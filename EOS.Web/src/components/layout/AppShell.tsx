@@ -1,16 +1,34 @@
 import {
+  IconBarcode,
+  IconBriefcase,
+  IconBuildingFactory,
+  IconCar,
+  IconChartBar,
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
+  IconClipboardCheck,
+  IconCoins,
   IconDashboard,
+  IconDatabase,
+  IconFileText,
+  IconFolder,
+  IconGitBranch,
   IconHome,
   IconMenu2,
+  IconPackage,
+  IconPalette,
   IconReportMoney,
   IconShoppingCart,
   IconTruckDelivery,
+  IconUsers,
   IconMoon,
   IconSettings,
   IconSun,
+  IconTools,
+  IconTruck,
+  IconWorld,
+  IconZoomScan,
 } from '@tabler/icons-react'
 import { Fragment, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -22,39 +40,68 @@ type Theme = 'light' | 'dark'
 const fallbackNavigation = [
   { id: 'dashboard', label: '工作台', route: '/dashboard', icon: 'dashboard' },
   {
+    id: 'procurement',
     label: '采购管理',
-    icon: IconShoppingCart,
+    icon: 'procurement',
     children: [
-      { label: '采购订单', to: '/procurement/purchase-orders' },
-      { label: '请购单', to: '/procurement/requisitions' },
-      { label: '采购收货', to: '/procurement/receipts' },
+      { id: 'po', label: '采购订单', route: '/procurement/purchase-orders', icon: 'procurement' },
+      { id: 'req', label: '请购单', route: '/procurement/requisitions', icon: 'procurement' },
+      { id: 'recv', label: '采购收货', route: '/procurement/receipts', icon: 'procurement' },
     ],
   },
   {
+    id: 'sales',
     label: '销售管理',
-    icon: IconReportMoney,
+    icon: 'sales',
     children: [
-      { label: '销售订单', to: '/sales/orders' },
-      { label: '报价单', to: '/sales/quotations' },
-      { label: '销售发货', to: '/sales/deliveries' },
+      { id: 'so', label: '销售订单', route: '/sales/orders', icon: 'sales' },
+      { id: 'quot', label: '报价单', route: '/sales/quotations', icon: 'sales' },
+      { id: 'del', label: '销售发货', route: '/sales/deliveries', icon: 'sales' },
     ],
   },
   {
+    id: 'inventory',
     label: '库存管理',
-    icon: IconTruckDelivery,
+    icon: 'inventory',
     children: [
-      { label: '库存查询', to: '/inventory/stock' },
-      { label: '调拨单', to: '/inventory/transfers' },
+      { id: 'stock', label: '库存查询', route: '/inventory/stock', icon: 'inventory' },
+      { id: 'transfer', label: '调拨单', route: '/inventory/transfers', icon: 'inventory' },
     ],
   },
-  { label: '个人设置', to: '/settings/profile', icon: IconSettings },
+  { id: 'settings', label: '个人设置', route: '/settings/profile', icon: 'settings' },
 ]
 
-const navigationIcons = { dashboard: IconDashboard, procurement: IconShoppingCart, sales: IconReportMoney, inventory: IconTruckDelivery, settings: IconSettings }
+const navigationIcons: Record<string, typeof IconDashboard> = {
+  dashboard: IconDashboard,
+  procurement: IconShoppingCart,
+  sales: IconReportMoney,
+  inventory: IconTruckDelivery,
+  settings: IconSettings,
+  folder: IconFolder,
+  production: IconBuildingFactory,
+  hr: IconUsers,
+  finance: IconCoins,
+  quality: IconClipboardCheck,
+  report: IconChartBar,
+  base: IconDatabase,
+  equipment: IconTools,
+  customer: IconBriefcase,
+  supplier: IconTruck,
+  document: IconFileText,
+  product: IconPackage,
+  vehicle: IconCar,
+  barcode: IconBarcode,
+  workflow: IconGitBranch,
+  sample: IconPalette,
+  query: IconZoomScan,
+  outsource: IconTruck,
+  customs: IconWorld,
+}
 
 const pageTitles: Record<string, { section: string; title: string }> = {
   '/dashboard': { section: '首页', title: '工作台' },
   '/procurement/purchase-orders': { section: '采购管理', title: '采购订单' },
+  '/admin/tables': { section: '系统管理', title: '数据表维护' },
   '/settings/profile': { section: '系统设置', title: '个人设置' },
 }
 
@@ -137,7 +184,7 @@ export function AppShell() {
           </div>
           <div className="navbar-nav pt-lg-3">
             {navigation.map((item) => {
-              const Icon = navigationIcons[item.icon]
+              const Icon = navigationIcons[item.icon] ?? IconFolder
               if (item.children) {
                 const isExpanded = expandedGroup === item.label
                 const isGroupActive = item.children.some((child) => location.pathname.startsWith(child.route!))
@@ -154,7 +201,7 @@ export function AppShell() {
                           setExpandedGroup((current) => current === item.label ? null : item.label)
                         }}
                       >
-                        <span className="nav-link-icon"><Icon size={20} stroke={1.7} /></span>
+                        <span className="nav-link-icon"><Icon size={18} stroke={1.7} /></span>
                         <span className="nav-link-title">{item.label}</span>
                         <IconChevronDown className="erp-nav-chevron" size={16} />
                       </button>
@@ -174,7 +221,7 @@ export function AppShell() {
               }
               return (
                 <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} key={item.route} to={item.route!} title={sidebarCollapsed ? item.label : undefined}>
-                  <span className="nav-link-icon"><Icon size={20} stroke={1.7} /></span>
+                  <span className="nav-link-icon"><Icon size={18} stroke={1.7} /></span>
                   <span className="nav-link-title">{item.label}</span>
                 </NavLink>
               )

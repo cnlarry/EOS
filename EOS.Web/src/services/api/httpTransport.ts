@@ -16,8 +16,9 @@ export class HttpTransport implements ApiTransport {
       signal: request.signal,
     })
     if (!response.ok) {
-      const problem = await response.json().catch(() => ({})) as { title?: string; detail?: string }
-      const body: ApiErrorBody = { code: `HTTP_${response.status}`, message: problem.title ?? problem.detail ?? '请求失败。' }
+      const problem = await response.json().catch(() => ({})) as { title?: string; detail?: string; message?: string }
+      const message = problem.message ?? problem.detail ?? problem.title ?? '请求失败。'
+      const body: ApiErrorBody = { code: `HTTP_${response.status}`, message }
       throw new ApiError(response.status, body)
     }
     if (response.status === 204) return undefined as TResponse
