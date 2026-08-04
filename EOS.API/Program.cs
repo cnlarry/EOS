@@ -37,6 +37,7 @@ builder.Services.AddAuthorization(options => options.FallbackPolicy =
         .RequireAuthenticatedUser().Build());
 builder.Services.AddScoped<AdminFieldRepository>();
 builder.Services.AddScoped<AuthenticationRepository>();
+builder.Services.AddScoped<FieldAdminRepository>();
 builder.Services.AddScoped<BomRepository>();
 builder.Services.AddScoped<DynamicBomRepository>();
 builder.Services.AddScoped<FieldConfigurationRepository>();

@@ -1,3 +1,4 @@
+using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Text.RegularExpressions;
@@ -11,14 +12,14 @@ public sealed record SaveWorkbenchColumns(IReadOnlyList<string> Master, IReadOnl
 public sealed record WorkbenchFieldSummary(string Key,string Label,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsCost,bool IsSecrecy,bool IsVirtual);
 public sealed record FieldChooserSource(bool Active,string? Table,string? Description,int? ModuleId,string? Filter,string? ReturnMapping);
 public sealed record WorkbenchFieldMetadata(string Key,string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool IsVirtual,string? VirtualExpression,bool CanCopy,bool IsAutoIncrement,string? ConvertFunction,string? DataSourceSql,string? LastUpdatedBy,DateTime? LastUpdatedAt);
-public sealed record UpdateWorkbenchFieldMetadata(string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers);
+public sealed record UpdateWorkbenchFieldMetadata(string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool CanCopy,WorkbenchFieldMetadata? Original);
 public sealed record WorkbenchDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, IReadOnlyList<WorkbenchField> MasterFields, IReadOnlyList<WorkbenchField> DetailFields, string? DefaultSort);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
 public sealed record WorkbenchQueryCondition(string Field, string Operator, string? Value, string? ValueTo, IReadOnlyList<string>? Values, string Logic = "and");
 public sealed record WorkbenchQuery(IReadOnlyList<WorkbenchQueryCondition> Conditions);
 public sealed record FieldSetupLookup(string Value,string Label);
 
-public sealed class DocumentWorkbenchRepository(IConfiguration configuration)
+public sealed class DocumentWorkbenchRepository(IConfiguration configuration, FieldAdminRepository fieldAdmin)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
@@ -57,25 +58,48 @@ public sealed class DocumentWorkbenchRepository(IConfiguration configuration)
     public async Task<WorkbenchFieldMetadata?> GetFieldMetadataAsync(WorkbenchDefinition definition,bool detail,string fieldKey,CancellationToken token)
     {
         var table=detail?definition.DetailTable:definition.MasterTable;if(table is null||!Identifier.IsMatch(fieldKey))return null;
-        await using var connection=CreateConnection();await connection.OpenAsync(token);const string sql="""
-            SELECT LTRIM(RTRIM(F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(F_DESC)),''),LTRIM(RTRIM(F_ID))),COALESCE(F_TYPE,'nvarchar'),COALESCE(DISPLAY_LENGTH,100),COALESCE(NULLIF(ITEM_ALIGN,''),'left'),COALESCE(NULLIF(HEADER_ALIGN,''),'center'),DISPLAY_FORMAT,CAST(COALESCE(IS_VISIBLE,1) AS bit),CAST(COALESCE(IS_DEFAULT_FIELDS,0) AS bit),CAST(COALESCE(IS_QUERY,1) AS bit),CAST(COALESCE(IS_READONLY,0) AS bit),CAST(COALESCE(IS_VERIFY,0) AS bit),CAST(COALESCE(IS_COST,0) AS bit),CAST(COALESCE(IS_SECRECY,0) AS bit),DFT_VALUE,VERIFY_INDEX,REGEX,F_REMARK,BROWSE_URL,BROWSE_M_IDX,CAST(COALESCE(ONLY_CHOOSE,0) AS bit),CAST(COALESCE(CHOOSE_MULTI,0) AS bit),CHOOSE_PAGE,CAST(COALESCE(CHOOSE_ACTIVE1,0) AS bit),CHOOSE_T_ID1,CHOOSE_T_DESC1,CHOOSE_M_IDX1,CHOOSE_FILTER1,CHOOSE_RETURNVAL1,CAST(COALESCE(CHOOSE_ACTIVE2,0) AS bit),CHOOSE_T_ID2,CHOOSE_T_DESC2,CHOOSE_M_IDX2,CHOOSE_FILTER2,CHOOSE_RETURNVAL2,CAST(COALESCE(CHOOSE_ACTIVE3,0) AS bit),CHOOSE_T_ID3,CHOOSE_T_DESC3,CHOOSE_M_IDX3,CHOOSE_FILTER3,CHOOSE_RETURNVAL3,CAST(COALESCE(CHOOSE_ACTIVE4,0) AS bit),CHOOSE_T_ID4,CHOOSE_T_DESC4,CHOOSE_M_IDX4,CHOOSE_FILTER4,CHOOSE_RETURNVAL4,CAST(COALESCE(IS_VIRTUAL,0) AS bit),VIRTUAL_EXP,CAST(COALESCE(CAN_COPY,1) AS bit),CAST(COALESCE(IS_AUTOINC,0) AS bit),CONVERT_FUNCTION,DATASOURCE_SQL,LAST_UPDATE_BY,LAST_UPDATE_DATE
-            FROM dbo.FIELDS WITH (NOLOCK) WHERE T_ID=@Table AND LTRIM(RTRIM(F_ID))=@Field;
-            """;
-        await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;command.Parameters.Add("@Field",SqlDbType.NVarChar,100).Value=fieldKey.Trim();await using var reader=await command.ExecuteReaderAsync(token);if(!await reader.ReadAsync(token))return null;var key=reader.GetString(0);return Identifier.IsMatch(key)?new(key,reader.GetString(1),reader.GetString(2),Math.Clamp(reader.GetInt32(3),40,300),reader.GetString(4),reader.GetString(5),reader.IsDBNull(6)?null:reader.GetString(6),reader.GetBoolean(7),reader.GetBoolean(8),reader.GetBoolean(9),reader.GetBoolean(10),reader.GetBoolean(11),reader.GetBoolean(12),reader.GetBoolean(13),reader.IsDBNull(14)?null:reader.GetString(14),reader.IsDBNull(15)?null:reader.GetInt32(15),reader.IsDBNull(16)?null:reader.GetString(16),reader.IsDBNull(17)?null:reader.GetString(17),reader.IsDBNull(18)?null:reader.GetString(18),reader.IsDBNull(19)?null:reader.GetInt32(19),reader.GetBoolean(20),reader.GetBoolean(21),reader.IsDBNull(22)?null:reader.GetString(22),[ReadChooser(reader,23),ReadChooser(reader,29),ReadChooser(reader,35),ReadChooser(reader,41)],reader.GetBoolean(47),reader.IsDBNull(48)?null:reader.GetString(48),reader.GetBoolean(49),reader.GetBoolean(50),reader.IsDBNull(51)?null:reader.GetString(51),reader.IsDBNull(52)?null:reader.GetString(52),reader.IsDBNull(53)?null:reader.GetString(53),reader.IsDBNull(54)?null:reader.GetDateTime(54)):null;
+        var metadata=await fieldAdmin.GetMetadataAsync(table,fieldKey.Trim(),token);
+        return metadata is null?null:MapMetadata(metadata);
     }
 
-    private static FieldChooserSource ReadChooser(SqlDataReader reader,int offset)=>new(reader.GetBoolean(offset),reader.IsDBNull(offset+1)?null:reader.GetString(offset+1),reader.IsDBNull(offset+2)?null:reader.GetString(offset+2),reader.IsDBNull(offset+3)?null:reader.GetInt32(offset+3),reader.IsDBNull(offset+4)?null:reader.GetString(offset+4),reader.IsDBNull(offset+5)?null:reader.GetString(offset+5));
+    private static WorkbenchFieldMetadata MapMetadata(FieldAdminMetadata metadata)
+    {
+        var input=metadata.Field;
+        return new(metadata.FieldId,input.Label,input.DataType,input.Width,input.Align,input.HeaderAlign,
+            input.Format,input.IsVisible,input.IsDefault,input.IsQueryable,input.IsReadonly,input.IsRequired,
+            input.IsCost,input.IsSecrecy,input.DefaultValue,input.VerifyIndex,input.Regex,input.Remark,
+            input.BrowseUrl,input.BrowseModuleId,input.OnlyChoose,input.ChooseMultiple,input.ChoosePage,
+            input.Choosers.Select(MapChooser).ToArray(),metadata.IsVirtual,metadata.VirtualExpression,input.CanCopy,
+            metadata.IsAutoIncrement,metadata.ConvertFunction,metadata.DataSourceSql,metadata.LastUpdatedBy,metadata.LastUpdatedAt);
+    }
 
-    public async Task UpdateFieldMetadataAsync(WorkbenchDefinition definition,bool detail,string fieldKey,UpdateWorkbenchFieldMetadata update,string userId,CancellationToken token)
+    private static FieldChooserSource MapChooser(FieldAdminChooser source)=>
+        new(source.Active,source.Table,source.Description,source.ModuleId,source.Filter,source.ReturnMapping);
+
+    public async Task UpdateFieldMetadataAsync(WorkbenchDefinition definition,bool detail,string fieldKey,UpdateWorkbenchFieldMetadata update,string updatedBy,CancellationToken token)
     {
         var table=detail?definition.DetailTable:definition.MasterTable;if(table is null||!Identifier.IsMatch(fieldKey))throw new ArgumentException("字段无效。");
-        var types=new HashSet<string>(["nvarchar","varchar","nchar","char","int","bigint","smallint","tinyint","decimal","numeric","float","real","money","smallmoney","date","datetime","datetime2","smalldatetime","time","bit"],StringComparer.OrdinalIgnoreCase);if(!types.Contains(update.DataType)||update.Label.Trim().Length is 0 or >300||update.Width is <40 or >300||update.Align is not ("left" or "center" or "right")||update.HeaderAlign is not ("left" or "center" or "right")||(update.Format?.Length??0)>50||(update.DefaultValue?.Length??0)>200||(update.Regex?.Length??0)>300||(update.Remark?.Length??0)>500||update.VerifyIndex is <0 or >9999||(update.BrowseUrl?.Length??0)>1000||(update.ChoosePage?.Length??0)>500||update.Choosers.Count!=4||update.Choosers.Any(item=>(item.Table?.Length??0)>300||(item.Description?.Length??0)>50||(item.Filter?.Length??0)>1000||(item.ReturnMapping?.Length??0)>8000))throw new ArgumentException("字段设置无效。");
-        if(!string.IsNullOrWhiteSpace(update.BrowseUrl)&&(!Uri.TryCreate(update.BrowseUrl,UriKind.Relative,out _)||update.BrowseUrl.TrimStart().StartsWith("//")))throw new ArgumentException("查看详情 URL 仅允许站内相对路径。");
-        await using var connection=CreateConnection();await connection.OpenAsync(token);const string sql="""
-            UPDATE dbo.FIELDS SET F_DESC=@Label,DISPLAY_LENGTH=@Width,ITEM_ALIGN=@Align,HEADER_ALIGN=@HeaderAlign,DISPLAY_FORMAT=@Format,IS_VISIBLE=@Visible,IS_DEFAULT_FIELDS=@Default,IS_QUERY=@Queryable,IS_READONLY=@Readonly,IS_VERIFY=@Required,IS_COST=@Cost,IS_SECRECY=@Secrecy,DFT_VALUE=@DefaultValue,VERIFY_INDEX=@VerifyIndex,REGEX=@Regex,F_REMARK=@Remark,BROWSE_URL=@BrowseUrl,BROWSE_M_IDX=@BrowseModuleId,ONLY_CHOOSE=@OnlyChoose,CHOOSE_MULTI=@ChooseMultiple,CHOOSE_PAGE=@ChoosePage,CHOOSE_ACTIVE1=@Active1,CHOOSE_T_ID1=@Table1,CHOOSE_T_DESC1=@Description1,CHOOSE_M_IDX1=@Module1,CHOOSE_FILTER1=@Filter1,CHOOSE_RETURNVAL1=@Return1,CHOOSE_ACTIVE2=@Active2,CHOOSE_T_ID2=@Table2,CHOOSE_T_DESC2=@Description2,CHOOSE_M_IDX2=@Module2,CHOOSE_FILTER2=@Filter2,CHOOSE_RETURNVAL2=@Return2,CHOOSE_ACTIVE3=@Active3,CHOOSE_T_ID3=@Table3,CHOOSE_T_DESC3=@Description3,CHOOSE_M_IDX3=@Module3,CHOOSE_FILTER3=@Filter3,CHOOSE_RETURNVAL3=@Return3,CHOOSE_ACTIVE4=@Active4,CHOOSE_T_ID4=@Table4,CHOOSE_T_DESC4=@Description4,CHOOSE_M_IDX4=@Module4,CHOOSE_FILTER4=@Filter4,CHOOSE_RETURNVAL4=@Return4,LAST_UPDATE_BY=@UserId,LAST_UPDATE_DATE=GETDATE() WHERE T_ID=@Table AND F_ID=@Field AND COALESCE(IS_VIRTUAL,0)=0;
-            """;
-        await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@Label",SqlDbType.NVarChar,300).Value=update.Label.Trim();command.Parameters.Add("@Width",SqlDbType.Int).Value=update.Width;command.Parameters.Add("@Align",SqlDbType.NVarChar,50).Value=update.Align;command.Parameters.Add("@HeaderAlign",SqlDbType.NVarChar,50).Value=update.HeaderAlign;command.Parameters.Add("@Format",SqlDbType.NVarChar,50).Value=(object?)update.Format??DBNull.Value;command.Parameters.Add("@Visible",SqlDbType.Bit).Value=update.IsVisible;command.Parameters.Add("@Default",SqlDbType.Bit).Value=update.IsDefault;command.Parameters.Add("@Queryable",SqlDbType.Bit).Value=update.IsQueryable;command.Parameters.Add("@Readonly",SqlDbType.Bit).Value=update.IsReadonly;command.Parameters.Add("@Required",SqlDbType.Bit).Value=update.IsRequired;command.Parameters.Add("@Cost",SqlDbType.Bit).Value=update.IsCost;command.Parameters.Add("@Secrecy",SqlDbType.Bit).Value=update.IsSecrecy;command.Parameters.Add("@DefaultValue",SqlDbType.NVarChar,200).Value=(object?)update.DefaultValue??DBNull.Value;command.Parameters.Add("@VerifyIndex",SqlDbType.Int).Value=(object?)update.VerifyIndex??DBNull.Value;command.Parameters.Add("@Regex",SqlDbType.NVarChar,300).Value=(object?)update.Regex??DBNull.Value;command.Parameters.Add("@Remark",SqlDbType.NVarChar,500).Value=(object?)update.Remark??DBNull.Value;command.Parameters.Add("@BrowseUrl",SqlDbType.VarChar,1000).Value=(object?)update.BrowseUrl??DBNull.Value;command.Parameters.Add("@BrowseModuleId",SqlDbType.Int).Value=(object?)update.BrowseModuleId??DBNull.Value;command.Parameters.Add("@OnlyChoose",SqlDbType.Bit).Value=update.OnlyChoose;command.Parameters.Add("@ChooseMultiple",SqlDbType.Bit).Value=update.ChooseMultiple;command.Parameters.Add("@ChoosePage",SqlDbType.NVarChar,500).Value=(object?)update.ChoosePage??DBNull.Value;for(var i=0;i<4;i++){var source=update.Choosers[i];var n=i+1;command.Parameters.Add($"@Active{n}",SqlDbType.Bit).Value=source.Active;command.Parameters.Add($"@Table{n}",SqlDbType.NVarChar,300).Value=(object?)source.Table??DBNull.Value;command.Parameters.Add($"@Description{n}",SqlDbType.NVarChar,50).Value=(object?)source.Description??DBNull.Value;command.Parameters.Add($"@Module{n}",SqlDbType.Int).Value=(object?)source.ModuleId??DBNull.Value;command.Parameters.Add($"@Filter{n}",SqlDbType.NVarChar,1000).Value=(object?)source.Filter??DBNull.Value;command.Parameters.Add($"@Return{n}",SqlDbType.VarChar,8000).Value=(object?)source.ReturnMapping??DBNull.Value;}command.Parameters.Add("@UserId",SqlDbType.NVarChar,50).Value=userId;command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;command.Parameters.Add("@Field",SqlDbType.NVarChar,100).Value=fieldKey;if(await command.ExecuteNonQueryAsync(token)!=1)throw new ArgumentException("字段不存在或不可设置。");
+        var input=MapInput(update);
+        var original=update.Original is null?null:MapInput(update.Original);
+        await fieldAdmin.UpdateAsync(table,fieldKey.Trim(),input,original,updatedBy,token);
     }
+
+    private static FieldAdminInput MapInput(UpdateWorkbenchFieldMetadata update)=>new(
+        update.Label,update.DataType,update.Width,update.Align,update.HeaderAlign,update.Format,
+        update.IsVisible,update.IsDefault,update.IsQueryable,update.IsReadonly,update.IsRequired,update.IsCost,update.IsSecrecy,
+        update.DefaultValue,update.VerifyIndex,update.Regex,update.Remark,update.BrowseUrl,update.BrowseModuleId,
+        update.OnlyChoose,update.ChooseMultiple,update.ChoosePage,
+        update.Choosers.Select(MapInputChooser).ToArray(),update.CanCopy);
+
+    private static FieldAdminInput MapInput(WorkbenchFieldMetadata metadata)=>new(
+        metadata.Label,metadata.DataType,metadata.Width,metadata.Align,metadata.HeaderAlign,metadata.Format,
+        metadata.IsVisible,metadata.IsDefault,metadata.IsQueryable,metadata.IsReadonly,metadata.IsRequired,metadata.IsCost,metadata.IsSecrecy,
+        metadata.DefaultValue,metadata.VerifyIndex,metadata.Regex,metadata.Remark,metadata.BrowseUrl,metadata.BrowseModuleId,
+        metadata.OnlyChoose,metadata.ChooseMultiple,metadata.ChoosePage,
+        metadata.Choosers.Select(MapInputChooser).ToArray(),metadata.CanCopy);
+
+    private static FieldAdminChooser MapInputChooser(FieldChooserSource source)=>
+        new(source.Active,source.Table,source.Description,source.ModuleId,source.Filter,source.ReturnMapping);
 
     public async Task<WorkbenchColumnSettings> GetDefaultColumnSettingsAsync(WorkbenchDefinition definition,string userId,CancellationToken token)
     {

@@ -11,7 +11,7 @@ export interface NavigationItem {
   id: string
   label: string
   route?: string
-  icon: 'dashboard' | 'procurement' | 'sales' | 'inventory' | 'settings'
+  icon: string
   children?: NavigationItem[] | null
 }
 

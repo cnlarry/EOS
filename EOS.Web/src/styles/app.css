@@ -47,7 +47,7 @@ button, input, select { font: inherit; }
 .erp-sidebar .navbar-brand small { display: block; color: var(--tblr-secondary); font-size: 11px; font-weight: 500; margin-top: 2px; }
 .erp-brand-mark { display: grid; flex: 0 0 auto; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(145deg, #206bc4, #4d91e5); color: white; font-weight: 800; box-shadow: 0 7px 18px rgba(32, 107, 196, .28); }
 .erp-sidebar .nav-link { width: auto; display: flex; align-items: center; justify-content: flex-start !important; gap: 10px; border-radius: 7px; margin: 0px 7px; padding: 0px 11px; text-align: left; }
-.erp-sidebar .nav-link-icon { flex: 0 0 20px; width: 20px; margin: 0 !important; }
+.erp-sidebar .nav-link-icon { flex: 0 0 18px; width: 18px; margin: 0 !important; }
 .erp-sidebar .nav-link-title { min-width: 0; text-align: left; }
 .erp-sidebar .nav-link.active { background: var(--tblr-primary-lt); color: var(--tblr-primary); font-weight: 650; }
 .erp-nav-group { flex: 0 0 38px; width: 100%; height: 38px; min-height: 38px; max-height: 38px; margin: 0; padding: 0; }
@@ -100,7 +100,6 @@ button, input, select { font: inherit; }
 .page-body > .container-fluid > :first-child { margin-top: 0 !important; }
 .erp-command-bar .card-body { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
 .erp-row-active td { background: var(--tblr-primary-lt) !important; }
-.erp-data-table tbody tr { cursor: pointer; }
 .erp-master-table-region { position: relative; min-height: 341px; transition: opacity .12s ease; }
 .erp-master-table-region.is-loading { pointer-events: none; opacity: .62; }
 .erp-master-table-region.is-loading::after { position: absolute; top: 10px; right: 12px; width: 16px; height: 16px; content: ''; border: 2px solid var(--tblr-border-color); border-top-color: var(--tblr-primary); border-radius: 50%; animation: spinner-border .65s linear infinite; }
@@ -137,14 +136,30 @@ button, input, select { font: inherit; }
 .erp-state { min-height: 18rem; padding: 2rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .75rem; text-align: center; }
 .erp-state-icon { display: grid; place-items: center; width: 3.5rem; height: 3.5rem; border-radius: .8rem; color: var(--tblr-primary); background: var(--tblr-primary-lt); }
 .erp-state-icon-error { color: var(--tblr-danger); background: var(--tblr-danger-lt); }
+/* ==========================================================================
+   标准列表表格（erp-data-table）
+   来源：DocumentWorkbench 主表列表表格（单元格内边距、字号、表头样式）。
+   说明：无法用 DocumentWorkbench 承载的列表页（如数据表/字段维护）复用同一样式，
+         后续新列表页也应统一使用本样式。
+   用法：<table className="table table-vcenter card-table mb-0 erp-data-table">
+   ========================================================================== */
 .erp-data-table { font-size: 12px; }
-.erp-data-table th { white-space: nowrap; font-size: 12px; }
+.erp-data-table th { position: relative; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.erp-data-table td { font-size: 12px; }
 .erp-data-table > :not(caption) > * > * { padding: 5px !important; }
+.erp-data-table tbody tr { cursor: pointer; }
+/* 列宽拖拽手柄（通用：主表、子表、字段维护等任意 ResizableTable 生效） */
+.erp-col-resizer { position: absolute; top: 0; right: -4px; bottom: 0; z-index: 2; width: 8px; cursor: col-resize; user-select: none; touch-action: none; }
+.erp-col-resizer::after { position: absolute; top: 0; right: 3px; bottom: 0; width: 2px; content: ''; background: transparent; transition: background-color .12s ease; }
+.erp-col-resizer:hover::after { background: var(--tblr-primary); }
+.erp-col-resizing, .erp-col-resizing * { cursor: col-resize !important; user-select: none !important; }
+.erp-data-table .btn-sm.erp-table-action { --tblr-btn-padding-x: 6px; --tblr-btn-padding-y: 1px; font-size: 12px; line-height: 1; min-height: 0; }
+.erp-data-table .btn-sm.erp-table-action svg { width: 14px; height: 14px; }
+.erp-data-table .erp-select-column { width: 33px !important; min-width: 33px; max-width: 33px; padding: 5px !important; text-align: center; }
+.erp-data-table .erp-select-column .form-check-input { display: block; margin: 0 auto; }
 .erp-detail-card .table { font-size: 12px; }
 .erp-detail-card .table th,
 .erp-detail-card .table td { font-size: 12px; }
-.erp-data-table .erp-select-column { width: 33px !important; min-width: 33px; max-width: 33px; padding: 5px !important; text-align: center; }
-.erp-data-table .erp-select-column .form-check-input { display: block; margin: 0 auto; }
 .erp-login-page { min-height: 100vh; display: grid; grid-template-columns: minmax(320px, 1fr) minmax(360px, 480px); align-items: center; gap: 8vw; padding: 8vh 10vw; background: radial-gradient(circle at 15% 20%, var(--tblr-primary-lt), transparent 35%), var(--tblr-bg-surface-secondary); }
 .erp-login-loading { display: flex; flex-direction: column; justify-content: center; gap: 14px; color: var(--tblr-secondary); }
 .erp-login-brand-heading { display: flex; align-items: center; gap: 22px; }
