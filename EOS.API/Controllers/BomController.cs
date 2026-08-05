@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Mvc;
@@ -17,7 +18,7 @@ public sealed class BomController(
     public async Task<ActionResult<object>> GetIdentity(CancellationToken cancellationToken)
     {
         var rights = await rightsRepository.GetAsync(userContext.UserId, 1204, cancellationToken);
-        return Ok(new { userId = userContext.UserId, developmentBypass = true, moduleId = 1204, canSetup = rights.CanSetup });
+        return Ok(new { userId = userContext.UserId, moduleId = 1204, canSetup = rights.CanSetup });
     }
 
     [HttpGet("grid/boms")]
@@ -92,11 +93,10 @@ public sealed class BomController(
         _ = userContext.UserId;
         if (string.IsNullOrWhiteSpace(proNo) || proNo.Length > 30)
         {
-            return BadRequest(new ProblemDetails
-            {
-                Title = "产品料号无效",
-                Detail = "产品料号不能为空且长度不能超过 30。"
-            });
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.InvalidArgument,
+                "产品料号不能为空且长度不能超过 30。"));
         }
 
         return Ok(await repository.GetDetailsAsync(proNo, cancellationToken));

@@ -4,7 +4,7 @@ using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
 
-public sealed class FieldConfigurationRepository(IConfiguration configuration)
+public sealed class FieldConfigurationRepository(DbConnectionFactory connections, ILogger<FieldConfigurationRepository> logger)
 {
     private const string MasterTable = "BOM_STRU_M";
     private const string DetailTable = "BOM_STRU_D";
@@ -112,6 +112,7 @@ public sealed class FieldConfigurationRepository(IConfiguration configuration)
         }
 
         await transaction.CommitAsync(cancellationToken);
+        logger.LogInformation("保存字段配置 userId={UserId} scope={Scope} fields={FieldCount}", userId, scope, normalized.Length);
     }
 
     public async Task RestoreDefaultAsync(
@@ -131,6 +132,7 @@ public sealed class FieldConfigurationRepository(IConfiguration configuration)
         AddIdentityParameters(command, userId, relatedTable);
         await connection.OpenAsync(cancellationToken);
         await command.ExecuteNonQueryAsync(cancellationToken);
+        logger.LogInformation("恢复默认字段配置 userId={UserId} scope={Scope}", userId, scope);
     }
 
     private static async Task<bool> HasUserConfigurationAsync(
@@ -244,15 +246,7 @@ public sealed class FieldConfigurationRepository(IConfiguration configuration)
         command.Parameters.Add("@RelatedTable", SqlDbType.VarChar, 100).Value = relatedTable;
     }
 
-    private SqlConnection CreateConnection()
-    {
-        var connectionString = configuration.GetConnectionString("ErpDatabase");
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            throw new InvalidOperationException("ConnectionStrings:ErpDatabase 未配置。");
-        }
-        return new SqlConnection(connectionString);
-    }
+    private SqlConnection CreateConnection() => connections.Create();
 }
 
 internal static class FieldSqlDataReaderExtensions

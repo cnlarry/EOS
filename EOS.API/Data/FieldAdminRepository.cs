@@ -5,7 +5,7 @@ using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
 
-public sealed class FieldAdminRepository(IConfiguration configuration)
+public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogger<FieldAdminRepository> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly HashSet<string> AllowedTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -204,6 +204,7 @@ public sealed class FieldAdminRepository(IConfiguration configuration)
         if (await command.ExecuteNonQueryAsync(token) != 1)
             throw new InvalidOperationException("新增字段失败。");
         await transaction.CommitAsync(token);
+        logger.LogInformation("新增字段 table={Table} field={Field} by={UpdatedBy}", request.TableId, request.FieldId, updatedBy);
     }
 
     public async Task UpdateAsync(
@@ -225,7 +226,10 @@ public sealed class FieldAdminRepository(IConfiguration configuration)
             var current = await ReadCurrentInputAsync(connection, transaction, tableId, fieldId, token)
                 ?? throw new KeyNotFoundException("字段不存在。");
             if (!SameInput(original, current))
+            {
+                logger.LogWarning("字段乐观锁冲突 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
                 throw new ArgumentException("字段内容已被他人修改，请刷新后重试！", nameof(field));
+            }
         }
 
         const string sql = """
@@ -252,6 +256,7 @@ public sealed class FieldAdminRepository(IConfiguration configuration)
         if (await command.ExecuteNonQueryAsync(token) != 1)
             throw new KeyNotFoundException("字段不存在。");
         await transaction.CommitAsync(token);
+        logger.LogInformation("更新字段 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
     }
 
     public async Task DeleteAsync(string tableId, string fieldId, CancellationToken token)
@@ -277,6 +282,7 @@ public sealed class FieldAdminRepository(IConfiguration configuration)
         clean.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
         await clean.ExecuteNonQueryAsync(token);
         await transaction.CommitAsync(token);
+        logger.LogInformation("删除字段 table={Table} field={Field}", tableId, fieldId);
     }
 
     private static FieldAdminChooser ReadChooser(SqlDataReader reader, int offset) => new(
@@ -440,6 +446,5 @@ public sealed class FieldAdminRepository(IConfiguration configuration)
 
     private static object DbValue(string? value) => string.IsNullOrWhiteSpace(value) ? DBNull.Value : value.Trim();
 
-    private SqlConnection CreateConnection() => new(configuration.GetConnectionString("ErpDatabase")
-        ?? throw new InvalidOperationException("ConnectionStrings:ErpDatabase 未配置。"));
+    private SqlConnection CreateConnection() => connections.Create();
 }

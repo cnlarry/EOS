@@ -18,8 +18,7 @@ public sealed class AdminFieldsController(
         CancellationToken cancellationToken = default)
     {
         if (!await CanSetup(cancellationToken)) return Forbid();
-        try { return Ok(await repository.GetFieldsAsync(table, cancellationToken)); }
-        catch (ArgumentException exception) { return BadRequest(Problem(exception.Message)); }
+        return Ok(await repository.GetFieldsAsync(table, cancellationToken));
     }
 
     [HttpPut]
@@ -28,13 +27,8 @@ public sealed class AdminFieldsController(
         CancellationToken cancellationToken)
     {
         if (!await CanSetup(cancellationToken)) return Forbid();
-        try
-        {
-            await repository.UpdateAsync(request, userContext.UserId, cancellationToken);
-            return NoContent();
-        }
-        catch (ArgumentException exception) { return BadRequest(Problem(exception.Message)); }
-        catch (KeyNotFoundException exception) { return NotFound(Problem(exception.Message)); }
+        await repository.UpdateAsync(request, userContext.UserId, cancellationToken);
+        return NoContent();
     }
 
     [HttpPut("defaults")]
@@ -43,18 +37,11 @@ public sealed class AdminFieldsController(
         CancellationToken cancellationToken)
     {
         if (!await CanSetup(cancellationToken)) return Forbid();
-        try
-        {
-            await repository.SaveDefaultsAsync(request, cancellationToken);
-            return NoContent();
-        }
-        catch (ArgumentException exception) { return BadRequest(Problem(exception.Message)); }
+        await repository.SaveDefaultsAsync(request, cancellationToken);
+        return NoContent();
     }
 
     private async Task<bool> CanSetup(CancellationToken cancellationToken) =>
         (await rightsRepository.GetAsync(userContext.UserId, 1204, cancellationToken)).CanSetup;
-
-    private static ProblemDetails Problem(string detail) => new()
-        { Title = "字段维护失败", Detail = detail };
 }
 

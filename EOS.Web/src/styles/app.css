@@ -222,3 +222,17 @@ button, input, select { font: inherit; }
   .erp-command-bar .btn { flex: 1 1 auto; }
   .page-header { padding-top: .5rem; }
 }
+
+
+/* ===== 打印 ===== */
+@media print {
+  body { background: #fff !important; }
+  .erp-sidebar, .erp-context-bar, .erp-mobile-menu-trigger, .erp-list-command-bar, .erp-pagination-footer, .modal, .modal-backdrop, .dropdown-menu, .erp-sidebar-backdrop, .btn-close { display: none !important; }
+  .page-wrapper { margin-left: 0 !important; }
+  .page-body, .page-body .container-fluid { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+  .card { box-shadow: none !important; border: 0 !important; }
+  .card-header { display: none; }
+  .erp-list-card, .erp-detail-card { break-inside: avoid; }
+  table { font-size: 10px !important; }
+  a[href]::after { content: none !important; }
+}

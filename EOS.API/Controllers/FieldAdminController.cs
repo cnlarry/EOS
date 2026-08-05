@@ -37,8 +37,7 @@ public sealed class FieldAdminController(
         CancellationToken token = default)
     {
         if (!await CanBrowse(token)) return Forbid();
-        try { return Ok(await repository.GetFieldsAsync(table, keyword, page, pageSize, token)); }
-        catch (ArgumentException exception) { return BadRequest(Problem(exception.Message)); }
+        return Ok(await repository.GetFieldsAsync(table, keyword, page, pageSize, token));
     }
 
     [HttpGet("fields/{table}/{field}")]
@@ -53,34 +52,24 @@ public sealed class FieldAdminController(
     public async Task<IActionResult> Create(CreateFieldAdminRequest request, CancellationToken token)
     {
         if (!await CanSetup(token)) return Forbid();
-        try
-        {
-            await repository.CreateAsync(request, userContext.EmployeeName, token);
-            return NoContent();
-        }
-        catch (ArgumentException exception) { return BadRequest(Problem(exception.Message)); }
+        await repository.CreateAsync(request, userContext.EmployeeName, token);
+        return NoContent();
     }
 
     [HttpPut("fields/{table}/{field}")]
     public async Task<IActionResult> Update(string table, string field, UpdateFieldAdminRequest request, CancellationToken token)
     {
         if (!await CanSetup(token)) return Forbid();
-        try
-        {
-            await repository.UpdateAsync(table, field, request.Field, request.Original, userContext.EmployeeName, token);
-            return NoContent();
-        }
-        catch (ArgumentException exception) { return BadRequest(Problem(exception.Message)); }
-        catch (KeyNotFoundException exception) { return NotFound(Problem(exception.Message)); }
+        await repository.UpdateAsync(table, field, request.Field, request.Original, userContext.EmployeeName, token);
+        return NoContent();
     }
 
     [HttpDelete("fields/{table}/{field}")]
     public async Task<IActionResult> Delete(string table, string field, CancellationToken token)
     {
         if (!await CanSetup(token)) return Forbid();
-        try { await repository.DeleteAsync(table, field, token); return NoContent(); }
-        catch (ArgumentException exception) { return BadRequest(Problem(exception.Message)); }
-        catch (KeyNotFoundException exception) { return NotFound(Problem(exception.Message)); }
+        await repository.DeleteAsync(table, field, token);
+        return NoContent();
     }
 
     private async Task<bool> CanBrowse(CancellationToken token) =>
@@ -88,7 +77,4 @@ public sealed class FieldAdminController(
 
     private async Task<bool> CanSetup(CancellationToken token) =>
         (await rightsRepository.GetAsync(userContext.UserId, AdminModuleId, token)).CanSetup;
-
-    private static ProblemDetails Problem(string detail) => new()
-        { Title = "字段维护失败", Detail = detail };
 }

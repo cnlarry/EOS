@@ -1,12 +1,46 @@
 using EOS.API.Data;
+using EOS.API.Errors;
+using EOS.API.Middleware;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Logging.ClearProviders();
+builder.Logging.AddSimpleConsole(options =>
+{
+    options.TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff ";
+});
+if (builder.Environment.IsDevelopment())
+{
+    builder.Logging.AddDebug();
+}
+
+builder.Services.AddControllers(options => options.Filters.Add<ApiExceptionFilter>())
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var fieldErrors = context.ModelState
+                .Where(entry => entry.Value is { Errors.Count: > 0 })
+                .ToDictionary(
+                    entry => entry.Key,
+                    entry => entry.Value!.Errors.Select(error => error.ErrorMessage).ToArray());
+            var problem = ApiProblem.Create(
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.InvalidModel,
+                "请求参数无效",
+                fieldErrors);
+            ApiProblem.AttachTraceId(problem, context.HttpContext);
+            return new BadRequestObjectResult(problem);
+        };
+    });
 builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<DbConnectionFactory>();
+builder.Services.AddScoped<ApiExceptionFilter>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -48,6 +82,7 @@ builder.Services.AddScoped<CurrentUserContext>();
 
 var app = builder.Build();
 
+app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseExceptionHandler();
 app.UseDefaultFiles();
 app.UseStaticFiles();

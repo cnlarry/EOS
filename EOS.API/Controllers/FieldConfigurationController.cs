@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Mvc;
@@ -17,27 +18,16 @@ public sealed class FieldConfigurationController(
         [FromQuery] string scope = "master",
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var rights = await rightsRepository.GetAsync(userContext.UserId, 1204, cancellationToken);
-            if (!rights.CanBrowse) return Forbid();
-            var deniedFields = scope == "detail" ? rights.DeniedDetailFields : rights.DeniedMasterFields;
-            return Ok(await repository.GetAsync(
-                userContext.UserId,
-                scope,
-                rights.CanViewCost,
-                rights.CanViewSecrecy,
-                deniedFields,
-                cancellationToken));
-        }
-        catch (ArgumentException exception)
-        {
-            return BadRequest(new ProblemDetails
-            {
-                Title = "字段配置参数无效",
-                Detail = exception.Message
-            });
-        }
+        var rights = await rightsRepository.GetAsync(userContext.UserId, 1204, cancellationToken);
+        if (!rights.CanBrowse) return Forbid();
+        var deniedFields = scope == "detail" ? rights.DeniedDetailFields : rights.DeniedMasterFields;
+        return Ok(await repository.GetAsync(
+            userContext.UserId,
+            scope,
+            rights.CanViewCost,
+            rights.CanViewSecrecy,
+            deniedFields,
+            cancellationToken));
     }
 
     [HttpDelete]
@@ -45,22 +35,11 @@ public sealed class FieldConfigurationController(
         SaveFieldConfigurationRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            await repository.RestoreDefaultAsync(
-                userContext.UserId,
-                request.Scope,
-                cancellationToken);
-            return NoContent();
-        }
-        catch (ArgumentException exception)
-        {
-            return BadRequest(new ProblemDetails
-            {
-                Title = "字段配置参数无效",
-                Detail = exception.Message
-            });
-        }
+        await repository.RestoreDefaultAsync(
+            userContext.UserId,
+            request.Scope,
+            cancellationToken);
+        return NoContent();
     }
 
     [HttpPut]
@@ -70,36 +49,24 @@ public sealed class FieldConfigurationController(
     {
         if (request.FieldIds.Count > 100)
         {
-            return BadRequest(new ProblemDetails
-            {
-                Title = "选择字段过多",
-                Detail = "单个表格最多允许选择 100 个字段。"
-            });
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.InvalidArgument,
+                "单个表格最多允许选择 100 个字段。"));
         }
 
-        try
-        {
-            var rights = await rightsRepository.GetAsync(userContext.UserId, 1204, cancellationToken);
-            if (!rights.CanBrowse) return Forbid();
-            var deniedFields = request.Scope == "detail" ? rights.DeniedDetailFields : rights.DeniedMasterFields;
-            await repository.SaveAsync(
-                userContext.UserId,
-                request.Scope,
-                request.FieldIds,
-                rights.CanViewCost,
-                rights.CanViewSecrecy,
-                deniedFields,
-                cancellationToken);
-            return NoContent();
-        }
-        catch (ArgumentException exception)
-        {
-            return BadRequest(new ProblemDetails
-            {
-                Title = "字段配置参数无效",
-                Detail = exception.Message
-            });
-        }
+        var rights = await rightsRepository.GetAsync(userContext.UserId, 1204, cancellationToken);
+        if (!rights.CanBrowse) return Forbid();
+        var deniedFields = request.Scope == "detail" ? rights.DeniedDetailFields : rights.DeniedMasterFields;
+        await repository.SaveAsync(
+            userContext.UserId,
+            request.Scope,
+            request.FieldIds,
+            rights.CanViewCost,
+            rights.CanViewSecrecy,
+            deniedFields,
+            cancellationToken);
+        return NoContent();
     }
 }
 

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -17,16 +18,24 @@ public sealed class AuthenticationController(AuthenticationRepository repository
     public async Task<IActionResult> Login(LoginRequest request, CancellationToken token)
     {
         if (string.IsNullOrWhiteSpace(request.UserId) || string.IsNullOrEmpty(request.Password))
-            return BadRequest(new ProblemDetails { Title = "请输入用户名和密码" });
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest,
+                ApiErrorCodes.LoginInvalidInput,
+                "请输入用户名和密码"));
         var result = await repository.AuthenticateAsync(request.UserId, request.Password, token);
         if (result.Failure != LoginFailure.None)
-            return Unauthorized(new ProblemDetails { Title = result.Failure switch
+        {
+            var (code, message) = result.Failure switch
             {
-                LoginFailure.UserNotFound => "用户名不存在",
-                LoginFailure.InvalidPassword => "密码不正确",
-                LoginFailure.Disabled => "账户已被禁用",
-                _ => "登录失败"
-            }});
+                LoginFailure.UserNotFound => (ApiErrorCodes.LoginUserNotFound, "用户名不存在"),
+                LoginFailure.InvalidPassword => (ApiErrorCodes.LoginInvalidPassword, "密码不正确"),
+                LoginFailure.Disabled => (ApiErrorCodes.LoginDisabled, "账户已被禁用"),
+                _ => (ApiErrorCodes.InternalError, "登录失败")
+            };
+            var problem = ApiProblem.Create(StatusCodes.Status401Unauthorized, code, message);
+            ApiProblem.AttachTraceId(problem, HttpContext);
+            return Unauthorized(problem);
+        }
         var user = result.User!;
         var claims = new[] {
             new Claim(ClaimTypes.NameIdentifier, user.UserId), new Claim(ClaimTypes.Name, user.EmployeeName),

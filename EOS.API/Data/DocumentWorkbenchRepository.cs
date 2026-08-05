@@ -1,6 +1,7 @@
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 using System.Data;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace EOS.API.Data;
@@ -19,7 +20,7 @@ public sealed record WorkbenchQueryCondition(string Field, string Operator, stri
 public sealed record WorkbenchQuery(IReadOnlyList<WorkbenchQueryCondition> Conditions);
 public sealed record FieldSetupLookup(string Value,string Label);
 
-public sealed class DocumentWorkbenchRepository(IConfiguration configuration, FieldAdminRepository fieldAdmin)
+public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections, FieldAdminRepository fieldAdmin, ILogger<DocumentWorkbenchRepository> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
@@ -29,14 +30,25 @@ public sealed class DocumentWorkbenchRepository(IConfiguration configuration, Fi
         const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection); command.Parameters.Add("@ModuleId", SqlDbType.Int).Value=moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
-        if (!await reader.ReadAsync(token)) return null;
+        if (!await reader.ReadAsync(token))
+        {
+            logger.LogDebug("工作台定义未找到 module={ModuleId}", moduleId);
+            return null;
+        }
         var title=reader.GetString(0).Trim(); var master=reader.IsDBNull(1)?"":reader.GetString(1).Trim();
         var detail=reader.IsDBNull(2)?null:reader.GetString(2).Trim(); var url=reader.IsDBNull(3)?"":reader.GetString(3);var defaultSort=reader.IsDBNull(4)?null:reader.GetString(4).Trim();
         await reader.CloseAsync();
-        if (!IsWorkbenchUrl(url) || !Identifier.IsMatch(master) || (detail is not null && !Identifier.IsMatch(detail))) return null;
+        if (!IsWorkbenchUrl(url) || !Identifier.IsMatch(master) || (detail is not null && !Identifier.IsMatch(detail)))
+        {
+            logger.LogWarning("模块 {ModuleId} 未通过工作台校验 url={Url} master={Master} detail={Detail}", moduleId, url, master, detail);
+            return null;
+        }
         var masterFields=await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token);
-        return new(moduleId,title,master,detail,masterFields,
+        WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,
             detail is null?[]:await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),NormalizeSort(defaultSort,master,masterFields));
+        logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
+            moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
+        return definition;
     }
 
     public async Task<IReadOnlyList<FieldSetupLookup>> GetFieldSetupTablesAsync(CancellationToken token)
@@ -124,30 +136,61 @@ public sealed class DocumentWorkbenchRepository(IConfiguration configuration, Fi
         await SaveColumns(connection,transaction,userId,definition.MasterTable,definition.MasterTable,settings.Master,token);
         if(definition.DetailTable is not null)await SaveColumns(connection,transaction,userId,definition.MasterTable,definition.DetailTable,settings.Detail,token);
         await transaction.CommitAsync(token);
+        logger.LogInformation("保存列配置 userId={UserId} module={ModuleId} master={Master} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
+            userId,definition.ModuleId,definition.MasterTable,settings.Master.Count,settings.Detail.Count);
     }
 
     public async Task ResetColumnSettingsAsync(WorkbenchDefinition definition,string userId,CancellationToken token)
     {
         await using var connection=CreateConnection();await connection.OpenAsync(token);const string sql="DELETE FROM dbo.SYSQL_FIELDS WHERE USER_ID=@UserId AND T_ID=@MasterTable";
         await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();command.Parameters.Add("@MasterTable",SqlDbType.NVarChar,100).Value=definition.MasterTable;await command.ExecuteNonQueryAsync(token);
+        logger.LogInformation("重置列配置 userId={UserId} module={ModuleId} master={Master}", userId,definition.ModuleId,definition.MasterTable);
     }
 
-    public async Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail, IReadOnlyDictionary<string,string> keys, int page, int pageSize, CancellationToken token, WorkbenchQuery? query=null, string? sortField=null, string? sortDirection=null)
+    public async Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail, IReadOnlyDictionary<string,string> keys, int page, int pageSize, CancellationToken token, WorkbenchQuery? query=null, string? keyword=null, string? sortField=null, string? sortDirection=null)
     {
         var table=detail?definition.DetailTable:definition.MasterTable; var fields=detail?definition.DetailFields:definition.MasterFields;
         page=Math.Max(1,page); pageSize=Math.Clamp(pageSize,10,100);
         if (table is null || fields.Count==0) return new([],0,page,pageSize);
         var selected=fields.Take(30).ToList(); var predicates=new List<string>();
+        var stopwatch=Stopwatch.StartNew();
         await using var connection=CreateConnection(); await connection.OpenAsync(token); await using var command=new SqlCommand(); command.Connection=connection;
         if (detail) foreach(var key in definition.MasterFields.Where(field=>field.IsPrimaryKey)) if(keys.TryGetValue(key.Key,out var value) && definition.DetailFields.Any(field=>field.Key.Equals(key.Key,StringComparison.OrdinalIgnoreCase))) { var name=$"@k{predicates.Count}"; predicates.Add($"[{key.Key}]={name}"); command.Parameters.AddWithValue(name,value); }
-        if(detail && predicates.Count==0) return new([],0,page,pageSize);
+        if(detail && predicates.Count==0)
+        {
+            logger.LogDebug("子表查询缺少主表关联键，跳过 detail={Detail} table={Table}", detail, table);
+            return new([],0,page,pageSize);
+        }
         if (!detail && query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
+        if (!detail && !string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,detail,sortField,sortDirection);
         command.CommandText=$"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {string.Join(',',selected.Select(field=>$"[{field.Key}]"))} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
         command.Parameters.Add("@Offset",SqlDbType.Int).Value=(page-1)*pageSize;command.Parameters.Add("@PageSize",SqlDbType.Int).Value=pageSize;
         await using var reader=await command.ExecuteReaderAsync(token); await reader.ReadAsync(token);var total=Convert.ToInt32(reader.GetInt64(0));await reader.NextResultAsync(token); var rows=new List<Dictionary<string,object?>>();
-        while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase); for(var i=0;i<reader.FieldCount;i++) row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i); rows.Add(row);} return new(rows,total,page,pageSize);
+        while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase); for(var i=0;i<reader.FieldCount;i++) row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i); rows.Add(row);}
+        logger.LogDebug("工作台查询完成 detail={Detail} table={Table} page={Page} pageSize={PageSize} total={Total} returned={Returned} elapsedMs={ElapsedMs:F0}",
+            detail,table,page,pageSize,total,rows.Count,stopwatch.Elapsed.TotalMilliseconds);
+        return new(rows,total,page,pageSize);
+    }
+
+    public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsAsync(WorkbenchDefinition definition,WorkbenchQuery? query,string? keyword,CancellationToken token,string? sortField=null,string? sortDirection=null)
+    {
+        var table=definition.MasterTable; var fields=definition.MasterFields;
+        if (table is null || fields.Count==0) return [];
+        const int maxExportRows=100000;
+        var selected=fields.Take(30).ToList(); var predicates=new List<string>();
+        var stopwatch=Stopwatch.StartNew();
+        await using var connection=CreateConnection(); await connection.OpenAsync(token); await using var command=new SqlCommand(); command.Connection=connection;
+        if (query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
+        if (!string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
+        var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
+        var order=ResolveOrder(definition,fields,selected,false,sortField,sortDirection);
+        command.CommandText=$"SELECT TOP {maxExportRows} {string.Join(',',selected.Select(field=>$"[{field.Key}]"))} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order};";
+        await using var reader=await command.ExecuteReaderAsync(token); var rows=new List<Dictionary<string,object?>>();
+        while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase); for(var i=0;i<reader.FieldCount;i++) row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i); rows.Add(row);}
+        logger.LogDebug("工作台导出完成 table={Table} returned={RowCount} elapsedMs={ElapsedMs:F0}", table,rows.Count,stopwatch.Elapsed.TotalMilliseconds);
+        return rows;
     }
 
     private static async Task<IReadOnlyList<WorkbenchColumn>> ReadDefaultColumnSettings(SqlConnection connection,string masterTable,string targetTable,CancellationToken token)
@@ -238,6 +281,24 @@ public sealed class DocumentWorkbenchRepository(IConfiguration configuration, Fi
         }
         if(queryPredicates.Count>0){queryPredicates[0]=queryPredicates[0][4..];predicates.Add("("+string.Join(' ',queryPredicates)+")");}
     }
-    private SqlConnection CreateConnection()=>new(configuration.GetConnectionString("ErpDatabase")??throw new InvalidOperationException("ConnectionStrings:ErpDatabase 未配置。"));
+
+    private static void AddKeywordPredicates(string keyword,IReadOnlyList<WorkbenchField> fields,List<string> predicates,SqlCommand command)
+    {
+        var textFields=fields.Where(field=>field.IsQueryable&&IsTextLike(field.DataType)).ToList();
+        if(textFields.Count==0)return;
+        var name=$"@kw{predicates.Count}";command.Parameters.AddWithValue(name,$"%{keyword.Trim()}%");
+        predicates.Add("("+string.Join(" OR ",textFields.Select(field=>IsDateLike(field.DataType)?$"CONVERT(varchar(23),[{field.Key}],120) LIKE {name}":$"[{field.Key}] LIKE {name}"))+")");
+    }
+
+    private static bool IsTextLike(string dataType)
+    {
+        var type=dataType.ToLowerInvariant();
+        return type.Contains("char")||type.Contains("text")||type.Contains("date")||type.Contains("time")
+            ||type is "idcard" or "url" or "email" or "phoneno" or "zipcode";
+    }
+
+    private static bool IsDateLike(string dataType)=>
+        dataType.Contains("date",StringComparison.OrdinalIgnoreCase)||dataType.Contains("time",StringComparison.OrdinalIgnoreCase);
+    private SqlConnection CreateConnection()=>connections.Create();
     private static bool IsWorkbenchUrl(string url){var value=url.Trim().Replace('\\','/');var query=value.IndexOfAny(['?','#']);if(query>=0)value=value[..query];while(value.StartsWith("~/")||value.StartsWith('/'))value=value.TrimStart('~','/');return value.Equals("comm/view_frame.aspx",StringComparison.OrdinalIgnoreCase);}
 }
