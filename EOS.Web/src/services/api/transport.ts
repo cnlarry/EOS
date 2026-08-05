@@ -4,6 +4,7 @@ export interface ApiRequest {
   query?: Record<string, string | number | undefined>
   body?: unknown
   signal?: AbortSignal
+  responseType?: 'json' | 'blob'
 }
 
 export interface ApiTransport {

@@ -16,11 +16,12 @@ export class HttpTransport implements ApiTransport {
       signal: request.signal,
     })
     if (!response.ok) {
-      const problem = await response.json().catch(() => ({})) as { title?: string; detail?: string; message?: string }
+      const problem = await response.json().catch(() => ({})) as { title?: string; detail?: string; message?: string; code?: string; traceId?: string }
       const message = problem.message ?? problem.detail ?? problem.title ?? '请求失败。'
-      const body: ApiErrorBody = { code: `HTTP_${response.status}`, message }
+      const body: ApiErrorBody = { code: problem.code ?? `HTTP_${response.status}`, message, requestId: problem.traceId }
       throw new ApiError(response.status, body)
     }
+    if (request.responseType === 'blob') return response.blob() as Promise<TResponse>
     if (response.status === 204) return undefined as TResponse
     return response.json() as Promise<TResponse>
   }

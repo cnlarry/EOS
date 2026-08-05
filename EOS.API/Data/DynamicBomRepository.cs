@@ -1,4 +1,5 @@
 using System.Data;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
@@ -6,8 +7,9 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data;
 
 public sealed partial class DynamicBomRepository(
-    IConfiguration configuration,
-    FieldConfigurationRepository fields)
+    DbConnectionFactory connections,
+    FieldConfigurationRepository fields,
+    ILogger<DynamicBomRepository> logger)
 {
     private const int MaximumLimit = 200;
 
@@ -81,6 +83,7 @@ public sealed partial class DynamicBomRepository(
         CancellationToken cancellationToken,
         string? internalKeyColumn = null)
     {
+        var stopwatch = Stopwatch.StartNew();
         await using var connection = CreateConnection();
         await using var command = new SqlCommand(sql, connection) { CommandTimeout = 120 };
         parameters(command);
@@ -102,6 +105,7 @@ public sealed partial class DynamicBomRepository(
             }
             rows.Add(row);
         }
+        logger.LogDebug("BOM 动态查询完成 rows={RowCount} elapsedMs={ElapsedMs:F0}", rows.Count, stopwatch.Elapsed.TotalMilliseconds);
         return new DynamicGridResult(columns, rows, rows.Count);
     }
 
@@ -165,13 +169,7 @@ public sealed partial class DynamicBomRepository(
 
     private static string QuoteIdentifier(string value) => $"[{value.Replace("]", "]]", StringComparison.Ordinal)}]";
 
-    private SqlConnection CreateConnection()
-    {
-        var connectionString = configuration.GetConnectionString("ErpDatabase");
-        return !string.IsNullOrWhiteSpace(connectionString)
-            ? new SqlConnection(connectionString)
-            : throw new InvalidOperationException("ConnectionStrings:ErpDatabase 未配置。");
-    }
+    private SqlConnection CreateConnection() => connections.Create();
 
     [GeneratedRegex(@"(;|--|/\*|\*/|\b(insert|update|delete|drop|alter|create|exec(?:ute)?|merge|truncate|grant|revoke)\b)", RegexOptions.IgnoreCase)]
     private static partial Regex DangerousSql();

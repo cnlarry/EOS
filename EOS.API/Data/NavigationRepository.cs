@@ -5,7 +5,7 @@ namespace EOS.API.Data;
 
 public sealed record LegacyNavigationModule(int Id, string Label, int ParentId, int RootId, int SortIndex, bool Enabled, string? LegacyUrl);
 
-public sealed class NavigationRepository(IConfiguration configuration)
+public sealed class NavigationRepository(DbConnectionFactory connections, ILogger<NavigationRepository> logger)
 {
     public async Task<IReadOnlyList<LegacyNavigationModule>> GetForUserAsync(string userId, CancellationToken token)
     {
@@ -33,8 +33,7 @@ public sealed class NavigationRepository(IConfiguration configuration)
             WHERE NULLIF(LTRIM(RTRIM(m.M_DESC)),'') IS NOT NULL
             ORDER BY M_ROOT_IDX,M_P_IDX,SORT_IDX,m.M_IDX;
             """;
-        await using var connection = new SqlConnection(configuration.GetConnectionString("ErpDatabase")
-            ?? throw new InvalidOperationException("ConnectionStrings:ErpDatabase 未配置。"));
+        await using var connection = connections.Create();
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
         await connection.OpenAsync(token);
@@ -43,6 +42,7 @@ public sealed class NavigationRepository(IConfiguration configuration)
         while (await reader.ReadAsync(token)) result.Add(new(
             reader.GetInt32(0), reader.GetString(1).Trim(), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4), reader.GetBoolean(5),
             reader.IsDBNull(6) ? null : reader.GetString(6).Trim()));
+        logger.LogDebug("用户导航 userId={UserId} modules={ModuleCount}", userId.Trim(), result.Count);
         return result;
     }
 }

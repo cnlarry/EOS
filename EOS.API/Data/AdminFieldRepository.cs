@@ -4,7 +4,7 @@ using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
 
-public sealed class AdminFieldRepository(IConfiguration configuration)
+public sealed class AdminFieldRepository(DbConnectionFactory connections, ILogger<AdminFieldRepository> logger)
 {
     private static readonly HashSet<string> AllowedTables = new(StringComparer.OrdinalIgnoreCase)
         { "BOM_STRU_M", "BOM_STRU_D" };
@@ -75,6 +75,7 @@ public sealed class AdminFieldRepository(IConfiguration configuration)
         await connection.OpenAsync(cancellationToken);
         if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
             throw new KeyNotFoundException("指定字段不存在。" );
+        logger.LogInformation("更新 BOM 字段 table={Table} field={Field} by={UpdatedBy}", request.TableId, request.FieldId, updatedBy);
     }
 
     public async Task SaveDefaultsAsync(DefaultColumnRequest request, CancellationToken cancellationToken)
@@ -107,6 +108,8 @@ public sealed class AdminFieldRepository(IConfiguration configuration)
                 throw new ArgumentException($"字段不存在：{fields[i]}", nameof(request));
         }
         await transaction.CommitAsync(cancellationToken);
+        logger.LogInformation("保存 BOM 默认列 moduleTable={ModuleTable} relatedTable={RelatedTable} fields={FieldCount}",
+            request.ModuleTable, request.RelatedTable, fields.Length);
     }
 
     private static void AddDefaultIdentity(SqlCommand command, DefaultColumnRequest request)
@@ -119,6 +122,5 @@ public sealed class AdminFieldRepository(IConfiguration configuration)
     {
         if (!AllowedTables.Contains(tableId)) throw new ArgumentException("不允许维护指定数据表。", nameof(tableId));
     }
-    private SqlConnection CreateConnection() => new(configuration.GetConnectionString("ErpDatabase")
-        ?? throw new InvalidOperationException("ConnectionStrings:ErpDatabase 未配置。"));
+    private SqlConnection CreateConnection() => connections.Create();
 }

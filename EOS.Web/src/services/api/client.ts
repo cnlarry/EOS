@@ -15,6 +15,10 @@ export class ApiClient {
     return this.transport.request<TResponse>({ method: 'POST', path, body, signal })
   }
 
+  postFile<TBody = unknown>(path: string, body?: TBody, options?: { query?: Record<string, string | number | undefined>; signal?: AbortSignal }) {
+    return this.transport.request<Blob>({ method: 'POST', path, body, query: options?.query, signal: options?.signal, responseType: 'blob' })
+  }
+
   put<TResponse, TBody = unknown>(path: string, body?: TBody, signal?: AbortSignal) {
     return this.transport.request<TResponse>({ method: 'PUT', path, body, signal })
   }

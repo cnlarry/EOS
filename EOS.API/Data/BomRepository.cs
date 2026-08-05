@@ -1,10 +1,11 @@
 using System.Data;
+using System.Diagnostics;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
 
-public sealed class BomRepository(IConfiguration configuration)
+public sealed class BomRepository(DbConnectionFactory connections, ILogger<BomRepository> logger)
 {
     private const int MaximumLimit = 200;
 
@@ -37,6 +38,7 @@ public sealed class BomRepository(IConfiguration configuration)
             ORDER BY m.PRO_NO ASC;
             """;
 
+        var stopwatch = Stopwatch.StartNew();
         await using var connection = CreateConnection();
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@Limit", SqlDbType.Int).Value = limit;
@@ -64,6 +66,7 @@ public sealed class BomRepository(IConfiguration configuration)
                 reader.GetString("REMARK")));
         }
 
+        logger.LogDebug("BOM 主表搜索完成 field={SearchField} rows={RowCount} elapsedMs={ElapsedMs:F0}", searchField, rows.Count, stopwatch.Elapsed.TotalMilliseconds);
         return rows;
     }
 
@@ -89,6 +92,7 @@ public sealed class BomRepository(IConfiguration configuration)
             ORDER BY d.SERIAL_NO ASC;
             """;
 
+        var stopwatch = Stopwatch.StartNew();
         await using var connection = CreateConnection();
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@ProNo", SqlDbType.NChar, 30).Value = proNo.Trim();
@@ -111,6 +115,7 @@ public sealed class BomRepository(IConfiguration configuration)
                 reader.GetString("REMARK")));
         }
 
+        logger.LogDebug("BOM 明细查询完成 proNo={ProNo} rows={RowCount} elapsedMs={ElapsedMs:F0}", proNo.Trim(), rows.Count, stopwatch.Elapsed.TotalMilliseconds);
         return rows;
     }
 
@@ -137,16 +142,7 @@ public sealed class BomRepository(IConfiguration configuration)
         };
     }
 
-    private SqlConnection CreateConnection()
-    {
-        var connectionString = configuration.GetConnectionString("ErpDatabase");
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            throw new InvalidOperationException("ConnectionStrings:ErpDatabase 未配置。");
-        }
-
-        return new SqlConnection(connectionString);
-    }
+    private SqlConnection CreateConnection() => connections.Create();
 }
 
 internal static class SqlDataReaderExtensions

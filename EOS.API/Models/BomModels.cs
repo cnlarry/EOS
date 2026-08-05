@@ -32,5 +32,3 @@ public sealed record BomSearchResult(
     int Limit,
     string SearchField,
     string Keyword);
-
-public sealed record DevelopmentIdentity(string UserId, bool LoginBypassed, int ModuleId);
