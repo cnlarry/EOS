@@ -19,6 +19,9 @@ public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Ro
 public sealed record WorkbenchQueryCondition(string Field, string Operator, string? Value, string? ValueTo, IReadOnlyList<string>? Values, string Logic = "and");
 public sealed record WorkbenchQuery(IReadOnlyList<WorkbenchQueryCondition> Conditions);
 public sealed record FieldSetupLookup(string Value,string Label);
+public sealed record SystemKnowledgeModule(int Id, string Title);
+public sealed record SystemKnowledgeField(string Table, string Field, string Description, string? DataType);
+public sealed record SystemKnowledgeResult(IReadOnlyList<SystemKnowledgeModule> Modules, IReadOnlyList<SystemKnowledgeField> Fields);
 
 public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections, FieldAdminRepository fieldAdmin, ILogger<DocumentWorkbenchRepository> logger)
 {
@@ -56,6 +59,93 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
 
     public async Task<IReadOnlyList<FieldSetupLookup>> GetFieldSetupModulesAsync(CancellationToken token)
     {await using var connection=CreateConnection();await connection.OpenAsync(token);const string sql="SELECT CONVERT(nvarchar(20),M_IDX),COALESCE(NULLIF(LTRIM(RTRIM(M_DESC)),''),CONVERT(nvarchar(20),M_IDX)) FROM dbo.MODULES WITH (NOLOCK) ORDER BY M_DESC,M_IDX";await using var command=new SqlCommand(sql,connection);await using var reader=await command.ExecuteReaderAsync(token);var result=new List<FieldSetupLookup>();while(await reader.ReadAsync(token))result.Add(new(reader.GetString(0),reader.GetString(1)));return result;}
+
+    /// <summary>
+    /// 按标题关键字查找第一个通用工作台模块（服务端白名单，不接受调用方传入任意标题）。
+    /// 仅供只读助手试点使用，例如"采购订单"。
+    /// </summary>
+    public async Task<int?> FindGenericModuleIdByTitleAsync(string titleKeyword, CancellationToken token)
+    {
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        const string sql = """
+            SELECT TOP 10 m.M_IDX, ISNULL(m.M_URL,'')
+            FROM dbo.MODULES m WITH (NOLOCK)
+            WHERE m.M_DESC LIKE @Keyword
+              AND NULLIF(LTRIM(RTRIM(m.M_DESC)),'') IS NOT NULL
+            ORDER BY m.SORT_IDX, m.M_IDX;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Keyword", SqlDbType.NVarChar, 100).Value = "%" + titleKeyword + "%";
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            var moduleId = reader.GetInt32(0);
+            var url = reader.IsDBNull(1) ? "" : reader.GetString(1);
+            if (IsWorkbenchUrl(url))
+            {
+                logger.LogDebug("只读助手找到通用模块 titleKeyword={Keyword} module={ModuleId}", titleKeyword, moduleId);
+                return moduleId;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 系统能力知识检索：按关键字匹配模块标题与字段元数据（表/字段/描述/类型）。
+    /// 只返回安全元数据，不返回 VIRTUAL_EXP / CONVERT_FUNCTION / DATASOURCE_SQL 等高危表达式。
+    /// </summary>
+    public async Task<SystemKnowledgeResult> SearchSystemKnowledgeAsync(string keyword, int max, CancellationToken token)
+    {
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+
+        var like = "%" + keyword.Trim() + "%";
+        var modules = new List<SystemKnowledgeModule>();
+        var fields = new List<SystemKnowledgeField>();
+
+        await using (var command = new SqlCommand("""
+            SELECT TOP (@Max) m.M_IDX, LTRIM(RTRIM(m.M_DESC))
+            FROM dbo.MODULES m WITH (NOLOCK)
+            WHERE m.M_DESC LIKE @Keyword AND NULLIF(LTRIM(RTRIM(m.M_DESC)),'') IS NOT NULL
+            ORDER BY m.SORT_IDX, m.M_IDX;
+            """, connection))
+        {
+            command.Parameters.Add("@Max", SqlDbType.Int).Value = max;
+            command.Parameters.Add("@Keyword", SqlDbType.NVarChar, 100).Value = like;
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                modules.Add(new(reader.GetInt32(0), reader.GetString(1)));
+            }
+        }
+
+        await using (var command = new SqlCommand("""
+            SELECT TOP (@Max) LTRIM(RTRIM(f.T_ID)), LTRIM(RTRIM(f.F_ID)),
+                   LTRIM(RTRIM(COALESCE(f.F_DESC,''))), LTRIM(RTRIM(COALESCE(f.F_TYPE,'')))
+            FROM dbo.FIELDS f WITH (NOLOCK)
+            WHERE f.F_DESC LIKE @Keyword OR f.F_ID LIKE @Keyword OR f.T_ID LIKE @Keyword
+            ORDER BY f.T_ID, f.F_ID;
+            """, connection))
+        {
+            command.Parameters.Add("@Max", SqlDbType.Int).Value = max;
+            command.Parameters.Add("@Keyword", SqlDbType.NVarChar, 100).Value = like;
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                fields.Add(new(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    string.IsNullOrWhiteSpace(reader.GetString(3)) ? null : reader.GetString(3)));
+            }
+        }
+
+        logger.LogDebug("系统知识检索 keyword={Keyword} modules={Modules} fields={Fields}",
+            keyword, modules.Count, fields.Count);
+        return new SystemKnowledgeResult(modules, fields);
+    }
 
     public async Task<IReadOnlyList<WorkbenchFieldSummary>> GetFieldSummariesAsync(WorkbenchDefinition definition,bool detail,CancellationToken token)
     {
