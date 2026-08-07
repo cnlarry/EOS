@@ -21,6 +21,11 @@ public sealed class AssistantController(
     [HttpGet("purchase-orders")]
     public async Task<IActionResult> PurchaseOrders(
         [FromQuery] string? keyword = null,
+        [FromQuery] string? dateFrom = null,
+        [FromQuery] string? dateTo = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? amountMin = null,
+        [FromQuery] string? amountMax = null,
         [FromQuery] int limit = 5,
         CancellationToken token = default)
     {
@@ -37,6 +42,16 @@ public sealed class AssistantController(
         }
 
         var pageSize = Math.Clamp(limit, 1, 10);
+        AssistantFilterResult filterResult;
+        try
+        {
+            filterResult = AssistantQueryBuilder.Build(definition, dateFrom, dateTo, status, amountMin, amountMax);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { code = "INVALID_ARGUMENT", message = ex.Message });
+        }
+
         var data = await repository.GetRowsAsync(
             definition,
             detail: false,
@@ -44,7 +59,7 @@ public sealed class AssistantController(
             page: 1,
             pageSize,
             token,
-            query: null,
+            query: filterResult.Query,
             keyword: string.IsNullOrWhiteSpace(keyword) ? null : keyword.Trim(),
             sortField: null,
             sortDirection: null);
@@ -55,6 +70,69 @@ public sealed class AssistantController(
             moduleTitle = definition.Title,
             total = data.Total,
             rows = data.Rows,
+            labels = BuildLabels(definition.MasterFields),
+            filtersNotApplied = filterResult.NotApplied,
+        });
+    }
+
+    /// <summary>
+    /// 库存盘点单列表：按关键字/日期/状态返回当前用户有权限查看的盘点单主表记录，最多 10 条。
+    /// 与采购单列表同一套白名单 + 参数化检索机制，验证只读助手可复用到第二个业务域。
+    /// </summary>
+    [HttpGet("inventory-counts")]
+    public async Task<IActionResult> InventoryCounts(
+        [FromQuery] string? keyword = null,
+        [FromQuery] string? dateFrom = null,
+        [FromQuery] string? dateTo = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? amountMin = null,
+        [FromQuery] string? amountMax = null,
+        [FromQuery] int limit = 5,
+        CancellationToken token = default)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var definition = await AuthorizeModuleByTitleAsync(userId, "库存盘点单", token);
+        if (definition is null)
+        {
+            return NotFound(new { code = "ASSISTANT_MODULE_NOT_FOUND", message = "未找到可用的库存盘点单模块或当前用户无权访问" });
+        }
+
+        var pageSize = Math.Clamp(limit, 1, 10);
+        AssistantFilterResult filterResult;
+        try
+        {
+            filterResult = AssistantQueryBuilder.Build(definition, dateFrom, dateTo, status, amountMin, amountMax);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { code = "INVALID_ARGUMENT", message = ex.Message });
+        }
+
+        var data = await repository.GetRowsAsync(
+            definition,
+            detail: false,
+            keys: new Dictionary<string, string>(),
+            page: 1,
+            pageSize,
+            token,
+            query: filterResult.Query,
+            keyword: string.IsNullOrWhiteSpace(keyword) ? null : keyword.Trim(),
+            sortField: null,
+            sortDirection: null);
+
+        return Ok(new
+        {
+            moduleId = definition.ModuleId,
+            moduleTitle = definition.Title,
+            total = data.Total,
+            rows = data.Rows,
+            labels = BuildLabels(definition.MasterFields),
+            filtersNotApplied = filterResult.NotApplied,
         });
     }
 
@@ -128,6 +206,10 @@ public sealed class AssistantController(
             total = masterData.Total,
             master,
             details,
+            labels = BuildLabels(definition.MasterFields),
+            detailLabels = definition.DetailFields.Count > 0
+                ? BuildLabels(definition.DetailFields)
+                : new Dictionary<string, string>(),
         });
     }
 
@@ -160,10 +242,16 @@ public sealed class AssistantController(
         return Ok(result);
     }
 
+    /// <summary>字段标签映射（列名 → 业务标题），供客户端/Agent 以可读文本呈现数据。</summary>
+    private static Dictionary<string, string> BuildLabels(IReadOnlyList<WorkbenchField> fields)
+        => fields.ToDictionary(field => field.Key, field => field.Label, StringComparer.OrdinalIgnoreCase);
+
     private async Task<WorkbenchDefinition?> AuthorizePurchaseOrderAsync(string userId, CancellationToken token)
+        => await AuthorizeModuleByTitleAsync(userId, "采购单", token);
+
+    private async Task<WorkbenchDefinition?> AuthorizeModuleByTitleAsync(string userId, string moduleTitle, CancellationToken token)
     {
-        // 旧系统模块标题为"采购单"（PUR_PURCHASE_M），不是"采购订单"
-        var moduleId = await repository.FindGenericModuleIdByTitleAsync("采购单", token);
+        var moduleId = await repository.FindGenericModuleIdByTitleAsync(moduleTitle, token);
         if (moduleId is null)
         {
             return null;
