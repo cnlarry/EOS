@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
 import { AppShell } from '../components/layout/AppShell'
 import { LoginPage } from '../features/auth/LoginPage'
 import { RequireAuth, RequirePermission } from '../features/auth/RouteGuards'
@@ -14,6 +14,21 @@ import { ErrorPage } from './ErrorPage'
 
 function ForbiddenPage() { return <main className="erp-error-page"><div className="text-center"><div className="display-5 fw-bold">403</div><h1>没有访问权限</h1><p className="text-secondary">当前账号无权访问此页面。</p></div></main> }
 
+/**
+ * 以 moduleId 作为 key 强制重挂载，避免上一个模块的排序/分页/查询条件等状态
+ * 带进下一个模块（否则会以无效 sortField 请求导致“排序字段无效”）。
+ */
+function WorkbenchRoute() {
+  const { moduleId = '' } = useParams()
+  return <DocumentWorkbenchPage key={moduleId} />
+}
+
+/** 数据表切换（tableId 变化）时同样重置字段维护页的搜索/分页状态 */
+function FieldAdminRoute() {
+  const { tableId = '' } = useParams()
+  return <FieldAdminPage key={tableId} />
+}
+
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/forbidden', element: <ForbiddenPage /> },
@@ -25,8 +40,8 @@ export const router = createBrowserRouter([
         { path: 'dashboard', element: <DashboardPage /> },
         { path: 'legacy/modules/:moduleId', element: <LegacyModulePage /> },
         { element: <RequirePermission permission="purchase-order.read" />, children: [{ path: 'procurement/purchase-orders', element: <PurchaseOrdersPage /> }] },
-        { element: <RequirePermission permission="legacy-module.2302.read" />, children: [{ path: 'admin/tables', element: <TableAdminPage /> }, { path: 'admin/tables/:tableId/fields', element: <FieldAdminPage /> }] },
-        { path: 'document-workbench/:moduleId', element: <DocumentWorkbenchPage /> },
+        { element: <RequirePermission permission="legacy-module.2302.read" />, children: [{ path: 'admin/tables', element: <TableAdminPage /> }, { path: 'admin/tables/:tableId/fields', element: <FieldAdminRoute /> }] },
+        { path: 'document-workbench/:moduleId', element: <WorkbenchRoute /> },
         { path: 'document-workbench/:moduleId/new', element: <FormEditorPage /> },
         { path: 'document-workbench/:moduleId/edit', element: <FormEditorPage /> },
         { path: 'legacy/modules/:moduleId', element: <LegacyModulePage /> },
