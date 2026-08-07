@@ -15,7 +15,7 @@ public sealed record FieldChooserSource(bool Active,string? Table,string? Descri
 public sealed record WorkbenchFieldMetadata(string Key,string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool IsVirtual,string? VirtualExpression,bool CanCopy,bool IsAutoIncrement,string? ConvertFunction,string? DataSourceSql,string? LastUpdatedBy,DateTime? LastUpdatedAt);
 public sealed record UpdateWorkbenchFieldMetadata(string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool CanCopy,WorkbenchFieldMetadata? Original);
 public sealed record WorkbenchDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, IReadOnlyList<WorkbenchField> MasterFields, IReadOnlyList<WorkbenchField> DetailFields, string? DefaultSort, bool HasAdd, bool HasEdit, bool DetailNoSave, IReadOnlyList<string> MasterPkOrder, string DetailNoFields);
-public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder);
+public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
 public sealed record WorkbenchQueryCondition(string Field, string Operator, string? Value, string? ValueTo, IReadOnlyList<string>? Values, string Logic = "and");
@@ -350,15 +350,17 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
         var masterRows=await ReadFormFieldRows(connection,definition.MasterTable,definition.MasterTable,token);
         var masterFields=FormFieldSelector.Select(masterRows,mode,canViewCost,canViewSecrecy,deniedMasterFields,deniedNewMasterFields,deniedModiMasterFields);
         IReadOnlyList<FormFieldDefinition> detailFields=[];
+        var detailDfVerify="";
         if(definition.DetailTable is not null)
         {
             var detailRows=await ReadFormFieldRows(connection,definition.MasterTable,definition.DetailTable,token);
             detailFields=FormFieldSelector.Select(detailRows,mode,canViewCost,canViewSecrecy,deniedDetailFields,deniedNewDetailFields,deniedModiDetailFields);
+            detailDfVerify=(await GetDfVerifyAsync(connection,null,definition.DetailTable,token))??"";
         }
         logger.LogDebug("表单定义 module={ModuleId} mode={Mode} master={MasterFieldCount} detail={DetailFieldCount}",
             definition.ModuleId,mode,masterFields.Count,detailFields.Count);
         return new FormDefinition(definition.ModuleId,definition.Title,definition.MasterTable,definition.DetailTable,
-            definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns);
+            definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns,definition.DetailNoFields,detailDfVerify);
     }
 
     private static async Task<IReadOnlyList<FormFieldRow>> ReadFormFieldRows(SqlConnection connection,string masterTable,string targetTable,CancellationToken token)
@@ -496,6 +498,7 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
         if(validation.Errors.Count>0)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","数据校验未通过。",validation.Errors);
         var values=new Dictionary<string,object?>(validation.Converted,StringComparer.OrdinalIgnoreCase);
         RecordPayloadValidator.ApplyDefaults(form.MasterFields,values);
+        FormDefaultRules.Apply(definition.ModuleId,form.MasterFields,values);
         var finalErrors=RecordPayloadValidator.CheckRequiredAndRegex(form.MasterFields,values);
         if(finalErrors.Count>0)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","数据校验未通过。",finalErrors);
         var fillErrors=await FillServerColumnsAsync(connection,transaction,definition.MasterTable,form.MasterFields,values,employeeName,true,token);
@@ -873,7 +876,7 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
         return await command.ExecuteScalarAsync(token) is not null;
     }
 
-    private static async Task<string?> GetDfVerifyAsync(SqlConnection connection,SqlTransaction transaction,string table,CancellationToken token)
+    private static async Task<string?> GetDfVerifyAsync(SqlConnection connection,SqlTransaction? transaction,string table,CancellationToken token)
     {
         const string sql="SELECT LTRIM(RTRIM(ISNULL(DF_VERIFY,''))) FROM dbo.TABLES WITH (NOLOCK) WHERE T_ID=@Table;";
         await using var command=new SqlCommand(sql,connection,transaction);command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
@@ -1038,7 +1041,11 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
         var queryPredicates=new List<string>();
         foreach(var condition in query.Conditions)
         {
-            var field=fields.FirstOrDefault(item=>item.IsQueryable&&item.Key.Equals(condition.Field,StringComparison.OrdinalIgnoreCase))??throw new ArgumentException($"无效查询字段：{condition.Field}");
+        var field=fields.FirstOrDefault(item=>item.Key.Equals(condition.Field,StringComparison.OrdinalIgnoreCase))??throw new ArgumentException($"无效查询字段：{condition.Field}");
+        // 比较运算符（eq/ne/gt/gte/lt/lte/between）允许定义白名单内任意字段（如批核/结案状态位），
+        // 仍以参数化 + 权限过滤后的定义白名单为边界；LIKE 类运算符继续限定 IsQueryable 字段。
+        var comparisonOnly=condition.Operator is "eq" or "ne" or "gt" or "gte" or "lt" or "lte" or "between";
+        if(!comparisonOnly&&!field.IsQueryable)throw new ArgumentException($"字段不可查询：{condition.Field}");
             var name=$"@q{command.Parameters.Count}"; var column=$"[{field.Key}]"; var op=condition.Operator.ToLowerInvariant(); string expression;
             switch(op)
             {
