@@ -10,10 +10,16 @@ export interface PageResponse<T> {
   total: number
 }
 
+export interface ApiFieldError {
+  field: string
+  message: string
+  code: string
+}
+
 export interface ApiErrorBody {
   code: string
   message: string
-  fieldErrors?: Record<string, string[]>
+  fieldErrors?: ApiFieldError[]
   requestId?: string
 }
 

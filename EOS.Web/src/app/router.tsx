@@ -4,6 +4,7 @@ import { LoginPage } from '../features/auth/LoginPage'
 import { RequireAuth, RequirePermission } from '../features/auth/RouteGuards'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { DocumentWorkbenchPage } from '../features/document-workbench/DocumentWorkbenchPage'
+import { FormEditorPage } from '../features/document-workbench/FormEditorPage'
 import { LegacyModulePage } from '../features/legacy/LegacyModulePage'
 import { PurchaseOrdersPage } from '../features/procurement/pages/PurchaseOrdersPage'
 import { FieldAdminPage } from '../features/field-admin/FieldAdminPage'
@@ -26,6 +27,8 @@ export const router = createBrowserRouter([
         { element: <RequirePermission permission="purchase-order.read" />, children: [{ path: 'procurement/purchase-orders', element: <PurchaseOrdersPage /> }] },
         { element: <RequirePermission permission="legacy-module.2302.read" />, children: [{ path: 'admin/tables', element: <TableAdminPage /> }, { path: 'admin/tables/:tableId/fields', element: <FieldAdminPage /> }] },
         { path: 'document-workbench/:moduleId', element: <DocumentWorkbenchPage /> },
+        { path: 'document-workbench/:moduleId/new', element: <FormEditorPage /> },
+        { path: 'document-workbench/:moduleId/edit', element: <FormEditorPage /> },
         { path: 'legacy/modules/:moduleId', element: <LegacyModulePage /> },
         { path: 'settings/profile', element: <ProfilePage /> },
       ],

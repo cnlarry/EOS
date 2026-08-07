@@ -6,4 +6,12 @@ public sealed record LegacyModuleRights(
     bool CanViewSecrecy,
     bool CanSetup,
     IReadOnlySet<string> DeniedMasterFields,
-    IReadOnlySet<string> DeniedDetailFields);
+    IReadOnlySet<string> DeniedDetailFields,
+    bool CanAddNew,
+    bool CanEdit,
+    bool CanDelete,
+    IReadOnlySet<string> DenyNewMasterFields,
+    IReadOnlySet<string> DenyNewDetailFields,
+    IReadOnlySet<string> DenyModiMasterFields,
+    IReadOnlySet<string> DenyModiDetailFields,
+    string DataFilter);

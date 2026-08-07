@@ -1,0 +1,159 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+
+namespace EOS.API.Data;
+
+/// <summary>
+/// 记录保存载荷的纯校验/转换逻辑（与数据库解耦，便于单元测试）。
+/// 规则：
+/// - 只接受表单定义内的字段；未知字段、只读/虚拟/serverFilled 字段一律拒绝（审计列视为服务端持有）；
+/// - 按 F_TYPE 做类型转换；必填（IS_VERIFY）非空；REGEX 校验；
+/// - 默认值（DFT_VALUE）在新增时服务端应用（不信任前端）。
+/// </summary>
+internal static class RecordPayloadValidator
+{
+    public static readonly IReadOnlySet<string> AuditColumns = new HashSet<string>(
+        ["CREATE_PERSON", "CREATE_DATE", "LAST_UPDATE_BY", "LAST_UPDATE_DATE"],
+        StringComparer.OrdinalIgnoreCase);
+
+    public static bool IsAuditColumn(string field) => AuditColumns.Contains(field);
+
+    public sealed record ValidationResult(
+        IReadOnlyList<FieldError> Errors,
+        IReadOnlyDictionary<string, object?> Converted);
+
+    public static ValidationResult ValidateSubmitted(
+        IReadOnlyList<FormFieldDefinition> fields,
+        IReadOnlyDictionary<string, string?> values)
+    {
+        var map = fields.ToDictionary(field => field.Key, StringComparer.OrdinalIgnoreCase);
+        var errors = new List<FieldError>();
+        var converted = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, raw) in values)
+        {
+            if (!map.TryGetValue(key, out var field))
+            {
+                errors.Add(new FieldError(key, "字段不在表单定义中。", "UNKNOWN_FIELD"));
+                continue;
+            }
+            if (field.IsReadonly || field.IsVirtual || field.ServerFilled)
+            {
+                errors.Add(new FieldError(key, "该字段由服务端维护，不可提交。", "READONLY_FIELD"));
+                continue;
+            }
+            if (raw is not null && field.MaxLength is int maxLength && raw.Length > maxLength)
+            {
+                errors.Add(new FieldError(key, $"内容长度超出限制（最多 {maxLength} 字符）。", "VALUE_TOO_LONG"));
+                continue;
+            }
+            if (!TryConvert(field.DataType, raw, out var value))
+            {
+                errors.Add(new FieldError(key, "数值格式不正确。", "INVALID_VALUE"));
+                continue;
+            }
+            converted[key] = value;
+        }
+        return new ValidationResult(errors, converted);
+    }
+
+    public static void ApplyDefaults(IReadOnlyList<FormFieldDefinition> fields, IDictionary<string, object?> values)
+    {
+        foreach (var field in fields)
+        {
+            if (field.IsReadonly || field.IsVirtual || field.ServerFilled || values.ContainsKey(field.Key)) continue;
+            if (string.IsNullOrWhiteSpace(field.DefaultValue)) continue;
+            if (TryConvert(field.DataType, field.DefaultValue, out var value)) values[field.Key] = value;
+        }
+    }
+
+    public static IReadOnlyList<FieldError> CheckRequiredAndRegex(
+        IReadOnlyList<FormFieldDefinition> fields,
+        IReadOnlyDictionary<string, object?> values)
+    {
+        var errors = new List<FieldError>();
+        foreach (var field in fields)
+        {
+            if (field.IsVirtual || field.ServerFilled || field.IsReadonly) continue;
+            var present = values.TryGetValue(field.Key, out var value);
+            // 勾选/布尔字段永远有值（true/false），不适用"必填"语义
+            var isBoolean = field.DataType.Contains("bit", StringComparison.OrdinalIgnoreCase);
+            if (field.IsRequired && !isBoolean)
+            {
+                if (!present || value is null || value is string text && string.IsNullOrWhiteSpace(text))
+                {
+                    errors.Add(new FieldError(field.Key, "该字段不能为空。", "REQUIRED_FIELD_MISSING"));
+                    continue;
+                }
+            }
+            if (string.IsNullOrWhiteSpace(field.Regex) || !present || value is null) continue;
+            var textValue = Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+            if (!Regex.IsMatch(textValue, field.Regex))
+                errors.Add(new FieldError(field.Key, "内容不符合格式要求。", "REGEX_MISMATCH"));
+        }
+        return errors;
+    }
+
+    /// <summary>
+    /// 明细行序号自动编号（对齐旧系统 SetSerialNo）：
+    /// 明细存在 SERIAL_NO 字段且行内未提供时，按 1..n 顺序赋值。
+    /// </summary>
+    public static void AssignSerialNumbers(IReadOnlyList<IDictionary<string, object?>> rows, IReadOnlyList<FormFieldDefinition> fields)
+    {
+        var serialField = fields.FirstOrDefault(field => field.Key.Equals("SERIAL_NO", StringComparison.OrdinalIgnoreCase));
+        if (serialField is null) return;
+        for (var index = 0; index < rows.Count; index++)
+        {
+            if (rows[index].ContainsKey(serialField.Key)) continue;
+            if (TryConvert(serialField.DataType, (index + 1).ToString(CultureInfo.InvariantCulture), out var value))
+                rows[index][serialField.Key] = value;
+        }
+    }
+
+    public static bool TryConvert(string dataType, string? raw, out object? value)
+    {
+        value = null;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            value = null;
+            return true;
+        }
+        var type = dataType.ToLowerInvariant();
+        try
+        {
+            var text = raw.Trim();
+            if (type.Contains("bit", StringComparison.Ordinal))
+            {
+                value = text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                    || text.Equals("1", StringComparison.Ordinal)
+                    || text.Equals("是", StringComparison.Ordinal);
+            }
+            else if (type.Contains("datetime", StringComparison.Ordinal) || type.Contains("smalldatetime", StringComparison.Ordinal)
+                     || type.Contains("date", StringComparison.Ordinal) || type.Contains("time", StringComparison.Ordinal))
+            {
+                value = DateTime.Parse(text, CultureInfo.InvariantCulture);
+            }
+            else if (type.Contains("int", StringComparison.Ordinal))
+            {
+                value = int.Parse(text, CultureInfo.InvariantCulture);
+            }
+            else if (type.Contains("float", StringComparison.Ordinal) || type.Contains("real", StringComparison.Ordinal))
+            {
+                value = double.Parse(text, CultureInfo.InvariantCulture);
+            }
+            else if (type.Contains("decimal", StringComparison.Ordinal) || type.Contains("numeric", StringComparison.Ordinal)
+                     || type.Contains("money", StringComparison.Ordinal))
+            {
+                value = decimal.Parse(text, CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                value = raw;
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}

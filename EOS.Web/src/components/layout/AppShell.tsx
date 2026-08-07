@@ -123,12 +123,20 @@ export function AppShell() {
   const navigate = useNavigate()
   const navigation = bootstrap?.navigation ?? fallbackNavigation as unknown as NavigationItem[]
   const location = useLocation()
-  const activeMenu = navigation.flatMap((item) => item.children ?? [item]).find((item) => item.route === location.pathname)
-  const activeGroup = navigation.find((item) => item.children?.some((child) => child.route === location.pathname))
-  const page = pageTitles[location.pathname] ?? {
-    section: activeGroup?.label ?? 'ERP',
-    title: activeMenu?.label ?? '页面',
-  }
+  const isFormEditor = /\/(new|edit)$/.test(location.pathname)
+  const basePath = location.pathname.replace(/\/(new|edit)$/, '')
+  const activeMenu = navigation.flatMap((item) => item.children ?? [item]).find((item) => item.route === basePath)
+  const activeGroup = navigation.find((item) => item.children?.some((child) => child.route === basePath))
+  const page: { section: string; module?: string; title: string } = isFormEditor
+    ? {
+        section: activeGroup?.label ?? 'ERP',
+        module: activeMenu?.label,
+        title: `${location.pathname.endsWith('/new') ? '新建' : '编辑'}${activeMenu?.label ?? ''}`,
+      }
+    : pageTitles[location.pathname] ?? {
+        section: activeGroup?.label ?? 'ERP',
+        title: activeMenu?.label ?? '页面',
+      }
 
   useEffect(() => {
     document.documentElement.setAttribute('data-bs-theme', theme)
@@ -254,6 +262,12 @@ export function AppShell() {
             <nav aria-label="当前位置">
               <IconHome className="erp-context-home" size={18} stroke={2} aria-hidden="true" />
               <span className="erp-context-section">{page.section}</span>
+              {page.module ? (
+                <>
+                  <IconChevronRight className="erp-context-separator" size={16} stroke={2} aria-hidden="true" />
+                  <span className="erp-context-section">{page.module}</span>
+                </>
+              ) : null}
               <IconChevronRight className="erp-context-separator" size={16} stroke={2} aria-hidden="true" />
               <h1>{page.title}</h1>
             </nav>
