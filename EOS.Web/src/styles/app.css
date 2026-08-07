@@ -132,6 +132,7 @@ button, input, select { font: inherit; }
 .erp-pagination-footer .text-secondary { margin-right: auto; line-height: 1; }
 .erp-pagination-footer .form-select-sm,
 .erp-pagination-footer .btn-sm { min-height: 26px; padding-top: 2px; padding-bottom: 2px; }
+.erp-pagination-footer .erp-page-jump { width: 64px; min-height: 26px; padding-top: 2px; padding-bottom: 2px; }
 .erp-page-size { width: auto; }
 .erp-state { min-height: 18rem; padding: 2rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .75rem; text-align: center; }
 .erp-state-icon { display: grid; place-items: center; width: 3.5rem; height: 3.5rem; border-radius: .8rem; color: var(--tblr-primary); background: var(--tblr-primary-lt); }

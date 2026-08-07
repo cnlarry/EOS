@@ -22,15 +22,24 @@ export function ErpDataTable({
   responsive = true,
   resizable = false,
   storageKey = '',
+  persistResize = true,
+  onColumnResize,
 }: {
   children: ReactNode
   className?: string
   responsive?: boolean
   resizable?: boolean
   storageKey?: string
+  persistResize?: boolean
+  onColumnResize?: (columnKey: string, width: number) => void
 }) {
   const table = (
-    <ResizableTable className={`table table-vcenter card-table mb-0 erp-data-table ${className}`.trim()} storageKey={resizable ? storageKey : ''}>
+    <ResizableTable
+      className={`table table-vcenter card-table mb-0 erp-data-table ${className}`.trim()}
+      storageKey={resizable ? storageKey : ''}
+      persistResize={persistResize}
+      onColumnResize={onColumnResize}
+    >
       {children}
     </ResizableTable>
   )

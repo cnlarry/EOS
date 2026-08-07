@@ -3,8 +3,11 @@ import type { ColumnDef, RowSelectionState, SortingState, VisibilityState } from
 import { IconColumns, IconDownload, IconEdit, IconEye, IconPlus, IconRefresh, IconSend, IconTrash } from '@tabler/icons-react'
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { DataTable } from '../../../components/common/DataTable'
-import { ErrorState, LoadingState } from '../../../components/common/AsyncState'
+import { EmptyState, ErrorState, LoadingState } from '../../../components/common/AsyncState'
+import { ErpListCard } from '../../../components/common/ErpListCard'
+import { ErpPagination } from '../../../components/common/ErpPagination'
+import { ErpSearchBox } from '../../../components/common/ErpSearchBox'
+import { ErpTable } from '../../../components/common/ErpTable'
 import { StatusBadge } from '../../../components/common/StatusBadge'
 import { Button } from '../../../components/ui/Button'
 import { ApiError } from '../../../types/api'
@@ -56,21 +59,16 @@ export function PurchaseOrdersPage() {
   }
   function changeSorting(next: SortingState) { const first = next[0]; updateParams({ sortBy: first?.id, sortDirection: first ? (first.desc ? 'desc' : 'asc') : undefined }, true) }
   const sorting: SortingState = [{ id: sortBy, desc: sortDirection === 'desc' }]
-  const totalPages = Math.max(1, Math.ceil((ordersQuery.data?.total ?? 0) / pageSize))
   const selectedCount = Object.keys(rowSelection).length
   const activeOrder = ordersQuery.data?.items.find((order) => order.id === activeOrderId) ?? ordersQuery.data?.items[0]
   const errorMessage = ordersQuery.error instanceof ApiError ? ordersQuery.error.body.message : '发生未知错误，请稍后重试。'
 
   return (
     <div className="d-grid gap-2 erp-purchase-page">
-      <section className="card erp-list-card">
-        <section className="erp-list-command-bar" aria-label="采购订单查询与操作">
-          <div className="erp-search erp-list-global-search">
-            <span aria-hidden="true">⌕</span>
-            <input aria-label="搜索单据、供应商或商品" placeholder="搜索单据、供应商或商品" type="search" />
-            <kbd>Ctrl K</kbd>
-          </div>
-          <div className="erp-list-actions">
+      <ErpListCard
+        ariaLabel="采购订单查询与操作"
+        search={<ErpSearchBox value={activeKeyword} onChange={(value) => updateParams({ keyword: value }, true)} debounceMs={400} placeholder="搜索单据、供应商或商品" ariaLabel="搜索单据、供应商或商品" />}
+        actions={<>
           {hasPermission('purchase-order.create') && <Link className="btn btn-primary btn-sm" to="/procurement/purchase-orders/new"><IconPlus size={16} /> 新建</Link>}
           <Button size="sm" icon={<IconEye size={16} />} disabled={!activeOrder}>查看</Button>
           {hasPermission('purchase-order.update') && <Button size="sm" icon={<IconEdit size={16} />} disabled={!activeOrder}>编辑</Button>}
@@ -82,17 +80,15 @@ export function PurchaseOrdersPage() {
             <Button size="sm" icon={<IconColumns size={16} />} onClick={() => setColumnsOpen((open) => !open)}>选择列</Button>
             {columnsOpen && <div className="erp-column-menu card"><div className="card-body py-2">{hideableColumns.map((column) => <label className="form-check" key={column.id}><input className="form-check-input" type="checkbox" checked={columnVisibility[column.id] !== false} onChange={(event) => setColumnVisibility((current) => ({ ...current, [column.id]: event.target.checked }))} /><span className="form-check-label">{column.label}</span></label>)}</div></div>}
           </div>
-          </div>
-        </section>
-        {ordersQuery.isPending ? <LoadingState label="正在加载采购订单…" /> : ordersQuery.isError ? <ErrorState message={errorMessage} onRetry={() => void ordersQuery.refetch()} /> : <>
-          <DataTable columns={columns} data={ordersQuery.data.items} getRowId={(order) => order.id} sorting={sorting} onSortingChange={changeSorting} rowSelection={rowSelection} onRowSelectionChange={setRowSelection} columnVisibility={columnVisibility} onColumnVisibilityChange={setColumnVisibility} onRowClick={(order) => setActiveOrderId(order.id)} activeRowId={activeOrder?.id} emptyTitle="没有找到采购订单" emptyDescription="请调整关键词、状态或日期条件后重新查询。" />
-          <div className="card-footer erp-pagination-footer">
-            <div className="text-secondary small">共 {ordersQuery.data.total} 条，第 {page}/{totalPages} 页</div>
-            <select className="form-select form-select-sm erp-page-size" value={pageSize} onChange={(event) => updateParams({ pageSize: event.target.value }, true)} aria-label="每页数量">{pageSizes.map((size) => <option key={size} value={size}>每页 {size} 条</option>)}</select>
-            <div className="btn-group"><Button size="sm" disabled={page <= 1} onClick={() => updateParams({ page: String(page - 1) })}>上一页</Button><Button size="sm" disabled={page >= totalPages} onClick={() => updateParams({ page: String(page + 1) })}>下一页</Button></div>
-          </div>
         </>}
-      </section>
+        footer={!ordersQuery.isPending && !ordersQuery.isError ? (
+          <ErpPagination total={ordersQuery.data?.total ?? 0} page={page} pageSize={pageSize} onPageChange={(next) => updateParams({ page: String(next) })} pageSizes={pageSizes} onPageSizeChange={(size) => updateParams({ pageSize: String(size) }, true)} />
+        ) : undefined}
+      >
+        {ordersQuery.isPending ? <LoadingState label="正在加载采购订单…" /> : ordersQuery.isError ? <ErrorState message={errorMessage} onRetry={() => void ordersQuery.refetch()} /> : (
+          <ErpTable columns={columns} data={ordersQuery.data.items} getRowId={(order) => order.id} sorting={sorting} onSortingChange={changeSorting} rowSelection={rowSelection} onRowSelectionChange={setRowSelection} columnVisibility={columnVisibility} onColumnVisibilityChange={setColumnVisibility} onRowClick={(order) => setActiveOrderId(order.id)} activeRowId={activeOrder?.id} resizable storageKey="purchase-orders" empty={<EmptyState title="没有找到采购订单" description="请调整关键词、状态或日期条件后重新查询。" />} />
+        )}
+      </ErpListCard>
       {activeOrder && (
         <section className="card erp-detail-card">
           <div className="card-header py-2">

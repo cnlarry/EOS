@@ -18,13 +18,19 @@ export function ResizableTable({
   className,
   storageKey,
   children,
+  persistResize = true,
+  onColumnResize,
 }: {
   className: string
   storageKey: string
   children: ReactNode
+  /** 是否持久化到 localStorage；false 时列宽以服务端字段（data-col-min-width）为唯一来源 */
+  persistResize?: boolean
+  /** 拖拽结束/双击自适应时回调（列键 + 新宽度） */
+  onColumnResize?: (columnKey: string, width: number) => void
 }) {
   const tableRef = useRef<HTMLTableElement>(null)
-  useColumnResize(tableRef, storageKey)
+  useColumnResize(tableRef, storageKey, { persist: persistResize, onColumnResize })
   return (
     <table ref={tableRef} className={className}>
       {children}
