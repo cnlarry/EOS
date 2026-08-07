@@ -149,6 +149,17 @@ public sealed class AssistantController(
         return Ok(result);
     }
 
+    /// <summary>
+    /// 系统模块清单（总数 + 前 limit 个标题），用于回答"系统中有多少个/有哪些模块"。
+    /// 仅返回安全元数据（模块 ID 与标题），不返回业务数据或高危表达式。
+    /// </summary>
+    [HttpGet("modules")]
+    public async Task<IActionResult> Modules([FromQuery] int limit = 20, CancellationToken token = default)
+    {
+        var result = await repository.ListModulesAsync(Math.Clamp(limit, 1, 50), token);
+        return Ok(result);
+    }
+
     private async Task<WorkbenchDefinition?> AuthorizePurchaseOrderAsync(string userId, CancellationToken token)
     {
         // 旧系统模块标题为"采购单"（PUR_PURCHASE_M），不是"采购订单"
