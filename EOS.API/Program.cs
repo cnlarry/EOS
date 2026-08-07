@@ -5,6 +5,7 @@ using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,6 +40,34 @@ builder.Services.AddControllers(options => options.Filters.Add<ApiExceptionFilte
     });
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer((document, context, cancellationToken) =>
+    {
+        document.Info.Title = "EOS API";
+        document.Info.Version = "v1";
+        document.Info.Description =
+            "EOS（原 ERP）业务 API 契约：EOS.Web / EOS.Client / Agent 的统一受控入口。"
+            + "所有业务接口默认要求登录会话（EOS.Auth Cookie），未登录返回 401，无权返回 403。";
+
+        var cookieScheme = new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.ApiKey,
+            Name = "EOS.Auth",
+            In = ParameterLocation.Cookie,
+            Description = "登录会话 Cookie（EOS.Auth）。",
+        };
+        document.AddComponent("EOS.Auth", cookieScheme);
+        document.Security =
+        [
+            new OpenApiSecurityRequirement
+            {
+                [new OpenApiSecuritySchemeReference("EOS.Auth", document, null)] = [],
+            },
+        ];
+        return Task.CompletedTask;
+    });
+});
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddScoped<ApiExceptionFilter>();
@@ -100,6 +129,7 @@ app.Use(async (context, next) =>
 });
 app.UseAuthorization();
 app.MapControllers();
+app.MapOpenApi().AllowAnonymous();
 app.MapFallbackToFile("index.html").RequireAuthorization();
 
 app.Run();

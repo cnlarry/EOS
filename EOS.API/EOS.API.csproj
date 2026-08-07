@@ -10,6 +10,9 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <!-- 显式升级传递依赖：Microsoft.OpenApi 2.0.0 存在高危漏洞 GHSA-v5pm-xwqc-g5wc，2.7.5+ 已修复 -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
   </ItemGroup>
 
   <ItemGroup>
