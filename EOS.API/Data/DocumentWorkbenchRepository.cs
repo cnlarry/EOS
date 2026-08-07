@@ -22,6 +22,7 @@ public sealed record FieldSetupLookup(string Value,string Label);
 public sealed record SystemKnowledgeModule(int Id, string Title);
 public sealed record SystemKnowledgeField(string Table, string Field, string Description, string? DataType);
 public sealed record SystemKnowledgeResult(IReadOnlyList<SystemKnowledgeModule> Modules, IReadOnlyList<SystemKnowledgeField> Fields);
+public sealed record SystemModuleList(int Total, IReadOnlyList<SystemKnowledgeModule> Modules);
 
 public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections, FieldAdminRepository fieldAdmin, ILogger<DocumentWorkbenchRepository> logger)
 {
@@ -145,6 +146,44 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
         logger.LogDebug("系统知识检索 keyword={Keyword} modules={Modules} fields={Fields}",
             keyword, modules.Count, fields.Count);
         return new SystemKnowledgeResult(modules, fields);
+    }
+
+    /// <summary>
+    /// 系统模块清单：总数 + 前 max 个模块标题（安全元数据），用于回答"系统中有多少个/有哪些模块"。
+    /// 与系统知识检索一样不返回高危表达式等敏感字段。
+    /// </summary>
+    public async Task<SystemModuleList> ListModulesAsync(int max, CancellationToken token)
+    {
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+
+        int total;
+        await using (var countCommand = new SqlCommand("""
+            SELECT COUNT(*) FROM dbo.MODULES WITH (NOLOCK)
+            WHERE NULLIF(LTRIM(RTRIM(M_DESC)),'') IS NOT NULL;
+            """, connection))
+        {
+            total = Convert.ToInt32(await countCommand.ExecuteScalarAsync(token));
+        }
+
+        var modules = new List<SystemKnowledgeModule>();
+        await using (var command = new SqlCommand("""
+            SELECT TOP (@Max) M_IDX, LTRIM(RTRIM(M_DESC))
+            FROM dbo.MODULES WITH (NOLOCK)
+            WHERE NULLIF(LTRIM(RTRIM(M_DESC)),'') IS NOT NULL
+            ORDER BY SORT_IDX, M_IDX;
+            """, connection))
+        {
+            command.Parameters.Add("@Max", SqlDbType.Int).Value = max;
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                modules.Add(new(reader.GetInt32(0), reader.GetString(1)));
+            }
+        }
+
+        logger.LogDebug("系统模块清单 total={Total} listed={Listed}", total, modules.Count);
+        return new SystemModuleList(total, modules);
     }
 
     public async Task<IReadOnlyList<WorkbenchFieldSummary>> GetFieldSummariesAsync(WorkbenchDefinition definition,bool detail,CancellationToken token)
