@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
@@ -59,6 +59,7 @@ export function FormEditorPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [detailErrors, setDetailErrors] = useState<FieldErrors[]>([])
+  const [detailChooser, setDetailChooser] = useState<{ index: number; field: FormFieldDefinition } | null>(null)
 
   const formQuery = useQuery({
     queryKey: ['workbench', moduleId, 'form-definition', isEdit ? 'edit' : 'new'],
@@ -103,6 +104,13 @@ export function FormEditorPage() {
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
   }, [dirty])
+
+  const blocker = useBlocker(dirty)
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return
+    if (window.confirm('有未保存的修改，确定离开吗？')) blocker.proceed()
+    else blocker.reset()
+  }, [blocker])
 
   const save = useMutation({
     mutationFn: async () => {
@@ -149,7 +157,7 @@ export function FormEditorPage() {
   const validateClient = (): boolean => {
     if (!formQuery.data) return false
     const master = validateMasterFields(formQuery.data.masterFields, masterValues)
-    const details = validateDetailRows(formQuery.data.detailFields, detailRows)
+    const details = validateDetailRows(formQuery.data.detailFields, detailRows, formQuery.data.detailDfVerify)
     setFieldErrors(master)
     setDetailErrors(details)
     const hasErrors = Object.keys(master).length > 0 || details.some(row => Object.keys(row).length > 0)
@@ -159,7 +167,6 @@ export function FormEditorPage() {
   }
 
   const back = () => {
-    if (dirty && !window.confirm('有未保存的修改，确定离开吗？')) return
     navigate(`/document-workbench/${moduleId}`)
   }
 
@@ -194,6 +201,14 @@ export function FormEditorPage() {
 
   const addDetailRow = () => {
     if (!formQuery.data) return
+    const missing = formQuery.data.detailNoFields
+      .split(';')
+      .map(field => field.trim())
+      .filter(field => field && !(masterValues[field] ?? '').trim())
+    if (missing.length > 0) {
+      setSaveError(`请先填写主表字段：${missing.join('、')}，再新增明细。`)
+      return
+    }
     const row: Record<string, string> = {}
     for (const field of formQuery.data.detailFields) {
       if (field.isVisible) row[field.key] = emptyValue(field)
@@ -201,6 +216,25 @@ export function FormEditorPage() {
     setDetailRows(current => [...current, row])
     setDetailErrors(current => [...current, {}])
     setDirty(true)
+  }
+
+  const applyDetailChooser = (index: number, field: FormFieldDefinition, row: ChooserRow) => {
+    const source = field.choosers.find(item => item.active && item.table)
+    const mapping = source?.returnMapping
+    if (mapping) {
+      setDetailRows(current => current.map((currentRow, i) => {
+        if (i !== index) return currentRow
+        const next = { ...currentRow }
+        for (const pair of mapping.split(';')) {
+          const [target, column] = pair.split('=')
+          if (!target || !column || row[column] === undefined) continue
+          next[target.replace(/^(txt|cho|dro|chk|lab|hidd)_/, '')] = String(row[column] ?? '')
+        }
+        return next
+      }))
+      setDirty(true)
+    }
+    setDetailChooser(null)
   }
 
   const removeDetailRow = (index: number) => {
@@ -262,13 +296,19 @@ export function FormEditorPage() {
                   <tr key={index}>
                     {visibleDetail.map(field => (
                       <td key={field.key}>
-                        <input
-                          className={`form-control form-control-sm${detailErrors[index]?.[field.key] ? ' is-invalid' : ''}`}
-                          value={row[field.key] ?? ''}
-                          disabled={field.isReadonly || field.serverFilled}
-                          onChange={event => updateDetail(index, field.key, event.target.value)}
-                        />
+                        <div className="d-flex gap-1">
+                          <input
+                            className={`form-control form-control-sm${detailErrors[index]?.[field.key] ? ' is-invalid' : ''}`}
+                            value={row[field.key] ?? ''}
+                            disabled={field.isReadonly || field.serverFilled}
+                            onChange={event => updateDetail(index, field.key, event.target.value)}
+                          />
+                          {field.choosers.some(source => source.active && source.table) && !field.isReadonly && !field.serverFilled ? (
+                            <Button size="sm" onClick={() => setDetailChooser({ index, field })}>选择</Button>
+                          ) : null}
+                        </div>
                         {detailErrors[index]?.[field.key] ? <div className="invalid-feedback d-block">{detailErrors[index][field.key]}</div> : null}
+                        {field.isPrimaryKey && field.isReadonly ? <div className="form-hint text-secondary">保存时自动编号</div> : null}
                       </td>
                     ))}
                     <td><Button size="sm" variant="danger" onClick={() => removeDetailRow(index)}>删除</Button></td>
@@ -281,6 +321,9 @@ export function FormEditorPage() {
       ) : null}
       {chooserField ? (
         <DataChooserInput moduleId={moduleId} field={chooserField} onPick={row => applyChooser(chooserField, row)} onClose={() => setChooserField(null)} />
+      ) : null}
+      {detailChooser ? (
+        <DataChooserInput moduleId={moduleId} field={detailChooser.field} onPick={row => applyDetailChooser(detailChooser.index, detailChooser.field, row)} onClose={() => setDetailChooser(null)} />
       ) : null}
     </div>
   )

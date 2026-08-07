@@ -20,6 +20,7 @@ export function FormFieldRenderer({ field, value, error, onChange, onChoose }: F
   const kind = inputKind(field)
   const disabled = field.isReadonly || field.serverFilled
   const isBoolean = kind === 'checkbox'
+  const numeric = /int|float|decimal|money|numeric/.test(field.dataType.toLowerCase())
   const hasChooser = Boolean(onChoose) && field.choosers.some(source => source.active && source.table)
   return (
     <div className="col-md-6">
@@ -28,7 +29,7 @@ export function FormFieldRenderer({ field, value, error, onChange, onChoose }: F
         {kind === 'checkbox' ? (
           <input type="checkbox" className={`form-check-input mt-2${error ? ' is-invalid' : ''}`} checked={value === '1' || value === 'true'} disabled={disabled} onChange={event => onChange(event.target.checked ? '1' : '0')} />
         ) : (
-          <input type={kind === 'date' ? 'date' : 'text'} className={`form-control${error ? ' is-invalid' : ''}`} value={value} maxLength={field.maxLength ?? undefined} disabled={disabled} onChange={event => onChange(event.target.value)} />
+          <input type={kind === 'date' ? 'date' : numeric ? 'number' : 'text'} className={`form-control${error ? ' is-invalid' : ''}`} value={value} maxLength={field.maxLength ?? undefined} disabled={disabled} onChange={event => onChange(event.target.value)} />
         )}
         {hasChooser ? (
           <Button size="sm" disabled={disabled} onClick={() => onChoose?.(field)}>选择</Button>

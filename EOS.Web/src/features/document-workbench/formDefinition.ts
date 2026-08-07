@@ -46,6 +46,8 @@ export interface FormDefinition {
   masterFields: FormFieldDefinition[]
   detailFields: FormFieldDefinition[]
   masterPkOrder: string[]
+  detailNoFields: string
+  detailDfVerify: string
 }
 
 /** 模块权限（与 EOS.API LegacyModuleRights 对应，M0 扩展后） */
