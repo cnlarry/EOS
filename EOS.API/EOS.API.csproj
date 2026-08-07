@@ -12,4 +12,8 @@
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="EOS.API.Tests" />
+  </ItemGroup>
+
 </Project>

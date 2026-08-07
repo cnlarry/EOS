@@ -1,6 +1,7 @@
 using EOS.API.Data;
 using EOS.API.Errors;
 using EOS.API.Middleware;
+using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
@@ -79,6 +80,7 @@ builder.Services.AddScoped<LegacyRightsRepository>();
 builder.Services.AddScoped<NavigationRepository>();
 builder.Services.AddScoped<DocumentWorkbenchRepository>();
 builder.Services.AddScoped<CurrentUserContext>();
+builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
 
 var app = builder.Build();
 

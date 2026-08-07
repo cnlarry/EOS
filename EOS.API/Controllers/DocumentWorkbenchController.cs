@@ -1,11 +1,13 @@
 using EOS.API.Data;
+using EOS.API.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace EOS.API.Controllers;
 
 [ApiController, Authorize, Route("api/document-workbench/{moduleId:int}")]
-public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, LegacyRightsRepository rightsRepository, EOS.API.Security.CurrentUserContext userContext) : ControllerBase
+public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, LegacyRightsRepository rightsRepository, EOS.API.Security.CurrentUserContext userContext, IOptions<UnifiedFormEditorSettings> formSettings, ILogger<DocumentWorkbenchController> logger) : ControllerBase
 {
     [HttpGet("definition")]
     public async Task<IActionResult> Definition(int moduleId,CancellationToken token)=>await AuthorizedDefinition(moduleId,token) is { } definition?Ok(definition):NotFound();
@@ -21,6 +23,152 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
 
     [HttpPost("export")]
     public async Task<IActionResult> Export(int moduleId,[FromBody]WorkbenchQuery? query,[FromQuery]string? keyword=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,CancellationToken token=default){var definition=await AuthorizedDefinition(moduleId,token);if(definition is null)return NotFound();var rows=await repository.GetExportRowsAsync(definition,query,keyword,token,sortField,sortDirection);return File(BuildCsv(definition.MasterFields,rows),"text/csv; charset=utf-8","export.csv");}
+
+    [HttpGet("form-definition")]
+    public async Task<IActionResult> FormDefinition(int moduleId,[FromQuery]string mode="new",CancellationToken token=default)
+    {
+        var definition=await AuthorizedDefinition(moduleId,token);
+        var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if(definition is null||userId is null)return NotFound();
+        if(!formSettings.Value.EnabledModuleIds.Contains(moduleId))return NotFound();
+        var normalized=mode.Trim().ToLowerInvariant();
+        if(normalized is not ("new" or "edit"))return BadRequest(new{code="INVALID_FORM_MODE",message="mode 仅支持 new 或 edit。"});
+        var rights=await rightsRepository.GetAsync(userId,moduleId,token);
+        if(normalized=="new"&&!rights.CanAddNew)return Forbid();
+        if(normalized=="edit"&&!rights.CanEdit)return Forbid();
+        if(normalized=="new"&&!definition.HasAdd)return NotFound();
+        if(normalized=="edit"&&!definition.HasEdit)return NotFound();
+        var form=await repository.GetFormDefinitionAsync(definition,normalized,rights.CanViewCost,rights.CanViewSecrecy,
+            rights.DeniedMasterFields,rights.DeniedDetailFields,
+            rights.DenyNewMasterFields,rights.DenyNewDetailFields,
+            rights.DenyModiMasterFields,rights.DenyModiDetailFields,token);
+        return Ok(form);
+    }
+
+    [HttpGet("record")]
+    public async Task<IActionResult> Record(int moduleId,[FromQuery]string key,CancellationToken token=default)
+    {
+        var access=await FormAccess(moduleId,"edit",token);
+        if(access is null)return NotFound();
+        var keyValues=ParseKey(key);
+        if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
+        var result=await repository.GetRecordAsync(access.Value.Definition,access.Value.Form,keyValues,access.Value.Rights.DataFilter,token);
+        return MapReadResult(result);
+    }
+
+    [HttpPost("record")]
+    public async Task<IActionResult> CreateRecord(int moduleId,[FromBody]SaveRecordRequest request,CancellationToken token=default)
+    {
+        var access=await FormAccess(moduleId,"new",token);
+        if(access is null)return NotFound();
+        logger.LogDebug("统一表单保存请求 module={ModuleId} mode=new fields={Fields} details={DetailCount}",moduleId,string.Join(',',request.Values.Keys),request.Details?.Count??0);
+        var result=await repository.CreateRecordAsync(access.Value.Definition,access.Value.Form,request,userContext.EmployeeName,access.Value.Rights.DataFilter,token);
+        LogValidationFailure(moduleId,result);
+        return MapSaveResult(result);
+    }
+
+    [HttpPut("record")]
+    public async Task<IActionResult> UpdateRecord(int moduleId,[FromQuery]string key,[FromBody]SaveRecordRequest request,CancellationToken token=default)
+    {
+        var access=await FormAccess(moduleId,"edit",token);
+        if(access is null)return NotFound();
+        var keyValues=ParseKey(key);
+        if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
+        logger.LogDebug("统一表单保存请求 module={ModuleId} mode=edit key={Key} fields={Fields} details={DetailCount}",moduleId,string.Join(',',keyValues),string.Join(',',request.Values.Keys),request.Details?.Count??0);
+        var result=await repository.UpdateRecordAsync(access.Value.Definition,access.Value.Form,keyValues,request,userContext.EmployeeName,access.Value.Rights.DataFilter,token);
+        LogValidationFailure(moduleId,result);
+        return MapSaveResult(result);
+    }
+
+    [HttpDelete("record")]
+    public async Task<IActionResult> DeleteRecord(int moduleId,[FromQuery]string key,CancellationToken token=default)
+    {
+        var access=await FormAccess(moduleId,"edit",token);
+        if(access is null)return NotFound();
+        if(!access.Value.Rights.CanDelete)return Forbid();
+        var keyValues=ParseKey(key);
+        if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
+        var result=await repository.DeleteRecordAsync(access.Value.Definition,access.Value.Form,keyValues,access.Value.Rights.DataFilter,token);
+        LogValidationFailure(moduleId,result);
+        return MapSaveResult(result);
+    }
+
+    private void LogValidationFailure(int moduleId,RecordSaveResult result)
+    {
+        if(result.Status==RecordAccessStatus.ValidationFailed)
+            logger.LogWarning("统一表单保存校验失败 module={ModuleId} code={Code} errors={Errors}",moduleId,result.ErrorCode,result.FieldErrors);
+    }
+
+    [HttpGet("form-chooser/{fieldKey}")]
+    public async Task<IActionResult> FormChooser(int moduleId,string fieldKey,[FromQuery]string? keyword=null,CancellationToken token=default)
+    {
+        var access=await FormAccess(moduleId,"new",token) ?? await FormAccess(moduleId,"edit",token);
+        if(access is null)return NotFound();
+        var (definition,form,rights)=access.Value;
+        var field=form.MasterFields.Concat(form.DetailFields).FirstOrDefault(item=>item.Key.Equals(fieldKey,StringComparison.OrdinalIgnoreCase));
+        if(field is null)return NotFound();
+        var source=field.Choosers.FirstOrDefault(item=>item.Active&&!string.IsNullOrWhiteSpace(item.Table));
+        if(source is null||source.Table is null)return NotFound();
+        var chooserRights=rights;
+        if(source.ModuleId is int moduleIndex&&moduleIndex>0)
+        {
+            var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if(userId is not null)chooserRights=await rightsRepository.GetAsync(userId,moduleIndex,token);
+        }
+        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,token);
+        return result is null?NotFound():Ok(result);
+    }
+
+    private async Task<(WorkbenchDefinition Definition,FormDefinition Form,LegacyModuleRights Rights)?> FormAccess(int moduleId,string mode,CancellationToken token)
+    {
+        var definition=await AuthorizedDefinition(moduleId,token);
+        var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if(definition is null||userId is null)return null;
+        if(!formSettings.Value.EnabledModuleIds.Contains(moduleId))return null;
+        var rights=await rightsRepository.GetAsync(userId,moduleId,token);
+        if(mode=="new"&&!rights.CanAddNew)return null;
+        if(mode=="edit"&&!rights.CanEdit)return null;
+        if(mode=="new"&&!definition.HasAdd)return null;
+        if(mode=="edit"&&!definition.HasEdit)return null;
+        var form=await repository.GetFormDefinitionAsync(definition,mode,rights.CanViewCost,rights.CanViewSecrecy,
+            rights.DeniedMasterFields,rights.DeniedDetailFields,
+            rights.DenyNewMasterFields,rights.DenyNewDetailFields,
+            rights.DenyModiMasterFields,rights.DenyModiDetailFields,token);
+        return form is null?null:(definition,form,rights);
+    }
+
+    private static IReadOnlyList<string>? ParseKey(string? key)
+    {
+        if(string.IsNullOrWhiteSpace(key))return null;
+        try
+        {
+            var values=System.Text.Json.JsonSerializer.Deserialize<string[]>(key);
+            return values is null?null:(IReadOnlyList<string>)values;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private IActionResult MapReadResult(RecordReadResult result)=>result.Status switch
+    {
+        RecordAccessStatus.Ok=>Ok(result.Bundle),
+        RecordAccessStatus.NotFound=>NotFound(),
+        RecordAccessStatus.OutOfScope=>StatusCode(403,new{code="RECORD_OUT_OF_SCOPE",message="目标记录不在当前用户数据范围内。"}),
+        RecordAccessStatus.FilterUnsupported=>StatusCode(403,new{code="DATA_FILTER_UNSUPPORTED",message="当前数据过滤条件尚不支持，已拒绝执行。"}),
+        _=>BadRequest(new{code="RECORD_KEY_MISMATCH",message="主键数量与模块主键不匹配。"}),
+    };
+
+    private IActionResult MapSaveResult(RecordSaveResult result)=>result.Status switch
+    {
+        RecordAccessStatus.Ok=>Ok(new{key=result.Key}),
+        RecordAccessStatus.NotFound=>NotFound(),
+        RecordAccessStatus.OutOfScope=>StatusCode(403,new{code="RECORD_OUT_OF_SCOPE",message="目标记录不在当前用户数据范围内。"}),
+        RecordAccessStatus.FilterUnsupported=>StatusCode(403,new{code="DATA_FILTER_UNSUPPORTED",message="当前数据过滤条件尚不支持，已拒绝执行。"}),
+        RecordAccessStatus.ConcurrentModified=>BadRequest(new{code="CONCURRENT_MODIFIED",message="字段内容已被他人修改，请刷新后重试！",fieldErrors=result.FieldErrors??Array.Empty<FieldError>()}),
+        _=>BadRequest(new{code=result.ErrorCode??"VALIDATION_FAILED",message=result.ErrorMessage??"数据校验未通过。",fieldErrors=result.FieldErrors??Array.Empty<FieldError>()}),
+    };
 
     [HttpGet("columns")]
     public async Task<IActionResult> Columns(int moduleId,CancellationToken token){var definition=await AuthorizedDefinition(moduleId,token);var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;if(definition is null||userId is null)return NotFound();return Ok(await repository.GetColumnSettingsAsync(definition,userId,token));}
