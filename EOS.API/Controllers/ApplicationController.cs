@@ -73,9 +73,19 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
     private static string RouteFor(LegacyNavigationModule module) =>
         ModernRoutes.TryGetValue(module.Id, out var modern)
             ? modern
+            : IsReportUrl(module.LegacyUrl)
+                ? $"/reports/{module.Id}"
             : IsDocumentWorkbenchUrl(module.LegacyUrl)
                 ? $"/document-workbench/{module.Id}"
                 : $"/legacy/modules/{module.Id}";
+
+    private static bool IsReportUrl(string? legacyUrl)
+    {
+        if (string.IsNullOrWhiteSpace(legacyUrl)) return false;
+        var normalized = legacyUrl.Trim().Replace('\\', '/');
+        if (normalized.StartsWith("~/", StringComparison.Ordinal)) normalized = normalized[2..];
+        return normalized.StartsWith("RPT/", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool IsDocumentWorkbenchUrl(string? legacyUrl)
     {
