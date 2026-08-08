@@ -9,3 +9,4 @@ export const UserAdminPage = lazy(() => import('../features/user-admin/UserAdmin
 export const ProfilePage = lazy(() => import('../features/settings/ProfilePage').then((module) => ({ default: module.ProfilePage })))
 export const ReportViewerPage = lazy(() => import('../features/reports/ReportViewerPage').then((module) => ({ default: module.ReportViewerPage })))
 export const SearchCenterPage = lazy(() => import('../features/search-center/SearchCenterPage').then((module) => ({ default: module.SearchCenterPage })))
+export const ImportPage = lazy(() => import('../features/import/ImportPage').then((module) => ({ default: module.ImportPage })))

@@ -4,6 +4,7 @@ import { RequireAuth, RequirePermission } from '../features/auth/RouteGuards'
 import { ErrorPage } from './ErrorPage'
 import {
   DashboardPage,
+  ImportPage,
   LegacyModulePage,
   LoginPage,
   ProfilePage,
@@ -34,6 +35,7 @@ export const router = createBrowserRouter([
         { path: 'document-workbench/:moduleId/edit', element: withSuspense(<FormEditorRoute />) },
         { path: 'reports/:moduleId', element: withSuspense(<ReportViewerPage />) },
         { path: 'search-center/:moduleId?', element: withSuspense(<SearchCenterPage />) },
+        { path: 'import', element: withSuspense(<ImportPage />) },
         { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },
         { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
       ],
