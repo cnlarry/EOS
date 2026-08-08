@@ -8,6 +8,7 @@ import {
   LoginPage,
   ProfilePage,
   PurchaseOrdersPage,
+  ReportViewerPage,
   TableAdminPage,
   UserAdminPage,
 } from './lazyRoutes'
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
         { path: 'document-workbench/:moduleId', element: withSuspense(<WorkbenchRoute />) },
         { path: 'document-workbench/:moduleId/new', element: withSuspense(<FormEditorRoute />) },
         { path: 'document-workbench/:moduleId/edit', element: withSuspense(<FormEditorRoute />) },
+        { path: 'reports/:moduleId', element: withSuspense(<ReportViewerPage />) },
         { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },
         { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
       ],

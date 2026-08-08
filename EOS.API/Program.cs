@@ -120,6 +120,7 @@ builder.Services.AddScoped<LegacyRightsRepository>();
 builder.Services.AddScoped<NavigationRepository>();
 builder.Services.AddScoped<ControlledSprocInvoker>();
 builder.Services.AddScoped<DocumentWorkbenchRepository>();
+builder.Services.AddScoped<ReportRepository>();
 builder.Services.AddScoped<CurrentUserContext>();
 builder.Services.AddSingleton<HubUserTracker>();
 builder.Services.AddSingleton<ImRateLimiter>();
