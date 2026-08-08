@@ -224,4 +224,14 @@ describe('ErpTable', () => {
     fireEvent.click(screen.getByRole('button', { name: /筛选：等于/ }))
     expect(onColumnFilterChange).toHaveBeenCalledWith('name', expect.objectContaining({ field: 'name', operator: 'eq', value: 'A' }))
   })
+
+  it('totals 非空时渲染合计行', () => {
+    render(
+      <ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} totals={{ select: null, id: null, name: 123.5 }} />,
+    )
+    const foot = document.querySelector('tfoot')
+    expect(foot).toBeInTheDocument()
+    expect(foot?.textContent).toContain('合计')
+    expect(foot?.textContent).toContain('123.5')
+  })
 })

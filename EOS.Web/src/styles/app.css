@@ -182,6 +182,7 @@ button, input, select { font: inherit; }
 .erp-data-table .erp-frozen-left { left: 0; }
 .erp-data-table .erp-frozen-right { right: 0; }
 .erp-data-table .erp-cell-ellipsis { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.erp-data-table tfoot td { font-weight: 600; }
 .erp-table-context-menu { min-width: 8rem; }
 .erp-detail-card .table { font-size: 12px; }
 .erp-detail-card .table th,
