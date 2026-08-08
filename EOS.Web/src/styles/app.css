@@ -128,7 +128,7 @@ button, input, select { font: inherit; }
 .erp-table-toolbar > div { display: flex; align-items: center; gap: .6rem; }
 .erp-column-menu { position: absolute; z-index: 20; top: calc(100% + .4rem); right: 0; width: 12rem; box-shadow: var(--tblr-box-shadow-dropdown); }
 .erp-sort-button { display: inline-flex; align-items: center; gap: .3rem; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; text-transform: inherit; letter-spacing: inherit; }
-.erp-pagination-footer { min-height: 34px; display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; gap: 8px; padding: 8px 12px 12px !important; }
+.erp-pagination-footer { flex: 0 0 auto; min-height: 34px; display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; gap: 8px; padding: 8px !important; }
 .erp-pagination-footer .text-secondary { margin-right: auto; line-height: 1; }
 .erp-pagination-footer .form-select-sm,
 .erp-pagination-footer .btn-sm { min-height: 26px; padding-top: 2px; padding-bottom: 2px; }
@@ -162,12 +162,16 @@ button, input, select { font: inherit; }
 .erp-data-table .erp-browse-link:hover { text-decoration: underline; }
 .erp-table-shell { outline: none; }
 .erp-data-table .erp-row-focus td { box-shadow: inset 2px 0 0 var(--tblr-primary); }
+.erp-data-table tbody tr:not(.erp-row-active):hover td { background: var(--tblr-bg-surface-secondary); }
+.erp-data-table tbody tr:not(.erp-row-active):hover .erp-frozen-left,
+.erp-data-table tbody tr:not(.erp-row-active):hover .erp-frozen-right { background: var(--tblr-bg-surface-secondary) !important; }
 .erp-data-table .erp-header-inner { display: inline-flex; align-items: center; gap: .3rem; }
 .erp-data-table .erp-header-menu-trigger { position: relative; display: inline-flex; align-items: center; padding: 0; border: 0; background: transparent; color: var(--tblr-secondary); }
 .erp-data-table .erp-header-menu-trigger:hover { color: var(--tblr-primary); }
 .erp-data-table .erp-header-menu-trigger.is-active { color: var(--tblr-primary); }
 .erp-data-table .erp-header-menu-trigger.is-filtered::after { position: absolute; top: 1px; right: 1px; width: 5px; height: 5px; content: ''; border-radius: 50%; background: var(--tblr-primary); }
-.erp-header-menu { position: absolute; top: 100%; right: 0; z-index: 40; min-width: 7rem; }
+.erp-header-menu { z-index: 1100; min-width: 5rem; }
+.erp-data-table thead th.erp-header-menu-open { background: var(--tblr-bg-surface-secondary); }
 .erp-column-filter-popover { position: absolute; top: 100%; right: 0; z-index: 40; width: 220px; padding: .65rem; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); box-shadow: var(--tblr-box-shadow-dropdown); }
 .erp-data-table .erp-frozen-left, .erp-data-table .erp-frozen-right { position: sticky; z-index: 2; background: var(--tblr-bg-surface) !important; }
 .erp-data-table .erp-frozen-left { left: 0; }
@@ -181,7 +185,7 @@ button, input, select { font: inherit; }
 /* 工作台：视口撑满布局（无页面级滚动条，主表/子表按比例瓜分高度，各自内部滚动） */
 .erp-workbench-page { display: flex; flex-direction: column; gap: 8px; min-height: 320px; height: calc(100vh - 96px); height: calc(100dvh - 96px); overflow: hidden; }
 .erp-workbench-page > .erp-list-card { flex: 1 1 70%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.erp-workbench-page > .erp-list-card .erp-master-table-region { flex: 1 1 auto; min-height: 0; max-height: calc(100vh - 330px); overflow: auto; }
+.erp-workbench-page > .erp-list-card .erp-master-table-region { flex: 1 1 auto; min-height: 0; max-height: calc(100vh - 330px); overflow: auto; margin-bottom: 6px; }
 .erp-workbench-page > .erp-list-card .erp-master-table-region .table-responsive { overflow: visible; }
 .erp-workbench-page > .erp-detail-card { flex: 1 1 30%; min-height: 140px; display: flex; flex-direction: column; overflow: hidden; }
 .erp-workbench-page > .erp-detail-card .table-responsive { flex: 1 1 auto; min-height: 0; max-height: calc(100vh - 430px); overflow: auto; border-radius: var(--tblr-border-radius); }
