@@ -331,7 +331,8 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
     {
         var value=url.Trim().Replace('\\','/');
         return value.StartsWith("~/RPT/",StringComparison.OrdinalIgnoreCase)
-            ||value.StartsWith("RPT/",StringComparison.OrdinalIgnoreCase);
+            ||value.StartsWith("RPT/",StringComparison.OrdinalIgnoreCase)
+            ||value.Contains("StockDiary",StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<IReadOnlyList<ReportCondition>> ReadConditionsAsync(
