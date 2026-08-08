@@ -18,6 +18,7 @@ public sealed class JobsController(
     CurrentUserContext userContext) : ControllerBase
 {
     private static readonly Regex DayColumn = new("^DAY_(0[1-9]|[12][0-9]|3[01])$", RegexOptions.Compiled);
+    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     /// <summary>
     /// 产品可用库存重计（230901）：受控执行 P_UPDATE_PRO_MRP_ALL（无参白名单 SP）。
@@ -190,6 +191,204 @@ public sealed class JobsController(
         }
     }
 
+    /// <summary>
+    /// 依薪资调整考勤（180505 受控移植）：按当月工资表 WAGE_ADD&lt;0（扣款）的员工，
+    /// 从节假日加班→休息日加班→平时加班→正常工时依次清空 HRM_DIARY 对应字段，
+    /// 调整前后各执行一次 P_HRM_WAGE_CALC（受控白名单 SP）。
+    /// HR_SETUP 的薪资调整项目列名须为 HRM_WAGE_D 真实列（白名单校验），全部值参数化。
+    /// </summary>
+    [HttpPost("attendance-adjust-wage")]
+    public async Task<IActionResult> AttendanceAdjustWage([FromBody]AttendanceAdjustWageRequest request,CancellationToken token)
+    {
+        if(!await CanRunAsync(180505,token))return Forbid();
+        var month=(request.Month??"").Trim();
+        if(!MonthKey.IsMatch(month))
+            return BadRequest(new{code="INVALID_MONTH",message="月份格式应为 yyyyMM。"});
+        await using var connection=connections.Create();
+        await connection.OpenAsync(token);
+        var wageFields=await ReadWageAdjustConfigAsync(connection,token);
+        if(wageFields is null)
+            return BadRequest(new{code="WAGE_SETUP_MISSING",message="考勤系统设置错误：未设置薪资表调整项目（HR_SETUP.WAGE_*）。"});
+        // P_HRM_WAGE_CALC 内部自带 BEGIN TRAN/COMMIT，外层再包事务会"事务计数不匹配"；
+        // 工资计算与考勤调整均以自动提交运行（对齐旧页面无外层事务的行为）。
+        var calcCount=await RunWageCalcForMonthAsync(connection,null,month,token);
+        var adjustments=await LoadWageAdjustmentsAsync(connection,null,month,wageFields,token);
+        var affected=await AdjustDiaryByWageAsync(connection,null,adjustments,wageFields,token);
+        // TODO: 临时诊断字段，验证后移除
+        var recalcCount=await RunWageCalcForMonthAsync(connection,null,month,token);
+        return Ok(new{Month=month,WageCalcRuns=calcCount+recalcCount,AdjustedEmployees=adjustments.Count,ClearedDiaryRows=affected});
+    }
+
+    private static readonly Regex MonthKey=new("^\\d{6}$",RegexOptions.Compiled);
+
+    private sealed record WageAdjustConfig(string Add,string Work,string Over,string Rest,string Holiday,string WorkTime,string OverTime,string RestTime,string HoliTime);
+
+    private static async Task<WageAdjustConfig?> ReadWageAdjustConfigAsync(SqlConnection connection,CancellationToken token)
+    {
+        const string sql="SELECT LTRIM(RTRIM(ISNULL(WAGE_ADD,''))),LTRIM(RTRIM(ISNULL(WAGE_WORK,''))),LTRIM(RTRIM(ISNULL(WAGE_OVER,''))),LTRIM(RTRIM(ISNULL(WAGE_REST,''))),LTRIM(RTRIM(ISNULL(WAGE_HOLIDAY,''))),LTRIM(RTRIM(ISNULL(WAGE_WORKTIME,''))),LTRIM(RTRIM(ISNULL(WAGE_OVERTIME,''))),LTRIM(RTRIM(ISNULL(WAGE_RESTTIME,''))),LTRIM(RTRIM(ISNULL(WAGE_HOLITIME,''))) FROM dbo.HR_SETUP;";
+        await using var command=new SqlCommand(sql,connection);
+        await using var reader=await command.ExecuteReaderAsync(token);
+        if(!await reader.ReadAsync(token))return null;
+        var config=new WageAdjustConfig(reader.GetString(0),reader.GetString(1),reader.GetString(2),reader.GetString(3),reader.GetString(4),reader.GetString(5),reader.GetString(6),reader.GetString(7),reader.GetString(8));
+        await reader.CloseAsync();
+        var fields=new[]{config.Add,config.Work,config.Over,config.Rest,config.Holiday,config.WorkTime,config.OverTime,config.RestTime,config.HoliTime};
+        if(fields.Any(string.IsNullOrWhiteSpace))return null;
+        if(fields.Any(field=>!Identifier.IsMatch(field)))return null;
+        // 校验配置列均为 HRM_WAGE_D 真实列（白名单），防止配置注入
+        var valid=await GetWageDetailColumnsAsync(connection,token);
+        return fields.All(valid.Contains)?config:null;
+    }
+
+    private static async Task<HashSet<string>> GetWageDetailColumnsAsync(SqlConnection connection,CancellationToken token)
+    {
+        const string sql="SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='HRM_WAGE_D';";
+        await using var command=new SqlCommand(sql,connection);
+        await using var reader=await command.ExecuteReaderAsync(token);
+        var columns=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while(await reader.ReadAsync(token))columns.Add(reader.GetString(0));
+        return columns;
+    }
+
+    private static async Task<int> RunWageCalcForMonthAsync(SqlConnection connection,SqlTransaction transaction,string month,CancellationToken token)
+    {
+        const string listSql="SELECT LTRIM(RTRIM(WAGE_TYPE)),LTRIM(RTRIM(WAGE_NO)) FROM dbo.HRM_WAGE_M WITH (NOLOCK) WHERE LTRIM(RTRIM(COUNT_MONTH))=@month;";
+        var types=new List<(string Type,string No)>();
+        await using (var listCommand=new SqlCommand(listSql,connection,transaction))
+        {
+            listCommand.Parameters.Add("@month",SqlDbType.NVarChar,10).Value=month;
+            await using var reader=await listCommand.ExecuteReaderAsync(token);
+            while(await reader.ReadAsync(token))types.Add((reader.GetString(0),reader.GetString(1)));
+        }
+        var runs=0;
+        foreach(var (type,no) in types)
+        {
+            await using var calc=new SqlCommand("EXEC dbo.P_HRM_WAGE_CALC @wage_type=@t,@wage_no=@n,@emp_ids=@e,@calc_mode=@m,@if_secrecy=@s;",connection,transaction);
+            calc.Parameters.Add("@t",SqlDbType.NVarChar,20).Value=type;
+            calc.Parameters.Add("@n",SqlDbType.NVarChar,30).Value=no;
+            calc.Parameters.Add("@e",SqlDbType.NVarChar,100).Value="";
+            calc.Parameters.Add("@m",SqlDbType.NVarChar,5).Value="A";
+            calc.Parameters.Add("@s",SqlDbType.Int).Value=0;
+            await calc.ExecuteNonQueryAsync(token);
+            runs++;
+        }
+        return runs;
+    }
+
+    private sealed record WageAdjustment(string EmpId,double Add,double Work,double Over,double Rest,double Holiday,double WorkT,double OverT,double RestT,double HoliT);
+
+    private static async Task<IReadOnlyList<WageAdjustment>> LoadWageAdjustmentsAsync(
+        SqlConnection connection,SqlTransaction transaction,string month,WageAdjustConfig c,CancellationToken token)
+    {
+        var sql=$"""
+            SELECT LTRIM(RTRIM(d.EMP_ID)),d.[{c.Add}],d.[{c.Work}],d.[{c.Over}],d.[{c.Rest}],d.[{c.Holiday}],
+                   d.[{c.WorkTime}],d.[{c.OverTime}],d.[{c.RestTime}],d.[{c.HoliTime}]
+            FROM dbo.HRM_WAGE_D d
+            INNER JOIN dbo.HRM_WAGE_M m ON m.WAGE_TYPE=d.WAGE_TYPE AND m.WAGE_NO=d.WAGE_NO
+            WHERE LTRIM(RTRIM(m.COUNT_MONTH))=@month AND d.[{c.Add}]<0;
+            """;
+        await using var command=new SqlCommand(sql,connection,transaction);
+        command.Parameters.Add("@month",SqlDbType.NVarChar,10).Value=month;
+        await using var reader=await command.ExecuteReaderAsync(token);
+        var rows=new List<WageAdjustment>();
+        while(await reader.ReadAsync(token))
+        {
+            rows.Add(new WageAdjustment(
+                reader.GetString(0),GetDouble(reader,1),GetDouble(reader,2),GetDouble(reader,3),GetDouble(reader,4),GetDouble(reader,5),
+                GetDouble(reader,6),GetDouble(reader,7),GetDouble(reader,8),GetDouble(reader,9)));
+        }
+        return rows;
+    }
+
+    private static double GetDouble(SqlDataReader reader,int ordinal)=>reader.IsDBNull(ordinal)?0:Convert.ToDouble(reader.GetValue(ordinal));
+
+    private static async Task<int> AdjustDiaryByWageAsync(
+        SqlConnection connection,SqlTransaction transaction,IReadOnlyList<WageAdjustment> adjustments,WageAdjustConfig c,CancellationToken token)
+    {
+        if(adjustments.Count==0)return 0;
+        var empIds=string.Join(',',adjustments.Select(a=>$"'{(a.EmpId.Replace("'","''"))}'"));
+        var diaryRows=await LoadDiaryRowsAsync(connection,transaction,empIds,c,token);
+        var timeTypes=await LoadTimeTypesAsync(connection,transaction,token);
+        var affected=0;
+        foreach(var wage in adjustments)
+        {
+            var rows=diaryRows.Where(row=>row.EmpId==wage.EmpId).OrderByDescending(row=>row.CountDate).ToList();
+            var dAdd=wage.Add;
+            // 节假日加班 → 休息日加班 → 平时加班 → 正常工时
+            if(dAdd<10&&wage.Holiday>0&&wage.HoliT>0)
+                foreach(var row in rows.Where(r=>r.HolidayOvertime>0).ToList())
+                    if(dAdd<10){ dAdd+=wage.Holiday/wage.HoliT*row.HolidayOvertime; ClearDiaryRow(connection,transaction,row,"holiday",timeTypes,token).GetAwaiter().GetResult(); affected++; } else break;
+            if(dAdd<10&&wage.Rest>0&&wage.RestT>0)
+                foreach(var row in rows.Where(r=>r.RestOvertime>0).ToList())
+                    if(dAdd<10){ dAdd+=wage.Rest/wage.RestT*row.RestOvertime; ClearDiaryRow(connection,transaction,row,"rest",timeTypes,token).GetAwaiter().GetResult(); affected++; } else break;
+            if(dAdd<10&&wage.Over>0&&wage.OverT>0)
+                foreach(var row in rows.Where(r=>r.Overtime>0).ToList())
+                    if(dAdd<10){ dAdd+=wage.Over/wage.OverT*row.Overtime; ClearDiaryRow(connection,transaction,row,"over",timeTypes,token).GetAwaiter().GetResult(); affected++; } else break;
+            if(dAdd<10&&wage.Work>0&&wage.WorkT>0)
+                foreach(var row in rows.Where(r=>r.Worktime>0).ToList())
+                    if(dAdd<10){ dAdd+=wage.Work/wage.WorkT*row.Worktime; ClearDiaryRow(connection,transaction,row,"work",timeTypes,token).GetAwaiter().GetResult(); affected++; } else break;
+        }
+        return affected;
+    }
+
+    private sealed record DiaryRow(string EmpId,DateTime CountDate,string? TimeTypeId,double Worktime,double Overtime,double RestOvertime,double HolidayOvertime);
+
+    private static async Task<IReadOnlyList<DiaryRow>> LoadDiaryRowsAsync(
+        SqlConnection connection,SqlTransaction transaction,string empIds,WageAdjustConfig c,CancellationToken token)
+    {
+        var sql=$"""
+            SELECT LTRIM(RTRIM(EMP_ID)),COUNT_DATE,LTRIM(RTRIM(ISNULL(TIMETYPE_ID,''))),ISNULL(WORKTIME,0),ISNULL(OVERTIME,0),ISNULL(REST_OVERTIME,0),ISNULL(HOLIDAY_OVERTIME,0)
+            FROM dbo.HRM_DIARY WITH (NOLOCK)
+            WHERE EMP_ID IN ({empIds}) AND (ISNULL(WORKTIME,0)>0 OR ISNULL(OVERTIME,0)>0 OR ISNULL(REST_OVERTIME,0)>0 OR ISNULL(HOLIDAY_OVERTIME,0)>0);
+            """;
+        await using var command=new SqlCommand(sql,connection,transaction);
+        await using var reader=await command.ExecuteReaderAsync(token);
+        var rows=new List<DiaryRow>();
+        while(await reader.ReadAsync(token))
+            rows.Add(new DiaryRow(reader.GetString(0),reader.GetDateTime(1),reader.IsDBNull(2)?null:reader.GetString(2),GetDouble(reader,3),GetDouble(reader,4),GetDouble(reader,5),GetDouble(reader,6)));
+        return rows;
+    }
+
+    private static async Task<Dictionary<string,bool[]>> LoadTimeTypesAsync(SqlConnection connection,SqlTransaction transaction,CancellationToken token)
+    {
+        const string sql="SELECT LTRIM(RTRIM(TIMETYPE_ID)),ISNULL(IF_OVERTIME1,0),ISNULL(IF_OVERTIME2,0),ISNULL(IF_OVERTIME3,0),ISNULL(IF_OVERTIME4,0) FROM dbo.HRM_TIMETYPE WITH (NOLOCK);";
+        await using var command=new SqlCommand(sql,connection,transaction);
+        await using var reader=await command.ExecuteReaderAsync(token);
+        var map=new Dictionary<string,bool[]>(StringComparer.OrdinalIgnoreCase);
+        while(await reader.ReadAsync(token))
+            map[reader.GetString(0)]=new[]{!reader.IsDBNull(1)&&reader.GetBoolean(1),!reader.IsDBNull(2)&&reader.GetBoolean(2),!reader.IsDBNull(3)&&reader.GetBoolean(3),!reader.IsDBNull(4)&&reader.GetBoolean(4)};
+        return map;
+    }
+
+    private static async Task ClearDiaryRow(
+        SqlConnection connection,SqlTransaction transaction,DiaryRow row,string mode,IReadOnlyDictionary<string,bool[]> timeTypes,CancellationToken token)
+    {
+        // 对齐旧 AdjustByWage.aspx.cs：holiday/rest/work 清空对应加班/工时字段 + 全部时段字段与汇总；
+        // over 仅清 OVERTIME 与按 HRM_TIMETYPE.IF_OVERTIME1-4 标记的时段（ON/OUT/BE_LATE/LEAVE_EARLY）。
+        var fullClear=new[]{"TIMETYPE_ID","ON1","ON2","ON3","ON4","OUT1","OUT2","OUT3","OUT4",
+            "BE_LATE_FOR1","BE_LATE_FOR2","BE_LATE_FOR3","BE_LATE_FOR4","BE_LATE_FOR",
+            "LEAVE_EARLY1","LEAVE_EARLY2","LEAVE_EARLY3","LEAVE_EARLY4","LEAVE_EARLY",
+            "LATE_TIMES","LEAVE_EARLY_TIMES","ON_DUTY_TIME","SIGN_IN"};
+        var segments=new List<string>();
+        if(mode=="holiday")segments.AddRange(fullClear.Prepend("HOLIDAY_OVERTIME"));
+        else if(mode=="rest")segments.AddRange(fullClear.Prepend("REST_OVERTIME"));
+        else if(mode=="work")segments.AddRange(fullClear.Prepend("WORKTIME"));
+        else
+        {
+            segments.Add("OVERTIME");
+            if(!string.IsNullOrWhiteSpace(row.TimeTypeId)&&timeTypes.TryGetValue(row.TimeTypeId,out var flags))
+                for(var i=0;i<4;i++)
+                    if(flags[i])
+                        segments.AddRange(new[]{$"ON{i+1}",$"OUT{i+1}",$"BE_LATE_FOR{i+1}",$"LEAVE_EARLY{i+1}"});
+        }
+        var sets=string.Join(',',segments.Select(column=>$"[{column}]=NULL"));
+        if(mode is "holiday" or "rest" or "work")sets+=",REMARK=''";
+        var sql=$"UPDATE dbo.HRM_DIARY SET {sets} WHERE EMP_ID=@e AND COUNT_DATE=@d;";
+        await using var command=new SqlCommand(sql,connection,transaction);
+        command.Parameters.Add("@e",SqlDbType.NChar,10).Value=row.EmpId;
+        command.Parameters.Add("@d",SqlDbType.SmallDateTime).Value=row.CountDate;
+        await command.ExecuteNonQueryAsync(token);
+    }
+
     private static async Task<IReadOnlyList<string>> ResolveEmployeeIdsAsync(
         SqlConnection connection,SqlTransaction transaction,IReadOnlyList<string> empIds,CancellationToken token)
     {
@@ -210,3 +409,4 @@ public sealed class JobsController(
 public sealed record CardBatchItem(string EmpId, string CardId);
 public sealed record CardBatchRequest(DateTime StartDate, DateTime? EndDate, IReadOnlyList<CardBatchItem> Cards);
 public sealed record AttendanceGenerateRequest(DateTime StartDate, DateTime EndDate, string Mode, string? DeptId, IReadOnlyList<string>? EmpIds);
+public sealed record AttendanceAdjustWageRequest(string? Month);
