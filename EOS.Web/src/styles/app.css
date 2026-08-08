@@ -177,6 +177,20 @@ button, input, select { font: inherit; }
 .erp-detail-card .table { font-size: 12px; }
 .erp-detail-card .table th,
 .erp-detail-card .table td { font-size: 12px; }
+
+/* 工作台：视口撑满布局（无页面级滚动条，主表/子表按比例瓜分高度，各自内部滚动） */
+.erp-workbench-page { display: flex; flex-direction: column; gap: 8px; min-height: 320px; height: calc(100vh - 96px); height: calc(100dvh - 96px); overflow: hidden; }
+.erp-workbench-page > .erp-list-card { flex: 1 1 55%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.erp-workbench-page > .erp-list-card .erp-master-table-region { flex: 1 1 auto; min-height: 0; max-height: none; }
+.erp-workbench-page > .erp-detail-card { flex: 1 1 45%; min-height: 140px; display: flex; flex-direction: column; overflow: hidden; }
+.erp-workbench-page > .erp-detail-card .table-responsive { flex: 1 1 auto; min-height: 0; max-height: none; }
+@media print {
+  .erp-workbench-page { display: block; height: auto; min-height: 0; overflow: visible; }
+  .erp-workbench-page > .erp-list-card,
+  .erp-workbench-page > .erp-detail-card { flex: none; display: block; }
+  .erp-workbench-page .erp-master-table-region,
+  .erp-workbench-page .erp-detail-card .table-responsive { max-height: none; overflow: visible; }
+}
 .erp-login-page { min-height: 100vh; display: grid; grid-template-columns: minmax(320px, 1fr) minmax(360px, 480px); align-items: center; gap: 8vw; padding: 8vh 10vw; background: radial-gradient(circle at 15% 20%, var(--tblr-primary-lt), transparent 35%), var(--tblr-bg-surface-secondary); }
 .erp-login-loading { display: flex; flex-direction: column; justify-content: center; gap: 14px; color: var(--tblr-secondary); }
 .erp-login-brand-heading { display: flex; align-items: center; gap: 22px; }

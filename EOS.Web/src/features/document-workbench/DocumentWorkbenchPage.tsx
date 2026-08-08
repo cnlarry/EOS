@@ -193,7 +193,7 @@ export function DocumentWorkbenchPage() {
   const handleExport=async()=>{if(!definition.data)return;setExporting(true);try{const blob=await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:appliedConditions},{query:{keyword:keyword||undefined,sortField:sort?.field,sortDirection:sort?.direction}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.csv`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
 
-  return <div className="d-grid gap-2">
+  return <div className="erp-workbench-page">
     <ErpListCard
       ariaLabel="单据列表查询与操作"
       search={<ErpSearchBox value={keyword} onChange={changeKeyword} debounceMs={400} placeholder="搜索单据、供应商或商品" ariaLabel="搜索" />}
