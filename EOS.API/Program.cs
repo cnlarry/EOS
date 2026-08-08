@@ -1,8 +1,10 @@
 using EOS.API.Data;
 using EOS.API.Errors;
+using EOS.API.Hubs;
 using EOS.API.Middleware;
 using EOS.API.Models;
 using EOS.API.Security;
+using EOS.API.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
@@ -118,6 +120,15 @@ builder.Services.AddScoped<LegacyRightsRepository>();
 builder.Services.AddScoped<NavigationRepository>();
 builder.Services.AddScoped<DocumentWorkbenchRepository>();
 builder.Services.AddScoped<CurrentUserContext>();
+builder.Services.AddSingleton<HubUserTracker>();
+builder.Services.AddSingleton<ImRateLimiter>();
+builder.Services.AddScoped<IImConversationRepository, ImConversationRepository>();
+builder.Services.AddScoped<IImMessageRepository, ImMessageRepository>();
+builder.Services.AddScoped<IImAttachmentRepository, ImAttachmentRepository>();
+builder.Services.AddScoped<IImCardService, ImCardService>();
+builder.Services.AddScoped<ImHubService>();
+builder.Services.AddHostedService<ImCleanupHostedService>();
+builder.Services.AddSignalR();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
 
 var app = builder.Build();
@@ -143,8 +154,11 @@ app.Use(async (context, next) =>
 });
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<ImHub>("/api/hubs/im");
 app.MapOpenApi().AllowAnonymous();
 app.MapFallbackToFile("index.html").RequireAuthorization();
+
+ImDatabaseInitializer.RunIfConfigured(builder.Configuration, app.Logger);
 
 app.Run();
 
