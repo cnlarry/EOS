@@ -2,7 +2,7 @@ import { IconKey, IconRefresh } from '@tabler/icons-react'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../auth/authContext'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 

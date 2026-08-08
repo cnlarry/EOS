@@ -1,16 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { apiClient } from '../../services/api'
+import { AuthContext, type AuthContextValue } from './authContext'
 import type { AppBootstrap, LoginCredentials } from './types'
-
-interface AuthContextValue {
-  bootstrap: AppBootstrap | null
-  loading: boolean
-  login: (credentials: LoginCredentials) => Promise<void>
-  logout: () => Promise<void>
-  hasPermission: (permission: string) => boolean
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [bootstrap, setBootstrap] = useState<AppBootstrap | null>(null)
@@ -36,10 +27,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }), [bootstrap, loading])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext)
-  if (!context) throw new Error('useAuth must be used within AuthProvider')
-  return context
 }

@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { emptyQueryCondition, ErpQueryBuilder, type QueryCondition } from './ErpQueryBuilder'
+import { ErpQueryBuilder } from './ErpQueryBuilder'
+import { emptyQueryCondition, type QueryCondition } from './queryCondition'
 
 const fields = [
   { key: 'APPLY_NO', label: '申请单号' },

@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { LoadingState } from '../../components/common/AsyncState'
-import { useAuth } from './AuthProvider'
+import { useAuth } from './authContext'
 
 export function RequireAuth() {
   const { bootstrap, loading } = useAuth()

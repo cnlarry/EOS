@@ -1,5 +1,5 @@
 import type { SortingState } from '@tanstack/react-table'
-import type { QueryCondition } from '../../components/common/ErpQueryBuilder'
+import type { QueryCondition } from '../../components/common/queryCondition'
 
 export const pageSizeOptions = [10, 16, 25, 50]
 

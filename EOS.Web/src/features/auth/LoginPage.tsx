@@ -2,7 +2,7 @@ import { IconEye, IconEyeOff, IconLock, IconUser } from '@tabler/icons-react'
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../types/api'
-import { useAuth } from './AuthProvider'
+import { useAuth } from './authContext'
 
 export function LoginPage() {
   const { bootstrap, loading, login } = useAuth()

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { emptyQueryCondition } from './ErpQueryBuilder'
+import { emptyQueryCondition } from './queryCondition'
 import { ErpColumnFilter } from './ErpColumnFilter'
 
 describe('ErpColumnFilter', () => {

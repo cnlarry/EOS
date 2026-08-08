@@ -11,7 +11,7 @@ import {
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { ErpDataTable } from './ErpDataTable'
 import { ErpColumnFilter } from './ErpColumnFilter'
-import { emptyQueryCondition, type QueryCondition } from './ErpQueryBuilder'
+import { emptyQueryCondition, type QueryCondition } from './queryCondition'
 import { rowsToTsv, writeClipboard } from './tableClipboard'
 
 const formatTotal = (value: number) => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value)

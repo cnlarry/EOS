@@ -11,7 +11,7 @@ import { ErpTable } from '../../../components/common/ErpTable'
 import { StatusBadge } from '../../../components/common/StatusBadge'
 import { Button } from '../../../components/ui/Button'
 import { ApiError } from '../../../types/api'
-import { useAuth } from '../../auth/AuthProvider'
+import { useAuth } from '../../auth/authContext'
 import { purchaseOrdersQueryOptions } from '../api/purchaseOrders'
 import type { PurchaseOrderSortField, PurchaseOrderStatus, PurchaseOrderSummary, SortDirection } from '../types/purchaseOrder'
 
