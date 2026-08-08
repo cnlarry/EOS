@@ -56,9 +56,49 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
             details=await ReadRowsAsync(connection,detailTable,pkOrder,keyValues,detailFields.Select(field=>field.Key).ToList(),token);
         }
         var (headerCompany,headerText,footerText)=await ReadHeaderFooterAsync(connection,moduleId,token);
+        headerText=ReplacePlaceholders(headerText,master);
+        footerText=ReplacePlaceholders(footerText,master);
         logger.LogDebug("打印数据 module={ModuleId} master={Master} details={DetailCount}",moduleId,masterTable,details.Count);
-        return new PrintData(moduleId,title,headerCompany,headerText,footerText,masterFields,detailFields,master,details);
+        return new PrintData(moduleId,title,headerCompany,headerText,footerText,
+            OrderPrintFields(masterFields),OrderPrintFields(detailFields),master,details);
     }
+
+    /// <summary>
+    /// 打印字段排序：单号/日期/编号/名称/金额/数量类字段优先（单据版式关键信息前置）。
+    /// </summary>
+    private static IReadOnlyList<PrintField> OrderPrintFields(IReadOnlyList<PrintField> fields)
+    {
+        static int Rank(string key)
+        {
+            if(key.Contains("NO",StringComparison.OrdinalIgnoreCase))return 0;
+            if(key.Contains("DATE",StringComparison.OrdinalIgnoreCase)||key.Contains("TIME",StringComparison.OrdinalIgnoreCase))return 1;
+            if(key.Contains("ID",StringComparison.OrdinalIgnoreCase))return 2;
+            if(key.Contains("NAME",StringComparison.OrdinalIgnoreCase))return 3;
+            if(key.Contains("AMOUNT",StringComparison.OrdinalIgnoreCase)||key.Contains("PRICE",StringComparison.OrdinalIgnoreCase))return 4;
+            if(key.Contains("QTY",StringComparison.OrdinalIgnoreCase)||key.Contains("QUANTITY",StringComparison.OrdinalIgnoreCase))return 5;
+            return 9;
+        }
+        return fields.OrderBy(field=>Rank(field.Key)).ToList();
+    }
+
+    /// <summary>
+    /// 页头/页脚占位符基础映射（旧 Crystal 参数字段约定）：
+    /// {1} 制表人、{2} 最后更新、{5} 审核人、{7} 列印人（当前登录员工）。
+    /// 其余 {n} 保留原文。
+    /// </summary>
+    private static string? ReplacePlaceholders(string? text,IReadOnlyDictionary<string,object?> master)
+    {
+        if(string.IsNullOrWhiteSpace(text))return text;
+        var result=text;
+        result=result.Replace("{1}",FieldValue(master,"CREATE_PERSON"));
+        result=result.Replace("{2}",FieldValue(master,"LAST_UPDATE_BY"));
+        result=result.Replace("{5}",FieldValue(master,"CONFIRM_PERSON"));
+        result=result.Replace("{7}",Environment.UserName);
+        return result;
+    }
+
+    private static string FieldValue(IReadOnlyDictionary<string,object?> row,string key)=>
+        row.TryGetValue(key,out var value)&&value is not null?Convert.ToString(value)!.Trim():"";
 
     private static bool IsWorkbenchUrl(string url)
     {
