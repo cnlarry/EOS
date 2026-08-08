@@ -1,5 +1,5 @@
 import { Button } from '../ui/Button'
-import { queryOperators, type QueryCondition } from './ErpQueryBuilder'
+import { queryOperators, type QueryCondition } from './queryCondition'
 
 interface ErpColumnFilterProps {
   condition: QueryCondition

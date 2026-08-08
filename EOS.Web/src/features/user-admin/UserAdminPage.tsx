@@ -8,7 +8,7 @@ import { ErpPagination } from '../../components/common/ErpPagination'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../auth/authContext'
 import { apiClient } from '../../services/api'
 import { ApiError, type PageResponse } from '../../types/api'
 

@@ -32,7 +32,7 @@ import {
 } from '@tabler/icons-react'
 import { Fragment, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { useAuth } from '../../features/auth/AuthProvider'
+import { useAuth } from '../../features/auth/authContext'
 import type { NavigationItem } from '../../features/auth/types'
 
 type Theme = 'light' | 'dark'
