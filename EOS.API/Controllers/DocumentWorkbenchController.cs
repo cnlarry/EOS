@@ -105,6 +105,24 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         return MapSaveResult(result);
     }
 
+    [HttpPost("approve")]
+    public async Task<IActionResult> Approve(int moduleId,[FromBody]ApproveWorkflowRequest request,CancellationToken token=default)
+        => await RunWorkflow(moduleId,true,request,token);
+
+    [HttpPost("deapprove")]
+    public async Task<IActionResult> Deapprove(int moduleId,[FromBody]ApproveWorkflowRequest request,CancellationToken token=default)
+        => await RunWorkflow(moduleId,false,request,token);
+
+    private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveWorkflowRequest request,CancellationToken token)
+    {
+        var definition=await AuthorizedDefinition(moduleId,token);
+        if(definition is null)return NotFound();
+        var keyValues=ParseKey(request.Key);
+        if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
+        var result=await repository.WorkflowAsync(definition,keyValues,approve,token);
+        return MapSaveResult(result);
+    }
+
     private void LogValidationFailure(int moduleId,RecordSaveResult result)
     {
         if(result.Status==RecordAccessStatus.ValidationFailed)

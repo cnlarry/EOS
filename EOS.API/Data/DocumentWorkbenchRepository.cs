@@ -27,7 +27,11 @@ public sealed record SystemKnowledgeField(string Table, string Field, string Des
 public sealed record SystemKnowledgeResult(IReadOnlyList<SystemKnowledgeModule> Modules, IReadOnlyList<SystemKnowledgeField> Fields);
 public sealed record SystemModuleList(int Total, IReadOnlyList<SystemKnowledgeModule> Modules);
 
-public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections, FieldAdminRepository fieldAdmin, ILogger<DocumentWorkbenchRepository> logger)
+public sealed class DocumentWorkbenchRepository(
+    DbConnectionFactory connections,
+    FieldAdminRepository fieldAdmin,
+    ControlledSprocInvoker controlledSprocs,
+    ILogger<DocumentWorkbenchRepository> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
@@ -566,6 +570,26 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
         var values=new Dictionary<string,object?>(validation.Converted,StringComparer.OrdinalIgnoreCase);
         RecordPayloadValidator.ApplyDefaults(form.MasterFields,values);
         FormDefaultRules.Apply(definition.ModuleId,form.MasterFields,values);
+
+        // 领域规则：自动单号 + 默认单别（等价旧 GetNewBillNo / GetDefaultBillInfo）
+        var businessRule=ModuleBusinessMap.Get(definition.ModuleId);
+        if(businessRule is { AutoBillNo: true, BillNoField: not null, BillTypeField: not null })
+        {
+            var existingNo=values.GetValueOrDefault(businessRule.BillNoField);
+            if(existingNo is null||string.IsNullOrWhiteSpace(ValueToString(existingNo)))
+            {
+                var newNo=await BillNoGenerator.GenerateAsync(connection,transaction,definition.ModuleId,
+                    definition.MasterTable,businessRule.BillNoField,businessRule.BillTypeField,token);
+                if(newNo is not null)values[businessRule.BillNoField]=newNo;
+            }
+            var existingType=values.GetValueOrDefault(businessRule.BillTypeField);
+            if(existingType is null||string.IsNullOrWhiteSpace(ValueToString(existingType)))
+            {
+                var billCode=await BillNoGenerator.GetDefaultBillCodeAsync(connection,transaction,definition.ModuleId,token);
+                if(billCode is not null)values[businessRule.BillTypeField]=billCode;
+            }
+        }
+
         var finalErrors=RecordPayloadValidator.CheckRequiredAndRegex(form.MasterFields,values);
         if(finalErrors.Count>0)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","数据校验未通过。",finalErrors);
         var fillErrors=await FillServerColumnsAsync(connection,transaction,definition.MasterTable,form.MasterFields,values,employeeName,true,token);
@@ -598,6 +622,13 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
 
         var detailErrors=await SaveDetailsAsync(connection,transaction,definition,form,pkColumns,keyValues,values,request.Details??[],employeeName,true,token);
         if(detailErrors is not null)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","明细数据校验未通过。",detailErrors);
+        if(businessRule?.AfterSaveSproc is { } afterSaveSproc)
+        {
+            var sprocResult=await controlledSprocs.RunAfterSaveAsync(definition.ModuleId,afterSaveSproc,pkColumns,keyValues,connection,transaction,token);
+            if(!sprocResult.Success)
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"BUSINESS_VALIDATION_FAILED",
+                    sprocResult.Message??"保存后业务校验未通过。");
+        }
         await transaction.CommitAsync(token);
         logger.LogInformation("统一表单新增 module={ModuleId} master={Master} key={Key}",definition.ModuleId,definition.MasterTable,string.Join(',',keyValues));
         return RecordSaveResult.Success(keyValues);
@@ -673,6 +704,14 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
 
         var detailErrors=await SaveDetailsAsync(connection,transaction,definition,form,pkColumns,keyValues,merged,request.Details??[],employeeName,false,token);
         if(detailErrors is not null)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","明细数据校验未通过。",detailErrors);
+        var businessRule=ModuleBusinessMap.Get(definition.ModuleId);
+        if(businessRule?.AfterSaveSproc is { } afterSaveSproc)
+        {
+            var sprocResult=await controlledSprocs.RunAfterSaveAsync(definition.ModuleId,afterSaveSproc,pkColumns,keyValues,connection,transaction,token);
+            if(!sprocResult.Success)
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"BUSINESS_VALIDATION_FAILED",
+                    sprocResult.Message??"保存后业务校验未通过。");
+        }
         await transaction.CommitAsync(token);
         logger.LogInformation("统一表单修改 module={ModuleId} master={Master} key={Key}",definition.ModuleId,definition.MasterTable,string.Join(',',keyValues));
         return RecordSaveResult.Success(keyValues);
@@ -707,6 +746,27 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
         if(affected==0)return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
         await transaction.CommitAsync(token);
         logger.LogInformation("统一表单删除 module={ModuleId} master={Master} key={Key}",definition.ModuleId,definition.MasterTable,string.Join(',',keyValues));
+        return RecordSaveResult.Success(keyValues);
+    }
+
+    /// <summary>
+    /// 单据批核/解批（旧 P_WF_&lt;DOC&gt; 的受控调用）。
+    /// 仅对 ModuleBusinessMap 登记的模块开放；成功返回主键，失败返回业务消息。
+    /// </summary>
+    public async Task<RecordSaveResult> WorkflowAsync(
+        WorkbenchDefinition definition,
+        IReadOnlyList<string> keyValues,
+        bool approve,
+        CancellationToken token)
+    {
+        var rule=ModuleBusinessMap.Get(definition.ModuleId);
+        if(rule?.WorkflowSproc is not { } sproc)
+            return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"WORKFLOW_NOT_SUPPORTED","该模块不支持批核操作。");
+        var result=await controlledSprocs.RunWorkflowAsync(definition.ModuleId,sproc,definition.MasterPkOrder,keyValues,approve,token);
+        if(!result.Success)
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"WORKFLOW_FAILED",
+                result.Message??(approve?"批核失败。":"解批失败。"));
+        logger.LogInformation("统一表单{Action} module={ModuleId} key={Key}",approve?"批核":"解批",definition.ModuleId,string.Join(',',keyValues));
         return RecordSaveResult.Success(keyValues);
     }
 
@@ -786,7 +846,7 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
         return result;
     }
 
-    private static async Task<IReadOnlyList<FieldError>?> SaveDetailsAsync(
+    private async Task<IReadOnlyList<FieldError>?> SaveDetailsAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         WorkbenchDefinition definition,
@@ -827,6 +887,15 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
             errors.AddRange(validation.Errors);
             var row=new Dictionary<string,object?>(validation.Converted,StringComparer.OrdinalIgnoreCase);
             RecordPayloadValidator.ApplyDefaults(form.DetailFields,row);
+            // 明细中未提供的字段，若主表存在同名值（如 CURR_ID/CURR_RATE/TAX_ID），
+            // 由服务端从主表带入——对齐旧系统明细隐藏控件随主表联动带值的行为。
+            // 客户端显式提供的可编辑明细值（如 PRO_NO/PRICE）保持优先。
+            foreach(var detailField in form.DetailFields)
+            {
+                if(row.ContainsKey(detailField.Key))continue;
+                if(masterValues.TryGetValue(detailField.Key,out var masterValue)&&masterValue is not null)
+                    row[detailField.Key]=masterValue;
+            }
             for(var i=0;i<pkColumns.Count;i++)
             {
                 var pkField=form.DetailFields.FirstOrDefault(field=>field.Key.Equals(pkColumns[i],StringComparison.OrdinalIgnoreCase));
@@ -886,7 +955,7 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
         return null;
     }
 
-    private static async Task<IReadOnlyList<FieldError>> FillServerColumnsAsync(
+    private async Task<IReadOnlyList<FieldError>> FillServerColumnsAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         string table,
@@ -904,7 +973,16 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
             if(await ColumnExistsAsync(connection,transaction,table,item.Name,token))values[item.Name]=item.Value;
         var errors=new List<FieldError>();
         foreach(var field in fields.Where(field=>field.ServerFilled&&!values.ContainsKey(field.Key)&&!RecordPayloadValidator.IsAuditColumn(field.Key)))
-            errors.Add(new FieldError(field.Key,"该必填字段由服务端维护，但暂无填充规则。","SERVER_FILL_MISSING"));
+        {
+            // 隐藏必填字段（serverFilled）优先取字段默认值（DFT_VALUE，服务端元数据）；
+            // 无默认值时跳过并登记日志（不再硬失败阻塞保存，缺口以技术债跟踪逐表修正元数据）。
+            if(!string.IsNullOrWhiteSpace(field.DefaultValue)&&RecordPayloadValidator.TryConvert(field.DataType,field.DefaultValue,out var defaulted))
+            {
+                values[field.Key]=defaulted;
+                continue;
+            }
+            logger.LogWarning("服务端必填字段无填充规则且无默认值 table={Table} field={Field}",table,field.Key);
+        }
         return errors;
     }
 

@@ -88,10 +88,11 @@ public class FormFieldSelectorTests
     }
 
     [Fact]
-    public void ReadonlyRequiredField_FlaggedServerFilled()
+    public void VisibleReadonlyRequiredField_NotServerFilled_ForLinkedValue()
     {
         var field = Select([Row("R", required: true, readOnly: true)]).Single();
-        Assert.True(field.ServerFilled);
+        // 必填但只读可见字段（如 CURR_RATE 汇率，前端联动带出）保留客户端提交，不误判服务端填充
+        Assert.False(field.ServerFilled);
         Assert.True(field.IsReadonly);
     }
 

@@ -29,13 +29,17 @@ public class RecordPayloadValidatorTests
     }
 
     [Fact]
-    public void ReadonlyAndServerFilledFields_AreRejected()
+    public void ServerFilledAndVirtualFields_AreRejected()
     {
         var fields = new[] { Field("R", readOnly: true), Field("S", serverFilled: true), Field("V", isVirtual: true) };
         var result = RecordPayloadValidator.ValidateSubmitted(fields,
             new Dictionary<string, string?> { ["R"] = "1", ["S"] = "1", ["V"] = "1" });
-        Assert.Equal(3, result.Errors.Count);
+        Assert.Equal(2, result.Errors.Count);
         Assert.All(result.Errors, error => Assert.Equal("READONLY_FIELD", error.Code));
+        // 只读可见联动字段（如 CURR_RATE 汇率）允许提交并进入转换结果
+        Assert.True(result.Converted.ContainsKey("R"));
+        Assert.False(result.Converted.ContainsKey("S"));
+        Assert.False(result.Converted.ContainsKey("V"));
     }
 
     [Fact]
