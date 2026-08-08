@@ -14,4 +14,5 @@ public sealed record LegacyModuleRights(
     IReadOnlySet<string> DenyNewDetailFields,
     IReadOnlySet<string> DenyModiMasterFields,
     IReadOnlySet<string> DenyModiDetailFields,
-    string DataFilter);
+    string DataFilter,
+    string ExecuteTag);

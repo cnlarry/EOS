@@ -266,6 +266,7 @@ public sealed class AssistantController(
         return await repository.GetDefinitionAsync(
             moduleId.Value,
             userId,
+            rights.ExecuteTag,
             rights.CanViewCost,
             rights.CanViewSecrecy,
             rights.DeniedMasterFields,

@@ -15,7 +15,25 @@ public sealed record WorkbenchFieldSummary(string Key,string Label,bool IsVisibl
 public sealed record FieldChooserSource(bool Active,string? Table,string? Description,int? ModuleId,string? Filter,string? ReturnMapping);
 public sealed record WorkbenchFieldMetadata(string Key,string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool IsVirtual,string? VirtualExpression,bool CanCopy,bool IsAutoIncrement,string? ConvertFunction,string? DataSourceSql,string? LastUpdatedBy,DateTime? LastUpdatedAt);
 public sealed record UpdateWorkbenchFieldMetadata(string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool CanCopy,WorkbenchFieldMetadata? Original);
-public sealed record WorkbenchDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, IReadOnlyList<WorkbenchField> MasterFields, IReadOnlyList<WorkbenchField> DetailFields, string? DefaultSort, bool HasAdd, bool HasEdit, bool DetailNoSave, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, bool HasWorkflow, string? ModuleFilter = null);
+public sealed record WorkbenchDefinition(
+    int ModuleId,
+    string Title,
+    string MasterTable,
+    string? DetailTable,
+    IReadOnlyList<WorkbenchField> MasterFields,
+    IReadOnlyList<WorkbenchField> DetailFields,
+    string? DefaultSort,
+    bool HasAdd,
+    bool HasEdit,
+    bool DetailNoSave,
+    IReadOnlyList<string> MasterPkOrder,
+    string DetailNoFields,
+    bool HasWorkflow,
+    string? ModuleFilter = null,
+    string UserId = "",
+    string? ExecTag = null,
+    bool HasOwnerColumn = true,
+    bool HasOwnerGroupColumn = true);
 public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize, IReadOnlyDictionary<string, double?>? Totals = null);
@@ -61,7 +79,7 @@ public sealed class DocumentWorkbenchRepository(
         return url;
     }
 
-    public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token)
+    public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token)
     {
         await using var connection = CreateConnection(); await connection.OpenAsync(token);
         const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
@@ -89,7 +107,11 @@ public sealed class DocumentWorkbenchRepository(
             detail is null?[]:await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),NormalizeSort(defaultSort,master,masterFields),hasEdit,hasEdit,detailNoSave,
             await GetPrimaryKeyColumnsAsync(connection,null,master,token),detailNoFields,
             ModuleBusinessMap.Get(moduleId)?.WorkflowSproc is not null,
-            string.IsNullOrWhiteSpace(moduleFilter)?null:moduleFilter);
+            string.IsNullOrWhiteSpace(moduleFilter)?null:moduleFilter,
+            userId.Trim(),
+            string.IsNullOrWhiteSpace(execTag)?"A":execTag.Trim(),
+            await ColumnExistsAsync(connection,null,master,"OWNER",token),
+            await ColumnExistsAsync(connection,null,master,"OWNER_G",token));
         logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
             moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
         return definition;
@@ -125,6 +147,49 @@ public sealed class DocumentWorkbenchRepository(
             .ToList();
         for(var i=0;i<parameterNames.Count;i++)
             command.Parameters.AddWithValue(parameterNames[i],parameters[i]);
+    }
+
+    /// <summary>
+    /// 执行范围（EXEC_TAG）行级过滤，对齐旧 DxQueryButton.OtherCondition：
+    /// B 仅本人（OWNER=当前用户）、C 本人及下级（含 f_get_underling）、
+    /// D 本人所属组（OWNER_G）、E 本人及下级所属组；Z/A 无附加范围。
+    /// 表缺 OWNER/OWNER_G 列时拒绝查询（不返回越权数据）；值全部参数化。
+    /// </summary>
+    private static void ApplyExecTagScope(
+        WorkbenchDefinition definition,
+        ICollection<string> predicates,
+        SqlCommand command)
+    {
+        var tag=(definition.ExecTag??"Z").Trim().ToUpperInvariant();
+        if(tag is "Z" or "A" or "")return;
+        var ownerParameter="@execOwner";
+        switch(tag)
+        {
+            case "B":
+                if(!definition.HasOwnerColumn)
+                    throw new DataFilterUnsupportedException("该模块不支持按执行范围过滤。");
+                predicates.Add($"[OWNER]={ownerParameter}");
+                command.Parameters.AddWithValue(ownerParameter,definition.UserId);
+                break;
+            case "C":
+                if(!definition.HasOwnerColumn)
+                    throw new DataFilterUnsupportedException("该模块不支持按执行范围过滤。");
+                predicates.Add($"([OWNER]={ownerParameter} OR [OWNER] IN (SELECT USER_ID FROM dbo.f_get_underling({ownerParameter})))");
+                command.Parameters.AddWithValue(ownerParameter,definition.UserId);
+                break;
+            case "D":
+                if(!definition.HasOwnerGroupColumn)
+                    throw new DataFilterUnsupportedException("该模块不支持按执行范围过滤。");
+                predicates.Add($"[OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID={ownerParameter})");
+                command.Parameters.AddWithValue(ownerParameter,definition.UserId);
+                break;
+            case "E":
+                if(!definition.HasOwnerGroupColumn)
+                    throw new DataFilterUnsupportedException("该模块不支持按执行范围过滤。");
+                predicates.Add($"[OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID IN (SELECT {ownerParameter} UNION ALL SELECT USER_ID FROM dbo.f_get_underling({ownerParameter})))");
+                command.Parameters.AddWithValue(ownerParameter,definition.UserId);
+                break;
+        }
     }
 
     /// <summary>
@@ -359,6 +424,7 @@ public sealed class DocumentWorkbenchRepository(
         if (!detail && query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
         if (!detail && !string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
         if (!detail) ApplyModuleFilter(definition, predicates, command);
+        if (!detail) ApplyExecTagScope(definition, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,detail,sortField,sortDirection);
         var numericFields=selected.Where(field=>IsNumericField(field.DataType)).ToList();
@@ -386,6 +452,7 @@ public sealed class DocumentWorkbenchRepository(
         if (query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
         if (!string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
         ApplyModuleFilter(definition, predicates, command);
+        ApplyExecTagScope(definition, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,false,sortField,sortDirection);
         command.CommandText=$"SELECT TOP {maxExportRows} {string.Join(',',selected.Select(field=>$"[{field.Key}]"))} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order};";
@@ -411,6 +478,7 @@ public sealed class DocumentWorkbenchRepository(
         var filterPredicates=new List<string>();
         await using var connection=CreateConnection();await connection.OpenAsync(token);await using var command=new SqlCommand();command.Connection=connection;
         ApplyModuleFilter(definition, filterPredicates, command);
+        ApplyExecTagScope(definition, filterPredicates, command);
         var orParts=new List<string>();
         for(var rowIndex=0;rowIndex<keys.Count;rowIndex++)
         {
