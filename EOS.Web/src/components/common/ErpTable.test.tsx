@@ -234,4 +234,16 @@ describe('ErpTable', () => {
     expect(foot?.textContent).toContain('合计')
     expect(foot?.textContent).toContain('123.5')
   })
+
+  it('表头拖拽重排列顺序', () => {
+    const onColumnsReorder = vi.fn()
+    render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onColumnsReorder={onColumnsReorder} />)
+    const labels = Array.from(document.querySelectorAll('.erp-header-label')) as HTMLElement[]
+    const nameLabel = labels.find((el) => el.textContent === '名称')!
+    const idLabel = labels.find((el) => el.textContent === 'ID')!
+    fireEvent.dragStart(nameLabel)
+    fireEvent.dragOver(idLabel)
+    fireEvent.drop(idLabel)
+    expect(onColumnsReorder).toHaveBeenCalledWith(['select', 'name', 'id'])
+  })
 })

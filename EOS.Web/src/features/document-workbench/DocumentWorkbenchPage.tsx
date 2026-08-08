@@ -174,6 +174,16 @@ export function DocumentWorkbenchPage() {
     })
     setPage(1)
   },[])
+  const handleColumnsReorder=useCallback(async(columnIds:string[])=>{
+    if(!definition.data)return
+    const master=columnIds.filter(id=>id!=='select')
+    const detail=(definition.data.detailFields??[]).map(field=>field.key)
+    try{
+      await saveColumns.mutateAsync({master,detail})
+    }catch(error){
+      window.alert(error instanceof Error?`保存列顺序失败：${error.message}`:'保存列顺序失败。')
+    }
+  },[definition.data,saveColumns])
   if(definition.isPending)return <LoadingState label="正在加载单据定义…"/>
   if(definition.isError)return <section className="card"><div className="card-body text-center py-5">无法加载模块定义。</div></section>
 
@@ -222,6 +232,7 @@ export function DocumentWorkbenchPage() {
           onColumnResize={saveMasterWidth}
           columnFilterValue={columnFilters}
           onColumnFilterChange={handleColumnFilterChange}
+          onColumnsReorder={handleColumnsReorder}
           dense={dense}
           totals={records.data?.totals}
           empty={null}

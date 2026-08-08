@@ -50,6 +50,8 @@ interface ErpTableProps<TData> {
   onColumnFilterChange?: (columnId: string, condition: QueryCondition | null) => void
   /** 当前筛选结果的数值列合计（列键 → 值），非空时渲染合计行 */
   totals?: Record<string, number | null>
+  /** 表头拖拽重排完成回调（新列顺序，含 select/冻结列）；不传则不启用拖拽重排 */
+  onColumnsReorder?: (columnIds: string[]) => void
 }
 
 /**
@@ -92,6 +94,7 @@ export function ErpTable<TData>({
   columnFilterValue,
   onColumnFilterChange,
   totals,
+  onColumnsReorder,
 }: ErpTableProps<TData>) {
   const shellRef = useRef<HTMLDivElement>(null)
   const [focusIndex, setFocusIndex] = useState<number | null>(null)
@@ -99,6 +102,7 @@ export function ErpTable<TData>({
   const [openFilter, setOpenFilter] = useState<string | null>(null)
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null)
+  const [dragColId, setDragColId] = useState<string | null>(null)
   const [draftFilter, setDraftFilter] = useState<QueryCondition>(emptyQueryCondition())
 
   const table = useReactTable({
@@ -248,6 +252,29 @@ export function ErpTable<TData>({
     setOpenMenu(columnId)
   }
 
+  const reorderColumns = (dragId: string, targetId: string) => {
+    if (!onColumnsReorder) return
+    const visibleIds = table.getVisibleLeafColumns().map((column) => column.id)
+    const draggableIds = visibleIds.filter((id) => {
+      const meta = table.getColumn(id)?.columnDef.meta
+      return id !== 'select' && !meta?.frozenLeft && !meta?.frozenRight
+    })
+    const from = draggableIds.indexOf(dragId)
+    const to = draggableIds.indexOf(targetId)
+    if (from < 0 || to < 0) return
+    const next = [...draggableIds]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    let index = 0
+    const order = visibleIds.map((id) => {
+      const meta = table.getColumn(id)?.columnDef.meta
+      if (id === 'select' || meta?.frozenLeft || meta?.frozenRight) return id
+      return next[index++] ?? id
+    })
+    setDragColId(null)
+    onColumnsReorder(order)
+  }
+
   if (data.length === 0 && empty != null) return <>{empty}</>
 
   return (
@@ -295,6 +322,7 @@ export function ErpTable<TData>({
                 }
                 for (const item of meta?.headerMenu ?? []) menuItems.push({ key: item.label, label: item.label, onClick: () => item.onClick() })
                 const sortIndex = sorting.findIndex((item) => item.id === header.column.id)
+                const draggable = Boolean(onColumnsReorder) && header.column.id !== 'select' && !meta?.frozenLeft && !meta?.frozenRight
                 return (
                   <th
                     key={header.id}
@@ -303,9 +331,27 @@ export function ErpTable<TData>({
                     className={[meta?.className, meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : ''].filter(Boolean).join(' ') || undefined}
                     style={thStyle}
                   >
-                    {header.isPlaceholder ? null : menuItems.length > 0 ? (
-                      <div className="erp-header-inner">
-                        <span className="erp-header-label">
+                    {header.isPlaceholder ? null : menuItems.length > 0 || onColumnsReorder ? (
+                      <div
+                        className="erp-header-inner"
+                        onDragOver={(event) => { if (draggable) event.preventDefault() }}
+                        onDrop={(event) => {
+                          if (draggable && dragColId && dragColId !== header.column.id) {
+                            event.preventDefault()
+                            reorderColumns(dragColId, header.column.id)
+                          }
+                        }}
+                      >
+                        <span
+                          className="erp-header-label"
+                          draggable={draggable}
+                          onDragStart={(event) => {
+                            if (!draggable) return
+                            if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+                            setDragColId(header.column.id)
+                          }}
+                          onDragEnd={() => setDragColId(null)}
+                        >
                           {flexRender(header.column.columnDef.header, header.getContext())}
                         </span>
                         <button
