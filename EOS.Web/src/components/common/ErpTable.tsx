@@ -243,6 +243,13 @@ export function ErpTable<TData>({
     setOpenFilter(null)
   }
 
+  const cellColumn = cellMenu ? table.getColumn(cellMenu.columnId) : null
+  const cellMeta = cellColumn?.columnDef.meta
+  const isBit = cellMeta?.dataType === 'bit'
+  const cellRowValue = cellMenu ? table.getRow(cellMenu.rowId)?.getValue(cellMenu.columnId) : undefined
+  const filterValue = isBit ? (cellRowValue ? '1' : '0') : (cellMenu?.text ?? '')
+  const showFilterMenu = Boolean(cellMenu && cellMeta?.filterable && onColumnFilterChange && (cellMenu.text || isBit))
+
   const openHeaderMenu = (columnId: string, trigger: HTMLElement) => {
     const rect = trigger.getBoundingClientRect()
     const menuWidth = 96
@@ -331,7 +338,7 @@ export function ErpTable<TData>({
                     className={[meta?.className, meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : ''].filter(Boolean).join(' ') || undefined}
                     style={thStyle}
                   >
-                    {header.isPlaceholder ? null : menuItems.length > 0 || onColumnsReorder ? (
+                    {header.isPlaceholder ? null : menuItems.length > 0 || draggable ? (
                       <div
                         className="erp-header-inner"
                         onDragOver={(event) => { if (draggable) event.preventDefault() }}
@@ -482,21 +489,32 @@ export function ErpTable<TData>({
           >
             复制选中行
           </button>
-          {cellMenu.text && table.getColumn(cellMenu.columnId)?.columnDef.meta?.filterable && onColumnFilterChange && (
+          {showFilterMenu && (
             <>
               <div className="dropdown-divider" />
-              <button className="dropdown-item" onClick={() => {
-                onColumnFilterChange(cellMenu.columnId, { field: cellMenu.columnId, operator: 'eq', value: cellMenu.text, valueTo: '', logic: 'and' })
-                setCellMenu(null)
-              }}>
-                筛选：等于“{cellMenu.text.slice(0, 12)}{cellMenu.text.length > 12 ? '…' : ''}”
-              </button>
-              <button className="dropdown-item" onClick={() => {
-                onColumnFilterChange(cellMenu.columnId, { field: cellMenu.columnId, operator: 'contains', value: cellMenu.text, valueTo: '', logic: 'and' })
-                setCellMenu(null)
-              }}>
-                筛选：包含“{cellMenu.text.slice(0, 12)}{cellMenu.text.length > 12 ? '…' : ''}”
-              </button>
+              {isBit ? (
+                <button className="dropdown-item" onClick={() => {
+                  onColumnFilterChange!(cellMenu.columnId, { field: cellMenu.columnId, operator: 'eq', value: filterValue, valueTo: '', logic: 'and' })
+                  setCellMenu(null)
+                }}>
+                  筛选：等于（{cellRowValue ? '选中' : '未选中'}）
+                </button>
+              ) : (
+                <>
+                  <button className="dropdown-item" onClick={() => {
+                    onColumnFilterChange!(cellMenu.columnId, { field: cellMenu.columnId, operator: 'eq', value: filterValue, valueTo: '', logic: 'and' })
+                    setCellMenu(null)
+                  }}>
+                    筛选：等于“{filterValue.slice(0, 12)}{filterValue.length > 12 ? '…' : ''}”
+                  </button>
+                  <button className="dropdown-item" onClick={() => {
+                    onColumnFilterChange!(cellMenu.columnId, { field: cellMenu.columnId, operator: 'contains', value: filterValue, valueTo: '', logic: 'and' })
+                    setCellMenu(null)
+                  }}>
+                    筛选：包含“{filterValue.slice(0, 12)}{filterValue.length > 12 ? '…' : ''}”
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -514,6 +532,8 @@ declare module '@tanstack/react-table' {
     minWidth?: number
     /** 该列支持列头快速筛选（需配合 ErpTable 的 onColumnFilterChange） */
     filterable?: boolean
+    /** 字段数据类型（如 bit），用于单元格右键筛选等特殊处理 */
+    dataType?: string
     /** 列头菜单附加项（如工作台「字段设置」） */
     headerMenu?: { label: string; onClick: () => void }[]
     /** 冻结在左侧（sticky left，建议仅首列） */

@@ -246,4 +246,21 @@ describe('ErpTable', () => {
     fireEvent.drop(idLabel)
     expect(onColumnsReorder).toHaveBeenCalledWith(['select', 'name', 'id'])
   })
+
+  it('bit 单元格右键筛选使用 1/0 值', () => {
+    const onColumnFilterChange = vi.fn()
+    const bitRows = [
+      { id: '1', name: 'A', flag: true },
+      { id: '2', name: 'B', flag: false },
+    ]
+    const columns: ColumnDef<typeof bitRows[number], unknown>[] = [
+      { accessorKey: 'flag', header: '标志', meta: { filterable: true, dataType: 'bit' } },
+    ]
+    const { container } = render(
+      <ErpTable columns={columns} data={bitRows} getRowId={(row) => row.id} columnFilterValue={{}} onColumnFilterChange={onColumnFilterChange} />,
+    )
+    fireEvent.contextMenu(container.querySelector('tbody td')!)
+    fireEvent.click(screen.getByRole('button', { name: '筛选：等于（选中）' }))
+    expect(onColumnFilterChange).toHaveBeenCalledWith('flag', expect.objectContaining({ field: 'flag', operator: 'eq', value: '1' }))
+  })
 })
