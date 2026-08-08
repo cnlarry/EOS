@@ -631,6 +631,7 @@ public sealed class DocumentWorkbenchRepository(
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"BUSINESS_VALIDATION_FAILED",
                     sprocResult.Message??"保存后业务校验未通过。");
         }
+        await RecalculateMasterAmountsAsync(connection,transaction,definition,token);
         await transaction.CommitAsync(token);
         logger.LogInformation("统一表单新增 module={ModuleId} master={Master} key={Key}",definition.ModuleId,definition.MasterTable,string.Join(',',keyValues));
         return RecordSaveResult.Success(keyValues);
@@ -715,6 +716,7 @@ public sealed class DocumentWorkbenchRepository(
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"BUSINESS_VALIDATION_FAILED",
                     sprocResult.Message??"保存后业务校验未通过。");
         }
+        await RecalculateMasterAmountsAsync(connection,transaction,definition,token);
         await transaction.CommitAsync(token);
         logger.LogInformation("统一表单修改 module={ModuleId} master={Master} key={Key}",definition.ModuleId,definition.MasterTable,string.Join(',',keyValues));
         return RecordSaveResult.Success(keyValues);
@@ -909,6 +911,8 @@ public sealed class DocumentWorkbenchRepository(
                 }
                 if(RecordPayloadValidator.TryConvert(pkField.DataType,keyValues[i],out var keyValue))row[pkColumns[i]]=keyValue;
             }
+            // 服务端复算明细金额（对齐旧系统前端 calc_row_amount，金额以服务端为权威）
+            RecalculateDetailAmounts(form.DetailFields,row,masterValues);
             rows.Add(row);
         }
         RecordPayloadValidator.AssignSerialNumbers(rows, form.DetailFields);
@@ -933,6 +937,101 @@ public sealed class DocumentWorkbenchRepository(
             await InsertRowAsync(connection,transaction,definition.DetailTable,insertFields,row,detailIdentity,token);
         }
         return null;
+    }
+
+    /// <summary>
+    /// 服务端复算明细行金额（AMOUNT/TAX_SUM/AMOUNT_TAX），覆盖客户端提交值，
+    /// 保证后续 AfterSave/主表汇总使用一致金额。仅当明细表单存在金额列时才计算。
+    /// </summary>
+    private static void RecalculateDetailAmounts(
+        IReadOnlyList<FormFieldDefinition> fields,
+        IDictionary<string,object?> row,
+        IReadOnlyDictionary<string,object?> masterValues)
+    {
+        var hasAmount=fields.Any(field=>field.Key.Equals("AMOUNT",StringComparison.OrdinalIgnoreCase));
+        var hasAmountTax=fields.Any(field=>field.Key.Equals("AMOUNT_TAX",StringComparison.OrdinalIgnoreCase));
+        var hasTaxSum=fields.Any(field=>field.Key.Equals("TAX_SUM",StringComparison.OrdinalIgnoreCase));
+        if(!hasAmount&&!hasAmountTax&&!hasTaxSum)return;
+        var result=AmountCalculator.Calculate(
+            GetDecimal(row,"QTY"),
+            GetDecimal(row,"PRICE"),
+            GetDecimal(row,"TAX_RATE")??GetDecimal(masterValues,"TAX_RATE")??0m,
+            row.TryGetValue("TAX_TYPE",out var taxType)
+                ?Convert.ToString(taxType)
+                :masterValues.TryGetValue("TAX_TYPE",out var masterTaxType)?Convert.ToString(masterTaxType):null,
+            GetDecimal(row,"REBATE")??100m);
+        if(hasAmount)row["AMOUNT"]=result.Amount;
+        if(hasTaxSum)row["TAX_SUM"]=result.TaxSum;
+        if(hasAmountTax)row["AMOUNT_TAX"]=result.AmountTax;
+    }
+
+    private static decimal? GetDecimal(IReadOnlyDictionary<string,object?> row,string key)
+    {
+        return GetDecimal((IDictionary<string,object?>)row,key);
+    }
+
+    private static decimal? GetDecimal(IDictionary<string,object?> row,string key)
+    {
+        if(!row.TryGetValue(key,out var value)||value is null)return null;
+        return value switch
+        {
+            decimal d=>d,
+            double dbl=>Convert.ToDecimal(dbl),
+            float f=>Convert.ToDecimal(f),
+            int i=>i,
+            long l=>l,
+            _=>decimal.TryParse(Convert.ToString(value,System.Globalization.CultureInfo.InvariantCulture),
+                System.Globalization.NumberStyles.Any,System.Globalization.CultureInfo.InvariantCulture,out var parsed)?parsed:null,
+        };
+    }
+
+    /// <summary>
+    /// 主表金额汇总与余额字段初始化：
+    /// - 明细表存在 AMOUNT/AMOUNT_TAX/TAX_SUM 时，主表同名列按主键聚合更新；
+    /// - 预收/预付主表 PREPAY_AMOUNT 为 NULL 时初始化为 AMOUNT（对齐旧系统余额语义）；
+    /// - 应收主表 RECEIVE_AMOUNT 为 NULL 时初始化为 0（批核时累加）。
+    /// 列名/表名均来自服务端元数据与 INFORMATION_SCHEMA 存在性校验。
+    /// </summary>
+    private static async Task RecalculateMasterAmountsAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        WorkbenchDefinition definition,
+        CancellationToken token)
+    {
+        if(definition.DetailTable is null||definition.MasterPkOrder.Count<2)return;
+        var typeColumn=definition.MasterPkOrder[0];
+        var noColumn=definition.MasterPkOrder[1];
+        foreach(var column in new[]{"AMOUNT","AMOUNT_TAX","TAX_SUM"})
+        {
+            if(!await ColumnExistsAsync(connection,transaction,definition.DetailTable,column,token))continue;
+            if(!await ColumnExistsAsync(connection,transaction,definition.MasterTable,column,token))continue;
+            await using var command=new SqlCommand(
+                $"""
+                UPDATE m SET [{column}]=d.[{column}]
+                FROM dbo.[{definition.MasterTable}] m
+                INNER JOIN (SELECT [{typeColumn}],[{noColumn}],SUM([{column}]) AS [{column}]
+                            FROM dbo.[{definition.DetailTable}]
+                            GROUP BY [{typeColumn}],[{noColumn}]) d
+                  ON m.[{typeColumn}]=d.[{typeColumn}] AND m.[{noColumn}]=d.[{noColumn}];
+                """,connection,transaction);
+            await command.ExecuteNonQueryAsync(token);
+        }
+        // 余额字段初始化（仅 NULL 时填充，编辑已有余额不覆盖）
+        if(await ColumnExistsAsync(connection,transaction,definition.MasterTable,"PREPAY_AMOUNT",token)
+           &&await ColumnExistsAsync(connection,transaction,definition.MasterTable,"AMOUNT",token))
+        {
+            await using var prepay=new SqlCommand(
+                $"UPDATE dbo.[{definition.MasterTable}] SET PREPAY_AMOUNT=ISNULL(PREPAY_AMOUNT,ISNULL(AMOUNT,0));",
+                connection,transaction);
+            await prepay.ExecuteNonQueryAsync(token);
+        }
+        if(await ColumnExistsAsync(connection,transaction,definition.MasterTable,"RECEIVE_AMOUNT",token))
+        {
+            await using var receive=new SqlCommand(
+                $"UPDATE dbo.[{definition.MasterTable}] SET RECEIVE_AMOUNT=ISNULL(RECEIVE_AMOUNT,0);",
+                connection,transaction);
+            await receive.ExecuteNonQueryAsync(token);
+        }
     }
 
     private static async Task<int?> InsertRowAsync(
