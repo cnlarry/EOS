@@ -170,6 +170,7 @@ button, input, select { font: inherit; }
 .erp-data-table .erp-header-menu-trigger { position: relative; display: inline-flex; align-items: center; padding: 0; border: 0; background: transparent; color: var(--tblr-secondary); }
 .erp-data-table .erp-header-menu-trigger:hover { color: var(--tblr-primary); }
 .erp-data-table .erp-header-menu-trigger.is-active { color: var(--tblr-primary); }
+.erp-data-table .erp-sort-priority { position: absolute; top: -5px; right: -5px; min-width: 12px; height: 12px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--tblr-primary); color: #fff; font-size: 9px; line-height: 1; }
 .erp-data-table .erp-header-menu-trigger.is-filtered::after { position: absolute; top: 1px; right: 1px; width: 5px; height: 5px; content: ''; border-radius: 50%; background: var(--tblr-primary); }
 .erp-header-menu { z-index: 1100; min-width: 5rem; }
 .erp-data-table thead th.erp-header-menu-open,

@@ -1043,9 +1043,22 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
         for(var i=0;i<fields.Count;i++){var field=fields[i];var safe=SanitizeBrowseUrl(field.BrowseUrl,allowedFields);if(safe!=field.BrowseUrl)fields[i]=field with{BrowseUrl=safe};}
         return fields;
     }
-    private static string ResolveOrder(WorkbenchDefinition definition,IReadOnlyList<WorkbenchField> fields,IReadOnlyList<WorkbenchField> selected,bool detail,string? sortField,string? sortDirection)
+    private static string ResolveOrder(WorkbenchDefinition definition,IReadOnlyList<WorkbenchField> fields,IReadOnlyList<WorkbenchField> selected,bool detail,string? sortFields,string? sortDirections)
     {
-        if(!string.IsNullOrWhiteSpace(sortField)){var field=fields.FirstOrDefault(item=>item.Key.Equals(sortField,StringComparison.OrdinalIgnoreCase))??throw new ArgumentException("排序字段无效。");var direction=sortDirection?.Equals("desc",StringComparison.OrdinalIgnoreCase)==true?"DESC":"ASC";return $"[{field.Key}] {direction}";}
+        if(!string.IsNullOrWhiteSpace(sortFields))
+        {
+            var names=sortFields.Split(',',StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries);
+            if(names.Length>5)throw new ArgumentException("排序字段不能超过 5 个。");
+            var dirs=(sortDirections??string.Empty).Split(',',StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries);
+            var parts=new List<string>();
+            for(var i=0;i<names.Length;i++)
+            {
+                var field=fields.FirstOrDefault(item=>item.Key.Equals(names[i],StringComparison.OrdinalIgnoreCase))??throw new ArgumentException("排序字段无效。");
+                var desc=i<dirs.Length&&dirs[i].Equals("desc",StringComparison.OrdinalIgnoreCase);
+                parts.Add($"[{field.Key}] {(desc?"DESC":"ASC")}");
+            }
+            return string.Join(',',parts);
+        }
         if(!detail&&!string.IsNullOrWhiteSpace(definition.DefaultSort))return definition.DefaultSort;
         var keys=fields.Where(field=>field.IsPrimaryKey).ToList();if(keys.Count==0)keys=[selected[0]];return string.Join(',',keys.Select(field=>$"[{field.Key}]"));
     }
