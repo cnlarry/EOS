@@ -20,6 +20,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
     private static readonly Regex FieldRef = new(@"^\s*(\w+)\.(\w+)\s*$", RegexOptions.Compiled);
     private static readonly Regex SelectExpression = new(@"\{([^}]+)\}=(true|false|[+-]?\d+(?:\.\d+)?|'[^']*')\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex SpReference = new(@"\{([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)\}", RegexOptions.Compiled);
+    private static readonly Regex SelectSourcePattern = new(@"^\s*select\s+(\w+)\s+C_ID\s*,\s*(\w+)\s+C_VALUE\s+from\s+(\w+)\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     public async Task<ReportDefinition?> GetDefinitionAsync(
         int moduleId,
@@ -51,6 +52,20 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         }
 
         var conditions=await ReadConditionsAsync(connection,masterTable,moduleId,token);
+        // F_TYPE 3 数据单选：校验选项源表/列物理存在（白名单）
+        foreach(var condition in conditions.Where(item=>item.SelectSource is not null))
+        {
+            var source=condition.SelectSource!;
+            if(!Identifier.IsMatch(source.Table)||!Identifier.IsMatch(source.IdColumn)||!Identifier.IsMatch(source.ValueColumn))
+                conditions=conditions.Select(item=>item==condition?item with{SelectSource=null}:item).ToList();
+            else
+            {
+                var physical=await GetPhysicalColumnsAsync(connection,source.Table,token);
+                if(!physical.Any(column=>column.Equals(source.IdColumn,StringComparison.OrdinalIgnoreCase))
+                   ||!physical.Any(column=>column.Equals(source.ValueColumn,StringComparison.OrdinalIgnoreCase)))
+                    conditions=conditions.Select(item=>item==condition?item with{SelectSource=null}:item).ToList();
+            }
+        }
         var (columns,pkOrder)=await ReadColumnsAsync(connection,masterTable,canViewCost,canViewSecrecy,deniedFields,token);
         var sortFields=await ReadDefaultSortFieldsAsync(connection,moduleId,token);
         var spName=sortFields.Select(field=>SpReference.Match(field))
@@ -66,6 +81,32 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             if(!await StoredProcedureExistsAsync(connection,spName,token))spName=null;
         }
         return new ReportDefinition(moduleId,title,masterTable,detailTable.Length>0?detailTable:null,conditions,columns,pkOrder,sortFields,spName,spParameters);
+    }
+
+    /// <summary>
+    /// F_TYPE 3 数据单选选项：按白名单表/列执行静态 SELECT（无用户输入拼接）。
+    /// </summary>
+    public async Task<IReadOnlyList<ReportOption>> GetConditionOptionsAsync(
+        ReportDefinition definition,
+        int serialNo,
+        CancellationToken token)
+    {
+        var condition=definition.Conditions.FirstOrDefault(item=>item.SerialNo==serialNo);
+        if(condition?.SelectSource is not { } source)return [];
+        if(!Identifier.IsMatch(source.Table)||!Identifier.IsMatch(source.IdColumn)||!Identifier.IsMatch(source.ValueColumn))return [];
+        await using var connection=connections.Create();
+        await connection.OpenAsync(token);
+        var physical=await GetPhysicalColumnsAsync(connection,source.Table,token);
+        if(!physical.Any(column=>column.Equals(source.IdColumn,StringComparison.OrdinalIgnoreCase))
+           ||!physical.Any(column=>column.Equals(source.ValueColumn,StringComparison.OrdinalIgnoreCase)))
+            return [];
+        await using var command=new SqlCommand(
+            $"SELECT [{source.IdColumn}],[{source.ValueColumn}] FROM dbo.[{source.Table}] WITH (NOLOCK);",connection);
+        await using var reader=await command.ExecuteReaderAsync(token);
+        var result=new List<ReportOption>();
+        while(await reader.ReadAsync(token))
+            result.Add(new ReportOption(Convert.ToString(reader.GetValue(1))??"",Convert.ToString(reader.GetValue(0))??""));
+        return result;
     }
 
     public async Task<ReportQueryResult> QueryAsync(
@@ -106,6 +147,10 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
                     if(!TryParseSelectOption(value,definition.MasterTable,physicalColumns,out var selectField,out var selectValue))continue;
                     predicates.Add($"m.[{selectField}] = @rc{command.Parameters.Count}");
                     command.Parameters.AddWithValue($"@rc{command.Parameters.Count}",NormalizeConstant(selectValue));
+                    break;
+                case 3 when !string.IsNullOrWhiteSpace(value):
+                    predicates.Add($"m.[{field}] = @rc{command.Parameters.Count}");
+                    command.Parameters.AddWithValue($"@rc{command.Parameters.Count}",value);
                     break;
                 case 4 when value is not null:
                     var chosen=value.Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries)
@@ -361,9 +406,16 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             var defaultValue=reader.GetString(5);
             var parameterName=reader.GetString(6);
             var options=ParseOptions(type,expression);
+            ReportSelectSource? selectSource=null;
+            if(type==3)
+            {
+                var match=SelectSourcePattern.Match(expression);
+                if(match.Success)
+                    selectSource=new ReportSelectSource(match.Groups[3].Value,match.Groups[1].Value,match.Groups[2].Value);
+            }
             result.Add(new ReportCondition(serial,field.Length>0?field:null,desc,type,
                 expression.Length>0?expression:null,defaultValue.Length>0?defaultValue:null,
-                parameterName.Length>0?parameterName:null,options));
+                parameterName.Length>0?parameterName:null,options,selectSource));
         }
         return result;
     }
