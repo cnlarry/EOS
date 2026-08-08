@@ -100,12 +100,12 @@ button, input, select { font: inherit; }
 .page-body > .container-fluid > :first-child { margin-top: 0 !important; }
 .erp-command-bar .card-body { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
 .erp-row-active td { background: var(--tblr-primary-lt) !important; }
-.erp-master-table-region { position: relative; min-height: 341px; transition: opacity .12s ease; }
+.erp-master-table-region { position: relative; min-height: 341px; max-height: calc(100vh - 330px); overflow-y: auto; overscroll-behavior: contain; transition: opacity .12s ease; }
 .erp-master-table-region.is-loading { pointer-events: none; opacity: .62; }
 .erp-master-table-region.is-loading::after { position: absolute; top: 10px; right: 12px; width: 16px; height: 16px; content: ''; border: 2px solid var(--tblr-border-color); border-top-color: var(--tblr-primary); border-radius: 50%; animation: spinner-border .65s linear infinite; }
 .erp-detail-card { overflow: hidden; }
 .erp-detail-card .card-header { min-height: 2.8rem; }
-.erp-detail-card .table-responsive { border-radius: 0 0 var(--tblr-border-radius) var(--tblr-border-radius); }
+.erp-detail-card .table-responsive { min-height: 150px; max-height: calc(100vh - 430px); overflow-y: auto; overscroll-behavior: contain; border-radius: 0 0 var(--tblr-border-radius) var(--tblr-border-radius); }
 .erp-detail-card tfoot td { background: var(--tblr-bg-surface-secondary); }
 .erp-detail-card tfoot tr:last-child td:first-child { border-bottom-left-radius: var(--tblr-border-radius); }
 .erp-detail-card tfoot tr:last-child td:last-child { border-bottom-right-radius: var(--tblr-border-radius); }
@@ -128,7 +128,7 @@ button, input, select { font: inherit; }
 .erp-table-toolbar > div { display: flex; align-items: center; gap: .6rem; }
 .erp-column-menu { position: absolute; z-index: 20; top: calc(100% + .4rem); right: 0; width: 12rem; box-shadow: var(--tblr-box-shadow-dropdown); }
 .erp-sort-button { display: inline-flex; align-items: center; gap: .3rem; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; text-transform: inherit; letter-spacing: inherit; }
-.erp-pagination-footer { min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 8px !important; }
+.erp-pagination-footer { min-height: 34px; display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; gap: 8px; padding: 8px !important; }
 .erp-pagination-footer .text-secondary { margin-right: auto; line-height: 1; }
 .erp-pagination-footer .form-select-sm,
 .erp-pagination-footer .btn-sm { min-height: 26px; padding-top: 2px; padding-bottom: 2px; }
@@ -162,9 +162,12 @@ button, input, select { font: inherit; }
 .erp-data-table .erp-browse-link:hover { text-decoration: underline; }
 .erp-table-shell { outline: none; }
 .erp-data-table .erp-row-focus td { box-shadow: inset 2px 0 0 var(--tblr-primary); }
-.erp-data-table .erp-filter-button { position: absolute; top: 50%; right: 5px; transform: translateY(-50%); display: inline-flex; align-items: center; padding: 0; border: 0; background: transparent; color: var(--tblr-secondary); }
-.erp-data-table .erp-filter-button:hover { color: var(--tblr-primary); }
-.erp-data-table .erp-filter-button.is-active { color: var(--tblr-primary); }
+.erp-data-table .erp-header-inner { display: inline-flex; align-items: center; gap: .3rem; }
+.erp-data-table .erp-header-menu-trigger { position: relative; display: inline-flex; align-items: center; padding: 0; border: 0; background: transparent; color: var(--tblr-secondary); }
+.erp-data-table .erp-header-menu-trigger:hover { color: var(--tblr-primary); }
+.erp-data-table .erp-header-menu-trigger.is-active { color: var(--tblr-primary); }
+.erp-data-table .erp-header-menu-trigger.is-filtered::after { position: absolute; top: 1px; right: 1px; width: 5px; height: 5px; content: ''; border-radius: 50%; background: var(--tblr-primary); }
+.erp-header-menu { position: absolute; top: 100%; right: 0; z-index: 40; min-width: 7rem; }
 .erp-column-filter-popover { position: absolute; top: 100%; right: 0; z-index: 40; width: 220px; padding: .65rem; background: var(--tblr-bg-surface); border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); box-shadow: var(--tblr-box-shadow-dropdown); }
 .erp-data-table .erp-frozen-left, .erp-data-table .erp-frozen-right { position: sticky; z-index: 2; background: var(--tblr-bg-surface) !important; }
 .erp-data-table .erp-frozen-left { left: 0; }

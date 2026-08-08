@@ -1,4 +1,4 @@
-import { IconArrowsSort, IconChevronDown, IconChevronUp, IconFilter, IconFilterFilled } from '@tabler/icons-react'
+import { IconChevronDown, IconChevronUp } from '@tabler/icons-react'
 import {
   flexRender,
   getCoreRowModel,
@@ -90,6 +90,7 @@ export function ErpTable<TData>({
   const [focusIndex, setFocusIndex] = useState<number | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; rowId: string } | null>(null)
   const [openFilter, setOpenFilter] = useState<string | null>(null)
+  const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [draftFilter, setDraftFilter] = useState<QueryCondition>(emptyQueryCondition())
 
   const table = useReactTable({
@@ -129,6 +130,33 @@ export function ErpTable<TData>({
     window.addEventListener('pointerdown', close)
     return () => window.removeEventListener('pointerdown', close)
   }, [menu])
+
+  // 列头菜单：点击菜单外关闭（触发按钮除外）
+  useEffect(() => {
+    if (!openMenu) return
+    const close = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (!shellRef.current?.contains(target)) return
+      if ((target as HTMLElement).closest?.('.erp-header-menu-trigger')) return
+      if (shellRef.current.querySelector('.erp-header-menu')?.contains(target)) return
+      setOpenMenu(null)
+    }
+    window.addEventListener('pointerdown', close)
+    return () => window.removeEventListener('pointerdown', close)
+  }, [openMenu])
+
+  // 列头筛选弹层：点击表格其它位置关闭
+  useEffect(() => {
+    if (!openFilter) return
+    const close = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (!shellRef.current?.contains(target)) return
+      if (shellRef.current.querySelector('.erp-column-filter-popover')?.contains(target)) return
+      setOpenFilter(null)
+    }
+    window.addEventListener('pointerdown', close)
+    return () => window.removeEventListener('pointerdown', close)
+  }, [openFilter])
 
   const copyRows = (ids: string[]) => {
     const tableEl = shellRef.current?.querySelector('table')
@@ -214,6 +242,18 @@ export function ErpTable<TData>({
                   ? header.column.columnDef.header
                   : header.column.id
                 const filterActive = Boolean(columnFilterValue?.[header.column.id])
+                const menuItems: { key: string; label: string; onClick: () => void }[] = []
+                if (header.column.getCanSort() && onSortingChange) {
+                  menuItems.push(
+                    { key: 'none', label: '默认', onClick: () => onSortingChange([]) },
+                    { key: 'asc', label: '升序', onClick: () => onSortingChange([{ id: header.column.id, desc: false }]) },
+                    { key: 'desc', label: '降序', onClick: () => onSortingChange([{ id: header.column.id, desc: true }]) },
+                  )
+                }
+                if (meta?.filterable && onColumnFilterChange) {
+                  menuItems.push({ key: 'filter', label: '筛选', onClick: () => openColumnFilter(header.column.id) })
+                }
+                for (const item of meta?.headerMenu ?? []) menuItems.push({ key: item.label, label: item.label, onClick: item.onClick })
                 return (
                   <th
                     key={header.id}
@@ -223,30 +263,40 @@ export function ErpTable<TData>({
                     style={thStyle}
                     onContextMenu={meta?.onHeaderContextMenu}
                   >
-                    {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                      <button className="erp-sort-button" type="button" onClick={header.column.getToggleSortingHandler()}>
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                        {sorted === 'asc' ? (
-                          <IconChevronUp size={14} />
-                        ) : sorted === 'desc' ? (
-                          <IconChevronDown size={14} />
-                        ) : (
-                          <IconArrowsSort size={14} />
-                        )}
-                      </button>
+                    {header.isPlaceholder ? null : menuItems.length > 0 ? (
+                      <div className="erp-header-inner">
+                        <span className="erp-header-label">
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                        </span>
+                        <button
+                          type="button"
+                          className={`erp-header-menu-trigger ${sorted ? 'is-active' : ''} ${filterActive ? 'is-filtered' : ''}`}
+                          aria-label={`表头操作${headerLabel}`}
+                          title="排序 / 筛选"
+                          onClick={() => setOpenMenu(openMenu === header.column.id ? null : header.column.id)}
+                        >
+                          {sorted === 'asc' ? <IconChevronUp size={13} /> : <IconChevronDown size={13} />}
+                        </button>
+                      </div>
                     ) : (
                       flexRender(header.column.columnDef.header, header.getContext())
                     )}
-                    {meta?.filterable && onColumnFilterChange && (
-                      <button
-                        type="button"
-                        className={`erp-filter-button ${filterActive ? 'is-active' : ''}`}
-                        aria-label={`筛选${headerLabel}`}
-                        title="筛选"
-                        onClick={() => (openFilter === header.column.id ? setOpenFilter(null) : openColumnFilter(header.column.id))}
-                      >
-                        {filterActive ? <IconFilterFilled size={13} /> : <IconFilter size={13} />}
-                      </button>
+                    {openMenu === header.column.id && (
+                      <div className="erp-header-menu dropdown-menu show" onClick={(event) => event.stopPropagation()}>
+                        {menuItems.map((item) => (
+                          <button
+                            key={item.key}
+                            type="button"
+                            className="dropdown-item"
+                            onClick={() => {
+                              item.onClick()
+                              setOpenMenu(null)
+                            }}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
                     )}
                     {openFilter === header.column.id && (
                       <div className="erp-column-filter-popover" onClick={(event) => event.stopPropagation()}>
@@ -272,7 +322,7 @@ export function ErpTable<TData>({
                 data-order-id={row.id}
                 data-kb-index={index}
                 className={`${row.getIsSelected() ? 'table-active ' : ''}${activeRowId === row.id ? 'erp-row-active ' : ''}${focusIndex === index ? 'erp-row-focus' : ''}`.trim() || undefined}
-                onClick={() => onRowClick?.(row.original)}
+                onClick={() => { setFocusIndex(null); onRowClick?.(row.original) }}
                 onContextMenu={copyable ? (event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, rowId: row.id }) } : undefined}
               >
                 {row.getVisibleCells().map((cell) => {
@@ -328,6 +378,8 @@ declare module '@tanstack/react-table' {
     onHeaderContextMenu?: (event: MouseEvent<HTMLTableCellElement>) => void
     /** 该列支持列头快速筛选（需配合 ErpTable 的 onColumnFilterChange） */
     filterable?: boolean
+    /** 列头菜单附加项（如工作台「字段设置」） */
+    headerMenu?: { label: string; onClick: () => void }[]
     /** 冻结在左侧（sticky left，建议仅首列） */
     frozenLeft?: boolean
     /** 冻结在右侧（sticky right，建议仅末列） */

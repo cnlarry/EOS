@@ -111,6 +111,7 @@ export function DocumentWorkbenchPage() {
         minWidth:field.width,
         filterable:field.isQueryable,
         onHeaderContextMenu:(event:MouseEvent<HTMLTableCellElement>)=>openFieldMenu(event,false,field.key),
+        headerMenu:[{label:'字段设置',onClick:()=>setFieldEditor({detail:false,fieldKey:field.key})}],
       },
       cell:(info)=>{
         const value=formatFieldValue(info.getValue(),field.dataType,field.format)
@@ -131,6 +132,7 @@ export function DocumentWorkbenchPage() {
       cellClassName:alignClass(field.align),
       minWidth:field.width,
       onHeaderContextMenu:(event:MouseEvent<HTMLTableCellElement>)=>openFieldMenu(event,true,field.key),
+      headerMenu:[{label:'字段设置',onClick:()=>setFieldEditor({detail:true,fieldKey:field.key})}],
     },
     cell:(info)=>{
       const value=formatFieldValue(info.getValue(),field.dataType,field.format)
@@ -182,8 +184,8 @@ export function DocumentWorkbenchPage() {
   const masterSorting:SortingState=sort?[{id:sort.field,desc:sort.direction==='desc'}]:[]
   const detailSorting:SortingState=detailSort?[{id:detailSort.field,desc:detailSort.direction==='desc'}]:[]
   const changeKeyword=(value:string)=>{setKeyword(value);setPage(1)}
-  const changeMasterSort=(next:SortingState)=>{const first=next[0];if(!first||(sort&&sort.field===first.id&&sort.direction==='desc'&&!first.desc)){setSort(null);setPage(1);return}setSort({field:first.id,direction:first.desc?'desc':'asc'});setPage(1)}
-  const changeDetailSort=(next:SortingState)=>{const first=next[0];if(!first||(detailSort&&detailSort.field===first.id&&detailSort.direction==='desc'&&!first.desc)){setDetailSort(null);return}setDetailSort({field:first.id,direction:first.desc?'desc':'asc'})}
+  const changeMasterSort=(next:SortingState)=>{const first=next[0];setSort(first?{field:first.id,direction:first.desc?'desc':'asc'}:null);setPage(1)}
+  const changeDetailSort=(next:SortingState)=>{const first=next[0];setDetailSort(first?{field:first.id,direction:first.desc?'desc':'asc'}:null)}
   const handleRowSelectionChange=(next:RowSelectionState)=>{const selectedKeys=Object.keys(next).filter(key=>next[key]);setSelected(current=>{const result:Record<string,Record<string,unknown>>={};for(const key of selectedKeys){result[key]=current[key]??records.data?.rows.find(row=>rowKey(row)===key)??{}}return result})}
   const handleRowClick=(row:Record<string,unknown>)=>{const key=rowKey(row);setSelected({[key]:row});setActiveKey(key)}
   const openEdit=()=>{if(!active||!definition.data)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));navigate(`/document-workbench/${moduleId}/edit?key=${encodeURIComponent(JSON.stringify(key))}`)}
