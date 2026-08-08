@@ -45,7 +45,7 @@ export const router = createBrowserRouter([
         { path: 'jobs', element: withSuspense(<JobPage />) },
         { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },
         { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
-        { path: 'settings/system', element: withSuspense(<SystemSettingsPage />) },
+        { path: 'settings/:table', element: withSuspense(<SystemSettingsPage />) },
       ],
     }],
   },

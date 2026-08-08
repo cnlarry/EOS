@@ -4,15 +4,18 @@ import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
+import { useParams } from 'react-router-dom'
 
 export function SystemSettingsPage() {
+  const { table = 'SYSSS' } = useParams<{ table: string }>()
+  const apiTable = table.toUpperCase() === 'HR-SETUP' ? 'HR_SETUP' : table.toUpperCase() === 'HRM-SETUP' ? 'HRM_SETUP' : 'SYSSS'
   const [values, setValues] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const settings = useQuery({
-    queryKey: ['settings', 'system'],
+    queryKey: ['settings', apiTable],
     queryFn: async () => {
-      const data = await apiClient.get<Record<string, unknown>>('/settings/system')
+      const data = await apiClient.get<Record<string, unknown>>(`/settings/${apiTable}`)
       const initial: Record<string, string> = {}
       Object.entries(data).forEach(([key, value]) => { initial[key] = value === null ? '' : String(value) })
       setValues(initial)
@@ -24,7 +27,7 @@ export function SystemSettingsPage() {
     setSaving(true)
     setSaved(false)
     try {
-      await apiClient.put('/settings/system', values)
+      await apiClient.put(`/settings/${apiTable}`, values)
       setSaved(true)
     } catch (error) {
       window.alert(error instanceof Error ? `保存失败：${error.message}` : '保存失败。')
