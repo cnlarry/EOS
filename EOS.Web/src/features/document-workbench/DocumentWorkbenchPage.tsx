@@ -91,7 +91,7 @@ export function DocumentWorkbenchPage() {
       id:'select',
       enableSorting:false,
       enableHiding:false,
-      meta:{className:'erp-select-column',frozenLeft:true},
+      meta:{className:'erp-select-column',frozenLeft:true,resizable:false},
       header:({table})=>(
         <input
           className="form-check-input"

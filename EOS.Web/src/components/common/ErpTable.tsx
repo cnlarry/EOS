@@ -335,6 +335,7 @@ export function ErpTable<TData>({
                     key={header.id}
                     data-col-key={header.column.id}
                     data-col-min-width={meta?.minWidth ?? undefined}
+                    data-col-resizable={meta?.resizable === false ? 'false' : 'true'}
                     className={[meta?.className, meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : ''].filter(Boolean).join(' ') || undefined}
                     style={thStyle}
                   >
@@ -540,5 +541,7 @@ declare module '@tanstack/react-table' {
     frozenLeft?: boolean
     /** 冻结在右侧（sticky right，建议仅末列） */
     frozenRight?: boolean
+    /** 该列不允许拖拽调整列宽（如固定宽度的选择列/操作列） */
+    resizable?: boolean
   }
 }
