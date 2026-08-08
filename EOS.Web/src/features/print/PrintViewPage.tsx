@@ -33,7 +33,7 @@ const totalOf = (rows: Record<string, unknown>[], field: PrintField): number =>
     return sum + (Number.isFinite(value) ? value : 0)
   }, 0)
 
-const DOCUMENT_LAYOUTS: Record<number, { noFields: string[]; dateField: string; partyField: string; partyNameField: string; amountField: string }> = {
+const DOCUMENT_LAYOUTS: Record<number, { noFields: string[]; dateField: string; partyField: string; partyNameField: string; amountField: string; partyLabel?: string }> = {
   1416: { noFields: ['QUOTE_NO', 'QUOTE_TYPE'], dateField: 'QUOTE_DATE', partyField: 'CLIENT_ID', partyNameField: 'CLIENT_NAME', amountField: 'AMOUNT_TAX' },
   1604: { noFields: ['QUOTE_NO', 'QUOTE_TYPE'], dateField: 'QUOTE_DATE', partyField: 'SUPPLIER_ID', partyNameField: 'SUPPLIER_NAME', amountField: 'AMOUNT_TAX' },
   1405: { noFields: ['ORDER_NO', 'ORDER_TYPE'], dateField: 'ORDER_DATE', partyField: 'CLIENT_ID', partyNameField: 'CLIENT_NAME', amountField: 'AMOUNT_TAX' },
@@ -48,6 +48,16 @@ const DOCUMENT_LAYOUTS: Record<number, { noFields: string[]; dateField: string; 
   1408: { noFields: ['SHIPMENT_NO', 'SHIPMENT_TYPE'], dateField: 'SHIPMENT_DATE', partyField: 'CLIENT_ID', partyNameField: 'CLIENT_NAME', amountField: 'AMOUNT_TAX' },
   170103: { noFields: ['PREPAY_NO', 'PREPAY_TYPE'], dateField: 'PREPAY_DATE', partyField: 'CLIENT_ID', partyNameField: 'CLIENT_NAME', amountField: 'AMOUNT' },
   170203: { noFields: ['PREPAY_NO', 'PREPAY_TYPE'], dateField: 'PREPAY_DATE', partyField: 'SUPPLIER_ID', partyNameField: 'SUPPLIER_NAME', amountField: 'AMOUNT' },
+  1407: { noFields: ['RETURN_NO', 'RETURN_TYPE'], dateField: 'RETURN_DATE', partyField: 'CLIENT_ID', partyNameField: 'CLIENT_NAME', amountField: 'AMOUNT_TAX' },
+  1409: { noFields: ['RETURN_NO', 'RETURN_TYPE'], dateField: 'RETURN_DATE', partyField: 'CLIENT_ID', partyNameField: 'CLIENT_NAME', amountField: 'AMOUNT_TAX' },
+  1608: { noFields: ['CANCEL_NO', 'CANCEL_TYPE'], dateField: 'CANCEL_DATE', partyField: 'SUPPLIER_ID', partyNameField: 'SUPPLIER_NAME', amountField: 'AMOUNT_TAX' },
+  1612: { noFields: ['CANCEL_NO', 'CANCEL_TYPE'], dateField: 'CANCEL_DATE', partyField: 'SUPPLIER_ID', partyNameField: 'SUPPLIER_NAME', amountField: 'AMOUNT_TAX' },
+  1610: { noFields: ['CALLBACK_NO', 'CALLBACK_TYPE'], dateField: 'CALLBACK_DATE', partyField: 'SUPPLIER_ID', partyNameField: 'SUPPLIER_NAME', amountField: 'AMOUNT_TAX' },
+  1503: { noFields: ['GET_NO', 'GET_TYPE'], dateField: 'GET_DATE', partyField: 'PRODUCE_NO', partyNameField: '', amountField: '', partyLabel: '制令单' },
+  1514: { noFields: ['GET_NO', 'GET_TYPE'], dateField: 'GET_DATE', partyField: 'PRODUCE_NO', partyNameField: '', amountField: '', partyLabel: '制令单' },
+  1504: { noFields: ['BACK_NO', 'BACK_TYPE'], dateField: 'BACK_DATE', partyField: 'BACK_NO', partyNameField: '', amountField: '', partyLabel: '单据号' },
+  1515: { noFields: ['PRODUCT_OUT_NO', 'PRODUCT_OUT_TYPE'], dateField: 'PRODUCT_OUT_DATE', partyField: 'CLIENT_ID', partyNameField: '', amountField: '', partyLabel: '客户' },
+  1616: { noFields: ['APPLY_NO', 'APPLY_TYPE'], dateField: 'APPLY_DATE', partyField: 'PRODUCE_NO', partyNameField: '', amountField: '', partyLabel: '制令单' },
 }
 
 export function PrintViewPage() {
@@ -119,7 +129,7 @@ export function PrintViewPage() {
         </div>
         <div className="row mb-3">
           <div className="col-6">
-            <div className="small">客户/厂商：<span className="fw-semibold">{formatValue(print.master[layout.partyField])}</span>　{formatValue(print.master[layout.partyNameField])}</div>
+            {layout.partyField && <div className="small">{layout.partyLabel ?? '客户/厂商'}：<span className="fw-semibold">{formatValue(print.master[layout.partyField])}</span>　{formatValue(print.master[layout.partyNameField])}</div>}
             <div className="small mt-1">币别：{formatValue(print.master.CURR_ID)}　汇率：{formatValue(print.master.CURR_RATE)}</div>
           </div>
           <div className="col-6 text-end">
