@@ -18,6 +18,7 @@ public sealed class TableDataController(
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly int[] AdminModules = [2310, 2312];
+    private const int FieldAuditModuleId = 2303;
 
     /// <summary>
     /// 数据表数据维护（2310/2312 受控只读版）：TABLES 白名单中有主键的表，
@@ -44,6 +45,66 @@ public sealed class TableDataController(
         while(await reader.ReadAsync(token))
             result.Add(new{Table=reader.GetString(0),Desc=reader.GetString(1)});
         return Ok(result);
+    }
+
+    /// <summary>
+    /// 字段元数据审计（2303 读写数据表信息受控只读版）：物理列与 FIELDS 元数据的差集。
+    /// kind=unmanaged：物理表存在但 FIELDS 无元数据的列（旧页面"未受管理字段"）；
+    /// kind=orphan：FIELDS 有元数据但物理表不存在的列（旧页面"未知的管理字段"）。
+    /// 只读，不开放写；权限门：模块 2303 可浏览。
+    /// </summary>
+    [HttpGet("field-audit/{kind}")]
+    public async Task<IActionResult> FieldAudit(string kind, CancellationToken token)
+    {
+        if(!await CanBrowseFieldAuditAsync(token)) return Forbid();
+        var normalized=kind.Trim().ToLowerInvariant();
+        if(normalized is not ("unmanaged" or "orphan")) return BadRequest(new{code="INVALID_AUDIT_KIND",message="kind 仅支持 unmanaged 或 orphan。"});
+        await using var connection=connections.Create();
+        await connection.OpenAsync(token);
+        const int limit=2000;
+        string sql;
+        if(normalized=="unmanaged")
+        {
+            sql=$$"""
+                SELECT c.TABLE_NAME AS T_ID,c.COLUMN_NAME AS F_ID,c.DATA_TYPE AS F_TYPE
+                FROM INFORMATION_SCHEMA.COLUMNS c
+                WHERE c.TABLE_SCHEMA='dbo'
+                  AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f WHERE f.T_ID=c.TABLE_NAME AND f.F_ID=c.COLUMN_NAME)
+                ORDER BY c.TABLE_NAME,c.ORDINAL_POSITION
+                OFFSET 0 ROWS FETCH NEXT {{limit}} ROWS ONLY;
+                SELECT COUNT_BIG(1) FROM INFORMATION_SCHEMA.COLUMNS c
+                WHERE c.TABLE_SCHEMA='dbo'
+                  AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f WHERE f.T_ID=c.TABLE_NAME AND f.F_ID=c.COLUMN_NAME);
+                """;
+        }
+        else
+        {
+            sql=$$"""
+                SELECT TOP ({{limit}}) LTRIM(RTRIM(f.T_ID)) AS T_ID,LTRIM(RTRIM(f.F_ID)) AS F_ID,
+                       LTRIM(RTRIM(ISNULL(f.F_TYPE,''))) AS F_TYPE,LTRIM(RTRIM(ISNULL(f.F_DESC,''))) AS F_DESC,
+                       CAST(ISNULL(f.IS_VIRTUAL,0) AS bit) AS IS_VIRTUAL
+                FROM dbo.FIELDS f WITH (NOLOCK)
+                WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
+                                  WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=f.T_ID AND c.COLUMN_NAME=f.F_ID)
+                ORDER BY f.T_ID,f.F_ID;
+                SELECT COUNT_BIG(1) FROM dbo.FIELDS f WITH (NOLOCK)
+                WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
+                                  WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=f.T_ID AND c.COLUMN_NAME=f.F_ID);
+                """;
+        }
+        await using var command=new SqlCommand(sql,connection);
+        await using var reader=await command.ExecuteReaderAsync(token);
+        var rows=new List<Dictionary<string,object?>>();
+        while(await reader.ReadAsync(token))
+        {
+            var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);
+            for(var i=0;i<reader.FieldCount;i++) row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i);
+            rows.Add(row);
+        }
+        await reader.NextResultAsync(token);
+        await reader.ReadAsync(token);
+        var total=Convert.ToInt64(reader.GetInt64(0));
+        return Ok(new{Kind=normalized,Rows=rows,Total=total,Limited=total>limit});
     }
 
     [HttpGet("{table}")]
@@ -88,6 +149,9 @@ public sealed class TableDataController(
                 return true;
         return false;
     }
+
+    private async Task<bool> CanBrowseFieldAuditAsync(CancellationToken token) =>
+        (await rightsRepository.GetAsync(userContext.UserId,FieldAuditModuleId,token)).CanBrowse;
 
     private static async Task<bool> IsWhitelistedAsync(SqlConnection connection,string table,CancellationToken token)
     {
