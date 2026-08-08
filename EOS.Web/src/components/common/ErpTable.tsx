@@ -8,7 +8,7 @@ import {
   type SortingState,
   type VisibilityState,
 } from '@tanstack/react-table'
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { ErpDataTable } from './ErpDataTable'
 import { ErpColumnFilter } from './ErpColumnFilter'
 import { emptyQueryCondition, type QueryCondition } from './ErpQueryBuilder'
@@ -263,18 +263,33 @@ export function ErpTable<TData>({
                   ? header.column.columnDef.header
                   : header.column.id
                 const filterActive = Boolean(columnFilterValue?.[header.column.id])
-                const menuItems: { key: string; label: string; onClick: () => void }[] = []
+                const menuItems: { key: string; label: string; onClick: (event: MouseEvent<HTMLButtonElement>) => void }[] = []
                 if (header.column.getCanSort() && onSortingChange) {
+                  const applySort = (event: MouseEvent<HTMLButtonElement>, desc: boolean) => {
+                    const id = header.column.id
+                    const current = sorting
+                    const existingIndex = current.findIndex((item) => item.id === id)
+                    if (event.ctrlKey || event.metaKey) {
+                      if (existingIndex >= 0) {
+                        onSortingChange(current.map((item) => (item.id === id ? { id, desc } : item)))
+                      } else {
+                        onSortingChange([...current.slice(-4), { id, desc }])
+                      }
+                    } else {
+                      onSortingChange([{ id, desc }])
+                    }
+                  }
                   menuItems.push(
                     { key: 'none', label: '默认', onClick: () => onSortingChange([]) },
-                    { key: 'asc', label: '升序', onClick: () => onSortingChange([{ id: header.column.id, desc: false }]) },
-                    { key: 'desc', label: '降序', onClick: () => onSortingChange([{ id: header.column.id, desc: true }]) },
+                    { key: 'asc', label: '升序', onClick: (event) => applySort(event, false) },
+                    { key: 'desc', label: '降序', onClick: (event) => applySort(event, true) },
                   )
                 }
                 if (meta?.filterable && onColumnFilterChange) {
                   menuItems.push({ key: 'filter', label: '筛选', onClick: () => openColumnFilter(header.column.id) })
                 }
-                for (const item of meta?.headerMenu ?? []) menuItems.push({ key: item.label, label: item.label, onClick: item.onClick })
+                for (const item of meta?.headerMenu ?? []) menuItems.push({ key: item.label, label: item.label, onClick: () => item.onClick() })
+                const sortIndex = sorting.findIndex((item) => item.id === header.column.id)
                 return (
                   <th
                     key={header.id}
@@ -296,6 +311,9 @@ export function ErpTable<TData>({
                           onClick={(event) => (openMenu === header.column.id ? setOpenMenu(null) : openHeaderMenu(header.column.id, event.currentTarget))}
                         >
                           {sorted === 'asc' ? <IconChevronUp size={13} /> : <IconChevronDown size={13} />}
+                          {sorting.length > 1 && sortIndex >= 0 && (
+                            <span className="erp-sort-priority">{sortIndex + 1}</span>
+                          )}
                         </button>
                       </div>
                     ) : (
@@ -312,8 +330,8 @@ export function ErpTable<TData>({
                             key={item.key}
                             type="button"
                             className="dropdown-item"
-                            onClick={() => {
-                              item.onClick()
+                            onClick={(event) => {
+                              item.onClick(event)
                               setOpenMenu(null)
                             }}
                           >

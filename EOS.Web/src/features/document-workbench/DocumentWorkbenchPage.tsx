@@ -29,6 +29,7 @@ interface ChooserSource { active:boolean; table:string|null; description:string|
 interface FieldMetadata { key:string; tableId:string; label:string; dataType:string; width:number; align:string; headerAlign:string; format:string|null; isVisible:boolean; isDefault:boolean; isQueryable:boolean; isReadonly:boolean; isRequired:boolean; isCost:boolean; isSecrecy:boolean; defaultValue:string|null; verifyIndex:number|null; regex:string|null; remark:string|null; browseUrl:string|null; browseModuleId:number|null; onlyChoose:boolean; chooseMultiple:boolean; choosePage:string|null; choosers:ChooserSource[]; isVirtual:boolean; virtualExpression:string|null; canCopy:boolean; isAutoIncrement:boolean; convertFunction:string|null; dataSourceSql:string|null; lastUpdatedBy:string|null; lastUpdatedAt:string|null }
 const uniqueFields=(fields:Field[])=>fields.filter((field,index,all)=>all.findIndex(item=>item.key.toLowerCase()===field.key.toLowerCase())===index)
 const renderText=(value:string)=>value.length>24?<span className="erp-cell-ellipsis" title={value}>{value}</span>:value
+const sortQuery=(sort:SortingState)=>({sortFields:sort.length?sort.map(item=>item.id).join(','):undefined,sortDirections:sort.length?sort.map(item=>item.desc?'desc':'asc').join(','):undefined})
 export function DocumentWorkbenchPage() {
   const { hasPermission } = useAuth()
   const navigate=useNavigate()
@@ -37,7 +38,7 @@ export function DocumentWorkbenchPage() {
   const [selected,setSelected]=useState<Record<string,Record<string,unknown>>>({})
   const [activeKey,setActiveKey]=useState<string|null>(null)
   const [page,setPage]=useState(1)
-  const [sort,setSort]=useState<{field:string;direction:'asc'|'desc'}|null>(null)
+  const [sort,setSort]=useState<SortingState>([])
   const [detailSort,setDetailSort]=useState<{field:string;direction:'asc'|'desc'}|null>(null)
   const [queryOpen,setQueryOpen]=useState(false)
   const [columnsOpen,setColumnsOpen]=useState(false)
@@ -51,7 +52,7 @@ export function DocumentWorkbenchPage() {
   const [exporting,setExporting]=useState(false)
   const definition=useQuery({queryKey:['workbench',moduleId,'definition'],queryFn:()=>apiClient.get<Definition>(`/document-workbench/${moduleId}/definition`)})
   const pageSize=pageSizePref??(definition.data?.detailTable?10:16)
-  const records=useQuery({queryKey:['workbench',moduleId,'records',page,pageSize,appliedConditions,keyword,sort],queryFn:()=>appliedConditions.length?apiClient.post<DataResponse>(`/document-workbench/${moduleId}/query?page=${page}&pageSize=${pageSize}${keyword?`&keyword=${encodeURIComponent(keyword)}`:''}${sort?`&sortField=${encodeURIComponent(sort.field)}&sortDirection=${sort.direction}`:''}`,{conditions:appliedConditions}):apiClient.get<DataResponse>(`/document-workbench/${moduleId}/records`,{query:{page,pageSize,keyword:keyword||undefined,sortField:sort?.field,sortDirection:sort?.direction}}),enabled:definition.isSuccess,placeholderData:keepPreviousData})
+  const records=useQuery({queryKey:['workbench',moduleId,'records',page,pageSize,appliedConditions,keyword,sort],queryFn:()=>{const sq=sortQuery(sort);return appliedConditions.length?apiClient.post<DataResponse>(`/document-workbench/${moduleId}/query?page=${page}&pageSize=${pageSize}${keyword?`&keyword=${encodeURIComponent(keyword)}`:''}${sq.sortFields?`&sortFields=${encodeURIComponent(sq.sortFields)}&sortDirections=${encodeURIComponent(sq.sortDirections??'')}`:''}`,{conditions:appliedConditions}):apiClient.get<DataResponse>(`/document-workbench/${moduleId}/records`,{query:{page,pageSize,keyword:keyword||undefined,...sq}})},enabled:definition.isSuccess,placeholderData:keepPreviousData})
   const columnSettings=useQuery({queryKey:['workbench',moduleId,'column-editor'],queryFn:()=>apiClient.get<{current:ColumnSettings;defaults:ColumnSettings}>(`/document-workbench/${moduleId}/column-editor`),enabled:columnsOpen})
   const saveColumns=useMutation({mutationFn:(settings:{master:string[];detail:string[]})=>apiClient.put<void>(`/document-workbench/${moduleId}/columns`,{master:settings.master,detail:settings.detail}),onSuccess:async()=>{await Promise.all([queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']}),queryClient.invalidateQueries({queryKey:['workbench',moduleId,'column-editor']})])}})
   const master=useMemo(()=>uniqueFields(definition.data?.masterFields??[]).slice(0,30),[definition.data])
@@ -177,16 +178,15 @@ export function DocumentWorkbenchPage() {
   if(definition.isError)return <section className="card"><div className="card-body text-center py-5">无法加载模块定义。</div></section>
 
   const rows=records.data?.rows??[]
-  const masterSorting:SortingState=sort?[{id:sort.field,desc:sort.direction==='desc'}]:[]
   const detailSorting:SortingState=detailSort?[{id:detailSort.field,desc:detailSort.direction==='desc'}]:[]
   const changeKeyword=(value:string)=>{setKeyword(value);setPage(1)}
-  const changeMasterSort=(next:SortingState)=>{const first=next[0];setSort(first?{field:first.id,direction:first.desc?'desc':'asc'}:null);setPage(1)}
+  const changeMasterSort=(next:SortingState)=>{setSort(next);setPage(1)}
   const changeDetailSort=(next:SortingState)=>{const first=next[0];setDetailSort(first?{field:first.id,direction:first.desc?'desc':'asc'}:null)}
   const handleRowSelectionChange=(next:RowSelectionState)=>{const selectedKeys=Object.keys(next).filter(key=>next[key]);setSelected(current=>{const result:Record<string,Record<string,unknown>>={};for(const key of selectedKeys){result[key]=current[key]??records.data?.rows.find(row=>rowKey(row)===key)??{}}return result})}
   const handleRowClick=(row:Record<string,unknown>)=>{const key=rowKey(row);setSelected({[key]:row});setActiveKey(key)}
   const openEdit=()=>{if(!active||!definition.data)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));navigate(`/document-workbench/${moduleId}/edit?key=${encodeURIComponent(JSON.stringify(key))}`)}
   const openNew=()=>{if(!definition.data?.hasAdd)return;navigate(`/document-workbench/${moduleId}/new`)}
-  const handleExport=async()=>{if(!definition.data)return;setExporting(true);try{const blob=await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:appliedConditions},{query:{keyword:keyword||undefined,sortField:sort?.field,sortDirection:sort?.direction}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.csv`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
+  const handleExport=async()=>{if(!definition.data)return;setExporting(true);try{const blob=await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:appliedConditions},{query:{keyword:keyword||undefined,...sortQuery(sort)}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.csv`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
 
   return <div className="erp-workbench-page">
@@ -210,7 +210,7 @@ export function DocumentWorkbenchPage() {
           columns={masterColumns}
           data={rows}
           getRowId={rowKey}
-          sorting={masterSorting}
+          sorting={sort}
           onSortingChange={changeMasterSort}
           rowSelection={rowSelection}
           onRowSelectionChange={handleRowSelectionChange}
