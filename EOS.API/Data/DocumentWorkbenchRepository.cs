@@ -893,15 +893,41 @@ public sealed class DocumentWorkbenchRepository(
         WorkbenchDefinition definition,
         IReadOnlyList<string> keyValues,
         bool approve,
+        string employeeName,
         CancellationToken token)
     {
         var rule=definition.BusinessRule;
         if(rule?.WorkflowSproc is not { } sproc)
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"WORKFLOW_NOT_SUPPORTED","该模块不支持批核操作。");
-        var result=await controlledSprocs.RunWorkflowAsync(definition.ModuleId,sproc,definition.MasterPkOrder,keyValues,approve,token);
+        await using var connection=CreateConnection();
+        await connection.OpenAsync(token);
+        await using var transaction=(SqlTransaction)await connection.BeginTransactionAsync(token);
+        var keyCondition=ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder,keyValues);
+        // 对齐旧系统 P_WF_APPROVE_NOFLOW：批核/解批先更新主表确认状态（带守卫），
+        // 再执行 P_WF_<DOC> 业务存储过程；同一事务，任一失败整体回滚。
+        // 守卫语义：批核仅允许 CONFIRM_TAG=0（未批核），解批仅允许 CONFIRM_TAG=1。
+        var confirmSql=approve
+            ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};"
+            : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyCondition};";
+        await using (var confirmCommand=new SqlCommand(confirmSql,connection,transaction))
+        {
+            confirmCommand.Parameters.Add("@ConfirmPerson",SqlDbType.NVarChar,50).Value=employeeName.Trim();
+            var affected=await confirmCommand.ExecuteNonQueryAsync(token);
+            if(affected==0)
+            {
+                await transaction.RollbackAsync(token);
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"WORKFLOW_STATE_CONFLICT",
+                    approve?"记录不存在或已批核，无法重复批核。":"记录不存在或未批核，无法解批。");
+            }
+        }
+        var result=await controlledSprocs.RunWorkflowAsync(definition.ModuleId,sproc,definition.MasterPkOrder,keyValues,approve,connection,transaction,token);
         if(!result.Success)
+        {
+            await transaction.RollbackAsync(token);
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"WORKFLOW_FAILED",
                 result.Message??(approve?"批核失败。":"解批失败。"));
+        }
+        await transaction.CommitAsync(token);
         logger.LogInformation("统一表单{Action} module={ModuleId} key={Key}",approve?"批核":"解批",definition.ModuleId,string.Join(',',keyValues));
         return RecordSaveResult.Success(keyValues);
     }

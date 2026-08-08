@@ -71,13 +71,16 @@ public sealed class ControlledSprocInvoker(DbConnectionFactory connections, ILog
         IReadOnlyList<string> pkColumns,
         IReadOnlyList<string> keyValues,
         bool approve,
+        SqlConnection? connection,
+        SqlTransaction? transaction,
         CancellationToken token)
     {
         if (!IsAllowed(sprocName)) return new(false, $"存储过程不在受控白名单内：{sprocName}");
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
+        var ownsConnection = connection is null;
+        connection ??= connections.Create();
+        if (ownsConnection) await connection.OpenAsync(token);
         var keyCondition = BuildKeyCondition(pkColumns, keyValues);
-        await using var command = new SqlCommand(sprocName, connection)
+        await using var command = new SqlCommand(sprocName, connection, transaction)
         {
             CommandType = CommandType.StoredProcedure,
         };
@@ -102,6 +105,10 @@ public sealed class ControlledSprocInvoker(DbConnectionFactory connections, ILog
             logger.LogWarning("批核存储过程异常 module={ModuleId} sproc={Sproc} message={Message}",
                 moduleId, sprocName, ex.Message);
             return new(false, SanitizeMessage(ex.Message));
+        }
+        finally
+        {
+            if (ownsConnection) await connection.DisposeAsync();
         }
     }
 

@@ -119,7 +119,7 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         if(definition is null)return NotFound();
         var keyValues=ParseKey(request.Key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
-        var result=await repository.WorkflowAsync(definition,keyValues,approve,token);
+        var result=await repository.WorkflowAsync(definition,keyValues,approve,userContext.EmployeeName,token);
         return MapSaveResult(result);
     }
 
