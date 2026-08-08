@@ -73,11 +73,20 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
     private static string RouteFor(LegacyNavigationModule module) =>
         ModernRoutes.TryGetValue(module.Id, out var modern)
             ? modern
+            : IsSearchCenterUrl(module.LegacyUrl)
+                ? $"/search-center/{module.Id}"
             : IsReportUrl(module.LegacyUrl)
                 ? $"/reports/{module.Id}"
             : IsDocumentWorkbenchUrl(module.LegacyUrl)
                 ? $"/document-workbench/{module.Id}"
                 : $"/legacy/modules/{module.Id}";
+
+    private static bool IsSearchCenterUrl(string? legacyUrl)
+    {
+        if (string.IsNullOrWhiteSpace(legacyUrl)) return false;
+        var normalized = legacyUrl.Trim().Replace('\\', '/').ToLowerInvariant();
+        return normalized.Contains("search_frame") || normalized.EndsWith("comm/searchcenter.aspx");
+    }
 
     private static bool IsReportUrl(string? legacyUrl)
     {
