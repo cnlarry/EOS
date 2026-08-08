@@ -128,7 +128,7 @@ button, input, select { font: inherit; }
 .erp-table-toolbar > div { display: flex; align-items: center; gap: .6rem; }
 .erp-column-menu { position: absolute; z-index: 20; top: calc(100% + .4rem); right: 0; width: 12rem; box-shadow: var(--tblr-box-shadow-dropdown); }
 .erp-sort-button { display: inline-flex; align-items: center; gap: .3rem; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; text-transform: inherit; letter-spacing: inherit; }
-.erp-pagination-footer { min-height: 34px; display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; gap: 8px; padding: 8px !important; }
+.erp-pagination-footer { min-height: 34px; display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; gap: 8px; padding: 8px 12px 12px !important; }
 .erp-pagination-footer .text-secondary { margin-right: auto; line-height: 1; }
 .erp-pagination-footer .form-select-sm,
 .erp-pagination-footer .btn-sm { min-height: 26px; padding-top: 2px; padding-bottom: 2px; }
@@ -180,9 +180,9 @@ button, input, select { font: inherit; }
 
 /* 工作台：视口撑满布局（无页面级滚动条，主表/子表按比例瓜分高度，各自内部滚动） */
 .erp-workbench-page { display: flex; flex-direction: column; gap: 8px; min-height: 320px; height: calc(100vh - 96px); height: calc(100dvh - 96px); overflow: hidden; }
-.erp-workbench-page > .erp-list-card { flex: 1 1 55%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.erp-workbench-page > .erp-list-card { flex: 1 1 70%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .erp-workbench-page > .erp-list-card .erp-master-table-region { flex: 1 1 auto; min-height: 0; max-height: none; }
-.erp-workbench-page > .erp-detail-card { flex: 1 1 45%; min-height: 140px; display: flex; flex-direction: column; overflow: hidden; }
+.erp-workbench-page > .erp-detail-card { flex: 1 1 30%; min-height: 140px; display: flex; flex-direction: column; overflow: hidden; }
 .erp-workbench-page > .erp-detail-card .table-responsive { flex: 1 1 auto; min-height: 0; max-height: none; }
 @media print {
   .erp-workbench-page { display: block; height: auto; min-height: 0; overflow: visible; }
