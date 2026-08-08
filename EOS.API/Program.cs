@@ -123,6 +123,7 @@ builder.Services.AddScoped<DocumentWorkbenchRepository>();
 builder.Services.AddScoped<ReportRepository>();
 builder.Services.AddScoped<SearchCenterRepository>();
 builder.Services.AddScoped<ImportService>();
+builder.Services.AddScoped<PrintService>();
 builder.Services.AddScoped<CurrentUserContext>();
 builder.Services.AddSingleton<HubUserTracker>();
 builder.Services.AddSingleton<ImRateLimiter>();
