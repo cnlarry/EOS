@@ -228,7 +228,7 @@ export function AppShell() {
                 const isExpanded = expandedGroup === item.label
                 const isGroupActive = item.children.some((child) => location.pathname.startsWith(child.route!))
                 return (
-                  <Fragment key={item.label}>
+                  <Fragment key={item.id}>
                     <div className="erp-nav-group">
                       <button
                         className={`nav-link erp-nav-group-toggle ${isGroupActive ? 'group-active' : ''}`}
