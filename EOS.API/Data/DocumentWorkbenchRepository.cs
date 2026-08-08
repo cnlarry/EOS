@@ -1565,5 +1565,26 @@ public sealed class DocumentWorkbenchRepository(
     private static bool IsDateLike(string dataType)=>
         dataType.Contains("date",StringComparison.OrdinalIgnoreCase)||dataType.Contains("time",StringComparison.OrdinalIgnoreCase);
     private SqlConnection CreateConnection()=>connections.Create();
-    private static bool IsWorkbenchUrl(string url){var value=url.Trim().Replace('\\','/');var query=value.IndexOfAny(['?','#']);if(query>=0)value=value[..query];while(value.StartsWith("~/")||value.StartsWith('/'))value=value.TrimStart('~','/');return value.Equals("comm/view_frame.aspx",StringComparison.OrdinalIgnoreCase);}
+    /// <summary>
+    /// 旧系统通用查看器页面家族（均以 MODULES/FIELDS 元数据驱动）：
+    /// comm/view_frame.aspx（标准）、comm/m_view_frame.aspx、hr/hr_view_frame.aspx、
+    /// hrm/hr_view_frame.aspx、comm/sysdept_view_frame.aspx（变体，共 12 个模块）。
+    /// </summary>
+    private static readonly HashSet<string> WorkbenchUrlFamily = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "comm/view_frame.aspx",
+        "comm/m_view_frame.aspx",
+        "hr/hr_view_frame.aspx",
+        "hrm/hr_view_frame.aspx",
+        "comm/sysdept_view_frame.aspx",
+    };
+
+    private static bool IsWorkbenchUrl(string url)
+    {
+        var value=url.Trim().Replace('\\','/');
+        var query=value.IndexOfAny(['?','#']);
+        if(query>=0)value=value[..query];
+        while(value.StartsWith("~/")||value.StartsWith('/'))value=value.TrimStart('~','/');
+        return WorkbenchUrlFamily.Contains(value);
+    }
 }

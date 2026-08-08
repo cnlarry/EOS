@@ -83,7 +83,11 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
         var normalized = legacyUrl.Trim().Replace('\\', '/');
         if (normalized.StartsWith("~/", StringComparison.Ordinal)) normalized = normalized[2..];
         normalized = normalized.TrimStart('/').Split('?', '#')[0].ToLowerInvariant();
-        return normalized == "comm/view_frame.aspx";
+        return normalized is "comm/view_frame.aspx"
+            or "comm/m_view_frame.aspx"
+            or "hr/hr_view_frame.aspx"
+            or "hrm/hr_view_frame.aspx"
+            or "comm/sysdept_view_frame.aspx";
     }
 
     private static readonly Dictionary<int, string> LegacyRootIcons = new() { [13] = "inventory", [14] = "sales", [15] = "procurement" };
