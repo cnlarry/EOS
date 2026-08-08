@@ -1,3 +1,4 @@
+using EOS.API.Errors;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 using System.Data;
@@ -14,7 +15,7 @@ public sealed record WorkbenchFieldSummary(string Key,string Label,bool IsVisibl
 public sealed record FieldChooserSource(bool Active,string? Table,string? Description,int? ModuleId,string? Filter,string? ReturnMapping);
 public sealed record WorkbenchFieldMetadata(string Key,string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool IsVirtual,string? VirtualExpression,bool CanCopy,bool IsAutoIncrement,string? ConvertFunction,string? DataSourceSql,string? LastUpdatedBy,DateTime? LastUpdatedAt);
 public sealed record UpdateWorkbenchFieldMetadata(string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool CanCopy,WorkbenchFieldMetadata? Original);
-public sealed record WorkbenchDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, IReadOnlyList<WorkbenchField> MasterFields, IReadOnlyList<WorkbenchField> DetailFields, string? DefaultSort, bool HasAdd, bool HasEdit, bool DetailNoSave, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, bool HasWorkflow);
+public sealed record WorkbenchDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, IReadOnlyList<WorkbenchField> MasterFields, IReadOnlyList<WorkbenchField> DetailFields, string? DefaultSort, bool HasAdd, bool HasEdit, bool DetailNoSave, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, bool HasWorkflow, string? ModuleFilter = null);
 public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize, IReadOnlyDictionary<string, double?>? Totals = null);
@@ -63,7 +64,7 @@ public sealed class DocumentWorkbenchRepository(
     public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token)
     {
         await using var connection = CreateConnection(); await connection.OpenAsync(token);
-        const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
+        const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection); command.Parameters.Add("@ModuleId", SqlDbType.Int).Value=moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token))
@@ -76,6 +77,7 @@ public sealed class DocumentWorkbenchRepository(
         var modiUrl=reader.IsDBNull(5)?"":reader.GetString(5).Trim(); var hasEdit=!string.IsNullOrWhiteSpace(modiUrl);
         var detailNoSave=!reader.IsDBNull(6)&&reader.GetBoolean(6);
         var detailNoFields=reader.IsDBNull(7)?"":reader.GetString(7).Trim();
+        var moduleFilter=reader.IsDBNull(8)?"":reader.GetString(8).Trim();
         await reader.CloseAsync();
         if (!IsWorkbenchUrl(url) || !Identifier.IsMatch(master) || (detail is not null && !Identifier.IsMatch(detail)))
         {
@@ -86,7 +88,8 @@ public sealed class DocumentWorkbenchRepository(
         WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,
             detail is null?[]:await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),NormalizeSort(defaultSort,master,masterFields),hasEdit,hasEdit,detailNoSave,
             await GetPrimaryKeyColumnsAsync(connection,null,master,token),detailNoFields,
-            ModuleBusinessMap.Get(moduleId)?.WorkflowSproc is not null);
+            ModuleBusinessMap.Get(moduleId)?.WorkflowSproc is not null,
+            string.IsNullOrWhiteSpace(moduleFilter)?null:moduleFilter);
         logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
             moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
         return definition;
@@ -97,6 +100,32 @@ public sealed class DocumentWorkbenchRepository(
 
     public async Task<IReadOnlyList<FieldSetupLookup>> GetFieldSetupModulesAsync(CancellationToken token)
     {await using var connection=CreateConnection();await connection.OpenAsync(token);const string sql="SELECT CONVERT(nvarchar(20),M_IDX),COALESCE(NULLIF(LTRIM(RTRIM(M_DESC)),''),CONVERT(nvarchar(20),M_IDX)) FROM dbo.MODULES WITH (NOLOCK) ORDER BY M_DESC,M_IDX";await using var command=new SqlCommand(sql,connection);await using var reader=await command.ExecuteReaderAsync(token);var result=new List<FieldSetupLookup>();while(await reader.ReadAsync(token))result.Add(new(reader.GetString(0),reader.GetString(1)));return result;}
+
+    /// <summary>
+    /// 应用模块级行过滤（MODULES.FILTER，如 1206 成品资料 PRODUCT.PRO_TYPE=1）。
+    /// 仅接受受限解析器支持的谓词（白名单主表字段 + 比较运算符 + 常量，参数化）；
+    /// 无法安全解析时抛 DataFilterUnsupportedException（403），拒绝返回未过滤数据。
+    /// </summary>
+    private static void ApplyModuleFilter(
+        WorkbenchDefinition definition,
+        ICollection<string> predicates,
+        SqlCommand command)
+    {
+        if(string.IsNullOrWhiteSpace(definition.ModuleFilter))return;
+        var allowedFields=definition.MasterFields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if(!DataFilterParser.TryParse(definition.ModuleFilter,definition.MasterTable,allowedFields,
+               out var predicate,out var parameters))
+            throw new DataFilterUnsupportedException("该模块的数据过滤条件尚不支持，已拒绝查询。");
+        predicates.Add(predicate);
+        // 解析器生成的谓词按顺序引用 @df0..@dfN，参数名与值一一对应
+        var parameterNames=Regex.Matches(predicate,"@df\\d+")
+            .Select(match=>match.Value)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name=>int.Parse(name[3..]))
+            .ToList();
+        for(var i=0;i<parameterNames.Count;i++)
+            command.Parameters.AddWithValue(parameterNames[i],parameters[i]);
+    }
 
     /// <summary>
     /// 按标题关键字查找第一个通用工作台模块（服务端白名单，不接受调用方传入任意标题）。
@@ -329,6 +358,7 @@ public sealed class DocumentWorkbenchRepository(
         }
         if (!detail && query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
         if (!detail && !string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
+        if (!detail) ApplyModuleFilter(definition, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,detail,sortField,sortDirection);
         var numericFields=selected.Where(field=>IsNumericField(field.DataType)).ToList();
@@ -355,6 +385,7 @@ public sealed class DocumentWorkbenchRepository(
         await using var connection=CreateConnection(); await connection.OpenAsync(token); await using var command=new SqlCommand(); command.Connection=connection;
         if (query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
         if (!string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
+        ApplyModuleFilter(definition, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,false,sortField,sortDirection);
         command.CommandText=$"SELECT TOP {maxExportRows} {string.Join(',',selected.Select(field=>$"[{field.Key}]"))} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order};";
@@ -377,7 +408,9 @@ public sealed class DocumentWorkbenchRepository(
             .Where(key=>key is not null).Cast<string>().ToList();
         if(pks.Count==0)return [];
         var selected=fields.Take(30).ToList();
+        var filterPredicates=new List<string>();
         await using var connection=CreateConnection();await connection.OpenAsync(token);await using var command=new SqlCommand();command.Connection=connection;
+        ApplyModuleFilter(definition, filterPredicates, command);
         var orParts=new List<string>();
         for(var rowIndex=0;rowIndex<keys.Count;rowIndex++)
         {
@@ -393,7 +426,8 @@ public sealed class DocumentWorkbenchRepository(
             orParts.Add("("+string.Join(" AND ",andParts)+")");
         }
         if(orParts.Count==0)return [];
-        command.CommandText=$"SELECT {string.Join(',',selected.Select(field=>$"[{field.Key}]"))} FROM dbo.[{table}] WITH (NOLOCK) WHERE {string.Join(" OR ",orParts)};";
+        var filterWhere=filterPredicates.Count>0?" AND "+string.Join(" AND ",filterPredicates):"";
+        command.CommandText=$"SELECT {string.Join(',',selected.Select(field=>$"[{field.Key}]"))} FROM dbo.[{table}] WITH (NOLOCK) WHERE {string.Join(" OR ",orParts)}{filterWhere};";
         await using var reader=await command.ExecuteReaderAsync(token);
         var rows=new List<Dictionary<string,object?>>();
         while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);for(var i=0;i<reader.FieldCount;i++)row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i);rows.Add(row);}

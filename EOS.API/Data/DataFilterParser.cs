@@ -4,9 +4,10 @@ using System.Text.RegularExpressions;
 namespace EOS.API.Data;
 
 /// <summary>
-/// DATA_FILTER 受限解析（M2 安全子集）。
-/// 仅接受「白名单字段 = '值'」谓词（字段可带主表名前缀），AND/OR 组合与括号（深度 ≤ 8），
-/// 值仅限单引号字符串字面量（'' 转义）。解析成功编译为参数化谓词；其余一律拒绝。
+/// DATA_FILTER / MODULES.FILTER 受限解析（M2 安全子集）。
+/// 接受「白名单字段 运算符 值」谓词（字段可带主表名前缀），AND/OR 组合与括号（深度 ≤ 8）。
+/// 运算符：=、&lt;&gt;、&gt;、&lt;、&gt;=、&lt;=；值限单引号字符串（'' 转义）或数字字面量。
+/// 解析成功编译为参数化谓词；其余一律拒绝。
 /// 空过滤由调用方视为"无行级限制"；解析失败时调用方必须拒绝执行（读/写返回 403）。
 /// </summary>
 internal static class DataFilterParser
@@ -148,13 +149,17 @@ internal static class DataFilterParser
         expression = string.Empty;
         if (position + 2 >= tokens.Count) return false;
         if (tokens[position].Kind != TokenKind.Identifier
-            || tokens[position + 1].Kind != TokenKind.Equals
-            || tokens[position + 2].Kind != TokenKind.Literal) return false;
+            || tokens[position + 1].Kind != TokenKind.Operator
+            || tokens[position + 2].Kind is not (TokenKind.Literal or TokenKind.Number)) return false;
         if (!TryResolveField(tokens[position].Text, masterTable, allowed, out var field)) return false;
+        var op = tokens[position + 1].Text;
+        if (op is not ("=" or "<>" or ">" or "<" or ">=" or "<=")) return false;
         var parameterName = $"@df{values.Count}";
-        values.Add(tokens[position + 2].Text);
+        values.Add(tokens[position + 2].Kind == TokenKind.Number
+            ? decimal.Parse(tokens[position + 2].Text, System.Globalization.CultureInfo.InvariantCulture)
+            : tokens[position + 2].Text);
         position += 3;
-        expression = $"[{field}] = {parameterName}";
+        expression = $"[{field}] {op} {parameterName}";
         return true;
     }
 
@@ -201,8 +206,17 @@ internal static class DataFilterParser
             }
             else if (ch == '=')
             {
-                tokens.Add(new Token(TokenKind.Equals, "="));
+                tokens.Add(new Token(TokenKind.Operator, "="));
                 index++;
+            }
+            else if (ch == '<' || ch == '>')
+            {
+                var start = index;
+                index++;
+                if (index < input.Length && (input[index] == '=' || (ch == '<' && input[index] == '>')))
+                    index++;
+                var text = input[start..index];
+                tokens.Add(new Token(TokenKind.Operator, text));
             }
             else if (ch == '\'')
             {
@@ -231,6 +245,13 @@ internal static class DataFilterParser
                 }
                 tokens.Add(new Token(TokenKind.Literal, builder.ToString()));
             }
+            else if (char.IsDigit(ch))
+            {
+                var start = index;
+                while (index < input.Length && (char.IsDigit(input[index]) || input[index] == '.'))
+                    index++;
+                tokens.Add(new Token(TokenKind.Number, input[start..index]));
+            }
             else if (char.IsLetter(ch) || ch == '_')
             {
                 var start = index;
@@ -255,7 +276,8 @@ internal static class DataFilterParser
     {
         Identifier,
         Literal,
-        Equals,
+        Number,
+        Operator,
         LeftParen,
         RightParen,
         AndOr,
