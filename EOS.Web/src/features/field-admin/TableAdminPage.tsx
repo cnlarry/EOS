@@ -43,7 +43,7 @@ export function TableAdminPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-end' },
+      meta: { className: 'text-end', frozenRight: true },
       cell: ({ row }) => <Button size="sm" className="erp-table-action" onClick={() => navigate(`/admin/tables/${encodeURIComponent(row.original.tableId)}/fields`)}>管理字段</Button>,
     },
   ], [navigate])

@@ -126,4 +126,58 @@ describe('ErpTable', () => {
     )
     await waitFor(() => expect(container.querySelector('table colgroup')).toBeInTheDocument())
   })
+
+  it('键盘导航：方向键移动活动行，Enter 触发行点击', () => {
+    const onRowClick = vi.fn()
+    const { container } = render(
+      <ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onRowClick={onRowClick} />,
+    )
+    const shell = container.querySelector('.erp-table-shell')!
+    fireEvent.keyDown(shell, { key: 'ArrowDown' })
+    expect(onRowClick).toHaveBeenLastCalledWith(rows[0])
+    fireEvent.keyDown(shell, { key: 'ArrowDown' })
+    expect(onRowClick).toHaveBeenLastCalledWith(rows[1])
+    fireEvent.keyDown(shell, { key: 'Enter' })
+    expect(onRowClick).toHaveBeenLastCalledWith(rows[1])
+    fireEvent.keyDown(shell, { key: 'Home' })
+    expect(onRowClick).toHaveBeenLastCalledWith(rows[0])
+  })
+
+  it('冻结列应用 sticky 类与偏移', () => {
+    const columns: ColumnDef<Row, unknown>[] = [
+      { accessorKey: 'id', header: 'ID', meta: { frozenLeft: true } },
+      { accessorKey: 'name', header: '名称' },
+    ]
+    const { container } = render(<ErpTable columns={columns} data={rows} getRowId={(row) => row.id} />)
+    expect(container.querySelector('thead th')).toHaveClass('erp-frozen-left')
+    expect(container.querySelector('thead th')).toHaveStyle({ left: '0px' })
+    expect(container.querySelector('tbody tr td')).toHaveClass('erp-frozen-left')
+  })
+
+  it('列头筛选：打开弹层应用条件并标记激活', () => {
+    const onColumnFilterChange = vi.fn()
+    const columns: ColumnDef<Row, unknown>[] = [
+      { accessorKey: 'name', header: '名称', meta: { filterable: true } },
+    ]
+    const { rerender } = render(
+      <ErpTable columns={columns} data={rows} getRowId={(row) => row.id} columnFilterValue={{}} onColumnFilterChange={onColumnFilterChange} />,
+    )
+    const trigger = screen.getByLabelText('筛选名称')
+    expect(trigger).not.toHaveClass('is-active')
+    fireEvent.click(trigger)
+    fireEvent.change(screen.getByLabelText('筛选运算符'), { target: { value: 'contains' } })
+    fireEvent.change(screen.getByLabelText('筛选值'), { target: { value: 'A' } })
+    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+    expect(onColumnFilterChange).toHaveBeenCalledWith('name', expect.objectContaining({ operator: 'contains', value: 'A' }))
+    rerender(
+      <ErpTable
+        columns={columns}
+        data={rows}
+        getRowId={(row) => row.id}
+        columnFilterValue={{ name: { field: 'name', operator: 'contains', value: 'A', valueTo: '', logic: 'and' } }}
+        onColumnFilterChange={onColumnFilterChange}
+      />,
+    )
+    expect(screen.getByLabelText('筛选名称')).toHaveClass('is-active')
+  })
 })

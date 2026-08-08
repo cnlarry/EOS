@@ -1,4 +1,4 @@
-import { IconArrowsSort, IconChevronDown, IconChevronUp } from '@tabler/icons-react'
+import { IconArrowsSort, IconChevronDown, IconChevronUp, IconFilter, IconFilterFilled } from '@tabler/icons-react'
 import {
   flexRender,
   getCoreRowModel,
@@ -8,8 +8,11 @@ import {
   type SortingState,
   type VisibilityState,
 } from '@tanstack/react-table'
-import type { MouseEvent, ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { ErpDataTable } from './ErpDataTable'
+import { ErpColumnFilter } from './ErpColumnFilter'
+import { emptyQueryCondition, type QueryCondition } from './ErpQueryBuilder'
+import { rowsToTsv, writeClipboard } from './tableClipboard'
 
 interface ErpTableProps<TData> {
   columns: ColumnDef<TData, unknown>[]
@@ -34,20 +37,31 @@ interface ErpTableProps<TData> {
   onColumnResize?: (columnKey: string, width: number) => void
   /** 追加到表格的类名（如 table-sm 明细表） */
   className?: string
+  /** 开启复制：Ctrl+C 复制选中/当前行，行右键菜单可复制本行/选中行 */
+  copyable?: boolean
+  /** 开启键盘导航：方向键/Home/End/PageUp/PageDown 移动活动行，Enter 触发行点击 */
+  keyboardNavigation?: boolean
+  /** 列头筛选值（列键 → 条件），配合 meta.filterable 与 onColumnFilterChange */
+  columnFilterValue?: Record<string, QueryCondition>
+  onColumnFilterChange?: (columnId: string, condition: QueryCondition | null) => void
 }
 
 /**
  * 统一 ERP 列表表格：TanStack Table 状态模型 + `erp-data-table` 样式外壳。
  *
  * 合并了原 DataTable（排序/选择/列显示）、ErpDataTable（样式）与
- * ResizableTable（列宽拖拽）的能力，供 DocumentWorkbench 主/子表、
- * 领域列表与维护列表统一使用。
+ * ResizableTable（列宽拖拽）的能力，并内置现代化网格交互：
+ * - 复制：Ctrl+C / 行右键复制（TSV，可直接粘贴进 Excel）；
+ * - 键盘导航：方向键/Home/End/PageUp/PageDown 移动活动行，Enter 触发；
+ * - 列头快速筛选（meta.filterable + columnFilterValue / onColumnFilterChange）；
+ * - 冻结列（meta.frozenLeft / meta.frozenRight，sticky）。
  *
  * 列级行为通过 ColumnMeta 扩展：
  * - `className`：td/th 追加类（对齐、选择列等）；
+ * - `cellClassName`：仅作用于数据单元格（优先级高于 className）；
  * - `minWidth`：表头最小列宽（工作台 DISPLAY_LENGTH）；
  * - `onHeaderContextMenu`：表头右键（工作台字段设置）；
- * - `headerClassName`：仅作用于表头。
+ * - `filterable` / `frozenLeft` / `frozenRight`：列头筛选 / 冻结。
  */
 export function ErpTable<TData>({
   columns,
@@ -67,7 +81,17 @@ export function ErpTable<TData>({
   persistResize = true,
   onColumnResize,
   className = '',
+  copyable = true,
+  keyboardNavigation = true,
+  columnFilterValue,
+  onColumnFilterChange,
 }: ErpTableProps<TData>) {
+  const shellRef = useRef<HTMLDivElement>(null)
+  const [focusIndex, setFocusIndex] = useState<number | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; rowId: string } | null>(null)
+  const [openFilter, setOpenFilter] = useState<string | null>(null)
+  const [draftFilter, setDraftFilter] = useState<QueryCondition>(emptyQueryCondition())
+
   const table = useReactTable({
     data,
     columns,
@@ -83,62 +107,214 @@ export function ErpTable<TData>({
       onColumnVisibilityChange?.(typeof updater === 'function' ? updater(columnVisibility) : updater),
   })
 
+  const rowsModel = table.getRowModel().rows
+
+  // 数据变化时钳制键盘焦点行号
+  useEffect(() => {
+    setFocusIndex((current) => (current === null ? null : Math.min(current, Math.max(rowsModel.length - 1, 0))))
+  }, [rowsModel.length])
+
+  // 键盘焦点行滚动到可视区
+  useEffect(() => {
+    if (focusIndex == null || !shellRef.current) return
+    shellRef.current
+      .querySelector(`tr[data-kb-index="${focusIndex}"]`)
+      ?.scrollIntoView?.({ block: 'nearest' })
+  }, [focusIndex])
+
+  // 行右键菜单：点击别处关闭
+  useEffect(() => {
+    if (!menu) return
+    const close = () => setMenu(null)
+    window.addEventListener('pointerdown', close)
+    return () => window.removeEventListener('pointerdown', close)
+  }, [menu])
+
+  const copyRows = (ids: string[]) => {
+    const tableEl = shellRef.current?.querySelector('table')
+    if (!ids.length || !tableEl) return
+    const headers = Array.from(tableEl.querySelectorAll('thead th')).map((th) => (th.textContent ?? '').trim())
+    const rows: string[][] = []
+    tableEl.querySelectorAll('tbody tr').forEach((tr) => {
+      if (!ids.includes(tr.getAttribute('data-order-id') ?? '')) return
+      rows.push(Array.from(tr.querySelectorAll('td')).map((td) => (td.textContent ?? '').trim()))
+    })
+    if (rows.length === 0) return
+    writeClipboard(rowsToTsv(headers, rows))
+  }
+
+  const copySelection = (): string[] => {
+    const selected = Object.keys(rowSelection).filter((id) => rowSelection[id])
+    if (selected.length > 0) return selected
+    if (activeRowId) return [activeRowId]
+    if (focusIndex != null && rowsModel[focusIndex]) return [rowsModel[focusIndex].id]
+    return []
+  }
+
+  const moveFocus = (target: number) => {
+    if (rowsModel.length === 0) return
+    const clamped = Math.max(0, Math.min(target, rowsModel.length - 1))
+    setFocusIndex(clamped)
+    onRowClick?.(rowsModel[clamped].original)
+  }
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (keyboardNavigation && rowsModel.length > 0) {
+      switch (event.key) {
+        case 'ArrowDown': moveFocus((focusIndex ?? -1) + 1); event.preventDefault(); return
+        case 'ArrowUp': moveFocus((focusIndex ?? rowsModel.length) - 1); event.preventDefault(); return
+        case 'Home': moveFocus(0); event.preventDefault(); return
+        case 'End': moveFocus(rowsModel.length - 1); event.preventDefault(); return
+        case 'PageDown': moveFocus((focusIndex ?? 0) + 10); event.preventDefault(); return
+        case 'PageUp': moveFocus((focusIndex ?? 0) - 10); event.preventDefault(); return
+        case 'Enter':
+          if (focusIndex != null && rowsModel[focusIndex]) {
+            onRowClick?.(rowsModel[focusIndex].original)
+            event.preventDefault()
+          }
+          return
+      }
+    }
+    if (copyable && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+      copyRows(copySelection())
+      event.preventDefault()
+    }
+  }
+
+  const openColumnFilter = (columnId: string) => {
+    setDraftFilter(columnFilterValue?.[columnId] ?? emptyQueryCondition())
+    setOpenFilter(columnId)
+  }
+  const applyColumnFilter = () => {
+    if (openFilter) onColumnFilterChange?.(openFilter, draftFilter)
+    setOpenFilter(null)
+  }
+  const clearColumnFilter = () => {
+    if (openFilter) onColumnFilterChange?.(openFilter, null)
+    setOpenFilter(null)
+  }
+
   if (data.length === 0 && empty != null) return <>{empty}</>
 
   return (
-    <ErpDataTable resizable={resizable} storageKey={storageKey} className={className} persistResize={persistResize} onColumnResize={onColumnResize}>
-      <thead>
-        {table.getHeaderGroups().map((headerGroup) => (
-          <tr key={headerGroup.id}>
-            {headerGroup.headers.map((header) => {
-              const meta = header.column.columnDef.meta
-              const sorted = header.column.getIsSorted()
-              return (
-                <th
-                  key={header.id}
-                  data-col-key={header.column.id}
-                  data-col-min-width={meta?.minWidth ?? undefined}
-                  className={[meta?.className, meta?.headerClassName].filter(Boolean).join(' ') || undefined}
-                  style={meta?.minWidth ? { minWidth: meta.minWidth } : undefined}
-                  onContextMenu={meta?.onHeaderContextMenu}
-                >
-                  {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                    <button className="erp-sort-button" type="button" onClick={header.column.getToggleSortingHandler()}>
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                      {sorted === 'asc' ? (
-                        <IconChevronUp size={14} />
-                      ) : sorted === 'desc' ? (
-                        <IconChevronDown size={14} />
-                      ) : (
-                        <IconArrowsSort size={14} />
-                      )}
-                    </button>
-                  ) : (
-                    flexRender(header.column.columnDef.header, header.getContext())
-                  )}
-                </th>
-              )
-            })}
-          </tr>
-        ))}
-      </thead>
-      <tbody>
-        {table.getRowModel().rows.map((row) => (
-          <tr
-            key={row.id}
-            className={`${row.getIsSelected() ? 'table-active ' : ''}${activeRowId === row.id ? 'erp-row-active' : ''}`.trim() || undefined}
-            onClick={() => onRowClick?.(row.original)}
-            data-order-id={row.id}
+    <div ref={shellRef} className="erp-table-shell" tabIndex={0} onKeyDown={handleKeyDown}>
+      <ErpDataTable resizable={resizable} storageKey={storageKey} className={className} persistResize={persistResize} onColumnResize={onColumnResize}>
+        <thead>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr key={headerGroup.id}>
+              {headerGroup.headers.map((header) => {
+                const meta = header.column.columnDef.meta
+                const sorted = header.column.getIsSorted()
+                const frozen = meta?.frozenLeft ? 'erp-frozen-left' : meta?.frozenRight ? 'erp-frozen-right' : ''
+                const thStyle: CSSProperties = { position: 'relative' }
+                if (meta?.minWidth) thStyle.minWidth = meta.minWidth
+                if (meta?.frozenLeft) thStyle.left = 0
+                if (meta?.frozenRight) thStyle.right = 0
+                const headerLabel = typeof header.column.columnDef.header === 'string'
+                  ? header.column.columnDef.header
+                  : header.column.id
+                const filterActive = Boolean(columnFilterValue?.[header.column.id])
+                return (
+                  <th
+                    key={header.id}
+                    data-col-key={header.column.id}
+                    data-col-min-width={meta?.minWidth ?? undefined}
+                    className={[meta?.className, meta?.headerClassName, frozen].filter(Boolean).join(' ') || undefined}
+                    style={thStyle}
+                    onContextMenu={meta?.onHeaderContextMenu}
+                  >
+                    {header.isPlaceholder ? null : header.column.getCanSort() ? (
+                      <button className="erp-sort-button" type="button" onClick={header.column.getToggleSortingHandler()}>
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {sorted === 'asc' ? (
+                          <IconChevronUp size={14} />
+                        ) : sorted === 'desc' ? (
+                          <IconChevronDown size={14} />
+                        ) : (
+                          <IconArrowsSort size={14} />
+                        )}
+                      </button>
+                    ) : (
+                      flexRender(header.column.columnDef.header, header.getContext())
+                    )}
+                    {meta?.filterable && onColumnFilterChange && (
+                      <button
+                        type="button"
+                        className={`erp-filter-button ${filterActive ? 'is-active' : ''}`}
+                        aria-label={`筛选${headerLabel}`}
+                        title="筛选"
+                        onClick={() => (openFilter === header.column.id ? setOpenFilter(null) : openColumnFilter(header.column.id))}
+                      >
+                        {filterActive ? <IconFilterFilled size={13} /> : <IconFilter size={13} />}
+                      </button>
+                    )}
+                    {openFilter === header.column.id && (
+                      <div className="erp-column-filter-popover" onClick={(event) => event.stopPropagation()}>
+                        <ErpColumnFilter
+                          condition={draftFilter}
+                          onChange={setDraftFilter}
+                          onApply={applyColumnFilter}
+                          onClear={clearColumnFilter}
+                        />
+                      </div>
+                    )}
+                  </th>
+                )
+              })}
+            </tr>
+          ))}
+        </thead>
+        <tbody>
+          {rowsModel.map((row, index) => {
+            return (
+              <tr
+                key={row.id}
+                data-order-id={row.id}
+                data-kb-index={index}
+                className={`${row.getIsSelected() ? 'table-active ' : ''}${activeRowId === row.id ? 'erp-row-active ' : ''}${focusIndex === index ? 'erp-row-focus' : ''}`.trim() || undefined}
+                onClick={() => onRowClick?.(row.original)}
+                onContextMenu={copyable ? (event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, rowId: row.id }) } : undefined}
+              >
+                {row.getVisibleCells().map((cell) => {
+                  const cellMeta = cell.column.columnDef.meta
+                  const cellFrozen = cellMeta?.frozenLeft ? 'erp-frozen-left' : cellMeta?.frozenRight ? 'erp-frozen-right' : ''
+                  return (
+                    <td
+                      key={cell.id}
+                      className={[cellMeta?.cellClassName ?? cellMeta?.className, cellFrozen].filter(Boolean).join(' ') || undefined}
+                      style={cellMeta?.frozenLeft ? { left: 0 } : cellMeta?.frozenRight ? { right: 0 } : undefined}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  )
+                })}
+              </tr>
+            )
+          })}
+        </tbody>
+      </ErpDataTable>
+      {menu && copyable && (
+        <div
+          className="dropdown-menu show erp-table-context-menu"
+          style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 1100 }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button className="dropdown-item" onClick={() => { copyRows([menu.rowId]); setMenu(null) }}>
+            复制本行
+          </button>
+          <button
+            className="dropdown-item"
+            onClick={() => {
+              const selected = Object.keys(rowSelection).filter((id) => rowSelection[id])
+              copyRows(selected.length > 0 ? selected : [menu.rowId])
+              setMenu(null)
+            }}
           >
-            {row.getVisibleCells().map((cell) => (
-              <td key={cell.id} className={cell.column.columnDef.meta?.cellClassName ?? cell.column.columnDef.meta?.className}>
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </ErpDataTable>
+            复制选中行
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -150,5 +326,11 @@ declare module '@tanstack/react-table' {
     cellClassName?: string
     minWidth?: number
     onHeaderContextMenu?: (event: MouseEvent<HTMLTableCellElement>) => void
+    /** 该列支持列头快速筛选（需配合 ErpTable 的 onColumnFilterChange） */
+    filterable?: boolean
+    /** 冻结在左侧（sticky left，建议仅首列） */
+    frozenLeft?: boolean
+    /** 冻结在右侧（sticky right，建议仅末列） */
+    frozenRight?: boolean
   }
 }

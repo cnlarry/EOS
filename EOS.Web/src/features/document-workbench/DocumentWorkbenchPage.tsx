@@ -28,6 +28,7 @@ interface SetupLookup { value:string; label:string }
 interface ChooserSource { active:boolean; table:string|null; description:string|null; moduleId:number|null; filter:string|null; returnMapping:string|null }
 interface FieldMetadata { key:string; tableId:string; label:string; dataType:string; width:number; align:string; headerAlign:string; format:string|null; isVisible:boolean; isDefault:boolean; isQueryable:boolean; isReadonly:boolean; isRequired:boolean; isCost:boolean; isSecrecy:boolean; defaultValue:string|null; verifyIndex:number|null; regex:string|null; remark:string|null; browseUrl:string|null; browseModuleId:number|null; onlyChoose:boolean; chooseMultiple:boolean; choosePage:string|null; choosers:ChooserSource[]; isVirtual:boolean; virtualExpression:string|null; canCopy:boolean; isAutoIncrement:boolean; convertFunction:string|null; dataSourceSql:string|null; lastUpdatedBy:string|null; lastUpdatedAt:string|null }
 const uniqueFields=(fields:Field[])=>fields.filter((field,index,all)=>all.findIndex(item=>item.key.toLowerCase()===field.key.toLowerCase())===index)
+const renderText=(value:string)=>value.length>24?<span className="erp-cell-ellipsis" title={value}>{value}</span>:value
 export function DocumentWorkbenchPage() {
   const { hasPermission } = useAuth()
   const navigate=useNavigate()
@@ -40,6 +41,8 @@ export function DocumentWorkbenchPage() {
   const [detailSort,setDetailSort]=useState<{field:string;direction:'asc'|'desc'}|null>(null)
   const [queryOpen,setQueryOpen]=useState(false)
   const [columnsOpen,setColumnsOpen]=useState(false)
+  const [pageSizePref,setPageSizePref]=useState<number|null>(null)
+  const [columnFilters,setColumnFilters]=useState<Record<string,QueryCondition>>({})
   const [fieldMenu,setFieldMenu]=useState<{x:number;y:number;detail:boolean;fieldKey:string}|null>(null)
   const [fieldEditor,setFieldEditor]=useState<{detail:boolean;fieldKey:string}|null>(null)
   const [appliedConditions,setAppliedConditions]=useState<QueryCondition[]>([])
@@ -47,7 +50,7 @@ export function DocumentWorkbenchPage() {
   const [keyword,setKeyword]=useState('')
   const [exporting,setExporting]=useState(false)
   const definition=useQuery({queryKey:['workbench',moduleId,'definition'],queryFn:()=>apiClient.get<Definition>(`/document-workbench/${moduleId}/definition`)})
-  const pageSize=definition.data?.detailTable?10:16
+  const pageSize=pageSizePref??(definition.data?.detailTable?10:16)
   const records=useQuery({queryKey:['workbench',moduleId,'records',page,pageSize,appliedConditions,keyword,sort],queryFn:()=>appliedConditions.length?apiClient.post<DataResponse>(`/document-workbench/${moduleId}/query?page=${page}&pageSize=${pageSize}${keyword?`&keyword=${encodeURIComponent(keyword)}`:''}${sort?`&sortField=${encodeURIComponent(sort.field)}&sortDirection=${sort.direction}`:''}`,{conditions:appliedConditions}):apiClient.get<DataResponse>(`/document-workbench/${moduleId}/records`,{query:{page,pageSize,keyword:keyword||undefined,sortField:sort?.field,sortDirection:sort?.direction}}),enabled:definition.isSuccess,placeholderData:keepPreviousData})
   const columnSettings=useQuery({queryKey:['workbench',moduleId,'column-editor'],queryFn:()=>apiClient.get<{current:ColumnSettings;defaults:ColumnSettings}>(`/document-workbench/${moduleId}/column-editor`),enabled:columnsOpen})
   const saveColumns=useMutation({mutationFn:(settings:{master:string[];detail:string[]})=>apiClient.put<void>(`/document-workbench/${moduleId}/columns`,{master:settings.master,detail:settings.detail}),onSuccess:async()=>{await Promise.all([queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']}),queryClient.invalidateQueries({queryKey:['workbench',moduleId,'column-editor']})])}})
@@ -75,7 +78,7 @@ export function DocumentWorkbenchPage() {
       id:'select',
       enableSorting:false,
       enableHiding:false,
-      meta:{className:'erp-select-column'},
+      meta:{className:'erp-select-column',frozenLeft:true},
       header:({table})=>(
         <input
           className="form-check-input"
@@ -106,13 +109,15 @@ export function DocumentWorkbenchPage() {
         className:alignClass(field.headerAlign),
         cellClassName:alignClass(field.align),
         minWidth:field.width,
+        filterable:field.isQueryable,
         onHeaderContextMenu:(event:MouseEvent<HTMLTableCellElement>)=>openFieldMenu(event,false,field.key),
       },
       cell:(info)=>{
         const value=formatFieldValue(info.getValue(),field.dataType,field.format)
+        if(!value)return '—'
         return field.browseUrl&&field.browseModuleId&&field.browseModuleId>0
           ?<FieldBrowseLink value={value} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
-          :value
+          :renderText(value)
       },
     })),
   ],[master,openFieldMenu,hasPermission])
@@ -129,9 +134,10 @@ export function DocumentWorkbenchPage() {
     },
     cell:(info)=>{
       const value=formatFieldValue(info.getValue(),field.dataType,field.format)
+      if(!value)return '—'
       return field.browseUrl&&field.browseModuleId&&field.browseModuleId>0
         ?<FieldBrowseLink value={value} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
-        :value
+        :renderText(value)
     },
   })),[detail,openFieldMenu,hasPermission])
   const rowSelection=useMemo<RowSelectionState>(()=>Object.fromEntries(Object.keys(selected).map(key=>[key,true])),[selected])
@@ -155,6 +161,20 @@ export function DocumentWorkbenchPage() {
   },[definition.data,moduleId,queryClient])
   const saveMasterWidth=useCallback((columnKey:string,width:number)=>{void saveColumnWidth(false,columnKey,width)},[saveColumnWidth])
   const saveDetailWidth=useCallback((columnKey:string,width:number)=>{void saveColumnWidth(true,columnKey,width)},[saveColumnWidth])
+  const handleColumnFilterChange=useCallback((columnId:string,condition:QueryCondition|null)=>{
+    setColumnFilters(current=>{
+      const next={...current}
+      if(condition)next[columnId]=condition
+      else delete next[columnId]
+      return next
+    })
+    setAppliedConditions(current=>{
+      const next=current.filter(item=>item.field.toLowerCase()!==columnId.toLowerCase())
+      if(condition)next.push({...condition,logic:'and'})
+      return next
+    })
+    setPage(1)
+  },[])
   if(definition.isPending)return <LoadingState label="正在加载单据定义…"/>
   if(definition.isError)return <section className="card"><div className="card-body text-center py-5">无法加载模块定义。</div></section>
 
@@ -183,7 +203,7 @@ export function DocumentWorkbenchPage() {
         <Button size="sm" icon={<IconPrinter size={16}/>} onClick={()=>window.print()}>打印</Button>
         <Button size="sm" icon={<IconFileExport size={16}/>} loading={exporting} onClick={()=>void handleExport()}>导出</Button>
       </>}
-      footer={<ErpPagination total={records.data?.total??0} page={page} pageSize={pageSize} onPageChange={setPage} />}
+      footer={<ErpPagination total={records.data?.total??0} page={page} pageSize={pageSize} onPageChange={setPage} pageSizes={[10,16,25,50]} onPageSizeChange={(size)=>{setPageSizePref(size);setPage(1)}} />}
     >
       <div className={`erp-master-table-region ${records.isFetching?'is-loading':''}`}>
         {records.isPending?<LoadingState label="正在加载主表数据…"/>:records.isError?<ErrorState message={recordsError} onRetry={()=>void records.refetch()}/>:<ErpTable
@@ -200,6 +220,8 @@ export function DocumentWorkbenchPage() {
           storageKey={`workbench-${moduleId}-master`}
           persistResize={false}
           onColumnResize={saveMasterWidth}
+          columnFilterValue={columnFilters}
+          onColumnFilterChange={handleColumnFilterChange}
           empty={null}
         />}
       </div>
@@ -235,7 +257,7 @@ export function DocumentWorkbenchPage() {
       conditions={conditions}
       onChange={setConditions}
       onApply={()=>{setAppliedConditions(conditions);setPage(1);setQueryOpen(false)}}
-      onClear={()=>{setConditions([emptyQueryCondition()]);setAppliedConditions([]);setPage(1);setQueryOpen(false)}}
+      onClear={()=>{setConditions([emptyQueryCondition()]);setAppliedConditions([]);setColumnFilters({});setPage(1);setQueryOpen(false)}}
       onClose={()=>setQueryOpen(false)}
     />}
   </div>
