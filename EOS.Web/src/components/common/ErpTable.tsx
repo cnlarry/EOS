@@ -91,6 +91,7 @@ export function ErpTable<TData>({
   const [menu, setMenu] = useState<{ x: number; y: number; rowId: string } | null>(null)
   const [openFilter, setOpenFilter] = useState<string | null>(null)
   const [openMenu, setOpenMenu] = useState<string | null>(null)
+  const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null)
   const [draftFilter, setDraftFilter] = useState<QueryCondition>(emptyQueryCondition())
 
   const table = useReactTable({
@@ -142,7 +143,12 @@ export function ErpTable<TData>({
       setOpenMenu(null)
     }
     window.addEventListener('pointerdown', close)
-    return () => window.removeEventListener('pointerdown', close)
+    const closeOnScroll = () => setOpenMenu(null)
+    window.addEventListener('scroll', closeOnScroll, true)
+    return () => {
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('scroll', closeOnScroll, true)
+    }
   }, [openMenu])
 
   // 列头筛选弹层：点击表格其它位置关闭
@@ -214,12 +220,21 @@ export function ErpTable<TData>({
     setOpenFilter(columnId)
   }
   const applyColumnFilter = () => {
-    if (openFilter) onColumnFilterChange?.(openFilter, draftFilter)
+    if (openFilter) onColumnFilterChange?.(openFilter, { ...draftFilter, field: openFilter })
     setOpenFilter(null)
   }
   const clearColumnFilter = () => {
     if (openFilter) onColumnFilterChange?.(openFilter, null)
     setOpenFilter(null)
+  }
+
+  const openHeaderMenu = (columnId: string, trigger: HTMLElement) => {
+    const rect = trigger.getBoundingClientRect()
+    const menuWidth = 96
+    let left = rect.left
+    if (left + menuWidth > window.innerWidth - 8) left = Math.max(8, window.innerWidth - menuWidth - 8)
+    setMenuPos({ left, top: rect.bottom + 4 })
+    setOpenMenu(columnId)
   }
 
   if (data.length === 0 && empty != null) return <>{empty}</>
@@ -259,7 +274,7 @@ export function ErpTable<TData>({
                     key={header.id}
                     data-col-key={header.column.id}
                     data-col-min-width={meta?.minWidth ?? undefined}
-                    className={[meta?.className, meta?.headerClassName, frozen].filter(Boolean).join(' ') || undefined}
+                    className={[meta?.className, meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : ''].filter(Boolean).join(' ') || undefined}
                     style={thStyle}
                     onContextMenu={meta?.onHeaderContextMenu}
                   >
@@ -273,7 +288,7 @@ export function ErpTable<TData>({
                           className={`erp-header-menu-trigger ${sorted ? 'is-active' : ''} ${filterActive ? 'is-filtered' : ''}`}
                           aria-label={`表头操作${headerLabel}`}
                           title="排序 / 筛选"
-                          onClick={() => setOpenMenu(openMenu === header.column.id ? null : header.column.id)}
+                          onClick={(event) => (openMenu === header.column.id ? setOpenMenu(null) : openHeaderMenu(header.column.id, event.currentTarget))}
                         >
                           {sorted === 'asc' ? <IconChevronUp size={13} /> : <IconChevronDown size={13} />}
                         </button>
@@ -282,7 +297,11 @@ export function ErpTable<TData>({
                       flexRender(header.column.columnDef.header, header.getContext())
                     )}
                     {openMenu === header.column.id && (
-                      <div className="erp-header-menu dropdown-menu show" onClick={(event) => event.stopPropagation()}>
+                      <div
+                        className="erp-header-menu dropdown-menu show"
+                        style={{ position: 'fixed', left: menuPos?.left ?? 0, top: menuPos?.top ?? 0 }}
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         {menuItems.map((item) => (
                           <button
                             key={item.key}

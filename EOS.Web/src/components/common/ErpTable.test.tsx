@@ -185,7 +185,7 @@ describe('ErpTable', () => {
     fireEvent.change(screen.getByLabelText('筛选运算符'), { target: { value: 'contains' } })
     fireEvent.change(screen.getByLabelText('筛选值'), { target: { value: 'A' } })
     fireEvent.click(screen.getByRole('button', { name: '应用' }))
-    expect(onColumnFilterChange).toHaveBeenCalledWith('name', expect.objectContaining({ operator: 'contains', value: 'A' }))
+    expect(onColumnFilterChange).toHaveBeenCalledWith('name', expect.objectContaining({ field: 'name', operator: 'contains', value: 'A' }))
     rerender(
       <ErpTable
         columns={columns}
