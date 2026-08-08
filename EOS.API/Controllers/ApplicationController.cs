@@ -69,6 +69,7 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
         [2302] = "/admin/tables",
         [2306] = "/admin/users",
         [230902] = "/import",
+        [110111] = "/settings/system",
     };
 
     private static string RouteFor(LegacyNavigationModule module) =>
