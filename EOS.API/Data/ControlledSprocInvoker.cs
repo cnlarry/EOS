@@ -43,7 +43,10 @@ public sealed class ControlledSprocInvoker(DbConnectionFactory connections, ILog
     {
         if (!IsAllowed(sprocName)) return new(false, $"存储过程不在受控白名单内：{sprocName}");
         var keyCondition = BuildKeyCondition(pkColumns, keyValues);
-        await using var command = new SqlCommand($"EXEC dbo.[{sprocName}] @pri_idx, @module", connection, transaction);
+        await using var command = new SqlCommand(sprocName, connection, transaction)
+        {
+            CommandType = CommandType.StoredProcedure,
+        };
         command.Parameters.Add("@pri_idx", SqlDbType.NVarChar, 1000).Value = keyCondition;
         command.Parameters.Add("@module", SqlDbType.Int).Value = moduleId;
         try
@@ -74,8 +77,10 @@ public sealed class ControlledSprocInvoker(DbConnectionFactory connections, ILog
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         var keyCondition = BuildKeyCondition(pkColumns, keyValues);
-        await using var command = new SqlCommand(
-            $"EXEC @rc = dbo.[{sprocName}] @key_value, @approve_tag, @msg OUTPUT", connection);
+        await using var command = new SqlCommand(sprocName, connection)
+        {
+            CommandType = CommandType.StoredProcedure,
+        };
         command.Parameters.Add("@key_value", SqlDbType.VarChar, 200).Value = keyCondition;
         command.Parameters.Add("@approve_tag", SqlDbType.Int).Value = approve ? 1 : -1;
         var messageParameter = command.Parameters.Add("@msg", SqlDbType.VarChar, 8000);

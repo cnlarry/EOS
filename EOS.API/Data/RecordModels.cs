@@ -3,7 +3,14 @@ namespace EOS.API.Data;
 public sealed record SaveRecordRequest(
     IReadOnlyDictionary<string, string?> Values,
     IReadOnlyList<IReadOnlyDictionary<string, string?>>? Details = null,
-    IReadOnlyDictionary<string, string?>? Original = null);
+    IReadOnlyDictionary<string, string?>? Original = null,
+    IReadOnlyList<PrepayOffsetRequest>? PrepayOffsets = null);
+
+/// <summary>
+/// 收款/付款单的预收/预付冲抵行（对应旧 COP_RECEIPT_PREPAY / PUR_PAY_PREPAY 关联表）。
+/// 只允许引用已批核的预收/预付单，金额由保存后的 AfterSave/P_WF_* 汇总校验。
+/// </summary>
+public sealed record PrepayOffsetRequest(string Type, string No, decimal? Amount, decimal PrepayAmount);
 
 public sealed record ApproveWorkflowRequest(string Key);
 
