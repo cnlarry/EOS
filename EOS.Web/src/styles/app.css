@@ -158,6 +158,8 @@ button, input, select { font: inherit; }
 .erp-data-table .btn-sm.erp-table-action svg { width: 14px; height: 14px; }
 .erp-data-table .erp-select-column { width: 33px !important; min-width: 33px; max-width: 33px; padding: 5px !important; text-align: center; }
 .erp-data-table .erp-select-column .form-check-input { display: block; margin: 0 auto; }
+.erp-data-table .erp-browse-link { color: var(--tblr-primary); text-decoration: none; }
+.erp-data-table .erp-browse-link:hover { text-decoration: underline; }
 .erp-detail-card .table { font-size: 12px; }
 .erp-detail-card .table th,
 .erp-detail-card .table td { font-size: 12px; }
