@@ -17,7 +17,7 @@ public sealed record UpdateWorkbenchFieldMetadata(string Label,string DataType,i
 public sealed record WorkbenchDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, IReadOnlyList<WorkbenchField> MasterFields, IReadOnlyList<WorkbenchField> DetailFields, string? DefaultSort, bool HasAdd, bool HasEdit, bool DetailNoSave, IReadOnlyList<string> MasterPkOrder, string DetailNoFields);
 public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength);
-public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
+public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize, IReadOnlyDictionary<string, double?>? Totals = null);
 public sealed record WorkbenchQueryCondition(string Field, string Operator, string? Value, string? ValueTo, IReadOnlyList<string>? Values, string Logic = "and");
 public sealed record WorkbenchQuery(IReadOnlyList<WorkbenchQueryCondition> Conditions);
 public sealed record ExportSelectedRequest(IReadOnlyList<IReadOnlyList<string>> Keys);
@@ -31,6 +31,12 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
+    private static readonly HashSet<string> NumericTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "int", "smallint", "tinyint", "bigint", "float", "double", "numeric", "decimal", "money", "smallmoney", "real",
+    };
+
+    private static bool IsNumericField(string dataType) => NumericTypes.Contains(dataType.Trim());
 
     /// <summary>
     /// 浏览链接模板白名单校验（BROWSE_URL）。
@@ -320,13 +326,18 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
         if (!detail && !string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,detail,sortField,sortDirection);
-        command.CommandText=$"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {string.Join(',',selected.Select(field=>$"[{field.Key}]"))} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
+        var numericFields=selected.Where(field=>IsNumericField(field.DataType)).ToList();
+        command.CommandText=$"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {string.Join(',',selected.Select(field=>$"[{field.Key}]"))} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;{(numericFields.Count>0?$" SELECT {string.Join(',',numericFields.Select(field=>$"SUM(CONVERT(float,[{field.Key}]))"))} FROM dbo.[{table}] WITH (NOLOCK){where};":"")}";
         command.Parameters.Add("@Offset",SqlDbType.Int).Value=(page-1)*pageSize;command.Parameters.Add("@PageSize",SqlDbType.Int).Value=pageSize;
         await using var reader=await command.ExecuteReaderAsync(token); await reader.ReadAsync(token);var total=Convert.ToInt32(reader.GetInt64(0));await reader.NextResultAsync(token); var rows=new List<Dictionary<string,object?>>();
         while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase); for(var i=0;i<reader.FieldCount;i++) row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i); rows.Add(row);}
+        var totals=new Dictionary<string,double?>(StringComparer.OrdinalIgnoreCase);
+        if(numericFields.Count>0&&await reader.NextResultAsync(token)&&await reader.ReadAsync(token))
+            for(var i=0;i<numericFields.Count;i++)
+                totals[numericFields[i].Key]=reader.IsDBNull(i)?(double?)null:Convert.ToDouble(reader.GetValue(i));
         logger.LogDebug("工作台查询完成 detail={Detail} table={Table} page={Page} pageSize={PageSize} total={Total} returned={Returned} elapsedMs={ElapsedMs:F0}",
             detail,table,page,pageSize,total,rows.Count,stopwatch.Elapsed.TotalMilliseconds);
-        return new(rows,total,page,pageSize);
+        return new(rows,total,page,pageSize,totals);
     }
 
     public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsAsync(WorkbenchDefinition definition,WorkbenchQuery? query,string? keyword,CancellationToken token,string? sortField=null,string? sortDirection=null)

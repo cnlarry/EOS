@@ -21,7 +21,7 @@ import { FieldBrowseLink } from './FieldBrowseLink'
 
 interface Field { key:string; label:string; dataType:string; width:number; align:string; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null }
 interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[] }
-interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number }
+interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number; totals?:Record<string,number|null> }
 interface ColumnSetting { key:string; label:string; isVisible:boolean; order:number }
 interface ColumnSettings { master:ColumnSetting[]; detail:ColumnSetting[] }
 interface SetupLookup { value:string; label:string }
@@ -223,6 +223,7 @@ export function DocumentWorkbenchPage() {
           columnFilterValue={columnFilters}
           onColumnFilterChange={handleColumnFilterChange}
           dense={dense}
+          totals={records.data?.totals}
           empty={null}
         />}
       </div>
