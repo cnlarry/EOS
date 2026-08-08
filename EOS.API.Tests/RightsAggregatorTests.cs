@@ -38,6 +38,7 @@ public class RightsAggregatorTests
         Assert.Empty(rights.DenyNewMasterFields);
         Assert.Empty(rights.DenyModiMasterFields);
         Assert.Equal(string.Empty, rights.DataFilter);
+        Assert.Equal("A", rights.ExecuteTag);
     }
 
     [Fact]
@@ -63,9 +64,19 @@ public class RightsAggregatorTests
     {
         var rights = RightsAggregator.FromGroups([Row("A"), Row("D"), Row("B")]);
         Assert.True(rights.CanBrowse);
+        Assert.Equal("D", rights.ExecuteTag);
 
         var none = RightsAggregator.FromGroups([Row("A"), Row("A")]);
         Assert.False(none.CanBrowse);
+        Assert.Equal("A", none.ExecuteTag);
+    }
+
+    [Fact]
+    public void PersonalRights_ExecuteTagPassedThrough()
+    {
+        var rights = RightsAggregator.FromPersonal(Row("C"));
+        Assert.Equal("C", rights.ExecuteTag);
+        Assert.True(rights.CanBrowse);
     }
 
     [Fact]

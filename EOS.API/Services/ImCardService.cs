@@ -53,6 +53,7 @@ public sealed class ImCardService(
         var definition = await repository.GetDefinitionAsync(
             moduleId.Value,
             userId.Trim(),
+            rights.ExecuteTag,
             rights.CanViewCost,
             rights.CanViewSecrecy,
             rights.DeniedMasterFields,

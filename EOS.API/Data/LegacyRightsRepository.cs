@@ -119,7 +119,8 @@ internal static class RightsAggregator
         DenyNewDetailFields: ParseDenied(row.DenyNewDetail),
         DenyModiMasterFields: ParseDenied(row.DenyModiMaster),
         DenyModiDetailFields: ParseDenied(row.DenyModiDetail),
-        DataFilter: row.DataFilter.Trim());
+        DataFilter: row.DataFilter.Trim(),
+        ExecuteTag: string.IsNullOrWhiteSpace(row.Execute) ? "A" : row.Execute.Trim());
 
     public static LegacyModuleRights FromGroups(IReadOnlyList<RightRow> rows)
     {
@@ -133,7 +134,8 @@ internal static class RightsAggregator
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                string.Empty);
+                string.Empty,
+                "A");
         }
 
         var execute = rows.Select(row => row.Execute).OrderByDescending(value => value, StringComparer.Ordinal).First();
@@ -151,7 +153,8 @@ internal static class RightsAggregator
             IntersectDenied(rows.Select(row => row.DenyNewDetail)),
             IntersectDenied(rows.Select(row => row.DenyModiMaster)),
             IntersectDenied(rows.Select(row => row.DenyModiDetail)),
-            CombineDataFilters(rows));
+            CombineDataFilters(rows),
+            execute);
     }
 
     private static string CombineDataFilters(IReadOnlyList<RightRow> rows)
