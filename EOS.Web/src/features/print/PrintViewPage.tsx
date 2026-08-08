@@ -24,6 +24,15 @@ const formatValue = (value: unknown): string => {
   return String(value)
 }
 
+const isAmountColumn = (key: string): boolean =>
+  /(QTY|AMOUNT|PRICE|SUM)/i.test(key)
+
+const totalOf = (rows: Record<string, unknown>[], field: PrintField): number =>
+  rows.reduce((sum, row) => {
+    const value = Number(row[field.key])
+    return sum + (Number.isFinite(value) ? value : 0)
+  }, 0)
+
 export function PrintViewPage() {
   const { moduleId = '' } = useParams()
   const [searchParams] = useSearchParams()
@@ -68,6 +77,13 @@ export function PrintViewPage() {
             {print.details.map((row, index) => (
               <tr key={index}>{print.detailFields.map((field) => <td key={field.key} className="small">{formatValue(row[field.key])}</td>)}</tr>
             ))}
+            {print.details.length > 0 && (
+              <tr className="fw-semibold">
+                {print.detailFields.map((field) => (
+                  <td key={field.key} className="small">{isAmountColumn(field.key) ? totalOf(print.details, field).toFixed(2) : ''}</td>
+                ))}
+              </tr>
+            )}
           </tbody>
         </table>
       )}
