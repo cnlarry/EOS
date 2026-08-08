@@ -228,7 +228,7 @@ export function DocumentWorkbenchPage() {
         />}
       </div>
     </ErpListCard>
-    {definition.data.detailTable&&<section className="card erp-detail-card"><div className="card-header py-2"><h2 className="card-title">{definition.data.title}明细</h2></div>{details.isError?<div className="alert alert-danger d-flex align-items-center justify-content-between m-2 mb-0"><span>明细数据加载失败。</span><button type="button" className="btn btn-danger btn-sm" onClick={()=>void details.refetch()}>重新加载</button></div>:<ErpTable
+    {definition.data.detailTable&&<section className="card erp-detail-card">{details.isError?<div className="alert alert-danger d-flex align-items-center justify-content-between m-2 mb-0"><span>明细数据加载失败。</span><button type="button" className="btn btn-danger btn-sm" onClick={()=>void details.refetch()}>重新加载</button></div>:<ErpTable
       columns={detailColumns}
       data={active?details.data?.rows??[]:[]}
       sorting={detailSorting}

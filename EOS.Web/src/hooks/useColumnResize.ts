@@ -137,7 +137,6 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
 
     const attachHandles = () => {
       thsOf().forEach((th) => {
-        th.style.position = 'relative'
         if (th.querySelector('.erp-col-resizer')) return
         const handle = document.createElement('div')
         handle.className = 'erp-col-resizer'
