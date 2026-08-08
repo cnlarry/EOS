@@ -71,6 +71,43 @@ export function PrintViewPage() {
   const print = data.data!
 
   const layout = DOCUMENT_LAYOUTS[print.moduleId]
+  if (print.moduleId === 1401 || print.moduleId === 1601) {
+    const idField = print.moduleId === 1401 ? 'CLIENT_ID' : 'SUPPLIER_ID'
+    const nameField = print.moduleId === 1401 ? 'CLIENT_NAME' : 'SUPPLIER_NAME'
+    return (
+      <div className="erp-print-sheet p-4">
+        <div className="text-center mb-3">
+          {print.headerCompany && <div className="fs-4 fw-bold">{print.headerCompany}</div>}
+          <div className="fs-5 fw-semibold mt-1">{print.title}</div>
+          <div className="small text-secondary mt-1">编号：{formatValue(print.master[idField])}　名称：{formatValue(print.master[nameField])}</div>
+        </div>
+        <table className="table table-sm table-bordered mb-3">
+          <tbody>
+            {print.masterFields.slice(0, 20).map((field) => (
+              <tr key={field.key}>
+                <th className="w-25 text-end pe-2 small">{field.label}</th>
+                <td>{formatValue(print.master[field.key])}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {print.detailFields.length > 0 && (
+          <>
+            <div className="fs-6 fw-semibold mb-2">联系人</div>
+            <table className="table table-sm table-bordered">
+              <thead><tr>{print.detailFields.map((field) => <th key={field.key} className="small">{field.label}</th>)}</tr></thead>
+              <tbody>
+                {print.details.map((row, index) => (
+                  <tr key={index}>{print.detailFields.map((field) => <td key={field.key} className="small">{formatValue(row[field.key])}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+        {print.footerText && <div className="small mt-3 text-secondary">{print.footerText}</div>}
+      </div>
+    )
+  }
   if (layout) {
     const noValue = layout.noFields.map((field) => formatValue(print.master[field])).filter(Boolean).join(' / ')
     return (
