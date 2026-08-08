@@ -14,4 +14,12 @@ public sealed class DbConnectionFactory(IConfiguration configuration)
             ?? throw new InvalidOperationException("ConnectionStrings:ErpDatabase 未配置。");
         return new SqlConnection(connectionString);
     }
+
+    /// <summary>创建指向 EOS.IM 即时通讯库的连接（独立于 Hiswitek 旧库）。</summary>
+    public SqlConnection CreateIm()
+    {
+        var connectionString = configuration.GetConnectionString("ImDatabase")
+            ?? throw new InvalidOperationException("ConnectionStrings:ImDatabase 未配置。");
+        return new SqlConnection(connectionString);
+    }
 }
