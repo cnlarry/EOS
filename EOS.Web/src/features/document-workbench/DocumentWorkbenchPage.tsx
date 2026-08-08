@@ -8,6 +8,7 @@ import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpPagination } from '../../components/common/ErpPagination'
+import { emptyQueryCondition, ErpQueryBuilder, type QueryCondition } from '../../components/common/ErpQueryBuilder'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
@@ -19,13 +20,11 @@ import { alignClass, formatFieldValue } from './fieldFormat'
 interface Field { key:string; label:string; dataType:string; width:number; align:string; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null }
 interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[] }
 interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number }
-interface QueryCondition { field:string; operator:string; value:string; valueTo:string; logic:string }
 interface ColumnSetting { key:string; label:string; isVisible:boolean; order:number }
 interface ColumnSettings { master:ColumnSetting[]; detail:ColumnSetting[] }
 interface SetupLookup { value:string; label:string }
 interface ChooserSource { active:boolean; table:string|null; description:string|null; moduleId:number|null; filter:string|null; returnMapping:string|null }
 interface FieldMetadata { key:string; tableId:string; label:string; dataType:string; width:number; align:string; headerAlign:string; format:string|null; isVisible:boolean; isDefault:boolean; isQueryable:boolean; isReadonly:boolean; isRequired:boolean; isCost:boolean; isSecrecy:boolean; defaultValue:string|null; verifyIndex:number|null; regex:string|null; remark:string|null; browseUrl:string|null; browseModuleId:number|null; onlyChoose:boolean; chooseMultiple:boolean; choosePage:string|null; choosers:ChooserSource[]; isVirtual:boolean; virtualExpression:string|null; canCopy:boolean; isAutoIncrement:boolean; convertFunction:string|null; dataSourceSql:string|null; lastUpdatedBy:string|null; lastUpdatedAt:string|null }
-const operators=[['eq','等于'],['ne','不等于'],['gt','大于'],['gte','大于等于'],['lt','小于'],['lte','小于等于'],['contains','包含'],['notcontains','不包含'],['startswith','开头为'],['endswith','结尾为'],['empty','为空'],['notempty','不为空'],['between','区间']]
 const uniqueFields=(fields:Field[])=>fields.filter((field,index,all)=>all.findIndex(item=>item.key.toLowerCase()===field.key.toLowerCase())===index)
 export function DocumentWorkbenchPage() {
   const navigate=useNavigate()
@@ -41,7 +40,7 @@ export function DocumentWorkbenchPage() {
   const [fieldMenu,setFieldMenu]=useState<{x:number;y:number;detail:boolean;fieldKey:string}|null>(null)
   const [fieldEditor,setFieldEditor]=useState<{detail:boolean;fieldKey:string}|null>(null)
   const [appliedConditions,setAppliedConditions]=useState<QueryCondition[]>([])
-  const [conditions,setConditions]=useState<QueryCondition[]>([{field:'',operator:'eq',value:'',valueTo:'',logic:'and'}])
+  const [conditions,setConditions]=useState<QueryCondition[]>([emptyQueryCondition()])
   const [keyword,setKeyword]=useState('')
   const [exporting,setExporting]=useState(false)
   const definition=useQuery({queryKey:['workbench',moduleId,'definition'],queryFn:()=>apiClient.get<Definition>(`/document-workbench/${moduleId}/definition`)})
@@ -217,6 +216,14 @@ export function DocumentWorkbenchPage() {
       canSave={(selection)=>Boolean(selection.master?.length)}
       onSave={async(selection)=>{await saveColumns.mutateAsync({master:selection.master??[],detail:selection.detail??[]});setColumnsOpen(false)}}
     />}
-    {queryOpen&&<div className="modal modal-blur show d-block" role="dialog" aria-modal="true"><div className="modal-dialog modal-lg modal-dialog-centered"><div className="modal-content"><div className="modal-header"><h2 className="modal-title">查询条件设定</h2><button className="btn-close" aria-label="关闭" onClick={()=>setQueryOpen(false)}/></div><div className="modal-body"><div className="d-grid gap-2">{conditions.map((condition,index)=><div className="row g-2 align-items-center" key={index}>{index>0&&<div className="col-2"><select className="form-select" value={condition.logic} onChange={event=>setConditions(current=>current.map((item,i)=>i===index?{...item,logic:event.target.value}:item))}><option value="and">并且</option><option value="or">或者</option></select></div>}<div className={index>0?'col-3':'col-5'}><select className="form-select" value={condition.field} onChange={event=>setConditions(current=>current.map((item,i)=>i===index?{...item,field:event.target.value}:item))}><option value="">选择字段</option>{master.filter(field=>field.isQueryable).map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></div><div className="col-2"><select className="form-select" value={condition.operator} onChange={event=>setConditions(current=>current.map((item,i)=>i===index?{...item,operator:event.target.value}:item))}>{operators.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div><div className="col"><input className="form-control" disabled={condition.operator==='empty'||condition.operator==='notempty'} value={condition.value} onChange={event=>setConditions(current=>current.map((item,i)=>i===index?{...item,value:event.target.value}:item))}/></div>{condition.operator==='between'&&<div className="col"><input className="form-control" value={condition.valueTo} onChange={event=>setConditions(current=>current.map((item,i)=>i===index?{...item,valueTo:event.target.value}:item))}/></div>}<div className="col-auto"><button className="btn btn-ghost-danger" disabled={conditions.length===1} onClick={()=>setConditions(current=>current.filter((_,i)=>i!==index))}>删除</button></div></div>)}</div><button className="btn btn-ghost-primary mt-3" onClick={()=>setConditions(current=>[...current,{field:'',operator:'eq',value:'',valueTo:'',logic:'and'}])}>添加条件</button></div><div className="modal-footer"><Button onClick={()=>{setConditions([{field:'',operator:'eq',value:'',valueTo:'',logic:'and'}]);setAppliedConditions([]);setPage(1);setQueryOpen(false)}}>清空</Button><Button variant="primary" disabled={conditions.some(item=>!item.field)} onClick={()=>{setAppliedConditions(conditions);setPage(1);setQueryOpen(false)}}>应用查询</Button></div></div></div></div>}
+    {queryOpen&&<ErpQueryBuilder
+      open
+      fields={master.filter(field=>field.isQueryable).map(field=>({key:field.key,label:field.label}))}
+      conditions={conditions}
+      onChange={setConditions}
+      onApply={()=>{setAppliedConditions(conditions);setPage(1);setQueryOpen(false)}}
+      onClear={()=>{setConditions([emptyQueryCondition()]);setAppliedConditions([]);setPage(1);setQueryOpen(false)}}
+      onClose={()=>setQueryOpen(false)}
+    />}
   </div>
 }
