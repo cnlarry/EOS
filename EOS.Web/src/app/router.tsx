@@ -4,6 +4,7 @@ import { RequireAuth, RequirePermission } from '../features/auth/RouteGuards'
 import { ErrorPage } from './ErrorPage'
 import {
   DashboardPage,
+  BomExpandPage,
   ImportPage,
   LegacyModulePage,
   LoginPage,
@@ -39,6 +40,7 @@ export const router = createBrowserRouter([
         { path: 'search-center/:moduleId?', element: withSuspense(<SearchCenterPage />) },
         { path: 'import', element: withSuspense(<ImportPage />) },
         { path: 'print/:moduleId', element: withSuspense(<PrintViewPage />) },
+        { path: 'bom-expand', element: withSuspense(<BomExpandPage />) },
         { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },
         { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
         { path: 'settings/system', element: withSuspense(<SystemSettingsPage />) },

@@ -8,6 +8,7 @@ export const TableAdminPage = lazy(() => import('../features/field-admin/TableAd
 export const UserAdminPage = lazy(() => import('../features/user-admin/UserAdminPage').then((module) => ({ default: module.UserAdminPage })))
 export const ProfilePage = lazy(() => import('../features/settings/ProfilePage').then((module) => ({ default: module.ProfilePage })))
 export const SystemSettingsPage = lazy(() => import('../features/settings/SystemSettingsPage').then((module) => ({ default: module.SystemSettingsPage })))
+export const BomExpandPage = lazy(() => import('../features/bom/BomExpandPage').then((module) => ({ default: module.BomExpandPage })))
 export const ReportViewerPage = lazy(() => import('../features/reports/ReportViewerPage').then((module) => ({ default: module.ReportViewerPage })))
 export const SearchCenterPage = lazy(() => import('../features/search-center/SearchCenterPage').then((module) => ({ default: module.SearchCenterPage })))
 export const ImportPage = lazy(() => import('../features/import/ImportPage').then((module) => ({ default: module.ImportPage })))
