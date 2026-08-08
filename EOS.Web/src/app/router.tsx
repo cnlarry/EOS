@@ -12,6 +12,7 @@ import {
   PurchaseOrdersPage,
   ReportViewerPage,
   SearchCenterPage,
+  SystemSettingsPage,
   TableAdminPage,
   UserAdminPage,
 } from './lazyRoutes'
@@ -40,6 +41,7 @@ export const router = createBrowserRouter([
         { path: 'print/:moduleId', element: withSuspense(<PrintViewPage />) },
         { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },
         { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
+        { path: 'settings/system', element: withSuspense(<SystemSettingsPage />) },
       ],
     }],
   },
