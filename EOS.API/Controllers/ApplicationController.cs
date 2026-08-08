@@ -71,6 +71,7 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
         [230902] = "/import",
         [110111] = "/settings/system",
         [129802] = "/bom-expand",
+        [230901] = "/jobs",
     };
 
     private static string RouteFor(LegacyNavigationModule module) =>
