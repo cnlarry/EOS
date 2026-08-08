@@ -97,13 +97,12 @@ describe('ErpTable', () => {
     expect(onRowSelectionChange).toHaveBeenCalledWith({ '1': true, '2': true })
   })
 
-  it('表头输出列键、最小列宽并支持右键回调', () => {
-    const onHeaderContextMenu = vi.fn()
+  it('表头输出列键与最小列宽', () => {
     const columns: ColumnDef<Row, unknown>[] = [
       {
         accessorKey: 'name',
         header: '名称',
-        meta: { minWidth: 120, onHeaderContextMenu },
+        meta: { minWidth: 120 },
       },
     ]
     render(<ErpTable columns={columns} data={rows} getRowId={(row) => row.id} />)
@@ -111,8 +110,6 @@ describe('ErpTable', () => {
     expect(th).toHaveAttribute('data-col-key', 'name')
     expect(th).toHaveAttribute('data-col-min-width', '120')
     expect(th).toHaveStyle({ minWidth: '120px' })
-    fireEvent.contextMenu(th)
-    expect(onHeaderContextMenu).toHaveBeenCalledTimes(1)
   })
 
   it('空数据时渲染 empty 插槽；传 null 时保留空表格', () => {

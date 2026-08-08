@@ -2,7 +2,7 @@ import { IconAdjustmentsHorizontal, IconColumns, IconFileExport, IconPlus, IconP
 import { IconEdit } from '@tabler/icons-react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
@@ -43,7 +43,6 @@ export function DocumentWorkbenchPage() {
   const [columnsOpen,setColumnsOpen]=useState(false)
   const [pageSizePref,setPageSizePref]=useState<number|null>(null)
   const [columnFilters,setColumnFilters]=useState<Record<string,QueryCondition>>({})
-  const [fieldMenu,setFieldMenu]=useState<{x:number;y:number;detail:boolean;fieldKey:string}|null>(null)
   const [fieldEditor,setFieldEditor]=useState<{detail:boolean;fieldKey:string}|null>(null)
   const [appliedConditions,setAppliedConditions]=useState<QueryCondition[]>([])
   const [conditions,setConditions]=useState<QueryCondition[]>([emptyQueryCondition()])
@@ -70,8 +69,6 @@ export function DocumentWorkbenchPage() {
     if(definition.data?.detailTable)groups.push(toGroup('detail','子表字段'))
     return groups
   },[columnSettings.data,definition.data?.detailTable])
-  useEffect(()=>{if(!fieldMenu)return;const close=()=>setFieldMenu(null);window.addEventListener('pointerdown',close);window.addEventListener('blur',close);window.addEventListener('resize',close);window.addEventListener('scroll',close,true);return()=>{window.removeEventListener('pointerdown',close);window.removeEventListener('blur',close);window.removeEventListener('resize',close);window.removeEventListener('scroll',close,true)}},[fieldMenu])
-  const openFieldMenu=useCallback((event:MouseEvent,detailTable:boolean,fieldKey:string)=>{event.preventDefault();event.stopPropagation();setFieldMenu({x:event.clientX,y:event.clientY,detail:detailTable,fieldKey})},[])
 
   const masterColumns=useMemo<ColumnDef<Record<string,unknown>,unknown>[]>(()=>[
     {
@@ -110,7 +107,6 @@ export function DocumentWorkbenchPage() {
         cellClassName:alignClass(field.align),
         minWidth:field.width,
         filterable:field.isQueryable,
-        onHeaderContextMenu:(event:MouseEvent<HTMLTableCellElement>)=>openFieldMenu(event,false,field.key),
         headerMenu:[{label:'字段设置',onClick:()=>setFieldEditor({detail:false,fieldKey:field.key})}],
       },
       cell:(info)=>{
@@ -121,7 +117,7 @@ export function DocumentWorkbenchPage() {
           :renderText(value)
       },
     })),
-  ],[master,openFieldMenu,hasPermission])
+  ],[master,hasPermission])
   const detailColumns=useMemo<ColumnDef<Record<string,unknown>,unknown>[]>(()=>detail.map((field):ColumnDef<Record<string,unknown>,unknown>=>({
     id:field.key,
     accessorKey:field.key,
@@ -131,7 +127,6 @@ export function DocumentWorkbenchPage() {
       className:alignClass(field.headerAlign),
       cellClassName:alignClass(field.align),
       minWidth:field.width,
-      onHeaderContextMenu:(event:MouseEvent<HTMLTableCellElement>)=>openFieldMenu(event,true,field.key),
       headerMenu:[{label:'字段设置',onClick:()=>setFieldEditor({detail:true,fieldKey:field.key})}],
     },
     cell:(info)=>{
@@ -141,7 +136,7 @@ export function DocumentWorkbenchPage() {
         ?<FieldBrowseLink value={value} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
         :renderText(value)
     },
-  })),[detail,openFieldMenu,hasPermission])
+  })),[detail,hasPermission])
   const rowSelection=useMemo<RowSelectionState>(()=>Object.fromEntries(Object.keys(selected).map(key=>[key,true])),[selected])
 
   const rowKey=(row:Record<string,unknown>)=>{const keys=master.filter(field=>field.isPrimaryKey).map(field=>String(row[field.key]??''));return keys.length?keys.join('|'):JSON.stringify(row)}
@@ -240,7 +235,6 @@ export function DocumentWorkbenchPage() {
       className="table-sm"
       empty={null}
     />}</section>}
-    {fieldMenu&&<div className="dropdown-menu show" style={{position:'fixed',left:fieldMenu.x,top:fieldMenu.y,zIndex:1100}} onPointerDown={event=>event.stopPropagation()}><button className="dropdown-item" onClick={()=>{setFieldEditor({detail:fieldMenu.detail,fieldKey:fieldMenu.fieldKey});setFieldMenu(null)}}>字段设置</button></div>}
     {fieldEditor&&<FieldEditorModal open mode="edit" tableId={(fieldEditor.detail?definition.data.detailTable:definition.data.masterTable)??''} fieldKey={fieldEditor.fieldKey} title={`${fieldEditor.detail?'子表':'主表'}字段设置`} endpoints={{load:async()=>{const meta=await apiClient.get<FieldMetadata>(`/document-workbench/${moduleId}/field-settings/${encodeURIComponent(fieldEditor.fieldKey)}`,{query:{detail:String(fieldEditor.detail)}});return{...meta,tableId:(fieldEditor.detail?definition.data.detailTable:definition.data.masterTable)??''}},save:async(input,_table,fieldId,original)=>apiClient.put<void>(`/document-workbench/${moduleId}/field-settings/${encodeURIComponent(fieldId)}?detail=${fieldEditor.detail}`,{...input,original:original?{...original,key:fieldId}:undefined}),tables:()=>apiClient.get<SetupLookup[]>(`/document-workbench/${moduleId}/field-settings/lookups/tables`),modules:()=>apiClient.get<SetupLookup[]>(`/document-workbench/${moduleId}/field-settings/lookups/modules`)}} onClose={()=>setFieldEditor(null)} onSaved={()=>{setFieldEditor(null);void Promise.all([queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']}),queryClient.invalidateQueries({queryKey:['workbench',moduleId,'field-settings']})])}}/>}
     {columnsOpen&&<ErpColumnSelector
       open

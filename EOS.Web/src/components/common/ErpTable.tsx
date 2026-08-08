@@ -8,7 +8,7 @@ import {
   type SortingState,
   type VisibilityState,
 } from '@tanstack/react-table'
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { ErpDataTable } from './ErpDataTable'
 import { ErpColumnFilter } from './ErpColumnFilter'
 import { emptyQueryCondition, type QueryCondition } from './ErpQueryBuilder'
@@ -60,7 +60,6 @@ interface ErpTableProps<TData> {
  * - `className`：td/th 追加类（对齐、选择列等）；
  * - `cellClassName`：仅作用于数据单元格（优先级高于 className）；
  * - `minWidth`：表头最小列宽（工作台 DISPLAY_LENGTH）；
- * - `onHeaderContextMenu`：表头右键（工作台字段设置）；
  * - `filterable` / `frozenLeft` / `frozenRight`：列头筛选 / 冻结。
  */
 export function ErpTable<TData>({
@@ -276,7 +275,6 @@ export function ErpTable<TData>({
                     data-col-min-width={meta?.minWidth ?? undefined}
                     className={[meta?.className, meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : ''].filter(Boolean).join(' ') || undefined}
                     style={thStyle}
-                    onContextMenu={meta?.onHeaderContextMenu}
                   >
                     {header.isPlaceholder ? null : menuItems.length > 0 ? (
                       <div className="erp-header-inner">
@@ -394,7 +392,6 @@ declare module '@tanstack/react-table' {
     /** 仅作用于数据单元格（优先级高于 className） */
     cellClassName?: string
     minWidth?: number
-    onHeaderContextMenu?: (event: MouseEvent<HTMLTableCellElement>) => void
     /** 该列支持列头快速筛选（需配合 ErpTable 的 onColumnFilterChange） */
     filterable?: boolean
     /** 列头菜单附加项（如工作台「字段设置」） */
