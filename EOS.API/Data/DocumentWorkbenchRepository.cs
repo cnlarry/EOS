@@ -1130,9 +1130,14 @@ public sealed class DocumentWorkbenchRepository(
         var hasAmountTax=fields.Any(field=>field.Key.Equals("AMOUNT_TAX",StringComparison.OrdinalIgnoreCase));
         var hasTaxSum=fields.Any(field=>field.Key.Equals("TAX_SUM",StringComparison.OrdinalIgnoreCase));
         if(!hasAmount&&!hasAmountTax&&!hasTaxSum)return;
+        var qty=GetDecimal(row,"QTY");
+        var price=GetDecimal(row,"PRICE");
+        // 无数量/单价的明细行（如预收/预付单按订单冲抵金额）不参与金额重算，
+        // 保留客户端提交的 AMOUNT（旧系统同样由用户录入冲抵金额）。
+        if(qty is null&&price is null)return;
         var result=AmountCalculator.Calculate(
-            GetDecimal(row,"QTY"),
-            GetDecimal(row,"PRICE"),
+            qty,
+            price,
             GetDecimal(row,"TAX_RATE")??GetDecimal(masterValues,"TAX_RATE")??0m,
             row.TryGetValue("TAX_TYPE",out var taxType)
                 ?Convert.ToString(taxType)

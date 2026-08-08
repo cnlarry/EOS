@@ -42,6 +42,12 @@ const DOCUMENT_LAYOUTS: Record<number, { noFields: string[]; dateField: string; 
   170102: { noFields: ['RECEIPT_NO', 'RECEIPT_TYPE'], dateField: 'RECEIPT_DATE', partyField: 'CLIENT_ID', partyNameField: 'CLIENT_NAME', amountField: 'AMOUNT_TAX' },
   170201: { noFields: ['DUE_NO', 'DUE_TYPE'], dateField: 'DUE_DATE', partyField: 'SUPPLIER_ID', partyNameField: 'SUPPLIER_NAME', amountField: 'AMOUNT_TAX' },
   170202: { noFields: ['PAY_NO', 'PAY_TYPE'], dateField: 'PAY_DATE', partyField: 'SUPPLIER_ID', partyNameField: 'SUPPLIER_NAME', amountField: 'AMOUNT_TAX' },
+  1607: { noFields: ['RECEIVE_NO', 'RECEIVE_TYPE'], dateField: 'RECEIVE_DATE', partyField: 'SUPPLIER_ID', partyNameField: 'SUPPLIER_NAME', amountField: 'AMOUNT_TAX' },
+  1615: { noFields: ['APPLY_NO', 'APPLY_TYPE'], dateField: 'APPLY_DATE', partyField: 'SUPPLIER_ID', partyNameField: 'SUPPLIER_NAME', amountField: 'AMOUNT_TAX' },
+  1606: { noFields: ['PURCHASE_NO', 'PURCHASE_TYPE'], dateField: 'PURCHASE_DATE', partyField: 'SUPPLIER_ID', partyNameField: 'SUPPLIER_NAME', amountField: 'AMOUNT_TAX' },
+  1408: { noFields: ['SHIPMENT_NO', 'SHIPMENT_TYPE'], dateField: 'SHIPMENT_DATE', partyField: 'CLIENT_ID', partyNameField: 'CLIENT_NAME', amountField: 'AMOUNT_TAX' },
+  170103: { noFields: ['PREPAY_NO', 'PREPAY_TYPE'], dateField: 'PREPAY_DATE', partyField: 'CLIENT_ID', partyNameField: 'CLIENT_NAME', amountField: 'AMOUNT' },
+  170203: { noFields: ['PREPAY_NO', 'PREPAY_TYPE'], dateField: 'PREPAY_DATE', partyField: 'SUPPLIER_ID', partyNameField: 'SUPPLIER_NAME', amountField: 'AMOUNT' },
 }
 
 export function PrintViewPage() {
