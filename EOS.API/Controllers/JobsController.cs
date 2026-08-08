@@ -1,7 +1,8 @@
 using System.Data;
 using System.Diagnostics;
-using System.Security.Claims;
+using System.Text.RegularExpressions;
 using EOS.API.Data;
+using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -11,8 +12,13 @@ namespace EOS.API.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/jobs")]
-public sealed class JobsController(DbConnectionFactory connections) : ControllerBase
+public sealed class JobsController(
+    DbConnectionFactory connections,
+    LegacyRightsRepository rightsRepository,
+    CurrentUserContext userContext) : ControllerBase
 {
+    private static readonly Regex DayColumn = new("^DAY_(0[1-9]|[12][0-9]|3[01])$", RegexOptions.Compiled);
+
     /// <summary>
     /// 产品可用库存重计（230901）：受控执行 P_UPDATE_PRO_MRP_ALL（无参白名单 SP）。
     /// 权限门：模块 230901 CanSetup；SP 名为固定白名单常量并经 sys.objects 校验。
@@ -97,22 +103,110 @@ public sealed class JobsController(DbConnectionFactory connections) : Controller
         return Ok(new{updated,inserted});
     }
 
-    private async Task<bool> CanRunAsync(int moduleId,CancellationToken token)
+    /// <summary>
+    /// 考勤生成（180654 模拟生成 / 180659 真实抽取生成的受控基座）：
+    /// 按日期范围生成 HRM_DIARY 空白考勤记录（员工 = 指定员工/部门及下级/全部在职），
+    /// 并按已批核排班（HRM_PLAN_M.CONFIRM_TAG=1）的班次时间填充 ON1/OUT1。
+    /// 旧页面完整计算引擎（调休/放假/请假/出差/签卡/随机模拟滚动计算）未移植，
+    /// 登记技术债；本端点全部值参数化、排班日列名由日期白名单生成。
+    /// </summary>
+    [HttpPost("attendance-generate")]
+    public async Task<IActionResult> AttendanceGenerate([FromBody]AttendanceGenerateRequest request,CancellationToken token)
     {
-        var userId=User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if(userId is null)return false;
+        if(!await CanRunAsync(180654,token)&&!await CanRunAsync(180659,token))return Forbid();
+        if(request.StartDate==default||request.EndDate==default||request.EndDate<request.StartDate)
+            return BadRequest(new{code="INVALID_RANGE",message="日期范围不合法。"});
+        var days=(request.EndDate-request.StartDate).Days+1;
+        if(days>62)return BadRequest(new{code="RANGE_TOO_LARGE",message="日期范围不能超过 62 天。"});
+        if(request.Mode is not ("simulate" or "extract"))
+            return BadRequest(new{code="INVALID_MODE",message="mode 仅支持 simulate 或 extract。"});
+        var empIds=(request.EmpIds??[])
+            .Select(id=>(id??"").Trim())
+            .Where(id=>id.Length>0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(500)
+            .ToList();
+        if(empIds.Count==0&&string.IsNullOrWhiteSpace(request.DeptId))
+            return BadRequest(new{code="NO_TARGET",message="请指定员工或部门。"});
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
-        const string sql="""
-            SELECT TOP 1 1 FROM dbo.SYSDD WITH (NOLOCK)
-            WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND LTRIM(RTRIM(ISNULL(EXEC_TAG,'')))<>'A' AND SETUP_TAG=1;
-            """;
-        await using var command=new SqlCommand(sql,connection);
-        command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
-        command.Parameters.Add("@ModuleId",SqlDbType.Int).Value=moduleId;
-        return await command.ExecuteScalarAsync(token) is not null;
+        await using var transaction=(SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using (var createTemp=new SqlCommand("CREATE TABLE #emps(EMP_ID nchar(10) PRIMARY KEY);",connection,transaction))
+                await createTemp.ExecuteNonQueryAsync(token);
+            int employeeCount;
+            if(empIds.Count>0)
+            {
+                var existing=await ResolveEmployeeIdsAsync(connection,transaction,empIds,token);
+                foreach(var id in existing)
+                {
+                    await using var insert=new SqlCommand("INSERT INTO #emps(EMP_ID) VALUES(@id);",connection,transaction);
+                    insert.Parameters.Add("@id",SqlDbType.NChar,10).Value=id;
+                    await insert.ExecuteNonQueryAsync(token);
+                }
+                employeeCount=existing.Count;
+            }
+            else
+            {
+                await using var byDept=new SqlCommand(
+                    "INSERT INTO #emps(EMP_ID) SELECT e.EMP_ID FROM dbo.HR_EMPLOYEE e WHERE e.IF_SHOW=1 AND e.DEPT_ID IN (SELECT DEPT_ID FROM dbo.f_get_under_depts(@dept));",connection,transaction);
+                byDept.Parameters.Add("@dept",SqlDbType.NVarChar,50).Value=request.DeptId!.Trim();
+                employeeCount=await byDept.ExecuteNonQueryAsync(token);
+            }
+            if(employeeCount==0)
+                return BadRequest(new{code="NO_EMPLOYEE",message="没有符合条件的员工。"});
+            var inserted=0;
+            var filled=0;
+            for(var date=request.StartDate;date<=request.EndDate;date=date.AddDays(1))
+            {
+                await using var skeleton=new SqlCommand(
+                    "INSERT INTO dbo.HRM_DIARY(COUNT_DATE,EMP_ID) SELECT @date,EMP_ID FROM #emps e WHERE NOT EXISTS (SELECT 1 FROM dbo.HRM_DIARY d WHERE d.COUNT_DATE=@date AND d.EMP_ID=e.EMP_ID);",connection,transaction);
+                skeleton.Parameters.Add("@date",SqlDbType.SmallDateTime).Value=date;
+                inserted+=await skeleton.ExecuteNonQueryAsync(token);
+                var dayColumn=$"DAY_{date.Day:00}";
+                if(DayColumn.IsMatch(dayColumn))
+                {
+                    await using var fill=new SqlCommand(
+                        $"""
+                        UPDATE d SET d.ON1=t.IN_TIME1,d.OUT1=t.OUT_TIME1,d.TIMETYPE_ID=t.TIMETYPE_ID
+                        FROM dbo.HRM_DIARY d
+                        INNER JOIN dbo.HRM_PLAN_D pd ON pd.EMP_ID=d.EMP_ID
+                        INNER JOIN dbo.HRM_PLAN_M pm ON pm.PLAN_TYPE=pd.PLAN_TYPE AND pm.PLAN_NO=pd.PLAN_NO AND pm.CONFIRM_TAG=1
+                        INNER JOIN dbo.HRM_TIMETYPE t ON t.TIMETYPE_ID=pd.[{dayColumn}]
+                        WHERE d.COUNT_DATE=@date AND pm.COUNT_MONTH=CONVERT(varchar(6),@date,112) AND pd.[{dayColumn}] IS NOT NULL AND LTRIM(RTRIM(pd.[{dayColumn}]))<>'';
+                        """,connection,transaction);
+                    fill.Parameters.Add("@date",SqlDbType.SmallDateTime).Value=date;
+                    filled+=await fill.ExecuteNonQueryAsync(token);
+                }
+            }
+            await transaction.CommitAsync(token);
+            return Ok(new{Mode=request.Mode,StartDate=request.StartDate,EndDate=request.EndDate,EmployeeCount=employeeCount,Inserted=inserted,Filled=filled});
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
     }
+
+    private static async Task<IReadOnlyList<string>> ResolveEmployeeIdsAsync(
+        SqlConnection connection,SqlTransaction transaction,IReadOnlyList<string> empIds,CancellationToken token)
+    {
+        var result=new List<string>();
+        foreach(var id in empIds)
+        {
+            await using var check=new SqlCommand("SELECT TOP 1 1 FROM dbo.HR_EMPLOYEE WHERE EMP_ID=@id AND IF_SHOW=1;",connection,transaction);
+            check.Parameters.Add("@id",SqlDbType.NChar,10).Value=id;
+            if(await check.ExecuteScalarAsync(token) is not null)result.Add(id);
+        }
+        return result;
+    }
+
+    private async Task<bool> CanRunAsync(int moduleId,CancellationToken token)
+        => (await rightsRepository.GetAsync(userContext.UserId,moduleId,token)).CanSetup;
 }
 
 public sealed record CardBatchItem(string EmpId, string CardId);
 public sealed record CardBatchRequest(DateTime StartDate, DateTime? EndDate, IReadOnlyList<CardBatchItem> Cards);
+public sealed record AttendanceGenerateRequest(DateTime StartDate, DateTime EndDate, string Mode, string? DeptId, IReadOnlyList<string>? EmpIds);

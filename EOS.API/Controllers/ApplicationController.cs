@@ -75,6 +75,8 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
         [110111] = "/settings/system",
         [129802] = "/bom-expand",
         [230901] = "/jobs",
+        [180654] = "/jobs",
+        [180659] = "/jobs",
         [209805] = "/reports/209805",
         [180213] = "/settings/hr-setup",
         [180662] = "/settings/hrm-setup",

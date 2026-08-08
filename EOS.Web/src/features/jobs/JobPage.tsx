@@ -9,6 +9,11 @@ export function JobPage() {
   const [cardStartDate, setCardStartDate] = useState('2026-08-09')
   const [cardList, setCardList] = useState('admin,CARD001\nuser02,CARD002')
   const [cardResult, setCardResult] = useState<{ updated: number; inserted: number } | null>(null)
+  const [attendanceStart, setAttendanceStart] = useState('2026-08-09')
+  const [attendanceEnd, setAttendanceEnd] = useState('2026-08-09')
+  const [attendanceMode, setAttendanceMode] = useState<'simulate' | 'extract'>('simulate')
+  const [attendanceTargets, setAttendanceTargets] = useState('')
+  const [attendanceResult, setAttendanceResult] = useState<{ mode: string; employeeCount: number; inserted: number; filled: number } | null>(null)
 
   const runMrpRecalc = async () => {
     setRunning(true)
@@ -38,6 +43,26 @@ export function JobPage() {
       setCardResult(data)
     } catch (error) {
       window.alert(error instanceof Error ? `发卡失败：${error.message}` : '发卡失败。')
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const runAttendanceGenerate = async () => {
+    setRunning(true)
+    setAttendanceResult(null)
+    try {
+      const empIds = attendanceTargets.split(/[\n,]/).map((part) => part.trim()).filter(Boolean)
+      const data = await apiClient.post<{ mode: string; employeeCount: number; inserted: number; filled: number }>('/jobs/attendance-generate', {
+        startDate: attendanceStart,
+        endDate: attendanceEnd,
+        mode: attendanceMode,
+        empIds: empIds.length > 0 ? empIds : null,
+        deptId: null,
+      })
+      setAttendanceResult(data)
+    } catch (error) {
+      window.alert(error instanceof Error ? `考勤生成失败：${error.message}` : '考勤生成失败。')
     } finally {
       setRunning(false)
     }
@@ -73,6 +98,37 @@ export function JobPage() {
               </div>
             </div>
             {cardResult && <div className="alert alert-success py-2 mb-0 mt-2">发卡完成：新增 {cardResult.inserted}，更新 {cardResult.updated}。</div>}
+          </div>
+        </div>
+        <div className="card m-2">
+          <div className="card-body py-2">
+            <h2 className="card-title fs-6">考勤生成（180654 模拟 / 180659 真实抽取）</h2>
+            <p className="text-secondary small mb-2">按日期范围生成 HRM_DIARY 空白考勤记录，并按已批核排班的班次时间填充上下班（ON1/OUT1）。完整计算引擎（调休/请假/出差/签卡/随机模拟）已登记技术债。</p>
+            <div className="row g-2 align-items-end">
+              <div className="col-md-2">
+                <label className="form-label mb-1 small">开始日期</label>
+                <input className="form-control form-control-sm" type="date" value={attendanceStart} onChange={(event) => setAttendanceStart(event.target.value)} />
+              </div>
+              <div className="col-md-2">
+                <label className="form-label mb-1 small">结束日期</label>
+                <input className="form-control form-control-sm" type="date" value={attendanceEnd} onChange={(event) => setAttendanceEnd(event.target.value)} />
+              </div>
+              <div className="col-md-2">
+                <label className="form-label mb-1 small">模式</label>
+                <select className="form-select form-select-sm" value={attendanceMode} onChange={(event) => setAttendanceMode(event.target.value as 'simulate' | 'extract')}>
+                  <option value="simulate">模拟生成</option>
+                  <option value="extract">真实抽取</option>
+                </select>
+              </div>
+              <div className="col-md-4">
+                <label className="form-label mb-1 small">员工号（逗号/换行分隔，留空=全部在职）</label>
+                <input className="form-control form-control-sm" value={attendanceTargets} onChange={(event) => setAttendanceTargets(event.target.value)} placeholder="如 admin" />
+              </div>
+              <div className="col-md-2">
+                <Button size="sm" onClick={() => void runAttendanceGenerate()} loading={running}>执行生成</Button>
+              </div>
+            </div>
+            {attendanceResult && <div className="alert alert-success py-2 mb-0 mt-2">生成完成（{attendanceResult.mode}）：员工 {attendanceResult.employeeCount} 人，新增考勤 {attendanceResult.inserted} 行，按排班填充 {attendanceResult.filled} 行。</div>}
           </div>
         </div>
       </ErpListCard>
