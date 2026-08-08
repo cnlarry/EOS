@@ -31,7 +31,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
         const string moduleSql="""
-            SELECT LTRIM(RTRIM(M_DESC)),LTRIM(RTRIM(MASTER_TABLE)),LTRIM(RTRIM(ISNULL(M_URL,'')))
+            SELECT LTRIM(RTRIM(M_DESC)),LTRIM(RTRIM(MASTER_TABLE)),LTRIM(RTRIM(ISNULL(M_URL,''))),LTRIM(RTRIM(ISNULL(DETAIL_TABLE,'')))
             FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
             """;
         await using var moduleCommand=new SqlCommand(moduleSql,connection);
@@ -41,6 +41,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         var title=reader.GetString(0);
         var masterTable=reader.GetString(1);
         var url=reader.GetString(2);
+        var detailTable=reader.GetString(3);
         await reader.DisposeAsync();
         if(!IsReportUrl(url)||!Identifier.IsMatch(masterTable))
         {
@@ -50,7 +51,8 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
 
         var conditions=await ReadConditionsAsync(connection,masterTable,moduleId,token);
         var (columns,pkOrder)=await ReadColumnsAsync(connection,masterTable,canViewCost,canViewSecrecy,deniedFields,token);
-        return new ReportDefinition(moduleId,title,masterTable,conditions,columns,pkOrder);
+        var sortFields=await ReadDefaultSortFieldsAsync(connection,moduleId,token);
+        return new ReportDefinition(moduleId,title,masterTable,detailTable.Length>0?detailTable:null,conditions,columns,pkOrder,sortFields);
     }
 
     public async Task<ReportQueryResult> QueryAsync(
@@ -65,6 +67,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
         var physicalColumns=await GetPhysicalColumnsAsync(connection,definition.MasterTable,token);
+        var detailPhysical=definition.DetailTable is null?[]:await GetPhysicalColumnsAsync(connection,definition.DetailTable,token);
         var predicates=new List<string>();
         var command=new SqlCommand();
         command.Connection=connection;
@@ -76,17 +79,17 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             switch(condition.Type)
             {
                 case 1 when !string.IsNullOrWhiteSpace(value):
-                    predicates.Add($"[{field}] >= @rc{command.Parameters.Count}");
+                    predicates.Add($"m.[{field}] >= @rc{command.Parameters.Count}");
                     command.Parameters.AddWithValue($"@rc{command.Parameters.Count}",value);
                     if(!string.IsNullOrWhiteSpace(valueTo))
                     {
-                        predicates.Add($"[{field}] <= @rc{command.Parameters.Count}");
+                        predicates.Add($"m.[{field}] <= @rc{command.Parameters.Count}");
                         command.Parameters.AddWithValue($"@rc{command.Parameters.Count}",valueTo);
                     }
                     break;
                 case 2 when !string.IsNullOrWhiteSpace(value):
                     if(!TryParseSelectOption(value,definition.MasterTable,physicalColumns,out var selectField,out var selectValue))continue;
-                    predicates.Add($"[{selectField}] = @rc{command.Parameters.Count}");
+                    predicates.Add($"m.[{selectField}] = @rc{command.Parameters.Count}");
                     command.Parameters.AddWithValue($"@rc{command.Parameters.Count}",NormalizeConstant(selectValue));
                     break;
                 case 4 when value is not null:
@@ -99,17 +102,33 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
                         placeholders.Add($"@rc{command.Parameters.Count}");
                         command.Parameters.AddWithValue($"@rc{command.Parameters.Count}",item);
                     }
-                    predicates.Add($"[{field}] IN ({string.Join(',',placeholders)})");
+                    predicates.Add($"m.[{field}] IN ({string.Join(',',placeholders)})");
                     break;
             }
         }
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
-        var selected=definition.Columns.Take(40).Select(column=>$"[{column.Key}]").ToList();
+        // 主键列优先（报表须可辨识行），再取其余可见列，上限 40 列
+        var selected=definition.MasterPkOrder
+            .Where(pk=>definition.Columns.Any(column=>column.Key.Equals(pk,StringComparison.OrdinalIgnoreCase)))
+            .Concat(definition.Columns
+                .Select(column=>column.Key)
+                .Where(key=>!definition.MasterPkOrder.Any(pk=>pk.Equals(key,StringComparison.OrdinalIgnoreCase))))
+            .Take(40)
+            .ToList();
         if(selected.Count==0)return new([],0,page,pageSize);
+        var join=string.Empty;
+        if(definition.DetailTable is not null&&definition.MasterPkOrder.Count>0
+           &&definition.SortFields.Any(field=>TryResolveSortField(field,definition,physicalColumns,detailPhysical,out _,out _)))
+        {
+            var on=string.Join(" AND ",definition.MasterPkOrder.Select((pk,index)=>
+                $"m.[{pk}]=d.[{pk}]"));
+            join=$" LEFT JOIN dbo.[{definition.DetailTable}] d WITH (NOLOCK) ON {on}";
+        }
+        var orderBy=ResolveOrderBy(definition,physicalColumns,detailPhysical,join.Length>0);
         command.CommandText=$"""
-            SELECT COUNT_BIG(1) FROM dbo.[{definition.MasterTable}] WITH (NOLOCK){where};
-            SELECT {string.Join(',',selected)} FROM dbo.[{definition.MasterTable}] WITH (NOLOCK){where}
-            ORDER BY {string.Join(',',definition.MasterPkOrder.Select((pk,index)=>$"[{pk}]"))}
+            SELECT COUNT_BIG(1) FROM dbo.[{definition.MasterTable}] m WITH (NOLOCK){join}{where};
+            SELECT {string.Join(',',selected.Select(column=>$"m.[{column}]"))} FROM dbo.[{definition.MasterTable}] m WITH (NOLOCK){join}{where}
+            ORDER BY {orderBy}
             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
             """;
         command.Parameters.Add("@Offset",SqlDbType.Int).Value=(page-1)*pageSize;
@@ -127,6 +146,81 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         }
         logger.LogDebug("报表查询 module={ModuleId} master={Master} total={Total} page={Page}",definition.ModuleId,definition.MasterTable,total,page);
         return new ReportQueryResult(rows,total,page,pageSize);
+    }
+
+    private static async Task<IReadOnlyList<string>> ReadDefaultSortFieldsAsync(
+        SqlConnection connection,
+        int moduleId,
+        CancellationToken token)
+    {
+        const string sql="""
+            SELECT LTRIM(RTRIM(ISNULL(s.SORT_FIELDS,'')))
+            FROM dbo.REPORT_SORT s WITH (NOLOCK)
+            WHERE s.REPORT_ID IN (SELECT REPORT_ID FROM dbo.REPORT WITH (NOLOCK)
+                                  WHERE R_M_IDX=@ModuleId AND IS_DEFAULT=1)
+              AND LTRIM(RTRIM(ISNULL(s.SORT_FIELDS,'')))<>''
+            ORDER BY s.SERIAL_NO;
+            """;
+        await using var command=new SqlCommand(sql,connection);
+        command.Parameters.Add("@ModuleId",SqlDbType.Int).Value=moduleId;
+        await using var reader=await command.ExecuteReaderAsync(token);
+        var result=new List<string>();
+        while(await reader.ReadAsync(token))
+        {
+            var value=reader.GetString(0);
+            if(string.IsNullOrWhiteSpace(value))continue;
+            result.AddRange(value.Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries)
+                .Where(field=>FieldRef.IsMatch(field)));
+        }
+        return result;
+    }
+
+    private static bool TryResolveSortField(
+        string raw,
+        ReportDefinition definition,
+        IReadOnlyList<string> masterPhysical,
+        IReadOnlyList<string> detailPhysical,
+        out string columnExpression,
+        out bool needsDetail)
+    {
+        columnExpression=string.Empty;
+        needsDetail=false;
+        var match=FieldRef.Match(raw);
+        if(!match.Success)return false;
+        var table=match.Groups[1].Value;
+        var column=match.Groups[2].Value;
+        if(!Identifier.IsMatch(column))return false;
+        if(table.Equals(definition.MasterTable,StringComparison.OrdinalIgnoreCase))
+        {
+            foreach(var item in masterPhysical)
+                if(item.Equals(column,StringComparison.OrdinalIgnoreCase)){columnExpression=$"[{column}]";return true;}
+            return false;
+        }
+        if(definition.DetailTable is not null&&table.Equals(definition.DetailTable,StringComparison.OrdinalIgnoreCase))
+        {
+            foreach(var item in detailPhysical)
+                if(item.Equals(column,StringComparison.OrdinalIgnoreCase)){columnExpression=$"d.[{column}]";needsDetail=true;return true;}
+            return false;
+        }
+        return false;
+    }
+
+    private static string ResolveOrderBy(
+        ReportDefinition definition,
+        IReadOnlyList<string> masterPhysical,
+        IReadOnlyList<string> detailPhysical,
+        bool hasJoin)
+    {
+        var orders=new List<string>();
+        foreach(var field in definition.SortFields)
+        {
+            if(!TryResolveSortField(field,definition,masterPhysical,detailPhysical,out var expression,out var needsDetail))continue;
+            if(needsDetail&&!hasJoin)continue;
+            orders.Add(expression);
+        }
+        if(orders.Count==0)
+            return string.Join(',',definition.MasterPkOrder.Select(pk=>$"[{pk}]"));
+        return string.Join(',',orders);
     }
 
     private static bool IsReportUrl(string url)

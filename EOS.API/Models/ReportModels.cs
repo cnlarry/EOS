@@ -20,9 +20,11 @@ public sealed record ReportDefinition(
     int ModuleId,
     string Title,
     string MasterTable,
+    string? DetailTable,
     IReadOnlyList<ReportCondition> Conditions,
     IReadOnlyList<ReportColumn> Columns,
-    IReadOnlyList<string> MasterPkOrder);
+    IReadOnlyList<string> MasterPkOrder,
+    IReadOnlyList<string> SortFields);
 
 public sealed record ReportQueryRequest(
     IReadOnlyDictionary<int, string?> Values,
