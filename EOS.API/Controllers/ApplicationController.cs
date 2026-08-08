@@ -77,6 +77,7 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
         [230901] = "/jobs",
         [180654] = "/jobs",
         [180659] = "/jobs",
+        [180505] = "/jobs",
         [2102] = "/my-tasks",
         [199901] = "/car-summary",
         [209805] = "/reports/209805",

@@ -14,6 +14,8 @@ export function JobPage() {
   const [attendanceMode, setAttendanceMode] = useState<'simulate' | 'extract'>('simulate')
   const [attendanceTargets, setAttendanceTargets] = useState('')
   const [attendanceResult, setAttendanceResult] = useState<{ mode: string; employeeCount: number; inserted: number; filled: number } | null>(null)
+  const [adjustMonth, setAdjustMonth] = useState('202608')
+  const [adjustResult, setAdjustResult] = useState<{ month: string; wageCalcRuns: number; adjustedEmployees: number; clearedDiaryRows: number } | null>(null)
 
   const runMrpRecalc = async () => {
     setRunning(true)
@@ -63,6 +65,21 @@ export function JobPage() {
       setAttendanceResult(data)
     } catch (error) {
       window.alert(error instanceof Error ? `考勤生成失败：${error.message}` : '考勤生成失败。')
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const runAttendanceAdjustWage = async () => {
+    setRunning(true)
+    setAdjustResult(null)
+    try {
+      const data = await apiClient.post<{ month: string; wageCalcRuns: number; adjustedEmployees: number; clearedDiaryRows: number }>('/jobs/attendance-adjust-wage', {
+        month: adjustMonth,
+      })
+      setAdjustResult(data)
+    } catch (error) {
+      window.alert(error instanceof Error ? `依薪资调整考勤失败：${error.message}` : '依薪资调整考勤失败。')
     } finally {
       setRunning(false)
     }
@@ -129,6 +146,22 @@ export function JobPage() {
               </div>
             </div>
             {attendanceResult && <div className="alert alert-success py-2 mb-0 mt-2">生成完成（{attendanceResult.mode}）：员工 {attendanceResult.employeeCount} 人，新增考勤 {attendanceResult.inserted} 行，按排班填充 {attendanceResult.filled} 行。</div>}
+          </div>
+        </div>
+        <div className="card m-2">
+          <div className="card-body py-2">
+            <h2 className="card-title fs-6">依薪资调整考勤（180505）</h2>
+            <p className="text-secondary small mb-2">按当月工资表扣款项（WAGE_ADD&lt;0）从节假日→休息日→平时→正常工时依次清空 HRM_DIARY 对应字段，调整前后各重算一次工资（需先在考勤系统设置 HR_SETUP.WAGE_* 调整项目）。</p>
+            <div className="row g-2 align-items-end">
+              <div className="col-md-2">
+                <label className="form-label mb-1 small">月份（yyyyMM）</label>
+                <input className="form-control form-control-sm" value={adjustMonth} onChange={(event) => setAdjustMonth(event.target.value)} />
+              </div>
+              <div className="col-md-2">
+                <Button size="sm" onClick={() => void runAttendanceAdjustWage()} loading={running}>执行调整</Button>
+              </div>
+              {adjustResult && <div className="col-md-8 text-success small">调整完成：工资计算 {adjustResult.wageCalcRuns} 次，员工 {adjustResult.adjustedEmployees} 人，清空考勤 {adjustResult.clearedDiaryRows} 行。</div>}
+            </div>
           </div>
         </div>
       </ErpListCard>
