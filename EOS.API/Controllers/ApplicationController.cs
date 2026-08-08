@@ -68,6 +68,8 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
     {
         [2302] = "/admin/tables",
         [2306] = "/admin/users",
+        [2310] = "/admin/table-data",
+        [2312] = "/admin/table-data",
         [230902] = "/import",
         [110111] = "/settings/system",
         [129802] = "/bom-expand",

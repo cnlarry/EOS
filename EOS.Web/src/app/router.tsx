@@ -16,6 +16,7 @@ import {
   SearchCenterPage,
   SystemSettingsPage,
   TableAdminPage,
+  TableDataPage,
   UserAdminPage,
 } from './lazyRoutes'
 import { FieldAdminRoute, ForbiddenPage, FormEditorRoute, WorkbenchRoute } from './routeElements'
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
         { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },
         { element: <RequirePermission permission="purchase-order.read" />, children: [{ path: 'procurement/purchase-orders', element: withSuspense(<PurchaseOrdersPage />) }] },
         { element: <RequirePermission permission="legacy-module.2302.read" />, children: [{ path: 'admin/tables', element: withSuspense(<TableAdminPage />) }, { path: 'admin/tables/:tableId/fields', element: withSuspense(<FieldAdminRoute />) }] },
+        { element: <RequirePermission permission="legacy-module.2310.read" />, children: [{ path: 'admin/table-data', element: withSuspense(<TableDataPage />) }] },
         { element: <RequirePermission permission="legacy-module.2306.read" />, children: [{ path: 'admin/users', element: withSuspense(<UserAdminPage />) }] },
         { path: 'document-workbench/:moduleId', element: withSuspense(<WorkbenchRoute />) },
         { path: 'document-workbench/:moduleId/new', element: withSuspense(<FormEditorRoute />) },
