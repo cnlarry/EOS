@@ -5,6 +5,8 @@ public sealed record SaveRecordRequest(
     IReadOnlyList<IReadOnlyDictionary<string, string?>>? Details = null,
     IReadOnlyDictionary<string, string?>? Original = null);
 
+public sealed record ApproveWorkflowRequest(string Key);
+
 public sealed record FieldError(string Field, string Message, string Code);
 
 public sealed record RecordBundle(IReadOnlyDictionary<string, object?> Master, IReadOnlyList<IReadOnlyDictionary<string, object?>> Details);

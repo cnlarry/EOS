@@ -66,8 +66,11 @@ internal static class FormFieldSelector
 
             // 审计列（CREATE_PERSON/CREATE_DATE/LAST_UPDATE_BY/LAST_UPDATE_DATE）一律服务端持有，
             // 即使 FIELDS.IS_READONLY 误标为可编辑（旧页面控件本身也是只读）。
+            // 自增主键与"必填且隐藏"字段也标记服务端填充。
+            // 注意：必填但只读可见的字段（如 CURR_RATE 汇率，由前端选择币别后联动带出）
+            // 不属于服务端填充，保留为客户端可提交字段，避免 SERVER_FILL_MISSING 误拦。
             var serverOwned = RecordPayloadValidator.IsAuditColumn(row.Key);
-            var serverFilled = serverOwned || row.IsRequired && (row.IsReadonly || !row.IsVisible);
+            var serverFilled = serverOwned || row.IsAutoIncrement || row.IsRequired && !row.IsVisible;
             if (!row.IsVisible && !serverFilled) continue;
 
             var choosers = row.Choosers

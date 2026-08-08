@@ -36,7 +36,10 @@ internal static class RecordPayloadValidator
                 errors.Add(new FieldError(key, "字段不在表单定义中。", "UNKNOWN_FIELD"));
                 continue;
             }
-            if (field.IsReadonly || field.IsVirtual || field.ServerFilled)
+            // 服务端持有（serverFilled）与虚拟字段拒绝客户端提交；
+            // 只读但可见的联动字段（如 CURR_RATE/CURR_ID/TAX_ID）旧系统由前端联动带值随保存提交，
+            // 因此允许提交并继续做类型/长度校验（用户无法直接修改，值仍受服务端校验约束）。
+            if (field.IsVirtual || field.ServerFilled)
             {
                 errors.Add(new FieldError(key, "该字段由服务端维护，不可提交。", "READONLY_FIELD"));
                 continue;
@@ -73,7 +76,7 @@ internal static class RecordPayloadValidator
         var errors = new List<FieldError>();
         foreach (var field in fields)
         {
-            if (field.IsVirtual || field.ServerFilled || field.IsReadonly) continue;
+            if (field.IsVirtual || field.ServerFilled) continue;
             var present = values.TryGetValue(field.Key, out var value);
             // 勾选/布尔字段永远有值（true/false），不适用"必填"语义
             var isBoolean = field.DataType.Contains("bit", StringComparison.OrdinalIgnoreCase);
