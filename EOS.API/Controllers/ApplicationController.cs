@@ -67,6 +67,7 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
     private static readonly Dictionary<int, string> ModernRoutes = new()
     {
         [2302] = "/admin/tables",
+        [2303] = "/admin/field-audit",
         [2306] = "/admin/users",
         [2310] = "/admin/table-data",
         [2312] = "/admin/table-data",
