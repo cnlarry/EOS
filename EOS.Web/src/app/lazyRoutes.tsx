@@ -16,3 +16,4 @@ export const ReportViewerPage = lazy(() => import('../features/reports/ReportVie
 export const SearchCenterPage = lazy(() => import('../features/search-center/SearchCenterPage').then((module) => ({ default: module.SearchCenterPage })))
 export const ImportPage = lazy(() => import('../features/import/ImportPage').then((module) => ({ default: module.ImportPage })))
 export const PrintViewPage = lazy(() => import('../features/print/PrintViewPage').then((module) => ({ default: module.PrintViewPage })))
+export const MyTasksPage = lazy(() => import('../features/workflow/MyTasksPage').then((module) => ({ default: module.MyTasksPage })))
