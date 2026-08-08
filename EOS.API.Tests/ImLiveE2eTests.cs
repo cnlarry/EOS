@@ -14,7 +14,7 @@ namespace EOS.API.Tests;
 /// 真实端到端测试：直连运行中的 EOS.API（默认 http://localhost:5000），
 /// 用真实账号（默认 admin/admin）经 HTTP 登录 + SignalR Hub 走完整 IM 流程。
 /// 环境变量：EOS_API_LIVE_URL / EOS_API_LIVE_ADMIN / EOS_API_LIVE_PASSWORD /
-///           EOS_API_LIVE_PARTNER / EOS_API_LIVE_PO。
+///           EOS_API_LIVE_PARTNER / EOS_API_LIVE_PARTNER_PASSWORD / EOS_API_LIVE_PO。
 /// 测试数据在 Dispose 中从 EOS.IM 库清理（直连开发库）。
 /// </summary>
 [Trait("Category", "Live")]
@@ -24,6 +24,7 @@ public sealed class ImLiveE2eTests : IAsyncLifetime
     private static readonly string AdminUser = Env("EOS_API_LIVE_ADMIN", "admin");
     private static readonly string AdminPassword = Env("EOS_API_LIVE_PASSWORD", "admin");
     private static readonly string PartnerUser = Env("EOS_API_LIVE_PARTNER", "pz-02");
+    private static readonly string PartnerPassword = Env("EOS_API_LIVE_PARTNER_PASSWORD", "123456");
     private static readonly string ThirdUser = Env("EOS_API_LIVE_THIRD", "lory");
     private static readonly string PoNumber = Env("EOS_API_LIVE_PO", "CGD18070016");
     private static readonly string TransportName = Env("EOS_API_LIVE_TRANSPORT", "WebSockets");
@@ -285,6 +286,110 @@ public sealed class ImLiveE2eTests : IAsyncLifetime
 
         await InvokeHubAsync("SendText", conversationId, Guid.NewGuid(), "无组B");
         await WaitForPersistedAsync(conversationId, "无组B");
+    }
+
+    [Fact]
+    public async Task CrossUser_RealTime_Delivery_Works()
+    {
+        // 双客户端互发：admin 与 partner（pz-02）各持一个真实 SignalR 连接，
+        // 验证跨用户实时投递（IM 的核心链路）。partner 密码默认 123456，
+        // 可由 EOS_API_LIVE_PARTNER_PASSWORD 覆盖。
+        var conversationId = await CreateDirectAsync(PartnerUser);
+        await InvokeHubAsync("JoinConversation", conversationId);
+
+        var partnerCookies = new CookieContainer();
+        using var partnerHttp = new HttpClient(
+            new HttpClientHandler { UseCookies = true, CookieContainer = partnerCookies })
+        {
+            BaseAddress = new Uri(BaseUrl),
+            Timeout = TimeSpan.FromSeconds(30),
+        };
+        using (var login = await partnerHttp.PostAsJsonAsync(
+                   "/api/auth/login", new { userId = PartnerUser, password = PartnerPassword }))
+        {
+            Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        }
+
+        var partnerReceived = new List<ImMessageDto>();
+        var partnerErrors = new List<(string Code, string Message)>();
+        var partnerHub = new HubConnectionBuilder()
+            .WithUrl($"{BaseUrl}/api/hubs/im", options =>
+            {
+                options.Cookies = partnerCookies;
+                options.Transports = ParseTransport(TransportName);
+            })
+            .Build();
+        partnerHub.On<ImMessageDto>("MessageReceived", message =>
+        {
+            lock (partnerReceived)
+            {
+                partnerReceived.Add(message);
+            }
+        });
+        partnerHub.On<string, string>("HubError", (code, message) =>
+        {
+            lock (partnerErrors)
+            {
+                partnerErrors.Add((code, message));
+            }
+        });
+        await partnerHub.StartAsync();
+        Assert.True(partnerHub.State == HubConnectionState.Connected);
+        await partnerHub.InvokeCoreAsync("JoinConversation", [conversationId]);
+
+        try
+        {
+            // admin -> partner：partner 客户端应实时收到
+            await InvokeHubAsync("SendText", conversationId, Guid.NewGuid(), "双端A-实时互发");
+            var receivedByPartner = await WaitForPartnerMessageAsync(partnerReceived, conversationId, "双端A-实时互发");
+            Assert.Equal("ADMIN", receivedByPartner.SenderUserId, ignoreCase: true);
+
+            // partner -> admin：admin 客户端应实时收到
+            await partnerHub.InvokeCoreAsync("SendText", [conversationId, Guid.NewGuid(), "双端B-实时互发"]);
+            var receivedByAdmin = await WaitForMessageAsync(m =>
+                m.ConversationId == conversationId && m.Content.Contains("双端B-实时互发", StringComparison.Ordinal));
+            Assert.Equal(PartnerUser, receivedByAdmin.SenderUserId, ignoreCase: true);
+
+            // REST 兜底：两条消息均已落库
+            var history = await GetJsonAsync<List<ImMessageDto>>(
+                $"/api/im/conversations/{conversationId}/messages?afterSeq=0&limit=50");
+            Assert.Contains(history, m => m.Content.Contains("双端A-实时互发", StringComparison.Ordinal));
+            Assert.Contains(history, m => m.Content.Contains("双端B-实时互发", StringComparison.Ordinal));
+
+            lock (partnerErrors)
+            {
+                Assert.Empty(partnerErrors);
+            }
+
+            Assert.Empty(_hubErrors);
+        }
+        finally
+        {
+            await partnerHub.DisposeAsync();
+        }
+    }
+
+    private static async Task<ImMessageDto> WaitForPartnerMessageAsync(
+        List<ImMessageDto> received, long conversationId, string keyword, int timeoutSeconds = 15)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < TimeSpan.FromSeconds(timeoutSeconds))
+        {
+            lock (received)
+            {
+                var match = received.FirstOrDefault(m =>
+                    m.ConversationId == conversationId &&
+                    m.Content.Contains(keyword, StringComparison.Ordinal));
+                if (match is not null)
+                {
+                    return match;
+                }
+            }
+
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException($"等待对方客户端收到消息 {keyword} 超时");
     }
 
     private async Task WaitForPersistedAsync(long conversationId, string keyword, int timeoutSeconds = 10)
