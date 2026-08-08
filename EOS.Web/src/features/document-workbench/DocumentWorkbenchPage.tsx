@@ -1,4 +1,4 @@
-import { IconAdjustmentsHorizontal, IconColumns, IconFileExport, IconPlus, IconPrinter, IconRefresh } from '@tabler/icons-react'
+import { IconAdjustmentsHorizontal, IconColumns, IconFileExport, IconListDetails, IconPlus, IconPrinter, IconRefresh } from '@tabler/icons-react'
 import { IconEdit } from '@tabler/icons-react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
@@ -109,14 +109,17 @@ export function DocumentWorkbenchPage() {
         cellClassName:alignClass(field.align),
         minWidth:field.width,
         filterable:field.isQueryable,
+        dataType:field.dataType,
         headerMenu:[{label:'字段设置',onClick:()=>setFieldEditor({detail:false,fieldKey:field.key})}],
       },
       cell:(info)=>{
-        const value=formatFieldValue(info.getValue(),field.dataType,field.format)
-        if(!value)return '—'
+        const value=info.getValue()
+        if((field.dataType??'').toLowerCase()==='bit')return <input type="checkbox" className="form-check-input" checked={Boolean(value)} disabled aria-label={field.label}/>
+        const text=formatFieldValue(value,field.dataType,field.format)
+        if(!text)return '—'
         return field.browseUrl&&field.browseModuleId&&field.browseModuleId>0
-          ?<FieldBrowseLink value={value} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
-          :renderText(value)
+          ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
+          :renderText(text)
       },
     })),
   ],[master,hasPermission])
@@ -129,14 +132,17 @@ export function DocumentWorkbenchPage() {
       className:alignClass(field.headerAlign),
       cellClassName:alignClass(field.align),
       minWidth:field.width,
+      dataType:field.dataType,
       headerMenu:[{label:'字段设置',onClick:()=>setFieldEditor({detail:true,fieldKey:field.key})}],
     },
     cell:(info)=>{
-      const value=formatFieldValue(info.getValue(),field.dataType,field.format)
-      if(!value)return '—'
+      const value=info.getValue()
+      if((field.dataType??'').toLowerCase()==='bit')return <input type="checkbox" className="form-check-input" checked={Boolean(value)} disabled aria-label={field.label}/>
+      const text=formatFieldValue(value,field.dataType,field.format)
+      if(!text)return '—'
       return field.browseUrl&&field.browseModuleId&&field.browseModuleId>0
-        ?<FieldBrowseLink value={value} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
-        :renderText(value)
+        ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
+        :renderText(text)
     },
   })),[detail,hasPermission])
   const rowSelection=useMemo<RowSelectionState>(()=>Object.fromEntries(Object.keys(selected).map(key=>[key,true])),[selected])
@@ -210,8 +216,8 @@ export function DocumentWorkbenchPage() {
         <Button size="sm" icon={<IconEdit size={16}/>} disabled={!definition.data?.hasEdit||!active} onClick={openEdit}>编辑</Button>
         <Button size="sm" icon={<IconPrinter size={16}/>} onClick={()=>window.print()}>打印</Button>
         <Button size="sm" icon={<IconFileExport size={16}/>} loading={exporting} onClick={()=>void handleExport()}>{Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'}</Button>
-        <Button size="sm" icon={<IconRefresh size={16}/>} onClick={()=>{void records.refetch();if(active)void details.refetch()}}>刷新</Button>
-        <Button size="sm" onClick={()=>setDense(current=>!current)}>{dense?'标准行高':'紧凑行高'}</Button>
+        <Button size="sm" icon={<IconRefresh size={16}/>} title="刷新" aria-label="刷新" onClick={()=>{void records.refetch();if(active)void details.refetch()}} />
+        <Button size="sm" icon={<IconListDetails size={16}/>} title={dense?'标准行高':'紧凑行高'} aria-label={dense?'标准行高':'紧凑行高'} onClick={()=>setDense(current=>!current)} />
       </>}
       footer={<ErpPagination total={records.data?.total??0} page={page} pageSize={pageSize} onPageChange={setPage} pageSizes={[10,16,25,50]} onPageSizeChange={(size)=>{setPageSizePref(size);setPage(1)}} />}
     >
