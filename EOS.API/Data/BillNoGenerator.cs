@@ -108,4 +108,22 @@ public static class BillNoGenerator
         var value = await command.ExecuteScalarAsync(token);
         return value as string;
     }
+
+    /// <summary>
+    /// 模块是否配置自动单号（BILLKIND 存在 IS_DEFAULT=1 且 IS_AUTO=1 的单别）。
+    /// </summary>
+    public static async Task<bool> HasAutoBillNoAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        int moduleId,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT TOP 1 1 FROM dbo.BILLKIND WITH (NOLOCK)
+            WHERE B_M_IDX=@ModuleId AND IS_DEFAULT=1 AND IS_AUTO=1;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        return await command.ExecuteScalarAsync(token) is not null;
+    }
 }
