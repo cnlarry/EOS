@@ -105,8 +105,12 @@ public sealed class ControlledSprocInvoker(DbConnectionFactory connections, ILog
         }
     }
 
+    /// <summary>
+    /// 存储过程名只允许标识符（防注入）；具体来源必须是当前模块的领域规则
+    /// （MODULES.UPDATE_SP / AFTERSAVE_SP 元数据或静态白名单），由调用方保证。
+    /// </summary>
     private bool IsAllowed(string sprocName) =>
-        SprocName.IsMatch(sprocName) && ModuleBusinessMap.IsKnownSproc(sprocName);
+        !string.IsNullOrWhiteSpace(sprocName) && SprocName.IsMatch(sprocName);
 
     /// <summary>
     /// 存储过程消息可能包含换行/制表符，统一压缩为单行展示文本。

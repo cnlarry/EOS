@@ -33,7 +33,8 @@ public sealed record WorkbenchDefinition(
     string UserId = "",
     string? ExecTag = null,
     bool HasOwnerColumn = true,
-    bool HasOwnerGroupColumn = true);
+    bool HasOwnerGroupColumn = true,
+    ModuleBusinessRule? BusinessRule = null);
 public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize, IReadOnlyDictionary<string, double?>? Totals = null);
@@ -82,7 +83,7 @@ public sealed class DocumentWorkbenchRepository(
     public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token)
     {
         await using var connection = CreateConnection(); await connection.OpenAsync(token);
-        const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
+        const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,UPDATE_SP,AFTERSAVE_SP FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection); command.Parameters.Add("@ModuleId", SqlDbType.Int).Value=moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token))
@@ -96,6 +97,8 @@ public sealed class DocumentWorkbenchRepository(
         var detailNoSave=!reader.IsDBNull(6)&&reader.GetBoolean(6);
         var detailNoFields=reader.IsDBNull(7)?"":reader.GetString(7).Trim();
         var moduleFilter=reader.IsDBNull(8)?"":reader.GetString(8).Trim();
+        var updateSproc=reader.IsDBNull(9)?"":reader.GetString(9).Trim();
+        var afterSaveSproc=reader.IsDBNull(10)?"":reader.GetString(10).Trim();
         await reader.CloseAsync();
         if (!IsWorkbenchUrl(url) || !Identifier.IsMatch(master) || (detail is not null && !Identifier.IsMatch(detail)))
         {
@@ -103,15 +106,41 @@ public sealed class DocumentWorkbenchRepository(
             return null;
         }
         var masterFields=await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token);
+        var masterPkOrder=await GetPrimaryKeyColumnsAsync(connection,null,master,token);
+        // 领域规则：静态映射优先（含单号字段/冲抵表等增强配置），否则由 MODULES 元数据自动注册
+        var businessRule=ModuleBusinessMap.Get(moduleId);
+        if(businessRule is null)
+        {
+            var hasSproc=updateSproc.Length>0||afterSaveSproc.Length>0;
+            if(hasSproc)
+            {
+                var hasAutoBillNo=await BillNoGenerator.HasAutoBillNoAsync(connection,null,moduleId,token);
+                string? billNoField=null;
+                string? billTypeField=null;
+                if(hasAutoBillNo&&masterPkOrder.Count>=2)
+                {
+                    billNoField=masterPkOrder.FirstOrDefault(column=>column.Contains("NO",StringComparison.OrdinalIgnoreCase));
+                    if(billNoField is not null)
+                        billTypeField=masterPkOrder.First(column=>!column.Equals(billNoField,StringComparison.OrdinalIgnoreCase));
+                }
+                businessRule=new(moduleId,
+                    afterSaveSproc.Length>0?afterSaveSproc:null,
+                    updateSproc.Length>0?updateSproc:null,
+                    billNoField is not null,
+                    billNoField,
+                    billTypeField);
+            }
+        }
         WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,
             detail is null?[]:await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),NormalizeSort(defaultSort,master,masterFields),hasEdit,hasEdit,detailNoSave,
-            await GetPrimaryKeyColumnsAsync(connection,null,master,token),detailNoFields,
-            ModuleBusinessMap.Get(moduleId)?.WorkflowSproc is not null,
+            masterPkOrder,detailNoFields,
+            businessRule?.WorkflowSproc is not null,
             string.IsNullOrWhiteSpace(moduleFilter)?null:moduleFilter,
             userId.Trim(),
             string.IsNullOrWhiteSpace(execTag)?"A":execTag.Trim(),
             await ColumnExistsAsync(connection,null,master,"OWNER",token),
-            await ColumnExistsAsync(connection,null,master,"OWNER_G",token));
+            await ColumnExistsAsync(connection,null,master,"OWNER_G",token),
+            businessRule);
         logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
             moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
         return definition;
@@ -675,7 +704,7 @@ public sealed class DocumentWorkbenchRepository(
         FormDefaultRules.Apply(definition.ModuleId,form.MasterFields,values);
 
         // 领域规则：自动单号 + 默认单别（等价旧 GetNewBillNo / GetDefaultBillInfo）
-        var businessRule=ModuleBusinessMap.Get(definition.ModuleId);
+        var businessRule=definition.BusinessRule;
         if(businessRule is { AutoBillNo: true, BillNoField: not null, BillTypeField: not null })
         {
             var existingNo=values.GetValueOrDefault(businessRule.BillNoField);
@@ -809,7 +838,7 @@ public sealed class DocumentWorkbenchRepository(
 
         var detailErrors=await SaveDetailsAsync(connection,transaction,definition,form,pkColumns,keyValues,merged,request.Details??[],employeeName,false,token);
         if(detailErrors is not null)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","明细数据校验未通过。",detailErrors);
-        var businessRule=ModuleBusinessMap.Get(definition.ModuleId);
+        var businessRule=definition.BusinessRule;
         await SavePrepayOffsetsAsync(connection,transaction,businessRule,pkColumns,keyValues,request.PrepayOffsets,token);
         if(businessRule?.AfterSaveSproc is { } afterSaveSproc)
         {
@@ -866,7 +895,7 @@ public sealed class DocumentWorkbenchRepository(
         bool approve,
         CancellationToken token)
     {
-        var rule=ModuleBusinessMap.Get(definition.ModuleId);
+        var rule=definition.BusinessRule;
         if(rule?.WorkflowSproc is not { } sproc)
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"WORKFLOW_NOT_SUPPORTED","该模块不支持批核操作。");
         var result=await controlledSprocs.RunWorkflowAsync(definition.ModuleId,sproc,definition.MasterPkOrder,keyValues,approve,token);
