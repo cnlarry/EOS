@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -23,6 +24,17 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
 
     [HttpPost("export")]
     public async Task<IActionResult> Export(int moduleId,[FromBody]WorkbenchQuery? query,[FromQuery]string? keyword=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]string? sortFields=null,[FromQuery]string? sortDirections=null,CancellationToken token=default){var definition=await AuthorizedDefinition(moduleId,token);if(definition is null)return NotFound();var rows=await repository.GetExportRowsAsync(definition,query,keyword,token,sortFields??sortField,sortDirections??sortDirection);return File(BuildCsv(definition.MasterFields,rows),"text/csv; charset=utf-8","export.csv");}
+
+    [HttpPost("export-selected")]
+    public async Task<IActionResult> ExportSelected(int moduleId,[FromBody]ExportSelectedRequest request,CancellationToken token=default)
+    {
+        var definition=await AuthorizedDefinition(moduleId,token);
+        if(definition is null)return NotFound();
+        if(request.Keys.Count==0||request.Keys.Count>500)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_EXPORT_KEYS","导出行数需在 1~500 之间。"));
+        if(request.Keys.Any(row=>row.Count!=definition.MasterPkOrder.Count))return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_EXPORT_KEYS","导出主键数量与模块定义不一致。"));
+        var rows=await repository.GetExportRowsByKeysAsync(definition,request.Keys,token);
+        return File(BuildCsv(definition.MasterFields,rows),"text/csv; charset=utf-8","export.csv");
+    }
 
     [HttpGet("form-definition")]
     public async Task<IActionResult> FormDefinition(int moduleId,[FromQuery]string mode="new",CancellationToken token=default)

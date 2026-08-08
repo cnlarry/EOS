@@ -20,6 +20,7 @@ public sealed record FormFieldDefinition(string Key, string Label, string DataTy
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
 public sealed record WorkbenchQueryCondition(string Field, string Operator, string? Value, string? ValueTo, IReadOnlyList<string>? Values, string Logic = "and");
 public sealed record WorkbenchQuery(IReadOnlyList<WorkbenchQueryCondition> Conditions);
+public sealed record ExportSelectedRequest(IReadOnlyList<IReadOnlyList<string>> Keys);
 public sealed record FieldSetupLookup(string Value,string Label);
 public sealed record SystemKnowledgeModule(int Id, string Title);
 public sealed record SystemKnowledgeField(string Table, string Field, string Description, string? DataType);
@@ -344,6 +345,42 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
         await using var reader=await command.ExecuteReaderAsync(token); var rows=new List<Dictionary<string,object?>>();
         while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase); for(var i=0;i<reader.FieldCount;i++) row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i); rows.Add(row);}
         logger.LogDebug("工作台导出完成 table={Table} returned={RowCount} elapsedMs={ElapsedMs:F0}", table,rows.Count,stopwatch.Elapsed.TotalMilliseconds);
+        return rows;
+    }
+
+    /// <summary>
+    /// 按主键集合导出（导出所选行）：keys 为「主键值数组」列表，顺序与 masterPkOrder 一致。
+    /// 全部条件参数化，字段沿用权限过滤后的定义白名单。
+    /// </summary>
+    public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsByKeysAsync(WorkbenchDefinition definition,IReadOnlyList<IReadOnlyList<string>> keys,CancellationToken token)
+    {
+        var table=definition.MasterTable;var fields=definition.MasterFields;
+        if(table is null||fields.Count==0||keys.Count==0)return [];
+        var pks=definition.MasterPkOrder
+            .Select(key=>fields.FirstOrDefault(field=>field.Key.Equals(key,StringComparison.OrdinalIgnoreCase))?.Key)
+            .Where(key=>key is not null).Cast<string>().ToList();
+        if(pks.Count==0)return [];
+        var selected=fields.Take(30).ToList();
+        await using var connection=CreateConnection();await connection.OpenAsync(token);await using var command=new SqlCommand();command.Connection=connection;
+        var orParts=new List<string>();
+        for(var rowIndex=0;rowIndex<keys.Count;rowIndex++)
+        {
+            var row=keys[rowIndex];
+            if(row.Count!=pks.Count)continue;
+            var andParts=new List<string>();
+            for(var i=0;i<pks.Count;i++)
+            {
+                var name=$"@k{rowIndex}_{i}";
+                andParts.Add($"[{pks[i]}]={name}");
+                command.Parameters.AddWithValue(name,row[i]??"");
+            }
+            orParts.Add("("+string.Join(" AND ",andParts)+")");
+        }
+        if(orParts.Count==0)return [];
+        command.CommandText=$"SELECT {string.Join(',',selected.Select(field=>$"[{field.Key}]"))} FROM dbo.[{table}] WITH (NOLOCK) WHERE {string.Join(" OR ",orParts)};";
+        await using var reader=await command.ExecuteReaderAsync(token);
+        var rows=new List<Dictionary<string,object?>>();
+        while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);for(var i=0;i<reader.FieldCount;i++)row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i);rows.Add(row);}
         return rows;
     }
 
