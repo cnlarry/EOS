@@ -14,8 +14,10 @@ import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
+import { useAuth } from '../auth/AuthProvider'
 import { FieldEditorModal } from '../field-admin/FieldEditorModal'
 import { alignClass, formatFieldValue } from './fieldFormat'
+import { FieldBrowseLink } from './FieldBrowseLink'
 
 interface Field { key:string; label:string; dataType:string; width:number; align:string; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null }
 interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[] }
@@ -27,6 +29,7 @@ interface ChooserSource { active:boolean; table:string|null; description:string|
 interface FieldMetadata { key:string; tableId:string; label:string; dataType:string; width:number; align:string; headerAlign:string; format:string|null; isVisible:boolean; isDefault:boolean; isQueryable:boolean; isReadonly:boolean; isRequired:boolean; isCost:boolean; isSecrecy:boolean; defaultValue:string|null; verifyIndex:number|null; regex:string|null; remark:string|null; browseUrl:string|null; browseModuleId:number|null; onlyChoose:boolean; chooseMultiple:boolean; choosePage:string|null; choosers:ChooserSource[]; isVirtual:boolean; virtualExpression:string|null; canCopy:boolean; isAutoIncrement:boolean; convertFunction:string|null; dataSourceSql:string|null; lastUpdatedBy:string|null; lastUpdatedAt:string|null }
 const uniqueFields=(fields:Field[])=>fields.filter((field,index,all)=>all.findIndex(item=>item.key.toLowerCase()===field.key.toLowerCase())===index)
 export function DocumentWorkbenchPage() {
+  const { hasPermission } = useAuth()
   const navigate=useNavigate()
   const { moduleId='' }=useParams()
   const queryClient=useQueryClient()
@@ -105,9 +108,14 @@ export function DocumentWorkbenchPage() {
         minWidth:field.width,
         onHeaderContextMenu:(event:MouseEvent<HTMLTableCellElement>)=>openFieldMenu(event,false,field.key),
       },
-      cell:info=>formatFieldValue(info.getValue(),field.dataType,field.format),
+      cell:(info)=>{
+        const value=formatFieldValue(info.getValue(),field.dataType,field.format)
+        return field.browseUrl&&field.browseModuleId&&field.browseModuleId>0
+          ?<FieldBrowseLink value={value} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
+          :value
+      },
     })),
-  ],[master,openFieldMenu])
+  ],[master,openFieldMenu,hasPermission])
   const detailColumns=useMemo<ColumnDef<Record<string,unknown>,unknown>[]>(()=>detail.map((field):ColumnDef<Record<string,unknown>,unknown>=>({
     id:field.key,
     accessorKey:field.key,
@@ -119,8 +127,13 @@ export function DocumentWorkbenchPage() {
       minWidth:field.width,
       onHeaderContextMenu:(event:MouseEvent<HTMLTableCellElement>)=>openFieldMenu(event,true,field.key),
     },
-    cell:info=>formatFieldValue(info.getValue(),field.dataType,field.format),
-  })),[detail,openFieldMenu])
+    cell:(info)=>{
+      const value=formatFieldValue(info.getValue(),field.dataType,field.format)
+      return field.browseUrl&&field.browseModuleId&&field.browseModuleId>0
+        ?<FieldBrowseLink value={value} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
+        :value
+    },
+  })),[detail,openFieldMenu,hasPermission])
   const rowSelection=useMemo<RowSelectionState>(()=>Object.fromEntries(Object.keys(selected).map(key=>[key,true])),[selected])
 
   const rowKey=(row:Record<string,unknown>)=>{const keys=master.filter(field=>field.isPrimaryKey).map(field=>String(row[field.key]??''));return keys.length?keys.join('|'):JSON.stringify(row)}
