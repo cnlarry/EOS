@@ -901,35 +901,62 @@ public sealed class DocumentWorkbenchRepository(
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"WORKFLOW_NOT_SUPPORTED","该模块不支持批核操作。");
         await using var connection=CreateConnection();
         await connection.OpenAsync(token);
-        await using var transaction=(SqlTransaction)await connection.BeginTransactionAsync(token);
         var keyCondition=ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder,keyValues);
-        // 对齐旧系统 P_WF_APPROVE_NOFLOW：批核/解批先更新主表确认状态（带守卫），
-        // 再执行 P_WF_<DOC> 业务存储过程；同一事务，任一失败整体回滚。
-        // 守卫语义：批核仅允许 CONFIRM_TAG=0（未批核），解批仅允许 CONFIRM_TAG=1。
+        // 对齐旧系统 P_WF_APPROVE_NOFLOW：先更新主表确认状态（带守卫），
+        // 再执行 P_WF_<DOC> 业务存储过程。业务 SP 自动提交运行——
+        // 部分 SP（如 P_WF_SAMPLE_PRO→P_WF_RUN 流程链）内部自带 BEGIN TRAN/COMMIT，
+        // 外层再包事务会导致"事务计数不匹配"（EXECUTE 后 BEGIN/COMMIT 数目失衡）。
+        // 守卫语义：批核仅允许 CONFIRM_TAG=0（未批核），解批仅允许 CONFIRM_TAG=1；
+        // 业务 SP 失败时回滚确认状态（SP 自身副作用无法回滚，与旧系统嵌套事务一致）。
+        var originalState=await ReadConfirmStateAsync(connection,definition.MasterTable,keyCondition,token);
+        if(originalState is null)
+            return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
         var confirmSql=approve
             ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};"
             : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyCondition};";
-        await using (var confirmCommand=new SqlCommand(confirmSql,connection,transaction))
+        await using (var confirmCommand=new SqlCommand(confirmSql,connection))
         {
             confirmCommand.Parameters.Add("@ConfirmPerson",SqlDbType.NVarChar,50).Value=employeeName.Trim();
             var affected=await confirmCommand.ExecuteNonQueryAsync(token);
             if(affected==0)
             {
-                await transaction.RollbackAsync(token);
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"WORKFLOW_STATE_CONFLICT",
                     approve?"记录不存在或已批核，无法重复批核。":"记录不存在或未批核，无法解批。");
             }
         }
-        var result=await controlledSprocs.RunWorkflowAsync(definition.ModuleId,sproc,definition.MasterPkOrder,keyValues,approve,connection,transaction,token);
+        var result=await controlledSprocs.RunWorkflowAsync(definition.ModuleId,sproc,definition.MasterPkOrder,keyValues,approve,token);
         if(!result.Success)
         {
-            await transaction.RollbackAsync(token);
+            await RestoreConfirmStateAsync(connection,definition.MasterTable,keyCondition,originalState.Value,token);
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"WORKFLOW_FAILED",
                 result.Message??(approve?"批核失败。":"解批失败。"));
         }
-        await transaction.CommitAsync(token);
         logger.LogInformation("统一表单{Action} module={ModuleId} key={Key}",approve?"批核":"解批",definition.ModuleId,string.Join(',',keyValues));
         return RecordSaveResult.Success(keyValues);
+    }
+
+    private static async Task<(bool? Tag,string? Person,DateTime? Date)?> ReadConfirmStateAsync(
+        SqlConnection connection,string table,string keyCondition,CancellationToken token)
+    {
+        var sql=$"SELECT CONFIRM_TAG,CONFIRM_PERSON,CONFIRM_DATE FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyCondition};";
+        await using var command=new SqlCommand(sql,connection);
+        await using var reader=await command.ExecuteReaderAsync(token);
+        if(!await reader.ReadAsync(token))return null;
+        var tag=reader.IsDBNull(0)?(bool?)null:reader.GetBoolean(0);
+        var person=reader.IsDBNull(1)?null:reader.GetString(1);
+        var date=reader.IsDBNull(2)?(DateTime?)null:reader.GetDateTime(2);
+        return (tag,person,date);
+    }
+
+    private static async Task RestoreConfirmStateAsync(
+        SqlConnection connection,string table,string keyCondition,(bool? Tag,string? Person,DateTime? Date) state,CancellationToken token)
+    {
+        var sql=$"UPDATE dbo.[{table}] SET CONFIRM_TAG=@Tag,CONFIRM_PERSON=@Person,CONFIRM_DATE=@Date WHERE {keyCondition};";
+        await using var command=new SqlCommand(sql,connection);
+        command.Parameters.Add("@Tag",SqlDbType.Bit).Value=(object?)state.Tag??DBNull.Value;
+        command.Parameters.Add("@Person",SqlDbType.NVarChar,50).Value=(object?)state.Person??DBNull.Value;
+        command.Parameters.Add("@Date",SqlDbType.DateTime).Value=(object?)state.Date??DBNull.Value;
+        await command.ExecuteNonQueryAsync(token);
     }
 
     /// <summary>
