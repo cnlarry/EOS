@@ -29,6 +29,12 @@ function FieldAdminRoute() {
   return <FieldAdminPage key={tableId} />
 }
 
+/** 表单编辑页（新增/编辑）跨模块打开时同样重置草稿/校验状态 */
+function FormEditorRoute() {
+  const { moduleId = '' } = useParams()
+  return <FormEditorPage key={moduleId} />
+}
+
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/forbidden', element: <ForbiddenPage /> },
@@ -42,8 +48,8 @@ export const router = createBrowserRouter([
         { element: <RequirePermission permission="purchase-order.read" />, children: [{ path: 'procurement/purchase-orders', element: <PurchaseOrdersPage /> }] },
         { element: <RequirePermission permission="legacy-module.2302.read" />, children: [{ path: 'admin/tables', element: <TableAdminPage /> }, { path: 'admin/tables/:tableId/fields', element: <FieldAdminRoute /> }] },
         { path: 'document-workbench/:moduleId', element: <WorkbenchRoute /> },
-        { path: 'document-workbench/:moduleId/new', element: <FormEditorPage /> },
-        { path: 'document-workbench/:moduleId/edit', element: <FormEditorPage /> },
+        { path: 'document-workbench/:moduleId/new', element: <FormEditorRoute /> },
+        { path: 'document-workbench/:moduleId/edit', element: <FormEditorRoute /> },
         { path: 'legacy/modules/:moduleId', element: <LegacyModulePage /> },
         { path: 'settings/profile', element: <ProfilePage /> },
       ],

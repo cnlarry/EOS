@@ -29,6 +29,25 @@ public sealed record SystemModuleList(int Total, IReadOnlyList<SystemKnowledgeMo
 public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections, FieldAdminRepository fieldAdmin, ILogger<DocumentWorkbenchRepository> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
+    private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// 浏览链接模板白名单校验（BROWSE_URL）。
+    /// 仅允许站内相对路径（~ 开头、无外部协议），且所有 {占位符} 必须是同一表内
+    /// 已授权字段（大小写不敏感）；否则返回 null，前端不渲染该浏览链接。
+    /// </summary>
+    internal static string? SanitizeBrowseUrl(string? rawUrl, IReadOnlySet<string> allowedFields)
+    {
+        if (string.IsNullOrWhiteSpace(rawUrl)) return null;
+        var url = rawUrl.Trim();
+        if (!url.StartsWith("~/", StringComparison.Ordinal) || url.Contains("://")) return null;
+        foreach (Match match in BrowseUrlPlaceholder.Matches(url))
+        {
+            var token = match.Groups[1].Value.Trim();
+            if (token.Length == 0 || !Identifier.IsMatch(token) || !allowedFields.Contains(token)) return null;
+        }
+        return url;
+    }
 
     public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token)
     {
@@ -1019,7 +1038,10 @@ public sealed class DocumentWorkbenchRepository(DbConnectionFactory connections,
             ORDER BY CASE WHEN EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku ON ku.CONSTRAINT_NAME=tc.CONSTRAINT_NAME AND ku.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND ku.TABLE_SCHEMA='dbo' AND ku.TABLE_NAME=@TargetTable AND ku.COLUMN_NAME=f.F_ID) AND u.F_ID IS NULL THEN 0 ELSE 1 END,COALESCE(u.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
             """;
         await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();command.Parameters.Add("@MasterTable",SqlDbType.NVarChar,100).Value=masterTable;command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;
-        await using var reader=await command.ExecuteReaderAsync(token);var fields=new List<WorkbenchField>();while(await reader.ReadAsync(token)){var key=reader.GetString(0).Trim();if(Identifier.IsMatch(key)&&!deniedFields.Contains(key)&&(canViewCost||!reader.GetBoolean(7))&&(canViewSecrecy||!reader.GetBoolean(8)))fields.Add(new(key,reader.GetString(1).Trim(),reader.GetString(2).Trim(),Math.Clamp(reader.GetInt32(3),40,300),reader.GetString(4).Trim(),reader.GetBoolean(5),true,reader.GetBoolean(6),reader.GetString(9),reader.IsDBNull(10)?null:reader.GetString(10),reader.IsDBNull(11)?null:reader.GetString(11),reader.IsDBNull(12)?null:reader.GetInt32(12)));}return fields;
+        await using var reader=await command.ExecuteReaderAsync(token);var fields=new List<WorkbenchField>();while(await reader.ReadAsync(token)){var key=reader.GetString(0).Trim();if(Identifier.IsMatch(key)&&!deniedFields.Contains(key)&&(canViewCost||!reader.GetBoolean(7))&&(canViewSecrecy||!reader.GetBoolean(8)))fields.Add(new(key,reader.GetString(1).Trim(),reader.GetString(2).Trim(),Math.Clamp(reader.GetInt32(3),40,300),reader.GetString(4).Trim(),reader.GetBoolean(5),true,reader.GetBoolean(6),reader.GetString(9),reader.IsDBNull(10)?null:reader.GetString(10),reader.IsDBNull(11)?null:reader.GetString(11),reader.IsDBNull(12)?null:reader.GetInt32(12)));}
+        var allowedFields=fields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for(var i=0;i<fields.Count;i++){var field=fields[i];var safe=SanitizeBrowseUrl(field.BrowseUrl,allowedFields);if(safe!=field.BrowseUrl)fields[i]=field with{BrowseUrl=safe};}
+        return fields;
     }
     private static string ResolveOrder(WorkbenchDefinition definition,IReadOnlyList<WorkbenchField> fields,IReadOnlyList<WorkbenchField> selected,bool detail,string? sortField,string? sortDirection)
     {
