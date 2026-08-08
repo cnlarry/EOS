@@ -427,7 +427,7 @@ public sealed class ImConversationRepository(DbConnectionFactory connections) : 
     {
         var pattern = $"%{keyword?.Trim() ?? string.Empty}%";
         const string sql = """
-            SELECT TOP (@Limit) u.USER_ID, n.EMP_NAME, dbo.f_get_dept_desc(n.DEPT_ID) AS DEPT_DESC
+            SELECT TOP (@Limit) u.USER_ID, n.EMP_NAME, Hiswitek.dbo.f_get_dept_desc(n.DEPT_ID) AS DEPT_DESC
             FROM Hiswitek.dbo.SYSDL u WITH (NOLOCK)
             JOIN Hiswitek.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
             WHERE u.ACTIVE_TAG = 1
@@ -522,5 +522,5 @@ public sealed class ImConversationRepository(DbConnectionFactory connections) : 
     }
 
     private static string EscapeJson(string value)
-        => System.Text.Json.JsonSerializer.Serialize(value).Trim('"');
+        => Services.ImJson.Serialize(value).Trim('"');
 }

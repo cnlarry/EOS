@@ -217,6 +217,20 @@ public sealed class ImRepositoryIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchUsers_ReturnsActiveUsersFromLegacyDirectory()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return;
+        }
+
+        var result = await _conversations.SearchUsersAsync(string.Empty, 5, CancellationToken.None);
+
+        Assert.NotEmpty(result);
+        Assert.All(result, contact => Assert.False(string.IsNullOrWhiteSpace(contact.UserId)));
+    }
+
+    [Fact]
     public async Task CleanupExpired_RemovesPastRetentionMessages()
     {
         if (ConnectionString.Value is null)

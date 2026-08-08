@@ -57,7 +57,7 @@ public static class ImCardSnapshot
             },
         };
 
-        return JsonSerializer.Serialize(payload);
+        return ImJson.Serialize(payload);
     }
 
     private static string? FormatValue(object? value)
