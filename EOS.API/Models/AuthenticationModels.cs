@@ -14,3 +14,9 @@ public sealed record LoginUser(
 public enum LoginFailure { None, UserNotFound, InvalidPassword, Disabled }
 
 public sealed record LoginResult(LoginFailure Failure, LoginUser? User);
+
+public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+
+public enum PasswordChangeFailure { None, UserNotFound, NoPasswordSet, WrongCurrentPassword, InvalidNewPassword }
+
+public sealed record PasswordChangeResult(PasswordChangeFailure Failure);

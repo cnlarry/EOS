@@ -29,7 +29,8 @@ public sealed class AuthenticationRepository(DbConnectionFactory connections, IL
             logger.LogWarning("登录失败 userId={UserId} reason=UserNotFound", normalizedUserId);
             return new(LoginFailure.UserNotFound, null);
         }
-        if (!LegacyPassword.Verify(reader.GetString("USER_PWD"), password))
+        var storedHash = reader.IsDBNull(reader.GetOrdinal("USER_PWD")) ? null : reader.GetString("USER_PWD");
+        if (!PasswordHasher.Verify(storedHash, password))
         {
             logger.LogWarning("登录失败 userId={UserId} reason=InvalidPassword", normalizedUserId);
             return new(LoginFailure.InvalidPassword, null);
@@ -46,5 +47,56 @@ public sealed class AuthenticationRepository(DbConnectionFactory connections, IL
             reader.GetString("COMPANY_ID").Trim(), reader.GetNullableString("G_IDX") ?? string.Empty);
         logger.LogInformation("登录成功 userId={UserId} employee={EmployeeName}", user.UserId, user.EmployeeName);
         return new(LoginFailure.None, user);
+    }
+
+    /// <summary>
+    /// 用户自助修改密码（ADR-004 配套）：必须验证当前密码，成功后写入现代哈希并记录审计。
+    /// </summary>
+    public async Task<PasswordChangeResult> ChangePasswordAsync(
+        string userId,
+        string currentPassword,
+        string newPassword,
+        string updatedBy,
+        CancellationToken token)
+    {
+        const string selectSql = """
+            SELECT USER_PWD
+            FROM dbo.SYSDL WITH (NOLOCK)
+            WHERE LTRIM(RTRIM(USER_ID))=@UserId;
+            """;
+        await using var connection = connections.Create();
+        await using var select = new SqlCommand(selectSql, connection);
+        select.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
+        await connection.OpenAsync(token);
+        var storedHash = await select.ExecuteScalarAsync(token) as string;
+        if (storedHash is null)
+            return new(PasswordChangeFailure.UserNotFound);
+        if (string.IsNullOrEmpty(storedHash))
+            return new(PasswordChangeFailure.NoPasswordSet);
+        if (!PasswordHasher.Verify(storedHash, currentPassword))
+            return new(PasswordChangeFailure.WrongCurrentPassword);
+        try
+        {
+            PasswordPolicy.Validate(newPassword);
+        }
+        catch (ArgumentException)
+        {
+            return new(PasswordChangeFailure.InvalidNewPassword);
+        }
+
+        var hash = PasswordHasher.Hash(newPassword);
+        const string updateSql = """
+            UPDATE dbo.SYSDL
+            SET USER_PWD=@Hash, LAST_UPDATE_BY=@UpdatedBy, LAST_UPDATE_DATE=GETDATE()
+            WHERE LTRIM(RTRIM(USER_ID))=@UserId;
+            """;
+        await using var update = new SqlCommand(updateSql, connection);
+        update.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
+        update.Parameters.Add("@Hash", SqlDbType.NVarChar, 50).Value = hash;
+        update.Parameters.Add("@UpdatedBy", SqlDbType.NChar, 20).Value = updatedBy;
+        if (await update.ExecuteNonQueryAsync(token) != 1)
+            return new(PasswordChangeFailure.UserNotFound);
+        logger.LogInformation("用户自助修改密码 userId={UserId} by={UpdatedBy}", userId.Trim(), updatedBy);
+        return new(PasswordChangeFailure.None);
     }
 }

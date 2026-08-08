@@ -98,10 +98,21 @@ const navigationIcons: Record<string, typeof IconDashboard> = {
   customs: IconWorld,
 }
 
+const avatarPalette = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6']
+
+function avatarColor(username: string): string {
+  let hash = 0
+  for (let index = 0; index < username.length; index += 1) {
+    hash = (hash * 31 + username.charCodeAt(index)) >>> 0
+  }
+  return avatarPalette[hash % avatarPalette.length]
+}
+
 const pageTitles: Record<string, { section: string; title: string }> = {
   '/dashboard': { section: '首页', title: '工作台' },
   '/procurement/purchase-orders': { section: '采购管理', title: '采购订单' },
   '/admin/tables': { section: '系统管理', title: '数据表维护' },
+  '/admin/users': { section: '系统管理', title: '用户管理' },
   '/settings/profile': { section: '系统设置', title: '个人设置' },
 }
 
@@ -118,6 +129,7 @@ export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('erp-sidebar-collapsed') === 'true')
   const [expandedGroup, setExpandedGroup] = useState<string | null>('采购管理')
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [currentDate, setCurrentDate] = useState(() => new Date())
   const { bootstrap, logout } = useAuth()
   const navigate = useNavigate()
@@ -148,7 +160,26 @@ export function AppShell() {
     localStorage.setItem('erp-sidebar-collapsed', String(sidebarCollapsed))
   }, [sidebarCollapsed])
 
-  useEffect(() => setSidebarOpen(false), [location.pathname])
+  useEffect(() => {
+    setSidebarOpen(false)
+    setUserMenuOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    if (!userMenuOpen) return
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!(event.target as HTMLElement).closest('.erp-user-menu')) setUserMenuOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setUserMenuOpen(false)
+    }
+    document.addEventListener('click', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('click', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [userMenuOpen])
 
   useEffect(() => {
     const updateDate = () => setCurrentDate(new Date())
@@ -284,14 +315,34 @@ export function AppShell() {
               >
                 {theme === 'light' ? <IconMoon size={20} /> : <IconSun size={20} />}
               </button>
-              <button className="btn erp-user" type="button" aria-label="退出登录" title="点击退出登录" onClick={() => void logout().then(() => navigate('/login', { replace: true }))}>
-                <span className="avatar avatar-sm">{bootstrap?.user.avatarText}</span>
-                <span className="d-none d-sm-block text-start">
-                  <span className="d-block fw-semibold">{bootstrap?.user.displayName}</span>
-                  <small className="text-secondary">{bootstrap?.user.roleName}</small>
-                </span>
-                <IconChevronDown size={16} className="text-secondary" />
-              </button>
+              <div className="dropdown erp-user-menu">
+                <button
+                  className="btn erp-user dropdown-toggle"
+                  type="button"
+                  aria-label="用户菜单"
+                  aria-haspopup="menu"
+                  aria-expanded={userMenuOpen}
+                  onClick={() => setUserMenuOpen((open) => !open)}
+                >
+                  {bootstrap?.user.avatarUrl ? (
+                    <span className="avatar avatar-sm"><img src={bootstrap.user.avatarUrl} alt="" /></span>
+                  ) : (
+                    <span className="avatar avatar-sm" style={{ backgroundColor: avatarColor(bootstrap?.user.username ?? 'user') }}>{bootstrap?.user.avatarText}</span>
+                  )}
+                  <span className="d-none d-sm-block text-start">
+                    <span className="d-block fw-semibold">{bootstrap?.user.displayName}</span>
+                    <small className="text-secondary">{bootstrap?.user.username}</small>
+                  </span>
+                  <IconChevronDown size={16} className="text-secondary" />
+                </button>
+                {userMenuOpen && (
+                  <div className="dropdown-menu dropdown-menu-end show" role="menu">
+                    <button className="dropdown-item" type="button" role="menuitem" onClick={() => navigate('/settings/profile')}>个人设置</button>
+                    <div className="dropdown-divider" />
+                    <button className="dropdown-item text-danger" type="button" role="menuitem" onClick={() => void logout().then(() => navigate('/login', { replace: true }))}>退出登录</button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

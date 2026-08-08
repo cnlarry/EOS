@@ -9,6 +9,7 @@ import { LegacyModulePage } from '../features/legacy/LegacyModulePage'
 import { PurchaseOrdersPage } from '../features/procurement/pages/PurchaseOrdersPage'
 import { FieldAdminPage } from '../features/field-admin/FieldAdminPage'
 import { TableAdminPage } from '../features/field-admin/TableAdminPage'
+import { UserAdminPage } from '../features/user-admin/UserAdminPage'
 import { ProfilePage } from '../features/settings/ProfilePage'
 import { ErrorPage } from './ErrorPage'
 
@@ -47,6 +48,7 @@ export const router = createBrowserRouter([
         { path: 'legacy/modules/:moduleId', element: <LegacyModulePage /> },
         { element: <RequirePermission permission="purchase-order.read" />, children: [{ path: 'procurement/purchase-orders', element: <PurchaseOrdersPage /> }] },
         { element: <RequirePermission permission="legacy-module.2302.read" />, children: [{ path: 'admin/tables', element: <TableAdminPage /> }, { path: 'admin/tables/:tableId/fields', element: <FieldAdminRoute /> }] },
+        { element: <RequirePermission permission="legacy-module.2306.read" />, children: [{ path: 'admin/users', element: <UserAdminPage /> }] },
         { path: 'document-workbench/:moduleId', element: <WorkbenchRoute /> },
         { path: 'document-workbench/:moduleId/new', element: <FormEditorRoute /> },
         { path: 'document-workbench/:moduleId/edit', element: <FormEditorRoute /> },

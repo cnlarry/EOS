@@ -3,6 +3,7 @@ using EOS.API.Errors;
 using EOS.API.Middleware;
 using EOS.API.Models;
 using EOS.API.Security;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.OpenApi;
@@ -71,13 +72,20 @@ builder.Services.AddOpenApi(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddScoped<ApiExceptionFilter>();
+builder.Services.Configure<LoginThrottleOptions>(builder.Configuration.GetSection("Security:LoginThrottle"));
+builder.Services.AddSingleton<LoginThrottleService>();
+builder.Services.AddDataProtection()
+    .SetApplicationName(builder.Configuration["DataProtection:ApplicationName"] ?? "EOS.API")
+    .PersistKeysToFileSystem(GetDataProtectionKeysDirectory(builder.Configuration));
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
         options.Cookie.Name = "EOS.Auth";
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.Cookie.SecurePolicy = builder.Environment.IsProduction()
+            ? CookieSecurePolicy.Always
+            : CookieSecurePolicy.SameAsRequest;
         options.SlidingExpiration = true;
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
         options.Events.OnRedirectToLogin = context =>
@@ -101,6 +109,7 @@ builder.Services.AddAuthorization(options => options.FallbackPolicy =
         .RequireAuthenticatedUser().Build());
 builder.Services.AddScoped<AdminFieldRepository>();
 builder.Services.AddScoped<AuthenticationRepository>();
+builder.Services.AddScoped<UserAdminRepository>();
 builder.Services.AddScoped<FieldAdminRepository>();
 builder.Services.AddScoped<BomRepository>();
 builder.Services.AddScoped<DynamicBomRepository>();
@@ -114,7 +123,12 @@ builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetS
 var app = builder.Build();
 
 app.UseMiddleware<RequestLoggingMiddleware>();
+app.UseMiddleware<SameOriginGuardMiddleware>();
 app.UseExceptionHandler();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseAuthentication();
@@ -133,3 +147,12 @@ app.MapOpenApi().AllowAnonymous();
 app.MapFallbackToFile("index.html").RequireAuthorization();
 
 app.Run();
+
+static DirectoryInfo GetDataProtectionKeysDirectory(IConfiguration configuration)
+{
+    var configured = configuration["DataProtection:KeysDirectory"];
+    var path = string.IsNullOrWhiteSpace(configured)
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "EOS", "DataProtection-Keys")
+        : Environment.ExpandEnvironmentVariables(configured);
+    return new DirectoryInfo(path);
+}

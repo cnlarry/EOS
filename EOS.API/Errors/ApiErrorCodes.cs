@@ -18,4 +18,5 @@ public static class ApiErrorCodes
     public const string LoginUserNotFound = "LOGIN_USER_NOT_FOUND";
     public const string LoginInvalidPassword = "LOGIN_INVALID_PASSWORD";
     public const string LoginDisabled = "LOGIN_DISABLED";
+    public const string LoginLocked = "LOGIN_LOCKED";
 }
