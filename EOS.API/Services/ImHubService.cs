@@ -39,7 +39,7 @@ public sealed class ImHubService(
             return new(false, "RATE_LIMITED", "发送过于频繁，请稍后再试", null);
         }
 
-        var content = JsonSerializer.Serialize(new { text = trimmed });
+        var content = ImJson.Serialize(new { text = trimmed });
         var message = await messages.SendAsync(
             conversationId, userId, clientMessageId, ImMessageType.Text, content,
             ImPreview.Build(ImMessageType.Text, content), token);
@@ -143,7 +143,7 @@ public sealed class ImHubService(
             return new(false, "FORBIDDEN", "只能发送自己上传的附件", null);
         }
 
-        var content = System.Text.Json.JsonSerializer.Serialize(new
+        var content = ImJson.Serialize(new
         {
             fileId = attachment.Id,
             fileName = attachment.FileName,
