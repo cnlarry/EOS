@@ -137,6 +137,7 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
 
     const attachHandles = () => {
       thsOf().forEach((th) => {
+        if (th.dataset.colResizable === 'false') return
         if (th.querySelector('.erp-col-resizer')) return
         const handle = document.createElement('div')
         handle.className = 'erp-col-resizer'
@@ -285,6 +286,7 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
       if (!target) return
       const th = target.closest('th')
       if (!th) return
+      if (th.dataset.colResizable === 'false') return
       const index = thsOf().indexOf(th)
       if (index < 0) return
       event.preventDefault()

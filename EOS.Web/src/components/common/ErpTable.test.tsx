@@ -263,4 +263,20 @@ describe('ErpTable', () => {
     fireEvent.click(screen.getByRole('button', { name: '筛选：等于（选中）' }))
     expect(onColumnFilterChange).toHaveBeenCalledWith('flag', expect.objectContaining({ field: 'flag', operator: 'eq', value: '1' }))
   })
+
+  it('非可调列不渲染拖拽手柄', async () => {
+    const columns: ColumnDef<Row, unknown>[] = [
+      { accessorKey: 'id', header: 'ID', meta: { resizable: false } },
+      { accessorKey: 'name', header: '名称' },
+    ]
+    const { container } = render(
+      <ErpTable columns={columns} data={rows} getRowId={(row) => row.id} resizable storageKey="erp-resize-test" />,
+    )
+    await waitFor(() => expect(container.querySelectorAll('.erp-col-resizer').length).toBeGreaterThan(0))
+    const idTh = container.querySelector('thead th')!
+    expect(idTh).toHaveAttribute('data-col-resizable', 'false')
+    expect(idTh.querySelector('.erp-col-resizer')).not.toBeInTheDocument()
+    const nameTh = container.querySelectorAll('thead th')[1]
+    expect(nameTh.querySelector('.erp-col-resizer')).toBeInTheDocument()
+  })
 })
