@@ -234,7 +234,7 @@ export function ErpTable<TData>({
                 const meta = header.column.columnDef.meta
                 const sorted = header.column.getIsSorted()
                 const frozen = meta?.frozenLeft ? 'erp-frozen-left' : meta?.frozenRight ? 'erp-frozen-right' : ''
-                const thStyle: CSSProperties = { position: 'relative' }
+                const thStyle: CSSProperties = {}
                 if (meta?.minWidth) thStyle.minWidth = meta.minWidth
                 if (meta?.frozenLeft) thStyle.left = 0
                 if (meta?.frozenRight) thStyle.right = 0
