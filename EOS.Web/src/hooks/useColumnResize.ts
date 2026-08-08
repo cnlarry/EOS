@@ -39,7 +39,7 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
     const MIN_WIDTH = 48
 
     let colgroup: HTMLTableColElement | null = null
-    let active: { index: number; columnKey: string; startX: number; startWidth: number; minWidth: number; dragged: boolean } | null = null
+    let active: { index: number; columnKey: string; th: HTMLTableCellElement; startX: number; startWidth: number; minWidth: number; dragged: boolean } | null = null
     // 双击自动适配列宽的判定：记录上一次“点击（无位移）松开”的时间与列
     let lastClick: { time: number; columnKey: string } | null = null
     const defaults = defaultsByTable.get(table) ?? (defaultsByTable.set(table, new Map<string, number>()), defaultsByTable.get(table)!)
@@ -251,7 +251,8 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
     const endDrag = (event: PointerEvent) => {
       const handle = event.currentTarget as HTMLElement
       if (active) {
-        const { index, columnKey, dragged } = active
+        const { index, columnKey, th: activeTh, dragged } = active
+        activeTh.classList.remove('erp-col-resizing-active')
         active = null
         if (dragged) {
           // 真实拖拽：持久化列宽并通知调用方
@@ -294,9 +295,11 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
       const padding = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0)
       const border = th.offsetWidth - th.clientWidth
       const minWidth = Math.max(MIN_WIDTH, measureHeaderContent(th) + padding + border)
+      th.classList.add('erp-col-resizing-active')
       active = {
         index,
         columnKey: colKeys()[index],
+        th,
         startX: event.clientX,
         startWidth: Number.isFinite(colWidth) && colWidth > 0 ? colWidth : th.getBoundingClientRect().width,
         minWidth,
