@@ -2,8 +2,8 @@ import { IconAdjustmentsHorizontal, IconColumns, IconFileExport, IconLayoutRows,
 import { IconEdit } from '@tabler/icons-react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
-import { useCallback, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
 import { ErpListCard } from '../../components/common/ErpListCard'
@@ -18,6 +18,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { FieldEditorModal } from '../field-admin/FieldEditorModal'
 import { alignClass, formatFieldValue } from './fieldFormat'
 import { FieldBrowseLink } from './FieldBrowseLink'
+import { readListState, writeListState } from './listStateUrl'
 
 interface Field { key:string; label:string; dataType:string; width:number; align:string; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null }
 interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[] }
@@ -35,28 +36,41 @@ export function DocumentWorkbenchPage() {
   const navigate=useNavigate()
   const { moduleId='' }=useParams()
   const queryClient=useQueryClient()
+  const [searchParams,setSearchParams]=useSearchParams()
+  const [initialState]=useState(()=>readListState(searchParams))
   const [selected,setSelected]=useState<Record<string,Record<string,unknown>>>({})
   const [activeKey,setActiveKey]=useState<string|null>(null)
-  const [page,setPage]=useState(1)
-  const [sort,setSort]=useState<SortingState>([])
+  const [page,setPage]=useState(initialState.page)
+  const [sort,setSort]=useState<SortingState>(initialState.sort)
   const [detailSort,setDetailSort]=useState<{field:string;direction:'asc'|'desc'}|null>(null)
   const [queryOpen,setQueryOpen]=useState(false)
   const [columnsOpen,setColumnsOpen]=useState(false)
-  const [pageSizePref,setPageSizePref]=useState<number|null>(null)
-  const [columnFilters,setColumnFilters]=useState<Record<string,QueryCondition>>({})
+  const [pageSizePref,setPageSizePref]=useState<number|null>(initialState.pageSize)
+  const [columnFilters,setColumnFilters]=useState<Record<string,QueryCondition>>(initialState.columnFilters)
   const [dense,setDense]=useState(false)
   const [fieldEditor,setFieldEditor]=useState<{detail:boolean;fieldKey:string}|null>(null)
-  const [appliedConditions,setAppliedConditions]=useState<QueryCondition[]>([])
+  const [appliedConditions,setAppliedConditions]=useState<QueryCondition[]>(initialState.conditions)
   const [conditions,setConditions]=useState<QueryCondition[]>([emptyQueryCondition()])
-  const [keyword,setKeyword]=useState('')
+  const [keyword,setKeyword]=useState(initialState.keyword)
   const [exporting,setExporting]=useState(false)
   const definition=useQuery({queryKey:['workbench',moduleId,'definition'],queryFn:()=>apiClient.get<Definition>(`/document-workbench/${moduleId}/definition`)})
   const pageSize=pageSizePref??(definition.data?.detailTable?10:16)
-  const records=useQuery({queryKey:['workbench',moduleId,'records',page,pageSize,appliedConditions,keyword,sort],queryFn:()=>{const sq=sortQuery(sort);return appliedConditions.length?apiClient.post<DataResponse>(`/document-workbench/${moduleId}/query?page=${page}&pageSize=${pageSize}${keyword?`&keyword=${encodeURIComponent(keyword)}`:''}${sq.sortFields?`&sortFields=${encodeURIComponent(sq.sortFields)}&sortDirections=${encodeURIComponent(sq.sortDirections??'')}`:''}`,{conditions:appliedConditions}):apiClient.get<DataResponse>(`/document-workbench/${moduleId}/records`,{query:{page,pageSize,keyword:keyword||undefined,...sq}})},enabled:definition.isSuccess,placeholderData:keepPreviousData})
-  const columnSettings=useQuery({queryKey:['workbench',moduleId,'column-editor'],queryFn:()=>apiClient.get<{current:ColumnSettings;defaults:ColumnSettings}>(`/document-workbench/${moduleId}/column-editor`),enabled:columnsOpen})
-  const saveColumns=useMutation({mutationFn:(settings:{master:string[];detail:string[]})=>apiClient.put<void>(`/document-workbench/${moduleId}/columns`,{master:settings.master,detail:settings.detail}),onSuccess:async()=>{await Promise.all([queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']}),queryClient.invalidateQueries({queryKey:['workbench',moduleId,'column-editor']})])}})
   const master=useMemo(()=>uniqueFields(definition.data?.masterFields??[]).slice(0,30),[definition.data])
   const detail=useMemo(()=>uniqueFields(definition.data?.detailFields??[]).slice(0,30),[definition.data])
+  const allowedMasterKeys=useMemo(()=>new Set(master.map(field=>field.key.toLowerCase())),[master])
+  const safeSort=useMemo(()=>sort.filter(item=>allowedMasterKeys.has(item.id.toLowerCase())),[sort,allowedMasterKeys])
+  const safeConditions=useMemo(()=>appliedConditions.filter(item=>allowedMasterKeys.has(item.field.toLowerCase())),[appliedConditions,allowedMasterKeys])
+  const safeColumnFilters=useMemo(()=>Object.fromEntries(Object.entries(columnFilters).filter(([key])=>allowedMasterKeys.has(key.toLowerCase()))),[columnFilters,allowedMasterKeys])
+  const records=useQuery({queryKey:['workbench',moduleId,'records',page,pageSize,safeConditions,keyword,safeSort],queryFn:()=>{const sq=sortQuery(safeSort);return safeConditions.length?apiClient.post<DataResponse>(`/document-workbench/${moduleId}/query?page=${page}&pageSize=${pageSize}${keyword?`&keyword=${encodeURIComponent(keyword)}`:''}${sq.sortFields?`&sortFields=${encodeURIComponent(sq.sortFields)}&sortDirections=${encodeURIComponent(sq.sortDirections??'')}`:''}`,{conditions:safeConditions}):apiClient.get<DataResponse>(`/document-workbench/${moduleId}/records`,{query:{page,pageSize,keyword:keyword||undefined,...sq}})},enabled:definition.isSuccess,placeholderData:keepPreviousData})
+  const totalPages=Math.max(1,Math.ceil((records.data?.total??0)/pageSize))
+  const hydrated=useRef(false)
+  useEffect(()=>{
+    if(!hydrated.current){hydrated.current=true;return}
+    setSearchParams(writeListState({page,pageSize:pageSizePref,keyword,sort:safeSort,conditions:safeConditions,columnFilters:safeColumnFilters}),{replace:true})
+  },[page,pageSizePref,keyword,safeSort,safeConditions,safeColumnFilters,setSearchParams])
+  useEffect(()=>{if(records.data&&page>totalPages)setPage(totalPages)},[page,totalPages,records.data])
+  const columnSettings=useQuery({queryKey:['workbench',moduleId,'column-editor'],queryFn:()=>apiClient.get<{current:ColumnSettings;defaults:ColumnSettings}>(`/document-workbench/${moduleId}/column-editor`),enabled:columnsOpen})
+  const saveColumns=useMutation({mutationFn:(settings:{master:string[];detail:string[]})=>apiClient.put<void>(`/document-workbench/${moduleId}/columns`,{master:settings.master,detail:settings.detail}),onSuccess:async()=>{await Promise.all([queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']}),queryClient.invalidateQueries({queryKey:['workbench',moduleId,'column-editor']})])}})
   const columnGroups=useMemo<ColumnSelectorGroup[]>(()=>{
     const current=columnSettings.data?.current
     if(!current)return []
@@ -223,7 +237,7 @@ export function DocumentWorkbenchPage() {
   const handleRowClick=(row:Record<string,unknown>)=>{const key=rowKey(row);setSelected({[key]:row});setActiveKey(key)}
   const openEdit=()=>{if(!active||!definition.data)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));navigate(`/document-workbench/${moduleId}/edit?key=${encodeURIComponent(JSON.stringify(key))}`)}
   const openNew=()=>{if(!definition.data?.hasAdd)return;navigate(`/document-workbench/${moduleId}/new`)}
-  const handleExport=async()=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:appliedConditions},{query:{keyword:keyword||undefined,...sortQuery(sort)}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.csv`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
+  const handleExport=async()=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:safeConditions},{query:{keyword:keyword||undefined,...sortQuery(safeSort)}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.csv`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
 
   return <div className="erp-workbench-page">
@@ -247,7 +261,7 @@ export function DocumentWorkbenchPage() {
           columns={masterColumns}
           data={rows}
           getRowId={rowKey}
-          sorting={sort}
+          sorting={safeSort}
           onSortingChange={changeMasterSort}
           rowSelection={rowSelection}
           onRowSelectionChange={handleRowSelectionChange}
