@@ -11,7 +11,8 @@ import { ApiError } from '../../types/api'
 import type { ColumnDef } from '@tanstack/react-table'
 
 interface ReportOption { label: string; value: string }
-interface ReportCondition { serialNo: number; field: string | null; desc: string; type: number; expression: string | null; defaultValue: string | null; parameterName: string | null; options: ReportOption[] }
+interface ReportSelectSource { table: string; idColumn: string; valueColumn: string }
+interface ReportCondition { serialNo: number; field: string | null; desc: string; type: number; expression: string | null; defaultValue: string | null; parameterName: string | null; options: ReportOption[]; selectSource: ReportSelectSource | null }
 interface ReportColumn { key: string; label: string; dataType: string }
 interface ReportDefinition { moduleId: number; title: string; masterTable: string; conditions: ReportCondition[]; columns: ReportColumn[]; masterPkOrder: string[]; spName: string | null; spParameters: ReportSpParameter[] }
 interface ReportSpParameter { name: string; dataType: string; maxLength: number }
@@ -116,6 +117,7 @@ export function ReportViewerPage() {
                         {condition.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                       </select>
                     )}
+                    {condition.type === 3 && <DataSelectCondition moduleId={moduleId} condition={condition} value={values[condition.serialNo] ?? ''} onChange={(value) => setValues((current) => ({ ...current, [condition.serialNo]: value }))} />}
                     {condition.type === 4 && (
                       <div className="d-flex flex-wrap gap-2 small">
                         {condition.options.map((option) => (
@@ -141,5 +143,19 @@ export function ReportViewerPage() {
         )}
       </ErpListCard>
     </div>
+  )
+}
+
+function DataSelectCondition({ moduleId, condition, value, onChange }: { moduleId: string; condition: ReportCondition; value: string; onChange: (value: string) => void }) {
+  const options = useQuery({
+    queryKey: ['report', moduleId, 'condition-options', condition.serialNo],
+    queryFn: () => apiClient.get<ReportOption[]>(`/reports/${moduleId}/condition-options/${condition.serialNo}`),
+    enabled: condition.selectSource != null,
+  })
+  return (
+    <select className="form-select form-select-sm" value={value} onChange={(event) => onChange(event.target.value)}>
+      <option value="">全部</option>
+      {(options.data ?? []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+    </select>
   )
 }

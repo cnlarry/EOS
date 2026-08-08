@@ -35,6 +35,14 @@ public sealed class ReportController(
         return Ok(await repository.QueryAsync(definition,request,page,pageSize,token));
     }
 
+    [HttpGet("condition-options/{serialNo:int}")]
+    public async Task<IActionResult> ConditionOptions(int moduleId,int serialNo,CancellationToken token)
+    {
+        var definition=await AuthorizedDefinition(moduleId,token);
+        if(definition is null)return NotFound();
+        return Ok(await repository.GetConditionOptionsAsync(definition,serialNo,token));
+    }
+
     [HttpPost("export")]
     public async Task<IActionResult> Export(int moduleId,[FromBody]ReportQueryRequest request,CancellationToken token)
     {

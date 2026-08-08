@@ -9,7 +9,11 @@ public sealed record ReportCondition(
     string? Expression,
     string? DefaultValue,
     string? ParameterName,
-    IReadOnlyList<ReportOption> Options);
+    IReadOnlyList<ReportOption> Options,
+    ReportSelectSource? SelectSource = null);
+
+/// <summary>F_TYPE 3 数据单选：白名单表 + 选项列（受控解析，不执行任意 SQL）。</summary>
+public sealed record ReportSelectSource(string Table, string IdColumn, string ValueColumn);
 
 public sealed record ReportOption(string Label, string Value);
 
