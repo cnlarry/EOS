@@ -19,6 +19,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly Regex FieldRef = new(@"^\s*(\w+)\.(\w+)\s*$", RegexOptions.Compiled);
     private static readonly Regex SelectExpression = new(@"\{([^}]+)\}=(true|false|[+-]?\d+(?:\.\d+)?|'[^']*')\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex SpReference = new(@"\{([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)\}", RegexOptions.Compiled);
 
     public async Task<ReportDefinition?> GetDefinitionAsync(
         int moduleId,
@@ -52,7 +53,19 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         var conditions=await ReadConditionsAsync(connection,masterTable,moduleId,token);
         var (columns,pkOrder)=await ReadColumnsAsync(connection,masterTable,canViewCost,canViewSecrecy,deniedFields,token);
         var sortFields=await ReadDefaultSortFieldsAsync(connection,moduleId,token);
-        return new ReportDefinition(moduleId,title,masterTable,detailTable.Length>0?detailTable:null,conditions,columns,pkOrder,sortFields);
+        var spName=sortFields.Select(field=>SpReference.Match(field))
+            .Where(match=>match.Success)
+            .Select(match=>match.Groups[1].Value.Split('.')[0])
+            .FirstOrDefault(name=>name.StartsWith("P_RPT_",StringComparison.OrdinalIgnoreCase));
+        IReadOnlyList<ReportSpParameter> spParameters=[];
+        if(spName is not null)
+        {
+            spParameters=await ReadSpParametersAsync(connection,spName,token);
+            if(await StoredProcedureExistsAsync(connection,spName,token)&&spParameters.Count==0)
+                spParameters=[]; // 无参 SP 也允许
+            if(!await StoredProcedureExistsAsync(connection,spName,token))spName=null;
+        }
+        return new ReportDefinition(moduleId,title,masterTable,detailTable.Length>0?detailTable:null,conditions,columns,pkOrder,sortFields,spName,spParameters);
     }
 
     public async Task<ReportQueryResult> QueryAsync(
@@ -62,6 +75,8 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         int pageSize,
         CancellationToken token)
     {
+        if(definition.SpName is not null)
+            return await RunSpAsync(definition,request.Values,token);
         page=Math.Max(1,page);
         pageSize=Math.Clamp(pageSize,10,200);
         await using var connection=connections.Create();
@@ -148,6 +163,95 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         return new ReportQueryResult(rows,total,page,pageSize);
     }
 
+    /// <summary>
+    /// 汇总报表 SP 受控执行（RptInteg，如库存日报 P_RPT_INV_PRO_DEPOT_1）：
+    /// SP 名来自 REPORT_SORT 花括号引用且必须以 P_RPT_ 开头并在 sys.objects 存在；
+    /// 参数名来自 sys.parameters 白名单，值按参数类型转换，执行读取首个结果集。
+    /// </summary>
+    private async Task<ReportQueryResult> RunSpAsync(
+        ReportDefinition definition,
+        IReadOnlyDictionary<int,string?> values,
+        CancellationToken token)
+    {
+        await using var connection=connections.Create();
+        await connection.OpenAsync(token);
+        await using var command=new SqlCommand(definition.SpName!,connection)
+        {
+            CommandType=CommandType.StoredProcedure,
+        };
+        foreach(var (serial,raw) in values)
+        {
+            var index=serial-1;
+            if(index<0||index>=definition.SpParameters.Count)continue;
+            var spec=definition.SpParameters[index];
+            if(string.IsNullOrWhiteSpace(raw))
+            {
+                command.Parameters.AddWithValue($"@{spec.Name}",DBNull.Value);
+                continue;
+            }
+            var value=ConvertParameter(spec,raw);
+            command.Parameters.AddWithValue($"@{spec.Name}",value??DBNull.Value);
+        }
+        await using var reader=await command.ExecuteReaderAsync(token);
+        var columns=new List<string>();
+        for(var i=0;i<reader.FieldCount;i++)columns.Add(reader.GetName(i));
+        var rows=new List<Dictionary<string,object?>>();
+        var count=0;
+        while(await reader.ReadAsync(token)&&count<1000)
+        {
+            var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);
+            for(var i=0;i<reader.FieldCount;i++)row[columns[i]]=reader.IsDBNull(i)?null:reader.GetValue(i);
+            rows.Add(row);
+            count++;
+        }
+        return new ReportQueryResult(rows,count,1,count);
+    }
+
+    private static object? ConvertParameter(ReportSpParameter parameter,string raw)
+    {
+        var type=parameter.DataType.ToLowerInvariant();
+        try
+        {
+            if(type.Contains("datetime",StringComparison.Ordinal)||type.Contains("date",StringComparison.Ordinal))
+                return DateTime.Parse(raw,System.Globalization.CultureInfo.InvariantCulture);
+            if(type.Contains("int",StringComparison.Ordinal))
+                return int.Parse(raw,System.Globalization.CultureInfo.InvariantCulture);
+            if(type.Contains("float",StringComparison.Ordinal)||type.Contains("real",StringComparison.Ordinal)
+               ||type.Contains("decimal",StringComparison.Ordinal)||type.Contains("numeric",StringComparison.Ordinal))
+                return decimal.Parse(raw,System.Globalization.CultureInfo.InvariantCulture);
+            if(type.Contains("bit",StringComparison.Ordinal))
+                return raw.Equals("true",StringComparison.OrdinalIgnoreCase)||raw=="1";
+            return raw;
+        }
+        catch{return null;}
+    }
+
+    private static async Task<IReadOnlyList<ReportSpParameter>> ReadSpParametersAsync(
+        SqlConnection connection,
+        string spName,
+        CancellationToken token)
+    {
+        const string sql="""
+            SELECT p.name,TYPE_NAME(p.user_type_id),p.max_length
+            FROM sys.parameters p WHERE p.object_id=OBJECT_ID(@SpName) ORDER BY p.parameter_id;
+            """;
+        await using var command=new SqlCommand(sql,connection);
+        command.Parameters.Add("@SpName",SqlDbType.NVarChar,200).Value=spName;
+        await using var reader=await command.ExecuteReaderAsync(token);
+        var result=new List<ReportSpParameter>();
+        while(await reader.ReadAsync(token))
+            result.Add(new ReportSpParameter(reader.GetString(0).TrimStart('@'),reader.GetString(1),Convert.ToInt32(reader.GetValue(2))));
+        return result;
+    }
+
+    private static async Task<bool> StoredProcedureExistsAsync(SqlConnection connection,string spName,CancellationToken token)
+    {
+        const string sql="SELECT 1 FROM sys.objects WHERE object_id=OBJECT_ID(@Name) AND type='P';";
+        await using var command=new SqlCommand(sql,connection);
+        command.Parameters.Add("@Name",SqlDbType.NVarChar,200).Value=spName;
+        return await command.ExecuteScalarAsync(token) is not null;
+    }
+
     private static async Task<IReadOnlyList<string>> ReadDefaultSortFieldsAsync(
         SqlConnection connection,
         int moduleId,
@@ -170,7 +274,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             var value=reader.GetString(0);
             if(string.IsNullOrWhiteSpace(value))continue;
             result.AddRange(value.Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries)
-                .Where(field=>FieldRef.IsMatch(field)));
+                .Where(field=>FieldRef.IsMatch(field)||SpReference.IsMatch(field)));
         }
         return result;
     }

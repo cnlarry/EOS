@@ -13,7 +13,8 @@ import type { ColumnDef } from '@tanstack/react-table'
 interface ReportOption { label: string; value: string }
 interface ReportCondition { serialNo: number; field: string | null; desc: string; type: number; expression: string | null; defaultValue: string | null; parameterName: string | null; options: ReportOption[] }
 interface ReportColumn { key: string; label: string; dataType: string }
-interface ReportDefinition { moduleId: number; title: string; masterTable: string; conditions: ReportCondition[]; columns: ReportColumn[]; masterPkOrder: string[] }
+interface ReportDefinition { moduleId: number; title: string; masterTable: string; conditions: ReportCondition[]; columns: ReportColumn[]; masterPkOrder: string[]; spName: string | null; spParameters: ReportSpParameter[] }
+interface ReportSpParameter { name: string; dataType: string; maxLength: number }
 interface ReportQueryResult { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }
 
 export function ReportViewerPage() {
@@ -78,7 +79,25 @@ export function ReportViewerPage() {
         </>}
         footer={<ErpPagination total={result.data?.total ?? 0} page={page} pageSize={pageSize} onPageChange={setPage} pageSizes={[50, 100, 200]} onPageSizeChange={(size) => { setPageSize(size); setPage(1) }} />}
       >
-        {def.conditions.length > 0 && (
+        {def.spName ? (
+          <div className="card mb-2">
+            <div className="card-body py-2">
+              <div className="row g-2">
+                {def.spParameters.map((parameter, index) => (
+                  <div className="col-md-4 col-lg-3" key={parameter.name}>
+                    <label className="form-label mb-1 small">{parameter.name}（{parameter.dataType}）</label>
+                    <input
+                      className="form-control form-control-sm"
+                      type={parameter.dataType.includes('datetime') || parameter.dataType.includes('date') ? 'date' : 'text'}
+                      value={values[index + 1] ?? ''}
+                      onChange={(event) => setValues((current) => ({ ...current, [index + 1]: event.target.value }))}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : def.conditions.length > 0 && (
           <div className="card mb-2">
             <div className="card-body py-2">
               <div className="row g-2">
