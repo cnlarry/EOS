@@ -1,4 +1,4 @@
-import { IconAdjustmentsHorizontal, IconColumns, IconFileExport, IconPlus, IconPrinter } from '@tabler/icons-react'
+import { IconAdjustmentsHorizontal, IconColumns, IconFileExport, IconPlus, IconPrinter, IconRefresh } from '@tabler/icons-react'
 import { IconEdit } from '@tabler/icons-react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
@@ -43,6 +43,7 @@ export function DocumentWorkbenchPage() {
   const [columnsOpen,setColumnsOpen]=useState(false)
   const [pageSizePref,setPageSizePref]=useState<number|null>(null)
   const [columnFilters,setColumnFilters]=useState<Record<string,QueryCondition>>({})
+  const [dense,setDense]=useState(false)
   const [fieldEditor,setFieldEditor]=useState<{detail:boolean;fieldKey:string}|null>(null)
   const [appliedConditions,setAppliedConditions]=useState<QueryCondition[]>([])
   const [conditions,setConditions]=useState<QueryCondition[]>([emptyQueryCondition()])
@@ -199,6 +200,8 @@ export function DocumentWorkbenchPage() {
         <Button size="sm" icon={<IconEdit size={16}/>} disabled={!definition.data?.hasEdit||!active} onClick={openEdit}>编辑</Button>
         <Button size="sm" icon={<IconPrinter size={16}/>} onClick={()=>window.print()}>打印</Button>
         <Button size="sm" icon={<IconFileExport size={16}/>} loading={exporting} onClick={()=>void handleExport()}>导出</Button>
+        <Button size="sm" icon={<IconRefresh size={16}/>} onClick={()=>{void records.refetch();if(active)void details.refetch()}}>刷新</Button>
+        <Button size="sm" onClick={()=>setDense(current=>!current)}>{dense?'标准行高':'紧凑行高'}</Button>
       </>}
       footer={<ErpPagination total={records.data?.total??0} page={page} pageSize={pageSize} onPageChange={setPage} pageSizes={[10,16,25,50]} onPageSizeChange={(size)=>{setPageSizePref(size);setPage(1)}} />}
     >
@@ -219,6 +222,7 @@ export function DocumentWorkbenchPage() {
           onColumnResize={saveMasterWidth}
           columnFilterValue={columnFilters}
           onColumnFilterChange={handleColumnFilterChange}
+          dense={dense}
           empty={null}
         />}
       </div>
@@ -232,6 +236,7 @@ export function DocumentWorkbenchPage() {
       storageKey={`workbench-${moduleId}-detail`}
       persistResize={false}
       onColumnResize={saveDetailWidth}
+      dense={dense}
       className="table-sm"
       empty={null}
     />}</section>}
