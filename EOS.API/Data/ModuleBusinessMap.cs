@@ -13,7 +13,8 @@ public sealed record ModuleBusinessRule(
     string? WorkflowSproc,
     bool AutoBillNo,
     string? BillNoField,
-    string? BillTypeField);
+    string? BillTypeField,
+    string? PrepayOffsetTable = null);
 
 public static class ModuleBusinessMap
 {
@@ -40,16 +41,20 @@ public static class ModuleBusinessMap
             [1607] = new(1607, "P_PUR_RECEIVE_After_Save", "P_WF_PUR_RECEIVE", true, "RECEIVE_NO", "RECEIVE_TYPE"),
             // 1406 送货单
             [1406] = new(1406, "P_COP_SEND_JING_After_Save", "P_WF_COP_SEND", true, "SEND_NO", "SEND_TYPE"),
+            // 1408 出货通知单：无 SP，仅自动单号（默认单别 CHPC，历史配置待业务确认）
+            [1408] = new(1408, null, null, true, "SHIPMENT_NO", "SHIPMENT_TYPE"),
             // 财务：170101 应收货款单（对帐单）
             [170101] = new(170101, "P_COP_ACCOUNT_After_Save", "P_WF_COP_ACCOUNT", true, "ACCOUNT_NO", "ACCOUNT_TYPE"),
             // 170102 收款单（预收冲抵入口）
-            [170102] = new(170102, "P_COP_RECEIPT_After_Save", "P_WF_COP_RECEIPT", true, "RECEIPT_NO", "RECEIPT_TYPE"),
+            [170102] = new(170102, "P_COP_RECEIPT_After_Save", "P_WF_COP_RECEIPT", true, "RECEIPT_NO", "RECEIPT_TYPE",
+                PrepayOffsetTable: "COP_RECEIPT_PREPAY"),
             // 170103 预收帐款单
             [170103] = new(170103, "P_COP_PREPAY_After_Save", "P_WF_COP_PREPAY", true, "PREPAY_NO", "PREPAY_TYPE"),
             // 170201 应付货款单
             [170201] = new(170201, "P_PUR_DUE_After_Save", "P_WF_PUR_DUE", true, "DUE_NO", "DUE_TYPE"),
             // 170202 付款单
-            [170202] = new(170202, "P_PUR_PAY_After_Save", "P_WF_PUR_PAY", true, "PAY_NO", "PAY_TYPE"),
+            [170202] = new(170202, "P_PUR_PAY_After_Save", "P_WF_PUR_PAY", true, "PAY_NO", "PAY_TYPE",
+                PrepayOffsetTable: "PUR_PAY_PREPAY"),
             // 170203 预付帐款单
             [170203] = new(170203, "P_PUR_PREPAY_After_Save", "P_WF_PUR_PREPAY", true, "PREPAY_NO", "PREPAY_TYPE"),
         };

@@ -14,7 +14,7 @@ public sealed record WorkbenchFieldSummary(string Key,string Label,bool IsVisibl
 public sealed record FieldChooserSource(bool Active,string? Table,string? Description,int? ModuleId,string? Filter,string? ReturnMapping);
 public sealed record WorkbenchFieldMetadata(string Key,string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool IsVirtual,string? VirtualExpression,bool CanCopy,bool IsAutoIncrement,string? ConvertFunction,string? DataSourceSql,string? LastUpdatedBy,DateTime? LastUpdatedAt);
 public sealed record UpdateWorkbenchFieldMetadata(string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool CanCopy,WorkbenchFieldMetadata? Original);
-public sealed record WorkbenchDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, IReadOnlyList<WorkbenchField> MasterFields, IReadOnlyList<WorkbenchField> DetailFields, string? DefaultSort, bool HasAdd, bool HasEdit, bool DetailNoSave, IReadOnlyList<string> MasterPkOrder, string DetailNoFields);
+public sealed record WorkbenchDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, IReadOnlyList<WorkbenchField> MasterFields, IReadOnlyList<WorkbenchField> DetailFields, string? DefaultSort, bool HasAdd, bool HasEdit, bool DetailNoSave, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, bool HasWorkflow);
 public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize, IReadOnlyDictionary<string, double?>? Totals = null);
@@ -85,7 +85,8 @@ public sealed class DocumentWorkbenchRepository(
         var masterFields=await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token);
         WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,
             detail is null?[]:await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),NormalizeSort(defaultSort,master,masterFields),hasEdit,hasEdit,detailNoSave,
-            await GetPrimaryKeyColumnsAsync(connection,null,master,token),detailNoFields);
+            await GetPrimaryKeyColumnsAsync(connection,null,master,token),detailNoFields,
+            ModuleBusinessMap.Get(moduleId)?.WorkflowSproc is not null);
         logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
             moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
         return definition;
@@ -622,6 +623,7 @@ public sealed class DocumentWorkbenchRepository(
 
         var detailErrors=await SaveDetailsAsync(connection,transaction,definition,form,pkColumns,keyValues,values,request.Details??[],employeeName,true,token);
         if(detailErrors is not null)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","明细数据校验未通过。",detailErrors);
+        await SavePrepayOffsetsAsync(connection,transaction,businessRule,pkColumns,keyValues,request.PrepayOffsets,token);
         if(businessRule?.AfterSaveSproc is { } afterSaveSproc)
         {
             var sprocResult=await controlledSprocs.RunAfterSaveAsync(definition.ModuleId,afterSaveSproc,pkColumns,keyValues,connection,transaction,token);
@@ -705,6 +707,7 @@ public sealed class DocumentWorkbenchRepository(
         var detailErrors=await SaveDetailsAsync(connection,transaction,definition,form,pkColumns,keyValues,merged,request.Details??[],employeeName,false,token);
         if(detailErrors is not null)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","明细数据校验未通过。",detailErrors);
         var businessRule=ModuleBusinessMap.Get(definition.ModuleId);
+        await SavePrepayOffsetsAsync(connection,transaction,businessRule,pkColumns,keyValues,request.PrepayOffsets,token);
         if(businessRule?.AfterSaveSproc is { } afterSaveSproc)
         {
             var sprocResult=await controlledSprocs.RunAfterSaveAsync(definition.ModuleId,afterSaveSproc,pkColumns,keyValues,connection,transaction,token);
@@ -984,6 +987,49 @@ public sealed class DocumentWorkbenchRepository(
             logger.LogWarning("服务端必填字段无填充规则且无默认值 table={Table} field={Field}",table,field.Key);
         }
         return errors;
+    }
+
+    /// <summary>
+    /// 保存收款/付款单的预收/预付冲抵关联表（COP_RECEIPT_PREPAY / PUR_PAY_PREPAY）。
+    /// 表名来自 ModuleBusinessMap 白名单，主键列来自服务端元数据，值全部参数化。
+    /// 先删除该单据的旧冲抵行再写入新行（与明细重建语义一致）。
+    /// </summary>
+    private static async Task SavePrepayOffsetsAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        ModuleBusinessRule? rule,
+        IReadOnlyList<string> pkColumns,
+        IReadOnlyList<string> keyValues,
+        IReadOnlyList<PrepayOffsetRequest>? offsets,
+        CancellationToken token)
+    {
+        if(rule?.PrepayOffsetTable is not { } table||pkColumns.Count<2)return;
+        var typeColumn=pkColumns[0];
+        var noColumn=pkColumns[1];
+        await using var delete=new SqlCommand(
+            $"DELETE FROM dbo.[{table}] WHERE [{typeColumn}]=@t AND [{noColumn}]=@n",connection,transaction);
+        delete.Parameters.Add("@t",SqlDbType.NVarChar,50).Value=keyValues[0];
+        delete.Parameters.Add("@n",SqlDbType.NVarChar,50).Value=keyValues[1];
+        await delete.ExecuteNonQueryAsync(token);
+        if(offsets is null)return;
+        var serial=1;
+        foreach(var offset in offsets)
+        {
+            await using var insert=new SqlCommand(
+                $"""
+                INSERT INTO dbo.[{table}] ([{typeColumn}],[{noColumn}],SERIAL_NO,PREPAY_TYPE,PREPAY_NO,AMOUNT,PREPAY_AMOUNT)
+                VALUES (@t,@n,@serial,@pt,@pn,@amount,@prepayAmount);
+                """,connection,transaction);
+            insert.Parameters.Add("@t",SqlDbType.NVarChar,50).Value=keyValues[0];
+            insert.Parameters.Add("@n",SqlDbType.NVarChar,50).Value=keyValues[1];
+            insert.Parameters.Add("@serial",SqlDbType.Int).Value=serial;
+            insert.Parameters.Add("@pt",SqlDbType.NVarChar,50).Value=offset.Type;
+            insert.Parameters.Add("@pn",SqlDbType.NVarChar,50).Value=offset.No;
+            insert.Parameters.Add("@amount",SqlDbType.Decimal).Value=(object?)offset.Amount??DBNull.Value;
+            insert.Parameters.Add("@prepayAmount",SqlDbType.Decimal).Value=offset.PrepayAmount;
+            await insert.ExecuteNonQueryAsync(token);
+            serial++;
+        }
     }
 
     private static async Task<IReadOnlyList<string>> GetPrimaryKeyColumnsAsync(SqlConnection connection,SqlTransaction? transaction,string table,CancellationToken token)

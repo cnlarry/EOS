@@ -23,7 +23,7 @@ public class AssistantQueryBuilderTests
             1606, "采购单", "PUR_PURCHASE_M", null,
             fields, [], "PURCHASE_DATE DESC",
             HasAdd: false, HasEdit: false, DetailNoSave: false,
-            ["PURCHASE_TYPE", "PURCHASE_NO"], string.Empty);
+            ["PURCHASE_TYPE", "PURCHASE_NO"], string.Empty, HasWorkflow: true);
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class AssistantQueryBuilderTests
         var definition = new WorkbenchDefinition(
             1606, "采购单", "T", null,
             [new WorkbenchField("PURCHASE_NO", "采购单号", "nvarchar", 100, "left", IsPrimaryKey: true, IsVisible: true, IsQueryable: true)],
-            [], null, HasAdd: false, HasEdit: false, DetailNoSave: false, ["PURCHASE_NO"], string.Empty);
+            [], null, HasAdd: false, HasEdit: false, DetailNoSave: false, ["PURCHASE_NO"], string.Empty, HasWorkflow: false);
         var result = AssistantQueryBuilder.Build(definition, "2018-07-01", null, null, null, null);
         Assert.Null(result.Query);
         Assert.Contains("date", result.NotApplied);
