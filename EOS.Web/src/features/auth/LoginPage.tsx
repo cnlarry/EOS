@@ -45,8 +45,21 @@ export function LoginPage() {
       <div className="card-body">
         <div className="mb-4"><h2 className="mb-1">登录系统</h2><p className="text-secondary mb-0">请输入您的企业账号</p></div>
         <form onSubmit={submit} className="d-grid gap-3">
-          <div><label className="form-label" htmlFor="login-username">用户名</label><div className="input-icon"><span className="input-icon-addon"><IconUser size={18}/></span><input id="login-username" name="username" className="form-control" value={username} onChange={(event)=>setUsername(event.target.value)} autoComplete="username" autoFocus required /></div></div>
-          <div><label className="form-label" htmlFor="login-password">密码</label><div className="input-group"><span className="input-group-text"><IconLock size={18}/></span><input id="login-password" name="password" className="form-control" type={showPassword?'text':'password'} value={password} onChange={(event)=>setPassword(event.target.value)} autoComplete="current-password" required /><button className="btn btn-icon" type="button" onClick={()=>setShowPassword(!showPassword)} aria-label={showPassword?'隐藏密码':'显示密码'}>{showPassword?<IconEyeOff size={18}/>:<IconEye size={18}/>}</button></div></div>
+          <div>
+            <label className="form-label" htmlFor="login-username">用户名</label>
+            <div className="input-group">
+              <span className="input-group-text"><IconUser size={18} /></span>
+              <input id="login-username" name="username" className="form-control" value={username} onChange={(event)=>setUsername(event.target.value)} autoComplete="username" autoFocus required />
+            </div>
+          </div>
+          <div>
+            <label className="form-label" htmlFor="login-password">密码</label>
+            <div className="input-group">
+              <span className="input-group-text"><IconLock size={18} /></span>
+              <input id="login-password" name="password" className="form-control" type={showPassword?'text':'password'} value={password} onChange={(event)=>setPassword(event.target.value)} autoComplete="current-password" required />
+              <button className="btn btn-icon" type="button" onClick={()=>setShowPassword(!showPassword)} aria-label={showPassword?'隐藏密码':'显示密码'}>{showPassword?<IconEyeOff size={18}/>:<IconEye size={18}/>}</button>
+            </div>
+          </div>
           <label className="form-check"><input className="form-check-input" type="checkbox" checked={remember} onChange={(event)=>setRemember(event.target.checked)}/><span className="form-check-label">记住用户名</span></label>
           {error && <div className="alert alert-danger py-2 mb-0" role="alert">{error}</div>}
           <button className="btn btn-primary" disabled={submitting} type="submit">{submitting?'正在登录…':'登录'}</button>

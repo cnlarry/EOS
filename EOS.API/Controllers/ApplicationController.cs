@@ -14,10 +14,13 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
     public async Task<IActionResult> Bootstrap(CancellationToken token)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+        var displayName = User.FindFirstValue(ClaimTypes.Name) ?? userId;
         var user = new {
             id = userId, username = userId,
-            displayName = User.FindFirstValue(ClaimTypes.Name) ?? userId,
-            avatarText = GetAvatarText(User.FindFirstValue(ClaimTypes.Name) ?? userId),
+            displayName,
+            employeeId = User.FindFirstValue("employee_id") ?? "",
+            avatarText = GetAvatarText(displayName),
+            avatarUrl = (string?)null,
             roleName = "ERP 用户",
             organization = new { id = User.FindFirstValue("department_id") ?? "", name = User.FindFirstValue("department_name") ?? "" }
         };
@@ -63,7 +66,8 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
 
     private static readonly Dictionary<int, string> ModernRoutes = new()
     {
-        [2302] = "/admin/tables"
+        [2302] = "/admin/tables",
+        [2306] = "/admin/users",
     };
 
     private static string RouteFor(LegacyNavigationModule module) =>
@@ -153,5 +157,14 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
         if (LegacyRootIcons.TryGetValue(rootId, out var legacyIcon)) return legacyIcon;
         return "folder";
     }
-    private static string GetAvatarText(string name) => string.Concat(name.Trim().TakeLast(Math.Min(2, name.Trim().Length)));
+    private static string GetAvatarText(string name)
+    {
+        var trimmed = name.Trim();
+        if (trimmed.Length == 0) return "?";
+        var first = trimmed[..1];
+        // 中文姓名取首字；拉丁姓名取前两个字符（大写）
+        return first[0] is >= '\u4E00' and <= '\u9FFF'
+            ? first
+            : trimmed.Length >= 2 ? trimmed[..2].ToUpperInvariant() : trimmed.ToUpperInvariant();
+    }
 }

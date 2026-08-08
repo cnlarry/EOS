@@ -2,7 +2,9 @@ export interface AuthUser {
   id: string
   username: string
   displayName: string
+  employeeId: string
   avatarText: string
+  avatarUrl: string | null
   roleName: string
   organization: { id: string; name: string }
 }
