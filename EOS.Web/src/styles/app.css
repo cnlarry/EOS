@@ -167,6 +167,7 @@ button, input, select { font: inherit; }
 .erp-data-table tbody tr:not(.erp-row-active):hover .erp-frozen-left,
 .erp-data-table tbody tr:not(.erp-row-active):hover .erp-frozen-right { background: var(--tblr-bg-surface-secondary) !important; }
 .erp-data-table .erp-header-inner { display: inline-flex; align-items: center; gap: .3rem; }
+.erp-data-table .erp-header-label[draggable="true"] { cursor: grab; }
 .erp-data-table .erp-header-menu-trigger { position: relative; display: inline-flex; align-items: center; padding: 0; border: 0; background: transparent; color: var(--tblr-secondary); }
 .erp-data-table .erp-header-menu-trigger:hover { color: var(--tblr-primary); }
 .erp-data-table .erp-header-menu-trigger.is-active { color: var(--tblr-primary); }
