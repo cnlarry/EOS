@@ -147,6 +147,7 @@ button, input, select { font: inherit; }
 .erp-data-table { font-size: 12px; }
 .erp-data-table th { position: relative; white-space: nowrap; font-size: 12px; font-weight: 600; }
 .erp-data-table td { font-size: 12px; }
+.erp-data-table .form-check-input { width: 14px; height: 14px; margin-top: 0; }
 .erp-data-table > :not(caption) > * > * { padding: 5px !important; }
 .erp-data-table.erp-table-compact > :not(caption) > * > * { padding: 2px 6px !important; }
 .erp-data-table tbody tr { cursor: pointer; }

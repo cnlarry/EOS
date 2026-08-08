@@ -1,8 +1,8 @@
-import { IconAdjustmentsHorizontal, IconColumns, IconFileExport, IconListDetails, IconPlus, IconPrinter, IconRefresh } from '@tabler/icons-react'
+import { IconAdjustmentsHorizontal, IconColumns, IconFileExport, IconLayoutRows, IconMinimize, IconPlus, IconPrinter, IconRefresh } from '@tabler/icons-react'
 import { IconEdit } from '@tabler/icons-react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
@@ -151,19 +151,40 @@ export function DocumentWorkbenchPage() {
   const active=activeKey?selected[activeKey]??records.data?.rows.find(row=>rowKey(row)===activeKey)??null:null
   const keys=useMemo(()=>master.filter(field=>field.isPrimaryKey).reduce<Record<string,string>>((result,field)=>{if(active?.[field.key]!=null)result[field.key]=String(active[field.key]);return result},{}),[active,master])
   const details=useQuery({queryKey:['workbench',moduleId,'details',keys,detailSort],queryFn:()=>apiClient.get<DataResponse>(`/document-workbench/${moduleId}/details`,{query:{...keys,sortField:detailSort?.field,sortDirection:detailSort?.direction}}),enabled:Boolean(active&&definition.data?.detailTable)})
-  const saveColumnWidth=useCallback(async(detailTable:boolean,fieldKey:string,width:number)=>{
+  const widthSaveQueue=useRef<{detail:boolean;fieldKey:string;width:number}|null>(null)
+  const widthSaveRunning=useRef(false)
+  const writeFieldWidth=useCallback(async(detailTable:boolean,fieldKey:string,width:number)=>{
     const definitionData=definition.data;if(!definitionData)return
     const tableId=detailTable?definitionData.detailTable:definitionData.masterTable;if(!tableId)return
-    const normalized=Math.min(300,Math.max(40,Math.round(width)))
-    try{
-      const meta=await apiClient.get<FieldMetadata>(`/document-workbench/${moduleId}/field-settings/${encodeURIComponent(fieldKey)}`,{query:{detail:String(detailTable)}})
-      const {key:_key,tableId:_tableId,isVirtual:_virtual,virtualExpression:_expression,isAutoIncrement:_auto,convertFunction:_convert,dataSourceSql:_sql,lastUpdatedBy:_by,lastUpdatedAt:_at,...input}=meta
-      await apiClient.put<void>(`/document-workbench/${moduleId}/field-settings/${encodeURIComponent(fieldKey)}?detail=${detailTable}`,{...input,width:normalized,original:{...input,key:meta.key,width:meta.width}})
-      await queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']})
-    }catch(error){
-      window.alert(error instanceof Error?`保存列宽失败：${error.message}`:'保存列宽失败。')
-    }
+    const meta=await apiClient.get<FieldMetadata>(`/document-workbench/${moduleId}/field-settings/${encodeURIComponent(fieldKey)}`,{query:{detail:String(detailTable)}})
+    const {key:_key,tableId:_tableId,isVirtual:_virtual,virtualExpression:_expression,isAutoIncrement:_auto,convertFunction:_convert,dataSourceSql:_sql,lastUpdatedBy:_by,lastUpdatedAt:_at,...input}=meta
+    await apiClient.put<void>(`/document-workbench/${moduleId}/field-settings/${encodeURIComponent(fieldKey)}?detail=${detailTable}`,{...input,width,original:{...input,key:meta.key,width:meta.width}})
+    await queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']})
   },[definition.data,moduleId,queryClient])
+  const saveColumnWidth=useCallback(async(detailTable:boolean,fieldKey:string,width:number)=>{
+    widthSaveQueue.current={detail:detailTable,fieldKey,width}
+    if(widthSaveRunning.current)return
+    widthSaveRunning.current=true
+    try{
+      while(widthSaveQueue.current){
+        const target=widthSaveQueue.current
+        widthSaveQueue.current=null
+        const normalized=Math.min(300,Math.max(40,Math.round(target.width)))
+        try{
+          await writeFieldWidth(target.detail,target.fieldKey,normalized)
+        }catch{
+          // 并发/乐观锁冲突：重新拉取元数据重试一次
+          try{
+            await writeFieldWidth(target.detail,target.fieldKey,normalized)
+          }catch(error2){
+            window.alert(error2 instanceof Error?`保存列宽失败：${error2.message}`:'保存列宽失败。')
+          }
+        }
+      }
+    }finally{
+      widthSaveRunning.current=false
+    }
+  },[writeFieldWidth])
   const saveMasterWidth=useCallback((columnKey:string,width:number)=>{void saveColumnWidth(false,columnKey,width)},[saveColumnWidth])
   const saveDetailWidth=useCallback((columnKey:string,width:number)=>{void saveColumnWidth(true,columnKey,width)},[saveColumnWidth])
   const handleColumnFilterChange=useCallback((columnId:string,condition:QueryCondition|null)=>{
@@ -217,7 +238,7 @@ export function DocumentWorkbenchPage() {
         <Button size="sm" icon={<IconPrinter size={16}/>} onClick={()=>window.print()}>打印</Button>
         <Button size="sm" icon={<IconFileExport size={16}/>} loading={exporting} onClick={()=>void handleExport()}>{Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'}</Button>
         <Button size="sm" icon={<IconRefresh size={16}/>} title="刷新" aria-label="刷新" onClick={()=>{void records.refetch();if(active)void details.refetch()}} />
-        <Button size="sm" icon={<IconListDetails size={16}/>} title={dense?'标准行高':'紧凑行高'} aria-label={dense?'标准行高':'紧凑行高'} onClick={()=>setDense(current=>!current)} />
+        <Button size="sm" icon={dense?<IconMinimize size={16}/>:<IconLayoutRows size={16}/>} title={dense?'标准行高':'紧凑行高'} aria-label={dense?'标准行高':'紧凑行高'} onClick={()=>setDense(current=>!current)} />
       </>}
       footer={<ErpPagination total={records.data?.total??0} page={page} pageSize={pageSize} onPageChange={setPage} pageSizes={[10,16,25,50]} onPageSizeChange={(size)=>{setPageSizePref(size);setPage(1)}} />}
     >
