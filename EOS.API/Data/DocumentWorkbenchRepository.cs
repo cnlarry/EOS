@@ -916,6 +916,8 @@ public sealed class DocumentWorkbenchRepository(
             rows.Add(row);
         }
         RecordPayloadValidator.AssignSerialNumbers(rows, form.DetailFields);
+        // 应收货款单（170101）等引用单据的明细：金额/数量从送货（退货）单明细带出
+        await FillReferencedAmountsAsync(connection,transaction,form.DetailFields,rows,token);
         foreach(var row in rows)errors.AddRange(RecordPayloadValidator.CheckRequiredAndRegex(form.DetailFields,row));
         if(errors.Count>0)return errors;
 
@@ -937,6 +939,51 @@ public sealed class DocumentWorkbenchRepository(
             await InsertRowAsync(connection,transaction,definition.DetailTable,insertFields,row,detailIdentity,token);
         }
         return null;
+    }
+
+    /// <summary>
+    /// 引用单据金额带出：明细含 S_R_TYPE/S_R_NO/S_R_SERIAL_NO（送/退货引用）时，
+    /// 从 COP_SEND_D / COP_RETURN_D 读取 QTY/AMOUNT/AMOUNT_TAX/TAX_SUM 填充，
+    /// 对齐旧系统对账引用带出行为；未找到引用行时保留客户端值。
+    /// 表名/列名为服务端常量，引用键值来自客户端但仅作参数化等值匹配。
+    /// </summary>
+    private static async Task FillReferencedAmountsAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        IReadOnlyList<FormFieldDefinition> fields,
+        IReadOnlyList<Dictionary<string,object?>> rows,
+        CancellationToken token)
+    {
+        var hasRef = fields.Any(field=>field.Key.Equals("S_R_TYPE",StringComparison.OrdinalIgnoreCase))
+            &&fields.Any(field=>field.Key.Equals("S_R_NO",StringComparison.OrdinalIgnoreCase))
+            &&fields.Any(field=>field.Key.Equals("S_R_SERIAL_NO",StringComparison.OrdinalIgnoreCase));
+        if(!hasRef)return;
+        var fieldSet=fields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach(var row in rows)
+        {
+            if(!row.TryGetValue("S_R_TYPE",out var rawType)||!row.TryGetValue("S_R_NO",out var rawNo)
+               ||!row.TryGetValue("S_R_SERIAL_NO",out var rawSerial))continue;
+            var type=Convert.ToString(rawType)??""; var no=Convert.ToString(rawNo)??"";
+            var serial=Convert.ToString(rawSerial)??"";
+            if(type.Length==0||no.Length==0||serial.Length==0)continue;
+            const string sql="""
+                SELECT TOP 1 QTY,AMOUNT,AMOUNT_TAX,TAX_SUM
+                FROM dbo.COP_SEND_D WITH (NOLOCK)
+                WHERE SEND_TYPE=@t AND SEND_NO=@n AND SERIAL_NO=@s;
+                """;
+            await using var command=new SqlCommand(sql,connection,transaction);
+            command.Parameters.Add("@t",SqlDbType.NVarChar,50).Value=type;
+            command.Parameters.Add("@n",SqlDbType.NVarChar,50).Value=no;
+            command.Parameters.Add("@s",SqlDbType.Int).Value=int.TryParse(serial,out var parsed)?parsed:0;
+            await using var reader=await command.ExecuteReaderAsync(token);
+            if(!await reader.ReadAsync(token))continue;
+            void Fill(string column)
+            {
+                if(!fieldSet.Contains(column))return;
+                row[column]=reader.IsDBNull(reader.GetOrdinal(column))?null:reader.GetValue(reader.GetOrdinal(column));
+            }
+            Fill("QTY");Fill("AMOUNT");Fill("AMOUNT_TAX");Fill("TAX_SUM");
+        }
     }
 
     /// <summary>
