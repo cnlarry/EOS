@@ -24,7 +24,11 @@ public sealed record ReportDefinition(
     IReadOnlyList<ReportCondition> Conditions,
     IReadOnlyList<ReportColumn> Columns,
     IReadOnlyList<string> MasterPkOrder,
-    IReadOnlyList<string> SortFields);
+    IReadOnlyList<string> SortFields,
+    string? SpName = null,
+    IReadOnlyList<ReportSpParameter> SpParameters = null!);
+
+public sealed record ReportSpParameter(string Name, string DataType, int MaxLength);
 
 public sealed record ReportQueryRequest(
     IReadOnlyDictionary<int, string?> Values,
