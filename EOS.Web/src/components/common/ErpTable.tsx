@@ -37,6 +37,8 @@ interface ErpTableProps<TData> {
   onColumnResize?: (columnKey: string, width: number) => void
   /** 追加到表格的类名（如 table-sm 明细表） */
   className?: string
+  /** 紧凑行高（erp-table-compact） */
+  dense?: boolean
   /** 开启复制：Ctrl+C 复制选中/当前行，行右键菜单可复制本行/选中行 */
   copyable?: boolean
   /** 开启键盘导航：方向键/Home/End/PageUp/PageDown 移动活动行，Enter 触发行点击 */
@@ -80,6 +82,7 @@ export function ErpTable<TData>({
   persistResize = true,
   onColumnResize,
   className = '',
+  dense = false,
   copyable = true,
   keyboardNavigation = true,
   columnFilterValue,
@@ -87,7 +90,7 @@ export function ErpTable<TData>({
 }: ErpTableProps<TData>) {
   const shellRef = useRef<HTMLDivElement>(null)
   const [focusIndex, setFocusIndex] = useState<number | null>(null)
-  const [menu, setMenu] = useState<{ x: number; y: number; rowId: string } | null>(null)
+  const [cellMenu, setCellMenu] = useState<{ x: number; y: number; rowId: string; columnId: string; text: string } | null>(null)
   const [openFilter, setOpenFilter] = useState<string | null>(null)
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null)
@@ -125,11 +128,15 @@ export function ErpTable<TData>({
 
   // 行右键菜单：点击别处关闭
   useEffect(() => {
-    if (!menu) return
-    const close = () => setMenu(null)
+    if (!cellMenu) return
+    const close = () => setCellMenu(null)
     window.addEventListener('pointerdown', close)
-    return () => window.removeEventListener('pointerdown', close)
-  }, [menu])
+    window.addEventListener('scroll', close, true)
+    return () => {
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('scroll', close, true)
+    }
+  }, [cellMenu])
 
   // 列头菜单：点击菜单外关闭（触发按钮除外）
   useEffect(() => {
@@ -240,7 +247,7 @@ export function ErpTable<TData>({
 
   return (
     <div ref={shellRef} className="erp-table-shell" tabIndex={0} onKeyDown={handleKeyDown}>
-      <ErpDataTable resizable={resizable} storageKey={storageKey} className={className} persistResize={persistResize} onColumnResize={onColumnResize}>
+      <ErpDataTable resizable={resizable} storageKey={storageKey} className={`${className} ${dense ? 'erp-table-compact' : ''}`.trim()} persistResize={persistResize} onColumnResize={onColumnResize}>
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
@@ -340,7 +347,6 @@ export function ErpTable<TData>({
                 data-kb-index={index}
                 className={`${row.getIsSelected() ? 'table-active ' : ''}${activeRowId === row.id ? 'erp-row-active ' : ''}${focusIndex === index ? 'erp-row-focus' : ''}`.trim() || undefined}
                 onClick={() => { setFocusIndex(null); onRowClick?.(row.original) }}
-                onContextMenu={copyable ? (event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, rowId: row.id }) } : undefined}
               >
                 {row.getVisibleCells().map((cell) => {
                   const cellMeta = cell.column.columnDef.meta
@@ -350,6 +356,16 @@ export function ErpTable<TData>({
                       key={cell.id}
                       className={[cellMeta?.cellClassName ?? cellMeta?.className, cellFrozen].filter(Boolean).join(' ') || undefined}
                       style={cellMeta?.frozenLeft ? { left: 0 } : cellMeta?.frozenRight ? { right: 0 } : undefined}
+                      onContextMenu={copyable ? (event) => {
+                        event.preventDefault()
+                        setCellMenu({
+                          x: event.clientX,
+                          y: event.clientY,
+                          rowId: row.id,
+                          columnId: cell.column.id,
+                          text: (event.currentTarget.textContent ?? '').trim(),
+                        })
+                      } : undefined}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
@@ -360,25 +376,45 @@ export function ErpTable<TData>({
           })}
         </tbody>
       </ErpDataTable>
-      {menu && copyable && (
+      {cellMenu && copyable && (
         <div
           className="dropdown-menu show erp-table-context-menu"
-          style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 1100 }}
+          style={{ position: 'fixed', left: cellMenu.x, top: cellMenu.y, zIndex: 1100 }}
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <button className="dropdown-item" onClick={() => { copyRows([menu.rowId]); setMenu(null) }}>
+          <button className="dropdown-item" onClick={() => { writeClipboard(cellMenu.text); setCellMenu(null) }}>
+            复制单元格
+          </button>
+          <button className="dropdown-item" onClick={() => { copyRows([cellMenu.rowId]); setCellMenu(null) }}>
             复制本行
           </button>
           <button
             className="dropdown-item"
             onClick={() => {
               const selected = Object.keys(rowSelection).filter((id) => rowSelection[id])
-              copyRows(selected.length > 0 ? selected : [menu.rowId])
-              setMenu(null)
+              copyRows(selected.length > 0 ? selected : [cellMenu.rowId])
+              setCellMenu(null)
             }}
           >
             复制选中行
           </button>
+          {cellMenu.text && table.getColumn(cellMenu.columnId)?.columnDef.meta?.filterable && onColumnFilterChange && (
+            <>
+              <div className="dropdown-divider" />
+              <button className="dropdown-item" onClick={() => {
+                onColumnFilterChange(cellMenu.columnId, { field: cellMenu.columnId, operator: 'eq', value: cellMenu.text, valueTo: '', logic: 'and' })
+                setCellMenu(null)
+              }}>
+                筛选：等于“{cellMenu.text.slice(0, 12)}{cellMenu.text.length > 12 ? '…' : ''}”
+              </button>
+              <button className="dropdown-item" onClick={() => {
+                onColumnFilterChange(cellMenu.columnId, { field: cellMenu.columnId, operator: 'contains', value: cellMenu.text, valueTo: '', logic: 'and' })
+                setCellMenu(null)
+              }}>
+                筛选：包含“{cellMenu.text.slice(0, 12)}{cellMenu.text.length > 12 ? '…' : ''}”
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

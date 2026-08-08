@@ -205,4 +205,23 @@ describe('ErpTable', () => {
     fireEvent.click(screen.getByRole('button', { name: '字段设置' }))
     expect(onFieldSettings).toHaveBeenCalledTimes(1)
   })
+
+  it('紧凑行高应用 erp-table-compact 类', () => {
+    const { container } = render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} dense />)
+    expect(container.querySelector('table')).toHaveClass('erp-table-compact')
+  })
+
+  it('单元格右键菜单：复制单元格与筛选等于', () => {
+    const onColumnFilterChange = vi.fn()
+    const columns: ColumnDef<Row, unknown>[] = [
+      { accessorKey: 'name', header: '名称', meta: { filterable: true } },
+    ]
+    const { container } = render(
+      <ErpTable columns={columns} data={rows} getRowId={(row) => row.id} columnFilterValue={{}} onColumnFilterChange={onColumnFilterChange} />,
+    )
+    fireEvent.contextMenu(container.querySelector('tbody td')!)
+    expect(screen.getByRole('button', { name: '复制单元格' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /筛选：等于/ }))
+    expect(onColumnFilterChange).toHaveBeenCalledWith('name', expect.objectContaining({ field: 'name', operator: 'eq', value: 'A' }))
+  })
 })

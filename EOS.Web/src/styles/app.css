@@ -148,6 +148,7 @@ button, input, select { font: inherit; }
 .erp-data-table th { position: relative; white-space: nowrap; font-size: 12px; font-weight: 600; }
 .erp-data-table td { font-size: 12px; }
 .erp-data-table > :not(caption) > * > * { padding: 5px !important; }
+.erp-data-table.erp-table-compact > :not(caption) > * > * { padding: 2px 6px !important; }
 .erp-data-table tbody tr { cursor: pointer; }
 /* 列宽拖拽手柄（通用：主表、子表、字段维护等任意 ResizableTable 生效） */
 .erp-col-resizer { position: absolute; top: 0; right: -4px; bottom: 0; z-index: 2; width: 8px; cursor: col-resize; user-select: none; touch-action: none; }
