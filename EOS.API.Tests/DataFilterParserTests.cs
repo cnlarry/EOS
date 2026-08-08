@@ -50,8 +50,32 @@ public class DataFilterParserTests
     [Fact]
     public void UnsupportedOperator_IsRejected()
     {
-        Assert.False(Try("A>1", "T", Fields("A"), out _, out _));
         Assert.False(Try("A LIKE 'x%'", "T", Fields("A"), out _, out _));
+        Assert.False(Try("A BETWEEN 1 AND 2", "T", Fields("A"), out _, out _));
+    }
+
+    [Theory]
+    [InlineData("T.PRO_TYPE=1", "[PRO_TYPE] = @df0")]
+    [InlineData("T.APPLY_TYPE='QG'", "[APPLY_TYPE] = @df0")]
+    [InlineData("T.QTY>0.1", "[QTY] > @df0")]
+    [InlineData("T.STATE<4", "[STATE] < @df0")]
+    [InlineData("T.MOU_SORT=2", "[MOU_SORT] = @df0")]
+    [InlineData("FINISHED_TAG=0 AND QTY>10", "[FINISHED_TAG] = @df0 AND [QTY] > @df1")]
+    public void ModuleFilter_数值与比较运算符(string filter, string expectedPredicate)
+    {
+        Assert.True(Try(filter, "T", Fields("PRO_TYPE", "APPLY_TYPE", "QTY", "STATE", "MOU_SORT", "FINISHED_TAG", "RECEIVE_QTY"), out var predicate, out var parameters));
+        Assert.Equal(expectedPredicate, predicate);
+        Assert.All(parameters, parameter => Assert.True(parameter is decimal or string));
+    }
+
+    [Theory]
+    [InlineData("SUM_AMOUNT-RECEIVE_AMOUNT>0")]
+    [InlineData("QTY IN (SELECT PRO_NO FROM BOM_STRU_M)")]
+    [InlineData("SEND_DATE<convert(varchar(7),getdate(),120)")]
+    [InlineData("PRO_NO LIKE '%X%'")]
+    public void ModuleFilter_不支持表达式被拒绝(string filter)
+    {
+        Assert.False(Try(filter, "COP_ACCOUNT_M", Fields("SUM_AMOUNT", "RECEIVE_AMOUNT", "QTY", "SEND_DATE", "PRO_NO"), out _, out _));
     }
 
     [Fact]
