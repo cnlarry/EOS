@@ -1569,6 +1569,7 @@ public sealed class DocumentWorkbenchRepository(
     /// 旧系统通用查看器页面家族（均以 MODULES/FIELDS 元数据驱动）：
     /// comm/view_frame.aspx（标准）、comm/m_view_frame.aspx、hr/hr_view_frame.aspx、
     /// hrm/hr_view_frame.aspx、comm/sysdept_view_frame.aspx（变体，共 12 个模块）。
+    /// 另含"工作台可承载的特殊页"：菜单管理（MODULES 表）、考勤日报（HR_DIARY/HRM_DIARY）。
     /// </summary>
     private static readonly HashSet<string> WorkbenchUrlFamily = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -1577,6 +1578,9 @@ public sealed class DocumentWorkbenchRepository(
         "hr/hr_view_frame.aspx",
         "hrm/hr_view_frame.aspx",
         "comm/sysdept_view_frame.aspx",
+        "admin/menubuilder.aspx",
+        "hr/diarytoother.aspx",
+        "hrm/diary.aspx",
     };
 
     private static bool IsWorkbenchUrl(string url)

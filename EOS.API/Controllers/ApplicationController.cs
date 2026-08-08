@@ -109,7 +109,10 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
             or "comm/m_view_frame.aspx"
             or "hr/hr_view_frame.aspx"
             or "hrm/hr_view_frame.aspx"
-            or "comm/sysdept_view_frame.aspx";
+            or "comm/sysdept_view_frame.aspx"
+            or "admin/menubuilder.aspx"
+            or "hr/diarytoother.aspx"
+            or "hrm/diary.aspx";
     }
 
     private static readonly Dictionary<int, string> LegacyRootIcons = new() { [13] = "inventory", [14] = "sales", [15] = "procurement" };
