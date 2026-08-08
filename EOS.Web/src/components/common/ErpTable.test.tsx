@@ -51,16 +51,23 @@ describe('ErpTable', () => {
     expect(screen.getByText('B')).toBeInTheDocument()
   })
 
-  it('点击可排序列头触发 onSortingChange（首击升序）', () => {
+  it('列头菜单：升序/降序/默认触发 onSortingChange', () => {
     const onSortingChange = vi.fn()
     render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onSortingChange={onSortingChange} />)
-    fireEvent.click(screen.getByRole('button', { name: '名称' }))
+    fireEvent.click(screen.getByLabelText('表头操作名称'))
+    fireEvent.click(screen.getByRole('button', { name: '升序' }))
     expect(onSortingChange).toHaveBeenCalledWith([{ id: 'name', desc: false }])
+    fireEvent.click(screen.getByLabelText('表头操作名称'))
+    fireEvent.click(screen.getByRole('button', { name: '降序' }))
+    expect(onSortingChange).toHaveBeenCalledWith([{ id: 'name', desc: true }])
+    fireEvent.click(screen.getByLabelText('表头操作名称'))
+    fireEvent.click(screen.getByRole('button', { name: '默认' }))
+    expect(onSortingChange).toHaveBeenCalledWith([])
   })
 
-  it('不可排序的列头不渲染排序按钮', () => {
+  it('不可排序且无菜单的列头不渲染表头操作按钮', () => {
     render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} />)
-    expect(screen.queryByRole('button', { name: 'ID' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('表头操作ID')).not.toBeInTheDocument()
   })
 
   it('行点击回调携带原始行数据', () => {
@@ -143,6 +150,15 @@ describe('ErpTable', () => {
     expect(onRowClick).toHaveBeenLastCalledWith(rows[0])
   })
 
+  it('鼠标点击行清除键盘焦点残留', () => {
+    const { container } = render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} />)
+    const shell = container.querySelector('.erp-table-shell')!
+    fireEvent.keyDown(shell, { key: 'ArrowDown' })
+    expect(container.querySelector('tr[data-kb-index="0"]')).toHaveClass('erp-row-focus')
+    fireEvent.click(container.querySelector('tr[data-kb-index="1"]')!)
+    expect(container.querySelector('tr[data-kb-index="0"]')).not.toHaveClass('erp-row-focus')
+  })
+
   it('冻结列应用 sticky 类与偏移', () => {
     const columns: ColumnDef<Row, unknown>[] = [
       { accessorKey: 'id', header: 'ID', meta: { frozenLeft: true } },
@@ -154,7 +170,7 @@ describe('ErpTable', () => {
     expect(container.querySelector('tbody tr td')).toHaveClass('erp-frozen-left')
   })
 
-  it('列头筛选：打开弹层应用条件并标记激活', () => {
+  it('列头筛选：菜单进入筛选弹层应用条件并标记激活', () => {
     const onColumnFilterChange = vi.fn()
     const columns: ColumnDef<Row, unknown>[] = [
       { accessorKey: 'name', header: '名称', meta: { filterable: true } },
@@ -162,9 +178,10 @@ describe('ErpTable', () => {
     const { rerender } = render(
       <ErpTable columns={columns} data={rows} getRowId={(row) => row.id} columnFilterValue={{}} onColumnFilterChange={onColumnFilterChange} />,
     )
-    const trigger = screen.getByLabelText('筛选名称')
-    expect(trigger).not.toHaveClass('is-active')
+    const trigger = screen.getByLabelText('表头操作名称')
+    expect(trigger).not.toHaveClass('is-filtered')
     fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('button', { name: '筛选' }))
     fireEvent.change(screen.getByLabelText('筛选运算符'), { target: { value: 'contains' } })
     fireEvent.change(screen.getByLabelText('筛选值'), { target: { value: 'A' } })
     fireEvent.click(screen.getByRole('button', { name: '应用' }))
@@ -178,6 +195,17 @@ describe('ErpTable', () => {
         onColumnFilterChange={onColumnFilterChange}
       />,
     )
-    expect(screen.getByLabelText('筛选名称')).toHaveClass('is-active')
+    expect(screen.getByLabelText('表头操作名称')).toHaveClass('is-filtered')
+  })
+
+  it('列头菜单支持自定义项（字段设置）', () => {
+    const onFieldSettings = vi.fn()
+    const columns: ColumnDef<Row, unknown>[] = [
+      { accessorKey: 'name', header: '名称', meta: { headerMenu: [{ label: '字段设置', onClick: onFieldSettings }] } },
+    ]
+    render(<ErpTable columns={columns} data={rows} getRowId={(row) => row.id} />)
+    fireEvent.click(screen.getByLabelText('表头操作名称'))
+    fireEvent.click(screen.getByRole('button', { name: '字段设置' }))
+    expect(onFieldSettings).toHaveBeenCalledTimes(1)
   })
 })
