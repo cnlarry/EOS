@@ -130,7 +130,7 @@ export function FieldAdminPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-end text-nowrap' },
+      meta: { className: 'text-end text-nowrap', frozenRight: true },
       cell: ({ row }) => (
         <>
           <Button size="sm" className="erp-table-action" onClick={() => setEditor({ mode: 'new', fieldKey: row.original.fieldId })}>复制</Button>
