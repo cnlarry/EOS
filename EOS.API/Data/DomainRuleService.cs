@@ -34,9 +34,11 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "cop-quote" => await CopQuoteAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-account" => await CopAccountAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-order" => await CopOrderAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "cop-send" => await CopSendAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-quote" => await PurQuoteAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-receive" => await PurReceiveAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-apply" => await PurApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "pur-purchase" => await PurPurchaseAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-pay" => await PurPayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-prepay" => await PurPrepayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 _ => new(false, $"未登记的领域规则：{ruleName}"),
@@ -101,6 +103,460 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         command.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = dueNo;
         await command.ExecuteNonQueryAsync(token);
         return new(true, null);
+    }
+
+    /// <summary>
+    /// 送货单（1406）AfterSave：排程/订单量校验（SYSSS 标志门控）+ 库存可用校验 +
+    /// 订单一致性 + 批号 + 30 天日期 + mo_no 标记。
+    /// </summary>
+    private static async Task<SprocResult> CopSendAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        var flags = await ReadSysssFlagsAsync(connection, transaction, token);
+
+        // P_COP_SEND_CHECK：排程量校验（无条件）
+        var shipmentLines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT od.SHIPMENT_NO, od.QTY, od.FINISHED_QTY, sd.QTY
+            FROM dbo.COP_SHIPMENT_D od
+            INNER JOIN (SELECT SHIPMENT_TYPE, SHIPMENT_NO, SHIPMENT_SERIAL_NO, SUM(QTY) QTY
+                        FROM dbo.COP_SEND_D WHERE SEND_TYPE=@Type AND SEND_NO=@No
+                        GROUP BY SHIPMENT_TYPE, SHIPMENT_NO, SHIPMENT_SERIAL_NO) sd
+              ON od.SHIPMENT_TYPE=sd.SHIPMENT_TYPE AND od.SHIPMENT_NO=sd.SHIPMENT_NO
+             AND od.SERIAL_NO=sd.SHIPMENT_SERIAL_NO
+            WHERE od.FINISHED_QTY+sd.QTY > od.QTY;
+            """, type, no, token,
+            line: r => $"{r.GetString(0).Trim()}    {Convert.ToDouble(r.GetValue(1))}    {Convert.ToDouble(r.GetValue(2))}    {Convert.ToDouble(r.GetValue(3))}");
+        if (shipmentLines is not null)
+            return new(false, "以下会出现已送货数量超出排程数量\r\n排程单号   数量  已送数量  单据数量\r\n" + shipmentLines);
+        // 订单量校验（SEND_ORDER_TAG=1）
+        if (flags.GetValueOrDefault("SEND_ORDER_TAG") == 1)
+        {
+            var orderLines = await FindLinesAsync(connection, transaction,
+                """
+                SELECT od.ORDER_NO, od.QTY, od.SPARE_QTY, od.FINISHED_SEND_QTY, od.FINISHED_SPARE_QTY, sd.QTY, sd.SPARE_QTY
+                FROM dbo.COP_ORDER_D od
+                INNER JOIN (SELECT ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
+                            FROM dbo.COP_SEND_D WHERE SEND_TYPE=@Type AND SEND_NO=@No
+                            GROUP BY ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO) sd
+                  ON od.ORDER_TYPE=sd.ORDER_TYPE AND od.ORDER_NO=sd.ORDER_NO AND od.SERIAL_NO=sd.ORDER_SERIAL_NO
+                WHERE od.FINISHED_SEND_QTY+ISNULL(od.BACK_MATERIAL,0)+ISNULL(od.BACK_BAD,0)+sd.QTY > od.QTY
+                   OR od.FINISHED_SPARE_QTY+sd.SPARE_QTY > ISNULL(od.SPARE_QTY,0);
+                """, type, no, token,
+                line: r => $"{r.GetString(0).Trim()}    {Convert.ToDouble(r.GetValue(1))}    {Convert.ToDouble(r.GetValue(3))}    {Convert.ToDouble(r.GetValue(5))}    {Convert.ToDouble(r.GetValue(2))}    {Convert.ToDouble(r.GetValue(4))}    {Convert.ToDouble(r.GetValue(6))}");
+            if (orderLines is not null)
+                return new(false, "以下会出现订单已送货数量超出订单数量\r\n订单单号   数量  已送数量  单据数量  备品  已送备品  单据备品\r\n" + orderLines);
+        }
+
+        // 订单一致性：客户相符 / 订单存在 / 序号产品相符 / 产品存在 / 批号
+        var clientMismatch = await FindLinesAsync(connection, transaction,
+            """
+            SELECT d.SERIAL_NO FROM dbo.COP_ORDER_M o
+            INNER JOIN dbo.COP_SEND_D d ON o.ORDER_TYPE=d.ORDER_TYPE AND o.ORDER_NO=d.ORDER_NO
+            INNER JOIN dbo.COP_SEND_M m ON m.SEND_TYPE=d.SEND_TYPE AND m.SEND_NO=d.SEND_NO
+            WHERE m.SEND_TYPE=@Type AND m.SEND_NO=@No AND o.CLIENT_ID<>m.CLIENT_ID;
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (clientMismatch is not null)
+            return new(false, "以下序号项送货单与订单客户不符 \r\n" + clientMismatch);
+        var orderMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.COP_SEND_D d
+            WHERE SEND_TYPE=@Type AND SEND_NO=@No AND ISNULL(ORDER_TYPE,'')<>''
+              AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o WHERE o.ORDER_TYPE=d.ORDER_TYPE AND o.ORDER_NO=d.ORDER_NO);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (orderMissing is not null)
+            return new(false, "以下序号项订单不存在 \r\n" + orderMissing);
+        var orderProduct = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.COP_SEND_D d
+            WHERE SEND_TYPE=@Type AND SEND_NO=@No AND ISNULL(ORDER_TYPE,'')<>''
+              AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_D o
+                              WHERE o.ORDER_TYPE=d.ORDER_TYPE AND o.ORDER_NO=d.ORDER_NO
+                                AND o.SERIAL_NO=d.ORDER_SERIAL_NO AND o.PRO_NO=d.PRO_NO);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (orderProduct is not null)
+            return new(false, "以下序号项订单序号与产品编号不相符 \r\n" + orderProduct);
+        var productMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.COP_SEND_D d
+            WHERE SEND_TYPE=@Type AND SEND_NO=@No
+              AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (productMissing is not null)
+            return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
+        var batchMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.COP_SEND_D d
+            WHERE SEND_TYPE=@Type AND SEND_NO=@No AND ISNULL(BATCH_NO,'')=''
+              AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO AND p.MANAGE_BATCH=1);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (batchMissing is not null)
+            return new(false, "以下序号项需要输入批号 \r\n" + batchMissing);
+        // 送货日期不能小于建立日期 30 天
+        var dateTooOld = await ExistsAsync(connection, transaction,
+            "SELECT TOP 1 1 FROM dbo.COP_SEND_M WHERE SEND_TYPE=@Type AND SEND_NO=@No AND DATEDIFF(day, SEND_DATE, CREATE_DATE)>30;",
+            type, no, token);
+        if (dateTooOld) return new(false, "送货日期不能小于建立日期30天");
+
+        // 库存可用校验（SEND_TAG=1）：库别存在 + 库存数量 + 批号库存
+        if (flags.GetValueOrDefault("SEND_TAG") == 1)
+        {
+            var depotMissing = await FindLinesAsync(connection, transaction,
+                """
+                SELECT SERIAL_NO, DEPOT_ID FROM dbo.COP_SEND_D d
+                WHERE SEND_TYPE=@Type AND SEND_NO=@No AND ISNULL(DEPOT_ID,'')<>''
+                  AND NOT EXISTS (SELECT 1 FROM dbo.DEPOT dp WHERE dp.DEPOT_ID=d.DEPOT_ID);
+                """, type, no, token,
+                line: r => $"{r.GetInt32(0)}    {r.GetString(1).Trim()}");
+            if (depotMissing is not null)
+                return new(false, "以下库别不存在\r\n序号----库别\r\n" + depotMissing);
+            var stockLines = await FindLinesAsync(connection, transaction,
+                """
+                SELECT a.PRO_NO, a.DEPOT_ID, a.QTY, ISNULL(b.QTY,0)
+                FROM (SELECT d.PRO_NO, d.DEPOT_ID,
+                             SUM((d.QTY+ISNULL(d.SPARE_QTY,0)) *
+                                 CASE p.UNIT_ID WHEN d.UNIT_ID THEN 1
+                                      WHEN p.UNIT_ID_1 THEN ISNULL(p.UNIT_RATE_1,0)
+                                      WHEN p.UNIT_ID_2 THEN ISNULL(p.UNIT_RATE_2,0)
+                                      WHEN p.UNIT_ID_3 THEN ISNULL(p.UNIT_RATE_3,0)
+                                      WHEN p.UNIT_ID_4 THEN ISNULL(p.UNIT_RATE_4,0) ELSE 0 END) AS QTY
+                      FROM dbo.COP_SEND_D d
+                      INNER JOIN dbo.PRODUCT p ON p.PRO_NO=d.PRO_NO
+                      WHERE d.SEND_TYPE=@Type AND d.SEND_NO=@No
+                      GROUP BY d.PRO_NO, d.DEPOT_ID) a
+                LEFT JOIN dbo.INV_PRO_DEPOT b ON b.PRO_NO=a.PRO_NO AND b.DEPOT_ID=a.DEPOT_ID
+                WHERE a.QTY > ISNULL(b.QTY,0);
+                """, type, no, token,
+                line: r => $"{r.GetString(0).Trim()}    {r.GetString(1).Trim()}    {Convert.ToDouble(r.GetValue(2))}    {Convert.ToDouble(r.GetValue(3))}    {Convert.ToDouble(r.GetValue(2))-Convert.ToDouble(r.GetValue(3))}");
+            if (stockLines is not null)
+                return new(false, "库存数量不足\r\n料号---------------库别----出库数量----库存数量---不足数量\r\n" + stockLines);
+            var batchStock = await FindLinesAsync(connection, transaction,
+                """
+                SELECT a.PRO_NO, a.BATCH_NO, a.QTY-(ISNULL(b.IN_SUM,0)-ISNULL(b.OUT_SUM,0))
+                FROM (SELECT d.PRO_NO, d.BATCH_NO,
+                             (d.QTY+ISNULL(d.SPARE_QTY,0)) *
+                                 CASE p.UNIT_ID WHEN d.UNIT_ID THEN 1
+                                      WHEN p.UNIT_ID_1 THEN ISNULL(p.UNIT_RATE_1,0)
+                                      WHEN p.UNIT_ID_2 THEN ISNULL(p.UNIT_RATE_2,0)
+                                      WHEN p.UNIT_ID_3 THEN ISNULL(p.UNIT_RATE_3,0)
+                                      WHEN p.UNIT_ID_4 THEN ISNULL(p.UNIT_RATE_4,0) ELSE 0 END AS QTY
+                      FROM dbo.COP_SEND_D d
+                      INNER JOIN dbo.PRODUCT p ON p.PRO_NO=d.PRO_NO
+                      WHERE d.SEND_TYPE=@Type AND d.SEND_NO=@No AND ISNULL(d.BATCH_NO,'')<>'') a
+                LEFT JOIN dbo.INV_BATCH_M b ON b.BATCH_NO=a.BATCH_NO AND b.PRO_NO=a.PRO_NO
+                WHERE a.QTY > (ISNULL(b.IN_SUM,0)-ISNULL(b.OUT_SUM,0));
+                """, type, no, token,
+                line: r => $"{r.GetString(0).Trim()}    {r.GetString(1).Trim()}    {Convert.ToDouble(r.GetValue(2))}");
+            if (batchStock is not null)
+                return new(false, "批号库存数量不足\r\n" + batchStock);
+        }
+
+        // mo_no 标记：每个品号取最大 CLIENT_ORDER_NO 行标记 showbaozhuang
+        await using (var moUpdate = new SqlCommand("""
+            UPDATE d SET d.mo_no='showbaozhuang'
+            FROM dbo.COP_SEND_D d
+            INNER JOIN (SELECT PRO_NO, MAX(CLIENT_ORDER_NO) MAX_CLIENT_ORDER_NO FROM dbo.COP_SEND_D
+                        WHERE SEND_TYPE=@Type AND SEND_NO=@No GROUP BY PRO_NO) max_d
+              ON d.PRO_NO=max_d.PRO_NO AND d.CLIENT_ORDER_NO=max_d.MAX_CLIENT_ORDER_NO
+            WHERE d.SEND_TYPE=@Type AND d.SEND_NO=@No;
+            """, connection, transaction))
+        {
+            moUpdate.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+            moUpdate.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+            await moUpdate.ExecuteNonQueryAsync(token);
+        }
+        return new(true, null);
+    }
+
+    private static async Task<Dictionary<string, int>> ReadSysssFlagsAsync(
+        SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    {
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        await using var command = new SqlCommand("""
+            SELECT TOP 1 ISNULL(CAST(SEND_TAG AS int),0), ISNULL(CAST(SEND_ORDER_TAG AS int),0)
+            FROM dbo.SYSSS;
+            """, connection, transaction);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (await reader.ReadAsync(token))
+        {
+            result["SEND_TAG"] = reader.GetInt32(0);
+            result["SEND_ORDER_TAG"] = reader.GetInt32(1);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 采购单（1606）AfterSave：厂商/计价有效期/预交日期/申购单/产品校验 +
+    /// PUR_PURCHASE_MORE 同步（补明细、单价回填、金额重算 I/O/N、数量分配、单号汇总）。
+    /// </summary>
+    private static async Task<SprocResult> PurPurchaseAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        var supplierOk = await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.PUR_PURCHASE_M m JOIN dbo.SUPPLIER c ON c.SUPPLIER_ID=m.SUPPLIER_ID
+            WHERE m.PURCHASE_TYPE=@Type AND m.PURCHASE_NO=@No AND c.BUSINESS_TAG=0;
+            """, type, no, token);
+        if (!supplierOk) return new(false, "厂商编号不存在或已停止交易。");
+        // 产品计价有效期
+        var priceExpired = await FindLinesAsync(connection, transaction,
+            """
+            SELECT DISTINCT a.PRO_NO FROM dbo.PUR_PURCHASE_D a
+            INNER JOIN dbo.PUR_PURCHASE_M m ON m.PURCHASE_TYPE=a.PURCHASE_TYPE AND m.PURCHASE_NO=a.PURCHASE_NO
+            INNER JOIN dbo.SUPPLIER_PRICE_D p
+              ON p.SUPPLIER_ID=m.SUPPLIER_ID AND p.PRO_NO=a.PRO_NO AND p.CURR_ID=a.CURR_ID
+             AND p.TAX_ID=a.TAX_ID AND p.TAX_TYPE=a.TAX_TYPE
+            WHERE a.PURCHASE_TYPE=@Type AND a.PURCHASE_NO=@No AND p.IN_EFFECT_DATE < m.PURCHASE_DATE;
+            """, type, no, token, line: r => r.GetString(0).Trim());
+        if (priceExpired is not null)
+            return new(false, "以下产品计价已过有效期\r\n" + priceExpired);
+        // 预交日期 >= 采购日期
+        var deliveryLines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT d.SERIAL_NO FROM dbo.PUR_PURCHASE_D d
+            INNER JOIN dbo.PUR_PURCHASE_M m ON m.PURCHASE_TYPE=d.PURCHASE_TYPE AND m.PURCHASE_NO=d.PURCHASE_NO
+            WHERE d.PURCHASE_TYPE=@Type AND d.PURCHASE_NO=@No AND d.PLAN_DELIVERY_DATE < m.PURCHASE_DATE;
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (deliveryLines is not null)
+            return new(false, "以下序号项预交日期小于采购单日期 \r\n" + deliveryLines);
+        // 申购单存在
+        var applyMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.PUR_PURCHASE_D d
+            WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No AND ISNULL(APPLY_TYPE,'')<>''
+              AND NOT EXISTS (SELECT 1 FROM dbo.PUR_APPLY_M q WHERE q.APPLY_TYPE=d.APPLY_TYPE AND q.APPLY_NO=d.APPLY_NO);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (applyMissing is not null)
+            return new(false, "以下序号项申购单不存在 \r\n" + applyMissing);
+        // 申购单序号与产品编号相符
+        var applyProduct = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.PUR_PURCHASE_D d
+            WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No AND ISNULL(APPLY_TYPE,'')<>''
+              AND NOT EXISTS (SELECT 1 FROM dbo.PUR_APPLY_D q
+                              WHERE q.APPLY_TYPE=d.APPLY_TYPE AND q.APPLY_NO=d.APPLY_NO
+                                AND q.SERIAL_NO=d.APPLY_SERIAL_NO AND q.PRO_NO=d.PRO_NO);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (applyProduct is not null)
+            return new(false, "以下序号项申购单序号与产品编号不相符 \r\n" + applyProduct);
+        // 产品编号存在
+        var productMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.PUR_PURCHASE_D d
+            WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No
+              AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (productMissing is not null)
+            return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
+
+        var hasMore = await ExistsAsync(connection, transaction,
+            "SELECT TOP 1 1 FROM dbo.PUR_PURCHASE_MORE WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No;", type, no, token);
+        if (hasMore)
+        {
+            // a. 补明细行
+            var maxSerial = await ScalarIntAsync(connection, transaction,
+                "SELECT ISNULL(MAX(SERIAL_NO),0) FROM dbo.PUR_PURCHASE_D WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No;",
+                type, no, token);
+            var missingProducts = await ReadStringsAsync(connection, transaction, """
+                SELECT DISTINCT LTRIM(RTRIM(m.PRO_NO)) FROM dbo.PUR_PURCHASE_MORE m
+                WHERE m.PURCHASE_TYPE=@Type AND m.PURCHASE_NO=@No
+                  AND NOT EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_D d
+                                  WHERE d.PURCHASE_TYPE=m.PURCHASE_TYPE AND d.PURCHASE_NO=m.PURCHASE_NO AND d.PRO_NO=m.PRO_NO);
+                """, type, no, token);
+            var moreQty = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+            await using (var readMore = new SqlCommand("""
+                SELECT LTRIM(RTRIM(PRO_NO)), SUM(REQUIRE_QTY) FROM dbo.PUR_PURCHASE_MORE
+                WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No GROUP BY PRO_NO;
+                """, connection, transaction))
+            {
+                readMore.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+                readMore.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+                await using var reader = await readMore.ExecuteReaderAsync(token);
+                while (await reader.ReadAsync(token))
+                    moreQty[reader.GetString(0)] = Convert.ToDecimal(reader.GetValue(1));
+            }
+            foreach (var proNo in missingProducts)
+            {
+                maxSerial++;
+                await using var insert = new SqlCommand("""
+                    INSERT INTO dbo.PUR_PURCHASE_D (PURCHASE_TYPE, PURCHASE_NO, SERIAL_NO, PRO_NO, DEPOT_ID, QTY, RECEIVE_QTY, UNIT_ID)
+                    SELECT @Type, @No, @Serial, p.PRO_NO, p.DEPOT_ID, @Qty, 0, p.UNIT_ID
+                    FROM dbo.PRODUCT p WHERE p.PRO_NO=@ProNo;
+                    """, connection, transaction);
+                insert.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+                insert.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+                insert.Parameters.Add("@Serial", SqlDbType.Int).Value = maxSerial;
+                insert.Parameters.Add("@Qty", SqlDbType.Decimal).Value = moreQty.GetValueOrDefault(proNo);
+                insert.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
+                await insert.ExecuteNonQueryAsync(token);
+            }
+            // b. 主表币别/税率带到明细
+            await using (var syncTax = new SqlCommand("""
+                UPDATE d SET d.CURR_ID=m.CURR_ID, d.CURR_RATE=m.CURR_RATE, d.TAX_TYPE=m.TAX_TYPE,
+                    d.TAX_RATE=m.TAX_RATE, d.TAX_ID=m.TAX_ID
+                FROM dbo.PUR_PURCHASE_D d INNER JOIN dbo.PUR_PURCHASE_M m
+                  ON m.PURCHASE_TYPE=d.PURCHASE_TYPE AND m.PURCHASE_NO=d.PURCHASE_NO
+                WHERE d.PURCHASE_TYPE=@Type AND d.PURCHASE_NO=@No;
+                """, connection, transaction))
+            {
+                syncTax.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+                syncTax.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+                await syncTax.ExecuteNonQueryAsync(token);
+            }
+            // c. 厂商计价回填单价
+            await using (var syncPrice = new SqlCommand("""
+                UPDATE d SET d.PRICE=p.PRICE, d.TAX_RATE=p.TAX_RATE, d.CURR_RATE=p.CURR_RATE, d.REBATE=p.REBATE
+                FROM dbo.PUR_PURCHASE_D d
+                INNER JOIN dbo.PUR_PURCHASE_M m ON m.PURCHASE_TYPE=d.PURCHASE_TYPE AND m.PURCHASE_NO=d.PURCHASE_NO
+                INNER JOIN dbo.SUPPLIER_PRICE_D p
+                  ON p.SUPPLIER_ID=m.SUPPLIER_ID AND p.PRO_NO=d.PRO_NO AND p.UNIT_ID=d.UNIT_ID
+                 AND p.CURR_ID=d.CURR_ID AND p.TAX_ID=d.TAX_ID AND p.TAX_TYPE=d.TAX_TYPE
+                WHERE d.PURCHASE_TYPE=@Type AND d.PURCHASE_NO=@No;
+                """, connection, transaction))
+            {
+                syncPrice.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+                syncPrice.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+                await syncPrice.ExecuteNonQueryAsync(token);
+            }
+            // d. REQUIRE_QTY 清零并回填
+            await using (var clearReq = new SqlCommand(
+                "UPDATE dbo.PUR_PURCHASE_D SET REQUIRE_QTY=0 WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No;",
+                connection, transaction))
+            {
+                clearReq.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+                clearReq.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+                await clearReq.ExecuteNonQueryAsync(token);
+            }
+            await using (var syncReq = new SqlCommand("""
+                UPDATE d SET d.REQUIRE_QTY=s.REQUIRE_QTY
+                FROM dbo.PUR_PURCHASE_D d
+                INNER JOIN (SELECT PURCHASE_TYPE, PURCHASE_NO, PRO_NO, SUM(REQUIRE_QTY) REQUIRE_QTY
+                            FROM dbo.PUR_PURCHASE_MORE WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No
+                            GROUP BY PURCHASE_TYPE, PURCHASE_NO, PRO_NO) s
+                  ON d.PURCHASE_TYPE=s.PURCHASE_TYPE AND d.PURCHASE_NO=s.PURCHASE_NO AND d.PRO_NO=s.PRO_NO
+                WHERE d.PURCHASE_TYPE=@Type AND d.PURCHASE_NO=@No;
+                """, connection, transaction))
+            {
+                syncReq.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+                syncReq.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+                await syncReq.ExecuteNonQueryAsync(token);
+            }
+            // e. 明细金额重算（I/O/N 税公式，对齐旧 SP 与 AmountCalculator）
+            await using (var calcAmount = new SqlCommand("""
+                UPDATE dbo.PUR_PURCHASE_D SET
+                    AMOUNT=CASE TAX_TYPE WHEN 'I' THEN ROUND((QTY*PRICE*ISNULL(REBATE,100)/100)/(1+ISNULL(TAX_RATE,0)/100),2)
+                                         ELSE ROUND(QTY*PRICE*ISNULL(REBATE,100)/100,2) END,
+                    AMOUNT_TAX=CASE TAX_TYPE WHEN 'O' THEN ROUND(QTY*PRICE*ISNULL(REBATE,100)/100*(1+ISNULL(TAX_RATE,0)/100),2)
+                                             ELSE ROUND(QTY*PRICE*ISNULL(REBATE,100)/100,2) END,
+                    TAX_SUM=CASE TAX_TYPE WHEN 'N' THEN 0
+                            WHEN 'O' THEN ROUND(QTY*PRICE*ISNULL(REBATE,100)/100*ISNULL(TAX_RATE,0)/100,2)
+                            WHEN 'I' THEN ROUND(QTY*PRICE*ISNULL(REBATE,100)/100*ISNULL(TAX_RATE,0)/100/(1+ISNULL(TAX_RATE,0)/100),2)
+                            ELSE 0 END
+                WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No;
+                """, connection, transaction))
+            {
+                calcAmount.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+                calcAmount.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+                await calcAmount.ExecuteNonQueryAsync(token);
+            }
+            // f. 主表金额汇总（明细×汇率 / 主表汇率，ROUND 2）
+            await using (var calcMaster = new SqlCommand("""
+                UPDATE m SET m.AMOUNT=ROUND(d.AMOUNT/m.CURR_RATE,2), m.AMOUNT_TAX=ROUND(d.AMOUNT_TAX/m.CURR_RATE,2),
+                    m.TAX_SUM=ROUND(d.TAX_SUM/m.CURR_RATE,2)
+                FROM dbo.PUR_PURCHASE_M m
+                INNER JOIN (SELECT PURCHASE_TYPE, PURCHASE_NO,
+                                   SUM(AMOUNT*CURR_RATE) AMOUNT, SUM(AMOUNT_TAX*CURR_RATE) AMOUNT_TAX,
+                                   SUM(TAX_SUM*CURR_RATE) TAX_SUM
+                            FROM dbo.PUR_PURCHASE_D WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No
+                            GROUP BY PURCHASE_TYPE, PURCHASE_NO) d
+                  ON m.PURCHASE_TYPE=d.PURCHASE_TYPE AND m.PURCHASE_NO=d.PURCHASE_NO
+                WHERE m.PURCHASE_TYPE=@Type AND m.PURCHASE_NO=@No;
+                """, connection, transaction))
+            {
+                calcMaster.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+                calcMaster.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+                await calcMaster.ExecuteNonQueryAsync(token);
+            }
+            // g. 数量分配（等价旧游标）
+            var detailQty = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+            await using (var readQty = new SqlCommand("""
+                SELECT LTRIM(RTRIM(PRO_NO)), QTY FROM dbo.PUR_PURCHASE_D WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No;
+                """, connection, transaction))
+            {
+                readQty.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+                readQty.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+                await using var reader = await readQty.ExecuteReaderAsync(token);
+                while (await reader.ReadAsync(token))
+                    detailQty[reader.GetString(0)] = Convert.ToDecimal(reader.GetValue(1));
+            }
+            await using (var clearMore = new SqlCommand(
+                "UPDATE dbo.PUR_PURCHASE_MORE SET QTY=0 WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No;",
+                connection, transaction))
+            {
+                clearMore.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+                clearMore.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+                await clearMore.ExecuteNonQueryAsync(token);
+            }
+            string? currentPro = null;
+            var remaining = 0m;
+            await using (var readMore = new SqlCommand("""
+                SELECT SERIAL_NO, LTRIM(RTRIM(PRO_NO)), REQUIRE_QTY FROM dbo.PUR_PURCHASE_MORE
+                WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No ORDER BY PRO_NO, SERIAL_NO;
+                """, connection, transaction))
+            {
+                readMore.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+                readMore.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+                await using var reader = await readMore.ExecuteReaderAsync(token);
+                while (await reader.ReadAsync(token))
+                {
+                    var serial = reader.GetInt32(0);
+                    var proNo = reader.GetString(1);
+                    var requireQty = Convert.ToDecimal(reader.GetValue(2));
+                    if (!string.Equals(currentPro, proNo, StringComparison.OrdinalIgnoreCase))
+                    {
+                        currentPro = proNo;
+                        remaining = detailQty.GetValueOrDefault(proNo);
+                    }
+                    if (remaining > requireQty)
+                    {
+                        await UpdatePurchaseMoreQtyAsync(connection, transaction, type, no, serial, requireQty, token);
+                        remaining -= requireQty;
+                    }
+                    else if (remaining > 0)
+                    {
+                        await UpdatePurchaseMoreQtyAsync(connection, transaction, type, no, serial, remaining, token);
+                        remaining -= requireQty;
+                    }
+                }
+            }
+        }
+        // 主表 ORDER_NO / PRODUCE_NO 汇总（MORE 有值才更新）
+        await UpdateDistinctFieldAsync(connection, transaction, type, no, "ORDER_NO", "PUR_PURCHASE_MORE", "ORDER_NO",
+            moreTypeColumn: "PURCHASE_TYPE", moreNoColumn: "PURCHASE_NO", token);
+        await UpdateDistinctFieldAsync(connection, transaction, type, no, "PRODUCE_NO", "PUR_PURCHASE_MORE", "PRODUCE_NO",
+            moreTypeColumn: "PURCHASE_TYPE", moreNoColumn: "PURCHASE_NO", token);
+        return new(true, null);
+    }
+
+    private static async Task UpdatePurchaseMoreQtyAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        string type, string no, int serialNo, decimal qty, CancellationToken token)
+    {
+        await using var command = new SqlCommand("""
+            UPDATE dbo.PUR_PURCHASE_MORE SET QTY=@Qty
+            WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No AND SERIAL_NO=@Serial;
+            """, connection, transaction);
+        command.Parameters.Add("@Qty", SqlDbType.Decimal).Value = qty;
+        command.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+        command.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+        command.Parameters.Add("@Serial", SqlDbType.Int).Value = serialNo;
+        await command.ExecuteNonQueryAsync(token);
     }
 
     /// <summary>收料单（1607）AfterSave：采购单一致性 + 批号要求 + 不超采购数量。</summary>
@@ -323,8 +779,10 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             }
         }
         // 5. 主表 ORDER_NO / PRODUCE_NO 汇总
-        await UpdateDistinctFieldAsync(connection, transaction, type, no, "ORDER_NO", "PUR_APPLY_MORE", "ORDER_NO", token);
-        await UpdateDistinctFieldAsync(connection, transaction, type, no, "PRODUCE_NO", "PUR_APPLY_MORE", "PRODUCE_NO", token);
+        await UpdateDistinctFieldAsync(connection, transaction, type, no, "ORDER_NO", "PUR_APPLY_MORE", "ORDER_NO",
+            moreTypeColumn: "APPLY_TYPE", moreNoColumn: "APPLY_NO", token);
+        await UpdateDistinctFieldAsync(connection, transaction, type, no, "PRODUCE_NO", "PUR_APPLY_MORE", "PRODUCE_NO",
+            moreTypeColumn: "APPLY_TYPE", moreNoColumn: "APPLY_NO", token);
         return new(true, null);
     }
 
@@ -367,11 +825,12 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
 
     private static async Task UpdateDistinctFieldAsync(
         SqlConnection connection, SqlTransaction transaction,
-        string type, string no, string masterColumn, string moreTable, string moreColumn, CancellationToken token)
+        string type, string no, string masterColumn, string moreTable, string moreColumn,
+        string moreTypeColumn, string moreNoColumn, CancellationToken token)
     {
         var values = await ReadStringsAsync(connection, transaction,
             $"SELECT DISTINCT LTRIM(RTRIM(ISNULL([{moreColumn}],''))) FROM dbo.[{moreTable}] " +
-            $"WHERE APPLY_TYPE=@Type AND APPLY_NO=@No AND ISNULL([{moreColumn}],'')<>'' ORDER BY 1;",
+            $"WHERE [{moreTypeColumn}]=@Type AND [{moreNoColumn}]=@No AND ISNULL([{moreColumn}],'')<>'' ORDER BY 1;",
             type, no, token);
         if (values.Count == 0) return;
         await using var command = new SqlCommand(
