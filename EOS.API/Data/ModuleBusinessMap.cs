@@ -14,7 +14,8 @@ public sealed record ModuleBusinessRule(
     bool AutoBillNo,
     string? BillNoField,
     string? BillTypeField,
-    string? PrepayOffsetTable = null);
+    string? PrepayOffsetTable = null,
+    string? DomainRule = null);
 
 public static class ModuleBusinessMap
 {
@@ -46,17 +47,21 @@ public static class ModuleBusinessMap
             // 财务：170101 应收货款单（对帐单）
             [170101] = new(170101, "P_COP_ACCOUNT_After_Save", "P_WF_COP_ACCOUNT", true, "ACCOUNT_NO", "ACCOUNT_TYPE"),
             // 170102 收款单（预收冲抵入口）
-            [170102] = new(170102, "P_COP_RECEIPT_After_Save", "P_WF_COP_RECEIPT", true, "RECEIPT_NO", "RECEIPT_TYPE",
-                PrepayOffsetTable: "COP_RECEIPT_PREPAY"),
-            // 170103 预收帐款单
-            [170103] = new(170103, "P_COP_PREPAY_After_Save", "P_WF_COP_PREPAY", true, "PREPAY_NO", "PREPAY_TYPE"),
-            // 170201 应付货款单
-            [170201] = new(170201, "P_PUR_DUE_After_Save", "P_WF_PUR_DUE", true, "DUE_NO", "DUE_TYPE"),
+            [170102] = new(170102, null, "P_WF_COP_RECEIPT", true, "RECEIPT_NO", "RECEIPT_TYPE",
+                PrepayOffsetTable: "COP_RECEIPT_PREPAY", DomainRule: "cop-receipt"),
+            // 170103 预收帐款单（AfterSave 已移植：客户校验 + 金额汇总）
+            [170103] = new(170103, null, "P_WF_COP_PREPAY", true, "PREPAY_NO", "PREPAY_TYPE",
+                DomainRule: "cop-prepay"),
+            // 170201 应付货款单：AfterSave 已移植为确定性领域规则（purchase-due），
+            // 不再调用 P_PUR_DUE_After_Save（金额汇总 + 数量校验由 C# 等价实现）
+            [170201] = new(170201, null, "P_WF_PUR_DUE", true, "DUE_NO", "DUE_TYPE",
+                DomainRule: "purchase-due"),
             // 170202 付款单
-            [170202] = new(170202, "P_PUR_PAY_After_Save", "P_WF_PUR_PAY", true, "PAY_NO", "PAY_TYPE",
-                PrepayOffsetTable: "PUR_PAY_PREPAY"),
-            // 170203 预付帐款单
-            [170203] = new(170203, "P_PUR_PREPAY_After_Save", "P_WF_PUR_PREPAY", true, "PREPAY_NO", "PREPAY_TYPE"),
+            [170202] = new(170202, null, "P_WF_PUR_PAY", true, "PAY_NO", "PAY_TYPE",
+                PrepayOffsetTable: "PUR_PAY_PREPAY", DomainRule: "pur-pay"),
+            // 170203 预付帐款单（AfterSave 已移植：厂商校验 + 预付不超采购金额 + 金额汇总）
+            [170203] = new(170203, null, "P_WF_PUR_PREPAY", true, "PREPAY_NO", "PREPAY_TYPE",
+                DomainRule: "pur-prepay"),
         };
 
     public static bool TryGet(int moduleId, out ModuleBusinessRule? rule) =>
