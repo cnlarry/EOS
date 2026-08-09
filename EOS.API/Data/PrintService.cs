@@ -58,9 +58,36 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
         var (headerCompany,headerText,footerText)=await ReadHeaderFooterAsync(connection,moduleId,token);
         headerText=ReplacePlaceholders(headerText,master);
         footerText=ReplacePlaceholders(footerText,master);
+        var masterResolved=await ResolvePartyNameAsync(connection,masterTable,master,token);
         logger.LogDebug("打印数据 module={ModuleId} master={Master} details={DetailCount}",moduleId,masterTable,details.Count);
         return new PrintData(moduleId,title,headerCompany,headerText,footerText,
-            OrderPrintFields(masterFields),OrderPrintFields(detailFields),master,details);
+            OrderPrintFields(masterFields),OrderPrintFields(detailFields),masterResolved,details);
+    }
+
+    /// <summary>
+    /// 打印版式往来单位名称补齐：部分单据主表未携带客户/厂商名称列（如 PUR_PURCHASE_M
+    /// 无 SUPPLIER_NAME），或主表名称字段未落库（如统一表单建单未回填 CLIENT_NAME）；
+    /// 按主表 CLIENT_ID/SUPPLIER_ID 从 CLIENT/SUPPLIER 回查名称注入载荷
+    /// （表/列名为服务端常量，值参数化），供版式"客户/厂商"行展示。
+    /// </summary>
+    private static async Task<IReadOnlyDictionary<string,object?>> ResolvePartyNameAsync(
+        SqlConnection connection,string masterTable,IReadOnlyDictionary<string,object?> master,CancellationToken token)
+    {
+        var result=new Dictionary<string,object?>(master,StringComparer.OrdinalIgnoreCase);
+        string? partyTable=null;
+        string? idField=null;
+        string? nameField=null;
+        if(master.ContainsKey("CLIENT_ID")){partyTable="CLIENT";idField="CLIENT_ID";nameField="CLIENT_NAME";}
+        else if(master.ContainsKey("SUPPLIER_ID")){partyTable="SUPPLIER";idField="SUPPLIER_ID";nameField="SUPPLIER_NAME";}
+        if(partyTable is null)return result;
+        var idValue=Convert.ToString(master.GetValueOrDefault(idField))?.Trim();
+        if(string.IsNullOrWhiteSpace(idValue))return result;
+        await using var command=new SqlCommand(
+            $"SELECT LTRIM(RTRIM([{nameField}])) FROM dbo.[{partyTable}] WITH (NOLOCK) WHERE [{idField}]=@id;",connection);
+        command.Parameters.Add("@id",SqlDbType.NVarChar,50).Value=idValue;
+        var name=await command.ExecuteScalarAsync(token) as string;
+        if(!string.IsNullOrWhiteSpace(name))result[nameField]=name;
+        return result;
     }
 
     /// <summary>
