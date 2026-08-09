@@ -15,7 +15,8 @@ namespace EOS.API.Controllers;
 public sealed class JobsController(
     DbConnectionFactory connections,
     LegacyRightsRepository rightsRepository,
-    CurrentUserContext userContext) : ControllerBase
+    CurrentUserContext userContext,
+    AttendanceCalcService attendanceCalc) : ControllerBase
 {
     private static readonly Regex DayColumn = new("^DAY_(0[1-9]|[12][0-9]|3[01])$", RegexOptions.Compiled);
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
@@ -189,6 +190,31 @@ public sealed class JobsController(
             await transaction.RollbackAsync(token);
             throw;
         }
+    }
+
+    /// <summary>
+    /// 考勤计算（阶段 6.2 核心）：对日期范围内 HRM_DIARY 逐员工计算
+    /// 排班班次（含调休）、签卡覆盖、加班申请上限、休/节假日分类与工时，幂等重算。
+    /// </summary>
+    [HttpPost("attendance-calc")]
+    public async Task<IActionResult> AttendanceCalc([FromBody]AttendanceGenerateRequest request,CancellationToken token)
+    {
+        if(!await CanRunAsync(180654,token)&&!await CanRunAsync(180659,token))return Forbid();
+        if(request.StartDate==default||request.EndDate==default||request.EndDate<request.StartDate)
+            return BadRequest(new{code="INVALID_RANGE",message="日期范围不合法。"});
+        var days=(request.EndDate-request.StartDate).Days+1;
+        if(days>62)return BadRequest(new{code="RANGE_TOO_LARGE",message="日期范围不能超过 62 天。"});
+        var empIds=(request.EmpIds??[])
+            .Select(id=>(id??"").Trim())
+            .Where(id=>id.Length>0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(500)
+            .ToList();
+        if(empIds.Count==0&&string.IsNullOrWhiteSpace(request.DeptId))
+            return BadRequest(new{code="NO_TARGET",message="请指定员工或部门。"});
+        var result=await attendanceCalc.CalculateAsync(request.StartDate,request.EndDate,empIds,request.DeptId,token);
+        return Ok(new{StartDate=request.StartDate,EndDate=request.EndDate,EmployeeCount=result.EmployeeCount,
+            DiaryRows=result.DiaryRows,Updated=result.Updated,SkippedNoTimeType=result.SkippedNoTimeType});
     }
 
     /// <summary>
