@@ -16,24 +16,26 @@ import {
   IconGitBranch,
   IconHome,
   IconMenu2,
+  IconMoon,
   IconPackage,
   IconPalette,
   IconReportMoney,
-  IconShoppingCart,
-  IconTruckDelivery,
-  IconUsers,
-  IconMoon,
+  IconSearch,
   IconSettings,
+  IconShoppingCart,
   IconSun,
   IconTools,
   IconTruck,
+  IconTruckDelivery,
+  IconUsers,
   IconWorld,
   IconZoomScan,
 } from '@tabler/icons-react'
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { apiClient } from '../../services/api'
 import { useAuth } from '../../features/auth/authContext'
-import type { NavigationItem } from '../../features/auth/types'
+import type { NavigationGroup, NavigationItem } from '../../features/auth/types'
 
 type Theme = 'light' | 'dark'
 
@@ -112,6 +114,7 @@ const pageTitles: Record<string, { section: string; title: string }> = {
   '/dashboard': { section: '首页', title: '工作台' },
   '/procurement/purchase-orders': { section: '采购管理', title: '采购订单' },
   '/admin/tables': { section: '系统管理', title: '数据表维护' },
+  '/admin/menus': { section: '系统管理', title: '菜单管理' },
   '/admin/users': { section: '系统管理', title: '用户管理' },
   '/settings/profile': { section: '系统设置', title: '个人设置' },
 }
@@ -124,21 +127,120 @@ function getInitialTheme(): Theme {
     : 'light'
 }
 
+/** 深度展开导航树，返回全部叶子（用于页面标题与菜单搜索）。 */
+function flattenLeaves(items: NavigationItem[]): NavigationItem[] {
+  return items.flatMap((item) => (item.children?.length ? flattenLeaves(item.children) : [item]))
+}
+
+/** 查找命中路由的叶子节点祖先 id 链（不含叶子自身），用于自动展开当前分支。 */
+function findAncestors(items: NavigationItem[], path: string): string[] {
+  for (const item of items) {
+    if (!item.children?.length) continue
+    if (item.children.some((child) => child.route === path)) return [item.id]
+    const nested = findAncestors(item.children, path)
+    if (nested.length) return [item.id, ...nested]
+  }
+  return []
+}
+
+/** 判断子树内是否有叶子命中当前路由（分组节点高亮）。 */
+function isSubtreeActive(item: NavigationItem, path: string): boolean {
+  if (item.route === path) return true
+  return item.children?.some((child) => isSubtreeActive(child, path)) ?? false
+}
+
+interface GroupValuesProps {
+  moduleId: number
+  group: NavigationGroup
+  route: string
+  searchParams: URLSearchParams
+}
+
+/** 第 4 级分组：点击组名展开组值（按需从 API 加载），点击组值进入模块并带分组筛选。 */
+function GroupValues({ moduleId, group, route, searchParams }: GroupValuesProps) {
+  const [open, setOpen] = useState(false)
+  const [values, setValues] = useState<string[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  const activeValue = searchParams.get('groupIndex') === String(group.index) ? searchParams.get('groupValue') : null
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setFailed(false)
+    apiClient
+      .get<{ values: string[] }>(`/navigation/${moduleId}/groups/${group.index}/values`)
+      .then((data) => {
+        if (!cancelled) setValues(data.values)
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, moduleId, group.index])
+
+  return (
+    <div className="erp-nav-group-item">
+      <button
+        className={`nav-link erp-nav-group-toggle erp-nav-group-level4 ${activeValue !== null ? 'group-active' : ''}`}
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="erp-nav-child-marker" aria-hidden="true" />
+        <span className="nav-link-title">{group.description}</span>
+        <IconChevronDown className="erp-nav-chevron" size={14} />
+      </button>
+      {open && (
+        <div className="erp-nav-group-values">
+          {failed ? (
+            <div className="erp-nav-group-hint">分组表达式暂不受支持</div>
+          ) : values === null ? (
+            <div className="erp-nav-group-hint">加载中…</div>
+          ) : values.length === 0 ? (
+            <div className="erp-nav-group-hint">无分组数据</div>
+          ) : (
+            values.map((value) => {
+              const target = `${route}?groupIndex=${group.index}&groupValue=${encodeURIComponent(value)}`
+              const isActive = activeValue === value
+              return (
+                <NavLink
+                  key={`${group.index}-${value}`}
+                  className={`nav-link erp-nav-value ${isActive ? 'active' : ''}`}
+                  to={target}
+                  title={value}
+                >
+                  <span className="nav-link-title">{value}</span>
+                </NavLink>
+              )
+            })
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function AppShell() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('erp-sidebar-collapsed') === 'true')
-  const [expandedGroup, setExpandedGroup] = useState<string | null>('采购管理')
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [currentDate, setCurrentDate] = useState(() => new Date())
+  const [menuQuery, setMenuQuery] = useState('')
   const { bootstrap, logout } = useAuth()
   const navigate = useNavigate()
   const navigation = bootstrap?.navigation ?? fallbackNavigation as unknown as NavigationItem[]
   const location = useLocation()
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search])
+  const firstGroup = navigation.find((item) => item.children?.length)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(firstGroup ? [firstGroup.id] : []))
   const isFormEditor = /\/(new|edit)$/.test(location.pathname)
   const basePath = location.pathname.replace(/\/(new|edit)$/, '')
-  const activeMenu = navigation.flatMap((item) => item.children ?? [item]).find((item) => item.route === basePath)
-  const activeGroup = navigation.find((item) => item.children?.some((child) => child.route === basePath))
+  const allLeaves = useMemo(() => flattenLeaves(navigation), [navigation])
+  const activeMenu = allLeaves.find((item) => item.route === basePath)
+  const activeGroup = navigation.find((item) => item.children?.some((child) => isSubtreeActive(child, basePath)))
   const page: { section: string; module?: string; title: string } = isFormEditor
     ? {
         section: activeGroup?.label ?? 'ERP',
@@ -164,6 +266,17 @@ export function AppShell() {
     setSidebarOpen(false)
     setUserMenuOpen(false)
   }, [location.pathname])
+
+  // 进入页面时自动展开当前模块所在的分支（含从菜单搜索直达的场景）
+  useEffect(() => {
+    const ancestors = findAncestors(navigation, basePath)
+    if (ancestors.length === 0) return
+    setExpandedIds((current) => {
+      const next = new Set(current)
+      ancestors.forEach((id) => next.add(id))
+      return next.size === current.size ? current : next
+    })
+  }, [basePath, navigation])
 
   useEffect(() => {
     if (!userMenuOpen) return
@@ -204,6 +317,113 @@ export function AppShell() {
   }).format(currentDate)
   const weekdayLabel = new Intl.DateTimeFormat('zh-CN', { weekday: 'long' }).format(currentDate)
 
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const trimmedQuery = menuQuery.trim().toLowerCase()
+  const searchResults = useMemo(() => {
+    if (!trimmedQuery) return []
+    const hits: { item: NavigationItem; breadcrumb: string }[] = []
+    const walk = (items: NavigationItem[], trail: string[]) => {
+      for (const item of items) {
+        if (item.children?.length) {
+          walk(item.children, [...trail, item.label])
+        } else {
+          const label = item.label.toLowerCase()
+          const moduleId = item.moduleId != null ? String(item.moduleId) : ''
+          const alias = (item.alias ?? '').toLowerCase()
+          if (label.includes(trimmedQuery) || moduleId.includes(trimmedQuery) || alias.includes(trimmedQuery)) {
+            hits.push({ item, breadcrumb: [...trail, item.label].join(' / ') })
+          }
+        }
+      }
+    }
+    walk(navigation, [])
+    return hits.slice(0, 50)
+  }, [navigation, trimmedQuery])
+
+  const renderChildren = (items: NavigationItem[], depth: number) =>
+    items.map((item) => {
+      if (item.children?.length) {
+        const Icon = navigationIcons[item.icon] ?? IconFolder
+        const isExpanded = expandedIds.has(item.id)
+        const isGroupActive = item.children.some((child) => isSubtreeActive(child, basePath))
+        return (
+          <Fragment key={item.id}>
+            <div className={`erp-nav-group erp-nav-group-depth-${depth}`}>
+              <button
+                className={`nav-link erp-nav-group-toggle ${isGroupActive ? 'group-active' : ''}`}
+                type="button"
+                aria-expanded={isExpanded}
+                title={sidebarCollapsed ? item.label : undefined}
+                onClick={() => {
+                  if (sidebarCollapsed) setSidebarCollapsed(false)
+                  toggleExpanded(item.id)
+                }}
+              >
+                {depth === 1 && (
+                  <span className="nav-link-icon"><Icon size={18} stroke={1.7} /></span>
+                )}
+                <span className="nav-link-title">{item.label}</span>
+                <IconChevronDown className="erp-nav-chevron" size={16} />
+              </button>
+            </div>
+            {isExpanded && !sidebarCollapsed && (
+              <div className="erp-nav-children">{renderChildren(item.children, depth + 1)}</div>
+            )}
+          </Fragment>
+        )
+      }
+      const hasGroups = (item.groups?.length ?? 0) > 0
+      const groupsOpen = expandedIds.has(`groups-${item.id}`)
+      return (
+        <Fragment key={item.id}>
+          <NavLink
+            className={({ isActive }) => `nav-link erp-nav-child erp-nav-child-depth-${depth} ${isActive ? 'active' : ''}`}
+            to={item.route!}
+            title={sidebarCollapsed ? item.label : undefined}
+          >
+            <span className="erp-nav-child-marker" aria-hidden="true" />
+            <span className="nav-link-title">{item.label}</span>
+            {hasGroups && <IconChevronDown className="erp-nav-chevron" size={14} />}
+          </NavLink>
+          {hasGroups && !sidebarCollapsed && (
+            <div className="erp-nav-groups">
+              <button
+                className={`nav-link erp-nav-groups-toggle ${groupsOpen ? 'group-active' : ''}`}
+                type="button"
+                aria-expanded={groupsOpen}
+                onClick={() => toggleExpanded(`groups-${item.id}`)}
+              >
+                <span className="erp-nav-groups-icon"><IconZoomScan size={14} /></span>
+                <span className="nav-link-title">分组</span>
+                <IconChevronDown className="erp-nav-chevron" size={13} />
+              </button>
+              {groupsOpen && (
+                <div className="erp-nav-children">
+                  {(item.groups ?? []).map((group) => (
+                    <GroupValues
+                      key={`${item.id}-g${group.index}`}
+                      moduleId={item.moduleId!}
+                      group={group}
+                      route={item.route!}
+                      searchParams={searchParams}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </Fragment>
+      )
+    })
+
   return (
     <div className="page erp-shell">
       <aside
@@ -221,50 +441,55 @@ export function AppShell() {
               <small>企业操作系统</small>
             </span>
           </div>
+          {!sidebarCollapsed && (
+            <div className="erp-nav-search">
+              <IconSearch size={16} aria-hidden="true" />
+              <input
+                type="search"
+                value={menuQuery}
+                onChange={(event) => setMenuQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') setMenuQuery('')
+                }}
+                placeholder="搜索菜单…"
+                aria-label="搜索菜单"
+              />
+              {menuQuery && (
+                <button
+                  className="erp-nav-search-clear"
+                  type="button"
+                  aria-label="清除搜索"
+                  onClick={() => setMenuQuery('')}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          )}
           <div className="navbar-nav pt-lg-3">
-            {navigation.map((item) => {
-              const Icon = navigationIcons[item.icon] ?? IconFolder
-              if (item.children) {
-                const isExpanded = expandedGroup === item.label
-                const isGroupActive = item.children.some((child) => location.pathname.startsWith(child.route!))
-                return (
-                  <Fragment key={item.id}>
-                    <div className="erp-nav-group">
-                      <button
-                        className={`nav-link erp-nav-group-toggle ${isGroupActive ? 'group-active' : ''}`}
-                        type="button"
-                        aria-expanded={isExpanded}
-                        title={sidebarCollapsed ? item.label : undefined}
-                        onClick={() => {
-                          if (sidebarCollapsed) setSidebarCollapsed(false)
-                          setExpandedGroup((current) => current === item.label ? null : item.label)
-                        }}
-                      >
-                        <span className="nav-link-icon"><Icon size={18} stroke={1.7} /></span>
-                        <span className="nav-link-title">{item.label}</span>
-                        <IconChevronDown className="erp-nav-chevron" size={16} />
-                      </button>
-                    </div>
-                    {isExpanded && !sidebarCollapsed && (
-                      <div className="erp-nav-children">
-                        {item.children.map((child) => (
-                          <NavLink className={({ isActive }) => `nav-link erp-nav-child ${isActive ? 'active' : ''}`} key={child.route} to={child.route!}>
-                            <span className="erp-nav-child-marker" aria-hidden="true" />
-                            <span className="nav-link-title">{child.label}</span>
-                          </NavLink>
-                        ))}
-                      </div>
-                    )}
-                  </Fragment>
-                )
-              }
-              return (
-                <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} key={item.route} to={item.route!} title={sidebarCollapsed ? item.label : undefined}>
-                  <span className="nav-link-icon"><Icon size={18} stroke={1.7} /></span>
-                  <span className="nav-link-title">{item.label}</span>
-                </NavLink>
-              )
-            })}
+            {trimmedQuery ? (
+              <div className="erp-nav-search-results">
+                {searchResults.length === 0 ? (
+                  <div className="erp-nav-search-empty">没有匹配的菜单</div>
+                ) : (
+                  searchResults.map(({ item, breadcrumb }) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="erp-nav-search-result"
+                      onClick={() => {
+                        navigate(item.route!)
+                        setMenuQuery('')
+                      }}
+                    >
+                      <span className="erp-nav-search-crumb">{breadcrumb}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : (
+              renderChildren(navigation, 1)
+            )}
           </div>
           <button
             className="btn btn-icon btn-ghost-secondary erp-sidebar-toggle d-none d-lg-inline-flex"

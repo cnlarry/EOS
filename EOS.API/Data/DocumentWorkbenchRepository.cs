@@ -37,7 +37,8 @@ public sealed record WorkbenchDefinition(
     bool HasOwnerColumn = true,
     bool HasOwnerGroupColumn = true,
     ModuleBusinessRule? BusinessRule = null,
-    bool AutoApprove = false);
+    bool AutoApprove = false,
+    [property: JsonIgnore] IReadOnlyList<string> GroupExpressions = default!);
 public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
@@ -82,7 +83,9 @@ public sealed class DocumentWorkbenchRepository(
     public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token)
     {
         await using var connection = CreateConnection(); await connection.OpenAsync(token);
-        const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,UPDATE_SP,AFTERSAVE_SP,AUTO_APPROVE FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
+        const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,UPDATE_SP,AFTERSAVE_SP,AUTO_APPROVE," +
+                           "GROUP1,GROUP_EXP1,GROUP2,GROUP_EXP2,GROUP3,GROUP_EXP3,GROUP4,GROUP_EXP4,GROUP5,GROUP_EXP5 " +
+                           "FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection); command.Parameters.Add("@ModuleId", SqlDbType.Int).Value=moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token))
@@ -99,6 +102,14 @@ public sealed class DocumentWorkbenchRepository(
         var updateSproc=reader.IsDBNull(9)?"":reader.GetString(9).Trim();
         var afterSaveSproc=reader.IsDBNull(10)?"":reader.GetString(10).Trim();
         var autoApprove=!reader.IsDBNull(11)&&reader.GetBoolean(11);
+        var groupExpressions = new string[5];
+        for (var i = 0; i < 5; i++)
+        {
+            var offset = 12 + i * 2;
+            var enabled = !reader.IsDBNull(offset) && reader.GetBoolean(offset);
+            var expression = reader.IsDBNull(offset + 1) ? string.Empty : reader.GetString(offset + 1).Trim();
+            groupExpressions[i] = enabled ? expression : string.Empty;
+        }
         await reader.CloseAsync();
         if (!IsWorkbenchUrl(url) || !Identifier.IsMatch(master) || (detail is not null && !Identifier.IsMatch(detail)))
         {
@@ -145,7 +156,8 @@ public sealed class DocumentWorkbenchRepository(
             await ColumnExistsAsync(connection,null,master,"OWNER",token),
             await ColumnExistsAsync(connection,null,master,"OWNER_G",token),
             businessRule,
-            autoApprove);
+            autoApprove,
+            groupExpressions);
         logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
             moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
         return definition;
@@ -184,6 +196,33 @@ public sealed class DocumentWorkbenchRepository(
             .ToList();
         for(var i=0;i<parameterNames.Count;i++)
             command.Parameters.AddWithValue(parameterNames[i],parameters[i]);
+    }
+
+    /// <summary>
+    /// 应用菜单分组筛选（GROUP_EXP&lt;groupIndex&gt; = groupValue）。
+    /// 与 MODULES.FILTER 同边界：表达式经 GroupExpressionParser 受控编译
+    /// （白名单主表字段），值参数化；不可解析抛 GroupExpressionUnsupportedException（403）。
+    /// </summary>
+    private static void ApplyGroupFilter(
+        WorkbenchDefinition definition,
+        int? groupIndex,
+        string? groupValue,
+        ICollection<string> predicates,
+        SqlCommand command)
+    {
+        if (groupIndex is null || string.IsNullOrWhiteSpace(groupValue)) return;
+        if (groupIndex is < 1 or > 5)
+            throw new GroupExpressionUnsupportedException("分组序号无效，已拒绝查询。");
+        var expression = definition.GroupExpressions[groupIndex.Value - 1];
+        if (string.IsNullOrWhiteSpace(expression))
+            throw new GroupExpressionUnsupportedException("该模块未启用此分组表达式，已拒绝查询。");
+        var allowedFields = definition.FilterFieldKeys
+            ?? definition.MasterFields.Select(field => field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!GroupExpressionParser.TryCompile(expression, definition.MasterTable, allowedFields, out var compiled))
+            throw new GroupExpressionUnsupportedException("分组表达式超出受控子集，已拒绝查询。");
+        var parameterName = $"@gf{predicates.Count}";
+        predicates.Add($"({compiled})={parameterName}");
+        command.Parameters.AddWithValue(parameterName, groupValue);
     }
 
     /// <summary>
@@ -444,7 +483,7 @@ public sealed class DocumentWorkbenchRepository(
         logger.LogInformation("重置列配置 userId={UserId} module={ModuleId} master={Master}", userId,definition.ModuleId,definition.MasterTable);
     }
 
-    public async Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail, IReadOnlyDictionary<string,string> keys, int page, int pageSize, CancellationToken token, WorkbenchQuery? query=null, string? keyword=null, string? sortField=null, string? sortDirection=null)
+    public async Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail, IReadOnlyDictionary<string,string> keys, int page, int pageSize, CancellationToken token, WorkbenchQuery? query=null, string? keyword=null, string? sortField=null, string? sortDirection=null, int? groupIndex=null, string? groupValue=null)
     {
         var table=detail?definition.DetailTable:definition.MasterTable; var fields=detail?definition.DetailFields:definition.MasterFields;
         page=Math.Max(1,page); pageSize=Math.Clamp(pageSize,10,100);
@@ -471,6 +510,7 @@ public sealed class DocumentWorkbenchRepository(
         if (!detail && query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
         if (!detail && !string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
         if (!detail) ApplyModuleFilter(definition, predicates, command);
+        if (!detail) ApplyGroupFilter(definition, groupIndex, groupValue, predicates, command);
         if (!detail) ApplyExecTagScope(definition, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,detail,sortField,sortDirection);
@@ -486,7 +526,7 @@ public sealed class DocumentWorkbenchRepository(
         return new(rows,total,page,pageSize);
     }
 
-    public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsAsync(WorkbenchDefinition definition,WorkbenchQuery? query,string? keyword,CancellationToken token,string? sortField=null,string? sortDirection=null)
+    public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsAsync(WorkbenchDefinition definition,WorkbenchQuery? query,string? keyword,CancellationToken token,string? sortField=null,string? sortDirection=null,int? groupIndex=null,string? groupValue=null)
     {
         var table=definition.MasterTable; var fields=definition.MasterFields;
         if (table is null || fields.Count==0) return [];
@@ -497,6 +537,7 @@ public sealed class DocumentWorkbenchRepository(
         if (query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
         if (!string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
         ApplyModuleFilter(definition, predicates, command);
+        ApplyGroupFilter(definition, groupIndex, groupValue, predicates, command);
         ApplyExecTagScope(definition, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,false,sortField,sortDirection);
@@ -514,7 +555,7 @@ public sealed class DocumentWorkbenchRepository(
     /// 按主键集合导出（导出所选行）：keys 为「主键值数组」列表，顺序与 masterPkOrder 一致。
     /// 全部条件参数化，字段沿用权限过滤后的定义白名单。
     /// </summary>
-    public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsByKeysAsync(WorkbenchDefinition definition,IReadOnlyList<IReadOnlyList<string>> keys,CancellationToken token)
+    public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsByKeysAsync(WorkbenchDefinition definition,IReadOnlyList<IReadOnlyList<string>> keys,CancellationToken token,int? groupIndex=null,string? groupValue=null)
     {
         var table=definition.MasterTable;var fields=definition.MasterFields;
         if(table is null||fields.Count==0||keys.Count==0)return [];
@@ -526,6 +567,7 @@ public sealed class DocumentWorkbenchRepository(
         var filterPredicates=new List<string>();
         await using var connection=CreateConnection();await connection.OpenAsync(token);await using var command=new SqlCommand();command.Connection=connection;
         ApplyModuleFilter(definition, filterPredicates, command);
+        ApplyGroupFilter(definition, groupIndex, groupValue, filterPredicates, command);
         ApplyExecTagScope(definition, filterPredicates, command);
         var orParts=new List<string>();
         for(var rowIndex=0;rowIndex<keys.Count;rowIndex++)

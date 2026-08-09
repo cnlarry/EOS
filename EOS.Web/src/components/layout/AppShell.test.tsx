@@ -7,6 +7,9 @@ import { AppShell } from './AppShell'
 
 vi.mock('../../features/auth/authContext', () => ({ useAuth: vi.fn() }))
 
+const apiClientMock = vi.hoisted(() => ({ get: vi.fn() }))
+vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+
 const bootstrap: AppBootstrap = {
   user: {
     id: 'u1', username: 'admin', displayName: 'Demo User', employeeId: 'E001', avatarText: 'LW',
@@ -15,13 +18,37 @@ const bootstrap: AppBootstrap = {
   permissions: [],
   navigation: [
     { id: 'dashboard', label: '工作台', route: '/dashboard', icon: 'dashboard' },
-    { id: 'procurement', label: '采购管理', icon: 'procurement', children: [{ id: 'po', label: '采购订单', route: '/procurement/purchase-orders', icon: 'procurement' }] },
+    {
+      id: 'procurement',
+      label: '采购管理',
+      icon: 'procurement',
+      children: [
+        { id: 'po', label: '采购订单', route: '/procurement/purchase-orders', icon: 'procurement' },
+        {
+          id: 'proc-sub',
+          label: '采购子组',
+          icon: 'procurement',
+          children: [
+            { id: 'po-sub', label: '采购子页', route: '/procurement/sub-page', icon: 'procurement' },
+            {
+              id: 'grouped',
+              label: '分组模块',
+              route: '/document-workbench/1209',
+              icon: 'procurement',
+              moduleId: 1209,
+              groups: [{ index: 1, description: '结案' }],
+            },
+          ],
+        },
+      ],
+    },
     { id: 'settings', label: '个人设置', route: '/settings/profile', icon: 'settings' },
   ],
 }
 
 function renderShell(initialEntry: string, auth: Partial<ReturnType<typeof useAuth>> = {}) {
   const logout = vi.fn().mockResolvedValue(undefined)
+  apiClientMock.get.mockResolvedValue({ values: ['YES', 'NO'] })
   vi.mocked(useAuth).mockReturnValue({
     bootstrap: bootstrap,
     loading: false,
@@ -92,6 +119,41 @@ describe('AppShell', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('三级菜单可逐级展开', () => {
+    renderShell('/dashboard')
+    const subGroup = screen.getByRole('button', { name: '采购子组' })
+    expect(subGroup).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(subGroup)
+    expect(subGroup).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('link', { name: '采购子页' })).toBeInTheDocument()
+  })
+
+  it('叶子模块展开第 4 级分组并加载组值', async () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('button', { name: '采购子组' }))
+    fireEvent.click(screen.getByRole('button', { name: '分组' }))
+    const groupToggle = await screen.findByRole('button', { name: '结案' })
+    expect(groupToggle).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(groupToggle)
+    await waitFor(() => expect(screen.getByRole('link', { name: 'YES' })).toBeInTheDocument())
+    expect(apiClientMock.get).toHaveBeenCalledWith('/navigation/1209/groups/1/values')
+  })
+
+  it('菜单搜索命中后显示面包屑并可直达', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('button', { name: '采购子组' }))
+    fireEvent.input(screen.getByRole('searchbox', { name: '搜索菜单' }), { target: { value: '分组模块' } })
+    const result = screen.getByRole('button', { name: '采购管理 / 采购子组 / 分组模块' })
+    fireEvent.click(result)
+    expect(screen.getByText('WB')).toBeInTheDocument()
+  })
+
+  it('菜单搜索无命中时提示', () => {
+    renderShell('/dashboard')
+    fireEvent.input(screen.getByRole('searchbox', { name: '搜索菜单' }), { target: { value: '不存在的菜单' } })
+    expect(screen.getByText('没有匹配的菜单')).toBeInTheDocument()
+  })
+
   it('主题切换写入 data-bs-theme 与 localStorage', () => {
     renderShell('/dashboard')
     expect(document.documentElement.getAttribute('data-bs-theme')).toBe('light')
@@ -141,7 +203,7 @@ describe('AppShell', () => {
     renderShell('/settings/profile')
     expect(screen.getByRole('heading', { name: '个人设置' })).toBeInTheDocument()
     renderShell('/document-workbench/1209/new')
-    expect(screen.getByRole('heading', { name: '新建' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '新建分组模块' })).toBeInTheDocument()
   })
 
   it('渲染当前日期时间元素', () => {

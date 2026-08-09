@@ -3,7 +3,20 @@ using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
 
-public sealed record LegacyNavigationModule(int Id, string Label, int ParentId, int RootId, int SortIndex, bool Enabled, string? LegacyUrl);
+public sealed record NavigationGroup(int Index, string? Description, string? Expression, bool Enabled);
+
+public sealed record LegacyNavigationModule(
+    int Id,
+    string Label,
+    string? Alias,
+    int ParentId,
+    int RootId,
+    int SortIndex,
+    bool Enabled,
+    string? LegacyUrl,
+    string? MasterTable,
+    string? Filter,
+    IReadOnlyList<NavigationGroup> Groups);
 
 public sealed class NavigationRepository(DbConnectionFactory connections, ILogger<NavigationRepository> logger)
 {
@@ -27,10 +40,15 @@ public sealed class NavigationRepository(DbConnectionFactory connections, ILogge
                     SELECT 1 FROM dbo.MODULES m WITH (NOLOCK) INNER JOIN UserModules u ON u.M_IDX=m.M_IDX
                     WHERE m.M_P_IDX=p.M_IDX OR m.M_ROOT_IDX=p.M_IDX)
             )
-            SELECT DISTINCT m.M_IDX,m.M_DESC,ISNULL(m.M_P_IDX,0) M_P_IDX,ISNULL(m.M_ROOT_IDX,m.M_IDX) M_ROOT_IDX,
-                   ISNULL(m.SORT_IDX,0) SORT_IDX,ISNULL(m.M_TAG,1) M_TAG,m.M_URL
+            SELECT DISTINCT m.M_IDX,m.M_DESC,m.M_ALIAS,ISNULL(m.M_P_IDX,0) M_P_IDX,ISNULL(m.M_ROOT_IDX,m.M_IDX) M_ROOT_IDX,
+                   ISNULL(m.SORT_IDX,0) SORT_IDX,ISNULL(m.M_TAG,1) M_TAG,m.M_URL,m.MASTER_TABLE,m.FILTER,
+                   ISNULL(m.GROUP1,0),m.GROUP_EXP1,m.GROUP_DESC1,
+                   ISNULL(m.GROUP2,0),m.GROUP_EXP2,m.GROUP_DESC2,
+                   ISNULL(m.GROUP3,0),m.GROUP_EXP3,m.GROUP_DESC3,
+                   ISNULL(m.GROUP4,0),m.GROUP_EXP4,m.GROUP_DESC4,
+                   ISNULL(m.GROUP5,0),m.GROUP_EXP5,m.GROUP_DESC5
             FROM dbo.MODULES m WITH (NOLOCK) INNER JOIN Included i ON i.M_IDX=m.M_IDX
-            WHERE NULLIF(LTRIM(RTRIM(m.M_DESC)),'') IS NOT NULL
+            WHERE NULLIF(LTRIM(RTRIM(m.M_DESC)),'') IS NOT NULL AND ISNULL(m.M_TAG,1)=1
             ORDER BY M_ROOT_IDX,M_P_IDX,SORT_IDX,m.M_IDX;
             """;
         await using var connection = connections.Create();
@@ -39,9 +57,33 @@ public sealed class NavigationRepository(DbConnectionFactory connections, ILogge
         await connection.OpenAsync(token);
         await using var reader = await command.ExecuteReaderAsync(token);
         var result = new List<LegacyNavigationModule>();
-        while (await reader.ReadAsync(token)) result.Add(new(
-            reader.GetInt32(0), reader.GetString(1).Trim(), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4), reader.GetBoolean(5),
-            reader.IsDBNull(6) ? null : reader.GetString(6).Trim()));
+        while (await reader.ReadAsync(token))
+        {
+            var groups = new List<NavigationGroup>();
+            for (var i = 0; i < 5; i++)
+            {
+                // 列布局：0=M_IDX 1=M_DESC 2=M_ALIAS 3=M_P_IDX 4=M_ROOT_IDX 5=SORT_IDX
+                // 6=M_TAG 7=M_URL 8=MASTER_TABLE 9=FILTER 10..24=GROUP1..5(EXPor/DESC)
+                var offset = 10 + i * 3;
+                var enabled = !reader.IsDBNull(offset) && reader.GetBoolean(offset);
+                var expression = reader.IsDBNull(offset + 1) ? null : reader.GetString(offset + 1).Trim();
+                var description = reader.IsDBNull(offset + 2) ? null : reader.GetString(offset + 2).Trim();
+                if (enabled || !string.IsNullOrWhiteSpace(expression))
+                    groups.Add(new NavigationGroup(i + 1, string.IsNullOrWhiteSpace(description) ? null : description, expression, enabled));
+            }
+            result.Add(new(
+                reader.GetInt32(0),
+                reader.GetString(1).Trim(),
+                reader.IsDBNull(2) ? null : reader.GetString(2).Trim(),
+                reader.GetInt32(3),
+                reader.GetInt32(4),
+                reader.GetInt32(5),
+                reader.GetBoolean(6),
+                reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
+                reader.IsDBNull(8) ? null : reader.GetString(8).Trim(),
+                reader.IsDBNull(9) ? null : reader.GetString(9).Trim(),
+                groups));
+        }
         logger.LogDebug("用户导航 userId={UserId} modules={ModuleCount}", userId.Trim(), result.Count);
         return result;
     }

@@ -14,7 +14,16 @@ export interface NavigationItem {
   label: string
   route?: string
   icon: string
+  alias?: string
+  moduleId?: number
+  masterTable?: string
+  groups?: NavigationGroup[] | null
   children?: NavigationItem[] | null
+}
+
+export interface NavigationGroup {
+  index: number
+  description: string
 }
 
 export interface AppBootstrap {
