@@ -104,19 +104,19 @@ public class FormFieldSelectorTests
     }
 
     [Fact]
-    public void Choosers_OnlyActiveWithTable_AndFilterAlwaysNull()
+    public void Choosers_OnlyActiveWithTable_AndFilterPassesThrough()
     {
         var choosers = new List<FormChooserRow>
         {
-            new(true, "PRODUCT", "产品", 1201, "PRO_NO=@1"),
-            new(false, "COLOR", null, null, null),
-            new(true, "", null, null, null),
+            new(true, "PRODUCT", "产品", 1201, "PRO_NO=@1", "PRO_TYPE='1'"),
+            new(false, "COLOR", null, null, null, null),
+            new(true, "", null, null, null, null),
         };
 
         var field = Select([Row("P", choosers: choosers)]).Single();
         Assert.Single(field.Choosers);
         Assert.Equal("PRODUCT", field.Choosers[0].Table);
-        Assert.Null(field.Choosers[0].Filter); // 高危过滤表达式不返回普通用户
+        Assert.Equal("PRO_TYPE='1'", field.Choosers[0].Filter); // CHOOSE_FILTER 受控传递，由服务端解析器校验
     }
 
     [Fact]

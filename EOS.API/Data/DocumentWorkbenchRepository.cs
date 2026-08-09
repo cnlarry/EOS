@@ -581,9 +581,13 @@ public sealed class DocumentWorkbenchRepository(
                    CAST(COALESCE(f.ONLY_CHOOSE,0) AS bit) AS ONLY_CHOOSE,CAST(COALESCE(f.CHOOSE_MULTI,0) AS bit) AS CHOOSE_MULTI,
                    f.CHOOSE_PAGE,
                    CAST(COALESCE(f.CHOOSE_ACTIVE1,0) AS bit) AS CHOOSE_ACTIVE1,f.CHOOSE_T_ID1,f.CHOOSE_T_DESC1,f.CHOOSE_M_IDX1,f.CHOOSE_RETURNVAL1,
+                   f.CHOOSE_FILTER1,
                    CAST(COALESCE(f.CHOOSE_ACTIVE2,0) AS bit) AS CHOOSE_ACTIVE2,f.CHOOSE_T_ID2,f.CHOOSE_T_DESC2,f.CHOOSE_M_IDX2,f.CHOOSE_RETURNVAL2,
+                   f.CHOOSE_FILTER2,
                    CAST(COALESCE(f.CHOOSE_ACTIVE3,0) AS bit) AS CHOOSE_ACTIVE3,f.CHOOSE_T_ID3,f.CHOOSE_T_DESC3,f.CHOOSE_M_IDX3,f.CHOOSE_RETURNVAL3,
+                   f.CHOOSE_FILTER3,
                    CAST(COALESCE(f.CHOOSE_ACTIVE4,0) AS bit) AS CHOOSE_ACTIVE4,f.CHOOSE_T_ID4,f.CHOOSE_T_DESC4,f.CHOOSE_M_IDX4,f.CHOOSE_RETURNVAL4,
+                   f.CHOOSE_FILTER4,
                    CAST(COALESCE(f.IS_VIRTUAL,0) AS bit) AS IS_VIRTUAL,CAST(COALESCE(f.IS_COST,0) AS bit) AS IS_COST,
                    CAST(COALESCE(f.IS_SECRECY,0) AS bit) AS IS_SECRECY,CAST(COALESCE(f.IS_AUTOINC,0) AS bit) AS IS_AUTOINC,
                    d.F_IDX,CAST(CASE WHEN pk.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PK,
@@ -654,7 +658,8 @@ public sealed class DocumentWorkbenchRepository(
             table,
             reader.GetNullableString($"CHOOSE_T_DESC{index}")?.Trim(),
             reader.GetNullableInt32($"CHOOSE_M_IDX{index}"),
-            reader.GetNullableString($"CHOOSE_RETURNVAL{index}"));
+            reader.GetNullableString($"CHOOSE_RETURNVAL{index}"),
+            reader.GetNullableString($"CHOOSE_FILTER{index}")?.Trim());
     }
 
     #region 记录读取与保存（M2 核心写操作）
@@ -998,6 +1003,7 @@ public sealed class DocumentWorkbenchRepository(
         bool canViewSecrecy,
         IReadOnlySet<string> deniedFields,
         string? dataFilter,
+        string? chooseFilter,
         CancellationToken token)
     {
         if(!Identifier.IsMatch(table))return null;
@@ -1005,16 +1011,41 @@ public sealed class DocumentWorkbenchRepository(
         var all=await ReadChooserColumnRows(connection,table,token);
         if(all.Count==0)return null;
         var allowedFields=all.Select(row=>row.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        string? scopePredicate=null; IReadOnlyList<object> scopeParameters=[];
-        if(!string.IsNullOrWhiteSpace(dataFilter))
+        // 合并两类过滤：用户数据范围（DATA_FILTER）+ 字段选择器过滤（CHOOSE_FILTER）。
+        // 全部经受限解析器（白名单字段 + 参数化）；任一无法安全解析即返回空选项（不泄漏数据）。
+        string? scopePredicate=null;
+        var scopeParameters=new List<object>();
+        var nextIndex=0;
+        foreach(var (raw,required) in new[]{ (dataFilter,false), (chooseFilter,true) })
         {
-            if(!DataFilterParser.TryParse(dataFilter,table,allowedFields,out scopePredicate,out scopeParameters))
+            if(string.IsNullOrWhiteSpace(raw))continue;
+            if(!DataFilterParser.TryParse(raw,table,allowedFields,out var parsed,out var parsedParameters))
                 return new FormChooserResult([],[]);
+            var renumbered=RenumberFilterParameters(parsed,parsedParameters,nextIndex);
+            scopePredicate=scopePredicate is null
+                ? renumbered.Predicate
+                : $"({scopePredicate}) AND ({renumbered.Predicate})";
+            scopeParameters.AddRange(renumbered.Parameters);
+            nextIndex+=renumbered.Parameters.Count;
         }
         var columns=ChooserColumnSelector.Select(all,canViewCost,canViewSecrecy,deniedFields);
         if(columns.Count==0)return new FormChooserResult([],[]);
         var rows=await ReadChooserRowsAsync(connection,table,columns,keyword,scopePredicate,scopeParameters,token);
         return new FormChooserResult(columns,rows);
+    }
+
+    /// <summary>把解析器生成的 @dfN 参数名重编号，避免多段过滤合并时参数名冲突。</summary>
+    private static (string Predicate,IReadOnlyList<object> Parameters) RenumberFilterParameters(
+        string predicate,IReadOnlyList<object> parameters,int startIndex)
+    {
+        var names=Regex.Matches(predicate,"@df\\d+").Select(match=>match.Value)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name=>int.Parse(name[3..]))
+            .ToList();
+        if(names.Count==0)return (predicate,parameters);
+        var map=names.Select((name,index)=>(name,$"@df{startIndex+index}"))
+            .ToDictionary(item=>item.name,item=>item.Item2);
+        return (Regex.Replace(predicate,"@df\\d+",match=>map[match.Value]),parameters);
     }
 
     private static async Task<IReadOnlyList<FormChooserColumnRow>> ReadChooserColumnRows(SqlConnection connection,string table,CancellationToken token)

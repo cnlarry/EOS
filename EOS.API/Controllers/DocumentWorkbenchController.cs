@@ -145,7 +145,11 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
             var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if(userId is not null)chooserRights=await rightsRepository.GetAsync(userId,moduleIndex,token);
         }
-        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,token);
+        // {module} 为旧系统模板占位符，服务端替换为当前模块号（常量，安全）后再受控解析
+        var chooseFilter=string.IsNullOrWhiteSpace(source.Filter)
+            ? null
+            : source.Filter.Replace("{module}",moduleId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,chooseFilter,token);
         return result is null?NotFound():Ok(result);
     }
 

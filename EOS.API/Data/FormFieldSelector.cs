@@ -32,7 +32,8 @@ internal sealed record FormChooserRow(
     string? Table,
     string? Description,
     int? ModuleId,
-    string? ReturnMapping);
+    string? ReturnMapping,
+    string? Filter);
 
 /// <summary>
 /// 纯字段选择逻辑（与数据库解耦，便于单元测试）。
@@ -80,7 +81,7 @@ internal static class FormFieldSelector
                     source.Table,
                     source.Description,
                     source.ModuleId,
-                    Filter: null, // CHOOSE_FILTER 属高危表达式内容，受控解析完成前不返回普通用户
+                    source.Filter,
                     source.ReturnMapping))
                 .ToArray();
 
