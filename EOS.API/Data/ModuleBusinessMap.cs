@@ -29,7 +29,8 @@ public static class ModuleBusinessMap
             // 1206 成品资料：仅批核工作流（P_WF_PRODUCT），无保存后副作用；PRO_NO 手工编号。
             [1206] = new(1206, null, "P_WF_PRODUCT", false, null, null),
             // 1416 客户报价单 → 批核联动客户计价表（1402）
-            [1416] = new(1416, "P_COP_QUOTE_After_Save", "P_WF_COP_QUOTE", true, "QUOTE_NO", "QUOTE_TYPE"),
+            [1416] = new(1416, null, "P_WF_COP_QUOTE", true, "QUOTE_NO", "QUOTE_TYPE",
+                DomainRule: "cop-quote"),
             // 1405 客户订单
             [1405] = new(1405, "P_COP_ORDER_After_Save", "P_WF_COP_ORDER", true, "ORDER_NO", "ORDER_TYPE"),
             // 1604 厂商报价单 → 批核联动厂商计价表（1602）
@@ -45,7 +46,8 @@ public static class ModuleBusinessMap
             // 1408 出货通知单：无 SP，仅自动单号（默认单别 CHPC，历史配置待业务确认）
             [1408] = new(1408, null, null, true, "SHIPMENT_NO", "SHIPMENT_TYPE"),
             // 财务：170101 应收货款单（对帐单）
-            [170101] = new(170101, "P_COP_ACCOUNT_After_Save", "P_WF_COP_ACCOUNT", true, "ACCOUNT_NO", "ACCOUNT_TYPE"),
+            [170101] = new(170101, null, "P_WF_COP_ACCOUNT", true, "ACCOUNT_NO", "ACCOUNT_TYPE",
+                DomainRule: "cop-account"),
             // 170102 收款单（预收冲抵入口）
             [170102] = new(170102, null, "P_WF_COP_RECEIPT", true, "RECEIPT_NO", "RECEIPT_TYPE",
                 PrepayOffsetTable: "COP_RECEIPT_PREPAY", DomainRule: "cop-receipt"),

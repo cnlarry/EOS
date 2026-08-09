@@ -31,6 +31,8 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "purchase-due" => await PurchaseDueAfterSaveAsync(connection, transaction, definition, pkColumns, keyValues, token),
                 "cop-receipt" => await CopReceiptAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-prepay" => await CopPrepayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "cop-quote" => await CopQuoteAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "cop-account" => await CopAccountAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-pay" => await PurPayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-prepay" => await PurPrepayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 _ => new(false, $"未登记的领域规则：{ruleName}"),
@@ -60,10 +62,14 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
 
         // 1. 数量校验：对帐明细不可超出收料/退料单数量（等价 P_PUR_DUE_CHECK）
         var receiveErrors = await FindExceededAsync(connection, transaction, dueType, dueNo, token,
+            detailTable: "PUR_DUE_D", detailTypeColumn: "DUE_TYPE", detailNoColumn: "DUE_NO",
+            detailGroupTypeColumn: "R_C_TYPE", detailGroupNoColumn: "R_C_NO", detailGroupSerialColumn: "R_C_SERIAL_NO",
             sourceTable: "PUR_RECEIVE_D", sourceTypeColumn: "RECEIVE_TYPE", sourceNoColumn: "RECEIVE_NO");
         if (receiveErrors is not null)
             return new(false, "以下对帐已超出收料单数量\r\n 收料单号  收料数量  已对帐数量  单据数量\r\n" + receiveErrors);
         var cancelErrors = await FindExceededAsync(connection, transaction, dueType, dueNo, token,
+            detailTable: "PUR_DUE_D", detailTypeColumn: "DUE_TYPE", detailNoColumn: "DUE_NO",
+            detailGroupTypeColumn: "R_C_TYPE", detailGroupNoColumn: "R_C_NO", detailGroupSerialColumn: "R_C_SERIAL_NO",
             sourceTable: "PUR_CANCEL_D", sourceTypeColumn: "CANCEL_TYPE", sourceNoColumn: "CANCEL_NO");
         if (cancelErrors is not null)
             return new(false, "以下对帐已超出退料单数量\r\n 退料单号  退料数量  已对帐数量  单据数量\r\n" + cancelErrors);
@@ -99,6 +105,12 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         string dueType,
         string dueNo,
         CancellationToken token,
+        string detailTable,
+        string detailTypeColumn,
+        string detailNoColumn,
+        string detailGroupTypeColumn,
+        string detailGroupNoColumn,
+        string detailGroupSerialColumn,
         string sourceTable,
         string sourceTypeColumn,
         string sourceNoColumn)
@@ -107,12 +119,13 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT od.{sourceNoColumn}, od.QTY, od.FINISHED_QTY, sd.QTY AS MY_QTY
             FROM dbo.[{sourceTable}] od
             INNER JOIN (
-                SELECT R_C_TYPE, R_C_NO, R_C_SERIAL_NO, SUM(QTY) QTY
-                FROM dbo.PUR_DUE_D
-                WHERE DUE_TYPE=@Type AND DUE_NO=@No
-                GROUP BY R_C_TYPE, R_C_NO, R_C_SERIAL_NO
+                SELECT [{detailGroupTypeColumn}], [{detailGroupNoColumn}], [{detailGroupSerialColumn}], SUM(QTY) QTY
+                FROM dbo.[{detailTable}]
+                WHERE [{detailTypeColumn}]=@Type AND [{detailNoColumn}]=@No
+                GROUP BY [{detailGroupTypeColumn}], [{detailGroupNoColumn}], [{detailGroupSerialColumn}]
             ) sd
-              ON od.{sourceTypeColumn}=sd.R_C_TYPE AND od.{sourceNoColumn}=sd.R_C_NO AND od.SERIAL_NO=sd.R_C_SERIAL_NO
+              ON od.{sourceTypeColumn}=sd.[{detailGroupTypeColumn}] AND od.{sourceNoColumn}=sd.[{detailGroupNoColumn}]
+             AND od.SERIAL_NO=sd.[{detailGroupSerialColumn}]
             WHERE od.FINISHED_QTY+sd.QTY > od.QTY;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
@@ -129,6 +142,106 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             lines.Add($"{no}    {qty}    {finished}    {myQty}");
         }
         return lines.Count > 0 ? string.Join("\r\n", lines) : null;
+    }
+
+    /// <summary>客户报价单（1416）AfterSave：客户校验 + 询价单一致性校验。</summary>
+    private static async Task<SprocResult> CopQuoteAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        var clientOk = await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.COP_QUOTE_M m JOIN dbo.CLIENT c ON c.CLIENT_ID=m.CLIENT_ID
+            WHERE m.QUOTE_TYPE=@Type AND m.QUOTE_NO=@No AND c.BUSINESS_TAG=0;
+            """, type, no, token);
+        if (!clientOk) return new(false, "客户编号不存在或已停止交易。");
+        // 询价单与报价单客户不符
+        var mismatchLines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT d.SERIAL_NO
+            FROM dbo.COP_CHAFFER_M q
+            INNER JOIN dbo.COP_QUOTE_D d ON q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO
+            INNER JOIN dbo.COP_QUOTE_M m ON m.QUOTE_TYPE=d.QUOTE_TYPE AND m.QUOTE_NO=d.QUOTE_NO
+            WHERE m.QUOTE_TYPE=@Type AND m.QUOTE_NO=@No AND q.CLIENT_ID<>m.CLIENT_ID;
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (mismatchLines is not null)
+            return new(false, "以下序号项询价单与报价单客户不符 \r\n" + mismatchLines);
+        // 询价单不存在
+        var missingLines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.COP_QUOTE_D d
+            WHERE QUOTE_TYPE=@Type AND QUOTE_NO=@No AND ISNULL(CHAFFER_TYPE,'')<>''
+              AND NOT EXISTS (SELECT 1 FROM dbo.COP_CHAFFER_M q WHERE q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (missingLines is not null)
+            return new(false, "以下序号项询价单不存在 \r\n" + missingLines);
+        return new(true, null);
+    }
+
+    /// <summary>应收货款单（170101）AfterSave：对帐不超送/退货量 + 客户校验 + 单证存在性 + 金额汇总。</summary>
+    private static async Task<SprocResult> CopAccountAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        var sendErrors = await FindExceededAsync(connection, transaction, type, no, token,
+            detailTable: "COP_ACCOUNT_D", detailTypeColumn: "ACCOUNT_TYPE", detailNoColumn: "ACCOUNT_NO",
+            detailGroupTypeColumn: "S_R_TYPE", detailGroupNoColumn: "S_R_NO", detailGroupSerialColumn: "S_R_SERIAL_NO",
+            sourceTable: "COP_SEND_D", sourceTypeColumn: "SEND_TYPE", sourceNoColumn: "SEND_NO");
+        if (sendErrors is not null)
+            return new(false, "以下对帐已超出送货单数量\r\n 送货单号  送货数量  已对帐数量  单据数量\r\n" + sendErrors);
+        var returnErrors = await FindExceededAsync(connection, transaction, type, no, token,
+            detailTable: "COP_ACCOUNT_D", detailTypeColumn: "ACCOUNT_TYPE", detailNoColumn: "ACCOUNT_NO",
+            detailGroupTypeColumn: "S_R_TYPE", detailGroupNoColumn: "S_R_NO", detailGroupSerialColumn: "S_R_SERIAL_NO",
+            sourceTable: "COP_RETURN_D", sourceTypeColumn: "RETURN_TYPE", sourceNoColumn: "RETURN_NO");
+        if (returnErrors is not null)
+            return new(false, "以下对帐已超出退货单数量\r\n 退货单号  退货数量  已对帐数量  单据数量\r\n" + returnErrors);
+
+        var clientOk = await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.COP_ACCOUNT_M m JOIN dbo.CLIENT c ON c.CLIENT_ID=m.CLIENT_ID
+            WHERE m.ACCOUNT_TYPE=@Type AND m.ACCOUNT_NO=@No AND c.BUSINESS_TAG=0;
+            """, type, no, token);
+        if (!clientOk) return new(false, "客户编号不存在或已停止交易。");
+        // 送/退货单存在性（明细引用的送/退货行必须存在）
+        var missingLines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.COP_ACCOUNT_D d
+            WHERE ACCOUNT_TYPE=@Type AND ACCOUNT_NO=@No
+              AND NOT EXISTS (SELECT 1 FROM dbo.COP_SEND_D s
+                              WHERE s.SEND_TYPE=d.S_R_TYPE AND s.SEND_NO=d.S_R_NO AND s.SERIAL_NO=d.S_R_SERIAL_NO)
+              AND NOT EXISTS (SELECT 1 FROM dbo.COP_RETURN_D s
+                              WHERE s.RETURN_TYPE=d.S_R_TYPE AND s.RETURN_NO=d.S_R_NO AND s.SERIAL_NO=d.S_R_SERIAL_NO);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (missingLines is not null)
+            return new(false, "以下序号项送/退货单不存在 \r\n" + missingLines);
+
+        // 主表金额汇总（ROUND 2，SUM_AMOUNT=AMOUNT_TAX+OTHER_PRICE，QTY_TOTAL=SUM(QTY)）
+        const string sql = """
+            UPDATE m
+            SET m.AMOUNT=d.AMOUNT, m.TAX_SUM=d.TAX_SUM, m.AMOUNT_TAX=d.AMOUNT_TAX,
+                m.SUM_AMOUNT=d.AMOUNT_TAX+ISNULL(m.OTHER_PRICE,0), m.QTY_TOTAL=d.QTY_ALL
+            FROM dbo.COP_ACCOUNT_M m
+            INNER JOIN (
+                SELECT ACCOUNT_TYPE, ACCOUNT_NO,
+                       ROUND(SUM(AMOUNT_TAX),2) AS AMOUNT_TAX,
+                       ROUND(SUM(AMOUNT),2) AS AMOUNT,
+                       ROUND(SUM(TAX_SUM),2) AS TAX_SUM,
+                       ROUND(SUM(QTY),2) AS QTY_ALL
+                FROM dbo.COP_ACCOUNT_D
+                WHERE ACCOUNT_TYPE=@Type AND ACCOUNT_NO=@No
+                GROUP BY ACCOUNT_TYPE, ACCOUNT_NO
+            ) d ON m.ACCOUNT_TYPE=d.ACCOUNT_TYPE AND m.ACCOUNT_NO=d.ACCOUNT_NO
+            WHERE m.ACCOUNT_TYPE=@Type AND m.ACCOUNT_NO=@No;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+        command.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+        await command.ExecuteNonQueryAsync(token);
+        return new(true, null);
     }
 
     private static (string TypeColumn, string NoColumn) KeyColumns(IReadOnlyList<string> pkColumns)
