@@ -63,6 +63,10 @@ public sealed class AttendanceCalcService(
         var exchanges = await LoadExchangesAsync(connection, startDate, endDate, token);
         var signs = await LoadSignsAsync(connection, startDate, endDate, token);
         var applies = await LoadAppliesAsync(connection, startDate, endDate, token);
+        var planAdjusts = await LoadPlanAdjustsAsync(connection, startDate, endDate, token);
+        var recesses = await LoadRecessesAsync(connection, startDate, endDate, token);
+        var leaves = await LoadLeavesAsync(connection, startDate, endDate, token);
+        var evections = await LoadEvectionsAsync(connection, startDate, endDate, token);
         var employeeSet = employees.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var diaryRows = 0;
@@ -99,15 +103,37 @@ public sealed class AttendanceCalcService(
                 var isHoliday = holidays.Any(h => date >= h.Start && date <= h.End);
                 var isWeekendRest = (setup.SatRestDay && date.DayOfWeek == DayOfWeek.Saturday)
                                  || (setup.SunRestDay && date.DayOfWeek == DayOfWeek.Sunday);
+                var planAdjust = planAdjusts.FirstOrDefault(a =>
+                    a.EmpId.Equals(empId, StringComparison.OrdinalIgnoreCase) && a.CountDate == dateStr);
+                var recess = recesses.FirstOrDefault(r =>
+                    r.EmpId.Equals(empId, StringComparison.OrdinalIgnoreCase) && date >= r.Start && date <= r.End);
+                var leave = leaves.FirstOrDefault(l =>
+                    l.EmpId.Equals(empId, StringComparison.OrdinalIgnoreCase) && date >= l.Start && date <= l.End);
+                var evection = evections.FirstOrDefault(e =>
+                    e.EmpId.Equals(empId, StringComparison.OrdinalIgnoreCase) && date >= e.Start && date <= e.End);
                 var sign = signs.FirstOrDefault(s =>
                     s.EmpId.Equals(empId, StringComparison.OrdinalIgnoreCase) && s.CountDate == dateStr);
                 var apply = applies.FirstOrDefault(a =>
                     a.EmpId.Equals(empId, StringComparison.OrdinalIgnoreCase) && a.CountDate == dateStr);
 
-                var on1 = sign?.On1 ?? tt.InTime1;
-                var out1 = sign?.Out1 ?? tt.OutTime1;
-                var workHours = tt.WorkHours1;
-                var addHours = tt.AddHours1;
+                var inTime1 = planAdjust?.InTime1 ?? tt.InTime1;
+                var outTime1 = planAdjust?.OutTime1 ?? tt.OutTime1;
+                var workHours = planAdjust?.WorkHours1 ?? tt.WorkHours1;
+                var addHours = planAdjust?.AddHours1 ?? tt.AddHours1;
+                var remark = exchange is not null ? "调休" : (sign is not null ? "签卡" : (object)DBNull.Value);
+                // 放假/请假/出差：整日覆盖（无起止时间）→ 清零班次与工时；部分时间裁剪留待确认后扩展
+                if ((recess is not null && string.IsNullOrWhiteSpace(recess.StartTime) && string.IsNullOrWhiteSpace(recess.EndTime))
+                 || (leave is not null && string.IsNullOrWhiteSpace(leave.StartTime) && string.IsNullOrWhiteSpace(leave.EndTime))
+                 || (evection is not null && string.IsNullOrWhiteSpace(evection.StartTime) && string.IsNullOrWhiteSpace(evection.EndTime)))
+                {
+                    workHours = 0;
+                    addHours = 0;
+                    inTime1 = null;
+                    outTime1 = null;
+                    remark = evection is not null ? "出差" : (leave is not null ? "请假" : "放假");
+                }
+                var on1 = sign?.On1 ?? inTime1;
+                var out1 = sign?.Out1 ?? outTime1;
                 // 加班申请上限（有申请记录时按分段截断）
                 if (apply is not null)
                 {
@@ -133,7 +159,7 @@ public sealed class AttendanceCalcService(
                 update.Parameters.Add("@Overtime", SqlDbType.Float).Value = overtime > 0 ? overtime : DBNull.Value;
                 update.Parameters.Add("@RestOvertime", SqlDbType.Float).Value = restOvertime > 0 ? restOvertime : DBNull.Value;
                 update.Parameters.Add("@HolidayOvertime", SqlDbType.Float).Value = holidayOvertime > 0 ? holidayOvertime : DBNull.Value;
-                update.Parameters.Add("@Remark", SqlDbType.NVarChar, 500).Value = exchange is not null ? "调休" : (sign is not null ? "签卡" : (object)DBNull.Value);
+                update.Parameters.Add("@Remark", SqlDbType.NVarChar, 500).Value = remark;
                 update.Parameters.Add("@Date", SqlDbType.SmallDateTime).Value = date.Date;
                 update.Parameters.Add("@EmpId", SqlDbType.NChar, 10).Value = empId;
                 var affected = await update.ExecuteNonQueryAsync(token);
@@ -187,6 +213,97 @@ public sealed class AttendanceCalcService(
         while (await reader.ReadAsync(token))
             result[reader.GetString(0)] = new TimeTypeRow(
                 reader.GetString(1), reader.GetString(2), reader.GetDouble(3), reader.GetDouble(4));
+        return result;
+    }
+
+    private sealed record PlanAdjustRow(string EmpId, string CountDate, string? InTime1, string? OutTime1, double? WorkHours1, double? AddHours1);
+    private static async Task<List<PlanAdjustRow>> LoadPlanAdjustsAsync(
+        SqlConnection connection, DateTime start, DateTime end, CancellationToken token)
+    {
+        var result = new List<PlanAdjustRow>();
+        await using var command = new SqlCommand("""
+            SELECT LTRIM(RTRIM(d.EMP_ID)), CONVERT(varchar(10),d.COUNT_DATE,120),
+                   NULLIF(LTRIM(RTRIM(ISNULL(d.IN_TIME1,''))),''), NULLIF(LTRIM(RTRIM(ISNULL(d.OUT_TIME1,''))),''),
+                   d.WORK_HOURS1, d.ADD_HOURS1
+            FROM dbo.HR_ADJUST_M m INNER JOIN dbo.HR_ADJUST_D d
+              ON d.ADJUST_TYPE=m.ADJUST_TYPE AND d.ADJUST_NO=m.ADJUST_NO
+            WHERE m.CONFIRM_TAG=1 AND d.COUNT_DATE>=@Start AND d.COUNT_DATE<=@End;
+            """, connection);
+        command.Parameters.Add("@Start", SqlDbType.SmallDateTime).Value = start.Date;
+        command.Parameters.Add("@End", SqlDbType.SmallDateTime).Value = end.Date;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+            result.Add(new PlanAdjustRow(reader.GetString(0), reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? (double?)null : reader.GetDouble(4),
+                reader.IsDBNull(5) ? (double?)null : reader.GetDouble(5)));
+        return result;
+    }
+
+    private sealed record RecessRow(string EmpId, DateTime Start, DateTime End, string? StartTime, string? EndTime);
+    private static async Task<List<RecessRow>> LoadRecessesAsync(
+        SqlConnection connection, DateTime start, DateTime end, CancellationToken token)
+    {
+        var result = new List<RecessRow>();
+        await using var command = new SqlCommand("""
+            SELECT LTRIM(RTRIM(d.EMP_ID)), d.START_DATE, d.END_DATE,
+                   NULLIF(LTRIM(RTRIM(ISNULL(d.START_TIME,''))),''), NULLIF(LTRIM(RTRIM(ISNULL(d.END_TIME,''))),'')
+            FROM dbo.HR_RECESS_M m INNER JOIN dbo.HR_RECESS_D d
+              ON d.RECESS_TYPE=m.RECESS_TYPE AND d.RECESS_NO=m.RECESS_NO
+            WHERE m.CONFIRM_TAG=1 AND d.START_DATE<=@End AND d.END_DATE>=@Start;
+            """, connection);
+        command.Parameters.Add("@Start", SqlDbType.SmallDateTime).Value = start.Date;
+        command.Parameters.Add("@End", SqlDbType.SmallDateTime).Value = end.Date;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+            result.Add(new RecessRow(reader.GetString(0), reader.GetDateTime(1), reader.GetDateTime(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4)));
+        return result;
+    }
+
+    private sealed record LeaveRow(string EmpId, DateTime Start, DateTime End, string? StartTime, string? EndTime);
+    private static async Task<List<LeaveRow>> LoadLeavesAsync(
+        SqlConnection connection, DateTime start, DateTime end, CancellationToken token)
+    {
+        var result = new List<LeaveRow>();
+        await using var command = new SqlCommand("""
+            SELECT LTRIM(RTRIM(d.EMP_ID)), d.START_DATE, d.END_DATE,
+                   NULLIF(LTRIM(RTRIM(ISNULL(d.START_TIME,''))),''), NULLIF(LTRIM(RTRIM(ISNULL(d.END_TIME,''))),'')
+            FROM dbo.HR_LEAVE_M m INNER JOIN dbo.HR_LEAVE_D d
+              ON d.LEAVE_TYPE=m.LEAVE_TYPE AND d.LEAVE_NO=m.LEAVE_NO
+            WHERE m.CONFIRM_TAG=1 AND d.START_DATE<=@End AND d.END_DATE>=@Start;
+            """, connection);
+        command.Parameters.Add("@Start", SqlDbType.SmallDateTime).Value = start.Date;
+        command.Parameters.Add("@End", SqlDbType.SmallDateTime).Value = end.Date;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+            result.Add(new LeaveRow(reader.GetString(0), reader.GetDateTime(1), reader.GetDateTime(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4)));
+        return result;
+    }
+
+    private sealed record EvectionRow(string EmpId, DateTime Start, DateTime End, string? StartTime, string? EndTime);
+    private static async Task<List<EvectionRow>> LoadEvectionsAsync(
+        SqlConnection connection, DateTime start, DateTime end, CancellationToken token)
+    {
+        var result = new List<EvectionRow>();
+        await using var command = new SqlCommand("""
+            SELECT LTRIM(RTRIM(d.EMP_ID)), d.START_DATE, d.END_DATE,
+                   NULLIF(LTRIM(RTRIM(ISNULL(d.START_TIME,''))),''), NULLIF(LTRIM(RTRIM(ISNULL(d.END_TIME,''))),'')
+            FROM dbo.HR_EVECTION_M m INNER JOIN dbo.HR_EVECTION_D d
+              ON d.EVECTION_TYPE=m.EVECTION_TYPE AND d.EVECTION_NO=m.EVECTION_NO
+            WHERE m.CONFIRM_TAG=1 AND d.START_DATE<=@End AND d.END_DATE>=@Start;
+            """, connection);
+        command.Parameters.Add("@Start", SqlDbType.SmallDateTime).Value = start.Date;
+        command.Parameters.Add("@End", SqlDbType.SmallDateTime).Value = end.Date;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+            result.Add(new EvectionRow(reader.GetString(0), reader.GetDateTime(1), reader.GetDateTime(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4)));
         return result;
     }
 
