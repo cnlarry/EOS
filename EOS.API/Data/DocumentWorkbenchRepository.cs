@@ -36,7 +36,8 @@ public sealed record WorkbenchDefinition(
     string? ExecTag = null,
     bool HasOwnerColumn = true,
     bool HasOwnerGroupColumn = true,
-    ModuleBusinessRule? BusinessRule = null);
+    ModuleBusinessRule? BusinessRule = null,
+    bool AutoApprove = false);
 public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
@@ -81,7 +82,7 @@ public sealed class DocumentWorkbenchRepository(
     public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token)
     {
         await using var connection = CreateConnection(); await connection.OpenAsync(token);
-        const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,UPDATE_SP,AFTERSAVE_SP FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
+        const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,UPDATE_SP,AFTERSAVE_SP,AUTO_APPROVE FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection); command.Parameters.Add("@ModuleId", SqlDbType.Int).Value=moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token))
@@ -97,6 +98,7 @@ public sealed class DocumentWorkbenchRepository(
         var moduleFilter=reader.IsDBNull(8)?"":reader.GetString(8).Trim();
         var updateSproc=reader.IsDBNull(9)?"":reader.GetString(9).Trim();
         var afterSaveSproc=reader.IsDBNull(10)?"":reader.GetString(10).Trim();
+        var autoApprove=!reader.IsDBNull(11)&&reader.GetBoolean(11);
         await reader.CloseAsync();
         if (!IsWorkbenchUrl(url) || !Identifier.IsMatch(master) || (detail is not null && !Identifier.IsMatch(detail)))
         {
@@ -142,7 +144,8 @@ public sealed class DocumentWorkbenchRepository(
             string.IsNullOrWhiteSpace(execTag)?"A":execTag.Trim(),
             await ColumnExistsAsync(connection,null,master,"OWNER",token),
             await ColumnExistsAsync(connection,null,master,"OWNER_G",token),
-            businessRule);
+            businessRule,
+            autoApprove);
         logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
             moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
         return definition;
@@ -798,6 +801,59 @@ public sealed class DocumentWorkbenchRepository(
         await WriteAuditAsync(connection,transaction,definition.ModuleId,string.Join(',',keyValues),"INSERT","新增记录",userId,token);
         await transaction.CommitAsync(token);
         logger.LogInformation("统一表单新增 module={ModuleId} master={Master} key={Key}",definition.ModuleId,definition.MasterTable,string.Join(',',keyValues));
+        if(definition.AutoApprove)
+        {
+            // 自动批核模块：新增成功后立即进入批核状态（CONFIRM_TAG=1/SYSTEM + P_WF_* 副作用 + 审计）。
+            // 在保存事务提交后执行——批核业务 SP 自带事务（自动提交），不能嵌套在保存事务内，
+            // 与现有批核端点（WorkflowAsync）同结构；失败时回滚确认状态、记录保持已建未确认。
+            var autoResult=await AutoApproveAsync(connection,definition,keyValues,userId,token);
+            if(autoResult.Status!=RecordAccessStatus.Ok)
+                logger.LogWarning("自动批核失败 module={ModuleId} key={Key} code={Code} message={Message}",
+                    definition.ModuleId,string.Join(',',keyValues),autoResult.ErrorCode,autoResult.ErrorMessage);
+        }
+        return RecordSaveResult.Success(keyValues);
+    }
+
+    /// <summary>
+    /// 自动批核（MODULES.AUTO_APPROVE=1）：新增后数据自动为批核状态，无需再点批核。
+    /// 等价批核端点无流程路径：CONFIRM_TAG=1/CONFIRM_PERSON='SYSTEM'/CONFIRM_DATE=GETDATE() +
+    /// P_WF_&lt;DOC&gt; 业务副作用（WorkflowSproc 存在时）+ APPROVE 审计；守卫防重复。
+    /// 主表无 CONFIRM_TAG 的模块跳过（无确认语义）。
+    /// </summary>
+    private async Task<RecordSaveResult> AutoApproveAsync(
+        SqlConnection connection,
+        WorkbenchDefinition definition,
+        IReadOnlyList<string> keyValues,
+        string userId,
+        CancellationToken token)
+    {
+        if(!await ColumnExistsAsync(connection,null,definition.MasterTable,"CONFIRM_TAG",token))
+            return RecordSaveResult.Success(keyValues);
+        var keyCondition=ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder,keyValues);
+        var originalState=await ReadConfirmStateAsync(connection,definition.MasterTable,keyCondition,token);
+        if(originalState is null)
+            return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
+        if(originalState.Value.Tag==true)
+            return RecordSaveResult.Success(keyValues);
+        var confirmSql=$"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};";
+        await using(var confirmCommand=new SqlCommand(confirmSql,connection))
+        {
+            confirmCommand.Parameters.Add("@ConfirmPerson",SqlDbType.NVarChar,50).Value="SYSTEM";
+            if(await confirmCommand.ExecuteNonQueryAsync(token)==0)
+                return RecordSaveResult.Success(keyValues);
+        }
+        if(definition.BusinessRule?.WorkflowSproc is { } sproc)
+        {
+            var result=await controlledSprocs.RunWorkflowAsync(definition.ModuleId,sproc,definition.MasterPkOrder,keyValues,true,token);
+            if(!result.Success)
+            {
+                await RestoreConfirmStateAsync(connection,definition.MasterTable,keyCondition,originalState.Value,token);
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"WORKFLOW_FAILED",
+                    result.Message??"自动批核失败。");
+            }
+        }
+        await WriteAuditAsync(connection,null,definition.ModuleId,string.Join(',',keyValues),"APPROVE","自动批核",userId,token);
+        logger.LogInformation("自动批核 module={ModuleId} key={Key} executor={User}",definition.ModuleId,string.Join(',',keyValues),userId);
         return RecordSaveResult.Success(keyValues);
     }
 
@@ -955,11 +1011,22 @@ public sealed class DocumentWorkbenchRepository(
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"WORKFLOW_NOT_SUPPORTED","该模块不支持批核操作。");
         await using var connection=CreateConnection();
         await connection.OpenAsync(token);
+        var keyCondition=ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder,keyValues);
+        // 自动批核模块（MODULES.AUTO_APPROVE=1）：新增即已确认（SYSTEM），显式批核幂等返回成功，
+        // 且不进入流程送审（用户语义：自动批核模块不走新增、审核模式）。
+        if(approve && definition.AutoApprove)
+        {
+            var state=await ReadConfirmStateAsync(connection,definition.MasterTable,keyCondition,token);
+            if(state is null)
+                return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
+            if(state.Value.Tag==true)
+                return RecordSaveResult.Success(keyValues);
+            // 未确认（理论不发生）时继续走直接确认路径。
+        }
         // 有流程定义的模块：批核即"送审"（启动审批链），单据保持未确认；
         // 无流程模块保持直接批核（对齐旧系统 P_WF_APPROVE_NOFLOW 语义）。
-        if(approve && await WorkflowEngine.HasFlowAsync(connection,definition.ModuleId,token))
+        else if(approve && await WorkflowEngine.HasFlowAsync(connection,definition.ModuleId,token))
             return await workflowEngine.StartFlowAsync(definition,keyValues,employeeName,token);
-        var keyCondition=ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder,keyValues);
         // 对齐旧系统 P_WF_APPROVE_NOFLOW：先更新主表确认状态（带守卫），
         // 再执行 P_WF_<DOC> 业务存储过程。业务 SP 自动提交运行——
         // 部分 SP（如 P_WF_SAMPLE_PRO→P_WF_RUN 流程链）内部自带 BEGIN TRAN/COMMIT，
