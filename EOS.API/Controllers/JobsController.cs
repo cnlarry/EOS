@@ -214,7 +214,8 @@ public sealed class JobsController(
             return BadRequest(new{code="NO_TARGET",message="请指定员工或部门。"});
         var result=await attendanceCalc.CalculateAsync(request.StartDate,request.EndDate,empIds,request.DeptId,token);
         return Ok(new{StartDate=request.StartDate,EndDate=request.EndDate,EmployeeCount=result.EmployeeCount,
-            DiaryRows=result.DiaryRows,Updated=result.Updated,SkippedNoTimeType=result.SkippedNoTimeType});
+            DiaryRows=result.DiaryRows,Updated=result.Updated,SkippedNoTimeType=result.SkippedNoTimeType,
+            SkippedNotActive=result.SkippedNotActive});
     }
 
     /// <summary>

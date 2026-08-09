@@ -19,7 +19,7 @@ public sealed class AttendanceCalcService(
 {
     private static readonly Regex DayColumn = new("^DAY_(0[1-9]|[12][0-9]|3[01])$", RegexOptions.Compiled);
 
-    public sealed record CalcResult(int EmployeeCount, int DiaryRows, int Updated, int SkippedNoTimeType);
+    public sealed record CalcResult(int EmployeeCount, int DiaryRows, int Updated, int SkippedNoTimeType, int SkippedNotActive);
 
     public async Task<CalcResult> CalculateAsync(
         DateTime startDate,
@@ -31,30 +31,49 @@ public sealed class AttendanceCalcService(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
 
-        // 员工集合（指定员工或部门及下级）
+        // 员工集合（指定员工或部门及下级；规则 21 员工筛选：IF_COUNT=0 / IF_SECRECY=1 不参与，
+        // 在职期间按日校验 IN_DATE/DIMISSION_DATE；规则 22 部门范围走 f_get_under_depts）。
         var employees = new List<string>();
+        var employment = new Dictionary<string, (DateTime? InDate, DateTime? DimissionDate)>(StringComparer.OrdinalIgnoreCase);
         if (empIds.Count > 0)
         {
             var distinct = empIds.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var placeholders = string.Join(',', distinct.Select((_, i) => $"@e{i}"));
             await using var command = new SqlCommand(
-                $"SELECT LTRIM(RTRIM(EMP_ID)) FROM dbo.HR_EMPLOYEE WHERE IF_SHOW=1 AND LTRIM(RTRIM(EMP_ID)) IN ({placeholders});",
+                $"SELECT LTRIM(RTRIM(EMP_ID)), IN_DATE, DIMISSION_DATE FROM dbo.HR_EMPLOYEE " +
+                $"WHERE IF_SHOW=1 AND COALESCE(IF_COUNT,1)=1 AND COALESCE(IF_SECRECY,0)=0 AND LTRIM(RTRIM(EMP_ID)) IN ({placeholders});",
                 connection);
             for (var i = 0; i < distinct.Count; i++)
                 command.Parameters.Add($"@e{i}", SqlDbType.NChar, 10).Value = distinct[i];
             await using var reader = await command.ExecuteReaderAsync(token);
-            while (await reader.ReadAsync(token)) employees.Add(reader.GetString(0));
+            while (await reader.ReadAsync(token))
+            {
+                var empId = reader.GetString(0);
+                employees.Add(empId);
+                employment[empId] = (
+                    reader.IsDBNull(1) ? null : reader.GetDateTime(1),
+                    reader.IsDBNull(2) ? null : reader.GetDateTime(2));
+            }
         }
         else if (!string.IsNullOrWhiteSpace(deptId))
         {
             await using var command = new SqlCommand(
-                "SELECT LTRIM(RTRIM(EMP_ID)) FROM dbo.HR_EMPLOYEE WHERE IF_SHOW=1 AND DEPT_ID IN (SELECT DEPT_ID FROM dbo.f_get_under_depts(@Dept));",
+                "SELECT LTRIM(RTRIM(EMP_ID)), IN_DATE, DIMISSION_DATE FROM dbo.HR_EMPLOYEE " +
+                "WHERE IF_SHOW=1 AND COALESCE(IF_COUNT,1)=1 AND COALESCE(IF_SECRECY,0)=0 " +
+                "AND DEPT_ID IN (SELECT DEPT_ID FROM dbo.f_get_under_depts(@Dept));",
                 connection);
             command.Parameters.Add("@Dept", SqlDbType.NVarChar, 50).Value = deptId.Trim();
             await using var reader = await command.ExecuteReaderAsync(token);
-            while (await reader.ReadAsync(token)) employees.Add(reader.GetString(0));
+            while (await reader.ReadAsync(token))
+            {
+                var empId = reader.GetString(0);
+                employees.Add(empId);
+                employment[empId] = (
+                    reader.IsDBNull(1) ? null : reader.GetDateTime(1),
+                    reader.IsDBNull(2) ? null : reader.GetDateTime(2));
+            }
         }
-        if (employees.Count == 0) return new CalcResult(0, 0, 0, 0);
+        if (employees.Count == 0) return new CalcResult(0, 0, 0, 0, 0);
 
         // 配置与参照数据（参数化，一次性加载）
         var setup = await LoadSetupAsync(connection, token);
@@ -73,6 +92,7 @@ public sealed class AttendanceCalcService(
         var diaryRows = 0;
         var updated = 0;
         var skippedNoTimeType = 0;
+        var skippedNotActive = 0;
         for (var date = startDate; date <= endDate; date = date.AddDays(1))
         {
             var dayColumn = $"DAY_{date.Day:00}";
@@ -83,6 +103,10 @@ public sealed class AttendanceCalcService(
 
             foreach (var empId in employees)
             {
+                // 在职期间（规则 21）：入职日晚于计算日或离职日早于计算日的员工当日跳过。
+                var empEmployment = employment.GetValueOrDefault(empId);
+                if (empEmployment.InDate is DateTime inDate && inDate.Date > date.Date) { skippedNotActive++; continue; }
+                if (empEmployment.DimissionDate is DateTime dimissionDate && dimissionDate.Date < date.Date) { skippedNotActive++; continue; }
                 // 调休：当天在调休区间内 → 用 END_DAY 的班次
                 var timeTypeId = planByEmployee.GetValueOrDefault(empId);
                 var exchange = exchanges.FirstOrDefault(e =>
@@ -264,7 +288,7 @@ public sealed class AttendanceCalcService(
         }
         logger.LogInformation("考勤计算完成 employees={Employees} rows={Rows} updated={Updated} noTimeType={NoTimeType}",
             employees.Count, diaryRows, updated, skippedNoTimeType);
-        return new CalcResult(employees.Count, diaryRows, updated, skippedNoTimeType);
+        return new CalcResult(employees.Count, diaryRows, updated, skippedNoTimeType, skippedNotActive);
     }
 
     private static double ParseTime(string time)
