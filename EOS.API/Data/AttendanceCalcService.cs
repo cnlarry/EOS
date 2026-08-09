@@ -63,6 +63,7 @@ public sealed class AttendanceCalcService(
         var exchanges = await LoadExchangesAsync(connection, startDate, endDate, token);
         var signs = await LoadSignsAsync(connection, startDate, endDate, token);
         var applies = await LoadAppliesAsync(connection, startDate, endDate, token);
+        var punches = await LoadPunchesAsync(connection, startDate, endDate, employees, token);
         var planAdjusts = await LoadPlanAdjustsAsync(connection, startDate, endDate, token);
         var recesses = await LoadRecessesAsync(connection, startDate, endDate, token);
         var leaves = await LoadLeavesAsync(connection, startDate, endDate, token);
@@ -144,8 +145,23 @@ public sealed class AttendanceCalcService(
                         inTime[slot] = null;
                         outTime[slot] = null;
                     }
-                    on[slot] = sign?.On[slot] ?? inTime[slot];
-                    outPunch[slot] = sign?.Out[slot] ?? outTime[slot];
+                    // 优先级：签卡 > 打卡窗口匹配 > 排班时间
+                    on[slot] = sign?.On[slot];
+                    if (string.IsNullOrWhiteSpace(on[slot]))
+                    {
+                        var match = !string.IsNullOrWhiteSpace(inTime[slot])
+                            ? MatchPunch(punches, empId, date, tt, slot, isIn: true)
+                            : null;
+                        on[slot] = match?.ToString("HH:mm") ?? inTime[slot];
+                    }
+                    outPunch[slot] = sign?.Out[slot];
+                    if (string.IsNullOrWhiteSpace(outPunch[slot]))
+                    {
+                        var match = !string.IsNullOrWhiteSpace(outTime[slot])
+                            ? MatchPunch(punches, empId, date, tt, slot, isIn: false)
+                            : null;
+                        outPunch[slot] = match?.ToString("HH:mm") ?? outTime[slot];
+                    }
                     // 不需打卡（IN_CHECK/OUT_CHECK）：未打卡时用排班时间填充
                     if (string.IsNullOrWhiteSpace(on[slot]) && tt.InCheck[slot] && !string.IsNullOrWhiteSpace(inTime[slot]))
                         on[slot] = inTime[slot];
@@ -259,6 +275,51 @@ public sealed class AttendanceCalcService(
         return hours * 60 + minutes;
     }
 
+    private sealed record PunchRow(string EmpId, DateTime Time);
+
+    private static async Task<List<PunchRow>> LoadPunchesAsync(
+        SqlConnection connection, DateTime start, DateTime end, IReadOnlyList<string> employees, CancellationToken token)
+    {
+        var result = new List<PunchRow>();
+        if (employees.Count == 0) return result;
+        var placeholders = string.Join(',', employees.Select((_, i) => $"@e{i}"));
+        await using var command = new SqlCommand($"""
+            SELECT LTRIM(RTRIM(c.EMP_ID)), m.COUNT_DATE
+            FROM dbo.HR_DIARY_D m
+            INNER JOIN dbo.HR_EMPLOYEE_CARD c ON c.CARD_ID=m.CARD_ID AND c.CONFIRM_TAG=1
+            WHERE m.COUNT_DATE>=@Start AND m.COUNT_DATE<@End
+              AND c.EMP_ID IN ({placeholders})
+              AND m.COUNT_DATE>=c.BEGIN_DATE AND (c.END_DATE IS NULL OR m.COUNT_DATE<DATEADD(day,1,c.END_DATE));
+            """, connection);
+        command.Parameters.Add("@Start", SqlDbType.SmallDateTime).Value = start.Date.AddDays(-1);
+        command.Parameters.Add("@End", SqlDbType.SmallDateTime).Value = end.Date.AddDays(1);
+        for (var i = 0; i < employees.Count; i++)
+            command.Parameters.Add($"@e{i}", SqlDbType.NChar, 10).Value = employees[i];
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+            result.Add(new PunchRow(reader.GetString(0), reader.GetDateTime(1)));
+        return result;
+    }
+
+    private static DateTime? MatchPunch(
+        List<PunchRow> punches, string empId, DateTime date, TimeTypeRow tt, int slot, bool isIn)
+    {
+        var timeText = isIn ? tt.InTime[slot] : tt.OutTime[slot];
+        var moreDay = isIn ? tt.InMoreDay[slot] : tt.OutMoreDay[slot];
+        var fore = isIn ? tt.InForeMinute[slot] : tt.OutForeMinute[slot];
+        var back = isIn ? tt.InBackMinute[slot] : tt.OutBackMinute[slot];
+        if (string.IsNullOrWhiteSpace(timeText)) return null;
+        var scheduled = date.Date.AddDays(moreDay ? 1 : 0).AddMinutes(ParseTime(timeText));
+        var windowStart = scheduled.AddMinutes(-fore);
+        var windowEnd = scheduled.AddMinutes(back);
+        return punches
+            .Where(p => p.EmpId.Equals(empId, StringComparison.OrdinalIgnoreCase)
+                     && p.Time >= windowStart && p.Time <= windowEnd)
+            .OrderBy(p => p.Time)
+            .Select(p => (DateTime?)p.Time)
+            .FirstOrDefault();
+    }
+
     private sealed record SetupFlags(bool SatRestDay, bool SunRestDay);
 
     private static async Task<SetupFlags> LoadSetupAsync(SqlConnection connection, CancellationToken token)
@@ -289,6 +350,7 @@ public sealed class AttendanceCalcService(
     private sealed record TimeTypeRow(
         string[] InTime, string[] OutTime, double[] WorkHours, double[] AddHours,
         bool[] InMoreDay, bool[] OutMoreDay, int[] InLateMinute, int[] OutLateMinute,
+        int[] InForeMinute, int[] InBackMinute, int[] OutForeMinute, int[] OutBackMinute,
         bool[] InCheck, bool[] OutCheck, bool[] IfOvertime, bool[] IsOutFlex, bool IfConfirm);
 
     private static async Task<Dictionary<string, TimeTypeRow>> LoadTimeTypesAsync(SqlConnection connection, CancellationToken token)
@@ -297,10 +359,10 @@ public sealed class AttendanceCalcService(
         await using var command = new SqlCommand("""
             SELECT LTRIM(RTRIM(TIMETYPE_ID)),
                    ISNULL(CAST(IF_CONFIRM AS int),0),
-                   LTRIM(RTRIM(ISNULL(IN_TIME1,''))),LTRIM(RTRIM(ISNULL(OUT_TIME1,''))),ISNULL(CAST(WORK_HOURS1 AS float),0),ISNULL(CAST(ADD_HOURS1 AS float),0),ISNULL(CAST(IN_MOREDAY1 AS int),0),ISNULL(CAST(OUT_MOREDAY1 AS int),0),ISNULL(CAST(IN_LATE_MINUTE1 AS int),0),ISNULL(CAST(OUT_LATE_MINUTE1 AS int),0),ISNULL(CAST(IN_CHECK1 AS int),0),ISNULL(CAST(OUT_CHECK1 AS int),0),ISNULL(CAST(IF_OVERTIME1 AS int),0),ISNULL(CAST(IS_OUT_FLEX1 AS int),0),
-                   LTRIM(RTRIM(ISNULL(IN_TIME2,''))),LTRIM(RTRIM(ISNULL(OUT_TIME2,''))),ISNULL(CAST(WORK_HOURS2 AS float),0),ISNULL(CAST(ADD_HOURS2 AS float),0),ISNULL(CAST(IN_MOREDAY2 AS int),0),ISNULL(CAST(OUT_MOREDAY2 AS int),0),ISNULL(CAST(IN_LATE_MINUTE2 AS int),0),ISNULL(CAST(OUT_LATE_MINUTE2 AS int),0),ISNULL(CAST(IN_CHECK2 AS int),0),ISNULL(CAST(OUT_CHECK2 AS int),0),ISNULL(CAST(IF_OVERTIME2 AS int),0),ISNULL(CAST(IS_OUT_FLEX2 AS int),0),
-                   LTRIM(RTRIM(ISNULL(IN_TIME3,''))),LTRIM(RTRIM(ISNULL(OUT_TIME3,''))),ISNULL(CAST(WORK_HOURS3 AS float),0),ISNULL(CAST(ADD_HOURS3 AS float),0),ISNULL(CAST(IN_MOREDAY3 AS int),0),ISNULL(CAST(OUT_MOREDAY3 AS int),0),ISNULL(CAST(IN_LATE_MINUTE3 AS int),0),ISNULL(CAST(OUT_LATE_MINUTE3 AS int),0),ISNULL(CAST(IN_CHECK3 AS int),0),ISNULL(CAST(OUT_CHECK3 AS int),0),ISNULL(CAST(IF_OVERTIME3 AS int),0),ISNULL(CAST(IS_OUT_FLEX3 AS int),0),
-                   LTRIM(RTRIM(ISNULL(IN_TIME4,''))),LTRIM(RTRIM(ISNULL(OUT_TIME4,''))),ISNULL(CAST(WORK_HOURS4 AS float),0),ISNULL(CAST(ADD_HOURS4 AS float),0),ISNULL(CAST(IN_MOREDAY4 AS int),0),ISNULL(CAST(OUT_MOREDAY4 AS int),0),ISNULL(CAST(IN_LATE_MINUTE4 AS int),0),ISNULL(CAST(OUT_LATE_MINUTE4 AS int),0),ISNULL(CAST(IN_CHECK4 AS int),0),ISNULL(CAST(OUT_CHECK4 AS int),0),ISNULL(CAST(IF_OVERTIME4 AS int),0),ISNULL(CAST(IS_OUT_FLEX4 AS int),0)
+                   LTRIM(RTRIM(ISNULL(IN_TIME1,''))),LTRIM(RTRIM(ISNULL(OUT_TIME1,''))),ISNULL(CAST(WORK_HOURS1 AS float),0),ISNULL(CAST(ADD_HOURS1 AS float),0),ISNULL(CAST(IN_MOREDAY1 AS int),0),ISNULL(CAST(OUT_MOREDAY1 AS int),0),ISNULL(CAST(IN_LATE_MINUTE1 AS int),0),ISNULL(CAST(OUT_LATE_MINUTE1 AS int),0),ISNULL(CAST(IN_FORE_MINUTE1 AS int),0),ISNULL(CAST(IN_BACK_MINUTE1 AS int),0),ISNULL(CAST(OUT_FORE_MINUTE1 AS int),0),ISNULL(CAST(OUT_BACK_MINUTE1 AS int),0),ISNULL(CAST(IN_CHECK1 AS int),0),ISNULL(CAST(OUT_CHECK1 AS int),0),ISNULL(CAST(IF_OVERTIME1 AS int),0),ISNULL(CAST(IS_OUT_FLEX1 AS int),0),
+                   LTRIM(RTRIM(ISNULL(IN_TIME2,''))),LTRIM(RTRIM(ISNULL(OUT_TIME2,''))),ISNULL(CAST(WORK_HOURS2 AS float),0),ISNULL(CAST(ADD_HOURS2 AS float),0),ISNULL(CAST(IN_MOREDAY2 AS int),0),ISNULL(CAST(OUT_MOREDAY2 AS int),0),ISNULL(CAST(IN_LATE_MINUTE2 AS int),0),ISNULL(CAST(OUT_LATE_MINUTE2 AS int),0),ISNULL(CAST(IN_FORE_MINUTE2 AS int),0),ISNULL(CAST(IN_BACK_MINUTE2 AS int),0),ISNULL(CAST(OUT_FORE_MINUTE2 AS int),0),ISNULL(CAST(OUT_BACK_MINUTE2 AS int),0),ISNULL(CAST(IN_CHECK2 AS int),0),ISNULL(CAST(OUT_CHECK2 AS int),0),ISNULL(CAST(IF_OVERTIME2 AS int),0),ISNULL(CAST(IS_OUT_FLEX2 AS int),0),
+                   LTRIM(RTRIM(ISNULL(IN_TIME3,''))),LTRIM(RTRIM(ISNULL(OUT_TIME3,''))),ISNULL(CAST(WORK_HOURS3 AS float),0),ISNULL(CAST(ADD_HOURS3 AS float),0),ISNULL(CAST(IN_MOREDAY3 AS int),0),ISNULL(CAST(OUT_MOREDAY3 AS int),0),ISNULL(CAST(IN_LATE_MINUTE3 AS int),0),ISNULL(CAST(OUT_LATE_MINUTE3 AS int),0),ISNULL(CAST(IN_FORE_MINUTE3 AS int),0),ISNULL(CAST(IN_BACK_MINUTE3 AS int),0),ISNULL(CAST(OUT_FORE_MINUTE3 AS int),0),ISNULL(CAST(OUT_BACK_MINUTE3 AS int),0),ISNULL(CAST(IN_CHECK3 AS int),0),ISNULL(CAST(OUT_CHECK3 AS int),0),ISNULL(CAST(IF_OVERTIME3 AS int),0),ISNULL(CAST(IS_OUT_FLEX3 AS int),0),
+                   LTRIM(RTRIM(ISNULL(IN_TIME4,''))),LTRIM(RTRIM(ISNULL(OUT_TIME4,''))),ISNULL(CAST(WORK_HOURS4 AS float),0),ISNULL(CAST(ADD_HOURS4 AS float),0),ISNULL(CAST(IN_MOREDAY4 AS int),0),ISNULL(CAST(OUT_MOREDAY4 AS int),0),ISNULL(CAST(IN_LATE_MINUTE4 AS int),0),ISNULL(CAST(OUT_LATE_MINUTE4 AS int),0),ISNULL(CAST(IN_FORE_MINUTE4 AS int),0),ISNULL(CAST(IN_BACK_MINUTE4 AS int),0),ISNULL(CAST(OUT_FORE_MINUTE4 AS int),0),ISNULL(CAST(OUT_BACK_MINUTE4 AS int),0),ISNULL(CAST(IN_CHECK4 AS int),0),ISNULL(CAST(OUT_CHECK4 AS int),0),ISNULL(CAST(IF_OVERTIME4 AS int),0),ISNULL(CAST(IS_OUT_FLEX4 AS int),0)
             FROM dbo.HR_TIMETYPE;
             """, connection);
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -315,6 +377,10 @@ public sealed class AttendanceCalcService(
             var outMoreDay = new bool[4];
             var inLate = new int[4];
             var outLate = new int[4];
+            var inFore = new int[4];
+            var inBack = new int[4];
+            var outFore = new int[4];
+            var outBack = new int[4];
             var inCheck = new bool[4];
             var outCheck = new bool[4];
             var ifOvertime = new bool[4];
@@ -330,15 +396,20 @@ public sealed class AttendanceCalcService(
                 outMoreDay[slot] = reader.GetInt32(6 + idxBase + idx) == 1;
                 inLate[slot] = reader.GetInt32(7 + idxBase + idx);
                 outLate[slot] = reader.GetInt32(8 + idxBase + idx);
-                inCheck[slot] = reader.GetInt32(9 + idxBase + idx) == 1;
-                outCheck[slot] = reader.GetInt32(10 + idxBase + idx) == 1;
-                ifOvertime[slot] = reader.GetInt32(11 + idxBase + idx) == 1;
-                isOutFlex[slot] = reader.GetInt32(12 + idxBase + idx) == 1;
-                idx += 12;
+                inFore[slot] = reader.GetInt32(9 + idxBase + idx);
+                inBack[slot] = reader.GetInt32(10 + idxBase + idx);
+                outFore[slot] = reader.GetInt32(11 + idxBase + idx);
+                outBack[slot] = reader.GetInt32(12 + idxBase + idx);
+                inCheck[slot] = reader.GetInt32(13 + idxBase + idx) == 1;
+                outCheck[slot] = reader.GetInt32(14 + idxBase + idx) == 1;
+                ifOvertime[slot] = reader.GetInt32(15 + idxBase + idx) == 1;
+                isOutFlex[slot] = reader.GetInt32(16 + idxBase + idx) == 1;
+                idx += 16;
             }
             var ifConfirm = reader.GetInt32(1) == 1;
             result[reader.GetString(0)] = new TimeTypeRow(inTime, outTime, workHours, addHours,
-                inMoreDay, outMoreDay, inLate, outLate, inCheck, outCheck, ifOvertime, isOutFlex, ifConfirm);
+                inMoreDay, outMoreDay, inLate, outLate, inFore, inBack, outFore, outBack,
+                inCheck, outCheck, ifOvertime, isOutFlex, ifConfirm);
         }
         return result;
     }
