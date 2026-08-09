@@ -64,7 +64,9 @@ public sealed class ControlledSprocInvokerTests
     [InlineData("P_PUR_PREPAY_After_Save", false)] // 已移植（pur-prepay）
     [InlineData("P_WF_PUR_PURCHASE", true)]
     [InlineData("P_COP_ORDER_After_Save", false)] // 已移植为领域规则（cop-order）
-    [InlineData("P_PUR_RECEIVE_After_Save", true)]
+    [InlineData("P_PUR_RECEIVE_After_Save", false)] // 已移植（pur-receive）
+    [InlineData("P_PUR_APPLY_After_Save", false)] // 已移植（pur-apply）
+    [InlineData("P_PUR_QUOTE_After_Save", false)] // 已移植（pur-quote）
     [InlineData("P_UNKNOWN_SPROC", false)]
     [InlineData("DROP TABLE X", false)]
     public void 受控白名单_只允许登记过的存储过程(string sproc, bool expected)
