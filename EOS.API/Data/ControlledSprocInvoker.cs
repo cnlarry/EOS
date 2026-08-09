@@ -72,11 +72,25 @@ public sealed class ControlledSprocInvoker(DbConnectionFactory connections, ILog
         IReadOnlyList<string> keyValues,
         bool approve,
         CancellationToken token)
+        => await RunWorkflowAsync(moduleId, sprocName, pkColumns, keyValues, approve, token, keyConditionOverride: null);
+
+    /// <summary>
+    /// 批核（approve=true）或解批（approve=false），对应旧 P_WF_&lt;DOC&gt; @key_value, @approve_tag, @msg。
+    /// keyConditionOverride 供工作流末步复用 WF_MONITOR 中已生成的主键条件。
+    /// </summary>
+    public async Task<SprocResult> RunWorkflowAsync(
+        int moduleId,
+        string sprocName,
+        IReadOnlyList<string> pkColumns,
+        IReadOnlyList<string> keyValues,
+        bool approve,
+        CancellationToken token,
+        string? keyConditionOverride = null)
     {
         if (!IsAllowed(sprocName)) return new(false, $"存储过程不在受控白名单内：{sprocName}");
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
-        var keyCondition = BuildKeyCondition(pkColumns, keyValues);
+        var keyCondition = keyConditionOverride ?? BuildKeyCondition(pkColumns, keyValues);
         await using var command = new SqlCommand(sprocName, connection)
         {
             CommandType = CommandType.StoredProcedure,

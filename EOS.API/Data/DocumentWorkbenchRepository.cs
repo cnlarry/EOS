@@ -52,6 +52,7 @@ public sealed class DocumentWorkbenchRepository(
     DbConnectionFactory connections,
     FieldAdminRepository fieldAdmin,
     ControlledSprocInvoker controlledSprocs,
+    WorkflowEngine workflowEngine,
     ILogger<DocumentWorkbenchRepository> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
@@ -921,6 +922,10 @@ public sealed class DocumentWorkbenchRepository(
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"WORKFLOW_NOT_SUPPORTED","该模块不支持批核操作。");
         await using var connection=CreateConnection();
         await connection.OpenAsync(token);
+        // 有流程定义的模块：批核即"送审"（启动审批链），单据保持未确认；
+        // 无流程模块保持直接批核（对齐旧系统 P_WF_APPROVE_NOFLOW 语义）。
+        if(approve && await WorkflowEngine.HasFlowAsync(connection,definition.ModuleId,token))
+            return await workflowEngine.StartFlowAsync(definition,keyValues,employeeName,token);
         var keyCondition=ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder,keyValues);
         // 对齐旧系统 P_WF_APPROVE_NOFLOW：先更新主表确认状态（带守卫），
         // 再执行 P_WF_<DOC> 业务存储过程。业务 SP 自动提交运行——

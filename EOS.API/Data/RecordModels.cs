@@ -36,10 +36,15 @@ public sealed record RecordSaveResult(
     string? ErrorCode,
     string? ErrorMessage,
     IReadOnlyList<FieldError>? FieldErrors,
-    IReadOnlyList<string>? Key)
+    IReadOnlyList<string>? Key,
+    bool FlowStarted = false)
 {
     public static RecordSaveResult Success(IReadOnlyList<string> key) =>
         new(RecordAccessStatus.Ok, null, null, null, key);
+
+    /// <summary>流程已启动（单据进入审批链，未确认）。</summary>
+    public static RecordSaveResult SuccessFlowStarted(IReadOnlyList<string> key) =>
+        new(RecordAccessStatus.Ok, null, null, null, key, FlowStarted: true);
 
     public static RecordSaveResult Failed(
         RecordAccessStatus status,
