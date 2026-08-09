@@ -126,6 +126,9 @@ public sealed class DocumentWorkbenchRepository(
                     billNoField is not null,
                     billNoField,
                     billTypeField);
+                // 阶段 5：自动注册的模块若已移植 AfterSave，则用 C# 领域规则替换受控 SP
+                if(DomainRuleMap.TryGet(moduleId,out var domainRule))
+                    businessRule=businessRule with { DomainRule=domainRule, AfterSaveSproc=null };
             }
         }
         WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,

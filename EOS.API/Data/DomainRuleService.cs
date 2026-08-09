@@ -35,6 +35,18 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "cop-account" => await CopAccountAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-order" => await CopOrderAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-send" => await CopSendAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "moc-work" => await MocWorkAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "moc-work-in" => await MocWorkInAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "pur-callback" => await PurCallbackAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "moc-produce-change" => await MocProduceChangeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "pur-purchase-change" => await PurPurchaseChangeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "sam-out" => await SamOutAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "cop-order-change" => await CopOrderChangeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "cop-callback" => await CopCallbackAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "moc-produce" => await MocProduceAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "hr-worktime" => await HrWorktimeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "moc-product-out" => await MocProductOutAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "inv-check-stock" => await InvCheckStockAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-quote" => await PurQuoteAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-receive" => await PurReceiveAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-apply" => await PurApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
@@ -105,6 +117,397 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         return new(true, null);
     }
 
+    /// <summary>库存盘点单（130101）AfterSave：库别/产品存在 + 盘点数不小于 0。</summary>
+    private static async Task<SprocResult> InvCheckStockAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        var depotMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.INV_CHECK_STOCK_D d
+            WHERE CHECK_STOCK_TYPE=@Type AND CHECK_STOCK_NO=@No
+              AND NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=d.DEPOT_ID);
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
+        if (depotMissing is not null) return new(false, "以下序号项库别编号不存在 \r\n" + depotMissing);
+        var productMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.INV_CHECK_STOCK_D d
+            WHERE CHECK_STOCK_TYPE=@Type AND CHECK_STOCK_NO=@No
+              AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
+        if (productMissing is not null) return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
+        var negative = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.INV_CHECK_STOCK_D d
+            WHERE CHECK_STOCK_TYPE=@Type AND CHECK_STOCK_NO=@No AND CHECK_QTY<0;
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
+        if (negative is not null) return new(false, "以下序号项盘点数小于0 \r\n" + negative);
+        return new(true, null);
+    }
+
+    /// <summary>送货回执（1413）AfterSave：送/退货已有回执校验。</summary>
+    private static async Task<SprocResult> CopCallbackAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        var lines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT c.SERIAL_NO FROM dbo.COP_SEND_D s
+            INNER JOIN dbo.COP_CALLBACK_D c
+              ON s.SEND_TYPE=c.S_R_TYPE AND s.SEND_NO=c.S_R_NO AND s.SERIAL_NO=c.S_R_SERIAL_NO
+            WHERE c.CALLBACK_TYPE=@Type AND c.CALLBACK_NO=@No AND ISNULL(s.CALLBACK_NO,'')<>''
+            UNION ALL
+            SELECT c.SERIAL_NO FROM dbo.COP_RETURN_D s
+            INNER JOIN dbo.COP_CALLBACK_D c
+              ON s.RETURN_TYPE=c.S_R_TYPE AND s.RETURN_NO=c.S_R_NO AND s.SERIAL_NO=c.S_R_SERIAL_NO
+            WHERE c.CALLBACK_TYPE=@Type AND c.CALLBACK_NO=@No AND ISNULL(s.CALLBACK_NO,'')<>'';
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString() + "    ");
+        return lines is null
+            ? new(true, null)
+            : new(false, "以下序号项送、退货已有回执\r\n" + lines);
+    }
+
+    /// <summary>制令单（1522）AfterSave：生产数量不超订单/计划 + 订单/产品校验 + 明细订单号回填。</summary>
+    private static async Task<SprocResult> MocProduceAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        if (await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.COP_ORDER_D od
+            INNER JOIN dbo.MOC_PRODUCE_M pr
+              ON pr.ORDER_TYPE=od.ORDER_TYPE AND pr.ORDER_NO=od.ORDER_NO AND pr.ORDER_SERIAL_NO=od.SERIAL_NO
+            WHERE pr.PRODUCE_TYPE=@Type AND pr.PRODUCE_NO=@No
+              AND (od.PLAN_QTY < ISNULL(od.FINISHED_PLAN_QTY,0)+ISNULL(pr.QTY,0)
+                OR od.PLAN_SPARE_QTY < ISNULL(od.FINISHED_PLAN_SPARE_QTY,0)+ISNULL(pr.SPARE_QTY,0));
+            """, type, no, token))
+            return new(false, "生产数量或备品生产数量超出订单数量");
+        if (await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.MOC_PLAN_MOC od
+            INNER JOIN dbo.MOC_PRODUCE_M pr
+              ON pr.PLAN_TYPE=od.PLAN_TYPE AND pr.PLAN_NO=od.PLAN_NO AND pr.PLAN_SERIAL_NO=od.SERIAL_NO
+            WHERE pr.PRODUCE_TYPE=@Type AND pr.PRODUCE_NO=@No
+              AND od.REQUIRE_QTY < ISNULL(od.PRODUCE_QTY,0)+ISNULL(pr.QTY,0);
+            """, type, no, token))
+            return new(false, "生产数量超出生产计划数量");
+        // 订单存在性（ORDER_NO 非空时）
+        var orderMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT m.ORDER_SERIAL_NO FROM dbo.MOC_PRODUCE_M m
+            WHERE m.PRODUCE_TYPE=@Type AND m.PRODUCE_NO=@No AND ISNULL(m.ORDER_NO,'')<>''
+              AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_D d
+                              WHERE d.ORDER_TYPE=m.ORDER_TYPE AND d.ORDER_NO=m.ORDER_NO AND d.SERIAL_NO=m.ORDER_SERIAL_NO);
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
+        if (orderMissing is not null) return new(false, "订单不存在  \r\n" + orderMissing);
+        var productMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.MOC_PRODUCE_D d
+            WHERE PRODUCE_TYPE=@Type AND PRODUCE_NO=@No
+              AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
+        if (productMissing is not null) return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
+        // 明细订单号回填
+        await using var syncOrder = new SqlCommand("""
+            UPDATE d SET d.ORDER_TYPE=m.ORDER_TYPE, d.ORDER_NO=m.ORDER_NO, d.ORDER_SERIAL_NO=m.ORDER_SERIAL_NO
+            FROM dbo.MOC_PRODUCE_D d INNER JOIN dbo.MOC_PRODUCE_M m
+              ON m.PRODUCE_TYPE=d.PRODUCE_TYPE AND m.PRODUCE_NO=d.PRODUCE_NO
+            WHERE d.PRODUCE_TYPE=@Type AND d.PRODUCE_NO=@No;
+            """, connection, transaction);
+        syncOrder.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
+        syncOrder.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
+        await syncOrder.ExecuteNonQueryAsync(token);
+        return new(true, null);
+    }
+
+    /// <summary>工时录入（180207）AfterSave：HR_SETUP.REQUIRE_ENACTMENT=1 时校验加班不超申请（当前环境=0，跳过）。</summary>
+    private static async Task<SprocResult> HrWorktimeAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var requireEnactment = await ExistsAsync(connection, transaction,
+            "SELECT TOP 1 1 FROM dbo.HR_SETUP WHERE REQUIRE_ENACTMENT=1;", keyValues[0], keyValues[1], token);
+        if (!requireEnactment) return new(true, null);
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        var lines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT a.EMP_ID, a.OVERTIME, a.REST_OVERTIME, a.HOLIDAY_OVERTIME, w.OVERTIME, w.REST_OVERTIME, w.HOLIDAY_OVERTIME
+            FROM (SELECT m.EMP_ID, SUM(m.OVERTIME) OVERTIME, SUM(m.REST_OVERTIME) REST_OVERTIME, SUM(m.HOLIDAY_OVERTIME) HOLIDAY_OVERTIME
+                  FROM dbo.HR_WORKTIME_M m INNER JOIN dbo.HR_WORKTIME_D d
+                    ON d.WORKTIME_TYPE=m.WORKTIME_TYPE AND d.WORKTIME_NO=m.WORKTIME_NO
+                  WHERE m.WORKTIME_TYPE=@Type AND m.WORKTIME_NO=@No
+                  GROUP BY m.EMP_ID) w
+            LEFT JOIN (SELECT d.EMP_ID, SUM(d.OVERTIME) OVERTIME, SUM(d.REST_OVERTIME) REST_OVERTIME, SUM(d.HOLIDAY_OVERTIME) HOLIDAY_OVERTIME
+                       FROM dbo.HR_APPLY_M m INNER JOIN dbo.HR_APPLY_D d
+                         ON d.APPLY_TYPE=m.APPLY_TYPE AND d.APPLY_NO=m.APPLY_NO
+                       WHERE m.COUNT_DATE=(SELECT TOP 1 COUNT_DATE FROM dbo.HR_WORKTIME_M WHERE WORKTIME_TYPE=@Type AND WORKTIME_NO=@No)
+                       GROUP BY d.EMP_ID) a ON a.EMP_ID=w.EMP_ID
+            WHERE w.OVERTIME > ISNULL(a.OVERTIME,0) OR w.REST_OVERTIME > ISNULL(a.REST_OVERTIME,0)
+               OR w.HOLIDAY_OVERTIME > ISNULL(a.HOLIDAY_OVERTIME,0);
+            """, type, no, token,
+            line: r => $"{r.GetString(0).Trim()}  {Convert.ToDouble(r.GetValue(1))}  {Convert.ToDouble(r.GetValue(2))}  {Convert.ToDouble(r.GetValue(3))}  已录入   {Convert.ToDouble(r.GetValue(4))}  {Convert.ToDouble(r.GetValue(5))}  {Convert.ToDouble(r.GetValue(6))}");
+        return lines is null
+            ? new(true, null)
+            : new(false, "以下人员时间超出:\r\n工号---加班时--休息日加班时--节假日加班时\r\n" + lines);
+    }
+
+    /// <summary>返工单（1515）AfterSave：出库不超制令可出库 + 制令/库别/产品/批号校验。</summary>
+    private static async Task<SprocResult> MocProductOutAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        var fitoutTag = await ExistsAsync(connection, transaction,
+            "SELECT TOP 1 1 FROM dbo.SYSSS WHERE FITOUT_TAG=1;", keyValues[0], keyValues[1], token);
+        var exceeded = await FindLinesAsync(connection, transaction,
+            fitoutTag
+                ? """
+                  SELECT t.PRODUCE_NO FROM (SELECT PRODUCE_TYPE, PRODUCE_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
+                                            FROM dbo.MOC_PRODUCT_OUT_D WHERE PRODUCT_OUT_TYPE=@Type AND PRODUCT_OUT_NO=@No
+                                            GROUP BY PRODUCE_TYPE, PRODUCE_NO) t
+                  INNER JOIN dbo.MOC_PRODUCE_M m ON m.PRODUCE_TYPE=t.PRODUCE_TYPE AND m.PRODUCE_NO=t.PRODUCE_NO
+                  WHERE t.QTY+ISNULL(m.FINISHED_FITOUT_QTY,0) > ISNULL(m.FINISHED_QTY,0)
+                     OR t.SPARE_QTY+ISNULL(m.FINISHED_FITOUT_SPARE_QTY,0) > ISNULL(m.FINISHED_SPARE_QTY,0);
+                  """
+                : """
+                  SELECT t.PRODUCE_NO FROM (SELECT PRODUCE_TYPE, PRODUCE_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
+                                            FROM dbo.MOC_PRODUCT_OUT_D WHERE PRODUCT_OUT_TYPE=@Type AND PRODUCT_OUT_NO=@No
+                                            GROUP BY PRODUCE_TYPE, PRODUCE_NO) t
+                  INNER JOIN dbo.MOC_PRODUCE_M m ON m.PRODUCE_TYPE=t.PRODUCE_TYPE AND m.PRODUCE_NO=t.PRODUCE_NO
+                  WHERE t.QTY+ISNULL(m.FINISHED_SEND_QTY,0) > ISNULL(m.FINISHED_QTY,0)
+                     OR t.SPARE_QTY+ISNULL(m.FINISHED_SEND_SPARE_QTY,0) > ISNULL(m.FINISHED_SPARE_QTY,0);
+                  """,
+            type, no, token, line: r => r.GetString(0).Trim() + "  ");
+        if (exceeded is not null)
+            return new(false, "以下生产单出库数量超出制令可出库 \r\n" + exceeded);
+        var produceMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.MOC_PRODUCT_OUT_D d
+            WHERE PRODUCT_OUT_TYPE=@Type AND PRODUCT_OUT_NO=@No
+              AND NOT EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_M c
+                              WHERE c.PRODUCE_TYPE=d.PRODUCE_TYPE AND c.PRODUCE_NO=d.PRODUCE_NO);
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
+        if (produceMissing is not null) return new(false, "以下序号项制令单不存在 \r\n" + produceMissing);
+        var depotMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.MOC_PRODUCT_OUT_D d
+            WHERE PRODUCT_OUT_TYPE=@Type AND PRODUCT_OUT_NO=@No
+              AND NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=d.DEPOT_ID);
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
+        if (depotMissing is not null) return new(false, "以下序号项库别编号不存在 \r\n" + depotMissing);
+        var productMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.MOC_PRODUCT_OUT_D d
+            WHERE PRODUCT_OUT_TYPE=@Type AND PRODUCT_OUT_NO=@No
+              AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
+        if (productMissing is not null) return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
+        var batchMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.MOC_PRODUCT_OUT_D d
+            WHERE PRODUCT_OUT_TYPE=@Type AND PRODUCT_OUT_NO=@No AND ISNULL(BATCH_NO,'')=''
+              AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO AND p.MANAGE_BATCH=1);
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
+        if (batchMissing is not null) return new(false, "以下序号项需要输入批号 \r\n" + batchMissing);
+        return new(true, null);
+    }
+
+    /// <summary>工序工单（2705）AfterSave：工序工单不超制程数量。</summary>
+    private static async Task<SprocResult> MocWorkAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        var lines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT od.PRODUCE_TYPE, od.PRODUCE_NO, od.PROCESS_QTY, od.FINISHED_PLAN_QTY, sd.PROCESS_QTY
+            FROM dbo.MOC_PRODUCE_PROCESS_D od
+            INNER JOIN (SELECT PRODUCE_TYPE, PRODUCE_NO, PRODUCE_SERIAL_NO, SUM(PROCESS_QTY) PROCESS_QTY
+                        FROM dbo.MOC_WORK_D WHERE WORK_TYPE=@Type AND WORK_NO=@No
+                        GROUP BY PRODUCE_TYPE, PRODUCE_NO, PRODUCE_SERIAL_NO) sd
+              ON od.PRODUCE_TYPE=sd.PRODUCE_TYPE AND od.PRODUCE_NO=sd.PRODUCE_NO AND od.SERIAL_NO=sd.PRODUCE_SERIAL_NO
+            WHERE od.FINISHED_PLAN_QTY+sd.PROCESS_QTY > od.PROCESS_QTY;
+            """, type, no, token,
+            line: r => $"{r.GetString(0).Trim()}    {r.GetString(1).Trim()}    {Convert.ToDouble(r.GetValue(2))}    {Convert.ToDouble(r.GetValue(3))}    {Convert.ToDouble(r.GetValue(4))}");
+        return lines is null
+            ? new(true, null)
+            : new(false, "以下工序工单超出工单制程数量\r\n工单单别   单号   数量   已下工序工单数量   单据数量\r\n" + lines);
+    }
+
+    /// <summary>工序完工单（2706）AfterSave：完工不超工序工单数量。</summary>
+    private static async Task<SprocResult> MocWorkInAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        var lines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT od.WORK_TYPE, od.WORK_NO, od.PROCESS_QTY+ISNULL(od.ULLAGE_QTY,0), ISNULL(od.FINISHED_IN_QTY,0), sd.QTY
+            FROM dbo.MOC_WORK_D od
+            INNER JOIN (SELECT WORK_TYPE, WORK_NO, WORK_SERIAL_NO, SUM(QTY) QTY
+                        FROM dbo.MOC_WORK_IN_D WHERE WORK_IN_TYPE=@Type AND WORK_IN_NO=@No
+                        GROUP BY WORK_TYPE, WORK_NO, WORK_SERIAL_NO) sd
+              ON od.WORK_TYPE=sd.WORK_TYPE AND od.WORK_NO=sd.WORK_NO AND od.SERIAL_NO=sd.WORK_SERIAL_NO
+            WHERE od.FINISHED_IN_QTY+sd.QTY > od.PROCESS_QTY+ISNULL(od.ULLAGE_QTY,0);
+            """, type, no, token,
+            line: r => $"{r.GetString(0).Trim()}    {r.GetString(1).Trim()}    {Convert.ToDouble(r.GetValue(2))}    {Convert.ToDouble(r.GetValue(3))}    {Convert.ToDouble(r.GetValue(4))}");
+        return lines is null
+            ? new(true, null)
+            : new(false, "以下入库超出工序工单数量\r\n工序工单单别   单号   数量   已入库数量   单据数量\r\n" + lines);
+    }
+
+    /// <summary>收料核价单（1610）AfterSave：厂商校验。</summary>
+    private static async Task<SprocResult> PurCallbackAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        var ok = await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.PUR_CALLBACK_M m JOIN dbo.SUPPLIER c ON c.SUPPLIER_ID=m.SUPPLIER_ID
+            WHERE m.CALLBACK_TYPE=@Type AND m.CALLBACK_NO=@No AND c.BUSINESS_TAG=0;
+            """, type, no, token);
+        return ok ? new(true, null) : new(false, "厂商编号不存在或已停止交易。");
+    }
+
+    /// <summary>制造命令单变更（1509）AfterSave：原单已批核 + 变更量不小于已生产/已领料。</summary>
+    private static async Task<SprocResult> MocProduceChangeAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        if (await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.MOC_PRODUCE_M m
+            INNER JOIN dbo.MOC_PRODUCE_CHANGE_M c ON c.PRODUCE_TYPE=m.PRODUCE_TYPE AND c.PRODUCE_NO=m.PRODUCE_NO
+            WHERE c.CHANGE_PRODUCE_TYPE=@Type AND c.CHANGE_PRODUCE_NO=@No AND m.CONFIRM_TAG=0;
+            """, type, no, token))
+            return new(false, "生产单未批核，不可变更");
+        if (await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.MOC_PRODUCE_M m
+            INNER JOIN dbo.MOC_PRODUCE_CHANGE_M c ON c.PRODUCE_TYPE=m.PRODUCE_TYPE AND c.PRODUCE_NO=m.PRODUCE_NO
+            WHERE c.CHANGE_PRODUCE_TYPE=@Type AND c.CHANGE_PRODUCE_NO=@No
+              AND (ISNULL(m.FINISHED_QTY,0)>ISNULL(c.QTY,0) OR ISNULL(m.FINISHED_SPARE_QTY,0)>ISNULL(c.SPARE_QTY,0));
+            """, type, no, token))
+            return new(false, "变更后以下序号项数量小于已生产数量");
+        var lines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT oc.SERIAL_NO FROM dbo.MOC_PRODUCE_D od
+            INNER JOIN dbo.MOC_PRODUCE_CHANGE_D oc
+              ON oc.PRODUCE_TYPE=od.PRODUCE_TYPE AND oc.PRODUCE_NO=od.PRODUCE_NO AND oc.PRODUCE_SERIAL_NO=od.SERIAL_NO
+            WHERE oc.CHANGE_PRODUCE_TYPE=@Type AND oc.CHANGE_PRODUCE_NO=@No AND oc.NEED_QTY < ISNULL(od.USED_QTY,0);
+            """, type, no, token, line: r => "    " + Convert.ToInt32(r.GetValue(0)).ToString());
+        return lines is null
+            ? new(true, null)
+            : new(false, "变更后以下序号项应领料数量小于制令已领料\r\n" + lines);
+    }
+
+    /// <summary>采购单变更（1609）AfterSave：原单已批核 + 变更量不小于已收货。</summary>
+    private static async Task<SprocResult> PurPurchaseChangeAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        if (await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.PUR_PURCHASE_M m
+            INNER JOIN dbo.PUR_PURCHASE_CHANGE_M c ON c.PURCHASE_TYPE=m.PURCHASE_TYPE AND c.PURCHASE_NO=m.PURCHASE_NO
+            WHERE c.CHANGE_PURCHASE_TYPE=@Type AND c.CHANGE_PURCHASE_NO=@No AND m.CONFIRM_TAG=0;
+            """, type, no, token))
+            return new(false, "采购单未批核，不可变更");
+        var lines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT oc.SERIAL_NO FROM dbo.PUR_PURCHASE_D od
+            INNER JOIN dbo.PUR_PURCHASE_CHANGE_D oc
+              ON oc.PURCHASE_TYPE=od.PURCHASE_TYPE AND oc.PURCHASE_NO=od.PURCHASE_NO AND oc.PURCHASE_SERIAL_NO=od.SERIAL_NO
+            WHERE oc.CHANGE_PURCHASE_TYPE=@Type AND oc.CHANGE_PURCHASE_NO=@No AND oc.QTY < ISNULL(od.RECEIVE_QTY,0);
+            """, type, no, token, line: r => "    " + Convert.ToInt32(r.GetValue(0)).ToString());
+        return lines is null
+            ? new(true, null)
+            : new(false, "变更后以下序号项采购单数量小于已收货数量\r\n" + lines);
+    }
+
+    /// <summary>打样出库单（2404）AfterSave：样品库存校验。</summary>
+    private static async Task<SprocResult> SamOutAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        var lines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT d.SERIAL_NO FROM dbo.SAM_OUT_D d
+            INNER JOIN dbo.SAMPLE_PRO p ON p.PRO_NO=d.PRO_NO
+            WHERE d.OUT_TYPE=@Type AND d.OUT_NO=@No AND d.QTY > p.QTY;
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString() + "    ");
+        return lines is null
+            ? new(true, null)
+            : new(false, "以下序号项样品库存不足 \r\n" + lines);
+    }
+
+    /// <summary>客户订单变更（1418）AfterSave：原单已批核 + 变更量校验 + 订单号唯一。</summary>
+    private static async Task<SprocResult> CopOrderChangeAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        if (await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.COP_ORDER_M m
+            INNER JOIN dbo.COP_ORDER_CHANGE_M c ON c.ORDER_TYPE=m.ORDER_TYPE AND c.ORDER_NO=m.ORDER_NO
+            WHERE c.CHANGE_ORDER_TYPE=@Type AND c.CHANGE_ORDER_NO=@No AND m.CONFIRM_TAG=0;
+            """, type, no, token))
+            return new(false, "订单未批核，不可变更");
+        var lines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT oc.SERIAL_NO FROM dbo.COP_ORDER_D od
+            INNER JOIN dbo.COP_ORDER_CHANGE_D oc
+              ON oc.ORDER_TYPE=od.ORDER_TYPE AND oc.ORDER_NO=od.ORDER_NO AND oc.ORDER_SERIAL_NO=od.SERIAL_NO
+            WHERE oc.CHANGE_ORDER_TYPE=@Type AND oc.CHANGE_ORDER_NO=@No
+              AND (oc.QTY < ISNULL(od.FINISHED_SEND_QTY,0) OR oc.SPARE_QTY < ISNULL(od.FINISHED_SPARE_QTY,0)
+                OR oc.QTY < ISNULL(od.FINISHED_PRODUCE_QTY,0) OR oc.SPARE_QTY < ISNULL(od.FINISHED_PRODUCE_SPARE_QTY,0));
+            """, type, no, token, line: r => "    " + Convert.ToInt32(r.GetValue(0)).ToString());
+        if (lines is not null)
+            return new(false, "变更后以下序号项订单数量小于已完工或已送货数量\r\n" + lines);
+        var planLines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT oc.SERIAL_NO FROM dbo.COP_ORDER_D od
+            INNER JOIN dbo.COP_ORDER_CHANGE_D oc
+              ON oc.ORDER_TYPE=od.ORDER_TYPE AND oc.ORDER_NO=od.ORDER_NO AND oc.ORDER_SERIAL_NO=od.SERIAL_NO
+            WHERE oc.CHANGE_ORDER_TYPE=@Type AND oc.CHANGE_ORDER_NO=@No AND oc.PLAN_QTY < ISNULL(od.FINISHED_PRODUCE_QTY,0);
+            """, type, no, token, line: r => "    " + Convert.ToInt32(r.GetValue(0)).ToString());
+        if (planLines is not null)
+            return new(false, "变更后以下序号项计划生产数量小于已下生产单数量\r\n" + planLines);
+        // 客户订单号不重复
+        if (await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.COP_ORDER_M
+            WHERE CLIENT_ORDER_NO=(SELECT CLIENT_ORDER_NO FROM dbo.COP_ORDER_CHANGE_M
+                                   WHERE CHANGE_ORDER_TYPE=@Type AND CHANGE_ORDER_NO=@No)
+              AND ISNULL(CLIENT_ORDER_NO,'')<>''
+              AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_CHANGE_M c
+                              WHERE c.ORDER_TYPE=COP_ORDER_M.ORDER_TYPE AND c.ORDER_NO=COP_ORDER_M.ORDER_NO
+                                AND c.CHANGE_ORDER_TYPE=@Type AND c.CHANGE_ORDER_NO=@No);
+            """, type, no, token))
+            return new(false, "客户订单号重复。");
+        return new(true, null);
+    }
+
     /// <summary>
     /// 送货单（1406）AfterSave：排程/订单量校验（SYSSS 标志门控）+ 库存可用校验 +
     /// 订单一致性 + 批号 + 30 天日期 + mo_no 标记。
@@ -158,7 +561,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             INNER JOIN dbo.COP_SEND_D d ON o.ORDER_TYPE=d.ORDER_TYPE AND o.ORDER_NO=d.ORDER_NO
             INNER JOIN dbo.COP_SEND_M m ON m.SEND_TYPE=d.SEND_TYPE AND m.SEND_NO=d.SEND_NO
             WHERE m.SEND_TYPE=@Type AND m.SEND_NO=@No AND o.CLIENT_ID<>m.CLIENT_ID;
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (clientMismatch is not null)
             return new(false, "以下序号项送货单与订单客户不符 \r\n" + clientMismatch);
         var orderMissing = await FindLinesAsync(connection, transaction,
@@ -166,7 +569,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT SERIAL_NO FROM dbo.COP_SEND_D d
             WHERE SEND_TYPE=@Type AND SEND_NO=@No AND ISNULL(ORDER_TYPE,'')<>''
               AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o WHERE o.ORDER_TYPE=d.ORDER_TYPE AND o.ORDER_NO=d.ORDER_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (orderMissing is not null)
             return new(false, "以下序号项订单不存在 \r\n" + orderMissing);
         var orderProduct = await FindLinesAsync(connection, transaction,
@@ -176,7 +579,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
               AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_D o
                               WHERE o.ORDER_TYPE=d.ORDER_TYPE AND o.ORDER_NO=d.ORDER_NO
                                 AND o.SERIAL_NO=d.ORDER_SERIAL_NO AND o.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (orderProduct is not null)
             return new(false, "以下序号项订单序号与产品编号不相符 \r\n" + orderProduct);
         var productMissing = await FindLinesAsync(connection, transaction,
@@ -184,7 +587,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT SERIAL_NO FROM dbo.COP_SEND_D d
             WHERE SEND_TYPE=@Type AND SEND_NO=@No
               AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (productMissing is not null)
             return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
         var batchMissing = await FindLinesAsync(connection, transaction,
@@ -192,7 +595,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT SERIAL_NO FROM dbo.COP_SEND_D d
             WHERE SEND_TYPE=@Type AND SEND_NO=@No AND ISNULL(BATCH_NO,'')=''
               AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO AND p.MANAGE_BATCH=1);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (batchMissing is not null)
             return new(false, "以下序号项需要输入批号 \r\n" + batchMissing);
         // 送货日期不能小于建立日期 30 天
@@ -322,7 +725,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT d.SERIAL_NO FROM dbo.PUR_PURCHASE_D d
             INNER JOIN dbo.PUR_PURCHASE_M m ON m.PURCHASE_TYPE=d.PURCHASE_TYPE AND m.PURCHASE_NO=d.PURCHASE_NO
             WHERE d.PURCHASE_TYPE=@Type AND d.PURCHASE_NO=@No AND d.PLAN_DELIVERY_DATE < m.PURCHASE_DATE;
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (deliveryLines is not null)
             return new(false, "以下序号项预交日期小于采购单日期 \r\n" + deliveryLines);
         // 申购单存在
@@ -331,7 +734,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT SERIAL_NO FROM dbo.PUR_PURCHASE_D d
             WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No AND ISNULL(APPLY_TYPE,'')<>''
               AND NOT EXISTS (SELECT 1 FROM dbo.PUR_APPLY_M q WHERE q.APPLY_TYPE=d.APPLY_TYPE AND q.APPLY_NO=d.APPLY_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (applyMissing is not null)
             return new(false, "以下序号项申购单不存在 \r\n" + applyMissing);
         // 申购单序号与产品编号相符
@@ -342,7 +745,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
               AND NOT EXISTS (SELECT 1 FROM dbo.PUR_APPLY_D q
                               WHERE q.APPLY_TYPE=d.APPLY_TYPE AND q.APPLY_NO=d.APPLY_NO
                                 AND q.SERIAL_NO=d.APPLY_SERIAL_NO AND q.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (applyProduct is not null)
             return new(false, "以下序号项申购单序号与产品编号不相符 \r\n" + applyProduct);
         // 产品编号存在
@@ -351,7 +754,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT SERIAL_NO FROM dbo.PUR_PURCHASE_D d
             WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No
               AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (productMissing is not null)
             return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
 
@@ -573,7 +976,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             INNER JOIN dbo.PUR_RECEIVE_D d ON o.PURCHASE_TYPE=d.PURCHASE_TYPE AND o.PURCHASE_NO=d.PURCHASE_NO
             INNER JOIN dbo.PUR_RECEIVE_M m ON m.RECEIVE_TYPE=d.RECEIVE_TYPE AND m.RECEIVE_NO=d.RECEIVE_NO
             WHERE m.RECEIVE_TYPE=@Type AND m.RECEIVE_NO=@No AND o.SUPPLIER_ID<>m.SUPPLIER_ID;
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (supplierMismatch is not null)
             return new(false, "以下序号项收料单与采购单厂商不符 \r\n" + supplierMismatch);
         // 采购单存在
@@ -582,7 +985,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT SERIAL_NO FROM dbo.PUR_RECEIVE_D d
             WHERE RECEIVE_TYPE=@Type AND RECEIVE_NO=@No AND ISNULL(PURCHASE_TYPE,'')<>''
               AND NOT EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_M o WHERE o.PURCHASE_TYPE=d.PURCHASE_TYPE AND o.PURCHASE_NO=d.PURCHASE_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (purchaseMissing is not null)
             return new(false, "以下序号项采购订单不存在 \r\n" + purchaseMissing);
         // 采购订单序号与产品编号相符
@@ -593,7 +996,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
               AND NOT EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_D o
                               WHERE o.PURCHASE_TYPE=d.PURCHASE_TYPE AND o.PURCHASE_NO=d.PURCHASE_NO
                                 AND o.SERIAL_NO=d.PURCHASE_SERIAL_NO AND o.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (purchaseProduct is not null)
             return new(false, "以下序号项采购订单序号与产品编号不相符 \r\n" + purchaseProduct);
         // 产品编号存在
@@ -602,7 +1005,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT SERIAL_NO FROM dbo.PUR_RECEIVE_D d
             WHERE RECEIVE_TYPE=@Type AND RECEIVE_NO=@No
               AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (productMissing is not null)
             return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
         // 需批号产品必须填写 BATCH_NO
@@ -611,7 +1014,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT SERIAL_NO FROM dbo.PUR_RECEIVE_D d
             WHERE RECEIVE_TYPE=@Type AND RECEIVE_NO=@No AND ISNULL(BATCH_NO,'')=''
               AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO AND p.MANAGE_BATCH=1);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (batchMissing is not null)
             return new(false, "以下序号项需要输入批号 \r\n" + batchMissing);
         // 收料数量不超出采购数量（+0.1 容差）
@@ -646,7 +1049,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT SERIAL_NO FROM dbo.PUR_APPLY_D d
             WHERE APPLY_TYPE=@Type AND APPLY_NO=@No
               AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (productMissing is not null)
             return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
 
@@ -940,7 +1343,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT d.SERIAL_NO FROM dbo.COP_ORDER_D d
             JOIN dbo.COP_ORDER_M m ON m.ORDER_TYPE=d.ORDER_TYPE AND m.ORDER_NO=d.ORDER_NO
             WHERE d.ORDER_TYPE=@Type AND d.ORDER_NO=@No AND d.PRE_SEND_DATE < m.ORDER_DATE;
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (preSendLines is not null)
             return new(false, "以下序号项预交日期小于订单日期 \r\n" + preSendLines);
         // 报价单与订单客户一致
@@ -950,7 +1353,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             INNER JOIN dbo.COP_ORDER_D d ON q.QUOTE_TYPE=d.QUOTE_TYPE AND q.QUOTE_NO=d.QUOTE_NO
             INNER JOIN dbo.COP_ORDER_M m ON m.ORDER_TYPE=d.ORDER_TYPE AND m.ORDER_NO=d.ORDER_NO
             WHERE m.ORDER_TYPE=@Type AND m.ORDER_NO=@No AND q.CLIENT_ID<>m.CLIENT_ID;
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (quoteMismatch is not null)
             return new(false, "以下序号项报价单与订单客户不符 \r\n" + quoteMismatch);
         // 报价单存在
@@ -959,7 +1362,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT SERIAL_NO FROM dbo.COP_ORDER_D d
             WHERE ORDER_TYPE=@Type AND ORDER_NO=@No AND ISNULL(QUOTE_TYPE,'')<>''
               AND NOT EXISTS (SELECT 1 FROM dbo.COP_QUOTE_M q WHERE q.QUOTE_TYPE=d.QUOTE_TYPE AND q.QUOTE_NO=d.QUOTE_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (quoteMissing is not null)
             return new(false, "以下序号项报价单不存在 \r\n" + quoteMissing);
         // 报价单序号与产品编号相符
@@ -970,7 +1373,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
               AND NOT EXISTS (SELECT 1 FROM dbo.COP_QUOTE_D q
                               WHERE q.QUOTE_TYPE=d.QUOTE_TYPE AND q.QUOTE_NO=d.QUOTE_NO
                                 AND q.SERIAL_NO=d.QUOTE_SERIAL_NO AND q.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (quoteProduct is not null)
             return new(false, "以下序号项报价单序号与产品编号不相符 \r\n" + quoteProduct);
         // 产品编号存在
@@ -979,7 +1382,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT SERIAL_NO FROM dbo.COP_ORDER_D d
             WHERE ORDER_TYPE=@Type AND ORDER_NO=@No
               AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (productMissing is not null)
             return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
         return new(true, null);
@@ -1005,7 +1408,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             INNER JOIN dbo.PUR_QUOTE_D d ON q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO
             INNER JOIN dbo.PUR_QUOTE_M m ON m.QUOTE_TYPE=d.QUOTE_TYPE AND m.QUOTE_NO=d.QUOTE_NO
             WHERE m.QUOTE_TYPE=@Type AND m.QUOTE_NO=@No AND q.SUPPLIER_ID<>m.SUPPLIER_ID;
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (mismatchLines is not null)
             return new(false, "以下序号项询价单与报价单厂商不符 \r\n" + mismatchLines);
         var missingLines = await FindLinesAsync(connection, transaction,
@@ -1013,7 +1416,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT SERIAL_NO FROM dbo.PUR_QUOTE_D d
             WHERE QUOTE_TYPE=@Type AND QUOTE_NO=@No AND ISNULL(CHAFFER_TYPE,'')<>''
               AND NOT EXISTS (SELECT 1 FROM dbo.PUR_CHAFFER_M q WHERE q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (missingLines is not null)
             return new(false, "以下序号项询价单不存在 \r\n" + missingLines);
         // 询价单序号与产品编号相符
@@ -1024,7 +1427,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
               AND NOT EXISTS (SELECT 1 FROM dbo.PUR_CHAFFER_D q
                               WHERE q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO
                                 AND q.SERIAL_NO=d.CHAFFER_SERIAL_NO AND q.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (productMismatch is not null)
             return new(false, "以下序号项询价单序号与产品编号不相符 \r\n" + productMismatch);
         return new(true, null);
@@ -1096,7 +1499,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             INNER JOIN dbo.COP_QUOTE_D d ON q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO
             INNER JOIN dbo.COP_QUOTE_M m ON m.QUOTE_TYPE=d.QUOTE_TYPE AND m.QUOTE_NO=d.QUOTE_NO
             WHERE m.QUOTE_TYPE=@Type AND m.QUOTE_NO=@No AND q.CLIENT_ID<>m.CLIENT_ID;
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (mismatchLines is not null)
             return new(false, "以下序号项询价单与报价单客户不符 \r\n" + mismatchLines);
         // 询价单不存在
@@ -1105,7 +1508,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             SELECT SERIAL_NO FROM dbo.COP_QUOTE_D d
             WHERE QUOTE_TYPE=@Type AND QUOTE_NO=@No AND ISNULL(CHAFFER_TYPE,'')<>''
               AND NOT EXISTS (SELECT 1 FROM dbo.COP_CHAFFER_M q WHERE q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (missingLines is not null)
             return new(false, "以下序号项询价单不存在 \r\n" + missingLines);
         return new(true, null);
@@ -1146,7 +1549,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                               WHERE s.SEND_TYPE=d.S_R_TYPE AND s.SEND_NO=d.S_R_NO AND s.SERIAL_NO=d.S_R_SERIAL_NO)
               AND NOT EXISTS (SELECT 1 FROM dbo.COP_RETURN_D s
                               WHERE s.RETURN_TYPE=d.S_R_TYPE AND s.RETURN_NO=d.S_R_NO AND s.SERIAL_NO=d.S_R_SERIAL_NO);
-            """, type, no, token, line: r => r.GetInt32(0).ToString());
+            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (missingLines is not null)
             return new(false, "以下序号项送/退货单不存在 \r\n" + missingLines);
 
