@@ -53,6 +53,7 @@ public sealed class DocumentWorkbenchRepository(
     FieldAdminRepository fieldAdmin,
     ControlledSprocInvoker controlledSprocs,
     WorkflowEngine workflowEngine,
+    DomainRuleService domainRules,
     ILogger<DocumentWorkbenchRepository> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
@@ -766,7 +767,14 @@ public sealed class DocumentWorkbenchRepository(
         var detailErrors=await SaveDetailsAsync(connection,transaction,definition,form,pkColumns,keyValues,values,request.Details??[],employeeName,true,token);
         if(detailErrors is not null)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","明细数据校验未通过。",detailErrors);
         await SavePrepayOffsetsAsync(connection,transaction,businessRule,pkColumns,keyValues,request.PrepayOffsets,token);
-        if(businessRule?.AfterSaveSproc is { } afterSaveSproc)
+        if(businessRule?.DomainRule is { } domainRule)
+        {
+            var domainResult=await domainRules.RunAfterSaveAsync(domainRule,connection,transaction,definition,pkColumns,keyValues,token);
+            if(!domainResult.Success)
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"BUSINESS_VALIDATION_FAILED",
+                    domainResult.Message??"保存后业务校验未通过。");
+        }
+        else if(businessRule?.AfterSaveSproc is { } afterSaveSproc)
         {
             var sprocResult=await controlledSprocs.RunAfterSaveAsync(definition.ModuleId,afterSaveSproc,pkColumns,keyValues,connection,transaction,token);
             if(!sprocResult.Success)
@@ -853,7 +861,14 @@ public sealed class DocumentWorkbenchRepository(
         if(detailErrors is not null)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","明细数据校验未通过。",detailErrors);
         var businessRule=definition.BusinessRule;
         await SavePrepayOffsetsAsync(connection,transaction,businessRule,pkColumns,keyValues,request.PrepayOffsets,token);
-        if(businessRule?.AfterSaveSproc is { } afterSaveSproc)
+        if(businessRule?.DomainRule is { } domainRule)
+        {
+            var domainResult=await domainRules.RunAfterSaveAsync(domainRule,connection,transaction,definition,pkColumns,keyValues,token);
+            if(!domainResult.Success)
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"BUSINESS_VALIDATION_FAILED",
+                    domainResult.Message??"保存后业务校验未通过。");
+        }
+        else if(businessRule?.AfterSaveSproc is { } afterSaveSproc)
         {
             var sprocResult=await controlledSprocs.RunAfterSaveAsync(definition.ModuleId,afterSaveSproc,pkColumns,keyValues,connection,transaction,token);
             if(!sprocResult.Success)
