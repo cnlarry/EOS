@@ -71,8 +71,10 @@ public static class BillNoGenerator
         var (title, width) = BuildCode(expression, DateTime.Now);
         if (width == 0) return title;
 
-        // 取该单别 + 字头前缀下的最大单号（等价旧 GetMaxID）
-        var maxSql = $"SELECT MAX([{billNoField}]) FROM dbo.[{masterTable}] WITH (NOLOCK) WHERE [{billNoField}] LIKE @Prefix + '%' AND [{billTypeField}]=@BillCode";
+        // 取该单别 + 字头前缀下的最大单号（等价旧 GetMaxID）。
+        // UPDLOCK+HOLDLOCK：事务内对匹配前缀加更新/范围锁，串行化并发取号，
+        // 消除"取最大号+1"的并发撞号；调用方必须传入保存事务（CreateRecordAsync 保证）。
+        var maxSql = $"SELECT MAX([{billNoField}]) FROM dbo.[{masterTable}] WITH (UPDLOCK, HOLDLOCK) WHERE [{billNoField}] LIKE @Prefix + '%' AND [{billTypeField}]=@BillCode";
         await using var maxCommand = new SqlCommand(maxSql, connection, transaction);
         maxCommand.Parameters.Add("@Prefix", SqlDbType.NVarChar, 100).Value = title;
         maxCommand.Parameters.Add("@BillCode", SqlDbType.NVarChar, 50).Value = billCode;

@@ -692,6 +692,7 @@ public sealed class DocumentWorkbenchRepository(
         FormDefinition form,
         SaveRecordRequest request,
         string employeeName,
+        string userId,
         string? dataFilter,
         CancellationToken token)
     {
@@ -767,6 +768,7 @@ public sealed class DocumentWorkbenchRepository(
                     sprocResult.Message??"保存后业务校验未通过。");
         }
         await RecalculateMasterAmountsAsync(connection,transaction,definition,token);
+        await WriteAuditAsync(connection,transaction,definition.ModuleId,string.Join(',',keyValues),"INSERT","新增记录",userId,token);
         await transaction.CommitAsync(token);
         logger.LogInformation("统一表单新增 module={ModuleId} master={Master} key={Key}",definition.ModuleId,definition.MasterTable,string.Join(',',keyValues));
         return RecordSaveResult.Success(keyValues);
@@ -778,6 +780,7 @@ public sealed class DocumentWorkbenchRepository(
         IReadOnlyList<string> keyValues,
         SaveRecordRequest request,
         string employeeName,
+        string userId,
         string? dataFilter,
         CancellationToken token)
     {
@@ -852,6 +855,16 @@ public sealed class DocumentWorkbenchRepository(
                     sprocResult.Message??"保存后业务校验未通过。");
         }
         await RecalculateMasterAmountsAsync(connection,transaction,definition,token);
+        var changes = new List<string>();
+        foreach (var (key,value) in validation.Converted)
+        {
+            var field=form.MasterFields.FirstOrDefault(item=>item.Key.Equals(key,StringComparison.OrdinalIgnoreCase));
+            var oldValue=current.GetValueOrDefault(key);
+            if(field is not null&&!ValuesEqual(oldValue,value))
+                changes.Add($"{field.Label}：{ValueToString(oldValue)}-->{ValueToString(value)}<BR>");
+        }
+        await WriteAuditAsync(connection,transaction,definition.ModuleId,string.Join(',',keyValues),"UPDATE",
+            changes.Count>0?string.Join("",changes):"修改记录",userId,token);
         await transaction.CommitAsync(token);
         logger.LogInformation("统一表单修改 module={ModuleId} master={Master} key={Key}",definition.ModuleId,definition.MasterTable,string.Join(',',keyValues));
         return RecordSaveResult.Success(keyValues);
@@ -861,6 +874,7 @@ public sealed class DocumentWorkbenchRepository(
         WorkbenchDefinition definition,
         FormDefinition form,
         IReadOnlyList<string> keyValues,
+        string userId,
         string? dataFilter,
         CancellationToken token)
     {
@@ -884,6 +898,7 @@ public sealed class DocumentWorkbenchRepository(
         AddKeyParameters(command,pkColumns,keyValues);
         var affected=await command.ExecuteNonQueryAsync(token);
         if(affected==0)return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
+        await WriteAuditAsync(connection,transaction,definition.ModuleId,string.Join(',',keyValues),"DELETE","删除记录",userId,token);
         await transaction.CommitAsync(token);
         logger.LogInformation("统一表单删除 module={ModuleId} master={Master} key={Key}",definition.ModuleId,definition.MasterTable,string.Join(',',keyValues));
         return RecordSaveResult.Success(keyValues);
@@ -898,6 +913,7 @@ public sealed class DocumentWorkbenchRepository(
         IReadOnlyList<string> keyValues,
         bool approve,
         string employeeName,
+        string userId,
         CancellationToken token)
     {
         var rule=definition.BusinessRule;
@@ -936,6 +952,8 @@ public sealed class DocumentWorkbenchRepository(
                 result.Message??(approve?"批核失败。":"解批失败。"));
         }
         logger.LogInformation("统一表单{Action} module={ModuleId} key={Key}",approve?"批核":"解批",definition.ModuleId,string.Join(',',keyValues));
+        await WriteAuditAsync(connection,null,definition.ModuleId,string.Join(',',keyValues),
+            approve?"APPROVE":"DEAPPROVE",approve?"批核":"解批",userId,token);
         return RecordSaveResult.Success(keyValues);
     }
 
@@ -1517,6 +1535,35 @@ public sealed class DocumentWorkbenchRepository(
 
     private static bool IsNumeric(object value)=>value is sbyte or byte or short or ushort or int or uint
         or long or ulong or float or double or decimal;
+
+    /// <summary>
+    /// 写操作审计留痕（旧库 SYSDF 系统日志表，不新建表）。
+    /// TYPE：INSERT/UPDATE/DELETE/APPROVE/DEAPPROVE；RECORD_IDX 为主键值逗号连接。
+    /// </summary>
+    private static async Task WriteAuditAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        int moduleId,
+        string recordKey,
+        string type,
+        string content,
+        string executor,
+        CancellationToken token)
+    {
+        const string sql = """
+            INSERT INTO dbo.SYSDF (M_IDX, RECORD_IDX, CONTENT, TYPE, EXEC_BY, EXEC_DATE, CI, OPERFLAG)
+            VALUES (@ModuleId, @RecordKey, @Content, @Type, @ExecBy, GETDATE(), NULL, 1);
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        command.Parameters.Add("@RecordKey", SqlDbType.NVarChar, 100).Value =
+            recordKey.Length > 100 ? recordKey[..100] : recordKey;
+        command.Parameters.Add("@Content", SqlDbType.NVarChar, 1000).Value =
+            content.Length > 1000 ? content[..1000] : content;
+        command.Parameters.Add("@Type", SqlDbType.NVarChar, 50).Value = type;
+        command.Parameters.Add("@ExecBy", SqlDbType.NVarChar, 50).Value = executor;
+        await command.ExecuteNonQueryAsync(token);
+    }
 
     #endregion
 
