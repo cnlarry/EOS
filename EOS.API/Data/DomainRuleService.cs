@@ -33,6 +33,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "cop-prepay" => await CopPrepayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-quote" => await CopQuoteAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-account" => await CopAccountAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "pur-quote" => await PurQuoteAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-pay" => await PurPayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-prepay" => await PurPrepayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 _ => new(false, $"未登记的领域规则：{ruleName}"),
@@ -96,6 +97,51 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         command.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = dueType;
         command.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = dueNo;
         await command.ExecuteNonQueryAsync(token);
+        return new(true, null);
+    }
+
+    /// <summary>厂商报价单（1604）AfterSave：厂商校验 + 询价单一致性校验（镜像 cop-quote，厂商侧）。</summary>
+    private static async Task<SprocResult> PurQuoteAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+        var supplierOk = await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.PUR_QUOTE_M m JOIN dbo.SUPPLIER c ON c.SUPPLIER_ID=m.SUPPLIER_ID
+            WHERE m.QUOTE_TYPE=@Type AND m.QUOTE_NO=@No AND c.BUSINESS_TAG=0;
+            """, type, no, token);
+        if (!supplierOk) return new(false, "厂商编号不存在或已停止交易。");
+        var mismatchLines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT d.SERIAL_NO
+            FROM dbo.PUR_CHAFFER_M q
+            INNER JOIN dbo.PUR_QUOTE_D d ON q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO
+            INNER JOIN dbo.PUR_QUOTE_M m ON m.QUOTE_TYPE=d.QUOTE_TYPE AND m.QUOTE_NO=d.QUOTE_NO
+            WHERE m.QUOTE_TYPE=@Type AND m.QUOTE_NO=@No AND q.SUPPLIER_ID<>m.SUPPLIER_ID;
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (mismatchLines is not null)
+            return new(false, "以下序号项询价单与报价单厂商不符 \r\n" + mismatchLines);
+        var missingLines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.PUR_QUOTE_D d
+            WHERE QUOTE_TYPE=@Type AND QUOTE_NO=@No AND ISNULL(CHAFFER_TYPE,'')<>''
+              AND NOT EXISTS (SELECT 1 FROM dbo.PUR_CHAFFER_M q WHERE q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (missingLines is not null)
+            return new(false, "以下序号项询价单不存在 \r\n" + missingLines);
+        // 询价单序号与产品编号相符
+        var productMismatch = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.PUR_QUOTE_D d
+            WHERE QUOTE_TYPE=@Type AND QUOTE_NO=@No AND ISNULL(CHAFFER_TYPE,'')<>''
+              AND NOT EXISTS (SELECT 1 FROM dbo.PUR_CHAFFER_D q
+                              WHERE q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO
+                                AND q.SERIAL_NO=d.CHAFFER_SERIAL_NO AND q.PRO_NO=d.PRO_NO);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (productMismatch is not null)
+            return new(false, "以下序号项询价单序号与产品编号不相符 \r\n" + productMismatch);
         return new(true, null);
     }
 
