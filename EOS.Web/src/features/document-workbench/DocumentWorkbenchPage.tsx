@@ -162,9 +162,9 @@ export function DocumentWorkbenchPage() {
   })),[detail,hasPermission])
   const rowSelection=useMemo<RowSelectionState>(()=>Object.fromEntries(Object.keys(selected).map(key=>[key,true])),[selected])
 
-  const rowKey=(row:Record<string,unknown>)=>{const keys=master.filter(field=>field.isPrimaryKey).map(field=>String(row[field.key]??''));return keys.length?keys.join('|'):JSON.stringify(row)}
+  const rowKey=(row:Record<string,unknown>)=>{const keys=(definition.data?.masterPkOrder??[]).map(column=>String(row[column]??''));return keys.some(key=>key!=='')?keys.join('|'):JSON.stringify(row)}
   const active=activeKey?selected[activeKey]??records.data?.rows.find(row=>rowKey(row)===activeKey)??null:null
-  const keys=useMemo(()=>master.filter(field=>field.isPrimaryKey).reduce<Record<string,string>>((result,field)=>{if(active?.[field.key]!=null)result[field.key]=String(active[field.key]);return result},{}),[active,master])
+  const keys=useMemo(()=>(definition.data?.masterPkOrder??[]).reduce<Record<string,string>>((result,column)=>{if(active?.[column]!=null)result[column]=String(active[column]);return result},{}),[active,definition.data?.masterPkOrder])
   const details=useQuery({queryKey:['workbench',moduleId,'details',keys,detailSort],queryFn:()=>apiClient.get<DataResponse>(`/document-workbench/${moduleId}/details`,{query:{...keys,sortField:detailSort?.field,sortDirection:detailSort?.direction}}),enabled:Boolean(active&&definition.data?.detailTable)})
   const widthSaveQueue=useRef<{detail:boolean;fieldKey:string;width:number}|null>(null)
   const widthSaveRunning=useRef(false)

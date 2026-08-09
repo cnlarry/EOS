@@ -441,10 +441,20 @@ public sealed class DocumentWorkbenchRepository(
         var table=detail?definition.DetailTable:definition.MasterTable; var fields=detail?definition.DetailFields:definition.MasterFields;
         page=Math.Max(1,page); pageSize=Math.Clamp(pageSize,10,100);
         if (table is null || fields.Count==0) return new([],0,page,pageSize);
-        var selected=fields.Take(30).ToList(); var predicates=new List<string>();
+        var selected=fields.Take(30).ToList();
+        // 行标识必须稳定：物理主键列无论是否可见/是否被截断，都强制包含在返回行中。
+        // MasterPkOrder 来自 INFORMATION_SCHEMA 主键约束（服务端白名单），不信任前端提交。
+        foreach(var pk in definition.MasterPkOrder)
+        {
+            if(selected.Any(field=>field.Key.Equals(pk,StringComparison.OrdinalIgnoreCase)))continue;
+            var field=fields.FirstOrDefault(item=>item.Key.Equals(pk,StringComparison.OrdinalIgnoreCase));
+            if(field is null&&Identifier.IsMatch(pk))field=new WorkbenchField(pk,pk,"nvarchar",100,"left",true,false,false);
+            if(field is not null)selected.Add(field);
+        }
+        var predicates=new List<string>();
         var stopwatch=Stopwatch.StartNew();
         await using var connection=CreateConnection(); await connection.OpenAsync(token); await using var command=new SqlCommand(); command.Connection=connection;
-        if (detail) foreach(var key in definition.MasterFields.Where(field=>field.IsPrimaryKey)) if(keys.TryGetValue(key.Key,out var value) && definition.DetailFields.Any(field=>field.Key.Equals(key.Key,StringComparison.OrdinalIgnoreCase))) { var name=$"@k{predicates.Count}"; predicates.Add($"[{key.Key}]={name}"); command.Parameters.AddWithValue(name,value); }
+        if (detail) foreach(var key in definition.MasterPkOrder) if(keys.TryGetValue(key,out var value) && definition.DetailFields.Any(field=>field.Key.Equals(key,StringComparison.OrdinalIgnoreCase))) { var name=$"@k{predicates.Count}"; predicates.Add($"[{key}]={name}"); command.Parameters.AddWithValue(name,value); }
         if(detail && predicates.Count==0)
         {
             logger.LogDebug("子表查询缺少主表关联键，跳过 detail={Detail} table={Table}", detail, table);
