@@ -38,11 +38,13 @@ public static class ModuleBusinessMap
             [1604] = new(1604, null, "P_WF_PUR_QUOTE", true, "QUOTE_NO", "QUOTE_TYPE",
                 DomainRule: "pur-quote"),
             // 1615 成品请购单
-            [1615] = new(1615, "P_PUR_APPLY_After_Save", "P_WF_PUR_APPLY", true, "APPLY_NO", "APPLY_TYPE"),
+            [1615] = new(1615, null, "P_WF_PUR_APPLY", true, "APPLY_NO", "APPLY_TYPE",
+                DomainRule: "pur-apply"),
             // 1606 采购单
             [1606] = new(1606, "P_PUR_PURCHASE_After_Save", "P_WF_PUR_PURCHASE", true, "PURCHASE_NO", "PURCHASE_TYPE"),
             // 1607 收料单
-            [1607] = new(1607, "P_PUR_RECEIVE_After_Save", "P_WF_PUR_RECEIVE", true, "RECEIVE_NO", "RECEIVE_TYPE"),
+            [1607] = new(1607, null, "P_WF_PUR_RECEIVE", true, "RECEIVE_NO", "RECEIVE_TYPE",
+                DomainRule: "pur-receive"),
             // 1406 送货单
             [1406] = new(1406, "P_COP_SEND_JING_After_Save", "P_WF_COP_SEND", true, "SEND_NO", "SEND_TYPE"),
             // 1408 出货通知单：无 SP，仅自动单号（默认单别 CHPC，历史配置待业务确认）
