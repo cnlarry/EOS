@@ -21,7 +21,7 @@ import { alignClass, formatFieldValue } from './fieldFormat'
 import { FieldBrowseLink } from './FieldBrowseLink'
 import { readListState, writeListState } from './listStateUrl'
 
-interface Field { key:string; label:string; dataType:string; width:number; align:string; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null }
+interface Field { key:string; label:string; dataType:string; width:number; align:string; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; isVirtual?:boolean }
 interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean }
 interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number }
 interface ColumnSetting { key:string; label:string; isVisible:boolean; order:number }
@@ -118,7 +118,7 @@ export function DocumentWorkbenchPage() {
       id:field.key,
       accessorKey:field.key,
       header:field.label,
-      enableSorting:true,
+      enableSorting:!field.isVirtual,
       meta:{
         className:alignClass(field.headerAlign),
         cellClassName:alignClass(field.align),
@@ -142,7 +142,7 @@ export function DocumentWorkbenchPage() {
     id:field.key,
     accessorKey:field.key,
     header:field.label,
-    enableSorting:true,
+    enableSorting:!field.isVirtual,
     meta:{
       className:alignClass(field.headerAlign),
       cellClassName:alignClass(field.align),

@@ -4,11 +4,12 @@ using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using System.Text.Json.Serialization;
 
 namespace EOS.API.Data;
 
-public sealed record WorkbenchField(string Key, string Label, string DataType, int Width, string Align, bool IsPrimaryKey, bool IsVisible = true, bool IsQueryable = true, string HeaderAlign = "center", string? Format = null, string? BrowseUrl = null, int? BrowseModuleId = null);
-public sealed record WorkbenchColumn(string Key, string Label, bool IsVisible, int Order);
+public sealed record WorkbenchField(string Key, string Label, string DataType, int Width, string Align, bool IsPrimaryKey, bool IsVisible = true, bool IsQueryable = true, string HeaderAlign = "center", string? Format = null, string? BrowseUrl = null, int? BrowseModuleId = null, bool IsVirtual = false, [property: JsonIgnore] string? VirtualExpression = null);
+public sealed record WorkbenchColumn(string Key, string Label, bool IsVisible, int Order, bool IsVirtual = false);
 public sealed record WorkbenchColumnSettings(IReadOnlyList<WorkbenchColumn> Master, IReadOnlyList<WorkbenchColumn> Detail);
 public sealed record SaveWorkbenchColumns(IReadOnlyList<string> Master, IReadOnlyList<string> Detail);
 public sealed record WorkbenchFieldSummary(string Key,string Label,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsCost,bool IsSecrecy,bool IsVirtual);
@@ -470,7 +471,10 @@ public sealed class DocumentWorkbenchRepository(
         if (!detail) ApplyExecTagScope(definition, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,detail,sortField,sortDirection);
-        command.CommandText=$"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {string.Join(',',selected.Select(field=>$"[{field.Key}]"))} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
+        var selection=await BuildListSelectionAsync(connection,table,selected,token);
+        command.CommandText=selection.HasVirtual
+            ? $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {selection.OuterColumns} FROM (SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where}) AS [__base]{selection.JoinFragment} ORDER BY {QualifyOrder(order)} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;"
+            : $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
         command.Parameters.Add("@Offset",SqlDbType.Int).Value=(page-1)*pageSize;command.Parameters.Add("@PageSize",SqlDbType.Int).Value=pageSize;
         await using var reader=await command.ExecuteReaderAsync(token); await reader.ReadAsync(token);var total=Convert.ToInt32(reader.GetInt64(0));await reader.NextResultAsync(token); var rows=new List<Dictionary<string,object?>>();
         while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase); for(var i=0;i<reader.FieldCount;i++) row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i); rows.Add(row);}
@@ -493,7 +497,10 @@ public sealed class DocumentWorkbenchRepository(
         ApplyExecTagScope(definition, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,false,sortField,sortDirection);
-        command.CommandText=$"SELECT TOP {maxExportRows} {string.Join(',',selected.Select(field=>$"[{field.Key}]"))} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order};";
+        var selection=await BuildListSelectionAsync(connection,table,selected,token);
+        command.CommandText=selection.HasVirtual
+            ? $"SELECT TOP {maxExportRows} {selection.OuterColumns} FROM (SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where}) AS [__base]{selection.JoinFragment} ORDER BY {QualifyOrder(order)};"
+            : $"SELECT TOP {maxExportRows} {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order};";
         await using var reader=await command.ExecuteReaderAsync(token); var rows=new List<Dictionary<string,object?>>();
         while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase); for(var i=0;i<reader.FieldCount;i++) row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i); rows.Add(row);}
         logger.LogDebug("工作台导出完成 table={Table} returned={RowCount} elapsedMs={ElapsedMs:F0}", table,rows.Count,stopwatch.Elapsed.TotalMilliseconds);
@@ -533,7 +540,10 @@ public sealed class DocumentWorkbenchRepository(
         }
         if(orParts.Count==0)return [];
         var filterWhere=filterPredicates.Count>0?" AND "+string.Join(" AND ",filterPredicates):"";
-        command.CommandText=$"SELECT {string.Join(',',selected.Select(field=>$"[{field.Key}]"))} FROM dbo.[{table}] WITH (NOLOCK) WHERE {string.Join(" OR ",orParts)}{filterWhere};";
+        var selection=await BuildListSelectionAsync(connection,table,selected,token);
+        command.CommandText=selection.HasVirtual
+            ? $"SELECT {selection.OuterColumns} FROM (SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK) WHERE {string.Join(" OR ",orParts)}{filterWhere}) AS [__base]{selection.JoinFragment};"
+            : $"SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK) WHERE {string.Join(" OR ",orParts)}{filterWhere};";
         await using var reader=await command.ExecuteReaderAsync(token);
         var rows=new List<Dictionary<string,object?>>();
         while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);for(var i=0;i<reader.FieldCount;i++)row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i);rows.Add(row);}
@@ -1624,11 +1634,18 @@ public sealed class DocumentWorkbenchRepository(
     private static async Task<IReadOnlyList<WorkbenchColumn>> ReadDefaultColumnSettings(SqlConnection connection,string masterTable,string targetTable,CancellationToken token)
     {
         const string sql="""
-            SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),CAST(CASE WHEN d.F_ID IS NULL THEN 0 ELSE 1 END AS bit),COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999))
+            SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),CAST(CASE WHEN d.F_ID IS NULL THEN 0 ELSE 1 END AS bit),COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),CAST(COALESCE(f.IS_VIRTUAL,0) AS bit)
             FROM dbo.FIELDS f WITH (NOLOCK) LEFT JOIN dbo.SYSQL_DEFAULT d WITH (NOLOCK) ON d.T_ID=@MasterTable AND d.T_ID_R=@TargetTable AND LTRIM(RTRIM(d.F_ID))=LTRIM(RTRIM(f.F_ID))
-            WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0 AND COALESCE(f.IS_COST,0)=0 AND COALESCE(f.IS_SECRECY,0)=0 ORDER BY CASE WHEN d.F_ID IS NULL THEN 1 ELSE 0 END,COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
+            WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_COST,0)=0 AND COALESCE(f.IS_SECRECY,0)=0 ORDER BY CASE WHEN d.F_ID IS NULL THEN 1 ELSE 0 END,COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
             """;
-        await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@MasterTable",SqlDbType.NVarChar,100).Value=masterTable;command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;await using var reader=await command.ExecuteReaderAsync(token);var result=new List<WorkbenchColumn>();var order=0;while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),++order));}return result;
+        await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@MasterTable",SqlDbType.NVarChar,100).Value=masterTable;command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;
+        var result=new List<WorkbenchColumn>();
+        await using(var reader=await command.ExecuteReaderAsync(token))
+        {
+            var order=0;
+            while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),++order,reader.GetBoolean(4)));}
+        }
+        return await DropUnresolvableVirtualColumnsAsync(connection,targetTable,result,token);
     }
 
     private static async Task<IReadOnlyList<WorkbenchColumn>> ReadColumnSettings(SqlConnection connection,string userId,string masterTable,string targetTable,CancellationToken token,bool defaultsOnly=false)
@@ -1636,12 +1653,50 @@ public sealed class DocumentWorkbenchRepository(
         const string sql="""
             WITH UserFields AS (SELECT LTRIM(RTRIM(F_ID)) F_ID,F_IDX FROM dbo.SYSQL_FIELDS WITH (NOLOCK) WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable),
             HasConfig AS (SELECT CASE WHEN EXISTS(SELECT 1 FROM UserFields) THEN 1 ELSE 0 END Value)
-            SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),CAST(CASE WHEN (h.Value=1 AND u.F_ID IS NOT NULL) OR (h.Value=0 AND COALESCE(f.IS_DEFAULT_FIELDS,0)=1) THEN 1 ELSE 0 END AS bit),COALESCE(u.F_IDX,COALESCE(f.VERIFY_INDEX,999))
+            SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),CAST(CASE WHEN (h.Value=1 AND u.F_ID IS NOT NULL) OR (h.Value=0 AND COALESCE(f.IS_DEFAULT_FIELDS,0)=1) THEN 1 ELSE 0 END AS bit),COALESCE(u.F_IDX,COALESCE(f.VERIFY_INDEX,999)),CAST(COALESCE(f.IS_VIRTUAL,0) AS bit)
             FROM dbo.FIELDS f WITH (NOLOCK) CROSS JOIN HasConfig h LEFT JOIN UserFields u ON u.F_ID=LTRIM(RTRIM(f.F_ID))
-            WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0 ORDER BY CASE WHEN u.F_IDX IS NULL THEN 1 ELSE 0 END,COALESCE(u.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
+            WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1 ORDER BY CASE WHEN u.F_IDX IS NULL THEN 1 ELSE 0 END,COALESCE(u.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
             """;
         await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();command.Parameters.Add("@MasterTable",SqlDbType.NVarChar,100).Value=masterTable;command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;
-        await using var reader=await command.ExecuteReaderAsync(token);var result=new List<WorkbenchColumn>();var order=0;while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),++order));}return result;
+        var result=new List<WorkbenchColumn>();
+        await using(var reader=await command.ExecuteReaderAsync(token))
+        {
+            var order=0;
+            while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),++order,reader.GetBoolean(4)));}
+        }
+        return await DropUnresolvableVirtualColumnsAsync(connection,targetTable,result,token);
+    }
+
+    /// <summary>
+    /// 列设置中剔除无法受控解析的虚拟字段（与 ReadFields 口径一致，避免列编辑器中
+    /// 出现"勾选但列表不渲染"的列）。
+    /// </summary>
+    private static async Task<IReadOnlyList<WorkbenchColumn>> DropUnresolvableVirtualColumnsAsync(
+        SqlConnection connection,
+        string targetTable,
+        IReadOnlyList<WorkbenchColumn> columns,
+        CancellationToken token)
+    {
+        var virtualColumns=columns.Where(column=>column.IsVirtual).ToList();
+        if(virtualColumns.Count==0)return columns;
+        var fields=new List<WorkbenchField>();
+        await using var command=new SqlCommand(
+            "SELECT LTRIM(RTRIM(F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(F_DESC)),''),F_ID),COALESCE(F_TYPE,'nvarchar'),ISNULL(VIRTUAL_EXP,'') " +
+            "FROM dbo.FIELDS WITH (NOLOCK) WHERE T_ID=@Table AND COALESCE(IS_VISIBLE,1)=1 AND COALESCE(IS_VIRTUAL,0)=1",
+            connection);
+        command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=targetTable;
+        await using(var reader=await command.ExecuteReaderAsync(token))
+        {
+            while(await reader.ReadAsync(token))
+            {
+                var key=reader.GetString(0).Trim();
+                if(Identifier.IsMatch(key))
+                    fields.Add(new(key,reader.GetString(1).Trim(),reader.GetString(2).Trim(),100,"left",false,IsVirtual:true,VirtualExpression:reader.GetString(3).Trim()));
+            }
+        }
+        var resolution=await new VirtualColumnResolver(connection).ResolveAsync(targetTable,fields,token);
+        var dropped=resolution.UnresolvedKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return columns.Where(column=>!dropped.Contains(column.Key)).ToList();
     }
 
     private static async Task SaveColumns(SqlConnection connection,SqlTransaction transaction,string userId,string masterTable,string targetTable,IReadOnlyList<string> fields,CancellationToken token)
@@ -1653,7 +1708,7 @@ public sealed class DocumentWorkbenchRepository(
     }
 
     private static async Task<HashSet<string>> ReadAllowedFieldKeys(SqlConnection connection,SqlTransaction transaction,string targetTable,CancellationToken token)
-    {await using var command=new SqlCommand("SELECT LTRIM(RTRIM(F_ID)) FROM dbo.FIELDS WHERE T_ID=@TargetTable AND COALESCE(IS_VISIBLE,1)=1 AND COALESCE(IS_VIRTUAL,0)=0",connection,transaction);command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;await using var reader=await command.ExecuteReaderAsync(token);var result=new HashSet<string>(StringComparer.OrdinalIgnoreCase);while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key))result.Add(key);}return result;}
+    {await using var command=new SqlCommand("SELECT LTRIM(RTRIM(F_ID)) FROM dbo.FIELDS WHERE T_ID=@TargetTable AND COALESCE(IS_VISIBLE,1)=1",connection,transaction);command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;await using var reader=await command.ExecuteReaderAsync(token);var result=new HashSet<string>(StringComparer.OrdinalIgnoreCase);while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key))result.Add(key);}return result;}
 
     /// <summary>
     /// MODULES.FILTER / DATA_FILTER 字段白名单：主表全部可见、非虚拟、物理存在的字段
@@ -1690,20 +1745,77 @@ public sealed class DocumentWorkbenchRepository(
               WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable
             ), HasConfig AS (SELECT CASE WHEN EXISTS(SELECT 1 FROM UserFields) THEN 1 ELSE 0 END Value)
             SELECT f.F_ID,COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),f.F_ID),COALESCE(f.F_TYPE,'nvarchar'),
-                   COALESCE(f.DISPLAY_LENGTH,100),COALESCE(NULLIF(f.ITEM_ALIGN,''),'left'),CAST(CASE WHEN EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku ON ku.CONSTRAINT_NAME=tc.CONSTRAINT_NAME AND ku.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND ku.TABLE_SCHEMA='dbo' AND ku.TABLE_NAME=@TargetTable AND ku.COLUMN_NAME=f.F_ID) THEN 1 ELSE 0 END AS bit),CAST(COALESCE(f.IS_QUERY,1) AS bit),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit),COALESCE(NULLIF(f.HEADER_ALIGN,''),'center'),f.DISPLAY_FORMAT,f.BROWSE_URL,f.BROWSE_M_IDX
+                   COALESCE(f.DISPLAY_LENGTH,100),COALESCE(NULLIF(f.ITEM_ALIGN,''),'left'),CAST(CASE WHEN EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku ON ku.CONSTRAINT_NAME=tc.CONSTRAINT_NAME AND ku.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND ku.TABLE_SCHEMA='dbo' AND ku.TABLE_NAME=@TargetTable AND ku.COLUMN_NAME=f.F_ID) THEN 1 ELSE 0 END AS bit),CAST(COALESCE(f.IS_QUERY,1) AS bit),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit),COALESCE(NULLIF(f.HEADER_ALIGN,''),'center'),f.DISPLAY_FORMAT,f.BROWSE_URL,f.BROWSE_M_IDX,CAST(COALESCE(f.IS_VIRTUAL,0) AS bit),f.VIRTUAL_EXP
             FROM dbo.FIELDS f WITH (NOLOCK) CROSS JOIN HasConfig h LEFT JOIN UserFields u ON u.F_ID=f.F_ID
-            WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                          WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TargetTable AND c.COLUMN_NAME=f.F_ID)
+            WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1
+              AND (COALESCE(f.IS_VIRTUAL,0)=1 OR EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
+                          WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TargetTable AND c.COLUMN_NAME=f.F_ID))
               AND (EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku ON ku.CONSTRAINT_NAME=tc.CONSTRAINT_NAME AND ku.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND ku.TABLE_SCHEMA='dbo' AND ku.TABLE_NAME=@TargetTable AND ku.COLUMN_NAME=f.F_ID) OR (h.Value=1 AND u.F_ID IS NOT NULL) OR (h.Value=0 AND COALESCE(f.IS_DEFAULT_FIELDS,0)=1))
             ORDER BY CASE WHEN EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku ON ku.CONSTRAINT_NAME=tc.CONSTRAINT_NAME AND ku.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND ku.TABLE_SCHEMA='dbo' AND ku.TABLE_NAME=@TargetTable AND ku.COLUMN_NAME=f.F_ID) AND u.F_ID IS NULL THEN 0 ELSE 1 END,COALESCE(u.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
             """;
         await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();command.Parameters.Add("@MasterTable",SqlDbType.NVarChar,100).Value=masterTable;command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;
-        await using var reader=await command.ExecuteReaderAsync(token);var fields=new List<WorkbenchField>();while(await reader.ReadAsync(token)){var key=reader.GetString(0).Trim();if(Identifier.IsMatch(key)&&!deniedFields.Contains(key)&&(canViewCost||!reader.GetBoolean(7))&&(canViewSecrecy||!reader.GetBoolean(8)))fields.Add(new(key,reader.GetString(1).Trim(),reader.GetString(2).Trim(),Math.Clamp(reader.GetInt32(3),40,300),reader.GetString(4).Trim(),reader.GetBoolean(5),true,reader.GetBoolean(6),reader.GetString(9),reader.IsDBNull(10)?null:reader.GetString(10),reader.IsDBNull(11)?null:reader.GetString(11),reader.IsDBNull(12)?null:reader.GetInt32(12)));}
+        var fields=new List<WorkbenchField>();
+        await using(var reader=await command.ExecuteReaderAsync(token))
+        {
+            while(await reader.ReadAsync(token)){var key=reader.GetString(0).Trim();if(Identifier.IsMatch(key)&&!deniedFields.Contains(key)&&(canViewCost||!reader.GetBoolean(7))&&(canViewSecrecy||!reader.GetBoolean(8))){var isVirtual=reader.GetBoolean(13);var virtualExpression=reader.IsDBNull(14)?null:reader.GetString(14).Trim();fields.Add(new(key,reader.GetString(1).Trim(),reader.GetString(2).Trim(),Math.Clamp(reader.GetInt32(3),40,300),reader.GetString(4).Trim(),reader.GetBoolean(5),true,isVirtual?false:reader.GetBoolean(6),reader.GetString(9),reader.IsDBNull(10)?null:reader.GetString(10),reader.IsDBNull(11)?null:reader.GetString(11),reader.IsDBNull(12)?null:reader.GetInt32(12),isVirtual,virtualExpression));}}
+        }
+        var virtualFields=fields.Where(field=>field.IsVirtual).ToList();
+        if(virtualFields.Count>0)
+        {
+            var resolution=await new VirtualColumnResolver(connection).ResolveAsync(targetTable,virtualFields,token);
+            if(resolution.UnresolvedKeys.Count>0)
+            {
+                var dropped=resolution.UnresolvedKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                fields=fields.Where(field=>!dropped.Contains(field.Key)).ToList();
+            }
+        }
         var allowedFields=fields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
         for(var i=0;i<fields.Count;i++){var field=fields[i];var safe=SanitizeBrowseUrl(field.BrowseUrl,allowedFields);if(safe!=field.BrowseUrl)fields[i]=field with{BrowseUrl=safe};}
         return fields;
     }
+    /// <summary>
+    /// 构造列表查询的列清单：物理列在派生表内无歧义选择；存在虚拟字段时外层经
+    /// `[__base]` 派生表 + 受控 LEFT JOIN 输出（QUERY_RELATION 白名单 + 物理存在校验）。
+    /// 派生表把 WHERE/ORDER 限制在基表内，避免 JOIN 引入的同名列歧义；
+    /// 无法解析的虚拟字段不进入外层列清单（不渲染）。
+    /// </summary>
+    private async Task<ListSelection> BuildListSelectionAsync(
+        SqlConnection connection,
+        string table,
+        IReadOnlyList<WorkbenchField> selected,
+        CancellationToken token)
+    {
+        var physical=selected.Where(field=>!field.IsVirtual).ToList();
+        var innerColumns=physical.Select(field=>$"[{field.Key}]").ToList();
+        var outerColumns=physical.Select(field=>$"[__base].[{field.Key}]").ToList();
+        var virtualFields=selected.Where(field=>field.IsVirtual).ToList();
+        var joinFragment="";
+        if(virtualFields.Count>0)
+        {
+            var resolution=await new VirtualColumnResolver(connection).ResolveAsync(table,virtualFields,token,baseAlias:"__base");
+            outerColumns.AddRange(resolution.SelectFragments);
+            joinFragment=resolution.JoinFragment;
+            // JOIN 条件引用的基表列必须出现在内层投影中，否则外层 [__base].[列] 引用无效。
+            foreach(var column in resolution.BaseColumns)
+                if(!physical.Any(field=>field.Key.Equals(column,StringComparison.OrdinalIgnoreCase)))
+                    innerColumns.Add($"[{column}]");
+            foreach(var key in resolution.UnresolvedKeys)
+                logger.LogDebug("虚拟字段运行期无法解析，列表不渲染：table={Table} field={Field}",table,key);
+        }
+        if(outerColumns.Count==0)
+        {
+            innerColumns.Add($"[{selected[0].Key}]");
+            outerColumns.Add($"[__base].[{selected[0].Key}]");
+        }
+        return new(string.Join(',',innerColumns),string.Join(',',outerColumns),joinFragment,virtualFields.Count>0);
+    }
+
+    private sealed record ListSelection(string InnerColumns,string OuterColumns,string JoinFragment,bool HasVirtual);
+
+    /// <summary>把 ResolveOrder 生成的 `[列] ASC` 改写为派生表限定 `[__base].[列] ASC`（仅作用于自身确定性输出）。</summary>
+    private static string QualifyOrder(string order) =>
+        Regex.Replace(order, @"\[([A-Za-z_][A-Za-z0-9_]{0,127})\]", "[__base].[$1]");
+
     private static string ResolveOrder(WorkbenchDefinition definition,IReadOnlyList<WorkbenchField> fields,IReadOnlyList<WorkbenchField> selected,bool detail,string? sortFields,string? sortDirections)
     {
         if(!string.IsNullOrWhiteSpace(sortFields))
@@ -1714,19 +1826,22 @@ public sealed class DocumentWorkbenchRepository(
             var parts=new List<string>();
             for(var i=0;i<names.Length;i++)
             {
-                var field=fields.FirstOrDefault(item=>item.Key.Equals(names[i],StringComparison.OrdinalIgnoreCase))??throw new ArgumentException("排序字段无效。");
+                var field=fields.FirstOrDefault(item=>!item.IsVirtual&&item.Key.Equals(names[i],StringComparison.OrdinalIgnoreCase))??throw new ArgumentException("排序字段无效。");
                 var desc=i<dirs.Length&&dirs[i].Equals("desc",StringComparison.OrdinalIgnoreCase);
                 parts.Add($"[{field.Key}] {(desc?"DESC":"ASC")}");
             }
             return string.Join(',',parts);
         }
         if(!detail&&!string.IsNullOrWhiteSpace(definition.DefaultSort))return definition.DefaultSort;
-        var keys=fields.Where(field=>field.IsPrimaryKey).ToList();if(keys.Count==0)keys=[selected[0]];return string.Join(',',keys.Select(field=>$"[{field.Key}]"));
+        var keys=fields.Where(field=>field.IsPrimaryKey&&!field.IsVirtual).ToList();
+        if(keys.Count==0)keys=selected.Where(field=>!field.IsVirtual).Take(1).ToList();
+        if(keys.Count==0)throw new InvalidOperationException("工作台列表缺少可排序列。");
+        return string.Join(',',keys.Select(field=>$"[{field.Key}]"));
     }
 
     private static string? NormalizeSort(string? value,string table,IReadOnlyList<WorkbenchField> fields)
     {
-        if(string.IsNullOrWhiteSpace(value))return null;var allowed=fields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);var result=new List<string>();
+        if(string.IsNullOrWhiteSpace(value))return null;var allowed=fields.Where(field=>!field.IsVirtual).Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);var result=new List<string>();
         foreach(var part in value.Split(',',StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries)){var tokens=Regex.Split(part.Trim(),"\\s+");if(tokens.Length is <1 or >2)return null;var identifier=tokens[0].Split('.');if(identifier.Length==2&&!identifier[0].Equals(table,StringComparison.OrdinalIgnoreCase))return null;var field=identifier[^1].Trim('[',']');if(!Identifier.IsMatch(field)||!allowed.Contains(field))return null;var direction=tokens.Length==2&&tokens[1].Equals("DESC",StringComparison.OrdinalIgnoreCase)?" DESC":tokens.Length==1||tokens[1].Equals("ASC",StringComparison.OrdinalIgnoreCase)?" ASC":null;if(direction is null)return null;result.Add($"[{field}]{direction}");}
         return result.Count==0?null:string.Join(',',result);
     }
@@ -1738,6 +1853,7 @@ public sealed class DocumentWorkbenchRepository(
         foreach(var condition in query.Conditions)
         {
         var field=fields.FirstOrDefault(item=>item.Key.Equals(condition.Field,StringComparison.OrdinalIgnoreCase))??throw new ArgumentException($"无效查询字段：{condition.Field}");
+        if(field.IsVirtual)throw new ArgumentException($"虚拟字段不可查询：{condition.Field}");
         // 比较运算符（eq/ne/gt/gte/lt/lte/between）允许定义白名单内任意字段（如批核/结案状态位），
         // 仍以参数化 + 权限过滤后的定义白名单为边界；LIKE 类运算符继续限定 IsQueryable 字段。
         var comparisonOnly=condition.Operator is "eq" or "ne" or "gt" or "gte" or "lt" or "lte" or "between";
