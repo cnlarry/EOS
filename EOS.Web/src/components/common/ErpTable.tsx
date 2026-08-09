@@ -14,8 +14,6 @@ import { ErpColumnFilter } from './ErpColumnFilter'
 import { emptyQueryCondition, type QueryCondition } from './queryCondition'
 import { rowsToTsv, writeClipboard } from './tableClipboard'
 
-const formatTotal = (value: number) => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value)
-
 interface ErpTableProps<TData> {
   columns: ColumnDef<TData, unknown>[]
   data: TData[]
@@ -48,8 +46,6 @@ interface ErpTableProps<TData> {
   /** 列头筛选值（列键 → 条件），配合 meta.filterable 与 onColumnFilterChange */
   columnFilterValue?: Record<string, QueryCondition>
   onColumnFilterChange?: (columnId: string, condition: QueryCondition | null) => void
-  /** 当前筛选结果的数值列合计（列键 → 值），非空时渲染合计行 */
-  totals?: Record<string, number | null>
   /** 表头拖拽重排完成回调（新列顺序，含 select/冻结列）；不传则不启用拖拽重排 */
   onColumnsReorder?: (columnIds: string[]) => void
 }
@@ -93,7 +89,6 @@ export function ErpTable<TData>({
   keyboardNavigation = true,
   columnFilterValue,
   onColumnFilterChange,
-  totals,
   onColumnsReorder,
 }: ErpTableProps<TData>) {
   const shellRef = useRef<HTMLDivElement>(null)
@@ -452,21 +447,6 @@ export function ErpTable<TData>({
             )
           })}
         </tbody>
-        {totals && Object.values(totals).some((value) => value != null) && (
-          <tfoot>
-            <tr>
-              {table.getVisibleLeafColumns().map((column, index) => {
-                const meta = column.columnDef.meta
-                const value = totals[column.id]
-                return (
-                  <td key={column.id} className={meta?.cellClassName ?? meta?.className}>
-                    {index === 0 ? '合计' : value != null ? formatTotal(value) : ''}
-                  </td>
-                )
-              })}
-            </tr>
-          </tfoot>
-        )}
       </ErpDataTable>
       {cellMenu && copyable && (
         <div
