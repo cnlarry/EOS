@@ -156,9 +156,11 @@ internal static class DataFilterParser
         if (!TryResolveField(tokens[position].Text, masterTable, allowed, out var field)) return false;
         var left = $"[{field}]";
         position++;
+        var leftIsArithmetic = false;
         // 左侧列算术：field (arithop (field|number))+，如 QTY-RECEIVE_QTY
         while (position < tokens.Count && IsArithmeticOperator(tokens[position]))
         {
+            leftIsArithmetic = true;
             var arithOp = tokens[position].Text;
             position++;
             if (position >= tokens.Count) return false;
@@ -184,7 +186,10 @@ internal static class DataFilterParser
         var comparison = tokens[position].Text;
         if (comparison is not ("=" or "<>" or ">" or "<" or ">=" or "<=")) return false;
         position++;
-        if (!ParseValueExpression(tokens, ref position, out var value)) return false;
+        // 直接列比较的数值字面量以字符串参数绑定（如 PRO_TYPE=1，PRO_TYPE 为 char，
+        // 若绑 decimal 会触发 char→numeric 隐式转换，含非数字值时报 8114）；
+        // 列间算术的右值保持 decimal（如 QTY-RECEIVE_QTY>0 的 0）。
+        if (!ParseValueExpression(tokens, ref position, out var value, numericAsString: !leftIsArithmetic)) return false;
         var parameterName = $"@df{values.Count}";
         values.Add(value);
         expression = $"{left} {comparison} {parameterName}";
@@ -198,7 +203,7 @@ internal static class DataFilterParser
     /// 谓词右侧值：字符串/数字字面量、负数，或受控函数表达式（可带 `+ '字面量'` 拼接）。
     /// 求值结果一律作为参数绑定，不拼接进 SQL。
     /// </summary>
-    private static bool ParseValueExpression(IReadOnlyList<Token> tokens, ref int position, out object value)
+    private static bool ParseValueExpression(IReadOnlyList<Token> tokens, ref int position, out object value, bool numericAsString = false)
     {
         value = null!;
         if (position >= tokens.Count) return false;
@@ -206,7 +211,7 @@ internal static class DataFilterParser
             && position + 1 < tokens.Count
             && tokens[position + 1].Kind == TokenKind.Number)
         {
-            value = -decimal.Parse(tokens[position + 1].Text, CultureInfo.InvariantCulture);
+            value = numericAsString ? "-" + tokens[position + 1].Text : -decimal.Parse(tokens[position + 1].Text, CultureInfo.InvariantCulture);
             position += 2;
             return true;
         }
@@ -218,7 +223,7 @@ internal static class DataFilterParser
         }
         if (tokens[position].Kind == TokenKind.Number)
         {
-            value = decimal.Parse(tokens[position].Text, CultureInfo.InvariantCulture);
+            value = numericAsString ? tokens[position].Text : decimal.Parse(tokens[position].Text, CultureInfo.InvariantCulture);
             position++;
             return true;
         }

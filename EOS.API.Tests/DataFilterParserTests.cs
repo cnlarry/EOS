@@ -77,6 +77,14 @@ public class DataFilterParserTests
     }
 
     [Fact]
+    public void ModuleFilter_直接数值比较_参数化为字符串避免char转换()
+    {
+        Assert.True(Try("PRO_TYPE=1", "PRODUCT", Fields("PRO_TYPE"), out var predicate, out var parameters));
+        Assert.Equal("[PRO_TYPE] = @df0", predicate);
+        Assert.Equal(["1"], parameters);
+    }
+
+    [Fact]
     public void ModuleFilter_带主表前缀的列算术_被接受()
     {
         Assert.True(Try("PUR_PURCHASE_D.QTY-PUR_PURCHASE_D.RECEIVE_QTY>0", "PUR_PURCHASE_D", Fields("QTY", "RECEIVE_QTY"), out var predicate, out _));
@@ -119,9 +127,9 @@ public class DataFilterParserTests
             "PUR_PURCHASE_D", Fields("FINISHED_TAG", "PLAN_DELIVERY_DATE", "QTY", "RECEIVE_QTY"), out var predicate, out var parameters));
         Assert.Equal("[finished_tag] = @df0 AND [PLAN_DELIVERY_DATE] <= @df1 AND [QTY]-[RECEIVE_QTY] > @df2", predicate);
         Assert.Equal(3, parameters.Count);
-        Assert.Equal(0m, parameters[0]);
+        Assert.Equal("0", parameters[0]); // 直接列比较数值字面量 → 字符串参数（避免 char 列隐式转 numeric）
         Assert.IsType<DateTime>(parameters[1]);
-        Assert.Equal(0m, parameters[2]);
+        Assert.Equal(0m, parameters[2]); // 列间算术右值保持 decimal
     }
 
     [Theory]

@@ -1487,16 +1487,36 @@ public sealed class DocumentWorkbenchRepository(
         _=>value.ToString()??string.Empty,
     };
 
-    private static bool ValuesEqual(object? left,object? right)
+    internal static bool ValuesEqual(object? left,object? right)
     {
         if(left is null&&right is null)return true;
         if(left is null||right is null)return false;
         if(left is string leftText&&right is string rightText)return string.Equals(leftText.Trim(),rightText.Trim(),StringComparison.Ordinal);
-        if(left is double leftDouble&&right is double rightDouble)return Math.Abs(leftDouble-rightDouble)<0.0001;
-        if(left is decimal leftDecimal&&right is decimal rightDecimal)return leftDecimal==rightDecimal;
         if(left is DateTime leftDate&&right is DateTime rightDate)return leftDate==rightDate;
+        if(left is double leftDouble&&right is double rightDouble)return Math.Abs(leftDouble-rightDouble)<0.0001;
+        // 数值跨类型比较：TryConvert('float') 产生 double、DB int 读出 Int64 等场景
+        if(IsNumeric(left)&&IsNumeric(right))
+        {
+            var leftNumber=Convert.ToDecimal(left,System.Globalization.CultureInfo.InvariantCulture);
+            var rightNumber=Convert.ToDecimal(right,System.Globalization.CultureInfo.InvariantCulture);
+            return leftNumber==rightNumber;
+        }
+        // F_TYPE 与物理类型不一致（如 nvarchar 标 smallint）时一侧为字符串一侧为数值，
+        // 统一按数值解析比较（失败回落字符串比较），避免此类字段更新永远 CONCURRENT_MODIFIED。
+        if(left is string||right is string)
+        {
+            var leftTextValue=ValueToString(left).Trim();
+            var rightTextValue=ValueToString(right).Trim();
+            if(decimal.TryParse(leftTextValue,System.Globalization.NumberStyles.Number,System.Globalization.CultureInfo.InvariantCulture,out var leftNumber)&&
+               decimal.TryParse(rightTextValue,System.Globalization.NumberStyles.Number,System.Globalization.CultureInfo.InvariantCulture,out var rightNumber))
+                return leftNumber==rightNumber;
+            return string.Equals(leftTextValue,rightTextValue,System.StringComparison.OrdinalIgnoreCase);
+        }
         return left.Equals(right);
     }
+
+    private static bool IsNumeric(object value)=>value is sbyte or byte or short or ushort or int or uint
+        or long or ulong or float or double or decimal;
 
     #endregion
 
