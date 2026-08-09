@@ -22,4 +22,12 @@ public sealed class DbConnectionFactory(IConfiguration configuration)
             ?? throw new InvalidOperationException("ConnectionStrings:ImDatabase 未配置。");
         return new SqlConnection(connectionString);
     }
+
+    /// <summary>创建指向 EOS.Mail 邮件任务库的连接（独立于 Hiswitek 旧库与 EOS.IM 消息库）。</summary>
+    public SqlConnection CreateMail()
+    {
+        var connectionString = configuration.GetConnectionString("MailDatabase")
+            ?? throw new InvalidOperationException("ConnectionStrings:MailDatabase 未配置。");
+        return new SqlConnection(connectionString);
+    }
 }

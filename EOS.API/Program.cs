@@ -132,6 +132,7 @@ builder.Services.AddScoped<IImMessageRepository, ImMessageRepository>();
 builder.Services.AddScoped<IImAttachmentRepository, ImAttachmentRepository>();
 builder.Services.AddScoped<IImCardService, ImCardService>();
 builder.Services.AddScoped<ImHubService>();
+builder.Services.AddScoped<MailTaskRepository>();
 builder.Services.AddHostedService<ImCleanupHostedService>();
 builder.Services.AddSignalR();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
@@ -164,6 +165,7 @@ app.MapOpenApi().AllowAnonymous();
 app.MapFallbackToFile("index.html").RequireAuthorization();
 
 ImDatabaseInitializer.RunIfConfigured(builder.Configuration, app.Logger);
+MailDatabaseInitializer.RunIfConfigured(builder.Configuration, app.Logger);
 
 app.Run();
 
