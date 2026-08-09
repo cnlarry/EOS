@@ -1,4 +1,4 @@
-import { IconAdjustmentsHorizontal, IconCheck, IconColumns, IconFileExport, IconLayoutRows, IconMinimize, IconPlus, IconPrinter, IconRefresh, IconRotateClockwise } from '@tabler/icons-react'
+import { IconAdjustmentsHorizontal, IconCheck, IconColumns, IconFileExport, IconLayoutRows, IconMinimize, IconPlus, IconPrinter, IconRefresh, IconRotateClockwise, IconZoomScan } from '@tabler/icons-react'
 import { IconEdit } from '@tabler/icons-react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
@@ -54,6 +54,10 @@ export function DocumentWorkbenchPage() {
   const [conditions,setConditions]=useState<QueryCondition[]>([emptyQueryCondition()])
   const [keyword,setKeyword]=useState(initialState.keyword)
   const [exporting,setExporting]=useState(false)
+  const rawGroupIndex=searchParams.get('groupIndex')
+  const rawGroupValue=searchParams.get('groupValue')
+  const groupIndex=rawGroupIndex!=null&&/^[1-5]$/.test(rawGroupIndex)?Number(rawGroupIndex):null
+  const groupValue=groupIndex!=null&&rawGroupValue!=null?rawGroupValue:null
   const definition=useQuery({queryKey:['workbench',moduleId,'definition'],queryFn:()=>apiClient.get<Definition>(`/document-workbench/${moduleId}/definition`)})
   const pageSize=pageSizePref??(definition.data?.detailTable?10:16)
   const master=useMemo(()=>uniqueFields(definition.data?.masterFields??[]).slice(0,30),[definition.data])
@@ -62,12 +66,19 @@ export function DocumentWorkbenchPage() {
   const safeSort=useMemo(()=>sort.filter(item=>allowedMasterKeys.has(item.id.toLowerCase())),[sort,allowedMasterKeys])
   const safeConditions=useMemo(()=>appliedConditions.filter(item=>allowedMasterKeys.has(item.field.toLowerCase())),[appliedConditions,allowedMasterKeys])
   const safeColumnFilters=useMemo(()=>Object.fromEntries(Object.entries(columnFilters).filter(([key])=>allowedMasterKeys.has(key.toLowerCase()))),[columnFilters,allowedMasterKeys])
-  const records=useQuery({queryKey:['workbench',moduleId,'records',page,pageSize,safeConditions,keyword,safeSort],queryFn:()=>{const sq=sortQuery(safeSort);return safeConditions.length?apiClient.post<DataResponse>(`/document-workbench/${moduleId}/query?page=${page}&pageSize=${pageSize}${keyword?`&keyword=${encodeURIComponent(keyword)}`:''}${sq.sortFields?`&sortFields=${encodeURIComponent(sq.sortFields)}&sortDirections=${encodeURIComponent(sq.sortDirections??'')}`:''}`,{conditions:safeConditions}):apiClient.get<DataResponse>(`/document-workbench/${moduleId}/records`,{query:{page,pageSize,keyword:keyword||undefined,...sq}})},enabled:definition.isSuccess,placeholderData:keepPreviousData})
+  const records=useQuery({queryKey:['workbench',moduleId,'records',page,pageSize,safeConditions,keyword,safeSort,groupIndex,groupValue],queryFn:()=>{const sq=sortQuery(safeSort);const group=groupIndex!=null&&groupValue!=null?`&groupIndex=${groupIndex}&groupValue=${encodeURIComponent(groupValue)}`:'';return safeConditions.length?apiClient.post<DataResponse>(`/document-workbench/${moduleId}/query?page=${page}&pageSize=${pageSize}${keyword?`&keyword=${encodeURIComponent(keyword)}`:''}${sq.sortFields?`&sortFields=${encodeURIComponent(sq.sortFields)}&sortDirections=${encodeURIComponent(sq.sortDirections??'')}`:''}${group}`,{conditions:safeConditions}):apiClient.get<DataResponse>(`/document-workbench/${moduleId}/records`,{query:{page,pageSize,keyword:keyword||undefined,...sq,...(groupIndex!=null&&groupValue!=null?{groupIndex,groupValue}:{})}})},enabled:definition.isSuccess,placeholderData:keepPreviousData})
   const totalPages=Math.max(1,Math.ceil((records.data?.total??0)/pageSize))
   const hydrated=useRef(false)
   useEffect(()=>{
     if(!hydrated.current){hydrated.current=true;return}
-    setSearchParams(writeListState({page,pageSize:pageSizePref,keyword,sort:safeSort,conditions:safeConditions,columnFilters:safeColumnFilters}),{replace:true})
+    setSearchParams((current)=>{
+      const state=writeListState({page,pageSize:pageSizePref,keyword,sort:safeSort,conditions:safeConditions,columnFilters:safeColumnFilters})
+      const groupIndexParam=current.get('groupIndex')
+      const groupValueParam=current.get('groupValue')
+      if(groupIndexParam)state.set('groupIndex',groupIndexParam)
+      if(groupValueParam)state.set('groupValue',groupValueParam)
+      return state
+    },{replace:true})
   },[page,pageSizePref,keyword,safeSort,safeConditions,safeColumnFilters,setSearchParams])
   useEffect(()=>{if(records.data&&page>totalPages)setPage(totalPages)},[page,totalPages,records.data])
   const columnSettings=useQuery({queryKey:['workbench',moduleId,'column-editor'],queryFn:()=>apiClient.get<{current:ColumnSettings;defaults:ColumnSettings}>(`/document-workbench/${moduleId}/column-editor`),enabled:columnsOpen})
@@ -240,7 +251,8 @@ export function DocumentWorkbenchPage() {
   const openNew=()=>{if(!definition.data?.hasAdd)return;navigate(`/document-workbench/${moduleId}/new`)}
   const runWorkflow=async(approve:boolean)=>{if(!definition.data||!active)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));try{await apiClient.post(`/document-workbench/${moduleId}/${approve?'approve':'deapprove'}`,{key:JSON.stringify(key)});await queryClient.invalidateQueries({queryKey:['workbench',moduleId,'records']});if(activeKey)void details.refetch()}catch(error){window.alert(error instanceof Error?`${approve?'批核':'解批'}失败：${error.message}`:`${approve?'批核':'解批'}失败。`)}}
   const openPrint=()=>{if(!definition.data||!active)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));window.open(`/print/${moduleId}?key=${encodeURIComponent(JSON.stringify(key))}`,'_blank')}
-  const handleExport=async()=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:safeConditions},{query:{keyword:keyword||undefined,...sortQuery(safeSort)}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.csv`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
+  const groupQuery=groupIndex!=null&&groupValue!=null?{groupIndex,groupValue}:{}
+  const handleExport=async()=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{query:groupQuery}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:safeConditions},{query:{keyword:keyword||undefined,...sortQuery(safeSort),...groupQuery}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.csv`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
 
   return <div className="erp-workbench-page">
@@ -264,6 +276,13 @@ export function DocumentWorkbenchPage() {
       footer={<ErpPagination total={records.data?.total??0} page={page} pageSize={pageSize} onPageChange={setPage} pageSizes={[10,16,25,50]} onPageSizeChange={(size)=>{setPageSizePref(size);setPage(1)}} />}
     >
       <div className={`erp-master-table-region ${records.isFetching?'is-loading':''}`}>
+        {groupValue!=null&&(
+          <div className="erp-active-group-filter">
+            <IconZoomScan size={14} aria-hidden="true" />
+            <span>分组筛选：{groupValue}</span>
+            <button type="button" onClick={()=>{setSearchParams((current)=>{current.delete('groupIndex');current.delete('groupValue');return current},{replace:true})}}>清除分组</button>
+          </div>
+        )}
         {records.isPending?<LoadingState label="正在加载主表数据…"/>:records.isError?<ErrorState message={recordsError} onRetry={()=>void records.refetch()}/>:<ErpTable
           columns={masterColumns}
           data={rows}

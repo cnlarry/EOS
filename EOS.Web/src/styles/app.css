@@ -60,10 +60,55 @@ button, input, select { font: inherit; }
 .erp-sidebar .erp-nav-child .nav-link-title { display: block; width: 100%; }
 .erp-nav-child-marker { position: absolute; top: 50%; left: 25px; width: 5px; height: 5px; flex: 0 0 auto; transform: translateY(-50%); border-radius: 50%; background: var(--tblr-border-color); pointer-events: none; }
 .erp-nav-child.active .erp-nav-child-marker { background: var(--tblr-primary); }
+
+/* ---- 菜单搜索 ---- */
+.erp-nav-search { display: flex; align-items: center; gap: 7px; margin: 10px 10px 2px; padding: 0 9px; height: 32px; border: 1px solid var(--tblr-border-color); border-radius: 7px; background: var(--tblr-bg-surface); color: var(--tblr-secondary); flex: 0 0 auto; }
+.erp-nav-search input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font-size: 12px; }
+.erp-nav-search input::placeholder { color: var(--tblr-secondary); }
+.erp-nav-search-clear { border: 0; background: transparent; color: var(--tblr-secondary); font-size: 14px; line-height: 1; padding: 0 2px; cursor: pointer; }
+.erp-nav-search-clear:hover { color: var(--tblr-primary); }
+.erp-nav-search-results { padding: 4px 8px 12px; }
+.erp-nav-search-empty { padding: 14px 8px; color: var(--tblr-secondary); font-size: 12px; text-align: center; }
+.erp-nav-search-result { display: block; width: 100%; text-align: left; border: 0; background: transparent; border-radius: 7px; padding: 7px 9px; margin: 2px 0; cursor: pointer; }
+.erp-nav-search-result:hover { background: var(--tblr-primary-lt); }
+.erp-nav-search-crumb { display: block; color: var(--tblr-secondary); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- 多级菜单（第 2/3 级） ---- */
+.erp-nav-group-depth-2 .erp-nav-group-toggle { padding-left: 24px !important; font-size: 12px; }
+.erp-nav-group-depth-3 .erp-nav-group-toggle { padding-left: 38px !important; font-size: 12px; }
+.erp-sidebar .navbar-nav .erp-nav-child-depth-2 { padding-left: 54px !important; }
+.erp-sidebar .navbar-nav .erp-nav-child-depth-3 { padding-left: 68px !important; }
+
+/* ---- 第 4 级分组 ---- */
+.erp-nav-groups { margin: 1px 0 5px; }
+.erp-nav-groups-toggle, .erp-nav-group-level4 { width: calc(100% - 14px) !important; height: 30px; min-height: 30px; max-height: 30px; margin-block: 0; padding: 0 11px 0 52px !important; border: 0; background: transparent; color: var(--tblr-secondary); font-size: 12px; box-sizing: border-box; }
+.erp-nav-group-level4 { padding-left: 66px !important; }
+.erp-nav-groups-icon { display: inline-flex; margin-right: 6px; }
+.erp-nav-groups-toggle[aria-expanded="true"] .erp-nav-chevron, .erp-nav-group-level4[aria-expanded="true"] .erp-nav-chevron { transform: rotate(180deg); }
+.erp-nav-groups-toggle.group-active, .erp-nav-group-level4.group-active { color: var(--tblr-primary); }
+.erp-nav-group-values { margin: 1px 0 4px; }
+.erp-sidebar .navbar-nav .erp-nav-value { position: relative; height: 30px; min-height: 30px; margin-block: 0; padding: 0 11px 0 82px !important; font-size: 12px; }
+.erp-nav-value .nav-link-title { display: block; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.erp-nav-value.active { color: var(--tblr-primary); font-weight: 600; }
+.erp-nav-group-hint { padding: 6px 12px 6px 82px; color: var(--tblr-secondary); font-size: 11px; }
+
+.erp-sidebar-collapsed .erp-nav-search { display: none; }
 .erp-sidebar-toggle { position: fixed; left: 199px; bottom: 67px; z-index: 1046; width: 29px; height: 42px; transform: translateX(-100%); border: 1px solid var(--tblr-border-color); border-right: 0; border-radius: 7px 0 0 7px; background: var(--tblr-bg-surface); box-shadow: -3px 2px 8px rgba(24, 36, 51, .08); transition: left .2s ease; }
+
+/* ---- 菜单管理（2301） ---- */
+.erp-menu-tree { max-height: 78vh; overflow-y: auto; }
+.erp-menu-tree-row { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: transparent; text-align: left; border-radius: 6px; padding: 5px 8px; font-size: 12px; cursor: pointer; }
+.erp-menu-tree-row:hover { background: var(--tblr-primary-lt); }
+.erp-menu-tree-row.active { background: var(--tblr-primary-lt); color: var(--tblr-primary); font-weight: 600; }
+.erp-menu-tree-label { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.erp-menu-tree-id { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 11px; }
+.erp-menu-form { max-height: 78vh; overflow-y: auto; }
+.erp-menu-group-card { border-color: var(--tblr-border-color); }
 .erp-mobile-menu-trigger { position: fixed; top: 8px; left: 8px; z-index: 1035; }
 .erp-list-command-bar { display: flex; min-height: 48px; align-items: center; gap: 5px; padding: 6px 8px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); border-radius: var(--tblr-border-radius) var(--tblr-border-radius) 0 0; }
 .erp-list-command-bar .btn { flex: 0 0 auto; white-space: nowrap; }
+.erp-active-group-filter { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-primary-lt); color: var(--tblr-primary); font-size: 12px; }
+.erp-active-group-filter button { border: 0; background: transparent; color: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; margin-left: auto; }
 .erp-list-global-search { height: 34px; flex: 0 1 360px; min-width: 180px; max-width: 360px; padding-block: 4px; }
 .erp-list-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-left: auto; }
 .erp-list-global-search input { min-width: 0; }

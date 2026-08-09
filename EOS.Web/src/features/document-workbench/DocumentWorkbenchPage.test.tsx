@@ -200,8 +200,20 @@ describe('DocumentWorkbenchPage', () => {
     await waitFor(() => expect(apiClientMock.postFile).toHaveBeenCalledWith(
       '/document-workbench/1209/export-selected',
       { keys: [['P1', 'A']] },
-      {},
+      { query: {} },
     ))
+  })
+
+  it('URL 携带分组参数时列表请求带 groupIndex/groupValue 并显示分组筛选', async () => {
+    renderPage('/document-workbench/1209?groupIndex=1&groupValue=YES')
+    await loaded()
+    await waitFor(() => {
+      const recordCall = apiClientMock.get.mock.calls.find(([path]) => String(path).includes('/records'))
+      expect(recordCall?.[1]).toMatchObject({ query: { groupIndex: 1, groupValue: 'YES' } })
+    })
+    expect(screen.getByText('分组筛选：YES')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '清除分组' }))
+    await waitFor(() => expect(screen.queryByText('分组筛选：YES')).not.toBeInTheDocument())
   })
 
   it('未选择行时导出当前条件', async () => {

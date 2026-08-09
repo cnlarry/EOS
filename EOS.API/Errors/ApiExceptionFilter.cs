@@ -17,6 +17,7 @@ public sealed class ApiExceptionFilter(ILogger<ApiExceptionFilter> logger) : IAs
             UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, ApiErrorCodes.Unauthorized, "当前请求尚未登录或会话已过期。"),
             ArgumentException exception => (StatusCodes.Status400BadRequest, ApiErrorCodes.InvalidArgument, exception.Message),
             DataFilterUnsupportedException exception => (StatusCodes.Status403Forbidden, "DATA_FILTER_UNSUPPORTED", exception.Message),
+            GroupExpressionUnsupportedException exception => (StatusCodes.Status403Forbidden, "GROUP_EXP_UNSUPPORTED", exception.Message),
             _ => (0, string.Empty, string.Empty)
         };
 

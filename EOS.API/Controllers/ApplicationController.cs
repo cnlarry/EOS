@@ -25,8 +25,7 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
             organization = new { id = User.FindFirstValue("department_id") ?? "", name = User.FindFirstValue("department_name") ?? "" }
         };
         var modules = await navigationRepository.GetForUserAsync(userId, token);
-        var moduleIds = modules.Select(module => module.Id).ToHashSet();
-        var roots = modules.Where(module => module.ParentId == 0 || module.Id == module.RootId)
+        var roots = modules.Where(module => module.ParentId == 0)
             .OrderBy(module => module.SortIndex).ThenBy(module => module.Id).ToList();
         var navigation = new List<object> {
             new { id = "dashboard", label = "工作台", route = "/dashboard", icon = "dashboard", children = (object?)null }
@@ -35,7 +34,8 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
             .ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
         foreach (var root in roots)
         {
-            var children = BuildChildren(root.Id, root.Label, modules, moduleIds, iconOverrides);
+            var rootIcon = IconFor(root.Id, root.Label, iconOverrides);
+            var children = BuildChildren(root.Id, modules, rootIcon);
             if (children.Count == 0) continue;
             navigation.Add(new { id = $"module-{root.Id}", label = root.Label, route = (string?)null, icon = IconFor(root.Id, root.Label, iconOverrides), children = (object?)children });
         }
@@ -44,28 +44,44 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
         return Ok(new { user, permissions, navigation });
     }
 
-    private static List<object> BuildChildren(int rootId, string rootLabel, IReadOnlyList<LegacyNavigationModule> modules, IReadOnlySet<int> included, IReadOnlyDictionary<string, string?> iconOverrides)
+    /// <summary>
+    /// 递归构建完整菜单树（旧系统为「无限级」，实际数据三级：根 → 组 → 叶子）。
+    /// 叶子携带 moduleId / masterTable / groups，供分组（第 4 级）与搜索使用。
+    /// 中间层不再被跳过（此前实现把二级压平成叶子，丢失层级）。
+    /// </summary>
+    private static List<object> BuildChildren(int parentId, IReadOnlyList<LegacyNavigationModule> modules, string rootIcon)
     {
-        var direct = modules.Where(module => module.ParentId == rootId && module.Id != rootId)
-            .OrderBy(module => module.SortIndex).ThenBy(module => module.Id).ToList();
         var result = new List<object>();
+        var direct = modules.Where(module => module.ParentId == parentId && module.Id != parentId)
+            .OrderBy(module => module.SortIndex).ThenBy(module => module.Id).ToList();
         foreach (var module in direct)
         {
-            var descendants = modules.Where(child => child.ParentId == module.Id && included.Contains(child.Id))
-                .OrderBy(child => child.SortIndex).ThenBy(child => child.Id).ToList();
+            var descendants = BuildChildren(module.Id, modules, rootIcon);
             if (descendants.Count > 0)
-                result.AddRange(descendants.Select(child => MenuLeaf(child, rootId, rootLabel, iconOverrides)));
-            else if (module.Enabled) result.Add(MenuLeaf(module, rootId, rootLabel, iconOverrides));
+                result.Add(new { id = $"module-{module.Id}", label = module.Label, route = (string?)null, icon = rootIcon, children = (object?)descendants });
+            else if (module.Enabled) result.Add(MenuLeaf(module, rootIcon));
         }
         return result;
     }
 
-    private static object MenuLeaf(LegacyNavigationModule module, int rootId, string rootLabel, IReadOnlyDictionary<string, string?> iconOverrides) => new {
-        id = $"module-{module.Id}", label = module.Label, route = RouteFor(module), icon = IconFor(rootId, rootLabel, iconOverrides), children = (object?)null
+    private static object MenuLeaf(LegacyNavigationModule module, string rootIcon) => new
+    {
+        id = $"module-{module.Id}",
+        label = module.Label,
+        alias = module.Alias,
+        route = RouteFor(module),
+        icon = rootIcon,
+        moduleId = module.Id,
+        masterTable = module.MasterTable,
+        groups = module.Groups
+            .Where(group => group.Enabled && !string.IsNullOrWhiteSpace(group.Description))
+            .Select(group => new { index = group.Index, description = group.Description })
+            .ToList()
     };
 
     private static readonly Dictionary<int, string> ModernRoutes = new()
     {
+        [2301] = "/admin/menus",
         [2302] = "/admin/tables",
         [2303] = "/admin/field-audit",
         [2306] = "/admin/users",
