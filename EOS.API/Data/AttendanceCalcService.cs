@@ -146,6 +146,11 @@ public sealed class AttendanceCalcService(
                     }
                     on[slot] = sign?.On[slot] ?? inTime[slot];
                     outPunch[slot] = sign?.Out[slot] ?? outTime[slot];
+                    // 不需打卡（IN_CHECK/OUT_CHECK）：未打卡时用排班时间填充
+                    if (string.IsNullOrWhiteSpace(on[slot]) && tt.InCheck[slot] && !string.IsNullOrWhiteSpace(inTime[slot]))
+                        on[slot] = inTime[slot];
+                    if (string.IsNullOrWhiteSpace(outPunch[slot]) && tt.OutCheck[slot] && !string.IsNullOrWhiteSpace(outTime[slot]))
+                        outPunch[slot] = outTime[slot];
                     if (!string.IsNullOrWhiteSpace(on[slot]) && !string.IsNullOrWhiteSpace(inTime[slot]))
                     {
                         var onMinutes = ParseTime(on[slot]!);
