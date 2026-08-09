@@ -44,7 +44,6 @@ const records = {
   total: 2,
   page: 1,
   pageSize: 16,
-  totals: { QTY: 30 },
 }
 
 const details = { rows: [{ ITEM: 'X1' }], total: 1, page: 1, pageSize: 10 }
@@ -155,7 +154,7 @@ describe('DocumentWorkbenchPage', () => {
     await waitFor(() => expect(apiClientMock.get.mock.calls.length).toBeGreaterThan(before))
   })
 
-  it('渲染主表行、位字段复选框、空值与合计行', async () => {
+  it('渲染主表行、位字段复选框与空值', async () => {
     renderPage()
     await loaded()
     expect(screen.getByText('P1')).toBeInTheDocument()
@@ -164,7 +163,6 @@ describe('DocumentWorkbenchPage', () => {
     const bitBoxes = screen.getAllByRole('checkbox', { name: '启用' })
     expect(bitBoxes[0]).toBeChecked()
     expect(bitBoxes[1]).not.toBeChecked()
-    expect(screen.getByText('合计')).toBeInTheDocument()
   })
 
   it('点击主表行后加载并渲染明细', async () => {
@@ -370,12 +368,4 @@ describe('DocumentWorkbenchPage', () => {
     await waitFor(() => expect(apiClientMock.get.mock.calls.length).toBeGreaterThan(before))
   })
 
-  it('打印按钮调用 window.print', async () => {
-    const printMock = vi.fn()
-    vi.stubGlobal('print', printMock)
-    renderPage()
-    await loaded()
-    fireEvent.click(screen.getByRole('button', { name: '打印' }))
-    expect(printMock).toHaveBeenCalled()
-  })
 })

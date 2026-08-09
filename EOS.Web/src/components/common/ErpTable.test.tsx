@@ -225,16 +225,6 @@ describe('ErpTable', () => {
     expect(onColumnFilterChange).toHaveBeenCalledWith('name', expect.objectContaining({ field: 'name', operator: 'eq', value: 'A' }))
   })
 
-  it('totals 非空时渲染合计行', () => {
-    render(
-      <ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} totals={{ select: null, id: null, name: 123.5 }} />,
-    )
-    const foot = document.querySelector('tfoot')
-    expect(foot).toBeInTheDocument()
-    expect(foot?.textContent).toContain('合计')
-    expect(foot?.textContent).toContain('123.5')
-  })
-
   it('表头拖拽重排列顺序', () => {
     const onColumnsReorder = vi.fn()
     render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onColumnsReorder={onColumnsReorder} />)

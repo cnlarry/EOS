@@ -23,7 +23,7 @@ import { readListState, writeListState } from './listStateUrl'
 
 interface Field { key:string; label:string; dataType:string; width:number; align:string; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null }
 interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean }
-interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number; totals?:Record<string,number|null> }
+interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number }
 interface ColumnSetting { key:string; label:string; isVisible:boolean; order:number }
 interface ColumnSettings { master:ColumnSetting[]; detail:ColumnSetting[] }
 interface SetupLookup { value:string; label:string }
@@ -256,7 +256,6 @@ export function DocumentWorkbenchPage() {
           <Button size="sm" icon={<IconCheck size={16}/>} disabled={!active} onClick={()=>void runWorkflow(true)}>批核</Button>
           <Button size="sm" icon={<IconRotateClockwise size={16}/>} disabled={!active} onClick={()=>void runWorkflow(false)}>解批</Button>
         </>}
-        <Button size="sm" icon={<IconPrinter size={16}/>} onClick={()=>window.print()}>打印</Button>
         <Button size="sm" icon={<IconPrinter size={16}/>} disabled={!active} onClick={openPrint}>打印单据</Button>
         <Button size="sm" icon={<IconFileExport size={16}/>} loading={exporting} onClick={()=>void handleExport()}>{Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'}</Button>
         <Button size="sm" icon={<IconRefresh size={16}/>} title="刷新" aria-label="刷新" onClick={()=>{void records.refetch();if(active)void details.refetch()}} />
@@ -283,7 +282,6 @@ export function DocumentWorkbenchPage() {
           onColumnFilterChange={handleColumnFilterChange}
           onColumnsReorder={handleColumnsReorder}
           dense={dense}
-          totals={records.data?.totals}
           empty={null}
         />}
       </div>

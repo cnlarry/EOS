@@ -209,13 +209,6 @@ button, input, select { font: inherit; }
 .erp-workbench-page .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
 .erp-workbench-page .erp-data-table thead th.erp-frozen-left,
 .erp-workbench-page .erp-data-table thead th.erp-frozen-right { z-index: 4; }
-@media print {
-  .erp-workbench-page { display: block; height: auto; min-height: 0; overflow: visible; }
-  .erp-workbench-page > .erp-list-card,
-  .erp-workbench-page > .erp-detail-card { flex: none; display: block; }
-  .erp-workbench-page .erp-master-table-region,
-  .erp-workbench-page .erp-detail-card .table-responsive { max-height: none; overflow: visible; }
-}
 .erp-login-page { min-height: 100vh; display: grid; grid-template-columns: minmax(320px, 1fr) minmax(360px, 480px); align-items: center; gap: 8vw; padding: 8vh 10vw; background: radial-gradient(circle at 15% 20%, var(--tblr-primary-lt), transparent 35%), var(--tblr-bg-surface-secondary); }
 .erp-login-loading { display: flex; flex-direction: column; justify-content: center; gap: 14px; color: var(--tblr-secondary); }
 .erp-login-brand-heading { display: flex; align-items: center; gap: 22px; }
