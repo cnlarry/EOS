@@ -4,6 +4,7 @@ import { RequireAuth, RequirePermission } from '../features/auth/RouteGuards'
 import { ErrorPage } from './ErrorPage'
 import {
   DashboardPage,
+  DetailQueryPage,
   FieldAuditPage,
   BomExpandPage,
   CarSummaryPage,
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
         { path: 'print/:moduleId', element: withSuspense(<PrintViewPage />) },
         { path: 'bom-expand', element: withSuspense(<BomExpandPage />) },
         { element: <RequirePermission permission="legacy-module.199901.read" />, children: [{ path: 'car-summary', element: withSuspense(<CarSummaryPage />) }] },
+        { path: 'detail-query/:moduleId', element: withSuspense(<DetailQueryPage />) },
         { element: <RequirePermission permission="legacy-module.2102.read" />, children: [{ path: 'my-tasks', element: withSuspense(<MyTasksPage />) }] },
         { path: 'jobs', element: withSuspense(<JobPage />) },
         { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },

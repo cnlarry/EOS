@@ -30,6 +30,7 @@ public sealed record WorkbenchDefinition(
     string DetailNoFields,
     bool HasWorkflow,
     string? ModuleFilter = null,
+    IReadOnlySet<string>? FilterFieldKeys = null,
     string UserId = "",
     string? ExecTag = null,
     bool HasOwnerColumn = true,
@@ -130,6 +131,7 @@ public sealed class DocumentWorkbenchRepository(
             masterPkOrder,detailNoFields,
             businessRule?.WorkflowSproc is not null,
             string.IsNullOrWhiteSpace(moduleFilter)?null:moduleFilter,
+            await ReadFilterFieldKeys(connection,master,canViewCost,canViewSecrecy,deniedMasterFields,token),
             userId.Trim(),
             string.IsNullOrWhiteSpace(execTag)?"A":execTag.Trim(),
             await ColumnExistsAsync(connection,null,master,"OWNER",token),
@@ -157,7 +159,10 @@ public sealed class DocumentWorkbenchRepository(
         SqlCommand command)
     {
         if(string.IsNullOrWhiteSpace(definition.ModuleFilter))return;
-        var allowedFields=definition.MasterFields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // 过滤器字段白名单 = 全量可见字段（不受用户列选择影响）：
+        // 用户保存的列配置可能不含过滤器引用的字段，若以可见列为准会误拒整个模块查询。
+        var allowedFields=definition.FilterFieldKeys
+            ?? definition.MasterFields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if(!DataFilterParser.TryParse(definition.ModuleFilter,definition.MasterTable,allowedFields,
                out var predicate,out var parameters))
             throw new DataFilterUnsupportedException("该模块的数据过滤条件尚不支持，已拒绝查询。");
@@ -1528,6 +1533,33 @@ public sealed class DocumentWorkbenchRepository(
 
     private static async Task<HashSet<string>> ReadAllowedFieldKeys(SqlConnection connection,SqlTransaction transaction,string targetTable,CancellationToken token)
     {await using var command=new SqlCommand("SELECT LTRIM(RTRIM(F_ID)) FROM dbo.FIELDS WHERE T_ID=@TargetTable AND COALESCE(IS_VISIBLE,1)=1 AND COALESCE(IS_VIRTUAL,0)=0",connection,transaction);command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;await using var reader=await command.ExecuteReaderAsync(token);var result=new HashSet<string>(StringComparer.OrdinalIgnoreCase);while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key))result.Add(key);}return result;}
+
+    /// <summary>
+    /// MODULES.FILTER / DATA_FILTER 字段白名单：主表全部可见、非虚拟、物理存在的字段
+    /// （不受用户列选择影响，因为过滤器是服务端行级数据范围，字段不在用户列配置里不代表
+    /// 不能用于过滤）；仍受禁止字段/成本/保密权限约束。
+    /// </summary>
+    private static async Task<IReadOnlySet<string>> ReadFilterFieldKeys(SqlConnection connection,string targetTable,bool canViewCost,bool canViewSecrecy,IReadOnlySet<string> deniedFields,CancellationToken token)
+    {
+        const string sql="""
+            SELECT LTRIM(RTRIM(f.F_ID)),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit)
+            FROM dbo.FIELDS f WITH (NOLOCK)
+            WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0
+              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
+                          WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TargetTable AND c.COLUMN_NAME=f.F_ID)
+            ORDER BY f.F_ID;
+            """;
+        await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;
+        await using var reader=await command.ExecuteReaderAsync(token);
+        var result=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while(await reader.ReadAsync(token))
+        {
+            var key=reader.GetString(0).Trim();
+            if(Identifier.IsMatch(key)&&!deniedFields.Contains(key)&&(canViewCost||!reader.GetBoolean(1))&&(canViewSecrecy||!reader.GetBoolean(2)))
+                result.Add(key);
+        }
+        return result;
+    }
 
     private static async Task<IReadOnlyList<WorkbenchField>> ReadFields(SqlConnection connection,string userId,string masterTable,string targetTable,bool canViewCost,bool canViewSecrecy,IReadOnlySet<string> deniedFields,CancellationToken token)
     {
