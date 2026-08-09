@@ -63,7 +63,7 @@ public sealed class ControlledSprocInvokerTests
     [InlineData("P_PUR_PAY_After_Save", false)] // 已移植（pur-pay）
     [InlineData("P_PUR_PREPAY_After_Save", false)] // 已移植（pur-prepay）
     [InlineData("P_WF_PUR_PURCHASE", true)]
-    [InlineData("P_COP_ORDER_After_Save", true)] // 未移植，仍为受控 SP
+    [InlineData("P_COP_ORDER_After_Save", false)] // 已移植为领域规则（cop-order）
     [InlineData("P_PUR_RECEIVE_After_Save", true)]
     [InlineData("P_UNKNOWN_SPROC", false)]
     [InlineData("DROP TABLE X", false)]
