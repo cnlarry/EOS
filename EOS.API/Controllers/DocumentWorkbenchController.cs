@@ -74,7 +74,7 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         var access=await FormAccess(moduleId,"new",token);
         if(access is null)return NotFound();
         logger.LogDebug("统一表单保存请求 module={ModuleId} mode=new fields={Fields} details={DetailCount}",moduleId,string.Join(',',request.Values.Keys),request.Details?.Count??0);
-        var result=await repository.CreateRecordAsync(access.Value.Definition,access.Value.Form,request,userContext.EmployeeName,access.Value.Rights.DataFilter,token);
+        var result=await repository.CreateRecordAsync(access.Value.Definition,access.Value.Form,request,userContext.EmployeeName,userContext.UserId,access.Value.Rights.DataFilter,token);
         LogValidationFailure(moduleId,result);
         return MapSaveResult(result);
     }
@@ -87,7 +87,7 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         var keyValues=ParseKey(key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
         logger.LogDebug("统一表单保存请求 module={ModuleId} mode=edit key={Key} fields={Fields} details={DetailCount}",moduleId,string.Join(',',keyValues),string.Join(',',request.Values.Keys),request.Details?.Count??0);
-        var result=await repository.UpdateRecordAsync(access.Value.Definition,access.Value.Form,keyValues,request,userContext.EmployeeName,access.Value.Rights.DataFilter,token);
+        var result=await repository.UpdateRecordAsync(access.Value.Definition,access.Value.Form,keyValues,request,userContext.EmployeeName,userContext.UserId,access.Value.Rights.DataFilter,token);
         LogValidationFailure(moduleId,result);
         return MapSaveResult(result);
     }
@@ -100,7 +100,7 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         if(!access.Value.Rights.CanDelete)return Forbid();
         var keyValues=ParseKey(key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
-        var result=await repository.DeleteRecordAsync(access.Value.Definition,access.Value.Form,keyValues,access.Value.Rights.DataFilter,token);
+        var result=await repository.DeleteRecordAsync(access.Value.Definition,access.Value.Form,keyValues,userContext.UserId,access.Value.Rights.DataFilter,token);
         LogValidationFailure(moduleId,result);
         return MapSaveResult(result);
     }
@@ -119,7 +119,7 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         if(definition is null)return NotFound();
         var keyValues=ParseKey(request.Key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
-        var result=await repository.WorkflowAsync(definition,keyValues,approve,userContext.EmployeeName,token);
+        var result=await repository.WorkflowAsync(definition,keyValues,approve,userContext.EmployeeName,userContext.UserId,token);
         return MapSaveResult(result);
     }
 
