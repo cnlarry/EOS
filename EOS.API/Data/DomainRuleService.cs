@@ -33,6 +33,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "cop-prepay" => await CopPrepayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-quote" => await CopQuoteAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-account" => await CopAccountAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "cop-order" => await CopOrderAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-quote" => await PurQuoteAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-pay" => await PurPayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-prepay" => await PurPrepayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
@@ -97,6 +98,149 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         command.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = dueType;
         command.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = dueNo;
         await command.ExecuteNonQueryAsync(token);
+        return new(true, null);
+    }
+
+    /// <summary>客户订单（1405）AfterSave：订单检查（P_COP_ORDER_CHECK 六规则）+ 客户/报价/产品一致性。</summary>
+    private static async Task<SprocResult> CopOrderAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var (typeColumn, noColumn) = KeyColumns(pkColumns);
+        var type = keyValues[0]; var no = keyValues[1];
+
+        // 1. 客户交易天数（SYSSS.CLIENT_DAYS；任一缺失跳过）
+        var tradeDays = await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.COP_ORDER_M m
+            CROSS JOIN (SELECT TOP 1 CLIENT_DAYS FROM dbo.SYSSS) s
+            JOIN dbo.CLIENT c ON c.CLIENT_ID=m.CLIENT_ID
+            WHERE m.ORDER_TYPE=@Type AND m.ORDER_NO=@No
+              AND s.CLIENT_DAYS IS NOT NULL AND c.LAST_TRADE_DATE IS NOT NULL
+              AND s.CLIENT_DAYS < DATEDIFF(day, c.LAST_TRADE_DATE, m.ORDER_DATE);
+            """, type, no, token);
+        if (tradeDays) return new(false, "已超过客户交易天数");
+        // 2. 最低订单金额（MIN_ORDER_AMOUNT>0 才启用）
+        var minOrder = await FindLinesAsync(connection, transaction,
+            """
+            SELECT c.MIN_ORDER_AMOUNT, c.CURR_ID
+            FROM dbo.COP_ORDER_M m JOIN dbo.CLIENT c ON c.CLIENT_ID=m.CLIENT_ID
+            LEFT JOIN dbo.CURR r ON r.CURR_ID=c.CURR_ID
+            WHERE m.ORDER_TYPE=@Type AND m.ORDER_NO=@No AND ISNULL(c.MIN_ORDER_AMOUNT,0) > 0
+              AND c.MIN_ORDER_AMOUNT * ISNULL(r.CURR_RATE,1) > ISNULL(m.AMOUNT_TAX,0) * ISNULL(m.CURR_RATE,1);
+            """, type, no, token,
+            line: r => $"{Convert.ToDouble(r.GetValue(0))}{r.GetString(1).Trim()}");
+        if (minOrder is not null)
+            return new(false, "总金额小于客户最低订单额:" + minOrder);
+        // 3. 客户信用余额（CREDIT_LIMIT_NUM 为 NULL 时不启用——旧系统 NULL 比较语义）
+        var credit = await FindLinesAsync(connection, transaction,
+            """
+            SELECT c.CREDIT_LIMIT_NUM * ISNULL(r.CURR_RATE,1) - ISNULL(m.AMOUNT_TAX,0) * ISNULL(m.CURR_RATE,1), c.CURR_ID
+            FROM dbo.COP_ORDER_M m JOIN dbo.CLIENT c ON c.CLIENT_ID=m.CLIENT_ID
+            LEFT JOIN dbo.CURR r ON r.CURR_ID=c.CURR_ID
+            WHERE m.ORDER_TYPE=@Type AND m.ORDER_NO=@No
+              AND c.CREDIT_LIMIT_NUM * ISNULL(r.CURR_RATE,1) < ISNULL(m.AMOUNT_TAX,0) * ISNULL(m.CURR_RATE,1);
+            """, type, no, token,
+            line: r => $"{Math.Round(Convert.ToDouble(r.GetValue(0)), 2)}{r.GetString(1).Trim()}");
+        if (credit is not null)
+            return new(false, "客户信用余额不足：" + credit);
+        // 4. 产品交易天数（SYSSS.PRODUCT_DAYS；客户交易天数缺失时旧系统跳过本检查）
+        var productDays = await FindLinesAsync(connection, transaction,
+            """
+            SELECT TOP 10 p.PRO_NO FROM dbo.COP_ORDER_D o
+            JOIN dbo.COP_ORDER_M m ON m.ORDER_TYPE=o.ORDER_TYPE AND m.ORDER_NO=o.ORDER_NO
+            JOIN dbo.CLIENT c ON c.CLIENT_ID=m.CLIENT_ID
+            JOIN dbo.PRODUCT p ON p.PRO_NO=o.PRO_NO
+            CROSS JOIN (SELECT TOP 1 PRODUCT_DAYS FROM dbo.SYSSS) s
+            WHERE o.ORDER_TYPE=@Type AND o.ORDER_NO=@No
+              AND s.PRODUCT_DAYS IS NOT NULL AND c.LAST_TRADE_DATE IS NOT NULL
+              AND s.PRODUCT_DAYS < DATEDIFF(day, p.LAST_TRADE_DATE, m.ORDER_DATE);
+            """, type, no, token, line: r => r.GetString(0).Trim());
+        if (productDays is not null)
+            return new(false, "以下产品编号已超出产品交易天数限制\r\n" + productDays);
+        // 5. 产品计价有效期（CLIENT_PRICE_D.IN_EFFECT_DATE >= 订单日期）
+        var priceExpired = await FindLinesAsync(connection, transaction,
+            """
+            SELECT DISTINCT a.PRO_NO FROM dbo.COP_ORDER_D a
+            JOIN dbo.COP_ORDER_M m ON m.ORDER_TYPE=a.ORDER_TYPE AND m.ORDER_NO=a.ORDER_NO
+            JOIN dbo.CLIENT_PRICE_D p ON p.CLIENT_ID=m.CLIENT_ID AND p.PRO_NO=a.PRO_NO
+            WHERE a.ORDER_TYPE=@Type AND a.ORDER_NO=@No AND p.IN_EFFECT_DATE < m.ORDER_DATE;
+            """, type, no, token, line: r => r.GetString(0).Trim());
+        if (priceExpired is not null)
+            return new(false, "以下产品计价已过有效期\r\n" + priceExpired);
+        // 6. 最小生产数量（QTY < MIN_PRODUCE_QTY）
+        var minProduce = await FindLinesAsync(connection, transaction,
+            """
+            SELECT TOP 10 p.PRO_NO FROM dbo.COP_ORDER_D o
+            JOIN dbo.PRODUCT p ON p.PRO_NO=o.PRO_NO
+            WHERE o.ORDER_TYPE=@Type AND o.ORDER_NO=@No AND o.QTY < ISNULL(p.MIN_PRODUCE_QTY,0);
+            """, type, no, token, line: r => r.GetString(0).Trim());
+        if (minProduce is not null)
+            return new(false, "以下产品编号订单量低于最小生产要求数量\r\n" + minProduce);
+
+        // AfterSave 校验：客户存在
+        var clientOk = await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.COP_ORDER_M m JOIN dbo.CLIENT c ON c.CLIENT_ID=m.CLIENT_ID
+            WHERE m.ORDER_TYPE=@Type AND m.ORDER_NO=@No AND c.BUSINESS_TAG=0;
+            """, type, no, token);
+        if (!clientOk) return new(false, "客户编号不存在或已停止交易。");
+        // 客户订单号不重复（排除自身）
+        var duplicateOrderNo = await ExistsAsync(connection, transaction,
+            """
+            SELECT TOP 1 1 FROM dbo.COP_ORDER_M
+            WHERE CLIENT_ORDER_NO=(SELECT CLIENT_ORDER_NO FROM dbo.COP_ORDER_M WHERE ORDER_TYPE=@Type AND ORDER_NO=@No)
+              AND ISNULL(CLIENT_ORDER_NO,'')<>'' AND NOT (ORDER_TYPE=@Type AND ORDER_NO=@No);
+            """, type, no, token);
+        if (duplicateOrderNo) return new(false, "客户订单号重复。");
+        // 预交日期 >= 订单日期
+        var preSendLines = await FindLinesAsync(connection, transaction,
+            """
+            SELECT d.SERIAL_NO FROM dbo.COP_ORDER_D d
+            JOIN dbo.COP_ORDER_M m ON m.ORDER_TYPE=d.ORDER_TYPE AND m.ORDER_NO=d.ORDER_NO
+            WHERE d.ORDER_TYPE=@Type AND d.ORDER_NO=@No AND d.PRE_SEND_DATE < m.ORDER_DATE;
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (preSendLines is not null)
+            return new(false, "以下序号项预交日期小于订单日期 \r\n" + preSendLines);
+        // 报价单与订单客户一致
+        var quoteMismatch = await FindLinesAsync(connection, transaction,
+            """
+            SELECT d.SERIAL_NO FROM dbo.COP_QUOTE_M q
+            INNER JOIN dbo.COP_ORDER_D d ON q.QUOTE_TYPE=d.QUOTE_TYPE AND q.QUOTE_NO=d.QUOTE_NO
+            INNER JOIN dbo.COP_ORDER_M m ON m.ORDER_TYPE=d.ORDER_TYPE AND m.ORDER_NO=d.ORDER_NO
+            WHERE m.ORDER_TYPE=@Type AND m.ORDER_NO=@No AND q.CLIENT_ID<>m.CLIENT_ID;
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (quoteMismatch is not null)
+            return new(false, "以下序号项报价单与订单客户不符 \r\n" + quoteMismatch);
+        // 报价单存在
+        var quoteMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.COP_ORDER_D d
+            WHERE ORDER_TYPE=@Type AND ORDER_NO=@No AND ISNULL(QUOTE_TYPE,'')<>''
+              AND NOT EXISTS (SELECT 1 FROM dbo.COP_QUOTE_M q WHERE q.QUOTE_TYPE=d.QUOTE_TYPE AND q.QUOTE_NO=d.QUOTE_NO);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (quoteMissing is not null)
+            return new(false, "以下序号项报价单不存在 \r\n" + quoteMissing);
+        // 报价单序号与产品编号相符
+        var quoteProduct = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.COP_ORDER_D d
+            WHERE ORDER_TYPE=@Type AND ORDER_NO=@No AND ISNULL(QUOTE_TYPE,'')<>''
+              AND NOT EXISTS (SELECT 1 FROM dbo.COP_QUOTE_D q
+                              WHERE q.QUOTE_TYPE=d.QUOTE_TYPE AND q.QUOTE_NO=d.QUOTE_NO
+                                AND q.SERIAL_NO=d.QUOTE_SERIAL_NO AND q.PRO_NO=d.PRO_NO);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (quoteProduct is not null)
+            return new(false, "以下序号项报价单序号与产品编号不相符 \r\n" + quoteProduct);
+        // 产品编号存在
+        var productMissing = await FindLinesAsync(connection, transaction,
+            """
+            SELECT SERIAL_NO FROM dbo.COP_ORDER_D d
+            WHERE ORDER_TYPE=@Type AND ORDER_NO=@No
+              AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
+            """, type, no, token, line: r => r.GetInt32(0).ToString());
+        if (productMissing is not null)
+            return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
         return new(true, null);
     }
 

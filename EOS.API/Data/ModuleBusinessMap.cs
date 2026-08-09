@@ -32,7 +32,8 @@ public static class ModuleBusinessMap
             [1416] = new(1416, null, "P_WF_COP_QUOTE", true, "QUOTE_NO", "QUOTE_TYPE",
                 DomainRule: "cop-quote"),
             // 1405 客户订单
-            [1405] = new(1405, "P_COP_ORDER_After_Save", "P_WF_COP_ORDER", true, "ORDER_NO", "ORDER_TYPE"),
+            [1405] = new(1405, null, "P_WF_COP_ORDER", true, "ORDER_NO", "ORDER_TYPE",
+                DomainRule: "cop-order"),
             // 1604 厂商报价单 → 批核联动厂商计价表（1602）
             [1604] = new(1604, null, "P_WF_PUR_QUOTE", true, "QUOTE_NO", "QUOTE_TYPE",
                 DomainRule: "pur-quote"),
