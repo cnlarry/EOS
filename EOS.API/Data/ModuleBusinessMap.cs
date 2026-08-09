@@ -107,6 +107,7 @@ public static class DomainRuleMap
         [180207] = "hr-worktime",
         [1515] = "moc-product-out",
         [130101] = "inv-check-stock",
+        [2708] = "sfc-plan",
     };
 
     public static bool TryGet(int moduleId, out string? rule) => Rules.TryGetValue(moduleId, out rule);
