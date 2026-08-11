@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
@@ -8,7 +8,9 @@ import { ApiError } from '../../types/api'
 import { DataChooserInput, type ChooserRow } from './DataChooserInput'
 import { FormFieldRenderer } from './FormFieldRenderer'
 import type { FormDefinition, FormFieldDefinition } from './formDefinition'
+import { buildFormCells, buildFormRows } from './formLayout'
 import { validateDetailRows, validateMasterFields, type FieldErrors } from './formValidation'
+import { ResizableTable } from '../../components/common/ResizableTable'
 
 interface SaveRecordRequest {
   values: Record<string, string>
@@ -29,7 +31,10 @@ function emptyValue(field: FormFieldDefinition): string {
 }
 
 function writableFields(fields: FormFieldDefinition[]): FormFieldDefinition[] {
-  return fields.filter(field => field.isVisible && !field.isReadonly && !field.serverFilled && !field.isVirtual)
+  // ONLY_CHOOSE 字段（IS_READONLY=1 但带选择器，如 CURR_ID/TAX_ID）只读不可手输，
+  // 但选择器选中的值必须随保存提交；元数据修复后误标只读字段已改可编辑，此分支仅服务 ONLY_CHOOSE 语义。
+  return fields.filter(field => field.isVisible && !field.serverFilled && !field.isVirtual && !field.displayOnly
+    && (!field.isReadonly || field.choosers.some(source => source.active && source.table)))
 }
 
 function describeError(error: unknown): string {
@@ -50,6 +55,7 @@ export function FormEditorPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isEdit = location.pathname.endsWith('/edit')
+  const isView = location.pathname.endsWith('/view')
   const keyParam = searchParams.get('key')
   const originalRef = useRef<Record<string, string>>({})
   const [masterValues, setMasterValues] = useState<Record<string, string>>({})
@@ -60,25 +66,33 @@ export function FormEditorPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [detailErrors, setDetailErrors] = useState<FieldErrors[]>([])
   const [detailChooser, setDetailChooser] = useState<{ index: number; field: FormFieldDefinition } | null>(null)
+  const [selectedDetailRows, setSelectedDetailRows] = useState<Set<number>>(new Set())
+  const [detailSort, setDetailSort] = useState<{ key: string; dir: 1 | -1 } | null>(null)
+  const [activeTab, setActiveTab] = useState(1)
 
   const formQuery = useQuery({
-    queryKey: ['workbench', moduleId, 'form-definition', isEdit ? 'edit' : 'new'],
-    queryFn: () => apiClient.get<FormDefinition>(`/document-workbench/${moduleId}/form-definition?mode=${isEdit ? 'edit' : 'new'}`),
+    queryKey: ['workbench', moduleId, 'form-definition', isEdit ? 'edit' : isView ? 'view' : 'new'],
+    queryFn: () => apiClient.get<FormDefinition>(`/document-workbench/${moduleId}/form-definition?mode=${isEdit ? 'edit' : isView ? 'view' : 'new'}`),
   })
   const recordQuery = useQuery({
     queryKey: ['workbench', moduleId, 'record', keyParam],
     queryFn: () => apiClient.get<RecordBundle>(`/document-workbench/${moduleId}/record`, { query: { key: keyParam ?? '' } }),
-    enabled: isEdit && Boolean(keyParam) && formQuery.isSuccess,
+    enabled: (isEdit || isView) && Boolean(keyParam) && formQuery.isSuccess,
   })
 
   useEffect(() => {
-    if (!formQuery.data || isEdit) return
+    if (!formQuery.data || isEdit || isView) return
     const initial: Record<string, string> = {}
+    const defaults = formQuery.data.defaultValues ?? {}
     for (const field of formQuery.data.masterFields) {
-      if (field.isVisible) initial[field.key] = emptyValue(field)
+      if (field.isVisible) initial[field.key] = defaults[field.key] ?? emptyValue(field)
     }
     setMasterValues(initial)
-  }, [formQuery.data, isEdit])
+  }, [formQuery.data, isEdit, isView])
+
+  useEffect(() => {
+    if (formQuery.data) setActiveTab(formQuery.data.tabs[0]?.no ?? 1)
+  }, [formQuery.data])
 
   useEffect(() => {
     if (!formQuery.data || !recordQuery.data) return
@@ -176,7 +190,7 @@ export function FormEditorPage() {
     if (mapping) {
       setMasterValues(current => {
         const next = { ...current }
-        for (const pair of mapping.split(';')) {
+        for (const pair of mapping.split(/[;,]/)) {
           const [target, column] = pair.split('=')
           if (!target || !column || row[column] === undefined) continue
           next[target.replace(/^(txt|cho|dro|chk|lab|hidd)_/, '')] = String(row[column] ?? '')
@@ -199,6 +213,16 @@ export function FormEditorPage() {
     setDirty(true)
   }
 
+  const buildEmptyDetailRow = (): Record<string, string> => {
+    if (!formQuery.data) return {}
+    const row: Record<string, string> = {}
+    for (const field of formQuery.data.detailFields) {
+      // 主表同名值自动带入新明细行（对齐旧系统 setTRKeyValue 随主表联动带值）
+      if (field.isVisible) row[field.key] = masterValues[field.key] ?? emptyValue(field)
+    }
+    return row
+  }
+
   const addDetailRow = () => {
     if (!formQuery.data) return
     const missing = formQuery.data.detailNoFields
@@ -209,28 +233,37 @@ export function FormEditorPage() {
       setSaveError(`请先填写主表字段：${missing.join('、')}，再新增明细。`)
       return
     }
-    const row: Record<string, string> = {}
-    for (const field of formQuery.data.detailFields) {
-      if (field.isVisible) row[field.key] = emptyValue(field)
-    }
-    setDetailRows(current => [...current, row])
+    setDetailRows(current => [...current, buildEmptyDetailRow()])
     setDetailErrors(current => [...current, {}])
     setDirty(true)
   }
 
-  const applyDetailChooser = (index: number, field: FormFieldDefinition, row: ChooserRow) => {
+  const applyDetailChooser = (index: number, field: FormFieldDefinition, rows: ChooserRow[]) => {
     const source = field.choosers.find(item => item.active && item.table)
     const mapping = source?.returnMapping
+    const applyMapping = (target: Record<string, string>, row: ChooserRow) => {
+      if (!mapping) return target
+      for (const pair of mapping.split(/[;,]/)) {
+        const [t, column] = pair.split('=')
+        if (!t || !column || row[column] === undefined) continue
+        target[t.replace(/^(txt|cho|dro|chk|lab|hidd)_/, '')] = String(row[column] ?? '')
+      }
+      return target
+    }
+    // 明细多选：逐条追加明细行（对齐旧系统 ReturnMultiValue 的 addTR 语义）
+    if (field.chooseMultiple && rows.length > 1) {
+      const newRows = rows.map(row => applyMapping(buildEmptyDetailRow(), row))
+      setDetailRows(current => [...current, ...newRows])
+      setDetailErrors(current => [...current, ...newRows.map(() => ({}))])
+      setDirty(true)
+      setDetailChooser(null)
+      return
+    }
+    const row = rows[0]
     if (mapping) {
       setDetailRows(current => current.map((currentRow, i) => {
         if (i !== index) return currentRow
-        const next = { ...currentRow }
-        for (const pair of mapping.split(';')) {
-          const [target, column] = pair.split('=')
-          if (!target || !column || row[column] === undefined) continue
-          next[target.replace(/^(txt|cho|dro|chk|lab|hidd)_/, '')] = String(row[column] ?? '')
-        }
-        return next
+        return applyMapping({ ...currentRow }, row)
       }))
       setDirty(true)
     }
@@ -240,7 +273,34 @@ export function FormEditorPage() {
   const removeDetailRow = (index: number) => {
     setDetailRows(current => current.filter((_, i) => i !== index))
     setDetailErrors(current => current.filter((_, i) => i !== index))
+    setSelectedDetailRows(current => new Set([...current].filter(i => i !== index).map(i => i > index ? i - 1 : i)))
     setDirty(true)
+  }
+
+  const toggleDetailRow = (index: number) => {
+    setSelectedDetailRows(current => {
+      const next = new Set(current)
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
+      return next
+    })
+  }
+
+  const allDetailSelected = detailRows.length > 0 && detailRows.every((_, index) => selectedDetailRows.has(index))
+
+  const toggleAllDetailRows = () => {
+    setSelectedDetailRows(allDetailSelected ? new Set() : new Set(detailRows.map((_, index) => index)))
+  }
+
+  const removeSelectedDetailRows = () => {
+    setDetailRows(current => current.filter((_, index) => !selectedDetailRows.has(index)))
+    setDetailErrors(current => current.filter((_, index) => !selectedDetailRows.has(index)))
+    setSelectedDetailRows(new Set())
+    setDirty(true)
+  }
+
+  const toggleDetailSort = (key: string) => {
+    setDetailSort(current => current?.key === key ? (current.dir === 1 ? { key, dir: -1 } : null) : { key, dir: 1 })
   }
 
   if (formQuery.isPending || (isEdit && recordQuery.isPending)) return <LoadingState label="正在加载表单…" />
@@ -251,33 +311,81 @@ export function FormEditorPage() {
   if (!form) return null
   const visibleMaster = form.masterFields.filter(field => field.isVisible)
   const visibleDetail = form.detailFields.filter(field => field.isVisible)
+  const detailFillerCount = Math.max(0, 5 - detailRows.length)
+  const hasTabs = form.tabs.length > 0
+  const activeTabNo = hasTabs ? activeTab : 1
+  const masterCells = buildFormCells(visibleMaster).filter(cell => !hasTabs || cell[0].tabNo === activeTabNo)
+  const masterRows = buildFormRows(masterCells, form.columns)
+  const orderedDetailIndices = (() => {
+    if (!detailSort) return detailRows.map((_, index) => index)
+    const { key, dir } = detailSort
+    const indices = detailRows.map((_, index) => index)
+    indices.sort((a, b) => {
+      const va = detailRows[a][key] ?? ''
+      const vb = detailRows[b][key] ?? ''
+      const na = Number(va)
+      const nb = Number(vb)
+      const numeric = va !== '' && vb !== '' && !Number.isNaN(na) && !Number.isNaN(nb)
+      const cmp = numeric ? na - nb : String(va).localeCompare(String(vb), 'zh-CN', { numeric: true })
+      return cmp * dir
+    })
+    return indices
+  })()
+  const renderField = (field: FormFieldDefinition, bare = false) => (
+    <FormFieldRenderer
+      key={field.key}
+      field={field}
+      value={masterValues[field.key] ?? ''}
+      error={fieldErrors[field.key]}
+      onChange={value => {
+        setMasterValues(current => ({ ...current, [field.key]: value }))
+        setFieldErrors(current => { const next = { ...current }; delete next[field.key]; return next })
+        setDirty(true)
+      }}
+      onChoose={fieldToChoose => setChooserField(fieldToChoose)}
+      bare={bare}
+    />
+  )
+  const renderCell = (cell: FormFieldDefinition[]) => {
+    const [main, ...companions] = cell
+    if (companions.length === 0) return renderField(main)
+    const isBoolean = main.dataType.toLowerCase().includes('bit')
+    return (
+      <div key={main.key} className="erp-form-cell">
+        <label className="erp-form-label">{main.label}{!isBoolean && !main.isReadonly && !main.serverFilled && main.isRequired ? ' *' : ''}</label>
+        <div className="erp-form-cell-controls">
+          {renderField(main, true)}
+          {companions.map(companion => renderField(companion, true))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="d-grid gap-2">
-      <div className="d-flex justify-content-between align-items-center">
-        <h1 className="h3 mb-0">{isEdit ? '编辑' : '新建'}{form.title}</h1>
-        <div className="d-flex gap-2">
-          <Button onClick={back}>返回</Button>
-          <Button variant="primary" loading={save.isPending} onClick={() => { if (validateClient()) save.mutate() }}>保存</Button>
-        </div>
-      </div>
       {saveError ? <div className="alert alert-danger mb-0">{saveError}</div> : null}
-      <section className="card">
+      <section className="card erp-form-card">
         <div className="card-body">
-          <div className="row g-3">
-            {visibleMaster.map(field => (
-              <FormFieldRenderer
-                key={field.key}
-                field={field}
-                value={masterValues[field.key] ?? ''}
-                error={fieldErrors[field.key]}
-                onChange={value => {
-                  setMasterValues(current => ({ ...current, [field.key]: value }))
-                  setFieldErrors(current => { const next = { ...current }; delete next[field.key]; return next })
-                  setDirty(true)
-                }}
-                onChoose={fieldToChoose => setChooserField(fieldToChoose)}
-              />
+          <div className="erp-form-toolbar">
+            {hasTabs ? (
+              <ul className="nav nav-tabs erp-form-tabs">
+                {form.tabs.map(tab => (
+                  <li className="nav-item" key={tab.no}>
+                    <button type="button" className={`nav-link${activeTabNo === tab.no ? ' active' : ''}`} onClick={() => setActiveTab(tab.no)}>{tab.title}</button>
+                  </li>
+                ))}
+              </ul>
+            ) : <div />}
+            <div className="d-flex gap-2 erp-form-toolbar-actions">
+              <Button size="sm" onClick={back}>返回</Button>
+              {!isView ? <Button size="sm" variant="primary" loading={save.isPending} onClick={() => { if (validateClient()) save.mutate() }}>保存</Button> : null}
+            </div>
+          </div>
+          <div className="erp-form-grid">
+            {masterRows.map((row, rowIndex) => (
+              <div className="erp-form-row" key={rowIndex} style={{ '--erp-form-cols': Math.max(1, form.columns) } as CSSProperties}>
+                {row.map(cell => renderCell(cell))}
+              </div>
             ))}
           </div>
         </div>
@@ -286,44 +394,72 @@ export function FormEditorPage() {
         <section className="card">
           <div className="card-header d-flex justify-content-between align-items-center">
             <h2 className="h5 mb-0">明细</h2>
-            <Button size="sm" onClick={addDetailRow}>新增一行</Button>
+            <div className="d-flex gap-2">
+              <Button size="sm" variant="danger" disabled={selectedDetailRows.size === 0} onClick={removeSelectedDetailRows}>删除所选{selectedDetailRows.size > 0 ? ` (${selectedDetailRows.size})` : ''}</Button>
+              <Button size="sm" onClick={addDetailRow}>新增一行</Button>
+            </div>
           </div>
           <div className="table-responsive">
-            <table className="table table-sm mb-0">
-              <thead><tr>{visibleDetail.map(field => <th key={field.key}>{field.label}</th>)}<th /></tr></thead>
+            <ResizableTable className="table table-sm mb-0 erp-detail-grid" storageKey={`form-detail-${moduleId}`}>
+              <thead>
+                <tr>
+                  <th className="erp-detail-check text-center" data-col-key="__check" style={{ width: 36 }}>
+                    <input type="checkbox" className="form-check-input" aria-label="全选" checked={allDetailSelected} onChange={toggleAllDetailRows} />
+                  </th>
+                  <th className="erp-detail-row-no" data-col-key="__rowNo">序号</th>
+                  {visibleDetail.map(field => (
+                    <th key={field.key} data-col-key={field.key} data-col-min-width={field.displayLength} style={{ width: field.displayLength }}>
+                      <button type="button" className="erp-detail-sort" title="点击排序" onClick={() => toggleDetailSort(field.key)}>
+                        {field.label}{detailSort?.key === field.key ? (detailSort.dir === 1 ? ' ▲' : ' ▼') : ''}
+                      </button>
+                    </th>
+                  ))}
+                  <th className="erp-detail-actions" data-col-key="__actions">操作</th>
+                </tr>
+              </thead>
               <tbody>
-                {detailRows.map((row, index) => (
+                {orderedDetailIndices.map((index, position) => {
+                  const row = detailRows[index]
+                  return (
                   <tr key={index}>
+                    <td className="erp-detail-check text-center">
+                      <input type="checkbox" className="form-check-input" aria-label={`选择第${index + 1}行`} checked={selectedDetailRows.has(index)} onChange={() => toggleDetailRow(index)} />
+                    </td>
+                    <td className="erp-detail-row-no text-center text-secondary">{position + 1}</td>
                     {visibleDetail.map(field => (
                       <td key={field.key}>
-                        <div className="d-flex gap-1">
-                          <input
-                            className={`form-control form-control-sm${detailErrors[index]?.[field.key] ? ' is-invalid' : ''}`}
-                            value={row[field.key] ?? ''}
-                            disabled={field.isReadonly || field.serverFilled}
-                            onChange={event => updateDetail(index, field.key, event.target.value)}
-                          />
-                          {field.choosers.some(source => source.active && source.table) && !field.isReadonly && !field.serverFilled ? (
-                            <Button size="sm" onClick={() => setDetailChooser({ index, field })}>选择</Button>
-                          ) : null}
-                        </div>
-                        {detailErrors[index]?.[field.key] ? <div className="invalid-feedback d-block">{detailErrors[index][field.key]}</div> : null}
-                        {field.isPrimaryKey && field.isReadonly ? <div className="form-hint text-secondary">保存时自动编号</div> : null}
+                        <FormFieldRenderer
+                          field={field}
+                          value={row[field.key] ?? ''}
+                          error={detailErrors[index]?.[field.key]}
+                          onChange={value => updateDetail(index, field.key, value)}
+                          onChoose={fieldToChoose => setDetailChooser({ index, field: fieldToChoose })}
+                          bare
+                        />
                       </td>
                     ))}
                     <td><Button size="sm" variant="danger" onClick={() => removeDetailRow(index)}>删除</Button></td>
                   </tr>
+                  )
+                })}
+                {Array.from({ length: detailFillerCount }, (_, fillerIndex) => (
+                  <tr key={`filler-${fillerIndex}`} className="erp-detail-filler">
+                    <td className="erp-detail-check" />
+                    <td className="erp-detail-row-no" />
+                    {visibleDetail.map(field => <td key={field.key} />)}
+                    <td className="erp-detail-actions" />
+                  </tr>
                 ))}
               </tbody>
-            </table>
+            </ResizableTable>
           </div>
         </section>
       ) : null}
       {chooserField ? (
-        <DataChooserInput moduleId={moduleId} field={chooserField} onPick={row => applyChooser(chooserField, row)} onClose={() => setChooserField(null)} />
+        <DataChooserInput moduleId={moduleId} field={chooserField} masterValues={masterValues} onPick={rows => applyChooser(chooserField, rows[0])} onClose={() => setChooserField(null)} />
       ) : null}
       {detailChooser ? (
-        <DataChooserInput moduleId={moduleId} field={detailChooser.field} onPick={row => applyDetailChooser(detailChooser.index, detailChooser.field, row)} onClose={() => setDetailChooser(null)} />
+        <DataChooserInput moduleId={moduleId} field={detailChooser.field} masterValues={masterValues} detailValues={detailRows[detailChooser.index] ?? undefined} onPick={rows => applyDetailChooser(detailChooser.index, detailChooser.field, rows)} onClose={() => setDetailChooser(null)} />
       ) : null}
     </div>
   )

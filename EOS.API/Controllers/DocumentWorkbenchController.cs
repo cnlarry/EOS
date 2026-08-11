@@ -44,13 +44,15 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         if(definition is null||userId is null)return NotFound();
         if(!formSettings.Value.EnabledModuleIds.Contains(moduleId))return NotFound();
         var normalized=mode.Trim().ToLowerInvariant();
-        if(normalized is not ("new" or "edit"))return BadRequest(new{code="INVALID_FORM_MODE",message="mode 仅支持 new 或 edit。"});
+        if(normalized is not ("new" or "edit" or "view"))return BadRequest(new{code="INVALID_FORM_MODE",message="mode 仅支持 new、edit 或 view。"});
         var rights=await rightsRepository.GetAsync(userId,moduleId,token);
         if(normalized=="new"&&!rights.CanAddNew)return Forbid();
         if(normalized=="edit"&&!rights.CanEdit)return Forbid();
+        // view 模式仅需浏览权限（对齐旧系统 state=brow 只读查看）
+        if(normalized=="view"&&!rights.CanBrowse)return Forbid();
         if(normalized=="new"&&!definition.HasAdd)return NotFound();
         if(normalized=="edit"&&!definition.HasEdit)return NotFound();
-        var form=await repository.GetFormDefinitionAsync(definition,normalized,rights.CanViewCost,rights.CanViewSecrecy,
+        var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,rights.CanViewCost,rights.CanViewSecrecy,
             rights.DeniedMasterFields,rights.DeniedDetailFields,
             rights.DenyNewMasterFields,rights.DenyNewDetailFields,
             rights.DenyModiMasterFields,rights.DenyModiDetailFields,token);
@@ -60,7 +62,8 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
     [HttpGet("record")]
     public async Task<IActionResult> Record(int moduleId,[FromQuery]string key,CancellationToken token=default)
     {
-        var access=await FormAccess(moduleId,"edit",token);
+        // 查看优先（浏览权限即可），编辑为回退（编辑权限可看可改）
+        var access=await FormAccess(moduleId,"view",token) ?? await FormAccess(moduleId,"edit",token);
         if(access is null)return NotFound();
         var keyValues=ParseKey(key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
@@ -130,7 +133,7 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
     }
 
     [HttpGet("form-chooser/{fieldKey}")]
-    public async Task<IActionResult> FormChooser(int moduleId,string fieldKey,[FromQuery]string? keyword=null,CancellationToken token=default)
+    public async Task<IActionResult> FormChooser(int moduleId,string fieldKey,[FromQuery]string? keyword=null,[FromQuery]string? filterField=null,[FromQuery]string? master=null,[FromQuery]string? detail=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]int page=1,[FromQuery]int pageSize=50,CancellationToken token=default)
     {
         var access=await FormAccess(moduleId,"new",token) ?? await FormAccess(moduleId,"edit",token);
         if(access is null)return NotFound();
@@ -149,7 +152,33 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         var chooseFilter=string.IsNullOrWhiteSpace(source.Filter)
             ? null
             : source.Filter.Replace("{module}",moduleId.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,chooseFilter,token);
+        IReadOnlyDictionary<string,string>? masterValues=null;
+        if(!string.IsNullOrWhiteSpace(master))
+        {
+            try
+            {
+                masterValues=System.Text.Json.JsonSerializer.Deserialize<Dictionary<string,string>>(master,
+                    new System.Text.Json.JsonSerializerOptions{PropertyNameCaseInsensitive=true});
+            }
+            catch
+            {
+                masterValues=null;
+            }
+        }
+        IReadOnlyDictionary<string,string>? detailValues=null;
+        if(!string.IsNullOrWhiteSpace(detail))
+        {
+            try
+            {
+                detailValues=System.Text.Json.JsonSerializer.Deserialize<Dictionary<string,string>>(detail,
+                    new System.Text.Json.JsonSerializerOptions{PropertyNameCaseInsensitive=true});
+            }
+            catch
+            {
+                detailValues=null;
+            }
+        }
+        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,filterField,source.ReturnMapping,masterValues,detailValues,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,chooseFilter,sortField,sortDirection,page,pageSize,token);
         return result is null?NotFound():Ok(result);
     }
 
@@ -162,9 +191,11 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         var rights=await rightsRepository.GetAsync(userId,moduleId,token);
         if(mode=="new"&&!rights.CanAddNew)return null;
         if(mode=="edit"&&!rights.CanEdit)return null;
+        if(mode=="view"&&!rights.CanBrowse)return null;
         if(mode=="new"&&!definition.HasAdd)return null;
         if(mode=="edit"&&!definition.HasEdit)return null;
-        var form=await repository.GetFormDefinitionAsync(definition,mode,rights.CanViewCost,rights.CanViewSecrecy,
+        if(mode=="view"&&!definition.HasEdit)return null;
+        var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.CanViewCost,rights.CanViewSecrecy,
             rights.DeniedMasterFields,rights.DeniedDetailFields,
             rights.DenyNewMasterFields,rights.DenyNewDetailFields,
             rights.DenyModiMasterFields,rights.DenyModiDetailFields,token);

@@ -49,7 +49,14 @@ public sealed record FieldAdminInput(
     bool ChooseMultiple,
     string? ChoosePage,
     IReadOnlyList<FieldAdminChooser> Choosers,
-    bool CanCopy);
+    bool CanCopy,
+    int TabNo = 1,
+    int? FormOrder = null,
+    int Span = 1,
+    bool NewLine = false,
+    string? CellGroup = null,
+    int CellRole = 0,
+    string? Options = null);
 
 public sealed record FieldAdminMetadata(
     string TableId,

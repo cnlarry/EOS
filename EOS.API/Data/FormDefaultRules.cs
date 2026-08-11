@@ -3,16 +3,40 @@ namespace EOS.API.Data;
 /// <summary>
 /// 默认值扩展点（B6）：按模块登记"页面代码默认值/自动单号"的受控等价规则。
 /// 原则：未登记不臆造；仅在新增（new）时应用；只作用于可写且未提供值的字段；
-/// 规则值支持动态 token：@today = 当天日期（仅对日期/时间类型字段生效）。
-/// 登记来源：旧页面代码核对（例：ERP/CLIENT/Huajing/Order.aspx.cs OnInit 中 REBATE=100）。
+/// 规则值支持动态 token：@today = 当天日期（仅对日期/时间类型字段生效）；
+/// @today:yyyyMM = 按格式生成字符串（如工时表月份 COUNT_MONTH=当前年月）。
+/// 登记来源：旧页面 code-behind 核对（2026-08-11 全量扫描 118 个 code-behind）。
 /// </summary>
 internal static class FormDefaultRules
 {
     private static readonly IReadOnlyDictionary<int, IReadOnlyDictionary<string, string>> RegisteredRules =
         new Dictionary<int, IReadOnlyDictionary<string, string>>
         {
-            // 1405 客户订单：新增时默认折扣 100（对齐旧 Order.aspx.cs OnInit）
+            // 单据默认折扣 100（旧页面 code-behind 新增分支）
+            [1404] = new Dictionary<string, string> { ["REBATE"] = "100" }, // 客户报价单 Quote.aspx.cs
+            [1416] = new Dictionary<string, string> { ["REBATE"] = "100" }, // 客户报价单（同页面）
+            [1604] = new Dictionary<string, string> { ["REBATE"] = "100" }, // 厂商报价单 Quote.aspx.cs
+            [1606] = new Dictionary<string, string> { ["REBATE"] = "100" }, // 采购单 Purchase.aspx.cs
             [1405] = new Dictionary<string, string> { ["REBATE"] = "100" },
+            // 退货/退料默认勾选已发运标记
+            [1407] = new Dictionary<string, string> { ["SEND_TAG"] = "1" }, // 退货单 Return.aspx.cs
+            [1409] = new Dictionary<string, string> { ["SEND_TAG"] = "1" }, // 扣款退货单
+            [1608] = new Dictionary<string, string> { ["SEND_TAG"] = "1" }, // 退料单 Cancel.aspx.cs
+            [1612] = new Dictionary<string, string> { ["SEND_TAG"] = "1" }, // 扣款退料单
+            // 产品资料：新增默认成品 + 自制（Product.aspx.cs dro 默认选中项）
+            [1201] = new Dictionary<string, string> { ["PRO_TYPE"] = "1", ["MAIN_SOURCE"] = "2" },
+            // 退料单(生产不良)：默认退料类别 2（Back.aspx.cs dro_BACK_CODE 默认选中）
+            [1423] = new Dictionary<string, string> { ["BACK_CODE"] = "2" },
+            // 生产领料（MOC/Get.aspx.cs 按 m 参数勾选：m=2 重工、m=3 托外、m=4 托外+重工）
+            [1514] = new Dictionary<string, string> { ["REWORK_TAG"] = "1" },
+            [2805] = new Dictionary<string, string> { ["OUTSIDE_TAG"] = "1" },
+            [2806] = new Dictionary<string, string> { ["OUTSIDE_TAG"] = "1", ["REWORK_TAG"] = "1" },
+            // 制令单（MOC/Produce.aspx.cs 同规则）
+            [1512] = new Dictionary<string, string> { ["REWORK_TAG"] = "1" },
+            [2803] = new Dictionary<string, string> { ["OUTSIDE_TAG"] = "1" },
+            [2804] = new Dictionary<string, string> { ["OUTSIDE_TAG"] = "1", ["REWORK_TAG"] = "1" },
+            // 工时录入表：新增默认当前年月（WORKTIME_M.aspx.cs）
+            [180207] = new Dictionary<string, string> { ["COUNT_MONTH"] = "@today:yyyyMM" },
         };
 
     public static void Apply(
@@ -31,6 +55,12 @@ internal static class FormDefaultRules
             {
                 var type = field.DataType.ToLowerInvariant();
                 if (type.Contains("date") || type.Contains("time")) values[field.Key] = DateTime.Today;
+                continue;
+            }
+            if (raw.StartsWith("@today:", StringComparison.Ordinal))
+            {
+                var format = raw["@today:".Length..];
+                values[field.Key] = DateTime.Today.ToString(format, System.Globalization.CultureInfo.InvariantCulture);
                 continue;
             }
             if (RecordPayloadValidator.TryConvert(field.DataType, raw, out var value)) values[field.Key] = value;

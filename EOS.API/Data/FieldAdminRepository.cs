@@ -247,6 +247,8 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
                 CHOOSE_FILTER3=@Filter3,CHOOSE_RETURNVAL3=@Return3,
                 CHOOSE_ACTIVE4=@Active4,CHOOSE_T_ID4=@Table4,CHOOSE_T_DESC4=@Description4,CHOOSE_M_IDX4=@Module4,
                 CHOOSE_FILTER4=@Filter4,CHOOSE_RETURNVAL4=@Return4,
+                FORM_TAB_NO=@FormTabNo,FORM_ORDER=@FormOrder,FORM_SPAN=@FormSpan,FORM_NEW_LINE=@FormNewLine,
+                FORM_CELL_GROUP=@FormCellGroup,FORM_CELL_ROLE=@FormCellRole,FORM_OPTIONS=@FormOptions,
                 LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE()
             WHERE T_ID=@TableId AND F_ID=@FieldId;
             """;
@@ -312,6 +314,9 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
                    CAST(COALESCE(CHOOSE_ACTIVE2,0) AS bit),CHOOSE_T_ID2,CHOOSE_T_DESC2,CHOOSE_M_IDX2,CHOOSE_FILTER2,CHOOSE_RETURNVAL2,
                    CAST(COALESCE(CHOOSE_ACTIVE3,0) AS bit),CHOOSE_T_ID3,CHOOSE_T_DESC3,CHOOSE_M_IDX3,CHOOSE_FILTER3,CHOOSE_RETURNVAL3,
                    CAST(COALESCE(CHOOSE_ACTIVE4,0) AS bit),CHOOSE_T_ID4,CHOOSE_T_DESC4,CHOOSE_M_IDX4,CHOOSE_FILTER4,CHOOSE_RETURNVAL4
+                   ,CAST(COALESCE(FORM_TAB_NO,1) AS int) AS FORM_TAB_NO,FORM_ORDER,
+                   CAST(COALESCE(FORM_SPAN,1) AS int) AS FORM_SPAN,CAST(COALESCE(FORM_NEW_LINE,0) AS bit) AS FORM_NEW_LINE,
+                   FORM_CELL_GROUP,CAST(COALESCE(FORM_CELL_ROLE,0) AS int) AS FORM_CELL_ROLE,FORM_OPTIONS
             FROM dbo.FIELDS WITH (NOLOCK)
             WHERE T_ID=@TableId AND LTRIM(RTRIM(F_ID))=@FieldId;
             """;
@@ -330,7 +335,14 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
             reader.IsDBNull(18) ? null : reader.GetInt32(18), reader.GetBoolean(19), reader.GetBoolean(20),
             reader.IsDBNull(21) ? null : reader.GetString(21),
             [ReadInputChooser(reader, 23), ReadInputChooser(reader, 29), ReadInputChooser(reader, 35), ReadInputChooser(reader, 41)],
-            reader.GetBoolean(22));
+            reader.GetBoolean(22),
+            reader.GetInt32(reader.GetOrdinal("FORM_TAB_NO")),
+            reader.IsDBNull(reader.GetOrdinal("FORM_ORDER")) ? null : reader.GetInt32(reader.GetOrdinal("FORM_ORDER")),
+            reader.GetInt32(reader.GetOrdinal("FORM_SPAN")),
+            reader.GetBoolean(reader.GetOrdinal("FORM_NEW_LINE")),
+            reader.IsDBNull(reader.GetOrdinal("FORM_CELL_GROUP")) ? null : reader.GetString(reader.GetOrdinal("FORM_CELL_GROUP")),
+            reader.GetInt32(reader.GetOrdinal("FORM_CELL_ROLE")),
+            reader.IsDBNull(reader.GetOrdinal("FORM_OPTIONS")) ? null : reader.GetString(reader.GetOrdinal("FORM_OPTIONS")));
     }
 
     private static FieldAdminChooser ReadInputChooser(SqlDataReader reader, int offset) => new(
@@ -372,6 +384,13 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         command.Parameters.Add("@ChooseMultiple", SqlDbType.Bit).Value = input.ChooseMultiple;
         command.Parameters.Add("@ChoosePage", SqlDbType.NVarChar, 500).Value = DbValue(input.ChoosePage);
         command.Parameters.Add("@CanCopy", SqlDbType.Bit).Value = input.CanCopy;
+        command.Parameters.Add("@FormTabNo", SqlDbType.Int).Value = input.TabNo;
+        command.Parameters.Add("@FormOrder", SqlDbType.Int).Value = input.FormOrder ?? (object)DBNull.Value;
+        command.Parameters.Add("@FormSpan", SqlDbType.TinyInt).Value = (byte)Math.Clamp(input.Span, 1, 2);
+        command.Parameters.Add("@FormNewLine", SqlDbType.Bit).Value = input.NewLine;
+        command.Parameters.Add("@FormCellGroup", SqlDbType.NVarChar, 50).Value = DbValue(input.CellGroup);
+        command.Parameters.Add("@FormCellRole", SqlDbType.TinyInt).Value = (byte)Math.Clamp(input.CellRole, 0, 2);
+        command.Parameters.Add("@FormOptions", SqlDbType.NVarChar, 500).Value = DbValue(input.Options);
         for (var i = 0; i < 4; i++)
         {
             var source = input.Choosers[i];

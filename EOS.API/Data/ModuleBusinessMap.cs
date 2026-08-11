@@ -26,8 +26,8 @@ public static class ModuleBusinessMap
     private static readonly IReadOnlyDictionary<int, ModuleBusinessRule> Rules =
         new Dictionary<int, ModuleBusinessRule>
         {
-            // 1206 成品资料：仅批核工作流（P_WF_PRODUCT），无保存后副作用；PRO_NO 手工编号。
-            [1206] = new(1206, null, "P_WF_PRODUCT", false, null, null),
+            // 1201 产品/料件基本资料（1206/1210/1211 已合并至此）：仅批核工作流（P_WF_PRODUCT），无保存后副作用；PRO_NO 手工编号。
+            [1201] = new(1201, null, "P_WF_PRODUCT", false, null, null),
             // 1416 客户报价单 → 批核联动客户计价表（1402）
             [1416] = new(1416, null, "P_WF_COP_QUOTE", true, "QUOTE_NO", "QUOTE_TYPE",
                 DomainRule: "cop-quote"),

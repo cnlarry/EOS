@@ -1,11 +1,8 @@
 import type { SortingState } from '@tanstack/react-table'
 import type { QueryCondition } from '../../components/common/queryCondition'
 
-export const pageSizeOptions = [10, 16, 25, 50]
-
 export interface WorkbenchListState {
   page: number
-  pageSize: number | null
   keyword: string
   sort: SortingState
   conditions: QueryCondition[]
@@ -37,10 +34,8 @@ function parseJson<T>(raw: string | null): T | null {
 export function readListState(search: URLSearchParams): WorkbenchListState {
   const parsedConditions = parseJson<QueryCondition[]>(search.get('q'))
   const parsedFilters = parseJson<Record<string, QueryCondition>>(search.get('cf'))
-  const pageSizeRaw = positiveInt(search.get('pageSize'), 0)
   return {
     page: positiveInt(search.get('page'), 1),
-    pageSize: pageSizeOptions.includes(pageSizeRaw) ? pageSizeRaw : null,
     keyword: search.get('keyword') ?? '',
     sort: parseSort(search.get('sortFields'), search.get('sortDirections')),
     conditions: Array.isArray(parsedConditions) ? parsedConditions : [],
@@ -52,7 +47,6 @@ export function readListState(search: URLSearchParams): WorkbenchListState {
 export function writeListState(state: WorkbenchListState): URLSearchParams {
   const params = new URLSearchParams()
   if (state.page > 1) params.set('page', String(state.page))
-  if (state.pageSize) params.set('pageSize', String(state.pageSize))
   if (state.keyword) params.set('keyword', state.keyword)
   if (state.sort.length) {
     params.set('sortFields', state.sort.map((item) => item.id).join(','))

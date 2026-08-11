@@ -5,8 +5,18 @@ namespace EOS.API.Tests;
 
 public class ChooserColumnSelectorTests
 {
-    private static FormChooserColumnRow Row(string key, bool cost = false, bool secrecy = false) =>
-        new(key, $"label-{key}", "nvarchar", cost, secrecy);
+    private static FormChooserColumnRow Row(string key, bool cost = false, bool secrecy = false, bool visible = true) =>
+        new(key, $"label-{key}", "nvarchar", cost, secrecy, 0, visible);
+
+    [Fact]
+    public void InvisibleColumns_ExcludedFromDisplayButNotFromWhitelist()
+    {
+        var rows = new[] { Row("CLIENT_ID", visible: false), Row("PRO_NO"), Row("PRO_NAME") };
+        var result = ChooserColumnSelector.Select(rows, true, true, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        Assert.Equal(["PRO_NO", "PRO_NAME"], result.Select(column => column.Key));
+        // 白名单（调用方用全部 rows）仍包含不可见列，CHOOSE_FILTER 可引用
+        Assert.Contains(rows, row => row.Key.Equals("CLIENT_ID", StringComparison.OrdinalIgnoreCase));
+    }
 
     [Fact]
     public void CostAndSecrecyColumns_FilteredByRights()

@@ -31,11 +31,10 @@ import {
   IconWorld,
   IconZoomScan,
 } from '@tabler/icons-react'
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { apiClient } from '../../services/api'
 import { useAuth } from '../../features/auth/authContext'
-import type { NavigationGroup, NavigationItem } from '../../features/auth/types'
+import type { NavigationItem } from '../../features/auth/types'
 
 type Theme = 'light' | 'dark'
 
@@ -149,79 +148,6 @@ function isSubtreeActive(item: NavigationItem, path: string): boolean {
   return item.children?.some((child) => isSubtreeActive(child, path)) ?? false
 }
 
-interface GroupValuesProps {
-  moduleId: number
-  group: NavigationGroup
-  route: string
-  searchParams: URLSearchParams
-}
-
-/** 第 4 级分组：点击组名展开组值（按需从 API 加载），点击组值进入模块并带分组筛选。 */
-function GroupValues({ moduleId, group, route, searchParams }: GroupValuesProps) {
-  const [open, setOpen] = useState(false)
-  const [values, setValues] = useState<string[] | null>(null)
-  const [failed, setFailed] = useState(false)
-  const activeValue = searchParams.get('groupIndex') === String(group.index) ? searchParams.get('groupValue') : null
-
-  useEffect(() => {
-    if (!open) return
-    let cancelled = false
-    setFailed(false)
-    apiClient
-      .get<{ values: string[] }>(`/navigation/${moduleId}/groups/${group.index}/values`)
-      .then((data) => {
-        if (!cancelled) setValues(data.values)
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [open, moduleId, group.index])
-
-  return (
-    <div className="erp-nav-group-item">
-      <button
-        className={`nav-link erp-nav-group-toggle erp-nav-group-level4 ${activeValue !== null ? 'group-active' : ''}`}
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span className="erp-nav-child-marker" aria-hidden="true" />
-        <span className="nav-link-title">{group.description}</span>
-        <IconChevronDown className="erp-nav-chevron" size={14} />
-      </button>
-      {open && (
-        <div className="erp-nav-group-values">
-          {failed ? (
-            <div className="erp-nav-group-hint">分组表达式暂不受支持</div>
-          ) : values === null ? (
-            <div className="erp-nav-group-hint">加载中…</div>
-          ) : values.length === 0 ? (
-            <div className="erp-nav-group-hint">无分组数据</div>
-          ) : (
-            values.map((value) => {
-              const target = `${route}?groupIndex=${group.index}&groupValue=${encodeURIComponent(value)}`
-              const isActive = activeValue === value
-              return (
-                <NavLink
-                  key={`${group.index}-${value}`}
-                  className={`nav-link erp-nav-value ${isActive ? 'active' : ''}`}
-                  to={target}
-                  title={value}
-                >
-                  <span className="nav-link-title">{value}</span>
-                </NavLink>
-              )
-            })
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export function AppShell() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -229,15 +155,15 @@ export function AppShell() {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [currentDate, setCurrentDate] = useState(() => new Date())
   const [menuQuery, setMenuQuery] = useState('')
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const { bootstrap, logout } = useAuth()
   const navigate = useNavigate()
   const navigation = bootstrap?.navigation ?? fallbackNavigation as unknown as NavigationItem[]
   const location = useLocation()
-  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search])
   const firstGroup = navigation.find((item) => item.children?.length)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(firstGroup ? [firstGroup.id] : []))
-  const isFormEditor = /\/(new|edit)$/.test(location.pathname)
-  const basePath = location.pathname.replace(/\/(new|edit)$/, '')
+  const isFormEditor = /\/(new|edit|view)$/.test(location.pathname)
+  const basePath = location.pathname.replace(/\/(new|edit|view)$/, '')
   const allLeaves = useMemo(() => flattenLeaves(navigation), [navigation])
   const activeMenu = allLeaves.find((item) => item.route === basePath)
   const activeGroup = navigation.find((item) => item.children?.some((child) => isSubtreeActive(child, basePath)))
@@ -245,7 +171,7 @@ export function AppShell() {
     ? {
         section: activeGroup?.label ?? 'ERP',
         module: activeMenu?.label,
-        title: `${location.pathname.endsWith('/new') ? '新建' : '编辑'}${activeMenu?.label ?? ''}`,
+        title: `${location.pathname.endsWith('/new') ? '新建' : location.pathname.endsWith('/view') ? '查看' : '编辑'}${activeMenu?.label ?? ''}`,
       }
     : pageTitles[location.pathname] ?? {
         section: activeGroup?.label ?? 'ERP',
@@ -261,6 +187,20 @@ export function AppShell() {
     document.documentElement.classList.toggle('erp-sidebar-collapsed', sidebarCollapsed)
     localStorage.setItem('erp-sidebar-collapsed', String(sidebarCollapsed))
   }, [sidebarCollapsed])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        searchInputRef.current?.focus()
+      } else if (event.key === '/' && document.activeElement?.tagName !== 'INPUT') {
+        event.preventDefault()
+        searchInputRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     setSidebarOpen(false)
@@ -370,56 +310,27 @@ export function AppShell() {
                 {depth === 1 && (
                   <span className="nav-link-icon"><Icon size={18} stroke={1.7} /></span>
                 )}
+                {depth > 1 && <IconChevronRight className="erp-nav-chevron" size={13} />}
                 <span className="nav-link-title">{item.label}</span>
-                <IconChevronDown className="erp-nav-chevron" size={16} />
               </button>
             </div>
             {isExpanded && !sidebarCollapsed && (
-              <div className="erp-nav-children">{renderChildren(item.children, depth + 1)}</div>
+              <div className={`erp-nav-children erp-nav-children-depth-${depth + 1}`}>{renderChildren(item.children, depth + 1)}</div>
             )}
           </Fragment>
         )
       }
-      const hasGroups = (item.groups?.length ?? 0) > 0
-      const groupsOpen = expandedIds.has(`groups-${item.id}`)
+      const Icon = navigationIcons[item.icon] ?? IconFolder
       return (
         <Fragment key={item.id}>
           <NavLink
-            className={({ isActive }) => `nav-link erp-nav-child erp-nav-child-depth-${depth} ${isActive ? 'active' : ''}`}
+            className={({ isActive }) => `nav-link ${depth > 1 ? `erp-nav-child erp-nav-child-depth-${depth}` : ''} ${isActive ? 'active' : ''}`}
             to={item.route!}
             title={sidebarCollapsed ? item.label : undefined}
           >
-            <span className="erp-nav-child-marker" aria-hidden="true" />
+            {depth === 1 && <span className="nav-link-icon"><Icon size={18} stroke={1.7} /></span>}
             <span className="nav-link-title">{item.label}</span>
-            {hasGroups && <IconChevronDown className="erp-nav-chevron" size={14} />}
           </NavLink>
-          {hasGroups && !sidebarCollapsed && (
-            <div className="erp-nav-groups">
-              <button
-                className={`nav-link erp-nav-groups-toggle ${groupsOpen ? 'group-active' : ''}`}
-                type="button"
-                aria-expanded={groupsOpen}
-                onClick={() => toggleExpanded(`groups-${item.id}`)}
-              >
-                <span className="erp-nav-groups-icon"><IconZoomScan size={14} /></span>
-                <span className="nav-link-title">分组</span>
-                <IconChevronDown className="erp-nav-chevron" size={13} />
-              </button>
-              {groupsOpen && (
-                <div className="erp-nav-children">
-                  {(item.groups ?? []).map((group) => (
-                    <GroupValues
-                      key={`${item.id}-g${group.index}`}
-                      moduleId={item.moduleId!}
-                      group={group}
-                      route={item.route!}
-                      searchParams={searchParams}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </Fragment>
       )
     })
@@ -446,6 +357,7 @@ export function AppShell() {
               <IconSearch size={16} aria-hidden="true" />
               <input
                 type="search"
+                ref={searchInputRef}
                 value={menuQuery}
                 onChange={(event) => setMenuQuery(event.target.value)}
                 onKeyDown={(event) => {
@@ -454,6 +366,7 @@ export function AppShell() {
                 placeholder="搜索菜单…"
                 aria-label="搜索菜单"
               />
+              {!menuQuery && <span className="erp-nav-kbd">Ctrl K</span>}
               {menuQuery && (
                 <button
                   className="erp-nav-search-clear"
@@ -466,7 +379,7 @@ export function AppShell() {
               )}
             </div>
           )}
-          <div className="navbar-nav pt-lg-3">
+          <div className="navbar-nav">
             {trimmedQuery ? (
               <div className="erp-nav-search-results">
                 {searchResults.length === 0 ? (

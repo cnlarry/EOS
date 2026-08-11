@@ -24,7 +24,8 @@ public sealed class MenuAdminRepository(DbConnectionFactory connections, ILogger
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
                    MASTER_TABLE,FILTER,DETAIL_TABLE,UPDATE_SP,AFTERSAVE_SP,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
                    GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
-                   GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE
+                   GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
+                   FORM_TABS,FORM_COLUMNS,FORM_BUTTONS
             FROM dbo.MODULES WITH (NOLOCK)
             WHERE (@Keyword = '' OR M_DESC LIKE @Keyword OR M_ALIAS LIKE @Keyword OR CONVERT(nvarchar(20),M_IDX) LIKE @Keyword)
             ORDER BY ISNULL(M_P_IDX,0),SORT_IDX,M_IDX;
@@ -137,7 +138,8 @@ public sealed class MenuAdminRepository(DbConnectionFactory connections, ILogger
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
                    MASTER_TABLE,FILTER,DETAIL_TABLE,UPDATE_SP,AFTERSAVE_SP,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
                    GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
-                   GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE
+                   GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
+                   FORM_TABS,FORM_COLUMNS,FORM_BUTTONS
             FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@Id;
             """;
         await using var connection = connections.Create();
@@ -255,7 +257,10 @@ public sealed class MenuAdminRepository(DbConnectionFactory connections, ILogger
         reader.GetBoolean(34), GetString(reader, 35), GetString(reader, 36),
         reader.GetBoolean(37), GetString(reader, 38), GetString(reader, 39),
         GetString(reader, 40),
-        reader.IsDBNull(41) ? null : reader.GetDateTime(41));
+        reader.IsDBNull(41) ? null : reader.GetDateTime(41),
+        GetString(reader, 42),
+        reader.IsDBNull(43) ? (int?)null : (int)reader.GetByte(43),
+        GetString(reader, 44));
 
     private async Task<(string? Master, string? Detail)> ResolveModuleTablesAsync(int moduleId, CancellationToken token)
     {
@@ -335,13 +340,15 @@ public sealed class MenuAdminRepository(DbConnectionFactory connections, ILogger
               M_P_IDX,SORT_IDX,M_TAG,M_ROOT_IDX,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
               MASTER_TABLE,FILTER,DETAIL_TABLE,UPDATE_SP,AFTERSAVE_SP,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
               GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
-              GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+              GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
+              FORM_TABS,FORM_COLUMNS,FORM_BUTTONS)
              VALUES
               (@M_IDX,@M_ALIAS,@M_DESC,@M_URL,@NEW_URL,@MODI_URL,@HELP_URL,@DETAIL_NO_FIELDS,@DETAIL_NO_SAVE,@SEARCH_1,@SEARCH_2,
               @M_P_IDX,@SORT_IDX,@M_TAG,@M_ROOT_IDX,@AUTO_APPROVE,@IF_COPY,@ERROR_NO_SAVE,@SORT_FIELDS,
               @MASTER_TABLE,@FILTER,@DETAIL_TABLE,@UPDATE_SP,@AFTERSAVE_SP,@NOT_BACK_FIELDS_M,@NOT_BACK_FIELDS,
               @GROUP1,@GROUP_EXP1,@GROUP_DESC1,@GROUP2,@GROUP_EXP2,@GROUP_DESC2,@GROUP3,@GROUP_EXP3,@GROUP_DESC3,
-              @GROUP4,@GROUP_EXP4,@GROUP_DESC4,@GROUP5,@GROUP_EXP5,@GROUP_DESC5,@LAST_UPDATE_BY,GETDATE());
+              @GROUP4,@GROUP_EXP4,@GROUP_DESC4,@GROUP5,@GROUP_EXP5,@GROUP_DESC5,@LAST_UPDATE_BY,GETDATE(),
+              @FORM_TABS,@FORM_COLUMNS,@FORM_BUTTONS);
             """;
         await using var command = BuildCommand(connection, transaction, sql, m, rootIdx, updatedBy);
         await command.ExecuteNonQueryAsync(token);
@@ -362,7 +369,8 @@ public sealed class MenuAdminRepository(DbConnectionFactory connections, ILogger
               GROUP3=@GROUP3,GROUP_EXP3=@GROUP_EXP3,GROUP_DESC3=@GROUP_DESC3,
               GROUP4=@GROUP4,GROUP_EXP4=@GROUP_EXP4,GROUP_DESC4=@GROUP_DESC4,
               GROUP5=@GROUP5,GROUP_EXP5=@GROUP_EXP5,GROUP_DESC5=@GROUP_DESC5,
-              LAST_UPDATE_BY=@LAST_UPDATE_BY,LAST_UPDATE_DATE=GETDATE()
+              LAST_UPDATE_BY=@LAST_UPDATE_BY,LAST_UPDATE_DATE=GETDATE(),
+              FORM_TABS=@FORM_TABS,FORM_COLUMNS=@FORM_COLUMNS,FORM_BUTTONS=@FORM_BUTTONS
             WHERE M_IDX=@OLD_IDX;
             """;
         await using var command = BuildCommand(connection, transaction, sql, m, rootIdx, updatedBy);
@@ -409,6 +417,9 @@ public sealed class MenuAdminRepository(DbConnectionFactory connections, ILogger
             command.Parameters.AddWithValue($"@GROUP_DESC{i + 1}", (object?)description ?? DBNull.Value);
         }
         command.Parameters.AddWithValue("@LAST_UPDATE_BY", updatedBy);
+        command.Parameters.AddWithValue("@FORM_TABS", (object?)m.FORM_TABS ?? DBNull.Value);
+        command.Parameters.Add("@FORM_COLUMNS", SqlDbType.TinyInt).Value = m.FORM_COLUMNS is { } columns ? (byte)Math.Clamp(columns, 1, 6) : (object)DBNull.Value;
+        command.Parameters.AddWithValue("@FORM_BUTTONS", (object?)m.FORM_BUTTONS ?? DBNull.Value);
         return command;
     }
 

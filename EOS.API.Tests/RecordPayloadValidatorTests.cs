@@ -15,9 +15,11 @@ public class RecordPayloadValidatorTests
         string? regex = null,
         string? defaultValue = null,
         bool isPrimaryKey = false,
-        int? maxLength = null) =>
+        int? maxLength = null,
+        bool displayOnly = false) =>
         new(key, $"label-{key}", dataType, 100, null, required, null, regex, defaultValue,
-            readOnly, true, false, false, null, [], isPrimaryKey, false, isVirtual, false, false, serverFilled, maxLength);
+            readOnly, true, false, false, null, [], isPrimaryKey, false, isVirtual, false, false, serverFilled, maxLength,
+            DisplayOnly: displayOnly);
 
     [Fact]
     public void UnknownField_IsRejected()
@@ -40,6 +42,17 @@ public class RecordPayloadValidatorTests
         Assert.True(result.Converted.ContainsKey("R"));
         Assert.False(result.Converted.ContainsKey("S"));
         Assert.False(result.Converted.ContainsKey("V"));
+    }
+
+    [Fact]
+    public void DisplayOnlyPhantomCompanion_IsRejected()
+    {
+        var fields = new[] { Field("CLIENT_NAME", displayOnly: true) };
+        var result = RecordPayloadValidator.ValidateSubmitted(fields,
+            new Dictionary<string, string?> { ["CLIENT_NAME"] = "某客户" });
+        var error = Assert.Single(result.Errors);
+        Assert.Equal("READONLY_FIELD", error.Code);
+        Assert.Empty(result.Converted);
     }
 
     [Fact]

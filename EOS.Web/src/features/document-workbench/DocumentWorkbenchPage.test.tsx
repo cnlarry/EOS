@@ -84,6 +84,8 @@ function installApiMocks(overrides: { records?: unknown; details?: unknown; defi
     if (p.includes('/column-editor')) return columnEditor
     if (p.includes('/lookups/')) return []
     if (p.includes('/field-settings/')) return fieldMeta
+    if (p.includes('/groups/') && p.includes('/values')) return { values: ['NO', 'YES'] }
+    if (p.includes('/groups')) return { groups: [{ index: 1, description: '结案', available: true }] }
     throw new Error(`unexpected GET ${p}`)
   })
   apiClientMock.post.mockResolvedValue({ key: [] })
@@ -216,6 +218,19 @@ describe('DocumentWorkbenchPage', () => {
     await waitFor(() => expect(screen.queryByText('分组筛选：YES')).not.toBeInTheDocument())
   })
 
+  it('工具条分组下拉选择组值后应用筛选', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.click(await screen.findByRole('button', { name: '分组' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '结案' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'NO' }))
+    await waitFor(() => expect(screen.getByText('分组筛选：NO')).toBeInTheDocument())
+    await waitFor(() => {
+      const recordCalls = apiClientMock.get.mock.calls.filter(([path]) => String(path).includes('/records'))
+      expect(recordCalls[recordCalls.length - 1]?.[1]).toMatchObject({ query: expect.objectContaining({ groupIndex: 1, groupValue: 'NO' }) })
+    })
+  })
+
   it('未选择行时导出当前条件', async () => {
     renderPage()
     await loaded()
@@ -309,12 +324,22 @@ describe('DocumentWorkbenchPage', () => {
     await waitFor(() => expect(screen.getByDisplayValue('产品编号')).toBeInTheDocument())
   })
 
-  it('紧凑行高切换', async () => {
+  it('单表模块默认每页 18 条且不提供每页条数选择', async () => {
+    installApiMocks({ definition: { ...definition, detailTable: undefined } })
     renderPage()
     await loaded()
-    const toggle = screen.getByRole('button', { name: '紧凑行高' })
-    fireEvent.click(toggle)
-    await waitFor(() => expect(document.querySelector('table.erp-data-table')).toHaveClass('erp-table-compact'))
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      '/document-workbench/1209/records',
+      expect.objectContaining({ query: expect.objectContaining({ pageSize: 18 }) }),
+    ))
+    expect(screen.queryByLabelText('每页数量')).not.toBeInTheDocument()
+  })
+
+  it('不提供行高切换按钮', async () => {
+    renderPage()
+    await loaded()
+    expect(screen.queryByRole('button', { name: '紧凑行高' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '标准行高' })).not.toBeInTheDocument()
   })
 
   it('URL 传入超界页码时钳制到有效页', async () => {
@@ -378,6 +403,19 @@ describe('DocumentWorkbenchPage', () => {
     const before = apiClientMock.get.mock.calls.length
     fireEvent.click(screen.getByRole('button', { name: '刷新' }))
     await waitFor(() => expect(apiClientMock.get.mock.calls.length).toBeGreaterThan(before))
+  })
+
+  it('单表模块（无子表）列表区使用全高自适应修饰类', async () => {
+    installApiMocks({ definition: { ...definition, detailTable: undefined } })
+    const { container } = renderPage()
+    await loaded()
+    expect(container.querySelector('.erp-workbench-page')).toHaveClass('erp-workbench-single')
+  })
+
+  it('带子表模块不加全高自适应修饰类', async () => {
+    const { container } = renderPage()
+    await loaded()
+    expect(container.querySelector('.erp-workbench-page')).not.toHaveClass('erp-workbench-single')
   })
 
 })
