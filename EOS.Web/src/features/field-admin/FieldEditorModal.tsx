@@ -37,6 +37,13 @@ export interface FieldInput {
   choosePage: string | null
   choosers: ChooserSource[]
   canCopy: boolean
+  tabNo: number
+  formOrder: number | null
+  span: number
+  newLine: boolean
+  cellGroup: string | null
+  cellRole: number
+  options: string | null
 }
 
 export interface FieldMeta extends FieldInput {
@@ -56,7 +63,7 @@ export interface SetupLookup {
   label: string
 }
 
-export type FieldSection = 'display' | 'validation' | 'security' | 'advanced'
+export type FieldSection = 'display' | 'validation' | 'security' | 'layout' | 'advanced'
 
 export interface FieldEditorEndpoints {
   load: () => Promise<FieldMeta | null>
@@ -88,6 +95,7 @@ function emptyDraft(tableId: string): FieldMeta {
     isCost: false, isSecrecy: false, defaultValue: null, verifyIndex: null, regex: null, remark: null,
     browseUrl: null, browseModuleId: null, onlyChoose: false, chooseMultiple: false, choosePage: null,
     choosers: emptyChoosers(),
+    tabNo: 1, formOrder: null, span: 1, newLine: false, cellGroup: null, cellRole: 0, options: null,
     isVirtual: false, virtualExpression: null, canCopy: true, isAutoIncrement: false, convertFunction: null,
     dataSourceSql: null, lastUpdatedBy: null, lastUpdatedAt: null,
   }
@@ -175,6 +183,7 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
                       <button type="button" className={`nav-link ${section === 'display' ? 'active' : ''}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setSection('display') }}>显示与查询</button>
                       <button type="button" className={`nav-link ${section === 'validation' ? 'active' : ''}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setSection('validation') }}>录入与校验</button>
                       <button type="button" className={`nav-link ${section === 'security' ? 'active' : ''}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setSection('security') }}>权限与备注</button>
+                      <button type="button" className={`nav-link ${section === 'layout' ? 'active' : ''}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setSection('layout') }}>表单布局</button>
                       <button type="button" className={`nav-link ${section === 'advanced' ? 'active' : ''}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setSection('advanced') }}>高级设置</button>
                     </div>
                   </div>
@@ -336,6 +345,48 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
                           </div>
                         </div>
                       ))}
+                    </>}
+                    {section === 'layout' && <>
+                      <div className="col-12">
+                        <div className="alert alert-warning">表单布局仅作用于统一表单编辑页（新增/编辑/查看）。页签归属与顺序需配合模块级页签定义（菜单管理中的 FORM_TABS）。</div>
+                      </div>
+                      <div className="col-md-4">
+                        <label className="form-label">页签序号（FORM_TAB_NO）</label>
+                        <input type="number" min="1" className="form-control" value={draft.tabNo} onChange={event => setDraft({ ...draft, tabNo: Math.max(1, Number(event.target.value) || 1) })} />
+                      </div>
+                      <div className="col-md-4">
+                        <label className="form-label">表单顺序（FORM_ORDER）</label>
+                        <input type="number" min="1" className="form-control" value={draft.formOrder ?? ''} placeholder="留空按默认列序" onChange={event => setDraft({ ...draft, formOrder: event.target.value === '' ? null : Math.max(1, Number(event.target.value) || 1) })} />
+                      </div>
+                      <div className="col-md-4">
+                        <label className="form-label">跨列宽度（FORM_SPAN）</label>
+                        <select className="form-select" value={draft.span} onChange={event => setDraft({ ...draft, span: Number(event.target.value) })}>
+                          <option value={1}>半行</option>
+                          <option value={2}>整行独占</option>
+                        </select>
+                      </div>
+                      <div className="col-md-4">
+                        <label className="form-label">复合格角色（FORM_CELL_ROLE）</label>
+                        <select className="form-select" value={draft.cellRole} onChange={event => setDraft({ ...draft, cellRole: Number(event.target.value) })}>
+                          <option value={0}>普通字段</option>
+                          <option value={1}>主字段（带标签 + 选择器）</option>
+                          <option value={2}>从字段（同格联动显示）</option>
+                        </select>
+                      </div>
+                      <div className="col-md-4">
+                        <label className="form-label">复合格组（FORM_CELL_GROUP）</label>
+                        <input className="form-control" value={draft.cellGroup ?? ''} placeholder="如 CLIENT，同组字段同一格" onChange={event => setDraft({ ...draft, cellGroup: event.target.value || null })} />
+                      </div>
+                      <div className="col-md-4 d-flex align-items-end pb-2">
+                        <label className="form-check">
+                          <input className="form-check-input" type="checkbox" checked={draft.newLine} onChange={() => setDraft({ ...draft, newLine: !draft.newLine })} />
+                          <span className="form-check-label">强制换行（FORM_NEW_LINE）</span>
+                        </label>
+                      </div>
+                      <div className="col-12">
+                        <label className="form-label">下拉选项（FORM_OPTIONS）</label>
+                        <input className="form-control" value={draft.options ?? ''} placeholder="如 O=外含税;I=内含税;N=不含税；有值即渲染下拉框" onChange={event => setDraft({ ...draft, options: event.target.value || null })} />
+                      </div>
                     </>}
                     {section === 'advanced' && <>
                       <div className="col-12">

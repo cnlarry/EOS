@@ -17,6 +17,7 @@ const moduleNode = (id: number, desc: string, parent: number | null): MenuAdminM
   GROUP3: false, GROUP_EXP3: null, GROUP_DESC3: null,
   GROUP4: false, GROUP_EXP4: null, GROUP_DESC4: null,
   GROUP5: false, GROUP_EXP5: null, GROUP_DESC5: null,
+  FORM_TABS: null, FORM_COLUMNS: null, FORM_BUTTONS: null,
   LAST_UPDATE_BY: null, LAST_UPDATE_DATE: null,
 })
 

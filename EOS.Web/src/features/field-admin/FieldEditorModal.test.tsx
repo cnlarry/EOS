@@ -17,6 +17,7 @@ function meta(overrides: Partial<FieldMeta> = {}): FieldMeta {
     ],
     isVirtual: false, virtualExpression: null, canCopy: true, isAutoIncrement: false,
     convertFunction: null, dataSourceSql: null, lastUpdatedBy: 'admin', lastUpdatedAt: '2026-08-01T00:00:00Z',
+    tabNo: 1, formOrder: null, span: 1, newLine: false, cellGroup: null, cellRole: 0, options: null,
     ...overrides,
   }
 }
@@ -115,6 +116,22 @@ describe('FieldEditorModal', () => {
     expect(expression).toBeDisabled()
     expect(screen.getByDisplayValue('CONVERT(X)')).toBeDisabled()
     expect(screen.getByDisplayValue('SELECT 1')).toBeDisabled()
+  })
+
+  it('表单布局分区展示并保存 FORM_* 值', async () => {
+    const save = vi.fn().mockResolvedValue(undefined)
+    const { container } = renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta()), save })
+    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '表单布局' }))
+    expect(screen.getByText('页签序号（FORM_TAB_NO）')).toBeInTheDocument()
+    expect(screen.getByText('跨列宽度（FORM_SPAN）')).toBeInTheDocument()
+    expect(screen.getByText('下拉选项（FORM_OPTIONS）')).toBeInTheDocument()
+    // 修改跨列宽度为整行，保存后 payload 应携带 span=2
+    const spanSelect = container.querySelector<HTMLSelectElement>('select.form-select')
+    fireEvent.change(spanSelect!, { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存字段设置' }))
+    await waitFor(() => expect(save).toHaveBeenCalled())
+    expect(save.mock.calls[0][0]).toEqual(expect.objectContaining({ span: 2 }))
   })
 
   it('数据来源编辑与返回值映射', async () => {

@@ -26,6 +26,14 @@ function field(overrides: Partial<FormFieldDefinition>): FormFieldDefinition {
     isSecrecy: false,
     serverFilled: false,
     maxLength: null,
+    tabNo: 1,
+    formOrder: null,
+    span: 1,
+    newLine: false,
+    cellGroup: null,
+    cellRole: 0,
+    options: [],
+    displayOnly: false,
     ...overrides,
   }
 }

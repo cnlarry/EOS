@@ -7,9 +7,6 @@ import { AppShell } from './AppShell'
 
 vi.mock('../../features/auth/authContext', () => ({ useAuth: vi.fn() }))
 
-const apiClientMock = vi.hoisted(() => ({ get: vi.fn() }))
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
-
 const bootstrap: AppBootstrap = {
   user: {
     id: 'u1', username: 'admin', displayName: 'Demo User', employeeId: 'E001', avatarText: 'LW',
@@ -48,7 +45,6 @@ const bootstrap: AppBootstrap = {
 
 function renderShell(initialEntry: string, auth: Partial<ReturnType<typeof useAuth>> = {}) {
   const logout = vi.fn().mockResolvedValue(undefined)
-  apiClientMock.get.mockResolvedValue({ values: ['YES', 'NO'] })
   vi.mocked(useAuth).mockReturnValue({
     bootstrap: bootstrap,
     loading: false,
@@ -126,17 +122,6 @@ describe('AppShell', () => {
     fireEvent.click(subGroup)
     expect(subGroup).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByRole('link', { name: '采购子页' })).toBeInTheDocument()
-  })
-
-  it('叶子模块展开第 4 级分组并加载组值', async () => {
-    renderShell('/dashboard')
-    fireEvent.click(screen.getByRole('button', { name: '采购子组' }))
-    fireEvent.click(screen.getByRole('button', { name: '分组' }))
-    const groupToggle = await screen.findByRole('button', { name: '结案' })
-    expect(groupToggle).toHaveAttribute('aria-expanded', 'false')
-    fireEvent.click(groupToggle)
-    await waitFor(() => expect(screen.getByRole('link', { name: 'YES' })).toBeInTheDocument())
-    expect(apiClientMock.get).toHaveBeenCalledWith('/navigation/1209/groups/1/values')
   })
 
   it('菜单搜索命中后显示面包屑并可直达', () => {

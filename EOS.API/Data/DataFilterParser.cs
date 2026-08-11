@@ -20,26 +20,116 @@ internal static class DataFilterParser
     private const int MaxDepth = 8;
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
+    /// <summary>
+    /// CHOOSE_FILTER 子查询白名单（IN (SELECT ...) 受控解析）。
+    /// 从 97 条旧配置提取（2026-08-11）：表/函数名 + 允许引用的列；子查询表名/列名必须在此白名单内。
+    /// F_* 为表值函数（dbo.f_get_pro_units / dbo.f_get_under_m_idx），参数模板后续阶段放开。
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> SubqueryTableColumns =
+        new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["BOM_COST_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRO_NO" },
+            ["BOM_INSTRUCT_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRO_NO" },
+            ["BOM_STRU_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRO_NO" },
+            ["CLIENT_PRICE_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "CLIENT_ID", "PRO_NO" },
+            ["F_GET_PRO_UNITS"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "UNIT_ID" },
+            ["F_GET_UNDER_M_IDX"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "M_IDX" },
+            ["HR_APPLY_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "APPLY_NO", "APPLY_TYPE", "EMP_ID" },
+            ["HR_BASEPAY_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "BASEPAY_NO", "BASEPAY_TYPE", "COUNT_MONTH" },
+            ["HR_BASEPAY_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "BASEPAY_NO", "BASEPAY_TYPE", "EMP_ID" },
+            ["HR_EMPLOYEE_CARD"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "EMP_ID" },
+            ["HR_ENACTMENT_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "EMP_ID", "ENACTMENT_NO", "ENACTMENT_TYPE" },
+            ["HR_LEAVE_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "EMP_ID", "LEAVE_NO", "LEAVE_TYPE" },
+            ["HR_PLAN_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "COUNT_MONTH", "PLAN_NO", "PLAN_TYPE" },
+            ["HR_PLAN_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "EMP_ID", "PLAN_NO", "PLAN_TYPE" },
+            ["HR_WAGE"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "WAGE_FIELD" },
+            ["HR_WAGE_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "COUNT_MONTH", "WAGE_NO", "WAGE_TYPE" },
+            ["HR_WAGE_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "EMP_ID", "WAGE_NO", "WAGE_TYPE" },
+            ["HR_WORKTIME_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "COUNT_DATE", "EMP_ID", "WORKTIME_NO", "WORKTIME_TYPE" },
+            ["INV_CHECK_STOCK_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "CHECK_STOCK_NO", "CHECK_STOCK_TYPE", "PRO_NO" },
+            ["MODULES"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "MASTER_TABLE", "M_IDX", "M_P_IDX" },
+            ["MOU_ACCEPT_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "APPLY_NO" },
+            ["MOU_ASSESS_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "ASSESS_NO", "PRO_NO" },
+            ["MOU_BATCHIN_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "BATCHIN_NO", "BATCH_NO" },
+            ["MOU_BATCHTOP_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "BATCH_NO", "SCRAP_NO" },
+            ["MOU_BATCH_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "BATCH_NO", "SCRAP_NO" },
+            ["MOU_GET2_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "APPLY_NO", "GET_NO" },
+            ["MOU_PRO_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRO_NO" },
+            ["QC_APPLY_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "APPLY_NO", "COMPLAIN_NO", "EXCEPTION_NO" },
+            ["QC_LOSS_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "ANALYSIS_NO", "LOSS_NO" },
+            ["QC_REWORK_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "COMPLAIN_NO", "EXCEPTION_NO", "REWORK_NO" },
+            ["QC_SAMPLE_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRO_NO" },
+            ["QC_SCRAP_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "ANALYSIS_NO", "COMPLAIN_NO", "EXCEPTION_NO", "REWORK_NO", "SCRAP_NO" },
+            ["SFC_PLAN_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PLAN_NO", "PLAN_TYPE", "SORT_IDX" },
+            ["SFC_PLAN_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PLAN_NO", "PLAN_TYPE", "SHIPMENT_NO", "SHIPMENT_SERIAL_NO" },
+            ["SFC_PROCESS_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRO_NO" },
+            ["SUPPLIER_PRICE_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRO_NO", "SUPPLIER_ID" },
+            ["SYSDD"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "M_IDX", "USER_ID" },
+            ["SYSDG_USER"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "G_IDX", "USER_ID" },
+            ["SYSDH"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "G_IDX", "M_IDX" },
+        };
+
     public static bool TryParse(
         string? filter,
         string masterTable,
         IReadOnlySet<string> allowedFields,
         out string predicate,
         out IReadOnlyList<object> parameters)
+        => TryParseCore(filter, masterTable, allowedFields, null, null, out predicate, out parameters, out _, out _);
+
+    /// <summary>
+    /// 带跨表 JOIN 支持的解析（选择器专用）：foreignTables = 外键表名 → 与查询表同名的关联列，
+    /// 引用白名单外键表列时输出 [表].[列] 并登记所需 JOIN 与引用列，由调用方校验物理存在后拼装。
+    /// </summary>
+    public static bool TryParseWithJoins(
+        string? filter,
+        string masterTable,
+        IReadOnlySet<string> allowedFields,
+        IReadOnlyDictionary<string, string>? foreignTables,
+        IReadOnlyDictionary<string, string>? columnTypes,
+        out string predicate,
+        out IReadOnlyList<object> parameters,
+        out IReadOnlyList<string> joins,
+        out IReadOnlyList<(string Table, string Column)> foreignColumns)
+        => TryParseCore(filter, masterTable, allowedFields, foreignTables, columnTypes, out predicate, out parameters, out joins, out foreignColumns);
+
+    private sealed class ParseContext
+    {
+        public IReadOnlyDictionary<string, string>? ForeignTables;
+        public IReadOnlyDictionary<string, string>? ColumnTypes;
+        public List<string> Joins = [];
+        public List<(string Table, string Column)> ForeignColumns = [];
+    }
+
+    private static bool TryParseCore(
+        string? filter,
+        string masterTable,
+        IReadOnlySet<string> allowedFields,
+        IReadOnlyDictionary<string, string>? foreignTables,
+        IReadOnlyDictionary<string, string>? columnTypes,
+        out string predicate,
+        out IReadOnlyList<object> parameters,
+        out IReadOnlyList<string> joins,
+        out IReadOnlyList<(string Table, string Column)> foreignColumns)
     {
         predicate = string.Empty;
         parameters = [];
+        joins = [];
+        foreignColumns = [];
         if (string.IsNullOrWhiteSpace(filter)) return false;
         try
         {
             var tokens = Tokenize(filter);
             var position = 0;
             var values = new List<object>();
-            if (!ParseOr(tokens, ref position, masterTable, allowedFields, out var expression, values, 0))
+            var context = new ParseContext { ForeignTables = foreignTables, ColumnTypes = columnTypes };
+            if (!ParseOr(tokens, ref position, masterTable, allowedFields, context, out var expression, values, 0))
                 return false;
             if (position != tokens.Count || string.IsNullOrWhiteSpace(expression)) return false;
             predicate = expression;
             parameters = values;
+            joins = context.Joins;
+            foreignColumns = context.ForeignColumns;
             return true;
         }
         catch
@@ -53,12 +143,13 @@ internal static class DataFilterParser
         ref int position,
         string masterTable,
         IReadOnlySet<string> allowed,
+        ParseContext context,
         out string expression,
         List<object> values,
         int depth)
     {
         if (depth > MaxDepth) { expression = string.Empty; return false; }
-        if (!ParseAnd(tokens, ref position, masterTable, allowed, out var left, values, depth))
+        if (!ParseAnd(tokens, ref position, masterTable, allowed, context, out var left, values, depth))
         {
             expression = string.Empty;
             return false;
@@ -68,7 +159,7 @@ internal static class DataFilterParser
                && tokens[position].Text.Equals("or", StringComparison.OrdinalIgnoreCase))
         {
             position++;
-            if (!ParseAnd(tokens, ref position, masterTable, allowed, out var right, values, depth))
+            if (!ParseAnd(tokens, ref position, masterTable, allowed, context, out var right, values, depth))
             {
                 expression = string.Empty;
                 return false;
@@ -84,11 +175,12 @@ internal static class DataFilterParser
         ref int position,
         string masterTable,
         IReadOnlySet<string> allowed,
+        ParseContext context,
         out string expression,
         List<object> values,
         int depth)
     {
-        if (!ParsePrimary(tokens, ref position, masterTable, allowed, out var left, values, depth))
+        if (!ParsePrimary(tokens, ref position, masterTable, allowed, context, out var left, values, depth))
         {
             expression = string.Empty;
             return false;
@@ -98,7 +190,7 @@ internal static class DataFilterParser
                && tokens[position].Text.Equals("and", StringComparison.OrdinalIgnoreCase))
         {
             position++;
-            if (!ParsePrimary(tokens, ref position, masterTable, allowed, out var right, values, depth))
+            if (!ParsePrimary(tokens, ref position, masterTable, allowed, context, out var right, values, depth))
             {
                 expression = string.Empty;
                 return false;
@@ -114,6 +206,7 @@ internal static class DataFilterParser
         ref int position,
         string masterTable,
         IReadOnlySet<string> allowed,
+        ParseContext context,
         out string expression,
         List<object> values,
         int depth)
@@ -126,7 +219,7 @@ internal static class DataFilterParser
         if (tokens[position].Kind == TokenKind.LeftParen)
         {
             position++;
-            if (!ParseOr(tokens, ref position, masterTable, allowed, out var inner, values, depth + 1))
+            if (!ParseOr(tokens, ref position, masterTable, allowed, context, out var inner, values, depth + 1))
             {
                 expression = string.Empty;
                 return false;
@@ -140,7 +233,7 @@ internal static class DataFilterParser
             expression = $"({inner})";
             return true;
         }
-        return ParsePredicate(tokens, ref position, masterTable, allowed, out expression, values);
+        return ParsePredicate(tokens, ref position, masterTable, allowed, context, out expression, values);
     }
 
     private static bool ParsePredicate(
@@ -148,14 +241,25 @@ internal static class DataFilterParser
         ref int position,
         string masterTable,
         IReadOnlySet<string> allowed,
+        ParseContext context,
         out string expression,
         List<object> values)
     {
         expression = string.Empty;
         if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier) return false;
-        if (!TryResolveField(tokens[position].Text, masterTable, allowed, out var field)) return false;
-        var left = $"[{field}]";
-        position++;
+        var leftToken = tokens[position].Text;
+        string left;
+        if (tokens[position].Text.Equals("isnull", StringComparison.OrdinalIgnoreCase))
+        {
+            // 旧系统高频写法 ISNULL(列,0)=0 / ISNULL(列,'')=''：仅白名单列 + 常量，参数化
+            if (!ParseIsNullLeft(tokens, ref position, masterTable, allowed, context, out left, values)) return false;
+        }
+        else
+        {
+            if (!TryResolveField(tokens[position].Text, masterTable, allowed, context, out var columnSql)) return false;
+            left = columnSql;
+            position++;
+        }
         var leftIsArithmetic = false;
         // 左侧列算术：field (arithop (field|number))+，如 QTY-RECEIVE_QTY
         while (position < tokens.Count && IsArithmeticOperator(tokens[position]))
@@ -166,9 +270,20 @@ internal static class DataFilterParser
             if (position >= tokens.Count) return false;
             if (tokens[position].Kind == TokenKind.Identifier)
             {
-                if (!TryResolveField(tokens[position].Text, masterTable, allowed, out var operand)) return false;
-                left += $"{arithOp}[{operand}]";
-                position++;
+                if (tokens[position].Text.Equals("cast", StringComparison.OrdinalIgnoreCase))
+                {
+                    // 拼接操作数 CAST(列 AS CHAR(n))：列经白名单校验
+                    if (!ParseCastAsChar(tokens, ref position, token =>
+                        TryResolveField(token, masterTable, allowed, context, out var columnSql) ? columnSql : null,
+                        out var castSql)) return false;
+                    left += $"{arithOp}{castSql}";
+                }
+                else
+                {
+                    if (!TryResolveField(tokens[position].Text, masterTable, allowed, context, out var operandSql)) return false;
+                    left += $"{arithOp}{operandSql}";
+                    position++;
+                }
             }
             else if (tokens[position].Kind == TokenKind.Number)
             {
@@ -182,6 +297,25 @@ internal static class DataFilterParser
                 return false;
             }
         }
+        // IN / NOT IN 子查询（受控白名单；阶段 1：单表、无 WHERE）
+        if (position < tokens.Count && tokens[position].Kind == TokenKind.Identifier
+            && tokens[position].Text.Equals("in", StringComparison.OrdinalIgnoreCase))
+        {
+            position++;
+            if (!ParseInSubquery(tokens, ref position, values, out var subSql)) return false;
+            expression = $"{left} IN ({subSql})";
+            return true;
+        }
+        if (position < tokens.Count && tokens[position].Kind == TokenKind.Identifier
+            && tokens[position].Text.Equals("not", StringComparison.OrdinalIgnoreCase)
+            && position + 1 < tokens.Count && tokens[position + 1].Kind == TokenKind.Identifier
+            && tokens[position + 1].Text.Equals("in", StringComparison.OrdinalIgnoreCase))
+        {
+            position += 2;
+            if (!ParseInSubquery(tokens, ref position, values, out var subSql)) return false;
+            expression = $"{left} NOT IN ({subSql})";
+            return true;
+        }
         if (position >= tokens.Count || tokens[position].Kind != TokenKind.Operator) return false;
         var comparison = tokens[position].Text;
         if (comparison is not ("=" or "<>" or ">" or "<" or ">=" or "<=")) return false;
@@ -189,15 +323,321 @@ internal static class DataFilterParser
         // 直接列比较的数值字面量以字符串参数绑定（如 PRO_TYPE=1，PRO_TYPE 为 char，
         // 若绑 decimal 会触发 char→numeric 隐式转换，含非数字值时报 8114）；
         // 列间算术的右值保持 decimal（如 QTY-RECEIVE_QTY>0 的 0）。
-        if (!ParseValueExpression(tokens, ref position, out var value, numericAsString: !leftIsArithmetic)) return false;
+        // 数值字面量的绑定类型按字段类型决定：bit/数值列绑数字（避免隐式转换导致索引失效/全表扫描），
+        // char/nvarchar 列绑字符串（对齐旧系统 PRO_TYPE=1 的 char 语义）；未知类型保守绑字符串。
+        var numericAsString = !leftIsArithmetic;
+        if (!leftIsArithmetic && !leftToken.Equals("isnull", StringComparison.OrdinalIgnoreCase)
+            && context.ColumnTypes is not null)
+        {
+            var leftCol = leftToken.Contains('.') ? leftToken.Split('.')[^1] : leftToken;
+            if (context.ColumnTypes.TryGetValue(leftCol, out var dataType))
+                numericAsString = !IsNumericSqlType(dataType);
+        }
+        if (!ParseValueExpression(tokens, ref position, out var value, numericAsString)) return false;
         var parameterName = $"@df{values.Count}";
         values.Add(value);
         expression = $"{left} {comparison} {parameterName}";
         return true;
     }
 
+    private static bool IsNumericSqlType(string dataType)
+    {
+        var type = dataType.ToLowerInvariant();
+        return type is "bit" or "int" or "bigint" or "smallint" or "tinyint"
+            or "decimal" or "numeric" or "float" or "real" or "money" or "smallmoney";
+    }
+
+    /// <summary>解析左侧 ISNULL(白名单列,常量) 表达式，常量（数字/字符串）参数化绑定。</summary>
+    private static bool ParseIsNullLeft(
+        IReadOnlyList<Token> tokens,
+        ref int position,
+        string masterTable,
+        IReadOnlySet<string> allowed,
+        ParseContext context,
+        out string left,
+        List<object> values)
+    {
+        left = string.Empty;
+        var start = position;
+        position++; // isnull
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.LeftParen) { position = start; return false; }
+        position++;
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier
+            || !TryResolveField(tokens[position].Text, masterTable, allowed, context, out var columnSql)) { position = start; return false; }
+        position++;
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.Comma) { position = start; return false; }
+        position++;
+        if (position >= tokens.Count || tokens[position].Kind is not (TokenKind.Number or TokenKind.Literal)) { position = start; return false; }
+        var fallback = $"@df{values.Count}";
+        values.Add(tokens[position].Text);
+        position++;
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.RightParen) { position = start; return false; }
+        position++;
+        left = $"ISNULL({columnSql},{fallback})";
+        return true;
+    }
+
+    /// <summary>
+    /// 解析 IN (SELECT [DISTINCT] 列 FROM 白名单表 [WHERE 条件]) 子查询。
+    /// 支持：单白名单表（含 WHERE 等值条件）、白名单表值函数（dbo.f_*，参数化）。
+    /// 表名/列名/函数名必须命中 SubqueryTableColumns 白名单；值全部参数化，不拼接用户输入。
+    /// 多表 FROM、嵌套子查询仍拒绝（保持现状，选择器返回空，不泄漏）。
+    /// </summary>
+    private static bool ParseInSubquery(
+        IReadOnlyList<Token> tokens,
+        ref int position,
+        List<object> values,
+        out string subSql)
+    {
+        subSql = string.Empty;
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.LeftParen) return false;
+        position++;
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier
+            || !tokens[position].Text.Equals("select", StringComparison.OrdinalIgnoreCase)) return false;
+        position++;
+        var distinct = false;
+        if (position < tokens.Count && tokens[position].Kind == TokenKind.Identifier
+            && tokens[position].Text.Equals("distinct", StringComparison.OrdinalIgnoreCase))
+        {
+            distinct = true;
+            position++;
+        }
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier) return false;
+        var selectCol = tokens[position].Text;
+        position++;
+        int? selectCastStart = null;
+        if (position < tokens.Count && tokens[position].Kind == TokenKind.Plus
+            && position + 1 < tokens.Count && tokens[position + 1].Kind == TokenKind.Identifier
+            && tokens[position + 1].Text.Equals("cast", StringComparison.OrdinalIgnoreCase))
+        {
+            // 拼接表达式（SHIPMENT_NO+CAST(...)）：先扫描跳过到 from，from 表解析后再回退解析列
+            selectCastStart = position;
+            var depth = 0;
+            while (position < tokens.Count)
+            {
+                if (tokens[position].Kind == TokenKind.LeftParen) depth++;
+                else if (tokens[position].Kind == TokenKind.RightParen) depth--;
+                else if (depth == 0 && tokens[position].Kind == TokenKind.Identifier
+                         && tokens[position].Text.Equals("from", StringComparison.OrdinalIgnoreCase)) break;
+                position++;
+            }
+        }
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier
+            || !tokens[position].Text.Equals("from", StringComparison.OrdinalIgnoreCase)) return false;
+        position++;
+        // FROM 解析：表值函数（dbo.f_xxx('参数')）或 一个或多个白名单表（可带别名）
+        string fromSql;
+        string? funcWhitelist = null;
+        var tables = new List<(string Table, string Alias)>();
+        if (position < tokens.Count && tokens[position].Kind == TokenKind.Identifier
+            && tokens[position].Text.Contains('.'))
+        {
+            var funcParts = tokens[position].Text.Split('.');
+            if (funcParts.Length != 2 || !funcParts[0].Equals("dbo", StringComparison.OrdinalIgnoreCase)) return false;
+            var funcName = funcParts[1];
+            if (!SubqueryTableColumns.TryGetValue(funcName, out _)) return false;
+            position++;
+            if (position >= tokens.Count || tokens[position].Kind != TokenKind.LeftParen) return false;
+            position++;
+            if (position >= tokens.Count || tokens[position].Kind != TokenKind.Literal) return false;
+            var parameterName = $"@df{values.Count}";
+            values.Add(tokens[position].Text);
+            position++;
+            if (position >= tokens.Count || tokens[position].Kind != TokenKind.RightParen) return false;
+            position++;
+            fromSql = $"dbo.[{funcName}]({parameterName})";
+            funcWhitelist = funcName;
+        }
+        else
+        {
+            var fromParts = new List<string>();
+            while (true)
+            {
+                if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier) return false;
+                var table = tokens[position].Text;
+                position++;
+                if (!SubqueryTableColumns.TryGetValue(table, out _)) return false;
+                var alias = table;
+                if (position < tokens.Count && tokens[position].Kind == TokenKind.Identifier
+                    && !tokens[position].Text.Equals("where", StringComparison.OrdinalIgnoreCase))
+                {
+                    alias = tokens[position].Text;
+                    position++;
+                }
+                if (tables.Any(item => item.Alias.Equals(alias, StringComparison.OrdinalIgnoreCase))) return false;
+                tables.Add((table, alias));
+                fromParts.Add($"{table} AS {alias}");
+                if (position < tokens.Count && tokens[position].Kind == TokenKind.Comma)
+                {
+                    position++;
+                    continue;
+                }
+                break;
+            }
+            fromSql = tables.Count == 1
+                ? $"dbo.[{tables[0].Table}]"
+                : string.Join(" JOIN ", fromParts.Select(p =>
+                {
+                    var sp = p.Split(" AS ");
+                    return $"dbo.[{sp[0]}] AS [{sp[1]}]";
+                }));
+        }
+
+        // 列归属解析：无前缀列 → 在所有 from 表中找唯一含该列的表；有前缀 → 别名/表名解析
+        bool ResolveColumn(string token, out string table, out string column)
+        {
+            table = "";
+            column = "";
+            if (token.Contains('.'))
+            {
+                var parts = token.Split('.');
+                if (parts.Length != 2) return false;
+                var found = tables.FirstOrDefault(item => item.Alias.Equals(parts[0], StringComparison.OrdinalIgnoreCase));
+                if (found.Table is null) return false;
+                if (!SubqueryTableColumns.TryGetValue(found.Table, out var cols) || !cols.Contains(parts[1])) return false;
+                table = found.Table;
+                column = parts[1];
+                return true;
+            }
+            var matches = tables.Where(item =>
+                SubqueryTableColumns.TryGetValue(item.Table, out var cols) && cols.Contains(token)).ToList();
+            if (matches.Count != 1) return false;
+            table = matches[0].Table;
+            column = token;
+            return true;
+        }
+
+        var singleTable = tables.Count == 1 && funcWhitelist is null;
+        string selectSql;
+        if (selectCastStart is int castStart)
+        {
+            // 拼接表达式：左侧列 + CAST(列 AS CHAR(n))（from 表已解析，回退到 + 处解析）
+            var savePos = position;
+            position = castStart;
+            if (position >= tokens.Count || tokens[position].Kind != TokenKind.Plus) return false;
+            position++;
+            if (!ResolveColumn(selectCol, out var leftTable, out var leftColumn)) return false;
+            var leftAlias = tables.First(item => item.Table.Equals(leftTable, StringComparison.OrdinalIgnoreCase)).Alias;
+            if (!ParseCastAsChar(tokens, ref position, token =>
+            {
+                if (!ResolveColumn(token, out var castTable, out var castColumn)) return null;
+                var alias = tables.First(item => item.Table.Equals(castTable, StringComparison.OrdinalIgnoreCase)).Alias;
+                return $"[{alias}].[{castColumn}]";
+            }, out var castSql)) return false;
+            selectSql = $"[{leftAlias}].[{leftColumn}]+{castSql}";
+            position = savePos;
+        }
+        else if (funcWhitelist is not null)
+        {
+            if (!SubqueryTableColumns.TryGetValue(funcWhitelist, out var funcCols) || !funcCols.Contains(selectCol)) return false;
+            selectSql = $"[{selectCol}]";
+        }
+        else
+        {
+            if (!ResolveColumn(selectCol, out var selTable, out var selColumn)) return false;
+            selectSql = singleTable
+                ? $"[{selColumn}]"
+                : $"[{tables.First(item => item.Table.Equals(selTable, StringComparison.OrdinalIgnoreCase)).Alias}].[{selColumn}]";
+        }
+
+        // WHERE：表间等值 → JOIN ON；列 = 值 → WHERE 参数化
+        var joins = new List<string>();
+        var conditions = new List<string>();
+        if (position < tokens.Count && tokens[position].Kind == TokenKind.Identifier
+            && tokens[position].Text.Equals("where", StringComparison.OrdinalIgnoreCase))
+        {
+            position++;
+            while (true)
+            {
+                if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier) return false;
+                var leftToken = tokens[position].Text;
+                position++;
+                if (!ResolveColumn(leftToken, out var leftTable, out var leftColumn)) return false;
+                if (position >= tokens.Count || tokens[position].Kind != TokenKind.Operator
+                    || tokens[position].Text is not ("=" or "<>" or ">" or "<" or ">=" or "<=")) return false;
+                var op = tokens[position].Text;
+                position++;
+                if (position < tokens.Count && tokens[position].Kind == TokenKind.Identifier
+                    && op == "="
+                    && ResolveColumn(tokens[position].Text, out var rightTable, out var rightColumn)
+                    && !leftTable.Equals(rightTable, StringComparison.OrdinalIgnoreCase))
+                {
+                    position++;
+                    var leftAlias = tables.First(item => item.Table.Equals(leftTable, StringComparison.OrdinalIgnoreCase)).Alias;
+                    var rightAlias = tables.First(item => item.Table.Equals(rightTable, StringComparison.OrdinalIgnoreCase)).Alias;
+                    joins.Add($"[{leftAlias}].[{leftColumn}]=[{rightAlias}].[{rightColumn}]");
+                }
+                else
+                {
+                    if (!ParseValueExpression(tokens, ref position, out var condValue, numericAsString: true)) return false;
+                    var condParameter = $"@df{values.Count}";
+                    values.Add(condValue);
+                    var alias = tables.First(item => item.Table.Equals(leftTable, StringComparison.OrdinalIgnoreCase)).Alias;
+                    conditions.Add(singleTable
+                        ? $"[{leftColumn}] {op} {condParameter}"
+                        : $"[{alias}].[{leftColumn}] {op} {condParameter}");
+                }
+                if (position < tokens.Count && tokens[position].Kind == TokenKind.AndOr
+                    && tokens[position].Text.Equals("and", StringComparison.OrdinalIgnoreCase))
+                {
+                    position++;
+                    continue;
+                }
+                break;
+            }
+        }
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.RightParen) return false;
+        position++;
+        if (tables.Count > 1 && joins.Count == 0) return false; // 多表必须有表间关联条件
+        subSql = $"SELECT {(distinct ? "DISTINCT " : "")}{selectSql} FROM {fromSql}"
+            + (joins.Count > 0 ? $" ON {string.Join(" AND ", joins)}" : "")
+            + (conditions.Count > 0 ? $" WHERE {string.Join(" AND ", conditions)}" : "");
+        return true;
+    }
+
     private static bool IsArithmeticOperator(Token token) =>
         token.Kind is TokenKind.Plus or TokenKind.Minus or TokenKind.Asterisk or TokenKind.Slash;
+
+    /// <summary>
+    /// 解析 CAST(列 AS CHAR(n)) 拼接操作数（旧系统单号+序号拼接，如 SHIPMENT_NO+CAST(SERIAL_NO AS CHAR(6))）。
+    /// 列必须能解析（白名单校验），宽度 n 限 1~64；resolve 返回列 SQL 片段，null 表示不可解析。
+    /// </summary>
+    private static bool ParseCastAsChar(
+        IReadOnlyList<Token> tokens,
+        ref int position,
+        Func<string, string?> resolve,
+        out string sql)
+    {
+        sql = "";
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier
+            || !tokens[position].Text.Equals("cast", StringComparison.OrdinalIgnoreCase)) return false;
+        position++;
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.LeftParen) return false;
+        position++;
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier) return false;
+        var columnToken = tokens[position].Text;
+        var columnSql = resolve(columnToken);
+        if (columnSql is null) return false;
+        position++;
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier
+            || !tokens[position].Text.Equals("as", StringComparison.OrdinalIgnoreCase)) return false;
+        position++;
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier
+            || !tokens[position].Text.Equals("char", StringComparison.OrdinalIgnoreCase)) return false;
+        position++;
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.LeftParen) return false;
+        position++;
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.Number) return false;
+        if (!int.TryParse(tokens[position].Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var width)
+            || width < 1 || width > 64) return false;
+        position++;
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.RightParen) return false;
+        position++;
+        if (position >= tokens.Count || tokens[position].Kind != TokenKind.RightParen) return false;
+        position++;
+        sql = $"CAST({columnSql} AS CHAR({width}))";
+        return true;
+    }
 
     /// <summary>
     /// 谓词右侧值：字符串/数字字面量、负数，或受控函数表达式（可带 `+ '字面量'` 拼接）。
@@ -326,24 +766,48 @@ internal static class DataFilterParser
         return true;
     }
 
-    private static bool TryResolveField(string identifier, string masterTable, IReadOnlySet<string> allowed, out string field)
+    /// <summary>解析列引用为完整限定 SQL 列；跨表 JOIN 模式下查询表列带表名前缀避免歧义。</summary>
+    private static bool TryResolveField(
+        string identifier,
+        string masterTable,
+        IReadOnlySet<string> allowed,
+        ParseContext context,
+        out string columnSql)
     {
-        field = string.Empty;
+        columnSql = string.Empty;
         var parts = identifier.Split('.', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 1)
         {
-            field = parts[0];
+            if (!Identifier.IsMatch(parts[0]) || !allowed.Contains(parts[0])) return false;
+            columnSql = context.ForeignTables is null ? $"[{parts[0]}]" : $"[{masterTable}].[{parts[0]}]";
+            return true;
         }
         else if (parts.Length == 2)
         {
-            if (!parts[0].Equals(masterTable, StringComparison.OrdinalIgnoreCase)) return false;
-            field = parts[1];
+            if (parts[0].Equals(masterTable, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!Identifier.IsMatch(parts[1]) || !allowed.Contains(parts[1])) return false;
+                columnSql = context.ForeignTables is null ? $"[{parts[1]}]" : $"[{masterTable}].[{parts[1]}]";
+                return true;
+            }
+            else if (context.ForeignTables is { } foreign && foreign.ContainsKey(parts[0]))
+            {
+                // 白名单外键表列：登记 JOIN 与引用列（物理存在性由调用方在拼 SQL 前校验），
+                if (!Identifier.IsMatch(parts[1])) return false;
+                context.Joins.Add(parts[0]);
+                context.ForeignColumns.Add((parts[0], parts[1]));
+                columnSql = $"[{parts[0]}].[{parts[1]}]";
+                return true;
+            }
+            else
+            {
+                return false;
+            }
         }
         else
         {
             return false;
         }
-        return Identifier.IsMatch(field) && allowed.Contains(field);
     }
 
     private static List<Token> Tokenize(string input)

@@ -38,6 +38,9 @@ export interface MenuAdminModule {
   GROUP3: boolean; GROUP_EXP3: string | null; GROUP_DESC3: string | null
   GROUP4: boolean; GROUP_EXP4: string | null; GROUP_DESC4: string | null
   GROUP5: boolean; GROUP_EXP5: string | null; GROUP_DESC5: string | null
+  FORM_TABS: string | null
+  FORM_COLUMNS: number | null
+  FORM_BUTTONS: string | null
   LAST_UPDATE_BY: string | null
   LAST_UPDATE_DATE: string | null
 }
@@ -73,6 +76,9 @@ const emptyDraft = (parentId: number | null): MenuAdminModule => ({
   GROUP3: false, GROUP_EXP3: null, GROUP_DESC3: null,
   GROUP4: false, GROUP_EXP4: null, GROUP_DESC4: null,
   GROUP5: false, GROUP_EXP5: null, GROUP_DESC5: null,
+  FORM_TABS: null,
+  FORM_COLUMNS: null,
+  FORM_BUTTONS: null,
   LAST_UPDATE_BY: null,
   LAST_UPDATE_DATE: null,
 })
@@ -407,6 +413,35 @@ export function MenuAdminPage() {
                       </div>
                     </div>
                   ))}
+                  <div className="card mb-2 erp-menu-form-card">
+                    <div className="card-header py-2 px-3"><strong className="fs-6">统一表单设置</strong></div>
+                    <div className="card-body py-2 px-3 row g-2">
+                      <div className="col-12">
+                        <Input
+                          label="页签定义（FORM_TABS）"
+                          value={draft.FORM_TABS ?? ''}
+                          placeholder="如 1=客户订单--1;2=客户订单--2；留空为单页签"
+                          onChange={(value) => patch((d) => ({ ...d, FORM_TABS: value || null }))}
+                        />
+                      </div>
+                      <div className="col-6">
+                        <Input
+                          label="每行对数（FORM_COLUMNS）"
+                          value={draft.FORM_COLUMNS == null ? '' : String(draft.FORM_COLUMNS)}
+                          placeholder="留空默认 2"
+                          onChange={(value) => patch((d) => ({ ...d, FORM_COLUMNS: value === '' ? null : Math.max(1, Math.min(6, Number(value) || 2)) }))}
+                        />
+                      </div>
+                      <div className="col-6">
+                        <Input
+                          label="业务按钮（FORM_BUTTONS）"
+                          value={draft.FORM_BUTTONS ?? ''}
+                          placeholder="受控注册码，如 GEN_ORDER;FINISH_CASE"
+                          onChange={(value) => patch((d) => ({ ...d, FORM_BUTTONS: value || null }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
                   <div className="d-flex gap-2 mt-3">
                     <Button size="sm" loading={save.isPending} onClick={() => void save.mutate(draft)}>保存</Button>
                     <Button size="sm" variant="secondary" onClick={() => setDraft(selected ? { ...selected } : null)}>取消</Button>

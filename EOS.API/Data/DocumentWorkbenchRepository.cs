@@ -3,6 +3,7 @@ using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
 
@@ -14,8 +15,8 @@ public sealed record WorkbenchColumnSettings(IReadOnlyList<WorkbenchColumn> Mast
 public sealed record SaveWorkbenchColumns(IReadOnlyList<string> Master, IReadOnlyList<string> Detail);
 public sealed record WorkbenchFieldSummary(string Key,string Label,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsCost,bool IsSecrecy,bool IsVirtual);
 public sealed record FieldChooserSource(bool Active,string? Table,string? Description,int? ModuleId,string? Filter,string? ReturnMapping);
-public sealed record WorkbenchFieldMetadata(string Key,string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool IsVirtual,string? VirtualExpression,bool CanCopy,bool IsAutoIncrement,string? ConvertFunction,string? DataSourceSql,string? LastUpdatedBy,DateTime? LastUpdatedAt);
-public sealed record UpdateWorkbenchFieldMetadata(string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool CanCopy,WorkbenchFieldMetadata? Original);
+public sealed record WorkbenchFieldMetadata(string Key,string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool IsVirtual,string? VirtualExpression,bool CanCopy,bool IsAutoIncrement,string? ConvertFunction,string? DataSourceSql,string? LastUpdatedBy,DateTime? LastUpdatedAt,int TabNo=1,int? FormOrder=null,int Span=1,bool NewLine=false,string? CellGroup=null,int CellRole=0,string? FormOptions=null);
+public sealed record UpdateWorkbenchFieldMetadata(string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool CanCopy,WorkbenchFieldMetadata? Original,int TabNo=1,int? FormOrder=null,int Span=1,bool NewLine=false,string? CellGroup=null,int CellRole=0,string? FormOptions=null);
 public sealed record WorkbenchDefinition(
     int ModuleId,
     string Title,
@@ -38,9 +39,16 @@ public sealed record WorkbenchDefinition(
     bool HasOwnerGroupColumn = true,
     ModuleBusinessRule? BusinessRule = null,
     bool AutoApprove = false,
-    [property: JsonIgnore] IReadOnlyList<string> GroupExpressions = default!);
-public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify);
-public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength);
+    [property: JsonIgnore] IReadOnlyList<string> GroupExpressions = default!,
+    string? FormTabs = null,
+    int? FormColumns = null,
+    string? FormButtons = null);
+/// <summary>统一表单页签定义（解析自 MODULES.FORM_TABS，如 '1=基本资料;2=其它'）。</summary>
+public sealed record FormTabDefinition(int No, string Title);
+/// <summary>统一表单下拉选项（解析自 FIELDS.FORM_OPTIONS，如 'O=外含税;I=内含税'）。</summary>
+public sealed record FormOptionItem(string Value, string Label);
+public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify, IReadOnlyList<FormTabDefinition> Tabs = default!, int Columns = 2, string? Buttons = null, IReadOnlyDictionary<string,string> DefaultValues = default!);
+public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength, int TabNo = 1, int? FormOrder = null, int Span = 1, bool NewLine = false, string? CellGroup = null, int CellRole = 0, IReadOnlyList<FormOptionItem>? Options = null, bool DisplayOnly = false);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
 public sealed record WorkbenchQueryCondition(string Field, string Operator, string? Value, string? ValueTo, IReadOnlyList<string>? Values, string Logic = "and");
 public sealed record WorkbenchQuery(IReadOnlyList<WorkbenchQueryCondition> Conditions);
@@ -61,7 +69,22 @@ public sealed class DocumentWorkbenchRepository(
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
-
+    /// <summary>
+    /// 选择器 CHOOSE_FILTER 跨表 JOIN 白名单：外键表名 → 与查询表同名的关联列。
+    /// 旧系统过滤器常引用 CLIENT_PRICE_M/PRODUCT 等表（如"仅客户计价 + 启用料号"），
+    /// 此处仅允许登记在册的表 + 固定关联键，其余跨表引用一律拒绝。
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> ChooserJoinTables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["PRODUCT"] = "PRO_NO",
+        ["CLIENT_PRICE_M"] = "CLIENT_ID",
+        ["CLIENT"] = "CLIENT_ID",
+        ["SUPPLIER"] = "SUPPLIER_ID",
+    };
+    private static readonly Regex MasterValuePlaceholderQuoted = new(@"'\{m\.([A-Za-z_][A-Za-z0-9_]*)\}'", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex MasterValuePlaceholder = new(@"\{m\.([A-Za-z_][A-Za-z0-9_]*)\}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex DetailValuePlaceholderQuoted = new(@"'\{d\.([A-Za-z_][A-Za-z0-9_]*)\}'", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex DetailValuePlaceholder = new(@"\{d\.([A-Za-z_][A-Za-z0-9_]*)\}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     /// <summary>
     /// 浏览链接模板白名单校验（BROWSE_URL）。
     /// 仅允许站内相对路径（~ 开头、无外部协议），且所有 {占位符} 必须是同一表内
@@ -84,7 +107,8 @@ public sealed class DocumentWorkbenchRepository(
     {
         await using var connection = CreateConnection(); await connection.OpenAsync(token);
         const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,UPDATE_SP,AFTERSAVE_SP,AUTO_APPROVE," +
-                           "GROUP1,GROUP_EXP1,GROUP2,GROUP_EXP2,GROUP3,GROUP_EXP3,GROUP4,GROUP_EXP4,GROUP5,GROUP_EXP5 " +
+                           "GROUP1,GROUP_EXP1,GROUP2,GROUP_EXP2,GROUP3,GROUP_EXP3,GROUP4,GROUP_EXP4,GROUP5,GROUP_EXP5," +
+                           "FORM_TABS,FORM_COLUMNS,FORM_BUTTONS " +
                            "FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection); command.Parameters.Add("@ModuleId", SqlDbType.Int).Value=moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -110,6 +134,9 @@ public sealed class DocumentWorkbenchRepository(
             var expression = reader.IsDBNull(offset + 1) ? string.Empty : reader.GetString(offset + 1).Trim();
             groupExpressions[i] = enabled ? expression : string.Empty;
         }
+        var formTabs = reader.IsDBNull(22) ? null : reader.GetString(22).Trim();
+        var formColumns = reader.IsDBNull(23) ? (int?)null : (int)reader.GetByte(23);
+        var formButtons = reader.IsDBNull(24) ? null : reader.GetString(24).Trim();
         await reader.CloseAsync();
         if (!IsWorkbenchUrl(url) || !Identifier.IsMatch(master) || (detail is not null && !Identifier.IsMatch(detail)))
         {
@@ -157,7 +184,10 @@ public sealed class DocumentWorkbenchRepository(
             await ColumnExistsAsync(connection,null,master,"OWNER_G",token),
             businessRule,
             autoApprove,
-            groupExpressions);
+            groupExpressions,
+            string.IsNullOrWhiteSpace(formTabs) ? null : formTabs,
+            formColumns,
+            string.IsNullOrWhiteSpace(formButtons) ? null : formButtons);
         logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
             moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
         return definition;
@@ -418,7 +448,8 @@ public sealed class DocumentWorkbenchRepository(
             input.IsCost,input.IsSecrecy,input.DefaultValue,input.VerifyIndex,input.Regex,input.Remark,
             input.BrowseUrl,input.BrowseModuleId,input.OnlyChoose,input.ChooseMultiple,input.ChoosePage,
             input.Choosers.Select(MapChooser).ToArray(),metadata.IsVirtual,metadata.VirtualExpression,input.CanCopy,
-            metadata.IsAutoIncrement,metadata.ConvertFunction,metadata.DataSourceSql,metadata.LastUpdatedBy,metadata.LastUpdatedAt);
+            metadata.IsAutoIncrement,metadata.ConvertFunction,metadata.DataSourceSql,metadata.LastUpdatedBy,metadata.LastUpdatedAt,
+            input.TabNo,input.FormOrder,input.Span,input.NewLine,input.CellGroup,input.CellRole,input.Options);
     }
 
     private static FieldChooserSource MapChooser(FieldAdminChooser source)=>
@@ -437,14 +468,16 @@ public sealed class DocumentWorkbenchRepository(
         update.IsVisible,update.IsDefault,update.IsQueryable,update.IsReadonly,update.IsRequired,update.IsCost,update.IsSecrecy,
         update.DefaultValue,update.VerifyIndex,update.Regex,update.Remark,update.BrowseUrl,update.BrowseModuleId,
         update.OnlyChoose,update.ChooseMultiple,update.ChoosePage,
-        update.Choosers.Select(MapInputChooser).ToArray(),update.CanCopy);
+        update.Choosers.Select(MapInputChooser).ToArray(),update.CanCopy,
+        update.TabNo,update.FormOrder,update.Span,update.NewLine,update.CellGroup,update.CellRole,update.FormOptions);
 
     private static FieldAdminInput MapInput(WorkbenchFieldMetadata metadata)=>new(
         metadata.Label,metadata.DataType,metadata.Width,metadata.Align,metadata.HeaderAlign,metadata.Format,
         metadata.IsVisible,metadata.IsDefault,metadata.IsQueryable,metadata.IsReadonly,metadata.IsRequired,metadata.IsCost,metadata.IsSecrecy,
         metadata.DefaultValue,metadata.VerifyIndex,metadata.Regex,metadata.Remark,metadata.BrowseUrl,metadata.BrowseModuleId,
         metadata.OnlyChoose,metadata.ChooseMultiple,metadata.ChoosePage,
-        metadata.Choosers.Select(MapInputChooser).ToArray(),metadata.CanCopy);
+        metadata.Choosers.Select(MapInputChooser).ToArray(),metadata.CanCopy,
+        metadata.TabNo,metadata.FormOrder,metadata.Span,metadata.NewLine,metadata.CellGroup,metadata.CellRole,metadata.FormOptions);
 
     private static FieldAdminChooser MapInputChooser(FieldChooserSource source)=>
         new(source.Active,source.Table,source.Description,source.ModuleId,source.Filter,source.ReturnMapping);
@@ -598,9 +631,13 @@ public sealed class DocumentWorkbenchRepository(
     /// <summary>
     /// 生成统一表单定义（按当前用户权限过滤后的录入字段视图）。
     /// mode 仅支持 new/edit（控制器已校验）；本方法不执行任何高危表达式。
+    /// 明细字段与 DocumentWorkbench 子表列保持一致：列集合与顺序以工作台同源配置
+    /// （用户 SYSQL_FIELDS → SYSQL_DEFAULT → FIELDS.IS_DEFAULT_FIELDS）为准，而非表单自身的
+    /// SYSQL_DEFAULT 全量可见字段，对齐旧系统新增页与工作台子表共用同一列配置的行为。
     /// </summary>
     public async Task<FormDefinition?> GetFormDefinitionAsync(
         WorkbenchDefinition definition,
+        string userId,
         string mode,
         bool canViewCost,
         bool canViewSecrecy,
@@ -620,17 +657,87 @@ public sealed class DocumentWorkbenchRepository(
         var detailDfVerify="";
         if(definition.DetailTable is not null)
         {
-            var detailRows=await ReadFormFieldRows(connection,definition.MasterTable,definition.DetailTable,token);
-            detailFields=FormFieldSelector.Select(detailRows,mode,canViewCost,canViewSecrecy,deniedDetailFields,deniedNewDetailFields,deniedModiDetailFields);
+            var workbenchDetail=await ReadFields(connection,userId,definition.MasterTable,definition.DetailTable,canViewCost,canViewSecrecy,deniedDetailFields,token);
+            var detailRows=await ReadFormFieldRows(connection,definition.MasterTable,definition.DetailTable,token,includeVirtual:true);
+            var rowsByKey=new Dictionary<string,FormFieldRow>(StringComparer.OrdinalIgnoreCase);
+            foreach(var row in detailRows) rowsByKey.TryAdd(row.Key,row);
+            var orderedRows=workbenchDetail
+                .Where(field=>rowsByKey.ContainsKey(field.Key))
+                .Select(field=>rowsByKey[field.Key])
+                .ToList();
+            detailFields=FormFieldSelector.Select(orderedRows,mode,canViewCost,canViewSecrecy,deniedDetailFields,deniedNewDetailFields,deniedModiDetailFields);
+            // 明细主键关联列（主表主键同名列，如 ORDER_TYPE/ORDER_NO）：服务端从主表带入，
+            // 表单内只读展示（对齐旧系统明细隐藏主键控件、随主表联动带值的做法）
+            if(detailFields.Count>0)
+            {
+                detailFields=detailFields
+                    .Select(field=>pkColumns.Any(column=>column.Equals(field.Key,StringComparison.OrdinalIgnoreCase))
+                        || field.Key.Equals("SERIAL_NO",StringComparison.OrdinalIgnoreCase)
+                        ? field with { IsReadonly=true, ServerFilled=true }
+                        : field)
+                    .ToList();
+            }
             detailDfVerify=(await GetDfVerifyAsync(connection,null,definition.DetailTable,token))??"";
         }
         logger.LogDebug("表单定义 module={ModuleId} mode={Mode} master={MasterFieldCount} detail={DetailFieldCount}",
             definition.ModuleId,mode,masterFields.Count,detailFields.Count);
+        // 查看模式：全部字段只读（对齐旧系统 state=brow），保存端点不可用
+        if(mode=="view")
+        {
+            masterFields=masterFields.Select(field=>field with { IsReadonly=true }).ToList();
+            detailFields=detailFields.Select(field=>field with { IsReadonly=true }).ToList();
+        }
+        var tabs = ParseFormTabs(definition.FormTabs);
+        var columns = definition.FormColumns is int formColumns and > 0 ? formColumns : 2;
+        var defaultValues = await BuildNewDefaultsAsync(connection,definition,masterFields,mode,token);
         return new FormDefinition(definition.ModuleId,definition.Title,definition.MasterTable,definition.DetailTable,
-            definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns,definition.DetailNoFields,detailDfVerify);
+            definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns,definition.DetailNoFields,detailDfVerify,
+            tabs,columns,definition.FormButtons,defaultValues);
     }
 
-    private static async Task<IReadOnlyList<FormFieldRow>> ReadFormFieldRows(SqlConnection connection,string masterTable,string targetTable,CancellationToken token)
+    /// <summary>
+    /// 新增模式默认值（对齐旧系统新增体验）：
+    /// 1) 自动单号模块：默认单别 + 生成的下一单号（等价 GetDefaultBillInfo / GetNewNo）；
+    /// 2) 日期字段（可编辑、非服务端持有、无 DFT_VALUE）默认今天（等价 DxCalendar DefaultDateTimeNow）。
+    /// 仅 mode=new 返回；服务端生成、前端只展示，保存时仍按保存管线复查。
+    /// </summary>
+    private static async Task<IReadOnlyDictionary<string,string>> BuildNewDefaultsAsync(
+        SqlConnection connection,
+        WorkbenchDefinition definition,
+        IReadOnlyList<FormFieldDefinition> masterFields,
+        string mode,
+        CancellationToken token)
+    {
+        var defaults = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+        if (mode != "new") return defaults;
+
+        if (definition.BusinessRule is { AutoBillNo: true, BillNoField: not null, BillTypeField: not null })
+        {
+            if (masterFields.Any(field => field.Key.Equals(definition.BusinessRule.BillTypeField,StringComparison.OrdinalIgnoreCase)))
+            {
+                var billCode = await BillNoGenerator.GetDefaultBillCodeAsync(connection,null,definition.ModuleId,token);
+                if (billCode is not null) defaults[definition.BusinessRule.BillTypeField] = billCode;
+            }
+            if (masterFields.Any(field => field.Key.Equals(definition.BusinessRule.BillNoField,StringComparison.OrdinalIgnoreCase)))
+            {
+                var newNo = await BillNoGenerator.GenerateAsync(connection,null,definition.ModuleId,
+                    definition.MasterTable,definition.BusinessRule.BillNoField,definition.BusinessRule.BillTypeField,token);
+                if (newNo is not null) defaults[definition.BusinessRule.BillNoField] = newNo;
+            }
+        }
+
+        var today = DateTime.Today.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture);
+        foreach (var field in masterFields)
+        {
+            if (field is { IsVisible: true, IsReadonly: false, ServerFilled: false, IsVirtual: false, DisplayOnly: false }
+                && field.DataType.Contains("date",StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrEmpty(field.DefaultValue))
+                defaults[field.Key] = today;
+        }
+        return defaults;
+    }
+
+    private static async Task<IReadOnlyList<FormFieldRow>> ReadFormFieldRows(SqlConnection connection,string masterTable,string targetTable,CancellationToken token,bool includeVirtual=false)
     {
         const string sql="""
             SELECT LTRIM(RTRIM(f.F_ID)) AS F_ID,COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))) AS F_DESC,
@@ -650,7 +757,15 @@ public sealed class DocumentWorkbenchRepository(
                    CAST(COALESCE(f.IS_VIRTUAL,0) AS bit) AS IS_VIRTUAL,CAST(COALESCE(f.IS_COST,0) AS bit) AS IS_COST,
                    CAST(COALESCE(f.IS_SECRECY,0) AS bit) AS IS_SECRECY,CAST(COALESCE(f.IS_AUTOINC,0) AS bit) AS IS_AUTOINC,
                    d.F_IDX,CAST(CASE WHEN pk.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PK,
-                   col.CHARACTER_MAXIMUM_LENGTH AS MAX_LENGTH
+                   col.CHARACTER_MAXIMUM_LENGTH AS MAX_LENGTH,
+                   CAST(COALESCE(f.FORM_TAB_NO,1) AS int) AS FORM_TAB_NO,
+                   f.FORM_ORDER AS FORM_ORDER,
+                   CAST(COALESCE(f.FORM_SPAN,1) AS int) AS FORM_SPAN,
+                   CAST(COALESCE(f.FORM_NEW_LINE,0) AS bit) AS FORM_NEW_LINE,
+                   LTRIM(RTRIM(COALESCE(f.FORM_CELL_GROUP,''))) AS FORM_CELL_GROUP,
+                   CAST(COALESCE(f.FORM_CELL_ROLE,0) AS int) AS FORM_CELL_ROLE,
+                   f.FORM_OPTIONS AS FORM_OPTIONS,
+                   CAST(CASE WHEN col.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PHYSICAL
             FROM dbo.FIELDS f WITH (NOLOCK)
             LEFT JOIN (SELECT T_ID,T_ID_R,LTRIM(RTRIM(F_ID)) AS F_ID,MIN(F_IDX) AS F_IDX
                        FROM dbo.SYSQL_DEFAULT WITH (NOLOCK)
@@ -664,12 +779,13 @@ public sealed class DocumentWorkbenchRepository(
                        WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND ku.TABLE_SCHEMA='dbo' AND ku.TABLE_NAME=@TargetTable) pk
               ON pk.COLUMN_NAME=f.F_ID
             WHERE f.T_ID=@TargetTable
-              AND col.COLUMN_NAME IS NOT NULL
-            ORDER BY CASE WHEN d.F_IDX IS NULL THEN 1 ELSE 0 END,COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
+              AND (COALESCE(f.IS_VIRTUAL,0)=@IncludeVirtual OR col.COLUMN_NAME IS NOT NULL OR LTRIM(RTRIM(COALESCE(f.FORM_CELL_GROUP,'')))<>'')
+            ORDER BY CASE WHEN f.FORM_ORDER IS NULL THEN 1 ELSE 0 END,COALESCE(f.FORM_ORDER,d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
             """;
         await using var command=new SqlCommand(sql,connection);
         command.Parameters.Add("@MasterTable",SqlDbType.NVarChar,100).Value=masterTable;
         command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;
+        command.Parameters.Add("@IncludeVirtual",SqlDbType.Bit).Value=includeVirtual;
         await using var reader=await command.ExecuteReaderAsync(token);
         var rows=new List<FormFieldRow>();
         while(await reader.ReadAsync(token)) rows.Add(ReadFormFieldRow(reader));
@@ -706,7 +822,15 @@ public sealed class DocumentWorkbenchRepository(
             reader.GetBoolean(reader.GetOrdinal("IS_SECRECY")),
             reader.GetBoolean(reader.GetOrdinal("IS_AUTOINC")),
             reader.GetBoolean(reader.GetOrdinal("IS_PK")),
-            reader.GetNullableInt32("MAX_LENGTH"));
+            reader.GetNullableInt32("MAX_LENGTH"),
+            reader.GetInt32(reader.GetOrdinal("FORM_TAB_NO")),
+            reader.GetNullableInt32("FORM_ORDER"),
+            reader.GetInt32(reader.GetOrdinal("FORM_SPAN")),
+            reader.GetBoolean(reader.GetOrdinal("FORM_NEW_LINE")),
+            reader.GetNullableString("FORM_CELL_GROUP"),
+            reader.GetInt32(reader.GetOrdinal("FORM_CELL_ROLE")),
+            reader.GetNullableString("FORM_OPTIONS"),
+            reader.GetBoolean(reader.GetOrdinal("IS_PHYSICAL")));
     }
 
     private static FormChooserRow ReadChooser(SqlDataReader reader,int index)
@@ -733,7 +857,7 @@ public sealed class DocumentWorkbenchRepository(
         await using var connection=CreateConnection(); await connection.OpenAsync(token);
         var pkColumns=await GetPrimaryKeyColumnsAsync(connection,null,definition.MasterTable,token);
         if(pkColumns.Count!=keyValues.Count)return new(RecordAccessStatus.KeyMismatch,null);
-        var masterFields=form.MasterFields.Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var masterFields=form.MasterFields.Where(field=>!field.DisplayOnly).Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var current=await ReadRowAsync(connection,null,definition.MasterTable,pkColumns,keyValues,masterFields,token);
         if(current is null)return new(RecordAccessStatus.NotFound,null);
         if(!string.IsNullOrWhiteSpace(dataFilter))
@@ -743,10 +867,11 @@ public sealed class DocumentWorkbenchRepository(
             if(!await RecordInScopeAsync(connection,null,definition.MasterTable,pkColumns,keyValues,predicate,parameters,token))
                 return new(RecordAccessStatus.OutOfScope,null);
         }
+        await ResolveChooserDisplaysAsync(connection,form.MasterFields,current,token);
         var detailRows=new List<IReadOnlyDictionary<string,object?>>();
         if(definition.DetailTable is not null&&form.DetailFields.Count>0)
         {
-            var detailFields=form.DetailFields.Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var detailFields=form.DetailFields.Where(field=>!field.DisplayOnly).Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             detailRows.AddRange(await ReadRowsAsync(connection,null,definition.DetailTable,pkColumns,keyValues,detailFields,token));
         }
         return new(RecordAccessStatus.Ok,new RecordBundle(current,detailRows));
@@ -913,7 +1038,7 @@ public sealed class DocumentWorkbenchRepository(
         await using var transaction=(SqlTransaction)await connection.BeginTransactionAsync(token);
         var pkColumns=await GetPrimaryKeyColumnsAsync(connection,transaction,definition.MasterTable,token);
         if(pkColumns.Count!=keyValues.Count)return RecordSaveResult.Failed(RecordAccessStatus.KeyMismatch,"RECORD_KEY_MISMATCH","主键数量与模块主键不匹配。");
-        var masterFields=form.MasterFields.Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var masterFields=form.MasterFields.Where(field=>!field.DisplayOnly).Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var current=await ReadRowAsync(connection,transaction,definition.MasterTable,pkColumns,keyValues,masterFields,token);
         if(current is null)return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
         if(!string.IsNullOrWhiteSpace(dataFilter))
@@ -1136,11 +1261,19 @@ public sealed class DocumentWorkbenchRepository(
     public async Task<FormChooserResult?> GetChooserOptionsAsync(
         string table,
         string? keyword,
+        string? filterField,
+        string? returnMapping,
+        IReadOnlyDictionary<string, string>? masterValues,
+        IReadOnlyDictionary<string, string>? detailValues,
         bool canViewCost,
         bool canViewSecrecy,
         IReadOnlySet<string> deniedFields,
         string? dataFilter,
         string? chooseFilter,
+        string? sortField,
+        string? sortDirection,
+        int page,
+        int pageSize,
         CancellationToken token)
     {
         if(!Identifier.IsMatch(table))return null;
@@ -1148,27 +1281,117 @@ public sealed class DocumentWorkbenchRepository(
         var all=await ReadChooserColumnRows(connection,table,token);
         if(all.Count==0)return null;
         var allowedFields=all.Select(row=>row.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var columnTypes=all.ToDictionary(row=>row.Key,row=>row.DataType,StringComparer.OrdinalIgnoreCase);
+        // {m.FIELD}/{d.FIELD} 旧系统模板：替换为当前主表/明细字段值（SQL 字面量转义后由解析器参数化，不拼接原始值）
+        var substitutedFilter = SubstituteTemplateValues(chooseFilter, masterValues, detailValues);
+        logger.LogInformation("选择器过滤 table={Table} filter={Filter} substituted={Substituted}", table, chooseFilter, substitutedFilter);
         // 合并两类过滤：用户数据范围（DATA_FILTER）+ 字段选择器过滤（CHOOSE_FILTER）。
         // 全部经受限解析器（白名单字段 + 参数化）；任一无法安全解析即返回空选项（不泄漏数据）。
         string? scopePredicate=null;
         var scopeParameters=new List<object>();
+        var joins=new List<string>();
         var nextIndex=0;
-        foreach(var (raw,required) in new[]{ (dataFilter,false), (chooseFilter,true) })
+        foreach(var (raw,required) in new[]{ (dataFilter,false), (substitutedFilter,true) })
         {
             if(string.IsNullOrWhiteSpace(raw))continue;
-            if(!DataFilterParser.TryParse(raw,table,allowedFields,out var parsed,out var parsedParameters))
-                return new FormChooserResult([],[]);
+            if(!DataFilterParser.TryParseWithJoins(raw,table,allowedFields,ChooserJoinTables,columnTypes,out var parsed,out var parsedParameters,out var parsedJoins,out var foreignColumns))
+            {
+                logger.LogWarning("选择器过滤无法解析 table={Table} filter={Filter}",table,raw);
+                return new FormChooserResult([],[],0);
+            }
+            if(!await ValidateChooserJoinsAsync(connection,table,parsedJoins,foreignColumns,token))
+            {
+                logger.LogWarning("选择器 JOIN 校验失败 table={Table} filter={Filter}",table,raw);
+                return new FormChooserResult([],[],0);
+            }
             var renumbered=RenumberFilterParameters(parsed,parsedParameters,nextIndex);
             scopePredicate=scopePredicate is null
                 ? renumbered.Predicate
                 : $"({scopePredicate}) AND ({renumbered.Predicate})";
             scopeParameters.AddRange(renumbered.Parameters);
             nextIndex+=renumbered.Parameters.Count;
+            foreach(var joinTable in parsedJoins.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var joinKey=ChooserJoinTables[joinTable];
+                joins.Add($"LEFT JOIN dbo.[{joinTable}] ON dbo.[{joinTable}].[{joinKey}] = dbo.[{table}].[{joinKey}]");
+            }
         }
-        var columns=ChooserColumnSelector.Select(all,canViewCost,canViewSecrecy,deniedFields);
-        if(columns.Count==0)return new FormChooserResult([],[]);
-        var rows=await ReadChooserRowsAsync(connection,table,columns,keyword,scopePredicate,scopeParameters,token);
-        return new FormChooserResult(columns,rows);
+        // 显示列：回填映射列优先（保证主键/名称可见），其余按 SYSQL_DEFAULT 顺序，
+        // 保留审计/状态列（对齐旧系统 Chooser.aspx 网格列，如建立人/批核状态等）
+        var preferred = FormFieldSelector.ParseReturnMapping(returnMapping)
+            .Select(pair => pair.Column.Trim())
+            .Where(column => all.Any(row => row.Key.Equals(column,StringComparison.OrdinalIgnoreCase)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var selected=ChooserColumnSelector.Select(all,canViewCost,canViewSecrecy,deniedFields,max: all.Count)
+            .ToList();
+        var orderIndex = selected.ToDictionary(column=>column.Key,column=>all.First(row=>row.Key.Equals(column.Key,StringComparison.OrdinalIgnoreCase)).OrderIndex,StringComparer.OrdinalIgnoreCase);
+        var columns=preferred
+            .Select(key=>selected.FirstOrDefault(column=>column.Key.Equals(key,StringComparison.OrdinalIgnoreCase)))
+            .OfType<FormChooserColumn>()
+            .Concat(selected
+                .Where(column=>!preferred.Any(key=>key.Equals(column.Key,StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(column=>orderIndex[column.Key]))
+            .Take(30)
+            .ToList();
+        if(columns.Count==0)return new FormChooserResult([],[],0);
+        // 过滤字段白名单校验：不在显示列内则忽略（回退为跨列模糊搜索）
+        if(!string.IsNullOrWhiteSpace(filterField) && !columns.Any(column=>column.Key.Equals(filterField,StringComparison.OrdinalIgnoreCase)))
+            filterField=null;
+        var (rows,total)=await ReadChooserRowsAsync(connection,table,columns,keyword,filterField,scopePredicate,scopeParameters,joins,sortField,sortDirection,page,pageSize,token);
+        return new FormChooserResult(columns,rows,total);
+    }
+
+    /// <summary>
+    /// 把旧系统 {m.FIELD} 主表值 / {d.FIELD} 明细值模板替换为 SQL 字面量（单引号转义，随后由解析器参数化绑定）。
+    /// 自带引号与不带引号两种都覆盖；值缺失时替换为空串（条件不命中，安全）。
+    /// </summary>
+    private static string? SubstituteTemplateValues(
+        string? filter,
+        IReadOnlyDictionary<string,string>? masterValues,
+        IReadOnlyDictionary<string,string>? detailValues)
+    {
+        if(string.IsNullOrWhiteSpace(filter))return filter;
+        string Escape(IReadOnlyDictionary<string,string>? source, string field)
+        {
+            if(source is not null && source.TryGetValue(field,out var value)) return value.Replace("'","''");
+            return "";
+        }
+        if(masterValues is not null)
+        {
+            filter=MasterValuePlaceholderQuoted.Replace(filter,match=>"'"+Escape(masterValues,match.Groups[1].Value)+"'");
+            filter=MasterValuePlaceholder.Replace(filter,match=>"'"+Escape(masterValues,match.Groups[1].Value)+"'");
+        }
+        if(detailValues is not null)
+        {
+            filter=DetailValuePlaceholderQuoted.Replace(filter,match=>"'"+Escape(detailValues,match.Groups[1].Value)+"'");
+            filter=DetailValuePlaceholder.Replace(filter,match=>"'"+Escape(detailValues,match.Groups[1].Value)+"'");
+        }
+        return filter;
+    }
+
+    /// <summary>校验选择器跨表 JOIN：关联键（查询表侧 + 外键表侧）与引用列均须物理存在，否则拒绝。</summary>
+    private static async Task<bool> ValidateChooserJoinsAsync(
+        SqlConnection connection,
+        string table,
+        IReadOnlyList<string> joinTables,
+        IReadOnlyList<(string Table,string Column)> foreignColumns,
+        CancellationToken token)
+    {
+        var checks=new List<(string Table,string Column)>();
+        foreach(var joinTable in joinTables.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if(!ChooserJoinTables.TryGetValue(joinTable,out var joinKey))return false;
+            checks.Add((table,joinKey));
+            checks.Add((joinTable,joinKey));
+        }
+        checks.AddRange(foreignColumns);
+        foreach(var group in checks.GroupBy(item=>item.Table,StringComparer.OrdinalIgnoreCase))
+        {
+            var columns=group.Select(item=>item.Column).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            if(!await ColumnsExistAsync(connection,group.Key,columns,token))return false;
+        }
+        return true;
     }
 
     /// <summary>把解析器生成的 @dfN 参数名重编号，避免多段过滤合并时参数名冲突。</summary>
@@ -1188,34 +1411,64 @@ public sealed class DocumentWorkbenchRepository(
     private static async Task<IReadOnlyList<FormChooserColumnRow>> ReadChooserColumnRows(SqlConnection connection,string table,CancellationToken token)
     {
         const string sql="""
-            SELECT TOP 30 LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),
-                   COALESCE(NULLIF(LTRIM(RTRIM(f.F_TYPE)),''),'nvarchar'),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit)
+            SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),
+                   COALESCE(NULLIF(LTRIM(RTRIM(f.F_TYPE)),''),'nvarchar'),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit),CAST(COALESCE(f.IS_VISIBLE,1) AS bit) AS IS_VISIBLE,
+                   CAST(COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)) AS int) AS ORDER_IDX
             FROM dbo.FIELDS f WITH (NOLOCK)
-            WHERE f.T_ID=@Table AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0
+            LEFT JOIN (SELECT T_ID,T_ID_R,LTRIM(RTRIM(F_ID)) AS F_ID,MIN(F_IDX) AS F_IDX
+                       FROM dbo.SYSQL_DEFAULT WITH (NOLOCK)
+                       GROUP BY T_ID,T_ID_R,LTRIM(RTRIM(F_ID))) d
+              ON d.T_ID=@Table AND d.T_ID_R=@Table AND d.F_ID=LTRIM(RTRIM(f.F_ID))
+            WHERE f.T_ID=@Table AND COALESCE(f.IS_VIRTUAL,0)=0
               AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@Table AND c.COLUMN_NAME=f.F_ID)
-            ORDER BY COALESCE(f.VERIFY_INDEX,999),f.F_ID;
+            ORDER BY CASE WHEN d.F_IDX IS NULL THEN 1 ELSE 0 END,COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
             """;
         await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
         await using var reader=await command.ExecuteReaderAsync(token);
         var rows=new List<FormChooserColumnRow>();
-        while(await reader.ReadAsync(token))rows.Add(new(reader.GetString(0),reader.GetString(1),reader.GetString(2),reader.GetBoolean(3),reader.GetBoolean(4)));
+        while(await reader.ReadAsync(token))rows.Add(new(reader.GetString(0),reader.GetString(1),reader.GetString(2),reader.GetBoolean(3),reader.GetBoolean(4),reader.GetInt32(reader.GetOrdinal("ORDER_IDX")),reader.GetBoolean(reader.GetOrdinal("IS_VISIBLE"))));
         return rows;
     }
 
-    private static async Task<IReadOnlyList<IReadOnlyDictionary<string,object?>>> ReadChooserRowsAsync(
-        SqlConnection connection,string table,IReadOnlyList<FormChooserColumn> columns,string? keyword,string? scopePredicate,IReadOnlyList<object> scopeParameters,CancellationToken token)
+    private static async Task<(IReadOnlyList<IReadOnlyDictionary<string,object?>> Rows,int Total)> ReadChooserRowsAsync(
+        SqlConnection connection,string table,IReadOnlyList<FormChooserColumn> columns,string? keyword,string? filterField,string? scopePredicate,IReadOnlyList<object> scopeParameters,IReadOnlyList<string> joins,string? sortField,string? sortDirection,int page,int pageSize,CancellationToken token)
     {
-        var select=string.Join(',',columns.Select(column=>$"[{column.Key}]"));
-        var textColumn=columns.FirstOrDefault(column=>IsTextLike(column.DataType))??columns[0];
+        var select=string.Join(',',columns.Select(column=>$"[{table}].[{column.Key}]"));
         var predicates=new List<string>();
-        if(!string.IsNullOrWhiteSpace(keyword))predicates.Add($"[{textColumn.Key}] LIKE @kw");
+        if(!string.IsNullOrWhiteSpace(keyword))
+        {
+            // 指定字段 → 单列模糊；未指定（全部）→ 跨文本列 OR LIKE（对齐旧选择器 droFieldList=全部）
+            if(!string.IsNullOrWhiteSpace(filterField))
+                predicates.Add($"[{table}].[{filterField}] LIKE @kw");
+            else
+            {
+                var textColumns=columns.Where(column=>IsTextLike(column.DataType)).ToList();
+                if(textColumns.Count>0)
+                    predicates.Add("("+string.Join(" OR ",textColumns.Select(column=>$"[{table}].[{column.Key}] LIKE @kw"))+")");
+            }
+        }
         if(!string.IsNullOrWhiteSpace(scopePredicate))predicates.Add($"({scopePredicate})");
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
-        var sql=$"SELECT {select} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY [{columns[0].Key}] OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY;";
+        var from=$"FROM dbo.[{table}] WITH (NOLOCK)";
+        if(joins.Count>0)from+=" "+string.Join(" ",joins);
+        // 排序字段必须在显示列白名单内（服务端校验），否则回退首列；方向仅 asc/desc
+        var sortColumn = !string.IsNullOrWhiteSpace(sortField)
+            ? columns.FirstOrDefault(column=>column.Key.Equals(sortField,StringComparison.OrdinalIgnoreCase))?.Key
+            : null;
+        sortColumn ??= columns[0].Key;
+        var dir = string.Equals(sortDirection,"desc",StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
+        page=Math.Max(1,page);
+        pageSize=Math.Clamp(pageSize,10,100);
+        var sql=$"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {select} {from}{where} ORDER BY [{table}].[{sortColumn}] {dir} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
         await using var command=new SqlCommand(sql,connection);
         if(!string.IsNullOrWhiteSpace(keyword))command.Parameters.AddWithValue("@kw",$"%{keyword.Trim()}%");
         for(var i=0;i<scopeParameters.Count;i++)command.Parameters.AddWithValue($"@df{i}",scopeParameters[i]??DBNull.Value);
+        command.Parameters.Add("@Offset",SqlDbType.Int).Value=(page-1)*pageSize;
+        command.Parameters.Add("@PageSize",SqlDbType.Int).Value=pageSize;
         await using var reader=await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total=Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
         var result=new List<IReadOnlyDictionary<string,object?>>();
         while(await reader.ReadAsync(token))
         {
@@ -1227,7 +1480,7 @@ public sealed class DocumentWorkbenchRepository(
             }
             result.Add(row);
         }
-        return result;
+        return (result,total);
     }
 
     private async Task<IReadOnlyList<FieldError>?> SaveDetailsAsync(
@@ -1606,7 +1859,104 @@ public sealed class DocumentWorkbenchRepository(
     }
 
     private static IReadOnlySet<string> ScopeFields(IReadOnlyList<FormFieldDefinition> fields,IReadOnlyList<string> pkColumns)=>
-        fields.Select(field=>field.Key).Concat(pkColumns).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        fields.Where(field=>!field.DisplayOnly).Select(field=>field.Key).Concat(pkColumns).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>解析 MODULES.FORM_TABS（如 '1=基本资料;2=其它'），非法项跳过并按键号升序。</summary>
+    private static IReadOnlyList<FormTabDefinition> ParseFormTabs(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return [];
+        var tabs = new List<FormTabDefinition>();
+        foreach (var part in raw.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq <= 0) continue;
+            if (!int.TryParse(part[..eq].Trim(), out var no)) continue;
+            var title = part[(eq + 1)..].Trim();
+            if (title.Length == 0) continue;
+            tabs.Add(new FormTabDefinition(no, title));
+        }
+        return tabs.OrderBy(tab => tab.No).ToList();
+    }
+
+    /// <summary>
+    /// 选择器显示值回显：编辑记录时，把复合单元格内"幽灵从字段"（无物理列、只显示不保存，
+    /// 如 CLIENT_NAME/SALES_NAME）按主字段值从白名单选择器表解析显示值，避免打开编辑页空白。
+    /// 安全约束：表名/列名均来自服务端元数据并做标识符 + 物理存在双重校验；值参数化。
+    /// </summary>
+    private static async Task ResolveChooserDisplaysAsync(SqlConnection connection,IReadOnlyList<FormFieldDefinition> fields,Dictionary<string,object?> row,CancellationToken token)
+    {
+        var companionsByGroup = fields
+            .Where(field => field.DisplayOnly && field.CellRole == 2 && !string.IsNullOrWhiteSpace(field.CellGroup))
+            .GroupBy(field => field.CellGroup!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+        if (companionsByGroup.Count == 0) return;
+
+        foreach (var main in fields.Where(field =>
+                     field.CellRole == 1 && !string.IsNullOrWhiteSpace(field.CellGroup)
+                     && field.Choosers.Any(source => source.Active && !string.IsNullOrWhiteSpace(source.Table))))
+        {
+            if (!companionsByGroup.TryGetValue(main.CellGroup!, out var companions)) continue;
+            if (!row.TryGetValue(main.Key, out var raw) || raw is null || string.IsNullOrWhiteSpace(raw.ToString())) continue;
+            var source = main.Choosers.First(item => item.Active && !string.IsNullOrWhiteSpace(item.Table));
+            await ResolveChooserGroupAsync(connection,main,source,companions,row,raw.ToString()!,token);
+        }
+    }
+
+    private static async Task ResolveChooserGroupAsync(
+        SqlConnection connection,
+        FormFieldDefinition main,
+        FieldChooserSource source,
+        IReadOnlyList<FormFieldDefinition> companions,
+        Dictionary<string,object?> row,
+        string value,
+        CancellationToken token)
+    {
+        var table = source.Table!.Trim();
+        if (!Identifier.IsMatch(table) || !await TableExistsAsync(connection,table,token)) return;
+
+        var mapping = FormFieldSelector.ParseReturnMapping(source.ReturnMapping);
+        var keyColumn = mapping.FirstOrDefault(pair => string.Equals(FormFieldSelector.NormalizeChooserTarget(pair.Target),main.Key,StringComparison.OrdinalIgnoreCase)).Column;
+        if (string.IsNullOrWhiteSpace(keyColumn)) keyColumn = main.Key;
+        if (!Identifier.IsMatch(keyColumn)) return;
+
+        var selected = new List<(FormFieldDefinition Field,string Column)>();
+        foreach (var companion in companions)
+        {
+            var column = mapping.FirstOrDefault(pair => string.Equals(FormFieldSelector.NormalizeChooserTarget(pair.Target),companion.Key,StringComparison.OrdinalIgnoreCase)).Column;
+            if (string.IsNullOrWhiteSpace(column)) column = companion.Key;
+            if (!Identifier.IsMatch(column)) return;
+            selected.Add((companion,column));
+        }
+
+        var columns = selected.Select(item => item.Column).Append(keyColumn).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (!await ColumnsExistAsync(connection,table,columns,token)) return;
+
+        var select = string.Join(",", columns.Select(column => $"[{column}]"));
+        await using var command = new SqlCommand($"SELECT TOP 1 {select} FROM dbo.[{table}] WHERE [{keyColumn}]=@Value;",connection);
+        command.Parameters.Add("@Value",SqlDbType.NVarChar,256).Value=value;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token)) return;
+        foreach (var (field,column) in selected)
+            row[field.Key] = reader.IsDBNull(reader.GetOrdinal(column)) ? null : reader.GetValue(reader.GetOrdinal(column));
+    }
+
+    private static async Task<bool> TableExistsAsync(SqlConnection connection,string table,CancellationToken token)
+    {
+        await using var command = new SqlCommand("SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table;",connection);
+        command.Parameters.Add("@Table",SqlDbType.NVarChar,128).Value=table;
+        return await command.ExecuteScalarAsync(token) is not null;
+    }
+
+    private static async Task<bool> ColumnsExistAsync(SqlConnection connection,string table,IReadOnlyList<string> columns,CancellationToken token)
+    {
+        var placeholders = string.Join(",", columns.Select((_,i) => $"@C{i}"));
+        await using var command = new SqlCommand($"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table AND COLUMN_NAME IN ({placeholders});",connection);
+        command.Parameters.Add("@Table",SqlDbType.NVarChar,128).Value=table;
+        for (var i = 0; i < columns.Count; i++)
+            command.Parameters.Add($"@C{i}",SqlDbType.NVarChar,128).Value=columns[i];
+        var count = Convert.ToInt32(await command.ExecuteScalarAsync(token));
+        return count == columns.Count;
+    }
 
     private static async Task<Dictionary<string,object?>?> ReadRowAsync(
         SqlConnection connection,SqlTransaction? transaction,string table,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues,IReadOnlyList<string> fields,CancellationToken token)
@@ -1749,10 +2099,11 @@ public sealed class DocumentWorkbenchRepository(
             """;
         await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@MasterTable",SqlDbType.NVarChar,100).Value=masterTable;command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;
         var result=new List<WorkbenchColumn>();
+        var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await using(var reader=await command.ExecuteReaderAsync(token))
         {
             var order=0;
-            while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),++order,reader.GetBoolean(4)));}
+            while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key)&&seen.Add(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),++order,reader.GetBoolean(4)));}
         }
         return await DropUnresolvableVirtualColumnsAsync(connection,targetTable,result,token);
     }
@@ -1768,10 +2119,11 @@ public sealed class DocumentWorkbenchRepository(
             """;
         await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();command.Parameters.Add("@MasterTable",SqlDbType.NVarChar,100).Value=masterTable;command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;
         var result=new List<WorkbenchColumn>();
+        var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await using(var reader=await command.ExecuteReaderAsync(token))
         {
             var order=0;
-            while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),++order,reader.GetBoolean(4)));}
+            while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key)&&seen.Add(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),++order,reader.GetBoolean(4)));}
         }
         return await DropUnresolvableVirtualColumnsAsync(connection,targetTable,result,token);
     }

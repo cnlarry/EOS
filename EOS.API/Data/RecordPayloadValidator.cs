@@ -39,7 +39,7 @@ internal static class RecordPayloadValidator
             // 服务端持有（serverFilled）与虚拟字段拒绝客户端提交；
             // 只读但可见的联动字段（如 CURR_RATE/CURR_ID/TAX_ID）旧系统由前端联动带值随保存提交，
             // 因此允许提交并继续做类型/长度校验（用户无法直接修改，值仍受服务端校验约束）。
-            if (field.IsVirtual || field.ServerFilled)
+            if (field.IsVirtual || field.ServerFilled || field.DisplayOnly)
             {
                 errors.Add(new FieldError(key, "该字段由服务端维护，不可提交。", "READONLY_FIELD"));
                 continue;
@@ -63,7 +63,7 @@ internal static class RecordPayloadValidator
     {
         foreach (var field in fields)
         {
-            if (field.IsReadonly || field.IsVirtual || field.ServerFilled || values.ContainsKey(field.Key)) continue;
+            if (field.IsReadonly || field.IsVirtual || field.ServerFilled || field.DisplayOnly || values.ContainsKey(field.Key)) continue;
             if (string.IsNullOrWhiteSpace(field.DefaultValue)) continue;
             if (TryConvert(field.DataType, field.DefaultValue, out var value)) values[field.Key] = value;
         }

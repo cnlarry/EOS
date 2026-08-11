@@ -49,7 +49,10 @@ public sealed record MenuAdminModule(
     [property: JsonPropertyName("GROUP_EXP5")] string? GROUP_EXP5,
     [property: JsonPropertyName("GROUP_DESC5")] string? GROUP_DESC5,
     [property: JsonPropertyName("LAST_UPDATE_BY")] string? LAST_UPDATE_BY,
-    [property: JsonPropertyName("LAST_UPDATE_DATE")] DateTime? LAST_UPDATE_DATE);
+    [property: JsonPropertyName("LAST_UPDATE_DATE")] DateTime? LAST_UPDATE_DATE,
+    [property: JsonPropertyName("FORM_TABS")] string? FORM_TABS = null,
+    [property: JsonPropertyName("FORM_COLUMNS")] int? FORM_COLUMNS = null,
+    [property: JsonPropertyName("FORM_BUTTONS")] string? FORM_BUTTONS = null);
 
 public sealed record MenuAdminList(int Total, IReadOnlyList<MenuAdminModule> Modules);
 

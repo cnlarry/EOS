@@ -8,6 +8,18 @@ export interface FormChooserSource {
   returnMapping: string | null
 }
 
+/** 下拉选项（解析自 FIELDS.FORM_OPTIONS，如 'O=外含税;I=内含税'） */
+export interface FormOptionItem {
+  value: string
+  label: string
+}
+
+/** 表单页签（解析自 MODULES.FORM_TABS，如 '1=基本资料;2=其它'） */
+export interface FormTab {
+  no: number
+  title: string
+}
+
 /** 单个录入字段（GET /api/document-workbench/{moduleId}/form-definition 返回项） */
 export interface FormFieldDefinition {
   key: string
@@ -32,6 +44,14 @@ export interface FormFieldDefinition {
   isSecrecy: boolean
   serverFilled: boolean
   maxLength: number | null
+  tabNo: number
+  formOrder: number | null
+  span: number
+  newLine: boolean
+  cellGroup: string | null
+  cellRole: number
+  options: FormOptionItem[]
+  displayOnly: boolean
 }
 
 /** 统一表单定义（按当前用户权限过滤后的录入视图） */
@@ -48,6 +68,11 @@ export interface FormDefinition {
   masterPkOrder: string[]
   detailNoFields: string
   detailDfVerify: string
+  tabs: FormTab[]
+  columns: number
+  buttons: string | null
+  /** 新增模式服务端默认值（单别/单号/日期等），edit 模式为空对象 */
+  defaultValues: Record<string, string>
 }
 
 /** 模块权限（与 EOS.API LegacyModuleRights 对应，M0 扩展后） */

@@ -1,4 +1,4 @@
-import { IconAdjustmentsHorizontal, IconCheck, IconColumns, IconFileExport, IconLayoutRows, IconMinimize, IconPlus, IconPrinter, IconRefresh, IconRotateClockwise, IconZoomScan } from '@tabler/icons-react'
+import { IconAdjustmentsHorizontal, IconCheck, IconColumns, IconFileExport, IconPlus, IconPrinter, IconRefresh, IconRotateClockwise, IconZoomScan } from '@tabler/icons-react'
 import { IconEdit } from '@tabler/icons-react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
@@ -24,11 +24,12 @@ import { readListState, writeListState } from './listStateUrl'
 interface Field { key:string; label:string; dataType:string; width:number; align:string; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; isVirtual?:boolean }
 interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean }
 interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number }
+interface NavigationGroupDef { index:number; description:string; available:boolean }
 interface ColumnSetting { key:string; label:string; isVisible:boolean; order:number }
 interface ColumnSettings { master:ColumnSetting[]; detail:ColumnSetting[] }
 interface SetupLookup { value:string; label:string }
 interface ChooserSource { active:boolean; table:string|null; description:string|null; moduleId:number|null; filter:string|null; returnMapping:string|null }
-interface FieldMetadata { key:string; tableId:string; label:string; dataType:string; width:number; align:string; headerAlign:string; format:string|null; isVisible:boolean; isDefault:boolean; isQueryable:boolean; isReadonly:boolean; isRequired:boolean; isCost:boolean; isSecrecy:boolean; defaultValue:string|null; verifyIndex:number|null; regex:string|null; remark:string|null; browseUrl:string|null; browseModuleId:number|null; onlyChoose:boolean; chooseMultiple:boolean; choosePage:string|null; choosers:ChooserSource[]; isVirtual:boolean; virtualExpression:string|null; canCopy:boolean; isAutoIncrement:boolean; convertFunction:string|null; dataSourceSql:string|null; lastUpdatedBy:string|null; lastUpdatedAt:string|null }
+interface FieldMetadata { key:string; tableId:string; label:string; dataType:string; width:number; align:string; headerAlign:string; format:string|null; isVisible:boolean; isDefault:boolean; isQueryable:boolean; isReadonly:boolean; isRequired:boolean; isCost:boolean; isSecrecy:boolean; defaultValue:string|null; verifyIndex:number|null; regex:string|null; remark:string|null; browseUrl:string|null; browseModuleId:number|null; onlyChoose:boolean; chooseMultiple:boolean; choosePage:string|null; choosers:ChooserSource[]; isVirtual:boolean; virtualExpression:string|null; canCopy:boolean; isAutoIncrement:boolean; convertFunction:string|null; dataSourceSql:string|null; lastUpdatedBy:string|null; lastUpdatedAt:string|null; tabNo:number; formOrder:number|null; span:number; newLine:boolean; cellGroup:string|null; cellRole:number; options:string|null }
 const uniqueFields=(fields:Field[])=>fields.filter((field,index,all)=>all.findIndex(item=>item.key.toLowerCase()===field.key.toLowerCase())===index)
 const renderText=(value:string)=>value.length>24?<span className="erp-cell-ellipsis" title={value}>{value}</span>:value
 const sortQuery=(sort:SortingState)=>({sortFields:sort.length?sort.map(item=>item.id).join(','):undefined,sortDirections:sort.length?sort.map(item=>item.desc?'desc':'asc').join(','):undefined})
@@ -46,20 +47,22 @@ export function DocumentWorkbenchPage() {
   const [detailSort,setDetailSort]=useState<{field:string;direction:'asc'|'desc'}|null>(null)
   const [queryOpen,setQueryOpen]=useState(false)
   const [columnsOpen,setColumnsOpen]=useState(false)
-  const [pageSizePref,setPageSizePref]=useState<number|null>(initialState.pageSize)
   const [columnFilters,setColumnFilters]=useState<Record<string,QueryCondition>>(initialState.columnFilters)
-  const [dense,setDense]=useState(false)
   const [fieldEditor,setFieldEditor]=useState<{detail:boolean;fieldKey:string}|null>(null)
   const [appliedConditions,setAppliedConditions]=useState<QueryCondition[]>(initialState.conditions)
   const [conditions,setConditions]=useState<QueryCondition[]>([emptyQueryCondition()])
   const [keyword,setKeyword]=useState(initialState.keyword)
   const [exporting,setExporting]=useState(false)
+  const [groupDefs,setGroupDefs]=useState<NavigationGroupDef[]|null>(null)
+  const [groupValues,setGroupValues]=useState<string[]|null>(null)
+  const [activeGroup,setActiveGroup]=useState<NavigationGroupDef|null>(null)
+  const [groupMenuOpen,setGroupMenuOpen]=useState(false)
   const rawGroupIndex=searchParams.get('groupIndex')
   const rawGroupValue=searchParams.get('groupValue')
   const groupIndex=rawGroupIndex!=null&&/^[1-5]$/.test(rawGroupIndex)?Number(rawGroupIndex):null
   const groupValue=groupIndex!=null&&rawGroupValue!=null?rawGroupValue:null
   const definition=useQuery({queryKey:['workbench',moduleId,'definition'],queryFn:()=>apiClient.get<Definition>(`/document-workbench/${moduleId}/definition`)})
-  const pageSize=pageSizePref??(definition.data?.detailTable?10:16)
+  const pageSize=definition.data?.detailTable?10:18
   const master=useMemo(()=>uniqueFields(definition.data?.masterFields??[]).slice(0,30),[definition.data])
   const detail=useMemo(()=>uniqueFields(definition.data?.detailFields??[]).slice(0,30),[definition.data])
   const allowedMasterKeys=useMemo(()=>new Set(master.map(field=>field.key.toLowerCase())),[master])
@@ -70,16 +73,31 @@ export function DocumentWorkbenchPage() {
   const totalPages=Math.max(1,Math.ceil((records.data?.total??0)/pageSize))
   const hydrated=useRef(false)
   useEffect(()=>{
+    if(!definition.data||groupDefs!==null)return
+    apiClient.get<{groups:NavigationGroupDef[]}>(`/navigation/${moduleId}/groups`)
+      .then(data=>setGroupDefs(data.groups??[]))
+      .catch(()=>setGroupDefs([]))
+  },[definition.data,moduleId,groupDefs])
+  useEffect(()=>{
+    if(!groupMenuOpen)return
+    const close=(event:MouseEvent)=>{if(!(event.target as HTMLElement).closest('.erp-group-dropdown'))setGroupMenuOpen(false)}
+    const esc=(event:KeyboardEvent)=>{if(event.key==='Escape')setGroupMenuOpen(false)}
+    // pointerdown 先于 click：此时菜单项仍挂在 DOM 上，不会被"重渲染导致目标脱离"误判为外部点击
+    document.addEventListener('pointerdown',close)
+    document.addEventListener('keydown',esc)
+    return ()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',esc)}
+  },[groupMenuOpen])
+  useEffect(()=>{
     if(!hydrated.current){hydrated.current=true;return}
     setSearchParams((current)=>{
-      const state=writeListState({page,pageSize:pageSizePref,keyword,sort:safeSort,conditions:safeConditions,columnFilters:safeColumnFilters})
+      const state=writeListState({page,keyword,sort:safeSort,conditions:safeConditions,columnFilters:safeColumnFilters})
       const groupIndexParam=current.get('groupIndex')
       const groupValueParam=current.get('groupValue')
       if(groupIndexParam)state.set('groupIndex',groupIndexParam)
       if(groupValueParam)state.set('groupValue',groupValueParam)
       return state
     },{replace:true})
-  },[page,pageSizePref,keyword,safeSort,safeConditions,safeColumnFilters,setSearchParams])
+  },[page,keyword,safeSort,safeConditions,safeColumnFilters,setSearchParams])
   useEffect(()=>{if(records.data&&page>totalPages)setPage(totalPages)},[page,totalPages,records.data])
   const columnSettings=useQuery({queryKey:['workbench',moduleId,'column-editor'],queryFn:()=>apiClient.get<{current:ColumnSettings;defaults:ColumnSettings}>(`/document-workbench/${moduleId}/column-editor`),enabled:columnsOpen})
   const saveColumns=useMutation({mutationFn:(settings:{master:string[];detail:string[]})=>apiClient.put<void>(`/document-workbench/${moduleId}/columns`,{master:settings.master,detail:settings.detail}),onSuccess:async()=>{await Promise.all([queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']}),queryClient.invalidateQueries({queryKey:['workbench',moduleId,'column-editor']})])}})
@@ -251,17 +269,43 @@ export function DocumentWorkbenchPage() {
   const openNew=()=>{if(!definition.data?.hasAdd)return;navigate(`/document-workbench/${moduleId}/new`)}
   const runWorkflow=async(approve:boolean)=>{if(!definition.data||!active)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));try{await apiClient.post(`/document-workbench/${moduleId}/${approve?'approve':'deapprove'}`,{key:JSON.stringify(key)});await queryClient.invalidateQueries({queryKey:['workbench',moduleId,'records']});if(activeKey)void details.refetch()}catch(error){window.alert(error instanceof Error?`${approve?'批核':'解批'}失败：${error.message}`:`${approve?'批核':'解批'}失败。`)}}
   const openPrint=()=>{if(!definition.data||!active)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));window.open(`/print/${moduleId}?key=${encodeURIComponent(JSON.stringify(key))}`,'_blank')}
+  const openGroupValues=async(group:NavigationGroupDef)=>{setActiveGroup(group);setGroupValues(null);try{const data=await apiClient.get<{values:string[]}>(`/navigation/${moduleId}/groups/${group.index}/values`);setGroupValues(data.values)}catch{setGroupValues([])}}
+  const applyGroupValue=(value:string)=>{if(!activeGroup)return;setGroupMenuOpen(false);setSearchParams(current=>{current.set('groupIndex',String(activeGroup.index));current.set('groupValue',value);return current},{replace:true})}
   const groupQuery=groupIndex!=null&&groupValue!=null?{groupIndex,groupValue}:{}
   const handleExport=async()=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{query:groupQuery}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:safeConditions},{query:{keyword:keyword||undefined,...sortQuery(safeSort),...groupQuery}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.csv`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
 
-  return <div className="erp-workbench-page">
+  return <div className={`erp-workbench-page${definition.data.detailTable?'':' erp-workbench-single'}`}>
     <ErpListCard
       ariaLabel="单据列表查询与操作"
       search={<ErpSearchBox value={keyword} onChange={changeKeyword} debounceMs={400} placeholder="搜索单据、供应商或商品" ariaLabel="搜索" />}
       actions={<>
         <Button size="sm" icon={<IconAdjustmentsHorizontal size={16}/>} onClick={()=>setQueryOpen(true)}>高级{appliedConditions.length?` (${appliedConditions.length})`:''}</Button>
         <Button size="sm" icon={<IconColumns size={16}/>} onClick={()=>{queryClient.removeQueries({queryKey:['workbench',moduleId,'column-editor']});setColumnsOpen(true)}}>选择列</Button>
+        {groupDefs&&groupDefs.length>0&&(
+          <div className="dropdown erp-group-dropdown">
+            <Button size="sm" icon={<IconZoomScan size={16}/>} className={`dropdown-toggle ${groupMenuOpen?'show':''}`} aria-expanded={groupMenuOpen} onClick={()=>setGroupMenuOpen(open=>!open)}>分组</Button>
+            {groupMenuOpen&&(
+              <div className="dropdown-menu dropdown-menu-end show" role="menu">
+                {activeGroup===null?groupDefs.map(group=>(
+                  <button key={group.index} type="button" role="menuitem" className={`dropdown-item ${group.available?'':'disabled'}`} disabled={!group.available} onClick={()=>void openGroupValues(group)}>{group.description}</button>
+                )):(
+                  <>
+                    <button type="button" role="menuitem" className="dropdown-item" onClick={()=>setActiveGroup(null)}>← {activeGroup.description}</button>
+                    <div className="dropdown-divider"/>
+                    {groupValues===null
+                      ?<div className="dropdown-item-text text-secondary">加载中…</div>
+                      :groupValues.length===0
+                        ?<div className="dropdown-item-text text-secondary">无分组数据</div>
+                        :groupValues.map(value=>(
+                          <button key={value} type="button" role="menuitem" className={`dropdown-item ${groupIndex===activeGroup.index&&groupValue===value?'active':''}`} onClick={()=>applyGroupValue(value)}>{value}</button>
+                        ))}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <Button size="sm" icon={<IconPlus size={16}/>} disabled={!definition.data?.hasAdd} onClick={openNew}>新增</Button>
         <Button size="sm" icon={<IconEdit size={16}/>} disabled={!definition.data?.hasEdit||!active} onClick={openEdit}>编辑</Button>
         {definition.data?.hasWorkflow&&<>
@@ -271,18 +315,17 @@ export function DocumentWorkbenchPage() {
         <Button size="sm" icon={<IconPrinter size={16}/>} disabled={!active} onClick={openPrint}>打印单据</Button>
         <Button size="sm" icon={<IconFileExport size={16}/>} loading={exporting} onClick={()=>void handleExport()}>{Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'}</Button>
         <Button size="sm" icon={<IconRefresh size={16}/>} title="刷新" aria-label="刷新" onClick={()=>{void records.refetch();if(active)void details.refetch()}} />
-        <Button size="sm" icon={dense?<IconMinimize size={16}/>:<IconLayoutRows size={16}/>} title={dense?'标准行高':'紧凑行高'} aria-label={dense?'标准行高':'紧凑行高'} onClick={()=>setDense(current=>!current)} />
       </>}
-      footer={<ErpPagination total={records.data?.total??0} page={page} pageSize={pageSize} onPageChange={setPage} pageSizes={[10,16,25,50]} onPageSizeChange={(size)=>{setPageSizePref(size);setPage(1)}} />}
+      footer={<ErpPagination total={records.data?.total??0} page={page} pageSize={pageSize} onPageChange={setPage} />}
     >
+      {groupValue!=null&&(
+        <div className="erp-active-group-filter">
+          <IconZoomScan size={14} aria-hidden="true" />
+          <span>分组筛选：{groupValue}</span>
+          <button type="button" onClick={()=>{setSearchParams((current)=>{current.delete('groupIndex');current.delete('groupValue');return current},{replace:true})}}>清除分组</button>
+        </div>
+      )}
       <div className={`erp-master-table-region ${records.isFetching?'is-loading':''}`}>
-        {groupValue!=null&&(
-          <div className="erp-active-group-filter">
-            <IconZoomScan size={14} aria-hidden="true" />
-            <span>分组筛选：{groupValue}</span>
-            <button type="button" onClick={()=>{setSearchParams((current)=>{current.delete('groupIndex');current.delete('groupValue');return current},{replace:true})}}>清除分组</button>
-          </div>
-        )}
         {records.isPending?<LoadingState label="正在加载主表数据…"/>:records.isError?<ErrorState message={recordsError} onRetry={()=>void records.refetch()}/>:<ErpTable
           columns={masterColumns}
           data={rows}
@@ -300,7 +343,6 @@ export function DocumentWorkbenchPage() {
           columnFilterValue={columnFilters}
           onColumnFilterChange={handleColumnFilterChange}
           onColumnsReorder={handleColumnsReorder}
-          dense={dense}
           empty={null}
         />}
       </div>
@@ -314,7 +356,6 @@ export function DocumentWorkbenchPage() {
       storageKey={`workbench-${moduleId}-detail`}
       persistResize={false}
       onColumnResize={saveDetailWidth}
-      dense={dense}
       className="table-sm"
       empty={null}
     />}</section>}

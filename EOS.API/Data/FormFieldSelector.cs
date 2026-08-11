@@ -25,7 +25,15 @@ internal sealed record FormFieldRow(
     bool IsSecrecy,
     bool IsAutoIncrement,
     bool IsPrimaryKey,
-    int? MaxLength);
+    int? MaxLength,
+    int TabNo = 1,
+    int? FormOrder = null,
+    int Span = 1,
+    bool NewLine = false,
+    string? CellGroup = null,
+    int CellRole = 0,
+    string? Options = null,
+    bool IsPhysical = true);
 
 internal sealed record FormChooserRow(
     bool Active,
@@ -41,10 +49,61 @@ internal sealed record FormChooserRow(
 /// - 权限过滤：成本/保密（无权限剔除）、DENY_VIEW 剔除；mode=new 剔 DENY_NEW，mode=edit 剔 DENY_MODI；
 /// - 虚拟字段保留标记 isVirtual 且强制只读；
 /// - 必填且只读/隐藏的字段标记 serverFilled（服务端填充），隐藏且非必填的字段不进表单；
-/// - 输入行顺序即表单顺序（SQL 已按 SYSQL_DEFAULT.F_IDX 排序）。
+/// - 输入行顺序即表单顺序：主表行由 SQL 按 SYSQL_DEFAULT.F_IDX 排序；
+///   明细行由调用方按 DocumentWorkbench 子表列配置（用户 SYSQL_FIELDS → 系统默认）对齐后传入。
 /// </summary>
 internal static class FormFieldSelector
 {
+    /// <summary>批核/结案状态勾选：旧页面即隐藏控件（chk_CONFIRM_TAG CssClass=hidden），统一不进表单。</summary>
+    private static readonly IReadOnlySet<string> HiddenStatusTags = new HashSet<string>(
+        ["CONFIRM_TAG", "FINISHED_TAG"], StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>解析 FIELDS.FORM_OPTIONS（KEY=VALUE;KEY=VALUE），非法项跳过（容错，不抛错）。</summary>
+    internal static IReadOnlyList<FormOptionItem> ParseOptions(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return [];
+        var options = new List<FormOptionItem>();
+        foreach (var part in raw.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq <= 0) continue;
+            var value = part[..eq].Trim();
+            var label = part[(eq + 1)..].Trim();
+            if (value.Length == 0 || label.Length == 0) continue;
+            options.Add(new FormOptionItem(value, label));
+        }
+        return options;
+    }
+
+    /// <summary>解析选择器回填映射（target=column,target=column；旧库约定逗号分隔，兼容分号）。</summary>
+    internal static IReadOnlyList<(string Target, string Column)> ParseReturnMapping(string? mapping)
+    {
+        if (string.IsNullOrWhiteSpace(mapping)) return [];
+        var result = new List<(string, string)>();
+        foreach (var part in mapping.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq <= 0) continue;
+            var target = part[..eq].Trim();
+            var column = part[(eq + 1)..].Trim();
+            if (target.Length == 0 || column.Length == 0) continue;
+            result.Add((target, column));
+        }
+        return result;
+    }
+
+    /// <summary>规范化选择器回填目标（去掉 txt_/cho_/dro_/chk_/lab_/hidd_ 前缀，与前端一致）。</summary>
+    internal static string NormalizeChooserTarget(string target)
+    {
+        var trimmed = target.Trim();
+        foreach (var prefix in new[] { "txt_", "cho_", "dro_", "chk_", "lab_", "hidd_" })
+        {
+            if (trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return trimmed[prefix.Length..];
+        }
+        return trimmed;
+    }
+
     public static IReadOnlyList<FormFieldDefinition> Select(
         IReadOnlyList<FormFieldRow> rows,
         string mode,
@@ -60,6 +119,9 @@ internal static class FormFieldSelector
         foreach (var row in rows)
         {
             if (!seen.Add(row.Key)) continue; // 防御：同名元数据行只取第一条
+            if (HiddenStatusTags.Contains(row.Key)) continue;
+            // 复合单元格从字段（FORM_CELL_ROLE=2 且配置了组）即使隐藏/幽灵也保留，用于同格联动显示
+            var isCellCompanion = row.CellRole == 2 && !string.IsNullOrWhiteSpace(row.CellGroup);
             if (row.IsCost && !canViewCost) continue;
             if (row.IsSecrecy && !canViewSecrecy) continue;
             if (deniedView.Contains(row.Key)) continue;
@@ -71,8 +133,10 @@ internal static class FormFieldSelector
             // 注意：必填但只读可见的字段（如 CURR_RATE 汇率，由前端选择币别后联动带出）
             // 不属于服务端填充，保留为客户端可提交字段，避免 SERVER_FILL_MISSING 误拦。
             var serverOwned = RecordPayloadValidator.IsAuditColumn(row.Key);
-            var serverFilled = serverOwned || row.IsAutoIncrement || row.IsRequired && !row.IsVisible;
-            if (!row.IsVisible && !serverFilled) continue;
+            // 幽灵从字段（无物理列）只显示不保存：DisplayOnly=true、强制只读、绝不服务端填充
+            var displayOnly = isCellCompanion && !row.IsPhysical;
+            var serverFilled = !displayOnly && (serverOwned || row.IsAutoIncrement || row.IsRequired && !row.IsVisible);
+            if (!row.IsVisible && !serverFilled && !isCellCompanion) continue;
 
             var choosers = row.Choosers
                 .Where(source => source.Active && !string.IsNullOrWhiteSpace(source.Table))
@@ -95,8 +159,8 @@ internal static class FormFieldSelector
                 row.VerifyIndex,
                 row.Regex,
                 row.DefaultValue,
-                IsReadonly: row.IsReadonly || row.IsVirtual || serverOwned,
-                row.IsVisible,
+                IsReadonly: row.IsReadonly || row.IsVirtual || serverOwned || displayOnly,
+                row.IsVisible || isCellCompanion,
                 row.OnlyChoose,
                 row.ChooseMultiple,
                 row.ChoosePage,
@@ -107,7 +171,15 @@ internal static class FormFieldSelector
                 row.IsCost,
                 row.IsSecrecy,
                 serverFilled,
-                row.MaxLength));
+                row.MaxLength,
+                row.TabNo,
+                row.FormOrder,
+                row.Span,
+                row.NewLine,
+                string.IsNullOrWhiteSpace(row.CellGroup) ? null : row.CellGroup,
+                row.CellRole,
+                ParseOptions(row.Options),
+                displayOnly));
         }
         return result;
     }
