@@ -11,8 +11,7 @@ namespace EOS.API.Controllers;
 [Route("api/reports/{moduleId:int}")]
 public sealed class ReportController(
     ReportRepository repository,
-    LegacyRightsRepository rightsRepository,
-    ILogger<ReportController> logger) : ControllerBase
+    LegacyRightsRepository rightsRepository) : ControllerBase
 {
     [HttpGet("definition")]
     public async Task<IActionResult> Definition(int moduleId,CancellationToken token)

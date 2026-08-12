@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { apiClient } from '../../services/api'
+import { MENU_CHANGED_EVENT } from '../../services/menuEvents'
 import { AuthContext, type AuthContextValue } from './authContext'
 import type { AppBootstrap, LoginCredentials } from './types'
 
@@ -9,6 +10,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     apiClient.get<AppBootstrap>('/app/bootstrap').then(setBootstrap).catch(() => setBootstrap(null)).finally(() => setLoading(false))
+  }, [])
+
+  // 菜单管理改动后刷新 bootstrap，保证侧栏图标/名称/启停/结构即时生效
+  useEffect(() => {
+    const onMenuChanged = () => {
+      apiClient.get<AppBootstrap>('/app/bootstrap').then(setBootstrap).catch(() => undefined)
+    }
+    window.addEventListener(MENU_CHANGED_EVENT, onMenuChanged)
+    return () => window.removeEventListener(MENU_CHANGED_EVENT, onMenuChanged)
   }, [])
 
   const value = useMemo<AuthContextValue>(() => ({

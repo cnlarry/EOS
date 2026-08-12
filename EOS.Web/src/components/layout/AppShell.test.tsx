@@ -197,4 +197,36 @@ describe('AppShell', () => {
     expect(time).toBeInTheDocument()
     expect(time!.getAttribute('dateTime')).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   })
+
+  it('拖拽手柄可调整侧栏宽度并持久化', () => {
+    renderShell('/dashboard')
+    const resizer = screen.getByRole('separator', { name: '调整菜单宽度' })
+    const shell = resizer.closest('.erp-shell') as HTMLElement
+    expect(shell.style.getPropertyValue('--erp-sidebar-width')).toBe('220px')
+
+    fireEvent.pointerDown(resizer, { clientX: 220, pointerId: 1 })
+    fireEvent.pointerMove(resizer, { clientX: 300, pointerId: 1 })
+    fireEvent.pointerUp(resizer, { pointerId: 1 })
+
+    expect(shell.style.getPropertyValue('--erp-sidebar-width')).toBe('300px')
+    expect(localStorage.getItem('erp-sidebar-width')).toBe('300')
+    expect(document.body.style.userSelect).toBe('')
+  })
+
+  it('侧栏宽度限制在最小/最大范围并恢复持久化值', () => {
+    localStorage.setItem('erp-sidebar-width', '999')
+    renderShell('/dashboard')
+    const resizer = screen.getByRole('separator', { name: '调整菜单宽度' })
+    const shell = resizer.closest('.erp-shell') as HTMLElement
+    // 非法持久化值回退默认 220px
+    expect(shell.style.getPropertyValue('--erp-sidebar-width')).toBe('220px')
+
+    fireEvent.pointerDown(resizer, { clientX: 220, pointerId: 1 })
+    fireEvent.pointerMove(resizer, { clientX: 5000, pointerId: 1 })
+    expect(shell.style.getPropertyValue('--erp-sidebar-width')).toBe('480px')
+    fireEvent.pointerMove(resizer, { clientX: -5000, pointerId: 1 })
+    expect(shell.style.getPropertyValue('--erp-sidebar-width')).toBe('160px')
+    fireEvent.pointerUp(resizer, { pointerId: 1 })
+    expect(localStorage.getItem('erp-sidebar-width')).toBe('160')
+  })
 })

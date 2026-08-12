@@ -1,11 +1,31 @@
-import { IconChevronDown, IconColumns, IconFolder, IconFolderOpen, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
+import {
+  IconArrowBarToDown,
+  IconArrowBarToUp,
+  IconArrowDown,
+  IconArrowUp,
+  IconChevronRight,
+  IconColumns,
+  IconEdit,
+  IconFolder,
+  IconPhoto,
+  IconPlus,
+  IconPower,
+  IconRefresh,
+  IconSearch,
+  IconTrash,
+} from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import type { ColumnDef } from '@tanstack/react-table'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { ErpChooserModal } from '../../components/common/ErpChooserModal'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
+import { navigationIcons } from '../../components/layout/navigationIcons'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
+import { notifyMenuChanged } from '../../services/menuEvents'
 import { ApiError } from '../../types/api'
+import { MenuFieldPicker, MenuFilterBuilder } from './MenuFieldPickers'
 
 export interface MenuAdminModule {
   M_IDX: number
@@ -43,7 +63,24 @@ export interface MenuAdminModule {
   FORM_BUTTONS: string | null
   LAST_UPDATE_BY: string | null
   LAST_UPDATE_DATE: string | null
+  M_ICON: string | null
+  Icon: string | null
 }
+
+/** 菜单同级排序动作（对齐旧系统「排序号」SORT_IDX 字段的移动语义）。 */
+type MenuSortAction = 'top' | 'up' | 'down' | 'bottom'
+
+/** 拖拽落点：before=目标同级之前、after=目标同级之后、into=成为目标子节点（追加末尾）。 */
+type DropMode = 'before' | 'after' | 'into'
+
+interface MenuAdminTableInfo {
+  T_ID: string
+  T_DESC: string
+  T_KIND: string | null
+  T_TYPE: string | null
+}
+
+const parentKeyOf = (module: MenuAdminModule) => (module.M_P_IDX != null && module.M_P_IDX > 0 ? module.M_P_IDX : 0)
 
 const emptyDraft = (parentId: number | null): MenuAdminModule => ({
   M_IDX: 0,
@@ -81,6 +118,8 @@ const emptyDraft = (parentId: number | null): MenuAdminModule => ({
   FORM_BUTTONS: null,
   LAST_UPDATE_BY: null,
   LAST_UPDATE_DATE: null,
+  M_ICON: null,
+  Icon: null,
 })
 
 interface TreeEntry {
@@ -150,11 +189,135 @@ export function MenuAdminPage() {
   const [defaultColumnGroups, setDefaultColumnGroups] = useState<ColumnSelectorGroup[]>([])
   const [defaultColumnsLoading, setDefaultColumnsLoading] = useState(false)
   const [defaultColumnsError, setDefaultColumnsError] = useState<string | null>(null)
+  const [draggedId, setDraggedId] = useState<number | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ id: number; mode: DropMode } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; module: MenuAdminModule } | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [tableChooser, setTableChooser] = useState<'master' | 'detail' | null>(null)
+  const [tableKeyword, setTableKeyword] = useState('')
+  const [iconPickerModule, setIconPickerModule] = useState<MenuAdminModule | null>(null)
+  const [fieldPicker, setFieldPicker] = useState<null | { target: 'sortFields' | 'detailNoFields' | 'notBackM' | 'notBack' }>(null)
+  const [filterBuilderOpen, setFilterBuilderOpen] = useState(false)
+  const [treeQuery, setTreeQuery] = useState('')
+  const draggedIdRef = useRef<number | null>(null)
   const modules = useQuery({ queryKey: ['menu-admin', 'modules'], queryFn: () => apiClient.get<{ total: number; modules: MenuAdminModule[] }>('/admin/menus') })
+  // 表列表仅在打开选择器时加载（避免挂载期失败状态残留导致“加载表列表失败”）
+  const tables = useQuery({
+    queryKey: ['menu-admin', 'tables'],
+    queryFn: async () => {
+      try {
+        return await apiClient.get<MenuAdminTableInfo[]>('/admin/menus/tables')
+      } catch (error) {
+        console.error('[菜单管理] 表列表加载失败，完整错误：', error)
+        throw error
+      }
+    },
+    enabled: false,
+    retry: 2,
+  })
 
   const byId = useMemo(() => new Map((modules.data?.modules ?? []).map((module) => [module.M_IDX, module])), [modules.data])
-  const tree = useMemo(() => buildTree(modules.data?.modules ?? []), [modules.data])
+  const filteredModules = useMemo(() => {
+    const query = treeQuery.trim().toLowerCase()
+    const all = modules.data?.modules ?? []
+    if (!query) return all
+    const localById = new Map(all.map((module) => [module.M_IDX, module]))
+    const matched = new Set<number>()
+    for (const module of all) {
+      const hit = module.M_DESC.toLowerCase().includes(query)
+        || (module.M_ALIAS ?? '').toLowerCase().includes(query)
+        || String(module.M_IDX).includes(query)
+      if (!hit) continue
+      let current: number | null | undefined = module.M_IDX
+      while (current != null && current > 0) {
+        matched.add(current)
+        current = localById.get(current)?.M_P_IDX ?? null
+      }
+    }
+    return all.filter((module) => matched.has(module.M_IDX))
+  }, [modules.data, treeQuery])
+  const tree = useMemo(() => buildTree(filteredModules), [filteredModules])
   const selected = selectedId != null ? byId.get(selectedId) ?? null : null
+
+  // 同级兄弟显示顺序（SORT_IDX,M_IDX），供排序按钮与拖拽定位使用
+  const siblingsByParent = useMemo(() => {
+    const map = new Map<number, number[]>()
+    for (const module of modules.data?.modules ?? []) {
+      const key = parentKeyOf(module)
+      const list = map.get(key) ?? []
+      list.push(module.M_IDX)
+      map.set(key, list)
+    }
+    map.forEach((list) => list.sort((a, b) =>
+      (byId.get(a)?.SORT_IDX ?? 0) - (byId.get(b)?.SORT_IDX ?? 0) || a - b))
+    return map
+  }, [modules.data, byId])
+  const siblingIds = selected != null ? siblingsByParent.get(parentKeyOf(selected)) ?? [] : []
+  const selectedIndex = selectedId != null ? siblingIds.indexOf(selectedId) : -1
+
+  // 有子节点的菜单组集合（用于拖拽落点：仅菜单组中间区域允许拖入）
+  const parentIds = useMemo(
+    () => new Set(
+      (modules.data?.modules ?? [])
+        .map((module) => module.M_P_IDX)
+        .filter((parent): parent is number => parent != null && parent > 0),
+    ),
+    [modules.data],
+  )
+
+  /** nodeId 是否位于 ancestorId 的子树内（沿 M_P_IDX 上溯）。 */
+  const isDescendantOf = (ancestorId: number, nodeId: number) => {
+    let current: number | null | undefined = nodeId
+    const visited = new Set<number>()
+    while (current != null && current > 0 && !visited.has(current)) {
+      if (current === ancestorId) return true
+      visited.add(current)
+      current = byId.get(current)?.M_P_IDX
+    }
+    return false
+  }
+
+  /** 目标节点在父级中的下一个同级 id（无则 null=末尾）。 */
+  const nextSiblingId = (id: number) => {
+    const module = byId.get(id)
+    if (!module) return null
+    const list = siblingsByParent.get(parentKeyOf(module)) ?? []
+    const index = list.indexOf(id)
+    return index >= 0 && index < list.length - 1 ? list[index + 1] : null
+  }
+
+  /** 计算拖拽移动是否会产生实际变化（同父且顺序一致时为无操作）。 */
+  const wouldChange = (id: number, parentId: number | null, beforeId: number | null) => {
+    const module = byId.get(id)
+    if (!module) return false
+    const parentKey = parentId ?? 0
+    if (parentKeyOf(module) !== parentKey) return true
+    // beforeId 指向自身：同父下等价于原位（例如“插到上一行之后”恰等于当前位置），直接视为无操作
+    if (beforeId === id) return false
+    const list = [...(siblingsByParent.get(parentKey) ?? [])]
+    const index = list.indexOf(id)
+    if (index >= 0) list.splice(index, 1)
+    const insertAt = beforeId != null ? list.indexOf(beforeId) : list.length
+    if (insertAt < 0) return true
+    list.splice(insertAt, 0, id)
+    return !(siblingsByParent.get(parentKey) ?? []).every((value, i) => value === list[i])
+  }
+
+  /**
+   * 根据鼠标在目标行内的纵向位置判定落点模式：
+   * - 前 30% before、后 30% after；
+   * - 中间 40%：菜单组（有子节点）允许 into（成为其子节点）；
+   *   叶子行一律按 before（插到该行之前）——拖到哪行就排到哪行，避免“拖到上一行
+   *   中间被解析成 after 自身”而成为无操作。
+   */
+  const dropModeFor = (clientY: number, rect: DOMRect, canAcceptChildren: boolean): DropMode => {
+    const height = rect.height || 1
+    const ratio = (clientY - rect.top) / height
+    if (ratio < 0.3) return 'before'
+    if (ratio > 0.7) return 'after'
+    return canAcceptChildren ? 'into' : 'before'
+  }
 
   const save = useMutation({
     mutationFn: async (input: MenuAdminModule) => {
@@ -163,6 +326,7 @@ export function MenuAdminPage() {
     },
     onSuccess: async (_, input) => {
       await queryClient.invalidateQueries({ queryKey: ['menu-admin', 'modules'] })
+      notifyMenuChanged()
       setSelectedId(input.M_IDX)
       setDraft(null)
       window.alert('菜单保存成功。')
@@ -178,6 +342,7 @@ export function MenuAdminPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['menu-admin', 'modules'] })
+      notifyMenuChanged()
       setSelectedId(null)
       setDraft(null)
       window.alert('删除成功。')
@@ -201,6 +366,227 @@ export function MenuAdminPage() {
       window.alert(error instanceof ApiError ? `保存失败：${error.body.message}` : '保存失败。')
     },
   })
+
+  const sort = useMutation({
+    mutationFn: async ({ id, action }: { id: number; action: MenuSortAction }) => {
+      await apiClient.put(`/admin/menus/${id}/sort`, { action })
+    },
+    onSuccess: async (_, { id }) => {
+      await queryClient.invalidateQueries({ queryKey: ['menu-admin', 'modules'] })
+      notifyMenuChanged()
+      const data = queryClient.getQueryData<{ total: number; modules: MenuAdminModule[] }>(['menu-admin', 'modules'])
+      const fresh = data?.modules.find((module) => module.M_IDX === id)
+      if (fresh) {
+        setSelectedId(id)
+        setDraft({ ...fresh })
+      }
+    },
+    onError: (error) => {
+      window.alert(error instanceof ApiError ? `排序失败：${error.body.message}` : '排序失败。')
+    },
+  })
+
+  const canMoveUp = selectedId != null && selectedIndex > 0 && !sort.isPending
+  const canMoveDown = selectedId != null && selectedIndex >= 0 && selectedIndex < siblingIds.length - 1 && !sort.isPending
+
+  const move = useMutation({
+    mutationFn: async ({ id, parentId, beforeId }: { id: number; parentId: number | null; beforeId: number | null }) => {
+      await apiClient.put(`/admin/menus/${id}/move`, { parentId, beforeId })
+    },
+    onSuccess: async (_, { id }) => {
+      await queryClient.invalidateQueries({ queryKey: ['menu-admin', 'modules'] })
+      notifyMenuChanged()
+      const data = queryClient.getQueryData<{ total: number; modules: MenuAdminModule[] }>(['menu-admin', 'modules'])
+      const fresh = data?.modules.find((module) => module.M_IDX === id)
+      if (fresh) {
+        // 自动展开新父链，保证拖入后节点可见
+        const freshById = new Map(data!.modules.map((module) => [module.M_IDX, module]))
+        const ancestors: number[] = []
+        let parent = fresh.M_P_IDX
+        while (parent != null && parent > 0) {
+          ancestors.push(parent)
+          parent = freshById.get(parent)?.M_P_IDX ?? null
+        }
+        setExpandedIds((current) => {
+          const next = new Set(current)
+          ancestors.forEach((ancestor) => next.add(ancestor))
+          return next.size === current.size ? current : next
+        })
+        setSelectedId(id)
+        setDraft({ ...fresh })
+      }
+    },
+    onError: (error) => {
+      window.alert(error instanceof ApiError ? `移动失败：${error.body.message}` : '移动失败。')
+    },
+  })
+
+  const requestSort = (action: MenuSortAction) => {
+    if (selectedId == null) return
+    const dirty = draft != null && selected != null && JSON.stringify(draft) !== JSON.stringify(selected)
+    if (dirty && !window.confirm('当前有未保存的菜单修改，调整顺序后将丢弃这些修改。继续吗？')) return
+    void sort.mutate({ id: selectedId, action })
+  }
+
+  const resetDrag = () => {
+    draggedIdRef.current = null
+    setDraggedId(null)
+    setDropTarget(null)
+  }
+
+  const closeContextMenu = () => setContextMenu(null)
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+    window.addEventListener('click', close)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [contextMenu])
+
+  const openContextMenu = (module: MenuAdminModule) => (event: React.MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    selectModule(module)
+    setContextMenu({
+      x: Math.max(4, Math.min(event.clientX, window.innerWidth - 190)),
+      y: Math.max(4, Math.min(event.clientY, window.innerHeight - 170)),
+      module,
+    })
+  }
+
+  const startRename = (module: MenuAdminModule) => {
+    closeContextMenu()
+    setEditingId(module.M_IDX)
+    setRenameValue(module.M_DESC)
+  }
+
+  const commitRename = (module: MenuAdminModule) => {
+    const value = renameValue.trim()
+    setEditingId(null)
+    if (value && value !== module.M_DESC) {
+      void save.mutate({ ...module, M_DESC: value })
+    }
+  }
+
+  const toggleEnabled = (module: MenuAdminModule) => {
+    closeContextMenu()
+    void save.mutate({ ...module, M_TAG: !module.M_TAG })
+  }
+
+  const addChildOf = (module: MenuAdminModule) => {
+    closeContextMenu()
+    setSelectedId(null)
+    setDraft(emptyDraft(module.M_IDX))
+    setExpandedIds((current) => {
+      const next = new Set(current)
+      next.add(module.M_IDX)
+      return next
+    })
+  }
+
+  const requestDelete = (module: MenuAdminModule) => {
+    closeContextMenu()
+    if (window.confirm(`确定删除菜单节点「${module.M_DESC}」吗？有下级菜单或已产生业务数据的模块不可删除。`)) {
+      void remove.mutate(module.M_IDX)
+    }
+  }
+
+  const openIconPicker = (module: MenuAdminModule) => {
+    closeContextMenu()
+    setIconPickerModule(module)
+  }
+
+  const iconEntries = useMemo(() => Object.entries(navigationIcons), [])
+
+  const pickTable = (kind: 'master' | 'detail', tableId: string) => {
+    patch((d) => ({ ...d, [kind === 'master' ? 'MASTER_TABLE' : 'DETAIL_TABLE']: tableId }))
+    setTableChooser(null)
+    setTableKeyword('')
+  }
+
+  const openTableChooser = (kind: 'master' | 'detail') => {
+    setTableKeyword('')
+    setTableChooser(kind)
+    // 打开时强制刷新表列表，避免旧 API 阶段的失败状态残留
+    void tables.refetch()
+  }
+
+  const filteredTables = useMemo(() => {
+    const keyword = tableKeyword.trim().toLowerCase()
+    return (tables.data ?? []).filter((table) => !keyword
+      || table.T_ID.toLowerCase().includes(keyword)
+      || table.T_DESC.toLowerCase().includes(keyword))
+  }, [tables.data, tableKeyword])
+
+  const tableKindLabel = (kind: string | null) => {
+    const upper = kind?.toUpperCase()
+    if (upper === 'P') return '主表'
+    if (upper === 'S') return '副表'
+    return upper ? upper : '其他'
+  }
+
+  const tableColumns: ColumnDef<MenuAdminTableInfo, unknown>[] = [
+    {
+      id: 'select',
+      enableSorting: false,
+      meta: { className: 'erp-select-column', resizable: false, frozenLeft: true, truncate: false },
+      header: () => null,
+      cell: () => <input className="form-check-input" type="checkbox" aria-label="选择此表" readOnly />,
+    },
+    { id: 'T_ID', accessorKey: 'T_ID', header: '表名', cell: ({ getValue }) => <span className="erp-menu-table-id">{String(getValue())}</span> },
+    { id: 'T_DESC', accessorKey: 'T_DESC', header: '描述' },
+    { id: 'T_KIND', accessorKey: 'T_KIND', header: '类型', cell: ({ getValue }) => tableKindLabel(getValue() as string | null) },
+    { id: 'T_TYPE', accessorKey: 'T_TYPE', header: '种类' },
+  ]
+
+  const handleDragStart = (module: MenuAdminModule) => (event: React.DragEvent) => {
+    draggedIdRef.current = module.M_IDX
+    setDraggedId(module.M_IDX)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(module.M_IDX))
+  }
+
+  const handleDragOver = (module: MenuAdminModule) => (event: React.DragEvent) => {
+    const dragId = draggedIdRef.current
+    if (dragId == null || dragId === module.M_IDX || isDescendantOf(dragId, module.M_IDX)) return
+    event.preventDefault()
+    event.stopPropagation()
+    const mode = dropModeFor(event.clientY, event.currentTarget.getBoundingClientRect(), parentIds.has(module.M_IDX))
+    setDropTarget((current) => (current?.id === module.M_IDX && current.mode === mode ? current : { id: module.M_IDX, mode }))
+  }
+
+  const handleDrop = (module: MenuAdminModule) => (event: React.DragEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const dragId = draggedIdRef.current
+    if (dragId == null || dragId === module.M_IDX || isDescendantOf(dragId, module.M_IDX)) {
+      resetDrag()
+      return
+    }
+    const mode = dropModeFor(event.clientY, event.currentTarget.getBoundingClientRect(), parentIds.has(module.M_IDX))
+    let parentId: number | null
+    let beforeId: number | null
+    if (mode === 'into') {
+      parentId = module.M_IDX
+      beforeId = null
+    } else {
+      parentId = module.M_P_IDX != null && module.M_P_IDX > 0 ? module.M_P_IDX : null
+      beforeId = mode === 'before' ? module.M_IDX : nextSiblingId(module.M_IDX)
+    }
+    if (wouldChange(dragId, parentId, beforeId)) {
+      void move.mutate({ id: dragId, parentId, beforeId })
+    }
+    resetDrag()
+  }
 
   const openDefaultColumns = async (table: 'master' | 'detail') => {
     if (selectedId == null) {
@@ -247,35 +633,84 @@ export function MenuAdminPage() {
 
   const renderTree = (entries: TreeEntry[], depth: number) =>
     entries.map((entry) => {
+      const module = entry.module
       const hasChildren = entry.children.length > 0
-      const expanded = expandedIds.has(entry.module.M_IDX)
-      const active = entry.module.M_IDX === selectedId
-      return (
-        <div key={entry.module.M_IDX}>
-          <button
-            type="button"
-            className={`erp-menu-tree-row ${active ? 'active' : ''}`}
-            style={{ paddingLeft: 10 + depth * 16 }}
-            onClick={() => {
-              selectModule(entry.module)
-              if (hasChildren) {
-                setExpandedIds((current) => {
-                  const next = new Set(current)
-                  if (next.has(entry.module.M_IDX)) next.delete(entry.module.M_IDX)
-                  else next.add(entry.module.M_IDX)
-                  return next
-                })
-              }
+      const searching = treeQuery.trim().length > 0
+      const expanded = searching || expandedIds.has(module.M_IDX)
+      const active = module.M_IDX === selectedId
+      const isDragging = draggedId === module.M_IDX
+      const dropClass = dropTarget?.id === module.M_IDX ? ` erp-drop-${dropTarget.mode}` : ''
+      const nodeClass = `erp-menu-node${dropClass}${isDragging ? ' erp-menu-dragging' : ''}`
+      const Icon = navigationIcons[module.Icon ?? 'folder'] ?? IconFolder
+      const label = editingId === module.M_IDX ? (
+        <span className="nav-link-title erp-menu-rename-wrap" onClick={(event) => event.stopPropagation()}>
+          <input
+            className="form-control form-control-sm erp-menu-rename-input"
+            autoFocus
+            value={renameValue}
+            onChange={(event) => setRenameValue(event.target.value)}
+            onBlur={() => commitRename(module)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') commitRename(module)
+              if (event.key === 'Escape') setEditingId(null)
             }}
-          >
-            {hasChildren ? (expanded ? <IconFolderOpen size={15} /> : <IconChevronDown size={15} />) : <IconFolder size={14} />}
-            <span className="erp-menu-tree-label">
-              <span className="erp-menu-tree-id">{entry.module.M_IDX}</span>
-              <span className={entry.module.M_TAG ? '' : 'text-secondary'}>{entry.module.M_DESC || '（未命名）'}</span>
-            </span>
-          </button>
-          {hasChildren && expanded && renderTree(entry.children, depth + 1)}
-        </div>
+          />
+        </span>
+      ) : (
+        <span className="nav-link-title">
+          <span className={module.M_TAG ? '' : 'text-secondary'}>{module.M_DESC || '（未命名）'}</span>
+          <span className="erp-menu-tree-id">{module.M_IDX}</span>
+        </span>
+      )
+      const dragProps = {
+        draggable: true,
+        onDragStart: handleDragStart(module),
+        onDragEnd: resetDrag,
+        onDragOver: handleDragOver(module),
+        onDrop: handleDrop(module),
+        onContextMenu: openContextMenu(module),
+      }
+      return (
+        <Fragment key={module.M_IDX}>
+          {hasChildren ? (
+            <>
+              <div className={`${nodeClass} erp-nav-group erp-nav-group-depth-${depth + 1}`} {...dragProps}>
+                <button
+                  type="button"
+                  className={`nav-link erp-nav-group-toggle ${active ? 'group-active' : ''}`}
+                  aria-expanded={expanded}
+                  onClick={() => {
+                    selectModule(module)
+                    setExpandedIds((current) => {
+                      const next = new Set(current)
+                      if (next.has(module.M_IDX)) next.delete(module.M_IDX)
+                      else next.add(module.M_IDX)
+                      return next
+                    })
+                  }}
+                >
+                  {depth === 0 && <span className="nav-link-icon"><Icon size={18} stroke={1.7} /></span>}
+                  {depth > 0 && <IconChevronRight className="erp-nav-chevron" size={13} />}
+                  {label}
+                </button>
+              </div>
+              {expanded && (
+                <div className={`erp-nav-children erp-nav-children-depth-${depth + 2}`}>{renderTree(entry.children, depth + 1)}</div>
+              )}
+            </>
+          ) : (
+            <div className={nodeClass} {...dragProps}>
+              <button
+                type="button"
+                className={`nav-link ${depth > 0 ? `erp-nav-child erp-nav-child-depth-${depth + 1}` : ''} ${active ? 'active' : ''}`}
+                onClick={() => selectModule(module)}
+              >
+                {depth === 0 && <span className="nav-link-icon"><Icon size={18} stroke={1.7} /></span>}
+                {label}
+              </button>
+            </div>
+          )}
+        </Fragment>
       )
     })
 
@@ -291,12 +726,23 @@ export function MenuAdminPage() {
   }
 
   const errorMessage = modules.error instanceof ApiError ? modules.error.body.message : '发生未知错误，请稍后重试。'
+  const describeError = (error: unknown, fallback: string) => {
+    if (error instanceof ApiError) return `${error.body.message}（HTTP ${error.status}）`
+    if (error && typeof error === 'object') {
+      const candidate = error as { status?: unknown; body?: { message?: string } }
+      if (typeof candidate.status === 'number' && candidate.body) {
+        return `${candidate.body.message ?? '请求失败'}（HTTP ${candidate.status}）`
+      }
+    }
+    if (error instanceof Error) return `${error.name}: ${error.message}`
+    return fallback
+  }
 
   return (
     <div className="erp-menu-admin d-grid gap-2">
       <div className="card">
         <div className="card-header d-flex align-items-center gap-2">
-          <strong>菜单管理（模块 2301）</strong>
+          <strong>{selected ? `已选择：${selected.M_DESC}（ID：${selected.M_IDX}）` : '已选择：—'}</strong>
           <div className="ms-auto d-flex gap-2">
             <Button size="sm" icon={<IconPlus size={16} />} onClick={startNewRoot}>新增根节点</Button>
             <Button size="sm" icon={<IconPlus size={16} />} onClick={startNewChild}>新增子节点</Button>
@@ -306,29 +752,64 @@ export function MenuAdminPage() {
         <div className="card-body p-0">
           <div className="row g-0">
             <div className="col-lg-5 border-end erp-menu-tree">
+              <div className="erp-menu-tree-toolbar p-2 border-bottom d-flex gap-1 align-items-center">
+                <div className="erp-nav-search erp-menu-search">
+                  <IconSearch size={16} aria-hidden="true" />
+                  <input
+                    type="search"
+                    value={treeQuery}
+                    onChange={(event) => setTreeQuery(event.target.value)}
+                    placeholder="搜索菜单…"
+                    aria-label="搜索菜单树"
+                  />
+                  {treeQuery && (
+                    <button type="button" className="erp-nav-search-clear" aria-label="清除搜索" onClick={() => setTreeQuery('')}>×</button>
+                  )}
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => setExpandedIds(new Set(parentIds))}>展开全部</Button>
+                <Button size="sm" variant="ghost" onClick={() => setExpandedIds(new Set())}>折叠全部</Button>
+              </div>
+              <div className="erp-menu-sort-bar d-flex gap-1 p-2 border-bottom align-items-center">
+                <Button size="sm" variant="secondary" icon={<IconArrowBarToUp size={16} />} title="将所选菜单移动到同级最前" disabled={!canMoveUp} onClick={() => requestSort('top')}>最前</Button>
+                <Button size="sm" variant="secondary" icon={<IconArrowUp size={16} />} title="将所选菜单向前移动一位" disabled={!canMoveUp} onClick={() => requestSort('up')}>前一步</Button>
+                <Button size="sm" variant="secondary" icon={<IconArrowDown size={16} />} title="将所选菜单向后移动一位" disabled={!canMoveDown} onClick={() => requestSort('down')}>后一步</Button>
+                <Button size="sm" variant="secondary" icon={<IconArrowBarToDown size={16} />} title="将所选菜单移动到同级最后" disabled={!canMoveDown} onClick={() => requestSort('bottom')}>最后</Button>
+              </div>
               {modules.isPending ? <LoadingState label="正在加载菜单…" /> : modules.isError ? (
                 <ErrorState message={errorMessage} onRetry={() => void modules.refetch()} />
               ) : (
                 <div className="p-2">{renderTree(tree, 0)}</div>
               )}
             </div>
+            {contextMenu && (
+              <div
+                className="erp-menu-context-menu"
+                style={{ left: contextMenu.x, top: contextMenu.y }}
+                role="menu"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button type="button" role="menuitem" onClick={() => startRename(contextMenu.module)}>
+                  <IconEdit size={14} /> 重命名
+                </button>
+                <button type="button" role="menuitem" onClick={() => toggleEnabled(contextMenu.module)}>
+                  <IconPower size={14} /> {contextMenu.module.M_TAG ? '停用' : '启用'}
+                </button>
+                <button type="button" role="menuitem" onClick={() => addChildOf(contextMenu.module)}>
+                  <IconPlus size={14} /> 添加子节点
+                </button>
+                {parentKeyOf(contextMenu.module) === 0 && (
+                  <button type="button" role="menuitem" onClick={() => openIconPicker(contextMenu.module)}>
+                    <IconPhoto size={14} /> 更换图标
+                  </button>
+                )}
+                <button type="button" role="menuitem" className="text-danger" onClick={() => requestDelete(contextMenu.module)}>
+                  <IconTrash size={14} /> 删除
+                </button>
+              </div>
+            )}
             <div className="col-lg-7">
               {draft ? (
                 <div className="p-3 erp-menu-form">
-                  <div className="row g-2">
-                    <div className="col-3">
-                      <Input label="菜单编号" type="number" value={String(draft.M_IDX || '')} onChange={(value) => patch((d) => ({ ...d, M_IDX: Number(value) || 0 }))} />
-                    </div>
-                    <div className="col-3">
-                      <Input label="排序号" type="number" value={String(draft.SORT_IDX ?? 0)} onChange={(value) => patch((d) => ({ ...d, SORT_IDX: Number(value) || 0 }))} />
-                    </div>
-                    <div className="col-3">
-                      <Input label="上级菜单" type="number" value={String(draft.M_P_IDX ?? 0)} onChange={(value) => patch((d) => ({ ...d, M_P_IDX: Number(value) || null }))} />
-                    </div>
-                    <div className="col-3 d-flex align-items-end pb-2">
-                      <Checkbox label="启用" checked={draft.M_TAG} onChange={(checked) => patch((d) => ({ ...d, M_TAG: checked }))} />
-                    </div>
-                  </div>
                   <div className="row g-2">
                     <div className="col-6">
                       <Input label="菜单名称" value={draft.M_DESC} onChange={(value) => patch((d) => ({ ...d, M_DESC: value }))} />
@@ -350,19 +831,27 @@ export function MenuAdminPage() {
                   <div className="row g-2">
                     <div className="col-6">
                       <Input label="操作主表名" value={draft.MASTER_TABLE ?? ''} onChange={(value) => patch((d) => ({ ...d, MASTER_TABLE: value || null }))} />
-                      <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('master')} disabled={!draft.MASTER_TABLE}>默认查询（主表）</Button>
+                      <div className="d-flex gap-2">
+                        <Button size="sm" onClick={() => openTableChooser('master')}>选择…</Button>
+                        <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('master')} disabled={!draft.MASTER_TABLE}>默认查询（主表）</Button>
+                      </div>
                     </div>
                     <div className="col-6">
                       <Input label="主表过滤条件" value={draft.FILTER ?? ''} onChange={(value) => patch((d) => ({ ...d, FILTER: value || null }))} />
+                      <Button size="sm" title="构建主表过滤条件" onClick={() => setFilterBuilderOpen(true)} disabled={!draft.MASTER_TABLE}>构建…</Button>
                     </div>
                   </div>
                   <div className="row g-2">
                     <div className="col-6">
                       <Input label="操作副表名" value={draft.DETAIL_TABLE ?? ''} onChange={(value) => patch((d) => ({ ...d, DETAIL_TABLE: value || null }))} />
-                      <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('detail')} disabled={!draft.DETAIL_TABLE}>默认查询（副表）</Button>
+                      <div className="d-flex gap-2">
+                        <Button size="sm" onClick={() => openTableChooser('detail')}>选择…</Button>
+                        <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('detail')} disabled={!draft.DETAIL_TABLE}>默认查询（副表）</Button>
+                      </div>
                     </div>
                     <div className="col-6">
                       <Input label="排序字段" value={draft.SORT_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, SORT_FIELDS: value || null }))} />
+                      <Button size="sm" title="选择排序字段" onClick={() => setFieldPicker({ target: 'sortFields' })} disabled={!draft.MASTER_TABLE}>选择…</Button>
                     </div>
                   </div>
                   <div className="row g-2">
@@ -376,12 +865,19 @@ export function MenuAdminPage() {
                   <div className="row g-2">
                     <div className="col-6">
                       <Input label="新增明细时必需字段" value={draft.DETAIL_NO_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, DETAIL_NO_FIELDS: value || null }))} />
+                      <Button size="sm" title="选择新增明细必需字段" onClick={() => setFieldPicker({ target: 'detailNoFields' })} disabled={!draft.DETAIL_TABLE}>选择…</Button>
                     </div>
                     <div className="col-6">
                       <Input label="字段有值时不可解批（主表）" value={draft.NOT_BACK_FIELDS_M ?? ''} onChange={(value) => patch((d) => ({ ...d, NOT_BACK_FIELDS_M: value || null }))} />
+                      <Button size="sm" title="选择不可解批主表字段" onClick={() => setFieldPicker({ target: 'notBackM' })} disabled={!draft.MASTER_TABLE}>选择…</Button>
                     </div>
                   </div>
-                  <Input label="字段有值时不可解批（副表）" value={draft.NOT_BACK_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, NOT_BACK_FIELDS: value || null }))} />
+                  <div className="row g-2">
+                    <div className="col-6">
+                      <Input label="字段有值时不可解批（副表）" value={draft.NOT_BACK_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, NOT_BACK_FIELDS: value || null }))} />
+                      <Button size="sm" title="选择不可解批副表字段" onClick={() => setFieldPicker({ target: 'notBack' })} disabled={!draft.DETAIL_TABLE}>选择…</Button>
+                    </div>
+                  </div>
                   <div className="d-flex flex-wrap gap-3 my-2">
                     <Checkbox label="通用查询（主表）" checked={draft.SEARCH_1} onChange={(checked) => patch((d) => ({ ...d, SEARCH_1: checked }))} />
                     <Checkbox label="通用查询（副表）" checked={draft.SEARCH_2} onChange={(checked) => patch((d) => ({ ...d, SEARCH_2: checked }))} />
@@ -445,19 +941,6 @@ export function MenuAdminPage() {
                   <div className="d-flex gap-2 mt-3">
                     <Button size="sm" loading={save.isPending} onClick={() => void save.mutate(draft)}>保存</Button>
                     <Button size="sm" variant="secondary" onClick={() => setDraft(selected ? { ...selected } : null)}>取消</Button>
-                    {selectedId != null && (
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        icon={<IconTrash size={16} />}
-                        loading={remove.isPending}
-                        onClick={() => {
-                          if (window.confirm(`确定删除菜单节点 ${selectedId} 及其全部子节点吗？此操作不可撤销。`)) void remove.mutate(selectedId)
-                        }}
-                      >
-                        删除
-                      </Button>
-                    )}
                   </div>
                   {selected?.LAST_UPDATE_BY && (
                     <div className="text-secondary mt-2" style={{ fontSize: 12 }}>
@@ -472,6 +955,93 @@ export function MenuAdminPage() {
           </div>
         </div>
       </div>
+      <ErpChooserModal
+        open={tableChooser !== null}
+        title={tableChooser === 'master' ? '选择操作主表' : '选择操作副表'}
+        columns={tableColumns}
+        data={filteredTables}
+        getRowId={(row) => row.T_ID}
+        mode="single"
+        onPick={(rows) => { const row = rows[0]; if (row && tableChooser) pickTable(tableChooser, row.T_ID) }}
+        onClose={() => { setTableChooser(null); setTableKeyword('') }}
+        searchText={tableKeyword}
+        onSearchChange={setTableKeyword}
+        searchPlaceholder="搜索表名/描述…"
+        loading={tables.isPending || (tables.isFetching && !tables.data)}
+        error={tables.isError ? describeError(tables.error, '加载表列表失败') : null}
+        onRetry={() => void tables.refetch()}
+        emptyText="没有匹配的表。"
+      />
+      {iconPickerModule && (
+        <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
+          <div className="modal-dialog modal-dialog-centered erp-dialog-lg">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h2 className="modal-title">更换图标：{iconPickerModule.M_DESC}</h2>
+                <button className="btn-close" aria-label="关闭" onClick={() => setIconPickerModule(null)} />
+              </div>
+              <div className="modal-body">
+                <div className="erp-menu-icon-grid">
+                  <button
+                    type="button"
+                    className={`erp-menu-icon-option${iconPickerModule.M_ICON ? '' : ' active'}`}
+                    title="默认图标"
+                    onClick={() => {
+                      void save.mutate({ ...iconPickerModule, M_ICON: null })
+                      setIconPickerModule(null)
+                    }}
+                  >
+                    <IconFolder size={20} />
+                    <span>默认</span>
+                  </button>
+                  {iconEntries.map(([name, IconComponent]) => (
+                    <button
+                      key={name}
+                      type="button"
+                      className={`erp-menu-icon-option${iconPickerModule.M_ICON === name ? ' active' : ''}`}
+                      title={name}
+                      onClick={() => {
+                        void save.mutate({ ...iconPickerModule, M_ICON: name })
+                        setIconPickerModule(null)
+                      }}
+                    >
+                      <IconComponent size={20} />
+                      <span>{name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <MenuFieldPicker
+        open={fieldPicker !== null}
+        title={fieldPicker?.target === 'sortFields' ? '选择排序字段（可升/降序）' : '选择字段'}
+        table={fieldPicker === null
+          ? null
+          : fieldPicker.target === 'sortFields' || fieldPicker.target === 'notBackM'
+            ? draft?.MASTER_TABLE ?? null
+            : draft?.DETAIL_TABLE ?? null}
+        mode={fieldPicker?.target === 'sortFields' ? 'sort' : 'multi'}
+        value={fieldPicker === null || draft === null
+          ? ''
+          : draft[fieldPicker.target === 'sortFields' ? 'SORT_FIELDS' : fieldPicker.target === 'detailNoFields' ? 'DETAIL_NO_FIELDS' : fieldPicker.target === 'notBackM' ? 'NOT_BACK_FIELDS_M' : 'NOT_BACK_FIELDS'] ?? ''}
+        onSave={(value) => {
+          if (fieldPicker) {
+            const key = fieldPicker.target === 'sortFields' ? 'SORT_FIELDS' : fieldPicker.target === 'detailNoFields' ? 'DETAIL_NO_FIELDS' : fieldPicker.target === 'notBackM' ? 'NOT_BACK_FIELDS_M' : 'NOT_BACK_FIELDS'
+            patch((d) => ({ ...d, [key]: value || null }))
+          }
+        }}
+        onClose={() => setFieldPicker(null)}
+      />
+      <MenuFilterBuilder
+        open={filterBuilderOpen}
+        table={draft?.MASTER_TABLE ?? null}
+        value={draft?.FILTER ?? ''}
+        onSave={(value) => patch((d) => ({ ...d, FILTER: value || null }))}
+        onClose={() => setFilterBuilderOpen(false)}
+      />
       <ErpColumnSelector
         open={defaultColumnsOpen !== null}
         title={defaultColumnsOpen?.table === 'detail' ? '副表默认查询列' : '主表默认查询列'}

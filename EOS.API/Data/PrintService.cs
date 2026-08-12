@@ -80,13 +80,13 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
         if(master.ContainsKey("CLIENT_ID")){partyTable="CLIENT";idField="CLIENT_ID";nameField="CLIENT_NAME";}
         else if(master.ContainsKey("SUPPLIER_ID")){partyTable="SUPPLIER";idField="SUPPLIER_ID";nameField="SUPPLIER_NAME";}
         if(partyTable is null)return result;
-        var idValue=Convert.ToString(master.GetValueOrDefault(idField))?.Trim();
+        var idValue=Convert.ToString(master.GetValueOrDefault(idField!))?.Trim();
         if(string.IsNullOrWhiteSpace(idValue))return result;
         await using var command=new SqlCommand(
             $"SELECT LTRIM(RTRIM([{nameField}])) FROM dbo.[{partyTable}] WITH (NOLOCK) WHERE [{idField}]=@id;",connection);
         command.Parameters.Add("@id",SqlDbType.NVarChar,50).Value=idValue;
         var name=await command.ExecuteScalarAsync(token) as string;
-        if(!string.IsNullOrWhiteSpace(name))result[nameField]=name;
+        if(!string.IsNullOrWhiteSpace(name))result[nameField!]=name;
         return result;
     }
 

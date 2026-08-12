@@ -154,15 +154,6 @@ if (!app.Environment.IsDevelopment())
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseAuthentication();
-app.Use(async (context, next) =>
-{
-    if (context.Request.Path == "/" && context.User.Identity?.IsAuthenticated != true)
-    {
-        context.Response.Redirect("/login.html");
-        return;
-    }
-    await next();
-});
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<ImHub>("/api/hubs/im");
