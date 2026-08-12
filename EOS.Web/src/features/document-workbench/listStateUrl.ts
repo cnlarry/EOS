@@ -2,16 +2,10 @@ import type { SortingState } from '@tanstack/react-table'
 import type { QueryCondition } from '../../components/common/queryCondition'
 
 export interface WorkbenchListState {
-  page: number
   keyword: string
   sort: SortingState
   conditions: QueryCondition[]
   columnFilters: Record<string, QueryCondition>
-}
-
-function positiveInt(value: string | null, fallback: number): number {
-  const parsed = Number(value)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
 function parseSort(fields: string | null, directions: string | null): SortingState {
@@ -35,7 +29,6 @@ export function readListState(search: URLSearchParams): WorkbenchListState {
   const parsedConditions = parseJson<QueryCondition[]>(search.get('q'))
   const parsedFilters = parseJson<Record<string, QueryCondition>>(search.get('cf'))
   return {
-    page: positiveInt(search.get('page'), 1),
     keyword: search.get('keyword') ?? '',
     sort: parseSort(search.get('sortFields'), search.get('sortDirections')),
     conditions: Array.isArray(parsedConditions) ? parsedConditions : [],
@@ -46,7 +39,6 @@ export function readListState(search: URLSearchParams): WorkbenchListState {
 /** 把工作台列表状态写入 URL（仅包含非默认值，便于分享与刷新恢复） */
 export function writeListState(state: WorkbenchListState): URLSearchParams {
   const params = new URLSearchParams()
-  if (state.page > 1) params.set('page', String(state.page))
   if (state.keyword) params.set('keyword', state.keyword)
   if (state.sort.length) {
     params.set('sortFields', state.sort.map((item) => item.id).join(','))

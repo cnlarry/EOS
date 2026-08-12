@@ -24,6 +24,7 @@ export function ErpDataTable({
   storageKey = '',
   persistResize = true,
   onColumnResize,
+  fitRef,
 }: {
   children: ReactNode
   className?: string
@@ -32,6 +33,7 @@ export function ErpDataTable({
   storageKey?: string
   persistResize?: boolean
   onColumnResize?: (columnKey: string, width: number) => void
+  fitRef?: { current: (() => Record<string, number>) | null }
 }) {
   const table = (
     <ResizableTable
@@ -39,6 +41,7 @@ export function ErpDataTable({
       storageKey={resizable ? storageKey : ''}
       persistResize={persistResize}
       onColumnResize={onColumnResize}
+      fitRef={fitRef}
     >
       {children}
     </ResizableTable>

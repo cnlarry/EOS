@@ -1,9 +1,9 @@
 namespace EOS.API.Data;
 
-public sealed record FormChooserColumn(string Key, string Label, string DataType);
+public sealed record FormChooserColumn(string Key, string Label, string DataType, string? DisplayFormat);
 public sealed record FormChooserResult(IReadOnlyList<FormChooserColumn> Columns, IReadOnlyList<IReadOnlyDictionary<string, object?>> Rows, int Total);
 
-internal sealed record FormChooserColumnRow(string Key, string Label, string DataType, bool IsCost, bool IsSecrecy, int OrderIndex, bool IsVisible);
+internal sealed record FormChooserColumnRow(string Key, string Label, string DataType, bool IsCost, bool IsSecrecy, int OrderIndex, bool IsVisible, string? DisplayFormat);
 
 /// <summary>
 /// 选择器显示列选择逻辑（与数据库解耦，便于单元测试）。
@@ -24,6 +24,6 @@ internal static class ChooserColumnSelector
             .Where(row => !row.IsSecrecy || canViewSecrecy)
             .Where(row => !deniedFields.Contains(row.Key))
             .Take(max)
-            .Select(row => new FormChooserColumn(row.Key, row.Label, row.DataType))
+            .Select(row => new FormChooserColumn(row.Key, row.Label, row.DataType, row.DisplayFormat))
             .ToArray();
 }

@@ -16,7 +16,7 @@ export interface FieldInput {
   label: string
   dataType: string
   width: number
-  align: string
+  align: string | null
   headerAlign: string
   format: string | null
   isVisible: boolean
@@ -90,7 +90,7 @@ function emptyChoosers(): ChooserSource[] {
 function emptyDraft(tableId: string): FieldMeta {
   return {
     key: '', tableId,
-    label: '', dataType: 'nvarchar', width: 100, align: 'left', headerAlign: 'center', format: null,
+    label: '', dataType: 'nvarchar', width: 100, align: '', headerAlign: 'center', format: null,
     isVisible: true, isDefault: true, isQueryable: true, isReadonly: false, isRequired: false,
     isCost: false, isSecrecy: false, defaultValue: null, verifyIndex: null, regex: null, remark: null,
     browseUrl: null, browseModuleId: null, onlyChoose: false, chooseMultiple: false, choosePage: null,
@@ -223,7 +223,8 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
                       </div>
                       <div className="col-md-3">
                         <label className="form-label">对齐</label>
-                        <select className="form-select" value={draft.align} onChange={event => setDraft({ ...draft, align: event.target.value })}>
+                        <select className="form-select" value={draft.align ?? ''} onChange={event => setDraft({ ...draft, align: event.target.value })}>
+                          <option value="">默认（数字右对齐 / 其它左对齐）</option>
                           <option value="left">左对齐</option>
                           <option value="center">居中</option>
                           <option value="right">右对齐</option>

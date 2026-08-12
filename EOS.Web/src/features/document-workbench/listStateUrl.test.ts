@@ -4,12 +4,11 @@ import { readListState, writeListState } from './listStateUrl'
 describe('listStateUrl', () => {
   it('空参数返回默认状态', () => {
     const state = readListState(new URLSearchParams())
-    expect(state).toEqual({ page: 1, keyword: '', sort: [], conditions: [], columnFilters: {} })
+    expect(state).toEqual({ keyword: '', sort: [], conditions: [], columnFilters: {} })
   })
 
   it('读写往返保持一致', () => {
     const state = {
-      page: 3,
       keyword: '备料',
       sort: [{ id: 'APPLY_DATE', desc: true }, { id: 'APPLY_NO', desc: false }],
       conditions: [{ field: 'APPLY_TYPE', operator: 'eq', value: 'QG', valueTo: '', logic: 'and' }],
@@ -18,10 +17,10 @@ describe('listStateUrl', () => {
     expect(readListState(writeListState(state))).toEqual(state)
   })
 
-  it('非法页码回退默认', () => {
+  it('page 参数不再参与状态（滚动加载由内部页码驱动）', () => {
     const state = readListState(new URLSearchParams('page=abc&keyword=x'))
-    expect(state.page).toBe(1)
     expect(state.keyword).toBe('x')
+    expect(writeListState(state).get('page')).toBeNull()
   })
 
   it('非法 JSON 条件被忽略', () => {

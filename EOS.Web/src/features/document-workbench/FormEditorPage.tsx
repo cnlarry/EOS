@@ -1,16 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
+import { ErpTable } from '../../components/common/ErpTable'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 import { DataChooserInput, type ChooserRow } from './DataChooserInput'
 import { FormFieldRenderer } from './FormFieldRenderer'
 import type { FormDefinition, FormFieldDefinition } from './formDefinition'
+import { inputKind } from './formFieldKind'
 import { buildFormCells, buildFormRows } from './formLayout'
 import { validateDetailRows, validateMasterFields, type FieldErrors } from './formValidation'
-import { ResizableTable } from '../../components/common/ResizableTable'
 
 interface SaveRecordRequest {
   values: Record<string, string>
@@ -20,6 +22,14 @@ interface SaveRecordRequest {
 
 interface RecordBundle { master: Record<string, unknown>; details: Record<string, unknown>[] }
 
+/** 明细网格行：__id 为表格行键，__index 映射 detailRows 原始行号，__filler 为占位空行 */
+interface DetailGridRow {
+  __id: string
+  __index: number
+  __filler: boolean
+  [key: string]: unknown
+}
+
 function buildKey(form: FormDefinition, values: Record<string, string>): string[] {
   return form.masterPkOrder.map(column => values[column] ?? '')
 }
@@ -28,6 +38,20 @@ function emptyValue(field: FormFieldDefinition): string {
   if (field.defaultValue != null) return field.defaultValue
   if (field.dataType.toLowerCase().includes('bit')) return '0'
   return ''
+}
+
+/**
+ * 明细编辑控件的可用最小列宽。DISPLAY_LENGTH 是只读列表展示宽度（往往只有几十像素），
+ * 编辑态直接套用会把输入控件压到无法操作；此处按控件类型给列宽下限，
+ * 并配合 `minWidthFloor` 让拖拽/历史宽度也不能低于该下限。
+ */
+function detailControlMinWidth(field: FormFieldDefinition): number {
+  const kind = inputKind(field)
+  if (kind === 'checkbox') return 56
+  if (kind === 'select') return 104
+  if (kind === 'date') return 132
+  const hasChooser = field.choosers.some(source => source.active && source.table)
+  return hasChooser ? 168 : 110
 }
 
 function writableFields(fields: FormFieldDefinition[]): FormFieldDefinition[] {
@@ -277,21 +301,6 @@ export function FormEditorPage() {
     setDirty(true)
   }
 
-  const toggleDetailRow = (index: number) => {
-    setSelectedDetailRows(current => {
-      const next = new Set(current)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
-      return next
-    })
-  }
-
-  const allDetailSelected = detailRows.length > 0 && detailRows.every((_, index) => selectedDetailRows.has(index))
-
-  const toggleAllDetailRows = () => {
-    setSelectedDetailRows(allDetailSelected ? new Set() : new Set(detailRows.map((_, index) => index)))
-  }
-
   const removeSelectedDetailRows = () => {
     setDetailRows(current => current.filter((_, index) => !selectedDetailRows.has(index)))
     setDetailErrors(current => current.filter((_, index) => !selectedDetailRows.has(index)))
@@ -299,8 +308,17 @@ export function FormEditorPage() {
     setDirty(true)
   }
 
-  const toggleDetailSort = (key: string) => {
-    setDetailSort(current => current?.key === key ? (current.dir === 1 ? { key, dir: -1 } : null) : { key, dir: 1 })
+  const handleDetailSortingChange = (next: SortingState) => {
+    const sort = next[0]
+    setDetailSort(sort ? { key: sort.id, dir: sort.desc ? -1 : 1 } : null)
+  }
+
+  const handleDetailRowSelectionChange = (next: RowSelectionState) => {
+    setSelectedDetailRows(new Set(
+      Object.keys(next)
+        .filter(id => next[id] && id.startsWith('r'))
+        .map(id => Number(id.slice(1))),
+    ))
   }
 
   if (formQuery.isPending || (isEdit && recordQuery.isPending)) return <LoadingState label="正在加载表单…" />
@@ -331,6 +349,78 @@ export function FormEditorPage() {
     })
     return indices
   })()
+  const detailRowSelection = Object.fromEntries([...selectedDetailRows].map(index => [`r${index}`, true])) as RowSelectionState
+  const detailGridRows: DetailGridRow[] = [
+    ...orderedDetailIndices.map(index => ({ __id: `r${index}`, __index: index, __filler: false, ...detailRows[index] })),
+    ...Array.from({ length: detailFillerCount }, (_, fillerIndex) => ({ __id: `f${fillerIndex}`, __index: -1, __filler: true })),
+  ]
+  const detailColumns: ColumnDef<DetailGridRow, unknown>[] = [
+    {
+      id: '__check',
+      enableSorting: false,
+      enableHiding: false,
+      meta: { className: 'erp-detail-check text-center', resizable: false, truncate: false },
+      header: ({ table }) => (
+        <input
+          className="form-check-input"
+          type="checkbox"
+          aria-label="全选"
+          checked={table.getIsAllPageRowsSelected()}
+          ref={input => { if (input) input.indeterminate = table.getIsSomePageRowsSelected() }}
+          onChange={table.getToggleAllPageRowsSelectedHandler()}
+        />
+      ),
+      cell: ({ row }) => row.original.__filler ? null : (
+        <input
+          className="form-check-input"
+          type="checkbox"
+          aria-label={`选择第${row.index + 1}行`}
+          checked={row.getIsSelected()}
+          onChange={row.getToggleSelectedHandler()}
+          onClick={event => event.stopPropagation()}
+        />
+      ),
+    },
+    {
+      id: '__rowNo',
+      header: '序号',
+      enableSorting: false,
+      enableHiding: false,
+      meta: { className: 'erp-detail-row-no text-center', resizable: false, truncate: false },
+      cell: ({ row }) => row.original.__filler ? null : <span className="text-secondary">{row.index + 1}</span>,
+    },
+    ...visibleDetail.map((field): ColumnDef<DetailGridRow, unknown> => ({
+      id: field.key,
+      accessorKey: field.key,
+      header: field.label,
+      enableSorting: true,
+      meta: { minWidth: Math.max(field.displayLength, detailControlMinWidth(field)), dataType: field.dataType, minWidthFloor: true, truncate: false },
+      cell: ({ row }) => {
+        if (row.original.__filler) return null
+        const index = row.original.__index
+        return (
+          <FormFieldRenderer
+            field={field}
+            value={String(row.original[field.key] ?? '')}
+            error={detailErrors[index]?.[field.key]}
+            onChange={value => updateDetail(index, field.key, value)}
+            onChoose={fieldToChoose => setDetailChooser({ index, field: fieldToChoose })}
+            bare
+          />
+        )
+      },
+    })),
+    {
+      id: '__actions',
+      header: '操作',
+      enableSorting: false,
+      enableHiding: false,
+      meta: { className: 'erp-detail-actions text-center', resizable: false, truncate: false },
+      cell: ({ row }) => row.original.__filler ? null : (
+        <Button size="sm" variant="danger" onClick={() => removeDetailRow(row.original.__index)}>删除</Button>
+      ),
+    },
+  ]
   const renderField = (field: FormFieldDefinition, bare = false) => (
     <FormFieldRenderer
       key={field.key}
@@ -362,25 +452,32 @@ export function FormEditorPage() {
   }
 
   return (
-    <div className="d-grid gap-2">
+    <div className="d-flex flex-column gap-2 erp-form-page">
       {saveError ? <div className="alert alert-danger mb-0">{saveError}</div> : null}
       <section className="card erp-form-card">
         <div className="card-body">
           <div className="erp-form-toolbar">
-            {hasTabs ? (
-              <ul className="nav nav-tabs erp-form-tabs">
-                {form.tabs.map(tab => (
-                  <li className="nav-item" key={tab.no}>
-                    <button type="button" className={`nav-link${activeTabNo === tab.no ? ' active' : ''}`} onClick={() => setActiveTab(tab.no)}>{tab.title}</button>
-                  </li>
-                ))}
-              </ul>
-            ) : <div />}
-            <div className="d-flex gap-2 erp-form-toolbar-actions">
-              <Button size="sm" onClick={back}>返回</Button>
-              {!isView ? <Button size="sm" variant="primary" loading={save.isPending} onClick={() => { if (validateClient()) save.mutate() }}>保存</Button> : null}
-            </div>
+            {!isView ? (
+              <>
+                <Button size="sm" variant="primary" loading={save.isPending} onClick={() => { if (validateClient()) save.mutate() }}>保存</Button>
+                <Button size="sm" onClick={back}>取消</Button>
+              </>
+            ) : (
+              <>
+                <Button size="sm" onClick={back}>返回</Button>
+                {/* 浏览模式扩展位：批核 / 解批 / 打印等后续加入 */}
+              </>
+            )}
           </div>
+          {hasTabs ? (
+            <ul className="nav nav-tabs erp-form-tabs">
+              {form.tabs.map(tab => (
+                <li className="nav-item" key={tab.no}>
+                  <button type="button" className={`nav-link${activeTabNo === tab.no ? ' active' : ''}`} onClick={() => setActiveTab(tab.no)}>{tab.title}</button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <div className="erp-form-grid">
             {masterRows.map((row, rowIndex) => (
               <div className="erp-form-row" key={rowIndex} style={{ '--erp-form-cols': Math.max(1, form.columns) } as CSSProperties}>
@@ -391,67 +488,32 @@ export function FormEditorPage() {
         </div>
       </section>
       {form.detailFields.length > 0 ? (
-        <section className="card">
-          <div className="card-header d-flex justify-content-between align-items-center">
-            <h2 className="h5 mb-0">明细</h2>
+        <section className="card erp-detail-card">
+          <div className="card-header erp-detail-toolbar">
             <div className="d-flex gap-2">
-              <Button size="sm" variant="danger" disabled={selectedDetailRows.size === 0} onClick={removeSelectedDetailRows}>删除所选{selectedDetailRows.size > 0 ? ` (${selectedDetailRows.size})` : ''}</Button>
               <Button size="sm" onClick={addDetailRow}>新增一行</Button>
+              <Button size="sm" variant="danger" disabled={selectedDetailRows.size === 0} onClick={removeSelectedDetailRows}>删除所选{selectedDetailRows.size > 0 ? ` (${selectedDetailRows.size})` : ''}</Button>
+              {/* 子表专用工具栏扩展位：生成请购单等后续加入 */}
             </div>
           </div>
           <div className="table-responsive">
-            <ResizableTable className="table table-sm mb-0 erp-detail-grid" storageKey={`form-detail-${moduleId}`}>
-              <thead>
-                <tr>
-                  <th className="erp-detail-check text-center" data-col-key="__check" style={{ width: 36 }}>
-                    <input type="checkbox" className="form-check-input" aria-label="全选" checked={allDetailSelected} onChange={toggleAllDetailRows} />
-                  </th>
-                  <th className="erp-detail-row-no" data-col-key="__rowNo">序号</th>
-                  {visibleDetail.map(field => (
-                    <th key={field.key} data-col-key={field.key} data-col-min-width={field.displayLength} style={{ width: field.displayLength }}>
-                      <button type="button" className="erp-detail-sort" title="点击排序" onClick={() => toggleDetailSort(field.key)}>
-                        {field.label}{detailSort?.key === field.key ? (detailSort.dir === 1 ? ' ▲' : ' ▼') : ''}
-                      </button>
-                    </th>
-                  ))}
-                  <th className="erp-detail-actions" data-col-key="__actions">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orderedDetailIndices.map((index, position) => {
-                  const row = detailRows[index]
-                  return (
-                  <tr key={index}>
-                    <td className="erp-detail-check text-center">
-                      <input type="checkbox" className="form-check-input" aria-label={`选择第${index + 1}行`} checked={selectedDetailRows.has(index)} onChange={() => toggleDetailRow(index)} />
-                    </td>
-                    <td className="erp-detail-row-no text-center text-secondary">{position + 1}</td>
-                    {visibleDetail.map(field => (
-                      <td key={field.key}>
-                        <FormFieldRenderer
-                          field={field}
-                          value={row[field.key] ?? ''}
-                          error={detailErrors[index]?.[field.key]}
-                          onChange={value => updateDetail(index, field.key, value)}
-                          onChoose={fieldToChoose => setDetailChooser({ index, field: fieldToChoose })}
-                          bare
-                        />
-                      </td>
-                    ))}
-                    <td><Button size="sm" variant="danger" onClick={() => removeDetailRow(index)}>删除</Button></td>
-                  </tr>
-                  )
-                })}
-                {Array.from({ length: detailFillerCount }, (_, fillerIndex) => (
-                  <tr key={`filler-${fillerIndex}`} className="erp-detail-filler">
-                    <td className="erp-detail-check" />
-                    <td className="erp-detail-row-no" />
-                    {visibleDetail.map(field => <td key={field.key} />)}
-                    <td className="erp-detail-actions" />
-                  </tr>
-                ))}
-              </tbody>
-            </ResizableTable>
+            <ErpTable
+              columns={detailColumns}
+              data={detailGridRows}
+              getRowId={row => row.__id}
+              sorting={detailSort ? [{ id: detailSort.key, desc: detailSort.dir === -1 }] : []}
+              onSortingChange={handleDetailSortingChange}
+              rowSelection={detailRowSelection}
+              onRowSelectionChange={handleDetailRowSelectionChange}
+              resizable
+              storageKey={`form-detail-${moduleId}`}
+              className="erp-detail-grid"
+              responsive={false}
+              copyable={false}
+              keyboardNavigation={false}
+              rowClassName={row => row.__filler ? 'erp-detail-filler' : undefined}
+              empty={null}
+            />
           </div>
         </section>
       ) : null}

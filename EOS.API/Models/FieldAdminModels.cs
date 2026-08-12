@@ -29,7 +29,7 @@ public sealed record FieldAdminInput(
     string Label,
     string DataType,
     int Width,
-    string Align,
+    string? Align,
     string HeaderAlign,
     string? Format,
     bool IsVisible,

@@ -8,6 +8,8 @@ export interface ColumnResizeOptions {
   persist?: boolean
   /** 拖拽结束或双击自适应时回调（列键 + 新宽度），用于写回服务端字段 */
   onColumnResize?: (columnKey: string, width: number) => void
+  /** 外部触发句柄：挂载后暴露“自适应全部列宽”函数（返回各列新宽度，不触发 onColumnResize） */
+  fitRef?: { current: (() => Record<string, number>) | null }
 }
 
 // 按表格元素缓存“默认列宽”（来源：表头 data-col-min-width / DISPLAY_LENGTH 或首次实测）。
@@ -31,6 +33,7 @@ const defaultsByTable = new WeakMap<HTMLTableElement, Map<string, number>>()
 export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, storageKey: string, options?: ColumnResizeOptions) {
   const persist = options?.persist ?? true
   const onColumnResize = options?.onColumnResize
+  const fitRef = options?.fitRef
 
   useEffect(() => {
     const table = tableRef.current
@@ -127,9 +130,13 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
 
       const cols = ensureCols()
       const saved = loadWidths()
-      ths.forEach((_th, index) => {
+      ths.forEach((th, index) => {
         const key = keys[index]
-        const width = (typeof saved[key] === 'number' && saved[key] > 0) ? saved[key] : (defaults.get(key) ?? 0)
+        const minWidth = parseFloat(th.dataset.colMinWidth ?? '') || 0
+        // 编辑态列（data-col-min-floor）：DISPLAY_LENGTH 同时作为硬下限，历史/拖拽宽度不得低于它
+        const floor = th.dataset.colMinFloor === 'true' ? minWidth : 0
+        const base = (typeof saved[key] === 'number' && saved[key] > 0) ? saved[key] : (defaults.get(key) ?? 0)
+        const width = Math.max(floor, base)
         if (cols[index]) cols[index].style.width = width > 0 ? `${width}px` : ''
       })
       // 弹性末列（最后一个 <col>）保持无宽度，吸收余量，锁定其它列
@@ -203,13 +210,14 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
     }
 
     /**
-     * 双击手柄时自动适配列宽：取「表头内容宽度」与「当前分页该列所有单元格中
-     * 最宽的一个（内容 + 内边距 + 边框）」的较大值，使最宽内容不换行。
+     * 计算并应用单列自适应宽度：取「表头内容宽度」与「当前分页该列所有单元格中
+     * 最宽的一个（内容 + 内边距 + 边框）」的较大值，使最宽内容不换行；
+     * 直接落 <col> 宽度并持久化 localStorage，但不触发 onColumnResize（由调用方决定写回服务端）。
      */
-    const autoFitColumn = (index: number) => {
+    const fitColumn = (index: number): number => {
       const ths = thsOf()
       const th = ths[index]
-      if (!th) return
+      if (!th) return 0
       const thStyle = getComputedStyle(th)
       const thPadding = (parseFloat(thStyle.paddingLeft) || 0) + (parseFloat(thStyle.paddingRight) || 0)
       const thBorder = th.offsetWidth - th.clientWidth
@@ -229,9 +237,34 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
       const width = Math.max(MIN_WIDTH, headerWidth, dataWidth)
       if (cols[index]) cols[index].style.width = `${width}px`
       saveWidths()
-      const key = colKeys()[index]
-      if (key) notify(key, width)
+      return width
     }
+
+    /**
+     * 双击手柄时自动适配单列：应用宽度并通知调用方写回服务端字段。
+     */
+    const autoFitColumn = (index: number) => {
+      const width = fitColumn(index)
+      const key = colKeys()[index]
+      if (key && width > 0) notify(key, width)
+    }
+
+    /**
+     * 自适应全部列：跳过固定列（如选择列），应用宽度并返回「列键 → 新宽度」，
+     * 供调用方一次性批量写回服务端，避免逐列回调造成低效。
+     */
+    const fitAllColumns = (): Record<string, number> => {
+      const fitted: Record<string, number> = {}
+      thsOf().forEach((th, index) => {
+        // 固定列（如选择列/冻结操作列）没有对应 FIELDS 记录，跳过，避免写回 404
+        if (th.dataset.colResizable === 'false') return
+        const key = colKeys()[index]
+        const width = fitColumn(index)
+        if (key && width > 0) fitted[key] = Math.round(width)
+      })
+      return fitted
+    }
+    if (fitRef) fitRef.current = fitAllColumns
 
     apply()
     attachHandles()
@@ -296,7 +329,8 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
       const style = getComputedStyle(th)
       const padding = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0)
       const border = th.offsetWidth - th.clientWidth
-      const minWidth = Math.max(MIN_WIDTH, measureHeaderContent(th) + padding + border)
+      const floor = th.dataset.colMinFloor === 'true' ? (parseFloat(th.dataset.colMinWidth ?? '') || 0) : 0
+      const minWidth = Math.max(MIN_WIDTH, measureHeaderContent(th) + padding + border, floor)
       th.classList.add('erp-col-resizing-active')
       active = {
         index,
@@ -316,8 +350,9 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
 
     table.addEventListener('pointerdown', onPointerDown)
     return () => {
+      if (fitRef) fitRef.current = null
       table.removeEventListener('pointerdown', onPointerDown)
       observer.disconnect()
     }
-  }, [tableRef, storageKey, persist, onColumnResize])
+  }, [tableRef, storageKey, persist, onColumnResize, fitRef])
 }

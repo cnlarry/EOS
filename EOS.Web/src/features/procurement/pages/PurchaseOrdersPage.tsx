@@ -41,13 +41,13 @@ export function PurchaseOrdersPage() {
   const ordersQuery = useQuery({ ...purchaseOrdersQueryOptions(query), placeholderData: keepPreviousData })
 
   const columns = useMemo<ColumnDef<PurchaseOrderSummary, unknown>[]>(() => [
-    { id: 'select', size: 33, enableSorting: false, enableHiding: false, meta: { className: 'erp-select-column' }, header: ({ table }) => <input className="form-check-input" type="checkbox" aria-label="选择当前页全部订单" checked={table.getIsAllPageRowsSelected()} ref={(input) => { if (input) input.indeterminate = table.getIsSomePageRowsSelected() }} onChange={table.getToggleAllPageRowsSelectedHandler()} />, cell: ({ row }) => <input className="form-check-input" type="checkbox" aria-label={`选择订单 ${row.original.number}`} checked={row.getIsSelected()} onChange={row.getToggleSelectedHandler()} /> },
+    { id: 'select', size: 33, enableSorting: false, enableHiding: false, meta: { className: 'erp-select-column', truncate: false }, header: ({ table }) => <input className="form-check-input" type="checkbox" aria-label="选择当前页全部订单" checked={table.getIsAllPageRowsSelected()} ref={(input) => { if (input) input.indeterminate = table.getIsSomePageRowsSelected() }} onChange={table.getToggleAllPageRowsSelectedHandler()} />, cell: ({ row }) => <input className="form-check-input" type="checkbox" aria-label={`选择订单 ${row.original.number}`} checked={row.getIsSelected()} onChange={row.getToggleSelectedHandler()} /> },
     { accessorKey: 'number', header: '订单编号', cell: ({ row }) => <Link className="fw-semibold" to={`/procurement/purchase-orders/${row.original.id}`}>{row.original.number}</Link> },
     { accessorKey: 'supplierName', header: '供应商' },
     { accessorKey: 'buyerName', header: '采购员', enableSorting: false },
     { accessorKey: 'purchaseDate', header: '采购日期', meta: { className: 'text-secondary text-nowrap' } },
-    { accessorKey: 'totalAmount', header: '含税金额', cell: ({ row }) => formatMoney(row.original.totalAmount), meta: { className: 'text-end text-nowrap fw-medium' } },
-    { accessorKey: 'status', header: '状态', cell: ({ row }) => <StatusBadge status={row.original.status} /> },
+    { accessorKey: 'totalAmount', header: '含税金额', cell: ({ row }) => formatMoney(row.original.totalAmount), meta: { className: 'text-end text-nowrap fw-medium', title: ({ value }) => formatMoney(String(value)) } },
+    { accessorKey: 'status', header: '状态', cell: ({ row }) => <StatusBadge status={row.original.status} />, meta: { truncate: false } },
   ], [])
 
   function updateParams(values: Record<string, string | undefined>, resetPage = false) {

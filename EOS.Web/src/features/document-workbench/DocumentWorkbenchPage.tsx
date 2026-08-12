@@ -1,13 +1,12 @@
-import { IconAdjustmentsHorizontal, IconCheck, IconColumns, IconFileExport, IconPlus, IconPrinter, IconRefresh, IconRotateClockwise, IconZoomScan } from '@tabler/icons-react'
+import { IconAdjustmentsHorizontal, IconArrowAutofitWidth, IconCheck, IconColumns, IconFileExport, IconPlus, IconPrinter, IconRefresh, IconRotateClockwise, IconZoomScan } from '@tabler/icons-react'
 import { IconEdit } from '@tabler/icons-react'
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
 import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpPagination } from '../../components/common/ErpPagination'
 import { ErpQueryBuilder } from '../../components/common/ErpQueryBuilder'
 import { emptyQueryCondition, type QueryCondition } from '../../components/common/queryCondition'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
@@ -21,7 +20,7 @@ import { alignClass, formatFieldValue } from './fieldFormat'
 import { FieldBrowseLink } from './FieldBrowseLink'
 import { readListState, writeListState } from './listStateUrl'
 
-interface Field { key:string; label:string; dataType:string; width:number; align:string; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; isVirtual?:boolean }
+interface Field { key:string; label:string; dataType:string; width:number; align:string|null; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; isVirtual?:boolean }
 interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean }
 interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number }
 interface NavigationGroupDef { index:number; description:string; available:boolean }
@@ -29,9 +28,8 @@ interface ColumnSetting { key:string; label:string; isVisible:boolean; order:num
 interface ColumnSettings { master:ColumnSetting[]; detail:ColumnSetting[] }
 interface SetupLookup { value:string; label:string }
 interface ChooserSource { active:boolean; table:string|null; description:string|null; moduleId:number|null; filter:string|null; returnMapping:string|null }
-interface FieldMetadata { key:string; tableId:string; label:string; dataType:string; width:number; align:string; headerAlign:string; format:string|null; isVisible:boolean; isDefault:boolean; isQueryable:boolean; isReadonly:boolean; isRequired:boolean; isCost:boolean; isSecrecy:boolean; defaultValue:string|null; verifyIndex:number|null; regex:string|null; remark:string|null; browseUrl:string|null; browseModuleId:number|null; onlyChoose:boolean; chooseMultiple:boolean; choosePage:string|null; choosers:ChooserSource[]; isVirtual:boolean; virtualExpression:string|null; canCopy:boolean; isAutoIncrement:boolean; convertFunction:string|null; dataSourceSql:string|null; lastUpdatedBy:string|null; lastUpdatedAt:string|null; tabNo:number; formOrder:number|null; span:number; newLine:boolean; cellGroup:string|null; cellRole:number; options:string|null }
+interface FieldMetadata { key:string; tableId:string; label:string; dataType:string; width:number; align:string|null; headerAlign:string; format:string|null; isVisible:boolean; isDefault:boolean; isQueryable:boolean; isReadonly:boolean; isRequired:boolean; isCost:boolean; isSecrecy:boolean; defaultValue:string|null; verifyIndex:number|null; regex:string|null; remark:string|null; browseUrl:string|null; browseModuleId:number|null; onlyChoose:boolean; chooseMultiple:boolean; choosePage:string|null; choosers:ChooserSource[]; isVirtual:boolean; virtualExpression:string|null; canCopy:boolean; isAutoIncrement:boolean; convertFunction:string|null; dataSourceSql:string|null; lastUpdatedBy:string|null; lastUpdatedAt:string|null; tabNo:number; formOrder:number|null; span:number; newLine:boolean; cellGroup:string|null; cellRole:number; options:string|null }
 const uniqueFields=(fields:Field[])=>fields.filter((field,index,all)=>all.findIndex(item=>item.key.toLowerCase()===field.key.toLowerCase())===index)
-const renderText=(value:string)=>value.length>24?<span className="erp-cell-ellipsis" title={value}>{value}</span>:value
 const sortQuery=(sort:SortingState)=>({sortFields:sort.length?sort.map(item=>item.id).join(','):undefined,sortDirections:sort.length?sort.map(item=>item.desc?'desc':'asc').join(','):undefined})
 export function DocumentWorkbenchPage() {
   const { hasPermission } = useAuth()
@@ -40,9 +38,11 @@ export function DocumentWorkbenchPage() {
   const queryClient=useQueryClient()
   const [searchParams,setSearchParams]=useSearchParams()
   const [initialState]=useState(()=>readListState(searchParams))
+  const masterFitRef=useRef<(() => Record<string, number>)|null>(null)
+  const detailFitRef=useRef<(() => Record<string, number>)|null>(null)
+  const [fitting,setFitting]=useState(false)
   const [selected,setSelected]=useState<Record<string,Record<string,unknown>>>({})
   const [activeKey,setActiveKey]=useState<string|null>(null)
-  const [page,setPage]=useState(initialState.page)
   const [sort,setSort]=useState<SortingState>(initialState.sort)
   const [detailSort,setDetailSort]=useState<{field:string;direction:'asc'|'desc'}|null>(null)
   const [queryOpen,setQueryOpen]=useState(false)
@@ -62,15 +62,24 @@ export function DocumentWorkbenchPage() {
   const groupIndex=rawGroupIndex!=null&&/^[1-5]$/.test(rawGroupIndex)?Number(rawGroupIndex):null
   const groupValue=groupIndex!=null&&rawGroupValue!=null?rawGroupValue:null
   const definition=useQuery({queryKey:['workbench',moduleId,'definition'],queryFn:()=>apiClient.get<Definition>(`/document-workbench/${moduleId}/definition`)})
-  const pageSize=definition.data?.detailTable?10:18
+  // 滚动加载模式下 pageSize 即每次抓取的块大小：50 ≈ 两屏缓冲，减少请求与“加载更多”闪烁
+  const pageSize=50
   const master=useMemo(()=>uniqueFields(definition.data?.masterFields??[]).slice(0,30),[definition.data])
   const detail=useMemo(()=>uniqueFields(definition.data?.detailFields??[]).slice(0,30),[definition.data])
   const allowedMasterKeys=useMemo(()=>new Set(master.map(field=>field.key.toLowerCase())),[master])
   const safeSort=useMemo(()=>sort.filter(item=>allowedMasterKeys.has(item.id.toLowerCase())),[sort,allowedMasterKeys])
   const safeConditions=useMemo(()=>appliedConditions.filter(item=>allowedMasterKeys.has(item.field.toLowerCase())),[appliedConditions,allowedMasterKeys])
   const safeColumnFilters=useMemo(()=>Object.fromEntries(Object.entries(columnFilters).filter(([key])=>allowedMasterKeys.has(key.toLowerCase()))),[columnFilters,allowedMasterKeys])
-  const records=useQuery({queryKey:['workbench',moduleId,'records',page,pageSize,safeConditions,keyword,safeSort,groupIndex,groupValue],queryFn:()=>{const sq=sortQuery(safeSort);const group=groupIndex!=null&&groupValue!=null?`&groupIndex=${groupIndex}&groupValue=${encodeURIComponent(groupValue)}`:'';return safeConditions.length?apiClient.post<DataResponse>(`/document-workbench/${moduleId}/query?page=${page}&pageSize=${pageSize}${keyword?`&keyword=${encodeURIComponent(keyword)}`:''}${sq.sortFields?`&sortFields=${encodeURIComponent(sq.sortFields)}&sortDirections=${encodeURIComponent(sq.sortDirections??'')}`:''}${group}`,{conditions:safeConditions}):apiClient.get<DataResponse>(`/document-workbench/${moduleId}/records`,{query:{page,pageSize,keyword:keyword||undefined,...sq,...(groupIndex!=null&&groupValue!=null?{groupIndex,groupValue}:{})}})},enabled:definition.isSuccess,placeholderData:keepPreviousData})
-  const totalPages=Math.max(1,Math.ceil((records.data?.total??0)/pageSize))
+  const records=useInfiniteQuery({
+    queryKey:['workbench',moduleId,'records',pageSize,safeConditions,keyword,safeSort,groupIndex,groupValue],
+    queryFn:({pageParam})=>{const sq=sortQuery(safeSort);const group=groupIndex!=null&&groupValue!=null?`&groupIndex=${groupIndex}&groupValue=${encodeURIComponent(groupValue)}`:'';return safeConditions.length?apiClient.post<DataResponse>(`/document-workbench/${moduleId}/query?page=${pageParam}&pageSize=${pageSize}${keyword?`&keyword=${encodeURIComponent(keyword)}`:''}${sq.sortFields?`&sortFields=${encodeURIComponent(sq.sortFields)}&sortDirections=${encodeURIComponent(sq.sortDirections??'')}`:''}${group}`,{conditions:safeConditions}):apiClient.get<DataResponse>(`/document-workbench/${moduleId}/records`,{query:{page:pageParam,pageSize,keyword:keyword||undefined,...sq,...(groupIndex!=null&&groupValue!=null?{groupIndex,groupValue}:{})}})},
+    initialPageParam:1,
+    getNextPageParam:(last)=>last.page<Math.ceil(last.total/pageSize)?last.page+1:undefined,
+    enabled:definition.isSuccess,
+    placeholderData:keepPreviousData,
+  })
+  const rows=useMemo(()=>records.data?.pages.flatMap(item=>item.rows??[])??[],[records.data])
+  const total=records.data?.pages[records.data.pages.length-1]?.total??0
   const hydrated=useRef(false)
   useEffect(()=>{
     if(!definition.data||groupDefs!==null)return
@@ -90,15 +99,14 @@ export function DocumentWorkbenchPage() {
   useEffect(()=>{
     if(!hydrated.current){hydrated.current=true;return}
     setSearchParams((current)=>{
-      const state=writeListState({page,keyword,sort:safeSort,conditions:safeConditions,columnFilters:safeColumnFilters})
+      const state=writeListState({keyword,sort:safeSort,conditions:safeConditions,columnFilters:safeColumnFilters})
       const groupIndexParam=current.get('groupIndex')
       const groupValueParam=current.get('groupValue')
       if(groupIndexParam)state.set('groupIndex',groupIndexParam)
       if(groupValueParam)state.set('groupValue',groupValueParam)
       return state
     },{replace:true})
-  },[page,keyword,safeSort,safeConditions,safeColumnFilters,setSearchParams])
-  useEffect(()=>{if(records.data&&page>totalPages)setPage(totalPages)},[page,totalPages,records.data])
+  },[keyword,safeSort,safeConditions,safeColumnFilters,setSearchParams])
   const columnSettings=useQuery({queryKey:['workbench',moduleId,'column-editor'],queryFn:()=>apiClient.get<{current:ColumnSettings;defaults:ColumnSettings}>(`/document-workbench/${moduleId}/column-editor`),enabled:columnsOpen})
   const saveColumns=useMutation({mutationFn:(settings:{master:string[];detail:string[]})=>apiClient.put<void>(`/document-workbench/${moduleId}/columns`,{master:settings.master,detail:settings.detail}),onSuccess:async()=>{await Promise.all([queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']}),queryClient.invalidateQueries({queryKey:['workbench',moduleId,'column-editor']})])}})
   const columnGroups=useMemo<ColumnSelectorGroup[]>(()=>{
@@ -121,7 +129,7 @@ export function DocumentWorkbenchPage() {
       id:'select',
       enableSorting:false,
       enableHiding:false,
-      meta:{className:'erp-select-column',frozenLeft:true,resizable:false},
+      meta:{className:'erp-select-column',frozenLeft:true,resizable:false,truncate:false},
       header:({table})=>(
         <input
           className="form-check-input"
@@ -150,10 +158,12 @@ export function DocumentWorkbenchPage() {
       enableSorting:!field.isVirtual,
       meta:{
         className:alignClass(field.headerAlign),
-        cellClassName:alignClass(field.align),
+        cellClassName:alignClass(field.align, field.dataType),
         minWidth:field.width,
         filterable:field.isQueryable,
         dataType:field.dataType,
+        truncate:(field.dataType??'').toLowerCase()!=='bit',
+        title:({value})=>formatFieldValue(value,field.dataType,field.format)||undefined,
         headerMenu:[{label:'字段设置',onClick:()=>setFieldEditor({detail:false,fieldKey:field.key})}],
       },
       cell:(info)=>{
@@ -163,7 +173,7 @@ export function DocumentWorkbenchPage() {
         if(!text)return '—'
         return field.browseUrl&&field.browseModuleId&&field.browseModuleId>0
           ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
-          :renderText(text)
+          :text
       },
     })),
   ],[master,hasPermission])
@@ -174,9 +184,11 @@ export function DocumentWorkbenchPage() {
     enableSorting:!field.isVirtual,
     meta:{
       className:alignClass(field.headerAlign),
-      cellClassName:alignClass(field.align),
+      cellClassName:alignClass(field.align, field.dataType),
       minWidth:field.width,
       dataType:field.dataType,
+      truncate:(field.dataType??'').toLowerCase()!=='bit',
+      title:({value})=>formatFieldValue(value,field.dataType,field.format)||undefined,
       headerMenu:[{label:'字段设置',onClick:()=>setFieldEditor({detail:true,fieldKey:field.key})}],
     },
     cell:(info)=>{
@@ -184,18 +196,19 @@ export function DocumentWorkbenchPage() {
       if((field.dataType??'').toLowerCase()==='bit')return <input type="checkbox" className="form-check-input" checked={Boolean(value)} disabled aria-label={field.label}/>
       const text=formatFieldValue(value,field.dataType,field.format)
       if(!text)return '—'
-      return field.browseUrl&&field.browseModuleId&&field.browseModuleId>0
-        ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
-        :renderText(text)
+        return field.browseUrl&&field.browseModuleId&&field.browseModuleId>0
+          ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
+          :text
     },
   })),[detail,hasPermission])
   const rowSelection=useMemo<RowSelectionState>(()=>Object.fromEntries(Object.keys(selected).map(key=>[key,true])),[selected])
 
   const rowKey=(row:Record<string,unknown>)=>{const keys=(definition.data?.masterPkOrder??[]).map(column=>String(row[column]??''));return keys.some(key=>key!=='')?keys.join('|'):JSON.stringify(row)}
-  const active=activeKey?selected[activeKey]??records.data?.rows.find(row=>rowKey(row)===activeKey)??null:null
+  const active=activeKey?selected[activeKey]??rows.find(row=>rowKey(row)===activeKey)??null:null
   const keys=useMemo(()=>(definition.data?.masterPkOrder??[]).reduce<Record<string,string>>((result,column)=>{if(active?.[column]!=null)result[column]=String(active[column]);return result},{}),[active,definition.data?.masterPkOrder])
   const details=useQuery({queryKey:['workbench',moduleId,'details',keys,detailSort],queryFn:()=>apiClient.get<DataResponse>(`/document-workbench/${moduleId}/details`,{query:{...keys,sortField:detailSort?.field,sortDirection:detailSort?.direction}}),enabled:Boolean(active&&definition.data?.detailTable)})
-  const widthSaveQueue=useRef<{detail:boolean;fieldKey:string;width:number}|null>(null)
+  // 多槽队列：自适应列宽一次入队多列，逐列串行写回；单槽会被同步循环覆盖导致只保存最后一列
+  const widthSaveQueue=useRef<{detail:boolean;fieldKey:string;width:number}[]>([])
   const widthSaveRunning=useRef(false)
   const writeFieldWidth=useCallback(async(detailTable:boolean,fieldKey:string,width:number)=>{
     const definitionData=definition.data;if(!definitionData)return
@@ -203,16 +216,14 @@ export function DocumentWorkbenchPage() {
     const meta=await apiClient.get<FieldMetadata>(`/document-workbench/${moduleId}/field-settings/${encodeURIComponent(fieldKey)}`,{query:{detail:String(detailTable)}})
     const {key:_key,tableId:_tableId,isVirtual:_virtual,virtualExpression:_expression,isAutoIncrement:_auto,convertFunction:_convert,dataSourceSql:_sql,lastUpdatedBy:_by,lastUpdatedAt:_at,...input}=meta
     await apiClient.put<void>(`/document-workbench/${moduleId}/field-settings/${encodeURIComponent(fieldKey)}?detail=${detailTable}`,{...input,width,original:{...input,key:meta.key,width:meta.width}})
-    await queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']})
-  },[definition.data,moduleId,queryClient])
+  },[definition.data,moduleId])
   const saveColumnWidth=useCallback(async(detailTable:boolean,fieldKey:string,width:number)=>{
-    widthSaveQueue.current={detail:detailTable,fieldKey,width}
+    widthSaveQueue.current.push({detail:detailTable,fieldKey,width})
     if(widthSaveRunning.current)return
     widthSaveRunning.current=true
     try{
-      while(widthSaveQueue.current){
-        const target=widthSaveQueue.current
-        widthSaveQueue.current=null
+      while(widthSaveQueue.current.length>0){
+        const target=widthSaveQueue.current.shift()!
         const normalized=Math.min(300,Math.max(40,Math.round(target.width)))
         try{
           await writeFieldWidth(target.detail,target.fieldKey,normalized)
@@ -225,10 +236,12 @@ export function DocumentWorkbenchPage() {
           }
         }
       }
+      // 全部写回完成后再刷新一次定义，避免逐列刷新把未保存完的列重置回旧宽度
+      try{await queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']})}catch{/* 忽略刷新失败 */}
     }finally{
       widthSaveRunning.current=false
     }
-  },[writeFieldWidth])
+  },[writeFieldWidth,queryClient,moduleId])
   const saveMasterWidth=useCallback((columnKey:string,width:number)=>{void saveColumnWidth(false,columnKey,width)},[saveColumnWidth])
   const saveDetailWidth=useCallback((columnKey:string,width:number)=>{void saveColumnWidth(true,columnKey,width)},[saveColumnWidth])
   const handleColumnFilterChange=useCallback((columnId:string,condition:QueryCondition|null)=>{
@@ -243,7 +256,6 @@ export function DocumentWorkbenchPage() {
       if(condition)next.push({...condition,logic:'and'})
       return next
     })
-    setPage(1)
   },[])
   const handleColumnsReorder=useCallback(async(columnIds:string[])=>{
     if(!definition.data)return
@@ -258,12 +270,11 @@ export function DocumentWorkbenchPage() {
   if(definition.isPending)return <LoadingState label="正在加载单据定义…"/>
   if(definition.isError)return <section className="card"><div className="card-body text-center py-5">无法加载模块定义。</div></section>
 
-  const rows=records.data?.rows??[]
   const detailSorting:SortingState=detailSort?[{id:detailSort.field,desc:detailSort.direction==='desc'}]:[]
-  const changeKeyword=(value:string)=>{setKeyword(value);setPage(1)}
-  const changeMasterSort=(next:SortingState)=>{setSort(next);setPage(1)}
+  const changeKeyword=(value:string)=>{setKeyword(value)}
+  const changeMasterSort=(next:SortingState)=>{setSort(next)}
   const changeDetailSort=(next:SortingState)=>{const first=next[0];setDetailSort(first?{field:first.id,direction:first.desc?'desc':'asc'}:null)}
-  const handleRowSelectionChange=(next:RowSelectionState)=>{const selectedKeys=Object.keys(next).filter(key=>next[key]);setSelected(current=>{const result:Record<string,Record<string,unknown>>={};for(const key of selectedKeys){result[key]=current[key]??records.data?.rows.find(row=>rowKey(row)===key)??{}}return result})}
+  const handleRowSelectionChange=(next:RowSelectionState)=>{const selectedKeys=Object.keys(next).filter(key=>next[key]);setSelected(current=>{const result:Record<string,Record<string,unknown>>={};for(const key of selectedKeys){result[key]=current[key]??rows.find(row=>rowKey(row)===key)??{}}return result})}
   const handleRowClick=(row:Record<string,unknown>)=>{const key=rowKey(row);setSelected({[key]:row});setActiveKey(key)}
   const openEdit=()=>{if(!active||!definition.data)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));navigate(`/document-workbench/${moduleId}/edit?key=${encodeURIComponent(JSON.stringify(key))}`)}
   const openNew=()=>{if(!definition.data?.hasAdd)return;navigate(`/document-workbench/${moduleId}/new`)}
@@ -272,6 +283,21 @@ export function DocumentWorkbenchPage() {
   const openGroupValues=async(group:NavigationGroupDef)=>{setActiveGroup(group);setGroupValues(null);try{const data=await apiClient.get<{values:string[]}>(`/navigation/${moduleId}/groups/${group.index}/values`);setGroupValues(data.values)}catch{setGroupValues([])}}
   const applyGroupValue=(value:string)=>{if(!activeGroup)return;setGroupMenuOpen(false);setSearchParams(current=>{current.set('groupIndex',String(activeGroup.index));current.set('groupValue',value);return current},{replace:true})}
   const groupQuery=groupIndex!=null&&groupValue!=null?{groupIndex,groupValue}:{}
+  const fitAllColumns=async()=>{
+    if(fitting)return
+    const masterWidths=masterFitRef.current?.()??{}
+    const detailWidths=detailFitRef.current?.()??{}
+    if(Object.keys(masterWidths).length===0&&Object.keys(detailWidths).length===0)return
+    setFitting(true)
+    try{
+      await apiClient.put<void>(`/document-workbench/${moduleId}/column-widths`,{master:masterWidths,detail:detailWidths})
+      await queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']})
+    }catch(error){
+      window.alert(error instanceof Error?`保存列宽失败：${error.message}`:'保存列宽失败。')
+    }finally{
+      setFitting(false)
+    }
+  }
   const handleExport=async()=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{query:groupQuery}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:safeConditions},{query:{keyword:keyword||undefined,...sortQuery(safeSort),...groupQuery}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.csv`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
 
@@ -280,11 +306,11 @@ export function DocumentWorkbenchPage() {
       ariaLabel="单据列表查询与操作"
       search={<ErpSearchBox value={keyword} onChange={changeKeyword} debounceMs={400} placeholder="搜索单据、供应商或商品" ariaLabel="搜索" />}
       actions={<>
-        <Button size="sm" icon={<IconAdjustmentsHorizontal size={16}/>} onClick={()=>setQueryOpen(true)}>高级{appliedConditions.length?` (${appliedConditions.length})`:''}</Button>
-        <Button size="sm" icon={<IconColumns size={16}/>} onClick={()=>{queryClient.removeQueries({queryKey:['workbench',moduleId,'column-editor']});setColumnsOpen(true)}}>选择列</Button>
+        <Button size="sm" icon={<IconAdjustmentsHorizontal size={16}/>} title={appliedConditions.length?`高级查询 (${appliedConditions.length})`:'高级查询'} aria-label={appliedConditions.length?`高级查询 (${appliedConditions.length})`:'高级查询'} onClick={()=>setQueryOpen(true)} />
+        <Button size="sm" icon={<IconColumns size={16}/>} title="选择列" aria-label="选择列" onClick={()=>{queryClient.removeQueries({queryKey:['workbench',moduleId,'column-editor']});setColumnsOpen(true)}} />
         {groupDefs&&groupDefs.length>0&&(
           <div className="dropdown erp-group-dropdown">
-            <Button size="sm" icon={<IconZoomScan size={16}/>} className={`dropdown-toggle ${groupMenuOpen?'show':''}`} aria-expanded={groupMenuOpen} onClick={()=>setGroupMenuOpen(open=>!open)}>分组</Button>
+            <Button size="sm" icon={<IconZoomScan size={16}/>} className={groupMenuOpen?'show':''} aria-expanded={groupMenuOpen} title="分组" aria-label="分组" onClick={()=>setGroupMenuOpen(open=>!open)} />
             {groupMenuOpen&&(
               <div className="dropdown-menu dropdown-menu-end show" role="menu">
                 {activeGroup===null?groupDefs.map(group=>(
@@ -306,17 +332,23 @@ export function DocumentWorkbenchPage() {
             )}
           </div>
         )}
-        <Button size="sm" icon={<IconPlus size={16}/>} disabled={!definition.data?.hasAdd} onClick={openNew}>新增</Button>
-        <Button size="sm" icon={<IconEdit size={16}/>} disabled={!definition.data?.hasEdit||!active} onClick={openEdit}>编辑</Button>
-        {definition.data?.hasWorkflow&&<>
-          <Button size="sm" icon={<IconCheck size={16}/>} disabled={!active} onClick={()=>void runWorkflow(true)}>批核</Button>
-          <Button size="sm" icon={<IconRotateClockwise size={16}/>} disabled={!active} onClick={()=>void runWorkflow(false)}>解批</Button>
+        <Button size="sm" icon={<IconArrowAutofitWidth size={16}/>} loading={fitting} title="自适应列宽" aria-label="自适应列宽" onClick={()=>void fitAllColumns()} />
+        {definition.data?.hasAdd&&<Button size="sm" icon={<IconPlus size={16}/>} title="新增" aria-label="新增" onClick={openNew} />}
+        {definition.data?.hasEdit&&active&&<Button size="sm" icon={<IconEdit size={16}/>} title="编辑" aria-label="编辑" onClick={openEdit} />}
+        {definition.data?.hasWorkflow&&active&&<>
+          <Button size="sm" icon={<IconCheck size={16}/>} title="批核" aria-label="批核" onClick={()=>void runWorkflow(true)} />
+          <Button size="sm" icon={<IconRotateClockwise size={16}/>} title="解批" aria-label="解批" onClick={()=>void runWorkflow(false)} />
         </>}
-        <Button size="sm" icon={<IconPrinter size={16}/>} disabled={!active} onClick={openPrint}>打印单据</Button>
-        <Button size="sm" icon={<IconFileExport size={16}/>} loading={exporting} onClick={()=>void handleExport()}>{Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'}</Button>
+        {active&&<Button size="sm" icon={<IconPrinter size={16}/>} title="打印单据" aria-label="打印单据" onClick={openPrint} />}
+        <Button size="sm" icon={<IconFileExport size={16}/>} loading={exporting} title={Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'} aria-label={Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'} onClick={()=>void handleExport()} />
         <Button size="sm" icon={<IconRefresh size={16}/>} title="刷新" aria-label="刷新" onClick={()=>{void records.refetch();if(active)void details.refetch()}} />
       </>}
-      footer={<ErpPagination total={records.data?.total??0} page={page} pageSize={pageSize} onPageChange={setPage} />}
+      footer={
+        <div className="d-flex align-items-center w-100">
+          <span className="text-secondary small">共 {total} 条{rows.length < total ? `，已加载 ${rows.length} 条` : ''}</span>
+          {records.isFetchingNextPage ? <span className="text-secondary small">正在加载更多…</span> : null}
+        </div>
+      }
     >
       {groupValue!=null&&(
         <div className="erp-active-group-filter">
@@ -325,7 +357,7 @@ export function DocumentWorkbenchPage() {
           <button type="button" onClick={()=>{setSearchParams((current)=>{current.delete('groupIndex');current.delete('groupValue');return current},{replace:true})}}>清除分组</button>
         </div>
       )}
-      <div className={`erp-master-table-region ${records.isFetching?'is-loading':''}`}>
+      <div className={`erp-master-table-region ${records.isFetching && !records.isFetchingNextPage ? 'is-loading' : ''}`}>
         {records.isPending?<LoadingState label="正在加载主表数据…"/>:records.isError?<ErrorState message={recordsError} onRetry={()=>void records.refetch()}/>:<ErpTable
           columns={masterColumns}
           data={rows}
@@ -337,6 +369,7 @@ export function DocumentWorkbenchPage() {
           onRowClick={handleRowClick}
           activeRowId={activeKey??undefined}
           resizable
+          fitRef={masterFitRef}
           storageKey={`workbench-${moduleId}-master`}
           persistResize={false}
           onColumnResize={saveMasterWidth}
@@ -344,6 +377,9 @@ export function DocumentWorkbenchPage() {
           onColumnFilterChange={handleColumnFilterChange}
           onColumnsReorder={handleColumnsReorder}
           empty={null}
+          onEndReached={()=>void records.fetchNextPage()}
+          hasMore={Boolean(records.hasNextPage)}
+          loadingMore={records.isFetchingNextPage}
         />}
       </div>
     </ErpListCard>
@@ -353,6 +389,7 @@ export function DocumentWorkbenchPage() {
       sorting={detailSorting}
       onSortingChange={changeDetailSort}
       resizable
+      fitRef={detailFitRef}
       storageKey={`workbench-${moduleId}-detail`}
       persistResize={false}
       onColumnResize={saveDetailWidth}
@@ -376,8 +413,8 @@ export function DocumentWorkbenchPage() {
       fields={master.filter(field=>field.isQueryable).map(field=>({key:field.key,label:field.label}))}
       conditions={conditions}
       onChange={setConditions}
-      onApply={()=>{setAppliedConditions(conditions);setPage(1);setQueryOpen(false)}}
-      onClear={()=>{setConditions([emptyQueryCondition()]);setAppliedConditions([]);setColumnFilters({});setPage(1);setQueryOpen(false)}}
+      onApply={()=>{setAppliedConditions(conditions);setQueryOpen(false)}}
+      onClear={()=>{setConditions([emptyQueryCondition()]);setAppliedConditions([]);setColumnFilters({});setQueryOpen(false)}}
       onClose={()=>setQueryOpen(false)}
     />}
   </div>

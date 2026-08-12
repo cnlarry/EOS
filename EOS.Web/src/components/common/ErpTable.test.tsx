@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ErpTable } from './ErpTable'
 
 interface Row {
@@ -12,6 +12,24 @@ const rows: Row[] = [
   { id: '1', name: 'A' },
   { id: '2', name: 'B' },
 ]
+
+class FakeIntersectionObserver {
+  static instances: FakeIntersectionObserver[] = []
+  callback: IntersectionObserverCallback
+
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback
+    FakeIntersectionObserver.instances.push(this)
+  }
+
+  observe = vi.fn()
+  unobserve = vi.fn()
+  disconnect = vi.fn()
+
+  trigger(entries: IntersectionObserverEntry[]) {
+    this.callback(entries, this as unknown as IntersectionObserver)
+  }
+}
 
 function buildColumns(): ColumnDef<Row, unknown>[] {
   return [
@@ -43,6 +61,10 @@ function buildColumns(): ColumnDef<Row, unknown>[] {
 }
 
 describe('ErpTable', () => {
+  beforeEach(() => {
+    FakeIntersectionObserver.instances = []
+  })
+
   it('渲染表头与数据行', () => {
     render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} />)
     expect(screen.getByText('ID')).toBeInTheDocument()
@@ -268,5 +290,123 @@ describe('ErpTable', () => {
     expect(idTh.querySelector('.erp-col-resizer')).not.toBeInTheDocument()
     const nameTh = container.querySelectorAll('thead th')[1]
     expect(nameTh.querySelector('.erp-col-resizer')).toBeInTheDocument()
+  })
+
+  it('clientSideSorting 使用 TanStack 内置排序', () => {
+    const data = [
+      { id: '1', name: 'B' },
+      { id: '2', name: 'A' },
+    ]
+    const columns: ColumnDef<Row, unknown>[] = [{ accessorKey: 'name', header: '名称' }]
+    const { rerender } = render(
+      <ErpTable
+        columns={columns}
+        data={data}
+        getRowId={(row) => row.id}
+        clientSideSorting
+        sorting={[{ id: 'name', desc: false }]}
+      />,
+    )
+    expect(Array.from(document.querySelectorAll('tbody tr td')).map((td) => td.textContent)).toEqual(['A', 'B'])
+    rerender(
+      <ErpTable
+        columns={columns}
+        data={data}
+        getRowId={(row) => row.id}
+        clientSideSorting
+        sorting={[{ id: 'name', desc: true }]}
+      />,
+    )
+    expect(Array.from(document.querySelectorAll('tbody tr td')).map((td) => td.textContent)).toEqual(['B', 'A'])
+  })
+
+  it('rowClassName 应用到行类名', () => {
+    render(
+      <ErpTable
+        columns={buildColumns()}
+        data={rows}
+        getRowId={(row) => row.id}
+        rowClassName={(row) => row.id === '2' ? 'custom-row' : undefined}
+      />,
+    )
+    expect(screen.getByText('B').closest('tr')).toHaveClass('custom-row')
+    expect(screen.getByText('A').closest('tr')).not.toHaveClass('custom-row')
+  })
+
+  it('行双击回调携带原始行数据', () => {
+    const onRowDoubleClick = vi.fn()
+    render(<ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onRowDoubleClick={onRowDoubleClick} />)
+    fireEvent.doubleClick(screen.getByText('A').closest('tr')!)
+    expect(onRowDoubleClick).toHaveBeenCalledWith(rows[0])
+  })
+
+  it('responsive=false 时不外包 table-responsive', () => {
+    const { container } = render(
+      <ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} responsive={false} />,
+    )
+    expect(container.querySelector('.table-responsive')).not.toBeInTheDocument()
+    expect(container.querySelector('table')?.parentElement).toHaveClass('erp-table-shell')
+  })
+
+  it('默认单元格包裹省略层并带 title 全文', () => {
+    const columns: ColumnDef<Row, unknown>[] = [{ accessorKey: 'name', header: '名称' }]
+    const { container } = render(<ErpTable columns={columns} data={rows} getRowId={(row) => row.id} />)
+    const cell = container.querySelector('tbody td')!
+    expect(cell.querySelector('.erp-cell-ellipsis')).toBeInTheDocument()
+    expect(cell).toHaveAttribute('title', 'A')
+    expect(cell.textContent).toBe('A')
+  })
+
+  it('truncate=false 的列不包裹省略层且无 title', () => {
+    const columns: ColumnDef<Row, unknown>[] = [
+      { accessorKey: 'name', header: '名称', meta: { truncate: false } },
+    ]
+    const { container } = render(<ErpTable columns={columns} data={rows} getRowId={(row) => row.id} />)
+    const cell = container.querySelector('tbody td')!
+    expect(cell.querySelector('.erp-cell-ellipsis')).not.toBeInTheDocument()
+    expect(cell).not.toHaveAttribute('title')
+  })
+
+  it('meta.title 函数用于悬停全文（格式化显示）', () => {
+    const columns: ColumnDef<Row, unknown>[] = [
+      { accessorKey: 'name', header: '名称', meta: { title: ({ value }) => `格式化:${String(value)}` } },
+    ]
+    const { container } = render(<ErpTable columns={columns} data={rows} getRowId={(row) => row.id} />)
+    expect(container.querySelector('tbody td')).toHaveAttribute('title', '格式化:A')
+  })
+
+  it('滚动到底触发 onEndReached，加载中不重复触发', () => {
+    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
+    try {
+      const onEndReached = vi.fn()
+      const { rerender } = render(
+        <ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onEndReached={onEndReached} hasMore />,
+      )
+      const observer = FakeIntersectionObserver.instances.at(-1)!
+      expect(observer.observe).toHaveBeenCalled()
+      act(() => observer.trigger([{ isIntersecting: true } as IntersectionObserverEntry]))
+      expect(onEndReached).toHaveBeenCalledTimes(1)
+      // 加载更多进行中再次触底不重复请求
+      rerender(
+        <ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onEndReached={onEndReached} hasMore loadingMore />,
+      )
+      act(() => observer.trigger([{ isIntersecting: true } as IntersectionObserverEntry]))
+      expect(onEndReached).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('hasMore=false 时不创建滚动监听并显示已加载全部', () => {
+    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
+    try {
+      render(
+        <ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onEndReached={vi.fn()} hasMore={false} />,
+      )
+      expect(FakeIntersectionObserver.instances).toHaveLength(0)
+      expect(screen.getByText('已加载全部')).toBeInTheDocument()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

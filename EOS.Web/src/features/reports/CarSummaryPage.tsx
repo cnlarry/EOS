@@ -36,7 +36,8 @@ export function CarSummaryPage() {
     (result.data?.columns ?? []).map((column) => ({
       accessorKey: column,
       header: () => <span className="font-monospace small">{column}</span>,
-      cell: (info) => <span className={column.includes('AMOUNT') || column.includes('METER') || column.includes('TOTAL') ? 'text-end d-block' : ''}>{String(info.getValue() ?? '—')}</span>,
+      cell: (info) => String(info.getValue() ?? '—'),
+      meta: { cellClassName: column.includes('AMOUNT') || column.includes('METER') || column.includes('TOTAL') ? 'text-end' : undefined },
     })), [result.data])
 
   const runQuery = () => setQueryKey((current) => current + 1)

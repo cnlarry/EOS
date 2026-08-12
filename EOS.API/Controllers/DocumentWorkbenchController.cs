@@ -259,6 +259,9 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
     [HttpPut("field-settings/{fieldKey}")]
     public async Task<IActionResult> UpdateFieldSettings(int moduleId,string fieldKey,[FromBody]UpdateWorkbenchFieldMetadata update,[FromQuery]bool detail=false,CancellationToken token=default){var access=await SetupDefinition(moduleId,token);if(access is null)return Forbid();await repository.UpdateFieldMetadataAsync(access,detail,fieldKey,update,userContext.EmployeeName,token);return NoContent();}
 
+    [HttpPut("column-widths")]
+    public async Task<IActionResult> UpdateColumnWidths(int moduleId,[FromBody]UpdateColumnWidthsRequest request,CancellationToken token=default){var access=await SetupDefinition(moduleId,token);if(access is null)return Forbid();await repository.UpdateColumnWidthsAsync(access,request,userContext.EmployeeName,token);return NoContent();}
+
     private async Task<WorkbenchDefinition?> SetupDefinition(int moduleId,CancellationToken token){var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;if(userId is null)return null;var rights=await rightsRepository.GetAsync(userId,moduleId,token);return rights.CanBrowse&&rights.CanSetup?await repository.GetDefinitionAsync(moduleId,userId,rights.ExecuteTag,rights.CanViewCost,rights.CanViewSecrecy,rights.DeniedMasterFields,rights.DeniedDetailFields,token):null;}
 
     private async Task<WorkbenchDefinition?> AuthorizedDefinition(int moduleId,CancellationToken token){var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;if(userId is null)return null;var rights=await rightsRepository.GetAsync(userId,moduleId,token);return rights.CanBrowse?await repository.GetDefinitionAsync(moduleId,userId,rights.ExecuteTag,rights.CanViewCost,rights.CanViewSecrecy,rights.DeniedMasterFields,rights.DeniedDetailFields,token):null;}

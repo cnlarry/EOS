@@ -20,6 +20,7 @@ export function ResizableTable({
   children,
   persistResize = true,
   onColumnResize,
+  fitRef,
 }: {
   className: string
   storageKey: string
@@ -28,9 +29,11 @@ export function ResizableTable({
   persistResize?: boolean
   /** 拖拽结束/双击自适应时回调（列键 + 新宽度） */
   onColumnResize?: (columnKey: string, width: number) => void
+  /** 外部触发句柄：暴露“自适应全部列宽”函数（返回各列新宽度，工具栏按钮批量写回） */
+  fitRef?: { current: (() => Record<string, number>) | null }
 }) {
   const tableRef = useRef<HTMLTableElement>(null)
-  useColumnResize(tableRef, storageKey, { persist: persistResize, onColumnResize })
+  useColumnResize(tableRef, storageKey, { persist: persistResize, onColumnResize, fitRef })
   return (
     <table ref={tableRef} className={className}>
       {children}

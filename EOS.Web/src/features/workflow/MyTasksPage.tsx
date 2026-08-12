@@ -72,7 +72,7 @@ export function MyTasksPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-end', frozenRight: true, resizable: false },
+      meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
       cell: ({ row }) => <Button size="sm" className="erp-table-action" onClick={() => navigate(`/document-workbench/${row.original.moduleId}`)}>去处理</Button>,
     },
   ], [navigate])
@@ -91,7 +91,7 @@ export function MyTasksPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-end', frozenRight: true, resizable: false },
+      meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
       cell: ({ row }) => (
         <div className="d-inline-flex gap-1">
           <Button size="sm" className="erp-table-action" onClick={() => void approveTask(row.original.myTaskId, 'Y')}>同意</Button>
