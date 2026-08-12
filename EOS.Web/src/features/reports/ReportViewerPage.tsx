@@ -41,7 +41,8 @@ export function ReportViewerPage() {
     () => (definition.data?.columns ?? []).map((column) => ({
       accessorKey: column.key,
       header: column.label,
-      cell: (info) => <span className={column.dataType.includes('float') || column.dataType.includes('int') ? 'text-end d-block' : ''}>{String(info.getValue() ?? '—')}</span>,
+      cell: (info) => String(info.getValue() ?? '—'),
+      meta: { cellClassName: column.dataType.includes('float') || column.dataType.includes('int') ? 'text-end' : undefined },
     })),
     [definition.data],
   )

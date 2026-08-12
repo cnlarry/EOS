@@ -56,7 +56,7 @@ export function DetailQueryPage() {
       },
       cell: (info) => {
         const text = formatValue(info.getValue(), field.dataType)
-        return text ? <span className={text.length > 24 ? 'erp-cell-ellipsis' : undefined} title={text.length > 24 ? text : undefined}>{text}</span> : '—'
+        return text || '—'
       },
     })), [result.data])
   const errorMessage = result.error instanceof ApiError ? result.error.body.message : '发生未知错误，请稍后重试。'

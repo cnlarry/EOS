@@ -212,8 +212,9 @@ describe('FormEditorPage', () => {
     expect(screen.queryByText('新建产品版次')).not.toBeInTheDocument()
     const toolbar = container.querySelector('.erp-form-toolbar')
     expect(toolbar).not.toBeNull()
-    expect(toolbar?.querySelector('.erp-form-tabs')).not.toBeNull()
-    expect(toolbar?.querySelector('.erp-form-toolbar-actions button')).not.toBeNull()
+    // 工具栏独立一行（保存/取消按钮），页签单独一行在表单网格上方
+    expect(toolbar?.querySelector('button')).not.toBeNull()
+    expect(container.querySelector('.erp-form-tabs')).not.toBeNull()
   })
 
   it('复合单元格：从字段与主字段同格、无独立标签', async () => {
@@ -384,11 +385,13 @@ describe('FormEditorPage', () => {
     // 初始顺序 B/A（每行两个输入：ITEM 在 0/2，QTY 在 1/3）
     expect(detailInputs()[0]).toHaveValue('B')
     // 按数量升序 → A(2)/B(10)
-    fireEvent.click(screen.getByRole('button', { name: /数量/ }))
+    fireEvent.click(screen.getByLabelText('表头操作数量'))
+    fireEvent.click(screen.getByRole('button', { name: '升序' }))
     expect(detailInputs()[0]).toHaveValue('A')
     expect(detailInputs()[2]).toHaveValue('B')
     // 再点降序 → B(10)/A(2)
-    fireEvent.click(screen.getByRole('button', { name: /数量/ }))
+    fireEvent.click(screen.getByLabelText('表头操作数量'))
+    fireEvent.click(screen.getByRole('button', { name: '降序' }))
     expect(detailInputs()[0]).toHaveValue('B')
     expect(detailInputs()[2]).toHaveValue('A')
   })

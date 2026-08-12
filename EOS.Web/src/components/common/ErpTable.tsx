@@ -2,6 +2,7 @@ import { IconChevronDown, IconChevronUp } from '@tabler/icons-react'
 import {
   flexRender,
   getCoreRowModel,
+  getSortedRowModel,
   useReactTable,
   type ColumnDef,
   type RowSelectionState,
@@ -17,7 +18,7 @@ import { rowsToTsv, writeClipboard } from './tableClipboard'
 interface ErpTableProps<TData> {
   columns: ColumnDef<TData, unknown>[]
   data: TData[]
-  getRowId?: (row: TData) => string
+  getRowId?: (row: TData, index: number) => string
   /** 空数据时渲染的内容；不传或传 null 则渲染空表格 */
   empty?: ReactNode
   sorting?: SortingState
@@ -35,6 +36,8 @@ interface ErpTableProps<TData> {
   persistResize?: boolean
   /** 拖拽结束/双击自适应时回调（列键 + 新宽度），用于写回服务端字段元数据 */
   onColumnResize?: (columnKey: string, width: number) => void
+  /** 外部触发句柄：暴露“自适应全部列宽”函数（返回各列新宽度，工具栏按钮批量写回） */
+  fitRef?: { current: (() => Record<string, number>) | null }
   /** 追加到表格的类名（如 table-sm 明细表） */
   className?: string
   /** 紧凑行高（erp-table-compact） */
@@ -48,6 +51,20 @@ interface ErpTableProps<TData> {
   onColumnFilterChange?: (columnId: string, condition: QueryCondition | null) => void
   /** 表头拖拽重排完成回调（新列顺序，含 select/冻结列）；不传则不启用拖拽重排 */
   onColumnsReorder?: (columnIds: string[]) => void
+  /** 客户端本地排序（TanStack 内置排序；服务端排序场景保持默认 false，由外部排序后传 data） */
+  clientSideSorting?: boolean
+  /** 行自定义类名（如占位行 erp-detail-filler） */
+  rowClassName?: (row: TData) => string | undefined
+  /** 行双击回调（如选择器双击确认） */
+  onRowDoubleClick?: (row: TData) => void
+  /** 是否外包 .table-responsive（默认 true；选择器等需要自定义滚动容器时传 false） */
+  responsive?: boolean
+  /** 滚动到底自动加载更多：滚动容器（shell 最近的 overflow 祖先）接近底部时触发；配合 hasMore/loadingMore 使用 */
+  onEndReached?: () => void
+  /** 是否还有下一页可加载（false 时停止监听并显示“已加载全部”） */
+  hasMore?: boolean
+  /** 加载更多进行中（防重复触发，可显示“正在加载更多…”） */
+  loadingMore?: boolean
 }
 
 /**
@@ -58,7 +75,9 @@ interface ErpTableProps<TData> {
  * - 复制：Ctrl+C / 行右键复制（TSV，可直接粘贴进 Excel）；
  * - 键盘导航：方向键/Home/End/PageUp/PageDown 移动活动行，Enter 触发；
  * - 列头快速筛选（meta.filterable + columnFilterValue / onColumnFilterChange）；
- * - 冻结列（meta.frozenLeft / meta.frozenRight，sticky）。
+ * - 冻结列（meta.frozenLeft / meta.frozenRight，sticky）；
+ * - 客户端本地排序（clientSideSorting，适合本地数据网格）；
+ * - 行自定义类名（rowClassName，如占位行）与行双击回调（onRowDoubleClick）。
  *
  * 列级行为通过 ColumnMeta 扩展：
  * - `className`：td/th 追加类（对齐、选择列等）；
@@ -83,6 +102,7 @@ export function ErpTable<TData>({
   storageKey = '',
   persistResize = true,
   onColumnResize,
+  fitRef,
   className = '',
   dense = false,
   copyable = true,
@@ -90,8 +110,16 @@ export function ErpTable<TData>({
   columnFilterValue,
   onColumnFilterChange,
   onColumnsReorder,
+  clientSideSorting = false,
+  rowClassName,
+  onRowDoubleClick,
+  responsive = true,
+  onEndReached,
+  hasMore = false,
+  loadingMore = false,
 }: ErpTableProps<TData>) {
   const shellRef = useRef<HTMLDivElement>(null)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
   const [focusIndex, setFocusIndex] = useState<number | null>(null)
   const [cellMenu, setCellMenu] = useState<{ x: number; y: number; rowId: string; columnId: string; text: string } | null>(null)
   const [openFilter, setOpenFilter] = useState<string | null>(null)
@@ -99,14 +127,42 @@ export function ErpTable<TData>({
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null)
   const [dragColId, setDragColId] = useState<string | null>(null)
   const [draftFilter, setDraftFilter] = useState<QueryCondition>(emptyQueryCondition())
+  const onEndReachedRef = useRef(onEndReached)
+  onEndReachedRef.current = onEndReached
+  const loadingMoreRef = useRef(loadingMore)
+  loadingMoreRef.current = loadingMore
+
+  // 滚动加载更多：以 shell 最近的 overflow 祖先为 root，底部哨兵进入视口（含 120px 提前量）时触发
+  useEffect(() => {
+    if (!onEndReached || !hasMore) return
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    let root: Element | Document | null = null
+    let current: HTMLElement | null = sentinel
+    while (current) {
+      const style = getComputedStyle(current)
+      if (/(auto|scroll|overlay)/.test(style.overflowY) || /(auto|scroll|overlay)/.test(style.overflow)) {
+        root = current
+        break
+      }
+      current = current.parentElement
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (loadingMoreRef.current) return
+      if (entries.some(entry => entry.isIntersecting)) onEndReachedRef.current?.()
+    }, { root, rootMargin: '120px 0px' })
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [onEndReached, hasMore])
 
   const table = useReactTable({
     data,
     columns,
     state: { sorting, rowSelection, columnVisibility },
-    manualSorting: true,
+    manualSorting: !clientSideSorting,
     enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: clientSideSorting ? getSortedRowModel() : undefined,
     getRowId,
     onSortingChange: (updater) => onSortingChange?.(typeof updater === 'function' ? updater(sorting) : updater),
     onRowSelectionChange: (updater) =>
@@ -281,7 +337,7 @@ export function ErpTable<TData>({
 
   return (
     <div ref={shellRef} className="erp-table-shell" tabIndex={0} onKeyDown={handleKeyDown}>
-      <ErpDataTable resizable={resizable} storageKey={storageKey} className={`${className} ${dense ? 'erp-table-compact' : ''}`.trim()} persistResize={persistResize} onColumnResize={onColumnResize}>
+      <ErpDataTable responsive={responsive} resizable={resizable} storageKey={storageKey} className={`${className} ${dense ? 'erp-table-compact' : ''}`.trim()} persistResize={persistResize} onColumnResize={onColumnResize} fitRef={fitRef}>
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
@@ -330,6 +386,7 @@ export function ErpTable<TData>({
                     key={header.id}
                     data-col-key={header.column.id}
                     data-col-min-width={meta?.minWidth ?? undefined}
+                    data-col-min-floor={meta?.minWidthFloor ? 'true' : undefined}
                     data-col-resizable={meta?.resizable === false ? 'false' : 'true'}
                     className={[meta?.className, meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : ''].filter(Boolean).join(' ') || undefined}
                     style={thStyle}
@@ -412,22 +469,33 @@ export function ErpTable<TData>({
         </thead>
         <tbody>
           {rowsModel.map((row, index) => {
+            const customClass = rowClassName?.(row.original)
             return (
               <tr
                 key={row.id}
                 data-order-id={row.id}
                 data-kb-index={index}
-                className={`${row.getIsSelected() ? 'table-active ' : ''}${activeRowId === row.id ? 'erp-row-active ' : ''}${focusIndex === index ? 'erp-row-focus' : ''}`.trim() || undefined}
+                className={`${row.getIsSelected() ? 'table-active ' : ''}${activeRowId === row.id ? 'erp-row-active ' : ''}${focusIndex === index ? 'erp-row-focus' : ''}${customClass ? ` ${customClass}` : ''}`.trim() || undefined}
                 onClick={() => { setFocusIndex(null); onRowClick?.(row.original) }}
+                onDoubleClick={onRowDoubleClick ? () => onRowDoubleClick(row.original) : undefined}
               >
                 {row.getVisibleCells().map((cell) => {
                   const cellMeta = cell.column.columnDef.meta
                   const cellFrozen = cellMeta?.frozenLeft ? 'erp-frozen-left' : cellMeta?.frozenRight ? 'erp-frozen-right' : ''
+                  const truncate = cellMeta?.truncate !== false
+                  const cellValue = cell.getValue()
+                  const title = truncate ? (cellMeta?.title != null
+                    ? (typeof cellMeta.title === 'function'
+                      ? cellMeta.title({ value: cellValue, row: row.original })
+                      : cellMeta.title)
+                    : (typeof cellValue === 'string' || typeof cellValue === 'number' ? String(cellValue) : undefined))
+                    : undefined
                   return (
                     <td
                       key={cell.id}
                       className={[cellMeta?.cellClassName ?? cellMeta?.className, cellFrozen].filter(Boolean).join(' ') || undefined}
                       style={cellMeta?.frozenLeft ? { left: 0 } : cellMeta?.frozenRight ? { right: 0 } : undefined}
+                      title={title}
                       onContextMenu={copyable ? (event) => {
                         event.preventDefault()
                         setCellMenu({
@@ -439,7 +507,9 @@ export function ErpTable<TData>({
                         })
                       } : undefined}
                     >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      {truncate
+                        ? <span className="erp-cell-ellipsis">{flexRender(cell.column.columnDef.cell, cell.getContext())}</span>
+                        : flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   )
                 })}
@@ -448,6 +518,13 @@ export function ErpTable<TData>({
           })}
         </tbody>
       </ErpDataTable>
+      {onEndReached ? (
+        <div ref={sentinelRef} className="erp-table-load-more">
+          {loadingMore
+            ? <span className="erp-table-load-more-hint">正在加载更多…</span>
+            : hasMore ? null : <span className="erp-table-load-more-hint">已加载全部</span>}
+        </div>
+      ) : null}
       {cellMenu && copyable && (
         <div
           className="dropdown-menu show erp-table-context-menu"
@@ -523,5 +600,11 @@ declare module '@tanstack/react-table' {
     frozenRight?: boolean
     /** 该列不允许拖拽调整列宽（如固定宽度的选择列/操作列） */
     resizable?: boolean
+    /** 编辑态列宽下限：data-col-min-width 同时作为硬下限，历史/拖拽宽度不得低于它（如表单明细录入列） */
+    minWidthFloor?: boolean
+    /** 单元格单行省略（默认 true）：不换行 + 超宽省略号 + title 悬停全文；复选框/按钮/输入框等交互列设为 false */
+    truncate?: boolean
+    /** 悬停 title 全文：默认取单元格原始值；显示文本与原始值不同（如格式化）时用函数返回展示文本 */
+    title?: string | ((info: { value: TValue; row: TData }) => string | undefined)
   }
 }

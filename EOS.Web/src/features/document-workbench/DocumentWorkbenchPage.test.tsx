@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
@@ -48,6 +48,24 @@ const records = {
 
 const details = { rows: [{ ITEM: 'X1' }], total: 1, page: 1, pageSize: 10 }
 
+class FakeIntersectionObserver {
+  static instances: FakeIntersectionObserver[] = []
+  callback: IntersectionObserverCallback
+
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback
+    FakeIntersectionObserver.instances.push(this)
+  }
+
+  observe = vi.fn()
+  unobserve = vi.fn()
+  disconnect = vi.fn()
+
+  trigger(entries: IntersectionObserverEntry[]) {
+    this.callback(entries, this as unknown as IntersectionObserver)
+  }
+}
+
 const columnEditor = {
   current: {
     master: [
@@ -72,14 +90,20 @@ const fieldMeta = {
   lastUpdatedBy: 'admin', lastUpdatedAt: '2026-08-01T00:00:00Z',
 }
 
-function installApiMocks(overrides: { records?: unknown; details?: unknown; definition?: unknown } = {}) {
+type RecordsMock = ((query: Record<string, string | undefined>) => unknown) | Record<string, unknown>
+
+function installApiMocks(overrides: {
+  records?: RecordsMock
+  details?: unknown
+  definition?: unknown
+} = {}) {
   const recordData = overrides.records ?? records
   const detailData = overrides.details ?? details
   const definitionData = overrides.definition ?? definition
-  apiClientMock.get.mockImplementation(async (path: string) => {
+  apiClientMock.get.mockImplementation(async (path: string, options?: { query?: Record<string, string | undefined> }) => {
     const p = String(path)
     if (p.endsWith('/definition')) return definitionData
-    if (p.includes('/records')) return recordData
+    if (p.includes('/records')) return typeof recordData === 'function' ? recordData(options?.query ?? {}) : recordData
     if (p.includes('/details')) return detailData
     if (p.includes('/column-editor')) return columnEditor
     if (p.includes('/lookups/')) return []
@@ -88,7 +112,11 @@ function installApiMocks(overrides: { records?: unknown; details?: unknown; defi
     if (p.includes('/groups')) return { groups: [{ index: 1, description: '结案', available: true }] }
     throw new Error(`unexpected GET ${p}`)
   })
-  apiClientMock.post.mockResolvedValue({ key: [] })
+  apiClientMock.post.mockImplementation(async (path: string) =>
+    String(path).includes('/query')
+      ? (typeof recordData === 'function' ? recordData({}) : recordData)
+      : { key: [] },
+  )
   apiClientMock.put.mockResolvedValue(undefined)
   apiClientMock.delete.mockResolvedValue(undefined)
   apiClientMock.postFile.mockResolvedValue(new Blob(['a,b']))
@@ -116,6 +144,8 @@ async function loaded() {
 
 describe('DocumentWorkbenchPage', () => {
   beforeEach(() => {
+    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
+    FakeIntersectionObserver.instances = []
     vi.mocked(useAuth).mockReturnValue({ bootstrap: null, loading: false, login: vi.fn(), logout: vi.fn(), hasPermission: () => true })
     installApiMocks()
     if (!('createObjectURL' in URL)) {
@@ -246,7 +276,7 @@ describe('DocumentWorkbenchPage', () => {
     installApiMocks({ definition: { ...definition, hasAdd: false } })
     const { unmount } = renderPage()
     await loaded()
-    expect(screen.getByRole('button', { name: '新增' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: '新增' })).not.toBeInTheDocument()
     unmount()
     installApiMocks()
     renderPage()
@@ -258,9 +288,9 @@ describe('DocumentWorkbenchPage', () => {
   it('选中行后编辑按钮可用并跳转带 key 的编辑页', async () => {
     renderPage()
     await loaded()
-    expect(screen.getByRole('button', { name: '编辑' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByText('P1'))
-    await waitFor(() => expect(screen.getByRole('button', { name: '编辑' })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole('button', { name: '编辑' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '编辑' }))
     expect(screen.getByText('EDIT_FORM')).toBeInTheDocument()
   })
@@ -289,17 +319,17 @@ describe('DocumentWorkbenchPage', () => {
   it('高级查询应用条件后展示计数并走 POST 查询', async () => {
     renderPage()
     await loaded()
-    fireEvent.click(screen.getByRole('button', { name: '高级' }))
+    fireEvent.click(screen.getByRole('button', { name: '高级查询' }))
     fireEvent.change(screen.getByLabelText('条件1字段'), { target: { value: 'PRO_NO' } })
     fireEvent.click(screen.getByRole('button', { name: '应用查询' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '高级 (1)' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: '高级查询 (1)' })).toBeInTheDocument())
     expect(apiClientMock.post).toHaveBeenCalledWith(
-      '/document-workbench/1209/query?page=1&pageSize=10',
+      '/document-workbench/1209/query?page=1&pageSize=50',
       { conditions: [expect.objectContaining({ field: 'PRO_NO' })] },
     )
-    fireEvent.click(screen.getByRole('button', { name: '高级 (1)' }))
+    fireEvent.click(screen.getByRole('button', { name: '高级查询 (1)' }))
     fireEvent.click(screen.getByRole('button', { name: '清空' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '高级' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: '高级查询' })).toBeInTheDocument())
   })
 
   it('选择列弹窗加载配置并保存列顺序', async () => {
@@ -324,15 +354,35 @@ describe('DocumentWorkbenchPage', () => {
     await waitFor(() => expect(screen.getByDisplayValue('产品编号')).toBeInTheDocument())
   })
 
-  it('单表模块默认每页 18 条且不提供每页条数选择', async () => {
+  it('单表模块默认每页 50 条（滚动加载块大小）且不提供每页条数选择', async () => {
     installApiMocks({ definition: { ...definition, detailTable: undefined } })
     renderPage()
     await loaded()
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
       '/document-workbench/1209/records',
-      expect.objectContaining({ query: expect.objectContaining({ pageSize: 18 }) }),
+      expect.objectContaining({ query: expect.objectContaining({ pageSize: 50 }) }),
     ))
     expect(screen.queryByLabelText('每页数量')).not.toBeInTheDocument()
+  })
+
+  it('主子表模块默认每页 50 条', async () => {
+    renderPage()
+    await loaded()
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      '/document-workbench/1209/records',
+      expect.objectContaining({ query: expect.objectContaining({ pageSize: 50 }) }),
+    ))
+  })
+
+  it('自适应列宽一次性批量写回主表全部可见字段与子表字段，不逐列保存', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: '自适应列宽' }))
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
+      '/document-workbench/1209/column-widths',
+      { master: { PRO_NO: 48, EDITION: 48, QTY: 48, FLAG: 48 }, detail: { ITEM: 48 } },
+    ))
+    expect(apiClientMock.put).not.toHaveBeenCalledWith(expect.stringContaining('/field-settings/'), expect.anything())
   })
 
   it('不提供行高切换按钮', async () => {
@@ -342,13 +392,37 @@ describe('DocumentWorkbenchPage', () => {
     expect(screen.queryByRole('button', { name: '标准行高' })).not.toBeInTheDocument()
   })
 
-  it('URL 传入超界页码时钳制到有效页', async () => {
+  it('URL 携带 page 参数时仍从第 1 页开始滚动加载', async () => {
     renderPage('/document-workbench/1209?page=2')
     await loaded()
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
       '/document-workbench/1209/records',
       expect.objectContaining({ query: expect.objectContaining({ page: 1 }) }),
     ))
+  })
+
+  it('主表滚动到底自动加载下一页并追加行', async () => {
+    installApiMocks({
+      records: (query) => {
+        const page = Number(query.page ?? 1)
+        return page === 1
+          ? { rows: [{ PRO_NO: 'P1', EDITION: 'A', QTY: '10', FLAG: true }], total: 60, page: 1, pageSize: 50 }
+          : { rows: [{ PRO_NO: 'P2', EDITION: 'B', QTY: '20', FLAG: false }], total: 60, page: 2, pageSize: 50 }
+      },
+    })
+    renderPage()
+    await loaded()
+    expect(screen.getByText('P1')).toBeInTheDocument()
+    expect(screen.queryByText('P2')).not.toBeInTheDocument()
+    expect(screen.getByText(/共 60 条，已加载 1 条/)).toBeInTheDocument()
+    const observer = FakeIntersectionObserver.instances.at(-1)!
+    act(() => observer.trigger([{ isIntersecting: true } as IntersectionObserverEntry]))
+    await waitFor(() => expect(screen.getByText('P2')).toBeInTheDocument())
+    expect(screen.getByText(/共 60 条，已加载 2 条/)).toBeInTheDocument()
+    expect(apiClientMock.get).toHaveBeenCalledWith(
+      '/document-workbench/1209/records',
+      expect.objectContaining({ query: expect.objectContaining({ page: 2 }) }),
+    )
   })
 
   it('空数据时渲染空表格而非错误', async () => {
@@ -377,9 +451,9 @@ describe('DocumentWorkbenchPage', () => {
     installApiMocks({ definition: { ...definition, hasEdit: false } })
     renderPage()
     await loaded()
-    expect(screen.getByRole('button', { name: '编辑' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByText('P1'))
-    await waitFor(() => expect(screen.getByRole('button', { name: '编辑' })).toBeDisabled())
+    await waitFor(() => expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument())
   })
 
   it('导出失败弹出错误提示', async () => {

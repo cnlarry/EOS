@@ -5,8 +5,8 @@ namespace EOS.API.Tests;
 
 public class ChooserColumnSelectorTests
 {
-    private static FormChooserColumnRow Row(string key, bool cost = false, bool secrecy = false, bool visible = true) =>
-        new(key, $"label-{key}", "nvarchar", cost, secrecy, 0, visible);
+    private static FormChooserColumnRow Row(string key, bool cost = false, bool secrecy = false, bool visible = true, string? displayFormat = null) =>
+        new(key, $"label-{key}", "nvarchar", cost, secrecy, 0, visible, displayFormat);
 
     [Fact]
     public void InvisibleColumns_ExcludedFromDisplayButNotFromWhitelist()
@@ -45,5 +45,14 @@ public class ChooserColumnSelectorTests
         var rows = Enumerable.Range(0, 10).Select(index => Row($"F{index}")).ToArray();
         var result = ChooserColumnSelector.Select(rows, true, true, new HashSet<string>(StringComparer.OrdinalIgnoreCase), max: 4);
         Assert.Equal(4, result.Count);
+    }
+
+    [Fact]
+    public void DisplayFormat_IsCarriedThrough()
+    {
+        var rows = new[] { Row("AMOUNT", displayFormat: "0.##"), Row("NAME") };
+        var result = ChooserColumnSelector.Select(rows, true, true, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        Assert.Equal("0.##", result.Single(column => column.Key == "AMOUNT").DisplayFormat);
+        Assert.Null(result.Single(column => column.Key == "NAME").DisplayFormat);
     }
 }

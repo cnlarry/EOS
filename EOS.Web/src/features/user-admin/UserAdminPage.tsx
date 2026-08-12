@@ -115,18 +115,20 @@ export function UserAdminPage() {
       accessorKey: 'isActive',
       header: '状态',
       cell: (info) => info.getValue() ? <span className="badge bg-success-subtle text-success">启用</span> : <span className="badge bg-danger-subtle text-danger">停用</span>,
+      meta: { truncate: false },
     },
     {
       accessorKey: 'hasPassword',
       header: '密码',
       cell: (info) => info.getValue() ? <span className="badge bg-secondary-subtle text-secondary">已设置</span> : <span className="badge bg-warning-subtle text-warning">未设置</span>,
+      meta: { truncate: false },
     },
     {
       id: 'actions',
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-end', frozenRight: true },
+      meta: { className: 'text-end', frozenRight: true, truncate: false },
       cell: ({ row }) => {
         const user = row.original
         const isSelf = user.userId.trim().toLowerCase() === currentUserId

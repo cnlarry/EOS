@@ -13,21 +13,27 @@ interface HarnessProps {
   persist?: boolean
   onColumnResize?: (columnKey: string, width: number) => void
   minWidths?: Record<string, number>
+  fitRef?: { current: (() => Record<string, number>) | null }
+  /** 追加一列固定列（data-col-resizable=false），模拟主表选择列 */
+  fixedColumn?: boolean
+  /** 首列启用编辑态列宽下限（data-col-min-floor=true），模拟表单明细录入列 */
+  floorColumn?: boolean
 }
 
-function Harness({ storageKey, persist, onColumnResize, minWidths }: HarnessProps) {
+function Harness({ storageKey, persist, onColumnResize, minWidths, fitRef, fixedColumn, floorColumn }: HarnessProps) {
   const ref = useRef<HTMLTableElement>(null)
-  useColumnResize(ref, storageKey, { persist: persist ?? true, onColumnResize })
+  useColumnResize(ref, storageKey, { persist: persist ?? true, onColumnResize, fitRef })
   return (
     <table ref={ref}>
       <thead>
         <tr>
-          <th data-col-key="a" data-col-min-width={minWidths?.a}>{'A'}</th>
+          <th data-col-key="a" data-col-min-width={minWidths?.a} data-col-min-floor={floorColumn ? 'true' : undefined}>{'A'}</th>
           <th data-col-key="b" data-col-min-width={minWidths?.b}>{'B'}</th>
+          {fixedColumn && <th data-col-key="select" data-col-min-width={40} data-col-resizable="false">{'选择'}</th>}
         </tr>
       </thead>
       <tbody>
-        <tr><td>{'aaa'}</td><td>{'bb'}</td></tr>
+        <tr><td>{'aaa'}</td><td>{'bb'}</td>{fixedColumn && <td>{'☐'}</td>}</tr>
       </tbody>
     </table>
   )
@@ -103,6 +109,29 @@ describe('useColumnResize', () => {
     fireEvent.pointerDown(handle, { clientX: 10 })
     fireEvent.pointerUp(handle, { clientX: 10 })
     expect(onColumnResize).toHaveBeenCalledWith('b', 48)
+  })
+
+  it('fitRef 自适应返回全部可调列宽并跳过不可调整列（如选择列）', () => {
+    const onColumnResize = vi.fn()
+    const fitRef: { current: (() => Record<string, number>) | null } = { current: null }
+    render(<Harness storageKey="t1" minWidths={{ a: 100, b: 60 }} onColumnResize={onColumnResize} fitRef={fitRef} fixedColumn />)
+    expect(fitRef.current).not.toBeNull()
+    expect(fitRef.current!()).toEqual({ a: 48, b: 48 })
+    expect(onColumnResize).not.toHaveBeenCalled()
+  })
+
+  it('minWidthFloor 列的历史/拖拽宽度不会低于列宽下限', () => {
+    localStorage.setItem('erp-table-cols:t1', JSON.stringify({ a: 60, b: 80 }))
+    const { container } = render(<Harness storageKey="t1" minWidths={{ a: 120, b: 80 }} floorColumn />)
+    const table = container.querySelector('table')!
+    const cols = table.querySelectorAll('colgroup col')
+    expect((cols[0] as HTMLTableColElement).style.width).toBe('120px')
+    expect((cols[1] as HTMLTableColElement).style.width).toBe('80px')
+    const handle = handleOf(table, 0)
+    fireEvent.pointerDown(handle, { clientX: 10 })
+    fireEvent.pointerMove(handle, { clientX: 0 })
+    fireEvent.pointerUp(handle, { clientX: 0 })
+    expect((cols[0] as HTMLTableColElement).style.width).toBe('120px')
   })
 
   it('已保存宽度优先于默认宽度', () => {

@@ -16,7 +16,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
     };
     private static readonly HashSet<string> AllowedAlign = new(StringComparer.OrdinalIgnoreCase)
     {
-        "left", "center", "right"
+        "", "left", "center", "right"
     };
 
     public async Task<IReadOnlyList<FieldAdminTable>> GetTablesAsync(CancellationToken token)
@@ -304,7 +304,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
     {
         const string sql = """
             SELECT COALESCE(NULLIF(LTRIM(RTRIM(F_DESC)),''),LTRIM(RTRIM(F_ID))),COALESCE(F_TYPE,''),COALESCE(DISPLAY_LENGTH,100),
-                   COALESCE(NULLIF(ITEM_ALIGN,''),'left'),COALESCE(NULLIF(HEADER_ALIGN,''),'center'),DISPLAY_FORMAT,
+                   NULLIF(LTRIM(RTRIM(ITEM_ALIGN)),''),COALESCE(NULLIF(HEADER_ALIGN,''),'center'),DISPLAY_FORMAT,
                    CAST(COALESCE(IS_VISIBLE,1) AS bit),CAST(COALESCE(IS_DEFAULT_FIELDS,0) AS bit),CAST(COALESCE(IS_QUERY,1) AS bit),
                    CAST(COALESCE(IS_READONLY,0) AS bit),CAST(COALESCE(IS_VERIFY,0) AS bit),CAST(COALESCE(IS_COST,0) AS bit),
                    CAST(COALESCE(IS_SECRECY,0) AS bit),DFT_VALUE,VERIFY_INDEX,REGEX,F_REMARK,BROWSE_URL,BROWSE_M_IDX,
@@ -327,7 +327,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         if (!await reader.ReadAsync(token)) return null;
         return new FieldAdminInput(
             reader.GetString(0), reader.GetString(1), Math.Clamp(reader.GetInt32(2), 40, 300),
-            reader.GetString(3), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5),
+            reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5),
             reader.GetBoolean(6), reader.GetBoolean(7), reader.GetBoolean(8), reader.GetBoolean(9), reader.GetBoolean(10),
             reader.GetBoolean(11), reader.GetBoolean(12), reader.IsDBNull(13) ? null : reader.GetString(13),
             reader.IsDBNull(14) ? null : reader.GetInt32(14), reader.IsDBNull(15) ? null : reader.GetString(15),
@@ -364,7 +364,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         command.Parameters.Add("@Label", SqlDbType.NVarChar, 300).Value = input.Label.Trim();
         command.Parameters.Add("@DataType", SqlDbType.NVarChar, 100).Value = input.DataType;
         command.Parameters.Add("@Width", SqlDbType.Int).Value = input.Width;
-        command.Parameters.Add("@Align", SqlDbType.NVarChar, 50).Value = input.Align;
+        command.Parameters.Add("@Align", SqlDbType.NVarChar, 50).Value = input.Align ?? "";
         command.Parameters.Add("@HeaderAlign", SqlDbType.NVarChar, 50).Value = input.HeaderAlign;
         command.Parameters.Add("@Format", SqlDbType.NVarChar, 50).Value = DbValue(input.Format);
         command.Parameters.Add("@Visible", SqlDbType.Bit).Value = input.IsVisible;
@@ -409,7 +409,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         a.Label.Trim().Equals(b.Label.Trim(), StringComparison.OrdinalIgnoreCase)
         && a.DataType.Equals(b.DataType, StringComparison.OrdinalIgnoreCase)
         && a.Width == b.Width
-        && a.Align.Equals(b.Align, StringComparison.OrdinalIgnoreCase)
+        && NullableEquals(a.Align, b.Align)
         && a.HeaderAlign.Equals(b.HeaderAlign, StringComparison.OrdinalIgnoreCase)
         && NullableEquals(a.Format, b.Format)
         && a.IsVisible == b.IsVisible && a.IsDefault == b.IsDefault && a.IsQueryable == b.IsQueryable
@@ -436,7 +436,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
             throw new ArgumentException("字段名称不能为空且不能超过 300 个字符。");
         if (!AllowedTypes.Contains(input.DataType)) throw new ArgumentException("字段类型无效。");
         if (input.Width is < 40 or > 300) throw new ArgumentException("显示宽度必须在 40-300 之间。");
-        if (!AllowedAlign.Contains(input.Align)) throw new ArgumentException("对齐方式无效。");
+        if (!AllowedAlign.Contains(input.Align ?? "")) throw new ArgumentException("对齐方式无效。");
         if (!AllowedAlign.Contains(input.HeaderAlign)) throw new ArgumentException("列标题对齐方式无效。");
         if ((input.Format?.Length ?? 0) > 50) throw new ArgumentException("显示格式过长。");
         if ((input.DefaultValue?.Length ?? 0) > 200) throw new ArgumentException("默认值过长。");
