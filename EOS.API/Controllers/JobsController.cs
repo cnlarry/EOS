@@ -276,7 +276,7 @@ public sealed class JobsController(
         return columns;
     }
 
-    private static async Task<int> RunWageCalcForMonthAsync(SqlConnection connection,SqlTransaction transaction,string month,CancellationToken token)
+    private static async Task<int> RunWageCalcForMonthAsync(SqlConnection connection,SqlTransaction? transaction,string month,CancellationToken token)
     {
         const string listSql="SELECT LTRIM(RTRIM(WAGE_TYPE)),LTRIM(RTRIM(WAGE_NO)) FROM dbo.HRM_WAGE_M WITH (NOLOCK) WHERE LTRIM(RTRIM(COUNT_MONTH))=@month;";
         var types=new List<(string Type,string No)>();
@@ -304,7 +304,7 @@ public sealed class JobsController(
     private sealed record WageAdjustment(string EmpId,double Add,double Work,double Over,double Rest,double Holiday,double WorkT,double OverT,double RestT,double HoliT);
 
     private static async Task<IReadOnlyList<WageAdjustment>> LoadWageAdjustmentsAsync(
-        SqlConnection connection,SqlTransaction transaction,string month,WageAdjustConfig c,CancellationToken token)
+        SqlConnection connection,SqlTransaction? transaction,string month,WageAdjustConfig c,CancellationToken token)
     {
         var sql=$"""
             SELECT LTRIM(RTRIM(d.EMP_ID)),d.[{c.Add}],d.[{c.Work}],d.[{c.Over}],d.[{c.Rest}],d.[{c.Holiday}],
@@ -329,7 +329,7 @@ public sealed class JobsController(
     private static double GetDouble(SqlDataReader reader,int ordinal)=>reader.IsDBNull(ordinal)?0:Convert.ToDouble(reader.GetValue(ordinal));
 
     private static async Task<int> AdjustDiaryByWageAsync(
-        SqlConnection connection,SqlTransaction transaction,IReadOnlyList<WageAdjustment> adjustments,WageAdjustConfig c,CancellationToken token)
+        SqlConnection connection,SqlTransaction? transaction,IReadOnlyList<WageAdjustment> adjustments,WageAdjustConfig c,CancellationToken token)
     {
         if(adjustments.Count==0)return 0;
         var empIds=string.Join(',',adjustments.Select(a=>$"'{(a.EmpId.Replace("'","''"))}'"));
@@ -360,7 +360,7 @@ public sealed class JobsController(
     private sealed record DiaryRow(string EmpId,DateTime CountDate,string? TimeTypeId,double Worktime,double Overtime,double RestOvertime,double HolidayOvertime);
 
     private static async Task<IReadOnlyList<DiaryRow>> LoadDiaryRowsAsync(
-        SqlConnection connection,SqlTransaction transaction,string empIds,WageAdjustConfig c,CancellationToken token)
+        SqlConnection connection,SqlTransaction? transaction,string empIds,WageAdjustConfig c,CancellationToken token)
     {
         var sql=$"""
             SELECT LTRIM(RTRIM(EMP_ID)),COUNT_DATE,LTRIM(RTRIM(ISNULL(TIMETYPE_ID,''))),ISNULL(WORKTIME,0),ISNULL(OVERTIME,0),ISNULL(REST_OVERTIME,0),ISNULL(HOLIDAY_OVERTIME,0)
@@ -375,7 +375,7 @@ public sealed class JobsController(
         return rows;
     }
 
-    private static async Task<Dictionary<string,bool[]>> LoadTimeTypesAsync(SqlConnection connection,SqlTransaction transaction,CancellationToken token)
+    private static async Task<Dictionary<string,bool[]>> LoadTimeTypesAsync(SqlConnection connection,SqlTransaction? transaction,CancellationToken token)
     {
         const string sql="SELECT LTRIM(RTRIM(TIMETYPE_ID)),ISNULL(IF_OVERTIME1,0),ISNULL(IF_OVERTIME2,0),ISNULL(IF_OVERTIME3,0),ISNULL(IF_OVERTIME4,0) FROM dbo.HRM_TIMETYPE WITH (NOLOCK);";
         await using var command=new SqlCommand(sql,connection,transaction);
@@ -387,7 +387,7 @@ public sealed class JobsController(
     }
 
     private static async Task ClearDiaryRow(
-        SqlConnection connection,SqlTransaction transaction,DiaryRow row,string mode,IReadOnlyDictionary<string,bool[]> timeTypes,CancellationToken token)
+        SqlConnection connection,SqlTransaction? transaction,DiaryRow row,string mode,IReadOnlyDictionary<string,bool[]> timeTypes,CancellationToken token)
     {
         // 对齐旧 AdjustByWage.aspx.cs：holiday/rest/work 清空对应加班/工时字段 + 全部时段字段与汇总；
         // over 仅清 OVERTIME 与按 HRM_TIMETYPE.IF_OVERTIME1-4 标记的时段（ON/OUT/BE_LATE/LEAVE_EARLY）。

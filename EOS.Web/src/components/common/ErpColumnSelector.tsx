@@ -141,7 +141,7 @@ export function ErpColumnSelector({
 
   return (
     <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className={`modal-dialog modal-dialog-centered erp-columns-dialog ${groups.length > 1 ? 'erp-columns-dialog-paired' : 'erp-columns-dialog-single'}`}>
+      <div className={`modal-dialog modal-dialog-centered erp-columns-dialog ${groups.length > 1 ? 'erp-dialog-xl' : 'erp-dialog-sm'}`}>
         <div className="modal-content">
           <div className="modal-header">
             <h2 className="modal-title">{title}</h2>

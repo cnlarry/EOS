@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { apiClient } from '../../services/api'
+import { MENU_CHANGED_EVENT } from '../../services/menuEvents'
 import { AuthProvider } from './AuthProvider'
 import { useAuth } from './authContext'
 import type { AppBootstrap } from './types'
@@ -60,6 +61,15 @@ describe('AuthProvider', () => {
     await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('admin'))
     await screen.getByRole('button', { name: 'logout' }).click()
     await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('none'))
+  })
+
+  it('菜单变更事件触发 bootstrap 重新拉取（侧栏即时生效）', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue(bootstrap)
+    render(<AuthProvider><Probe /></AuthProvider>)
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('admin'))
+    const callsBefore = vi.mocked(apiClient.get).mock.calls.length
+    window.dispatchEvent(new Event(MENU_CHANGED_EVENT))
+    await waitFor(() => expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(callsBefore))
   })
 
   it('useAuth 在 Provider 外抛出', () => {

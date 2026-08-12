@@ -1841,7 +1841,7 @@ public sealed class DocumentWorkbenchRepository(
         return result;
     }
 
-    private static async Task<bool> ColumnExistsAsync(SqlConnection connection,SqlTransaction transaction,string table,string column,CancellationToken token)
+    private static async Task<bool> ColumnExistsAsync(SqlConnection connection,SqlTransaction? transaction,string table,string column,CancellationToken token)
     {
         const string sql="SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table AND COLUMN_NAME=@Column;";
         await using var command=new SqlCommand(sql,connection,transaction);

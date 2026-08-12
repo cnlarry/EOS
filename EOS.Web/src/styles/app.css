@@ -11,8 +11,6 @@ html { margin-left: 0 !important; }
 body { background: var(--tblr-bg-surface-secondary); }
 button, input, select { font: inherit; }
 .erp-columns-dialog { max-width: calc(100vw - 24px); }
-.erp-columns-dialog-paired { width: 970px; }
-.erp-columns-dialog-single { width: 510px; }
 .erp-columns-dialog .modal-body { overflow-x: hidden; }
 .erp-columns-layout { display: flex; justify-content: center; gap: 18px; overflow-x: auto; }
 .erp-columns-group { flex: 0 0 auto; }
@@ -49,7 +47,7 @@ button, input, select { font: inherit; }
 .erp-sidebar .navbar-brand > span:last-child { min-width: 0; text-align: left; }
 .erp-sidebar .navbar-brand small { display: block; color: var(--tblr-secondary); font-size: 11px; font-weight: 500; margin-top: 2px; }
 .erp-brand-mark { display: grid; flex: 0 0 auto; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(145deg, #206bc4, #4d91e5); color: white; font-weight: 800; box-shadow: 0 7px 18px rgba(32, 107, 196, .28); }
-.erp-sidebar .nav-link { width: auto; display: flex; align-items: center; justify-content: flex-start !important; gap: 10px; border-radius: 7px; margin: 0px 7px; padding: 0px 11px; text-align: left; }
+.erp-sidebar .nav-link { width: auto; display: flex; align-items: center; justify-content: flex-start !important; gap: 11.5px; border-radius: 7px; margin: 0px 7px; padding: 0px 11px; text-align: left; }
 /* 顶层直达项（工作台/个人设置）与菜单保持同字号 */
 .erp-sidebar .navbar-nav > .nav-link { font-size: 12px; }
 .erp-sidebar .nav-link-icon { flex: 0 0 18px; width: 18px; margin: 0 !important; }
@@ -95,7 +93,7 @@ button, input, select { font: inherit; }
    二级小圆点中心与箭头中心对齐；二级文字列在 66px；三级小圆点中心对齐 66px，三级文字在 78px。 */
 .erp-nav-group-depth-2 .erp-nav-group-toggle { gap: 6px; padding-left: 40px !important; font-size: 12px; }
 .erp-nav-group-depth-3 .erp-nav-group-toggle { gap: 6px; padding-left: 59px !important; font-size: 12px; }
-.erp-sidebar .navbar-nav .erp-nav-child-depth-3 { padding-left: 71px !important; }
+.erp-sidebar .navbar-nav .erp-nav-child-depth-3 { padding-left: 78px !important; }
 /* 二级分组展开后：从展开/折叠箭头正下方（箭头中心 53px）向下延伸的虚线 */
 .erp-nav-children-depth-3::before {
   content: "";
@@ -122,23 +120,261 @@ button, input, select { font: inherit; }
   pointer-events: none;
 }
 .erp-nav-child-depth-2::before { left: 46.5px; }
-.erp-nav-child-depth-3::before { left: 59px; }
+.erp-nav-child-depth-3::before { left: 65.5px; }
 
 .erp-sidebar-collapsed .erp-nav-search { display: none; }
-.erp-sidebar-toggle { position: fixed; left: 219px; bottom: 67px; z-index: 1046; width: 29px; height: 42px; transform: translateX(-100%); border: 1px solid var(--tblr-border-color); border-right: 0; border-radius: 7px 0 0 7px; background: var(--tblr-bg-surface); box-shadow: -3px 2px 8px rgba(24, 36, 51, .08); transition: left .2s ease; }
+.erp-sidebar-toggle { position: fixed; left: calc(var(--erp-sidebar-width, 220px) - 1px); bottom: 67px; z-index: 1046; width: 29px; height: 42px; transform: translateX(-100%); border: 1px solid var(--tblr-border-color); border-right: 0; border-radius: 7px 0 0 7px; background: var(--tblr-bg-surface); box-shadow: -3px 2px 8px rgba(24, 36, 51, .08); transition: left .2s ease; }
+.erp-sidebar-resizer { position: fixed; top: 0; bottom: 0; left: calc(var(--erp-sidebar-width, 220px) - 3px); width: 6px; z-index: 1047; cursor: col-resize; touch-action: none; }
+.erp-sidebar-resizer:hover, .erp-sidebar-resizer:active { background: color-mix(in srgb, var(--tblr-primary) 22%, transparent); }
+.erp-sidebar-resizing { user-select: none; }
+.erp-sidebar-resizing .erp-sidebar,
+.erp-sidebar-resizing .erp-context-bar,
+.erp-sidebar-resizing > .page-wrapper { transition: none !important; }
+.erp-sidebar-collapsed .erp-sidebar-resizer { display: none; }
 
 /* ---- 菜单管理（2301） ---- */
 .erp-menu-tree { max-height: 78vh; overflow-y: auto; }
-.erp-menu-tree-row { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: transparent; text-align: left; border-radius: 6px; padding: 5px 8px; font-size: 12px; cursor: pointer; }
-.erp-menu-tree-row:hover { background: var(--tblr-primary-lt); }
-.erp-menu-tree-row.active { background: var(--tblr-primary-lt); color: var(--tblr-primary); font-weight: 600; }
-.erp-menu-tree-label { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.erp-menu-tree-id { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 11px; }
+.erp-menu-sort-bar { background: var(--tblr-bg-surface); position: sticky; top: 0; z-index: 5; }
+.erp-menu-sort-bar .btn { flex: 0 0 auto; white-space: nowrap; }
+/* 复刻左侧系统菜单（AppShell 侧栏）的样式：图标、展开折叠箭头、虚线、圆点 */
+.erp-menu-tree .nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start !important;
+  gap: 11.5px;
+  width: 100%;
+  height: 32px;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-size: 12px;
+}
+.erp-menu-tree .nav-link:hover { background: var(--tblr-primary-lt); }
+.erp-menu-tree .nav-link-icon { flex: 0 0 18px; width: 18px; margin: 0 !important; }
+.erp-menu-tree .nav-link-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.erp-menu-tree .nav-link-title > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erp-menu-tree .nav-link.active { color: var(--tblr-primary); font-weight: 650; }
+.erp-menu-tree .erp-nav-group-toggle.group-active { color: var(--tblr-primary); }
+.erp-menu-tree .erp-nav-group { flex: 0 0 32px; height: 32px; min-height: 32px; max-height: 32px; }
+.erp-menu-tree .erp-nav-group-toggle { height: 32px; min-height: 32px; max-height: 32px; }
+/* 二级/三级分组恢复侧栏设计的 6px 间隙（.erp-menu-tree .nav-link 的 10px 会覆盖全局规则，这里按深度重新声明） */
+.erp-menu-tree .erp-nav-group-depth-2 .erp-nav-group-toggle { gap: 6px; }
+.erp-menu-tree .erp-nav-group-depth-3 .erp-nav-group-toggle { gap: 6px; }
+.erp-menu-tree .erp-nav-child { position: relative; height: 32px; min-height: 32px; margin-block: 0; padding: 0 11px 0 59px !important; font-size: 12px; }
+.erp-menu-tree .erp-nav-child-depth-3 { padding-left: 78px !important; }
+/* 叶子圆点与同级菜单组折叠箭头同一列，且该列位于上级菜单第一个字中心：
+   管理页 二级箭头中心 46.5px=一级字中心（11 内边距+18 图标+11.5 间距+6 半字）、
+   三级箭头中心 65.5px=二级字中心（40 内边距+13 箭头+6 间距+6 半字）；
+   侧栏同样适用（行含 7px 外边距，全局 65.5px 即三级箭头列） */
+.erp-menu-tree .erp-nav-child-depth-2::before { left: 46.5px; }
+.erp-menu-tree .erp-nav-child-depth-3::before { left: 65.5px; }
+/* 展开虚线对齐（管理页行无侧栏 7px 外边距，重新按实际几何定位）：
+   一级分组线对根图标中心（20px），二级对展开箭头中心（46.5px），三级对箭头中心（65.5px） */
+.erp-menu-tree .erp-nav-children-depth-2::before { left: 20px; }
+.erp-menu-tree .erp-nav-children-depth-3::before { left: 46.5px; }
+.erp-menu-tree .erp-nav-children-depth-4::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 65.5px;
+  border-left: 1px dashed var(--tblr-border-color);
+  pointer-events: none;
+}
+.erp-menu-tree-id { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 11px; flex: 0 0 auto; }
+/* 拖拽排序/跨父移动 */
+.erp-menu-node { position: relative; }
+.erp-menu-node[draggable='true'] { cursor: grab; }
+.erp-menu-node.erp-menu-dragging { opacity: .45; }
+.erp-menu-node.erp-drop-before::before,
+.erp-menu-node.erp-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--tblr-primary);
+  z-index: 6;
+  pointer-events: none;
+}
+.erp-menu-node.erp-drop-before::before { top: -1px; }
+.erp-menu-node.erp-drop-after::after { bottom: -1px; }
+.erp-menu-node.erp-drop-into > .nav-link {
+  background: var(--tblr-primary-lt);
+  outline: 1px dashed var(--tblr-primary);
+  outline-offset: -1px;
+}
+.erp-menu-tree-toolbar { background: var(--tblr-bg-surface); position: sticky; top: 0; z-index: 5; }
+.erp-menu-search { flex: 1 1 auto; min-width: 0; margin: 0; }
+.erp-menu-context-menu {
+  position: fixed;
+  z-index: 1050;
+  width: fit-content;
+  min-width: 150px;
+  max-width: 240px;
+  padding: 4px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
+  background: var(--tblr-bg-surface);
+  box-shadow: 0 8px 24px rgba(24, 36, 51, .14);
+}
+.erp-menu-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.erp-menu-context-menu button:hover { background: var(--tblr-primary-lt); }
+.erp-menu-context-menu button.text-danger { color: var(--tblr-danger); }
+.erp-menu-context-menu button.text-danger:hover { background: var(--tblr-danger-lt); }
+.erp-menu-rename-wrap { flex: 1 1 auto; }
+.erp-menu-rename-input { height: 26px; min-height: 26px; padding: 2px 8px; font-size: 12px; }
+.erp-menu-icon-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  height: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
+}
+.erp-menu-icon-preview {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
+  color: var(--tblr-primary);
+  background: var(--tblr-primary-lt);
+}
+.erp-menu-icon-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 64px;
+  min-width: 64px;
+  padding: 6px 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--tblr-secondary);
+  font-size: 10px;
+}
+.erp-menu-icon-option:hover { background: var(--tblr-primary-lt); color: var(--tblr-primary); }
+.erp-menu-icon-option.active { border-color: var(--tblr-primary); background: var(--tblr-primary-lt); color: var(--tblr-primary); }
+.erp-menu-icon-option span { max-width: 62px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ================= 统一弹窗尺寸规范 =================
+ * sm 560px：单栏选择；md 720px：列表/双栏选择；lg 880px：网格/图标；xl 970px：双栏转移。
+ * 所有选择器弹窗统一使用 .erp-dialog-*，并同步 --tblr-modal-width 与最大宽度。 */
+.erp-dialog-sm { --tblr-modal-width: 560px; width: 560px; max-width: calc(100vw - 24px); }
+.erp-dialog-md { --tblr-modal-width: 720px; width: 720px; max-width: calc(100vw - 24px); }
+.erp-dialog-lg { --tblr-modal-width: 880px; width: 880px; max-width: calc(100vw - 24px); }
+.erp-dialog-xl { --tblr-modal-width: 970px; width: 970px; max-width: calc(100vw - 24px); }
+.erp-menu-table-list { display: flex; flex-direction: column; gap: 2px; max-height: 46vh; overflow-y: auto; }
+.erp-menu-table-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+}
+.erp-menu-table-option:hover { background: var(--tblr-primary-lt); }
+.erp-menu-table-id { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 11px; flex: 0 0 auto; }
+.erp-menu-table-desc { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erp-field-picker-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.erp-field-picker-list { display: flex; flex-direction: column; gap: 2px; max-height: 46vh; overflow-y: auto; }
+.erp-field-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+}
+.erp-field-picker-option:hover { background: var(--tblr-primary-lt); }
+.erp-field-picker-option.picked { background: var(--tblr-primary-lt); color: var(--tblr-primary); }
+.erp-field-picker-desc { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erp-field-picker-order {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--tblr-primary-lt);
+  color: var(--tblr-primary);
+  font-size: 11px;
+}
+.erp-field-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.erp-field-dir {
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--tblr-primary);
+  font-size: 11px;
+  padding: 1px 6px;
+}
+.erp-field-dir:hover { background: var(--tblr-primary-lt); }
+.erp-field-mini {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--tblr-secondary);
+}
+.erp-field-mini:hover:not(:disabled) { background: var(--tblr-primary-lt); color: var(--tblr-primary); }
+.erp-field-mini:disabled { opacity: .4; }
+.erp-filter-rows { display: flex; flex-direction: column; gap: 8px; }
+.erp-filter-row > .form-select { flex: 1 1 30%; min-width: 0; }
+.erp-filter-row > .form-control { flex: 1 1 auto; min-width: 0; }
+.erp-filter-logic { flex: 0 0 70px !important; }
+.erp-filter-op { flex: 0 0 80px !important; }
 .erp-menu-form { max-height: 78vh; overflow-y: auto; }
 .erp-menu-group-card { border-color: var(--tblr-border-color); }
 .erp-mobile-menu-trigger { position: fixed; top: 8px; left: 8px; z-index: 1035; }
 .erp-list-command-bar { display: flex; min-height: 48px; align-items: center; gap: 5px; padding: 6px 8px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); border-radius: var(--tblr-border-radius) var(--tblr-border-radius) 0 0; }
 .erp-list-command-bar .btn { flex: 0 0 auto; white-space: nowrap; }
+/* 工作台命令栏：纯图形按钮（正方形圆角，hover 由 title 显示按钮名称） */
+.erp-workbench-page .erp-list-command-bar .btn { width: 30px; height: 30px; flex: 0 0 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
+.erp-workbench-page .erp-list-command-bar .btn svg { width: 16px; height: 16px; }
 .erp-active-group-filter { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-primary-lt); color: var(--tblr-primary); font-size: 12px; }
 .erp-active-group-filter button { border: 0; background: transparent; color: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; margin-left: auto; }
 .erp-list-global-search { height: 34px; flex: 0 1 360px; min-width: 180px; max-width: 360px; padding-block: 4px; }
@@ -161,14 +397,15 @@ button, input, select { font: inherit; }
   z-index: 1030;
   min-width: 10rem;
 }
-.erp-shell > .page-wrapper { display: flex; flex-direction: column; min-width: 0; width: 100%; max-width: none; min-height: 100vh; }
-.erp-context-bar { display: flex; align-items: center; height: 64px; padding: 0 10px; border: 0; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); box-shadow: none; }
-.erp-context-bar > .container-fluid { display: flex; height: 100%; align-items: center; padding: 0 !important; }
-.erp-context-user { display: flex; height: 100%; align-items: center; gap: 4px; }
+.erp-shell > .page-wrapper { display: flex; flex-direction: column; min-width: 0; width: 100%; max-width: none; min-height: 100vh; padding-top: 64px; }
+/* 面包屑导航容器固定定位：不随页面滚动消失；自身不出现滚动条，溢出交由 page-body 内部滚动 */
+.erp-context-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 1030; display: flex; align-items: center; height: 64px; padding: 0 10px; border: 0; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); box-shadow: none; overflow: hidden; }
+.erp-context-bar > .container-fluid { display: flex; height: 100%; min-width: 0; align-items: center; padding: 0 !important; }
+.erp-context-user { display: flex; flex: 0 0 auto; height: 100%; align-items: center; gap: 4px; }
 .erp-context-user .erp-user { height: 100%; border-radius: 0; }
 .erp-context-date { height: 32px; align-items: center; gap: 8px; margin-right: 4px; padding: 0 10px; color: var(--tblr-secondary); border-right: 1px solid var(--tblr-border-color); font-size: 13px; line-height: 1; white-space: nowrap; }
 .erp-context-date strong { color: var(--tblr-body-color); font-weight: 600; }
-.erp-context-bar nav { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; color: var(--tblr-secondary); font-size: 14px; font-weight: 600; line-height: 1; }
+.erp-context-bar nav { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; gap: 7px; color: var(--tblr-secondary); font-size: 14px; font-weight: 600; line-height: 1; overflow: hidden; }
 .erp-page-toolbar { padding: 6px 10px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); }
 .erp-page-toolbar > .container-fluid { display: flex; align-items: center; gap: 5px; padding: 0 !important; }
 .erp-page-toolbar .btn { white-space: nowrap; }
@@ -178,10 +415,10 @@ button, input, select { font: inherit; }
 .erp-toolbar-search input[type="date"] { width: 135px; }
 .erp-toolbar-divider { align-self: stretch; width: 1px; margin: 0 3px; background: var(--tblr-border-color); }
 .erp-context-home { color: var(--tblr-secondary); flex: 0 0 auto; }
-.erp-context-section { white-space: nowrap; }
-.erp-context-bar h1 { margin: 0; color: var(--tblr-body-color); font-size: 14px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.erp-context-section { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.erp-context-bar h1 { margin: 0; max-width: 280px; overflow: hidden; text-overflow: ellipsis; color: var(--tblr-body-color); font-size: 14px; font-weight: 600; line-height: 1; white-space: nowrap; }
 .erp-context-separator { color: var(--tblr-secondary); opacity: .65; }
-.page-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; margin: 0 !important; padding: 10px 0 !important; }
+.page-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; height: calc(100vh - 64px); overflow-y: auto; margin: 0 !important; padding: 10px 0 !important; }
 .page-body > .container-fluid { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; padding-right: 10px !important; padding-left: 10px !important; }
 .page-body > .container-fluid > :first-child { margin-top: 0 !important; }
 .erp-command-bar .card-body { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
@@ -191,6 +428,7 @@ button, input, select { font: inherit; }
 .erp-master-table-region.is-loading::after { position: absolute; top: 10px; right: 12px; width: 16px; height: 16px; content: ''; border: 2px solid var(--tblr-border-color); border-top-color: var(--tblr-primary); border-radius: 50%; animation: spinner-border .65s linear infinite; }
 .erp-detail-card { overflow: hidden; }
 .erp-detail-card .card-header { min-height: 2.8rem; }
+.erp-detail-card .card-header.erp-detail-toolbar { padding: 10px; }
 .erp-detail-card .table-responsive { min-height: 150px; max-height: calc(100vh - 430px); overflow-y: auto; overscroll-behavior: contain; border-radius: 0 0 var(--tblr-border-radius) var(--tblr-border-radius); }
 .erp-detail-card tfoot td { background: var(--tblr-bg-surface-secondary); }
 .erp-detail-card tfoot tr:last-child td:first-child { border-bottom-left-radius: var(--tblr-border-radius); }
@@ -232,7 +470,16 @@ button, input, select { font: inherit; }
    ========================================================================== */
 .erp-data-table { font-size: 12px; }
 .erp-data-table th { position: relative; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.erp-data-table thead th {
+  border-top: 0;
+  border-bottom: 0;
+  /* 表头列间白色 1px 竖线：直观标出各列宽度边界（表头浅灰底上可见），不加上下边框 */
+  border-right: 1px solid #fff;
+}
+.erp-data-table thead th:last-child { border-right: 0; }
 .erp-data-table td { font-size: 12px; }
+/* 单元格强制单行：超宽时由 .erp-cell-ellipsis 省略截断，title 悬停显示全文（复制仍取完整 textContent） */
+.erp-data-table td { white-space: nowrap; }
 .erp-data-table .form-check-input { width: 14px; height: 14px; margin-top: 0; border-radius: 3px; }
 .erp-data-table > :not(caption) > * > * { padding: 5px !important; }
 .erp-data-table.erp-table-compact > :not(caption) > * > * { padding: 2px 6px !important; }
@@ -272,19 +519,25 @@ button, input, select { font: inherit; }
 .erp-data-table .erp-cell-ellipsis { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .erp-data-table tfoot td { font-weight: 600; }
 .erp-table-context-menu { min-width: 8rem; }
+/* 滚动加载更多：底部哨兵与提示（ErpTable onEndReached） */
+.erp-table-load-more { display: flex; align-items: center; justify-content: center; min-height: 28px; padding: 4px 0; }
+.erp-table-load-more-hint { font-size: 12px; color: var(--tblr-secondary); }
 .erp-detail-card .table { font-size: 12px; }
 .erp-detail-card .table th,
 .erp-detail-card .table td { font-size: 12px; }
 
-/* 工作台：视口撑满布局（无页面级滚动条，主表/子表按比例瓜分高度，各自内部滚动） */
+/* 工作台：视口撑满布局（无页面级滚动条；主表/子表高度固定，互不因内容挤压，各自内部滚动） */
 .erp-workbench-page { display: flex; flex-direction: column; gap: 8px; min-height: 320px; flex: 1 1 auto; overflow: hidden; }
-.erp-workbench-page > .erp-list-card { flex: 1 1 69%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.erp-workbench-page > .erp-list-card .erp-master-table-region { flex: 1 1 auto; min-height: 0; max-height: calc(100vh - 330px); overflow: auto; margin-bottom: 6px; }
+.erp-workbench-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.erp-workbench-page > .erp-list-card .erp-master-table-region { flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto; margin-bottom: 6px; }
 .erp-workbench-page > .erp-list-card .erp-master-table-region .table-responsive { overflow: visible; }
-.erp-workbench-page > .erp-detail-card { flex: 1 1 31%; min-height: 140px; display: flex; flex-direction: column; overflow: auto; }
-.erp-workbench-page > .erp-detail-card .table-responsive { flex: 0 0 auto; min-height: 0; max-height: none; overflow: visible; border-radius: var(--tblr-border-radius); }
+/* 子表卡按工作台高度 30% 分配（150~260px 区间），主表占满剩余空间 */
+.erp-workbench-page > .erp-detail-card { flex: 0 0 30%; min-height: 150px; max-height: 260px; display: flex; flex-direction: column; overflow: hidden; }
+/* 子表卡内部：erp-table-shell 是唯一滚动容器（内容过多时出现上下滚动条），表头 sticky 跟随其滚动 */
+.erp-workbench-page > .erp-detail-card .erp-table-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+.erp-workbench-page > .erp-detail-card .table-responsive { flex: 1 1 auto; min-height: 0; max-height: none; overflow: visible; border-radius: var(--tblr-border-radius); }
 /* 单表模块（无子表）：列表卡占满整页，主表区域自适应视口高度，不再被子表预留高度压矮 */
-.erp-workbench-page.erp-workbench-single > .erp-list-card { flex-basis: 100%; }
+.erp-workbench-page.erp-workbench-single > .erp-list-card { flex: 1 1 auto; }
 .erp-workbench-page.erp-workbench-single > .erp-list-card .erp-master-table-region { max-height: none; }
 .erp-workbench-page .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
 .erp-workbench-page .erp-data-table thead th.erp-frozen-left,
@@ -307,8 +560,10 @@ button, input, select { font: inherit; }
 .erp-sidebar-backdrop { display: none; }
 
 @media (min-width: 992px) {
-  .erp-sidebar { width: 220px !important; max-width: 220px; transition: width .2s ease; }
-  .erp-shell > .page-wrapper { position: absolute; top: 0; right: 0; left: 220px; width: auto !important; max-width: none !important; min-height: 100vh; margin: 0 !important; padding-left: 0 !important; transition: left .2s ease; }
+  .erp-sidebar { width: var(--erp-sidebar-width, 220px) !important; max-width: var(--erp-sidebar-width, 220px); transition: width .2s ease; }
+  .erp-context-bar { left: var(--erp-sidebar-width, 220px); transition: left .2s ease; }
+  .erp-sidebar-collapsed .erp-context-bar { left: 72px; }
+  .erp-shell > .page-wrapper { position: absolute; top: 0; right: 0; left: var(--erp-sidebar-width, 220px); width: auto !important; max-width: none !important; min-height: 100vh; margin: 0 !important; padding-left: 0 !important; transition: left .2s ease; }
   .erp-sidebar-collapsed .erp-sidebar { width: 72px !important; max-width: 72px; }
   .erp-sidebar-collapsed .erp-shell > .page-wrapper { left: 72px; width: auto !important; max-width: none !important; margin-left: 0 !important; }
   .erp-sidebar-collapsed .erp-sidebar-toggle { left: 71px; }
@@ -321,6 +576,7 @@ button, input, select { font: inherit; }
 }
 
 @media (max-width: 991.98px) {
+  .erp-sidebar-resizer { display: none; }
   .erp-sidebar { display: block; position: fixed; inset: 0 auto 0 0; z-index: 1045; width: min(18rem, 85vw); transform: translateX(-105%); transition: transform .2s ease; background: var(--tblr-bg-surface); }
   .erp-sidebar.show { transform: translateX(0); }
   .erp-sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 1040; border: 0; background: rgba(14, 21, 31, .48); }
@@ -456,19 +712,19 @@ button, input, select { font: inherit; }
 .erp-form-card.card { border: 0; box-shadow: none; background: transparent; }
 .erp-form-card .card-body { padding: 0; }
 
-/* 工具栏：页签靠左、操作按钮靠右；背景透明继承页面，页签紧贴网格顶边、不被容器包裹；
-   左侧缩进 20px 避开容器圆角；页签下边框归零，与网格顶边融为一体 */
-.erp-form-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 0; padding-left: 20px; background: transparent; }
-.erp-form-toolbar .erp-form-tabs { margin-bottom: 0; border-bottom: 0; }
-.erp-form-toolbar .erp-form-tabs .nav-link { border-bottom: 0; }
-.erp-form-toolbar .erp-form-tabs .nav-link.active { background-color: var(--tblr-bg-surface); }
-.erp-form-toolbar .erp-form-tabs .nav-link { border-radius: 8px 8px 0 0; }
+/* 主表工具栏独立一行（表单上方），与表单网格左边框对齐，下方留 10px 间距；
+   背景透明继承页面，按钮靠左；页签单独一行在表单网格上方，页签下边框归零，与网格顶边融为一体 */
+.erp-form-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding-left: 0; background: transparent; }
+.erp-form-toolbar .btn { min-width: 72px; }
+.erp-form-toolbar-actions { margin-left: auto; }
+.erp-form-tabs { margin-bottom: 0; border-bottom: 0; }
+.erp-form-tabs .nav-link { border-bottom: 0; }
+.erp-form-tabs .nav-link.active { background-color: var(--tblr-bg-surface); }
+.erp-form-tabs .nav-link { border-radius: 8px 8px 0 0; }
 /* 相邻标签始终只保留一条分隔线，且激活标签边框完整：
    非激活的后续标签去掉左边框；激活标签的前一个邻居去掉右边框（:has） */
-.erp-form-toolbar .erp-form-tabs .nav-item + .nav-item .nav-link:not(.active) { border-left: 0 !important; }
-.erp-form-toolbar .erp-form-tabs .nav-item:has(+ .nav-item .nav-link.active) .nav-link { border-right: 0 !important; }
-.erp-form-toolbar-actions { flex: 0 0 auto; padding-bottom: 10px; }
-.erp-form-toolbar-actions .btn { min-width: 72px; }
+.erp-form-tabs .nav-item + .nav-item .nav-link:not(.active) { border-left: 0 !important; }
+.erp-form-tabs .nav-item:has(+ .nav-item .nav-link.active) .nav-link { border-right: 0 !important; }
 
 /* 统一表单紧凑控件（旧系统编辑页为紧凑输入框，避免"胖"控件） */
 .erp-form-grid .form-control,
@@ -497,23 +753,31 @@ button, input, select { font: inherit; }
 .erp-chooser-query .erp-chooser-field { flex: 0 0 170px; width: 170px; }
 .erp-chooser-query .form-control { min-width: 0; }
 
-/* 明细网格：序号列窄固定，操作列紧凑 */
+/* 明细网格：序号列窄固定，操作列紧凑（基于统一 erp-data-table 电子表格外壳） */
 .erp-detail-row-no { width: 52px; min-width: 52px; }
 .erp-detail-actions { width: 74px; min-width: 74px; }
 .erp-detail-check { width: 36px; min-width: 36px; }
+.erp-detail-check .form-check-input { display: block; margin: 0 auto; }
 /* 明细列宽对齐工作台子表：table-layout fixed + DISPLAY_LENGTH 宽度，输入框填满列 */
 .erp-detail-grid { table-layout: fixed; width: 100%; }
-.erp-detail-grid .form-control { width: 100%; min-width: 0; }
+.erp-detail-grid .form-control { width: 100%; min-width: 96px; }
 .erp-detail-grid .form-control, .erp-detail-grid .form-select { height: 30px; padding: 3px 8px; font-size: 13px; }
 .erp-detail-grid .erp-form-control { width: 100%; min-width: 0; }
 .erp-detail-grid .erp-form-control .d-flex { flex-wrap: nowrap; }
 .erp-detail-grid .erp-form-control .d-flex > .form-control,
-.erp-detail-grid .erp-form-control .d-flex > .form-select { flex: 1 1 auto; width: auto; min-width: 0; }
+.erp-detail-grid .erp-form-control .d-flex > .form-select { flex: 1 1 auto; width: auto; min-width: 96px; }
 .erp-detail-grid .form-check-input { width: 14px; height: 14px; margin-top: 0; }
-.erp-detail-sort { border: 0; background: transparent; padding: 0; font: inherit; color: inherit; cursor: pointer; white-space: nowrap; }
-.erp-detail-sort:hover { color: var(--tblr-primary); }
 /* 明细空行占位：行数不足 5 时补足，保持网格完整（不参与保存） */
 .erp-detail-filler td { height: 41px; }
+
+/* 统一表单：视口撑满（与工作台一致），主表单占剩余位置、明细固定高度，各自内部滚动 */
+.erp-form-page { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.erp-form-page > .erp-form-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.erp-form-page > .erp-form-card .card-body { display: flex; flex-direction: column; min-height: 0; }
+.erp-form-page > .erp-form-card .erp-form-toolbar { flex: 0 0 auto; }
+.erp-form-page > .erp-form-card .erp-form-grid { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.erp-form-page > .card.erp-detail-card { flex: 0 0 auto; height: 300px; display: flex; flex-direction: column; overflow: hidden; }
+.erp-form-page > .card.erp-detail-card .table-responsive { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; }
 
 /* ===== 系统参数设置（110111）=====
    复用统一表单编辑网格（erp-form-grid），分区标题行 + 12px 标准字号 */

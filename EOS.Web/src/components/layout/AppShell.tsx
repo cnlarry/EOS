@@ -1,42 +1,26 @@
 import {
-  IconBarcode,
-  IconBriefcase,
-  IconBuildingFactory,
-  IconCar,
-  IconChartBar,
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
-  IconClipboardCheck,
-  IconCoins,
-  IconDashboard,
-  IconDatabase,
-  IconFileText,
   IconFolder,
-  IconGitBranch,
   IconHome,
   IconMenu2,
   IconMoon,
-  IconPackage,
-  IconPalette,
-  IconReportMoney,
   IconSearch,
-  IconSettings,
-  IconShoppingCart,
   IconSun,
-  IconTools,
-  IconTruck,
-  IconTruckDelivery,
-  IconUsers,
-  IconWorld,
-  IconZoomScan,
 } from '@tabler/icons-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../features/auth/authContext'
 import type { NavigationItem } from '../../features/auth/types'
+import { navigationIcons } from './navigationIcons'
 
 type Theme = 'light' | 'dark'
+
+const SIDEBAR_WIDTH_KEY = 'erp-sidebar-width'
+const SIDEBAR_WIDTH_MIN = 160
+const SIDEBAR_WIDTH_MAX = 480
+const DEFAULT_SIDEBAR_WIDTH = 220
 
 const fallbackNavigation = [
   { id: 'dashboard', label: '工作台', route: '/dashboard', icon: 'dashboard' },
@@ -72,33 +56,6 @@ const fallbackNavigation = [
   { id: 'settings', label: '个人设置', route: '/settings/profile', icon: 'settings' },
 ]
 
-const navigationIcons: Record<string, typeof IconDashboard> = {
-  dashboard: IconDashboard,
-  procurement: IconShoppingCart,
-  sales: IconReportMoney,
-  inventory: IconTruckDelivery,
-  settings: IconSettings,
-  folder: IconFolder,
-  production: IconBuildingFactory,
-  hr: IconUsers,
-  finance: IconCoins,
-  quality: IconClipboardCheck,
-  report: IconChartBar,
-  base: IconDatabase,
-  equipment: IconTools,
-  customer: IconBriefcase,
-  supplier: IconTruck,
-  document: IconFileText,
-  product: IconPackage,
-  vehicle: IconCar,
-  barcode: IconBarcode,
-  workflow: IconGitBranch,
-  sample: IconPalette,
-  query: IconZoomScan,
-  outsource: IconTruck,
-  customs: IconWorld,
-}
-
 const avatarPalette = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6']
 
 function avatarColor(username: string): string {
@@ -116,6 +73,18 @@ const pageTitles: Record<string, { section: string; title: string }> = {
   '/admin/menus': { section: '系统管理', title: '菜单管理' },
   '/admin/users': { section: '系统管理', title: '用户管理' },
   '/settings/profile': { section: '系统设置', title: '个人设置' },
+}
+
+/** 查找命中路由的完整功能路径（含叶子自身），用于面包屑展示全部层级。 */
+function findPath(items: NavigationItem[], path: string): NavigationItem[] {
+  for (const item of items) {
+    if (item.route === path) return [item]
+    if (item.children?.length) {
+      const nested = findPath(item.children, path)
+      if (nested.length) return [item, ...nested]
+    }
+  }
+  return []
 }
 
 function getInitialTheme(): Theme {
@@ -152,6 +121,11 @@ export function AppShell() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('erp-sidebar-collapsed') === 'true')
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY))
+    return Number.isFinite(saved) && saved >= SIDEBAR_WIDTH_MIN && saved <= SIDEBAR_WIDTH_MAX ? saved : DEFAULT_SIDEBAR_WIDTH
+  })
+  const [sidebarResizing, setSidebarResizing] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [currentDate, setCurrentDate] = useState(() => new Date())
   const [menuQuery, setMenuQuery] = useState('')
@@ -162,21 +136,25 @@ export function AppShell() {
   const location = useLocation()
   const firstGroup = navigation.find((item) => item.children?.length)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(firstGroup ? [firstGroup.id] : []))
+  const sidebarWidthRef = useRef(sidebarWidth)
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const isFormEditor = /\/(new|edit|view)$/.test(location.pathname)
   const basePath = location.pathname.replace(/\/(new|edit|view)$/, '')
   const allLeaves = useMemo(() => flattenLeaves(navigation), [navigation])
   const activeMenu = allLeaves.find((item) => item.route === basePath)
   const activeGroup = navigation.find((item) => item.children?.some((child) => isSubtreeActive(child, basePath)))
-  const page: { section: string; module?: string; title: string } = isFormEditor
+  const page: { section: string; title: string } = isFormEditor
     ? {
         section: activeGroup?.label ?? 'ERP',
-        module: activeMenu?.label,
         title: `${location.pathname.endsWith('/new') ? '新建' : location.pathname.endsWith('/view') ? '查看' : '编辑'}${activeMenu?.label ?? ''}`,
       }
     : pageTitles[location.pathname] ?? {
         section: activeGroup?.label ?? 'ERP',
         title: activeMenu?.label ?? '页面',
       }
+  const breadcrumbPath = useMemo(() => findPath(navigation, basePath), [navigation, basePath])
+  // 完整路径：命中导航树时展示全部祖先 + 叶子；未命中（如直达维护页）回退「分区 + 标题」。
+  const breadcrumbLeads = breadcrumbPath.length > 0 ? breadcrumbPath.slice(0, -1).map((item) => item.label) : [page.section]
 
   useEffect(() => {
     document.documentElement.setAttribute('data-bs-theme', theme)
@@ -187,6 +165,38 @@ export function AppShell() {
     document.documentElement.classList.toggle('erp-sidebar-collapsed', sidebarCollapsed)
     localStorage.setItem('erp-sidebar-collapsed', String(sidebarCollapsed))
   }, [sidebarCollapsed])
+
+  const clampSidebarWidth = (width: number) =>
+    Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, Math.round(width)))
+
+  const startSidebarResize = (event: React.PointerEvent) => {
+    if (window.innerWidth < 992 || sidebarCollapsed) return
+    event.preventDefault()
+    sidebarResizeRef.current = { startX: event.clientX, startWidth: sidebarWidthRef.current }
+    setSidebarResizing(true)
+    document.body.style.userSelect = 'none'
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+    } catch {
+      // jsdom/无活动指针时忽略，拖拽仍可继续
+    }
+  }
+
+  const resizeSidebar = (event: React.PointerEvent) => {
+    const state = sidebarResizeRef.current
+    if (!state) return
+    const next = clampSidebarWidth(state.startWidth + (event.clientX - state.startX))
+    sidebarWidthRef.current = next
+    setSidebarWidth(next)
+  }
+
+  const endSidebarResize = () => {
+    if (!sidebarResizeRef.current) return
+    sidebarResizeRef.current = null
+    setSidebarResizing(false)
+    document.body.style.userSelect = ''
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidthRef.current))
+  }
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -336,7 +346,10 @@ export function AppShell() {
     })
 
   return (
-    <div className="page erp-shell">
+    <div
+      className={`page erp-shell${sidebarResizing ? ' erp-sidebar-resizing' : ''}`}
+      style={{ '--erp-sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
+    >
       <aside
         className={`navbar navbar-vertical navbar-expand-lg erp-sidebar ${sidebarOpen ? 'show' : ''}`}
         aria-label="主导航"
@@ -416,6 +429,18 @@ export function AppShell() {
         </div>
       </aside>
 
+      <div
+        className="erp-sidebar-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整菜单宽度"
+        title="拖动调整菜单宽度"
+        onPointerDown={startSidebarResize}
+        onPointerMove={resizeSidebar}
+        onPointerUp={endSidebarResize}
+        onPointerCancel={endSidebarResize}
+      />
+
       {sidebarOpen && (
         <button
           className="erp-sidebar-backdrop"
@@ -430,14 +455,12 @@ export function AppShell() {
           <div className="container-fluid px-3 px-lg-4">
             <nav aria-label="当前位置">
               <IconHome className="erp-context-home" size={18} stroke={2} aria-hidden="true" />
-              <span className="erp-context-section">{page.section}</span>
-              {page.module ? (
-                <>
+              {breadcrumbLeads.map((crumb, index) => (
+                <Fragment key={`${crumb}-${index}`}>
+                  <span className="erp-context-section">{crumb}</span>
                   <IconChevronRight className="erp-context-separator" size={16} stroke={2} aria-hidden="true" />
-                  <span className="erp-context-section">{page.module}</span>
-                </>
-              ) : null}
-              <IconChevronRight className="erp-context-separator" size={16} stroke={2} aria-hidden="true" />
+                </Fragment>
+              ))}
               <h1>{page.title}</h1>
             </nav>
             <div className="erp-context-user ms-auto">

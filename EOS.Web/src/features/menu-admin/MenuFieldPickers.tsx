@@ -1,0 +1,397 @@
+import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react'
+import { useQuery } from '@tanstack/react-query'
+import type { ColumnDef } from '@tanstack/react-table'
+import { useEffect, useMemo, useState } from 'react'
+import { ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { ErpChooserModal } from '../../components/common/ErpChooserModal'
+import { Button } from '../../components/ui/Button'
+import { apiClient } from '../../services/api'
+import { ApiError } from '../../types/api'
+
+export interface MenuFieldOption {
+  F_ID: string
+  F_DESC: string
+  F_TYPE: string
+  IS_VISIBLE: boolean
+  IS_VIRTUAL: boolean
+  IS_QUERY: boolean
+}
+
+type SortDirection = 'asc' | 'desc'
+
+interface SelectedField {
+  field: string
+  dir: SortDirection
+}
+
+function useTableFields(table: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['menu-admin', 'fields', table],
+    queryFn: async () => {
+      try {
+        return await apiClient.get<MenuFieldOption[]>(`/admin/menus/fields?table=${encodeURIComponent(table ?? '')}`)
+      } catch (error) {
+        console.error(`[菜单管理] 字段列表加载失败（表 ${table ?? ''}），完整错误：`, error)
+        throw error
+      }
+    },
+    enabled: enabled && Boolean(table),
+  })
+}
+
+function describeError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return `${error.body.message}（HTTP ${error.status}）`
+  if (error && typeof error === 'object') {
+    const candidate = error as { status?: unknown; body?: { message?: string } }
+    if (typeof candidate.status === 'number' && candidate.body) {
+      return `${candidate.body.message ?? '请求失败'}（HTTP ${candidate.status}）`
+    }
+  }
+  if (error instanceof Error) return `${error.name}: ${error.message}`
+  return fallback
+}
+
+function parseValue(value: string, mode: 'multi' | 'sort'): SelectedField[] {
+  const bare = (token: string) => token.replace(/^\[|\]$/g, '').split('.').pop() ?? ''
+  if (mode === 'sort') {
+    return value
+      .split(',')
+      .map((part) => {
+        const tokens = part.trim().split(/\s+/)
+        const field = bare(tokens[0] ?? '')
+        return field ? { field, dir: tokens[1]?.toLowerCase() === 'desc' ? 'desc' as const : 'asc' as const } : null
+      })
+      .filter((item): item is SelectedField => item !== null)
+  }
+  return value
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((field) => ({ field: bare(field), dir: 'asc' as const }))
+}
+
+/**
+ * 字段选择器（统一电子表格风格，与统一表单选择器一致）：
+ * - 表格列出字段（表名/描述/类型），勾选或点行选择；排序模式每行可切换升/降序；
+ * - 下方「已选顺序」条展示并支持上移/下移/移除；
+ * - mode='multi' 保存为分号分隔；mode='sort' 保存为 "FIELD ASC|DESC" 逗号分隔。
+ */
+export function MenuFieldPicker({
+  open,
+  title,
+  table,
+  mode,
+  value,
+  onSave,
+  onClose,
+}: {
+  open: boolean
+  title: string
+  table: string | null
+  mode: 'multi' | 'sort'
+  value: string
+  onSave: (value: string) => void
+  onClose: () => void
+}) {
+  const fields = useTableFields(table, open)
+  const [selected, setSelected] = useState<SelectedField[]>([])
+
+  useEffect(() => {
+    if (open) setSelected(parseValue(value, mode))
+  }, [open, value, mode])
+
+  const fieldOptions = useMemo(
+    () => (fields.data ?? []).filter((field) => !field.IS_VIRTUAL),
+    [fields.data],
+  )
+  const byId = useMemo(() => new Map(fieldOptions.map((field) => [field.F_ID, field])), [fieldOptions])
+  const selectedKeys = useMemo(() => new Set(selected.map((item) => item.field)), [selected])
+  const rowSelection = useMemo(
+    () => Object.fromEntries(selected.map((item) => [item.field, true])),
+    [selected],
+  )
+
+  const reconcileSelection = (next: Record<string, boolean>) => {
+    setSelected((current) => {
+      const currentKeys = new Set(current.map((item) => item.field))
+      const nextKeys = new Set(Object.keys(next).filter((key) => next[key]))
+      const removed = [...currentKeys].filter((key) => !nextKeys.has(key))
+      const added = [...nextKeys].filter((key) => !currentKeys.has(key))
+      if (removed.length === 0 && added.length === 0) return current
+      let result = current.filter((item) => !removed.includes(item.field))
+      for (const field of added) result = [...result, { field, dir: 'asc' as const }]
+      return result
+    })
+  }
+
+  const toggle = (fieldId: string) => {
+    setSelected((current) => (current.some((item) => item.field === fieldId)
+      ? current.filter((item) => item.field !== fieldId)
+      : [...current, { field: fieldId, dir: 'asc' }]))
+  }
+
+  const toggleDir = (fieldId: string) => {
+    setSelected((current) => current.map((item) => (item.field === fieldId ? { ...item, dir: item.dir === 'asc' ? 'desc' : 'asc' } : item)))
+  }
+
+  const move = (fieldId: string, delta: -1 | 1) => {
+    setSelected((current) => {
+      const index = current.findIndex((item) => item.field === fieldId)
+      const target = index + delta
+      if (index < 0 || target < 0 || target >= current.length) return current
+      const next = [...current]
+      ;[next[index], next[target]] = [next[target], next[index]]
+      return next
+    })
+  }
+
+  const handleSave = () => {
+    if (mode === 'sort') {
+      onSave(selected.map((item) => `${item.field} ${item.dir.toUpperCase()}`).join(','))
+    } else {
+      onSave(selected.map((item) => item.field).join(';'))
+    }
+    onClose()
+  }
+
+  const columns: ColumnDef<MenuFieldOption, unknown>[] = [
+    {
+      id: 'select',
+      enableSorting: false,
+      meta: { className: 'erp-select-column', resizable: false, frozenLeft: true, truncate: false },
+      header: () => null,
+      cell: ({ row }) => (
+        <input
+          className="form-check-input"
+          type="checkbox"
+          aria-label={`选择 ${row.original.F_ID}`}
+          checked={selectedKeys.has(row.original.F_ID)}
+          onChange={() => toggle(row.original.F_ID)}
+          onClick={(event) => event.stopPropagation()}
+        />
+      ),
+    },
+    { id: 'F_ID', accessorKey: 'F_ID', header: '字段名', cell: ({ getValue }) => <span className="erp-menu-table-id">{String(getValue())}</span> },
+    { id: 'F_DESC', accessorKey: 'F_DESC', header: '描述' },
+    { id: 'F_TYPE', accessorKey: 'F_TYPE', header: '类型' },
+    ...(mode === 'sort' ? [{
+      id: 'dir',
+      accessorKey: 'F_ID',
+      enableSorting: false,
+      header: '方向',
+      cell: ({ row }) => {
+        const item = selected.find((s) => s.field === row.original.F_ID)
+        return item ? (
+          <button type="button" className="erp-field-dir" onClick={(event) => { event.stopPropagation(); toggleDir(row.original.F_ID) }}>
+            {item.dir === 'asc' ? '升序' : '降序'}
+          </button>
+        ) : null
+      },
+    } as ColumnDef<MenuFieldOption, unknown>] : []),
+  ]
+
+  if (!open) return null
+
+  return (
+    <ErpChooserModal
+      open={open}
+      title={title}
+      columns={columns}
+      data={fieldOptions}
+      getRowId={(row) => row.F_ID}
+      mode="multi"
+      selectedKeys={rowSelection}
+      onSelectedKeysChange={reconcileSelection}
+      onPick={() => handleSave()}
+      onClose={onClose}
+      loading={fields.isPending}
+      error={fields.isError ? describeError(fields.error, '加载字段失败') : null}
+      onRetry={() => void fields.refetch()}
+      emptyText="该表没有可用字段。"
+      extra={
+        <div className="mt-2">
+          <label className="form-label">已选顺序</label>
+          <div className="erp-field-picker-list">
+            {selected.map((item, index) => {
+              const field = byId.get(item.field)
+              return (
+                <div key={item.field} className="erp-field-picker-row">
+                  <span className="erp-field-picker-order">{index + 1}</span>
+                  <span className="erp-field-picker-desc">{field?.F_DESC ?? item.field}</span>
+                  <span className="erp-menu-table-id">{item.field}</span>
+                  <span className="ms-auto d-flex align-items-center gap-1">
+                    {mode === 'sort' && (
+                      <button type="button" className="erp-field-dir" onClick={() => toggleDir(item.field)}>
+                        {item.dir === 'asc' ? '升序' : '降序'}
+                      </button>
+                    )}
+                    <button type="button" className="erp-field-mini" aria-label="上移" disabled={index === 0} onClick={() => move(item.field, -1)}>
+                      <IconArrowUp size={14} />
+                    </button>
+                    <button type="button" className="erp-field-mini" aria-label="下移" disabled={index === selected.length - 1} onClick={() => move(item.field, 1)}>
+                      <IconArrowDown size={14} />
+                    </button>
+                    <button type="button" className="erp-field-mini" aria-label="移除" onClick={() => toggle(item.field)}>
+                      <IconTrash size={14} />
+                    </button>
+                  </span>
+                </div>
+              )
+            })}
+            {selected.length === 0 && <div className="text-secondary small p-2">尚未选择字段。</div>}
+          </div>
+        </div>
+      }
+    />
+  )
+}
+
+interface FilterRow {
+  field: string
+  op: string
+  logic: 'AND' | 'OR'
+  value: string
+}
+
+const FILTER_OPS = ['=', '<>', '>', '<', '>=', '<=']
+
+const FILTER_PART = /^\s*\(?\s*([A-Za-z_][A-Za-z0-9_]*)\s*(=|<>|>=|<=|>|<)\s*(N?'(?:[^']|'')*'|[+-]?\d+(?:\.\d+)?)\s*\)?\s*$/
+
+function parseFilter(value: string): FilterRow[] | null {
+  if (!value.trim()) return []
+  const parts = value.split(/\s+(AND|OR)\s+/i)
+  const logics = value.match(/\s+(AND|OR)\s+/gi) ?? []
+  const rows: FilterRow[] = []
+  for (let i = 0; i < parts.length; i++) {
+    const match = parts[i].trim().match(FILTER_PART)
+    if (!match) return null
+    const raw = match[3]
+    rows.push({
+      field: match[1],
+      op: match[2],
+      value: raw.startsWith("'") ? raw.replace(/^N?'|'$/g, '').replace(/''/g, "'") : raw,
+      logic: i === 0 ? 'AND' : ((logics[i - 1] ?? 'AND').trim().toUpperCase() as 'AND' | 'OR'),
+    })
+  }
+  return rows
+}
+
+function quoteValue(value: string): string {
+  return /^[+-]?\d+(\.\d+)?$/.test(value) ? value : `'${value.replace(/'/g, "''")}'`
+}
+
+/**
+ * 主表过滤条件构建器：字段 + 运算符 + 值 组成条件行，输出与 DataFilterParser
+ * 兼容的谓词（如 `(PRO_TYPE=1) AND (PRO_NAME='a')`）。
+ */
+export function MenuFilterBuilder({
+  open,
+  table,
+  value,
+  onSave,
+  onClose,
+}: {
+  open: boolean
+  table: string | null
+  value: string
+  onSave: (value: string) => void
+  onClose: () => void
+}) {
+  const fields = useTableFields(table, open)
+  const [rows, setRows] = useState<FilterRow[]>([])
+
+  useEffect(() => {
+    if (open) setRows(parseFilter(value) ?? [])
+  }, [open, value])
+
+  const fieldOptions = useMemo(
+    () => (fields.data ?? []).filter((field) => !field.IS_VIRTUAL),
+    [fields.data],
+  )
+
+  const updateRow = (index: number, patch: Partial<FilterRow>) => {
+    setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)))
+  }
+
+  const handleSave = () => {
+    const parts = rows.map((row, i) => `${i === 0 ? '' : `${row.logic} `}(${row.field} ${row.op} ${quoteValue(row.value)})`.trim())
+    onSave(parts.join(' '))
+    onClose()
+  }
+
+  if (!open) return null
+
+  return (
+    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
+      <div className="modal-dialog modal-dialog-centered erp-dialog-md">
+        <div className="modal-content">
+          <div className="modal-header">
+            <h2 className="modal-title">构建主表过滤条件</h2>
+            <button className="btn-close" aria-label="关闭" onClick={onClose} />
+          </div>
+          <div className="modal-body">
+            {fields.isPending ? (
+              <LoadingState label="正在加载字段…" />
+            ) : fields.isError ? (
+              <ErrorState
+                message={describeError(fields.error, '加载字段失败')}
+                onRetry={() => void fields.refetch()}
+              />
+            ) : (
+              <div className="erp-filter-rows">
+                {rows.map((row, index) => (
+                  <div key={index} className="erp-filter-row d-flex gap-2 align-items-center">
+                    {index > 0 && (
+                      <select
+                        className="form-select form-select-sm erp-filter-logic"
+                        value={row.logic}
+                        onChange={(event) => updateRow(index, { logic: event.target.value as 'AND' | 'OR' })}
+                      >
+                        <option value="AND">AND</option>
+                        <option value="OR">OR</option>
+                      </select>
+                    )}
+                    <select
+                      className="form-select form-select-sm"
+                      value={row.field}
+                      onChange={(event) => updateRow(index, { field: event.target.value })}
+                    >
+                      <option value="">选择字段…</option>
+                      {fieldOptions.map((field) => (
+                        <option key={field.F_ID} value={field.F_ID}>{field.F_DESC}（{field.F_ID}）</option>
+                      ))}
+                    </select>
+                    <select
+                      className="form-select form-select-sm erp-filter-op"
+                      value={row.op}
+                      onChange={(event) => updateRow(index, { op: event.target.value })}
+                    >
+                      {FILTER_OPS.map((op) => <option key={op} value={op}>{op}</option>)}
+                    </select>
+                    <input
+                      className="form-control form-control-sm"
+                      value={row.value}
+                      placeholder="值"
+                      onChange={(event) => updateRow(index, { value: event.target.value })}
+                    />
+                    <button type="button" className="erp-field-mini" aria-label="删除条件" onClick={() => setRows((current) => current.filter((_, i) => i !== index))}>
+                      <IconTrash size={14} />
+                    </button>
+                  </div>
+                ))}
+                <Button size="sm" icon={<IconPlus size={14} />} onClick={() => setRows((current) => [...current, { field: '', op: '=', logic: 'AND', value: '' }])}>
+                  添加条件
+                </Button>
+                {rows.length === 0 && <div className="text-secondary small mt-1">当前无条件（保存将清空过滤条件）。</div>}
+              </div>
+            )}
+          </div>
+          <div className="modal-footer">
+            <Button onClick={onClose}>取消</Button>
+            <Button variant="primary" onClick={handleSave}>确定</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
