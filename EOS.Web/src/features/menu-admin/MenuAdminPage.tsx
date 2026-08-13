@@ -759,7 +759,7 @@ export function MenuAdminPage() {
                       <Input label="菜单别名" value={draft.M_ALIAS ?? ''} onChange={(value) => patch((d) => ({ ...d, M_ALIAS: value || null }))} />
                     </div>
                   </div>
-                  <Input label="链接URL地址" value={draft.M_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, M_URL: value || null }))} />
+                  <Input label="页面链接（现代路由）" value={draft.M_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, M_URL: value || null }))} />
                   <div className="row g-2">
                     <div className="col-6">
                       <Input label="新增URL地址" value={draft.NEW_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, NEW_URL: value || null }))} />

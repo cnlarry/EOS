@@ -15,7 +15,6 @@ export const BomExpandPage = lazy(() => import('../features/bom/BomExpandPage').
 export const CarSummaryPage = lazy(() => import('../features/reports/CarSummaryPage').then((module) => ({ default: module.CarSummaryPage })))
 export const DetailQueryPage = lazy(() => import('../features/reports/DetailQueryPage').then((module) => ({ default: module.DetailQueryPage })))
 export const JobPage = lazy(() => import('../features/jobs/JobPage').then((module) => ({ default: module.JobPage })))
-export const ReportViewerPage = lazy(() => import('../features/reports/ReportViewerPage').then((module) => ({ default: module.ReportViewerPage })))
 export const SearchCenterPage = lazy(() => import('../features/search-center/SearchCenterPage').then((module) => ({ default: module.SearchCenterPage })))
 export const ImportPage = lazy(() => import('../features/import/ImportPage').then((module) => ({ default: module.ImportPage })))
 export const PrintViewPage = lazy(() => import('../features/print/PrintViewPage').then((module) => ({ default: module.PrintViewPage })))

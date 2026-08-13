@@ -16,7 +16,6 @@ import {
   PrintViewPage,
   ProfilePage,
   PurchaseOrdersPage,
-  ReportViewerPage,
   SearchCenterPage,
   SystemSettingsPage,
   TableAdminPage,
@@ -24,7 +23,7 @@ import {
   UserAdminPage,
   MenuAdminPage,
 } from './lazyRoutes'
-import { FieldAdminRoute, ForbiddenPage, FormEditorRoute, WorkbenchRoute } from './routeElements'
+import { FieldAdminRoute, ForbiddenPage, FormEditorRoute, PrintSetupRoute, ReportAdminRoute, ReportViewerRoute, WorkbenchRoute } from './routeElements'
 import { withSuspense } from './suspense'
 
 export const router = createBrowserRouter([
@@ -43,11 +42,13 @@ export const router = createBrowserRouter([
         { element: <RequirePermission permission="legacy-module.2310.read" />, children: [{ path: 'admin/table-data', element: withSuspense(<TableDataPage />) }] },
         { element: <RequirePermission permission="legacy-module.2303.read" />, children: [{ path: 'admin/field-audit', element: withSuspense(<FieldAuditPage />) }] },
         { element: <RequirePermission permission="legacy-module.2306.read" />, children: [{ path: 'admin/users', element: withSuspense(<UserAdminPage />) }] },
+        { path: 'admin/report-setup', element: withSuspense(<ReportAdminRoute />) },
+        { path: 'admin/print-setup/:tab?', element: withSuspense(<PrintSetupRoute />) },
         { path: 'document-workbench/:moduleId', element: withSuspense(<WorkbenchRoute />) },
         { path: 'document-workbench/:moduleId/new', element: withSuspense(<FormEditorRoute />) },
         { path: 'document-workbench/:moduleId/edit', element: withSuspense(<FormEditorRoute />) },
         { path: 'document-workbench/:moduleId/view', element: withSuspense(<FormEditorRoute />) },
-        { path: 'reports/:moduleId', element: withSuspense(<ReportViewerPage />) },
+        { path: 'reports/:moduleId', element: withSuspense(<ReportViewerRoute />) },
         { path: 'search-center/:moduleId?', element: withSuspense(<SearchCenterPage />) },
         { path: 'import', element: withSuspense(<ImportPage />) },
         { path: 'print/:moduleId', element: withSuspense(<PrintViewPage />) },

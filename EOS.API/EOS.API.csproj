@@ -14,6 +14,12 @@
     <PackageReference Include="dbup-sqlserver" Version="5.0.40" />
     <!-- 显式升级传递依赖：Microsoft.OpenApi 2.0.0 存在高危漏洞 GHSA-v5pm-xwqc-g5wc，2.7.5+ 已修复 -->
     <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
+    <PackageReference Include="QuestPDF" Version="2026.7.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 报表 PDF 中文字体（Noto Sans CJK SC，SIL OFL 1.1 许可） -->
+    <None Include="Fonts\NotoSansCJKsc-Regular.otf" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,6 +1,6 @@
 namespace EOS.API.Models;
 
-public sealed record PrintField(string Key, string Label);
+public sealed record PrintField(string Key, string Label, string? DisplayFormat = null);
 
 public sealed record PrintData(
     int ModuleId,
@@ -8,6 +8,8 @@ public sealed record PrintData(
     string? HeaderCompany,
     string? HeaderText,
     string? FooterText,
+    string? LogoPath,
+    string? TailText,
     IReadOnlyList<PrintField> MasterFields,
     IReadOnlyList<PrintField> DetailFields,
     IReadOnlyDictionary<string,object?> Master,

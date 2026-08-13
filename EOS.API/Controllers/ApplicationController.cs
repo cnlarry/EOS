@@ -79,72 +79,10 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
             .ToList()
     };
 
-    private static readonly Dictionary<int, string> ModernRoutes = new()
-    {
-        [2301] = "/admin/menus",
-        [2302] = "/admin/tables",
-        [2303] = "/admin/field-audit",
-        [2306] = "/admin/users",
-        [2310] = "/admin/table-data",
-        [2312] = "/admin/table-data",
-        [230902] = "/import",
-        [110111] = "/settings/system",
-        [129802] = "/bom-expand",
-        [230901] = "/jobs",
-        [180654] = "/jobs",
-        [180659] = "/jobs",
-        [180505] = "/jobs",
-        [2102] = "/my-tasks",
-        [199901] = "/car-summary",
-        [14996] = "/detail-query/14996",
-        [14998] = "/detail-query/14998",
-        [170297] = "/detail-query/170297",
-        [209805] = "/reports/209805",
-        [180213] = "/settings/hr-setup",
-        [180662] = "/settings/hrm-setup",
-    };
-
+    // MODULES.M_URL 即模块页面链接（现代路由），代码只做安全校验不做翻译；
+    // 迁移见 docs/migrations/update.sql（M_URL 现代化小节）。
     private static string RouteFor(LegacyNavigationModule module) =>
-        ModernRoutes.TryGetValue(module.Id, out var modern)
-            ? modern
-            : IsSearchCenterUrl(module.LegacyUrl)
-                ? $"/search-center/{module.Id}"
-            : IsReportUrl(module.LegacyUrl)
-                ? $"/reports/{module.Id}"
-            : IsDocumentWorkbenchUrl(module.LegacyUrl)
-                ? $"/document-workbench/{module.Id}"
-                : $"/legacy/modules/{module.Id}";
-
-    private static bool IsSearchCenterUrl(string? legacyUrl)
-    {
-        if (string.IsNullOrWhiteSpace(legacyUrl)) return false;
-        var normalized = legacyUrl.Trim().Replace('\\', '/').ToLowerInvariant();
-        return normalized.Contains("search_frame") || normalized.EndsWith("comm/searchcenter.aspx");
-    }
-
-    private static bool IsReportUrl(string? legacyUrl)
-    {
-        if (string.IsNullOrWhiteSpace(legacyUrl)) return false;
-        var normalized = legacyUrl.Trim().Replace('\\', '/');
-        if (normalized.StartsWith("~/", StringComparison.Ordinal)) normalized = normalized[2..];
-        return normalized.StartsWith("RPT/", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsDocumentWorkbenchUrl(string? legacyUrl)
-    {
-        if (string.IsNullOrWhiteSpace(legacyUrl)) return false;
-        var normalized = legacyUrl.Trim().Replace('\\', '/');
-        if (normalized.StartsWith("~/", StringComparison.Ordinal)) normalized = normalized[2..];
-        normalized = normalized.TrimStart('/').Split('?', '#')[0].ToLowerInvariant();
-        return normalized is "comm/view_frame.aspx"
-            or "comm/m_view_frame.aspx"
-            or "hr/hr_view_frame.aspx"
-            or "hrm/hr_view_frame.aspx"
-            or "comm/sysdept_view_frame.aspx"
-            or "admin/menubuilder.aspx"
-            or "hr/diarytoother.aspx"
-            or "hrm/diary.aspx";
-    }
+        ModuleRouteValidator.Resolve(module.LegacyUrl, module.Id);
 
     private static string IconFor(int rootId, string rootLabel, IReadOnlyDictionary<string, string?> iconOverrides)
         => MenuIconResolver.Resolve(rootId, rootLabel, iconOverrides);
