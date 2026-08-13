@@ -1,81 +1,16 @@
 <!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>产品 BOM 工作台</title>
-  <link rel="stylesheet" href="/styles.css">
-</head>
-<body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">DX</span><div><strong>ERP Modern</strong><small>重构工作台</small></div></div>
-      <nav><a class="active" href="/">产品 BOM</a><button id="adminFields" class="nav-button hidden" type="button">字段管理</button><span>更多模块逐步迁移</span></nav>
-      <div class="identity"><small>开发身份 · 已跳过登录</small><strong id="identity">读取中…</strong></div>
-    </aside>
-
-    <main>
-      <header>
-        <div><p class="eyebrow">模块 1204</p><h1>产品 BOM 浏览</h1><p>快速定位产品及其组成物料，旧系统数据保持只读。</p></div>
-        <div class="badge">只读模式</div>
-      </header>
-
-      <section class="search-card">
-        <select id="field" aria-label="查询字段">
-          <option value="proNo">产品料号</option>
-          <option value="proName">产品名称</option>
-          <option value="proSpec">产品规格</option>
-          <option value="elementProNo">元件料号</option>
-        </select>
-        <div class="search-input"><span>⌕</span><input id="keyword" maxlength="100" placeholder="输入关键字，按 Enter 查询"></div>
-        <button id="search">查询</button>
-        <button id="reset" class="secondary">重置</button>
-        <button id="columns" class="secondary" type="button">选择列</button>
-      </section>
-
-      <div id="error" class="error hidden"></div>
-
-      <section class="stats">
-        <article><small>查询结果</small><strong id="masterCount">—</strong><span>条 BOM</span></article>
-        <article><small>当前选择</small><strong id="selectedProNo">未选择</strong><span id="selectedName">点击主表行查看明细</span></article>
-        <article><small>组成物料</small><strong id="detailCount">—</strong><span>项</span></article>
-      </section>
-
-      <section class="panel">
-        <div class="panel-heading"><div><h2>BOM 主表</h2><p>最多显示 200 条，选择任意一行加载组成明细</p></div><span id="loadingMaster" class="loading hidden">正在查询…</span></div>
-        <div class="table-wrap">
-          <table><thead><tr id="masterHead"></tr></thead><tbody id="masterBody"></tbody></table>
-          <div id="masterEmpty" class="empty hidden">没有符合条件的 BOM</div>
-        </div>
-      </section>
-
-      <section class="panel detail-panel">
-        <div class="panel-heading"><div><h2>BOM 组成明细</h2><p id="detailHint">请先从主表选择一个料号</p></div><span id="loadingDetail" class="loading hidden">正在加载…</span></div>
-        <div class="table-wrap">
-          <table><thead><tr id="detailHead"></tr></thead><tbody id="detailBody"></tbody></table>
-          <div id="detailEmpty" class="empty">选择主表记录后显示组成物料</div>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <div id="columnBackdrop" class="drawer-backdrop hidden"></div>
-  <aside id="columnDrawer" class="column-drawer" aria-hidden="true">
-    <div class="drawer-heading"><div><p class="eyebrow">显示设置</p><h2>选择列</h2></div><button id="closeColumns" class="icon-button" type="button">×</button></div>
-    <div class="scope-tabs"><button class="scope-tab active" data-scope="master" type="button">主表字段</button><button class="scope-tab" data-scope="detail" type="button">子表字段</button></div>
-    <p class="drawer-tip">勾选控制显示，上下移动调整列顺序。字段名称由管理员统一维护。</p>
-    <div id="fieldList" class="field-list"></div>
-    <div class="drawer-actions"><button id="restoreColumns" class="secondary" type="button">恢复系统默认</button><button id="saveColumns" type="button">保存设置</button></div>
-  </aside>
-
-  <div id="adminBackdrop" class="drawer-backdrop hidden"></div>
-  <section id="adminDrawer" class="admin-drawer" aria-hidden="true">
-    <div class="drawer-heading"><div><p class="eyebrow">管理员 · 全局生效</p><h2>字段管理</h2></div><button id="closeAdmin" class="icon-button" type="button">×</button></div>
-    <div class="scope-tabs"><button class="admin-tab active" data-table="BOM_STRU_M" type="button">主表字段</button><button class="admin-tab" data-table="BOM_STRU_D" type="button">子表字段</button></div>
-    <p class="drawer-tip">字段名称、虚拟表达式和可见性修改后影响所有用户，请谨慎操作。</p>
-    <div id="adminFieldList" class="admin-field-list"></div>
-  </section>
-
-  <script src="/app.js"></script>
-</body>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EOS</title>
+    <script type="module" crossorigin src="/assets/index-BaljWeOx.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/jsx-runtime-Cltr0gcK.js">
+    <link rel="modulepreload" crossorigin href="/assets/QueryClientProvider-A4QsL-Gw.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-BaboQZUj.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>
