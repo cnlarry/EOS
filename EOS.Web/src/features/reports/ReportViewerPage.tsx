@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
@@ -12,11 +12,24 @@ import type { ColumnDef } from '@tanstack/react-table'
 
 interface ReportOption { label: string; value: string }
 interface ReportSelectSource { table: string; idColumn: string; valueColumn: string }
-interface ReportCondition { serialNo: number; field: string | null; desc: string; type: number; expression: string | null; defaultValue: string | null; parameterName: string | null; options: ReportOption[]; selectSource: ReportSelectSource | null }
+interface ReportCondition { serialNo: number; field: string | null; desc: string; type: number; expression: string | null; defaultValue: string | null; parameterName: string | null; options: ReportOption[]; selectSource: ReportSelectSource | null; defaultValueTo: string | null }
 interface ReportColumn { key: string; label: string; dataType: string }
 interface ReportDefinition { moduleId: number; title: string; masterTable: string; conditions: ReportCondition[]; columns: ReportColumn[]; masterPkOrder: string[]; spName: string | null; spParameters: ReportSpParameter[] }
 interface ReportSpParameter { name: string; dataType: string; maxLength: number }
 interface ReportQueryResult { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }
+interface ReportPrintOption { reportId: string; reportName: string; headerId: string | null; tailId: string | null; footerText: string | null; isoNo: string | null; defaultPaper: string | null; isDefault: boolean }
+interface ReportHeaderOption { headerId: string; headerName: string; companyName: string; headerText: string | null; logoUrl: string | null }
+interface ReportTailOption { tailId: string; tailName: string; tailText: string }
+interface ReportSortScheme { serialNo: number; sortName: string; sortFields: string | null; groupName: string | null; groupFields: string | null }
+interface ReportUserPrintSettings { reportId: string | null; headerId: string | null; tailId: string | null; sortSerialNo: number | null; sortAsc: boolean; showGroup: boolean; showDetail: boolean }
+interface ReportPrintSettingsData {
+  moduleId: number
+  reports: ReportPrintOption[]
+  headers: ReportHeaderOption[]
+  tails: ReportTailOption[]
+  sortSchemesByReport: Record<string, ReportSortScheme[]>
+  userSettings: ReportUserPrintSettings | null
+}
 
 export function ReportViewerPage() {
   const { moduleId = '' } = useParams()
@@ -25,10 +38,25 @@ export function ReportViewerPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const [queryKey, setQueryKey] = useState(0)
+  const [reportId, setReportId] = useState('')
+  const [headerId, setHeaderId] = useState('')
+  const [tailId, setTailId] = useState('')
+  const [sortSerialNo, setSortSerialNo] = useState<number | null>(null)
+  const [sortDirect, setSortDirect] = useState<'asc' | 'desc'>('asc')
+  const [showGroup, setShowGroup] = useState(true)
+  const [showDetail, setShowDetail] = useState(true)
+  const [printing, setPrinting] = useState(false)
+  const [printError, setPrintError] = useState<string | null>(null)
+  const settingsApplied = useRef(false)
+  const defaultsApplied = useRef(false)
 
   const definition = useQuery({
     queryKey: ['report', moduleId, 'definition'],
     queryFn: () => apiClient.get<ReportDefinition>(`/reports/${moduleId}/definition`),
+  })
+  const printSettings = useQuery({
+    queryKey: ['report', moduleId, 'print-settings'],
+    queryFn: () => apiClient.get<ReportPrintSettingsData>(`/reports/${moduleId}/print-settings`),
   })
   const result = useQuery({
     queryKey: ['report', moduleId, 'result', page, pageSize, queryKey],
@@ -36,6 +64,35 @@ export function ReportViewerPage() {
     enabled: definition.isSuccess && queryKey > 0,
     placeholderData: (previous: ReportQueryResult | undefined) => previous,
   })
+
+  useEffect(() => {
+    if (settingsApplied.current || !printSettings.data) return
+    settingsApplied.current = true
+    const user = printSettings.data.userSettings
+    const report = user?.reportId
+      ? printSettings.data.reports.find((item) => item.reportId === user.reportId)
+      : printSettings.data.reports.find((item) => item.isDefault) ?? printSettings.data.reports[0]
+    setReportId(report?.reportId ?? '')
+    setHeaderId(user?.headerId ?? report?.headerId ?? '')
+    setTailId(user?.tailId ?? report?.tailId ?? '')
+    setSortSerialNo(user?.sortSerialNo ?? null)
+    setSortDirect(user ? (user.sortAsc ? 'asc' : 'desc') : 'asc')
+    setShowGroup(user?.showGroup ?? true)
+    setShowDetail(user?.showDetail ?? true)
+  }, [printSettings.data])
+
+  useEffect(() => {
+    if (defaultsApplied.current || !definition.data) return
+    defaultsApplied.current = true
+    const next: Record<number, string> = {}
+    const nextTo: Record<number, string> = {}
+    for (const condition of definition.data.conditions) {
+      if (condition.defaultValue) next[condition.serialNo] = condition.defaultValue
+      if (condition.defaultValueTo) nextTo[condition.serialNo] = condition.defaultValueTo
+    }
+    setValues(next)
+    setValuesTo(nextTo)
+  }, [definition.data])
 
   const columns = useMemo<ColumnDef<Record<string, unknown>, unknown>[]>(
     () => (definition.data?.columns ?? []).map((column) => ({
@@ -48,6 +105,7 @@ export function ReportViewerPage() {
   )
 
   const runQuery = () => { setPage(1); setQueryKey((current) => current + 1) }
+
   const handleExport = async () => {
     if (!definition.data) return
     try {
@@ -65,6 +123,46 @@ export function ReportViewerPage() {
     }
   }
 
+  const selectedHeader = printSettings.data?.headers.find((header) => header.headerId === headerId)
+  const sortSchemes = printSettings.data?.sortSchemesByReport[reportId] ?? []
+  const hasPrintPermission = (printSettings.data?.reports.length ?? 0) > 0
+
+  const handlePrint = async () => {
+    if (!definition.data || !printSettings.data) return
+    setPrinting(true)
+    setPrintError(null)
+    try {
+      await apiClient.post(`/reports/${moduleId}/print-settings`, {
+        reportId: reportId || null,
+        headerId: headerId || null,
+        tailId: tailId || null,
+        sortSerialNo,
+        sortAsc: sortDirect === 'asc',
+        showGroup,
+        showDetail,
+        values,
+        valuesTo,
+      }).catch(() => {})
+      const blob = await apiClient.postFile(`/reports/${moduleId}/pdf`, {
+        reportId: reportId || null,
+        headerId: headerId || null,
+        tailId: tailId || null,
+        values,
+        valuesTo,
+        sortSerialNo,
+        sortDirect: sortDirect === 'desc',
+        showGroup,
+        showDetail,
+      })
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank')
+    } catch (error) {
+      setPrintError(error instanceof ApiError ? error.body.message : 'PDF 生成失败，请重试。')
+    } finally {
+      setPrinting(false)
+    }
+  }
+
   if (definition.isPending) return <LoadingState label="正在加载报表定义…" />
   if (definition.isError) return <ErrorState message={definition.error instanceof ApiError ? definition.error.body.message : '报表定义加载失败。'} onRetry={() => void definition.refetch()} />
   const def = definition.data!
@@ -72,6 +170,83 @@ export function ReportViewerPage() {
 
   return (
     <div className="d-grid gap-2 erp-report-page">
+      {hasPrintPermission && (
+        <div className="card">
+          <div className="card-header py-2 d-flex align-items-center gap-2">
+            <span className="fw-semibold small">打印设置</span>
+            <span className="text-secondary small">页头/表尾可随时更换，选择后即时预览</span>
+          </div>
+          <div className="card-body py-2">
+            <div className="row g-2 align-items-end">
+              <div className="col-md-3 col-lg-2">
+                <label className="form-label small mb-1">报表</label>
+                <select className="form-select form-select-sm" value={reportId} onChange={(event) => { setReportId(event.target.value); setSortSerialNo(null) }}>
+                  {(printSettings.data?.reports ?? []).map((report) => <option key={report.reportId} value={report.reportId}>{report.reportName}</option>)}
+                </select>
+              </div>
+              <div className="col-md-3 col-lg-2">
+                <label className="form-label small mb-1">页头</label>
+                <select className="form-select form-select-sm" value={headerId} onChange={(event) => setHeaderId(event.target.value)}>
+                  <option value="">（报表默认）</option>
+                  {(printSettings.data?.headers ?? []).map((header) => <option key={header.headerId} value={header.headerId}>{header.headerName}</option>)}
+                </select>
+              </div>
+              <div className="col-md-3 col-lg-2">
+                <label className="form-label small mb-1">表尾</label>
+                <select className="form-select form-select-sm" value={tailId} onChange={(event) => setTailId(event.target.value)}>
+                  <option value="">（无）</option>
+                  {(printSettings.data?.tails ?? []).map((tail) => <option key={tail.tailId} value={tail.tailId}>{tail.tailName}</option>)}
+                </select>
+              </div>
+              <div className="col-md-3 col-lg-2">
+                <label className="form-label small mb-1">排序方案</label>
+                <select className="form-select form-select-sm" value={sortSerialNo ?? ''} onChange={(event) => setSortSerialNo(event.target.value === '' ? null : Number(event.target.value))}>
+                  <option value="">（默认）</option>
+                  {sortSchemes.map((scheme) => <option key={scheme.serialNo} value={scheme.serialNo}>{scheme.sortName}</option>)}
+                </select>
+              </div>
+              <div className="col-md-3 col-lg-2">
+                <label className="form-label small mb-1">顺序</label>
+                <div className="d-flex gap-3">
+                  <label className="form-check small">
+                    <input className="form-check-input" type="radio" name="sort-direct" checked={sortDirect === 'asc'} onChange={() => setSortDirect('asc')} />
+                    <span className="form-check-label">升序</span>
+                  </label>
+                  <label className="form-check small">
+                    <input className="form-check-input" type="radio" name="sort-direct" checked={sortDirect === 'desc'} onChange={() => setSortDirect('desc')} />
+                    <span className="form-check-label">降序</span>
+                  </label>
+                </div>
+              </div>
+              <div className="col-md-3 col-lg-2">
+                <div className="d-flex gap-3">
+                  <label className="form-check small">
+                    <input className="form-check-input" type="checkbox" checked={showGroup} onChange={(event) => setShowGroup(event.target.checked)} />
+                    <span className="form-check-label">显示分组</span>
+                  </label>
+                  <label className="form-check small">
+                    <input className="form-check-input" type="checkbox" checked={showDetail} onChange={(event) => setShowDetail(event.target.checked)} />
+                    <span className="form-check-label">显示明细</span>
+                  </label>
+                </div>
+              </div>
+              <div className="col-md-3 col-lg-2">
+                <Button size="sm" onClick={() => void handlePrint()} loading={printing}>打印 PDF</Button>
+              </div>
+            </div>
+            {selectedHeader && (
+              <div className="border rounded bg-light mt-2 px-3 py-2 d-flex align-items-center gap-3">
+                {selectedHeader.logoUrl && <img src={selectedHeader.logoUrl} alt="页头 LOGO" style={{ maxHeight: 40 }} onError={(event) => { event.currentTarget.style.display = 'none' }} />}
+                <div>
+                  {selectedHeader.companyName && <div className="fw-bold">{selectedHeader.companyName}</div>}
+                  {selectedHeader.headerText && <div className="small text-secondary">{selectedHeader.headerText}</div>}
+                </div>
+              </div>
+            )}
+            {printError && <div className="text-danger small mt-2">{printError}</div>}
+          </div>
+        </div>
+      )}
       <ErpListCard
         ariaLabel={`${def.title}查询`}
         search={null}

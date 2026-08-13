@@ -117,6 +117,9 @@ internal static class DataFilterParser
         joins = [];
         foreignColumns = [];
         if (string.IsNullOrWhiteSpace(filter)) return false;
+        // 旧系统 FILTER 字段引用使用 {表.列} 花括号语法（如 {PRODUCT.PRO_TYPE}=1），
+        // 花括号仅为语法包裹，剥离后走同一白名单/参数化路径。
+        filter = filter.Replace("{", "").Replace("}", "");
         try
         {
             var tokens = Tokenize(filter);
@@ -230,6 +233,26 @@ internal static class DataFilterParser
                 return false;
             }
             position++;
+            // 括号表达式后跟比较符（如 (A-B-C)>0）：比较右值参数化
+            if (position < tokens.Count && tokens[position].Kind == TokenKind.Operator)
+            {
+                var parenComparison = tokens[position].Text;
+                if (parenComparison is not ("=" or "<>" or ">" or "<" or ">=" or "<="))
+                {
+                    expression = string.Empty;
+                    return false;
+                }
+                position++;
+                if (!ParseValueExpression(tokens, ref position, out var parenValue, true))
+                {
+                    expression = string.Empty;
+                    return false;
+                }
+                var parenParameter = $"@df{values.Count}";
+                values.Add(parenValue);
+                expression = $"({inner}) {parenComparison} {parenParameter}";
+                return true;
+            }
             expression = $"({inner})";
             return true;
         }
@@ -246,6 +269,21 @@ internal static class DataFilterParser
         List<object> values)
     {
         expression = string.Empty;
+        // 常量左值比较（如 1=1）：左值直接拼接（来源为服务端配置），右值参数化
+        if (tokens[position].Kind == TokenKind.Number)
+        {
+            var constLeft = tokens[position].Text;
+            position++;
+            if (position >= tokens.Count || tokens[position].Kind != TokenKind.Operator) return false;
+            var constComparison = tokens[position].Text;
+            if (constComparison is not ("=" or "<>" or ">" or "<" or ">=" or "<=")) return false;
+            position++;
+            if (!ParseValueExpression(tokens, ref position, out var constValue, true)) return false;
+            var constParameter = $"@df{values.Count}";
+            values.Add(constValue);
+            expression = $"{constLeft} {constComparison} {constParameter}";
+            return true;
+        }
         if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier) return false;
         var leftToken = tokens[position].Text;
         string left;
@@ -296,6 +334,12 @@ internal static class DataFilterParser
             {
                 return false;
             }
+        }
+        // 括号内算术表达式（如 (A-B-C)）：右括号处结束，尾部比较符由 ParsePrimary 处理
+        if (position < tokens.Count && tokens[position].Kind == TokenKind.RightParen)
+        {
+            expression = left;
+            return true;
         }
         // IN / NOT IN 子查询（受控白名单；阶段 1：单表、无 WHERE）
         if (position < tokens.Count && tokens[position].Kind == TokenKind.Identifier
@@ -668,6 +712,14 @@ internal static class DataFilterParser
             return true;
         }
         if (tokens[position].Kind == TokenKind.Identifier
+            && (tokens[position].Text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || tokens[position].Text.Equals("false", StringComparison.OrdinalIgnoreCase)))
+        {
+            value = tokens[position].Text.Equals("true", StringComparison.OrdinalIgnoreCase);
+            position++;
+            return true;
+        }
+        if (tokens[position].Kind == TokenKind.Identifier
             && position + 1 < tokens.Count
             && tokens[position + 1].Kind == TokenKind.LeftParen)
         {
@@ -845,17 +897,18 @@ internal static class DataFilterParser
                 var text = input[start..index];
                 tokens.Add(new Token(TokenKind.Operator, text));
             }
-            else if (ch == '\'')
+            else if (ch is '\'' or '"')
             {
                 var builder = new StringBuilder();
+                var quote = ch;
                 index++;
                 while (index < input.Length)
                 {
-                    if (input[index] == '\'')
+                    if (input[index] == quote)
                     {
-                        if (index + 1 < input.Length && input[index + 1] == '\'')
+                        if (index + 1 < input.Length && input[index + 1] == quote)
                         {
-                            builder.Append('\'');
+                            builder.Append(quote);
                             index += 2;
                         }
                         else

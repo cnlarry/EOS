@@ -18,6 +18,8 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
     public async Task<PrintData?> GetPrintDataAsync(
         int moduleId,
         IReadOnlyList<string> keyValues,
+        string? headerId,
+        string? tailId,
         bool canViewCost,
         bool canViewSecrecy,
         IReadOnlySet<string> deniedMasterFields,
@@ -55,12 +57,12 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
             detailFields=await ReadFieldsAsync(connection,detailTable,canViewCost,canViewSecrecy,deniedDetailFields,token);
             details=await ReadRowsAsync(connection,detailTable,pkOrder,keyValues,detailFields.Select(field=>field.Key).ToList(),token);
         }
-        var (headerCompany,headerText,footerText)=await ReadHeaderFooterAsync(connection,moduleId,token);
+        var (headerCompany,headerText,footerText,logoPath,tailText)=await ReadHeaderFooterAsync(connection,moduleId,headerId,tailId,token);
         headerText=ReplacePlaceholders(headerText,master);
         footerText=ReplacePlaceholders(footerText,master);
         var masterResolved=await ResolvePartyNameAsync(connection,masterTable,master,token);
         logger.LogDebug("打印数据 module={ModuleId} master={Master} details={DetailCount}",moduleId,masterTable,details.Count);
-        return new PrintData(moduleId,title,headerCompany,headerText,footerText,
+        return new PrintData(moduleId,title,headerCompany,headerText,footerText,logoPath,tailText,
             OrderPrintFields(masterFields),OrderPrintFields(detailFields),masterResolved,details);
     }
 
@@ -129,12 +131,13 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
 
     private static bool IsWorkbenchUrl(string url)
     {
-        var value=url.Trim().Replace('\\','/').ToLowerInvariant();
-        return value.Contains("view_frame")||value.Contains("/rpt/")||value.StartsWith("rpt/");
+        var value=url.Trim().Replace('\\','/');
+        return value.Equals("/document-workbench",StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("/document-workbench/",StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task<(string? Company,string? Header,string? Footer)> ReadHeaderFooterAsync(
-        SqlConnection connection,int moduleId,CancellationToken token)
+    private static async Task<(string? Company,string? Header,string? Footer,string? Logo,string? Tail)> ReadHeaderFooterAsync(
+        SqlConnection connection,int moduleId,string? headerIdOverride,string? tailIdOverride,CancellationToken token)
     {
         const string sql="""
             SELECT TOP 1 r.HEADER_ID,r.TAIL_ID
@@ -145,36 +148,42 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
         await using var command=new SqlCommand(sql,connection);
         command.Parameters.Add("@ModuleId",SqlDbType.Int).Value=moduleId;
         await using var reader=await command.ExecuteReaderAsync(token);
-        string? headerId=null;
-        string? tailId=null;
+        string? defaultHeaderId=null;
+        string? defaultTailId=null;
         if(await reader.ReadAsync(token))
         {
-            headerId=reader.IsDBNull(0)?"":reader.GetString(0).Trim();
-            tailId=reader.IsDBNull(1)?"":reader.GetString(1).Trim();
+            defaultHeaderId=reader.IsDBNull(0)?"":reader.GetString(0).Trim();
+            defaultTailId=reader.IsDBNull(1)?"":reader.GetString(1).Trim();
         }
         await reader.DisposeAsync();
-        if(string.IsNullOrEmpty(headerId))headerId="DEFAULT";
-        const string headerSql="SELECT LTRIM(RTRIM(ISNULL(COMPANY_NAME,''))),LTRIM(RTRIM(ISNULL(HEADER_TEXT,''))) FROM dbo.REPORT_HEADER WITH (NOLOCK) WHERE HEADER_ID=@Id;";
+        var headerId=string.IsNullOrWhiteSpace(headerIdOverride)
+            ? (string.IsNullOrWhiteSpace(defaultHeaderId)?"DEFAULT":defaultHeaderId)
+            : headerIdOverride.Trim();
+        const string headerSql="SELECT LTRIM(RTRIM(ISNULL(COMPANY_NAME,''))),LTRIM(RTRIM(ISNULL(HEADER_TEXT,''))),LTRIM(RTRIM(ISNULL(LOGO_PATH,''))) FROM dbo.REPORT_HEADER WITH (NOLOCK) WHERE HEADER_ID=@Id;";
         await using var headerCommand=new SqlCommand(headerSql,connection);
         headerCommand.Parameters.Add("@Id",SqlDbType.NVarChar,50).Value=headerId;
         await using var headerReader=await headerCommand.ExecuteReaderAsync(token);
         string? company=null;
         string? headerText=null;
+        string? logoPath=null;
         if(await headerReader.ReadAsync(token))
         {
             company=headerReader.GetString(0);
             headerText=headerReader.GetString(1);
+            logoPath=headerReader.GetString(2);
         }
         await headerReader.DisposeAsync();
-        string? footerText=null;
+        var tailId=string.IsNullOrWhiteSpace(tailIdOverride)?defaultTailId:tailIdOverride.Trim();
+        string? tailText=null;
         if(!string.IsNullOrEmpty(tailId))
         {
             const string tailSql="SELECT LTRIM(RTRIM(ISNULL(TAIL_TEXT,''))) FROM dbo.REPORT_TAIL WITH (NOLOCK) WHERE TAIL_ID=@Id;";
             await using var tailCommand=new SqlCommand(tailSql,connection);
             tailCommand.Parameters.Add("@Id",SqlDbType.NVarChar,50).Value=tailId;
-            footerText=await tailCommand.ExecuteScalarAsync(token) as string;
+            tailText=await tailCommand.ExecuteScalarAsync(token) as string;
         }
-        return (company,headerText,footerText);
+        tailText=string.IsNullOrWhiteSpace(tailText)?null:tailText.Trim();
+        return (company,headerText,tailText,string.IsNullOrWhiteSpace(logoPath)?null:logoPath.Trim(),tailText);
     }
 
     private static async Task<IReadOnlyList<PrintField>> ReadFieldsAsync(
@@ -183,7 +192,7 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
     {
         const string sql="""
             SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),
-                   COALESCE(f.IS_COST,0),COALESCE(f.IS_SECRECY,0)
+                   COALESCE(f.IS_COST,0),COALESCE(f.IS_SECRECY,0),LTRIM(RTRIM(ISNULL(f.DISPLAY_FORMAT,'')))
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE f.T_ID=@Table AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0
               AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@Table AND c.COLUMN_NAME=f.F_ID)
@@ -199,7 +208,9 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
             if(deniedFields.Contains(key))continue;
             if(Convert.ToBoolean(reader.GetValue(2))&&!canViewCost)continue;
             if(Convert.ToBoolean(reader.GetValue(3))&&!canViewSecrecy)continue;
-            result.Add(new PrintField(key,reader.GetString(1)));
+            var displayFormat=reader.GetString(4);
+            result.Add(new PrintField(key,reader.GetString(1),
+                string.IsNullOrWhiteSpace(displayFormat)?null:displayFormat.Trim()));
         }
         return result;
     }

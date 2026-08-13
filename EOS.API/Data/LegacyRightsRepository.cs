@@ -36,6 +36,54 @@ public sealed class LegacyRightsRepository(DbConnectionFactory connections, ILog
         return rights;
     }
 
+    /// <summary>
+    /// 报表级权限（对齐旧 Admin.GetUserReportRightDetail）：
+    /// 个人 SYSDD_REPORT 记录存在则完全采用（不再合并组）；否则取用户所属组
+    /// SYSDH_REPORT 的 PREVIEW/PRINT/EXPORT 标签按 OR 合并、DATA_FILTER 按 OR 拼接；
+    /// 无任何记录时三项权限均为 false。
+    /// </summary>
+    public async Task<ReportRights> GetReportAsync(string userId, int moduleId, string reportId, CancellationToken token)
+    {
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+
+        const string personalSql = """
+            SELECT ISNULL(PREVIEW_TAG,0) AS PREVIEW_TAG,ISNULL(PRINT_TAG,0) AS PRINT_TAG,
+                   ISNULL(EXPORT_TAG,0) AS EXPORT_TAG,ISNULL(DATA_FILTER,'') AS DATA_FILTER
+            FROM dbo.SYSDD_REPORT WITH (NOLOCK)
+            WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId;
+            """;
+        await using (var personalCommand = new SqlCommand(personalSql, connection))
+        {
+            AddReportParameters(personalCommand, userId, moduleId, reportId);
+            await using var reader = await personalCommand.ExecuteReaderAsync(token);
+            if (await reader.ReadAsync(token))
+            {
+                var rights = ReportRightsAggregator.FromPersonal(ReadReportRow(reader));
+                logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source=personal",
+                    userId, moduleId, reportId);
+                return rights;
+            }
+        }
+
+        const string groupSql = """
+            SELECT ISNULL(g.PREVIEW_TAG,0) AS PREVIEW_TAG,ISNULL(g.PRINT_TAG,0) AS PRINT_TAG,
+                   ISNULL(g.EXPORT_TAG,0) AS EXPORT_TAG,ISNULL(g.DATA_FILTER,'') AS DATA_FILTER
+            FROM dbo.SYSDH_REPORT g WITH (NOLOCK)
+            INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX=g.G_IDX
+            WHERE gu.USER_ID=@UserId AND g.M_IDX=@ModuleId AND g.REPORT_ID=@ReportId;
+            """;
+        await using var groupCommand = new SqlCommand(groupSql, connection);
+        AddReportParameters(groupCommand, userId, moduleId, reportId);
+        await using var groupReader = await groupCommand.ExecuteReaderAsync(token);
+        var rows = new List<ReportRightRow>();
+        while (await groupReader.ReadAsync(token)) rows.Add(ReadReportRow(groupReader));
+        var result = ReportRightsAggregator.FromGroups(rows);
+        logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source={Source}",
+            userId, moduleId, reportId, rows.Count == 0 ? "none" : $"group({rows.Count})");
+        return result;
+    }
+
     private void LogRights(string userId, int moduleId, string source, LegacyModuleRights rights) =>
         logger.LogDebug(
             "模块权限 userId={UserId} module={ModuleId} source={Source} browse={CanBrowse} cost={CanViewCost} secrecy={CanViewSecrecy} setup={CanSetup} addNew={CanAddNew} edit={CanEdit} delete={CanDelete} deniedMaster={DeniedMasterCount} deniedDetail={DeniedDetailCount} denyNewMaster={DenyNewMasterCount} denyModiMaster={DenyModiMasterCount}",
@@ -76,6 +124,19 @@ public sealed class LegacyRightsRepository(DbConnectionFactory connections, ILog
         command.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId;
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
     }
+
+    private static void AddReportParameters(SqlCommand command, string userId, int moduleId, string reportId)
+    {
+        AddParameters(command, userId, moduleId);
+        command.Parameters.Add("@ReportId", SqlDbType.NChar, 50).Value = reportId.Trim();
+    }
+
+    private static ReportRightRow ReadReportRow(SqlDataReader reader) => new(
+        reader.GetNullableBoolean("PREVIEW_TAG"),
+        reader.GetNullableBoolean("PRINT_TAG"),
+        reader.GetNullableBoolean("EXPORT_TAG"),
+        reader.GetNullableString("DATA_FILTER") ?? string.Empty);
+
     private SqlConnection CreateConnection() => connections.Create();
 }
 
@@ -94,6 +155,34 @@ internal sealed record RightRow(
     string DenyModiMaster,
     string DenyModiDetail,
     string DataFilter);
+
+internal sealed record ReportRightRow(bool Preview, bool Print, bool Export, string DataFilter);
+
+/// <summary>
+/// 报表权限聚合（纯逻辑，与数据库解耦，便于单元测试）。
+/// 对齐旧 Admin.GetUserReportRightDetail：个人覆盖组；组标签取 OR；
+/// DATA_FILTER 非空项以 OR 拼接；无记录全禁。
+/// </summary>
+internal static class ReportRightsAggregator
+{
+    public static ReportRights FromPersonal(ReportRightRow row) =>
+        new(row.Preview, row.Print, row.Export, row.DataFilter.Trim());
+
+    public static ReportRights FromGroups(IReadOnlyList<ReportRightRow> rows)
+    {
+        if (rows.Count == 0) return new ReportRights(false, false, false, string.Empty);
+        var filters = rows
+            .Select(row => row.DataFilter.Trim())
+            .Where(filter => filter.Length > 0)
+            .Select(filter => $"({filter})")
+            .ToList();
+        return new ReportRights(
+            rows.Any(row => row.Preview),
+            rows.Any(row => row.Print),
+            rows.Any(row => row.Export),
+            string.Join(" OR ", filters));
+    }
+}
 
 /// <summary>
 /// 纯权限聚合逻辑（与数据库解耦，便于单元测试）。

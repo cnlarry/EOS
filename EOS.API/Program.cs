@@ -9,6 +9,11 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.OpenApi;
+using QuestPDF;
+using QuestPDF.Infrastructure;
+
+// QuestPDF Community 许可（公司年收入 < $1M USD 免费；商用前需复核门槛，见 docs/tech-debt.md）
+QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -127,6 +132,11 @@ builder.Services.AddScoped<DomainRuleService>();
 builder.Services.AddScoped<AttendanceCalcService>();
 builder.Services.AddScoped<DocumentWorkbenchRepository>();
 builder.Services.AddScoped<ReportRepository>();
+builder.Services.AddScoped<PrintSettingsRepository>();
+builder.Services.AddScoped<PrintAdminRepository>();
+builder.Services.AddScoped<ReportAdminRepository>();
+builder.Services.AddScoped<ReportPdfService>();
+builder.Services.AddScoped<DocumentPdfService>();
 builder.Services.AddScoped<SearchCenterRepository>();
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<PrintService>();
@@ -164,7 +174,17 @@ app.MapFallbackToFile("index.html").RequireAuthorization();
 ImDatabaseInitializer.RunIfConfigured(builder.Configuration, app.Logger);
 MailDatabaseInitializer.RunIfConfigured(builder.Configuration, app.Logger);
 
+RegisterPdfFont();
+
 app.Run();
+
+static void RegisterPdfFont()
+{
+    var fontPath = Path.Combine(AppContext.BaseDirectory, "Fonts", "NotoSansCJKsc-Regular.otf");
+    if (!File.Exists(fontPath)) return;
+    // 进程内只注册一次；QuestPDF 内部持有字体数据，流保持打开由进程回收
+    QuestPDF.Drawing.FontManager.RegisterFontWithCustomName("Noto Sans CJK SC", File.OpenRead(fontPath));
+}
 
 static DirectoryInfo GetDataProtectionKeysDirectory(IConfiguration configuration)
 {

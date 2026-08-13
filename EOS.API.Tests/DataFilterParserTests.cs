@@ -28,6 +28,30 @@ public class DataFilterParserTests
     }
 
     [Fact]
+    public void LegacyBraceFieldSyntax_IsAccepted()
+    {
+        // 旧系统 FILTER 使用 {表.列} 花括号语法（如 18069801 HR_EMPLOYEE）。
+        Assert.True(Try(
+            "{HR_EMPLOYEE.STATE}<4 and {HR_EMPLOYEE.IF_SHOW}=1",
+            "HR_EMPLOYEE", Fields("STATE", "IF_SHOW"),
+            out var predicate, out var parameters));
+        Assert.Equal("[STATE] < @df0 AND [IF_SHOW] = @df1", predicate);
+        Assert.Equal(2, parameters.Count);
+    }
+
+    [Fact]
+    public void ParenthesizedArithmeticComparison_IsAccepted()
+    {
+        // 1310 报表过滤：({MOC_PRODUCE_M.FINISHED_QTY}-{...FITOUT_QTY}-{...SCRAP_QTY})>0
+        Assert.True(Try(
+            "({MOC_PRODUCE_M.FINISHED_QTY}-{MOC_PRODUCE_M.FINISHED_FITOUT_QTY}-{MOC_PRODUCE_M.SCRAP_QTY})>0",
+            "MOC_PRODUCE_M", Fields("FINISHED_QTY", "FINISHED_FITOUT_QTY", "SCRAP_QTY"),
+            out var predicate, out var parameters));
+        Assert.Equal("([FINISHED_QTY]-[FINISHED_FITOUT_QTY]-[SCRAP_QTY]) > @df0", predicate);
+        Assert.Equal(1, parameters.Count);
+    }
+
+    [Fact]
     public void ForeignTablePrefix_IsRejected()
     {
         Assert.False(Try("CLIENT.SALES_ID='YW2-08'", "PRODUCT_EDITION", Fields("CLIENT_ID"), out _, out _));

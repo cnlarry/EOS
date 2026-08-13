@@ -11,19 +11,40 @@ namespace EOS.API.Controllers;
 [Route("api/print")]
 public sealed class PrintController(
     PrintService service,
-    LegacyRightsRepository rightsRepository) : ControllerBase
+    PrintSettingsRepository printSettingsRepository,
+    LegacyRightsRepository rightsRepository,
+    DocumentPdfService documentPdfService) : ControllerBase
 {
-    [HttpPost("{moduleId:int}")]
-    public async Task<IActionResult> Print(int moduleId,[FromBody]PrintRequest request,CancellationToken token)
+    /// <summary>
+    /// 单据 PDF（原 RptBill 的受控等价）：主表 + 明细 + 可选页头/表尾/打印备注，
+    /// 生成前校验模块浏览权与报表级打印权；全部字段经服务端元数据过滤。
+    /// </summary>
+    [HttpPost("{moduleId:int}/pdf")]
+    public async Task<IActionResult> Pdf(int moduleId, [FromBody] DocumentPdfRequest request, CancellationToken token)
     {
-        var userId=User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if(userId is null)return Unauthorized();
-        var rights=await rightsRepository.GetAsync(userId,moduleId,token);
-        if(!rights.CanBrowse)return Forbid();
-        var data=await service.GetPrintDataAsync(moduleId,request.Key,rights.CanViewCost,rights.CanViewSecrecy,
-            rights.DeniedMasterFields,rights.DeniedDetailFields,token);
-        return data is null?NotFound():Ok(data);
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is null) return Unauthorized();
+        var rights = await rightsRepository.GetAsync(userId, moduleId, token);
+        if (!rights.CanBrowse) return Forbid();
+
+        var settings = await printSettingsRepository.GetAsync(moduleId, userId, token);
+        var report = settings.Reports.FirstOrDefault(item => item.IsDefault) ?? settings.Reports.FirstOrDefault();
+        if (report is null) return Forbid();
+        var reportRights = await rightsRepository.GetReportAsync(userId, moduleId, report.ReportId, token);
+        if (!reportRights.CanPrint) return Forbid();
+
+        var headerId = string.IsNullOrWhiteSpace(request.HeaderId) ? report.HeaderId : request.HeaderId.Trim();
+        var tailId = string.IsNullOrWhiteSpace(request.TailId) ? report.TailId : request.TailId.Trim();
+        var data = await service.GetPrintDataAsync(
+            moduleId, request.Key, headerId, tailId,
+            rights.CanViewCost, rights.CanViewSecrecy,
+            rights.DeniedMasterFields, rights.DeniedDetailFields, token);
+        if (data is null) return NotFound();
+
+        var header = settings.Headers.FirstOrDefault(item => item.HeaderId == headerId);
+        var tail = settings.Tails.FirstOrDefault(item => item.TailId == tailId);
+        var pdf = documentPdfService.Generate(
+            data, header, tail?.TailText ?? data.TailText, request.ShowRemark, userId);
+        return File(pdf, "application/pdf", $"{data.Title}.pdf");
     }
 }
-
-public sealed record PrintRequest(IReadOnlyList<string> Key);

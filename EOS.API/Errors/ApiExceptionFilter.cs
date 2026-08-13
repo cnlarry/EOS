@@ -18,6 +18,7 @@ public sealed class ApiExceptionFilter(ILogger<ApiExceptionFilter> logger) : IAs
             ArgumentException exception => (StatusCodes.Status400BadRequest, ApiErrorCodes.InvalidArgument, exception.Message),
             DataFilterUnsupportedException exception => (StatusCodes.Status403Forbidden, "DATA_FILTER_UNSUPPORTED", exception.Message),
             GroupExpressionUnsupportedException exception => (StatusCodes.Status403Forbidden, "GROUP_EXP_UNSUPPORTED", exception.Message),
+            PdfDataTooLargeException exception => (StatusCodes.Status422UnprocessableEntity, "PDF_DATA_TOO_LARGE", exception.Message),
             _ => (0, string.Empty, string.Empty)
         };
 
