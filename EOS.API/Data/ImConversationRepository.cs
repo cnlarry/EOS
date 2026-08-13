@@ -6,7 +6,7 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// EOS.IM 会话/成员/通讯录仓储。成员关系即访问权限边界；
-/// 用户目录（姓名/部门）来自 Hiswitek 旧系统，只读跨库查询，不新建用户体系。
+/// 用户目录（姓名/部门）来自 EOS.ERP 旧系统，只读跨库查询，不新建用户体系。
 /// </summary>
 public sealed class ImConversationRepository(DbConnectionFactory connections) : IImConversationRepository
 {
@@ -346,8 +346,8 @@ public sealed class ImConversationRepository(DbConnectionFactory connections) : 
         const string sql = """
             SELECT m.UserId, m.Role, ISNULL(n.EMP_NAME, m.UserId) AS EmployeeName
             FROM dbo.im_conversation_members m
-            LEFT JOIN Hiswitek.dbo.SYSDL u WITH (NOLOCK) ON LTRIM(RTRIM(u.USER_ID)) = m.UserId
-            LEFT JOIN Hiswitek.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
+            LEFT JOIN EOS.ERP.dbo.SYSDL u WITH (NOLOCK) ON LTRIM(RTRIM(u.USER_ID)) = m.UserId
+            LEFT JOIN EOS.ERP.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
             WHERE m.ConversationId = @ConversationId AND m.LeftAt IS NULL
             ORDER BY CASE m.Role WHEN N'Owner' THEN 0 WHEN N'Admin' THEN 1 ELSE 2 END, EmployeeName;
             """;
@@ -378,8 +378,8 @@ public sealed class ImConversationRepository(DbConnectionFactory connections) : 
                     WHERE a.ConversationId = c.Id AND a.LeftAt IS NULL) AS MemberCount,
                    (SELECT TOP (1) n.EMP_NAME
                     FROM dbo.im_conversation_members o
-                    JOIN Hiswitek.dbo.SYSDL u WITH (NOLOCK) ON LTRIM(RTRIM(u.USER_ID)) = o.UserId
-                    JOIN Hiswitek.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
+                    JOIN EOS.ERP.dbo.SYSDL u WITH (NOLOCK) ON LTRIM(RTRIM(u.USER_ID)) = o.UserId
+                    JOIN EOS.ERP.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
                     WHERE o.ConversationId = c.Id AND o.UserId <> @UserId AND o.LeftAt IS NULL) AS DirectName
             FROM dbo.im_conversations c
             JOIN dbo.im_conversation_members m ON m.ConversationId = c.Id AND m.UserId = @UserId AND m.LeftAt IS NULL
@@ -427,9 +427,9 @@ public sealed class ImConversationRepository(DbConnectionFactory connections) : 
     {
         var pattern = $"%{keyword?.Trim() ?? string.Empty}%";
         const string sql = """
-            SELECT TOP (@Limit) u.USER_ID, n.EMP_NAME, Hiswitek.dbo.f_get_dept_desc(n.DEPT_ID) AS DEPT_DESC
-            FROM Hiswitek.dbo.SYSDL u WITH (NOLOCK)
-            JOIN Hiswitek.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
+            SELECT TOP (@Limit) u.USER_ID, n.EMP_NAME, EOS.ERP.dbo.f_get_dept_desc(n.DEPT_ID) AS DEPT_DESC
+            FROM EOS.ERP.dbo.SYSDL u WITH (NOLOCK)
+            JOIN EOS.ERP.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
             WHERE u.ACTIVE_TAG = 1
               AND (LTRIM(RTRIM(u.USER_ID)) LIKE @Pattern OR n.EMP_NAME LIKE @Pattern)
             ORDER BY n.EMP_NAME;
