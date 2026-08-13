@@ -136,7 +136,9 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
         // 编辑态列（data-col-min-floor）：DISPLAY_LENGTH 同时作为硬下限，历史/拖拽宽度不得低于它
         const floor = th.dataset.colMinFloor === 'true' ? minWidth : 0
         const base = (typeof saved[key] === 'number' && saved[key] > 0) ? saved[key] : (defaults.get(key) ?? 0)
-        const width = Math.max(floor, base)
+        // 有最大宽度上限（如选择器巨量内容防护）时钳制列宽，历史/拖拽宽度同样受约束
+        const maxWidth = parseFloat(th.dataset.colMaxWidth ?? '') || 0
+        const width = maxWidth > 0 ? Math.min(Math.max(floor, base), maxWidth) : Math.max(floor, base)
         if (cols[index]) cols[index].style.width = width > 0 ? `${width}px` : ''
       })
       // 弹性末列（最后一个 <col>）保持无宽度，吸收余量，锁定其它列
@@ -234,7 +236,10 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
         })
       })
       const cols = ensureCols()
-      const width = Math.max(MIN_WIDTH, headerWidth, dataWidth)
+      const maxWidth = parseFloat(th.dataset.colMaxWidth ?? '') || 0
+      const width = maxWidth > 0
+        ? Math.min(Math.max(MIN_WIDTH, headerWidth, dataWidth), maxWidth)
+        : Math.max(MIN_WIDTH, headerWidth, dataWidth)
       if (cols[index]) cols[index].style.width = `${width}px`
       saveWidths()
       return width

@@ -752,6 +752,21 @@ button, input, select { font: inherit; }
 /* 选择器弹窗：查询区（字段下拉 + 条件值）对齐旧系统 Chooser.aspx */
 .erp-chooser-query .erp-chooser-field { flex: 0 0 170px; width: 170px; }
 .erp-chooser-query .form-control { min-width: 0; }
+/* 选择器工具行：确认/高级查询/选择列按钮固定宽，搜索占满剩余空间，整行与容器等宽；
+   与标题栏/表格的间距统一为 10px */
+.erp-chooser-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.erp-chooser-toolbar > .btn { flex: 0 0 auto; }
+.erp-chooser-toolbar .btn { font-size: 12px; }
+.erp-chooser-toolbar .erp-chooser-query { flex: 1 1 auto; min-width: 0; }
+/* 选择器弹窗固定高度：记录少时不缩矮，记录多时表格区滚动条控制。
+   modal-dialog-centered 默认 min-height 近整屏高，必须清零让固定高度生效；
+   modal-content 高度 100% 填满弹窗，body 与表格容器 min-height/min-width 归零，
+   垂直/水平溢出都收进表格区滚动条，而不是把弹窗撑出屏幕。 */
+.erp-chooser-dialog { height: 640px; min-height: 0; max-height: calc(100vh - 32px); }
+.erp-chooser-dialog .modal-content { height: 100%; max-height: 100%; }
+.erp-chooser-dialog .modal-body { display: flex; flex-direction: column; overflow: hidden; min-height: 0; min-width: 0; padding-top: 10px; }
+.erp-chooser-body-table { flex: 1 1 auto; min-height: 0; min-width: 0; overflow: auto; }
+.erp-chooser-extra { flex: 0 1 auto; overflow: auto; max-height: 180px; min-width: 0; }
 
 /* 明细网格：序号列窄固定，操作列紧凑（基于统一 erp-data-table 电子表格外壳） */
 .erp-detail-row-no { width: 52px; min-width: 52px; }

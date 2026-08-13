@@ -404,6 +404,7 @@ describe('FormEditorPage', () => {
     await waitFor(() => expect(screen.getByText('高强钢')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '查询' }))
     fireEvent.click(screen.getByText('高强钢').closest('tr')! as HTMLElement)
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
     await waitFor(() => expect(screen.getByDisplayValue('P9')).toBeInTheDocument())
     const event = new Event('beforeunload', { cancelable: true })
     window.dispatchEvent(event)

@@ -5,9 +5,9 @@ import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from
 import { LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
 import { ErpTable } from '../../components/common/ErpTable'
+import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
-import { DataChooserInput, type ChooserRow } from './DataChooserInput'
 import { FormFieldRenderer } from './FormFieldRenderer'
 import type { FormDefinition, FormFieldDefinition } from './formDefinition'
 import { inputKind } from './formFieldKind'
@@ -59,6 +59,12 @@ function writableFields(fields: FormFieldDefinition[]): FormFieldDefinition[] {
   // 但选择器选中的值必须随保存提交；元数据修复后误标只读字段已改可编辑，此分支仅服务 ONLY_CHOOSE 语义。
   return fields.filter(field => field.isVisible && !field.serverFilled && !field.isVirtual && !field.displayOnly
     && (!field.isReadonly || field.choosers.some(source => source.active && source.table)))
+}
+
+/** 统一选择器标题：字段标签 + 数据源描述（多选后缀由 UnifiedChooser 内部追加） */
+function chooserTitle(field: FormFieldDefinition): string {
+  const source = field.choosers.find(item => item.active && item.table)
+  return `${field.label}${source?.description ? `（${source.description}）` : ''}`
 }
 
 function describeError(error: unknown): string {
@@ -208,7 +214,7 @@ export function FormEditorPage() {
     navigate(`/document-workbench/${moduleId}`)
   }
 
-  const applyChooser = (field: FormFieldDefinition, row: ChooserRow) => {
+  const applyChooser = (field: FormFieldDefinition, row: UnifiedChooserRow) => {
     const source = field.choosers.find(item => item.active && item.table)
     const mapping = source?.returnMapping
     if (mapping) {
@@ -262,10 +268,10 @@ export function FormEditorPage() {
     setDirty(true)
   }
 
-  const applyDetailChooser = (index: number, field: FormFieldDefinition, rows: ChooserRow[]) => {
+  const applyDetailChooser = (index: number, field: FormFieldDefinition, rows: UnifiedChooserRow[]) => {
     const source = field.choosers.find(item => item.active && item.table)
     const mapping = source?.returnMapping
-    const applyMapping = (target: Record<string, string>, row: ChooserRow) => {
+    const applyMapping = (target: Record<string, string>, row: UnifiedChooserRow) => {
       if (!mapping) return target
       for (const pair of mapping.split(/[;,]/)) {
         const [t, column] = pair.split('=')
@@ -518,10 +524,33 @@ export function FormEditorPage() {
         </section>
       ) : null}
       {chooserField ? (
-        <DataChooserInput moduleId={moduleId} field={chooserField} masterValues={masterValues} onPick={rows => applyChooser(chooserField, rows[0])} onClose={() => setChooserField(null)} />
+        <UnifiedChooser
+          open
+          title={chooserTitle(chooserField)}
+          source={{ kind: 'formField', moduleId, fieldKey: chooserField.key }}
+          mode={chooserField.chooseMultiple ? 'multi' : 'single'}
+          masterValues={masterValues}
+          onPick={rows => applyChooser(chooserField, rows[0])}
+          onClose={() => setChooserField(null)}
+          resizable
+          storageKey={`chooser-${moduleId}-${chooserField.key}`}
+          emptyText="没有可选数据。"
+        />
       ) : null}
       {detailChooser ? (
-        <DataChooserInput moduleId={moduleId} field={detailChooser.field} masterValues={masterValues} detailValues={detailRows[detailChooser.index] ?? undefined} onPick={rows => applyDetailChooser(detailChooser.index, detailChooser.field, rows)} onClose={() => setDetailChooser(null)} />
+        <UnifiedChooser
+          open
+          title={chooserTitle(detailChooser.field)}
+          source={{ kind: 'formField', moduleId, fieldKey: detailChooser.field.key }}
+          mode={detailChooser.field.chooseMultiple ? 'multi' : 'single'}
+          masterValues={masterValues}
+          detailValues={detailRows[detailChooser.index] ?? undefined}
+          onPick={rows => applyDetailChooser(detailChooser.index, detailChooser.field, rows)}
+          onClose={() => setDetailChooser(null)}
+          resizable
+          storageKey={`chooser-${moduleId}-${detailChooser.field.key}`}
+          emptyText="没有可选数据。"
+        />
       ) : null}
     </div>
   )

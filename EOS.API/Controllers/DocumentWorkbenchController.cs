@@ -133,7 +133,7 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
     }
 
     [HttpGet("form-chooser/{fieldKey}")]
-    public async Task<IActionResult> FormChooser(int moduleId,string fieldKey,[FromQuery]string? keyword=null,[FromQuery]string? filterField=null,[FromQuery]string? master=null,[FromQuery]string? detail=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]int page=1,[FromQuery]int pageSize=50,CancellationToken token=default)
+    public async Task<IActionResult> FormChooser(int moduleId,string fieldKey,[FromQuery]string? keyword=null,[FromQuery]string? filterField=null,[FromQuery]string? master=null,[FromQuery]string? detail=null,[FromQuery]string? conditions=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]int page=1,[FromQuery]int pageSize=50,CancellationToken token=default)
     {
         var access=await FormAccess(moduleId,"new",token) ?? await FormAccess(moduleId,"edit",token);
         if(access is null)return NotFound();
@@ -178,7 +178,20 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
                 detailValues=null;
             }
         }
-        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,filterField,source.ReturnMapping,masterValues,detailValues,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,chooseFilter,sortField,sortDirection,page,pageSize,token);
+        IReadOnlyList<UnifiedChooserCondition>? chooserConditions=null;
+        if(!string.IsNullOrWhiteSpace(conditions))
+        {
+            try
+            {
+                chooserConditions=System.Text.Json.JsonSerializer.Deserialize<List<UnifiedChooserCondition>>(conditions,
+                    new System.Text.Json.JsonSerializerOptions{PropertyNameCaseInsensitive=true});
+            }
+            catch
+            {
+                chooserConditions=null;
+            }
+        }
+        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,filterField,source.ReturnMapping,masterValues,detailValues,chooserConditions,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,chooseFilter,sortField,sortDirection,page,pageSize,token);
         return result is null?NotFound():Ok(result);
     }
 

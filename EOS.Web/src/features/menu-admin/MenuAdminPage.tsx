@@ -15,10 +15,9 @@ import {
   IconTrash,
 } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ColumnDef } from '@tanstack/react-table'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpChooserModal } from '../../components/common/ErpChooserModal'
+import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
 import { navigationIcons } from '../../components/layout/navigationIcons'
 import { Button } from '../../components/ui/Button'
@@ -72,13 +71,6 @@ type MenuSortAction = 'top' | 'up' | 'down' | 'bottom'
 
 /** 拖拽落点：before=目标同级之前、after=目标同级之后、into=成为目标子节点（追加末尾）。 */
 type DropMode = 'before' | 'after' | 'into'
-
-interface MenuAdminTableInfo {
-  T_ID: string
-  T_DESC: string
-  T_KIND: string | null
-  T_TYPE: string | null
-}
 
 const parentKeyOf = (module: MenuAdminModule) => (module.M_P_IDX != null && module.M_P_IDX > 0 ? module.M_P_IDX : 0)
 
@@ -195,27 +187,12 @@ export function MenuAdminPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [tableChooser, setTableChooser] = useState<'master' | 'detail' | null>(null)
-  const [tableKeyword, setTableKeyword] = useState('')
   const [iconPickerModule, setIconPickerModule] = useState<MenuAdminModule | null>(null)
   const [fieldPicker, setFieldPicker] = useState<null | { target: 'sortFields' | 'detailNoFields' | 'notBackM' | 'notBack' }>(null)
   const [filterBuilderOpen, setFilterBuilderOpen] = useState(false)
   const [treeQuery, setTreeQuery] = useState('')
   const draggedIdRef = useRef<number | null>(null)
   const modules = useQuery({ queryKey: ['menu-admin', 'modules'], queryFn: () => apiClient.get<{ total: number; modules: MenuAdminModule[] }>('/admin/menus') })
-  // 表列表仅在打开选择器时加载（避免挂载期失败状态残留导致“加载表列表失败”）
-  const tables = useQuery({
-    queryKey: ['menu-admin', 'tables'],
-    queryFn: async () => {
-      try {
-        return await apiClient.get<MenuAdminTableInfo[]>('/admin/menus/tables')
-      } catch (error) {
-        console.error('[菜单管理] 表列表加载失败，完整错误：', error)
-        throw error
-      }
-    },
-    enabled: false,
-    retry: 2,
-  })
 
   const byId = useMemo(() => new Map((modules.data?.modules ?? []).map((module) => [module.M_IDX, module])), [modules.data])
   const filteredModules = useMemo(() => {
@@ -510,22 +487,11 @@ export function MenuAdminPage() {
   const pickTable = (kind: 'master' | 'detail', tableId: string) => {
     patch((d) => ({ ...d, [kind === 'master' ? 'MASTER_TABLE' : 'DETAIL_TABLE']: tableId }))
     setTableChooser(null)
-    setTableKeyword('')
   }
 
   const openTableChooser = (kind: 'master' | 'detail') => {
-    setTableKeyword('')
     setTableChooser(kind)
-    // 打开时强制刷新表列表，避免旧 API 阶段的失败状态残留
-    void tables.refetch()
   }
-
-  const filteredTables = useMemo(() => {
-    const keyword = tableKeyword.trim().toLowerCase()
-    return (tables.data ?? []).filter((table) => !keyword
-      || table.T_ID.toLowerCase().includes(keyword)
-      || table.T_DESC.toLowerCase().includes(keyword))
-  }, [tables.data, tableKeyword])
 
   const tableKindLabel = (kind: string | null) => {
     const upper = kind?.toUpperCase()
@@ -533,20 +499,6 @@ export function MenuAdminPage() {
     if (upper === 'S') return '副表'
     return upper ? upper : '其他'
   }
-
-  const tableColumns: ColumnDef<MenuAdminTableInfo, unknown>[] = [
-    {
-      id: 'select',
-      enableSorting: false,
-      meta: { className: 'erp-select-column', resizable: false, frozenLeft: true, truncate: false },
-      header: () => null,
-      cell: () => <input className="form-check-input" type="checkbox" aria-label="选择此表" readOnly />,
-    },
-    { id: 'T_ID', accessorKey: 'T_ID', header: '表名', cell: ({ getValue }) => <span className="erp-menu-table-id">{String(getValue())}</span> },
-    { id: 'T_DESC', accessorKey: 'T_DESC', header: '描述' },
-    { id: 'T_KIND', accessorKey: 'T_KIND', header: '类型', cell: ({ getValue }) => tableKindLabel(getValue() as string | null) },
-    { id: 'T_TYPE', accessorKey: 'T_TYPE', header: '种类' },
-  ]
 
   const handleDragStart = (module: MenuAdminModule) => (event: React.DragEvent) => {
     draggedIdRef.current = module.M_IDX
@@ -726,17 +678,6 @@ export function MenuAdminPage() {
   }
 
   const errorMessage = modules.error instanceof ApiError ? modules.error.body.message : '发生未知错误，请稍后重试。'
-  const describeError = (error: unknown, fallback: string) => {
-    if (error instanceof ApiError) return `${error.body.message}（HTTP ${error.status}）`
-    if (error && typeof error === 'object') {
-      const candidate = error as { status?: unknown; body?: { message?: string } }
-      if (typeof candidate.status === 'number' && candidate.body) {
-        return `${candidate.body.message ?? '请求失败'}（HTTP ${candidate.status}）`
-      }
-    }
-    if (error instanceof Error) return `${error.name}: ${error.message}`
-    return fallback
-  }
 
   return (
     <div className="erp-menu-admin d-grid gap-2">
@@ -955,21 +896,18 @@ export function MenuAdminPage() {
           </div>
         </div>
       </div>
-      <ErpChooserModal
+      <UnifiedChooser
         open={tableChooser !== null}
         title={tableChooser === 'master' ? '选择操作主表' : '选择操作副表'}
-        columns={tableColumns}
-        data={filteredTables}
-        getRowId={(row) => row.T_ID}
+        source={{ kind: 'sourceKey', key: 'menu-admin.tables' }}
+        getRowId={(row) => String(row.T_ID)}
         mode="single"
-        onPick={(rows) => { const row = rows[0]; if (row && tableChooser) pickTable(tableChooser, row.T_ID) }}
-        onClose={() => { setTableChooser(null); setTableKeyword('') }}
-        searchText={tableKeyword}
-        onSearchChange={setTableKeyword}
+        onPick={(rows) => { const row = rows[0]; if (row && tableChooser) pickTable(tableChooser, String(row.T_ID)) }}
+        onClose={() => setTableChooser(null)}
         searchPlaceholder="搜索表名/描述…"
-        loading={tables.isPending || (tables.isFetching && !tables.data)}
-        error={tables.isError ? describeError(tables.error, '加载表列表失败') : null}
-        onRetry={() => void tables.refetch()}
+        columnRenderers={{
+          T_KIND: (row) => tableKindLabel(row.T_KIND as string | null),
+        }}
         emptyText="没有匹配的表。"
       />
       {iconPickerModule && (

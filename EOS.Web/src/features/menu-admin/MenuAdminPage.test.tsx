@@ -40,6 +40,29 @@ const threeLeaves = [
 ]
 const withTables: MenuAdminModule = { ...moduleNode(110101, '公司基本资料', 1101), MASTER_TABLE: 'COMPANY', DETAIL_TABLE: 'COMPANY_D' }
 
+const tableChooserData = {
+  columns: [
+    { key: 'T_ID', label: '表名', dataType: 'nvarchar', format: null },
+    { key: 'T_DESC', label: '描述', dataType: 'nvarchar', format: null },
+    { key: 'T_KIND', label: '类型', dataType: 'nvarchar', format: null },
+    { key: 'T_TYPE', label: '种类', dataType: 'nvarchar', format: null },
+  ],
+  rows: [{ T_ID: 'COMPANY', T_DESC: '公司基本资料', T_KIND: '', T_TYPE: '' }],
+  total: 1,
+}
+
+function fieldChooserData(fieldRows: { F_ID: string; F_DESC: string; F_TYPE: string }[]) {
+  return {
+    columns: [
+      { key: 'F_ID', label: '字段名', dataType: 'nvarchar', format: null },
+      { key: 'F_DESC', label: '描述', dataType: 'nvarchar', format: null },
+      { key: 'F_TYPE', label: '类型', dataType: 'nvarchar', format: null },
+    ],
+    rows: fieldRows.map(({ F_ID, F_DESC, F_TYPE }) => ({ F_ID, F_DESC, F_TYPE })),
+    total: fieldRows.length,
+  }
+}
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -420,11 +443,10 @@ describe('MenuAdminPage', () => {
   })
 
   it('表选择器选择操作主表并回填', async () => {
-    apiClientMock.get.mockImplementation(async (path: string) => {
-      if (path === '/admin/menus/tables') {
-        return [{ T_ID: 'COMPANY', T_DESC: '公司基本资料', T_KIND: null, T_TYPE: null }]
-      }
-      return { total: modules.length, modules }
+    apiClientMock.get.mockResolvedValue({ total: modules.length, modules })
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === '/chooser/query') return tableChooserData
+      throw new Error(`unexpected POST ${path}`)
     })
     renderPage()
     await waitForMenuTree()
@@ -433,6 +455,7 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getAllByRole('button', { name: '选择…' })[0])
     await waitFor(() => expect(screen.getByText('公司基本资料')).toBeInTheDocument())
     fireEvent.click(screen.getByText('公司基本资料'))
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
     await waitFor(() => expect(screen.getByLabelText('操作主表名')).toHaveValue('COMPANY'))
   })
 
@@ -445,6 +468,10 @@ describe('MenuAdminPage', () => {
       if (path.includes('/admin/menus/fields')) return fieldRows
       return { total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), withTables] }
     })
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === '/chooser/query') return fieldChooserData(fieldRows)
+      throw new Error(`unexpected POST ${path}`)
+    })
     renderPage()
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
@@ -456,7 +483,7 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(screen.getByText('公司编号')).toBeInTheDocument())
     fireEvent.click(screen.getByText('公司编号'))
     fireEvent.click(screen.getAllByRole('button', { name: '升序' })[0])
-    fireEvent.click(screen.getByRole('button', { name: /确定/ }))
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
     await waitFor(() => expect(screen.getByLabelText('排序字段')).toHaveValue('C_ID DESC'))
   })
 
@@ -469,6 +496,10 @@ describe('MenuAdminPage', () => {
       if (path.includes('/admin/menus/fields')) return fieldRows
       return { total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), withTables] }
     })
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === '/chooser/query') return fieldChooserData(fieldRows)
+      throw new Error(`unexpected POST ${path}`)
+    })
     renderPage()
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
@@ -480,7 +511,7 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(screen.getByText('公司编号')).toBeInTheDocument())
     fireEvent.click(screen.getByText('公司编号'))
     fireEvent.click(screen.getByText('公司名称'))
-    fireEvent.click(screen.getByRole('button', { name: /确定/ }))
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
     await waitFor(() => expect(screen.getByLabelText('新增明细时必需字段')).toHaveValue('C_ID;C_NAME'))
   })
 
