@@ -268,7 +268,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
         await using var delete = new SqlCommand("DELETE FROM dbo.FIELDS WHERE T_ID=@TableId AND F_ID=@FieldId", connection, transaction);
-        delete.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        delete.Parameters.Add("@TableId", SqlDbType.VarChar, 100).Value = tableId;
         delete.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
         if (await delete.ExecuteNonQueryAsync(token) != 1)
         {
@@ -281,7 +281,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
             """;
         await using var clean = new SqlCommand(cleanSql, connection, transaction);
         clean.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
-        clean.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        clean.Parameters.Add("@TableId", SqlDbType.VarChar, 100).Value = tableId;
         await clean.ExecuteNonQueryAsync(token);
         await transaction.CommitAsync(token);
         logger.LogInformation("删除字段 table={Table} field={Field}", tableId, fieldId);
