@@ -15,7 +15,7 @@ public sealed class DbConnectionFactory(IConfiguration configuration)
         return new SqlConnection(connectionString);
     }
 
-    /// <summary>创建指向 EOS.IM 即时通讯库的连接（独立于 Hiswitek 旧库）。</summary>
+    /// <summary>创建指向 EOS.IM 即时通讯库的连接（独立于 EOS.ERP 旧库）。</summary>
     public SqlConnection CreateIm()
     {
         var connectionString = configuration.GetConnectionString("ImDatabase")
@@ -23,7 +23,7 @@ public sealed class DbConnectionFactory(IConfiguration configuration)
         return new SqlConnection(connectionString);
     }
 
-    /// <summary>创建指向 EOS.Mail 邮件任务库的连接（独立于 Hiswitek 旧库与 EOS.IM 消息库）。</summary>
+    /// <summary>创建指向 EOS.Mail 邮件任务库的连接（独立于 EOS.ERP 旧库与 EOS.IM 消息库）。</summary>
     public SqlConnection CreateMail()
     {
         var connectionString = configuration.GetConnectionString("MailDatabase")

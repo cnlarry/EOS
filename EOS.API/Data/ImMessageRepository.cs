@@ -168,8 +168,8 @@ public sealed class ImMessageRepository(DbConnectionFactory connections) : IImMe
                    m.MessageType, m.Content, m.SentAt, m.IsRecalled, m.RecalledAt, m.RecalledByUserId,
                    ISNULL(n.EMP_NAME, m.SenderUserId) AS SenderName
             FROM dbo.im_messages m
-            LEFT JOIN Hiswitek.dbo.SYSDL u WITH (NOLOCK) ON LTRIM(RTRIM(u.USER_ID)) = m.SenderUserId
-            LEFT JOIN Hiswitek.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
+            LEFT JOIN EOS.ERP.dbo.SYSDL u WITH (NOLOCK) ON LTRIM(RTRIM(u.USER_ID)) = m.SenderUserId
+            LEFT JOIN EOS.ERP.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
             WHERE m.ConversationId = @ConversationId AND m.Seq > @AfterSeq
             ORDER BY m.Seq ASC;
             """;
@@ -190,8 +190,8 @@ public sealed class ImMessageRepository(DbConnectionFactory connections) : IImMe
                    m.MessageType, m.Content, m.SentAt, m.IsRecalled, m.RecalledAt, m.RecalledByUserId,
                    ISNULL(n.EMP_NAME, m.SenderUserId) AS SenderName
             FROM dbo.im_messages m
-            LEFT JOIN Hiswitek.dbo.SYSDL u WITH (NOLOCK) ON LTRIM(RTRIM(u.USER_ID)) = m.SenderUserId
-            LEFT JOIN Hiswitek.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
+            LEFT JOIN EOS.ERP.dbo.SYSDL u WITH (NOLOCK) ON LTRIM(RTRIM(u.USER_ID)) = m.SenderUserId
+            LEFT JOIN EOS.ERP.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
             WHERE m.ConversationId = @ConversationId AND m.Seq < @BeforeSeq
             ORDER BY m.Seq DESC;
             """;
@@ -332,8 +332,8 @@ public sealed class ImMessageRepository(DbConnectionFactory connections) : IImMe
                    c.Name AS ConversationName
             FROM dbo.im_messages m
             JOIN dbo.im_conversations c ON c.Id = m.ConversationId
-            LEFT JOIN Hiswitek.dbo.SYSDL u WITH (NOLOCK) ON LTRIM(RTRIM(u.USER_ID)) = m.SenderUserId
-            LEFT JOIN Hiswitek.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
+            LEFT JOIN EOS.ERP.dbo.SYSDL u WITH (NOLOCK) ON LTRIM(RTRIM(u.USER_ID)) = m.SenderUserId
+            LEFT JOIN EOS.ERP.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
             WHERE m.IsRecalled = 0 AND m.Content LIKE @Pattern
               AND EXISTS (
                   SELECT 1 FROM dbo.im_conversation_members x
@@ -387,8 +387,8 @@ public sealed class ImMessageRepository(DbConnectionFactory connections) : IImMe
                    m.MessageType, m.Content, m.SentAt, m.IsRecalled, m.RecalledAt, m.RecalledByUserId,
                    ISNULL(n.EMP_NAME, m.SenderUserId) AS SenderName
             FROM dbo.im_messages m
-            LEFT JOIN Hiswitek.dbo.SYSDL u WITH (NOLOCK) ON LTRIM(RTRIM(u.USER_ID)) = m.SenderUserId
-            LEFT JOIN Hiswitek.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
+            LEFT JOIN EOS.ERP.dbo.SYSDL u WITH (NOLOCK) ON LTRIM(RTRIM(u.USER_ID)) = m.SenderUserId
+            LEFT JOIN EOS.ERP.dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = u.EMP_ID
             WHERE m.ConversationId = @ConversationId AND m.Id = @MessageId;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);

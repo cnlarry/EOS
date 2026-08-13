@@ -747,9 +747,9 @@ public sealed class ImLiveE2eTests : IAsyncLifetime
             var path = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "config.toml");
             var text = File.ReadAllText(path);
-            var match = System.Text.RegularExpressions.Regex.Match(text, "MSSQL_CONNECTION_STRING\\s*=\\s*\"([^\"]+)\"");
+            var match = System.Text.RegularExpressions.Regex.Match(text, "\\[mcp_servers\\.mssql-erp\\.env\\][\\s\\S]*?MSSQL_CONNECTION_STRING\\s*=\\s*\"([^\"]+)\"");
             return match.Success
-                ? match.Groups[1].Value.Replace("Database=Hiswitek", "Database=EOS.IM")
+                ? match.Groups[1].Value.Replace("Database=EOS.ERP", "Database=EOS.IM")
                 : null;
         }
         catch
