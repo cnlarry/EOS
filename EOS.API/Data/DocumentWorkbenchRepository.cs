@@ -1322,6 +1322,7 @@ public sealed class DocumentWorkbenchRepository(
         string? returnMapping,
         IReadOnlyDictionary<string, string>? masterValues,
         IReadOnlyDictionary<string, string>? detailValues,
+        IReadOnlyList<UnifiedChooserCondition>? conditions,
         bool canViewCost,
         bool canViewSecrecy,
         IReadOnlySet<string> deniedFields,
@@ -1395,7 +1396,7 @@ public sealed class DocumentWorkbenchRepository(
         // 过滤字段白名单校验：不在显示列内则忽略（回退为跨列模糊搜索）
         if(!string.IsNullOrWhiteSpace(filterField) && !columns.Any(column=>column.Key.Equals(filterField,StringComparison.OrdinalIgnoreCase)))
             filterField=null;
-        var (rows,total)=await ReadChooserRowsAsync(connection,table,columns,keyword,filterField,scopePredicate,scopeParameters,joins,sortField,sortDirection,page,pageSize,token);
+        var (rows,total)=await ReadChooserRowsAsync(connection,table,columns,keyword,filterField,scopePredicate,scopeParameters,joins,conditions,allowedFields,sortField,sortDirection,page,pageSize,token);
         return new FormChooserResult(columns,rows,total);
     }
 
@@ -1489,7 +1490,7 @@ public sealed class DocumentWorkbenchRepository(
     }
 
     private static async Task<(IReadOnlyList<IReadOnlyDictionary<string,object?>> Rows,int Total)> ReadChooserRowsAsync(
-        SqlConnection connection,string table,IReadOnlyList<FormChooserColumn> columns,string? keyword,string? filterField,string? scopePredicate,IReadOnlyList<object> scopeParameters,IReadOnlyList<string> joins,string? sortField,string? sortDirection,int page,int pageSize,CancellationToken token)
+        SqlConnection connection,string table,IReadOnlyList<FormChooserColumn> columns,string? keyword,string? filterField,string? scopePredicate,IReadOnlyList<object> scopeParameters,IReadOnlyList<string> joins,IReadOnlyList<UnifiedChooserCondition>? conditions,IReadOnlySet<string> allowedFields,string? sortField,string? sortDirection,int page,int pageSize,CancellationToken token)
     {
         var select=string.Join(',',columns.Select(column=>$"[{table}].[{column.Key}]"));
         var predicates=new List<string>();
@@ -1506,6 +1507,15 @@ public sealed class DocumentWorkbenchRepository(
             }
         }
         if(!string.IsNullOrWhiteSpace(scopePredicate))predicates.Add($"({scopePredicate})");
+        await using var command=new SqlCommand{Connection=connection};
+        if(!string.IsNullOrWhiteSpace(keyword))command.Parameters.AddWithValue("@kw",$"%{keyword.Trim()}%");
+        for(var i=0;i<scopeParameters.Count;i++)command.Parameters.AddWithValue($"@df{i}",scopeParameters[i]??DBNull.Value);
+        if(conditions is { Count: > 0 })
+        {
+            var expressions=allowedFields.ToDictionary(field=>field,field=>$"[{table}].[{field}]",StringComparer.OrdinalIgnoreCase);
+            var conditionPredicate=ChooserConditionBuilder.Build(conditions,expressions,command);
+            if(conditionPredicate is not null)predicates.Add(conditionPredicate);
+        }
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var from=$"FROM dbo.[{table}] WITH (NOLOCK)";
         if(joins.Count>0)from+=" "+string.Join(" ",joins);
@@ -1518,9 +1528,7 @@ public sealed class DocumentWorkbenchRepository(
         page=Math.Max(1,page);
         pageSize=Math.Clamp(pageSize,10,100);
         var sql=$"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {select} {from}{where} ORDER BY [{table}].[{sortColumn}] {dir} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
-        await using var command=new SqlCommand(sql,connection);
-        if(!string.IsNullOrWhiteSpace(keyword))command.Parameters.AddWithValue("@kw",$"%{keyword.Trim()}%");
-        for(var i=0;i<scopeParameters.Count;i++)command.Parameters.AddWithValue($"@df{i}",scopeParameters[i]??DBNull.Value);
+        command.CommandText=sql;
         command.Parameters.Add("@Offset",SqlDbType.Int).Value=(page-1)*pageSize;
         command.Parameters.Add("@PageSize",SqlDbType.Int).Value=pageSize;
         await using var reader=await command.ExecuteReaderAsync(token);

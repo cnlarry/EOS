@@ -131,10 +131,32 @@ export function ErpTable<TData>({
   onEndReachedRef.current = onEndReached
   const loadingMoreRef = useRef(loadingMore)
   loadingMoreRef.current = loadingMore
+  const hasMoreRef = useRef(hasMore)
+  hasMoreRef.current = hasMore
+  const [showAllLoaded, setShowAllLoaded] = useState(false)
+  const allLoadedTimerRef = useRef<number | null>(null)
+  const seenBottomRef = useRef(false)
+  const wasLoadingMoreRef = useRef(false)
+
+  /** 短暂提示“已加载全部”（滚动触发加载完成或再次尝试滚动到底时闪现后消失） */
+  const flashAllLoaded = () => {
+    setShowAllLoaded(true)
+    if (allLoadedTimerRef.current !== null) window.clearTimeout(allLoadedTimerRef.current)
+    allLoadedTimerRef.current = window.setTimeout(() => setShowAllLoaded(false), 1500)
+  }
+
+  // 滚动触发的加载完成后（最后一页）短暂提示；再次滚动尝试到底时由下方观察器再提示
+  useEffect(() => {
+    if (wasLoadingMoreRef.current && !loadingMore && !hasMore) flashAllLoaded()
+    wasLoadingMoreRef.current = loadingMore
+    return () => {
+      if (allLoadedTimerRef.current !== null) window.clearTimeout(allLoadedTimerRef.current)
+    }
+  }, [loadingMore, hasMore])
 
   // 滚动加载更多：以 shell 最近的 overflow 祖先为 root，底部哨兵进入视口（含 120px 提前量）时触发
   useEffect(() => {
-    if (!onEndReached || !hasMore) return
+    if (!onEndReached) return
     const sentinel = sentinelRef.current
     if (!sentinel) return
     let root: Element | Document | null = null
@@ -149,11 +171,18 @@ export function ErpTable<TData>({
     }
     const observer = new IntersectionObserver((entries) => {
       if (loadingMoreRef.current) return
-      if (entries.some(entry => entry.isIntersecting)) onEndReachedRef.current?.()
+      if (!entries.some(entry => entry.isIntersecting)) return
+      if (hasMoreRef.current) {
+        onEndReachedRef.current?.()
+      } else if (seenBottomRef.current) {
+        // 全部加载后用户再次尝试滚动到底：短暂提示一次
+        flashAllLoaded()
+      }
+      seenBottomRef.current = true
     }, { root, rootMargin: '120px 0px' })
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [onEndReached, hasMore])
+  }, [onEndReached])
 
   const table = useReactTable({
     data,
@@ -347,6 +376,7 @@ export function ErpTable<TData>({
                 const frozen = meta?.frozenLeft ? 'erp-frozen-left' : meta?.frozenRight ? 'erp-frozen-right' : ''
                 const thStyle: CSSProperties = {}
                 if (meta?.minWidth) thStyle.minWidth = meta.minWidth
+                if (meta?.maxWidth) thStyle.maxWidth = meta.maxWidth
                 if (meta?.frozenLeft) thStyle.left = 0
                 if (meta?.frozenRight) thStyle.right = 0
                 const headerLabel = typeof header.column.columnDef.header === 'string'
@@ -386,6 +416,7 @@ export function ErpTable<TData>({
                     key={header.id}
                     data-col-key={header.column.id}
                     data-col-min-width={meta?.minWidth ?? undefined}
+                    data-col-max-width={meta?.maxWidth ?? undefined}
                     data-col-min-floor={meta?.minWidthFloor ? 'true' : undefined}
                     data-col-resizable={meta?.resizable === false ? 'false' : 'true'}
                     className={[meta?.className, meta?.headerClassName, frozen, openMenu === header.column.id ? 'erp-header-menu-open' : ''].filter(Boolean).join(' ') || undefined}
@@ -482,6 +513,10 @@ export function ErpTable<TData>({
                 {row.getVisibleCells().map((cell) => {
                   const cellMeta = cell.column.columnDef.meta
                   const cellFrozen = cellMeta?.frozenLeft ? 'erp-frozen-left' : cellMeta?.frozenRight ? 'erp-frozen-right' : ''
+                  const cellStyle: CSSProperties = {}
+                  if (cellMeta?.frozenLeft) cellStyle.left = 0
+                  if (cellMeta?.frozenRight) cellStyle.right = 0
+                  if (cellMeta?.maxWidth) cellStyle.maxWidth = cellMeta.maxWidth
                   const truncate = cellMeta?.truncate !== false
                   const cellValue = cell.getValue()
                   const title = truncate ? (cellMeta?.title != null
@@ -494,7 +529,7 @@ export function ErpTable<TData>({
                     <td
                       key={cell.id}
                       className={[cellMeta?.cellClassName ?? cellMeta?.className, cellFrozen].filter(Boolean).join(' ') || undefined}
-                      style={cellMeta?.frozenLeft ? { left: 0 } : cellMeta?.frozenRight ? { right: 0 } : undefined}
+                      style={Object.keys(cellStyle).length > 0 ? cellStyle : undefined}
                       title={title}
                       onContextMenu={copyable ? (event) => {
                         event.preventDefault()
@@ -522,7 +557,7 @@ export function ErpTable<TData>({
         <div ref={sentinelRef} className="erp-table-load-more">
           {loadingMore
             ? <span className="erp-table-load-more-hint">正在加载更多…</span>
-            : hasMore ? null : <span className="erp-table-load-more-hint">已加载全部</span>}
+            : showAllLoaded ? <span className="erp-table-load-more-hint">已加载全部</span> : null}
         </div>
       ) : null}
       {cellMenu && copyable && (
@@ -588,6 +623,8 @@ declare module '@tanstack/react-table' {
     /** 仅作用于数据单元格（优先级高于 className） */
     cellClassName?: string
     minWidth?: number
+    /** 该列最大宽度（自动列宽上限，超宽内容省略截断，避免撑爆表格） */
+    maxWidth?: number
     /** 该列支持列头快速筛选（需配合 ErpTable 的 onColumnFilterChange） */
     filterable?: boolean
     /** 字段数据类型（如 bit），用于单元格右键筛选等特殊处理 */

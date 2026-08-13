@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useEffect, useMemo, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpChooserModal } from '../../components/common/ErpChooserModal'
+import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
@@ -72,7 +72,8 @@ function parseValue(value: string, mode: 'multi' | 'sort'): SelectedField[] {
 
 /**
  * 字段选择器（统一电子表格风格，与统一表单选择器一致）：
- * - 表格列出字段（表名/描述/类型），勾选或点行选择；排序模式每行可切换升/降序；
+ * - 统一选择器（menu-admin.fields 数据源）列出字段（字段名/描述/类型），勾选或点行选择；
+ *   排序模式每行可切换升/降序；
  * - 下方「已选顺序」条展示并支持上移/下移/移除；
  * - mode='multi' 保存为分号分隔；mode='sort' 保存为 "FIELD ASC|DESC" 逗号分隔。
  */
@@ -105,7 +106,6 @@ export function MenuFieldPicker({
     [fields.data],
   )
   const byId = useMemo(() => new Map(fieldOptions.map((field) => [field.F_ID, field])), [fieldOptions])
-  const selectedKeys = useMemo(() => new Set(selected.map((item) => item.field)), [selected])
   const rowSelection = useMemo(
     () => Object.fromEntries(selected.map((item) => [item.field, true])),
     [selected],
@@ -154,60 +154,39 @@ export function MenuFieldPicker({
     onClose()
   }
 
-  const columns: ColumnDef<MenuFieldOption, unknown>[] = [
-    {
-      id: 'select',
-      enableSorting: false,
-      meta: { className: 'erp-select-column', resizable: false, frozenLeft: true, truncate: false },
-      header: () => null,
-      cell: ({ row }) => (
-        <input
-          className="form-check-input"
-          type="checkbox"
-          aria-label={`选择 ${row.original.F_ID}`}
-          checked={selectedKeys.has(row.original.F_ID)}
-          onChange={() => toggle(row.original.F_ID)}
-          onClick={(event) => event.stopPropagation()}
-        />
-      ),
-    },
-    { id: 'F_ID', accessorKey: 'F_ID', header: '字段名', cell: ({ getValue }) => <span className="erp-menu-table-id">{String(getValue())}</span> },
-    { id: 'F_DESC', accessorKey: 'F_DESC', header: '描述' },
-    { id: 'F_TYPE', accessorKey: 'F_TYPE', header: '类型' },
-    ...(mode === 'sort' ? [{
+  const extraColumns: ColumnDef<UnifiedChooserRow, unknown>[] = mode === 'sort' ? [{
       id: 'dir',
       accessorKey: 'F_ID',
       enableSorting: false,
       header: '方向',
+      meta: { maxWidth: 320 },
       cell: ({ row }) => {
-        const item = selected.find((s) => s.field === row.original.F_ID)
+        const fieldId = String(row.original.F_ID)
+        const item = selected.find((s) => s.field === fieldId)
         return item ? (
-          <button type="button" className="erp-field-dir" onClick={(event) => { event.stopPropagation(); toggleDir(row.original.F_ID) }}>
+          <button type="button" className="erp-field-dir" onClick={(event) => { event.stopPropagation(); toggleDir(fieldId) }}>
             {item.dir === 'asc' ? '升序' : '降序'}
           </button>
         ) : null
       },
-    } as ColumnDef<MenuFieldOption, unknown>] : []),
-  ]
+    }] : []
 
   if (!open) return null
 
   return (
-    <ErpChooserModal
+    <UnifiedChooser
       open={open}
       title={title}
-      columns={columns}
-      data={fieldOptions}
-      getRowId={(row) => row.F_ID}
+      source={{ kind: 'sourceKey', key: 'menu-admin.fields', args: table ? { tableId: table } : undefined }}
+      getRowId={(row) => String(row.F_ID)}
       mode="multi"
+      dialogSize="md"
       selectedKeys={rowSelection}
       onSelectedKeysChange={reconcileSelection}
       onPick={() => handleSave()}
       onClose={onClose}
-      loading={fields.isPending}
-      error={fields.isError ? describeError(fields.error, '加载字段失败') : null}
-      onRetry={() => void fields.refetch()}
       emptyText="该表没有可用字段。"
+      extraColumns={extraColumns}
       extra={
         <div className="mt-2">
           <label className="form-label">已选顺序</label>

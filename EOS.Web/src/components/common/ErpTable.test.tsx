@@ -397,15 +397,28 @@ describe('ErpTable', () => {
     }
   })
 
-  it('hasMore=false 时不创建滚动监听并显示已加载全部', () => {
+  it('已加载全部仅在滚动尝试时短暂显示，随后消失', () => {
+    vi.useFakeTimers()
     vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
     try {
       render(
         <ErpTable columns={buildColumns()} data={rows} getRowId={(row) => row.id} onEndReached={vi.fn()} hasMore={false} />,
       )
-      expect(FakeIntersectionObserver.instances).toHaveLength(0)
+      // 保留滚动监听用于识别“再次滚动到底”的尝试
+      expect(FakeIntersectionObserver.instances).toHaveLength(1)
+      expect(screen.queryByText('已加载全部')).not.toBeInTheDocument()
+      const observer = FakeIntersectionObserver.instances.at(-1)!
+      // 首次触底（挂载时哨兵已可见）不提示
+      act(() => observer.trigger([{ isIntersecting: true } as IntersectionObserverEntry]))
+      expect(screen.queryByText('已加载全部')).not.toBeInTheDocument()
+      // 再次滚动尝试到底 → 短暂提示
+      act(() => observer.trigger([{ isIntersecting: true } as IntersectionObserverEntry]))
       expect(screen.getByText('已加载全部')).toBeInTheDocument()
+      // 随后自动消失
+      act(() => { vi.advanceTimersByTime(1600) })
+      expect(screen.queryByText('已加载全部')).not.toBeInTheDocument()
     } finally {
+      vi.useRealTimers()
       vi.unstubAllGlobals()
     }
   })
