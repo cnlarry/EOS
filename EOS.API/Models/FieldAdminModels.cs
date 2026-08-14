@@ -1,6 +1,13 @@
 namespace EOS.API.Models;
 
-public sealed record FieldAdminTable(string TableId, string Description, string? Kind, string? Type);
+public sealed record FieldAdminTable(
+    string TableId,
+    string Description,
+    string? Kind,
+    string? Type,
+    int FieldCount,
+    int UnmanagedCount,
+    int OrphanCount);
 
 public sealed record FieldAdminModule(int Id, string Label);
 
@@ -15,7 +22,45 @@ public sealed record FieldAdminFieldSummary(
     bool IsQueryable,
     bool IsReadonly,
     bool IsCost,
-    bool IsSecrecy);
+    bool IsSecrecy,
+    bool IsPrimaryKey,
+    bool PhysicalExists);
+
+/// <summary>数据表完整元数据（编辑弹窗用；高风险表达式列仅展示不参与写入）。</summary>
+public sealed record FieldAdminTableDetail(
+    string TableId,
+    string Description,
+    string? Kind,
+    string? Type,
+    string? Remark,
+    string? FkTable1,
+    string? FkTable2,
+    string? FkTable3,
+    string? FkTable4,
+    string? FkTable5,
+    string? QueryRelation,
+    string? DefaultCondition,
+    string? DefaultVerify,
+    bool CanImport,
+    string? LastUpdatedBy,
+    DateTime? LastUpdatedAt);
+
+/// <summary>表元数据可编辑的低风险字段子集；FK_T_ID*/QUERY_RELATION/DF_* 只读展示。</summary>
+public sealed record FieldAdminTableInput(
+    string Description,
+    string? Kind,
+    string? Type,
+    string? Remark);
+
+public sealed record CreateFieldAdminTableRequest(string TableId, FieldAdminTableInput Table);
+
+public sealed record UpdateFieldAdminTableRequest(string TableId, FieldAdminTableInput Table, FieldAdminTableInput? Original);
+
+public sealed record FieldAdminUnmanagedField(string FieldId, string DataType);
+
+public sealed record CreateUnmanagedFieldsRequest(string TableId, IReadOnlyList<string> FieldIds);
+
+public sealed record CreateUnmanagedFieldsResult(int Created, int Skipped, IReadOnlyList<string> SkippedReasons);
 
 public sealed record FieldAdminChooser(
     bool Active,
@@ -68,7 +113,11 @@ public sealed record FieldAdminMetadata(
     string? ConvertFunction,
     string? DataSourceSql,
     string? LastUpdatedBy,
-    DateTime? LastUpdatedAt);
+    DateTime? LastUpdatedAt,
+    bool IsPrimaryKey,
+    bool PhysicalExists,
+    string? PhysicalType,
+    bool? TypeMatches);
 
 public sealed record CreateFieldAdminRequest(string TableId, string FieldId, FieldAdminInput Field);
 

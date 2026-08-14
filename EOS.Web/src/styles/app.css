@@ -390,6 +390,18 @@ button, input, select { font: inherit; }
   .erp-menu-admin .col-lg-5.erp-menu-tree { display: flex; flex-direction: column; min-height: 0; max-height: none; }
   .erp-menu-admin .col-lg-7 { display: flex; flex-direction: column; min-height: 0; }
 }
+/* 数据表、字段维护（2302）：性质筛选下拉固定宽度 */
+.erp-kind-filter { width: 165px; flex: 0 0 165px; }
+/* 通用全高列表页（工作台同款电子表格体验）：列表卡铺满页面高度，
+   表格区域内部滚动、表头吸顶；复用 ErpTable 的列宽拖拽/排序/复制/键盘导航 */
+.erp-full-list-page { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 320px; overflow: hidden; }
+.erp-full-list-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.erp-full-list-page .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.erp-full-list-page .erp-list-card .table-responsive { overflow: visible; }
+.erp-full-list-page .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
+/* 未管理字段弹窗：电子表格列表限高内部滚动 */
+.erp-unmanaged-table .erp-table-shell { max-height: 46vh; overflow-y: auto; }
+.erp-unmanaged-table .table-responsive { overflow: visible; }
 /* 系统级页签面板（TabbedPanel 设计语言）：
    内容面板带完整边框 + 系统圆角 + padding 10px；
    激活标签向下延伸 1px、用面板底色覆盖面板上边框，与面板融为一体；未激活标签仍完整显示面板上边框 */

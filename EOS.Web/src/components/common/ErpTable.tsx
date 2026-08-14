@@ -90,7 +90,7 @@ export function ErpTable<TData>({
   data,
   getRowId,
   empty,
-  sorting = [],
+  sorting,
   onSortingChange,
   rowSelection = {},
   onRowSelectionChange,
@@ -127,6 +127,15 @@ export function ErpTable<TData>({
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null)
   const [dragColId, setDragColId] = useState<string | null>(null)
   const [draftFilter, setDraftFilter] = useState<QueryCondition>(emptyQueryCondition())
+  // 未受控排序：外部未传 sorting/onSortingChange 时用内部稳定状态，
+  // 避免默认空数组每次渲染都是新引用导致 TanStack 状态循环（卡死路由过渡）
+  const [internalSorting, setInternalSorting] = useState<SortingState>([])
+  const resolvedSorting = sorting ?? internalSorting
+  const updateSorting = (updater: SortingState | ((current: SortingState) => SortingState)) => {
+    const next = typeof updater === 'function' ? updater(resolvedSorting) : updater
+    if (onSortingChange) onSortingChange(next)
+    else setInternalSorting(next)
+  }
   const onEndReachedRef = useRef(onEndReached)
   onEndReachedRef.current = onEndReached
   const loadingMoreRef = useRef(loadingMore)
@@ -187,13 +196,13 @@ export function ErpTable<TData>({
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, rowSelection, columnVisibility },
+    state: { sorting: resolvedSorting, rowSelection, columnVisibility },
     manualSorting: !clientSideSorting,
     enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: clientSideSorting ? getSortedRowModel() : undefined,
     getRowId,
-    onSortingChange: (updater) => onSortingChange?.(typeof updater === 'function' ? updater(sorting) : updater),
+    onSortingChange: updateSorting,
     onRowSelectionChange: (updater) =>
       onRowSelectionChange?.(typeof updater === 'function' ? updater(rowSelection) : updater),
     onColumnVisibilityChange: (updater) =>
@@ -384,23 +393,23 @@ export function ErpTable<TData>({
                   : header.column.id
                 const filterActive = Boolean(columnFilterValue?.[header.column.id])
                 const menuItems: { key: string; label: string; onClick: (event: MouseEvent<HTMLButtonElement>) => void }[] = []
-                if (header.column.getCanSort() && onSortingChange) {
+                if (header.column.getCanSort() && (onSortingChange || clientSideSorting)) {
                   const applySort = (event: MouseEvent<HTMLButtonElement>, desc: boolean) => {
                     const id = header.column.id
-                    const current = sorting
+                    const current = resolvedSorting
                     const existingIndex = current.findIndex((item) => item.id === id)
                     if (event.ctrlKey || event.metaKey) {
                       if (existingIndex >= 0) {
-                        onSortingChange(current.map((item) => (item.id === id ? { id, desc } : item)))
+                        updateSorting(current.map((item) => (item.id === id ? { id, desc } : item)))
                       } else {
-                        onSortingChange([...current.slice(-4), { id, desc }])
+                        updateSorting([...current.slice(-4), { id, desc }])
                       }
                     } else {
-                      onSortingChange([{ id, desc }])
+                      updateSorting([{ id, desc }])
                     }
                   }
                   menuItems.push(
-                    { key: 'none', label: '默认', onClick: () => onSortingChange([]) },
+                    { key: 'none', label: '默认', onClick: () => updateSorting([]) },
                     { key: 'asc', label: '升序', onClick: (event) => applySort(event, false) },
                     { key: 'desc', label: '降序', onClick: (event) => applySort(event, true) },
                   )
@@ -409,7 +418,7 @@ export function ErpTable<TData>({
                   menuItems.push({ key: 'filter', label: '筛选', onClick: () => openColumnFilter(header.column.id) })
                 }
                 for (const item of meta?.headerMenu ?? []) menuItems.push({ key: item.label, label: item.label, onClick: () => item.onClick() })
-                const sortIndex = sorting.findIndex((item) => item.id === header.column.id)
+                const sortIndex = resolvedSorting.findIndex((item) => item.id === header.column.id)
                 const draggable = Boolean(onColumnsReorder) && header.column.id !== 'select' && !meta?.frozenLeft && !meta?.frozenRight
                 return (
                   <th
@@ -453,7 +462,7 @@ export function ErpTable<TData>({
                           onClick={(event) => (openMenu === header.column.id ? setOpenMenu(null) : openHeaderMenu(header.column.id, event.currentTarget))}
                         >
                           {sorted === 'asc' ? <IconChevronUp size={13} /> : <IconChevronDown size={13} />}
-                          {sorting.length > 1 && sortIndex >= 0 && (
+                          {resolvedSorting.length > 1 && sortIndex >= 0 && (
                             <span className="erp-sort-priority">{sortIndex + 1}</span>
                           )}
                         </button>

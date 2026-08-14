@@ -143,18 +143,30 @@ export function AppShell() {
   const allLeaves = useMemo(() => flattenLeaves(navigation), [navigation])
   const activeMenu = allLeaves.find((item) => item.route === basePath)
   const activeGroup = navigation.find((item) => item.children?.some((child) => isSubtreeActive(child, basePath)))
-  const page: { section: string; title: string } = isFormEditor
-    ? {
-        section: activeGroup?.label ?? 'ERP',
-        title: `${location.pathname.endsWith('/new') ? '新建' : location.pathname.endsWith('/view') ? '查看' : '编辑'}${activeMenu?.label ?? ''}`,
-      }
-    : pageTitles[location.pathname] ?? {
-        section: activeGroup?.label ?? 'ERP',
-        title: activeMenu?.label ?? '页面',
-      }
+  // 字段维护子页（2302 /admin/tables/:tableId/fields）：
+  // 面包屑固定为 系统管理 > 数据表维护 > 数据表维护 > {表名} > 字段
+  const fieldAdminFields = location.pathname.match(/^\/admin\/tables\/([^/]+)\/fields$/)
+  const fieldAdminCrumb = fieldAdminFields
+    ? { leads: ['系统管理', '数据表维护', '数据表维护', decodeURIComponent(fieldAdminFields[1])], title: '字段' }
+    : null
+  const page: { section: string; title: string } = fieldAdminCrumb
+    ? { section: '系统管理', title: fieldAdminCrumb.title }
+    : isFormEditor
+      ? {
+          section: activeGroup?.label ?? 'ERP',
+          title: `${location.pathname.endsWith('/new') ? '新建' : location.pathname.endsWith('/view') ? '查看' : '编辑'}${activeMenu?.label ?? ''}`,
+        }
+      : pageTitles[location.pathname] ?? {
+          section: activeGroup?.label ?? 'ERP',
+          title: activeMenu?.label ?? '页面',
+        }
   const breadcrumbPath = useMemo(() => findPath(navigation, basePath), [navigation, basePath])
   // 完整路径：命中导航树时展示全部祖先 + 叶子；未命中（如直达维护页）回退「分区 + 标题」。
-  const breadcrumbLeads = breadcrumbPath.length > 0 ? breadcrumbPath.slice(0, -1).map((item) => item.label) : [page.section]
+  const breadcrumbLeads = fieldAdminCrumb
+    ? fieldAdminCrumb.leads
+    : breadcrumbPath.length > 0
+      ? breadcrumbPath.slice(0, -1).map((item) => item.label)
+      : [page.section]
 
   useEffect(() => {
     document.documentElement.setAttribute('data-bs-theme', theme)

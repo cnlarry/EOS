@@ -59,6 +59,7 @@ function renderShell(initialEntry: string, auth: Partial<ReturnType<typeof useAu
         <Route element={<AppShell />}>
           <Route path="/dashboard" element={<div>DASH</div>} />
           <Route path="/settings/profile" element={<div>PROFILE</div>} />
+          <Route path="/admin/tables/:tableId/fields" element={<div>FIELDS</div>} />
           <Route path="/document-workbench/:moduleId" element={<div>WB</div>} />
           <Route path="/document-workbench/:moduleId/new" element={<div>NEW_FORM</div>} />
           <Route path="/login" element={<div>LOGIN_PAGE</div>} />
@@ -228,5 +229,18 @@ describe('AppShell', () => {
     expect(shell.style.getPropertyValue('--erp-sidebar-width')).toBe('160px')
     fireEvent.pointerUp(resizer, { pointerId: 1 })
     expect(localStorage.getItem('erp-sidebar-width')).toBe('160')
+  })
+
+  it('字段维护子页面包屑固定为 系统管理 > 数据表维护 > 数据表维护 > 表名 > 字段', () => {
+    renderShell('/admin/tables/PRODUCT_EDITION/fields')
+    const nav = screen.getByRole('navigation', { name: '当前位置' })
+    const text = nav.textContent ?? ''
+    const order = ['系统管理', '数据表维护', '数据表维护', 'PRODUCT_EDITION', '字段']
+    let cursor = -1
+    for (const segment of order) {
+      const index = text.indexOf(segment, cursor + 1)
+      expect(index).toBeGreaterThan(cursor)
+      cursor = index
+    }
   })
 })

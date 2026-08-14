@@ -320,6 +320,22 @@ describe('ErpTable', () => {
     expect(Array.from(document.querySelectorAll('tbody tr td')).map((td) => td.textContent)).toEqual(['B', 'A'])
   })
 
+  it('clientSideSorting 未受控时表头排序走内部状态且不循环', () => {
+    const data = [
+      { id: '1', name: 'B' },
+      { id: '2', name: 'A' },
+    ]
+    const columns: ColumnDef<Row, unknown>[] = [{ accessorKey: 'name', header: '名称' }]
+    render(<ErpTable columns={columns} data={data} getRowId={(row) => row.id} clientSideSorting />)
+    fireEvent.click(screen.getByRole('button', { name: '表头操作名称' }))
+    fireEvent.click(screen.getByRole('button', { name: '升序' }))
+    expect(Array.from(document.querySelectorAll('tbody tr td')).map((td) => td.textContent)).toEqual(['A', 'B'])
+    // 再切一次确认内部状态可继续更新（未受控路径不卡死）
+    fireEvent.click(screen.getByRole('button', { name: '表头操作名称' }))
+    fireEvent.click(screen.getByRole('button', { name: '降序' }))
+    expect(Array.from(document.querySelectorAll('tbody tr td')).map((td) => td.textContent)).toEqual(['B', 'A'])
+  })
+
   it('rowClassName 应用到行类名', () => {
     render(
       <ErpTable
