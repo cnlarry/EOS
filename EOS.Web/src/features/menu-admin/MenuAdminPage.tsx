@@ -19,12 +19,25 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
+import { TabbedPanel } from '../../components/common/TabbedPanel'
 import { navigationIcons } from '../../components/layout/navigationIcons'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { notifyMenuChanged } from '../../services/menuEvents'
 import { ApiError } from '../../types/api'
+import { parseFilter } from './menuFilter'
 import { MenuFieldPicker, MenuFilterBuilder } from './MenuFieldPickers'
+
+/** 菜单编辑表单页签：基础 / 主表 / 子表 / 分组 / 统一表单。 */
+type MenuFormTab = 'basic' | 'master' | 'detail' | 'group' | 'form'
+
+const MENU_FORM_TABS: { key: MenuFormTab; label: string }[] = [
+  { key: 'basic', label: '基础' },
+  { key: 'master', label: '主表' },
+  { key: 'detail', label: '子表' },
+  { key: 'group', label: '分组' },
+  { key: 'form', label: '统一表单' },
+]
 
 export interface MenuAdminModule {
   M_IDX: number
@@ -140,12 +153,13 @@ function buildTree(modules: MenuAdminModule[]): TreeEntry[] {
   return roots
 }
 
-function Input({ label, value, onChange, type = 'text', placeholder }: {
+function Input({ label, value, onChange, type = 'text', placeholder, readOnly = false }: {
   label: string
   value: string
   onChange: (value: string) => void
   type?: string
   placeholder?: string
+  readOnly?: boolean
 }) {
   const inputId = `erp-menu-field-${label.replace(/[^\w\u4e00-\u9fa5]+/g, '-')}`
   return (
@@ -157,6 +171,7 @@ function Input({ label, value, onChange, type = 'text', placeholder }: {
         type={type}
         value={value}
         placeholder={placeholder}
+        readOnly={readOnly}
         onChange={(event) => onChange(event.target.value)}
       />
     </div>
@@ -190,6 +205,8 @@ export function MenuAdminPage() {
   const [iconPickerModule, setIconPickerModule] = useState<MenuAdminModule | null>(null)
   const [fieldPicker, setFieldPicker] = useState<null | { target: 'sortFields' | 'detailNoFields' | 'notBackM' | 'notBack' }>(null)
   const [filterBuilderOpen, setFilterBuilderOpen] = useState(false)
+  const [sprocChooser, setSprocChooser] = useState<'afterSave' | 'update' | null>(null)
+  const [formTab, setFormTab] = useState<MenuFormTab>('basic')
   const [treeQuery, setTreeQuery] = useState('')
   const draggedIdRef = useRef<number | null>(null)
   const modules = useQuery({ queryKey: ['menu-admin', 'modules'], queryFn: () => apiClient.get<{ total: number; modules: MenuAdminModule[] }>('/admin/menus') })
@@ -298,13 +315,17 @@ export function MenuAdminPage() {
 
   const save = useMutation({
     mutationFn: async (input: MenuAdminModule) => {
-      if (selectedId != null && byId.has(selectedId)) await apiClient.put(`/admin/menus/${selectedId}`, input)
-      else await apiClient.post('/admin/menus', input)
+      if (selectedId != null && byId.has(selectedId)) {
+        await apiClient.put(`/admin/menus/${selectedId}`, input)
+        return selectedId
+      }
+      const created = await apiClient.post<{ id: number }>('/admin/menus', input)
+      return created.id
     },
-    onSuccess: async (_, input) => {
+    onSuccess: async (savedId) => {
       await queryClient.invalidateQueries({ queryKey: ['menu-admin', 'modules'] })
       notifyMenuChanged()
-      setSelectedId(input.M_IDX)
+      setSelectedId(savedId)
       setDraft(null)
       window.alert('菜单保存成功。')
     },
@@ -500,6 +521,20 @@ export function MenuAdminPage() {
     return upper ? upper : '其他'
   }
 
+  /** 主表过滤条件文本的即时可读性判断（构建器语法子集；高级写法仍可手动编辑）。 */
+  const filterStatus = useMemo(() => {
+    const value = draft?.FILTER ?? ''
+    if (!value.trim()) return { className: 'text-secondary small mt-1', text: '留空表示无行级限制' }
+    const parsed = parseFilter(value)
+    if (parsed == null) {
+      return {
+        className: 'text-warning small mt-1',
+        text: '当前文本无法由构建器解析（可能是 ISNULL、函数或列运算等高级写法，或格式不完整），建议点击「构建…」检查',
+      }
+    }
+    return { className: 'text-success small mt-1', text: `格式有效：${parsed.length} 个条件` }
+  }, [draft?.FILTER])
+
   const handleDragStart = (module: MenuAdminModule) => (event: React.DragEvent) => {
     draggedIdRef.current = module.M_IDX
     setDraggedId(module.M_IDX)
@@ -567,11 +602,13 @@ export function MenuAdminPage() {
   const selectModule = (module: MenuAdminModule) => {
     setSelectedId(module.M_IDX)
     setDraft({ ...module })
+    setFormTab('basic')
   }
 
   const startNewRoot = () => {
     setSelectedId(null)
     setDraft(emptyDraft(null))
+    setFormTab('basic')
   }
 
   const startNewChild = () => {
@@ -581,6 +618,7 @@ export function MenuAdminPage() {
     }
     setSelectedId(null)
     setDraft(emptyDraft(selectedId))
+    setFormTab('basic')
   }
 
   const renderTree = (entries: TreeEntry[], depth: number) =>
@@ -680,7 +718,7 @@ export function MenuAdminPage() {
   const errorMessage = modules.error instanceof ApiError ? modules.error.body.message : '发生未知错误，请稍后重试。'
 
   return (
-    <div className="erp-menu-admin d-grid gap-2">
+    <div className="erp-menu-admin d-flex flex-column gap-2">
       <div className="card">
         <div className="card-header d-flex align-items-center gap-2">
           <strong>{selected ? `已选择：${selected.M_DESC}（ID：${selected.M_IDX}）` : '已选择：—'}</strong>
@@ -751,134 +789,183 @@ export function MenuAdminPage() {
             <div className="col-lg-7">
               {draft ? (
                 <div className="p-3 erp-menu-form">
-                  <div className="row g-2">
-                    <div className="col-6">
-                      <Input label="菜单名称" value={draft.M_DESC} onChange={(value) => patch((d) => ({ ...d, M_DESC: value }))} />
-                    </div>
-                    <div className="col-6">
-                      <Input label="菜单别名" value={draft.M_ALIAS ?? ''} onChange={(value) => patch((d) => ({ ...d, M_ALIAS: value || null }))} />
-                    </div>
-                  </div>
-                  <Input label="页面链接（现代路由）" value={draft.M_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, M_URL: value || null }))} />
-                  <div className="row g-2">
-                    <div className="col-6">
-                      <Input label="新增URL地址" value={draft.NEW_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, NEW_URL: value || null }))} />
-                    </div>
-                    <div className="col-6">
-                      <Input label="修改URL地址" value={draft.MODI_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, MODI_URL: value || null }))} />
-                    </div>
-                  </div>
-                  <Input label="帮助文件URL地址" value={draft.HELP_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, HELP_URL: value || null }))} />
-                  <div className="row g-2">
-                    <div className="col-6">
-                      <Input label="操作主表名" value={draft.MASTER_TABLE ?? ''} onChange={(value) => patch((d) => ({ ...d, MASTER_TABLE: value || null }))} />
-                      <div className="d-flex gap-2">
-                        <Button size="sm" onClick={() => openTableChooser('master')}>选择…</Button>
-                        <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('master')} disabled={!draft.MASTER_TABLE}>默认查询（主表）</Button>
-                      </div>
-                    </div>
-                    <div className="col-6">
-                      <Input label="主表过滤条件" value={draft.FILTER ?? ''} onChange={(value) => patch((d) => ({ ...d, FILTER: value || null }))} />
-                      <Button size="sm" title="构建主表过滤条件" onClick={() => setFilterBuilderOpen(true)} disabled={!draft.MASTER_TABLE}>构建…</Button>
-                    </div>
-                  </div>
-                  <div className="row g-2">
-                    <div className="col-6">
-                      <Input label="操作副表名" value={draft.DETAIL_TABLE ?? ''} onChange={(value) => patch((d) => ({ ...d, DETAIL_TABLE: value || null }))} />
-                      <div className="d-flex gap-2">
-                        <Button size="sm" onClick={() => openTableChooser('detail')}>选择…</Button>
-                        <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('detail')} disabled={!draft.DETAIL_TABLE}>默认查询（副表）</Button>
-                      </div>
-                    </div>
-                    <div className="col-6">
-                      <Input label="排序字段" value={draft.SORT_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, SORT_FIELDS: value || null }))} />
-                      <Button size="sm" title="选择排序字段" onClick={() => setFieldPicker({ target: 'sortFields' })} disabled={!draft.MASTER_TABLE}>选择…</Button>
-                    </div>
-                  </div>
-                  <div className="row g-2">
-                    <div className="col-6">
-                      <Input label="存盘后执行存储过程" value={draft.AFTERSAVE_SP ?? ''} onChange={(value) => patch((d) => ({ ...d, AFTERSAVE_SP: value || null }))} />
-                    </div>
-                    <div className="col-6">
-                      <Input label="数据更新存储过程" value={draft.UPDATE_SP ?? ''} onChange={(value) => patch((d) => ({ ...d, UPDATE_SP: value || null }))} />
-                    </div>
-                  </div>
-                  <div className="row g-2">
-                    <div className="col-6">
-                      <Input label="新增明细时必需字段" value={draft.DETAIL_NO_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, DETAIL_NO_FIELDS: value || null }))} />
-                      <Button size="sm" title="选择新增明细必需字段" onClick={() => setFieldPicker({ target: 'detailNoFields' })} disabled={!draft.DETAIL_TABLE}>选择…</Button>
-                    </div>
-                    <div className="col-6">
-                      <Input label="字段有值时不可解批（主表）" value={draft.NOT_BACK_FIELDS_M ?? ''} onChange={(value) => patch((d) => ({ ...d, NOT_BACK_FIELDS_M: value || null }))} />
-                      <Button size="sm" title="选择不可解批主表字段" onClick={() => setFieldPicker({ target: 'notBackM' })} disabled={!draft.MASTER_TABLE}>选择…</Button>
-                    </div>
-                  </div>
-                  <div className="row g-2">
-                    <div className="col-6">
-                      <Input label="字段有值时不可解批（副表）" value={draft.NOT_BACK_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, NOT_BACK_FIELDS: value || null }))} />
-                      <Button size="sm" title="选择不可解批副表字段" onClick={() => setFieldPicker({ target: 'notBack' })} disabled={!draft.DETAIL_TABLE}>选择…</Button>
-                    </div>
-                  </div>
-                  <div className="d-flex flex-wrap gap-3 my-2">
-                    <Checkbox label="通用查询（主表）" checked={draft.SEARCH_1} onChange={(checked) => patch((d) => ({ ...d, SEARCH_1: checked }))} />
-                    <Checkbox label="通用查询（副表）" checked={draft.SEARCH_2} onChange={(checked) => patch((d) => ({ ...d, SEARCH_2: checked }))} />
-                    <Checkbox label="无明细资料不可保存" checked={draft.DETAIL_NO_SAVE} onChange={(checked) => patch((d) => ({ ...d, DETAIL_NO_SAVE: checked }))} />
-                    <Checkbox label="自动批核" checked={draft.AUTO_APPROVE} onChange={(checked) => patch((d) => ({ ...d, AUTO_APPROVE: checked }))} />
-                    <Checkbox label="可以复制" checked={draft.IF_COPY} onChange={(checked) => patch((d) => ({ ...d, IF_COPY: checked }))} />
-                    <Checkbox label="异常记录不可保存" checked={draft.ERROR_NO_SAVE} onChange={(checked) => patch((d) => ({ ...d, ERROR_NO_SAVE: checked }))} />
-                  </div>
-                  {[1, 2, 3, 4, 5].map((index) => (
-                    <div className="card mb-2 erp-menu-group-card" key={index}>
-                      <div className="card-body py-2 px-3">
-                        <div className="d-flex align-items-center gap-3">
-                          <Checkbox
-                            label={`分组表达式${index}`}
-                            checked={draft[`GROUP${index}` as keyof MenuAdminModule] as boolean}
-                            onChange={(checked) => setGroup(index, 'enabled', checked)}
-                          />
-                          <Input
-                            label={`表达式描述${index}`}
-                            value={(draft[`GROUP_DESC${index}` as keyof MenuAdminModule] as string | null) ?? ''}
-                            onChange={(value) => setGroup(index, 'description', value || null)}
-                          />
+                  <TabbedPanel tabs={MENU_FORM_TABS} activeKey={formTab} onActiveKeyChange={setFormTab}>
+                    {formTab === 'basic' && (
+                      <>
+                        <div className="row g-2">
+                          <div className="col-6">
+                            <Input label="菜单名称" value={draft.M_DESC} onChange={(value) => patch((d) => ({ ...d, M_DESC: value }))} />
+                          </div>
+                          <div className="col-6">
+                            <Input label="菜单别名" value={draft.M_ALIAS ?? ''} onChange={(value) => patch((d) => ({ ...d, M_ALIAS: value || null }))} />
+                          </div>
                         </div>
-                        <Input
-                          label={`表达式${index}（如 TABLE.COL、CASE 或日期函数）`}
-                          value={(draft[`GROUP_EXP${index}` as keyof MenuAdminModule] as string | null) ?? ''}
-                          onChange={(value) => setGroup(index, 'expression', value || null)}
-                        />
+                        <Input label="页面链接（现代路由）" value={draft.M_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, M_URL: value || null }))} />
+                        <div className="row g-2">
+                          <div className="col-6">
+                            <Input label="新增URL地址" value={draft.NEW_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, NEW_URL: value || null }))} />
+                          </div>
+                          <div className="col-6">
+                            <Input label="修改URL地址" value={draft.MODI_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, MODI_URL: value || null }))} />
+                          </div>
+                        </div>
+                        <Input label="帮助文件URL地址" value={draft.HELP_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, HELP_URL: value || null }))} />
+                      </>
+                    )}
+                    {formTab === 'master' && (
+                      <>
+                        <div className="row g-2">
+                          <div className="col-6">
+                            <Input label="操作主表名" readOnly value={draft.MASTER_TABLE ?? ''} onChange={(value) => patch((d) => ({ ...d, MASTER_TABLE: value || null }))} />
+                            <div className="d-flex gap-2">
+                              <Button size="sm" onClick={() => openTableChooser('master')}>选择…</Button>
+                              <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('master')} disabled={!draft.MASTER_TABLE}>默认列</Button>
+                              <Button size="sm" variant="ghost" title="清除操作主表名" onClick={() => patch((d) => ({ ...d, MASTER_TABLE: null }))}>清除</Button>
+                            </div>
+                          </div>
+                          <div className="col-6">
+                            <Input label="主表过滤条件" readOnly value={draft.FILTER ?? ''} onChange={(value) => patch((d) => ({ ...d, FILTER: value || null }))} />
+                            <div className={filterStatus.className}>{filterStatus.text}</div>
+                            <div className="d-flex gap-2">
+                              <Button size="sm" title="构建主表过滤条件" onClick={() => setFilterBuilderOpen(true)} disabled={!draft.MASTER_TABLE}>构建…</Button>
+                              <Button size="sm" variant="ghost" title="清除主表过滤条件" onClick={() => patch((d) => ({ ...d, FILTER: null }))}>清除</Button>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="row g-2">
+                          <div className="col-6">
+                            <Input label="排序字段" readOnly value={draft.SORT_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, SORT_FIELDS: value || null }))} />
+                            <div className="d-flex gap-2">
+                              <Button size="sm" title="选择排序字段" onClick={() => setFieldPicker({ target: 'sortFields' })} disabled={!draft.MASTER_TABLE}>选择…</Button>
+                              <Button size="sm" variant="ghost" title="清除排序字段" onClick={() => patch((d) => ({ ...d, SORT_FIELDS: null }))}>清除</Button>
+                            </div>
+                          </div>
+                          <div className="col-6">
+                            <Input label="字段有值时不可解批（主表）" readOnly value={draft.NOT_BACK_FIELDS_M ?? ''} onChange={(value) => patch((d) => ({ ...d, NOT_BACK_FIELDS_M: value || null }))} />
+                            <div className="d-flex gap-2">
+                              <Button size="sm" title="选择不可解批主表字段" onClick={() => setFieldPicker({ target: 'notBackM' })} disabled={!draft.MASTER_TABLE}>选择…</Button>
+                              <Button size="sm" variant="ghost" title="清除不可解批主表字段" onClick={() => patch((d) => ({ ...d, NOT_BACK_FIELDS_M: null }))}>清除</Button>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="row g-2">
+                          <div className="col-6">
+                            <Input label="存盘后执行存储过程" readOnly value={draft.AFTERSAVE_SP ?? ''} onChange={(value) => patch((d) => ({ ...d, AFTERSAVE_SP: value || null }))} />
+                            <div className="d-flex gap-2">
+                              <Button size="sm" title="选择存盘后执行存储过程" onClick={() => setSprocChooser('afterSave')}>选择…</Button>
+                              <Button size="sm" variant="ghost" title="清除存盘后执行存储过程" onClick={() => patch((d) => ({ ...d, AFTERSAVE_SP: null }))}>清除</Button>
+                            </div>
+                          </div>
+                          <div className="col-6">
+                            <Input label="数据更新存储过程" readOnly value={draft.UPDATE_SP ?? ''} onChange={(value) => patch((d) => ({ ...d, UPDATE_SP: value || null }))} />
+                            <div className="d-flex gap-2">
+                              <Button size="sm" title="选择数据更新存储过程" onClick={() => setSprocChooser('update')}>选择…</Button>
+                              <Button size="sm" variant="ghost" title="清除数据更新存储过程" onClick={() => patch((d) => ({ ...d, UPDATE_SP: null }))}>清除</Button>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-secondary small fw-semibold mt-2 mb-1">单据行为</div>
+                        <div className="d-flex flex-wrap gap-3">
+                          <Checkbox label="通用查询（主表）" checked={draft.SEARCH_1} onChange={(checked) => patch((d) => ({ ...d, SEARCH_1: checked }))} />
+                          <Checkbox label="自动批核" checked={draft.AUTO_APPROVE} onChange={(checked) => patch((d) => ({ ...d, AUTO_APPROVE: checked }))} />
+                          <Checkbox label="可以复制" checked={draft.IF_COPY} onChange={(checked) => patch((d) => ({ ...d, IF_COPY: checked }))} />
+                          <Checkbox label="异常记录不可保存" checked={draft.ERROR_NO_SAVE} onChange={(checked) => patch((d) => ({ ...d, ERROR_NO_SAVE: checked }))} />
+                        </div>
+                      </>
+                    )}
+                    {formTab === 'detail' && (
+                      <>
+                        <div className="row g-2">
+                          <div className="col-6">
+                            <Input label="操作副表名" readOnly value={draft.DETAIL_TABLE ?? ''} onChange={(value) => patch((d) => ({ ...d, DETAIL_TABLE: value || null }))} />
+                            <div className="d-flex gap-2">
+                              <Button size="sm" onClick={() => openTableChooser('detail')}>选择…</Button>
+                              <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('detail')} disabled={!draft.DETAIL_TABLE}>默认列</Button>
+                              <Button size="sm" variant="ghost" title="清除操作副表名" onClick={() => patch((d) => ({ ...d, DETAIL_TABLE: null }))}>清除</Button>
+                            </div>
+                          </div>
+                          <div className="col-6">
+                            <Input label="新增明细时必需字段" readOnly value={draft.DETAIL_NO_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, DETAIL_NO_FIELDS: value || null }))} />
+                            <div className="d-flex gap-2">
+                              <Button size="sm" title="选择新增明细必需字段" onClick={() => setFieldPicker({ target: 'detailNoFields' })} disabled={!draft.DETAIL_TABLE}>选择…</Button>
+                              <Button size="sm" variant="ghost" title="清除新增明细必需字段" onClick={() => patch((d) => ({ ...d, DETAIL_NO_FIELDS: null }))}>清除</Button>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="row g-2">
+                          <div className="col-6">
+                            <Input label="字段有值时不可解批（副表）" readOnly value={draft.NOT_BACK_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, NOT_BACK_FIELDS: value || null }))} />
+                            <div className="d-flex gap-2">
+                              <Button size="sm" title="选择不可解批副表字段" onClick={() => setFieldPicker({ target: 'notBack' })} disabled={!draft.DETAIL_TABLE}>选择…</Button>
+                              <Button size="sm" variant="ghost" title="清除不可解批副表字段" onClick={() => patch((d) => ({ ...d, NOT_BACK_FIELDS: null }))}>清除</Button>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="d-flex flex-wrap gap-3 my-2">
+                          <Checkbox label="通用查询（副表）" checked={draft.SEARCH_2} onChange={(checked) => patch((d) => ({ ...d, SEARCH_2: checked }))} />
+                          <Checkbox label="无明细资料不可保存" checked={draft.DETAIL_NO_SAVE} onChange={(checked) => patch((d) => ({ ...d, DETAIL_NO_SAVE: checked }))} />
+                        </div>
+                      </>
+                    )}
+                    {formTab === 'group' && (
+                      <>
+                        {[1, 2, 3, 4, 5].map((index) => (
+                          <div className="card mb-2 erp-menu-group-card" key={index}>
+                            <div className="card-body py-2 px-3">
+                              <div className="d-flex align-items-center gap-3">
+                                <Checkbox
+                                  label={`分组表达式${index}`}
+                                  checked={draft[`GROUP${index}` as keyof MenuAdminModule] as boolean}
+                                  onChange={(checked) => setGroup(index, 'enabled', checked)}
+                                />
+                                <Input
+                                  label={`表达式描述${index}`}
+                                  value={(draft[`GROUP_DESC${index}` as keyof MenuAdminModule] as string | null) ?? ''}
+                                  onChange={(value) => setGroup(index, 'description', value || null)}
+                                />
+                              </div>
+                              <Input
+                                label={`表达式${index}（如 TABLE.COL、CASE 或日期函数）`}
+                                value={(draft[`GROUP_EXP${index}` as keyof MenuAdminModule] as string | null) ?? ''}
+                                onChange={(value) => setGroup(index, 'expression', value || null)}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                    {formTab === 'form' && (
+                      <div className="card mb-2 erp-menu-form-card">
+                        <div className="card-header py-2 px-3"><strong className="fs-6">统一表单设置</strong></div>
+                        <div className="card-body py-2 px-3 row g-2">
+                          <div className="col-12">
+                            <Input
+                              label="页签定义（FORM_TABS）"
+                              value={draft.FORM_TABS ?? ''}
+                              placeholder="如 1=客户订单--1;2=客户订单--2；留空为单页签"
+                              onChange={(value) => patch((d) => ({ ...d, FORM_TABS: value || null }))}
+                            />
+                          </div>
+                          <div className="col-6">
+                            <Input
+                              label="每行对数（FORM_COLUMNS）"
+                              value={draft.FORM_COLUMNS == null ? '' : String(draft.FORM_COLUMNS)}
+                              placeholder="留空默认 2"
+                              onChange={(value) => patch((d) => ({ ...d, FORM_COLUMNS: value === '' ? null : Math.max(1, Math.min(6, Number(value) || 2)) }))}
+                            />
+                          </div>
+                          <div className="col-6">
+                            <Input
+                              label="业务按钮（FORM_BUTTONS）"
+                              value={draft.FORM_BUTTONS ?? ''}
+                              placeholder="受控注册码，如 GEN_ORDER;FINISH_CASE"
+                              onChange={(value) => patch((d) => ({ ...d, FORM_BUTTONS: value || null }))}
+                            />
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                  <div className="card mb-2 erp-menu-form-card">
-                    <div className="card-header py-2 px-3"><strong className="fs-6">统一表单设置</strong></div>
-                    <div className="card-body py-2 px-3 row g-2">
-                      <div className="col-12">
-                        <Input
-                          label="页签定义（FORM_TABS）"
-                          value={draft.FORM_TABS ?? ''}
-                          placeholder="如 1=客户订单--1;2=客户订单--2；留空为单页签"
-                          onChange={(value) => patch((d) => ({ ...d, FORM_TABS: value || null }))}
-                        />
-                      </div>
-                      <div className="col-6">
-                        <Input
-                          label="每行对数（FORM_COLUMNS）"
-                          value={draft.FORM_COLUMNS == null ? '' : String(draft.FORM_COLUMNS)}
-                          placeholder="留空默认 2"
-                          onChange={(value) => patch((d) => ({ ...d, FORM_COLUMNS: value === '' ? null : Math.max(1, Math.min(6, Number(value) || 2)) }))}
-                        />
-                      </div>
-                      <div className="col-6">
-                        <Input
-                          label="业务按钮（FORM_BUTTONS）"
-                          value={draft.FORM_BUTTONS ?? ''}
-                          placeholder="受控注册码，如 GEN_ORDER;FINISH_CASE"
-                          onChange={(value) => patch((d) => ({ ...d, FORM_BUTTONS: value || null }))}
-                        />
-                      </div>
-                    </div>
-                  </div>
+                    )}
+                  </TabbedPanel>
                   <div className="d-flex gap-2 mt-3">
                     <Button size="sm" loading={save.isPending} onClick={() => void save.mutate(draft)}>保存</Button>
                     <Button size="sm" variant="secondary" onClick={() => setDraft(selected ? { ...selected } : null)}>取消</Button>
@@ -909,6 +996,22 @@ export function MenuAdminPage() {
           T_KIND: (row) => tableKindLabel(row.T_KIND as string | null),
         }}
         emptyText="没有匹配的表。"
+      />
+      <UnifiedChooser
+        open={sprocChooser !== null}
+        title={sprocChooser === 'afterSave' ? '选择存盘后执行存储过程' : '选择数据更新存储过程'}
+        source={{ kind: 'sourceKey', key: 'menu-admin.sprocs' }}
+        getRowId={(row) => String(row.SP_NAME)}
+        mode="single"
+        onPick={(rows) => {
+          const row = rows[0]
+          if (row && sprocChooser) {
+            patch((d) => ({ ...d, [sprocChooser === 'afterSave' ? 'AFTERSAVE_SP' : 'UPDATE_SP']: String(row.SP_NAME) }))
+          }
+        }}
+        onClose={() => setSprocChooser(null)}
+        searchPlaceholder="搜索存储过程名…"
+        emptyText="没有匹配的存储过程。"
       />
       {iconPickerModule && (
         <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
