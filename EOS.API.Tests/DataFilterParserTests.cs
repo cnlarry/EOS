@@ -40,6 +40,19 @@ public class DataFilterParserTests
     }
 
     [Fact]
+    public void LegacyBraceAndBooleanLiteral_IsAccepted()
+    {
+        // 存量 MODULES.FILTER 真实写法：{表.列} 花括号 + 裸字段花括号 + TRUE 布尔字面量。
+        // 前端构建器（简单子集）无法表达，但服务端权威解析器必须兼容旧系统。
+        Assert.True(Try(
+            "{HR_EMPLOYEE.STATE}<4 AND {IF_SHOW}=TRUE",
+            "HR_EMPLOYEE", Fields("STATE", "IF_SHOW"),
+            out var predicate, out var parameters));
+        Assert.Equal("[STATE] < @df0 AND [IF_SHOW] = @df1", predicate);
+        Assert.Equal(["4", true], parameters);
+    }
+
+    [Fact]
     public void ParenthesizedArithmeticComparison_IsAccepted()
     {
         // 1310 报表过滤：({MOC_PRODUCE_M.FINISHED_QTY}-{...FITOUT_QTY}-{...SCRAP_QTY})>0

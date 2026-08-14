@@ -118,6 +118,28 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith('/admin/menus', expect.objectContaining({ M_IDX: 0, M_DESC: '新菜单' })))
   })
 
+  it('新增根节点保存后选中服务端返回的新编号', async () => {
+    let posted = false
+    apiClientMock.get.mockImplementation(async () => {
+      if (!posted) return { total: 1, modules: [moduleNode(11, '基本参数', null)] }
+      return { total: 2, modules: [moduleNode(11, '基本参数', null), moduleNode(999, '新菜单', null)] }
+    })
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === '/admin/menus') {
+        posted = true
+        return { id: 999 }
+      }
+      throw new Error(`unexpected POST ${path}`)
+    })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: '新增根节点' }))
+    await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue(''))
+    fireEvent.change(screen.getByLabelText('菜单名称'), { target: { value: '新菜单' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.getByText('已选择：新菜单（ID：999）')).toBeInTheDocument())
+  })
+
   it('默认查询列弹窗加载并保存主表默认列', async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       if (path.includes('/default-columns')) {
@@ -137,8 +159,9 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '默认查询（主表）' })).toBeEnabled())
-    fireEvent.click(screen.getByRole('button', { name: '默认查询（主表）' }))
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '默认列' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: '默认列' }))
     await waitFor(() => expect(screen.getByText('主表默认查询列')).toBeInTheDocument())
     // 等弹窗把默认勾选字段同步进“已选字段”后再保存，避免时序抖动导致空选择提交
     await waitFor(() => {
@@ -451,6 +474,7 @@ describe('MenuAdminPage', () => {
     renderPage()
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
     await waitFor(() => expect(screen.getAllByRole('button', { name: '选择…' }).length).toBeGreaterThan(0))
     fireEvent.click(screen.getAllByRole('button', { name: '选择…' })[0])
     await waitFor(() => expect(screen.getByText('公司基本资料')).toBeInTheDocument())
@@ -477,7 +501,8 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '默认查询（主表）' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '默认列' })).toBeEnabled())
 
     fireEvent.click(screen.getByTitle('选择排序字段'))
     await waitFor(() => expect(screen.getByText('公司编号')).toBeInTheDocument())
@@ -505,7 +530,8 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '默认查询（主表）' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('tab', { name: '子表' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '默认列' })).toBeEnabled())
 
     fireEvent.click(screen.getByTitle('选择新增明细必需字段'))
     await waitFor(() => expect(screen.getByText('公司编号')).toBeInTheDocument())
@@ -528,7 +554,8 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
     fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '默认查询（主表）' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '默认列' })).toBeEnabled())
 
     fireEvent.click(screen.getByTitle('构建主表过滤条件'))
     await waitFor(() => expect(screen.getByRole('button', { name: '添加条件' })).toBeInTheDocument())
@@ -539,6 +566,147 @@ describe('MenuAdminPage', () => {
     fireEvent.change(screen.getByPlaceholderText('值'), { target: { value: '1' } })
     fireEvent.click(screen.getByRole('button', { name: '确定' }))
     await waitFor(() => expect(screen.getByLabelText('主表过滤条件')).toHaveValue('(C_ID = 1)'))
+  })
+
+  it('编辑表单按页签分组：基础/主表/子表/分组/统一表单', async () => {
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
+
+    expect(screen.getByRole('tab', { name: '基础' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByLabelText('页面链接（现代路由）')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
+    expect(screen.getByLabelText('操作主表名')).toBeInTheDocument()
+    expect(screen.getByLabelText('主表过滤条件')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: '子表' }))
+    expect(screen.getByLabelText('操作副表名')).toBeInTheDocument()
+    expect(screen.getByLabelText('新增明细时必需字段')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: '分组' }))
+    expect(screen.getByLabelText('表达式1（如 TABLE.COL、CASE 或日期函数）')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: '统一表单' }))
+    expect(screen.getByLabelText('页签定义（FORM_TABS）')).toBeInTheDocument()
+  })
+
+  it('过滤条件构建器：未选择字段时给出错误并禁止保存', async () => {
+    const fieldRows = [
+      { F_ID: 'C_ID', F_DESC: '公司编号', F_TYPE: 'nvarchar', IS_VISIBLE: true, IS_VIRTUAL: false, IS_QUERY: true },
+    ]
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path.includes('/admin/menus/fields')) return fieldRows
+      return { total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), withTables] }
+    })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
+    fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
+    await waitFor(() => expect(screen.getByTitle('构建主表过滤条件')).toBeEnabled())
+
+    fireEvent.click(screen.getByTitle('构建主表过滤条件'))
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加条件' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '添加条件' }))
+
+    expect(screen.getByText('请选择字段')).toBeInTheDocument()
+    expect(screen.getByText(/还有 1 处条件不完整/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '确定' })).toBeDisabled()
+  })
+
+  it('过滤条件构建器：数值字段填入非数字时阻止保存并提示', async () => {
+    const fieldRows = [
+      { F_ID: 'QTY', F_DESC: '数量', F_TYPE: 'decimal', IS_VISIBLE: true, IS_VIRTUAL: false, IS_QUERY: true },
+    ]
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path.includes('/admin/menus/fields')) return fieldRows
+      return { total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), withTables] }
+    })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
+    fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
+    await waitFor(() => expect(screen.getByTitle('构建主表过滤条件')).toBeEnabled())
+
+    fireEvent.click(screen.getByTitle('构建主表过滤条件'))
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加条件' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '添加条件' }))
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'QTY' } })
+    fireEvent.change(screen.getByPlaceholderText('值'), { target: { value: 'abc' } })
+
+    expect(screen.getByText(/为数值类型，比较值应为数字/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '确定' })).toBeDisabled()
+  })
+
+  it('过滤条件构建器：保留无法解析的既有复杂条件，不静默清空', async () => {
+    const complexModule = { ...withTables, FILTER: "ISNULL(C_ID,'')=''" }
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path.includes('/admin/menus/fields')) {
+        return [{ F_ID: 'C_ID', F_DESC: '公司编号', F_TYPE: 'nvarchar', IS_VISIBLE: true, IS_VIRTUAL: false, IS_QUERY: true }]
+      }
+      return { total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), complexModule] }
+    })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
+    fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
+    await waitFor(() => expect(screen.getByTitle('构建主表过滤条件')).toBeEnabled())
+
+    fireEvent.click(screen.getByTitle('构建主表过滤条件'))
+    await waitFor(() => expect(screen.getByText(/已保留原值/)).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '确定' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: '确定' }))
+
+    await waitFor(() => expect(screen.getByLabelText('主表过滤条件')).toHaveValue("ISNULL(C_ID,'')=''"))
+  })
+
+  it('表/字段/过滤/存储过程等配置输入为只读，防止手工录入', async () => {
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
+
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
+    for (const label of ['操作主表名', '主表过滤条件', '排序字段', '字段有值时不可解批（主表）', '存盘后执行存储过程', '数据更新存储过程']) {
+      expect(screen.getByLabelText(label)).toHaveAttribute('readonly')
+    }
+
+    fireEvent.click(screen.getByRole('tab', { name: '子表' }))
+    for (const label of ['操作副表名', '新增明细时必需字段', '字段有值时不可解批（副表）']) {
+      expect(screen.getByLabelText(label)).toHaveAttribute('readonly')
+    }
+  })
+
+  it('存储过程选择器选择存盘后执行存储过程并回填', async () => {
+    const sprocData = {
+      columns: [{ key: 'SP_NAME', label: '存储过程名', dataType: 'nvarchar', format: null }],
+      rows: [{ SP_NAME: 'P_QUOTE_After_Save' }],
+      total: 1,
+    }
+    apiClientMock.get.mockResolvedValue({ total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), withTables] })
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === '/chooser/query') return sprocData
+      throw new Error(`unexpected POST ${path}`)
+    })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
+    fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
+
+    fireEvent.click(screen.getByTitle('选择存盘后执行存储过程'))
+    await waitFor(() => expect(screen.getByText('P_QUOTE_After_Save')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('P_QUOTE_After_Save'))
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
+    await waitFor(() => expect(screen.getByLabelText('存盘后执行存储过程')).toHaveValue('P_QUOTE_After_Save'))
   })
 })
 

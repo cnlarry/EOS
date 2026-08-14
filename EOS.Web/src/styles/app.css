@@ -133,7 +133,7 @@ button, input, select { font: inherit; }
 .erp-sidebar-collapsed .erp-sidebar-resizer { display: none; }
 
 /* ---- 菜单管理（2301） ---- */
-.erp-menu-tree { max-height: 78vh; overflow-y: auto; }
+.erp-menu-tree { overflow-y: auto; }
 .erp-menu-sort-bar { background: var(--tblr-bg-surface); position: sticky; top: 0; z-index: 5; }
 .erp-menu-sort-bar .btn { flex: 0 0 auto; white-space: nowrap; }
 /* 复刻左侧系统菜单（AppShell 侧栏）的样式：图标、展开折叠箭头、虚线、圆点 */
@@ -363,12 +363,42 @@ button, input, select { font: inherit; }
 .erp-field-mini:hover:not(:disabled) { background: var(--tblr-primary-lt); color: var(--tblr-primary); }
 .erp-field-mini:disabled { opacity: .4; }
 .erp-filter-rows { display: flex; flex-direction: column; gap: 8px; }
-.erp-filter-row > .form-select { flex: 1 1 30%; min-width: 0; }
-.erp-filter-row > .form-control { flex: 1 1 auto; min-width: 0; }
+.erp-filter-row { display: flex; flex-direction: column; gap: 4px; }
+.erp-filter-row-line { display: flex; align-items: center; gap: 8px; }
+.erp-filter-row-line > .form-select { flex: 1 1 30%; min-width: 0; }
+.erp-filter-row-line > .form-control { flex: 1 1 auto; min-width: 0; }
 .erp-filter-logic { flex: 0 0 70px !important; }
 .erp-filter-op { flex: 0 0 80px !important; }
-.erp-menu-form { max-height: 78vh; overflow-y: auto; }
+.erp-filter-row-issues { display: flex; flex-direction: column; gap: 2px; padding-left: 2px; font-size: 12px; }
+.erp-menu-form { overflow-y: auto; }
 .erp-menu-group-card { border-color: var(--tblr-border-color); }
+/* 菜单管理：页面随内容区高度自适应（工作台同款思路：根节点/卡片填满、树与表单内部滚动），
+   消除内容不满视口时底部留白大于其它边的问题 */
+.erp-menu-admin { flex: 1 1 auto; min-height: 0; }
+.erp-menu-admin > .card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.erp-menu-admin > .card > .card-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.erp-menu-admin .card-body > .row { flex: 1 1 auto; min-height: 0; }
+.erp-menu-admin .erp-menu-form { flex: 1 1 auto; min-height: 0; max-height: none; }
+@media (min-width: 992px) {
+  /* 桌面端：卡片体用 grid 替代 row/col 的 flex 行（flex 行对内部行高度不是确定尺寸，
+      stretch 仍按内容高度计算导致列溢出）；grid 确定高度下 stretch 可靠，树/表单内部滚动 */
+  .erp-menu-admin > .card > .card-body { display: grid; grid-template-columns: 5fr 7fr; }
+  .erp-menu-admin .card-body > .row { display: contents; }
+  /* col-lg-* 自带 width 41.66%/58.33%：作为 grid 子项会按自身轨道的百分比再次收缩（只占轨道一部分），
+     改为 auto 让 justify-self:stretch 填满对应轨道，保持 5:7 与旧 col 宽度一致 */
+  .erp-menu-admin .col-lg-5, .erp-menu-admin .col-lg-7 { width: auto; }
+  .erp-menu-admin .col-lg-5.erp-menu-tree { display: flex; flex-direction: column; min-height: 0; max-height: none; }
+  .erp-menu-admin .col-lg-7 { display: flex; flex-direction: column; min-height: 0; }
+}
+/* 系统级页签面板（TabbedPanel 设计语言）：
+   内容面板带完整边框 + 系统圆角 + padding 10px；
+   激活标签向下延伸 1px、用面板底色覆盖面板上边框，与面板融为一体；未激活标签仍完整显示面板上边框 */
+.erp-tabbed-panel-tabs { border-bottom: 0; margin-bottom: 0; padding-left: calc(var(--tblr-border-radius) * 2); }
+.erp-tabbed-panel-tabs .nav-link { padding: 5px 14px; font-size: 13px; border-bottom: 0; border-radius: var(--tblr-border-radius-lg) var(--tblr-border-radius-lg) 0 0; margin-bottom: -1px; }
+.erp-tabbed-panel-tabs .nav-link.active { background-color: var(--tblr-bg-surface); border-bottom: 1px solid var(--tblr-bg-surface); position: relative; z-index: 1; }
+.erp-tabbed-panel-tabs .nav-item + .nav-item .nav-link:not(.active) { border-left: 0 !important; }
+.erp-tabbed-panel-tabs .nav-item:has(+ .nav-item .nav-link.active) .nav-link { border-right: 0 !important; }
+.erp-tabbed-panel-body { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background-color: var(--tblr-bg-surface); padding: 10px; }
 .erp-mobile-menu-trigger { position: fixed; top: 8px; left: 8px; z-index: 1035; }
 .erp-list-command-bar { display: flex; min-height: 48px; align-items: center; gap: 5px; padding: 6px 8px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); border-radius: var(--tblr-border-radius) var(--tblr-border-radius) 0 0; }
 .erp-list-command-bar .btn { flex: 0 0 auto; white-space: nowrap; }
