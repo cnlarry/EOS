@@ -196,6 +196,20 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
       return width
     }
 
+    /**
+     * 交互单元格（按钮组/复选框/徽标等）真实内容宽度：
+     * 同一弹性行内的控件按「宽度之和 + 间距」计算，避免按 textContent 拼接
+     * 低估按钮组宽度（如操作列 复制/编辑/删除）。
+     */
+    const measureCellInteractive = (td: HTMLTableCellElement, padding: number, border: number): number => {
+      const controls = Array.from(td.querySelectorAll('button, input, select, a, .badge'))
+      if (controls.length === 0) return 0
+      const parent = controls[0].parentElement
+      const gap = parent ? (parseFloat(getComputedStyle(parent).columnGap) || 0) : 0
+      const widths = controls.map((el) => el.getBoundingClientRect().width)
+      return widths.reduce((sum, width) => sum + width, 0) + gap * (controls.length - 1) + padding + border
+    }
+
     const saveWidths = () => {
       if (!persist) return
       const ths = thsOf()
@@ -232,7 +246,11 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
           const cellStyle = getComputedStyle(cell)
           const cellPadding = (parseFloat(cellStyle.paddingLeft) || 0) + (parseFloat(cellStyle.paddingRight) || 0)
           const cellBorder = cell.offsetWidth - cell.clientWidth
-          dataWidth = Math.max(dataWidth, measureCellContent(cell) + cellPadding + cellBorder)
+          dataWidth = Math.max(
+            dataWidth,
+            measureCellContent(cell) + cellPadding + cellBorder,
+            measureCellInteractive(cell, cellPadding, cellBorder),
+          )
         })
       })
       const cols = ensureCols()

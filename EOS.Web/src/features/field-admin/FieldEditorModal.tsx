@@ -56,12 +56,27 @@ export interface FieldMeta extends FieldInput {
   dataSourceSql: string | null
   lastUpdatedBy: string | null
   lastUpdatedAt: string | null
+  isPrimaryKey?: boolean
+  physicalExists?: boolean
+  physicalType?: string | null
+  typeMatches?: boolean | null
 }
 
 export interface SetupLookup {
   value: string
   label: string
 }
+
+/** 与服务端 FieldAdminRepository.AllowedTypes 保持一致；伪类型保留兼容旧数据。 */
+const ALLOWED_TYPES = [
+  'nvarchar', 'varchar', 'nchar', 'char',
+  'int', 'bigint', 'smallint', 'tinyint',
+  'decimal', 'numeric', 'float', 'real', 'money', 'smallmoney',
+  'date', 'datetime', 'datetime2', 'smalldatetime', 'time',
+  'bit', 'uniqueidentifier', 'text', 'ntext', 'image', 'varbinary', 'binary',
+  'xml', 'timestamp', 'sql_variant', 'geometry', 'geography', 'hierarchyid',
+  'IDCard', 'URL', 'Email', 'PhoneNo', 'ZipCode', 'String', 'Integer',
+]
 
 export type FieldSection = 'display' | 'validation' | 'security' | 'layout' | 'advanced'
 
@@ -104,6 +119,16 @@ function emptyDraft(tableId: string): FieldMeta {
 function extractInput(meta: FieldMeta): FieldInput {
   const { key: _key, tableId: _tableId, isVirtual: _virtual, virtualExpression: _exp, isAutoIncrement: _auto, convertFunction: _convert, dataSourceSql: _sql, lastUpdatedBy: _by, lastUpdatedAt: _at, ...input } = meta
   return input
+}
+
+function regexIssue(regex: string | null): string | null {
+  if (!regex) return null
+  try {
+    new RegExp(regex)
+    return null
+  } catch {
+    return '正则表达式无法编译，请检查语法。'
+  }
 }
 
 export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoints, onClose, onSaved }: FieldEditorModalProps) {
@@ -211,11 +236,9 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">数据库类型</label>
-                        {isNew ? (
-                          <input className="form-control" value={draft.dataType} onChange={event => setDraft({ ...draft, dataType: event.target.value })} />
-                        ) : (
-                          <input className="form-control" value={draft.dataType} disabled />
-                        )}
+                        <select className="form-select" value={draft.dataType} disabled={!isNew} onChange={event => setDraft({ ...draft, dataType: event.target.value })}>
+                          {ALLOWED_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                        </select>
                       </div>
                       <div className="col-md-3">
                         <label className="form-label">列宽</label>
@@ -256,6 +279,24 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
                           <span className="form-check-label">允许查询</span>
                         </label>
                       </div>
+                      {!isNew && (
+                        <div className="col-12 d-flex gap-2 flex-wrap align-items-center">
+                          <span className={`badge ${draft.isPrimaryKey ? 'bg-blue-lt' : 'bg-secondary-lt'}`}>主键{draft.isPrimaryKey ? '：是' : '：否'}</span>
+                          <span className={`badge ${draft.physicalExists === false ? 'bg-danger-lt' : 'bg-green-lt'}`}>
+                            物理列：{draft.physicalExists === false ? '不存在' : draft.physicalType ?? '未知'}
+                          </span>
+                          {draft.physicalExists && draft.typeMatches === false && (
+                            <span className="badge bg-warning-lt">类型不一致（元数据 {draft.dataType} / 物理 {draft.physicalType ?? '—'}）</span>
+                          )}
+                        </div>
+                      )}
+                      {!isNew && draft.physicalExists === false && !draft.isVirtual && (
+                        <div className="col-12">
+                          <div className="alert alert-warning py-2 px-3 small mb-0">
+                            该字段元数据引用的物理列不存在（幽灵字段），列表已默认隐藏。编辑仅影响元数据，不影响查询与录入。
+                          </div>
+                        </div>
+                      )}
                     </>}
                     {section === 'validation' && <>
                       <div className="col-md-6">
@@ -268,7 +309,8 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
                       </div>
                       <div className="col-12">
                         <label className="form-label">正则表达式</label>
-                        <input className="form-control" value={draft.regex ?? ''} onChange={event => setDraft({ ...draft, regex: event.target.value })} />
+                        <input className={`form-control${regexIssue(draft.regex) ? ' is-invalid' : ''}`} value={draft.regex ?? ''} placeholder="如 ^[A-Z0-9]{8}$" onChange={event => setDraft({ ...draft, regex: event.target.value })} />
+                        {regexIssue(draft.regex) && <div className="invalid-feedback">{regexIssue(draft.regex)}</div>}
                       </div>
                       <div className="col-12 d-flex gap-4">
                         <label className="form-check">
@@ -337,6 +379,9 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
                               <div className="col-12">
                                 <label className="form-label">过滤条件</label>
                                 <textarea className="form-control" rows={2} value={source.filter ?? ''} onChange={event => setDraft({ ...draft, choosers: draft.choosers.map((item, i) => i === index ? { ...item, filter: event.target.value } : item) })} />
+                                {source.filter?.includes('{') && (
+                                  <div className="text-warning small mt-1">含运行时占位符（&#123;...&#125;），受控解析完成前不执行，保存时原样保留。</div>
+                                )}
                               </div>
                               <div className="col-12">
                                 <label className="form-label">返回值映射</label>
@@ -406,6 +451,10 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
                           <input className="form-check-input" type="checkbox" checked={draft.isAutoIncrement} disabled />
                           <span className="form-check-label">自动增长</span>
                         </label>
+                        <label className="form-check">
+                          <input className="form-check-input" type="checkbox" checked={draft.isPrimaryKey ?? false} disabled />
+                          <span className="form-check-label">主键标记（IS_PK）</span>
+                        </label>
                       </div>
                       <div className="col-12">
                         <label className="form-label">虚拟表达式</label>
@@ -435,7 +484,7 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
                   </div>
                   {save.isError && <div className="alert alert-danger m-3 mb-0">{String((save.error as Error)?.message ?? '保存失败')}</div>}
                   <div className="card-footer text-end">
-                    <Button variant="primary" loading={save.isPending} disabled={!draft.label.trim() || draft.width < 40 || draft.width > 300 || (isNew && (!draft.key.trim() || !draft.tableId.trim()))} onClick={() => save.mutate(draft)}>{isNew ? '新增字段' : '保存字段设置'}</Button>
+                    <Button variant="primary" loading={save.isPending} disabled={!draft.label.trim() || draft.width < 40 || draft.width > 300 || regexIssue(draft.regex) !== null || (isNew && (!draft.key.trim() || !draft.tableId.trim()))} onClick={() => save.mutate(draft)}>{isNew ? '新增字段' : '保存字段设置'}</Button>
                   </div>
                 </div>
               ) : (

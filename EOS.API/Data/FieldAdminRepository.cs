@@ -12,29 +12,57 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
     {
         "nvarchar", "varchar", "nchar", "char", "int", "bigint", "smallint", "tinyint", "decimal", "numeric",
         "float", "real", "money", "smallmoney", "date", "datetime", "datetime2", "smalldatetime", "time", "bit",
-        "IDCard", "URL", "Email", "PhoneNo", "ZipCode"
+        "uniqueidentifier", "text", "ntext", "image", "varbinary", "binary", "xml", "timestamp", "sql_variant",
+        "geometry", "geography", "hierarchyid",
+        // 旧系统伪类型与历史遗留写法（保留可编辑，避免已有行保存失败）
+        "IDCard", "URL", "Email", "PhoneNo", "ZipCode", "String", "Integer"
     };
     private static readonly HashSet<string> AllowedAlign = new(StringComparer.OrdinalIgnoreCase)
     {
         "", "left", "center", "right"
     };
-
-    public async Task<IReadOnlyList<FieldAdminTable>> GetTablesAsync(CancellationToken token)
+    private static readonly HashSet<string> AllowedTableKinds = new(StringComparer.OrdinalIgnoreCase)
     {
+        "", "P", "S", "O", "V"
+    };
+    private static readonly HashSet<string> AllowedTableTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "", "TABLE", "VIEW", "UNKNOW"
+    };
+
+    public async Task<IReadOnlyList<FieldAdminTable>> GetTablesAsync(string? kind, CancellationToken token)
+    {
+        var kindFilter = kind?.Trim() ?? "";
+        if (kindFilter.Length > 0 && !AllowedTableKinds.Contains(kindFilter))
+            throw new ArgumentException("表性质筛选无效。", nameof(kind));
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         const string sql = """
-            SELECT LTRIM(RTRIM(T_ID)),LTRIM(RTRIM(T_DESC)),LTRIM(RTRIM(ISNULL(T_KIND,''))),LTRIM(RTRIM(ISNULL(T_TYPE,'')))
-            FROM dbo.TABLES WITH (NOLOCK)
+            SELECT LTRIM(RTRIM(t.T_ID)),LTRIM(RTRIM(t.T_DESC)),LTRIM(RTRIM(ISNULL(t.T_KIND,''))),LTRIM(RTRIM(ISNULL(t.T_TYPE,''))),
+                   (SELECT COUNT(*) FROM dbo.FIELDS f WITH (NOLOCK) WHERE f.T_ID=t.T_ID) AS FieldCount,
+                   (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS c
+                     WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=t.T_ID
+                       AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f2 WITH (NOLOCK)
+                                        WHERE f2.T_ID=t.T_ID AND LTRIM(RTRIM(f2.F_ID))=c.COLUMN_NAME)) AS UnmanagedCount,
+                   (SELECT COUNT(*) FROM dbo.FIELDS f3 WITH (NOLOCK)
+                     WHERE f3.T_ID=t.T_ID
+                       AND NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c2
+                                        WHERE c2.TABLE_SCHEMA='dbo' AND c2.TABLE_NAME=t.T_ID
+                                          AND c2.COLUMN_NAME=LTRIM(RTRIM(f3.F_ID)))) AS OrphanCount
+            FROM dbo.TABLES t WITH (NOLOCK)
+            WHERE (@Kind='' OR LTRIM(RTRIM(t.T_KIND))=@Kind)
             ORDER BY T_DESC,T_ID;
             """;
         await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Kind", SqlDbType.NVarChar, 20).Value = kindFilter;
         await using var reader = await command.ExecuteReaderAsync(token);
         var result = new List<FieldAdminTable>();
         while (await reader.ReadAsync(token))
         {
             var table = reader.GetString(0);
-            if (Identifier.IsMatch(table)) result.Add(new(table, reader.GetString(1), NullIfEmpty(reader.GetString(2)), NullIfEmpty(reader.GetString(3))));
+            if (Identifier.IsMatch(table))
+                result.Add(new(table, reader.GetString(1), NullIfEmpty(reader.GetString(2)), NullIfEmpty(reader.GetString(3)),
+                    reader.GetInt32(4), reader.GetInt32(5), reader.GetInt32(6)));
         }
         return result;
     }
@@ -54,6 +82,270 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         while (await reader.ReadAsync(token))
             result.Add(new(reader.GetInt32(0), reader.GetString(1)));
         return result;
+    }
+
+    public async Task<FieldAdminTableDetail?> GetTableAsync(string tableId, CancellationToken token)
+    {
+        EnsureIdentifier(tableId, null);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        const string sql = """
+            SELECT LTRIM(RTRIM(T_ID)),LTRIM(RTRIM(T_DESC)),LTRIM(RTRIM(ISNULL(T_KIND,''))),LTRIM(RTRIM(ISNULL(T_TYPE,''))),
+                   T_REMARK,FK_T_ID_1,FK_T_ID_2,FK_T_ID_3,FK_T_ID_4,FK_T_ID_5,
+                   QUERY_RELATION,DF_CONDITION,DF_VERIFY,CAST(COALESCE(CAN_IMPORT,0) AS bit),
+                   LAST_UPDATE_BY,LAST_UPDATE_DATE
+            FROM dbo.TABLES WITH (NOLOCK)
+            WHERE T_ID=@TableId;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token)) return null;
+        return new(
+            reader.GetString(0), reader.GetString(1), NullIfEmpty(reader.GetString(2)), NullIfEmpty(reader.GetString(3)),
+            reader.IsDBNull(4) ? null : reader.GetString(4),
+            NullIfEmpty(reader.IsDBNull(5) ? "" : reader.GetString(5)),
+            NullIfEmpty(reader.IsDBNull(6) ? "" : reader.GetString(6)),
+            NullIfEmpty(reader.IsDBNull(7) ? "" : reader.GetString(7)),
+            NullIfEmpty(reader.IsDBNull(8) ? "" : reader.GetString(8)),
+            NullIfEmpty(reader.IsDBNull(9) ? "" : reader.GetString(9)),
+            NullIfEmpty(reader.IsDBNull(10) ? "" : reader.GetString(10)),
+            NullIfEmpty(reader.IsDBNull(11) ? "" : reader.GetString(11)),
+            NullIfEmpty(reader.IsDBNull(12) ? "" : reader.GetString(12)),
+            reader.GetBoolean(13),
+            reader.IsDBNull(14) ? null : reader.GetString(14),
+            reader.IsDBNull(15) ? null : reader.GetDateTime(15));
+    }
+
+    public async Task CreateTableAsync(CreateFieldAdminTableRequest request, string updatedBy, CancellationToken token)
+    {
+        EnsureIdentifier(request.TableId, null);
+        ValidateTableInput(request.Table);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+
+        await using (var physical = new SqlCommand(
+            """
+            SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@TableId;
+            """, connection, transaction))
+        {
+            physical.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = request.TableId;
+            if (await physical.ExecuteScalarAsync(token) is null)
+                throw new ArgumentException("物理表或视图不存在，无法登记表元数据。", nameof(request));
+        }
+        await using (var repeat = new SqlCommand("SELECT 1 FROM dbo.TABLES WITH (NOLOCK) WHERE T_ID=@TableId", connection, transaction))
+        {
+            repeat.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = request.TableId;
+            if (await repeat.ExecuteScalarAsync(token) is not null)
+                throw new ArgumentException("数据表元数据已存在，不能重复登记。", nameof(request));
+        }
+
+        const string sql = """
+            INSERT INTO dbo.TABLES (T_ID,T_DESC,T_KIND,T_TYPE,T_REMARK,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            VALUES (@TableId,@Description,@Kind,@Type,@Remark,@UpdatedBy,GETDATE());
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        AddTableParameters(command, request.TableId, request.Table, updatedBy);
+        if (await command.ExecuteNonQueryAsync(token) != 1)
+            throw new InvalidOperationException("新增数据表元数据失败。");
+        await transaction.CommitAsync(token);
+        logger.LogInformation("新增数据表元数据 table={Table} by={UpdatedBy}", request.TableId, updatedBy);
+    }
+
+    public async Task UpdateTableAsync(
+        string tableId,
+        FieldAdminTableInput input,
+        FieldAdminTableInput? original,
+        string updatedBy,
+        CancellationToken token)
+    {
+        EnsureIdentifier(tableId, null);
+        ValidateTableInput(input);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+
+        if (original is not null)
+        {
+            var current = await ReadCurrentTableInputAsync(connection, transaction, tableId, token)
+                ?? throw new KeyNotFoundException("数据表不存在。");
+            if (!SameTableInput(original, current))
+            {
+                logger.LogWarning("数据表乐观锁冲突 table={Table} by={UpdatedBy}", tableId, updatedBy);
+                throw new ArgumentException("数据表信息已被他人修改，请刷新后重试！", nameof(input));
+            }
+        }
+
+        const string sql = """
+            UPDATE dbo.TABLES SET
+                T_DESC=@Description,T_KIND=@Kind,T_TYPE=@Type,T_REMARK=@Remark,
+                LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE()
+            WHERE T_ID=@TableId;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        AddTableParameters(command, tableId, input, updatedBy);
+        if (await command.ExecuteNonQueryAsync(token) != 1)
+            throw new KeyNotFoundException("数据表不存在。");
+        await transaction.CommitAsync(token);
+        logger.LogInformation("更新数据表元数据 table={Table} by={UpdatedBy}", tableId, updatedBy);
+    }
+
+    public async Task DeleteTableAsync(string tableId, CancellationToken token)
+    {
+        EnsureIdentifier(tableId, null);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+
+        const string refsSql = """
+            SELECT
+              (SELECT COUNT(*) FROM dbo.FIELDS f WITH (NOLOCK) WHERE f.T_ID=@TableId) AS Fields,
+              (SELECT COUNT(*) FROM dbo.MODULES m WITH (NOLOCK)
+                WHERE LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))) = @TableId OR LTRIM(RTRIM(ISNULL(m.DETAIL_TABLE,''))) = @TableId) AS Modules,
+              (SELECT COUNT(*) FROM dbo.TABLES t2 WITH (NOLOCK)
+                WHERE @TableId IN (LTRIM(RTRIM(ISNULL(t2.FK_T_ID_1,''))),LTRIM(RTRIM(ISNULL(t2.FK_T_ID_2,''))),
+                                   LTRIM(RTRIM(ISNULL(t2.FK_T_ID_3,''))),LTRIM(RTRIM(ISNULL(t2.FK_T_ID_4,''))),
+                                   LTRIM(RTRIM(ISNULL(t2.FK_T_ID_5,''))))) AS FkReferences,
+              (SELECT COUNT(*) FROM dbo.SYSQL_DEFAULT WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS SysqlDefault,
+              (SELECT COUNT(*) FROM dbo.SYSQL_FIELDS WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS SysqlFields,
+              (SELECT COUNT(*) FROM dbo.SYSQL_CONDITION WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS SysqlCondition,
+              (SELECT COUNT(*) FROM dbo.SYSQL_COND_DFT WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS SysqlCondDft,
+              (SELECT COUNT(*) FROM dbo.SYSQD_CONDITION WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS SysqdCondition,
+              (SELECT COUNT(*) FROM dbo.LISTREPORT_CONDITION WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS ListReport,
+              (SELECT COUNT(*) FROM dbo.SYSQQ WITH (NOLOCK) WHERE T_ID=@TableId) AS Sysqq,
+              (SELECT COUNT(*) FROM dbo.SYSQR_DEFAULT WITH (NOLOCK) WHERE F_ID=@TableDot OR F_ID LIKE @Pattern) AS SysqrDefault;
+            """;
+        await using var refs = new SqlCommand(refsSql, connection, transaction);
+        refs.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        refs.Parameters.Add("@TableDot", SqlDbType.NVarChar, 120).Value = $"{tableId}.";
+        refs.Parameters.Add("@Pattern", SqlDbType.NVarChar, 120).Value = $"{tableId}.%";
+        await using var refsReader = await refs.ExecuteReaderAsync(token);
+        if (!await refsReader.ReadAsync(token))
+            throw new KeyNotFoundException("数据表不存在。");
+        var counts = new (string Name, int Count)[]
+        {
+            ("字段元数据", refsReader.GetInt32(0)),
+            ("模块引用", refsReader.GetInt32(1)),
+            ("关联表引用", refsReader.GetInt32(2)),
+            ("默认列配置", refsReader.GetInt32(3)),
+            ("用户列配置", refsReader.GetInt32(4)),
+            ("查询条件记忆", refsReader.GetInt32(5) + refsReader.GetInt32(6) + refsReader.GetInt32(7) + refsReader.GetInt32(8)),
+            ("报表条件引用", refsReader.GetInt32(9) + refsReader.GetInt32(10)),
+        };
+        await refsReader.CloseAsync();
+        var blocked = counts.Where(item => item.Count > 0).ToList();
+        if (blocked.Count > 0)
+            throw new ArgumentException(
+                $"数据表存在引用，无法删除：{string.Join("；", blocked.Select(item => $"{item.Name} {item.Count} 条"))}。仅删除无引用的表元数据，物理表不受影响。",
+                nameof(tableId));
+
+        await using var delete = new SqlCommand("DELETE FROM dbo.TABLES WHERE T_ID=@TableId", connection, transaction);
+        delete.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        if (await delete.ExecuteNonQueryAsync(token) != 1)
+            throw new KeyNotFoundException("数据表不存在。");
+        await transaction.CommitAsync(token);
+        logger.LogInformation("删除数据表元数据 table={Table}", tableId);
+    }
+
+    public async Task<IReadOnlyList<FieldAdminUnmanagedField>> GetUnmanagedFieldsAsync(string tableId, CancellationToken token)
+    {
+        EnsureIdentifier(tableId, null);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        const string sql = """
+            SELECT c.COLUMN_NAME, c.DATA_TYPE
+            FROM INFORMATION_SCHEMA.COLUMNS c
+            WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TableId
+              AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f WITH (NOLOCK)
+                               WHERE f.T_ID=@TableId AND LTRIM(RTRIM(f.F_ID))=c.COLUMN_NAME)
+            ORDER BY c.ORDINAL_POSITION;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<FieldAdminUnmanagedField>();
+        while (await reader.ReadAsync(token))
+            result.Add(new(reader.GetString(0), reader.GetString(1)));
+        return result;
+    }
+
+    public async Task<CreateUnmanagedFieldsResult> CreateUnmanagedFieldsAsync(
+        CreateUnmanagedFieldsRequest request,
+        string updatedBy,
+        CancellationToken token)
+    {
+        EnsureIdentifier(request.TableId, null);
+        if (request.FieldIds.Count == 0)
+            throw new ArgumentException("请至少选择一个字段。", nameof(request));
+        var requested = request.FieldIds
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        foreach (var id in requested)
+            EnsureIdentifier(request.TableId, id);
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+
+        await using (var physical = new SqlCommand(
+            """
+            SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@TableId;
+            """, connection, transaction))
+        {
+            physical.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = request.TableId;
+            if (await physical.ExecuteScalarAsync(token) is null)
+                throw new ArgumentException("物理表或视图不存在，无法生成字段元数据。", nameof(request));
+        }
+
+        var created = 0;
+        var skipped = 0;
+        var reasons = new List<string>();
+        foreach (var fieldId in requested)
+        {
+            if (await FieldExistsAsync(connection, transaction, request.TableId, fieldId, token))
+            {
+                skipped++;
+                reasons.Add($"{fieldId}：已存在元数据，跳过");
+                continue;
+            }
+            var column = await ReadPhysicalColumnAsync(connection, transaction, request.TableId, fieldId, token);
+            if (column is null)
+            {
+                skipped++;
+                reasons.Add($"{fieldId}：物理列不存在，跳过");
+                continue;
+            }
+            if (!AllowedTypes.Contains(column.Value.Type))
+            {
+                skipped++;
+                reasons.Add($"{fieldId}：物理类型 {column.Value.Type} 不受支持，跳过");
+                continue;
+            }
+
+            const string sql = """
+                INSERT INTO dbo.FIELDS
+                    (T_ID,F_ID,F_DESC,F_TYPE,IS_QUERY,IS_DEFAULT_FIELDS,IS_VISIBLE,IS_VIRTUAL,IS_COST,IS_SECRECY,
+                     IS_READONLY,CAN_COPY,DISPLAY_LENGTH,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                VALUES
+                    (@TableId,@FieldId,@Description,@DataType,1,1,1,0,0,0,0,1,100,@UpdatedBy,GETDATE());
+                """;
+            await using var command = new SqlCommand(sql, connection, transaction);
+            command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = request.TableId;
+            command.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
+            command.Parameters.Add("@Description", SqlDbType.NVarChar, 500).Value = column.Value.Description;
+            command.Parameters.Add("@DataType", SqlDbType.NVarChar, 100).Value = column.Value.Type;
+            command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
+            await command.ExecuteNonQueryAsync(token);
+            created++;
+        }
+        await transaction.CommitAsync(token);
+        logger.LogInformation("批量生成字段元数据 table={Table} created={Created} skipped={Skipped} by={UpdatedBy}",
+            request.TableId, created, skipped, updatedBy);
+        return new(created, skipped, reasons);
     }
 
     public async Task<FieldAdminPageResult> GetFieldsAsync(
@@ -80,11 +372,16 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
                        CAST(COALESCE(IS_QUERY,1) AS bit) IS_QUERY,
                        CAST(COALESCE(IS_READONLY,0) AS bit) IS_READONLY,
                        CAST(COALESCE(IS_COST,0) AS bit) IS_COST,
-                       CAST(COALESCE(IS_SECRECY,0) AS bit) IS_SECRECY
+                       CAST(COALESCE(IS_SECRECY,0) AS bit) IS_SECRECY,
+                       CAST(COALESCE(IS_PK,0) AS bit) IS_PK
                 FROM dbo.FIELDS WITH (NOLOCK)
                 WHERE T_ID=@TableId
             )
-            SELECT F_ID,F_DESC,F_TYPE,IS_VIRTUAL,IS_VISIBLE,IS_DEFAULT_FIELDS,IS_QUERY,IS_READONLY,IS_COST,IS_SECRECY,
+            SELECT F_ID,F_DESC,F_TYPE,IS_VIRTUAL,IS_VISIBLE,IS_DEFAULT_FIELDS,IS_QUERY,IS_READONLY,IS_COST,IS_SECRECY,IS_PK,
+                   CAST(CASE WHEN IS_VIRTUAL=1 THEN 1 ELSE
+                     CASE WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
+                                        WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TableId
+                                          AND c.COLUMN_NAME=LTRIM(RTRIM(F_ID))) THEN 1 ELSE 0 END END AS bit) AS IS_PHYSICAL,
                    COUNT(*) OVER() AS Total
             FROM base
             WHERE (@Keyword='' OR F_ID LIKE @Pattern OR F_DESC LIKE @Pattern)
@@ -102,12 +399,13 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         var total = 0;
         while (await reader.ReadAsync(token))
         {
-            if (total == 0) total = Convert.ToInt32(reader.GetValue(10));
+            if (total == 0) total = Convert.ToInt32(reader.GetValue(12));
             var field = reader.GetString(0).Trim();
             if (!Identifier.IsMatch(field)) continue;
             items.Add(new(tableId, field, reader.GetString(1), reader.GetString(2),
                 reader.GetBoolean(3), reader.GetBoolean(4), reader.GetBoolean(5), reader.GetBoolean(6),
-                reader.GetBoolean(7), reader.GetBoolean(8), reader.GetBoolean(9)));
+                reader.GetBoolean(7), reader.GetBoolean(8), reader.GetBoolean(9),
+                reader.GetBoolean(10), reader.GetBoolean(11)));
         }
         return new(items, total, page, pageSize);
     }
@@ -129,7 +427,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
                    CAST(COALESCE(CHOOSE_ACTIVE3,0) AS bit),CHOOSE_T_ID3,CHOOSE_T_DESC3,CHOOSE_M_IDX3,CHOOSE_FILTER3,CHOOSE_RETURNVAL3,
                    CAST(COALESCE(CHOOSE_ACTIVE4,0) AS bit),CHOOSE_T_ID4,CHOOSE_T_DESC4,CHOOSE_M_IDX4,CHOOSE_FILTER4,CHOOSE_RETURNVAL4,
                    CAST(COALESCE(IS_VIRTUAL,0) AS bit),VIRTUAL_EXP,CAST(COALESCE(CAN_COPY,1) AS bit),CAST(COALESCE(IS_AUTOINC,0) AS bit),
-                   CONVERT_FUNCTION,DATASOURCE_SQL,LAST_UPDATE_BY,LAST_UPDATE_DATE
+                   CONVERT_FUNCTION,DATASOURCE_SQL,LAST_UPDATE_BY,LAST_UPDATE_DATE,CAST(COALESCE(IS_PK,0) AS bit)
             FROM dbo.FIELDS WITH (NOLOCK)
             WHERE T_ID=@TableId AND LTRIM(RTRIM(F_ID))=@FieldId;
             """;
@@ -140,7 +438,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         if (!await reader.ReadAsync(token)) return null;
         var field = reader.GetString(0).Trim();
         if (!Identifier.IsMatch(field)) return null;
-        return new(tableId, field, new FieldAdminInput(
+        var input = new FieldAdminInput(
             reader.GetString(1), reader.GetString(2), Math.Clamp(reader.GetInt32(3), 40, 300),
             reader.GetString(4), reader.GetString(5), reader.IsDBNull(6) ? null : reader.GetString(6),
             reader.GetBoolean(7), reader.GetBoolean(8), reader.GetBoolean(9), reader.GetBoolean(10), reader.GetBoolean(11),
@@ -150,10 +448,40 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
             reader.IsDBNull(19) ? null : reader.GetInt32(19), reader.GetBoolean(20), reader.GetBoolean(21),
             reader.IsDBNull(22) ? null : reader.GetString(22),
             [ReadChooser(reader, 23), ReadChooser(reader, 29), ReadChooser(reader, 35), ReadChooser(reader, 41)],
-            reader.GetBoolean(49)),
-            reader.GetBoolean(47), reader.IsDBNull(48) ? null : reader.GetString(48), reader.GetBoolean(50),
-            reader.IsDBNull(51) ? null : reader.GetString(51), reader.IsDBNull(52) ? null : reader.GetString(52),
-            reader.IsDBNull(53) ? null : reader.GetString(53), reader.IsDBNull(54) ? null : reader.GetDateTime(54));
+            reader.GetBoolean(49));
+        var isVirtual = reader.GetBoolean(47);
+        var virtualExpression = reader.IsDBNull(48) ? null : reader.GetString(48);
+        var isAutoIncrement = reader.GetBoolean(50);
+        var convertFunction = reader.IsDBNull(51) ? null : reader.GetString(51);
+        var dataSourceSql = reader.IsDBNull(52) ? null : reader.GetString(52);
+        var lastUpdatedBy = reader.IsDBNull(53) ? null : reader.GetString(53);
+        DateTime? lastUpdatedAt = reader.IsDBNull(54) ? null : reader.GetDateTime(54);
+        var isPrimaryKey = reader.GetBoolean(55);
+        await reader.CloseAsync();
+        var physicalType = await GetPhysicalTypeAsync(connection, tableId, field, token);
+        return new(tableId, field, input,
+            isVirtual, virtualExpression, isAutoIncrement, convertFunction, dataSourceSql,
+            lastUpdatedBy, lastUpdatedAt, isPrimaryKey,
+            physicalType is not null,
+            physicalType,
+            physicalType is null ? null : string.Equals(physicalType, input.DataType.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static async Task<string?> GetPhysicalTypeAsync(
+        SqlConnection connection,
+        string tableId,
+        string fieldId,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@TableId AND COLUMN_NAME=@FieldId;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        command.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
+        var value = await command.ExecuteScalarAsync(token);
+        return value is null ? null : Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     public async Task CreateAsync(CreateFieldAdminRequest request, string updatedBy, CancellationToken token)
@@ -176,6 +504,19 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
             repeat.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = request.FieldId.Trim();
             if (await repeat.ExecuteScalarAsync(token) is not null)
                 throw new ArgumentException("数据库中已经存在此字段，不能保存！", nameof(request));
+        }
+        await using (var physical = new SqlCommand(
+            """
+            SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@TableId AND COLUMN_NAME=@FieldId;
+            """, connection, transaction))
+        {
+            physical.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = request.TableId;
+            physical.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = request.FieldId.Trim();
+            if (await physical.ExecuteScalarAsync(token) is null)
+                throw new ArgumentException(
+                    $"物理列 {request.TableId}.{request.FieldId.Trim()} 不存在，新增字段元数据仅允许指向真实物理列；虚拟/派生字段需经受控表达式机制另行处理。",
+                    nameof(request));
         }
 
         const string sql = """
@@ -278,10 +619,17 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         const string cleanSql = """
             DELETE FROM dbo.SYSQL_FIELDS WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
             DELETE FROM dbo.SYSQL_DEFAULT WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
+            DELETE FROM dbo.SYSQL_CONDITION WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
+            DELETE FROM dbo.SYSQL_COND_DFT WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
+            DELETE FROM dbo.SYSQD_CONDITION WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
+            DELETE FROM dbo.LISTREPORT_CONDITION WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
+            DELETE FROM dbo.SYSQQ WHERE F_ID=@TableDotField;
+            DELETE FROM dbo.SYSQR_DEFAULT WHERE F_ID=@TableDotField;
             """;
         await using var clean = new SqlCommand(cleanSql, connection, transaction);
         clean.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
         clean.Parameters.Add("@TableId", SqlDbType.VarChar, 100).Value = tableId;
+        clean.Parameters.Add("@TableDotField", SqlDbType.NVarChar, 220).Value = $"{tableId}.{fieldId.Trim()}";
         await clean.ExecuteNonQueryAsync(token);
         await transaction.CommitAsync(token);
         logger.LogInformation("删除字段 table={Table} field={Field}", tableId, fieldId);
@@ -459,6 +807,90 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
     {
         if (!Identifier.IsMatch(tableId)) throw new ArgumentException("数据表名无效。");
         if (fieldId is not null && !Identifier.IsMatch(fieldId)) throw new ArgumentException("字段名无效。");
+    }
+
+    private static void ValidateTableInput(FieldAdminTableInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.Description) || input.Description.Trim().Length > 300)
+            throw new ArgumentException("数据表描述不能为空且不能超过 300 个字符。");
+        if (!AllowedTableKinds.Contains(input.Kind ?? ""))
+            throw new ArgumentException("数据表性质无效（P=主表/S=明细/O=其它/V=视图）。");
+        if (!AllowedTableTypes.Contains(input.Type ?? ""))
+            throw new ArgumentException("数据表类型无效（TABLE/VIEW/UNKNOW）。");
+        if ((input.Remark?.Length ?? 0) > 500)
+            throw new ArgumentException("数据表备注过长。");
+    }
+
+    private static void AddTableParameters(SqlCommand command, string tableId, FieldAdminTableInput input, string updatedBy)
+    {
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        command.Parameters.Add("@Description", SqlDbType.NVarChar, 300).Value = input.Description.Trim();
+        command.Parameters.Add("@Kind", SqlDbType.NVarChar, 20).Value = (input.Kind ?? "").Trim();
+        command.Parameters.Add("@Type", SqlDbType.NVarChar, 20).Value = (input.Type ?? "").Trim();
+        command.Parameters.Add("@Remark", SqlDbType.NVarChar, 500).Value = DbValue(input.Remark);
+        command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
+    }
+
+    private static bool SameTableInput(FieldAdminTableInput a, FieldAdminTableInput b) =>
+        a.Description.Trim().Equals(b.Description.Trim(), StringComparison.OrdinalIgnoreCase)
+        && NullableEquals(a.Kind, b.Kind)
+        && NullableEquals(a.Type, b.Type)
+        && NullableEquals(a.Remark, b.Remark);
+
+    private static async Task<FieldAdminTableInput?> ReadCurrentTableInputAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string tableId,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(T_DESC)),LTRIM(RTRIM(ISNULL(T_KIND,''))),LTRIM(RTRIM(ISNULL(T_TYPE,''))),T_REMARK
+            FROM dbo.TABLES WITH (NOLOCK)
+            WHERE T_ID=@TableId;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token)) return null;
+        return new(reader.GetString(0), NullIfEmpty(reader.GetString(1)), NullIfEmpty(reader.GetString(2)),
+            reader.IsDBNull(3) ? null : reader.GetString(3));
+    }
+
+    private static async Task<bool> FieldExistsAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string tableId,
+        string fieldId,
+        CancellationToken token)
+    {
+        const string sql = "SELECT 1 FROM dbo.FIELDS WITH (NOLOCK) WHERE T_ID=@TableId AND LTRIM(RTRIM(F_ID))=@FieldId;";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        command.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
+        return await command.ExecuteScalarAsync(token) is not null;
+    }
+
+    private static async Task<(string Description, string Type)?> ReadPhysicalColumnAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string tableId,
+        string fieldId,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT COALESCE(CONVERT(nvarchar(500), ep.value), c.COLUMN_NAME) AS F_DESC, c.DATA_TYPE
+            FROM INFORMATION_SCHEMA.COLUMNS c
+            LEFT JOIN sys.extended_properties ep
+              ON ep.class=1 AND ep.major_id=OBJECT_ID('dbo.' + QUOTENAME(@TableId))
+             AND ep.minor_id=c.ORDINAL_POSITION AND ep.name='MS_Description'
+            WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TableId AND c.COLUMN_NAME=@FieldId;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        command.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token)) return null;
+        return (reader.GetString(0), reader.GetString(1));
     }
 
     private static string? NullIfEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

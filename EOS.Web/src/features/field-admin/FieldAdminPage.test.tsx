@@ -22,8 +22,8 @@ const tables = [
 
 const fieldsPage = {
   items: [
-    { tableId: 'PRODUCT_EDITION', fieldId: 'PRO_NO', description: '产品编号', dataType: 'nvarchar', isVirtual: false, isVisible: true, isDefault: true, isQueryable: true, isReadonly: false, isCost: false, isSecrecy: false },
-    { tableId: 'PRODUCT_EDITION', fieldId: 'QTY', description: '数量', dataType: 'decimal', isVirtual: false, isVisible: true, isDefault: true, isQueryable: true, isReadonly: false, isCost: false, isSecrecy: false },
+    { tableId: 'PRODUCT_EDITION', fieldId: 'PRO_NO', description: '产品编号', dataType: 'nvarchar', isVirtual: false, isVisible: true, isDefault: true, isQueryable: true, isReadonly: false, isCost: false, isSecrecy: false, isPrimaryKey: true, physicalExists: true },
+    { tableId: 'PRODUCT_EDITION', fieldId: 'QTY', description: '数量', dataType: 'decimal', isVirtual: false, isVisible: true, isDefault: true, isQueryable: true, isReadonly: false, isCost: false, isSecrecy: false, isPrimaryKey: false, physicalExists: true },
   ],
   total: 2,
   page: 1,
@@ -39,8 +39,12 @@ const fieldMeta = {
     isSecrecy: false, defaultValue: null, verifyIndex: null, regex: null, remark: null, browseUrl: null,
     browseModuleId: null, onlyChoose: false, chooseMultiple: false, choosePage: null,
     choosers: Array.from({ length: 4 }, () => ({ active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null })),
-    canCopy: true,
+  canCopy: true,
   },
+  isPrimaryKey: true,
+  physicalExists: true,
+  physicalType: 'nvarchar',
+  typeMatches: true,
   isVirtual: false,
   virtualExpression: null,
   isAutoIncrement: false,
@@ -55,11 +59,16 @@ function installMocks() {
     const p = String(path)
     if (p === '/admin/tables') return tables
     if (p.includes('/admin/tables/') && p.endsWith('/fields')) return fieldsPage
+    if (p.endsWith('/fields/unmanaged')) return [{ fieldId: 'UNMANAGED_1', dataType: 'nvarchar' }, { fieldId: 'UNMANAGED_2', dataType: 'int' }]
     if (p.includes('/admin/fields/')) return fieldMeta
     if (p === '/admin/lookups/modules') return [{ id: 1305, label: '库存仓别' }]
     throw new Error(`unexpected GET ${p}`)
   })
   apiClientMock.post.mockResolvedValue(undefined)
+  apiClientMock.post.mockImplementation(async (path: string) => {
+    if (path.endsWith('/fields/batch')) return { created: 1, skipped: 0, skippedReasons: [] }
+    return undefined
+  })
   apiClientMock.put.mockResolvedValue(undefined)
   apiClientMock.delete.mockResolvedValue(undefined)
 }
@@ -106,6 +115,8 @@ describe('FieldAdminPage', () => {
     expect(screen.getByText('PRO_NO')).toBeInTheDocument()
     expect(screen.getByText('产品编号')).toBeInTheDocument()
     expect(screen.getByText('共 2 个字段')).toBeInTheDocument()
+    expect(screen.getAllByRole('radio', { name: '选择此行' })).toHaveLength(2)
+    expect(document.querySelectorAll('input[type="checkbox"]:disabled').length).toBeGreaterThan(0)
   })
 
   it('搜索关键词触发带 keyword 的查询', async () => {
@@ -165,5 +176,20 @@ describe('FieldAdminPage', () => {
     await loaded()
     fireEvent.click(screen.getByRole('button', { name: '返回' }))
     expect(screen.getByText('TABLE_LIST')).toBeInTheDocument()
+  })
+
+  it('未管理字段弹窗可批量生成并展示结果', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: '未管理字段' }))
+    await waitFor(() => expect(screen.getByText('未管理字段批量生成（产品版次）')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByRole('checkbox', { name: '选择此行' })).toHaveLength(2))
+    fireEvent.click(screen.getAllByRole('checkbox', { name: '选择此行' })[0])
+    fireEvent.click(screen.getByRole('button', { name: /^生成$/ }))
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/admin/tables/PRODUCT_EDITION/fields/batch',
+      expect.objectContaining({ tableId: 'PRODUCT_EDITION', fieldIds: ['UNMANAGED_1'] }),
+    ))
+    await waitFor(() => expect(screen.getByText(/已生成 1 个字段元数据/)).toBeInTheDocument())
   })
 })

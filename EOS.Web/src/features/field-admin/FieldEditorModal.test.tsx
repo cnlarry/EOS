@@ -52,10 +52,10 @@ describe('FieldEditorModal', () => {
     const saveButton = screen.getByRole('button', { name: '新增字段' })
     expect(saveButton).toBeDisabled()
     const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('input.form-control'))
-    fireEvent.change(inputs[1], { target: { value: 'CODE2' } })
     fireEvent.change(inputs[0], { target: { value: 'T2' } })
+    fireEvent.change(inputs[1], { target: { value: 'CODE2' } })
     fireEvent.change(inputs[2], { target: { value: '新字段' } })
-    fireEvent.change(inputs[3], { target: { value: 'decimal' } })
+    fireEvent.change(container.querySelector<HTMLSelectElement>('select.form-select')!, { target: { value: 'decimal' } })
     await waitFor(() => expect(screen.getByRole('button', { name: '新增字段' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '新增字段' }))
     await waitFor(() => expect(save).toHaveBeenCalled())
@@ -208,9 +208,9 @@ describe('FieldEditorModal', () => {
     const { container } = renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta()), save: vi.fn() })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
     const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('input.form-control'))
-    fireEvent.change(inputs[5], { target: { value: 'yyyy-MM-dd' } })
+    fireEvent.change(inputs[4], { target: { value: 'yyyy-MM-dd' } })
     expect(screen.getByDisplayValue('yyyy-MM-dd')).toBeInTheDocument()
-    const align = container.querySelectorAll('select')[0] as HTMLSelectElement
+    const align = container.querySelectorAll('select')[1] as HTMLSelectElement
     fireEvent.change(align, { target: { value: 'right' } })
     expect(align.value).toBe('right')
   })
@@ -226,10 +226,10 @@ describe('FieldEditorModal', () => {
     const dialog = screen.getByRole('dialog')
     const inputs = Array.from(dialog.querySelectorAll<HTMLInputElement>('input.form-control'))
 
-    fireEvent.change(inputs[4], { target: { value: '150' } })
-    fireEvent.change(dialog.querySelectorAll('select')[0], { target: { value: 'right' } })
-    fireEvent.change(dialog.querySelectorAll('select')[1], { target: { value: 'left' } })
-    fireEvent.change(inputs[5], { target: { value: 'yyyy' } })
+    fireEvent.change(inputs[3], { target: { value: '150' } })
+    fireEvent.change(dialog.querySelectorAll('select')[1], { target: { value: 'right' } })
+    fireEvent.change(dialog.querySelectorAll('select')[2], { target: { value: 'left' } })
+    fireEvent.change(inputs[4], { target: { value: 'yyyy' } })
     fireEvent.click(screen.getByLabelText('可见'))
     fireEvent.click(screen.getByLabelText('默认字段'))
     fireEvent.click(screen.getByLabelText('允许查询'))
@@ -278,5 +278,28 @@ describe('FieldEditorModal', () => {
     expect(input.choosers[0]).toEqual(expect.objectContaining({
       active: true, table: 'PRODUCT', description: '产品资料', filter: '1=1', returnMapping: 'txt_PRO_NO=PRO_NO',
     }))
+  })
+
+  it('正则表达式无效时禁用保存并提示', async () => {
+    renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta({ regex: '[' })), save: vi.fn() })
+    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '录入与校验' }))
+    expect(screen.getByText('正则表达式无法编译，请检查语法。')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '保存字段设置' })).toBeDisabled()
+  })
+
+  it('显示主键与类型不一致状态', async () => {
+    renderModal(true, 'edit', {
+      load: vi.fn().mockResolvedValue(meta({ isPrimaryKey: true, physicalExists: true, physicalType: 'float', typeMatches: false })),
+      save: vi.fn(),
+    })
+    await waitFor(() => expect(screen.getByText('主键：是')).toBeInTheDocument())
+    expect(screen.getByText('类型不一致（元数据 nvarchar / 物理 float）')).toBeInTheDocument()
+  })
+
+  it('幽灵字段显示元数据警告', async () => {
+    renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta({ physicalExists: false })), save: vi.fn() })
+    await waitFor(() => expect(screen.getByText(/该字段元数据引用的物理列不存在/)).toBeInTheDocument())
+    expect(screen.getByText('物理列：不存在')).toBeInTheDocument()
   })
 })

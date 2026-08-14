@@ -15,10 +15,42 @@ public sealed class FieldAdminController(
     private const int AdminModuleId = 2302;
 
     [HttpGet("tables")]
-    public async Task<IActionResult> Tables(CancellationToken token)
+    public async Task<IActionResult> Tables([FromQuery] string? kind = null, CancellationToken token = default)
     {
         if (!await CanBrowse(token)) return Forbid();
-        return Ok(await repository.GetTablesAsync(token));
+        return Ok(await repository.GetTablesAsync(kind, token));
+    }
+
+    [HttpGet("tables/{table}")]
+    public async Task<IActionResult> Table(string table, CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        var detail = await repository.GetTableAsync(table, token);
+        return detail is null ? NotFound() : Ok(detail);
+    }
+
+    [HttpPost("tables")]
+    public async Task<IActionResult> CreateTable(CreateFieldAdminTableRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        await repository.CreateTableAsync(request, userContext.EmployeeName, token);
+        return NoContent();
+    }
+
+    [HttpPut("tables/{table}")]
+    public async Task<IActionResult> UpdateTable(string table, UpdateFieldAdminTableRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        await repository.UpdateTableAsync(table, request.Table, request.Original, userContext.EmployeeName, token);
+        return NoContent();
+    }
+
+    [HttpDelete("tables/{table}")]
+    public async Task<IActionResult> DeleteTable(string table, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        await repository.DeleteTableAsync(table, token);
+        return NoContent();
     }
 
     [HttpGet("lookups/modules")]
@@ -38,6 +70,22 @@ public sealed class FieldAdminController(
     {
         if (!await CanBrowse(token)) return Forbid();
         return Ok(await repository.GetFieldsAsync(table, keyword, page, pageSize, token));
+    }
+
+    [HttpGet("tables/{table}/fields/unmanaged")]
+    public async Task<IActionResult> UnmanagedFields(string table, CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        return Ok(await repository.GetUnmanagedFieldsAsync(table, token));
+    }
+
+    [HttpPost("tables/{table}/fields/batch")]
+    public async Task<IActionResult> CreateUnmanagedFields(string table, CreateUnmanagedFieldsRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        if (!string.Equals(request.TableId, table, StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { code = "TABLE_MISMATCH", message = "路径表名与请求体表名不一致。" });
+        return Ok(await repository.CreateUnmanagedFieldsAsync(request, userContext.EmployeeName, token));
     }
 
     [HttpGet("fields/{table}/{field}")]
