@@ -47,6 +47,8 @@ export function ReportViewerPage() {
   const [showDetail, setShowDetail] = useState(true)
   const [printing, setPrinting] = useState(false)
   const [printError, setPrintError] = useState<string | null>(null)
+  /** SP 报表（空主表无 FIELDS 列定义）查询后的结果集动态列 */
+  const [spResultColumns, setSpResultColumns] = useState<ColumnDef<Record<string, unknown>, unknown>[] | null>(null)
   const settingsApplied = useRef(false)
   const defaultsApplied = useRef(false)
 
@@ -95,14 +97,31 @@ export function ReportViewerPage() {
   }, [definition.data])
 
   const columns = useMemo<ColumnDef<Record<string, unknown>, unknown>[]>(
-    () => (definition.data?.columns ?? []).map((column) => ({
+    () => spResultColumns ?? (definition.data?.columns ?? []).map((column) => ({
       accessorKey: column.key,
       header: column.label,
       cell: (info) => String(info.getValue() ?? '—'),
       meta: { cellClassName: column.dataType.includes('float') || column.dataType.includes('int') ? 'text-end' : undefined },
     })),
-    [definition.data],
+    [definition.data, spResultColumns],
   )
+
+  // SP 报表：结果集行键即权威列（空主表模块无 definition.columns）
+  useEffect(() => {
+    if (!definition.data?.spName) {
+      setSpResultColumns(null)
+      return
+    }
+    const first = result.data?.rows?.[0]
+    if (!first) return
+    const keys = Object.keys(first)
+    if (keys.length === 0) return
+    setSpResultColumns(keys.map((key) => ({
+      accessorKey: key,
+      header: key,
+      cell: (info) => String(info.getValue() ?? '—'),
+    })))
+  }, [definition.data?.spName, result.data])
 
   const runQuery = () => { setPage(1); setQueryKey((current) => current + 1) }
 
