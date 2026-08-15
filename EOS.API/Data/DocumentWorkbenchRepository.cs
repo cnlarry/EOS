@@ -43,7 +43,9 @@ public sealed record WorkbenchDefinition(
     [property: JsonIgnore] IReadOnlyList<string> GroupExpressions = default!,
     string? FormTabs = null,
     int? FormColumns = null,
-    string? FormButtons = null);
+    string? FormButtons = null,
+    string? NewUrl = null,
+    string? ModiUrl = null);
 /// <summary>统一表单页签定义（解析自 MODULES.FORM_TABS，如 '1=基本资料;2=其它'）。</summary>
 public sealed record FormTabDefinition(int No, string Title);
 /// <summary>统一表单下拉选项（解析自 FIELDS.FORM_OPTIONS，如 'O=外含税;I=内含税'）。</summary>
@@ -109,7 +111,7 @@ public sealed class DocumentWorkbenchRepository(
         await using var connection = CreateConnection(); await connection.OpenAsync(token);
         const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,UPDATE_SP,AFTERSAVE_SP,AUTO_APPROVE," +
                            "GROUP1,GROUP_EXP1,GROUP2,GROUP_EXP2,GROUP3,GROUP_EXP3,GROUP4,GROUP_EXP4,GROUP5,GROUP_EXP5," +
-                           "FORM_TABS,FORM_COLUMNS,FORM_BUTTONS " +
+                           "FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,NEW_URL " +
                            "FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection); command.Parameters.Add("@ModuleId", SqlDbType.Int).Value=moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -120,7 +122,7 @@ public sealed class DocumentWorkbenchRepository(
         }
         var title=reader.GetString(0).Trim(); var master=reader.IsDBNull(1)?"":reader.GetString(1).Trim();
         var detail=reader.IsDBNull(2)?null:reader.GetString(2).Trim(); if(detail is not null&&detail.Length==0)detail=null; var url=reader.IsDBNull(3)?"":reader.GetString(3);var defaultSort=reader.IsDBNull(4)?null:reader.GetString(4).Trim();
-        var modiUrl=reader.IsDBNull(5)?"":reader.GetString(5).Trim(); var hasEdit=!string.IsNullOrWhiteSpace(modiUrl);
+        var modiUrl=reader.IsDBNull(5)?"":reader.GetString(5).Trim();
         var detailNoSave=!reader.IsDBNull(6)&&reader.GetBoolean(6);
         var detailNoFields=reader.IsDBNull(7)?"":reader.GetString(7).Trim();
         var moduleFilter=reader.IsDBNull(8)?"":reader.GetString(8).Trim();
@@ -138,12 +140,17 @@ public sealed class DocumentWorkbenchRepository(
         var formTabs = reader.IsDBNull(22) ? null : reader.GetString(22).Trim();
         var formColumns = reader.IsDBNull(23) ? (int?)null : (int)reader.GetByte(23);
         var formButtons = reader.IsDBNull(24) ? null : reader.GetString(24).Trim();
+        var newUrlRaw = reader.IsDBNull(25) ? string.Empty : reader.GetString(25).Trim();
         await reader.CloseAsync();
-        if (!IsWorkbenchUrl(url) || !Identifier.IsMatch(master) || (detail is not null && !Identifier.IsMatch(detail)))
+        if (!ModuleRouteValidator.IsWorkbenchUrl(url) || !Identifier.IsMatch(master) || (detail is not null && !Identifier.IsMatch(detail)))
         {
             logger.LogWarning("模块 {ModuleId} 未通过工作台校验 url={Url} master={Master} detail={Detail}", moduleId, url, master, detail);
             return null;
         }
+        // NEW_URL/MODI_URL 决定新增/编辑路由（M86 契约）：可解析的现代动作路由下发前端，
+        // 空值/非法值返回 null，由控制器按统一表单白名单回退或隐藏按钮。
+        var resolvedNewUrl = ModuleRouteValidator.ResolveActionUrl(newUrlRaw, moduleId);
+        var resolvedModiUrl = ModuleRouteValidator.ResolveActionUrl(modiUrl, moduleId);
         var masterFields=await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token);
         var masterPkOrder=await GetPrimaryKeyColumnsAsync(connection,null,master,token);
         // 领域规则：静态映射优先（含单号字段/冲抵表等增强配置），否则由 MODULES 元数据自动注册
@@ -174,7 +181,8 @@ public sealed class DocumentWorkbenchRepository(
             }
         }
         WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,
-            detail is null?[]:await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),NormalizeSort(defaultSort,master,masterFields),hasEdit,hasEdit,detailNoSave,
+            detail is null?[]:await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),NormalizeSort(defaultSort,master,masterFields),
+            resolvedNewUrl is not null || resolvedModiUrl is not null,resolvedModiUrl is not null,detailNoSave,
             masterPkOrder,detailNoFields,
             businessRule?.WorkflowSproc is not null,
             string.IsNullOrWhiteSpace(moduleFilter)?null:moduleFilter,
@@ -188,7 +196,9 @@ public sealed class DocumentWorkbenchRepository(
             groupExpressions,
             string.IsNullOrWhiteSpace(formTabs) ? null : formTabs,
             formColumns,
-            string.IsNullOrWhiteSpace(formButtons) ? null : formButtons);
+            string.IsNullOrWhiteSpace(formButtons) ? null : formButtons,
+            resolvedNewUrl,
+            resolvedModiUrl);
         logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
             moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
         return definition;
@@ -321,7 +331,7 @@ public sealed class DocumentWorkbenchRepository(
         {
             var moduleId = reader.GetInt32(0);
             var url = reader.IsDBNull(1) ? "" : reader.GetString(1);
-            if (IsWorkbenchUrl(url))
+            if (ModuleRouteValidator.IsWorkbenchUrl(url))
             {
                 logger.LogDebug("只读助手找到通用模块 titleKeyword={Keyword} module={ModuleId}", titleKeyword, moduleId);
                 return moduleId;
@@ -604,6 +614,9 @@ public sealed class DocumentWorkbenchRepository(
         if (!detail) ApplyExecTagScope(definition, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,detail,sortField,sortDirection);
+        // 排序字段必须并入投影：30 列截断后若排序列（如 SORT_FIELDS 引用的日期列）落在截断外，
+        // 派生表（虚拟字段）投影缺列会导致 ORDER BY 无效列 500（14997/14999/170299 等回归）。
+        EnsureOrderColumnsInProjection(fields, selected, order);
         var selection=await BuildListSelectionAsync(connection,table,selected,token);
         command.CommandText=selection.HasVirtual
             ? $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {selection.OuterColumns} FROM (SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where}) AS [__base]{selection.JoinFragment} ORDER BY {QualifyOrder(order)} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;"
@@ -631,6 +644,7 @@ public sealed class DocumentWorkbenchRepository(
         ApplyExecTagScope(definition, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,false,sortField,sortDirection);
+        EnsureOrderColumnsInProjection(fields, selected, order);
         var selection=await BuildListSelectionAsync(connection,table,selected,token);
         command.CommandText=selection.HasVirtual
             ? $"SELECT TOP {maxExportRows} {selection.OuterColumns} FROM (SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where}) AS [__base]{selection.JoinFragment} ORDER BY {QualifyOrder(order)};"
@@ -722,6 +736,16 @@ public sealed class DocumentWorkbenchRepository(
                 .Where(field=>rowsByKey.ContainsKey(field.Key))
                 .Select(field=>rowsByKey[field.Key])
                 .ToList();
+            // 必填字段（IS_VERIFY=1）必须保留在表单中：工作台列配置只决定列表展示，
+            // 不决定可录入字段；用户列配置/默认列缺漏必填列会直接导致建单被拒
+            // （8231b7d 起明细表单以工作台列配置为源，1505/130104 等回归）。
+            var includedKeys=new HashSet<string>(orderedRows.Select(row=>row.Key),StringComparer.OrdinalIgnoreCase);
+            foreach(var row in detailRows)
+            {
+                if(!includedKeys.Add(row.Key))continue;
+                if(!row.IsRequired)continue;
+                orderedRows.Add(row);
+            }
             detailFields=FormFieldSelector.Select(orderedRows,mode,canViewCost,canViewSecrecy,deniedDetailFields,deniedNewDetailFields,deniedModiDetailFields);
             // 明细主键关联列（主表主键同名列，如 ORDER_TYPE/ORDER_NO）：服务端从主表带入，
             // 表单内只读展示（对齐旧系统明细隐藏主键控件、随主表联动带值的做法）
@@ -734,6 +758,28 @@ public sealed class DocumentWorkbenchRepository(
                         : field)
                     .ToList();
             }
+            // 主表主键关联列必须保留在明细表单定义中（服务端从主表带入，旧系统明细隐藏主键控件）：
+            // 8231b7d 起明细字段以工作台列配置为源，隐藏或未默认的必填主键列会丢失，
+            // 建单被 MASTER_KEY_NOT_IN_DETAIL 拒绝（1601/1505/130104 等回归）。
+            // 此处从全量物理行补回缺失的主键列：只读、服务端填充，权限过滤与 Select 一致。
+            var deniedForMode = mode == "edit" ? deniedModiDetailFields : deniedNewDetailFields;
+            var missingPk = new List<FormFieldDefinition>();
+            foreach (var column in pkColumns)
+            {
+                if (detailFields.Any(field => field.Key.Equals(column, StringComparison.OrdinalIgnoreCase))) continue;
+                if (!rowsByKey.TryGetValue(column, out var pkRow)) continue;
+                if (deniedDetailFields.Contains(column) || deniedForMode.Contains(column)) continue;
+                missingPk.Add(new FormFieldDefinition(
+                    pkRow.Key, pkRow.Label, pkRow.DataType, pkRow.DisplayLength, pkRow.DisplayFormat,
+                    IsRequired: true, pkRow.VerifyIndex, pkRow.Regex, pkRow.DefaultValue,
+                    IsReadonly: true, IsVisible: pkRow.IsVisible, OnlyChoose: false, ChooseMultiple: false, ChoosePage: null,
+                    Choosers: [], IsPrimaryKey: true, IsAutoIncrement: pkRow.IsAutoIncrement, IsVirtual: pkRow.IsVirtual,
+                    IsCost: pkRow.IsCost, IsSecrecy: pkRow.IsSecrecy, ServerFilled: true, pkRow.MaxLength,
+                    pkRow.TabNo, pkRow.FormOrder, pkRow.Span, pkRow.NewLine,
+                    string.IsNullOrWhiteSpace(pkRow.CellGroup) ? null : pkRow.CellGroup, pkRow.CellRole,
+                    FormFieldSelector.ParseOptions(pkRow.Options), DisplayOnly: false));
+            }
+            if (missingPk.Count > 0) detailFields = detailFields.Concat(missingPk).ToList();
             detailDfVerify=(await GetDfVerifyAsync(connection,null,definition.DetailTable,token))??"";
         }
         logger.LogDebug("表单定义 module={ModuleId} mode={Mode} master={MasterFieldCount} detail={DetailFieldCount}",
@@ -914,7 +960,16 @@ public sealed class DocumentWorkbenchRepository(
         await using var connection=CreateConnection(); await connection.OpenAsync(token);
         var pkColumns=await GetPrimaryKeyColumnsAsync(connection,null,definition.MasterTable,token);
         if(pkColumns.Count!=keyValues.Count)return new(RecordAccessStatus.KeyMismatch,null);
-        var masterFields=form.MasterFields.Where(field=>!field.DisplayOnly).Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        // 虚拟字段不参与物理 SELECT（VIRTUAL_EXP 为跨表表达式，ReadRowAsync 无法直接取值）
+        var masterFields=form.MasterFields.Where(field=>!field.DisplayOnly&&!field.IsVirtual).Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        // 批核/结案状态列：表单不可编辑（FormFieldSelector.HiddenStatusTags），
+        // 但记录读取契约必须返回（表单编辑态展示与 E2E 批核断言依赖）。
+        foreach (var statusColumn in new[] { "CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE", "FINISHED_TAG" })
+        {
+            if (!masterFields.Contains(statusColumn, StringComparer.OrdinalIgnoreCase)
+                && await ColumnExistsAsync(connection, null, definition.MasterTable, statusColumn, token))
+                masterFields.Add(statusColumn);
+        }
         var current=await ReadRowAsync(connection,null,definition.MasterTable,pkColumns,keyValues,masterFields,token);
         if(current is null)return new(RecordAccessStatus.NotFound,null);
         if(!string.IsNullOrWhiteSpace(dataFilter))
@@ -928,7 +983,7 @@ public sealed class DocumentWorkbenchRepository(
         var detailRows=new List<IReadOnlyDictionary<string,object?>>();
         if(definition.DetailTable is not null&&form.DetailFields.Count>0)
         {
-            var detailFields=form.DetailFields.Where(field=>!field.DisplayOnly).Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var detailFields=form.DetailFields.Where(field=>!field.DisplayOnly&&!field.IsVirtual).Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             detailRows.AddRange(await ReadRowsAsync(connection,null,definition.DetailTable,pkColumns,keyValues,detailFields,token));
         }
         return new(RecordAccessStatus.Ok,new RecordBundle(current,detailRows));
@@ -1095,7 +1150,8 @@ public sealed class DocumentWorkbenchRepository(
         await using var transaction=(SqlTransaction)await connection.BeginTransactionAsync(token);
         var pkColumns=await GetPrimaryKeyColumnsAsync(connection,transaction,definition.MasterTable,token);
         if(pkColumns.Count!=keyValues.Count)return RecordSaveResult.Failed(RecordAccessStatus.KeyMismatch,"RECORD_KEY_MISMATCH","主键数量与模块主键不匹配。");
-        var masterFields=form.MasterFields.Where(field=>!field.DisplayOnly).Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        // 虚拟字段不参与物理 SELECT（VIRTUAL_EXP 为跨表表达式，ReadRowAsync 无法直接取值）
+        var masterFields=form.MasterFields.Where(field=>!field.DisplayOnly&&!field.IsVirtual).Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var current=await ReadRowAsync(connection,transaction,definition.MasterTable,pkColumns,keyValues,masterFields,token);
         if(current is null)return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
         if(!string.IsNullOrWhiteSpace(dataFilter))
@@ -2343,6 +2399,23 @@ public sealed class DocumentWorkbenchRepository(
     private static string QualifyOrder(string order) =>
         Regex.Replace(order, @"\[([A-Za-z_][A-Za-z0-9_]{0,127})\]", "[__base].[$1]");
 
+    /// <summary>把 ORDER BY 引用的列并入投影（30 列截断后仍可排序），派生表查询缺列会 500。</summary>
+    private static void EnsureOrderColumnsInProjection(
+        IReadOnlyList<WorkbenchField> fields,
+        ICollection<WorkbenchField> selected,
+        string order)
+    {
+        foreach (Match match in Regex.Matches(order, @"\[([A-Za-z_][A-Za-z0-9_]{0,127})\]"))
+        {
+            var sortColumn = match.Groups[1].Value;
+            if (selected.Any(field => field.Key.Equals(sortColumn, StringComparison.OrdinalIgnoreCase))) continue;
+            var field = fields.FirstOrDefault(item => item.Key.Equals(sortColumn, StringComparison.OrdinalIgnoreCase));
+            if (field is null && Identifier.IsMatch(sortColumn))
+                field = new WorkbenchField(sortColumn, sortColumn, "nvarchar", 100, "left", false, false, false);
+            if (field is not null) selected.Add(field);
+        }
+    }
+
     private static string ResolveOrder(WorkbenchDefinition definition,IReadOnlyList<WorkbenchField> fields,IReadOnlyList<WorkbenchField> selected,bool detail,string? sortFields,string? sortDirections)
     {
         if(!string.IsNullOrWhiteSpace(sortFields))
@@ -2421,10 +2494,4 @@ public sealed class DocumentWorkbenchRepository(
         dataType.Contains("date",StringComparison.OrdinalIgnoreCase)||dataType.Contains("time",StringComparison.OrdinalIgnoreCase);
     private SqlConnection CreateConnection()=>connections.Create();
     /// <summary>
-    private static bool IsWorkbenchUrl(string url)
-    {
-        var value=url.Trim().Replace('\\','/');
-        return value.Equals("/document-workbench",StringComparison.OrdinalIgnoreCase)
-            || value.StartsWith("/document-workbench/",StringComparison.OrdinalIgnoreCase);
-    }
 }

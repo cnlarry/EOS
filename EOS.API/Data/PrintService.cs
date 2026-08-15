@@ -42,7 +42,7 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
         var detailTable=reader.GetString(2);
         var url=reader.GetString(3);
         await reader.DisposeAsync();
-        if(!IsWorkbenchUrl(url)||!Identifier.IsMatch(masterTable))return null;
+        if(!ModuleRouteValidator.IsWorkbenchUrl(url)||!Identifier.IsMatch(masterTable))return null;
 
         var pkOrder=await GetPrimaryKeyColumnsAsync(connection,masterTable,token);
         if(pkOrder.Count==0||pkOrder.Count!=keyValues.Count)return null;
@@ -128,13 +128,6 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
 
     private static string FieldValue(IReadOnlyDictionary<string,object?> row,string key)=>
         row.TryGetValue(key,out var value)&&value is not null?Convert.ToString(value)!.Trim():"";
-
-    private static bool IsWorkbenchUrl(string url)
-    {
-        var value=url.Trim().Replace('\\','/');
-        return value.Equals("/document-workbench",StringComparison.OrdinalIgnoreCase)
-            || value.StartsWith("/document-workbench/",StringComparison.OrdinalIgnoreCase);
-    }
 
     private static async Task<(string? Company,string? Header,string? Footer,string? Logo,string? Tail)> ReadHeaderFooterAsync(
         SqlConnection connection,int moduleId,string? headerIdOverride,string? tailIdOverride,CancellationToken token)

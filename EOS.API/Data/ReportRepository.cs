@@ -48,7 +48,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         var detailTable=reader.GetString(3);
         var moduleFilter=reader.GetString(4);
         await reader.DisposeAsync();
-        if(!IsReportUrl(url)||!Identifier.IsMatch(masterTable))
+        if(!ModuleRouteValidator.IsReportUrl(url)||!Identifier.IsMatch(masterTable))
         {
             logger.LogWarning("报表模块校验失败 module={ModuleId} url={Url} master={Master}",moduleId,url,masterTable);
             return null;
@@ -512,13 +512,6 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         if(orders.Count==0)
             return string.Join(',',definition.MasterPkOrder.Select(pk=>$"[{pk}]"));
         return string.Join(',',orders);
-    }
-
-    private static bool IsReportUrl(string url)
-    {
-        var value=url.Trim().Replace('\\','/');
-        return value.Equals("/reports",StringComparison.OrdinalIgnoreCase)
-            || value.StartsWith("/reports/",StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<IReadOnlyList<ReportCondition>> ReadConditionsAsync(
