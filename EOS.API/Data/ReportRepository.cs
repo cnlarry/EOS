@@ -29,6 +29,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         bool canViewCost,
         bool canViewSecrecy,
         IReadOnlySet<string> deniedFields,
+        string? reportId,
         CancellationToken token)
     {
         await using var connection=connections.Create();
@@ -48,7 +49,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         var detailTable=reader.GetString(3);
         var moduleFilter=reader.GetString(4);
         await reader.DisposeAsync();
-        var sortFields=await ReadDefaultSortFieldsAsync(connection,moduleId,token);
+        var sortFields=await ReadDefaultSortFieldsAsync(connection,moduleId,reportId,token);
         var spName=sortFields.Select(field=>SpReference.Match(field))
             .Where(match=>match.Success)
             .Select(match=>match.Groups[1].Value.Split('.')[0])
@@ -333,18 +334,25 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
     private static async Task<IReadOnlyList<string>> ReadDefaultSortFieldsAsync(
         SqlConnection connection,
         int moduleId,
+        string? reportId,
         CancellationToken token)
     {
-        const string sql="""
+        // 按报表（REPORT_ID）解析排序/分组字段；未指定时用模块默认报表
+        // （一模块多报表场景，如 18019807 人事分析表下 6 张报表各自独立 SP/列）
+        var sql = """
             SELECT LTRIM(RTRIM(ISNULL(s.SORT_FIELDS,'')))
             FROM dbo.REPORT_SORT s WITH (NOLOCK)
-            WHERE s.REPORT_ID IN (SELECT REPORT_ID FROM dbo.REPORT WITH (NOLOCK)
-                                  WHERE R_M_IDX=@ModuleId AND IS_DEFAULT=1)
+            WHERE s.REPORT_ID = (
+                    SELECT TOP 1 REPORT_ID FROM dbo.REPORT WITH (NOLOCK)
+                    WHERE R_M_IDX=@ModuleId AND (@ReportId IS NULL OR REPORT_ID=@ReportId)
+                      AND (@ReportId IS NOT NULL OR IS_DEFAULT=1)
+                    ORDER BY REPORT_ID)
               AND LTRIM(RTRIM(ISNULL(s.SORT_FIELDS,'')))<>''
             ORDER BY s.SERIAL_NO;
             """;
         await using var command=new SqlCommand(sql,connection);
         command.Parameters.Add("@ModuleId",SqlDbType.Int).Value=moduleId;
+        command.Parameters.Add("@ReportId",SqlDbType.NChar,40).Value=(object?)reportId ?? DBNull.Value;
         await using var reader=await command.ExecuteReaderAsync(token);
         var result=new List<string>();
         while(await reader.ReadAsync(token))

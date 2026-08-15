@@ -16,22 +16,23 @@ public sealed class ReportController(
     ReportPdfService reportPdfService) : ControllerBase
 {
     [HttpGet("definition")]
-    public async Task<IActionResult> Definition(int moduleId, CancellationToken token)
+    public async Task<IActionResult> Definition(int moduleId, [FromQuery] string? reportId, CancellationToken token)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
         var rights = await rightsRepository.GetAsync(userId, moduleId, token);
         if (!rights.CanBrowse) return Forbid();
         var definition = await repository.GetDefinitionAsync(moduleId, userId, rights.CanViewCost, rights.CanViewSecrecy,
-            rights.DeniedMasterFields, token);
+            rights.DeniedMasterFields, reportId, token);
         return definition is null ? NotFound() : Ok(definition);
     }
 
     [HttpPost("query")]
     public async Task<IActionResult> Query(int moduleId,
-        [FromQuery] int page, [FromQuery] int pageSize, [FromBody] ReportQueryRequest request, CancellationToken token)
+        [FromQuery] int page, [FromQuery] int pageSize, [FromQuery] string? reportId,
+        [FromBody] ReportQueryRequest request, CancellationToken token)
     {
-        var definition = await AuthorizedDefinition(moduleId, token);
+        var definition = await AuthorizedDefinition(moduleId, reportId, token);
         if (definition is null) return NotFound();
         return Ok(await repository.QueryAsync(definition, request, page, pageSize, token));
     }
@@ -39,7 +40,7 @@ public sealed class ReportController(
     [HttpGet("condition-options/{serialNo:int}")]
     public async Task<IActionResult> ConditionOptions(int moduleId, int serialNo, CancellationToken token)
     {
-        var definition = await AuthorizedDefinition(moduleId, token);
+        var definition = await AuthorizedDefinition(moduleId, null, token);
         if (definition is null) return NotFound();
         return Ok(await repository.GetConditionOptionsAsync(definition, serialNo, token));
     }
@@ -82,7 +83,7 @@ public sealed class ReportController(
         if (!moduleRights.CanBrowse) return Forbid();
         var definition = await repository.GetDefinitionAsync(
             moduleId, userId, moduleRights.CanViewCost, moduleRights.CanViewSecrecy,
-            moduleRights.DeniedMasterFields, token);
+            moduleRights.DeniedMasterFields, request.ReportId, token);
         if (definition is null) return NotFound();
 
         var settings = await printSettingsRepository.GetAsync(moduleId, userId, token);
@@ -129,14 +130,15 @@ public sealed class ReportController(
 
     /// <summary>CSV 导出：除模块浏览权外，报表级 EXPORT_TAG 必须为真（对齐旧 RptView 导出权限）。</summary>
     [HttpPost("export")]
-    public async Task<IActionResult> Export(int moduleId, [FromBody] ReportQueryRequest request, CancellationToken token)
+    public async Task<IActionResult> Export(int moduleId, [FromQuery] string? reportId,
+        [FromBody] ReportQueryRequest request, CancellationToken token)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
         var rights = await rightsRepository.GetAsync(userId, moduleId, token);
         if (!rights.CanBrowse) return Forbid();
         var definition = await repository.GetDefinitionAsync(moduleId, userId, rights.CanViewCost, rights.CanViewSecrecy,
-            rights.DeniedMasterFields, token);
+            rights.DeniedMasterFields, reportId, token);
         if (definition is null) return NotFound();
         var settings = await printSettingsRepository.GetAsync(moduleId, userId, token);
         var report = settings.Reports.FirstOrDefault(item => item.IsDefault) ?? settings.Reports.FirstOrDefault();
@@ -153,14 +155,14 @@ public sealed class ReportController(
         return File(System.Text.Encoding.UTF8.GetBytes(writer.ToString()), "text/csv; charset=utf-8", "report.csv");
     }
 
-    private async Task<ReportDefinition?> AuthorizedDefinition(int moduleId, CancellationToken token)
+    private async Task<ReportDefinition?> AuthorizedDefinition(int moduleId, string? reportId, CancellationToken token)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return null;
         var rights = await rightsRepository.GetAsync(userId, moduleId, token);
         if (!rights.CanBrowse) return null;
         return await repository.GetDefinitionAsync(moduleId, userId, rights.CanViewCost, rights.CanViewSecrecy,
-            rights.DeniedMasterFields, token);
+            rights.DeniedMasterFields, reportId, token);
     }
 
     private static IReadOnlyList<string> SplitFields(string? raw) =>

@@ -52,17 +52,19 @@ export function ReportViewerPage() {
   const settingsApplied = useRef(false)
   const defaultsApplied = useRef(false)
 
-  const definition = useQuery({
-    queryKey: ['report', moduleId, 'definition'],
-    queryFn: () => apiClient.get<ReportDefinition>(`/reports/${moduleId}/definition`),
-  })
   const printSettings = useQuery({
     queryKey: ['report', moduleId, 'print-settings'],
     queryFn: () => apiClient.get<ReportPrintSettingsData>(`/reports/${moduleId}/print-settings`),
   })
+  const definition = useQuery({
+    queryKey: ['report', moduleId, 'definition', reportId],
+    queryFn: () => apiClient.get<ReportDefinition>(`/reports/${moduleId}/definition`, { query: { reportId: reportId || undefined } }),
+    // 等待打印设置加载完成 reportId 初始化（一模块多报表按 REPORT_ID 解析 SP/列）
+    enabled: printSettings.isSuccess && reportId !== '',
+  })
   const result = useQuery({
-    queryKey: ['report', moduleId, 'result', page, pageSize, queryKey],
-    queryFn: () => apiClient.post<ReportQueryResult>(`/reports/${moduleId}/query?page=${page}&pageSize=${pageSize}`, { values, valuesTo }),
+    queryKey: ['report', moduleId, 'result', page, pageSize, queryKey, reportId],
+    queryFn: () => apiClient.post<ReportQueryResult>(`/reports/${moduleId}/query?page=${page}&pageSize=${pageSize}${reportId ? `&reportId=${encodeURIComponent(reportId)}` : ''}`, { values, valuesTo }),
     enabled: definition.isSuccess && queryKey > 0,
     placeholderData: (previous: ReportQueryResult | undefined) => previous,
   })
@@ -128,7 +130,7 @@ export function ReportViewerPage() {
   const handleExport = async () => {
     if (!definition.data) return
     try {
-      const blob = await apiClient.postFile(`/reports/${moduleId}/export`, { values, valuesTo })
+      const blob = await apiClient.postFile(`/reports/${moduleId}/export${reportId ? `?reportId=${encodeURIComponent(reportId)}` : ''}`, { values, valuesTo })
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = url
