@@ -19,7 +19,7 @@ public sealed class WorkflowController(
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
-    public sealed record ApproveTaskRequest(string ApproveState, string? Message = null);
+    public sealed record ApproveTaskRequest(string ApproveState, string? Message = null, string? JumpNo = null);
 
     /// <summary>
     /// 流程任务审批（同意 'Y' / 驳回 'N'）。
@@ -30,7 +30,7 @@ public sealed class WorkflowController(
         var state = request.ApproveState.Trim().ToUpperInvariant();
         if (state is not ("Y" or "N"))
             return BadRequest(new { code = "INVALID_APPROVE_STATE", message = "approveState 仅支持 Y（同意）或 N（驳回）。" });
-        var result = await workflowEngine.ApproveTaskAsync(myTaskId, userContext.UserId, state[0], request.Message, token);
+        var result = await workflowEngine.ApproveTaskAsync(myTaskId, userContext.UserId, state[0], request.Message, request.JumpNo, token);
         if (!result.Success)
             return BadRequest(new { code = result.ErrorCode, message = result.ErrorMessage });
         return Ok(new { Approved = state == "Y", FlowFinished = result.FlowFinished, Message = result.Message });
