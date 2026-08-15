@@ -28,6 +28,16 @@ public sealed record ExpressionPreviewResult(
 public sealed record ExpressionStaleEntry(string Kind, string Table, string Field, string Expression, IReadOnlyList<string> Errors);
 public sealed record ExpressionRescanResult(int WhiteListVersion, int Total, IReadOnlyList<ExpressionStaleEntry> Stale);
 
+public sealed record ExpressionOverview(
+    int WhiteListVersion,
+    int TotalVisible,
+    int Hidden,
+    int VirtualExp,
+    int ConvertFunction,
+    int DataSourceSql,
+    int Stale,
+    IReadOnlyList<ExpressionStaleEntry> StaleItems);
+
 /// <summary>
 /// 受控表达式解析工作流（P1/P2，2026-08-15，设计见 docs/plans/受控表达式工作流.md）：
 /// VIRTUAL_EXP / CONVERT_FUNCTION / DATASOURCE_SQL 三套受限语言的服务端校验、只读预览与发布审计。
@@ -268,6 +278,42 @@ public sealed class RestrictedExpressionService(
             }
         }
         return new ExpressionRescanResult(version, total, stale);
+    }
+
+    /// <summary>表达式审计总览：版本 + 可见/隐藏/分类计数 + 重校验结果（供 2302 表达式审计面板与顾问报表）。</summary>
+    public async Task<ExpressionOverview> OverviewAsync(CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        var version = await ReadWhiteListVersionAsync(token);
+        var virtualExp = 0;
+        var convertFunction = 0;
+        var dataSourceSql = 0;
+        var visible = 0;
+        var hidden = 0;
+        const string sql = """
+            SELECT CAST(COALESCE(IS_VISIBLE,1) AS bit),
+                   CAST(CASE WHEN LTRIM(RTRIM(ISNULL(VIRTUAL_EXP,'')))<>'' THEN 1 ELSE 0 END AS bit),
+                   CAST(CASE WHEN LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,'')))<>'' THEN 1 ELSE 0 END AS bit),
+                   CAST(CASE WHEN LTRIM(RTRIM(ISNULL(DATASOURCE_SQL,'')))<>'' THEN 1 ELSE 0 END AS bit)
+            FROM dbo.FIELDS WITH (NOLOCK);
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            var isVisible = reader.GetBoolean(0);
+            var hasVirtual = reader.GetBoolean(1);
+            var hasConvert = reader.GetBoolean(2);
+            var hasDataSource = reader.GetBoolean(3);
+            if (hasVirtual) virtualExp++;
+            if (hasConvert) convertFunction++;
+            if (hasDataSource) dataSourceSql++;
+            if (isVisible) visible++;
+            else hidden++;
+        }
+        var rescan = await RescanAsync(token);
+        return new ExpressionOverview(version, visible, hidden, virtualExp, convertFunction, dataSourceSql, rescan.Stale.Count, rescan.Stale);
     }
 
     private async Task<int> ReadWhiteListVersionAsync(CancellationToken token)
