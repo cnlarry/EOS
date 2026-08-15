@@ -165,6 +165,14 @@ public sealed class FieldAdminController(
         return Ok(await expressionService.RescanAsync(token));
     }
 
+    /// <summary>表达式审计总览（2302）：白名单版本 + 分类/可见性计数 + 重校验残留清单。</summary>
+    [HttpGet("fields/expressions/overview")]
+    public async Task<IActionResult> ExpressionOverview(CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        return Ok(await expressionService.OverviewAsync(token));
+    }
+
     private static bool TryParseKind(string kind, out RestrictedExpressionKind parsed)
     {
         parsed = kind.Trim().ToLowerInvariant() switch

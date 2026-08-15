@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 import { TableEditorModal, type TableEditorEndpoints, type TableDetail } from './TableEditorModal'
+import { ExpressionAuditModal } from './ExpressionAuditModal'
 
 export interface FieldAdminTable {
   tableId: string
@@ -37,6 +38,7 @@ export function TableAdminPage() {
   const [keyword, setKeyword] = useState('')
   const [kind, setKind] = useState('')
   const [editor, setEditor] = useState<{ mode: 'new' | 'edit'; tableId?: string } | null>(null)
+  const [exprAuditOpen, setExprAuditOpen] = useState(false)
   const [selectedTable, setSelectedTable] = useState<string | null>(null)
   const [sorting, setSorting] = useState<SortingState>([])
   // 表元数据一次性加载：本地筛选即可，不需要分页与手动刷新
@@ -156,7 +158,10 @@ export function TableAdminPage() {
             <ErpSearchBox value={keyword} onChange={setKeyword} debounceMs={300} placeholder="搜索表名或描述" ariaLabel="搜索数据表" />
           </div>
         )}
-        actions={<Button size="sm" icon={<IconPlus size={16} />} onClick={() => setEditor({ mode: 'new' })}>新增</Button>}
+        actions={<>
+          <Button size="sm" onClick={() => setExprAuditOpen(true)}>表达式审计</Button>
+          <Button size="sm" icon={<IconPlus size={16} />} onClick={() => setEditor({ mode: 'new' })}>新增</Button>
+        </>}
       >
         {tables.isPending ? <LoadingState label="正在加载数据表…" /> : tables.isError ? <ErrorState message={errorMessage} onRetry={() => void tables.refetch()} /> : (
           <ErpTable
@@ -187,6 +192,7 @@ export function TableAdminPage() {
           }}
         />
       )}
+      <ExpressionAuditModal open={exprAuditOpen} onClose={() => setExprAuditOpen(false)} />
     </div>
   )
 }
