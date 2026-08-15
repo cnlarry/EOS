@@ -157,6 +157,14 @@ public sealed class FieldAdminController(
         };
     }
 
+    /// <summary>对全部已发布表达式按当前白名单版本重校验（P3：版本升级后标记需复核项）。</summary>
+    [HttpPost("fields/expressions/rescan")]
+    public async Task<IActionResult> RescanExpressions(CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        return Ok(await expressionService.RescanAsync(token));
+    }
+
     private static bool TryParseKind(string kind, out RestrictedExpressionKind parsed)
     {
         parsed = kind.Trim().ToLowerInvariant() switch
