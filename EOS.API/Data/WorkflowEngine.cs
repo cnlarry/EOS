@@ -1,15 +1,21 @@
 using Microsoft.Data.SqlClient;
 using System.Data;
+using System.Text.RegularExpressions;
 
 namespace EOS.API.Data;
 
 /// <summary>
-/// 通用工作流审批链（旧 P_WF_RUN / P_WF_APPROVE 的受控 C# 等价，第一期：顺序多级审批）。
+/// 通用工作流审批链（旧 P_WF_RUN / P_WF_APPROVE / P_WF_RUN_AUTO 的受控 C# 等价，第二期：
+/// 动态条件 / 会签 / 跳转 / 自动执行）。
 /// 复用旧 WF_* 表：WFFORM/WFFORM_FLOW（流程定义）、WF_MONITOR（运行实例）、
 /// WF_MYTASK（待办任务）、WF_MYTASK_LOG（审批日志）、WF_APPROVE（单据批核历史）。
 /// 无流程模块保持"直接批核"（DocumentWorkbenchRepository.WorkflowAsync）不变。
-/// 第一期不支持：EXEC_CONDITION/PERSON_CONDITION 动态条件（直接拒绝而非拼接 SQL）、
-/// 会签百分比（IS_SIGN/PASS_PERCENT 字段随任务落库但按顺序审批推进）、跳转（jump）。
+/// 动态条件（EXEC_CONDITION/PERSON_CONDITION/AUTO_EXEC_CONDITION）一律经 DataFilterParser
+/// 按主表物理列白名单受控解析（参数化，不可解析即拒绝流程启动），绝不拼接用户输入。
+/// 权限：PERSON_APP_POWER/PERSON_FORWARD_POWER 按人解析（空串=全部有权限）。
+/// 会签：IS_SIGN=1 步骤按 PASS_PERCENT 计数阈值 + MUST_SIGNER 必签者整步通过。
+/// 跳转：同意 + FORWARD_POWER 向前跳（'0'=直接结束，中间未批任务标记跳过）；
+/// 驳回可退回指定步骤（jumpNo 为空=第一步），先过解批前置校验（NOT_BACK_FIELDS）。
 /// 代理（CAN_SIR_AGENCY）按旧 f_get_sirs 校验。
 /// </summary>
 public sealed class WorkflowEngine(
@@ -17,6 +23,26 @@ public sealed class WorkflowEngine(
     ControlledSprocInvoker controlledSprocs,
     ILogger<WorkflowEngine> logger)
 {
+    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
+
+    /// <summary>流程步骤定义（WFFORM_FLOW 行，权限串/条件串按旧语义逐人解析）。</summary>
+    private sealed record FlowStep(
+        string SortNo,
+        string Desc,
+        string[] People,
+        string ExecCondition,
+        string[] PersonConditions,
+        string[] ApprovePowers,
+        string[] ForwardPowers,
+        string AutoExecCondition,
+        bool IsAutoExec,
+        bool IsSign,
+        int PassPercent,
+        bool IsEffect,
+        bool PreMustUnder,
+        bool CanSirAgency,
+        string[] MustSigners);
+
     /// <summary>模块是否配置了流程（WFFORM + 至少一步 WFFORM_FLOW）。</summary>
     public static async Task<bool> HasFlowAsync(SqlConnection connection, int moduleId, CancellationToken token)
     {
@@ -32,7 +58,10 @@ public sealed class WorkflowEngine(
 
     /// <summary>
     /// 启动流程：建/取 WF_MONITOR，删除旧任务，按 WFFORM_FLOW.SORT_NO 重建 WF_MYTASK。
-    /// 含动态条件的流程（EXEC_CONDITION/PERSON_CONDITION 非空）第一期拒绝启动。
+    /// 动态条件（EXEC_CONDITION/PERSON_CONDITION/AUTO_EXEC_CONDITION）经 DataFilterParser
+    /// 受控评估：步骤执行条件为真的步骤才生成任务，审批人条件为真的人员才入任务；
+    /// 权限串（PERSON_APP_POWER/PERSON_FORWARD_POWER）按人解析，空串=全部有权限；
+    /// 首个具备审批权的步骤置为当前；自动执行步骤由 SYSTEM 自动同意（P_WF_RUN_AUTO 等价）。
     /// </summary>
     public async Task<RecordSaveResult> StartFlowAsync(
         WorkbenchDefinition definition,
@@ -79,14 +108,14 @@ public sealed class WorkflowEngine(
             await clear.ExecuteNonQueryAsync(token);
         }
 
-        var steps = new List<(string SortNo, string Desc, string[] People, string ExecCondition,
-            string PersonCondition, bool ApprovePower, bool ForwardPower, bool IsAutoExec, bool IsSign,
-            bool IsEffect, bool PreMustUnder, bool CanSirAgency, bool IsMustSign)>();
+        // 步骤定义：权限串/条件串按旧语义逐人解析（空权限串=全部有权限）
+        var steps = new List<FlowStep>();
         await using (var stepCommand = new SqlCommand("""
             SELECT SORT_NO, LTRIM(RTRIM(ISNULL(SUBFLOW_DESC,''))), LTRIM(RTRIM(ISNULL(EXEC_PERSON,''))),
                    LTRIM(RTRIM(ISNULL(EXEC_CONDITION,''))), LTRIM(RTRIM(ISNULL(PERSON_CONDITION,''))),
-                   ISNULL(CAST(PERSON_APP_POWER AS int),0), ISNULL(CAST(PERSON_FORWARD_POWER AS int),0),
-                   ISNULL(CAST(IS_AUTO_EXEC AS int),0), ISNULL(CAST(IS_SIGN AS int),0),
+                   LTRIM(RTRIM(ISNULL(PERSON_APP_POWER,''))), LTRIM(RTRIM(ISNULL(PERSON_FORWARD_POWER,''))),
+                   LTRIM(RTRIM(ISNULL(AUTO_EXEC_CONDITION,''))), ISNULL(CAST(IS_AUTO_EXEC AS int),0),
+                   ISNULL(CAST(IS_SIGN AS int),0), ISNULL(CAST(PASS_PERCENT AS int),0),
                    ISNULL(CAST(IS_EFFECT AS int),0), ISNULL(CAST(PRE_MUST_UNDER AS int),0),
                    ISNULL(CAST(CAN_SIR_AGENCY AS int),0), LTRIM(RTRIM(ISNULL(MUST_SIGNER,'')))
             FROM dbo.WFFORM_FLOW WITH (NOLOCK)
@@ -97,30 +126,32 @@ public sealed class WorkflowEngine(
             await using var reader = await stepCommand.ExecuteReaderAsync(token);
             while (await reader.ReadAsync(token))
             {
-                steps.Add((
+                steps.Add(new FlowStep(
                     reader.GetString(0).Trim(),
                     reader.GetString(1),
                     reader.GetString(2).Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
                     reader.GetString(3),
-                    reader.GetString(4),
-                    reader.GetInt32(5) == 1,
-                    reader.GetInt32(6) == 1,
-                    reader.GetInt32(7) == 1,
+                    reader.GetString(4).Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+                    reader.GetString(5).Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+                    reader.GetString(6).Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+                    reader.GetString(7),
                     reader.GetInt32(8) == 1,
                     reader.GetInt32(9) == 1,
-                    reader.GetInt32(10) == 1,
+                    reader.GetInt32(10),
                     reader.GetInt32(11) == 1,
-                    !string.IsNullOrWhiteSpace(reader.GetString(12))));
+                    reader.GetInt32(12) == 1,
+                    reader.GetInt32(13) == 1,
+                    reader.GetString(14).Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)));
             }
         }
 
         if (steps.Count == 0)
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_NO_STEPS", "流程未配置审批步骤。");
-        if (steps.Any(step => !string.IsNullOrWhiteSpace(step.ExecCondition) || !string.IsNullOrWhiteSpace(step.PersonCondition)))
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_CONDITION_UNSUPPORTED",
-                "流程步骤含动态条件（EXEC_CONDITION/PERSON_CONDITION），第一期不支持，已拒绝启动。");
 
-        var first = true;
+        // 主表物理列白名单（INFORMATION_SCHEMA，服务端权威）供条件评估使用
+        var masterColumns = await LoadMasterColumnsAsync(connection, transaction, definition.MasterTable, token);
+
+        string? firstApproveStep = null;
         const string insertSql = """
             INSERT INTO dbo.WF_MYTASK
                 (WF_ID, SUBFLOW_NO, SUBFLOW_DESC, APPROVER, APPROVE_TAG, APPROVE_STATE,
@@ -133,42 +164,92 @@ public sealed class WorkflowEngine(
             """;
         foreach (var step in steps)
         {
-            foreach (var person in step.People)
+            // 步骤执行条件（EXEC_CONDITION）：为假则整步不生成任务
+            var execResult = await EvaluateConditionAsync(connection, transaction, definition, keyCondition,
+                masterColumns, step.ExecCondition, token);
+            if (execResult is null)
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_CONDITION_UNSUPPORTED",
+                    $"步骤 {step.SortNo} 的动态条件无法安全解析，已拒绝启动。");
+            if (!execResult.Value)
+                continue;
+
+            // 自动执行条件（AUTO_EXEC_CONDITION）：仅 IS_AUTO_EXEC=1 时步骤级评估一次
+            bool? stepAuto = null;
+            if (step.IsAutoExec && !string.IsNullOrWhiteSpace(step.AutoExecCondition))
             {
+                stepAuto = await EvaluateConditionAsync(connection, transaction, definition, keyCondition,
+                    masterColumns, step.AutoExecCondition, token);
+                if (stepAuto is null)
+                    return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_CONDITION_UNSUPPORTED",
+                        $"步骤 {step.SortNo} 的自动执行条件无法安全解析，已拒绝启动。");
+            }
+
+            foreach (var (person, index) in step.People.Select((person, index) => (person, index)))
+            {
+                // 审批人条件（PERSON_CONDITION）：与 EXEC_PERSON 一一对应；缺省视为无条件
+                var personCondition = index < step.PersonConditions.Length ? step.PersonConditions[index] : string.Empty;
+                var personResult = await EvaluateConditionAsync(connection, transaction, definition, keyCondition,
+                    masterColumns, personCondition, token);
+                if (personResult is null)
+                    return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_CONDITION_UNSUPPORTED",
+                        $"步骤 {step.SortNo} 审批人 {person} 的动态条件无法安全解析，已拒绝启动。");
+                if (!personResult.Value)
+                    continue;
+
+                var approvePower = HasPower(person, step.ApprovePowers);
+                var forwardPower = HasPower(person, step.ForwardPowers);
+                // 必签名单（MUST_SIGNER）：非空且包含该人；空名单=无必签者（与权限串"空=全部"语义不同）
+                var isMustSign = step.IsSign && step.MustSigners.Length > 0
+                    && step.MustSigners.Contains(person, StringComparer.OrdinalIgnoreCase);
+                var isAutoExec = step.IsAutoExec && (stepAuto ?? true);
+                if (approvePower && firstApproveStep is null)
+                    firstApproveStep = step.SortNo;
+
                 await using var taskCommand = new SqlCommand(insertSql, connection, transaction);
                 taskCommand.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
                 taskCommand.Parameters.Add("@SubflowNo", SqlDbType.Char, 3).Value = step.SortNo;
                 taskCommand.Parameters.Add("@SubflowDesc", SqlDbType.VarChar, 50).Value = step.Desc;
                 taskCommand.Parameters.Add("@Approver", SqlDbType.VarChar, 20).Value = person;
-                taskCommand.Parameters.Add("@IsAutoExec", SqlDbType.Bit).Value = step.IsAutoExec;
+                taskCommand.Parameters.Add("@IsAutoExec", SqlDbType.Bit).Value = isAutoExec;
                 taskCommand.Parameters.Add("@IsSign", SqlDbType.Bit).Value = step.IsSign;
-                taskCommand.Parameters.Add("@IsMustSign", SqlDbType.Bit).Value = step.IsMustSign;
-                taskCommand.Parameters.Add("@PassPercent", SqlDbType.Int).Value = 100;
+                taskCommand.Parameters.Add("@IsMustSign", SqlDbType.Bit).Value = isMustSign;
+                taskCommand.Parameters.Add("@PassPercent", SqlDbType.Int).Value = step.PassPercent;
                 taskCommand.Parameters.Add("@IsEffect", SqlDbType.Bit).Value = step.IsEffect;
                 taskCommand.Parameters.Add("@PreMustUnder", SqlDbType.Bit).Value = step.PreMustUnder;
                 taskCommand.Parameters.Add("@CanSirAgency", SqlDbType.Bit).Value = step.CanSirAgency;
-                taskCommand.Parameters.Add("@ApprovePower", SqlDbType.Bit).Value = step.ApprovePower;
-                taskCommand.Parameters.Add("@ForwardPower", SqlDbType.Bit).Value = step.ForwardPower;
-                taskCommand.Parameters.Add("@IsCurrent", SqlDbType.Bit).Value = first;
+                taskCommand.Parameters.Add("@ApprovePower", SqlDbType.Bit).Value = approvePower;
+                taskCommand.Parameters.Add("@ForwardPower", SqlDbType.Bit).Value = forwardPower;
+                taskCommand.Parameters.Add("@IsCurrent", SqlDbType.Bit).Value = firstApproveStep == step.SortNo;
                 await taskCommand.ExecuteNonQueryAsync(token);
             }
-            first = false;
         }
 
+        if (firstApproveStep is null)
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_NO_APPROVE_POWER",
+                "流程步骤没有具备审批权（PERSON_APP_POWER）的人员，已拒绝启动。");
+
         await transaction.CommitAsync(token);
-        logger.LogInformation("流程启动 module={ModuleId} key={Key} steps={Steps}",
-            definition.ModuleId, string.Join(',', keyValues), steps.Count);
+        logger.LogInformation("流程启动 module={ModuleId} key={Key} steps={Steps} firstApprove={First}",
+            definition.ModuleId, string.Join(',', keyValues), steps.Count, firstApproveStep);
+        // 自动执行：P_WF_RUN_AUTO 等价——当前自动执行任务由 SYSTEM 自动同意（可连跳）
+        if (steps.Any(step => step.IsAutoExec))
+            await RunAutoExecLoopAsync(wfId, token);
         return RecordSaveResult.SuccessFlowStarted(keyValues);
     }
 
     /// <summary>
-    /// 任务审批（approveState='Y'/'N'）。末步同意：落主表 CONFIRM_TAG + 执行 WorkflowSproc 副作用 + WF_APPROVE 历史。
+    /// 任务审批（approveState='Y'/'N'，可选 jumpNo）。
+    /// 同意：顺序步整步通过；会签步（IS_SIGN=1）按 PASS_PERCENT 计数阈值 + MUST_SIGNER 推进；
+    ///   非空 jumpNo 且具备 FORWARD_POWER 时向前跳（'0'=直接结束，中间未批任务标记跳过）；
+    /// 驳回：解批前置校验（NOT_BACK_FIELDS）后重置 [jumpNo, 当前] 区间任务并退回目标步（空=第一步）；
+    /// 末步/跳转结束：落主表 CONFIRM_TAG + WorkflowSproc 副作用 + WF_APPROVE 历史。
     /// </summary>
     public async Task<(bool Success, string? ErrorCode, string? ErrorMessage, bool FlowFinished, string? Message)> ApproveTaskAsync(
         long myTaskId,
         string userId,
         char approveState,
         string? message,
+        string? jumpNo,
         CancellationToken token)
     {
         await using var connection = connections.Create();
@@ -176,17 +257,24 @@ public sealed class WorkflowEngine(
 
         long wfId;
         string subflowNo;
-        // 阶段 A：任务审批（更新任务 + 日志 + 推进下一步），先提交释放锁
+        bool isSign;
+        bool approvePower;
+        bool forwardPower;
+        bool hasNext;
+        bool finishedDirect = false;
         string subflowDesc;
         string? currentState;
-        bool hasNext;
+        int passPercent;
+        // 阶段 A：任务审批（更新任务 + 日志 + 推进下一步），先提交释放锁
         await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token))
         {
             string approver;
             bool canSirAgency;
             await using (var taskCommand = new SqlCommand("""
                 SELECT WF_ID, SUBFLOW_NO, LTRIM(RTRIM(ISNULL(APPROVER,''))), ISNULL(CAN_SIR_AGENCY,0),
-                       LTRIM(RTRIM(ISNULL(APPROVE_STATE,''))), LTRIM(RTRIM(ISNULL(SUBFLOW_DESC,'')))
+                       LTRIM(RTRIM(ISNULL(APPROVE_STATE,''))), LTRIM(RTRIM(ISNULL(SUBFLOW_DESC,''))),
+                       ISNULL(APPROVE_POWER,0), ISNULL(FORWARD_POWER,0), ISNULL(IS_SIGN,0),
+                       ISNULL(PASS_PERCENT,0)
                 FROM dbo.WF_MYTASK WITH (UPDLOCK, HOLDLOCK) WHERE MYTASK_ID=@MyTaskId;
                 """, connection, transaction))
             {
@@ -200,6 +288,10 @@ public sealed class WorkflowEngine(
                 canSirAgency = reader.GetBoolean(3);
                 currentState = reader.GetString(4);
                 subflowDesc = reader.GetString(5);
+                approvePower = reader.GetBoolean(6);
+                forwardPower = reader.GetBoolean(7);
+                isSign = reader.GetBoolean(8);
+                passPercent = reader.GetInt32(9);
             }
 
             if (!string.IsNullOrEmpty(currentState))
@@ -219,144 +311,554 @@ public sealed class WorkflowEngine(
                 return (false, "TASK_NOT_AUTHORIZED", "当前用户不是该审批步骤的审批人，无权处理。", false, null);
 
             var now = DateTime.Now;
-            await using (var update = new SqlCommand("""
-                UPDATE dbo.WF_MYTASK SET APP_EMP_ID=@UserId, APPROVE_MSG=@Msg, APPROVE_TAG=1,
-                    APPROVE_DATE=@Now, APPROVE_STATE=@State
-                WHERE MYTASK_ID=@MyTaskId;
-                """, connection, transaction))
-            {
-                update.Parameters.Add("@UserId", SqlDbType.VarChar, 20).Value = userId;
-                update.Parameters.Add("@Msg", SqlDbType.VarChar, 3000).Value = (object?)message ?? DBNull.Value;
-                update.Parameters.Add("@Now", SqlDbType.DateTime).Value = now;
-                update.Parameters.Add("@State", SqlDbType.Char, 1).Value = approveState.ToString();
-                update.Parameters.Add("@MyTaskId", SqlDbType.BigInt).Value = myTaskId;
-                await update.ExecuteNonQueryAsync(token);
-            }
-            await using (var log = new SqlCommand("""
-                INSERT INTO dbo.WF_MYTASK_LOG (WF_ID, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, APP_EMP_ID,
-                    APPROVE_DATE, APPROVE_STATE, APPROVE_MSG)
-                VALUES (@WfId, @MyTaskId, @SubflowNo, @SubflowDesc, @UserId, @Now, @State, @Msg);
-                """, connection, transaction))
-            {
-                log.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
-                log.Parameters.Add("@MyTaskId", SqlDbType.BigInt).Value = myTaskId;
-                log.Parameters.Add("@SubflowNo", SqlDbType.Char, 3).Value = subflowNo;
-                log.Parameters.Add("@SubflowDesc", SqlDbType.VarChar, 50).Value = subflowDesc;
-                log.Parameters.Add("@UserId", SqlDbType.VarChar, 20).Value = userId;
-                log.Parameters.Add("@Now", SqlDbType.DateTime).Value = now;
-                log.Parameters.Add("@State", SqlDbType.Char, 1).Value = approveState.ToString();
-                log.Parameters.Add("@Msg", SqlDbType.VarChar, 3000).Value = (object?)message ?? DBNull.Value;
-                await log.ExecuteNonQueryAsync(token);
-            }
+            var effectiveJump = string.IsNullOrWhiteSpace(jumpNo) ? null : jumpNo.Trim();
 
-            if (approveState != 'Y')
+            if (approveState == 'Y')
             {
-                await transaction.CommitAsync(token);
-                return (true, null, null, false, "已驳回，流程终止（单据未确认）。");
-            }
+                if (!approvePower)
+                    return (false, "NO_APPROVE_POWER", "您没有该步骤的审批权，不能同意。", false, null);
 
-            // 找下一步
-            hasNext = false;
-            await using (var nextCommand = new SqlCommand("""
-                SELECT TOP 1 SORT_NO FROM dbo.WFFORM_FLOW WITH (NOLOCK)
-                WHERE WF_M_IDX=(SELECT WF_M_IDX FROM dbo.WF_MONITOR WHERE WF_ID=@WfId) AND SORT_NO>@SubflowNo
-                ORDER BY SORT_NO;
-                """, connection, transaction))
-            {
-                nextCommand.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
-                nextCommand.Parameters.Add("@SubflowNo", SqlDbType.Char, 3).Value = subflowNo;
-                var next = await nextCommand.ExecuteScalarAsync(token);
-                if (next is not null)
+                // 同意 + 跳转：需解批权；目标必须晚于当前步骤（'0'=直接结束）
+                if (!string.IsNullOrEmpty(effectiveJump) && effectiveJump != "0")
                 {
+                    if (!forwardPower)
+                        return (false, "NO_FORWARD_POWER", "您没有该步骤的跳转/解批权，不能跳转。", false, null);
+                    if (string.CompareOrdinal(effectiveJump, subflowNo) <= 0)
+                        return (false, "INVALID_JUMP_TARGET", "跳转目标步骤必须晚于当前步骤（'0' 表示直接结束）。", false, null);
+                    if (!await StepHasTasksAsync(connection, transaction, wfId, effectiveJump, token))
+                        return (false, "INVALID_JUMP_TARGET", $"跳转目标步骤 {effectiveJump} 不存在待处理任务。", false, null);
+                }
+                else if (effectiveJump == "0")
+                {
+                    if (!forwardPower)
+                        return (false, "NO_FORWARD_POWER", "您没有该步骤的跳转/解批权，不能直接结束流程。", false, null);
+                    finishedDirect = true;
+                }
+
+                if (isSign)
+                {
+                    // 会签步：仅本任务通过
+                    await MarkTaskApprovedAsync(connection, transaction, myTaskId, userId, message, now, token);
+                    await LogApproveAsync(connection, transaction, wfId, myTaskId, subflowNo, subflowDesc,
+                        userId, now, 'Y', message, token);
+                }
+                else
+                {
+                    // 顺序步：整步标记通过（其余候选审批人同步通过）
+                    await MarkStepApprovedAsync(connection, transaction, wfId, subflowNo, userId, message, now, token);
+                    await LogApproveAsync(connection, transaction, wfId, myTaskId, subflowNo, subflowDesc,
+                        userId, now, 'Y', message, token);
+                }
+
+                // 跳转/直接结束：中间未批任务标记跳过（'S'）并写日志
+                if (finishedDirect)
+                {
+                    await SkipTasksAsync(connection, transaction, wfId, subflowNo, null, false, now, "---跳转跳过---", token);
+                    hasNext = false;
+                }
+                else if (!string.IsNullOrEmpty(effectiveJump))
+                {
+                    await SkipTasksAsync(connection, transaction, wfId, subflowNo, effectiveJump, false, now, "---跳转跳过---", token);
+                    await SetCurrentStepAsync(connection, transaction, wfId, effectiveJump, token);
                     hasNext = true;
-                    await using var activate = new SqlCommand("""
-                        UPDATE dbo.WF_MYTASK SET IS_CURRENT=0 WHERE WF_ID=@WfId;
-                        UPDATE dbo.WF_MYTASK SET IS_CURRENT=1 WHERE WF_ID=@WfId AND SUBFLOW_NO=@Next;
-                        """, connection, transaction);
-                    activate.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
-                    activate.Parameters.Add("@Next", SqlDbType.Char, 3).Value = (string)next;
-                    await activate.ExecuteNonQueryAsync(token);
+                }
+                else if (isSign)
+                {
+                    // 会签：计数阈值 + 无未批必签者才整步通过并推进
+                    if (!await SignStepPassedAsync(connection, transaction, wfId, subflowNo, passPercent, token))
+                    {
+                        await transaction.CommitAsync(token);
+                        return (true, null, null, false, "会签已记录，等待其余审批人达到通过阈值后整步通过。");
+                    }
+                    await SkipTasksAsync(connection, transaction, wfId, subflowNo, subflowNo, true, now,
+                        "---执行会签条件跳过---", token);
+                    hasNext = await SetNextStepAsync(connection, transaction, wfId, subflowNo, token);
+                }
+                else
+                {
+                    hasNext = await SetNextStepAsync(connection, transaction, wfId, subflowNo, token);
                 }
             }
+            else // 驳回
+            {
+                if (!approvePower)
+                    return (false, "NO_APPROVE_POWER", "您没有该步骤的审批权，不能驳回。", false, null);
+
+                // 退回目标：jumpNo 非空且非 '0' 时为目标步；空/'0'=第一步
+                string? target;
+                if (string.IsNullOrEmpty(effectiveJump) || effectiveJump == "0")
+                {
+                    target = await GetFirstStepNoAsync(connection, transaction, wfId, token);
+                }
+                else
+                {
+                    target = effectiveJump;
+                }
+                if (target is null)
+                    return (false, "INVALID_JUMP_TARGET", "流程没有可退回的步骤。", false, null);
+                if (string.CompareOrdinal(target, subflowNo) > 0)
+                    return (false, "INVALID_JUMP_TARGET", "驳回退回目标步骤必须不晚于当前步骤。", false, null);
+
+                // 解批前置校验（旧 P_WF_GET_NOBACK_STATE 的受控等价）
+                var noBack = await CheckNotBackFieldsAsync(connection, transaction, wfId, token);
+                if (noBack is not null)
+                    return (false, noBack.Value.ErrorCode, noBack.Value.ErrorMessage, false, null);
+
+                // 重置 [target, 当前] 区间任务为未处理并退回目标步
+                await ResetStepRangeAsync(connection, transaction, wfId, target, subflowNo, token);
+                await LogApproveAsync(connection, transaction, wfId, myTaskId, subflowNo, subflowDesc,
+                    userId, now, 'N', message, token);
+                await SetCurrentStepAsync(connection, transaction, wfId, target, token);
+                await transaction.CommitAsync(token);
+                return (true, null, null, false, $"已驳回，流程退回至步骤 {target}。");
+            }
+
             await transaction.CommitAsync(token);
         }
 
-        if (hasNext)
-            return (true, null, null, false, "审批通过，流程进入下一步。");
+        if (finishedDirect || !hasNext)
+            return await CompleteFlowAsync(connection, wfId, userId, token);
+        await RunAutoExecLoopAsync(wfId, token);
+        return (true, null, null, false, "审批通过，流程进入下一步。");
+    }
 
-        // 阶段 B（末步）：主表确认 + WorkflowSproc 副作用 + WF_APPROVE 历史。
-        // 任务锁已释放，SP 在独立连接执行，避免跨连接锁冲突/死锁。
+    /// <summary>
+    /// 流程完成（末步/跳转结束）：主表确认 + WorkflowSproc 副作用 + WF_APPROVE 历史。
+    /// 任务锁已释放，SP 在独立连接执行，避免跨连接锁冲突/死锁。
+    /// </summary>
+    private async Task<(bool Success, string? ErrorCode, string? ErrorMessage, bool FlowFinished, string? Message)> CompleteFlowAsync(
+        SqlConnection connection, long wfId, string userId, CancellationToken token)
+    {
+        int moduleId;
+        string masterTable;
+        string keyCondition;
+        string? updateSproc;
+        string? title;
+        await using (var monitorCommand = new SqlCommand("""
+            SELECT WF_M_IDX, KEY_VALUE
+            FROM dbo.WF_MONITOR WITH (NOLOCK) WHERE WF_ID=@WfId;
+            """, connection))
         {
-            // 末步通过：主表确认 + WorkflowSproc 副作用 + WF_APPROVE 历史
-            int moduleId;
-            string masterTable;
-            string keyCondition;
-            string? updateSproc;
-            string? title;
-            await using (var monitorCommand = new SqlCommand("""
-                SELECT WF_M_IDX, KEY_VALUE
-                FROM dbo.WF_MONITOR WITH (NOLOCK) WHERE WF_ID=@WfId;
-                """, connection))
-            {
-                monitorCommand.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
-                await using var reader = await monitorCommand.ExecuteReaderAsync(token);
-                if (!await reader.ReadAsync(token))
-                    return (false, "FLOW_NOT_FOUND", "流程实例不存在。", false, null);
-                moduleId = reader.GetInt32(0);
-                keyCondition = reader.GetString(1);
-            }
-            await using (var moduleCommand = new SqlCommand("""
-                SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))), LTRIM(RTRIM(ISNULL(UPDATE_SP,''))),
-                       LTRIM(RTRIM(ISNULL(M_DESC,'')))
-                FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
-                """, connection))
-            {
-                moduleCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-                await using var reader = await moduleCommand.ExecuteReaderAsync(token);
-                if (!await reader.ReadAsync(token))
-                    return (false, "MODULE_NOT_FOUND", "模块不存在。", false, null);
-                masterTable = reader.GetString(0);
-                updateSproc = reader.IsDBNull(1) ? null : reader.GetString(1);
-                title = reader.GetString(2);
-            }
+            monitorCommand.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+            await using var reader = await monitorCommand.ExecuteReaderAsync(token);
+            if (!await reader.ReadAsync(token))
+                return (false, "FLOW_NOT_FOUND", "流程实例不存在。", false, null);
+            moduleId = reader.GetInt32(0);
+            keyCondition = reader.GetString(1);
+        }
+        await using (var moduleCommand = new SqlCommand("""
+            SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))), LTRIM(RTRIM(ISNULL(UPDATE_SP,''))),
+                   LTRIM(RTRIM(ISNULL(M_DESC,'')))
+            FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
+            """, connection))
+        {
+            moduleCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+            await using var reader = await moduleCommand.ExecuteReaderAsync(token);
+            if (!await reader.ReadAsync(token))
+                return (false, "MODULE_NOT_FOUND", "模块不存在。", false, null);
+            masterTable = reader.GetString(0);
+            updateSproc = reader.IsDBNull(1) ? null : reader.GetString(1);
+            title = reader.GetString(2);
+        }
 
-            if (!string.IsNullOrWhiteSpace(updateSproc))
-            {
-                var sprocResult = await controlledSprocs.RunWorkflowAsync(
-                    moduleId, updateSproc, Array.Empty<string>(), Array.Empty<string>(), true, token, keyCondition);
-                if (!sprocResult.Success)
-                    return (false, "WORKFLOW_FAILED", sprocResult.Message ?? "末步业务处理失败。", false, null);
-            }
+        if (!string.IsNullOrWhiteSpace(updateSproc))
+        {
+            var sprocResult = await controlledSprocs.RunWorkflowAsync(
+                moduleId, updateSproc, Array.Empty<string>(), Array.Empty<string>(), true, token, keyCondition);
+            if (!sprocResult.Success)
+                return (false, "WORKFLOW_FAILED", sprocResult.Message ?? "末步业务处理失败。", false, null);
+        }
 
-            await using var finalTransaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
-            try
-            {
-                await using var confirm = new SqlCommand(
-                    $"UPDATE dbo.[{masterTable}] SET CONFIRM_PERSON=@Person, CONFIRM_DATE=GETDATE(), CONFIRM_TAG=1 " +
-                    $"WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};", connection, finalTransaction);
-                confirm.Parameters.Add("@Person", SqlDbType.NVarChar, 50).Value = userId;
-                var affected = await confirm.ExecuteNonQueryAsync(token);
-                if (affected == 0)
-                    return (false, "WORKFLOW_STATE_CONFLICT", "记录不存在或已批核，无法重复批核。", false, null);
+        await using var finalTransaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using var confirm = new SqlCommand(
+                $"UPDATE dbo.[{masterTable}] SET CONFIRM_PERSON=@Person, CONFIRM_DATE=GETDATE(), CONFIRM_TAG=1 " +
+                $"WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};", connection, finalTransaction);
+            confirm.Parameters.Add("@Person", SqlDbType.NVarChar, 50).Value = userId;
+            var affected = await confirm.ExecuteNonQueryAsync(token);
+            if (affected == 0)
+                return (false, "WORKFLOW_STATE_CONFLICT", "记录不存在或已批核，无法重复批核。", false, null);
 
-                await using var history = new SqlCommand("""
-                    INSERT INTO dbo.WF_APPROVE (M_IDX, KEY_VALUE, KEY_VALUE_DESC)
-                    VALUES (@ModuleId, @KeyValue, @KeyValueDesc);
-                    """, connection, finalTransaction);
-                history.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-                history.Parameters.Add("@KeyValue", SqlDbType.VarChar, 200).Value = keyCondition;
-                history.Parameters.Add("@KeyValueDesc", SqlDbType.VarChar, 300).Value =
-                    (title ?? string.Empty) + " 流程审批完成";
-                await history.ExecuteNonQueryAsync(token);
-                await finalTransaction.CommitAsync(token);
-            }
-            catch
+            await using var history = new SqlCommand("""
+                INSERT INTO dbo.WF_APPROVE (M_IDX, KEY_VALUE, KEY_VALUE_DESC)
+                VALUES (@ModuleId, @KeyValue, @KeyValueDesc);
+                """, connection, finalTransaction);
+            history.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+            history.Parameters.Add("@KeyValue", SqlDbType.VarChar, 200).Value = keyCondition;
+            history.Parameters.Add("@KeyValueDesc", SqlDbType.VarChar, 300).Value =
+                (title ?? string.Empty) + " 流程审批完成";
+            await history.ExecuteNonQueryAsync(token);
+            await finalTransaction.CommitAsync(token);
+        }
+        catch
+        {
+            await finalTransaction.RollbackAsync(token);
+            throw;
+        }
+        logger.LogInformation("流程末步通过 module={ModuleId} key={Key}", moduleId, keyCondition);
+        return (true, null, null, true, "流程审批完成，单据已确认。");
+    }
+
+    /// <summary>
+    /// 受控条件评估（EXEC_CONDITION/PERSON_CONDITION/AUTO_EXEC_CONDITION）：
+    /// 空条件=true；经 DataFilterParser 按主表物理列白名单参数化解析，输出 EXISTS 判定；
+    /// 解析失败返回 null（调用方必须拒绝启动，绝不拼接 SQL）。
+    /// </summary>
+    private static async Task<bool?> EvaluateConditionAsync(
+        SqlConnection connection, SqlTransaction transaction, WorkbenchDefinition definition,
+        string keyCondition, IReadOnlySet<string> masterColumns, string condition, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(condition)) return true;
+        if (!DataFilterParser.TryParse(condition, definition.MasterTable, masterColumns, out var predicate, out var parameters))
+            return null;
+        await using var command = new SqlCommand(
+            $"SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.[{definition.MasterTable}] WITH (NOLOCK) " +
+            $"WHERE {keyCondition} AND ({predicate})) THEN 1 ELSE 0 END;", connection, transaction);
+        for (var i = 0; i < parameters.Count; i++)
+            command.Parameters.AddWithValue($"@df{i}", parameters[i] ?? DBNull.Value);
+        var result = await command.ExecuteScalarAsync(token);
+        return result is not null && Convert.ToInt32(result) == 1;
+    }
+
+    /// <summary>主表物理列白名单（INFORMATION_SCHEMA，服务端权威），供条件评估使用。</summary>
+    private static async Task<HashSet<string>> LoadMasterColumnsAsync(
+        SqlConnection connection, SqlTransaction transaction, string masterTable, CancellationToken token)
+    {
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using var command = new SqlCommand(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table;",
+            connection, transaction);
+        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = masterTable;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token)) columns.Add(reader.GetString(0));
+        return columns;
+    }
+
+    /// <summary>按人权限判定：空权限串=全部有权限（旧语义，兼容存量无 POWER 配置的流程）。</summary>
+    private static bool HasPower(string user, IReadOnlyList<string> powerList)
+        => powerList.Count == 0 || powerList.Contains(user, StringComparer.OrdinalIgnoreCase);
+
+    private static async Task MarkTaskApprovedAsync(
+        SqlConnection connection, SqlTransaction transaction, long myTaskId, string userId,
+        string? message, DateTime now, CancellationToken token)
+    {
+        await using var update = new SqlCommand("""
+            UPDATE dbo.WF_MYTASK SET APP_EMP_ID=@UserId, APPROVE_MSG=@Msg, APPROVE_TAG=1,
+                APPROVE_DATE=@Now, APPROVE_STATE='Y'
+            WHERE MYTASK_ID=@MyTaskId AND ISNULL(APPROVE_STATE,'')='';
+            """, connection, transaction);
+        update.Parameters.Add("@UserId", SqlDbType.VarChar, 20).Value = userId;
+        update.Parameters.Add("@Msg", SqlDbType.VarChar, 3000).Value = (object?)message ?? DBNull.Value;
+        update.Parameters.Add("@Now", SqlDbType.DateTime).Value = now;
+        update.Parameters.Add("@MyTaskId", SqlDbType.BigInt).Value = myTaskId;
+        await update.ExecuteNonQueryAsync(token);
+    }
+
+    private static async Task MarkStepApprovedAsync(
+        SqlConnection connection, SqlTransaction transaction, long wfId, string subflowNo, string userId,
+        string? message, DateTime now, CancellationToken token)
+    {
+        await using var update = new SqlCommand("""
+            UPDATE dbo.WF_MYTASK SET APP_EMP_ID=@UserId, APPROVE_MSG=@Msg, APPROVE_TAG=1,
+                APPROVE_DATE=@Now, APPROVE_STATE='Y'
+            WHERE WF_ID=@WfId AND SUBFLOW_NO=@SubflowNo AND ISNULL(APPROVE_STATE,'')='';
+            """, connection, transaction);
+        update.Parameters.Add("@UserId", SqlDbType.VarChar, 20).Value = userId;
+        update.Parameters.Add("@Msg", SqlDbType.VarChar, 3000).Value = (object?)message ?? DBNull.Value;
+        update.Parameters.Add("@Now", SqlDbType.DateTime).Value = now;
+        update.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+        update.Parameters.Add("@SubflowNo", SqlDbType.Char, 3).Value = subflowNo;
+        await update.ExecuteNonQueryAsync(token);
+    }
+
+    private static async Task LogApproveAsync(
+        SqlConnection connection, SqlTransaction transaction, long wfId, long myTaskId,
+        string subflowNo, string subflowDesc, string userId, DateTime now, char state,
+        string? message, CancellationToken token)
+    {
+        await using var log = new SqlCommand("""
+            INSERT INTO dbo.WF_MYTASK_LOG (WF_ID, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, APP_EMP_ID,
+                APPROVE_DATE, APPROVE_STATE, APPROVE_MSG)
+            VALUES (@WfId, @MyTaskId, @SubflowNo, @SubflowDesc, @UserId, @Now, @State, @Msg);
+            """, connection, transaction);
+        log.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+        log.Parameters.Add("@MyTaskId", SqlDbType.BigInt).Value = myTaskId;
+        log.Parameters.Add("@SubflowNo", SqlDbType.Char, 3).Value = subflowNo;
+        log.Parameters.Add("@SubflowDesc", SqlDbType.VarChar, 50).Value = subflowDesc;
+        log.Parameters.Add("@UserId", SqlDbType.VarChar, 20).Value = userId;
+        log.Parameters.Add("@Now", SqlDbType.DateTime).Value = now;
+        log.Parameters.Add("@State", SqlDbType.Char, 1).Value = state.ToString();
+        log.Parameters.Add("@Msg", SqlDbType.VarChar, 3000).Value = (object?)message ?? DBNull.Value;
+        await log.ExecuteNonQueryAsync(token);
+    }
+
+    /// <summary>
+    /// 会签整步通过判定：已通过任务数 ≥ PASS_PERCENT（计数阈值，非数学百分比），
+    /// 且不存在未批的必签者（IS_MUST_SIGN=1）。
+    /// </summary>
+    private static async Task<bool> SignStepPassedAsync(
+        SqlConnection connection, SqlTransaction transaction, long wfId, string stepNo,
+        int passPercent, CancellationToken token)
+    {
+        await using var command = new SqlCommand("""
+            SELECT CASE WHEN @PassPercent <= (SELECT COUNT_BIG(1) FROM dbo.WF_MYTASK
+                    WHERE WF_ID=@WfId AND SUBFLOW_NO=@StepNo AND APPROVE_TAG=1)
+                AND NOT EXISTS (SELECT 1 FROM dbo.WF_MYTASK
+                    WHERE WF_ID=@WfId AND SUBFLOW_NO=@StepNo AND APPROVE_TAG=0 AND IS_MUST_SIGN=1)
+                THEN 1 ELSE 0 END;
+            """, connection, transaction);
+        command.Parameters.Add("@PassPercent", SqlDbType.Int).Value = passPercent;
+        command.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+        command.Parameters.Add("@StepNo", SqlDbType.Char, 3).Value = stepNo;
+        var result = await command.ExecuteScalarAsync(token);
+        return result is not null && Convert.ToInt32(result) == 1;
+    }
+
+    /// <summary>
+    /// 将 [fromStep, toStep]（toStepExclusive=true 时不含 toStep；toStep=null 到流程结束）
+    /// 区间内未批任务标记为跳过（APPROVE_STATE='S'）并写审批日志。
+    /// </summary>
+    private async Task SkipTasksAsync(
+        SqlConnection connection, SqlTransaction transaction, long wfId,
+        string? fromStep, string? toStep, bool toStepExclusive, DateTime now,
+        string skipMessage, CancellationToken token)
+    {
+        var range = (fromStep is null ? string.Empty : "SUBFLOW_NO>=@FromStep AND ")
+                  + (toStep is null ? string.Empty : toStepExclusive ? "SUBFLOW_NO<=@ToStep AND " : "SUBFLOW_NO<@ToStep AND ");
+        if (range.Length == 0)
+            range = "1=1 AND ";
+        var where = $"WF_ID=@WfId AND {range}ISNULL(APPROVE_STATE,'')=''";
+        await using var update = new SqlCommand($"""
+            UPDATE dbo.WF_MYTASK SET APP_EMP_ID='', APPROVE_MSG=@SkipMsg, APPROVE_TAG=1,
+                APPROVE_DATE=@Now, APPROVE_STATE='S'
+            WHERE {where};
+            """, connection, transaction);
+        update.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+        if (fromStep is not null) update.Parameters.Add("@FromStep", SqlDbType.Char, 3).Value = fromStep;
+        if (toStep is not null) update.Parameters.Add("@ToStep", SqlDbType.Char, 3).Value = toStep;
+        update.Parameters.Add("@SkipMsg", SqlDbType.VarChar, 3000).Value = skipMessage;
+        update.Parameters.Add("@Now", SqlDbType.DateTime).Value = now;
+        var affected = await update.ExecuteNonQueryAsync(token);
+        if (affected <= 0)
+            return;
+
+        var logWhere = $"WF_ID=@WfId AND {range}APPROVE_STATE='S' AND APPROVE_MSG=@SkipMsg";
+        await using var log = new SqlCommand($"""
+            INSERT INTO dbo.WF_MYTASK_LOG (WF_ID, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, APP_EMP_ID,
+                APPROVE_DATE, APPROVE_STATE, APPROVE_MSG)
+            SELECT @WfId, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, '', @Now, 'S', @SkipMsg
+            FROM dbo.WF_MYTASK WITH (NOLOCK)
+            WHERE {logWhere};
+            """, connection, transaction);
+        log.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+        if (fromStep is not null) log.Parameters.Add("@FromStep", SqlDbType.Char, 3).Value = fromStep;
+        if (toStep is not null) log.Parameters.Add("@ToStep", SqlDbType.Char, 3).Value = toStep;
+        log.Parameters.Add("@SkipMsg", SqlDbType.VarChar, 3000).Value = skipMessage;
+        log.Parameters.Add("@Now", SqlDbType.DateTime).Value = now;
+        await log.ExecuteNonQueryAsync(token);
+    }
+
+    /// <summary>推进到下一个具备审批权且未处理的步骤（无则返回 false=流程完成）。</summary>
+    private static async Task<bool> SetNextStepAsync(
+        SqlConnection connection, SqlTransaction transaction, long wfId, string afterStep, CancellationToken token)
+    {
+        await using var nextCommand = new SqlCommand("""
+            SELECT TOP 1 SUBFLOW_NO FROM dbo.WF_MYTASK WITH (NOLOCK)
+            WHERE WF_ID=@WfId AND APPROVE_POWER=1 AND ISNULL(APPROVE_STATE,'')=''
+              AND SUBFLOW_NO>@AfterStep
+            ORDER BY SUBFLOW_NO;
+            """, connection, transaction);
+        nextCommand.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+        nextCommand.Parameters.Add("@AfterStep", SqlDbType.Char, 3).Value = afterStep;
+        var next = await nextCommand.ExecuteScalarAsync(token) as string;
+        if (string.IsNullOrWhiteSpace(next))
+            return false;
+        await SetCurrentStepAsync(connection, transaction, wfId, next.Trim(), token);
+        return true;
+    }
+
+    /// <summary>整流程当前步切换：清空后置目标步骤（该步骤全部任务）为当前。</summary>
+    private static async Task SetCurrentStepAsync(
+        SqlConnection connection, SqlTransaction transaction, long wfId, string stepNo, CancellationToken token)
+    {
+        await using var command = new SqlCommand("""
+            UPDATE dbo.WF_MYTASK SET IS_CURRENT=0 WHERE WF_ID=@WfId;
+            UPDATE dbo.WF_MYTASK SET IS_CURRENT=1 WHERE WF_ID=@WfId AND SUBFLOW_NO=@StepNo;
+            """, connection, transaction);
+        command.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+        command.Parameters.Add("@StepNo", SqlDbType.Char, 3).Value = stepNo;
+        await command.ExecuteNonQueryAsync(token);
+    }
+
+    private static async Task<bool> StepHasTasksAsync(
+        SqlConnection connection, SqlTransaction transaction, long wfId, string stepNo, CancellationToken token)
+    {
+        await using var command = new SqlCommand("""
+            SELECT TOP 1 1 FROM dbo.WF_MYTASK WITH (NOLOCK) WHERE WF_ID=@WfId AND SUBFLOW_NO=@StepNo;
+            """, connection, transaction);
+        command.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+        command.Parameters.Add("@StepNo", SqlDbType.Char, 3).Value = stepNo;
+        return await command.ExecuteScalarAsync(token) is not null;
+    }
+
+    /// <summary>流程第一步（最小 SUBFLOW_NO 的任务步骤），供驳回退回默认目标。</summary>
+    private static async Task<string?> GetFirstStepNoAsync(
+        SqlConnection connection, SqlTransaction transaction, long wfId, CancellationToken token)
+    {
+        await using var command = new SqlCommand("""
+            SELECT TOP 1 SUBFLOW_NO FROM dbo.WF_MYTASK WITH (NOLOCK)
+            WHERE WF_ID=@WfId ORDER BY SUBFLOW_NO;
+            """, connection, transaction);
+        command.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+        var result = await command.ExecuteScalarAsync(token) as string;
+        return string.IsNullOrWhiteSpace(result) ? null : result.Trim();
+    }
+
+    /// <summary>重置 [target, current] 区间任务为未处理（驳回退回）。</summary>
+    private static async Task ResetStepRangeAsync(
+        SqlConnection connection, SqlTransaction transaction, long wfId,
+        string target, string current, CancellationToken token)
+    {
+        await using var update = new SqlCommand("""
+            UPDATE dbo.WF_MYTASK SET APP_EMP_ID='', APPROVE_MSG='', APPROVE_TAG=0,
+                APPROVE_DATE=NULL, APPROVE_STATE=''
+            WHERE WF_ID=@WfId AND SUBFLOW_NO>=@Target AND SUBFLOW_NO<=@Current;
+            """, connection, transaction);
+        update.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+        update.Parameters.Add("@Target", SqlDbType.Char, 3).Value = target;
+        update.Parameters.Add("@Current", SqlDbType.Char, 3).Value = current;
+        await update.ExecuteNonQueryAsync(token);
+    }
+
+    /// <summary>
+    /// 驳回前置校验（旧 P_WF_GET_NOBACK_STATE 的受控等价）：
+    /// MODULES.NOT_BACK_FIELDS(_M) 配置字段存在"已发生业务"值（CAST(字段 AS varchar(100))>'0'）时禁止驳回退回。
+    /// </summary>
+    private async Task<(string ErrorCode, string ErrorMessage)?> CheckNotBackFieldsAsync(
+        SqlConnection connection, SqlTransaction transaction, long wfId, CancellationToken token)
+    {
+        int moduleId;
+        string keyCondition;
+        await using (var monitorCommand = new SqlCommand("""
+            SELECT WF_M_IDX, KEY_VALUE FROM dbo.WF_MONITOR WITH (NOLOCK) WHERE WF_ID=@WfId;
+            """, connection, transaction))
+        {
+            monitorCommand.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+            await using var reader = await monitorCommand.ExecuteReaderAsync(token);
+            if (!await reader.ReadAsync(token))
+                return null;
+            moduleId = reader.GetInt32(0);
+            keyCondition = reader.GetString(1);
+        }
+
+        string masterTable, detailTable, masterFields, detailFields;
+        await using (var moduleCommand = new SqlCommand("""
+            SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))), LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))),
+                   LTRIM(RTRIM(ISNULL(NOT_BACK_FIELDS_M,''))), LTRIM(RTRIM(ISNULL(NOT_BACK_FIELDS,'')))
+            FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
+            """, connection, transaction))
+        {
+            moduleCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+            await using var reader = await moduleCommand.ExecuteReaderAsync(token);
+            if (!await reader.ReadAsync(token))
+                return null;
+            masterTable = reader.GetString(0);
+            detailTable = reader.GetString(1);
+            masterFields = reader.GetString(2);
+            detailFields = reader.GetString(3);
+        }
+
+        var blocked = new List<string>();
+        if (!string.IsNullOrWhiteSpace(masterFields) && !string.IsNullOrWhiteSpace(masterTable))
+            await CheckNotBackTableAsync(connection, transaction, moduleId, masterTable, masterFields,
+                keyCondition, blocked, token);
+        if (!string.IsNullOrWhiteSpace(detailFields) && !string.IsNullOrWhiteSpace(detailTable))
+            await CheckNotBackTableAsync(connection, transaction, moduleId, detailTable, detailFields,
+                keyCondition, blocked, token);
+
+        if (blocked.Count == 0)
+            return null;
+        return ("NOBACK_BLOCKED",
+            $"单据存在已发生的业务数据（{string.Join("、", blocked)}），不能驳回退回。");
+    }
+
+    private async Task CheckNotBackTableAsync(
+        SqlConnection connection, SqlTransaction transaction, int moduleId, string table,
+        string fieldsCsv, string keyCondition, List<string> blocked, CancellationToken token)
+    {
+        var fields = fieldsCsv.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Where(field => Identifier.IsMatch(field)).ToArray();
+        if (fields.Length == 0)
+            return;
+
+        // 物理列存在性校验（服务端白名单）：只保留真实存在的列
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using (var columnCommand = new SqlCommand(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table;",
+            connection, transaction))
+        {
+            columnCommand.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
+            await using var reader = await columnCommand.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token)) existing.Add(reader.GetString(0));
+        }
+        var valid = fields.Where(field => existing.Contains(field)).ToArray();
+        foreach (var missing in fields.Where(field => !existing.Contains(field)))
+            logger.LogWarning("驳回前置校验字段物理不存在，已跳过 module={ModuleId} table={Table} field={Field}",
+                moduleId, table, missing);
+        if (valid.Length == 0)
+            return;
+
+        // 字段描述（FIELDS.F_DESC）用于业务提示
+        var labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var inClause = string.Join(",", valid.Select((_, index) => $"@f{index}"));
+        await using (var descCommand = new SqlCommand(
+            $"SELECT LTRIM(RTRIM(F_ID)),LTRIM(RTRIM(ISNULL(F_DESC,''))) FROM dbo.FIELDS WITH (NOLOCK) " +
+            $"WHERE LTRIM(RTRIM(T_ID))=@Table AND F_ID IN ({inClause});", connection, transaction))
+        {
+            descCommand.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
+            for (var i = 0; i < valid.Length; i++)
+                descCommand.Parameters.Add($"@f{i}", SqlDbType.NVarChar, 100).Value = valid[i];
+            await using var reader = await descCommand.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token)) labels[reader.GetString(0)] = reader.GetString(1);
+        }
+
+        var predicates = string.Join(" OR ", valid.Select(field => $"CAST([{field}] AS varchar(100))>'0'"));
+        await using var checkCommand = new SqlCommand(
+            $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyCondition} AND ({predicates});",
+            connection, transaction);
+        var count = Convert.ToInt64(await checkCommand.ExecuteScalarAsync(token));
+        if (count > 0)
+            blocked.AddRange(valid.Select(field => labels.TryGetValue(field, out var label) && label.Length > 0 ? label : field));
+    }
+
+    /// <summary>
+    /// P_WF_RUN_AUTO 等价：当前自动执行任务由 SYSTEM 自动同意，循环直至无自动任务（可连跳多步）。
+    /// </summary>
+    private async Task RunAutoExecLoopAsync(long wfId, CancellationToken token)
+    {
+        while (true)
+        {
+            long? autoTaskId;
+            await using (var connection = connections.Create())
             {
-                await finalTransaction.RollbackAsync(token);
-                throw;
+                await connection.OpenAsync(token);
+                await using var command = new SqlCommand("""
+                    SELECT TOP 1 MYTASK_ID FROM dbo.WF_MYTASK WITH (NOLOCK)
+                    WHERE WF_ID=@WfId AND IS_CURRENT=1 AND IS_AUTO_EXEC=1 AND ISNULL(APPROVE_STATE,'')='';
+                    """, connection);
+                command.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+                autoTaskId = await command.ExecuteScalarAsync(token) as long?;
             }
-            logger.LogInformation("流程末步通过 module={ModuleId} key={Key}", moduleId, keyCondition);
-            return (true, null, null, true, "流程审批完成，单据已确认。");
+            if (autoTaskId is null)
+                return;
+            var result = await ApproveTaskAsync(autoTaskId.Value, "SYSTEM", 'Y', "系统自动执行", null, token);
+            if (!result.Success)
+            {
+                logger.LogWarning("自动执行步骤失败 wf={WfId} task={TaskId} code={Code} message={Message}",
+                    wfId, autoTaskId.Value, result.ErrorCode, result.ErrorMessage);
+                return;
+            }
         }
     }
 
@@ -414,16 +916,19 @@ public sealed class WorkflowEngine(
         return result;
     }
 
-    /// <summary>当前用户真实待办（WF_MYTASK 未处理任务）。</summary>
+    /// <summary>当前用户真实待办（WF_MYTASK 未处理任务），含跳转候选步骤与权限位。</summary>
     public async Task<IReadOnlyList<object>> GetMyFlowTasksAsync(
         SqlConnection connection,
         string userId,
         CancellationToken token)
     {
-        var result = new List<object>();
+        var rows = new List<(long MyTaskId, long WfId, string Step, string StepDesc, int ModuleId,
+            string KeyValue, string Title, bool ApprovePower, bool ForwardPower, bool IsSign, int PassPercent)>();
         await using var command = new SqlCommand("""
             SELECT T.MYTASK_ID, T.WF_ID, T.SUBFLOW_NO, T.SUBFLOW_DESC, M.WF_M_IDX, M.KEY_VALUE,
-                   LTRIM(RTRIM(ISNULL((SELECT M_DESC FROM dbo.MODULES WHERE M_IDX=M.WF_M_IDX),'')))
+                   LTRIM(RTRIM(ISNULL((SELECT M_DESC FROM dbo.MODULES WHERE M_IDX=M.WF_M_IDX),''))),
+                   ISNULL(T.APPROVE_POWER,0), ISNULL(T.FORWARD_POWER,0), ISNULL(T.IS_SIGN,0),
+                   ISNULL(T.PASS_PERCENT,0)
             FROM dbo.WF_MYTASK T WITH (NOLOCK)
             JOIN dbo.WF_MONITOR M WITH (NOLOCK) ON M.WF_ID=T.WF_ID
             WHERE LTRIM(RTRIM(T.APPROVER))=@UserId AND ISNULL(T.APPROVE_STATE,'')=''
@@ -433,16 +938,58 @@ public sealed class WorkflowEngine(
         command.Parameters.Add("@UserId", SqlDbType.VarChar, 20).Value = userId;
         await using var reader = await command.ExecuteReaderAsync(token);
         while (await reader.ReadAsync(token))
+            rows.Add((
+                reader.GetInt64(0),
+                reader.GetInt64(1),
+                reader.GetString(2).Trim(),
+                reader.GetString(3),
+                reader.GetInt32(4),
+                reader.GetString(5),
+                reader.GetString(6),
+                reader.GetBoolean(7),
+                reader.GetBoolean(8),
+                reader.GetBoolean(9),
+                reader.GetInt32(10)));
+        await reader.DisposeAsync();
+
+        // 同流程全部步骤（跳转候选，服务端按 WF_MYTASK 实际任务步骤返回）
+        var stepsByWf = new Dictionary<long, List<object>>();
+        foreach (var wfId in rows.Select(row => row.WfId).Distinct())
+        {
+            var stepList = new List<object>();
+            await using var stepCommand = new SqlCommand("""
+                SELECT DISTINCT SUBFLOW_NO, LTRIM(RTRIM(ISNULL(SUBFLOW_DESC,'')))
+                FROM dbo.WF_MYTASK WITH (NOLOCK)
+                WHERE WF_ID=@WfId ORDER BY SUBFLOW_NO;
+                """, connection);
+            stepCommand.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+            await using var stepReader = await stepCommand.ExecuteReaderAsync(token);
+            while (await stepReader.ReadAsync(token))
+                stepList.Add(new { Step = stepReader.GetString(0).Trim(), StepDesc = stepReader.GetString(1) });
+            stepsByWf[wfId] = stepList;
+        }
+
+        var result = new List<object>();
+        foreach (var row in rows)
+        {
             result.Add(new
             {
-                MyTaskId = reader.GetInt64(0),
-                WfId = reader.GetInt64(1),
-                Step = reader.GetString(2).Trim(),
-                StepDesc = reader.GetString(3),
-                ModuleId = reader.GetInt32(4),
-                KeyValue = reader.GetString(5),
-                Title = reader.GetString(6),
+                row.MyTaskId,
+                row.WfId,
+                row.Step,
+                row.StepDesc,
+                row.ModuleId,
+                row.KeyValue,
+                row.Title,
+                row.ApprovePower,
+                row.ForwardPower,
+                row.IsSign,
+                row.PassPercent,
+                Steps = stepsByWf.TryGetValue(row.WfId, out var steps)
+                    ? (IReadOnlyList<object>)steps
+                    : Array.Empty<object>(),
             });
+        }
         return result;
     }
 }

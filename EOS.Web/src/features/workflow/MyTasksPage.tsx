@@ -1,7 +1,7 @@
 import { IconRefresh } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
@@ -24,6 +24,11 @@ interface FlowTask {
   moduleId: number
   keyValue: string
   title: string
+  approvePower: boolean
+  forwardPower: boolean
+  isSign: boolean
+  passPercent: number
+  steps: { step: string; stepDesc: string }[]
 }
 
 interface MyTasksResult {
@@ -33,6 +38,8 @@ interface MyTasksResult {
   note: string
 }
 
+type ApproveState = 'Y' | 'N'
+
 /** 我的任务（2102）：真实流程待办（同意/驳回）+ 直接批核模型单据计数 */
 export function MyTasksPage() {
   const navigate = useNavigate()
@@ -40,13 +47,15 @@ export function MyTasksPage() {
     queryKey: ['my-tasks'],
     queryFn: () => apiClient.get<MyTasksResult>('/workflow/my-tasks'),
   })
-  const approveTask = async (myTaskId: number, approveState: 'Y' | 'N') => {
-    const message = approveState === 'N' ? window.prompt('驳回意见（可选）：') : undefined
-    if (approveState === 'N' && message === null) return
+  const [pending, setPending] = useState<{ task: FlowTask; state: ApproveState } | null>(null)
+  const [jumpNo, setJumpNo] = useState('')
+  const [opinion, setOpinion] = useState('')
+
+  const approveTask = async (myTaskId: number, approveState: ApproveState, message?: string, jump?: string) => {
     try {
       const response = await apiClient.post<{ flowFinished: boolean; message?: string }>(
         `/workflow/tasks/${myTaskId}/approve`,
-        { approveState, message: message?.trim() || undefined },
+        { approveState, message, jumpNo: jump },
       )
       window.alert(response.message ?? (approveState === 'Y' ? '已同意' : '已驳回'))
       void result.refetch()
@@ -55,6 +64,29 @@ export function MyTasksPage() {
       window.alert(body?.message ?? '审批失败，请稍后重试。')
     }
   }
+
+  const openApprove = (task: FlowTask, state: ApproveState) => {
+    // 同意且无跳转权：直接提交；否则打开弹窗选择跳转/退回目标与意见
+    if (state === 'Y' && !task.forwardPower) {
+      void approveTask(task.myTaskId, state)
+      return
+    }
+    setPending({ task, state })
+    setJumpNo('')
+    setOpinion('')
+  }
+
+  const confirmApprove = async () => {
+    if (!pending) return
+    const task = pending.task
+    const message = opinion.trim() || undefined
+    const jump = jumpNo || undefined
+    setPending(null)
+    await approveTask(task.myTaskId, pending.state, message, jump)
+  }
+
+  const forwardTargets = pending?.task.steps.filter((step) => step.step > pending.task.step) ?? []
+  const backTargets = pending?.task.steps.filter((step) => step.step <= pending.task.step) ?? []
 
   const columns = useMemo<ColumnDef<MyTask, unknown>[]>(() => [
     { accessorKey: 'title', header: '单据类型', cell: (info) => <span className="fw-semibold">{String(info.getValue() ?? '—')}</span> },
@@ -84,7 +116,17 @@ export function MyTasksPage() {
   const flowColumns: ColumnDef<FlowTask, unknown>[] = [
     { accessorKey: 'title', header: '单据类型', cell: (info) => <span className="fw-semibold">{String(info.getValue() ?? '—')}</span> },
     { accessorKey: 'step', header: '步骤', cell: (info) => <span className="font-monospace">{String(info.getValue())}</span> },
-    { accessorKey: 'stepDesc', header: '审批步骤', cell: (info) => <span>{String(info.getValue() ?? '—')}</span> },
+    {
+      accessorKey: 'stepDesc',
+      header: '审批步骤',
+      cell: (info) => (
+        <span>
+          {String(info.getValue() ?? '—')}
+          {info.row.original.isSign && <span className="badge text-bg-info ms-1">会签</span>}
+          {info.row.original.forwardPower && <span className="badge text-bg-secondary ms-1">可跳转</span>}
+        </span>
+      ),
+    },
     { accessorKey: 'moduleId', header: '模块号', cell: (info) => <span className="font-monospace text-secondary">{String(info.getValue())}</span> },
     {
       id: 'actions',
@@ -94,8 +136,8 @@ export function MyTasksPage() {
       meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
       cell: ({ row }) => (
         <div className="d-inline-flex gap-1">
-          <Button size="sm" className="erp-table-action" onClick={() => void approveTask(row.original.myTaskId, 'Y')}>同意</Button>
-          <Button size="sm" variant="danger" className="erp-table-action" onClick={() => void approveTask(row.original.myTaskId, 'N')}>驳回</Button>
+          <Button size="sm" className="erp-table-action" onClick={() => openApprove(row.original, 'Y')}>同意</Button>
+          <Button size="sm" variant="danger" className="erp-table-action" onClick={() => openApprove(row.original, 'N')}>驳回</Button>
         </div>
       ),
     },
@@ -103,6 +145,65 @@ export function MyTasksPage() {
 
   return (
     <div className="d-grid gap-2">
+      {pending && (
+        <div className="modal modal-blur show d-block" role="dialog" aria-modal="true" aria-label="流程审批">
+          <div className="modal-dialog modal-dialog-centered erp-dialog-sm">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h2 className="modal-title">{pending.state === 'Y' ? '同意并处理' : '驳回退回'}</h2>
+                <button type="button" className="btn-close" aria-label="关闭" onClick={() => setPending(null)} />
+              </div>
+              <div className="modal-body">
+                <div className="mb-2 text-secondary small">
+                  {pending.task.title} · 步骤 {pending.task.step} {pending.task.stepDesc}
+                </div>
+                {pending.state === 'N' && (
+                  <div className="mb-2">
+                    <label className="form-label">退回至</label>
+                    <select className="form-select" value={jumpNo} onChange={(event) => setJumpNo(event.target.value)}>
+                      <option value="">退回第一步（默认）</option>
+                      {backTargets.map((target) => (
+                        <option key={target.step} value={target.step}>
+                          退回至 {target.step} {target.stepDesc}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {pending.state === 'Y' && pending.task.forwardPower && (
+                  <div className="mb-2">
+                    <label className="form-label">跳转目标（跳过中间步骤）</label>
+                    <select className="form-select" value={jumpNo} onChange={(event) => setJumpNo(event.target.value)}>
+                      <option value="">不跳转（按顺序进入下一步）</option>
+                      <option value="0">直接结束流程</option>
+                      {forwardTargets.map((target) => (
+                        <option key={target.step} value={target.step}>
+                          跳至 {target.step} {target.stepDesc}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="form-label">{pending.state === 'N' ? '驳回意见' : '审批意见'}（可选）</label>
+                  <input
+                    className="form-control"
+                    value={opinion}
+                    onChange={(event) => setOpinion(event.target.value)}
+                    placeholder={pending.state === 'N' ? '填写驳回原因…' : '填写审批意见…'}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <Button variant="secondary" onClick={() => setPending(null)}>取消</Button>
+                <Button variant={pending.state === 'Y' ? 'primary' : 'danger'} onClick={() => void confirmApprove()}>
+                  {pending.state === 'Y' ? '确认同意' : '确认驳回'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {flowTasks.length > 0 && (
         <ErpListCard
           ariaLabel="流程审批待办"
