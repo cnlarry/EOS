@@ -71,6 +71,8 @@ export interface FormDefinition {
   tabs: FormTab[]
   columns: number
   buttons: string | null
+  /** 模块是否具备批核工作流（MODULES.UPDATE_SP → ModuleBusinessMap.WorkflowSproc 非空） */
+  hasWorkflow: boolean
   /** 新增模式服务端默认值（单别/单号/日期等），edit 模式为空对象 */
   defaultValues: Record<string, string>
 }
