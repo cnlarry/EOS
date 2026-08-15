@@ -29,8 +29,28 @@ internal static class PdfLayout
     {
         if (string.IsNullOrWhiteSpace(logoPath) || environment.WebRootPath is null) return null;
         var relative = logoPath.Trim().Replace('\\', '/').TrimStart('~', '/');
-        var full = Path.Combine(environment.WebRootPath, relative);
-        return File.Exists(full) ? File.ReadAllBytes(full) : null;
+        // 候选根：wwwroot（新 LOGO 上传）、仓库根 UploadFile/（旧系统 LOGO 目录）、wwwroot/print-logo
+        var roots = new List<string> { environment.WebRootPath };
+        if (environment.ContentRootPath is not null)
+        {
+            roots.Add(Path.Combine(environment.ContentRootPath, "UploadFile"));
+            roots.Add(Path.Combine(environment.WebRootPath, "print-logo"));
+        }
+        foreach (var root in roots)
+        {
+            var full = Path.GetFullPath(Path.Combine(root, relative));
+            var rootFull = Path.GetFullPath(root);
+            // 越界防护：解析后的路径必须仍位于候选根内（LOGO_PATH 为服务端元数据，防御性校验）
+            if (!full.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)) continue;
+            if (File.Exists(full)) return File.ReadAllBytes(full);
+            // print-logo 兜底：旧路径文件名若已迁移到 print-logo，按文件名匹配
+            if (root.EndsWith("print-logo", StringComparison.OrdinalIgnoreCase))
+            {
+                var byName = Path.Combine(root, Path.GetFileName(relative));
+                if (File.Exists(byName)) return File.ReadAllBytes(byName);
+            }
+        }
+        return null;
     }
 
     public static string FormatValue(object? value)
