@@ -1,4 +1,4 @@
-import { IconAdjustmentsHorizontal, IconArrowAutofitWidth, IconCheck, IconColumns, IconFileExport, IconPlus, IconPrinter, IconRefresh, IconRotateClockwise, IconZoomScan } from '@tabler/icons-react'
+import { IconAdjustmentsHorizontal, IconArrowAutofitWidth, IconCheck, IconColumns, IconCopy, IconFileExport, IconPlus, IconPrinter, IconRefresh, IconRotateClockwise, IconSearch, IconZoomScan } from '@tabler/icons-react'
 import { IconEdit } from '@tabler/icons-react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
@@ -21,7 +21,7 @@ import { FieldBrowseLink } from './FieldBrowseLink'
 import { readListState, writeListState } from './listStateUrl'
 
 interface Field { key:string; label:string; dataType:string; width:number; align:string|null; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; isVirtual?:boolean }
-interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean; newUrl?:string|null; modiUrl?:string|null }
+interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean; ifCopy:boolean; searchMaster:boolean; searchDetail:boolean; buttons:{action:string}[]|null; newUrl?:string|null; modiUrl?:string|null }
 interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number }
 interface NavigationGroupDef { index:number; description:string; available:boolean }
 interface ColumnSetting { key:string; label:string; isVisible:boolean; order:number }
@@ -279,6 +279,8 @@ export function DocumentWorkbenchPage() {
   // 路由契约（M86）：NEW_URL/MODI_URL 有值时按元数据跳转，无值回退统一表单
   const openEdit=()=>{if(!active||!definition.data)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));const base=definition.data.modiUrl??`/document-workbench/${moduleId}/edit`;navigate(`${base}${base.includes('?')?'&':'?'}key=${encodeURIComponent(JSON.stringify(key))}`)}
   const openNew=()=>{if(!definition.data?.hasAdd)return;navigate(definition.data.newUrl??`/document-workbench/${moduleId}/new`)}
+  const openCopy=()=>{if(!active||!definition.data?.ifCopy)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));navigate(`/document-workbench/${moduleId}/copy?copyFrom=${encodeURIComponent(JSON.stringify(key))}`)}
+  const openSearchCenter=()=>{navigate(`/search-center/${moduleId}`)}
   const runWorkflow=async(approve:boolean)=>{if(!definition.data||!active)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));try{await apiClient.post(`/document-workbench/${moduleId}/${approve?'approve':'deapprove'}`,{key:JSON.stringify(key)});await queryClient.invalidateQueries({queryKey:['workbench',moduleId,'records']});if(activeKey)void details.refetch()}catch(error){window.alert(error instanceof Error?`${approve?'批核':'解批'}失败：${error.message}`:`${approve?'批核':'解批'}失败。`)}}
   const openPrint=()=>{if(!definition.data||!active)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));window.open(`/print/${moduleId}?key=${encodeURIComponent(JSON.stringify(key))}`,'_blank')}
   const openGroupValues=async(group:NavigationGroupDef)=>{setActiveGroup(group);setGroupValues(null);try{const data=await apiClient.get<{values:string[]}>(`/navigation/${moduleId}/groups/${group.index}/values`);setGroupValues(data.values)}catch{setGroupValues([])}}
@@ -301,6 +303,33 @@ export function DocumentWorkbenchPage() {
   }
   const handleExport=async()=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{query:groupQuery}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:safeConditions},{query:{keyword:keyword||undefined,...sortQuery(safeSort),...groupQuery}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.csv`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
+  // FORM_BUTTONS 业务按钮渲染：动作白名单与服务端一致；未配置（null）时走默认按钮集
+  const renderCommandButton=(action:string,key:number)=>{
+    switch(action){
+      case 'new':return definition.data?.hasAdd?<Button key={key} size="sm" icon={<IconPlus size={16}/>} title="新增" aria-label="新增" onClick={openNew}/>:null
+      case 'edit':return definition.data?.hasEdit&&active?<Button key={key} size="sm" icon={<IconEdit size={16}/>} title="编辑" aria-label="编辑" onClick={openEdit}/>:null
+      case 'copy':return definition.data?.ifCopy&&definition.data?.hasAdd&&active?<Button key={key} size="sm" icon={<IconCopy size={16}/>} title="复制" aria-label="复制" onClick={openCopy}/>:null
+      case 'approve':return definition.data?.hasWorkflow&&active?<Button key={key} size="sm" icon={<IconCheck size={16}/>} title="批核" aria-label="批核" onClick={()=>void runWorkflow(true)}/>:null
+      case 'deapprove':return definition.data?.hasWorkflow&&active?<Button key={key} size="sm" icon={<IconRotateClockwise size={16}/>} title="解批" aria-label="解批" onClick={()=>void runWorkflow(false)}/>:null
+      case 'print':return active?<Button key={key} size="sm" icon={<IconPrinter size={16}/>} title="打印单据" aria-label="打印单据" onClick={openPrint}/>:null
+      case 'export':return <Button key={key} size="sm" icon={<IconFileExport size={16}/>} loading={exporting} title={Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'} aria-label={Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'} onClick={()=>void handleExport()}/>
+      case 'search':return (definition.data?.searchMaster||definition.data?.searchDetail)?<Button key={key} size="sm" icon={<IconSearch size={16}/>} title="通用查询" aria-label="通用查询" onClick={openSearchCenter}/>:null
+      default:return null
+    }
+  }
+  const configuredButtons=definition.data?.buttons&&definition.data.buttons.length>0
+    ?definition.data.buttons.map((button,index)=>renderCommandButton(button.action,index))
+    :<>
+      {definition.data?.hasAdd&&<Button size="sm" icon={<IconPlus size={16}/>} title="新增" aria-label="新增" onClick={openNew}/>}
+      {definition.data?.hasEdit&&active&&<Button size="sm" icon={<IconEdit size={16}/>} title="编辑" aria-label="编辑" onClick={openEdit}/>}
+      {definition.data?.ifCopy&&definition.data?.hasAdd&&active&&<Button size="sm" icon={<IconCopy size={16}/>} title="复制" aria-label="复制" onClick={openCopy}/>}
+      {definition.data?.hasWorkflow&&active&&<>
+        <Button size="sm" icon={<IconCheck size={16}/>} title="批核" aria-label="批核" onClick={()=>void runWorkflow(true)}/>
+        <Button size="sm" icon={<IconRotateClockwise size={16}/>} title="解批" aria-label="解批" onClick={()=>void runWorkflow(false)}/>
+      </>}
+      {active&&<Button size="sm" icon={<IconPrinter size={16}/>} title="打印单据" aria-label="打印单据" onClick={openPrint}/>}
+      <Button size="sm" icon={<IconFileExport size={16}/>} loading={exporting} title={Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'} aria-label={Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'} onClick={()=>void handleExport()}/>
+    </>
 
   return <div className={`erp-workbench-page${definition.data.detailTable?'':' erp-workbench-single'}`}>
     <ErpListCard
@@ -334,14 +363,8 @@ export function DocumentWorkbenchPage() {
           </div>
         )}
         <Button size="sm" icon={<IconArrowAutofitWidth size={16}/>} loading={fitting} title="自适应列宽" aria-label="自适应列宽" onClick={()=>void fitAllColumns()} />
-        {definition.data?.hasAdd&&<Button size="sm" icon={<IconPlus size={16}/>} title="新增" aria-label="新增" onClick={openNew} />}
-        {definition.data?.hasEdit&&active&&<Button size="sm" icon={<IconEdit size={16}/>} title="编辑" aria-label="编辑" onClick={openEdit} />}
-        {definition.data?.hasWorkflow&&active&&<>
-          <Button size="sm" icon={<IconCheck size={16}/>} title="批核" aria-label="批核" onClick={()=>void runWorkflow(true)} />
-          <Button size="sm" icon={<IconRotateClockwise size={16}/>} title="解批" aria-label="解批" onClick={()=>void runWorkflow(false)} />
-        </>}
-        {active&&<Button size="sm" icon={<IconPrinter size={16}/>} title="打印单据" aria-label="打印单据" onClick={openPrint} />}
-        <Button size="sm" icon={<IconFileExport size={16}/>} loading={exporting} title={Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'} aria-label={Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'} onClick={()=>void handleExport()} />
+        {configuredButtons}
+        {(definition.data?.searchMaster||definition.data?.searchDetail)&&<Button size="sm" icon={<IconSearch size={16}/>} title="通用查询" aria-label="通用查询" onClick={openSearchCenter}/>}
         <Button size="sm" icon={<IconRefresh size={16}/>} title="刷新" aria-label="刷新" onClick={()=>{void records.refetch();if(active)void details.refetch()}} />
       </>}
       footer={

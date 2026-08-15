@@ -55,10 +55,11 @@ function detailControlMinWidth(field: FormFieldDefinition): number {
 }
 
 function writableFields(fields: FormFieldDefinition[]): FormFieldDefinition[] {
-  // ONLY_CHOOSE 字段（IS_READONLY=1 但带选择器，如 CURR_ID/TAX_ID）只读不可手输，
-  // 但选择器选中的值必须随保存提交；元数据修复后误标只读字段已改可编辑，此分支仅服务 ONLY_CHOOSE 语义。
+  // 只读可见字段随保存提交（与服务端规则一致）：ONLY_CHOOSE 带选择器字段（CURR_ID/TAX_ID）
+  // 与只读必填联动字段（如 CURR_RATE，由币别带出）必须提交，否则服务端必填校验失败；
+  // displayOnly/serverFilled/虚拟字段仍不提交（服务端维护）。
   return fields.filter(field => field.isVisible && !field.serverFilled && !field.isVirtual && !field.displayOnly
-    && (!field.isReadonly || field.choosers.some(source => source.active && source.table)))
+    && (!field.isReadonly || field.isRequired || field.choosers.some(source => source.active && source.table)))
 }
 
 /** 统一选择器标题：字段标签 + 数据源描述（多选后缀由 UnifiedChooser 内部追加） */
@@ -86,7 +87,9 @@ export function FormEditorPage() {
   const queryClient = useQueryClient()
   const isEdit = location.pathname.endsWith('/edit')
   const isView = location.pathname.endsWith('/view')
+  const isCopy = location.pathname.endsWith('/copy')
   const keyParam = searchParams.get('key')
+  const copyFrom = searchParams.get('copyFrom')
   const originalRef = useRef<Record<string, string>>({})
   const [masterValues, setMasterValues] = useState<Record<string, string>>({})
   const [detailRows, setDetailRows] = useState<Record<string, string>[]>([])
@@ -105,20 +108,20 @@ export function FormEditorPage() {
     queryFn: () => apiClient.get<FormDefinition>(`/document-workbench/${moduleId}/form-definition?mode=${isEdit ? 'edit' : isView ? 'view' : 'new'}`),
   })
   const recordQuery = useQuery({
-    queryKey: ['workbench', moduleId, 'record', keyParam],
-    queryFn: () => apiClient.get<RecordBundle>(`/document-workbench/${moduleId}/record`, { query: { key: keyParam ?? '' } }),
-    enabled: (isEdit || isView) && Boolean(keyParam) && formQuery.isSuccess,
+    queryKey: ['workbench', moduleId, 'record', keyParam ?? copyFrom],
+    queryFn: () => apiClient.get<RecordBundle>(`/document-workbench/${moduleId}/record`, { query: { key: keyParam ?? copyFrom ?? '' } }),
+    enabled: (isEdit || isView || isCopy) && Boolean(keyParam ?? copyFrom) && formQuery.isSuccess,
   })
 
   useEffect(() => {
-    if (!formQuery.data || isEdit || isView) return
+    if (!formQuery.data || isEdit || isView || isCopy) return
     const initial: Record<string, string> = {}
     const defaults = formQuery.data.defaultValues ?? {}
     for (const field of formQuery.data.masterFields) {
       if (field.isVisible) initial[field.key] = defaults[field.key] ?? emptyValue(field)
     }
     setMasterValues(initial)
-  }, [formQuery.data, isEdit, isView])
+  }, [formQuery.data, isEdit, isView, isCopy])
 
   useEffect(() => {
     if (formQuery.data) setActiveTab(formQuery.data.tabs[0]?.no ?? 1)
@@ -130,17 +133,35 @@ export function FormEditorPage() {
     for (const field of formQuery.data.masterFields) {
       if (field.isVisible) master[field.key] = recordQuery.data.master[field.key] == null ? '' : String(recordQuery.data.master[field.key])
     }
+    if (isCopy) {
+      // 复制（IF_COPY）：主键/自动单号由服务端重新生成，CAN_COPY=0 字段不带出；
+      // 应用新增默认值（单别/单号/日期），保存走新增管线
+      for (const field of formQuery.data.masterFields) {
+        if (!field.isVisible) continue
+        if (formQuery.data.masterPkOrder.some(pk => pk.toLowerCase() === field.key.toLowerCase()) || !field.canCopy) master[field.key] = ''
+      }
+      const defaults = formQuery.data.defaultValues ?? {}
+      for (const field of formQuery.data.masterFields) {
+        if (field.isVisible && defaults[field.key] != null) master[field.key] = defaults[field.key]
+      }
+    }
     originalRef.current = {}
     for (const field of writableFields(formQuery.data.masterFields)) originalRef.current[field.key] = master[field.key] ?? ''
     setMasterValues(master)
     setDetailRows(recordQuery.data.details.map(detail => {
       const row: Record<string, string> = {}
       for (const field of formQuery.data?.detailFields ?? []) {
-        if (field.isVisible) row[field.key] = detail[field.key] == null ? '' : String(detail[field.key])
+        if (!field.isVisible) continue
+        // 复制时：主表主键关联列（服务端从主表带入）与 CAN_COPY=0 字段不带出
+        if (isCopy && (formQuery.data.masterPkOrder.some(pk => pk.toLowerCase() === field.key.toLowerCase()) || !field.canCopy)) {
+          row[field.key] = ''
+          continue
+        }
+        row[field.key] = detail[field.key] == null ? '' : String(detail[field.key])
       }
       return row
     }))
-  }, [formQuery.data, recordQuery.data])
+  }, [formQuery.data, recordQuery.data, isCopy])
 
   useEffect(() => {
     if (!dirty) return
@@ -487,13 +508,27 @@ export function FormEditorPage() {
           <div className="erp-form-toolbar">
             {!isView ? (
               <>
+                {isCopy && <span className="small text-secondary align-self-center">复制模式：以选中记录为模板，保存后生成新单据</span>}
                 <Button size="sm" variant="primary" loading={save.isPending} onClick={() => { if (validateClient()) save.mutate() }}>保存</Button>
                 <Button size="sm" onClick={back}>取消</Button>
               </>
             ) : (
               <>
                 <Button size="sm" onClick={back}>返回</Button>
-                {form.hasWorkflow && keyParam && recordQuery.isSuccess && recordQuery.data ? (
+                {form.buttons && form.buttons.length > 0 ? (
+                  form.buttons.map((button, index) => {
+                    if (button.action === 'approve' && form.hasWorkflow && keyParam && recordQuery.data && recordQuery.data.master.CONFIRM_TAG !== true) {
+                      return <Button key={index} size="sm" variant="primary" loading={workflow.isPending} onClick={() => workflow.mutate('approve')}>批核</Button>
+                    }
+                    if (button.action === 'deapprove' && form.hasWorkflow && keyParam && recordQuery.data && recordQuery.data.master.CONFIRM_TAG === true) {
+                      return <Button key={index} size="sm" variant="danger" loading={workflow.isPending} onClick={() => workflow.mutate('deapprove')}>解批</Button>
+                    }
+                    if (button.action === 'print' && keyParam) {
+                      return <Button key={index} size="sm" onClick={openPrint}>打印</Button>
+                    }
+                    return null
+                  })
+                ) : form.hasWorkflow && keyParam && recordQuery.isSuccess && recordQuery.data ? (
                   <>
                     {recordQuery.data.master.CONFIRM_TAG !== true && (
                       <Button size="sm" variant="primary" loading={workflow.isPending} onClick={() => workflow.mutate('approve')}>批核</Button>

@@ -13,6 +13,7 @@ public class FormFieldSelectorTests
         bool cost = false,
         bool secrecy = false,
         bool isVirtual = false,
+        bool canCopy = true,
         bool isPrimaryKey = false,
         IReadOnlyList<FormChooserRow>? choosers = null,
         int tabNo = 1,
@@ -24,7 +25,7 @@ public class FormFieldSelectorTests
         string? options = null,
         bool isPhysical = true) =>
         new(key, $"label-{key}", "nvarchar", 100, null, required, null, null, null,
-            readOnly, visible, false, false, null, choosers ?? [], isVirtual, cost, secrecy, false, isPrimaryKey, null,
+            readOnly, visible, false, false, null, choosers ?? [], isVirtual, cost, secrecy, false, canCopy, isPrimaryKey, null,
             tabNo, formOrder, span, newLine, cellGroup, cellRole, options, isPhysical);
 
     private static IReadOnlySet<string> Set(params string[] values) =>

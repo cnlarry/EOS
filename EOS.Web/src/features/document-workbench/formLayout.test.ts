@@ -9,7 +9,7 @@ function field(key: string, overrides: Partial<FormFieldDefinition> = {}): FormF
     onlyChoose: false, chooseMultiple: false, choosePage: null, choosers: [],
     isPrimaryKey: false, isAutoIncrement: false, isVirtual: false, isCost: false, isSecrecy: false,
     serverFilled: false, maxLength: null,
-    tabNo: 1, formOrder: null, span: 1, newLine: false, cellGroup: null, cellRole: 0, options: [], displayOnly: false,
+    tabNo: 1, formOrder: null, span: 1, newLine: false, cellGroup: null, cellRole: 0, options: [], displayOnly: false, canCopy: true,
     ...overrides,
   }
 }

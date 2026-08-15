@@ -14,6 +14,11 @@ export interface FormOptionItem {
   label: string
 }
 
+/** 工作台/表单业务按钮（解析自 MODULES.FORM_BUTTONS，如 '1=copy;2=approve;3=print'） */
+export interface WorkbenchButton {
+  action: string
+}
+
 /** 表单页签（解析自 MODULES.FORM_TABS，如 '1=基本资料;2=其它'） */
 export interface FormTab {
   no: number
@@ -52,6 +57,8 @@ export interface FormFieldDefinition {
   cellRole: number
   options: FormOptionItem[]
   displayOnly: boolean
+  /** 复制（IF_COPY）时是否带出该字段值（FIELDS.CAN_COPY，默认 true） */
+  canCopy: boolean
 }
 
 /** 统一表单定义（按当前用户权限过滤后的录入视图） */
@@ -70,9 +77,14 @@ export interface FormDefinition {
   detailDfVerify: string
   tabs: FormTab[]
   columns: number
-  buttons: string | null
+  buttons: WorkbenchButton[] | null
   /** 模块是否具备批核工作流（MODULES.UPDATE_SP → ModuleBusinessMap.WorkflowSproc 非空） */
   hasWorkflow: boolean
+  /** 模块允许复制（MODULES.IF_COPY） */
+  ifCopy: boolean
+  /** 模块纳入通用查询（MODULES.SEARCH_1/SEARCH_2） */
+  searchMaster: boolean
+  searchDetail: boolean
   /** 新增模式服务端默认值（单别/单号/日期等），edit 模式为空对象 */
   defaultValues: Record<string, string>
 }

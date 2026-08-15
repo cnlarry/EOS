@@ -16,6 +16,8 @@ public sealed record SaveWorkbenchColumns(IReadOnlyList<string> Master, IReadOnl
 public sealed record UpdateColumnWidthsRequest(IReadOnlyDictionary<string, int> Master, IReadOnlyDictionary<string, int>? Detail);
 public sealed record WorkbenchFieldSummary(string Key,string Label,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsCost,bool IsSecrecy,bool IsVirtual);
 public sealed record FieldChooserSource(bool Active,string? Table,string? Description,int? ModuleId,string? Filter,string? ReturnMapping);
+/// <summary>工作台/表单业务按钮（解析自 MODULES.FORM_BUTTONS，如 '1=copy;2=approve;3=print'）。</summary>
+public sealed record WorkbenchButton(string Action);
 public sealed record WorkbenchFieldMetadata(string Key,string Label,string DataType,int Width,string? Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool IsVirtual,string? VirtualExpression,bool CanCopy,bool IsAutoIncrement,string? ConvertFunction,string? DataSourceSql,string? LastUpdatedBy,DateTime? LastUpdatedAt,int TabNo=1,int? FormOrder=null,int Span=1,bool NewLine=false,string? CellGroup=null,int CellRole=0,string? FormOptions=null);
 public sealed record UpdateWorkbenchFieldMetadata(string Label,string DataType,int Width,string Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool CanCopy,WorkbenchFieldMetadata? Original,int TabNo=1,int? FormOrder=null,int Span=1,bool NewLine=false,string? CellGroup=null,int CellRole=0,string? FormOptions=null);
 public sealed record WorkbenchDefinition(
@@ -43,15 +45,19 @@ public sealed record WorkbenchDefinition(
     [property: JsonIgnore] IReadOnlyList<string> GroupExpressions = default!,
     string? FormTabs = null,
     int? FormColumns = null,
-    string? FormButtons = null,
+    [property: JsonPropertyName("buttons")]
+    IReadOnlyList<WorkbenchButton>? FormButtons = null,
+    bool IfCopy = false,
+    bool SearchMaster = false,
+    bool SearchDetail = false,
     string? NewUrl = null,
     string? ModiUrl = null);
 /// <summary>统一表单页签定义（解析自 MODULES.FORM_TABS，如 '1=基本资料;2=其它'）。</summary>
 public sealed record FormTabDefinition(int No, string Title);
 /// <summary>统一表单下拉选项（解析自 FIELDS.FORM_OPTIONS，如 'O=外含税;I=内含税'）。</summary>
 public sealed record FormOptionItem(string Value, string Label);
-public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify, IReadOnlyList<FormTabDefinition> Tabs = default!, int Columns = 2, string? Buttons = null, IReadOnlyDictionary<string,string> DefaultValues = default!, bool HasWorkflow = false);
-public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength, int TabNo = 1, int? FormOrder = null, int Span = 1, bool NewLine = false, string? CellGroup = null, int CellRole = 0, IReadOnlyList<FormOptionItem>? Options = null, bool DisplayOnly = false);
+public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify, IReadOnlyList<FormTabDefinition> Tabs = default!, int Columns = 2, IReadOnlyList<WorkbenchButton>? Buttons = null, IReadOnlyDictionary<string,string> DefaultValues = default!, bool HasWorkflow = false, bool IfCopy = false, bool SearchMaster = false, bool SearchDetail = false);
+public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength, int TabNo = 1, int? FormOrder = null, int Span = 1, bool NewLine = false, string? CellGroup = null, int CellRole = 0, IReadOnlyList<FormOptionItem>? Options = null, bool DisplayOnly = false, bool CanCopy = true);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
 public sealed record WorkbenchQueryCondition(string Field, string Operator, string? Value, string? ValueTo, IReadOnlyList<string>? Values, string Logic = "and");
 public sealed record WorkbenchQuery(IReadOnlyList<WorkbenchQueryCondition> Conditions);
@@ -72,6 +78,29 @@ public sealed class DocumentWorkbenchRepository(
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// 解析 MODULES.FORM_BUTTONS（如 '1=copy;2=approve;3=print'）为受控按钮列表。
+    /// 格式：分号分隔的「序号=动作」；动作白名单 new/edit/delete/copy/approve/deapprove/print/export/search；
+    /// 空/非法条目忽略（服务端白名单，不信任配置原文）；空配置返回 null（前端走默认按钮集）。
+    /// </summary>
+    private static IReadOnlyList<WorkbenchButton>? ParseFormButtons(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "new", "edit", "delete", "copy", "approve", "deapprove", "print", "export", "search",
+        };
+        var result = new List<WorkbenchButton>();
+        foreach (var part in raw.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            var action = eq >= 0 ? part[(eq + 1)..].Trim() : part.Trim();
+            if (allowed.Contains(action))
+                result.Add(new WorkbenchButton(action));
+        }
+        return result.Count > 0 ? result : null;
+    }
     /// <summary>
     /// 选择器 CHOOSE_FILTER 跨表 JOIN 白名单：外键表名 → 与查询表同名的关联列。
     /// 旧系统过滤器常引用 CLIENT_PRICE_M/PRODUCT 等表（如"仅客户计价 + 启用料号"），
@@ -111,7 +140,7 @@ public sealed class DocumentWorkbenchRepository(
         await using var connection = CreateConnection(); await connection.OpenAsync(token);
         const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,UPDATE_SP,AFTERSAVE_SP,AUTO_APPROVE," +
                            "GROUP1,GROUP_EXP1,GROUP2,GROUP_EXP2,GROUP3,GROUP_EXP3,GROUP4,GROUP_EXP4,GROUP5,GROUP_EXP5," +
-                           "FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,NEW_URL " +
+                           "FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,NEW_URL,IF_COPY,SEARCH_1,SEARCH_2 " +
                            "FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection); command.Parameters.Add("@ModuleId", SqlDbType.Int).Value=moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -141,6 +170,9 @@ public sealed class DocumentWorkbenchRepository(
         var formColumns = reader.IsDBNull(23) ? (int?)null : (int)reader.GetByte(23);
         var formButtons = reader.IsDBNull(24) ? null : reader.GetString(24).Trim();
         var newUrlRaw = reader.IsDBNull(25) ? string.Empty : reader.GetString(25).Trim();
+        var ifCopy = !reader.IsDBNull(26) && reader.GetBoolean(26);
+        var searchMaster = !reader.IsDBNull(27) && reader.GetBoolean(27);
+        var searchDetail = !reader.IsDBNull(28) && reader.GetBoolean(28);
         await reader.CloseAsync();
         if (!ModuleRouteValidator.IsWorkbenchUrl(url) || !Identifier.IsMatch(master) || (detail is not null && !Identifier.IsMatch(detail)))
         {
@@ -196,7 +228,10 @@ public sealed class DocumentWorkbenchRepository(
             groupExpressions,
             string.IsNullOrWhiteSpace(formTabs) ? null : formTabs,
             formColumns,
-            string.IsNullOrWhiteSpace(formButtons) ? null : formButtons,
+            ParseFormButtons(formButtons),
+            ifCopy,
+            searchMaster,
+            searchDetail,
             resolvedNewUrl,
             resolvedModiUrl);
         logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
@@ -798,7 +833,8 @@ public sealed class DocumentWorkbenchRepository(
         var defaultValues = await BuildNewDefaultsAsync(connection,definition,masterFields,mode,token);
         return new FormDefinition(definition.ModuleId,definition.Title,definition.MasterTable,definition.DetailTable,
             definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns,definition.DetailNoFields,detailDfVerify,
-            tabs,columns,definition.FormButtons,defaultValues,definition.HasWorkflow);
+            tabs,columns,definition.FormButtons,defaultValues,definition.HasWorkflow,
+            definition.IfCopy,definition.SearchMaster,definition.SearchDetail);
     }
 
     /// <summary>
@@ -862,6 +898,7 @@ public sealed class DocumentWorkbenchRepository(
                    f.CHOOSE_FILTER4,
                    CAST(COALESCE(f.IS_VIRTUAL,0) AS bit) AS IS_VIRTUAL,CAST(COALESCE(f.IS_COST,0) AS bit) AS IS_COST,
                    CAST(COALESCE(f.IS_SECRECY,0) AS bit) AS IS_SECRECY,CAST(COALESCE(f.IS_AUTOINC,0) AS bit) AS IS_AUTOINC,
+                   CAST(COALESCE(f.CAN_COPY,1) AS bit) AS CAN_COPY,
                    d.F_IDX,CAST(CASE WHEN pk.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PK,
                    col.CHARACTER_MAXIMUM_LENGTH AS MAX_LENGTH,
                    CAST(COALESCE(f.FORM_TAB_NO,1) AS int) AS FORM_TAB_NO,
@@ -927,6 +964,7 @@ public sealed class DocumentWorkbenchRepository(
             reader.GetBoolean(reader.GetOrdinal("IS_COST")),
             reader.GetBoolean(reader.GetOrdinal("IS_SECRECY")),
             reader.GetBoolean(reader.GetOrdinal("IS_AUTOINC")),
+            reader.GetBoolean(reader.GetOrdinal("CAN_COPY")),
             reader.GetBoolean(reader.GetOrdinal("IS_PK")),
             reader.GetNullableInt32("MAX_LENGTH"),
             reader.GetInt32(reader.GetOrdinal("FORM_TAB_NO")),
