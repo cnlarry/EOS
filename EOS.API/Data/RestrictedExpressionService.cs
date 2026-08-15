@@ -112,6 +112,7 @@ public sealed class RestrictedExpressionService(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        string? generatedSql = null;
         try
         {
             var (sql, parameters) = kind switch
@@ -121,6 +122,7 @@ public sealed class RestrictedExpressionService(
                 RestrictedExpressionKind.DataSourceSql => BuildDataSourcePreviewSql(value),
                 _ => throw new InvalidOperationException("未知表达式类型。"),
             };
+            generatedSql = sql;
             await using var command = new SqlCommand(sql, connection);
             foreach (var (name, paramValue) in parameters)
                 command.Parameters.AddWithValue(name, paramValue);
@@ -140,7 +142,7 @@ public sealed class RestrictedExpressionService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "受控表达式预览失败 kind={Kind} table={Table} field={Field}", kind, table, field);
-            return new(false, [$"预览执行失败：{ex.Message}"], [], null, stopwatch.ElapsedMilliseconds);
+            return new(false, [$"预览执行失败：{ex.Message}（SQL：{generatedSql}）"], [], null, stopwatch.ElapsedMilliseconds);
         }
     }
 
@@ -306,7 +308,7 @@ public sealed class RestrictedExpressionService(
             refs.Add((refTable, refColumn));
         else
             foreach (var item in arithmeticTokens!.Where(item => item.Kind == "Ref"))
-                refs.Add((item.Table!, item.Column!));
+                refs.Add((item.Table ?? table, item.Column!));
         var referencedTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var hasCrossTable = refs.Any(item => !item.Table.Equals(table, StringComparison.OrdinalIgnoreCase));
         await using var connection = connections.Create();
@@ -426,9 +428,9 @@ public sealed class RestrictedExpressionService(
         }
         else if (VirtualArithmeticParser.TryParse(expression, out arithmeticTokens, out _))
         {
-            fragment = RenderArithmeticFragment(arithmeticTokens);
-            hasCrossTable = arithmeticTokens.Any(item => item.Kind == "Ref" && !item.Table!.Equals(table, StringComparison.OrdinalIgnoreCase));
-            hasBaseRef = arithmeticTokens.Any(item => item.Kind == "Ref" && item.Table!.Equals(table, StringComparison.OrdinalIgnoreCase));
+            fragment = RenderArithmeticFragment(arithmeticTokens, table);
+            hasCrossTable = arithmeticTokens.Any(item => item.Kind == "Ref" && item.Table is not null && !item.Table.Equals(table, StringComparison.OrdinalIgnoreCase));
+            hasBaseRef = arithmeticTokens.Any(item => item.Kind == "Ref" && (item.Table is null || item.Table.Equals(table, StringComparison.OrdinalIgnoreCase)));
         }
         else
         {
@@ -461,19 +463,19 @@ public sealed class RestrictedExpressionService(
         return ($"SELECT TOP 20 {fragment} AS [{field}] {(fromClause.Length == 0 ? string.Empty : $"FROM {fromClause}")};", []);
     }
 
-    private static string RenderArithmeticFragment(IReadOnlyList<VirtualArithmeticToken> tokens)
+    private static string RenderArithmeticFragment(IReadOnlyList<VirtualArithmeticToken> tokens, string baseTable)
     {
-        var builder = new System.Text.StringBuilder();
+        var parts = new List<string>();
         foreach (var token in tokens)
         {
             if (token.Kind == "Ref")
-                builder.Append($"[{token.Table}].[{token.Column}]");
+                parts.Add($"[{token.Table ?? baseTable}].[{token.Column}]");
             else if (token.Kind == "String")
-                builder.Append($"N'{token.Text.Replace("'", "''")}'");
+                parts.Add($"N'{token.Text.Replace("'", "''")}'");
             else
-                builder.Append(token.Text);
+                parts.Add(token.Text);
         }
-        return builder.ToString();
+        return string.Join(' ', parts);
     }
 
     internal static bool TryParseDataSourceSql(

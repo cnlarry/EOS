@@ -146,7 +146,7 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
                     unresolved.Add(field.Key);
                     continue;
                 }
-                var fragment = new System.Text.StringBuilder();
+                var fragmentParts = new List<string>();
                 var arithNeeded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var arithmeticOk = true;
                 foreach (var exprToken in tokens)
@@ -155,7 +155,7 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
                     {
                         string alias;
                         string targetTable;
-                        if (exprToken.Table!.Equals(table, StringComparison.OrdinalIgnoreCase))
+                        if (exprToken.Table is null || exprToken.Table.Equals(table, StringComparison.OrdinalIgnoreCase))
                         {
                             alias = baseAlias;
                             targetTable = table;
@@ -176,10 +176,10 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
                             arithmeticOk = false;
                             break;
                         }
-                        fragment.Append($"[{alias}].[{exprToken.Column}]");
+                        fragmentParts.Add($"[{alias}].[{exprToken.Column}]");
                         continue;
                     }
-                    fragment.Append(exprToken.Kind == "String"
+                    fragmentParts.Add(exprToken.Kind == "String"
                         ? $"N'{exprToken.Text.Replace("'", "''")}'"
                         : exprToken.Text);
                 }
@@ -188,7 +188,7 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
                     unresolved.Add(field.Key);
                     continue;
                 }
-                candidate.Add((field, null, null, fragment.ToString(), arithNeeded));
+                candidate.Add((field, null, null, string.Join(' ', fragmentParts), arithNeeded));
                 continue;
             }
             if (reference.Equals(table, StringComparison.OrdinalIgnoreCase))

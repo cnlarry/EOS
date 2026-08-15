@@ -1319,6 +1319,14 @@ public sealed class DocumentWorkbenchRepository(
         var originalState=await ReadConfirmStateAsync(connection,definition.MasterTable,keyCondition,token);
         if(originalState is null)
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
+        // 解批前置校验（旧 P_WF_GET_NOBACK_STATE 的受控 C# 等价）：
+        // MODULES.NOT_BACK_FIELDS(_M) 配置字段存在"已发生业务"值（CAST(字段 AS varchar(100))>'0'）时禁止解批。
+        if(!approve && originalState.Value.Tag==true)
+        {
+            var noBack=await CheckNotBackFieldsAsync(connection,definition,keyValues,token);
+            if(noBack is not null)
+                return noBack;
+        }
         var confirmSql=approve
             ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};"
             : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyCondition};";
@@ -1343,6 +1351,98 @@ public sealed class DocumentWorkbenchRepository(
         await WriteAuditAsync(connection,null,definition.ModuleId,string.Join(',',keyValues),
             approve?"APPROVE":"DEAPPROVE",approve?"批核":"解批",userId,token);
         return RecordSaveResult.Success(keyValues);
+    }
+
+    /// <summary>
+    /// 解批前置校验（旧 P_WF_GET_NOBACK_STATE 的受控 C# 等价，仅解批路径）。
+    /// MODULES.NOT_BACK_FIELDS(_M) 配置字段存在"已发生业务"值（CAST(字段 AS varchar(100))>'0'）时禁止解批。
+    /// 安全边界：表名来自工作台定义（已校验）；字段名来自服务端 MODULES 元数据并经
+    /// 标识符正则 + INFORMATION_SCHEMA 物理列存在性双重白名单校验；主键条件沿用
+    /// ControlledSprocInvoker.BuildKeyCondition（转义常量，与批核/解批 SP 调用一致）；
+    /// 不拼接任何客户端输入。字段描述取 FIELDS.F_DESC 用于业务提示；
+    /// 配置了但物理不存在的字段跳过并记日志（防御元数据漂移）。
+    /// </summary>
+    private async Task<RecordSaveResult?> CheckNotBackFieldsAsync(
+        SqlConnection connection,
+        WorkbenchDefinition definition,
+        IReadOnlyList<string> keyValues,
+        CancellationToken token)
+    {
+        string masterFields, detailFields;
+        await using (var moduleCommand = new SqlCommand(
+            "SELECT LTRIM(RTRIM(ISNULL(NOT_BACK_FIELDS_M,''))),LTRIM(RTRIM(ISNULL(NOT_BACK_FIELDS,''))) " +
+            "FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;", connection))
+        {
+            moduleCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = definition.ModuleId;
+            await using var reader = await moduleCommand.ExecuteReaderAsync(token);
+            if(!await reader.ReadAsync(token)) return null;
+            masterFields = reader.GetString(0);
+            detailFields = reader.GetString(1);
+        }
+
+        if(string.IsNullOrWhiteSpace(masterFields) && string.IsNullOrWhiteSpace(detailFields))
+            return null;
+
+        var blocked = new List<string>();
+        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
+        if(!string.IsNullOrWhiteSpace(masterFields) && !string.IsNullOrWhiteSpace(definition.MasterTable))
+            await CheckNotBackTableAsync(connection, definition.ModuleId, definition.MasterTable, masterFields, keyCondition, blocked, token);
+        if(!string.IsNullOrWhiteSpace(detailFields) && !string.IsNullOrWhiteSpace(definition.DetailTable))
+            await CheckNotBackTableAsync(connection, definition.ModuleId, definition.DetailTable!, detailFields, keyCondition, blocked, token);
+
+        if(blocked.Count == 0) return null;
+        return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "NOBACK_BLOCKED",
+            $"单据存在已发生的业务数据（{string.Join("、", blocked)}），不能解批。");
+    }
+
+    private async Task CheckNotBackTableAsync(
+        SqlConnection connection,
+        int moduleId,
+        string table,
+        string fieldsCsv,
+        string keyCondition,
+        List<string> blocked,
+        CancellationToken token)
+    {
+        var fields = fieldsCsv.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Where(field => Identifier.IsMatch(field)).ToArray();
+        if(fields.Length == 0) return;
+
+        // 物理列存在性校验（服务端白名单）：只保留真实存在的列
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using (var columnCommand = new SqlCommand(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table;", connection))
+        {
+            columnCommand.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
+            await using var reader = await columnCommand.ExecuteReaderAsync(token);
+            while(await reader.ReadAsync(token)) existing.Add(reader.GetString(0));
+        }
+        var valid = fields.Where(field => existing.Contains(field)).ToArray();
+        foreach(var missing in fields.Where(field => !existing.Contains(field)))
+            logger.LogWarning("解批前置校验字段物理不存在，已跳过 module={ModuleId} table={Table} field={Field}",
+                moduleId, table, missing);
+        if(valid.Length == 0) return;
+
+        // 字段描述（FIELDS.F_DESC）用于业务提示
+        var labels = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+        var inClause = string.Join(",", valid.Select((_, index) => $"@f{index}"));
+        await using (var descCommand = new SqlCommand(
+            $"SELECT LTRIM(RTRIM(F_ID)),LTRIM(RTRIM(ISNULL(F_DESC,''))) FROM dbo.FIELDS WITH (NOLOCK) " +
+            $"WHERE LTRIM(RTRIM(T_ID))=@Table AND F_ID IN ({inClause});", connection))
+        {
+            descCommand.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
+            for(var i = 0; i < valid.Length; i++)
+                descCommand.Parameters.Add($"@f{i}", SqlDbType.NVarChar, 100).Value = valid[i];
+            await using var reader = await descCommand.ExecuteReaderAsync(token);
+            while(await reader.ReadAsync(token)) labels[reader.GetString(0)] = reader.GetString(1);
+        }
+
+        var predicates = string.Join(" OR ", valid.Select(field => $"CAST([{field}] AS varchar(100))>'0'"));
+        await using var checkCommand = new SqlCommand(
+            $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyCondition} AND ({predicates});", connection);
+        var count = Convert.ToInt64(await checkCommand.ExecuteScalarAsync(token));
+        if(count > 0)
+            blocked.AddRange(valid.Select(field => labels.TryGetValue(field, out var label) && label.Length > 0 ? label : field));
     }
 
     private static async Task<(bool? Tag,string? Person,DateTime? Date)?> ReadConfirmStateAsync(
