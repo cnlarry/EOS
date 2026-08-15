@@ -116,7 +116,7 @@ public sealed class RestrictedExpressionService(
         {
             var (sql, parameters) = kind switch
             {
-                RestrictedExpressionKind.VirtualExp => BuildVirtualPreviewSql(connection, table, value, token).GetAwaiter().GetResult(),
+                RestrictedExpressionKind.VirtualExp => BuildVirtualPreviewSql(connection, table, field, value, token).GetAwaiter().GetResult(),
                 RestrictedExpressionKind.ConvertFunction => BuildConvertPreviewSql(table, field, value),
                 RestrictedExpressionKind.DataSourceSql => BuildDataSourcePreviewSql(value),
                 _ => throw new InvalidOperationException("未知表达式类型。"),
@@ -285,47 +285,78 @@ public sealed class RestrictedExpressionService(
 
     private async Task ValidateVirtualExpAsync(string table, string expression, List<string> errors, List<string> hints, CancellationToken token)
     {
-        if (!VirtualExpressionParser.TryParseExpression(expression, out var refTable, out var refColumn))
+        IReadOnlyList<VirtualArithmeticToken>? arithmeticTokens = null;
+        var simple = VirtualExpressionParser.TryParseExpression(expression, out var refTable, out var refColumn);
+        if (!simple)
         {
-            errors.Add("虚拟表达式仅支持「表.列」单跨表取值（如 CLIENT.CLIENT_NAME）。");
-            return;
+            // P5：受控算术/常量子集（列引用 + 数值 + 四则运算 + 括号；字符串常量独立使用）
+            if (!VirtualArithmeticParser.TryParse(expression, out arithmeticTokens, out var parseError))
+            {
+                errors.Add($"虚拟表达式不支持：{parseError}");
+                return;
+            }
         }
         if (!Identifier.IsMatch(table))
         {
             errors.Add("基表名无效。");
             return;
         }
+        var refs = new List<(string Table, string Column)>();
+        if (simple)
+            refs.Add((refTable, refColumn));
+        else
+            foreach (var item in arithmeticTokens!.Where(item => item.Kind == "Ref"))
+                refs.Add((item.Table!, item.Column!));
+        var referencedTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var hasCrossTable = refs.Any(item => !item.Table.Equals(table, StringComparison.OrdinalIgnoreCase));
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
-        string? relation;
-        await using (var relationCommand = new SqlCommand(
-            "SELECT LTRIM(RTRIM(ISNULL(QUERY_RELATION,''))) FROM dbo.TABLES WITH (NOLOCK) WHERE LTRIM(RTRIM(T_ID))=@Table;",
-            connection))
+        IReadOnlyList<VirtualJoin> joins = [];
+        if (hasCrossTable)
         {
-            relationCommand.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table.Trim();
-            relation = await relationCommand.ExecuteScalarAsync(token) as string;
+            string? relation;
+            await using (var relationCommand = new SqlCommand(
+                "SELECT LTRIM(RTRIM(ISNULL(QUERY_RELATION,''))) FROM dbo.TABLES WITH (NOLOCK) WHERE LTRIM(RTRIM(T_ID))=@Table;",
+                connection))
+            {
+                relationCommand.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table.Trim();
+                relation = await relationCommand.ExecuteScalarAsync(token) as string;
+            }
+            if (string.IsNullOrWhiteSpace(relation))
+            {
+                errors.Add($"表 {table} 未配置 QUERY_RELATION，无法解析跨表引用。");
+                return;
+            }
+            if (!VirtualExpressionParser.TryParseRelation(relation, table, out joins, out var relationError))
+            {
+                errors.Add($"QUERY_RELATION 解析失败：{relationError}");
+                return;
+            }
         }
-        if (string.IsNullOrWhiteSpace(relation))
+        foreach (var (refTableName, refColumnName) in refs)
         {
-            errors.Add($"表 {table} 未配置 QUERY_RELATION，虚拟表达式无法解析关联。");
-            return;
+            referencedTables.Add(refTableName);
+            string targetTable;
+            if (refTableName.Equals(table, StringComparison.OrdinalIgnoreCase))
+            {
+                targetTable = table;
+            }
+            else
+            {
+                var join = joins.FirstOrDefault(candidate => candidate.Table.Equals(refTableName, StringComparison.OrdinalIgnoreCase)
+                    || candidate.Alias.Equals(refTableName, StringComparison.OrdinalIgnoreCase));
+                if (join is null)
+                {
+                    errors.Add($"表 {refTableName} 不在 {table} 的 QUERY_RELATION 白名单内。");
+                    continue;
+                }
+                targetTable = join.Table;
+            }
+            if (!await ColumnExistsAsync(connection, targetTable, refColumnName, token))
+                errors.Add($"列 {refTableName}.{refColumnName} 在物理表中不存在。");
         }
-        if (!VirtualExpressionParser.TryParseRelation(relation, table, out var joins, out var relationError))
-        {
-            errors.Add($"QUERY_RELATION 解析失败：{relationError}");
-            return;
-        }
-        var referenced = joins.FirstOrDefault(join => join.Table.Equals(refTable, StringComparison.OrdinalIgnoreCase)
-            || join.Alias.Equals(refTable, StringComparison.OrdinalIgnoreCase));
-        if (referenced is null)
-        {
-            errors.Add($"表 {refTable} 不在 {table} 的 QUERY_RELATION 白名单内。");
-            return;
-        }
-        if (!await ColumnExistsAsync(connection, referenced.Table, refColumn, token))
-            errors.Add($"列 {refTable}.{refColumn} 在物理表中不存在。");
         if (errors.Count == 0)
-            hints.Add($"关联：{referenced.Table}（JOIN 白名单 v{WhiteListVersion}）");
+            hints.Add($"引用：{(referencedTables.Count == 0 ? "(常量)" : string.Join(',', referencedTables))}（白名单 v{WhiteListVersion}）");
     }
 
     internal static string? ValidateConvertFunction(string expression)
@@ -381,20 +412,68 @@ public sealed class RestrictedExpressionService(
     }
 
     private async Task<(string Sql, List<(string Name, object? Value)> Parameters)> BuildVirtualPreviewSql(
-        SqlConnection connection, string table, string expression, CancellationToken token)
+        SqlConnection connection, string table, string field, string expression, CancellationToken token)
     {
-        VirtualExpressionParser.TryParseExpression(expression, out var refTable, out var refColumn);
-        string? relation;
-        await using (var relationCommand = new SqlCommand(
-            "SELECT LTRIM(RTRIM(ISNULL(QUERY_RELATION,''))) FROM dbo.TABLES WITH (NOLOCK) WHERE LTRIM(RTRIM(T_ID))=@Table;",
-            connection))
+        IReadOnlyList<VirtualArithmeticToken>? arithmeticTokens = null;
+        string? fragment;
+        bool hasCrossTable;
+        bool hasBaseRef;
+        if (VirtualExpressionParser.TryParseExpression(expression, out var refTable, out var refColumn))
         {
-            relationCommand.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table.Trim();
-            relation = await relationCommand.ExecuteScalarAsync(token) as string;
+            fragment = $"[{refTable}].[{refColumn}]";
+            hasCrossTable = !refTable.Equals(table, StringComparison.OrdinalIgnoreCase);
+            hasBaseRef = refTable.Equals(table, StringComparison.OrdinalIgnoreCase);
+        }
+        else if (VirtualArithmeticParser.TryParse(expression, out arithmeticTokens, out _))
+        {
+            fragment = RenderArithmeticFragment(arithmeticTokens);
+            hasCrossTable = arithmeticTokens.Any(item => item.Kind == "Ref" && !item.Table!.Equals(table, StringComparison.OrdinalIgnoreCase));
+            hasBaseRef = arithmeticTokens.Any(item => item.Kind == "Ref" && item.Table!.Equals(table, StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            fragment = null;
+            hasCrossTable = false;
+            hasBaseRef = false;
+        }
+        if (fragment is null)
+            return ("SELECT TOP 0 NULL;", []);
+        string fromClause;
+        if (hasCrossTable)
+        {
+            string? relation;
+            await using (var relationCommand = new SqlCommand(
+                "SELECT LTRIM(RTRIM(ISNULL(QUERY_RELATION,''))) FROM dbo.TABLES WITH (NOLOCK) WHERE LTRIM(RTRIM(T_ID))=@Table;",
+                connection))
+            {
+                relationCommand.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table.Trim();
+                relation = await relationCommand.ExecuteScalarAsync(token) as string;
+            }
+            fromClause = string.IsNullOrWhiteSpace(relation) ? $"dbo.[{table}] WITH (NOLOCK)" : relation;
+        }
+        else
+        {
+            // 常量（无引用）不需要 FROM；基表引用用基表
+            fromClause = hasBaseRef ? $"dbo.[{table}] WITH (NOLOCK)" : string.Empty;
         }
         // QUERY_RELATION 本身即受控 LEFT JOIN（解析器已校验），直接作为预览 FROM；
         // 引用列按 别名.列 限定，避免 JOIN 同名歧义
-        return ($"SELECT TOP 20 [{refTable}].[{refColumn}] AS [{refColumn}] FROM {relation};", []);
+        return ($"SELECT TOP 20 {fragment} AS [{field}] {(fromClause.Length == 0 ? string.Empty : $"FROM {fromClause}")};", []);
+    }
+
+    private static string RenderArithmeticFragment(IReadOnlyList<VirtualArithmeticToken> tokens)
+    {
+        var builder = new System.Text.StringBuilder();
+        foreach (var token in tokens)
+        {
+            if (token.Kind == "Ref")
+                builder.Append($"[{token.Table}].[{token.Column}]");
+            else if (token.Kind == "String")
+                builder.Append($"N'{token.Text.Replace("'", "''")}'");
+            else
+                builder.Append(token.Text);
+        }
+        return builder.ToString();
     }
 
     internal static bool TryParseDataSourceSql(
