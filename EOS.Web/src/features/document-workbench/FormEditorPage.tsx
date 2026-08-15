@@ -198,6 +198,22 @@ export function FormEditorPage() {
     },
   })
 
+  const workflow = useMutation({
+    mutationFn: async (action: 'approve' | 'deapprove') => {
+      if (!formQuery.data) throw new Error('表单定义未加载。')
+      const key = buildKey(formQuery.data, masterValues)
+      return apiClient.post<{ key: string[] }>(`/document-workbench/${moduleId}/${action}`, { key })
+    },
+    onSuccess: async (_, action) => {
+      window.alert(action === 'approve' ? '批核成功。' : '解批成功。')
+      await recordQuery.refetch()
+    },
+    onError: cause => {
+      const message = cause instanceof ApiError ? cause.body.message : '操作失败，请稍后重试。'
+      window.alert(message)
+    },
+  })
+
   const validateClient = (): boolean => {
     if (!formQuery.data) return false
     const master = validateMasterFields(formQuery.data.masterFields, masterValues)
@@ -212,6 +228,12 @@ export function FormEditorPage() {
 
   const back = () => {
     navigate(`/document-workbench/${moduleId}`)
+  }
+
+  const openPrint = () => {
+    if (!formQuery.data) return
+    const key = buildKey(formQuery.data, masterValues)
+    window.open(`/print/${moduleId}?key=${encodeURIComponent(JSON.stringify(key))}`, '_blank')
   }
 
   const applyChooser = (field: FormFieldDefinition, row: UnifiedChooserRow) => {
@@ -471,7 +493,17 @@ export function FormEditorPage() {
             ) : (
               <>
                 <Button size="sm" onClick={back}>返回</Button>
-                {/* 浏览模式扩展位：批核 / 解批 / 打印等后续加入 */}
+                {form.hasWorkflow && keyParam && recordQuery.isSuccess && recordQuery.data ? (
+                  <>
+                    {recordQuery.data.master.CONFIRM_TAG !== true && (
+                      <Button size="sm" variant="primary" loading={workflow.isPending} onClick={() => workflow.mutate('approve')}>批核</Button>
+                    )}
+                    {recordQuery.data.master.CONFIRM_TAG === true && (
+                      <Button size="sm" variant="danger" loading={workflow.isPending} onClick={() => workflow.mutate('deapprove')}>解批</Button>
+                    )}
+                    <Button size="sm" onClick={openPrint}>打印</Button>
+                  </>
+                ) : null}
               </>
             )}
           </div>

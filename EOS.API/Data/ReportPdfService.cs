@@ -60,6 +60,8 @@ public sealed class ReportPdfService(IWebHostEnvironment environment, ILogger<Re
                         {
                             if (!string.IsNullOrWhiteSpace(header?.CompanyName))
                                 center.Item().Text(header!.CompanyName).FontSize(14).Bold();
+                            if (!string.IsNullOrWhiteSpace(header?.CompanyNameEn))
+                                center.Item().Text(header!.CompanyNameEn).FontSize(9);
                             center.Item().Text(meta.ReportName).FontSize(12).SemiBold();
                             if (!string.IsNullOrWhiteSpace(header?.HeaderText))
                                 center.Item().Text(header!.HeaderText).FontSize(8);

@@ -50,6 +50,7 @@ const formDefinition: FormDefinition = {
   tabs: [],
   columns: 2,
   buttons: null,
+  hasWorkflow: false,
   defaultValues: {},
 }
 
@@ -83,6 +84,7 @@ function renderEditor(initialEntry: string) {
       { path: '/document-workbench/:moduleId', element: <div>BACK_LIST</div> },
       { path: '/document-workbench/:moduleId/new', element: <FormEditorPage /> },
       { path: '/document-workbench/:moduleId/edit', element: <FormEditorPage /> },
+      { path: '/document-workbench/:moduleId/view', element: <FormEditorPage /> },
     ],
     { initialEntries: [initialEntry] },
   )
@@ -97,6 +99,8 @@ describe('FormEditorPage', () => {
   beforeEach(() => {
     installApiMocks()
     vi.stubGlobal('confirm', vi.fn(() => true))
+    vi.stubGlobal('alert', vi.fn())
+    vi.stubGlobal('open', vi.fn())
   })
 
   afterEach(() => {
@@ -123,6 +127,50 @@ describe('FormEditorPage', () => {
     expect(screen.getByDisplayValue('5')).toBeInTheDocument()
     expect(container.querySelector('input[type="checkbox"]')).toBeChecked()
     expect(screen.queryByText('由系统维护')).not.toBeInTheDocument()
+  })
+
+  it('浏览模式（有工作流、未批核）显示批核/打印，无解批', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: false } }
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    await waitFor(() => expect(screen.getByRole('button', { name: '批核' })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: '解批' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '打印' })).toBeInTheDocument()
+  })
+
+  it('浏览模式（已批核）显示解批/打印，无批核', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: true } }
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    await waitFor(() => expect(screen.getByRole('button', { name: '解批' })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: '批核' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '打印' })).toBeInTheDocument()
+  })
+
+  it('浏览模式点击批核调用 approve 并刷新记录', async () => {
+    const postMock = vi.fn().mockResolvedValue({ key: ['P1', 'A'] })
+    apiClientMock.post.mockImplementation(postMock)
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: false } }
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    const approveButton = await screen.findByRole('button', { name: '批核' })
+    fireEvent.click(approveButton)
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith(
+      '/document-workbench/1209/approve',
+      expect.objectContaining({ key: ['P1', 'A'] }),
+    ))
   })
 
   it('新增模式应用服务端默认值（单别/单号/日期）', async () => {
