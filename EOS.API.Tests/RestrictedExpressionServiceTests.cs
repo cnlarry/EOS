@@ -80,4 +80,33 @@ public class RestrictedExpressionServiceTests
         Assert.False(VirtualExpressionParser.TryParseExpression("CLIENT_NAME", out _, out _));
         Assert.False(VirtualExpressionParser.TryParseExpression("1; DROP TABLE X", out _, out _));
     }
+
+    [Theory]
+    [InlineData("COP_ACCOUNT_M.SUM_AMOUNT-COP_ACCOUNT_M.RECEIVE_AMOUNT", 2)]
+    [InlineData("A.QTY*B.PRICE", 2)]
+    [InlineData("(A.X+B.Y-C.Z)", 3)]
+    [InlineData("A.QTY + 1", 1)]
+    [InlineData("100", 0)]
+    [InlineData("'RMB'", 0)]
+    [InlineData("-A.QTY", 1)]
+    public void VirtualArithmetic_ValidForms_Parse(string expression, int expectedRefs)
+    {
+        Assert.True(VirtualArithmeticParser.TryParse(expression, out var tokens, out var error), error);
+        Assert.Equal(expectedRefs, tokens.Count(token => token.Kind == "Ref"));
+    }
+
+    [Theory]
+    [InlineData("A.QTY+'x'", "字符串常量仅允许独立使用")]
+    [InlineData("SUM(A.QTY)", "裸标识符")]
+    [InlineData("case when A.X=1 then 1 else 0 end", "裸标识符")]
+    [InlineData("A.QTY; DROP TABLE X", "分号")]
+    [InlineData("A.QTY -- x", "分号或注释")]
+    [InlineData("A.QTY +", "不完整")]
+    [InlineData("(A.QTY", "括号不匹配")]
+    [InlineData("A.QTY = B.QTY", "不允许的字符")]
+    public void VirtualArithmetic_InvalidForms_Rejected(string expression, string expectedErrorPart)
+    {
+        Assert.False(VirtualArithmeticParser.TryParse(expression, out _, out var error));
+        Assert.Contains(expectedErrorPart, error);
+    }
 }

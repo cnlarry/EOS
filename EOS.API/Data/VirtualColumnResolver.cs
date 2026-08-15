@@ -134,18 +134,66 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
         }
 
         var byAlias = joins.ToDictionary(join => join.Alias, StringComparer.OrdinalIgnoreCase);
-        var candidate = new List<(WorkbenchField Field, string Alias, string Column)>();
+        var candidate = new List<(WorkbenchField Field, string? Alias, string? Column, string? Fragment, HashSet<string> Needed)>();
         var unresolved = new List<string>();
         foreach (var field in selected)
         {
             if (!VirtualExpressionParser.TryParseExpression(field.VirtualExpression, out var reference, out var column))
             {
-                unresolved.Add(field.Key);
+                // P5：非简单引用走受控算术/常量子集解析（语法白名单 + 表/列物理存在校验）
+                if (!VirtualArithmeticParser.TryParse(field.VirtualExpression ?? string.Empty, out var tokens, out _))
+                {
+                    unresolved.Add(field.Key);
+                    continue;
+                }
+                var fragment = new System.Text.StringBuilder();
+                var arithNeeded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var arithmeticOk = true;
+                foreach (var exprToken in tokens)
+                {
+                    if (exprToken.Kind == "Ref")
+                    {
+                        string alias;
+                        string targetTable;
+                        if (exprToken.Table!.Equals(table, StringComparison.OrdinalIgnoreCase))
+                        {
+                            alias = baseAlias;
+                            targetTable = table;
+                        }
+                        else if (byAlias.TryGetValue(exprToken.Table!, out var arithJoin))
+                        {
+                            alias = arithJoin.Alias;
+                            targetTable = arithJoin.Table;
+                            arithNeeded.Add(arithJoin.Alias);
+                        }
+                        else
+                        {
+                            arithmeticOk = false;
+                            break;
+                        }
+                        if (!await ColumnExistsAsync(targetTable, exprToken.Column!, token))
+                        {
+                            arithmeticOk = false;
+                            break;
+                        }
+                        fragment.Append($"[{alias}].[{exprToken.Column}]");
+                        continue;
+                    }
+                    fragment.Append(exprToken.Kind == "String"
+                        ? $"N'{exprToken.Text.Replace("'", "''")}'"
+                        : exprToken.Text);
+                }
+                if (!arithmeticOk)
+                {
+                    unresolved.Add(field.Key);
+                    continue;
+                }
+                candidate.Add((field, null, null, fragment.ToString(), arithNeeded));
                 continue;
             }
             if (reference.Equals(table, StringComparison.OrdinalIgnoreCase))
             {
-                if (await ColumnExistsAsync(table, column, token)) candidate.Add((field, baseAlias, column));
+                if (await ColumnExistsAsync(table, column, token)) candidate.Add((field, baseAlias, column, null, new HashSet<string>(StringComparer.OrdinalIgnoreCase)));
                 else unresolved.Add(field.Key);
                 continue;
             }
@@ -154,7 +202,7 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
                 unresolved.Add(field.Key);
                 continue;
             }
-            if (await ColumnExistsAsync(join.Table, column, token)) candidate.Add((field, join.Alias, column));
+            if (await ColumnExistsAsync(join.Table, column, token)) candidate.Add((field, join.Alias, column, null, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { join.Alias }));
             else unresolved.Add(field.Key);
         }
 
@@ -168,8 +216,7 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
         var resolvedKeys = new List<string>();
         foreach (var item in candidate)
         {
-            var fieldNeeded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (byAlias.TryGetValue(item.Alias, out var targetJoin)) fieldNeeded.Add(targetJoin.Alias);
+            var fieldNeeded = new HashSet<string>(item.Needed, StringComparer.OrdinalIgnoreCase);
             var changed = true;
             while (changed)
             {
@@ -189,7 +236,7 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
             }
             if (fieldNeeded.All(alias => usable[alias]))
             {
-                selectFragments.Add($"[{item.Alias}].[{item.Column}] AS [{item.Field.Key}]");
+                selectFragments.Add((item.Fragment ?? $"[{item.Alias}].[{item.Column}]") + $" AS [{item.Field.Key}]");
                 resolvedKeys.Add(item.Field.Key);
                 needed.UnionWith(fieldNeeded);
             }
