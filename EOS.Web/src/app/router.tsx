@@ -48,6 +48,7 @@ export const router = createBrowserRouter([
         { path: 'document-workbench/:moduleId/new', element: withSuspense(<FormEditorRoute />) },
         { path: 'document-workbench/:moduleId/edit', element: withSuspense(<FormEditorRoute />) },
         { path: 'document-workbench/:moduleId/view', element: withSuspense(<FormEditorRoute />) },
+        { path: 'document-workbench/:moduleId/copy', element: withSuspense(<FormEditorRoute />) },
         { path: 'reports/:moduleId', element: withSuspense(<ReportViewerRoute />) },
         { path: 'search-center/:moduleId?', element: withSuspense(<SearchCenterPage />) },
         { path: 'import', element: withSuspense(<ImportPage />) },

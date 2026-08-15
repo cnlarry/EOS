@@ -35,7 +35,7 @@ function field(overrides: Partial<FormFieldDefinition>): FormFieldDefinition {
     cellGroup: null,
     cellRole: 0,
     options: [],
-    displayOnly: false,
+    displayOnly: false, canCopy: true,
     ...overrides,
   }
 }

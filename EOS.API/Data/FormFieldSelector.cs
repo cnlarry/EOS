@@ -24,6 +24,7 @@ internal sealed record FormFieldRow(
     bool IsCost,
     bool IsSecrecy,
     bool IsAutoIncrement,
+    bool CanCopy,
     bool IsPrimaryKey,
     int? MaxLength,
     int TabNo = 1,
@@ -179,7 +180,8 @@ internal static class FormFieldSelector
                 string.IsNullOrWhiteSpace(row.CellGroup) ? null : row.CellGroup,
                 row.CellRole,
                 ParseOptions(row.Options),
-                displayOnly));
+                displayOnly,
+                row.CanCopy));
         }
         return result;
     }

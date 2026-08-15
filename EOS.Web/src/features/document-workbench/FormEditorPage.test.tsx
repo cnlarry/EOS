@@ -23,7 +23,7 @@ function field(key: string, label: string, overrides: Partial<FormDefinition['ma
     onlyChoose: false, chooseMultiple: false, choosePage: null, choosers: [],
     isPrimaryKey: false, isAutoIncrement: false, isVirtual: false, isCost: false, isSecrecy: false,
     serverFilled: false, maxLength: null,
-    tabNo: 1, formOrder: null, span: 1, newLine: false, cellGroup: null, cellRole: 0, options: [], displayOnly: false,
+    tabNo: 1, formOrder: null, span: 1, newLine: false, cellGroup: null, cellRole: 0, options: [], displayOnly: false, canCopy: true,
     ...overrides,
   }
 }
@@ -36,6 +36,9 @@ const formDefinition: FormDefinition = {
   hasAdd: true,
   hasEdit: true,
   mode: 'new',
+  ifCopy: true,
+  searchMaster: false,
+  searchDetail: false,
   masterFields: [
     field('PRO_NO', '产品编号', { isRequired: true, isPrimaryKey: true, choosers: [{ active: true, table: 'PRODUCT', description: null, moduleId: null, filter: null, returnMapping: 'txt_PRO_NO=PRO_NO;txt_PRO_NAME=PRO_NAME' }] }),
     field('EDITION', '版次', { isPrimaryKey: true }),
