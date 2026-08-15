@@ -29,7 +29,7 @@ public sealed record ExpressionStaleEntry(string Kind, string Table, string Fiel
 public sealed record ExpressionRescanResult(int WhiteListVersion, int Total, IReadOnlyList<ExpressionStaleEntry> Stale);
 
 /// <summary>
-/// 受控表达式解析工作流（P1/P2，2026-08-15，设计见 docs/plans/controlled-expression-workflow.md）：
+/// 受控表达式解析工作流（P1/P2，2026-08-15，设计见 docs/plans/受控表达式工作流.md）：
 /// VIRTUAL_EXP / CONVERT_FUNCTION / DATASOURCE_SQL 三套受限语言的服务端校验、只读预览与发布审计。
 /// - 校验：语法解析 → 表/列物理存在 → 白名单命中，任何失败不进入运行时；
 /// - 发布：事务内写 FIELDS + SYSDF 审计（TYPE=EXPR_PUBLISH），幂等，乐观锁；
@@ -237,9 +237,10 @@ public sealed class RestrictedExpressionService(
             SELECT LTRIM(RTRIM(T_ID)),LTRIM(RTRIM(F_ID)),
                    LTRIM(RTRIM(ISNULL(VIRTUAL_EXP,''))),LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,''))),LTRIM(RTRIM(ISNULL(DATASOURCE_SQL,'')))
             FROM dbo.FIELDS WITH (NOLOCK)
-            WHERE LTRIM(RTRIM(ISNULL(VIRTUAL_EXP,'')))<>''
-               OR LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,'')))<>''
-               OR LTRIM(RTRIM(ISNULL(DATASOURCE_SQL,'')))<>'';
+            WHERE (LTRIM(RTRIM(ISNULL(VIRTUAL_EXP,'')))<>''
+                OR LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,'')))<>''
+                OR LTRIM(RTRIM(ISNULL(DATASOURCE_SQL,'')))<>'')
+              AND COALESCE(IS_VISIBLE,1)=1;
             """;
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(token);

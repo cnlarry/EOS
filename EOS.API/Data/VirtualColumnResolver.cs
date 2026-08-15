@@ -5,10 +5,13 @@ using System.Text.RegularExpressions;
 namespace EOS.API.Data;
 
 /// <summary>QUERY_RELATION 中一条受控 LEFT JOIN（表/别名/条件全部来自服务端元数据并经严格校验）。</summary>
-public sealed record VirtualJoin(string Table, string Alias, IReadOnlyList<VirtualJoinCondition> Conditions);
+public sealed record VirtualJoin(string Table, string Alias, IReadOnlyList<VirtualJoinCondition> Conditions, IReadOnlyList<VirtualJoinConstant> Constants = default!);
 
 /// <summary>JOIN ON 条件：两侧均为「表.列」恒等比较，无值、无函数、无子查询。</summary>
 public sealed record VirtualJoinCondition(string LeftTable, string LeftColumn, string RightTable, string RightColumn);
+
+/// <summary>JOIN ON 常量条件（C 类，2026-08-15）：表.列 = '字面量'（或数值），用于按常量定位关联行（如 FIELDS.T_ID='HR_WAGE_D'）。</summary>
+public sealed record VirtualJoinConstant(string Table, string Column, string Literal, bool IsString);
 
 /// <summary>虚拟字段受控解析结果：可解析列片段 + 所需 JOIN 片段 + 已解析/未解析字段。</summary>
 public sealed record VirtualColumnResolution(
@@ -37,6 +40,10 @@ internal static class VirtualExpressionParser
     private static readonly Regex Condition = new(
         @"^(?<lt>[A-Za-z_][A-Za-z0-9_]{0,127})\.(?<lc>[A-Za-z_][A-Za-z0-9_]{0,127})\s*=\s*" +
         @"(?<rt>[A-Za-z_][A-Za-z0-9_]{0,127})\.(?<rc>[A-Za-z_][A-Za-z0-9_]{0,127})$",
+        RegexOptions.Compiled);
+    private static readonly Regex ConstantCondition = new(
+        @"^(?<ct>[A-Za-z_][A-Za-z0-9_]{0,127})\.(?<cc>[A-Za-z_][A-Za-z0-9_]{0,127})\s*=\s*" +
+        @"(?:(?<str>'((?:[^']|'')*)')|(?<num>\d+(\.\d+)?))$",
         RegexOptions.Compiled);
 
     /// <summary>仅接受「表.列」单跨表取值；其余一律拒绝。</summary>
@@ -82,21 +89,41 @@ internal static class VirtualExpressionParser
             var alias = match.Groups["alias"].Success ? match.Groups["alias"].Value : table;
             if (!aliases.Add(alias)) { error = $"JOIN 别名重复：{alias}"; return false; }
             var conditions = new List<VirtualJoinCondition>();
+            var constants = new List<VirtualJoinConstant>();
             foreach (var part in Regex.Split(match.Groups["conds"].Value, @"\s+AND\s+", RegexOptions.IgnoreCase))
             {
                 var condition = Condition.Match(part.Trim());
-                if (!condition.Success) { error = $"JOIN 条件无法解析：{part.Trim()}"; return false; }
-                var leftTable = condition.Groups["lt"].Value;
-                var rightTable = condition.Groups["rt"].Value;
-                if (!aliases.Contains(leftTable) || !aliases.Contains(rightTable))
+                if (condition.Success)
                 {
-                    error = $"JOIN 条件引用未声明表/别名：{part.Trim()}";
-                    return false;
+                    var leftTable = condition.Groups["lt"].Value;
+                    var rightTable = condition.Groups["rt"].Value;
+                    if (!aliases.Contains(leftTable) || !aliases.Contains(rightTable))
+                    {
+                        error = $"JOIN 条件引用未声明表/别名：{part.Trim()}";
+                        return false;
+                    }
+                    conditions.Add(new(leftTable, condition.Groups["lc"].Value, rightTable, condition.Groups["rc"].Value));
+                    continue;
                 }
-                conditions.Add(new(leftTable, condition.Groups["lc"].Value, rightTable, condition.Groups["rc"].Value));
+                var constant = ConstantCondition.Match(part.Trim());
+                if (constant.Success)
+                {
+                    var constantTable = constant.Groups["ct"].Value;
+                    if (!aliases.Contains(constantTable))
+                    {
+                        error = $"JOIN 常量条件引用未声明表/别名：{part.Trim()}";
+                        return false;
+                    }
+                    var isString = constant.Groups["str"].Success;
+                    var literal = isString ? constant.Groups["str"].Value : constant.Groups["num"].Value;
+                    constants.Add(new(constantTable, constant.Groups["cc"].Value, literal, isString));
+                    continue;
+                }
+                error = $"JOIN 条件无法解析：{part.Trim()}";
+                return false;
             }
-            if (conditions.Count == 0) { error = $"JOIN 缺少 ON 条件：{segment.Trim()}"; return false; }
-            result.Add(new(table, alias, conditions));
+            if (conditions.Count == 0 && constants.Count == 0) { error = $"JOIN 缺少 ON 条件：{segment.Trim()}"; return false; }
+            result.Add(new(table, alias, conditions, constants));
         }
         joins = result;
         return true;
@@ -248,7 +275,7 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
 
         var joinFragment = string.Concat(
             joins.Where(join => needed.Contains(join.Alias)).Select(join =>
-                $" LEFT JOIN dbo.[{join.Table}] AS [{join.Alias}] WITH (NOLOCK) ON {string.Join(" AND ", join.Conditions.Select(condition => FormatCondition(condition, table, baseAlias)))}"));
+                $" LEFT JOIN dbo.[{join.Table}] AS [{join.Alias}] WITH (NOLOCK) ON {FormatJoinOn(join, table, baseAlias)}"));
         var baseColumns = joins
             .Where(join => needed.Contains(join.Alias))
             .SelectMany(join => join.Conditions)
@@ -266,6 +293,15 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
 
     private static string FormatCondition(VirtualJoinCondition condition, string baseTable, string baseAlias) =>
         $"{FormatSide(condition.LeftTable, condition.LeftColumn, baseTable, baseAlias)} = {FormatSide(condition.RightTable, condition.RightColumn, baseTable, baseAlias)}";
+
+    private static string FormatJoinOn(VirtualJoin join, string baseTable, string baseAlias)
+    {
+        var parts = join.Conditions.Select(condition => FormatCondition(condition, baseTable, baseAlias))
+            .Concat(join.Constants.Select(constant =>
+                $"{FormatSide(constant.Table, constant.Column, baseTable, baseAlias)} = {(constant.IsString ? $"N'{constant.Literal.Replace("'", "''")}'" : constant.Literal)}"))
+            .ToList();
+        return string.Join(" AND ", parts);
+    }
 
     private static string FormatSide(string table, string column, string baseTable, string baseAlias) =>
         table.Equals(baseTable, StringComparison.OrdinalIgnoreCase)
@@ -322,6 +358,19 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
                             }
                         }
                         if (!ok) break;
+                    }
+                    foreach (var constant in join.Constants)
+                    {
+                        var physicalTable = constant.Table.Equals(baseTable, StringComparison.OrdinalIgnoreCase)
+                            ? baseTable
+                            : constant.Table.Equals(alias, StringComparison.OrdinalIgnoreCase)
+                                ? join.Table
+                                : null;
+                        if (physicalTable is null || !await ColumnExistsAsync(physicalTable, constant.Column, token))
+                        {
+                            ok = false;
+                            break;
+                        }
                     }
                 }
                 usable[alias] = ok;

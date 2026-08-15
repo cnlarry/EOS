@@ -123,12 +123,21 @@ public class VirtualExpressionParserTests
     }
 
     [Theory]
+    [InlineData("HR_WAGE WITH (NOLOCK) LEFT JOIN FIELDS WITH (NOLOCK) ON HR_WAGE.WAGE_FIELD=FIELDS.F_ID AND FIELDS.T_ID='HR_WAGE_D'", "HR_WAGE")]
+    [InlineData("HRM_WAGE WITH (NOLOCK) LEFT JOIN FIELDS WITH (NOLOCK) ON HRM_WAGE.WAGE_FIELD=FIELDS.F_ID AND FIELDS.T_ID='HRM_WAGE_D'", "HRM_WAGE")]
+    public void QualifiedLiteralConditionInRelation_IsAccepted(string relation, string baseTable)
+    {
+        Assert.True(VirtualExpressionParser.TryParseRelation(relation, baseTable, out var joins, out var error), error);
+        var fieldsJoin = Assert.Single(joins.Where(join => join.Table.Equals("FIELDS", StringComparison.OrdinalIgnoreCase)));
+        Assert.Single(fieldsJoin.Constants);
+    }
+
+    [Theory]
     [InlineData("HR_WAGE WITH (NOLOCK) LEFT JOIN FIELDS WITH (NOLOCK) ON HR_WAGE.WAGE_FIELD=FIELDS.F_ID AND T_ID='HR_WAGE'")]
-    [InlineData("HRM_WAGE WITH (NOLOCK) LEFT JOIN FIELDS WITH (NOLOCK) ON HRM_WAGE.WAGE_FIELD=FIELDS.F_ID AND FIELDS.T_ID='HRM_WAGE'")]
-    public void LiteralConditionInRelation_IsRejected(string relation)
+    [InlineData("HR_WAGE WITH (NOLOCK) LEFT JOIN FIELDS WITH (NOLOCK) ON HR_WAGE.WAGE_FIELD=FIELDS.F_ID AND FIELDS.T_ID=1+1")]
+    public void UnqualifiedOrComplexLiteralCondition_IsRejected(string relation)
     {
         Assert.False(VirtualExpressionParser.TryParseRelation(relation, "HR_WAGE", out _, out _));
-        Assert.False(VirtualExpressionParser.TryParseRelation(relation, "HRM_WAGE", out _, out _));
     }
 
     [Theory]
