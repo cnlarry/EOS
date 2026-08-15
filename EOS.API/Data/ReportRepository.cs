@@ -48,9 +48,26 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         var detailTable=reader.GetString(3);
         var moduleFilter=reader.GetString(4);
         await reader.DisposeAsync();
-        if(!ModuleRouteValidator.IsReportUrl(url)||!Identifier.IsMatch(masterTable))
+        var sortFields=await ReadDefaultSortFieldsAsync(connection,moduleId,token);
+        var spName=sortFields.Select(field=>SpReference.Match(field))
+            .Where(match=>match.Success)
+            .Select(match=>match.Groups[1].Value.Split('.')[0])
+            .FirstOrDefault(name=>name.StartsWith("P_RPT_",StringComparison.OrdinalIgnoreCase));
+        IReadOnlyList<ReportSpParameter> spParameters=[];
+        if(spName is not null)
         {
-            logger.LogWarning("报表模块校验失败 module={ModuleId} url={Url} master={Master}",moduleId,url,masterTable);
+            spParameters=await ReadSpParametersAsync(connection,spName,token);
+            if(await StoredProcedureExistsAsync(connection,spName,token)&&spParameters.Count==0)
+                spParameters=[]; // 无参 SP 也允许
+            if(!await StoredProcedureExistsAsync(connection,spName,token))spName=null;
+        }
+        // SP 报表（REPORT_SORT 花括号引用 P_RPT_* 且存储过程存在）不依赖主表：
+        // 空 MASTER_TABLE 放行（列来自 SP 结果集，条件来自 sys.parameters），
+        // 非 SP 报表仍要求主表为合法标识符。
+        var isSpReport=spName is not null;
+        if(!ModuleRouteValidator.IsReportUrl(url)||(!Identifier.IsMatch(masterTable)&&!isSpReport))
+        {
+            logger.LogWarning("报表模块校验失败 module={ModuleId} url={Url} master={Master} sp={Sp}",moduleId,url,masterTable,spName);
             return null;
         }
 
@@ -69,20 +86,10 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
                     conditions=conditions.Select(item=>item==condition?item with{SelectSource=null}:item).ToList();
             }
         }
-        var (columns,pkOrder)=await ReadColumnsAsync(connection,masterTable,canViewCost,canViewSecrecy,deniedFields,token);
-        var sortFields=await ReadDefaultSortFieldsAsync(connection,moduleId,token);
-        var spName=sortFields.Select(field=>SpReference.Match(field))
-            .Where(match=>match.Success)
-            .Select(match=>match.Groups[1].Value.Split('.')[0])
-            .FirstOrDefault(name=>name.StartsWith("P_RPT_",StringComparison.OrdinalIgnoreCase));
-        IReadOnlyList<ReportSpParameter> spParameters=[];
-        if(spName is not null)
-        {
-            spParameters=await ReadSpParametersAsync(connection,spName,token);
-            if(await StoredProcedureExistsAsync(connection,spName,token)&&spParameters.Count==0)
-                spParameters=[]; // 无参 SP 也允许
-            if(!await StoredProcedureExistsAsync(connection,spName,token))spName=null;
-        }
+        // 空主表 SP 报表：无 FIELDS 列定义，列由 SP 结果集动态提供（前端/PDF 侧处理）
+        var (columns,pkOrder)=string.IsNullOrWhiteSpace(masterTable)
+            ? (Array.Empty<ReportColumn>(),Array.Empty<string>())
+            : await ReadColumnsAsync(connection,masterTable,canViewCost,canViewSecrecy,deniedFields,token);
         return new ReportDefinition(moduleId,title,masterTable,detailTable.Length>0?detailTable:null,conditions,columns,pkOrder,sortFields,spName,spParameters,
             moduleFilter.Length==0?null:moduleFilter);
     }
