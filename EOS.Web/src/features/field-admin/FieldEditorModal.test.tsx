@@ -105,17 +105,25 @@ describe('FieldEditorModal', () => {
     expect(screen.getByDisplayValue('admin')).toBeInTheDocument()
   })
 
-  it('高级表达式只读展示', async () => {
+  it('高级表达式受控编辑（校验/预览/发布）', async () => {
     renderModal(true, 'edit', {
       load: vi.fn().mockResolvedValue(meta({ virtualExpression: '1+1', convertFunction: 'CONVERT(X)', dataSourceSql: 'SELECT 1' })),
       save: vi.fn(),
+      validateExpression: vi.fn().mockResolvedValue({ ok: true, errors: [], hints: ['白名单 v1'], whiteListVersion: 1 }),
+      previewExpression: vi.fn().mockResolvedValue({ ok: true, errors: [], rows: [{ COL: 'v1' }] }),
+      publishExpression: vi.fn().mockResolvedValue(undefined),
     })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '高级设置' }))
-    const expression = screen.getByDisplayValue('1+1')
-    expect(expression).toBeDisabled()
-    expect(screen.getByDisplayValue('CONVERT(X)')).toBeDisabled()
-    expect(screen.getByDisplayValue('SELECT 1')).toBeDisabled()
+    expect(screen.getByDisplayValue('1+1')).not.toBeDisabled()
+    expect(screen.getByDisplayValue('CONVERT(X)')).not.toBeDisabled()
+    expect(screen.getByDisplayValue('SELECT 1')).not.toBeDisabled()
+    const validateButtons = screen.getAllByRole('button', { name: '校验' })
+    expect(validateButtons).toHaveLength(3)
+    const previewButtons = screen.getAllByRole('button', { name: '预览' })
+    expect(previewButtons).toHaveLength(3)
+    // 发布按钮在值未变化时禁用
+    expect(screen.getAllByRole('button', { name: '发布' }).every((button) => button.hasAttribute('disabled'))).toBe(true)
   })
 
   it('表单布局分区展示并保存 FORM_* 值', async () => {

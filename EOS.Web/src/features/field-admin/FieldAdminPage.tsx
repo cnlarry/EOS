@@ -12,7 +12,7 @@ import { radioSelectColumn } from '../../components/common/erpRadioSelectColumn'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
-import { FieldEditorModal, type FieldInput, type FieldMeta, type SetupLookup } from './FieldEditorModal'
+import { FieldEditorModal, type ExpressionKind, type ExpressionPreview, type ExpressionValidation, type FieldInput, type FieldMeta, type SetupLookup } from './FieldEditorModal'
 import type { FieldAdminTable } from './TableAdminPage'
 import { UnmanagedFieldsModal } from './UnmanagedFieldsModal'
 
@@ -117,6 +117,13 @@ export function FieldAdminPage() {
       .map((item) => ({ value: item.tableId, label: `${item.description} (${item.tableId})` }) as SetupLookup),
     modules: async () => (await apiClient.get<{ id: number; label: string }[]>('/admin/lookups/modules'))
       .map((item) => ({ value: String(item.id), label: item.label }) as SetupLookup),
+    validateExpression: async (kind: ExpressionKind, targetTable: string, fieldId: string, expression: string | null) =>
+      (await apiClient.post(`/admin/fields/expressions/validate`, { kind, table: targetTable, field: fieldId, expression })) as ExpressionValidation,
+    previewExpression: async (kind: ExpressionKind, targetTable: string, fieldId: string, expression: string | null) =>
+      (await apiClient.post(`/admin/fields/expressions/preview`, { kind, table: targetTable, field: fieldId, expression })) as ExpressionPreview,
+    publishExpression: async (kind: ExpressionKind, targetTable: string, fieldId: string, expression: string | null, original: string | null) => {
+      await apiClient.post(`/admin/fields/expressions/publish`, { kind, table: targetTable, field: fieldId, expression, original })
+    },
   }
 
   const items = fields.data?.items ?? []
