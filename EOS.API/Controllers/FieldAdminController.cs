@@ -5,12 +5,17 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace EOS.API.Controllers;
 
+public sealed record ValidateExpressionRequest(string Kind, string Table, string Field, string? Expression);
+public sealed record PreviewExpressionRequest(string Kind, string Table, string Field, string? Expression);
+public sealed record PublishExpressionRequest(string Kind, string Table, string Field, string? Expression, string? Original);
+
 [ApiController]
 [Route("api/admin")]
 public sealed class FieldAdminController(
     FieldAdminRepository repository,
     LegacyRightsRepository rightsRepository,
-    CurrentUserContext userContext) : ControllerBase
+    CurrentUserContext userContext,
+    RestrictedExpressionService expressionService) : ControllerBase
 {
     private const int AdminModuleId = 2302;
 
@@ -110,6 +115,58 @@ public sealed class FieldAdminController(
         if (!await CanSetup(token)) return Forbid();
         await repository.UpdateAsync(table, field, request.Field, request.Original, userContext.EmployeeName, token);
         return NoContent();
+    }
+
+    /// <summary>受控表达式校验（P1）：语法 + 白名单 + 物理存在性，失败返回精确错误。</summary>
+    [HttpPost("fields/expressions/validate")]
+    public async Task<IActionResult> ValidateExpression(ValidateExpressionRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        if (!TryParseKind(request.Kind, out var kind))
+            return BadRequest(new { code = "INVALID_EXPRESSION_KIND", message = "kind 仅支持 virtual_exp / convert_function / datasource_sql。" });
+        return Ok(await expressionService.ValidateAsync(kind, request.Table, request.Field, request.Expression, token));
+    }
+
+    /// <summary>受控表达式只读预览（P2）：绑定模块/主表，TOP 20 抽样。</summary>
+    [HttpPost("fields/expressions/preview")]
+    public async Task<IActionResult> PreviewExpression(PreviewExpressionRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        if (!TryParseKind(request.Kind, out var kind))
+            return BadRequest(new { code = "INVALID_EXPRESSION_KIND", message = "kind 仅支持 virtual_exp / convert_function / datasource_sql。" });
+        return Ok(await expressionService.PreviewAsync(kind, request.Table, request.Field, request.Expression, token));
+    }
+
+    /// <summary>受控表达式发布（P2）：事务写 FIELDS + SYSDF 审计，乐观锁 + 幂等。</summary>
+    [HttpPost("fields/expressions/publish")]
+    public async Task<IActionResult> PublishExpression(PublishExpressionRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        if (!TryParseKind(request.Kind, out var kind))
+            return BadRequest(new { code = "INVALID_EXPRESSION_KIND", message = "kind 仅支持 virtual_exp / convert_function / datasource_sql。" });
+        var outcome = await expressionService.PublishAsync(
+            kind, request.Table, request.Field, request.Expression, request.Original,
+            userContext.EmployeeName, userContext.UserId, token);
+        return outcome.Status switch
+        {
+            PublishExpressionStatus.Published => Ok(new { status = "published" }),
+            PublishExpressionStatus.NoChange => NoContent(),
+            PublishExpressionStatus.Invalid => BadRequest(new { code = "EXPRESSION_INVALID", message = string.Join("；", outcome.Errors) }),
+            PublishExpressionStatus.NotFound => NotFound(new { code = "FIELD_NOT_FOUND", message = "字段元数据不存在。" }),
+            _ => Conflict(new { code = "CONCURRENT_MODIFIED", message = "字段内容已被他人修改，请刷新后重试。" }),
+        };
+    }
+
+    private static bool TryParseKind(string kind, out RestrictedExpressionKind parsed)
+    {
+        parsed = kind.Trim().ToLowerInvariant() switch
+        {
+            "virtual_exp" => RestrictedExpressionKind.VirtualExp,
+            "convert_function" => RestrictedExpressionKind.ConvertFunction,
+            "datasource_sql" => RestrictedExpressionKind.DataSourceSql,
+            _ => (RestrictedExpressionKind)(-1),
+        };
+        return parsed != (RestrictedExpressionKind)(-1);
     }
 
     [HttpDelete("fields/{table}/{field}")]

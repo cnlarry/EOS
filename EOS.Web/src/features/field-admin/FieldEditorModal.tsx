@@ -80,11 +80,29 @@ const ALLOWED_TYPES = [
 
 export type FieldSection = 'display' | 'validation' | 'security' | 'layout' | 'advanced'
 
+export type ExpressionKind = 'virtual_exp' | 'convert_function' | 'datasource_sql'
+
+export interface ExpressionValidation {
+  ok: boolean
+  errors: string[]
+  hints: string[]
+  whiteListVersion: number
+}
+
+export interface ExpressionPreview {
+  ok: boolean
+  errors: string[]
+  rows: Record<string, unknown>[]
+}
+
 export interface FieldEditorEndpoints {
   load: () => Promise<FieldMeta | null>
   save: (input: FieldInput, tableId: string, fieldId: string, original: FieldInput | null) => Promise<void>
   tables?: () => Promise<SetupLookup[]>
   modules?: () => Promise<SetupLookup[]>
+  validateExpression?: (kind: ExpressionKind, tableId: string, fieldId: string, expression: string | null) => Promise<ExpressionValidation>
+  previewExpression?: (kind: ExpressionKind, tableId: string, fieldId: string, expression: string | null) => Promise<ExpressionPreview>
+  publishExpression?: (kind: ExpressionKind, tableId: string, fieldId: string, expression: string | null, original: string | null) => Promise<void>
 }
 
 interface FieldEditorModalProps {
@@ -135,6 +153,13 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
   const [draft, setDraft] = useState<FieldMeta | null>(null)
   const [original, setOriginal] = useState<FieldMeta | null>(null)
   const [section, setSection] = useState<FieldSection>('display')
+  const [exprStatus, setExprStatus] = useState<Record<ExpressionKind, { message: string; tone: 'ok' | 'error' | 'info'; rows?: Record<string, unknown>[] }>>({
+    virtual_exp: { message: '', tone: 'info' },
+    convert_function: { message: '', tone: 'info' },
+    datasource_sql: { message: '', tone: 'info' },
+  })
+  const [exprBusy, setExprBusy] = useState<Record<ExpressionKind, boolean>>({ virtual_exp: false, convert_function: false, datasource_sql: false })
+  const [exprOriginal, setExprOriginal] = useState<Record<ExpressionKind, string | null>>({ virtual_exp: null, convert_function: null, datasource_sql: null })
 
   useEffect(() => {
     if (!open) {
@@ -160,6 +185,11 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
     if (mode === 'edit') {
       setDraft(loadQuery.data)
       setOriginal(loadQuery.data)
+      setExprOriginal({
+        virtual_exp: loadQuery.data.virtualExpression ?? null,
+        convert_function: loadQuery.data.convertFunction ?? null,
+        datasource_sql: loadQuery.data.dataSourceSql ?? null,
+      })
     } else if (mode === 'new') {
       setDraft({ ...loadQuery.data, key: '', tableId })
       setOriginal(null)
@@ -182,8 +212,101 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
     onSuccess: () => onSaved(),
   })
 
+  const expressionValue = (kind: ExpressionKind): string | null => {
+    if (!draft) return null
+    return kind === 'virtual_exp' ? draft.virtualExpression ?? null
+      : kind === 'convert_function' ? draft.convertFunction ?? null
+        : draft.dataSourceSql ?? null
+  }
+  const setExpressionValue = (kind: ExpressionKind, value: string | null) => {
+    if (!draft) return
+    if (kind === 'virtual_exp') setDraft({ ...draft, virtualExpression: value || null })
+    else if (kind === 'convert_function') setDraft({ ...draft, convertFunction: value || null })
+    else setDraft({ ...draft, dataSourceSql: value || null })
+    setExprStatus((prev) => ({ ...prev, [kind]: { message: '', tone: 'info' } }))
+  }
+  const runValidate = async (kind: ExpressionKind) => {
+    if (!draft || !endpoints.validateExpression) return
+    setExprBusy((prev) => ({ ...prev, [kind]: true }))
+    try {
+      const result = await endpoints.validateExpression(kind, draft.tableId, draft.key, expressionValue(kind))
+      setExprStatus((prev) => ({ ...prev, [kind]: {
+        message: result.ok
+          ? `校验通过（白名单 v${result.whiteListVersion}）${result.hints.length ? '：' + result.hints.join('；') : ''}`
+          : result.errors.join('；'),
+        tone: result.ok ? 'ok' : 'error',
+      } }))
+    } catch (error) {
+      setExprStatus((prev) => ({ ...prev, [kind]: { message: `校验失败：${error instanceof Error ? error.message : String(error)}`, tone: 'error' } }))
+    } finally {
+      setExprBusy((prev) => ({ ...prev, [kind]: false }))
+    }
+  }
+  const runPreview = async (kind: ExpressionKind) => {
+    if (!draft || !endpoints.previewExpression) return
+    setExprBusy((prev) => ({ ...prev, [kind]: true }))
+    try {
+      const result = await endpoints.previewExpression(kind, draft.tableId, draft.key, expressionValue(kind))
+      setExprStatus((prev) => ({ ...prev, [kind]: {
+        message: result.ok ? `预览成功（最多 20 行）` : result.errors.join('；'),
+        tone: result.ok ? 'ok' : 'error',
+        rows: result.ok ? result.rows : undefined,
+      } }))
+    } catch (error) {
+      setExprStatus((prev) => ({ ...prev, [kind]: { message: `预览失败：${error instanceof Error ? error.message : String(error)}`, tone: 'error' } }))
+    } finally {
+      setExprBusy((prev) => ({ ...prev, [kind]: false }))
+    }
+  }
+  const runPublish = async (kind: ExpressionKind) => {
+    if (!draft || !endpoints.publishExpression) return
+    const value = expressionValue(kind)
+    if (value === exprOriginal[kind]) {
+      setExprStatus((prev) => ({ ...prev, [kind]: { message: '值与当前一致，无需发布。', tone: 'info' } }))
+      return
+    }
+    setExprBusy((prev) => ({ ...prev, [kind]: true }))
+    try {
+      await endpoints.publishExpression(kind, draft.tableId, draft.key, value, exprOriginal[kind])
+      setExprOriginal((prev) => ({ ...prev, [kind]: value }))
+      setExprStatus((prev) => ({ ...prev, [kind]: { message: '已发布（SYSDF 审计已留痕）。', tone: 'ok' } }))
+    } catch (error) {
+      setExprStatus((prev) => ({ ...prev, [kind]: { message: `发布失败：${error instanceof Error ? error.message : String(error)}`, tone: 'error' } }))
+    } finally {
+      setExprBusy((prev) => ({ ...prev, [kind]: false }))
+    }
+  }
+
   const isNew = mode === 'new'
   const dialogTitle = title ?? (isNew ? '新增字段' : '字段管理')
+
+  const renderExpressionRow = (kind: ExpressionKind, label: string, multiline: boolean, placeholder: string) => {
+    const status = exprStatus[kind]
+    const value = expressionValue(kind) ?? ''
+    const previewColumns = status.rows && status.rows.length > 0 ? Object.keys(status.rows[0]).slice(0, 4) : []
+    return (
+      <div className="col-12">
+        <label className="form-label">{label}</label>
+        {multiline
+          ? <textarea className="form-control font-monospace" rows={3} value={value} placeholder={placeholder} onChange={(event) => setExpressionValue(kind, event.target.value)} />
+          : <input className="form-control" value={value} placeholder={placeholder} onChange={(event) => setExpressionValue(kind, event.target.value)} />}
+        <div className="d-flex gap-2 mt-1 mb-1">
+          <Button size="sm" loading={exprBusy[kind]} onClick={() => void runValidate(kind)} disabled={!endpoints.validateExpression}>校验</Button>
+          <Button size="sm" loading={exprBusy[kind]} onClick={() => void runPreview(kind)} disabled={!endpoints.previewExpression}>预览</Button>
+          <Button size="sm" variant="danger" loading={exprBusy[kind]} onClick={() => void runPublish(kind)} disabled={!endpoints.publishExpression || value.trim() === (exprOriginal[kind] ?? '')}>发布</Button>
+        </div>
+        {status.message && <div className={`small mb-1 ${status.tone === 'ok' ? 'text-success' : status.tone === 'error' ? 'text-danger' : 'text-secondary'}`}>{status.message}</div>}
+        {status.rows && status.rows.length > 0 && (
+          <table className="table table-sm table-bordered mt-1">
+            <thead><tr>{previewColumns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+            <tbody>{status.rows.slice(0, 5).map((row, index) => (
+              <tr key={index}>{previewColumns.map((column) => <td key={column}>{String(row[column] ?? '')}</td>)}</tr>
+            ))}</tbody>
+          </table>
+        )}
+      </div>
+    )
+  }
 
   return open ? (
     <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
@@ -436,7 +559,7 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
                     </>}
                     {section === 'advanced' && <>
                       <div className="col-12">
-                        <div className="alert alert-warning">高级表达式会影响数据读取和单据处理，请仅在充分验证后修改。当前阶段只读展示虚拟表达式、转换函数和数据源 SQL，避免未经解析的表达式直接进入运行时。</div>
+                        <div className="alert alert-warning">高级表达式会影响数据读取和单据处理，请按「校验 → 预览 → 发布」顺序操作；发布走受控解析 + SYSDF 审计，未通过校验的表达式不会进入运行时。转换函数与数据源 SQL 为注册表/受限语法白名单。</div>
                       </div>
                       <div className="col-12 d-flex gap-4">
                         <label className="form-check">
@@ -456,18 +579,9 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
                           <span className="form-check-label">主键标记（IS_PK）</span>
                         </label>
                       </div>
-                      <div className="col-12">
-                        <label className="form-label">虚拟表达式</label>
-                        <textarea className="form-control" rows={3} value={draft.virtualExpression ?? ''} disabled />
-                      </div>
-                      <div className="col-12">
-                        <label className="form-label">转换函数</label>
-                        <input className="form-control" value={draft.convertFunction ?? ''} disabled />
-                      </div>
-                      <div className="col-12">
-                        <label className="form-label">数据源 SQL</label>
-                        <textarea className="form-control font-monospace" rows={3} value={draft.dataSourceSql ?? ''} disabled />
-                      </div>
+                      {renderExpressionRow('virtual_exp', '虚拟表达式（表.列）', true, '如 CLIENT.CLIENT_NAME（须在 QUERY_RELATION 白名单内）')}
+                      {renderExpressionRow('convert_function', '转换函数', false, '如 f_get_emp_name_by_id（受控注册表）')}
+                      {renderExpressionRow('datasource_sql', '数据源 SQL（受限 SELECT）', true, '如 SELECT G_IDX,G_DESC FROM SYSDG')}
                       <div className="col-md-6">
                         <label className="form-label">最后修改人</label>
                         <input className="form-control" value={draft.lastUpdatedBy ?? ''} disabled />
