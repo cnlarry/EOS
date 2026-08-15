@@ -64,6 +64,25 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
                 result.Add(new(table, reader.GetString(1), NullIfEmpty(reader.GetString(2)), NullIfEmpty(reader.GetString(3)),
                     reader.GetInt32(4), reader.GetInt32(5), reader.GetInt32(6)));
         }
+        await reader.DisposeAsync();
+        // P4a：TABLES.T_KIND 若配置受控转换函数（f_get_table_kind_desc），列表显示转换后描述
+        string? kindConvertFunction = null;
+        await using (var fnCommand = new SqlCommand(
+            "SELECT LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,''))) FROM dbo.FIELDS WITH (NOLOCK) WHERE LTRIM(RTRIM(T_ID))='TABLES' AND LTRIM(RTRIM(F_ID))='T_KIND';",
+            connection))
+        {
+            kindConvertFunction = await fnCommand.ExecuteScalarAsync(token) as string;
+        }
+        if (!string.IsNullOrWhiteSpace(kindConvertFunction))
+        {
+            var distinctKinds = result.Select(item => item.Kind).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.Trim()).Distinct(StringComparer.Ordinal).ToList();
+            var kindMap = await ConvertFunctionResolver.BuildMapAsync(connection, kindConvertFunction.Trim(), distinctKinds, token);
+            if (kindMap.Count > 0)
+            {
+                result = result.Select(item => item.Kind is null ? item
+                    : kindMap.TryGetValue(item.Kind.Trim(), out var converted) ? item with { Kind = Convert.ToString(converted) ?? item.Kind } : item).ToList();
+            }
+        }
         return result;
     }
 

@@ -25,6 +25,9 @@ public sealed record ExpressionPreviewResult(
     string? Sql,
     long ElapsedMs);
 
+public sealed record ExpressionStaleEntry(string Kind, string Table, string Field, string Expression, IReadOnlyList<string> Errors);
+public sealed record ExpressionRescanResult(int WhiteListVersion, int Total, IReadOnlyList<ExpressionStaleEntry> Stale);
+
 /// <summary>
 /// 受控表达式解析工作流（P1/P2，2026-08-15，设计见 docs/plans/controlled-expression-workflow.md）：
 /// VIRTUAL_EXP / CONVERT_FUNCTION / DATASOURCE_SQL 三套受限语言的服务端校验、只读预览与发布审计。
@@ -62,18 +65,19 @@ public sealed class RestrictedExpressionService(
         string? expression,
         CancellationToken token)
     {
+        var version = await ReadWhiteListVersionAsync(token);
         var errors = new List<string>();
         var hints = new List<string>();
         var value = (expression ?? string.Empty).Trim();
         if (string.IsNullOrEmpty(value))
         {
             errors.Add("表达式不能为空（清空请使用发布空值语义，或直接保留原值）。");
-            return new(false, errors, hints, WhiteListVersion);
+            return new(false, errors, hints, version);
         }
         if (value.Length > 2000)
         {
             errors.Add("表达式长度超出限制（最多 2000 字符）。");
-            return new(false, errors, hints, WhiteListVersion);
+            return new(false, errors, hints, version);
         }
 
         switch (kind)
@@ -91,7 +95,7 @@ public sealed class RestrictedExpressionService(
                 errors.Add("未知表达式类型。");
                 break;
         }
-        return new(errors.Count == 0, errors, hints, WhiteListVersion);
+        return new(errors.Count == 0, errors, hints, version);
     }
 
     public async Task<ExpressionPreviewResult> PreviewAsync(
@@ -155,6 +159,7 @@ public sealed class RestrictedExpressionService(
         CancellationToken token)
     {
         var value = (expression ?? string.Empty).Trim();
+        var version = await ReadWhiteListVersionAsync(token);
         var validation = await ValidateAsync(kind, table, field, value, token);
         if (!validation.Ok)
             return new(PublishExpressionStatus.Invalid, validation.Errors);
@@ -205,7 +210,7 @@ public sealed class RestrictedExpressionService(
             {
                 audit.Parameters.AddWithValue("@Record", $"{table.Trim()}.{field.Trim()}");
                 audit.Parameters.AddWithValue("@Content",
-                    $"[{kind}] {column} {table.Trim()}.{field.Trim()}：{(string.IsNullOrEmpty(current) ? "(空)" : current)} → {(string.IsNullOrEmpty(value) ? "(空)" : value)}（白名单 v{WhiteListVersion}，发布人 {employeeName}）");
+                    $"[{kind}] {column} {table.Trim()}.{field.Trim()}：{(string.IsNullOrEmpty(current) ? "(空)" : current)} → {(string.IsNullOrEmpty(value) ? "(空)" : value)}（白名单 v{version}，发布人 {employeeName}）");
                 audit.Parameters.AddWithValue("@By", userId);
                 await audit.ExecuteNonQueryAsync(token);
             }
@@ -217,6 +222,64 @@ public sealed class RestrictedExpressionService(
         {
             await transaction.RollbackAsync(token);
             throw;
+        }
+    }
+
+    /// <summary>对全部已发布表达式按当前白名单版本重校验（P3：版本升级后标记需复核项）。</summary>
+    public async Task<ExpressionRescanResult> RescanAsync(CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        var version = await ReadWhiteListVersionAsync(token);
+        const string sql = """
+            SELECT LTRIM(RTRIM(T_ID)),LTRIM(RTRIM(F_ID)),
+                   LTRIM(RTRIM(ISNULL(VIRTUAL_EXP,''))),LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,''))),LTRIM(RTRIM(ISNULL(DATASOURCE_SQL,'')))
+            FROM dbo.FIELDS WITH (NOLOCK)
+            WHERE LTRIM(RTRIM(ISNULL(VIRTUAL_EXP,'')))<>''
+               OR LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,'')))<>''
+               OR LTRIM(RTRIM(ISNULL(DATASOURCE_SQL,'')))<>'';
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var stale = new List<ExpressionStaleEntry>();
+        var total = 0;
+        while (await reader.ReadAsync(token))
+        {
+            var table = reader.GetString(0);
+            var field = reader.GetString(1);
+            var virtualExp = reader.GetString(2);
+            var convertFunction = reader.GetString(3);
+            var dataSourceSql = reader.GetString(4);
+            foreach (var (kind, value) in new[]
+            {
+                (RestrictedExpressionKind.VirtualExp, virtualExp),
+                (RestrictedExpressionKind.ConvertFunction, convertFunction),
+                (RestrictedExpressionKind.DataSourceSql, dataSourceSql),
+            })
+            {
+                if (string.IsNullOrEmpty(value)) continue;
+                total++;
+                var validation = await ValidateAsync(kind, table, field, value, token);
+                if (!validation.Ok)
+                    stale.Add(new ExpressionStaleEntry(kind.ToString(), table, field, value, validation.Errors));
+            }
+        }
+        return new ExpressionRescanResult(version, total, stale);
+    }
+
+    private async Task<int> ReadWhiteListVersionAsync(CancellationToken token)
+    {
+        try
+        {
+            await using var connection = connections.Create();
+            await connection.OpenAsync(token);
+            await using var command = new SqlCommand(
+                "SELECT MAX(VERSION) FROM dbo.EXPRESSION_WHITELIST_VERSION WITH (NOLOCK);", connection);
+            return Convert.ToInt32(await command.ExecuteScalarAsync(token) ?? WhiteListVersion);
+        }
+        catch
+        {
+            return WhiteListVersion;
         }
     }
 
