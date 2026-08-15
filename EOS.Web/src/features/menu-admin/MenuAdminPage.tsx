@@ -800,15 +800,16 @@ export function MenuAdminPage() {
                             <Input label="菜单别名" value={draft.M_ALIAS ?? ''} onChange={(value) => patch((d) => ({ ...d, M_ALIAS: value || null }))} />
                           </div>
                         </div>
-                        <Input label="页面链接（现代路由）" value={draft.M_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, M_URL: value || null }))} />
+                        <Input label="页面链接（现代路由）" value={draft.M_URL ?? ''} placeholder="如 /document-workbench、/admin/menus（承载页不带编号）" onChange={(value) => patch((d) => ({ ...d, M_URL: value || null }))} />
                         <div className="row g-2">
                           <div className="col-6">
-                            <Input label="新增URL地址" value={draft.NEW_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, NEW_URL: value || null }))} />
+                            <Input label="新增URL地址" value={draft.NEW_URL ?? ''} placeholder="/document-workbench/{moduleId}/new 或精确路径" onChange={(value) => patch((d) => ({ ...d, NEW_URL: value || null }))} />
                           </div>
                           <div className="col-6">
-                            <Input label="修改URL地址" value={draft.MODI_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, MODI_URL: value || null }))} />
+                            <Input label="修改URL地址" value={draft.MODI_URL ?? ''} placeholder="/document-workbench/{moduleId}/edit 或精确路径" onChange={(value) => patch((d) => ({ ...d, MODI_URL: value || null }))} />
                           </div>
                         </div>
+                        <div className="text-secondary small mb-2">新增/修改 URL 留空表示回退统一表单；保存时按现代路由契约校验（承载页不带编号，动作路由支持 {'{moduleId}'} 模板）。</div>
                         <Input label="帮助文件URL地址" value={draft.HELP_URL ?? ''} onChange={(value) => patch((d) => ({ ...d, HELP_URL: value || null }))} />
                       </>
                     )}

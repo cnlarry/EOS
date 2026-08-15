@@ -277,7 +277,23 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
 
     private async Task<WorkbenchDefinition?> SetupDefinition(int moduleId,CancellationToken token){var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;if(userId is null)return null;var rights=await rightsRepository.GetAsync(userId,moduleId,token);return rights.CanBrowse&&rights.CanSetup?await repository.GetDefinitionAsync(moduleId,userId,rights.ExecuteTag,rights.CanViewCost,rights.CanViewSecrecy,rights.DeniedMasterFields,rights.DeniedDetailFields,token):null;}
 
-    private async Task<WorkbenchDefinition?> AuthorizedDefinition(int moduleId,CancellationToken token){var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;if(userId is null)return null;var rights=await rightsRepository.GetAsync(userId,moduleId,token);return rights.CanBrowse?await repository.GetDefinitionAsync(moduleId,userId,rights.ExecuteTag,rights.CanViewCost,rights.CanViewSecrecy,rights.DeniedMasterFields,rights.DeniedDetailFields,token):null;}
+    private async Task<WorkbenchDefinition?> AuthorizedDefinition(int moduleId,CancellationToken token)
+    {
+        var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if(userId is null)return null;
+        var rights=await rightsRepository.GetAsync(userId,moduleId,token);
+        if(!rights.CanBrowse)return null;
+        var definition=await repository.GetDefinitionAsync(moduleId,userId,rights.ExecuteTag,rights.CanViewCost,rights.CanViewSecrecy,rights.DeniedMasterFields,rights.DeniedDetailFields,token);
+        if(definition is null)return null;
+        // 路由契约（M86）：NEW_URL/MODI_URL 有值即自定义路由；无值时按统一表单白名单
+        // 回退（显示按钮走统一表单）或隐藏按钮。
+        var formEnabled=formSettings.Value.EnabledModuleIds.Contains(moduleId);
+        return definition with
+        {
+            HasAdd=definition.NewUrl is not null||formEnabled,
+            HasEdit=definition.ModiUrl is not null||formEnabled,
+        };
+    }
 
     private static byte[] BuildCsv(IReadOnlyList<WorkbenchField> fields,IReadOnlyList<Dictionary<string,object?>> rows)
     {
