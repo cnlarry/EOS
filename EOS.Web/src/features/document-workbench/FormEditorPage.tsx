@@ -13,6 +13,7 @@ import type { FormDefinition, FormFieldDefinition } from './formDefinition'
 import { inputKind } from './formFieldKind'
 import { buildFormCells, buildFormRows } from './formLayout'
 import { validateDetailRows, validateMasterFields, type FieldErrors } from './formValidation'
+import { AMOUNT_COLUMN_KEYS, AMOUNT_TRIGGER_KEYS, previewDetailAmount, previewMasterAmounts } from './amountCalculator'
 
 interface SaveRecordRequest {
   values: Record<string, string>
@@ -276,7 +277,13 @@ export function FormEditorPage() {
   }
 
   const updateDetail = (index: number, key: string, value: string) => {
-    setDetailRows(current => current.map((row, i) => i === index ? { ...row, [key]: value } : row))
+    const updatedRow = { ...detailRows[index], [key]: value }
+    // 金额联动：QTY/PRICE/税率/税型/折扣变更时重算该行金额（服务端保存时权威复算）
+    const nextRows = AMOUNT_TRIGGER_KEYS.has(key.toUpperCase())
+      ? recalcRowAmounts(detailRows, index, updatedRow)
+      : detailRows.map((row, i) => i === index ? updatedRow : row)
+    setDetailRows(nextRows)
+    syncMasterPreview(nextRows)
     setDetailErrors(current => current.map((rowErrors, i) => {
       if (i !== index) return rowErrors
       const next = { ...rowErrors }
@@ -284,6 +291,19 @@ export function FormEditorPage() {
       return next
     }))
     setDirty(true)
+  }
+
+  /** 明细行金额预览：按行内/主表 TAX_RATE/TAX_TYPE 重算 AMOUNT/TAX_SUM/AMOUNT_TAX。 */
+  const recalcRowAmounts = (rows: Record<string, string>[], index: number, updatedRow: Record<string, string>): Record<string, string>[] => {
+    if (!formQuery.data) return rows
+    const patch = previewDetailAmount(formQuery.data.detailFields, updatedRow, masterValues)
+    return rows.map((row, i) => i === index ? (patch ? { ...updatedRow, ...patch } as Record<string, string> : updatedRow) : row)
+  }
+
+  /** 主表金额汇总预览（明细 SUM，保存后服务端权威聚合覆盖）。 */
+  const syncMasterPreview = (rows: Record<string, string>[]) => {
+    if (!formQuery.data) return
+    setMasterValues(current => ({ ...current, ...previewMasterAmounts(formQuery.data.masterFields, rows) }))
   }
 
   const buildEmptyDetailRow = (): Record<string, string> => {
@@ -306,7 +326,9 @@ export function FormEditorPage() {
       setSaveError(`请先填写主表字段：${missing.join('、')}，再新增明细。`)
       return
     }
-    setDetailRows(current => [...current, buildEmptyDetailRow()])
+    const nextRows = [...detailRows, buildEmptyDetailRow()]
+    setDetailRows(nextRows)
+    syncMasterPreview(nextRows)
     setDetailErrors(current => [...current, {}])
     setDirty(true)
   }
@@ -326,7 +348,9 @@ export function FormEditorPage() {
     // 明细多选：逐条追加明细行（对齐旧系统 ReturnMultiValue 的 addTR 语义）
     if (field.chooseMultiple && rows.length > 1) {
       const newRows = rows.map(row => applyMapping(buildEmptyDetailRow(), row))
-      setDetailRows(current => [...current, ...newRows])
+      const mergedRows = [...detailRows, ...newRows]
+      setDetailRows(mergedRows)
+      syncMasterPreview(mergedRows)
       setDetailErrors(current => [...current, ...newRows.map(() => ({}))])
       setDirty(true)
       setDetailChooser(null)
@@ -334,24 +358,28 @@ export function FormEditorPage() {
     }
     const row = rows[0]
     if (mapping) {
-      setDetailRows(current => current.map((currentRow, i) => {
-        if (i !== index) return currentRow
-        return applyMapping({ ...currentRow }, row)
-      }))
+      const updatedRow = applyMapping({ ...detailRows[index] }, row)
+      const nextRows = recalcRowAmounts(detailRows, index, updatedRow)
+      setDetailRows(nextRows)
+      syncMasterPreview(nextRows)
       setDirty(true)
     }
     setDetailChooser(null)
   }
 
   const removeDetailRow = (index: number) => {
-    setDetailRows(current => current.filter((_, i) => i !== index))
+    const nextRows = detailRows.filter((_, i) => i !== index)
+    setDetailRows(nextRows)
+    syncMasterPreview(nextRows)
     setDetailErrors(current => current.filter((_, i) => i !== index))
     setSelectedDetailRows(current => new Set([...current].filter(i => i !== index).map(i => i > index ? i - 1 : i)))
     setDirty(true)
   }
 
   const removeSelectedDetailRows = () => {
-    setDetailRows(current => current.filter((_, index) => !selectedDetailRows.has(index)))
+    const nextRows = detailRows.filter((_, index) => !selectedDetailRows.has(index))
+    setDetailRows(nextRows)
+    syncMasterPreview(nextRows)
     setDetailErrors(current => current.filter((_, index) => !selectedDetailRows.has(index)))
     setSelectedDetailRows(new Set())
     setDirty(true)
@@ -376,6 +404,8 @@ export function FormEditorPage() {
 
   const form = formQuery.data
   if (!form) return null
+  // 明细走金额汇总（明细表有 AMOUNT 列）时，主表金额列强制只读展示（保存后服务端权威聚合）
+  const masterAmountLocked = form.detailFields.some(field => field.key.toUpperCase() === 'AMOUNT')
   const visibleMaster = form.masterFields.filter(field => field.isVisible)
   const visibleDetail = form.detailFields.filter(field => field.isVisible)
   const detailFillerCount = Math.max(0, 5 - detailRows.length)
@@ -473,7 +503,7 @@ export function FormEditorPage() {
   const renderField = (field: FormFieldDefinition, bare = false) => (
     <FormFieldRenderer
       key={field.key}
-      field={field}
+      field={masterAmountLocked && AMOUNT_COLUMN_KEYS.has(field.key.toUpperCase()) ? { ...field, isReadonly: true } : field}
       value={masterValues[field.key] ?? ''}
       error={fieldErrors[field.key]}
       onChange={value => {

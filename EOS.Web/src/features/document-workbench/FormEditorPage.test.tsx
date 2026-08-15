@@ -479,4 +479,51 @@ describe('FormEditorPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(screen.getByText('网络错误')).toBeInTheDocument())
   })
+
+  it('明细金额联动：QTY/PRICE/税型/税率/折扣变更实时预览金额并汇总主表', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) {
+        return {
+          ...formDefinition,
+          masterFields: [
+            ...formDefinition.masterFields,
+            field('AMOUNT', '金额', { dataType: 'decimal' }),
+            field('TAX_SUM', '税额', { dataType: 'decimal', isReadonly: true }),
+            field('AMOUNT_TAX', '价税合计', { dataType: 'decimal', isReadonly: true }),
+          ],
+          detailFields: [
+            field('QTY', '数量', { dataType: 'decimal' }),
+            field('PRICE', '单价', { dataType: 'decimal' }),
+            field('TAX_RATE', '税率', { dataType: 'decimal' }),
+            field('TAX_TYPE', '税型', { dataType: 'nvarchar' }),
+            field('REBATE', '折扣', { dataType: 'decimal' }),
+            field('AMOUNT', '金额', { dataType: 'decimal', isReadonly: true }),
+            field('TAX_SUM', '税额', { dataType: 'decimal', isReadonly: true }),
+            field('AMOUNT_TAX', '价税合计', { dataType: 'decimal', isReadonly: true }),
+          ],
+        }
+      }
+      throw new Error(`unexpected GET ${p}`)
+    })
+    const { container } = renderEditor('/document-workbench/1209/new')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    // 新增明细前先填主表字段（detailNoFields 校验 PRO_NO）
+    fireEvent.change(masterInputs(container)[0], { target: { value: 'P9' } })
+    fireEvent.click(await screen.findByRole('button', { name: '新增一行' }))
+    const detailInputs = () => Array.from(container.querySelectorAll<HTMLInputElement>(
+      '.erp-detail-grid tbody tr:not(.erp-detail-filler) input.form-control'))
+    await waitFor(() => expect(detailInputs().length).toBeGreaterThan(0))
+    fireEvent.change(detailInputs()[0], { target: { value: '10' } })   // QTY
+    fireEvent.change(detailInputs()[1], { target: { value: '100' } })  // PRICE
+    fireEvent.change(detailInputs()[3], { target: { value: 'O' } })    // TAX_TYPE
+    fireEvent.change(detailInputs()[2], { target: { value: '13' } })   // TAX_RATE
+    await waitFor(() => expect(detailInputs()[5].value).toBe('1000'))  // AMOUNT 预览
+    expect(detailInputs()[6].value).toBe('130')                        // TAX_SUM 预览
+    expect(detailInputs()[7].value).toBe('1130')                       // AMOUNT_TAX 预览
+    // 主表金额汇总预览（明细走汇总时主表金额列强制只读，预览值写入 disabled input）
+    const masterAmount = Array.from(container.querySelectorAll<HTMLInputElement>('.erp-form-grid input.form-control'))
+      .find(input => input.value === '1000')
+    expect(masterAmount).toBeTruthy()
+  })
 })
