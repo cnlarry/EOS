@@ -67,6 +67,7 @@ public sealed class WorkflowEngine(
         WorkbenchDefinition definition,
         IReadOnlyList<string> keyValues,
         string employeeName,
+        string userId,
         CancellationToken token)
     {
         await using var connection = connections.Create();
@@ -90,16 +91,27 @@ public sealed class WorkflowEngine(
             else
             {
                 await using var insert = new SqlCommand("""
-                    INSERT INTO dbo.WF_MONITOR (WF_M_IDX, KEY_VALUE, KEY_VALUE_DESC, WF_STATE, UPDATE_SUBFLOW)
-                    VALUES (@ModuleId, @KeyValue, @KeyValueDesc, '0', '');
+                    INSERT INTO dbo.WF_MONITOR (WF_M_IDX, KEY_VALUE, KEY_VALUE_DESC, WF_STATE, UPDATE_SUBFLOW, START_USER, START_DATE)
+                    VALUES (@ModuleId, @KeyValue, @KeyValueDesc, '0', '', @StartUser, GETDATE());
                     SELECT CAST(SCOPE_IDENTITY() AS bigint);
                     """, connection, transaction);
                 insert.Parameters.Add("@ModuleId", SqlDbType.Int).Value = definition.ModuleId;
                 insert.Parameters.Add("@KeyValue", SqlDbType.VarChar, 200).Value = keyCondition;
                 insert.Parameters.Add("@KeyValueDesc", SqlDbType.VarChar, 300).Value =
                     keyCondition.Length > 300 ? keyCondition[..300] : keyCondition;
+                insert.Parameters.Add("@StartUser", SqlDbType.NVarChar, 50).Value = userId;
                 wfId = Convert.ToInt64(await insert.ExecuteScalarAsync(token));
             }
+        }
+
+        // 重新提交/刷新：流程状态复位为在途，发起人刷新为当前送审人（覆盖已撤回 '2' 的复位）
+        await using (var reset = new SqlCommand(
+            "UPDATE dbo.WF_MONITOR SET WF_STATE='0', START_USER=@UserId, START_DATE=GETDATE() WHERE WF_ID=@WfId;",
+            connection, transaction))
+        {
+            reset.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+            reset.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+            await reset.ExecuteNonQueryAsync(token);
         }
 
         await using (var clear = new SqlCommand("DELETE FROM dbo.WF_MYTASK WHERE WF_ID=@WfId;", connection, transaction))
@@ -472,6 +484,12 @@ public sealed class WorkflowEngine(
         await using var finalTransaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
         try
         {
+            await using (var state = new SqlCommand(
+                "UPDATE dbo.WF_MONITOR SET WF_STATE='1' WHERE WF_ID=@WfId;", connection, finalTransaction))
+            {
+                state.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+                await state.ExecuteNonQueryAsync(token);
+            }
             await using var confirm = new SqlCommand(
                 $"UPDATE dbo.[{masterTable}] SET CONFIRM_PERSON=@Person, CONFIRM_DATE=GETDATE(), CONFIRM_TAG=1 " +
                 $"WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};", connection, finalTransaction);
@@ -990,6 +1008,136 @@ public sealed class WorkflowEngine(
                     : Array.Empty<object>(),
             });
         }
+        return result;
+    }
+
+    /// <summary>
+    /// 发起人撤回在途流程（v2.1）：仅发起人可在流程未完成（WF_STATE='0'）且单据未确认时
+    /// 撤回；未处理任务标记 'W'（已撤回）并写日志，主表保持 CONFIRM_TAG=0（可编辑后重新提交）。
+    /// </summary>
+    public async Task<RecordSaveResult> WithdrawAsync(
+        int moduleId,
+        string keyValue,
+        string userId,
+        string employeeName,
+        CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+
+        long wfId;
+        string state;
+        string? startUser;
+        await using (var read = new SqlCommand("""
+            SELECT WF_ID, LTRIM(RTRIM(ISNULL(WF_STATE,''))), LTRIM(RTRIM(ISNULL(START_USER,'')))
+            FROM dbo.WF_MONITOR WITH (UPDLOCK, HOLDLOCK)
+            WHERE WF_M_IDX=@ModuleId AND KEY_VALUE=@KeyValue;
+            """, connection, transaction))
+        {
+            read.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+            read.Parameters.Add("@KeyValue", SqlDbType.VarChar, 200).Value = keyValue;
+            await using var reader = await read.ExecuteReaderAsync(token);
+            if (!await reader.ReadAsync(token))
+                return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "FLOW_NOT_FOUND",
+                    "流程实例不存在或尚未送审。");
+            wfId = reader.GetInt64(0);
+            state = reader.GetString(1);
+            startUser = reader.GetString(2);
+        }
+        if (!string.Equals(state, "0", StringComparison.Ordinal))
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_NOT_ACTIVE",
+                state == "2" ? "该流程已撤回，请修改后重新提交。" : "该流程已完成，不能撤回。");
+        if (!string.Equals(startUser, userId, StringComparison.OrdinalIgnoreCase))
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "NOT_FLOW_INITIATOR",
+                "仅发起人可撤回该流程。");
+
+        // 单据未最终确认（CONFIRM_TAG=0）才能撤回；KEY_VALUE 为服务端 BuildKeyCondition 生成，安全
+        string? masterTable;
+        await using (var tableCommand = new SqlCommand(
+            "SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))) FROM dbo.MODULES WHERE M_IDX=@ModuleId;",
+            connection, transaction))
+        {
+            tableCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+            masterTable = await tableCommand.ExecuteScalarAsync(token) as string;
+        }
+        if (string.IsNullOrWhiteSpace(masterTable) || !Identifier.IsMatch(masterTable))
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "INVALID_MASTER_TABLE",
+                "模块主表无效。");
+        await using (var confirm = new SqlCommand(
+            $"SELECT TOP 1 ISNULL(CONFIRM_TAG,0) FROM dbo.[{masterTable}] WITH (NOLOCK) WHERE {keyValue};",
+            connection, transaction))
+        {
+            var tag = await confirm.ExecuteScalarAsync(token);
+            if (tag is not null && Convert.ToInt32(tag) == 1)
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_ALREADY_FINISHED",
+                    "单据已确认，流程已结束，不能撤回。");
+        }
+
+        await using (var mark = new SqlCommand("""
+            UPDATE dbo.WF_MYTASK SET APPROVE_STATE='W', IS_CURRENT=0, APPROVE_DATE=GETDATE(),
+                APPROVE_MSG=@Msg
+            WHERE WF_ID=@WfId AND ISNULL(APPROVE_STATE,'')='';
+            """, connection, transaction))
+        {
+            mark.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+            mark.Parameters.Add("@Msg", SqlDbType.VarChar, 3000).Value = employeeName + " 撤回流程";
+            await mark.ExecuteNonQueryAsync(token);
+        }
+        await using (var log = new SqlCommand("""
+            INSERT INTO dbo.WF_MYTASK_LOG (WF_ID, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, APP_EMP_ID,
+                APPROVE_DATE, APPROVE_STATE, APPROVE_MSG)
+            SELECT WF_ID, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, @UserId, GETDATE(), 'W', @Msg
+            FROM dbo.WF_MYTASK WHERE WF_ID=@WfId AND APPROVE_STATE='W';
+            """, connection, transaction))
+        {
+            log.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+            log.Parameters.Add("@UserId", SqlDbType.VarChar, 20).Value = userId;
+            log.Parameters.Add("@Msg", SqlDbType.VarChar, 3000).Value = employeeName + " 撤回流程";
+            await log.ExecuteNonQueryAsync(token);
+        }
+        await using (var stateUpdate = new SqlCommand(
+            "UPDATE dbo.WF_MONITOR SET WF_STATE='2' WHERE WF_ID=@WfId;", connection, transaction))
+        {
+            stateUpdate.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+            await stateUpdate.ExecuteNonQueryAsync(token);
+        }
+        await transaction.CommitAsync(token);
+        logger.LogInformation("流程撤回 module={ModuleId} key={Key} user={User}", moduleId, keyValue, userId);
+        return RecordSaveResult.Success([]);
+    }
+
+    /// <summary>当前用户发起的在途流程（v2.1「我发起的」，撤回入口数据源）。</summary>
+    public async Task<IReadOnlyList<object>> GetMyStartedAsync(
+        SqlConnection connection,
+        string userId,
+        CancellationToken token)
+    {
+        var result = new List<object>();
+        await using var command = new SqlCommand("""
+            SELECT M.WF_ID, M.WF_M_IDX,
+                   LTRIM(RTRIM(ISNULL((SELECT M_DESC FROM dbo.MODULES WHERE M_IDX=M.WF_M_IDX),''))),
+                   M.KEY_VALUE, M.KEY_VALUE_DESC, M.START_DATE,
+                   LTRIM(RTRIM(ISNULL(T.SUBFLOW_NO,''))), LTRIM(RTRIM(ISNULL(T.SUBFLOW_DESC,'')))
+            FROM dbo.WF_MONITOR M WITH (NOLOCK)
+            LEFT JOIN dbo.WF_MYTASK T WITH (NOLOCK) ON T.WF_ID=M.WF_ID AND T.IS_CURRENT=1
+            WHERE LTRIM(RTRIM(ISNULL(M.START_USER,''))) = @UserId AND M.WF_STATE='0'
+            ORDER BY M.START_DATE DESC;
+            """, connection);
+        command.Parameters.Add("@UserId", SqlDbType.VarChar, 20).Value = userId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+            result.Add(new
+            {
+                WfId = reader.GetInt64(0),
+                ModuleId = reader.GetInt32(1),
+                Title = reader.GetString(2),
+                KeyValue = reader.GetString(3),
+                KeyValueDesc = reader.GetString(4),
+                StartDate = reader.IsDBNull(5) ? null : reader.GetValue(5),
+                Step = reader.GetString(6),
+                StepDesc = reader.GetString(7),
+            });
         return result;
     }
 }
