@@ -275,6 +275,32 @@ public sealed class DocumentWorkbenchRepository(
     }
 
     /// <summary>
+    /// 应用用户数据范围（SYSDD/SYSDH 权限 DATA_FILTER；个人覆盖组、组 OR 已由
+    /// RightsAdminRepository 组合为生效值）。与 MODULES.FILTER 同边界：白名单主表字段 +
+    /// 受限解析 + 参数化；参数名重命名避免与模块 FILTER 的 @dfN 冲突。
+    /// 无法安全解析时抛 DataFilterUnsupportedException（403），拒绝返回未过滤数据。
+    /// </summary>
+    private static void ApplyUserDataFilter(
+        WorkbenchDefinition definition,
+        string? dataFilter,
+        ICollection<string> predicates,
+        SqlCommand command)
+    {
+        if(string.IsNullOrWhiteSpace(dataFilter))return;
+        var allowedFields=definition.FilterFieldKeys
+            ?? definition.MasterFields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if(!DataFilterParser.TryParse(dataFilter,definition.MasterTable,allowedFields,
+               out var predicate,out var parameters))
+            throw new DataFilterUnsupportedException("当前用户的权限数据范围尚不支持，已拒绝查询。");
+        var prefix=$"@udf{predicates.Count}_";
+        var renamed=Regex.Replace(predicate,"@df(\\d+)",
+            match=>prefix+int.Parse(match.Groups[1].Value));
+        for(var i=0;i<parameters.Count;i++)
+            command.Parameters.AddWithValue(prefix+i,parameters[i]);
+        predicates.Add(renamed);
+    }
+
+    /// <summary>
     /// 应用菜单分组筛选（GROUP_EXP&lt;groupIndex&gt; = groupValue）。
     /// 与 MODULES.FILTER 同边界：表达式经 GroupExpressionParser 受控编译
     /// （白名单主表字段），值参数化；不可解析抛 GroupExpressionUnsupportedException（403）。
@@ -618,7 +644,7 @@ public sealed class DocumentWorkbenchRepository(
         logger.LogInformation("重置列配置 userId={UserId} module={ModuleId} master={Master}", userId,definition.ModuleId,definition.MasterTable);
     }
 
-    public async Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail, IReadOnlyDictionary<string,string> keys, int page, int pageSize, CancellationToken token, WorkbenchQuery? query=null, string? keyword=null, string? sortField=null, string? sortDirection=null, int? groupIndex=null, string? groupValue=null)
+    public async Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail, IReadOnlyDictionary<string,string> keys, int page, int pageSize, CancellationToken token, WorkbenchQuery? query=null, string? keyword=null, string? sortField=null, string? sortDirection=null, int? groupIndex=null, string? groupValue=null, string? dataFilter=null)
     {
         var table=detail?definition.DetailTable:definition.MasterTable; var fields=detail?definition.DetailFields:definition.MasterFields;
         page=Math.Max(1,page); pageSize=Math.Clamp(pageSize,10,100);
@@ -645,6 +671,7 @@ public sealed class DocumentWorkbenchRepository(
         if (!detail && query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
         if (!detail && !string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
         if (!detail) ApplyModuleFilter(definition, predicates, command);
+        if (!detail) ApplyUserDataFilter(definition, dataFilter, predicates, command);
         if (!detail) ApplyGroupFilter(definition, groupIndex, groupValue, predicates, command);
         if (!detail) ApplyExecTagScope(definition, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
@@ -670,7 +697,7 @@ public sealed class DocumentWorkbenchRepository(
     public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsAsync(
         WorkbenchDefinition definition,WorkbenchQuery? query,string? keyword,CancellationToken token,
         string? sortField=null,string? sortDirection=null,int? groupIndex=null,string? groupValue=null,
-        IReadOnlyList<WorkbenchField>? exportFields=null)
+        IReadOnlyList<WorkbenchField>? exportFields=null,string? dataFilter=null)
     {
         var table=definition.MasterTable; var fields=definition.MasterFields;
         if (table is null || fields.Count==0) return [];
@@ -682,6 +709,7 @@ public sealed class DocumentWorkbenchRepository(
         if (query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
         if (!string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
         ApplyModuleFilter(definition, predicates, command);
+        ApplyUserDataFilter(definition, dataFilter, predicates, command);
         ApplyGroupFilter(definition, groupIndex, groupValue, predicates, command);
         ApplyExecTagScope(definition, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
@@ -703,7 +731,7 @@ public sealed class DocumentWorkbenchRepository(
     /// </summary>
     public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsByKeysAsync(
         WorkbenchDefinition definition,IReadOnlyList<IReadOnlyList<string>> keys,CancellationToken token,
-        int? groupIndex=null,string? groupValue=null,IReadOnlyList<WorkbenchField>? exportFields=null)
+        int? groupIndex=null,string? groupValue=null,IReadOnlyList<WorkbenchField>? exportFields=null,string? dataFilter=null)
     {
         var table=definition.MasterTable;var fields=definition.MasterFields;
         if(table is null||fields.Count==0||keys.Count==0)return [];
@@ -715,6 +743,7 @@ public sealed class DocumentWorkbenchRepository(
         var filterPredicates=new List<string>();
         await using var connection=CreateConnection();await connection.OpenAsync(token);await using var command=new SqlCommand();command.Connection=connection;
         ApplyModuleFilter(definition, filterPredicates, command);
+        ApplyUserDataFilter(definition, dataFilter, filterPredicates, command);
         ApplyGroupFilter(definition, groupIndex, groupValue, filterPredicates, command);
         ApplyExecTagScope(definition, filterPredicates, command);
         var orParts=new List<string>();

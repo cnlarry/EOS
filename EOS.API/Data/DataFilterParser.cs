@@ -360,10 +360,33 @@ internal static class DataFilterParser
             expression = $"{left} NOT IN ({subSql})";
             return true;
         }
+        // LIKE 模式匹配（真实存量：HR_WAGE/HRM_WAGE 工资字段选择器 F_ID LIKE '%_ITEM%'）：
+        // 模式串必须为引号字面量，作为参数绑定（通配符来自服务端配置字面量，不拼接用户输入）。
+        if (position < tokens.Count && tokens[position].Kind == TokenKind.Identifier
+            && tokens[position].Text.Equals("like", StringComparison.OrdinalIgnoreCase))
+        {
+            position++;
+            if (position >= tokens.Count || tokens[position].Kind != TokenKind.Literal) return false;
+            var likePattern = tokens[position].Text;
+            position++;
+            var likeParameter = $"@df{values.Count}";
+            values.Add(likePattern);
+            expression = $"{left} LIKE {likeParameter}";
+            return true;
+        }
         if (position >= tokens.Count || tokens[position].Kind != TokenKind.Operator) return false;
         var comparison = tokens[position].Text;
         if (comparison is not ("=" or "<>" or ">" or "<" or ">=" or "<=")) return false;
         position++;
+        // 列对列比较（存量 REPORT_FILTER 真实写法：{MOC_PRODUCE_M.FINISHED_QTY}<{MOC_PRODUCE_M.QTY}）：
+        // 右值同样经白名单解析为列，双方均为服务端白名单列，无参数拼接。
+        if (position < tokens.Count && tokens[position].Kind == TokenKind.Identifier
+            && TryResolveField(tokens[position].Text, masterTable, allowed, context, out var rightColumnSql))
+        {
+            position++;
+            expression = $"{left} {comparison} {rightColumnSql}";
+            return true;
+        }
         // 直接列比较的数值字面量以字符串参数绑定（如 PRO_TYPE=1，PRO_TYPE 为 char，
         // 若绑 decimal 会触发 char→numeric 隐式转换，含非数字值时报 8114）；
         // 列间算术的右值保持 decimal（如 QTY-RECEIVE_QTY>0 的 0）。
@@ -959,15 +982,42 @@ internal static class DataFilterParser
             }
             else if (char.IsLetter(ch) || ch == '_')
             {
-                var start = index;
-                while (index < input.Length && (char.IsLetterOrDigit(input[index]) || input[index] is '_' or '.'))
-                    index++;
-                var text = input[start..index];
+                var builder = new StringBuilder();
+                while (index < input.Length)
+                {
+                    var c = input[index];
+                    if (char.IsLetterOrDigit(c) || c is '_' or '.')
+                    {
+                        builder.Append(c);
+                        index++;
+                    }
+                    else if (c == '[')
+                    {
+                        // 旧系统方括号列语法（FIELDS.[T_ID] / [FIELDS.T_ID]）：并入同一标识符
+                        var close = input.IndexOf(']', index + 1);
+                        if (close < 0) throw new FormatException("未闭合的方括号：列引用非法。");
+                        builder.Append(input, index + 1, close - index - 1);
+                        index = close + 1;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                var text = builder.ToString();
                 tokens.Add(new Token(
                     text.Equals("and", StringComparison.OrdinalIgnoreCase) || text.Equals("or", StringComparison.OrdinalIgnoreCase)
                         ? TokenKind.AndOr
                         : TokenKind.Identifier,
                     text));
+            }
+            else if (ch == '[')
+            {
+                // 以方括号开头的列引用（[FIELDS.T_ID]）：剥离括号后作为单个标识符
+                var close = input.IndexOf(']', index + 1);
+                if (close < 0) throw new FormatException("未闭合的方括号：列引用非法。");
+                tokens.Add(new Token(TokenKind.Identifier, input[(index + 1)..close]));
+                index = close + 1;
             }
             else
             {

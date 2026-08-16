@@ -175,7 +175,6 @@ public class DataFilterParserTests
     [Fact]
     public void UnsupportedOperator_IsRejected()
     {
-        Assert.False(Try("A LIKE 'x%'", "T", Fields("A"), out _, out _));
         Assert.False(Try("A BETWEEN 1 AND 2", "T", Fields("A"), out _, out _));
     }
 
@@ -258,15 +257,89 @@ public class DataFilterParserTests
     }
 
     [Theory]
-    [InlineData("PRO_NO LIKE '%X%'")]
+    [InlineData("PRO_NO BETWEEN 'A' AND 'Z'")]
     public void ModuleFilter_不支持表达式被拒绝(string filter)
     {
         Assert.False(Try(filter, "COP_ACCOUNT_M", Fields("SUM_AMOUNT", "RECEIVE_AMOUNT", "QTY", "SEND_DATE", "PRO_NO"), out _, out _));
     }
 
+    [Fact]
+    public void BracketIdentifier_LeadingBracket_IsAccepted()
+    {
+        // 存量 CHOOSE_FILTER 真实写法：[FIELDS.T_ID]='HR_WAGE_D'
+        Assert.True(Try("[FIELDS.T_ID]='HR_WAGE_D'", "FIELDS", Fields("T_ID"), out var predicate, out var parameters));
+        Assert.Equal("[T_ID] = @df0", predicate);
+        Assert.Equal(["HR_WAGE_D"], parameters);
+    }
+
+    [Fact]
+    public void BracketIdentifier_AfterPrefix_IsAccepted()
+    {
+        // 存量 CHOOSE_FILTER 真实写法：FIELDS.[T_ID]='HR_WAGE_D'
+        Assert.True(Try("FIELDS.[T_ID]='HR_WAGE_D'", "FIELDS", Fields("T_ID"), out var predicate, out var parameters));
+        Assert.Equal("[T_ID] = @df0", predicate);
+        Assert.Equal(["HR_WAGE_D"], parameters);
+    }
+
+    [Fact]
+    public void LikeOperator_CompilesToParameterizedPattern()
+    {
+        // 存量 CHOOSE_FILTER 真实写法：F_ID LIKE '%_ITEM%'（模式串参数化，通配符来自配置字面量）
+        Assert.True(Try("F_ID LIKE '%_ITEM%'", "FIELDS", Fields("F_ID", "T_ID"), out var predicate, out var parameters));
+        Assert.Equal("[F_ID] LIKE @df0", predicate);
+        Assert.Equal(["%_ITEM%"], parameters);
+    }
+
+    [Fact]
+    public void LikeOperator_NonStringPattern_IsRejected()
+    {
+        Assert.False(Try("F_ID LIKE 123", "FIELDS", Fields("F_ID"), out _, out _));
+    }
+
+    [Fact]
+    public void ColumnToColumnComparison_IsAccepted()
+    {
+        // 存量 REPORT_FILTER 真实写法：{MOC_PRODUCE_M.FINISHED_SEND_QTY}<{MOC_PRODUCE_M.FINISHED_FITOUT_QTY}
+        Assert.True(Try(
+            "MOC_PRODUCE_M.FINISHED_SEND_QTY < MOC_PRODUCE_M.FINISHED_FITOUT_QTY",
+            "MOC_PRODUCE_M", Fields("FINISHED_SEND_QTY", "FINISHED_FITOUT_QTY", "QTY"),
+            out var predicate, out var parameters));
+        Assert.Equal("[FINISHED_SEND_QTY] < [FINISHED_FITOUT_QTY]", predicate);
+        Assert.Empty(parameters);
+    }
+
+    [Fact]
+    public void ColumnToColumnComparison_BraceForm_IsAccepted()
+    {
+        Assert.True(Try(
+            "{MOC_PRODUCE_M.FINISHED_QTY }<{MOC_PRODUCE_M.QTY}",
+            "MOC_PRODUCE_M", Fields("FINISHED_QTY", "QTY"),
+            out var predicate, out _));
+        Assert.Equal("[FINISHED_QTY] < [QTY]", predicate);
+    }
+
+    [Fact]
+    public void ColumnToColumnComparison_NonWhitelistedRightColumn_IsRejected()
+    {
+        Assert.False(Try("A<SECRET", "T", Fields("A"), out _, out _));
+    }
+
+    [Fact]
+    public void WageFieldChooserFilter_RealExpression_Compiles()
+    {
+        // HR_WAGE/HRM_WAGE 工资字段选择器存量全量表达式（方括号 + NOT IN + LIKE）
+        Assert.True(Try(
+            "FIELDS.[T_ID]='HR_WAGE_D' AND FIELDS.F_ID NOT IN (SELECT WAGE_FIELD FROM HR_WAGE) AND F_ID LIKE '%_ITEM%'",
+            "FIELDS", Fields("T_ID", "F_ID"),
+            out var predicate, out var parameters));
+        Assert.Contains("[T_ID] = @df0", predicate);
+        Assert.Contains("NOT IN (SELECT [WAGE_FIELD] FROM dbo.[HR_WAGE])", predicate);
+        Assert.Contains("[F_ID] LIKE @df1", predicate);
+        Assert.Equal(["HR_WAGE_D", "%_ITEM%"], parameters);
+    }
+
     [Theory]
     [InlineData("COP_SEND_M.SEND_DATE<getdate()")]
-    [InlineData("PLAN_QTY>FINISHED_PLAN_QTY")]
     [InlineData("SEND_DATE<fancy(getdate())")]
     [InlineData("QTY-RECEIVE_QTY")]
     public void ModuleFilter_跨表与未知函数被拒绝(string filter)
