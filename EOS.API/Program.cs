@@ -119,6 +119,7 @@ builder.Services.AddScoped<AuthenticationRepository>();
 builder.Services.AddScoped<UserAdminRepository>();
 builder.Services.AddScoped<FieldAdminRepository>();
 builder.Services.AddScoped<RestrictedExpressionService>();
+builder.Services.AddScoped<RightsAdminRepository>();
 builder.Services.AddScoped<BomRepository>();
 builder.Services.AddScoped<DynamicBomRepository>();
 builder.Services.AddScoped<FieldConfigurationRepository>();

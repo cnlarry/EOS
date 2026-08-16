@@ -19,6 +19,7 @@ public class ModuleRouteValidatorTests
     [InlineData("/admin/menus", 2301)]
     [InlineData("/admin/report-setup", 2201)]
     [InlineData("/admin/print-setup/headers", 2202)]
+    [InlineData("/admin/groups", 2305)]
     [InlineData("/settings/system", 110111)]
     [InlineData("/my-tasks", 2102)]
     [InlineData("/jobs", 230901)]

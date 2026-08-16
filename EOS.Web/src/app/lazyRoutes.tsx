@@ -8,6 +8,7 @@ export const TableAdminPage = lazy(() => import('../features/field-admin/TableAd
 export const TableDataPage = lazy(() => import('../features/admin/TableDataPage').then((module) => ({ default: module.TableDataPage })))
 export const FieldAuditPage = lazy(() => import('../features/admin/FieldAuditPage').then((module) => ({ default: module.FieldAuditPage })))
 export const UserAdminPage = lazy(() => import('../features/user-admin/UserAdminPage').then((module) => ({ default: module.UserAdminPage })))
+export const UserGroupAdminPage = lazy(() => import('../features/rights-admin/UserGroupAdminPage').then((module) => ({ default: module.UserGroupAdminPage })))
 export const MenuAdminPage = lazy(() => import('../features/menu-admin/MenuAdminPage').then((module) => ({ default: module.MenuAdminPage })))
 export const ProfilePage = lazy(() => import('../features/settings/ProfilePage').then((module) => ({ default: module.ProfilePage })))
 export const SystemSettingsPage = lazy(() => import('../features/settings/SystemSettingsPage').then((module) => ({ default: module.SystemSettingsPage })))
