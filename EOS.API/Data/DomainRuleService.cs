@@ -60,6 +60,12 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "sysdg" => await SysdgAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "sysdl" => await SysdlAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "employee-card" => await EmployeeCardAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "inv-in" => await InvOccurInAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "inv-out" => await InvOccurOutAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "inv-transfer" => await InvOccurTransferAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "inv-scrap" => await InvOccurScrapAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "inv-adjust" => await InvOccurAdjustAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "inv-init" => await InvOccurInitAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 _ => new(false, $"未登记的领域规则：{ruleName}"),
             };
         }
@@ -534,6 +540,81 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         }
         return new(true, null);
     }
+
+    /// <summary>库存单 AfterSave 通用校验：库别/产品/批号（等价 P_INV_OCCUR_*_After_Save，纯校验无写）。</summary>
+    private static async Task<SprocResult> InvOccurValidateAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues,
+        string detailTable, bool checkInDepot, CancellationToken token)
+    {
+        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "库存单据领域规则缺少主键。");
+        if (detailTable.Length == 0 || detailTable.Length > 64
+            || !detailTable.All(c => char.IsLetterOrDigit(c) || c == '_'))
+            return new(false, "库存单据明细表名非法。");
+        var type = (keyValues[0] ?? string.Empty).Trim();
+        var no = (keyValues[1] ?? string.Empty).Trim();
+        async Task<string?> MissingAsync(string whereClause)
+        {
+            await using var cmd = new SqlCommand($"""
+                SELECT TOP 11 SERIAL_NO FROM dbo.[{detailTable}] t
+                WHERE OCCUR_TYPE=@Type AND OCCUR_NO=@No AND {whereClause} ORDER BY SERIAL_NO;
+                """, connection, transaction);
+            cmd.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
+            cmd.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
+            await using var reader = await cmd.ExecuteReaderAsync(token);
+            var lines = new List<string>();
+            while (await reader.ReadAsync(token)) lines.Add(Convert.ToInt32(reader.GetValue(0)).ToString());
+            return lines.Count > 0 ? string.Join("\r\n", lines.Take(10)) : null;
+        }
+        if (checkInDepot)
+        {
+            var inDepot = await MissingAsync("NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=t.IN_DEPOT_ID)");
+            if (inDepot is not null) return new(false, "以下序号项入库别编号不存在 \r\n" + inDepot);
+            var outDepot = await MissingAsync("NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=t.DEPOT_ID)");
+            if (outDepot is not null) return new(false, "以下序号项出库别编号不存在 \r\n" + outDepot);
+        }
+        else
+        {
+            var depot = await MissingAsync("NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=t.DEPOT_ID)");
+            if (depot is not null) return new(false, "以下序号项库别编号不存在 \r\n" + depot);
+        }
+        var product = await MissingAsync("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)");
+        if (product is not null) return new(false, "以下序号项产品编号不存在 \r\n" + product);
+        var batch = await MissingAsync(
+            "ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)");
+        if (batch is not null) return new(false, "以下序号项需要输入批号 \r\n" + batch);
+        return new(true, null);
+    }
+
+    private static Task<SprocResult> InvOccurInAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+        => InvOccurValidateAsync(connection, transaction, pkColumns, keyValues, "INV_OCCUR_IN_D", false, token);
+
+    private static Task<SprocResult> InvOccurOutAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+        => InvOccurValidateAsync(connection, transaction, pkColumns, keyValues, "INV_OCCUR_OUT_D", false, token);
+
+    private static Task<SprocResult> InvOccurTransferAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+        => InvOccurValidateAsync(connection, transaction, pkColumns, keyValues, "INV_OCCUR_TRANSFER_D", true, token);
+
+    private static Task<SprocResult> InvOccurScrapAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+        => InvOccurValidateAsync(connection, transaction, pkColumns, keyValues, "INV_OCCUR_SCRAP_D", true, token);
+
+    private static Task<SprocResult> InvOccurAdjustAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+        => InvOccurValidateAsync(connection, transaction, pkColumns, keyValues, "INV_OCCUR_ADJUST_D", false, token);
+
+    private static Task<SprocResult> InvOccurInitAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+        => InvOccurValidateAsync(connection, transaction, pkColumns, keyValues, "INV_OCCUR_INIT_D", false, token);
 
     /// <summary>送货回执（1413）AfterSave：送/退货已有回执校验。</summary>
     private static async Task<SprocResult> CopCallbackAfterSaveAsync(
