@@ -20,6 +20,7 @@ public sealed class WorkflowController(
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     public sealed record ApproveTaskRequest(string ApproveState, string? Message = null, string? JumpNo = null);
+    public sealed record WithdrawRequest(int ModuleId, string KeyValue);
 
     /// <summary>
     /// 流程任务审批（同意 'Y' / 驳回 'N'）。
@@ -86,6 +87,35 @@ public sealed class WorkflowController(
         return Ok(new{Tasks=tasks,FlowTasks=flowTasks,EngineEnabled=hasFlow,
             Note=hasFlow?"工作流引擎已启用：FlowTasks 为当前用户真实审批待办，Tasks 为直接批核模型下的未批核计数。"
                          :"当前无流程定义（WFFORM 为空），待办=各单据未批核数量（直接批核模型）。"});
+    }
+
+    /// <summary>
+    /// 发起人撤回在途流程（v2.1）：仅发起人可在流程未完成且单据未确认时撤回；
+    /// 撤回后单据可编辑，重新批核即重新提交。KeyValue 取「我发起的」返回的 KEY_VALUE。
+    /// </summary>
+    [HttpPost("withdraw")]
+    public async Task<IActionResult> Withdraw([FromBody] WithdrawRequest request, CancellationToken token)
+    {
+        if (request.ModuleId <= 0 || string.IsNullOrWhiteSpace(request.KeyValue))
+            return BadRequest(new { code = "INVALID_WITHDRAW_REQUEST", message = "moduleId 与 keyValue 不能为空。" });
+        if (!(await rightsRepository.GetAsync(userContext.UserId, request.ModuleId, token)).CanBrowse)
+            return Forbid();
+        var result = await workflowEngine.WithdrawAsync(
+            request.ModuleId, request.KeyValue, userContext.UserId, userContext.EmployeeName, token);
+        if (result.Status != RecordAccessStatus.Ok)
+            return BadRequest(new { code = result.ErrorCode, message = result.ErrorMessage });
+        return Ok(new { Withdrawn = true, Message = "流程已撤回，单据可修改后重新提交。" });
+    }
+
+    /// <summary>当前用户发起的在途流程（v2.1「我发起的」）。</summary>
+    [HttpGet("my-started")]
+    public async Task<IActionResult> MyStarted(CancellationToken token)
+    {
+        if (!(await rightsRepository.GetAsync(userContext.UserId, 2102, token)).CanBrowse) return Forbid();
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        var rows = await workflowEngine.GetMyStartedAsync(connection, userContext.UserId, token);
+        return Ok(new { Rows = rows });
     }
 
     private static IReadOnlyList<string>? ParseKey(string? key)

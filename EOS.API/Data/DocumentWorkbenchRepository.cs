@@ -1409,7 +1409,7 @@ public sealed class DocumentWorkbenchRepository(
         // 有流程定义的模块：批核即"送审"（启动审批链），单据保持未确认；
         // 无流程模块保持直接批核（对齐旧系统 P_WF_APPROVE_NOFLOW 语义）。
         else if(approve && await WorkflowEngine.HasFlowAsync(connection,definition.ModuleId,token))
-            return await workflowEngine.StartFlowAsync(definition,keyValues,employeeName,token);
+            return await workflowEngine.StartFlowAsync(definition,keyValues,employeeName,userId,token);
         // 对齐旧系统 P_WF_APPROVE_NOFLOW：先更新主表确认状态（带守卫），
         // 再执行 P_WF_<DOC> 业务存储过程。业务 SP 自动提交运行——
         // 部分 SP（如 P_WF_SAMPLE_PRO→P_WF_RUN 流程链）内部自带 BEGIN TRAN/COMMIT，

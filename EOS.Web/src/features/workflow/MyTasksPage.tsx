@@ -31,6 +31,17 @@ interface FlowTask {
   steps: { step: string; stepDesc: string }[]
 }
 
+interface MyStartedFlow {
+  wfId: number
+  moduleId: number
+  title: string
+  keyValue: string
+  keyValueDesc: string
+  startDate: string | null
+  step: string
+  stepDesc: string
+}
+
 interface MyTasksResult {
   tasks: MyTask[]
   flowTasks: FlowTask[]
@@ -46,6 +57,10 @@ export function MyTasksPage() {
   const result = useQuery({
     queryKey: ['my-tasks'],
     queryFn: () => apiClient.get<MyTasksResult>('/workflow/my-tasks'),
+  })
+  const started = useQuery({
+    queryKey: ['my-started'],
+    queryFn: () => apiClient.get<{ rows: MyStartedFlow[] }>('/workflow/my-started'),
   })
   const [pending, setPending] = useState<{ task: FlowTask; state: ApproveState } | null>(null)
   const [jumpNo, setJumpNo] = useState('')
@@ -74,6 +89,24 @@ export function MyTasksPage() {
     setPending({ task, state })
     setJumpNo('')
     setOpinion('')
+  }
+
+  const withdrawFlow = async (flow: MyStartedFlow) => {
+    if (!window.confirm(`确认撤回「${flow.title}」（${flow.keyValueDesc || flow.keyValue}）？撤回后单据可修改并重新提交。`)) {
+      return
+    }
+    try {
+      const response = await apiClient.post<{ message?: string }>('/workflow/withdraw', {
+        moduleId: flow.moduleId,
+        keyValue: flow.keyValue,
+      })
+      window.alert(response.message ?? '流程已撤回')
+      void result.refetch()
+      void started.refetch()
+    } catch (error) {
+      const body = error instanceof ApiError ? error.body : undefined
+      window.alert(body?.message ?? '撤回失败，请稍后重试。')
+    }
   }
 
   const confirmApprove = async () => {
@@ -218,6 +251,55 @@ export function MyTasksPage() {
             empty={<div className="text-center text-secondary py-4">当前无流程审批待办</div>}
             resizable
             storageKey="my-tasks-flow"
+          />
+        </ErpListCard>
+      )}
+      {(started.data?.rows ?? []).length > 0 && (
+        <ErpListCard
+          ariaLabel="我发起的"
+          search={null}
+          actions={<Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void started.refetch()}>刷新</Button>}
+          header={<div className="px-3 pt-2 small text-secondary">我发起的在途流程 {started.data?.rows.length ?? 0} 项（可撤回后修改重新提交）</div>}
+        >
+          <ErpTable
+            columns={[
+              { accessorKey: 'title', header: '单据类型', cell: (info) => <span className="fw-semibold">{String(info.getValue() ?? '—')}</span> },
+              { accessorKey: 'keyValueDesc', header: '单据', cell: (info) => <span className="text-secondary">{String(info.getValue() ?? '—')}</span> },
+              {
+                accessorKey: 'step',
+                header: '当前步骤',
+                cell: (info) => (
+                  <span className="font-monospace">
+                    {String(info.getValue() ?? '—')} {String((info.row.original as MyStartedFlow).stepDesc ?? '')}
+                  </span>
+                ),
+              },
+              {
+                accessorKey: 'startDate',
+                header: '发起时间',
+                cell: (info) => {
+                  const raw = info.getValue()
+                  return raw ? new Date(String(raw)).toLocaleString() : '—'
+                },
+              },
+              {
+                id: 'actions',
+                header: '操作',
+                enableSorting: false,
+                enableHiding: false,
+                meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
+                cell: ({ row }) => (
+                  <Button size="sm" variant="danger" className="erp-table-action" onClick={() => void withdrawFlow(row.original as MyStartedFlow)}>
+                    撤回
+                  </Button>
+                ),
+              },
+            ]}
+            data={started.data?.rows ?? []}
+            getRowId={(row) => String(row.wfId)}
+            empty={<div className="text-center text-secondary py-4">当前无我发起的在途流程</div>}
+            resizable
+            storageKey="my-started"
           />
         </ErpListCard>
       )}
