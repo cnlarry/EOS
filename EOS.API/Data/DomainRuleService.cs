@@ -88,6 +88,23 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "hrm-wage" => await HrWageAfterSaveAsync(connection, transaction, "HRM_WAGE_M", "HRM_WAGE_D", pkColumns, keyValues, token, deleteDup: false),
                 "hr-wage-lz" => await HrWageAfterSaveAsync(connection, transaction, "HR_WAGE_M", "HR_WAGE_D", pkColumns, keyValues, token, deleteDup: true),
                 "hr-apply" => await HrApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "inv-loan" => await InvLoanAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "inv-return" => await InvReturnAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "moc-bom-stru" => await MocBomStruAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "moc-plan" => await MocPlanAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
+                "moc-produce-process" => await MocProduceProcessAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "moc-work-out" => await MocWorkOutAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
+                "mou-apply" => await MouldNoopAfterSaveAsync(token),
+                "mou-accept" => await MouldNoopAfterSaveAsync(token),
+                "mou-batch" => await MouBatchAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "mou-get" => await MouGetAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "mou-out" => await MouMouldCheckAfterSaveAsync(connection, transaction, pkColumns, keyValues, "MOU_OUT_D", "OUT_TYPE", "OUT_NO", token),
+                "mou-in" => await MouMouldCheckAfterSaveAsync(connection, transaction, pkColumns, keyValues, "MOU_IN_D", "IN_TYPE", "IN_NO", token),
+                "mou-scrap" => await MouMouldCheckAfterSaveAsync(connection, transaction, pkColumns, keyValues, "MOU_SCRAP_D", "SCRAP_TYPE", "SCRAP_NO", token),
+                "mou-pro" => await MouProAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "mou-batchin" => await MouBatchinAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
+                "mou-get2" => await MouGet2AfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "mou-assess" => await MouAssessAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 _ => new(false, $"未登记的领域规则：{ruleName}"),
             };
         }
@@ -1532,6 +1549,289 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         return exceeded is null
             ? new(true, null)
             : new(false, "以下人员时间超出:\r\n工号--加班时--休息日加班时--节假日加班时\r\n" + exceeded);
+    }
+
+    /// <summary>借出单（P_INV_LOAN）AfterSave：库别/产品/批号校验。</summary>
+    private static Task<SprocResult> InvLoanAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+        => ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
+            "INV_LOAN_D", "LOAN_TYPE", "LOAN_NO",
+            [
+                ("NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=t.DEPOT_ID)", "以下序号项库别编号不存在 "),
+                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
+                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
+            ], token);
+
+    /// <summary>返还单（P_INV_RETURN）AfterSave：库别/产品/批号校验。</summary>
+    private static Task<SprocResult> InvReturnAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+        => ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
+            "INV_RETURN_D", "RETURN_TYPE", "RETURN_NO",
+            [
+                ("NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=t.DEPOT_ID)", "以下序号项库别编号不存在 "),
+                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
+                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
+            ], token);
+
+    /// <summary>工单BOM（P_MOC_BOM_STRU）AfterSave：孤儿主/明细清理循环（等价旧 SP 的 while 循环）。</summary>
+    private static async Task<SprocResult> MocBomStruAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 3 || keyValues.Count < 3) return new(false, "工单BOM领域规则缺少主键。");
+        var type = (keyValues[0] ?? string.Empty).Trim();
+        var no = (keyValues[1] ?? string.Empty).Trim();
+        var proNo = (keyValues[2] ?? string.Empty).Trim();
+        string? rootProNo;
+        await using (var read = new SqlCommand(
+            "SELECT TOP 1 LTRIM(RTRIM(ISNULL(PRO_NO,''))) FROM dbo.MOC_PRODUCE_M WHERE PRODUCE_TYPE=@Type AND PRODUCE_NO=@No;",
+            connection, transaction))
+        {
+            read.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
+            read.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
+            rootProNo = (string?)await read.ExecuteScalarAsync(token);
+        }
+        rootProNo ??= string.Empty;
+        while (true)
+        {
+            await using var delM = new SqlCommand("""
+                DELETE m FROM dbo.MOC_BOM_STRU_M m
+                WHERE m.PRODUCE_TYPE=@Type AND m.PRODUCE_NO=@No AND m.PRO_NO<>@ProNo AND m.PRO_NO<>@RootProNo
+                  AND m.PRO_NO NOT IN (SELECT ELEMENT_PRO_NO FROM dbo.MOC_BOM_STRU_D WHERE PRODUCE_TYPE=@Type AND PRODUCE_NO=@No);
+                """, connection, transaction);
+            delM.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
+            delM.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
+            delM.Parameters.Add("@ProNo", SqlDbType.NChar, 30).Value = proNo;
+            delM.Parameters.Add("@RootProNo", SqlDbType.NChar, 30).Value = rootProNo;
+            var mRows = await delM.ExecuteNonQueryAsync(token);
+            await using var delD = new SqlCommand("""
+                DELETE d FROM dbo.MOC_BOM_STRU_D d
+                WHERE d.PRODUCE_TYPE=@Type AND d.PRODUCE_NO=@No
+                  AND d.PRO_NO NOT IN (SELECT PRO_NO FROM dbo.MOC_BOM_STRU_M WHERE PRODUCE_TYPE=@Type AND PRODUCE_NO=@No);
+                """, connection, transaction);
+            delD.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
+            delD.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
+            var dRows = await delD.ExecuteNonQueryAsync(token);
+            if (mRows == 0 && dRows == 0) break;
+        }
+        return new(true, null);
+    }
+
+    /// <summary>生产计划（P_MOC_PLAN）AfterSave：ERROR_NO_SAVE 门控的生产计划不超订单检查。</summary>
+    private static async Task<SprocResult> MocPlanAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction, int moduleId,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "生产计划领域规则缺少主键。");
+        var type = (keyValues[0] ?? string.Empty).Trim();
+        var no = (keyValues[1] ?? string.Empty).Trim();
+        if (!await HasErrorNoSaveAsync(connection, transaction, moduleId, token))
+            return new(true, null);
+        // 等价 P_MOC_PLAN_CHECK：计划数量/备品不超订单剩余
+        var rows = await FindLinesAsync(connection, transaction,
+            """
+            SELECT a.SERIAL_NO, b.QTY, b.DO_PLAN_QTY, a.QTY, b.SPARE_QTY, b.DO_PLAN_SPARE_QTY, a.SPARE_QTY
+            FROM dbo.MOC_PLAN_D a
+            INNER JOIN dbo.COP_ORDER_D b ON b.ORDER_TYPE=a.ORDER_TYPE AND b.ORDER_NO=a.ORDER_NO AND b.SERIAL_NO=a.ORDER_SERIAL_NO
+            WHERE a.PLAN_TYPE=@Type AND a.PLAN_NO=@No
+              AND (a.QTY > ISNULL(b.QTY,0)-ISNULL(b.DO_PLAN_QTY,0)
+                OR a.SPARE_QTY > ISNULL(b.QTY,0)-ISNULL(b.DO_PLAN_SPARE_QTY,0));
+            """, type, no, token,
+            line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
+        return rows is null
+            ? new(true, null)
+            : new(false, "以下序号项生产计划超出订单\r\n序号  订单数量  已计划数  本次数量  订单备品  已计划备品  本次备品\r\n" + rows);
+    }
+
+    /// <summary>工单制程（P_MOC_PRODUCE_PROCESS）AfterSave：制令存在校验。</summary>
+    private static async Task<SprocResult> MocProduceProcessAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "工单制程领域规则缺少主键。");
+        var type = (keyValues[0] ?? string.Empty).Trim();
+        var no = (keyValues[1] ?? string.Empty).Trim();
+        await using var cmd = new SqlCommand(
+            "SELECT TOP 1 1 FROM dbo.MOC_PRODUCE_PROCESS_M t INNER JOIN dbo.MOC_PRODUCE_M c ON c.PRODUCE_TYPE=t.PRODUCE_TYPE AND c.PRODUCE_NO=t.PRODUCE_NO WHERE t.PRODUCE_TYPE=@Type AND t.PRODUCE_NO=@No;",
+            connection, transaction);
+        cmd.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
+        cmd.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
+        return await cmd.ExecuteScalarAsync(token) is null
+            ? new(false, "制令单不存在。 ")
+            : new(true, null);
+    }
+
+    /// <summary>工序发料单（P_MOC_WORK_OUT）AfterSave：ERROR_NO_SAVE 门控的出库不超工序入库检查。</summary>
+    private static async Task<SprocResult> MocWorkOutAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction, int moduleId,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "工序发料领域规则缺少主键。");
+        var type = (keyValues[0] ?? string.Empty).Trim();
+        var no = (keyValues[1] ?? string.Empty).Trim();
+        if (!await HasErrorNoSaveAsync(connection, transaction, moduleId, token))
+            return new(true, null);
+        var rows = await FindLinesAsync(connection, transaction,
+            """
+            SELECT od.WORK_TYPE, od.WORK_NO, od.PROCESS_QTY, od.FINISHED_OUT_QTY, sd.QTY
+            FROM dbo.MOC_WORK_D od
+            INNER JOIN dbo.MOC_WORK_OUT_D sd ON sd.WORK_TYPE=od.WORK_TYPE AND sd.WORK_NO=od.WORK_NO AND sd.WORK_SERIAL_NO=od.SERIAL_NO
+            WHERE sd.WORK_OUT_TYPE=@Type AND sd.WORK_OUT_NO=@No
+              AND ISNULL(od.FINISHED_OUT_QTY,0) + ISNULL(sd.QTY,0) > ISNULL(od.FINISHED_IN_QTY,0);
+            """, type, no, token,
+            line: r => $"{r.GetString(0).Trim()}    {r.GetString(1).Trim()}    {Convert.ToString(r.GetValue(2))}    {Convert.ToString(r.GetValue(3))}    {Convert.ToString(r.GetValue(4))}");
+        return rows is null
+            ? new(true, null)
+            : new(false, "以下出库超出工序工单入库数量\r\n工序工单单别   单号   数量   已入库数量   单据数量\r\n" + rows);
+    }
+
+    /// <summary>模具单据空转规则（P_MOU_APPLY / P_MOU_ACCEPT：旧 SP 无有效副作用）。</summary>
+    private static Task<SprocResult> MouldNoopAfterSaveAsync(CancellationToken token)
+        => Task.FromResult(new SprocResult(true, null));
+
+    /// <summary>量产模具完工（P_MOU_BATCH）AfterSave：申请数量不超承认单可申请数量。</summary>
+    private static async Task<SprocResult> MouBatchAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "量产模具完工领域规则缺少主键。");
+        var type = (keyValues[0] ?? string.Empty).Trim();
+        var no = (keyValues[1] ?? string.Empty).Trim();
+        await using var cmd = new SqlCommand("""
+            SELECT TOP 1 1 FROM dbo.MOU_BATCH_M d
+            INNER JOIN dbo.MOU_ACCEPT_M m ON m.ACCEPT_TYPE=d.ACCEPT_TYPE AND m.ACCEPT_NO=d.ACCEPT_NO
+            WHERE d.BATCH_TYPE=@Type AND d.BATCH_NO=@No
+              AND ISNULL(m.QTY,0) < ISNULL(m.FINISHED_QTY,0) + ISNULL(d.QTY,0);
+            """, connection, transaction);
+        cmd.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
+        cmd.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
+        return await cmd.ExecuteScalarAsync(token) is not null
+            ? new(false, "申请数量已超过承认单可申请数量")
+            : new(true, null);
+    }
+
+    /// <summary>模房领料/耗料单（P_MOU_GET / P_MOU_GET2）AfterSave：库别/产品/批号校验。</summary>
+    private static Task<SprocResult> MouGetAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+        => ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
+            "MOU_GET_D", "GET_TYPE", "GET_NO",
+            [
+                ("NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=t.DEPOT_ID)", "以下序号项库别编号不存在 "),
+                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
+                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
+            ], token);
+
+    private static Task<SprocResult> MouGet2AfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+        => ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
+            "MOU_GET2_D", "GET_TYPE", "GET_NO",
+            [
+                ("NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=t.DEPOT_ID)", "以下序号项库别编号不存在 "),
+                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
+                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
+            ], token);
+
+    /// <summary>模具领用/返还/报废（P_MOU_OUT/IN/SCRAP）AfterSave：明细模具编号存在。</summary>
+    private static Task<SprocResult> MouMouldCheckAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues,
+        string detailTable, string typeColumn, string noColumn, CancellationToken token)
+        => ValidateDetailAsync(connection, transaction, pkColumns, keyValues, detailTable, typeColumn, noColumn,
+            [("NOT EXISTS (SELECT 1 FROM dbo.MOU_MOULD m WHERE m.MOULD_ID=t.MOULD_ID)", "以下序号项模具编号不存在 ")], token);
+
+    /// <summary>产品模具对照表（P_MOU_PRO）AfterSave：产品/模具存在 + 所用模具汇总（按产品限定——旧 SP 全局更新疑似笔误）。</summary>
+    private static async Task<SprocResult> MouProAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 1 || keyValues.Count < 1) return new(false, "产品模具对照领域规则缺少主键。");
+        var proNo = (keyValues[0] ?? string.Empty).Trim();
+        await using var product = new SqlCommand(
+            "SELECT TOP 1 1 FROM dbo.PRODUCT WHERE PRO_NO=@ProNo;", connection, transaction);
+        product.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
+        if (await product.ExecuteScalarAsync(token) is null)
+            return new(false, "产品编号不存在");
+        await using (var mould = new SqlCommand("""
+            SELECT TOP 11 SERIAL_NO FROM dbo.MOU_PRO_D t
+            WHERE t.PRO_NO=@ProNo
+              AND NOT EXISTS (SELECT 1 FROM dbo.MOU_MOULD m WHERE m.MOULD_ID=t.MOULD_ID)
+            ORDER BY SERIAL_NO;
+            """, connection, transaction))
+        {
+            mould.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
+            await using var reader = await mould.ExecuteReaderAsync(token);
+            var lines = new List<string>();
+            while (await reader.ReadAsync(token)) lines.Add(Convert.ToInt32(reader.GetValue(0)).ToString());
+            if (lines.Count > 0)
+                return new(false, "以下序号项模具编号不存在 \r\n" + string.Join("\r\n", lines.Take(10)));
+        }
+        await using var update = new SqlCommand(
+            "UPDATE dbo.MOU_PRO_M SET MOULD_IDS=dbo.f_get_pro_moulds(PRO_NO) WHERE PRO_NO=@ProNo;", connection, transaction);
+        update.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
+        await update.ExecuteNonQueryAsync(token);
+        return new(true, null);
+    }
+
+    /// <summary>量产模入库（P_MOU_BATCHIN）AfterSave：模具存在 + ERROR_NO_SAVE 门控的不超完工未入检查。</summary>
+    private static async Task<SprocResult> MouBatchinAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction, int moduleId,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "量产模入库领域规则缺少主键。");
+        var type = (keyValues[0] ?? string.Empty).Trim();
+        var no = (keyValues[1] ?? string.Empty).Trim();
+        var mould = await MouMouldCheckAfterSaveAsync(connection, transaction, pkColumns, keyValues,
+            "MOU_BATCHIN_D", "BATCHIN_TYPE", "BATCHIN_NO", token);
+        if (!mould.Success) return mould;
+        if (!await HasErrorNoSaveAsync(connection, transaction, moduleId, token))
+            return new(true, null);
+        var rows = await FindLinesAsync(connection, transaction,
+            """
+            SELECT d.SERIAL_NO
+            FROM dbo.MOU_BATCH_M m
+            INNER JOIN (SELECT BATCH_TYPE, BATCH_NO, MAX(SERIAL_NO) SERIAL_NO, SUM(QTY) QTY
+                        FROM dbo.MOU_BATCHIN_D WHERE BATCHIN_TYPE=@Type AND BATCHIN_NO=@No
+                        GROUP BY BATCH_TYPE, BATCH_NO) d
+              ON m.BATCH_TYPE=d.BATCH_TYPE AND m.BATCH_NO=d.BATCH_NO
+            WHERE ISNULL(m.QTY,0) < ISNULL(m.FINISHED_QTY,0) + d.QTY;
+            """, type, no, token,
+            line: r => Convert.ToInt32(r.GetValue(0)).ToString() + "    ");
+        return rows is null
+            ? new(true, null)
+            : new(false, "以下序号项量产模入库不能大于模具完工未入数量\r\n" + rows);
+    }
+
+    /// <summary>吸塑开模评估（P_MOU_ASSESS）AfterSave：料号开模评估唯一。</summary>
+    private static async Task<SprocResult> MouAssessAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "开模评估领域规则缺少主键。");
+        var type = (keyValues[0] ?? string.Empty).Trim();
+        var no = (keyValues[1] ?? string.Empty).Trim();
+        string? proNo;
+        await using (var read = new SqlCommand(
+            "SELECT LTRIM(RTRIM(ISNULL(PRO_NO,''))) FROM dbo.MOU_ASSESS_M WHERE ASSESS_TYPE=@Type AND ASSESS_NO=@No;",
+            connection, transaction))
+        {
+            read.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
+            read.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
+            proNo = (string?)await read.ExecuteScalarAsync(token);
+        }
+        if (string.IsNullOrWhiteSpace(proNo)) return new(true, null);
+        await using var cmd = new SqlCommand(
+            "SELECT TOP 1 1 FROM dbo.MOU_ASSESS_M WHERE PRO_NO=@ProNo AND NOT (ASSESS_TYPE=@Type AND ASSESS_NO=@No);",
+            connection, transaction);
+        cmd.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
+        cmd.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
+        cmd.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
+        return await cmd.ExecuteScalarAsync(token) is not null
+            ? new(false, "此料号开模评估资料已经存在")
+            : new(true, null);
     }
 
     /// <summary>送货回执（1413）AfterSave：送/退货已有回执校验。</summary>
