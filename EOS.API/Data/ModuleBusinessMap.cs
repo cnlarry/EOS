@@ -95,6 +95,11 @@ public static class DomainRuleMap
 {
     private static readonly IReadOnlyDictionary<int, string> Rules = new Dictionary<int, string>
     {
+        [110103] = "curr",
+        [1204] = "bom-stru",
+        [180208] = "employee-card",
+        [2205] = "sysqr-default",
+        [2305] = "sysdg",
         [2705] = "moc-work",
         [2706] = "moc-work-in",
         [1610] = "pur-callback",
