@@ -21,6 +21,7 @@ import {
   TableAdminPage,
   TableDataPage,
   UserAdminPage,
+  UserGroupAdminPage,
   MenuAdminPage,
 } from './lazyRoutes'
 import { FieldAdminRoute, ForbiddenPage, FormEditorRoute, PrintSetupRoute, ReportAdminRoute, ReportViewerRoute, WorkbenchRoute } from './routeElements'
@@ -39,6 +40,7 @@ export const router = createBrowserRouter([
         { element: <RequirePermission permission="purchase-order.read" />, children: [{ path: 'procurement/purchase-orders', element: withSuspense(<PurchaseOrdersPage />) }] },
         { element: <RequirePermission permission="legacy-module.2302.read" />, children: [{ path: 'admin/tables', element: withSuspense(<TableAdminPage />) }, { path: 'admin/tables/:tableId/fields', element: withSuspense(<FieldAdminRoute />) }] },
         { element: <RequirePermission permission="legacy-module.2301.read" />, children: [{ path: 'admin/menus', element: withSuspense(<MenuAdminPage />) }] },
+        { element: <RequirePermission permission="legacy-module.2305.read" />, children: [{ path: 'admin/groups', element: withSuspense(<UserGroupAdminPage />) }] },
         { element: <RequirePermission permission="legacy-module.2310.read" />, children: [{ path: 'admin/table-data', element: withSuspense(<TableDataPage />) }] },
         { element: <RequirePermission permission="legacy-module.2303.read" />, children: [{ path: 'admin/field-audit', element: withSuspense(<FieldAuditPage />) }] },
         { element: <RequirePermission permission="legacy-module.2306.read" />, children: [{ path: 'admin/users', element: withSuspense(<UserAdminPage />) }] },

@@ -13,6 +13,17 @@ button, input, select { font: inherit; }
 .erp-columns-dialog { max-width: calc(100vw - 24px); }
 .erp-columns-dialog .modal-body { overflow-x: hidden; }
 .erp-columns-layout { display: flex; justify-content: center; gap: 18px; overflow-x: auto; }
+
+/* 权限矩阵（2306/2305）：模块树 + 权限位编辑 */
+.rights-matrix-layout { min-height: 420px; }
+.rights-tree-panel { width: 300px; display: flex; flex-direction: column; }
+.rights-tree-scroll { overflow: auto; max-height: 460px; flex: 1; }
+.rights-tree-row { border-radius: 4px; }
+.rights-tree-row:hover { background: var(--bs-tertiary-bg); }
+.rights-tree-label { max-width: 190px; line-height: 1.2; white-space: normal; }
+.rights-field-list, .rights-picker-list { max-height: 300px; overflow: auto; }
+.rights-report-table .table { margin-bottom: 0; }
+.cursor-pointer { cursor: pointer; }
 .erp-columns-group { flex: 0 0 auto; }
 .erp-columns-transfer { display: grid; grid-template-columns: 170px 42px 212px; align-items: start; gap: 8px; }
 .erp-columns-transfer > .col-auto { align-self: center; width: 42px; padding: 0; margin: 0; }

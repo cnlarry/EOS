@@ -1,4 +1,4 @@
-import { IconKey, IconRefresh, IconUserOff, IconUserPlus } from '@tabler/icons-react'
+import { IconKey, IconRefresh, IconReport, IconShield, IconUserOff, IconUserPlus, IconUsers } from '@tabler/icons-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useMemo, useState } from 'react'
@@ -9,6 +9,10 @@ import { ErpSearchBox } from '../../components/common/ErpSearchBox'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { useAuth } from '../auth/authContext'
+import { ReportRightsMatrix } from '../rights-admin/ReportRightsMatrix'
+import { RightsMatrix } from '../rights-admin/RightsMatrix'
+import { RightsMemberPicker, type PickerOption } from '../rights-admin/RightsMemberPicker'
+import type { UserGroupItem, UserGroupSummary } from '../rights-admin/types'
 import { apiClient } from '../../services/api'
 import { ApiError, type PageResponse } from '../../types/api'
 
@@ -91,9 +95,27 @@ export function UserAdminPage() {
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
   const [passwordTarget, setPasswordTarget] = useState<UserAdminSummary | null>(null)
+  const [rightsTarget, setRightsTarget] = useState<UserAdminSummary | null>(null)
+  const [reportTarget, setReportTarget] = useState<UserAdminSummary | null>(null)
+  const [groupsTarget, setGroupsTarget] = useState<UserAdminSummary | null>(null)
   const users = useQuery({
     queryKey: ['user-admin', 'users', keyword, page],
     queryFn: () => apiClient.get<PageResponse<UserAdminSummary>>('/admin/users', { query: { keyword, page, pageSize } }),
+  })
+  const groups = useQuery({
+    queryKey: ['rights-admin', 'groups'],
+    queryFn: () => apiClient.get<UserGroupSummary[]>('/admin/groups'),
+  })
+  const userGroups = useQuery({
+    queryKey: ['rights-admin', 'user-groups', groupsTarget?.userId],
+    queryFn: () => apiClient.get<UserGroupItem[]>(`/admin/users/${encodeURIComponent(groupsTarget!.userId.trim())}/groups`),
+    enabled: groupsTarget !== null,
+  })
+  const saveGroups = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await apiClient.put(`/admin/users/${encodeURIComponent(groupsTarget!.userId.trim())}/groups`, { ids })
+    },
+    onSuccess: () => setGroupsTarget(null),
   })
   const status = useMutation({
     mutationFn: async ({ userId, isActive }: { userId: string; isActive: boolean }) => {
@@ -135,6 +157,9 @@ export function UserAdminPage() {
         return (
           <div className="d-inline-flex gap-1">
             <Button size="sm" icon={<IconKey size={15} />} onClick={() => setPasswordTarget(user)}>设置密码</Button>
+            <Button size="sm" icon={<IconShield size={15} />} onClick={() => setRightsTarget(user)}>权限</Button>
+            <Button size="sm" icon={<IconReport size={15} />} onClick={() => setReportTarget(user)}>报表权限</Button>
+            <Button size="sm" variant="secondary" icon={<IconUsers size={15} />} onClick={() => setGroupsTarget(user)}>所属组</Button>
             <Button
               size="sm"
               variant={user.isActive ? 'ghost' : 'secondary'}
@@ -172,6 +197,28 @@ export function UserAdminPage() {
         user={passwordTarget}
         onClose={() => setPasswordTarget(null)}
         onSaved={() => { setPasswordTarget(null); void users.refetch() }}
+      />
+      <RightsMatrix
+        open={rightsTarget !== null}
+        mode="user"
+        targetId={rightsTarget?.userId ?? ''}
+        onClose={() => setRightsTarget(null)}
+      />
+      <ReportRightsMatrix
+        open={reportTarget !== null}
+        mode="user"
+        targetId={reportTarget?.userId ?? ''}
+        onClose={() => setReportTarget(null)}
+      />
+      <RightsMemberPicker
+        open={groupsTarget !== null}
+        title={`用户所属组：${groupsTarget?.userId.trim() ?? ''}`}
+        hint="用户所属组按用户全量替换保存（个人权限存在时完全覆盖组权限）。"
+        options={(groups.data ?? []).map<PickerOption>((group) => ({ id: group.groupId.trim(), label: group.groupDescription }))}
+        selected={(userGroups.data ?? []).map((group) => group.groupId.trim())}
+        loading={groupsTarget !== null && groups.isPending}
+        onClose={() => setGroupsTarget(null)}
+        onSave={(ids) => saveGroups.mutateAsync(ids)}
       />
     </div>
   )

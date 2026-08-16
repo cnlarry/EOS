@@ -42,9 +42,17 @@ async function loaded() {
   await waitFor(() => expect(screen.queryByText('正在加载用户…')).not.toBeInTheDocument())
 }
 
+function mockGet(path: string) {
+  if (path === '/admin/groups') return Promise.resolve([])
+  if (path.startsWith('/admin/users/') && path.endsWith('/groups')) return Promise.resolve([])
+  if (path.startsWith('/admin/users/') && path.endsWith('/rights')) return Promise.resolve([])
+  if (path.startsWith('/admin/users/') && path.endsWith('/report-rights')) return Promise.resolve([])
+  return Promise.resolve(usersPage)
+}
+
 describe('UserAdminPage', () => {
   beforeEach(() => {
-    apiClientMock.get.mockResolvedValue(usersPage)
+    apiClientMock.get.mockImplementation((path: string) => mockGet(path))
     apiClientMock.put.mockResolvedValue(undefined)
     vi.stubGlobal('confirm', vi.fn(() => true))
   })
@@ -152,5 +160,24 @@ describe('UserAdminPage', () => {
     fireEvent.change(within(dialog).getByLabelText('确认新密码'), { target: { value: 'long-enough-1' } })
     fireEvent.click(within(dialog).getByRole('button', { name: '保存密码' }))
     await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('密码强度不足。'))
+  })
+
+  it('打开模块权限矩阵', async () => {
+    renderPage()
+    await loaded()
+    const viewerRow = screen.getByText('viewer').closest('tr')!
+    fireEvent.click(within(viewerRow).getByRole('button', { name: '权限' }))
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith('/admin/users/viewer/rights'))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('打开所属组选择器并保存', async () => {
+    renderPage()
+    await loaded()
+    const viewerRow = screen.getByText('viewer').closest('tr')!
+    fireEvent.click(within(viewerRow).getByRole('button', { name: '所属组' }))
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith('/admin/users/viewer/groups'))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith('/admin/users/viewer/groups', { ids: [] }))
   })
 })
