@@ -28,7 +28,12 @@ public sealed class PrintController(
         if (!rights.CanBrowse) return Forbid();
 
         var settings = await printSettingsRepository.GetAsync(moduleId, userId, token);
-        var report = settings.Reports.FirstOrDefault(item => item.IsDefault) ?? settings.Reports.FirstOrDefault();
+        // 报表变体选择（对齐旧 RptBill 的 rblReport）：请求指定时白名单校验，
+        // 否则按默认报表 → 首个可打印报表回退。
+        var report = settings.Reports.FirstOrDefault(item =>
+                !string.IsNullOrWhiteSpace(request.ReportId) && item.ReportId == request.ReportId.Trim())
+            ?? settings.Reports.FirstOrDefault(item => item.IsDefault)
+            ?? settings.Reports.FirstOrDefault();
         if (report is null) return Forbid();
         var reportRights = await rightsRepository.GetReportAsync(userId, moduleId, report.ReportId, token);
         if (!reportRights.CanPrint) return Forbid();

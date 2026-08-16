@@ -232,7 +232,7 @@ describe('DocumentWorkbenchPage', () => {
     await waitFor(() => expect(apiClientMock.postFile).toHaveBeenCalledWith(
       '/document-workbench/1209/export-selected',
       { keys: [['P1', 'A']] },
-      { query: {} },
+      { query: { format: 'csv', columns: 'PRO_NO,EDITION,QTY,FLAG' } },
     ))
   })
 
@@ -268,7 +268,7 @@ describe('DocumentWorkbenchPage', () => {
     await waitFor(() => expect(apiClientMock.postFile).toHaveBeenCalledWith(
       '/document-workbench/1209/export',
       { conditions: [] },
-      { query: { keyword: undefined, sortFields: undefined, sortDirections: undefined } },
+      { query: { keyword: undefined, sortFields: undefined, sortDirections: undefined, format: 'csv', columns: 'PRO_NO,EDITION,QTY,FLAG' } },
     ))
   })
 

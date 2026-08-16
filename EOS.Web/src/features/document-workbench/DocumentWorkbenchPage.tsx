@@ -4,7 +4,7 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpQueryBuilder } from '../../components/common/ErpQueryBuilder'
@@ -53,6 +53,7 @@ export function DocumentWorkbenchPage() {
   const [conditions,setConditions]=useState<QueryCondition[]>([emptyQueryCondition()])
   const [keyword,setKeyword]=useState(initialState.keyword)
   const [exporting,setExporting]=useState(false)
+  const [exportMenuOpen,setExportMenuOpen]=useState(false)
   const [groupDefs,setGroupDefs]=useState<NavigationGroupDef[]|null>(null)
   const [groupValues,setGroupValues]=useState<string[]|null>(null)
   const [activeGroup,setActiveGroup]=useState<NavigationGroupDef|null>(null)
@@ -96,6 +97,14 @@ export function DocumentWorkbenchPage() {
     document.addEventListener('keydown',esc)
     return ()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',esc)}
   },[groupMenuOpen])
+  useEffect(()=>{
+    if(!exportMenuOpen)return
+    const close=(event:MouseEvent)=>{if(!(event.target as HTMLElement).closest('.erp-export-group'))setExportMenuOpen(false)}
+    const esc=(event:KeyboardEvent)=>{if(event.key==='Escape')setExportMenuOpen(false)}
+    document.addEventListener('pointerdown',close)
+    document.addEventListener('keydown',esc)
+    return ()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',esc)}
+  },[exportMenuOpen])
   useEffect(()=>{
     if(!hydrated.current){hydrated.current=true;return}
     setSearchParams((current)=>{
@@ -302,7 +311,16 @@ export function DocumentWorkbenchPage() {
       setFitting(false)
     }
   }
-  const handleExport=async()=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{query:groupQuery}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:safeConditions},{query:{keyword:keyword||undefined,...sortQuery(safeSort),...groupQuery}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.csv`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
+  const handleExport=async(format:'csv'|'xls')=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const exportColumns=definition.data.masterFields.map(field=>field.key).join(',');const commonQuery={format,columns:exportColumns};const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{query:{...groupQuery,...commonQuery}}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:safeConditions},{query:{keyword:keyword||undefined,...sortQuery(safeSort),...groupQuery,...commonQuery}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.${format==='xls'?'xls':'csv'}`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
+  const exportLabel=Object.keys(rowSelection).filter(id=>rowSelection[id]).length
+  const exportButton=<div className="btn-group erp-export-group position-relative">
+    <Button size="sm" icon={<IconFileExport size={16}/>} loading={exporting} title={exportLabel?`导出所选 (${exportLabel})`:'导出'} aria-label={exportLabel?`导出所选 (${exportLabel})`:'导出'} onClick={()=>void handleExport('csv')} />
+    <Button size="sm" className="dropdown-toggle dropdown-toggle-split" aria-label="选择导出格式" title="选择导出格式" aria-expanded={exportMenuOpen} onClick={()=>setExportMenuOpen(open=>!open)} />
+    {exportMenuOpen&&<div className="dropdown-menu dropdown-menu-end show" role="menu">
+      <button type="button" role="menuitem" className="dropdown-item" onClick={()=>{setExportMenuOpen(false);void handleExport('csv')}}>CSV{exportLabel?`（所选 ${exportLabel} 行）`:''}</button>
+      <button type="button" role="menuitem" className="dropdown-item" onClick={()=>{setExportMenuOpen(false);void handleExport('xls')}}>Excel{exportLabel?`（所选 ${exportLabel} 行）`:''}</button>
+    </div>}
+  </div>
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
   // FORM_BUTTONS 业务按钮渲染：动作白名单与服务端一致；未配置（null）时走默认按钮集
   const renderCommandButton=(action:string,key:number)=>{
@@ -313,7 +331,7 @@ export function DocumentWorkbenchPage() {
       case 'approve':return definition.data?.hasWorkflow&&active?<Button key={key} size="sm" icon={<IconCheck size={16}/>} title="批核" aria-label="批核" onClick={()=>void runWorkflow(true)}/>:null
       case 'deapprove':return definition.data?.hasWorkflow&&active?<Button key={key} size="sm" icon={<IconRotateClockwise size={16}/>} title="解批" aria-label="解批" onClick={()=>void runWorkflow(false)}/>:null
       case 'print':return active?<Button key={key} size="sm" icon={<IconPrinter size={16}/>} title="打印单据" aria-label="打印单据" onClick={openPrint}/>:null
-      case 'export':return <Button key={key} size="sm" icon={<IconFileExport size={16}/>} loading={exporting} title={Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'} aria-label={Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'} onClick={()=>void handleExport()}/>
+      case 'export':return <div key={key}>{exportButton}</div>
       case 'search':return (definition.data?.searchMaster||definition.data?.searchDetail)?<Button key={key} size="sm" icon={<IconSearch size={16}/>} title="通用查询" aria-label="通用查询" onClick={openSearchCenter}/>:null
       default:return null
     }
@@ -330,7 +348,7 @@ export function DocumentWorkbenchPage() {
         <Button size="sm" icon={<IconRotateClockwise size={16}/>} title="解批" aria-label="解批" onClick={()=>void runWorkflow(false)}/>
       </>}
       {active&&<Button size="sm" icon={<IconPrinter size={16}/>} title="打印单据" aria-label="打印单据" onClick={openPrint}/>}
-      <Button size="sm" icon={<IconFileExport size={16}/>} loading={exporting} title={Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'} aria-label={Object.keys(rowSelection).length?`导出所选 (${Object.keys(rowSelection).length})`:'导出'} onClick={()=>void handleExport()}/>
+      {exportButton}
     </>
 
   return <div className={`erp-workbench-page${definition.data.detailTable?'':' erp-workbench-single'}`}>
@@ -402,7 +420,7 @@ export function DocumentWorkbenchPage() {
           columnFilterValue={columnFilters}
           onColumnFilterChange={handleColumnFilterChange}
           onColumnsReorder={handleColumnsReorder}
-          empty={null}
+          empty={keyword?<EmptyState title="未找到匹配记录" description={`没有找到与“${keyword}”匹配的${definition.data.title}记录，可尝试其它关键词或清除搜索。`}/>:null}
           onEndReached={()=>void records.fetchNextPage()}
           hasMore={Boolean(records.hasNextPage)}
           loadingMore={records.isFetchingNextPage}

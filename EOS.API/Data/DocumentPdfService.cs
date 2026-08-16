@@ -50,6 +50,29 @@ internal static class DocumentLayoutProfiles
         };
 }
 
+/// <summary>打印版式固定列的展示格式（渲染层约定，不随字段元数据漂移）。</summary>
+internal static class PrintColumnFormats
+{
+    /// <summary>数量：最多 6 位小数、去尾零、千分位。</summary>
+    public const string Quantity = "#,##0.######";
+
+    /// <summary>单价：最多 6 位小数、去尾零（兼容电子元件类 6 位精度单价）。</summary>
+    public const string Price = "#,##0.######";
+
+    /// <summary>金额：固定两位小数 + 千分位。</summary>
+    public const string Amount = "#,##0.00";
+
+    public static string Format(object? value, string format)
+    {
+        if (value is null || value is DBNull) return string.Empty;
+        if (decimal.TryParse(
+                Convert.ToString(value, CultureInfo.InvariantCulture),
+                NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+            return parsed.ToString(format, CultureInfo.InvariantCulture);
+        return PdfLayout.FormatValue(value);
+    }
+}
+
 /// <summary>
 /// 单据 PDF 模板（原 RptBill / 工作台"打印单据"）：
 /// 三种形态——资料卡（1401/1601）、单据版式配置（主表 + 固定明细列 + 价税合计 + 签名行）、
@@ -159,11 +182,16 @@ public sealed class DocumentPdfService(IWebHostEnvironment environment, ILogger<
                     var name = profile.PartyNameField is null
                         ? string.Empty
                         : PdfLayout.FormatValue(data.Master.GetValueOrDefault(profile.PartyNameField));
+                    var partyValue = PdfLayout.FormatValue(data.Master.GetValueOrDefault(profile.PartyField));
+                    if (partyValue.Length == 0 && name.Length == 0)
+                        partyValue = "—";
                     left.Item().Text(
-                        $"{partyLabel}：{PdfLayout.FormatValue(data.Master.GetValueOrDefault(profile.PartyField))} {name}").FontSize(8);
+                        $"{partyLabel}：{partyValue} {name}").FontSize(8);
                 }
-                left.Item().Text(
-                    $"币别：{PdfLayout.FormatValue(data.Master.GetValueOrDefault("CURR_ID"))}　汇率：{PdfLayout.FormatValue(data.Master.GetValueOrDefault("CURR_RATE"))}").FontSize(8);
+                var currency = PdfLayout.FormatValue(data.Master.GetValueOrDefault("CURR_ID"));
+                var rate = PdfLayout.FormatValue(data.Master.GetValueOrDefault("CURR_RATE"));
+                if (currency.Length > 0 || rate.Length > 0)
+                    left.Item().Text($"币别：{currency}　汇率：{rate}").FontSize(8);
             });
             row.RelativeItem().AlignRight().Column(right =>
             {
@@ -189,27 +217,45 @@ public sealed class DocumentPdfService(IWebHostEnvironment environment, ILogger<
             {
                 var labels = new[] { "#", "料号", "品名/规格", "数量", "单位", "单价", "折扣", "金额" };
                 foreach (var label in labels)
-                    headerRow.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text(label).FontSize(8).SemiBold();
+                    headerRow.Cell().Background(Colors.Grey.Lighten3)
+                        .BorderBottom(0.75f).BorderColor(Colors.Grey.Darken1)
+                        .Padding(3).Text(label).FontSize(8).SemiBold();
             });
             var index = 0;
             foreach (var row in data.Details)
             {
                 index++;
-                table.Cell().Padding(2).Text(index.ToString(CultureInfo.InvariantCulture)).FontSize(8);
-                table.Cell().Padding(2).Text(PdfLayout.FormatValue(row.GetValueOrDefault("PRO_NO"))).FontSize(8);
-                table.Cell().Padding(2).Text(
-                    $"{PdfLayout.FormatValue(row.GetValueOrDefault("PRO_NAME"))} {PdfLayout.FormatValue(row.GetValueOrDefault("PRO_SPEC"))}").FontSize(8);
-                table.Cell().Padding(2).AlignRight().Text(FormatDetailValue(data, "QTY", row.GetValueOrDefault("QTY"))).FontSize(8);
-                table.Cell().Padding(2).Text(PdfLayout.FormatValue(row.GetValueOrDefault("UNIT_ID"))).FontSize(8);
-                table.Cell().Padding(2).AlignRight().Text(FormatDetailValue(data, "PRICE", row.GetValueOrDefault("PRICE"))).FontSize(8);
-                table.Cell().Padding(2).AlignRight().Text(PdfLayout.FormatValue(row.GetValueOrDefault("REBATE")) + "%").FontSize(8);
-                table.Cell().Padding(2).AlignRight().Text(FormatDetailValue(data, "AMOUNT_TAX", row.GetValueOrDefault("AMOUNT_TAX"))).FontSize(8);
+                table.Cell().BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2).Padding(2)
+                    .Text(index.ToString(CultureInfo.InvariantCulture)).FontSize(8);
+                table.Cell().BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2).Padding(2)
+                    .Text(PdfLayout.FormatValue(row.GetValueOrDefault("PRO_NO"))).FontSize(8);
+                var productName = PdfLayout.FormatValue(row.GetValueOrDefault("PRO_NAME"));
+                var productSpec = PdfLayout.FormatValue(row.GetValueOrDefault("PRO_SPEC"));
+                var productText = string.IsNullOrEmpty(productSpec) || productSpec.Equals(productName, StringComparison.OrdinalIgnoreCase)
+                    ? productName
+                    : $"{productName} {productSpec}";
+                table.Cell().BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2).Padding(2).Text(productText).FontSize(8);
+                table.Cell().BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2).Padding(2).AlignRight()
+                    .Text(PrintColumnFormats.Format(row.GetValueOrDefault("QTY"), PrintColumnFormats.Quantity)).FontSize(8);
+                table.Cell().BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2).Padding(2)
+                    .Text(PdfLayout.FormatValue(row.GetValueOrDefault("UNIT_ID"))).FontSize(8);
+                table.Cell().BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2).Padding(2).AlignRight()
+                    .Text(PrintColumnFormats.Format(row.GetValueOrDefault("PRICE"), PrintColumnFormats.Price)).FontSize(8);
+                var rebate = PdfLayout.FormatValue(row.GetValueOrDefault("REBATE"));
+                table.Cell().BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2).Padding(2).AlignRight()
+                    .Text(string.IsNullOrEmpty(rebate) ? string.Empty : rebate + "%").FontSize(8);
+                table.Cell().BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2).Padding(2).AlignRight()
+                    .Text(PrintColumnFormats.Format(row.GetValueOrDefault("AMOUNT_TAX"), PrintColumnFormats.Amount)).FontSize(8);
             }
-            if (profile.AmountField is not null)
+            if (!string.IsNullOrWhiteSpace(profile.AmountField))
             {
-                table.Cell().ColumnSpan(7).Padding(3).AlignRight().Text("价税合计").FontSize(8).SemiBold();
-                table.Cell().Padding(3).AlignRight()
-                    .Text(FormatMasterValue(data, profile.AmountField, data.Master.GetValueOrDefault(profile.AmountField))).FontSize(8).SemiBold();
+                var amount = PrintColumnFormats.Format(
+                    data.Master.GetValueOrDefault(profile.AmountField), PrintColumnFormats.Amount);
+                table.Cell().ColumnSpan(7).BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2).Padding(3).AlignRight()
+                    .Text("价税合计").FontSize(8).SemiBold();
+                table.Cell().BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2).Padding(3).AlignRight()
+                    .Text(amount.Length == 0 ? "0.00" : amount)
+                    .FontSize(8).SemiBold();
             }
         });
         content.Item().PaddingTop(10).Row(signature =>
@@ -274,20 +320,6 @@ public sealed class DocumentPdfService(IWebHostEnvironment environment, ILogger<
                     table.Cell().Padding(3).AlignRight().Text(total.ToString("0.00", CultureInfo.InvariantCulture)).FontSize(8).SemiBold();
                 }
         });
-    }
-
-    private static string FormatDetailValue(PrintData data, string key, object? value)
-    {
-        var format = data.DetailFields
-            .FirstOrDefault(field => field.Key.Equals(key, StringComparison.OrdinalIgnoreCase))?.DisplayFormat;
-        return PdfLayout.FormatValue(value, format);
-    }
-
-    private static string FormatMasterValue(PrintData data, string key, object? value)
-    {
-        var format = data.MasterFields
-            .FirstOrDefault(field => field.Key.Equals(key, StringComparison.OrdinalIgnoreCase))?.DisplayFormat;
-        return PdfLayout.FormatValue(value, format);
     }
 
 }
