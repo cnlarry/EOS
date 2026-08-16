@@ -167,6 +167,48 @@ public class DataFilterParserTests
     }
 
     [Fact]
+    public void NotParenthesized_IsSupported()
+    {
+        // 存量 CHOOSE_FILTER：NOT (PRODUCT.BUSINESS_TAG=1 OR PRODUCT.STOP_TAG=1)
+        Assert.True(Try(
+            "A='1' AND NOT (B='2' OR C='3')", "T", Fields("A", "B", "C"),
+            out var predicate, out var parameters));
+        Assert.Equal("[A] = @df0 AND NOT ([B] = @df1 OR [C] = @df2)", predicate);
+        Assert.Equal(["1", "2", "3"], parameters);
+    }
+
+    [Fact]
+    public void DatediffLeft_CompilesToWhitelistedSql()
+    {
+        // 存量 CHOOSE_FILTER：Datediff(day,COP_SHIPMENT_M.SHIPMENT_DATE,GETDATE())=0
+        Assert.True(Try(
+            "Datediff(day,COP_SHIPMENT_M.SHIPMENT_DATE,GETDATE())=0",
+            "COP_SHIPMENT_M", Fields("SHIPMENT_DATE", "CONFIRM_TAG"),
+            out var predicate, out var parameters));
+        Assert.Equal("DATEDIFF(day, [SHIPMENT_DATE], GETDATE()) = @df0", predicate);
+        Assert.Equal(["0"], parameters);
+    }
+
+    [Fact]
+    public void DatediffLeft_UnknownColumn_IsRejected()
+    {
+        Assert.False(Try(
+            "Datediff(day,SECRET_DATE,GETDATE())=0", "COP_SHIPMENT_M", Fields("SHIPMENT_DATE"),
+            out _, out _));
+    }
+
+    [Fact]
+    public void ChooserFilter_NotAndDatediff_Compiles()
+    {
+        // 存量组合形态：AND NOT (...)（内层为主表白名单列）
+        Assert.True(Try(
+            "COP_ORDER_M.CONFIRM_TAG=1 AND COP_ORDER_M.FINISHED_TAG=0 AND NOT (CONFIRM_TAG=1 OR FINISHED_TAG=1)",
+            "COP_ORDER_M", Fields("CONFIRM_TAG", "FINISHED_TAG"),
+            out var predicate, out _));
+        Assert.Contains("AND NOT ([CONFIRM_TAG] = @df2 OR [FINISHED_TAG] = @df3)", predicate);
+    }
+
+    [Fact]
     public void UnknownField_IsRejected()
     {
         Assert.False(Try("SECRET='1'", "T", Fields("A"), out _, out _));

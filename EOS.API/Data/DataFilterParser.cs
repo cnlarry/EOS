@@ -219,6 +219,26 @@ internal static class DataFilterParser
             expression = string.Empty;
             return false;
         }
+        // NOT ( ... )：存量 CHOOSE_FILTER（如 NOT (PRODUCT.BUSINESS_TAG=1 OR PRODUCT.STOP_TAG=1)）
+        if (tokens[position].Kind == TokenKind.Identifier
+            && tokens[position].Text.Equals("not", StringComparison.OrdinalIgnoreCase)
+            && position + 1 < tokens.Count && tokens[position + 1].Kind == TokenKind.LeftParen)
+        {
+            position += 2;
+            if (!ParseOr(tokens, ref position, masterTable, allowed, context, out var inner, values, depth + 1))
+            {
+                expression = string.Empty;
+                return false;
+            }
+            if (position >= tokens.Count || tokens[position].Kind != TokenKind.RightParen)
+            {
+                expression = string.Empty;
+                return false;
+            }
+            position++;
+            expression = $"NOT ({inner})";
+            return true;
+        }
         if (tokens[position].Kind == TokenKind.LeftParen)
         {
             position++;
@@ -287,7 +307,32 @@ internal static class DataFilterParser
         if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier) return false;
         var leftToken = tokens[position].Text;
         string left;
-        if (tokens[position].Text.Equals("isnull", StringComparison.OrdinalIgnoreCase))
+        if (tokens[position].Text.Equals("datediff", StringComparison.OrdinalIgnoreCase)
+            && position + 1 < tokens.Count && tokens[position + 1].Kind == TokenKind.LeftParen)
+        {
+            // DATEDIFF(day, <白名单列>, GETDATE()) 左侧谓词（存量 CHOOSE_FILTER：当日送货选择器）。
+            // 列经白名单解析，GETDATE() 为固定 SQL 关键字，无用户输入拼接。
+            position += 2;
+            if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier
+                || !tokens[position].Text.Equals("day", StringComparison.OrdinalIgnoreCase))
+                return false;
+            position++;
+            if (!ExpectToken(tokens, ref position, TokenKind.Comma)) return false;
+            if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier
+                || !TryResolveField(tokens[position].Text, masterTable, allowed, context, out var dateColumnSql))
+                return false;
+            position++;
+            if (!ExpectToken(tokens, ref position, TokenKind.Comma)) return false;
+            if (position >= tokens.Count || tokens[position].Kind != TokenKind.Identifier
+                || !tokens[position].Text.Equals("getdate", StringComparison.OrdinalIgnoreCase))
+                return false;
+            position++;
+            if (!ExpectToken(tokens, ref position, TokenKind.LeftParen)) return false;
+            if (!ExpectToken(tokens, ref position, TokenKind.RightParen)) return false;
+            if (!ExpectToken(tokens, ref position, TokenKind.RightParen)) return false;
+            left = $"DATEDIFF(day, {dateColumnSql}, GETDATE())";
+        }
+        else if (tokens[position].Text.Equals("isnull", StringComparison.OrdinalIgnoreCase))
         {
             // 旧系统高频写法 ISNULL(列,0)=0 / ISNULL(列,'')=''：仅白名单列 + 常量，参数化
             if (!ParseIsNullLeft(tokens, ref position, masterTable, allowed, context, out left, values)) return false;
