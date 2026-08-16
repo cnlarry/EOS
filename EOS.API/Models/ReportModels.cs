@@ -124,6 +124,7 @@ public sealed record ReportPdfRequest(
 /// <summary>单据 PDF 生成请求（原 RptBill）。</summary>
 public sealed record DocumentPdfRequest(
     IReadOnlyList<string> Key,
+    string? ReportId = null,
     string? HeaderId = null,
     string? TailId = null,
     bool ShowRemark = true);

@@ -16,7 +16,7 @@ interface ErpSearchBoxProps {
  * 标准 ERP 列表全局搜索框（`.erp-search.erp-list-global-search`）。
  *
  * - 受控组件，内部维护输入草稿；防抖后把 trim 后的值提交给 onChange；
- * - 回车立即提交、非空时显示清除按钮、Ctrl/Cmd+K 聚焦并全选；
+ * - 回车立即提交、非空时显示清除按钮、Ctrl/Cmd+K 或 / 聚焦并全选、Esc 清空或失焦；
  * - 提交值由页面写入 URL/Query Key，本组件不感知业务。
  */
 export function ErpSearchBox({
@@ -56,6 +56,12 @@ export function ErpSearchBox({
   useEffect(() => {
     if (!shortcut) return
     const handler = (event: globalThis.KeyboardEvent) => {
+      if (event.key === '/' && !isEditableTarget(event.target)) {
+        event.preventDefault()
+        inputRef.current?.focus()
+        inputRef.current?.select()
+        return
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         inputRef.current?.focus()
@@ -81,6 +87,14 @@ export function ErpSearchBox({
         }}
         onKeyDown={(event) => {
           if (event.key === 'Enter') emit(draft)
+          if (event.key === 'Escape') {
+            if (draft) {
+              setDraft('')
+              emit('')
+            } else {
+              event.currentTarget.blur()
+            }
+          }
         }}
       />
       {draft && (
@@ -99,4 +113,10 @@ export function ErpSearchBox({
       {shortcut && <kbd>Ctrl K</kbd>}
     </div>
   )
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
 }

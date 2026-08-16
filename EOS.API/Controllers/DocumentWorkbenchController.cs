@@ -23,17 +23,18 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
     public async Task<IActionResult> Details(int moduleId,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,CancellationToken token=default){var definition=await AuthorizedDefinition(moduleId,token);if(definition is null)return NotFound();var keys=Request.Query.ToDictionary(item=>item.Key,item=>item.Value.ToString(),StringComparer.OrdinalIgnoreCase);return Ok(await repository.GetRowsAsync(definition,true,keys,1,100,token,null,null,sortField,sortDirection));}
 
     [HttpPost("export")]
-    public async Task<IActionResult> Export(int moduleId,[FromBody]WorkbenchQuery? query,[FromQuery]string? keyword=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]string? sortFields=null,[FromQuery]string? sortDirections=null,[FromQuery]int? groupIndex=null,[FromQuery]string? groupValue=null,CancellationToken token=default){var definition=await AuthorizedDefinition(moduleId,token);if(definition is null)return NotFound();var rows=await repository.GetExportRowsAsync(definition,query,keyword,token,sortFields??sortField,sortDirections??sortDirection,groupIndex,groupValue);return File(BuildCsv(definition.MasterFields,rows),"text/csv; charset=utf-8","export.csv");}
+    public async Task<IActionResult> Export(int moduleId,[FromBody]WorkbenchQuery? query,[FromQuery]string? keyword=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]string? sortFields=null,[FromQuery]string? sortDirections=null,[FromQuery]int? groupIndex=null,[FromQuery]string? groupValue=null,[FromQuery]string? format=null,[FromQuery]string? columns=null,CancellationToken token=default){var definition=await AuthorizedDefinition(moduleId,token);if(definition is null)return NotFound();var exportFields=DocumentWorkbenchRepository.ResolveExportFields(definition.MasterFields,ParseColumnKeys(columns));var rows=await repository.GetExportRowsAsync(definition,query,keyword,token,sortFields??sortField,sortDirections??sortDirection,groupIndex,groupValue,exportFields);return ExportFile(exportFields,rows,format,definition.Title);}
 
     [HttpPost("export-selected")]
-    public async Task<IActionResult> ExportSelected(int moduleId,[FromBody]ExportSelectedRequest request,[FromQuery]int? groupIndex=null,[FromQuery]string? groupValue=null,CancellationToken token=default)
+    public async Task<IActionResult> ExportSelected(int moduleId,[FromBody]ExportSelectedRequest request,[FromQuery]int? groupIndex=null,[FromQuery]string? groupValue=null,[FromQuery]string? format=null,[FromQuery]string? columns=null,CancellationToken token=default)
     {
         var definition=await AuthorizedDefinition(moduleId,token);
         if(definition is null)return NotFound();
         if(request.Keys.Count==0||request.Keys.Count>500)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_EXPORT_KEYS","导出行数需在 1~500 之间。"));
         if(request.Keys.Any(row=>row.Count!=definition.MasterPkOrder.Count))return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_EXPORT_KEYS","导出主键数量与模块定义不一致。"));
-        var rows=await repository.GetExportRowsByKeysAsync(definition,request.Keys,token,groupIndex,groupValue);
-        return File(BuildCsv(definition.MasterFields,rows),"text/csv; charset=utf-8","export.csv");
+        var exportFields=DocumentWorkbenchRepository.ResolveExportFields(definition.MasterFields,ParseColumnKeys(columns));
+        var rows=await repository.GetExportRowsByKeysAsync(definition,request.Keys,token,groupIndex,groupValue,exportFields);
+        return ExportFile(exportFields,rows,format,definition.Title);
     }
 
     [HttpGet("form-definition")]
@@ -303,6 +304,65 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         foreach(var row in rows)WriteCsvRow(writer,fields.Select(field=>FormatCsvValue(row.GetValueOrDefault(field.Key),field.DataType)));
         return System.Text.Encoding.UTF8.GetBytes(writer.ToString());
     }
+
+    /// <summary>导出文件响应：CSV（默认）或 Excel 2003 XML（对齐旧 DataTableToExcel）。</summary>
+    private static IActionResult ExportFile(IReadOnlyList<WorkbenchField> fields,IReadOnlyList<Dictionary<string,object?>> rows,string? format,string title)
+    {
+        var fileName=SanitizeFileName(title);
+        if(string.Equals(format,"xls",StringComparison.OrdinalIgnoreCase)||string.Equals(format,"excel",StringComparison.OrdinalIgnoreCase))
+            return new FileContentResult(BuildExcel(fields,rows),"application/vnd.ms-excel"){FileDownloadName=$"{fileName}.xls"};
+        return new FileContentResult(BuildCsv(fields,rows),"text/csv; charset=utf-8"){FileDownloadName=$"{fileName}.csv"};
+    }
+
+    /// <summary>逗号分隔的列 key 白名单解析：仅保留定义内字段、保持顺序、上限 30 列。</summary>
+    private static IReadOnlyList<string>? ParseColumnKeys(string? columns)
+    {
+        if(string.IsNullOrWhiteSpace(columns))return null;
+        return columns.Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(30).ToArray();
+    }
+
+    private static string SanitizeFileName(string title)
+    {
+        var invalid=System.IO.Path.GetInvalidFileNameChars();
+        var safe=new string(title.Where(character=>!invalid.Contains(character)).ToArray()).Trim();
+        return safe.Length==0?"export":safe;
+    }
+
+    private static byte[] BuildExcel(IReadOnlyList<WorkbenchField> fields,IReadOnlyList<Dictionary<string,object?>> rows)
+    {
+        var builder=new System.Text.StringBuilder();
+        builder.Append("<?xml version=\"1.0\"?>\n");
+        builder.Append("<?mso-application progid=\"Excel.Sheet\"?>\n");
+        builder.Append("<Workbook xmlns=\"urn:schemas-microsoft-com:office:spreadsheet\" ");
+        builder.Append("xmlns:ss=\"urn:schemas-microsoft-com:office:spreadsheet\">");
+        builder.Append("<Worksheet ss:Name=\"Sheet1\"><Table>");
+        builder.Append("<Row>");
+        foreach(var field in fields)
+            builder.Append("<Cell><Data ss:Type=\"String\">").Append(XmlEncode(field.Label)).Append("</Data></Cell>");
+        builder.Append("</Row>");
+        foreach(var row in rows)
+        {
+            builder.Append("<Row>");
+            foreach(var field in fields)
+            {
+                var value=row.GetValueOrDefault(field.Key);
+                var text=FormatCsvValue(value,field.DataType);
+                var numeric=value is not null && value is not DBNull && IsNumericValue(value);
+                builder.Append("<Cell><Data ss:Type=\"").Append(numeric?"Number":"String").Append("\">")
+                    .Append(XmlEncode(numeric&&text.Length>0?text.Replace(",",""):text)).Append("</Data></Cell>");
+            }
+            builder.Append("</Row>");
+        }
+        builder.Append("</Table></Worksheet></Workbook>");
+        return System.Text.Encoding.UTF8.GetBytes(builder.ToString());
+    }
+
+    private static bool IsNumericValue(object value)=>value is sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal;
+
+    private static string XmlEncode(string? value)=>
+        string.IsNullOrEmpty(value)?string.Empty:
+        System.Security.SecurityElement.Escape(value)??string.Empty;
 
     private static void WriteCsvRow(StringWriter writer,IEnumerable<string> values)=>writer.WriteLine(string.Join(',',values.Select(value=>EscapeCsv(value))));
 

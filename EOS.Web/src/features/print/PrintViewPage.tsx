@@ -14,7 +14,7 @@ interface ReportPrintSettingsData {
   reports: ReportPrintOption[]
   headers: ReportHeaderOption[]
   tails: ReportTailOption[]
-  userSettings: { headerId: string | null; tailId: string | null } | null
+  userSettings: { reportId: string | null; headerId: string | null; tailId: string | null } | null
 }
 
 export function PrintViewPage() {
@@ -23,6 +23,7 @@ export function PrintViewPage() {
   const key = useMemo(() => {
     try { return JSON.parse(searchParams.get('key') ?? '[]') as string[] } catch { return [] }
   }, [searchParams])
+  const [reportId, setReportId] = useState('')
   const [headerId, setHeaderId] = useState('')
   const [tailId, setTailId] = useState('')
   const [showRemark, setShowRemark] = useState(true)
@@ -37,14 +38,17 @@ export function PrintViewPage() {
   })
 
   const title = useMemo(() => {
-    const report = settings.data?.reports.find((item) => item.isDefault) ?? settings.data?.reports[0]
+    const report = settings.data?.reports.find((item) => item.reportId === reportId)
+      ?? settings.data?.reports.find((item) => item.isDefault)
+      ?? settings.data?.reports[0]
     return report?.reportName ?? '单据打印'
-  }, [settings.data])
+  }, [settings.data, reportId])
 
   useEffect(() => {
     if (!settings.data) return
     const user = settings.data.userSettings
     const report = settings.data.reports.find((item) => item.isDefault) ?? settings.data.reports[0]
+    setReportId((current) => current || user?.reportId || report?.reportId || '')
     setHeaderId((current) => current || user?.headerId || report?.headerId || '')
     setTailId((current) => current || user?.tailId || report?.tailId || '')
   }, [settings.data])
@@ -55,6 +59,7 @@ export function PrintViewPage() {
     try {
       const blob = await apiClient.postFile(`/print/${moduleId}/pdf`, {
         key,
+        reportId: reportId || null,
         headerId: headerId || null,
         tailId: tailId || null,
         showRemark,
@@ -66,9 +71,25 @@ export function PrintViewPage() {
     } catch (error) {
       setPdfError(error instanceof ApiError ? error.body.message : 'PDF 生成失败，请重试。')
     }
-  }, [settings.isSuccess, moduleId, key, headerId, tailId, showRemark])
+  }, [settings.isSuccess, moduleId, key, reportId, headerId, tailId, showRemark])
 
   useEffect(() => { void loadPdf() }, [loadPdf])
+
+  const handlePrint = async () => {
+    // 保存最近一次打印设置（SYSQR IS_LAST=1，对齐旧 RptParent），保存失败不阻断打印
+    try {
+      await apiClient.post<void>(`/reports/${moduleId}/print-settings`, {
+        reportId: reportId || null,
+        headerId: headerId || null,
+        tailId: tailId || null,
+        sortSerialNo: null,
+        sortAsc: true,
+        showGroup: true,
+        showDetail: true,
+      })
+    } catch { /* 忽略保存失败 */ }
+    iframeRef.current?.contentWindow?.print()
+  }
 
   if (settings.isPending) return <LoadingState label="正在加载打印设置…" />
   if (settings.isError) return <ErrorState message={settings.error instanceof ApiError ? settings.error.body.message : '打印设置加载失败。'} onRetry={() => void settings.refetch()} />
@@ -78,6 +99,13 @@ export function PrintViewPage() {
     <div className="erp-print-page d-flex flex-column vh-100">
       <div className="border-bottom bg-white px-3 py-2 d-flex align-items-center gap-3 flex-wrap">
         <div className="fw-semibold">{title}</div>
+        {settings.data.reports.length > 1 && (
+          <label className="small mb-0">报表
+            <select className="form-select form-select-sm ms-1" value={reportId} onChange={(event) => setReportId(event.target.value)}>
+              {settings.data.reports.map((report) => <option key={report.reportId} value={report.reportId}>{report.reportName}</option>)}
+            </select>
+          </label>
+        )}
         <label className="small mb-0">页头
           <select className="form-select form-select-sm ms-1" value={headerId} onChange={(event) => setHeaderId(event.target.value)}>
             <option value="">（报表默认）</option>
@@ -95,7 +123,7 @@ export function PrintViewPage() {
           <span className="form-check-label">打印备注</span>
         </label>
         <div className="ms-auto d-flex gap-2">
-          <Button size="sm" onClick={() => void iframeRef.current?.contentWindow?.print()}>打印</Button>
+          <Button size="sm" onClick={() => void handlePrint()}>打印</Button>
           <Button size="sm" variant="secondary" onClick={() => pdfUrl && window.open(pdfUrl, '_blank')}>新标签打开</Button>
         </div>
       </div>

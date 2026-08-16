@@ -667,12 +667,16 @@ public sealed class DocumentWorkbenchRepository(
         return new(rows,total,page,pageSize);
     }
 
-    public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsAsync(WorkbenchDefinition definition,WorkbenchQuery? query,string? keyword,CancellationToken token,string? sortField=null,string? sortDirection=null,int? groupIndex=null,string? groupValue=null)
+    public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsAsync(
+        WorkbenchDefinition definition,WorkbenchQuery? query,string? keyword,CancellationToken token,
+        string? sortField=null,string? sortDirection=null,int? groupIndex=null,string? groupValue=null,
+        IReadOnlyList<WorkbenchField>? exportFields=null)
     {
         var table=definition.MasterTable; var fields=definition.MasterFields;
         if (table is null || fields.Count==0) return [];
         const int maxExportRows=100000;
-        var selected=fields.Take(30).ToList(); var predicates=new List<string>();
+        var selected=exportFields is { Count:>0 }?exportFields.ToList():fields.Take(30).ToList();
+        var predicates=new List<string>();
         var stopwatch=Stopwatch.StartNew();
         await using var connection=CreateConnection(); await connection.OpenAsync(token); await using var command=new SqlCommand(); command.Connection=connection;
         if (query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
@@ -697,7 +701,9 @@ public sealed class DocumentWorkbenchRepository(
     /// 按主键集合导出（导出所选行）：keys 为「主键值数组」列表，顺序与 masterPkOrder 一致。
     /// 全部条件参数化，字段沿用权限过滤后的定义白名单。
     /// </summary>
-    public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsByKeysAsync(WorkbenchDefinition definition,IReadOnlyList<IReadOnlyList<string>> keys,CancellationToken token,int? groupIndex=null,string? groupValue=null)
+    public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsByKeysAsync(
+        WorkbenchDefinition definition,IReadOnlyList<IReadOnlyList<string>> keys,CancellationToken token,
+        int? groupIndex=null,string? groupValue=null,IReadOnlyList<WorkbenchField>? exportFields=null)
     {
         var table=definition.MasterTable;var fields=definition.MasterFields;
         if(table is null||fields.Count==0||keys.Count==0)return [];
@@ -705,7 +711,7 @@ public sealed class DocumentWorkbenchRepository(
             .Select(key=>fields.FirstOrDefault(field=>field.Key.Equals(key,StringComparison.OrdinalIgnoreCase))?.Key)
             .Where(key=>key is not null).Cast<string>().ToList();
         if(pks.Count==0)return [];
-        var selected=fields.Take(30).ToList();
+        var selected=exportFields is { Count:>0 }?exportFields.ToList():fields.Take(30).ToList();
         var filterPredicates=new List<string>();
         await using var connection=CreateConnection();await connection.OpenAsync(token);await using var command=new SqlCommand();command.Connection=connection;
         ApplyModuleFilter(definition, filterPredicates, command);
@@ -735,6 +741,22 @@ public sealed class DocumentWorkbenchRepository(
         var rows=new List<Dictionary<string,object?>>();
         while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);for(var i=0;i<reader.FieldCount;i++)row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i);rows.Add(row);}
         return rows;
+    }
+
+    /// <summary>
+    /// 导出列解析：请求列与权限过滤后的定义白名单求交（保持请求顺序），
+    /// 空请求/无匹配时回退前 30 列；上限 30 列（与服务端投影安全上限一致）。
+    /// </summary>
+    public static IReadOnlyList<WorkbenchField> ResolveExportFields(
+        IReadOnlyList<WorkbenchField> fields,IReadOnlyList<string>? columnKeys)
+    {
+        if(columnKeys is { Count:>0 })
+        {
+            var requested=new HashSet<string>(columnKeys,StringComparer.OrdinalIgnoreCase);
+            var matched=fields.Where(field=>requested.Contains(field.Key)).Take(30).ToList();
+            if(matched.Count>0)return matched;
+        }
+        return fields.Take(30).ToList();
     }
 
     /// <summary>
