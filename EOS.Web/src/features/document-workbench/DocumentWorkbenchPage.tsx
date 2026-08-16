@@ -1,4 +1,4 @@
-import { IconAdjustmentsHorizontal, IconArrowAutofitWidth, IconCheck, IconColumns, IconCopy, IconFileExport, IconPlus, IconPrinter, IconRefresh, IconRotateClockwise, IconSearch, IconZoomScan } from '@tabler/icons-react'
+import { IconAdjustmentsHorizontal, IconArrowAutofitWidth, IconCheck, IconColumns, IconCopy, IconEye, IconFileExport, IconPlus, IconPrinter, IconRefresh, IconRotateClockwise, IconSearch, IconZoomScan } from '@tabler/icons-react'
 import { IconEdit } from '@tabler/icons-react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
@@ -278,6 +278,7 @@ export function DocumentWorkbenchPage() {
   const handleRowClick=(row:Record<string,unknown>)=>{const key=rowKey(row);setSelected({[key]:row});setActiveKey(key)}
   // 路由契约（M86）：NEW_URL/MODI_URL 有值时按元数据跳转，无值回退统一表单
   const openEdit=()=>{if(!active||!definition.data)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));const base=definition.data.modiUrl??`/document-workbench/${moduleId}/edit`;navigate(`${base}${base.includes('?')?'&':'?'}key=${encodeURIComponent(JSON.stringify(key))}`)}
+  const openView=()=>{if(!active)return;const key=definition.data?.masterPkOrder.map(column=>String(active[column]??''))??[];navigate(`/document-workbench/${moduleId}/view?key=${encodeURIComponent(JSON.stringify(key))}`)}
   const openNew=()=>{if(!definition.data?.hasAdd)return;navigate(definition.data.newUrl??`/document-workbench/${moduleId}/new`)}
   const openCopy=()=>{if(!active||!definition.data?.ifCopy)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));navigate(`/document-workbench/${moduleId}/copy?copyFrom=${encodeURIComponent(JSON.stringify(key))}`)}
   const openSearchCenter=()=>{navigate(`/search-center/${moduleId}`)}
@@ -322,6 +323,7 @@ export function DocumentWorkbenchPage() {
     :<>
       {definition.data?.hasAdd&&<Button size="sm" icon={<IconPlus size={16}/>} title="新增" aria-label="新增" onClick={openNew}/>}
       {definition.data?.hasEdit&&active&&<Button size="sm" icon={<IconEdit size={16}/>} title="编辑" aria-label="编辑" onClick={openEdit}/>}
+      {active&&<Button size="sm" icon={<IconEye size={16}/>} title="查看" aria-label="查看" onClick={openView}/>}
       {definition.data?.ifCopy&&definition.data?.hasAdd&&active&&<Button size="sm" icon={<IconCopy size={16}/>} title="复制" aria-label="复制" onClick={openCopy}/>}
       {definition.data?.hasWorkflow&&active&&<>
         <Button size="sm" icon={<IconCheck size={16}/>} title="批核" aria-label="批核" onClick={()=>void runWorkflow(true)}/>

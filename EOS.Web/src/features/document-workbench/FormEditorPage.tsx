@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
@@ -10,75 +10,13 @@ import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 import { FormFieldRenderer } from './FormFieldRenderer'
 import type { FormDefinition, FormFieldDefinition } from './formDefinition'
-import { inputKind } from './formFieldKind'
 import { buildFormCells, buildFormRows } from './formLayout'
 import { validateDetailRows, validateMasterFields, type FieldErrors } from './formValidation'
 import { AMOUNT_COLUMN_KEYS, AMOUNT_TRIGGER_KEYS, previewDetailAmount, previewMasterAmounts } from './amountCalculator'
-
-interface SaveRecordRequest {
-  values: Record<string, string>
-  details: Record<string, string>[]
-  original?: Record<string, string>
-}
-
-interface RecordBundle { master: Record<string, unknown>; details: Record<string, unknown>[] }
-
-/** 明细网格行：__id 为表格行键，__index 映射 detailRows 原始行号，__filler 为占位空行 */
-interface DetailGridRow {
-  __id: string
-  __index: number
-  __filler: boolean
-  [key: string]: unknown
-}
-
-function buildKey(form: FormDefinition, values: Record<string, string>): string[] {
-  return form.masterPkOrder.map(column => values[column] ?? '')
-}
-
-function emptyValue(field: FormFieldDefinition): string {
-  if (field.defaultValue != null) return field.defaultValue
-  if (field.dataType.toLowerCase().includes('bit')) return '0'
-  return ''
-}
-
-/**
- * 明细编辑控件的可用最小列宽。DISPLAY_LENGTH 是只读列表展示宽度（往往只有几十像素），
- * 编辑态直接套用会把输入控件压到无法操作；此处按控件类型给列宽下限，
- * 并配合 `minWidthFloor` 让拖拽/历史宽度也不能低于该下限。
- */
-function detailControlMinWidth(field: FormFieldDefinition): number {
-  const kind = inputKind(field)
-  if (kind === 'checkbox') return 56
-  if (kind === 'select') return 104
-  if (kind === 'date') return 132
-  const hasChooser = field.choosers.some(source => source.active && source.table)
-  return hasChooser ? 168 : 110
-}
-
-function writableFields(fields: FormFieldDefinition[]): FormFieldDefinition[] {
-  // 只读可见字段随保存提交（与服务端规则一致）：ONLY_CHOOSE 带选择器字段（CURR_ID/TAX_ID）
-  // 与只读必填联动字段（如 CURR_RATE，由币别带出）必须提交，否则服务端必填校验失败；
-  // displayOnly/serverFilled/虚拟字段仍不提交（服务端维护）。
-  return fields.filter(field => field.isVisible && !field.serverFilled && !field.isVirtual && !field.displayOnly
-    && (!field.isReadonly || field.isRequired || field.choosers.some(source => source.active && source.table)))
-}
-
-/** 统一选择器标题：字段标签 + 数据源描述（多选后缀由 UnifiedChooser 内部追加） */
-function chooserTitle(field: FormFieldDefinition): string {
-  const source = field.choosers.find(item => item.active && item.table)
-  return `${field.label}${source?.description ? `（${source.description}）` : ''}`
-}
-
-function describeError(error: unknown): string {
-  if (error instanceof ApiError && error.status === 404) return '该模块未启用统一表单编辑（含存盘后业务逻辑的模块暂不开放，或不在白名单内）。'
-  if (error instanceof ApiError) return error.body.message
-  return '无法加载表单定义。'
-}
-
-function summarizeFieldErrors(master: FieldErrors, details: FieldErrors[]): string {
-  const messages = [...Object.values(master), ...details.flatMap(row => Object.values(row))]
-  return messages.slice(0, 3).join('；')
-}
+import {
+  buildKey, chooserTitle, describeError, detailControlMinWidth, emptyValue,
+  summarizeFieldErrors, writableFields, type DetailGridRow, type RecordBundle, type SaveRecordRequest,
+} from './formEditorUtils'
 
 export function FormEditorPage() {
   const { moduleId = '' } = useParams()
@@ -103,6 +41,9 @@ export function FormEditorPage() {
   const [selectedDetailRows, setSelectedDetailRows] = useState<Set<number>>(new Set())
   const [detailSort, setDetailSort] = useState<{ key: string; dir: 1 | -1 } | null>(null)
   const [activeTab, setActiveTab] = useState(1)
+  // 明细列宽统一走服务端（FIELDS.DISPLAY_LENGTH，与工作台一致），拖拽后批量保存
+  const widthBatch = useRef<Record<string, number>>({})
+  const widthTimer = useRef<number | null>(null)
 
   const formQuery = useQuery({
     queryKey: ['workbench', moduleId, 'form-definition', isEdit ? 'edit' : isView ? 'view' : 'new'],
@@ -305,6 +246,18 @@ export function FormEditorPage() {
     if (!formQuery.data) return
     setMasterValues(current => ({ ...current, ...previewMasterAmounts(formQuery.data.masterFields, rows) }))
   }
+
+  /** 明细列宽拖拽：防抖批量保存到服务端（FIELDS.DISPLAY_LENGTH，与工作台 column-widths 一致）。 */
+  const saveDetailWidth = useCallback((fieldKey: string, width: number) => {
+    if (!formQuery.data) return
+    widthBatch.current[fieldKey] = width
+    if (widthTimer.current != null) window.clearTimeout(widthTimer.current)
+    widthTimer.current = window.setTimeout(() => {
+      const detail = widthBatch.current
+      widthBatch.current = {}
+      void apiClient.put<void>(`/document-workbench/${moduleId}/column-widths`, { master: {}, detail }).catch(() => {})
+    }, 300)
+  }, [formQuery.data, moduleId])
 
   const buildEmptyDetailRow = (): Record<string, string> => {
     if (!formQuery.data) return {}
@@ -596,6 +549,7 @@ export function FormEditorPage() {
             <div className="d-flex gap-2">
               <Button size="sm" onClick={addDetailRow}>新增一行</Button>
               <Button size="sm" variant="danger" disabled={selectedDetailRows.size === 0} onClick={removeSelectedDetailRows}>删除所选{selectedDetailRows.size > 0 ? ` (${selectedDetailRows.size})` : ''}</Button>
+              {detailSort && <span className="small text-secondary align-self-center">视图排序（保存顺序以序号 SERIAL_NO 为准）</span>}
               {/* 子表专用工具栏扩展位：生成请购单等后续加入 */}
             </div>
           </div>
@@ -610,6 +564,8 @@ export function FormEditorPage() {
               onRowSelectionChange={handleDetailRowSelectionChange}
               resizable
               storageKey={`form-detail-${moduleId}`}
+              persistResize={false}
+              onColumnResize={saveDetailWidth}
               className="erp-detail-grid"
               responsive={false}
               copyable={false}
