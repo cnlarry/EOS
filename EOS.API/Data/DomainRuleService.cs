@@ -54,6 +54,12 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "pur-purchase" => await PurPurchaseAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-pay" => await PurPayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-prepay" => await PurPrepayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "curr" => await CurrAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "bom-stru" => await BomStruAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "sysqr-default" => await SysqrDefaultAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "sysdg" => await SysdgAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "sysdl" => await SysdlAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "employee-card" => await EmployeeCardAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 _ => new(false, $"未登记的领域规则：{ruleName}"),
             };
         }
@@ -256,6 +262,276 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             WHERE CHECK_STOCK_TYPE=@Type AND CHECK_STOCK_NO=@No AND CHECK_QTY<0;
             """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (negative is not null) return new(false, "以下序号项盘点数小于0 \r\n" + negative);
+        return new(true, null);
+    }
+
+    /// <summary>
+    /// 货币资料（110103）AfterSave：本位币唯一 + 本位币汇率必须为 1（等价 P_CURR_After_Save）。
+    /// 仅校验，无落库副作用。
+    /// </summary>
+    private static async Task<SprocResult> CurrAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 1 || keyValues.Count < 1) return new(false, "货币资料领域规则缺少主键。");
+        var currId = (keyValues[0] ?? string.Empty).Trim();
+        bool? isBase; decimal? rate;
+        await using (var read = new SqlCommand(
+            "SELECT IS_BASE, CURR_RATE FROM dbo.CURR WHERE CURR_ID=@CurrId;", connection, transaction))
+        {
+            read.Parameters.Add("@CurrId", SqlDbType.NChar, 10).Value = currId;
+            await using var reader = await read.ExecuteReaderAsync(token);
+            if (!await reader.ReadAsync(token)) return new(true, null);
+            isBase = reader.IsDBNull(0) ? null : reader.GetBoolean(0);
+            rate = reader.IsDBNull(1) ? null : Convert.ToDecimal(reader.GetValue(1));
+        }
+        if (isBase != true) return new(true, null);
+        string? otherBase;
+        await using (var other = new SqlCommand(
+            "SELECT TOP 1 LTRIM(RTRIM(CURR_ID)) FROM dbo.CURR WHERE CURR_ID<>@CurrId AND IS_BASE=1;",
+            connection, transaction))
+        {
+            other.Parameters.Add("@CurrId", SqlDbType.NChar, 10).Value = currId;
+            otherBase = (string?)await other.ExecuteScalarAsync(token);
+        }
+        if (!string.IsNullOrEmpty(otherBase))
+            return new(false, $"已将币别 [{otherBase}] 设为本位币，不能存在两种本位币");
+        if (rate is null || rate.Value != 1m)
+            return new(false, "本位币汇率只能为1");
+        return new(true, null);
+    }
+
+    /// <summary>
+    /// 产品BOM表（1204）AfterSave：品号/元件/底数/循环引用校验 + 长宽旧值回填
+    /// （等价 P_BOM_STRU_After_Save；底数检查按 PRO_NO 限定——旧 SP 缺 PRO_NO 条件，
+    /// 疑似笔误会误拦全表，见台账待顾问确认）。
+    /// </summary>
+    private static async Task<SprocResult> BomStruAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 1 || keyValues.Count < 1) return new(false, "产品BOM领域规则缺少主键。");
+        var proNo = (keyValues[0] ?? string.Empty).Trim();
+        // 1. 品号存在
+        await using (var product = new SqlCommand(
+            "SELECT TOP 1 1 FROM dbo.PRODUCT WHERE PRO_NO=@ProNo;", connection, transaction))
+        {
+            product.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
+            if (await product.ExecuteScalarAsync(token) is null)
+                return new(false, "产品编号不存在。 ");
+        }
+        // 2. 元件编号存在（最多列 10 个序号）
+        var elements = await ReadBomMissingAsync(connection, transaction,
+            "SELECT TOP 11 SERIAL_NO FROM dbo.BOM_STRU_D d WHERE PRO_NO=@ProNo " +
+            "AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.ELEMENT_PRO_NO) ORDER BY SERIAL_NO;",
+            proNo, token);
+        if (elements is not null) return new(false, "以下序号项元件编号不存在 \r\n" + elements);
+        // 3. 底数不能小于等于 0（按当前产品限定；旧 SP 全局扫描疑似笔误）
+        var baseQty = await ReadBomMissingAsync(connection, transaction,
+            "SELECT TOP 11 SERIAL_NO FROM dbo.BOM_STRU_D WHERE PRO_NO=@ProNo AND BASE_QTY<=0 ORDER BY SERIAL_NO;",
+            proNo, token);
+        if (baseQty is not null) return new(false, "以下序号项元件底数不能小于0 \r\n" + baseQty);
+        // 4. 循环引用（受控调用 P_BOM_CHECK，保留 SP：递归 BOM 走查复杂，不移植）
+        await using (var check = new SqlCommand("dbo.P_BOM_CHECK", connection, transaction)
+        {
+            CommandType = CommandType.StoredProcedure,
+        })
+        {
+            check.Parameters.Add("@ProNo", SqlDbType.NVarChar, 50).Value = proNo;
+            var ok = check.Parameters.Add("@ok", SqlDbType.Int);
+            ok.Direction = ParameterDirection.Output;
+            var errCode = check.Parameters.Add("@errCode", SqlDbType.NVarChar, 50);
+            errCode.Direction = ParameterDirection.Output;
+            await check.ExecuteNonQueryAsync(token);
+            if (ok.Value is not int okValue || okValue != 1)
+                return new(false, "以下元件在BOM结构中循环使用 \r\n" + Convert.ToString(errCode.Value));
+        }
+        // 5. 长宽旧值回填
+        await using (var backfill = new SqlCommand("""
+            UPDATE m SET m.P_LENGTH_OLD=p.P_LENGTH, m.P_WIDTH_OLD=p.P_WIDTH
+            FROM dbo.BOM_STRU_M m INNER JOIN dbo.PRODUCT p ON p.PRO_NO=m.PRO_NO
+            WHERE m.PRO_NO=@ProNo;
+            """, connection, transaction))
+        {
+            backfill.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
+            await backfill.ExecuteNonQueryAsync(token);
+        }
+        return new(true, null);
+    }
+
+    private static async Task<string?> ReadBomMissingAsync(
+        SqlConnection connection, SqlTransaction transaction, string sql, string proNo, CancellationToken token)
+    {
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var lines = new List<string>();
+        while (await reader.ReadAsync(token)) lines.Add(Convert.ToInt32(reader.GetValue(0)).ToString());
+        return lines.Count > 0 ? string.Join("\r\n", lines.Take(10)) : null;
+    }
+
+    /// <summary>
+    /// 报表过滤条件设置（2205）AfterSave：条件定义保存后清空用户报表条件记忆
+    /// （等价 P_SYSQR_DEFAULT_After_Save；旧 SP 的 @@ERROR 判断为死代码，不移植）。
+    /// </summary>
+    private static async Task<SprocResult> SysqrDefaultAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 1 || keyValues.Count < 1
+            || !int.TryParse((keyValues[0] ?? string.Empty).Trim(), out var mIdx))
+            return new(true, null); // 主键非数字：无 M_IDX 可清（与旧 SP 读取失败行为一致）
+        await using var clear = new SqlCommand("DELETE FROM dbo.SYSQR_USER WHERE M_IDX=@MIdx;", connection, transaction);
+        clear.Parameters.Add("@MIdx", SqlDbType.Int).Value = mIdx;
+        await clear.ExecuteNonQueryAsync(token);
+        return new(true, null);
+    }
+
+    /// <summary>
+    /// 用户组管理（2305）AfterSave：清理组权限孤儿行（等价 P_SYSDG_After_Save；
+    /// 作用于全部组，旧 SP 未使用主键）。注释掉的「新报表权限补齐」为死代码，不移植。
+    /// </summary>
+    private static async Task<SprocResult> SysdgAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        await using (var cleanGroup = new SqlCommand(
+            "DELETE FROM dbo.SYSDH WHERE M_IDX NOT IN (SELECT M_IDX FROM dbo.MODULES);",
+            connection, transaction))
+        {
+            await cleanGroup.ExecuteNonQueryAsync(token);
+        }
+        await using (var cleanReport = new SqlCommand("""
+            DELETE FROM dbo.SYSDH_REPORT
+            WHERE M_IDX NOT IN (SELECT M_IDX FROM dbo.MODULES) OR REPORT_ID NOT IN (SELECT REPORT_ID FROM dbo.REPORT);
+            """, connection, transaction))
+        {
+            await cleanReport.ExecuteNonQueryAsync(token);
+        }
+        return new(true, null);
+    }
+
+    /// <summary>
+    /// 用户权限设定（2306）AfterSave：默认组入组 + 报表权限补齐 + 个人权限孤儿清理
+    /// （等价 P_SYSDL_After_Save；@user_id 取自 SYSDD，无个人权限行时跳过入组/报表补齐，
+    /// 孤儿清理仍全局执行——与旧 SP 一致）。
+    /// </summary>
+    private static async Task<SprocResult> SysdlAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 1 || keyValues.Count < 1) return new(false, "用户权限领域规则缺少主键。");
+        var keyUser = (keyValues[0] ?? string.Empty).Trim();
+        string? userId;
+        await using (var read = new SqlCommand(
+            "SELECT TOP 1 LTRIM(RTRIM(USER_ID)) FROM dbo.SYSDD WHERE USER_ID=@UserId;",
+            connection, transaction))
+        {
+            read.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = keyUser;
+            userId = (string?)await read.ExecuteScalarAsync(token);
+        }
+        if (!string.IsNullOrEmpty(userId))
+        {
+            // 1. 默认组入组
+            string? groupId;
+            await using (var readGroup = new SqlCommand(
+                "SELECT LTRIM(RTRIM(ISNULL(G_IDX,''))) FROM dbo.SYSDL WHERE USER_ID=@UserId;",
+                connection, transaction))
+            {
+                readGroup.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId;
+                groupId = (string?)await readGroup.ExecuteScalarAsync(token);
+            }
+            if (!string.IsNullOrWhiteSpace(groupId))
+            {
+                await using var join = new SqlCommand("""
+                    INSERT INTO dbo.SYSDG_USER (G_IDX, USER_ID)
+                    SELECT @GIdx, @UserId
+                    WHERE NOT EXISTS (SELECT 1 FROM dbo.SYSDG_USER WHERE G_IDX=@GIdx AND USER_ID=@UserId);
+                    """, connection, transaction);
+                join.Parameters.Add("@GIdx", SqlDbType.NChar, 10).Value = groupId;
+                join.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId;
+                await join.ExecuteNonQueryAsync(token);
+            }
+            // 2. 报表权限补齐（有 REPORT_TAG=1 个人模块的报表，预览/打印/导出默认开通）
+            await using var reports = new SqlCommand("""
+                INSERT INTO dbo.SYSDD_REPORT (USER_ID, M_IDX, REPORT_ID, PREVIEW_TAG, PRINT_TAG, EXPORT_TAG, DATA_FILTER)
+                SELECT m.USER_ID, r.R_M_IDX, r.REPORT_ID, 1, 1, 1, ''
+                FROM dbo.SYSDL m CROSS JOIN dbo.REPORT r
+                WHERE m.USER_ID=@UserId
+                  AND r.REPORT_ID NOT IN (SELECT REPORT_ID FROM dbo.SYSDD_REPORT WHERE USER_ID=@UserId)
+                  AND r.R_M_IDX IN (SELECT M_IDX FROM dbo.SYSDD WHERE REPORT_TAG=1 AND USER_ID=@UserId);
+                """, connection, transaction);
+            reports.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId;
+            await reports.ExecuteNonQueryAsync(token);
+        }
+        // 3. 个人权限孤儿清理（全局，与旧 SP 一致）
+        await using (var cleanDd = new SqlCommand(
+            "DELETE FROM dbo.SYSDD WHERE M_IDX NOT IN (SELECT M_IDX FROM dbo.MODULES);",
+            connection, transaction))
+        {
+            await cleanDd.ExecuteNonQueryAsync(token);
+        }
+        await using (var cleanDdReport = new SqlCommand("""
+            DELETE FROM dbo.SYSDD_REPORT
+            WHERE M_IDX NOT IN (SELECT M_IDX FROM dbo.MODULES) OR REPORT_ID NOT IN (SELECT REPORT_ID FROM dbo.REPORT);
+            """, connection, transaction))
+        {
+            await cleanDdReport.ExecuteNonQueryAsync(token);
+        }
+        return new(true, null);
+    }
+
+    /// <summary>
+    /// 员工发卡（180208）AfterSave：失效日期不得早于生效日期 + 旧卡到期日联动
+    /// （等价 P_Employee_Card_After_Save：同卡号其它员工旧卡、同员工其它卡到期 =
+    /// 生效日前一天；注释掉的重复占用校验为死代码，不移植）。
+    /// </summary>
+    private static async Task<SprocResult> EmployeeCardAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "员工发卡领域规则缺少主键。");
+        var empId = (keyValues[0] ?? string.Empty).Trim();
+        var cardId = (keyValues[1] ?? string.Empty).Trim();
+        DateTime? beginDate; DateTime? endDate;
+        await using (var read = new SqlCommand(
+            "SELECT BEGIN_DATE, END_DATE FROM dbo.HR_EMPLOYEE_CARD WHERE EMP_ID=@EmpId AND CARD_ID=@CardId;",
+            connection, transaction))
+        {
+            read.Parameters.Add("@EmpId", SqlDbType.NChar, 10).Value = empId;
+            read.Parameters.Add("@CardId", SqlDbType.NChar, 20).Value = cardId;
+            await using var reader = await read.ExecuteReaderAsync(token);
+            if (!await reader.ReadAsync(token)) return new(true, null);
+            beginDate = reader.IsDBNull(0) ? null : reader.GetDateTime(0);
+            endDate = reader.IsDBNull(1) ? null : reader.GetDateTime(1);
+        }
+        if (endDate < beginDate) return new(false, "失于日期应在生效日期后");
+        if (beginDate is not null)
+        {
+            var expires = beginDate.Value.AddDays(-1);
+            await using (var updCard = new SqlCommand("""
+                UPDATE dbo.HR_EMPLOYEE_CARD SET END_DATE=@Expires
+                WHERE CARD_ID=@CardId AND EMP_ID<>@EmpId AND (END_DATE IS NULL OR END_DATE>=@BeginDate);
+                """, connection, transaction))
+            {
+                updCard.Parameters.Add("@Expires", SqlDbType.DateTime).Value = expires;
+                updCard.Parameters.Add("@CardId", SqlDbType.NChar, 20).Value = cardId;
+                updCard.Parameters.Add("@EmpId", SqlDbType.NChar, 10).Value = empId;
+                updCard.Parameters.Add("@BeginDate", SqlDbType.DateTime).Value = beginDate.Value;
+                await updCard.ExecuteNonQueryAsync(token);
+            }
+            await using (var updEmp = new SqlCommand("""
+                UPDATE dbo.HR_EMPLOYEE_CARD SET END_DATE=@Expires
+                WHERE EMP_ID=@EmpId AND CARD_ID<>@CardId AND (END_DATE IS NULL OR END_DATE>=@BeginDate);
+                """, connection, transaction))
+            {
+                updEmp.Parameters.Add("@Expires", SqlDbType.DateTime).Value = expires;
+                updEmp.Parameters.Add("@EmpId", SqlDbType.NChar, 10).Value = empId;
+                updEmp.Parameters.Add("@CardId", SqlDbType.NChar, 20).Value = cardId;
+                updEmp.Parameters.Add("@BeginDate", SqlDbType.DateTime).Value = beginDate.Value;
+                await updEmp.ExecuteNonQueryAsync(token);
+            }
+        }
         return new(true, null);
     }
 
