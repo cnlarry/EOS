@@ -205,7 +205,6 @@ export function MenuAdminPage() {
   const [iconPickerModule, setIconPickerModule] = useState<MenuAdminModule | null>(null)
   const [fieldPicker, setFieldPicker] = useState<null | { target: 'sortFields' | 'detailNoFields' | 'notBackM' | 'notBack' }>(null)
   const [filterBuilderOpen, setFilterBuilderOpen] = useState(false)
-  const [sprocChooser, setSprocChooser] = useState<'afterSave' | 'update' | null>(null)
   const [formTab, setFormTab] = useState<MenuFormTab>('basic')
   const [treeQuery, setTreeQuery] = useState('')
   const draggedIdRef = useRef<number | null>(null)
@@ -849,22 +848,6 @@ export function MenuAdminPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="row g-2">
-                          <div className="col-6">
-                            <Input label="存盘后执行存储过程" readOnly value={draft.AFTERSAVE_SP ?? ''} onChange={(value) => patch((d) => ({ ...d, AFTERSAVE_SP: value || null }))} />
-                            <div className="d-flex gap-2">
-                              <Button size="sm" title="选择存盘后执行存储过程" onClick={() => setSprocChooser('afterSave')}>选择…</Button>
-                              <Button size="sm" variant="ghost" title="清除存盘后执行存储过程" onClick={() => patch((d) => ({ ...d, AFTERSAVE_SP: null }))}>清除</Button>
-                            </div>
-                          </div>
-                          <div className="col-6">
-                            <Input label="数据更新存储过程" readOnly value={draft.UPDATE_SP ?? ''} onChange={(value) => patch((d) => ({ ...d, UPDATE_SP: value || null }))} />
-                            <div className="d-flex gap-2">
-                              <Button size="sm" title="选择数据更新存储过程" onClick={() => setSprocChooser('update')}>选择…</Button>
-                              <Button size="sm" variant="ghost" title="清除数据更新存储过程" onClick={() => patch((d) => ({ ...d, UPDATE_SP: null }))}>清除</Button>
-                            </div>
-                          </div>
-                        </div>
                         <div className="text-secondary small fw-semibold mt-2 mb-1">单据行为</div>
                         <div className="d-flex flex-wrap gap-3">
                           <Checkbox label="通用查询（主表）" checked={draft.SEARCH_1} onChange={(checked) => patch((d) => ({ ...d, SEARCH_1: checked }))} />
@@ -997,22 +980,6 @@ export function MenuAdminPage() {
           T_KIND: (row) => tableKindLabel(row.T_KIND as string | null),
         }}
         emptyText="没有匹配的表。"
-      />
-      <UnifiedChooser
-        open={sprocChooser !== null}
-        title={sprocChooser === 'afterSave' ? '选择存盘后执行存储过程' : '选择数据更新存储过程'}
-        source={{ kind: 'sourceKey', key: 'menu-admin.sprocs' }}
-        getRowId={(row) => String(row.SP_NAME)}
-        mode="single"
-        onPick={(rows) => {
-          const row = rows[0]
-          if (row && sprocChooser) {
-            patch((d) => ({ ...d, [sprocChooser === 'afterSave' ? 'AFTERSAVE_SP' : 'UPDATE_SP']: String(row.SP_NAME) }))
-          }
-        }}
-        onClose={() => setSprocChooser(null)}
-        searchPlaceholder="搜索存储过程名…"
-        emptyText="没有匹配的存储过程。"
       />
       {iconPickerModule && (
         <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">

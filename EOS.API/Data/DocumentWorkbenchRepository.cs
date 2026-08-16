@@ -210,6 +210,11 @@ public sealed class DocumentWorkbenchRepository(
                 // 阶段 5：自动注册的模块若已移植 AfterSave，则用 C# 领域规则替换受控 SP
                 if(DomainRuleMap.TryGet(moduleId,out var domainRule))
                     businessRule=businessRule with { DomainRule=domainRule, AfterSaveSproc=null };
+                // 阶段 8（字段收敛）：未移植 AfterSave 的模块禁止静默执行元数据 SP——
+                // AfterSave 置空并标记待移植（保存时拒绝）；WorkflowSproc（批核 UPDATE_SP）
+                // 保留受控调用（批核 SP C# 化属二期）。
+                else if(afterSaveSproc.Length>0)
+                    businessRule=businessRule with { AfterSaveSproc=null, SprocPendingPorting=true };
             }
         }
         WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,
@@ -1104,6 +1109,9 @@ public sealed class DocumentWorkbenchRepository(
 
         // 领域规则：自动单号 + 默认单别（等价旧 GetNewBillNo / GetDefaultBillInfo）
         var businessRule=definition.BusinessRule;
+        if(businessRule?.SprocPendingPorting==true)
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"SP_NOT_PORTED",
+                "该模块的存盘后处理逻辑尚未移植，禁止保存。");
         if(businessRule is { AutoBillNo: true, BillNoField: not null, BillTypeField: not null })
         {
             var existingNo=values.GetValueOrDefault(businessRule.BillNoField);
@@ -1240,6 +1248,9 @@ public sealed class DocumentWorkbenchRepository(
     {
         await using var connection=CreateConnection(); await connection.OpenAsync(token);
         await using var transaction=(SqlTransaction)await connection.BeginTransactionAsync(token);
+        if(definition.BusinessRule?.SprocPendingPorting==true)
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"SP_NOT_PORTED",
+                "该模块的存盘后处理逻辑尚未移植，禁止保存。");
         var pkColumns=await GetPrimaryKeyColumnsAsync(connection,transaction,definition.MasterTable,token);
         if(pkColumns.Count!=keyValues.Count)return RecordSaveResult.Failed(RecordAccessStatus.KeyMismatch,"RECORD_KEY_MISMATCH","主键数量与模块主键不匹配。");
         // 虚拟字段不参与物理 SELECT（VIRTUAL_EXP 为跨表表达式，ReadRowAsync 无法直接取值）
