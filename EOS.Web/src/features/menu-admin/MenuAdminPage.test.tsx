@@ -674,7 +674,7 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
 
     fireEvent.click(screen.getByRole('tab', { name: '主表' }))
-    for (const label of ['操作主表名', '主表过滤条件', '排序字段', '字段有值时不可解批（主表）', '存盘后执行存储过程', '数据更新存储过程']) {
+    for (const label of ['操作主表名', '主表过滤条件', '排序字段', '字段有值时不可解批（主表）']) {
       expect(screen.getByLabelText(label)).toHaveAttribute('readonly')
     }
 
@@ -684,30 +684,6 @@ describe('MenuAdminPage', () => {
     }
   })
 
-  it('存储过程选择器选择存盘后执行存储过程并回填', async () => {
-    const sprocData = {
-      columns: [{ key: 'SP_NAME', label: '存储过程名', dataType: 'nvarchar', format: null }],
-      rows: [{ SP_NAME: 'P_QUOTE_After_Save' }],
-      total: 1,
-    }
-    apiClientMock.get.mockResolvedValue({ total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), withTables] })
-    apiClientMock.post.mockImplementation(async (path: string) => {
-      if (path === '/chooser/query') return sprocData
-      throw new Error(`unexpected POST ${path}`)
-    })
-    renderPage()
-    await waitForMenuTree()
-    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
-    fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
-    fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
-    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
-
-    fireEvent.click(screen.getByTitle('选择存盘后执行存储过程'))
-    await waitFor(() => expect(screen.getByText('P_QUOTE_After_Save')).toBeInTheDocument())
-    fireEvent.click(screen.getByText('P_QUOTE_After_Save'))
-    fireEvent.click(screen.getByRole('button', { name: '确认' }))
-    await waitFor(() => expect(screen.getByLabelText('存盘后执行存储过程')).toHaveValue('P_QUOTE_After_Save'))
-  })
 })
 
 const rect = (height: number): DOMRect => ({

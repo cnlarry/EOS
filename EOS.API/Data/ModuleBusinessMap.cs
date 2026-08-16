@@ -15,7 +15,8 @@ public sealed record ModuleBusinessRule(
     string? BillNoField,
     string? BillTypeField,
     string? PrepayOffsetTable = null,
-    string? DomainRule = null);
+    string? DomainRule = null,
+    bool SprocPendingPorting = false);
 
 public static class ModuleBusinessMap
 {
