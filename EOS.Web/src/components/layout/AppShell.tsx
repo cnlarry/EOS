@@ -25,16 +25,6 @@ const DEFAULT_SIDEBAR_WIDTH = 220
 const fallbackNavigation = [
   { id: 'dashboard', label: '工作台', route: '/dashboard', icon: 'dashboard' },
   {
-    id: 'procurement',
-    label: '采购管理',
-    icon: 'procurement',
-    children: [
-      { id: 'po', label: '采购订单', route: '/procurement/purchase-orders', icon: 'procurement' },
-      { id: 'req', label: '请购单', route: '/procurement/requisitions', icon: 'procurement' },
-      { id: 'recv', label: '采购收货', route: '/procurement/receipts', icon: 'procurement' },
-    ],
-  },
-  {
     id: 'sales',
     label: '销售管理',
     icon: 'sales',
@@ -68,7 +58,6 @@ function avatarColor(username: string): string {
 
 const pageTitles: Record<string, { section: string; title: string }> = {
   '/dashboard': { section: '首页', title: '工作台' },
-  '/procurement/purchase-orders': { section: '采购管理', title: '采购订单' },
   '/admin/tables': { section: '系统管理', title: '数据表维护' },
   '/admin/menus': { section: '系统管理', title: '菜单管理' },
   '/admin/users': { section: '系统管理', title: '用户管理' },

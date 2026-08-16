@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, type PageResponse } from '../../types/api'
-import type { PurchaseOrderSummary } from '../../features/procurement/types/purchaseOrder'
+import { ApiError } from '../../types/api'
 import { MockTransport } from './mockTransport'
 
 async function run(transport: MockTransport, request: Parameters<MockTransport['request']>[0]) {
@@ -49,29 +48,6 @@ describe('MockTransport', () => {
     expect(error.status).toBe(401)
   })
 
-  it('采购订单按 keyword/status/date 过滤并排序分页', async () => {
-    vi.useFakeTimers()
-    const transport = new MockTransport()
-    sessionStorage.setItem('erp-mock-session', 'viewer')
-    const page1 = await run(transport, { method: 'GET', path: '/purchase-orders', query: { page: 1, pageSize: 2, status: 'pending', sortBy: 'purchaseDate', sortDirection: 'asc' } }) as PageResponse<PurchaseOrderSummary>
-    expect(page1.total).toBe(1)
-    expect(page1.items[0].status).toBe('pending')
-    const searched = await run(transport, { method: 'GET', path: '/purchase-orders', query: { keyword: '苏州', page: 1, pageSize: 20 } }) as PageResponse<PurchaseOrderSummary>
-    expect(searched.total).toBe(1)
-    expect(searched.items[0].supplierName).toContain('苏州')
-    const dateFiltered = await run(transport, { method: 'GET', path: '/purchase-orders', query: { dateFrom: '2026-08-01', page: 1, pageSize: 20 } }) as PageResponse<PurchaseOrderSummary>
-    expect(dateFiltered.items.every((order: { purchaseDate: string }) => order.purchaseDate >= '2026-08-01')).toBe(true)
-  })
-
-  it('keyword=error 触发 503', async () => {
-    vi.useFakeTimers()
-    const transport = new MockTransport()
-    sessionStorage.setItem('erp-mock-session', 'viewer')
-    const error = await run(transport, { method: 'GET', path: '/purchase-orders', query: { keyword: 'error', page: 1, pageSize: 20 } }).catch((reason) => reason) as ApiError
-    expect(error.status).toBe(503)
-    expect(error.body.code).toBe('MOCK_SERVICE_UNAVAILABLE')
-  })
-
   it('未知路由返回 404', async () => {
     vi.useFakeTimers()
     const transport = new MockTransport()
@@ -84,7 +60,7 @@ describe('MockTransport', () => {
     vi.useFakeTimers()
     const transport = new MockTransport()
     const controller = new AbortController()
-    const promise = transport.request({ method: 'GET', path: '/purchase-orders', signal: controller.signal })
+    const promise = transport.request({ method: 'GET', path: '/nope', signal: controller.signal })
     promise.catch(() => undefined)
     controller.abort()
     await expect(promise).rejects.toMatchObject({ name: 'AbortError' })

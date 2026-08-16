@@ -16,22 +16,22 @@ const bootstrap: AppBootstrap = {
   navigation: [
     { id: 'dashboard', label: '工作台', route: '/dashboard', icon: 'dashboard' },
     {
-      id: 'procurement',
-      label: '采购管理',
-      icon: 'procurement',
+      id: 'sales',
+      label: '销售管理',
+      icon: 'sales',
       children: [
-        { id: 'po', label: '采购订单', route: '/procurement/purchase-orders', icon: 'procurement' },
+        { id: 'so', label: '销售订单', route: '/sales/orders', icon: 'sales' },
         {
-          id: 'proc-sub',
-          label: '采购子组',
-          icon: 'procurement',
+          id: 'sales-sub',
+          label: '销售子组',
+          icon: 'sales',
           children: [
-            { id: 'po-sub', label: '采购子页', route: '/procurement/sub-page', icon: 'procurement' },
+            { id: 'so-sub', label: '销售子页', route: '/sales/sub-page', icon: 'sales' },
             {
               id: 'grouped',
               label: '分组模块',
               route: '/document-workbench/1209',
-              icon: 'procurement',
+              icon: 'sales',
               moduleId: 1209,
               groups: [{ index: 1, description: '结案' }],
             },
@@ -94,7 +94,7 @@ describe('AppShell', () => {
     renderShell('/dashboard')
     expect(screen.getByText('EOS')).toBeInTheDocument()
     expect(screen.getAllByText('工作台').length).toBeGreaterThan(0)
-    expect(screen.getByText('采购管理')).toBeInTheDocument()
+    expect(screen.getByText('销售管理')).toBeInTheDocument()
     expect(screen.getByText('Demo User')).toBeInTheDocument()
     expect(screen.getByText('admin')).toBeInTheDocument()
     expect(screen.getByText('LW')).toBeInTheDocument()
@@ -102,13 +102,13 @@ describe('AppShell', () => {
 
   it('无 bootstrap 时使用兜底导航', () => {
     renderShell('/dashboard', { bootstrap: null })
-    expect(screen.getByText('采购管理')).toBeInTheDocument()
-    expect(screen.getAllByText('采购订单').length).toBeGreaterThan(0)
+    expect(screen.getByText('销售管理')).toBeInTheDocument()
+    expect(screen.getAllByText('销售订单').length).toBeGreaterThan(0)
   })
 
   it('导航分组可展开收起', () => {
     renderShell('/dashboard')
-    const toggle = screen.getByRole('button', { name: '采购管理' })
+    const toggle = screen.getByRole('button', { name: '销售管理' })
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
     fireEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
@@ -118,18 +118,18 @@ describe('AppShell', () => {
 
   it('三级菜单可逐级展开', () => {
     renderShell('/dashboard')
-    const subGroup = screen.getByRole('button', { name: '采购子组' })
+    const subGroup = screen.getByRole('button', { name: '销售子组' })
     expect(subGroup).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(subGroup)
     expect(subGroup).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByRole('link', { name: '采购子页' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '销售子页' })).toBeInTheDocument()
   })
 
   it('菜单搜索命中后显示面包屑并可直达', () => {
     renderShell('/dashboard')
-    fireEvent.click(screen.getByRole('button', { name: '采购子组' }))
+    fireEvent.click(screen.getByRole('button', { name: '销售子组' }))
     fireEvent.input(screen.getByRole('searchbox', { name: '搜索菜单' }), { target: { value: '分组模块' } })
-    const result = screen.getByRole('button', { name: '采购管理 / 采购子组 / 分组模块' })
+    const result = screen.getByRole('button', { name: '销售管理 / 销售子组 / 分组模块' })
     fireEvent.click(result)
     expect(screen.getByText('WB')).toBeInTheDocument()
   })
