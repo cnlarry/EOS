@@ -70,6 +70,11 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "moc-product-out" => await MocProductOutAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
                 "sfc-process" => await SfcProcessAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "sfc-daily" => await SfcDailyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "cop-return" => await CopReturnAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
+                "cop-fitout" => await CopFitoutAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
+                "cop-fitin" => await CopFitinAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
+                "cop-back" => await CopBackAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
+                "pur-cancel" => await PurCancelAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 _ => new(false, $"未登记的领域规则：{ruleName}"),
             };
         }
@@ -888,6 +893,287 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 return new(false, "以下序号项数量超过制令制程允许生产最大数量 \r\n" + string.Join("\r\n", lines.Take(10)));
         }
         return new(true, null);
+    }
+
+    /// <summary>客户退货单（P_COP_RETURN）AfterSave：客户相符/订单存在/订单序号产品相符/产品/批号校验。</summary>
+    private static Task<SprocResult> CopReturnAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+        => ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
+            "COP_RETURN_D", "RETURN_TYPE", "RETURN_NO",
+            [
+                ("EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o JOIN dbo.COP_RETURN_M m ON m.RETURN_TYPE=@Type AND m.RETURN_NO=@No WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.CLIENT_ID<>m.CLIENT_ID)", "以下序号项退货单与订单客户不符 "),
+                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO)", "以下序号项订单不存在 "),
+                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_D o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.SERIAL_NO=t.ORDER_SERIAL_NO AND o.PRO_NO=t.PRO_NO)", "以下序号项订单序号与产品编号不相符 "),
+                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
+                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
+            ], token);
+
+    /// <summary>备货单（P_COP_FITOUT）AfterSave：CHECK 分支（SYSSS 门控）+ 客户/订单/产品/批号校验。</summary>
+    private static async Task<SprocResult> CopFitoutAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction, int moduleId,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "备货单领域规则缺少主键。");
+        var type = (keyValues[0] ?? string.Empty).Trim();
+        var no = (keyValues[1] ?? string.Empty).Trim();
+        if (await HasErrorNoSaveAsync(connection, transaction, moduleId, token))
+        {
+            var check = await CopFitoutCheckAsync(connection, transaction, type, no, token);
+            if (check is not null) return check;
+        }
+        return await ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
+            "COP_FITOUT_D", "FITOUT_TYPE", "FITOUT_NO",
+            [
+                ("EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o JOIN dbo.COP_FITOUT_M m ON m.FITOUT_TYPE=@Type AND m.FITOUT_NO=@No WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.CLIENT_ID<>m.CLIENT_ID)", "以下序号项送货单与订单客户不符 "),
+                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO)", "以下序号项订单不存在 "),
+                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_D o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.SERIAL_NO=t.ORDER_SERIAL_NO AND o.PRO_NO=t.PRO_NO)", "以下序号项订单序号与产品编号不相符 "),
+                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
+                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号! "),
+            ], token);
+    }
+
+    /// <summary>备货返仓单（P_COP_FITIN）AfterSave：CHECK 分支（SYSSS 门控）+ 客户/订单/产品/批号校验。</summary>
+    private static async Task<SprocResult> CopFitinAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction, int moduleId,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "备货返仓单领域规则缺少主键。");
+        var type = (keyValues[0] ?? string.Empty).Trim();
+        var no = (keyValues[1] ?? string.Empty).Trim();
+        if (await HasErrorNoSaveAsync(connection, transaction, moduleId, token))
+        {
+            var check = await CopFitinCheckAsync(connection, transaction, type, no, token);
+            if (check is not null) return check;
+        }
+        return await ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
+            "COP_FITIN_D", "FITIN_TYPE", "FITIN_NO",
+            [
+                ("EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o JOIN dbo.COP_FITIN_M m ON m.FITIN_TYPE=@Type AND m.FITIN_NO=@No WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.CLIENT_ID<>m.CLIENT_ID)", "以下序号项与订单客户不符 "),
+                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO)", "以下序号项订单不存在 "),
+                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_D o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.SERIAL_NO=t.ORDER_SERIAL_NO AND o.PRO_NO=t.PRO_NO)", "以下序号项订单序号与产品编号不相符 "),
+                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
+                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
+            ], token);
+    }
+
+    /// <summary>客户退料单（P_COP_BACK）AfterSave：CHECK 分支（退料不超订单）+ 客户/订单/产品/批号校验。</summary>
+    private static async Task<SprocResult> CopBackAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction, int moduleId,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "客户退料单领域规则缺少主键。");
+        var type = (keyValues[0] ?? string.Empty).Trim();
+        var no = (keyValues[1] ?? string.Empty).Trim();
+        if (await HasErrorNoSaveAsync(connection, transaction, moduleId, token))
+        {
+            var check = await CopBackCheckAsync(connection, transaction, type, no, token);
+            if (check is not null) return check;
+        }
+        return await ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
+            "COP_BACK_D", "BACK_TYPE", "BACK_NO",
+            [
+                ("EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o JOIN dbo.COP_BACK_M m ON m.BACK_TYPE=@Type AND m.BACK_NO=@No WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.CLIENT_ID<>m.CLIENT_ID)", "以下序号项退料单与订单客户不符 "),
+                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO)", "以下序号项订单不存在 "),
+                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_D o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.SERIAL_NO=t.ORDER_SERIAL_NO AND o.PRO_NO=t.PRO_NO)", "以下序号项订单序号与产品编号不相符 "),
+                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
+                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
+            ], token);
+    }
+
+    /// <summary>采购退料单（P_PUR_CANCEL）AfterSave：6 项引用校验 + 退料不超收料。</summary>
+    private static async Task<SprocResult> PurCancelAfterSaveAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "采购退料单领域规则缺少主键。");
+        var type = (keyValues[0] ?? string.Empty).Trim();
+        var no = (keyValues[1] ?? string.Empty).Trim();
+        var validated = await ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
+            "PUR_CANCEL_D", "CANCEL_TYPE", "CANCEL_NO",
+            [
+                ("EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_M o JOIN dbo.PUR_CANCEL_M m ON m.CANCEL_TYPE=@Type AND m.CANCEL_NO=@No WHERE o.PURCHASE_TYPE=t.PURCHASE_TYPE AND o.PURCHASE_NO=t.PURCHASE_NO AND o.SUPPLIER_ID<>m.SUPPLIER_ID)", "以下序号项收料单与采购单厂商不符 "),
+                ("ISNULL(t.PURCHASE_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_M o WHERE o.PURCHASE_TYPE=t.PURCHASE_TYPE AND o.PURCHASE_NO=t.PURCHASE_NO)", "以下序号项采购订单不存在 "),
+                ("ISNULL(t.PURCHASE_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_D o WHERE o.PURCHASE_TYPE=t.PURCHASE_TYPE AND o.PURCHASE_NO=t.PURCHASE_NO AND o.SERIAL_NO=t.PURCHASE_SERIAL_NO AND o.PRO_NO=t.PRO_NO)", "以下序号项采购订单序号与产品编号不相符 "),
+                ("ISNULL(t.RECEIVE_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.PUR_RECEIVE_D o WHERE o.RECEIVE_TYPE=t.RECEIVE_TYPE AND o.RECEIVE_NO=t.RECEIVE_NO AND o.SERIAL_NO=t.RECEIVE_SERIAL_NO AND o.PRO_NO=t.PRO_NO)", "以下序号项送货单序号与产品编号不相符 "),
+                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
+                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
+            ], token);
+        if (!validated.Success) return validated;
+        var qtyCheck = await PurCancelQtyCheckAsync(connection, transaction, type, no, token);
+        return qtyCheck ?? new(true, null);
+    }
+
+    /// <summary>P_COP_BACK_CHECK 内联：退料不超订单数量。</summary>
+    private static async Task<SprocResult?> CopBackCheckAsync(
+        SqlConnection connection, SqlTransaction transaction, string type, string no, CancellationToken token)
+    {
+        var rows = await FindLinesAsync(connection, transaction,
+            """
+            SELECT od.ORDER_NO, od.QTY, od.FINISHED_SEND_QTY, od.BACK_MATERIAL, od.BACK_BAD, sd.QTY
+            FROM dbo.COP_ORDER_D od
+            INNER JOIN (SELECT ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
+                        FROM dbo.COP_BACK_D WHERE BACK_TYPE=@Type AND BACK_NO=@No
+                        GROUP BY ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO) sd
+              ON od.ORDER_TYPE=sd.ORDER_TYPE AND od.ORDER_NO=sd.ORDER_NO AND od.SERIAL_NO=sd.ORDER_SERIAL_NO
+            WHERE ISNULL(od.FINISHED_SEND_QTY,0)+ISNULL(od.BACK_MATERIAL,0)+ISNULL(od.BACK_BAD,0)+sd.QTY > od.QTY;
+            """, type, no, token,
+            line: r => $"{r.GetString(0).Trim()}    {Convert.ToString(r.GetValue(1))}    {Convert.ToString(r.GetValue(2))}    {Convert.ToString(r.GetValue(3))}    {Convert.ToString(r.GetValue(4))}    {Convert.ToString(r.GetValue(5))}");
+        return rows is null
+            ? null
+            : new(false, "以下退料已超出订单数量\r\n 订单单号  订单数量  已送数量  已退数量  已退次品  单据数量\r\n" + rows);
+    }
+
+    /// <summary>P_COP_FITOUT_CHECK 内联：已备货不超订单/工单完工数量（SYSSS 门控）。</summary>
+    private static async Task<SprocResult?> CopFitoutCheckAsync(
+        SqlConnection connection, SqlTransaction transaction, string type, string no, CancellationToken token)
+    {
+        if (await ExistsAsync(connection, transaction,
+            "SELECT TOP 1 1 FROM dbo.SYSSS WHERE FITOUT_ORDER_TAG=1;", type, no, token))
+        {
+            var rows = await FindLinesAsync(connection, transaction,
+                """
+                SELECT od.ORDER_NO, od.QTY, od.FINISHED_FITOUT_QTY, sd.QTY, od.SPARE_QTY, od.FINISHED_FITOUT_SPARE_QTY, sd.SPARE_QTY
+                FROM dbo.COP_ORDER_D od
+                INNER JOIN (SELECT ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
+                            FROM dbo.COP_FITOUT_D WHERE FITOUT_TYPE=@Type AND FITOUT_NO=@No
+                            GROUP BY ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO) sd
+                  ON od.ORDER_TYPE=sd.ORDER_TYPE AND od.ORDER_NO=sd.ORDER_NO AND od.SERIAL_NO=sd.ORDER_SERIAL_NO
+                WHERE (ISNULL(od.FINISHED_FITOUT_QTY,0)+sd.QTY > ISNULL(od.QTY,0)
+                    OR ISNULL(od.FINISHED_FITOUT_SPARE_QTY,0)+sd.SPARE_QTY > ISNULL(od.SPARE_QTY,0));
+                """, type, no, token,
+                line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
+            if (rows is not null)
+                return new(false, "以下会出现已备货数量超出订单数量\r\n订单号   数量   已备货数量  单据数量  备品  已备货备品  单据备品\r\n" + rows);
+        }
+        if (await ExistsAsync(connection, transaction,
+            "SELECT TOP 1 1 FROM dbo.SYSSS WHERE FITOUT_PRODUCE_TAG=1;", type, no, token))
+        {
+            var rows = await FindLinesAsync(connection, transaction,
+                """
+                SELECT od.PRODUCE_NO, od.FINISHED_QTY, od.FINISHED_FITOUT_QTY, sd.QTY, od.FINISHED_SPARE_QTY, od.FINISHED_FITOUT_SPARE_QTY, sd.SPARE_QTY
+                FROM dbo.MOC_PRODUCE_M od
+                INNER JOIN (SELECT PRODUCE_TYPE, PRODUCE_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
+                            FROM dbo.COP_FITOUT_D WHERE FITOUT_TYPE=@Type AND FITOUT_NO=@No
+                            GROUP BY PRODUCE_TYPE, PRODUCE_NO) sd
+                  ON od.PRODUCE_TYPE=sd.PRODUCE_TYPE AND od.PRODUCE_NO=sd.PRODUCE_NO
+                WHERE (ISNULL(od.FINISHED_FITOUT_QTY,0)+sd.QTY > ISNULL(od.FINISHED_QTY,0)
+                    OR ISNULL(od.FINISHED_FITOUT_SPARE_QTY,0)+sd.SPARE_QTY > ISNULL(od.FINISHED_SPARE_QTY,0));
+                """, type, no, token,
+                line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
+            if (rows is not null)
+                return new(false, "以下会出现已备货数量超出工单完工数量\r\n工单号   数量   已备货数量  单据数量  备品  已备货备品  单据备品\r\n" + rows);
+        }
+        return null;
+    }
+
+    /// <summary>P_COP_FITIN_CHECK 内联：返仓不超备货/送货不超备货（订单/工单/调拨，SYSSS 门控）。</summary>
+    private static async Task<SprocResult?> CopFitinCheckAsync(
+        SqlConnection connection, SqlTransaction transaction, string type, string no, CancellationToken token)
+    {
+        // 1. 返仓不超备货
+        var rows = await FindLinesAsync(connection, transaction,
+            """
+            SELECT od.FITOUT_NO, od.QTY, od.FINISHED_QTY, od.RETURN_QTY, sd.QTY, od.SPARE_QTY, od.FINISHED_SPARE_QTY, od.RETURN_SPARE_QTY, sd.SPARE_QTY
+            FROM dbo.COP_FITOUT_D od
+            INNER JOIN (SELECT FITOUT_TYPE, FITOUT_NO, FITOUT_SERIAL_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
+                        FROM dbo.COP_FITIN_D WHERE FITIN_TYPE=@Type AND FITIN_NO=@No
+                        GROUP BY FITOUT_TYPE, FITOUT_NO, FITOUT_SERIAL_NO) sd
+              ON od.FITOUT_TYPE=sd.FITOUT_TYPE AND od.FITOUT_NO=sd.FITOUT_NO AND od.SERIAL_NO=sd.FITOUT_SERIAL_NO
+            WHERE (ISNULL(od.QTY,0)-ISNULL(od.FINISHED_QTY,0)-ISNULL(od.RETURN_QTY,0) < sd.QTY
+                OR ISNULL(od.SPARE_QTY,0)-ISNULL(od.FINISHED_SPARE_QTY,0)-ISNULL(od.RETURN_SPARE_QTY,0)-sd.SPARE_QTY < 0);
+            """, type, no, token,
+            line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
+        if (rows is not null)
+            return new(false, "以下返仓已超出备货单数量\r\n备货单号   数量  已送货   已返仓数量  单据数量  备品  已送备品  已返仓备品  单据备品\r\n" + rows);
+        // 2-4. 送货/调拨不超备货（SYSSS 门控）
+        if (await ExistsAsync(connection, transaction,
+            "SELECT TOP 1 1 FROM dbo.SYSSS WHERE FITOUT_ORDER_TAG=1;", type, no, token))
+        {
+            rows = await FindLinesAsync(connection, transaction,
+                """
+                SELECT od.ORDER_NO, od.FINISHED_FITOUT_QTY, od.FINISHED_SEND_QTY, sd.QTY, od.FINISHED_FITOUT_SPARE_QTY, od.FINISHED_SPARE_QTY, sd.SPARE_QTY
+                FROM dbo.COP_ORDER_D od
+                INNER JOIN (SELECT ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
+                            FROM dbo.COP_FITIN_D WHERE FITIN_TYPE=@Type AND FITIN_NO=@No
+                            GROUP BY ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO) sd
+                  ON od.ORDER_TYPE=sd.ORDER_TYPE AND od.ORDER_NO=sd.ORDER_NO AND od.SERIAL_NO=sd.ORDER_SERIAL_NO
+                WHERE (ISNULL(od.FINISHED_FITOUT_QTY,0)-sd.QTY < ISNULL(od.FINISHED_SEND_QTY,0)
+                    OR ISNULL(od.FINISHED_FITOUT_SPARE_QTY,0)-sd.SPARE_QTY < ISNULL(od.FINISHED_SPARE_QTY,0));
+                """, type, no, token,
+                line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
+            if (rows is not null)
+                return new(false, "以下会出现已送货数量超出已备货数量\r\n订单号  备货数量  已送货  单据数量  备货备品  已送备品  单据备品\r\n" + rows);
+        }
+        if (await ExistsAsync(connection, transaction,
+            "SELECT TOP 1 1 FROM dbo.SYSSS WHERE FITOUT_PRODUCE_TAG=1;", type, no, token))
+        {
+            rows = await FindLinesAsync(connection, transaction,
+                """
+                SELECT od.PRODUCE_NO, od.FINISHED_FITOUT_QTY, od.FINISHED_SEND_QTY, sd.QTY, od.FINISHED_FITOUT_SPARE_QTY, od.FINISHED_SEND_SPARE_QTY, sd.SPARE_QTY
+                FROM dbo.MOC_PRODUCE_M od
+                INNER JOIN (SELECT PRODUCE_TYPE, PRODUCE_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
+                            FROM dbo.COP_FITIN_D WHERE FITIN_TYPE=@Type AND FITIN_NO=@No
+                            GROUP BY PRODUCE_TYPE, PRODUCE_NO) sd
+                  ON od.PRODUCE_TYPE=sd.PRODUCE_TYPE AND od.PRODUCE_NO=sd.PRODUCE_NO
+                WHERE (ISNULL(od.FINISHED_FITOUT_QTY,0)-sd.QTY < ISNULL(od.FINISHED_SEND_QTY,0)
+                    OR ISNULL(od.FINISHED_FITOUT_SPARE_QTY,0)-sd.SPARE_QTY < ISNULL(od.FINISHED_SEND_SPARE_QTY,0));
+                """, type, no, token,
+                line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
+            if (rows is not null)
+                return new(false, "以下会出现已送货数量超出已备货数量\r\n工单号  备货数量  已送货  单据数量  备货备品  已送备品  单据备品\r\n" + rows);
+        }
+        if (await ExistsAsync(connection, transaction,
+            "SELECT TOP 1 1 FROM dbo.SYSSS WHERE FITOUT_PRODUCE_TRANSFER_TAG=1;", type, no, token))
+        {
+            rows = await FindLinesAsync(connection, transaction,
+                """
+                SELECT od.PRODUCE_NO, od.FINISHED_FITOUT_QTY, od.FINISHED_TRANSFER_QTY, sd.QTY, od.FINISHED_FITOUT_SPARE_QTY, od.FINISHED_TRANSFER_SPARE_QTY, sd.SPARE_QTY
+                FROM dbo.MOC_PRODUCE_M od
+                INNER JOIN (SELECT PRODUCE_TYPE, PRODUCE_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
+                            FROM dbo.COP_FITIN_D WHERE FITIN_TYPE=@Type AND FITIN_NO=@No
+                            GROUP BY PRODUCE_TYPE, PRODUCE_NO) sd
+                  ON od.PRODUCE_TYPE=sd.PRODUCE_TYPE AND od.PRODUCE_NO=sd.PRODUCE_NO
+                WHERE (ISNULL(od.FINISHED_FITOUT_QTY,0)-sd.QTY < ISNULL(od.FINISHED_TRANSFER_QTY,0)
+                    OR ISNULL(od.FINISHED_FITOUT_SPARE_QTY,0)-sd.SPARE_QTY < ISNULL(od.FINISHED_TRANSFER_SPARE_QTY,0));
+                """, type, no, token,
+                line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
+            if (rows is not null)
+                return new(false, "以下会出现已调拔数量超出已备货数量\r\n工单号  备货数量  已调拔  单据数量  备货备品  已调拔备品  单据备品\r\n" + rows);
+        }
+        return null;
+    }
+
+    /// <summary>P_PUR_CANCEL 退料不超收料（旧 SP 展示「已收=退货」为显示 bug，此处按意图展示 RECEIVE）。</summary>
+    private static async Task<SprocResult?> PurCancelQtyCheckAsync(
+        SqlConnection connection, SqlTransaction transaction, string type, string no, CancellationToken token)
+    {
+        var rows = await FindLinesAsync(connection, transaction,
+            """
+            SELECT d.SERIAL_NO,
+                   SUM(CASE WHEN p.SRC='P' THEN p.QTY END) PUR_QTY,
+                   SUM(CASE WHEN p.SRC='R' THEN p.QTY END) REC_QTY,
+                   SUM(CASE WHEN p.SRC='C' THEN p.QTY END) RET_QTY,
+                   SUM(CASE WHEN p.SRC='P' THEN p.SPARE_QTY END) PUR_SPARE_QTY,
+                   SUM(CASE WHEN p.SRC='R' THEN p.SPARE_QTY END) REC_SPARE_QTY,
+                   SUM(CASE WHEN p.SRC='C' THEN p.SPARE_QTY END) RET_SPARE_QTY
+            FROM dbo.PUR_CANCEL_D d
+            INNER JOIN (
+                SELECT PURCHASE_TYPE, PURCHASE_NO, SERIAL_NO AS PURCHASE_SERIAL_NO, QTY, SPARE_QTY, 'P' SRC FROM dbo.PUR_PURCHASE_D
+                UNION ALL
+                SELECT PURCHASE_TYPE, PURCHASE_NO, PURCHASE_SERIAL_NO, QTY, SPARE_QTY, 'R' SRC FROM dbo.PUR_RECEIVE_D
+                UNION ALL
+                SELECT PURCHASE_TYPE, PURCHASE_NO, PURCHASE_SERIAL_NO, QTY, SPARE_QTY, 'C' SRC FROM dbo.PUR_CANCEL_D
+            ) p ON p.PURCHASE_TYPE=d.PURCHASE_TYPE AND p.PURCHASE_NO=d.PURCHASE_NO AND p.PURCHASE_SERIAL_NO=d.PURCHASE_SERIAL_NO
+            WHERE d.CANCEL_TYPE=@Type AND d.CANCEL_NO=@No
+            GROUP BY d.SERIAL_NO
+            HAVING SUM(CASE WHEN p.SRC='C' THEN p.QTY END) > SUM(CASE WHEN p.SRC='R' THEN p.QTY END)
+                OR SUM(CASE WHEN p.SRC='C' THEN p.SPARE_QTY END) > SUM(CASE WHEN p.SRC='R' THEN p.SPARE_QTY END);
+            """, type, no, token,
+            line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
+        return rows is null
+            ? null
+            : new(false, "以下序号项退料数量大于收料\r\n 序号  采购数量   已收  退料   采购备品   已收备品  退备品\r\n" + rows);
     }
 
     /// <summary>送货回执（1413）AfterSave：送/退货已有回执校验。</summary>
