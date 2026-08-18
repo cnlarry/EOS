@@ -2497,8 +2497,9 @@ public sealed class DocumentWorkbenchRepository(
     {await using var command=new SqlCommand("SELECT LTRIM(RTRIM(F_ID)) FROM dbo.FIELDS WHERE T_ID=@TargetTable AND COALESCE(IS_VISIBLE,1)=1",connection,transaction);command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;await using var reader=await command.ExecuteReaderAsync(token);var result=new HashSet<string>(StringComparer.OrdinalIgnoreCase);while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key))result.Add(key);}return result;}
 
     /// <summary>
-    /// MODULES.FILTER / DATA_FILTER 字段白名单：主表全部可见、非虚拟、物理存在的字段
-    /// （不受用户列选择影响，因为过滤器是服务端行级数据范围，字段不在用户列配置里不代表
+    /// MODULES.FILTER / DATA_FILTER 字段白名单：主表全部物理存在、非虚拟字段
+    /// （含隐藏字段；旧系统过滤表达式常引用隐藏字段如 IF_SHOW，若仅按可见字段会误拒整个模块；
+    /// 不受用户列选择影响，因为过滤器是服务端行级数据范围，字段不在用户列配置里不代表
     /// 不能用于过滤）；仍受禁止字段/成本/保密权限约束。
     /// </summary>
     private static async Task<IReadOnlySet<string>> ReadFilterFieldKeys(SqlConnection connection,string targetTable,bool canViewCost,bool canViewSecrecy,IReadOnlySet<string> deniedFields,CancellationToken token)
@@ -2506,7 +2507,7 @@ public sealed class DocumentWorkbenchRepository(
         const string sql="""
             SELECT LTRIM(RTRIM(f.F_ID)),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit)
             FROM dbo.FIELDS f WITH (NOLOCK)
-            WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0
+            WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VIRTUAL,0)=0
               AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
                           WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TargetTable AND c.COLUMN_NAME=f.F_ID)
             ORDER BY f.F_ID;

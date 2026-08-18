@@ -10,7 +10,7 @@ public sealed record NavigationGroupDefinition(int Index, string? Description, b
 /// <summary>
 /// 菜单分组（第 4 级）数据：读取 MODULES.GROUP1..5 / GROUP_EXP1..5 / GROUP_DESC1..5，
 /// 用 GroupExpressionParser 受控编译后查询主表分组值。
-/// 安全边界：表达式字段白名单 = 主表可见、非虚拟、物理存在的 FIELDS 列
+/// 安全边界：表达式字段白名单 = 主表物理存在、非虚拟的 FIELDS 列（含隐藏字段）
 /// （受禁止字段/成本/保密权限约束）；不可解析一律抛 GroupExpressionUnsupportedException。
 /// </summary>
 public sealed class NavigationGroupsRepository(DbConnectionFactory connections, ILogger<NavigationGroupsRepository> logger)
@@ -99,8 +99,8 @@ public sealed class NavigationGroupsRepository(DbConnectionFactory connections, 
     }
 
     /// <summary>
-    /// 分组表达式字段白名单：主表全部可见、非虚拟、物理存在字段
-    /// （与工作台 MODULES.FILTER 白名单同口径，仍受成本/保密/禁止字段约束）。
+    /// 分组表达式字段白名单：主表全部物理存在、非虚拟字段（含隐藏字段，与工作台
+    /// MODULES.FILTER 白名单同口径，仍受成本/保密/禁止字段约束）。
     /// </summary>
     private async Task<IReadOnlySet<string>> ReadFilterFieldKeysAsync(
         string masterTable,
@@ -110,7 +110,7 @@ public sealed class NavigationGroupsRepository(DbConnectionFactory connections, 
         const string sql = """
             SELECT LTRIM(RTRIM(f.F_ID)),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit)
             FROM dbo.FIELDS f WITH (NOLOCK)
-            WHERE f.T_ID=@MasterTable AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0
+            WHERE f.T_ID=@MasterTable AND COALESCE(f.IS_VIRTUAL,0)=0
               AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
                           WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@MasterTable AND c.COLUMN_NAME=f.F_ID)
             ORDER BY f.F_ID;
