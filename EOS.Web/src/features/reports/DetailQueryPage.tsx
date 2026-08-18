@@ -10,9 +10,10 @@ import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
+import { formatFieldValue } from '../document-workbench/fieldFormat'
 import { useAuth } from '../auth/authContext'
 
-interface DetailColumn { key: string; label: string; dataType: string }
+interface DetailColumn { key: string; label: string; dataType: string; displayFormat?: string | null }
 interface DetailQueryResult {
   moduleId: number
   title: string
@@ -24,15 +25,6 @@ interface DetailQueryResult {
 }
 
 const numericTypes = new Set(['int', 'decimal', 'float', 'money', 'numeric', 'double', 'bigint', 'smallint'])
-
-const formatValue = (value: unknown, dataType: string): string => {
-  if (value === null || value === undefined) return ''
-  if (value instanceof Date) return isNaN(value.getTime()) ? '' : value.toISOString().slice(0, 10)
-  const text = String(value).trim()
-  if (text.length === 0) return ''
-  if (dataType === 'datetime' && /^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10)
-  return text
-}
 
 /** 跨表明细查询（14996/14998/170297）：受控只读列表，服务端固定 SQL + 参数化日期边界。 */
 export function DetailQueryPage() {
@@ -55,7 +47,7 @@ export function DetailQueryPage() {
         minWidth: field.key === 'REMARK' ? 180 : 100,
       },
       cell: (info) => {
-        const text = formatValue(info.getValue(), field.dataType)
+        const text = formatFieldValue(info.getValue(), field.dataType, field.displayFormat ?? null)
         return text || '—'
       },
     })), [result.data])

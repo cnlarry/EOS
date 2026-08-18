@@ -23,7 +23,7 @@ public sealed class DetailQueryController(
     LegacyRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
-    private sealed record DetailColumn(string Key, string Label, string DataType);
+    private sealed record DetailColumn(string Key, string Label, string DataType, string? DisplayFormat = null);
     private sealed record QuerySpec(
         int ModuleId,
         string Title,
@@ -132,6 +132,7 @@ public sealed class DetailQueryController(
             $"SELECT COUNT_BIG(1) FROM {spec.FromSql};";
         command.Parameters.Add("@Offset", SqlDbType.Int).Value = (page - 1) * pageSize;
         command.Parameters.Add("@PageSize", SqlDbType.Int).Value = pageSize;
+        var formats = await ReadDisplayFormatsAsync(connection, spec, token);
         await using var reader = await command.ExecuteReaderAsync(token);
         var rows = new List<Dictionary<string, object?>>();
         while (await reader.ReadAsync(token))
@@ -148,11 +149,46 @@ public sealed class DetailQueryController(
         {
             spec.ModuleId,
             spec.Title,
-            Columns = spec.Columns.Select(column => new { column.Key, column.Label, column.DataType }),
+            Columns = spec.Columns.Select(column => new { column.Key, column.Label, column.DataType, DisplayFormat = formats.GetValueOrDefault(column.Key) }),
             Rows = rows,
             Total = total,
             Page = page,
             PageSize = pageSize,
         });
+    }
+
+    /// <summary>从 FIELDS 读取明细查询列的 DISPLAY_FORMAT（表/字段均为服务端常量，值参数化）。</summary>
+    private static async Task<Dictionary<string, string>> ReadDisplayFormatsAsync(
+        SqlConnection connection,
+        QuerySpec spec,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(F_ID)),LTRIM(RTRIM(ISNULL(DISPLAY_FORMAT,'')))
+            FROM dbo.FIELDS WITH (NOLOCK)
+            WHERE T_ID=@Table AND F_ID IN ({0});
+            """;
+        var keys = spec.Columns.Select(column => column.Key).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (keys.Count == 0) return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var parameters = keys.Select((_, index) => $"@f{index}").ToList();
+        await using var command = new SqlCommand(string.Format(sql, string.Join(',', parameters)), connection);
+        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = spec.ModuleId switch
+        {
+            14996 => "COP_ORDER_D",
+            14998 => "COP_SEND_D",
+            170297 => "PUR_RECEIVE_D",
+            _ => "COP_ORDER_D",
+        };
+        for (var i = 0; i < keys.Count; i++)
+            command.Parameters.Add(parameters[i], SqlDbType.NVarChar, 100).Value = keys[i];
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            var format = reader.GetString(1);
+            if (!string.IsNullOrWhiteSpace(format))
+                result[reader.GetString(0).Trim()] = format.Trim();
+        }
+        return result;
     }
 }

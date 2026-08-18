@@ -147,7 +147,7 @@ public sealed class SearchCenterRepository(DbConnectionFactory connections, ILog
         const string sql="""
             SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),
                    COALESCE(NULLIF(LTRIM(RTRIM(f.F_TYPE)),''),'nvarchar'),COALESCE(f.IS_COST,0),COALESCE(f.IS_SECRECY,0),
-                   COALESCE(f.IS_VISIBLE,1)
+                   COALESCE(f.IS_VISIBLE,1),LTRIM(RTRIM(ISNULL(f.DISPLAY_FORMAT,'')))
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE f.T_ID=@Table AND COALESCE(f.IS_VIRTUAL,0)=0
               AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@Table AND c.COLUMN_NAME=f.F_ID)
@@ -163,7 +163,9 @@ public sealed class SearchCenterRepository(DbConnectionFactory connections, ILog
             if(deniedFields.Contains(key))continue;
             if(Convert.ToBoolean(reader.GetValue(3))&&!canViewCost)continue;
             if(Convert.ToBoolean(reader.GetValue(4))&&!canViewSecrecy)continue;
-            result.Add(new SearchField(key,reader.GetString(1),reader.GetString(2)));
+            var displayFormat=reader.GetString(6);
+            result.Add(new SearchField(key,reader.GetString(1),reader.GetString(2),
+                string.IsNullOrWhiteSpace(displayFormat)?null:displayFormat.Trim()));
         }
         return result;
     }

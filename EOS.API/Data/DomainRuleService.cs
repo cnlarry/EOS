@@ -3507,7 +3507,20 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             WHERE m.PREPAY_TYPE=@Type AND m.PREPAY_NO=@No AND c.BUSINESS_TAG=0;
             """, type, no, token);
         if (!supplierOk) return new(false, "厂商编号不存在或已停止交易。");
-        // 预付金额不能超出采购金额
+        // 采购单引用联动校验：填了采购单号就必须同时填单别/序号（三者要么全填、要么全不填），
+        // 支持"无采购单预付"（打样/合作开发等场景），避免存半截引用。
+        var incompleteRef = await FindLinesAsync(connection, transaction,
+            """
+            SELECT d.SERIAL_NO
+            FROM dbo.PUR_PREPAY_D d
+            WHERE d.PREPAY_TYPE=@Type AND d.PREPAY_NO=@No
+              AND (LTRIM(RTRIM(ISNULL(d.PURCHASE_NO,'')))<>''
+                   AND (LTRIM(RTRIM(ISNULL(d.PURCHASE_TYPE,'')))='' OR d.PURCHASE_SERIAL_NO IS NULL OR d.PURCHASE_SERIAL_NO=0));
+            """, type, no, token,
+            line: r => Convert.ToInt32(r.GetValue(0)).ToString());
+        if (incompleteRef is not null)
+            return new(false, "以下序号项已填采购单号，但未填采购单别或采购序号（三者为一体）：\r\n" + incompleteRef);
+        // 预付金额不能超出采购金额（仅对填了采购单引用的明细行生效；无采购单的明细行跳过）
         var purchaseErrors = await FindLinesAsync(connection, transaction,
             """
             SELECT i.PURCHASE_SERIAL_NO, o.AMOUNT, o.FINISHED_AMOUNT, i.AMOUNT

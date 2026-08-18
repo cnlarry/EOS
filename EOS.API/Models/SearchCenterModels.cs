@@ -8,7 +8,7 @@ public sealed record SearchableModule(
     bool SearchMaster,
     bool SearchDetail);
 
-public sealed record SearchField(string Key, string Label, string DataType);
+public sealed record SearchField(string Key, string Label, string DataType, string? DisplayFormat = null);
 
 public sealed record SearchDefinition(
     int ModuleId,
