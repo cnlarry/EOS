@@ -8,12 +8,13 @@ import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
+import { formatFieldValue } from '../document-workbench/fieldFormat'
 import type { ColumnDef } from '@tanstack/react-table'
 
 interface ReportOption { label: string; value: string }
 interface ReportSelectSource { table: string; idColumn: string; valueColumn: string }
 interface ReportCondition { serialNo: number; field: string | null; desc: string; type: number; expression: string | null; defaultValue: string | null; parameterName: string | null; options: ReportOption[]; selectSource: ReportSelectSource | null; defaultValueTo: string | null }
-interface ReportColumn { key: string; label: string; dataType: string }
+interface ReportColumn { key: string; label: string; dataType: string; displayFormat?: string | null }
 interface ReportDefinition { moduleId: number; title: string; masterTable: string; conditions: ReportCondition[]; columns: ReportColumn[]; masterPkOrder: string[]; spName: string | null; spParameters: ReportSpParameter[] }
 interface ReportSpParameter { name: string; dataType: string; maxLength: number }
 interface ReportQueryResult { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }
@@ -102,7 +103,7 @@ export function ReportViewerPage() {
     () => spResultColumns ?? (definition.data?.columns ?? []).map((column) => ({
       accessorKey: column.key,
       header: column.label,
-      cell: (info) => String(info.getValue() ?? '—'),
+      cell: (info) => formatFieldValue(info.getValue(), column.dataType, column.displayFormat ?? null) || '—',
       meta: { cellClassName: column.dataType.includes('float') || column.dataType.includes('int') ? 'text-end' : undefined },
     })),
     [definition.data, spResultColumns],

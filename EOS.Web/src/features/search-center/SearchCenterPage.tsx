@@ -8,10 +8,11 @@ import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
+import { formatFieldValue } from '../document-workbench/fieldFormat'
 import type { ColumnDef } from '@tanstack/react-table'
 
 interface SearchableModule { moduleId: number; title: string; masterTable: string; detailTable: string | null; searchMaster: boolean; searchDetail: boolean }
-interface SearchField { key: string; label: string; dataType: string }
+interface SearchField { key: string; label: string; dataType: string; displayFormat?: string | null }
 interface SearchDefinition { moduleId: number; title: string; table: string; fields: SearchField[]; columns: SearchField[]; pkOrder: string[] }
 interface SearchResult { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }
 
@@ -50,7 +51,7 @@ export function SearchCenterPage() {
     () => (definition.data?.columns ?? []).map((column) => ({
       accessorKey: column.key,
       header: column.label,
-      cell: (info) => String(info.getValue() ?? '—'),
+      cell: (info) => formatFieldValue(info.getValue(), column.dataType, column.displayFormat ?? null) || '—',
       meta: { cellClassName: column.dataType.includes('float') || column.dataType.includes('int') ? 'text-end' : undefined },
     })),
     [definition.data],
