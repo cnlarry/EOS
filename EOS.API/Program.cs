@@ -12,7 +12,7 @@ using Microsoft.OpenApi;
 using QuestPDF;
 using QuestPDF.Infrastructure;
 
-// QuestPDF Community 许可（公司年收入 < $1M USD 免费；商用前需复核门槛，见 docs/技术债.md）
+// QuestPDF Community 许可（公司年收入 < $1M USD 免费；商用前需复核门槛，见 docs/status.md §6）
 QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
