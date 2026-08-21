@@ -188,7 +188,7 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
                    COALESCE(f.IS_COST,0),COALESCE(f.IS_SECRECY,0),LTRIM(RTRIM(ISNULL(f.DISPLAY_FORMAT,'')))
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE f.T_ID=@Table AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@Table AND c.COLUMN_NAME=f.F_ID)
+              AND EXISTS (SELECT 1 FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID)
             ORDER BY COALESCE(f.VERIFY_INDEX,999),f.F_ID;
             """;
         await using var command=new SqlCommand(sql,connection);

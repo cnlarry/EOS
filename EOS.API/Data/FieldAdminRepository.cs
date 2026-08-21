@@ -150,8 +150,9 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
 
         await using (var physical = new SqlCommand(
             """
-            SELECT 1 FROM INFORMATION_SCHEMA.TABLES
-            WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@TableId;
+            SELECT 1 FROM sys.objects o
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            WHERE s.name=N'dbo' AND o.name=@TableId AND o.type IN ('U','V');
             """, connection, transaction))
         {
             physical.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = request.TableId;
@@ -278,12 +279,14 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         const string sql = """
-            SELECT c.COLUMN_NAME, c.DATA_TYPE
-            FROM INFORMATION_SCHEMA.COLUMNS c
-            WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TableId
+            SELECT c.name AS COLUMN_NAME, TYPE_NAME(c.user_type_id) AS DATA_TYPE
+            FROM sys.columns c
+            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            WHERE s.name=N'dbo' AND o.name=@TableId
               AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f WITH (NOLOCK)
-                               WHERE f.T_ID=@TableId AND LTRIM(RTRIM(f.F_ID))=c.COLUMN_NAME)
-            ORDER BY c.ORDINAL_POSITION;
+                               WHERE f.T_ID=@TableId AND LTRIM(RTRIM(f.F_ID))=c.name)
+            ORDER BY c.column_id;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
@@ -315,8 +318,9 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
 
         await using (var physical = new SqlCommand(
             """
-            SELECT 1 FROM INFORMATION_SCHEMA.TABLES
-            WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@TableId;
+            SELECT 1 FROM sys.objects o
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            WHERE s.name=N'dbo' AND o.name=@TableId AND o.type IN ('U','V');
             """, connection, transaction))
         {
             physical.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = request.TableId;
@@ -402,9 +406,11 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
             )
             SELECT F_ID,F_DESC,F_TYPE,IS_VIRTUAL,IS_VISIBLE,IS_DEFAULT_FIELDS,IS_QUERY,IS_READONLY,IS_COST,IS_SECRECY,IS_PK,
                    CAST(CASE WHEN IS_VIRTUAL=1 THEN 1 ELSE
-                     CASE WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                                        WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TableId
-                                          AND c.COLUMN_NAME=LTRIM(RTRIM(F_ID))) THEN 1 ELSE 0 END END AS bit) AS IS_PHYSICAL,
+                     CASE WHEN EXISTS (SELECT 1 FROM sys.columns c
+                                        JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                                        JOIN sys.schemas s ON o.schema_id=s.schema_id
+                                        WHERE s.name=N'dbo' AND o.name=@TableId
+                                          AND c.name=LTRIM(RTRIM(F_ID))) THEN 1 ELSE 0 END END AS bit) AS IS_PHYSICAL,
                    COUNT(*) OVER() AS Total
             FROM base
             WHERE (@Keyword='' OR F_ID LIKE @Pattern OR F_DESC LIKE @Pattern)
@@ -497,8 +503,11 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         CancellationToken token)
     {
         const string sql = """
-            SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@TableId AND COLUMN_NAME=@FieldId;
+            SELECT TYPE_NAME(c.user_type_id) AS DATA_TYPE
+            FROM sys.columns c
+            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            WHERE s.name=N'dbo' AND o.name=@TableId AND c.name=@FieldId;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
@@ -530,8 +539,10 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         }
         await using (var physical = new SqlCommand(
             """
-            SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@TableId AND COLUMN_NAME=@FieldId;
+            SELECT 1 FROM sys.columns c
+            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            WHERE s.name=N'dbo' AND o.name=@TableId AND c.name=@FieldId;
             """, connection, transaction))
         {
             physical.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = request.TableId;
@@ -901,12 +912,14 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         CancellationToken token)
     {
         const string sql = """
-            SELECT COALESCE(CONVERT(nvarchar(500), ep.value), c.COLUMN_NAME) AS F_DESC, c.DATA_TYPE
-            FROM INFORMATION_SCHEMA.COLUMNS c
+            SELECT COALESCE(CONVERT(nvarchar(500), ep.value), c.name) AS F_DESC, TYPE_NAME(c.user_type_id) AS DATA_TYPE
+            FROM sys.columns c
+            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
             LEFT JOIN sys.extended_properties ep
               ON ep.class=1 AND ep.major_id=OBJECT_ID('dbo.' + QUOTENAME(@TableId))
-             AND ep.minor_id=c.ORDINAL_POSITION AND ep.name='MS_Description'
-            WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TableId AND c.COLUMN_NAME=@FieldId;
+             AND ep.minor_id=c.column_id AND ep.name='MS_Description'
+            WHERE s.name=N'dbo' AND o.name=@TableId AND c.name=@FieldId;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;

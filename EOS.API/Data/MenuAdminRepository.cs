@@ -89,8 +89,10 @@ public sealed class MenuAdminRepository(DbConnectionFactory connections, ILogger
                    CAST(COALESCE(f.IS_QUERY,1) AS bit)
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE LTRIM(RTRIM(f.T_ID))=@Table
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                          WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@Table AND c.COLUMN_NAME=f.F_ID)
+              AND EXISTS (SELECT 1 FROM sys.columns c
+                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID)
             ORDER BY f.F_ID;
             """;
         await using var connection = connections.Create();
@@ -125,8 +127,10 @@ public sealed class MenuAdminRepository(DbConnectionFactory connections, ILogger
             LEFT JOIN dbo.SYSQL_DEFAULT d WITH (NOLOCK)
               ON d.T_ID=@MasterTable AND d.T_ID_R=@TargetTable AND LTRIM(RTRIM(d.F_ID))=LTRIM(RTRIM(f.F_ID))
             WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                          WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TargetTable AND c.COLUMN_NAME=f.F_ID)
+              AND EXISTS (SELECT 1 FROM sys.columns c
+                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=@TargetTable AND c.name=f.F_ID)
             ORDER BY CASE WHEN d.F_ID IS NULL THEN 1 ELSE 0 END,COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
             """;
         await using var connection = connections.Create();
@@ -582,8 +586,10 @@ public sealed class MenuAdminRepository(DbConnectionFactory connections, ILogger
         const string sql = """
             SELECT LTRIM(RTRIM(F_ID)) FROM dbo.FIELDS WITH (NOLOCK)
             WHERE T_ID=@TargetTable AND COALESCE(IS_VISIBLE,1)=1 AND COALESCE(IS_VIRTUAL,0)=0
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                          WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TargetTable AND c.COLUMN_NAME=F_ID);
+              AND EXISTS (SELECT 1 FROM sys.columns c
+                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=@TargetTable AND c.name=F_ID);
             """;
         await using var connection = connections.Create();
         await using var command = new SqlCommand(sql, connection);

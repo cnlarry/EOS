@@ -183,8 +183,10 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
                 WHERE M_IDX=@ModuleId AND LTRIM(RTRIM(ISNULL(DETAIL_TABLE,'')))<>''
             ) t
             INNER JOIN dbo.FIELDS c WITH (NOLOCK) ON c.T_ID=t.T_ID AND COALESCE(c.IS_VIRTUAL,0)=0
-            WHERE EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS col
-                          WHERE col.TABLE_SCHEMA='dbo' AND col.TABLE_NAME=t.T_ID AND col.COLUMN_NAME=c.F_ID)
+            WHERE EXISTS (SELECT 1 FROM sys.columns col
+                          JOIN sys.objects o ON col.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=t.T_ID AND col.name=c.F_ID)
             ORDER BY t.T_ID,c.F_ID;
             """;
         await using var connection = connections.Create();

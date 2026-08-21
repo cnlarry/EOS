@@ -195,10 +195,12 @@ public sealed class TableDataController(
     private static async Task<IReadOnlyList<string>> GetColumnNamesAsync(SqlConnection connection,string table,CancellationToken token)
     {
         const string sql="""
-            SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table
-              AND DATA_TYPE NOT IN ('binary','varbinary','image','rowversion','timestamp')
-            ORDER BY ORDINAL_POSITION;
+            SELECT c.name AS COLUMN_NAME FROM sys.columns c
+            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            WHERE s.name=N'dbo' AND o.name=@Table
+              AND TYPE_NAME(c.user_type_id) NOT IN ('binary','varbinary','image','rowversion','timestamp')
+            ORDER BY c.column_id;
             """;
         await using var command=new SqlCommand(sql,connection);
         command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
