@@ -29,6 +29,9 @@ interface ErpTableProps<TData> {
   onColumnVisibilityChange?: (visibility: VisibilityState) => void
   onRowClick?: (row: TData) => void
   activeRowId?: string
+  /** 点击行内任意处选中该行（单选语义：清除其它行选中；已单独选中时再次点击取消选中）；
+   *  交互控件（输入框/按钮/链接/选择器等）除外；首列复选框仍可多选 */
+  rowClickSingleSelect?: boolean
   /** 开启列宽拖拽（配合 storageKey 按用户与列表持久化到 localStorage） */
   resizable?: boolean
   storageKey?: string
@@ -98,6 +101,7 @@ export function ErpTable<TData>({
   onColumnVisibilityChange,
   onRowClick,
   activeRowId,
+  rowClickSingleSelect = false,
   resizable = false,
   storageKey = '',
   persistResize = true,
@@ -307,6 +311,12 @@ export function ErpTable<TData>({
         case 'PageUp': moveFocus((focusIndex ?? 0) - 10); event.preventDefault(); return
         case 'Enter':
           if (focusIndex != null && rowsModel[focusIndex]) {
+            if (rowClickSingleSelect) {
+              const focusRow = rowsModel[focusIndex]
+              const isSelected = focusRow.getIsSelected()
+              const onlySelected = isSelected && Object.keys(rowSelection).length === 1
+              table.setRowSelection(onlySelected ? {} : { [focusRow.id]: true })
+            }
             onRowClick?.(rowsModel[focusIndex].original)
             event.preventDefault()
           }
@@ -516,7 +526,18 @@ export function ErpTable<TData>({
                 data-order-id={row.id}
                 data-kb-index={index}
                 className={`${row.getIsSelected() ? 'table-active ' : ''}${activeRowId === row.id ? 'erp-row-active ' : ''}${focusIndex === index ? 'erp-row-focus' : ''}${customClass ? ` ${customClass}` : ''}`.trim() || undefined}
-                onClick={() => { setFocusIndex(null); onRowClick?.(row.original) }}
+                onClick={(event) => {
+                  setFocusIndex(null)
+                  if (rowClickSingleSelect) {
+                    const target = event.target as HTMLElement
+                    if (!target.closest('input, button, a, select, textarea, label, [contenteditable="true"], .erp-col-resizer')) {
+                      const isSelected = row.getIsSelected()
+                      const onlySelected = isSelected && Object.keys(rowSelection).length === 1
+                      table.setRowSelection(onlySelected ? {} : { [row.id]: true })
+                    }
+                  }
+                  onRowClick?.(row.original)
+                }}
                 onDoubleClick={onRowDoubleClick ? () => onRowDoubleClick(row.original) : undefined}
               >
                 {row.getVisibleCells().map((cell) => {
