@@ -428,6 +428,10 @@ button, input, select { font: inherit; }
 /* 工作台命令栏：纯图形按钮（正方形圆角，hover 由 title 显示按钮名称） */
 .erp-workbench-page .erp-list-command-bar .btn { width: 30px; height: 30px; flex: 0 0 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
 .erp-workbench-page .erp-list-command-bar .btn svg { width: 16px; height: 16px; }
+/* 通用列表命令栏（非工作台页面）：容器加 erp-command-bar-icon 后，其中按钮与工作台命令栏
+   同款纯图标方形按钮（30×30 圆角、title 显示按钮名、图标 16px），作为所有列表页命令栏的统一样式 */
+.erp-command-bar-icon .btn { width: 30px; height: 30px; flex: 0 0 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
+.erp-command-bar-icon .btn svg { width: 16px; height: 16px; }
 .erp-active-group-filter { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-primary-lt); color: var(--tblr-primary); font-size: 12px; }
 .erp-active-group-filter button { border: 0; background: transparent; color: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; margin-left: auto; }
 .erp-list-global-search { height: 34px; flex: 0 1 360px; min-width: 180px; max-width: 360px; padding-block: 4px; }
@@ -471,8 +475,13 @@ button, input, select { font: inherit; }
 .erp-context-section { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
 .erp-context-bar h1 { margin: 0; max-width: 280px; overflow: hidden; text-overflow: ellipsis; color: var(--tblr-body-color); font-size: 14px; font-weight: 600; line-height: 1; white-space: nowrap; }
 .erp-context-separator { color: var(--tblr-secondary); opacity: .65; }
-.page-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; height: calc(100vh - 64px); overflow-y: auto; margin: 0 !important; padding: 10px 0 !important; }
+.page-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; height: calc(100vh - 64px); overflow-y: auto; overflow-x: hidden; margin: 0 !important; padding: 10px 0 !important; }
 .page-body > .container-fluid { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; padding-right: 10px !important; padding-left: 10px !important; }
+/* 页面级禁止横向滚动：横向溢出一律交给表格等内部滚动容器（.table-responsive / erp-table-shell）。
+   页面根（flex 列子项）与页面内 d-grid 直接子项默认 min-width:auto 会按内容撑开，导致
+   行内内容过长时页面出现横向滚动条；改为 min-width:0 让其收缩到容器宽度，由表格容器内部滚动。 */
+.page-body > .container-fluid > * { min-width: 0; }
+.page-body .d-grid > * { min-width: 0; }
 .page-body > .container-fluid > :first-child { margin-top: 0 !important; }
 .erp-command-bar .card-body { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
 .erp-row-active td { background: var(--tblr-primary-lt) !important; }
