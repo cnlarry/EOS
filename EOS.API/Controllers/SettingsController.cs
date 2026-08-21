@@ -132,11 +132,20 @@ public sealed class SettingsController(
     private static async Task<List<object>> GetFieldDefinitionsAsync(SqlConnection connection, string table, CancellationToken token)
     {
         const string sql = """
-            SELECT c.COLUMN_NAME, c.DATA_TYPE, c.CHARACTER_MAXIMUM_LENGTH, c.IS_NULLABLE, f.F_DESC, c.ORDINAL_POSITION
-            FROM INFORMATION_SCHEMA.COLUMNS c
-            LEFT JOIN dbo.FIELDS f WITH (NOLOCK) ON f.T_ID=@Table AND f.F_ID=c.COLUMN_NAME
-            WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@Table
-            ORDER BY c.ORDINAL_POSITION;
+            SELECT c.name AS COLUMN_NAME, TYPE_NAME(c.user_type_id) AS DATA_TYPE,
+                   CASE WHEN c.system_type_id IN (167,175) AND c.max_length=-1 THEN NULL
+                        WHEN c.system_type_id IN (167,175) THEN c.max_length
+                        WHEN c.system_type_id IN (231,239) AND c.max_length=-1 THEN NULL
+                        WHEN c.system_type_id IN (231,239) THEN c.max_length/2
+                        ELSE NULL END AS CHARACTER_MAXIMUM_LENGTH,
+                   CASE WHEN c.is_nullable=1 THEN 'YES' ELSE 'NO' END AS IS_NULLABLE,
+                   f.F_DESC, c.column_id AS ORDINAL_POSITION
+            FROM sys.columns c
+            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            LEFT JOIN dbo.FIELDS f WITH (NOLOCK) ON f.T_ID=@Table AND f.F_ID=c.name
+            WHERE s.name=N'dbo' AND o.name=@Table
+            ORDER BY c.column_id;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
@@ -160,8 +169,11 @@ public sealed class SettingsController(
     private static async Task<Dictionary<string, string>> GetColumnsAsync(SqlConnection connection, string table, CancellationToken token)
     {
         const string sql = """
-            SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table;
+            SELECT c.name AS COLUMN_NAME, TYPE_NAME(c.user_type_id) AS DATA_TYPE
+            FROM sys.columns c
+            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            WHERE s.name=N'dbo' AND o.name=@Table;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;

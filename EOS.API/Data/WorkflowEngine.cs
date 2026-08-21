@@ -545,7 +545,7 @@ public sealed class WorkflowEngine(
     {
         var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await using var command = new SqlCommand(
-            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table;",
+            "SELECT c.name FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table ORDER BY c.column_id;",
             connection, transaction);
         command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = masterTable;
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -813,7 +813,7 @@ public sealed class WorkflowEngine(
         // 物理列存在性校验（服务端白名单）：只保留真实存在的列
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await using (var columnCommand = new SqlCommand(
-            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table;",
+            "SELECT c.name FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table ORDER BY c.column_id;",
             connection, transaction))
         {
             columnCommand.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;

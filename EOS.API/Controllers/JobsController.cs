@@ -268,7 +268,7 @@ public sealed class JobsController(
 
     private static async Task<HashSet<string>> GetWageDetailColumnsAsync(SqlConnection connection,CancellationToken token)
     {
-        const string sql="SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='HRM_WAGE_D';";
+        const string sql="SELECT c.name FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=N'HRM_WAGE_D' ORDER BY c.column_id;";
         await using var command=new SqlCommand(sql,connection);
         await using var reader=await command.ExecuteReaderAsync(token);
         var columns=new HashSet<string>(StringComparer.OrdinalIgnoreCase);

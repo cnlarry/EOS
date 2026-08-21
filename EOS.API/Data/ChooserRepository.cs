@@ -263,8 +263,10 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE LTRIM(RTRIM(f.T_ID))=@Table AND COALESCE(f.IS_VIRTUAL,0)=0
               AND EXISTS (SELECT 1 FROM dbo.TABLES t WITH (NOLOCK) WHERE LTRIM(RTRIM(t.T_ID))=@Table)
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                          WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@Table AND c.COLUMN_NAME=f.F_ID)
+              AND EXISTS (SELECT 1 FROM sys.columns c
+                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID)
               AND (@Keyword = '' OR {keywordPredicate}){conditionSql};
             SELECT LTRIM(RTRIM(f.F_ID)) AS F_ID,
                    COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))) AS F_DESC,
@@ -272,8 +274,10 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE LTRIM(RTRIM(f.T_ID))=@Table AND COALESCE(f.IS_VIRTUAL,0)=0
               AND EXISTS (SELECT 1 FROM dbo.TABLES t WITH (NOLOCK) WHERE LTRIM(RTRIM(t.T_ID))=@Table)
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                          WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@Table AND c.COLUMN_NAME=f.F_ID)
+              AND EXISTS (SELECT 1 FROM sys.columns c
+                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID)
               AND (@Keyword = '' OR {keywordPredicate}){conditionSql}
             {orderBy}
             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
@@ -327,8 +331,10 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 WHERE M_IDX=@ModuleId AND LTRIM(RTRIM(ISNULL(DETAIL_TABLE,'')))<>''
             ) t
             INNER JOIN dbo.FIELDS c WITH (NOLOCK) ON c.T_ID=t.T_ID AND COALESCE(c.IS_VIRTUAL,0)=0
-            WHERE EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS col
-                          WHERE col.TABLE_SCHEMA='dbo' AND col.TABLE_NAME=t.T_ID AND col.COLUMN_NAME=c.F_ID)
+            WHERE EXISTS (SELECT 1 FROM sys.columns col
+                          JOIN sys.objects o ON col.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=t.T_ID AND col.name=c.F_ID)
               AND (@Keyword = '' OR {keywordPredicate}){conditionSql};
             SELECT t.T_ID,c.F_ID,
                    COALESCE(NULLIF(LTRIM(RTRIM(c.F_DESC)),''),LTRIM(RTRIM(c.F_ID))) AS F_DESC,
@@ -340,8 +346,10 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 WHERE M_IDX=@ModuleId AND LTRIM(RTRIM(ISNULL(DETAIL_TABLE,'')))<>''
             ) t
             INNER JOIN dbo.FIELDS c WITH (NOLOCK) ON c.T_ID=t.T_ID AND COALESCE(c.IS_VIRTUAL,0)=0
-            WHERE EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS col
-                          WHERE col.TABLE_SCHEMA='dbo' AND col.TABLE_NAME=t.T_ID AND col.COLUMN_NAME=c.F_ID)
+            WHERE EXISTS (SELECT 1 FROM sys.columns col
+                          JOIN sys.objects o ON col.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=t.T_ID AND col.name=c.F_ID)
               AND (@Keyword = '' OR {keywordPredicate}){conditionSql}
             {orderBy}
             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;

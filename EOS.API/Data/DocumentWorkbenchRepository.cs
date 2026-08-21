@@ -970,8 +970,12 @@ public sealed class DocumentWorkbenchRepository(
                        FROM dbo.SYSQL_DEFAULT WITH (NOLOCK)
                        GROUP BY T_ID,T_ID_R,LTRIM(RTRIM(F_ID))) d
               ON d.T_ID=@MasterTable AND d.T_ID_R=@TargetTable AND d.F_ID=LTRIM(RTRIM(f.F_ID))
-            LEFT JOIN INFORMATION_SCHEMA.COLUMNS col
-              ON col.TABLE_SCHEMA='dbo' AND col.TABLE_NAME=@TargetTable AND col.COLUMN_NAME=f.F_ID
+            LEFT JOIN (SELECT c.name AS COLUMN_NAME
+                       FROM sys.columns c
+                       JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                       JOIN sys.schemas s ON o.schema_id=s.schema_id
+                       WHERE s.name=N'dbo' AND o.name=@TargetTable) col
+              ON col.COLUMN_NAME=f.F_ID
             LEFT JOIN (SELECT c.name AS COLUMN_NAME
                        FROM sys.indexes i
                        JOIN sys.index_columns ic ON i.object_id=ic.object_id AND i.index_id=ic.index_id
@@ -1514,7 +1518,7 @@ public sealed class DocumentWorkbenchRepository(
         // 物理列存在性校验（服务端白名单）：只保留真实存在的列
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await using (var columnCommand = new SqlCommand(
-            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table;", connection))
+            "SELECT c.name FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table ORDER BY c.column_id;", connection))
         {
             columnCommand.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
             await using var reader = await columnCommand.ExecuteReaderAsync(token);
@@ -1741,7 +1745,7 @@ public sealed class DocumentWorkbenchRepository(
                        GROUP BY T_ID,T_ID_R,LTRIM(RTRIM(F_ID))) d
               ON d.T_ID=@Table AND d.T_ID_R=@Table AND d.F_ID=LTRIM(RTRIM(f.F_ID))
             WHERE f.T_ID=@Table AND COALESCE(f.IS_VIRTUAL,0)=0
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@Table AND c.COLUMN_NAME=f.F_ID)
+              AND EXISTS (SELECT 1 FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID)
             ORDER BY CASE WHEN d.F_IDX IS NULL THEN 1 ELSE 0 END,COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
             """;
         await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
@@ -2174,7 +2178,7 @@ public sealed class DocumentWorkbenchRepository(
 
     private static async Task<bool> ColumnExistsAsync(SqlConnection connection,SqlTransaction? transaction,string table,string column,CancellationToken token)
     {
-        const string sql="SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table AND COLUMN_NAME=@Column;";
+        const string sql="SELECT 1 FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name=@Column;";
         await using var command=new SqlCommand(sql,connection,transaction);
         command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
         command.Parameters.Add("@Column",SqlDbType.NVarChar,100).Value=column;
@@ -2273,7 +2277,7 @@ public sealed class DocumentWorkbenchRepository(
 
     private static async Task<bool> TableExistsAsync(SqlConnection connection,string table,CancellationToken token)
     {
-        await using var command = new SqlCommand("SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table;",connection);
+        await using var command = new SqlCommand("SELECT 1 FROM sys.objects o JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND o.type IN ('U','V');",connection);
         command.Parameters.Add("@Table",SqlDbType.NVarChar,128).Value=table;
         return await command.ExecuteScalarAsync(token) is not null;
     }
@@ -2281,7 +2285,7 @@ public sealed class DocumentWorkbenchRepository(
     private static async Task<bool> ColumnsExistAsync(SqlConnection connection,string table,IReadOnlyList<string> columns,CancellationToken token)
     {
         var placeholders = string.Join(",", columns.Select((_,i) => $"@C{i}"));
-        await using var command = new SqlCommand($"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table AND COLUMN_NAME IN ({placeholders});",connection);
+        await using var command = new SqlCommand($"SELECT COUNT(*) FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name IN ({placeholders});",connection);
         command.Parameters.Add("@Table",SqlDbType.NVarChar,128).Value=table;
         for (var i = 0; i < columns.Count; i++)
             command.Parameters.Add($"@C{i}",SqlDbType.NVarChar,128).Value=columns[i];
@@ -2514,8 +2518,10 @@ public sealed class DocumentWorkbenchRepository(
             SELECT LTRIM(RTRIM(f.F_ID)),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit)
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VIRTUAL,0)=0
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                          WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TargetTable AND c.COLUMN_NAME=f.F_ID)
+              AND EXISTS (SELECT 1 FROM sys.columns c
+                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=@TargetTable AND c.name=f.F_ID)
             ORDER BY f.F_ID;
             """;
         await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;
@@ -2541,8 +2547,10 @@ public sealed class DocumentWorkbenchRepository(
                    COALESCE(f.DISPLAY_LENGTH,100),NULLIF(LTRIM(RTRIM(f.ITEM_ALIGN)),''),CAST(CASE WHEN EXISTS(SELECT 1 FROM sys.indexes i2 JOIN sys.index_columns ic2 ON i2.object_id=ic2.object_id AND i2.index_id=ic2.index_id JOIN sys.columns c2 ON ic2.object_id=c2.object_id AND ic2.column_id=c2.column_id JOIN sys.tables t3 ON i2.object_id=t3.object_id JOIN sys.schemas s3 ON t3.schema_id=s3.schema_id WHERE s3.name=N'dbo' AND t3.name=@TargetTable AND i2.is_primary_key=1 AND c2.name=f.F_ID) THEN 1 ELSE 0 END AS bit),CAST(COALESCE(f.IS_QUERY,1) AS bit),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit),COALESCE(NULLIF(f.HEADER_ALIGN,''),'center'),f.DISPLAY_FORMAT,f.BROWSE_URL,f.BROWSE_M_IDX,CAST(COALESCE(f.IS_VIRTUAL,0) AS bit),f.VIRTUAL_EXP,f.CONVERT_FUNCTION
             FROM dbo.FIELDS f WITH (NOLOCK) CROSS JOIN HasConfig h LEFT JOIN UserFields u ON u.F_ID=f.F_ID
             WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1
-              AND (COALESCE(f.IS_VIRTUAL,0)=1 OR EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                          WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@TargetTable AND c.COLUMN_NAME=f.F_ID))
+              AND (COALESCE(f.IS_VIRTUAL,0)=1 OR EXISTS (SELECT 1 FROM sys.columns c
+                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=@TargetTable AND c.name=f.F_ID))
               AND (EXISTS(SELECT 1 FROM sys.indexes i2 JOIN sys.index_columns ic2 ON i2.object_id=ic2.object_id AND i2.index_id=ic2.index_id JOIN sys.columns c2 ON ic2.object_id=c2.object_id AND ic2.column_id=c2.column_id JOIN sys.tables t3 ON i2.object_id=t3.object_id JOIN sys.schemas s3 ON t3.schema_id=s3.schema_id WHERE s3.name=N'dbo' AND t3.name=@TargetTable AND i2.is_primary_key=1 AND c2.name=f.F_ID) OR (h.Value=1 AND u.F_ID IS NOT NULL) OR (h.Value=0 AND COALESCE(f.IS_DEFAULT_FIELDS,0)=1))
             ORDER BY CASE WHEN EXISTS(SELECT 1 FROM sys.indexes i2 JOIN sys.index_columns ic2 ON i2.object_id=ic2.object_id AND i2.index_id=ic2.index_id JOIN sys.columns c2 ON ic2.object_id=c2.object_id AND ic2.column_id=c2.column_id JOIN sys.tables t3 ON i2.object_id=t3.object_id JOIN sys.schemas s3 ON t3.schema_id=s3.schema_id WHERE s3.name=N'dbo' AND t3.name=@TargetTable AND i2.is_primary_key=1 AND c2.name=f.F_ID) AND u.F_ID IS NULL THEN 0 ELSE 1 END,COALESCE(u.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID OPTION (OPTIMIZE FOR UNKNOWN);
             """;

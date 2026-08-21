@@ -399,7 +399,7 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
         if (_existingTables.Contains(table)) return true;
         if (_missingTables.Contains(table)) return false;
         await using var command = new SqlCommand(
-            "SELECT CASE WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES t WHERE t.TABLE_SCHEMA='dbo' AND t.TABLE_NAME=@Table) THEN 1 ELSE 0 END",
+            "SELECT CASE WHEN EXISTS (SELECT 1 FROM sys.objects o JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND o.type IN ('U','V')) THEN 1 ELSE 0 END",
             connection);
         command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
         var exists = Convert.ToInt32(await command.ExecuteScalarAsync(token)) == 1;
@@ -413,7 +413,7 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
         {
             columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             await using var command = new SqlCommand(
-                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table",
+                "SELECT c.name FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table ORDER BY c.column_id",
                 connection);
             command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
             await using var reader = await command.ExecuteReaderAsync(token);

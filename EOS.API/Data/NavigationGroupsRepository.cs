@@ -111,8 +111,10 @@ public sealed class NavigationGroupsRepository(DbConnectionFactory connections, 
             SELECT LTRIM(RTRIM(f.F_ID)),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit)
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE f.T_ID=@MasterTable AND COALESCE(f.IS_VIRTUAL,0)=0
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                          WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=@MasterTable AND c.COLUMN_NAME=f.F_ID)
+              AND EXISTS (SELECT 1 FROM sys.columns c
+                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=@MasterTable AND c.name=f.F_ID)
             ORDER BY f.F_ID;
             """;
         await using var connection = connections.Create();
