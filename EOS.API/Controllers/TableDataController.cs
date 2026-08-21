@@ -33,10 +33,12 @@ public sealed class TableDataController(
         const string sql="""
             SELECT LTRIM(RTRIM(t.T_ID)),COALESCE(NULLIF(LTRIM(RTRIM(t.T_DESC)),''),LTRIM(RTRIM(t.T_ID)))
             FROM dbo.TABLES t WITH (NOLOCK)
-            WHERE EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES it WHERE it.TABLE_SCHEMA='dbo' AND it.TABLE_NAME=t.T_ID)
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-                          INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku ON ku.CONSTRAINT_NAME=tc.CONSTRAINT_NAME
-                          WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA='dbo' AND tc.TABLE_NAME=t.T_ID)
+            WHERE EXISTS (SELECT 1 FROM sys.tables st JOIN sys.schemas ss ON st.schema_id=ss.schema_id
+                          WHERE ss.name=N'dbo' AND st.name=t.T_ID)
+              AND EXISTS (SELECT 1 FROM sys.indexes si
+                          JOIN sys.tables st2 ON si.object_id=st2.object_id
+                          JOIN sys.schemas ss2 ON st2.schema_id=ss2.schema_id
+                          WHERE ss2.name=N'dbo' AND st2.name=t.T_ID AND si.is_primary_key=1)
             ORDER BY t.T_DESC,t.T_ID;
             """;
         await using var command=new SqlCommand(sql,connection);
@@ -66,15 +68,20 @@ public sealed class TableDataController(
         if(normalized=="unmanaged")
         {
             sql=$$"""
-                SELECT c.TABLE_NAME AS T_ID,c.COLUMN_NAME AS F_ID,c.DATA_TYPE AS F_TYPE
-                FROM INFORMATION_SCHEMA.COLUMNS c
-                WHERE c.TABLE_SCHEMA='dbo'
-                  AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f WHERE f.T_ID=c.TABLE_NAME AND f.F_ID=c.COLUMN_NAME)
-                ORDER BY c.TABLE_NAME,c.ORDINAL_POSITION
+                SELECT o.name AS T_ID, c.name AS F_ID, TYPE_NAME(c.user_type_id) AS F_TYPE
+                FROM sys.columns c
+                JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                JOIN sys.schemas s ON o.schema_id=s.schema_id
+                WHERE s.name=N'dbo'
+                  AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f WHERE f.T_ID=o.name AND f.F_ID=c.name)
+                ORDER BY o.name,c.column_id
                 OFFSET 0 ROWS FETCH NEXT {{limit}} ROWS ONLY;
-                SELECT COUNT_BIG(1) FROM INFORMATION_SCHEMA.COLUMNS c
-                WHERE c.TABLE_SCHEMA='dbo'
-                  AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f WHERE f.T_ID=c.TABLE_NAME AND f.F_ID=c.COLUMN_NAME);
+                SELECT COUNT_BIG(1)
+                FROM sys.columns c
+                JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                JOIN sys.schemas s ON o.schema_id=s.schema_id
+                WHERE s.name=N'dbo'
+                  AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f WHERE f.T_ID=o.name AND f.F_ID=c.name);
                 """;
         }
         else
@@ -84,12 +91,16 @@ public sealed class TableDataController(
                        LTRIM(RTRIM(ISNULL(f.F_TYPE,''))) AS F_TYPE,LTRIM(RTRIM(ISNULL(f.F_DESC,''))) AS F_DESC,
                        CAST(ISNULL(f.IS_VIRTUAL,0) AS bit) AS IS_VIRTUAL
                 FROM dbo.FIELDS f WITH (NOLOCK)
-                WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                                  WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=f.T_ID AND c.COLUMN_NAME=f.F_ID)
+                WHERE NOT EXISTS (SELECT 1 FROM sys.columns c
+                                  JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                                  JOIN sys.schemas s ON o.schema_id=s.schema_id
+                                  WHERE s.name=N'dbo' AND o.name=f.T_ID AND c.name=f.F_ID)
                 ORDER BY f.T_ID,f.F_ID;
                 SELECT COUNT_BIG(1) FROM dbo.FIELDS f WITH (NOLOCK)
-                WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                                  WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=f.T_ID AND c.COLUMN_NAME=f.F_ID);
+                WHERE NOT EXISTS (SELECT 1 FROM sys.columns c
+                                  JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                                  JOIN sys.schemas s ON o.schema_id=s.schema_id
+                                  WHERE s.name=N'dbo' AND o.name=f.T_ID AND c.name=f.F_ID);
                 """;
         }
         await using var command=new SqlCommand(sql,connection);
@@ -164,11 +175,14 @@ public sealed class TableDataController(
     private static async Task<IReadOnlyList<string>> GetPrimaryKeyColumnsAsync(SqlConnection connection,string table,CancellationToken token)
     {
         const string sql="""
-            SELECT ku.COLUMN_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-            INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
-              ON ku.CONSTRAINT_NAME=tc.CONSTRAINT_NAME AND ku.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA
-            WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA='dbo' AND tc.TABLE_NAME=@Table
-            ORDER BY ku.ORDINAL_POSITION;
+            SELECT c.name AS COLUMN_NAME
+            FROM sys.indexes i
+            JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+            JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+            JOIN sys.tables t ON i.object_id = t.object_id
+            JOIN sys.schemas s ON t.schema_id = s.schema_id
+            WHERE s.name = N'dbo' AND t.name = @Table AND i.is_primary_key = 1
+            ORDER BY ic.key_ordinal;
             """;
         await using var command=new SqlCommand(sql,connection);
         command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;

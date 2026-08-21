@@ -245,11 +245,14 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
     private static async Task<IReadOnlyList<string>> GetPrimaryKeyColumnsAsync(SqlConnection connection,string table,CancellationToken token)
     {
         const string sql="""
-            SELECT ku.COLUMN_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-            INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
-              ON ku.CONSTRAINT_NAME=tc.CONSTRAINT_NAME AND ku.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA
-            WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA='dbo' AND tc.TABLE_NAME=@Table
-            ORDER BY ku.ORDINAL_POSITION;
+            SELECT c.name AS COLUMN_NAME
+            FROM sys.indexes i
+            JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+            JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+            JOIN sys.tables t ON i.object_id = t.object_id
+            JOIN sys.schemas s ON t.schema_id = s.schema_id
+            WHERE s.name = N'dbo' AND t.name = @Table AND i.is_primary_key = 1
+            ORDER BY ic.key_ordinal;
             """;
         await using var command=new SqlCommand(sql,connection);
         command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;

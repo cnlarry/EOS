@@ -24,11 +24,12 @@ public sealed class ImportService(DbConnectionFactory connections, ILogger<Impor
         const string sql="""
             SELECT LTRIM(RTRIM(t.T_ID)),COALESCE(NULLIF(LTRIM(RTRIM(t.T_DESC)),''),LTRIM(RTRIM(t.T_ID)))
             FROM dbo.TABLES t WITH (NOLOCK)
-            WHERE EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES it
-                          WHERE it.TABLE_SCHEMA='dbo' AND it.TABLE_NAME=t.T_ID)
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-                          INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku ON ku.CONSTRAINT_NAME=tc.CONSTRAINT_NAME
-                          WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA='dbo' AND tc.TABLE_NAME=t.T_ID)
+            WHERE EXISTS (SELECT 1 FROM sys.tables st JOIN sys.schemas ss ON st.schema_id=ss.schema_id
+                          WHERE ss.name=N'dbo' AND st.name=t.T_ID)
+              AND EXISTS (SELECT 1 FROM sys.indexes si
+                          JOIN sys.tables st2 ON si.object_id=st2.object_id
+                          JOIN sys.schemas ss2 ON st2.schema_id=ss2.schema_id
+                          WHERE ss2.name=N'dbo' AND st2.name=t.T_ID AND si.is_primary_key=1)
               AND EXISTS (SELECT 1 FROM dbo.FIELDS f WHERE f.T_ID=t.T_ID)
             ORDER BY t.T_DESC,t.T_ID;
             """;
@@ -221,11 +222,14 @@ public sealed class ImportService(DbConnectionFactory connections, ILogger<Impor
     private static async Task<IReadOnlyList<string>> GetPrimaryKeyColumnsAsync(SqlConnection connection,string table,CancellationToken token)
     {
         const string sql="""
-            SELECT ku.COLUMN_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-            INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
-              ON ku.CONSTRAINT_NAME=tc.CONSTRAINT_NAME AND ku.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA
-            WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA='dbo' AND tc.TABLE_NAME=@Table
-            ORDER BY ku.ORDINAL_POSITION;
+            SELECT c.name AS COLUMN_NAME
+            FROM sys.indexes i
+            JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+            JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+            JOIN sys.tables t ON i.object_id = t.object_id
+            JOIN sys.schemas s ON t.schema_id = s.schema_id
+            WHERE s.name = N'dbo' AND t.name = @Table AND i.is_primary_key = 1
+            ORDER BY ic.key_ordinal;
             """;
         await using var command=new SqlCommand(sql,connection);
         command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;

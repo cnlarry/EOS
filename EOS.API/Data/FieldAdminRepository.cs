@@ -40,15 +40,19 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         const string sql = """
             SELECT LTRIM(RTRIM(t.T_ID)),LTRIM(RTRIM(t.T_DESC)),LTRIM(RTRIM(ISNULL(t.T_KIND,''))),LTRIM(RTRIM(ISNULL(t.T_TYPE,''))),
                    (SELECT COUNT(*) FROM dbo.FIELDS f WITH (NOLOCK) WHERE f.T_ID=t.T_ID) AS FieldCount,
-                   (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS c
-                     WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=t.T_ID
+                   (SELECT COUNT(*) FROM sys.columns c
+                     JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                     JOIN sys.schemas s ON o.schema_id=s.schema_id
+                     WHERE s.name=N'dbo' AND o.name=t.T_ID
                        AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f2 WITH (NOLOCK)
-                                        WHERE f2.T_ID=t.T_ID AND LTRIM(RTRIM(f2.F_ID))=c.COLUMN_NAME)) AS UnmanagedCount,
+                                        WHERE f2.T_ID=t.T_ID AND LTRIM(RTRIM(f2.F_ID))=c.name)) AS UnmanagedCount,
                    (SELECT COUNT(*) FROM dbo.FIELDS f3 WITH (NOLOCK)
                      WHERE f3.T_ID=t.T_ID
-                       AND NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c2
-                                        WHERE c2.TABLE_SCHEMA='dbo' AND c2.TABLE_NAME=t.T_ID
-                                          AND c2.COLUMN_NAME=LTRIM(RTRIM(f3.F_ID)))) AS OrphanCount
+                       AND NOT EXISTS (SELECT 1 FROM sys.columns c2
+                                        JOIN sys.objects o2 ON c2.object_id=o2.object_id AND o2.type IN ('U','V')
+                                        JOIN sys.schemas s2 ON o2.schema_id=s2.schema_id
+                                        WHERE s2.name=N'dbo' AND o2.name=t.T_ID
+                                          AND c2.name=LTRIM(RTRIM(f3.F_ID)))) AS OrphanCount
             FROM dbo.TABLES t WITH (NOLOCK)
             WHERE (@Kind='' OR LTRIM(RTRIM(t.T_KIND))=@Kind)
             ORDER BY T_DESC,T_ID;
