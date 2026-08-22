@@ -54,10 +54,12 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         if(normalized=="view"&&!rights.CanBrowse)return Forbid();
         if(normalized=="new"&&!definition.HasAdd)return NotFound();
         if(normalized=="edit"&&!definition.HasEdit)return NotFound();
-        var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,rights.CanViewCost,rights.CanViewSecrecy,
+var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,rights.CanViewCost,rights.CanViewSecrecy,
             rights.DeniedMasterFields,rights.DeniedDetailFields,
             rights.DenyNewMasterFields,rights.DenyNewDetailFields,
-            rights.DenyModiMasterFields,rights.DenyModiDetailFields,token);
+            rights.DenyModiMasterFields,rights.DenyModiDetailFields,token,
+            rights.CanDelete,rights.CanApprove,rights.CanDeapprove,rights.CanEndCase,rights.CanUnEndCase,
+            rights.CanFileView,rights.CanFileUpda,rights.CanFileEdit,rights.CanFileDele);
         return Ok(form);
     }
 
@@ -114,17 +116,40 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
     public async Task<IActionResult> Approve(int moduleId,[FromBody]ApproveWorkflowRequest request,CancellationToken token=default)
         => await RunWorkflow(moduleId,true,request,token);
 
-    [HttpPost("deapprove")]
+[HttpPost("deapprove")]
     public async Task<IActionResult> Deapprove(int moduleId,[FromBody]ApproveWorkflowRequest request,CancellationToken token=default)
         => await RunWorkflow(moduleId,false,request,token);
 
-    private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveWorkflowRequest request,CancellationToken token)
+    [HttpPost("endcase")]
+    public async Task<IActionResult> EndCase(int moduleId,[FromBody]ApproveWorkflowRequest request,CancellationToken token=default)
+        => await RunFinish(moduleId,true,request,token);
+
+    [HttpPost("unendcase")]
+    public async Task<IActionResult> UnEndCase(int moduleId,[FromBody]ApproveWorkflowRequest request,CancellationToken token=default)
+        => await RunFinish(moduleId,false,request,token);
+
+private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveWorkflowRequest request,CancellationToken token)
     {
         var definition=await AuthorizedDefinition(moduleId,token);
         if(definition is null)return NotFound();
         var keyValues=ParseKey(request.Key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
         var result=await repository.WorkflowAsync(definition,keyValues,approve,userContext.EmployeeName,userContext.UserId,token);
+        return MapSaveResult(result);
+    }
+
+    private async Task<IActionResult> RunFinish(int moduleId,bool finish,ApproveWorkflowRequest request,CancellationToken token)
+    {
+        var definition=await AuthorizedDefinition(moduleId,token);
+        if(definition is null)return NotFound();
+        var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if(userId is null)return Unauthorized();
+        var rights=await rightsRepository.GetAsync(userId,moduleId,token);
+        if(finish&&!rights.CanEndCase)return Forbid();
+        if(!finish&&!rights.CanUnEndCase)return Forbid();
+        var keyValues=ParseKey(request.Key);
+        if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
+        var result=await repository.FinishAsync(definition,keyValues,finish,userContext.EmployeeName,userContext.UserId,token);
         return MapSaveResult(result);
     }
 
@@ -210,10 +235,12 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         if(mode=="new"&&!definition.HasAdd)return null;
         if(mode=="edit"&&!definition.HasEdit)return null;
         if(mode=="view"&&!definition.HasEdit)return null;
-        var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.CanViewCost,rights.CanViewSecrecy,
+var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.CanViewCost,rights.CanViewSecrecy,
             rights.DeniedMasterFields,rights.DeniedDetailFields,
             rights.DenyNewMasterFields,rights.DenyNewDetailFields,
-            rights.DenyModiMasterFields,rights.DenyModiDetailFields,token);
+            rights.DenyModiMasterFields,rights.DenyModiDetailFields,token,
+            rights.CanDelete,rights.CanApprove,rights.CanDeapprove,rights.CanEndCase,rights.CanUnEndCase,
+            rights.CanFileView,rights.CanFileUpda,rights.CanFileEdit,rights.CanFileDele);
         return form is null?null:(definition,form,rights);
     }
 
@@ -289,11 +316,12 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         if(definition is null)return null;
         // 路由契约（M86）：NEW_URL/MODI_URL 有值即自定义路由；无值时按统一表单白名单
         // 回退（显示按钮走统一表单）或隐藏按钮。
-        var formEnabled=formSettings.Value.EnabledModuleIds.Contains(moduleId);
+var formEnabled=formSettings.Value.EnabledModuleIds.Contains(moduleId);
         return definition with
         {
             HasAdd=definition.NewUrl is not null||formEnabled,
             HasEdit=definition.ModiUrl is not null||formEnabled,
+            CanDelete=rights.CanDelete,
         };
     }
 

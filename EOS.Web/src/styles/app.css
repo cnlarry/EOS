@@ -432,6 +432,10 @@ button, input, select { font: inherit; }
    同款纯图标方形按钮（30×30 圆角、title 显示按钮名、图标 16px），作为所有列表页命令栏的统一样式 */
 .erp-command-bar-icon .btn { width: 30px; height: 30px; flex: 0 0 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
 .erp-command-bar-icon .btn svg { width: 16px; height: 16px; }
+/* 统一命令栏（ErpCommandBar）纯图标按钮：30×30 圆角、title 显示按钮名、图标 16px，
+   供工作台/表单/列表在任意容器内保持同一表意与尺寸（表单工具栏 min-width 覆盖回退） */
+.erp-command-btn { width: 30px; height: 30px; min-width: 30px; flex: 0 0 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
+.erp-command-btn svg { width: 16px; height: 16px; }
 .erp-active-group-filter { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-primary-lt); color: var(--tblr-primary); font-size: 12px; }
 .erp-active-group-filter button { border: 0; background: transparent; color: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; margin-left: auto; }
 .erp-list-global-search { height: 34px; flex: 0 1 360px; min-width: 180px; max-width: 360px; padding-block: 4px; }
@@ -893,3 +897,7 @@ button, input, select { font: inherit; }
   text-overflow: clip;
   line-height: 1.35;
 }
+
+/* 统一表单附件对话框：附件列表项（文件名/大小/上传人/时间/备注，操作按钮右侧排列） */
+.erp-attachment-list .list-group-item { align-items: center; }
+.erp-attachment-remark { font-size: 12px; }

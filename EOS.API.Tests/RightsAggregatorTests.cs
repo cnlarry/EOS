@@ -10,6 +10,14 @@ public class RightsAggregatorTests
         bool addNew = false,
         bool delete = false,
         bool edit = false,
+        bool approve = false,
+        bool deapprove = false,
+        bool endCase = false,
+        bool unEndCase = false,
+        bool fileView = false,
+        bool fileUpda = false,
+        bool fileEdit = false,
+        bool fileDele = false,
         bool cost = false,
         bool secrecy = false,
         bool setup = false,
@@ -20,7 +28,8 @@ public class RightsAggregatorTests
         string denyModiMaster = "",
         string denyModiDetail = "",
         string dataFilter = "") =>
-        new(execute, addNew, delete, edit, cost, secrecy, setup,
+        new(execute, addNew, delete, edit, approve, deapprove, endCase, unEndCase, fileView, fileUpda, fileEdit, fileDele,
+            cost, secrecy, setup,
             denyViewMaster, denyViewDetail, denyNewMaster, denyNewDetail,
             denyModiMaster, denyModiDetail, dataFilter);
 
@@ -57,6 +66,32 @@ public class RightsAggregatorTests
         Assert.True(rights.CanViewCost);
         Assert.True(rights.CanSetup);
         Assert.False(rights.CanViewSecrecy);
+    }
+
+    [Fact]
+    public void GroupExtendedBits_AreOrAggregated()
+    {
+        var rights = RightsAggregator.FromGroups(
+        [
+            Row("B", approve: true, endCase: true, fileView: true, fileDele: true),
+            Row("C", deapprove: true, unEndCase: true, fileUpda: true, fileEdit: true),
+        ]);
+
+        Assert.True(rights.CanApprove);
+        Assert.True(rights.CanDeapprove);
+        Assert.True(rights.CanEndCase);
+        Assert.True(rights.CanUnEndCase);
+        Assert.True(rights.CanFileView);
+        Assert.True(rights.CanFileUpda);
+        Assert.True(rights.CanFileEdit);
+        Assert.True(rights.CanFileDele);
+
+        var onlyView = RightsAggregator.FromGroups([Row("B", fileView: true)]);
+        Assert.True(onlyView.CanFileView);
+        Assert.False(onlyView.CanFileUpda);
+        Assert.False(onlyView.CanFileEdit);
+        Assert.False(onlyView.CanFileDele);
+        Assert.False(onlyView.CanEndCase);
     }
 
     [Fact]

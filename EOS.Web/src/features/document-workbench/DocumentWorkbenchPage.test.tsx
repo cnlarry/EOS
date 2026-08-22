@@ -305,6 +305,25 @@ describe('DocumentWorkbenchPage', () => {
     ))
   })
 
+  it('启用通用查询的模块只显示一个通用查询按钮（未选中/选中行均不重复）', async () => {
+    installApiMocks({ definition: { ...definition, searchMaster: true, searchDetail: false } })
+    renderPage()
+    await loaded()
+    const count = () => screen.getAllByRole('button', { name: '通用查询' }).length
+    expect(count()).toBe(1)
+    // 选中行后业务按钮增多，但通用查询仍只有一个
+    fireEvent.click(screen.getByText('P1'))
+    await waitFor(() => expect(screen.getByRole('button', { name: '编辑' })).toBeInTheDocument())
+    expect(count()).toBe(1)
+  })
+
+  it('未启用通用查询的模块不显示通用查询按钮', async () => {
+    installApiMocks({ definition: { ...definition, searchMaster: false, searchDetail: false } })
+    renderPage()
+    await loaded()
+    expect(screen.queryByRole('button', { name: '通用查询' })).not.toBeInTheDocument()
+  })
+
   it('表头菜单升序触发服务端排序参数', async () => {
     renderPage()
     await loaded()

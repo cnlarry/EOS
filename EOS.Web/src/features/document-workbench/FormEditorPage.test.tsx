@@ -55,6 +55,15 @@ const formDefinition: FormDefinition = {
   buttons: null,
   hasWorkflow: false,
   defaultValues: {},
+  canDelete: true,
+  canApprove: true,
+  canDeapprove: true,
+  canEndCase: false,
+  canUnEndCase: false,
+  canFileView: false,
+  canFileUpda: false,
+  canFileEdit: false,
+  canFileDele: false,
 }
 
 const recordBundle = {
@@ -172,8 +181,39 @@ describe('FormEditorPage', () => {
     fireEvent.click(approveButton)
     await waitFor(() => expect(postMock).toHaveBeenCalledWith(
       '/document-workbench/1209/approve',
-      expect.objectContaining({ key: ['P1', 'A'] }),
+      expect.objectContaining({ key: JSON.stringify(['P1', 'A']) }),
     ))
+  })
+
+  it('浏览模式点击结案调用 endcase 并刷新记录（FINISHED_TAG=false）', async () => {
+    const postMock = vi.fn().mockResolvedValue({ key: ['P1', 'A'] })
+    apiClientMock.post.mockImplementation(postMock)
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, canEndCase: true, canUnEndCase: false }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, FINISHED_TAG: false } }
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    const endcaseButton = await screen.findByRole('button', { name: '结案' })
+    fireEvent.click(endcaseButton)
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith(
+      '/document-workbench/1209/endcase',
+      expect.objectContaining({ key: JSON.stringify(['P1', 'A']) }),
+    ))
+  })
+
+  it('浏览模式未结案权限时不显示结案按钮', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, canEndCase: false, canUnEndCase: false }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, FINISHED_TAG: false } }
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: '结案' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '未结案' })).not.toBeInTheDocument()
   })
 
   it('新增模式应用服务端默认值（单别/单号/日期）', async () => {

@@ -103,21 +103,21 @@ describe('AppShell', () => {
   it('无 bootstrap 时使用兜底导航', () => {
     renderShell('/dashboard', { bootstrap: null })
     expect(screen.getByText('销售管理')).toBeInTheDocument()
-    expect(screen.getAllByText('销售订单').length).toBeGreaterThan(0)
   })
 
-  it('导航分组可展开收起', () => {
+  it('导航分组默认闭合，点击展开收起', () => {
     renderShell('/dashboard')
     const toggle = screen.getByRole('button', { name: '销售管理' })
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    fireEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('三级菜单可逐级展开', () => {
     renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('button', { name: '销售管理' }))
     const subGroup = screen.getByRole('button', { name: '销售子组' })
     expect(subGroup).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(subGroup)
@@ -127,6 +127,7 @@ describe('AppShell', () => {
 
   it('菜单搜索命中后显示面包屑并可直达', () => {
     renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('button', { name: '销售管理' }))
     fireEvent.click(screen.getByRole('button', { name: '销售子组' }))
     fireEvent.input(screen.getByRole('searchbox', { name: '搜索菜单' }), { target: { value: '分组模块' } })
     const result = screen.getByRole('button', { name: '销售管理 / 销售子组 / 分组模块' })

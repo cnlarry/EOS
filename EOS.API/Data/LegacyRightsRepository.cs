@@ -19,7 +19,9 @@ public sealed class LegacyRightsRepository(DbConnectionFactory connections, ILog
         }
 
         const string groupSql = """
-            SELECT h.EXEC_TAG,h.ADDNEW_TAG,h.DELETE_TAG,h.EDIT_TAG,h.COST_TAG,h.SECRECY_TAG,h.SETUP_TAG,
+            SELECT h.EXEC_TAG,h.ADDNEW_TAG,h.DELETE_TAG,h.EDIT_TAG,h.APPROVE_TAG,h.DEAPPROVE_TAG,h.ENDCASE_TAG,h.UNENDCASE_TAG,
+                   h.FILE_VIEW_TAG,h.FILE_UPDA_TAG,h.FILE_EDIT_TAG,h.FILE_DELE_TAG,
+                   h.COST_TAG,h.SECRECY_TAG,h.SETUP_TAG,
                    h.DENY_VIEW_FIELD_MASTER,h.DENY_VIEW_FIELD_DETAIL,h.DENY_NEW_FIELD_MASTER,h.DENY_NEW_FIELD_DETAIL,
                    h.DENY_MODI_FIELD_MASTER,h.DENY_MODI_FIELD_DETAIL,h.DATA_FILTER
             FROM dbo.SYSDH h WITH (NOLOCK)
@@ -94,7 +96,7 @@ public sealed class LegacyRightsRepository(DbConnectionFactory connections, ILog
 
     private static async Task<List<RightRow>> ReadRowsAsync(SqlConnection connection, string table, string idColumn, string userId, int moduleId, CancellationToken token)
     {
-        var sql = $"SELECT EXEC_TAG,ADDNEW_TAG,DELETE_TAG,EDIT_TAG,COST_TAG,SECRECY_TAG,SETUP_TAG,DENY_VIEW_FIELD_MASTER,DENY_VIEW_FIELD_DETAIL,DENY_NEW_FIELD_MASTER,DENY_NEW_FIELD_DETAIL,DENY_MODI_FIELD_MASTER,DENY_MODI_FIELD_DETAIL,DATA_FILTER FROM dbo.{table} WITH (NOLOCK) WHERE {idColumn}=@UserId AND M_IDX=@ModuleId";
+        var sql = $"SELECT EXEC_TAG,ADDNEW_TAG,DELETE_TAG,EDIT_TAG,APPROVE_TAG,DEAPPROVE_TAG,ENDCASE_TAG,UNENDCASE_TAG,FILE_VIEW_TAG,FILE_UPDA_TAG,FILE_EDIT_TAG,FILE_DELE_TAG,COST_TAG,SECRECY_TAG,SETUP_TAG,DENY_VIEW_FIELD_MASTER,DENY_VIEW_FIELD_DETAIL,DENY_NEW_FIELD_MASTER,DENY_NEW_FIELD_DETAIL,DENY_MODI_FIELD_MASTER,DENY_MODI_FIELD_DETAIL,DATA_FILTER FROM dbo.{table} WITH (NOLOCK) WHERE {idColumn}=@UserId AND M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection);
         AddParameters(command, userId, moduleId);
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -108,6 +110,14 @@ public sealed class LegacyRightsRepository(DbConnectionFactory connections, ILog
         reader.GetNullableBoolean("ADDNEW_TAG"),
         reader.GetNullableBoolean("DELETE_TAG"),
         reader.GetNullableBoolean("EDIT_TAG"),
+        reader.GetNullableBoolean("APPROVE_TAG"),
+        reader.GetNullableBoolean("DEAPPROVE_TAG"),
+        reader.GetNullableBoolean("ENDCASE_TAG"),
+        reader.GetNullableBoolean("UNENDCASE_TAG"),
+        reader.GetNullableBoolean("FILE_VIEW_TAG"),
+        reader.GetNullableBoolean("FILE_UPDA_TAG"),
+        reader.GetNullableBoolean("FILE_EDIT_TAG"),
+        reader.GetNullableBoolean("FILE_DELE_TAG"),
         reader.GetNullableBoolean("COST_TAG"),
         reader.GetNullableBoolean("SECRECY_TAG"),
         reader.GetNullableBoolean("SETUP_TAG"),
@@ -145,6 +155,14 @@ internal sealed record RightRow(
     bool AddNew,
     bool Delete,
     bool Edit,
+    bool Approve,
+    bool Deapprove,
+    bool EndCase,
+    bool UnEndCase,
+    bool FileView,
+    bool FileUpda,
+    bool FileEdit,
+    bool FileDele,
     bool Cost,
     bool Secrecy,
     bool Setup,
@@ -204,6 +222,14 @@ internal static class RightsAggregator
         CanAddNew: row.AddNew,
         CanEdit: row.Edit,
         CanDelete: row.Delete,
+        CanApprove: row.Approve,
+        CanDeapprove: row.Deapprove,
+        CanEndCase: row.EndCase,
+        CanUnEndCase: row.UnEndCase,
+        CanFileView: row.FileView,
+        CanFileUpda: row.FileUpda,
+        CanFileEdit: row.FileEdit,
+        CanFileDele: row.FileDele,
         DenyNewMasterFields: ParseDenied(row.DenyNewMaster),
         DenyNewDetailFields: ParseDenied(row.DenyNewDetail),
         DenyModiMasterFields: ParseDenied(row.DenyModiMaster),
@@ -219,6 +245,7 @@ internal static class RightsAggregator
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 false, false, false,
+                false, false, false, false, false, false, false, false,
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
@@ -238,6 +265,14 @@ internal static class RightsAggregator
             rows.Any(row => row.AddNew),
             rows.Any(row => row.Edit),
             rows.Any(row => row.Delete),
+            rows.Any(row => row.Approve),
+            rows.Any(row => row.Deapprove),
+            rows.Any(row => row.EndCase),
+            rows.Any(row => row.UnEndCase),
+            rows.Any(row => row.FileView),
+            rows.Any(row => row.FileUpda),
+            rows.Any(row => row.FileEdit),
+            rows.Any(row => row.FileDele),
             IntersectDenied(rows.Select(row => row.DenyNewMaster)),
             IntersectDenied(rows.Select(row => row.DenyNewDetail)),
             IntersectDenied(rows.Select(row => row.DenyModiMaster)),
