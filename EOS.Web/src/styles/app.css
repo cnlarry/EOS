@@ -767,8 +767,16 @@ button, input, select { font: inherit; }
   .erp-form-row { grid-template-columns: 1fr; }
 }
 
-/* 页签（对齐旧系统"客户订单--1/--2"式分组） */
-.erp-form-tabs .nav-link { padding: 5px 14px; font-size: 13px; }
+/* 页签（对齐旧系统"客户订单--1/--2"式分组；样式与系统级 TabbedPanel 完全一致，
+   即菜单管理右侧表单同款页签：行左缩进、激活标签向下延伸 1px 用面板底色覆盖网格顶边、
+   圆角用设计令牌，未激活标签完整显示网格顶边） */
+.erp-form-tabs { border-bottom: 0; margin-bottom: 0; padding-left: calc(var(--tblr-border-radius) * 2); }
+.erp-form-tabs .nav-link { padding: 5px 14px; font-size: 13px; border-bottom: 0; border-radius: var(--tblr-border-radius-lg) var(--tblr-border-radius-lg) 0 0; margin-bottom: -1px; }
+.erp-form-tabs .nav-link.active { background-color: var(--tblr-bg-surface); border-bottom: 1px solid var(--tblr-bg-surface); position: relative; z-index: 1; }
+/* 相邻标签始终只保留一条分隔线，且激活标签边框完整：
+   非激活的后续标签去掉左边框；激活标签的前一个邻居去掉右边框（:has） */
+.erp-form-tabs .nav-item + .nav-item .nav-link:not(.active) { border-left: 0 !important; }
+.erp-form-tabs .nav-item:has(+ .nav-item .nav-link.active) .nav-link { border-right: 0 !important; }
 
 /* 主表单卡：视觉交给 erp-form-grid（边框/圆角/背景），卡本身透明、无内边距 */
 .erp-form-card.card { border: 0; box-shadow: none; background: transparent; }
@@ -779,14 +787,6 @@ button, input, select { font: inherit; }
 .erp-form-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding-left: 0; background: transparent; }
 .erp-form-toolbar .btn { min-width: 72px; }
 .erp-form-toolbar-actions { margin-left: auto; }
-.erp-form-tabs { margin-bottom: 0; border-bottom: 0; }
-.erp-form-tabs .nav-link { border-bottom: 0; }
-.erp-form-tabs .nav-link.active { background-color: var(--tblr-bg-surface); }
-.erp-form-tabs .nav-link { border-radius: 8px 8px 0 0; }
-/* 相邻标签始终只保留一条分隔线，且激活标签边框完整：
-   非激活的后续标签去掉左边框；激活标签的前一个邻居去掉右边框（:has） */
-.erp-form-tabs .nav-item + .nav-item .nav-link:not(.active) { border-left: 0 !important; }
-.erp-form-tabs .nav-item:has(+ .nav-item .nav-link.active) .nav-link { border-right: 0 !important; }
 
 /* 统一表单紧凑控件（旧系统编辑页为紧凑输入框，避免"胖"控件） */
 .erp-form-grid .form-control,
