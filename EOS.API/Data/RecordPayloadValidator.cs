@@ -16,6 +16,16 @@ internal static class RecordPayloadValidator
         ["CREATE_PERSON", "CREATE_DATE", "LAST_UPDATE_BY", "LAST_UPDATE_DATE"],
         StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 长度校验只适用于字符类型。datetime/numeric 等类型的 sys.columns.max_length 是字节数
+    /// （如 datetime=8、numeric(18,2)=9），不能当作字符上限，否则 ISO 日期/较长数值会被误拒。
+    /// </summary>
+    private static bool IsTextType(string dataType)
+    {
+        var type = dataType.Trim().ToLowerInvariant();
+        return type is "char" or "nchar" or "varchar" or "nvarchar" or "text" or "ntext";
+    }
+
     public static bool IsAuditColumn(string field) => AuditColumns.Contains(field);
 
     public sealed record ValidationResult(
@@ -44,7 +54,7 @@ internal static class RecordPayloadValidator
                 errors.Add(new FieldError(key, "该字段由服务端维护，不可提交。", "READONLY_FIELD"));
                 continue;
             }
-            if (raw is not null && field.MaxLength is int maxLength && raw.Length > maxLength)
+            if (raw is not null && IsTextType(field.DataType) && field.MaxLength is int maxLength && raw.Length > maxLength)
             {
                 errors.Add(new FieldError(key, $"内容长度超出限制（最多 {maxLength} 字符）。", "VALUE_TOO_LONG"));
                 continue;

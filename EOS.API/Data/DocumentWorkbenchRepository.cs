@@ -113,6 +113,8 @@ public sealed class DocumentWorkbenchRepository(
         ["CLIENT_PRICE_M"] = "CLIENT_ID",
         ["CLIENT"] = "CLIENT_ID",
         ["SUPPLIER"] = "SUPPLIER_ID",
+        // 复合主键（3302 PRODUCE_NO 依赖 COP_SEND_D → COP_SEND_M）：值用逗号分隔的关联列清单
+        ["COP_SEND_M"] = "SEND_TYPE,SEND_NO",
     };
     private static readonly Regex MasterValuePlaceholderQuoted = new(@"'\{m\.([A-Za-z_][A-Za-z0-9_]*)\}'", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex MasterValuePlaceholder = new(@"\{m\.([A-Za-z_][A-Za-z0-9_]*)\}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -967,10 +969,11 @@ public sealed class DocumentWorkbenchRepository(
                    CAST(COALESCE(f.IS_SECRECY,0) AS bit) AS IS_SECRECY,CAST(COALESCE(f.IS_AUTOINC,0) AS bit) AS IS_AUTOINC,
                    CAST(COALESCE(f.CAN_COPY,1) AS bit) AS CAN_COPY,
                    d.F_IDX,CAST(CASE WHEN pk.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PK,
-                   CASE WHEN col.COLUMN_NAME IS NULL THEN NULL
-                        WHEN col.MAX_LENGTH = -1 THEN NULL
-                        WHEN col.CHARACTER_LENGTH_FLAG = 1 THEN col.MAX_LENGTH / 2
-                        ELSE col.MAX_LENGTH END AS MAX_LENGTH,
+                    CASE WHEN col.COLUMN_NAME IS NULL THEN NULL
+                         WHEN col.CHARACTER_LENGTH_FLAG = 0 THEN NULL
+                         WHEN col.MAX_LENGTH = -1 THEN NULL
+                         WHEN col.CHARACTER_LENGTH_FLAG = 2 THEN col.MAX_LENGTH / 2
+                         ELSE col.MAX_LENGTH END AS MAX_LENGTH,
                    CAST(COALESCE(f.FORM_TAB_NO,1) AS int) AS FORM_TAB_NO,
                    f.FORM_ORDER AS FORM_ORDER,
                    CAST(COALESCE(f.FORM_SPAN,1) AS int) AS FORM_SPAN,
@@ -985,7 +988,9 @@ public sealed class DocumentWorkbenchRepository(
                        GROUP BY T_ID,T_ID_R,LTRIM(RTRIM(F_ID))) d
               ON d.T_ID=@MasterTable AND d.T_ID_R=@TargetTable AND d.F_ID=LTRIM(RTRIM(f.F_ID))
             LEFT JOIN (SELECT c.name AS COLUMN_NAME,c.max_length AS MAX_LENGTH,
-                       CASE WHEN t.user_type_id IN (231,239) THEN 1 ELSE 0 END AS CHARACTER_LENGTH_FLAG
+                       CASE WHEN t.user_type_id IN (231,239) THEN 2
+                            WHEN t.user_type_id IN (167,175,35,99) THEN 1
+                            ELSE 0 END AS CHARACTER_LENGTH_FLAG
                        FROM sys.columns c
                        JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
                        JOIN sys.schemas s ON o.schema_id=s.schema_id
@@ -1693,8 +1698,9 @@ public sealed class DocumentWorkbenchRepository(
             nextIndex+=renumbered.Parameters.Count;
             foreach(var joinTable in parsedJoins.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                var joinKey=ChooserJoinTables[joinTable];
-                joins.Add($"LEFT JOIN dbo.[{joinTable}] ON dbo.[{joinTable}].[{joinKey}] = dbo.[{table}].[{joinKey}]");
+                var joinKeys=ChooserJoinTables[joinTable].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var on=string.Join(" AND ", joinKeys.Select(key=>$"dbo.[{joinTable}].[{key}] = dbo.[{table}].[{key}]"));
+                joins.Add($"LEFT JOIN dbo.[{joinTable}] ON {on}");
             }
         }
         // 显示列：回填映射列优先（保证主键/名称可见），其余按 SYSQL_DEFAULT 顺序，
@@ -1762,9 +1768,14 @@ public sealed class DocumentWorkbenchRepository(
         var checks=new List<(string Table,string Column)>();
         foreach(var joinTable in joinTables.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if(!ChooserJoinTables.TryGetValue(joinTable,out var joinKey))return false;
-            checks.Add((table,joinKey));
-            checks.Add((joinTable,joinKey));
+            if(!ChooserJoinTables.TryGetValue(joinTable,out var joinKeySpec))return false;
+            var joinKeys=joinKeySpec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if(joinKeys.Length==0)return false;
+            foreach(var key in joinKeys)
+            {
+                checks.Add((table,key));
+                checks.Add((joinTable,key));
+            }
         }
         checks.AddRange(foreignColumns);
         foreach(var group in checks.GroupBy(item=>item.Table,StringComparer.OrdinalIgnoreCase))
@@ -1842,6 +1853,8 @@ public sealed class DocumentWorkbenchRepository(
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var from=$"FROM dbo.[{table}] WITH (NOLOCK)";
         if(joins.Count>0)from+=" "+string.Join(" ",joins);
+        var countFrom=$"FROM dbo.[{table}] WITH (NOLOCK)";
+        if(joins.Count>0)countFrom+=" "+string.Join(" ",joins);
         // 排序字段必须在显示列白名单内（服务端校验），否则回退首列；方向仅 asc/desc
         var sortColumn = !string.IsNullOrWhiteSpace(sortField)
             ? columns.FirstOrDefault(column=>column.Key.Equals(sortField,StringComparison.OrdinalIgnoreCase))?.Key
@@ -1850,7 +1863,7 @@ public sealed class DocumentWorkbenchRepository(
         var dir = string.Equals(sortDirection,"desc",StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
         page=Math.Max(1,page);
         pageSize=Math.Clamp(pageSize,10,100);
-        var sql=$"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {select} {from}{where} ORDER BY [{table}].[{sortColumn}] {dir} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
+        var sql=$"SELECT COUNT_BIG(1) {countFrom}{where}; SELECT {select} {from}{where} ORDER BY [{table}].[{sortColumn}] {dir} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
         command.CommandText=sql;
         command.Parameters.Add("@Offset",SqlDbType.Int).Value=(page-1)*pageSize;
         command.Parameters.Add("@PageSize",SqlDbType.Int).Value=pageSize;
