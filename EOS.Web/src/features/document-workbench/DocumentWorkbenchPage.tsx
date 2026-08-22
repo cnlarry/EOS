@@ -1,11 +1,11 @@
-import { IconAdjustmentsHorizontal, IconArrowAutofitWidth, IconCheck, IconColumns, IconCopy, IconEye, IconFileExport, IconPlus, IconPrinter, IconRefresh, IconRotateClockwise, IconSearch, IconZoomScan } from '@tabler/icons-react'
-import { IconEdit } from '@tabler/icons-react'
+import { IconFileExport, IconZoomScan } from '@tabler/icons-react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
+import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpQueryBuilder } from '../../components/common/ErpQueryBuilder'
 import { emptyQueryCondition, type QueryCondition } from '../../components/common/queryCondition'
@@ -21,7 +21,7 @@ import { FieldBrowseLink } from './FieldBrowseLink'
 import { readListState, writeListState } from './listStateUrl'
 
 interface Field { key:string; label:string; dataType:string; width:number; align:string|null; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; isVirtual?:boolean }
-interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean; ifCopy:boolean; searchMaster:boolean; searchDetail:boolean; buttons:{action:string}[]|null; newUrl?:string|null; modiUrl?:string|null }
+interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean; ifCopy:boolean; searchMaster:boolean; searchDetail:boolean; buttons:{action:string}[]|null; newUrl?:string|null; modiUrl?:string|null; canDelete?:boolean }
 interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number }
 interface NavigationGroupDef { index:number; description:string; available:boolean }
 interface ColumnSetting { key:string; label:string; isVisible:boolean; order:number }
@@ -283,7 +283,7 @@ export function DocumentWorkbenchPage() {
   const changeKeyword=(value:string)=>{setKeyword(value)}
   const changeMasterSort=(next:SortingState)=>{setSort(next)}
   const changeDetailSort=(next:SortingState)=>{const first=next[0];setDetailSort(first?{field:first.id,direction:first.desc?'desc':'asc'}:null)}
-  const handleRowSelectionChange=(next:RowSelectionState)=>{const selectedKeys=Object.keys(next).filter(key=>next[key]);setSelected(current=>{const result:Record<string,Record<string,unknown>>={};for(const key of selectedKeys){result[key]=current[key]??rows.find(row=>rowKey(row)===key)??{}}return result})}
+  const handleRowSelectionChange=(next:RowSelectionState)=>{const selectedKeys=Object.keys(next).filter(key=>next[key]);setSelected(current=>{const result:Record<string,Record<string,unknown>>={};for(const key of selectedKeys){result[key]=current[key]??rows.find(row=>rowKey(row)===key)??{}}return result});if(selectedKeys.length===1){const only=selectedKeys[0];setActiveKey(only)}else if(selectedKeys.length===0){setActiveKey(null)}}
   const handleRowClick=(row:Record<string,unknown>)=>{const key=rowKey(row);setSelected({[key]:row});setActiveKey(key)}
   // 路由契约（M86）：NEW_URL/MODI_URL 有值时按元数据跳转，无值回退统一表单
   const openEdit=()=>{if(!active||!definition.data)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));const base=definition.data.modiUrl??`/document-workbench/${moduleId}/edit`;navigate(`${base}${base.includes('?')?'&':'?'}key=${encodeURIComponent(JSON.stringify(key))}`)}
@@ -292,6 +292,7 @@ export function DocumentWorkbenchPage() {
   const openCopy=()=>{if(!active||!definition.data?.ifCopy)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));navigate(`/document-workbench/${moduleId}/copy?copyFrom=${encodeURIComponent(JSON.stringify(key))}`)}
   const openSearchCenter=()=>{navigate(`/search-center/${moduleId}`)}
   const runWorkflow=async(approve:boolean)=>{if(!definition.data||!active)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));try{await apiClient.post(`/document-workbench/${moduleId}/${approve?'approve':'deapprove'}`,{key:JSON.stringify(key)});await queryClient.invalidateQueries({queryKey:['workbench',moduleId,'records']});if(activeKey)void details.refetch()}catch(error){window.alert(error instanceof Error?`${approve?'批核':'解批'}失败：${error.message}`:`${approve?'批核':'解批'}失败。`)}}
+  const deleteRecord=async()=>{if(!definition.data||!active)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));const label=definition.data.title;if(!window.confirm(`确定删除该${label}吗？删除后不可恢复。`))return;try{await apiClient.delete(`/document-workbench/${moduleId}/record?key=${encodeURIComponent(JSON.stringify(key))}`);setSelected({});setActiveKey(null);await queryClient.invalidateQueries({queryKey:['workbench',moduleId,'records']})}catch(error){window.alert(error instanceof Error?`删除失败：${error.message}`:'删除失败。')}}
   const openPrint=()=>{if(!definition.data||!active)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));window.open(`/print/${moduleId}?key=${encodeURIComponent(JSON.stringify(key))}`,'_blank')}
   const openGroupValues=async(group:NavigationGroupDef)=>{setActiveGroup(group);setGroupValues(null);try{const data=await apiClient.get<{values:string[]}>(`/navigation/${moduleId}/groups/${group.index}/values`);setGroupValues(data.values)}catch{setGroupValues([])}}
   const applyGroupValue=(value:string)=>{if(!activeGroup)return;setGroupMenuOpen(false);setSearchParams(current=>{current.set('groupIndex',String(activeGroup.index));current.set('groupValue',value);return current},{replace:true})}
@@ -322,70 +323,82 @@ export function DocumentWorkbenchPage() {
     </div>}
   </div>
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
-  // FORM_BUTTONS 业务按钮渲染：动作白名单与服务端一致；未配置（null）时走默认按钮集
-  const renderCommandButton=(action:string,key:number)=>{
-    switch(action){
-      case 'new':return definition.data?.hasAdd?<Button key={key} size="sm" icon={<IconPlus size={16}/>} title="新增" aria-label="新增" onClick={openNew}/>:null
-      case 'edit':return definition.data?.hasEdit&&active?<Button key={key} size="sm" icon={<IconEdit size={16}/>} title="编辑" aria-label="编辑" onClick={openEdit}/>:null
-      case 'copy':return definition.data?.ifCopy&&definition.data?.hasAdd&&active?<Button key={key} size="sm" icon={<IconCopy size={16}/>} title="复制" aria-label="复制" onClick={openCopy}/>:null
-      case 'approve':return definition.data?.hasWorkflow&&active?<Button key={key} size="sm" icon={<IconCheck size={16}/>} title="批核" aria-label="批核" onClick={()=>void runWorkflow(true)}/>:null
-      case 'deapprove':return definition.data?.hasWorkflow&&active?<Button key={key} size="sm" icon={<IconRotateClockwise size={16}/>} title="解批" aria-label="解批" onClick={()=>void runWorkflow(false)}/>:null
-      case 'print':return active?<Button key={key} size="sm" icon={<IconPrinter size={16}/>} title="打印单据" aria-label="打印单据" onClick={openPrint}/>:null
-      case 'export':return <div key={key}>{exportButton}</div>
-      case 'search':return (definition.data?.searchMaster||definition.data?.searchDetail)?<Button key={key} size="sm" icon={<IconSearch size={16}/>} title="通用查询" aria-label="通用查询" onClick={openSearchCenter}/>:null
-      default:return null
-    }
-  }
-  const configuredButtons=definition.data?.buttons&&definition.data.buttons.length>0
-    ?definition.data.buttons.map((button,index)=>renderCommandButton(button.action,index))
-    :<>
-      {definition.data?.hasAdd&&<Button size="sm" icon={<IconPlus size={16}/>} title="新增" aria-label="新增" onClick={openNew}/>}
-      {definition.data?.hasEdit&&active&&<Button size="sm" icon={<IconEdit size={16}/>} title="编辑" aria-label="编辑" onClick={openEdit}/>}
-      {active&&<Button size="sm" icon={<IconEye size={16}/>} title="查看" aria-label="查看" onClick={openView}/>}
-      {definition.data?.ifCopy&&definition.data?.hasAdd&&active&&<Button size="sm" icon={<IconCopy size={16}/>} title="复制" aria-label="复制" onClick={openCopy}/>}
-      {definition.data?.hasWorkflow&&active&&<>
-        <Button size="sm" icon={<IconCheck size={16}/>} title="批核" aria-label="批核" onClick={()=>void runWorkflow(true)}/>
-        <Button size="sm" icon={<IconRotateClockwise size={16}/>} title="解批" aria-label="解批" onClick={()=>void runWorkflow(false)}/>
-      </>}
-      {active&&<Button size="sm" icon={<IconPrinter size={16}/>} title="打印单据" aria-label="打印单据" onClick={openPrint}/>}
-      {exportButton}
-    </>
+  // FORM_BUTTONS 业务按钮：动作白名单与服务端一致；未配置（null）时走默认按钮集
+  const businessItems:ErpCommandItem[]=(definition.data?.buttons&&definition.data.buttons.length>0
+    ?definition.data.buttons
+    :[{action:'new'},{action:'edit'},{action:'view'},{action:'copy'},{action:'delete'},{action:'approve'},{action:'deapprove'},{action:'print'},{action:'export'}]).map((button)=>({
+    action:button.action,
+    visible:(()=>{
+      switch(button.action){
+        case 'new':return definition.data?.hasAdd
+        case 'edit':return Boolean(definition.data?.hasEdit&&active)
+        case 'view':return Boolean(active)
+        case 'copy':return Boolean(definition.data?.ifCopy&&definition.data?.hasAdd&&active)
+        case 'delete':return Boolean(definition.data?.canDelete&&active)
+        case 'approve':return Boolean(definition.data?.hasWorkflow&&active)
+        case 'deapprove':return Boolean(definition.data?.hasWorkflow&&active)
+        case 'print':return Boolean(active)
+        case 'export':return true
+        case 'search':return Boolean(definition.data?.searchMaster||definition.data?.searchDetail)
+        default:return false
+      }
+    })(),
+    onClick:(()=>{
+      switch(button.action){
+        case 'new':return openNew
+        case 'edit':return openEdit
+        case 'view':return openView
+        case 'copy':return openCopy
+        case 'delete':return deleteRecord
+        case 'approve':return ()=>void runWorkflow(true)
+        case 'deapprove':return ()=>void runWorkflow(false)
+        case 'print':return openPrint
+        case 'search':return openSearchCenter
+        default:return undefined
+      }
+    })(),
+    render:button.action==='export'?()=>exportButton:undefined,
+  }))
 
   return <div className={`erp-workbench-page${definition.data.detailTable?'':' erp-workbench-single'}`}>
     <ErpListCard
       ariaLabel="单据列表查询与操作"
       search={<ErpSearchBox value={keyword} onChange={changeKeyword} debounceMs={400} placeholder="搜索单据、供应商或商品" ariaLabel="搜索" />}
       actions={<>
-        <Button size="sm" icon={<IconAdjustmentsHorizontal size={16}/>} title={appliedConditions.length?`高级查询 (${appliedConditions.length})`:'高级查询'} aria-label={appliedConditions.length?`高级查询 (${appliedConditions.length})`:'高级查询'} onClick={()=>setQueryOpen(true)} />
-        <Button size="sm" icon={<IconColumns size={16}/>} title="选择列" aria-label="选择列" onClick={()=>{queryClient.removeQueries({queryKey:['workbench',moduleId,'column-editor']});setColumnsOpen(true)}} />
-        {groupDefs&&groupDefs.length>0&&(
-          <div className="dropdown erp-group-dropdown">
-            <Button size="sm" icon={<IconZoomScan size={16}/>} className={groupMenuOpen?'show':''} aria-expanded={groupMenuOpen} title="分组" aria-label="分组" onClick={()=>setGroupMenuOpen(open=>!open)} />
-            {groupMenuOpen&&(
-              <div className="dropdown-menu dropdown-menu-end show" role="menu">
-                {activeGroup===null?groupDefs.map(group=>(
-                  <button key={group.index} type="button" role="menuitem" className={`dropdown-item ${group.available?'':'disabled'}`} disabled={!group.available} onClick={()=>void openGroupValues(group)}>{group.description}</button>
-                )):(
-                  <>
-                    <button type="button" role="menuitem" className="dropdown-item" onClick={()=>setActiveGroup(null)}>← {activeGroup.description}</button>
-                    <div className="dropdown-divider"/>
-                    {groupValues===null
-                      ?<div className="dropdown-item-text text-secondary">加载中…</div>
-                      :groupValues.length===0
-                        ?<div className="dropdown-item-text text-secondary">无分组数据</div>
-                        :groupValues.map(value=>(
-                          <button key={value} type="button" role="menuitem" className={`dropdown-item ${groupIndex===activeGroup.index&&groupValue===value?'active':''}`} onClick={()=>applyGroupValue(value)}>{value}</button>
-                        ))}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-        <Button size="sm" icon={<IconArrowAutofitWidth size={16}/>} loading={fitting} title="自适应列宽" aria-label="自适应列宽" onClick={()=>void fitAllColumns()} />
-        {configuredButtons}
-        {(definition.data?.searchMaster||definition.data?.searchDetail)&&<Button size="sm" icon={<IconSearch size={16}/>} title="通用查询" aria-label="通用查询" onClick={openSearchCenter}/>}
-        <Button size="sm" icon={<IconRefresh size={16}/>} title="刷新" aria-label="刷新" onClick={()=>{void records.refetch();if(active)void details.refetch()}} />
+        <ErpCommandBar items={[
+          {action:'query',onClick:()=>setQueryOpen(true),title:appliedConditions.length?`高级查询 (${appliedConditions.length})`:'高级查询'},
+          {action:'columns',onClick:()=>{queryClient.removeQueries({queryKey:['workbench',moduleId,'column-editor']});setColumnsOpen(true)}},
+          ...(groupDefs&&groupDefs.length>0?[{action:'group',render:()=>(
+            <div className="dropdown erp-group-dropdown">
+              <Button size="sm" icon={<IconZoomScan size={16}/>} className={groupMenuOpen?'show':''} aria-expanded={groupMenuOpen} title="分组" aria-label="分组" onClick={()=>setGroupMenuOpen(open=>!open)} />
+              {groupMenuOpen&&(
+                <div className="dropdown-menu dropdown-menu-end show" role="menu">
+                  {activeGroup===null?groupDefs.map(group=>(
+                    <button key={group.index} type="button" role="menuitem" className={`dropdown-item ${group.available?'':'disabled'}`} disabled={!group.available} onClick={()=>void openGroupValues(group)}>{group.description}</button>
+                  )):(
+                    <>
+                      <button type="button" role="menuitem" className="dropdown-item" onClick={()=>setActiveGroup(null)}>← {activeGroup.description}</button>
+                      <div className="dropdown-divider"/>
+                      {groupValues===null
+                        ?<div className="dropdown-item-text text-secondary">加载中…</div>
+                        :groupValues.length===0
+                          ?<div className="dropdown-item-text text-secondary">无分组数据</div>
+                          :groupValues.map(value=>(
+                            <button key={value} type="button" role="menuitem" className={`dropdown-item ${groupIndex===activeGroup.index&&groupValue===value?'active':''}`} onClick={()=>applyGroupValue(value)}>{value}</button>
+                          ))}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}] satisfies ErpCommandItem[]:[]),
+          {action:'fit',loading:fitting,onClick:()=>void fitAllColumns()},
+          ...businessItems,
+          ...((definition.data?.searchMaster||definition.data?.searchDetail)&&!businessItems.some(item=>item.action==='search')
+            ?[{action:'search',onClick:openSearchCenter}] satisfies ErpCommandItem[]
+            :[]),
+          {action:'refresh',onClick:()=>{void records.refetch();if(active)void details.refetch()}},
+        ]} />
       </>}
       footer={
         <div className="d-flex align-items-center w-100">

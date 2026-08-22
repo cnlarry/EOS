@@ -87,6 +87,16 @@ export interface FormDefinition {
   searchDetail: boolean
   /** 新增模式服务端默认值（单别/单号/日期等），edit 模式为空对象 */
   defaultValues: Record<string, string>
+  /** 删除/批核/结案/附件操作权限（服务端 LegacyModuleRights 下发，视图按位显隐） */
+  canDelete: boolean
+  canApprove: boolean
+  canDeapprove: boolean
+  canEndCase: boolean
+  canUnEndCase: boolean
+  canFileView: boolean
+  canFileUpda: boolean
+  canFileEdit: boolean
+  canFileDele: boolean
 }
 
 /** 模块权限（与 EOS.API LegacyModuleRights 对应，M0 扩展后） */

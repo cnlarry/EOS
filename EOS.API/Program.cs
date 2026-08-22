@@ -151,9 +151,11 @@ builder.Services.AddScoped<IImAttachmentRepository, ImAttachmentRepository>();
 builder.Services.AddScoped<IImCardService, ImCardService>();
 builder.Services.AddScoped<ImHubService>();
 builder.Services.AddScoped<MailTaskRepository>();
+builder.Services.AddScoped<AttachmentRepository>();
 builder.Services.AddHostedService<ImCleanupHostedService>();
 builder.Services.AddSignalR();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
+builder.Services.Configure<AttachmentSettings>(builder.Configuration.GetSection("Attachment"));
 
 var app = builder.Build();
 
@@ -175,6 +177,7 @@ app.MapFallbackToFile("index.html").RequireAuthorization();
 
 ImDatabaseInitializer.RunIfConfigured(builder.Configuration, app.Logger);
 MailDatabaseInitializer.RunIfConfigured(builder.Configuration, app.Logger);
+ErpDatabaseInitializer.Run(builder.Configuration, app.Logger);
 
 RegisterPdfFont();
 

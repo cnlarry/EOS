@@ -22,6 +22,9 @@ const SIDEBAR_WIDTH_MIN = 160
 const SIDEBAR_WIDTH_MAX = 480
 const DEFAULT_SIDEBAR_WIDTH = 220
 
+const RECENT_MODULES_KEY = 'erp-dashboard-recent'
+const RECENT_MODULES_MAX = 8
+
 const fallbackNavigation = [
   { id: 'dashboard', label: '工作台', route: '/dashboard', icon: 'dashboard' },
   {
@@ -123,8 +126,7 @@ export function AppShell() {
   const navigate = useNavigate()
   const navigation = bootstrap?.navigation ?? fallbackNavigation as unknown as NavigationItem[]
   const location = useLocation()
-  const firstGroup = navigation.find((item) => item.children?.length)
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(firstGroup ? [firstGroup.id] : []))
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
   const sidebarWidthRef = useRef(sidebarWidth)
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const isFormEditor = /\/(new|edit|view)$/.test(location.pathname)
@@ -217,6 +219,22 @@ export function AppShell() {
     setSidebarOpen(false)
     setUserMenuOpen(false)
   }, [location.pathname])
+
+  // 记录最近访问的业务模块（工作台/报表等叶子），供 dashboard 快捷入口使用；本地持久化
+  useEffect(() => {
+    if (basePath === '/dashboard' || basePath === '/login') return
+    const leaf = allLeaves.find((item) => item.route === basePath)
+    if (!leaf) return
+    let saved: string[]
+    try {
+      saved = JSON.parse(localStorage.getItem(RECENT_MODULES_KEY) ?? '[]') as string[]
+      if (!Array.isArray(saved)) saved = []
+    } catch {
+      saved = []
+    }
+    const next = [leaf.route!, ...saved.filter((route) => route !== leaf.route)].slice(0, RECENT_MODULES_MAX)
+    localStorage.setItem(RECENT_MODULES_KEY, JSON.stringify(next))
+  }, [basePath, allLeaves])
 
   // 进入页面时自动展开当前模块所在的分支（含从菜单搜索直达的场景）
   useEffect(() => {

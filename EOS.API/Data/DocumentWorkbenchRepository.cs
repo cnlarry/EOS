@@ -51,12 +51,13 @@ public sealed record WorkbenchDefinition(
     bool SearchMaster = false,
     bool SearchDetail = false,
     string? NewUrl = null,
-    string? ModiUrl = null);
+    string? ModiUrl = null,
+    bool CanDelete = false);
 /// <summary>统一表单页签定义（解析自 MODULES.FORM_TABS，如 '1=基本资料;2=其它'）。</summary>
 public sealed record FormTabDefinition(int No, string Title);
 /// <summary>统一表单下拉选项（解析自 FIELDS.FORM_OPTIONS，如 'O=外含税;I=内含税'）。</summary>
 public sealed record FormOptionItem(string Value, string Label);
-public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify, IReadOnlyList<FormTabDefinition> Tabs = default!, int Columns = 2, IReadOnlyList<WorkbenchButton>? Buttons = null, IReadOnlyDictionary<string,string> DefaultValues = default!, bool HasWorkflow = false, bool IfCopy = false, bool SearchMaster = false, bool SearchDetail = false);
+public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify, IReadOnlyList<FormTabDefinition> Tabs = default!, int Columns = 2, IReadOnlyList<WorkbenchButton>? Buttons = null, IReadOnlyDictionary<string,string> DefaultValues = default!, bool HasWorkflow = false, bool IfCopy = false, bool SearchMaster = false, bool SearchDetail = false, bool CanDelete = false, bool CanApprove = false, bool CanDeapprove = false, bool CanEndCase = false, bool CanUnEndCase = false, bool CanFileView = false, bool CanFileUpda = false, bool CanFileEdit = false, bool CanFileDele = false);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength, int TabNo = 1, int? FormOrder = null, int Span = 1, bool NewLine = false, string? CellGroup = null, int CellRole = 0, IReadOnlyList<FormOptionItem>? Options = null, bool DisplayOnly = false, bool CanCopy = true);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
 public sealed record WorkbenchQueryCondition(string Field, string Operator, string? Value, string? ValueTo, IReadOnlyList<string>? Values, string Logic = "and");
@@ -89,7 +90,7 @@ public sealed class DocumentWorkbenchRepository(
         if (string.IsNullOrWhiteSpace(raw)) return null;
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "new", "edit", "delete", "copy", "approve", "deapprove", "print", "export", "search",
+            "new", "edit", "delete", "copy", "approve", "deapprove", "endcase", "unendcase", "print", "export", "search",
         };
         var result = new List<WorkbenchButton>();
         foreach (var part in raw.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
@@ -812,7 +813,16 @@ public sealed class DocumentWorkbenchRepository(
         IReadOnlySet<string> deniedNewDetailFields,
         IReadOnlySet<string> deniedModiMasterFields,
         IReadOnlySet<string> deniedModiDetailFields,
-        CancellationToken token)
+        CancellationToken token,
+        bool canDelete = false,
+        bool canApprove = false,
+        bool canDeapprove = false,
+        bool canEndCase = false,
+        bool canUnEndCase = false,
+        bool canFileView = false,
+        bool canFileUpda = false,
+        bool canFileEdit = false,
+        bool canFileDele = false)
     {
         await using var connection=CreateConnection(); await connection.OpenAsync(token);
         var pkColumns=await GetPrimaryKeyColumnsAsync(connection,null,definition.MasterTable,token);
@@ -890,7 +900,8 @@ public sealed class DocumentWorkbenchRepository(
         return new FormDefinition(definition.ModuleId,definition.Title,definition.MasterTable,definition.DetailTable,
             definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns,definition.DetailNoFields,detailDfVerify,
             tabs,columns,definition.FormButtons,defaultValues,definition.HasWorkflow,
-            definition.IfCopy,definition.SearchMaster,definition.SearchDetail);
+            definition.IfCopy,definition.SearchMaster,definition.SearchDetail,
+            canDelete,canApprove,canDeapprove,canEndCase,canUnEndCase,canFileView,canFileUpda,canFileEdit,canFileDele);
     }
 
     /// <summary>
@@ -956,7 +967,10 @@ public sealed class DocumentWorkbenchRepository(
                    CAST(COALESCE(f.IS_SECRECY,0) AS bit) AS IS_SECRECY,CAST(COALESCE(f.IS_AUTOINC,0) AS bit) AS IS_AUTOINC,
                    CAST(COALESCE(f.CAN_COPY,1) AS bit) AS CAN_COPY,
                    d.F_IDX,CAST(CASE WHEN pk.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PK,
-                   col.CHARACTER_MAXIMUM_LENGTH AS MAX_LENGTH,
+                   CASE WHEN col.COLUMN_NAME IS NULL THEN NULL
+                        WHEN col.MAX_LENGTH = -1 THEN NULL
+                        WHEN col.CHARACTER_LENGTH_FLAG = 1 THEN col.MAX_LENGTH / 2
+                        ELSE col.MAX_LENGTH END AS MAX_LENGTH,
                    CAST(COALESCE(f.FORM_TAB_NO,1) AS int) AS FORM_TAB_NO,
                    f.FORM_ORDER AS FORM_ORDER,
                    CAST(COALESCE(f.FORM_SPAN,1) AS int) AS FORM_SPAN,
@@ -970,10 +984,12 @@ public sealed class DocumentWorkbenchRepository(
                        FROM dbo.SYSQL_DEFAULT WITH (NOLOCK)
                        GROUP BY T_ID,T_ID_R,LTRIM(RTRIM(F_ID))) d
               ON d.T_ID=@MasterTable AND d.T_ID_R=@TargetTable AND d.F_ID=LTRIM(RTRIM(f.F_ID))
-            LEFT JOIN (SELECT c.name AS COLUMN_NAME
+            LEFT JOIN (SELECT c.name AS COLUMN_NAME,c.max_length AS MAX_LENGTH,
+                       CASE WHEN t.user_type_id IN (231,239) THEN 1 ELSE 0 END AS CHARACTER_LENGTH_FLAG
                        FROM sys.columns c
                        JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
                        JOIN sys.schemas s ON o.schema_id=s.schema_id
+                       JOIN sys.types t ON c.user_type_id=t.user_type_id
                        WHERE s.name=N'dbo' AND o.name=@TargetTable) col
               ON col.COLUMN_NAME=f.F_ID
             LEFT JOIN (SELECT c.name AS COLUMN_NAME
@@ -1457,6 +1473,47 @@ public sealed class DocumentWorkbenchRepository(
         logger.LogInformation("统一表单{Action} module={ModuleId} key={Key}",approve?"批核":"解批",definition.ModuleId,string.Join(',',keyValues));
         await WriteAuditAsync(connection,null,definition.ModuleId,string.Join(',',keyValues),
             approve?"APPROVE":"DEAPPROVE",approve?"批核":"解批",userId,token);
+        return RecordSaveResult.Success(keyValues);
+    }
+
+    /// <summary>
+    /// 结案/取消结案（旧 Comm/DoFinishOne.aspx 的受控 C# 等价，主表单笔结案）。
+    /// 语义：更新主表 FINISHED_TAG/FINISHED_PERSON/FINISHED_DATE；
+    /// 结案仅允许 FINISHED_TAG=0，取消结案仅允许 FINISHED_TAG=1（守卫防重复/冲突）。
+    /// 安全边界：表名来自工作台定义（已校验）；列存在性用 sys.columns 校验
+    /// （FINISHED_TAG/FINISHED_PERSON/FINISHED_DATE），缺列模块返回不支持；
+    /// 主键条件沿用 ControlledSprocInvoker.BuildKeyCondition（转义常量），不拼接客户端输入。
+    /// </summary>
+    public async Task<RecordSaveResult> FinishAsync(
+        WorkbenchDefinition definition,
+        IReadOnlyList<string> keyValues,
+        bool finish,
+        string employeeName,
+        string userId,
+        CancellationToken token)
+    {
+        await using var connection=CreateConnection();
+        await connection.OpenAsync(token);
+        var keyCondition=ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder,keyValues);
+        var hasTag=await ColumnExistsAsync(connection,null,definition.MasterTable,"FINISHED_TAG",token);
+        if(!hasTag)
+            return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"ENDCASE_NOT_SUPPORTED","该模块不支持结案操作。");
+        var hasPerson=await ColumnExistsAsync(connection,null,definition.MasterTable,"FINISHED_PERSON",token);
+        var hasDate=await ColumnExistsAsync(connection,null,definition.MasterTable,"FINISHED_DATE",token);
+        var sql=finish
+            ? $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=1{(hasPerson?",FINISHED_PERSON=@Person":string.Empty)}{(hasDate?",FINISHED_DATE=GETDATE()":string.Empty)} WHERE ISNULL(FINISHED_TAG,0)=0 AND {keyCondition};"
+            : $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=0{(hasPerson?",FINISHED_PERSON=@Person":string.Empty)}{(hasDate?",FINISHED_DATE=GETDATE()":string.Empty)} WHERE FINISHED_TAG=1 AND {keyCondition};";
+        await using var command=new SqlCommand(sql,connection);
+        if(hasPerson)command.Parameters.Add("@Person",SqlDbType.NVarChar,50).Value=employeeName.Trim();
+        var affected=await command.ExecuteNonQueryAsync(token);
+        if(affected==0)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"ENDCASE_STATE_CONFLICT",
+                finish?"记录不存在或已结案，无法重复结案。":"记录不存在或未结案，无法取消结案。");
+        }
+        logger.LogInformation("统一表单{Action} module={ModuleId} key={Key}",finish?"结案":"取消结案",definition.ModuleId,string.Join(',',keyValues));
+        await WriteAuditAsync(connection,null,definition.ModuleId,string.Join(',',keyValues),
+            finish?"ENDCASE":"UNENDCASE",finish?"结案":"取消结案",userId,token);
         return RecordSaveResult.Success(keyValues);
     }
 

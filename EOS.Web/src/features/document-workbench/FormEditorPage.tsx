@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
+import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
 import { ErpTable } from '../../components/common/ErpTable'
 import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
+import { AttachmentDialog } from './AttachmentDialog'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 import { FormFieldRenderer } from './FormFieldRenderer'
@@ -41,6 +43,7 @@ export function FormEditorPage() {
   const [selectedDetailRows, setSelectedDetailRows] = useState<Set<number>>(new Set())
   const [detailSort, setDetailSort] = useState<{ key: string; dir: 1 | -1 } | null>(null)
   const [activeTab, setActiveTab] = useState(1)
+  const [attachOpen, setAttachOpen] = useState(false)
   // 明细列宽统一走服务端（FIELDS.DISPLAY_LENGTH，与工作台一致），拖拽后批量保存
   const widthBatch = useRef<Record<string, number>>({})
   const widthTimer = useRef<number | null>(null)
@@ -165,7 +168,7 @@ export function FormEditorPage() {
     mutationFn: async (action: 'approve' | 'deapprove') => {
       if (!formQuery.data) throw new Error('表单定义未加载。')
       const key = buildKey(formQuery.data, masterValues)
-      return apiClient.post<{ key: string[] }>(`/document-workbench/${moduleId}/${action}`, { key })
+      return apiClient.post<{ key: string[] }>(`/document-workbench/${moduleId}/${action}`, { key: JSON.stringify(key) })
     },
     onSuccess: async (_, action) => {
       window.alert(action === 'approve' ? '批核成功。' : '解批成功。')
@@ -176,6 +179,34 @@ export function FormEditorPage() {
       window.alert(message)
     },
   })
+
+  const finish = useMutation({
+    mutationFn: async (action: 'endcase' | 'unendcase') => {
+      if (!formQuery.data) throw new Error('表单定义未加载。')
+      const key = buildKey(formQuery.data, masterValues)
+      return apiClient.post<{ key: string[] }>(`/document-workbench/${moduleId}/${action}`, { key: JSON.stringify(key) })
+    },
+    onSuccess: async (_, action) => {
+      window.alert(action === 'endcase' ? '结案成功。' : '取消结案成功。')
+      await recordQuery.refetch()
+    },
+    onError: cause => {
+      const message = cause instanceof ApiError ? cause.body.message : '操作失败，请稍后重试。'
+      window.alert(message)
+    },
+  })
+
+  const deleteRecord = async () => {
+    if (!formQuery.data) return
+    const key = buildKey(formQuery.data, masterValues)
+    if (!window.confirm('确定删除该单据吗？删除后不可恢复。')) return
+    try {
+      await apiClient.delete(`/document-workbench/${moduleId}/record?key=${encodeURIComponent(JSON.stringify(key))}`)
+      navigate(`/document-workbench/${moduleId}`)
+    } catch (cause) {
+      window.alert(cause instanceof Error ? `删除失败：${cause.message}` : '删除失败。')
+    }
+  }
 
   const validateClient = (): boolean => {
     if (!formQuery.data) return false
@@ -492,36 +523,63 @@ export function FormEditorPage() {
             {!isView ? (
               <>
                 {isCopy && <span className="small text-secondary align-self-center">复制模式：以选中记录为模板，保存后生成新单据</span>}
-                <Button size="sm" variant="primary" loading={save.isPending} onClick={() => { if (validateClient()) save.mutate() }}>保存</Button>
-                <Button size="sm" onClick={back}>取消</Button>
+                <ErpCommandBar items={[
+                  { action: 'save', label: '保存', variant: 'primary', loading: save.isPending, onClick: () => { if (validateClient()) save.mutate() } },
+                  { action: 'cancel', label: '取消', onClick: back },
+                ]} />
+                {form.canFileView && keyParam && (
+                  <ErpCommandBar items={[{ action: 'attach', visible: true, onClick: () => setAttachOpen(true) }]} />
+                )}
               </>
             ) : (
               <>
-                <Button size="sm" onClick={back}>返回</Button>
+                <ErpCommandBar items={[
+                  { action: 'back', label: '返回', onClick: back },
+                ]} />
                 {form.buttons && form.buttons.length > 0 ? (
-                  form.buttons.map((button, index) => {
+                  <ErpCommandBar items={form.buttons.map((button): ErpCommandItem => {
                     if (button.action === 'approve' && form.hasWorkflow && keyParam && recordQuery.data && recordQuery.data.master.CONFIRM_TAG !== true) {
-                      return <Button key={index} size="sm" variant="primary" loading={workflow.isPending} onClick={() => workflow.mutate('approve')}>批核</Button>
+                      return { action: 'approve', loading: workflow.isPending, onClick: () => workflow.mutate('approve') }
                     }
                     if (button.action === 'deapprove' && form.hasWorkflow && keyParam && recordQuery.data && recordQuery.data.master.CONFIRM_TAG === true) {
-                      return <Button key={index} size="sm" variant="danger" loading={workflow.isPending} onClick={() => workflow.mutate('deapprove')}>解批</Button>
+                      return { action: 'deapprove', loading: workflow.isPending, onClick: () => workflow.mutate('deapprove') }
+                    }
+                    if (button.action === 'endcase' && keyParam && form.canEndCase && recordQuery.data && recordQuery.data.master.FINISHED_TAG !== true) {
+                      return { action: 'endcase', loading: finish.isPending, onClick: () => finish.mutate('endcase') }
+                    }
+                    if (button.action === 'unendcase' && keyParam && form.canUnEndCase && recordQuery.data && recordQuery.data.master.FINISHED_TAG === true) {
+                      return { action: 'unendcase', loading: finish.isPending, onClick: () => finish.mutate('unendcase') }
                     }
                     if (button.action === 'print' && keyParam) {
-                      return <Button key={index} size="sm" onClick={openPrint}>打印</Button>
+                      return { action: 'print', onClick: openPrint }
                     }
-                    return null
-                  })
-                ) : form.hasWorkflow && keyParam && recordQuery.isSuccess && recordQuery.data ? (
-                  <>
-                    {recordQuery.data.master.CONFIRM_TAG !== true && (
-                      <Button size="sm" variant="primary" loading={workflow.isPending} onClick={() => workflow.mutate('approve')}>批核</Button>
-                    )}
-                    {recordQuery.data.master.CONFIRM_TAG === true && (
-                      <Button size="sm" variant="danger" loading={workflow.isPending} onClick={() => workflow.mutate('deapprove')}>解批</Button>
-                    )}
-                    <Button size="sm" onClick={openPrint}>打印</Button>
-                  </>
-                ) : null}
+                    if (button.action === 'delete' && keyParam && form.canDelete) {
+                      return { action: 'delete', onClick: () => void deleteRecord() }
+                    }
+                    return { action: button.action, visible: false }
+                  })} />
+                ) : (
+                  <ErpCommandBar items={[
+                    ...(form.hasWorkflow && keyParam && recordQuery.isSuccess && recordQuery.data
+                      ? recordQuery.data.master.CONFIRM_TAG !== true
+                        ? [{ action: 'approve', loading: workflow.isPending, onClick: () => workflow.mutate('approve') } satisfies ErpCommandItem]
+                        : [{ action: 'deapprove', loading: workflow.isPending, onClick: () => workflow.mutate('deapprove') } satisfies ErpCommandItem]
+                      : []),
+                    ...(keyParam && form.canEndCase && recordQuery.data && recordQuery.data.master.FINISHED_TAG !== true
+                      ? [{ action: 'endcase', loading: finish.isPending, onClick: () => finish.mutate('endcase') } satisfies ErpCommandItem]
+                      : []),
+                    ...(keyParam && form.canUnEndCase && recordQuery.data && recordQuery.data.master.FINISHED_TAG === true
+                      ? [{ action: 'unendcase', loading: finish.isPending, onClick: () => finish.mutate('unendcase') } satisfies ErpCommandItem]
+                      : []),
+                    ...(keyParam ? [{ action: 'print', onClick: openPrint } satisfies ErpCommandItem] : []),
+                  ]} />
+                )}
+                {form.canFileView && keyParam && (
+                  <ErpCommandBar items={[{ action: 'attach', visible: true, onClick: () => setAttachOpen(true) }]} />
+                )}
+                {form.canDelete && keyParam && (
+                  <ErpCommandBar items={[{ action: 'delete', visible: true, onClick: () => void deleteRecord() }]} />
+                )}
               </>
             )}
           </div>
@@ -605,6 +663,18 @@ export function FormEditorPage() {
           emptyText="没有可选数据。"
         />
       ) : null}
+      {attachOpen && keyParam && (
+        <AttachmentDialog
+          moduleId={Number(moduleId)}
+          masterTable={form.masterTable}
+          recordKey={buildKey(form, masterValues)}
+          title={form.title}
+          canUpload={form.canFileUpda}
+          canEdit={form.canFileEdit}
+          canDelete={form.canFileDele}
+          onClose={() => setAttachOpen(false)}
+        />
+      )}
     </div>
   )
 }
