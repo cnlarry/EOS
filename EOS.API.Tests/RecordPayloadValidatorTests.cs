@@ -94,6 +94,28 @@ public class RecordPayloadValidatorTests
     }
 
     [Fact]
+    public void DateTimeValue_NotSubjectToByteLengthLimit()
+    {
+        // datetime 的 max_length=8 是字节数，不是字符上限；ISO 日期 10 字符必须放行
+        var result = RecordPayloadValidator.ValidateSubmitted(
+            [Field("D", dataType: "datetime", maxLength: 8)],
+            new Dictionary<string, string?> { ["D"] = "2026-08-23" });
+        Assert.Empty(result.Errors);
+        Assert.IsType<DateTime>(result.Converted["D"]);
+    }
+
+    [Fact]
+    public void NumericValue_NotSubjectToByteLengthLimit()
+    {
+        // int 的 max_length=4 是字节数；较长数值字符串（如 12345）不得误判超长
+        var result = RecordPayloadValidator.ValidateSubmitted(
+            [Field("N", dataType: "int", maxLength: 4)],
+            new Dictionary<string, string?> { ["N"] = "12345" });
+        Assert.Empty(result.Errors);
+        Assert.Equal(12345, result.Converted["N"]);
+    }
+
+    [Fact]
     public void RequiredField_MissingOrBlank_IsRejected()
     {
         var fields = new[] { Field("A", required: true), Field("B", required: true) };

@@ -15,6 +15,10 @@ const apiClientMock = vi.hoisted(() => ({
 
 vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
 
+// 环境负载下（并跑 web dev/API/playwright）弹窗交互用例 5s 默认超时偶发超时，
+// 单独跑 10/10 通过；放宽到 15s 消除偶发（同仓库其它表单页测试同此配置风格）。
+vi.setConfig({ testTimeout: 15000 })
+
 const tables = Array.from({ length: 20 }, (_, index) => ({
   tableId: `TABLE_${String(index).padStart(2, '0')}`,
   description: `表${index}`,
