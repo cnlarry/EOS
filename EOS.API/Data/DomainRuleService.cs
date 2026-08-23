@@ -3279,7 +3279,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         return lines.Count > 0 ? string.Join("\r\n", lines) : null;
     }
 
-    /// <summary>客户报价单（1416）AfterSave：客户校验 + 询价单一致性校验。</summary>
+    /// <summary>报价单（1404，原 1416 规则迁移）AfterSave：客户校验 + 询价单一致性校验。</summary>
     private static async Task<SprocResult> CopQuoteAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)

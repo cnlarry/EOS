@@ -10,7 +10,7 @@ public class DocumentLayoutProfileTests
     {
         Assert.Equal(24, DocumentLayoutProfiles.All.Count);
         Assert.Contains(1406, DocumentLayoutProfiles.All.Keys); // 送货单
-        Assert.Contains(1416, DocumentLayoutProfiles.All.Keys); // 报价单
+        Assert.Contains(1404, DocumentLayoutProfiles.All.Keys); // 报价单
         Assert.Contains(1405, DocumentLayoutProfiles.All.Keys); // 客户订单
     }
 

@@ -21,14 +21,14 @@ const bootstrap = {
       id: 'sales', label: '销售管理', icon: 'sales',
       children: [
         { id: 'so', label: '销售订单', route: '/document-workbench/1405', icon: 'sales', moduleId: 1405 },
-        { id: 'quot', label: '报价单', route: '/document-workbench/1416', icon: 'sales', moduleId: 1416 },
+        { id: 'quot', label: '报价单', route: '/document-workbench/1404', icon: 'sales', moduleId: 1404 },
       ],
     },
   ],
 }
 
 const myTasks = {
-  tasks: [{ moduleId: 1405, title: '销售订单', pending: 3 }, { moduleId: 1416, title: '报价单', pending: 0 }],
+  tasks: [{ moduleId: 1405, title: '销售订单', pending: 3 }, { moduleId: 1404, title: '报价单', pending: 0 }],
   flowTasks: [{ myTaskId: 1 }],
   engineEnabled: true,
   note: '',

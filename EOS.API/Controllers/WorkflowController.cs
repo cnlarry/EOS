@@ -163,7 +163,7 @@ public sealed class WorkflowController(
     /// <summary>需批核单据白名单：业务闭环 17 单据 + 生产/库存核心单据（主表名来自服务端常量）。</summary>
     private static readonly (int ModuleId,string Table)[] PendingModules =
     [
-        (1416,"COP_QUOTE_M"),(1405,"COP_ORDER_M"),(1406,"COP_SEND_M"),(1408,"COP_SHIPMENT_M"),
+        (1404,"COP_QUOTE_M"),(1405,"COP_ORDER_M"),(1406,"COP_SEND_M"),(1408,"COP_SHIPMENT_M"),
         (170101,"COP_ACCOUNT_M"),(170102,"COP_RECEIPT_M"),(170103,"COP_PREPAY_M"),
         (1604,"PUR_QUOTE_M"),(1615,"PUR_APPLY_M"),(1606,"PUR_PURCHASE_M"),(1607,"PUR_RECEIVE_M"),
         (170201,"PUR_DUE_M"),(170202,"PUR_PAY_M"),(170203,"PUR_PREPAY_M"),
