@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.Json;
+using EOS.API.Models;
 using EOS.API.Telemetry;
 using Microsoft.Data.SqlClient;
 
@@ -230,7 +231,8 @@ public sealed class WorkbenchCommandHandler(
             }
         }
         await RecalculateMasterAmountsAsync(connection, transaction, definition, token);
-        await auditWriter.WriteAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues), "INSERT", "新增记录", userId, token);
+        await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues),
+            "INSERT", "新增记录", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
         if (idempotencyKey is not null)
         {
             await idempotency.CompleteAsync(connection, transaction, idempotencyKey, SerializeResultKey(keyValues), false, token);
@@ -402,6 +404,7 @@ public sealed class WorkbenchCommandHandler(
         }
         await RecalculateMasterAmountsAsync(connection, transaction, definition, token);
         var changes = new List<string>();
+        var fieldChanges = new List<AuditFieldChange>();
         foreach (var (key, value) in validation.Converted)
         {
             var field = form.MasterFields.FirstOrDefault(item => item.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
@@ -409,10 +412,11 @@ public sealed class WorkbenchCommandHandler(
             if (field is not null && !ValuesEqual(oldValue, value))
             {
                 changes.Add($"{field.Label}：{ValueToString(oldValue)}-->{ValueToString(value)}<BR>");
+                fieldChanges.Add(new AuditFieldChange(field.Key, ValueToString(oldValue), ValueToString(value), null));
             }
         }
-        await auditWriter.WriteAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues), "UPDATE",
-            changes.Count > 0 ? string.Join("", changes) : "修改记录", userId, token);
+        await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues), "UPDATE",
+            changes.Count > 0 ? string.Join("", changes) : "修改记录", userId, "WORKBENCH_RECORD", result: 1, fieldChanges, token);
         if (idempotencyKey is not null)
         {
             await idempotency.CompleteAsync(connection, transaction, idempotencyKey, SerializeResultKey(keyValues), false, token);
@@ -483,7 +487,8 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
         }
-        await auditWriter.WriteAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues), "DELETE", "删除记录", userId, token);
+        await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues),
+            "DELETE", "删除记录", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
         if (idempotencyKey is not null)
         {
             await idempotency.CompleteAsync(connection, transaction, idempotencyKey, SerializeResultKey(keyValues), false, token);

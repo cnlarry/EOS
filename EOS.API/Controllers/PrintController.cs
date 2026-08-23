@@ -16,6 +16,7 @@ public sealed class PrintController(
     LegacyRightsRepository rightsRepository,
     IPermissionService permissions,
     DocumentWorkbenchRepository workbench,
+    WorkbenchAuditWriter auditWriter,
     DocumentPdfService documentPdfService) : ControllerBase
 {
     /// <summary>
@@ -57,6 +58,7 @@ public sealed class PrintController(
         var tail = settings.Tails.FirstOrDefault(item => item.TailId == tailId);
         var pdf = documentPdfService.Generate(
             data, header, tail?.TailText ?? data.TailText, request.ShowRemark, userId);
+        await auditWriter.WriteBestEffortAsync(moduleId, string.Join(',', request.Key), "PRINT", $"打印 {data.Title}", userId, "PRINT", result: 1, null, token);
         return File(pdf, "application/pdf", $"{data.Title}.pdf");
     }
 }

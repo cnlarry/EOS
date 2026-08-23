@@ -123,7 +123,8 @@ public sealed class WorkbenchApprovalService(
                     result.Message ?? "自动批核失败。");
             }
         }
-        await auditWriter.WriteAsync(connection, null, definition.ModuleId, string.Join(',', keyValues), "APPROVE", "自动批核", userId, token);
+        await auditWriter.WriteEventAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
+            "APPROVE", "自动批核", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
         logger.LogInformation("自动批核 module={ModuleId} key={Key} executor={User}", definition.ModuleId, string.Join(',', keyValues), userId);
         return RecordSaveResult.Success(keyValues);
     }
@@ -147,15 +148,26 @@ public sealed class WorkbenchApprovalService(
         }
 
         var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
-        var sql = $"SELECT ISNULL(CONFIRM_TAG,0),ISNULL(FINISHED_TAG,0) FROM dbo.[{definition.MasterTable}] WITH (NOLOCK) WHERE {keyCondition};";
+        var stateColumns = new List<string>();
+        if (hasConfirm)
+        {
+            stateColumns.Add("CONFIRM_TAG");
+        }
+        if (hasFinished)
+        {
+            stateColumns.Add("FINISHED_TAG");
+        }
+        var sql = $"SELECT {string.Join(',', stateColumns.Select(column => $"ISNULL([{column}],0)"))} FROM dbo.[{definition.MasterTable}] WITH (NOLOCK) WHERE {keyCondition};";
         await using var command = new SqlCommand(sql, connection, transaction);
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
         }
-        var confirm = hasConfirm && reader.GetBoolean(0);
-        var finished = hasFinished && reader.GetBoolean(1);
+        var confirmIndex = stateColumns.FindIndex(column => column == "CONFIRM_TAG");
+        var finishedIndex = stateColumns.FindIndex(column => column == "FINISHED_TAG");
+        var confirm = confirmIndex >= 0 && reader.GetBoolean(confirmIndex);
+        var finished = finishedIndex >= 0 && reader.GetBoolean(finishedIndex);
         if (finished)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FINISHED_RECORD_NOT_DELETABLE",
@@ -241,8 +253,8 @@ public sealed class WorkbenchApprovalService(
                 result.Message ?? (approve ? "批核失败。" : "解批失败。"));
         }
         logger.LogInformation("统一表单{Action} module={ModuleId} key={Key}", approve ? "批核" : "解批", definition.ModuleId, string.Join(',', keyValues));
-        await auditWriter.WriteAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
-            approve ? "APPROVE" : "DEAPPROVE", approve ? "批核" : "解批", userId, token);
+        await auditWriter.WriteEventAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
+            approve ? "APPROVE" : "DEAPPROVE", approve ? "批核" : "解批", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
         return RecordSaveResult.Success(keyValues);
     }
 
@@ -279,8 +291,8 @@ public sealed class WorkbenchApprovalService(
                 finish ? "记录不存在或已结案，无法重复结案。" : "记录不存在或未结案，无法取消结案。");
         }
         logger.LogInformation("统一表单{Action} module={ModuleId} key={Key}", finish ? "结案" : "取消结案", definition.ModuleId, string.Join(',', keyValues));
-        await auditWriter.WriteAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
-            finish ? "ENDCASE" : "UNENDCASE", finish ? "结案" : "取消结案", userId, token);
+        await auditWriter.WriteEventAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
+            finish ? "ENDCASE" : "UNENDCASE", finish ? "结案" : "取消结案", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
         return RecordSaveResult.Success(keyValues);
     }
 

@@ -30,7 +30,9 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
                 ["ConnectionStrings:ErpDatabase"] = ConnectionString.Value,
             })
             .Build();
-        _repository = new FieldAdminRepository(new DbConnectionFactory(config), new WorkbenchDirtyMarker(new DbConnectionFactory(config)), NullLogger<FieldAdminRepository>.Instance);
+        _repository = new FieldAdminRepository(new DbConnectionFactory(config), new WorkbenchDirtyMarker(new DbConnectionFactory(config)),
+            new WorkbenchAuditWriter(new DbConnectionFactory(config), new Microsoft.AspNetCore.Http.HttpContextAccessor()),
+            NullLogger<FieldAdminRepository>.Instance);
     }
 
     [Fact]

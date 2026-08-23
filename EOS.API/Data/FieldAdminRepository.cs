@@ -8,6 +8,7 @@ namespace EOS.API.Data;
 public sealed class FieldAdminRepository(
     DbConnectionFactory connections,
     WorkbenchDirtyMarker dirtyMarker,
+    WorkbenchAuditWriter auditWriter,
     ILogger<FieldAdminRepository> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
@@ -218,6 +219,7 @@ public sealed class FieldAdminRepository(
             throw new KeyNotFoundException("数据表不存在。");
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
         await transaction.CommitAsync(token);
+        await auditWriter.WriteBestEffortAsync(null, tableId, "UPDATE", "数据表维护更新", updatedBy, "FIELD_ADMIN", result: 1, null, token);
         logger.LogInformation("更新数据表元数据 table={Table} by={UpdatedBy}", tableId, updatedBy);
     }
 
@@ -587,6 +589,7 @@ public sealed class FieldAdminRepository(
             throw new InvalidOperationException("新增字段失败。");
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
         await transaction.CommitAsync(token);
+        await auditWriter.WriteBestEffortAsync(null, $"{request.TableId}.{request.FieldId}", "CREATE", "字段维护新增", updatedBy, "FIELD_ADMIN", result: 1, null, token);
         logger.LogInformation("新增字段 table={Table} field={Field} by={UpdatedBy}", request.TableId, request.FieldId, updatedBy);
     }
 
@@ -642,6 +645,7 @@ public sealed class FieldAdminRepository(
             throw new KeyNotFoundException("字段不存在。");
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
         await transaction.CommitAsync(token);
+        await auditWriter.WriteBestEffortAsync(null, $"{tableId}.{fieldId}", "UPDATE", "字段维护更新", updatedBy, "FIELD_ADMIN", result: 1, null, token);
         logger.LogInformation("更新字段 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
     }
 

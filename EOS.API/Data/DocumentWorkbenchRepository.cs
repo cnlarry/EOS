@@ -77,6 +77,7 @@ public sealed class DocumentWorkbenchRepository(
     WorkbenchQueryComposer queryComposer,
     WorkbenchCommandHandler commandHandler,
     WorkbenchApprovalService approvalService,
+    WorkbenchAuditWriter auditWriter,
     ILogger<DocumentWorkbenchRepository> logger)
 {
     internal static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
@@ -418,6 +419,7 @@ public sealed class DocumentWorkbenchRepository(
         var input=MapInput(update);
         var original=update.Original is null?null:MapInput(update.Original);
         await fieldAdmin.UpdateAsync(table,fieldKey.Trim(),input,original,updatedBy,token);
+        await auditWriter.WriteBestEffortAsync(definition.ModuleId,$"{table}.{fieldKey.Trim()}","UPDATE","更新字段设置",updatedBy,"WORKBENCH_METADATA",result:1,null,token);
     }
 
     /// <summary>
@@ -458,6 +460,8 @@ public sealed class DocumentWorkbenchRepository(
             }
         }
         await dirtyMarker.MarkDirtyAsync(connection, transaction, definition.ModuleId, updatedBy, token);
+        await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId,
+            $"column-widths:{definition.MasterTable}", "UPDATE", "更新列宽", updatedBy, "WORKBENCH_METADATA", result: 1, null, token);
         await transaction.CommitAsync(token);
         logger.LogInformation("批量保存列宽 module={ModuleId} master={MasterCount} detail={DetailCount}",definition.ModuleId,masterWidths.Count,detailWidths.Count);
     }

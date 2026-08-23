@@ -22,6 +22,7 @@ public sealed class AttachmentController(
     IPermissionService permissions,
     AttachmentRepository attachments,
     CurrentUserContext userContext,
+    WorkbenchAuditWriter auditWriter,
     IOptions<AttachmentSettings> settings,
     ILogger<AttachmentController> logger) : ControllerBase
 {
@@ -151,6 +152,7 @@ public sealed class AttachmentController(
         }
 
         logger.LogInformation("附件删除 module={ModuleId} id={Id}", moduleId, id);
+        await auditWriter.WriteBestEffortAsync(moduleId, deleted.KeyValues, "DELETE", "附件删除", userContext.UserId, "ATTACHMENT", result: 1, null, token);
         return Ok(deleted);
     }
 
