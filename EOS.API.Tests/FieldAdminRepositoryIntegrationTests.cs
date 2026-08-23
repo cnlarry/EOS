@@ -32,7 +32,8 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
             .Build();
         _repository = new FieldAdminRepository(new DbConnectionFactory(config), new WorkbenchDirtyMarker(new DbConnectionFactory(config)),
             new WorkbenchAuditWriter(new DbConnectionFactory(config), new Microsoft.AspNetCore.Http.HttpContextAccessor(),
-                new WorkbenchDefinitionProvider(new DbConnectionFactory(config), NullLogger<WorkbenchDefinitionProvider>.Instance)),
+                new WorkbenchDefinitionProvider(new DbConnectionFactory(config), NullLogger<WorkbenchDefinitionProvider>.Instance),
+                Microsoft.Extensions.Options.Options.Create(new EOS.API.Models.AuditSettings())),
             NullLogger<FieldAdminRepository>.Instance);
     }
 

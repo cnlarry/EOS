@@ -180,6 +180,7 @@ public sealed class FieldAdminRepository(
             throw new InvalidOperationException("新增数据表元数据失败。");
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
         await transaction.CommitAsync(token);
+        await auditWriter.WriteBestEffortAsync(null, request.TableId, "CREATE", "数据表维护新增", updatedBy, "FIELD_ADMIN", result: 1, null, token);
         logger.LogInformation("新增数据表元数据 table={Table} by={UpdatedBy}", request.TableId, updatedBy);
     }
 
@@ -278,6 +279,7 @@ public sealed class FieldAdminRepository(
             throw new KeyNotFoundException("数据表不存在。");
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, "SYSTEM", token);
         await transaction.CommitAsync(token);
+        await auditWriter.WriteBestEffortAsync(null, tableId, "DELETE", "数据表维护删除", "SYSTEM", "FIELD_ADMIN", result: 1, null, token);
         logger.LogInformation("删除数据表元数据 table={Table}", tableId);
     }
 
@@ -379,6 +381,7 @@ public sealed class FieldAdminRepository(
         }
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
         await transaction.CommitAsync(token);
+        await auditWriter.WriteBestEffortAsync(null, request.TableId, "CREATE", "批量生成字段元数据", updatedBy, "FIELD_ADMIN", result: 1, null, token);
         logger.LogInformation("批量生成字段元数据 table={Table} created={Created} skipped={Skipped} by={UpdatedBy}",
             request.TableId, created, skipped, updatedBy);
         return new(created, skipped, reasons);
@@ -680,6 +683,7 @@ public sealed class FieldAdminRepository(
         await clean.ExecuteNonQueryAsync(token);
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, "SYSTEM", token);
         await transaction.CommitAsync(token);
+        await auditWriter.WriteBestEffortAsync(null, $"{tableId}.{fieldId}", "DELETE", "字段维护删除", "SYSTEM", "FIELD_ADMIN", result: 1, null, token);
         logger.LogInformation("删除字段 table={Table} field={Field}", tableId, fieldId);
     }
 

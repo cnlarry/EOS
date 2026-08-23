@@ -8,8 +8,8 @@ namespace EOS.API.Data;
 /// 批核/解批/结案/未结案/自动批核 + 状态机副作用 + 幂等 + 删除补偿守卫。
 /// 补偿语义（落定）：
 /// - 结案单据（FINISHED_TAG=1）禁止删除，需先取消结案；
-/// - 已批核且有副作用 SP（HasWorkflow）的非自动批核模块禁止删除，需先解批；
-/// - 自动批核模块保持可删（删除即整单撤销，放量 CRUD 依赖；边界登记技术债）。
+/// - 任何已批核单据（CONFIRM_TAG=1，含自动批核模块）禁止删除，需先解批；
+/// - 已产生库存日志（INV_DEPOT_LOG）的单据禁止删除（解批回退库存后再删）。
 /// 批核副作用 SP 自带事务（自动提交），状态守卫（CONFIRM_TAG/FINISHED_TAG）防重复副作用，
 /// 幂等键提供顺序重放保护；解批前置 NOBACK 校验原样保留。
 /// </summary>
@@ -130,7 +130,9 @@ public sealed class WorkbenchApprovalService(
     }
 
     /// <summary>
-    /// 删除补偿守卫（ADR-005 §2）：结案单据禁止删除；已批核且有副作用 SP 的非自动批核模块禁止删除。
+    /// 删除补偿守卫（ADR-005 §2，2026-08-23 全量收紧）：
+    /// 结案单据禁止删除；任何已批核单据（含自动批核）禁止删除，需先解批；
+    /// 已产生库存日志（INV_DEPOT_LOG）的单据禁止删除（解批回退后再删）。
     /// 返回 null 表示允许删除，否则返回阻止原因（RecordSaveResult）。
     /// </summary>
     public async Task<RecordSaveResult?> EnsureDeletionAllowedAsync(
@@ -173,10 +175,28 @@ public sealed class WorkbenchApprovalService(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FINISHED_RECORD_NOT_DELETABLE",
                 "单据已结案，不能删除，请先取消结案。");
         }
-        if (confirm && definition.HasWorkflow && !definition.AutoApprove)
+        if (confirm)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "APPROVED_RECORD_NOT_DELETABLE",
                 "单据已批核并产生业务副作用，不能删除，请先解批。");
+        }
+        // 兜底：CONFIRM=0 但库存日志仍引用本单（异常/部分回退态）→ 禁删
+        if (definition.MasterPkOrder.Count >= 2 && keyValues.Count >= 2)
+        {
+            var typeColumn = definition.MasterPkOrder[0];
+            var noColumn = definition.MasterPkOrder[1];
+            const string logSql = """
+                SELECT TOP 1 1 FROM dbo.INV_DEPOT_LOG WITH (NOLOCK)
+                WHERE LTRIM(RTRIM(MUTUALITY_TYPE))=@t AND LTRIM(RTRIM(MUTUALITY_NO))=@n;
+                """;
+            await using var logCommand = new SqlCommand(logSql, connection, transaction);
+            logCommand.Parameters.Add("@t", SqlDbType.NVarChar, 50).Value = keyValues[0];
+            logCommand.Parameters.Add("@n", SqlDbType.NVarChar, 50).Value = keyValues[1];
+            if (await logCommand.ExecuteScalarAsync(token) is not null)
+            {
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "INVENTORY_LOG_EXISTS",
+                    "单据已产生库存记录（INV_DEPOT_LOG），禁止删除；请先解批回退库存。");
+            }
         }
         return null;
     }

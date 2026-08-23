@@ -212,8 +212,14 @@ builder.Services.AddHostedService<ImCleanupHostedService>();
 builder.Services.AddSignalR();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
 builder.Services.Configure<AttachmentSettings>(builder.Configuration.GetSection("Attachment"));
+builder.Services.Configure<EOS.API.Models.AuditSettings>(builder.Configuration.GetSection("Audit"));
 
 var app = builder.Build();
+
+if (!app.Configuration.GetValue("Audit:FieldChangesEnabled", true))
+{
+    app.Logger.LogWarning("字段级审计已关闭（Audit:FieldChangesEnabled=false）：仅写摘要级审计，AUDIT_FIELD_CHANGE 停写。");
+}
 
 app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseMiddleware<SameOriginGuardMiddleware>();
