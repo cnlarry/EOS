@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 [ApiController]
-[Route("api/modules/1204/fields")]
+[Route("api/v1/modules/1204/fields")]
 public sealed class FieldConfigurationController(
     FieldConfigurationRepository repository,
     LegacyRightsRepository rightsRepository,

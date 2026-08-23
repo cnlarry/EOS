@@ -9,7 +9,10 @@ namespace EOS.API.Middleware;
 /// 全局未处理异常出口：记录异常上下文（路径、用户、关联 ID），
 /// 返回稳定的 ProblemDetails；开发环境额外附带完整异常信息便于调试。
 /// </summary>
-public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHostEnvironment environment)
+public sealed class GlobalExceptionHandler(
+    ILogger<GlobalExceptionHandler> logger,
+    IHostEnvironment environment,
+    EOS.API.Data.WorkbenchDefinitionProvider definitionProvider)
     : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(
@@ -37,6 +40,11 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
             "服务器内部错误");
         RequestContext.SetErrorCode(context, ApiErrorCodes.InternalError);
         ApiProblem.AttachRequestContext(problem, context);
+        if (RequestContext.GetModuleId(context) is { } moduleId
+            && definitionProvider.GetVersion(moduleId) is { } definitionVersion)
+        {
+            problem.Extensions["definitionVersion"] = definitionVersion;
+        }
         if (environment.IsDevelopment())
         {
             problem.Extensions["detail"] = exception.ToString();

@@ -11,7 +11,7 @@ namespace EOS.API.Controllers;
 /// 操作审计查询（旧库 SYSDF 系统日志只读视图）。
 /// 权限门：模块 11（基本参数，旧系统日志所在位置）可浏览。
 /// </summary>
-[ApiController, Authorize, Route("api/audit")]
+[ApiController, Authorize, Route("api/v1/audit")]
 public sealed class AuditController(
     DbConnectionFactory connections,
     LegacyRightsRepository rightsRepository,

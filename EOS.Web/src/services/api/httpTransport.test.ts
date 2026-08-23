@@ -14,7 +14,7 @@ describe('HttpTransport', () => {
     const result = await transport.request({ method: 'GET', path: '/records', query: { page: 2, keyword: 'a', empty: undefined } })
     expect(result).toEqual({ rows: [] })
     const [url, init] = fetchMock.mock.calls[0]
-    expect(String(url)).toContain('/api/records?page=2&keyword=a')
+    expect(String(url)).toContain('/api/v1/records?page=2&keyword=a')
     expect(init.credentials).toBe('include')
     expect(init.headers['X-Client-Id']).toBe('eos.web')
     expect(init.headers['X-Correlation-Id']).toBeTruthy()

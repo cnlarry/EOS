@@ -15,7 +15,8 @@ public sealed class RequestLoggingMiddleware(
     RequestDelegate next,
     ILogger<RequestLoggingMiddleware> logger,
     ApiMetrics metrics,
-    DbTimingCollector dbTiming)
+    DbTimingCollector dbTiming,
+    EOS.API.Data.WorkbenchDefinitionProvider definitionProvider)
 {
     public async Task InvokeAsync(HttpContext context)
     {
@@ -45,6 +46,7 @@ public sealed class RequestLoggingMiddleware(
                 var moduleId = RequestContext.GetModuleId(context);
                 var action = RequestContext.GetAction(context);
                 var errorCode = RequestContext.GetErrorCode(context);
+                var definitionVersion = moduleId is int moduleIndex ? definitionProvider.GetVersion(moduleIndex) : null;
                 var dbElapsedMs = dbTiming.TotalMilliseconds;
                 var route = context.GetEndpoint() is RouteEndpoint routeEndpoint
                     ? routeEndpoint.RoutePattern.RawText ?? context.Request.Path.Value ?? "unknown"
@@ -54,24 +56,24 @@ public sealed class RequestLoggingMiddleware(
                 metrics.ObserveHttpDuration(elapsedMs / 1000.0);
 
                 const string message =
-                    "HTTP 请求结束 {Event} {Method} {Path} -> {Status} 耗时 {ElapsedMs:F0}ms db={DbElapsedMs:F0}ms user={User} client={ClientId} module={ModuleId} action={Action} correlation={CorrelationId} trace={TraceId} span={SpanId} error={ErrorCode}";
+                    "HTTP 请求结束 {Event} {Method} {Path} -> {Status} 耗时 {ElapsedMs:F0}ms db={DbElapsedMs:F0}ms user={User} client={ClientId} module={ModuleId} action={Action} definitionVersion={DefinitionVersion} correlation={CorrelationId} trace={TraceId} span={SpanId} error={ErrorCode}";
                 if (status >= 500 || errorCode is not null)
                 {
                     logger.LogError(message, "http_request", context.Request.Method,
                         context.Request.Path.ToString(), status, elapsedMs, dbElapsedMs, user, clientId,
-                        moduleId, action, correlationId, traceId, spanId, errorCode);
+                        moduleId, action, definitionVersion, correlationId, traceId, spanId, errorCode);
                 }
                 else if (isApi)
                 {
                     logger.LogInformation(message, "http_request", context.Request.Method,
                         context.Request.Path.ToString(), status, elapsedMs, dbElapsedMs, user, clientId,
-                        moduleId, action, correlationId, traceId, spanId, errorCode);
+                        moduleId, action, definitionVersion, correlationId, traceId, spanId, errorCode);
                 }
                 else
                 {
                     logger.LogDebug(message, "http_request", context.Request.Method,
                         context.Request.Path.ToString(), status, elapsedMs, dbElapsedMs, user, clientId,
-                        moduleId, action, correlationId, traceId, spanId, errorCode);
+                        moduleId, action, definitionVersion, correlationId, traceId, spanId, errorCode);
                 }
             }
         }

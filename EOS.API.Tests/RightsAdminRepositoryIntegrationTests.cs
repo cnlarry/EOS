@@ -36,6 +36,7 @@ public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
         _repository = new RightsAdminRepository(
             connections,
             new NavigationRepository(connections, NullLogger<NavigationRepository>.Instance),
+            new EOS.API.Security.PermissionCache(config),
             NullLogger<RightsAdminRepository>.Instance);
     }
 

@@ -35,7 +35,8 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
             })
             .Build();
         _repository = new MenuAdminRepository(new DbConnectionFactory(config), new WorkbenchDirtyMarker(new DbConnectionFactory(config)),
-            new WorkbenchAuditWriter(new DbConnectionFactory(config), new Microsoft.AspNetCore.Http.HttpContextAccessor()),
+            new WorkbenchAuditWriter(new DbConnectionFactory(config), new Microsoft.AspNetCore.Http.HttpContextAccessor(),
+                new WorkbenchDefinitionProvider(new DbConnectionFactory(config), NullLogger<WorkbenchDefinitionProvider>.Instance)),
             NullLogger<MenuAdminRepository>.Instance);
         var baseId = 990000000 + Random.Shared.Next(0, 9999999);
         _parentId = baseId;

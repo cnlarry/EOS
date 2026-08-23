@@ -22,6 +22,7 @@ export interface ApiErrorBody {
   fieldErrors?: ApiFieldError[]
   requestId?: string
   correlationId?: string
+  definitionVersion?: string
 }
 
 export class ApiError extends Error {

@@ -10,7 +10,10 @@ namespace EOS.API.Errors;
 /// 统一异常出口：把业务校验与资源缺失异常转换为统一错误契约，
 /// 控制器不再各自 try/catch 映射错误。
 /// </summary>
-public sealed class ApiExceptionFilter(ILogger<ApiExceptionFilter> logger, WorkbenchAuditWriter auditWriter) : IAsyncExceptionFilter
+public sealed class ApiExceptionFilter(
+    ILogger<ApiExceptionFilter> logger,
+    WorkbenchAuditWriter auditWriter,
+    EOS.API.Data.WorkbenchDefinitionProvider definitionProvider) : IAsyncExceptionFilter
 {
     public async Task OnExceptionAsync(ExceptionContext context)
     {
@@ -38,6 +41,11 @@ public sealed class ApiExceptionFilter(ILogger<ApiExceptionFilter> logger, Workb
         RequestContext.SetErrorCode(context.HttpContext, code);
         var problem = ApiProblem.Create(status, code, message);
         ApiProblem.AttachRequestContext(problem, context.HttpContext);
+        if (RequestContext.GetModuleId(context.HttpContext) is { } moduleId
+            && definitionProvider.GetVersion(moduleId) is { } definitionVersion)
+        {
+            problem.Extensions["definitionVersion"] = definitionVersion;
+        }
         if (context.Exception is PermissionDeniedException pde)
         {
             await auditWriter.WriteBestEffortAsync(

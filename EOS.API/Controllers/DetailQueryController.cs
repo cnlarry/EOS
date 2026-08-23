@@ -17,7 +17,7 @@ namespace EOS.API.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
-[Route("api/detail-query/{moduleId:int}")]
+[Route("api/v1/detail-query/{moduleId:int}")]
 public sealed class DetailQueryController(
     DbConnectionFactory connections,
     LegacyRightsRepository rightsRepository,

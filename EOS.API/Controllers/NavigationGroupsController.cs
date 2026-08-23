@@ -10,7 +10,7 @@ namespace EOS.API.Controllers;
 /// 菜单分组（第 4 级）：读取模块启用的分组定义与分组值。
 /// 权限：与模块浏览权限一致（CanBrowse）；GROUP_EXP 不可受控解析时返回 403。
 /// </summary>
-[ApiController, Authorize, Route("api/navigation")]
+[ApiController, Authorize, Route("api/v1/navigation")]
 public sealed class NavigationGroupsController(
     NavigationGroupsRepository repository,
     LegacyRightsRepository rightsRepository,

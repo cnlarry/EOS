@@ -16,7 +16,7 @@ namespace EOS.API.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
-[Route("api/settings")]
+[Route("api/v1/settings")]
 public sealed class SettingsController(
     DbConnectionFactory connections,
     LegacyRightsRepository rightsRepository,

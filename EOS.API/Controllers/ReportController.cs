@@ -9,7 +9,7 @@ namespace EOS.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/reports/{moduleId:int}")]
+[Route("api/v1/reports/{moduleId:int}")]
 public sealed class ReportController(
     ReportRepository repository,
     PrintSettingsRepository printSettingsRepository,

@@ -10,7 +10,7 @@ namespace EOS.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/workflow")]
+[Route("api/v1/workflow")]
 public sealed class WorkflowController(
     DbConnectionFactory connections,
     LegacyRightsRepository rightsRepository,

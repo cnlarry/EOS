@@ -9,7 +9,7 @@ namespace EOS.API.Controllers;
 /// 只读助手试点接口：固定场景 + 服务端模块白名单 + 复用现有权限与字段过滤。
 /// 当前支持采购单列表/详情与系统能力知识检索；不提供任意查询，也不向模型开放任何写能力。
 /// </summary>
-[ApiController, Authorize, Route("api/assistant")]
+[ApiController, Authorize, Route("api/v1/assistant")]
 public sealed class AssistantController(
     DocumentWorkbenchRepository repository,
     LegacyRightsRepository rightsRepository) : ControllerBase

@@ -9,7 +9,7 @@ namespace EOS.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/print")]
+[Route("api/v1/print")]
 public sealed class PrintController(
     PrintService service,
     PrintSettingsRepository printSettingsRepository,

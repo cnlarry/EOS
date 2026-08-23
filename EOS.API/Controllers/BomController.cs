@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 [ApiController]
-[Route("api/modules/1204")]
+[Route("api/v1/modules/1204")]
 public sealed class BomController(
     BomRepository repository,
     DynamicBomRepository dynamicRepository,

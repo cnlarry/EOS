@@ -15,6 +15,7 @@ namespace EOS.API.Data;
 public sealed class WorkbenchDefinitionSnapshotService(
     DbConnectionFactory connections,
     WorkbenchDefinitionValidator validator,
+    WorkbenchDefinitionProvider definitionProvider,
     IOptions<UnifiedFormEditorSettings> formSettings,
     ILogger<WorkbenchDefinitionSnapshotService> logger)
 {
@@ -144,6 +145,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
                 await clearDirty.ExecuteNonQueryAsync(token);
 
                 await transaction.CommitAsync(token);
+                await definitionProvider.RefreshAsync(token);
                 logger.LogInformation("快照发布 module={ModuleId} version={Version} by={PublishedBy}",
                     moduleId, next, publishedBy);
                 return new WorkbenchPublishResult(moduleId, report.Title, true, next,

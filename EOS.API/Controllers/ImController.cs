@@ -12,7 +12,7 @@ namespace EOS.API.Controllers;
 /// IM 读接口与兜底写接口（历史、搜索、通讯录、建单聊、ACK、撤回）。
 /// 实时收发走 SignalR Hub（/api/hubs/im）；本控制器全部走 EOS.API 授权边界。
 /// </summary>
-[ApiController, Authorize, Route("api/im")]
+[ApiController, Authorize, Route("api/v1/im")]
 public sealed class ImController(
     IImConversationRepository conversations,
     IImMessageRepository messages,

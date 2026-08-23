@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 [ApiController]
-[Route("api/auth")]
+[Route("api/v1/auth")]
 public sealed class AuthenticationController(
     AuthenticationRepository repository,
     LoginThrottleService throttle,

@@ -12,7 +12,7 @@ namespace EOS.API.Controllers;
 /// 状态（已编辑但未发布）、dry-run 校验、发布、已启用模块回填。
 /// 权限门：模块 2306（系统管理）CanSetup；发布校验器与放量流水线共用同一道闸。
 /// </summary>
-[ApiController, Authorize, Route("api/workbench-definitions")]
+[ApiController, Authorize, Route("api/v1/workbench-definitions")]
 public sealed class WorkbenchDefinitionController(
     WorkbenchDefinitionSnapshotService snapshots,
     IPermissionService permissions,

@@ -11,7 +11,7 @@ namespace EOS.API.Controllers;
 /// 只读、统一脱敏、限行数/字节、查询留痕；权限门：模块 2306（系统管理）CanSetup。
 /// 默认面向开发/测试环境；生产访问需显式授权（具备 2306 Setup 的用户）。
 /// </summary>
-[ApiController, Authorize, Route("api/logs")]
+[ApiController, Authorize, Route("api/v1/logs")]
 public sealed class LogQueryController(
     LogQueryService logs,
     WorkbenchAuditWriter auditWriter,

@@ -7,7 +7,7 @@ namespace EOS.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/bom")]
+[Route("api/v1/bom")]
 public sealed class BomExpandController(Data.DbConnectionFactory connections) : ControllerBase
 {
     /// <summary>

@@ -10,7 +10,7 @@ namespace EOS.API.Controllers;
 /// 统一选择器（通用数据源查询）：sourceKey 由服务端注册表解析，权限按数据源定义收紧。
 /// 前端只传 sourceKey + 白名单参数，不传表名/列名/SQL；动态查询全部参数化。
 /// </summary>
-[ApiController, Authorize, Route("api/chooser")]
+[ApiController, Authorize, Route("api/v1/chooser")]
 public sealed class ChooserController(
     ChooserRepository repository,
     LegacyRightsRepository rightsRepository,

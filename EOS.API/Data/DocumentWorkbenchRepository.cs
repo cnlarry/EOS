@@ -53,7 +53,8 @@ public sealed record WorkbenchDefinition(
     bool SearchDetail = false,
     string? NewUrl = null,
     string? ModiUrl = null,
-    bool CanDelete = false);
+    bool CanDelete = false,
+    string? DefinitionVersion = null);
 /// <summary>统一表单页签定义（解析自 MODULES.FORM_TABS，如 '1=基本资料;2=其它'）。</summary>
 public sealed record FormTabDefinition(int No, string Title);
 /// <summary>统一表单下拉选项（解析自 FIELDS.FORM_OPTIONS，如 'O=外含税;I=内含税'）。</summary>
@@ -78,6 +79,7 @@ public sealed class DocumentWorkbenchRepository(
     WorkbenchCommandHandler commandHandler,
     WorkbenchApprovalService approvalService,
     WorkbenchAuditWriter auditWriter,
+    WorkbenchDefinitionProvider definitionProvider,
     ILogger<DocumentWorkbenchRepository> logger)
 {
     internal static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
@@ -143,7 +145,70 @@ public sealed class DocumentWorkbenchRepository(
 
     public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token)
     {
-        await using var connection = CreateConnection(); await connection.OpenAsync(token);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        if (definitionProvider.TryGetBaseline(moduleId, out var baseline, out var snapshotVersion)
+            && !await IsDirtyAsync(connection, moduleId, token))
+        {
+            var fromBaseline = await BuildFromBaselineAsync(connection, baseline, snapshotVersion, moduleId, userId, execTag,
+                canViewCost, canViewSecrecy, deniedMasterFields, deniedDetailFields, token);
+            logger.LogDebug("工作台定义（快照）module={ModuleId} version={Version}", moduleId, snapshotVersion);
+            return fromBaseline;
+        }
+        return await BuildFromMetadataAsync(connection, moduleId, userId, execTag, canViewCost, canViewSecrecy,
+            deniedMasterFields, deniedDetailFields, snapshotVersion, token);
+    }
+
+    /// <summary>
+    /// 基于已发布快照基线构建每用户定义（ADR-005 §3 运行时快照落地）：
+    /// 模块级不可变元数据（表/路由/主键/过滤/表单/业务规则）来自快照；
+    /// 每用户字段视图（权限过滤 + 列顺序）、FILTER 白名单与分组表达式仍按用户实时解析。
+    /// </summary>
+    private async Task<WorkbenchDefinition> BuildFromBaselineAsync(
+        SqlConnection connection,
+        WorkbenchDefinition baseline,
+        string version,
+        int moduleId,
+        string userId,
+        string? execTag,
+        bool canViewCost,
+        bool canViewSecrecy,
+        IReadOnlySet<string> deniedMasterFields,
+        IReadOnlySet<string> deniedDetailFields,
+        CancellationToken token)
+    {
+        var master = baseline.MasterTable;
+        var detail = baseline.DetailTable;
+        var masterFields = await ReadFields(connection, userId, master, master, canViewCost, canViewSecrecy, deniedMasterFields, token);
+        var detailFields = detail is null
+            ? []
+            : await ReadFields(connection, userId, master, detail, canViewCost, canViewSecrecy, deniedDetailFields, token);
+        var (_, groupExpressions) = await ReadGroupExpressionsAsync(connection, moduleId, token);
+        return baseline with
+        {
+            MasterFields = masterFields,
+            DetailFields = detailFields,
+            DefaultSort = NormalizeSort(baseline.DefaultSort, master, masterFields),
+            FilterFieldKeys = await ReadFilterFieldKeys(connection, master, canViewCost, canViewSecrecy, deniedMasterFields, token),
+            UserId = userId.Trim(),
+            ExecTag = string.IsNullOrWhiteSpace(execTag) ? "A" : execTag.Trim(),
+            GroupExpressions = groupExpressions,
+            DefinitionVersion = version,
+        };
+    }
+
+    private async Task<WorkbenchDefinition?> BuildFromMetadataAsync(
+        SqlConnection connection,
+        int moduleId,
+        string userId,
+        string? execTag,
+        bool canViewCost,
+        bool canViewSecrecy,
+        IReadOnlySet<string> deniedMasterFields,
+        IReadOnlySet<string> deniedDetailFields,
+        string? version,
+        CancellationToken token)
+    {
         const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,UPDATE_SP,AFTERSAVE_SP,AUTO_APPROVE," +
                            "GROUP1,GROUP_EXP1,GROUP2,GROUP_EXP2,GROUP3,GROUP_EXP3,GROUP4,GROUP_EXP4,GROUP5,GROUP_EXP5," +
                            "FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,NEW_URL,IF_COPY,SEARCH_1,SEARCH_2 " +
@@ -247,7 +312,7 @@ public sealed class DocumentWorkbenchRepository(
             resolvedModiUrl);
         logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
             moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
-        return definition;
+        return definition with { DefinitionVersion = version };
     }
 
     public async Task<IReadOnlyList<FieldSetupLookup>> GetFieldSetupTablesAsync(CancellationToken token)
@@ -1411,6 +1476,41 @@ public sealed class DocumentWorkbenchRepository(
                 result.Add(key);
         }
         return result;
+    }
+
+    /// <summary>模块已编辑未发布（脏）时回退实时元数据构建，避免快照消费造成放量/字段维护立即生效语义变化。</summary>
+    private static async Task<bool> IsDirtyAsync(SqlConnection connection, int moduleId, CancellationToken token)
+    {
+        const string sql = "SELECT 1 FROM dbo.WORKBENCH_MODULE_DIRTY WITH (NOLOCK) WHERE MODULE_ID=@ModuleId AND DIRTY_TAG=1;";
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        return await command.ExecuteScalarAsync(token) is not null;
+    }
+
+    /// <summary>读取模块分组表达式（GROUP1..5/GROUP_EXP1..5；快照 JSON 不含高危表达式，运行时实时读取）。</summary>
+    private static async Task<(bool[] Enabled, string[] Expressions)> ReadGroupExpressionsAsync(
+        SqlConnection connection, int moduleId, CancellationToken token)
+    {
+        const string sql = """
+            SELECT ISNULL(GROUP1,0),ISNULL(GROUP_EXP1,''),ISNULL(GROUP2,0),ISNULL(GROUP_EXP2,''),
+                   ISNULL(GROUP3,0),ISNULL(GROUP_EXP3,''),ISNULL(GROUP4,0),ISNULL(GROUP_EXP4,''),
+                   ISNULL(GROUP5,0),ISNULL(GROUP_EXP5,'')
+            FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var enabled = new bool[5];
+        var expressions = new string[5];
+        if (await reader.ReadAsync(token))
+        {
+            for (var i = 0; i < 5; i++)
+            {
+                enabled[i] = reader.GetBoolean(i * 2);
+                expressions[i] = reader.IsDBNull(i * 2 + 1) ? string.Empty : reader.GetString(i * 2 + 1).Trim();
+            }
+        }
+        return (enabled, expressions);
     }
 
     private static async Task<IReadOnlyList<WorkbenchField>> ReadFields(SqlConnection connection,string userId,string masterTable,string targetTable,bool canViewCost,bool canViewSecrecy,IReadOnlySet<string> deniedFields,CancellationToken token)

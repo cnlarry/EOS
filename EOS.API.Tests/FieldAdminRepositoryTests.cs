@@ -21,11 +21,14 @@ public sealed class FieldAdminRepositoryTests
             })
             .Build();
         return new FieldAdminRepository(new DbConnectionFactory(config), new WorkbenchDirtyMarker(new DbConnectionFactory(config)),
-            new WorkbenchAuditWriter(new DbConnectionFactory(config), new Microsoft.AspNetCore.Http.HttpContextAccessor()),
+            new WorkbenchAuditWriter(new DbConnectionFactory(config), new Microsoft.AspNetCore.Http.HttpContextAccessor(), Provider(config)),
             NullLogger<FieldAdminRepository>.Instance);
     }
 
     private static FieldAdminTableInput TableInput(string description = "测试表") => new(description, "P", "TABLE", null);
+
+    private static WorkbenchDefinitionProvider Provider(Microsoft.Extensions.Configuration.IConfiguration config) =>
+        new(new DbConnectionFactory(config), NullLogger<WorkbenchDefinitionProvider>.Instance);
 
     [Theory]
     [InlineData("")]
