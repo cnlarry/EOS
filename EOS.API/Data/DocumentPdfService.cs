@@ -23,7 +23,7 @@ internal static class DocumentLayoutProfiles
     public static IReadOnlyDictionary<int, DocumentLayoutProfile> All { get; } =
         new Dictionary<int, DocumentLayoutProfile>
         {
-            [1416] = new(["QUOTE_NO", "QUOTE_TYPE"], "QUOTE_DATE", "CLIENT_ID", "CLIENT_NAME", "AMOUNT_TAX"),
+            [1404] = new(["QUOTE_NO", "QUOTE_TYPE"], "QUOTE_DATE", "CLIENT_ID", "CLIENT_NAME", "AMOUNT_TAX"),
             [1604] = new(["QUOTE_NO", "QUOTE_TYPE"], "QUOTE_DATE", "SUPPLIER_ID", "SUPPLIER_NAME", "AMOUNT_TAX"),
             [1405] = new(["ORDER_NO", "ORDER_TYPE"], "ORDER_DATE", "CLIENT_ID", "CLIENT_NAME", "AMOUNT_TAX"),
             [1406] = new(["SEND_NO", "SEND_TYPE"], "SEND_DATE", "CLIENT_ID", "CLIENT_NAME", "AMOUNT_TAX"),

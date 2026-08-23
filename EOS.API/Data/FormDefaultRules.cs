@@ -13,8 +13,7 @@ internal static class FormDefaultRules
         new Dictionary<int, IReadOnlyDictionary<string, string>>
         {
             // 单据默认折扣 100（旧页面 code-behind 新增分支）
-            [1404] = new Dictionary<string, string> { ["REBATE"] = "100" }, // 客户报价单 Quote.aspx.cs
-            [1416] = new Dictionary<string, string> { ["REBATE"] = "100" }, // 客户报价单（同页面）
+            [1404] = new Dictionary<string, string> { ["REBATE"] = "100" }, // 报价单 Quote.aspx.cs（原 1416 同规则，2026-08-23 收敛）
             [1604] = new Dictionary<string, string> { ["REBATE"] = "100" }, // 厂商报价单 Quote.aspx.cs
             [1606] = new Dictionary<string, string> { ["REBATE"] = "100" }, // 采购单 Purchase.aspx.cs
             [1405] = new Dictionary<string, string> { ["REBATE"] = "100" },

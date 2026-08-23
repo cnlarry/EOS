@@ -6,9 +6,9 @@ import { ReportAdminPage } from './ReportAdminPage'
 const apiClientMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn(), postFile: vi.fn() }))
 vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
 
-const modules = [{ moduleId: 1416, description: '采购订单' }]
+const modules = [{ moduleId: 1404, description: '采购订单' }]
 const reports = [{
-  reportId: 'R1', reportName: '采购报表', moduleId: 1416, isoNo: null, headerId: null, tailId: null,
+  reportId: 'R1', reportName: '采购报表', moduleId: 1404, isoNo: null, headerId: null, tailId: null,
   footerText: null, defaultPaper: null, isDefault: true, reportFilter: null, defaultPrinter: null, remark: null,
 }]
 const fieldChooserData = {
@@ -57,7 +57,7 @@ describe('ReportAdminPage', () => {
   it('排序/分组字段选择：统一选择器选字段后回填「表.列」串', async () => {
     renderPage()
     await waitFor(() => expect(screen.getAllByRole('combobox').length).toBeGreaterThan(0))
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '1416' } })
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '1404' } })
     await waitFor(() => expect(screen.getByText('采购报表')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '排序方案' }))
     await waitFor(() => expect(screen.getAllByRole('button', { name: '选择字段…' }).length).toBeGreaterThan(0))

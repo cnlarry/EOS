@@ -97,8 +97,8 @@ public sealed class ChooserRepositoryTests
     }
 
     [Theory]
-    [InlineData("1416", 1416)]
-    [InlineData(" 1416 ", 1416)]
+    [InlineData("1404", 1404)]
+    [InlineData(" 1404 ", 1404)]
     [InlineData("0", null)]
     [InlineData("-1", null)]
     [InlineData("abc", null)]
