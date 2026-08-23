@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using EOS.API.Telemetry;
 using EOS.API.Security;
+using EOS.API.Data;
 
 namespace EOS.API.Errors;
 
@@ -9,9 +10,9 @@ namespace EOS.API.Errors;
 /// 统一异常出口：把业务校验与资源缺失异常转换为统一错误契约，
 /// 控制器不再各自 try/catch 映射错误。
 /// </summary>
-public sealed class ApiExceptionFilter(ILogger<ApiExceptionFilter> logger) : IAsyncExceptionFilter
+public sealed class ApiExceptionFilter(ILogger<ApiExceptionFilter> logger, WorkbenchAuditWriter auditWriter) : IAsyncExceptionFilter
 {
-    public Task OnExceptionAsync(ExceptionContext context)
+    public async Task OnExceptionAsync(ExceptionContext context)
     {
         var (status, code, message) = context.Exception switch
         {
@@ -27,7 +28,7 @@ public sealed class ApiExceptionFilter(ILogger<ApiExceptionFilter> logger) : IAs
 
         if (status == 0)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         logger.LogDebug(
@@ -37,8 +38,14 @@ public sealed class ApiExceptionFilter(ILogger<ApiExceptionFilter> logger) : IAs
         RequestContext.SetErrorCode(context.HttpContext, code);
         var problem = ApiProblem.Create(status, code, message);
         ApiProblem.AttachRequestContext(problem, context.HttpContext);
+        if (context.Exception is PermissionDeniedException pde)
+        {
+            await auditWriter.WriteBestEffortAsync(
+                RequestContext.GetModuleId(context.HttpContext), pde.UserId, "DENY",
+                $"权限拒绝 {pde.Action}（模块 {pde.ModuleId}）", pde.UserId, "PERMISSION",
+                result: 0, null, context.HttpContext.RequestAborted);
+        }
         context.Result = new ObjectResult(problem) { StatusCode = status };
         context.ExceptionHandled = true;
-        return Task.CompletedTask;
     }
 }

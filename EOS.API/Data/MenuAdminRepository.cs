@@ -18,6 +18,7 @@ namespace EOS.API.Data;
 public sealed class MenuAdminRepository(
     DbConnectionFactory connections,
     WorkbenchDirtyMarker dirtyMarker,
+    WorkbenchAuditWriter auditWriter,
     ILogger<MenuAdminRepository> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
@@ -202,6 +203,7 @@ public sealed class MenuAdminRepository(
             await transaction.RollbackAsync(token);
             throw;
         }
+        await auditWriter.WriteBestEffortAsync(moduleId, targetTable, "SAVE", "保存默认查询列", "SYSTEM", "MENU", result: 1, null, token);
         logger.LogInformation("保存默认查询列 module={ModuleId} kind={Kind} table={Table} fields={FieldCount}",
             moduleId, request.Table, targetTable, request.FieldIds.Count);
     }
@@ -475,6 +477,7 @@ public sealed class MenuAdminRepository(
                 await dirtyMarker.MarkDirtyAsync(connection, transaction, oldModuleId, updatedBy, token);
             }
             await transaction.CommitAsync(token);
+            await auditWriter.WriteBestEffortAsync(input.M_IDX, $"{oldId}->{input.M_IDX}", "SAVE", "保存菜单节点", updatedBy, "MENU", result: 1, null, token);
             logger.LogInformation("菜单保存 module={ModuleId} updatedBy={UpdatedBy}", input.M_IDX, updatedBy);
             return input.M_IDX;
         }

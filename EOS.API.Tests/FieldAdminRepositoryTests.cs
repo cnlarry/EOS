@@ -20,7 +20,9 @@ public sealed class FieldAdminRepositoryTests
                 ["ConnectionStrings:ErpDatabase"] = "Server=localhost;Database=EOS.ERP;Integrated Security=True;Encrypt=True;TrustServerCertificate=True",
             })
             .Build();
-        return new FieldAdminRepository(new DbConnectionFactory(config), new WorkbenchDirtyMarker(new DbConnectionFactory(config)), NullLogger<FieldAdminRepository>.Instance);
+        return new FieldAdminRepository(new DbConnectionFactory(config), new WorkbenchDirtyMarker(new DbConnectionFactory(config)),
+            new WorkbenchAuditWriter(new DbConnectionFactory(config), new Microsoft.AspNetCore.Http.HttpContextAccessor()),
+            NullLogger<FieldAdminRepository>.Instance);
     }
 
     private static FieldAdminTableInput TableInput(string description = "测试表") => new(description, "P", "TABLE", null);

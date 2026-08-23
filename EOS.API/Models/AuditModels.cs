@@ -1,0 +1,22 @@
+namespace EOS.API.Models;
+
+/// <summary>执行者类型（ADR-005 §8）：区分用户、系统任务、Agent 代表用户和外部集成。</summary>
+public enum AuditActorType : byte
+{
+    User = 1,
+    SystemTask = 2,
+    Agent = 3,
+    Integration = 4,
+}
+
+/// <summary>调用方类型（ADR-005 §8）：区分 Web、API、Agent 和集成调用。</summary>
+public enum AuditClientType : byte
+{
+    Web = 1,
+    Api = 2,
+    Agent = 3,
+    Integration = 4,
+}
+
+/// <summary>字段级变更明细（ADR-005 §8 AUDIT_FIELD_CHANGE）。</summary>
+public sealed record AuditFieldChange(string FieldName, string? OldValue, string? NewValue, string? ValueHash);

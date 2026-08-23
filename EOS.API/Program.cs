@@ -2,6 +2,7 @@ using EOS.API.Data;
 using EOS.API.Errors;
 using EOS.API.Hubs;
 using EOS.API.Health;
+using EOS.API.Logging;
 using EOS.API.Middleware;
 using EOS.API.Models;
 using EOS.API.Security;
@@ -12,6 +13,8 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using ModelContextProtocol.AspNetCore;
+using ModelContextProtocol.Server;
 using Microsoft.OpenApi;
 using QuestPDF;
 using QuestPDF.Infrastructure;
@@ -28,6 +31,10 @@ builder.Logging.AddJsonConsole(options =>
     options.UseUtcTimestamp = false;
     options.JsonWriterOptions = new System.Text.Json.JsonWriterOptions { Indented = false };
 });
+builder.Logging.AddProvider(new JsonFileLoggerProvider(
+    builder.Configuration["Logging:File:Path"] ?? Path.Combine(Directory.GetCurrentDirectory(), "logs", "api-json.log"),
+    maxBytes: 50L * 1024 * 1024,
+    maxFiles: 3));
 if (builder.Environment.IsDevelopment())
 {
     builder.Logging.AddDebug();
@@ -156,6 +163,8 @@ builder.Services.AddScoped<WorkbenchVirtualColumnResolver>();
 builder.Services.AddScoped<WorkbenchApprovalService>();
 builder.Services.AddScoped<WorkbenchQueryComposer>();
 builder.Services.AddScoped<WorkbenchCommandHandler>();
+builder.Services.AddScoped<LogQueryService>();
+builder.Services.AddMcpServer().WithHttpTransport().WithTools<LogMcpTools>();
 builder.Services.AddScoped<AttendanceCalcService>();
 builder.Services.AddScoped<DocumentWorkbenchRepository>();
 builder.Services.AddScoped<ReportRepository>();
@@ -216,6 +225,15 @@ var metricsEndpoint = app.MapGet("/metrics", (ApiMetrics metrics) =>
 if (app.Environment.IsDevelopment())
 {
     metricsEndpoint.AllowAnonymous();
+}
+var mcpEndpoint = app.MapMcp("/api/log-mcp");
+if (app.Environment.IsDevelopment())
+{
+    mcpEndpoint.AllowAnonymous();
+}
+else
+{
+    mcpEndpoint.RequireAuthorization();
 }
 app.MapFallbackToFile("index.html").RequireAuthorization();
 
