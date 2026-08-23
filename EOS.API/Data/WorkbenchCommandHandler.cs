@@ -182,17 +182,6 @@ public sealed class WorkbenchCommandHandler(
         }
 
         var keyValues = pkColumns.Select(column => ValueToString(values.GetValueOrDefault(column))).ToList();
-        if (!string.IsNullOrWhiteSpace(dataFilter))
-        {
-            if (!DataFilterParser.TryParse(dataFilter, definition.MasterTable, DocumentWorkbenchRepository.ScopeFields(form.MasterFields, pkColumns), out var predicate, out var parameters))
-            {
-                return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
-            }
-            if (!await DocumentWorkbenchRepository.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, predicate, parameters, token))
-            {
-                return RecordSaveResult.Failed(RecordAccessStatus.OutOfScope, "RECORD_OUT_OF_SCOPE", "目标记录不在当前用户数据范围内。");
-            }
-        }
 
         var insertFields = form.MasterFields.Where(field => !field.IsVirtual && values.ContainsKey(field.Key) && !masterIdentity.Contains(field.Key)).ToList();
         if (insertFields.Count == 0)
@@ -204,6 +193,17 @@ public sealed class WorkbenchCommandHandler(
         {
             values[masterIdentity[0]] = identityValue;
             keyValues = pkColumns.Select(column => ValueToString(values.GetValueOrDefault(column))).ToList();
+        }
+
+        // ADR-005 §7 收紧（2026-08-23）：建单后记录必须处于模块契约内（模块 FILTER + DATA_FILTER + EXEC_TAG）
+        if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
+        }
+        if (!string.IsNullOrWhiteSpace(scopePredicate)
+            && !await DocumentWorkbenchRepository.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "RECORD_OUT_OF_MODULE_FILTER", "新建记录不满足模块过滤条件，无法保存。");
         }
 
         var detailErrors = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, values, request.Details ?? [], employeeName, true, token);
@@ -292,16 +292,15 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
         }
-        if (!string.IsNullOrWhiteSpace(dataFilter))
+        // ADR-005 §7 收紧：编辑前目标记录必须处于模块契约内
+        if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
         {
-            if (!DataFilterParser.TryParse(dataFilter, definition.MasterTable, DocumentWorkbenchRepository.ScopeFields(form.MasterFields, pkColumns), out var predicate, out var parameters))
-            {
-                return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
-            }
-            if (!await DocumentWorkbenchRepository.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, predicate, parameters, token))
-            {
-                return RecordSaveResult.Failed(RecordAccessStatus.OutOfScope, "RECORD_OUT_OF_SCOPE", "目标记录不在当前用户数据范围内。");
-            }
+            return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
+        }
+        if (!string.IsNullOrWhiteSpace(scopePredicate)
+            && !await DocumentWorkbenchRepository.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.OutOfScope, "RECORD_OUT_OF_SCOPE", "目标记录不在当前用户数据范围内。");
         }
 
         if (request.Original is not null)
@@ -403,6 +402,12 @@ public sealed class WorkbenchCommandHandler(
             }
         }
         await RecalculateMasterAmountsAsync(connection, transaction, definition, token);
+        // 收紧：修改后记录仍须满足模块契约（防止把记录改出过滤范围）
+        if (!string.IsNullOrWhiteSpace(scopePredicate)
+            && !await DocumentWorkbenchRepository.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "RECORD_OUT_OF_MODULE_FILTER", "修改后记录不满足模块过滤条件，无法保存。");
+        }
         var changes = new List<string>();
         var fieldChanges = new List<AuditFieldChange>();
         foreach (var (key, value) in validation.Converted)
@@ -458,16 +463,15 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
         }
-        if (!string.IsNullOrWhiteSpace(dataFilter))
+        // ADR-005 §7 收紧：删除前目标记录必须处于模块契约内
+        if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
         {
-            if (!DataFilterParser.TryParse(dataFilter, definition.MasterTable, DocumentWorkbenchRepository.ScopeFields(form.MasterFields, pkColumns), out var predicate, out var parameters))
-            {
-                return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
-            }
-            if (!await DocumentWorkbenchRepository.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, predicate, parameters, token))
-            {
-                return RecordSaveResult.Failed(RecordAccessStatus.OutOfScope, "RECORD_OUT_OF_SCOPE", "目标记录不在当前用户数据范围内。");
-            }
+            return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
+        }
+        if (!string.IsNullOrWhiteSpace(scopePredicate)
+            && !await DocumentWorkbenchRepository.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.OutOfScope, "RECORD_OUT_OF_SCOPE", "目标记录不在当前用户数据范围内。");
         }
         // 删除补偿守卫（ADR-005 §2）：结案单据/已批核有副作用单据禁止删除
         var guard = await approvalService.EnsureDeletionAllowedAsync(connection, transaction, definition, keyValues, token);
