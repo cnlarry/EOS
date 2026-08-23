@@ -1,4 +1,5 @@
 using EOS.API.Errors;
+using EOS.API.Telemetry;
 
 namespace EOS.API.Security;
 
@@ -35,7 +36,7 @@ public sealed class SameOriginGuardMiddleware(RequestDelegate next, IConfigurati
                     StatusCodes.Status403Forbidden,
                     ApiErrorCodes.Forbidden,
                     "跨站请求被拒绝。");
-                ApiProblem.AttachTraceId(problem, context);
+                ApiProblem.AttachRequestContext(problem, context);
                 await context.Response.WriteAsJsonAsync(problem, context.RequestAborted);
                 return;
             }

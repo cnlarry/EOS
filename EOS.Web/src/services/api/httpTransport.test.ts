@@ -16,7 +16,9 @@ describe('HttpTransport', () => {
     const [url, init] = fetchMock.mock.calls[0]
     expect(String(url)).toContain('/api/records?page=2&keyword=a')
     expect(init.credentials).toBe('include')
-    expect(init.headers).toBeUndefined()
+    expect(init.headers['X-Client-Id']).toBe('eos.web')
+    expect(init.headers['X-Correlation-Id']).toBeTruthy()
+    expect(init.headers['Content-Type']).toBeUndefined()
   })
 
   it('POST 序列化 JSON body', async () => {
@@ -27,7 +29,9 @@ describe('HttpTransport', () => {
     expect(result).toBeUndefined()
     const [, init] = fetchMock.mock.calls[0]
     expect(init.body).toBe(JSON.stringify({ name: 'x' }))
-    expect(init.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(init.headers['Content-Type']).toBe('application/json')
+    expect(init.headers['X-Client-Id']).toBe('eos.web')
+    expect(init.headers['X-Correlation-Id']).toBeTruthy()
   })
 
   it('非 2xx 抛出 ApiError 并映射 message/code/traceId', async () => {

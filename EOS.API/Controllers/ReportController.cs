@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using EOS.API.Data;
 using EOS.API.Models;
+using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,6 +14,7 @@ public sealed class ReportController(
     ReportRepository repository,
     PrintSettingsRepository printSettingsRepository,
     LegacyRightsRepository rightsRepository,
+    IPermissionService permissions,
     ReportPdfService reportPdfService) : ControllerBase
 {
     [HttpGet("definition")]
@@ -20,7 +22,7 @@ public sealed class ReportController(
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
-        var rights = await rightsRepository.GetAsync(userId, moduleId, token);
+        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
         if (!rights.CanBrowse) return Forbid();
         var definition = await repository.GetDefinitionAsync(moduleId, userId, rights.CanViewCost, rights.CanViewSecrecy,
             rights.DeniedMasterFields, reportId, token);
@@ -51,7 +53,7 @@ public sealed class ReportController(
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
-        var rights = await rightsRepository.GetAsync(userId, moduleId, token);
+        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
         if (!rights.CanBrowse) return Forbid();
         return Ok(await printSettingsRepository.GetAsync(moduleId, userId, token));
     }
@@ -63,7 +65,7 @@ public sealed class ReportController(
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
-        var rights = await rightsRepository.GetAsync(userId, moduleId, token);
+        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
         if (!rights.CanBrowse) return Forbid();
         await printSettingsRepository.SaveAsync(moduleId, userId, request, token);
         return NoContent();
@@ -79,7 +81,7 @@ public sealed class ReportController(
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
-        var moduleRights = await rightsRepository.GetAsync(userId, moduleId, token);
+        var moduleRights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
         if (!moduleRights.CanBrowse) return Forbid();
         var definition = await repository.GetDefinitionAsync(
             moduleId, userId, moduleRights.CanViewCost, moduleRights.CanViewSecrecy,
@@ -135,7 +137,7 @@ public sealed class ReportController(
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
-        var rights = await rightsRepository.GetAsync(userId, moduleId, token);
+        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
         if (!rights.CanBrowse) return Forbid();
         var definition = await repository.GetDefinitionAsync(moduleId, userId, rights.CanViewCost, rights.CanViewSecrecy,
             rights.DeniedMasterFields, reportId, token);
@@ -159,7 +161,7 @@ public sealed class ReportController(
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return null;
-        var rights = await rightsRepository.GetAsync(userId, moduleId, token);
+        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
         if (!rights.CanBrowse) return null;
         return await repository.GetDefinitionAsync(moduleId, userId, rights.CanViewCost, rights.CanViewSecrecy,
             rights.DeniedMasterFields, reportId, token);

@@ -1,6 +1,7 @@
 using EOS.API.Data;
 using EOS.API.Errors;
 using EOS.API.Models;
+using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -8,7 +9,7 @@ using Microsoft.Extensions.Options;
 namespace EOS.API.Controllers;
 
 [ApiController, Authorize, Route("api/document-workbench/{moduleId:int}")]
-public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, LegacyRightsRepository rightsRepository, EOS.API.Security.CurrentUserContext userContext, IOptions<UnifiedFormEditorSettings> formSettings, ILogger<DocumentWorkbenchController> logger) : ControllerBase
+public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, IPermissionService permissions, EOS.API.Security.CurrentUserContext userContext, IOptions<UnifiedFormEditorSettings> formSettings, ILogger<DocumentWorkbenchController> logger) : ControllerBase
 {
     [HttpGet("definition")]
     public async Task<IActionResult> Definition(int moduleId,CancellationToken token)=>await AuthorizedDefinition(moduleId,token) is { } definition?Ok(definition):NotFound();
@@ -20,7 +21,7 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
     public async Task<IActionResult> Query(int moduleId,[FromBody]WorkbenchQuery query,[FromQuery]int page=1,[FromQuery]int pageSize=20,[FromQuery]string? keyword=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]string? sortFields=null,[FromQuery]string? sortDirections=null,[FromQuery]int? groupIndex=null,[FromQuery]string? groupValue=null,CancellationToken token=default){var definition=await AuthorizedDefinition(moduleId,token);if(definition is null)return NotFound();var dataFilter=await EffectiveDataFilter(moduleId,token);return Ok(await repository.GetRowsAsync(definition,false,new Dictionary<string,string>(),page,pageSize,token,query,keyword,sortFields??sortField,sortDirections??sortDirection,groupIndex,groupValue,dataFilter));}
 
     [HttpGet("details")]
-    public async Task<IActionResult> Details(int moduleId,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,CancellationToken token=default){var definition=await AuthorizedDefinition(moduleId,token);if(definition is null)return NotFound();var keys=Request.Query.ToDictionary(item=>item.Key,item=>item.Value.ToString(),StringComparer.OrdinalIgnoreCase);return Ok(await repository.GetRowsAsync(definition,true,keys,1,100,token,null,null,sortField,sortDirection));}
+    public async Task<IActionResult> Details(int moduleId,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,CancellationToken token=default){var definition=await AuthorizedDefinition(moduleId,token);if(definition is null)return NotFound();var keys=Request.Query.ToDictionary(item=>item.Key,item=>item.Value.ToString(),StringComparer.OrdinalIgnoreCase);var dataFilter=await EffectiveDataFilter(moduleId,token);return Ok(await repository.GetRowsAsync(definition,true,keys,1,100,token,null,null,sortField,sortDirection,dataFilter:dataFilter));}
 
     [HttpPost("export")]
     public async Task<IActionResult> Export(int moduleId,[FromBody]WorkbenchQuery? query,[FromQuery]string? keyword=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]string? sortFields=null,[FromQuery]string? sortDirections=null,[FromQuery]int? groupIndex=null,[FromQuery]string? groupValue=null,[FromQuery]string? format=null,[FromQuery]string? columns=null,CancellationToken token=default){var definition=await AuthorizedDefinition(moduleId,token);if(definition is null)return NotFound();var dataFilter=await EffectiveDataFilter(moduleId,token);var exportFields=DocumentWorkbenchRepository.ResolveExportFields(definition.MasterFields,ParseColumnKeys(columns));var rows=await repository.GetExportRowsAsync(definition,query,keyword,token,sortFields??sortField,sortDirections??sortDirection,groupIndex,groupValue,exportFields,dataFilter);return ExportFile(exportFields,rows,format,definition.Title);}
@@ -47,7 +48,7 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         if(!formSettings.Value.EnabledModuleIds.Contains(moduleId))return NotFound();
         var normalized=mode.Trim().ToLowerInvariant();
         if(normalized is not ("new" or "edit" or "view"))return BadRequest(new{code="INVALID_FORM_MODE",message="mode 仅支持 new、edit 或 view。"});
-        var rights=await rightsRepository.GetAsync(userId,moduleId,token);
+        var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
         if(normalized=="new"&&!rights.CanAddNew)return Forbid();
         if(normalized=="edit"&&!rights.CanEdit)return Forbid();
         // view 模式仅需浏览权限（对齐旧系统 state=brow 只读查看）
@@ -104,7 +105,7 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
     {
         var access=await FormAccess(moduleId,"edit",token);
         if(access is null)return NotFound();
-        if(!access.Value.Rights.CanDelete)return Forbid();
+        await permissions.RequireAsync(userContext.UserId,moduleId,PermissionAction.Delete,token);
         var keyValues=ParseKey(key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
         var result=await repository.DeleteRecordAsync(access.Value.Definition,access.Value.Form,keyValues,userContext.UserId,access.Value.Rights.DataFilter,token);
@@ -144,9 +145,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         if(definition is null)return NotFound();
         var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if(userId is null)return Unauthorized();
-        var rights=await rightsRepository.GetAsync(userId,moduleId,token);
-        if(finish&&!rights.CanEndCase)return Forbid();
-        if(!finish&&!rights.CanUnEndCase)return Forbid();
+        await permissions.RequireAsync(userId,moduleId,finish?PermissionAction.EndCase:PermissionAction.UnEndCase,token);
         var keyValues=ParseKey(request.Key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
         var result=await repository.FinishAsync(definition,keyValues,finish,userContext.EmployeeName,userContext.UserId,token);
@@ -173,7 +172,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         if(source.ModuleId is int moduleIndex&&moduleIndex>0)
         {
             var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if(userId is not null)chooserRights=await rightsRepository.GetAsync(userId,moduleIndex,token);
+            if(userId is not null)chooserRights=(await permissions.GetAsync(userId,moduleIndex,token)).Rights;
         }
         // {module} 为旧系统模板占位符，服务端替换为当前模块号（常量，安全）后再受控解析
         var chooseFilter=string.IsNullOrWhiteSpace(source.Filter)
@@ -228,7 +227,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if(definition is null||userId is null)return null;
         if(!formSettings.Value.EnabledModuleIds.Contains(moduleId))return null;
-        var rights=await rightsRepository.GetAsync(userId,moduleId,token);
+        var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
         if(mode=="new"&&!rights.CanAddNew)return null;
         if(mode=="edit"&&!rights.CanEdit)return null;
         if(mode=="view"&&!rights.CanBrowse)return null;
@@ -304,13 +303,13 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.C
     [HttpPut("column-widths")]
     public async Task<IActionResult> UpdateColumnWidths(int moduleId,[FromBody]UpdateColumnWidthsRequest request,CancellationToken token=default){var access=await SetupDefinition(moduleId,token);if(access is null)return Forbid();await repository.UpdateColumnWidthsAsync(access,request,userContext.EmployeeName,token);return NoContent();}
 
-    private async Task<WorkbenchDefinition?> SetupDefinition(int moduleId,CancellationToken token){var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;if(userId is null)return null;var rights=await rightsRepository.GetAsync(userId,moduleId,token);return rights.CanBrowse&&rights.CanSetup?await repository.GetDefinitionAsync(moduleId,userId,rights.ExecuteTag,rights.CanViewCost,rights.CanViewSecrecy,rights.DeniedMasterFields,rights.DeniedDetailFields,token):null;}
+    private async Task<WorkbenchDefinition?> SetupDefinition(int moduleId,CancellationToken token){var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;if(userId is null)return null;var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;return rights.CanBrowse&&rights.CanSetup?await repository.GetDefinitionAsync(moduleId,userId,rights.ExecuteTag,rights.CanViewCost,rights.CanViewSecrecy,rights.DeniedMasterFields,rights.DeniedDetailFields,token):null;}
 
     private async Task<WorkbenchDefinition?> AuthorizedDefinition(int moduleId,CancellationToken token)
     {
         var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if(userId is null)return null;
-        var rights=await rightsRepository.GetAsync(userId,moduleId,token);
+        var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
         if(!rights.CanBrowse)return null;
         var definition=await repository.GetDefinitionAsync(moduleId,userId,rights.ExecuteTag,rights.CanViewCost,rights.CanViewSecrecy,rights.DeniedMasterFields,rights.DeniedDetailFields,token);
         if(definition is null)return null;
@@ -330,7 +329,7 @@ var formEnabled=formSettings.Value.EnabledModuleIds.Contains(moduleId);
     {
         var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if(userId is null)return null;
-        var rights=await rightsRepository.GetAsync(userId,moduleId,token);
+        var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
         return rights.DataFilter;
     }
 

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using EOS.API.Data;
 using EOS.API.Models;
+using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,6 +14,8 @@ public sealed class PrintController(
     PrintService service,
     PrintSettingsRepository printSettingsRepository,
     LegacyRightsRepository rightsRepository,
+    IPermissionService permissions,
+    DocumentWorkbenchRepository workbench,
     DocumentPdfService documentPdfService) : ControllerBase
 {
     /// <summary>
@@ -24,8 +27,11 @@ public sealed class PrintController(
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
-        var rights = await rightsRepository.GetAsync(userId, moduleId, token);
+        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
         if (!rights.CanBrowse) return Forbid();
+        var definition = await workbench.GetDefinitionAsync(moduleId, userId, rights.ExecuteTag,
+            rights.CanViewCost, rights.CanViewSecrecy, rights.DeniedMasterFields, rights.DeniedDetailFields, token);
+        if (definition is null) return NotFound();
 
         var settings = await printSettingsRepository.GetAsync(moduleId, userId, token);
         // 报表变体选择（对齐旧 RptBill 的 rblReport）：请求指定时白名单校验，
@@ -41,9 +47,10 @@ public sealed class PrintController(
         var headerId = string.IsNullOrWhiteSpace(request.HeaderId) ? report.HeaderId : request.HeaderId.Trim();
         var tailId = string.IsNullOrWhiteSpace(request.TailId) ? report.TailId : request.TailId.Trim();
         var data = await service.GetPrintDataAsync(
-            moduleId, request.Key, headerId, tailId,
+            definition, request.Key, headerId, tailId,
             rights.CanViewCost, rights.CanViewSecrecy,
-            rights.DeniedMasterFields, rights.DeniedDetailFields, token);
+            rights.DeniedMasterFields, rights.DeniedDetailFields,
+            rights.DataFilter, token);
         if (data is null) return NotFound();
 
         var header = settings.Headers.FirstOrDefault(item => item.HeaderId == headerId);

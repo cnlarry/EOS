@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using EOS.API.Errors;
+using EOS.API.Telemetry;
 using Microsoft.AspNetCore.Diagnostics;
 
 namespace EOS.API.Middleware;
@@ -34,7 +35,8 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
             StatusCodes.Status500InternalServerError,
             ApiErrorCodes.InternalError,
             "服务器内部错误");
-        ApiProblem.AttachTraceId(problem, context);
+        RequestContext.SetErrorCode(context, ApiErrorCodes.InternalError);
+        ApiProblem.AttachRequestContext(problem, context);
         if (environment.IsDevelopment())
         {
             problem.Extensions["detail"] = exception.ToString();

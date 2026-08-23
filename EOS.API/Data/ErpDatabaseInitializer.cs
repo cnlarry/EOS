@@ -13,6 +13,9 @@ namespace EOS.API.Data;
 /// </summary>
 public static class ErpDatabaseInitializer
 {
+    /// <summary>最近一次启动迁移是否成功（/health/startup 与 /health/ready 依据）。</summary>
+    public static bool LastRunSucceeded { get; private set; }
+
     public static void Run(IConfiguration configuration, ILogger logger)
     {
         var connectionString = configuration.GetConnectionString("ErpDatabase")
@@ -32,9 +35,11 @@ public static class ErpDatabaseInitializer
 
         if (!result.Successful)
         {
+            LastRunSucceeded = false;
             throw new InvalidOperationException("EOS.ERP 数据库迁移失败", result.Error);
         }
 
+        LastRunSucceeded = true;
         logger.LogInformation("EOS.ERP 数据库迁移完成（{Scripts} 个脚本）", result.Scripts.Count());
     }
 }

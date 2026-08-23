@@ -1,5 +1,6 @@
 using EOS.API.Errors;
 using EOS.API.Models;
+using EOS.API.Telemetry;
 using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Diagnostics;
@@ -75,6 +76,9 @@ public sealed class DocumentWorkbenchRepository(
     ControlledSprocInvoker controlledSprocs,
     WorkflowEngine workflowEngine,
     DomainRuleService domainRules,
+    WorkbenchScopeFilter scopeFilter,
+    DbTimingCollector dbTiming,
+    ApiMetrics metrics,
     ILogger<DocumentWorkbenchRepository> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
@@ -252,131 +256,6 @@ public sealed class DocumentWorkbenchRepository(
 
     public async Task<IReadOnlyList<FieldSetupLookup>> GetFieldSetupModulesAsync(CancellationToken token)
     {await using var connection=CreateConnection();await connection.OpenAsync(token);const string sql="SELECT CONVERT(nvarchar(20),M_IDX),COALESCE(NULLIF(LTRIM(RTRIM(M_DESC)),''),CONVERT(nvarchar(20),M_IDX)) FROM dbo.MODULES WITH (NOLOCK) ORDER BY M_DESC,M_IDX";await using var command=new SqlCommand(sql,connection);await using var reader=await command.ExecuteReaderAsync(token);var result=new List<FieldSetupLookup>();while(await reader.ReadAsync(token))result.Add(new(reader.GetString(0),reader.GetString(1)));return result;}
-
-    /// <summary>
-    /// 应用模块级行过滤（MODULES.FILTER，如 1206 成品资料 PRODUCT.PRO_TYPE=1）。
-    /// 仅接受受限解析器支持的谓词（白名单主表字段 + 比较运算符 + 常量，参数化）；
-    /// 无法安全解析时抛 DataFilterUnsupportedException（403），拒绝返回未过滤数据。
-    /// </summary>
-    private static void ApplyModuleFilter(
-        WorkbenchDefinition definition,
-        ICollection<string> predicates,
-        SqlCommand command)
-    {
-        if(string.IsNullOrWhiteSpace(definition.ModuleFilter))return;
-        // 过滤器字段白名单 = 全量可见字段（不受用户列选择影响）：
-        // 用户保存的列配置可能不含过滤器引用的字段，若以可见列为准会误拒整个模块查询。
-        var allowedFields=definition.FilterFieldKeys
-            ?? definition.MasterFields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if(!DataFilterParser.TryParse(definition.ModuleFilter,definition.MasterTable,allowedFields,
-               out var predicate,out var parameters))
-            throw new DataFilterUnsupportedException("该模块的数据过滤条件尚不支持，已拒绝查询。");
-        predicates.Add(predicate);
-        // 解析器生成的谓词按顺序引用 @df0..@dfN，参数名与值一一对应
-        var parameterNames=Regex.Matches(predicate,"@df\\d+")
-            .Select(match=>match.Value)
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(name=>int.Parse(name[3..]))
-            .ToList();
-        for(var i=0;i<parameterNames.Count;i++)
-            command.Parameters.AddWithValue(parameterNames[i],parameters[i]);
-    }
-
-    /// <summary>
-    /// 应用用户数据范围（SYSDD/SYSDH 权限 DATA_FILTER；个人覆盖组、组 OR 已由
-    /// RightsAdminRepository 组合为生效值）。与 MODULES.FILTER 同边界：白名单主表字段 +
-    /// 受限解析 + 参数化；参数名重命名避免与模块 FILTER 的 @dfN 冲突。
-    /// 无法安全解析时抛 DataFilterUnsupportedException（403），拒绝返回未过滤数据。
-    /// </summary>
-    private static void ApplyUserDataFilter(
-        WorkbenchDefinition definition,
-        string? dataFilter,
-        ICollection<string> predicates,
-        SqlCommand command)
-    {
-        if(string.IsNullOrWhiteSpace(dataFilter))return;
-        var allowedFields=definition.FilterFieldKeys
-            ?? definition.MasterFields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if(!DataFilterParser.TryParse(dataFilter,definition.MasterTable,allowedFields,
-               out var predicate,out var parameters))
-            throw new DataFilterUnsupportedException("当前用户的权限数据范围尚不支持，已拒绝查询。");
-        var prefix=$"@udf{predicates.Count}_";
-        var renamed=Regex.Replace(predicate,"@df(\\d+)",
-            match=>prefix+int.Parse(match.Groups[1].Value));
-        for(var i=0;i<parameters.Count;i++)
-            command.Parameters.AddWithValue(prefix+i,parameters[i]);
-        predicates.Add(renamed);
-    }
-
-    /// <summary>
-    /// 应用菜单分组筛选（GROUP_EXP&lt;groupIndex&gt; = groupValue）。
-    /// 与 MODULES.FILTER 同边界：表达式经 GroupExpressionParser 受控编译
-    /// （白名单主表字段），值参数化；不可解析抛 GroupExpressionUnsupportedException（403）。
-    /// </summary>
-    private static void ApplyGroupFilter(
-        WorkbenchDefinition definition,
-        int? groupIndex,
-        string? groupValue,
-        ICollection<string> predicates,
-        SqlCommand command)
-    {
-        if (groupIndex is null || string.IsNullOrWhiteSpace(groupValue)) return;
-        if (groupIndex is < 1 or > 5)
-            throw new GroupExpressionUnsupportedException("分组序号无效，已拒绝查询。");
-        var expression = definition.GroupExpressions[groupIndex.Value - 1];
-        if (string.IsNullOrWhiteSpace(expression))
-            throw new GroupExpressionUnsupportedException("该模块未启用此分组表达式，已拒绝查询。");
-        var allowedFields = definition.FilterFieldKeys
-            ?? definition.MasterFields.Select(field => field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (!GroupExpressionParser.TryCompile(expression, definition.MasterTable, allowedFields, out var compiled))
-            throw new GroupExpressionUnsupportedException("分组表达式超出受控子集，已拒绝查询。");
-        var parameterName = $"@gf{predicates.Count}";
-        predicates.Add($"({compiled})={parameterName}");
-        command.Parameters.AddWithValue(parameterName, groupValue);
-    }
-
-    /// <summary>
-    /// 执行范围（EXEC_TAG）行级过滤，对齐旧 DxQueryButton.OtherCondition：
-    /// B 仅本人（OWNER=当前用户）、C 本人及下级（含 f_get_underling）、
-    /// D 本人所属组（OWNER_G）、E 本人及下级所属组；Z/A 无附加范围。
-    /// 表缺 OWNER/OWNER_G 列时拒绝查询（不返回越权数据）；值全部参数化。
-    /// </summary>
-    private static void ApplyExecTagScope(
-        WorkbenchDefinition definition,
-        ICollection<string> predicates,
-        SqlCommand command)
-    {
-        var tag=(definition.ExecTag??"Z").Trim().ToUpperInvariant();
-        if(tag is "Z" or "A" or "")return;
-        var ownerParameter="@execOwner";
-        switch(tag)
-        {
-            case "B":
-                if(!definition.HasOwnerColumn)
-                    throw new DataFilterUnsupportedException("该模块不支持按执行范围过滤。");
-                predicates.Add($"[OWNER]={ownerParameter}");
-                command.Parameters.AddWithValue(ownerParameter,definition.UserId);
-                break;
-            case "C":
-                if(!definition.HasOwnerColumn)
-                    throw new DataFilterUnsupportedException("该模块不支持按执行范围过滤。");
-                predicates.Add($"([OWNER]={ownerParameter} OR [OWNER] IN (SELECT USER_ID FROM dbo.f_get_underling({ownerParameter})))");
-                command.Parameters.AddWithValue(ownerParameter,definition.UserId);
-                break;
-            case "D":
-                if(!definition.HasOwnerGroupColumn)
-                    throw new DataFilterUnsupportedException("该模块不支持按执行范围过滤。");
-                predicates.Add($"[OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID={ownerParameter})");
-                command.Parameters.AddWithValue(ownerParameter,definition.UserId);
-                break;
-            case "E":
-                if(!definition.HasOwnerGroupColumn)
-                    throw new DataFilterUnsupportedException("该模块不支持按执行范围过滤。");
-                predicates.Add($"[OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID IN (SELECT {ownerParameter} UNION ALL SELECT USER_ID FROM dbo.f_get_underling({ownerParameter})))");
-                command.Parameters.AddWithValue(ownerParameter,definition.UserId);
-                break;
-        }
-    }
 
     /// <summary>
     /// 按标题关键字查找第一个通用工作台模块（服务端白名单，不接受调用方传入任意标题）。
@@ -668,6 +547,7 @@ public sealed class DocumentWorkbenchRepository(
             if(field is not null)selected.Add(field);
         }
         var predicates=new List<string>();
+        using var timing=dbTiming.Measure();
         var stopwatch=Stopwatch.StartNew();
         await using var connection=CreateConnection(); await connection.OpenAsync(token); await using var command=new SqlCommand(); command.Connection=connection;
         if (detail) foreach(var key in definition.MasterPkOrder) if(keys.TryGetValue(key,out var value) && definition.DetailFields.Any(field=>field.Key.Equals(key,StringComparison.OrdinalIgnoreCase))) { var name=$"@k{predicates.Count}"; predicates.Add($"[{key}]={name}"); command.Parameters.AddWithValue(name,value); }
@@ -676,12 +556,16 @@ public sealed class DocumentWorkbenchRepository(
             logger.LogDebug("子表查询缺少主表关联键，跳过 detail={Detail} table={Table}", detail, table);
             return new([],0,page,pageSize);
         }
+        if (detail)
+        {
+            var detailKeyColumns = definition.MasterPkOrder
+                .Where(pk => definition.DetailFields.Any(field => field.Key.Equals(pk, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            scopeFilter.ApplyDetailScope(definition, dataFilter, table, detailKeyColumns, predicates, command);
+        }
         if (!detail && query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
         if (!detail && !string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
-        if (!detail) ApplyModuleFilter(definition, predicates, command);
-        if (!detail) ApplyUserDataFilter(definition, dataFilter, predicates, command);
-        if (!detail) ApplyGroupFilter(definition, groupIndex, groupValue, predicates, command);
-        if (!detail) ApplyExecTagScope(definition, predicates, command);
+        if (!detail) scopeFilter.ApplyScope(definition, dataFilter, groupIndex, groupValue, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,detail,sortField,sortDirection);
         // 排序字段必须并入投影：30 列截断后若排序列（如 SORT_FIELDS 引用的日期列）落在截断外，
@@ -699,6 +583,7 @@ public sealed class DocumentWorkbenchRepository(
             await ConvertFunctionResolver.ApplyAsync(connection, field.Key, field.ConvertFunction!, rows, token);
         logger.LogDebug("工作台查询完成 detail={Detail} table={Table} page={Page} pageSize={PageSize} total={Total} returned={Returned} elapsedMs={ElapsedMs:F0}",
             detail,table,page,pageSize,total,rows.Count,stopwatch.Elapsed.TotalMilliseconds);
+        metrics.ObserveWorkbenchQuery(stopwatch.Elapsed.TotalMilliseconds);
         return new(rows,total,page,pageSize);
     }
 
@@ -712,14 +597,12 @@ public sealed class DocumentWorkbenchRepository(
         const int maxExportRows=100000;
         var selected=exportFields is { Count:>0 }?exportFields.ToList():fields.Take(30).ToList();
         var predicates=new List<string>();
+        using var timing=dbTiming.Measure();
         var stopwatch=Stopwatch.StartNew();
         await using var connection=CreateConnection(); await connection.OpenAsync(token); await using var command=new SqlCommand(); command.Connection=connection;
         if (query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
         if (!string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
-        ApplyModuleFilter(definition, predicates, command);
-        ApplyUserDataFilter(definition, dataFilter, predicates, command);
-        ApplyGroupFilter(definition, groupIndex, groupValue, predicates, command);
-        ApplyExecTagScope(definition, predicates, command);
+        scopeFilter.ApplyScope(definition, dataFilter, groupIndex, groupValue, predicates, command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var order=ResolveOrder(definition,fields,selected,false,sortField,sortDirection);
         EnsureOrderColumnsInProjection(fields, selected, order);
@@ -730,6 +613,7 @@ public sealed class DocumentWorkbenchRepository(
         await using var reader=await command.ExecuteReaderAsync(token); var rows=new List<Dictionary<string,object?>>();
         while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase); for(var i=0;i<reader.FieldCount;i++) row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i); rows.Add(row);}
         logger.LogDebug("工作台导出完成 table={Table} returned={RowCount} elapsedMs={ElapsedMs:F0}", table,rows.Count,stopwatch.Elapsed.TotalMilliseconds);
+        metrics.ObserveWorkbenchQuery(stopwatch.Elapsed.TotalMilliseconds);
         return rows;
     }
 
@@ -749,11 +633,10 @@ public sealed class DocumentWorkbenchRepository(
         if(pks.Count==0)return [];
         var selected=exportFields is { Count:>0 }?exportFields.ToList():fields.Take(30).ToList();
         var filterPredicates=new List<string>();
+        using var timing=dbTiming.Measure();
+        var stopwatch=Stopwatch.StartNew();
         await using var connection=CreateConnection();await connection.OpenAsync(token);await using var command=new SqlCommand();command.Connection=connection;
-        ApplyModuleFilter(definition, filterPredicates, command);
-        ApplyUserDataFilter(definition, dataFilter, filterPredicates, command);
-        ApplyGroupFilter(definition, groupIndex, groupValue, filterPredicates, command);
-        ApplyExecTagScope(definition, filterPredicates, command);
+        scopeFilter.ApplyScope(definition, dataFilter, groupIndex, groupValue, filterPredicates, command);
         var orParts=new List<string>();
         for(var rowIndex=0;rowIndex<keys.Count;rowIndex++)
         {
@@ -777,6 +660,7 @@ public sealed class DocumentWorkbenchRepository(
         await using var reader=await command.ExecuteReaderAsync(token);
         var rows=new List<Dictionary<string,object?>>();
         while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);for(var i=0;i<reader.FieldCount;i++)row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i);rows.Add(row);}
+        metrics.ObserveWorkbenchQuery(stopwatch.Elapsed.TotalMilliseconds);
         return rows;
     }
 
@@ -1082,6 +966,7 @@ public sealed class DocumentWorkbenchRepository(
         string? dataFilter,
         CancellationToken token)
     {
+        using var timing=dbTiming.Measure();
         await using var connection=CreateConnection(); await connection.OpenAsync(token);
         var pkColumns=await GetPrimaryKeyColumnsAsync(connection,null,definition.MasterTable,token);
         if(pkColumns.Count!=keyValues.Count)return new(RecordAccessStatus.KeyMismatch,null);
@@ -1097,11 +982,11 @@ public sealed class DocumentWorkbenchRepository(
         }
         var current=await ReadRowAsync(connection,null,definition.MasterTable,pkColumns,keyValues,masterFields,token);
         if(current is null)return new(RecordAccessStatus.NotFound,null);
-        if(!string.IsNullOrWhiteSpace(dataFilter))
+        if(!scopeFilter.TryBuildRecordScopePredicate(definition,dataFilter,out var scopePredicate,out var scopeParameters))
+            return new(RecordAccessStatus.FilterUnsupported,null);
+        if(!string.IsNullOrWhiteSpace(scopePredicate))
         {
-            if(!DataFilterParser.TryParse(dataFilter,definition.MasterTable,ScopeFields(form.MasterFields,pkColumns),out var predicate,out var parameters))
-                return new(RecordAccessStatus.FilterUnsupported,null);
-            if(!await RecordInScopeAsync(connection,null,definition.MasterTable,pkColumns,keyValues,predicate,parameters,token))
+            if(!await RecordInScopeAsync(connection,null,definition.MasterTable,pkColumns,keyValues,scopePredicate,scopeParameters,token))
                 return new(RecordAccessStatus.OutOfScope,null);
         }
         await ResolveChooserDisplaysAsync(connection,form.MasterFields,current,token);
@@ -1134,6 +1019,16 @@ public sealed class DocumentWorkbenchRepository(
         var values=new Dictionary<string,object?>(validation.Converted,StringComparer.OrdinalIgnoreCase);
         RecordPayloadValidator.ApplyDefaults(form.MasterFields,values);
         FormDefaultRules.Apply(definition.ModuleId,form.MasterFields,values);
+
+        // ADR-005 §7 配套：主表存在 OWNER/OWNER_G 时回填制单人/主组，保证 EXEC_TAG=B/D
+        // 范围下新建记录立即可见（对齐旧系统 OWNER=制单人语义）；用户已提交的值不被覆盖。
+        if(await ColumnExistsAsync(connection,transaction,definition.MasterTable,"OWNER",token))
+            values.TryAdd("OWNER",userId);
+        if(await ColumnExistsAsync(connection,transaction,definition.MasterTable,"OWNER_G",token))
+        {
+            var primaryGroup=await GetPrimaryGroupAsync(connection,transaction,userId,token);
+            if(primaryGroup is not null)values.TryAdd("OWNER_G",primaryGroup);
+        }
 
         // 领域规则：自动单号 + 默认单别（等价旧 GetNewBillNo / GetDefaultBillInfo）
         var businessRule=definition.BusinessRule;
@@ -2244,6 +2139,14 @@ public sealed class DocumentWorkbenchRepository(
         var result=new List<string>();
         while(await reader.ReadAsync(token))result.Add(reader.GetString(0));
         return result;
+    }
+
+    /// <summary>取用户主组（SYSDG_USER 首组，G_IDX 最小），用于 OWNER_G 回填。</summary>
+    private static async Task<int?> GetPrimaryGroupAsync(SqlConnection connection,SqlTransaction transaction,string userId,CancellationToken token)
+    {
+        await using var command=new SqlCommand("SELECT TOP 1 G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID=@UserId ORDER BY G_IDX;",connection,transaction);
+        command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
+        return await command.ExecuteScalarAsync(token) as int?;
     }
 
     private static async Task<bool> ColumnExistsAsync(SqlConnection connection,SqlTransaction? transaction,string table,string column,CancellationToken token)

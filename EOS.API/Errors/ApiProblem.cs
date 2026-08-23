@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using EOS.API.Telemetry;
 
 namespace EOS.API.Errors;
 
@@ -42,5 +43,21 @@ public static class ApiProblem
     public static void AttachTraceId(ProblemDetails problem, HttpContext context)
     {
         problem.Extensions["traceId"] = context.TraceIdentifier;
+    }
+
+    /// <summary>
+    /// 统一请求上下文扩展（ADR-005 §1/§5.1）：traceId / correlationId / clientId /
+    /// moduleId（路由携带时）。作为排障关联键随错误响应返回给调用方。
+    /// </summary>
+    public static void AttachRequestContext(ProblemDetails problem, HttpContext context)
+    {
+        AttachTraceId(problem, context);
+        problem.Extensions["correlationId"] = RequestContext.GetCorrelationId(context);
+        problem.Extensions["clientId"] = RequestContext.GetClientId(context);
+        var moduleId = RequestContext.GetModuleId(context);
+        if (moduleId is not null)
+        {
+            problem.Extensions["moduleId"] = moduleId;
+        }
     }
 }
