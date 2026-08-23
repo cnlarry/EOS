@@ -15,7 +15,10 @@ namespace EOS.API.Data;
 ///   对齐旧系统「排序号」字段驱动的菜单顺序。
 /// 全部参数化，动态标识符仅来自服务端校验。
 /// </summary>
-public sealed class MenuAdminRepository(DbConnectionFactory connections, ILogger<MenuAdminRepository> logger)
+public sealed class MenuAdminRepository(
+    DbConnectionFactory connections,
+    WorkbenchDirtyMarker dirtyMarker,
+    ILogger<MenuAdminRepository> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
@@ -191,6 +194,7 @@ public sealed class MenuAdminRepository(DbConnectionFactory connections, ILogger
                 insert.Parameters.Add("@Position", SqlDbType.Int).Value = i + 1;
                 await insert.ExecuteNonQueryAsync(token);
             }
+            await dirtyMarker.MarkDirtyAsync(connection, transaction, moduleId, "SYSTEM", token);
             await transaction.CommitAsync(token);
         }
         catch
@@ -464,6 +468,11 @@ public sealed class MenuAdminRepository(DbConnectionFactory connections, ILogger
                 if (await ExistsAsync(connection, transaction, input.M_IDX, token))
                     throw new ArgumentException($"菜单编号 {input.M_IDX} 已存在。");
                 await InsertAsync(connection, transaction, input, rootIdx, updatedBy, token);
+            }
+            await dirtyMarker.MarkDirtyAsync(connection, transaction, input.M_IDX, updatedBy, token);
+            if (oldId is { } oldModuleId && oldModuleId != input.M_IDX)
+            {
+                await dirtyMarker.MarkDirtyAsync(connection, transaction, oldModuleId, updatedBy, token);
             }
             await transaction.CommitAsync(token);
             logger.LogInformation("菜单保存 module={ModuleId} updatedBy={UpdatedBy}", input.M_IDX, updatedBy);
