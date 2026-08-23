@@ -528,6 +528,7 @@ public sealed class MenuAdminRepository(
                 await rights.ExecuteNonQueryAsync(token);
             }
             await transaction.CommitAsync(token);
+            await auditWriter.WriteBestEffortAsync(id, $"{id}", "DELETE", "菜单节点删除", "SYSTEM", "MENU", result: 1, null, token);
             logger.LogInformation("菜单删除 module={ModuleId}", id);
         }
         catch

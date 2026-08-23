@@ -6,6 +6,7 @@ using EOS.API.Models;
 using EOS.API.Telemetry;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Options;
 
 namespace EOS.API.Data;
 
@@ -18,7 +19,8 @@ namespace EOS.API.Data;
 public sealed class WorkbenchAuditWriter(
     DbConnectionFactory connections,
     IHttpContextAccessor httpContextAccessor,
-    WorkbenchDefinitionProvider definitionProvider)
+    WorkbenchDefinitionProvider definitionProvider,
+    IOptions<AuditSettings> auditSettings)
 {
     /// <summary>兼容入口：SYSDF + AUDIT_EVENT（无字段级明细）。</summary>
     public async Task WriteAsync(
@@ -51,6 +53,8 @@ public sealed class WorkbenchAuditWriter(
 
         var correlationId = ResolveCorrelationId();
         var definitionVersion = moduleId is int moduleIndex ? definitionProvider.GetVersion(moduleIndex) : null;
+        var fieldChangesEnabled = auditSettings.Value.FieldChangesEnabled;
+        var effectiveFieldChanges = fieldChangesEnabled ? fieldChanges : null;
         const string insertSql = """
             INSERT INTO dbo.AUDIT_EVENT
                 (OCCURRED_AT, CORRELATION_ID, ACTOR_USER_ID, ACTOR_TYPE, CLIENT_TYPE, MODULE_ID,
@@ -72,16 +76,16 @@ public sealed class WorkbenchAuditWriter(
         command.Parameters.Add("@DefinitionVersion", SqlDbType.NVarChar, 64).Value = (object?)definitionVersion ?? DBNull.Value;
         command.Parameters.Add("@Summary", SqlDbType.NVarChar, 1000).Value = summary is { Length: > 0 } ? (object)Truncate(summary, 1000) : DBNull.Value;
         command.Parameters.Add("@DetailJson", SqlDbType.NVarChar, -1).Value =
-            fieldChanges is { Count: > 0 } ? (object)JsonSerializer.Serialize(fieldChanges) : DBNull.Value;
+            effectiveFieldChanges is { Count: > 0 } ? (object)JsonSerializer.Serialize(effectiveFieldChanges) : DBNull.Value;
         var eventId = Convert.ToInt64(await command.ExecuteScalarAsync(token));
 
-        if (fieldChanges is { Count: > 0 })
+        if (effectiveFieldChanges is { Count: > 0 })
         {
             const string changeSql = """
                 INSERT INTO dbo.AUDIT_FIELD_CHANGE (EVENT_ID, FIELD_NAME, OLD_VALUE, NEW_VALUE, VALUE_HASH)
                 VALUES (@EventId, @FieldName, @OldValue, @NewValue, @ValueHash);
                 """;
-            foreach (var change in fieldChanges)
+            foreach (var change in effectiveFieldChanges)
             {
                 await using var changeCommand = new SqlCommand(changeSql, connection, transaction);
                 changeCommand.Parameters.Add("@EventId", SqlDbType.BigInt).Value = eventId;
