@@ -17,7 +17,6 @@ namespace EOS.API.Data;
 public sealed class PrintService(
     DbConnectionFactory connections,
     WorkbenchScopeFilter scopeFilter,
-    DbTimingCollector dbTiming,
     ILogger<PrintService> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
@@ -34,7 +33,7 @@ public sealed class PrintService(
         string? dataFilter,
         CancellationToken token)
     {
-        using var timing = dbTiming.Measure();
+        using var timing = DbTimingCollector.Instance.Measure();
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
         var moduleId=definition.ModuleId;

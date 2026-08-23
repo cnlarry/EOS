@@ -1,6 +1,7 @@
 using System.Data;
 using Microsoft.Data.SqlClient;
 
+using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 public sealed record NavigationGroup(int Index, string? Description, string? Expression, bool Enabled);
@@ -22,6 +23,7 @@ public sealed class NavigationRepository(DbConnectionFactory connections, ILogge
 {
     public async Task<IReadOnlyList<LegacyNavigationModule>> GetForUserAsync(string userId, CancellationToken token)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         const string sql = """
             WITH UserModules AS (
                 SELECT d.M_IDX

@@ -2,6 +2,7 @@ using System.Data;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
+using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 /// <summary>
@@ -215,6 +216,7 @@ public sealed class RightsAdminRepository(
     public async Task<IReadOnlyList<ModuleRightsRow>> GetUserModuleMatrixAsync(
         string adminUserId, string targetUserId, CancellationToken token)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         await EnsureUserExistsAsync(targetUserId, token);
         var modules = await navigationRepository.GetForUserAsync(adminUserId, token);
         var modulesById = modules.ToDictionary(module => module.Id);

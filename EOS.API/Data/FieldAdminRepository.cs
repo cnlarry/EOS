@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
+using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 public sealed class FieldAdminRepository(
@@ -36,6 +37,7 @@ public sealed class FieldAdminRepository(
 
     public async Task<IReadOnlyList<FieldAdminTable>> GetTablesAsync(string? kind, CancellationToken token)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         var kindFilter = kind?.Trim() ?? "";
         if (kindFilter.Length > 0 && !AllowedTableKinds.Contains(kindFilter))
             throw new ArgumentException("表性质筛选无效。", nameof(kind));
@@ -113,6 +115,7 @@ public sealed class FieldAdminRepository(
 
     public async Task<FieldAdminTableDetail?> GetTableAsync(string tableId, CancellationToken token)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         EnsureIdentifier(tableId, null);
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);

@@ -82,7 +82,6 @@ public sealed class DocumentWorkbenchRepository(
     WorkbenchDefinitionProvider definitionProvider,
     ILogger<DocumentWorkbenchRepository> logger)
 {
-    internal static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
 
     /// <summary>
@@ -138,13 +137,14 @@ public sealed class DocumentWorkbenchRepository(
         foreach (Match match in BrowseUrlPlaceholder.Matches(url))
         {
             var token = match.Groups[1].Value.Trim();
-            if (token.Length == 0 || !Identifier.IsMatch(token) || !allowedFields.Contains(token)) return null;
+            if (token.Length == 0 || !WorkbenchSql.Identifier.IsMatch(token) || !allowedFields.Contains(token)) return null;
         }
         return url;
     }
 
     public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         if (definitionProvider.TryGetBaseline(moduleId, out var baseline, out var snapshotVersion)
@@ -245,7 +245,7 @@ public sealed class DocumentWorkbenchRepository(
         var searchMaster = !reader.IsDBNull(27) && reader.GetBoolean(27);
         var searchDetail = !reader.IsDBNull(28) && reader.GetBoolean(28);
         await reader.CloseAsync();
-        if (!ModuleRouteValidator.IsWorkbenchUrl(url) || !Identifier.IsMatch(master) || (detail is not null && !Identifier.IsMatch(detail)))
+        if (!ModuleRouteValidator.IsWorkbenchUrl(url) || !WorkbenchSql.Identifier.IsMatch(master) || (detail is not null && !WorkbenchSql.Identifier.IsMatch(detail)))
         {
             logger.LogWarning("模块 {ModuleId} 未通过工作台校验 url={Url} master={Master} detail={Detail}", moduleId, url, master, detail);
             return null;
@@ -255,7 +255,7 @@ public sealed class DocumentWorkbenchRepository(
         var resolvedNewUrl = ModuleRouteValidator.ResolveActionUrl(newUrlRaw, moduleId);
         var resolvedModiUrl = ModuleRouteValidator.ResolveActionUrl(modiUrl, moduleId);
         var masterFields=await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token);
-        var masterPkOrder=await GetPrimaryKeyColumnsAsync(connection,null,master,token);
+        var masterPkOrder=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,master,token);
         // 领域规则：静态映射优先（含单号字段/冲抵表等增强配置），否则由 MODULES 元数据自动注册
         var businessRule=ModuleBusinessMap.Get(moduleId);
         if(businessRule is null)
@@ -297,8 +297,8 @@ public sealed class DocumentWorkbenchRepository(
             await ReadFilterFieldKeys(connection,master,canViewCost,canViewSecrecy,deniedMasterFields,token),
             userId.Trim(),
             string.IsNullOrWhiteSpace(execTag)?"A":execTag.Trim(),
-            await ColumnExistsAsync(connection,null,master,"OWNER",token),
-            await ColumnExistsAsync(connection,null,master,"OWNER_G",token),
+            await WorkbenchSql.ColumnExistsAsync(connection,null,master,"OWNER",token),
+            await WorkbenchSql.ColumnExistsAsync(connection,null,master,"OWNER_G",token),
             businessRule,
             autoApprove,
             groupExpressions,
@@ -316,7 +316,7 @@ public sealed class DocumentWorkbenchRepository(
     }
 
     public async Task<IReadOnlyList<FieldSetupLookup>> GetFieldSetupTablesAsync(CancellationToken token)
-    {await using var connection=CreateConnection();await connection.OpenAsync(token);const string sql="SELECT LTRIM(RTRIM(T_ID)),COALESCE(NULLIF(LTRIM(RTRIM(T_DESC)),''),LTRIM(RTRIM(T_ID))) FROM dbo.TABLES WITH (NOLOCK) ORDER BY T_DESC,T_ID";await using var command=new SqlCommand(sql,connection);await using var reader=await command.ExecuteReaderAsync(token);var result=new List<FieldSetupLookup>();while(await reader.ReadAsync(token)){var value=reader.GetString(0);if(Identifier.IsMatch(value))result.Add(new(value,reader.GetString(1)));}return result;}
+    {await using var connection=CreateConnection();await connection.OpenAsync(token);const string sql="SELECT LTRIM(RTRIM(T_ID)),COALESCE(NULLIF(LTRIM(RTRIM(T_DESC)),''),LTRIM(RTRIM(T_ID))) FROM dbo.TABLES WITH (NOLOCK) ORDER BY T_DESC,T_ID";await using var command=new SqlCommand(sql,connection);await using var reader=await command.ExecuteReaderAsync(token);var result=new List<FieldSetupLookup>();while(await reader.ReadAsync(token)){var value=reader.GetString(0);if(WorkbenchSql.Identifier.IsMatch(value))result.Add(new(value,reader.GetString(1)));}return result;}
 
     public async Task<IReadOnlyList<FieldSetupLookup>> GetFieldSetupModulesAsync(CancellationToken token)
     {await using var connection=CreateConnection();await connection.OpenAsync(token);const string sql="SELECT CONVERT(nvarchar(20),M_IDX),COALESCE(NULLIF(LTRIM(RTRIM(M_DESC)),''),CONVERT(nvarchar(20),M_IDX)) FROM dbo.MODULES WITH (NOLOCK) ORDER BY M_DESC,M_IDX";await using var command=new SqlCommand(sql,connection);await using var reader=await command.ExecuteReaderAsync(token);var result=new List<FieldSetupLookup>();while(await reader.ReadAsync(token))result.Add(new(reader.GetString(0),reader.GetString(1)));return result;}
@@ -453,12 +453,12 @@ public sealed class DocumentWorkbenchRepository(
             SELECT LTRIM(RTRIM(F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(F_DESC)),''),LTRIM(RTRIM(F_ID))),CAST(COALESCE(IS_VISIBLE,1) AS bit),CAST(COALESCE(IS_DEFAULT_FIELDS,0) AS bit),CAST(COALESCE(IS_QUERY,1) AS bit),CAST(COALESCE(IS_READONLY,0) AS bit),CAST(COALESCE(IS_COST,0) AS bit),CAST(COALESCE(IS_SECRECY,0) AS bit),CAST(COALESCE(IS_VIRTUAL,0) AS bit)
             FROM dbo.FIELDS WITH (NOLOCK) WHERE T_ID=@Table ORDER BY COALESCE(VERIFY_INDEX,999),F_ID;
             """;
-        await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;await using var reader=await command.ExecuteReaderAsync(token);var result=new List<WorkbenchFieldSummary>();while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),reader.GetBoolean(3),reader.GetBoolean(4),reader.GetBoolean(5),reader.GetBoolean(6),reader.GetBoolean(7),reader.GetBoolean(8)));}return result;
+        await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;await using var reader=await command.ExecuteReaderAsync(token);var result=new List<WorkbenchFieldSummary>();while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(WorkbenchSql.Identifier.IsMatch(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),reader.GetBoolean(3),reader.GetBoolean(4),reader.GetBoolean(5),reader.GetBoolean(6),reader.GetBoolean(7),reader.GetBoolean(8)));}return result;
     }
 
     public async Task<WorkbenchFieldMetadata?> GetFieldMetadataAsync(WorkbenchDefinition definition,bool detail,string fieldKey,CancellationToken token)
     {
-        var table=detail?definition.DetailTable:definition.MasterTable;if(table is null||!Identifier.IsMatch(fieldKey))return null;
+        var table=detail?definition.DetailTable:definition.MasterTable;if(table is null||!WorkbenchSql.Identifier.IsMatch(fieldKey))return null;
         var metadata=await fieldAdmin.GetMetadataAsync(table,fieldKey.Trim(),token);
         return metadata is null?null:MapMetadata(metadata);
     }
@@ -480,7 +480,7 @@ public sealed class DocumentWorkbenchRepository(
 
     public async Task UpdateFieldMetadataAsync(WorkbenchDefinition definition,bool detail,string fieldKey,UpdateWorkbenchFieldMetadata update,string updatedBy,CancellationToken token)
     {
-        var table=detail?definition.DetailTable:definition.MasterTable;if(table is null||!Identifier.IsMatch(fieldKey))throw new ArgumentException("字段无效。");
+        var table=detail?definition.DetailTable:definition.MasterTable;if(table is null||!WorkbenchSql.Identifier.IsMatch(fieldKey))throw new ArgumentException("字段无效。");
         var input=MapInput(update);
         var original=update.Original is null?null:MapInput(update.Original);
         await fieldAdmin.UpdateAsync(table,fieldKey.Trim(),input,original,updatedBy,token);
@@ -540,7 +540,7 @@ public sealed class DocumentWorkbenchRepository(
         foreach(var (key,rawWidth) in input)
         {
             var field=key.Trim();
-            if(field.Length==0||!Identifier.IsMatch(field)||!allowed.Contains(field))continue;
+            if(field.Length==0||!WorkbenchSql.Identifier.IsMatch(field)||!allowed.Contains(field))continue;
             result[field]=Math.Clamp(rawWidth,40,300);
         }
         return result;
@@ -646,7 +646,7 @@ public sealed class DocumentWorkbenchRepository(
         bool canFileDele = false)
     {
         await using var connection=CreateConnection(); await connection.OpenAsync(token);
-        var pkColumns=await GetPrimaryKeyColumnsAsync(connection,null,definition.MasterTable,token);
+        var pkColumns=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,definition.MasterTable,token);
         var masterRows=await ReadFormFieldRows(connection,definition.MasterTable,definition.MasterTable,token);
         var masterFields=FormFieldSelector.Select(masterRows,mode,canViewCost,canViewSecrecy,deniedMasterFields,deniedNewMasterFields,deniedModiMasterFields);
         IReadOnlyList<FormFieldDefinition> detailFields=[];
@@ -705,7 +705,7 @@ public sealed class DocumentWorkbenchRepository(
                     FormFieldSelector.ParseOptions(pkRow.Options), DisplayOnly: false));
             }
             if (missingPk.Count > 0) detailFields = detailFields.Concat(missingPk).ToList();
-            detailDfVerify=(await GetDfVerifyAsync(connection,null,definition.DetailTable,token))??"";
+            detailDfVerify=(await WorkbenchSql.GetDfVerifyAsync(connection,null,definition.DetailTable,token))??"";
         }
         logger.LogDebug("表单定义 module={ModuleId} mode={Mode} master={MasterFieldCount} detail={DetailFieldCount}",
             definition.ModuleId,mode,masterFields.Count,detailFields.Count);
@@ -943,7 +943,8 @@ public sealed class DocumentWorkbenchRepository(
         int pageSize,
         CancellationToken token)
     {
-        if(!Identifier.IsMatch(table))return null;
+        using var timing = DbTimingCollector.Instance.Measure();
+        if(!WorkbenchSql.Identifier.IsMatch(table))return null;
         await using var connection=CreateConnection(); await connection.OpenAsync(token);
         var all=await ReadChooserColumnRows(connection,table,token);
         if(all.Count==0)return null;
@@ -1062,7 +1063,7 @@ public sealed class DocumentWorkbenchRepository(
         foreach(var group in checks.GroupBy(item=>item.Table,StringComparer.OrdinalIgnoreCase))
         {
             var columns=group.Select(item=>item.Column).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            if(!await ColumnsExistAsync(connection,group.Key,columns,token))return false;
+            if(!await WorkbenchSql.ColumnsExistAsync(connection,group.Key,columns,token))return false;
         }
         return true;
     }
@@ -1169,65 +1170,6 @@ public sealed class DocumentWorkbenchRepository(
 
 
 
-
-
-    internal static async Task<IReadOnlyList<string>> GetPrimaryKeyColumnsAsync(SqlConnection connection,SqlTransaction? transaction,string table,CancellationToken token)
-    {
-        const string sql="""
-            SELECT c.name AS COLUMN_NAME
-            FROM sys.indexes i
-            JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            JOIN sys.tables t ON i.object_id = t.object_id
-            JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = N'dbo' AND t.name = @Table AND i.is_primary_key = 1
-            ORDER BY ic.key_ordinal;
-            """;
-        await using var command=new SqlCommand(sql,connection,transaction);command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
-        await using var reader=await command.ExecuteReaderAsync(token);
-        var result=new List<string>();
-        while(await reader.ReadAsync(token))result.Add(reader.GetString(0));
-        return result;
-    }
-
-    internal static async Task<IReadOnlyList<string>> GetIdentityColumnsAsync(SqlConnection connection,SqlTransaction transaction,string table,CancellationToken token)
-    {
-        const string sql="SELECT c.name FROM sys.tables t INNER JOIN sys.columns c ON c.object_id=t.object_id WHERE t.name=@Table AND t.schema_id=SCHEMA_ID('dbo') AND c.is_identity=1;";
-        await using var command=new SqlCommand(sql,connection,transaction);command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
-        await using var reader=await command.ExecuteReaderAsync(token);
-        var result=new List<string>();
-        while(await reader.ReadAsync(token))result.Add(reader.GetString(0));
-        return result;
-    }
-
-    /// <summary>取用户主组（SYSDG_USER 首组，G_IDX 最小），用于 OWNER_G 回填。</summary>
-    internal static async Task<int?> GetPrimaryGroupAsync(SqlConnection connection,SqlTransaction transaction,string userId,CancellationToken token)
-    {
-        await using var command=new SqlCommand("SELECT TOP 1 G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID=@UserId ORDER BY G_IDX;",connection,transaction);
-        command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
-        return await command.ExecuteScalarAsync(token) as int?;
-    }
-
-    internal static async Task<bool> ColumnExistsAsync(SqlConnection connection,SqlTransaction? transaction,string table,string column,CancellationToken token)
-    {
-        const string sql="SELECT 1 FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name=@Column;";
-        await using var command=new SqlCommand(sql,connection,transaction);
-        command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
-        command.Parameters.Add("@Column",SqlDbType.NVarChar,100).Value=column;
-        return await command.ExecuteScalarAsync(token) is not null;
-    }
-
-    internal static async Task<string?> GetDfVerifyAsync(SqlConnection connection,SqlTransaction? transaction,string table,CancellationToken token)
-    {
-        const string sql="SELECT LTRIM(RTRIM(ISNULL(DF_VERIFY,''))) FROM dbo.TABLES WITH (NOLOCK) WHERE T_ID=@Table;";
-        await using var command=new SqlCommand(sql,connection,transaction);command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
-        var result=await command.ExecuteScalarAsync(token);
-        return result is null||string.IsNullOrWhiteSpace(result.ToString())?null:result.ToString();
-    }
-
-    internal static IReadOnlySet<string> ScopeFields(IReadOnlyList<FormFieldDefinition> fields,IReadOnlyList<string> pkColumns)=>
-        fields.Where(field=>!field.DisplayOnly).Select(field=>field.Key).Concat(pkColumns).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
     /// <summary>解析 MODULES.FORM_TABS（如 '1=基本资料;2=其它'），非法项跳过并按键号升序。</summary>
     private static IReadOnlyList<FormTabDefinition> ParseFormTabs(string? raw)
     {
@@ -1244,127 +1186,6 @@ public sealed class DocumentWorkbenchRepository(
         }
         return tabs.OrderBy(tab => tab.No).ToList();
     }
-
-
-    internal static async Task<bool> TableExistsAsync(SqlConnection connection,string table,CancellationToken token)
-    {
-        await using var command = new SqlCommand("SELECT 1 FROM sys.objects o JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND o.type IN ('U','V');",connection);
-        command.Parameters.Add("@Table",SqlDbType.NVarChar,128).Value=table;
-        return await command.ExecuteScalarAsync(token) is not null;
-    }
-
-    internal static async Task<bool> ColumnsExistAsync(SqlConnection connection,string table,IReadOnlyList<string> columns,CancellationToken token)
-    {
-        var placeholders = string.Join(",", columns.Select((_,i) => $"@C{i}"));
-        await using var command = new SqlCommand($"SELECT COUNT(*) FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name IN ({placeholders});",connection);
-        command.Parameters.Add("@Table",SqlDbType.NVarChar,128).Value=table;
-        for (var i = 0; i < columns.Count; i++)
-            command.Parameters.Add($"@C{i}",SqlDbType.NVarChar,128).Value=columns[i];
-        var count = Convert.ToInt32(await command.ExecuteScalarAsync(token));
-        return count == columns.Count;
-    }
-
-    internal static async Task<Dictionary<string,object?>?> ReadRowAsync(
-        SqlConnection connection,SqlTransaction? transaction,string table,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues,IReadOnlyList<string> fields,CancellationToken token)
-    {
-        var rows=await ReadRowsAsync(connection,transaction,table,pkColumns,keyValues,fields,token);
-        return rows.Count==0?null:rows[0];
-    }
-
-    internal static async Task<IReadOnlyList<Dictionary<string,object?>>> ReadRowsAsync(
-        SqlConnection connection,SqlTransaction? transaction,string table,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues,IReadOnlyList<string> fields,CancellationToken token)
-    {
-        var select=string.Join(',',fields.Select(field=>$"[{field}]"));
-        var where=string.Join(" AND ",pkColumns.Select((column,index)=>$"[{column}]=@k{index}"));
-        await using var command=new SqlCommand($"SELECT {select} FROM dbo.[{table}] WHERE {where};",connection,transaction);
-        AddKeyParameters(command,pkColumns,keyValues);
-        await using var reader=await command.ExecuteReaderAsync(token);
-        var result=new List<Dictionary<string,object?>>();
-        while(await reader.ReadAsync(token))
-        {
-            var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);
-            for(var i=0;i<reader.FieldCount;i++)
-            {
-                var value=reader.IsDBNull(i)?null:reader.GetValue(i);
-                row[reader.GetName(i)]=value is string text?text.Trim():value;
-            }
-            result.Add(row);
-        }
-        return result;
-    }
-
-    internal static async Task<bool> RowExistsAsync(SqlConnection connection,SqlTransaction transaction,string table,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues,CancellationToken token)
-    {
-        var where=string.Join(" AND ",pkColumns.Select((column,index)=>$"[{column}]=@k{index}"));
-        await using var command=new SqlCommand($"SELECT 1 FROM dbo.[{table}] WHERE {where};",connection,transaction);
-        AddKeyParameters(command,pkColumns,keyValues);
-        return await command.ExecuteScalarAsync(token) is not null;
-    }
-
-    internal static async Task<bool> RecordInScopeAsync(
-        SqlConnection connection,SqlTransaction? transaction,string table,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues,string predicate,IReadOnlyList<object> parameters,CancellationToken token)
-    {
-        var where=string.Join(" AND ",pkColumns.Select((column,index)=>$"[{column}]=@k{index}"));
-        await using var command=new SqlCommand($"SELECT 1 FROM dbo.[{table}] WHERE {where} AND ({predicate});",connection,transaction);
-        AddKeyParameters(command,pkColumns,keyValues);
-        for(var i=0;i<parameters.Count;i++)command.Parameters.AddWithValue($"@df{i}",parameters[i]??DBNull.Value);
-        return await command.ExecuteScalarAsync(token) is not null;
-    }
-
-    internal static async Task DeleteDetailRowsAsync(SqlConnection connection,SqlTransaction transaction,string detailTable,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues,CancellationToken token)
-    {
-        var where=string.Join(" AND ",pkColumns.Select((column,index)=>$"[{column}]=@k{index}"));
-        await using var command=new SqlCommand($"DELETE FROM dbo.[{detailTable}] WHERE {where};",connection,transaction);
-        AddKeyParameters(command,pkColumns,keyValues);
-        await command.ExecuteNonQueryAsync(token);
-    }
-
-    internal static void AddKeyParameters(SqlCommand command,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues)
-    {
-        for(var i=0;i<pkColumns.Count;i++)command.Parameters.AddWithValue($"@k{i}",keyValues[i]??string.Empty);
-    }
-
-    internal static object NormalizeDbValue(object? value)=>value is null?DBNull.Value:value;
-
-    internal static string ValueToString(object? value)=>value switch
-    {
-        null=>string.Empty,
-        DateTime dateTime=>dateTime.ToString("yyyy-MM-dd HH:mm:ss",System.Globalization.CultureInfo.InvariantCulture),
-        IFormattable formattable=>formattable.ToString(null,System.Globalization.CultureInfo.InvariantCulture),
-        _=>value.ToString()??string.Empty,
-    };
-
-    internal static bool ValuesEqual(object? left,object? right)
-    {
-        if(left is null&&right is null)return true;
-        if(left is null||right is null)return false;
-        if(left is string leftText&&right is string rightText)return string.Equals(leftText.Trim(),rightText.Trim(),StringComparison.Ordinal);
-        if(left is DateTime leftDate&&right is DateTime rightDate)return leftDate==rightDate;
-        if(left is double leftDouble&&right is double rightDouble)return Math.Abs(leftDouble-rightDouble)<0.0001;
-        // 数值跨类型比较：TryConvert('float') 产生 double、DB int 读出 Int64 等场景
-        if(IsNumeric(left)&&IsNumeric(right))
-        {
-            var leftNumber=Convert.ToDecimal(left,System.Globalization.CultureInfo.InvariantCulture);
-            var rightNumber=Convert.ToDecimal(right,System.Globalization.CultureInfo.InvariantCulture);
-            return leftNumber==rightNumber;
-        }
-        // F_TYPE 与物理类型不一致（如 nvarchar 标 smallint）时一侧为字符串一侧为数值，
-        // 统一按数值解析比较（失败回落字符串比较），避免此类字段更新永远 CONCURRENT_MODIFIED。
-        if(left is string||right is string)
-        {
-            var leftTextValue=ValueToString(left).Trim();
-            var rightTextValue=ValueToString(right).Trim();
-            if(decimal.TryParse(leftTextValue,System.Globalization.NumberStyles.Number,System.Globalization.CultureInfo.InvariantCulture,out var leftNumber)&&
-               decimal.TryParse(rightTextValue,System.Globalization.NumberStyles.Number,System.Globalization.CultureInfo.InvariantCulture,out var rightNumber))
-                return leftNumber==rightNumber;
-            return string.Equals(leftTextValue,rightTextValue,System.StringComparison.OrdinalIgnoreCase);
-        }
-        return left.Equals(right);
-    }
-
-    internal static bool IsNumeric(object value)=>value is sbyte or byte or short or ushort or int or uint
-        or long or ulong or float or double or decimal;
-
     #endregion
 
     private static async Task<IReadOnlyList<WorkbenchColumn>> ReadDefaultColumnSettings(SqlConnection connection,string masterTable,string targetTable,CancellationToken token)
@@ -1380,7 +1201,7 @@ public sealed class DocumentWorkbenchRepository(
         await using(var reader=await command.ExecuteReaderAsync(token))
         {
             var order=0;
-            while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key)&&seen.Add(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),++order,reader.GetBoolean(4)));}
+            while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(WorkbenchSql.Identifier.IsMatch(key)&&seen.Add(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),++order,reader.GetBoolean(4)));}
         }
         return await DropUnresolvableVirtualColumnsAsync(connection,targetTable,result,token);
     }
@@ -1400,7 +1221,7 @@ public sealed class DocumentWorkbenchRepository(
         await using(var reader=await command.ExecuteReaderAsync(token))
         {
             var order=0;
-            while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key)&&seen.Add(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),++order,reader.GetBoolean(4)));}
+            while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(WorkbenchSql.Identifier.IsMatch(key)&&seen.Add(key))result.Add(new(key,reader.GetString(1),reader.GetBoolean(2),++order,reader.GetBoolean(4)));}
         }
         return await DropUnresolvableVirtualColumnsAsync(connection,targetTable,result,token);
     }
@@ -1428,7 +1249,7 @@ public sealed class DocumentWorkbenchRepository(
             while(await reader.ReadAsync(token))
             {
                 var key=reader.GetString(0).Trim();
-                if(Identifier.IsMatch(key))
+                if(WorkbenchSql.Identifier.IsMatch(key))
                     fields.Add(new(key,reader.GetString(1).Trim(),reader.GetString(2).Trim(),100,"left",false,IsVirtual:true,VirtualExpression:reader.GetString(3).Trim()));
             }
         }
@@ -1446,7 +1267,7 @@ public sealed class DocumentWorkbenchRepository(
     }
 
     private static async Task<HashSet<string>> ReadAllowedFieldKeys(SqlConnection connection,SqlTransaction transaction,string targetTable,CancellationToken token)
-    {await using var command=new SqlCommand("SELECT LTRIM(RTRIM(F_ID)) FROM dbo.FIELDS WHERE T_ID=@TargetTable AND COALESCE(IS_VISIBLE,1)=1",connection,transaction);command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;await using var reader=await command.ExecuteReaderAsync(token);var result=new HashSet<string>(StringComparer.OrdinalIgnoreCase);while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(Identifier.IsMatch(key))result.Add(key);}return result;}
+    {await using var command=new SqlCommand("SELECT LTRIM(RTRIM(F_ID)) FROM dbo.FIELDS WHERE T_ID=@TargetTable AND COALESCE(IS_VISIBLE,1)=1",connection,transaction);command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;await using var reader=await command.ExecuteReaderAsync(token);var result=new HashSet<string>(StringComparer.OrdinalIgnoreCase);while(await reader.ReadAsync(token)){var key=reader.GetString(0);if(WorkbenchSql.Identifier.IsMatch(key))result.Add(key);}return result;}
 
     /// <summary>
     /// MODULES.FILTER / DATA_FILTER 字段白名单：主表全部物理存在、非虚拟字段
@@ -1472,7 +1293,7 @@ public sealed class DocumentWorkbenchRepository(
         while(await reader.ReadAsync(token))
         {
             var key=reader.GetString(0).Trim();
-            if(Identifier.IsMatch(key)&&!deniedFields.Contains(key)&&(canViewCost||!reader.GetBoolean(1))&&(canViewSecrecy||!reader.GetBoolean(2)))
+            if(WorkbenchSql.Identifier.IsMatch(key)&&!deniedFields.Contains(key)&&(canViewCost||!reader.GetBoolean(1))&&(canViewSecrecy||!reader.GetBoolean(2)))
                 result.Add(key);
         }
         return result;
@@ -1535,7 +1356,7 @@ public sealed class DocumentWorkbenchRepository(
         var fields=new List<WorkbenchField>();
         await using(var reader=await command.ExecuteReaderAsync(token))
         {
-            while(await reader.ReadAsync(token)){var key=reader.GetString(0).Trim();if(Identifier.IsMatch(key)&&!deniedFields.Contains(key)&&(canViewCost||!reader.GetBoolean(7))&&(canViewSecrecy||!reader.GetBoolean(8))){var isVirtual=reader.GetBoolean(13);var virtualExpression=reader.IsDBNull(14)?null:reader.GetString(14).Trim();var convertFunction=reader.IsDBNull(15)?null:reader.GetString(15).Trim();fields.Add(new(key,reader.GetString(1).Trim(),reader.GetString(2).Trim(),Math.Clamp(reader.GetInt32(3),40,300),reader.IsDBNull(4)?null:reader.GetString(4).Trim(),reader.GetBoolean(5),true,isVirtual?false:reader.GetBoolean(6),reader.GetString(9),reader.IsDBNull(10)?null:reader.GetString(10),reader.IsDBNull(11)?null:reader.GetString(11),reader.IsDBNull(12)?null:reader.GetInt32(12),isVirtual,virtualExpression,convertFunction));}}
+            while(await reader.ReadAsync(token)){var key=reader.GetString(0).Trim();if(WorkbenchSql.Identifier.IsMatch(key)&&!deniedFields.Contains(key)&&(canViewCost||!reader.GetBoolean(7))&&(canViewSecrecy||!reader.GetBoolean(8))){var isVirtual=reader.GetBoolean(13);var virtualExpression=reader.IsDBNull(14)?null:reader.GetString(14).Trim();var convertFunction=reader.IsDBNull(15)?null:reader.GetString(15).Trim();fields.Add(new(key,reader.GetString(1).Trim(),reader.GetString(2).Trim(),Math.Clamp(reader.GetInt32(3),40,300),reader.IsDBNull(4)?null:reader.GetString(4).Trim(),reader.GetBoolean(5),true,isVirtual?false:reader.GetBoolean(6),reader.GetString(9),reader.IsDBNull(10)?null:reader.GetString(10),reader.IsDBNull(11)?null:reader.GetString(11),reader.IsDBNull(12)?null:reader.GetInt32(12),isVirtual,virtualExpression,convertFunction));}}
         }
         var virtualFields=fields.Where(field=>field.IsVirtual).ToList();
         if(virtualFields.Count>0)
@@ -1557,7 +1378,7 @@ public sealed class DocumentWorkbenchRepository(
     private static string? NormalizeSort(string? value,string table,IReadOnlyList<WorkbenchField> fields)
     {
         if(string.IsNullOrWhiteSpace(value))return null;var allowed=fields.Where(field=>!field.IsVirtual).Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);var result=new List<string>();
-        foreach(var part in value.Split(',',StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries)){var tokens=Regex.Split(part.Trim(),"\\s+");if(tokens.Length is <1 or >2)return null;var identifier=tokens[0].Split('.');if(identifier.Length==2&&!identifier[0].Equals(table,StringComparison.OrdinalIgnoreCase))return null;var field=identifier[^1].Trim('[',']');if(!Identifier.IsMatch(field)||!allowed.Contains(field))return null;var direction=tokens.Length==2&&tokens[1].Equals("DESC",StringComparison.OrdinalIgnoreCase)?" DESC":tokens.Length==1||tokens[1].Equals("ASC",StringComparison.OrdinalIgnoreCase)?" ASC":null;if(direction is null)return null;result.Add($"[{field}]{direction}");}
+        foreach(var part in value.Split(',',StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries)){var tokens=Regex.Split(part.Trim(),"\\s+");if(tokens.Length is <1 or >2)return null;var identifier=tokens[0].Split('.');if(identifier.Length==2&&!identifier[0].Equals(table,StringComparison.OrdinalIgnoreCase))return null;var field=identifier[^1].Trim('[',']');if(!WorkbenchSql.Identifier.IsMatch(field)||!allowed.Contains(field))return null;var direction=tokens.Length==2&&tokens[1].Equals("DESC",StringComparison.OrdinalIgnoreCase)?" DESC":tokens.Length==1||tokens[1].Equals("ASC",StringComparison.OrdinalIgnoreCase)?" ASC":null;if(direction is null)return null;result.Add($"[{field}]{direction}");}
         return result.Count==0?null:string.Join(',',result);
     }
 

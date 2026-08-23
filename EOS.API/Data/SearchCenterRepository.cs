@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
+using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 /// <summary>
@@ -79,6 +80,7 @@ public sealed class SearchCenterRepository(DbConnectionFactory connections, ILog
         int pageSize,
         CancellationToken token)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         page=Math.Max(1,page);
         pageSize=Math.Clamp(pageSize,10,200);
         await using var connection=connections.Create();
