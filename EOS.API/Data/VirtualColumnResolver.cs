@@ -136,6 +136,18 @@ internal static class VirtualExpressionParser
 /// </summary>
 public sealed class VirtualColumnResolver(SqlConnection connection)
 {
+    /// <summary>
+    /// 受控标量函数白名单（2026-08-23，110303 虚拟列落地）：VIRTUAL_EXP 允许
+    /// dbo.&lt;函数&gt;(&lt;表.列&gt;) 形式，函数必须登记在此（如 f_get_unit_type_desc：
+    /// 旧系统把单位类型 1~5 翻译为 数量/重量/长度/面积/体积 的纯映射函数）。
+    /// </summary>
+    internal static readonly IReadOnlySet<string> ControlledScalarFunctions =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "f_get_unit_type_desc" };
+
+    private static readonly Regex ScalarFunctionReference = new(
+        @"^dbo\.(?<fn>[A-Za-z_][A-Za-z0-9_]{0,127})\((?<table>[A-Za-z_][A-Za-z0-9_]{0,127})\.(?<column>[A-Za-z_][A-Za-z0-9_]{0,127})\)$",
+        RegexOptions.Compiled);
+
     private readonly Dictionary<string, HashSet<string>> _columns = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _existingTables = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _missingTables = new(StringComparer.OrdinalIgnoreCase);
@@ -155,16 +167,63 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
         if (selected.Count == 0) return new([], "", [], [], []);
 
         var relation = await ReadQueryRelationAsync(table, token);
-        if (!VirtualExpressionParser.TryParseRelation(relation, table, out var joins, out var parseError))
-        {
-            return new([], "", [], selected.Select(field => field.Key).ToList(), []);
-        }
+        // 关联缺失/不可解析不整体放弃：标量函数等无需关联的字段仍可解析，其余字段判未解析
+        var relationOk = VirtualExpressionParser.TryParseRelation(relation, table, out var joins, out _);
 
-        var byAlias = joins.ToDictionary(join => join.Alias, StringComparer.OrdinalIgnoreCase);
+        var byAlias = relationOk
+            ? joins.ToDictionary(join => join.Alias, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, VirtualJoin>(StringComparer.OrdinalIgnoreCase);
         var candidate = new List<(WorkbenchField Field, string? Alias, string? Column, string? Fragment, HashSet<string> Needed)>();
         var unresolved = new List<string>();
         foreach (var field in selected)
         {
+            // P5b：受控标量函数（dbo.<函数>(<表.列>)），函数必须在本类白名单内
+            var functionMatch = field.VirtualExpression is null
+                ? null
+                : ScalarFunctionReference.Match(field.VirtualExpression.Trim());
+            if (functionMatch is { Success: true }
+                && ControlledScalarFunctions.Contains(functionMatch.Groups["fn"].Value))
+            {
+                var functionName = functionMatch.Groups["fn"].Value;
+                var functionTable = functionMatch.Groups["table"].Value;
+                var functionColumn = functionMatch.Groups["column"].Value;
+                string alias;
+                string targetTable;
+                if (functionTable.Equals(table, StringComparison.OrdinalIgnoreCase))
+                {
+                    alias = baseAlias;
+                    targetTable = table;
+                }
+                else if (byAlias.TryGetValue(functionTable, out var functionJoin))
+                {
+                    alias = functionJoin.Alias;
+                    targetTable = functionJoin.Table;
+                }
+                else
+                {
+                    unresolved.Add(field.Key);
+                    continue;
+                }
+                if (!await ColumnExistsAsync(targetTable, functionColumn, token))
+                {
+                    unresolved.Add(field.Key);
+                    continue;
+                }
+                var functionNeeded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (!string.Equals(alias, baseAlias, StringComparison.Ordinal))
+                {
+                    functionNeeded.Add(alias);
+                }
+                candidate.Add((field, null, null, $"dbo.[{functionName}]([{alias}].[{functionColumn}])", functionNeeded));
+                continue;
+            }
+
+            if (!relationOk)
+            {
+                unresolved.Add(field.Key);
+                continue;
+            }
+
             if (!VirtualExpressionParser.TryParseExpression(field.VirtualExpression, out var reference, out var column))
             {
                 // P5：非简单引用走受控算术/常量子集解析（语法白名单 + 表/列物理存在校验）
