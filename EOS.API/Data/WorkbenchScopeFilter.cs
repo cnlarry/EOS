@@ -276,9 +276,20 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
         ICollection<string> parts,
         List<object> values,
         out string error)
+        => TryAppendExecTagCore(definition.ExecTag, definition.UserId, definition.HasOwnerColumn,
+            definition.HasOwnerGroupColumn, parts, values, out error);
+
+    private bool TryAppendExecTagCore(
+        string? execTag,
+        string userId,
+        bool hasOwnerColumn,
+        bool hasOwnerGroupColumn,
+        ICollection<string> parts,
+        List<object> values,
+        out string error)
     {
         error = string.Empty;
-        var tag = (definition.ExecTag ?? "Z").Trim().ToUpperInvariant();
+        var tag = (execTag ?? "Z").Trim().ToUpperInvariant();
         if (tag is "Z" or "A" or "")
         {
             return true;
@@ -288,42 +299,99 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
         switch (tag)
         {
             case "B":
-                if (!definition.HasOwnerColumn)
+                if (!hasOwnerColumn)
                 {
                     metrics.IncrementScopeRejected("exec_tag_owner_missing");
                     return false;
                 }
                 parts.Add($"[OWNER]=@df{offset}");
-                values.Add(definition.UserId);
+                values.Add(userId);
                 break;
             case "C":
-                if (!definition.HasOwnerColumn)
+                if (!hasOwnerColumn)
                 {
                     metrics.IncrementScopeRejected("exec_tag_owner_missing");
                     return false;
                 }
                 parts.Add($"([OWNER]=@df{offset} OR [OWNER] IN (SELECT USER_ID FROM dbo.f_get_underling(@df{offset})))");
-                values.Add(definition.UserId);
+                values.Add(userId);
                 break;
             case "D":
-                if (!definition.HasOwnerGroupColumn)
+                if (!hasOwnerGroupColumn)
                 {
                     metrics.IncrementScopeRejected("exec_tag_owner_group_missing");
                     return false;
                 }
                 parts.Add($"[OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID=@df{offset})");
-                values.Add(definition.UserId);
+                values.Add(userId);
                 break;
             case "E":
-                if (!definition.HasOwnerGroupColumn)
+                if (!hasOwnerGroupColumn)
                 {
                     metrics.IncrementScopeRejected("exec_tag_owner_group_missing");
                     return false;
                 }
                 parts.Add($"[OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID IN (SELECT @df{offset} UNION ALL SELECT USER_ID FROM dbo.f_get_underling(@df{offset})))");
-                values.Add(definition.UserId);
+                values.Add(userId);
                 break;
         }
+        return true;
+    }
+
+    /// <summary>
+    /// 表单选择器数据范围（ADR-005 §7，C 档落地）：模块 FILTER（仅源表=模块主表时）+
+    /// DATA_FILTER + EXEC_TAG，与列表/详情/打印同一口径；解析失败返回 false（调用方返回空选项）。
+    /// </summary>
+    public bool TryBuildChooserScopePredicate(
+        string sourceTable,
+        string? moduleFilter,
+        string? moduleMasterTable,
+        string? dataFilter,
+        string? execTag,
+        string userId,
+        bool hasOwnerColumn,
+        bool hasOwnerGroupColumn,
+        IReadOnlySet<string> allowedFields,
+        out string predicate,
+        out IReadOnlyList<object> parameters)
+    {
+        var values = new List<object>();
+        var parts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(moduleFilter)
+            && string.Equals(moduleMasterTable, sourceTable, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!DataFilterParser.TryParse(moduleFilter, sourceTable, allowedFields, out var parsed, out var parsedParameters))
+            {
+                metrics.IncrementScopeRejected("chooser_module_filter");
+                predicate = string.Empty;
+                parameters = [];
+                return false;
+            }
+            parts.Add(Renumber(parsed, values, parsedParameters));
+        }
+
+        if (!string.IsNullOrWhiteSpace(dataFilter))
+        {
+            if (!DataFilterParser.TryParse(dataFilter, sourceTable, allowedFields, out var parsed, out var parsedParameters))
+            {
+                metrics.IncrementScopeRejected("chooser_data_filter");
+                predicate = string.Empty;
+                parameters = [];
+                return false;
+            }
+            parts.Add(Renumber(parsed, values, parsedParameters));
+        }
+
+        if (!TryAppendExecTagCore(execTag, userId, hasOwnerColumn, hasOwnerGroupColumn, parts, values, out _))
+        {
+            predicate = string.Empty;
+            parameters = [];
+            return false;
+        }
+
+        predicate = parts.Count == 0 ? string.Empty : string.Join(" AND ", parts);
+        parameters = values;
         return true;
     }
 

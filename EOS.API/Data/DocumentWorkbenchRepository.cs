@@ -74,6 +74,7 @@ public sealed record SystemModuleList(int Total, IReadOnlyList<SystemKnowledgeMo
 public sealed class DocumentWorkbenchRepository(
     DbConnectionFactory connections,
     FieldAdminRepository fieldAdmin,
+    WorkbenchScopeFilter scopeFilter,
     WorkbenchDirtyMarker dirtyMarker,
     WorkbenchQueryComposer queryComposer,
     WorkbenchCommandHandler commandHandler,
@@ -941,6 +942,9 @@ public sealed class DocumentWorkbenchRepository(
         string? sortDirection,
         int page,
         int pageSize,
+        string? execTag,
+        int? scopeModuleId,
+        string userId,
         CancellationToken token)
     {
         using var timing = DbTimingCollector.Instance.Measure();
@@ -953,35 +957,57 @@ public sealed class DocumentWorkbenchRepository(
         // {m.FIELD}/{d.FIELD} 旧系统模板：替换为当前主表/明细字段值（SQL 字面量转义后由解析器参数化，不拼接原始值）
         var substitutedFilter = SubstituteTemplateValues(chooseFilter, masterValues, detailValues);
         logger.LogInformation("选择器过滤 table={Table} filter={Filter} substituted={Substituted}", table, chooseFilter, substitutedFilter);
-        // 合并两类过滤：用户数据范围（DATA_FILTER）+ 字段选择器过滤（CHOOSE_FILTER）。
-        // 全部经受限解析器（白名单字段 + 参数化）；任一无法安全解析即返回空选项（不泄漏数据）。
-        string? scopePredicate=null;
-        var scopeParameters=new List<object>();
-        var joins=new List<string>();
-        var nextIndex=0;
-        foreach(var (raw,required) in new[]{ (dataFilter,false), (substitutedFilter,true) })
+        // ADR-005 §7（C 档落地）：用户数据范围统一经 WorkbenchScopeFilter——
+        // 模块 FILTER（仅源表=模块主表时）+ DATA_FILTER + EXEC_TAG，与列表/详情/打印同口径；
+        // 再与字段选择器自身过滤（CHOOSE_FILTER）组合；任一无法安全解析即返回空选项（fail-closed）。
+        string? moduleFilter = null;
+        string? moduleMasterTable = null;
+        if (scopeModuleId is int scopeId)
         {
-            if(string.IsNullOrWhiteSpace(raw))continue;
-            if(!DataFilterParser.TryParseWithJoins(raw,table,allowedFields,ChooserJoinTables,columnTypes,out var parsed,out var parsedParameters,out var parsedJoins,out var foreignColumns))
+            const string moduleSql = "SELECT LTRIM(RTRIM(ISNULL(FILTER,''))),LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))) FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;";
+            await using var moduleCommand = new SqlCommand(moduleSql, connection);
+            moduleCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = scopeId;
+            await using var moduleReader = await moduleCommand.ExecuteReaderAsync(token);
+            if (await moduleReader.ReadAsync(token))
             {
-                logger.LogWarning("选择器过滤无法解析 table={Table} filter={Filter}",table,raw);
-                return new FormChooserResult([],[],0);
+                moduleFilter = moduleReader.GetString(0);
+                moduleMasterTable = moduleReader.GetString(1);
             }
-            if(!await ValidateChooserJoinsAsync(connection,table,parsedJoins,foreignColumns,token))
+        }
+        var hasOwner = await WorkbenchSql.ColumnExistsAsync(connection, null, table, "OWNER", token);
+        var hasOwnerGroup = await WorkbenchSql.ColumnExistsAsync(connection, null, table, "OWNER_G", token);
+        if (!scopeFilter.TryBuildChooserScopePredicate(table, moduleFilter, moduleMasterTable, dataFilter, execTag,
+                userId, hasOwner, hasOwnerGroup, allowedFields, out var basePredicate, out var baseParameters))
+        {
+            logger.LogWarning("选择器数据范围无法构建（fail-closed）table={Table} module={Module}", table, scopeModuleId);
+            return new FormChooserResult([], [], 0);
+        }
+        var scopeParameters = new List<object>(baseParameters);
+        string? scopePredicate = string.IsNullOrWhiteSpace(basePredicate) ? null : basePredicate;
+        var nextIndex = scopeParameters.Count;
+        var joins = new List<string>();
+        if (!string.IsNullOrWhiteSpace(substitutedFilter))
+        {
+            if (!DataFilterParser.TryParseWithJoins(substitutedFilter, table, allowedFields, ChooserJoinTables, columnTypes,
+                    out var parsed, out var parsedParameters, out var parsedJoins, out var foreignColumns))
             {
-                logger.LogWarning("选择器 JOIN 校验失败 table={Table} filter={Filter}",table,raw);
-                return new FormChooserResult([],[],0);
+                logger.LogWarning("选择器过滤无法解析 table={Table} filter={Filter}", table, substitutedFilter);
+                return new FormChooserResult([], [], 0);
             }
-            var renumbered=RenumberFilterParameters(parsed,parsedParameters,nextIndex);
-            scopePredicate=scopePredicate is null
+            if (!await ValidateChooserJoinsAsync(connection, table, parsedJoins, foreignColumns, token))
+            {
+                logger.LogWarning("选择器 JOIN 校验失败 table={Table} filter={Filter}", table, substitutedFilter);
+                return new FormChooserResult([], [], 0);
+            }
+            var renumbered = RenumberFilterParameters(parsed, parsedParameters, nextIndex);
+            scopePredicate = scopePredicate is null
                 ? renumbered.Predicate
                 : $"({scopePredicate}) AND ({renumbered.Predicate})";
             scopeParameters.AddRange(renumbered.Parameters);
-            nextIndex+=renumbered.Parameters.Count;
-            foreach(var joinTable in parsedJoins.Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var joinTable in parsedJoins.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                var joinKeys=ChooserJoinTables[joinTable].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                var on=string.Join(" AND ", joinKeys.Select(key=>$"dbo.[{joinTable}].[{key}] = dbo.[{table}].[{key}]"));
+                var joinKeys = ChooserJoinTables[joinTable].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var on = string.Join(" AND ", joinKeys.Select(key => $"dbo.[{joinTable}].[{key}] = dbo.[{table}].[{key}]"));
                 joins.Add($"LEFT JOIN dbo.[{joinTable}] ON {on}");
             }
         }

@@ -217,7 +217,12 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
                 chooserConditions=null;
             }
         }
-        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,filterField,source.ReturnMapping,masterValues,detailValues,chooserConditions,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,chooseFilter,sortField,sortDirection,page,pageSize,token);
+        var chooserUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (chooserUserId is null)
+        {
+            return Unauthorized();
+        }
+        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,filterField,source.ReturnMapping,masterValues,detailValues,chooserConditions,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,chooseFilter,sortField,sortDirection,page,pageSize,chooserRights.ExecuteTag,source.ModuleId ?? moduleId,chooserUserId,token);
         return result is null?NotFound():Ok(result);
     }
 
