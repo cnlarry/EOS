@@ -1,13 +1,17 @@
 using EOS.API.Data;
 using EOS.API.Errors;
 using EOS.API.Hubs;
+using EOS.API.Health;
 using EOS.API.Middleware;
 using EOS.API.Models;
 using EOS.API.Security;
 using EOS.API.Services;
+using EOS.API.Telemetry;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.OpenApi;
 using QuestPDF;
 using QuestPDF.Infrastructure;
@@ -18,9 +22,11 @@ QuestPDF.Settings.License = LicenseType.Community;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.ClearProviders();
-builder.Logging.AddSimpleConsole(options =>
+builder.Logging.AddJsonConsole(options =>
 {
-    options.TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff ";
+    options.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffzzz";
+    options.UseUtcTimestamp = false;
+    options.JsonWriterOptions = new System.Text.Json.JsonWriterOptions { Indented = false };
 });
 if (builder.Environment.IsDevelopment())
 {
@@ -42,7 +48,8 @@ builder.Services.AddControllers(options => options.Filters.Add<ApiExceptionFilte
                 ApiErrorCodes.InvalidModel,
                 "请求参数无效",
                 fieldErrors);
-            ApiProblem.AttachTraceId(problem, context.HttpContext);
+            RequestContext.SetErrorCode(context.HttpContext, ApiErrorCodes.InvalidModel);
+            ApiProblem.AttachRequestContext(problem, context.HttpContext);
             return new BadRequestObjectResult(problem);
         };
     });
@@ -78,6 +85,8 @@ builder.Services.AddOpenApi(options =>
 });
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<DbConnectionFactory>();
+builder.Services.AddSingleton<ApiMetrics>();
+builder.Services.AddSingleton<DbTimingCollector>();
 builder.Services.AddScoped<ApiExceptionFilter>();
 builder.Services.Configure<LoginThrottleOptions>(builder.Configuration.GetSection("Security:LoginThrottle"));
 builder.Services.AddSingleton<LoginThrottleService>();
@@ -114,6 +123,11 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddAuthorization(options => options.FallbackPolicy =
     new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser().Build());
+builder.Services.AddHealthChecks()
+    .AddCheck<ErpDatabaseHealthCheck>("erp_database", tags: ["ready"])
+    .AddCheck<MigrationsHealthCheck>("erp_migrations", tags: ["ready", "startup"])
+    .AddCheck<AttachmentStorageHealthCheck>("attachment_storage", tags: ["ready"])
+    .AddCheck<ConfigurationHealthCheck>("configuration", tags: ["ready"]);
 builder.Services.AddScoped<AdminFieldRepository>();
 builder.Services.AddScoped<AuthenticationRepository>();
 builder.Services.AddScoped<UserAdminRepository>();
@@ -124,6 +138,7 @@ builder.Services.AddScoped<BomRepository>();
 builder.Services.AddScoped<DynamicBomRepository>();
 builder.Services.AddScoped<FieldConfigurationRepository>();
 builder.Services.AddScoped<LegacyRightsRepository>();
+builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<NavigationRepository>();
 builder.Services.AddScoped<NavigationGroupsRepository>();
 builder.Services.AddScoped<MenuAdminRepository>();
@@ -131,6 +146,7 @@ builder.Services.AddScoped<ChooserRepository>();
 builder.Services.AddScoped<ControlledSprocInvoker>();
 builder.Services.AddScoped<WorkflowEngine>();
 builder.Services.AddScoped<DomainRuleService>();
+builder.Services.AddScoped<WorkbenchScopeFilter>();
 builder.Services.AddScoped<AttendanceCalcService>();
 builder.Services.AddScoped<DocumentWorkbenchRepository>();
 builder.Services.AddScoped<ReportRepository>();
@@ -173,6 +189,25 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<ImHub>("/api/hubs/im");
 app.MapOpenApi().AllowAnonymous();
+app.MapHealthChecks("/health/live").AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    AllowCachingResponses = false,
+    ResponseWriter = WriteHealthReportAsync,
+}).AllowAnonymous();
+app.MapHealthChecks("/health/startup", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("startup"),
+    AllowCachingResponses = false,
+    ResponseWriter = WriteHealthReportAsync,
+}).AllowAnonymous();
+var metricsEndpoint = app.MapGet("/metrics", (ApiMetrics metrics) =>
+    Results.Text(metrics.RenderPrometheus(), "text/plain; version=0.0.4; charset=utf-8"));
+if (app.Environment.IsDevelopment())
+{
+    metricsEndpoint.AllowAnonymous();
+}
 app.MapFallbackToFile("index.html").RequireAuthorization();
 
 ImDatabaseInitializer.RunIfConfigured(builder.Configuration, app.Logger);
@@ -198,4 +233,13 @@ static DirectoryInfo GetDataProtectionKeysDirectory(IConfiguration configuration
         ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "EOS", "DataProtection-Keys")
         : Environment.ExpandEnvironmentVariables(configured);
     return new DirectoryInfo(path);
+}
+
+static async Task WriteHealthReportAsync(HttpContext context, HealthReport report)
+{
+    context.Response.ContentType = "application/json; charset=utf-8";
+    var entries = report.Entries.ToDictionary(
+        entry => entry.Key,
+        entry => new { status = entry.Value.Status.ToString(), description = entry.Value.Description });
+    await context.Response.WriteAsJsonAsync(new { status = report.Status.ToString(), entries });
 }

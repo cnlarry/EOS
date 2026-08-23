@@ -19,7 +19,7 @@ namespace EOS.API.Controllers;
 [ApiController, Authorize, Route("api/document-workbench/{moduleId:int}/attachments")]
 public sealed class AttachmentController(
     DocumentWorkbenchRepository workbench,
-    LegacyRightsRepository rightsRepository,
+    IPermissionService permissions,
     AttachmentRepository attachments,
     CurrentUserContext userContext,
     IOptions<AttachmentSettings> settings,
@@ -30,7 +30,7 @@ public sealed class AttachmentController(
     {
         var access = await AttachmentAccess(moduleId, token);
         if (access is null) return Forbid();
-        if (!access.Value.Rights.CanFileView) return Forbid();
+        if (!access.Value.Permission.Can(PermissionAction.FileView)) return Forbid();
         var keyValues = ParseKey(key);
         if (keyValues is null) return BadRequest(new { code = "INVALID_RECORD_KEY", message = "key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。" });
         var items = await attachments.ListAsync(moduleId, access.Value.Definition.MasterTable, JsonSerializer.Serialize(keyValues), token);
@@ -48,7 +48,7 @@ public sealed class AttachmentController(
     {
         var access = await AttachmentAccess(moduleId, token);
         if (access is null) return Forbid();
-        if (!access.Value.Rights.CanFileUpda) return Forbid();
+        if (!access.Value.Permission.Can(PermissionAction.FileUpload)) return Forbid();
         var keyValues = ParseKey(key);
         if (keyValues is null) return BadRequest(new { code = "INVALID_RECORD_KEY", message = "key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。" });
 
@@ -104,7 +104,7 @@ public sealed class AttachmentController(
     {
         var access = await AttachmentAccess(moduleId, token);
         if (access is null) return Forbid();
-        if (!access.Value.Rights.CanFileView) return Forbid();
+        if (!access.Value.Permission.Can(PermissionAction.FileView)) return Forbid();
         var meta = await attachments.GetAsync(id, token);
         if (meta is null || meta.ModuleId != moduleId) return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, ApiErrorCodes.NotFound, "附件不存在"));
         var root = ResolveStorageRoot(settings.Value);
@@ -121,7 +121,7 @@ public sealed class AttachmentController(
     {
         var access = await AttachmentAccess(moduleId, token);
         if (access is null) return Forbid();
-        if (!access.Value.Rights.CanFileEdit) return Forbid();
+        if (!access.Value.Permission.Can(PermissionAction.FileEdit)) return Forbid();
         var updated = await attachments.UpdateRemarkAsync(id, request.Remark, token);
         if (updated is null || updated.ModuleId != moduleId) return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, ApiErrorCodes.NotFound, "附件不存在"));
         return Ok(updated);
@@ -132,7 +132,7 @@ public sealed class AttachmentController(
     {
         var access = await AttachmentAccess(moduleId, token);
         if (access is null) return Forbid();
-        if (!access.Value.Rights.CanFileDele) return Forbid();
+        if (!access.Value.Permission.Can(PermissionAction.FileDelete)) return Forbid();
         var deleted = await attachments.DeleteAsync(id, token);
         if (deleted is null || deleted.ModuleId != moduleId) return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, ApiErrorCodes.NotFound, "附件不存在"));
         var root = ResolveStorageRoot(settings.Value);
@@ -155,15 +155,15 @@ public sealed class AttachmentController(
     }
 
     /// <summary>附件访问门：模块浏览权限 + 工作台定义 + 结构化 key 归属校验（记录必须真实存在）。</summary>
-    private async Task<(WorkbenchDefinition Definition, LegacyModuleRights Rights)?> AttachmentAccess(int moduleId, CancellationToken token)
+    private async Task<(WorkbenchDefinition Definition, ModulePermission Permission)?> AttachmentAccess(int moduleId, CancellationToken token)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId is null) return null;
-        var rights = await rightsRepository.GetAsync(userId, moduleId, token);
-        if (!rights.CanBrowse) return null;
-        var definition = await workbench.GetDefinitionAsync(moduleId, userId, rights.ExecuteTag, rights.CanViewCost, rights.CanViewSecrecy, rights.DeniedMasterFields, rights.DeniedDetailFields, token);
+        var permission = await permissions.GetAsync(userId, moduleId, token);
+        if (!permission.CanBrowse) return null;
+        var definition = await workbench.GetDefinitionAsync(moduleId, userId, permission.Rights.ExecuteTag, permission.Rights.CanViewCost, permission.Rights.CanViewSecrecy, permission.Rights.DeniedMasterFields, permission.Rights.DeniedDetailFields, token);
         if (definition is null) return null;
-        return (definition, rights);
+        return (definition, permission);
     }
 
     private static IReadOnlyList<string>? ParseKey(string? key)

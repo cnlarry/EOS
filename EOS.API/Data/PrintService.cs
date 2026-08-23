@@ -1,6 +1,8 @@
 using System.Data;
 using System.Text.RegularExpressions;
+using EOS.API.Errors;
 using EOS.API.Models;
+using EOS.API.Telemetry;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
@@ -9,14 +11,19 @@ namespace EOS.API.Data;
 /// 通用单据打印数据（报表打印模板的第一步）：
 /// 主表 + 明细 + 列定义（FIELDS 可见列，成本/保密/禁止过滤）+ 页头/页脚
 /// （REPORT_HEADER / REPORT_TAIL，按模块默认报表或 DEFAULT）。
-/// 全部标识符来自服务端元数据，键值参数化。
+/// 全部标识符来自服务端 Definition 白名单，键值参数化；主表读取应用用户数据范围
+/// （DATA_FILTER + EXEC_TAG，ADR-005 §7）——范围外单据返回 null（404），不输出越权打印。
 /// </summary>
-public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintService> logger)
+public sealed class PrintService(
+    DbConnectionFactory connections,
+    WorkbenchScopeFilter scopeFilter,
+    DbTimingCollector dbTiming,
+    ILogger<PrintService> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     public async Task<PrintData?> GetPrintDataAsync(
-        int moduleId,
+        WorkbenchDefinition definition,
         IReadOnlyList<string> keyValues,
         string? headerId,
         string? tailId,
@@ -24,35 +31,29 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
         bool canViewSecrecy,
         IReadOnlySet<string> deniedMasterFields,
         IReadOnlySet<string> deniedDetailFields,
+        string? dataFilter,
         CancellationToken token)
     {
+        using var timing = dbTiming.Measure();
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
-        const string moduleSql="""
-            SELECT LTRIM(RTRIM(M_DESC)),LTRIM(RTRIM(MASTER_TABLE)),LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))),
-                   LTRIM(RTRIM(ISNULL(M_URL,'')))
-            FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
-            """;
-        await using var moduleCommand=new SqlCommand(moduleSql,connection);
-        moduleCommand.Parameters.Add("@ModuleId",SqlDbType.Int).Value=moduleId;
-        await using var reader=await moduleCommand.ExecuteReaderAsync(token);
-        if(!await reader.ReadAsync(token))return null;
-        var title=reader.GetString(0);
-        var masterTable=reader.GetString(1);
-        var detailTable=reader.GetString(2);
-        var url=reader.GetString(3);
-        await reader.DisposeAsync();
-        if(!ModuleRouteValidator.IsWorkbenchUrl(url)||!Identifier.IsMatch(masterTable))return null;
+        var moduleId=definition.ModuleId;
+        var title=definition.Title;
+        var masterTable=definition.MasterTable;
+        var detailTable=definition.DetailTable;
 
-        var pkOrder=await GetPrimaryKeyColumnsAsync(connection,masterTable,token);
+        var pkOrder=definition.MasterPkOrder;
         if(pkOrder.Count==0||pkOrder.Count!=keyValues.Count)return null;
         var masterFields=await ReadFieldsAsync(connection,masterTable,canViewCost,canViewSecrecy,deniedMasterFields,token);
-        var master=await ReadRowAsync(connection,masterTable,pkOrder,keyValues,masterFields.Select(field=>field.Key).ToList(),token);
+        if(!scopeFilter.TryBuildRecordScopePredicate(definition,dataFilter,out var scopePredicate,out var scopeParameters))
+            throw new DataFilterUnsupportedException("当前用户的权限数据范围尚不支持，已拒绝打印。");
+        var master=await ReadRowAsync(connection,masterTable,pkOrder,keyValues,masterFields.Select(field=>field.Key).ToList(),
+            scopePredicate,scopeParameters,token);
         if(master is null)return null;
 
         IReadOnlyList<PrintField> detailFields=[];
         IReadOnlyList<IReadOnlyDictionary<string,object?>> details=[];
-        if(detailTable.Length>0&&Identifier.IsMatch(detailTable))
+        if(detailTable is { Length: >0 }&&Identifier.IsMatch(detailTable))
         {
             detailFields=await ReadFieldsAsync(connection,detailTable,canViewCost,canViewSecrecy,deniedDetailFields,token);
             details=await ReadRowsAsync(connection,detailTable,pkOrder,keyValues,detailFields.Select(field=>field.Key).ToList(),token);
@@ -210,12 +211,14 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
 
     private static async Task<Dictionary<string,object?>?> ReadRowAsync(
         SqlConnection connection,string table,IReadOnlyList<string> pkOrder,IReadOnlyList<string> keyValues,
-        IReadOnlyList<string> fields,CancellationToken token)
+        IReadOnlyList<string> fields,string scopePredicate,IReadOnlyList<object> scopeParameters,CancellationToken token)
     {
         var where=string.Join(" AND ",pkOrder.Select((pk,index)=>$"[{pk}]=@k{index}"));
+        var scope=string.IsNullOrWhiteSpace(scopePredicate)?"":" AND ("+scopePredicate+")";
         var columns=string.Join(',',fields.Select(field=>$"[{field}]"));
-        await using var command=new SqlCommand($"SELECT {columns} FROM dbo.[{table}] WITH (NOLOCK) WHERE {where};",connection);
+        await using var command=new SqlCommand($"SELECT {columns} FROM dbo.[{table}] WITH (NOLOCK) WHERE {where}{scope};",connection);
         for(var i=0;i<pkOrder.Count;i++)command.Parameters.AddWithValue($"@k{i}",keyValues[i]);
+        for(var i=0;i<scopeParameters.Count;i++)command.Parameters.AddWithValue($"@df{i}",scopeParameters[i]??DBNull.Value);
         await using var reader=await command.ExecuteReaderAsync(token);
         if(!await reader.ReadAsync(token))return null;
         var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);
@@ -240,25 +243,5 @@ public sealed class PrintService(DbConnectionFactory connections, ILogger<PrintS
             rows.Add(row);
         }
         return rows;
-    }
-
-    private static async Task<IReadOnlyList<string>> GetPrimaryKeyColumnsAsync(SqlConnection connection,string table,CancellationToken token)
-    {
-        const string sql="""
-            SELECT c.name AS COLUMN_NAME
-            FROM sys.indexes i
-            JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            JOIN sys.tables t ON i.object_id = t.object_id
-            JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = N'dbo' AND t.name = @Table AND i.is_primary_key = 1
-            ORDER BY ic.key_ordinal;
-            """;
-        await using var command=new SqlCommand(sql,connection);
-        command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
-        await using var reader=await command.ExecuteReaderAsync(token);
-        var result=new List<string>();
-        while(await reader.ReadAsync(token))result.Add(reader.GetString(0));
-        return result;
     }
 }

@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using EOS.API.Telemetry;
+using EOS.API.Security;
 
 namespace EOS.API.Errors;
 
@@ -15,6 +17,7 @@ public sealed class ApiExceptionFilter(ILogger<ApiExceptionFilter> logger) : IAs
         {
             KeyNotFoundException exception => (StatusCodes.Status404NotFound, ApiErrorCodes.NotFound, exception.Message),
             UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, ApiErrorCodes.Unauthorized, "当前请求尚未登录或会话已过期。"),
+            PermissionDeniedException => (StatusCodes.Status403Forbidden, ApiErrorCodes.Forbidden, "无权执行该操作"),
             ArgumentException exception => (StatusCodes.Status400BadRequest, ApiErrorCodes.InvalidArgument, exception.Message),
             DataFilterUnsupportedException exception => (StatusCodes.Status403Forbidden, "DATA_FILTER_UNSUPPORTED", exception.Message),
             GroupExpressionUnsupportedException exception => (StatusCodes.Status403Forbidden, "GROUP_EXP_UNSUPPORTED", exception.Message),
@@ -31,8 +34,9 @@ public sealed class ApiExceptionFilter(ILogger<ApiExceptionFilter> logger) : IAs
             "请求被拒绝 status={Status} code={Code} message={Message} path={Path} correlation={CorrelationId}",
             status, code, message, context.HttpContext.Request.Path, context.HttpContext.TraceIdentifier);
 
+        RequestContext.SetErrorCode(context.HttpContext, code);
         var problem = ApiProblem.Create(status, code, message);
-        ApiProblem.AttachTraceId(problem, context.HttpContext);
+        ApiProblem.AttachRequestContext(problem, context.HttpContext);
         context.Result = new ObjectResult(problem) { StatusCode = status };
         context.ExceptionHandled = true;
         return Task.CompletedTask;
