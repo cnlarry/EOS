@@ -73,16 +73,13 @@ public sealed record SystemModuleList(int Total, IReadOnlyList<SystemKnowledgeMo
 public sealed class DocumentWorkbenchRepository(
     DbConnectionFactory connections,
     FieldAdminRepository fieldAdmin,
-    ControlledSprocInvoker controlledSprocs,
-    WorkflowEngine workflowEngine,
-    DomainRuleService domainRules,
-    WorkbenchScopeFilter scopeFilter,
-    DbTimingCollector dbTiming,
-    ApiMetrics metrics,
     WorkbenchDirtyMarker dirtyMarker,
+    WorkbenchQueryComposer queryComposer,
+    WorkbenchCommandHandler commandHandler,
+    WorkbenchApprovalService approvalService,
     ILogger<DocumentWorkbenchRepository> logger)
 {
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
+    internal static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
 
     /// <summary>
@@ -534,153 +531,20 @@ public sealed class DocumentWorkbenchRepository(
     }
 
     public async Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail, IReadOnlyDictionary<string,string> keys, int page, int pageSize, CancellationToken token, WorkbenchQuery? query=null, string? keyword=null, string? sortField=null, string? sortDirection=null, int? groupIndex=null, string? groupValue=null, string? dataFilter=null)
-    {
-        var table=detail?definition.DetailTable:definition.MasterTable; var fields=detail?definition.DetailFields:definition.MasterFields;
-        page=Math.Max(1,page); pageSize=Math.Clamp(pageSize,10,100);
-        if (table is null || fields.Count==0) return new([],0,page,pageSize);
-        var selected=fields.Take(30).ToList();
-        // 行标识必须稳定：物理主键列无论是否可见/是否被截断，都强制包含在返回行中。
-        // MasterPkOrder 来自 INFORMATION_SCHEMA 主键约束（服务端白名单），不信任前端提交。
-        foreach(var pk in definition.MasterPkOrder)
-        {
-            if(selected.Any(field=>field.Key.Equals(pk,StringComparison.OrdinalIgnoreCase)))continue;
-            var field=fields.FirstOrDefault(item=>item.Key.Equals(pk,StringComparison.OrdinalIgnoreCase));
-            if(field is null&&Identifier.IsMatch(pk))field=new WorkbenchField(pk,pk,"nvarchar",100,"left",true,false,false);
-            if(field is not null)selected.Add(field);
-        }
-        var predicates=new List<string>();
-        using var timing=dbTiming.Measure();
-        var stopwatch=Stopwatch.StartNew();
-        await using var connection=CreateConnection(); await connection.OpenAsync(token); await using var command=new SqlCommand(); command.Connection=connection;
-        if (detail) foreach(var key in definition.MasterPkOrder) if(keys.TryGetValue(key,out var value) && definition.DetailFields.Any(field=>field.Key.Equals(key,StringComparison.OrdinalIgnoreCase))) { var name=$"@k{predicates.Count}"; predicates.Add($"[{key}]={name}"); command.Parameters.AddWithValue(name,value); }
-        if(detail && predicates.Count==0)
-        {
-            logger.LogDebug("子表查询缺少主表关联键，跳过 detail={Detail} table={Table}", detail, table);
-            return new([],0,page,pageSize);
-        }
-        if (detail)
-        {
-            var detailKeyColumns = definition.MasterPkOrder
-                .Where(pk => definition.DetailFields.Any(field => field.Key.Equals(pk, StringComparison.OrdinalIgnoreCase)))
-                .ToList();
-            scopeFilter.ApplyDetailScope(definition, dataFilter, table, detailKeyColumns, predicates, command);
-        }
-        if (!detail && query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
-        if (!detail && !string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
-        if (!detail) scopeFilter.ApplyScope(definition, dataFilter, groupIndex, groupValue, predicates, command);
-        var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
-        var order=ResolveOrder(definition,fields,selected,detail,sortField,sortDirection);
-        // 排序字段必须并入投影：30 列截断后若排序列（如 SORT_FIELDS 引用的日期列）落在截断外，
-        // 派生表（虚拟字段）投影缺列会导致 ORDER BY 无效列 500（14997/14999/170299 等回归）。
-        EnsureOrderColumnsInProjection(fields, selected, order);
-        var selection=await BuildListSelectionAsync(connection,table,selected,token);
-        command.CommandText=selection.HasVirtual
-            ? $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {selection.OuterColumns} FROM (SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where}) AS [__base]{selection.JoinFragment} ORDER BY {QualifyOrder(order)} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;"
-            : $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK){where}; SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
-        command.Parameters.Add("@Offset",SqlDbType.Int).Value=(page-1)*pageSize;command.Parameters.Add("@PageSize",SqlDbType.Int).Value=pageSize;
-        await using var reader=await command.ExecuteReaderAsync(token); await reader.ReadAsync(token);var total=Convert.ToInt32(reader.GetInt64(0));await reader.NextResultAsync(token); var rows=new List<Dictionary<string,object?>>();
-        while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase); for(var i=0;i<reader.FieldCount;i++) row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i); rows.Add(row);}
-        // P4a：带 CONVERT_FUNCTION 的字段按受控函数转换为展示值（函数白名单 + 参数化）
-        foreach (var field in (detail ? definition.DetailFields : definition.MasterFields).Where(field => !string.IsNullOrWhiteSpace(field.ConvertFunction)))
-            await ConvertFunctionResolver.ApplyAsync(connection, field.Key, field.ConvertFunction!, rows, token);
-        logger.LogDebug("工作台查询完成 detail={Detail} table={Table} page={Page} pageSize={PageSize} total={Total} returned={Returned} elapsedMs={ElapsedMs:F0}",
-            detail,table,page,pageSize,total,rows.Count,stopwatch.Elapsed.TotalMilliseconds);
-        metrics.ObserveWorkbenchQuery(stopwatch.Elapsed.TotalMilliseconds);
-        return new(rows,total,page,pageSize);
-    }
+        => await queryComposer.GetRowsAsync(definition,detail,keys,page,pageSize,token,query,keyword,sortField,sortDirection,groupIndex,groupValue,dataFilter);
 
     public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsAsync(
         WorkbenchDefinition definition,WorkbenchQuery? query,string? keyword,CancellationToken token,
         string? sortField=null,string? sortDirection=null,int? groupIndex=null,string? groupValue=null,
         IReadOnlyList<WorkbenchField>? exportFields=null,string? dataFilter=null)
-    {
-        var table=definition.MasterTable; var fields=definition.MasterFields;
-        if (table is null || fields.Count==0) return [];
-        const int maxExportRows=100000;
-        var selected=exportFields is { Count:>0 }?exportFields.ToList():fields.Take(30).ToList();
-        var predicates=new List<string>();
-        using var timing=dbTiming.Measure();
-        var stopwatch=Stopwatch.StartNew();
-        await using var connection=CreateConnection(); await connection.OpenAsync(token); await using var command=new SqlCommand(); command.Connection=connection;
-        if (query is not null) AddQueryPredicates(query, definition.MasterFields, predicates, command);
-        if (!string.IsNullOrWhiteSpace(keyword)) AddKeywordPredicates(keyword, fields, predicates, command);
-        scopeFilter.ApplyScope(definition, dataFilter, groupIndex, groupValue, predicates, command);
-        var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
-        var order=ResolveOrder(definition,fields,selected,false,sortField,sortDirection);
-        EnsureOrderColumnsInProjection(fields, selected, order);
-        var selection=await BuildListSelectionAsync(connection,table,selected,token);
-        command.CommandText=selection.HasVirtual
-            ? $"SELECT TOP {maxExportRows} {selection.OuterColumns} FROM (SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where}) AS [__base]{selection.JoinFragment} ORDER BY {QualifyOrder(order)};"
-            : $"SELECT TOP {maxExportRows} {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order};";
-        await using var reader=await command.ExecuteReaderAsync(token); var rows=new List<Dictionary<string,object?>>();
-        while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase); for(var i=0;i<reader.FieldCount;i++) row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i); rows.Add(row);}
-        logger.LogDebug("工作台导出完成 table={Table} returned={RowCount} elapsedMs={ElapsedMs:F0}", table,rows.Count,stopwatch.Elapsed.TotalMilliseconds);
-        metrics.ObserveWorkbenchQuery(stopwatch.Elapsed.TotalMilliseconds);
-        return rows;
-    }
-
-    /// <summary>
-    /// 按主键集合导出（导出所选行）：keys 为「主键值数组」列表，顺序与 masterPkOrder 一致。
-    /// 全部条件参数化，字段沿用权限过滤后的定义白名单。
-    /// </summary>
+        => await queryComposer.GetExportRowsAsync(definition,query,keyword,token,sortField,sortDirection,groupIndex,groupValue,exportFields,dataFilter);
     public async Task<IReadOnlyList<Dictionary<string,object?>>> GetExportRowsByKeysAsync(
         WorkbenchDefinition definition,IReadOnlyList<IReadOnlyList<string>> keys,CancellationToken token,
         int? groupIndex=null,string? groupValue=null,IReadOnlyList<WorkbenchField>? exportFields=null,string? dataFilter=null)
-    {
-        var table=definition.MasterTable;var fields=definition.MasterFields;
-        if(table is null||fields.Count==0||keys.Count==0)return [];
-        var pks=definition.MasterPkOrder
-            .Select(key=>fields.FirstOrDefault(field=>field.Key.Equals(key,StringComparison.OrdinalIgnoreCase))?.Key)
-            .Where(key=>key is not null).Cast<string>().ToList();
-        if(pks.Count==0)return [];
-        var selected=exportFields is { Count:>0 }?exportFields.ToList():fields.Take(30).ToList();
-        var filterPredicates=new List<string>();
-        using var timing=dbTiming.Measure();
-        var stopwatch=Stopwatch.StartNew();
-        await using var connection=CreateConnection();await connection.OpenAsync(token);await using var command=new SqlCommand();command.Connection=connection;
-        scopeFilter.ApplyScope(definition, dataFilter, groupIndex, groupValue, filterPredicates, command);
-        var orParts=new List<string>();
-        for(var rowIndex=0;rowIndex<keys.Count;rowIndex++)
-        {
-            var row=keys[rowIndex];
-            if(row.Count!=pks.Count)continue;
-            var andParts=new List<string>();
-            for(var i=0;i<pks.Count;i++)
-            {
-                var name=$"@k{rowIndex}_{i}";
-                andParts.Add($"[{pks[i]}]={name}");
-                command.Parameters.AddWithValue(name,row[i]??"");
-            }
-            orParts.Add("("+string.Join(" AND ",andParts)+")");
-        }
-        if(orParts.Count==0)return [];
-        var filterWhere=filterPredicates.Count>0?" AND "+string.Join(" AND ",filterPredicates):"";
-        var selection=await BuildListSelectionAsync(connection,table,selected,token);
-        command.CommandText=selection.HasVirtual
-            ? $"SELECT {selection.OuterColumns} FROM (SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK) WHERE {string.Join(" OR ",orParts)}{filterWhere}) AS [__base]{selection.JoinFragment};"
-            : $"SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK) WHERE {string.Join(" OR ",orParts)}{filterWhere};";
-        await using var reader=await command.ExecuteReaderAsync(token);
-        var rows=new List<Dictionary<string,object?>>();
-        while(await reader.ReadAsync(token)){var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);for(var i=0;i<reader.FieldCount;i++)row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i);rows.Add(row);}
-        metrics.ObserveWorkbenchQuery(stopwatch.Elapsed.TotalMilliseconds);
-        return rows;
-    }
-
-    /// <summary>
-    /// 导出列解析：请求列与权限过滤后的定义白名单求交（保持请求顺序），
-    /// 空请求/无匹配时回退前 30 列；上限 30 列（与服务端投影安全上限一致）。
-    /// </summary>
+        => await queryComposer.GetExportRowsByKeysAsync(definition,keys,token,groupIndex,groupValue,exportFields,dataFilter);
     public static IReadOnlyList<WorkbenchField> ResolveExportFields(
         IReadOnlyList<WorkbenchField> fields,IReadOnlyList<string>? columnKeys)
-    {
-        if(columnKeys is { Count:>0 })
-        {
-            var requested=new HashSet<string>(columnKeys,StringComparer.OrdinalIgnoreCase);
-            var matched=fields.Where(field=>requested.Contains(field.Key)).Take(30).ToList();
-            if(matched.Count>0)return matched;
-        }
-        return fields.Take(30).ToList();
-    }
+        => WorkbenchQueryComposer.ResolveExportFields(fields,columnKeys);
 
     /// <summary>
     /// 生成统一表单定义（按当前用户权限过滤后的录入字段视图）。
@@ -962,578 +826,29 @@ public sealed class DocumentWorkbenchRepository(
     #region 记录读取与保存（M2 核心写操作）
 
     public async Task<RecordReadResult> GetRecordAsync(
-        WorkbenchDefinition definition,
-        FormDefinition form,
-        IReadOnlyList<string> keyValues,
-        string? dataFilter,
-        CancellationToken token)
-    {
-        using var timing=dbTiming.Measure();
-        await using var connection=CreateConnection(); await connection.OpenAsync(token);
-        var pkColumns=await GetPrimaryKeyColumnsAsync(connection,null,definition.MasterTable,token);
-        if(pkColumns.Count!=keyValues.Count)return new(RecordAccessStatus.KeyMismatch,null);
-        // 虚拟字段不参与物理 SELECT（VIRTUAL_EXP 为跨表表达式，ReadRowAsync 无法直接取值）
-        var masterFields=form.MasterFields.Where(field=>!field.DisplayOnly&&!field.IsVirtual).Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        // 批核/结案状态列：表单不可编辑（FormFieldSelector.HiddenStatusTags），
-        // 但记录读取契约必须返回（表单编辑态展示与 E2E 批核断言依赖）。
-        foreach (var statusColumn in new[] { "CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE", "FINISHED_TAG" })
-        {
-            if (!masterFields.Contains(statusColumn, StringComparer.OrdinalIgnoreCase)
-                && await ColumnExistsAsync(connection, null, definition.MasterTable, statusColumn, token))
-                masterFields.Add(statusColumn);
-        }
-        var current=await ReadRowAsync(connection,null,definition.MasterTable,pkColumns,keyValues,masterFields,token);
-        if(current is null)return new(RecordAccessStatus.NotFound,null);
-        if(!scopeFilter.TryBuildRecordScopePredicate(definition,dataFilter,out var scopePredicate,out var scopeParameters))
-            return new(RecordAccessStatus.FilterUnsupported,null);
-        if(!string.IsNullOrWhiteSpace(scopePredicate))
-        {
-            if(!await RecordInScopeAsync(connection,null,definition.MasterTable,pkColumns,keyValues,scopePredicate,scopeParameters,token))
-                return new(RecordAccessStatus.OutOfScope,null);
-        }
-        await ResolveChooserDisplaysAsync(connection,form.MasterFields,current,token);
-        var detailRows=new List<IReadOnlyDictionary<string,object?>>();
-        if(definition.DetailTable is not null&&form.DetailFields.Count>0)
-        {
-            var detailFields=form.DetailFields.Where(field=>!field.DisplayOnly&&!field.IsVirtual).Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            detailRows.AddRange(await ReadRowsAsync(connection,null,definition.DetailTable,pkColumns,keyValues,detailFields,token));
-        }
-        return new(RecordAccessStatus.Ok,new RecordBundle(current,detailRows));
-    }
+        WorkbenchDefinition definition,FormDefinition form,IReadOnlyList<string> keyValues,string? dataFilter,CancellationToken token)
+        => await commandHandler.GetRecordAsync(definition,form,keyValues,dataFilter,token);
 
     public async Task<RecordSaveResult> CreateRecordAsync(
-        WorkbenchDefinition definition,
-        FormDefinition form,
-        SaveRecordRequest request,
-        string employeeName,
-        string userId,
-        string? dataFilter,
-        CancellationToken token)
-    {
-        await using var connection=CreateConnection(); await connection.OpenAsync(token);
-        await using var transaction=(SqlTransaction)await connection.BeginTransactionAsync(token);
-        var pkColumns=await GetPrimaryKeyColumnsAsync(connection,transaction,definition.MasterTable,token);
-        if(pkColumns.Count==0)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"NO_PRIMARY_KEY","模块主表缺少主键定义。");
-        var masterIdentity=await GetIdentityColumnsAsync(connection,transaction,definition.MasterTable,token);
-
-        var validation=RecordPayloadValidator.ValidateSubmitted(form.MasterFields,request.Values);
-        if(validation.Errors.Count>0)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","数据校验未通过。",validation.Errors);
-        var values=new Dictionary<string,object?>(validation.Converted,StringComparer.OrdinalIgnoreCase);
-        RecordPayloadValidator.ApplyDefaults(form.MasterFields,values);
-        FormDefaultRules.Apply(definition.ModuleId,form.MasterFields,values);
-
-        // ADR-005 §7 配套：主表存在 OWNER/OWNER_G 时回填制单人/主组，保证 EXEC_TAG=B/D
-        // 范围下新建记录立即可见（对齐旧系统 OWNER=制单人语义）；用户已提交的值不被覆盖。
-        if(await ColumnExistsAsync(connection,transaction,definition.MasterTable,"OWNER",token))
-            values.TryAdd("OWNER",userId);
-        if(await ColumnExistsAsync(connection,transaction,definition.MasterTable,"OWNER_G",token))
-        {
-            var primaryGroup=await GetPrimaryGroupAsync(connection,transaction,userId,token);
-            if(primaryGroup is not null)values.TryAdd("OWNER_G",primaryGroup);
-        }
-
-        // 领域规则：自动单号 + 默认单别（等价旧 GetNewBillNo / GetDefaultBillInfo）
-        var businessRule=definition.BusinessRule;
-        if(businessRule?.SprocPendingPorting==true)
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"SP_NOT_PORTED",
-                "该模块的存盘后处理逻辑尚未移植，禁止保存。");
-        if(businessRule is { AutoBillNo: true, BillNoField: not null, BillTypeField: not null })
-        {
-            var existingNo=values.GetValueOrDefault(businessRule.BillNoField);
-            if(existingNo is null||string.IsNullOrWhiteSpace(ValueToString(existingNo)))
-            {
-                var newNo=await BillNoGenerator.GenerateAsync(connection,transaction,definition.ModuleId,
-                    definition.MasterTable,businessRule.BillNoField,businessRule.BillTypeField,token);
-                if(newNo is not null)values[businessRule.BillNoField]=newNo;
-            }
-            var existingType=values.GetValueOrDefault(businessRule.BillTypeField);
-            if(existingType is null||string.IsNullOrWhiteSpace(ValueToString(existingType)))
-            {
-                var billCode=await BillNoGenerator.GetDefaultBillCodeAsync(connection,transaction,definition.ModuleId,token);
-                if(billCode is not null)values[businessRule.BillTypeField]=billCode;
-            }
-        }
-
-        var finalErrors=RecordPayloadValidator.CheckRequiredAndRegex(form.MasterFields,values);
-        if(finalErrors.Count>0)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","数据校验未通过。",finalErrors);
-        var fillErrors=await FillServerColumnsAsync(connection,transaction,definition.MasterTable,form.MasterFields,values,employeeName,true,token);
-        if(fillErrors.Count>0)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"SERVER_FILL_MISSING","存在服务端必填字段未登记填充规则。",fillErrors);
-
-        foreach(var pk in pkColumns)
-        {
-            if(masterIdentity.Contains(pk))continue;
-            if(!values.ContainsKey(pk)||values[pk] is null)
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"REQUIRED_FIELD_MISSING",$"主键字段 {pk} 不能为空。",[new FieldError(pk,"主键字段不能为空。","REQUIRED_FIELD_MISSING")]);
-        }
-
-        var keyValues=pkColumns.Select(column=>ValueToString(values.GetValueOrDefault(column))).ToList();
-        if(!string.IsNullOrWhiteSpace(dataFilter))
-        {
-            if(!DataFilterParser.TryParse(dataFilter,definition.MasterTable,ScopeFields(form.MasterFields,pkColumns),out var predicate,out var parameters))
-                return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported,"DATA_FILTER_UNSUPPORTED","当前数据过滤条件尚不支持，已拒绝执行。");
-            if(!await RecordInScopeAsync(connection,transaction,definition.MasterTable,pkColumns,keyValues,predicate,parameters,token))
-                return RecordSaveResult.Failed(RecordAccessStatus.OutOfScope,"RECORD_OUT_OF_SCOPE","目标记录不在当前用户数据范围内。");
-        }
-
-        var insertFields=form.MasterFields.Where(field=>!field.IsVirtual&&values.ContainsKey(field.Key)&&!masterIdentity.Contains(field.Key)).ToList();
-        if(insertFields.Count==0)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"NO_WRITABLE_FIELDS","没有可写入的字段。");
-        var identityValue=await InsertRowAsync(connection,transaction,definition.MasterTable,insertFields,values,masterIdentity,token);
-        if(identityValue is not null&&masterIdentity.Count>0)
-        {
-            values[masterIdentity[0]]=identityValue;
-            keyValues=pkColumns.Select(column=>ValueToString(values.GetValueOrDefault(column))).ToList();
-        }
-
-        var detailErrors=await SaveDetailsAsync(connection,transaction,definition,form,pkColumns,keyValues,values,request.Details??[],employeeName,true,token);
-        if(detailErrors is not null)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","明细数据校验未通过。",detailErrors);
-        await SavePrepayOffsetsAsync(connection,transaction,businessRule,pkColumns,keyValues,request.PrepayOffsets,token);
-        if(businessRule?.DomainRule is { } domainRule)
-        {
-            var domainResult=await domainRules.RunAfterSaveAsync(domainRule,connection,transaction,definition,pkColumns,keyValues,token);
-            if(!domainResult.Success)
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"BUSINESS_VALIDATION_FAILED",
-                    domainResult.Message??"保存后业务校验未通过。");
-        }
-        else if(businessRule?.AfterSaveSproc is { } afterSaveSproc)
-        {
-            var sprocResult=await controlledSprocs.RunAfterSaveAsync(definition.ModuleId,afterSaveSproc,pkColumns,keyValues,connection,transaction,token);
-            if(!sprocResult.Success)
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"BUSINESS_VALIDATION_FAILED",
-                    sprocResult.Message??"保存后业务校验未通过。");
-        }
-        await RecalculateMasterAmountsAsync(connection,transaction,definition,token);
-        await WriteAuditAsync(connection,transaction,definition.ModuleId,string.Join(',',keyValues),"INSERT","新增记录",userId,token);
-        await transaction.CommitAsync(token);
-        logger.LogInformation("统一表单新增 module={ModuleId} master={Master} key={Key}",definition.ModuleId,definition.MasterTable,string.Join(',',keyValues));
-        if(definition.AutoApprove)
-        {
-            // 自动批核模块：新增成功后立即进入批核状态（CONFIRM_TAG=1/SYSTEM + P_WF_* 副作用 + 审计）。
-            // 在保存事务提交后执行——批核业务 SP 自带事务（自动提交），不能嵌套在保存事务内，
-            // 与现有批核端点（WorkflowAsync）同结构；失败时回滚确认状态、记录保持已建未确认。
-            var autoResult=await AutoApproveAsync(connection,definition,keyValues,userId,token);
-            if(autoResult.Status!=RecordAccessStatus.Ok)
-                logger.LogWarning("自动批核失败 module={ModuleId} key={Key} code={Code} message={Message}",
-                    definition.ModuleId,string.Join(',',keyValues),autoResult.ErrorCode,autoResult.ErrorMessage);
-        }
-        return RecordSaveResult.Success(keyValues);
-    }
-
-    /// <summary>
-    /// 自动批核（MODULES.AUTO_APPROVE=1）：新增后数据自动为批核状态，无需再点批核。
-    /// 等价批核端点无流程路径：CONFIRM_TAG=1/CONFIRM_PERSON='SYSTEM'/CONFIRM_DATE=GETDATE() +
-    /// P_WF_&lt;DOC&gt; 业务副作用（WorkflowSproc 存在时）+ APPROVE 审计；守卫防重复。
-    /// 主表无 CONFIRM_TAG 的模块跳过（无确认语义）。
-    /// </summary>
-    private async Task<RecordSaveResult> AutoApproveAsync(
-        SqlConnection connection,
-        WorkbenchDefinition definition,
-        IReadOnlyList<string> keyValues,
-        string userId,
-        CancellationToken token)
-    {
-        if(!await ColumnExistsAsync(connection,null,definition.MasterTable,"CONFIRM_TAG",token))
-            return RecordSaveResult.Success(keyValues);
-        var keyCondition=ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder,keyValues);
-        var originalState=await ReadConfirmStateAsync(connection,definition.MasterTable,keyCondition,token);
-        if(originalState is null)
-            return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
-        if(originalState.Value.Tag==true)
-            return RecordSaveResult.Success(keyValues);
-        var confirmSql=$"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};";
-        await using(var confirmCommand=new SqlCommand(confirmSql,connection))
-        {
-            confirmCommand.Parameters.Add("@ConfirmPerson",SqlDbType.NVarChar,50).Value="SYSTEM";
-            if(await confirmCommand.ExecuteNonQueryAsync(token)==0)
-                return RecordSaveResult.Success(keyValues);
-        }
-        if(definition.BusinessRule?.WorkflowSproc is { } sproc)
-        {
-            var result=await controlledSprocs.RunWorkflowAsync(definition.ModuleId,sproc,definition.MasterPkOrder,keyValues,true,token);
-            if(!result.Success)
-            {
-                await RestoreConfirmStateAsync(connection,definition.MasterTable,keyCondition,originalState.Value,token);
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"WORKFLOW_FAILED",
-                    result.Message??"自动批核失败。");
-            }
-        }
-        await WriteAuditAsync(connection,null,definition.ModuleId,string.Join(',',keyValues),"APPROVE","自动批核",userId,token);
-        logger.LogInformation("自动批核 module={ModuleId} key={Key} executor={User}",definition.ModuleId,string.Join(',',keyValues),userId);
-        return RecordSaveResult.Success(keyValues);
-    }
+        WorkbenchDefinition definition,FormDefinition form,SaveRecordRequest request,string employeeName,string userId,string? dataFilter,CancellationToken token)
+        => await commandHandler.CreateRecordAsync(definition,form,request,employeeName,userId,dataFilter,token);
 
     public async Task<RecordSaveResult> UpdateRecordAsync(
-        WorkbenchDefinition definition,
-        FormDefinition form,
-        IReadOnlyList<string> keyValues,
-        SaveRecordRequest request,
-        string employeeName,
-        string userId,
-        string? dataFilter,
-        CancellationToken token)
-    {
-        await using var connection=CreateConnection(); await connection.OpenAsync(token);
-        await using var transaction=(SqlTransaction)await connection.BeginTransactionAsync(token);
-        if(definition.BusinessRule?.SprocPendingPorting==true)
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"SP_NOT_PORTED",
-                "该模块的存盘后处理逻辑尚未移植，禁止保存。");
-        var pkColumns=await GetPrimaryKeyColumnsAsync(connection,transaction,definition.MasterTable,token);
-        if(pkColumns.Count!=keyValues.Count)return RecordSaveResult.Failed(RecordAccessStatus.KeyMismatch,"RECORD_KEY_MISMATCH","主键数量与模块主键不匹配。");
-        // 虚拟字段不参与物理 SELECT（VIRTUAL_EXP 为跨表表达式，ReadRowAsync 无法直接取值）
-        var masterFields=form.MasterFields.Where(field=>!field.DisplayOnly&&!field.IsVirtual).Select(field=>field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var current=await ReadRowAsync(connection,transaction,definition.MasterTable,pkColumns,keyValues,masterFields,token);
-        if(current is null)return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
-        if(!string.IsNullOrWhiteSpace(dataFilter))
-        {
-            if(!DataFilterParser.TryParse(dataFilter,definition.MasterTable,ScopeFields(form.MasterFields,pkColumns),out var predicate,out var parameters))
-                return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported,"DATA_FILTER_UNSUPPORTED","当前数据过滤条件尚不支持，已拒绝执行。");
-            if(!await RecordInScopeAsync(connection,transaction,definition.MasterTable,pkColumns,keyValues,predicate,parameters,token))
-                return RecordSaveResult.Failed(RecordAccessStatus.OutOfScope,"RECORD_OUT_OF_SCOPE","目标记录不在当前用户数据范围内。");
-        }
-
-        if(request.Original is not null)
-        {
-            var writable=form.MasterFields.Where(field=>!field.IsReadonly&&!field.IsVirtual&&!field.ServerFilled).ToList();
-            string? conflictingField=null;
-            foreach(var (key,raw) in request.Original)
-            {
-                var field=writable.FirstOrDefault(item=>item.Key.Equals(key,StringComparison.OrdinalIgnoreCase));
-                if(field is null||!RecordPayloadValidator.TryConvert(field.DataType,raw,out var expected))continue;
-                if(!ValuesEqual(expected,current.GetValueOrDefault(field.Key)))
-                {
-                    logger.LogDebug("并发冲突诊断 field={Field} expected={Expected} current={Current}", field.Key, expected, current.GetValueOrDefault(field.Key));
-                    conflictingField??=field.Key;
-                }
-            }
-            if(conflictingField is not null)
-                return RecordSaveResult.Failed(RecordAccessStatus.ConcurrentModified,"CONCURRENT_MODIFIED","字段内容已被他人修改，请刷新后重试！",[new FieldError(conflictingField,"字段内容已被他人修改，请刷新后重试！","CONCURRENT_MODIFIED")]);
-        }
-
-        var validation=RecordPayloadValidator.ValidateSubmitted(form.MasterFields,request.Values);
-        if(validation.Errors.Count>0)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","数据校验未通过。",validation.Errors);
-        var merged=new Dictionary<string,object?>(current,StringComparer.OrdinalIgnoreCase);
-        foreach(var (key,value) in validation.Converted)merged[key]=value;
-        var finalErrors=RecordPayloadValidator.CheckRequiredAndRegex(form.MasterFields,merged);
-        if(finalErrors.Count>0)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","数据校验未通过。",finalErrors);
-
-        var sets=new List<(string Column,object? Value)>();
-        foreach(var (key,value) in validation.Converted)
-        {
-            if(pkColumns.Contains(key,StringComparer.OrdinalIgnoreCase))continue;
-            sets.Add((key,value));
-        }
-        if(await ColumnExistsAsync(connection,transaction,definition.MasterTable,"LAST_UPDATE_BY",token))sets.Add(("LAST_UPDATE_BY",employeeName));
-        if(await ColumnExistsAsync(connection,transaction,definition.MasterTable,"LAST_UPDATE_DATE",token))sets.Add(("LAST_UPDATE_DATE",DateTime.Now));
-        if(sets.Count>0)
-        {
-            var setSql=string.Join(',',sets.Select((item,index)=>$"[{item.Column}]=@s{index}"));
-            var where=string.Join(" AND ",pkColumns.Select((column,index)=>$"[{column}]=@k{index}"));
-            await using var command=new SqlCommand($"UPDATE dbo.[{definition.MasterTable}] SET {setSql} WHERE {where};",connection,transaction);
-            for(var i=0;i<sets.Count;i++)command.Parameters.AddWithValue($"@s{i}",NormalizeDbValue(sets[i].Value));
-            AddKeyParameters(command,pkColumns,keyValues);
-            var affected=await command.ExecuteNonQueryAsync(token);
-            if(affected==0)return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
-        }
-
-        var detailErrors=await SaveDetailsAsync(connection,transaction,definition,form,pkColumns,keyValues,merged,request.Details??[],employeeName,false,token);
-        if(detailErrors is not null)return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"VALIDATION_FAILED","明细数据校验未通过。",detailErrors);
-        var businessRule=definition.BusinessRule;
-        await SavePrepayOffsetsAsync(connection,transaction,businessRule,pkColumns,keyValues,request.PrepayOffsets,token);
-        if(businessRule?.DomainRule is { } domainRule)
-        {
-            var domainResult=await domainRules.RunAfterSaveAsync(domainRule,connection,transaction,definition,pkColumns,keyValues,token);
-            if(!domainResult.Success)
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"BUSINESS_VALIDATION_FAILED",
-                    domainResult.Message??"保存后业务校验未通过。");
-        }
-        else if(businessRule?.AfterSaveSproc is { } afterSaveSproc)
-        {
-            var sprocResult=await controlledSprocs.RunAfterSaveAsync(definition.ModuleId,afterSaveSproc,pkColumns,keyValues,connection,transaction,token);
-            if(!sprocResult.Success)
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"BUSINESS_VALIDATION_FAILED",
-                    sprocResult.Message??"保存后业务校验未通过。");
-        }
-        await RecalculateMasterAmountsAsync(connection,transaction,definition,token);
-        var changes = new List<string>();
-        foreach (var (key,value) in validation.Converted)
-        {
-            var field=form.MasterFields.FirstOrDefault(item=>item.Key.Equals(key,StringComparison.OrdinalIgnoreCase));
-            var oldValue=current.GetValueOrDefault(key);
-            if(field is not null&&!ValuesEqual(oldValue,value))
-                changes.Add($"{field.Label}：{ValueToString(oldValue)}-->{ValueToString(value)}<BR>");
-        }
-        await WriteAuditAsync(connection,transaction,definition.ModuleId,string.Join(',',keyValues),"UPDATE",
-            changes.Count>0?string.Join("",changes):"修改记录",userId,token);
-        await transaction.CommitAsync(token);
-        logger.LogInformation("统一表单修改 module={ModuleId} master={Master} key={Key}",definition.ModuleId,definition.MasterTable,string.Join(',',keyValues));
-        return RecordSaveResult.Success(keyValues);
-    }
+        WorkbenchDefinition definition,FormDefinition form,IReadOnlyList<string> keyValues,SaveRecordRequest request,string employeeName,string userId,string? dataFilter,CancellationToken token)
+        => await commandHandler.UpdateRecordAsync(definition,form,keyValues,request,employeeName,userId,dataFilter,token);
 
     public async Task<RecordSaveResult> DeleteRecordAsync(
-        WorkbenchDefinition definition,
-        FormDefinition form,
-        IReadOnlyList<string> keyValues,
-        string userId,
-        string? dataFilter,
-        CancellationToken token)
-    {
-        await using var connection=CreateConnection(); await connection.OpenAsync(token);
-        await using var transaction=(SqlTransaction)await connection.BeginTransactionAsync(token);
-        var pkColumns=await GetPrimaryKeyColumnsAsync(connection,transaction,definition.MasterTable,token);
-        if(pkColumns.Count!=keyValues.Count)return RecordSaveResult.Failed(RecordAccessStatus.KeyMismatch,"RECORD_KEY_MISMATCH","主键数量与模块主键不匹配。");
-        if(!await RowExistsAsync(connection,transaction,definition.MasterTable,pkColumns,keyValues,token))
-            return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
-        if(!string.IsNullOrWhiteSpace(dataFilter))
-        {
-            if(!DataFilterParser.TryParse(dataFilter,definition.MasterTable,ScopeFields(form.MasterFields,pkColumns),out var predicate,out var parameters))
-                return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported,"DATA_FILTER_UNSUPPORTED","当前数据过滤条件尚不支持，已拒绝执行。");
-            if(!await RecordInScopeAsync(connection,transaction,definition.MasterTable,pkColumns,keyValues,predicate,parameters,token))
-                return RecordSaveResult.Failed(RecordAccessStatus.OutOfScope,"RECORD_OUT_OF_SCOPE","目标记录不在当前用户数据范围内。");
-        }
-        if(definition.DetailTable is not null)
-            await DeleteDetailRowsAsync(connection,transaction,definition.DetailTable,pkColumns,keyValues,token);
-        var where=string.Join(" AND ",pkColumns.Select((column,index)=>$"[{column}]=@k{index}"));
-        await using var command=new SqlCommand($"DELETE FROM dbo.[{definition.MasterTable}] WHERE {where};",connection,transaction);
-        AddKeyParameters(command,pkColumns,keyValues);
-        var affected=await command.ExecuteNonQueryAsync(token);
-        if(affected==0)return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
-        await WriteAuditAsync(connection,transaction,definition.ModuleId,string.Join(',',keyValues),"DELETE","删除记录",userId,token);
-        await transaction.CommitAsync(token);
-        logger.LogInformation("统一表单删除 module={ModuleId} master={Master} key={Key}",definition.ModuleId,definition.MasterTable,string.Join(',',keyValues));
-        return RecordSaveResult.Success(keyValues);
-    }
-
-    /// <summary>
-    /// 单据批核/解批（旧 P_WF_&lt;DOC&gt; 的受控调用）。
-    /// 仅对 ModuleBusinessMap 登记的模块开放；成功返回主键，失败返回业务消息。
-    /// </summary>
+        WorkbenchDefinition definition,FormDefinition form,IReadOnlyList<string> keyValues,string userId,string? dataFilter,CancellationToken token,string? idempotencyKey=null)
+        => await commandHandler.DeleteRecordAsync(definition,form,keyValues,userId,dataFilter,idempotencyKey,token);
     public async Task<RecordSaveResult> WorkflowAsync(
-        WorkbenchDefinition definition,
-        IReadOnlyList<string> keyValues,
-        bool approve,
-        string employeeName,
-        string userId,
-        CancellationToken token)
-    {
-        var rule=definition.BusinessRule;
-        if(rule?.WorkflowSproc is not { } sproc)
-            return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"WORKFLOW_NOT_SUPPORTED","该模块不支持批核操作。");
-        await using var connection=CreateConnection();
-        await connection.OpenAsync(token);
-        var keyCondition=ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder,keyValues);
-        // 自动批核模块（MODULES.AUTO_APPROVE=1）：新增即已确认（SYSTEM），显式批核幂等返回成功，
-        // 且不进入流程送审（用户语义：自动批核模块不走新增、审核模式）。
-        if(approve && definition.AutoApprove)
-        {
-            var state=await ReadConfirmStateAsync(connection,definition.MasterTable,keyCondition,token);
-            if(state is null)
-                return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
-            if(state.Value.Tag==true)
-                return RecordSaveResult.Success(keyValues);
-            // 未确认（理论不发生）时继续走直接确认路径。
-        }
-        // 有流程定义的模块：批核即"送审"（启动审批链），单据保持未确认；
-        // 无流程模块保持直接批核（对齐旧系统 P_WF_APPROVE_NOFLOW 语义）。
-        else if(approve && await WorkflowEngine.HasFlowAsync(connection,definition.ModuleId,token))
-            return await workflowEngine.StartFlowAsync(definition,keyValues,employeeName,userId,token);
-        // 对齐旧系统 P_WF_APPROVE_NOFLOW：先更新主表确认状态（带守卫），
-        // 再执行 P_WF_<DOC> 业务存储过程。业务 SP 自动提交运行——
-        // 部分 SP（如 P_WF_SAMPLE_PRO→P_WF_RUN 流程链）内部自带 BEGIN TRAN/COMMIT，
-        // 外层再包事务会导致"事务计数不匹配"（EXECUTE 后 BEGIN/COMMIT 数目失衡）。
-        // 守卫语义：批核仅允许 CONFIRM_TAG=0（未批核），解批仅允许 CONFIRM_TAG=1；
-        // 业务 SP 失败时回滚确认状态（SP 自身副作用无法回滚，与旧系统嵌套事务一致）。
-        var originalState=await ReadConfirmStateAsync(connection,definition.MasterTable,keyCondition,token);
-        if(originalState is null)
-            return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"RECORD_NOT_FOUND","记录不存在。");
-        // 解批前置校验（旧 P_WF_GET_NOBACK_STATE 的受控 C# 等价）：
-        // MODULES.NOT_BACK_FIELDS(_M) 配置字段存在"已发生业务"值（CAST(字段 AS varchar(100))>'0'）时禁止解批。
-        if(!approve && originalState.Value.Tag==true)
-        {
-            var noBack=await CheckNotBackFieldsAsync(connection,definition,keyValues,token);
-            if(noBack is not null)
-                return noBack;
-        }
-        var confirmSql=approve
-            ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};"
-            : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyCondition};";
-        await using (var confirmCommand=new SqlCommand(confirmSql,connection))
-        {
-            confirmCommand.Parameters.Add("@ConfirmPerson",SqlDbType.NVarChar,50).Value=employeeName.Trim();
-            var affected=await confirmCommand.ExecuteNonQueryAsync(token);
-            if(affected==0)
-            {
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"WORKFLOW_STATE_CONFLICT",
-                    approve?"记录不存在或已批核，无法重复批核。":"记录不存在或未批核，无法解批。");
-            }
-        }
-        var result=await controlledSprocs.RunWorkflowAsync(definition.ModuleId,sproc,definition.MasterPkOrder,keyValues,approve,token);
-        if(!result.Success)
-        {
-            await RestoreConfirmStateAsync(connection,definition.MasterTable,keyCondition,originalState.Value,token);
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"WORKFLOW_FAILED",
-                result.Message??(approve?"批核失败。":"解批失败。"));
-        }
-        logger.LogInformation("统一表单{Action} module={ModuleId} key={Key}",approve?"批核":"解批",definition.ModuleId,string.Join(',',keyValues));
-        await WriteAuditAsync(connection,null,definition.ModuleId,string.Join(',',keyValues),
-            approve?"APPROVE":"DEAPPROVE",approve?"批核":"解批",userId,token);
-        return RecordSaveResult.Success(keyValues);
-    }
-
-    /// <summary>
-    /// 结案/取消结案（旧 Comm/DoFinishOne.aspx 的受控 C# 等价，主表单笔结案）。
-    /// 语义：更新主表 FINISHED_TAG/FINISHED_PERSON/FINISHED_DATE；
-    /// 结案仅允许 FINISHED_TAG=0，取消结案仅允许 FINISHED_TAG=1（守卫防重复/冲突）。
-    /// 安全边界：表名来自工作台定义（已校验）；列存在性用 sys.columns 校验
-    /// （FINISHED_TAG/FINISHED_PERSON/FINISHED_DATE），缺列模块返回不支持；
-    /// 主键条件沿用 ControlledSprocInvoker.BuildKeyCondition（转义常量），不拼接客户端输入。
-    /// </summary>
+        WorkbenchDefinition definition,IReadOnlyList<string> keyValues,bool approve,string employeeName,string userId,CancellationToken token,string? idempotencyKey=null)
+        => await approvalService.WorkflowAsync(definition,keyValues,approve,employeeName,userId,idempotencyKey,token);
     public async Task<RecordSaveResult> FinishAsync(
-        WorkbenchDefinition definition,
-        IReadOnlyList<string> keyValues,
-        bool finish,
-        string employeeName,
-        string userId,
-        CancellationToken token)
-    {
-        await using var connection=CreateConnection();
-        await connection.OpenAsync(token);
-        var keyCondition=ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder,keyValues);
-        var hasTag=await ColumnExistsAsync(connection,null,definition.MasterTable,"FINISHED_TAG",token);
-        if(!hasTag)
-            return RecordSaveResult.Failed(RecordAccessStatus.NotFound,"ENDCASE_NOT_SUPPORTED","该模块不支持结案操作。");
-        var hasPerson=await ColumnExistsAsync(connection,null,definition.MasterTable,"FINISHED_PERSON",token);
-        var hasDate=await ColumnExistsAsync(connection,null,definition.MasterTable,"FINISHED_DATE",token);
-        var sql=finish
-            ? $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=1{(hasPerson?",FINISHED_PERSON=@Person":string.Empty)}{(hasDate?",FINISHED_DATE=GETDATE()":string.Empty)} WHERE ISNULL(FINISHED_TAG,0)=0 AND {keyCondition};"
-            : $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=0{(hasPerson?",FINISHED_PERSON=@Person":string.Empty)}{(hasDate?",FINISHED_DATE=GETDATE()":string.Empty)} WHERE FINISHED_TAG=1 AND {keyCondition};";
-        await using var command=new SqlCommand(sql,connection);
-        if(hasPerson)command.Parameters.Add("@Person",SqlDbType.NVarChar,50).Value=employeeName.Trim();
-        var affected=await command.ExecuteNonQueryAsync(token);
-        if(affected==0)
-        {
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,"ENDCASE_STATE_CONFLICT",
-                finish?"记录不存在或已结案，无法重复结案。":"记录不存在或未结案，无法取消结案。");
-        }
-        logger.LogInformation("统一表单{Action} module={ModuleId} key={Key}",finish?"结案":"取消结案",definition.ModuleId,string.Join(',',keyValues));
-        await WriteAuditAsync(connection,null,definition.ModuleId,string.Join(',',keyValues),
-            finish?"ENDCASE":"UNENDCASE",finish?"结案":"取消结案",userId,token);
-        return RecordSaveResult.Success(keyValues);
-    }
+        WorkbenchDefinition definition,IReadOnlyList<string> keyValues,bool finish,string employeeName,string userId,CancellationToken token,string? idempotencyKey=null)
+        => await approvalService.FinishAsync(definition,keyValues,finish,employeeName,userId,idempotencyKey,token);
 
-    /// <summary>
-    /// 解批前置校验（旧 P_WF_GET_NOBACK_STATE 的受控 C# 等价，仅解批路径）。
-    /// MODULES.NOT_BACK_FIELDS(_M) 配置字段存在"已发生业务"值（CAST(字段 AS varchar(100))>'0'）时禁止解批。
-    /// 安全边界：表名来自工作台定义（已校验）；字段名来自服务端 MODULES 元数据并经
-    /// 标识符正则 + INFORMATION_SCHEMA 物理列存在性双重白名单校验；主键条件沿用
-    /// ControlledSprocInvoker.BuildKeyCondition（转义常量，与批核/解批 SP 调用一致）；
-    /// 不拼接任何客户端输入。字段描述取 FIELDS.F_DESC 用于业务提示；
-    /// 配置了但物理不存在的字段跳过并记日志（防御元数据漂移）。
-    /// </summary>
-    private async Task<RecordSaveResult?> CheckNotBackFieldsAsync(
-        SqlConnection connection,
-        WorkbenchDefinition definition,
-        IReadOnlyList<string> keyValues,
-        CancellationToken token)
-    {
-        string masterFields, detailFields;
-        await using (var moduleCommand = new SqlCommand(
-            "SELECT LTRIM(RTRIM(ISNULL(NOT_BACK_FIELDS_M,''))),LTRIM(RTRIM(ISNULL(NOT_BACK_FIELDS,''))) " +
-            "FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;", connection))
-        {
-            moduleCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = definition.ModuleId;
-            await using var reader = await moduleCommand.ExecuteReaderAsync(token);
-            if(!await reader.ReadAsync(token)) return null;
-            masterFields = reader.GetString(0);
-            detailFields = reader.GetString(1);
-        }
 
-        if(string.IsNullOrWhiteSpace(masterFields) && string.IsNullOrWhiteSpace(detailFields))
-            return null;
 
-        var blocked = new List<string>();
-        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
-        if(!string.IsNullOrWhiteSpace(masterFields) && !string.IsNullOrWhiteSpace(definition.MasterTable))
-            await CheckNotBackTableAsync(connection, definition.ModuleId, definition.MasterTable, masterFields, keyCondition, blocked, token);
-        if(!string.IsNullOrWhiteSpace(detailFields) && !string.IsNullOrWhiteSpace(definition.DetailTable))
-            await CheckNotBackTableAsync(connection, definition.ModuleId, definition.DetailTable!, detailFields, keyCondition, blocked, token);
-
-        if(blocked.Count == 0) return null;
-        return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "NOBACK_BLOCKED",
-            $"单据存在已发生的业务数据（{string.Join("、", blocked)}），不能解批。");
-    }
-
-    private async Task CheckNotBackTableAsync(
-        SqlConnection connection,
-        int moduleId,
-        string table,
-        string fieldsCsv,
-        string keyCondition,
-        List<string> blocked,
-        CancellationToken token)
-    {
-        var fields = fieldsCsv.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Where(field => Identifier.IsMatch(field)).ToArray();
-        if(fields.Length == 0) return;
-
-        // 物理列存在性校验（服务端白名单）：只保留真实存在的列
-        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        await using (var columnCommand = new SqlCommand(
-            "SELECT c.name FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table ORDER BY c.column_id;", connection))
-        {
-            columnCommand.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
-            await using var reader = await columnCommand.ExecuteReaderAsync(token);
-            while(await reader.ReadAsync(token)) existing.Add(reader.GetString(0));
-        }
-        var valid = fields.Where(field => existing.Contains(field)).ToArray();
-        foreach(var missing in fields.Where(field => !existing.Contains(field)))
-            logger.LogWarning("解批前置校验字段物理不存在，已跳过 module={ModuleId} table={Table} field={Field}",
-                moduleId, table, missing);
-        if(valid.Length == 0) return;
-
-        // 字段描述（FIELDS.F_DESC）用于业务提示
-        var labels = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
-        var inClause = string.Join(",", valid.Select((_, index) => $"@f{index}"));
-        await using (var descCommand = new SqlCommand(
-            $"SELECT LTRIM(RTRIM(F_ID)),LTRIM(RTRIM(ISNULL(F_DESC,''))) FROM dbo.FIELDS WITH (NOLOCK) " +
-            $"WHERE LTRIM(RTRIM(T_ID))=@Table AND F_ID IN ({inClause});", connection))
-        {
-            descCommand.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
-            for(var i = 0; i < valid.Length; i++)
-                descCommand.Parameters.Add($"@f{i}", SqlDbType.NVarChar, 100).Value = valid[i];
-            await using var reader = await descCommand.ExecuteReaderAsync(token);
-            while(await reader.ReadAsync(token)) labels[reader.GetString(0)] = reader.GetString(1);
-        }
-
-        var predicates = string.Join(" OR ", valid.Select(field => $"CAST([{field}] AS varchar(100))>'0'"));
-        await using var checkCommand = new SqlCommand(
-            $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyCondition} AND ({predicates});", connection);
-        var count = Convert.ToInt64(await checkCommand.ExecuteScalarAsync(token));
-        if(count > 0)
-            blocked.AddRange(valid.Select(field => labels.TryGetValue(field, out var label) && label.Length > 0 ? label : field));
-    }
-
-    private static async Task<(bool? Tag,string? Person,DateTime? Date)?> ReadConfirmStateAsync(
-        SqlConnection connection,string table,string keyCondition,CancellationToken token)
-    {
-        var sql=$"SELECT CONFIRM_TAG,CONFIRM_PERSON,CONFIRM_DATE FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyCondition};";
-        await using var command=new SqlCommand(sql,connection);
-        await using var reader=await command.ExecuteReaderAsync(token);
-        if(!await reader.ReadAsync(token))return null;
-        var tag=reader.IsDBNull(0)?(bool?)null:reader.GetBoolean(0);
-        var person=reader.IsDBNull(1)?null:reader.GetString(1);
-        var date=reader.IsDBNull(2)?(DateTime?)null:reader.GetDateTime(2);
-        return (tag,person,date);
-    }
-
-    private static async Task RestoreConfirmStateAsync(
-        SqlConnection connection,string table,string keyCondition,(bool? Tag,string? Person,DateTime? Date) state,CancellationToken token)
-    {
-        var sql=$"UPDATE dbo.[{table}] SET CONFIRM_TAG=@Tag,CONFIRM_PERSON=@Person,CONFIRM_DATE=@Date WHERE {keyCondition};";
-        await using var command=new SqlCommand(sql,connection);
-        command.Parameters.Add("@Tag",SqlDbType.Bit).Value=(object?)state.Tag??DBNull.Value;
-        command.Parameters.Add("@Person",SqlDbType.NVarChar,50).Value=(object?)state.Person??DBNull.Value;
-        command.Parameters.Add("@Date",SqlDbType.DateTime).Value=(object?)state.Date??DBNull.Value;
-        await command.ExecuteNonQueryAsync(token);
-    }
 
     /// <summary>
     /// 选择器数据源（M4）：表名来自服务端表单定义（客户端仅传字段 key），
@@ -1782,339 +1097,12 @@ public sealed class DocumentWorkbenchRepository(
         return (result,total);
     }
 
-    private async Task<IReadOnlyList<FieldError>?> SaveDetailsAsync(
-        SqlConnection connection,
-        SqlTransaction transaction,
-        WorkbenchDefinition definition,
-        FormDefinition form,
-        IReadOnlyList<string> pkColumns,
-        IReadOnlyList<string> keyValues,
-        IReadOnlyDictionary<string,object?> masterValues,
-        IReadOnlyList<IReadOnlyDictionary<string,string?>> details,
-        string employeeName,
-        bool isNew,
-        CancellationToken token)
-    {
-        if(definition.DetailTable is null||form.DetailFields.Count==0)return null;
-        if(details.Count==0)
-        {
-            if(definition.DetailNoSave)return [new FieldError("","该模块无明细资料不可保存。","DETAIL_REQUIRED")];
-            await DeleteDetailRowsAsync(connection,transaction,definition.DetailTable,pkColumns,keyValues,token);
-            return null;
-        }
 
-        if(!string.IsNullOrWhiteSpace(definition.DetailNoFields))
-        {
-            var missing=definition.DetailNoFields.Split(';',StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries)
-                .Where(field=>!masterValues.TryGetValue(field,out var value)||value is null||value is string text&&string.IsNullOrWhiteSpace(text))
-                .ToList();
-            if(missing.Count>0)
-                return missing.Select(field=>new FieldError(field,"新增明细前必须填写该主表字段。","DETAIL_NO_FIELDS_MISSING")).ToList();
-        }
 
-        var detailIdentity=await GetIdentityColumnsAsync(connection,transaction,definition.DetailTable,token);
-        var dfVerify=await GetDfVerifyAsync(connection,transaction,definition.DetailTable,token);
-        var dfFields=dfVerify?.Split(';',StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries)??[];
-        var errors=new List<FieldError>();
-        var rows=new List<Dictionary<string,object?>>();
-        for(var rowIndex=0;rowIndex<details.Count;rowIndex++)
-        {
-            var validation=RecordPayloadValidator.ValidateSubmitted(form.DetailFields,details[rowIndex]);
-            errors.AddRange(validation.Errors);
-            var row=new Dictionary<string,object?>(validation.Converted,StringComparer.OrdinalIgnoreCase);
-            RecordPayloadValidator.ApplyDefaults(form.DetailFields,row);
-            // 明细中未提供的字段，若主表存在同名值（如 CURR_ID/CURR_RATE/TAX_ID），
-            // 由服务端从主表带入——对齐旧系统明细隐藏控件随主表联动带值的行为。
-            // 客户端显式提供的可编辑明细值（如 PRO_NO/PRICE）保持优先。
-            foreach(var detailField in form.DetailFields)
-            {
-                if(row.ContainsKey(detailField.Key))continue;
-                if(masterValues.TryGetValue(detailField.Key,out var masterValue)&&masterValue is not null)
-                    row[detailField.Key]=masterValue;
-            }
-            for(var i=0;i<pkColumns.Count;i++)
-            {
-                var pkField=form.DetailFields.FirstOrDefault(field=>field.Key.Equals(pkColumns[i],StringComparison.OrdinalIgnoreCase));
-                if(pkField is null)
-                {
-                    errors.Add(new FieldError(pkColumns[i],"明细表缺少主表关联字段。","MASTER_KEY_NOT_IN_DETAIL"));
-                    continue;
-                }
-                if(RecordPayloadValidator.TryConvert(pkField.DataType,keyValues[i],out var keyValue))row[pkColumns[i]]=keyValue;
-            }
-            // 服务端复算明细金额（对齐旧系统前端 calc_row_amount，金额以服务端为权威）
-            RecalculateDetailAmounts(form.DetailFields,row,masterValues);
-            rows.Add(row);
-        }
-        RecordPayloadValidator.AssignSerialNumbers(rows, form.DetailFields);
-        // 应收货款单（170101）等引用单据的明细：金额/数量从送货（退货）单明细带出
-        await FillReferencedAmountsAsync(connection,transaction,form.DetailFields,rows,token);
-        foreach(var row in rows)errors.AddRange(RecordPayloadValidator.CheckRequiredAndRegex(form.DetailFields,row));
-        if(errors.Count>0)return errors;
 
-        if(dfFields.Length>0)
-        {
-            var groups=rows.GroupBy(row=>string.Join('\u0001',dfFields.Select(field=>Convert.ToString(row.GetValueOrDefault(field)??string.Empty,System.Globalization.CultureInfo.InvariantCulture))));
-            var duplicate=groups.FirstOrDefault(group=>group.Count()>1);
-            if(duplicate is not null)
-                return [new FieldError(string.Join(';',dfFields),$"明细表资料重复：{string.Join(';',dfFields)}。","DF_VERIFY_DUPLICATE")];
-        }
 
-        await DeleteDetailRowsAsync(connection,transaction,definition.DetailTable,pkColumns,keyValues,token);
-        foreach(var row in rows)
-        {
-            var fillErrors=await FillServerColumnsAsync(connection,transaction,definition.DetailTable,form.DetailFields,row,employeeName,isNew,token);
-            if(fillErrors.Count>0)return fillErrors;
-            var insertFields=form.DetailFields.Where(field=>!field.IsVirtual&&row.ContainsKey(field.Key)&&!detailIdentity.Contains(field.Key)).ToList();
-            if(insertFields.Count==0)continue;
-            await InsertRowAsync(connection,transaction,definition.DetailTable,insertFields,row,detailIdentity,token);
-        }
-        return null;
-    }
 
-    /// <summary>
-    /// 引用单据金额带出：明细含 S_R_TYPE/S_R_NO/S_R_SERIAL_NO（送/退货引用）时，
-    /// 从 COP_SEND_D / COP_RETURN_D 读取 QTY/AMOUNT/AMOUNT_TAX/TAX_SUM 填充，
-    /// 对齐旧系统对账引用带出行为；未找到引用行时保留客户端值。
-    /// 表名/列名为服务端常量，引用键值来自客户端但仅作参数化等值匹配。
-    /// </summary>
-    private static async Task FillReferencedAmountsAsync(
-        SqlConnection connection,
-        SqlTransaction transaction,
-        IReadOnlyList<FormFieldDefinition> fields,
-        IReadOnlyList<Dictionary<string,object?>> rows,
-        CancellationToken token)
-    {
-        var hasRef = fields.Any(field=>field.Key.Equals("S_R_TYPE",StringComparison.OrdinalIgnoreCase))
-            &&fields.Any(field=>field.Key.Equals("S_R_NO",StringComparison.OrdinalIgnoreCase))
-            &&fields.Any(field=>field.Key.Equals("S_R_SERIAL_NO",StringComparison.OrdinalIgnoreCase));
-        if(!hasRef)return;
-        var fieldSet=fields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach(var row in rows)
-        {
-            if(!row.TryGetValue("S_R_TYPE",out var rawType)||!row.TryGetValue("S_R_NO",out var rawNo)
-               ||!row.TryGetValue("S_R_SERIAL_NO",out var rawSerial))continue;
-            var type=Convert.ToString(rawType)??""; var no=Convert.ToString(rawNo)??"";
-            var serial=Convert.ToString(rawSerial)??"";
-            if(type.Length==0||no.Length==0||serial.Length==0)continue;
-            const string sql="""
-                SELECT TOP 1 QTY,AMOUNT,AMOUNT_TAX,TAX_SUM
-                FROM dbo.COP_SEND_D WITH (NOLOCK)
-                WHERE SEND_TYPE=@t AND SEND_NO=@n AND SERIAL_NO=@s;
-                """;
-            await using var command=new SqlCommand(sql,connection,transaction);
-            command.Parameters.Add("@t",SqlDbType.NVarChar,50).Value=type;
-            command.Parameters.Add("@n",SqlDbType.NVarChar,50).Value=no;
-            command.Parameters.Add("@s",SqlDbType.Int).Value=int.TryParse(serial,out var parsed)?parsed:0;
-            await using var reader=await command.ExecuteReaderAsync(token);
-            if(!await reader.ReadAsync(token))continue;
-            void Fill(string column)
-            {
-                if(!fieldSet.Contains(column))return;
-                row[column]=reader.IsDBNull(reader.GetOrdinal(column))?null:reader.GetValue(reader.GetOrdinal(column));
-            }
-            Fill("QTY");Fill("AMOUNT");Fill("AMOUNT_TAX");Fill("TAX_SUM");
-        }
-    }
-
-    /// <summary>
-    /// 服务端复算明细行金额（AMOUNT/TAX_SUM/AMOUNT_TAX），覆盖客户端提交值，
-    /// 保证后续 AfterSave/主表汇总使用一致金额。仅当明细表单存在金额列时才计算。
-    /// </summary>
-    private static void RecalculateDetailAmounts(
-        IReadOnlyList<FormFieldDefinition> fields,
-        IDictionary<string,object?> row,
-        IReadOnlyDictionary<string,object?> masterValues)
-    {
-        var hasAmount=fields.Any(field=>field.Key.Equals("AMOUNT",StringComparison.OrdinalIgnoreCase));
-        var hasAmountTax=fields.Any(field=>field.Key.Equals("AMOUNT_TAX",StringComparison.OrdinalIgnoreCase));
-        var hasTaxSum=fields.Any(field=>field.Key.Equals("TAX_SUM",StringComparison.OrdinalIgnoreCase));
-        if(!hasAmount&&!hasAmountTax&&!hasTaxSum)return;
-        var qty=GetDecimal(row,"QTY");
-        var price=GetDecimal(row,"PRICE");
-        // 无数量/单价的明细行（如预收/预付单按订单冲抵金额）不参与金额重算，
-        // 保留客户端提交的 AMOUNT（旧系统同样由用户录入冲抵金额）。
-        if(qty is null&&price is null)return;
-        var result=AmountCalculator.Calculate(
-            qty,
-            price,
-            GetDecimal(row,"TAX_RATE")??GetDecimal(masterValues,"TAX_RATE")??0m,
-            row.TryGetValue("TAX_TYPE",out var taxType)
-                ?Convert.ToString(taxType)
-                :masterValues.TryGetValue("TAX_TYPE",out var masterTaxType)?Convert.ToString(masterTaxType):null,
-            GetDecimal(row,"REBATE")??100m);
-        if(hasAmount)row["AMOUNT"]=result.Amount;
-        if(hasTaxSum)row["TAX_SUM"]=result.TaxSum;
-        if(hasAmountTax)row["AMOUNT_TAX"]=result.AmountTax;
-    }
-
-    private static decimal? GetDecimal(IReadOnlyDictionary<string,object?> row,string key)
-    {
-        return GetDecimal((IDictionary<string,object?>)row,key);
-    }
-
-    private static decimal? GetDecimal(IDictionary<string,object?> row,string key)
-    {
-        if(!row.TryGetValue(key,out var value)||value is null)return null;
-        return value switch
-        {
-            decimal d=>d,
-            double dbl=>Convert.ToDecimal(dbl),
-            float f=>Convert.ToDecimal(f),
-            int i=>i,
-            long l=>l,
-            _=>decimal.TryParse(Convert.ToString(value,System.Globalization.CultureInfo.InvariantCulture),
-                System.Globalization.NumberStyles.Any,System.Globalization.CultureInfo.InvariantCulture,out var parsed)?parsed:null,
-        };
-    }
-
-    /// <summary>
-    /// 主表金额汇总与余额字段初始化：
-    /// - 明细表存在 AMOUNT/AMOUNT_TAX/TAX_SUM 时，主表同名列按主键聚合更新；
-    /// - 预收/预付主表 PREPAY_AMOUNT 为 NULL 时初始化为 AMOUNT（对齐旧系统余额语义）；
-    /// - 应收主表 RECEIVE_AMOUNT 为 NULL 时初始化为 0（批核时累加）。
-    /// 列名/表名均来自服务端元数据与 INFORMATION_SCHEMA 存在性校验。
-    /// </summary>
-    private static async Task RecalculateMasterAmountsAsync(
-        SqlConnection connection,
-        SqlTransaction transaction,
-        WorkbenchDefinition definition,
-        CancellationToken token)
-    {
-        if(definition.DetailTable is null||definition.MasterPkOrder.Count<2)return;
-        var typeColumn=definition.MasterPkOrder[0];
-        var noColumn=definition.MasterPkOrder[1];
-        foreach(var column in new[]{"AMOUNT","AMOUNT_TAX","TAX_SUM"})
-        {
-            if(!await ColumnExistsAsync(connection,transaction,definition.DetailTable,column,token))continue;
-            if(!await ColumnExistsAsync(connection,transaction,definition.MasterTable,column,token))continue;
-            await using var command=new SqlCommand(
-                $"""
-                UPDATE m SET [{column}]=d.[{column}]
-                FROM dbo.[{definition.MasterTable}] m
-                INNER JOIN (SELECT [{typeColumn}],[{noColumn}],SUM([{column}]) AS [{column}]
-                            FROM dbo.[{definition.DetailTable}]
-                            GROUP BY [{typeColumn}],[{noColumn}]) d
-                  ON m.[{typeColumn}]=d.[{typeColumn}] AND m.[{noColumn}]=d.[{noColumn}];
-                """,connection,transaction);
-            await command.ExecuteNonQueryAsync(token);
-        }
-        // 余额字段初始化（仅 NULL 时填充，编辑已有余额不覆盖）
-        if(await ColumnExistsAsync(connection,transaction,definition.MasterTable,"PREPAY_AMOUNT",token)
-           &&await ColumnExistsAsync(connection,transaction,definition.MasterTable,"AMOUNT",token))
-        {
-            await using var prepay=new SqlCommand(
-                $"UPDATE dbo.[{definition.MasterTable}] SET PREPAY_AMOUNT=ISNULL(PREPAY_AMOUNT,ISNULL(AMOUNT,0));",
-                connection,transaction);
-            await prepay.ExecuteNonQueryAsync(token);
-        }
-        if(await ColumnExistsAsync(connection,transaction,definition.MasterTable,"RECEIVE_AMOUNT",token))
-        {
-            await using var receive=new SqlCommand(
-                $"UPDATE dbo.[{definition.MasterTable}] SET RECEIVE_AMOUNT=ISNULL(RECEIVE_AMOUNT,0);",
-                connection,transaction);
-            await receive.ExecuteNonQueryAsync(token);
-        }
-    }
-
-    private static async Task<int?> InsertRowAsync(
-        SqlConnection connection,
-        SqlTransaction transaction,
-        string table,
-        IReadOnlyList<FormFieldDefinition> insertFields,
-        IReadOnlyDictionary<string,object?> values,
-        IReadOnlyList<string> identityColumns,
-        CancellationToken token)
-    {
-        var columns=string.Join(',',insertFields.Select(field=>$"[{field.Key}]"));
-        var parameters=string.Join(',',insertFields.Select((_,index)=>$"@v{index}"));
-        var sql=$"INSERT INTO dbo.[{table}] ({columns}) VALUES ({parameters});";
-        await using var command=new SqlCommand(sql,connection,transaction);
-        for(var i=0;i<insertFields.Count;i++)command.Parameters.AddWithValue($"@v{i}",NormalizeDbValue(values[insertFields[i].Key]));
-        if(identityColumns.Count>0)
-        {
-            command.CommandText+=" SELECT SCOPE_IDENTITY();";
-            return Convert.ToInt32(await command.ExecuteScalarAsync(token));
-        }
-        await command.ExecuteNonQueryAsync(token);
-        return null;
-    }
-
-    private async Task<IReadOnlyList<FieldError>> FillServerColumnsAsync(
-        SqlConnection connection,
-        SqlTransaction transaction,
-        string table,
-        IReadOnlyList<FormFieldDefinition> fields,
-        IDictionary<string,object?> values,
-        string employeeName,
-        bool isNew,
-        CancellationToken token)
-    {
-        var now=DateTime.Now;
-        var audit=isNew
-            ? new (string Name,object Value)[]{("CREATE_PERSON",employeeName),("CREATE_DATE",now),("LAST_UPDATE_BY",employeeName),("LAST_UPDATE_DATE",now)}
-            : new (string Name,object Value)[]{("LAST_UPDATE_BY",employeeName),("LAST_UPDATE_DATE",now)};
-        foreach(var item in audit)
-            if(await ColumnExistsAsync(connection,transaction,table,item.Name,token))values[item.Name]=item.Value;
-        var errors=new List<FieldError>();
-        foreach(var field in fields.Where(field=>field.ServerFilled&&!values.ContainsKey(field.Key)&&!RecordPayloadValidator.IsAuditColumn(field.Key)))
-        {
-            // 隐藏必填字段（serverFilled）优先取字段默认值（DFT_VALUE，服务端元数据）；
-            // 无默认值时跳过并登记日志（不再硬失败阻塞保存，缺口以技术债跟踪逐表修正元数据）。
-            if(!string.IsNullOrWhiteSpace(field.DefaultValue)&&RecordPayloadValidator.TryConvert(field.DataType,field.DefaultValue,out var defaulted))
-            {
-                values[field.Key]=defaulted;
-                continue;
-            }
-            logger.LogWarning("服务端必填字段无填充规则且无默认值 table={Table} field={Field}",table,field.Key);
-        }
-        return errors;
-    }
-
-    /// <summary>
-    /// 保存收款/付款单的预收/预付冲抵关联表（COP_RECEIPT_PREPAY / PUR_PAY_PREPAY）。
-    /// 表名来自 ModuleBusinessMap 白名单，主键列来自服务端元数据，值全部参数化。
-    /// 先删除该单据的旧冲抵行再写入新行（与明细重建语义一致）。
-    /// </summary>
-    private static async Task SavePrepayOffsetsAsync(
-        SqlConnection connection,
-        SqlTransaction transaction,
-        ModuleBusinessRule? rule,
-        IReadOnlyList<string> pkColumns,
-        IReadOnlyList<string> keyValues,
-        IReadOnlyList<PrepayOffsetRequest>? offsets,
-        CancellationToken token)
-    {
-        if(rule?.PrepayOffsetTable is not { } table||pkColumns.Count<2)return;
-        var typeColumn=pkColumns[0];
-        var noColumn=pkColumns[1];
-        await using var delete=new SqlCommand(
-            $"DELETE FROM dbo.[{table}] WHERE [{typeColumn}]=@t AND [{noColumn}]=@n",connection,transaction);
-        delete.Parameters.Add("@t",SqlDbType.NVarChar,50).Value=keyValues[0];
-        delete.Parameters.Add("@n",SqlDbType.NVarChar,50).Value=keyValues[1];
-        await delete.ExecuteNonQueryAsync(token);
-        if(offsets is null)return;
-        var serial=1;
-        foreach(var offset in offsets)
-        {
-            await using var insert=new SqlCommand(
-                $"""
-                INSERT INTO dbo.[{table}] ([{typeColumn}],[{noColumn}],SERIAL_NO,PREPAY_TYPE,PREPAY_NO,AMOUNT,PREPAY_AMOUNT)
-                VALUES (@t,@n,@serial,@pt,@pn,@amount,@prepayAmount);
-                """,connection,transaction);
-            insert.Parameters.Add("@t",SqlDbType.NVarChar,50).Value=keyValues[0];
-            insert.Parameters.Add("@n",SqlDbType.NVarChar,50).Value=keyValues[1];
-            insert.Parameters.Add("@serial",SqlDbType.Int).Value=serial;
-            insert.Parameters.Add("@pt",SqlDbType.NVarChar,50).Value=offset.Type;
-            insert.Parameters.Add("@pn",SqlDbType.NVarChar,50).Value=offset.No;
-            insert.Parameters.Add("@amount",SqlDbType.Decimal).Value=(object?)offset.Amount??DBNull.Value;
-            insert.Parameters.Add("@prepayAmount",SqlDbType.Decimal).Value=offset.PrepayAmount;
-            await insert.ExecuteNonQueryAsync(token);
-            serial++;
-        }
-    }
-
-    private static async Task<IReadOnlyList<string>> GetPrimaryKeyColumnsAsync(SqlConnection connection,SqlTransaction? transaction,string table,CancellationToken token)
+    internal static async Task<IReadOnlyList<string>> GetPrimaryKeyColumnsAsync(SqlConnection connection,SqlTransaction? transaction,string table,CancellationToken token)
     {
         const string sql="""
             SELECT c.name AS COLUMN_NAME
@@ -2133,7 +1121,7 @@ public sealed class DocumentWorkbenchRepository(
         return result;
     }
 
-    private static async Task<IReadOnlyList<string>> GetIdentityColumnsAsync(SqlConnection connection,SqlTransaction transaction,string table,CancellationToken token)
+    internal static async Task<IReadOnlyList<string>> GetIdentityColumnsAsync(SqlConnection connection,SqlTransaction transaction,string table,CancellationToken token)
     {
         const string sql="SELECT c.name FROM sys.tables t INNER JOIN sys.columns c ON c.object_id=t.object_id WHERE t.name=@Table AND t.schema_id=SCHEMA_ID('dbo') AND c.is_identity=1;";
         await using var command=new SqlCommand(sql,connection,transaction);command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
@@ -2144,14 +1132,14 @@ public sealed class DocumentWorkbenchRepository(
     }
 
     /// <summary>取用户主组（SYSDG_USER 首组，G_IDX 最小），用于 OWNER_G 回填。</summary>
-    private static async Task<int?> GetPrimaryGroupAsync(SqlConnection connection,SqlTransaction transaction,string userId,CancellationToken token)
+    internal static async Task<int?> GetPrimaryGroupAsync(SqlConnection connection,SqlTransaction transaction,string userId,CancellationToken token)
     {
         await using var command=new SqlCommand("SELECT TOP 1 G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID=@UserId ORDER BY G_IDX;",connection,transaction);
         command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();
         return await command.ExecuteScalarAsync(token) as int?;
     }
 
-    private static async Task<bool> ColumnExistsAsync(SqlConnection connection,SqlTransaction? transaction,string table,string column,CancellationToken token)
+    internal static async Task<bool> ColumnExistsAsync(SqlConnection connection,SqlTransaction? transaction,string table,string column,CancellationToken token)
     {
         const string sql="SELECT 1 FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name=@Column;";
         await using var command=new SqlCommand(sql,connection,transaction);
@@ -2160,7 +1148,7 @@ public sealed class DocumentWorkbenchRepository(
         return await command.ExecuteScalarAsync(token) is not null;
     }
 
-    private static async Task<string?> GetDfVerifyAsync(SqlConnection connection,SqlTransaction? transaction,string table,CancellationToken token)
+    internal static async Task<string?> GetDfVerifyAsync(SqlConnection connection,SqlTransaction? transaction,string table,CancellationToken token)
     {
         const string sql="SELECT LTRIM(RTRIM(ISNULL(DF_VERIFY,''))) FROM dbo.TABLES WITH (NOLOCK) WHERE T_ID=@Table;";
         await using var command=new SqlCommand(sql,connection,transaction);command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
@@ -2168,7 +1156,7 @@ public sealed class DocumentWorkbenchRepository(
         return result is null||string.IsNullOrWhiteSpace(result.ToString())?null:result.ToString();
     }
 
-    private static IReadOnlySet<string> ScopeFields(IReadOnlyList<FormFieldDefinition> fields,IReadOnlyList<string> pkColumns)=>
+    internal static IReadOnlySet<string> ScopeFields(IReadOnlyList<FormFieldDefinition> fields,IReadOnlyList<string> pkColumns)=>
         fields.Where(field=>!field.DisplayOnly).Select(field=>field.Key).Concat(pkColumns).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>解析 MODULES.FORM_TABS（如 '1=基本资料;2=其它'），非法项跳过并按键号升序。</summary>
@@ -2188,76 +1176,15 @@ public sealed class DocumentWorkbenchRepository(
         return tabs.OrderBy(tab => tab.No).ToList();
     }
 
-    /// <summary>
-    /// 选择器显示值回显：编辑记录时，把复合单元格内"幽灵从字段"（无物理列、只显示不保存，
-    /// 如 CLIENT_NAME/SALES_NAME）按主字段值从白名单选择器表解析显示值，避免打开编辑页空白。
-    /// 安全约束：表名/列名均来自服务端元数据并做标识符 + 物理存在双重校验；值参数化。
-    /// </summary>
-    private static async Task ResolveChooserDisplaysAsync(SqlConnection connection,IReadOnlyList<FormFieldDefinition> fields,Dictionary<string,object?> row,CancellationToken token)
-    {
-        var companionsByGroup = fields
-            .Where(field => field.DisplayOnly && field.CellRole == 2 && !string.IsNullOrWhiteSpace(field.CellGroup))
-            .GroupBy(field => field.CellGroup!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
-        if (companionsByGroup.Count == 0) return;
 
-        foreach (var main in fields.Where(field =>
-                     field.CellRole == 1 && !string.IsNullOrWhiteSpace(field.CellGroup)
-                     && field.Choosers.Any(source => source.Active && !string.IsNullOrWhiteSpace(source.Table))))
-        {
-            if (!companionsByGroup.TryGetValue(main.CellGroup!, out var companions)) continue;
-            if (!row.TryGetValue(main.Key, out var raw) || raw is null || string.IsNullOrWhiteSpace(raw.ToString())) continue;
-            var source = main.Choosers.First(item => item.Active && !string.IsNullOrWhiteSpace(item.Table));
-            await ResolveChooserGroupAsync(connection,main,source,companions,row,raw.ToString()!,token);
-        }
-    }
-
-    private static async Task ResolveChooserGroupAsync(
-        SqlConnection connection,
-        FormFieldDefinition main,
-        FieldChooserSource source,
-        IReadOnlyList<FormFieldDefinition> companions,
-        Dictionary<string,object?> row,
-        string value,
-        CancellationToken token)
-    {
-        var table = source.Table!.Trim();
-        if (!Identifier.IsMatch(table) || !await TableExistsAsync(connection,table,token)) return;
-
-        var mapping = FormFieldSelector.ParseReturnMapping(source.ReturnMapping);
-        var keyColumn = mapping.FirstOrDefault(pair => string.Equals(FormFieldSelector.NormalizeChooserTarget(pair.Target),main.Key,StringComparison.OrdinalIgnoreCase)).Column;
-        if (string.IsNullOrWhiteSpace(keyColumn)) keyColumn = main.Key;
-        if (!Identifier.IsMatch(keyColumn)) return;
-
-        var selected = new List<(FormFieldDefinition Field,string Column)>();
-        foreach (var companion in companions)
-        {
-            var column = mapping.FirstOrDefault(pair => string.Equals(FormFieldSelector.NormalizeChooserTarget(pair.Target),companion.Key,StringComparison.OrdinalIgnoreCase)).Column;
-            if (string.IsNullOrWhiteSpace(column)) column = companion.Key;
-            if (!Identifier.IsMatch(column)) return;
-            selected.Add((companion,column));
-        }
-
-        var columns = selected.Select(item => item.Column).Append(keyColumn).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (!await ColumnsExistAsync(connection,table,columns,token)) return;
-
-        var select = string.Join(",", columns.Select(column => $"[{column}]"));
-        await using var command = new SqlCommand($"SELECT TOP 1 {select} FROM dbo.[{table}] WHERE [{keyColumn}]=@Value;",connection);
-        command.Parameters.Add("@Value",SqlDbType.NVarChar,256).Value=value;
-        await using var reader = await command.ExecuteReaderAsync(token);
-        if (!await reader.ReadAsync(token)) return;
-        foreach (var (field,column) in selected)
-            row[field.Key] = reader.IsDBNull(reader.GetOrdinal(column)) ? null : reader.GetValue(reader.GetOrdinal(column));
-    }
-
-    private static async Task<bool> TableExistsAsync(SqlConnection connection,string table,CancellationToken token)
+    internal static async Task<bool> TableExistsAsync(SqlConnection connection,string table,CancellationToken token)
     {
         await using var command = new SqlCommand("SELECT 1 FROM sys.objects o JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND o.type IN ('U','V');",connection);
         command.Parameters.Add("@Table",SqlDbType.NVarChar,128).Value=table;
         return await command.ExecuteScalarAsync(token) is not null;
     }
 
-    private static async Task<bool> ColumnsExistAsync(SqlConnection connection,string table,IReadOnlyList<string> columns,CancellationToken token)
+    internal static async Task<bool> ColumnsExistAsync(SqlConnection connection,string table,IReadOnlyList<string> columns,CancellationToken token)
     {
         var placeholders = string.Join(",", columns.Select((_,i) => $"@C{i}"));
         await using var command = new SqlCommand($"SELECT COUNT(*) FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name IN ({placeholders});",connection);
@@ -2268,14 +1195,14 @@ public sealed class DocumentWorkbenchRepository(
         return count == columns.Count;
     }
 
-    private static async Task<Dictionary<string,object?>?> ReadRowAsync(
+    internal static async Task<Dictionary<string,object?>?> ReadRowAsync(
         SqlConnection connection,SqlTransaction? transaction,string table,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues,IReadOnlyList<string> fields,CancellationToken token)
     {
         var rows=await ReadRowsAsync(connection,transaction,table,pkColumns,keyValues,fields,token);
         return rows.Count==0?null:rows[0];
     }
 
-    private static async Task<IReadOnlyList<Dictionary<string,object?>>> ReadRowsAsync(
+    internal static async Task<IReadOnlyList<Dictionary<string,object?>>> ReadRowsAsync(
         SqlConnection connection,SqlTransaction? transaction,string table,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues,IReadOnlyList<string> fields,CancellationToken token)
     {
         var select=string.Join(',',fields.Select(field=>$"[{field}]"));
@@ -2297,7 +1224,7 @@ public sealed class DocumentWorkbenchRepository(
         return result;
     }
 
-    private static async Task<bool> RowExistsAsync(SqlConnection connection,SqlTransaction transaction,string table,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues,CancellationToken token)
+    internal static async Task<bool> RowExistsAsync(SqlConnection connection,SqlTransaction transaction,string table,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues,CancellationToken token)
     {
         var where=string.Join(" AND ",pkColumns.Select((column,index)=>$"[{column}]=@k{index}"));
         await using var command=new SqlCommand($"SELECT 1 FROM dbo.[{table}] WHERE {where};",connection,transaction);
@@ -2305,7 +1232,7 @@ public sealed class DocumentWorkbenchRepository(
         return await command.ExecuteScalarAsync(token) is not null;
     }
 
-    private static async Task<bool> RecordInScopeAsync(
+    internal static async Task<bool> RecordInScopeAsync(
         SqlConnection connection,SqlTransaction? transaction,string table,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues,string predicate,IReadOnlyList<object> parameters,CancellationToken token)
     {
         var where=string.Join(" AND ",pkColumns.Select((column,index)=>$"[{column}]=@k{index}"));
@@ -2315,7 +1242,7 @@ public sealed class DocumentWorkbenchRepository(
         return await command.ExecuteScalarAsync(token) is not null;
     }
 
-    private static async Task DeleteDetailRowsAsync(SqlConnection connection,SqlTransaction transaction,string detailTable,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues,CancellationToken token)
+    internal static async Task DeleteDetailRowsAsync(SqlConnection connection,SqlTransaction transaction,string detailTable,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues,CancellationToken token)
     {
         var where=string.Join(" AND ",pkColumns.Select((column,index)=>$"[{column}]=@k{index}"));
         await using var command=new SqlCommand($"DELETE FROM dbo.[{detailTable}] WHERE {where};",connection,transaction);
@@ -2323,14 +1250,14 @@ public sealed class DocumentWorkbenchRepository(
         await command.ExecuteNonQueryAsync(token);
     }
 
-    private static void AddKeyParameters(SqlCommand command,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues)
+    internal static void AddKeyParameters(SqlCommand command,IReadOnlyList<string> pkColumns,IReadOnlyList<string> keyValues)
     {
         for(var i=0;i<pkColumns.Count;i++)command.Parameters.AddWithValue($"@k{i}",keyValues[i]??string.Empty);
     }
 
-    private static object NormalizeDbValue(object? value)=>value is null?DBNull.Value:value;
+    internal static object NormalizeDbValue(object? value)=>value is null?DBNull.Value:value;
 
-    private static string ValueToString(object? value)=>value switch
+    internal static string ValueToString(object? value)=>value switch
     {
         null=>string.Empty,
         DateTime dateTime=>dateTime.ToString("yyyy-MM-dd HH:mm:ss",System.Globalization.CultureInfo.InvariantCulture),
@@ -2366,37 +1293,8 @@ public sealed class DocumentWorkbenchRepository(
         return left.Equals(right);
     }
 
-    private static bool IsNumeric(object value)=>value is sbyte or byte or short or ushort or int or uint
+    internal static bool IsNumeric(object value)=>value is sbyte or byte or short or ushort or int or uint
         or long or ulong or float or double or decimal;
-
-    /// <summary>
-    /// 写操作审计留痕（旧库 SYSDF 系统日志表，不新建表）。
-    /// TYPE：INSERT/UPDATE/DELETE/APPROVE/DEAPPROVE；RECORD_IDX 为主键值逗号连接。
-    /// </summary>
-    private static async Task WriteAuditAsync(
-        SqlConnection connection,
-        SqlTransaction? transaction,
-        int moduleId,
-        string recordKey,
-        string type,
-        string content,
-        string executor,
-        CancellationToken token)
-    {
-        const string sql = """
-            INSERT INTO dbo.SYSDF (M_IDX, RECORD_IDX, CONTENT, TYPE, EXEC_BY, EXEC_DATE, CI, OPERFLAG)
-            VALUES (@ModuleId, @RecordKey, @Content, @Type, @ExecBy, GETDATE(), NULL, 1);
-            """;
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-        command.Parameters.Add("@RecordKey", SqlDbType.NVarChar, 100).Value =
-            recordKey.Length > 100 ? recordKey[..100] : recordKey;
-        command.Parameters.Add("@Content", SqlDbType.NVarChar, 1000).Value =
-            content.Length > 1000 ? content[..1000] : content;
-        command.Parameters.Add("@Type", SqlDbType.NVarChar, 50).Value = type;
-        command.Parameters.Add("@ExecBy", SqlDbType.NVarChar, 50).Value = executor;
-        await command.ExecuteNonQueryAsync(token);
-    }
 
     #endregion
 
@@ -2549,88 +1447,8 @@ public sealed class DocumentWorkbenchRepository(
         for(var i=0;i<fields.Count;i++){var field=fields[i];var safe=SanitizeBrowseUrl(field.BrowseUrl,allowedFields);if(safe!=field.BrowseUrl)fields[i]=field with{BrowseUrl=safe};}
         return fields;
     }
-    /// <summary>
-    /// 构造列表查询的列清单：物理列在派生表内无歧义选择；存在虚拟字段时外层经
-    /// `[__base]` 派生表 + 受控 LEFT JOIN 输出（QUERY_RELATION 白名单 + 物理存在校验）。
-    /// 派生表把 WHERE/ORDER 限制在基表内，避免 JOIN 引入的同名列歧义；
-    /// 无法解析的虚拟字段不进入外层列清单（不渲染）。
-    /// </summary>
-    private async Task<ListSelection> BuildListSelectionAsync(
-        SqlConnection connection,
-        string table,
-        IReadOnlyList<WorkbenchField> selected,
-        CancellationToken token)
-    {
-        var physical=selected.Where(field=>!field.IsVirtual).ToList();
-        var innerColumns=physical.Select(field=>$"[{field.Key}]").ToList();
-        var outerColumns=physical.Select(field=>$"[__base].[{field.Key}]").ToList();
-        var virtualFields=selected.Where(field=>field.IsVirtual).ToList();
-        var joinFragment="";
-        if(virtualFields.Count>0)
-        {
-            var resolution=await new VirtualColumnResolver(connection).ResolveAsync(table,virtualFields,token,baseAlias:"__base");
-            outerColumns.AddRange(resolution.SelectFragments);
-            joinFragment=resolution.JoinFragment;
-            // JOIN 条件引用的基表列必须出现在内层投影中，否则外层 [__base].[列] 引用无效。
-            foreach(var column in resolution.BaseColumns)
-                if(!physical.Any(field=>field.Key.Equals(column,StringComparison.OrdinalIgnoreCase)))
-                    innerColumns.Add($"[{column}]");
-            foreach(var key in resolution.UnresolvedKeys)
-                logger.LogDebug("虚拟字段运行期无法解析，列表不渲染：table={Table} field={Field}",table,key);
-        }
-        if(outerColumns.Count==0)
-        {
-            innerColumns.Add($"[{selected[0].Key}]");
-            outerColumns.Add($"[__base].[{selected[0].Key}]");
-        }
-        return new(string.Join(',',innerColumns),string.Join(',',outerColumns),joinFragment,virtualFields.Count>0);
-    }
 
-    private sealed record ListSelection(string InnerColumns,string OuterColumns,string JoinFragment,bool HasVirtual);
 
-    /// <summary>把 ResolveOrder 生成的 `[列] ASC` 改写为派生表限定 `[__base].[列] ASC`（仅作用于自身确定性输出）。</summary>
-    private static string QualifyOrder(string order) =>
-        Regex.Replace(order, @"\[([A-Za-z_][A-Za-z0-9_]{0,127})\]", "[__base].[$1]");
-
-    /// <summary>把 ORDER BY 引用的列并入投影（30 列截断后仍可排序），派生表查询缺列会 500。</summary>
-    private static void EnsureOrderColumnsInProjection(
-        IReadOnlyList<WorkbenchField> fields,
-        ICollection<WorkbenchField> selected,
-        string order)
-    {
-        foreach (Match match in Regex.Matches(order, @"\[([A-Za-z_][A-Za-z0-9_]{0,127})\]"))
-        {
-            var sortColumn = match.Groups[1].Value;
-            if (selected.Any(field => field.Key.Equals(sortColumn, StringComparison.OrdinalIgnoreCase))) continue;
-            var field = fields.FirstOrDefault(item => item.Key.Equals(sortColumn, StringComparison.OrdinalIgnoreCase));
-            if (field is null && Identifier.IsMatch(sortColumn))
-                field = new WorkbenchField(sortColumn, sortColumn, "nvarchar", 100, "left", false, false, false);
-            if (field is not null) selected.Add(field);
-        }
-    }
-
-    private static string ResolveOrder(WorkbenchDefinition definition,IReadOnlyList<WorkbenchField> fields,IReadOnlyList<WorkbenchField> selected,bool detail,string? sortFields,string? sortDirections)
-    {
-        if(!string.IsNullOrWhiteSpace(sortFields))
-        {
-            var names=sortFields.Split(',',StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries);
-            if(names.Length>5)throw new ArgumentException("排序字段不能超过 5 个。");
-            var dirs=(sortDirections??string.Empty).Split(',',StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries);
-            var parts=new List<string>();
-            for(var i=0;i<names.Length;i++)
-            {
-                var field=fields.FirstOrDefault(item=>!item.IsVirtual&&item.Key.Equals(names[i],StringComparison.OrdinalIgnoreCase))??throw new ArgumentException("排序字段无效。");
-                var desc=i<dirs.Length&&dirs[i].Equals("desc",StringComparison.OrdinalIgnoreCase);
-                parts.Add($"[{field.Key}] {(desc?"DESC":"ASC")}");
-            }
-            return string.Join(',',parts);
-        }
-        if(!detail&&!string.IsNullOrWhiteSpace(definition.DefaultSort))return definition.DefaultSort;
-        var keys=fields.Where(field=>field.IsPrimaryKey&&!field.IsVirtual).ToList();
-        if(keys.Count==0)keys=selected.Where(field=>!field.IsVirtual).Take(1).ToList();
-        if(keys.Count==0)throw new InvalidOperationException("工作台列表缺少可排序列。");
-        return string.Join(',',keys.Select(field=>$"[{field.Key}]"));
-    }
 
     private static string? NormalizeSort(string? value,string table,IReadOnlyList<WorkbenchField> fields)
     {
@@ -2639,52 +1457,17 @@ public sealed class DocumentWorkbenchRepository(
         return result.Count==0?null:string.Join(',',result);
     }
 
-    private static void AddQueryPredicates(WorkbenchQuery query,IReadOnlyList<WorkbenchField> fields,List<string> predicates,SqlCommand command)
-    {
-        if(query.Conditions.Count>20)throw new ArgumentException("查询条件不能超过 20 个。");
-        var queryPredicates=new List<string>();
-        foreach(var condition in query.Conditions)
-        {
-        var field=fields.FirstOrDefault(item=>item.Key.Equals(condition.Field,StringComparison.OrdinalIgnoreCase))??throw new ArgumentException($"无效查询字段：{condition.Field}");
-        if(field.IsVirtual)throw new ArgumentException($"虚拟字段不可查询：{condition.Field}");
-        // 比较运算符（eq/ne/gt/gte/lt/lte/between）允许定义白名单内任意字段（如批核/结案状态位），
-        // 仍以参数化 + 权限过滤后的定义白名单为边界；LIKE 类运算符继续限定 IsQueryable 字段。
-        var comparisonOnly=condition.Operator is "eq" or "ne" or "gt" or "gte" or "lt" or "lte" or "between";
-        if(!comparisonOnly&&!field.IsQueryable)throw new ArgumentException($"字段不可查询：{condition.Field}");
-            var name=$"@q{command.Parameters.Count}"; var column=$"[{field.Key}]"; var op=condition.Operator.ToLowerInvariant(); string expression;
-            switch(op)
-            {
-                case "eq": case "ne": case "gt": case "gte": case "lt": case "lte":
-                    var sqlOperator=op switch { "eq"=>"=", "ne"=>"<>", "gt"=>">", "gte"=>">=", "lt"=>"<", _=>"<=" }; expression=$"{column} {sqlOperator} {name}"; command.Parameters.AddWithValue(name,condition.Value??""); break;
-                case "contains": case "notcontains": case "startswith": case "endswith":
-                    expression=$"{column} {(op=="notcontains"?"NOT LIKE":"LIKE")} {name}"; var value=condition.Value??""; command.Parameters.AddWithValue(name,op is "contains" or "notcontains"?$"%{value}%":op=="startswith"?$"{value}%":$"%{value}"); break;
-                case "empty": expression=$"({column} IS NULL OR {column}='')"; break;
-                case "notempty": expression=$"({column} IS NOT NULL AND {column}<>'')"; break;
-                case "between": expression=$"{column} BETWEEN {name} AND {name}b"; command.Parameters.AddWithValue(name,condition.Value??""); command.Parameters.AddWithValue(name+"b",condition.ValueTo??""); break;
-                default: throw new ArgumentException($"无效查询运算符：{condition.Operator}");
-            }
-            queryPredicates.Add((queryPredicates.Count>0&&condition.Logic.Equals("or",StringComparison.OrdinalIgnoreCase)?"OR ":"AND ")+expression);
-        }
-        if(queryPredicates.Count>0){queryPredicates[0]=queryPredicates[0][4..];predicates.Add("("+string.Join(' ',queryPredicates)+")");}
-    }
 
-    private static void AddKeywordPredicates(string keyword,IReadOnlyList<WorkbenchField> fields,List<string> predicates,SqlCommand command)
-    {
-        var textFields=fields.Where(field=>field.IsQueryable&&IsTextLike(field.DataType)).ToList();
-        if(textFields.Count==0)return;
-        var name=$"@kw{predicates.Count}";command.Parameters.AddWithValue(name,$"%{keyword.Trim()}%");
-        predicates.Add("("+string.Join(" OR ",textFields.Select(field=>IsDateLike(field.DataType)?$"CONVERT(varchar(23),[{field.Key}],120) LIKE {name}":$"[{field.Key}] LIKE {name}"))+")");
-    }
 
+
+    /// <summary>选择器关键字过滤的文本类字段判定（与查询组件 IsTextLike 同口径）。</summary>
     private static bool IsTextLike(string dataType)
     {
-        var type=dataType.ToLowerInvariant();
-        return type.Contains("char")||type.Contains("text")||type.Contains("date")||type.Contains("time")
-            ||type is "idcard" or "url" or "email" or "phoneno" or "zipcode";
+        var type = dataType.ToLowerInvariant();
+        return type.Contains("char") || type.Contains("text") || type.Contains("date") || type.Contains("time")
+            || type is "idcard" or "url" or "email" or "phoneno" or "zipcode";
     }
 
-    private static bool IsDateLike(string dataType)=>
-        dataType.Contains("date",StringComparison.OrdinalIgnoreCase)||dataType.Contains("time",StringComparison.OrdinalIgnoreCase);
     private SqlConnection CreateConnection()=>connections.Create();
     /// <summary>
 }

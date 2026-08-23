@@ -4,7 +4,8 @@ public sealed record SaveRecordRequest(
     IReadOnlyDictionary<string, string?> Values,
     IReadOnlyList<IReadOnlyDictionary<string, string?>>? Details = null,
     IReadOnlyDictionary<string, string?>? Original = null,
-    IReadOnlyList<PrepayOffsetRequest>? PrepayOffsets = null);
+    IReadOnlyList<PrepayOffsetRequest>? PrepayOffsets = null,
+    string? IdempotencyKey = null);
 
 /// <summary>
 /// 收款/付款单的预收/预付冲抵行（对应旧 COP_RECEIPT_PREPAY / PUR_PAY_PREPAY 关联表）。
@@ -12,7 +13,7 @@ public sealed record SaveRecordRequest(
 /// </summary>
 public sealed record PrepayOffsetRequest(string Type, string No, decimal? Amount, decimal PrepayAmount);
 
-public sealed record ApproveWorkflowRequest(string Key);
+public sealed record ApproveWorkflowRequest(string Key, string? IdempotencyKey = null);
 
 public sealed record FieldError(string Field, string Message, string Code);
 

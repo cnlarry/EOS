@@ -101,14 +101,14 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
     }
 
     [HttpDelete("record")]
-    public async Task<IActionResult> DeleteRecord(int moduleId,[FromQuery]string key,CancellationToken token=default)
+    public async Task<IActionResult> DeleteRecord(int moduleId,[FromQuery]string key,[FromHeader(Name="X-Idempotency-Key")]string? idempotencyKey=null,CancellationToken token=default)
     {
         var access=await FormAccess(moduleId,"edit",token);
         if(access is null)return NotFound();
         await permissions.RequireAsync(userContext.UserId,moduleId,PermissionAction.Delete,token);
         var keyValues=ParseKey(key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
-        var result=await repository.DeleteRecordAsync(access.Value.Definition,access.Value.Form,keyValues,userContext.UserId,access.Value.Rights.DataFilter,token);
+        var result=await repository.DeleteRecordAsync(access.Value.Definition,access.Value.Form,keyValues,userContext.UserId,access.Value.Rights.DataFilter,token,idempotencyKey);
         LogValidationFailure(moduleId,result);
         return MapSaveResult(result);
     }
@@ -135,7 +135,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         if(definition is null)return NotFound();
         var keyValues=ParseKey(request.Key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
-        var result=await repository.WorkflowAsync(definition,keyValues,approve,userContext.EmployeeName,userContext.UserId,token);
+        var result=await repository.WorkflowAsync(definition,keyValues,approve,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey);
         return MapSaveResult(result);
     }
 
@@ -148,7 +148,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         await permissions.RequireAsync(userId,moduleId,finish?PermissionAction.EndCase:PermissionAction.UnEndCase,token);
         var keyValues=ParseKey(request.Key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
-        var result=await repository.FinishAsync(definition,keyValues,finish,userContext.EmployeeName,userContext.UserId,token);
+        var result=await repository.FinishAsync(definition,keyValues,finish,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey);
         return MapSaveResult(result);
     }
 
