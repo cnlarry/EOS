@@ -10,6 +10,7 @@ using EOS.API.Services;
 using EOS.API.Telemetry;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -94,6 +95,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddSingleton<ApiMetrics>();
 builder.Services.AddSingleton<DbTimingCollector>();
+builder.Services.AddSingleton<WorkbenchDefinitionProvider>();
 builder.Services.AddScoped<ApiExceptionFilter>();
 builder.Services.Configure<LoginThrottleOptions>(builder.Configuration.GetSection("Security:LoginThrottle"));
 builder.Services.AddSingleton<LoginThrottleService>();
@@ -130,6 +132,25 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddAuthorization(options => options.FallbackPolicy =
     new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser().Build());
+var mcpAccessTokens = builder.Configuration.GetSection("Logging:Mcp:AccessTokens").Get<string[]>() ?? [];
+builder.Services.AddAuthorizationBuilder().AddPolicy("LogMcp", policy => policy.RequireAssertion(context =>
+{
+    if (context.User.Identity?.IsAuthenticated == true)
+    {
+        return true;
+    }
+    if (context.Resource is not HttpContext http)
+    {
+        return false;
+    }
+    var header = http.Request.Headers.Authorization.ToString();
+    if (string.IsNullOrWhiteSpace(header) || !header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+    var token = header["Bearer ".Length..].Trim();
+    return mcpAccessTokens.Contains(token, StringComparer.Ordinal);
+}));
 builder.Services.AddHealthChecks()
     .AddCheck<ErpDatabaseHealthCheck>("erp_database", tags: ["ready"])
     .AddCheck<MigrationsHealthCheck>("erp_migrations", tags: ["ready", "startup"])
@@ -146,6 +167,7 @@ builder.Services.AddScoped<DynamicBomRepository>();
 builder.Services.AddScoped<FieldConfigurationRepository>();
 builder.Services.AddScoped<LegacyRightsRepository>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
+builder.Services.AddSingleton<PermissionCache>();
 builder.Services.AddScoped<NavigationRepository>();
 builder.Services.AddScoped<NavigationGroupsRepository>();
 builder.Services.AddScoped<MenuAdminRepository>();
@@ -233,13 +255,14 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    mcpEndpoint.RequireAuthorization();
+    mcpEndpoint.RequireAuthorization("LogMcp");
 }
 app.MapFallbackToFile("index.html").RequireAuthorization();
 
 ImDatabaseInitializer.RunIfConfigured(builder.Configuration, app.Logger);
 MailDatabaseInitializer.RunIfConfigured(builder.Configuration, app.Logger);
 ErpDatabaseInitializer.Run(builder.Configuration, app.Logger);
+await app.Services.GetRequiredService<WorkbenchDefinitionProvider>().RefreshAsync(CancellationToken.None);
 
 RegisterPdfFont();
 

@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 [ApiController]
-[Route("api/modules/1204/admin/fields")]
+[Route("api/v1/modules/1204/admin/fields")]
 public sealed class AdminFieldsController(
     AdminFieldRepository repository,
     LegacyRightsRepository rightsRepository,

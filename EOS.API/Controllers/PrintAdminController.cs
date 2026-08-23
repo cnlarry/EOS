@@ -14,7 +14,7 @@ namespace EOS.API.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
-[Route("api/print-admin")]
+[Route("api/v1/print-admin")]
 public sealed class PrintAdminController(
     PrintAdminRepository repository,
     LegacyRightsRepository rightsRepository,

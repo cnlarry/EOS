@@ -10,7 +10,7 @@ namespace EOS.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/table-data")]
+[Route("api/v1/table-data")]
 public sealed class TableDataController(
     DbConnectionFactory connections,
     LegacyRightsRepository rightsRepository,

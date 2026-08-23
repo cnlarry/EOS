@@ -15,7 +15,7 @@ namespace EOS.API.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
-[Route("api/mail-tasks")]
+[Route("api/v1/mail-tasks")]
 public sealed class MailTasksController(
     MailTaskRepository tasks,
     CurrentUserContext userContext) : ControllerBase

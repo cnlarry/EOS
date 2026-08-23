@@ -11,7 +11,7 @@ namespace EOS.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/jobs")]
+[Route("api/v1/jobs")]
 public sealed class JobsController(
     DbConnectionFactory connections,
     LegacyRightsRepository rightsRepository,

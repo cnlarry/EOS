@@ -8,7 +8,7 @@ namespace EOS.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/search-center")]
+[Route("api/v1/search-center")]
 public sealed class SearchCenterController(
     SearchCenterRepository repository,
     LegacyRightsRepository rightsRepository) : ControllerBase

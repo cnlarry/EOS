@@ -10,7 +10,7 @@ namespace EOS.API.Controllers;
 /// 菜单管理（模块 2301，对齐旧 Admin/MenuBuilder.aspx）。
 /// 读要求 CanBrowse，写要求 CanSetup；编号变更自动级联子级与权限引用。
 /// </summary>
-[ApiController, Authorize, Route("api/admin/menus")]
+[ApiController, Authorize, Route("api/v1/admin/menus")]
 public sealed class MenuAdminController(
     MenuAdminRepository repository,
     LegacyRightsRepository rightsRepository,

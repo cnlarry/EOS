@@ -14,7 +14,7 @@ namespace EOS.API.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
-[Route("api/admin")]
+[Route("api/v1/admin")]
 public sealed class RightsAdminController(
     RightsAdminRepository repository,
     LegacyRightsRepository rightsRepository,

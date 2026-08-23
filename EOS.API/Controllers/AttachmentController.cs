@@ -16,7 +16,7 @@ namespace EOS.API.Controllers;
 /// （修正旧系统仅控制按钮不校验的漏洞）；KeyValues 为结构化主键 JSON，不信任客户端拼接。
 /// 文件二进制存 Attachment:StorageRoot，元数据 + SHA-256 入库，下载经本端点授权提供。
 /// </summary>
-[ApiController, Authorize, Route("api/document-workbench/{moduleId:int}/attachments")]
+[ApiController, Authorize, Route("api/v1/document-workbench/{moduleId:int}/attachments")]
 public sealed class AttachmentController(
     DocumentWorkbenchRepository workbench,
     IPermissionService permissions,

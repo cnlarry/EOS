@@ -10,7 +10,7 @@ public sealed record PreviewExpressionRequest(string Kind, string Table, string 
 public sealed record PublishExpressionRequest(string Kind, string Table, string Field, string? Expression, string? Original);
 
 [ApiController]
-[Route("api/admin")]
+[Route("api/v1/admin")]
 public sealed class FieldAdminController(
     FieldAdminRepository repository,
     LegacyRightsRepository rightsRepository,

@@ -3,7 +3,7 @@ import type { ApiRequest, ApiTransport } from './transport'
 
 export class HttpTransport implements ApiTransport {
   private readonly baseUrl: string
-  constructor(baseUrl = '/api') { this.baseUrl = baseUrl }
+  constructor(baseUrl = '/api/v1') { this.baseUrl = baseUrl }
 
   async request<TResponse>(request: ApiRequest): Promise<TResponse> {
     const url = new URL(`${this.baseUrl}${request.path}`, window.location.origin)
@@ -23,9 +23,9 @@ export class HttpTransport implements ApiTransport {
       signal: request.signal,
     })
     if (!response.ok) {
-      const problem = await response.json().catch(() => ({})) as { title?: string; detail?: string; message?: string; code?: string; traceId?: string; correlationId?: string }
+      const problem = await response.json().catch(() => ({})) as { title?: string; detail?: string; message?: string; code?: string; traceId?: string; correlationId?: string; definitionVersion?: string }
       const message = problem.message ?? problem.detail ?? problem.title ?? '请求失败。'
-      const body: ApiErrorBody = { code: problem.code ?? `HTTP_${response.status}`, message, requestId: problem.traceId, correlationId: problem.correlationId }
+      const body: ApiErrorBody = { code: problem.code ?? `HTTP_${response.status}`, message, requestId: problem.traceId, correlationId: problem.correlationId, definitionVersion: problem.definitionVersion }
       throw new ApiError(response.status, body)
     }
     if (request.responseType === 'blob') return response.blob() as Promise<TResponse>

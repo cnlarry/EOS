@@ -15,7 +15,10 @@ namespace EOS.API.Data;
 /// UPDATE 另写 AUDIT_FIELD_CHANGE（字段级明细）；大字段/敏感字段只存摘要或 SHA-256。
 /// 读路径（导出/打印/权限拒绝/日志查询留痕）用 WriteBestEffortAsync（独立连接 + 事务，失败忽略）。
 /// </summary>
-public sealed class WorkbenchAuditWriter(DbConnectionFactory connections, IHttpContextAccessor httpContextAccessor)
+public sealed class WorkbenchAuditWriter(
+    DbConnectionFactory connections,
+    IHttpContextAccessor httpContextAccessor,
+    WorkbenchDefinitionProvider definitionProvider)
 {
     /// <summary>兼容入口：SYSDF + AUDIT_EVENT（无字段级明细）。</summary>
     public async Task WriteAsync(
@@ -47,12 +50,13 @@ public sealed class WorkbenchAuditWriter(DbConnectionFactory connections, IHttpC
         await WriteSysdfAsync(connection, transaction, moduleId ?? 0, recordKey, action, summary, executor, token);
 
         var correlationId = ResolveCorrelationId();
+        var definitionVersion = moduleId is int moduleIndex ? definitionProvider.GetVersion(moduleIndex) : null;
         const string insertSql = """
             INSERT INTO dbo.AUDIT_EVENT
                 (OCCURRED_AT, CORRELATION_ID, ACTOR_USER_ID, ACTOR_TYPE, CLIENT_TYPE, MODULE_ID,
                  RESOURCE_TYPE, RESOURCE_KEY, ACTION, RESULT, DEFINITION_VERSION, SUMMARY, DETAIL_JSON, CREATED_DATE)
             VALUES (SYSDATETIME(), @CorrelationId, @Actor, @ActorType, @ClientType, @ModuleId,
-                    @ResourceType, @ResourceKey, @Action, @Result, NULL, @Summary, @DetailJson, SYSDATETIME());
+                    @ResourceType, @ResourceKey, @Action, @Result, @DefinitionVersion, @Summary, @DetailJson, SYSDATETIME());
             SELECT CAST(SCOPE_IDENTITY() AS bigint);
             """;
         await using var command = new SqlCommand(insertSql, connection, transaction);
@@ -65,6 +69,7 @@ public sealed class WorkbenchAuditWriter(DbConnectionFactory connections, IHttpC
         command.Parameters.Add("@ResourceKey", SqlDbType.NVarChar, 200).Value = Truncate(recordKey ?? string.Empty, 200);
         command.Parameters.Add("@Action", SqlDbType.NVarChar, 50).Value = Truncate(action, 50);
         command.Parameters.Add("@Result", SqlDbType.TinyInt).Value = result;
+        command.Parameters.Add("@DefinitionVersion", SqlDbType.NVarChar, 64).Value = (object?)definitionVersion ?? DBNull.Value;
         command.Parameters.Add("@Summary", SqlDbType.NVarChar, 1000).Value = summary is { Length: > 0 } ? (object)Truncate(summary, 1000) : DBNull.Value;
         command.Parameters.Add("@DetailJson", SqlDbType.NVarChar, -1).Value =
             fieldChanges is { Count: > 0 } ? (object)JsonSerializer.Serialize(fieldChanges) : DBNull.Value;

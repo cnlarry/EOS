@@ -189,6 +189,7 @@ internal static class RightsAdminLogic
 public sealed class RightsAdminRepository(
     DbConnectionFactory connections,
     NavigationRepository navigationRepository,
+    EOS.API.Security.PermissionCache permissionCache,
     ILogger<RightsAdminRepository> logger)
 {
     private const int AuditModuleId = 2306;
@@ -265,6 +266,7 @@ public sealed class RightsAdminRepository(
             await WriteAuditAsync(connection, transaction, targetUserId,
                 $"保存用户 {targetUserId} 个人模块权限（{items.Count} 行）", adminName, token);
             await transaction.CommitAsync(token);
+            permissionCache.InvalidateAll();
             logger.LogInformation("保存用户模块权限 userId={Target} rows={Count} by={By}",
                 targetUserId, items.Count, adminName);
         }
@@ -295,6 +297,7 @@ public sealed class RightsAdminRepository(
             await WriteAuditAsync(connection, transaction, groupId,
                 $"保存用户组 {groupId} 模块权限（{items.Count} 行）", adminName, token);
             await transaction.CommitAsync(token);
+            permissionCache.InvalidateAll();
             logger.LogInformation("保存组模块权限 groupId={Target} rows={Count} by={By}",
                 groupId, items.Count, adminName);
         }
@@ -372,6 +375,7 @@ public sealed class RightsAdminRepository(
             await WriteAuditAsync(connection, transaction, targetUserId,
                 $"保存用户 {targetUserId} 个人报表权限（{items.Count} 行）", adminName, token);
             await transaction.CommitAsync(token);
+            permissionCache.InvalidateAll();
             logger.LogInformation("保存用户报表权限 userId={Target} rows={Count} by={By}",
                 targetUserId, items.Count, adminName);
         }
@@ -402,6 +406,7 @@ public sealed class RightsAdminRepository(
             await WriteAuditAsync(connection, transaction, groupId,
                 $"保存用户组 {groupId} 报表权限（{items.Count} 行）", adminName, token);
             await transaction.CommitAsync(token);
+            permissionCache.InvalidateAll();
             logger.LogInformation("保存组报表权限 groupId={Target} rows={Count} by={By}",
                 groupId, items.Count, adminName);
         }
@@ -484,6 +489,7 @@ public sealed class RightsAdminRepository(
             await WriteAuditAsync(connection, transaction, userId,
                 $"设置用户 {userId} 所属组（{distinct.Count} 个：{string.Join(',', distinct)}）", adminName, token);
             await transaction.CommitAsync(token);
+            permissionCache.InvalidateAll();
             logger.LogInformation("设置用户所属组 userId={User} groups={Groups} by={By}",
                 userId, string.Join(',', distinct), adminName);
         }
@@ -549,6 +555,7 @@ public sealed class RightsAdminRepository(
             await WriteAuditAsync(connection, transaction, groupId,
                 $"设置用户组 {groupId} 成员（{distinct.Count} 个：{string.Join(',', distinct)}）", adminName, token);
             await transaction.CommitAsync(token);
+            permissionCache.InvalidateAll();
             logger.LogInformation("设置组成员 groupId={Group} users={Users} by={By}",
                 groupId, string.Join(',', distinct), adminName);
         }

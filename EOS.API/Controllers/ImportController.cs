@@ -8,7 +8,7 @@ namespace EOS.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/import")]
+[Route("api/v1/import")]
 public sealed class ImportController(
     ImportService service,
     LegacyRightsRepository rightsRepository,

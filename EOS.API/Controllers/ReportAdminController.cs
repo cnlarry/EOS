@@ -13,7 +13,7 @@ namespace EOS.API.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
-[Route("api/report-admin")]
+[Route("api/v1/report-admin")]
 public sealed class ReportAdminController(
     ReportAdminRepository repository,
     LegacyRightsRepository rightsRepository) : ControllerBase

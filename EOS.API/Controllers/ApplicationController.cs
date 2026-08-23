@@ -7,7 +7,7 @@ namespace EOS.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/app")]
+[Route("api/v1/app")]
 public sealed class ApplicationController(NavigationRepository navigationRepository, IConfiguration configuration) : ControllerBase
 {
     [HttpGet("bootstrap")]

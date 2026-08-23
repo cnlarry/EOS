@@ -10,7 +10,7 @@ namespace EOS.API.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/car-summary")]
+[Route("api/v1/car-summary")]
 public sealed class CarSummaryController(
     DbConnectionFactory connections,
     LegacyRightsRepository rightsRepository,

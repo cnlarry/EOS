@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace EOS.API.Controllers;
 
-[ApiController, Authorize, Route("api/document-workbench/{moduleId:int}")]
+[ApiController, Authorize, Route("api/v1/document-workbench/{moduleId:int}")]
 public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, IPermissionService permissions, WorkbenchAuditWriter auditWriter, EOS.API.Security.CurrentUserContext userContext, IOptions<UnifiedFormEditorSettings> formSettings, ILogger<DocumentWorkbenchController> logger) : ControllerBase
 {
     [HttpGet("definition")]
