@@ -79,6 +79,7 @@ public sealed class DocumentWorkbenchRepository(
     WorkbenchScopeFilter scopeFilter,
     DbTimingCollector dbTiming,
     ApiMetrics metrics,
+    WorkbenchDirtyMarker dirtyMarker,
     ILogger<DocumentWorkbenchRepository> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
@@ -459,6 +460,7 @@ public sealed class DocumentWorkbenchRepository(
                 await command.ExecuteNonQueryAsync(token);
             }
         }
+        await dirtyMarker.MarkDirtyAsync(connection, transaction, definition.ModuleId, updatedBy, token);
         await transaction.CommitAsync(token);
         logger.LogInformation("批量保存列宽 module={ModuleId} master={MasterCount} detail={DetailCount}",definition.ModuleId,masterWidths.Count,detailWidths.Count);
     }

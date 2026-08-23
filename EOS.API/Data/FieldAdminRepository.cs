@@ -5,7 +5,10 @@ using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
 
-public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogger<FieldAdminRepository> logger)
+public sealed class FieldAdminRepository(
+    DbConnectionFactory connections,
+    WorkbenchDirtyMarker dirtyMarker,
+    ILogger<FieldAdminRepository> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly HashSet<string> AllowedTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -174,6 +177,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         AddTableParameters(command, request.TableId, request.Table, updatedBy);
         if (await command.ExecuteNonQueryAsync(token) != 1)
             throw new InvalidOperationException("新增数据表元数据失败。");
+        await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
         await transaction.CommitAsync(token);
         logger.LogInformation("新增数据表元数据 table={Table} by={UpdatedBy}", request.TableId, updatedBy);
     }
@@ -212,6 +216,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         AddTableParameters(command, tableId, input, updatedBy);
         if (await command.ExecuteNonQueryAsync(token) != 1)
             throw new KeyNotFoundException("数据表不存在。");
+        await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
         await transaction.CommitAsync(token);
         logger.LogInformation("更新数据表元数据 table={Table} by={UpdatedBy}", tableId, updatedBy);
     }
@@ -269,6 +274,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         delete.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
         if (await delete.ExecuteNonQueryAsync(token) != 1)
             throw new KeyNotFoundException("数据表不存在。");
+        await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, "SYSTEM", token);
         await transaction.CommitAsync(token);
         logger.LogInformation("删除数据表元数据 table={Table}", tableId);
     }
@@ -369,6 +375,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
             await command.ExecuteNonQueryAsync(token);
             created++;
         }
+        await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
         await transaction.CommitAsync(token);
         logger.LogInformation("批量生成字段元数据 table={Table} created={Created} skipped={Skipped} by={UpdatedBy}",
             request.TableId, created, skipped, updatedBy);
@@ -578,6 +585,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         AddInput(command, request.Field, updatedBy);
         if (await command.ExecuteNonQueryAsync(token) != 1)
             throw new InvalidOperationException("新增字段失败。");
+        await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
         await transaction.CommitAsync(token);
         logger.LogInformation("新增字段 table={Table} field={Field} by={UpdatedBy}", request.TableId, request.FieldId, updatedBy);
     }
@@ -632,6 +640,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         AddInput(command, field, updatedBy);
         if (await command.ExecuteNonQueryAsync(token) != 1)
             throw new KeyNotFoundException("字段不存在。");
+        await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
         await transaction.CommitAsync(token);
         logger.LogInformation("更新字段 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
     }
@@ -665,6 +674,7 @@ public sealed class FieldAdminRepository(DbConnectionFactory connections, ILogge
         clean.Parameters.Add("@TableId", SqlDbType.VarChar, 100).Value = tableId;
         clean.Parameters.Add("@TableDotField", SqlDbType.NVarChar, 220).Value = $"{tableId}.{fieldId.Trim()}";
         await clean.ExecuteNonQueryAsync(token);
+        await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, "SYSTEM", token);
         await transaction.CommitAsync(token);
         logger.LogInformation("删除字段 table={Table} field={Field}", tableId, fieldId);
     }

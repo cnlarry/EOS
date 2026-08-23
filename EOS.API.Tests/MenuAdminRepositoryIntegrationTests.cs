@@ -34,7 +34,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
                 ["ConnectionStrings:ErpDatabase"] = ConnectionString.Value,
             })
             .Build();
-        _repository = new MenuAdminRepository(new DbConnectionFactory(config), NullLogger<MenuAdminRepository>.Instance);
+        _repository = new MenuAdminRepository(new DbConnectionFactory(config), new WorkbenchDirtyMarker(new DbConnectionFactory(config)), NullLogger<MenuAdminRepository>.Instance);
         var baseId = 990000000 + Random.Shared.Next(0, 9999999);
         _parentId = baseId;
         _childIds = [baseId + 1, baseId + 2, baseId + 3, baseId + 4];
