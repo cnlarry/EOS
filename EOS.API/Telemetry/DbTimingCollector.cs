@@ -9,6 +9,9 @@ namespace EOS.API.Telemetry;
 /// </summary>
 public sealed class DbTimingCollector
 {
+    /// <summary>进程内共享实例：AsyncLocal 状态为静态，任意实例操作同一请求上下文。</summary>
+    public static DbTimingCollector Instance { get; } = new();
+
     private static readonly AsyncLocal<State?> Current = new();
 
     public IDisposable BeginRequest()
@@ -22,11 +25,23 @@ public sealed class DbTimingCollector
         var state = Current.Value ??= new State();
         if (state.Active)
         {
-            throw new InvalidOperationException("DbTimingCollector 不支持嵌套计时。");
+            // 嵌套计时：外层已覆盖本段耗时，内层为 no-op，避免重复累计与抛异常
+            return NoopScope.Instance;
         }
         state.Active = true;
         state.Timestamp = Stopwatch.GetTimestamp();
         return new MeasureScope(state);
+    }
+
+    /// <summary>连接层统计（SqlConnection.RetrieveStatistics ExecutionTime）累计入口。</summary>
+    public void AddMilliseconds(double milliseconds)
+    {
+        if (milliseconds <= 0)
+        {
+            return;
+        }
+        var state = Current.Value ??= new State();
+        state.TotalMs += milliseconds;
     }
 
     public double TotalMilliseconds => Current.Value?.TotalMs ?? 0;
@@ -51,6 +66,14 @@ public sealed class DbTimingCollector
             _disposed = true;
             state.TotalMs += Stopwatch.GetElapsedTime(state.Timestamp).TotalMilliseconds;
             state.Active = false;
+        }
+    }
+
+    private sealed class NoopScope : IDisposable
+    {
+        public static readonly NoopScope Instance = new();
+        public void Dispose()
+        {
         }
     }
 

@@ -5,6 +5,7 @@ using EOS.API.Errors;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
+using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 /// <summary>
@@ -128,6 +129,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         int pageSize,
         CancellationToken token)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         if(definition.SpName is not null)
             return await RunSpAsync(definition,request.Values,token);
         page=Math.Max(1,page);
@@ -188,6 +190,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         IReadOnlyList<string> groupFields,
         CancellationToken token)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         if(definition.SpName is not null)
             return await RunSpAsync(definition,request.Values,token,10000);
         await using var connection=connections.Create();

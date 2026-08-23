@@ -4,6 +4,7 @@ using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.Data.SqlClient;
 
+using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 /// <summary>
@@ -20,6 +21,7 @@ public sealed class UserAdminRepository(DbConnectionFactory connections, ILogger
         int pageSize,
         CancellationToken token)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 10, 100);
         var pattern = $"%{keyword?.Trim() ?? ""}%";

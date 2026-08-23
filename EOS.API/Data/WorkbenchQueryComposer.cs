@@ -15,7 +15,6 @@ namespace EOS.API.Data;
 public sealed class WorkbenchQueryComposer(
     DbConnectionFactory connections,
     WorkbenchScopeFilter scopeFilter,
-    DbTimingCollector dbTiming,
     ApiMetrics metrics,
     WorkbenchVirtualColumnResolver virtualColumns,
     ILogger<WorkbenchQueryComposer> logger)
@@ -35,6 +34,7 @@ public sealed class WorkbenchQueryComposer(
         string? groupValue = null,
         string? dataFilter = null)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         var table = detail ? definition.DetailTable : definition.MasterTable;
         var fields = detail ? definition.DetailFields : definition.MasterFields;
         page = Math.Max(1, page);
@@ -52,7 +52,7 @@ public sealed class WorkbenchQueryComposer(
                 continue;
             }
             var field = fields.FirstOrDefault(item => item.Key.Equals(pk, StringComparison.OrdinalIgnoreCase));
-            if (field is null && DocumentWorkbenchRepository.Identifier.IsMatch(pk))
+            if (field is null && WorkbenchSql.Identifier.IsMatch(pk))
             {
                 field = new WorkbenchField(pk, pk, "nvarchar", 100, "left", true, false, false);
             }
@@ -62,7 +62,6 @@ public sealed class WorkbenchQueryComposer(
             }
         }
         var predicates = new List<string>();
-        using var timing = dbTiming.Measure();
         var stopwatch = Stopwatch.StartNew();
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
@@ -148,6 +147,7 @@ public sealed class WorkbenchQueryComposer(
         IReadOnlyList<WorkbenchField>? exportFields = null,
         string? dataFilter = null)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         var table = definition.MasterTable;
         var fields = definition.MasterFields;
         if (table is null || fields.Count == 0)
@@ -157,7 +157,6 @@ public sealed class WorkbenchQueryComposer(
         const int maxExportRows = 100000;
         var selected = exportFields is { Count: > 0 } ? exportFields.ToList() : fields.Take(30).ToList();
         var predicates = new List<string>();
-        using var timing = dbTiming.Measure();
         var stopwatch = Stopwatch.StartNew();
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
@@ -205,6 +204,7 @@ public sealed class WorkbenchQueryComposer(
         IReadOnlyList<WorkbenchField>? exportFields = null,
         string? dataFilter = null)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         var table = definition.MasterTable;
         var fields = definition.MasterFields;
         if (table is null || fields.Count == 0 || keys.Count == 0)
@@ -220,7 +220,6 @@ public sealed class WorkbenchQueryComposer(
         }
         var selected = exportFields is { Count: > 0 } ? exportFields.ToList() : fields.Take(30).ToList();
         var filterPredicates = new List<string>();
-        using var timing = dbTiming.Measure();
         var stopwatch = Stopwatch.StartNew();
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
@@ -341,7 +340,7 @@ public sealed class WorkbenchQueryComposer(
                 continue;
             }
             var field = fields.FirstOrDefault(item => item.Key.Equals(sortColumn, StringComparison.OrdinalIgnoreCase));
-            if (field is null && DocumentWorkbenchRepository.Identifier.IsMatch(sortColumn))
+            if (field is null && WorkbenchSql.Identifier.IsMatch(sortColumn))
             {
                 field = new WorkbenchField(sortColumn, sortColumn, "nvarchar", 100, "left", false, false, false);
             }

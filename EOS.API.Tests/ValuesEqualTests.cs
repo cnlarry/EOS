@@ -23,6 +23,6 @@ public sealed class ValuesEqualTests
     [InlineData("2026-08-09", "2026-08-09", true)]
     public void ValuesEqual_MixedStringNumeric(object? left, object? right, bool expected)
     {
-        Assert.Equal(expected, DocumentWorkbenchRepository.ValuesEqual(left, right));
+        Assert.Equal(expected, EOS.API.Data.WorkbenchSql.ValuesEqual(left, right));
     }
 }

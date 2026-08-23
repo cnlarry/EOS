@@ -90,7 +90,7 @@ public sealed class WorkbenchApprovalService(
         string userId,
         CancellationToken token)
     {
-        if (!await DocumentWorkbenchRepository.ColumnExistsAsync(connection, null, definition.MasterTable, "CONFIRM_TAG", token))
+        if (!await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "CONFIRM_TAG", token))
         {
             return RecordSaveResult.Success(keyValues);
         }
@@ -142,8 +142,8 @@ public sealed class WorkbenchApprovalService(
         IReadOnlyList<string> keyValues,
         CancellationToken token)
     {
-        var hasConfirm = await DocumentWorkbenchRepository.ColumnExistsAsync(connection, transaction, definition.MasterTable, "CONFIRM_TAG", token);
-        var hasFinished = await DocumentWorkbenchRepository.ColumnExistsAsync(connection, transaction, definition.MasterTable, "FINISHED_TAG", token);
+        var hasConfirm = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "CONFIRM_TAG", token);
+        var hasFinished = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "FINISHED_TAG", token);
         if (!hasConfirm && !hasFinished)
         {
             return null;
@@ -289,13 +289,13 @@ public sealed class WorkbenchApprovalService(
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
-        var hasTag = await DocumentWorkbenchRepository.ColumnExistsAsync(connection, null, definition.MasterTable, "FINISHED_TAG", token);
+        var hasTag = await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "FINISHED_TAG", token);
         if (!hasTag)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "ENDCASE_NOT_SUPPORTED", "该模块不支持结案操作。");
         }
-        var hasPerson = await DocumentWorkbenchRepository.ColumnExistsAsync(connection, null, definition.MasterTable, "FINISHED_PERSON", token);
-        var hasDate = await DocumentWorkbenchRepository.ColumnExistsAsync(connection, null, definition.MasterTable, "FINISHED_DATE", token);
+        var hasPerson = await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "FINISHED_PERSON", token);
+        var hasDate = await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "FINISHED_DATE", token);
         var sql = finish
             ? $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=1{(hasPerson ? ",FINISHED_PERSON=@Person" : string.Empty)}{(hasDate ? ",FINISHED_DATE=GETDATE()" : string.Empty)} WHERE ISNULL(FINISHED_TAG,0)=0 AND {keyCondition};"
             : $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=0{(hasPerson ? ",FINISHED_PERSON=@Person" : string.Empty)}{(hasDate ? ",FINISHED_DATE=GETDATE()" : string.Empty)} WHERE FINISHED_TAG=1 AND {keyCondition};";
@@ -372,7 +372,7 @@ public sealed class WorkbenchApprovalService(
         CancellationToken token)
     {
         var fields = fieldsCsv.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Where(field => DocumentWorkbenchRepository.Identifier.IsMatch(field)).ToArray();
+            .Where(field => WorkbenchSql.Identifier.IsMatch(field)).ToArray();
         if (fields.Length == 0)
         {
             return;

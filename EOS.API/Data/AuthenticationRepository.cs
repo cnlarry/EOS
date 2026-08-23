@@ -3,12 +3,14 @@ using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.Data.SqlClient;
 
+using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 public sealed class AuthenticationRepository(DbConnectionFactory connections, ILogger<AuthenticationRepository> logger)
 {
     public async Task<LoginResult> AuthenticateAsync(string userId, string password, CancellationToken token)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         var normalizedUserId = userId.Trim();
         logger.LogInformation("登录尝试 userId={UserId}", normalizedUserId);
 

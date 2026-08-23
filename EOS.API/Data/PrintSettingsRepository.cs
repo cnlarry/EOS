@@ -2,6 +2,7 @@ using System.Data;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
+using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 /// <summary>
@@ -15,6 +16,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
 {
     public async Task<ReportPrintSettings> GetAsync(int moduleId, string userId, CancellationToken token)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         var reports = await ReadReportsAsync(connection, moduleId, userId, token);

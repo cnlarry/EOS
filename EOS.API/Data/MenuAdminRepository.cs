@@ -3,6 +3,7 @@ using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 using System.Text.RegularExpressions;
 
+using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 /// <summary>
@@ -35,6 +36,7 @@ public sealed class MenuAdminRepository(
 
     public async Task<MenuAdminList> GetModulesAsync(string? keyword, CancellationToken token)
     {
+        using var timing = DbTimingCollector.Instance.Measure();
         var sql = """
             SELECT M_IDX,M_ALIAS,M_DESC,M_URL,NEW_URL,MODI_URL,HELP_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,

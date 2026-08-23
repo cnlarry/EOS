@@ -18,7 +18,6 @@ public sealed class WorkbenchCommandHandler(
     WorkbenchAuditWriter auditWriter,
     WorkbenchApprovalService approvalService,
     WorkbenchScopeFilter scopeFilter,
-    DbTimingCollector dbTiming,
     DomainRuleService domainRules,
     ControlledSprocInvoker controlledSprocs,
     WorkbenchIdempotency idempotency,
@@ -31,10 +30,10 @@ public sealed class WorkbenchCommandHandler(
         string? dataFilter,
         CancellationToken token)
     {
-        using var timing = dbTiming.Measure();
+        using var timing = DbTimingCollector.Instance.Measure();
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
-        var pkColumns = await DocumentWorkbenchRepository.GetPrimaryKeyColumnsAsync(connection, null, definition.MasterTable, token);
+        var pkColumns = await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, null, definition.MasterTable, token);
         if (pkColumns.Count != keyValues.Count)
         {
             return new(RecordAccessStatus.KeyMismatch, null);
@@ -44,12 +43,12 @@ public sealed class WorkbenchCommandHandler(
         foreach (var statusColumn in new[] { "CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE", "FINISHED_TAG" })
         {
             if (!masterFields.Contains(statusColumn, StringComparer.OrdinalIgnoreCase)
-                && await DocumentWorkbenchRepository.ColumnExistsAsync(connection, null, definition.MasterTable, statusColumn, token))
+                && await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, statusColumn, token))
             {
                 masterFields.Add(statusColumn);
             }
         }
-        var current = await DocumentWorkbenchRepository.ReadRowAsync(connection, null, definition.MasterTable, pkColumns, keyValues, masterFields, token);
+        var current = await WorkbenchSql.ReadRowAsync(connection, null, definition.MasterTable, pkColumns, keyValues, masterFields, token);
         if (current is null)
         {
             return new(RecordAccessStatus.NotFound, null);
@@ -60,7 +59,7 @@ public sealed class WorkbenchCommandHandler(
         }
         if (!string.IsNullOrWhiteSpace(scopePredicate))
         {
-            if (!await DocumentWorkbenchRepository.RecordInScopeAsync(connection, null, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
+            if (!await WorkbenchSql.RecordInScopeAsync(connection, null, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
             {
                 return new(RecordAccessStatus.OutOfScope, null);
             }
@@ -70,7 +69,7 @@ public sealed class WorkbenchCommandHandler(
         if (definition.DetailTable is not null && form.DetailFields.Count > 0)
         {
             var detailFields = form.DetailFields.Where(field => !field.DisplayOnly && !field.IsVirtual).Select(field => field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            detailRows.AddRange(await DocumentWorkbenchRepository.ReadRowsAsync(connection, null, definition.DetailTable, pkColumns, keyValues, detailFields, token));
+            detailRows.AddRange(await WorkbenchSql.ReadRowsAsync(connection, null, definition.DetailTable, pkColumns, keyValues, detailFields, token));
         }
         return new(RecordAccessStatus.Ok, new RecordBundle(current, detailRows));
     }
@@ -98,12 +97,12 @@ public sealed class WorkbenchCommandHandler(
             }
         }
 
-        var pkColumns = await DocumentWorkbenchRepository.GetPrimaryKeyColumnsAsync(connection, transaction, definition.MasterTable, token);
+        var pkColumns = await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, transaction, definition.MasterTable, token);
         if (pkColumns.Count == 0)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "NO_PRIMARY_KEY", "模块主表缺少主键定义。");
         }
-        var masterIdentity = await DocumentWorkbenchRepository.GetIdentityColumnsAsync(connection, transaction, definition.MasterTable, token);
+        var masterIdentity = await WorkbenchSql.GetIdentityColumnsAsync(connection, transaction, definition.MasterTable, token);
 
         var validation = RecordPayloadValidator.ValidateSubmitted(form.MasterFields, request.Values);
         if (validation.Errors.Count > 0)
@@ -115,13 +114,13 @@ public sealed class WorkbenchCommandHandler(
         FormDefaultRules.Apply(definition.ModuleId, form.MasterFields, values);
 
         // ADR-005 §7 配套：主表存在 OWNER/OWNER_G 时回填制单人/主组
-        if (await DocumentWorkbenchRepository.ColumnExistsAsync(connection, transaction, definition.MasterTable, "OWNER", token))
+        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "OWNER", token))
         {
             values.TryAdd("OWNER", userId);
         }
-        if (await DocumentWorkbenchRepository.ColumnExistsAsync(connection, transaction, definition.MasterTable, "OWNER_G", token))
+        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "OWNER_G", token))
         {
-            var primaryGroup = await DocumentWorkbenchRepository.GetPrimaryGroupAsync(connection, transaction, userId, token);
+            var primaryGroup = await WorkbenchSql.GetPrimaryGroupAsync(connection, transaction, userId, token);
             if (primaryGroup is not null)
             {
                 values.TryAdd("OWNER_G", primaryGroup);
@@ -201,7 +200,7 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
         }
         if (!string.IsNullOrWhiteSpace(scopePredicate)
-            && !await DocumentWorkbenchRepository.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
+            && !await WorkbenchSql.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "RECORD_OUT_OF_MODULE_FILTER", "新建记录不满足模块过滤条件，无法保存。");
         }
@@ -281,13 +280,13 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "SP_NOT_PORTED",
                 "该模块的存盘后处理逻辑尚未移植，禁止保存。");
         }
-        var pkColumns = await DocumentWorkbenchRepository.GetPrimaryKeyColumnsAsync(connection, transaction, definition.MasterTable, token);
+        var pkColumns = await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, transaction, definition.MasterTable, token);
         if (pkColumns.Count != keyValues.Count)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.KeyMismatch, "RECORD_KEY_MISMATCH", "主键数量与模块主键不匹配。");
         }
         var masterFields = form.MasterFields.Where(field => !field.DisplayOnly && !field.IsVirtual).Select(field => field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var current = await DocumentWorkbenchRepository.ReadRowAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, masterFields, token);
+        var current = await WorkbenchSql.ReadRowAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, masterFields, token);
         if (current is null)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
@@ -298,7 +297,7 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
         }
         if (!string.IsNullOrWhiteSpace(scopePredicate)
-            && !await DocumentWorkbenchRepository.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
+            && !await WorkbenchSql.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.OutOfScope, "RECORD_OUT_OF_SCOPE", "目标记录不在当前用户数据范围内。");
         }
@@ -351,11 +350,11 @@ public sealed class WorkbenchCommandHandler(
             }
             sets.Add((key, value));
         }
-        if (await DocumentWorkbenchRepository.ColumnExistsAsync(connection, transaction, definition.MasterTable, "LAST_UPDATE_BY", token))
+        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "LAST_UPDATE_BY", token))
         {
             sets.Add(("LAST_UPDATE_BY", employeeName));
         }
-        if (await DocumentWorkbenchRepository.ColumnExistsAsync(connection, transaction, definition.MasterTable, "LAST_UPDATE_DATE", token))
+        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "LAST_UPDATE_DATE", token))
         {
             sets.Add(("LAST_UPDATE_DATE", DateTime.Now));
         }
@@ -366,9 +365,9 @@ public sealed class WorkbenchCommandHandler(
             await using var command = new SqlCommand($"UPDATE dbo.[{definition.MasterTable}] SET {setSql} WHERE {where};", connection, transaction);
             for (var i = 0; i < sets.Count; i++)
             {
-                command.Parameters.AddWithValue($"@s{i}", DocumentWorkbenchRepository.NormalizeDbValue(sets[i].Value));
+                command.Parameters.AddWithValue($"@s{i}", WorkbenchSql.NormalizeDbValue(sets[i].Value));
             }
-            DocumentWorkbenchRepository.AddKeyParameters(command, pkColumns, keyValues);
+            WorkbenchSql.AddKeyParameters(command, pkColumns, keyValues);
             var affected = await command.ExecuteNonQueryAsync(token);
             if (affected == 0)
             {
@@ -404,7 +403,7 @@ public sealed class WorkbenchCommandHandler(
         await RecalculateMasterAmountsAsync(connection, transaction, definition, token);
         // 收紧：修改后记录仍须满足模块契约（防止把记录改出过滤范围）
         if (!string.IsNullOrWhiteSpace(scopePredicate)
-            && !await DocumentWorkbenchRepository.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
+            && !await WorkbenchSql.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "RECORD_OUT_OF_MODULE_FILTER", "修改后记录不满足模块过滤条件，无法保存。");
         }
@@ -454,12 +453,12 @@ public sealed class WorkbenchCommandHandler(
             }
         }
 
-        var pkColumns = await DocumentWorkbenchRepository.GetPrimaryKeyColumnsAsync(connection, transaction, definition.MasterTable, token);
+        var pkColumns = await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, transaction, definition.MasterTable, token);
         if (pkColumns.Count != keyValues.Count)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.KeyMismatch, "RECORD_KEY_MISMATCH", "主键数量与模块主键不匹配。");
         }
-        if (!await DocumentWorkbenchRepository.RowExistsAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, token))
+        if (!await WorkbenchSql.RowExistsAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, token))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
         }
@@ -469,7 +468,7 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
         }
         if (!string.IsNullOrWhiteSpace(scopePredicate)
-            && !await DocumentWorkbenchRepository.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
+            && !await WorkbenchSql.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.OutOfScope, "RECORD_OUT_OF_SCOPE", "目标记录不在当前用户数据范围内。");
         }
@@ -481,11 +480,11 @@ public sealed class WorkbenchCommandHandler(
         }
         if (definition.DetailTable is not null)
         {
-            await DocumentWorkbenchRepository.DeleteDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token);
+            await WorkbenchSql.DeleteDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token);
         }
         var where = string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@k{index}"));
         await using var command = new SqlCommand($"DELETE FROM dbo.[{definition.MasterTable}] WHERE {where};", connection, transaction);
-        DocumentWorkbenchRepository.AddKeyParameters(command, pkColumns, keyValues);
+        WorkbenchSql.AddKeyParameters(command, pkColumns, keyValues);
         var affected = await command.ExecuteNonQueryAsync(token);
         if (affected == 0)
         {
@@ -525,7 +524,7 @@ public sealed class WorkbenchCommandHandler(
             {
                 return [new FieldError("", "该模块无明细资料不可保存。", "DETAIL_REQUIRED")];
             }
-            await DocumentWorkbenchRepository.DeleteDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token);
+            await WorkbenchSql.DeleteDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token);
             return null;
         }
 
@@ -540,8 +539,8 @@ public sealed class WorkbenchCommandHandler(
             }
         }
 
-        var detailIdentity = await DocumentWorkbenchRepository.GetIdentityColumnsAsync(connection, transaction, definition.DetailTable, token);
-        var dfVerify = await DocumentWorkbenchRepository.GetDfVerifyAsync(connection, transaction, definition.DetailTable, token);
+        var detailIdentity = await WorkbenchSql.GetIdentityColumnsAsync(connection, transaction, definition.DetailTable, token);
+        var dfVerify = await WorkbenchSql.GetDfVerifyAsync(connection, transaction, definition.DetailTable, token);
         var dfFields = dfVerify?.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) ?? [];
         var errors = new List<FieldError>();
         var rows = new List<Dictionary<string, object?>>();
@@ -602,7 +601,7 @@ public sealed class WorkbenchCommandHandler(
             }
         }
 
-        await DocumentWorkbenchRepository.DeleteDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token);
+        await WorkbenchSql.DeleteDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token);
         foreach (var row in rows)
         {
             var fillErrors = await FillServerColumnsAsync(connection, transaction, definition.DetailTable, form.DetailFields, row, employeeName, isNew, token);
@@ -759,11 +758,11 @@ public sealed class WorkbenchCommandHandler(
         var noColumn = definition.MasterPkOrder[1];
         foreach (var column in new[] { "AMOUNT", "AMOUNT_TAX", "TAX_SUM" })
         {
-            if (!await DocumentWorkbenchRepository.ColumnExistsAsync(connection, transaction, definition.DetailTable, column, token))
+            if (!await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.DetailTable, column, token))
             {
                 continue;
             }
-            if (!await DocumentWorkbenchRepository.ColumnExistsAsync(connection, transaction, definition.MasterTable, column, token))
+            if (!await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, column, token))
             {
                 continue;
             }
@@ -778,15 +777,15 @@ public sealed class WorkbenchCommandHandler(
                 """, connection, transaction);
             await command.ExecuteNonQueryAsync(token);
         }
-        if (await DocumentWorkbenchRepository.ColumnExistsAsync(connection, transaction, definition.MasterTable, "PREPAY_AMOUNT", token)
-            && await DocumentWorkbenchRepository.ColumnExistsAsync(connection, transaction, definition.MasterTable, "AMOUNT", token))
+        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "PREPAY_AMOUNT", token)
+            && await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "AMOUNT", token))
         {
             await using var prepay = new SqlCommand(
                 $"UPDATE dbo.[{definition.MasterTable}] SET PREPAY_AMOUNT=ISNULL(PREPAY_AMOUNT,ISNULL(AMOUNT,0));",
                 connection, transaction);
             await prepay.ExecuteNonQueryAsync(token);
         }
-        if (await DocumentWorkbenchRepository.ColumnExistsAsync(connection, transaction, definition.MasterTable, "RECEIVE_AMOUNT", token))
+        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "RECEIVE_AMOUNT", token))
         {
             await using var receive = new SqlCommand(
                 $"UPDATE dbo.[{definition.MasterTable}] SET RECEIVE_AMOUNT=ISNULL(RECEIVE_AMOUNT,0);",
@@ -810,7 +809,7 @@ public sealed class WorkbenchCommandHandler(
         await using var command = new SqlCommand(sql, connection, transaction);
         for (var i = 0; i < insertFields.Count; i++)
         {
-            command.Parameters.AddWithValue($"@v{i}", DocumentWorkbenchRepository.NormalizeDbValue(values[insertFields[i].Key]));
+            command.Parameters.AddWithValue($"@v{i}", WorkbenchSql.NormalizeDbValue(values[insertFields[i].Key]));
         }
         if (identityColumns.Count > 0)
         {
@@ -837,7 +836,7 @@ public sealed class WorkbenchCommandHandler(
             : new (string Name, object Value)[] { ("LAST_UPDATE_BY", employeeName), ("LAST_UPDATE_DATE", now) };
         foreach (var item in audit)
         {
-            if (await DocumentWorkbenchRepository.ColumnExistsAsync(connection, transaction, table, item.Name, token))
+            if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, table, item.Name, token))
             {
                 values[item.Name] = item.Value;
             }
@@ -943,7 +942,7 @@ public sealed class WorkbenchCommandHandler(
         CancellationToken token)
     {
         var table = source.Table!.Trim();
-        if (!DocumentWorkbenchRepository.Identifier.IsMatch(table) || !await DocumentWorkbenchRepository.TableExistsAsync(connection, table, token))
+        if (!WorkbenchSql.Identifier.IsMatch(table) || !await WorkbenchSql.TableExistsAsync(connection, table, token))
         {
             return;
         }
@@ -954,7 +953,7 @@ public sealed class WorkbenchCommandHandler(
         {
             keyColumn = main.Key;
         }
-        if (!DocumentWorkbenchRepository.Identifier.IsMatch(keyColumn))
+        if (!WorkbenchSql.Identifier.IsMatch(keyColumn))
         {
             return;
         }
@@ -967,7 +966,7 @@ public sealed class WorkbenchCommandHandler(
             {
                 column = companion.Key;
             }
-            if (!DocumentWorkbenchRepository.Identifier.IsMatch(column))
+            if (!WorkbenchSql.Identifier.IsMatch(column))
             {
                 return;
             }
@@ -975,7 +974,7 @@ public sealed class WorkbenchCommandHandler(
         }
 
         var columns = selected.Select(item => item.Column).Append(keyColumn).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (!await DocumentWorkbenchRepository.ColumnsExistAsync(connection, table, columns, token))
+        if (!await WorkbenchSql.ColumnsExistAsync(connection, table, columns, token))
         {
             return;
         }
@@ -1014,9 +1013,9 @@ public sealed class WorkbenchCommandHandler(
         }
     }
 
-    private static string ValueToString(object? value) => DocumentWorkbenchRepository.ValueToString(value);
+    private static string ValueToString(object? value) => WorkbenchSql.ValueToString(value);
 
-    private static bool ValuesEqual(object? left, object? right) => DocumentWorkbenchRepository.ValuesEqual(left, right);
+    private static bool ValuesEqual(object? left, object? right) => WorkbenchSql.ValuesEqual(left, right);
 
     private SqlConnection CreateConnection() => connections.Create();
 }
