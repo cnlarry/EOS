@@ -9,10 +9,9 @@ namespace EOS.API.Data;
 /// 工作台数据范围统一构建器（ADR-005 §2/§7，阶段 1）：
 /// 把模块 FILTER、用户 DATA_FILTER、分组表达式、EXEC_TAG 落地为受控 SQL 谓词。
 /// 规则边界（阶段 1 登记）：
-/// - 列表/导出：模块 FILTER + DATA_FILTER + 分组 + EXEC_TAG（与既有行为等价，逻辑收敛到此组件）；
-/// - 详情/记录读取：DATA_FILTER + EXEC_TAG（用户权限范围）；模块 FILTER 不参与——
-///   旧系统表单默认值允许创建范围外记录（如 1407 退货单 SEND_TAG 默认 1 而列表 FILTER=SEND_TAG=0），
-///   把 FILTER 强加到详情会破坏既有放量 CRUD；保存路径语义统一留待阶段 3；
+/// - 列表/导出/详情/记录读取/子表/打印：模块 FILTER + DATA_FILTER + 分组 + EXEC_TAG 全范围一致
+///   （2026-08-23 收紧：模块级过滤条件对一切读取生效；建单/改单/删单也校验模块契约，
+///   表单默认值已对齐，范围外记录不可见也不可写）；
 /// - 子表：通过主表关联键把主表范围推导到明细（缺关联键禁止读取，fail-closed）。
 /// 全部动态标识符来自服务端 Definition 白名单，值参数化；解析失败或范围无法确定时
 /// 抛 DataFilterUnsupportedException/GroupExpressionUnsupportedException（403），不降级为全量查询。
@@ -205,6 +204,7 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
         }
 
         var scopePredicates = new List<string>();
+        ApplyModuleFilter(definition, scopePredicates, command);
         ApplyUserDataFilter(definition, dataFilter, scopePredicates, command);
         ApplyExecTagScope(definition, scopePredicates, command);
         if (scopePredicates.Count == 0)
@@ -230,6 +230,20 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
     {
         var values = new List<object>();
         var parts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(definition.ModuleFilter))
+        {
+            var allowedFields = ResolveFilterFieldKeys(definition);
+            if (!DataFilterParser.TryParse(definition.ModuleFilter, definition.MasterTable, allowedFields,
+                    out var parsed, out var parsedParameters))
+            {
+                metrics.IncrementScopeRejected("module_filter");
+                predicate = string.Empty;
+                parameters = [];
+                return false;
+            }
+            parts.Add(Renumber(parsed, values, parsedParameters));
+        }
 
         if (!string.IsNullOrWhiteSpace(dataFilter))
         {

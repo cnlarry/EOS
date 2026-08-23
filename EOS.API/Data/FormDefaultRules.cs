@@ -18,21 +18,24 @@ internal static class FormDefaultRules
             [1604] = new Dictionary<string, string> { ["REBATE"] = "100" }, // 厂商报价单 Quote.aspx.cs
             [1606] = new Dictionary<string, string> { ["REBATE"] = "100" }, // 采购单 Purchase.aspx.cs
             [1405] = new Dictionary<string, string> { ["REBATE"] = "100" },
-            // 退货/退料默认勾选已发运标记
-            [1407] = new Dictionary<string, string> { ["SEND_TAG"] = "1" }, // 退货单 Return.aspx.cs
+            // 退货/退料 SEND_TAG 默认 0：与模块 FILTER 契约一致（1407/1608 FILTER=SEND_TAG=0，
+            // 全库数据亦为 0；旧默认 1 会让新建记录落在过滤范围外，2026-08-23 收紧时修正）
+            [1407] = new Dictionary<string, string> { ["SEND_TAG"] = "0" }, // 退货单 Return.aspx.cs
             [1409] = new Dictionary<string, string> { ["SEND_TAG"] = "1" }, // 扣款退货单
-            [1608] = new Dictionary<string, string> { ["SEND_TAG"] = "1" }, // 退料单 Cancel.aspx.cs
+            [1608] = new Dictionary<string, string> { ["SEND_TAG"] = "0" }, // 退料单 Cancel.aspx.cs
             [1612] = new Dictionary<string, string> { ["SEND_TAG"] = "1" }, // 扣款退料单
+            // 成品请购单：默认请购类型 QG（对齐 FILTER=APPLY_TYPE='QG' 与全库主流数据）
+            [1615] = new Dictionary<string, string> { ["APPLY_TYPE"] = "QG" },
             // 产品资料：新增默认成品 + 自制（Product.aspx.cs dro 默认选中项）
             [1201] = new Dictionary<string, string> { ["PRO_TYPE"] = "1", ["MAIN_SOURCE"] = "2" },
             // 退料单(生产不良)：默认退料类别 2（Back.aspx.cs dro_BACK_CODE 默认选中）
             [1423] = new Dictionary<string, string> { ["BACK_CODE"] = "2" },
             // 生产领料（MOC/Get.aspx.cs 按 m 参数勾选：m=2 重工、m=3 托外、m=4 托外+重工）
-            [1514] = new Dictionary<string, string> { ["REWORK_TAG"] = "1" },
+            [1514] = new Dictionary<string, string> { ["REWORK_TAG"] = "1", ["OUTSIDE_TAG"] = "0" },
             [2805] = new Dictionary<string, string> { ["OUTSIDE_TAG"] = "1" },
             [2806] = new Dictionary<string, string> { ["OUTSIDE_TAG"] = "1", ["REWORK_TAG"] = "1" },
             // 制令单（MOC/Produce.aspx.cs 同规则）
-            [1512] = new Dictionary<string, string> { ["REWORK_TAG"] = "1" },
+            [1512] = new Dictionary<string, string> { ["REWORK_TAG"] = "1", ["OUTSIDE_TAG"] = "0" },
             [2803] = new Dictionary<string, string> { ["OUTSIDE_TAG"] = "1" },
             [2804] = new Dictionary<string, string> { ["OUTSIDE_TAG"] = "1", ["REWORK_TAG"] = "1" },
             // 工时录入表：新增默认当前年月（WORKTIME_M.aspx.cs）
