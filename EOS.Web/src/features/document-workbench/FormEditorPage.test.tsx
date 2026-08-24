@@ -1,4 +1,4 @@
-﻿import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -60,6 +60,8 @@ const formDefinition: FormDefinition = {
   canDeapprove: true,
   canEndCase: false,
   canUnEndCase: false,
+  canAddNew: true,
+  canEdit: true,
   canFileView: false,
   canFileUpda: false,
   canFileEdit: false,
@@ -238,7 +240,7 @@ describe('FormEditorPage', () => {
     const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('input.form-control:not([disabled])'))
     expect(inputs.find(input => input.value === 'DD')).toBeTruthy()
     expect(inputs.find(input => input.value === 'DD26080015')).toBeTruthy()
-    expect(inputs.find(input => input.value === '2026-08-10')).toBeTruthy()
+    expect(inputs.find(input => input.value.startsWith('2026-08-10'))).toBeTruthy()
   })
 
   it('明细网格显示序号与操作列', async () => {
@@ -249,18 +251,19 @@ describe('FormEditorPage', () => {
     expect(screen.getByText('1')).toBeInTheDocument()
   })
 
-  it('明细行不足 5 行时渲染空行占位', async () => {
+  it('明细网格不再渲染补空行（ADR-006 决策 5）', async () => {
     const { container } = renderEditor('/document-workbench/1209/edit?key=["P1","A"]')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
-    // 编辑模式有 1 行真实明细 → 补 4 行占位；新增模式 0 行 → 补 5 行
-    expect(container.querySelectorAll('tr.erp-detail-filler')).toHaveLength(4)
-    expect(container.querySelectorAll('tbody tr')).toHaveLength(5)
+    // 编辑模式有 1 行真实明细，无任何占位空行
+    expect(container.querySelectorAll('tr.erp-detail-filler')).toHaveLength(0)
+    expect(container.querySelectorAll('.erp-detail-grid tbody tr')).toHaveLength(1)
   })
 
-  it('新增模式 0 行明细时渲染 5 行空行占位', async () => {
+  it('新增模式 0 行明细时空态显示「+ 新增一行」入口（ADR-006 决策 5）', async () => {
     const { container } = renderEditor('/document-workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
-    expect(container.querySelectorAll('tr.erp-detail-filler')).toHaveLength(5)
+    expect(container.querySelectorAll('.erp-detail-grid tbody tr')).toHaveLength(0)
+    expect(screen.getByRole('button', { name: '+ 新增一行' })).toBeInTheDocument()
   })
 
   it('按页签分组渲染并可切换', async () => {
@@ -342,16 +345,20 @@ describe('FormEditorPage', () => {
     expect(apiClientMock.post).not.toHaveBeenCalled()
   })
 
-  it('新增保存成功后回列表页', async () => {
+  it('新增保存成功后进入浏览态（ADR-006 决策 6）', async () => {
     const { container } = renderEditor('/document-workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.change(masterInputs(container)[0], { target: { value: 'P9' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/document-workbench/1209/record',
-      { values: { PRO_NO: 'P9', EDITION: '', QTY: '5', FLAG: '1' }, details: [] },
+      expect.objectContaining({ values: { PRO_NO: 'P9', EDITION: '', QTY: '5', FLAG: '1' }, details: [] }),
     ))
-    await waitFor(() => expect(screen.getByText('BACK_LIST')).toBeInTheDocument())
+    // ADR-006 决策 2.1：保存请求必须携带幂等键
+    const saveBody = apiClientMock.post.mock.calls.find(([path]) => path === '/document-workbench/1209/record')?.[1] as { idempotencyKey?: string }
+    expect(saveBody?.idempotencyKey).toBeTruthy()
+    // 保存成功跳浏览态（返回按钮出现），不再回列表
+    await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
   })
 
   it('保存 400 展示服务端字段错误', async () => {
@@ -381,7 +388,8 @@ describe('FormEditorPage', () => {
         details: [{ ITEM: 'X1' }],
       }),
     ))
-    await waitFor(() => expect(screen.getByText('BACK_LIST')).toBeInTheDocument())
+    // 保存成功进入浏览态（决策 6）
+    await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
   })
 
   it('主表必填缺失时拒绝新增明细行', async () => {
@@ -396,9 +404,10 @@ describe('FormEditorPage', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.change(masterInputs(container)[0], { target: { value: 'P9' } })
     fireEvent.click(screen.getByRole('button', { name: '新增一行' }))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: '删除' })).toHaveLength(1))
-    fireEvent.click(screen.getByRole('button', { name: '删除' }))
-    await waitFor(() => expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument())
+    // ADR-006 决策 5：行删除为图标按钮（aria-label 删除第N行）
+    await waitFor(() => expect(screen.getAllByRole('button', { name: '删除第1行' })).toHaveLength(1))
+    fireEvent.click(screen.getByRole('button', { name: '删除第1行' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: '删除第1行' })).not.toBeInTheDocument())
   })
 
   it('新增明细行预填主表同名值', async () => {
@@ -420,7 +429,7 @@ describe('FormEditorPage', () => {
     fireEvent.change(masterInputs(container)[2], { target: { value: '8' } })
     fireEvent.click(screen.getByRole('button', { name: '新增一行' }))
     const detailInputs = container.querySelectorAll('.erp-detail-grid tbody tr:not(.erp-detail-filler) input.form-control')
-    expect(detailInputs[0]).toHaveValue(8)
+    expect(detailInputs[0]).toHaveValue('8')
   })
 
   it('明细主键关联列只读（服务端持有）', async () => {
@@ -438,8 +447,10 @@ describe('FormEditorPage', () => {
     })
     const { container } = renderEditor('/document-workbench/1209/edit?key=["P1","A"]')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
-    const detailInputs = container.querySelectorAll('.erp-detail-grid tbody tr:not(.erp-detail-filler) input.form-control')
-    expect(detailInputs[0]).toBeDisabled()
+    // ADR-006 决策 1：serverFilled 无选择器字段渲染为只读文本，不再是禁用输入框
+    const staticCells = container.querySelectorAll('.erp-detail-grid tbody tr:not(.erp-detail-filler) .erp-form-static')
+    expect(staticCells.length).toBeGreaterThan(0)
+    expect(container.querySelector('.erp-detail-grid tbody tr:not(.erp-detail-filler) input.form-control[data-field-key="PRO_NO"], .erp-detail-grid tbody tr:not(.erp-detail-filler) .erp-form-control[data-field-key="PRO_NO"] input')).toBeNull()
   })
 
   it('全选并删除所选明细行', async () => {

@@ -13,6 +13,7 @@ export class HttpTransport implements ApiTransport {
     const headers: Record<string, string> = {
       'X-Client-Id': 'eos.web',
       'X-Correlation-Id': newCorrelationId(),
+      ...request.headers,
     }
     if (request.body !== undefined) headers['Content-Type'] = 'application/json'
     const response = await fetch(url, {

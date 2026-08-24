@@ -1,7 +1,11 @@
 namespace EOS.API.Models;
 
-/// <summary>发布校验单项（ADR-005 §3 机器可读报告）。</summary>
-public sealed record WorkbenchDefinitionValidationCheck(string Code, bool Passed, string Message);
+/// <summary>
+/// 发布校验单项（ADR-005 §3 机器可读报告；ADR-006 决策 4 增加 Severity 分级）：
+/// error=阻断发布；warning=质量提示不拦闸（界面质量类：F_DESC 超长、FORM_ORDER 缺失、
+/// datetime 建议格式等），由批量报告与豁免清单承接。
+/// </summary>
+public sealed record WorkbenchDefinitionValidationCheck(string Code, bool Passed, string Message, string Severity = "error");
 
 /// <summary>模块 Definition 校验报告（dry-run 与发布共用）。</summary>
 public sealed record WorkbenchDefinitionValidationReport(

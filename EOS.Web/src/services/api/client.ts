@@ -23,7 +23,7 @@ export class ApiClient {
     return this.transport.request<TResponse>({ method: 'PUT', path, body, signal })
   }
 
-  delete<TResponse>(path: string, signal?: AbortSignal) {
-    return this.transport.request<TResponse>({ method: 'DELETE', path, signal })
+  delete<TResponse>(path: string, options?: { headers?: Record<string, string>; signal?: AbortSignal }) {
+    return this.transport.request<TResponse>({ method: 'DELETE', path, headers: options?.headers, signal: options?.signal })
   }
 }

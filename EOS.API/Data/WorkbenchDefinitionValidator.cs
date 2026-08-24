@@ -227,7 +227,7 @@ public sealed class WorkbenchDefinitionValidator(
                     new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                     new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                     token,
-                    true, true, true, true, true, true, true, true, true);
+                    true, true, true, true, true, true, true, true, true, true, true);
                 checks.Add(form is not null
                     ? new("form_definition", true, "统一表单定义可构建（页签/默认值/选择器/必填解析）。")
                     : new("form_definition", false, "统一表单定义无法构建。"));
@@ -242,7 +242,13 @@ public sealed class WorkbenchDefinitionValidator(
             checks.Add(new("form_definition", true, "模块非工作台/表单模块，跳过表单校验。"));
         }
 
-        var passed = checks.All(check => check.Passed);
+        // ===== ADR-006 决策 4：界面质量类校验（error 三项拦发布闸；warning 仅质量提示） =====
+        if (definition is not null)
+        {
+            checks.AddRange(await ValidateFormQualityAsync(connection, tables, token));
+        }
+
+        var passed = checks.Where(check => check.Severity != "warning").All(check => check.Passed);
         string? definitionJson = null;
         if (passed && definition is not null)
         {
@@ -433,6 +439,185 @@ public sealed class WorkbenchDefinitionValidator(
         while (await reader.ReadAsync(token))
         {
             result.Add(reader.GetString(0).Trim());
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 界面质量类校验（ADR-006 决策 4）：
+    /// 阻断——FORM_OPTIONS 格式非法 / CHOOSE_RETURNVAL 映射目标不存在 / DFT_VALUE 按 F_TYPE 不可转换
+    /// （GETDATE() 类无参函数表达式跳过）；警告——FORM_ORDER 缺失比例过高、F_DESC 超长
+    /// （渲染层「换两行+title」为硬保障，此处仅质量提示）、datetime 缺 DISPLAY_FORMAT。
+    /// CHOOSE_RETURNVAL 目标按「主表∪子表模块字段全集」判定——旧语义允许子表选择器跨表回填主表字段。
+    /// </summary>
+    private async Task<IReadOnlyList<WorkbenchDefinitionValidationCheck>> ValidateFormQualityAsync(
+        SqlConnection connection, IReadOnlyList<string> tables, CancellationToken token)
+    {
+        var checks = new List<WorkbenchDefinitionValidationCheck>();
+        var fieldsByTable = new Dictionary<string, IReadOnlyList<FormQualityField>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var table in tables)
+        {
+            var fields = await ReadFormQualityFieldsAsync(connection, table, token);
+            if (fields.Count > 0)
+            {
+                fieldsByTable[table] = fields;
+            }
+        }
+        if (fieldsByTable.Count == 0)
+        {
+            return checks;
+        }
+
+        // 模块字段全集（主表 ∪ 子表）
+        var moduleKeys = fieldsByTable.Values
+            .SelectMany(list => list)
+            .Select(field => field.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // CHOOSE_RETURNVAL 映射目标存在（阻断；模块级聚合一条，消息截断前 8 条防超长）
+        var returnvalErrors = new List<string>();
+        foreach (var (table, fields) in fieldsByTable)
+        {
+            foreach (var field in fields)
+            {
+                foreach (var mapping in field.ReturnMappings)
+                {
+                    if (string.IsNullOrWhiteSpace(mapping)) continue;
+                    foreach (var pair in mapping.Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        var eq = pair.IndexOf('=');
+                        if (eq <= 0)
+                        {
+                            returnvalErrors.Add($"{table}.{field.Key}(片段 '{pair}' 缺少 =)");
+                            continue;
+                        }
+                        var target = FormFieldSelector.NormalizeChooserTarget(pair[..eq].Trim());
+                        if (!moduleKeys.Contains(target))
+                        {
+                            returnvalErrors.Add($"{table}.{field.Key}(目标 {target})");
+                        }
+                    }
+                }
+            }
+        }
+        checks.Add(new("chooser_returnval_targets", returnvalErrors.Count == 0,
+            returnvalErrors.Count == 0
+                ? "CHOOSE_RETURNVAL 映射目标全部存在于模块字段集。"
+                : $"存在跨模块死映射 {returnvalErrors.Count} 处（运行时未命中即跳过、无害，随逐模块验收清理）：{string.Join(",", returnvalErrors.Take(8))}{(returnvalErrors.Count > 8 ? " 等" : "")}。",
+            "warning"));
+
+        foreach (var (table, fields) in fieldsByTable)
+        {
+            // FORM_OPTIONS 格式（阻断）：k=v;k=v，键不得重复
+            var optionsErrors = new List<string>();
+            foreach (var field in fields)
+            {
+                if (string.IsNullOrWhiteSpace(field.Options)) continue;
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var part in field.Options.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    var eq = part.IndexOf('=');
+                    var optionKey = eq <= 0 ? string.Empty : part[..eq].Trim();
+                    var label = eq <= 0 ? string.Empty : part[(eq + 1)..].Trim();
+                    if (optionKey.Length == 0 || label.Length == 0)
+                    {
+                        optionsErrors.Add($"{table}.{field.Key}(FORM_OPTIONS='{field.Options}')");
+                        break;
+                    }
+                    if (!seen.Add(optionKey))
+                    {
+                        optionsErrors.Add($"{table}.{field.Key}(重复键 {optionKey})");
+                        break;
+                    }
+                }
+            }
+            checks.Add(new("form_options_format", optionsErrors.Count == 0,
+                optionsErrors.Count == 0 ? $"{table} FORM_OPTIONS 格式合法。" : $"FORM_OPTIONS 非法：{string.Join(",", optionsErrors)}。"));
+
+            // DFT_VALUE 可转换（阻断；GETDATE() 类无参函数调用与旧系统日期宏 'D'=当天 跳过）
+            var dftErrors = new List<string>();
+            foreach (var field in fields)
+            {
+                if (string.IsNullOrWhiteSpace(field.DefaultValue)) continue;
+                if (Regex.IsMatch(field.DefaultValue, @"^[A-Za-z_]\w*\(\s*\)$")) continue;
+                if (field.FType.ToLowerInvariant().Contains("date") && field.DefaultValue.Trim().Equals("D", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!RecordPayloadValidator.TryConvert(field.FType, field.DefaultValue, out _))
+                {
+                    dftErrors.Add($"{table}.{field.Key}(DFT_VALUE='{field.DefaultValue}' F_TYPE={field.FType})");
+                }
+            }
+            checks.Add(new("dft_value_convertible", dftErrors.Count == 0,
+                dftErrors.Count == 0 ? $"{table} DFT_VALUE 均可按 F_TYPE 转换。" : $"DFT_VALUE 不可转换：{string.Join(",", dftErrors)}。"));
+
+            var visiblePhysical = fields.Where(field => field.IsVisible && !field.IsVirtual).ToList();
+
+            // FORM_ORDER 缺失比例（警告）：>50% 时表单顺序回退 VERIFY_INDEX 可能混乱
+            if (visiblePhysical.Count >= 5)
+            {
+                var missingOrder = visiblePhysical.Count(field => !field.HasFormOrder);
+                if ((double)missingOrder / visiblePhysical.Count > 0.5)
+                {
+                    checks.Add(new("form_order_coverage", true,
+                        $"{table} 可见字段 FORM_ORDER 缺失 {missingOrder}/{visiblePhysical.Count}，表单顺序回退 VERIFY_INDEX 可能混乱。", "warning"));
+                }
+            }
+
+            // F_DESC 超长（警告）
+            var longLabels = visiblePhysical.Where(field => field.LabelLength > 20)
+                .Take(5).Select(field => $"{field.Key}:{field.LabelLength}字符").ToList();
+            if (longLabels.Count > 0)
+            {
+                checks.Add(new("f_desc_length", true,
+                    $"{table} 存在超长标签（>20 字符，渲染层两行+title 兜底）：{string.Join(",", longLabels)}。", "warning"));
+            }
+
+            // datetime 建议 DISPLAY_FORMAT（警告）
+            var bareDatetime = visiblePhysical
+                .Where(field => !field.IsReadonly && field.FType.ToLowerInvariant().Contains("datetime"))
+                .Where(field => string.IsNullOrWhiteSpace(field.DisplayFormat))
+                .Take(5).Select(field => field.Key).ToList();
+            if (bareDatetime.Count > 0)
+            {
+                checks.Add(new("datetime_display_format_hint", true,
+                    $"{table} datetime 字段缺 DISPLAY_FORMAT（列表侧时间分量可能不显示）：{string.Join(",", bareDatetime)}。", "warning"));
+            }
+        }
+        return checks;
+    }
+
+    private sealed record FormQualityField(
+        string Key, string Label, string FType, bool IsVisible, bool IsReadonly, bool IsVirtual,
+        bool HasFormOrder, string? Options, string? DefaultValue, string?[] ReturnMappings, string? DisplayFormat)
+    {
+        public int LabelLength => Label.Length;
+    }
+
+    private static async Task<IReadOnlyList<FormQualityField>> ReadFormQualityFieldsAsync(
+        SqlConnection connection, string table, CancellationToken token)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(f.F_ID)),LTRIM(RTRIM(f.F_DESC)),COALESCE(LTRIM(RTRIM(f.F_TYPE)),N'nvarchar'),
+                   CAST(COALESCE(f.IS_VISIBLE,1) AS bit),CAST(COALESCE(f.IS_READONLY,0) AS bit),CAST(COALESCE(f.IS_VIRTUAL,0) AS bit),
+                   f.FORM_ORDER,f.FORM_OPTIONS,f.DFT_VALUE,
+                   LTRIM(RTRIM(ISNULL(f.CHOOSE_RETURNVAL1,''))),LTRIM(RTRIM(ISNULL(f.CHOOSE_RETURNVAL2,''))),
+                   LTRIM(RTRIM(ISNULL(f.CHOOSE_RETURNVAL3,''))),LTRIM(RTRIM(ISNULL(f.CHOOSE_RETURNVAL4,''))),
+                   f.DISPLAY_FORMAT
+            FROM dbo.FIELDS f WITH (NOLOCK) WHERE f.T_ID=@Table;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<FormQualityField>();
+        while (await reader.ReadAsync(token))
+        {
+            result.Add(new FormQualityField(
+                reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                reader.GetBoolean(3), reader.GetBoolean(4), reader.GetBoolean(5),
+                !reader.IsDBNull(6), reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
+                reader.IsDBNull(8) ? null : reader.GetString(8).Trim(),
+                [reader.IsDBNull(9) ? null : reader.GetString(9), reader.IsDBNull(10) ? null : reader.GetString(10),
+                 reader.IsDBNull(11) ? null : reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12)],
+                reader.IsDBNull(13) ? null : reader.GetString(13)));
         }
         return result;
     }

@@ -49,3 +49,43 @@ export function buildFormRows(cells: FormFieldDefinition[][], columns: number): 
   flush()
   return rows
 }
+
+/** 表单分节：标题 + 该节的单元格序列（ADR-006 决策 1 分区表单） */
+export interface FormSection {
+  title: string | null
+  cells: FormFieldDefinition[][]
+}
+
+/**
+ * 页签内分节（ADR-006 决策 1「分区表单」）：
+ * - 复用 FORM_CELL_GROUP 归组：同一组名下有 ≥2 个主字段单元格时视为业务分节，
+ *   节标题取组名原文（元数据方可配置中文名）；仅含单个复合三件套（ID+选择+名称）的
+ *   组名不立节——那是复合单元格语义，不是分区语义。
+ * - 无分组字段与未成节的单格组一律归入默认节（无标题、排在最前），保持现有版式不回退。
+ */
+export function buildFormSections(cells: FormFieldDefinition[][]): FormSection[] {
+  const countsByGroup = new Map<string, number>()
+  for (const cell of cells) {
+    const group = cell[0].cellGroup?.trim()
+    if (group) countsByGroup.set(group, (countsByGroup.get(group) ?? 0) + 1)
+  }
+  const defaultCells: FormFieldDefinition[][] = []
+  const sections: FormSection[] = []
+  const indexByGroup = new Map<string, number>()
+  for (const cell of cells) {
+    const group = cell[0].cellGroup?.trim()
+    if (group && (countsByGroup.get(group) ?? 0) >= 2) {
+      let sectionIndex = indexByGroup.get(group)
+      if (sectionIndex == null) {
+        sectionIndex = sections.length
+        indexByGroup.set(group, sectionIndex)
+        sections.push({ title: group, cells: [] })
+      }
+      sections[sectionIndex].cells.push(cell)
+      continue
+    }
+    defaultCells.push(cell)
+  }
+  if (defaultCells.length > 0) sections.unshift({ title: null, cells: defaultCells })
+  return sections
+}

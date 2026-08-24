@@ -1,0 +1,178 @@
+{
+  "comment": "ADR-006 决策 2.4 校验单一来源对拍矩阵。消费方：EOS.API.Tests/FormValidationParityTests.cs（服务端 ValidateSubmitted+CheckRequiredAndRegex 管线）与 EOS.Web formValidationParity.test.ts（前端 evaluateField）。两端必须对每个用例给出相同判定码；expectedValue 存在时还须给出相同的规范化值（客户端 canonicalize 输出 / 服务端不变文化序列化）。任一端修改规则必须先改本文件。",
+  "cases": [
+    {
+      "name": "文本前后空白被裁剪（trim 契约）",
+      "field": { "key": "A", "dataType": "nvarchar", "maxLength": 10 },
+      "input": "  文本  ",
+      "expectedCode": "ok",
+      "expectedValue": "文本"
+    },
+    {
+      "name": "必填字段空白串拒绝",
+      "field": { "key": "A", "dataType": "nvarchar", "isRequired": true },
+      "input": "   ",
+      "expectedCode": "REQUIRED_FIELD_MISSING"
+    },
+    {
+      "name": "必填字段缺省（键不存在）拒绝",
+      "field": { "key": "A", "dataType": "nvarchar", "isRequired": true },
+      "input": null,
+      "expectedCode": "REQUIRED_FIELD_MISSING"
+    },
+    {
+      "name": "可选字段空串放行且等价 null",
+      "field": { "key": "A", "dataType": "nvarchar" },
+      "input": "",
+      "expectedCode": "ok",
+      "expectedValue": ""
+    },
+    {
+      "name": "可选字段缺省放行",
+      "field": { "key": "A", "dataType": "nvarchar" },
+      "input": null,
+      "expectedCode": "ok",
+      "expectedValue": ""
+    },
+    {
+      "name": "字符超长拒绝",
+      "field": { "key": "A", "dataType": "nvarchar", "maxLength": 5 },
+      "input": "123456",
+      "expectedCode": "VALUE_TOO_LONG"
+    },
+    {
+      "name": "长度上限按 trim 后计（前后空白不计入）",
+      "field": { "key": "A", "dataType": "nvarchar", "maxLength": 5 },
+      "input": " 12345 ",
+      "expectedCode": "ok",
+      "expectedValue": "12345"
+    },
+    {
+      "name": "regex 匹配放行",
+      "field": { "key": "A", "dataType": "nvarchar", "regex": "^\\d{4}$" },
+      "input": "2026",
+      "expectedCode": "ok",
+      "expectedValue": "2026"
+    },
+    {
+      "name": "regex 不匹配拒绝",
+      "field": { "key": "A", "dataType": "nvarchar", "regex": "^\\d{4}$" },
+      "input": "abcd",
+      "expectedCode": "REGEX_MISMATCH"
+    },
+    {
+      "name": "可选空串跳过 regex（等价 null）",
+      "field": { "key": "A", "dataType": "nvarchar", "regex": "^\\d+$" },
+      "input": "",
+      "expectedCode": "ok",
+      "expectedValue": ""
+    },
+    {
+      "name": "整数合法",
+      "field": { "key": "N", "dataType": "int" },
+      "input": "42",
+      "expectedCode": "ok",
+      "expectedValue": "42"
+    },
+    {
+      "name": "整数接受千分位逗号并规范化",
+      "field": { "key": "N", "dataType": "int" },
+      "input": "1,000",
+      "expectedCode": "ok",
+      "expectedValue": "1000"
+    },
+    {
+      "name": "整数接受全角数字并规范化",
+      "field": { "key": "N", "dataType": "int" },
+      "input": "４２",
+      "expectedCode": "ok",
+      "expectedValue": "42"
+    },
+    {
+      "name": "整数非法文本拒绝",
+      "field": { "key": "N", "dataType": "int" },
+      "input": "abc",
+      "expectedCode": "INVALID_VALUE"
+    },
+    {
+      "name": "整数字段拒绝小数",
+      "field": { "key": "N", "dataType": "int" },
+      "input": "1.5",
+      "expectedCode": "INVALID_VALUE"
+    },
+    {
+      "name": "decimal 小数位在 scale 内放行",
+      "field": { "key": "AMT", "dataType": "decimal", "precision": 18, "scale": 2 },
+      "input": "1234.56",
+      "expectedCode": "ok",
+      "expectedValue": "1234.56"
+    },
+    {
+      "name": "decimal 小数位超 scale 拒绝",
+      "field": { "key": "AMT", "dataType": "decimal", "precision": 18, "scale": 2 },
+      "input": "1.999",
+      "expectedCode": "SCALE_EXCEEDED"
+    },
+    {
+      "name": "decimal 整数位超 precision 拒绝",
+      "field": { "key": "AMT", "dataType": "decimal", "precision": 18, "scale": 2 },
+      "input": "10000000000000000",
+      "expectedCode": "PRECISION_EXCEEDED"
+    },
+    {
+      "name": "decimal 接受全角句点与全角数字并规范化",
+      "field": { "key": "AMT", "dataType": "decimal", "precision": 18, "scale": 2 },
+      "input": "１２３４．５６",
+      "expectedCode": "ok",
+      "expectedValue": "1234.56"
+    },
+    {
+      "name": "money 不启用超精度校验（固定 scale=4 由库端处理）",
+      "field": { "key": "M", "dataType": "money" },
+      "input": "1.99999",
+      "expectedCode": "ok",
+      "expectedValue": "1.99999"
+    },
+    {
+      "name": "float 不启用超精度校验（无精度语义）",
+      "field": { "key": "F", "dataType": "float" },
+      "input": "1.123456789",
+      "expectedCode": "ok",
+      "expectedValue": "1.123456789"
+    },
+    {
+      "name": "bit 是 → 1",
+      "field": { "key": "FLAG", "dataType": "bit" },
+      "input": "是",
+      "expectedCode": "ok",
+      "expectedValue": "1"
+    },
+    {
+      "name": "bit 任意其它文本归 false → 0（无必填语义）",
+      "field": { "key": "FLAG", "dataType": "bit" },
+      "input": "abc",
+      "expectedCode": "ok",
+      "expectedValue": "0"
+    },
+    {
+      "name": "datetime 带秒合法（T 分隔规范串）",
+      "field": { "key": "D", "dataType": "datetime" },
+      "input": "2026-08-23T14:30:05",
+      "expectedCode": "ok",
+      "expectedValue": "2026-08-23T14:30:05"
+    },
+    {
+      "name": "datetime 非法文本拒绝",
+      "field": { "key": "D", "dataType": "datetime" },
+      "input": "not-a-date",
+      "expectedCode": "INVALID_VALUE"
+    },
+    {
+      "name": "date 仅日期合法",
+      "field": { "key": "D", "dataType": "date" },
+      "input": "2026-08-23",
+      "expectedCode": "ok",
+      "expectedValue": "2026-08-23"
+    }
+  ]
+}

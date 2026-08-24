@@ -34,7 +34,9 @@ internal sealed record FormFieldRow(
     string? CellGroup = null,
     int CellRole = 0,
     string? Options = null,
-    bool IsPhysical = true);
+    bool IsPhysical = true,
+    int? TypePrecision = null,
+    int? TypeScale = null);
 
 internal sealed record FormChooserRow(
     bool Active,
@@ -181,7 +183,9 @@ internal static class FormFieldSelector
                 row.CellRole,
                 ParseOptions(row.Options),
                 displayOnly,
-                row.CanCopy));
+                row.CanCopy,
+                row.TypePrecision,
+                row.TypeScale));
         }
         return result;
     }

@@ -53,14 +53,16 @@ public sealed record WorkbenchDefinition(
     bool SearchDetail = false,
     string? NewUrl = null,
     string? ModiUrl = null,
+    string? HelpUrl = null,
     bool CanDelete = false,
     string? DefinitionVersion = null);
 /// <summary>统一表单页签定义（解析自 MODULES.FORM_TABS，如 '1=基本资料;2=其它'）。</summary>
 public sealed record FormTabDefinition(int No, string Title);
 /// <summary>统一表单下拉选项（解析自 FIELDS.FORM_OPTIONS，如 'O=外含税;I=内含税'）。</summary>
 public sealed record FormOptionItem(string Value, string Label);
-public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify, IReadOnlyList<FormTabDefinition> Tabs = default!, int Columns = 2, IReadOnlyList<WorkbenchButton>? Buttons = null, IReadOnlyDictionary<string,string> DefaultValues = default!, bool HasWorkflow = false, bool IfCopy = false, bool SearchMaster = false, bool SearchDetail = false, bool CanDelete = false, bool CanApprove = false, bool CanDeapprove = false, bool CanEndCase = false, bool CanUnEndCase = false, bool CanFileView = false, bool CanFileUpda = false, bool CanFileEdit = false, bool CanFileDele = false);
-public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength, int TabNo = 1, int? FormOrder = null, int Span = 1, bool NewLine = false, string? CellGroup = null, int CellRole = 0, IReadOnlyList<FormOptionItem>? Options = null, bool DisplayOnly = false, bool CanCopy = true);
+public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify, IReadOnlyList<FormTabDefinition> Tabs = default!, int Columns = 2, IReadOnlyList<WorkbenchButton>? Buttons = null, IReadOnlyDictionary<string,string> DefaultValues = default!, bool HasWorkflow = false, bool IfCopy = false, bool SearchMaster = false, bool SearchDetail = false, bool CanDelete = false, bool CanApprove = false, bool CanDeapprove = false, bool CanEndCase = false, bool CanUnEndCase = false, bool CanFileView = false, bool CanFileUpda = false, bool CanFileEdit = false, bool CanFileDele = false, bool CanAddNew = false, bool CanEdit = false, string? HelpUrl = null);
+public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength, int TabNo = 1, int? FormOrder = null, int Span = 1, bool NewLine = false, string? CellGroup = null, int CellRole = 0, IReadOnlyList<FormOptionItem>? Options = null, bool DisplayOnly = false, bool CanCopy = true,
+    int? Precision = null, int? Scale = null);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
 public sealed record WorkbenchQueryCondition(string Field, string Operator, string? Value, string? ValueTo, IReadOnlyList<string>? Values, string Logic = "and");
 public sealed record WorkbenchQuery(IReadOnlyList<WorkbenchQueryCondition> Conditions);
@@ -212,7 +214,7 @@ public sealed class DocumentWorkbenchRepository(
     {
         const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,UPDATE_SP,AFTERSAVE_SP,AUTO_APPROVE," +
                            "GROUP1,GROUP_EXP1,GROUP2,GROUP_EXP2,GROUP3,GROUP_EXP3,GROUP4,GROUP_EXP4,GROUP5,GROUP_EXP5," +
-                           "FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,NEW_URL,IF_COPY,SEARCH_1,SEARCH_2 " +
+                           "FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,NEW_URL,IF_COPY,SEARCH_1,SEARCH_2,HELP_URL " +
                            "FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection); command.Parameters.Add("@ModuleId", SqlDbType.Int).Value=moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -245,6 +247,8 @@ public sealed class DocumentWorkbenchRepository(
         var ifCopy = !reader.IsDBNull(26) && reader.GetBoolean(26);
         var searchMaster = !reader.IsDBNull(27) && reader.GetBoolean(27);
         var searchDetail = !reader.IsDBNull(28) && reader.GetBoolean(28);
+        var helpUrl = reader.IsDBNull(29) ? null : reader.GetString(29).Trim();
+        if (string.IsNullOrEmpty(helpUrl)) helpUrl = null;
         await reader.CloseAsync();
         if (!ModuleRouteValidator.IsWorkbenchUrl(url) || !WorkbenchSql.Identifier.IsMatch(master) || (detail is not null && !WorkbenchSql.Identifier.IsMatch(detail)))
         {
@@ -310,7 +314,8 @@ public sealed class DocumentWorkbenchRepository(
             searchMaster,
             searchDetail,
             resolvedNewUrl,
-            resolvedModiUrl);
+            resolvedModiUrl,
+            helpUrl);
         logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
             moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
         return definition with { DefinitionVersion = version };
@@ -636,6 +641,8 @@ public sealed class DocumentWorkbenchRepository(
         IReadOnlySet<string> deniedModiMasterFields,
         IReadOnlySet<string> deniedModiDetailFields,
         CancellationToken token,
+        bool canAddNew = false,
+        bool canEdit = false,
         bool canDelete = false,
         bool canApprove = false,
         bool canDeapprove = false,
@@ -703,7 +710,8 @@ public sealed class DocumentWorkbenchRepository(
                     IsCost: pkRow.IsCost, IsSecrecy: pkRow.IsSecrecy, ServerFilled: true, pkRow.MaxLength,
                     pkRow.TabNo, pkRow.FormOrder, pkRow.Span, pkRow.NewLine,
                     string.IsNullOrWhiteSpace(pkRow.CellGroup) ? null : pkRow.CellGroup, pkRow.CellRole,
-                    FormFieldSelector.ParseOptions(pkRow.Options), DisplayOnly: false));
+                    FormFieldSelector.ParseOptions(pkRow.Options), DisplayOnly: false,
+                    Precision: pkRow.TypePrecision, Scale: pkRow.TypeScale));
             }
             if (missingPk.Count > 0) detailFields = detailFields.Concat(missingPk).ToList();
             detailDfVerify=(await WorkbenchSql.GetDfVerifyAsync(connection,null,definition.DetailTable,token))??"";
@@ -723,7 +731,8 @@ public sealed class DocumentWorkbenchRepository(
             definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns,definition.DetailNoFields,detailDfVerify,
             tabs,columns,definition.FormButtons,defaultValues,definition.HasWorkflow,
             definition.IfCopy,definition.SearchMaster,definition.SearchDetail,
-            canDelete,canApprove,canDeapprove,canEndCase,canUnEndCase,canFileView,canFileUpda,canFileEdit,canFileDele);
+            canDelete,canApprove,canDeapprove,canEndCase,canUnEndCase,canFileView,canFileUpda,canFileEdit,canFileDele,
+            canAddNew,canEdit,definition.HelpUrl);
     }
 
     /// <summary>
@@ -801,16 +810,17 @@ public sealed class DocumentWorkbenchRepository(
                    LTRIM(RTRIM(COALESCE(f.FORM_CELL_GROUP,''))) AS FORM_CELL_GROUP,
                    CAST(COALESCE(f.FORM_CELL_ROLE,0) AS int) AS FORM_CELL_ROLE,
                    f.FORM_OPTIONS AS FORM_OPTIONS,
+                   col.TYPE_PRECISION AS TYPE_PRECISION,col.TYPE_SCALE AS TYPE_SCALE,
                    CAST(CASE WHEN col.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PHYSICAL
             FROM dbo.FIELDS f WITH (NOLOCK)
             LEFT JOIN (SELECT T_ID,T_ID_R,LTRIM(RTRIM(F_ID)) AS F_ID,MIN(F_IDX) AS F_IDX
                        FROM dbo.SYSQL_DEFAULT WITH (NOLOCK)
                        GROUP BY T_ID,T_ID_R,LTRIM(RTRIM(F_ID))) d
               ON d.T_ID=@MasterTable AND d.T_ID_R=@TargetTable AND d.F_ID=LTRIM(RTRIM(f.F_ID))
-            LEFT JOIN (SELECT c.name AS COLUMN_NAME,c.max_length AS MAX_LENGTH,
-                       CASE WHEN t.user_type_id IN (231,239) THEN 2
-                            WHEN t.user_type_id IN (167,175,35,99) THEN 1
-                            ELSE 0 END AS CHARACTER_LENGTH_FLAG
+            LEFT JOIN (SELECT c.name AS COLUMN_NAME,c.max_length AS MAX_LENGTH,CAST(t.precision AS int) AS TYPE_PRECISION,CAST(t.scale AS int) AS TYPE_SCALE,
+                        CASE WHEN t.user_type_id IN (231,239) THEN 2
+                             WHEN t.user_type_id IN (167,175,35,99) THEN 1
+                             ELSE 0 END AS CHARACTER_LENGTH_FLAG
                        FROM sys.columns c
                        JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
                        JOIN sys.schemas s ON o.schema_id=s.schema_id
@@ -878,7 +888,9 @@ public sealed class DocumentWorkbenchRepository(
             reader.GetNullableString("FORM_CELL_GROUP"),
             reader.GetInt32(reader.GetOrdinal("FORM_CELL_ROLE")),
             reader.GetNullableString("FORM_OPTIONS"),
-            reader.GetBoolean(reader.GetOrdinal("IS_PHYSICAL")));
+            reader.GetBoolean(reader.GetOrdinal("IS_PHYSICAL")),
+            reader.GetNullableInt32("TYPE_PRECISION"),
+            reader.GetNullableInt32("TYPE_SCALE"));
     }
 
     private static FormChooserRow ReadChooser(SqlDataReader reader,int index)

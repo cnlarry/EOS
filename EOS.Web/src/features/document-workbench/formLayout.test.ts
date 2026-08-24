@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FormFieldDefinition } from './formDefinition'
-import { buildFormCells, buildFormRows } from './formLayout'
+import { buildFormCells, buildFormRows, buildFormSections } from './formLayout'
 
 function field(key: string, overrides: Partial<FormFieldDefinition> = {}): FormFieldDefinition {
   return {
@@ -51,5 +51,52 @@ describe('buildFormRows', () => {
     const cells = [[field('A')], [field('C', { newLine: true })], [field('B')]]
     const rows = buildFormRows(cells, 2)
     expect(rows.map(row => row.map(cell => cell[0].key))).toEqual([['A'], ['C', 'B']])
+  })
+})
+
+describe('buildFormSections（ADR-006 分区表单）', () => {
+  it('无分组字段全部归入默认节（无标题、排最前）', () => {
+    const sections = buildFormSections([[field('A')], [field('B')]])
+    expect(sections).toEqual([{ title: null, cells: [[expect.objectContaining({ key: 'A' })], [expect.objectContaining({ key: 'B' })]] }])
+  })
+
+  it('组名下 ≥2 个主字段格成节，标题取组名原文', () => {
+    const sections = buildFormSections([
+      [field('A')],
+      [field('S1', { cellGroup: '发货信息' })],
+      [field('S2', { cellGroup: '发货信息' })],
+    ])
+    expect(sections).toHaveLength(2)
+    expect(sections[0].title).toBeNull()
+    expect(sections[0].cells.map(cell => cell[0].key)).toEqual(['A'])
+    expect(sections[1].title).toBe('发货信息')
+    expect(sections[1].cells.map(cell => cell[0].key)).toEqual(['S1', 'S2'])
+  })
+
+  it('复合三件套（ID+名称同格）不立节——单格组归默认节', () => {
+    const main = field('CLIENT_ID', { cellGroup: 'CLIENT', cellRole: 1 })
+    const companion = field('CLIENT_NAME', { cellGroup: 'CLIENT', cellRole: 2 })
+    const cells = buildFormCells([main, companion])
+    expect(cells).toHaveLength(1)
+    const sections = buildFormSections(cells)
+    expect(sections).toHaveLength(1)
+    expect(sections[0].title).toBeNull()
+  })
+
+  it('分节内保持字段出现顺序，节按首现顺序排列', () => {
+    const sections = buildFormSections([
+      [field('G2A', { cellGroup: 'G2' })],
+      [field('M1')],
+      [field('G1B', { cellGroup: 'G1' })],
+      [field('G2B', { cellGroup: 'G2' })],
+      [field('G1A', { cellGroup: 'G1' })],
+    ])
+    expect(sections.map(section => section.title)).toEqual([null, 'G2', 'G1'])
+    expect(sections[1].cells.map(cell => cell[0].key)).toEqual(['G2A', 'G2B'])
+    expect(sections[2].cells.map(cell => cell[0].key)).toEqual(['G1B', 'G1A'])
+  })
+
+  it('空输入返回单个默认节', () => {
+    expect(buildFormSections([])).toEqual([])
   })
 })
