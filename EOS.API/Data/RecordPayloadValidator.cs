@@ -28,6 +28,35 @@ internal static class RecordPayloadValidator
 
     public static bool IsAuditColumn(string field) => AuditColumns.Contains(field);
 
+    /// <summary>
+    /// decimal/numeric 超精度校验（ADR-006 决策 2.4）：precision/scale 源自 sys.types 随 form-definition 下发。
+    /// 仅 decimal/numeric 启用——float 无精度语义、money 固定 scale=4，均不适用。
+    /// 校验为拒绝式（不做静默舍入），与服务端 decimal away-from-zero 语义一致。
+    /// </summary>
+    private static FieldError? CheckNumericScale(FormFieldDefinition field, object? value)
+    {
+        if (value is not decimal number || field.Precision is not int precision || field.Scale is not int scale)
+        {
+            return null;
+        }
+        var type = field.DataType.Trim().ToLowerInvariant();
+        if (!type.Contains("decimal") && !type.Contains("numeric"))
+        {
+            return null;
+        }
+        var rounded = decimal.Round(number, scale, MidpointRounding.AwayFromZero);
+        if (rounded != number)
+        {
+            return new FieldError(field.Key, $"小数位超出精度（最多 {scale} 位）。", "SCALE_EXCEEDED");
+        }
+        var integerLimit = (decimal)Math.Pow(10, precision - scale);
+        if (Math.Abs(number) >= integerLimit)
+        {
+            return new FieldError(field.Key, $"数值超出精度范围（整数部分最多 {Math.Max(0, precision - scale)} 位）。", "PRECISION_EXCEEDED");
+        }
+        return null;
+    }
+
     public sealed record ValidationResult(
         IReadOnlyList<FieldError> Errors,
         IReadOnlyDictionary<string, object?> Converted);
@@ -54,14 +83,22 @@ internal static class RecordPayloadValidator
                 errors.Add(new FieldError(key, "该字段由服务端维护，不可提交。", "READONLY_FIELD"));
                 continue;
             }
-            if (raw is not null && IsTextType(field.DataType) && field.MaxLength is int maxLength && raw.Length > maxLength)
+            // ADR-006 决策 2.4（trim 契约拍板）：保存归一化统一 trim 前后空白，校验与入库基于 trim 后值
+            var trimmed = raw?.Trim();
+            if (trimmed is not null && IsTextType(field.DataType) && field.MaxLength is int maxLength && trimmed.Length > maxLength)
             {
                 errors.Add(new FieldError(key, $"内容长度超出限制（最多 {maxLength} 字符）。", "VALUE_TOO_LONG"));
                 continue;
             }
-            if (!TryConvert(field.DataType, raw, out var value))
+            if (!TryConvert(field.DataType, trimmed, out var value))
             {
                 errors.Add(new FieldError(key, "数值格式不正确。", "INVALID_VALUE"));
+                continue;
+            }
+            var scaleError = CheckNumericScale(field, value);
+            if (scaleError is not null)
+            {
+                errors.Add(scaleError);
                 continue;
             }
             converted[key] = value;
@@ -75,6 +112,14 @@ internal static class RecordPayloadValidator
         {
             if (field.IsReadonly || field.IsVirtual || field.ServerFilled || field.DisplayOnly || values.ContainsKey(field.Key)) continue;
             if (string.IsNullOrWhiteSpace(field.DefaultValue)) continue;
+            // 旧系统日期宏（ADR-006 步骤5 求证）：datetime 字段 DFT_VALUE='D' 表示默认当天
+            // （旧 ERP DFT 宏惯例）；此前按字面量转换失败被静默跳过，HR 在职日期等默认值失效。
+            if (field.DataType.Contains("date", StringComparison.OrdinalIgnoreCase)
+                && field.DefaultValue.Trim().Equals("D", StringComparison.OrdinalIgnoreCase))
+            {
+                values[field.Key] = DateTime.Today;
+                continue;
+            }
             if (TryConvert(field.DataType, field.DefaultValue, out var value)) values[field.Key] = value;
         }
     }
@@ -122,6 +167,22 @@ internal static class RecordPayloadValidator
         }
     }
 
+    /// <summary>
+    /// 数值输入规范化（ADR-006 决策 2.5）：全角数字/句点转半角、去除千分位逗号。
+    /// 仅用于数值类型分支；日期与文本不受影响（文本 trim 由 ValidateSubmitted 处理）。
+    /// </summary>
+    private static string NormalizeNumericText(string text)
+    {
+        var builder = new System.Text.StringBuilder(text.Length);
+        foreach (var character in text)
+        {
+            if (character >= '０' && character <= '９') builder.Append((char)(character - '０' + '0'));
+            else if (character == '．') builder.Append('.');
+            else builder.Append(character);
+        }
+        return builder.ToString().Replace(",", string.Empty);
+    }
+
     public static bool TryConvert(string dataType, string? raw, out object? value)
     {
         value = null;
@@ -147,16 +208,16 @@ internal static class RecordPayloadValidator
             }
             else if (type.Contains("int", StringComparison.Ordinal))
             {
-                value = int.Parse(text, CultureInfo.InvariantCulture);
+                value = int.Parse(NormalizeNumericText(text), CultureInfo.InvariantCulture);
             }
             else if (type.Contains("float", StringComparison.Ordinal) || type.Contains("real", StringComparison.Ordinal))
             {
-                value = double.Parse(text, CultureInfo.InvariantCulture);
+                value = double.Parse(NormalizeNumericText(text), CultureInfo.InvariantCulture);
             }
             else if (type.Contains("decimal", StringComparison.Ordinal) || type.Contains("numeric", StringComparison.Ordinal)
                      || type.Contains("money", StringComparison.Ordinal))
             {
-                value = decimal.Parse(text, CultureInfo.InvariantCulture);
+                value = decimal.Parse(NormalizeNumericText(text), NumberStyles.Number, CultureInfo.InvariantCulture);
             }
             else
             {

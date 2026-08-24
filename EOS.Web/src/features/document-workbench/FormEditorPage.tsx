@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { IconTrash } from '@tabler/icons-react'
 import { LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
@@ -12,12 +13,13 @@ import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 import { FormFieldRenderer } from './FormFieldRenderer'
 import type { FormDefinition, FormFieldDefinition } from './formDefinition'
-import { buildFormCells, buildFormRows } from './formLayout'
+import { buildFormCells, buildFormRows, buildFormSections } from './formLayout'
+import { fieldVariant } from './formFieldKind'
 import { validateDetailRows, validateMasterFields, type FieldErrors } from './formValidation'
 import { AMOUNT_COLUMN_KEYS, AMOUNT_TRIGGER_KEYS, previewDetailAmount, previewMasterAmounts } from './amountCalculator'
 import {
-  buildKey, chooserTitle, describeError, detailControlMinWidth, emptyValue,
-  summarizeFieldErrors, writableFields, type DetailGridRow, type RecordBundle, type SaveRecordRequest,
+  buildKey, canonicalizeDecimalValue, chooserTitle, describeError, detailControlMinWidth, emptyValue, newIdempotencyKey,
+  summarizeFieldErrors, writableFields, type DetailGridRow, type RecordBundle, type RecordSaveResponse, type SaveRecordRequest,
 } from './formEditorUtils'
 
 export function FormEditorPage() {
@@ -31,7 +33,25 @@ export function FormEditorPage() {
   const isCopy = location.pathname.endsWith('/copy')
   const keyParam = searchParams.get('key')
   const copyFrom = searchParams.get('copyFrom')
+  // ADR-006 决策 6：路由 state 承载两类跨页上下文——保存 warnings 与列表导航（上一条/下一条）
+  interface ViewNavState { navKeys?: string[][]; navIndex?: number; warnings?: { code: string; message: string }[] | null }
+  const locationState = (location.state ?? null) as ViewNavState | null
+  const navKeys = locationState?.navKeys
+  const navIndex = locationState?.navIndex
+  const [warningsDismissed, setWarningsDismissed] = useState(false)
+  useEffect(() => { setWarningsDismissed(false) }, [location.key])
+  const warnings = isView && !warningsDismissed ? locationState?.warnings ?? null : null
+  const goNeighbor = (delta: number) => {
+    if (!navKeys || navIndex == null) return
+    const next = navIndex + delta
+    if (next < 0 || next >= navKeys.length) return
+    // 相邻记录按进入浏览态时的列表当前顺序（旧系统 GoPrior/GoNext 语义），不回退到物理顺序
+    navigate(`/document-workbench/${moduleId}/view?key=${encodeURIComponent(JSON.stringify(navKeys[next]))}`,
+      { state: { navKeys, navIndex: next } satisfies ViewNavState })
+  }
   const originalRef = useRef<Record<string, string>>({})
+  // ADR-006 决策 2.1：幂等键＝一次用户保存意图；保存成功/取消放弃后换新键，校验失败重试沿用原键
+  const idempotencyRef = useRef(newIdempotencyKey())
   const [masterValues, setMasterValues] = useState<Record<string, string>>({})
   const [detailRows, setDetailRows] = useState<Record<string, string>[]>([])
   const [chooserField, setChooserField] = useState<FormFieldDefinition | null>(null)
@@ -125,25 +145,38 @@ export function FormEditorPage() {
   const save = useMutation({
     mutationFn: async () => {
       if (!formQuery.data) throw new Error('表单定义未加载。')
+      // ADR-006 决策 1/2.5：decimal 变体提交前规范化为不变文化数字串（去千分位/全角）
+      const toSubmit = (field: FormFieldDefinition): string => {
+        const raw = masterValues[field.key] ?? ''
+        return fieldVariant(field) === 'decimal' ? canonicalizeDecimalValue(raw) : raw.trim()
+      }
       const values: Record<string, string> = {}
-      for (const field of writableFields(formQuery.data.masterFields)) values[field.key] = masterValues[field.key] ?? ''
+      for (const field of writableFields(formQuery.data.masterFields)) values[field.key] = toSubmit(field)
       const details = detailRows.map(row => {
         const detail: Record<string, string> = {}
-        for (const field of writableFields(formQuery.data?.detailFields ?? [])) detail[field.key] = row[field.key] ?? ''
+        for (const field of writableFields(formQuery.data?.detailFields ?? [])) {
+          const raw = row[field.key] ?? ''
+          detail[field.key] = fieldVariant(field) === 'decimal' ? canonicalizeDecimalValue(raw) : raw.trim()
+        }
         return detail
       })
-      const body: SaveRecordRequest = { values, details }
+      const body: SaveRecordRequest = { values, details, idempotencyKey: idempotencyRef.current }
       if (isEdit) {
         body.original = originalRef.current
         const key = buildKey(formQuery.data, masterValues)
-        return apiClient.put<{ key: string[] }>(`/document-workbench/${moduleId}/record?key=${encodeURIComponent(JSON.stringify(key))}`, body)
+        return apiClient.put<RecordSaveResponse>(`/document-workbench/${moduleId}/record?key=${encodeURIComponent(JSON.stringify(key))}`, body)
       }
-      return apiClient.post<{ key: string[] }>(`/document-workbench/${moduleId}/record`, body)
+      return apiClient.post<RecordSaveResponse>(`/document-workbench/${moduleId}/record`, body)
     },
-    onSuccess: async () => {
+    onSuccess: async response => {
       setDirty(false)
+      idempotencyRef.current = newIdempotencyKey()
       await queryClient.invalidateQueries({ queryKey: ['workbench', moduleId] })
-      navigate(`/document-workbench/${moduleId}`)
+      // ADR-006 决策 6：保存后进入该单据浏览态，key 以保存响应的服务端权威键为准
+      // （自动单号场景预览号≠最终单号，禁止用表单内值拼 key）；warnings 经路由 state 带到浏览态 banner。
+      const key = response?.key?.length ? response.key : buildKey(formQuery.data!, masterValues)
+      navigate(`/document-workbench/${moduleId}/view?key=${encodeURIComponent(JSON.stringify(key))}`,
+        { state: { warnings: response?.warnings ?? null } satisfies ViewNavState })
     },
     onError: cause => {
       if (cause instanceof ApiError && cause.status === 400 && Array.isArray(cause.body.fieldErrors) && cause.body.fieldErrors.length > 0) {
@@ -168,7 +201,7 @@ export function FormEditorPage() {
     mutationFn: async (action: 'approve' | 'deapprove') => {
       if (!formQuery.data) throw new Error('表单定义未加载。')
       const key = buildKey(formQuery.data, masterValues)
-      return apiClient.post<{ key: string[] }>(`/document-workbench/${moduleId}/${action}`, { key: JSON.stringify(key) })
+      return apiClient.post<RecordSaveResponse>(`/document-workbench/${moduleId}/${action}`, { key: JSON.stringify(key), idempotencyKey: newIdempotencyKey() })
     },
     onSuccess: async (_, action) => {
       window.alert(action === 'approve' ? '批核成功。' : '解批成功。')
@@ -184,7 +217,7 @@ export function FormEditorPage() {
     mutationFn: async (action: 'endcase' | 'unendcase') => {
       if (!formQuery.data) throw new Error('表单定义未加载。')
       const key = buildKey(formQuery.data, masterValues)
-      return apiClient.post<{ key: string[] }>(`/document-workbench/${moduleId}/${action}`, { key: JSON.stringify(key) })
+      return apiClient.post<RecordSaveResponse>(`/document-workbench/${moduleId}/${action}`, { key: JSON.stringify(key), idempotencyKey: newIdempotencyKey() })
     },
     onSuccess: async (_, action) => {
       window.alert(action === 'endcase' ? '结案成功。' : '取消结案成功。')
@@ -201,7 +234,9 @@ export function FormEditorPage() {
     const key = buildKey(formQuery.data, masterValues)
     if (!window.confirm('确定删除该单据吗？删除后不可恢复。')) return
     try {
-      await apiClient.delete(`/document-workbench/${moduleId}/record?key=${encodeURIComponent(JSON.stringify(key))}`)
+      await apiClient.delete(`/document-workbench/${moduleId}/record?key=${encodeURIComponent(JSON.stringify(key))}`, { headers: { 'X-Idempotency-Key': newIdempotencyKey() } })
+      // ADR-006 决策 6：删除后返回工作台列表并刷新（旧系统 window.close 回主表列表语义）
+      await queryClient.invalidateQueries({ queryKey: ['workbench', moduleId] })
       navigate(`/document-workbench/${moduleId}`)
     } catch (cause) {
       window.alert(cause instanceof Error ? `删除失败：${cause.message}` : '删除失败。')
@@ -215,13 +250,90 @@ export function FormEditorPage() {
     setFieldErrors(master)
     setDetailErrors(details)
     const hasErrors = Object.keys(master).length > 0 || details.some(row => Object.keys(row).length > 0)
-    if (hasErrors) setSaveError(`数据校验未通过：${summarizeFieldErrors(master, details)}`)
-    else setSaveError(null)
+    if (hasErrors) {
+      setSaveError(`数据校验未通过：${summarizeFieldErrors(master, details)}`)
+      focusFirstError(formQuery.data.masterFields, master, details)
+    } else setSaveError(null)
     return !hasErrors
+  }
+
+  /**
+   * 错误 UX（ADR-006 决策 2.2/背景 4）：提交校验失败时自动切换到首个错误所在页签，
+   * 滚动并聚焦首个错误控件；明细错误滚动到明细网格首错单元格。
+   */
+  const focusFirstError = (fields: FormFieldDefinition[], master: FieldErrors, details: FieldErrors[]) => {
+    const firstMaster = fields.find(field => field.isVisible && master[field.key])
+    const firstDetailRow = details.find(row => Object.keys(row).length > 0)
+    const detailKey = Object.keys(firstDetailRow ?? {})[0]
+    if (firstMaster && form.tabs.length > 0 && firstMaster.tabNo !== activeTab) setActiveTab(firstMaster.tabNo)
+    const targetKey = firstMaster?.key ?? detailKey
+    if (!targetKey) return
+    const scope = firstMaster ? '.erp-form-card' : '.erp-detail-card'
+    window.setTimeout(() => {
+      const selector = ['input', 'select', 'textarea']
+        .map(tag => `${scope} [data-field-key="${CSS.escape(targetKey)}"] ${tag}`)
+        .join(',')
+      const element = document.querySelector(selector) as HTMLElement | null
+      // jsdom 无 scrollIntoView 实现：可选调用，真实浏览器中滚动并聚焦
+      element?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+      element?.focus({ preventScroll: true })
+    }, 60)
   }
 
   const back = () => {
     navigate(`/document-workbench/${moduleId}`)
+  }
+
+  // ADR-006 决策 5：Ctrl+S 保存（编辑/新增态）；每次渲染重挂监听以捕获最新校验闭包
+  useEffect(() => {
+    if (isView) return
+    const handler = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return
+      event.preventDefault()
+      if (save.isPending) return
+      if (validateClient()) save.mutate()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  })
+
+  /** 主表 Enter 下一字段（textarea/select/checkbox/日期原生控件不拦截——决策 5） */
+  const handleMasterKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (isView || event.key !== 'Enter') return
+    const target = event.target as HTMLElement
+    if (target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.tagName === 'BUTTON') return
+    const inputType = (target as HTMLInputElement).type
+    if (inputType === 'checkbox' || inputType === 'date' || inputType === 'datetime-local') return
+    event.preventDefault()
+    const focusables = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>('input.form-control:not([disabled]), select.form-select:not([disabled])'),
+    )
+    const index = focusables.indexOf(target)
+    ;(focusables[index + 1] ?? focusables[0])?.focus()
+  }
+
+  /** 明细网格 Enter：同列下一行继续；末行则新增行后聚焦同列（决策 5 键盘规则） */
+  const handleDetailGridKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter') return
+    const target = event.target as HTMLElement
+    if (!(target instanceof HTMLInputElement)) return
+    if (target.type === 'checkbox' || target.type === 'date' || target.type === 'datetime-local') return
+    const row = target.closest('tr')
+    const tbody = target.closest('tbody')
+    if (!row || !tbody) return
+    event.preventDefault()
+    const rows = Array.from(tbody.querySelectorAll('tr'))
+    const rowIndex = rows.indexOf(row)
+    const cellInputs = Array.from(row.querySelectorAll<HTMLElement>('td input.form-control'))
+    const columnIndex = Math.max(0, cellInputs.indexOf(target))
+    if (rowIndex < rows.length - 1) {
+      rows[rowIndex + 1].querySelectorAll<HTMLElement>('td input.form-control')[columnIndex]?.focus()
+      return
+    }
+    addDetailRow()
+    window.setTimeout(() => {
+      tbody.querySelector('tr:last-of-type')?.querySelectorAll<HTMLElement>('td input.form-control')[columnIndex]?.focus()
+    }, 30)
   }
 
   const openPrint = () => {
@@ -392,11 +504,16 @@ export function FormEditorPage() {
   const masterAmountLocked = form.detailFields.some(field => field.key.toUpperCase() === 'AMOUNT')
   const visibleMaster = form.masterFields.filter(field => field.isVisible)
   const visibleDetail = form.detailFields.filter(field => field.isVisible)
-  const detailFillerCount = Math.max(0, 5 - detailRows.length)
   const hasTabs = form.tabs.length > 0
   const activeTabNo = hasTabs ? activeTab : 1
   const masterCells = buildFormCells(visibleMaster).filter(cell => !hasTabs || cell[0].tabNo === activeTabNo)
-  const masterRows = buildFormRows(masterCells, form.columns)
+  // ADR-006 决策 1：页签内按 FORM_CELL_GROUP 分节（≥2 个主字段格成节，其余归默认节）
+  const masterSections = buildFormSections(masterCells)
+  // 页签错误徽标（ADR-006 背景 4）：隐藏页签的错误以计数徽标提示
+  const tabErrorCounts = new Map<number, number>()
+  for (const field of form.masterFields) {
+    if (field.isVisible && fieldErrors[field.key]) tabErrorCounts.set(field.tabNo, (tabErrorCounts.get(field.tabNo) ?? 0) + 1)
+  }
   const orderedDetailIndices = (() => {
     if (!detailSort) return detailRows.map((_, index) => index)
     const { key, dir } = detailSort
@@ -413,10 +530,8 @@ export function FormEditorPage() {
     return indices
   })()
   const detailRowSelection = Object.fromEntries([...selectedDetailRows].map(index => [`r${index}`, true])) as RowSelectionState
-  const detailGridRows: DetailGridRow[] = [
-    ...orderedDetailIndices.map(index => ({ __id: `r${index}`, __index: index, __filler: false, ...detailRows[index] })),
-    ...Array.from({ length: detailFillerCount }, (_, fillerIndex) => ({ __id: `f${fillerIndex}`, __index: -1, __filler: true })),
-  ]
+  // ADR-006 决策 5：移除硬编码补空行；空态由 ErpTable empty 渲染「+ 新增一行」虚线入口
+  const detailGridRows: DetailGridRow[] = orderedDetailIndices.map(index => ({ __id: `r${index}`, __index: index, ...detailRows[index] }))
   const detailColumns: ColumnDef<DetailGridRow, unknown>[] = [
     {
       id: '__check',
@@ -433,7 +548,7 @@ export function FormEditorPage() {
           onChange={table.getToggleAllPageRowsSelectedHandler()}
         />
       ),
-      cell: ({ row }) => row.original.__filler ? null : (
+      cell: ({ row }) => (
         <input
           className="form-check-input"
           type="checkbox"
@@ -450,7 +565,7 @@ export function FormEditorPage() {
       enableSorting: false,
       enableHiding: false,
       meta: { className: 'erp-detail-row-no text-center', resizable: false, truncate: false },
-      cell: ({ row }) => row.original.__filler ? null : <span className="text-secondary">{row.index + 1}</span>,
+      cell: ({ row }) => <span className="text-secondary">{row.index + 1}</span>,
     },
     ...visibleDetail.map((field): ColumnDef<DetailGridRow, unknown> => ({
       id: field.key,
@@ -459,7 +574,6 @@ export function FormEditorPage() {
       enableSorting: true,
       meta: { minWidth: Math.max(field.displayLength, detailControlMinWidth(field)), dataType: field.dataType, minWidthFloor: true, truncate: false },
       cell: ({ row }) => {
-        if (row.original.__filler) return null
         const index = row.original.__index
         return (
           <FormFieldRenderer
@@ -479,8 +593,16 @@ export function FormEditorPage() {
       enableSorting: false,
       enableHiding: false,
       meta: { className: 'erp-detail-actions text-center', resizable: false, truncate: false },
-      cell: ({ row }) => row.original.__filler ? null : (
-        <Button size="sm" variant="danger" onClick={() => removeDetailRow(row.original.__index)}>删除</Button>
+      cell: ({ row }) => (
+        // ADR-006 决策 5：行内删除改图标按钮，对齐命令栏图标规范
+        <Button
+          size="sm"
+          variant="danger"
+          icon={<IconTrash size={16} />}
+          title="删除本行"
+          aria-label={`删除第${row.index + 1}行`}
+          onClick={() => removeDetailRow(row.original.__index)}
+        />
       ),
     },
   ]
@@ -490,6 +612,7 @@ export function FormEditorPage() {
       field={masterAmountLocked && AMOUNT_COLUMN_KEYS.has(field.key.toUpperCase()) ? { ...field, isReadonly: true } : field}
       value={masterValues[field.key] ?? ''}
       error={fieldErrors[field.key]}
+      viewing={isView}
       onChange={value => {
         setMasterValues(current => ({ ...current, [field.key]: value }))
         setFieldErrors(current => { const next = { ...current }; delete next[field.key]; return next })
@@ -517,6 +640,12 @@ export function FormEditorPage() {
   return (
     <div className="d-flex flex-column gap-2 erp-form-page">
       {saveError ? <div className="alert alert-danger mb-0">{saveError}</div> : null}
+      {warnings && warnings.length > 0 ? (
+        <div className="alert alert-warning mb-0 d-flex justify-content-between align-items-center" role="alert">
+          <span>{warnings.map(warning => warning.message).join('；')}</span>
+          <button type="button" className="btn-close" aria-label="关闭" onClick={() => setWarningsDismissed(true)} />
+        </div>
+      ) : null}
       <section className="card erp-form-card">
         <div className="card-body">
           <div className="erp-form-toolbar">
@@ -532,71 +661,100 @@ export function FormEditorPage() {
                 )}
               </>
             ) : (
-              <>
-                <ErpCommandBar items={[
-                  { action: 'back', label: '返回', onClick: back },
-                ]} />
-                {form.buttons && form.buttons.length > 0 ? (
-                  <ErpCommandBar items={form.buttons.map((button): ErpCommandItem => {
-                    if (button.action === 'approve' && form.hasWorkflow && keyParam && recordQuery.data && recordQuery.data.master.CONFIRM_TAG !== true) {
-                      return { action: 'approve', loading: workflow.isPending, onClick: () => workflow.mutate('approve') }
-                    }
-                    if (button.action === 'deapprove' && form.hasWorkflow && keyParam && recordQuery.data && recordQuery.data.master.CONFIRM_TAG === true) {
-                      return { action: 'deapprove', loading: workflow.isPending, onClick: () => workflow.mutate('deapprove') }
-                    }
-                    if (button.action === 'endcase' && keyParam && form.canEndCase && recordQuery.data && recordQuery.data.master.FINISHED_TAG !== true) {
-                      return { action: 'endcase', loading: finish.isPending, onClick: () => finish.mutate('endcase') }
-                    }
-                    if (button.action === 'unendcase' && keyParam && form.canUnEndCase && recordQuery.data && recordQuery.data.master.FINISHED_TAG === true) {
-                      return { action: 'unendcase', loading: finish.isPending, onClick: () => finish.mutate('unendcase') }
-                    }
-                    if (button.action === 'print' && keyParam) {
-                      return { action: 'print', onClick: openPrint }
-                    }
-                    if (button.action === 'delete' && keyParam && form.canDelete) {
-                      return { action: 'delete', onClick: () => void deleteRecord() }
-                    }
-                    return { action: button.action, visible: false }
-                  })} />
-                ) : (
-                  <ErpCommandBar items={[
-                    ...(form.hasWorkflow && keyParam && recordQuery.isSuccess && recordQuery.data
-                      ? recordQuery.data.master.CONFIRM_TAG !== true
-                        ? [{ action: 'approve', loading: workflow.isPending, onClick: () => workflow.mutate('approve') } satisfies ErpCommandItem]
-                        : [{ action: 'deapprove', loading: workflow.isPending, onClick: () => workflow.mutate('deapprove') } satisfies ErpCommandItem]
-                      : []),
-                    ...(keyParam && form.canEndCase && recordQuery.data && recordQuery.data.master.FINISHED_TAG !== true
-                      ? [{ action: 'endcase', loading: finish.isPending, onClick: () => finish.mutate('endcase') } satisfies ErpCommandItem]
-                      : []),
-                    ...(keyParam && form.canUnEndCase && recordQuery.data && recordQuery.data.master.FINISHED_TAG === true
-                      ? [{ action: 'unendcase', loading: finish.isPending, onClick: () => finish.mutate('unendcase') } satisfies ErpCommandItem]
-                      : []),
-                    ...(keyParam ? [{ action: 'print', onClick: openPrint } satisfies ErpCommandItem] : []),
-                  ]} />
-                )}
-                {form.canFileView && keyParam && (
-                  <ErpCommandBar items={[{ action: 'attach', visible: true, onClick: () => setAttachOpen(true) }]} />
-                )}
-                {form.canDelete && keyParam && (
-                  <ErpCommandBar items={[{ action: 'delete', visible: true, onClick: () => void deleteRecord() }]} />
-                )}
-              </>
+              // ADR-006 决策 6 浏览态工具栏：返回/上下条/新增/复制/编辑/帮助/FORM_BUTTONS 动作/附件
+              <ErpCommandBar items={(() => {
+                const encodeKey = (key: string[]) => encodeURIComponent(JSON.stringify(key))
+                const currentKey = buildKey(form, masterValues)
+                const master = recordQuery.data?.master
+                const whitelistItems: ErpCommandItem[] = (form.buttons && form.buttons.length > 0
+                  ? form.buttons.flatMap((button): ErpCommandItem[] => {
+                      switch (button.action) {
+                        case 'approve':
+                          return form.hasWorkflow && keyParam && master && master.CONFIRM_TAG !== true
+                            ? [{ action: 'approve', loading: workflow.isPending, onClick: () => workflow.mutate('approve') }]
+                            : []
+                        case 'deapprove':
+                          return form.hasWorkflow && keyParam && master && master.CONFIRM_TAG === true
+                            ? [{ action: 'deapprove', loading: workflow.isPending, onClick: () => workflow.mutate('deapprove') }]
+                            : []
+                        case 'endcase':
+                          return keyParam && form.canEndCase && master && master.FINISHED_TAG !== true
+                            ? [{ action: 'endcase', loading: finish.isPending, onClick: () => finish.mutate('endcase') }]
+                            : []
+                        case 'unendcase':
+                          return keyParam && form.canUnEndCase && master && master.FINISHED_TAG === true
+                            ? [{ action: 'unendcase', loading: finish.isPending, onClick: () => finish.mutate('unendcase') }]
+                            : []
+                        case 'print':
+                          return keyParam ? [{ action: 'print', onClick: openPrint }] : []
+                        case 'delete':
+                          return keyParam && form.canDelete ? [{ action: 'delete', onClick: () => void deleteRecord() }] : []
+                        default:
+                          return []
+                      }
+                    })
+                  : [
+                      // 未配置 FORM_BUTTONS 的回退集（保持既有行为：工作流/结案/打印）
+                      ...(form.hasWorkflow && keyParam && master
+                        ? [master.CONFIRM_TAG !== true
+                            ? { action: 'approve', loading: workflow.isPending, onClick: () => workflow.mutate('approve') }
+                            : { action: 'deapprove', loading: workflow.isPending, onClick: () => workflow.mutate('deapprove') } satisfies ErpCommandItem]
+                        : []),
+                      ...(keyParam && form.canEndCase && master && master.FINISHED_TAG !== true
+                        ? [{ action: 'endcase', loading: finish.isPending, onClick: () => finish.mutate('endcase') } satisfies ErpCommandItem]
+                        : []),
+                      ...(keyParam && form.canUnEndCase && master && master.FINISHED_TAG === true
+                        ? [{ action: 'unendcase', loading: finish.isPending, onClick: () => finish.mutate('unendcase') } satisfies ErpCommandItem]
+                        : []),
+                      ...(keyParam ? [{ action: 'print', onClick: openPrint } satisfies ErpCommandItem] : []),
+                    ])
+                return [
+                  { action: 'back', onClick: back },
+                  ...(navKeys && navIndex != null ? [
+                    { action: 'prior', disabled: navIndex <= 0, onClick: () => goNeighbor(-1) },
+                    { action: 'next', disabled: navIndex >= navKeys.length - 1, onClick: () => goNeighbor(1) },
+                  ] satisfies ErpCommandItem[] : []),
+                  ...(form.canAddNew && form.hasAdd
+                    ? [{ action: 'new', onClick: () => navigate(`/document-workbench/${moduleId}/new`) } satisfies ErpCommandItem]
+                    : []),
+                  ...(form.ifCopy && form.canAddNew && keyParam
+                    ? [{ action: 'copy', onClick: () => navigate(`/document-workbench/${moduleId}/copy?copyFrom=${encodeKey(currentKey)}`) } satisfies ErpCommandItem]
+                    : []),
+                  ...(form.canEdit && form.hasEdit && keyParam
+                    ? [{ action: 'edit', onClick: () => navigate(`/document-workbench/${moduleId}/edit?key=${encodeKey(currentKey)}`) } satisfies ErpCommandItem]
+                    : []),
+                  ...(form.helpUrl ? [{ action: 'help', onClick: () => window.open(form.helpUrl!, '_blank', 'noopener') } satisfies ErpCommandItem] : []),
+                  ...whitelistItems,
+                  ...(form.canFileView && keyParam ? [{ action: 'attach', onClick: () => setAttachOpen(true) } satisfies ErpCommandItem] : []),
+                ]
+              })()} />
             )}
           </div>
           {hasTabs ? (
             <ul className="nav nav-tabs erp-form-tabs">
-              {form.tabs.map(tab => (
-                <li className="nav-item" key={tab.no}>
-                  <button type="button" className={`nav-link${activeTabNo === tab.no ? ' active' : ''}`} onClick={() => setActiveTab(tab.no)}>{tab.title}</button>
-                </li>
-              ))}
+              {form.tabs.map(tab => {
+                const errorCount = tabErrorCounts.get(tab.no) ?? 0
+                return (
+                  <li className="nav-item" key={tab.no}>
+                    <button type="button" className={`nav-link${activeTabNo === tab.no ? ' active' : ''}`} onClick={() => setActiveTab(tab.no)}>
+                      {tab.title}
+                      {errorCount > 0 ? <span className="erp-tab-error-badge">{errorCount}</span> : null}
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           ) : null}
-          <div className="erp-form-grid">
-            {masterRows.map((row, rowIndex) => (
-              <div className="erp-form-row" key={rowIndex} style={{ '--erp-form-cols': Math.max(1, form.columns) } as CSSProperties}>
-                {row.map(cell => renderCell(cell))}
-              </div>
+          <div className="erp-form-grid" onKeyDown={handleMasterKeyDown}>
+            {masterSections.map((section, sectionIndex) => (
+              <section className="erp-form-group" key={section.title ?? `default-${sectionIndex}`}>
+                {section.title ? <div className="erp-form-group-title">{section.title}</div> : null}
+                {buildFormRows(section.cells, form.columns).map((row, rowIndex) => (
+                  <div className="erp-form-row" key={rowIndex} style={{ '--erp-form-cols': Math.max(1, form.columns) } as CSSProperties}>
+                    {row.map(cell => renderCell(cell))}
+                  </div>
+                ))}
+              </section>
             ))}
           </div>
         </div>
@@ -611,7 +769,7 @@ export function FormEditorPage() {
               {/* 子表专用工具栏扩展位：生成请购单等后续加入 */}
             </div>
           </div>
-          <div className="table-responsive">
+          <div className="table-responsive" onKeyDown={handleDetailGridKeyDown}>
             <ErpTable
               columns={detailColumns}
               data={detailGridRows}
@@ -626,10 +784,13 @@ export function FormEditorPage() {
               onColumnResize={saveDetailWidth}
               className="erp-detail-grid"
               responsive={false}
-              copyable={false}
-              keyboardNavigation={false}
-              rowClassName={row => row.__filler ? 'erp-detail-filler' : undefined}
-              empty={null}
+              empty={
+                detailRows.length === 0 && !isView ? (
+                  <div className="erp-detail-empty">
+                    <Button size="sm" variant="secondary" onClick={addDetailRow}>+ 新增一行</Button>
+                  </div>
+                ) : undefined
+              }
             />
           </div>
         </section>

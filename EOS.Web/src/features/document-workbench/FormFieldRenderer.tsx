@@ -1,7 +1,11 @@
+import type { ReactElement } from 'react'
 import { Button } from '../../components/ui/Button'
 import { IconSearch } from '@tabler/icons-react'
 import type { FormFieldDefinition } from './formDefinition'
-import { inputKind, isFullWidthField } from './formFieldKind'
+import { fieldVariant, isFullWidthField, type FieldVariant } from './formFieldKind'
+import { formatFieldValue } from './fieldFormat'
+import { canonicalizeDecimalValue } from './formEditorUtils'
+import { fromDateTimeControlValue, toDateTimeControlValue } from './dateTimeValue'
 
 interface FormFieldRendererProps {
   field: FormFieldDefinition
@@ -11,34 +15,164 @@ interface FormFieldRendererProps {
   onChoose?: (field: FormFieldDefinition) => void
   /** 复合单元格内联模式：不渲染标签与格线，只渲染控件（供复合格 [主][选择][从] 使用） */
   bare?: boolean
+  /** 浏览态：全部字段走只读文本渲染（ADR-006 决策 1，不再是禁用输入框） */
+  viewing?: boolean
 }
 
-export function FormFieldRenderer({ field, value, error, onChange, onChoose, bare = false }: FormFieldRendererProps) {
-  const kind = inputKind(field)
-  const disabled = field.isReadonly || field.serverFilled
-  // 只读联动字段（如 CURR_ID/TAX_ID）：输入框只读，但选择按钮仍可用（对齐旧系统只读框+选择器）
-  const chooserDisabled = field.serverFilled
-  const isBoolean = kind === 'checkbox'
-  const numeric = /int|float|decimal|money|numeric/.test(field.dataType.toLowerCase())
-  // 下拉（FORM_OPTIONS）已承担取值，不再叠加选择器按钮
-  const hasChooser = kind !== 'select' && Boolean(onChoose) && field.choosers.some(source => source.active && source.table)
-  const fullWidth = isFullWidthField(field)
-  const control = (
-    <div className="erp-form-control">
+interface ControlProps {
+  field: FormFieldDefinition
+  value: string
+  disabled: boolean
+  onChange: (value: string) => void
+}
+
+const controlClassName = (error?: string) => `form-control${error ? ' is-invalid' : ''}`
+
+// ===== 控件变体注册表（ADR-006 决策 1）：新控件类型只加条目，不改页面编排 =====
+
+function TextControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
+  return (
+    <input
+      type="text"
+      className={controlClassName(error)}
+      value={value}
+      maxLength={field.maxLength ?? undefined}
+      disabled={disabled}
+      onChange={event => onChange(event.target.value)}
+    />
+  )
+}
+
+/** decimal 变体：文本框 + inputmode，失焦按 DISPLAY_FORMAT 展示格式化；保存前经 canonicalizeDecimalValue 规范化 */
+function DecimalControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
+  const handleBlur = () => {
+    if (disabled) return
+    const canonical = canonicalizeDecimalValue(value)
+    // 不可解析（含货币符号等）保留原值交由校验报错；可解析则套 DISPLAY_FORMAT 展示
+    if (!canonical || !Number.isFinite(Number(canonical))) return
+    const formatted = formatFieldValue(Number(canonical), field.dataType, field.displayFormat)
+    const next = formatted === '' ? canonical : formatted
+    if (next !== value) onChange(next)
+  }
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      className={controlClassName(error)}
+      value={value}
+      maxLength={field.maxLength ?? undefined}
+      disabled={disabled}
+      onChange={event => onChange(event.target.value)}
+      onBlur={handleBlur}
+    />
+  )
+}
+
+function DateControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
+  return (
+    <input
+      type="date"
+      className={controlClassName(error)}
+      value={toDateTimeControlValue(field.dataType, value)}
+      disabled={disabled}
+      onChange={event => onChange(fromDateTimeControlValue(event.target.value))}
+    />
+  )
+}
+
+/** datetime 变体：datetime-local + 秒分量；提交 yyyy-MM-ddTHH:mm:ss 本地朴素串（决策 2.3） */
+function DateTimeControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
+  return (
+    <input
+      type="datetime-local"
+      step={1}
+      className={controlClassName(error)}
+      value={toDateTimeControlValue(field.dataType, value)}
+      disabled={disabled}
+      onChange={event => onChange(fromDateTimeControlValue(event.target.value))}
+    />
+  )
+}
+
+function TextareaControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
+  return (
+    <textarea
+      className={controlClassName(error)}
+      rows={3}
+      value={value}
+      maxLength={field.maxLength ?? undefined}
+      disabled={disabled}
+      onChange={event => onChange(event.target.value)}
+    />
+  )
+}
+
+function SelectControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
+  return (
+    <select
+      className={`form-select${error ? ' is-invalid' : ''}`}
+      value={value}
+      disabled={disabled}
+      onChange={event => onChange(event.target.value)}
+    >
+      {value === '' ? <option value="">请选择</option> : null}
+      {field.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+    </select>
+  )
+}
+
+function CheckboxControl({ value, disabled, onChange, error }: ControlProps & { error?: string }) {
+  return (
+    <input
+      type="checkbox"
+      className={`form-check-input${error ? ' is-invalid' : ''}`}
+      checked={value === '1' || value === 'true'}
+      disabled={disabled}
+      onChange={event => onChange(event.target.checked ? '1' : '0')}
+    />
+  )
+}
+
+const CONTROL_RENDERERS: Record<FieldVariant, (props: ControlProps & { error?: string }) => ReactElement> = {
+  text: TextControl,
+  decimal: DecimalControl,
+  date: DateControl,
+  datetime: DateTimeControl,
+  textarea: TextareaControl,
+  select: SelectControl,
+  checkbox: CheckboxControl,
+}
+
+export function FormFieldRenderer({ field, value, error, onChange, onChoose, bare = false, viewing = false }: FormFieldRendererProps) {
+  const variant = fieldVariant(field)
+  const hasChooser = variant !== 'select' && Boolean(onChoose) && field.choosers.some(source => source.active && source.table)
+  // 只读文本触发条件（ADR-006 决策 1）：浏览态全量；编辑/新增态仅 serverFilled 且无选择器的字段。
+  // serverFilled 但带选择器的联动字段（CURR_ID/TAX_ID）保留只读框+可用选择按钮（对齐旧系统）。
+  const readOnlyStatic = viewing || (field.serverFilled && !hasChooser)
+  const disabled = !readOnlyStatic && (field.isReadonly || field.serverFilled)
+  // 只读联动字段的选择按钮仍可用；serverFilled 无选择器时按钮无意义
+  const chooserDisabled = field.serverFilled && !hasChooser
+
+  let control: ReactElement
+  if (readOnlyStatic) {
+    // 只读文本 + 状态徽标（bit 渲染 是/否 徽标），不渲染禁用输入框
+    const display = variant === 'checkbox'
+      ? (value === '1' || value === 'true' ? '是' : '否')
+      : formatFieldValue(value, field.dataType, field.displayFormat)
+    control = (
+      <span className={`erp-form-static${variant === 'checkbox' ? ' erp-form-static-badge' : ''}`}>
+        {display || '—'}
+      </span>
+    )
+  } else {
+    control = CONTROL_RENDERERS[variant]({ field, value, disabled, onChange, error })
+  }
+
+  const container = (
+    <div className="erp-form-control" data-field-key={field.key}>
       <div className="d-flex gap-2">
-        {kind === 'checkbox' ? (
-          <input type="checkbox" className={`form-check-input${error ? ' is-invalid' : ''}`} checked={value === '1' || value === 'true'} disabled={disabled} onChange={event => onChange(event.target.checked ? '1' : '0')} />
-        ) : kind === 'select' ? (
-          <select className={`form-select${error ? ' is-invalid' : ''}`} value={value} disabled={disabled} onChange={event => onChange(event.target.value)}>
-            {value === '' ? <option value="">请选择</option> : null}
-            {field.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        ) : fullWidth && kind === 'text' ? (
-          <textarea className={`form-control${error ? ' is-invalid' : ''}`} rows={3} value={value} maxLength={field.maxLength ?? undefined} disabled={disabled} onChange={event => onChange(event.target.value)} />
-        ) : (
-          <input type={kind === 'date' ? 'date' : numeric ? 'number' : 'text'} className={`form-control${error ? ' is-invalid' : ''}`} value={value} maxLength={field.maxLength ?? undefined} disabled={disabled} onChange={event => onChange(event.target.value)} />
-        )}
-        {hasChooser ? (
+        {control}
+        {hasChooser && !readOnlyStatic ? (
           <Button size="sm" variant="secondary" className="erp-chooser-btn" aria-label="选择" title={`选择${field.label}`} disabled={chooserDisabled} onClick={() => onChoose?.(field)}>
             <IconSearch size={14} />
           </Button>
@@ -48,17 +182,19 @@ export function FormFieldRenderer({ field, value, error, onChange, onChoose, bar
       {field.regex ? <div className="form-hint">格式校验：{field.regex}</div> : null}
     </div>
   )
-  if (bare) return control
+  if (bare) return container
+  const fullWidth = isFullWidthField(field)
   const className = [
     'erp-form-field',
     fullWidth ? 'is-full' : '',
-    disabled ? 'is-readonly' : '',
+    readOnlyStatic ? 'is-static' : '',
+    !readOnlyStatic && disabled ? 'is-readonly' : '',
     error ? 'has-error' : '',
   ].filter(Boolean).join(' ')
   return (
-    <div className={className}>
-      <label className="erp-form-label">{field.label}{!isBoolean && !disabled && field.isRequired ? ' *' : ''}</label>
-      {control}
+    <div className={className} data-field-key={field.key}>
+      <label className="erp-form-label" title={field.label}>{field.label}{!readOnlyStatic && variant !== 'checkbox' && !disabled && field.isRequired ? ' *' : ''}</label>
+      {container}
     </div>
   )
 }

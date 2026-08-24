@@ -59,7 +59,7 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
             rights.DeniedMasterFields,rights.DeniedDetailFields,
             rights.DenyNewMasterFields,rights.DenyNewDetailFields,
             rights.DenyModiMasterFields,rights.DenyModiDetailFields,token,
-            rights.CanDelete,rights.CanApprove,rights.CanDeapprove,rights.CanEndCase,rights.CanUnEndCase,
+            rights.CanAddNew,rights.CanEdit,rights.CanDelete,rights.CanApprove,rights.CanDeapprove,rights.CanEndCase,rights.CanUnEndCase,
             rights.CanFileView,rights.CanFileUpda,rights.CanFileEdit,rights.CanFileDele);
         return Ok(form);
     }
@@ -77,10 +77,13 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
     }
 
     [HttpPost("record")]
-    public async Task<IActionResult> CreateRecord(int moduleId,[FromBody]SaveRecordRequest request,CancellationToken token=default)
+    public async Task<IActionResult> CreateRecord(int moduleId,[FromBody]SaveRecordRequest request,[FromHeader(Name="X-Idempotency-Key")]string? headerIdempotencyKey=null,CancellationToken token=default)
     {
         var access=await FormAccess(moduleId,"new",token);
         if(access is null)return NotFound();
+        // ADR-006 决策 2.1：统一表单写路径强制幂等键（请求体 IdempotencyKey 或 X-Idempotency-Key 头）
+        if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
+        request=request with{IdempotencyKey=request.IdempotencyKey??headerIdempotencyKey};
         logger.LogDebug("统一表单保存请求 module={ModuleId} mode=new fields={Fields} details={DetailCount}",moduleId,string.Join(',',request.Values.Keys),request.Details?.Count??0);
         var result=await repository.CreateRecordAsync(access.Value.Definition,access.Value.Form,request,userContext.EmployeeName,userContext.UserId,access.Value.Rights.DataFilter,token);
         LogValidationFailure(moduleId,result);
@@ -88,12 +91,14 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
     }
 
     [HttpPut("record")]
-    public async Task<IActionResult> UpdateRecord(int moduleId,[FromQuery]string key,[FromBody]SaveRecordRequest request,CancellationToken token=default)
+    public async Task<IActionResult> UpdateRecord(int moduleId,[FromQuery]string key,[FromBody]SaveRecordRequest request,[FromHeader(Name="X-Idempotency-Key")]string? headerIdempotencyKey=null,CancellationToken token=default)
     {
         var access=await FormAccess(moduleId,"edit",token);
         if(access is null)return NotFound();
         var keyValues=ParseKey(key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
+        if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
+        request=request with{IdempotencyKey=request.IdempotencyKey??headerIdempotencyKey};
         logger.LogDebug("统一表单保存请求 module={ModuleId} mode=edit key={Key} fields={Fields} details={DetailCount}",moduleId,string.Join(',',keyValues),string.Join(',',request.Values.Keys),request.Details?.Count??0);
         var result=await repository.UpdateRecordAsync(access.Value.Definition,access.Value.Form,keyValues,request,userContext.EmployeeName,userContext.UserId,access.Value.Rights.DataFilter,token);
         LogValidationFailure(moduleId,result);
@@ -108,38 +113,40 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
         await permissions.RequireAsync(userContext.UserId,moduleId,PermissionAction.Delete,token);
         var keyValues=ParseKey(key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
-        var result=await repository.DeleteRecordAsync(access.Value.Definition,access.Value.Form,keyValues,userContext.UserId,access.Value.Rights.DataFilter,token,idempotencyKey);
+        if(IdempotencyProblem(idempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
+        var result=await repository.DeleteRecordAsync(access.Value.Definition,access.Value.Form,keyValues,userContext.UserId,access.Value.Rights.DataFilter,token,idempotencyKey!.Trim());
         LogValidationFailure(moduleId,result);
         return MapSaveResult(result);
     }
 
     [HttpPost("approve")]
-    public async Task<IActionResult> Approve(int moduleId,[FromBody]ApproveWorkflowRequest request,CancellationToken token=default)
-        => await RunWorkflow(moduleId,true,request,token);
+    public async Task<IActionResult> Approve(int moduleId,[FromBody]ApproveWorkflowRequest request,[FromHeader(Name="X-Idempotency-Key")]string? headerIdempotencyKey=null,CancellationToken token=default)
+        => await RunWorkflow(moduleId,true,request,headerIdempotencyKey,token);
 
 [HttpPost("deapprove")]
-    public async Task<IActionResult> Deapprove(int moduleId,[FromBody]ApproveWorkflowRequest request,CancellationToken token=default)
-        => await RunWorkflow(moduleId,false,request,token);
+    public async Task<IActionResult> Deapprove(int moduleId,[FromBody]ApproveWorkflowRequest request,[FromHeader(Name="X-Idempotency-Key")]string? headerIdempotencyKey=null,CancellationToken token=default)
+        => await RunWorkflow(moduleId,false,request,headerIdempotencyKey,token);
 
     [HttpPost("endcase")]
-    public async Task<IActionResult> EndCase(int moduleId,[FromBody]ApproveWorkflowRequest request,CancellationToken token=default)
-        => await RunFinish(moduleId,true,request,token);
+    public async Task<IActionResult> EndCase(int moduleId,[FromBody]ApproveWorkflowRequest request,[FromHeader(Name="X-Idempotency-Key")]string? headerIdempotencyKey=null,CancellationToken token=default)
+        => await RunFinish(moduleId,true,request,headerIdempotencyKey,token);
 
     [HttpPost("unendcase")]
-    public async Task<IActionResult> UnEndCase(int moduleId,[FromBody]ApproveWorkflowRequest request,CancellationToken token=default)
-        => await RunFinish(moduleId,false,request,token);
+    public async Task<IActionResult> UnEndCase(int moduleId,[FromBody]ApproveWorkflowRequest request,[FromHeader(Name="X-Idempotency-Key")]string? headerIdempotencyKey=null,CancellationToken token=default)
+        => await RunFinish(moduleId,false,request,headerIdempotencyKey,token);
 
-private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveWorkflowRequest request,CancellationToken token)
+private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveWorkflowRequest request,string? headerIdempotencyKey,CancellationToken token)
     {
         var definition=await AuthorizedDefinition(moduleId,token);
         if(definition is null)return NotFound();
         var keyValues=ParseKey(request.Key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
-        var result=await repository.WorkflowAsync(definition,keyValues,approve,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey);
+        if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
+        var result=await repository.WorkflowAsync(definition,keyValues,approve,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey??headerIdempotencyKey);
         return MapSaveResult(result);
     }
 
-    private async Task<IActionResult> RunFinish(int moduleId,bool finish,ApproveWorkflowRequest request,CancellationToken token)
+    private async Task<IActionResult> RunFinish(int moduleId,bool finish,ApproveWorkflowRequest request,string? headerIdempotencyKey,CancellationToken token)
     {
         var definition=await AuthorizedDefinition(moduleId,token);
         if(definition is null)return NotFound();
@@ -148,9 +155,16 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         await permissions.RequireAsync(userId,moduleId,finish?PermissionAction.EndCase:PermissionAction.UnEndCase,token);
         var keyValues=ParseKey(request.Key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
-        var result=await repository.FinishAsync(definition,keyValues,finish,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey);
+        if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
+        var result=await repository.FinishAsync(definition,keyValues,finish,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey??headerIdempotencyKey);
         return MapSaveResult(result);
     }
+
+    /// <summary>ADR-006 决策 2.1：统一表单写路径幂等键强制（缺失或超 128 字符返回 400）。</summary>
+    private IActionResult? IdempotencyProblem(string? idempotencyKey)
+        => string.IsNullOrWhiteSpace(idempotencyKey)||idempotencyKey.Trim().Length>128
+            ? BadRequest(new{code="IDEMPOTENCY_KEY_REQUIRED",message="写操作缺少有效幂等键（请求体 idempotencyKey 或 X-Idempotency-Key 请求头，≤128 字符）。"})
+            :null;
 
     private void LogValidationFailure(int moduleId,RecordSaveResult result)
     {
@@ -243,7 +257,7 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.C
             rights.DeniedMasterFields,rights.DeniedDetailFields,
             rights.DenyNewMasterFields,rights.DenyNewDetailFields,
             rights.DenyModiMasterFields,rights.DenyModiDetailFields,token,
-            rights.CanDelete,rights.CanApprove,rights.CanDeapprove,rights.CanEndCase,rights.CanUnEndCase,
+            rights.CanAddNew,rights.CanEdit,rights.CanDelete,rights.CanApprove,rights.CanDeapprove,rights.CanEndCase,rights.CanUnEndCase,
             rights.CanFileView,rights.CanFileUpda,rights.CanFileEdit,rights.CanFileDele);
         return form is null?null:(definition,form,rights);
     }
@@ -273,7 +287,8 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.C
 
     private IActionResult MapSaveResult(RecordSaveResult result)=>result.Status switch
     {
-        RecordAccessStatus.Ok=>Ok(new{key=result.Key,flowStarted=result.FlowStarted}),
+        // ADR-006 决策 2.7：warnings 随保存响应回传（如自动批核失败），前端在浏览态 banner 展示
+        RecordAccessStatus.Ok=>Ok(new{key=result.Key,flowStarted=result.FlowStarted,warnings=result.Warnings}),
         RecordAccessStatus.NotFound=>NotFound(),
         RecordAccessStatus.OutOfScope=>StatusCode(403,new{code="RECORD_OUT_OF_SCOPE",message="目标记录不在当前用户数据范围内。"}),
         RecordAccessStatus.FilterUnsupported=>StatusCode(403,new{code="DATA_FILTER_UNSUPPORTED",message="当前数据过滤条件尚不支持，已拒绝执行。"}),

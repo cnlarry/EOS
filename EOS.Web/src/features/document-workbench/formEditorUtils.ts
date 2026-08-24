@@ -1,12 +1,26 @@
 import { ApiError } from '../../types/api'
-import { inputKind } from './formFieldKind'
+import { fieldVariant } from './formFieldKind'
 import type { FormDefinition, FormFieldDefinition } from './formDefinition'
 
-/** 统一表单保存载荷（主表 values + 明细 details，edit 时带 original 并发快照） */
+/** 统一表单保存载荷（主表 values + 明细 details，edit 时带 original 并发快照；ADR-006 决策 2.1 强制幂等键） */
 export interface SaveRecordRequest {
   values: Record<string, string>
   details: Record<string, string>[]
   original?: Record<string, string>
+  idempotencyKey?: string
+}
+
+/** 保存/批核/结案响应（ADR-006 决策 2.7：warnings 随响应回传，浏览态 banner 展示） */
+export interface RecordSaveResponse {
+  key: string[]
+  flowStarted?: boolean
+  warnings?: { code: string; message: string }[]
+}
+
+/** 幂等键生成（ADR-006 决策 2.1）：一次用户操作意图一个键，成功后换新键 */
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  return `eos-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
 }
 
 export interface RecordBundle {
@@ -14,11 +28,10 @@ export interface RecordBundle {
   details: Record<string, unknown>[]
 }
 
-/** 明细网格行：__id 为表格行键，__index 映射 detailRows 原始行号，__filler 为占位空行 */
+/** 明细网格行：__id 为表格行键，__index 映射 detailRows 原始行号（ADR-006 决策 5：不再有占位空行） */
 export interface DetailGridRow {
   __id: string
   __index: number
-  __filler: boolean
   [key: string]: unknown
 }
 
@@ -34,16 +47,33 @@ export function emptyValue(field: FormFieldDefinition): string {
 
 /**
  * 明细编辑控件的可用最小列宽。DISPLAY_LENGTH 是只读列表展示宽度（往往只有几十像素），
- * 编辑态直接套用会把输入控件压到无法操作；此处按控件类型给列宽下限，
+ * 编辑态直接套用会把输入控件压到无法操作；此处按控件变体给列宽下限，
  * 并配合 `minWidthFloor` 让拖拽/历史宽度也不能低于该下限。
  */
 export function detailControlMinWidth(field: FormFieldDefinition): number {
-  const kind = inputKind(field)
-  if (kind === 'checkbox') return 56
-  if (kind === 'select') return 104
-  if (kind === 'date') return 132
+  const variant = fieldVariant(field)
+  if (variant === 'checkbox') return 56
+  if (variant === 'select') return 104
+  if (variant === 'date' || variant === 'datetime') return 132
   const hasChooser = field.choosers.some(source => source.active && source.table)
   return hasChooser ? 168 : 110
+}
+
+/**
+ * 数值输入规范化（ADR-006 决策 1 decimal 变体 / 决策 2.5）：
+ * 全角数字/句点转半角、去除千分位逗号，可解析时输出不变文化的普通数字串；
+ * 不可解析（含货币符号等）原样返回，交由校验报错。
+ */
+export function canonicalizeDecimalValue(raw: string): string {
+  let text = (raw ?? '').trim()
+  if (!text) return ''
+  text = text
+    .replace(/[０-９]/g, character => String.fromCharCode(character.charCodeAt(0) - 0xFEE0))
+    .replace('．', '.')
+    .replace(/，/g, ',')
+  if (/^%/.test(text) || text.endsWith('%')) return text
+  const numeric = Number(text.replace(/,/g, ''))
+  return Number.isFinite(numeric) ? String(numeric) : text
 }
 
 /**

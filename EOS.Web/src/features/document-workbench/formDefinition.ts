@@ -48,17 +48,20 @@ export interface FormFieldDefinition {
   isCost: boolean
   isSecrecy: boolean
   serverFilled: boolean
-  maxLength: number | null
-  tabNo: number
-  formOrder: number | null
-  span: number
-  newLine: boolean
-  cellGroup: string | null
-  cellRole: number
-  options: FormOptionItem[]
-  displayOnly: boolean
-  /** 复制（IF_COPY）时是否带出该字段值（FIELDS.CAN_COPY，默认 true） */
-  canCopy: boolean
+   maxLength: number | null
+   tabNo: number
+   formOrder: number | null
+   span: number
+   newLine: boolean
+   cellGroup: string | null
+   cellRole: number
+   options: FormOptionItem[]
+   displayOnly: boolean
+   /** 复制（IF_COPY）时是否带出该字段值（FIELDS.CAN_COPY，默认 true） */
+   canCopy: boolean
+   /** 数值精度/小数位（sys.types，仅 decimal/numeric；ADR-006 决策 2.4 超精度校验依据） */
+   precision?: number | null
+   scale?: number | null
 }
 
 /** 统一表单定义（按当前用户权限过滤后的录入视图） */
@@ -87,16 +90,21 @@ export interface FormDefinition {
   searchDetail: boolean
   /** 新增模式服务端默认值（单别/单号/日期等），edit 模式为空对象 */
   defaultValues: Record<string, string>
-  /** 删除/批核/结案/附件操作权限（服务端 LegacyModuleRights 下发，视图按位显隐） */
-  canDelete: boolean
-  canApprove: boolean
-  canDeapprove: boolean
-  canEndCase: boolean
-  canUnEndCase: boolean
-  canFileView: boolean
-  canFileUpda: boolean
-  canFileEdit: boolean
-  canFileDele: boolean
+   /** 删除/批核/结案/附件操作权限（服务端 LegacyModuleRights 下发，视图按位显隐） */
+   canDelete: boolean
+   canApprove: boolean
+   canDeapprove: boolean
+   canEndCase: boolean
+   canUnEndCase: boolean
+   canFileView: boolean
+   canFileUpda: boolean
+   canFileEdit: boolean
+   canFileDele: boolean
+   /** 新增/编辑用户权限（ADR-006 决策 6 浏览态按钮显隐：模块能力 ∧ 用户权限） */
+   canAddNew: boolean
+   canEdit: boolean
+   /** 帮助页地址（MODULES.HELP_URL，非空时浏览态显示帮助按钮） */
+   helpUrl?: string | null
 }
 
 /** 模块权限（与 EOS.API LegacyModuleRights 对应，M0 扩展后） */

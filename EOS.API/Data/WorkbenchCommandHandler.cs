@@ -187,7 +187,24 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "NO_WRITABLE_FIELDS", "没有可写入的字段。");
         }
-        var identityValue = await InsertRowAsync(connection, transaction, definition.MasterTable, insertFields, values, masterIdentity, token);
+        decimal? identityValue;
+        try
+        {
+            identityValue = await InsertRowAsync(connection, transaction, definition.MasterTable, insertFields, values, masterIdentity, token);
+        }
+        // ADR-006 决策 2.8（单号冲突友好化）：自动单号模块的默认单号只是预览号，并发开单会撞唯一键；
+        // 仅当冲突索引命中主键/单号列时映射为 BILL_NO_CONFLICT（400），其余唯一键冲突保持原样上抛。
+        catch (SqlException ex) when (ex.Number is 2601 or 2627)
+        {
+            if (businessRule is { AutoBillNo: true, BillNoField: not null }
+                && TryParseDuplicateIndexName(ex.Message, out var duplicateIndexName)
+                && await IsBillNoUniqueConflictAsync(connection, transaction, definition.MasterTable, duplicateIndexName, pkColumns, businessRule.BillNoField, token))
+            {
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BILL_NO_CONFLICT",
+                    "单号已被占用，请重新保存以获取新单号。");
+            }
+            throw;
+        }
         if (identityValue is not null && masterIdentity.Count > 0)
         {
             values[masterIdentity[0]] = identityValue;
@@ -238,17 +255,21 @@ public sealed class WorkbenchCommandHandler(
         }
         await transaction.CommitAsync(token);
         logger.LogInformation("统一表单新增 module={ModuleId} master={Master} key={Key}", definition.ModuleId, definition.MasterTable, string.Join(',', keyValues));
+        IReadOnlyList<SaveWarning>? warnings = null;
         if (definition.AutoApprove)
         {
-            // 自动批核模块：新增成功后立即进入批核状态（保存事务提交后执行，SP 自带事务）
+            // 自动批核模块：新增成功后立即进入批核状态（保存事务提交后执行，SP 自带事务）；
+            // 失败不回滚保存（ADR-006 决策 2.7）：以 warnings 回传前端提示「已保存，但自动批核失败」。
             var autoResult = await approvalService.AutoApproveAsync(connection, definition, keyValues, userId, token);
             if (autoResult.Status != RecordAccessStatus.Ok)
             {
                 logger.LogWarning("自动批核失败 module={ModuleId} key={Key} code={Code} message={Message}",
                     definition.ModuleId, string.Join(',', keyValues), autoResult.ErrorCode, autoResult.ErrorMessage);
+                warnings = [new SaveWarning("AUTO_APPROVE_FAILED",
+                    $"已保存，但自动批核失败：{autoResult.ErrorMessage ?? autoResult.ErrorCode ?? "未知原因"}")];
             }
         }
-        return RecordSaveResult.Success(keyValues);
+        return RecordSaveResult.Success(keyValues, warnings);
     }
 
     public async Task<RecordSaveResult> UpdateRecordAsync(
@@ -547,7 +568,8 @@ public sealed class WorkbenchCommandHandler(
         for (var rowIndex = 0; rowIndex < details.Count; rowIndex++)
         {
             var validation = RecordPayloadValidator.ValidateSubmitted(form.DetailFields, details[rowIndex]);
-            errors.AddRange(validation.Errors);
+            // ADR-006 决策 2.2：明细行错误携带行号，前端按行精确定位（不再全部挂到第一行）
+            errors.AddRange(validation.Errors.Select(error => error with { RowIndex = rowIndex }));
             var row = new Dictionary<string, object?>(validation.Converted, StringComparer.OrdinalIgnoreCase);
             RecordPayloadValidator.ApplyDefaults(form.DetailFields, row);
             // 明细中未提供的字段，若主表存在同名值（如 CURR_ID/CURR_RATE/TAX_ID），由服务端从主表带入
@@ -567,7 +589,7 @@ public sealed class WorkbenchCommandHandler(
                 var pkField = form.DetailFields.FirstOrDefault(field => field.Key.Equals(pkColumns[i], StringComparison.OrdinalIgnoreCase));
                 if (pkField is null)
                 {
-                    errors.Add(new FieldError(pkColumns[i], "明细表缺少主表关联字段。", "MASTER_KEY_NOT_IN_DETAIL"));
+                    errors.Add(new FieldError(pkColumns[i], "明细表缺少主表关联字段。", "MASTER_KEY_NOT_IN_DETAIL", rowIndex));
                     continue;
                 }
                 if (RecordPayloadValidator.TryConvert(pkField.DataType, keyValues[i], out var keyValue))
@@ -582,9 +604,10 @@ public sealed class WorkbenchCommandHandler(
         RecordPayloadValidator.AssignSerialNumbers(rows, form.DetailFields);
         // 应收货款单（170101）等引用单据的明细：金额/数量从送货（退货）单明细带出
         await FillReferencedAmountsAsync(connection, transaction, form.DetailFields, rows, token);
-        foreach (var row in rows)
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
-            errors.AddRange(RecordPayloadValidator.CheckRequiredAndRegex(form.DetailFields, row));
+            errors.AddRange(RecordPayloadValidator.CheckRequiredAndRegex(form.DetailFields, rows[rowIndex])
+                .Select(error => error with { RowIndex = rowIndex }));
         }
         if (errors.Count > 0)
         {
@@ -602,12 +625,13 @@ public sealed class WorkbenchCommandHandler(
         }
 
         await WorkbenchSql.DeleteDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token);
-        foreach (var row in rows)
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
+            var row = rows[rowIndex];
             var fillErrors = await FillServerColumnsAsync(connection, transaction, definition.DetailTable, form.DetailFields, row, employeeName, isNew, token);
             if (fillErrors.Count > 0)
             {
-                return fillErrors;
+                return fillErrors.Select(error => error with { RowIndex = rowIndex }).ToList();
             }
             var insertFields = form.DetailFields.Where(field => !field.IsVirtual && row.ContainsKey(field.Key) && !detailIdentity.Contains(field.Key)).ToList();
             if (insertFields.Count == 0)
@@ -997,6 +1021,60 @@ public sealed class WorkbenchCommandHandler(
     {
         var normalized = key?.Trim();
         return string.IsNullOrWhiteSpace(normalized) || normalized.Length > 128 ? null : normalized;
+    }
+
+    /// <summary>从唯一键冲突异常消息解析索引名（ADR-006 决策 2.8）。消息本地化导致解析失败时返回 false（保持原样上抛）。</summary>
+    private static bool TryParseDuplicateIndexName(string message, out string indexName)
+    {
+        // 英文：Cannot insert duplicate key row in object 'dbo.X' with unique index 'IX_NAME'.
+        // 2627（主键冲突）与 2601（唯一索引冲突）消息结构一致。
+        var match = System.Text.RegularExpressions.Regex.Match(
+            message, @"with\s+(unique\s+index|PRIMARY\s+KEY)\s+'(?<name>[^']+)'",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+        indexName = match.Success ? match.Groups["name"].Value : string.Empty;
+        return match.Success;
+    }
+
+    /// <summary>
+    /// 判定唯一键冲突是否为「单号冲突」（ADR-006 决策 2.8 范围限定）：
+    /// 冲突索引的列命中单号列，或冲突索引即主键且主键含主键列（自动单号模块主键含 单别+单号）。
+    /// </summary>
+    private static async Task<bool> IsBillNoUniqueConflictAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string table,
+        string indexName,
+        IReadOnlyList<string> pkColumns,
+        string billNoField,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT c.name AS COLUMN_NAME,i.is_primary_key AS IS_PK
+            FROM sys.indexes i
+            JOIN sys.index_columns ic ON i.object_id=ic.object_id AND i.index_id=ic.index_id
+            JOIN sys.columns c ON ic.object_id=c.object_id AND ic.column_id=c.column_id
+            WHERE i.name=@IndexName AND i.object_id=OBJECT_ID(N'dbo.' + @Table);
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@IndexName", SqlDbType.NVarChar, 256).Value = indexName;
+        command.Parameters.Add("@Table", SqlDbType.NVarChar, 256).Value = table;
+        var columns = new List<string>();
+        var isPrimaryKey = false;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            columns.Add(reader.GetString(reader.GetOrdinal("COLUMN_NAME")));
+            isPrimaryKey |= reader.GetBoolean(reader.GetOrdinal("IS_PK"));
+        }
+        if (columns.Count == 0)
+        {
+            return false;
+        }
+        if (columns.Any(column => column.Equals(billNoField, StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+        return isPrimaryKey && pkColumns.Any(pk => columns.Contains(pk, StringComparer.OrdinalIgnoreCase));
     }
 
     private static string SerializeResultKey(IReadOnlyList<string> keyValues) => JsonSerializer.Serialize(keyValues);
