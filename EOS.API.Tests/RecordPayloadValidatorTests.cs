@@ -16,10 +16,12 @@ public class RecordPayloadValidatorTests
         string? defaultValue = null,
         bool isPrimaryKey = false,
         int? maxLength = null,
-        bool displayOnly = false) =>
+        bool displayOnly = false,
+        int? precision = null,
+        int? scale = null) =>
         new(key, $"label-{key}", dataType, 100, null, required, null, regex, defaultValue,
             readOnly, true, false, false, null, [], isPrimaryKey, false, isVirtual, false, false, serverFilled, maxLength,
-            DisplayOnly: displayOnly);
+            DisplayOnly: displayOnly, Precision: precision, Scale: scale);
 
     [Fact]
     public void UnknownField_IsRejected()
@@ -176,5 +178,81 @@ public class RecordPayloadValidatorTests
         };
         RecordPayloadValidator.AssignSerialNumbers(rows, [Field("SERIAL_NO", dataType: "int")]);
         Assert.Equal(9, rows[0]["SERIAL_NO"]);
+    }
+
+    // ===== ADR-006 决策 2.4：trim 契约与 precision/scale 超精度校验 =====
+
+    [Fact]
+    public void TextValue_IsTrimmedOnSave()
+    {
+        var result = RecordPayloadValidator.ValidateSubmitted([Field("A")],
+            new Dictionary<string, string?> { ["A"] = "  文本  " });
+        Assert.Empty(result.Errors);
+        Assert.Equal("文本", result.Converted["A"]);
+    }
+
+    [Fact]
+    public void TrimmedLength_UsedForMaxLengthCheck()
+    {
+        // 前后空白不计入长度：trim 后 10 字符应放行（maxLength=10）
+        var result = RecordPayloadValidator.ValidateSubmitted([Field("A", maxLength: 10)],
+            new Dictionary<string, string?> { ["A"] = " 1234567890 " });
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public void DecimalScaleExceeded_IsRejected()
+    {
+        var field = Field("AMT", dataType: "decimal", precision: 18, scale: 2);
+        var result = RecordPayloadValidator.ValidateSubmitted([field],
+            new Dictionary<string, string?> { ["AMT"] = "1.999" });
+        Assert.Equal("SCALE_EXCEEDED", Assert.Single(result.Errors).Code);
+    }
+
+    [Fact]
+    public void DecimalScaleZero_RejectsAnyFraction()
+    {
+        var field = Field("QTY", dataType: "numeric", precision: 10, scale: 0);
+        var result = RecordPayloadValidator.ValidateSubmitted([field],
+            new Dictionary<string, string?> { ["QTY"] = "1.5" });
+        Assert.Equal("SCALE_EXCEEDED", Assert.Single(result.Errors).Code);
+    }
+
+    [Fact]
+    public void DecimalWithinPrecision_IsAccepted()
+    {
+        var field = Field("AMT", dataType: "decimal", precision: 18, scale: 2);
+        var result = RecordPayloadValidator.ValidateSubmitted([field],
+            new Dictionary<string, string?> { ["AMT"] = "12345678901234.56" });
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public void DecimalIntegerOverflow_IsRejected()
+    {
+        var field = Field("AMT", dataType: "decimal", precision: 18, scale: 2);
+        var result = RecordPayloadValidator.ValidateSubmitted([field],
+            new Dictionary<string, string?> { ["AMT"] = "10000000000000000" });
+        Assert.Equal("PRECISION_EXCEEDED", Assert.Single(result.Errors).Code);
+    }
+
+    [Fact]
+    public void FloatAndMoney_NotSubjectToScaleCheck()
+    {
+        // float 无精度语义、money 固定 scale=4：均不启用超精度校验（ADR-006 评审第二轮）
+        var fields = new[] { Field("F", dataType: "float"), Field("M", dataType: "money") };
+        var result = RecordPayloadValidator.ValidateSubmitted(fields,
+            new Dictionary<string, string?> { ["F"] = "1.123456789", ["M"] = "1.123456789" });
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public void ScaleError_CarriesNoRowIndex_ByDefault()
+    {
+        // 主表级错误 RowIndex 为 null；明细行号由 SaveDetailsAsync 附着
+        var field = Field("AMT", dataType: "decimal", precision: 18, scale: 2);
+        var result = RecordPayloadValidator.ValidateSubmitted([field],
+            new Dictionary<string, string?> { ["AMT"] = "1.999" });
+        Assert.Null(Assert.Single(result.Errors).RowIndex);
     }
 }

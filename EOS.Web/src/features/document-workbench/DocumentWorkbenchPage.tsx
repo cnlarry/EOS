@@ -1,4 +1,4 @@
-import { IconFileExport, IconZoomScan } from '@tabler/icons-react'
+import { IconChevronDown, IconFileExport, IconZoomScan } from '@tabler/icons-react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -18,6 +18,7 @@ import { useAuth } from '../auth/authContext'
 import { FieldEditorModal } from '../field-admin/FieldEditorModal'
 import { alignClass, formatFieldValue } from './fieldFormat'
 import { FieldBrowseLink } from './FieldBrowseLink'
+import { newIdempotencyKey } from './formEditorUtils'
 import { readListState, writeListState } from './listStateUrl'
 
 interface Field { key:string; label:string; dataType:string; width:number; align:string|null; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; isVirtual?:boolean }
@@ -286,14 +287,43 @@ export function DocumentWorkbenchPage() {
   const handleRowSelectionChange=(next:RowSelectionState)=>{const selectedKeys=Object.keys(next).filter(key=>next[key]);setSelected(current=>{const result:Record<string,Record<string,unknown>>={};for(const key of selectedKeys){result[key]=current[key]??rows.find(row=>rowKey(row)===key)??{}}return result});if(selectedKeys.length===1){const only=selectedKeys[0];setActiveKey(only)}else if(selectedKeys.length===0){setActiveKey(null)}}
   const handleRowClick=(row:Record<string,unknown>)=>{const key=rowKey(row);setSelected({[key]:row});setActiveKey(key)}
   // 路由契约（M86）：NEW_URL/MODI_URL 有值时按元数据跳转，无值回退统一表单
-  const openEdit=()=>{if(!active||!definition.data)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));const base=definition.data.modiUrl??`/document-workbench/${moduleId}/edit`;navigate(`${base}${base.includes('?')?'&':'?'}key=${encodeURIComponent(JSON.stringify(key))}`)}
-  const openView=()=>{if(!active)return;const key=definition.data?.masterPkOrder.map(column=>String(active[column]??''))??[];navigate(`/document-workbench/${moduleId}/view?key=${encodeURIComponent(JSON.stringify(key))}`)}
   const openNew=()=>{if(!definition.data?.hasAdd)return;navigate(definition.data.newUrl??`/document-workbench/${moduleId}/new`)}
-  const openCopy=()=>{if(!active||!definition.data?.ifCopy)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));navigate(`/document-workbench/${moduleId}/copy?copyFrom=${encodeURIComponent(JSON.stringify(key))}`)}
+  const canOpenView=Boolean(definition.data?.hasEdit)
+  // ADR-006 决策 6：主表行双击进入浏览态（明细行双击不进入）；查询型模块（无浏览能力）双击无动作。
+  // 携带列表当前显示顺序（排序/过滤后）作为上一条/下一条导航上下文——旧系统 GoPrior/GoNext 语义。
+  const openViewFromRow=(row:Record<string,unknown>)=>{
+    if(!definition.data||!canOpenView)return
+    const key=definition.data.masterPkOrder.map(column=>String(row[column]??''))
+    const navKeys=rows.map(item=>definition.data!.masterPkOrder.map(column=>String(item[column]??'')))
+    const navIndex=navKeys.findIndex(candidate=>candidate.every((value,i)=>value===key[i]))
+    navigate(`/document-workbench/${moduleId}/view?key=${encodeURIComponent(JSON.stringify(key))}`,{state:{navKeys,navIndex}})
+  }
   const openSearchCenter=()=>{navigate(`/search-center/${moduleId}`)}
-  const runWorkflow=async(approve:boolean)=>{if(!definition.data||!active)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));try{await apiClient.post(`/document-workbench/${moduleId}/${approve?'approve':'deapprove'}`,{key:JSON.stringify(key)});await queryClient.invalidateQueries({queryKey:['workbench',moduleId,'records']});if(activeKey)void details.refetch()}catch(error){window.alert(error instanceof Error?`${approve?'批核':'解批'}失败：${error.message}`:`${approve?'批核':'解批'}失败。`)}}
-  const deleteRecord=async()=>{if(!definition.data||!active)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));const label=definition.data.title;if(!window.confirm(`确定删除该${label}吗？删除后不可恢复。`))return;try{await apiClient.delete(`/document-workbench/${moduleId}/record?key=${encodeURIComponent(JSON.stringify(key))}`);setSelected({});setActiveKey(null);await queryClient.invalidateQueries({queryKey:['workbench',moduleId,'records']})}catch(error){window.alert(error instanceof Error?`删除失败：${error.message}`:'删除失败。')}}
-  const openPrint=()=>{if(!definition.data||!active)return;const key=definition.data.masterPkOrder.map(column=>String(active[column]??''));window.open(`/print/${moduleId}?key=${encodeURIComponent(JSON.stringify(key))}`,'_blank')}
+  // FORM_BUTTONS 业务按钮：动作白名单与服务端一致。
+  // ADR-006 决策 6（2026-08-24 列表工具条收敛）：列表仅保留 新增 + 列表自身工具（导出/通用查询）；
+  // 编辑/复制/删除/批核/解批/结案/未结案/打印等单据级动作全部移入统一表单浏览态工具栏，
+  // 破坏性操作必须先进入浏览态确认单据细节（禁止列表勾选直删）。
+  const businessItems:ErpCommandItem[]=(definition.data?.buttons&&definition.data.buttons.length>0
+    ?definition.data.buttons
+    :[{action:'new'},{action:'export'}]).map((button)=>({
+    action:button.action,
+    visible:(()=>{
+      switch(button.action){
+        case 'new':return definition.data?.hasAdd
+        case 'export':return true
+        case 'search':return Boolean(definition.data?.searchMaster||definition.data?.searchDetail)
+        default:return false
+      }
+    })(),
+    onClick:(()=>{
+      switch(button.action){
+        case 'new':return openNew
+        case 'search':return openSearchCenter
+        default:return undefined
+      }
+    })(),
+    render:button.action==='export'?()=>exportButton:undefined,
+  }))
   const openGroupValues=async(group:NavigationGroupDef)=>{setActiveGroup(group);setGroupValues(null);try{const data=await apiClient.get<{values:string[]}>(`/navigation/${moduleId}/groups/${group.index}/values`);setGroupValues(data.values)}catch{setGroupValues([])}}
   const applyGroupValue=(value:string)=>{if(!activeGroup)return;setGroupMenuOpen(false);setSearchParams(current=>{current.set('groupIndex',String(activeGroup.index));current.set('groupValue',value);return current},{replace:true})}
   const groupQuery=groupIndex!=null&&groupValue!=null?{groupIndex,groupValue}:{}
@@ -314,51 +344,18 @@ export function DocumentWorkbenchPage() {
   }
   const handleExport=async(format:'csv'|'xls')=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const exportColumns=definition.data.masterFields.map(field=>field.key).join(',');const commonQuery={format,columns:exportColumns};const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{query:{...groupQuery,...commonQuery}}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:safeConditions},{query:{keyword:keyword||undefined,...sortQuery(safeSort),...groupQuery,...commonQuery}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.${format==='xls'?'xls':'csv'}`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
   const exportLabel=Object.keys(rowSelection).filter(id=>rowSelection[id]).length
-  const exportButton=<div className="btn-group erp-export-group position-relative">
-    <Button size="sm" icon={<IconFileExport size={16}/>} loading={exporting} title={exportLabel?`导出所选 (${exportLabel})`:'导出'} aria-label={exportLabel?`导出所选 (${exportLabel})`:'导出'} onClick={()=>void handleExport('csv')} />
-    <Button size="sm" className="dropdown-toggle dropdown-toggle-split" aria-label="选择导出格式" title="选择导出格式" aria-expanded={exportMenuOpen} onClick={()=>setExportMenuOpen(open=>!open)} />
+  const exportButton=<div className="d-flex align-items-center gap-1 erp-export-group position-relative">
+    <Button size="sm" className="erp-command-btn" icon={<IconFileExport size={16}/>} loading={exporting} title={exportLabel?`导出所选 (${exportLabel})`:'导出'} onClick={()=>void handleExport('csv')}>
+      导出{exportLabel?` (${exportLabel})`:''}
+    </Button>
+    <Button size="sm" className="erp-command-icon-btn dropdown-toggle" icon={<IconChevronDown size={16}/>} aria-expanded={exportMenuOpen} title="选择导出格式" aria-label="选择导出格式" onClick={()=>setExportMenuOpen(open=>!open)} />
     {exportMenuOpen&&<div className="dropdown-menu dropdown-menu-end show" role="menu">
+      <div className="dropdown-header">导出格式</div>
       <button type="button" role="menuitem" className="dropdown-item" onClick={()=>{setExportMenuOpen(false);void handleExport('csv')}}>CSV{exportLabel?`（所选 ${exportLabel} 行）`:''}</button>
       <button type="button" role="menuitem" className="dropdown-item" onClick={()=>{setExportMenuOpen(false);void handleExport('xls')}}>Excel{exportLabel?`（所选 ${exportLabel} 行）`:''}</button>
     </div>}
   </div>
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
-  // FORM_BUTTONS 业务按钮：动作白名单与服务端一致；未配置（null）时走默认按钮集
-  const businessItems:ErpCommandItem[]=(definition.data?.buttons&&definition.data.buttons.length>0
-    ?definition.data.buttons
-    :[{action:'new'},{action:'edit'},{action:'view'},{action:'copy'},{action:'delete'},{action:'approve'},{action:'deapprove'},{action:'print'},{action:'export'}]).map((button)=>({
-    action:button.action,
-    visible:(()=>{
-      switch(button.action){
-        case 'new':return definition.data?.hasAdd
-        case 'edit':return Boolean(definition.data?.hasEdit&&active)
-        case 'view':return Boolean(active)
-        case 'copy':return Boolean(definition.data?.ifCopy&&definition.data?.hasAdd&&active)
-        case 'delete':return Boolean(definition.data?.canDelete&&active)
-        case 'approve':return Boolean(definition.data?.hasWorkflow&&active)
-        case 'deapprove':return Boolean(definition.data?.hasWorkflow&&active)
-        case 'print':return Boolean(active)
-        case 'export':return true
-        case 'search':return Boolean(definition.data?.searchMaster||definition.data?.searchDetail)
-        default:return false
-      }
-    })(),
-    onClick:(()=>{
-      switch(button.action){
-        case 'new':return openNew
-        case 'edit':return openEdit
-        case 'view':return openView
-        case 'copy':return openCopy
-        case 'delete':return deleteRecord
-        case 'approve':return ()=>void runWorkflow(true)
-        case 'deapprove':return ()=>void runWorkflow(false)
-        case 'print':return openPrint
-        case 'search':return openSearchCenter
-        default:return undefined
-      }
-    })(),
-    render:button.action==='export'?()=>exportButton:undefined,
-  }))
 
   return <div className={`erp-workbench-page${definition.data.detailTable?'':' erp-workbench-single'}`}>
     <ErpListCard
@@ -370,7 +367,7 @@ export function DocumentWorkbenchPage() {
           {action:'columns',onClick:()=>{queryClient.removeQueries({queryKey:['workbench',moduleId,'column-editor']});setColumnsOpen(true)}},
           ...(groupDefs&&groupDefs.length>0?[{action:'group',render:()=>(
             <div className="dropdown erp-group-dropdown">
-              <Button size="sm" icon={<IconZoomScan size={16}/>} className={groupMenuOpen?'show':''} aria-expanded={groupMenuOpen} title="分组" aria-label="分组" onClick={()=>setGroupMenuOpen(open=>!open)} />
+              <Button size="sm" className={`erp-command-icon-btn${groupMenuOpen?' show':''}`} icon={<IconZoomScan size={16}/>} aria-expanded={groupMenuOpen} title="分组" aria-label="分组" onClick={()=>setGroupMenuOpen(open=>!open)} />
               {groupMenuOpen&&(
                 <div className="dropdown-menu dropdown-menu-end show" role="menu">
                   {activeGroup===null?groupDefs.map(group=>(
@@ -424,6 +421,7 @@ export function DocumentWorkbenchPage() {
           rowSelection={rowSelection}
           onRowSelectionChange={handleRowSelectionChange}
           onRowClick={handleRowClick}
+          onRowDoubleClick={openViewFromRow}
           activeRowId={activeKey??undefined}
           resizable
           fitRef={masterFitRef}

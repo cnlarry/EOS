@@ -2,7 +2,9 @@ import type { ReactNode } from 'react'
 import {
   IconAdjustmentsHorizontal,
   IconArrowAutofitWidth,
+  IconArrowDown,
   IconArrowLeft,
+  IconArrowUp,
   IconCheck,
   IconColumns,
   IconCopy,
@@ -10,6 +12,7 @@ import {
   IconEye,
   IconFileExport,
   IconFileUpload,
+  IconHelpCircle,
   IconLock,
   IconLockOpen,
   IconPaperclip,
@@ -46,4 +49,8 @@ export const COMMAND_ACTIONS: Record<string, { icon: ReactNode; title: string }>
   columns: { icon: <IconColumns size={16} />, title: '选择列' },
   fit: { icon: <IconArrowAutofitWidth size={16} />, title: '自适应列宽' },
   upload: { icon: <IconFileUpload size={16} />, title: '上传' },
+  // ADR-006 决策 6：浏览态上一条/下一条（按列表当前顺序）与帮助（HELP_URL）
+  prior: { icon: <IconArrowUp size={16} />, title: '上一条' },
+  next: { icon: <IconArrowDown size={16} />, title: '下一条' },
+  help: { icon: <IconHelpCircle size={16} />, title: '帮助' },
 }

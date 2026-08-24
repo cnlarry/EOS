@@ -691,6 +691,15 @@ button, input, select { font: inherit; }
 /* ===== 统一表单编辑页（对齐旧系统编辑页布局） =====
    旧系统（ERP/*.aspx）编辑页通用结构：顶部工具栏 + 主表"标签-控件"成对网格
    （简单模块 2 对/行、业务单据 2~3 对/行）+ 长文本整行 + 底部灰显只读区 + 明细网格。 */
+/* 设计 token（ADR-006 决策 1）：标签宽/控件高/字号/分区间距统一定义于此 */
+:root {
+  --erp-form-label-min: 88px;
+  --erp-form-label-width: 112px;
+  --erp-form-control-height: 30px;
+  --erp-form-control-font: 13px;
+  --erp-form-group-gap: 12px;
+}
+
 .erp-form-grid {
   display: block;
   border: 1px solid var(--tblr-border-color);
@@ -710,7 +719,7 @@ button, input, select { font: inherit; }
 
 .erp-form-field {
   display: grid;
-  grid-template-columns: minmax(88px, 0.9fr) minmax(0, 2.1fr);
+  grid-template-columns: minmax(var(--erp-form-label-min), var(--erp-form-label-width)) minmax(0, 2.1fr);
   align-items: center;
   gap: 8px 12px;
   min-width: 0;
@@ -720,12 +729,45 @@ button, input, select { font: inherit; }
 
 .erp-form-cell {
   display: grid;
-  grid-template-columns: minmax(88px, 0.9fr) minmax(0, 2.1fr);
+  grid-template-columns: minmax(var(--erp-form-label-min), var(--erp-form-label-width)) minmax(0, 2.1fr);
   align-items: center;
   gap: 8px 12px;
   min-width: 0;
   padding: 9px 12px;
   background: var(--tblr-bg-surface);
+}
+
+/* 分节容器与标题（ADR-006 分区表单：FORM_CELL_GROUP ≥2 主字段格成节） */
+.erp-form-group + .erp-form-group { margin-top: var(--erp-form-group-gap); }
+.erp-form-group-title {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--tblr-secondary);
+  letter-spacing: 0.02em;
+  background: var(--tblr-bg-surface-secondary);
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+
+/* 只读文本渲染（浏览态 / serverFilled 无选择器）：纯文本 + bit 状态徽标，非禁用输入框 */
+.erp-form-static {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--erp-form-control-height);
+  padding: 4px 0;
+  font-size: var(--erp-form-control-font);
+  color: var(--tblr-body-color);
+  overflow-wrap: anywhere;
+}
+.erp-form-static-badge {
+  padding: 1px 10px;
+  font-size: 12px;
+  color: var(--tblr-secondary);
+  background: var(--tblr-bg-surface-secondary);
+  border-radius: 6px;
 }
 
 .erp-form-cell-controls {
@@ -745,9 +787,13 @@ button, input, select { font: inherit; }
 
 .erp-form-label {
   min-width: 0;
+  /* ADR-006 决策 1：禁止静默截断——最多两行换行显示，title 悬停全文兜底 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  word-break: break-word;
   color: var(--tblr-secondary);
   font-size: 12px;
   font-weight: 600;
@@ -777,6 +823,19 @@ button, input, select { font: inherit; }
 .erp-form-tabs { border-bottom: 0; margin-bottom: 0; padding-left: calc(var(--tblr-border-radius) * 2); }
 .erp-form-tabs .nav-link { padding: 5px 14px; font-size: 13px; border-bottom: 0; border-radius: var(--tblr-border-radius-lg) var(--tblr-border-radius-lg) 0 0; margin-bottom: -1px; }
 .erp-form-tabs .nav-link.active { background-color: var(--tblr-bg-surface); border-bottom: 1px solid var(--tblr-bg-surface); position: relative; z-index: 1; }
+/* 页签错误计数徽标（ADR-006 错误 UX）：隐藏页签的错误可见 */
+.erp-tab-error-badge {
+  display: inline-block;
+  margin-left: 6px;
+  min-width: 16px;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  color: #fff;
+  background: var(--tblr-danger);
+  border-radius: 8px;
+}
 /* 相邻标签始终只保留一条分隔线，且激活标签边框完整：
    非激活的后续标签去掉左边框；激活标签的前一个邻居去掉右边框（:has） */
 .erp-form-tabs .nav-item + .nav-item .nav-link:not(.active) { border-left: 0 !important; }
@@ -857,8 +916,18 @@ button, input, select { font: inherit; }
 .erp-form-page > .erp-form-card .card-body { display: flex; flex-direction: column; min-height: 0; }
 .erp-form-page > .erp-form-card .erp-form-toolbar { flex: 0 0 auto; }
 .erp-form-page > .erp-form-card .erp-form-grid { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-.erp-form-page > .card.erp-detail-card { flex: 0 0 auto; height: 300px; display: flex; flex-direction: column; overflow: hidden; }
+/* 明细卡片高度弹性化（ADR-006 决策 5）：min~max 区间随视口伸缩，代替固定 300px */
+.erp-form-page > .card.erp-detail-card { flex: 0 1 auto; height: clamp(220px, 38vh, 480px); display: flex; flex-direction: column; overflow: hidden; }
 .erp-form-page > .card.erp-detail-card .table-responsive { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; }
+
+/* 明细空态「+ 新增一行」虚线入口（ADR-006 决策 5，替代硬编码补空行） */
+.erp-detail-empty {
+  padding: 18px 12px;
+}
+.erp-detail-empty .btn {
+  width: 100%;
+  border-style: dashed;
+}
 
 /* ===== 系统参数设置（110111）=====
    复用统一表单编辑网格（erp-form-grid），分区标题行 + 12px 标准字号 */

@@ -131,6 +131,7 @@ function renderPage(initialEntry = '/document-workbench/1209') {
           <Route path="/document-workbench/:moduleId" element={<DocumentWorkbenchPage />} />
           <Route path="/document-workbench/:moduleId/new" element={<div>NEW_FORM</div>} />
           <Route path="/document-workbench/:moduleId/edit" element={<div>EDIT_FORM</div>} />
+          <Route path="/document-workbench/:moduleId/view" element={<div>VIEW_FORM</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -285,14 +286,16 @@ describe('DocumentWorkbenchPage', () => {
     expect(screen.getByText('NEW_FORM')).toBeInTheDocument()
   })
 
-  it('选中行后编辑按钮可用并跳转带 key 的编辑页', async () => {
+  it('列表不提供编辑按钮（收敛到浏览态）；双击主表行进入浏览态并携带导航上下文', async () => {
     renderPage()
     await loaded()
+    // ADR-006 决策 6 列表工具条收敛：单据级动作不再出现在列表
     expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByText('P1'))
-    await waitFor(() => expect(screen.getByRole('button', { name: '编辑' })).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
-    expect(screen.getByText('EDIT_FORM')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '批核' })).not.toBeInTheDocument()
+    // 双击主表行进入浏览态（明细行双击不进入由 ErpTable 仅主表接线保证）
+    fireEvent.doubleClick(screen.getByText('P1'))
+    expect(screen.getByText('VIEW_FORM')).toBeInTheDocument()
   })
 
   it('搜索关键字触发带 keyword 的记录查询', async () => {
@@ -311,9 +314,9 @@ describe('DocumentWorkbenchPage', () => {
     await loaded()
     const count = () => screen.getAllByRole('button', { name: '通用查询' }).length
     expect(count()).toBe(1)
-    // 选中行后业务按钮增多，但通用查询仍只有一个
+    // 选中行后命令栏状态变化，但通用查询仍只有一个
     fireEvent.click(screen.getByText('P1'))
-    await waitFor(() => expect(screen.getByRole('button', { name: '编辑' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: /导出所选 \(1\)/ })).toBeInTheDocument())
     expect(count()).toBe(1)
   })
 
