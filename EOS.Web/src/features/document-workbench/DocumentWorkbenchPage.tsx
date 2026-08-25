@@ -1,4 +1,4 @@
-import { IconChevronDown, IconFileExport, IconZoomScan } from '@tabler/icons-react'
+import { IconFileExport, IconZoomScan } from '@tabler/icons-react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -18,7 +18,6 @@ import { useAuth } from '../auth/authContext'
 import { FieldEditorModal } from '../field-admin/FieldEditorModal'
 import { alignClass, formatFieldValue } from './fieldFormat'
 import { FieldBrowseLink } from './FieldBrowseLink'
-import { newIdempotencyKey } from './formEditorUtils'
 import { readListState, writeListState } from './listStateUrl'
 
 interface Field { key:string; label:string; dataType:string; width:number; align:string|null; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; isVirtual?:boolean }
@@ -54,7 +53,6 @@ export function DocumentWorkbenchPage() {
   const [conditions,setConditions]=useState<QueryCondition[]>([emptyQueryCondition()])
   const [keyword,setKeyword]=useState(initialState.keyword)
   const [exporting,setExporting]=useState(false)
-  const [exportMenuOpen,setExportMenuOpen]=useState(false)
   const [groupDefs,setGroupDefs]=useState<NavigationGroupDef[]|null>(null)
   const [groupValues,setGroupValues]=useState<string[]|null>(null)
   const [activeGroup,setActiveGroup]=useState<NavigationGroupDef|null>(null)
@@ -98,14 +96,6 @@ export function DocumentWorkbenchPage() {
     document.addEventListener('keydown',esc)
     return ()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',esc)}
   },[groupMenuOpen])
-  useEffect(()=>{
-    if(!exportMenuOpen)return
-    const close=(event:MouseEvent)=>{if(!(event.target as HTMLElement).closest('.erp-export-group'))setExportMenuOpen(false)}
-    const esc=(event:KeyboardEvent)=>{if(event.key==='Escape')setExportMenuOpen(false)}
-    document.addEventListener('pointerdown',close)
-    document.addEventListener('keydown',esc)
-    return ()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',esc)}
-  },[exportMenuOpen])
   useEffect(()=>{
     if(!hydrated.current){hydrated.current=true;return}
     setSearchParams((current)=>{
@@ -344,17 +334,10 @@ export function DocumentWorkbenchPage() {
   }
   const handleExport=async(format:'csv'|'xls')=>{if(!definition.data)return;setExporting(true);try{const selectedIds=Object.keys(rowSelection).filter(id=>rowSelection[id]);const exportColumns=definition.data.masterFields.map(field=>field.key).join(',');const commonQuery={format,columns:exportColumns};const blob=selectedIds.length>0?await apiClient.postFile(`/document-workbench/${moduleId}/export-selected`,{keys:selectedIds.map(id=>{const row=selected[id];return definition.data!.masterPkOrder.map(column=>String(row?.[column]??''))})},{query:{...groupQuery,...commonQuery}}):await apiClient.postFile(`/document-workbench/${moduleId}/export`,{conditions:safeConditions},{query:{keyword:keyword||undefined,...sortQuery(safeSort),...groupQuery,...commonQuery}});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${definition.data.title}.${format==='xls'?'xls':'csv'}`;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)}catch(error){window.alert(error instanceof Error?`导出失败：${error.message}`:'导出失败。')}finally{setExporting(false)}}
   const exportLabel=Object.keys(rowSelection).filter(id=>rowSelection[id]).length
-  const exportButton=<div className="d-flex align-items-center gap-1 erp-export-group position-relative">
-    <Button size="sm" className="erp-command-btn" icon={<IconFileExport size={16}/>} loading={exporting} title={exportLabel?`导出所选 (${exportLabel})`:'导出'} onClick={()=>void handleExport('csv')}>
-      导出{exportLabel?` (${exportLabel})`:''}
-    </Button>
-    <Button size="sm" className="erp-command-icon-btn dropdown-toggle" icon={<IconChevronDown size={16}/>} aria-expanded={exportMenuOpen} title="选择导出格式" aria-label="选择导出格式" onClick={()=>setExportMenuOpen(open=>!open)} />
-    {exportMenuOpen&&<div className="dropdown-menu dropdown-menu-end show" role="menu">
-      <div className="dropdown-header">导出格式</div>
-      <button type="button" role="menuitem" className="dropdown-item" onClick={()=>{setExportMenuOpen(false);void handleExport('csv')}}>CSV{exportLabel?`（所选 ${exportLabel} 行）`:''}</button>
-      <button type="button" role="menuitem" className="dropdown-item" onClick={()=>{setExportMenuOpen(false);void handleExport('xls')}}>Excel{exportLabel?`（所选 ${exportLabel} 行）`:''}</button>
-    </div>}
-  </div>
+  const exportDisabled=exportLabel===0
+  const exportButton=<Button size="sm" className="erp-command-btn" icon={<IconFileExport size={16}/>} loading={exporting} disabled={exportDisabled} title={exportLabel?`导出所选 (${exportLabel})`:'请先选择要导出的行'} onClick={()=>void handleExport('csv')}>
+    {exportLabel?`导出所选 (${exportLabel})`:'导出'}
+  </Button>
   const recordsError=records.error instanceof ApiError?records.error.body.message:'发生未知错误，请稍后重试。'
 
   return <div className={`erp-workbench-page${definition.data.detailTable?'':' erp-workbench-single'}`}>

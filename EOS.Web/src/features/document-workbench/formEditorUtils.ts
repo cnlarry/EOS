@@ -39,6 +39,23 @@ export function buildKey(form: FormDefinition, values: Record<string, string>): 
   return form.masterPkOrder.map(column => values[column] ?? '')
 }
 
+/** 常见单别/类别类主键列：这些列是「单据类别」而非单据编号，面包屑单号应跳过。 */
+const DOC_NO_SKIP_PATTERN = /TYPE|KIND|CLASS|GRADE|_ID$|_IDX|_NO_FIELDS|SERIAL_NO/i
+
+/**
+ * 从主键值中提取单据编号用于面包屑：
+ * 跳过单别/类别类列（如 单别/单据类别），取剩余主键值（通常即单号）；
+ * 若主键全为类别列则回退为主键值组合；无任何主键值返回 null（如新增未生成单号）。
+ */
+export function extractDocNo(form: FormDefinition, values: Record<string, string>): string | null {
+  const nonCategory = form.masterPkOrder
+    .map(column => ({ column, value: values[column] ?? '' }))
+    .filter(item => item.value && !DOC_NO_SKIP_PATTERN.test(item.column))
+  if (nonCategory.length > 0) return nonCategory.map(item => item.value).join('-')
+  const any = form.masterPkOrder.map(column => values[column] ?? '').filter(Boolean)
+  return any.length > 0 ? any.join('-') : null
+}
+
 export function emptyValue(field: FormFieldDefinition): string {
   if (field.defaultValue != null) return field.defaultValue
   if (field.dataType.toLowerCase().includes('bit')) return '0'

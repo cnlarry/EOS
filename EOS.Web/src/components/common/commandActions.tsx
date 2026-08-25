@@ -38,7 +38,7 @@ export const COMMAND_ACTIONS: Record<string, { icon: ReactNode; title: string }>
   approve: { icon: <IconCheck size={16} />, title: '批核' },
   deapprove: { icon: <IconRotateClockwise size={16} />, title: '解批' },
   endcase: { icon: <IconLock size={16} />, title: '结案' },
-  unendcase: { icon: <IconLockOpen size={16} />, title: '未结案' },
+  unendcase: { icon: <IconLockOpen size={16} />, title: '取消结案' },
   print: { icon: <IconPrinter size={16} />, title: '打印' },
   export: { icon: <IconFileExport size={16} />, title: '导出' },
   search: { icon: <IconSearch size={16} />, title: '通用查询' },

@@ -215,7 +215,57 @@ describe('FormEditorPage', () => {
     renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
     await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: '结案' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '未结案' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '取消结案' })).not.toBeInTheDocument()
+  })
+
+  it('浏览模式已审批（CONFIRM_TAG=true）时编辑按钮禁用，批核/解批互斥仍显示解批', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: true, FINISHED_TAG: false } }
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    await waitFor(() => expect(screen.getByRole('button', { name: '解批' })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: '批核' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '编辑' })).toBeDisabled()
+  })
+
+  it('浏览模式无批核权限（canApprove=false）不显示批核按钮', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true, canApprove: false, canDeapprove: false }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: false, FINISHED_TAG: false } }
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: '批核' })).not.toBeInTheDocument()
+  })
+
+  it('浏览模式已结案显示取消结案按钮（FINISHED_TAG=true + canUnEndCase）', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, canEndCase: true, canUnEndCase: true }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, FINISHED_TAG: true } }
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    await waitFor(() => expect(screen.getByRole('button', { name: '取消结案' })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: '结案' })).not.toBeInTheDocument()
+  })
+
+  it('浏览模式已结案（FINISHED_TAG=true）时编辑/解批按钮禁用', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: true, FINISHED_TAG: true } }
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    await waitFor(() => expect(screen.getByRole('button', { name: '解批' })).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '解批' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '编辑' })).toBeDisabled()
   })
 
   it('新增模式应用服务端默认值（单别/单号/日期）', async () => {

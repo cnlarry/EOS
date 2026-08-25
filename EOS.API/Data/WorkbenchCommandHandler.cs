@@ -307,10 +307,28 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.KeyMismatch, "RECORD_KEY_MISMATCH", "主键数量与模块主键不匹配。");
         }
         var masterFields = form.MasterFields.Where(field => !field.DisplayOnly && !field.IsVirtual).Select(field => field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        // 批核/结案状态列：表单不可编辑，但记录读取契约必须返回（用于编辑前状态校验）
+        foreach (var statusColumn in new[] { "CONFIRM_TAG", "FINISHED_TAG" })
+        {
+            if (!masterFields.Contains(statusColumn, StringComparer.OrdinalIgnoreCase)
+                && await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, statusColumn, token))
+            {
+                masterFields.Add(statusColumn);
+            }
+        }
         var current = await WorkbenchSql.ReadRowAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, masterFields, token);
         if (current is null)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
+        }
+        // 状态校验（对齐删除补偿守卫）：已结案 / 已批核的单据禁止编辑
+        if (IsStatusTrue(current, "FINISHED_TAG"))
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FINISHED_EDIT_FORBIDDEN", "记录已结案，禁止编辑（请先取消结案）。");
+        }
+        if (IsStatusTrue(current, "CONFIRM_TAG"))
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "CONFIRMED_EDIT_FORBIDDEN", "记录已批核，禁止编辑（请先解批）。");
         }
         // ADR-005 §7 收紧：编辑前目标记录必须处于模块契约内
         if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
@@ -1092,6 +1110,23 @@ public sealed class WorkbenchCommandHandler(
     }
 
     private static string ValueToString(object? value) => WorkbenchSql.ValueToString(value);
+
+    /// <summary>判断状态位列是否为真：兼容 bit 列返回的 bool，以及历史遗留的 1/0 数值或字符串。</summary>
+    private static bool IsStatusTrue(IReadOnlyDictionary<string, object?> row, string column)
+    {
+        if (!row.TryGetValue(column, out var value) || value is null) return false;
+        return value switch
+        {
+            bool b => b,
+            string s => s.Trim() == "1" || s.Trim().Equals("true", StringComparison.OrdinalIgnoreCase),
+            int i => i != 0,
+            long l => l != 0,
+            byte b2 => b2 != 0,
+            short s2 => s2 != 0,
+            decimal d => d != 0,
+            _ => false,
+        };
+    }
 
     private static bool ValuesEqual(object? left, object? right) => WorkbenchSql.ValuesEqual(left, right);
 
