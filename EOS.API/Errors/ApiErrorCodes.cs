@@ -1,7 +1,7 @@
 namespace EOS.API.Errors;
 
 /// <summary>
-/// 统一错误契约的稳定错误码。前端与 EOS.Client 依据 code 做分支，
+/// 统一错误契约的稳定错误码。前端依据 code 做分支，
 /// message 仅用于展示，不应作为判断依据。
 /// </summary>
 public static class ApiErrorCodes

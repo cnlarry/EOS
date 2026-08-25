@@ -1,12 +1,10 @@
 using EOS.API.Data;
 using EOS.API.Errors;
-using EOS.API.Hubs;
 using EOS.API.Health;
 using EOS.API.Logging;
 using EOS.API.Middleware;
 using EOS.API.Models;
 using EOS.API.Security;
-using EOS.API.Services;
 using EOS.API.Telemetry;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -70,7 +68,7 @@ builder.Services.AddOpenApi(options =>
         document.Info.Title = "EOS API";
         document.Info.Version = "v1";
         document.Info.Description =
-            "EOS（原 ERP）业务 API 契约：EOS.Web / EOS.Client / Agent 的统一受控入口。"
+            "EOS（原 ERP）业务 API 契约：EOS.Web / Agent / 外部集成的统一受控入口。"
             + "所有业务接口默认要求登录会话（EOS.Auth Cookie），未登录返回 401，无权返回 403。";
 
         var cookieScheme = new OpenApiSecurityScheme
@@ -199,17 +197,7 @@ builder.Services.AddScoped<SearchCenterRepository>();
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<PrintService>();
 builder.Services.AddScoped<CurrentUserContext>();
-builder.Services.AddSingleton<HubUserTracker>();
-builder.Services.AddSingleton<ImRateLimiter>();
-builder.Services.AddScoped<IImConversationRepository, ImConversationRepository>();
-builder.Services.AddScoped<IImMessageRepository, ImMessageRepository>();
-builder.Services.AddScoped<IImAttachmentRepository, ImAttachmentRepository>();
-builder.Services.AddScoped<IImCardService, ImCardService>();
-builder.Services.AddScoped<ImHubService>();
-builder.Services.AddScoped<MailTaskRepository>();
 builder.Services.AddScoped<AttachmentRepository>();
-builder.Services.AddHostedService<ImCleanupHostedService>();
-builder.Services.AddSignalR();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
 builder.Services.Configure<AttachmentSettings>(builder.Configuration.GetSection("Attachment"));
 builder.Services.Configure<EOS.API.Models.AuditSettings>(builder.Configuration.GetSection("Audit"));
@@ -233,7 +221,6 @@ app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-app.MapHub<ImHub>("/api/hubs/im");
 app.MapOpenApi().AllowAnonymous();
 app.MapHealthChecks("/health/live").AllowAnonymous();
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
@@ -265,8 +252,6 @@ else
 }
 app.MapFallbackToFile("index.html").RequireAuthorization();
 
-ImDatabaseInitializer.RunIfConfigured(builder.Configuration, app.Logger);
-MailDatabaseInitializer.RunIfConfigured(builder.Configuration, app.Logger);
 ErpDatabaseInitializer.Run(builder.Configuration, app.Logger);
 await app.Services.GetRequiredService<WorkbenchDefinitionProvider>().RefreshAsync(CancellationToken.None);
 
