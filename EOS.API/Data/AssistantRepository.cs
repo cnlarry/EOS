@@ -54,6 +54,9 @@ public interface IAssistantRepository
     /// <summary>组装模型上下文用的最近 N 条历史（正序返回）；归属校验在 SQL 内完成。</summary>
     Task<IReadOnlyList<(int Role, string Content)>> LoadRecentHistoryAsync(
         string userId, long sessionId, int maxMessages, CancellationToken token);
+
+    /// <summary>回填最终回复行使用的工具调用摘要（归属校验在 SQL 内完成）。</summary>
+    Task UpdateToolCallsJsonAsync(string userId, long messageId, string toolCallsJson, CancellationToken token);
 }
 
 /// <summary>ASSISTANT_SESSION/ASSISTANT_MESSAGE 的 SQL Server 实现（EOS.ERP 唯一业务库）。</summary>
@@ -238,6 +241,24 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
 
         items.Reverse(); // DESC 取最近 N 条后恢复正序
         return items;
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateToolCallsJsonAsync(string userId, long messageId, string toolCallsJson, CancellationToken token)
+    {
+        const string sql = """
+            UPDATE m SET m.TOOL_CALLS_JSON = @Json
+            FROM dbo.ASSISTANT_MESSAGE m
+            INNER JOIN dbo.ASSISTANT_SESSION s WITH (NOLOCK) ON s.ID = m.SESSION_ID
+            WHERE m.ID = @Id AND s.USER_ID = @UserId;
+            """;
+        await using var conn = connections.Create();
+        await conn.OpenAsync(token);
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.Add("@Json", System.Data.SqlDbType.NVarChar, -1).Value = toolCallsJson;
+        cmd.Parameters.AddWithValue("@Id", messageId);
+        cmd.Parameters.AddWithValue("@UserId", userId);
+        await cmd.ExecuteNonQueryAsync(token);
     }
 
     private static void AddNullable(SqlCommand cmd, string name, int? value)

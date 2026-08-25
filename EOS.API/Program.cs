@@ -204,6 +204,16 @@ builder.Services.Configure<EOS.API.Features.Assistant.ModelAccess.AssistantSetti
 builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.IChatModel,
     EOS.API.Features.Assistant.ModelAccess.DeepSeekChatModel>();
 builder.Services.AddScoped<EOS.API.Data.AssistantRepository>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IWorkbenchSearchGateway>(sp =>
+    sp.GetRequiredService<EOS.API.Data.DocumentWorkbenchRepository>());
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.SearchRecordsTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetRecordDetailTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistry>(sp =>
+    new EOS.API.Features.Assistant.Tools.AssistantToolRegistry(
+    [
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.SearchRecordsTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetRecordDetailTool>(),
+    ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
 builder.Services.Configure<AttachmentSettings>(builder.Configuration.GetSection("Attachment"));

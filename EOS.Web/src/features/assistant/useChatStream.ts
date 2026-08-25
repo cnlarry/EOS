@@ -1,16 +1,23 @@
 import { useCallback, useRef, useState } from 'react'
 
-/** SSE 事件（ADR-007 M2）：delta=文本增量；done=回复已落库；error=流中失败。 */
+/** SSE 事件（ADR-007 M2/M3）：delta=文本增量；done=回复已落库（含工具摘要）；error=流中失败。 */
 export type ChatStreamEvent =
   | { event: 'delta'; text: string }
-  | { event: 'done'; message: unknown }
+  | { event: 'done'; message: unknown; toolCalls?: Array<{ name: string; digest: string }> }
   | { event: 'error'; code: string; message: string }
+
+export interface ChatPageContext {
+  moduleId?: number
+  pageType?: string
+  docNo?: string
+}
 
 interface SendOptions {
   sessionId: string
   content: string
+  pageContext?: ChatPageContext | null
   onDelta: (text: string) => void
-  onDone?: (message: unknown) => void
+  onDone?: (message: unknown, toolCalls?: Array<{ name: string; digest: string }>) => void
   onError?: (code: string, message: string) => void
 }
 
@@ -51,7 +58,7 @@ export function useChatStream() {
           'X-Client-Id': 'eos.web',
           'X-Correlation-Id': newCorrelationId(),
         },
-        body: JSON.stringify({ content: options.content }),
+        body: JSON.stringify({ content: options.content, context: options.pageContext ?? null }),
         signal: controller.signal,
       })
       if (!response.ok || !response.body) {
@@ -82,7 +89,7 @@ export function useChatStream() {
                 break
               case 'done':
                 outcome = 'done'
-                options.onDone?.(evt.message)
+                options.onDone?.(evt.message, evt.toolCalls)
                 break
               case 'error':
                 outcome = 'error'

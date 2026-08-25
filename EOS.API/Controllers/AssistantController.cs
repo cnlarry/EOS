@@ -22,7 +22,8 @@ public sealed class AssistantController(
 {
     private static readonly JsonSerializerOptions SseJson = new(JsonSerializerDefaults.Web);
 
-    public sealed record ChatRequest(string Content);
+    public sealed record ChatContext(int? ModuleId, string? ModuleTitle, string? PageType, string? DocNo);
+    public sealed record ChatRequest(string Content, ChatContext? Context);
 
     [HttpGet("sessions")]
     public async Task<IActionResult> ListSessions([FromQuery] int limit = 50, CancellationToken token = default)
@@ -67,7 +68,11 @@ public sealed class AssistantController(
 
         await using var writer = new StreamWriter(Response.Body, new UTF8Encoding(false), leaveOpen: true);
         await foreach (var evt in chat.StreamReplyAsync(
-            userContext.UserId, sessionId, request.Content ?? string.Empty, correlationId, token))
+            userContext.UserId, sessionId, request.Content ?? string.Empty,
+            request.Context is null ? null : new Features.Assistant.PageContext(
+                request.Context.ModuleId, request.Context.ModuleTitle,
+                request.Context.PageType, request.Context.DocNo),
+            correlationId, token))
         {
             switch (evt)
             {
@@ -75,7 +80,11 @@ public sealed class AssistantController(
                     await WriteEventAsync(writer, "delta", new { text = d.Text }, token);
                     break;
                 case ChatStreamEvent.Completed done:
-                    await WriteEventAsync(writer, "done", done.Message, token);
+                    await WriteEventAsync(writer, "done", new
+                    {
+                        message = done.Message,
+                        toolCalls = done.ToolCalls?.Select(t => new { name = t.Name, digest = t.ResultDigest }),
+                    }, token);
                     break;
                 case ChatStreamEvent.Failed fail:
                     await WriteEventAsync(writer, "error", new { code = fail.Code, message = fail.Message }, token);
