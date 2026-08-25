@@ -24,10 +24,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- EOS.IM 版本化迁移脚本：作为嵌入资源由 DbUp 在启动时执行 -->
-    <EmbeddedResource Include="Data\Migrations\*.sql" />
-    <!-- EOS.Mail 邮件任务库版本化迁移脚本（独立目录，与 IM 迁移互不干扰） -->
-    <EmbeddedResource Include="Data\MailMigrations\*.sql" />
     <!-- EOS.ERP 版本化迁移脚本（唯一业务库，DbUp 启动时执行；对象名全大写） -->
     <EmbeddedResource Include="Data\Migrations\*.sql" />
   </ItemGroup>
