@@ -262,15 +262,13 @@ describe('DocumentWorkbenchPage', () => {
     })
   })
 
-  it('未选择行时导出当前条件', async () => {
+  it('未选中行时导出按钮禁用，不触发导出', async () => {
     renderPage()
     await loaded()
-    fireEvent.click(screen.getByRole('button', { name: '导出' }))
-    await waitFor(() => expect(apiClientMock.postFile).toHaveBeenCalledWith(
-      '/document-workbench/1209/export',
-      { conditions: [] },
-      { query: { keyword: undefined, sortFields: undefined, sortDirections: undefined, format: 'csv', columns: 'PRO_NO,EDITION,QTY,FLAG' } },
-    ))
+    const exportBtn = screen.getByRole('button', { name: '导出' })
+    expect(exportBtn).toBeDisabled()
+    fireEvent.click(exportBtn)
+    expect(apiClientMock.postFile).not.toHaveBeenCalled()
   })
 
   it('hasAdd 控制新增按钮，点击后跳转新增页', async () => {
@@ -484,7 +482,9 @@ describe('DocumentWorkbenchPage', () => {
     apiClientMock.postFile.mockRejectedValue(new Error('网络断了'))
     renderPage()
     await loaded()
-    fireEvent.click(screen.getByRole('button', { name: '导出' }))
+    fireEvent.click(screen.getAllByLabelText('选择此行')[0])
+    await waitFor(() => expect(screen.getByRole('button', { name: /导出所选 \(1\)/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /导出所选 \(1\)/ }))
     await waitFor(() => expect(alertMock).toHaveBeenCalledWith('导出失败：网络断了'))
   })
 

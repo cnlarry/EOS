@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '../../features/auth/authContext'
@@ -190,7 +190,19 @@ describe('AppShell', () => {
     renderShell('/settings/profile')
     expect(screen.getByRole('heading', { name: '个人设置' })).toBeInTheDocument()
     renderShell('/document-workbench/1209/new')
-    expect(screen.getByRole('heading', { name: '新建分组模块' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '新增分组模块' })).toBeInTheDocument()
+  })
+
+  it('表单页面包屑含完整层级，叶子可点击返回模块工作台', async () => {
+    renderShell('/document-workbench/1209/new')
+    const crumbs = within(screen.getByRole('navigation', { name: '当前位置' }))
+    // 层级：销售管理 > 销售子组 > 分组模块（叶子可点击）> 新增分组模块
+    expect(crumbs.getByText('销售管理')).toBeInTheDocument()
+    expect(crumbs.getByText('销售子组')).toBeInTheDocument()
+    const leaf = crumbs.getByText('分组模块')
+    expect(leaf).toHaveAttribute('href', '/document-workbench/1209')
+    fireEvent.click(leaf)
+    expect(screen.getByText('WB')).toBeInTheDocument()
   })
 
   it('渲染当前日期时间元素', () => {

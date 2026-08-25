@@ -425,17 +425,23 @@ button, input, select { font: inherit; }
 .erp-mobile-menu-trigger { position: fixed; top: 8px; left: 8px; z-index: 1035; }
 .erp-list-command-bar { display: flex; min-height: 48px; align-items: center; gap: 5px; padding: 6px 8px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); border-radius: var(--tblr-border-radius) var(--tblr-border-radius) 0 0; }
 .erp-list-command-bar .btn { flex: 0 0 auto; white-space: nowrap; }
-/* 工作台命令栏：纯图形按钮（正方形圆角，hover 由 title 显示按钮名称） */
-.erp-workbench-page .erp-list-command-bar .btn { width: 30px; height: 30px; flex: 0 0 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
-.erp-workbench-page .erp-list-command-bar .btn svg { width: 16px; height: 16px; }
+/* 工作台命令栏：纯图形按钮（正方形圆角，hover 由 title 显示按钮名称）；
+   ErpCommandBar 按钮（.erp-command-btn）为图标+文字、工具栏纯图标触发器
+   （.erp-command-icon-btn，分组/导出分割）为 28px，均豁免此强制方块尺寸 */
+.erp-workbench-page .erp-list-command-bar .btn:not(.erp-command-btn):not(.erp-command-icon-btn) { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
+.erp-workbench-page .erp-list-command-bar .btn:not(.erp-command-btn):not(.erp-command-icon-btn) svg { width: 16px; height: 16px; }
 /* 通用列表命令栏（非工作台页面）：容器加 erp-command-bar-icon 后，其中按钮与工作台命令栏
-   同款纯图标方形按钮（30×30 圆角、title 显示按钮名、图标 16px），作为所有列表页命令栏的统一样式 */
-.erp-command-bar-icon .btn { width: 30px; height: 30px; flex: 0 0 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
+   同款纯图标方形按钮（28×28 圆角、title 显示按钮名、图标 16px），作为所有列表页命令栏的统一样式 */
+.erp-command-bar-icon .btn { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
 .erp-command-bar-icon .btn svg { width: 16px; height: 16px; }
-/* 统一命令栏（ErpCommandBar）纯图标按钮：30×30 圆角、title 显示按钮名、图标 16px，
-   供工作台/表单/列表在任意容器内保持同一表意与尺寸（表单工具栏 min-width 覆盖回退） */
-.erp-command-btn { width: 30px; height: 30px; min-width: 30px; flex: 0 0 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
-.erp-command-btn svg { width: 16px; height: 16px; }
+/* 统一命令栏（ErpCommandBar）图标+文字按钮：图标 16px + 动作名（新增/编辑/批核/打印等），
+   统一 28px 高、左右 10px 内边距、宽度随内容自适应（不设固定宽度），
+   供工作台/表单/列表在任意容器内保持同一表意与尺寸 */
+.erp-command-btn { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: 8px; white-space: nowrap; }
+.erp-command-btn svg { width: 16px; height: 16px; flex: 0 0 auto; }
+/* 工具栏纯图标触发器（分组/导出分割下拉等）：28×28、圆角、图标 16px，与 .erp-command-btn 高度对齐 */
+.erp-command-icon-btn { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
+.erp-command-icon-btn svg { width: 16px; height: 16px; }
 .erp-active-group-filter { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-primary-lt); color: var(--tblr-primary); font-size: 12px; }
 .erp-active-group-filter button { border: 0; background: transparent; color: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; margin-left: auto; }
 .erp-list-global-search { height: 34px; flex: 0 1 360px; min-width: 180px; max-width: 360px; padding-block: 4px; }
@@ -477,6 +483,8 @@ button, input, select { font: inherit; }
 .erp-toolbar-divider { align-self: stretch; width: 1px; margin: 0 3px; background: var(--tblr-border-color); }
 .erp-context-home { color: var(--tblr-secondary); flex: 0 0 auto; }
 .erp-context-section { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.erp-context-link { color: var(--tblr-secondary); text-decoration: none; }
+.erp-context-link:hover { color: var(--tblr-primary); text-decoration: underline; }
 .erp-context-bar h1 { margin: 0; max-width: 280px; overflow: hidden; text-overflow: ellipsis; color: var(--tblr-body-color); font-size: 14px; font-weight: 600; line-height: 1; white-space: nowrap; }
 .erp-context-separator { color: var(--tblr-secondary); opacity: .65; }
 .page-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; height: calc(100vh - 64px); overflow-y: auto; overflow-x: hidden; margin: 0 !important; padding: 10px 0 !important; }
@@ -841,14 +849,15 @@ button, input, select { font: inherit; }
 .erp-form-tabs .nav-item + .nav-item .nav-link:not(.active) { border-left: 0 !important; }
 .erp-form-tabs .nav-item:has(+ .nav-item .nav-link.active) .nav-link { border-right: 0 !important; }
 
-/* 主表单卡：视觉交给 erp-form-grid（边框/圆角/背景），卡本身透明、无内边距 */
-.erp-form-card.card { border: 0; box-shadow: none; background: transparent; }
+/* 主表单卡：视觉交给 erp-form-grid（边框/圆角/背景），卡本身透明、无内边距；
+   border-radius 归零避免 card 圆角 + overflow:hidden 裁切工具栏第一个按钮左上角 */
+.erp-form-card.card { border: 0; box-shadow: none; background: transparent; border-radius: 0; }
 .erp-form-card .card-body { padding: 0; }
 
 /* 主表工具栏独立一行（表单上方），与表单网格左边框对齐，下方留 10px 间距；
    背景透明继承页面，按钮靠左；页签单独一行在表单网格上方，页签下边框归零，与网格顶边融为一体 */
 .erp-form-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding-left: 0; background: transparent; }
-.erp-form-toolbar .btn { min-width: 72px; }
+.erp-form-toolbar .btn { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; }
 .erp-form-toolbar-actions { margin-left: auto; }
 
 /* 统一表单紧凑控件（旧系统编辑页为紧凑输入框，避免"胖"控件） */

@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/Button'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
 import { ErpTable } from '../../components/common/ErpTable'
 import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
+import { useFormBreadcrumb } from '../../components/layout/FormBreadcrumbContext'
 import { AttachmentDialog } from './AttachmentDialog'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
@@ -18,7 +19,7 @@ import { fieldVariant } from './formFieldKind'
 import { validateDetailRows, validateMasterFields, type FieldErrors } from './formValidation'
 import { AMOUNT_COLUMN_KEYS, AMOUNT_TRIGGER_KEYS, previewDetailAmount, previewMasterAmounts } from './amountCalculator'
 import {
-  buildKey, canonicalizeDecimalValue, chooserTitle, describeError, detailControlMinWidth, emptyValue, newIdempotencyKey,
+  buildKey, canonicalizeDecimalValue, chooserTitle, describeError, detailControlMinWidth, emptyValue, extractDocNo, newIdempotencyKey,
   summarizeFieldErrors, writableFields, type DetailGridRow, type RecordBundle, type RecordSaveResponse, type SaveRecordRequest,
 } from './formEditorUtils'
 
@@ -28,6 +29,7 @@ export function FormEditorPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { setBreadcrumb } = useFormBreadcrumb()
   const isEdit = location.pathname.endsWith('/edit')
   const isView = location.pathname.endsWith('/view')
   const isCopy = location.pathname.endsWith('/copy')
@@ -77,6 +79,19 @@ export function FormEditorPage() {
     queryFn: () => apiClient.get<RecordBundle>(`/document-workbench/${moduleId}/record`, { query: { key: keyParam ?? copyFrom ?? '' } }),
     enabled: (isEdit || isView || isCopy) && Boolean(keyParam ?? copyFrom) && formQuery.isSuccess,
   })
+
+  // 上抛单据面包屑给 AppShell：编辑/查看带单号，新增/复制不显示单号
+  useEffect(() => {
+    if (!formQuery.data) return
+    const master = recordQuery.data?.master
+    const values: Record<string, string> = {}
+    for (const field of formQuery.data.masterFields) {
+      if (field.isVisible && master && master[field.key] != null) values[field.key] = String(master[field.key])
+    }
+    const docNo = isEdit || isView ? extractDocNo(formQuery.data, values) : null
+    setBreadcrumb({ moduleTitle: formQuery.data.title, docNo })
+    return () => setBreadcrumb(null)
+  }, [formQuery.data, recordQuery.data, isEdit, isView, isCopy, setBreadcrumb])
 
   useEffect(() => {
     if (!formQuery.data || isEdit || isView || isCopy) return
@@ -666,16 +681,22 @@ export function FormEditorPage() {
                 const encodeKey = (key: string[]) => encodeURIComponent(JSON.stringify(key))
                 const currentKey = buildKey(form, masterValues)
                 const master = recordQuery.data?.master
+                // ADR-006 决策 6 单据状态（服务端 record 强制返回）：已批核 CONFIRM_TAG / 已结案 FINISHED_TAG
+                const isConfirmed = master?.CONFIRM_TAG === true
+                const isFinished = master?.FINISHED_TAG === true
+                // 已结案：解批/编辑/删除禁用；已审批：批核/编辑/删除禁用（按钮禁用而非隐藏，旧系统 DxAuthentication 语义）
+                const editDisabled = isFinished || isConfirmed
+                const deleteDisabled = isFinished || isConfirmed
                 const whitelistItems: ErpCommandItem[] = (form.buttons && form.buttons.length > 0
                   ? form.buttons.flatMap((button): ErpCommandItem[] => {
                       switch (button.action) {
                         case 'approve':
-                          return form.hasWorkflow && keyParam && master && master.CONFIRM_TAG !== true
-                            ? [{ action: 'approve', loading: workflow.isPending, onClick: () => workflow.mutate('approve') }]
+                          return form.hasWorkflow && form.canApprove && keyParam && master && master.CONFIRM_TAG !== true
+                            ? [{ action: 'approve', disabled: isFinished, loading: workflow.isPending, onClick: () => workflow.mutate('approve') }]
                             : []
                         case 'deapprove':
-                          return form.hasWorkflow && keyParam && master && master.CONFIRM_TAG === true
-                            ? [{ action: 'deapprove', loading: workflow.isPending, onClick: () => workflow.mutate('deapprove') }]
+                          return form.hasWorkflow && form.canDeapprove && keyParam && master && master.CONFIRM_TAG === true
+                            ? [{ action: 'deapprove', disabled: isFinished, loading: workflow.isPending, onClick: () => workflow.mutate('deapprove') }]
                             : []
                         case 'endcase':
                           return keyParam && form.canEndCase && master && master.FINISHED_TAG !== true
@@ -688,17 +709,18 @@ export function FormEditorPage() {
                         case 'print':
                           return keyParam ? [{ action: 'print', onClick: openPrint }] : []
                         case 'delete':
-                          return keyParam && form.canDelete ? [{ action: 'delete', onClick: () => void deleteRecord() }] : []
+                          return keyParam && form.canDelete ? [{ action: 'delete', disabled: deleteDisabled, onClick: () => void deleteRecord() }] : []
                         default:
                           return []
                       }
                     })
                   : [
                       // 未配置 FORM_BUTTONS 的回退集（保持既有行为：工作流/结案/打印）
-                      ...(form.hasWorkflow && keyParam && master
-                        ? [master.CONFIRM_TAG !== true
-                            ? { action: 'approve', loading: workflow.isPending, onClick: () => workflow.mutate('approve') }
-                            : { action: 'deapprove', loading: workflow.isPending, onClick: () => workflow.mutate('deapprove') } satisfies ErpCommandItem]
+                      ...(form.hasWorkflow && keyParam && master && master.CONFIRM_TAG !== true && form.canApprove
+                        ? [{ action: 'approve', disabled: isFinished, loading: workflow.isPending, onClick: () => workflow.mutate('approve') } satisfies ErpCommandItem]
+                        : []),
+                      ...(form.hasWorkflow && keyParam && master && master.CONFIRM_TAG === true && form.canDeapprove
+                        ? [{ action: 'deapprove', disabled: isFinished, loading: workflow.isPending, onClick: () => workflow.mutate('deapprove') } satisfies ErpCommandItem]
                         : []),
                       ...(keyParam && form.canEndCase && master && master.FINISHED_TAG !== true
                         ? [{ action: 'endcase', loading: finish.isPending, onClick: () => finish.mutate('endcase') } satisfies ErpCommandItem]
@@ -721,7 +743,7 @@ export function FormEditorPage() {
                     ? [{ action: 'copy', onClick: () => navigate(`/document-workbench/${moduleId}/copy?copyFrom=${encodeKey(currentKey)}`) } satisfies ErpCommandItem]
                     : []),
                   ...(form.canEdit && form.hasEdit && keyParam
-                    ? [{ action: 'edit', onClick: () => navigate(`/document-workbench/${moduleId}/edit?key=${encodeKey(currentKey)}`) } satisfies ErpCommandItem]
+                    ? [{ action: 'edit', disabled: editDisabled, onClick: () => navigate(`/document-workbench/${moduleId}/edit?key=${encodeKey(currentKey)}`) } satisfies ErpCommandItem]
                     : []),
                   ...(form.helpUrl ? [{ action: 'help', onClick: () => window.open(form.helpUrl!, '_blank', 'noopener') } satisfies ErpCommandItem] : []),
                   ...whitelistItems,

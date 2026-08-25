@@ -14,6 +14,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../features/auth/authContext'
 import type { NavigationItem } from '../../features/auth/types'
 import { navigationIcons } from './navigationIcons'
+import { FormBreadcrumbContext, type FormBreadcrumb } from './FormBreadcrumbContext'
 
 type Theme = 'light' | 'dark'
 
@@ -122,6 +123,8 @@ export function AppShell() {
   const [currentDate, setCurrentDate] = useState(() => new Date())
   const [menuQuery, setMenuQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement | null>(null)
+  // 统一表单上抛的单据面包屑（模块标题 + 单号），由 FormEditorPage 写入、面包屑渲染消费
+  const [formBreadcrumb, setFormBreadcrumb] = useState<FormBreadcrumb | null>(null)
   const { bootstrap, logout } = useAuth()
   const navigate = useNavigate()
   const navigation = bootstrap?.navigation ?? fallbackNavigation as unknown as NavigationItem[]
@@ -143,21 +146,32 @@ export function AppShell() {
   const page: { section: string; title: string } = fieldAdminCrumb
     ? { section: '系统管理', title: fieldAdminCrumb.title }
     : isFormEditor
-      ? {
-          section: activeGroup?.label ?? 'ERP',
-          title: `${location.pathname.endsWith('/new') ? '新建' : location.pathname.endsWith('/view') ? '查看' : '编辑'}${activeMenu?.label ?? ''}`,
-        }
+      ? (() => {
+          const op = location.pathname.endsWith('/new') ? '新增' : location.pathname.endsWith('/view') ? '查看' : '编辑'
+          const moduleLabel = formBreadcrumb?.moduleTitle ?? activeMenu?.label ?? ''
+          const docNo = op !== '新增' && formBreadcrumb?.docNo ? formBreadcrumb.docNo : null
+          return {
+            section: activeGroup?.label ?? 'ERP',
+            title: `${op}${moduleLabel}${docNo ? `：${docNo}` : ''}`,
+          }
+        })()
       : pageTitles[location.pathname] ?? {
           section: activeGroup?.label ?? 'ERP',
           title: activeMenu?.label ?? '页面',
         }
   const breadcrumbPath = useMemo(() => findPath(navigation, basePath), [navigation, basePath])
   // 完整路径：命中导航树时展示全部祖先 + 叶子；未命中（如直达维护页）回退「分区 + 标题」。
-  const breadcrumbLeads = fieldAdminCrumb
-    ? fieldAdminCrumb.leads
-    : breadcrumbPath.length > 0
-      ? breadcrumbPath.slice(0, -1).map((item) => item.label)
-      : [page.section]
+  // 统一表单页（查看/编辑/新增）：叶子也作为面包屑项且可点击返回工作台列表；
+  // 其余页面保持「祖先 + 叶子标题」两段式（叶子由 h1 承担）。
+  const breadcrumbLeads: { label: string; to?: string }[] = fieldAdminCrumb
+    ? fieldAdminCrumb.leads.map(label => ({ label }))
+    : breadcrumbPath.length === 0
+      ? [{ label: page.section }]
+      : isFormEditor
+        ? breadcrumbPath.map((item, index) => (index === breadcrumbPath.length - 1
+            ? { label: item.label, to: item.route }
+            : { label: item.label }))
+        : breadcrumbPath.slice(0, -1).map(item => ({ label: item.label }))
 
   useEffect(() => {
     document.documentElement.setAttribute('data-bs-theme', theme)
@@ -475,8 +489,12 @@ export function AppShell() {
             <nav aria-label="当前位置">
               <IconHome className="erp-context-home" size={18} stroke={2} aria-hidden="true" />
               {breadcrumbLeads.map((crumb, index) => (
-                <Fragment key={`${crumb}-${index}`}>
-                  <span className="erp-context-section">{crumb}</span>
+                <Fragment key={`${crumb.label}-${index}`}>
+                  {crumb.to ? (
+                    <NavLink to={crumb.to} className="erp-context-section erp-context-link">{crumb.label}</NavLink>
+                  ) : (
+                    <span className="erp-context-section">{crumb.label}</span>
+                  )}
                   <IconChevronRight className="erp-context-separator" size={16} stroke={2} aria-hidden="true" />
                 </Fragment>
               ))}
@@ -538,7 +556,9 @@ export function AppShell() {
 
         <main className="page-body">
           <div className="container-fluid px-3 px-lg-4">
-            <Outlet />
+            <FormBreadcrumbContext.Provider value={{ breadcrumb: formBreadcrumb, setBreadcrumb: setFormBreadcrumb }}>
+              <Outlet />
+            </FormBreadcrumbContext.Provider>
           </div>
         </main>
       </div>

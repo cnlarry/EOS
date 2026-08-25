@@ -33,8 +33,9 @@ interface ErpCommandBarProps {
 
 /**
  * 统一命令栏（对齐旧 ModifyToolBar 语义 + AGENTS.md 列表规范）：
- * - 纯图标按钮：30×30 圆角方形、hover title、图标 16px（工作台/列表统一表意）；
- * - 文字按钮：表单主操作（保存/取消）保留文字可读性；
+ * - 图标+文字按钮：动作按钮统一为「图标 + 动作名」样式（工作台/表单/列表统一表意），
+ *   悬停 title 仍保留动作名说明；
+ * - 文字按钮：表单主操作（保存/取消）由 label 提供，保持文字可读性；
  * - 每个动作由页面按权限/选中状态声明 visible，不在组件内写业务分支。
  */
 export function ErpCommandBar({ items, className = '', ariaLabel = '命令栏' }: ErpCommandBarProps) {
@@ -54,7 +55,9 @@ export function ErpCommandBar({ items, className = '', ariaLabel = '命令栏' }
           )
         }
         return (
-          <Button key={item.action} size="sm" className="erp-command-btn" icon={icon} title={title} aria-label={title} variant={item.variant ?? 'secondary'} disabled={item.disabled} loading={item.loading} onClick={item.onClick} />
+          <Button key={item.action} size="sm" className="erp-command-btn" icon={icon} title={title} aria-label={title} variant={item.variant ?? 'secondary'} disabled={item.disabled} loading={item.loading} onClick={item.onClick}>
+            {title}
+          </Button>
         )
       })}
     </div>

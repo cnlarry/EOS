@@ -1,0 +1,3 @@
+ASP.NET Core 需要 wwwroot 作为 WebRootPath 存在（Program.cs UseStaticFiles / 2202 打印 LOGO 上传 print-logo）。
+前端开发阶段走 EOS.Web (Vite)，此目录保持为空，不再存放前端构建产物。
+print-logo 子目录由 PrintAdminController.UploadLogo 上传时自动创建。
