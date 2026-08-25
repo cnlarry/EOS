@@ -979,3 +979,112 @@ button, input, select { font: inherit; }
 /* 统一表单附件对话框：附件列表项（文件名/大小/上传人/时间/备注，操作按钮右侧排列） */
 .erp-attachment-list .list-group-item { align-items: center; }
 .erp-attachment-remark { font-size: 12px; }
+
+/* ===== 工作助手（ADR-007 M2）：悬浮球 + 右侧抽屉 ===== */
+.erp-assistant-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1080;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: var(--tblr-primary, #206bc4);
+  box-shadow: 0 4px 14px rgba(32, 107, 196, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.erp-assistant-fab:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(32, 107, 196, 0.45); }
+
+.erp-assistant-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1080;
+  width: 360px;
+  max-width: 100vw;
+  background: var(--tblr-bg-surface, #fff);
+  border-left: 1px solid var(--tblr-border-color, #e6e7e9);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+}
+.erp-assistant-drawer.erp-assistant-wide { width: 520px; }
+
+.erp-assistant-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--tblr-border-color, #e6e7e9);
+  flex: 0 0 auto;
+}
+.erp-assistant-title { font-weight: 600; white-space: nowrap; }
+.erp-assistant-session-select { min-width: 0; flex: 1; }
+.erp-assistant-menu { position: absolute; top: 100%; right: 0; z-index: 1090; }
+
+.erp-assistant-messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.erp-assistant-empty {
+  margin: auto;
+  text-align: center;
+  color: var(--tblr-secondary, #6c757d);
+  font-size: 13px;
+  padding: 0 16px;
+}
+
+.erp-assistant-bubble {
+  max-width: 88%;
+  padding: 7px 11px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.erp-assistant-bubble.is-user {
+  align-self: flex-end;
+  background: var(--tblr-primary, #206bc4);
+  color: #fff;
+  border-bottom-right-radius: 3px;
+}
+.erp-assistant-bubble.is-assistant {
+  align-self: flex-start;
+  background: var(--tblr-bg-surface-secondary, #f6f8fb);
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-bottom-left-radius: 3px;
+}
+.erp-assistant-cursor { animation: erp-assistant-blink 1s steps(2) infinite; }
+@keyframes erp-assistant-blink { to { visibility: hidden; } }
+
+.erp-assistant-error {
+  flex: 0 0 auto;
+  margin: 0 12px 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--tblr-warning-lt, #fff3cd);
+  color: var(--tblr-yellow, #997404);
+}
+
+.erp-assistant-input {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 10px 12px;
+  border-top: 1px solid var(--tblr-border-color, #e6e7e9);
+}
+.erp-assistant-input textarea { resize: vertical; min-height: 44px; max-height: 140px; }
+.erp-assistant-send { flex: 0 0 auto; }

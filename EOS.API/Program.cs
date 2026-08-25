@@ -198,6 +198,13 @@ builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<PrintService>();
 builder.Services.AddScoped<CurrentUserContext>();
 builder.Services.AddScoped<AttachmentRepository>();
+builder.Services.AddHttpClient("AssistantModel");
+builder.Services.Configure<EOS.API.Features.Assistant.ModelAccess.AssistantSettings>(
+    builder.Configuration.GetSection(EOS.API.Features.Assistant.ModelAccess.AssistantSettings.SectionName));
+builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.IChatModel,
+    EOS.API.Features.Assistant.ModelAccess.DeepSeekChatModel>();
+builder.Services.AddScoped<EOS.API.Data.AssistantRepository>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
 builder.Services.Configure<AttachmentSettings>(builder.Configuration.GetSection("Attachment"));
 builder.Services.Configure<EOS.API.Models.AuditSettings>(builder.Configuration.GetSection("Audit"));
