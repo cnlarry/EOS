@@ -13,6 +13,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../features/auth/authContext'
 import type { NavigationItem } from '../../features/auth/types'
+import { AssistantDock } from '../../features/assistant/AssistantDock'
 import { navigationIcons } from './navigationIcons'
 import { FormBreadcrumbContext, type FormBreadcrumb } from './FormBreadcrumbContext'
 
@@ -561,6 +562,8 @@ export function AppShell() {
             </FormBreadcrumbContext.Provider>
           </div>
         </main>
+
+        <AssistantDock />
       </div>
     </div>
   )
