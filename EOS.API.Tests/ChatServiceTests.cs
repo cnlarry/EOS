@@ -1,6 +1,7 @@
 using EOS.API.Data;
 using EOS.API.Features.Assistant;
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Tools;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -27,6 +28,7 @@ public sealed class ChatServiceTests
 
         public async IAsyncEnumerable<ChatDelta> StreamAsync(
             IReadOnlyList<ChatMessage> messages,
+            IReadOnlyList<ToolDefinition>? tools,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
         {
             LastMessages = messages;
@@ -94,10 +96,13 @@ public sealed class ChatServiceTests
             await Task.CompletedTask;
             return [];
         }
+
+        public Task UpdateToolCallsJsonAsync(string userId, long messageId, string toolCallsJson, CancellationToken token)
+            => Task.CompletedTask;
     }
 
     private static ChatService CreateService(IChatModel model, FakeRepository repo) =>
-        new(repo, model, Options.Create(new AssistantSettings { SystemPrompt = "SYS" }), NullLogger<ChatService>.Instance);
+        new(repo, model, new AssistantToolRegistry([]), Options.Create(new AssistantSettings { SystemPrompt = "SYS" }), NullLogger<ChatService>.Instance);
 
     private static async Task<List<ChatStreamEvent>> CollectAsync(IAsyncEnumerable<ChatStreamEvent> stream)
     {
@@ -113,7 +118,7 @@ public sealed class ChatServiceTests
         var repo = new FakeRepository();
         var service = CreateService(model, repo);
 
-        var events = await CollectAsync(service.StreamReplyAsync("u1", 7, "  你好呀 ", "corr", CancellationToken.None));
+        var events = await CollectAsync(service.StreamReplyAsync("u1", 7, "  你好呀 ", null, "corr", CancellationToken.None));
 
         Assert.Equal(4, events.Count); // 3 delta + done
         Assert.IsType<ChatStreamEvent.Delta>(events[0]);
@@ -144,7 +149,7 @@ public sealed class ChatServiceTests
         };
         var service = CreateService(model, repo);
 
-        await CollectAsync(service.StreamReplyAsync("u1", 7, "第二问补充", "corr", CancellationToken.None));
+        await CollectAsync(service.StreamReplyAsync("u1", 7, "第二问补充", null, "corr", CancellationToken.None));
 
         // 系统提示 + 有效历史 3 条（脏数据/未知角色剔除）
         Assert.Equal(4, model.LastMessages.Count);
@@ -161,7 +166,7 @@ public sealed class ChatServiceTests
         var repo = new FakeRepository();
         var service = CreateService(model, repo);
 
-        var events = await CollectAsync(service.StreamReplyAsync("u1", 7, "hi", "corr", CancellationToken.None));
+        var events = await CollectAsync(service.StreamReplyAsync("u1", 7, "hi", null, "corr", CancellationToken.None));
 
         var fail = Assert.IsType<ChatStreamEvent.Failed>(Assert.Single(events));
         Assert.Equal("AI_MODEL_NOT_CONFIGURED", fail.Code);
@@ -176,10 +181,10 @@ public sealed class ChatServiceTests
         var repo = new FakeRepository();
         var service = CreateService(model, repo);
 
-        var blank = await CollectAsync(service.StreamReplyAsync("u1", 7, "   ", "corr", CancellationToken.None));
+        var blank = await CollectAsync(service.StreamReplyAsync("u1", 7, "   ", null, "corr", CancellationToken.None));
         Assert.Equal("INVALID_ARGUMENT", Assert.IsType<ChatStreamEvent.Failed>(Assert.Single(blank)).Code);
 
-        var oversize = await CollectAsync(service.StreamReplyAsync("u1", 7, new string('长', ChatService.MaxContentLength + 1), "corr", CancellationToken.None));
+        var oversize = await CollectAsync(service.StreamReplyAsync("u1", 7, new string('长', ChatService.MaxContentLength + 1), null, "corr", CancellationToken.None));
         Assert.Equal("INVALID_ARGUMENT", Assert.IsType<ChatStreamEvent.Failed>(Assert.Single(oversize)).Code);
 
         Assert.Empty(repo.UserMessages);
@@ -192,7 +197,7 @@ public sealed class ChatServiceTests
         var repo = new FakeRepository();
         var service = CreateService(model, repo);
 
-        var events = await CollectAsync(service.StreamReplyAsync("u1", 7, "hi", "corr", CancellationToken.None));
+        var events = await CollectAsync(service.StreamReplyAsync("u1", 7, "hi", null, "corr", CancellationToken.None));
 
         var fail = Assert.IsType<ChatStreamEvent.Failed>(Assert.Single(events));
         Assert.Equal("AI_MODEL_ERROR", fail.Code);

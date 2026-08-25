@@ -9,7 +9,9 @@ import {
   IconX,
 } from '@tabler/icons-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { createSession, deleteSession, listMessages, listSessions } from './api'
+import { extractPageContext } from './pageContext'
 import { useChatStream } from './useChatStream'
 import type { AssistantMessage, AssistantSession } from './types'
 
@@ -21,9 +23,11 @@ interface Bubble {
   role: 1 | 2
   text: string
   streaming?: boolean
+  tools?: Array<{ name: string; digest: string }>
 }
 
 export function AssistantDock() {
+  const location = useLocation()
   const [open, setOpen] = useState(() => readBool(OPEN_KEY))
   const [wide, setWide] = useState(() => readWidth() === 520)
   const [sessions, setSessions] = useState<AssistantSession[]>([])
@@ -129,11 +133,14 @@ export function AssistantDock() {
     const outcome = await send({
       sessionId: target,
       content,
+      pageContext: extractPageContext(location.pathname, location.search),
       onDelta: (text) => {
         setBubbles(prev => prev.map(b => b.key === draftKey ? { ...b, text: b.text + text } : b))
       },
-      onDone: () => {
-        setBubbles(prev => prev.map(b => b.key === draftKey ? { ...b, streaming: false } : b))
+      onDone: (_message, toolCalls) => {
+        setBubbles(prev => prev.map(b => b.key === draftKey
+          ? { ...b, streaming: false, tools: toolCalls && toolCalls.length > 0 ? toolCalls : undefined }
+          : b))
         void refreshSessions()
       },
       onError: (code, message) => {
@@ -148,7 +155,7 @@ export function AssistantDock() {
     } else {
       setBubbles(prev => prev.map(b => b.key === draftKey ? { ...b, streaming: false } : b))
     }
-  }, [input, sessionId, streaming, send, refreshSessions])
+  }, [input, sessionId, streaming, send, refreshSessions, location.pathname, location.search])
 
   const handleDeleteSession = useCallback(async () => {
     setMenuOpen(false)
@@ -237,6 +244,15 @@ export function AssistantDock() {
               <div key={bubble.key} className={`erp-assistant-bubble ${bubble.role === 1 ? 'is-user' : 'is-assistant'}`}>
                 {bubble.text || (bubble.streaming ? '' : '(空回复)')}
                 {bubble.streaming && <span className="erp-assistant-cursor" aria-hidden="true">▍</span>}
+                {!bubble.streaming && bubble.tools && bubble.tools.length > 0 && (
+                  <div className="erp-assistant-tool-chips">
+                    {bubble.tools.map((tool, index) => (
+                      <span key={index} className="erp-assistant-chip" title={tool.digest}>
+                        🔍 {tool.name === 'search_records' ? '已查询业务数据' : `已调用 ${tool.name}`}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

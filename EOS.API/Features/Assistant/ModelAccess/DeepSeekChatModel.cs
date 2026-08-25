@@ -9,7 +9,7 @@ namespace EOS.API.Features.Assistant.ModelAccess;
 
 /// <summary>
 /// DeepSeek（OpenAI 兼容 /chat/completions）流式实现。
-/// 只做出网调用与 SSE 解析：无权限语义、无落库、无提示词组装（ADR-007 §4）。
+/// 只做出网调用与 SSE 解析：无权限语义、无落库、无提示词组装、不执行工具（ADR-007 §4）。
 /// 密钥经 IOptions 注入；请求级取消贯穿到 HTTP 流读取，客户端断开即中止出网调用。
 /// </summary>
 public sealed class DeepSeekChatModel(
@@ -24,6 +24,7 @@ public sealed class DeepSeekChatModel(
 
     public async IAsyncEnumerable<ChatDelta> StreamAsync(
         IReadOnlyList<ChatMessage> messages,
+        IReadOnlyList<ToolDefinition>? tools,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var config = settings.Value;
@@ -44,18 +45,7 @@ public sealed class DeepSeekChatModel(
         using var request = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
         {
             Content = new StringContent(
-                JsonSerializer.Serialize(new
-                {
-                    model = config.Model,
-                    messages = messages.Select(m => new { role = m.Role switch
-                    {
-                        ChatRole.System => "system",
-                        ChatRole.Assistant => "assistant",
-                        _ => "user",
-                    }, content = m.Content }),
-                    stream = true,
-                    stream_options = new { include_usage = true },
-                }, JsonOptions),
+                JsonSerializer.Serialize(BuildPayload(config, messages, tools), JsonOptions),
                 Encoding.UTF8,
                 "application/json"),
         };
@@ -77,7 +67,63 @@ public sealed class DeepSeekChatModel(
         }
     }
 
-    /// <summary>解析 OpenAI 兼容 SSE 帧：data:{json} 行 + data:[DONE] 收尾；usage 帧转 ChatUsage。</summary>
+    internal static Dictionary<string, object?> BuildPayload(
+        AssistantSettings config,
+        IReadOnlyList<ChatMessage> messages,
+        IReadOnlyList<ToolDefinition>? tools)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["model"] = config.Model,
+            ["messages"] = messages.Select(SerializeMessage).ToList(),
+            ["stream"] = true,
+            ["stream_options"] = new { include_usage = true },
+        };
+        if (tools is { Count: > 0 })
+        {
+            payload["tools"] = tools.Select(t => new
+            {
+                type = "function",
+                function = new { name = t.Name, description = t.Description, parameters = JsonDocument.Parse(t.ParametersJson).RootElement },
+            }).ToList();
+        }
+
+        return payload;
+    }
+
+    private static Dictionary<string, object?> SerializeMessage(ChatMessage message) => message.Role switch
+    {
+        ChatRole.Assistant when message.ToolCalls is { Count: > 0 } => new Dictionary<string, object?>
+        {
+            ["role"] = "assistant",
+            ["content"] = string.IsNullOrEmpty(message.Content) ? null : message.Content,
+            ["tool_calls"] = message.ToolCalls.Select(tc => new
+            {
+                id = tc.Id,
+                type = "function",
+                function = new { name = tc.Name, arguments = tc.ArgumentsJson },
+            }).ToList(),
+        },
+        ChatRole.Tool => new Dictionary<string, object?>
+        {
+            ["role"] = "tool",
+            ["tool_call_id"] = message.ToolCallId ?? throw new ArgumentException("工具结果消息缺少 ToolCallId。"),
+            ["content"] = message.Content,
+        },
+        _ => new Dictionary<string, object?>
+        {
+            ["role"] = message.Role switch
+            {
+                ChatRole.System => "system",
+                ChatRole.Assistant => "assistant",
+                ChatRole.Tool => "tool",
+                _ => "user",
+            },
+            ["content"] = message.Content,
+        },
+    };
+
+    /// <summary>解析 OpenAI 兼容 SSE 帧：data:{json} 行 + data:[DONE] 收尾；usage/tool_calls 帧转结构化增量。</summary>
     private static async IAsyncEnumerable<ChatDelta> ParseSseAsync(
         Stream stream, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -123,19 +169,56 @@ public sealed class DeepSeekChatModel(
         }
 
         string? text = null;
+        List<ProposedToolCallFragment>? fragments = null;
+        string? finishReason = null;
         if (root.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array
             && choices.GetArrayLength() > 0)
         {
             var choice = choices[0];
-            if (choice.TryGetProperty("delta", out var deltaEl)
-                && deltaEl.TryGetProperty("content", out var contentEl)
-                && contentEl.ValueKind == JsonValueKind.String)
+            if (choice.TryGetProperty("delta", out var deltaEl))
             {
-                text = contentEl.GetString();
+                if (deltaEl.TryGetProperty("content", out var contentEl)
+                    && contentEl.ValueKind == JsonValueKind.String)
+                {
+                    text = contentEl.GetString();
+                }
+
+                if (deltaEl.TryGetProperty("tool_calls", out var callsEl)
+                    && callsEl.ValueKind == JsonValueKind.Array)
+                {
+                    fragments = [];
+                    foreach (var call in callsEl.EnumerateArray())
+                    {
+                        int index = call.TryGetProperty("index", out var idxEl) ? idxEl.GetInt32() : 0;
+                        string? id = call.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String ? idEl.GetString() : null;
+                        string? name = null;
+                        string? argsFragment = null;
+                        if (call.TryGetProperty("function", out var fnEl) && fnEl.ValueKind == JsonValueKind.Object)
+                        {
+                            if (fnEl.TryGetProperty("name", out var nameEl) && nameEl.ValueKind == JsonValueKind.String)
+                            {
+                                name = nameEl.GetString();
+                            }
+
+                            if (fnEl.TryGetProperty("arguments", out var argsEl) && argsEl.ValueKind == JsonValueKind.String)
+                            {
+                                argsFragment = argsEl.GetString();
+                            }
+                        }
+
+                        fragments.Add(new ProposedToolCallFragment(index, id, name, argsFragment));
+                    }
+                }
+            }
+
+            if (choice.TryGetProperty("finish_reason", out var finishEl) && finishEl.ValueKind == JsonValueKind.String)
+            {
+                finishReason = finishEl.GetString();
             }
         }
 
-        return text is null ? null : new ChatDelta(text, null);
+        if (text is null && fragments is null && finishReason is null) return null;
+        return new ChatDelta(text, null, fragments, finishReason);
     }
 
     private static string Truncate(string value, int max) =>

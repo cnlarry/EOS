@@ -1,6 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 import { AssistantDock } from './AssistantDock'
+
+function renderDock() {
+  return render(
+    <MemoryRouter initialEntries={['/dashboard']}>
+      <AssistantDock />
+    </MemoryRouter>,
+  )
+}
 
 function sseResponse(chunks: string[]): Response {
   const encoder = new TextEncoder()
@@ -30,7 +39,7 @@ describe('AssistantDock', () => {
       .mockResolvedValueOnce(Response.json([]))
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<AssistantDock />)
+    renderDock()
     expect(screen.queryByRole('complementary')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '打开工作助手' }))
@@ -40,7 +49,7 @@ describe('AssistantDock', () => {
 
   it('Ctrl+/ 快捷键切换抽屉开关，状态写入 localStorage', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json([])))
-    render(<AssistantDock />)
+    renderDock()
 
     fireEvent.keyDown(window, { key: '/', ctrlKey: true })
     expect(screen.getByRole('complementary')).not.toBeNull()
@@ -62,7 +71,7 @@ describe('AssistantDock', () => {
       ]))
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<AssistantDock />)
+    renderDock()
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
 
     fireEvent.change(screen.getByPlaceholderText(/输入问题/), { target: { value: '在吗' } })

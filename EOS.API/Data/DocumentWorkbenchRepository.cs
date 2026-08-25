@@ -83,7 +83,7 @@ public sealed class DocumentWorkbenchRepository(
     WorkbenchApprovalService approvalService,
     WorkbenchAuditWriter auditWriter,
     WorkbenchDefinitionProvider definitionProvider,
-    ILogger<DocumentWorkbenchRepository> logger)
+    ILogger<DocumentWorkbenchRepository> logger) : Features.Assistant.Tools.IWorkbenchSearchGateway
 {
     private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
 
