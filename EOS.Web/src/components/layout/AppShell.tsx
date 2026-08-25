@@ -28,7 +28,7 @@ const RECENT_MODULES_KEY = 'erp-dashboard-recent'
 const RECENT_MODULES_MAX = 8
 
 const fallbackNavigation = [
-  { id: 'dashboard', label: '工作台', route: '/dashboard', icon: 'dashboard' },
+  { id: 'dashboard', label: '首页', route: '/dashboard', icon: 'dashboard' },
   {
     id: 'sales',
     label: '销售管理',
@@ -62,7 +62,7 @@ function avatarColor(username: string): string {
 }
 
 const pageTitles: Record<string, { section: string; title: string }> = {
-  '/dashboard': { section: '首页', title: '工作台' },
+  '/dashboard': { section: '首页', title: '首页' },
   '/admin/tables': { section: '系统管理', title: '数据表维护' },
   '/admin/menus': { section: '系统管理', title: '菜单管理' },
   '/admin/users': { section: '系统管理', title: '用户管理' },

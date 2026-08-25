@@ -3,7 +3,7 @@ import type { AppBootstrap, AuthUser, LoginCredentials, NavigationItem } from '.
 import type { ApiRequest, ApiTransport } from './transport'
 
 const baseNavigation: NavigationItem[] = [
-  { id: 'dashboard', label: '工作台', route: '/dashboard', icon: 'dashboard' },
+  { id: 'dashboard', label: '首页', route: '/dashboard', icon: 'dashboard' },
   { id: 'sales', label: '销售管理', icon: 'sales', children: [{ id: 'sales-orders', label: '销售订单', route: '/sales/orders', icon: 'sales' }, { id: 'quotations', label: '报价单', route: '/sales/quotations', icon: 'sales' }] },
   { id: 'inventory', label: '库存管理', icon: 'inventory', children: [{ id: 'stock', label: '库存查询', route: '/inventory/stock', icon: 'inventory' }] },
   { id: 'profile', label: '个人设置', route: '/settings/profile', icon: 'settings' },

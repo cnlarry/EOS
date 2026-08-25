@@ -15,7 +15,7 @@ export function ErrorPage() {
           {isNotFound ? '页面可能已被移动，或者您输入的地址不正确。' : '请稍后重试；如果问题持续存在，请联系系统管理员。'}
         </p>
         <Link className="btn btn-primary mt-3" to="/dashboard">
-          <IconArrowLeft size={18} /> 返回工作台
+          <IconArrowLeft size={18} /> 返回首页
         </Link>
       </div>
     </main>
