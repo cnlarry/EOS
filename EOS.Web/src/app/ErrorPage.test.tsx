@@ -20,7 +20,7 @@ describe('ErrorPage', () => {
     render(<MemoryRouter><ErrorPage /></MemoryRouter>)
     expect(screen.getByText('404')).toBeInTheDocument()
     expect(screen.getByText('没有找到这个页面')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /返回工作台/ })).toHaveAttribute('href', '/dashboard')
+    expect(screen.getByRole('link', { name: /返回首页/ })).toHaveAttribute('href', '/dashboard')
   })
 
   it('非 404 显示通用错误', () => {

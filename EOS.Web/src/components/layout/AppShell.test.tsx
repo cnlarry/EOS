@@ -14,7 +14,7 @@ const bootstrap: AppBootstrap = {
   },
   permissions: [],
   navigation: [
-    { id: 'dashboard', label: '工作台', route: '/dashboard', icon: 'dashboard' },
+    { id: 'dashboard', label: '首页', route: '/dashboard', icon: 'dashboard' },
     {
       id: 'sales',
       label: '销售管理',
@@ -93,7 +93,7 @@ describe('AppShell', () => {
   it('渲染品牌、导航与用户信息', () => {
     renderShell('/dashboard')
     expect(screen.getByText('EOS')).toBeInTheDocument()
-    expect(screen.getAllByText('工作台').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('首页').length).toBeGreaterThan(0)
     expect(screen.getByText('销售管理')).toBeInTheDocument()
     expect(screen.getByText('Demo User')).toBeInTheDocument()
     expect(screen.getByText('admin')).toBeInTheDocument()
@@ -186,7 +186,7 @@ describe('AppShell', () => {
 
   it('页面标题随路由变化', () => {
     renderShell('/dashboard')
-    expect(screen.getByRole('heading', { name: '工作台' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '首页' })).toBeInTheDocument()
     renderShell('/settings/profile')
     expect(screen.getByRole('heading', { name: '个人设置' })).toBeInTheDocument()
     renderShell('/document-workbench/1209/new')
