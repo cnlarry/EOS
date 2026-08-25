@@ -23,8 +23,7 @@ public sealed record AssistantFormDraft(
 /// </summary>
 public sealed class DraftRecordTool(
     IWorkbenchSearchGateway gateway,
-    IPermissionService permissions,
-    GetFormSchemaTool schemaTool) : AssistantToolBase
+    IPermissionService permissions) : AssistantToolBase
 {
     public const string ToolName = "draft_record";
 

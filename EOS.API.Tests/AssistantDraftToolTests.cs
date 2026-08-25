@@ -104,7 +104,7 @@ public sealed class AssistantDraftToolTests
     {
         var gateway = new FakeGateway(form ?? Form());
         var permissions = new FakePermissions(Rights(canAddNew: canAddNew));
-        return new DraftRecordTool(gateway, permissions, new GetFormSchemaTool(gateway, permissions));
+        return new DraftRecordTool(gateway, permissions);
     }
 
     [Fact]
@@ -188,7 +188,7 @@ public sealed class AssistantDraftToolTests
             new SearchRecordsTool(gateway, permissions),
             new GetRecordDetailTool(gateway, permissions),
             new GetFormSchemaTool(gateway, permissions),
-            new DraftRecordTool(gateway, permissions, new GetFormSchemaTool(gateway, permissions)),
+            new DraftRecordTool(gateway, permissions),
         ]);
 
         // 只读工具标 [READ]，草稿工具标 [DRAFT]——风险分级随描述下发模型
@@ -208,8 +208,7 @@ public sealed class AssistantDraftToolTests
         var repo = new ForwardingRepo();
         var gateway = new FakeGateway(Form());
         var permissions = new FakePermissions(Rights());
-        var schemaTool = new GetFormSchemaTool(gateway, permissions);
-        var draftTool = new DraftRecordTool(gateway, permissions, schemaTool);
+        var draftTool = new DraftRecordTool(gateway, permissions);
         var service = new ChatService(repo, model, new AssistantToolRegistry([draftTool]),
             Options.Create(new AssistantSettings { SystemPrompt = "SYS" }), NullLogger<ChatService>.Instance);
 

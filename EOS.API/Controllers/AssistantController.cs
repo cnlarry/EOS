@@ -16,7 +16,7 @@ namespace EOS.API.Controllers;
 /// </summary>
 [ApiController, Authorize, Route("api/v1/assistant")]
 public sealed class AssistantController(
-    AssistantRepository repository,
+    IAssistantRepository repository,
     ChatService chat,
     CurrentUserContext userContext) : ControllerBase
 {
