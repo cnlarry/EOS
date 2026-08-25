@@ -75,6 +75,8 @@ public sealed class ChatToolOrchestrationTests
 
         public string Name => SearchRecordsTool.ToolName;
 
+        public AssistantToolRisk Risk => AssistantToolRisk.Read;
+
         public string Description => "stub";
 
         public string ParametersJson => """{"type":"object","properties":{}}""";

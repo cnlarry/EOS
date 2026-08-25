@@ -25,6 +25,8 @@ public sealed class SearchRecordsTool(
 
     public string Name => ToolName;
 
+    public AssistantToolRisk Risk => AssistantToolRisk.Read;
+
     public string Description =>
         "在 ERP 模块中搜索单据/资料列表。当用户想找单据、查资料时使用。"
         + "返回前 5 行及每行主键值数组 _keys，可用 get_record_detail 取单行完整详情。";

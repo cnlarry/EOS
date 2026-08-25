@@ -100,8 +100,22 @@ export function FormEditorPage() {
     for (const field of formQuery.data.masterFields) {
       if (field.isVisible) initial[field.key] = defaults[field.key] ?? emptyValue(field)
     }
+    // ADR-007 M4：工作助手「带入表单」预填——sessionStorage 一次性消费；
+    // 助手值覆盖默认值（服务端维护字段在草稿生成时已剔除），最终仍由保存管线权威校验
+    const prefillRaw = sessionStorage.getItem(`erp-assistant-prefill-${moduleId}`)
+    if (prefillRaw) {
+      sessionStorage.removeItem(`erp-assistant-prefill-${moduleId}`)
+      try {
+        const prefill = JSON.parse(prefillRaw) as Record<string, unknown>
+        for (const [key, value] of Object.entries(prefill)) {
+          if (key in initial && value != null) initial[key] = String(value)
+        }
+      } catch {
+        // 非法草稿直接忽略，不影响正常新增
+      }
+    }
     setMasterValues(initial)
-  }, [formQuery.data, isEdit, isView, isCopy])
+  }, [formQuery.data, isEdit, isView, isCopy, moduleId])
 
   useEffect(() => {
     if (formQuery.data) setActiveTab(formQuery.data.tabs[0]?.no ?? 1)

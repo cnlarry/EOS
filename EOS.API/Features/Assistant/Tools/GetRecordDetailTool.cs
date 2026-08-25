@@ -22,6 +22,8 @@ public sealed class GetRecordDetailTool(
 
     public string Name => ToolName;
 
+    public AssistantToolRisk Risk => AssistantToolRisk.Read;
+
     public string Description =>
         "按主键取单条记录的完整字段。module_id 与 _keys 必须来自 search_records 的返回结果，不要臆造。";
 

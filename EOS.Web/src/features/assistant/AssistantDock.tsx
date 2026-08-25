@@ -9,10 +9,10 @@ import {
   IconX,
 } from '@tabler/icons-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { createSession, deleteSession, listMessages, listSessions } from './api'
 import { extractPageContext } from './pageContext'
-import { useChatStream } from './useChatStream'
+import { useChatStream, type AssistantFormDraft } from './useChatStream'
 import type { AssistantMessage, AssistantSession } from './types'
 
 const OPEN_KEY = 'erp-assistant-open'
@@ -24,10 +24,12 @@ interface Bubble {
   text: string
   streaming?: boolean
   tools?: Array<{ name: string; digest: string }>
+  drafts?: AssistantFormDraft[]
 }
 
 export function AssistantDock() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(() => readBool(OPEN_KEY))
   const [wide, setWide] = useState(() => readWidth() === 520)
   const [sessions, setSessions] = useState<AssistantSession[]>([])
@@ -137,9 +139,14 @@ export function AssistantDock() {
       onDelta: (text) => {
         setBubbles(prev => prev.map(b => b.key === draftKey ? { ...b, text: b.text + text } : b))
       },
-      onDone: (_message, toolCalls) => {
+      onDone: (_message, toolCalls, drafts) => {
         setBubbles(prev => prev.map(b => b.key === draftKey
-          ? { ...b, streaming: false, tools: toolCalls && toolCalls.length > 0 ? toolCalls : undefined }
+          ? {
+              ...b,
+              streaming: false,
+              tools: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
+              drafts: drafts && drafts.length > 0 ? drafts : undefined,
+            }
           : b))
         void refreshSessions()
       },
@@ -156,6 +163,14 @@ export function AssistantDock() {
       setBubbles(prev => prev.map(b => b.key === draftKey ? { ...b, streaming: false } : b))
     }
   }, [input, sessionId, streaming, send, refreshSessions, location.pathname, location.search])
+
+  // ADR-007 §6：草稿确认后「带入表单」——经 sessionStorage 一次性通道预填，
+  // 执行走现有统一表单保存管线（幂等键/校验/审计复用），助手不新增写路径
+  const handleOpenInForm = useCallback((draft: AssistantFormDraft) => {
+    sessionStorage.setItem(`erp-assistant-prefill-${draft.moduleId}`, JSON.stringify(draft.values))
+    setOpen(false)
+    navigate(`/document-workbench/${draft.moduleId}/new`)
+  }, [navigate])
 
   const handleDeleteSession = useCallback(async () => {
     setMenuOpen(false)
@@ -253,6 +268,13 @@ export function AssistantDock() {
                     ))}
                   </div>
                 )}
+                {!bubble.streaming && bubble.drafts && bubble.drafts.length > 0 && (
+                  <div className="erp-assistant-drafts">
+                    {bubble.drafts.map((draft, index) => (
+                      <DraftCard key={index} draft={draft} onOpenForm={handleOpenInForm} />
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -292,6 +314,39 @@ export function AssistantDock() {
 
 function toBubble(message: AssistantMessage): Bubble {
   return { key: `m-${message.id}`, role: message.role as 1 | 2, text: message.content }
+}
+
+/** 结构化确认卡片（ADR-007 §6）：字段级预览 + 缺失/警告提示 + 带入表单。 */
+function DraftCard({ draft, onOpenForm }: { draft: AssistantFormDraft; onOpenForm: (draft: AssistantFormDraft) => void }) {
+  const entries = Object.entries(draft.values)
+  return (
+    <div className="erp-assistant-draft-card">
+      <div className="fw-bold mb-1">📝 表单草稿：{draft.moduleTitle}</div>
+      <table className="table table-sm erp-assistant-draft-table">
+        <tbody>
+          {entries.map(([key, value]) => (
+            <tr key={key}>
+              <td className="text-secondary">{draft.labels?.[key] ?? key}</td>
+              <td>{value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {draft.missingRequired.length > 0 && (
+        <div className="text-warning small mb-1">缺必填：{draft.missingRequired.join('、')}</div>
+      )}
+      {draft.warnings.map((warning, index) => (
+        <div key={index} className="text-warning small">{warning}</div>
+      ))}
+      <button
+        className="btn btn-sm btn-primary"
+        type="button"
+        onClick={() => onOpenForm(draft)}
+      >
+        带入表单填写（不自动保存）
+      </button>
+    </div>
+  )
 }
 
 function readBool(key: string): boolean {
