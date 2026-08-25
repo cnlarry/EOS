@@ -28,10 +28,36 @@ public interface IWorkbenchSearchGateway
         WorkbenchDefinition definition, IReadOnlyList<IReadOnlyList<string>> keys, CancellationToken token,
         int? groupIndex = null, string? groupValue = null,
         IReadOnlyList<WorkbenchField>? exportFields = null, string? dataFilter = null);
+
+    /// <summary>统一表单定义（mode=new/edit/view；字段集合经权限过滤）。</summary>
+    Task<FormDefinition?> GetFormDefinitionAsync(
+        WorkbenchDefinition definition, string userId, string mode,
+        bool canViewCost, bool canViewSecrecy,
+        IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields,
+        IReadOnlySet<string> deniedNewMasterFields, IReadOnlySet<string> deniedNewDetailFields,
+        IReadOnlySet<string> deniedModiMasterFields, IReadOnlySet<string> deniedModiDetailFields,
+        CancellationToken token,
+        bool canAddNew = false, bool canEdit = false, bool canDelete = false,
+        bool canApprove = false, bool canDeapprove = false,
+        bool canEndCase = false, bool canUnEndCase = false,
+        bool canFileView = false, bool canFileUpda = false,
+        bool canFileEdit = false, bool canFileDele = false);
 }
 
-/// <summary>工具执行结果：ContentForModel 是回喂模型的紧凑文本（已限行数/列数，防 token 爆炸）。</summary>
-public sealed record ToolExecutionResult(bool Ok, string ContentForModel)
+/// <summary>
+/// 工具风险分级（ADR-007 §6）：Read=只读查询；Draft=产出草稿/建议不触发写入；
+/// Write=触发业务写入；AdminWrite=元数据/配置变更（额外要求 CanSetup）。
+/// </summary>
+public enum AssistantToolRisk
+{
+    Read = 0,
+    Draft = 1,
+    Write = 2,
+    AdminWrite = 3,
+}
+
+/// <summary>工具执行结果：ContentForModel 是回喂模型的紧凑文本；Draft 非空时随 done 事件下发前端渲染确认卡片。</summary>
+public sealed record ToolExecutionResult(bool Ok, string ContentForModel, object? Draft = null)
 {
     public static ToolExecutionResult Success(string content) => new(true, content);
     public static ToolExecutionResult Deny(string reason) => new(false, reason);
@@ -43,6 +69,9 @@ public interface IAssistantTool
     string Name { get; }
 
     string Description { get; }
+
+    /// <summary>风险分级（ADR-007 §6）。</summary>
+    AssistantToolRisk Risk { get; }
 
     /// <summary>JSON Schema（OpenAI function parameters 格式）。</summary>
     string ParametersJson { get; }

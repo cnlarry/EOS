@@ -15,12 +15,29 @@ public sealed class AssistantToolRegistry(IEnumerable<IAssistantTool> tools)
     private readonly Dictionary<string, IAssistantTool> _tools =
         tools.ToDictionary(t => t.Name, StringComparer.Ordinal);
 
-    /// <summary>发给模型的工具声明（按名排序稳定，便于测试与提示词缓存）。</summary>
+    /// <summary>发给模型的工具声明（按名排序稳定，便于测试与提示词缓存；风险分级随描述下发）。</summary>
     public IReadOnlyList<ToolDefinition> Definitions { get; } =
         [.. tools.OrderBy(t => t.Name, StringComparer.Ordinal).Select(t =>
-            new ToolDefinition(t.Name, t.Description, t.ParametersJson))];
+            new ToolDefinition(
+                t.Name,
+                $"[{t.Risk.ToString().ToUpperInvariant()}] {t.Description}",
+                t.ParametersJson))];
 
     public bool TryGet(string name, out IAssistantTool tool) => _tools.TryGetValue(name, out tool!);
+}
+
+/// <summary>工具基类：统一抽象成员声明。</summary>
+public abstract class AssistantToolBase : IAssistantTool
+{
+    public abstract string Name { get; }
+
+    public abstract AssistantToolRisk Risk { get; }
+
+    public abstract string Description { get; }
+
+    public abstract string ParametersJson { get; }
+
+    public abstract Task<ToolExecutionResult> ExecuteAsync(string userId, System.Text.Json.JsonElement arguments, CancellationToken token);
 }
 
 /// <summary>工具共用小函数。</summary>

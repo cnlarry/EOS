@@ -1100,3 +1100,13 @@ button, input, select { font: inherit; }
   border: 1px solid var(--tblr-border-color, #e6e7e9);
   color: var(--tblr-secondary, #6c757d);
 }
+
+.erp-assistant-drafts { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.erp-assistant-draft-card {
+  border: 1px solid var(--tblr-primary, #206bc4);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--tblr-active-bg, #f0f6ff);
+}
+.erp-assistant-draft-table { margin: 4px 0; }
+.erp-assistant-draft-table td { padding: 2px 6px; font-size: 12px; word-break: break-all; }

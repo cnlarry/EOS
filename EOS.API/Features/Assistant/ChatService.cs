@@ -12,8 +12,11 @@ public abstract record ChatStreamEvent
 {
     public sealed record Delta(string Text) : ChatStreamEvent;
 
-    /// <summary>回复已落库；ToolCalls 为本次回复使用的工具摘要（前端展示标签）。</summary>
-    public sealed record Completed(AssistantMessageDto Message, IReadOnlyList<ToolCallSummary>? ToolCalls) : ChatStreamEvent;
+    /// <summary>回复已落库；ToolCalls 为本次回复使用的工具摘要；Drafts 为表单草稿（前端渲染确认卡片）。</summary>
+    public sealed record Completed(
+        AssistantMessageDto Message,
+        IReadOnlyList<ToolCallSummary>? ToolCalls,
+        IReadOnlyList<object>? Drafts = null) : ChatStreamEvent;
 
     public sealed record Failed(string Code, string Message) : ChatStreamEvent;
 }
@@ -112,6 +115,7 @@ public sealed class ChatService(
 
         var messages = BuildModelMessages(history, pageContext);
         var toolLog = new List<ToolCallSummary>();
+        var drafts = new List<object>();
 
         for (int round = 0; round <= AssistantToolRegistry.MaxToolRounds; round++)
         {
@@ -205,6 +209,11 @@ public sealed class ChatService(
                 foreach (var call in calls)
                 {
                     var result = await ExecuteToolSafelyAsync(userId, call, sessionId, toolLog, token);
+                    if (result.Draft is not null)
+                    {
+                        drafts.Add(result.Draft); // DRAFT 级工具产出的结构化变更集，随 done 事件下发确认卡片
+                    }
+
                     messages.Add(new ChatMessage(ChatRole.Tool, result.ContentForModel, ToolCallId: call.Id));
                 }
 
@@ -231,7 +240,10 @@ public sealed class ChatService(
                     userId, saved.Id, JsonSerializer.Serialize(toolLog), token);
             }
 
-            yield return new ChatStreamEvent.Completed(saved, toolLog.Count > 0 ? [.. toolLog] : null);
+            yield return new ChatStreamEvent.Completed(
+                saved,
+                toolLog.Count > 0 ? [.. toolLog] : null,
+                drafts.Count > 0 ? [.. drafts] : null);
             yield break;
         }
     }

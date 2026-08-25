@@ -84,6 +84,7 @@ public sealed class AssistantController(
                     {
                         message = done.Message,
                         toolCalls = done.ToolCalls?.Select(t => new { name = t.Name, digest = t.ResultDigest }),
+                        drafts = done.Drafts,
                     }, token);
                     break;
                 case ChatStreamEvent.Failed fail:
