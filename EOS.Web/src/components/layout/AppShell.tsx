@@ -15,6 +15,7 @@ import { useAuth } from '../../features/auth/authContext'
 import type { NavigationItem } from '../../features/auth/types'
 import { AssistantDock } from '../../features/assistant/AssistantDock'
 import { navigationIcons } from './navigationIcons'
+import { childPad, dotLeft, groupPad, lineSidebar } from './menuDepth'
 import { FormBreadcrumbContext, type FormBreadcrumb } from './FormBreadcrumbContext'
 import { workbenchAction, workbenchList, workbenchModuleId } from '../../features/document-workbench/workbenchPath'
 
@@ -350,9 +351,11 @@ export function AppShell() {
         const Icon = navigationIcons[item.icon] ?? IconFolder
         const isExpanded = expandedIds.has(item.id)
         const isGroupActive = item.children.some((child) => isSubtreeActive(child, basePath))
+        const groupStyle =
+          depth > 1 ? ({ '--menu-gpad': `${groupPad(depth)}px` } as React.CSSProperties) : undefined
         return (
           <Fragment key={item.id}>
-            <div className={`erp-nav-group erp-nav-group-depth-${depth}`}>
+            <div className={`erp-nav-group erp-nav-group-depth-${depth}`} style={groupStyle}>
               <button
                 className={`nav-link erp-nav-group-toggle ${isGroupActive ? 'group-active' : ''}`}
                 type="button"
@@ -371,18 +374,28 @@ export function AppShell() {
               </button>
             </div>
             {isExpanded && !sidebarCollapsed && (
-              <div className={`erp-nav-children erp-nav-children-depth-${depth + 1}`}>{renderChildren(item.children, depth + 1)}</div>
+              <div
+                className={`erp-nav-children erp-nav-children-depth-${depth + 1}`}
+                style={{ '--menu-line': `${lineSidebar(depth + 1)}px` } as React.CSSProperties}
+              >
+                {renderChildren(item.children, depth + 1)}
+              </div>
             )}
           </Fragment>
         )
       }
       const Icon = navigationIcons[item.icon] ?? IconFolder
+      const childStyle =
+        depth > 1
+          ? ({ '--menu-cpad': `${childPad(depth)}px`, '--menu-dot': `${dotLeft(depth)}px` } as React.CSSProperties)
+          : undefined
       return (
         <Fragment key={item.id}>
           <NavLink
             className={({ isActive }) => `nav-link ${depth > 1 ? `erp-nav-child erp-nav-child-depth-${depth}` : ''} ${isActive ? 'active' : ''}`}
             to={item.route!}
             title={sidebarCollapsed ? item.label : undefined}
+            style={childStyle}
           >
             {depth === 1 && <span className="nav-link-icon"><Icon size={18} stroke={1.7} /></span>}
             <span className="nav-link-title">{item.label}</span>
