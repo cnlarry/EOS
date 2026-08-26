@@ -156,7 +156,7 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
             await ExecuteStatementsAsync(sql);
             _createdFields.Add((table, field));
 
-            await _repository.DeleteAsync(table, field, CancellationToken.None);
+            await _repository.DeleteAsync(table, field, "IT", CancellationToken.None);
             _createdFields.Remove((table, field));
 
             await using var check = new SqlConnection(ConnectionString.Value);
@@ -217,7 +217,7 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
         }
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _repository.DeleteTableAsync("COMPANY", CancellationToken.None));
+            () => _repository.DeleteTableAsync("COMPANY", "IT", CancellationToken.None));
     }
 
     [Fact]

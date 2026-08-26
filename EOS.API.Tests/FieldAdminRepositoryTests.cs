@@ -108,4 +108,77 @@ public sealed class FieldAdminRepositoryTests
         await Assert.ThrowsAsync<ArgumentException>(
             () => repository.CreateUnmanagedFieldsAsync(new("COMPANY", ["bad field"]), "IT", CancellationToken.None));
     }
+
+    private static FieldAdminInput FieldInput(
+        string label = "测试字段",
+        string? format = null,
+        bool isVisible = true,
+        bool isCost = false,
+        int width = 100) => new(
+        Label: label, DataType: "nvarchar", Width: width, Align: null, HeaderAlign: "center", Format: format,
+        IsVisible: isVisible, IsDefault: true, IsQueryable: true, IsReadonly: false, IsRequired: false,
+        IsCost: isCost, IsSecrecy: false, DefaultValue: null, VerifyIndex: null, Regex: null, Remark: null,
+        BrowseUrl: null, BrowseModuleId: null, OnlyChoose: false, ChooseMultiple: false, ChoosePage: null,
+        Choosers:
+        [
+            new(true, "CLIENT", "客户", 1401, null, "CLIENT_ID=CLIENT_ID"),
+            new(false, null, null, null, null, null),
+            new(false, null, null, null, null, null),
+            new(false, null, null, null, null, null),
+        ],
+        CanCopy: true);
+
+    [Fact]
+    public void DiffInputs_ReportsOnlyChangedKeys()
+    {
+        var before = FieldInput();
+        var after = FieldInput(label: "新名称", format: "0.##", isCost: true);
+        var changes = FieldAdminRepository.DiffInputs(before, after);
+
+        var keys = changes.Select(change => change.FieldName).ToArray();
+        Assert.Equal(["DISPLAY_FORMAT", "F_DESC", "IS_COST"], keys);
+        Assert.Equal("测试字段", changes.Single(change => change.FieldName == "F_DESC").OldValue);
+        Assert.Equal("新名称", changes.Single(change => change.FieldName == "F_DESC").NewValue);
+    }
+
+    [Fact]
+    public void DiffInputs_NoChanges_YieldsEmpty()
+    {
+        Assert.Empty(FieldAdminRepository.DiffInputs(FieldInput(), FieldInput()));
+    }
+
+    [Fact]
+    public void DiffInputs_TrimsWhitespaceAndNormalizesNulls()
+    {
+        var before = FieldInput();
+        var choosers = before.Choosers.ToArray();
+        choosers[0] = choosers[0] with { Filter = "  " };
+        var after = before with { Choosers = choosers };
+        var changes = FieldAdminRepository.DiffInputs(before, after);
+        Assert.Empty(changes);
+    }
+
+    [Fact]
+    public void DescribeInput_FlattensChooserSlots()
+    {
+        var describe = FieldAdminRepository.DescribeInput(FieldInput());
+        Assert.Equal("1", describe["CHOOSE1_ACTIVE"]);
+        Assert.Equal("CLIENT", describe["CHOOSE1_T_ID"]);
+        Assert.Equal("1401", describe["CHOOSE1_M_IDX"]);
+        Assert.Equal("CLIENT_ID=CLIENT_ID", describe["CHOOSE1_RETURNVAL"]);
+        Assert.Equal("0", describe["CHOOSE4_ACTIVE"]);
+        Assert.Null(describe["CHOOSE2_T_ID"]);
+    }
+
+    [Fact]
+    public void DiffTables_ReportsChangedRemark()
+    {
+        var changes = FieldAdminRepository.DiffTables(
+            new FieldAdminTableInput("测试表", "P", "TABLE", "备注A"),
+            new FieldAdminTableInput("测试表", "P", "TABLE", "备注B"));
+        var change = Assert.Single(changes);
+        Assert.Equal("T_REMARK", change.FieldName);
+        Assert.Equal("备注A", change.OldValue);
+        Assert.Equal("备注B", change.NewValue);
+    }
 }
