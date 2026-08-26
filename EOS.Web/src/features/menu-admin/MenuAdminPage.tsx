@@ -21,6 +21,7 @@ import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
 import { TabbedPanel } from '../../components/common/TabbedPanel'
 import { navigationIcons } from '../../components/layout/navigationIcons'
+import { childPad, dotLeft, groupPad, lineTree } from '../../components/layout/menuDepth'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { notifyMenuChanged } from '../../services/menuEvents'
@@ -659,11 +660,17 @@ export function MenuAdminPage() {
         onDrop: handleDrop(module),
         onContextMenu: openContextMenu(module),
       }
+      const groupStyle =
+        depth > 0 ? ({ '--menu-gpad': `${groupPad(depth + 1)}px` } as React.CSSProperties) : undefined
+      const childStyle =
+        depth > 0
+          ? ({ '--menu-cpad': `${childPad(depth + 1)}px`, '--menu-dot': `${dotLeft(depth + 1)}px` } as React.CSSProperties)
+          : undefined
       return (
         <Fragment key={module.M_IDX}>
           {hasChildren ? (
             <>
-              <div className={`${nodeClass} erp-nav-group erp-nav-group-depth-${depth + 1}`} {...dragProps}>
+              <div className={`${nodeClass} erp-nav-group erp-nav-group-depth-${depth + 1}`} style={groupStyle} {...dragProps}>
                 <button
                   type="button"
                   className={`nav-link erp-nav-group-toggle ${active ? 'group-active' : ''}`}
@@ -684,7 +691,12 @@ export function MenuAdminPage() {
                 </button>
               </div>
               {expanded && (
-                <div className={`erp-nav-children erp-nav-children-depth-${depth + 2}`}>{renderTree(entry.children, depth + 1)}</div>
+                <div
+                  className={`erp-nav-children erp-nav-children-depth-${depth + 2}`}
+                  style={{ '--menu-line': `${lineTree(depth + 2)}px` } as React.CSSProperties}
+                >
+                  {renderTree(entry.children, depth + 1)}
+                </div>
               )}
             </>
           ) : (
@@ -693,6 +705,7 @@ export function MenuAdminPage() {
                 type="button"
                 className={`nav-link ${depth > 0 ? `erp-nav-child erp-nav-child-depth-${depth + 1}` : ''} ${active ? 'active' : ''}`}
                 onClick={() => selectModule(module)}
+                style={childStyle}
               >
                 {depth === 0 && <span className="nav-link-icon"><Icon size={18} stroke={1.7} /></span>}
                 {label}

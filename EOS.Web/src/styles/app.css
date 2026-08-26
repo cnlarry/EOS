@@ -73,17 +73,7 @@ button, input, select { font: inherit; }
 .erp-nav-group-toggle[aria-expanded="true"] .erp-nav-chevron { transform: rotate(90deg); }
 .erp-nav-children { margin: 1px 0 5px; }
 .erp-nav-children { position: relative; }
-/* 一级分组展开后：从顶级菜单自定义图标正下方（图标中心 28px）向下延伸的虚线 */
-.erp-nav-children-depth-2::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 28px;
-  border-left: 1px dashed var(--tblr-border-color);
-  pointer-events: none;
-}
-.erp-sidebar .navbar-nav .erp-nav-child { position: relative; height: 32px; min-height: 32px; margin-block: 0; padding: 0 11px 0 59px !important; font-size: 12px; }
+.erp-sidebar .navbar-nav .erp-nav-child { position: relative; height: 32px; min-height: 32px; margin-block: 0; padding: 0 11px 0 var(--menu-cpad, 59px) !important; font-size: 12px; }
 .erp-sidebar .erp-nav-child .nav-link-title { display: block; flex: 1 1 auto; min-width: 0; }
 
 /* ---- 菜单搜索 ---- */
@@ -99,44 +89,33 @@ button, input, select { font: inherit; }
 .erp-nav-search-result:hover { background: var(--tblr-primary-lt); }
 .erp-nav-search-crumb { display: block; color: var(--tblr-secondary); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ---- 多级菜单（第 2/3/4 级） ---- */
+/* ---- 多级菜单（2 级起，深度几何由 JS 内联 CSS 变量驱动，天然支持任意层级） ---- */
 /* 对齐基线（侧栏元素左缘含 7px 外边距，::before 的 left 相对元素自身）：
    一级菜单第一个字在 48.5px；二级折叠箭头左缘在 47px（中心 53.5px），
    二级小圆点中心 53.5px 与箭头中心对齐；二级文字列在 66px；
    三级折叠箭头左缘在 66px（中心 72.5px），三级文字列在 85px；
    四级小圆点中心 91px 与三级（父级）菜单第一个中文的中心对齐（85px 左缘 + 6px 半字）；
-   各层圆点右缘到文字的距离一致（约 10.5px），故四级文字列在 103.5px。 */
-.erp-nav-group-depth-2 .erp-nav-group-toggle { gap: 6px; padding-left: 40px !important; font-size: 12px; }
-.erp-nav-group-depth-3 .erp-nav-group-toggle { gap: 6px; padding-left: 59px !important; font-size: 12px; }
-.erp-sidebar .navbar-nav .erp-nav-child-depth-3 { padding-left: 78px !important; }
-.erp-sidebar .navbar-nav .erp-nav-child-depth-4 { padding-left: 96.5px !important; }
-/* 二级分组展开后：从展开/折叠箭头正下方（箭头中心 53.5px）向下延伸的虚线 */
-.erp-nav-children-depth-3::before {
+   各层圆点右缘到文字的距离一致（约 10.5px）。
+   深度像素值见 menuDepth.ts：2~4 层为验收值，5 层起按每层 +19px 等差延伸。 */
+/* 分组（深度>=2）：折叠箭头 + 6px 间隙 + 内边距随深度；深度 1 分组走基础图标版式 */
+.erp-nav-group:not(.erp-nav-group-depth-1) .erp-nav-group-toggle {
+  gap: 6px;
+  padding-left: var(--menu-gpad, 40px) !important;
+  font-size: 12px;
+}
+/* 分组展开后：从父级展开/折叠箭头正下方向下延伸的虚线 */
+.erp-nav-children::before {
   content: "";
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 53px;
+  left: var(--menu-line, 28px);
   border-left: 1px dashed var(--tblr-border-color);
   pointer-events: none;
 }
-/* 三级分组展开后：从展开/折叠箭头正下方（箭头中心 72.5px）向下延伸的虚线 */
-.erp-nav-children-depth-4::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 72.5px;
-  border-left: 1px dashed var(--tblr-border-color);
-  pointer-events: none;
-}
-/* 二/三/四级菜单统一小圆点（4px）：颜色跟随文字（默认灰色、激活蓝色）；
-   二级圆点中心与二级折叠箭头中心对齐，三级圆点中心与三级折叠箭头中心对齐，
-   四级圆点中心与三级（父级）菜单第一个中文的中心对齐；
-   各圆点右缘到对应文字的距离一致（约 10.5px）。 */
-.erp-nav-child-depth-2::before,
-.erp-nav-child-depth-3::before,
-.erp-nav-child-depth-4::before {
+/* 子菜单统一小圆点（4px）：颜色跟随文字（默认灰色、激活蓝色）；
+   圆点中心与父级菜单第一个中文的中心对齐，圆点右缘到文字的距离一致（约 10.5px）。 */
+.erp-nav-child::before {
   content: "";
   position: absolute;
   top: 50%;
@@ -146,10 +125,8 @@ button, input, select { font: inherit; }
   background: currentColor;
   transform: translate(-50%, -50%);
   pointer-events: none;
+  left: var(--menu-dot, 46.5px);
 }
-.erp-nav-child-depth-2::before { left: 46.5px; }
-.erp-nav-child-depth-3::before { left: 65.5px; }
-.erp-nav-child-depth-4::before { left: 84px; }
 
 .erp-sidebar-collapsed .erp-nav-search { display: none; }
 .erp-sidebar-toggle { position: fixed; left: calc(var(--erp-sidebar-width, 220px) - 1px); bottom: 67px; z-index: 1046; width: 29px; height: 42px; transform: translateX(-100%); border: 1px solid var(--tblr-border-color); border-right: 0; border-radius: 7px 0 0 7px; background: var(--tblr-bg-surface); box-shadow: -3px 2px 8px rgba(24, 36, 51, .08); transition: left .2s ease; }
@@ -191,31 +168,8 @@ button, input, select { font: inherit; }
 .erp-menu-tree .erp-nav-group-toggle.group-active { color: var(--tblr-primary); }
 .erp-menu-tree .erp-nav-group { flex: 0 0 32px; height: 32px; min-height: 32px; max-height: 32px; }
 .erp-menu-tree .erp-nav-group-toggle { height: 32px; min-height: 32px; max-height: 32px; }
-/* 二级/三级分组恢复侧栏设计的 6px 间隙（.erp-menu-tree .nav-link 的 10px 会覆盖全局规则，这里按深度重新声明） */
-.erp-menu-tree .erp-nav-group-depth-2 .erp-nav-group-toggle { gap: 6px; }
-.erp-menu-tree .erp-nav-group-depth-3 .erp-nav-group-toggle { gap: 6px; }
-.erp-menu-tree .erp-nav-child { position: relative; height: 32px; min-height: 32px; margin-block: 0; padding: 0 11px 0 59px !important; font-size: 12px; }
-.erp-menu-tree .erp-nav-child-depth-3 { padding-left: 78px !important; }
-.erp-menu-tree .erp-nav-child-depth-4 { padding-left: 96.5px !important; }
-/* 叶子圆点与同级菜单组折叠箭头同一列，且该列位于上级菜单第一个字中心：
-   管理页 二级箭头中心 46.5px=一级字中心（11 内边距+18 图标+11.5 间距+6 半字）、
-   三级箭头中心 65.5px=二级字中心（40 内边距+13 箭头+6 间距+6 半字）；
-   侧栏同样适用（行含 7px 外边距，全局 65.5px 即三级箭头列） */
-.erp-menu-tree .erp-nav-child-depth-2::before { left: 46.5px; }
-.erp-menu-tree .erp-nav-child-depth-3::before { left: 65.5px; }
-/* 展开虚线对齐（管理页行无侧栏 7px 外边距，重新按实际几何定位）：
-   一级分组线对根图标中心（20px），二级对展开箭头中心（46.5px），三级对箭头中心（65.5px） */
-.erp-menu-tree .erp-nav-children-depth-2::before { left: 20px; }
-.erp-menu-tree .erp-nav-children-depth-3::before { left: 46.5px; }
-.erp-menu-tree .erp-nav-children-depth-4::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 65.5px;
-  border-left: 1px dashed var(--tblr-border-color);
-  pointer-events: none;
-}
+/* 管理页子菜单行与侧栏同用 --menu-cpad/--menu-dot 深度几何（menuDepth.ts） */
+.erp-menu-tree .erp-nav-child { position: relative; height: 32px; min-height: 32px; margin-block: 0; padding: 0 11px 0 var(--menu-cpad, 59px) !important; font-size: 12px; }
 .erp-menu-tree-id { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 11px; flex: 0 0 auto; }
 /* 拖拽排序/跨父移动 */
 .erp-menu-node { position: relative; }
