@@ -30,7 +30,7 @@ const bootstrap: AppBootstrap = {
             {
               id: 'grouped',
               label: '分组模块',
-              route: '/document-workbench/1209',
+              route: '/workbench/1209',
               icon: 'sales',
               moduleId: 1209,
               groups: [{ index: 1, description: '结案' }],
@@ -60,8 +60,9 @@ function renderShell(initialEntry: string, auth: Partial<ReturnType<typeof useAu
           <Route path="/dashboard" element={<div>DASH</div>} />
           <Route path="/settings/profile" element={<div>PROFILE</div>} />
           <Route path="/admin/tables/:tableId/fields" element={<div>FIELDS</div>} />
-          <Route path="/document-workbench/:moduleId" element={<div>WB</div>} />
-          <Route path="/document-workbench/:moduleId/new" element={<div>NEW_FORM</div>} />
+          <Route path="/workbench/:moduleId" element={<div>WB</div>} />
+          <Route path="/workbench/:moduleId/new" element={<div>NEW_FORM</div>} />
+          <Route path="/workbench/:moduleId/view/*" element={<div>VIEW_FORM</div>} />
           <Route path="/login" element={<div>LOGIN_PAGE</div>} />
         </Route>
       </Routes>
@@ -189,20 +190,36 @@ describe('AppShell', () => {
     expect(screen.getByRole('heading', { name: '首页' })).toBeInTheDocument()
     renderShell('/settings/profile')
     expect(screen.getByRole('heading', { name: '个人设置' })).toBeInTheDocument()
-    renderShell('/document-workbench/1209/new')
+    renderShell('/workbench/1209/new')
     expect(screen.getByRole('heading', { name: '新增分组模块' })).toBeInTheDocument()
   })
 
   it('表单页面包屑含完整层级，叶子可点击返回模块工作台', async () => {
-    renderShell('/document-workbench/1209/new')
+    renderShell('/workbench/1209/new')
     const crumbs = within(screen.getByRole('navigation', { name: '当前位置' }))
     // 层级：销售管理 > 销售子组 > 分组模块（叶子可点击）> 新增分组模块
     expect(crumbs.getByText('销售管理')).toBeInTheDocument()
     expect(crumbs.getByText('销售子组')).toBeInTheDocument()
     const leaf = crumbs.getByText('分组模块')
-    expect(leaf).toHaveAttribute('href', '/document-workbench/1209')
+    expect(leaf).toHaveAttribute('href', '/workbench/1209')
     fireEvent.click(leaf)
     expect(screen.getByText('WB')).toBeInTheDocument()
+  })
+
+  it('跨模块关联浏览（from 参数）面包屑按来源模块路径呈现', () => {
+    renderShell('/workbench/1401/view/A?from=1209')
+    const crumbs = within(screen.getByRole('navigation', { name: '当前位置' }))
+    // 来源模块 1209（分组模块）的完整层级，叶子可点击返回来源工作台
+    expect(crumbs.getByText('销售管理')).toBeInTheDocument()
+    expect(crumbs.getByText('销售子组')).toBeInTheDocument()
+    expect(crumbs.getByText('分组模块')).toHaveAttribute('href', '/workbench/1209')
+  })
+
+  it('常规浏览（无 from 参数）面包屑不显示来源模块路径', () => {
+    renderShell('/workbench/1401/view/A')
+    const crumbs = within(screen.getByRole('navigation', { name: '当前位置' }))
+    expect(crumbs.queryByText('分组模块')).not.toBeInTheDocument()
+    expect(crumbs.queryByText('销售子组')).not.toBeInTheDocument()
   })
 
   it('渲染当前日期时间元素', () => {
@@ -257,3 +274,4 @@ describe('AppShell', () => {
     }
   })
 })
+

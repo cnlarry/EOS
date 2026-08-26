@@ -24,10 +24,10 @@ describe('RouteGuards', () => {
   it('RequireAuth 未登录跳转 /login 并携带来源', () => {
     vi.mocked(useAuth).mockReturnValue({ ...authed, bootstrap: null })
     render(
-      <MemoryRouter initialEntries={['/document-workbench/1209']}>
+      <MemoryRouter initialEntries={['/workbench/1209']}>
         <Routes>
           <Route path="/login" element={<div>LOGIN_PAGE</div>} />
-          <Route element={<RequireAuth />}><Route path="/document-workbench/:moduleId" element={<div>OK</div>} /></Route>
+          <Route element={<RequireAuth />}><Route path="/workbench/:moduleId" element={<div>OK</div>} /></Route>
         </Routes>
       </MemoryRouter>,
     )
@@ -59,3 +59,4 @@ describe('RouteGuards', () => {
     expect(screen.getByText('OK')).toBeInTheDocument()
   })
 })
+

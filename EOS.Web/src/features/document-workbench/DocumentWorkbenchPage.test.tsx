@@ -23,13 +23,13 @@ const definition = {
   masterTable: 'PRODUCT_EDITION',
   detailTable: 'PRODUCT_DETAIL',
   masterFields: [
-    { key: 'PRO_NO', label: '产品编号', dataType: 'nvarchar', width: 120, align: 'left', isPrimaryKey: true, isQueryable: true, headerAlign: 'center', format: null, browseUrl: null, browseModuleId: null },
-    { key: 'EDITION', label: '版次', dataType: 'nvarchar', width: 80, align: 'center', isPrimaryKey: true, isQueryable: true, headerAlign: 'center', format: null, browseUrl: null, browseModuleId: null },
-    { key: 'QTY', label: '数量', dataType: 'decimal', width: 100, align: 'right', isPrimaryKey: false, isQueryable: true, headerAlign: 'right', format: null, browseUrl: null, browseModuleId: null },
-    { key: 'FLAG', label: '启用', dataType: 'bit', width: 60, align: 'center', isPrimaryKey: false, isQueryable: true, headerAlign: 'center', format: null, browseUrl: null, browseModuleId: null },
+    { key: 'PRO_NO', label: '产品编号', dataType: 'nvarchar', width: 120, align: 'left', isPrimaryKey: true, isQueryable: true, headerAlign: 'center', format: null, browseUrl: null, browseModuleId: null, browseKeyFields: null },
+    { key: 'EDITION', label: '版次', dataType: 'nvarchar', width: 80, align: 'center', isPrimaryKey: true, isQueryable: true, headerAlign: 'center', format: null, browseUrl: null, browseModuleId: null, browseKeyFields: null },
+    { key: 'QTY', label: '数量', dataType: 'decimal', width: 100, align: 'right', isPrimaryKey: false, isQueryable: true, headerAlign: 'right', format: null, browseUrl: null, browseModuleId: null, browseKeyFields: null },
+    { key: 'FLAG', label: '启用', dataType: 'bit', width: 60, align: 'center', isPrimaryKey: false, isQueryable: true, headerAlign: 'center', format: null, browseUrl: null, browseModuleId: null, browseKeyFields: null },
   ],
   detailFields: [
-    { key: 'ITEM', label: '明细项', dataType: 'nvarchar', width: 100, align: 'left', isPrimaryKey: false, isQueryable: true, headerAlign: 'center', format: null, browseUrl: null, browseModuleId: null },
+    { key: 'ITEM', label: '明细项', dataType: 'nvarchar', width: 100, align: 'left', isPrimaryKey: false, isQueryable: true, headerAlign: 'center', format: null, browseUrl: null, browseModuleId: null, browseKeyFields: null },
   ],
   hasAdd: true,
   hasEdit: true,
@@ -122,16 +122,16 @@ function installApiMocks(overrides: {
   apiClientMock.postFile.mockResolvedValue(new Blob(['a,b']))
 }
 
-function renderPage(initialEntry = '/document-workbench/1209') {
+function renderPage(initialEntry = '/workbench/1209') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
-          <Route path="/document-workbench/:moduleId" element={<DocumentWorkbenchPage />} />
-          <Route path="/document-workbench/:moduleId/new" element={<div>NEW_FORM</div>} />
-          <Route path="/document-workbench/:moduleId/edit" element={<div>EDIT_FORM</div>} />
-          <Route path="/document-workbench/:moduleId/view" element={<div>VIEW_FORM</div>} />
+          <Route path="/workbench/:moduleId" element={<DocumentWorkbenchPage />} />
+          <Route path="/workbench/:moduleId/new" element={<div>NEW_FORM</div>} />
+          <Route path="/workbench/:moduleId/edit/*" element={<div>EDIT_FORM</div>} />
+          <Route path="/workbench/:moduleId/view/*" element={<div>VIEW_FORM</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -238,7 +238,7 @@ describe('DocumentWorkbenchPage', () => {
   })
 
   it('URL 携带分组参数时列表请求带 groupIndex/groupValue 并显示分组筛选', async () => {
-    renderPage('/document-workbench/1209?groupIndex=1&groupValue=YES')
+    renderPage('/workbench/1209?groupIndex=1&groupValue=YES')
     await loaded()
     await waitFor(() => {
       const recordCall = apiClientMock.get.mock.calls.find(([path]) => String(path).includes('/records'))
@@ -413,7 +413,7 @@ describe('DocumentWorkbenchPage', () => {
   })
 
   it('URL 携带 page 参数时仍从第 1 页开始滚动加载', async () => {
-    renderPage('/document-workbench/1209?page=2')
+    renderPage('/workbench/1209?page=2')
     await loaded()
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
       '/document-workbench/1209/records',
@@ -467,6 +467,33 @@ describe('DocumentWorkbenchPage', () => {
     expect(screen.queryByRole('link', { name: 'P1' })).not.toBeInTheDocument()
   })
 
+  it('有权限且键源列完整时渲染为目标记录浏览链接', async () => {
+    const withBrowse = {
+      ...definition,
+      masterFields: definition.masterFields.map((field: { key: string }) => field.key === 'PRO_NO'
+        ? { ...field, browseModuleId: 1305, browseKeyFields: ['PRO_NO'] }
+        : field),
+    }
+    installApiMocks({ definition: withBrowse })
+    renderPage()
+    await loaded()
+    const link = screen.getByRole('link', { name: 'P1' })
+    expect(link).toHaveAttribute('href', '/workbench/1305/view/P1?from=1209')
+  })
+
+  it('有权限但无键源列时降级为目标模块列表链接', async () => {
+    const withBrowse = {
+      ...definition,
+      masterFields: definition.masterFields.map((field: { key: string }) => field.key === 'PRO_NO'
+        ? { ...field, browseModuleId: 1305, browseKeyFields: null }
+        : field),
+    }
+    installApiMocks({ definition: withBrowse })
+    renderPage()
+    await loaded()
+    expect(screen.getByRole('link', { name: 'P1' })).toHaveAttribute('href', '/workbench/1305')
+  })
+
   it('hasEdit=false 时编辑按钮始终禁用', async () => {
     installApiMocks({ definition: { ...definition, hasEdit: false } })
     renderPage()
@@ -515,3 +542,4 @@ describe('DocumentWorkbenchPage', () => {
   })
 
 })
+

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider, useParams } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
 import { FormEditorPage } from './FormEditorPage'
@@ -79,6 +79,12 @@ const chooserData = {
   total: 1,
 }
 
+/** 返回目标探针：渲染当前 moduleId，用于断言返回按钮的去向。 */
+function BackProbe() {
+  const { moduleId } = useParams()
+  return <div>BACK_LIST_{moduleId}</div>
+}
+
 function installApiMocks() {
   apiClientMock.get.mockImplementation(async (path: string) => {
     const p = String(path)
@@ -95,10 +101,10 @@ function renderEditor(initialEntry: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createMemoryRouter(
     [
-      { path: '/document-workbench/:moduleId', element: <div>BACK_LIST</div> },
-      { path: '/document-workbench/:moduleId/new', element: <FormEditorPage /> },
-      { path: '/document-workbench/:moduleId/edit', element: <FormEditorPage /> },
-      { path: '/document-workbench/:moduleId/view', element: <FormEditorPage /> },
+      { path: '/workbench/:moduleId', element: <div>BACK_LIST</div> },
+      { path: '/workbench/:moduleId/new', element: <FormEditorPage /> },
+      { path: '/workbench/:moduleId/edit/*', element: <FormEditorPage /> },
+      { path: '/workbench/:moduleId/view/*', element: <FormEditorPage /> },
     ],
     { initialEntries: [initialEntry] },
   )
@@ -124,18 +130,48 @@ describe('FormEditorPage', () => {
 
   it('加载中显示 LoadingState', () => {
     apiClientMock.get.mockReturnValue(new Promise(() => undefined))
-    renderEditor('/document-workbench/1209/new')
+    renderEditor('/workbench/1209/new')
     expect(screen.getByText('正在加载表单…')).toBeInTheDocument()
   })
 
   it('模块未启用（404）显示明确提示', async () => {
     apiClientMock.get.mockRejectedValue(new ApiError(404, { code: 'NOT_FOUND', message: 'not found' }))
-    renderEditor('/document-workbench/1209/new')
+    renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByText('该模块未启用统一表单编辑（含存盘后业务逻辑的模块暂不开放，或不在白名单内）。')).toBeInTheDocument())
   })
 
+  it('跨模块关联浏览（from 参数）：返回按钮回到来源工作台列表', async () => {
+    const router = createMemoryRouter(
+      [
+        { path: '/workbench/:moduleId', element: <BackProbe /> },
+        { path: '/workbench/:moduleId/view/*', element: <FormEditorPage /> },
+      ],
+      { initialEntries: ['/workbench/1209/view/P1/A?from=1405'] },
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>)
+    await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '返回' }))
+    await waitFor(() => expect(screen.getByText('BACK_LIST_1405')).toBeInTheDocument())
+  })
+
+  it('常规浏览（无 from 参数）：返回按钮回到当前模块列表', async () => {
+    const router = createMemoryRouter(
+      [
+        { path: '/workbench/:moduleId', element: <BackProbe /> },
+        { path: '/workbench/:moduleId/view/*', element: <FormEditorPage /> },
+      ],
+      { initialEntries: ['/workbench/1209/view/P1/A'] },
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>)
+    await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '返回' }))
+    await waitFor(() => expect(screen.getByText('BACK_LIST_1209')).toBeInTheDocument())
+  })
+
   it('新增模式按默认值初始化字段', async () => {
-    const { container } = renderEditor('/document-workbench/1209/new')
+    const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     expect(container.querySelector('.erp-form-grid')).not.toBeNull()
     expect(screen.getByDisplayValue('5')).toBeInTheDocument()
@@ -150,7 +186,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: false } }
       throw new Error(`unexpected GET ${p}`)
     })
-    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    renderEditor('/workbench/1209/view/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '批核' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: '解批' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '打印' })).toBeInTheDocument()
@@ -163,7 +199,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: true } }
       throw new Error(`unexpected GET ${p}`)
     })
-    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    renderEditor('/workbench/1209/view/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '解批' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: '批核' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '打印' })).toBeInTheDocument()
@@ -178,7 +214,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: false } }
       throw new Error(`unexpected GET ${p}`)
     })
-    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    renderEditor('/workbench/1209/view/P1/A')
     const approveButton = await screen.findByRole('button', { name: '批核' })
     fireEvent.click(approveButton)
     await waitFor(() => expect(postMock).toHaveBeenCalledWith(
@@ -196,7 +232,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, FINISHED_TAG: false } }
       throw new Error(`unexpected GET ${p}`)
     })
-    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    renderEditor('/workbench/1209/view/P1/A')
     const endcaseButton = await screen.findByRole('button', { name: '结案' })
     fireEvent.click(endcaseButton)
     await waitFor(() => expect(postMock).toHaveBeenCalledWith(
@@ -212,7 +248,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, FINISHED_TAG: false } }
       throw new Error(`unexpected GET ${p}`)
     })
-    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    renderEditor('/workbench/1209/view/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: '结案' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '取消结案' })).not.toBeInTheDocument()
@@ -225,7 +261,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: true, FINISHED_TAG: false } }
       throw new Error(`unexpected GET ${p}`)
     })
-    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    renderEditor('/workbench/1209/view/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '解批' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: '批核' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '编辑' })).toBeDisabled()
@@ -238,7 +274,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: false, FINISHED_TAG: false } }
       throw new Error(`unexpected GET ${p}`)
     })
-    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    renderEditor('/workbench/1209/view/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: '批核' })).not.toBeInTheDocument()
   })
@@ -250,7 +286,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, FINISHED_TAG: true } }
       throw new Error(`unexpected GET ${p}`)
     })
-    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    renderEditor('/workbench/1209/view/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '取消结案' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: '结案' })).not.toBeInTheDocument()
   })
@@ -262,7 +298,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: true, FINISHED_TAG: true } }
       throw new Error(`unexpected GET ${p}`)
     })
-    renderEditor('/document-workbench/1209/view?key=%5B%22P1%22%2C%22A%22%5D')
+    renderEditor('/workbench/1209/view/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '解批' })).toBeInTheDocument())
     expect(screen.getByRole('button', { name: '解批' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '编辑' })).toBeDisabled()
@@ -285,7 +321,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/form-chooser/')) return chooserData
       throw new Error(`unexpected GET ${p}`)
     })
-    const { container } = renderEditor('/document-workbench/1209/new')
+    const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('input.form-control:not([disabled])'))
     expect(inputs.find(input => input.value === 'DD')).toBeTruthy()
@@ -294,7 +330,7 @@ describe('FormEditorPage', () => {
   })
 
   it('明细网格显示序号与操作列', async () => {
-    renderEditor('/document-workbench/1209/edit?key=["P1","A"]')
+    renderEditor('/workbench/1209/edit/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     expect(screen.getByText('序号')).toBeInTheDocument()
     expect(screen.getByText('操作')).toBeInTheDocument()
@@ -302,7 +338,7 @@ describe('FormEditorPage', () => {
   })
 
   it('明细网格不再渲染补空行（ADR-006 决策 5）', async () => {
-    const { container } = renderEditor('/document-workbench/1209/edit?key=["P1","A"]')
+    const { container } = renderEditor('/workbench/1209/edit/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     // 编辑模式有 1 行真实明细，无任何占位空行
     expect(container.querySelectorAll('tr.erp-detail-filler')).toHaveLength(0)
@@ -310,7 +346,7 @@ describe('FormEditorPage', () => {
   })
 
   it('新增模式 0 行明细时空态显示「+ 新增一行」入口（ADR-006 决策 5）', async () => {
-    const { container } = renderEditor('/document-workbench/1209/new')
+    const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     expect(container.querySelectorAll('.erp-detail-grid tbody tr')).toHaveLength(0)
     expect(screen.getByRole('button', { name: '+ 新增一行' })).toBeInTheDocument()
@@ -329,7 +365,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/form-chooser/')) return chooserData
       throw new Error(`unexpected GET ${p}`)
     })
-    renderEditor('/document-workbench/1209/new')
+    renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     expect(screen.getByRole('button', { name: '基本资料' })).toHaveClass('active')
     expect(screen.getByText('字段A')).toBeInTheDocument()
@@ -351,7 +387,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/form-chooser/')) return chooserData
       throw new Error(`unexpected GET ${p}`)
     })
-    const { container } = renderEditor('/document-workbench/1209/new')
+    const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     expect(screen.queryByText('新建产品版次')).not.toBeInTheDocument()
     const toolbar = container.querySelector('.erp-form-toolbar')
@@ -376,7 +412,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/form-chooser/')) return chooserData
       throw new Error(`unexpected GET ${p}`)
     })
-    const { container } = renderEditor('/document-workbench/1209/new')
+    const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     const cell = container.querySelector('.erp-form-cell')
     expect(cell).not.toBeNull()
@@ -387,7 +423,7 @@ describe('FormEditorPage', () => {
   })
 
   it('客户端校验拦截必填为空并展示字段错误', async () => {
-    renderEditor('/document-workbench/1209/new')
+    renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(screen.getByText(/数据校验未通过/)).toBeInTheDocument())
@@ -396,7 +432,7 @@ describe('FormEditorPage', () => {
   })
 
   it('新增保存成功后进入浏览态（ADR-006 决策 6）', async () => {
-    const { container } = renderEditor('/document-workbench/1209/new')
+    const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.change(masterInputs(container)[0], { target: { value: 'P9' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
@@ -417,7 +453,7 @@ describe('FormEditorPage', () => {
       message: '校验失败',
       fieldErrors: [{ field: 'QTY', message: '数量不能超过库存。', code: 'RANGE' }],
     }))
-    const { container } = renderEditor('/document-workbench/1209/new')
+    const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.change(masterInputs(container)[0], { target: { value: 'P9' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
@@ -425,7 +461,7 @@ describe('FormEditorPage', () => {
   })
 
   it('编辑模式加载记录、保存时携带 original 与主键 key', async () => {
-    renderEditor('/document-workbench/1209/edit?key=["P1","A"]')
+    renderEditor('/workbench/1209/edit/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     expect(screen.getByDisplayValue('P1')).toBeInTheDocument()
     expect(screen.getByDisplayValue('X1')).toBeInTheDocument()
@@ -443,14 +479,14 @@ describe('FormEditorPage', () => {
   })
 
   it('主表必填缺失时拒绝新增明细行', async () => {
-    renderEditor('/document-workbench/1209/new')
+    renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '新增一行' }))
     await waitFor(() => expect(screen.getByText('请先填写主表字段：PRO_NO，再新增明细。')).toBeInTheDocument())
   })
 
   it('新增与删除明细行', async () => {
-    const { container } = renderEditor('/document-workbench/1209/new')
+    const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.change(masterInputs(container)[0], { target: { value: 'P9' } })
     fireEvent.click(screen.getByRole('button', { name: '新增一行' }))
@@ -472,7 +508,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/form-chooser/')) return chooserData
       throw new Error(`unexpected GET ${p}`)
     })
-    const { container } = renderEditor('/document-workbench/1209/new')
+    const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     // 主表 QTY 默认 5，新增明细行后 QTY 应带入
     fireEvent.change(masterInputs(container)[0], { target: { value: 'P9' } })
@@ -495,7 +531,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/form-chooser/')) return chooserData
       throw new Error(`unexpected GET ${p}`)
     })
-    const { container } = renderEditor('/document-workbench/1209/edit?key=["P1","A"]')
+    const { container } = renderEditor('/workbench/1209/edit/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     // ADR-006 决策 1：serverFilled 无选择器字段渲染为只读文本，不再是禁用输入框
     const staticCells = container.querySelectorAll('.erp-detail-grid tbody tr:not(.erp-detail-filler) .erp-form-static')
@@ -504,7 +540,7 @@ describe('FormEditorPage', () => {
   })
 
   it('全选并删除所选明细行', async () => {
-    const { container } = renderEditor('/document-workbench/1209/new')
+    const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.change(masterInputs(container)[0], { target: { value: 'P9' } })
     fireEvent.click(screen.getByRole('button', { name: '新增一行' }))
@@ -531,7 +567,7 @@ describe('FormEditorPage', () => {
       if (p.includes('/form-chooser/')) return chooserData
       throw new Error(`unexpected GET ${p}`)
     })
-    const { container } = renderEditor('/document-workbench/1209/edit?key=["P1","A"]')
+    const { container } = renderEditor('/workbench/1209/edit/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     const detailInputs = () => Array.from(container.querySelectorAll<HTMLInputElement>('.erp-detail-grid tbody tr:not(.erp-detail-filler) input.form-control'))
     // 初始顺序 B/A（每行两个输入：ITEM 在 0/2，QTY 在 1/3）
@@ -549,7 +585,7 @@ describe('FormEditorPage', () => {
   })
 
   it('选择器按 returnMapping 回填主表字段并置脏', async () => {
-    renderEditor('/document-workbench/1209/new')
+    renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '选择' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: '产品编号' })).toBeInTheDocument())
@@ -564,7 +600,7 @@ describe('FormEditorPage', () => {
   })
 
   it('修改字段后触发未保存离开提示', async () => {
-    const { container } = renderEditor('/document-workbench/1209/new')
+    const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.change(masterInputs(container)[0], { target: { value: 'X' } })
     const event = new Event('beforeunload', { cancelable: true })
@@ -574,7 +610,7 @@ describe('FormEditorPage', () => {
 
   it('保存失败展示通用错误', async () => {
     apiClientMock.post.mockRejectedValue(new Error('网络错误'))
-    const { container } = renderEditor('/document-workbench/1209/new')
+    const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.change(masterInputs(container)[0], { target: { value: 'P9' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
@@ -607,7 +643,7 @@ describe('FormEditorPage', () => {
       }
       throw new Error(`unexpected GET ${p}`)
     })
-    const { container } = renderEditor('/document-workbench/1209/new')
+    const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     // 新增明细前先填主表字段（detailNoFields 校验 PRO_NO）
     fireEvent.change(masterInputs(container)[0], { target: { value: 'P9' } })

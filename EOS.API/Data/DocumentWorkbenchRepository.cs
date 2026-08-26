@@ -2,6 +2,7 @@ using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Telemetry;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Options;
 using System.Data;
 using System.Diagnostics;
 using System.Globalization;
@@ -10,7 +11,7 @@ using System.Text.Json.Serialization;
 
 namespace EOS.API.Data;
 
-public sealed record WorkbenchField(string Key, string Label, string DataType, int Width, string? Align, bool IsPrimaryKey, bool IsVisible = true, bool IsQueryable = true, string HeaderAlign = "center", string? Format = null, string? BrowseUrl = null, int? BrowseModuleId = null, bool IsVirtual = false, [property: JsonIgnore] string? VirtualExpression = null, [property: JsonIgnore] string? ConvertFunction = null);
+public sealed record WorkbenchField(string Key, string Label, string DataType, int Width, string? Align, bool IsPrimaryKey, bool IsVisible = true, bool IsQueryable = true, string HeaderAlign = "center", string? Format = null, string? BrowseUrl = null, int? BrowseModuleId = null, bool IsVirtual = false, [property: JsonIgnore] string? VirtualExpression = null, [property: JsonIgnore] string? ConvertFunction = null, IReadOnlyList<string>? BrowseKeyFields = null);
 public sealed record WorkbenchColumn(string Key, string Label, bool IsVisible, int Order, bool IsVirtual = false);
 public sealed record WorkbenchColumnSettings(IReadOnlyList<WorkbenchColumn> Master, IReadOnlyList<WorkbenchColumn> Detail);
 public sealed record SaveWorkbenchColumns(IReadOnlyList<string> Master, IReadOnlyList<string> Detail);
@@ -83,9 +84,11 @@ public sealed class DocumentWorkbenchRepository(
     WorkbenchApprovalService approvalService,
     WorkbenchAuditWriter auditWriter,
     WorkbenchDefinitionProvider definitionProvider,
+    IOptions<UnifiedFormEditorSettings> formSettings,
     ILogger<DocumentWorkbenchRepository> logger) : Features.Assistant.Tools.IWorkbenchSearchGateway
 {
     private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
+    private readonly IReadOnlySet<int> formEnabledModules = formSettings.Value.EnabledModuleIds.ToHashSet();
 
     /// <summary>
     /// 解析 MODULES.FORM_BUTTONS（如 '1=copy;2=approve;3=print'）为受控按钮列表。
@@ -182,10 +185,14 @@ public sealed class DocumentWorkbenchRepository(
     {
         var master = baseline.MasterTable;
         var detail = baseline.DetailTable;
-        var masterFields = await ReadFields(connection, userId, master, master, canViewCost, canViewSecrecy, deniedMasterFields, token);
+        var masterFields = await WorkbenchBrowseResolver.ResolveAsync(connection,
+            await ReadFields(connection, userId, master, master, canViewCost, canViewSecrecy, deniedMasterFields, token),
+            master, formEnabledModules, token);
         var detailFields = detail is null
             ? []
-            : await ReadFields(connection, userId, master, detail, canViewCost, canViewSecrecy, deniedDetailFields, token);
+            : await WorkbenchBrowseResolver.ResolveAsync(connection,
+                await ReadFields(connection, userId, master, detail, canViewCost, canViewSecrecy, deniedDetailFields, token),
+                detail, formEnabledModules, token);
         var (_, groupExpressions) = await ReadGroupExpressionsAsync(connection, moduleId, token);
         return baseline with
         {
@@ -259,7 +266,8 @@ public sealed class DocumentWorkbenchRepository(
         // 空值/非法值返回 null，由控制器按统一表单白名单回退或隐藏按钮。
         var resolvedNewUrl = ModuleRouteValidator.ResolveActionUrl(newUrlRaw, moduleId);
         var resolvedModiUrl = ModuleRouteValidator.ResolveActionUrl(modiUrl, moduleId);
-        var masterFields=await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token);
+        var masterFields=await WorkbenchBrowseResolver.ResolveAsync(connection,
+            await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token),master,formEnabledModules,token);
         var masterPkOrder=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,master,token);
         // 领域规则：静态映射优先（含单号字段/冲抵表等增强配置），否则由 MODULES 元数据自动注册
         var businessRule=ModuleBusinessMap.Get(moduleId);
@@ -294,7 +302,8 @@ public sealed class DocumentWorkbenchRepository(
             }
         }
         WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,
-            detail is null?[]:await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),NormalizeSort(defaultSort,master,masterFields),
+            detail is null?[]:await WorkbenchBrowseResolver.ResolveAsync(connection,
+                await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),detail,formEnabledModules,token),NormalizeSort(defaultSort,master,masterFields),
             resolvedNewUrl is not null || resolvedModiUrl is not null,resolvedModiUrl is not null,detailNoSave,
             masterPkOrder,detailNoFields,
             businessRule?.WorkflowSproc is not null,

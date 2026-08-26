@@ -8,6 +8,7 @@ import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
+import { workbenchList } from '../document-workbench/workbenchPath'
 import { ApiError } from '../../types/api'
 
 interface MyTask {
@@ -138,7 +139,7 @@ export function MyTasksPage() {
       enableSorting: false,
       enableHiding: false,
       meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
-      cell: ({ row }) => <Button size="sm" className="erp-table-action" onClick={() => navigate(`/document-workbench/${row.original.moduleId}`)}>去处理</Button>,
+      cell: ({ row }) => <Button size="sm" className="erp-table-action" onClick={() => navigate(workbenchList(row.original.moduleId))}>去处理</Button>,
     },
   ], [navigate])
 

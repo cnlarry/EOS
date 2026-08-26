@@ -9,6 +9,7 @@ import { ErpTable } from '../../components/common/ErpTable'
 import { navigationIcons } from '../../components/layout/navigationIcons'
 import { Button } from '../../components/ui/Button'
 import { useAuth } from '../auth/authContext'
+import { workbenchList } from '../document-workbench/workbenchPath'
 import type { NavigationItem } from '../auth/types'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
@@ -129,7 +130,7 @@ export function DashboardPage() {
       enableHiding: false,
       meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
       cell: ({ row }) => (
-        <Button size="sm" className="erp-table-action" onClick={() => navigate(`/document-workbench/${row.original.moduleId}`)}>去处理</Button>
+        <Button size="sm" className="erp-table-action" onClick={() => navigate(workbenchList(row.original.moduleId))}>去处理</Button>
       ),
     },
   ]
@@ -187,7 +188,7 @@ export function DashboardPage() {
       enableHiding: false,
       meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
       cell: ({ row }) => (
-        <Button size="sm" className="erp-table-action" onClick={() => navigate(`/document-workbench/${row.original.moduleId}`)}>查看</Button>
+        <Button size="sm" className="erp-table-action" onClick={() => navigate(workbenchList(row.original.moduleId))}>查看</Button>
       ),
     },
   ]

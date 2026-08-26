@@ -7,7 +7,7 @@ public class ModuleRouteValidatorTests
 {
     [Theory]
     [InlineData("/reports", 129801, "/reports/129801")]
-    [InlineData("/document-workbench", 1406, "/document-workbench/1406")]
+    [InlineData("/workbench", 1406, "/workbench/1406")]
     [InlineData("/search-center", 2501, "/search-center/2501")]
     [InlineData("/detail-query", 14996, "/detail-query/14996")]
     public void ParameterizedBases_AppendModuleId(string url, int moduleId, string expected)
@@ -30,7 +30,7 @@ public class ModuleRouteValidatorTests
 
     [Theory]
     [InlineData("/reports/129801", 129801)]          // 编号不应写进 M_URL
-    [InlineData("/document-workbench/1406", 1406)]
+    [InlineData("/workbench/1406", 1406)]
     [InlineData("/reports?x=1", 129801)]
     [InlineData("/admin/nope", 2301)]
     [InlineData("https://evil.example/x", 129801)]
@@ -47,10 +47,10 @@ public class ModuleRouteValidatorTests
     }
 
     [Theory]
-    [InlineData("/document-workbench/{moduleId}/new", 1209, "/document-workbench/1209/new")]
-    [InlineData("/document-workbench/{moduleId}/edit", 1406, "/document-workbench/1406/edit")]
-    [InlineData("/document-workbench/{moduleId}/view", 1305, "/document-workbench/1305/view")]
-    [InlineData("/document-workbench/{moduleId}/edit?key=x", 1406, "/document-workbench/1406/edit?key=x")]
+    [InlineData("/workbench/{moduleId}/new", 1209, "/workbench/1209/new")]
+    [InlineData("/workbench/{moduleId}/edit", 1406, "/workbench/1406/edit")]
+    [InlineData("/workbench/{moduleId}/view", 1305, "/workbench/1305/view")]
+    [InlineData("/workbench/{moduleId}/edit?key=x", 1406, "/workbench/1406/edit?key=x")]
     public void ResolveActionUrl_Templates_SubstituteModuleId(string url, int moduleId, string expected)
     {
         Assert.Equal(expected, ModuleRouteValidator.ResolveActionUrl(url, moduleId));
@@ -71,7 +71,7 @@ public class ModuleRouteValidatorTests
     [InlineData("~/BOM/Product.aspx")]
     [InlineData("~/COP/Return.aspx?m=1")]
     [InlineData("/admin/nope")]
-    [InlineData("/document-workbench/1406")]
+    [InlineData("/workbench/1406")]
     [InlineData("https://evil.example/x")]
     [InlineData("javascript:alert(1)")]
     [InlineData("//evil.example/x")]
@@ -81,8 +81,8 @@ public class ModuleRouteValidatorTests
     }
 
     [Theory]
-    [InlineData("/document-workbench/{moduleId}/edit", 1406, "/document-workbench/1406/edit")]
-    [InlineData("/document-workbench/{moduleId}/new", 1209, "/document-workbench/1209/new")]
+    [InlineData("/workbench/{moduleId}/edit", 1406, "/workbench/1406/edit")]
+    [InlineData("/workbench/{moduleId}/new", 1209, "/workbench/1209/new")]
     public void Resolve_ActionTemplates_MapToFormRoute(string url, int moduleId, string expected)
     {
         Assert.Equal(expected, ModuleRouteValidator.Resolve(url, moduleId));
@@ -91,15 +91,15 @@ public class ModuleRouteValidatorTests
     [Theory]
     [InlineData(null, true)]
     [InlineData("", true)]
-    [InlineData("/document-workbench", true)]
+    [InlineData("/workbench", true)]
     [InlineData("/reports", true)]
     [InlineData("/search-center", true)]
     [InlineData("/detail-query", true)]
     [InlineData("/admin/tables", true)]
     [InlineData("/settings/system", true)]
-    [InlineData("/document-workbench/{moduleId}/new", true)]
+    [InlineData("/workbench/{moduleId}/new", true)]
     [InlineData("/legacy/modules/2307", true)]
-    [InlineData("/document-workbench/1406", false)]
+    [InlineData("/workbench/1406", false)]
     [InlineData("/reports/129801", false)]
     [InlineData("~/BOM/Product.aspx", false)]
     [InlineData("Comm/view_frame.aspx", false)]
@@ -113,12 +113,12 @@ public class ModuleRouteValidatorTests
     [Theory]
     [InlineData(null, true)]
     [InlineData("", true)]
-    [InlineData("/document-workbench/{moduleId}/new", true)]
-    [InlineData("/document-workbench/{moduleId}/edit", true)]
+    [InlineData("/workbench/{moduleId}/new", true)]
+    [InlineData("/workbench/{moduleId}/edit", true)]
     [InlineData("/admin/tables?table=PRODUCT", true)]
     [InlineData("/admin/menus", true)]
     [InlineData("~/BOM/Product.aspx", false)]
-    [InlineData("/document-workbench/1406/edit", false)]
+    [InlineData("/workbench/1406/edit", false)]
     [InlineData("/admin/nope", false)]
     [InlineData("javascript:alert(1)", false)]
     public void IsValidActionUrl_Contract(string? url, bool expected)
@@ -127,9 +127,9 @@ public class ModuleRouteValidatorTests
     }
 
     [Theory]
-    [InlineData("/document-workbench", true)]
-    [InlineData("/document-workbench/1406", true)]
-    [InlineData("/document-workbench/1406/edit", true)]
+    [InlineData("/workbench", true)]
+    [InlineData("/workbench/1406", true)]
+    [InlineData("/workbench/1406/edit", true)]
     [InlineData("/reports", false)]
     [InlineData("/admin/menus", false)]
     public void IsWorkbenchUrl_Classification(string url, bool expected)
@@ -140,7 +140,7 @@ public class ModuleRouteValidatorTests
     [Theory]
     [InlineData("/reports", true)]
     [InlineData("/reports/129801", true)]
-    [InlineData("/document-workbench", false)]
+    [InlineData("/workbench", false)]
     [InlineData("/search-center", false)]
     public void IsReportUrl_Classification(string url, bool expected)
     {

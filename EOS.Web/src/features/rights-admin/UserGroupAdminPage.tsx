@@ -7,6 +7,7 @@ import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
+import { workbenchList } from '../document-workbench/workbenchPath'
 import { ApiError } from '../../types/api'
 import { ReportRightsMatrix } from './ReportRightsMatrix'
 import { RightsMatrix } from './RightsMatrix'
@@ -74,7 +75,7 @@ export function UserGroupAdminPage() {
             <Button size="sm" icon={<IconShield size={15} />} onClick={() => setRightsTarget(id)}>组权限</Button>
             <Button size="sm" icon={<IconReport size={15} />} onClick={() => setReportTarget(id)}>报表权限</Button>
             <Button size="sm" variant="secondary" icon={<IconUsers size={15} />} onClick={() => setMemberTarget(id)}>成员</Button>
-            <Button size="sm" variant="ghost" icon={<IconExternalLink size={15} />} title="在统一表单工作台中维护组主档" onClick={() => { window.location.href = '/document-workbench/2305' }}>
+            <Button size="sm" variant="ghost" icon={<IconExternalLink size={15} />} title="在统一表单工作台中维护组主档" onClick={() => { window.location.href = workbenchList(2305) }}>
               主档
             </Button>
           </div>

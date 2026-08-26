@@ -61,6 +61,23 @@ public sealed class WorkbenchQueryComposer(
                 selected.Add(field);
             }
         }
+        // 跨模块浏览链接（BROWSE_M_IDX/BrowseKeyFields）的键源列：不在可见列内时
+        // 强制加入返回行（隐藏、不渲染），供前端 FieldBrowseLink 组装目标记录主键数组。
+        foreach (var sourceKey in fields
+            .Where(field => field.BrowseKeyFields is { Count: > 0 })
+            .SelectMany(field => field.BrowseKeyFields!)
+            .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (selected.Any(field => field.Key.Equals(sourceKey, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+            if (!WorkbenchSql.Identifier.IsMatch(sourceKey))
+            {
+                continue;
+            }
+            selected.Add(new WorkbenchField(sourceKey, sourceKey, "nvarchar", 100, "left", false, false, false));
+        }
         var predicates = new List<string>();
         var stopwatch = Stopwatch.StartNew();
         await using var connection = CreateConnection();
