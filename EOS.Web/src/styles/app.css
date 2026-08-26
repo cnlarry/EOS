@@ -484,8 +484,10 @@ button, input, select { font: inherit; }
   min-width: 10rem;
 }
 .erp-shell > .page-wrapper { display: flex; flex-direction: column; min-width: 0; width: 100%; max-width: none; min-height: 100vh; padding-top: 64px; }
-/* 面包屑导航容器固定定位：不随页面滚动消失；自身不出现滚动条，溢出交由 page-body 内部滚动 */
-.erp-context-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 1030; display: flex; align-items: center; height: 64px; padding: 0 10px; border: 0; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); box-shadow: none; overflow: hidden; }
+/* 面包屑导航容器固定定位：不随页面滚动消失；溢出交由 page-body 内部滚动。
+   overflow 不能为 hidden，否则固定定位容器内的用户下拉菜单（向下展开超出 64px）会被裁切/被下方工作区遮挡；
+   面包屑文本自身的截断由 .erp-context-bar nav 的 overflow:hidden 单独承担。 */
+.erp-context-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 1030; display: flex; align-items: center; height: 64px; padding: 0 10px; border: 0; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); box-shadow: none; overflow: visible; }
 .erp-context-bar > .container-fluid { display: flex; height: 100%; min-width: 0; align-items: center; padding: 0 !important; }
 .erp-context-user { display: flex; flex: 0 0 auto; height: 100%; align-items: center; gap: 4px; }
 .erp-context-user .erp-user { height: 100%; border-radius: 0; }
@@ -530,6 +532,9 @@ button, input, select { font: inherit; }
 .erp-metric-card { overflow: hidden; }
 .erp-metric-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--tblr-primary); }
 .erp-metric-icon { display: grid; place-items: center; width: 2.8rem; height: 2.8rem; border-radius: .7rem; color: var(--tblr-primary); background: var(--tblr-primary-lt); }
+/* 首页卡片布局：卡片间隙与页边距一致（10px），覆盖 Tabler 默认 gutter（page-padding 16px） */
+.erp-dashboard { gap: 10px; }
+.erp-dashboard .row-cards { --tblr-gutter-x: 10px; --tblr-gutter-y: 10px; }
 .erp-chart-placeholder { height: 19rem; display: flex; flex-direction: column; justify-content: flex-end; }
 .erp-chart-bars { display: flex; align-items: end; gap: 2.2%; height: 15rem; padding: 0 1rem; border-bottom: 1px solid var(--tblr-border-color); background: repeating-linear-gradient(to bottom, transparent 0, transparent calc(25% - 1px), var(--tblr-border-color-translucent) 25%); }
 .erp-chart-bars span { flex: 1; max-width: 2.5rem; margin-inline: auto; border-radius: .35rem .35rem 0 0; background: linear-gradient(to top, #206bc4, #76aee9); opacity: .9; }
