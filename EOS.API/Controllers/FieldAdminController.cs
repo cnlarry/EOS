@@ -54,7 +54,7 @@ public sealed class FieldAdminController(
     public async Task<IActionResult> DeleteTable(string table, CancellationToken token)
     {
         if (!await CanSetup(token)) return Forbid();
-        await repository.DeleteTableAsync(table, token);
+        await repository.DeleteTableAsync(table, userContext.EmployeeName, token);
         return NoContent();
     }
 
@@ -189,7 +189,7 @@ public sealed class FieldAdminController(
     public async Task<IActionResult> Delete(string table, string field, CancellationToken token)
     {
         if (!await CanSetup(token)) return Forbid();
-        await repository.DeleteAsync(table, field, token);
+        await repository.DeleteAsync(table, field, userContext.EmployeeName, token);
         return NoContent();
     }
 

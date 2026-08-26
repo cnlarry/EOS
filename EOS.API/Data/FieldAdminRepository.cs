@@ -1,4 +1,6 @@
 using System.Data;
+using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
@@ -200,15 +202,12 @@ public sealed class FieldAdminRepository(
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
 
-        if (original is not null)
+        var currentTable = await ReadCurrentTableInputAsync(connection, transaction, tableId, token)
+            ?? throw new KeyNotFoundException("数据表不存在。");
+        if (original is not null && !SameTableInput(original, currentTable))
         {
-            var current = await ReadCurrentTableInputAsync(connection, transaction, tableId, token)
-                ?? throw new KeyNotFoundException("数据表不存在。");
-            if (!SameTableInput(original, current))
-            {
-                logger.LogWarning("数据表乐观锁冲突 table={Table} by={UpdatedBy}", tableId, updatedBy);
-                throw new ArgumentException("数据表信息已被他人修改，请刷新后重试！", nameof(input));
-            }
+            logger.LogWarning("数据表乐观锁冲突 table={Table} by={UpdatedBy}", tableId, updatedBy);
+            throw new ArgumentException("数据表信息已被他人修改，请刷新后重试！", nameof(input));
         }
 
         const string sql = """
@@ -223,11 +222,12 @@ public sealed class FieldAdminRepository(
             throw new KeyNotFoundException("数据表不存在。");
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
         await transaction.CommitAsync(token);
-        await auditWriter.WriteBestEffortAsync(null, tableId, "UPDATE", "数据表维护更新", updatedBy, "FIELD_ADMIN", result: 1, null, token);
+        await auditWriter.WriteBestEffortAsync(null, tableId, "UPDATE", "数据表维护更新", updatedBy, "FIELD_ADMIN",
+            result: 1, DiffTables(currentTable, input), token);
         logger.LogInformation("更新数据表元数据 table={Table} by={UpdatedBy}", tableId, updatedBy);
     }
 
-    public async Task DeleteTableAsync(string tableId, CancellationToken token)
+    public async Task DeleteTableAsync(string tableId, string updatedBy, CancellationToken token)
     {
         EnsureIdentifier(tableId, null);
         await using var connection = CreateConnection();
@@ -276,14 +276,19 @@ public sealed class FieldAdminRepository(
                 $"数据表存在引用，无法删除：{string.Join("；", blocked.Select(item => $"{item.Name} {item.Count} 条"))}。仅删除无引用的表元数据，物理表不受影响。",
                 nameof(tableId));
 
+        var snapshot = await ReadCurrentTableInputAsync(connection, transaction, tableId, token)
+            ?? throw new KeyNotFoundException("数据表不存在。");
         await using var delete = new SqlCommand("DELETE FROM dbo.TABLES WHERE T_ID=@TableId", connection, transaction);
         delete.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
         if (await delete.ExecuteNonQueryAsync(token) != 1)
             throw new KeyNotFoundException("数据表不存在。");
-        await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, "SYSTEM", token);
+        await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
         await transaction.CommitAsync(token);
-        await auditWriter.WriteBestEffortAsync(null, tableId, "DELETE", "数据表维护删除", "SYSTEM", "FIELD_ADMIN", result: 1, null, token);
-        logger.LogInformation("删除数据表元数据 table={Table}", tableId);
+        await auditWriter.WriteBestEffortAsync(null, tableId, "DELETE", "数据表维护删除", updatedBy, "FIELD_ADMIN",
+            result: 1,
+            [new AuditFieldChange("(table)", JsonSerializer.Serialize(DescribeTable(snapshot)), null, null)],
+            token);
+        logger.LogInformation("删除数据表元数据 table={Table} by={UpdatedBy}", tableId, updatedBy);
     }
 
     public async Task<IReadOnlyList<FieldAdminUnmanagedField>> GetUnmanagedFieldsAsync(string tableId, CancellationToken token)
@@ -344,6 +349,7 @@ public sealed class FieldAdminRepository(
         var created = 0;
         var skipped = 0;
         var reasons = new List<string>();
+        var createdChanges = new List<AuditFieldChange>();
         foreach (var fieldId in requested)
         {
             if (await FieldExistsAsync(connection, transaction, request.TableId, fieldId, token))
@@ -381,10 +387,12 @@ public sealed class FieldAdminRepository(
             command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
             await command.ExecuteNonQueryAsync(token);
             created++;
+            createdChanges.Add(new AuditFieldChange(fieldId, null, $"{column.Value.Type} ({column.Value.Description})", null));
         }
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
         await transaction.CommitAsync(token);
-        await auditWriter.WriteBestEffortAsync(null, request.TableId, "CREATE", "批量生成字段元数据", updatedBy, "FIELD_ADMIN", result: 1, null, token);
+        await auditWriter.WriteBestEffortAsync(null, request.TableId, "CREATE",
+            $"批量生成字段元数据 created={created} skipped={skipped}", updatedBy, "FIELD_ADMIN", result: 1, createdChanges, token);
         logger.LogInformation("批量生成字段元数据 table={Table} created={Created} skipped={Skipped} by={UpdatedBy}",
             request.TableId, created, skipped, updatedBy);
         return new(created, skipped, reasons);
@@ -595,7 +603,10 @@ public sealed class FieldAdminRepository(
             throw new InvalidOperationException("新增字段失败。");
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
         await transaction.CommitAsync(token);
-        await auditWriter.WriteBestEffortAsync(null, $"{request.TableId}.{request.FieldId}", "CREATE", "字段维护新增", updatedBy, "FIELD_ADMIN", result: 1, null, token);
+        await auditWriter.WriteBestEffortAsync(null, $"{request.TableId}.{request.FieldId}", "CREATE", "字段维护新增", updatedBy, "FIELD_ADMIN",
+            result: 1,
+            [new AuditFieldChange("(field)", null, JsonSerializer.Serialize(DescribeInput(request.Field)), null)],
+            token);
         logger.LogInformation("新增字段 table={Table} field={Field} by={UpdatedBy}", request.TableId, request.FieldId, updatedBy);
     }
 
@@ -613,15 +624,12 @@ public sealed class FieldAdminRepository(
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
 
-        if (original is not null)
+        var current = await ReadCurrentInputAsync(connection, transaction, tableId, fieldId, token)
+            ?? throw new KeyNotFoundException("字段不存在。");
+        if (original is not null && !SameInput(original, current))
         {
-            var current = await ReadCurrentInputAsync(connection, transaction, tableId, fieldId, token)
-                ?? throw new KeyNotFoundException("字段不存在。");
-            if (!SameInput(original, current))
-            {
-                logger.LogWarning("字段乐观锁冲突 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
-                throw new ArgumentException("字段内容已被他人修改，请刷新后重试！", nameof(field));
-            }
+            logger.LogWarning("字段乐观锁冲突 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
+            throw new ArgumentException("字段内容已被他人修改，请刷新后重试！", nameof(field));
         }
 
         const string sql = """
@@ -651,16 +659,19 @@ public sealed class FieldAdminRepository(
             throw new KeyNotFoundException("字段不存在。");
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
         await transaction.CommitAsync(token);
-        await auditWriter.WriteBestEffortAsync(null, $"{tableId}.{fieldId}", "UPDATE", "字段维护更新", updatedBy, "FIELD_ADMIN", result: 1, null, token);
+        await auditWriter.WriteBestEffortAsync(null, $"{tableId}.{fieldId}", "UPDATE", "字段维护更新", updatedBy, "FIELD_ADMIN",
+            result: 1, DiffInputs(current, field), token);
         logger.LogInformation("更新字段 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
     }
 
-    public async Task DeleteAsync(string tableId, string fieldId, CancellationToken token)
+    public async Task DeleteAsync(string tableId, string fieldId, string updatedBy, CancellationToken token)
     {
         EnsureIdentifier(tableId, fieldId);
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        var snapshot = await ReadCurrentInputAsync(connection, transaction, tableId, fieldId, token)
+            ?? throw new KeyNotFoundException("字段不存在。");
         await using var delete = new SqlCommand("DELETE FROM dbo.FIELDS WHERE T_ID=@TableId AND F_ID=@FieldId", connection, transaction);
         delete.Parameters.Add("@TableId", SqlDbType.VarChar, 100).Value = tableId;
         delete.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
@@ -684,10 +695,13 @@ public sealed class FieldAdminRepository(
         clean.Parameters.Add("@TableId", SqlDbType.VarChar, 100).Value = tableId;
         clean.Parameters.Add("@TableDotField", SqlDbType.NVarChar, 220).Value = $"{tableId}.{fieldId.Trim()}";
         await clean.ExecuteNonQueryAsync(token);
-        await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, "SYSTEM", token);
+        await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
         await transaction.CommitAsync(token);
-        await auditWriter.WriteBestEffortAsync(null, $"{tableId}.{fieldId}", "DELETE", "字段维护删除", "SYSTEM", "FIELD_ADMIN", result: 1, null, token);
-        logger.LogInformation("删除字段 table={Table} field={Field}", tableId, fieldId);
+        await auditWriter.WriteBestEffortAsync(null, $"{tableId}.{fieldId}", "DELETE", "字段维护删除", updatedBy, "FIELD_ADMIN",
+            result: 1,
+            [new AuditFieldChange("(field)", JsonSerializer.Serialize(DescribeInput(snapshot)), null, null)],
+            token);
+        logger.LogInformation("删除字段 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
     }
 
     private static FieldAdminChooser ReadChooser(SqlDataReader reader, int offset) => new(
@@ -807,6 +821,90 @@ public sealed class FieldAdminRepository(
         }
         command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
     }
+
+    /// <summary>字段元数据扁平化（键对齐 DB 列名，值按写入口径归一），供审计明细 diff 与删除快照。</summary>
+    internal static SortedDictionary<string, string?> DescribeInput(FieldAdminInput input)
+    {
+        var dict = new SortedDictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["F_DESC"] = input.Label.Trim(),
+            ["F_TYPE"] = input.DataType,
+            ["DISPLAY_LENGTH"] = input.Width.ToString(CultureInfo.InvariantCulture),
+            ["ITEM_ALIGN"] = input.Align ?? "",
+            ["HEADER_ALIGN"] = input.HeaderAlign,
+            ["DISPLAY_FORMAT"] = DbText(input.Format),
+            ["IS_VISIBLE"] = Bit(input.IsVisible),
+            ["IS_DEFAULT_FIELDS"] = Bit(input.IsDefault),
+            ["IS_QUERY"] = Bit(input.IsQueryable),
+            ["IS_READONLY"] = Bit(input.IsReadonly),
+            ["IS_VERIFY"] = Bit(input.IsRequired),
+            ["IS_COST"] = Bit(input.IsCost),
+            ["IS_SECRECY"] = Bit(input.IsSecrecy),
+            ["DFT_VALUE"] = DbText(input.DefaultValue),
+            ["VERIFY_INDEX"] = input.VerifyIndex?.ToString(CultureInfo.InvariantCulture),
+            ["REGEX"] = DbText(input.Regex),
+            ["F_REMARK"] = DbText(input.Remark),
+            ["BROWSE_URL"] = DbText(input.BrowseUrl),
+            ["BROWSE_M_IDX"] = input.BrowseModuleId?.ToString(CultureInfo.InvariantCulture),
+            ["ONLY_CHOOSE"] = Bit(input.OnlyChoose),
+            ["CHOOSE_MULTI"] = Bit(input.ChooseMultiple),
+            ["CHOOSE_PAGE"] = DbText(input.ChoosePage),
+            ["CAN_COPY"] = Bit(input.CanCopy),
+            ["FORM_TAB_NO"] = input.TabNo.ToString(CultureInfo.InvariantCulture),
+            ["FORM_ORDER"] = input.FormOrder?.ToString(CultureInfo.InvariantCulture),
+            ["FORM_SPAN"] = Math.Clamp(input.Span, 1, 2).ToString(CultureInfo.InvariantCulture),
+            ["FORM_NEW_LINE"] = Bit(input.NewLine),
+            ["FORM_CELL_GROUP"] = DbText(input.CellGroup),
+            ["FORM_CELL_ROLE"] = Math.Clamp(input.CellRole, 0, 2).ToString(CultureInfo.InvariantCulture),
+            ["FORM_OPTIONS"] = DbText(input.Options),
+        };
+        for (var i = 0; i < 4; i++)
+        {
+            var source = input.Choosers[i];
+            var prefix = $"CHOOSE{i + 1}_";
+            dict[$"{prefix}ACTIVE"] = Bit(source.Active);
+            dict[$"{prefix}T_ID"] = DbText(source.Table);
+            dict[$"{prefix}T_DESC"] = DbText(source.Description);
+            dict[$"{prefix}M_IDX"] = source.ModuleId?.ToString(CultureInfo.InvariantCulture);
+            dict[$"{prefix}FILTER"] = DbText(source.Filter);
+            dict[$"{prefix}RETURNVAL"] = DbText(source.ReturnMapping);
+        }
+        return dict;
+    }
+
+    /// <summary>表元数据扁平化（同 DescribeInput 口径）。</summary>
+    internal static SortedDictionary<string, string?> DescribeTable(FieldAdminTableInput input) => new(StringComparer.Ordinal)
+    {
+        ["T_DESC"] = input.Description.Trim(),
+        ["T_KIND"] = (input.Kind ?? "").Trim(),
+        ["T_TYPE"] = (input.Type ?? "").Trim(),
+        ["T_REMARK"] = DbText(input.Remark),
+    };
+
+    /// <summary>按扁平化键集对比前后差异，仅输出变化项（审计字段级明细）。</summary>
+    internal static IReadOnlyList<AuditFieldChange> DiffInputs(FieldAdminInput before, FieldAdminInput after) =>
+        Diff(DescribeInput(before), DescribeInput(after));
+
+    internal static IReadOnlyList<AuditFieldChange> DiffTables(FieldAdminTableInput before, FieldAdminTableInput after) =>
+        Diff(DescribeTable(before), DescribeTable(after));
+
+    private static IReadOnlyList<AuditFieldChange> Diff(
+        SortedDictionary<string, string?> before, SortedDictionary<string, string?> after)
+    {
+        var changes = new List<AuditFieldChange>();
+        foreach (var key in before.Keys.Union(after.Keys))
+        {
+            before.TryGetValue(key, out var oldValue);
+            after.TryGetValue(key, out var newValue);
+            if (!string.Equals(oldValue, newValue, StringComparison.Ordinal))
+                changes.Add(new AuditFieldChange(key, oldValue, newValue, null));
+        }
+        return changes;
+    }
+
+    private static string Bit(bool value) => value ? "1" : "0";
+
+    private static string? DbText(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static bool SameInput(FieldAdminInput a, FieldAdminInput b) =>
         a.Label.Trim().Equals(b.Label.Trim(), StringComparison.OrdinalIgnoreCase)
