@@ -66,9 +66,9 @@ describe('DashboardPage', () => {
     vi.mocked(useAuth).mockReset()
   })
 
-  it('渲染个人问候与真实待办指标', async () => {
+  it('渲染真实待办指标', async () => {
     renderPage()
-    expect(screen.getByText(/你好，系统管理员/)).toBeInTheDocument()
+    expect(screen.queryByText(/你好，系统管理员/)).not.toBeInTheDocument()
     await waitFor(() => expect(screen.queryByText('…')).not.toBeInTheDocument())
     expect(screen.getByText('待批核单据')).toBeInTheDocument()
     expect(screen.getByText('流程审批待办')).toBeInTheDocument()

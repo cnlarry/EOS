@@ -1,7 +1,7 @@
-import { IconArrowUpRight, IconChecklist, IconClockHour4, IconFolder, IconGitBranch, IconUserCircle } from '@tabler/icons-react'
-import type { ColumnDef } from '@tanstack/react-table'
+import { IconArrowUpRight, IconChecklist, IconClockHour4, IconFolder, IconGitBranch } from '@tabler/icons-react'
+import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import { useQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
@@ -56,8 +56,9 @@ function readRecent(): string[] {
 export function DashboardPage() {
   const navigate = useNavigate()
   const { bootstrap, hasPermission } = useAuth()
-  const user = bootstrap?.user
   const canSeeTasks = hasPermission('legacy-module.2102.read')
+  const [pendingSelection, setPendingSelection] = useState<RowSelectionState>({})
+  const [startedSelection, setStartedSelection] = useState<RowSelectionState>({})
 
   const myTasks = useQuery({
     queryKey: ['dashboard-my-tasks'],
@@ -85,6 +86,32 @@ export function DashboardPage() {
   const flowCount = myTasks.data?.flowTasks.length ?? 0
 
   const pendingColumns: ColumnDef<MyTask, unknown>[] = [
+    {
+      id: 'select',
+      enableSorting: false,
+      enableHiding: false,
+      meta: { className: 'erp-select-column', frozenLeft: true, resizable: false, truncate: false },
+      header: ({ table }) => (
+        <input
+          className="form-check-input"
+          type="checkbox"
+          aria-label="选择当前页"
+          checked={table.getIsAllPageRowsSelected()}
+          ref={(input) => { if (input) input.indeterminate = table.getIsSomePageRowsSelected() }}
+          onChange={table.getToggleAllPageRowsSelectedHandler()}
+        />
+      ),
+      cell: ({ row }) => (
+        <input
+          className="form-check-input"
+          type="checkbox"
+          aria-label="选择此行"
+          checked={row.getIsSelected()}
+          onChange={row.getToggleSelectedHandler()}
+          onClick={(event) => event.stopPropagation()}
+        />
+      ),
+    },
     { accessorKey: 'title', header: '单据类型', cell: (info) => <span className="fw-semibold">{String(info.getValue() ?? '—')}</span> },
     { accessorKey: 'moduleId', header: '模块号', cell: (info) => <span className="font-monospace text-secondary">{String(info.getValue())}</span> },
     {
@@ -108,6 +135,32 @@ export function DashboardPage() {
   ]
 
   const startedColumns: ColumnDef<MyStartedFlow, unknown>[] = [
+    {
+      id: 'select',
+      enableSorting: false,
+      enableHiding: false,
+      meta: { className: 'erp-select-column', frozenLeft: true, resizable: false, truncate: false },
+      header: ({ table }) => (
+        <input
+          className="form-check-input"
+          type="checkbox"
+          aria-label="选择当前页"
+          checked={table.getIsAllPageRowsSelected()}
+          ref={(input) => { if (input) input.indeterminate = table.getIsSomePageRowsSelected() }}
+          onChange={table.getToggleAllPageRowsSelectedHandler()}
+        />
+      ),
+      cell: ({ row }) => (
+        <input
+          className="form-check-input"
+          type="checkbox"
+          aria-label="选择此行"
+          checked={row.getIsSelected()}
+          onChange={row.getToggleSelectedHandler()}
+          onClick={(event) => event.stopPropagation()}
+        />
+      ),
+    },
     { accessorKey: 'title', header: '单据类型', cell: (info) => <span className="fw-semibold">{String(info.getValue() ?? '—')}</span> },
     { accessorKey: 'keyValueDesc', header: '单据', cell: (info) => <span className="text-secondary">{String(info.getValue() ?? '—')}</span> },
     {
@@ -140,27 +193,7 @@ export function DashboardPage() {
   ]
 
   return (
-    <div className="d-grid gap-3">
-      <section className="card">
-        <div className="card-body d-flex align-items-center gap-3">
-          {user?.avatarUrl ? (
-            <span className="avatar avatar-lg"><img src={user.avatarUrl} alt="" /></span>
-          ) : (
-            <span className="avatar avatar-lg">{user?.avatarText}</span>
-          )}
-          <div className="min-w-0">
-            <div className="h3 mb-0 text-truncate">你好，{user?.displayName ?? '用户'}</div>
-            <div className="text-secondary small mt-1 text-truncate">
-              {[user?.roleName, user?.organization.name, user?.employeeId].filter(Boolean).join(' · ') || '欢迎使用 EOS'}
-            </div>
-          </div>
-          <div className="ms-auto d-none d-md-flex flex-column align-items-end">
-            <IconUserCircle className="text-secondary" size={28} stroke={1.5} />
-            <span className="text-secondary small">{new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</span>
-          </div>
-        </div>
-      </section>
-
+    <div className="d-grid erp-dashboard">
       <div className="row row-deck row-cards">
         <div className="col-sm-6 col-xl-4">
           <article className="card erp-metric-card">
@@ -236,6 +269,10 @@ export function DashboardPage() {
                 empty={<div className="text-center text-secondary py-4">当前无待批核单据</div>}
                 resizable
                 storageKey="dashboard-pending"
+                clientSideSorting
+                rowClickSingleSelect
+                rowSelection={pendingSelection}
+                onRowSelectionChange={setPendingSelection}
               />
             )}
           </ErpListCard>
@@ -283,6 +320,10 @@ export function DashboardPage() {
               empty={<div className="text-center text-secondary py-4">当前无我发起的在途流程</div>}
               resizable
               storageKey="dashboard-started"
+              clientSideSorting
+              rowClickSingleSelect
+              rowSelection={startedSelection}
+              onRowSelectionChange={setStartedSelection}
             />
           )}
         </ErpListCard>

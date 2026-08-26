@@ -516,7 +516,7 @@ export function AppShell() {
               </button>
               <div className="dropdown erp-user-menu">
                 <button
-                  className="btn erp-user dropdown-toggle"
+                  className="btn erp-user"
                   type="button"
                   aria-label="用户菜单"
                   aria-haspopup="menu"
