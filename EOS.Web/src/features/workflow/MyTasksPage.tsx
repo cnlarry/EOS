@@ -8,7 +8,7 @@ import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
-import { workbenchList } from '../document-workbench/workbenchPath'
+import { workbenchList, workbenchView } from '../document-workbench/workbenchPath'
 import { ApiError } from '../../types/api'
 
 interface MyTask {
@@ -24,6 +24,7 @@ interface FlowTask {
   stepDesc: string
   moduleId: number
   keyValue: string
+  keyValues: string[]
   title: string
   approvePower: boolean
   forwardPower: boolean
@@ -37,6 +38,7 @@ interface MyStartedFlow {
   moduleId: number
   title: string
   keyValue: string
+  keyValues: string[]
   keyValueDesc: string
   startDate: string | null
   step: string
@@ -99,7 +101,7 @@ export function MyTasksPage() {
     try {
       const response = await apiClient.post<{ message?: string }>('/workflow/withdraw', {
         moduleId: flow.moduleId,
-        keyValue: flow.keyValue,
+        key: flow.keyValues.length > 0 ? flow.keyValues : null,
       })
       window.alert(response.message ?? '流程已撤回')
       void result.refetch()
@@ -170,6 +172,14 @@ export function MyTasksPage() {
       meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
       cell: ({ row }) => (
         <div className="d-inline-flex gap-1">
+          <Button
+            size="sm"
+            className="erp-table-action"
+            title="查看单据内容"
+            onClick={() => navigate(workbenchView(row.original.moduleId, row.original.keyValues.length > 0 ? row.original.keyValues : null))}
+          >
+            查看
+          </Button>
           <Button size="sm" className="erp-table-action" onClick={() => openApprove(row.original, 'Y')}>同意</Button>
           <Button size="sm" variant="danger" className="erp-table-action" onClick={() => openApprove(row.original, 'N')}>驳回</Button>
         </div>

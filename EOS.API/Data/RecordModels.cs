@@ -23,6 +23,19 @@ public sealed record SaveWarning(string Code, string Message);
 
 public sealed record RecordBundle(IReadOnlyDictionary<string, object?> Master, IReadOnlyList<IReadOnlyDictionary<string, object?>> Details);
 
+/// <summary>
+/// 单据在途流程状态（WF_MONITOR.WF_STATE 的受控投影），供表单工具栏按状态切换批核/撤回/禁用：
+/// None=无流程实例（直接批核模型）；InProgress=审批中（禁编辑/删，批核改显示撤回）；
+/// Completed=流程已完成（正常批核语义）；Withdrawn=已撤回（可编辑后重新送审）。
+/// </summary>
+public enum FlowState
+{
+    None = 0,
+    InProgress = 1,
+    Completed = 2,
+    Withdrawn = 3,
+}
+
 public enum RecordAccessStatus
 {
     Ok,
@@ -34,7 +47,7 @@ public enum RecordAccessStatus
     ConcurrentModified,
 }
 
-public sealed record RecordReadResult(RecordAccessStatus Status, RecordBundle? Bundle);
+public sealed record RecordReadResult(RecordAccessStatus Status, RecordBundle? Bundle, FlowState FlowState = FlowState.None);
 
 public sealed record RecordSaveResult(
     RecordAccessStatus Status,

@@ -278,7 +278,7 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.C
 
     private IActionResult MapReadResult(RecordReadResult result)=>result.Status switch
     {
-        RecordAccessStatus.Ok=>Ok(result.Bundle),
+        RecordAccessStatus.Ok=>Ok(new{master=result.Bundle!.Master,details=result.Bundle.Details,flowState=result.FlowState.ToString()}),
         RecordAccessStatus.NotFound=>NotFound(),
         RecordAccessStatus.OutOfScope=>StatusCode(403,new{code="RECORD_OUT_OF_SCOPE",message="目标记录不在当前用户数据范围内。"}),
         RecordAccessStatus.FilterUnsupported=>StatusCode(403,new{code="DATA_FILTER_UNSUPPORTED",message="当前数据过滤条件尚不支持，已拒绝执行。"}),
