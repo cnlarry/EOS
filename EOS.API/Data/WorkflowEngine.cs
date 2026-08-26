@@ -57,6 +57,25 @@ public sealed class WorkflowEngine(
     }
 
     /// <summary>
+    /// 单据是否存在在途流程实例（WF_MONITOR WF_STATE='0'）。
+    /// keyCondition 必须来自服务端 BuildKeyCondition（服务端权威，非用户输入）。
+    /// 供编辑/删除守卫使用：在途流程的单据禁止编辑（改了审批人批的是旧数据）与删除（留孤儿流程实例）。
+    /// </summary>
+    public static async Task<bool> HasActiveFlowAsync(
+        SqlConnection connection, SqlTransaction? transaction,
+        int moduleId, string keyCondition, CancellationToken token)
+    {
+        const string sql = """
+            SELECT TOP 1 1 FROM dbo.WF_MONITOR WITH (NOLOCK)
+            WHERE WF_M_IDX=@ModuleId AND KEY_VALUE=@KeyValue AND WF_STATE='0';
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        command.Parameters.Add("@KeyValue", SqlDbType.VarChar, 200).Value = keyCondition;
+        return await command.ExecuteScalarAsync(token) is not null;
+    }
+
+    /// <summary>
     /// 启动流程：建/取 WF_MONITOR，删除旧任务，按 WFFORM_FLOW.SORT_NO 重建 WF_MYTASK。
     /// 动态条件（EXEC_CONDITION/PERSON_CONDITION/AUTO_EXEC_CONDITION）经 DataFilterParser
     /// 受控评估：步骤执行条件为真的步骤才生成任务，审批人条件为真的人员才入任务；
@@ -76,20 +95,23 @@ public sealed class WorkflowEngine(
         var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
 
         long wfId;
+        string existingState = string.Empty;
         await using (var select = new SqlCommand("""
-            SELECT WF_ID FROM dbo.WF_MONITOR WITH (UPDLOCK, HOLDLOCK)
+            SELECT WF_ID, LTRIM(RTRIM(ISNULL(WF_STATE,''))) FROM dbo.WF_MONITOR WITH (UPDLOCK, HOLDLOCK)
             WHERE WF_M_IDX=@ModuleId AND KEY_VALUE=@KeyValue;
             """, connection, transaction))
         {
             select.Parameters.Add("@ModuleId", SqlDbType.Int).Value = definition.ModuleId;
             select.Parameters.Add("@KeyValue", SqlDbType.VarChar, 200).Value = keyCondition;
-            var existing = await select.ExecuteScalarAsync(token);
-            if (existing is not null)
+            await using var existingReader = await select.ExecuteReaderAsync(token);
+            if (await existingReader.ReadAsync(token))
             {
-                wfId = Convert.ToInt64(existing);
+                wfId = existingReader.GetInt64(0);
+                existingState = existingReader.GetString(1);
             }
             else
             {
+                await existingReader.DisposeAsync();
                 await using var insert = new SqlCommand("""
                     INSERT INTO dbo.WF_MONITOR (WF_M_IDX, KEY_VALUE, KEY_VALUE_DESC, WF_STATE, UPDATE_SUBFLOW, START_USER, START_DATE)
                     VALUES (@ModuleId, @KeyValue, @KeyValueDesc, '0', '', @StartUser, GETDATE());
@@ -102,6 +124,14 @@ public sealed class WorkflowEngine(
                 insert.Parameters.Add("@StartUser", SqlDbType.NVarChar, 50).Value = userId;
                 wfId = Convert.ToInt64(await insert.ExecuteScalarAsync(token));
             }
+        }
+
+        // 在途守卫：已存在审批中流程实例（WF_STATE='0'）时拒绝重复送审，
+        // 防止静默重建审批链导致在途任务丢失/进度被重置。发起人须先撤回（WF_STATE='2'）再重新提交。
+        if (existingState == "0")
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_IN_PROGRESS",
+                "该单据流程正在审批中，如需修改请先撤回后重新送审。");
         }
 
         // 重新提交/刷新：流程状态复位为在途，发起人刷新为当前送审人（覆盖已撤回 '2' 的复位）
@@ -557,6 +587,26 @@ public sealed class WorkflowEngine(
     private static bool HasPower(string user, IReadOnlyList<string> powerList)
         => powerList.Count == 0 || powerList.Contains(user, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 将 WF_MONITOR.KEY_VALUE（BuildKeyCondition 产物，格式 [PK]='v' AND ...，主键序，单引号已转义）
+    /// 解析回主键值数组（顺序即模块主键序），供前端拼装 /workbench/{m}/view/{keys} 记录浏览链接。
+    /// 解析失败返回空数组（调用方降级为不显示浏览入口，不影响审批）。
+    /// </summary>
+    public static IReadOnlyList<string> ParseKeyValues(string keyValue)
+    {
+        if (string.IsNullOrWhiteSpace(keyValue))
+            return Array.Empty<string>();
+        var matches = Regex.Matches(keyValue, @"\[([^\]]+)\]='([^']*)'");
+        var values = new List<string>(matches.Count);
+        foreach (Match match in matches)
+        {
+            if (match.Groups.Count < 3)
+                continue;
+            values.Add(match.Groups[2].Value.Replace("''", "'"));
+        }
+        return values;
+    }
+
     private static async Task MarkTaskApprovedAsync(
         SqlConnection connection, SqlTransaction transaction, long myTaskId, string userId,
         string? message, DateTime now, CancellationToken token)
@@ -1003,6 +1053,7 @@ public sealed class WorkflowEngine(
                 row.ForwardPower,
                 row.IsSign,
                 row.PassPercent,
+                KeyValues = ParseKeyValues(row.KeyValue),
                 Steps = stepsByWf.TryGetValue(row.WfId, out var steps)
                     ? (IReadOnlyList<object>)steps
                     : Array.Empty<object>(),
@@ -1017,7 +1068,7 @@ public sealed class WorkflowEngine(
     /// </summary>
     public async Task<RecordSaveResult> WithdrawAsync(
         int moduleId,
-        string keyValue,
+        IReadOnlyList<string> keyValues,
         string userId,
         string employeeName,
         CancellationToken token)
@@ -1025,6 +1076,24 @@ public sealed class WorkflowEngine(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+
+        // 主表 + 主键列（服务端元数据，白名单），构建受控 keyCondition（参数化/转义，不信任前端条件串）
+        string? masterTable;
+        await using (var tableCommand = new SqlCommand(
+            "SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))) FROM dbo.MODULES WHERE M_IDX=@ModuleId;",
+            connection, transaction))
+        {
+            tableCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+            masterTable = await tableCommand.ExecuteScalarAsync(token) as string;
+        }
+        if (string.IsNullOrWhiteSpace(masterTable) || !Identifier.IsMatch(masterTable))
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "INVALID_MASTER_TABLE",
+                "模块主表无效。");
+        var pkColumns = await LoadPrimaryKeyColumnsAsync(connection, transaction, masterTable, token);
+        if (pkColumns.Count == 0 || pkColumns.Count != keyValues.Count)
+            return RecordSaveResult.Failed(RecordAccessStatus.KeyMismatch, "RECORD_KEY_MISMATCH",
+                "主键数量与模块主键不匹配。");
+        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(pkColumns, keyValues);
 
         long wfId;
         string state;
@@ -1036,7 +1105,7 @@ public sealed class WorkflowEngine(
             """, connection, transaction))
         {
             read.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-            read.Parameters.Add("@KeyValue", SqlDbType.VarChar, 200).Value = keyValue;
+            read.Parameters.Add("@KeyValue", SqlDbType.VarChar, 200).Value = keyCondition;
             await using var reader = await read.ExecuteReaderAsync(token);
             if (!await reader.ReadAsync(token))
                 return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "FLOW_NOT_FOUND",
@@ -1052,20 +1121,9 @@ public sealed class WorkflowEngine(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "NOT_FLOW_INITIATOR",
                 "仅发起人可撤回该流程。");
 
-        // 单据未最终确认（CONFIRM_TAG=0）才能撤回；KEY_VALUE 为服务端 BuildKeyCondition 生成，安全
-        string? masterTable;
-        await using (var tableCommand = new SqlCommand(
-            "SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))) FROM dbo.MODULES WHERE M_IDX=@ModuleId;",
-            connection, transaction))
-        {
-            tableCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-            masterTable = await tableCommand.ExecuteScalarAsync(token) as string;
-        }
-        if (string.IsNullOrWhiteSpace(masterTable) || !Identifier.IsMatch(masterTable))
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "INVALID_MASTER_TABLE",
-                "模块主表无效。");
+        // 单据未最终确认（CONFIRM_TAG=0）才能撤回；keyCondition 为服务端 BuildKeyCondition 生成，安全
         await using (var confirm = new SqlCommand(
-            $"SELECT TOP 1 ISNULL(CONFIRM_TAG,0) FROM dbo.[{masterTable}] WITH (NOLOCK) WHERE {keyValue};",
+            $"SELECT TOP 1 ISNULL(CONFIRM_TAG,0) FROM dbo.[{masterTable}] WITH (NOLOCK) WHERE {keyCondition};",
             connection, transaction))
         {
             var tag = await confirm.ExecuteScalarAsync(token);
@@ -1103,8 +1161,30 @@ public sealed class WorkflowEngine(
             await stateUpdate.ExecuteNonQueryAsync(token);
         }
         await transaction.CommitAsync(token);
-        logger.LogInformation("流程撤回 module={ModuleId} key={Key} user={User}", moduleId, keyValue, userId);
+        logger.LogInformation("流程撤回 module={ModuleId} key={Key} user={User}", moduleId, string.Join(',', keyValues), userId);
         return RecordSaveResult.Success([]);
+    }
+
+    /// <summary>主表主键列（sys.* 元数据，白名单，按 key_ordinal 序）。</summary>
+    private static async Task<IReadOnlyList<string>> LoadPrimaryKeyColumnsAsync(
+        SqlConnection connection, SqlTransaction transaction, string table, CancellationToken token)
+    {
+        const string sql = """
+            SELECT c.name
+            FROM sys.indexes i
+            JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+            JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+            JOIN sys.tables t ON i.object_id = t.object_id
+            JOIN sys.schemas s ON t.schema_id = s.schema_id
+            WHERE s.name = N'dbo' AND t.name = @Table AND i.is_primary_key = 1
+            ORDER BY ic.key_ordinal;
+            """;
+        var result = new List<string>();
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token)) result.Add(reader.GetString(0));
+        return result;
     }
 
     /// <summary>当前用户发起的在途流程（v2.1「我发起的」，撤回入口数据源）。</summary>
@@ -1133,6 +1213,7 @@ public sealed class WorkflowEngine(
                 ModuleId = reader.GetInt32(1),
                 Title = reader.GetString(2),
                 KeyValue = reader.GetString(3),
+                KeyValues = ParseKeyValues(reader.GetString(3)),
                 KeyValueDesc = reader.GetString(4),
                 StartDate = reader.IsDBNull(5) ? null : reader.GetValue(5),
                 Step = reader.GetString(6),

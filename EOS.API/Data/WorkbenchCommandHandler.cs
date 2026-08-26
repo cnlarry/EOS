@@ -71,7 +71,29 @@ public sealed class WorkbenchCommandHandler(
             var detailFields = form.DetailFields.Where(field => !field.DisplayOnly && !field.IsVirtual).Select(field => field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             detailRows.AddRange(await WorkbenchSql.ReadRowsAsync(connection, null, definition.DetailTable, pkColumns, keyValues, detailFields, token));
         }
-        return new(RecordAccessStatus.Ok, new RecordBundle(current, detailRows));
+        var flowState = await ReadFlowStateAsync(connection, definition.ModuleId, ControlledSprocInvoker.BuildKeyCondition(pkColumns, keyValues), token);
+        return new(RecordAccessStatus.Ok, new RecordBundle(current, detailRows), flowState);
+    }
+
+    /// <summary>读取单据在途流程状态（WF_MONITOR.WF_STATE → FlowState 投影；无实例=None）。</summary>
+    private static async Task<FlowState> ReadFlowStateAsync(
+        SqlConnection connection, int moduleId, string keyCondition, CancellationToken token)
+    {
+        const string sql = """
+            SELECT TOP 1 LTRIM(RTRIM(ISNULL(WF_STATE,''))) FROM dbo.WF_MONITOR WITH (NOLOCK)
+            WHERE WF_M_IDX=@ModuleId AND KEY_VALUE=@KeyValue;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        command.Parameters.Add("@KeyValue", SqlDbType.VarChar, 200).Value = keyCondition;
+        var state = await command.ExecuteScalarAsync(token) as string;
+        return state switch
+        {
+            "0" => FlowState.InProgress,
+            "1" => FlowState.Completed,
+            "2" => FlowState.Withdrawn,
+            _ => FlowState.None,
+        };
     }
 
     public async Task<RecordSaveResult> CreateRecordAsync(
@@ -330,6 +352,13 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "CONFIRMED_EDIT_FORBIDDEN", "记录已批核，禁止编辑（请先解批）。");
         }
+        // 在途流程守卫：流程审批中的单据禁止编辑（审批人批的是送审时快照，改后需先撤回再重提）
+        var editKeyCondition = ControlledSprocInvoker.BuildKeyCondition(pkColumns, keyValues);
+        if (await WorkflowEngine.HasActiveFlowAsync(connection, transaction, definition.ModuleId, editKeyCondition, token))
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_IN_PROGRESS_EDIT_FORBIDDEN",
+                "记录流程正在审批中，禁止编辑（请先撤回流程）。");
+        }
         // ADR-005 §7 收紧：编辑前目标记录必须处于模块契约内
         if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
         {
@@ -516,6 +545,13 @@ public sealed class WorkbenchCommandHandler(
         if (guard is not null)
         {
             return guard;
+        }
+        // 在途流程守卫：流程审批中的单据禁止删除（防止留下孤儿流程实例与在途任务）
+        var deleteKeyCondition = ControlledSprocInvoker.BuildKeyCondition(pkColumns, keyValues);
+        if (await WorkflowEngine.HasActiveFlowAsync(connection, transaction, definition.ModuleId, deleteKeyCondition, token))
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_IN_PROGRESS_DELETE_FORBIDDEN",
+                "记录流程正在审批中，禁止删除（请先撤回流程）。");
         }
         if (definition.DetailTable is not null)
         {

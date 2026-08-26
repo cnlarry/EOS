@@ -293,6 +293,23 @@ export function FormEditorPage() {
     }
   }
 
+  // 发起人撤回在途流程（v2.1）：表单浏览态在途时显示「撤回」，撤回后单据可编辑并重新送审
+  const withdraw = useMutation({
+    mutationFn: async () => {
+      if (!formQuery.data) throw new Error('表单定义未加载。')
+      const key = buildKey(formQuery.data, masterValues)
+      return apiClient.post<{ message?: string }>('/workflow/withdraw', { moduleId, key })
+    },
+    onSuccess: async (response) => {
+      window.alert(response.message ?? '流程已撤回，单据可修改后重新提交。')
+      await recordQuery.refetch()
+    },
+    onError: cause => {
+      const message = cause instanceof ApiError ? cause.body.message : '撤回失败，请稍后重试。'
+      window.alert(message)
+    },
+  })
+
   const validateClient = (): boolean => {
     if (!formQuery.data) return false
     const master = validateMasterFields(formQuery.data.masterFields, masterValues)
@@ -719,14 +736,16 @@ export function FormEditorPage() {
                 // ADR-006 决策 6 单据状态（服务端 record 强制返回）：已批核 CONFIRM_TAG / 已结案 FINISHED_TAG
                 const isConfirmed = master?.CONFIRM_TAG === true
                 const isFinished = master?.FINISHED_TAG === true
-                // 已结案：解批/编辑/删除禁用；已审批：批核/编辑/删除禁用（按钮禁用而非隐藏，旧系统 DxAuthentication 语义）
-                const editDisabled = isFinished || isConfirmed
-                const deleteDisabled = isFinished || isConfirmed
+                // A3：在途流程状态（WF_MONITOR.WF_STATE='0'）——流程审批中的单据禁止编辑/删除，批核改显示撤回
+                const flowInProgress = recordQuery.data?.flowState === 'InProgress'
+                // 已结案：解批/编辑/删除禁用；已审批：批核/编辑/删除禁用；在途流程：编辑/删除禁用（按钮禁用而非隐藏，旧系统 DxAuthentication 语义）
+                const editDisabled = isFinished || isConfirmed || flowInProgress
+                const deleteDisabled = isFinished || isConfirmed || flowInProgress
                 const whitelistItems: ErpCommandItem[] = (form.buttons && form.buttons.length > 0
                   ? form.buttons.flatMap((button): ErpCommandItem[] => {
                       switch (button.action) {
                         case 'approve':
-                          return form.hasWorkflow && form.canApprove && keyParam && master && master.CONFIRM_TAG !== true
+                          return form.hasWorkflow && form.canApprove && keyParam && master && master.CONFIRM_TAG !== true && !flowInProgress
                             ? [{ action: 'approve', disabled: isFinished, loading: workflow.isPending, onClick: () => workflow.mutate('approve') }]
                             : []
                         case 'deapprove':
@@ -751,7 +770,7 @@ export function FormEditorPage() {
                     })
                   : [
                       // 未配置 FORM_BUTTONS 的回退集（保持既有行为：工作流/结案/打印）
-                      ...(form.hasWorkflow && keyParam && master && master.CONFIRM_TAG !== true && form.canApprove
+                      ...(form.hasWorkflow && keyParam && master && master.CONFIRM_TAG !== true && !flowInProgress && form.canApprove
                         ? [{ action: 'approve', disabled: isFinished, loading: workflow.isPending, onClick: () => workflow.mutate('approve') } satisfies ErpCommandItem]
                         : []),
                       ...(form.hasWorkflow && keyParam && master && master.CONFIRM_TAG === true && form.canDeapprove
@@ -781,6 +800,10 @@ export function FormEditorPage() {
                     ? [{ action: 'edit', disabled: editDisabled, onClick: () => navigate(workbenchEdit(moduleId, currentKey)) } satisfies ErpCommandItem]
                     : []),
                   ...(form.helpUrl ? [{ action: 'help', onClick: () => window.open(form.helpUrl!, '_blank', 'noopener') } satisfies ErpCommandItem] : []),
+                  // A3：在途流程时显示「撤回」（发起人），撤回后可编辑并重新送审
+                  ...(flowInProgress && keyParam
+                    ? [{ action: 'withdraw', loading: withdraw.isPending, onClick: () => withdraw.mutate() } satisfies ErpCommandItem]
+                    : []),
                   ...whitelistItems,
                   ...(form.canFileView && keyParam ? [{ action: 'attach', onClick: () => setAttachOpen(true) } satisfies ErpCommandItem] : []),
                 ]

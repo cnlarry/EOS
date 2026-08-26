@@ -26,6 +26,8 @@ export function newIdempotencyKey(): string {
 export interface RecordBundle {
   master: Record<string, unknown>
   details: Record<string, unknown>[]
+  /** 在途流程状态（服务端 FlowState 投影）：None/InProgress/Completed/Withdrawn */
+  flowState?: 'None' | 'InProgress' | 'Completed' | 'Withdrawn'
 }
 
 /** 明细网格行：__id 为表格行键，__index 映射 detailRows 原始行号（ADR-006 决策 5：不再有占位空行） */

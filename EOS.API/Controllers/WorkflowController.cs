@@ -20,7 +20,7 @@ public sealed class WorkflowController(
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     public sealed record ApproveTaskRequest(string ApproveState, string? Message = null, string? JumpNo = null);
-    public sealed record WithdrawRequest(int ModuleId, string KeyValue);
+    public sealed record WithdrawRequest(int ModuleId, IReadOnlyList<string> Key);
 
     /// <summary>
     /// 流程任务审批（同意 'Y' / 驳回 'N'）。
@@ -91,17 +91,18 @@ public sealed class WorkflowController(
 
     /// <summary>
     /// 发起人撤回在途流程（v2.1）：仅发起人可在流程未完成且单据未确认时撤回；
-    /// 撤回后单据可编辑，重新批核即重新提交。KeyValue 取「我发起的」返回的 KEY_VALUE。
+    /// 撤回后单据可编辑，重新批核即重新提交。Key 为主键值数组（模块主键序，
+    /// 服务端经 BuildKeyCondition 重新构造条件，不信任前端拼装的 KEY_VALUE 条件串）。
     /// </summary>
     [HttpPost("withdraw")]
     public async Task<IActionResult> Withdraw([FromBody] WithdrawRequest request, CancellationToken token)
     {
-        if (request.ModuleId <= 0 || string.IsNullOrWhiteSpace(request.KeyValue))
-            return BadRequest(new { code = "INVALID_WITHDRAW_REQUEST", message = "moduleId 与 keyValue 不能为空。" });
+        if (request.ModuleId <= 0 || request.Key is null || request.Key.Count == 0)
+            return BadRequest(new { code = "INVALID_WITHDRAW_REQUEST", message = "moduleId 与 key 不能为空。" });
         if (!(await rightsRepository.GetAsync(userContext.UserId, request.ModuleId, token)).CanBrowse)
             return Forbid();
         var result = await workflowEngine.WithdrawAsync(
-            request.ModuleId, request.KeyValue, userContext.UserId, userContext.EmployeeName, token);
+            request.ModuleId, request.Key, userContext.UserId, userContext.EmployeeName, token);
         if (result.Status != RecordAccessStatus.Ok)
             return BadRequest(new { code = result.ErrorCode, message = result.ErrorMessage });
         return Ok(new { Withdrawn = true, Message = "流程已撤回，单据可修改后重新提交。" });

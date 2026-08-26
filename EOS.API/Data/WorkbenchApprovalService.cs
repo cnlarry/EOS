@@ -170,6 +170,7 @@ public sealed class WorkbenchApprovalService(
         var finishedIndex = stateColumns.FindIndex(column => column == "FINISHED_TAG");
         var confirm = confirmIndex >= 0 && reader.GetBoolean(confirmIndex);
         var finished = finishedIndex >= 0 && reader.GetBoolean(finishedIndex);
+        await reader.DisposeAsync();
         if (finished)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FINISHED_RECORD_NOT_DELETABLE",
