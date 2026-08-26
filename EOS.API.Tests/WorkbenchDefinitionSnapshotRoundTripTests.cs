@@ -43,8 +43,8 @@ public sealed class WorkbenchDefinitionSnapshotRoundTripTests
             IfCopy: false,
             SearchMaster: false,
             SearchDetail: false,
-            NewUrl: "/document-workbench/1401/new",
-            ModiUrl: "/document-workbench/1401/edit",
+NewUrl: "/workbench/1401/new",
+        ModiUrl: "/workbench/1401/edit",
             DefinitionVersion: "module-1401-v1");
 
         var json = JsonSerializer.Serialize(definition);

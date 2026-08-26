@@ -29,7 +29,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
             FROM dbo.MODULES m WITH (NOLOCK)
             LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.MODULE_ID=m.M_IDX
             LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.MODULE_ID=m.M_IDX AND s.IS_CURRENT=1
-            WHERE LTRIM(RTRIM(ISNULL(m.M_URL,''))) LIKE '/document-workbench%'
+            WHERE LTRIM(RTRIM(ISNULL(m.M_URL,''))) LIKE '/workbench%'
                OR d.MODULE_ID IS NOT NULL
             ORDER BY m.M_IDX;
             """;

@@ -16,6 +16,7 @@ import type { NavigationItem } from '../../features/auth/types'
 import { AssistantDock } from '../../features/assistant/AssistantDock'
 import { navigationIcons } from './navigationIcons'
 import { FormBreadcrumbContext, type FormBreadcrumb } from './FormBreadcrumbContext'
+import { workbenchAction, workbenchList, workbenchModuleId } from '../../features/document-workbench/workbenchPath'
 
 type Theme = 'light' | 'dark'
 
@@ -133,11 +134,22 @@ export function AppShell() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
   const sidebarWidthRef = useRef(sidebarWidth)
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
-  const isFormEditor = /\/(new|edit|view)$/.test(location.pathname)
-  const basePath = location.pathname.replace(/\/(new|edit|view)$/, '')
+  const wbAction = workbenchAction(location.pathname)
+  const isFormEditor = wbAction !== null
+  const workbenchId = workbenchModuleId(location.pathname)
+  const basePath = workbenchId ? workbenchList(workbenchId) : location.pathname.replace(/\/(new|edit|view)$/, '')
+  // 跨模块关联字段浏览（FieldBrowseLink 带入 from）：面包屑/分区按来源工作台呈现，
+  // 叶子（来源模块）可点击返回原工作台列表。仅当为合法模块 ID 且不同于当前模块时生效。
+  const pathModuleId = workbenchId
+  const fromParam = (() => {
+    const raw = new URLSearchParams(location.search).get('from')
+    if (!raw || !/^\d+$/.test(raw) || (pathModuleId && raw === pathModuleId)) return null
+    return raw
+  })()
+  const crumbBasePath = fromParam ? workbenchList(fromParam) : basePath
   const allLeaves = useMemo(() => flattenLeaves(navigation), [navigation])
-  const activeMenu = allLeaves.find((item) => item.route === basePath)
-  const activeGroup = navigation.find((item) => item.children?.some((child) => isSubtreeActive(child, basePath)))
+  const activeMenu = allLeaves.find((item) => item.route === crumbBasePath)
+  const activeGroup = navigation.find((item) => item.children?.some((child) => isSubtreeActive(child, crumbBasePath)))
   // 字段维护子页（2302 /admin/tables/:tableId/fields）：
   // 面包屑固定为 系统管理 > 数据表维护 > 数据表维护 > {表名} > 字段
   const fieldAdminFields = location.pathname.match(/^\/admin\/tables\/([^/]+)\/fields$/)
@@ -148,7 +160,7 @@ export function AppShell() {
     ? { section: '系统管理', title: fieldAdminCrumb.title }
     : isFormEditor
       ? (() => {
-          const op = location.pathname.endsWith('/new') ? '新增' : location.pathname.endsWith('/view') ? '查看' : '编辑'
+          const op = wbAction === 'new' ? '新增' : wbAction === 'copy' ? '复制' : wbAction === 'view' ? '查看' : '编辑'
           const moduleLabel = formBreadcrumb?.moduleTitle ?? activeMenu?.label ?? ''
           const docNo = op !== '新增' && formBreadcrumb?.docNo ? formBreadcrumb.docNo : null
           return {
@@ -160,7 +172,7 @@ export function AppShell() {
           section: activeGroup?.label ?? 'ERP',
           title: activeMenu?.label ?? '页面',
         }
-  const breadcrumbPath = useMemo(() => findPath(navigation, basePath), [navigation, basePath])
+  const breadcrumbPath = useMemo(() => findPath(navigation, crumbBasePath), [navigation, crumbBasePath])
   // 完整路径：命中导航树时展示全部祖先 + 叶子；未命中（如直达维护页）回退「分区 + 标题」。
   // 统一表单页（查看/编辑/新增）：叶子也作为面包屑项且可点击返回工作台列表；
   // 其余页面保持「祖先 + 叶子标题」两段式（叶子由 h1 承担）。

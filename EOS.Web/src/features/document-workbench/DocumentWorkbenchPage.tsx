@@ -18,9 +18,10 @@ import { useAuth } from '../auth/authContext'
 import { FieldEditorModal } from '../field-admin/FieldEditorModal'
 import { alignClass, formatFieldValue } from './fieldFormat'
 import { FieldBrowseLink } from './FieldBrowseLink'
+import { workbenchNew, workbenchView } from './workbenchPath'
 import { readListState, writeListState } from './listStateUrl'
 
-interface Field { key:string; label:string; dataType:string; width:number; align:string|null; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; isVirtual?:boolean }
+interface Field { key:string; label:string; dataType:string; width:number; align:string|null; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; browseKeyFields:string[]|null; isVirtual?:boolean }
 interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean; ifCopy:boolean; searchMaster:boolean; searchDetail:boolean; buttons:{action:string}[]|null; newUrl?:string|null; modiUrl?:string|null; canDelete?:boolean }
 interface DataResponse { rows:Record<string,unknown>[]; total:number; page:number; pageSize:number }
 interface NavigationGroupDef { index:number; description:string; available:boolean }
@@ -171,12 +172,12 @@ export function DocumentWorkbenchPage() {
         if((field.dataType??'').toLowerCase()==='bit')return <input type="checkbox" className="form-check-input" checked={Boolean(value)} disabled aria-label={field.label}/>
         const text=formatFieldValue(value,field.dataType,field.format)
         if(!text)return '—'
-        return field.browseUrl&&field.browseModuleId&&field.browseModuleId>0
-          ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
+        return field.browseModuleId&&field.browseModuleId>0
+          ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} browseKeyFields={field.browseKeyFields} row={info.row.original} fromModuleId={moduleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
           :text
       },
     })),
-  ],[master,hasPermission])
+  ],[master,hasPermission,moduleId])
   const detailColumns=useMemo<ColumnDef<Record<string,unknown>,unknown>[]>(()=>detail.map((field):ColumnDef<Record<string,unknown>,unknown>=>({
     id:field.key,
     accessorKey:field.key,
@@ -196,11 +197,11 @@ export function DocumentWorkbenchPage() {
       if((field.dataType??'').toLowerCase()==='bit')return <input type="checkbox" className="form-check-input" checked={Boolean(value)} disabled aria-label={field.label}/>
       const text=formatFieldValue(value,field.dataType,field.format)
       if(!text)return '—'
-        return field.browseUrl&&field.browseModuleId&&field.browseModuleId>0
-          ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
-          :text
+      return field.browseModuleId&&field.browseModuleId>0
+        ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} browseKeyFields={field.browseKeyFields} row={info.row.original} fromModuleId={moduleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
+        :text
     },
-  })),[detail,hasPermission])
+  })),[detail,hasPermission,moduleId])
   const rowSelection=useMemo<RowSelectionState>(()=>Object.fromEntries(Object.keys(selected).map(key=>[key,true])),[selected])
 
   const rowKey=(row:Record<string,unknown>)=>{const keys=(definition.data?.masterPkOrder??[]).map(column=>String(row[column]??''));return keys.some(key=>key!=='')?keys.join('|'):JSON.stringify(row)}
@@ -277,7 +278,7 @@ export function DocumentWorkbenchPage() {
   const handleRowSelectionChange=(next:RowSelectionState)=>{const selectedKeys=Object.keys(next).filter(key=>next[key]);setSelected(current=>{const result:Record<string,Record<string,unknown>>={};for(const key of selectedKeys){result[key]=current[key]??rows.find(row=>rowKey(row)===key)??{}}return result});if(selectedKeys.length===1){const only=selectedKeys[0];setActiveKey(only)}else if(selectedKeys.length===0){setActiveKey(null)}}
   const handleRowClick=(row:Record<string,unknown>)=>{const key=rowKey(row);setSelected({[key]:row});setActiveKey(key)}
   // 路由契约（M86）：NEW_URL/MODI_URL 有值时按元数据跳转，无值回退统一表单
-  const openNew=()=>{if(!definition.data?.hasAdd)return;navigate(definition.data.newUrl??`/document-workbench/${moduleId}/new`)}
+  const openNew=()=>{if(!definition.data?.hasAdd)return;navigate(definition.data.newUrl??workbenchNew(moduleId))}
   const canOpenView=Boolean(definition.data?.hasEdit)
   // ADR-006 决策 6：主表行双击进入浏览态（明细行双击不进入）；查询型模块（无浏览能力）双击无动作。
   // 携带列表当前显示顺序（排序/过滤后）作为上一条/下一条导航上下文——旧系统 GoPrior/GoNext 语义。
@@ -286,7 +287,7 @@ export function DocumentWorkbenchPage() {
     const key=definition.data.masterPkOrder.map(column=>String(row[column]??''))
     const navKeys=rows.map(item=>definition.data!.masterPkOrder.map(column=>String(item[column]??'')))
     const navIndex=navKeys.findIndex(candidate=>candidate.every((value,i)=>value===key[i]))
-    navigate(`/document-workbench/${moduleId}/view?key=${encodeURIComponent(JSON.stringify(key))}`,{state:{navKeys,navIndex}})
+    navigate(workbenchView(moduleId,key),{state:{navKeys,navIndex}})
   }
   const openSearchCenter=()=>{navigate(`/search-center/${moduleId}`)}
   // FORM_BUTTONS 业务按钮：动作白名单与服务端一致。

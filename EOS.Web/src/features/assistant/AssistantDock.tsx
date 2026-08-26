@@ -13,6 +13,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { createSession, deleteSession, listMessages, listSessions } from './api'
 import { extractPageContext } from './pageContext'
 import { useChatStream, type AssistantFormDraft } from './useChatStream'
+import { workbenchNew } from '../document-workbench/workbenchPath'
 import type { AssistantMessage, AssistantSession } from './types'
 
 const OPEN_KEY = 'erp-assistant-open'
@@ -135,7 +136,7 @@ export function AssistantDock() {
     const outcome = await send({
       sessionId: target,
       content,
-      pageContext: extractPageContext(location.pathname, location.search),
+      pageContext: extractPageContext(location.pathname),
       onDelta: (text) => {
         setBubbles(prev => prev.map(b => b.key === draftKey ? { ...b, text: b.text + text } : b))
       },
@@ -162,14 +163,14 @@ export function AssistantDock() {
     } else {
       setBubbles(prev => prev.map(b => b.key === draftKey ? { ...b, streaming: false } : b))
     }
-  }, [input, sessionId, streaming, send, refreshSessions, location.pathname, location.search])
+  }, [input, sessionId, streaming, send, refreshSessions, location.pathname])
 
   // ADR-007 §6：草稿确认后「带入表单」——经 sessionStorage 一次性通道预填，
   // 执行走现有统一表单保存管线（幂等键/校验/审计复用），助手不新增写路径
   const handleOpenInForm = useCallback((draft: AssistantFormDraft) => {
     sessionStorage.setItem(`erp-assistant-prefill-${draft.moduleId}`, JSON.stringify(draft.values))
     setOpen(false)
-    navigate(`/document-workbench/${draft.moduleId}/new`)
+    navigate(workbenchNew(draft.moduleId))
   }, [navigate])
 
   const handleDeleteSession = useCallback(async () => {

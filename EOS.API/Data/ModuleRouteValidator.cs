@@ -2,14 +2,16 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// 模块路由契约（M_URL / NEW_URL / MODI_URL 全量消费）：
-/// - M_URL 只存承载页路径（如 /reports、/document-workbench），菜单渲染时自动追加
+/// - M_URL 只存承载页路径（如 /reports、/workbench），菜单渲染时自动追加
 ///   /{moduleId}；精确路径白名单（特殊页）原样返回；统一表单动作模板
-///   （/document-workbench/{moduleId}/new|edit|view）视为直达表单；外部/脚本链接
+///   （/workbench/{moduleId}/new|edit|view）视为直达表单；外部/脚本链接
 ///   一律拒绝并回退占位页。
 /// - NEW_URL/MODI_URL 决定新增/编辑路由：允许统一表单动作模板（服务端替换
 ///   {moduleId}）或精确现代路径（特殊页，可带查询串）；空值或非法值视为无值
 ///   （返回 null），由调用方按统一表单白名单回退或隐藏按钮。
 /// - 承载判定（工作台/表单/打印/报表识别）统一由本类提供，替代各处私有前缀判断。
+/// - 2026-08-26：浏览器路由前缀由 /document-workbench 收敛为 /workbench（A 档 URL 重构，
+///   docs/plans/工作台URL重构.md）；API 路由 /api/v1/document-workbench 不变。
 /// </summary>
 internal static class ModuleRouteValidator
 {
@@ -17,7 +19,7 @@ internal static class ModuleRouteValidator
     private static readonly string[] ParameterizedBases =
     [
         "/reports",
-        "/document-workbench",
+        "/workbench",
         "/search-center",
         "/detail-query",
     ];
@@ -34,9 +36,9 @@ internal static class ModuleRouteValidator
     /// <summary>统一表单动作模板：NEW_URL/MODI_URL（或 M_URL 直达表单）命中时替换 {moduleId}。</summary>
     private static readonly string[] ActionTemplates =
     [
-        "/document-workbench/{moduleId}/new",
-        "/document-workbench/{moduleId}/edit",
-        "/document-workbench/{moduleId}/view",
+        "/workbench/{moduleId}/new",
+        "/workbench/{moduleId}/edit",
+        "/workbench/{moduleId}/view",
     ];
 
     private static readonly System.Text.RegularExpressions.Regex LegacyPlaceholder =
@@ -96,8 +98,8 @@ internal static class ModuleRouteValidator
     public static bool IsWorkbenchUrl(string url)
     {
         var value = url.Trim().Replace('\\', '/');
-        return value.Equals("/document-workbench", StringComparison.OrdinalIgnoreCase)
-            || value.StartsWith("/document-workbench/", StringComparison.OrdinalIgnoreCase);
+        return value.Equals("/workbench", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("/workbench/", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>报表承载判定（报表查看器/打印体系共用）。</summary>

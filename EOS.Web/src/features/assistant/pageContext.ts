@@ -8,29 +8,22 @@ export interface AssistantPageContext {
   docNo?: string
 }
 
-const FORM_PAGE_PATTERN = /^\/document-workbench\/(\d+)(?:\/(new|edit|view|copy))?$/
+// 2026-08-26：路由前缀 /workbench；view/edit 的记录主键以路径段表达（主键序），docNo 取自路径段
+const FORM_PAGE_PATTERN = /^\/workbench\/(\d+)(?:\/(new|copy)|\/(edit|view)(?:\/(.*))?)?$/
 
-export function extractPageContext(pathname: string, search: string): AssistantPageContext | null {
+export function extractPageContext(pathname: string): AssistantPageContext | null {
   const match = FORM_PAGE_PATTERN.exec(pathname)
   if (!match) return null
 
   const moduleId = Number(match[1])
-  const pageType = (match[2] ?? 'list') as AssistantPageType
+  const pageType = (match[2] ?? match[3] ?? 'list') as AssistantPageType
   const context: AssistantPageContext = { moduleId, pageType }
 
-  if (search) {
-    const keyParam = new URLSearchParams(search).get('key')
-    if (keyParam) {
-      try {
-        const parsed: unknown = JSON.parse(keyParam)
-        if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(v => typeof v === 'string')) {
-          // 单段主键视为单号；多段主键拼接展示
-          context.docNo = parsed.length === 1 ? (parsed[0] as string) : (parsed as string[]).join('/')
-        }
-      } catch {
-        // key 非法时不注入 docNo，不影响对话
-      }
-    }
+  // 单段主键视为单号；多段主键拼接展示
+  const pathKey = match[4]
+  if (pathKey) {
+    const parts = pathKey.split('/').filter(part => part !== '')
+    if (parts.length > 0) context.docNo = parts.length === 1 ? parts[0] : parts.join('/')
   }
 
   return context

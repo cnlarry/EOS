@@ -1,24 +1,43 @@
 import { Link } from 'react-router-dom'
+import { workbenchList, workbenchView } from './workbenchPath'
 
 interface FieldBrowseLinkProps {
   value: string
   /** 目标模块（BROWSE_M_IDX）；为空或 ≤0 时按纯文本渲染 */
   browseModuleId?: number | null
+  /** 记录浏览键源列（服务端按目标主键序解析）；为空时降级为目标模块列表链接 */
+  browseKeyFields?: string[] | null
+  /** 当前行数据（用于组装目标记录主键值数组） */
+  row?: Record<string, unknown>
+  /** 来源工作台模块 ID（FieldBrowseLink 所在列表的 moduleId）：目标记录浏览返回与面包屑按来源呈现 */
+  fromModuleId?: string | number | null
   /** 当前用户是否拥有目标模块的查看权限（bootstrap 权限位） */
   canBrowse?: boolean
 }
 
 /**
- * 字段浏览链接（方向二：映射到现代工作台）。
+ * 字段浏览链接（跨模块关联单据浏览）。
  *
- * 服务端已对 BROWSE_URL 模板做白名单校验；此处仅在目标模块可用且当前用户有权限时
- * 渲染为跳转到 `/document-workbench/{browseModuleId}` 的链接，权限最终由工作台自身把关。
+ * 服务端已对 BROWSE_URL 模板受控解析并下发 browseModuleId / browseKeyFields
+ * （目标模块可达性 + 主键映射 + 白名单均服务端判定；权限最终由目标 /view、/record
+ * 端点重新授权）。此处：
+ *  - 目标模块可用且有权限时，优先跳转目标记录浏览
+ *    `/workbench/{m}/view/{主键段...}?from={来源模块}`（同页签，与列表双击进浏览一致）；
+ *  - 键无法完整组装（目标不可记录浏览/键值缺失）时降级为目标模块列表 `/workbench/{m}`；
+ *  - 无权限或目标不可达时按纯文本渲染。
  * 点击链接不触发行选择（stopPropagation）。
  */
-export function FieldBrowseLink({ value, browseModuleId, canBrowse = true }: FieldBrowseLinkProps) {
+export function FieldBrowseLink({ value, browseModuleId, browseKeyFields, row, fromModuleId, canBrowse = true }: FieldBrowseLinkProps) {
   if (!value || !browseModuleId || browseModuleId <= 0 || !canBrowse) return <>{value}</>
+  const recordKeys = browseKeyFields?.length && row
+    ? browseKeyFields.map(key => String(row[key] ?? '')).filter(keyValue => keyValue !== '')
+    : []
+  const isRecordLink = recordKeys.length > 0 && recordKeys.length === (browseKeyFields?.length ?? 0)
+  const target = isRecordLink
+    ? workbenchView(browseModuleId, recordKeys, fromModuleId)
+    : workbenchList(browseModuleId)
   return (
-    <Link className="erp-browse-link" to={`/document-workbench/${browseModuleId}`} onClick={(event) => event.stopPropagation()}>
+    <Link className="erp-browse-link" to={target} onClick={(event) => event.stopPropagation()}>
       {value}
     </Link>
   )

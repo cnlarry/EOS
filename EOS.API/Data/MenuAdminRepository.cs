@@ -550,11 +550,11 @@ public sealed class MenuAdminRepository(
         if (!string.IsNullOrWhiteSpace(input.DETAIL_TABLE) && !Identifier.IsMatch(input.DETAIL_TABLE))
             throw new ArgumentException($"操作副表名无效：{input.DETAIL_TABLE}");
         if (!ModuleRouteValidator.IsValidHostUrl(input.M_URL))
-            throw new ArgumentException("页面链接不符合现代路由契约：应为承载页（如 /document-workbench，不带编号）、精确路径、直达表单模板或 /legacy/modules/{编号}。");
+            throw new ArgumentException("页面链接不符合现代路由契约：应为承载页（如 /workbench，不带编号）、精确路径、直达表单模板或 /legacy/modules/{编号}。");
         if (!ModuleRouteValidator.IsValidActionUrl(input.NEW_URL))
-            throw new ArgumentException("新增URL不符合路由契约：应为 /document-workbench/{moduleId}/new 模板或精确现代路径，留空回退统一表单。");
+            throw new ArgumentException("新增URL不符合路由契约：应为 /workbench/{moduleId}/new 模板或精确现代路径，留空回退统一表单。");
         if (!ModuleRouteValidator.IsValidActionUrl(input.MODI_URL))
-            throw new ArgumentException("修改URL不符合路由契约：应为 /document-workbench/{moduleId}/edit 模板或精确现代路径，留空回退统一表单。");
+            throw new ArgumentException("修改URL不符合路由契约：应为 /workbench/{moduleId}/edit 模板或精确现代路径，留空回退统一表单。");
     }
 
     private static MenuAdminModule ReadModule(SqlDataReader reader) => new(

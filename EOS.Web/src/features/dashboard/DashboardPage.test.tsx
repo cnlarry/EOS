@@ -20,8 +20,8 @@ const bootstrap = {
     {
       id: 'sales', label: '销售管理', icon: 'sales',
       children: [
-        { id: 'so', label: '销售订单', route: '/document-workbench/1405', icon: 'sales', moduleId: 1405 },
-        { id: 'quot', label: '报价单', route: '/document-workbench/1404', icon: 'sales', moduleId: 1404 },
+        { id: 'so', label: '销售订单', route: '/workbench/1405', icon: 'sales', moduleId: 1405 },
+        { id: 'quot', label: '报价单', route: '/workbench/1404', icon: 'sales', moduleId: 1404 },
       ],
     },
   ],
@@ -106,3 +106,4 @@ describe('DashboardPage', () => {
     expect(screen.getByText('待批核单据 — 项')).toBeInTheDocument()
   })
 })
+
