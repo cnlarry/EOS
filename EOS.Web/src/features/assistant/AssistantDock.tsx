@@ -18,6 +18,26 @@ import type { AssistantMessage, AssistantSession } from './types'
 
 const OPEN_KEY = 'erp-assistant-open'
 const WIDTH_KEY = 'erp-assistant-width'
+const FAB_POS_KEY = 'erp-assistant-fab-pos'
+const FAB_SIZE = 52
+const FAB_MARGIN = 8
+
+interface FabPos {
+  x: number
+  y: number
+}
+
+function readFabPos(): FabPos | null {
+  try {
+    const raw = localStorage.getItem(FAB_POS_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as FabPos
+    if (typeof parsed.x === 'number' && typeof parsed.y === 'number') return parsed
+    return null
+  } catch {
+    return null
+  }
+}
 
 interface Bubble {
   key: string
@@ -33,6 +53,7 @@ export function AssistantDock() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(() => readBool(OPEN_KEY))
   const [wide, setWide] = useState(() => readWidth() === 520)
+  const [fabPos, setFabPos] = useState<FabPos | null>(readFabPos)
   const [sessions, setSessions] = useState<AssistantSession[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [bubbles, setBubbles] = useState<Bubble[]>([])
@@ -41,6 +62,10 @@ export function AssistantDock() {
   const [menuOpen, setMenuOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fabDragRef = useRef<{ startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
+  // 拖拽移动标记独立于指针会话：onPointerUp 清空会话，但移动事实保留到 onClick 消费，
+  // 避免「拖拽后误触发打开」。
+  const fabMovedRef = useRef(false)
   const { send, stop, streaming } = useChatStream()
 
   // Ctrl+/ 全局唤起/收起（ADR-007 §2）
@@ -57,6 +82,46 @@ export function AssistantDock() {
 
   useEffect(() => localStorage.setItem(OPEN_KEY, String(open)), [open])
   useEffect(() => localStorage.setItem(WIDTH_KEY, wide ? '520' : '360'), [wide])
+  useEffect(() => {
+    if (fabPos) localStorage.setItem(FAB_POS_KEY, JSON.stringify(fabPos))
+  }, [fabPos])
+
+  // 浮球拖拽：pointer 捕获 + 视口内钳制；位置按用户存 localStorage（纯展示偏好，不落库）
+  const onFabPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const current = fabPos ?? {
+      x: window.innerWidth - 24 - FAB_SIZE,
+      y: window.innerHeight - 24 - FAB_SIZE,
+    }
+    fabDragRef.current = { startX: event.clientX, startY: event.clientY, originX: current.x, originY: current.y, moved: false }
+    fabMovedRef.current = false
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+
+  const onFabPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const state = fabDragRef.current
+    if (!state) return
+    const dx = event.clientX - state.startX
+    const dy = event.clientY - state.startY
+    if (!state.moved && Math.hypot(dx, dy) > 4) {
+      state.moved = true
+      fabMovedRef.current = true
+    }
+    const nextX = Math.min(Math.max(state.originX + dx, FAB_MARGIN), window.innerWidth - FAB_SIZE - FAB_MARGIN)
+    const nextY = Math.min(Math.max(state.originY + dy, FAB_MARGIN), window.innerHeight - FAB_SIZE - FAB_MARGIN)
+    setFabPos({ x: nextX, y: nextY })
+  }
+
+  const endFabDrag = () => {
+    fabDragRef.current = null
+  }
+
+  const openFab = () => {
+    if (fabMovedRef.current) {
+      fabMovedRef.current = false
+      return
+    }
+    setOpen(true)
+  }
 
   // 打开抽屉时加载会话列表并恢复最近会话
   useEffect(() => {
@@ -196,8 +261,18 @@ export function AssistantDock() {
   return (
     <>
       {!open && (
-        <button className="erp-assistant-fab" type="button" title="工作助手 (Ctrl+/)" aria-label="打开工作助手"
-          onClick={() => setOpen(true)}>
+        <button
+          className={`erp-assistant-fab${fabPos ? ' erp-assistant-fab-dragged' : ''}`}
+          type="button"
+          title="工作助手 (Ctrl+/)（可拖拽调整位置）"
+          aria-label="打开工作助手"
+          style={fabPos ? { left: fabPos.x, top: fabPos.y } : undefined}
+          onPointerDown={onFabPointerDown}
+          onPointerMove={onFabPointerMove}
+          onPointerUp={endFabDrag}
+          onPointerCancel={endFabDrag}
+          onClick={openFab}
+        >
           <IconRobot size={26} />
         </button>
       )}

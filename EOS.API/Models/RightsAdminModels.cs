@@ -45,6 +45,7 @@ public sealed record ModuleRightsRow(
     int ModuleId,
     string Title,
     string GroupPath,
+    string? Icon,
     int ParentId,
     int RootId,
     int SortIndex,
@@ -145,8 +146,8 @@ public sealed record EffectiveReportRights(
     bool Export,
     string DataFilter);
 
-/// <summary>用户组列表行（SYSDG + 成员数）。</summary>
-public sealed record UserGroupSummary(string GroupId, string GroupDescription, int MemberCount);
+/// <summary>用户组列表行（SYSDG + 成员数 + 备注）。</summary>
+public sealed record UserGroupSummary(string GroupId, string GroupDescription, int MemberCount, string? Remark);
 
 /// <summary>组成员行（SYSDG_USER JOIN SYSDL/SYSDN）。</summary>
 public sealed record GroupMemberSummary(string UserId, string EmployeeId, string EmployeeName);
@@ -185,3 +186,9 @@ public sealed record EffectiveRightsDetail(
 public sealed record SaveModuleRightsRequest(IReadOnlyList<ModuleRightsInput> Items);
 public sealed record SaveReportRightsRequest(IReadOnlyList<ReportRightsInput> Items);
 public sealed record SaveMembersRequest(IReadOnlyList<string> Ids);
+
+/// <summary>用户组新增请求（2305 定制页主档，SYSDG）。</summary>
+public sealed record CreateGroupRequest(string? GroupId, string? GroupDescription, string? Remark);
+
+/// <summary>用户组编辑请求（G_IDX 不可修改）。</summary>
+public sealed record UpdateGroupRequest(string? GroupDescription, string? Remark);

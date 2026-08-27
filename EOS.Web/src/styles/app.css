@@ -22,6 +22,7 @@ button, input, select { font: inherit; }
 .rights-tree-row:hover { background: var(--bs-tertiary-bg); }
 .rights-tree-label { max-width: 190px; line-height: 1.2; white-space: normal; }
 .rights-field-list, .rights-picker-list { max-height: 300px; overflow: auto; }
+.rights-picker-list-page { max-height: 60vh; }
 .rights-report-table .table { margin-bottom: 0; }
 .cursor-pointer { cursor: pointer; }
 .erp-columns-group { flex: 0 0 auto; }
@@ -171,6 +172,18 @@ button, input, select { font: inherit; }
 /* 管理页子菜单行与侧栏同用 --menu-cpad/--menu-dot 深度几何（menuDepth.ts） */
 .erp-menu-tree .erp-nav-child { position: relative; height: 32px; min-height: 32px; margin-block: 0; padding: 0 11px 0 var(--menu-cpad, 59px) !important; font-size: 12px; }
 .erp-menu-tree-id { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 11px; flex: 0 0 auto; }
+/* 权限矩阵模块树：复用系统菜单/菜单管理左侧树的样式（虚线、圆点、缩进几何） */
+.erp-rights-tree .nav-link-title { align-items: center; }
+.erp-rights-tree .erp-nav-child { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.erp-rights-tree .erp-nav-child.active { color: var(--tblr-primary); font-weight: 650; background: var(--tblr-primary-lt); }
+.erp-rights-tree .erp-nav-child .rights-tree-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erp-rights-tree .erp-nav-group-toggle { cursor: pointer; }
+.erp-rights-tree .rights-tree-label { min-width: 0; }
+.erp-rights-tree .form-check-input { width: 14px; height: 14px; margin-top: 0; border-radius: 3px; }
+.erp-rights-tree .erp-rights-leaf-root { height: 32px; min-height: 32px; padding: 0 11px; display: flex; align-items: center; gap: 8px; cursor: pointer; border-radius: 7px; }
+.erp-rights-tree .erp-rights-leaf-root.active { color: var(--tblr-primary); font-weight: 650; background: var(--tblr-primary-lt); }
+/* 组权限页（菜单管理式左右分栏）：树区填满左列、内部滚动，去掉弹窗场景的 460px 上限 */
+.erp-menu-admin .erp-rights-tree .rights-tree-scroll { max-height: none; flex: 1 1 auto; min-height: 0; }
 /* 拖拽排序/跨父移动 */
 .erp-menu-node { position: relative; }
 .erp-menu-node[draggable='true'] { cursor: grab; }
@@ -383,6 +396,9 @@ button, input, select { font: inherit; }
 .erp-full-list-page .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .erp-full-list-page .erp-list-card .table-responsive { overflow: visible; }
 .erp-full-list-page .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
+/* 报表权限矩阵页：表格区作为内部滚动容器（吸顶表头随表内滚动） */
+.erp-full-list-page .erp-report-matrix-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+.erp-full-list-page .erp-report-matrix-body .erp-table-shell { flex: 1 1 auto; min-height: 0; }
 /* 未管理字段弹窗：电子表格列表限高内部滚动 */
 .erp-unmanaged-table .erp-table-shell { max-height: 46vh; overflow-y: auto; }
 .erp-unmanaged-table .table-responsive { overflow: visible; }
@@ -975,7 +991,11 @@ button, input, select { font: inherit; }
   background: var(--tblr-primary, #206bc4);
   box-shadow: 0 4px 14px rgba(32, 107, 196, 0.35);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  touch-action: none;
+  cursor: grab;
 }
+.erp-assistant-fab.erp-assistant-fab-dragged { right: auto; bottom: auto; }
+.erp-assistant-fab:active { cursor: grabbing; }
 .erp-assistant-fab:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(32, 107, 196, 0.45); }
 
 .erp-assistant-drawer {

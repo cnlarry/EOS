@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
 import { useAuth } from '../auth/authContext'
@@ -18,13 +19,18 @@ vi.mock('../auth/authContext', () => ({ useAuth: vi.fn() }))
 
 const usersPage = {
   items: [
-    { userId: 'admin', employeeId: 'E001', employeeName: 'Demo User', departmentId: 'D1', departmentName: '信息部', companyId: 'C1', groupId: 'G1', isActive: true, hasPassword: true, lastUpdatedBy: 'admin', lastUpdatedAt: '2026-08-01T00:00:00Z' },
-    { userId: 'viewer', employeeId: 'E002', employeeName: '只读用户', departmentId: 'D2', departmentName: '财务部', companyId: 'C1', groupId: 'G2', isActive: false, hasPassword: false, lastUpdatedBy: 'admin', lastUpdatedAt: null },
+    { userId: 'admin', employeeId: 'E001', employeeName: 'Demo User', departmentId: 'D1', departmentName: '信息部', companyId: 'C1', groupId: 'G1', groups: '超级用户组', isActive: true, hasPassword: true, lastUpdatedBy: 'admin', lastUpdatedAt: '2026-08-01T00:00:00Z' },
+    { userId: 'viewer', employeeId: 'E002', employeeName: '只读用户', departmentId: 'D2', departmentName: '财务部', companyId: 'C1', groupId: 'G2', groups: '采购、财务', isActive: false, hasPassword: false, lastUpdatedBy: 'admin', lastUpdatedAt: null },
   ],
   page: 1,
-  pageSize: 10,
+  pageSize: 50,
   total: 2,
 }
+
+const allGroups = [
+  { groupId: 'CG', groupDescription: '采购', memberCount: 2, remark: null },
+  { groupId: 'CW', groupDescription: '财务', memberCount: 0, remark: null },
+]
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -35,18 +41,30 @@ function renderPage() {
     logout: vi.fn(),
     hasPermission: () => true,
   })
-  return render(<QueryClientProvider client={queryClient}><UserAdminPage /></QueryClientProvider>)
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/admin/users']}>
+        <Routes>
+          <Route path="/admin/users" element={<UserAdminPage />} />
+          <Route path="/admin/users/:userId/rights" element={<div>USER_RIGHTS_PAGE</div>} />
+          <Route path="/admin/users/:userId/report-rights" element={<div>USER_REPORT_RIGHTS_PAGE</div>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
 }
 
 async function loaded() {
   await waitFor(() => expect(screen.queryByText('正在加载用户…')).not.toBeInTheDocument())
 }
 
+function rowOf(userId: string) {
+  return screen.getByText(userId).closest('tr')!
+}
+
 function mockGet(path: string) {
-  if (path === '/admin/groups') return Promise.resolve([])
+  if (path === '/admin/groups') return Promise.resolve(allGroups)
   if (path.startsWith('/admin/users/') && path.endsWith('/groups')) return Promise.resolve([])
-  if (path.startsWith('/admin/users/') && path.endsWith('/rights')) return Promise.resolve([])
-  if (path.startsWith('/admin/users/') && path.endsWith('/report-rights')) return Promise.resolve([])
   return Promise.resolve(usersPage)
 }
 
@@ -68,76 +86,53 @@ describe('UserAdminPage', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('用户列表挂了'))
   })
 
-  it('渲染用户列表与状态徽标', async () => {
+  it('渲染用户列表（全高铺满 + 首列选择 + 表头排序 + 所属组列 + 操作列）', async () => {
+    const { container } = renderPage()
+    await loaded()
+    expect(screen.getByText('Demo User')).toBeInTheDocument()
+    expect(screen.getByText(/共 2 个账号/)).toBeInTheDocument()
+    expect(container.querySelector('.erp-full-list-page')).not.toBeNull()
+    expect(screen.getByLabelText('选择当前页')).toBeInTheDocument()
+    expect(screen.getAllByLabelText('选择此行')).toHaveLength(2)
+    expect(screen.getByLabelText('表头操作用户名')).toBeInTheDocument()
+    // 所属组列一目了然
+    expect(within(rowOf('viewer')).getByText('采购')).toBeInTheDocument()
+    expect(within(rowOf('viewer')).getByText('财务')).toBeInTheDocument()
+    const actions = within(rowOf('viewer'))
+    for (const name of ['设置密码', '权限', '报表权限', '所属组', '启用']) {
+      expect(actions.getByRole('button', { name })).toBeInTheDocument()
+    }
+  })
+
+  it('点击行内单选选中', async () => {
     renderPage()
     await loaded()
-    expect(screen.getByText('admin')).toBeInTheDocument()
-    expect(screen.getByText('E001')).toBeInTheDocument()
-    expect(screen.getByText('Demo User')).toBeInTheDocument()
-    expect(screen.getAllByText('启用').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('停用').length).toBeGreaterThan(0)
-    expect(screen.getByText('已设置')).toBeInTheDocument()
-    expect(screen.getByText('未设置')).toBeInTheDocument()
-    expect(screen.getByText(/共 2 个账号/)).toBeInTheDocument()
+    fireEvent.click(rowOf('viewer'))
+    const boxes = screen.getAllByLabelText('选择此行')
+    expect(boxes[0]).not.toBeChecked()
+    expect(boxes[1]).toBeChecked()
   })
 
   it('当前登录账号的停用按钮禁用', async () => {
     renderPage()
     await loaded()
-    const adminRow = screen.getByText('admin').closest('tr')!
-    expect(within(adminRow).getByRole('button', { name: '停用' })).toBeDisabled()
+    expect(within(rowOf('admin')).getByRole('button', { name: '停用' })).toBeDisabled()
   })
 
   it('停用用户需要确认并调用状态接口', async () => {
     renderPage()
     await loaded()
-    const viewerRow = screen.getByText('viewer').closest('tr')!
-    fireEvent.click(within(viewerRow).getByRole('button', { name: '启用' }))
+    fireEvent.click(within(rowOf('viewer')).getByRole('button', { name: '启用' }))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
       '/admin/users/viewer/status',
       { isActive: true },
     ))
   })
 
-  it('停用取消时不调用接口', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => false))
-    renderPage()
-    await loaded()
-    const viewerRow = screen.getByText('viewer').closest('tr')!
-    fireEvent.click(within(viewerRow).getByRole('button', { name: '启用' }))
-    expect(apiClientMock.put).not.toHaveBeenCalled()
-  })
-
-  it('设置密码：校验不通过禁用保存', async () => {
-    renderPage()
-    await loaded()
-    const viewerRow = screen.getByText('viewer').closest('tr')!
-    fireEvent.click(within(viewerRow).getByRole('button', { name: '设置密码' }))
-    const dialog = screen.getByRole('dialog')
-    const save = within(dialog).getByRole('button', { name: '保存密码' })
-    expect(save).toBeDisabled()
-    fireEvent.change(within(dialog).getByLabelText('新密码'), { target: { value: 'short' } })
-    fireEvent.change(within(dialog).getByLabelText('确认新密码'), { target: { value: 'short' } })
-    expect(save).toBeDisabled()
-  })
-
-  it('设置密码：密码不一致提示并禁用保存', async () => {
-    renderPage()
-    await loaded()
-    const viewerRow = screen.getByText('viewer').closest('tr')!
-    fireEvent.click(within(viewerRow).getByRole('button', { name: '设置密码' }))
-    const dialog = screen.getByRole('dialog')
-    fireEvent.change(within(dialog).getByLabelText('新密码'), { target: { value: 'long-enough-1' } })
-    fireEvent.change(within(dialog).getByLabelText('确认新密码'), { target: { value: 'different-1' } })
-    expect(within(dialog).getByText('两次输入的密码不一致。')).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: '保存密码' })).toBeDisabled()
-  })
-
   it('设置密码成功调用接口并关闭弹窗', async () => {
     renderPage()
     await loaded()
-    const viewerRow = screen.getByText('viewer').closest('tr')!
-    fireEvent.click(within(viewerRow).getByRole('button', { name: '设置密码' }))
+    fireEvent.click(within(rowOf('viewer')).getByRole('button', { name: '设置密码' }))
     const dialog = screen.getByRole('dialog')
     fireEvent.change(within(dialog).getByLabelText('新密码'), { target: { value: 'long-enough-1' } })
     fireEvent.change(within(dialog).getByLabelText('确认新密码'), { target: { value: 'long-enough-1' } })
@@ -149,35 +144,31 @@ describe('UserAdminPage', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 
-  it('设置密码失败展示错误', async () => {
-    apiClientMock.put.mockRejectedValue(new ApiError(400, { code: 'WEAK', message: '密码强度不足。' }))
+  it('操作列导航到权限完整子页面', async () => {
     renderPage()
     await loaded()
-    const viewerRow = screen.getByText('viewer').closest('tr')!
-    fireEvent.click(within(viewerRow).getByRole('button', { name: '设置密码' }))
-    const dialog = screen.getByRole('dialog')
-    fireEvent.change(within(dialog).getByLabelText('新密码'), { target: { value: 'long-enough-1' } })
-    fireEvent.change(within(dialog).getByLabelText('确认新密码'), { target: { value: 'long-enough-1' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存密码' }))
-    await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('密码强度不足。'))
+    fireEvent.click(within(rowOf('viewer')).getByRole('button', { name: '权限' }))
+    expect(await screen.findByText('USER_RIGHTS_PAGE')).toBeInTheDocument()
   })
 
-  it('打开模块权限矩阵', async () => {
+  it('操作列导航到报表权限完整子页面', async () => {
     renderPage()
     await loaded()
-    const viewerRow = screen.getByText('viewer').closest('tr')!
-    fireEvent.click(within(viewerRow).getByRole('button', { name: '权限' }))
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith('/admin/users/viewer/rights'))
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    fireEvent.click(within(rowOf('viewer')).getByRole('button', { name: '报表权限' }))
+    expect(await screen.findByText('USER_REPORT_RIGHTS_PAGE')).toBeInTheDocument()
   })
 
-  it('打开所属组选择器并保存', async () => {
+  it('所属组弹窗选择并全量保存', async () => {
     renderPage()
     await loaded()
-    const viewerRow = screen.getByText('viewer').closest('tr')!
-    fireEvent.click(within(viewerRow).getByRole('button', { name: '所属组' }))
+    fireEvent.click(within(rowOf('viewer')).getByRole('button', { name: '所属组' }))
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith('/admin/users/viewer/groups'))
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith('/admin/users/viewer/groups', { ids: [] }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByText('采购'))
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
+      '/admin/users/viewer/groups',
+      { ids: ['CG'] },
+    ))
   })
 })

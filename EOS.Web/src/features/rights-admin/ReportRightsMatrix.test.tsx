@@ -54,10 +54,9 @@ describe('ReportRightsMatrix', () => {
     expect(body.items[0]).toMatchObject({ moduleId: 129801, reportId: 'R129801', preview: true, print: true, export: false })
   })
 
-  it('展开 DATA_FILTER 并随保存提交', async () => {
+  it('编辑 DATA_FILTER 并随保存提交', async () => {
     renderMatrix()
     await waitFor(() => expect(screen.getByText('R129801')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: 'DATA_FILTER' }))
     const input = await screen.findByPlaceholderText('受控过滤表达式（非法保存时拒绝 400）')
     fireEvent.change(input, { target: { value: "STATE=1" } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))

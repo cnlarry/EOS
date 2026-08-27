@@ -8,6 +8,7 @@ public sealed record UserAdminSummary(
     string DepartmentName,
     string CompanyId,
     string GroupId,
+    string Groups,
     bool IsActive,
     bool HasPassword,
     string? LastUpdatedBy,
