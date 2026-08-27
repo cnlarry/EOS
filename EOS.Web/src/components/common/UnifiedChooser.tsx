@@ -19,7 +19,7 @@ export interface UnifiedChooserColumn {
 }
 
 export interface UnifiedChooserRow { [key: string]: unknown }
-export interface UnifiedChooserData { columns: UnifiedChooserColumn[]; rows: UnifiedChooserRow[]; total: number }
+export interface UnifiedChooserData { columns: UnifiedChooserColumn[]; rows: UnifiedChooserRow[]; total: number; defaultKeys?: string[] }
 
 export interface UnifiedChooserQuery {
   keyword?: string
@@ -143,6 +143,7 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
 
   const requestSeq = useRef(0)
   const wasOpen = useRef(false)
+  const appliedDefaultsRef = useRef(false)
 
   const load = async (query: UnifiedChooserQuery): Promise<UnifiedChooserData> => {
     if (source.kind === 'loader') return source.load(query)
@@ -218,6 +219,10 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
       setRows(result.rows as T[])
       setFieldColumns(result.columns)
       setTotal(result.total)
+      if (!appliedDefaultsRef.current) {
+        appliedDefaultsRef.current = true
+        setVisibleColumnKeys(result.defaultKeys?.length ? result.defaultKeys : null)
+      }
       if (!controlledSelection) setInternalSelected({})
       setPage(targetPage)
     } catch (cause) {
@@ -254,6 +259,7 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
       setFilterField('')
       setConditions([])
       setVisibleColumnKeys(null)
+      appliedDefaultsRef.current = false
       setAdvancedOpen(false)
       setColumnsOpen(false)
       void fetchPage(1, [], '', '', [])
@@ -362,7 +368,6 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
           </div>
           <div className="modal-body">
             <div className="erp-chooser-toolbar">
-              <Button variant="primary" disabled={selectedCount === 0} onClick={confirm}>确认</Button>
               {searchable ? (
                 <div className="input-group erp-chooser-query">
                   <select className="form-select erp-chooser-field" value={filterField} onChange={event => setFilterField(event.target.value)}>
@@ -422,7 +427,10 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
             <div className="erp-chooser-extra">{extra}</div>
           </div>
           <div className="modal-footer">
-            <Button onClick={onClose}>取消</Button>
+            <div className="d-flex gap-2 ms-auto">
+              <Button onClick={onClose}>取消</Button>
+              <Button variant="primary" disabled={selectedCount === 0} onClick={confirm}>确认</Button>
+            </div>
           </div>
         </div>
       </div>

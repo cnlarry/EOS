@@ -218,6 +218,82 @@ public sealed class ChooserRepositoryIntegrationTests
     }
 
     [Fact]
+    public async Task QueryEmployees_ReturnsUnopenedEmployeesWithMetadataColumns()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return;
+        }
+
+        var result = await _repository.QueryAsync(
+            new UnifiedChooserQueryRequest("user-admin.employees", Page: 1, PageSize: 50),
+            CancellationToken.None);
+        Assert.NotNull(result);
+        Assert.NotEmpty(result!.Columns);
+        Assert.Contains(result.Columns, column => column.Key.Equals("EMP_ID", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Columns, column => column.Key.Equals("EMP_NAME", StringComparison.OrdinalIgnoreCase));
+        // 默认列串联 110104 SYSQL_DEFAULT
+        Assert.NotNull(result.DefaultKeys);
+        Assert.NotEmpty(result.DefaultKeys);
+        Assert.Contains(result.DefaultKeys!, key => key.Equals("EMP_ID", StringComparison.OrdinalIgnoreCase));
+        if (result.Total > 0)
+        {
+            Assert.NotEmpty(result.Rows);
+            Assert.All(result.Rows, row => Assert.True(
+                row.TryGetValue("EMP_ID", out var id) && Convert.ToString(id) is { Length: > 0 }));
+        }
+    }
+
+    [Fact]
+    public async Task QueryEmployees_KeywordFiltersOnMetadataColumns()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return;
+        }
+
+        var result = await _repository.QueryAsync(
+            new UnifiedChooserQueryRequest(
+                "user-admin.employees",
+                FilterField: "EMP_NAME",
+                Keyword: "张",
+                Page: 1,
+                PageSize: 50),
+            CancellationToken.None);
+        Assert.NotNull(result);
+        Assert.NotNull(result!.Columns);
+        // filterField 命中元数据列白名单；命中行按员工姓名过滤（无命中时 total=0 合法）
+        if (result.Total > 0)
+        {
+            Assert.All(result.Rows, row =>
+                Assert.True(Convert.ToString(row["EMP_NAME"])?.Contains("张", StringComparison.OrdinalIgnoreCase) == true));
+        }
+    }
+
+    [Fact]
+    public async Task QueryEmployees_AppliesAdvancedConditions()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return;
+        }
+
+        var result = await _repository.QueryAsync(
+            new UnifiedChooserQueryRequest(
+                "user-admin.employees",
+                Conditions: [new UnifiedChooserCondition("EMP_NAME", "contains", "张")],
+                Page: 1,
+                PageSize: 50),
+            CancellationToken.None);
+        Assert.NotNull(result);
+        if (result!.Total > 0)
+        {
+            Assert.All(result.Rows, row =>
+                Assert.True(Convert.ToString(row["EMP_NAME"])?.Contains("张", StringComparison.OrdinalIgnoreCase) == true));
+        }
+    }
+
+    [Fact]
     public async Task Query_RejectsUnknownSourceKey()
     {
         if (ConnectionString.Value is null)

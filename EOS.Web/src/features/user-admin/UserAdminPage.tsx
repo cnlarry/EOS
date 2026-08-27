@@ -1,4 +1,4 @@
-import { IconKey, IconRefresh, IconReport, IconShield, IconUserOff, IconUserPlus, IconUsers } from '@tabler/icons-react'
+import { IconKey, IconPlus, IconRefresh, IconReport, IconShield, IconUserOff, IconUserPlus, IconUsers } from '@tabler/icons-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -13,6 +13,7 @@ import { RightsMemberPicker, type PickerOption } from '../rights-admin/RightsMem
 import type { UserGroupItem, UserGroupSummary } from '../rights-admin/types'
 import { apiClient } from '../../services/api'
 import { ApiError, type PageResponse } from '../../types/api'
+import { NewUserModal } from './NewUserModal'
 
 export interface UserAdminSummary {
   userId: string
@@ -102,11 +103,15 @@ export function UserAdminPage() {
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [passwordTarget, setPasswordTarget] = useState<UserAdminSummary | null>(null)
   const [groupsTarget, setGroupsTarget] = useState<UserAdminSummary | null>(null)
+  const [newUserOpen, setNewUserOpen] = useState(false)
 
   const users = useQuery({
     queryKey: ['user-admin', 'users', keyword, page],
     queryFn: () => apiClient.get<PageResponse<UserAdminSummary>>('/admin/users', { query: { keyword, page, pageSize } }),
     placeholderData: (previous) => previous,
+    // 刷新/重建列表时 items 会先清空再回填：关闭结构共享保证每次 fetch 都产生新引用，
+    // 否则数据未变化时 users.data 引用不变，回填 effect 不会重跑，列表停留在空态
+    structuralSharing: false,
   })
   const groups = useQuery({
     queryKey: ['rights-admin', 'groups'],
@@ -232,7 +237,7 @@ export function UserAdminPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-end text-nowrap', frozenRight: true, truncate: false, minWidth: 420, minWidthFloor: true, resizable: false },
+      meta: { className: 'text-nowrap', frozenRight: true, truncate: false, minWidth: 420, minWidthFloor: true },
       cell: ({ row }) => {
         const user = row.original
         const id = user.userId.trim()
@@ -268,8 +273,11 @@ export function UserAdminPage() {
       <ErpListCard
         ariaLabel="用户管理查询"
         search={<ErpSearchBox value={keyword} onChange={onSearchChange} debounceMs={300} placeholder="搜索用户名、员工号或姓名" ariaLabel="搜索用户" />}
-        actions={<Button size="sm" icon={<IconRefresh size={16} />} onClick={() => { itemsRef.current = []; setItems([]); setPage(1); void users.refetch() }}>刷新</Button>}
-        header={users.data ? <div className="erp-list-header text-secondary small px-3 pt-2">共 {total} 个账号；向下滚动自动加载更多；密码为空的账号需由管理员分配密码后才能登录。</div> : undefined}
+        actions={<div className="d-flex gap-2 align-items-center">
+          <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => { itemsRef.current = []; setItems([]); setPage(1); void users.refetch() }}>刷新</Button>
+          <Button size="sm" variant="primary" icon={<IconPlus size={16} />} onClick={() => setNewUserOpen(true)}>新增用户</Button>
+        </div>}
+        header={users.data ? <div className="erp-list-header text-secondary small px-3 pt-2">共 {total} 个账号；向下滚动自动加载更多；「新增用户」为员工开户（选择器选员工）；密码为空的账号需由管理员分配密码后才能登录。</div> : undefined}
       >
         {users.isPending && page === 1 ? <LoadingState label="正在加载用户…" /> : users.isError ? <ErrorState message={errorMessage} onRetry={() => void users.refetch()} /> : (
           <ErpTable
@@ -304,6 +312,13 @@ export function UserAdminPage() {
         onClose={() => setGroupsTarget(null)}
         onSave={(ids) => saveGroups.mutateAsync(ids)}
       />
+      {newUserOpen && (
+        <NewUserModal
+          groups={groups.data ?? []}
+          onClose={() => setNewUserOpen(false)}
+          onSaved={() => { setNewUserOpen(false); itemsRef.current = []; setItems([]); setPage(1); void users.refetch() }}
+        />
+      )}
     </div>
   )
 }

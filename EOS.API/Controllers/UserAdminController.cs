@@ -39,6 +39,17 @@ public sealed class UserAdminController(
         return NoContent();
     }
 
+    /// <summary>新增用户（开户）：用户名 + 员工（选择器）+ 初始密码 + 可选所属组；要求 CanSetup(2306)。</summary>
+    [HttpPost]
+    public async Task<IActionResult> CreateUser(CreateUserRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        await repository.CreateUserAsync(
+            request.UserId, request.EmployeeId, request.Password, request.GroupId,
+            userContext.EmployeeName, token);
+        return NoContent();
+    }
+
     [HttpPut("{userId}/status")]
     public async Task<IActionResult> SetStatus(string userId, SetUserStatusRequest request, CancellationToken token)
     {

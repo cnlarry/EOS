@@ -76,6 +76,13 @@ describe('UnifiedChooser', () => {
     expect(screen.getByText('共 2 条，已选 0 项')).toBeInTheDocument()
   })
 
+  it('sourceKey：首次加载应用服务端 defaultKeys 作为默认显示列', async () => {
+    apiClientMock.post.mockResolvedValue({ columns, rows, total: 2, defaultKeys: ['CLIENT_ID'] })
+    renderChooser()
+    await waitFor(() => expect(screen.getByText('C0')).toBeInTheDocument())
+    expect(screen.queryByText('客户甲')).not.toBeInTheDocument()
+  })
+
   it('单选模式：首列 Radio，勾选不触发选择，左上角确认才回填', async () => {
     const { props } = renderChooser()
     await waitFor(() => expect(screen.getByText('客户甲')).toBeInTheDocument())

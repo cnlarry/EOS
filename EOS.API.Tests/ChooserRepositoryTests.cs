@@ -14,6 +14,7 @@ public sealed class ChooserRepositoryTests
     [InlineData("menu-admin.fields", true)]
     [InlineData("menu-admin.sprocs", true)]
     [InlineData("report-admin.fields", true)]
+    [InlineData("user-admin.employees", true)]
     [InlineData("MENU-ADMIN.TABLES", true)]
     [InlineData("unknown.source", false)]
     [InlineData("", false)]
@@ -29,6 +30,7 @@ public sealed class ChooserRepositoryTests
     [InlineData("menu-admin.fields", 2301)]
     [InlineData("menu-admin.sprocs", 2301)]
     [InlineData("report-admin.fields", 2201)]
+    [InlineData("user-admin.employees", 2306)]
     [InlineData("unknown.source", null)]
     public void PermissionModuleId_ReturnsPermissionGate(string sourceKey, int? expected)
     {

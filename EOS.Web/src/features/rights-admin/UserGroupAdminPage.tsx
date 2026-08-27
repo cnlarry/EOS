@@ -101,7 +101,7 @@ export function UserGroupAdminPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-end text-nowrap', frozenRight: true, truncate: false, minWidth: 400, minWidthFloor: true, resizable: false },
+      meta: { className: 'text-nowrap', frozenRight: true, truncate: false, minWidth: 400, minWidthFloor: true },
       cell: ({ row }) => {
         const group = row.original
         const id = group.groupId.trim()
