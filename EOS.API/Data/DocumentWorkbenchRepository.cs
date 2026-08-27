@@ -932,8 +932,8 @@ public sealed class DocumentWorkbenchRepository(
         WorkbenchDefinition definition,FormDefinition form,IReadOnlyList<string> keyValues,string userId,string? dataFilter,CancellationToken token,string? idempotencyKey=null)
         => await commandHandler.DeleteRecordAsync(definition,form,keyValues,userId,dataFilter,idempotencyKey,token);
     public async Task<RecordSaveResult> WorkflowAsync(
-        WorkbenchDefinition definition,IReadOnlyList<string> keyValues,bool approve,string employeeName,string userId,CancellationToken token,string? idempotencyKey=null)
-        => await approvalService.WorkflowAsync(definition,keyValues,approve,employeeName,userId,idempotencyKey,token);
+        WorkbenchDefinition definition,IReadOnlyList<string> keyValues,bool approve,string employeeName,string userId,CancellationToken token,string? idempotencyKey=null,string? message=null)
+        => await approvalService.WorkflowAsync(definition,keyValues,approve,employeeName,userId,idempotencyKey,token,message);
     public async Task<RecordSaveResult> FinishAsync(
         WorkbenchDefinition definition,IReadOnlyList<string> keyValues,bool finish,string employeeName,string userId,CancellationToken token,string? idempotencyKey=null)
         => await approvalService.FinishAsync(definition,keyValues,finish,employeeName,userId,idempotencyKey,token);

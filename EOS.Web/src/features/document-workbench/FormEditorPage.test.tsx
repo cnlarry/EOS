@@ -205,7 +205,7 @@ describe('FormEditorPage', () => {
     expect(screen.getByRole('button', { name: '打印' })).toBeInTheDocument()
   })
 
-  it('浏览模式点击批核调用 approve 并刷新记录', async () => {
+  it('浏览模式点击批核打开送审弹窗，确认后调用 approve 携带送审说明并刷新记录', async () => {
     const postMock = vi.fn().mockResolvedValue({ key: ['P1', 'A'] })
     apiClientMock.post.mockImplementation(postMock)
     apiClientMock.get.mockImplementation(async (path: string) => {
@@ -217,10 +217,35 @@ describe('FormEditorPage', () => {
     renderEditor('/workbench/1209/view/P1/A')
     const approveButton = await screen.findByRole('button', { name: '批核' })
     fireEvent.click(approveButton)
+    // 送审弹窗出现，可填写说明
+    expect(screen.getByText('送审确认')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('送审说明'), { target: { value: '请加急审批' } })
+    fireEvent.click(screen.getByRole('button', { name: '确认送审' }))
     await waitFor(() => expect(postMock).toHaveBeenCalledWith(
       '/document-workbench/1209/approve',
-      expect.objectContaining({ key: JSON.stringify(['P1', 'A']) }),
+      expect.objectContaining({ key: JSON.stringify(['P1', 'A']), message: '请加急审批' }),
     ))
+  })
+
+  it('流程模块浏览态显示审批历史按钮，点击加载时间线弹窗', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: false } }
+      if (p.includes('/workflow/1209/history')) return { rows: [
+        { kind: 'task', step: '000', stepDesc: '提交送审', approver: 'admin', state: 'A', message: '请加急', date: '2026-08-26 10:00' },
+        { kind: 'task', step: '001', stepDesc: '一级审批', approver: 'admin', state: 'Y', message: '同意', date: '2026-08-26 10:01' },
+        { kind: 'confirm', step: '', stepDesc: '流程审批完成，单据已确认', approver: 'admin', state: 'Y', message: '', date: '' },
+      ] }
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/workbench/1209/view/P1/A')
+    const historyButton = await screen.findByRole('button', { name: '审批历史' })
+    fireEvent.click(historyButton)
+    expect(await screen.findByText('审批历史（流程信息）')).toBeInTheDocument()
+    expect(await screen.findByText('提交送审')).toBeInTheDocument()
+    expect(screen.getByText('请加急')).toBeInTheDocument()
+    expect(screen.getByText('流程完成')).toBeInTheDocument()
   })
 
   it('浏览模式点击结案调用 endcase 并刷新记录（FINISHED_TAG=false）', async () => {

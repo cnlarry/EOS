@@ -22,6 +22,8 @@ public class ModuleRouteValidatorTests
     [InlineData("/admin/groups", 2305)]
     [InlineData("/settings/system", 110111)]
     [InlineData("/my-tasks", 2102)]
+    [InlineData("/workflow/design", 2101)]
+    [InlineData("/workflow/monitor", 2103)]
     [InlineData("/jobs", 230901)]
     public void ExactRoutes_ReturnAsIs(string url, int moduleId)
     {

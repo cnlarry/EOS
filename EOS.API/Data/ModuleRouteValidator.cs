@@ -31,6 +31,7 @@ internal static class ModuleRouteValidator
         "/admin/groups", "/admin/report-setup", "/admin/print-setup/headers", "/admin/print-setup/footers", "/admin/print-setup/tails",
         "/import", "/settings/system", "/settings/hr-setup", "/settings/hrm-setup",
         "/bom-expand", "/jobs", "/my-tasks", "/car-summary",
+        "/workflow/design", "/workflow/monitor",
     ];
 
     /// <summary>统一表单动作模板：NEW_URL/MODI_URL（或 M_URL 直达表单）命中时替换 {moduleId}。</summary>

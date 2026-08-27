@@ -142,7 +142,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         var keyValues=ParseKey(request.Key);
         if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
         if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
-        var result=await repository.WorkflowAsync(definition,keyValues,approve,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey??headerIdempotencyKey);
+        var result=await repository.WorkflowAsync(definition,keyValues,approve,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey??headerIdempotencyKey,request.Message);
         return MapSaveResult(result);
     }
 

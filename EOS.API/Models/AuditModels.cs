@@ -29,3 +29,9 @@ public sealed class AuditSettings
 {
     public bool FieldChangesEnabled { get; set; } = true;
 }
+
+/// <summary>工作流设置（模块 2103 流程监控超时阈值）：OverdueDays 内完成视为正常，超过则标记超时。</summary>
+public sealed class WorkflowSettings
+{
+    public int OverdueDays { get; set; } = 3;
+}
