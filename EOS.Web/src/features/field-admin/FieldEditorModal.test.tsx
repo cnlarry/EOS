@@ -48,16 +48,15 @@ describe('FieldEditorModal', () => {
   it('新增模式渲染空草稿且必填校验禁用保存', async () => {
     const save = vi.fn().mockResolvedValue(undefined)
     const { container, onSaved } = renderModal(true, 'new', { load: vi.fn(), save })
-    expect(screen.getByText(/新增字段将写入全局字段元数据/)).toBeInTheDocument()
-    const saveButton = screen.getByRole('button', { name: '新增字段' })
+    const saveButton = screen.getByRole('button', { name: '保存' })
     expect(saveButton).toBeDisabled()
     const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('input.form-control'))
     fireEvent.change(inputs[0], { target: { value: 'T2' } })
     fireEvent.change(inputs[1], { target: { value: 'CODE2' } })
     fireEvent.change(inputs[2], { target: { value: '新字段' } })
     fireEvent.change(container.querySelector<HTMLSelectElement>('select.form-select')!, { target: { value: 'decimal' } })
-    await waitFor(() => expect(screen.getByRole('button', { name: '新增字段' })).toBeEnabled())
-    fireEvent.click(screen.getByRole('button', { name: '新增字段' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(save).toHaveBeenCalled())
     expect(save.mock.calls[0][1]).toBe('T2')
     expect(save.mock.calls[0][3]).toBeNull()
@@ -71,7 +70,7 @@ describe('FieldEditorModal', () => {
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
     const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('input.form-control'))
     fireEvent.change(inputs[2], { target: { value: '编号2' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存字段设置' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(save).toHaveBeenCalled())
     const [input, tableId, fieldId, original] = save.mock.calls[0]
     expect(tableId).toBe('T1')
@@ -95,11 +94,11 @@ describe('FieldEditorModal', () => {
   it('分区切换展示对应控件', async () => {
     const { container } = renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta()), save: vi.fn() })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: '录入与校验' }))
+    fireEvent.click(screen.getByRole('tab', { name: '录入与校验' }))
     expect(container.querySelector('input.form-control')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '权限与备注' }))
+    fireEvent.click(screen.getByRole('tab', { name: '权限与备注' }))
     expect(container.querySelector('input[type="checkbox"]')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '高级设置' }))
+    fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
     expect(screen.getByLabelText('虚拟字段')).toBeDisabled()
     expect(screen.getByText('最后修改人')).toBeInTheDocument()
     expect(screen.getByDisplayValue('admin')).toBeInTheDocument()
@@ -114,7 +113,7 @@ describe('FieldEditorModal', () => {
       publishExpression: vi.fn().mockResolvedValue(undefined),
     })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: '高级设置' }))
+    fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
     expect(screen.getByDisplayValue('1+1')).not.toBeDisabled()
     expect(screen.getByDisplayValue('CONVERT(X)')).not.toBeDisabled()
     expect(screen.getByDisplayValue('SELECT 1')).not.toBeDisabled()
@@ -130,14 +129,14 @@ describe('FieldEditorModal', () => {
     const save = vi.fn().mockResolvedValue(undefined)
     const { container } = renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta()), save })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: '表单布局' }))
+    fireEvent.click(screen.getByRole('tab', { name: '表单布局' }))
     expect(screen.getByText('页签序号（FORM_TAB_NO）')).toBeInTheDocument()
     expect(screen.getByText('跨列宽度（FORM_SPAN）')).toBeInTheDocument()
     expect(screen.getByText('下拉选项（FORM_OPTIONS）')).toBeInTheDocument()
     // 修改跨列宽度为整行，保存后 payload 应携带 span=2
     const spanSelect = container.querySelector<HTMLSelectElement>('select.form-select')
     fireEvent.change(spanSelect!, { target: { value: '2' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存字段设置' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(save).toHaveBeenCalled())
     expect(save.mock.calls[0][0]).toEqual(expect.objectContaining({ span: 2 }))
   })
@@ -145,7 +144,7 @@ describe('FieldEditorModal', () => {
   it('数据来源编辑与返回值映射', async () => {
     renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta()), save: vi.fn() })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: '权限与备注' }))
+    fireEvent.click(screen.getByRole('tab', { name: '权限与备注' }))
     fireEvent.click(screen.getByLabelText('数据来源 1'))
     const tableInput = screen.getAllByText('来源表')[0].closest('.col-md-6')!.querySelector('input') as HTMLInputElement
     fireEvent.change(tableInput, { target: { value: 'PRODUCT' } })
@@ -161,7 +160,7 @@ describe('FieldEditorModal', () => {
   it('列宽越界禁用保存', async () => {
     renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta({ width: 500 })), save: vi.fn() })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    expect(screen.getByRole('button', { name: '保存字段设置' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
   })
 
   it('load 返回 null 时显示未找到元数据', async () => {
@@ -178,7 +177,7 @@ describe('FieldEditorModal', () => {
     })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
     await waitFor(() => expect(screen.getByText('产品 (PRODUCT)')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: '权限与备注' }))
+    fireEvent.click(screen.getByRole('tab', { name: '权限与备注' }))
     await waitFor(() => expect(screen.getByRole('option', { name: /库存仓别 \(1305\)/ })).toBeInTheDocument())
   })
 
@@ -188,7 +187,7 @@ describe('FieldEditorModal', () => {
       save: vi.fn().mockRejectedValue(new Error('保存被拒绝')),
     })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: '保存字段设置' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(screen.getByText('保存被拒绝')).toBeInTheDocument())
   })
 
@@ -204,7 +203,7 @@ describe('FieldEditorModal', () => {
   it('校验分区切换与只读/必填开关', async () => {
     renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta()), save: vi.fn() })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: '录入与校验' }))
+    fireEvent.click(screen.getByRole('tab', { name: '录入与校验' }))
     expect(screen.getByLabelText('不能为空')).toBeChecked()
     fireEvent.click(screen.getByLabelText('不能为空'))
     fireEvent.click(screen.getByLabelText('只读'))
@@ -242,7 +241,7 @@ describe('FieldEditorModal', () => {
     fireEvent.click(screen.getByLabelText('默认字段'))
     fireEvent.click(screen.getByLabelText('允许查询'))
 
-    fireEvent.click(screen.getByRole('button', { name: '录入与校验' }))
+    fireEvent.click(screen.getByRole('tab', { name: '录入与校验' }))
     const validationInputs = Array.from(dialog.querySelectorAll<HTMLInputElement>('input.form-control'))
     fireEvent.change(validationInputs[0], { target: { value: 'ABC' } })
     fireEvent.change(validationInputs[1], { target: { value: '3' } })
@@ -250,7 +249,7 @@ describe('FieldEditorModal', () => {
     fireEvent.click(screen.getByLabelText('不能为空'))
     fireEvent.click(screen.getByLabelText('只读'))
 
-    fireEvent.click(screen.getByRole('button', { name: '权限与备注' }))
+    fireEvent.click(screen.getByRole('tab', { name: '权限与备注' }))
     const securityInputs = Array.from(dialog.querySelectorAll<HTMLInputElement>('input.form-control'))
     fireEvent.click(screen.getByLabelText('成本字段'))
     fireEvent.click(screen.getByLabelText('保密字段'))
@@ -267,12 +266,12 @@ describe('FieldEditorModal', () => {
     fireEvent.change(screen.getAllByText('过滤条件')[0].closest('.col-12')!.querySelector('textarea')!, { target: { value: '1=1' } })
     fireEvent.change(screen.getAllByText('返回值映射')[0].closest('.col-12')!.querySelector('textarea')!, { target: { value: 'txt_PRO_NO=PRO_NO' } })
 
-    fireEvent.click(screen.getByRole('button', { name: '高级设置' }))
+    fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
     fireEvent.click(screen.getByLabelText('数据可复制'))
     const advancedTextareas = dialog.querySelectorAll('textarea')
     fireEvent.change(advancedTextareas[2], { target: { value: '备注内容' } })
 
-    fireEvent.click(screen.getByRole('button', { name: '保存字段设置' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(save).toHaveBeenCalled())
     const [input] = save.mock.calls[0]
     expect(input).toEqual(expect.objectContaining({
@@ -291,9 +290,9 @@ describe('FieldEditorModal', () => {
   it('正则表达式无效时禁用保存并提示', async () => {
     renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta({ regex: '[' })), save: vi.fn() })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: '录入与校验' }))
+    fireEvent.click(screen.getByRole('tab', { name: '录入与校验' }))
     expect(screen.getByText('正则表达式无法编译，请检查语法。')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '保存字段设置' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
   })
 
   it('显示主键与类型不一致状态', async () => {

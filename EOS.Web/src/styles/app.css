@@ -39,9 +39,6 @@ button, input, select { font: inherit; }
 .erp-column-select-detail { background: color-mix(in srgb, var(--tblr-indigo-lt) 65%, var(--tblr-bg-surface)); }
 .erp-field-settings-dialog { --tblr-modal-width: 820px; }
 .erp-field-settings-dialog .modal-body { max-height: calc(100vh - 180px); overflow-y: auto; }
-.erp-field-settings-tabs { border-bottom: 0 !important; }
-.erp-field-settings-tabs .nav-link { border-top: 0 !important; border-bottom: 0 !important; border-right: 1px solid var(--tblr-border-color) !important; border-left: 1px solid var(--tblr-border-color) !important; border-radius: 0 !important; }
-.erp-field-settings-tabs .nav-link + .nav-link { border-left: 0 !important; }
 .erp-shell { min-height: 100vh; width: 100% !important; max-width: none !important; margin: 0 !important; overflow-x: clip; }
 .erp-sidebar { box-shadow: none; overflow: hidden !important; }
 .erp-sidebar .container-fluid { min-width: 0; min-height: 100%; height: 100vh; padding: 0; display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch; overflow: hidden !important; }

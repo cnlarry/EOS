@@ -271,7 +271,7 @@ describe('DocumentWorkbenchPage', () => {
     expect(apiClientMock.postFile).not.toHaveBeenCalled()
   })
 
-  it('hasAdd 控制新增按钮，点击后跳转新增页', async () => {
+  it('hasAdd 控制新增按钮（主操作样式、工具栏最右），点击后跳转新增页', async () => {
     installApiMocks({ definition: { ...definition, hasAdd: false } })
     const { unmount } = renderPage()
     await loaded()
@@ -280,7 +280,11 @@ describe('DocumentWorkbenchPage', () => {
     installApiMocks()
     renderPage()
     await loaded()
-    fireEvent.click(screen.getByRole('button', { name: '新增' }))
+    const addNew = screen.getByRole('button', { name: '新增' })
+    expect(addNew).toHaveClass('btn-primary')
+    const toolbar = addNew.closest('[role="toolbar"]')!
+    expect(toolbar.children[toolbar.children.length - 1]).toContainElement(addNew)
+    fireEvent.click(addNew)
     expect(screen.getByText('NEW_FORM')).toBeInTheDocument()
   })
 

@@ -329,6 +329,62 @@ describe('FormEditorPage', () => {
     expect(screen.getByRole('button', { name: '编辑' })).toBeDisabled()
   })
 
+  it('浏览模式显示删除按钮（红色危险样式、canDelete 控制）；按钮顺序按固定约定', async () => {
+    const { unmount } = renderEditor('/workbench/1209/view/P1/A')
+    const deleteButton = await screen.findByRole('button', { name: '删除' })
+    expect(deleteButton).toHaveClass('btn-danger')
+    expect(deleteButton).not.toBeDisabled()
+    const addNew = screen.getByRole('button', { name: '新增' })
+    expect(addNew).toHaveClass('btn-primary')
+    const toolbar = addNew.closest('[role="toolbar"]')!
+    const order = Array.from(toolbar.querySelectorAll('button')).map(button => (button.textContent ?? '').trim())
+    expect(order).toEqual(['返回', '新增', '复制', '编辑', '删除', '打印'])
+    unmount()
+    installApiMocks()
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, canDelete: false }
+      if (p.includes('/record')) return recordBundle
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/workbench/1209/view/P1/A')
+    await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument()
+  })
+
+  it('浏览态工具栏完整顺序：批核/审批历史/结案/附件/打印/帮助按约定排列', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true, canEndCase: true, canFileView: true, helpUrl: '/help/1209.html' }
+      if (p.includes('/record')) return recordBundle
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/workbench/1209/view/P1/A')
+    const toolbar = (await screen.findByRole('button', { name: '返回' })).closest('[role="toolbar"]')!
+    const order = Array.from(toolbar.querySelectorAll('button')).map(button => (button.textContent ?? '').trim())
+    expect(order).toEqual(['返回', '新增', '复制', '编辑', '删除', '批核', '审批历史', '结案', '附件', '打印', '帮助'])
+  })
+
+  it('浏览模式已批核时删除按钮禁用；点击删除（确认后）调用删除接口并返回列表', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return { ...formDefinition, hasWorkflow: true }
+      if (p.includes('/record')) return { ...recordBundle, master: { ...recordBundle.master, CONFIRM_TAG: true, FINISHED_TAG: false } }
+      throw new Error(`unexpected GET ${p}`)
+    })
+    const { unmount: unmountConfirmed } = renderEditor('/workbench/1209/view/P1/A')
+    await waitFor(() => expect(screen.getByRole('button', { name: '删除' })).toBeDisabled())
+    unmountConfirmed()
+    installApiMocks()
+    const { unmount } = renderEditor('/workbench/1209/view/P1/A')
+    fireEvent.click(await screen.findByRole('button', { name: '删除' }))
+    await waitFor(() => expect(apiClientMock.delete).toHaveBeenCalledWith(
+      '/document-workbench/1209/record?key=%5B%22P1%22%2C%22A%22%5D',
+      expect.objectContaining({ headers: expect.objectContaining({ 'X-Idempotency-Key': expect.any(String) }) }),
+    ))
+    unmount()
+  })
+
   it('新增模式应用服务端默认值（单别/单号/日期）', async () => {
     const withDefaults: FormDefinition = {
       ...formDefinition,

@@ -147,7 +147,7 @@ describe('FieldAdminPage', () => {
     const inputs = Array.from(dialog.querySelectorAll<HTMLInputElement>('input.form-control'))
     fireEvent.change(inputs[1], { target: { value: 'NEW_CODE' } })
     fireEvent.change(inputs[2], { target: { value: '新字段' } })
-    const save = within(dialog).getByRole('button', { name: '新增字段' })
+    const save = within(dialog).getByRole('button', { name: '保存' })
     await waitFor(() => expect(save).toBeEnabled())
     fireEvent.click(save)
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(

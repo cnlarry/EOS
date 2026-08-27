@@ -315,11 +315,11 @@ export function FormEditorPage() {
   })
 
   const deleteRecord = async () => {
-    if (!formQuery.data) return
-    const key = buildKey(formQuery.data, masterValues)
+    // 键取 URL 路径主键（keyParam，同步权威）：masterValues 为异步回填，record 未返回时点击会得到空键
+    if (!keyParam) return
     if (!window.confirm('确定删除该单据吗？删除后不可恢复。')) return
     try {
-      await apiClient.delete(`/document-workbench/${moduleId}/record?key=${encodeURIComponent(JSON.stringify(key))}`, { headers: { 'X-Idempotency-Key': newIdempotencyKey() } })
+      await apiClient.delete(`/document-workbench/${moduleId}/record?key=${encodeURIComponent(keyParam)}`, { headers: { 'X-Idempotency-Key': newIdempotencyKey() } })
       // ADR-006 决策 6：删除后返回工作台列表并刷新（旧系统 window.close 回主表列表语义）；
       // 跨模块关联浏览时返回来源工作台
       await queryClient.invalidateQueries({ queryKey: ['workbench', moduleId] })
@@ -765,7 +765,8 @@ export function FormEditorPage() {
                 )}
               </>
             ) : (
-              // ADR-006 决策 6 浏览态工具栏：返回/上下条/新增/复制/编辑/帮助/FORM_BUTTONS 动作/附件
+              // ADR-006 决策 6 浏览态工具栏（2026-08-27 顺序用户定序，固定不随 FORM_BUTTONS 顺序漂移）：
+              // 返回/上下条/新增(主操作)/复制/编辑/删除/批核|解批/审批历史/结案|未结案/附件/打印/帮助
               <ErpCommandBar items={(() => {
                 const currentKey = buildKey(form, masterValues)
                 const master = recordQuery.data?.master
@@ -798,8 +799,6 @@ export function FormEditorPage() {
                             : []
                         case 'print':
                           return keyParam ? [{ action: 'print', onClick: openPrint }] : []
-                        case 'delete':
-                          return keyParam && form.canDelete ? [{ action: 'delete', disabled: deleteDisabled, onClick: () => void deleteRecord() }] : []
                         default:
                           return []
                       }
@@ -827,7 +826,7 @@ export function FormEditorPage() {
                     { action: 'next', disabled: navIndex >= navKeys.length - 1, onClick: () => goNeighbor(1) },
                   ] satisfies ErpCommandItem[] : []),
                   ...(form.canAddNew && form.hasAdd
-                    ? [{ action: 'new', onClick: () => navigate(workbenchNew(moduleId)) } satisfies ErpCommandItem]
+                    ? [{ action: 'new', variant: 'primary', onClick: () => navigate(workbenchNew(moduleId)) } satisfies ErpCommandItem]
                     : []),
                   ...(form.ifCopy && form.canAddNew && keyParam
                     ? [{ action: 'copy', onClick: () => navigate(workbenchCopy(moduleId, currentKey)) } satisfies ErpCommandItem]
@@ -835,8 +834,12 @@ export function FormEditorPage() {
                   ...(form.canEdit && form.hasEdit && keyParam
                     ? [{ action: 'edit', disabled: editDisabled, onClick: () => navigate(workbenchEdit(moduleId, currentKey)) } satisfies ErpCommandItem]
                     : []),
-                  ...(form.helpUrl ? [{ action: 'help', onClick: () => window.open(form.helpUrl!, '_blank', 'noopener') } satisfies ErpCommandItem] : []),
-                  // A3：在途流程时显示「撤回」（发起人），撤回后可编辑并重新送审
+                  // 删除为浏览态标准动作（对齐旧 ModifyToolBar）：权限 canDelete ∧ 单据状态，不依赖 FORM_BUTTONS 配置
+                  ...(form.canDelete && keyParam
+                    ? [{ action: 'delete', variant: 'danger', disabled: deleteDisabled, onClick: () => void deleteRecord() } satisfies ErpCommandItem]
+                    : []),
+                  ...whitelistItems.filter(item => item.action === 'approve' || item.action === 'deapprove'),
+                  // A3：在途流程时显示「撤回」（发起人），撤回后可编辑并重新送审——与批核同位互斥
                   ...(flowInProgress && keyParam
                     ? [{ action: 'withdraw', loading: withdraw.isPending, onClick: () => withdraw.mutate() } satisfies ErpCommandItem]
                     : []),
@@ -844,8 +847,10 @@ export function FormEditorPage() {
                   ...(form.hasWorkflow && keyParam
                     ? [{ action: 'history', onClick: () => setHistoryOpen(true) } satisfies ErpCommandItem]
                     : []),
-                  ...whitelistItems,
+                  ...whitelistItems.filter(item => item.action === 'endcase' || item.action === 'unendcase'),
                   ...(form.canFileView && keyParam ? [{ action: 'attach', onClick: () => setAttachOpen(true) } satisfies ErpCommandItem] : []),
+                  ...whitelistItems.filter(item => item.action === 'print'),
+                  ...(form.helpUrl ? [{ action: 'help', onClick: () => window.open(form.helpUrl!, '_blank', 'noopener') } satisfies ErpCommandItem] : []),
                 ]
               })()} />
             )}
