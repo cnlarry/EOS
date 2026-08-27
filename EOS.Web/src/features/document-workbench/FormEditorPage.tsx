@@ -3,7 +3,7 @@ import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { IconTrash } from '@tabler/icons-react'
-import { LoadingState } from '../../components/common/AsyncState'
+import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
 import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
 import { ErpTable } from '../../components/common/ErpTable'
@@ -23,6 +23,25 @@ import {
   buildKey, canonicalizeDecimalValue, chooserTitle, describeError, detailControlMinWidth, emptyValue, extractDocNo, newIdempotencyKey,
   summarizeFieldErrors, writableFields, type DetailGridRow, type RecordBundle, type RecordSaveResponse, type SaveRecordRequest,
 } from './formEditorUtils'
+
+/** 按单审批历史时间线行（/workflow/{moduleId}/history 返回）：task=审批动作 / confirm=流程完成确认。 */
+interface WorkflowHistoryRow {
+  kind: 'task' | 'confirm'
+  step: string
+  stepDesc: string
+  approver: string | null
+  state: string
+  message: string | null
+  date: string | null
+}
+
+const HISTORY_STATE_LABEL: Record<string, string> = {
+  Y: '同意',
+  N: '驳回',
+  S: '跳过',
+  W: '撤回',
+  A: '送审',
+}
 
 export function FormEditorPage() {
   const params = useParams()
@@ -247,13 +266,19 @@ export function FormEditorPage() {
   })
 
   const workflow = useMutation({
-    mutationFn: async (action: 'approve' | 'deapprove') => {
+    mutationFn: async ({ action, message }: { action: 'approve' | 'deapprove'; message?: string }) => {
       if (!formQuery.data) throw new Error('表单定义未加载。')
       const key = buildKey(formQuery.data, masterValues)
-      return apiClient.post<RecordSaveResponse>(`/document-workbench/${moduleId}/${action}`, { key: JSON.stringify(key), idempotencyKey: newIdempotencyKey() })
+      return apiClient.post<RecordSaveResponse>(`/document-workbench/${moduleId}/${action}`, {
+        key: JSON.stringify(key),
+        idempotencyKey: newIdempotencyKey(),
+        message: message?.trim() || undefined,
+      })
     },
-    onSuccess: async (_, action) => {
-      window.alert(action === 'approve' ? '批核成功。' : '解批成功。')
+    onSuccess: async (_, { action }) => {
+      window.alert(action === 'approve' ? (form.hasWorkflow ? '已送审，单据进入审批链。' : '批核成功。') : '解批成功。')
+      setApproveOpen(false)
+      setSubmitMessage('')
       await recordQuery.refetch()
     },
     onError: cause => {
@@ -261,6 +286,17 @@ export function FormEditorPage() {
       window.alert(message)
     },
   })
+
+  // C1（2026-08-27）：送审意见弹窗 + 审批历史（流程信息）。审批历史沿用 /workflow/{moduleId}/history 时间线端点。
+  const [approveOpen, setApproveOpen] = useState(false)
+  const [submitMessage, setSubmitMessage] = useState('')
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const historyQuery = useQuery({
+    queryKey: ['workflow-history', moduleId, keyParam],
+    queryFn: () => apiClient.get<{ rows: WorkflowHistoryRow[] }>(`/workflow/${moduleId}/history?key=${encodeURIComponent(keyParam ?? '')}`),
+    enabled: historyOpen && Boolean(keyParam),
+  })
+  const openApprove = () => { setSubmitMessage(''); setApproveOpen(true) }
 
   const finish = useMutation({
     mutationFn: async (action: 'endcase' | 'unendcase') => {
@@ -746,11 +782,11 @@ export function FormEditorPage() {
                       switch (button.action) {
                         case 'approve':
                           return form.hasWorkflow && form.canApprove && keyParam && master && master.CONFIRM_TAG !== true && !flowInProgress
-                            ? [{ action: 'approve', disabled: isFinished, loading: workflow.isPending, onClick: () => workflow.mutate('approve') }]
+                            ? [{ action: 'approve', disabled: isFinished, loading: workflow.isPending, onClick: () => openApprove() }]
                             : []
                         case 'deapprove':
                           return form.hasWorkflow && form.canDeapprove && keyParam && master && master.CONFIRM_TAG === true
-                            ? [{ action: 'deapprove', disabled: isFinished, loading: workflow.isPending, onClick: () => workflow.mutate('deapprove') }]
+                            ? [{ action: 'deapprove', disabled: isFinished, loading: workflow.isPending, onClick: () => workflow.mutate({ action: 'deapprove' }) }]
                             : []
                         case 'endcase':
                           return keyParam && form.canEndCase && master && master.FINISHED_TAG !== true
@@ -771,10 +807,10 @@ export function FormEditorPage() {
                   : [
                       // 未配置 FORM_BUTTONS 的回退集（保持既有行为：工作流/结案/打印）
                       ...(form.hasWorkflow && keyParam && master && master.CONFIRM_TAG !== true && !flowInProgress && form.canApprove
-                        ? [{ action: 'approve', disabled: isFinished, loading: workflow.isPending, onClick: () => workflow.mutate('approve') } satisfies ErpCommandItem]
+                        ? [{ action: 'approve', disabled: isFinished, loading: workflow.isPending, onClick: () => openApprove() } satisfies ErpCommandItem]
                         : []),
                       ...(form.hasWorkflow && keyParam && master && master.CONFIRM_TAG === true && form.canDeapprove
-                        ? [{ action: 'deapprove', disabled: isFinished, loading: workflow.isPending, onClick: () => workflow.mutate('deapprove') } satisfies ErpCommandItem]
+                        ? [{ action: 'deapprove', disabled: isFinished, loading: workflow.isPending, onClick: () => workflow.mutate({ action: 'deapprove' }) } satisfies ErpCommandItem]
                         : []),
                       ...(keyParam && form.canEndCase && master && master.FINISHED_TAG !== true
                         ? [{ action: 'endcase', loading: finish.isPending, onClick: () => finish.mutate('endcase') } satisfies ErpCommandItem]
@@ -803,6 +839,10 @@ export function FormEditorPage() {
                   // A3：在途流程时显示「撤回」（发起人），撤回后可编辑并重新送审
                   ...(flowInProgress && keyParam
                     ? [{ action: 'withdraw', loading: withdraw.isPending, onClick: () => withdraw.mutate() } satisfies ErpCommandItem]
+                    : []),
+                  // C1：审批历史（流程信息）——流程模块浏览态显示
+                  ...(form.hasWorkflow && keyParam
+                    ? [{ action: 'history', onClick: () => setHistoryOpen(true) } satisfies ErpCommandItem]
                     : []),
                   ...whitelistItems,
                   ...(form.canFileView && keyParam ? [{ action: 'attach', onClick: () => setAttachOpen(true) } satisfies ErpCommandItem] : []),
@@ -915,6 +955,78 @@ export function FormEditorPage() {
           canDelete={form.canFileDele}
           onClose={() => setAttachOpen(false)}
         />
+      )}
+      {approveOpen && (
+        <div className="modal modal-blur show d-block" role="dialog" aria-modal="true" aria-label="送审确认">
+          <div className="modal-dialog modal-dialog-centered erp-dialog-sm">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h2 className="modal-title">送审确认</h2>
+                <button type="button" className="btn-close" aria-label="关闭" onClick={() => setApproveOpen(false)} />
+              </div>
+              <div className="modal-body">
+                <div className="mb-2 text-secondary small">
+                  单据将进入审批链，审批完成前不可编辑/删除。可填写送审说明（选填）。
+                </div>
+                <input
+                  className="form-control"
+                  value={submitMessage}
+                  onChange={(event) => setSubmitMessage(event.target.value)}
+                  placeholder="送审说明…"
+                  aria-label="送审说明"
+                />
+              </div>
+              <div className="modal-footer">
+                <Button variant="secondary" onClick={() => setApproveOpen(false)}>取消</Button>
+                <Button variant="primary" loading={workflow.isPending} onClick={() => workflow.mutate({ action: 'approve', message: submitMessage })}>
+                  确认送审
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {historyOpen && keyParam && (
+        <div className="modal modal-blur show d-block" role="dialog" aria-modal="true" aria-label="审批历史">
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h2 className="modal-title">审批历史（流程信息）</h2>
+                <button type="button" className="btn-close" aria-label="关闭" onClick={() => setHistoryOpen(false)} />
+              </div>
+              <div className="modal-body" style={{ maxHeight: '60dvh', overflowY: 'auto' }}>
+                {historyQuery.isPending ? <LoadingState label="正在加载审批历史…" /> : historyQuery.isError ? (
+                  <ErrorState message="审批历史加载失败" onRetry={() => void historyQuery.refetch()} />
+                ) : (historyQuery.data?.rows ?? []).length === 0 ? (
+                  <div className="text-center text-secondary py-4">暂无审批记录</div>
+                ) : (
+                  <ul className="list-unstyled mb-0">
+                    {(historyQuery.data?.rows ?? []).map((row, index) => {
+                      const label = row.kind === 'confirm' ? '流程完成' : (HISTORY_STATE_LABEL[row.state] ?? row.state) || '—'
+                      return (
+                        <li key={index} className="d-flex gap-2 align-items-start py-2 border-bottom">
+                          <span className="badge text-bg-light border mt-1" style={{ minWidth: 44 }}>{row.step || '—'}</span>
+                          <div className="flex-grow-1">
+                            <div className="small">
+                              <span className="fw-semibold">{row.stepDesc || label}</span>
+                              {row.approver && <span className="font-monospace text-secondary ms-2">{row.approver}</span>}
+                              <span className={`ms-2 badge ${row.state === 'Y' || row.kind === 'confirm' ? 'text-bg-success' : row.state === 'N' || row.state === 'W' ? 'text-bg-danger' : row.state === 'A' ? 'text-bg-info' : row.state === 'S' ? 'text-bg-secondary' : 'text-bg-warning'}`}>{label}</span>
+                            </div>
+                            {row.message && <div className="small text-secondary">{row.message}</div>}
+                          </div>
+                          {row.date && <span className="small text-secondary text-nowrap">{row.date}</span>}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
+              <div className="modal-footer">
+                <Button variant="secondary" onClick={() => setHistoryOpen(false)}>关闭</Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

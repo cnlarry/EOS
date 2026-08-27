@@ -21,6 +21,7 @@ namespace EOS.API.Data;
 public sealed class WorkflowEngine(
     DbConnectionFactory connections,
     ControlledSprocInvoker controlledSprocs,
+    WorkbenchAuditWriter auditWriter,
     ILogger<WorkflowEngine> logger)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
@@ -81,13 +82,15 @@ public sealed class WorkflowEngine(
     /// 受控评估：步骤执行条件为真的步骤才生成任务，审批人条件为真的人员才入任务；
     /// 权限串（PERSON_APP_POWER/PERSON_FORWARD_POWER）按人解析，空串=全部有权限；
     /// 首个具备审批权的步骤置为当前；自动执行步骤由 SYSTEM 自动同意（P_WF_RUN_AUTO 等价）。
+    /// submitMessage（可选）：送审说明，写入提交送审日志（APPROVE_STATE='A'）并记入审计。
     /// </summary>
     public async Task<RecordSaveResult> StartFlowAsync(
         WorkbenchDefinition definition,
         IReadOnlyList<string> keyValues,
         string employeeName,
         string userId,
-        CancellationToken token)
+        CancellationToken token,
+        string? submitMessage = null)
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
@@ -269,6 +272,24 @@ public sealed class WorkflowEngine(
         if (firstApproveStep is null)
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_NO_APPROVE_POWER",
                 "流程步骤没有具备审批权（PERSON_APP_POWER）的人员，已拒绝启动。");
+
+        // 提交送审日志（APPROVE_STATE='A'：发起人送审，MYTASK_ID=0 表示非任务级动作）
+        await using (var submitLog = new SqlCommand("""
+            INSERT INTO dbo.WF_MYTASK_LOG (WF_ID, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, APP_EMP_ID,
+                APPROVE_DATE, APPROVE_STATE, APPROVE_MSG)
+            VALUES (@WfId, 0, '000', N'提交送审', @UserId, GETDATE(), 'A', @Msg);
+            """, connection, transaction))
+        {
+            submitLog.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+            submitLog.Parameters.Add("@UserId", SqlDbType.VarChar, 20).Value = userId;
+            submitLog.Parameters.Add("@Msg", SqlDbType.VarChar, 3000).Value =
+                (object?)(string.IsNullOrWhiteSpace(submitMessage) ? null : submitMessage) ?? DBNull.Value;
+            await submitLog.ExecuteNonQueryAsync(token);
+        }
+        await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId,
+            string.Join(',', keyValues), "FLOW_SUBMIT",
+            string.IsNullOrWhiteSpace(submitMessage) ? "送审（流程启动）" : $"送审（流程启动）：{submitMessage}",
+            userId, "WORKBENCH_RECORD", 1, null, token);
 
         await transaction.CommitAsync(token);
         logger.LogInformation("流程启动 module={ModuleId} key={Key} steps={Steps} firstApprove={First}",
@@ -1220,5 +1241,161 @@ public sealed class WorkflowEngine(
                 StepDesc = reader.GetString(7),
             });
         return result;
+    }
+
+    /// <summary>
+    /// 流程监控列表（模块 2103）：全部流程实例（在途/完成/撤回），支持按状态/模块/关键字过滤。
+    /// OverdueDays 为超时阈值（配置层）：在途天数超过阈值且仍在途 → Overdue=true。
+    /// </summary>
+    public async Task<IReadOnlyList<object>> GetMonitorAsync(
+        SqlConnection connection, string status, int moduleId, string? keyword,
+        int overdueDays, CancellationToken token)
+    {
+        var result = new List<object>();
+        await using var command = new SqlCommand("""
+            SELECT M.WF_ID, M.WF_M_IDX,
+                   LTRIM(RTRIM(ISNULL((SELECT M_DESC FROM dbo.MODULES WHERE M_IDX=M.WF_M_IDX),''))),
+                   LTRIM(RTRIM(ISNULL(M.KEY_VALUE_DESC,''))), LTRIM(RTRIM(ISNULL(M.KEY_VALUE,''))),
+                   LTRIM(RTRIM(ISNULL(M.START_USER,''))), M.START_DATE,
+                   LTRIM(RTRIM(ISNULL(T.SUBFLOW_NO,''))), LTRIM(RTRIM(ISNULL(T.SUBFLOW_DESC,''))),
+                   LTRIM(RTRIM(ISNULL(M.WF_STATE,'')))
+            FROM dbo.WF_MONITOR M WITH (NOLOCK)
+            LEFT JOIN dbo.WF_MYTASK T WITH (NOLOCK) ON T.WF_ID=M.WF_ID AND T.IS_CURRENT=1
+            WHERE (@Status='' OR LTRIM(RTRIM(ISNULL(M.WF_STATE,'')))=@Status)
+              AND (@ModuleId=0 OR M.WF_M_IDX=@ModuleId)
+              AND (@Kw='' OR M.KEY_VALUE_DESC LIKE @Like OR M.KEY_VALUE LIKE @Like OR M.START_USER LIKE @Like
+                   OR EXISTS (SELECT 1 FROM dbo.MODULES MD WITH (NOLOCK) WHERE MD.M_IDX=M.WF_M_IDX AND MD.M_DESC LIKE @Like))
+            ORDER BY M.START_DATE DESC;
+            """, connection);
+        command.Parameters.Add("@Status", SqlDbType.VarChar, 1).Value = status;
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        command.Parameters.Add("@Kw", SqlDbType.NVarChar, 200).Value = keyword?.Trim() ?? string.Empty;
+        command.Parameters.Add("@Like", SqlDbType.NVarChar, 210).Value = $"%{(keyword ?? string.Empty).Trim()}%";
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            var startDate = reader.IsDBNull(6) ? (DateTime?)null : reader.GetDateTime(6);
+            var ageDays = startDate is null ? (double?)null : Math.Max(0, (DateTime.Now - startDate.Value).TotalDays);
+            var stateValue = reader.GetString(9);
+            result.Add(new
+            {
+                WfId = reader.GetInt64(0),
+                ModuleId = reader.GetInt32(1),
+                Title = reader.GetString(2),
+                KeyValueDesc = reader.GetString(3),
+                KeyValue = reader.GetString(4),
+                KeyValues = ParseKeyValues(reader.GetString(4)),
+                StartUser = reader.GetString(5),
+                StartDate = startDate,
+                AgeDays = ageDays,
+                Step = reader.GetString(7),
+                StepDesc = reader.GetString(8),
+                State = stateValue,
+                StateLabel = stateValue switch
+                {
+                    "0" => "在途",
+                    "1" => "已完成",
+                    "2" => "已撤回",
+                    _ => stateValue,
+                },
+                Overdue = stateValue == "0" && ageDays.HasValue && ageDays.Value > overdueDays,
+            });
+        }
+        return result;
+    }
+
+    /// <summary>流程实例明细（模块 2103 监控详情）：monitor + 全部任务 + 审批日志时间线。</summary>
+    public async Task<object?> GetMonitorDetailAsync(SqlConnection connection, long wfId, CancellationToken token)
+    {
+        object? monitor = null;
+        await using (var monitorCommand = new SqlCommand("""
+            SELECT M.WF_ID, M.WF_M_IDX,
+                   LTRIM(RTRIM(ISNULL((SELECT M_DESC FROM dbo.MODULES WHERE M_IDX=M.WF_M_IDX),''))),
+                   LTRIM(RTRIM(ISNULL(M.KEY_VALUE_DESC,''))), LTRIM(RTRIM(ISNULL(M.KEY_VALUE,''))),
+                   LTRIM(RTRIM(ISNULL(M.START_USER,''))), M.START_DATE,
+                   LTRIM(RTRIM(ISNULL(M.WF_STATE,'')))
+            FROM dbo.WF_MONITOR M WITH (NOLOCK) WHERE M.WF_ID=@WfId;
+            """, connection))
+        {
+            monitorCommand.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+            await using var reader = await monitorCommand.ExecuteReaderAsync(token);
+            if (!await reader.ReadAsync(token))
+                return null;
+            var startDate = reader.IsDBNull(6) ? (DateTime?)null : reader.GetDateTime(6);
+            monitor = new
+            {
+                WfId = reader.GetInt64(0),
+                ModuleId = reader.GetInt32(1),
+                Title = reader.GetString(2),
+                KeyValueDesc = reader.GetString(3),
+                KeyValue = reader.GetString(4),
+                KeyValues = ParseKeyValues(reader.GetString(4)),
+                StartUser = reader.GetString(5),
+                StartDate = startDate,
+                AgeDays = startDate is null ? (double?)null : Math.Max(0, (DateTime.Now - startDate.Value).TotalDays),
+                State = reader.GetString(7),
+            };
+        }
+
+        var tasks = new List<object>();
+        await using (var taskCommand = new SqlCommand("""
+            SELECT MYTASK_ID, LTRIM(RTRIM(ISNULL(SUBFLOW_NO,''))), LTRIM(RTRIM(ISNULL(SUBFLOW_DESC,''))),
+                   LTRIM(RTRIM(ISNULL(APPROVER,''))), LTRIM(RTRIM(ISNULL(APPROVE_STATE,''))),
+                   LTRIM(RTRIM(ISNULL(APPROVE_MSG,''))),
+                   CONVERT(varchar(19), APPROVE_DATE, 120),
+                   ISNULL(APPROVE_POWER,0), ISNULL(IS_CURRENT,0), ISNULL(IS_SIGN,0),
+                   ISNULL(IS_MUST_SIGN,0), ISNULL(IS_AUTO_EXEC,0), ISNULL(PASS_PERCENT,0)
+            FROM dbo.WF_MYTASK WITH (NOLOCK)
+            WHERE WF_ID=@WfId ORDER BY SUBFLOW_NO, MYTASK_ID;
+            """, connection))
+        {
+            taskCommand.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+            await using var reader = await taskCommand.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                tasks.Add(new
+                {
+                    MyTaskId = reader.GetInt64(0),
+                    Step = reader.GetString(1),
+                    StepDesc = reader.GetString(2),
+                    Approver = reader.GetString(3),
+                    State = reader.GetString(4),
+                    Message = reader.GetString(5),
+                    ApproveDate = reader.IsDBNull(6) ? null : reader.GetString(6),
+                    ApprovePower = reader.GetBoolean(7),
+                    IsCurrent = reader.GetBoolean(8),
+                    IsSign = reader.GetBoolean(9),
+                    IsMustSign = reader.GetBoolean(10),
+                    IsAutoExec = reader.GetBoolean(11),
+                    PassPercent = reader.GetInt32(12),
+                });
+            }
+        }
+
+        var logs = new List<object>();
+        await using (var logCommand = new SqlCommand("""
+            SELECT LTRIM(RTRIM(ISNULL(SUBFLOW_NO,''))), LTRIM(RTRIM(ISNULL(SUBFLOW_DESC,''))),
+                   LTRIM(RTRIM(ISNULL(APP_EMP_ID,''))), LTRIM(RTRIM(ISNULL(APPROVE_STATE,''))),
+                   LTRIM(RTRIM(ISNULL(APPROVE_MSG,''))), CONVERT(varchar(19), APPROVE_DATE, 120)
+            FROM dbo.WF_MYTASK_LOG WITH (NOLOCK)
+            WHERE WF_ID=@WfId ORDER BY APPROVE_DATE;
+            """, connection))
+        {
+            logCommand.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
+            await using var reader = await logCommand.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                logs.Add(new
+                {
+                    Step = reader.GetString(0),
+                    StepDesc = reader.GetString(1),
+                    Approver = reader.GetString(2),
+                    State = reader.GetString(3),
+                    Message = reader.GetString(4),
+                    Date = reader.IsDBNull(5) ? null : reader.GetString(5),
+                });
+            }
+        }
+        return new { Monitor = monitor, Tasks = tasks, Logs = logs };
     }
 }

@@ -1,10 +1,12 @@
 using System.Data;
 using System.Text.RegularExpressions;
 using EOS.API.Data;
+using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Options;
 
 namespace EOS.API.Controllers;
 
@@ -15,7 +17,8 @@ public sealed class WorkflowController(
     DbConnectionFactory connections,
     LegacyRightsRepository rightsRepository,
     CurrentUserContext userContext,
-    WorkflowEngine workflowEngine) : ControllerBase
+    WorkflowEngine workflowEngine,
+    IOptions<WorkflowSettings> workflowOptions) : ControllerBase
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
@@ -117,6 +120,37 @@ public sealed class WorkflowController(
         await connection.OpenAsync(token);
         var rows = await workflowEngine.GetMyStartedAsync(connection, userContext.UserId, token);
         return Ok(new { Rows = rows });
+    }
+
+    /// <summary>
+    /// 流程监控列表（模块 2103）：全部流程实例（在途/完成/撤回），支持按状态/模块/关键字过滤。
+    /// Overdue 由服务端按 Workflow:OverdueDays 阈值计算（在途超过阈值标记超时）。
+    /// </summary>
+    [HttpGet("monitor")]
+    public async Task<IActionResult> Monitor([FromQuery] string? status = null, [FromQuery] int moduleId = 0, [FromQuery] string? keyword = null, CancellationToken token = default)
+    {
+        if (!(await rightsRepository.GetAsync(userContext.UserId, 2103, token)).CanBrowse) return Forbid();
+        var state = (status ?? string.Empty).Trim();
+        if (state.Length > 0 && state is not ("0" or "1" or "2"))
+            return BadRequest(new { code = "INVALID_FLOW_STATE", message = "status 仅支持 0（在途）/1（已完成）/2（已撤回）。" });
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        var rows = await workflowEngine.GetMonitorAsync(connection, state, moduleId, keyword,
+            workflowOptions.Value.OverdueDays, token);
+        return Ok(new { Rows = rows, OverdueDays = workflowOptions.Value.OverdueDays });
+    }
+
+    /// <summary>流程监控详情（模块 2103）：实例 + 任务 + 审批日志时间线。</summary>
+    [HttpGet("monitor/{wfId:long}")]
+    public async Task<IActionResult> MonitorDetail(long wfId, CancellationToken token)
+    {
+        if (!(await rightsRepository.GetAsync(userContext.UserId, 2103, token)).CanBrowse) return Forbid();
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        var detail = await workflowEngine.GetMonitorDetailAsync(connection, wfId, token);
+        return detail is null
+            ? NotFound(new { code = "FLOW_NOT_FOUND", message = "流程实例不存在。" })
+            : Ok(detail);
     }
 
     private static IReadOnlyList<string>? ParseKey(string? key)

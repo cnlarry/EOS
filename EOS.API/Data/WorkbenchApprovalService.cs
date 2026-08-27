@@ -32,7 +32,8 @@ public sealed class WorkbenchApprovalService(
         string employeeName,
         string userId,
         string? idempotencyKey,
-        CancellationToken token)
+        CancellationToken token,
+        string? message = null)
     {
         var action = approve ? "APPROVE" : "DEAPPROVE";
         if (idempotencyKey is not null)
@@ -44,7 +45,7 @@ public sealed class WorkbenchApprovalService(
             }
         }
 
-        var result = await WorkflowCoreAsync(definition, keyValues, approve, employeeName, userId, token);
+        var result = await WorkflowCoreAsync(definition, keyValues, approve, employeeName, userId, token, message);
         await CompleteOrReleaseIdempotencyAsync(idempotencyKey, action, definition.ModuleId, result, keyValues, token);
         return result;
     }
@@ -208,7 +209,8 @@ public sealed class WorkbenchApprovalService(
         bool approve,
         string employeeName,
         string userId,
-        CancellationToken token)
+        CancellationToken token,
+        string? message = null)
     {
         var rule = definition.BusinessRule;
         if (rule?.WorkflowSproc is not { } sproc)
@@ -236,7 +238,7 @@ public sealed class WorkbenchApprovalService(
         // 无流程模块保持直接批核（对齐旧系统 P_WF_APPROVE_NOFLOW 语义）。
         else if (approve && await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token))
         {
-            return await workflowEngine.StartFlowAsync(definition, keyValues, employeeName, userId, token);
+            return await workflowEngine.StartFlowAsync(definition, keyValues, employeeName, userId, token, message);
         }
         // 对齐旧系统 P_WF_APPROVE_NOFLOW：先更新主表确认状态（带守卫），再执行业务 SP。
         var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);

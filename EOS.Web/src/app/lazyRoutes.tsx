@@ -24,3 +24,5 @@ export const SearchCenterPage = lazy(() => import('../features/search-center/Sea
 export const ImportPage = lazy(() => import('../features/import/ImportPage').then((module) => ({ default: module.ImportPage })))
 export const PrintViewPage = lazy(() => import('../features/print/PrintViewPage').then((module) => ({ default: module.PrintViewPage })))
 export const MyTasksPage = lazy(() => import('../features/workflow/MyTasksPage').then((module) => ({ default: module.MyTasksPage })))
+export const FlowDesignPage = lazy(() => import('../features/workflow/FlowDesignPage').then((module) => ({ default: module.FlowDesignPage })))
+export const FlowMonitorPage = lazy(() => import('../features/workflow/FlowMonitorPage').then((module) => ({ default: module.FlowMonitorPage })))
