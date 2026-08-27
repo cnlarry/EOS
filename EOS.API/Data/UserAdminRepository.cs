@@ -44,8 +44,19 @@ public sealed class UserAdminRepository(DbConnectionFactory connections, ILogger
                 LEFT JOIN dbo.SYSDN n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
             )
             SELECT USER_ID,EMP_ID,EMP_NAME,DEPT_ID,DEPT_DESC,COMPANY_ID,G_IDX,ACTIVE_TAG,HAS_PASSWORD,
-                   LAST_UPDATE_BY,LAST_UPDATE_DATE,COUNT(*) OVER() AS Total
+                   LAST_UPDATE_BY,LAST_UPDATE_DATE,
+                   OUTER_APPLY_GROUPS.GROUPS,
+                   COUNT(*) OVER() AS Total
             FROM base
+            OUTER APPLY (
+                SELECT STUFF((
+                    SELECT N'、' + LTRIM(RTRIM(ISNULL(g.G_DESC,'')))
+                    FROM dbo.SYSDG_USER ug
+                    INNER JOIN dbo.SYSDG g ON ug.G_IDX=g.G_IDX
+                    WHERE LTRIM(RTRIM(ug.USER_ID))=LTRIM(RTRIM(base.USER_ID))
+                    ORDER BY g.G_IDX
+                    FOR XML PATH('')), 1, 1, N'') AS GROUPS
+            ) AS OUTER_APPLY_GROUPS
             WHERE @Keyword = '' OR USER_ID LIKE @Pattern OR EMP_ID LIKE @Pattern OR EMP_NAME LIKE @Pattern
             ORDER BY USER_ID
             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
@@ -60,11 +71,12 @@ public sealed class UserAdminRepository(DbConnectionFactory connections, ILogger
         var total = 0;
         while (await reader.ReadAsync(token))
         {
-            if (total == 0) total = Convert.ToInt32(reader.GetValue(11));
+            if (total == 0) total = Convert.ToInt32(reader.GetValue(12));
             items.Add(new(
                 reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
-                reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetBoolean(7),
-                reader.GetBoolean(8), NullIfEmpty(reader, 9),
+                reader.GetString(4), reader.GetString(5), reader.GetString(6),
+                reader.IsDBNull(11) ? string.Empty : reader.GetString(11),
+                reader.GetBoolean(7), reader.GetBoolean(8), NullIfEmpty(reader, 9),
                 reader.IsDBNull(10) ? null : reader.GetDateTime(10)));
         }
         return new(items, total, page, pageSize);

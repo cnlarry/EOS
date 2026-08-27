@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { UserGroupAdminPage } from './UserGroupAdminPage'
 
@@ -14,59 +15,156 @@ const apiClientMock = vi.hoisted(() => ({
 vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
 
 const groups = [
-  { groupId: 'CG', groupDescription: '采购', memberCount: 2 },
+  { groupId: 'CG', groupDescription: '采购', memberCount: 2, remark: '采购组备注' },
   { groupId: 'CW', groupDescription: '财务', memberCount: 0 },
 ]
-const usersPage = { items: [{ userId: 'puser01', employeeName: '李示例' }, { userId: 'puser02', employeeName: '王示例' }], total: 2, page: 1, pageSize: 100 }
-const members = [{ userId: 'puser01', employeeId: 'puser01', employeeName: '李示例' }]
-
-function mockGet(path: string) {
-  if (path === '/admin/groups') return Promise.resolve(groups)
-  if (path === '/admin/users' || path.startsWith('/admin/users?')) return Promise.resolve(usersPage)
-  if (path === '/admin/groups/CG/members') return Promise.resolve(members)
-  if (path === '/admin/groups/CG/rights') return Promise.resolve([])
-  if (path === '/admin/groups/CG/report-rights') return Promise.resolve([])
-  return Promise.resolve([])
-}
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(<QueryClientProvider client={queryClient}><UserGroupAdminPage /></QueryClientProvider>)
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/admin/groups']}>
+        <Routes>
+          <Route path="/admin/groups" element={<UserGroupAdminPage />} />
+          <Route path="/admin/groups/:groupId/rights" element={<div>GROUP_RIGHTS_PAGE</div>} />
+          <Route path="/admin/groups/:groupId/report-rights" element={<div>GROUP_REPORT_RIGHTS_PAGE</div>} />
+          <Route path="/admin/groups/:groupId/members" element={<div>GROUP_MEMBERS_PAGE</div>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+async function loaded() {
+  await waitFor(() => expect(screen.getByText('CG')).toBeInTheDocument())
+}
+
+function rowOf(groupId: string) {
+  return screen.getByText(groupId).closest('tr')!
 }
 
 describe('UserGroupAdminPage', () => {
   beforeEach(() => {
-    apiClientMock.get.mockImplementation((path: string) => mockGet(path))
+    apiClientMock.get.mockResolvedValue(groups)
+    apiClientMock.post.mockResolvedValue(undefined)
     apiClientMock.put.mockResolvedValue(undefined)
+    apiClientMock.delete.mockResolvedValue(undefined)
+    vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
   afterEach(() => {
     vi.clearAllMocks()
+    vi.unstubAllGlobals()
   })
 
-  it('渲染用户组列表', async () => {
-    renderPage()
-    await waitFor(() => expect(screen.getByText('CG')).toBeInTheDocument())
+  it('渲染用户组列表（全高铺满 + 首列选择 + 表头排序 + 操作列）', async () => {
+    const { container } = renderPage()
+    await loaded()
     expect(screen.getByText('采购')).toBeInTheDocument()
+    expect(screen.getByText('财务')).toBeInTheDocument()
+    expect(container.querySelector('.erp-full-list-page')).not.toBeNull()
+    expect(screen.getByLabelText('选择当前页')).toBeInTheDocument()
+    expect(screen.getAllByLabelText('选择此行')).toHaveLength(2)
+    expect(screen.getByLabelText('表头操作组ID')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '新增' })).toBeInTheDocument()
+    // 操作列：组权限/报表权限/成员/编辑/删除
+    const actions = within(rowOf('CG'))
+    for (const name of ['组权限', '报表权限', '成员', '编辑', '删除']) {
+      expect(actions.getByRole('button', { name })).toBeInTheDocument()
+    }
+  })
+
+  it('成员数徽标：0 灰、>0 绿', async () => {
+    renderPage()
+    await loaded()
+    const cwRow = rowOf('CW')
+    const cgRow = rowOf('CG')
+    expect(within(cwRow).getByText('0').className).toContain('bg-secondary-subtle')
+    expect(within(cgRow).getByText('2').className).toContain('bg-success-subtle')
+  })
+
+  it('搜索按组ID/组描述过滤', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.change(screen.getByLabelText('搜索用户组'), { target: { value: '财务' } })
+    await waitFor(() => expect(screen.queryByText('采购')).not.toBeInTheDocument())
     expect(screen.getByText('财务')).toBeInTheDocument()
   })
 
-  it('打开组权限矩阵并保存', async () => {
+  it('新增用户组走弹窗并 POST', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText('CG')).toBeInTheDocument())
-    const row = screen.getByText('CG').closest('tr')!
-    fireEvent.click(within(row).getByRole('button', { name: '组权限' }))
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
-    expect(apiClientMock.get).toHaveBeenCalledWith('/admin/groups/CG/rights')
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: '新增' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('组ID'), { target: { value: 'NEWG' } })
+    fireEvent.change(screen.getByLabelText('组描述'), { target: { value: '新用户组' } })
+    fireEvent.change(screen.getByLabelText('备注'), { target: { value: '备注' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/admin/groups',
+      { groupId: 'NEWG', groupDescription: '新用户组', remark: '备注' },
+    ))
   })
 
-  it('打开成员选择器并全量保存', async () => {
+  it('编辑用户组预填弹窗并 PUT', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText('CG')).toBeInTheDocument())
-    const row = screen.getByText('CG').closest('tr')!
-    fireEvent.click(within(row).getByRole('button', { name: '成员' }))
-    await waitFor(() => expect(screen.getByText('李示例')).toBeInTheDocument())
+    await loaded()
+    fireEvent.click(within(rowOf('CG')).getByRole('button', { name: '编辑' }))
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.querySelector('#group-id')).toBeDisabled()
+    expect((dialog.querySelector('#group-description') as HTMLInputElement).value).toBe('采购')
+    fireEvent.change(screen.getByLabelText('组描述'), { target: { value: '采购部' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith('/admin/groups/CG/members', { ids: ['puser01'] }))
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
+      '/admin/groups/CG',
+      { groupDescription: '采购部', remark: '采购组备注' },
+    ))
+  })
+
+  it('双击用户组行等同于点击编辑', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.doubleClick(rowOf('CG'))
+    const dialog = screen.getByRole('dialog')
+    expect((dialog.querySelector('#group-id') as HTMLInputElement).value).toBe('CG')
+    expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument()
+  })
+
+  it('删除经确认后调用 DELETE', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.click(within(rowOf('CG')).getByRole('button', { name: '删除' }))
+    expect(window.confirm).toHaveBeenCalled()
+    await waitFor(() => expect(apiClientMock.delete).toHaveBeenCalledWith('/admin/groups/CG'))
+  })
+
+  it('删除取消时不调用接口', async () => {
+    vi.mocked(window.confirm).mockReturnValue(false)
+    renderPage()
+    await loaded()
+    fireEvent.click(within(rowOf('CG')).getByRole('button', { name: '删除' }))
+    expect(apiClientMock.delete).not.toHaveBeenCalled()
+  })
+
+  it('操作列导航到组权限完整子页面', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.click(within(rowOf('CG')).getByRole('button', { name: '组权限' }))
+    expect(await screen.findByText('GROUP_RIGHTS_PAGE')).toBeInTheDocument()
+  })
+
+  it('操作列导航到报表权限完整子页面', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.click(within(rowOf('CG')).getByRole('button', { name: '报表权限' }))
+    expect(await screen.findByText('GROUP_REPORT_RIGHTS_PAGE')).toBeInTheDocument()
+  })
+
+  it('操作列导航到成员完整子页面', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.click(within(rowOf('CG')).getByRole('button', { name: '成员' }))
+    expect(await screen.findByText('GROUP_MEMBERS_PAGE')).toBeInTheDocument()
   })
 })
+

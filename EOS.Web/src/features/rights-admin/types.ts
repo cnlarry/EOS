@@ -36,6 +36,7 @@ export interface ModuleRightsRow {
   moduleId: number
   title: string
   groupPath: string
+  icon?: string | null
   parentId: number
   rootId: number
   sortIndex: number
@@ -135,6 +136,7 @@ export interface UserGroupSummary {
   groupId: string
   groupDescription: string
   memberCount: number
+  remark?: string | null
 }
 
 export interface GroupMemberSummary {

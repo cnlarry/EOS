@@ -1,16 +1,14 @@
 import { IconKey, IconRefresh, IconReport, IconShield, IconUserOff, IconUserPlus, IconUsers } from '@tabler/icons-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import type { ColumnDef } from '@tanstack/react-table'
-import { useMemo, useState } from 'react'
+import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ErrorState, EmptyState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
-import { ErpPagination } from '../../components/common/ErpPagination'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { useAuth } from '../auth/authContext'
-import { ReportRightsMatrix } from '../rights-admin/ReportRightsMatrix'
-import { RightsMatrix } from '../rights-admin/RightsMatrix'
 import { RightsMemberPicker, type PickerOption } from '../rights-admin/RightsMemberPicker'
 import type { UserGroupItem, UserGroupSummary } from '../rights-admin/types'
 import { apiClient } from '../../services/api'
@@ -24,6 +22,7 @@ export interface UserAdminSummary {
   departmentName: string
   companyId: string
   groupId: string
+  groups: string
   isActive: boolean
   hasPassword: boolean
   lastUpdatedBy: string | null
@@ -88,19 +87,26 @@ function SetPasswordModal({ user, onClose, onSaved }: SetPasswordModalProps) {
   )
 }
 
-const pageSize = 10
+const pageSize = 50
 
+/** 用户权限设定（2306 定制页）：用户列表（无感翻页）+ 行级操作；权限/报表权限为完整子页面，所属组为弹窗。 */
 export function UserAdminPage() {
+  const navigate = useNavigate()
   const { bootstrap } = useAuth()
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
+  const [items, setItems] = useState<UserAdminSummary[]>([])
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const itemsRef = useRef<UserAdminSummary[]>([])
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [passwordTarget, setPasswordTarget] = useState<UserAdminSummary | null>(null)
-  const [rightsTarget, setRightsTarget] = useState<UserAdminSummary | null>(null)
-  const [reportTarget, setReportTarget] = useState<UserAdminSummary | null>(null)
   const [groupsTarget, setGroupsTarget] = useState<UserAdminSummary | null>(null)
+
   const users = useQuery({
     queryKey: ['user-admin', 'users', keyword, page],
     queryFn: () => apiClient.get<PageResponse<UserAdminSummary>>('/admin/users', { query: { keyword, page, pageSize } }),
+    placeholderData: (previous) => previous,
   })
   const groups = useQuery({
     queryKey: ['rights-admin', 'groups'],
@@ -115,7 +121,11 @@ export function UserAdminPage() {
     mutationFn: async (ids: string[]) => {
       await apiClient.put(`/admin/users/${encodeURIComponent(groupsTarget!.userId.trim())}/groups`, { ids })
     },
-    onSuccess: () => setGroupsTarget(null),
+    onSuccess: () => {
+      setGroupsTarget(null)
+      void users.refetch()
+      void userGroups.refetch()
+    },
   })
   const status = useMutation({
     mutationFn: async ({ userId, isActive }: { userId: string; isActive: boolean }) => {
@@ -124,51 +134,124 @@ export function UserAdminPage() {
     onSuccess: () => void users.refetch(),
   })
 
+  // 无感翻页：累积已加载行；关键字或页码变化时重建当前页数据
+  useEffect(() => {
+    if (!users.data) return
+    const current = users.data.items ?? []
+    const next = page === 1
+      ? current
+      : [...itemsRef.current, ...current.filter((user) => !itemsRef.current.some((prev) => prev.userId.trim() === user.userId.trim()))]
+    itemsRef.current = next
+    setItems(next)
+    setHasMore(next.length < (users.data.total ?? 0))
+    setLoadingMore(false)
+  }, [users.data, page])
+
+  const loadMore = () => {
+    if (hasMore && !loadingMore && !users.isFetching) {
+      setLoadingMore(true)
+      setPage((current) => current + 1)
+    }
+  }
+
+  const onSearchChange = (value: string) => {
+    setKeyword(value)
+    setPage(1)
+    itemsRef.current = []
+    setItems([])
+    setHasMore(false)
+  }
+
   const errorMessage = users.error instanceof ApiError ? users.error.body.message : '发生未知错误，请稍后重试。'
   const currentUserId = bootstrap?.user.id.trim().toLowerCase()
+  const total = users.data?.total ?? items.length
 
   const columns = useMemo<ColumnDef<UserAdminSummary, unknown>[]>(() => [
-    { accessorKey: 'userId', header: '用户名', cell: (info) => <span className="font-monospace fw-semibold">{String(info.getValue()).trim()}</span> },
-    { accessorKey: 'employeeId', header: '员工号', cell: (info) => <span className="font-monospace">{String(info.getValue()).trim()}</span> },
-    { accessorKey: 'employeeName', header: '姓名' },
-    { accessorKey: 'departmentName', header: '部门', cell: (info) => <span className="text-secondary">{String(info.getValue() || '—')}</span> },
-    { accessorKey: 'companyId', header: '公司', cell: (info) => <span className="text-secondary">{String(info.getValue() || '—')}</span> },
+    {
+      id: 'select',
+      enableSorting: false,
+      enableHiding: false,
+      meta: { className: 'erp-select-column', frozenLeft: true, resizable: false, truncate: false },
+      header: ({ table }) => (
+        <input
+          className="form-check-input"
+          type="checkbox"
+          aria-label="选择当前页"
+          checked={table.getIsAllPageRowsSelected()}
+          ref={(input) => { if (input) input.indeterminate = table.getIsSomePageRowsSelected() }}
+          onChange={table.getToggleAllPageRowsSelectedHandler()}
+        />
+      ),
+      cell: ({ row }) => (
+        <input
+          className="form-check-input"
+          type="checkbox"
+          aria-label="选择此行"
+          checked={row.getIsSelected()}
+          onChange={row.getToggleSelectedHandler()}
+          onClick={(event) => event.stopPropagation()}
+        />
+      ),
+    },
+    { accessorKey: 'userId', header: '用户名', minSize: 100, cell: (info) => <span className="font-monospace fw-semibold">{String(info.getValue()).trim()}</span>, meta: { minWidth: 100 } },
+    { accessorKey: 'employeeId', header: '员工号', minSize: 80, cell: (info) => <span className="font-monospace">{String(info.getValue()).trim()}</span>, meta: { minWidth: 80 } },
+    { accessorKey: 'employeeName', header: '姓名', minSize: 120, cell: (info) => <span>{String(info.getValue())}</span>, meta: { minWidth: 120 } },
+    { accessorKey: 'departmentName', header: '部门', minSize: 140, cell: (info) => <span className="text-secondary">{String(info.getValue() || '—')}</span>, meta: { minWidth: 140 } },
+    { accessorKey: 'companyId', header: '公司', minSize: 80, cell: (info) => <span className="text-secondary">{String(info.getValue() || '—')}</span>, meta: { minWidth: 80 } },
+    {
+      accessorKey: 'groups',
+      header: '所属组',
+      minSize: 200,
+      cell: (info) => {
+        const value = String(info.getValue() || '')
+        const parts = value.split('、').map((item) => item.trim()).filter(Boolean)
+        return parts.length === 0
+          ? <span className="text-secondary">—</span>
+          : (
+            <div className="d-flex flex-wrap gap-1">
+              {parts.map((group) => <span key={group} className="badge bg-secondary-subtle text-secondary">{group}</span>)}
+            </div>
+          )
+      },
+      meta: { minWidth: 200, truncate: false },
+    },
     {
       accessorKey: 'isActive',
       header: '状态',
       cell: (info) => info.getValue() ? <span className="badge bg-success-subtle text-success">启用</span> : <span className="badge bg-danger-subtle text-danger">停用</span>,
-      meta: { truncate: false },
+      meta: { truncate: false, minWidth: 80 },
     },
     {
       accessorKey: 'hasPassword',
       header: '密码',
       cell: (info) => info.getValue() ? <span className="badge bg-secondary-subtle text-secondary">已设置</span> : <span className="badge bg-warning-subtle text-warning">未设置</span>,
-      meta: { truncate: false },
+      meta: { truncate: false, minWidth: 80 },
     },
     {
       id: 'actions',
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-end', frozenRight: true, truncate: false },
+      meta: { className: 'text-end text-nowrap', frozenRight: true, truncate: false, minWidth: 420, minWidthFloor: true, resizable: false },
       cell: ({ row }) => {
         const user = row.original
-        const isSelf = user.userId.trim().toLowerCase() === currentUserId
+        const id = user.userId.trim()
+        const isSelf = id.toLowerCase() === currentUserId
         return (
           <div className="d-inline-flex gap-1">
-            <Button size="sm" icon={<IconKey size={15} />} onClick={() => setPasswordTarget(user)}>设置密码</Button>
-            <Button size="sm" icon={<IconShield size={15} />} onClick={() => setRightsTarget(user)}>权限</Button>
-            <Button size="sm" icon={<IconReport size={15} />} onClick={() => setReportTarget(user)}>报表权限</Button>
-            <Button size="sm" variant="secondary" icon={<IconUsers size={15} />} onClick={() => setGroupsTarget(user)}>所属组</Button>
+            <Button size="sm" variant="ghost" icon={<IconKey size={14} />} onClick={() => setPasswordTarget(user)}>设置密码</Button>
+            <Button size="sm" variant="ghost" icon={<IconShield size={14} />} onClick={() => navigate(`/admin/users/${encodeURIComponent(id)}/rights`)}>权限</Button>
+            <Button size="sm" variant="ghost" icon={<IconReport size={14} />} onClick={() => navigate(`/admin/users/${encodeURIComponent(id)}/report-rights`)}>报表权限</Button>
+            <Button size="sm" variant="ghost" icon={<IconUsers size={14} />} onClick={() => setGroupsTarget(user)}>所属组</Button>
             <Button
               size="sm"
               variant={user.isActive ? 'ghost' : 'secondary'}
-              icon={user.isActive ? <IconUserOff size={15} /> : <IconUserPlus size={15} />}
+              icon={user.isActive ? <IconUserOff size={14} /> : <IconUserPlus size={14} />}
               disabled={isSelf || status.isPending}
               title={isSelf ? '不能停用当前登录账号' : undefined}
               onClick={() => {
                 const next = !user.isActive
-                if (!next && !window.confirm(`确定停用账号 ${user.userId.trim()} 吗？停用后该账号将无法登录。`)) return
+                if (!next && !window.confirm(`确定停用账号 ${id} 吗？停用后该账号将无法登录。`)) return
                 status.mutate({ userId: user.userId, isActive: next })
               }}
             >
@@ -178,37 +261,38 @@ export function UserAdminPage() {
         )
       },
     },
-  ], [currentUserId, status])
+  ], [currentUserId, status, navigate])
 
   return (
-    <div className="d-grid gap-2">
+    <div className="erp-full-list-page">
       <ErpListCard
         ariaLabel="用户管理查询"
-        search={<ErpSearchBox value={keyword} onChange={(value) => { setKeyword(value); setPage(1) }} debounceMs={300} placeholder="搜索用户名、员工号或姓名" ariaLabel="搜索用户" />}
-        actions={<Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void users.refetch()}>刷新</Button>}
-        header={users.data ? <div className="erp-list-header text-secondary small px-3 pt-2">共 {users.data.total} 个账号；密码为空的账号需由管理员分配密码后才能登录。</div> : undefined}
-        footer={!users.isPending && !users.isError ? <ErpPagination total={users.data?.total ?? 0} page={page} pageSize={pageSize} onPageChange={setPage} /> : undefined}
+        search={<ErpSearchBox value={keyword} onChange={onSearchChange} debounceMs={300} placeholder="搜索用户名、员工号或姓名" ariaLabel="搜索用户" />}
+        actions={<Button size="sm" icon={<IconRefresh size={16} />} onClick={() => { itemsRef.current = []; setItems([]); setPage(1); void users.refetch() }}>刷新</Button>}
+        header={users.data ? <div className="erp-list-header text-secondary small px-3 pt-2">共 {total} 个账号；向下滚动自动加载更多；密码为空的账号需由管理员分配密码后才能登录。</div> : undefined}
       >
-        {users.isPending ? <LoadingState label="正在加载用户…" /> : users.isError ? <ErrorState message={errorMessage} onRetry={() => void users.refetch()} /> : (
-          <ErpTable columns={columns} data={users.data?.items ?? []} resizable storageKey="user-admin-users" empty={<EmptyState title="没有找到用户" description="请调整搜索条件后重试。" />} />
+        {users.isPending && page === 1 ? <LoadingState label="正在加载用户…" /> : users.isError ? <ErrorState message={errorMessage} onRetry={() => void users.refetch()} /> : (
+          <ErpTable
+            columns={columns}
+            data={items}
+            getRowId={(row) => row.userId.trim()}
+            resizable
+            storageKey="user-admin-users"
+            clientSideSorting
+            rowClickSingleSelect
+            rowSelection={rowSelection}
+            onRowSelectionChange={setRowSelection}
+            onEndReached={loadMore}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            empty={<EmptyState title="没有找到用户" description="请调整搜索条件后重试。" />}
+          />
         )}
       </ErpListCard>
       <SetPasswordModal
         user={passwordTarget}
         onClose={() => setPasswordTarget(null)}
         onSaved={() => { setPasswordTarget(null); void users.refetch() }}
-      />
-      <RightsMatrix
-        open={rightsTarget !== null}
-        mode="user"
-        targetId={rightsTarget?.userId ?? ''}
-        onClose={() => setRightsTarget(null)}
-      />
-      <ReportRightsMatrix
-        open={reportTarget !== null}
-        mode="user"
-        targetId={reportTarget?.userId ?? ''}
-        onClose={() => setReportTarget(null)}
       />
       <RightsMemberPicker
         open={groupsTarget !== null}

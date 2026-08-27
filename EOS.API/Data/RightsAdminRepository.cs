@@ -75,9 +75,15 @@ internal static class RightsAdminLogic
     public static string NormalizeDenyList(string? value) =>
         string.Join(";", ParseDenyList(value));
 
+    /// <summary>
+    /// 解析字段拒绝串（逗号/分号分隔）。跳过遗留哨兵值 '0'：
+    /// 旧系统导入的历史行把「无禁止字段」写成 '0'（旧网格 Split(';') 后按列名隐藏，无此列即无效果）；
+    /// 新系统视为空，读侧聚合与写侧规范化统一剔除。
+    /// </summary>
     public static IReadOnlyList<string> ParseDenyList(string? value) =>
         (value ?? string.Empty)
             .Split([';', ','], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Where(token => !string.Equals(token, "0", StringComparison.Ordinal))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -425,17 +431,21 @@ public sealed class RightsAdminRepository(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         const string sql = """
-            SELECT LTRIM(RTRIM(g.G_IDX)),LTRIM(RTRIM(g.G_DESC)),COUNT(u.USER_ID)
+            SELECT LTRIM(RTRIM(g.G_IDX)),LTRIM(RTRIM(g.G_DESC)),COUNT(u.USER_ID),
+                   LTRIM(RTRIM(ISNULL(g.REMARK,'')))
             FROM dbo.SYSDG g WITH (NOLOCK)
             LEFT JOIN dbo.SYSDG_USER u WITH (NOLOCK) ON u.G_IDX=g.G_IDX
-            GROUP BY g.G_IDX,g.G_DESC
+            GROUP BY g.G_IDX,g.G_DESC,g.REMARK
             ORDER BY g.G_IDX;
             """;
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(token);
         var result = new List<UserGroupSummary>();
         while (await reader.ReadAsync(token))
-            result.Add(new(reader.GetString(0), reader.GetString(1), reader.GetInt32(2)));
+        {
+            var remark = reader.IsDBNull(3) ? null : reader.GetString(3);
+            result.Add(new(reader.GetString(0), reader.GetString(1), reader.GetInt32(2), remark));
+        }
         return result;
     }
 
@@ -568,6 +578,179 @@ public sealed class RightsAdminRepository(
         }
     }
 
+    /// <summary>
+    /// 新增用户组（2305 定制页主档）：G_IDX/G_DESC/REMARK + 审计 + 权限缓存失效。
+    /// 校验：组ID 必填且 ≤20 字符、组描述必填且 ≤100 字符、备注 ≤1000 字符；重复组ID 拒绝。
+    /// </summary>
+    public async Task CreateGroupAsync(
+        string? groupId, string? groupDescription, string? remark,
+        string adminName, CancellationToken token)
+    {
+        var id = NormalizeGroupId(groupId);
+        var description = NormalizeGroupDescription(groupDescription);
+        var note = NormalizeRemark(remark);
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using (var exists = new SqlCommand(
+                "SELECT COUNT(1) FROM dbo.SYSDG WITH (UPDLOCK,HOLDLOCK) WHERE LTRIM(RTRIM(G_IDX))=@Id;",
+                connection, transaction))
+            {
+                exists.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
+                if (Convert.ToInt32(await exists.ExecuteScalarAsync(token)) > 0)
+                    throw new ArgumentException($"用户组 {id} 已存在，不能重复登记。", nameof(groupId));
+            }
+            await using var insert = new SqlCommand(
+                """
+                INSERT INTO dbo.SYSDG (G_IDX,G_DESC,REMARK,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                VALUES (@Id,@Desc,@Remark,@By,GETDATE(),@By,GETDATE());
+                """, connection, transaction);
+            insert.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
+            insert.Parameters.Add("@Desc", SqlDbType.NVarChar, 100).Value = description;
+            insert.Parameters.Add("@Remark", SqlDbType.NVarChar, 1000).Value = (object?)note ?? DBNull.Value;
+            insert.Parameters.Add("@By", SqlDbType.NChar, 40).Value = adminName;
+            await insert.ExecuteNonQueryAsync(token);
+            await WriteAuditAsync(connection, transaction, id,
+                $"新增用户组 {id}（{description}）", adminName, token, "GROUP_SAVE");
+            await transaction.CommitAsync(token);
+            permissionCache.InvalidateAll();
+            logger.LogInformation("新增用户组 groupId={Group} by={By}", id, adminName);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
+    }
+
+    /// <summary>编辑用户组（2305 定制页主档）：G_DESC/REMARK + 审计；G_IDX 不可修改。</summary>
+    public async Task UpdateGroupAsync(
+        string groupId, string? groupDescription, string? remark,
+        string adminName, CancellationToken token)
+    {
+        var id = NormalizeGroupId(groupId);
+        var description = NormalizeGroupDescription(groupDescription);
+        var note = NormalizeRemark(remark);
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await EnsureGroupExistsAsync(connection, transaction, id, token);
+            await using var update = new SqlCommand(
+                """
+                UPDATE dbo.SYSDG
+                SET G_DESC=@Desc,REMARK=@Remark,LAST_UPDATE_BY=@By,LAST_UPDATE_DATE=GETDATE()
+                WHERE LTRIM(RTRIM(G_IDX))=@Id;
+                """, connection, transaction);
+            update.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
+            update.Parameters.Add("@Desc", SqlDbType.NVarChar, 100).Value = description;
+            update.Parameters.Add("@Remark", SqlDbType.NVarChar, 1000).Value = (object?)note ?? DBNull.Value;
+            update.Parameters.Add("@By", SqlDbType.NChar, 40).Value = adminName;
+            await update.ExecuteNonQueryAsync(token);
+            await WriteAuditAsync(connection, transaction, id,
+                $"编辑用户组 {id}（{description}）", adminName, token, "GROUP_SAVE");
+            await transaction.CommitAsync(token);
+            permissionCache.InvalidateAll();
+            logger.LogInformation("编辑用户组 groupId={Group} by={By}", id, adminName);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 删除用户组（严格删除，向旧系统求证后修正隐患）：
+    /// 旧系统 ModifyToolBar 同事务删除 SYSDG + SYSDH（模块权限）+ SYSDH_REPORT（报表权限），
+    /// 但**不清理 SYSDG_USER（成员）**，留下孤儿成员行（组重建后会误挂回）。
+    /// 新系统更严格：组仍关联成员时拒绝删除（必须先经「成员」页移除），
+    /// 权限/报表权限随组删除同事务级联（对齐旧系统行为）。
+    /// </summary>
+    public async Task DeleteGroupAsync(string groupId, string adminName, CancellationToken token)
+    {
+        var id = NormalizeGroupId(groupId);
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await EnsureGroupExistsAsync(connection, transaction, id, token);
+            await using (var memberCount = new SqlCommand(
+                "SELECT COUNT(1) FROM dbo.SYSDG_USER WITH (UPDLOCK,HOLDLOCK) WHERE G_IDX=@Id;",
+                connection, transaction))
+            {
+                memberCount.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
+                var count = Convert.ToInt32(await memberCount.ExecuteScalarAsync(token));
+                if (count > 0)
+                    throw new ArgumentException(
+                        $"用户组 {id} 仍关联 {count} 名成员，无法删除；请先在「成员」中移除全部成员后再删除。",
+                        nameof(groupId));
+            }
+            await using (var deleteReport = new SqlCommand(
+                "DELETE FROM dbo.SYSDH_REPORT WHERE G_IDX=@Id;", connection, transaction))
+            {
+                deleteReport.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
+                await deleteReport.ExecuteNonQueryAsync(token);
+            }
+            await using (var deleteRights = new SqlCommand(
+                "DELETE FROM dbo.SYSDH WHERE G_IDX=@Id;", connection, transaction))
+            {
+                deleteRights.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
+                await deleteRights.ExecuteNonQueryAsync(token);
+            }
+            await using (var deleteGroup = new SqlCommand(
+                "DELETE FROM dbo.SYSDG WHERE LTRIM(RTRIM(G_IDX))=@Id;", connection, transaction))
+            {
+                deleteGroup.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
+                await deleteGroup.ExecuteNonQueryAsync(token);
+            }
+            await WriteAuditAsync(connection, transaction, id,
+                $"删除用户组 {id}（连同模块权限/报表权限，成员守卫已通过）", adminName, token, "GROUP_DELETE");
+            await transaction.CommitAsync(token);
+            permissionCache.InvalidateAll();
+            logger.LogInformation("删除用户组 groupId={Group} by={By}", id, adminName);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
+    }
+
+    private static string NormalizeGroupId(string? groupId)
+    {
+        var id = (groupId ?? string.Empty).Trim();
+        if (id.Length == 0)
+            throw new ArgumentException("组ID不能为空。", nameof(groupId));
+        // SYSDG.G_IDX 为 nchar(10)（sys.columns.max_length=20 字节 ÷2）
+        if (id.Length > 10)
+            throw new ArgumentException("组ID不能超过 10 个字符。", nameof(groupId));
+        return id;
+    }
+
+    private static string NormalizeGroupDescription(string? value)
+    {
+        var description = (value ?? string.Empty).Trim();
+        if (description.Length == 0)
+            throw new ArgumentException("组描述不能为空。", nameof(value));
+        if (description.Length > 100)
+            throw new ArgumentException("组描述不能超过 100 个字符。", nameof(value));
+        return description;
+    }
+
+    private static string? NormalizeRemark(string? value)
+    {
+        var remark = (value ?? string.Empty).Trim();
+        if (remark.Length == 0) return null;
+        if (remark.Length > 1000)
+            throw new ArgumentException("备注不能超过 1000 个字符。", nameof(value));
+        return remark;
+    }
+
     /// <summary>模块主/明细物理字段（§5.3，供字段级拒绝选择器；成本/保密字段按管理员权限过滤）。</summary>
     public async Task<RightsModuleFields?> GetModuleFieldsAsync(
         int moduleId, bool includeCost, bool includeSecrecy, CancellationToken token)
@@ -664,7 +847,7 @@ public sealed class RightsAdminRepository(
             false, false, false, false, false, false, false, false, false, false,
             null, null, null, null, null, null, null);
         return new ModuleRightsRow(
-            module.Id, module.Label, BuildGroupPath(modulesById, module.Id),
+            module.Id, module.Label, BuildGroupPath(modulesById, module.Id), module.Icon,
             module.ParentId, module.RootId, module.SortIndex,
             value.ExecTag, value.AddNew, value.Edit, value.Delete, value.Approve, value.Deapprove, value.Report,
             value.Cost, value.Setup, value.Secrecy, value.EndCase, value.UnEndCase,
@@ -1052,13 +1235,14 @@ public sealed class RightsAdminRepository(
 
     private static async Task WriteAuditAsync(
         SqlConnection connection, SqlTransaction transaction, string record, string content,
-        string by, CancellationToken token)
+        string by, CancellationToken token, string type = "RIGHTS_SAVE")
     {
         await using var command = new SqlCommand(
-            "INSERT INTO dbo.SYSDF (M_IDX,RECORD_IDX,CONTENT,TYPE,EXEC_BY,EXEC_DATE,OPERFLAG) VALUES (2306,@Record,@Content,'RIGHTS_SAVE',@By,GETDATE(),1);",
+            "INSERT INTO dbo.SYSDF (M_IDX,RECORD_IDX,CONTENT,TYPE,EXEC_BY,EXEC_DATE,OPERFLAG) VALUES (2306,@Record,@Content,@Type,@By,GETDATE(),1);",
             connection, transaction);
         command.Parameters.Add("@Record", SqlDbType.NVarChar, 100).Value = record;
         command.Parameters.Add("@Content", SqlDbType.NVarChar, 1000).Value = content;
+        command.Parameters.Add("@Type", SqlDbType.NVarChar, 50).Value = type;
         command.Parameters.Add("@By", SqlDbType.NVarChar, 50).Value = by;
         await command.ExecuteNonQueryAsync(token);
     }

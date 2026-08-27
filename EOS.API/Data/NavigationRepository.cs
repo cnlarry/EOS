@@ -17,6 +17,7 @@ public sealed record LegacyNavigationModule(
     string? LegacyUrl,
     string? MasterTable,
     string? Filter,
+    string? Icon,
     IReadOnlyList<NavigationGroup> Groups);
 
 public sealed class NavigationRepository(DbConnectionFactory connections, ILogger<NavigationRepository> logger)
@@ -44,6 +45,7 @@ public sealed class NavigationRepository(DbConnectionFactory connections, ILogge
             )
             SELECT DISTINCT m.M_IDX,m.M_DESC,m.M_ALIAS,ISNULL(m.M_P_IDX,0) M_P_IDX,ISNULL(m.M_ROOT_IDX,m.M_IDX) M_ROOT_IDX,
                    ISNULL(m.SORT_IDX,0) SORT_IDX,ISNULL(m.M_TAG,1) M_TAG,m.M_URL,m.MASTER_TABLE,m.FILTER,
+                   LTRIM(RTRIM(ISNULL(m.M_ICON,''))),
                    ISNULL(m.GROUP1,0),m.GROUP_EXP1,m.GROUP_DESC1,
                    ISNULL(m.GROUP2,0),m.GROUP_EXP2,m.GROUP_DESC2,
                    ISNULL(m.GROUP3,0),m.GROUP_EXP3,m.GROUP_DESC3,
@@ -65,8 +67,8 @@ public sealed class NavigationRepository(DbConnectionFactory connections, ILogge
             for (var i = 0; i < 5; i++)
             {
                 // 列布局：0=M_IDX 1=M_DESC 2=M_ALIAS 3=M_P_IDX 4=M_ROOT_IDX 5=SORT_IDX
-                // 6=M_TAG 7=M_URL 8=MASTER_TABLE 9=FILTER 10..24=GROUP1..5(EXPor/DESC)
-                var offset = 10 + i * 3;
+                // 6=M_TAG 7=M_URL 8=MASTER_TABLE 9=FILTER 10=M_ICON 11..25=GROUP1..5(EXPor/DESC)
+                var offset = 11 + i * 3;
                 var enabled = !reader.IsDBNull(offset) && reader.GetBoolean(offset);
                 var expression = reader.IsDBNull(offset + 1) ? null : reader.GetString(offset + 1).Trim();
                 var description = reader.IsDBNull(offset + 2) ? null : reader.GetString(offset + 2).Trim();
@@ -84,6 +86,7 @@ public sealed class NavigationRepository(DbConnectionFactory connections, ILogge
                 reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
                 reader.IsDBNull(8) ? null : reader.GetString(8).Trim(),
                 reader.IsDBNull(9) ? null : reader.GetString(9).Trim(),
+                reader.IsDBNull(10) ? null : reader.GetString(10).Trim(),
                 groups));
         }
         logger.LogDebug("用户导航 userId={UserId} modules={ModuleCount}", userId.Trim(), result.Count);

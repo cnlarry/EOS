@@ -1,6 +1,9 @@
+import { IconArrowLeft, IconSearch } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useEffect, useMemo, useState } from 'react'
-import { LoadingState } from '../../components/common/AsyncState'
+import { EmptyState, LoadingState } from '../../components/common/AsyncState'
+import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
@@ -13,6 +16,8 @@ interface ReportRightsMatrixProps {
   title?: string
   onClose: () => void
   onSaved?: () => void
+  /** 弹窗（默认）或完整页面（供 2305 组报表权限页）。 */
+  variant?: 'modal' | 'page'
 }
 
 interface ReportDraft {
@@ -26,7 +31,7 @@ function reportKey(row: Pick<ReportRightsRow, 'moduleId' | 'reportId'>) {
   return `${row.moduleId}:${row.reportId}`
 }
 
-export function ReportRightsMatrix({ open, mode, targetId, title, onClose, onSaved }: ReportRightsMatrixProps) {
+export function ReportRightsMatrix({ open, mode, targetId, title, onClose, onSaved, variant = 'modal' }: ReportRightsMatrixProps) {
   const url = mode === 'user'
     ? `/admin/users/${encodeURIComponent(targetId.trim())}/report-rights`
     : `/admin/groups/${encodeURIComponent(targetId.trim())}/report-rights`
@@ -41,10 +46,20 @@ export function ReportRightsMatrix({ open, mode, targetId, title, onClose, onSav
 
   const [draft, setDraft] = useState<Record<string, ReportDraft>>({})
   const [dirty, setDirty] = useState<Set<string>>(new Set())
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+
+  const filteredRows = useMemo(() => {
+    const text = search.trim().toLowerCase()
+    if (!text) return rows
+    return rows.filter((row) =>
+      String(row.moduleId).includes(text)
+      || row.moduleTitle.toLowerCase().includes(text)
+      || row.reportId.toLowerCase().includes(text)
+      || row.reportName.toLowerCase().includes(text))
+  }, [rows, search])
 
   useEffect(() => {
     if (!open || !matrix.data) return
@@ -54,18 +69,9 @@ export function ReportRightsMatrix({ open, mode, targetId, title, onClose, onSav
     })
     setDraft(nextDraft)
     setDirty(new Set())
-    setExpanded(new Set())
     setError(null)
     setNotice(null)
   }, [open, matrix.data])
-
-  const grouped = useMemo(() => {
-    const map = new Map<number, ReportRightsRow[]>()
-    for (const row of rows) {
-      map.set(row.moduleId, [...(map.get(row.moduleId) ?? []), row])
-    }
-    return [...map.entries()].sort((a, b) => a[0] - b[0])
-  }, [rows])
 
   const setValue = (key: string, patch: Partial<ReportDraft>) => {
     setDraft((current) => ({ ...current, [key]: { ...current[key], ...patch } }))
@@ -105,153 +111,204 @@ export function ReportRightsMatrix({ open, mode, targetId, title, onClose, onSav
     }
   }
 
+  const columns = useMemo<ColumnDef<ReportRightsRow, unknown>[]>(() => [
+    {
+      accessorKey: 'moduleId',
+      header: '模块',
+      cell: ({ row }) => (
+        <span className="text-nowrap small">
+          {row.original.moduleId}
+          <span className="text-secondary ms-1">{row.original.moduleTitle}</span>
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'reportId',
+      header: '报表',
+      cell: ({ row }) => (
+        <>
+          <div className="font-monospace small">{row.original.reportId}</div>
+          <div className="small text-secondary">{row.original.reportName}</div>
+        </>
+      ),
+    },
+    {
+      id: 'preview',
+      header: '预览',
+      cell: ({ row }) => {
+        const key = reportKey(row.original)
+        return (
+          <input
+            type="checkbox"
+            className="form-check-input m-0"
+            checked={draft[key]?.preview ?? false}
+            onChange={(event) => setValue(key, { preview: event.target.checked })}
+            aria-label={`预览 ${row.original.reportId}`}
+          />
+        )
+      },
+      meta: { className: 'text-center', truncate: false },
+    },
+    {
+      id: 'print',
+      header: '列印',
+      cell: ({ row }) => {
+        const key = reportKey(row.original)
+        return (
+          <input
+            type="checkbox"
+            className="form-check-input m-0"
+            checked={draft[key]?.print ?? false}
+            onChange={(event) => setValue(key, { print: event.target.checked })}
+            aria-label={`列印 ${row.original.reportId}`}
+          />
+        )
+      },
+      meta: { className: 'text-center', truncate: false },
+    },
+    {
+      id: 'export',
+      header: '导出',
+      cell: ({ row }) => {
+        const key = reportKey(row.original)
+        return (
+          <input
+            type="checkbox"
+            className="form-check-input m-0"
+            checked={draft[key]?.export ?? false}
+            onChange={(event) => setValue(key, { export: event.target.checked })}
+            aria-label={`导出 ${row.original.reportId}`}
+          />
+        )
+      },
+      meta: { className: 'text-center', truncate: false },
+    },
+    {
+      id: 'effective',
+      header: '来源 / 生效',
+      cell: ({ row }) => {
+        const effective = row.original.effective
+        const key = reportKey(row.original)
+        return (
+          <span className="small">
+            <span className={`badge me-1 ${effective.source === 'personal' ? 'bg-primary-subtle text-primary' : effective.source === 'group' ? 'bg-secondary-subtle text-secondary' : 'bg-light text-secondary'}`}>
+              {effective.source === 'personal' ? '个人' : effective.source === 'group' ? '组' : '无'}
+            </span>
+            {effective.source !== 'none' && (
+              <span className="text-secondary">
+                预览{effective.preview ? '✓' : '✗'} 列印{effective.print ? '✓' : '✗'} 导出{effective.export ? '✓' : '✗'}
+              </span>
+            )}
+            {dirty.has(key) && <span className="badge bg-warning-subtle text-warning ms-1">已修改</span>}
+          </span>
+        )
+      },
+      meta: { truncate: false },
+    },
+    {
+      id: 'dataFilter',
+      header: 'DATA_FILTER',
+      cell: ({ row }) => {
+        const key = reportKey(row.original)
+        return (
+          <input
+            className="form-control form-control-sm font-monospace"
+            value={draft[key]?.dataFilter ?? ''}
+            onChange={(event) => setValue(key, { dataFilter: event.target.value })}
+            placeholder="受控过滤表达式（非法保存时拒绝 400）"
+            aria-label={`DATA_FILTER ${row.original.reportId}`}
+          />
+        )
+      },
+      meta: { minWidth: 240 },
+    },
+  ], [draft, dirty])
+
   if (!open) return null
+
+  const headerTitle = title ?? (mode === 'user' ? `用户报表权限：${targetId.trim()}` : `用户组报表权限：${targetId.trim()}`)
+
+  const matrixBody = (
+    <>
+      <div className="alert alert-info py-1 px-2 small mb-2">
+        {mode === 'user' ? '个人报表权限存在时完全采用；组报表权限按组 OR 聚合。' : '组报表权限按组 OR 聚合。'}
+        清空勾选并保存 = 删除该行，回退到无权限。
+      </div>
+      {matrix.isPending ? <LoadingState label="正在加载报表权限…" /> : matrix.isError ? (
+        <div className="alert alert-danger d-flex align-items-center justify-content-between">
+          <span>{matrix.error instanceof ApiError ? matrix.error.body.message : '报表权限加载失败。'}</span>
+          <Button variant="danger" size="sm" onClick={() => void matrix.refetch()}>重试</Button>
+        </div>
+      ) : rows.length === 0 ? (
+        <EmptyState title="当前可见模块下没有报表定义" description="切换其它用户/组后重试。" />
+      ) : filteredRows.length === 0 ? (
+        <EmptyState title="没有匹配的报表" description="请调整搜索关键字后重试。" />
+      ) : (
+        <ErpTable
+          columns={columns}
+          data={filteredRows}
+          getRowId={(row) => reportKey(row)}
+          resizable
+          storageKey={`report-rights-${targetId.trim()}`}
+          clientSideSorting
+          empty={<EmptyState title="当前可见模块下没有报表定义" />}
+        />
+      )}
+      {error && <div className="alert alert-danger py-2 mt-2 mb-0" role="alert">{error}</div>}
+      {notice && <div className="alert alert-info py-2 mt-2 mb-0" role="status">{notice}</div>}
+    </>
+  )
+
+  const matrixFooter = (
+    <div className="d-flex gap-2 ms-auto">
+      <Button onClick={onClose}>{variant === 'page' ? '返回' : '取消'}</Button>
+      <Button variant="primary" onClick={() => void save()} loading={saving}>保存</Button>
+    </div>
+  )
+
+  if (variant === 'page') {
+    return (
+      <div className="erp-full-list-page">
+        <section className="card erp-list-card">
+          <section className="erp-list-command-bar" aria-label="报表权限工具栏">
+            <div className="erp-nav-search erp-menu-search">
+              <IconSearch size={16} aria-hidden="true" />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="搜索模块/报表名称或编号"
+                aria-label="搜索报表"
+              />
+              {search && (
+                <button type="button" className="erp-nav-search-clear" aria-label="清除搜索" onClick={() => setSearch('')}>×</button>
+              )}
+            </div>
+            <div className="erp-list-actions d-flex gap-2 align-items-center">
+              <Button size="sm" variant="ghost" icon={<IconArrowLeft size={16} />} onClick={onClose}>
+                {mode === 'user' ? '返回用户列表' : '返回用户组'}
+              </Button>
+              <Button size="sm" variant="primary" onClick={() => void save()} loading={saving}>保存</Button>
+            </div>
+          </section>
+          <div className="erp-report-matrix-body p-2">{matrixBody}</div>
+        </section>
+      </div>
+    )
+  }
 
   return (
     <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
       <div className="modal-dialog modal-dialog-centered modal-lg">
         <div className="modal-content">
           <div className="modal-header">
-            <h2 className="modal-title">{title ?? (mode === 'user' ? `用户报表权限：${targetId.trim()}` : `用户组报表权限：${targetId.trim()}`)}</h2>
+            <h2 className="modal-title">{headerTitle}</h2>
             <button className="btn-close" aria-label="关闭" onClick={onClose} />
           </div>
-          <div className="modal-body">
-            <div className="alert alert-info py-1 px-2 small mb-2">个人报表权限存在时完全采用；组报表权限按组 OR 聚合。清空勾选并保存 = 删除该行，回退组权限。</div>
-            {matrix.isPending ? <LoadingState label="正在加载报表权限…" /> : matrix.isError ? (
-              <div className="alert alert-danger d-flex align-items-center justify-content-between">
-                <span>{matrix.error instanceof ApiError ? matrix.error.body.message : '报表权限加载失败。'}</span>
-                <Button variant="danger" size="sm" onClick={() => void matrix.refetch()}>重试</Button>
-              </div>
-            ) : rows.length === 0 ? (
-              <div className="text-secondary py-4 text-center">当前可见模块下没有报表定义。</div>
-            ) : (
-              <div className="table-responsive rights-report-table">
-                <table className="table table-sm table-hover align-middle">
-                  <thead>
-                    <tr>
-                      <th>模块</th>
-                      <th>报表</th>
-                      <th className="text-center">预览</th>
-                      <th className="text-center">列印</th>
-                      <th className="text-center">导出</th>
-                      <th>来源 / 生效</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grouped.map(([moduleId, moduleRows]) => (
-                      <>
-                        {moduleRows.map((row) => {
-                          const key = reportKey(row)
-                          const value = draft[key]
-                          if (!value) return null
-                          const isExpanded = expanded.has(key)
-                          const effective = row.effective
-                          return (
-                            <ReportRowFragment
-                              key={key}
-                              row={row}
-                              value={value}
-                              isExpanded={isExpanded}
-                              dirty={dirty.has(key)}
-                              moduleId={moduleId}
-                              onToggleExpanded={() => {
-                                setExpanded((current) => {
-                                  const next = new Set(current)
-                                  if (next.has(key)) next.delete(key)
-                                  else next.add(key)
-                                  return next
-                                })
-                              }}
-                              onValue={(patch) => setValue(key, patch)}
-                              effectiveSource={effective.source}
-                              effectiveText={
-                                effective.source === 'none'
-                                  ? '无权限'
-                                  : `${effective.source === 'personal' ? '个人' : '组'}：预览${effective.preview ? '✓' : '✗'} 列印${effective.print ? '✓' : '✗'} 导出${effective.export ? '✓' : '✗'}`
-                              }
-                            />
-                          )
-                        })}
-                      </>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {error && <div className="alert alert-danger py-2 mt-2 mb-0" role="alert">{error}</div>}
-            {notice && <div className="alert alert-info py-2 mt-2 mb-0" role="status">{notice}</div>}
-          </div>
-          <div className="modal-footer">
-            <div className="d-flex gap-2 ms-auto">
-              <Button onClick={onClose}>取消</Button>
-              <Button variant="primary" onClick={() => void save()} loading={saving}>保存</Button>
-            </div>
-          </div>
+          <div className="modal-body">{matrixBody}</div>
+          <div className="modal-footer">{matrixFooter}</div>
         </div>
       </div>
     </div>
-  )
-}
-
-interface ReportRowFragmentProps {
-  row: ReportRightsRow
-  value: ReportDraft
-  isExpanded: boolean
-  dirty: boolean
-  moduleId: number
-  effectiveSource: string
-  effectiveText: string
-  onToggleExpanded: () => void
-  onValue: (patch: Partial<ReportDraft>) => void
-}
-
-function ReportRowFragment({ row, value, isExpanded, dirty, moduleId, effectiveSource, effectiveText, onToggleExpanded, onValue }: ReportRowFragmentProps) {
-  return (
-    <>
-      <tr>
-        <td className="text-nowrap small">{moduleId}<span className="text-secondary ms-1">{row.moduleTitle}</span></td>
-        <td>
-          <div className="font-monospace small">{row.reportId}</div>
-          <div className="small text-secondary">{row.reportName}</div>
-        </td>
-        <td className="text-center">
-          <input type="checkbox" className="form-check-input m-0" checked={value.preview} onChange={(event) => onValue({ preview: event.target.checked })} aria-label={`预览 ${row.reportId}`} />
-        </td>
-        <td className="text-center">
-          <input type="checkbox" className="form-check-input m-0" checked={value.print} onChange={(event) => onValue({ print: event.target.checked })} aria-label={`列印 ${row.reportId}`} />
-        </td>
-        <td className="text-center">
-          <input type="checkbox" className="form-check-input m-0" checked={value.export} onChange={(event) => onValue({ export: event.target.checked })} aria-label={`导出 ${row.reportId}`} />
-        </td>
-        <td className="small">
-          <span className={`badge ${effectiveSource === 'personal' ? 'bg-primary-subtle text-primary' : effectiveSource === 'group' ? 'bg-secondary-subtle text-secondary' : 'bg-light text-secondary'} me-1`}>
-            {effectiveSource === 'personal' ? '个人' : effectiveSource === 'group' ? '组' : '无'}
-          </span>
-          <span className="text-secondary">{effectiveText}</span>
-          {dirty && <span className="badge bg-warning-subtle text-warning ms-1">已修改</span>}
-        </td>
-        <td className="text-end">
-          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onToggleExpanded}>
-            {isExpanded ? '收起过滤' : 'DATA_FILTER'}
-          </button>
-        </td>
-      </tr>
-      {isExpanded && (
-        <tr>
-          <td colSpan={7} className="bg-light">
-            <div className="d-flex align-items-center gap-2">
-              <label className="form-label mb-0 text-nowrap small">DATA_FILTER</label>
-              <input
-                className="form-control form-control-sm font-monospace"
-                value={value.dataFilter}
-                onChange={(event) => onValue({ dataFilter: event.target.value })}
-                placeholder="受控过滤表达式（非法保存时拒绝 400）"
-              />
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
   )
 }

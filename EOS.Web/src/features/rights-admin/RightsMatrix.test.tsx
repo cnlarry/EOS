@@ -79,13 +79,13 @@ describe('RightsMatrix', () => {
     expect(screen.getByLabelText('执行级别 EXEC_TAG（A=禁止执行）')).toBeInTheDocument()
   })
 
-  it('编辑后批量保存提交脏行', async () => {
+  it('编辑后保存提交脏行', async () => {
     renderMatrix()
     await waitFor(() => expect(screen.getAllByText('用户权限设定').length).toBeGreaterThan(0))
     fireEvent.click(screen.getAllByText('用户权限设定')[0])
     const addNew = screen.getByLabelText('新增')
     fireEvent.click(addNew)
-    fireEvent.click(screen.getByRole('button', { name: '批量保存' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalled())
     const [url, body] = apiClientMock.put.mock.calls[0]
     expect(url).toBe('/admin/users/viewer/rights')
@@ -97,18 +97,19 @@ describe('RightsMatrix', () => {
     renderMatrix()
     await waitFor(() => expect(screen.getAllByText('用户权限设定').length).toBeGreaterThan(0))
     fireEvent.click(screen.getByRole('button', { name: /清空个人权限/ }))
-    await waitFor(() => expect(screen.getByText(/已把 2 个模块标记为/)).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: '批量保存' }))
+    await waitFor(() => expect(screen.getByText(/已把「用户权限设定」标记为/)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalled())
     const [url, body] = apiClientMock.put.mock.calls[0]
     expect(url).toBe('/admin/users/viewer/rights')
-    expect(body.items).toHaveLength(2)
-    expect(body.items.every((item: { addNew: boolean; execTag: string | null }) => !item.addNew && (item.execTag === null || item.execTag === 'A'))).toBe(true)
+    expect(body.items).toHaveLength(1)
+    expect(body.items[0]).toMatchObject({ moduleId: 2306, addNew: false, execTag: null })
   })
 
-  it('复制权限：选择来源后调用来源矩阵并标记脏行', async () => {
+  it('复制权限：选择来源后把权限复制到当前选中模块', async () => {
     renderMatrix()
     await waitFor(() => expect(screen.getAllByText('用户权限设定').length).toBeGreaterThan(0))
+    fireEvent.click(screen.getAllByText('用户权限设定')[0])
     fireEvent.click(screen.getByRole('button', { name: /复制权限/ }))
     const select = await screen.findByLabelText('复制来源')
     await waitFor(() => expect(select.querySelectorAll('option').length).toBeGreaterThan(1))
@@ -118,8 +119,8 @@ describe('RightsMatrix', () => {
       return mockGet(path)
     })
     fireEvent.click(screen.getByRole('button', { name: '复制' }))
-    await waitFor(() => expect(screen.getByText(/已从 other 复制 1 个模块/)).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: '批量保存' }))
+    await waitFor(() => expect(screen.getByText(/已从 other 复制「用户权限设定」的权限/)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalled())
     const body = apiClientMock.put.mock.calls[0][1]
     expect(body.items[0]).toMatchObject({ moduleId: 2306, execTag: 'Z', addNew: true, fileDele: true })

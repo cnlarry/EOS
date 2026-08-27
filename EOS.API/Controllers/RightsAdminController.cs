@@ -76,6 +76,32 @@ public sealed class RightsAdminController(
         return Ok(await repository.GetGroupsAsync(token));
     }
 
+    [HttpPost("groups")]
+    public async Task<IActionResult> CreateGroup(CreateGroupRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        await repository.CreateGroupAsync(
+            request.GroupId, request.GroupDescription, request.Remark, userContext.EmployeeName, token);
+        return NoContent();
+    }
+
+    [HttpPut("groups/{groupId}")]
+    public async Task<IActionResult> UpdateGroup(string groupId, UpdateGroupRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        await repository.UpdateGroupAsync(
+            groupId, request.GroupDescription, request.Remark, userContext.EmployeeName, token);
+        return NoContent();
+    }
+
+    [HttpDelete("groups/{groupId}")]
+    public async Task<IActionResult> DeleteGroup(string groupId, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        await repository.DeleteGroupAsync(groupId, userContext.EmployeeName, token);
+        return NoContent();
+    }
+
     [HttpGet("groups/{groupId}/rights")]
     public async Task<IActionResult> GroupRights(string groupId, CancellationToken token)
     {

@@ -17,6 +17,7 @@ import { AssistantDock } from '../../features/assistant/AssistantDock'
 import { navigationIcons } from './navigationIcons'
 import { childPad, dotLeft, groupPad, lineSidebar } from './menuDepth'
 import { FormBreadcrumbContext, type FormBreadcrumb } from './FormBreadcrumbContext'
+import { PageBreadcrumbContext, type PageBreadcrumb } from './PageBreadcrumbContext'
 import { workbenchAction, workbenchList, workbenchModuleId } from '../../features/document-workbench/workbenchPath'
 
 type Theme = 'light' | 'dark'
@@ -67,6 +68,7 @@ const pageTitles: Record<string, { section: string; title: string }> = {
   '/dashboard': { section: '首页', title: '首页' },
   '/admin/tables': { section: '系统管理', title: '数据表维护' },
   '/admin/menus': { section: '系统管理', title: '菜单管理' },
+  '/admin/groups': { section: '系统管理', title: '用户组管理' },
   '/admin/users': { section: '系统管理', title: '用户管理' },
   '/settings/profile': { section: '系统设置', title: '个人设置' },
 }
@@ -128,6 +130,8 @@ export function AppShell() {
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   // 统一表单上抛的单据面包屑（模块标题 + 单号），由 FormEditorPage 写入、面包屑渲染消费
   const [formBreadcrumb, setFormBreadcrumb] = useState<FormBreadcrumb | null>(null)
+  // 定制页子页面包屑（如 用户组管理 > 采购 组权限），由子页写入、面包屑渲染消费
+  const [pageCrumb, setPageCrumb] = useState<PageBreadcrumb | null>(null)
   const { bootstrap, logout } = useAuth()
   const navigate = useNavigate()
   const navigation = bootstrap?.navigation ?? fallbackNavigation as unknown as NavigationItem[]
@@ -157,8 +161,20 @@ export function AppShell() {
   const fieldAdminCrumb = fieldAdminFields
     ? { leads: ['系统管理', '数据表维护', '数据表维护', decodeURIComponent(fieldAdminFields[1])], title: '字段' }
     : null
+  const groupAdminPage = location.pathname.match(/^\/admin\/groups\/[^/]+\/(rights|report-rights|members)$/)
   const page: { section: string; title: string } = fieldAdminCrumb
     ? { section: '系统管理', title: fieldAdminCrumb.title }
+    : pageCrumb
+      ? { section: '系统管理', title: pageCrumb.title }
+    : groupAdminPage
+      ? {
+          section: '系统管理',
+          title: groupAdminPage[1] === 'rights'
+            ? '用户组权限'
+            : groupAdminPage[1] === 'report-rights'
+              ? '用户组报表权限'
+              : '用户组成员',
+        }
     : isFormEditor
       ? (() => {
           const op = wbAction === 'new' ? '新增' : wbAction === 'copy' ? '复制' : wbAction === 'view' ? '查看' : '编辑'
@@ -179,7 +195,9 @@ export function AppShell() {
   // 其余页面保持「祖先 + 叶子标题」两段式（叶子由 h1 承担）。
   const breadcrumbLeads: { label: string; to?: string }[] = fieldAdminCrumb
     ? fieldAdminCrumb.leads.map(label => ({ label }))
-    : breadcrumbPath.length === 0
+    : pageCrumb
+      ? pageCrumb.leads
+      : breadcrumbPath.length === 0
       ? [{ label: page.section }]
       : isFormEditor
         ? breadcrumbPath.map((item, index) => (index === breadcrumbPath.length - 1
@@ -246,6 +264,13 @@ export function AppShell() {
   useEffect(() => {
     setSidebarOpen(false)
     setUserMenuOpen(false)
+  }, [location.pathname])
+
+  // 离开定制页子页时清空页面级面包屑（防止串到其它页面）
+  useEffect(() => {
+    if (!location.pathname.match(/^\/admin\/(groups\/[^/]+\/(rights|report-rights|members)|users\/[^/]+\/(rights|report-rights|groups))$/)) {
+      setPageCrumb(null)
+    }
   }, [location.pathname])
 
   // 记录最近访问的业务模块（工作台/报表等叶子），供 dashboard 快捷入口使用；本地持久化
@@ -583,7 +608,9 @@ export function AppShell() {
         <main className="page-body">
           <div className="container-fluid px-3 px-lg-4">
             <FormBreadcrumbContext.Provider value={{ breadcrumb: formBreadcrumb, setBreadcrumb: setFormBreadcrumb }}>
-              <Outlet />
+              <PageBreadcrumbContext.Provider value={{ breadcrumb: pageCrumb, setBreadcrumb: setPageCrumb }}>
+                <Outlet />
+              </PageBreadcrumbContext.Provider>
             </FormBreadcrumbContext.Provider>
           </div>
         </main>
