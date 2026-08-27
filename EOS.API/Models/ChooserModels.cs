@@ -33,8 +33,10 @@ public sealed record UnifiedChooserColumn(string Key, string Label, string DataT
 /// <summary>
 /// 统一选择器分页结果（columns/rows/total，与 document-workbench form-chooser 协议一致）。
 /// rows 为「列键 → 值」字典，字符串值统一 Trim。
+/// defaultKeys 为数据源建议的默认显示列（可为 null，前端回退为全部列）。
 /// </summary>
 public sealed record UnifiedChooserResult(
     IReadOnlyList<UnifiedChooserColumn> Columns,
     IReadOnlyList<IReadOnlyDictionary<string, object?>> Rows,
-    int Total);
+    int Total,
+    IReadOnlyList<string>? DefaultKeys = null);

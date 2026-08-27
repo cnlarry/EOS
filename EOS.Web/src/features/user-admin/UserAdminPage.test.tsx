@@ -31,6 +31,19 @@ const allGroups = [
   { groupId: 'CG', groupDescription: '采购', memberCount: 2, remark: null },
   { groupId: 'CW', groupDescription: '财务', memberCount: 0, remark: null },
 ]
+// 统一选择器 sourceKey 响应：列键来自 110104（SYSDN）字段元数据（大写 F_ID）
+const employeeChooserData = {
+  columns: [
+    { key: 'EMP_ID', label: '员工号', dataType: 'string' },
+    { key: 'EMP_NAME', label: '姓名', dataType: 'string' },
+    { key: 'DEPT_NAME', label: '部门', dataType: 'string' },
+  ],
+  defaultKeys: ['EMP_ID', 'EMP_NAME', 'DEPT_NAME'],
+  rows: [
+    { EMP_ID: 'E999', EMP_NAME: '新员工', DEPT_ID: 'D9', DEPT_NAME: '新部门' },
+  ],
+  total: 1,
+}
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -65,13 +78,18 @@ function rowOf(userId: string) {
 function mockGet(path: string) {
   if (path === '/admin/groups') return Promise.resolve(allGroups)
   if (path.startsWith('/admin/users/') && path.endsWith('/groups')) return Promise.resolve([])
-  return Promise.resolve(usersPage)
+  // 真实 API 每次返回新对象；副本保证引用变化（结构共享关闭后 effect 依赖引用重跑）
+  return Promise.resolve(structuredClone(usersPage))
 }
 
 describe('UserAdminPage', () => {
   beforeEach(() => {
     apiClientMock.get.mockImplementation((path: string) => mockGet(path))
     apiClientMock.put.mockResolvedValue(undefined)
+    apiClientMock.post.mockImplementation((path: string) => {
+      if (path === '/chooser/query') return Promise.resolve(employeeChooserData)
+      return Promise.resolve(undefined)
+    })
     vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
@@ -111,6 +129,16 @@ describe('UserAdminPage', () => {
     const boxes = screen.getAllByLabelText('选择此行')
     expect(boxes[0]).not.toBeChecked()
     expect(boxes[1]).toBeChecked()
+  })
+
+  it('刷新后列表不回空', async () => {
+    renderPage()
+    await loaded()
+    expect(screen.getAllByLabelText('选择此行')).toHaveLength(2)
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }))
+    await waitFor(() => expect(screen.getAllByLabelText('选择此行')).toHaveLength(2))
+    expect(screen.getByText('Demo User')).toBeInTheDocument()
+    expect(screen.queryByText('没有找到用户')).not.toBeInTheDocument()
   })
 
   it('当前登录账号的停用按钮禁用', async () => {
@@ -169,6 +197,37 @@ describe('UserAdminPage', () => {
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
       '/admin/users/viewer/groups',
       { ids: ['CG'] },
+    ))
+  })
+
+  it('新增用户：选择员工开户并 POST', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.click(screen.getByRole('button', { name: '新增用户' }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText('用户名'), { target: { value: 'newuser' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '选择员工' }))
+    const dialogs = await screen.findAllByRole('dialog')
+    const chooser = dialogs[dialogs.length - 1]
+    await waitFor(() => expect(within(chooser).queryByText('正在加载…')).not.toBeInTheDocument())
+    // 唤起统一选择器（sourceKey），不再走自建 /admin/users/employees
+    expect(apiClientMock.post).toHaveBeenCalledWith('/chooser/query', expect.objectContaining({
+      sourceKey: 'user-admin.employees',
+      page: 1,
+      pageSize: 50,
+    }))
+    expect(apiClientMock.get).not.toHaveBeenCalledWith(expect.stringContaining('/admin/users/employees'), expect.anything())
+    // 点击行即选中（单选语义），确认后回填员工
+    fireEvent.click(within(chooser).getByText('新员工'))
+    await waitFor(() => expect(within(chooser).getByRole('button', { name: '确认' })).toBeEnabled())
+    fireEvent.click(within(chooser).getByRole('button', { name: '确认' }))
+    expect(within(dialog).getByLabelText('已选员工')).toHaveValue('E999（新员工 / 新部门）')
+    fireEvent.change(within(dialog).getByLabelText('初始密码'), { target: { value: 'long-enough-1' } })
+    fireEvent.change(within(dialog).getByLabelText('确认密码'), { target: { value: 'long-enough-1' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '开户' }))
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/admin/users',
+      { userId: 'newuser', employeeId: 'E999', password: 'long-enough-1', groupId: null },
     ))
   })
 })

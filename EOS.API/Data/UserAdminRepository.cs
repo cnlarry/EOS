@@ -122,6 +122,100 @@ public sealed class UserAdminRepository(DbConnectionFactory connections, ILogger
         logger.LogInformation("管理员变更启用状态 userId={UserId} active={IsActive} by={UpdatedBy}", userId.Trim(), isActive, updatedBy);
     }
 
+    /// <summary>
+    /// 新增用户（开户，2306）：SYSDL 建号 + 初始密码（现代哈希）+ 可选所属组。
+    /// 校验：用户名格式（1-10 位字母数字下划线连字符）、初始密码策略、用户名唯一、
+    /// 员工必须存在于 SYSDN 且尚未开户；写 SYSDF 审计。
+    /// </summary>
+    public async Task CreateUserAsync(
+        string userId, string employeeId, string password, string? groupId,
+        string adminName, CancellationToken token)
+    {
+        ValidateUserId(userId);
+        PasswordPolicy.Validate(password);
+        var id = userId.Trim();
+        var emp = (employeeId ?? string.Empty).Trim();
+        if (emp.Length == 0)
+            throw new ArgumentException("请选择员工。", nameof(employeeId));
+        var group = (groupId ?? string.Empty).Trim();
+        var hash = PasswordHasher.Hash(password);
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            // 用户名唯一（UPDLOCK/HOLDLOCK 防并发重复开户）
+            await using (var exists = new SqlCommand(
+                "SELECT COUNT(1) FROM dbo.SYSDL WITH (UPDLOCK,HOLDLOCK) WHERE LTRIM(RTRIM(USER_ID))=@UserId;",
+                connection, transaction))
+            {
+                exists.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = id;
+                if (Convert.ToInt32(await exists.ExecuteScalarAsync(token)) > 0)
+                    throw new ArgumentException($"用户名 {id} 已存在，不能重复开户。", nameof(userId));
+            }
+            // 员工存在且未开户（fail-closed：一个员工一个账号）
+            await using (var empCheck = new SqlCommand(
+                """
+                SELECT COUNT(1) FROM dbo.SYSDN WITH (NOLOCK) WHERE LTRIM(RTRIM(EMP_ID))=@Emp;
+                """, connection, transaction))
+            {
+                empCheck.Parameters.Add("@Emp", SqlDbType.NChar, 10).Value = emp;
+                if (Convert.ToInt32(await empCheck.ExecuteScalarAsync(token)) == 0)
+                    throw new KeyNotFoundException($"员工 {emp} 不存在。");
+            }
+            await using (var accountCheck = new SqlCommand(
+                "SELECT COUNT(1) FROM dbo.SYSDL WITH (UPDLOCK,HOLDLOCK) WHERE LTRIM(RTRIM(EMP_ID))=@Emp;",
+                connection, transaction))
+            {
+                accountCheck.Parameters.Add("@Emp", SqlDbType.NChar, 10).Value = emp;
+                if (Convert.ToInt32(await accountCheck.ExecuteScalarAsync(token)) > 0)
+                    throw new ArgumentException($"员工 {emp} 已有登录账号，不能重复开户。", nameof(employeeId));
+            }
+            if (group.Length > 0)
+            {
+                await using var groupCheck = new SqlCommand(
+                    "SELECT COUNT(1) FROM dbo.SYSDG WITH (NOLOCK) WHERE LTRIM(RTRIM(G_IDX))=@GroupId;",
+                    connection, transaction);
+                groupCheck.Parameters.Add("@GroupId", SqlDbType.NChar, 10).Value = group;
+                if (Convert.ToInt32(await groupCheck.ExecuteScalarAsync(token)) == 0)
+                    throw new KeyNotFoundException($"用户组 {group} 不存在。");
+            }
+
+            await using var insert = new SqlCommand(
+                """
+                INSERT INTO dbo.SYSDL (USER_ID,EMP_ID,G_IDX,USER_PWD,ACTIVE_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                VALUES (@UserId,@Emp,@Group,@Hash,1,@By,GETDATE(),@By,GETDATE());
+                """, connection, transaction);
+            insert.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = id;
+            insert.Parameters.Add("@Emp", SqlDbType.NChar, 10).Value = emp;
+            insert.Parameters.Add("@Group", SqlDbType.NChar, 10).Value = group.Length > 0 ? group : DBNull.Value;
+            insert.Parameters.Add("@Hash", SqlDbType.NVarChar, 50).Value = hash;
+            insert.Parameters.Add("@By", SqlDbType.NChar, 40).Value = adminName;
+            await insert.ExecuteNonQueryAsync(token);
+
+            await using (var audit = new SqlCommand(
+                """
+                INSERT INTO dbo.SYSDF (M_IDX,RECORD_IDX,CONTENT,TYPE,EXEC_BY,EXEC_DATE,OPERFLAG)
+                VALUES (2306,@Record,@Content,'USER_CREATE',@By,GETDATE(),1);
+                """, connection, transaction))
+            {
+                audit.Parameters.Add("@Record", SqlDbType.NVarChar, 100).Value = id;
+                audit.Parameters.Add("@Content", SqlDbType.NVarChar, 1000).Value = $"新增用户 {id}（员工 {emp}）";
+                audit.Parameters.Add("@By", SqlDbType.NVarChar, 50).Value = adminName;
+                await audit.ExecuteNonQueryAsync(token);
+            }
+
+            await transaction.CommitAsync(token);
+            logger.LogInformation("新增用户 userId={UserId} emp={Emp} by={By}", id, emp, adminName);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
+    }
+
     private static void ValidateUserId(string userId)
     {
         if (string.IsNullOrWhiteSpace(userId) || userId.Trim().Length > 10 || !UserIdPattern.IsMatch(userId.Trim()))
