@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { LoadingState } from '../../components/common/AsyncState'
+import { TabbedPanel, type TabbedPanelTab } from '../../components/common/TabbedPanel'
 import { Button } from '../../components/ui/Button'
 
 export interface ChooserSource {
@@ -79,6 +80,14 @@ const ALLOWED_TYPES = [
 ]
 
 export type FieldSection = 'display' | 'validation' | 'security' | 'layout' | 'advanced'
+
+const SECTION_TABS: TabbedPanelTab<FieldSection>[] = [
+  { key: 'display', label: '显示与查询' },
+  { key: 'validation', label: '录入与校验' },
+  { key: 'security', label: '权限与备注' },
+  { key: 'layout', label: '表单布局' },
+  { key: 'advanced', label: '高级设置' },
+]
 
 export type ExpressionKind = 'virtual_exp' | 'convert_function' | 'datasource_sql'
 
@@ -318,24 +327,15 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
           </div>
           <div className="modal-body">
             <datalist id="field-setup-tables">{tablesQuery.data?.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</datalist>
-            <div className="alert alert-warning">{isNew ? '新增字段将写入全局字段元数据（FIELDS），直接影响该表后续的显示、查询、权限与录入行为。' : '字段设置会直接影响业务数据的显示、查询、权限与录入行为。当前窗口只允许维护选中的单个字段。'}</div>
             <div>
               {mode === 'edit' && loadQuery.isPending ? (
                 <LoadingState label="正在加载字段元数据…" />
               ) : mode === 'edit' && loadQuery.isError ? (
                 <div className="alert alert-danger">无法加载该字段的元数据，请确认当前账号具有字段设置权限。</div>
               ) : draft ? (
-                <div className="card">
-                  <div className="card-header p-0 position-relative" style={{ zIndex: 2 }}>
-                    <div className="nav nav-tabs px-3 erp-field-settings-tabs" role="tablist" onPointerDown={event => event.stopPropagation()}>
-                      <button type="button" className={`nav-link ${section === 'display' ? 'active' : ''}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setSection('display') }}>显示与查询</button>
-                      <button type="button" className={`nav-link ${section === 'validation' ? 'active' : ''}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setSection('validation') }}>录入与校验</button>
-                      <button type="button" className={`nav-link ${section === 'security' ? 'active' : ''}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setSection('security') }}>权限与备注</button>
-                      <button type="button" className={`nav-link ${section === 'layout' ? 'active' : ''}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setSection('layout') }}>表单布局</button>
-                      <button type="button" className={`nav-link ${section === 'advanced' ? 'active' : ''}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setSection('advanced') }}>高级设置</button>
-                    </div>
-                  </div>
-                  <div className="card-body row g-3">
+                <div onPointerDown={event => event.stopPropagation()}>
+                  <TabbedPanel tabs={SECTION_TABS} activeKey={section} onActiveKeyChange={setSection} label="字段设置分区">
+                    <div className="row g-3">
                     {section === 'display' && <>
                       <div className="col-md-6">
                         <label className="form-label">数据表</label>
@@ -595,10 +595,11 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
                         <textarea className="form-control" rows={3} value={draft.remark ?? ''} onChange={event => setDraft({ ...draft, remark: event.target.value })} />
                       </div>
                     </>}
-                  </div>
-                  {save.isError && <div className="alert alert-danger m-3 mb-0">{String((save.error as Error)?.message ?? '保存失败')}</div>}
-                  <div className="card-footer text-end">
-                    <Button variant="primary" loading={save.isPending} disabled={!draft.label.trim() || draft.width < 40 || draft.width > 300 || regexIssue(draft.regex) !== null || (isNew && (!draft.key.trim() || !draft.tableId.trim()))} onClick={() => save.mutate(draft)}>{isNew ? '新增字段' : '保存字段设置'}</Button>
+                    </div>
+                  </TabbedPanel>
+                  {save.isError && <div className="alert alert-danger mt-3 mb-0">{String((save.error as Error)?.message ?? '保存失败')}</div>}
+                  <div className="text-end mt-3">
+                    <Button variant="primary" loading={save.isPending} disabled={!draft.label.trim() || draft.width < 40 || draft.width > 300 || regexIssue(draft.regex) !== null || (isNew && (!draft.key.trim() || !draft.tableId.trim()))} onClick={() => save.mutate(draft)}>保存</Button>
                   </div>
                 </div>
               ) : (

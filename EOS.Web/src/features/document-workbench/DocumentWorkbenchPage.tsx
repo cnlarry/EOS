@@ -314,6 +314,7 @@ export function DocumentWorkbenchPage() {
       }
     })(),
     render:button.action==='export'?()=>exportButton:undefined,
+    variant:button.action==='new'?'primary':undefined,
   }))
   const openGroupValues=async(group:NavigationGroupDef)=>{setActiveGroup(group);setGroupValues(null);try{const data=await apiClient.get<{values:string[]}>(`/navigation/${moduleId}/groups/${group.index}/values`);setGroupValues(data.values)}catch{setGroupValues([])}}
   const applyGroupValue=(value:string)=>{if(!activeGroup)return;setGroupMenuOpen(false);setSearchParams(current=>{current.set('groupIndex',String(activeGroup.index));current.set('groupValue',value);return current},{replace:true})}
@@ -374,11 +375,12 @@ export function DocumentWorkbenchPage() {
             </div>
           )}] satisfies ErpCommandItem[]:[]),
           {action:'fit',loading:fitting,onClick:()=>void fitAllColumns()},
-          ...businessItems,
+          ...businessItems.filter(item=>item.action!=='new'),
           ...((definition.data?.searchMaster||definition.data?.searchDetail)&&!businessItems.some(item=>item.action==='search')
             ?[{action:'search',onClick:openSearchCenter}] satisfies ErpCommandItem[]
             :[]),
           {action:'refresh',onClick:()=>{void records.refetch();if(active)void details.refetch()}},
+          ...businessItems.filter(item=>item.action==='new'),
         ]} />
       </>}
       footer={

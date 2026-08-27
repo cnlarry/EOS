@@ -237,7 +237,7 @@ export function UserAdminPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      meta: { className: 'text-nowrap', frozenRight: true, truncate: false, minWidth: 420, minWidthFloor: true },
+      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, minWidth: 356, minWidthFloor: true },
       cell: ({ row }) => {
         const user = row.original
         const id = user.userId.trim()
