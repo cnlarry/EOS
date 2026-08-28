@@ -505,8 +505,8 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '默认列' })).toBeEnabled())
 
     fireEvent.click(screen.getByTitle('选择排序字段'))
-    await waitFor(() => expect(screen.getByText('公司编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByText('公司编号'))
+    await waitFor(() => expect(screen.getByLabelText('选择字段 C_ID')).toBeInTheDocument())
+    fireEvent.click(screen.getByLabelText('选择字段 C_ID'))
     fireEvent.click(screen.getAllByRole('button', { name: '升序' })[0])
     fireEvent.click(screen.getByRole('button', { name: '确认' }))
     await waitFor(() => expect(screen.getByLabelText('排序字段')).toHaveValue('C_ID DESC'))
@@ -534,9 +534,9 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '默认列' })).toBeEnabled())
 
     fireEvent.click(screen.getByTitle('选择新增明细必需字段'))
-    await waitFor(() => expect(screen.getByText('公司编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByText('公司编号'))
-    fireEvent.click(screen.getByText('公司名称'))
+    await waitFor(() => expect(screen.getByLabelText('选择字段 C_ID')).toBeInTheDocument())
+    fireEvent.click(screen.getByLabelText('选择字段 C_ID'))
+    fireEvent.click(screen.getByLabelText('选择字段 C_NAME'))
     fireEvent.click(screen.getByRole('button', { name: '确认' }))
     await waitFor(() => expect(screen.getByLabelText('新增明细时必需字段')).toHaveValue('C_ID;C_NAME'))
   })
