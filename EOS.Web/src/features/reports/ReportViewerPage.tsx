@@ -316,6 +316,7 @@ export function ReportViewerPage() {
                       </select>
                     )}
                     {condition.type === 3 && <DataSelectCondition moduleId={moduleId} condition={condition} value={values[condition.serialNo] ?? ''} onChange={(value) => setValues((current) => ({ ...current, [condition.serialNo]: value }))} />}
+                    {condition.type === 5 && <DataMultiSelectCondition moduleId={moduleId} condition={condition} value={values[condition.serialNo] ?? ''} onChange={(value) => setValues((current) => ({ ...current, [condition.serialNo]: value }))} />}
                     {condition.type === 4 && (
                       <div className="d-flex flex-wrap gap-2 small">
                         {condition.options.map((option) => (
@@ -355,5 +356,31 @@ function DataSelectCondition({ moduleId, condition, value, onChange }: { moduleI
       <option value="">全部</option>
       {(options.data ?? []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
     </select>
+  )
+}
+
+/**
+ * F_TYPE 5 数据源多选：选项来自数据源（condition-options 接口，同 type 3），
+ * 取值为逗号分隔的实际值（同 type 4 固定多选语义）。
+ */
+function DataMultiSelectCondition({ moduleId, condition, value, onChange }: { moduleId: string; condition: ReportCondition; value: string; onChange: (value: string) => void }) {
+  const options = useQuery({
+    queryKey: ['report', moduleId, 'condition-options', condition.serialNo],
+    queryFn: () => apiClient.get<ReportOption[]>(`/reports/${moduleId}/condition-options/${condition.serialNo}`),
+    enabled: condition.selectSource != null,
+  })
+  const selected = value.split(',').filter(Boolean)
+  return (
+    <div className="d-flex flex-wrap gap-2 small">
+      {(options.data ?? []).map((option) => (
+        <label className="form-check" key={option.value}>
+          <input className="form-check-input" type="checkbox" checked={selected.includes(option.value)} onChange={(event) => {
+            const next = event.target.checked ? [...selected, option.value] : selected.filter((item) => item !== option.value)
+            onChange(next.join(','))
+          }} />
+          <span className="form-check-label">{option.label}</span>
+        </label>
+      ))}
+    </div>
   )
 }

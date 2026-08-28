@@ -1,0 +1,123 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ReportViewerPage } from './ReportViewerPage'
+
+const apiClientMock = vi.hoisted(() => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  put: vi.fn(),
+  delete: vi.fn(),
+  postFile: vi.fn(),
+}))
+
+vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+
+const printSettings = {
+  reports: [{ reportId: 'RPT_A', reportName: '库存报表', headerId: null, tailId: null, footerText: null, isoNo: null, defaultPaper: 'A4', isDefault: true }],
+  headers: [],
+  tails: [],
+  sortSchemesByReport: {},
+  userSettings: null,
+}
+
+const definition = {
+  moduleId: 1405,
+  title: '库存报表',
+  masterTable: 'COP_ORDER_M',
+  conditions: [
+    {
+      serialNo: 1, field: 'COP_ORDER_M.WAREHOUSE', desc: '仓库', type: 5,
+      expression: 'SELECT W_ID C_ID, W_NAME C_VALUE FROM WAREHOUSE',
+      defaultValue: null, parameterName: null, options: [],
+      selectSource: { table: 'WAREHOUSE', idColumn: 'W_ID', valueColumn: 'W_NAME' },
+      defaultValueTo: null,
+    },
+  ],
+  columns: [{ key: 'ORDER_NO', label: '订单号', dataType: 'nvarchar' }],
+  masterPkOrder: ['ORDER_NO'],
+  spName: null,
+  spParameters: [],
+}
+
+const conditionOptions = [
+  { label: '一号仓', value: 'W1' },
+  { label: '二号仓', value: 'W2' },
+]
+
+function installApiMocks() {
+  apiClientMock.get.mockImplementation(async (path: string) => {
+    const p = String(path)
+    if (p.includes('/print-settings')) return printSettings
+    if (p.includes('/definition')) return definition
+    if (p.includes('/condition-options/')) return conditionOptions
+    throw new Error(`unexpected GET ${p}`)
+  })
+  apiClientMock.post.mockImplementation(async (path: string) => {
+    const p = String(path)
+    if (p.includes('/query')) return { rows: [], total: 0, page: 1, pageSize: 50 }
+    return {}
+  })
+}
+
+function renderViewer() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const router = createMemoryRouter(
+    [{ path: '/reports/:moduleId', element: <ReportViewerPage /> }],
+    { initialEntries: ['/reports/1405'] },
+  )
+  return render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>)
+}
+
+describe('ReportViewerPage F_TYPE 5（数据源多选条件）', () => {
+  beforeEach(() => {
+    installApiMocks()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('按数据源选项渲染复选框（type 5），而非 type 3 的下拉', async () => {
+    renderViewer()
+    expect(await screen.findByText('一号仓')).toBeInTheDocument()
+    expect(screen.getByText('二号仓')).toBeInTheDocument()
+    // 仅统计条件区的复选框（打印设置卡另有显示分组/显示明细复选框）
+    const conditionArea = screen.getByText('仓库').closest<HTMLElement>('.col-md-4')!
+    expect(within(conditionArea).getAllByRole('checkbox')).toHaveLength(2)
+    expect(within(conditionArea).getAllByRole('checkbox')[0]).not.toBeChecked()
+    // 不应渲染 type 3 的「全部」下拉选项
+    expect(screen.queryByText('全部')).not.toBeInTheDocument()
+  })
+
+  it('勾选复选框后点查询，以逗号分隔实际值 POST（type 4 同语义）', async () => {
+    renderViewer()
+    await screen.findByText('一号仓')
+    fireEvent.click(screen.getByText('一号仓').closest('label')!.querySelector('input')!)
+    fireEvent.click(screen.getByText('二号仓').closest('label')!.querySelector('input')!)
+    fireEvent.click(screen.getByRole('button', { name: '查询' }))
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/reports/1405/query?page=1&pageSize=50&reportId=RPT_A',
+      expect.objectContaining({ values: { 1: 'W1,W2' } }),
+    ))
+  })
+
+  it('取消勾选后重新查询，POST 值同步收缩', async () => {
+    renderViewer()
+    await screen.findByText('一号仓')
+    fireEvent.click(screen.getByText('一号仓').closest('label')!.querySelector('input')!)
+    fireEvent.click(screen.getByText('二号仓').closest('label')!.querySelector('input')!)
+    fireEvent.click(screen.getByRole('button', { name: '查询' }))
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/reports/1405/query?page=1&pageSize=50&reportId=RPT_A',
+      expect.objectContaining({ values: { 1: 'W1,W2' } }),
+    ))
+    fireEvent.click(screen.getByText('一号仓').closest('label')!.querySelector('input')!)
+    fireEvent.click(screen.getByRole('button', { name: '查询' }))
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/reports/1405/query?page=1&pageSize=50&reportId=RPT_A',
+      expect.objectContaining({ values: { 1: 'W2' } }),
+    ))
+  })
+})

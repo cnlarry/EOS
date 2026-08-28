@@ -74,7 +74,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         }
 
         var conditions=await ReadConditionsAsync(connection,masterTable,moduleId,userId,token);
-        // F_TYPE 3 数据单选：校验选项源表/列物理存在（白名单）
+        // F_TYPE 3 数据单选 / 5 数据源多选：校验选项源表/列物理存在（白名单）
         foreach(var condition in conditions.Where(item=>item.SelectSource is not null))
         {
             var source=condition.SelectSource!;
@@ -97,7 +97,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
     }
 
     /// <summary>
-    /// F_TYPE 3 数据单选选项：按白名单表/列执行静态 SELECT（无用户输入拼接）。
+    /// F_TYPE 3 数据单选 / 5 数据源多选选项：按白名单表/列执行静态 SELECT（无用户输入拼接）。
     /// </summary>
     public async Task<IReadOnlyList<ReportOption>> GetConditionOptionsAsync(
         ReportDefinition definition,
@@ -106,9 +106,16 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
     {
         var condition=definition.Conditions.FirstOrDefault(item=>item.SerialNo==serialNo);
         if(condition?.SelectSource is not { } source)return [];
-        if(!Identifier.IsMatch(source.Table)||!Identifier.IsMatch(source.IdColumn)||!Identifier.IsMatch(source.ValueColumn))return [];
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
+        return await ReadSelectSourceOptionsAsync(connection,source,token);
+    }
+
+    /// <summary>数据源选项核心读取：标识符白名单 + 物理列存在校验（fail-closed）+ 静态 SELECT。</summary>
+    private static async Task<IReadOnlyList<ReportOption>> ReadSelectSourceOptionsAsync(
+        SqlConnection connection, ReportSelectSource source, CancellationToken token)
+    {
+        if(!Identifier.IsMatch(source.Table)||!Identifier.IsMatch(source.IdColumn)||!Identifier.IsMatch(source.ValueColumn))return [];
         var physical=await GetPhysicalColumnsAsync(connection,source.Table,token);
         if(!physical.Any(column=>column.Equals(source.IdColumn,StringComparison.OrdinalIgnoreCase))
            ||!physical.Any(column=>column.Equals(source.ValueColumn,StringComparison.OrdinalIgnoreCase)))
@@ -119,6 +126,22 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         var result=new List<ReportOption>();
         while(await reader.ReadAsync(token))
             result.Add(new ReportOption(Convert.ToString(reader.GetValue(1))??"",Convert.ToString(reader.GetValue(0))??""));
+        return result;
+    }
+
+    /// <summary>
+    /// F_TYPE 5 数据源多选的合法值集合：查询时从数据源动态取，作为 IN 白名单
+    /// （与 F_TYPE 4 固定多选的静态选项白名单同语义，坏值不进 SQL）。
+    /// </summary>
+    private async Task<IReadOnlyDictionary<int,IReadOnlySet<string>>> LoadSelectSourceValueSetsAsync(
+        ReportDefinition definition, SqlConnection connection, CancellationToken token)
+    {
+        var result=new Dictionary<int,IReadOnlySet<string>>();
+        foreach(var condition in definition.Conditions.Where(item=>item.Type==5&&item.SelectSource is not null))
+        {
+            var options=await ReadSelectSourceOptionsAsync(connection,condition.SelectSource!,token);
+            result[condition.SerialNo]=options.Select(option=>option.Value).ToHashSet(StringComparer.Ordinal);
+        }
         return result;
     }
 
@@ -140,7 +163,8 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         var detailPhysical=definition.DetailTable is null?[]:await GetPhysicalColumnsAsync(connection,definition.DetailTable,token);
         var command=new SqlCommand();
         command.Connection=connection;
-        var predicates=BuildConditionPredicates(definition,request,physicalColumns,command);
+        var selectSourceValues=await LoadSelectSourceValueSetsAsync(definition,connection,token);
+        var predicates=BuildConditionPredicates(definition,request,physicalColumns,selectSourceValues,command);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var selected=BuildSelectedColumns(definition);
         if(selected.Count==0)return new([],0,page,pageSize);
@@ -200,7 +224,8 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         var allowedFields=physicalColumns.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var command=new SqlCommand();
         command.Connection=connection;
-        var predicates=BuildConditionPredicates(definition,request,physicalColumns,command);
+        var selectSourceValues=await LoadSelectSourceValueSetsAsync(definition,connection,token);
+        var predicates=BuildConditionPredicates(definition,request,physicalColumns,selectSourceValues,command);
         ApplyControlledFilter(moduleFilter,definition.MasterTable,allowedFields,predicates,command,throwOnFailure:true);
         ApplyControlledFilter(reportFilter,definition.MasterTable,allowedFields,predicates,command,throwOnFailure:true);
         ApplyControlledFilter(rightsDataFilter,definition.MasterTable,allowedFields,predicates,command,throwOnFailure:true);
@@ -399,13 +424,14 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
     }
 
     /// <summary>
-    /// 查询条件编译（F_TYPE 1 范围 / 2 固定单选 / 3 数据单选 / 4 固定多选），
+    /// 查询条件编译（F_TYPE 1 范围 / 2 固定单选 / 3 数据单选 / 4 固定多选 / 5 数据源多选），
     /// 字段经白名单解析，值全部参数化；与 QueryAsync / QueryPdfAsync 共用。
     /// </summary>
     private static List<string> BuildConditionPredicates(
         ReportDefinition definition,
         ReportQueryRequest request,
         IReadOnlyList<string> physicalColumns,
+        IReadOnlyDictionary<int,IReadOnlySet<string>> selectSourceValues,
         SqlCommand command)
     {
         var predicates=new List<string>();
@@ -435,8 +461,12 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
                     command.Parameters.AddWithValue($"@rc{command.Parameters.Count}",value);
                     break;
                 case 4 when value is not null:
-                    var chosen=value.Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries)
-                        .Where(item=>condition.Options.Any(option=>option.Value==item)).ToList();
+                case 5 when value is not null:
+                {
+                    var allowed=condition.Type==4
+                        ? condition.Options.Select(option=>option.Value).ToHashSet(StringComparer.Ordinal)
+                        : selectSourceValues.GetValueOrDefault(condition.SerialNo)??new HashSet<string>(StringComparer.Ordinal);
+                    var chosen=FilterMultiSelectValues(value,allowed);
                     if(chosen.Count==0)continue;
                     var placeholders=new List<string>();
                     foreach(var item in chosen)
@@ -446,9 +476,23 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
                     }
                     predicates.Add($"m.[{field}] IN ({string.Join(',',placeholders)})");
                     break;
+                }
             }
         }
         return predicates;
+    }
+
+    /// <summary>
+    /// 多选条件值（F_TYPE 4 固定多选 / 5 数据源多选）：逗号分隔实际值，
+    /// 过滤合法集合（坏值丢弃，fail-closed）并去重保序。
+    /// </summary>
+    internal static IReadOnlyList<string> FilterMultiSelectValues(string? raw, IReadOnlySet<string> allowed)
+    {
+        if(raw is null)return [];
+        return raw.Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries)
+            .Where(allowed.Contains)
+            .Distinct()
+            .ToList();
     }
 
     /// <summary>主键列优先（报表须可辨识行），再取其余可见列，上限 40 列。</summary>
@@ -568,7 +612,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             var effectiveDefaultTo=userTo;
             var options=ParseOptions(type,expression);
             ReportSelectSource? selectSource=null;
-            if(type==3)
+            if(type is 3 or 5)
             {
                 var match=SelectSourcePattern.Match(expression);
                 if(match.Success)
