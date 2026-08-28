@@ -416,10 +416,6 @@ button, input, select { font: inherit; }
    （.erp-command-icon-btn，分组/导出分割）为 28px，均豁免此强制方块尺寸 */
 .erp-workbench-page .erp-list-command-bar .btn:not(.erp-command-btn):not(.erp-command-icon-btn) { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
 .erp-workbench-page .erp-list-command-bar .btn:not(.erp-command-btn):not(.erp-command-icon-btn) svg { width: 16px; height: 16px; }
-/* 通用列表命令栏（非工作台页面）：容器加 erp-command-bar-icon 后，其中按钮与工作台命令栏
-   同款纯图标方形按钮（28×28 圆角、title 显示按钮名、图标 16px），作为所有列表页命令栏的统一样式 */
-.erp-command-bar-icon .btn { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
-.erp-command-bar-icon .btn svg { width: 16px; height: 16px; }
 /* 统一命令栏（ErpCommandBar）图标+文字按钮：图标 16px + 动作名（新增/编辑/批核/打印等），
    统一 28px 高、左右 10px 内边距、宽度随内容自适应（不设固定宽度），
    供工作台/表单/列表在任意容器内保持同一表意与尺寸 */
@@ -928,6 +924,12 @@ button, input, select { font: inherit; }
   width: 100%;
   border-style: dashed;
 }
+
+/* 明细卡（主子表下方，30%/260px 封顶）空态压缩：避免 .erp-state 默认 min-height 18rem
+   在窄明细区内被裁切显示不完整 */
+.erp-detail-card .erp-state { min-height: 0; padding: 14px 12px; gap: .25rem; }
+.erp-detail-card .erp-state-icon { width: 2rem; height: 2rem; border-radius: .5rem; }
+.erp-detail-card .erp-state-icon svg { width: 18px; height: 18px; }
 
 /* ===== 系统参数设置（110111）=====
    复用统一表单编辑网格（erp-form-grid），分区标题行 + 12px 标准字号 */

@@ -27,7 +27,7 @@ internal static class ModuleRouteValidator
     private static readonly string[] ExactRoutes =
     [
         "/dashboard",
-        "/admin/menus", "/admin/tables", "/admin/field-audit", "/admin/users", "/admin/table-data",
+        "/admin/menus", "/admin/tables", "/admin/field-audit", "/admin/users",
         "/admin/groups", "/admin/report-setup", "/admin/print-setup/headers", "/admin/print-setup/footers", "/admin/print-setup/tails",
         "/import", "/settings/system", "/settings/hr-setup", "/settings/hrm-setup",
         "/bom-expand", "/jobs", "/my-tasks", "/car-summary",

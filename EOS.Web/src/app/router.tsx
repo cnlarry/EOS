@@ -20,7 +20,6 @@ import {
   SearchCenterPage,
   SystemSettingsPage,
   TableAdminPage,
-  TableDataPage,
   UserAdminPage,
   UserRightsPage,
   UserReportRightsPage,
@@ -51,7 +50,6 @@ export const router = createBrowserRouter([
           { path: 'admin/groups/:groupId/report-rights', element: withSuspense(<GroupReportRightsPage />) },
           { path: 'admin/groups/:groupId/members', element: withSuspense(<GroupMembersPage />) },
         ] },
-        { element: <RequirePermission permission="legacy-module.2310.read" />, children: [{ path: 'admin/table-data', element: withSuspense(<TableDataPage />) }] },
         { element: <RequirePermission permission="legacy-module.2303.read" />, children: [{ path: 'admin/field-audit', element: withSuspense(<FieldAuditPage />) }] },
         { element: <RequirePermission permission="legacy-module.2306.read" />, children: [
           { path: 'admin/users', element: withSuspense(<UserAdminPage />) },

@@ -25,6 +25,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["menu-admin.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
             ["menu-admin.sprocs"] = ["SP_NAME"],
             ["report-admin.fields"] = ["T_ID", "F_ID", "F_DESC", "F_TYPE"],
+            ["report-admin.modules"] = ["M_IDX", "M_DESC"],
             // 员工源显示列/可排序列来自 110104（SYSDN）字段元数据，运行时动态解析，这里仅登记默认排序列
             ["user-admin.employees"] = ["EMP_ID"],
         };
@@ -37,6 +38,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["menu-admin.fields"] = ["F_ID"],
             ["menu-admin.sprocs"] = ["SP_NAME"],
             ["report-admin.fields"] = ["T_ID", "F_ID"],
+            ["report-admin.modules"] = ["M_IDX"],
             ["user-admin.employees"] = ["EMP_ID"],
         };
 
@@ -66,6 +68,11 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 ["T_ID"] = "LTRIM(RTRIM(t.T_ID)) LIKE @Keyword",
                 ["F_ID"] = "LTRIM(RTRIM(c.F_ID)) LIKE @Keyword",
                 ["F_DESC"] = "COALESCE(NULLIF(LTRIM(RTRIM(c.F_DESC)),''),LTRIM(RTRIM(c.F_ID))) LIKE @Keyword",
+            },
+            ["report-admin.modules"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["M_IDX"] = "LTRIM(RTRIM(CAST(m.M_IDX AS nvarchar(20)))) LIKE @Keyword",
+                ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,''))) LIKE @Keyword",
             },
         };
 
@@ -97,6 +104,11 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 ["F_DESC"] = "COALESCE(NULLIF(LTRIM(RTRIM(c.F_DESC)),''),LTRIM(RTRIM(c.F_ID)))",
                 ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(c.F_TYPE)),'nvarchar')",
             },
+            ["report-admin.modules"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["M_IDX"] = "m.M_IDX",
+                ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,'')))",
+            },
         };
 
     public static bool IsRegistered(string? sourceKey) =>
@@ -106,7 +118,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     public static int? PermissionModuleId(string? sourceKey) => sourceKey?.Trim().ToLowerInvariant() switch
     {
         "menu-admin.tables" or "menu-admin.fields" or "menu-admin.sprocs" => MenuAdminModuleId,
-        "report-admin.fields" => ReportAdminModuleId,
+        "report-admin.fields" or "report-admin.modules" => ReportAdminModuleId,
         "user-admin.employees" => UserAdminModuleId,
         _ => null,
     };
@@ -150,6 +162,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             "menu-admin.fields" => await QueryFieldsAsync(request, token),
             "menu-admin.sprocs" => await QuerySprocsAsync(request, token),
             "report-admin.fields" => await QueryReportFieldsAsync(request, token),
+            "report-admin.modules" => await QueryModulesAsync(request, token),
             "user-admin.employees" => await QueryEmployeesAsync(request, token),
             _ => null,
         };
@@ -238,6 +251,54 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 new UnifiedChooserColumn("T_DESC", "描述", "nvarchar", null),
                 new UnifiedChooserColumn("T_KIND", "类型", "nvarchar", null),
                 new UnifiedChooserColumn("T_TYPE", "种类", "nvarchar", null),
+            ],
+            rows,
+            total);
+    }
+
+    private async Task<UnifiedChooserResult> QueryModulesAsync(UnifiedChooserQueryRequest request, CancellationToken token)
+    {
+        const string sourceKey = "report-admin.modules";
+        var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
+        var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand { Connection = connection };
+        AddCommonParameters(command, keyword, page, pageSize);
+        var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
+        var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        // 报表所属模块候选：启用且具备报表承载能力（RPT/ URL）或已挂报表的模块
+        const string scope = """
+            ISNULL(m.M_TAG,1)=1
+            AND (LTRIM(RTRIM(ISNULL(m.M_URL,''))) LIKE 'RPT/%'
+                 OR LTRIM(RTRIM(ISNULL(m.M_URL,''))) LIKE '~/RPT/%'
+                 OR EXISTS (SELECT 1 FROM dbo.REPORT r WITH (NOLOCK) WHERE r.R_M_IDX=m.M_IDX))
+            """;
+        var sql = $"""
+            SELECT COUNT_BIG(1) FROM dbo.MODULES m WITH (NOLOCK)
+            WHERE {scope} AND (@Keyword = '' OR {keywordPredicate}){conditionSql};
+            SELECT m.M_IDX,LTRIM(RTRIM(ISNULL(m.M_DESC,''))) AS M_DESC
+            FROM dbo.MODULES m WITH (NOLOCK)
+            WHERE {scope} AND (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+        command.CommandText = sql;
+        await connection.OpenAsync(token);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(reader, ["M_IDX", "M_DESC"]);
+        logger.LogInformation("统一选择器模块源查询 page={Page} size={PageSize} total={Total} rows={Rows}",
+            page, pageSize, total, rows.Count);
+        return new UnifiedChooserResult(
+            [
+                new UnifiedChooserColumn("M_IDX", "模块号", "int", null),
+                new UnifiedChooserColumn("M_DESC", "模块名", "nvarchar", null),
             ],
             rows,
             total);
