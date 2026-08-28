@@ -16,6 +16,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     private const int ReportAdminModuleId = 2201;
     private const int ReportConditionsModuleId = 2205;
     private const int UserAdminModuleId = 2306;
+    private const int FieldAdminModuleId = 2302;
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     /// <summary>注册数据源 → 可排序列白名单（首列为默认排序列，稳定次序列固定追加）。</summary>
@@ -23,6 +24,9 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
             ["menu-admin.tables"] = ["T_DESC", "T_ID", "T_KIND", "T_TYPE"],
+            ["field-admin.tables"] = ["T_DESC", "T_ID", "T_KIND", "T_TYPE"],
+            ["field-admin.columns"] = ["COLUMN_NAME", "DATA_TYPE"],
+            ["field-admin.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
             ["menu-admin.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
             ["menu-admin.sprocs"] = ["SP_NAME"],
             ["report-admin.fields"] = ["T_ID", "F_ID", "F_DESC", "F_TYPE"],
@@ -37,6 +41,9 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
             ["menu-admin.tables"] = ["T_ID"],
+            ["field-admin.tables"] = ["T_ID"],
+            ["field-admin.columns"] = ["COLUMN_NAME"],
+            ["field-admin.fields"] = ["F_ID"],
             ["menu-admin.fields"] = ["F_ID"],
             ["menu-admin.sprocs"] = ["SP_NAME"],
             ["report-admin.fields"] = ["T_ID", "F_ID"],
@@ -55,6 +62,23 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 ["T_DESC"] = "LTRIM(RTRIM(T_DESC)) LIKE @Keyword",
                 ["T_KIND"] = "LTRIM(RTRIM(ISNULL(T_KIND,''))) LIKE @Keyword",
                 ["T_TYPE"] = "LTRIM(RTRIM(ISNULL(T_TYPE,''))) LIKE @Keyword",
+            },
+            ["field-admin.tables"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["T_ID"] = "LTRIM(RTRIM(T_ID)) LIKE @Keyword",
+                ["T_DESC"] = "LTRIM(RTRIM(T_DESC)) LIKE @Keyword",
+                ["T_KIND"] = "LTRIM(RTRIM(ISNULL(T_KIND,''))) LIKE @Keyword",
+                ["T_TYPE"] = "LTRIM(RTRIM(ISNULL(T_TYPE,''))) LIKE @Keyword",
+            },
+            ["field-admin.columns"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["COLUMN_NAME"] = "LTRIM(RTRIM(c.name)) LIKE @Keyword",
+            },
+            ["field-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["F_ID"] = "LTRIM(RTRIM(f.F_ID)) LIKE @Keyword",
+                ["F_DESC"] = "COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))) LIKE @Keyword",
+                ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar') LIKE @Keyword",
             },
             ["menu-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -96,6 +120,23 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 ["T_KIND"] = "LTRIM(RTRIM(ISNULL(T_KIND,'')))",
                 ["T_TYPE"] = "LTRIM(RTRIM(ISNULL(T_TYPE,'')))",
             },
+            ["field-admin.tables"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["T_ID"] = "LTRIM(RTRIM(T_ID))",
+                ["T_DESC"] = "LTRIM(RTRIM(T_DESC))",
+                ["T_KIND"] = "LTRIM(RTRIM(ISNULL(T_KIND,'')))",
+                ["T_TYPE"] = "LTRIM(RTRIM(ISNULL(T_TYPE,'')))",
+            },
+            ["field-admin.columns"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["COLUMN_NAME"] = "LTRIM(RTRIM(c.name))",
+            },
+            ["field-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["F_ID"] = "LTRIM(RTRIM(f.F_ID))",
+                ["F_DESC"] = "COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID)))",
+                ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar')",
+            },
             ["menu-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["F_ID"] = "LTRIM(RTRIM(f.F_ID))",
@@ -134,6 +175,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     public static int? PermissionModuleId(string? sourceKey) => sourceKey?.Trim().ToLowerInvariant() switch
     {
         "menu-admin.tables" or "menu-admin.fields" or "menu-admin.sprocs" => MenuAdminModuleId,
+        "field-admin.tables" or "field-admin.columns" or "field-admin.fields" => FieldAdminModuleId,
         "report-admin.fields" or "report-admin.modules" => ReportAdminModuleId,
         "report-conditions.fields" => ReportConditionsModuleId,
         "user-admin.employees" => UserAdminModuleId,
@@ -176,6 +218,9 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         return sourceKey!.ToLowerInvariant() switch
         {
             "menu-admin.tables" => await QueryTablesAsync(request, token),
+            "field-admin.tables" => await QueryTablesAsync(request, token),
+            "field-admin.columns" => await QueryColumnsAsync(request, token),
+            "field-admin.fields" => await QueryFieldsAsync(request, token),
             "menu-admin.fields" => await QueryFieldsAsync(request, token),
             "menu-admin.sprocs" => await QuerySprocsAsync(request, token),
             "report-admin.fields" or "report-conditions.fields" => await QueryReportFieldsAsync(request, token, sourceKey!),
@@ -268,6 +313,54 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 new UnifiedChooserColumn("T_DESC", "描述", "nvarchar", null),
                 new UnifiedChooserColumn("T_KIND", "类型", "nvarchar", null),
                 new UnifiedChooserColumn("T_TYPE", "种类", "nvarchar", null),
+            ],
+            rows,
+            total);
+    }
+
+    /// <summary>field-admin.columns：按表返回物理列（sys.columns，仅 dbo 表/视图；权限门 2302）。</summary>
+    private async Task<UnifiedChooserResult?> QueryColumnsAsync(UnifiedChooserQueryRequest request, CancellationToken token)
+    {
+        const string sourceKey = "field-admin.columns";
+        var tableId = ResolveFieldsTableId(request.Args);
+        if (tableId is null) return null;
+        var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
+        var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand { Connection = connection };
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        AddCommonParameters(command, keyword, page, pageSize);
+        var sql = $"""
+            SELECT COUNT_BIG(1)
+            FROM sys.columns c
+            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            WHERE s.name=N'dbo' AND o.name=@TableId AND (@Keyword = '' OR {keywordPredicate});
+            SELECT LTRIM(RTRIM(c.name)) AS COLUMN_NAME, TYPE_NAME(c.user_type_id) AS DATA_TYPE
+            FROM sys.columns c
+            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            WHERE s.name=N'dbo' AND o.name=@TableId AND (@Keyword = '' OR {keywordPredicate})
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+        command.CommandText = sql;
+        await connection.OpenAsync(token);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(reader, ["COLUMN_NAME", "DATA_TYPE"]);
+        logger.LogInformation("统一选择器物理列查询 table={Table} page={Page} total={Total} rows={Rows}",
+            tableId, page, total, rows.Count);
+        return new UnifiedChooserResult(
+            [
+                new UnifiedChooserColumn("COLUMN_NAME", "列名", "nvarchar", null),
+                new UnifiedChooserColumn("DATA_TYPE", "类型", "nvarchar", null),
             ],
             rows,
             total);

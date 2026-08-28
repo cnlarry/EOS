@@ -162,12 +162,13 @@ public sealed class FieldAdminRepositoryTests
     public void DescribeInput_FlattensChooserSlots()
     {
         var describe = FieldAdminRepository.DescribeInput(FieldInput());
-        Assert.Equal("1", describe["CHOOSE1_ACTIVE"]);
-        Assert.Equal("CLIENT", describe["CHOOSE1_T_ID"]);
-        Assert.Equal("1401", describe["CHOOSE1_M_IDX"]);
-        Assert.Equal("CLIENT_ID=CLIENT_ID", describe["CHOOSE1_RETURNVAL"]);
-        Assert.Equal("0", describe["CHOOSE4_ACTIVE"]);
-        Assert.Null(describe["CHOOSE2_T_ID"]);
+        // ADR-008：审计扁平化键改为 FIELDS_CHOOSER 条目（SERIAL_NO 维度）
+        Assert.Equal("1", describe["CHOOSER[1].ACTIVE"]);
+        Assert.Equal("CLIENT", describe["CHOOSER[1].SOURCE_T_ID"]);
+        Assert.Equal("1401", describe["CHOOSER[1].SOURCE_M_IDX"]);
+        Assert.Equal("CLIENT_ID=CLIENT_ID", describe["CHOOSER[1].RETURN_ITEMS"]);
+        Assert.Equal("0", describe["CHOOSER[4].ACTIVE"]);
+        Assert.Null(describe["CHOOSER[2].SOURCE_T_ID"]);
     }
 
     [Fact]

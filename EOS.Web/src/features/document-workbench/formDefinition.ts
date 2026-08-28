@@ -1,4 +1,9 @@
-/** 表单选择器数据源（与 EOS.API FieldChooserSource 对应；filter 受控解析前恒为 null，不返回普通用户） */
+/**
+ * 表单选择器数据源（与 EOS.API FieldChooserSource 对应；ADR-008）：
+ * - filter 恒为 null（FILTER_STRUCT 仅字段设置可见，运行期由 form-chooser 端点按 serialNo 取权威定义）；
+ * - returnMapping = RETURN_ITEMS JSON（有序回填映射，[{target,column}]）；
+ * - serialNo：多来源「各是各的入口」时传给 form-chooser 指定来源。
+ */
 export interface FormChooserSource {
   active: boolean
   table: string | null
@@ -6,6 +11,7 @@ export interface FormChooserSource {
   moduleId: number | null
   filter: string | null
   returnMapping: string | null
+  serialNo: number | null
 }
 
 /** 下拉选项（解析自 FIELDS.FORM_OPTIONS，如 'O=外含税;I=内含税'） */

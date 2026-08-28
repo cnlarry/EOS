@@ -173,25 +173,41 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
     }
 
     [HttpGet("form-chooser/{fieldKey}")]
-    public async Task<IActionResult> FormChooser(int moduleId,string fieldKey,[FromQuery]string? keyword=null,[FromQuery]string? filterField=null,[FromQuery]string? master=null,[FromQuery]string? detail=null,[FromQuery]string? conditions=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]int page=1,[FromQuery]int pageSize=50,CancellationToken token=default)
+    public async Task<IActionResult> FormChooser(int moduleId,string fieldKey,[FromQuery]int? serialNo=null,[FromQuery]string? keyword=null,[FromQuery]string? filterField=null,[FromQuery]string? master=null,[FromQuery]string? detail=null,[FromQuery]string? conditions=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]int page=1,[FromQuery]int pageSize=50,CancellationToken token=default)
     {
         var access=await FormAccess(moduleId,"new",token) ?? await FormAccess(moduleId,"edit",token);
         if(access is null)return NotFound();
         var (definition,form,rights)=access.Value;
         var field=form.MasterFields.Concat(form.DetailFields).FirstOrDefault(item=>item.Key.Equals(fieldKey,StringComparison.OrdinalIgnoreCase));
         if(field is null)return NotFound();
-        var source=field.Choosers.FirstOrDefault(item=>item.Active&&!string.IsNullOrWhiteSpace(item.Table));
-        if(source is null||source.Table is null)return NotFound();
+        // ADR-008 §2：多来源「各是各的入口」——前端按 serialNo 指定来源；缺省取首个启用来源。
+        // 来源定义（FILTER_STRUCT/RETURN_ITEMS）仅服务端持有，不从表单定义 DTO 读取。
+        var source=await repository.GetChooserSourceAsync(definition.MasterTable,definition.DetailTable,fieldKey,serialNo,token);
+        if(source is null||!source.Active||string.IsNullOrWhiteSpace(source.Table))return NotFound();
         var chooserRights=rights;
         if(source.ModuleId is int moduleIndex&&moduleIndex>0)
         {
             var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if(userId is not null)chooserRights=(await permissions.GetAsync(userId,moduleIndex,token)).Rights;
         }
-        // {module} 为旧系统模板占位符，服务端替换为当前模块号（常量，安全）后再受控解析
-        var chooseFilter=string.IsNullOrWhiteSpace(source.Filter)
-            ? null
-            : source.Filter.Replace("{module}",moduleId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        // FILTER_STRUCT 结构化条件：编译期把 {module} 等模板转为参数占位符，运行期绑定（ADR-008 §3）
+        // NULL = 存量条件待重建（迁移清单内），fail-closed 返回空选项，绝不退化为「无过滤」放大数据范围
+        if (source.Filter is null)
+        {
+            logger.LogWarning("选择器过滤条件待重建（FILTER_STRUCT 为空）module={ModuleId} field={Field} serial={Serial}", moduleId, fieldKey, source.SerialNo);
+            return Ok(new FormChooserResult([], [], 0));
+        }
+        if (!ChooserFilterStruct.TryParse(source.Filter, out var filterStruct))
+        {
+            logger.LogWarning("选择器结构化过滤条件非法 module={ModuleId} field={Field} serial={Serial}", moduleId, fieldKey, source.SerialNo);
+            return BadRequest(new { code = "CHOOSER_FILTER_INVALID", message = "选择器过滤条件不是合法的结构化 JSON，请联系系统管理员在字段设置中重建。" });
+        }
+        var returnItems = ChooserReturnItems.Parse(source.ReturnMapping);
+        if (returnItems is null)
+        {
+            logger.LogWarning("选择器回填映射非法 module={ModuleId} field={Field} serial={Serial}", moduleId, fieldKey, source.SerialNo);
+            return BadRequest(new { code = "CHOOSER_RETURN_INVALID", message = "选择器回填映射不是合法的 JSON 数组，请联系系统管理员在字段设置中重建。" });
+        }
         IReadOnlyDictionary<string,string>? masterValues=null;
         if(!string.IsNullOrWhiteSpace(master))
         {
@@ -236,7 +252,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         {
             return Unauthorized();
         }
-        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,filterField,source.ReturnMapping,masterValues,detailValues,chooserConditions,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,chooseFilter,sortField,sortDirection,page,pageSize,chooserRights.ExecuteTag,source.ModuleId ?? moduleId,chooserUserId,token);
+        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,filterField,returnItems,masterValues,detailValues,chooserConditions,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,filterStruct,sortField,sortDirection,page,pageSize,chooserRights.ExecuteTag,source.ModuleId ?? moduleId,chooserUserId,token);
         return result is null?NotFound():Ok(result);
     }
 

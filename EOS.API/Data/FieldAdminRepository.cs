@@ -474,10 +474,6 @@ public sealed class FieldAdminRepository(
                    CAST(COALESCE(IS_QUERY,1) AS bit),CAST(COALESCE(IS_READONLY,0) AS bit),CAST(COALESCE(IS_VERIFY,0) AS bit),
                    CAST(COALESCE(IS_COST,0) AS bit),CAST(COALESCE(IS_SECRECY,0) AS bit),DFT_VALUE,VERIFY_INDEX,REGEX,F_REMARK,
                    BROWSE_URL,BROWSE_M_IDX,CAST(COALESCE(ONLY_CHOOSE,0) AS bit),CAST(COALESCE(CHOOSE_MULTI,0) AS bit),CHOOSE_PAGE,
-                   CAST(COALESCE(CHOOSE_ACTIVE1,0) AS bit),CHOOSE_T_ID1,CHOOSE_T_DESC1,CHOOSE_M_IDX1,CHOOSE_FILTER1,CHOOSE_RETURNVAL1,
-                   CAST(COALESCE(CHOOSE_ACTIVE2,0) AS bit),CHOOSE_T_ID2,CHOOSE_T_DESC2,CHOOSE_M_IDX2,CHOOSE_FILTER2,CHOOSE_RETURNVAL2,
-                   CAST(COALESCE(CHOOSE_ACTIVE3,0) AS bit),CHOOSE_T_ID3,CHOOSE_T_DESC3,CHOOSE_M_IDX3,CHOOSE_FILTER3,CHOOSE_RETURNVAL3,
-                   CAST(COALESCE(CHOOSE_ACTIVE4,0) AS bit),CHOOSE_T_ID4,CHOOSE_T_DESC4,CHOOSE_M_IDX4,CHOOSE_FILTER4,CHOOSE_RETURNVAL4,
                    CAST(COALESCE(IS_VIRTUAL,0) AS bit),VIRTUAL_EXP,CAST(COALESCE(CAN_COPY,1) AS bit),CAST(COALESCE(IS_AUTOINC,0) AS bit),
                    CONVERT_FUNCTION,DATASOURCE_SQL,LAST_UPDATE_BY,LAST_UPDATE_DATE,CAST(COALESCE(IS_PK,0) AS bit)
             FROM dbo.FIELDS WITH (NOLOCK)
@@ -499,17 +495,18 @@ public sealed class FieldAdminRepository(
             reader.IsDBNull(17) ? null : reader.GetString(17), reader.IsDBNull(18) ? null : reader.GetString(18),
             reader.IsDBNull(19) ? null : reader.GetInt32(19), reader.GetBoolean(20), reader.GetBoolean(21),
             reader.IsDBNull(22) ? null : reader.GetString(22),
-            [ReadChooser(reader, 23), ReadChooser(reader, 29), ReadChooser(reader, 35), ReadChooser(reader, 41)],
-            reader.GetBoolean(49));
-        var isVirtual = reader.GetBoolean(47);
-        var virtualExpression = reader.IsDBNull(48) ? null : reader.GetString(48);
-        var isAutoIncrement = reader.GetBoolean(50);
-        var convertFunction = reader.IsDBNull(51) ? null : reader.GetString(51);
-        var dataSourceSql = reader.IsDBNull(52) ? null : reader.GetString(52);
-        var lastUpdatedBy = reader.IsDBNull(53) ? null : reader.GetString(53);
-        DateTime? lastUpdatedAt = reader.IsDBNull(54) ? null : reader.GetDateTime(54);
-        var isPrimaryKey = reader.GetBoolean(55);
+            [],
+            reader.GetBoolean(25));
+        var isVirtual = reader.GetBoolean(23);
+        var virtualExpression = reader.IsDBNull(24) ? null : reader.GetString(24);
+        var isAutoIncrement = reader.GetBoolean(26);
+        var convertFunction = reader.IsDBNull(27) ? null : reader.GetString(27);
+        var dataSourceSql = reader.IsDBNull(28) ? null : reader.GetString(28);
+        var lastUpdatedBy = reader.IsDBNull(29) ? null : reader.GetString(29);
+        DateTime? lastUpdatedAt = reader.IsDBNull(30) ? null : reader.GetDateTime(30);
+        var isPrimaryKey = reader.GetBoolean(31);
         await reader.CloseAsync();
+        input = input with { Choosers = await ReadFieldChoosersAsync(connection, null, tableId, field, token) };
         var physicalType = await GetPhysicalTypeAsync(connection, tableId, field, token);
         return new(tableId, field, input,
             isVirtual, virtualExpression, isAutoIncrement, convertFunction, dataSourceSql,
@@ -517,6 +514,78 @@ public sealed class FieldAdminRepository(
             physicalType is not null,
             physicalType,
             physicalType is null ? null : string.Equals(physicalType, input.DataType.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// 字段变更历史（AUDIT_EVENT/FIELD_CHANGE，RESOURCE_TYPE=FIELD_ADMIN，RESOURCE_KEY=表.字段）。
+    /// 供全尺寸字段设置页「变更历史」选项卡（ADR-008 全页化改造）。
+    /// </summary>
+    public async Task<IReadOnlyList<FieldHistoryEvent>> GetFieldHistoryAsync(
+        string tableId,
+        string fieldId,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT CONVERT(varchar(19), e.OCCURRED_AT, 120) AS OCCURRED_AT,
+                   e.ACTOR_USER_ID, e.ACTION, e.SUMMARY,
+                   ISNULL((SELECT JSON_QUERY((
+                            SELECT fc.FIELD_NAME AS [name], fc.OLD_VALUE AS [oldValue], fc.NEW_VALUE AS [newValue]
+                            FROM dbo.AUDIT_FIELD_CHANGE fc WITH (NOLOCK)
+                            WHERE fc.EVENT_ID = e.EVENT_ID
+                            FOR JSON PATH)), '[]') AS CHANGES_JSON
+            FROM dbo.AUDIT_EVENT e WITH (NOLOCK)
+            WHERE e.RESOURCE_TYPE = N'FIELD_ADMIN'
+              AND e.RESOURCE_KEY = @Key
+            ORDER BY e.OCCURRED_AT DESC, e.EVENT_ID DESC
+            OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY;
+            """;
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Key", SqlDbType.NVarChar, 220).Value = $"{tableId}.{fieldId}";
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<FieldHistoryEvent>();
+        while (await reader.ReadAsync(token))
+        {
+            var changes = System.Text.Json.JsonSerializer.Deserialize<List<FieldHistoryChange>>(
+                reader.GetString(4),
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+            result.Add(new FieldHistoryEvent(
+                DateTime.Parse(reader.GetString(0), System.Globalization.CultureInfo.InvariantCulture),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                changes));
+        }
+        return result;
+    }
+
+    /// <summary>表物理列（sys.columns，仅 dbo 表/视图；字段设置构建器下拉用）。</summary>
+    public async Task<IReadOnlyList<FieldAdminColumn>> GetTableColumnsAsync(
+        string tableId,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT c.name, TYPE_NAME(c.user_type_id), LTRIM(RTRIM(COALESCE(f.F_DESC,''))) AS F_DESC
+            FROM sys.columns c
+            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            LEFT JOIN dbo.FIELDS f WITH (NOLOCK)
+              ON f.T_ID=@TableId AND LTRIM(RTRIM(f.F_ID))=c.name
+            WHERE s.name=N'dbo' AND o.name=@TableId
+            ORDER BY c.column_id;
+            """;
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId.Trim();
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<FieldAdminColumn>();
+        while (await reader.ReadAsync(token))
+        {
+            result.Add(new FieldAdminColumn(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+        }
+        return result;
     }
 
     private static async Task<string?> GetPhysicalTypeAsync(
@@ -579,19 +648,11 @@ public sealed class FieldAdminRepository(
         const string sql = """
             INSERT INTO dbo.FIELDS
                 (T_ID,F_ID,F_DESC,F_TYPE,BROWSE_URL,BROWSE_M_IDX,ONLY_CHOOSE,CHOOSE_PAGE,CHOOSE_MULTI,
-                 CHOOSE_T_ID1,CHOOSE_T_DESC1,CHOOSE_M_IDX1,CHOOSE_FILTER1,CHOOSE_RETURNVAL1,CHOOSE_ACTIVE1,
-                 CHOOSE_T_ID2,CHOOSE_T_DESC2,CHOOSE_M_IDX2,CHOOSE_FILTER2,CHOOSE_RETURNVAL2,CHOOSE_ACTIVE2,
-                 CHOOSE_T_ID3,CHOOSE_T_DESC3,CHOOSE_M_IDX3,CHOOSE_FILTER3,CHOOSE_RETURNVAL3,CHOOSE_ACTIVE3,
-                 CHOOSE_T_ID4,CHOOSE_T_DESC4,CHOOSE_M_IDX4,CHOOSE_FILTER4,CHOOSE_RETURNVAL4,CHOOSE_ACTIVE4,
                  REGEX,DISPLAY_LENGTH,DISPLAY_FORMAT,HEADER_ALIGN,ITEM_ALIGN,IS_VERIFY,VERIFY_INDEX,
                  IS_READONLY,IS_VISIBLE,IS_VIRTUAL,IS_AUTOINC,IS_QUERY,IS_COST,IS_SECRECY,DFT_VALUE,
                  CAN_COPY,IS_DEFAULT_FIELDS,F_REMARK,LAST_UPDATE_BY,LAST_UPDATE_DATE)
             VALUES
                 (@TableId,@FieldId,@Label,@DataType,NULL,@BrowseModuleId,@OnlyChoose,@ChoosePage,@ChooseMultiple,
-                 @Table1,@Description1,@Module1,@Filter1,@Return1,@Active1,
-                 @Table2,@Description2,@Module2,@Filter2,@Return2,@Active2,
-                 @Table3,@Description3,@Module3,@Filter3,@Return3,@Active3,
-                 @Table4,@Description4,@Module4,@Filter4,@Return4,@Active4,
                  @Regex,@Width,@Format,@HeaderAlign,@Align,@Required,@VerifyIndex,
                  @Readonly,@Visible,0,0,@Queryable,@Cost,@Secrecy,@DefaultValue,
                  @CanCopy,@Default,@Remark,@UpdatedBy,GETDATE());
@@ -601,6 +662,8 @@ public sealed class FieldAdminRepository(
         AddInput(command, request.Field, updatedBy);
         if (await command.ExecuteNonQueryAsync(token) != 1)
             throw new InvalidOperationException("新增字段失败。");
+        // ADR-008：数据源独立表事务内写入（任意数量，SERIAL_NO 1..n）
+        await ReplaceChoosersAsync(connection, transaction, request.TableId, request.FieldId.Trim(), request.Field.Choosers, updatedBy, token);
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
         await transaction.CommitAsync(token);
         await auditWriter.WriteBestEffortAsync(null, $"{request.TableId}.{request.FieldId}", "CREATE", "字段维护新增", updatedBy, "FIELD_ADMIN",
@@ -639,14 +702,6 @@ public sealed class FieldAdminRepository(
                 IS_READONLY=@Readonly,IS_VERIFY=@Required,IS_COST=@Cost,IS_SECRECY=@Secrecy,DFT_VALUE=@DefaultValue,
                 VERIFY_INDEX=@VerifyIndex,REGEX=@Regex,F_REMARK=@Remark,BROWSE_URL=@BrowseUrl,BROWSE_M_IDX=@BrowseModuleId,
                 ONLY_CHOOSE=@OnlyChoose,CHOOSE_MULTI=@ChooseMultiple,CHOOSE_PAGE=@ChoosePage,CAN_COPY=@CanCopy,
-                CHOOSE_ACTIVE1=@Active1,CHOOSE_T_ID1=@Table1,CHOOSE_T_DESC1=@Description1,CHOOSE_M_IDX1=@Module1,
-                CHOOSE_FILTER1=@Filter1,CHOOSE_RETURNVAL1=@Return1,
-                CHOOSE_ACTIVE2=@Active2,CHOOSE_T_ID2=@Table2,CHOOSE_T_DESC2=@Description2,CHOOSE_M_IDX2=@Module2,
-                CHOOSE_FILTER2=@Filter2,CHOOSE_RETURNVAL2=@Return2,
-                CHOOSE_ACTIVE3=@Active3,CHOOSE_T_ID3=@Table3,CHOOSE_T_DESC3=@Description3,CHOOSE_M_IDX3=@Module3,
-                CHOOSE_FILTER3=@Filter3,CHOOSE_RETURNVAL3=@Return3,
-                CHOOSE_ACTIVE4=@Active4,CHOOSE_T_ID4=@Table4,CHOOSE_T_DESC4=@Description4,CHOOSE_M_IDX4=@Module4,
-                CHOOSE_FILTER4=@Filter4,CHOOSE_RETURNVAL4=@Return4,
                 FORM_TAB_NO=@FormTabNo,FORM_ORDER=@FormOrder,FORM_SPAN=@FormSpan,FORM_NEW_LINE=@FormNewLine,
                 FORM_CELL_GROUP=@FormCellGroup,FORM_CELL_ROLE=@FormCellRole,FORM_OPTIONS=@FormOptions,
                 LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE()
@@ -657,6 +712,8 @@ public sealed class FieldAdminRepository(
         AddInput(command, field, updatedBy);
         if (await command.ExecuteNonQueryAsync(token) != 1)
             throw new KeyNotFoundException("字段不存在。");
+        // ADR-008：数据源独立表事务内全量替换（DELETE + INSERT，SERIAL_NO 1..n）
+        await ReplaceChoosersAsync(connection, transaction, tableId, fieldId.Trim(), field.Choosers, updatedBy, token);
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
         await transaction.CommitAsync(token);
         await auditWriter.WriteBestEffortAsync(null, $"{tableId}.{fieldId}", "UPDATE", "字段维护更新", updatedBy, "FIELD_ADMIN",
@@ -704,14 +761,6 @@ public sealed class FieldAdminRepository(
         logger.LogInformation("删除字段 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
     }
 
-    private static FieldAdminChooser ReadChooser(SqlDataReader reader, int offset) => new(
-        reader.GetBoolean(offset),
-        reader.IsDBNull(offset + 1) ? null : reader.GetString(offset + 1),
-        reader.IsDBNull(offset + 2) ? null : reader.GetString(offset + 2),
-        reader.IsDBNull(offset + 3) ? null : reader.GetInt32(offset + 3),
-        reader.IsDBNull(offset + 4) ? null : reader.GetString(offset + 4),
-        reader.IsDBNull(offset + 5) ? null : reader.GetString(offset + 5));
-
     private static async Task<FieldAdminInput?> ReadCurrentInputAsync(
         SqlConnection connection,
         SqlTransaction transaction,
@@ -727,11 +776,7 @@ public sealed class FieldAdminRepository(
                    CAST(COALESCE(IS_SECRECY,0) AS bit),DFT_VALUE,VERIFY_INDEX,REGEX,F_REMARK,BROWSE_URL,BROWSE_M_IDX,
                    CAST(COALESCE(ONLY_CHOOSE,0) AS bit),CAST(COALESCE(CHOOSE_MULTI,0) AS bit),CHOOSE_PAGE,
                    CAST(COALESCE(CAN_COPY,1) AS bit),
-                   CAST(COALESCE(CHOOSE_ACTIVE1,0) AS bit),CHOOSE_T_ID1,CHOOSE_T_DESC1,CHOOSE_M_IDX1,CHOOSE_FILTER1,CHOOSE_RETURNVAL1,
-                   CAST(COALESCE(CHOOSE_ACTIVE2,0) AS bit),CHOOSE_T_ID2,CHOOSE_T_DESC2,CHOOSE_M_IDX2,CHOOSE_FILTER2,CHOOSE_RETURNVAL2,
-                   CAST(COALESCE(CHOOSE_ACTIVE3,0) AS bit),CHOOSE_T_ID3,CHOOSE_T_DESC3,CHOOSE_M_IDX3,CHOOSE_FILTER3,CHOOSE_RETURNVAL3,
-                   CAST(COALESCE(CHOOSE_ACTIVE4,0) AS bit),CHOOSE_T_ID4,CHOOSE_T_DESC4,CHOOSE_M_IDX4,CHOOSE_FILTER4,CHOOSE_RETURNVAL4
-                   ,CAST(COALESCE(FORM_TAB_NO,1) AS int) AS FORM_TAB_NO,FORM_ORDER,
+                   CAST(COALESCE(FORM_TAB_NO,1) AS int) AS FORM_TAB_NO,FORM_ORDER,
                    CAST(COALESCE(FORM_SPAN,1) AS int) AS FORM_SPAN,CAST(COALESCE(FORM_NEW_LINE,0) AS bit) AS FORM_NEW_LINE,
                    FORM_CELL_GROUP,CAST(COALESCE(FORM_CELL_ROLE,0) AS int) AS FORM_CELL_ROLE,FORM_OPTIONS
             FROM dbo.FIELDS WITH (NOLOCK)
@@ -742,7 +787,7 @@ public sealed class FieldAdminRepository(
         command.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId.Trim();
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token)) return null;
-        return new FieldAdminInput(
+        var result = new FieldAdminInput(
             reader.GetString(0), reader.GetString(1), Math.Clamp(reader.GetInt32(2), 40, 300),
             reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5),
             reader.GetBoolean(6), reader.GetBoolean(7), reader.GetBoolean(8), reader.GetBoolean(9), reader.GetBoolean(10),
@@ -751,7 +796,7 @@ public sealed class FieldAdminRepository(
             reader.IsDBNull(16) ? null : reader.GetString(16), reader.IsDBNull(17) ? null : reader.GetString(17),
             reader.IsDBNull(18) ? null : reader.GetInt32(18), reader.GetBoolean(19), reader.GetBoolean(20),
             reader.IsDBNull(21) ? null : reader.GetString(21),
-            [ReadInputChooser(reader, 23), ReadInputChooser(reader, 29), ReadInputChooser(reader, 35), ReadInputChooser(reader, 41)],
+            [],
             reader.GetBoolean(22),
             reader.GetInt32(reader.GetOrdinal("FORM_TAB_NO")),
             reader.IsDBNull(reader.GetOrdinal("FORM_ORDER")) ? null : reader.GetInt32(reader.GetOrdinal("FORM_ORDER")),
@@ -760,15 +805,47 @@ public sealed class FieldAdminRepository(
             reader.IsDBNull(reader.GetOrdinal("FORM_CELL_GROUP")) ? null : reader.GetString(reader.GetOrdinal("FORM_CELL_GROUP")),
             reader.GetInt32(reader.GetOrdinal("FORM_CELL_ROLE")),
             reader.IsDBNull(reader.GetOrdinal("FORM_OPTIONS")) ? null : reader.GetString(reader.GetOrdinal("FORM_OPTIONS")));
+        await reader.CloseAsync();
+        return result with { Choosers = await ReadFieldChoosersAsync(connection, transaction, tableId, fieldId, token) };
     }
 
-    private static FieldAdminChooser ReadInputChooser(SqlDataReader reader, int offset) => new(
-        reader.GetBoolean(offset),
-        reader.IsDBNull(offset + 1) ? null : reader.GetString(offset + 1),
-        reader.IsDBNull(offset + 2) ? null : reader.GetString(offset + 2),
-        reader.IsDBNull(offset + 3) ? null : reader.GetInt32(offset + 3),
-        reader.IsDBNull(offset + 4) ? null : reader.GetString(offset + 4),
-        reader.IsDBNull(offset + 5) ? null : reader.GetString(offset + 5));
+    /// <summary>读取字段的数据源列表（FIELD_DATASOURCE，按 SERIAL_NO 排序；ADR-008）。</summary>
+    private static async Task<IReadOnlyList<FieldAdminChooser>> ReadFieldChoosersAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        string tableId,
+        string fieldId,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT c.SERIAL_NO,CAST(COALESCE(c.ACTIVE_TAG,0) AS bit) AS ACTIVE_TAG,
+                   LTRIM(RTRIM(ISNULL(c.SOURCE_T_ID,''))) AS SOURCE_T_ID,
+                   LTRIM(RTRIM(ISNULL(c.SOURCE_DESC,''))) AS SOURCE_DESC,c.SOURCE_M_IDX,
+                   c.FILTER_STRUCT,c.RETURN_ITEMS
+            FROM dbo.FIELD_DATASOURCE c WITH (NOLOCK)
+            WHERE c.T_ID=@TableId AND LTRIM(RTRIM(c.F_ID))=@FieldId
+            ORDER BY c.SERIAL_NO;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        command.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId.Trim();
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<FieldAdminChooser>();
+        while (await reader.ReadAsync(token))
+        {
+            var table = reader.GetString(reader.GetOrdinal("SOURCE_T_ID")).Trim();
+            if (table.Length == 0) continue;
+            result.Add(new FieldAdminChooser(
+                reader.GetBoolean(reader.GetOrdinal("ACTIVE_TAG")),
+                table,
+                reader.GetString(reader.GetOrdinal("SOURCE_DESC")),
+                reader.IsDBNull(reader.GetOrdinal("SOURCE_M_IDX")) ? null : reader.GetInt32(reader.GetOrdinal("SOURCE_M_IDX")),
+                reader.IsDBNull(reader.GetOrdinal("FILTER_STRUCT")) ? null : reader.GetString(reader.GetOrdinal("FILTER_STRUCT")),
+                reader.IsDBNull(reader.GetOrdinal("RETURN_ITEMS")) ? null : reader.GetString(reader.GetOrdinal("RETURN_ITEMS")),
+                reader.GetInt32(reader.GetOrdinal("SERIAL_NO"))));
+        }
+        return result;
+    }
 
     private static void AddIdentity(SqlCommand command, string tableId, string fieldId)
     {
@@ -808,17 +885,6 @@ public sealed class FieldAdminRepository(
         command.Parameters.Add("@FormCellGroup", SqlDbType.NVarChar, 50).Value = DbValue(input.CellGroup);
         command.Parameters.Add("@FormCellRole", SqlDbType.TinyInt).Value = (byte)Math.Clamp(input.CellRole, 0, 2);
         command.Parameters.Add("@FormOptions", SqlDbType.NVarChar, 500).Value = DbValue(input.Options);
-        for (var i = 0; i < 4; i++)
-        {
-            var source = input.Choosers[i];
-            var n = i + 1;
-            command.Parameters.Add($"@Active{n}", SqlDbType.Bit).Value = source.Active;
-            command.Parameters.Add($"@Table{n}", SqlDbType.NVarChar, 300).Value = DbValue(source.Table);
-            command.Parameters.Add($"@Description{n}", SqlDbType.NVarChar, 50).Value = DbValue(source.Description);
-            command.Parameters.Add($"@Module{n}", SqlDbType.Int).Value = source.ModuleId ?? (object)DBNull.Value;
-            command.Parameters.Add($"@Filter{n}", SqlDbType.NVarChar, 1000).Value = DbValue(source.Filter);
-            command.Parameters.Add($"@Return{n}", SqlDbType.VarChar, 8000).Value = DbValue(source.ReturnMapping);
-        }
         command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
     }
 
@@ -858,16 +924,17 @@ public sealed class FieldAdminRepository(
             ["FORM_CELL_ROLE"] = Math.Clamp(input.CellRole, 0, 2).ToString(CultureInfo.InvariantCulture),
             ["FORM_OPTIONS"] = DbText(input.Options),
         };
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < input.Choosers.Count; i++)
         {
             var source = input.Choosers[i];
-            var prefix = $"CHOOSE{i + 1}_";
+            var serial = source.SerialNo ?? i + 1;
+            var prefix = $"CHOOSER[{serial}].";
             dict[$"{prefix}ACTIVE"] = Bit(source.Active);
-            dict[$"{prefix}T_ID"] = DbText(source.Table);
-            dict[$"{prefix}T_DESC"] = DbText(source.Description);
-            dict[$"{prefix}M_IDX"] = source.ModuleId?.ToString(CultureInfo.InvariantCulture);
-            dict[$"{prefix}FILTER"] = DbText(source.Filter);
-            dict[$"{prefix}RETURNVAL"] = DbText(source.ReturnMapping);
+            dict[$"{prefix}SOURCE_T_ID"] = DbText(source.Table);
+            dict[$"{prefix}SOURCE_DESC"] = DbText(source.Description);
+            dict[$"{prefix}SOURCE_M_IDX"] = source.ModuleId?.ToString(CultureInfo.InvariantCulture);
+            dict[$"{prefix}FILTER_STRUCT"] = DbText(source.Filter);
+            dict[$"{prefix}RETURN_ITEMS"] = DbText(source.ReturnMapping);
         }
         return dict;
     }
@@ -926,7 +993,8 @@ public sealed class FieldAdminRepository(
 
     private static bool SameChooser(FieldAdminChooser a, FieldAdminChooser b) =>
         a.Active == b.Active && NullableEquals(a.Table, b.Table) && NullableEquals(a.Description, b.Description)
-        && a.ModuleId == b.ModuleId && NullableEquals(a.Filter, b.Filter) && NullableEquals(a.ReturnMapping, b.ReturnMapping);
+        && a.ModuleId == b.ModuleId && NullableEquals(a.Filter, b.Filter) && NullableEquals(a.ReturnMapping, b.ReturnMapping)
+        && a.SerialNo == b.SerialNo;
 
     private static bool NullableEquals(string? a, string? b) =>
         string.IsNullOrWhiteSpace(a) ? string.IsNullOrWhiteSpace(b) : string.Equals(a.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);
@@ -949,11 +1017,125 @@ public sealed class FieldAdminRepository(
             (!Uri.TryCreate(input.BrowseUrl, UriKind.Relative, out _) || input.BrowseUrl.TrimStart().StartsWith("//")))
             throw new ArgumentException("查看详情 URL 仅允许站内相对路径。");
         if ((input.ChoosePage?.Length ?? 0) > 500) throw new ArgumentException("数据选择页面过长。");
-        if (input.Choosers.Count != 4)
-            throw new ArgumentException("数据选择源必须为 4 组。");
-        if (input.Choosers.Any(item => (item.Table?.Length ?? 0) > 300 || (item.Description?.Length ?? 0) > 50
-            || (item.Filter?.Length ?? 0) > 1000 || (item.ReturnMapping?.Length ?? 0) > 8000))
-            throw new ArgumentException("数据选择源配置无效。");
+        foreach (var source in input.Choosers)
+        {
+            if ((source.Table?.Length ?? 0) > 300 || (source.Description?.Length ?? 0) > 50)
+                throw new ArgumentException("数据选择源配置无效（来源表/说明超长）。");
+            if (!string.IsNullOrWhiteSpace(source.Table) && !Identifier.IsMatch(source.Table.Trim()))
+                throw new ArgumentException($"数据选择源表名无效：{source.Table}");
+            // ADR-008：过滤条件只接受结构化 JSON；旧系统手写 SQL 需经迁移/构建器转换，不做 SQL 后门
+            if (!string.IsNullOrWhiteSpace(source.Filter) && !ChooserFilterStruct.TryParse(source.Filter, out _))
+                throw new ArgumentException("过滤条件必须是结构化 JSON（{\"logic\":\"AND\",\"items\":[...]}）；旧手写 SQL 不再接受。");
+            if (!string.IsNullOrWhiteSpace(source.ReturnMapping) && ChooserReturnItems.Parse(source.ReturnMapping) is null)
+                throw new ArgumentException("回填映射必须是 JSON 数组（[{\"target\":\"...\",\"column\":\"...\"}]）。");
+        }
+    }
+
+    /// <summary>
+    /// 事务内全量替换字段的数据源（DELETE + INSERT；空来源表不落行；保存即校验）。
+    /// 过滤条件空 → FILTER_STRUCT=NULL（fail-closed）；迁移清单内待重建来源禁止静默清空。
+    /// </summary>
+    private static async Task ReplaceChoosersAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string tableId,
+        string fieldId,
+        IReadOnlyList<FieldAdminChooser> choosers,
+        string updatedBy,
+        CancellationToken token)
+    {
+        await using (var delete = new SqlCommand("DELETE FROM dbo.FIELD_DATASOURCE WHERE T_ID=@TableId AND F_ID=@FieldId;", connection, transaction))
+        {
+            delete.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+            delete.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
+            await delete.ExecuteNonQueryAsync(token);
+        }
+
+        const string insertSql = """
+            INSERT INTO dbo.FIELD_DATASOURCE
+                (T_ID,F_ID,SERIAL_NO,ACTIVE_TAG,SOURCE_T_ID,SOURCE_DESC,SOURCE_M_IDX,FILTER_STRUCT,RETURN_ITEMS,
+                 CREATE_BY,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+            VALUES (@TableId,@FieldId,@SerialNo,@Active,@SourceTable,@SourceDesc,@SourceModule,@FilterStruct,@ReturnItems,
+                    @UpdatedBy,GETDATE(),@UpdatedBy,GETDATE());
+            """;
+
+        for (var i = 0; i < choosers.Count; i++)
+        {
+            var source = choosers[i];
+            // SERIAL_NO = 列表顺序（1..n），随前端增删/上下移重排；不沿用旧槽位号
+            var serial = i + 1;
+            if (string.IsNullOrWhiteSpace(source.Table)) continue;
+            var sourceTable = source.Table.Trim();
+            if (!WorkbenchSql.Identifier.IsMatch(sourceTable))
+                throw new ArgumentException($"数据选择源表名无效：{sourceTable}");
+            if (!await WorkbenchSql.TableExistsAsync(connection, sourceTable, token))
+                throw new ArgumentException($"数据选择源表 {sourceTable} 不存在。");
+
+            string? filterStructJson = null;
+            if (!string.IsNullOrWhiteSpace(source.Filter))
+            {
+                if (!ChooserFilterStruct.TryParse(source.Filter, out var filterStruct) || filterStruct is null)
+                    throw new ArgumentException($"数据来源 {serial} 的过滤条件不是合法的 ADR-008 结构化 JSON。");
+                var errors = await ChooserFilterValidator.ValidateAsync(connection, filterStruct, sourceTable, token);
+                if (errors.Count > 0)
+                    throw new ArgumentException($"数据来源 {serial} 过滤条件校验失败：{string.Join("；", errors.Take(4))}");
+                filterStructJson = filterStruct.ToJson();
+            }
+            else if (await HasPendingMigrationFilterAsync(connection, transaction, tableId, fieldId, serial, token))
+            {
+                throw new ArgumentException(
+                    $"数据来源 {serial} 的旧过滤条件尚未重建（ADR-008 迁移清单内）。请先以结构化 JSON 重建；确需无过滤请由顾问处理迁移清单后再保存。");
+            }
+
+            string? returnItemsJson = null;
+            if (!string.IsNullOrWhiteSpace(source.ReturnMapping))
+            {
+                var returnItems = ChooserReturnItems.Parse(source.ReturnMapping)
+                    ?? throw new ArgumentException($"数据来源 {serial} 的回填映射不是合法的 JSON 数组。");
+                if (returnItems.Any(item => !WorkbenchSql.Identifier.IsMatch(item.Column.Trim())
+                    || !WorkbenchSql.Identifier.IsMatch(item.Target.Trim())))
+                    throw new ArgumentException($"数据来源 {serial} 回填映射含非法来源列/目标字段名。");
+                var columns = returnItems.Select(item => item.Column.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                if (columns.Length > 0 && !await WorkbenchSql.ColumnsExistAsync(connection, sourceTable, columns, token))
+                    throw new ArgumentException($"数据来源 {serial} 回填映射引用了源表 {sourceTable} 不存在的列。");
+                returnItemsJson = ChooserReturnItems.ToJson(returnItems);
+            }
+
+            await using var insert = new SqlCommand(insertSql, connection, transaction);
+            insert.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+            insert.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
+            insert.Parameters.Add("@SerialNo", SqlDbType.Int).Value = serial;
+            insert.Parameters.Add("@Active", SqlDbType.Bit).Value = source.Active;
+            insert.Parameters.Add("@SourceTable", SqlDbType.NVarChar, 300).Value = sourceTable;
+            insert.Parameters.Add("@SourceDesc", SqlDbType.NVarChar, 50).Value = DbValue(source.Description) ?? (object)DBNull.Value;
+            insert.Parameters.Add("@SourceModule", SqlDbType.Int).Value = source.ModuleId ?? (object)DBNull.Value;
+            insert.Parameters.Add("@FilterStruct", SqlDbType.NVarChar, -1).Value = (object?)filterStructJson ?? DBNull.Value;
+            insert.Parameters.Add("@ReturnItems", SqlDbType.NVarChar, -1).Value = (object?)returnItemsJson ?? DBNull.Value;
+            insert.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
+            await insert.ExecuteNonQueryAsync(token);
+        }
+    }
+
+    /// <summary>迁移清单内是否存在该来源的待重建过滤条件（PENDING_P3 / MANUAL / DRIFT）。</summary>
+    private static async Task<bool> HasPendingMigrationFilterAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string tableId,
+        string fieldId,
+        int serialNo,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT 1 FROM dbo.CHOOSER_FILTER_MIGRATION_LOG WITH (NOLOCK)
+            WHERE T_ID=@TableId AND LTRIM(RTRIM(F_ID))=@FieldId AND SERIAL_NO=@SerialNo
+              AND STATUS IN (N'PENDING_P3', N'MANUAL', N'DRIFT');
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
+        command.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
+        command.Parameters.Add("@SerialNo", SqlDbType.Int).Value = serialNo;
+        return await command.ExecuteScalarAsync(token) is not null;
     }
 
     private static void EnsureIdentifier(string tableId, string? fieldId)

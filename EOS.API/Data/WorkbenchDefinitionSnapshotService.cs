@@ -193,6 +193,8 @@ public sealed class WorkbenchDefinitionSnapshotService(
                 SELECT ISNULL(LAST_UPDATE_DATE, GETDATE()) AS v FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId
                 UNION ALL
                 SELECT ISNULL(LAST_UPDATE_DATE, GETDATE()) FROM dbo.FIELDS WITH (NOLOCK) WHERE T_ID=@Master
+                UNION ALL
+                SELECT ISNULL(LAST_UPDATE_DATE, GETDATE()) FROM dbo.FIELD_DATASOURCE WITH (NOLOCK) WHERE T_ID=@Master
             ) t;
             """;
         await using var connection = connections.Create();
@@ -203,7 +205,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
         if (!string.IsNullOrWhiteSpace(detailTable))
         {
             command.CommandText = command.CommandText.Replace(
-                "WHERE T_ID=@Master", $"WHERE T_ID=@Master OR T_ID=@Detail", StringComparison.Ordinal);
+                "WHERE T_ID=@Master", "WHERE T_ID=@Master OR T_ID=@Detail", StringComparison.Ordinal);
             command.Parameters.Add("@Detail", SqlDbType.NVarChar, 100).Value = detailTable;
         }
         return await command.ExecuteScalarAsync(token) as string;

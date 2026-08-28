@@ -21,7 +21,7 @@ describe('buildFormCells', () => {
   })
 
   it('同组从字段跟随主字段进入同一格', () => {
-    const main = field('CLIENT_ID', { cellGroup: 'CLIENT', cellRole: 1, choosers: [{ active: true, table: 'CLIENT', description: null, moduleId: null, filter: null, returnMapping: null }] })
+    const main = field('CLIENT_ID', { cellGroup: 'CLIENT', cellRole: 1, choosers: [{ active: true, table: 'CLIENT', description: null, moduleId: null, filter: null, returnMapping: null, serialNo: 1 }] })
     const companion = field('CLIENT_NAME', { cellGroup: 'CLIENT', cellRole: 2, displayOnly: true })
     const cells = buildFormCells([companion, main])
     expect(cells).toHaveLength(1)

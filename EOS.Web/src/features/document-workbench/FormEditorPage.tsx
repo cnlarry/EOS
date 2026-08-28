@@ -21,6 +21,7 @@ import { validateDetailRows, validateMasterFields, type FieldErrors } from './fo
 import { AMOUNT_COLUMN_KEYS, AMOUNT_TRIGGER_KEYS, previewDetailAmount, previewMasterAmounts } from './amountCalculator'
 import {
   buildKey, canonicalizeDecimalValue, chooserTitle, describeError, detailControlMinWidth, emptyValue, extractDocNo, newIdempotencyKey,
+  parseReturnItems,
   summarizeFieldErrors, writableFields, type DetailGridRow, type RecordBundle, type RecordSaveResponse, type SaveRecordRequest,
 } from './formEditorUtils'
 
@@ -96,11 +97,19 @@ export function FormEditorPage() {
   const [masterValues, setMasterValues] = useState<Record<string, string>>({})
   const [detailRows, setDetailRows] = useState<Record<string, string>[]>([])
   const [chooserField, setChooserField] = useState<FormFieldDefinition | null>(null)
+  const [chooserSerial, setChooserSerial] = useState<number | null>(null)
   const [dirty, setDirty] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [detailErrors, setDetailErrors] = useState<FieldErrors[]>([])
   const [detailChooser, setDetailChooser] = useState<{ index: number; field: FormFieldDefinition } | null>(null)
+  const [detailChooserSerial, setDetailChooserSerial] = useState<number | null>(null)
+  /** 多来源「各是各的入口」：先弹来源菜单（ADR-008 §2）。 */
+  const [sourceMenu, setSourceMenu] = useState<
+    | { kind: 'master'; field: FormFieldDefinition }
+    | { kind: 'detail'; index: number; field: FormFieldDefinition }
+    | null
+  >(null)
   const [selectedDetailRows, setSelectedDetailRows] = useState<Set<number>>(new Set())
   const [detailSort, setDetailSort] = useState<{ key: string; dir: 1 | -1 } | null>(null)
   const [activeTab, setActiveTab] = useState(1)
@@ -447,15 +456,15 @@ export function FormEditorPage() {
   }
 
   const applyChooser = (field: FormFieldDefinition, row: UnifiedChooserRow) => {
-    const source = field.choosers.find(item => item.active && item.table)
-    const mapping = source?.returnMapping
-    if (mapping) {
+    const source = field.choosers.find(item => item.active && item.table && item.serialNo === chooserSerial)
+      ?? field.choosers.find(item => item.active && item.table)
+    const mapping = parseReturnItems(source?.returnMapping)
+    if (mapping.length > 0) {
       setMasterValues(current => {
         const next = { ...current }
-        for (const pair of mapping.split(/[;,]/)) {
-          const [target, column] = pair.split('=')
-          if (!target || !column || row[column] === undefined) continue
-          next[target.replace(/^(txt|cho|dro|chk|lab|hidd)_/, '')] = String(row[column] ?? '')
+        for (const item of mapping) {
+          if (row[item.column] === undefined) continue
+          next[item.target] = String(row[item.column] ?? '')
         }
         return next
       })
@@ -534,14 +543,13 @@ export function FormEditorPage() {
   }
 
   const applyDetailChooser = (index: number, field: FormFieldDefinition, rows: UnifiedChooserRow[]) => {
-    const source = field.choosers.find(item => item.active && item.table)
-    const mapping = source?.returnMapping
+    const source = field.choosers.find(item => item.active && item.table && item.serialNo === detailChooserSerial)
+      ?? field.choosers.find(item => item.active && item.table)
+    const mapping = parseReturnItems(source?.returnMapping)
     const applyMapping = (target: Record<string, string>, row: UnifiedChooserRow) => {
-      if (!mapping) return target
-      for (const pair of mapping.split(/[;,]/)) {
-        const [t, column] = pair.split('=')
-        if (!t || !column || row[column] === undefined) continue
-        target[t.replace(/^(txt|cho|dro|chk|lab|hidd)_/, '')] = String(row[column] ?? '')
+      for (const item of mapping) {
+        if (row[item.column] === undefined) continue
+        target[item.target] = String(row[item.column] ?? '')
       }
       return target
     }
@@ -557,7 +565,7 @@ export function FormEditorPage() {
       return
     }
     const row = rows[0]
-    if (mapping) {
+    if (mapping.length > 0) {
       const updatedRow = applyMapping({ ...detailRows[index] }, row)
       const nextRows = recalcRowAmounts(detailRows, index, updatedRow)
       setDetailRows(nextRows)
@@ -574,6 +582,23 @@ export function FormEditorPage() {
     setDetailErrors(current => current.filter((_, i) => i !== index))
     setSelectedDetailRows(current => new Set([...current].filter(i => i !== index).map(i => i > index ? i - 1 : i)))
     setDirty(true)
+  }
+
+  /** 多来源「各是各的入口」：1 个直接打开，多个先弹来源菜单（ADR-008 §2）。 */
+  const openChooser = (field: FormFieldDefinition, kind: 'master' | 'detail', detailIndex?: number) => {
+    const sources = field.choosers.filter(item => item.active && item.table)
+    if (sources.length === 0) return
+    if (sources.length === 1) {
+      if (kind === 'master') {
+        setChooserField(field)
+        setChooserSerial(sources[0].serialNo)
+      } else {
+        setDetailChooser({ index: detailIndex!, field })
+        setDetailChooserSerial(sources[0].serialNo)
+      }
+      return
+    }
+    setSourceMenu(kind === 'master' ? { kind, field } : { kind, index: detailIndex!, field })
   }
 
   const removeSelectedDetailRows = () => {
@@ -685,7 +710,7 @@ export function FormEditorPage() {
             value={String(row.original[field.key] ?? '')}
             error={detailErrors[index]?.[field.key]}
             onChange={value => updateDetail(index, field.key, value)}
-            onChoose={fieldToChoose => setDetailChooser({ index, field: fieldToChoose })}
+            onChoose={fieldToChoose => openChooser(fieldToChoose, 'detail', index)}
             bare
           />
         )
@@ -722,7 +747,7 @@ export function FormEditorPage() {
         setFieldErrors(current => { const next = { ...current }; delete next[field.key]; return next })
         setDirty(true)
       }}
-      onChoose={fieldToChoose => setChooserField(fieldToChoose)}
+      onChoose={fieldToChoose => openChooser(fieldToChoose, 'master')}
       bare={bare}
     />
   )
@@ -924,11 +949,11 @@ export function FormEditorPage() {
         <UnifiedChooser
           open
           title={chooserTitle(chooserField)}
-          source={{ kind: 'formField', moduleId, fieldKey: chooserField.key }}
+          source={{ kind: 'formField', moduleId, fieldKey: chooserField.key, serialNo: chooserSerial }}
           mode={chooserField.chooseMultiple ? 'multi' : 'single'}
           masterValues={masterValues}
           onPick={rows => applyChooser(chooserField, rows[0])}
-          onClose={() => setChooserField(null)}
+          onClose={() => { setChooserField(null); setChooserSerial(null) }}
           resizable
           storageKey={`chooser-${moduleId}-${chooserField.key}`}
           emptyText="没有可选数据。"
@@ -938,16 +963,49 @@ export function FormEditorPage() {
         <UnifiedChooser
           open
           title={chooserTitle(detailChooser.field)}
-          source={{ kind: 'formField', moduleId, fieldKey: detailChooser.field.key }}
+          source={{ kind: 'formField', moduleId, fieldKey: detailChooser.field.key, serialNo: detailChooserSerial }}
           mode={detailChooser.field.chooseMultiple ? 'multi' : 'single'}
           masterValues={masterValues}
           detailValues={detailRows[detailChooser.index] ?? undefined}
           onPick={rows => applyDetailChooser(detailChooser.index, detailChooser.field, rows)}
-          onClose={() => setDetailChooser(null)}
+          onClose={() => { setDetailChooser(null); setDetailChooserSerial(null) }}
           resizable
           storageKey={`chooser-${moduleId}-${detailChooser.field.key}`}
           emptyText="没有可选数据。"
         />
+      ) : null}
+      {sourceMenu ? (
+        <div className="modal show d-block" tabIndex={-1} role="dialog" onClick={() => setSourceMenu(null)}>
+          <div className="modal-dialog modal-sm modal-dialog-centered" role="document" onClick={event => event.stopPropagation()}>
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">选择数据来源：{sourceMenu.field.label}</h5>
+                <button type="button" className="btn-close" aria-label="关闭" onClick={() => setSourceMenu(null)} />
+              </div>
+              <div className="modal-body d-flex flex-column gap-1">
+                {sourceMenu.field.choosers.filter(item => item.active && item.table).map(source => (
+                  <button
+                    key={source.serialNo ?? source.table}
+                    type="button"
+                    className="btn btn-outline-secondary text-start"
+                    onClick={() => {
+                      if (sourceMenu.kind === 'master') {
+                        setChooserField(sourceMenu.field)
+                        setChooserSerial(source.serialNo)
+                      } else {
+                        setDetailChooser({ index: sourceMenu.index, field: sourceMenu.field })
+                        setDetailChooserSerial(source.serialNo)
+                      }
+                      setSourceMenu(null)
+                    }}
+                  >
+                    {source.description || source.table}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       ) : null}
       {attachOpen && keyParam && (
         <AttachmentDialog

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
@@ -38,7 +38,7 @@ const fieldMeta = {
     isVisible: true, isDefault: true, isQueryable: true, isReadonly: false, isRequired: true, isCost: false,
     isSecrecy: false, defaultValue: null, verifyIndex: null, regex: null, remark: null, browseUrl: null,
     browseModuleId: null, onlyChoose: false, chooseMultiple: false, choosePage: null,
-    choosers: Array.from({ length: 4 }, () => ({ active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null })),
+    choosers: Array.from({ length: 4 }, (_, index) => ({ active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null, serialNo: index + 1 })),
   canCopy: true,
   },
   isPrimaryKey: true,
@@ -80,6 +80,7 @@ function renderPage() {
       <MemoryRouter initialEntries={['/admin/tables/PRODUCT_EDITION/fields']}>
         <Routes>
           <Route path="/admin/tables/:tableId/fields" element={<FieldAdminPage />} />
+          <Route path="/admin/fields/:tableId/:fieldId" element={<div>FIELD_PAGE</div>} />
           <Route path="/admin/tables" element={<div>TABLE_LIST</div>} />
         </Routes>
       </MemoryRouter>
@@ -129,31 +130,18 @@ describe('FieldAdminPage', () => {
     ))
   })
 
-  it('编辑按钮打开字段管理弹窗并加载元数据', async () => {
+  it('编辑按钮跳转全尺寸字段设置页', async () => {
     renderPage()
     await loaded()
     fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
-    await waitFor(() => expect(screen.getByText('字段管理（PRO_NO）')).toBeInTheDocument())
-    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith('/admin/fields/PRODUCT_EDITION/PRO_NO'))
-    await waitFor(() => expect(screen.getByDisplayValue('产品编号')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('FIELD_PAGE')).toBeInTheDocument())
   })
 
-  it('新增字段完整保存流程', async () => {
+  it('新增按钮跳转全尺寸字段设置页（新增态）', async () => {
     renderPage()
     await loaded()
     fireEvent.click(screen.getByRole('button', { name: '新增' }))
-    await waitFor(() => expect(screen.getByText('新增字段（PRODUCT_EDITION）')).toBeInTheDocument())
-    const dialog = screen.getByRole('dialog')
-    const inputs = Array.from(dialog.querySelectorAll<HTMLInputElement>('input.form-control'))
-    fireEvent.change(inputs[1], { target: { value: 'NEW_CODE' } })
-    fireEvent.change(inputs[2], { target: { value: '新字段' } })
-    const save = within(dialog).getByRole('button', { name: '保存' })
-    await waitFor(() => expect(save).toBeEnabled())
-    fireEvent.click(save)
-    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
-      '/admin/fields',
-      expect.objectContaining({ tableId: 'PRODUCT_EDITION', fieldId: 'NEW_CODE', field: expect.objectContaining({ label: '新字段' }) }),
-    ))
+    await waitFor(() => expect(screen.getByText('FIELD_PAGE')).toBeInTheDocument())
   })
 
   it('删除字段需要确认并调用删除接口', async () => {

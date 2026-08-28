@@ -44,7 +44,8 @@ internal sealed record FormChooserRow(
     string? Description,
     int? ModuleId,
     string? ReturnMapping,
-    string? Filter);
+    string? Filter,
+    int? SerialNo = null);
 
 /// <summary>
 /// 纯字段选择逻辑（与数据库解耦，便于单元测试）。
@@ -148,8 +149,10 @@ internal static class FormFieldSelector
                     source.Table,
                     source.Description,
                     source.ModuleId,
-                    source.Filter,
-                    source.ReturnMapping))
+                    // FILTER_STRUCT 仅字段设置 CanSetup 可见（ADR-008 §7），普通用户表单定义不下发
+                    Filter: null,
+                    source.ReturnMapping,
+                    source.SerialNo))
                 .ToArray();
 
             result.Add(new FormFieldDefinition(

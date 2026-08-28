@@ -111,6 +111,26 @@ export function chooserTitle(field: FormFieldDefinition): string {
   return `${field.label}${source?.description ? `（${source.description}）` : ''}`
 }
 
+/** 回填映射条目（ADR-008 §4：RETURN_ITEMS 有序 JSON 数组）。 */
+export interface ChooserReturnItem {
+  target: string
+  column: string
+}
+
+/** 解析 RETURN_ITEMS JSON；空/非法返回空数组（不抛错）。 */
+export function parseReturnItems(raw: string | null | undefined): ChooserReturnItem[] {
+  if (!raw) return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item): item is ChooserReturnItem =>
+      Boolean(item) && typeof (item as ChooserReturnItem).target === 'string'
+      && typeof (item as ChooserReturnItem).column === 'string')
+  } catch {
+    return []
+  }
+}
+
 export function describeError(error: unknown): string {
   if (error instanceof ApiError && error.status === 404) return '该模块未启用统一表单编辑（含存盘后业务逻辑的模块暂不开放，或不在白名单内）。'
   if (error instanceof ApiError) return error.body.message

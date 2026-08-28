@@ -40,7 +40,7 @@ const formDefinition: FormDefinition = {
   searchMaster: false,
   searchDetail: false,
   masterFields: [
-    field('PRO_NO', '产品编号', { isRequired: true, isPrimaryKey: true, choosers: [{ active: true, table: 'PRODUCT', description: null, moduleId: null, filter: null, returnMapping: 'txt_PRO_NO=PRO_NO;txt_PRO_NAME=PRO_NAME' }] }),
+    field('PRO_NO', '产品编号', { isRequired: true, isPrimaryKey: true, choosers: [{ active: true, table: 'PRODUCT', description: null, moduleId: null, filter: null, returnMapping: '[{"target":"PRO_NO","column":"PRO_NO"},{"target":"PRO_NAME","column":"PRO_NAME"}]', serialNo: 1 }] }),
     field('EDITION', '版次', { isPrimaryKey: true }),
     field('QTY', '数量', { dataType: 'decimal', defaultValue: '5' }),
     field('FLAG', '启用', { dataType: 'bit', defaultValue: '1' }),
@@ -482,7 +482,7 @@ describe('FormEditorPage', () => {
     const composite: FormDefinition = {
       ...formDefinition,
       masterFields: [
-        field('CLIENT_ID', '客户', { isRequired: true, cellGroup: 'CLIENT', cellRole: 1, choosers: [{ active: true, table: 'CLIENT', description: null, moduleId: null, filter: null, returnMapping: 'txt_CLIENT_ID=CLIENT_ID;txt_CLIENT_NAME=CLIENT_NAME' }] }),
+        field('CLIENT_ID', '客户', { isRequired: true, cellGroup: 'CLIENT', cellRole: 1, choosers: [{ active: true, table: 'CLIENT', description: null, moduleId: null, filter: null, returnMapping: '[{"target":"CLIENT_ID","column":"CLIENT_ID"},{"target":"CLIENT_NAME","column":"CLIENT_NAME"}]', serialNo: 1 }] }),
         field('CLIENT_NAME', '客户名称', { cellGroup: 'CLIENT', cellRole: 2, displayOnly: true, isReadonly: true }),
       ],
     }

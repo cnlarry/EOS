@@ -125,7 +125,7 @@ describe('FormFieldRenderer', () => {
     expect(container.querySelector('input')).toBeNull()
     expect(container.querySelector('.erp-form-static')).not.toBeNull()
 
-    const chooserSource = [{ active: true, table: 'CURR', description: null, moduleId: null, filter: null, returnMapping: 'txt_cur=ID' }]
+    const chooserSource = [{ active: true, table: 'CURR', description: null, moduleId: null, filter: null, returnMapping: '[{"target":"cur","column":"ID"}]', serialNo: 1 }]
     rerender(
       <FormFieldRenderer
         field={field({ serverFilled: true, choosers: chooserSource })}
@@ -156,13 +156,13 @@ describe('FormFieldRenderer', () => {
 
   it('有活跃数据来源时显示选择按钮并触发 onChoose', () => {
     const onChoose = vi.fn()
-    render(<FormFieldRenderer field={field({ choosers: [{ active: true, table: 'PRODUCT', description: null, moduleId: null, filter: null, returnMapping: 'txt_code=PRO_NO' }] })} value="" onChange={() => undefined} onChoose={onChoose} />)
+    render(<FormFieldRenderer field={field({ choosers: [{ active: true, table: 'PRODUCT', description: null, moduleId: null, filter: null, returnMapping: '[{"target":"code","column":"PRO_NO"}]', serialNo: 1 }] })} value="" onChange={() => undefined} onChoose={onChoose} />)
     fireEvent.click(screen.getByRole('button', { name: '选择' }))
     expect(onChoose).toHaveBeenCalled()
   })
 
   it('无活跃数据来源时不显示选择按钮', () => {
-    render(<FormFieldRenderer field={field({ choosers: [{ active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null }] })} value="" onChange={() => undefined} onChoose={vi.fn()} />)
+    render(<FormFieldRenderer field={field({ choosers: [{ active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null, serialNo: null }] })} value="" onChange={() => undefined} onChoose={vi.fn()} />)
     expect(screen.queryByRole('button', { name: '选择' })).not.toBeInTheDocument()
   })
 
@@ -192,7 +192,7 @@ describe('FormFieldRenderer', () => {
 
   it('下拉字段即使配置了选择器也不显示选择按钮', () => {
     const { container } = render(<FormFieldRenderer
-      field={field({ options: [{ value: 'O', label: 'O、外含税' }], choosers: [{ active: true, table: 'TAX', description: null, moduleId: null, filter: null, returnMapping: null }] })}
+      field={field({ options: [{ value: 'O', label: 'O、外含税' }], choosers: [{ active: true, table: 'TAX', description: null, moduleId: null, filter: null, returnMapping: null, serialNo: 1 }] })}
       value="O"
       onChange={() => undefined}
       onChoose={vi.fn()}

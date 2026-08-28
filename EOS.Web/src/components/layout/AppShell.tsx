@@ -268,7 +268,7 @@ export function AppShell() {
 
   // 离开定制页子页时清空页面级面包屑（防止串到其它页面）
   useEffect(() => {
-    if (!location.pathname.match(/^\/admin\/(groups\/[^/]+\/(rights|report-rights|members)|users\/[^/]+\/(rights|report-rights|groups))$/)) {
+    if (!location.pathname.match(/^\/admin\/(groups\/[^/]+\/(rights|report-rights|members)|users\/[^/]+\/(rights|report-rights|groups)|fields\/[^/]+\/[^/]+)$/)) {
       setPageCrumb(null)
     }
   }, [location.pathname])
