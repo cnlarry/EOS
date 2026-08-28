@@ -1,9 +1,8 @@
-import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconPlus, IconTrash } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
-import type { ColumnDef } from '@tanstack/react-table'
 import { useEffect, useMemo, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
+import { ErpFieldChooser } from '../../components/common/ErpFieldChooser'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
@@ -16,13 +15,6 @@ export interface MenuFieldOption {
   IS_VISIBLE: boolean
   IS_VIRTUAL: boolean
   IS_QUERY: boolean
-}
-
-type SortDirection = 'asc' | 'desc'
-
-interface SelectedField {
-  field: string
-  dir: SortDirection
 }
 
 function useTableFields(table: string | null, enabled: boolean) {
@@ -52,30 +44,10 @@ function describeError(error: unknown, fallback: string): string {
   return fallback
 }
 
-function parseValue(value: string, mode: 'multi' | 'sort'): SelectedField[] {
-  const bare = (token: string) => token.replace(/^\[|\]$/g, '').split('.').pop() ?? ''
-  if (mode === 'sort') {
-    return value
-      .split(',')
-      .map((part) => {
-        const tokens = part.trim().split(/\s+/)
-        const field = bare(tokens[0] ?? '')
-        return field ? { field, dir: tokens[1]?.toLowerCase() === 'desc' ? 'desc' as const : 'asc' as const } : null
-      })
-      .filter((item): item is SelectedField => item !== null)
-  }
-  return value
-    .split(';')
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((field) => ({ field: bare(field), dir: 'asc' as const }))
-}
-
 /**
- * 字段选择器（统一电子表格风格，与统一表单选择器一致）：
- * - 统一选择器（menu-admin.fields 数据源）列出字段（字段名/描述/类型），勾选或点行选择；
- *   排序模式每行可切换升/降序；
- * - 下方「已选顺序」条展示并支持上移/下移/移除；
+ * 字段选择器（统一字段选择器 ErpFieldChooser，左右双栏）：
+ * - 左栏列出字段（字段名/描述/类型），勾选即加入右栏；
+ * - 右栏「已选字段」可上移/下移/移除，排序模式每行可切换升/降序；
  * - mode='multi' 保存为分号分隔；mode='sort' 保存为 "FIELD ASC|DESC" 逗号分隔。
  */
 export function MenuFieldPicker({
@@ -95,133 +67,18 @@ export function MenuFieldPicker({
   onSave: (value: string) => void
   onClose: () => void
 }) {
-  const fields = useTableFields(table, open)
-  const [selected, setSelected] = useState<SelectedField[]>([])
-
-  useEffect(() => {
-    if (open) setSelected(parseValue(value, mode))
-  }, [open, value, mode])
-
-  const fieldOptions = useMemo(
-    () => (fields.data ?? []).filter((field) => !field.IS_VIRTUAL),
-    [fields.data],
-  )
-  const byId = useMemo(() => new Map(fieldOptions.map((field) => [field.F_ID, field])), [fieldOptions])
-  const rowSelection = useMemo(
-    () => Object.fromEntries(selected.map((item) => [item.field, true])),
-    [selected],
-  )
-
-  const reconcileSelection = (next: Record<string, boolean>) => {
-    setSelected((current) => {
-      const currentKeys = new Set(current.map((item) => item.field))
-      const nextKeys = new Set(Object.keys(next).filter((key) => next[key]))
-      const removed = [...currentKeys].filter((key) => !nextKeys.has(key))
-      const added = [...nextKeys].filter((key) => !currentKeys.has(key))
-      if (removed.length === 0 && added.length === 0) return current
-      let result = current.filter((item) => !removed.includes(item.field))
-      for (const field of added) result = [...result, { field, dir: 'asc' as const }]
-      return result
-    })
-  }
-
-  const toggle = (fieldId: string) => {
-    setSelected((current) => (current.some((item) => item.field === fieldId)
-      ? current.filter((item) => item.field !== fieldId)
-      : [...current, { field: fieldId, dir: 'asc' }]))
-  }
-
-  const toggleDir = (fieldId: string) => {
-    setSelected((current) => current.map((item) => (item.field === fieldId ? { ...item, dir: item.dir === 'asc' ? 'desc' : 'asc' } : item)))
-  }
-
-  const move = (fieldId: string, delta: -1 | 1) => {
-    setSelected((current) => {
-      const index = current.findIndex((item) => item.field === fieldId)
-      const target = index + delta
-      if (index < 0 || target < 0 || target >= current.length) return current
-      const next = [...current]
-      ;[next[index], next[target]] = [next[target], next[index]]
-      return next
-    })
-  }
-
-  const handleSave = () => {
-    if (mode === 'sort') {
-      onSave(selected.map((item) => `${item.field} ${item.dir.toUpperCase()}`).join(','))
-    } else {
-      onSave(selected.map((item) => item.field).join(';'))
-    }
-    onClose()
-  }
-
-  const extraColumns: ColumnDef<UnifiedChooserRow, unknown>[] = mode === 'sort' ? [{
-      id: 'dir',
-      accessorKey: 'F_ID',
-      enableSorting: false,
-      header: '方向',
-      meta: { maxWidth: 320 },
-      cell: ({ row }) => {
-        const fieldId = String(row.original.F_ID)
-        const item = selected.find((s) => s.field === fieldId)
-        return item ? (
-          <button type="button" className="erp-field-dir" onClick={(event) => { event.stopPropagation(); toggleDir(fieldId) }}>
-            {item.dir === 'asc' ? '升序' : '降序'}
-          </button>
-        ) : null
-      },
-    }] : []
-
-  if (!open) return null
-
   return (
-    <UnifiedChooser
+    <ErpFieldChooser
       open={open}
       title={title}
       source={{ kind: 'sourceKey', key: 'menu-admin.fields', args: table ? { tableId: table } : undefined }}
+      mode={mode}
       getRowId={(row) => String(row.F_ID)}
-      mode="multi"
-      dialogSize="md"
-      selectedKeys={rowSelection}
-      onSelectedKeysChange={reconcileSelection}
-      onPick={() => handleSave()}
+      valueFormat={mode === 'sort' ? 'comma-dir' : 'semicolon'}
+      value={value}
+      onSave={onSave}
       onClose={onClose}
       emptyText="该表没有可用字段。"
-      extraColumns={extraColumns}
-      extra={
-        <div className="mt-2">
-          <label className="form-label">已选顺序</label>
-          <div className="erp-field-picker-list">
-            {selected.map((item, index) => {
-              const field = byId.get(item.field)
-              return (
-                <div key={item.field} className="erp-field-picker-row">
-                  <span className="erp-field-picker-order">{index + 1}</span>
-                  <span className="erp-field-picker-desc">{field?.F_DESC ?? item.field}</span>
-                  <span className="erp-menu-table-id">{item.field}</span>
-                  <span className="ms-auto d-flex align-items-center gap-1">
-                    {mode === 'sort' && (
-                      <button type="button" className="erp-field-dir" onClick={() => toggleDir(item.field)}>
-                        {item.dir === 'asc' ? '升序' : '降序'}
-                      </button>
-                    )}
-                    <button type="button" className="erp-field-mini" aria-label="上移" disabled={index === 0} onClick={() => move(item.field, -1)}>
-                      <IconArrowUp size={14} />
-                    </button>
-                    <button type="button" className="erp-field-mini" aria-label="下移" disabled={index === selected.length - 1} onClick={() => move(item.field, 1)}>
-                      <IconArrowDown size={14} />
-                    </button>
-                    <button type="button" className="erp-field-mini" aria-label="移除" onClick={() => toggle(item.field)}>
-                      <IconTrash size={14} />
-                    </button>
-                  </span>
-                </div>
-              )
-            })}
-            {selected.length === 0 && <div className="text-secondary small p-2">尚未选择字段。</div>}
-          </div>
-        </div>
-      }
     />
   )
 }

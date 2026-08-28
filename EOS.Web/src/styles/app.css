@@ -297,7 +297,6 @@ button, input, select { font: inherit; }
 .erp-menu-table-option:hover { background: var(--tblr-primary-lt); }
 .erp-menu-table-id { color: var(--tblr-secondary); font-family: var(--tblr-font-monospace); font-size: 11px; flex: 0 0 auto; }
 .erp-menu-table-desc { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.erp-field-picker-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .erp-field-picker-list { display: flex; flex-direction: column; gap: 2px; max-height: 46vh; overflow-y: auto; }
 .erp-field-picker-option {
   display: flex;
@@ -356,6 +355,18 @@ button, input, select { font: inherit; }
 }
 .erp-field-mini:hover:not(:disabled) { background: var(--tblr-primary-lt); color: var(--tblr-primary); }
 .erp-field-mini:disabled { opacity: .4; }
+/* 字段选择器（ErpFieldChooser）：左待选/右已选双栏。
+   弹窗固定高度（同统一选择器），搜索工具行全宽置顶，两栏等高、各自栏内滚动 */
+.erp-field-chooser-dialog { height: 640px; min-height: 0; max-height: calc(100vh - 32px); }
+.erp-field-chooser-dialog .modal-content { height: 100%; max-height: 100%; }
+.erp-field-chooser-dialog .modal-body { display: flex; flex-direction: column; overflow: hidden; min-height: 0; min-width: 0; padding-top: 10px; }
+.erp-field-chooser-layout { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.erp-field-chooser-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.erp-field-chooser-pane .erp-field-picker-list { flex: 1 1 auto; min-height: 0; max-height: none; }
+/* 左栏搜索框（input-group 融为一体，对齐统一选择器）与右栏等高占位同高同距 */
+.erp-field-chooser-search { height: 38px; margin-bottom: 8px; }
+.erp-field-chooser-search .form-control { height: 38px; }
+.erp-field-chooser-search .btn { height: 38px; }
 .erp-filter-rows { display: flex; flex-direction: column; gap: 8px; }
 .erp-filter-row { display: flex; flex-direction: column; gap: 4px; }
 .erp-filter-row-line { display: flex; align-items: center; gap: 8px; }

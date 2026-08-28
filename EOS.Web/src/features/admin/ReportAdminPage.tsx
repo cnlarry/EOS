@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ErrorState, EmptyState, LoadingState } from '../../components/common/AsyncState'
+import { ErpFieldChooser } from '../../components/common/ErpFieldChooser'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpQueryBuilder } from '../../components/common/ErpQueryBuilder'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
@@ -262,8 +263,8 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
 }
 
 /**
- * 报表排序/分组字段选择器：复用统一选择器（report-admin.fields 数据源）。
- * 已选字段按「表.列」token 保持顺序，勾选/取消/移除后经左上角「确认」回写逗号分隔串。
+ * 报表排序/分组字段选择器：统一字段选择器（report-admin.fields 数据源），
+ * 已选字段按「表.列」token 保持顺序，右栏可上移/下移/移除后经「保存」回写逗号分隔串。
  */
 function ReportFieldPicker({
   open,
@@ -280,61 +281,18 @@ function ReportFieldPicker({
   onSave: (value: string) => void
   onClose: () => void
 }) {
-  const [tokens, setTokens] = useState<string[]>([])
-
-  useEffect(() => {
-    if (open) setTokens(value.split(',').map(token => token.trim()).filter(Boolean))
-  }, [open, value])
-
-  const rowSelection = useMemo(() => Object.fromEntries(tokens.map(token => [token, true])), [tokens])
-
-  const reconcileSelection = (next: Record<string, boolean>) => {
-    setTokens(current => {
-      const nextKeys = Object.keys(next).filter(key => next[key])
-      const currentSet = new Set(current)
-      if (nextKeys.length === current.length && nextKeys.every(key => currentSet.has(key))) return current
-      const kept = current.filter(key => nextKeys.includes(key))
-      const added = nextKeys.filter(key => !currentSet.has(key))
-      return [...kept, ...added]
-    })
-  }
-
-  const removeToken = (token: string) => {
-    reconcileSelection({ ...rowSelection, [token]: false })
-  }
-
   return (
-    <UnifiedChooser
+    <ErpFieldChooser
       open={open}
       title={title}
       source={{ kind: 'sourceKey', key: 'report-admin.fields', args: { moduleId } }}
       mode="multi"
       getRowId={(row) => `${String(row.T_ID)}.${String(row.F_ID)}`}
-      selectedKeys={rowSelection}
-      onSelectedKeysChange={reconcileSelection}
-      onPick={() => { onSave(tokens.join(',')); onClose() }}
+      valueFormat="comma"
+      value={value}
+      onSave={onSave}
       onClose={onClose}
-      dialogSize="md"
       emptyText="该模块没有可用字段。"
-      extra={
-        <div className="mt-2">
-          <label className="form-label">已选字段（顺序即保存顺序）</label>
-          <div className="erp-field-picker-list">
-            {tokens.map((token, index) => (
-              <div key={token} className="erp-field-picker-row">
-                <span className="erp-field-picker-order">{index + 1}</span>
-                <span className="erp-menu-table-id">{token}</span>
-                <span className="ms-auto d-flex align-items-center gap-1">
-                  <button type="button" className="erp-field-mini" aria-label={`移除 ${token}`} onClick={() => removeToken(token)}>
-                    <IconTrash size={14} />
-                  </button>
-                </span>
-              </div>
-            ))}
-            {tokens.length === 0 && <div className="text-secondary small p-2">尚未选择字段。</div>}
-          </div>
-        </div>
-      }
     />
   )
 }
