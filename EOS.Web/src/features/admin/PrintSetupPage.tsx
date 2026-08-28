@@ -154,14 +154,14 @@ export function PrintSetupPage() {
         <div className="d-flex align-items-center gap-2 mb-2">
           <span className="fw-semibold small">{config.label}维护</span>
           <span className="text-secondary small">页头/表尾/页脚供报表打印与单据打印使用</span>
-          <div className="ms-auto d-flex gap-2 erp-command-bar-icon">
+          <div className="ms-auto d-flex gap-2">
             {selectedRows.length > 0 && (
               <>
-                <Button size="sm" icon={<IconEdit size={16} />} title="编辑" aria-label="编辑" disabled={selectedRows.length !== 1} onClick={openEdit} />
-                <Button size="sm" variant="danger" icon={<IconTrash size={16} />} title="删除" aria-label="删除" onClick={() => void removeSelected()} />
+                <Button size="sm" className="erp-command-btn" icon={<IconEdit size={16} />} title="编辑" disabled={selectedRows.length !== 1} onClick={openEdit}>编辑</Button>
+                <Button size="sm" variant="danger" className="erp-command-btn" icon={<IconTrash size={16} />} title="删除" onClick={() => void removeSelected()}>删除</Button>
               </>
             )}
-            <Button size="sm" icon={<IconPlus size={16} />} title="新增" aria-label="新增" onClick={() => setEditor({ mode: 'new' })} />
+            <Button size="sm" className="erp-command-btn" icon={<IconPlus size={16} />} title="新增" onClick={() => setEditor({ mode: 'new' })}>新增</Button>
           </div>
         </div>
         <div>

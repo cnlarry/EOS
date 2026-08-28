@@ -9,12 +9,13 @@ public class ReportAdminValidatorTests
     [InlineData("Product_List")]
     [InlineData("RPT-01")]
     [InlineData("A")]
+    [InlineData("A.B")]
+    [InlineData("INV_Occur_In_List.")]
     public void ValidReportIds_Pass(string id) => ReportAdminValidator.ValidateReportId(id);
 
     [Theory]
     [InlineData("")]
     [InlineData("A B")]
-    [InlineData("A.B")]
     [InlineData("中文")]
     public void InvalidReportIds_Throw(string id)
     {

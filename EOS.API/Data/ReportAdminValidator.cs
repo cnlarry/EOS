@@ -8,14 +8,15 @@ namespace EOS.API.Data;
 /// </summary>
 internal static class ReportAdminValidator
 {
-    private static readonly Regex ReportIdPattern = new("^[A-Za-z0-9_\\-]{1,100}$", RegexOptions.Compiled);
+    /// <summary>报表编号：真实编号可含点号（如 INV_Occur_In_List.），仅作 SQL 参数非动态标识符，故放行点号。</summary>
+    private static readonly Regex ReportIdPattern = new("^[A-Za-z0-9_.\\-]{1,100}$", RegexOptions.Compiled);
     private static readonly Regex FieldToken = new("^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
     private static readonly string[] PaperWhitelist = ["A4", "A3", "A5", "LETTER", "LEGAL"];
 
     public static void ValidateReportId(string? id)
     {
         if (string.IsNullOrWhiteSpace(id) || !ReportIdPattern.IsMatch(id.Trim()))
-            throw new ArgumentException("报表编号格式无效（1-100 位字母/数字/下划线/连字符）。", nameof(id));
+            throw new ArgumentException("报表编号格式无效（1-100 位字母/数字/下划线/点/连字符）。", nameof(id));
     }
 
     public static void ValidateModuleId(int? moduleId)

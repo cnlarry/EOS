@@ -58,6 +58,32 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
         return result;
     }
 
+    /// <summary>全部报表定义（不分模块）：2201 定制页以单一列表呈现全部模块报表。</summary>
+    public async Task<List<ReportAdminDraft>> ListAllReportsAsync(CancellationToken token)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(REPORT_ID)),LTRIM(RTRIM(ISNULL(REPORT_NAME,''))),R_M_IDX,
+                   LTRIM(RTRIM(ISNULL(ISO_NO,''))),LTRIM(RTRIM(ISNULL(HEADER_ID,''))),LTRIM(RTRIM(ISNULL(TAIL_ID,''))),
+                   LTRIM(RTRIM(ISNULL(FOOTER_TEXT,''))),LTRIM(RTRIM(ISNULL(DEFAULT_PAPER,''))),ISNULL(IS_DEFAULT,0),
+                   LTRIM(RTRIM(ISNULL(REPORT_FILTER,''))),LTRIM(RTRIM(ISNULL(DEFAULT_PRINTER,''))),LTRIM(RTRIM(ISNULL(REMARK,'')))
+            FROM dbo.REPORT WITH (NOLOCK) ORDER BY R_M_IDX,IS_DEFAULT DESC,REPORT_ID;
+            """;
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<ReportAdminDraft>();
+        while (await reader.ReadAsync(token))
+        {
+            result.Add(new ReportAdminDraft(
+                reader.GetString(0).Trim(), EmptyToNull(reader.GetString(1)), reader.GetInt32(2),
+                EmptyToNull(reader.GetString(3)), EmptyToNull(reader.GetString(4)), EmptyToNull(reader.GetString(5)),
+                EmptyToNull(reader.GetString(6)), EmptyToNull(reader.GetString(7)), reader.GetBoolean(8),
+                EmptyToNull(reader.GetString(9)), EmptyToNull(reader.GetString(10)), EmptyToNull(reader.GetString(11))));
+        }
+        return result;
+    }
+
     public async Task CreateReportAsync(ReportAdminDraft draft, string user, CancellationToken token)
     {
         const string sql = """
