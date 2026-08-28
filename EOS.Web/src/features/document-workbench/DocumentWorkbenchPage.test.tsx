@@ -129,6 +129,7 @@ function renderPage(initialEntry = '/workbench/1209') {
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/workbench/:moduleId" element={<DocumentWorkbenchPage />} />
+          <Route path="/admin/fields/:tableId/:fieldId" element={<div>FIELD_PAGE</div>} />
           <Route path="/workbench/:moduleId/new" element={<div>NEW_FORM</div>} />
           <Route path="/workbench/:moduleId/edit/*" element={<div>EDIT_FORM</div>} />
           <Route path="/workbench/:moduleId/view/*" element={<div>VIEW_FORM</div>} />
@@ -368,14 +369,12 @@ describe('DocumentWorkbenchPage', () => {
     ))
   })
 
-  it('表头菜单打开单字段设置弹窗', async () => {
+  it('表头菜单跳转全尺寸字段设置页（带模块返回上下文）', async () => {
     renderPage()
     await loaded()
     fireEvent.click(screen.getByRole('button', { name: '表头操作产品编号' }))
     fireEvent.click(screen.getByRole('button', { name: '字段设置' }))
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
-    expect(screen.getByText('主表字段设置')).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByDisplayValue('产品编号')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('FIELD_PAGE')).toBeInTheDocument())
   })
 
   it('单表模块默认每页 50 条（滚动加载块大小）且不提供每页条数选择', async () => {

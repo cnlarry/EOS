@@ -33,7 +33,7 @@ export interface UnifiedChooserQuery {
  * - loader：调用方自定义加载函数（过渡期，闭包内仍走各自授权 API）。
  */
 export type UnifiedChooserSource =
-  | { kind: 'formField'; moduleId: string; fieldKey: string }
+  | { kind: 'formField'; moduleId: string; fieldKey: string; serialNo?: number | null }
   | { kind: 'sourceKey'; key: string; args?: Record<string, string> }
   | { kind: 'loader'; load: (query: UnifiedChooserQuery) => Promise<UnifiedChooserData> }
 
@@ -60,6 +60,7 @@ export async function loadChooserSource(source: UnifiedChooserSource, query: Uni
     query: {
       keyword: query.keyword,
       filterField: query.filterField,
+      serialNo: source.serialNo != null ? String(source.serialNo) : undefined,
       conditions: query.conditions?.length ? JSON.stringify(query.conditions) : undefined,
       master: query.master ? JSON.stringify(query.master) : undefined,
       detail: query.detail ? JSON.stringify(query.detail) : undefined,

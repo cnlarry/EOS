@@ -1,0 +1,29 @@
+-- ADR-008：字段数据来源表改名 FIELDS_CHOOSER → FIELD_DATASOURCE（2026-08-28 用户拍板）
+--
+-- 决策来源：docs/decisions/ADR-008-字段数据来源模型重构.md（全页化 UI 打磨登记第 8 点）
+-- 理由：CHOOSER 偏控件语义，FIELD_DATASOURCE 更直观表达「字段数据源定义」。
+-- 影响：表名/主键/唯一约束/外键/默认约束/索引名统一为 FIELD_DATASOURCE 前缀；
+--       依赖该表的存储过程（P_Change_M_IDX）由 sp_rename 自动同步绑定引用；
+--       CHOOSER_FILTER_MIGRATION_LOG（迁移审计/待重建队列）保持原名。
+-- 顺序：本迁移在 018 之后执行（018 回填仍引用旧名 FIELDS_CHOOSER，先执行再改名）。
+-- 编号：019 已被 2205 报表条件迁移占用（019_2205_report_conditions_special_page.sql），本迁移用 020。
+
+SET NOCOUNT ON;
+
+DECLARE @GUARD_MESSAGE NVARCHAR(400) = N'本脚本只能在 EOS.ERP 数据库内执行，当前库为 ' + DB_NAME() + N'。';
+IF DB_NAME() <> N'EOS.ERP'
+    THROW 50000, @GUARD_MESSAGE, 1;
+
+IF OBJECT_ID(N'dbo.FIELDS_CHOOSER', N'U') IS NOT NULL
+   AND OBJECT_ID(N'dbo.FIELD_DATASOURCE', N'U') IS NULL
+BEGIN
+    EXEC sys.sp_rename N'dbo.FIELDS_CHOOSER', N'FIELD_DATASOURCE';
+    EXEC sys.sp_rename N'dbo.PK_FIELDS_CHOOSER', N'PK_FIELD_DATASOURCE', N'OBJECT';
+    EXEC sys.sp_rename N'dbo.UQ_FIELDS_CHOOSER', N'UQ_FIELD_DATASOURCE', N'OBJECT';
+    EXEC sys.sp_rename N'dbo.FK_FIELDS_CHOOSER_FIELDS', N'FK_FIELD_DATASOURCE_FIELDS', N'OBJECT';
+    EXEC sys.sp_rename N'dbo.DF_FIELDS_CHOOSER_ACTIVE_TAG', N'DF_FIELD_DATASOURCE_ACTIVE_TAG', N'OBJECT';
+    EXEC sys.sp_rename N'dbo.FIELD_DATASOURCE.IX_FIELDS_CHOOSER_SOURCE_M_IDX', N'IX_FIELD_DATASOURCE_SOURCE_M_IDX', N'INDEX';
+END
+
+DECLARE @DATASOURCE_COUNT INT = (SELECT COUNT(*) FROM dbo.FIELD_DATASOURCE);
+PRINT N'[ADR-008] FIELD_DATASOURCE 改名完成：' + CAST(@DATASOURCE_COUNT AS NVARCHAR(10)) + N' 行数据源。';

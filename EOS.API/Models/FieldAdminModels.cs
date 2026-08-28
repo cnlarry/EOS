@@ -68,7 +68,8 @@ public sealed record FieldAdminChooser(
     string? Description,
     int? ModuleId,
     string? Filter,
-    string? ReturnMapping);
+    string? ReturnMapping,
+    int? SerialNo = null);
 
 public sealed record FieldAdminInput(
     string Label,
@@ -124,3 +125,17 @@ public sealed record CreateFieldAdminRequest(string TableId, string FieldId, Fie
 public sealed record UpdateFieldAdminRequest(string TableId, string FieldId, FieldAdminInput Field, FieldAdminInput? Original);
 
 public sealed record FieldAdminPageResult(IReadOnlyList<FieldAdminFieldSummary> Items, int Total, int Page, int PageSize);
+
+/// <summary>字段变更历史中的单条字段级明细（AUDIT_FIELD_CHANGE）。</summary>
+public sealed record FieldHistoryChange(string Name, string? OldValue, string? NewValue);
+
+/// <summary>字段变更历史事件（AUDIT_EVENT，RESOURCE_TYPE=FIELD_ADMIN）。</summary>
+public sealed record FieldHistoryEvent(
+    DateTime OccurredAt,
+    string ActorUserId,
+    string Action,
+    string? Summary,
+    IReadOnlyList<FieldHistoryChange> Changes);
+
+/// <summary>表物理列（sys.columns + FIELDS 描述）：字段设置数据来源/回填构建器下拉选项。</summary>
+public sealed record FieldAdminColumn(string Name, string DataType, string Description);

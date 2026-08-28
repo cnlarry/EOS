@@ -3,6 +3,16 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FieldEditorModal, type FieldEditorEndpoints, type FieldMeta } from './FieldEditorModal'
 
+const apiClientMock = vi.hoisted(() => ({
+  get: vi.fn().mockResolvedValue([]),
+  post: vi.fn(),
+  put: vi.fn(),
+  delete: vi.fn(),
+  postFile: vi.fn(),
+}))
+
+vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+
 function meta(overrides: Partial<FieldMeta> = {}): FieldMeta {
   return {
     key: 'CODE', tableId: 'T1', label: '编号', dataType: 'nvarchar', width: 120, align: 'left', headerAlign: 'center',
@@ -10,10 +20,10 @@ function meta(overrides: Partial<FieldMeta> = {}): FieldMeta {
     isCost: false, isSecrecy: false, defaultValue: null, verifyIndex: null, regex: null, remark: null,
     browseUrl: null, browseModuleId: null, onlyChoose: false, chooseMultiple: false, choosePage: null,
     choosers: [
-      { active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null },
-      { active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null },
-      { active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null },
-      { active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null },
+      { active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null, serialNo: 1 },
+      { active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null, serialNo: 2 },
+      { active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null, serialNo: 3 },
+      { active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null, serialNo: 4 },
     ],
     isVirtual: false, virtualExpression: null, canCopy: true, isAutoIncrement: false,
     convertFunction: null, dataSourceSql: null, lastUpdatedBy: 'admin', lastUpdatedAt: '2026-08-01T00:00:00Z',
@@ -39,6 +49,7 @@ describe('FieldEditorModal', () => {
   afterEach(() => {
     vi.clearAllMocks()
   })
+
 
   it('open=false 时不渲染', () => {
     const { container } = renderModal(false, 'edit', { load: vi.fn(), save: vi.fn() })
@@ -94,9 +105,9 @@ describe('FieldEditorModal', () => {
   it('分区切换展示对应控件', async () => {
     const { container } = renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta()), save: vi.fn() })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('tab', { name: '录入与校验' }))
+    fireEvent.click(screen.getByRole('tab', { name: '基本信息' }))
     expect(container.querySelector('input.form-control')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('tab', { name: '权限与备注' }))
+    fireEvent.click(screen.getByRole('tab', { name: '权限与行为' }))
     expect(container.querySelector('input[type="checkbox"]')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
     expect(screen.getByLabelText('虚拟字段')).toBeDisabled()
@@ -144,11 +155,12 @@ describe('FieldEditorModal', () => {
   it('数据来源编辑与返回值映射', async () => {
     renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta()), save: vi.fn() })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('tab', { name: '权限与备注' }))
-    fireEvent.click(screen.getByLabelText('数据来源 1'))
-    const tableInput = screen.getAllByText('来源表')[0].closest('.col-md-6')!.querySelector('input') as HTMLInputElement
-    fireEvent.change(tableInput, { target: { value: 'PRODUCT' } })
-    expect(screen.getByDisplayValue('PRODUCT')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: '数据来源' }))
+    // 数据来源为列表 + 弹窗配置（ADR-008 全页化第 4 点）
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
+    await waitFor(() => expect(screen.getByText('编辑数据源：未命名数据源')).toBeInTheDocument())
+    fireEvent.click(screen.getAllByLabelText('关闭')[1])
+    await waitFor(() => expect(screen.queryByText('编辑数据源：未命名数据源')).not.toBeInTheDocument())
   })
 
   it('关闭按钮触发 onClose', async () => {
@@ -168,17 +180,15 @@ describe('FieldEditorModal', () => {
     await waitFor(() => expect(screen.getByText('未找到该字段的元数据。')).toBeInTheDocument())
   })
 
-  it('提供 tables/modules 端点时渲染数据源选项', async () => {
+  it('提供 modules 端点时渲染权限模块选项', async () => {
     renderModal(true, 'edit', {
       load: vi.fn().mockResolvedValue(meta()),
       save: vi.fn(),
-      tables: vi.fn().mockResolvedValue([{ value: 'PRODUCT', label: '产品 (PRODUCT)' }]),
       modules: vi.fn().mockResolvedValue([{ value: '1305', label: '库存仓别' }]),
     })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    await waitFor(() => expect(screen.getByText('产品 (PRODUCT)')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('tab', { name: '权限与备注' }))
-    await waitFor(() => expect(screen.getByRole('option', { name: /库存仓别 \(1305\)/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('tab', { name: '权限与行为' }))
+    await waitFor(() => expect(screen.getAllByText('库存仓别 (1305)').length).toBeGreaterThan(0))
   })
 
   it('保存失败展示错误消息', async () => {
@@ -203,7 +213,7 @@ describe('FieldEditorModal', () => {
   it('校验分区切换与只读/必填开关', async () => {
     renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta()), save: vi.fn() })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('tab', { name: '录入与校验' }))
+    fireEvent.click(screen.getByRole('tab', { name: '基本信息' }))
     expect(screen.getByLabelText('不能为空')).toBeChecked()
     fireEvent.click(screen.getByLabelText('不能为空'))
     fireEvent.click(screen.getByLabelText('只读'))
@@ -241,30 +251,31 @@ describe('FieldEditorModal', () => {
     fireEvent.click(screen.getByLabelText('默认字段'))
     fireEvent.click(screen.getByLabelText('允许查询'))
 
-    fireEvent.click(screen.getByRole('tab', { name: '录入与校验' }))
-    const validationInputs = Array.from(dialog.querySelectorAll<HTMLInputElement>('input.form-control'))
-    fireEvent.change(validationInputs[0], { target: { value: 'ABC' } })
-    fireEvent.change(validationInputs[1], { target: { value: '3' } })
-    fireEvent.change(validationInputs[2], { target: { value: '^\\d+$' } })
+    fireEvent.click(screen.getByRole('tab', { name: '基本信息' }))
+    const defaultInput = screen.getAllByText('默认值')[0].closest('.col-md-4')!.querySelector('input') as HTMLInputElement
+    fireEvent.change(defaultInput, { target: { value: 'ABC' } })
+    const verifyInput = screen.getAllByText('检验顺序')[0].closest('.col-md-4')!.querySelector('input') as HTMLInputElement
+    fireEvent.change(verifyInput, { target: { value: '3' } })
+    fireEvent.change(screen.getByPlaceholderText('如 ^[A-Z0-9]{8}$'), { target: { value: '^\\d+$' } })
     fireEvent.click(screen.getByLabelText('不能为空'))
     fireEvent.click(screen.getByLabelText('只读'))
 
-    fireEvent.click(screen.getByRole('tab', { name: '权限与备注' }))
+    fireEvent.click(screen.getByRole('tab', { name: '权限与行为' }))
     const securityInputs = Array.from(dialog.querySelectorAll<HTMLInputElement>('input.form-control'))
     fireEvent.click(screen.getByLabelText('成本字段'))
     fireEvent.click(screen.getByLabelText('保密字段'))
     fireEvent.change(screen.getByPlaceholderText('仅允许站内相对路径'), { target: { value: '/detail' } })
-    await waitFor(() => expect(screen.getByRole('option', { name: /库存仓别 \(1305\)/ })).toBeInTheDocument())
-    const selects = dialog.querySelectorAll('select')
-    fireEvent.change(selects[selects.length - 1], { target: { value: '1305' } })
+    await waitFor(() => expect(screen.getAllByText('库存仓别 (1305)').length).toBeGreaterThan(0))
+    const browseModuleSelect = screen.getAllByText('浏览权限模块 ID')[0].closest('.col-md-4')!.querySelector('select') as HTMLSelectElement
+    fireEvent.change(browseModuleSelect, { target: { value: '1305' } })
     fireEvent.click(screen.getByLabelText('数据仅可选入'))
     fireEvent.click(screen.getByLabelText('支持多笔选入'))
     fireEvent.change(securityInputs[1], { target: { value: '/chooser' } })
-    fireEvent.click(screen.getByLabelText('数据来源 1'))
-    fireEvent.change(screen.getAllByText('来源表')[0].closest('.col-md-6')!.querySelector('input')!, { target: { value: 'PRODUCT' } })
-    fireEvent.change(screen.getAllByText('来源说明')[0].closest('.col-md-6')!.querySelector('input')!, { target: { value: '产品资料' } })
-    fireEvent.change(screen.getAllByText('过滤条件')[0].closest('.col-12')!.querySelector('textarea')!, { target: { value: '1=1' } })
-    fireEvent.change(screen.getAllByText('返回值映射')[0].closest('.col-12')!.querySelector('textarea')!, { target: { value: 'txt_PRO_NO=PRO_NO' } })
+    fireEvent.click(screen.getByRole('tab', { name: '数据来源' }))
+    // 数据来源：列表 + 弹窗配置（打开弹窗验证，细节由 DataSourceEditorModal 单测覆盖）
+    fireEvent.click(screen.getByRole('button', { name: '新增数据源' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: '新增数据源' })).toBeInTheDocument())
+    fireEvent.click(screen.getAllByLabelText('关闭')[1])
 
     fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
     fireEvent.click(screen.getByLabelText('数据可复制'))
@@ -283,14 +294,15 @@ describe('FieldEditorModal', () => {
       canCopy: false, remark: '备注内容',
     }))
     expect(input.choosers[0]).toEqual(expect.objectContaining({
-      active: true, table: 'PRODUCT', description: '产品资料', filter: '1=1', returnMapping: 'txt_PRO_NO=PRO_NO',
+      filter: '{"logic":"AND","items":[]}',
+      returnMapping: '',
     }))
   })
 
   it('正则表达式无效时禁用保存并提示', async () => {
     renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta({ regex: '[' })), save: vi.fn() })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('tab', { name: '录入与校验' }))
+    fireEvent.click(screen.getByRole('tab', { name: '基本信息' }))
     expect(screen.getByText('正则表达式无法编译，请检查语法。')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
   })

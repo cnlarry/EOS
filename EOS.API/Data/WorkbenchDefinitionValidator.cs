@@ -474,37 +474,88 @@ public sealed class WorkbenchDefinitionValidator(
             .Select(field => field.Key)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // CHOOSE_RETURNVAL 映射目标存在（阻断；模块级聚合一条，消息截断前 8 条防超长）
+        // RETURN_ITEMS 映射目标存在（阻断；模块级聚合一条，消息截断前 8 条防超长；ADR-008 §4）
         var returnvalErrors = new List<string>();
         foreach (var (table, fields) in fieldsByTable)
         {
             foreach (var field in fields)
             {
-                foreach (var mapping in field.ReturnMappings)
+                foreach (var mapping in field.ReturnItems)
                 {
-                    if (string.IsNullOrWhiteSpace(mapping)) continue;
-                    foreach (var pair in mapping.Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    var target = FormFieldSelector.NormalizeChooserTarget(mapping.Target);
+                    if (!moduleKeys.Contains(target))
                     {
-                        var eq = pair.IndexOf('=');
-                        if (eq <= 0)
-                        {
-                            returnvalErrors.Add($"{table}.{field.Key}(片段 '{pair}' 缺少 =)");
-                            continue;
-                        }
-                        var target = FormFieldSelector.NormalizeChooserTarget(pair[..eq].Trim());
-                        if (!moduleKeys.Contains(target))
-                        {
-                            returnvalErrors.Add($"{table}.{field.Key}(目标 {target})");
-                        }
+                        returnvalErrors.Add($"{table}.{field.Key}(目标 {target})");
                     }
                 }
             }
         }
         checks.Add(new("chooser_returnval_targets", returnvalErrors.Count == 0,
             returnvalErrors.Count == 0
-                ? "CHOOSE_RETURNVAL 映射目标全部存在于模块字段集。"
+                ? "RETURN_ITEMS 映射目标全部存在于模块字段集。"
                 : $"存在跨模块死映射 {returnvalErrors.Count} 处（运行时未命中即跳过、无害，随逐模块验收清理）：{string.Join(",", returnvalErrors.Take(8))}{(returnvalErrors.Count > 8 ? " 等" : "")}。",
             "warning"));
+
+        // ADR-008 §7：数据源完整性（阻断）——来源表存在、FILTER_STRUCT 可编译、回填列存在于来源表
+        var chooserErrors = new List<string>();
+        var chooserWarnings = new List<string>();
+        foreach (var table in tables)
+        {
+            foreach (var source in await ReadChooserSourcesAsync(connection, table, token))
+            {
+                if (!await WorkbenchSql.TableExistsAsync(connection, source.SourceTable, token))
+                {
+                    chooserErrors.Add($"{table}.{source.Field}#{source.SerialNo} 来源表 {source.SourceTable} 不存在");
+                    continue;
+                }
+                if (string.IsNullOrWhiteSpace(source.FilterStruct))
+                {
+                    chooserWarnings.Add($"{table}.{source.Field}#{source.SerialNo} 过滤条件待重建（FILTER_STRUCT 为空，运行期 fail-closed 空选项）");
+                    continue;
+                }
+                if (!ChooserFilterStruct.TryParse(source.FilterStruct, out var filterStruct) || filterStruct is null)
+                {
+                    chooserErrors.Add($"{table}.{source.Field}#{source.SerialNo} FILTER_STRUCT 不是合法结构化 JSON");
+                    continue;
+                }
+                var filterErrors = await ChooserFilterValidator.ValidateAsync(
+                    connection, filterStruct, source.SourceTable, token);
+                if (filterErrors.Count > 0)
+                {
+                    chooserErrors.Add($"{table}.{source.Field}#{source.SerialNo} 过滤条件校验失败：{string.Join("；", filterErrors.Take(2))}");
+                }
+                if (!string.IsNullOrWhiteSpace(source.ReturnItems))
+                {
+                    var returnItems = ChooserReturnItems.Parse(source.ReturnItems);
+                    if (returnItems is null)
+                    {
+                        chooserErrors.Add($"{table}.{source.Field}#{source.SerialNo} RETURN_ITEMS 不是合法 JSON 数组");
+                    }
+                    else
+                    {
+                        var columns = returnItems.Select(item => item.Column.Trim())
+                            .Where(column => WorkbenchSql.Identifier.IsMatch(column))
+                            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                        if (columns.Length > 0
+                            && !await WorkbenchSql.ColumnsExistAsync(connection, source.SourceTable, columns, token))
+                        {
+                            chooserErrors.Add($"{table}.{source.Field}#{source.SerialNo} 回填映射引用了来源表不存在的列");
+                        }
+                    }
+                }
+            }
+        }
+        checks.Add(new("chooser_sources", chooserErrors.Count == 0,
+            chooserErrors.Count == 0
+                ? "选择器数据源完整性校验通过。"
+                : $"选择器数据源损坏 {chooserErrors.Count} 处：{string.Join("；", chooserErrors.Take(8))}{(chooserErrors.Count > 8 ? " 等" : "")}。",
+            "error"));
+        if (chooserWarnings.Count > 0)
+        {
+            checks.Add(new("chooser_sources_pending", true,
+                $"选择器过滤条件待重建 {chooserWarnings.Count} 处（ADR-008 迁移清单）：{string.Join("；", chooserWarnings.Take(5))}{(chooserWarnings.Count > 5 ? " 等" : "")}。",
+                "warning"));
+        }
 
         foreach (var (table, fields) in fieldsByTable)
         {
@@ -587,10 +638,12 @@ public sealed class WorkbenchDefinitionValidator(
 
     private sealed record FormQualityField(
         string Key, string Label, string FType, bool IsVisible, bool IsReadonly, bool IsVirtual,
-        bool HasFormOrder, string? Options, string? DefaultValue, string?[] ReturnMappings, string? DisplayFormat)
+        bool HasFormOrder, string? Options, string? DefaultValue, IReadOnlyList<ChooserReturnItem> ReturnItems, string? DisplayFormat)
     {
         public int LabelLength => Label.Length;
     }
+
+    private sealed record ChooserSourceRow(string Field, int SerialNo, string SourceTable, string? FilterStruct, string? ReturnItems);
 
     private static async Task<IReadOnlyList<FormQualityField>> ReadFormQualityFieldsAsync(
         SqlConnection connection, string table, CancellationToken token)
@@ -599,8 +652,6 @@ public sealed class WorkbenchDefinitionValidator(
             SELECT LTRIM(RTRIM(f.F_ID)),LTRIM(RTRIM(f.F_DESC)),COALESCE(LTRIM(RTRIM(f.F_TYPE)),N'nvarchar'),
                    CAST(COALESCE(f.IS_VISIBLE,1) AS bit),CAST(COALESCE(f.IS_READONLY,0) AS bit),CAST(COALESCE(f.IS_VIRTUAL,0) AS bit),
                    f.FORM_ORDER,f.FORM_OPTIONS,f.DFT_VALUE,
-                   LTRIM(RTRIM(ISNULL(f.CHOOSE_RETURNVAL1,''))),LTRIM(RTRIM(ISNULL(f.CHOOSE_RETURNVAL2,''))),
-                   LTRIM(RTRIM(ISNULL(f.CHOOSE_RETURNVAL3,''))),LTRIM(RTRIM(ISNULL(f.CHOOSE_RETURNVAL4,''))),
                    f.DISPLAY_FORMAT
             FROM dbo.FIELDS f WITH (NOLOCK) WHERE f.T_ID=@Table;
             """;
@@ -608,6 +659,7 @@ public sealed class WorkbenchDefinitionValidator(
         command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
         await using var reader = await command.ExecuteReaderAsync(token);
         var result = new List<FormQualityField>();
+        var returnItemsByField = await ReadReturnItemsByFieldAsync(connection, table, token);
         while (await reader.ReadAsync(token))
         {
             result.Add(new FormQualityField(
@@ -615,9 +667,67 @@ public sealed class WorkbenchDefinitionValidator(
                 reader.GetBoolean(3), reader.GetBoolean(4), reader.GetBoolean(5),
                 !reader.IsDBNull(6), reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
                 reader.IsDBNull(8) ? null : reader.GetString(8).Trim(),
-                [reader.IsDBNull(9) ? null : reader.GetString(9), reader.IsDBNull(10) ? null : reader.GetString(10),
-                 reader.IsDBNull(11) ? null : reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12)],
-                reader.IsDBNull(13) ? null : reader.GetString(13)));
+                returnItemsByField.TryGetValue(reader.GetString(0).Trim(), out var items) ? items : [],
+                reader.IsDBNull(9) ? null : reader.GetString(9)));
+        }
+        return result;
+    }
+
+    /// <summary>读取表内全部字段的回填映射（FIELD_DATASOURCE.RETURN_ITEMS，按字段聚合；ADR-008 §4）。</summary>
+    private static async Task<Dictionary<string, IReadOnlyList<ChooserReturnItem>>> ReadReturnItemsByFieldAsync(
+        SqlConnection connection, string table, CancellationToken token)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(c.F_ID)),c.RETURN_ITEMS
+            FROM dbo.FIELD_DATASOURCE c WITH (NOLOCK)
+            WHERE c.T_ID=@Table AND CAST(COALESCE(c.ACTIVE_TAG,0) AS bit)=1
+              AND LTRIM(RTRIM(ISNULL(c.RETURN_ITEMS,'')))<>'';
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new Dictionary<string, IReadOnlyList<ChooserReturnItem>>(StringComparer.OrdinalIgnoreCase);
+        while (await reader.ReadAsync(token))
+        {
+            var field = reader.GetString(0).Trim();
+            var items = ChooserReturnItems.Parse(reader.GetString(1)) ?? [];
+            if (!result.TryGetValue(field, out var existing))
+            {
+                result[field] = items;
+            }
+            else
+            {
+                result[field] = existing.Concat(items).ToList();
+            }
+        }
+        return result;
+    }
+
+    /// <summary>读取表内启用数据源（FIELD_DATASOURCE；ADR-008 §7 完整性校验数据源）。</summary>
+    private static async Task<IReadOnlyList<ChooserSourceRow>> ReadChooserSourcesAsync(
+        SqlConnection connection, string table, CancellationToken token)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(c.F_ID)),c.SERIAL_NO,LTRIM(RTRIM(ISNULL(c.SOURCE_T_ID,''))),
+                   c.FILTER_STRUCT,c.RETURN_ITEMS
+            FROM dbo.FIELD_DATASOURCE c WITH (NOLOCK)
+            WHERE c.T_ID=@Table AND CAST(COALESCE(c.ACTIVE_TAG,0) AS bit)=1
+            ORDER BY c.SERIAL_NO;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<ChooserSourceRow>();
+        while (await reader.ReadAsync(token))
+        {
+            var sourceTable = reader.GetString(2).Trim();
+            if (sourceTable.Length == 0) continue;
+            result.Add(new ChooserSourceRow(
+                reader.GetString(0).Trim(),
+                reader.GetInt32(1),
+                sourceTable,
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4)));
         }
         return result;
     }

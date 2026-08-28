@@ -1,4 +1,4 @@
-import { IconEdit, IconListDetails, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
+import { IconCopy, IconEdit, IconListDetails, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useCallback, useMemo, useState } from 'react'
@@ -12,7 +12,6 @@ import { radioSelectColumn } from '../../components/common/erpRadioSelectColumn'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
-import { FieldEditorModal, type ExpressionKind, type ExpressionPreview, type ExpressionValidation, type FieldInput, type FieldMeta, type SetupLookup } from './FieldEditorModal'
 import type { FieldAdminTable } from './TableAdminPage'
 import { UnmanagedFieldsModal } from './UnmanagedFieldsModal'
 
@@ -39,34 +38,6 @@ interface FieldAdminPageResult {
   pageSize: number
 }
 
-interface FieldAdminMetadata {
-  tableId: string
-  fieldId: string
-  field: FieldInput
-  isVirtual: boolean
-  virtualExpression: string | null
-  isAutoIncrement: boolean
-  convertFunction: string | null
-  dataSourceSql: string | null
-  lastUpdatedBy: string | null
-  lastUpdatedAt: string | null
-}
-
-function adminMetaToFieldMeta(meta: FieldAdminMetadata): FieldMeta {
-  return {
-    ...meta.field,
-    key: meta.fieldId,
-    tableId: meta.tableId,
-    isVirtual: meta.isVirtual,
-    virtualExpression: meta.virtualExpression,
-    isAutoIncrement: meta.isAutoIncrement,
-    convertFunction: meta.convertFunction,
-    dataSourceSql: meta.dataSourceSql,
-    lastUpdatedBy: meta.lastUpdatedBy,
-    lastUpdatedAt: meta.lastUpdatedAt,
-  }
-}
-
 const pageSize = 16
 
 /** 只读布尔列：复选框表达（勾选=True，未勾选=False），仅展示不可操作。 */
@@ -80,7 +51,6 @@ export function FieldAdminPage() {
   const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
-  const [editor, setEditor] = useState<{ mode: 'new' | 'edit'; fieldKey?: string } | null>(null)
   const [unmanagedOpen, setUnmanagedOpen] = useState(false)
   const [selectedField, setSelectedField] = useState<string | null>(null)
 
@@ -99,32 +69,6 @@ export function FieldAdminPage() {
     mutationFn: (fieldId: string) => apiClient.delete(`/admin/fields/${encodeURIComponent(tableId)}/${encodeURIComponent(fieldId)}`),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['field-admin', 'fields'] }) },
   })
-
-  const endpoints = {
-    load: async () => {
-      if (!editor?.fieldKey) return null
-      const meta = await apiClient.get<FieldAdminMetadata>(`/admin/fields/${encodeURIComponent(tableId)}/${encodeURIComponent(editor.fieldKey)}`)
-      return adminMetaToFieldMeta(meta)
-    },
-    save: async (input: FieldInput, targetTable: string, fieldId: string, original: FieldInput | null) => {
-      if (editor?.mode === 'new') {
-        await apiClient.post('/admin/fields', { tableId: targetTable, fieldId, field: input })
-      } else {
-        await apiClient.put(`/admin/fields/${encodeURIComponent(targetTable)}/${encodeURIComponent(fieldId)}`, { tableId: targetTable, fieldId, field: input, original })
-      }
-    },
-    tables: async () => (await apiClient.get<FieldAdminTable[]>('/admin/tables'))
-      .map((item) => ({ value: item.tableId, label: `${item.description} (${item.tableId})` }) as SetupLookup),
-    modules: async () => (await apiClient.get<{ id: number; label: string }[]>('/admin/lookups/modules'))
-      .map((item) => ({ value: String(item.id), label: item.label }) as SetupLookup),
-    validateExpression: async (kind: ExpressionKind, targetTable: string, fieldId: string, expression: string | null) =>
-      (await apiClient.post(`/admin/fields/expressions/validate`, { kind, table: targetTable, field: fieldId, expression })) as ExpressionValidation,
-    previewExpression: async (kind: ExpressionKind, targetTable: string, fieldId: string, expression: string | null) =>
-      (await apiClient.post(`/admin/fields/expressions/preview`, { kind, table: targetTable, field: fieldId, expression })) as ExpressionPreview,
-    publishExpression: async (kind: ExpressionKind, targetTable: string, fieldId: string, expression: string | null, original: string | null) => {
-      await apiClient.post(`/admin/fields/expressions/publish`, { kind, table: targetTable, field: fieldId, expression, original })
-    },
-  }
 
   const items = fields.data?.items ?? []
   const errorMessage = fields.error instanceof ApiError ? fields.error.body.message : '发生未知错误，请稍后重试。'
@@ -161,16 +105,16 @@ export function FieldAdminPage() {
       enableSorting: false,
       enableHiding: false,
       // 操作列固定宽度：容纳三个文字按钮，不随内容/拖拽变化
-      meta: { className: 'text-end text-nowrap', frozenRight: true, truncate: false, minWidth: 160, minWidthFloor: true, resizable: false },
+      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, minWidth: 220, minWidthFloor: true, resizable: false },
       cell: ({ row }) => (
         <div className="d-flex gap-1 justify-content-end">
-          <Button size="sm" className="erp-table-action" onClick={() => setEditor({ mode: 'new', fieldKey: row.original.fieldId })}>复制</Button>
-          <Button size="sm" className="erp-table-action" icon={<IconEdit size={16} />} onClick={() => setEditor({ mode: 'edit', fieldKey: row.original.fieldId })}>编辑</Button>
-          <Button size="sm" className="erp-table-action" variant="danger" icon={<IconTrash size={16} />} loading={remove.isPending && remove.variables === row.original.fieldId} disabled={remove.isPending} onClick={() => confirmDelete(row.original.fieldId, row.original.description)}>删除</Button>
+          <Button size="sm" variant="ghost" icon={<IconCopy size={14} />} title="复制" onClick={() => navigate(`/admin/fields/${encodeURIComponent(tableId)}/new?copyFrom=${encodeURIComponent(row.original.fieldId)}`)}>复制</Button>
+          <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} title="编辑" onClick={() => navigate(`/admin/fields/${encodeURIComponent(tableId)}/${encodeURIComponent(row.original.fieldId)}`)}>编辑</Button>
+          <Button size="sm" variant="ghost" icon={<IconTrash size={14} />} title="删除" loading={remove.isPending && remove.variables === row.original.fieldId} disabled={remove.isPending} onClick={() => confirmDelete(row.original.fieldId, row.original.description)}>删除</Button>
         </div>
       ),
     },
-  ], [confirmDelete, remove.isPending, remove.variables, selectedField, tableId])
+  ], [confirmDelete, remove.isPending, remove.variables, selectedField, tableId, navigate])
 
   return (
     <div className="erp-full-list-page">
@@ -178,7 +122,7 @@ export function FieldAdminPage() {
         ariaLabel="字段维护查询与操作"
         search={<ErpSearchBox value={keyword} onChange={(value) => { setKeyword(value); setPage(1) }} debounceMs={300} placeholder="搜索字段名或标题" ariaLabel="搜索字段" />}
         actions={<>
-          <Button size="sm" icon={<IconPlus size={16} />} onClick={() => setEditor({ mode: 'new' })}>新增</Button>
+          <Button size="sm" icon={<IconPlus size={16} />} onClick={() => navigate(`/admin/fields/${encodeURIComponent(tableId)}/new`)}>新增</Button>
           <Button size="sm" icon={<IconListDetails size={16} />} onClick={() => setUnmanagedOpen(true)}>未管理字段</Button>
           <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void fields.refetch()}>刷新</Button>
           <Button size="sm" onClick={() => navigate('/admin/tables')}>返回</Button>
@@ -210,23 +154,6 @@ export function FieldAdminPage() {
         )}
       </ErpListCard>
       {remove.isError && <div className="alert alert-danger">{remove.error instanceof ApiError ? remove.error.body.message : '删除失败。'}</div>}
-      {editor && (
-        <FieldEditorModal
-          open
-          mode={editor.mode}
-          tableId={tableId}
-          fieldKey={editor.fieldKey}
-          title={editor.mode === 'new' ? `新增字段（${tableId}）` : `字段管理（${editor.fieldKey}）`}
-          endpoints={endpoints}
-          onClose={() => setEditor(null)}
-          onSaved={() => {
-            void queryClient.invalidateQueries({ queryKey: ['field-admin', 'fields'] })
-            void queryClient.invalidateQueries({ queryKey: ['field-admin', 'unmanaged'] })
-            void queryClient.invalidateQueries({ queryKey: ['field-admin', 'tables'] })
-            setEditor(null)
-          }}
-        />
-      )}
       {unmanagedOpen && (
         <UnmanagedFieldsModal
           open

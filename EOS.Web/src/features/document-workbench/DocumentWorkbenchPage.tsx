@@ -15,7 +15,6 @@ import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 import { useAuth } from '../auth/authContext'
-import { FieldEditorModal } from '../field-admin/FieldEditorModal'
 import { alignClass, formatFieldValue } from './fieldFormat'
 import { FieldBrowseLink } from './FieldBrowseLink'
 import { workbenchNew, workbenchView } from './workbenchPath'
@@ -27,8 +26,7 @@ interface DataResponse { rows:Record<string,unknown>[]; total:number; page:numbe
 interface NavigationGroupDef { index:number; description:string; available:boolean }
 interface ColumnSetting { key:string; label:string; isVisible:boolean; order:number }
 interface ColumnSettings { master:ColumnSetting[]; detail:ColumnSetting[] }
-interface SetupLookup { value:string; label:string }
-interface ChooserSource { active:boolean; table:string|null; description:string|null; moduleId:number|null; filter:string|null; returnMapping:string|null }
+interface ChooserSource { active:boolean; table:string|null; description:string|null; moduleId:number|null; filter:string|null; returnMapping:string|null; serialNo:number|null }
 interface FieldMetadata { key:string; tableId:string; label:string; dataType:string; width:number; align:string|null; headerAlign:string; format:string|null; isVisible:boolean; isDefault:boolean; isQueryable:boolean; isReadonly:boolean; isRequired:boolean; isCost:boolean; isSecrecy:boolean; defaultValue:string|null; verifyIndex:number|null; regex:string|null; remark:string|null; browseUrl:string|null; browseModuleId:number|null; onlyChoose:boolean; chooseMultiple:boolean; choosePage:string|null; choosers:ChooserSource[]; isVirtual:boolean; virtualExpression:string|null; canCopy:boolean; isAutoIncrement:boolean; convertFunction:string|null; dataSourceSql:string|null; lastUpdatedBy:string|null; lastUpdatedAt:string|null; tabNo:number; formOrder:number|null; span:number; newLine:boolean; cellGroup:string|null; cellRole:number; options:string|null }
 const uniqueFields=(fields:Field[])=>fields.filter((field,index,all)=>all.findIndex(item=>item.key.toLowerCase()===field.key.toLowerCase())===index)
 const sortQuery=(sort:SortingState)=>({sortFields:sort.length?sort.map(item=>item.id).join(','):undefined,sortDirections:sort.length?sort.map(item=>item.desc?'desc':'asc').join(','):undefined})
@@ -49,7 +47,6 @@ export function DocumentWorkbenchPage() {
   const [queryOpen,setQueryOpen]=useState(false)
   const [columnsOpen,setColumnsOpen]=useState(false)
   const [columnFilters,setColumnFilters]=useState<Record<string,QueryCondition>>(initialState.columnFilters)
-  const [fieldEditor,setFieldEditor]=useState<{detail:boolean;fieldKey:string}|null>(null)
   const [appliedConditions,setAppliedConditions]=useState<QueryCondition[]>(initialState.conditions)
   const [conditions,setConditions]=useState<QueryCondition[]>([emptyQueryCondition()])
   const [keyword,setKeyword]=useState(initialState.keyword)
@@ -165,7 +162,7 @@ export function DocumentWorkbenchPage() {
         dataType:field.dataType,
         truncate:(field.dataType??'').toLowerCase()!=='bit',
         title:({value})=>formatFieldValue(value,field.dataType,field.format)||undefined,
-        headerMenu:[{label:'字段设置',onClick:()=>setFieldEditor({detail:false,fieldKey:field.key})}],
+        headerMenu:[{label:'字段设置',onClick:()=>navigate(`/admin/fields/${encodeURIComponent(definition.data?.masterTable ?? '')}/${encodeURIComponent(field.key)}?moduleId=${moduleId}`)}],
       },
       cell:(info)=>{
         const value=info.getValue()
@@ -177,7 +174,7 @@ export function DocumentWorkbenchPage() {
           :text
       },
     })),
-  ],[master,hasPermission,moduleId])
+  ],[master,hasPermission,moduleId,navigate,definition.data?.masterTable])
   const detailColumns=useMemo<ColumnDef<Record<string,unknown>,unknown>[]>(()=>detail.map((field):ColumnDef<Record<string,unknown>,unknown>=>({
     id:field.key,
     accessorKey:field.key,
@@ -190,7 +187,7 @@ export function DocumentWorkbenchPage() {
       dataType:field.dataType,
       truncate:(field.dataType??'').toLowerCase()!=='bit',
       title:({value})=>formatFieldValue(value,field.dataType,field.format)||undefined,
-      headerMenu:[{label:'字段设置',onClick:()=>setFieldEditor({detail:true,fieldKey:field.key})}],
+      headerMenu:[{label:'字段设置',onClick:()=>navigate(`/admin/fields/${encodeURIComponent(definition.data?.detailTable ?? '')}/${encodeURIComponent(field.key)}?moduleId=${moduleId}`)}],
     },
     cell:(info)=>{
       const value=info.getValue()
@@ -201,7 +198,7 @@ export function DocumentWorkbenchPage() {
         ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} browseKeyFields={field.browseKeyFields} row={info.row.original} fromModuleId={moduleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
         :text
     },
-  })),[detail,hasPermission,moduleId])
+  })),[detail,hasPermission,moduleId,navigate,definition.data?.detailTable])
   const rowSelection=useMemo<RowSelectionState>(()=>Object.fromEntries(Object.keys(selected).map(key=>[key,true])),[selected])
 
   const rowKey=(row:Record<string,unknown>)=>{const keys=(definition.data?.masterPkOrder??[]).map(column=>String(row[column]??''));return keys.some(key=>key!=='')?keys.join('|'):JSON.stringify(row)}
@@ -437,7 +434,6 @@ export function DocumentWorkbenchPage() {
       className="table-sm"
       empty={null}
     />}</section>}
-    {fieldEditor&&<FieldEditorModal open mode="edit" tableId={(fieldEditor.detail?definition.data.detailTable:definition.data.masterTable)??''} fieldKey={fieldEditor.fieldKey} title={`${fieldEditor.detail?'子表':'主表'}字段设置`} endpoints={{load:async()=>{const meta=await apiClient.get<FieldMetadata>(`/document-workbench/${moduleId}/field-settings/${encodeURIComponent(fieldEditor.fieldKey)}`,{query:{detail:String(fieldEditor.detail)}});return{...meta,tableId:(fieldEditor.detail?definition.data.detailTable:definition.data.masterTable)??''}},save:async(input,_table,fieldId,original)=>apiClient.put<void>(`/document-workbench/${moduleId}/field-settings/${encodeURIComponent(fieldId)}?detail=${fieldEditor.detail}`,{...input,original:original?{...original,key:fieldId}:undefined}),tables:()=>apiClient.get<SetupLookup[]>(`/document-workbench/${moduleId}/field-settings/lookups/tables`),modules:()=>apiClient.get<SetupLookup[]>(`/document-workbench/${moduleId}/field-settings/lookups/modules`)}} onClose={()=>setFieldEditor(null)} onSaved={()=>{setFieldEditor(null);void Promise.all([queryClient.invalidateQueries({queryKey:['workbench',moduleId,'definition']}),queryClient.invalidateQueries({queryKey:['workbench',moduleId,'field-settings']})])}}/>}
     {columnsOpen&&<ErpColumnSelector
       open
       groups={columnGroups}

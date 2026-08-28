@@ -17,7 +17,18 @@ public sealed record WorkbenchColumnSettings(IReadOnlyList<WorkbenchColumn> Mast
 public sealed record SaveWorkbenchColumns(IReadOnlyList<string> Master, IReadOnlyList<string> Detail);
 public sealed record UpdateColumnWidthsRequest(IReadOnlyDictionary<string, int> Master, IReadOnlyDictionary<string, int>? Detail);
 public sealed record WorkbenchFieldSummary(string Key,string Label,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsCost,bool IsSecrecy,bool IsVirtual);
-public sealed record FieldChooserSource(bool Active,string? Table,string? Description,int? ModuleId,string? Filter,string? ReturnMapping);
+/// <summary>
+/// 选择器数据源（ADR-008）：Filter=FILTER_STRUCT JSON（仅字段设置可见；普通用户表单定义不下发，
+/// 运行期由 form-chooser 端点按 SerialNo 从 FIELD_DATASOURCE 取权威定义），ReturnMapping=RETURN_ITEMS JSON。
+/// </summary>
+public sealed record FieldChooserSource(
+    bool Active,
+    string? Table,
+    string? Description,
+    int? ModuleId,
+    string? Filter,
+    string? ReturnMapping,
+    int? SerialNo = null);
 /// <summary>工作台/表单业务按钮（解析自 MODULES.FORM_BUTTONS，如 '1=copy;2=approve;3=print'）。</summary>
 public sealed record WorkbenchButton(string Action);
 public sealed record WorkbenchFieldMetadata(string Key,string Label,string DataType,int Width,string? Align,string HeaderAlign,string? Format,bool IsVisible,bool IsDefault,bool IsQueryable,bool IsReadonly,bool IsRequired,bool IsCost,bool IsSecrecy,string? DefaultValue,int? VerifyIndex,string? Regex,string? Remark,string? BrowseUrl,int? BrowseModuleId,bool OnlyChoose,bool ChooseMultiple,string? ChoosePage,IReadOnlyList<FieldChooserSource> Choosers,bool IsVirtual,string? VirtualExpression,bool CanCopy,bool IsAutoIncrement,string? ConvertFunction,string? DataSourceSql,string? LastUpdatedBy,DateTime? LastUpdatedAt,int TabNo=1,int? FormOrder=null,int Span=1,bool NewLine=false,string? CellGroup=null,int CellRole=0,string? FormOptions=null);
@@ -112,24 +123,6 @@ public sealed class DocumentWorkbenchRepository(
         }
         return result.Count > 0 ? result : null;
     }
-    /// <summary>
-    /// 选择器 CHOOSE_FILTER 跨表 JOIN 白名单：外键表名 → 与查询表同名的关联列。
-    /// 旧系统过滤器常引用 CLIENT_PRICE_M/PRODUCT 等表（如"仅客户计价 + 启用料号"），
-    /// 此处仅允许登记在册的表 + 固定关联键，其余跨表引用一律拒绝。
-    /// </summary>
-    private static readonly IReadOnlyDictionary<string, string> ChooserJoinTables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["PRODUCT"] = "PRO_NO",
-        ["CLIENT_PRICE_M"] = "CLIENT_ID",
-        ["CLIENT"] = "CLIENT_ID",
-        ["SUPPLIER"] = "SUPPLIER_ID",
-        // 复合主键（3302 PRODUCE_NO 依赖 COP_SEND_D → COP_SEND_M）：值用逗号分隔的关联列清单
-        ["COP_SEND_M"] = "SEND_TYPE,SEND_NO",
-    };
-    private static readonly Regex MasterValuePlaceholderQuoted = new(@"'\{m\.([A-Za-z_][A-Za-z0-9_]*)\}'", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex MasterValuePlaceholder = new(@"\{m\.([A-Za-z_][A-Za-z0-9_]*)\}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex DetailValuePlaceholderQuoted = new(@"'\{d\.([A-Za-z_][A-Za-z0-9_]*)\}'", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex DetailValuePlaceholder = new(@"\{d\.([A-Za-z_][A-Za-z0-9_]*)\}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     /// <summary>
     /// 浏览链接模板白名单校验（BROWSE_URL）。
     /// 仅允许站内相对路径（~ 开头、无外部协议），且所有 {占位符} 必须是同一表内
@@ -491,7 +484,7 @@ public sealed class DocumentWorkbenchRepository(
     }
 
     private static FieldChooserSource MapChooser(FieldAdminChooser source)=>
-        new(source.Active,source.Table,source.Description,source.ModuleId,source.Filter,source.ReturnMapping);
+        new(source.Active,source.Table,source.Description,source.ModuleId,source.Filter,source.ReturnMapping,source.SerialNo);
 
     public async Task UpdateFieldMetadataAsync(WorkbenchDefinition definition,bool detail,string fieldKey,UpdateWorkbenchFieldMetadata update,string updatedBy,CancellationToken token)
     {
@@ -578,7 +571,7 @@ public sealed class DocumentWorkbenchRepository(
         metadata.TabNo,metadata.FormOrder,metadata.Span,metadata.NewLine,metadata.CellGroup,metadata.CellRole,metadata.FormOptions);
 
     private static FieldAdminChooser MapInputChooser(FieldChooserSource source)=>
-        new(source.Active,source.Table,source.Description,source.ModuleId,source.Filter,source.ReturnMapping);
+        new(source.Active,source.Table,source.Description,source.ModuleId,source.Filter,source.ReturnMapping,source.SerialNo);
 
     public async Task<WorkbenchColumnSettings> GetDefaultColumnSettingsAsync(WorkbenchDefinition definition,string userId,CancellationToken token)
     {
@@ -795,14 +788,6 @@ public sealed class DocumentWorkbenchRepository(
                    CAST(COALESCE(f.IS_READONLY,0) AS bit) AS IS_READONLY,CAST(COALESCE(f.IS_VISIBLE,1) AS bit) AS IS_VISIBLE,
                    CAST(COALESCE(f.ONLY_CHOOSE,0) AS bit) AS ONLY_CHOOSE,CAST(COALESCE(f.CHOOSE_MULTI,0) AS bit) AS CHOOSE_MULTI,
                    f.CHOOSE_PAGE,
-                   CAST(COALESCE(f.CHOOSE_ACTIVE1,0) AS bit) AS CHOOSE_ACTIVE1,f.CHOOSE_T_ID1,f.CHOOSE_T_DESC1,f.CHOOSE_M_IDX1,f.CHOOSE_RETURNVAL1,
-                   f.CHOOSE_FILTER1,
-                   CAST(COALESCE(f.CHOOSE_ACTIVE2,0) AS bit) AS CHOOSE_ACTIVE2,f.CHOOSE_T_ID2,f.CHOOSE_T_DESC2,f.CHOOSE_M_IDX2,f.CHOOSE_RETURNVAL2,
-                   f.CHOOSE_FILTER2,
-                   CAST(COALESCE(f.CHOOSE_ACTIVE3,0) AS bit) AS CHOOSE_ACTIVE3,f.CHOOSE_T_ID3,f.CHOOSE_T_DESC3,f.CHOOSE_M_IDX3,f.CHOOSE_RETURNVAL3,
-                   f.CHOOSE_FILTER3,
-                   CAST(COALESCE(f.CHOOSE_ACTIVE4,0) AS bit) AS CHOOSE_ACTIVE4,f.CHOOSE_T_ID4,f.CHOOSE_T_DESC4,f.CHOOSE_M_IDX4,f.CHOOSE_RETURNVAL4,
-                   f.CHOOSE_FILTER4,
                    CAST(COALESCE(f.IS_VIRTUAL,0) AS bit) AS IS_VIRTUAL,CAST(COALESCE(f.IS_COST,0) AS bit) AS IS_COST,
                    CAST(COALESCE(f.IS_SECRECY,0) AS bit) AS IS_SECRECY,CAST(COALESCE(f.IS_AUTOINC,0) AS bit) AS IS_AUTOINC,
                    CAST(COALESCE(f.CAN_COPY,1) AS bit) AS CAN_COPY,
@@ -852,22 +837,22 @@ public sealed class DocumentWorkbenchRepository(
         command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
         command.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
         command.Parameters.Add("@IncludeVirtual",SqlDbType.Bit).Value=includeVirtual;
+        // ADR-008：选择器数据源从 FIELD_DATASOURCE 独立读取（按字段聚合），不再嵌入 FIELDS 四组列
+        var choosersByField = await ReadChoosersByFieldAsync(connection, targetTable, token);
         await using var reader=await command.ExecuteReaderAsync(token);
         var rows=new List<FormFieldRow>();
-        while(await reader.ReadAsync(token)) rows.Add(ReadFormFieldRow(reader));
+        while(await reader.ReadAsync(token))
+        {
+            var row=ReadFormFieldRow(reader);
+            rows.Add(choosersByField.TryGetValue(row.Key, out var choosers) && choosers.Count>0
+                ? row with { Choosers = choosers }
+                : row);
+        }
         return rows;
     }
 
     private static FormFieldRow ReadFormFieldRow(SqlDataReader reader)
-    {
-        var choosers=new List<FormChooserRow>(4)
-        {
-            ReadChooser(reader,1),
-            ReadChooser(reader,2),
-            ReadChooser(reader,3),
-            ReadChooser(reader,4),
-        };
-        return new FormFieldRow(
+        => new(
             reader.GetString(reader.GetOrdinal("F_ID")).Trim(),
             reader.GetString(reader.GetOrdinal("F_DESC")).Trim(),
             reader.GetString(reader.GetOrdinal("F_TYPE")).Trim(),
@@ -882,7 +867,7 @@ public sealed class DocumentWorkbenchRepository(
             reader.GetBoolean(reader.GetOrdinal("ONLY_CHOOSE")),
             reader.GetBoolean(reader.GetOrdinal("CHOOSE_MULTI")),
             reader.GetNullableString("CHOOSE_PAGE"),
-            choosers,
+            [],
             reader.GetBoolean(reader.GetOrdinal("IS_VIRTUAL")),
             reader.GetBoolean(reader.GetOrdinal("IS_COST")),
             reader.GetBoolean(reader.GetOrdinal("IS_SECRECY")),
@@ -900,18 +885,50 @@ public sealed class DocumentWorkbenchRepository(
             reader.GetBoolean(reader.GetOrdinal("IS_PHYSICAL")),
             reader.GetNullableInt32("TYPE_PRECISION"),
             reader.GetNullableInt32("TYPE_SCALE"));
-    }
 
-    private static FormChooserRow ReadChooser(SqlDataReader reader,int index)
+    /// <summary>读取目标表全部字段的选择器数据源（FIELD_DATASOURCE，按 SERIAL_NO 排序）。</summary>
+    private static async Task<Dictionary<string, IReadOnlyList<FormChooserRow>>> ReadChoosersByFieldAsync(
+        SqlConnection connection,
+        string targetTable,
+        CancellationToken token)
     {
-        var table=reader.GetNullableString($"CHOOSE_T_ID{index}")?.Trim();
-        return new FormChooserRow(
-            reader.GetBoolean(reader.GetOrdinal($"CHOOSE_ACTIVE{index}")),
-            table,
-            reader.GetNullableString($"CHOOSE_T_DESC{index}")?.Trim(),
-            reader.GetNullableInt32($"CHOOSE_M_IDX{index}"),
-            reader.GetNullableString($"CHOOSE_RETURNVAL{index}"),
-            reader.GetNullableString($"CHOOSE_FILTER{index}")?.Trim());
+        const string sql = """
+            SELECT LTRIM(RTRIM(c.F_ID)) AS F_ID,c.SERIAL_NO,CAST(COALESCE(c.ACTIVE_TAG,0) AS bit) AS ACTIVE_TAG,
+                   LTRIM(RTRIM(ISNULL(c.SOURCE_T_ID,''))) AS SOURCE_T_ID,
+                   LTRIM(RTRIM(ISNULL(c.SOURCE_DESC,''))) AS SOURCE_DESC,c.SOURCE_M_IDX,
+                   c.RETURN_ITEMS,c.FILTER_STRUCT
+            FROM dbo.FIELD_DATASOURCE c WITH (NOLOCK)
+            WHERE c.T_ID=@TargetTable
+            ORDER BY c.SERIAL_NO;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@TargetTable", SqlDbType.VarChar, 100).Value = targetTable;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new Dictionary<string, IReadOnlyList<FormChooserRow>>(StringComparer.OrdinalIgnoreCase);
+        while (await reader.ReadAsync(token))
+        {
+            var field = reader.GetString(0).Trim();
+            var table = reader.GetString(3).Trim();
+            if (table.Length == 0)
+            {
+                continue;
+            }
+            var row = new FormChooserRow(
+                reader.GetBoolean(reader.GetOrdinal("ACTIVE_TAG")),
+                table,
+                reader.GetString(4),
+                reader.IsDBNull(reader.GetOrdinal("SOURCE_M_IDX")) ? null : reader.GetInt32(reader.GetOrdinal("SOURCE_M_IDX")),
+                reader.IsDBNull(reader.GetOrdinal("RETURN_ITEMS")) ? null : reader.GetString(reader.GetOrdinal("RETURN_ITEMS")),
+                reader.IsDBNull(reader.GetOrdinal("FILTER_STRUCT")) ? null : reader.GetString(reader.GetOrdinal("FILTER_STRUCT")),
+                reader.GetInt32(reader.GetOrdinal("SERIAL_NO")));
+            if (!result.TryGetValue(field, out var list))
+            {
+                list = new List<FormChooserRow>();
+                result[field] = list;
+            }
+            ((List<FormChooserRow>)list).Add(row);
+        }
+        return result;
     }
 
     #region 记录读取与保存（M2 核心写操作）
@@ -942,15 +959,15 @@ public sealed class DocumentWorkbenchRepository(
 
 
     /// <summary>
-    /// 选择器数据源（M4）：表名来自服务端表单定义（客户端仅传字段 key），
+    /// 选择器数据源（M4/ADR-008）：表名与来源定义来自服务端 FIELD_DATASOURCE（客户端仅传字段 key + serialNo），
     /// 显示列按权限过滤（成本/保密/禁止查看），DATA_FILTER 受限解析可应用时应用，
-    /// 无法安全解析时返回空列表（不泄漏数据）。
+    /// FILTER_STRUCT 经受控编译器参数化；任一无法安全编译即返回空列表（不泄漏数据，fail-closed）。
     /// </summary>
     public async Task<FormChooserResult?> GetChooserOptionsAsync(
         string table,
         string? keyword,
         string? filterField,
-        string? returnMapping,
+        IReadOnlyList<ChooserReturnItem>? returnItems,
         IReadOnlyDictionary<string, string>? masterValues,
         IReadOnlyDictionary<string, string>? detailValues,
         IReadOnlyList<UnifiedChooserCondition>? conditions,
@@ -958,7 +975,7 @@ public sealed class DocumentWorkbenchRepository(
         bool canViewSecrecy,
         IReadOnlySet<string> deniedFields,
         string? dataFilter,
-        string? chooseFilter,
+        ChooserFilterStruct? filterStruct,
         string? sortField,
         string? sortDirection,
         int page,
@@ -975,12 +992,10 @@ public sealed class DocumentWorkbenchRepository(
         if(all.Count==0)return null;
         var allowedFields=all.Select(row=>row.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var columnTypes=all.ToDictionary(row=>row.Key,row=>row.DataType,StringComparer.OrdinalIgnoreCase);
-        // {m.FIELD}/{d.FIELD} 旧系统模板：替换为当前主表/明细字段值（SQL 字面量转义后由解析器参数化，不拼接原始值）
-        var substitutedFilter = SubstituteTemplateValues(chooseFilter, masterValues, detailValues);
-        logger.LogInformation("选择器过滤 table={Table} filter={Filter} substituted={Substituted}", table, chooseFilter, substitutedFilter);
+        logger.LogInformation("选择器过滤 table={Table} filter={Filter}", table, filterStruct is null ? null : filterStruct.ToJson());
         // ADR-005 §7（C 档落地）：用户数据范围统一经 WorkbenchScopeFilter——
         // 模块 FILTER（仅源表=模块主表时）+ DATA_FILTER + EXEC_TAG，与列表/详情/打印同口径；
-        // 再与字段选择器自身过滤（CHOOSE_FILTER）组合；任一无法安全解析即返回空选项（fail-closed）。
+        // 再与字段选择器自身过滤（FILTER_STRUCT）组合；任一无法安全编译即返回空选项（fail-closed）。
         string? moduleFilter = null;
         string? moduleMasterTable = null;
         if (scopeModuleId is int scopeId)
@@ -1005,36 +1020,68 @@ public sealed class DocumentWorkbenchRepository(
         }
         var scopeParameters = new List<object>(baseParameters);
         string? scopePredicate = string.IsNullOrWhiteSpace(basePredicate) ? null : basePredicate;
-        var nextIndex = scopeParameters.Count;
         var joins = new List<string>();
-        if (!string.IsNullOrWhiteSpace(substitutedFilter))
+        if (filterStruct is null)
         {
-            if (!DataFilterParser.TryParseWithJoins(substitutedFilter, table, allowedFields, ChooserJoinTables, columnTypes,
-                    out var parsed, out var parsedParameters, out var parsedJoins, out var foreignColumns))
+            // ADR-008：FILTER_STRUCT=NULL 表示存量条件待重建（迁移清单内），fail-closed 空选项，
+            // 防止把「无条件」与「条件待重建」混为一谈导致数据范围放大
+            logger.LogWarning("选择器过滤条件待重建（FILTER_STRUCT 为空）table={Table}", table);
+            return new FormChooserResult([], [], 0);
+        }
+        if (filterStruct is not null && filterStruct.Items.Count > 0)
+        {
+            // ADR-008 P3：跨表 JOIN 白名单来自源表 TABLES.QUERY_RELATION（受控解析，进程内缓存）
+            var catalog = await ChooserJoinCatalog.GetAsync(connection, table, token);
+            if (catalog.Error is not null)
             {
-                logger.LogWarning("选择器过滤无法解析 table={Table} filter={Filter}", table, substitutedFilter);
+                logger.LogWarning("选择器跨表目录解析失败（fail-closed）table={Table} error={Error}", table, catalog.Error);
                 return new FormChooserResult([], [], 0);
             }
-            if (!await ValidateChooserJoinsAsync(connection, table, parsedJoins, foreignColumns, token))
+            var compiled = ChooserFilterCompiler.Compile(filterStruct, table, catalog.Aliases, columnTypes);
+            if (compiled is null)
             {
-                logger.LogWarning("选择器 JOIN 校验失败 table={Table} filter={Filter}", table, substitutedFilter);
+                logger.LogWarning("选择器过滤无法编译 table={Table} filter={Filter}", table, filterStruct.ToJson());
                 return new FormChooserResult([], [], 0);
             }
-            var renumbered = RenumberFilterParameters(parsed, parsedParameters, nextIndex);
+            // 裸字段必须在源表可解析字段集内（跨表字段走 JOIN 白名单 + 物理列校验）
+            var bareFields = new List<string>();
+            CollectBareFields(filterStruct, bareFields);
+            foreach (var field in bareFields)
+            {
+                if (!allowedFields.Contains(field))
+                {
+                    logger.LogWarning("选择器过滤字段不在白名单 table={Table} field={Field}", table, field);
+                    return new FormChooserResult([], [], 0);
+                }
+            }
+            if (!await ValidateChooserForeignColumnsAsync(connection, catalog, compiled.ForeignColumns, token))
+            {
+                logger.LogWarning("选择器 JOIN 校验失败 table={Table} filter={Filter}", table, filterStruct.ToJson());
+                return new FormChooserResult([], [], 0);
+            }
+            // 运行期模板绑定（{m.X}/{d.X}/{module}）→ SqlParameter；@cfN 重编号为 @df{offset+N} 与作用域参数连续
+            var boundParameters = compiled.Parameters
+                .Select(parameter => (object)ChooserFilterCompiler.BindRuntimeValue(parameter, masterValues, detailValues, scopeModuleId ?? 0))
+                .ToList();
+            var renumbered = RenumberChooserParameters(compiled.Predicate, scopeParameters.Count);
             scopePredicate = scopePredicate is null
-                ? renumbered.Predicate
-                : $"({scopePredicate}) AND ({renumbered.Predicate})";
-            scopeParameters.AddRange(renumbered.Parameters);
-            foreach (var joinTable in parsedJoins.Distinct(StringComparer.OrdinalIgnoreCase))
+                ? renumbered
+                : $"({scopePredicate}) AND ({renumbered})";
+            scopeParameters.AddRange(boundParameters);
+            if (compiled.Joins.Count > 0)
             {
-                var joinKeys = ChooserJoinTables[joinTable].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                var on = string.Join(" AND ", joinKeys.Select(key => $"dbo.[{joinTable}].[{key}] = dbo.[{table}].[{key}]"));
-                joins.Add($"LEFT JOIN dbo.[{joinTable}] ON {on}");
+                var joinClause = ChooserJoinCatalog.BuildJoinClause(catalog, compiled.Joins);
+                if (joinClause is null)
+                {
+                    logger.LogWarning("选择器 JOIN 重建失败（fail-closed）table={Table}", table);
+                    return new FormChooserResult([], [], 0);
+                }
+                joins.Add(joinClause);
             }
         }
         // 显示列：回填映射列优先（保证主键/名称可见），其余按 SYSQL_DEFAULT 顺序，
         // 保留审计/状态列（对齐旧系统 Chooser.aspx 网格列，如建立人/批核状态等）
-        var preferred = FormFieldSelector.ParseReturnMapping(returnMapping)
+        var preferred = (returnItems ?? [])
             .Select(pair => pair.Column.Trim())
             .Where(column => all.Any(row => row.Key.Equals(column,StringComparison.OrdinalIgnoreCase)))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -1059,74 +1106,156 @@ public sealed class DocumentWorkbenchRepository(
     }
 
     /// <summary>
-    /// 把旧系统 {m.FIELD} 主表值 / {d.FIELD} 明细值模板替换为 SQL 字面量（单引号转义，随后由解析器参数化绑定）。
-    /// 自带引号与不带引号两种都覆盖；值缺失时替换为空串（条件不命中，安全）。
+    /// form-chooser 端点权威数据源解析（ADR-008 §2/§7）：按字段 + serialNo 从 FIELD_DATASOURCE 读取
+    /// FILTER_STRUCT / RETURN_ITEMS（仅服务端持有；普通用户表单定义不下发过滤条件）。
+    /// serialNo 为空时取首个启用来源（向后兼容单来源调用）。
     /// </summary>
-    private static string? SubstituteTemplateValues(
-        string? filter,
-        IReadOnlyDictionary<string,string>? masterValues,
-        IReadOnlyDictionary<string,string>? detailValues)
+    public async Task<FieldChooserSource?> GetChooserSourceAsync(
+        string masterTable,
+        string? detailTable,
+        string fieldKey,
+        int? serialNo,
+        CancellationToken token)
     {
-        if(string.IsNullOrWhiteSpace(filter))return filter;
-        string Escape(IReadOnlyDictionary<string,string>? source, string field)
+        const string sql = """
+            SELECT c.SERIAL_NO,CAST(COALESCE(c.ACTIVE_TAG,0) AS bit) AS ACTIVE_TAG,
+                   LTRIM(RTRIM(ISNULL(c.SOURCE_T_ID,''))) AS SOURCE_T_ID,
+                   LTRIM(RTRIM(ISNULL(c.SOURCE_DESC,''))) AS SOURCE_DESC,c.SOURCE_M_IDX,
+                   c.RETURN_ITEMS,c.FILTER_STRUCT
+            FROM dbo.FIELD_DATASOURCE c WITH (NOLOCK)
+            WHERE LTRIM(RTRIM(c.F_ID))=@FieldKey
+              AND c.T_ID IN (SELECT value FROM STRING_SPLIT(@Tables, N','))
+            ORDER BY c.SERIAL_NO;
+            """;
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@FieldKey", SqlDbType.NVarChar, 100).Value = fieldKey.Trim();
+        var tables = detailTable is { Length: > 0 }
+            ? $"{masterTable},{detailTable}"
+            : masterTable;
+        command.Parameters.Add("@Tables", SqlDbType.NVarChar, 220).Value = tables;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
         {
-            if(source is not null && source.TryGetValue(field,out var value)) return value.Replace("'","''");
-            return "";
+            var active = reader.GetBoolean(reader.GetOrdinal("ACTIVE_TAG"));
+            var table = reader.GetString(reader.GetOrdinal("SOURCE_T_ID")).Trim();
+            var currentSerial = reader.GetInt32(reader.GetOrdinal("SERIAL_NO"));
+            if (serialNo is int requested && requested != currentSerial)
+            {
+                continue;
+            }
+            // 未启用来源一律不下发（无论是否指定 serialNo，防绕过 ACTIVE_TAG 门）
+            if (table.Length == 0 || !active)
+            {
+                continue;
+            }
+            return new FieldChooserSource(
+                active,
+                table,
+                reader.GetString(reader.GetOrdinal("SOURCE_DESC")),
+                reader.IsDBNull(reader.GetOrdinal("SOURCE_M_IDX")) ? null : reader.GetInt32(reader.GetOrdinal("SOURCE_M_IDX")),
+                reader.IsDBNull(reader.GetOrdinal("FILTER_STRUCT")) ? null : reader.GetString(reader.GetOrdinal("FILTER_STRUCT")),
+                reader.IsDBNull(reader.GetOrdinal("RETURN_ITEMS")) ? null : reader.GetString(reader.GetOrdinal("RETURN_ITEMS")),
+                currentSerial);
         }
-        if(masterValues is not null)
-        {
-            filter=MasterValuePlaceholderQuoted.Replace(filter,match=>"'"+Escape(masterValues,match.Groups[1].Value)+"'");
-            filter=MasterValuePlaceholder.Replace(filter,match=>"'"+Escape(masterValues,match.Groups[1].Value)+"'");
-        }
-        if(detailValues is not null)
-        {
-            filter=DetailValuePlaceholderQuoted.Replace(filter,match=>"'"+Escape(detailValues,match.Groups[1].Value)+"'");
-            filter=DetailValuePlaceholder.Replace(filter,match=>"'"+Escape(detailValues,match.Groups[1].Value)+"'");
-        }
-        return filter;
+        return null;
     }
 
-    /// <summary>校验选择器跨表 JOIN：关联键（查询表侧 + 外键表侧）与引用列均须物理存在，否则拒绝。</summary>
-    private static async Task<bool> ValidateChooserJoinsAsync(
+    /// <summary>
+    /// 校验选择器跨表引用列物理存在：引用别名经 catalog 映射到物理表后查 sys.columns，否则拒绝。
+    /// 源表自身的裸字段由 allowedFields（FIELDS 注册集）覆盖，不在此处。
+    /// </summary>
+    private static async Task<bool> ValidateChooserForeignColumnsAsync(
         SqlConnection connection,
-        string table,
-        IReadOnlyList<string> joinTables,
+        ChooserSourceJoins catalog,
         IReadOnlyList<(string Table,string Column)> foreignColumns,
         CancellationToken token)
     {
-        var checks=new List<(string Table,string Column)>();
-        foreach(var joinTable in joinTables.Distinct(StringComparer.OrdinalIgnoreCase))
+        if (foreignColumns.Count == 0)
         {
-            if(!ChooserJoinTables.TryGetValue(joinTable,out var joinKeySpec))return false;
-            var joinKeys=joinKeySpec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if(joinKeys.Length==0)return false;
-            foreach(var key in joinKeys)
-            {
-                checks.Add((table,key));
-                checks.Add((joinTable,key));
-            }
+            return true;
         }
-        checks.AddRange(foreignColumns);
-        foreach(var group in checks.GroupBy(item=>item.Table,StringComparer.OrdinalIgnoreCase))
+        var aliasToTable = catalog.Joins
+            .GroupBy(join => join.Alias, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Table, StringComparer.OrdinalIgnoreCase);
+        var checks = new List<(string Table, string Column)>();
+        foreach (var (alias, column) in foreignColumns)
         {
-            var columns=group.Select(item=>item.Column).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            if(!await WorkbenchSql.ColumnsExistAsync(connection,group.Key,columns,token))return false;
+            if (alias.Equals(catalog.SourceTable, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            if (!aliasToTable.TryGetValue(alias, out var physicalTable))
+            {
+                return false;
+            }
+            checks.Add((physicalTable, column));
+        }
+        foreach (var group in checks.GroupBy(item => item.Table, StringComparer.OrdinalIgnoreCase))
+        {
+            var columns = group.Select(item => item.Column).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            if (!await WorkbenchSql.ColumnsExistAsync(connection, group.Key, columns, token))
+            {
+                return false;
+            }
         }
         return true;
     }
 
-    /// <summary>把解析器生成的 @dfN 参数名重编号，避免多段过滤合并时参数名冲突。</summary>
-    private static (string Predicate,IReadOnlyList<object> Parameters) RenumberFilterParameters(
-        string predicate,IReadOnlyList<object> parameters,int startIndex)
+    /// <summary>递归收集主查询裸字段（无表前缀的列引用），供源表 FIELDS 白名单校验。</summary>
+    private static void CollectBareFields(ChooserFilterStruct filter, ICollection<string> fields)
     {
-        var names=Regex.Matches(predicate,"@df\\d+").Select(match=>match.Value)
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(name=>int.Parse(name[3..]))
-            .ToList();
-        if(names.Count==0)return (predicate,parameters);
-        var map=names.Select((name,index)=>(name,$"@df{startIndex+index}"))
-            .ToDictionary(item=>item.name,item=>item.Item2);
-        return (Regex.Replace(predicate,"@df\\d+",match=>map[match.Value]),parameters);
+        foreach (var item in filter.Items)
+        {
+            if (item.Group is not null)
+            {
+                CollectBareFields(item.Group, fields);
+            }
+            if (item.Subquery?.Filter is { Count: > 0 })
+            {
+                foreach (var subItem in item.Subquery.Filter)
+                {
+                    CollectBareFields(new ChooserFilterStruct("AND", [subItem]), fields);
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(item.Field) && !item.Field.Contains('.', StringComparison.Ordinal))
+            {
+                fields.Add(item.Field.Trim());
+            }
+            CollectBareExpression(item.Left, fields);
+            CollectBareExpression(item.Right, fields);
+        }
+    }
+
+    private static void CollectBareExpression(ChooserFilterExpression? expr, ICollection<string> fields)
+    {
+        if (expr is null)
+        {
+            return;
+        }
+        if (expr.Kind.Equals("column", StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrWhiteSpace(expr.Table)
+            && !string.IsNullOrWhiteSpace(expr.Column)
+            && !expr.Column.Contains('.', StringComparison.Ordinal))
+        {
+            fields.Add(expr.Column.Trim());
+        }
+        CollectBareExpression(expr.Left, fields);
+        CollectBareExpression(expr.Right, fields);
+    }
+
+    /// <summary>把编译器输出参数 @cfN 重编号为 @df{offset+N}，与作用域参数（@df0..offset-1）连续绑定。</summary>
+    private static string RenumberChooserParameters(string predicate, int offset)
+    {
+        if (offset == 0)
+        {
+            return predicate;
+        }
+        return System.Text.RegularExpressions.Regex.Replace(
+            predicate,
+            "@cf(\\d+)",
+            match => $"@df{offset + int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)}");
     }
 
     private static async Task<IReadOnlyList<FormChooserColumnRow>> ReadChooserColumnRows(SqlConnection connection,string table,CancellationToken token)

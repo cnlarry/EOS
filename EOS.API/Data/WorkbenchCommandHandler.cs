@@ -1025,8 +1025,9 @@ public sealed class WorkbenchCommandHandler(
             return;
         }
 
-        var mapping = FormFieldSelector.ParseReturnMapping(source.ReturnMapping);
-        var keyColumn = mapping.FirstOrDefault(pair => string.Equals(FormFieldSelector.NormalizeChooserTarget(pair.Target), main.Key, StringComparison.OrdinalIgnoreCase)).Column;
+        // ADR-008 §4：回填映射消费有序 RETURN_ITEMS JSON（旧逗号串解析退役）
+        var mapping = ChooserReturnItems.Parse(source.ReturnMapping) ?? [];
+        var keyColumn = mapping.FirstOrDefault(pair => string.Equals(FormFieldSelector.NormalizeChooserTarget(pair.Target), main.Key, StringComparison.OrdinalIgnoreCase))?.Column;
         if (string.IsNullOrWhiteSpace(keyColumn))
         {
             keyColumn = main.Key;
@@ -1039,7 +1040,7 @@ public sealed class WorkbenchCommandHandler(
         var selected = new List<(FormFieldDefinition Field, string Column)>();
         foreach (var companion in companions)
         {
-            var column = mapping.FirstOrDefault(pair => string.Equals(FormFieldSelector.NormalizeChooserTarget(pair.Target), companion.Key, StringComparison.OrdinalIgnoreCase)).Column;
+            var column = mapping.FirstOrDefault(pair => string.Equals(FormFieldSelector.NormalizeChooserTarget(pair.Target), companion.Key, StringComparison.OrdinalIgnoreCase))?.Column;
             if (string.IsNullOrWhiteSpace(column))
             {
                 column = companion.Key;

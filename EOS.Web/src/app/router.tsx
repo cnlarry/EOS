@@ -6,6 +6,7 @@ import {
   DashboardPage,
   DetailQueryPage,
   FieldAuditPage,
+  FieldEditorRoute,
   BomExpandPage,
   CarSummaryPage,
   ImportPage,
@@ -42,7 +43,11 @@ export const router = createBrowserRouter([
         { index: true, element: <Navigate to="/dashboard" replace /> },
         { path: 'dashboard', element: withSuspense(<DashboardPage />) },
         { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },
-        { element: <RequirePermission permission="legacy-module.2302.read" />, children: [{ path: 'admin/tables', element: withSuspense(<TableAdminPage />) }, { path: 'admin/tables/:tableId/fields', element: withSuspense(<FieldAdminRoute />) }] },
+        { element: <RequirePermission permission="legacy-module.2302.read" />, children: [
+          { path: 'admin/tables', element: withSuspense(<TableAdminPage />) },
+          { path: 'admin/tables/:tableId/fields', element: withSuspense(<FieldAdminRoute />) },
+          { path: 'admin/fields/:tableId/:fieldId', element: withSuspense(<FieldEditorRoute />) },
+        ] },
         { element: <RequirePermission permission="legacy-module.2301.read" />, children: [{ path: 'admin/menus', element: withSuspense(<MenuAdminPage />) }] },
         { element: <RequirePermission permission="legacy-module.2305.read" />, children: [
           { path: 'admin/groups', element: withSuspense(<UserGroupAdminPage />) },

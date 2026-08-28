@@ -101,6 +101,22 @@ public sealed class FieldAdminController(
         return metadata is null ? NotFound() : Ok(metadata);
     }
 
+    /// <summary>表物理列（sys.columns，含类型；字段设置数据来源/回填构建器下拉用，权限门 CanBrowse 2302）。</summary>
+    [HttpGet("tables/{table}/columns")]
+    public async Task<IActionResult> TableColumns(string table, CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        return Ok(await repository.GetTableColumnsAsync(table, token));
+    }
+
+    /// <summary>字段变更历史（AUDIT_EVENT/FIELD_CHANGE，只读；权限门 CanBrowse 2302）。</summary>
+    [HttpGet("fields/{table}/{field}/history")]
+    public async Task<IActionResult> FieldHistory(string table, string field, CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        return Ok(await repository.GetFieldHistoryAsync(table, field.Trim(), token));
+    }
+
     [HttpPost("fields")]
     public async Task<IActionResult> Create(CreateFieldAdminRequest request, CancellationToken token)
     {
