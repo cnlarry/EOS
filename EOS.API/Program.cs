@@ -193,6 +193,7 @@ builder.Services.AddScoped<ReportRepository>();
 builder.Services.AddScoped<PrintSettingsRepository>();
 builder.Services.AddScoped<PrintAdminRepository>();
 builder.Services.AddScoped<ReportAdminRepository>();
+builder.Services.AddScoped<ReportConditionsRepository>();
 builder.Services.AddScoped<ReportPdfService>();
 builder.Services.AddScoped<DocumentPdfService>();
 builder.Services.AddScoped<SearchCenterRepository>();
