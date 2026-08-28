@@ -17,13 +17,13 @@ interface ConditionRow {
   description: string | null; defaultValue: string | null; parameterName: string | null; remark: string | null
 }
 
-/** 条件类型（旧 RptList2 语义）；类型 5 现代报表查看器暂不支持渲染，维护数据时明确提示。 */
+/** 条件类型（旧 RptList2 语义）。 */
 const CONDITION_TYPES = [
   { value: 1, label: '范围' },
   { value: 2, label: '固定单选' },
   { value: 3, label: '从数据表单选' },
   { value: 4, label: '固定多选' },
-  { value: 5, label: '从数据表多选（查看器暂不支持）' },
+  { value: 5, label: '从数据表多选' },
 ]
 
 const typeLabel = (type: number) => CONDITION_TYPES.find((item) => item.value === type)?.label ?? String(type)

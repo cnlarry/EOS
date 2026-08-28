@@ -28,6 +28,43 @@ public class ReportConditionValueTests
         Assert.True(PdfLayout.IsSubtotalColumn(new ReportColumn("WEIGHT", "净重", "float"), ["PRO_NO"]));
     }
 
+    private static readonly HashSet<string> Allowed = new(StringComparer.Ordinal) { "W1", "W2", "W3" };
+
+    [Theory]
+    [InlineData("W1,W3", "W1|W3")]
+    [InlineData(" W1 , W2 ,", "W1|W2")]
+    [InlineData("W2", "W2")]
+    public void MultiSelectValues_FilterAndKeepOrder(string? raw, string expected)
+    {
+        var chosen = ReportRepository.FilterMultiSelectValues(raw, Allowed);
+        Assert.Equal(expected.Split('|'), chosen);
+    }
+
+    [Theory]
+    [InlineData("W1,HACK,W9")]   // 合法值与坏值混合：坏值丢弃
+    [InlineData("HACK")]         // 纯坏值：全部丢弃
+    public void MultiSelectValues_DropValuesOutOfWhitelist(string raw)
+    {
+        var chosen = ReportRepository.FilterMultiSelectValues(raw, Allowed);
+        Assert.All(chosen, item => Assert.Contains(item, Allowed));
+        Assert.DoesNotContain("HACK", chosen);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(",,,")]
+    public void MultiSelectValues_EmptyRaw_YieldsEmpty(string? raw)
+    {
+        Assert.Empty(ReportRepository.FilterMultiSelectValues(raw, Allowed));
+    }
+
+    [Fact]
+    public void MultiSelectValues_Deduplicate()
+    {
+        Assert.Equal(["W1", "W2"], ReportRepository.FilterMultiSelectValues("W1,W2,W1", Allowed));
+    }
+
     [Fact]
     public void SubtotalColumn_ExcludesIdentifiersAndDates()
     {
