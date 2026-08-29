@@ -1,4 +1,4 @@
-import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconEdit, IconListDetails, IconPlus, IconTrash } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import { useCallback, useMemo, useState } from 'react'
@@ -121,17 +121,17 @@ export function TableAdminPage() {
       header: '操作',
       enableSorting: false,
       enableHiding: false,
-      // 操作列固定宽度：容纳三个文字按钮，不随内容/拖拽变化
-      meta: { className: 'text-end', frozenRight: true, truncate: false, minWidth: 184, minWidthFloor: true, resizable: false },
+      // 操作列对齐 2305/2306/字段维护：ghost + 14px 图标 + 文字，右对齐冻结，不随内容/拖拽变化
+      meta: { className: 'text-nowrap text-end', frozenRight: true, truncate: false, minWidth: 220, minWidthFloor: true, resizable: false },
       cell: ({ row }) => (
         <div className="d-flex gap-1 justify-content-end">
-          <Button size="sm" className="erp-table-action" onClick={(event) => { event.stopPropagation(); navigate(`/admin/tables/${encodeURIComponent(row.original.tableId)}/fields`) }}>管理字段</Button>
-          <Button size="sm" className="erp-table-action" icon={<IconEdit size={16} />} onClick={(event) => { event.stopPropagation(); setEditor({ mode: 'edit', tableId: row.original.tableId }) }}>编辑</Button>
+          <Button size="sm" variant="ghost" icon={<IconListDetails size={14} />} title="管理字段" onClick={(event) => { event.stopPropagation(); navigate(`/admin/tables/${encodeURIComponent(row.original.tableId)}/fields`) }}>管理字段</Button>
+          <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} title="编辑" onClick={(event) => { event.stopPropagation(); setEditor({ mode: 'edit', tableId: row.original.tableId }) }}>编辑</Button>
           <Button
             size="sm"
-            className="erp-table-action"
-            variant="danger"
-            icon={<IconTrash size={16} />}
+            variant="ghost"
+            icon={<IconTrash size={14} />}
+            title="删除"
             loading={remove.isPending && remove.variables === row.original.tableId}
             disabled={remove.isPending}
             onClick={(event) => { event.stopPropagation(); confirmDelete(row.original.tableId, row.original.description) }}
