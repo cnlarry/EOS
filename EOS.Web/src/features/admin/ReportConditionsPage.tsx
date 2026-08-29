@@ -1,7 +1,7 @@
 import { IconEdit, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ErrorState, EmptyState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
@@ -13,6 +13,7 @@ import { ApiError } from '../../types/api'
 
 interface ModuleOption { moduleId: number; description: string }
 interface ConditionRow {
+  moduleId: number; moduleDescription: string | null
   serialNo: number; type: number; field: string | null; expression: string | null;
   description: string | null; defaultValue: string | null; parameterName: string | null; remark: string | null
 }
@@ -78,14 +79,16 @@ interface ConditionEditorModalProps {
   open: boolean
   mode: 'new' | 'edit'
   row?: ConditionRow
-  moduleId: number
-  nextSerial: number
+  modules: ModuleOption[]
+  /** 全量条件行：新增模式按所选模块推算下一个序号。 */
+  allRows: ConditionRow[]
   onClose: () => void
   onSaved: () => void
 }
 
-/** 过滤条件行（SYSQR_DEFAULT）新增/编辑弹窗：按条件类型给出类型化编辑器。 */
-function ConditionEditorModal({ open, mode, row, moduleId, nextSerial, onClose, onSaved }: ConditionEditorModalProps) {
+/** 过滤条件行（SYSQR_DEFAULT）新增/编辑弹窗：按条件类型给出类型化编辑器；新增时在弹窗内选模块（2026-08-29 单表改版）。 */
+function ConditionEditorModal({ open, mode, row, modules, allRows, onClose, onSaved }: ConditionEditorModalProps) {
+  const [moduleId, setModuleId] = useState(0)
   const [serialNo, setSerialNo] = useState('')
   const [type, setType] = useState(1)
   const [field, setField] = useState('')
@@ -99,21 +102,30 @@ function ConditionEditorModal({ open, mode, row, moduleId, nextSerial, onClose, 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const nextType = row?.type ?? 1
-    setSerialNo(mode === 'edit' ? String(row?.serialNo ?? '') : String(nextSerial))
-    setType(nextType)
-    setField(row?.field ?? '')
-    setDescription(row?.description ?? '')
-    setOptionPairs(parseOptionPairs(row?.expression ?? null))
-    setExpressionText(nextType === 3 || nextType === 5 ? row?.expression ?? '' : '')
-    setDefaultValue(row?.defaultValue ?? '')
-    setParameterName(row?.parameterName ?? '')
-    setRemark(row?.remark ?? '')
-    setError(null)
-    setFieldChooserOpen(false)
-  }, [open, mode, row, nextSerial])
+  const effectiveModuleId = mode === 'edit' ? row?.moduleId ?? 0 : moduleId
+  const nextSerialFor = (targetModuleId: number) =>
+    allRows.filter((item) => item.moduleId === targetModuleId).reduce((max, item) => Math.max(max, item.serialNo), 0) + 1
+
+  // 弹窗每次打开时重建草稿（编辑回填 / 新增清空并选首个模块）
+  const [lastOpen, setLastOpen] = useState<boolean | null>(null)
+  if (open !== lastOpen) {
+    setLastOpen(open)
+    if (open) {
+      const nextType = row?.type ?? 1
+      setModuleId(row?.moduleId ?? 0)
+      setSerialNo(mode === 'edit' ? String(row?.serialNo ?? '') : '')
+      setType(nextType)
+      setField(row?.field ?? '')
+      setDescription(row?.description ?? '')
+      setOptionPairs(parseOptionPairs(row?.expression ?? null))
+      setExpressionText(nextType === 3 || nextType === 5 ? row?.expression ?? '' : '')
+      setDefaultValue(row?.defaultValue ?? '')
+      setParameterName(row?.parameterName ?? '')
+      setRemark(row?.remark ?? '')
+      setError(null)
+      setFieldChooserOpen(false)
+    }
+  }
 
   if (!open) return null
 
@@ -129,6 +141,7 @@ function ConditionEditorModal({ open, mode, row, moduleId, nextSerial, onClose, 
   }
 
   const submit = async () => {
+    if (mode === 'new' && !moduleId) { setError('请选择模块。'); return }
     const serial = Number(serialNo)
     if (!Number.isInteger(serial) || serial < 1) { setError('条件序号无效（正整数）。'); return }
     if (!field.trim()) { setError('请选择查询字段。'); return }
@@ -147,9 +160,9 @@ function ConditionEditorModal({ open, mode, row, moduleId, nextSerial, onClose, 
         parameterName: String(parameterName ?? ''), remark: String(remark ?? ''),
       }
       if (mode === 'edit') {
-        await apiClient.put(`/report-conditions/conditions/${row?.serialNo}?moduleId=${moduleId}`, body)
+        await apiClient.put(`/report-conditions/conditions/${row?.serialNo}?moduleId=${effectiveModuleId}`, body)
       } else {
-        await apiClient.post(`/report-conditions/conditions?moduleId=${moduleId}`, body)
+        await apiClient.post(`/report-conditions/conditions?moduleId=${effectiveModuleId}`, body)
       }
       onSaved()
     } catch (reason) {
@@ -159,17 +172,45 @@ function ConditionEditorModal({ open, mode, row, moduleId, nextSerial, onClose, 
     }
   }
 
+  const moduleDescription = modules.find((item) => item.moduleId === effectiveModuleId)?.description
+  const editorModuleTitle = mode === 'edit'
+    ? `模块 ${effectiveModuleId}${moduleDescription ? ` ${moduleDescription}` : ''}`
+    : ''
+
   return (
     <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
       <div className="modal-dialog modal-dialog-centered modal-lg">
         <div className="modal-content">
           <div className="modal-header">
-            <h2 className="modal-title">{mode === 'new' ? `新增过滤条件：模块 ${moduleId}` : `编辑过滤条件：模块 ${moduleId}`}</h2>
+            <h2 className="modal-title">{mode === 'new' ? '新增过滤条件' : `编辑过滤条件：${editorModuleTitle}`}</h2>
             <button className="btn-close" aria-label="关闭" onClick={onClose} />
           </div>
           <div className="modal-body">
             {error && <div className="alert alert-danger py-2 mb-3" role="alert">{error}</div>}
             <div className="row g-3">
+              <div className="col-md-6">
+                <label className="form-label" htmlFor="condition-module">模块</label>
+                {mode === 'edit' ? (
+                  <input id="condition-module" className="form-control" readOnly value={`模块 ${effectiveModuleId}${moduleDescription ? ` ${moduleDescription}` : ''}`} />
+                ) : (
+                  <select
+                    id="condition-module"
+                    className="form-select"
+                    value={moduleId || ''}
+                    onChange={(event) => {
+                      const next = Number(event.target.value) || 0
+                      setModuleId(next)
+                      setField('')
+                      setSerialNo(next ? String(nextSerialFor(next)) : '')
+                    }}
+                  >
+                    <option value="">请选择模块…</option>
+                    {modules.map((item) => (
+                      <option key={item.moduleId} value={item.moduleId}>{item.moduleId} {item.description}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
               <div className="col-md-3">
                 <label className="form-label" htmlFor="condition-serial">序号</label>
                 <input id="condition-serial" className="form-control" type="number" value={serialNo} disabled={mode === 'edit'} onChange={(event) => setSerialNo(event.target.value)} />
@@ -185,7 +226,7 @@ function ConditionEditorModal({ open, mode, row, moduleId, nextSerial, onClose, 
                 <label className="form-label" htmlFor="condition-field">查询字段（主表.列）</label>
                 <div className="d-flex gap-1">
                   <input id="condition-field" className="form-control font-monospace" readOnly value={field} />
-                  <Button size="sm" onClick={() => setFieldChooserOpen(true)}>选择字段…</Button>
+                  <Button size="sm" disabled={mode === 'new' && !moduleId} onClick={() => setFieldChooserOpen(true)}>选择字段…</Button>
                 </div>
               </div>
               <div className="col-md-6">
@@ -249,11 +290,11 @@ function ConditionEditorModal({ open, mode, row, moduleId, nextSerial, onClose, 
           </div>
         </div>
       </div>
-      {fieldChooserOpen && (
+      {fieldChooserOpen && effectiveModuleId > 0 && (
         <UnifiedChooser
           open
           title="选择查询字段"
-          source={{ kind: 'sourceKey', key: 'report-conditions.fields', args: { moduleId: String(moduleId) } }}
+          source={{ kind: 'sourceKey', key: 'report-conditions.fields', args: { moduleId: String(effectiveModuleId) } }}
           mode="single"
           getRowId={(chooserRow) => `${String(chooserRow.T_ID)}.${String(chooserRow.F_ID)}`}
           onPick={(rows) => {
@@ -271,78 +312,47 @@ function ConditionEditorModal({ open, mode, row, moduleId, nextSerial, onClose, 
 }
 
 /**
- * 报表过滤条件设置（2205 定制页，2026-08-28 自统一表单白名单归类）：
- * SYSQR_DA + SYSQR_DEFAULT 主子表——上方模块列表、下方该模块的条件行；
+ * 报表过滤条件设置（2205 定制页，2026-08-28 自统一表单白名单归类；2026-08-29 用户拍板改单表）：
+ * SYSQR_DEFAULT 条件行单张大表（模块编号/模块名称列内聚），上方模块导航取消——
+ * 模块在新增弹窗内选择，SYSQR_DA 主档行由保存路径自动补建；
  * 条件编辑按 F_TYPE 类型化（范围/固定单选/固定多选选项 DSL、数据表单选/多选数据源语句），
  * 与报表运行时解析规则镜像，坏配置保存时拦截。
  */
 export function ReportConditionsPage() {
   const [keyword, setKeyword] = useState('')
-  const [moduleSelection, setModuleSelection] = useState<RowSelectionState>({})
-  const [conditionSelection, setConditionSelection] = useState<RowSelectionState>({})
-  const [selectedModule, setSelectedModule] = useState(0)
+  const [selection, setSelection] = useState<RowSelectionState>({})
   const [editor, setEditor] = useState<ConditionEditorState | null>(null)
 
   const modules = useQuery({ queryKey: ['report-conditions', 'modules'], queryFn: () => apiClient.get<ModuleOption[]>('/report-conditions/modules') })
   const conditions = useQuery({
-    queryKey: ['report-conditions', 'conditions', selectedModule],
-    queryFn: () => apiClient.get<ConditionRow[]>(`/report-conditions/conditions?moduleId=${selectedModule}`),
-    enabled: selectedModule > 0,
+    queryKey: ['report-conditions', 'conditions-all'],
+    queryFn: () => apiClient.get<ConditionRow[]>('/report-conditions/conditions/all'),
   })
 
-  const moduleRows = modules.data ?? []
-  const conditionRows = conditions.data ?? []
+  const allRows = useMemo(() => conditions.data ?? [], [conditions.data])
 
-  const filteredModules = useMemo(() => {
-    const all = modules.data ?? []
+  const filteredRows = useMemo(() => {
     const text = keyword.trim().toLowerCase()
-    if (!text) return all
-    return all.filter((row) =>
+    if (!text) return allRows
+    return allRows.filter((row) =>
       String(row.moduleId).includes(text)
-      || row.description.toLowerCase().includes(text))
-  }, [modules.data, keyword])
-
-  // 数据加载后无有效选中时默认选中第一条（刷新/过滤变化时同样自动回落）
-  useEffect(() => {
-    if (!modules.data) return
-    setModuleSelection((current) => {
-      const valid = Object.keys(current).filter((key) => current[key] && modules.data!.some((item) => String(item.moduleId) === key))
-      if (valid.length > 0) return current
-      const first = modules.data![0]?.moduleId ?? 0
-      setSelectedModule(first)
-      setConditionSelection({})
-      setEditor(null)
-      return first ? { [first]: true } : {}
-    })
-  }, [modules.data])
+      || (row.moduleDescription ?? '').toLowerCase().includes(text)
+      || (row.field ?? '').toLowerCase().includes(text)
+      || (row.description ?? '').toLowerCase().includes(text))
+  }, [allRows, keyword])
 
   const deleteCondition = useCallback(async (row: ConditionRow) => {
-    if (!window.confirm(`确定删除条件「${row.description ?? row.field ?? row.serialNo}」？保存过该模块条件值的用户记忆将一并清除。`)) return
+    if (!window.confirm(`确定删除模块 ${row.moduleId} 的条件「${row.description ?? row.field ?? row.serialNo}」？保存过该模块条件值的用户记忆将一并清除。`)) return
     try {
-      await apiClient.delete(`/report-conditions/conditions/${row.serialNo}?moduleId=${selectedModule}`)
+      await apiClient.delete(`/report-conditions/conditions/${row.serialNo}?moduleId=${row.moduleId}`)
       await conditions.refetch()
     } catch { /* 删除失败静默：保持列表现场，错误由下次刷新体现 */ }
-  }, [selectedModule, conditions])
-
-  const handleModuleSelectionChange = (next: RowSelectionState) => {
-    setModuleSelection(next)
-    const keys = Object.keys(next).filter((key) => next[key])
-    const nextModule = Number(keys[0] ?? 0)
-    if (nextModule !== selectedModule) {
-      setSelectedModule(nextModule)
-      setConditionSelection({})
-      setEditor(null)
-    }
-  }
-
-  const moduleColumns = useMemo<ColumnDef<ModuleOption, unknown>[]>(() => [
-    selectColumn<ModuleOption>(),
-    { accessorKey: 'moduleId', header: '模块编号', cell: (info) => <span className="font-monospace fw-semibold">{String(info.getValue() ?? '')}</span> },
-    { accessorKey: 'description', header: '模块名称', cell: (info) => (info.getValue() == null || info.getValue() === '' ? '—' : String(info.getValue())) },
-  ], [])
+  }, [conditions])
 
   const conditionColumns = useMemo<ColumnDef<ConditionRow, unknown>[]>(() => [
     selectColumn<ConditionRow>(),
+    { accessorKey: 'moduleId', header: '模块编号', cell: (info) => <span className="font-monospace fw-semibold">{String(info.getValue() ?? '')}</span> },
+    { accessorKey: 'moduleDescription', header: '模块名称', cell: (info) => (info.getValue() == null || info.getValue() === '' ? '—' : String(info.getValue())) },
     { accessorKey: 'serialNo', header: '序号' },
     { accessorKey: 'description', header: '条件描述', cell: (info) => (info.getValue() == null || info.getValue() === '' ? '—' : String(info.getValue())) },
     { accessorKey: 'field', header: '查询字段', cell: (info) => <span className="font-monospace">{info.getValue() == null || info.getValue() === '' ? '—' : String(info.getValue())}</span> },
@@ -365,67 +375,41 @@ export function ReportConditionsPage() {
     },
   ], [deleteCondition])
 
-  if (modules.isPending) return <LoadingState label="正在加载模块…" />
+  if (modules.isPending || conditions.isPending) return <LoadingState label="正在加载过滤条件…" />
   if (modules.isError) return <ErrorState message={modules.error instanceof ApiError ? modules.error.body.message : '加载失败。'} onRetry={() => void modules.refetch()} />
-
-  const selectedDescription = moduleRows.find((item) => item.moduleId === selectedModule)?.description
-  const conditionsError = conditions.error instanceof ApiError ? conditions.error.body.message : '加载失败。'
-  const nextSerial = conditionRows.reduce((max, row) => Math.max(max, row.serialNo), 0) + 1
+  if (conditions.isError) return <ErrorState message={conditions.error instanceof ApiError ? conditions.error.body.message : '加载失败。'} onRetry={() => void conditions.refetch()} />
 
   return (
-    <div className="erp-workbench-page">
+    <div className="erp-full-list-page">
       <ErpListCard
-        ariaLabel="报表过滤条件模块查询"
-        search={<ErpSearchBox value={keyword} onChange={setKeyword} debounceMs={300} placeholder="搜索模块编号/名称" ariaLabel="搜索模块" />}
-        actions={<Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />} onClick={() => void modules.refetch()}>刷新</Button>}
-        header={modules.data ? <div className="erp-list-header text-secondary small px-3 pt-2">共 {moduleRows.length} 个可维护模块{keyword.trim() ? `，筛选后 ${filteredModules.length} 个` : ''}；点击行选中模块，下方维护其报表过滤条件。</div> : undefined}
+        ariaLabel="报表过滤条件查询"
+        search={<ErpSearchBox value={keyword} onChange={setKeyword} debounceMs={300} placeholder="搜索模块编号/名称/字段/描述" ariaLabel="搜索过滤条件" />}
+        actions={<div className="d-flex gap-2 align-items-center">
+          <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />} onClick={() => void conditions.refetch()}>刷新</Button>
+          <Button size="sm" variant="primary" className="erp-command-btn" icon={<IconPlus size={16} />} onClick={() => setEditor({ mode: 'new' })}>新增条件</Button>
+        </div>}
+        header={conditions.data ? <div className="erp-list-header text-secondary small px-3 pt-2">共 {allRows.length} 条过滤条件{keyword.trim() ? `，筛选后 ${filteredRows.length} 条` : ''}（覆盖 {new Set(allRows.map((row) => row.moduleId)).size} 个模块）；点击「新增条件」在弹窗内选择模块建立条件。</div> : undefined}
       >
-        <div className="erp-master-table-region">
-          <ErpTable
-            columns={moduleColumns}
-            data={filteredModules}
-            getRowId={(row: ModuleOption) => String(row.moduleId)}
-            empty={<EmptyState title={keyword.trim() ? '未找到匹配模块' : '暂无可维护模块'} description={keyword.trim() ? '换一个关键词试试。' : '没有可维护报表过滤条件的模块。'} />}
-            resizable
-            storageKey="report-conditions-modules"
-            clientSideSorting
-            rowClickSingleSelect
-            rowSelection={moduleSelection}
-            onRowSelectionChange={handleModuleSelectionChange}
-          />
-        </div>
+        <ErpTable
+          columns={conditionColumns}
+          data={filteredRows}
+          getRowId={(row: ConditionRow) => `${row.moduleId}-${row.serialNo}`}
+          empty={<EmptyState title={keyword.trim() ? '未找到匹配条件' : '暂无过滤条件'} description={keyword.trim() ? '换一个关键词试试。' : '点击「新增条件」建立第一条过滤条件。'} />}
+          resizable
+          storageKey="report-conditions-rows"
+          clientSideSorting
+          rowClickSingleSelect
+          rowSelection={selection}
+          onRowSelectionChange={setSelection}
+        />
       </ErpListCard>
-      <section className="card erp-detail-card">
-        <div className="card-header erp-detail-toolbar d-flex align-items-center gap-2">
-          <span className="small fw-semibold">{selectedModule ? `过滤条件（SYSQR_DEFAULT）——模块：${selectedModule}${selectedDescription ? ` ${selectedDescription}` : ''}` : '过滤条件（SYSQR_DEFAULT）'}</span>
-          <div className="ms-auto">
-            <Button size="sm" variant="primary" className="erp-command-btn" icon={<IconPlus size={16} />} disabled={!selectedModule} onClick={() => setEditor({ mode: 'new' })}>新增条件</Button>
-          </div>
-        </div>
-        {selectedModule && conditions.isPending ? <LoadingState label="正在加载过滤条件…" /> : conditions.isError ? (
-          <ErrorState message={conditionsError} onRetry={() => void conditions.refetch()} />
-        ) : (
-          <ErpTable
-            columns={conditionColumns}
-            data={conditionRows}
-            getRowId={(row: ConditionRow) => String(row.serialNo)}
-            empty={<EmptyState title={selectedModule ? '暂无过滤条件' : '未选择模块'} description={selectedModule ? '点击「新增条件」建立第一条过滤条件。' : '请先选择上方模块，再维护其报表过滤条件。'} />}
-            resizable
-            storageKey="report-conditions-rows"
-            clientSideSorting
-            rowClickSingleSelect
-            rowSelection={conditionSelection}
-            onRowSelectionChange={setConditionSelection}
-          />
-        )}
-      </section>
-      {editor && selectedModule > 0 && (
+      {editor && (
         <ConditionEditorModal
           open
           mode={editor.mode}
           row={editor.mode === 'edit' ? editor.row : undefined}
-          moduleId={selectedModule}
-          nextSerial={nextSerial}
+          modules={modules.data ?? []}
+          allRows={allRows}
           onClose={() => setEditor(null)}
           onSaved={() => { setEditor(null); void conditions.refetch() }}
         />

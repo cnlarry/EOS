@@ -40,6 +40,14 @@ public sealed class ReportConditionsController(
         return Ok(await repository.ListConditionsAsync(moduleId, token));
     }
 
+    /// <summary>全部条件行（含模块编号/名称，2026-08-29 单表改版——孤儿模块行保留展示）。</summary>
+    [HttpGet("conditions/all")]
+    public async Task<IActionResult> AllConditions(CancellationToken token)
+    {
+        if (!await CanBrowseAsync(token)) return Forbid();
+        return Ok(await repository.ListAllConditionsAsync(token));
+    }
+
     [HttpPost("conditions")]
     public async Task<IActionResult> CreateCondition([FromQuery] int moduleId, [FromBody] ReportConditionDraft draft, CancellationToken token)
     {
