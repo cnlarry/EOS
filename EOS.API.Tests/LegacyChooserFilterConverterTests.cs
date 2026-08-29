@@ -30,6 +30,45 @@ public sealed class LegacyChooserFilterConverterTests
     }
 
     [Fact]
+    public void Convert_SelfTableQualifiedReference_Tier1()
+    {
+        // 回归（2026-08-29）：018 离线管线把「源表名前缀自引用」误判为跨表死配置（148 处 OWNER 过滤挂起）
+        var result = LegacyChooserFilterConverter.Convert("ISNULL(SYSDL.ACTIVE_TAG,0) = 1", "SYSDL");
+        Assert.Equal(1, result.Tier);
+        Assert.NotNull(result.Struct);
+        Assert.Equal("SYSDL.ACTIVE_TAG", result.Struct!.Items[0].Field);
+        Assert.Equal("EQ", result.Struct.Items[0].Operator);
+        Assert.Equal("ZERO", result.Struct.Items[0].NullSafe);
+        Assert.Equal("1", result.Struct.Items[0].Value);
+
+        var compile = ChooserFilterCompiler.Compile(result.Struct, "SYSDL", null, null);
+        Assert.NotNull(compile);
+        Assert.Contains("ISNULL([SYSDL].[ACTIVE_TAG],0)", compile!.Predicate);
+    }
+
+    [Fact]
+    public void Convert_BareColumnWithModuleTemplate_Tier1()
+    {
+        var result = LegacyChooserFilterConverter.Convert("B_M_IDX={module}", "BILLKIND");
+        Assert.NotNull(result.Struct);
+        var compile = ChooserFilterCompiler.Compile(result.Struct!, "BILLKIND", null, null);
+        Assert.NotNull(compile);
+        Assert.Contains("[BILLKIND].[B_M_IDX]", compile!.Predicate);
+    }
+
+    [Fact]
+    public void Convert_CrossTableWithJoinClosure_Compiles()
+    {
+        var result = LegacyChooserFilterConverter.Convert(
+            "ISNULL(COP_SEND_M.CONFIRM_TAG,0)=1 AND COP_SEND_M.CLIENT_ID='{m.CLIENT_ID}' AND ISNULL(COP_SEND_D.FINISHED_TAG,0)=0",
+            "COP_SEND_D", Opts("COP_SEND_M"));
+        Assert.NotNull(result.Struct);
+        var compile = ChooserFilterCompiler.Compile(result.Struct!, "COP_SEND_D", Opts("COP_SEND_M").JoinAliases, null);
+        Assert.NotNull(compile);
+        Assert.Contains("COP_SEND_M", compile!.Joins);
+    }
+
+    [Fact]
     public void Convert_TemplateAndQuotedValue_Tier1()
     {
         var result = LegacyChooserFilterConverter.Convert(
