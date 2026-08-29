@@ -24,15 +24,17 @@ export interface FieldEditorModalProps {
   endpoints: FieldEditorEndpoints
   onClose: () => void
   onSaved: () => void
+  /** 透传 FieldEditorForm 的保存状态（含 dirty）。 */
+  onStateChange?: (state: { canSave: boolean; saving: boolean; dirty: boolean }) => void
 }
 
 /**
  * 字段设置弹窗（旧承载形态，2026-08-28 起新入口统一走全尺寸页面 FieldEditorPage）。
  * 表单主体与页面共用 FieldEditorForm，避免双份逻辑漂移。
  */
-export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoints, onClose, onSaved }: FieldEditorModalProps) {
+export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoints, onClose, onSaved, onStateChange }: FieldEditorModalProps) {
   const actionRef = useRef<{ save: () => void } | null>(null)
-  const [, setSaveState] = useState({ canSave: false, saving: false })
+  const [, setSaveState] = useState({ canSave: false, saving: false, dirty: false })
   return open ? (
     <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
       <div className="modal-dialog modal-lg modal-dialog-centered erp-field-settings-dialog">
@@ -50,7 +52,7 @@ export function FieldEditorModal({ open, mode, tableId, fieldKey, title, endpoin
               onCancel={onClose}
               onSaved={onSaved}
               actionRef={actionRef}
-              onStateChange={setSaveState}
+              onStateChange={state => { setSaveState(state); onStateChange?.(state) }}
               renderActions={({ canSave, saving, onSave, onCancel }) => (
                 <div className="text-end mt-3">
                   <Button variant="secondary" className="me-2" onClick={onCancel}>取消</Button>

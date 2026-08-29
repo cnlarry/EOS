@@ -135,7 +135,9 @@ public sealed record FieldHistoryEvent(
     string ActorUserId,
     string Action,
     string? Summary,
-    IReadOnlyList<FieldHistoryChange> Changes);
+    IReadOnlyList<FieldHistoryChange> Changes,
+    /// <summary>操作人姓名（SYSDN.EMP_NAME 对照解析；无对应员工时回退 ActorUserId）。</summary>
+    string ActorName);
 
 /// <summary>表物理列（sys.columns + FIELDS 描述）：字段设置数据来源/回填构建器下拉选项。</summary>
 public sealed record FieldAdminColumn(string Name, string DataType, string Description);

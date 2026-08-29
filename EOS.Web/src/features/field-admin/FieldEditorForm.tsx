@@ -6,103 +6,14 @@ import { TabbedPanel, type TabbedPanelTab } from '../../components/common/Tabbed
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { DataSourceEditorModal } from './DataSourceEditorModal'
-
-/** 过滤条件构建器行（P2）：简单比较行可编辑；复杂 item（表达式/子查询/嵌套组）以 raw JSON 只读兜底。 */
-interface FilterRowDraft {
-  key: string
-  field: string
-  operator: string
-  value: string
-  logic: 'AND' | 'OR' | null
-  raw?: string
-}
-
-/** 回填映射构建器行（P4）：来源列 ↔ 目标字段配对。 */
-interface ReturnRowDraft {
-  key: string
-  column: string
-  target: string
-}
-
-function isSimpleFilterItem(item: unknown): boolean {
-  if (!item || typeof item !== 'object') return false
-  const record = item as Record<string, unknown>
-  return typeof record.field === 'string' && typeof record.operator === 'string'
-    && record.left == null && record.right == null && record.group == null
-    && record.subquery == null && record.negate == null
-}
-
-function parseFilterRows(json: string | null): FilterRowDraft[] {
-  if (!json) return []
-  try {
-    const parsed: unknown = JSON.parse(json)
-    if (!parsed || typeof parsed !== 'object') return []
-    const struct = parsed as { logic?: unknown; items?: unknown }
-    if (struct.logic !== 'AND' && struct.logic !== 'OR') return []
-    if (!Array.isArray(struct.items)) return []
-    const logic = struct.logic as 'AND' | 'OR'
-    return struct.items.map((item: unknown, index: number) => {
-      if (!isSimpleFilterItem(item)) {
-        return { key: `r${index}`, field: '', operator: '', value: '', logic: index === 0 ? null : logic, raw: JSON.stringify(item) }
-      }
-      const record = item as { field?: unknown; operator?: unknown; value?: unknown; nullSafe?: unknown }
-      return {
-        key: `r${index}`,
-        field: String(record.field ?? ''),
-        operator: String(record.operator ?? ''),
-        value: record.value == null ? '' : String(record.value),
-        logic: index === 0 ? null : logic,
-        raw: record.nullSafe != null ? JSON.stringify(item) : undefined,
-      }
-    })
-  } catch {
-    return []
-  }
-}
-
-function serializeFilterRows(rows: FilterRowDraft[]): string {
-  const items: unknown[] = []
-  for (const row of rows) {
-    if (row.raw) {
-      try {
-        items.push(JSON.parse(row.raw))
-      } catch {
-        // raw JSON 损坏则丢弃该行（构建器保存前由校验器兜底）
-      }
-      continue
-    }
-    if (!row.field.trim() || !row.operator) continue
-    items.push({
-      field: row.field.trim(),
-      operator: row.operator,
-      value: row.value === '' ? null : row.value,
-      nullSafe: null,
-    })
-  }
-  const logic = rows.find(row => row.logic)?.logic ?? 'AND'
-  return JSON.stringify({ logic, items })
-}
-
-function parseReturnRows(json: string | null): ReturnRowDraft[] {
-  if (!json) return []
-  try {
-    const parsed: unknown = JSON.parse(json)
-    if (!Array.isArray(parsed)) return []
-    return parsed.map((item: unknown, index: number) => {
-      const record = (item ?? {}) as { column?: unknown; target?: unknown }
-      return { key: `m${index}`, column: String(record.column ?? ''), target: String(record.target ?? '') }
-    })
-  } catch {
-    return []
-  }
-}
-
-function serializeReturnRows(rows: ReturnRowDraft[]): string {
-  const items = rows
-    .filter(row => row.column.trim() && row.target.trim())
-    .map(row => ({ target: row.target.trim(), column: row.column.trim() }))
-  return items.length > 0 ? JSON.stringify(items) : ''
-}
+import {
+  parseFilterRows,
+  parseReturnRows,
+  serializeFilterRows,
+  serializeReturnRows,
+  type FilterRowDraft,
+  type ReturnRowDraft,
+} from './chooserDraft'
 
 export interface ChooserSource {
   active: boolean
@@ -200,6 +111,8 @@ export interface FieldHistoryChange {
 export interface FieldHistoryEvent {
   occurredAt: string
   actorUserId: string
+  /** 操作人姓名（后端对照 SYSDN.Emp_Name 解析，缺省回退 user id）。 */
+  actorName?: string
   action: string
   summary: string | null
   changes: FieldHistoryChange[]
@@ -241,8 +154,8 @@ interface FieldEditorFormProps {
   historyTab?: boolean
   /** 保存动作句柄（页面工具栏按钮触发 Form 内部保存；React 19 ref 作为普通 prop）。 */
   actionRef?: React.MutableRefObject<{ save: () => void } | null>
-  /** 保存状态回调（页面工具栏按钮禁用/loading 联动）。 */
-  onStateChange?: (state: { canSave: boolean; saving: boolean }) => void
+  /** 保存状态回调（页面工具栏按钮禁用/loading 联动；dirty 供页面做未保存离开确认）。 */
+  onStateChange?: (state: { canSave: boolean; saving: boolean; dirty: boolean }) => void
   /** 底部操作区渲染（弹窗用）；页面模式由页面工具栏承担，不传。 */
   renderActions?: (action: { canSave: boolean; saving: boolean; onSave: () => void; onCancel: () => void }) => React.ReactNode
 }
@@ -289,6 +202,27 @@ function moveItem<T>(items: T[], index: number, delta: -1 | 1): T[] {
   return next
 }
 
+/** 数据源构建器草稿统一按列表位置（i{index}）索引：初始化/弹窗读回/保存序列化三处同键。 */
+function chooserUiKey(index: number): string {
+  return `i${index}`
+}
+
+/** 把构建器行按列表位置合并回 choosers（保存序列化与 dirty 对比共用同一口径）。 */
+function mergeChooserUi(
+  value: FieldMeta,
+  ui: Record<string, { filterRows: FilterRowDraft[]; returnRows: ReturnRowDraft[] }>,
+): FieldMeta {
+  return {
+    ...value,
+    choosers: value.choosers.map((source, index) => {
+      const entry = ui[chooserUiKey(index)]
+      return entry
+        ? { ...source, filter: serializeFilterRows(entry.filterRows), returnMapping: serializeReturnRows(entry.returnRows) }
+        : source
+    }),
+  }
+}
+
 export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, onSaved, historyTab = false, actionRef, onStateChange, renderActions }: FieldEditorFormProps) {
   const [draft, setDraft] = useState<FieldMeta | null>(null)
   const [original, setOriginal] = useState<FieldMeta | null>(null)
@@ -300,16 +234,24 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
   })
   const [exprBusy, setExprBusy] = useState<Record<ExpressionKind, boolean>>({ virtual_exp: false, convert_function: false, datasource_sql: false })
   const [exprOriginal, setExprOriginal] = useState<Record<ExpressionKind, string | null>>({ virtual_exp: null, convert_function: null, datasource_sql: null })
-  // P2/P4 构建器状态：过滤行/回填行（按 serialNo 或索引键）、来源表选择、列/目标字段选择
+  // P2/P4 构建器状态：过滤行/回填行（按列表位置 i{index} 键）、来源表选择、列/目标字段选择
   const [chooserUi, setChooserUi] = useState<Record<string, { filterRows: FilterRowDraft[]; returnRows: ReturnRowDraft[] }>>({})
   const [dataSourceEditor, setDataSourceEditor] = useState<{ index: number } | null>(null)
+  // dirty 基线：取「构建器行回写后」的草稿快照，解析/序列化往返不产生假 dirty
+  const baselineRef = useRef<string | null>(null)
+  // 已初始化的字段标识：同字段后台重取（refetch/窗口聚焦）不覆盖编辑中的草稿
+  const loadedKeyRef = useRef<string | null>(null)
+  const [historyLimit, setHistoryLimit] = useState(20)
 
   useEffect(() => {
-    if (mode === 'new') {
-      setDraft(emptyDraft(tableId))
-      setOriginal(null)
-      setSection('basic')
-    }
+    if (mode !== 'new') return
+    const empty = emptyDraft(tableId)
+    setDraft(empty)
+    setOriginal(null)
+    setChooserUi({})
+    baselineRef.current = JSON.stringify(empty)
+    loadedKeyRef.current = `empty:${tableId}`
+    setSection('basic')
   }, [mode, tableId])
 
   const loadQuery = useQuery({
@@ -325,26 +267,28 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
     enabled: historyTab && mode === 'edit' && Boolean(fieldKey),
   })
   useEffect(() => {
-    if (!open || !loadQuery.data) return
-    if (mode === 'edit') {
-      setDraft(loadQuery.data)
-      setOriginal(loadQuery.data)
-      setExprOriginal({
-        virtual_exp: loadQuery.data.virtualExpression ?? null,
-        convert_function: loadQuery.data.convertFunction ?? null,
-        datasource_sql: loadQuery.data.dataSourceSql ?? null,
-      })
-    } else if (mode === 'new') {
-      setDraft({ ...loadQuery.data, key: '', tableId })
-      setOriginal(null)
-    }
-    setChooserUi(Object.fromEntries(
-      (loadQuery.data?.choosers ?? []).map((source, index) => [
-        String(source.serialNo ?? index),
+    const data = loadQuery.data
+    if (!data) return
+    const loadedKey = `${mode}:${tableId}:${fieldKey ?? ''}`
+    if (loadedKeyRef.current === loadedKey) return
+    loadedKeyRef.current = loadedKey
+    const nextDraft = mode === 'edit' ? data : { ...data, key: '', tableId }
+    const ui = Object.fromEntries(
+      (data.choosers ?? []).map((source, index) => [
+        chooserUiKey(index),
         { filterRows: parseFilterRows(source.filter), returnRows: parseReturnRows(source.returnMapping) },
       ]),
-    ))
-  }, [mode, loadQuery.data, tableId])
+    )
+    setDraft(nextDraft)
+    setOriginal(mode === 'edit' ? data : null)
+    setExprOriginal({
+      virtual_exp: data.virtualExpression ?? null,
+      convert_function: data.convertFunction ?? null,
+      datasource_sql: data.dataSourceSql ?? null,
+    })
+    setChooserUi(ui)
+    baselineRef.current = JSON.stringify(mergeChooserUi(nextDraft, ui))
+  }, [mode, loadQuery.data, tableId, fieldKey])
 
   const tablesQuery = useQuery({
     queryKey: ['field-editor', 'tables'],
@@ -357,32 +301,56 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
     enabled: Boolean(endpoints.modules),
   })
 
+  const lastPayloadRef = useRef<string | null>(null)
   const save = useMutation({
     mutationFn: async (value: FieldMeta) => {
       // P2/P4：把构建器行序列化回 FILTER_STRUCT / RETURN_ITEMS JSON
-      const choosers = value.choosers.map((source, index) => {
-        const key = source.serialNo != null ? String(source.serialNo) : `i${index}`
-        const ui = chooserUi[key]
-        if (!ui) return source
-        return {
-          ...source,
-          filter: serializeFilterRows(ui.filterRows),
-          returnMapping: serializeReturnRows(ui.returnRows),
-        }
-      })
-      const payload = { ...value, choosers }
+      const payload = mergeChooserUi(value, chooserUi)
+      lastPayloadRef.current = JSON.stringify(payload)
       return endpoints.save(extractInput(payload), payload.tableId, payload.key, original ? extractInput(original) : null)
     },
-    onSuccess: () => onSaved(),
+    onSuccess: () => {
+      // 保存成功后以提交内容为新基线，并同步归零 dirty（onSaved 触发的返回导航不得被离开确认拦截）
+      if (lastPayloadRef.current != null) baselineRef.current = lastPayloadRef.current
+      onStateChange?.({ canSave, saving: false, dirty: false })
+      onSaved()
+    },
   })
 
   const updateChooser = (index: number, patch: Partial<ChooserSource>) => {
     setDraft(prev => prev ? { ...prev, choosers: prev.choosers.map((source, i) => i === index ? { ...source, ...patch } : source) } : prev)
   }
 
-  // 数据源构建器草稿按列表顺序（i{index}）索引：增删/上下移后 key 随位置稳定，
-  // 保存时按当前列表顺序序列化（SERIAL_NO 由服务端重排为 1..n）
-  const chooserUiKey = (index: number) => `i${index}`
+  const moveChooser = (index: number, delta: -1 | 1) => {
+    if (!draft) return
+    const keys = draft.choosers.map((_, i) => chooserUiKey(i))
+    const nextKeys = moveItem(keys, index, delta)
+    if (nextKeys === keys) return
+    setDraft(prev => prev ? { ...prev, choosers: moveItem(prev.choosers, index, delta) } : prev)
+    setChooserUi(prev => {
+      // 构建器草稿跟随数据项一起搬移，保持「位置键 ↔ 数据」对齐
+      const next: typeof prev = {}
+      nextKeys.forEach((key, position) => { if (prev[key]) next[chooserUiKey(position)] = prev[key] })
+      return next
+    })
+  }
+
+  const removeChooser = (index: number) => {
+    if (!draft) return
+    const source = draft.choosers[index]
+    if (!source) return
+    if (!window.confirm(`确定要删除数据源「${source.description || source.table || '未命名数据源'}」吗？删除在保存字段后生效。`)) return
+    setDraft(prev => prev ? { ...prev, choosers: prev.choosers.filter((_, i) => i !== index) } : prev)
+    setChooserUi(prev => {
+      const next: typeof prev = {}
+      draft.choosers.forEach((_, i) => {
+        if (i === index) return
+        const entry = prev[chooserUiKey(i)]
+        if (entry) next[chooserUiKey(i < index ? i : i - 1)] = entry
+      })
+      return next
+    })
+  }
 
   const expressionValue = (kind: ExpressionKind): string | null => {
     if (!draft) return null
@@ -455,13 +423,15 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
     : SECTION_TABS
   const canSave = Boolean(draft && draft.label.trim() && draft.width >= 40 && draft.width <= 300
     && regexIssue(draft.regex) === null && (!isNew || (draft.key.trim() && draft.tableId.trim())))
-  const lastStateRef = useRef<{ canSave: boolean; saving: boolean } | null>(null)
+  const dirty = draft != null && baselineRef.current != null
+    && JSON.stringify(mergeChooserUi(draft, chooserUi)) !== baselineRef.current
+  const lastStateRef = useRef<{ canSave: boolean; saving: boolean; dirty: boolean } | null>(null)
 
   useEffect(() => {
     if (actionRef) actionRef.current = { save: () => draft && save.mutate(draft) }
-    const next = { canSave, saving: save.isPending }
+    const next = { canSave, saving: save.isPending, dirty }
     const last = lastStateRef.current
-    if (!last || last.canSave !== next.canSave || last.saving !== next.saving) {
+    if (!last || last.canSave !== next.canSave || last.saving !== next.saving || last.dirty !== next.dirty) {
       lastStateRef.current = next
       onStateChange?.(next)
     }
@@ -667,12 +637,14 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                             <input className="form-check-input" type="checkbox" checked={source.active} onChange={() => updateChooser(index, { active: !source.active })} title="启用/停用" />
                             <div className="flex-grow-1">
                               <div className="fw-semibold">{source.description || source.table || '未命名数据源'}</div>
-                              <div className="text-secondary small font-monospace">{source.table ?? ''}{source.moduleId ? ` · 模块 ${source.moduleId}` : ''}</div>
+                              <div className="text-secondary small font-monospace">
+                                {source.table ?? ''}{source.moduleId != null ? ` · ${modulesQuery.data?.find(item => item.value === String(source.moduleId))?.label ?? `模块 ${source.moduleId}`}` : ''}
+                              </div>
                             </div>
-                            <Button size="sm" variant="secondary" disabled={index === 0} title="上移" onClick={() => setDraft(prev => prev ? { ...prev, choosers: moveItem(prev.choosers, index, -1) } : prev)}>↑</Button>
-                            <Button size="sm" variant="secondary" disabled={index === draft.choosers.length - 1} title="下移" onClick={() => setDraft(prev => prev ? { ...prev, choosers: moveItem(prev.choosers, index, 1) } : prev)}>↓</Button>
+                            <Button size="sm" variant="secondary" disabled={index === 0} title="上移" onClick={() => moveChooser(index, -1)}>↑</Button>
+                            <Button size="sm" variant="secondary" disabled={index === draft.choosers.length - 1} title="下移" onClick={() => moveChooser(index, 1)}>↓</Button>
                             <Button size="sm" variant="ghost" icon={<IconPencil size={16} />} onClick={() => setDataSourceEditor({ index })}>编辑</Button>
-                            <Button size="sm" variant="danger" icon={<IconTrash size={16} />} onClick={() => setDraft(prev => prev ? { ...prev, choosers: prev.choosers.filter((_, i) => i !== index) } : prev)}>删除</Button>
+                            <Button size="sm" variant="danger" icon={<IconTrash size={16} />} onClick={() => removeChooser(index)}>删除</Button>
                           </div>
                         </div>
                       ))}
@@ -765,11 +737,11 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                           <div className="text-secondary">暂无字段变更记录。</div>
                         )}
                         <div className="d-flex flex-column gap-2">
-                          {historyQuery.data?.map(event => (
+                          {historyQuery.data?.slice(0, historyLimit).map(event => (
                             <div key={`${event.occurredAt}-${event.action}-${event.actorUserId}`} className="border rounded p-2">
                               <div className="d-flex justify-content-between align-items-center">
                                 <strong>{event.action === 'CREATE' ? '新增' : event.action === 'UPDATE' ? '修改' : event.action === 'DELETE' ? '删除' : event.action}</strong>
-                                <span className="text-secondary small">{event.occurredAt} · {event.actorUserId}</span>
+                                <span className="text-secondary small">{event.occurredAt} · {event.actorName || event.actorUserId}</span>
                               </div>
                               {event.summary && <div className="small text-secondary mt-1">{event.summary}</div>}
                               {event.changes.length > 0 && (
@@ -786,9 +758,17 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                                   </tbody>
                                 </table>
                               )}
+                              {event.changes.length > 30 && (
+                                <div className="small text-secondary mt-1">字段级明细共 {event.changes.length} 条，其余 {event.changes.length - 30} 条省略。</div>
+                              )}
                             </div>
                           ))}
                         </div>
+                        {historyQuery.data && historyQuery.data.length > historyLimit && (
+                          <Button size="sm" variant="secondary" className="mt-2" onClick={() => setHistoryLimit(limit => limit + 20)}>
+                            加载更多（还有 {historyQuery.data.length - historyLimit} 条）
+                          </Button>
+                        )}
                       </div>
                     )}
                     </div>

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FieldEditorRoute } from './FieldEditorPage'
 import type { FieldInput } from './FieldEditorForm'
@@ -42,6 +42,7 @@ const history = [
   {
     occurredAt: '2026-08-28 10:00:00',
     actorUserId: 'admin',
+    actorName: '管理员',
     action: 'UPDATE',
     summary: '字段维护更新',
     changes: [{ name: 'F_DESC', oldValue: '旧标题', newValue: '产品编号' }],
@@ -50,13 +51,16 @@ const history = [
 
 function renderPage(initialEntry = '/admin/fields/PRODUCT_EDITION/PRO_NO') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const router = createMemoryRouter(
+    [
+      { path: '/admin/fields/:tableId/:fieldId', element: <FieldEditorRoute /> },
+      { path: '/admin/tables/:tableId/fields', element: <div>字段维护列表</div> },
+    ],
+    { initialEntries: [initialEntry] },
+  )
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]}>
-        <Routes>
-          <Route path="/admin/fields/:tableId/:fieldId" element={<FieldEditorRoute />} />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   )
 }
@@ -114,6 +118,37 @@ describe('FieldEditorRoute', () => {
     fireEvent.click(screen.getByRole('tab', { name: '变更历史' }))
     await waitFor(() => expect(screen.getByText('修改')).toBeInTheDocument())
     expect(screen.getByText('旧标题')).toBeInTheDocument()
+    // 操作人显示姓名（SYSDN 解析）
+    expect(screen.getByText(/管理员/)).toBeInTheDocument()
+  })
+
+  it('有未保存修改时返回弹出离开确认，取消则留在页面', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderPage()
+    await waitFor(() => expect(screen.getByDisplayValue('产品编号')).toBeInTheDocument())
+    fireEvent.change(screen.getByDisplayValue('产品编号'), { target: { value: '改过的标题' } })
+    fireEvent.click(screen.getByRole('button', { name: '返回' }))
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledWith('字段设置有未保存的修改，确定离开吗？'))
+    expect(screen.getByDisplayValue('改过的标题')).toBeInTheDocument()
+  })
+
+  it('无未保存修改时返回不弹确认直接离开', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderPage()
+    await waitFor(() => expect(screen.getByDisplayValue('产品编号')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '返回' }))
+    await waitFor(() => expect(screen.getByText('字段维护列表')).toBeInTheDocument())
+    expect(confirmSpy).not.toHaveBeenCalled()
+  })
+
+  it('保存成功后自动返回且不弹离开确认', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderPage()
+    await waitFor(() => expect(screen.getByDisplayValue('产品编号')).toBeInTheDocument())
+    fireEvent.change(screen.getByDisplayValue('产品编号'), { target: { value: '新标题' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.getByText('字段维护列表')).toBeInTheDocument())
+    expect(confirmSpy).not.toHaveBeenCalled()
   })
 
   it('编辑态保存调用 PUT 字段维护接口', async () => {

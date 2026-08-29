@@ -32,12 +32,19 @@ function meta(overrides: Partial<FieldMeta> = {}): FieldMeta {
   }
 }
 
-function renderModal(open: boolean, mode: 'new' | 'edit', endpoints: FieldEditorEndpoints, onSaved = vi.fn(), onClose = vi.fn()) {
+function renderModal(
+  open: boolean,
+  mode: 'new' | 'edit',
+  endpoints: FieldEditorEndpoints,
+  onSaved = vi.fn(),
+  onClose = vi.fn(),
+  onStateChange?: (state: { canSave: boolean; saving: boolean; dirty: boolean }) => void,
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return {
     ...render(
       <QueryClientProvider client={queryClient}>
-        <FieldEditorModal open={open} mode={mode} tableId="T1" fieldKey="CODE" endpoints={endpoints} onClose={onClose} onSaved={onSaved} />
+        <FieldEditorModal open={open} mode={mode} tableId="T1" fieldKey="CODE" endpoints={endpoints} onClose={onClose} onSaved={onSaved} onStateChange={onStateChange} />
       </QueryClientProvider>,
     ),
     onSaved,
@@ -161,6 +168,50 @@ describe('FieldEditorModal', () => {
     await waitFor(() => expect(screen.getByText('编辑数据源：未命名数据源')).toBeInTheDocument())
     fireEvent.click(screen.getAllByLabelText('关闭')[1])
     await waitFor(() => expect(screen.queryByText('编辑数据源：未命名数据源')).not.toBeInTheDocument())
+  })
+
+  it('编辑已有数据源时弹窗回读已保存的过滤/回填行（构建器按列表序号对齐）', async () => {
+    const loaded = meta({
+      choosers: [
+        { active: true, table: 'CLIENT', description: '客户资料', moduleId: null, filter: '{"logic":"AND","items":[{"field":"CLIENT.CREDIT_LIMIT","operator":"GT","value":"0","nullSafe":null}]}', returnMapping: '[{"target":"CLIENT_NAME","column":"CLIENT_NAME"}]', serialNo: 1 },
+      ],
+    })
+    renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(loaded), save: vi.fn() })
+    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('tab', { name: '数据来源' }))
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
+    await waitFor(() => expect(screen.getByText('编辑数据源：客户资料')).toBeInTheDocument())
+    // 已保存的过滤行/回填行应回显为可编辑行，而不是空列表（空列表确定会清空原过滤）
+    await waitFor(() => expect(screen.getByDisplayValue('0')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '回填来源列' })).toBeInTheDocument()
+  })
+
+  it('删除数据源需确认，取消则保留，确认后移除', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta()), save: vi.fn() })
+    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('tab', { name: '数据来源' }))
+    expect(screen.getAllByRole('button', { name: '删除' })).toHaveLength(4)
+    fireEvent.click(screen.getAllByRole('button', { name: '删除' })[0])
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(screen.getAllByRole('button', { name: '删除' })).toHaveLength(4)
+    confirmSpy.mockReturnValue(true)
+    fireEvent.click(screen.getAllByRole('button', { name: '删除' })[0])
+    expect(screen.getAllByRole('button', { name: '删除' })).toHaveLength(3)
+    confirmSpy.mockRestore()
+  })
+
+  it('编辑内容后上报 dirty，保存成功后归零', async () => {
+    const states: { canSave: boolean; saving: boolean; dirty: boolean }[] = []
+    const save = vi.fn().mockResolvedValue(undefined)
+    renderModal(true, 'edit', { load: vi.fn().mockResolvedValue(meta()), save }, vi.fn(), vi.fn(), state => states.push(state))
+    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
+    expect(states.at(-1)?.dirty).toBe(false)
+    fireEvent.change(screen.getByDisplayValue('编号'), { target: { value: '编号2' } })
+    await waitFor(() => expect(states.at(-1)?.dirty).toBe(true))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(save).toHaveBeenCalled())
+    await waitFor(() => expect(states.at(-1)?.dirty).toBe(false))
   })
 
   it('关闭按钮触发 onClose', async () => {

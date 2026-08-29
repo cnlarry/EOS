@@ -527,13 +527,16 @@ public sealed class FieldAdminRepository(
     {
         const string sql = """
             SELECT CONVERT(varchar(19), e.OCCURRED_AT, 120) AS OCCURRED_AT,
-                   e.ACTOR_USER_ID, e.ACTION, e.SUMMARY,
+                   e.ACTOR_USER_ID,
+                   ISNULL(NULLIF(LTRIM(RTRIM(dn.EMP_NAME)), N''), e.ACTOR_USER_ID) AS ACTOR_NAME, e.ACTION, e.SUMMARY,
                    ISNULL((SELECT JSON_QUERY((
                             SELECT fc.FIELD_NAME AS [name], fc.OLD_VALUE AS [oldValue], fc.NEW_VALUE AS [newValue]
                             FROM dbo.AUDIT_FIELD_CHANGE fc WITH (NOLOCK)
                             WHERE fc.EVENT_ID = e.EVENT_ID
                             FOR JSON PATH)), '[]') AS CHANGES_JSON
             FROM dbo.AUDIT_EVENT e WITH (NOLOCK)
+            LEFT JOIN dbo.SYSDN dn WITH (NOLOCK)
+              ON LTRIM(RTRIM(dn.EMP_ID)) = LTRIM(RTRIM(e.ACTOR_USER_ID))
             WHERE e.RESOURCE_TYPE = N'FIELD_ADMIN'
               AND e.RESOURCE_KEY = @Key
             ORDER BY e.OCCURRED_AT DESC, e.EVENT_ID DESC
@@ -548,14 +551,15 @@ public sealed class FieldAdminRepository(
         while (await reader.ReadAsync(token))
         {
             var changes = System.Text.Json.JsonSerializer.Deserialize<List<FieldHistoryChange>>(
-                reader.GetString(4),
+                reader.GetString(5),
                 new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
             result.Add(new FieldHistoryEvent(
                 DateTime.Parse(reader.GetString(0), System.Globalization.CultureInfo.InvariantCulture),
                 reader.GetString(1),
-                reader.GetString(2),
-                reader.IsDBNull(3) ? null : reader.GetString(3),
-                changes));
+                reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                changes,
+                reader.GetString(2)));
         }
         return result;
     }

@@ -1,7 +1,7 @@
 import { IconArrowLeft, IconDeviceFloppy, IconPlus, IconX } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useBlocker, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
 import { usePageBreadcrumb } from '../../components/layout/PageBreadcrumbContext'
@@ -111,7 +111,24 @@ export function FieldEditorRoute() {
     navigate(`/admin/fields/${encodeURIComponent(tableId)}/${encodeURIComponent(key)}${moduleId ? `?moduleId=${moduleId}` : ''}`)
   }
   const actionRef = useRef<{ save: () => void } | null>(null)
-  const [saveState, setSaveState] = useState({ canSave: false, saving: false })
+  const [saveState, setSaveState] = useState({ canSave: false, saving: false, dirty: false })
+  const dirtyRef = useRef(false)
+
+  // 未保存离开确认（对齐统一表单）：站内跳转（返回/取消/左栏切换/浏览器后退）经 useBlocker 拦截，
+  // 刷新/关闭页签走 beforeunload；dirtyRef 供 blocker 回调在导航时刻读取最新值。
+  useEffect(() => {
+    if (!saveState.dirty) return
+    const handler = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [saveState.dirty])
+
+  const blocker = useBlocker(() => dirtyRef.current)
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return
+    if (window.confirm('字段设置有未保存的修改，确定离开吗？')) blocker.proceed()
+    else blocker.reset()
+  }, [blocker])
 
   const endpoints: FieldEditorEndpoints = useMemo(() => ({
     load: async () => {
@@ -158,45 +175,45 @@ export function FieldEditorRoute() {
             <Button size="sm" variant="primary" icon={<IconDeviceFloppy size={16} />} loading={saveState.saving} disabled={!saveState.canSave} onClick={() => actionRef.current?.save()}>保存</Button>
           </div>
         </section>
-        <div className="card-body p-0">
-          <div className="row g-0">
-            <div className="col-auto border-end d-flex flex-column" style={{ width: 260, minHeight: 480 }}>
-              <div className="p-2 border-bottom d-flex justify-content-between align-items-center">
-                <strong className="small">字段列表（{fieldsQuery.data?.length ?? '…'}）</strong>
-                <Button size="sm" variant="primary" icon={<IconPlus size={16} />} onClick={() => gotoField('new')}>新增</Button>
+          <div className="card-body p-0">
+            <div className="row g-0">
+              <div className="col-auto border-end d-flex flex-column erp-field-nav" style={{ width: 260 }}>
+                <div className="p-2 border-bottom d-flex justify-content-between align-items-center">
+                  <strong className="small">字段列表（{fieldsQuery.data?.length ?? '…'}）</strong>
+                  <Button size="sm" variant="primary" icon={<IconPlus size={16} />} onClick={() => gotoField('new')}>新增</Button>
+                </div>
+                <div className="flex-grow-1 overflow-auto">
+                  {fieldsQuery.isPending && <LoadingState label="加载字段…" />}
+                  {fieldsQuery.data?.map(item => (
+                    <button
+                      key={item.fieldId}
+                      type="button"
+                      className={`erp-field-nav-item d-block w-100 text-start px-2 py-1 border-0 bg-transparent ${item.fieldId.toLowerCase() === fieldId.toLowerCase() ? 'bg-primary-lt' : ''}`}
+                      onClick={() => gotoField(item.fieldId)}
+                    >
+                      <div className="small fw-semibold font-monospace text-truncate">{item.fieldId}</div>
+                      <div className="text-secondary small text-truncate">{item.description}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex-grow-1 overflow-auto">
-                {fieldsQuery.isPending && <LoadingState label="加载字段…" />}
-                {fieldsQuery.data?.map(item => (
-                  <button
-                    key={item.fieldId}
-                    type="button"
-                    className={`d-block w-100 text-start px-2 py-1 border-0 bg-transparent ${item.fieldId.toLowerCase() === fieldId.toLowerCase() ? 'bg-primary-lt' : ''}`}
-                    onClick={() => gotoField(item.fieldId)}
-                  >
-                    <div className="small fw-semibold font-monospace text-truncate">{item.fieldId}</div>
-                    <div className="text-secondary small text-truncate">{item.description}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="col">
-              <div className="p-3">
-                <FieldEditorForm
-                  mode={isNew ? 'new' : 'edit'}
-                  tableId={tableId}
-                  fieldKey={loadKey}
-                  endpoints={endpoints}
-                  onCancel={() => navigate(backTo)}
-                  onSaved={() => navigate(backTo)}
-                  historyTab={!isNew}
-                  actionRef={actionRef}
-                  onStateChange={setSaveState}
-                />
+              <div className="col">
+                <div className="p-3">
+                  <FieldEditorForm
+                    mode={isNew ? 'new' : 'edit'}
+                    tableId={tableId}
+                    fieldKey={loadKey}
+                    endpoints={endpoints}
+                    onCancel={() => navigate(backTo)}
+                    onSaved={() => navigate(backTo)}
+                    historyTab={!isNew}
+                    actionRef={actionRef}
+                    onStateChange={state => { dirtyRef.current = state.dirty; setSaveState(state) }}
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
       </section>
     </div>
   )
