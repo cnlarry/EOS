@@ -531,7 +531,7 @@ public sealed class FieldAdminRepository(
                    ISNULL(NULLIF(LTRIM(RTRIM(dn.EMP_NAME)), N''), e.ACTOR_USER_ID) AS ACTOR_NAME, e.ACTION, e.SUMMARY,
                    ISNULL((SELECT JSON_QUERY((
                             SELECT fc.FIELD_NAME AS [name], fc.OLD_VALUE AS [oldValue], fc.NEW_VALUE AS [newValue]
-                            FROM dbo.AUDIT_FIELD_CHANGE fc WITH (NOLOCK)
+                            FROM dbo.AUDIT_FIELD_CHANGE fc
                             WHERE fc.EVENT_ID = e.EVENT_ID
                             FOR JSON PATH)), '[]') AS CHANGES_JSON
             FROM dbo.AUDIT_EVENT e WITH (NOLOCK)
