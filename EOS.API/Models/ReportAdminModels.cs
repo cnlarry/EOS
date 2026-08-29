@@ -49,3 +49,16 @@ public sealed record ReportConditionDraft(
     string? DefaultValue,
     string? ParameterName,
     string? Remark);
+
+/// <summary>过滤条件行全量列表（含模块上下文；2026-08-29 2205 单表改版，LEFT JOIN MODULES——模块已不在册的孤儿行保留展示）。</summary>
+public sealed record ReportConditionListRow(
+    int ModuleId,
+    string ModuleDescription,
+    int SerialNo,
+    int Type,
+    string? Field,
+    string? Expression,
+    string? Description,
+    string? DefaultValue,
+    string? ParameterName,
+    string? Remark);

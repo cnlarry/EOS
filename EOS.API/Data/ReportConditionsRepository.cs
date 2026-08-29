@@ -42,6 +42,36 @@ public sealed class ReportConditionsRepository(DbConnectionFactory connections)
         return result;
     }
 
+    /// <summary>全部条件行（含模块编号/名称；LEFT JOIN MODULES——模块已不在册的孤儿行保留展示，2026-08-29 单表改版）。</summary>
+    public async Task<List<ReportConditionListRow>> ListAllConditionsAsync(CancellationToken token)
+    {
+        const string sql = """
+            SELECT d.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC,''))),
+                   CONVERT(INT,d.SERIAL_NO), COALESCE(TRY_CONVERT(INT,d.F_TYPE),0),
+                   LTRIM(RTRIM(ISNULL(d.F_ID,''))),LTRIM(RTRIM(ISNULL(d.F_EXPR,''))),
+                   LTRIM(RTRIM(ISNULL(d.F_DESC,''))),LTRIM(RTRIM(ISNULL(d.F_VALUE,''))),
+                   LTRIM(RTRIM(ISNULL(d.PARA_NAME,''))),LTRIM(RTRIM(ISNULL(d.REMARK,'')))
+            FROM dbo.SYSQR_DEFAULT d WITH (NOLOCK)
+            LEFT JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX=d.M_IDX
+            ORDER BY d.M_IDX, d.SERIAL_NO;
+            """;
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<ReportConditionListRow>();
+        while (await reader.ReadAsync(token))
+        {
+            result.Add(new ReportConditionListRow(
+                reader.GetInt32(0), reader.GetString(1),
+                reader.GetInt32(2), reader.GetInt32(3),
+                EmptyToNull(reader.GetString(4)), EmptyToNull(reader.GetString(5)),
+                EmptyToNull(reader.GetString(6)), EmptyToNull(reader.GetString(7)),
+                EmptyToNull(reader.GetString(8)), EmptyToNull(reader.GetString(9))));
+        }
+        return result;
+    }
+
     public async Task<string?> GetMasterTableAsync(int moduleId, CancellationToken token)
     {
         const string sql = "SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))) FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;";
