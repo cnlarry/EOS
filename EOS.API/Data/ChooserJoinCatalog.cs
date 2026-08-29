@@ -74,28 +74,51 @@ public static class ChooserJoinCatalog
         {
             return null;
         }
+        // 反向依赖：被引用别名 + 其 ON 条件引用的上游表（到不动点），只选依赖链上的 JOIN
+        var needed = new HashSet<string>(referencedAliases, StringComparer.OrdinalIgnoreCase);
+        var pending = true;
+        while (pending)
+        {
+            pending = false;
+            foreach (var join in catalog.Joins)
+            {
+                if (!needed.Contains(join.Alias))
+                {
+                    continue;
+                }
+                foreach (var condition in join.Conditions)
+                {
+                    pending |= needed.Add(condition.LeftTable);
+                    pending |= needed.Add(condition.RightTable);
+                }
+                foreach (var constant in join.Constants)
+                {
+                    pending |= needed.Add(constant.Table);
+                }
+            }
+        }
         var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { catalog.SourceTable };
         var chosen = new List<VirtualJoin>();
-        var remaining = new List<VirtualJoin>(catalog.Joins);
+        var remaining = new List<VirtualJoin>(catalog.Joins.Where(join => needed.Contains(join.Alias)));
         var changed = true;
         while (changed)
         {
             changed = false;
             foreach (var join in remaining.ToList())
             {
+                // JOIN 自身 ON 条件必然引用其别名：候选集 = 已选表 ∪ 本 JOIN 别名
+                var candidates = new HashSet<string>(selected, StringComparer.OrdinalIgnoreCase) { join.Alias };
                 var conditionsResolvable = join.Conditions.All(c =>
-                    selected.Contains(c.LeftTable) && selected.Contains(c.RightTable));
-                var constantsResolvable = join.Constants.All(c => selected.Contains(c.Table));
+                    candidates.Contains(c.LeftTable) && candidates.Contains(c.RightTable));
+                var constantsResolvable = join.Constants.All(c => candidates.Contains(c.Table));
                 if (!conditionsResolvable || !constantsResolvable)
                 {
                     continue;
                 }
-                if (selected.Add(join.Alias))
-                {
-                    chosen.Add(join);
-                    changed = true;
-                }
+                selected.Add(join.Alias);
+                chosen.Add(join);
                 remaining.Remove(join);
+                changed = true;
             }
         }
         if (!referencedAliases.All(alias => selected.Contains(alias)))
