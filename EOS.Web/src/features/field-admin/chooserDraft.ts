@@ -107,7 +107,7 @@ export function isTypeCompatible(sourceType: string, targetType: string): boolea
   if (s === t) return true
   const charFamily = new Set(['char', 'varchar', 'nchar', 'nvarchar', 'text', 'ntext', 'idcard', 'url', 'email', 'phoneno', 'zipcode', 'string'])
   const numericFamily = new Set(['int', 'bigint', 'smallint', 'tinyint', 'decimal', 'numeric', 'float', 'real', 'money', 'smallmoney', 'integer'])
-  const dateFamily = new Set(['date', 'datetime', 'datetime2', 'smalldatetime', 'time'])
+  const dateFamily = new Set(['date', 'datetime', 'datetime2', 'datetimeoffset', 'smalldatetime', 'time'])
   const binaryFamily = new Set(['binary', 'varbinary', 'image'])
   if (charFamily.has(s) && charFamily.has(t)) return true
   if (numericFamily.has(s) && numericFamily.has(t)) return true

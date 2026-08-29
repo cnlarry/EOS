@@ -1,6 +1,6 @@
 import { IconPlus, IconX } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
@@ -59,30 +59,80 @@ function FieldPickerSelect({ options, value, onChange, placeholder, ariaLabel }:
   ariaLabel: string
 }) {
   const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const selected = options.find(option => option.value === value)
+  const close = () => setOpen(false)
+
+  // 打开时聚焦当前选中项（无选中聚焦第一项），支持方向键在选项间移动
+  useEffect(() => {
+    if (!open) return
+    const options = containerRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]')
+    if (!options || options.length === 0) return
+    const currentIndex = Array.from(options).findIndex(option => option.classList.contains('bg-primary-lt'))
+    options[Math.max(currentIndex, 0)]?.focus()
+  }, [open])
+
+  const moveOptionFocus = (event: React.KeyboardEvent) => {
+    const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'))
+    const current = options.indexOf(document.activeElement as HTMLButtonElement)
+    const next = event.key === 'ArrowDown' ? Math.min(current + 1, options.length - 1) : Math.max(current - 1, 0)
+    options[next]?.focus()
+  }
+
   return (
-    <div className="position-relative flex-grow-1">
+    <div
+      className="position-relative flex-grow-1"
+      ref={containerRef}
+      onBlur={event => {
+        const next = event.relatedTarget as Node | null
+        if (!next || !event.currentTarget.contains(next)) close()
+      }}
+    >
       <button
         type="button"
         className="form-select form-select-sm text-start"
         aria-label={ariaLabel}
         aria-expanded={open}
+        aria-haspopup="listbox"
         onClick={() => setOpen(current => !current)}
+        onKeyDown={event => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault()
+            setOpen(true)
+          } else if (event.key === 'Escape') {
+            close()
+          }
+        }}
       >
         {selected
           ? <><span className="text-truncate d-inline-block align-middle" style={{ maxWidth: 'calc(100% - 70px)' }}>{selected.label}</span><span className="text-secondary small ms-1">{selected.dataType}</span></>
           : <span className="text-secondary">{placeholder}</span>}
       </button>
       {open && (
-        <div className="position-absolute top-100 start-0 w-100 border rounded bg-white shadow-sm z-3" role="listbox" aria-label={ariaLabel} style={{ maxHeight: 240, overflowY: 'auto' }}>
-          <button type="button" role="option" className="d-block w-100 text-start px-2 py-1 border-0 bg-transparent text-secondary" onClick={() => { onChange(''); setOpen(false) }}>{placeholder}</button>
+        <div
+          className="position-absolute top-100 start-0 w-100 border rounded bg-white shadow-sm z-3"
+          role="listbox"
+          aria-label={ariaLabel}
+          style={{ maxHeight: 240, overflowY: 'auto' }}
+          onKeyDown={event => {
+            if (event.key === 'Escape') {
+              event.stopPropagation()
+              close()
+              containerRef.current?.querySelector<HTMLButtonElement>('button.form-select')?.focus()
+            } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault()
+              moveOptionFocus(event)
+            }
+          }}
+        >
+          <button type="button" role="option" className="d-block w-100 text-start px-2 py-1 border-0 bg-transparent text-secondary" onClick={() => { onChange(''); close() }}>{placeholder}</button>
           {options.map(option => (
             <button
               key={option.value}
               type="button"
               role="option"
-              className={`d-flex w-100 align-items-center justify-content-between px-2 py-1 border-0 bg-transparent ${option.value === value ? 'bg-primary-lt' : ''}`}
-              onClick={() => { onChange(option.value); setOpen(false) }}
+              className={`erp-picker-option d-flex w-100 align-items-center justify-content-between px-2 py-1 border-0 bg-transparent ${option.value === value ? 'bg-primary-lt' : ''}`}
+              onClick={() => { onChange(option.value); close() }}
             >
               <span className="text-truncate">{option.label}</span>
               {option.dataType && <span className="text-secondary small ms-2">{option.dataType}</span>}
@@ -126,6 +176,7 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
   const [filterRows, setFilterRows] = useState<FilterRowDraft[]>(initial?.filterRows ?? [])
   const [returnRows, setReturnRows] = useState<ReturnRowDraft[]>(initial?.returnRows ?? [])
   const [tablePickerOpen, setTablePickerOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const columnsQuery = useSourceColumns(source.table)
   const targetFieldsQuery = useTargetFields(currentTable)
@@ -143,6 +194,7 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
       setSource(initial?.source ?? emptySource())
       setFilterRows(initial?.filterRows ?? [])
       setReturnRows(initial?.returnRows ?? [])
+      setError(null)
     }
   }
 
@@ -158,6 +210,27 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
   const updateReturnRows = (rows: ReturnRowDraft[]) => setReturnRows(rows)
 
   const handleSave = () => {
+    // 确定即校验：坏 JSON / 未完成行若静默交给序列化会被丢弃，必须在弹窗内给出反馈
+    if (filterRows.some(row => {
+      if (!row.raw) return false
+      try {
+        JSON.parse(row.raw)
+        return false
+      } catch {
+        return true
+      }
+    })) {
+      setError('高级条件行 JSON 无法解析，请修正或删除该行后再确定。')
+      return
+    }
+    if (filterRows.some(row => !row.raw && !row.field.trim())) {
+      setError('存在未选择来源列的过滤条件行，请补全或删除。')
+      return
+    }
+    if (returnRows.some(row => !row.column.trim() || !row.target.trim())) {
+      setError('存在未配对的回填映射行（来源列与目标字段都需选择），请补全或删除。')
+      return
+    }
     onSave({
       source,
       filterRows,
@@ -277,6 +350,7 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
                   </div>
                 </div>
               </div>
+              {error && <div className="alert alert-danger py-2 px-3 small mb-0" role="alert">{error}</div>}
             </div>
           </div>
           <div className="modal-footer">

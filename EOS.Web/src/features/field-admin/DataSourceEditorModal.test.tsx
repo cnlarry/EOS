@@ -113,4 +113,43 @@ describe('DataSourceEditorModal', () => {
     expect(draft.filterRows).toHaveLength(1)
     expect(draft.returnRows).toHaveLength(1)
   })
+
+  it('高级条件 raw JSON 损坏时确定给出错误反馈且不回调 onSave', () => {
+    const onSave = vi.fn()
+    renderModal(
+      { source, filterRows: [{ key: 'r0', field: '', operator: '', value: '', logic: null, raw: '{"broken' }], returnRows: [] },
+      onSave,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '确定' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('JSON 无法解析')
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('未选择来源列的过滤条件行阻止确定', () => {
+    const onSave = vi.fn()
+    renderModal({ source, filterRows: [{ key: 'r0', field: '', operator: 'EQ', value: '', logic: null }], returnRows: [] }, onSave)
+    fireEvent.click(screen.getByRole('button', { name: '确定' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('未选择来源列')
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('未配对的回填映射行阻止确定', () => {
+    const onSave = vi.fn()
+    renderModal({ source, filterRows: [], returnRows: [{ key: 'm0', column: 'CLIENT_ID', target: '' }] }, onSave)
+    fireEvent.click(screen.getByRole('button', { name: '确定' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('未配对')
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('FieldPickerSelect 支持键盘开关（ArrowDown 打开 / Escape 关闭）', async () => {
+    renderModal({ source, filterRows: [], returnRows: [] })
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith('/admin/tables/CLIENT/columns'))
+    fireEvent.click(screen.getByRole('button', { name: '+ 条件' }))
+    const trigger = screen.getByRole('button', { name: '过滤条件字段' })
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' })
+    const listbox = screen.getByRole('listbox', { name: '过滤条件字段' })
+    expect(listbox).toBeInTheDocument()
+    fireEvent.keyDown(listbox, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('listbox', { name: '过滤条件字段' })).not.toBeInTheDocument())
+  })
 })

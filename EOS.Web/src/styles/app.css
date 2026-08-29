@@ -407,6 +407,14 @@ button, input, select { font: inherit; }
 /* 报表权限矩阵页：表格区作为内部滚动容器（吸顶表头随表内滚动） */
 .erp-full-list-page .erp-report-matrix-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .erp-full-list-page .erp-report-matrix-body .erp-table-shell { flex: 1 1 auto; min-height: 0; }
+/* 字段设置全页（ADR-008）：整页随视口高度自适应，左栏字段导航与右栏编辑区各自内部滚动 */
+.erp-field-editor-page { flex: 1 1 auto; min-height: 0; }
+.erp-field-editor-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.erp-field-editor-page > .erp-list-card > .card-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.erp-field-editor-page .card-body .row.g-0 { height: 100%; }
+.erp-field-editor-page .card-body .row.g-0 > .col { min-height: 0; overflow-y: auto; }
+.erp-field-editor-page .erp-field-nav-item { cursor: pointer; }
+.erp-field-editor-page .erp-field-nav-item:hover { background-color: var(--tblr-gray-100, rgba(15, 23, 42, 0.06)); }
 /* 未管理字段弹窗：电子表格列表限高内部滚动 */
 .erp-unmanaged-table .erp-table-shell { max-height: 46vh; overflow-y: auto; }
 .erp-unmanaged-table .table-responsive { overflow: visible; }
