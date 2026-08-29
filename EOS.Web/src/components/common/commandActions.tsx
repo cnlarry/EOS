@@ -8,6 +8,7 @@ import {
   IconCheck,
   IconColumns,
   IconCopy,
+  IconDeviceFloppy,
   IconEdit,
   IconEye,
   IconFileExport,
@@ -23,6 +24,7 @@ import {
   IconRotateClockwise,
   IconSearch,
   IconTrash,
+  IconX,
 } from '@tabler/icons-react'
 
 /**
@@ -36,6 +38,8 @@ export const COMMAND_ACTIONS: Record<string, { icon: ReactNode; title: string }>
   view: { icon: <IconEye size={16} />, title: '查看' },
   copy: { icon: <IconCopy size={16} />, title: '复制' },
   delete: { icon: <IconTrash size={16} />, title: '删除' },
+  save: { icon: <IconDeviceFloppy size={16} />, title: '保存' },
+  cancel: { icon: <IconX size={16} />, title: '取消' },
   approve: { icon: <IconCheck size={16} />, title: '批核' },
   deapprove: { icon: <IconRotateClockwise size={16} />, title: '解批' },
   withdraw: { icon: <IconRotateClockwise size={16} />, title: '撤回' },
