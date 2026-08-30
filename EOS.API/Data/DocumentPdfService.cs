@@ -83,6 +83,16 @@ public sealed class DocumentPdfService(IWebHostEnvironment environment, ILogger<
     public byte[] Generate(PrintData data, ReportHeaderOption? header, string? tailText, bool showRemark, string printPerson)
     {
         var logo = header is null ? null : PdfLayout.TryLoadLogo(environment, header.LogoPath);
+        var companyName = header?.CompanyName;
+        var companyNameEn = header?.CompanyNameEn;
+        var headerText = header?.HeaderText;
+        var profile = data.ClientProfile;
+        // 客户级抬头优先（P6，ADR-009 §9.4.2）：CLIENT.FULL_NAME_CN/EN 覆盖报表级抬头公司名
+        if (profile is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(profile.FullNameCn)) companyName = profile.FullNameCn;
+            if (!string.IsNullOrWhiteSpace(profile.FullNameEn)) companyNameEn = profile.FullNameEn;
+        }
         var document = Document.Create(container =>
         {
             container.Page(page =>
@@ -98,23 +108,29 @@ public sealed class DocumentPdfService(IWebHostEnvironment environment, ILogger<
                             row.ConstantItem(70).Image(logo);
                         row.RelativeItem().AlignCenter().Column(center =>
                         {
-                            if (!string.IsNullOrWhiteSpace(header?.CompanyName))
-                                center.Item().Text(header!.CompanyName).FontSize(14).Bold();
-                            if (!string.IsNullOrWhiteSpace(header?.CompanyNameEn))
-                                center.Item().Text(header!.CompanyNameEn).FontSize(9);
+                            if (!string.IsNullOrWhiteSpace(companyName))
+                                center.Item().Text(companyName).FontSize(14).Bold();
+                            if (!string.IsNullOrWhiteSpace(companyNameEn))
+                                center.Item().Text(companyNameEn).FontSize(9);
                             center.Item().Text(data.Title).FontSize(12).SemiBold();
-                            if (!string.IsNullOrWhiteSpace(header?.HeaderText))
-                                center.Item().Text(header!.HeaderText).FontSize(8);
+                            if (!string.IsNullOrWhiteSpace(headerText))
+                                center.Item().Text(headerText).FontSize(8);
                         });
                     });
                     headerColumn.Item().PaddingTop(4).LineHorizontal(0.5f);
                 });
                 page.Content().Column(content =>
                 {
+                    // 客户级收/发地址与联系人（P6）：有 CLIENT 资料时在单据内容顶部展示
+                    if (profile is not null && (profile.DeliAddrCn is not null || profile.DeliAddrEn is not null || profile.Tel is not null || profile.Linkman is not null))
+                        content.Item().PaddingTop(2).Row(addr =>
+                        {
+                            addr.RelativeItem().Text(BuildClientAddressLine(profile)).FontSize(8);
+                        });
                     if (data.ModuleId is 1401 or 1601)
                         RenderCard(content, data, showRemark);
-                    else if (DocumentLayoutProfiles.All.TryGetValue(data.ModuleId, out var profile))
-                        RenderProfile(content, data, profile, showRemark);
+                    else if (DocumentLayoutProfiles.All.TryGetValue(data.ModuleId, out var profile2))
+                        RenderProfile(content, data, profile2, showRemark);
                     else
                         RenderGeneric(content, data, showRemark);
                     if (!string.IsNullOrWhiteSpace(tailText))
@@ -137,6 +153,18 @@ public sealed class DocumentPdfService(IWebHostEnvironment environment, ILogger<
         });
         logger.LogDebug("单据 PDF 生成 module={ModuleId} rows={RowCount}", data.ModuleId, data.Details.Count);
         return document.GeneratePdf();
+    }
+
+    /// <summary>客户级收/发地址行（P6）：收货地址 + 联系人/电话/传真，缺项省略。</summary>
+    private static string BuildClientAddressLine(ClientPrintProfile profile)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(profile.DeliAddrCn)) parts.Add($"收货地址：{profile.DeliAddrCn}");
+        else if (!string.IsNullOrWhiteSpace(profile.DeliAddrEn)) parts.Add($"Deliver to: {profile.DeliAddrEn}");
+        if (!string.IsNullOrWhiteSpace(profile.Linkman)) parts.Add($"联系人：{profile.Linkman}");
+        if (!string.IsNullOrWhiteSpace(profile.Tel)) parts.Add($"电话：{profile.Tel}");
+        if (!string.IsNullOrWhiteSpace(profile.Fax)) parts.Add($"传真：{profile.Fax}");
+        return parts.Count == 0 ? string.Empty : string.Join("　", parts);
     }
 
     private static void RenderCard(ColumnDescriptor content, PrintData data, bool showRemark)

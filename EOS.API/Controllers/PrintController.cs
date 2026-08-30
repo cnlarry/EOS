@@ -45,7 +45,11 @@ public sealed class PrintController(
         var reportRights = await rightsRepository.GetReportAsync(userId, moduleId, report.ReportId, token);
         if (!reportRights.CanPrint) return Forbid();
 
-        var headerId = string.IsNullOrWhiteSpace(request.HeaderId) ? report.HeaderId : request.HeaderId.Trim();
+        // 抬头取值优先级（ADR-009 §9.4.2）：CLIENT.HEADER_ID（单据抬头客户）→
+        // SYSQR.HEADER_ID（使用者选择）→ REPORT.HEADER_ID（报表默认）。
+        var headerId = !string.IsNullOrWhiteSpace(request.HeaderId)
+            ? request.HeaderId.Trim()
+            : report.HeaderId ?? string.Empty;
         var tailId = string.IsNullOrWhiteSpace(request.TailId) ? report.TailId : request.TailId.Trim();
         var data = await service.GetPrintDataAsync(
             definition, request.Key, headerId, tailId,
@@ -54,7 +58,9 @@ public sealed class PrintController(
             CombineDataFilters(rights.DataFilter, reportRights.DataFilter), token);
         if (data is null) return NotFound();
 
-        var header = settings.Headers.FirstOrDefault(item => item.HeaderId == headerId);
+        // 客户级抬头优先（CLIENT.HEADER_ID 非空时覆盖报表默认/使用者选择，§9.4.2 第一级）
+        var effectiveHeaderId = data.ClientProfile?.HeaderId ?? headerId;
+        var header = settings.Headers.FirstOrDefault(item => item.HeaderId == effectiveHeaderId);
         var tail = settings.Tails.FirstOrDefault(item => item.TailId == tailId);
         var pdf = documentPdfService.Generate(
             data, header, tail?.TailText ?? data.TailText, request.ShowRemark, userId);
