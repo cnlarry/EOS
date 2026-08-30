@@ -192,7 +192,6 @@ builder.Services.AddScoped<AttendanceCalcService>();
 builder.Services.AddScoped<DocumentWorkbenchRepository>();
 builder.Services.AddScoped<ReportRepository>();
 builder.Services.AddScoped<PrintSettingsRepository>();
-builder.Services.AddScoped<PrintAdminRepository>();
 builder.Services.AddScoped<ReportAdminRepository>();
 builder.Services.AddScoped<ReportPdfService>();
 builder.Services.AddScoped<DocumentPdfService>();

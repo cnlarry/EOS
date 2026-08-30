@@ -8,7 +8,7 @@ namespace EOS.API.Data;
 /// <summary>
 /// 报表打印设置（旧 RptParent.master 面板的受控等价）：
 /// - 报表清单按报表级预览权限过滤（SYSDD_REPORT 个人覆盖 SYSDH_REPORT 组，组标签取 OR）；
-/// - 页头/表尾来自 REPORT_HEADER / REPORT_TAIL；
+/// - 页头/表尾来自 REPORT_LAYOUT；
 /// - 排序/分组方案来自 REPORT_SORT（字段串仅服务端消费，白名单校验后进入查询）；
 /// - 用户最近设置读写 SYSQR（IS_LAST=1），字段值全部参数化。
 /// </summary>
@@ -118,25 +118,32 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
         ReportHeaderOption? header = null;
         var headerId = string.IsNullOrWhiteSpace(defaultHeaderId) ? "DEFAULT" : defaultHeaderId;
         const string headerSql = """
-            SELECT LTRIM(RTRIM(HEADER_ID)),LTRIM(RTRIM(ISNULL(HEADER_NAME,HEADER_ID))),
-                   LTRIM(RTRIM(ISNULL(COMPANY_NAME,''))),LTRIM(RTRIM(ISNULL(COMPANY_NAME_EN,''))),
-                   LTRIM(RTRIM(ISNULL(HEADER_TEXT,''))),LTRIM(RTRIM(ISNULL(LOGO_PATH,'')))
-            FROM dbo.REPORT_HEADER WITH (NOLOCK) WHERE HEADER_ID=@HeaderId;
+            SELECT LTRIM(RTRIM(LAYOUT_ID)),LTRIM(RTRIM(ISNULL(LAYOUT_DESC,LAYOUT_ID))),
+                   LTRIM(RTRIM(ISNULL(CONTENT,''))),LTRIM(RTRIM(ISNULL(IMAGE_PATH,'')))
+            FROM dbo.REPORT_LAYOUT WITH (NOLOCK)
+            WHERE KIND=N'HEADER' AND LAYOUT_ID=@HeaderId;
             """;
         await using (var headerCommand = new SqlCommand(headerSql, connection))
         {
-            headerCommand.Parameters.Add("@HeaderId", SqlDbType.NChar, 10).Value = headerId;
+            headerCommand.Parameters.Add("@HeaderId", SqlDbType.NChar, 50).Value = headerId;
             await using var headerReader = await headerCommand.ExecuteReaderAsync(token);
             if (await headerReader.ReadAsync(token))
-                header = ReadHeader(headerReader);
+            {
+                var id = headerReader.GetString(0).Trim();
+                var name = headerReader.GetString(1);
+                var contentJson = headerReader.GetString(2);
+                var logoPath = headerReader.IsDBNull(3) ? null : headerReader.GetString(3).Trim();
+                var (company, companyEn, headerText) = ParseHeaderJson(contentJson);
+                header = new ReportHeaderOption(id, name, company ?? string.Empty, companyEn, headerText, logoPath, LogoUrl(logoPath ?? string.Empty));
+            }
         }
 
         string? tailText = null;
         if (!string.IsNullOrWhiteSpace(defaultTailId))
         {
             const string tailSql = """
-                SELECT LTRIM(RTRIM(ISNULL(TAIL_TEXT,'')))
-                FROM dbo.REPORT_TAIL WITH (NOLOCK) WHERE TAIL_ID=@TailId;
+                SELECT LTRIM(RTRIM(ISNULL(CONTENT,'')))
+                FROM dbo.REPORT_LAYOUT WITH (NOLOCK) WHERE KIND=N'TAIL' AND LAYOUT_ID=@TailId;
                 """;
             await using var tailCommand = new SqlCommand(tailSql, connection);
             tailCommand.Parameters.Add("@TailId", SqlDbType.NChar, 10).Value = defaultTailId;
@@ -245,32 +252,52 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
     private static async Task<List<ReportHeaderOption>> ReadHeadersAsync(SqlConnection connection, CancellationToken token)
     {
         const string sql = """
-            SELECT LTRIM(RTRIM(HEADER_ID)),LTRIM(RTRIM(ISNULL(HEADER_NAME,HEADER_ID))),
-                   LTRIM(RTRIM(ISNULL(COMPANY_NAME,''))),LTRIM(RTRIM(ISNULL(COMPANY_NAME_EN,''))),
-                   LTRIM(RTRIM(ISNULL(HEADER_TEXT,''))),LTRIM(RTRIM(ISNULL(LOGO_PATH,'')))
-            FROM dbo.REPORT_HEADER WITH (NOLOCK) ORDER BY HEADER_ID;
+            SELECT LTRIM(RTRIM(LAYOUT_ID)),LTRIM(RTRIM(ISNULL(LAYOUT_DESC,LAYOUT_ID))),
+                   LTRIM(RTRIM(ISNULL(CONTENT,''))),LTRIM(RTRIM(ISNULL(IMAGE_PATH,'')))
+            FROM dbo.REPORT_LAYOUT WITH (NOLOCK)
+            WHERE KIND=N'HEADER' ORDER BY LAYOUT_ID;
             """;
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(token);
         var result = new List<ReportHeaderOption>();
-        while (await reader.ReadAsync(token)) result.Add(ReadHeader(reader));
+        while (await reader.ReadAsync(token))
+        {
+            var id = reader.GetString(0).Trim();
+            var name = reader.GetString(1);
+            var contentJson = reader.GetString(2);
+            var logoPath = reader.IsDBNull(3) ? null : reader.GetString(3).Trim();
+            // 解析 CONTENT JSON → companyName/companyNameEn/headerText
+            var (company, companyEn, headerText) = ParseHeaderJson(contentJson);
+            result.Add(new ReportHeaderOption(id, name, company ?? string.Empty, companyEn, headerText, logoPath, LogoUrl(logoPath ?? string.Empty)));
+        }
         return result;
     }
 
-    private static ReportHeaderOption ReadHeader(SqlDataReader reader) => new(
-        reader.GetString(0).Trim(),
-        reader.GetString(1),
-        reader.GetString(2),
-        EmptyToNull(reader.GetString(3)),
-        EmptyToNull(reader.GetString(4)),
-        EmptyToNull(reader.GetString(5)),
-        LogoUrl(reader.GetString(5)));
+    private static (string? Company, string? CompanyEn, string? HeaderText) ParseHeaderJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return (null, null, null);
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var company = root.TryGetProperty("companyName", out var c) ? c.GetString() : null;
+            var companyEn = root.TryGetProperty("companyNameEn", out var ce) ? ce.GetString() : null;
+            var headerText = root.TryGetProperty("headerText", out var h) ? h.GetString() : null;
+            return (company, companyEn, headerText);
+        }
+        catch
+        {
+            return (null, null, null);
+        }
+    }
 
     private static async Task<List<ReportTailOption>> ReadTailsAsync(SqlConnection connection, CancellationToken token)
     {
         const string sql = """
-            SELECT LTRIM(RTRIM(TAIL_ID)),LTRIM(RTRIM(ISNULL(TAIL_NAME,TAIL_ID))),LTRIM(RTRIM(ISNULL(TAIL_TEXT,'')))
-            FROM dbo.REPORT_TAIL WITH (NOLOCK) ORDER BY TAIL_ID;
+            SELECT LTRIM(RTRIM(LAYOUT_ID)),LTRIM(RTRIM(ISNULL(LAYOUT_DESC,LAYOUT_ID))),
+                   LTRIM(RTRIM(ISNULL(CONTENT,'')))
+            FROM dbo.REPORT_LAYOUT WITH (NOLOCK)
+            WHERE KIND=N'TAIL' ORDER BY LAYOUT_ID;
             """;
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(token);
