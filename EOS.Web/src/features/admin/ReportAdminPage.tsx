@@ -20,15 +20,13 @@ interface IdNameOption { id: string; name: string }
 interface ReportRow {
   reportId: string; reportName: string | null; moduleId: number; isoNo: string | null;
   headerId: string | null; tailId: string | null; footerText: string | null;
-  defaultPaper: string | null; isDefault: boolean; reportFilter: string | null;
-  defaultPrinter: string | null; remark: string | null
+  isDefault: boolean; reportFilter: string | null;
+  remark: string | null
 }
 interface SortRow {
   serialNo: number; sortName: string | null; sortFields: string | null; sortDesc: string | null;
   groupName: string | null; groupFields: string | null; groupDesc: string | null
 }
-
-const PAPERS = ['', 'A4', 'A3', 'A5', 'LETTER', 'LEGAL']
 
 interface ReportAdminFieldOption { table: string; column: string; label: string }
 
@@ -92,8 +90,8 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
     setDraft({
       reportId: row?.reportId ?? '', reportName: row?.reportName ?? '', isoNo: row?.isoNo ?? '',
       headerId: row?.headerId ?? '', tailId: row?.tailId ?? '', footerText: row?.footerText ?? '',
-      defaultPaper: row?.defaultPaper ?? '', isDefault: row?.isDefault ?? false,
-      reportFilter: row?.reportFilter ?? '', defaultPrinter: row?.defaultPrinter ?? '', remark: row?.remark ?? '',
+      isDefault: row?.isDefault ?? false,
+      reportFilter: row?.reportFilter ?? '', remark: row?.remark ?? '',
     })
     setModuleSelection(mode === 'edit' ? (row?.moduleId ?? '') : '')
     setModuleDesc('')
@@ -123,9 +121,9 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
       const body = {
         reportId: id, reportName: String(draft.reportName ?? ''), moduleId: targetModule,
         isoNo: String(draft.isoNo ?? ''), headerId: String(draft.headerId ?? ''), tailId: String(draft.tailId ?? ''),
-        footerText: String(draft.footerText ?? ''), defaultPaper: String(draft.defaultPaper ?? ''),
+        footerText: String(draft.footerText ?? ''),
         isDefault: Boolean(draft.isDefault), reportFilter: String(draft.reportFilter ?? ''),
-        defaultPrinter: String(draft.defaultPrinter ?? ''), remark: String(draft.remark ?? ''),
+        remark: String(draft.remark ?? ''),
       }
       if (mode === 'edit') await apiClient.put(`/report-admin/reports/${encodeURIComponent(editingId)}`, body)
       else await apiClient.post('/report-admin/reports', body)
@@ -184,18 +182,8 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
                 </select>
               </div>
               <div className="col-md-4">
-                <label className="form-label" htmlFor="report-paper">纸张</label>
-                <select id="report-paper" className="form-select" value={String(draft.defaultPaper ?? '')} onChange={(event) => setDraft((state) => ({ ...state, defaultPaper: event.target.value }))}>
-                  {PAPERS.map((paper) => <option key={paper} value={paper}>{paper || 'A4（默认）'}</option>)}
-                </select>
-              </div>
-              <div className="col-md-4">
                 <label className="form-label d-block" htmlFor="report-default">默认报表</label>
                 <input id="report-default" className="form-check-input" type="checkbox" checked={Boolean(draft.isDefault)} onChange={(event) => setDraft((state) => ({ ...state, isDefault: event.target.checked }))} />
-              </div>
-              <div className="col-md-8">
-                <label className="form-label" htmlFor="report-printer">默认打印机</label>
-                <input id="report-printer" className="form-control" value={String(draft.defaultPrinter ?? '')} onChange={(event) => setDraft((state) => ({ ...state, defaultPrinter: event.target.value }))} />
               </div>
               <div className="col-md-12">
                 <label className="form-label" htmlFor="report-filter">报表过滤（受控解析，不可解析时跳过）</label>
@@ -504,7 +492,6 @@ export function ReportAdminPage() {
     { accessorKey: 'reportName', header: '报表名称', cell: (info) => (info.getValue() == null || info.getValue() === '' ? '—' : String(info.getValue())) },
     { accessorKey: 'headerId', header: '页头', cell: (info) => headers.data?.find((item) => item.id === info.getValue())?.name ?? (info.getValue() == null || info.getValue() === '' ? '—' : String(info.getValue())) },
     { accessorKey: 'tailId', header: '表尾', cell: (info) => tails.data?.find((item) => item.id === info.getValue())?.name ?? (info.getValue() == null || info.getValue() === '' ? '—' : String(info.getValue())) },
-    { accessorKey: 'defaultPaper', header: '纸张', cell: (info) => (info.getValue() == null || info.getValue() === '' ? 'A4' : String(info.getValue())) },
     { accessorKey: 'isDefault', header: '默认', cell: (info) => (info.getValue() ? '是' : '否') },
     {
       id: 'actions',

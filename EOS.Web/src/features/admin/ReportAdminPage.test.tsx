@@ -20,9 +20,9 @@ const modules = [
 ]
 
 const reports = [
-  { reportId: 'RPT_A', reportName: '送货单', moduleId: 1209, isoNo: null, headerId: 'H1', tailId: null, footerText: null, defaultPaper: 'A4', isDefault: true, reportFilter: null, defaultPrinter: null, remark: null },
-  { reportId: 'RPT_B', reportName: '订单', moduleId: 1209, isoNo: null, headerId: null, tailId: null, footerText: null, defaultPaper: 'A3', isDefault: false, reportFilter: null, defaultPrinter: null, remark: null },
-  { reportId: 'RPT_C', reportName: '库存日志', moduleId: 1305, isoNo: null, headerId: null, tailId: null, footerText: null, defaultPaper: 'A4', isDefault: false, reportFilter: null, defaultPrinter: null, remark: null },
+  { reportId: 'RPT_A', reportName: '送货单', moduleId: 1209, isoNo: null, headerId: 'H1', tailId: null, footerText: null, isDefault: true, reportFilter: null, remark: null },
+  { reportId: 'RPT_B', reportName: '订单', moduleId: 1209, isoNo: null, headerId: null, tailId: null, footerText: null, isDefault: false, reportFilter: null, remark: null },
+  { reportId: 'RPT_C', reportName: '库存日志', moduleId: 1305, isoNo: null, headerId: null, tailId: null, footerText: null, isDefault: false, reportFilter: null, remark: null },
 ]
 
 const headers = [{ id: 'H1', name: '默认页头' }]

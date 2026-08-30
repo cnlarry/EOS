@@ -46,7 +46,6 @@ public sealed class ReportAdminController(
         if (!await CanSetupAsync(token)) return Forbid();
         ReportAdminValidator.ValidateReportId(draft.ReportId);
         ReportAdminValidator.ValidateModuleId(draft.ModuleId);
-        ReportAdminValidator.ValidatePaper(draft.DefaultPaper);
         var existing = await repository.ListReportsAsync(draft.ModuleId!.Value, token);
         if (existing.Any(item => item.ReportId == draft.ReportId.Trim())) return Conflict("报表编号已存在。");
         await repository.CreateReportAsync(draft, User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty, token);
@@ -58,7 +57,6 @@ public sealed class ReportAdminController(
     {
         if (!await CanSetupAsync(token)) return Forbid();
         ReportAdminValidator.ValidateReportId(id);
-        ReportAdminValidator.ValidatePaper(draft.DefaultPaper);
         var moduleId = await repository.GetReportModuleAsync(id, token);
         if (moduleId is null) return NotFound();
         var updated = await repository.UpdateReportAsync(id, draft, User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty, token);

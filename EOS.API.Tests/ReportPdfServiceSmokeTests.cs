@@ -39,7 +39,8 @@ public class ReportPdfServiceSmokeTests
     public void GenerateReportPdf_ProducesValidPdfBytes()
     {
         var meta = new ReportPdfMeta(
-            "R1", "测试报表", null, null, "页脚文字", "ISO9001", null, null,
+            "R1", "测试报表", null, null, "页脚文字", "ISO9001",
+            null,
             new ReportHeaderOption("H1", "默认页头", "某某公司", null, "页头文字", null, null),
             "表尾文字", []);
         var definition = new ReportDefinition(
@@ -65,7 +66,7 @@ public class ReportPdfServiceSmokeTests
     public void GenerateGroupedReportPdf_WritesTempFileForVerification()
     {
         var meta = new ReportPdfMeta(
-            "R1", "分组测试报表", null, null, null, null, null, null, null, null, []);
+            "R1", "分组测试报表", null, null, null, null, null, null, null, []);
         var definition = new ReportDefinition(
             129801, "分组测试", "PRODUCT", null,
             [],

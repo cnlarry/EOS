@@ -9,10 +9,8 @@ public sealed record ReportAdminDraft(
     string? HeaderId,
     string? TailId,
     string? FooterText,
-    string? DefaultPaper,
     bool IsDefault,
     string? ReportFilter,
-    string? DefaultPrinter,
     string? Remark);
 
 /// <summary>排序/分组方案维护草稿（REPORT_SORT）。</summary>

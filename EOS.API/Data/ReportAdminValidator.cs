@@ -4,14 +4,13 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// 报表定义维护校验（纯逻辑，便于单元测试）：
-/// 编号/排序字段串格式、纸张白名单、图片文件头白名单。
+/// 编号/排序字段串格式、图片文件头白名单。
 /// </summary>
 internal static class ReportAdminValidator
 {
     /// <summary>报表编号：真实编号可含点号（如 INV_Occur_In_List.），仅作 SQL 参数非动态标识符，故放行点号。</summary>
     private static readonly Regex ReportIdPattern = new("^[A-Za-z0-9_.\\-]{1,100}$", RegexOptions.Compiled);
     private static readonly Regex FieldToken = new("^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
-    private static readonly string[] PaperWhitelist = ["A4", "A3", "A5", "LETTER", "LEGAL"];
 
     public static void ValidateReportId(string? id)
     {
@@ -22,14 +21,6 @@ internal static class ReportAdminValidator
     public static void ValidateModuleId(int? moduleId)
     {
         if (moduleId is null or <= 0) throw new ArgumentException("模块号无效。", nameof(moduleId));
-    }
-
-    public static void ValidatePaper(string? paper)
-    {
-        if (string.IsNullOrWhiteSpace(paper)) return;
-        var normalized = paper.Trim().ToUpperInvariant();
-        if (!PaperWhitelist.Contains(normalized))
-            throw new ArgumentException("纸张类型仅支持 A4/A3/A5/LETTER/LEGAL。", nameof(paper));
     }
 
     /// <summary>排序/分组字段串：逗号分隔的 "表.列" 白名单格式；空串允许。</summary>

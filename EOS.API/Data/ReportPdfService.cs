@@ -56,7 +56,7 @@ public sealed class ReportPdfService(IWebHostEnvironment environment, ILogger<Re
         {
             container.Page(page =>
             {
-                page.Size(PdfLayout.PageSizeFor(meta.DefaultPaper, columns.Count > 12));
+                page.Size(PdfLayout.PageSizeFor(null, columns.Count > 12));
                 page.Margin(32);
                 page.DefaultTextStyle(TextStyle.Default.FontFamily(PdfLayout.FontFamily).FontSize(9));
                 page.Header().Column(headerColumn =>
