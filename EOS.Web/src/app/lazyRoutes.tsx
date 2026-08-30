@@ -26,3 +26,4 @@ export const PrintViewPage = lazy(() => import('../features/print/PrintViewPage'
 export const MyTasksPage = lazy(() => import('../features/workflow/MyTasksPage').then((module) => ({ default: module.MyTasksPage })))
 export const FlowDesignPage = lazy(() => import('../features/workflow/FlowDesignPage').then((module) => ({ default: module.FlowDesignPage })))
 export const FlowMonitorPage = lazy(() => import('../features/workflow/FlowMonitorPage').then((module) => ({ default: module.FlowMonitorPage })))
+export const ReportCenterPage = lazy(() => import('../features/reports/ReportCenterPage').then((module) => ({ default: module.ReportCenterPage })))

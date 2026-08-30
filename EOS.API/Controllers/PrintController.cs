@@ -51,7 +51,7 @@ public sealed class PrintController(
             definition, request.Key, headerId, tailId,
             rights.CanViewCost, rights.CanViewSecrecy,
             rights.DeniedMasterFields, rights.DeniedDetailFields,
-            rights.DataFilter, token);
+            CombineDataFilters(rights.DataFilter, reportRights.DataFilter), token);
         if (data is null) return NotFound();
 
         var header = settings.Headers.FirstOrDefault(item => item.HeaderId == headerId);
@@ -60,5 +60,15 @@ public sealed class PrintController(
             data, header, tail?.TailText ?? data.TailText, request.ShowRemark, userId);
         await auditWriter.WriteBestEffortAsync(moduleId, string.Join(',', request.Key), "PRINT", $"打印 {data.Title}", userId, "PRINT", result: 1, null, token);
         return File(pdf, "application/pdf", $"{data.Title}.pdf");
+    }
+
+    /// <summary>合并多个 DATA_FILTER 表达式（交集收紧，§13.3 作用顺序：AND 组合）。</summary>
+    private static string CombineDataFilters(params string?[] filters)
+    {
+        var parts = filters
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Select(f => $"({f!.Trim()})")
+            .ToList();
+        return parts.Count == 0 ? string.Empty : string.Join(" AND ", parts);
     }
 }

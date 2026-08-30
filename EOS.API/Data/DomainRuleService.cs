@@ -494,28 +494,21 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 readGroup.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId;
                 groupId = (string?)await readGroup.ExecuteScalarAsync(token);
             }
-            if (!string.IsNullOrWhiteSpace(groupId))
-            {
-                await using var join = new SqlCommand("""
-                    INSERT INTO dbo.SYSDG_USER (G_IDX, USER_ID)
-                    SELECT @GIdx, @UserId
-                    WHERE NOT EXISTS (SELECT 1 FROM dbo.SYSDG_USER WHERE G_IDX=@GIdx AND USER_ID=@UserId);
-                    """, connection, transaction);
-                join.Parameters.Add("@GIdx", SqlDbType.NChar, 10).Value = groupId;
-                join.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId;
-                await join.ExecuteNonQueryAsync(token);
-            }
-            // 2. 报表权限补齐（有 REPORT_TAG=1 个人模块的报表，预览/打印/导出默认开通）
-            await using var reports = new SqlCommand("""
-                INSERT INTO dbo.SYSDD_REPORT (USER_ID, M_IDX, REPORT_ID, PREVIEW_TAG, PRINT_TAG, EXPORT_TAG, DATA_FILTER)
-                SELECT m.USER_ID, r.R_M_IDX, r.REPORT_ID, 1, 1, 1, ''
-                FROM dbo.SYSDL m CROSS JOIN dbo.REPORT r
-                WHERE m.USER_ID=@UserId
-                  AND r.REPORT_ID NOT IN (SELECT REPORT_ID FROM dbo.SYSDD_REPORT WHERE USER_ID=@UserId)
-                  AND r.R_M_IDX IN (SELECT M_IDX FROM dbo.SYSDD WHERE REPORT_TAG=1 AND USER_ID=@UserId);
+        if (!string.IsNullOrWhiteSpace(groupId))
+        {
+            await using var join = new SqlCommand("""
+                INSERT INTO dbo.SYSDG_USER (G_IDX, USER_ID)
+                SELECT @GIdx, @UserId
+                WHERE NOT EXISTS (SELECT 1 FROM dbo.SYSDG_USER WHERE G_IDX=@GIdx AND USER_ID=@UserId);
                 """, connection, transaction);
-            reports.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId;
-            await reports.ExecuteNonQueryAsync(token);
+            join.Parameters.Add("@GIdx", SqlDbType.NChar, 10).Value = groupId;
+            join.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId;
+            await join.ExecuteNonQueryAsync(token);
+        }
+        // 2.（已删除，ADR-009 §2）报表权限物化展开：SYSDD_REPORT 由 DomainRuleService 按
+        //    SYSDD.REPORT_TAG 笛卡尔积补行（原 508-518 行）。P1 起权限判定改"默认全开 +
+        //    override 覆盖"（LegacyRightsRepository.GetReportAsync），不再需要物化补行；
+        //    用户×报表 10 万行物化展开已随之废弃。孤儿清理（下方第 3 步）保留。
         }
         // 3. 个人权限孤儿清理（全局，与旧 SP 一致）
         await using (var cleanDd = new SqlCommand(

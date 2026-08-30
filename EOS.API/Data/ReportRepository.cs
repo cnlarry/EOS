@@ -150,6 +150,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         ReportQueryRequest request,
         int page,
         int pageSize,
+        string? dataFilter,
         CancellationToken token)
     {
         using var timing = DbTimingCollector.Instance.Measure();
@@ -164,7 +165,10 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         var command=new SqlCommand();
         command.Connection=connection;
         var selectSourceValues=await LoadSelectSourceValueSetsAsync(definition,connection,token);
+        var allowedFields=physicalColumns.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var predicates=BuildConditionPredicates(definition,request,physicalColumns,selectSourceValues,command);
+        ApplyControlledFilter(definition.ModuleFilter,definition.MasterTable,allowedFields,predicates,command,throwOnFailure:true);
+        ApplyControlledFilter(dataFilter,definition.MasterTable,allowedFields,predicates,command,throwOnFailure:true);
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var selected=BuildSelectedColumns(definition);
         if(selected.Count==0)return new([],0,page,pageSize);

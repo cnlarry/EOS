@@ -28,7 +28,8 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
         var roots = modules.Where(module => module.ParentId == 0)
             .OrderBy(module => module.SortIndex).ThenBy(module => module.Id).ToList();
         var navigation = new List<object> {
-            new { id = "dashboard", label = "首页", route = "/dashboard", icon = "dashboard", children = (object?)null }
+            new { id = "dashboard", label = "首页", route = "/dashboard", icon = "dashboard", children = (object?)null },
+            new { id = "report-center", label = "报表中心", route = "/report-center", icon = "report", children = (object?)null }
         };
         var iconOverrides = configuration.GetSection("NavigationIcons").GetChildren()
             .ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);

@@ -122,7 +122,11 @@ internal static class RightsAdminLogic
             CombineDataFilters(groups.Select(group => group.DataFilter), " AND "));
     }
 
-    /// <summary>用户/组报表权限生效值：个人行存在 → 完全采用；否则组 OR（DATA_FILTER 按 OR 拼接）；无记录全禁。</summary>
+    /// <summary>
+    /// 用户/组报表权限生效值（ADR-009 §2 语义）：个人 override 行存在 → 完全采用；
+    /// 否则组 override OR（DATA_FILTER 按 OR 拼接）；无任何 override 行 → 默认开放
+    /// （跟随模块 REPORT_TAG 全开，source="default_open"）。
+    /// </summary>
     public static EffectiveReportRights AggregateReportEffective(
         ReportRightsInput? personal,
         IReadOnlyList<ReportRightsInput> groups)
@@ -130,7 +134,7 @@ internal static class RightsAdminLogic
         if (personal is not null)
             return new("personal", personal.Preview, personal.Print, personal.Export, (personal.DataFilter ?? string.Empty).Trim());
         if (groups.Count == 0)
-            return new("none", false, false, false, string.Empty);
+            return new("default_open", true, true, true, string.Empty);
         return new(
             "group",
             groups.Any(group => group.Preview),

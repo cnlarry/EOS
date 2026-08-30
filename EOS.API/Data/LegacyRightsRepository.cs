@@ -39,51 +39,72 @@ public sealed class LegacyRightsRepository(DbConnectionFactory connections, ILog
     }
 
     /// <summary>
-    /// 报表级权限（对齐旧 Admin.GetUserReportRightDetail）：
-    /// 个人 SYSDD_REPORT 记录存在则完全采用（不再合并组）；否则取用户所属组
-    /// SYSDH_REPORT 的 PREVIEW/PRINT/EXPORT 标签按 OR 合并、DATA_FILTER 按 OR 拼接；
-    /// 无任何记录时三项权限均为 false。
+    /// 报表级权限（ADR-009 §2 语义：SYSDD.REPORT_TAG 唯一真源，SYSDD_REPORT 降级为 override）：
+    /// 1. 先判断模块级报表可见性（SYSDD.REPORT_TAG 个人优先，否则 SYSDH.REPORT_TAG 组 OR）；
+    /// 2. 若模块 REPORT_TAG 未授予 → 全禁（CanPreview/CanPrint/CanExport all false）；
+    /// 3. 若模块 REPORT_TAG 已授予 → 查询 override 行（SYSDD_REPORT 个人优先，否则 SYSDH_REPORT 组 OR）；
+    /// 4. 无 override 行 → 默认全开（PREVIEW/PRINT/EXPORT = true, DATA_FILTER = ''）；
+    /// 5. 有 override 行 → 按 override 值覆盖（通常收紧）。
     /// </summary>
     public async Task<ReportRights> GetReportAsync(string userId, int moduleId, string reportId, CancellationToken token)
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
 
-        const string personalSql = """
+        // 1. 判断模块级 REPORT_TAG（个人覆盖组）
+        var moduleReportTag = await GetModuleReportTagAsync(connection, userId, moduleId, token);
+        if (!moduleReportTag)
+        {
+            logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source=module_no_report_tag",
+                userId, moduleId, reportId);
+            return new ReportRights(false, false, false, string.Empty);
+        }
+
+        // 2. 查询 override 行（个人 SYSDD_REPORT 优先，否则组 SYSDH_REPORT OR）
+        const string personalOverrideSql = """
             SELECT ISNULL(PREVIEW_TAG,0) AS PREVIEW_TAG,ISNULL(PRINT_TAG,0) AS PRINT_TAG,
                    ISNULL(EXPORT_TAG,0) AS EXPORT_TAG,ISNULL(DATA_FILTER,'') AS DATA_FILTER
             FROM dbo.SYSDD_REPORT WITH (NOLOCK)
             WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId;
             """;
-        await using (var personalCommand = new SqlCommand(personalSql, connection))
+        await using (var personalCommand = new SqlCommand(personalOverrideSql, connection))
         {
             AddReportParameters(personalCommand, userId, moduleId, reportId);
             await using var reader = await personalCommand.ExecuteReaderAsync(token);
             if (await reader.ReadAsync(token))
             {
-                var rights = ReportRightsAggregator.FromPersonal(ReadReportRow(reader));
-                logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source=personal",
+                var row = ReadReportRow(reader);
+                var rights = new ReportRights(row.Preview, row.Print, row.Export, row.DataFilter.Trim());
+                logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source=personal_override",
                     userId, moduleId, reportId);
                 return rights;
             }
         }
 
-        const string groupSql = """
+        const string groupOverrideSql = """
             SELECT ISNULL(g.PREVIEW_TAG,0) AS PREVIEW_TAG,ISNULL(g.PRINT_TAG,0) AS PRINT_TAG,
                    ISNULL(g.EXPORT_TAG,0) AS EXPORT_TAG,ISNULL(g.DATA_FILTER,'') AS DATA_FILTER
             FROM dbo.SYSDH_REPORT g WITH (NOLOCK)
             INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX=g.G_IDX
             WHERE gu.USER_ID=@UserId AND g.M_IDX=@ModuleId AND g.REPORT_ID=@ReportId;
             """;
-        await using var groupCommand = new SqlCommand(groupSql, connection);
+        await using var groupCommand = new SqlCommand(groupOverrideSql, connection);
         AddReportParameters(groupCommand, userId, moduleId, reportId);
         await using var groupReader = await groupCommand.ExecuteReaderAsync(token);
         var rows = new List<ReportRightRow>();
         while (await groupReader.ReadAsync(token)) rows.Add(ReadReportRow(groupReader));
-        var result = ReportRightsAggregator.FromGroups(rows);
-        logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source={Source}",
-            userId, moduleId, reportId, rows.Count == 0 ? "none" : $"group({rows.Count})");
-        return result;
+        if (rows.Count > 0)
+        {
+            var result = ReportRightsAggregator.FromGroups(rows);
+            logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source=group_override({Count})",
+                userId, moduleId, reportId, rows.Count);
+            return result;
+        }
+
+        // 3. 无 override 行 → 默认全开（跟随模块 REPORT_TAG）
+        logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source=default_open",
+            userId, moduleId, reportId);
+        return new ReportRights(true, true, true, string.Empty);
     }
 
     private void LogRights(string userId, int moduleId, string source, LegacyModuleRights rights) =>
@@ -139,6 +160,34 @@ public sealed class LegacyRightsRepository(DbConnectionFactory connections, ILog
     {
         AddParameters(command, userId, moduleId);
         command.Parameters.Add("@ReportId", SqlDbType.NChar, 50).Value = reportId.Trim();
+    }
+
+    /// <summary>模块级报表可见性唯一真源（ADR-009 §2）：SYSDD.REPORT_TAG 个人优先，否则 SYSDH.REPORT_TAG 组 OR。</summary>
+    private static async Task<bool> GetModuleReportTagAsync(
+        SqlConnection connection, string userId, int moduleId, CancellationToken token)
+    {
+        const string personalSql = """
+            SELECT ISNULL(REPORT_TAG,0) FROM dbo.SYSDD WITH (NOLOCK)
+            WHERE USER_ID=@UserId AND M_IDX=@ModuleId;
+            """;
+        await using (var personalCommand = new SqlCommand(personalSql, connection))
+        {
+            AddParameters(personalCommand, userId, moduleId);
+            var personal = await personalCommand.ExecuteScalarAsync(token);
+            if (personal is not null && personal is not DBNull)
+            {
+                return Convert.ToBoolean(personal);
+            }
+        }
+
+        const string groupSql = """
+            SELECT TOP 1 1 FROM dbo.SYSDH h WITH (NOLOCK)
+            INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX=h.G_IDX
+            WHERE gu.USER_ID=@UserId AND h.M_IDX=@ModuleId AND ISNULL(h.REPORT_TAG,0)=1;
+            """;
+        await using var groupCommand = new SqlCommand(groupSql, connection);
+        AddParameters(groupCommand, userId, moduleId);
+        return await groupCommand.ExecuteScalarAsync(token) is not null;
     }
 
     private static ReportRightRow ReadReportRow(SqlDataReader reader) => new(

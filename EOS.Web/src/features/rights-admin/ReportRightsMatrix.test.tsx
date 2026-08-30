@@ -17,8 +17,8 @@ vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
 const reportRows: ReportRightsRow[] = [
   {
     moduleId: 129801, moduleTitle: '产品资料明细', reportId: 'R129801', reportName: '产品资料明细表',
-    preview: false, print: false, export: false, dataFilter: '', hasPersonal: false,
-    effective: { source: 'none', preview: false, print: false, export: false, dataFilter: '' },
+    preview: false, print: false, export: false, dataFilter: '', hasPersonal: true,
+    effective: { source: 'group', preview: false, print: false, export: false, dataFilter: '' },
   },
 ]
 

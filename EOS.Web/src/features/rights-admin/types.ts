@@ -1,4 +1,4 @@
-export type RightsSource = 'personal' | 'group' | 'none'
+export type RightsSource = 'personal' | 'group' | 'none' | 'default_open'
 
 export interface EffectiveModuleRights {
   source: RightsSource

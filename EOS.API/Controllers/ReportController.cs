@@ -35,9 +35,14 @@ public sealed class ReportController(
         [FromQuery] int page, [FromQuery] int pageSize, [FromQuery] string? reportId,
         [FromBody] ReportQueryRequest request, CancellationToken token)
     {
-        var definition = await AuthorizedDefinition(moduleId, reportId, token);
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is null) return Unauthorized();
+        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
+        if (!rights.CanBrowse) return Forbid();
+        var definition = await repository.GetDefinitionAsync(moduleId, userId, rights.CanViewCost, rights.CanViewSecrecy,
+            rights.DeniedMasterFields, reportId, token);
         if (definition is null) return NotFound();
-        return Ok(await repository.QueryAsync(definition, request, page, pageSize, token));
+        return Ok(await repository.QueryAsync(definition, request, page, pageSize, rights.DataFilter, token));
     }
 
     [HttpGet("condition-options/{serialNo:int}")]
@@ -120,7 +125,7 @@ public sealed class ReportController(
             new ReportQueryRequest(request.Values ?? new Dictionary<int, string?>(), request.ValuesTo ?? new Dictionary<int, string?>()),
             definition.ModuleFilter,
             meta.ReportFilter,
-            reportRights.DataFilter,
+            CombineDataFilters(moduleRights.DataFilter, reportRights.DataFilter),
             sortFields,
             groupFields,
             token);
@@ -150,7 +155,9 @@ public sealed class ReportController(
         var reportRights = await rightsRepository.GetReportAsync(userId, moduleId, report.ReportId, token);
         if (!reportRights.CanExport) return Forbid();
 
-        var result = await repository.QueryAsync(definition, request, 1, 200, token);
+        var result = await repository.QueryAsync(
+            definition, request, 1, 200,
+            CombineDataFilters(rights.DataFilter, reportRights.DataFilter), token);
         using var writer = new StringWriter();
         writer.Write('\uFEFF');
         writer.WriteLine(string.Join(',', definition.Columns.Select(column => Escape(column.Label))));
@@ -201,4 +208,14 @@ public sealed class ReportController(
 
     private static string Escape(string value) =>
         value.IndexOfAny([',', '"', '\r', '\n']) >= 0 ? "\"" + value.Replace("\"", "\"\"") + "\"" : value;
+
+    /// <summary>合并多个 DATA_FILTER 表达式（交集收紧，§13.3 作用顺序：AND 组合）。</summary>
+    private static string CombineDataFilters(params string?[] filters)
+    {
+        var parts = filters
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Select(f => $"({f!.Trim()})")
+            .ToList();
+        return parts.Count == 0 ? string.Empty : string.Join(" AND ", parts);
+    }
 }
