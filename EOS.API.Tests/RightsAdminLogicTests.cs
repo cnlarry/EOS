@@ -197,7 +197,10 @@ public class RightsAdminLogicTests
         Assert.False(groupEffective.Print);
         Assert.Equal("(Y=2)", groupEffective.DataFilter);
 
-        Assert.Equal("none", RightsAdminLogic.AggregateReportEffective(null, []).Source);
+        Assert.Equal("default_open", RightsAdminLogic.AggregateReportEffective(null, []).Source);
+        Assert.True(RightsAdminLogic.AggregateReportEffective(null, []).Preview);
+        Assert.True(RightsAdminLogic.AggregateReportEffective(null, []).Print);
+        Assert.True(RightsAdminLogic.AggregateReportEffective(null, []).Export);
     }
 
     [Fact]

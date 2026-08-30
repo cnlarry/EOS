@@ -43,23 +43,25 @@ export function ReportRightsMatrix({ open, mode, targetId, title, onClose, onSav
     refetchOnWindowFocus: false,
   })
   const rows = useMemo(() => matrix.data ?? [], [matrix.data])
+  const [showOnlyExceptions, setShowOnlyExceptions] = useState(true)
+  const [search, setSearch] = useState('')
+
+  const filteredRows = useMemo(() => {
+    const text = search.trim().toLowerCase()
+    const scoped = showOnlyExceptions ? rows.filter((row) => row.hasPersonal) : rows
+    if (!text) return scoped
+    return scoped.filter((row) =>
+      String(row.moduleId).includes(text)
+      || row.moduleTitle.toLowerCase().includes(text)
+      || row.reportId.toLowerCase().includes(text)
+      || row.reportName.toLowerCase().includes(text))
+  }, [rows, search, showOnlyExceptions])
 
   const [draft, setDraft] = useState<Record<string, ReportDraft>>({})
   const [dirty, setDirty] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-
-  const filteredRows = useMemo(() => {
-    const text = search.trim().toLowerCase()
-    if (!text) return rows
-    return rows.filter((row) =>
-      String(row.moduleId).includes(text)
-      || row.moduleTitle.toLowerCase().includes(text)
-      || row.reportId.toLowerCase().includes(text)
-      || row.reportName.toLowerCase().includes(text))
-  }, [rows, search])
 
   useEffect(() => {
     if (!open || !matrix.data) return
@@ -189,16 +191,14 @@ export function ReportRightsMatrix({ open, mode, targetId, title, onClose, onSav
       cell: ({ row }) => {
         const effective = row.original.effective
         const key = reportKey(row.original)
+        const sourceClass = effective.source === 'personal' ? 'bg-primary-subtle text-primary' : effective.source === 'group' ? 'bg-secondary-subtle text-secondary' : 'bg-light text-secondary'
+        const sourceLabel = effective.source === 'personal' ? '个人' : effective.source === 'group' ? '组' : effective.source === 'default_open' ? '默认开放' : '无'
         return (
           <span className="small">
-            <span className={`badge me-1 ${effective.source === 'personal' ? 'bg-primary-subtle text-primary' : effective.source === 'group' ? 'bg-secondary-subtle text-secondary' : 'bg-light text-secondary'}`}>
-              {effective.source === 'personal' ? '个人' : effective.source === 'group' ? '组' : '无'}
+            <span className={`badge me-1 ${sourceClass}`}>{sourceLabel}</span>
+            <span className="text-secondary">
+              预览{effective.preview ? '✓' : '✗'} 列印{effective.print ? '✓' : '✗'} 导出{effective.export ? '✓' : '✗'}
             </span>
-            {effective.source !== 'none' && (
-              <span className="text-secondary">
-                预览{effective.preview ? '✓' : '✗'} 列印{effective.print ? '✓' : '✗'} 导出{effective.export ? '✓' : '✗'}
-              </span>
-            )}
             {dirty.has(key) && <span className="badge bg-warning-subtle text-warning ms-1">已修改</span>}
           </span>
         )
@@ -230,9 +230,17 @@ export function ReportRightsMatrix({ open, mode, targetId, title, onClose, onSav
 
   const matrixBody = (
     <>
-      <div className="alert alert-info py-1 px-2 small mb-2">
-        {mode === 'user' ? '个人报表权限存在时完全采用；组报表权限按组 OR 聚合。' : '组报表权限按组 OR 聚合。'}
-        清空勾选并保存 = 删除该行，回退到无权限。
+      <div className="alert alert-info py-1 px-2 small mb-2 d-flex align-items-center justify-content-between">
+        <span>
+          报表权限已改为「默认开放 + 例外收紧」：模块拥有报表权限 (REPORT_TAG) 的用户默认可预览/列印/导出该模块全部报表。
+          以下仅列出已逐报表收紧的例外行。清空某行勾选并保存 = 删除该例外，恢复默认开放。
+          {mode === 'user' ? ' 个人例外覆盖组例外。' : ''}
+        </span>
+        <label className="form-check form-check-inline mb-0 text-nowrap">
+          <input type="checkbox" className="form-check-input" checked={showOnlyExceptions}
+            onChange={(event) => setShowOnlyExceptions(event.target.checked)} />
+          <span className="form-check-label">仅显示例外</span>
+        </label>
       </div>
       {matrix.isPending ? <LoadingState label="正在加载报表权限…" /> : matrix.isError ? (
         <div className="alert alert-danger d-flex align-items-center justify-content-between">

@@ -29,6 +29,7 @@ import {
   GroupReportRightsPage,
   GroupMembersPage,
   MenuAdminPage,
+  ReportCenterPage,
 } from './lazyRoutes'
 import { FieldAdminRoute, ForbiddenPage, FormEditorRoute, PrintSetupRoute, ReportAdminRoute, ReportConditionsRoute, ReportViewerRoute, WorkbenchRoute } from './routeElements'
 import { withSuspense } from './suspense'
@@ -70,6 +71,7 @@ export const router = createBrowserRouter([
         { path: 'workbench/:moduleId/view/*', element: withSuspense(<FormEditorRoute />) },
         { path: 'workbench/:moduleId/copy', element: withSuspense(<FormEditorRoute />) },
         { path: 'reports/:moduleId', element: withSuspense(<ReportViewerRoute />) },
+        { path: 'report-center', element: withSuspense(<ReportCenterPage />) },
         { path: 'search-center/:moduleId?', element: withSuspense(<SearchCenterPage />) },
         { path: 'import', element: withSuspense(<ImportPage />) },
         { path: 'print/:moduleId', element: withSuspense(<PrintViewPage />) },
