@@ -57,7 +57,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "pur-prepay" => await PurPrepayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "curr" => await CurrAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "bom-stru" => await BomStruAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "sysqr-default" => await SysqrDefaultAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "sysdg" => await SysdgAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "sysdl" => await SysdlAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "employee-card" => await EmployeeCardAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
@@ -421,23 +420,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         var lines = new List<string>();
         while (await reader.ReadAsync(token)) lines.Add(Convert.ToInt32(reader.GetValue(0)).ToString());
         return lines.Count > 0 ? string.Join("\r\n", lines.Take(10)) : null;
-    }
-
-    /// <summary>
-    /// 报表过滤条件设置（2205）AfterSave：条件定义保存后清空用户报表条件记忆
-    /// （等价 P_SYSQR_DEFAULT_After_Save；旧 SP 的 @@ERROR 判断为死代码，不移植）。
-    /// </summary>
-    private static async Task<SprocResult> SysqrDefaultAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 1 || keyValues.Count < 1
-            || !int.TryParse((keyValues[0] ?? string.Empty).Trim(), out var mIdx))
-            return new(true, null); // 主键非数字：无 M_IDX 可清（与旧 SP 读取失败行为一致）
-        await using var clear = new SqlCommand("DELETE FROM dbo.SYSQR_USER WHERE M_IDX=@MIdx;", connection, transaction);
-        clear.Parameters.Add("@MIdx", SqlDbType.Int).Value = mIdx;
-        await clear.ExecuteNonQueryAsync(token);
-        return new(true, null);
     }
 
     /// <summary>

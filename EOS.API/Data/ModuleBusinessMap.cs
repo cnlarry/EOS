@@ -107,7 +107,6 @@ public static class DomainRuleMap
         [130107] = "inv-adjust",
         [130110] = "inv-out",
         [180208] = "employee-card",
-        [2205] = "sysqr-default",
         [2305] = "sysdg",
         [2817] = "inv-in",
         [2818] = "inv-out",

@@ -14,7 +14,6 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
 {
     private const int MenuAdminModuleId = 2301;
     private const int ReportAdminModuleId = 2201;
-    private const int ReportConditionsModuleId = 2205;
     private const int UserAdminModuleId = 2306;
     private const int FieldAdminModuleId = 2302;
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
@@ -30,7 +29,6 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["menu-admin.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
             ["menu-admin.sprocs"] = ["SP_NAME"],
             ["report-admin.fields"] = ["T_ID", "F_ID", "F_DESC", "F_TYPE"],
-            ["report-conditions.fields"] = ["T_ID", "F_ID", "F_DESC", "F_TYPE"],
             ["report-admin.modules"] = ["M_IDX", "M_DESC"],
             // 员工源显示列/可排序列来自 110104（SYSDN）字段元数据，运行时动态解析，这里仅登记默认排序列
             ["user-admin.employees"] = ["EMP_ID"],
@@ -47,7 +45,6 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["menu-admin.fields"] = ["F_ID"],
             ["menu-admin.sprocs"] = ["SP_NAME"],
             ["report-admin.fields"] = ["T_ID", "F_ID"],
-            ["report-conditions.fields"] = ["T_ID", "F_ID"],
             ["report-admin.modules"] = ["M_IDX"],
             ["user-admin.employees"] = ["EMP_ID"],
         };
@@ -91,12 +88,6 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 ["SP_NAME"] = "LTRIM(RTRIM(p.name)) LIKE @Keyword",
             },
             ["report-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["T_ID"] = "LTRIM(RTRIM(t.T_ID)) LIKE @Keyword",
-                ["F_ID"] = "LTRIM(RTRIM(c.F_ID)) LIKE @Keyword",
-                ["F_DESC"] = "COALESCE(NULLIF(LTRIM(RTRIM(c.F_DESC)),''),LTRIM(RTRIM(c.F_ID))) LIKE @Keyword",
-            },
-            ["report-conditions.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["T_ID"] = "LTRIM(RTRIM(t.T_ID)) LIKE @Keyword",
                 ["F_ID"] = "LTRIM(RTRIM(c.F_ID)) LIKE @Keyword",
@@ -154,13 +145,6 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 ["F_DESC"] = "COALESCE(NULLIF(LTRIM(RTRIM(c.F_DESC)),''),LTRIM(RTRIM(c.F_ID)))",
                 ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(c.F_TYPE)),'nvarchar')",
             },
-            ["report-conditions.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["T_ID"] = "LTRIM(RTRIM(t.T_ID))",
-                ["F_ID"] = "LTRIM(RTRIM(c.F_ID))",
-                ["F_DESC"] = "COALESCE(NULLIF(LTRIM(RTRIM(c.F_DESC)),''),LTRIM(RTRIM(c.F_ID)))",
-                ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(c.F_TYPE)),'nvarchar')",
-            },
             ["report-admin.modules"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["M_IDX"] = "m.M_IDX",
@@ -177,7 +161,6 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         "menu-admin.tables" or "menu-admin.fields" or "menu-admin.sprocs" => MenuAdminModuleId,
         "field-admin.tables" or "field-admin.columns" or "field-admin.fields" => FieldAdminModuleId,
         "report-admin.fields" or "report-admin.modules" => ReportAdminModuleId,
-        "report-conditions.fields" => ReportConditionsModuleId,
         "user-admin.employees" => UserAdminModuleId,
         _ => null,
     };
@@ -203,7 +186,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         return Identifier.IsMatch(tableId.Trim()) ? tableId.Trim() : null;
     }
 
-    /// <summary>report-admin.fields / report-conditions.fields 共用的 args 校验：moduleId 必须为正整数。</summary>
+    /// <summary>report-admin.fields 共用的 args 校验：moduleId 必须为正整数。</summary>
     internal static int? ResolveReportModuleId(IReadOnlyDictionary<string, string>? args)
     {
         if (args is null || !args.TryGetValue("moduleId", out var raw) || !int.TryParse(raw, out var moduleId) || moduleId <= 0)
@@ -223,7 +206,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             "field-admin.fields" => await QueryFieldsAsync(request, token),
             "menu-admin.fields" => await QueryFieldsAsync(request, token),
             "menu-admin.sprocs" => await QuerySprocsAsync(request, token),
-            "report-admin.fields" or "report-conditions.fields" => await QueryReportFieldsAsync(request, token, sourceKey!),
+            "report-admin.fields" => await QueryReportFieldsAsync(request, token, sourceKey!),
             "report-admin.modules" => await QueryModulesAsync(request, token),
             "user-admin.employees" => await QueryEmployeesAsync(request, token),
             _ => null,
@@ -478,7 +461,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             total);
     }
 
-    /// <summary>报表字段源（2201 排序/分组与 2205 过滤条件共用：模块主/明细表 FIELDS 白名单字段）。</summary>
+    /// <summary>报表字段源（2201 排序/分组：模块主/明细表 FIELDS 白名单字段）。</summary>
     private async Task<UnifiedChooserResult?> QueryReportFieldsAsync(
         UnifiedChooserQueryRequest request, CancellationToken token, string sourceKey)
     {
