@@ -214,6 +214,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.SearchRecordsTool>()
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetRecordDetailTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetFormSchemaTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.DraftRecordTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.EnumMetricsTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistry>(sp =>
     new EOS.API.Features.Assistant.Tools.AssistantToolRegistry(
     [
@@ -221,6 +222,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetRecordDetailTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetFormSchemaTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DraftRecordTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.EnumMetricsTool>(),
     ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
