@@ -61,9 +61,11 @@ public sealed class PrintService(
         headerText=ReplacePlaceholders(headerText,master);
         footerText=ReplacePlaceholders(footerText,master);
         var masterResolved=await ResolvePartyNameAsync(connection,masterTable,master,token);
-        logger.LogDebug("打印数据 module={ModuleId} master={Master} details={DetailCount}",moduleId,masterTable,details.Count);
+        var clientProfile=await ResolveClientProfileAsync(connection,masterTable,masterResolved,token);
+        logger.LogDebug("打印数据 module={ModuleId} master={Master} details={DetailCount} clientProfile={HasClient}",
+            moduleId,masterTable,details.Count,clientProfile is not null);
         return new PrintData(moduleId,title,headerCompany,headerText,footerText,logoPath,tailText,
-            OrderPrintFields(masterFields),OrderPrintFields(detailFields),masterResolved,details);
+            OrderPrintFields(masterFields),OrderPrintFields(detailFields),masterResolved,details,clientProfile);
     }
 
     /// <summary>
@@ -90,6 +92,45 @@ public sealed class PrintService(
         var name=await command.ExecuteScalarAsync(token) as string;
         if(!string.IsNullOrWhiteSpace(name))result[nameField!]=name;
         return result;
+    }
+
+    /// <summary>
+    /// 客户级抬头资料（P6，ADR-009 §9.4.2）：按主表 CLIENT_ID/SUPPLIER_ID 从
+    /// CLIENT/SUPPLIER 回查抬头字段——HEADER_ID / FULL_NAME_CN|EN / DELI_ADDR_CN|EN /
+    /// TEL / FAX / LINKMAN / PRINT_PRICE。返回 ClientPrintProfile 供版式抬头/单价显隐使用。
+    /// 表/列名为服务端常量白名单，值参数化。CLIENT.PRINT_PRICE 启用前需审计取值分布。
+    /// </summary>
+    private static async Task<ClientPrintProfile?> ResolveClientProfileAsync(
+        SqlConnection connection,string masterTable,IReadOnlyDictionary<string,object?> master,CancellationToken token)
+    {
+        string? partyTable=null;
+        string? idField=null;
+        if(master.ContainsKey("CLIENT_ID")){partyTable="CLIENT";idField="CLIENT_ID";}
+        else if(master.ContainsKey("SUPPLIER_ID")){partyTable="SUPPLIER";idField="SUPPLIER_ID";}
+        if(partyTable is null)return null;
+        var idValue=Convert.ToString(master.GetValueOrDefault(idField!))?.Trim();
+        if(string.IsNullOrWhiteSpace(idValue))return null;
+
+        var isClient=partyTable.Equals("CLIENT",StringComparison.OrdinalIgnoreCase);
+        var columns=isClient
+            ? "CLIENT_NAME,FULL_NAME_CN,FULL_NAME_EN,DELI_ADDR_CN,DELI_ADDR_EN,TEL,FAX,LINKMAN,HEADER_ID,ISNULL(PRINT_PRICE,0)"
+            : "SUPPLIER_NAME,FULL_NAME_CN,FULL_NAME_EN,DELI_ADDR_CN,DELI_ADDR_EN,TEL,FAX,LINKMAN,HEADER_ID,0";
+        await using var command=new SqlCommand(
+            $"SELECT {columns} FROM dbo.[{partyTable}] WITH (NOLOCK) WHERE [{idField}]=@id;",connection);
+        command.Parameters.Add("@id",SqlDbType.NVarChar,50).Value=idValue;
+        await using var reader=await command.ExecuteReaderAsync(token);
+        if(!await reader.ReadAsync(token))return null;
+        var name=reader.IsDBNull(0)?null:reader.GetString(0).Trim();
+        var fullCn=reader.IsDBNull(1)?null:reader.GetString(1).Trim();
+        var fullEn=reader.IsDBNull(2)?null:reader.GetString(2).Trim();
+        var addrCn=reader.IsDBNull(3)?null:reader.GetString(3).Trim();
+        var addrEn=reader.IsDBNull(4)?null:reader.GetString(4).Trim();
+        var tel=reader.IsDBNull(5)?null:reader.GetString(5).Trim();
+        var fax=reader.IsDBNull(6)?null:reader.GetString(6).Trim();
+        var linkman=reader.IsDBNull(7)?null:reader.GetString(7).Trim();
+        var headerId=reader.IsDBNull(8)?null:reader.GetString(8).Trim();
+        var printPrice=!reader.IsDBNull(9)&&Convert.ToBoolean(reader.GetValue(9));
+        return new ClientPrintProfile(name,fullCn,fullEn,addrCn,addrEn,tel,fax,linkman,headerId,printPrice);
     }
 
     /// <summary>
