@@ -315,8 +315,10 @@ public sealed class ChooserRepositoryIntegrationTests
             FROM dbo.FIELDS f WITH (NOLOCK)
             INNER JOIN dbo.TABLES t WITH (NOLOCK) ON LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(f.T_ID))
             WHERE COALESCE(f.IS_VIRTUAL,0)=0
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                          WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=f.T_ID AND c.COLUMN_NAME=f.F_ID)
+              AND EXISTS (SELECT 1 FROM sys.columns c
+                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=f.T_ID AND c.name=f.F_ID)
             GROUP BY LTRIM(RTRIM(f.T_ID));
             """, connection);
         var value = await command.ExecuteScalarAsync();
@@ -334,8 +336,10 @@ public sealed class ChooserRepositoryIntegrationTests
             INNER JOIN dbo.FIELDS f WITH (NOLOCK)
               ON f.T_ID=LTRIM(RTRIM(m.MASTER_TABLE)) AND COALESCE(f.IS_VIRTUAL,0)=0
             WHERE LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,'')))<>''
-              AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS c
-                          WHERE c.TABLE_SCHEMA='dbo' AND c.TABLE_NAME=f.T_ID AND c.COLUMN_NAME=f.F_ID)
+              AND EXISTS (SELECT 1 FROM sys.columns c
+                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=f.T_ID AND c.name=f.F_ID)
             GROUP BY m.M_IDX;
             """, connection);
         var value = await command.ExecuteScalarAsync();

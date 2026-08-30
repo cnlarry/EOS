@@ -255,13 +255,15 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
         await connection.OpenAsync();
         await using var command = new SqlCommand(
             """
-            SELECT TOP 1 c.TABLE_NAME, c.COLUMN_NAME
-            FROM INFORMATION_SCHEMA.COLUMNS c
-            WHERE c.TABLE_SCHEMA='dbo'
+            SELECT TOP 1 o.name AS TABLE_NAME, c.name AS COLUMN_NAME
+            FROM sys.columns c
+            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            WHERE s.name=N'dbo'
               AND NOT EXISTS (SELECT 1 FROM dbo.FIELDS f
-                               WHERE f.T_ID=c.TABLE_NAME AND LTRIM(RTRIM(f.F_ID))=c.COLUMN_NAME)
-              AND EXISTS (SELECT 1 FROM dbo.TABLES t WHERE t.T_ID=c.TABLE_NAME)
-            ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION;
+                               WHERE f.T_ID=o.name AND LTRIM(RTRIM(f.F_ID))=c.name)
+              AND EXISTS (SELECT 1 FROM dbo.TABLES t WHERE t.T_ID=o.name)
+            ORDER BY o.name, c.column_id;
             """, connection);
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
