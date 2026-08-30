@@ -45,8 +45,9 @@ public sealed class PrintController(
         var reportRights = await rightsRepository.GetReportAsync(userId, moduleId, report.ReportId, token);
         if (!reportRights.CanPrint) return Forbid();
 
-        // 抬头取值优先级（ADR-009 §9.4.2）：CLIENT.HEADER_ID（单据抬头客户）→
-        // SYSQR.HEADER_ID（使用者选择）→ REPORT.HEADER_ID（报表默认）。
+        // 抬头取值优先级（2026-08-31 用户拍板，ADR-009 §9.4.2）：
+        // 用户本次选择/记忆（request.HeaderId / SYSQR）→ 客户默认（CLIENT.HEADER_ID，
+        // 未来由 REPORT_FORM_BINDING.HEADER_ID 按单据类型 × 客户细化）→ 报表默认（REPORT.HEADER_ID）。
         var headerId = !string.IsNullOrWhiteSpace(request.HeaderId)
             ? request.HeaderId.Trim()
             : report.HeaderId ?? string.Empty;
@@ -58,8 +59,11 @@ public sealed class PrintController(
             CombineDataFilters(rights.DataFilter, reportRights.DataFilter), token);
         if (data is null) return NotFound();
 
-        // 客户级抬头优先（CLIENT.HEADER_ID 非空时覆盖报表默认/使用者选择，§9.4.2 第一级）
-        var effectiveHeaderId = data.ClientProfile?.HeaderId ?? headerId;
+        // 用户本次选择/记忆优先（与旧系统 SYSQR 记忆一致，支持按场景切 A/B 抬头）；
+        // 客户默认仅兜底（请求未带页头时生效）。
+        var effectiveHeaderId = !string.IsNullOrWhiteSpace(request.HeaderId)
+            ? request.HeaderId.Trim()
+            : data.ClientProfile?.HeaderId ?? report.HeaderId ?? string.Empty;
         var header = settings.Headers.FirstOrDefault(item => item.HeaderId == effectiveHeaderId);
         var tail = settings.Tails.FirstOrDefault(item => item.TailId == tailId);
         var pdf = documentPdfService.Generate(

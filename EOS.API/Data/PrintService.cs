@@ -95,9 +95,10 @@ public sealed class PrintService(
     }
 
     /// <summary>
-    /// 客户级抬头资料（P6，ADR-009 §9.4.2）：按主表 CLIENT_ID/SUPPLIER_ID 从
-    /// CLIENT/SUPPLIER 回查抬头字段——HEADER_ID / FULL_NAME_CN|EN / DELI_ADDR_CN|EN /
-    /// TEL / FAX / LINKMAN / PRINT_PRICE。返回 ClientPrintProfile 供版式抬头/单价显隐使用。
+    /// 往来单位资料 + 客户级页头默认（P6，ADR-009 §9.4.2）：按主表 CLIENT_ID/SUPPLIER_ID 从
+    /// CLIENT/SUPPLIER 回查——HEADER_ID / FULL_NAME_CN|EN / DELI_ADDR_CN|EN /
+    /// TEL / FAX / LINKMAN / PRINT_PRICE。返回 ClientPrintProfile 供正文往来单位行/单价显隐使用，
+    /// HEADER_ID 供控制器解析客户级页头默认（页头公司名不得被客户全称覆盖）。
     /// 表/列名为服务端常量白名单，值参数化。CLIENT.PRINT_PRICE 启用前需审计取值分布。
     /// </summary>
     private static async Task<ClientPrintProfile?> ResolveClientProfileAsync(
