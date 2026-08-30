@@ -25,6 +25,10 @@ import {
   summarizeFieldErrors, writableFields, type DetailGridRow, type RecordBundle, type RecordSaveResponse, type SaveRecordRequest,
 } from './formEditorUtils'
 
+// 统一表单主表布局列数（2026-08-30 用户拍板）：全局固定一行四列，忽略各模块 FORM_COLUMNS 元数据
+//（含显式配置 3 列的 113 个模块），与旧系统密集表单观感保持一致。
+const UNIFIED_FORM_COLUMNS = 4
+
 /** 按单审批历史时间线行（/workflow/{moduleId}/history 返回）：task=审批动作 / confirm=流程完成确认。 */
 interface WorkflowHistoryRow {
   kind: 'task' | 'confirm'
@@ -899,8 +903,8 @@ export function FormEditorPage() {
             {masterSections.map((section, sectionIndex) => (
               <section className="erp-form-group" key={section.title ?? `default-${sectionIndex}`}>
                 {section.title ? <div className="erp-form-group-title">{section.title}</div> : null}
-                {buildFormRows(section.cells, form.columns).map((row, rowIndex) => (
-                  <div className="erp-form-row" key={rowIndex} style={{ '--erp-form-cols': Math.max(1, form.columns) } as CSSProperties}>
+                {buildFormRows(section.cells, UNIFIED_FORM_COLUMNS).map((row, rowIndex) => (
+                  <div className="erp-form-row" key={rowIndex} style={{ '--erp-form-cols': UNIFIED_FORM_COLUMNS } as CSSProperties}>
                     {row.map(cell => renderCell(cell))}
                   </div>
                 ))}

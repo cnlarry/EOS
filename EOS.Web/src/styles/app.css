@@ -705,13 +705,14 @@ button, input, select { font: inherit; }
 /* ===== 统一表单编辑页（对齐旧系统编辑页布局） =====
    旧系统（ERP/*.aspx）编辑页通用结构：顶部工具栏 + 主表"标签-控件"成对网格
    （简单模块 2 对/行、业务单据 2~3 对/行）+ 长文本整行 + 底部灰显只读区 + 明细网格。 */
-/* 设计 token（ADR-006 决策 1）：标签宽/控件高/字号/分区间距统一定义于此 */
+/* 设计 token（ADR-006 决策 1）：标签宽/控件高/字号/分区间距统一定义于此。
+   2026-08-30 用户拍板：统一表单全局固定一行四列，标签收窄、行高压矮，对齐旧系统密集表单 */
 :root {
-  --erp-form-label-min: 88px;
-  --erp-form-label-width: 112px;
-  --erp-form-control-height: 30px;
-  --erp-form-control-font: 13px;
-  --erp-form-group-gap: 12px;
+  --erp-form-label-min: 64px;
+  --erp-form-label-width: 80px;
+  --erp-form-control-height: 26px;
+  --erp-form-control-font: 12px;
+  --erp-form-group-gap: 10px;
 }
 
 .erp-form-grid {
@@ -719,14 +720,14 @@ button, input, select { font: inherit; }
   border: 1px solid var(--tblr-border-color);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--tblr-border-color);
+  background: var(--tblr-bg-surface);
 }
 
 .erp-form-row {
   display: grid;
   grid-template-columns: repeat(var(--erp-form-cols, 2), minmax(0, 1fr));
   gap: 1px;
-  background: var(--tblr-border-color);
+  background: var(--tblr-bg-surface);
 }
 
 .erp-form-row + .erp-form-row { margin-top: 1px; }
@@ -735,9 +736,9 @@ button, input, select { font: inherit; }
   display: grid;
   grid-template-columns: minmax(var(--erp-form-label-min), var(--erp-form-label-width)) minmax(0, 2.1fr);
   align-items: center;
-  gap: 8px 12px;
+  gap: 4px 8px;
   min-width: 0;
-  padding: 9px 12px;
+  padding: 5px 8px;
   background: var(--tblr-bg-surface);
 }
 
@@ -745,9 +746,9 @@ button, input, select { font: inherit; }
   display: grid;
   grid-template-columns: minmax(var(--erp-form-label-min), var(--erp-form-label-width)) minmax(0, 2.1fr);
   align-items: center;
-  gap: 8px 12px;
+  gap: 4px 8px;
   min-width: 0;
-  padding: 9px 12px;
+  padding: 5px 8px;
   background: var(--tblr-bg-surface);
 }
 
@@ -756,9 +757,9 @@ button, input, select { font: inherit; }
 .erp-form-group-title {
   display: flex;
   align-items: center;
-  min-height: 30px;
-  padding: 4px 12px;
-  font-size: 12px;
+  min-height: 24px;
+  padding: 2px 10px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--tblr-secondary);
   letter-spacing: 0.02em;
@@ -866,25 +867,25 @@ button, input, select { font: inherit; }
 .erp-form-toolbar .btn { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; }
 .erp-form-toolbar-actions { margin-left: auto; }
 
-/* 统一表单紧凑控件（旧系统编辑页为紧凑输入框，避免"胖"控件） */
+/* 统一表单紧凑控件（旧系统编辑页为紧凑输入框，避免"胖"控件；2026-08-30 压矮到 26px） */
 .erp-form-grid .form-control,
 .erp-form-grid .form-select,
 .erp-form-cell-controls .form-control,
 .erp-form-cell-controls .form-select {
-  height: 30px;
-  padding: 3px 8px;
-  font-size: 13px;
+  height: 26px;
+  padding: 2px 7px;
+  font-size: 12px;
 }
 
 .erp-form-grid textarea.form-control,
-.erp-form-cell-controls textarea.form-control { height: auto; min-height: 62px; }
+.erp-form-cell-controls textarea.form-control { height: auto; min-height: 52px; }
 
 /* 选择器按钮：图标化（对齐旧系统省略号按钮意境） */
 .erp-chooser-btn {
   display: inline-grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   flex: 0 0 auto;
 }
