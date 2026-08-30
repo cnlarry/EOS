@@ -590,7 +590,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         const string sql="""
             SELECT d.SERIAL_NO,LTRIM(RTRIM(ISNULL(d.F_ID,''))),LTRIM(RTRIM(ISNULL(d.F_DESC,''))),ISNULL(d.F_TYPE,0),
                    LTRIM(RTRIM(ISNULL(d.F_EXPR,''))),LTRIM(RTRIM(ISNULL(d.F_VALUE,''))),LTRIM(RTRIM(ISNULL(d.PARA_NAME,''))),
-                   LTRIM(RTRIM(ISNULL(u.F_VALUE,'')))
+                   LTRIM(RTRIM(ISNULL(u.F_VALUE,''))),LTRIM(RTRIM(ISNULL(d.FILTER_TEMPLATE,'')))
             FROM dbo.SYSQR_DEFAULT d WITH (NOLOCK)
             LEFT JOIN dbo.SYSQR_USER u WITH (NOLOCK)
               ON u.M_IDX=d.M_IDX AND u.SERIAL_NO=d.SERIAL_NO AND u.USER_ID=@UserId
@@ -611,9 +611,29 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             var defaultValue=reader.GetString(5);
             var parameterName=reader.GetString(6);
             var userValue=reader.GetString(7);
+            var filterTemplate=reader.GetString(8);
             var (userFrom,userTo)=SplitUserConditionValue(userValue);
             var effectiveDefault=string.IsNullOrWhiteSpace(userFrom)?defaultValue:userFrom;
             var effectiveDefaultTo=userTo;
+
+            // FILTER_TEMPLATE 优先（ADR-009 §6）：结构化解析，未转换行回退旧 DSL
+            var templateParsed=ConditionTemplateParser.TryParse(filterTemplate,effectiveDefault,effectiveDefaultTo);
+            if(templateParsed is not null)
+            {
+                result.Add(new ReportCondition(
+                    serial,
+                    templateParsed.Field ?? (field.Length>0?field:null),
+                    desc,
+                    templateParsed.Type,
+                    expression.Length>0?expression:null,
+                    string.IsNullOrWhiteSpace(templateParsed.DefaultValue)?null:templateParsed.DefaultValue,
+                    templateParsed.ParameterName ?? (parameterName.Length>0?parameterName:null),
+                    templateParsed.Options,
+                    templateParsed.SelectSource,
+                    string.IsNullOrWhiteSpace(templateParsed.DefaultValueTo)?null:templateParsed.DefaultValueTo));
+                continue;
+            }
+
             var options=ParseOptions(type,expression);
             ReportSelectSource? selectSource=null;
             if(type is 3 or 5)
