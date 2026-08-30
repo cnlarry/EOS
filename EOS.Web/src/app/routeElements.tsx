@@ -1,7 +1,6 @@
 import { lazy } from 'react'
 import { useParams } from 'react-router-dom'
 import { ReportAdminPage } from '../features/admin/ReportAdminPage'
-import { ReportConditionsPage } from '../features/admin/ReportConditionsPage'
 import { PrintSetupPage } from '../features/admin/PrintSetupPage'
 import { ReportViewerPage } from '../features/reports/ReportViewerPage'
 import { useAuth } from '../features/auth/authContext'
@@ -42,12 +41,8 @@ export function ReportAdminRoute() {
   return <ReportAdminPage />
 }
 
-/** 报表过滤条件设置（2205）：SYSQR_DA + SYSQR_DEFAULT 主子表（2026-08-28 归类定制页）。 */
-export function ReportConditionsRoute() {
-  const { hasPermission } = useAuth()
-  if (!hasPermission('legacy-module.2205.read')) return <ForbiddenPage />
-  return <ReportConditionsPage />
-}
+/** 报表过滤条件设置（2205）已随 ADR-009 §11 下线（2026-08-30）：参数定义并入报表定义资产，
+ *  用户填值 SYSQR_USER 保留为运行态，管理写侧退役。 */
 
 /** 页头/表尾/页脚维护（2202/2203/2204）：任一相关模块有浏览权即可进入。 */
 export function PrintSetupRoute() {

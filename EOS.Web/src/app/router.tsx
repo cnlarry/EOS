@@ -31,7 +31,7 @@ import {
   MenuAdminPage,
   ReportCenterPage,
 } from './lazyRoutes'
-import { FieldAdminRoute, ForbiddenPage, FormEditorRoute, PrintSetupRoute, ReportAdminRoute, ReportConditionsRoute, ReportViewerRoute, WorkbenchRoute } from './routeElements'
+import { FieldAdminRoute, ForbiddenPage, FormEditorRoute, PrintSetupRoute, ReportAdminRoute, ReportViewerRoute, WorkbenchRoute } from './routeElements'
 import { withSuspense } from './suspense'
 
 export const router = createBrowserRouter([
@@ -63,7 +63,6 @@ export const router = createBrowserRouter([
           { path: 'admin/users/:userId/report-rights', element: withSuspense(<UserReportRightsPage />) },
         ] },
         { path: 'admin/report-setup', element: withSuspense(<ReportAdminRoute />) },
-        { path: 'admin/report-conditions', element: withSuspense(<ReportConditionsRoute />) },
         { path: 'admin/print-setup/:tab?', element: withSuspense(<PrintSetupRoute />) },
         { path: 'workbench/:moduleId', element: withSuspense(<WorkbenchRoute />) },
         { path: 'workbench/:moduleId/new', element: withSuspense(<FormEditorRoute />) },
