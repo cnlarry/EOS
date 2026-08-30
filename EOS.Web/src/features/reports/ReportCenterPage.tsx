@@ -1,8 +1,9 @@
-import { IconArrowDown, IconArrowUp, IconSearch, IconStar, IconStarFilled, IconX } from '@tabler/icons-react'
+import { IconArrowDown, IconArrowUp, IconInbox, IconSearch, IconStar, IconStarFilled, IconX } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { EmptyState, LoadingState } from '../../components/common/AsyncState'
+import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 
@@ -114,6 +115,9 @@ export function ReportCenterPage() {
             )}
           </div>
           <div className="erp-list-actions d-flex gap-2 align-items-center">
+            <Button variant="ghost" size="sm" icon={<IconInbox size={16} />} onClick={() => navigate('/report-center/inbox')}>
+              收件箱
+            </Button>
             <label className="form-check form-check-inline mb-0 text-nowrap">
               <input type="checkbox" className="form-check-input" checked={onlyFavorites}
                 onChange={(event) => setOnlyFavorites(event.target.checked)} />
