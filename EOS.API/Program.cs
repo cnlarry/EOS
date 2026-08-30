@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Services;
 using EOS.API.Errors;
 using EOS.API.Health;
 using EOS.API.Logging;
@@ -195,6 +196,7 @@ builder.Services.AddScoped<PrintAdminRepository>();
 builder.Services.AddScoped<ReportAdminRepository>();
 builder.Services.AddScoped<ReportPdfService>();
 builder.Services.AddScoped<DocumentPdfService>();
+builder.Services.AddScoped<ReportInboxRepository>();
 builder.Services.AddScoped<SearchCenterRepository>();
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<PrintService>();
@@ -223,6 +225,8 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
 builder.Services.Configure<AttachmentSettings>(builder.Configuration.GetSection("Attachment"));
+builder.Services.Configure<ReportInboxSettings>(builder.Configuration.GetSection("ReportInbox"));
+builder.Services.AddHostedService<ReportInboxScheduler>();
 builder.Services.Configure<EOS.API.Models.AuditSettings>(builder.Configuration.GetSection("Audit"));
 
 var app = builder.Build();
