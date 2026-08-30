@@ -51,7 +51,7 @@ const formDefinition: FormDefinition = {
   detailNoFields: 'PRO_NO',
   detailDfVerify: 'ITEM',
   tabs: [],
-  columns: 2,
+  columns: 4,
   buttons: null,
   hasWorkflow: false,
   defaultValues: {},
