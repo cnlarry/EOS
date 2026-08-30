@@ -1,7 +1,6 @@
 import { lazy } from 'react'
 import { useParams } from 'react-router-dom'
 import { ReportAdminPage } from '../features/admin/ReportAdminPage'
-import { PrintSetupPage } from '../features/admin/PrintSetupPage'
 import { ReportViewerPage } from '../features/reports/ReportViewerPage'
 import { useAuth } from '../features/auth/authContext'
 
@@ -43,16 +42,6 @@ export function ReportAdminRoute() {
 
 /** 报表过滤条件设置（2205）已随 ADR-009 §11 下线（2026-08-30）：参数定义并入报表定义资产，
  *  用户填值 SYSQR_USER 保留为运行态，管理写侧退役。 */
-
-/** 页头/表尾/页脚维护（2202/2203/2204）：任一相关模块有浏览权即可进入。 */
-export function PrintSetupRoute() {
-  const { hasPermission } = useAuth()
-  const { tab = '' } = useParams()
-  const allowed = ['2202', '2203', '2204']
-    .some((id) => hasPermission(`legacy-module.${id}.read`))
-  if (!allowed) return <ForbiddenPage />
-  return <PrintSetupPage key={tab} />
-}
 
 /** 报表查看器：跨模块打开时重置条件/分页/打印面板状态。 */
 export function ReportViewerRoute() {

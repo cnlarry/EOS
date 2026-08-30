@@ -229,8 +229,9 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
     public async Task<List<ReportAdminHeaderTailOption>> HeaderOptionsAsync(CancellationToken token)
     {
         const string sql = """
-            SELECT LTRIM(RTRIM(HEADER_ID)),LTRIM(RTRIM(ISNULL(HEADER_NAME,HEADER_ID)))
-            FROM dbo.REPORT_HEADER WITH (NOLOCK) ORDER BY HEADER_ID;
+            SELECT LTRIM(RTRIM(LAYOUT_ID)),LTRIM(RTRIM(ISNULL(LAYOUT_DESC,LAYOUT_ID)))
+            FROM dbo.REPORT_LAYOUT WITH (NOLOCK)
+            WHERE KIND=N'HEADER' ORDER BY LAYOUT_ID;
             """;
         return await ReadIdNameAsync(sql, token);
     }
@@ -238,8 +239,9 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
     public async Task<List<ReportAdminHeaderTailOption>> TailOptionsAsync(CancellationToken token)
     {
         const string sql = """
-            SELECT LTRIM(RTRIM(TAIL_ID)),LTRIM(RTRIM(ISNULL(TAIL_NAME,TAIL_ID)))
-            FROM dbo.REPORT_TAIL WITH (NOLOCK) ORDER BY TAIL_ID;
+            SELECT LTRIM(RTRIM(LAYOUT_ID)),LTRIM(RTRIM(ISNULL(LAYOUT_DESC,LAYOUT_ID)))
+            FROM dbo.REPORT_LAYOUT WITH (NOLOCK)
+            WHERE KIND=N'TAIL' ORDER BY LAYOUT_ID;
             """;
         return await ReadIdNameAsync(sql, token);
     }

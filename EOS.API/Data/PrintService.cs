@@ -10,7 +10,7 @@ namespace EOS.API.Data;
 /// <summary>
 /// 通用单据打印数据（报表打印模板的第一步）：
 /// 主表 + 明细 + 列定义（FIELDS 可见列，成本/保密/禁止过滤）+ 页头/页脚
-/// （REPORT_HEADER / REPORT_TAIL，按模块默认报表或 DEFAULT）。
+/// （REPORT_LAYOUT，按模块默认报表或 DEFAULT）。
 /// 全部标识符来自服务端 Definition 白名单，键值参数化；主表读取应用用户数据范围
 /// （DATA_FILTER + EXEC_TAG，ADR-005 §7）——范围外单据返回 null（404），不输出越权打印。
 /// </summary>
@@ -193,7 +193,7 @@ public sealed class PrintService(
         var headerId=string.IsNullOrWhiteSpace(headerIdOverride)
             ? (string.IsNullOrWhiteSpace(defaultHeaderId)?"DEFAULT":defaultHeaderId)
             : headerIdOverride.Trim();
-        const string headerSql="SELECT LTRIM(RTRIM(ISNULL(COMPANY_NAME,''))),LTRIM(RTRIM(ISNULL(HEADER_TEXT,''))),LTRIM(RTRIM(ISNULL(LOGO_PATH,''))) FROM dbo.REPORT_HEADER WITH (NOLOCK) WHERE HEADER_ID=@Id;";
+        const string headerSql="SELECT LTRIM(RTRIM(ISNULL(CONTENT,''))),LTRIM(RTRIM(ISNULL(IMAGE_PATH,''))) FROM dbo.REPORT_LAYOUT WITH (NOLOCK) WHERE KIND=N'HEADER' AND LAYOUT_ID=@Id;";
         await using var headerCommand=new SqlCommand(headerSql,connection);
         headerCommand.Parameters.Add("@Id",SqlDbType.NVarChar,50).Value=headerId;
         await using var headerReader=await headerCommand.ExecuteReaderAsync(token);
@@ -202,22 +202,42 @@ public sealed class PrintService(
         string? logoPath=null;
         if(await headerReader.ReadAsync(token))
         {
-            company=headerReader.GetString(0);
-            headerText=headerReader.GetString(1);
-            logoPath=headerReader.GetString(2);
+            var contentJson=headerReader.GetString(0);
+            logoPath=headerReader.IsDBNull(1)?null:headerReader.GetString(1).Trim();
+            var (c,h)=ParseHeaderContent(contentJson);
+            company=c;
+            headerText=h;
         }
         await headerReader.DisposeAsync();
         var tailId=string.IsNullOrWhiteSpace(tailIdOverride)?defaultTailId:tailIdOverride.Trim();
         string? tailText=null;
         if(!string.IsNullOrEmpty(tailId))
         {
-            const string tailSql="SELECT LTRIM(RTRIM(ISNULL(TAIL_TEXT,''))) FROM dbo.REPORT_TAIL WITH (NOLOCK) WHERE TAIL_ID=@Id;";
+            const string tailSql="SELECT LTRIM(RTRIM(ISNULL(CONTENT,''))) FROM dbo.REPORT_LAYOUT WITH (NOLOCK) WHERE KIND=N'TAIL' AND LAYOUT_ID=@Id;";
             await using var tailCommand=new SqlCommand(tailSql,connection);
             tailCommand.Parameters.Add("@Id",SqlDbType.NVarChar,50).Value=tailId;
             tailText=await tailCommand.ExecuteScalarAsync(token) as string;
         }
         tailText=string.IsNullOrWhiteSpace(tailText)?null:tailText.Trim();
         return (company,headerText,tailText,string.IsNullOrWhiteSpace(logoPath)?null:logoPath.Trim(),tailText);
+    }
+
+    /// <summary>解析 REPORT_LAYOUT 页头 CONTENT JSON（companyName/headerText）。</summary>
+    private static (string? Company,string? HeaderText) ParseHeaderContent(string? json)
+    {
+        if(string.IsNullOrWhiteSpace(json))return(null,null);
+        try
+        {
+            using var doc=System.Text.Json.JsonDocument.Parse(json);
+            var root=doc.RootElement;
+            var company=root.TryGetProperty("companyName",out var c)?c.GetString():null;
+            var headerText=root.TryGetProperty("headerText",out var h)?h.GetString():null;
+            return(company,headerText);
+        }
+        catch
+        {
+            return(null,null);
+        }
     }
 
     private static async Task<IReadOnlyList<PrintField>> ReadFieldsAsync(
