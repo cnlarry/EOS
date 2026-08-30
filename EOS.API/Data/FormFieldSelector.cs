@@ -79,23 +79,6 @@ internal static class FormFieldSelector
         return options;
     }
 
-    /// <summary>解析选择器回填映射（target=column,target=column；旧库约定逗号分隔，兼容分号）。</summary>
-    internal static IReadOnlyList<(string Target, string Column)> ParseReturnMapping(string? mapping)
-    {
-        if (string.IsNullOrWhiteSpace(mapping)) return [];
-        var result = new List<(string, string)>();
-        foreach (var part in mapping.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var eq = part.IndexOf('=');
-            if (eq <= 0) continue;
-            var target = part[..eq].Trim();
-            var column = part[(eq + 1)..].Trim();
-            if (target.Length == 0 || column.Length == 0) continue;
-            result.Add((target, column));
-        }
-        return result;
-    }
-
     /// <summary>规范化选择器回填目标（去掉 txt_/cho_/dro_/chk_/lab_/hidd_ 前缀，与前端一致）。</summary>
     internal static string NormalizeChooserTarget(string target)
     {

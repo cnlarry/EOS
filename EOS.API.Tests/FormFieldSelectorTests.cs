@@ -152,17 +152,12 @@ public class FormFieldSelectorTests
     }
 
     [Fact]
-    public void ParseReturnMapping_And_NormalizeTarget()
+    public void NormalizeChooserTarget_StripsControlPrefixes()
     {
-        // 旧库 CHOOSE_RETURNVAL 约定逗号分隔（1082 个多对映射全为逗号），兼容分号
-        var mapping = FormFieldSelector.ParseReturnMapping("txt_CLIENT_ID=client_id,txt_CLIENT_NAME=client_name;txt_SALES_ID=emp_id");
-        Assert.Equal(3, mapping.Count);
-        Assert.Equal("txt_CLIENT_ID", mapping[0].Target);
-        Assert.Equal("client_id", mapping[0].Column);
-        Assert.Equal("txt_CLIENT_NAME", mapping[1].Target);
-        Assert.Equal("txt_SALES_ID", mapping[2].Target);
         Assert.Equal("CLIENT_ID", FormFieldSelector.NormalizeChooserTarget("txt_CLIENT_ID"));
         Assert.Equal("CLIENT_NAME", FormFieldSelector.NormalizeChooserTarget("txt_CLIENT_NAME"));
+        Assert.Equal("SALES_ID", FormFieldSelector.NormalizeChooserTarget("dro_SALES_ID"));
+        Assert.Equal("VALUE", FormFieldSelector.NormalizeChooserTarget("VALUE"));
     }
 
     [Fact]
