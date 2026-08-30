@@ -64,7 +64,7 @@ public sealed class ReportCenterController(
                 WHERE o.USER_ID = @UserId AND o.M_IDX = r.R_M_IDX AND o.REPORT_ID = r.REPORT_ID
                   AND ISNULL(o.PREVIEW_TAG, 0) = 0
               )
-            ORDER BY DOMAIN_DESC, ISNULL(r.IS_DEFAULT, 0) DESC, r.REPORT_ID;
+            ORDER BY DOMAIN_DESC, ISNULL(p.FAVORITE_TAG, 0) DESC, ISNULL(p.SORT_IDX, 0), ISNULL(r.IS_DEFAULT, 0) DESC, r.REPORT_ID;
             """;
 
         await using var command = new SqlCommand(catalogSql, connection);
@@ -124,7 +124,61 @@ public sealed class ReportCenterController(
         await command.ExecuteNonQueryAsync(token);
         return NoContent();
     }
+
+    /// <summary>收藏重排（P5）：一次性写入完整收藏顺序，SORT_IDX=1..N 顺次落库。</summary>
+    [HttpPost("reorder")]
+    public async Task<IActionResult> Reorder(
+        [FromBody] ReportReorderRequest request, CancellationToken token)
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId is null) return Unauthorized();
+        if (request.Items is null || request.Items.Count == 0)
+            return BadRequest(new { code = "INVALID_ORDER", message = "收藏顺序不能为空。" });
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            for (var index = 0; index < request.Items.Count; index++)
+            {
+                var item = request.Items[index];
+                if (string.IsNullOrWhiteSpace(item.ReportId)) continue;
+                // 权限门：目标模块报表可见性（REPORT_TAG）
+                var permission = await permissions.GetAsync(userId, item.ModuleId, token);
+                if (!permission.Rights.CanBrowse) return Forbid();
+
+                const string sql = """
+                    IF EXISTS (SELECT 1 FROM dbo.SYSDD_REPORT WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId)
+                        UPDATE dbo.SYSDD_REPORT SET FAVORITE_TAG=1, SORT_IDX=@SortIdx
+                        WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId;
+                    ELSE
+                        INSERT INTO dbo.SYSDD_REPORT (USER_ID,M_IDX,REPORT_ID,FAVORITE_TAG,SORT_IDX)
+                        VALUES (@UserId,@ModuleId,@ReportId,1,@SortIdx);
+                    """;
+                await using var command = new SqlCommand(sql, connection, transaction);
+                command.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
+                command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = item.ModuleId;
+                command.Parameters.Add("@ReportId", SqlDbType.NChar, 50).Value = item.ReportId.Trim();
+                command.Parameters.Add("@SortIdx", SqlDbType.Int).Value = index + 1;
+                await command.ExecuteNonQueryAsync(token);
+            }
+            await transaction.CommitAsync(token);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
+        return NoContent();
+    }
 }
+
+/// <summary>报表中心收藏重排项。</summary>
+public sealed record ReportReorderItem(int ModuleId, string? ReportId);
+
+/// <summary>收藏重排请求。</summary>
+public sealed record ReportReorderRequest(IReadOnlyList<ReportReorderItem>? Items);
 
 /// <summary>报表中心目录项。</summary>
 public sealed record ReportCatalogItem(
