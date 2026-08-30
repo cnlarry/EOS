@@ -54,7 +54,6 @@ public sealed record ReportPrintOption(
     string? TailId,
     string? FooterText,
     string? IsoNo,
-    string? DefaultPaper,
     bool IsDefault);
 
 /// <summary>页头（REPORT_HEADER）。</summary>
@@ -137,7 +136,6 @@ public sealed record ReportPdfMeta(
     string? TailId,
     string? FooterText,
     string? IsoNo,
-    string? DefaultPaper,
     string? ReportFilter,
     ReportHeaderOption? Header,
     string? TailText,

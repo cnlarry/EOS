@@ -248,7 +248,6 @@ public sealed class FieldAdminRepository(
               (SELECT COUNT(*) FROM dbo.SYSQL_CONDITION WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS SysqlCondition,
               (SELECT COUNT(*) FROM dbo.SYSQL_COND_DFT WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS SysqlCondDft,
               (SELECT COUNT(*) FROM dbo.SYSQD_CONDITION WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS SysqdCondition,
-              (SELECT COUNT(*) FROM dbo.LISTREPORT_CONDITION WITH (NOLOCK) WHERE T_ID=@TableId OR T_ID_R=@TableId) AS ListReport,
               (SELECT COUNT(*) FROM dbo.SYSQQ WITH (NOLOCK) WHERE T_ID=@TableId) AS Sysqq,
               (SELECT COUNT(*) FROM dbo.SYSQR_DEFAULT WITH (NOLOCK) WHERE F_ID=@TableDot OR F_ID LIKE @Pattern) AS SysqrDefault;
             """;
@@ -266,8 +265,8 @@ public sealed class FieldAdminRepository(
             ("关联表引用", refsReader.GetInt32(2)),
             ("默认列配置", refsReader.GetInt32(3)),
             ("用户列配置", refsReader.GetInt32(4)),
-            ("查询条件记忆", refsReader.GetInt32(5) + refsReader.GetInt32(6) + refsReader.GetInt32(7) + refsReader.GetInt32(8)),
-            ("报表条件引用", refsReader.GetInt32(9) + refsReader.GetInt32(10)),
+            ("查询条件记忆", refsReader.GetInt32(5) + refsReader.GetInt32(6) + refsReader.GetInt32(7)),
+            ("报表条件引用", refsReader.GetInt32(8) + refsReader.GetInt32(9)),
         };
         await refsReader.CloseAsync();
         var blocked = counts.Where(item => item.Count > 0).ToList();
@@ -747,7 +746,6 @@ public sealed class FieldAdminRepository(
             DELETE FROM dbo.SYSQL_CONDITION WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
             DELETE FROM dbo.SYSQL_COND_DFT WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
             DELETE FROM dbo.SYSQD_CONDITION WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
-            DELETE FROM dbo.LISTREPORT_CONDITION WHERE F_ID=@FieldId AND (T_ID=@TableId OR T_ID_R=@TableId);
             DELETE FROM dbo.SYSQQ WHERE F_ID=@TableDotField;
             DELETE FROM dbo.SYSQR_DEFAULT WHERE F_ID=@TableDotField;
             """;

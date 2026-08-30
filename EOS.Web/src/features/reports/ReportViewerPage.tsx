@@ -18,7 +18,7 @@ interface ReportColumn { key: string; label: string; dataType: string; displayFo
 interface ReportDefinition { moduleId: number; title: string; masterTable: string; conditions: ReportCondition[]; columns: ReportColumn[]; masterPkOrder: string[]; spName: string | null; spParameters: ReportSpParameter[] }
 interface ReportSpParameter { name: string; dataType: string; maxLength: number }
 interface ReportQueryResult { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }
-interface ReportPrintOption { reportId: string; reportName: string; headerId: string | null; tailId: string | null; footerText: string | null; isoNo: string | null; defaultPaper: string | null; isDefault: boolean }
+interface ReportPrintOption { reportId: string; reportName: string; headerId: string | null; tailId: string | null; footerText: string | null; isoNo: string | null; isDefault: boolean }
 interface ReportHeaderOption { headerId: string; headerName: string; companyName: string; headerText: string | null; logoUrl: string | null }
 interface ReportTailOption { tailId: string; tailName: string; tailText: string }
 interface ReportSortScheme { serialNo: number; sortName: string; sortFields: string | null; groupName: string | null; groupFields: string | null }

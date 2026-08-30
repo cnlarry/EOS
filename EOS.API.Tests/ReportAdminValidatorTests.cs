@@ -22,22 +22,6 @@ public class ReportAdminValidatorTests
         Assert.Throws<ArgumentException>(() => ReportAdminValidator.ValidateReportId(id));
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("a4")]
-    [InlineData("A3")]
-    [InlineData("LETTER")]
-    public void Papers_Pass(string? paper) => ReportAdminValidator.ValidatePaper(paper);
-
-    [Theory]
-    [InlineData("B5")]
-    [InlineData("A2")]
-    public void InvalidPapers_Throw(string paper)
-    {
-        Assert.Throws<ArgumentException>(() => ReportAdminValidator.ValidatePaper(paper));
-    }
-
     [Fact]
     public void FieldList_AcceptsWhitelistTokens()
     {

@@ -15,7 +15,7 @@ const apiClientMock = vi.hoisted(() => ({
 vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
 
 const printSettings = {
-  reports: [{ reportId: 'RPT_A', reportName: '库存报表', headerId: null, tailId: null, footerText: null, isoNo: null, defaultPaper: 'A4', isDefault: true }],
+  reports: [{ reportId: 'RPT_A', reportName: '库存报表', headerId: null, tailId: null, footerText: null, isoNo: null, isDefault: true }],
   headers: [],
   tails: [],
   sortSchemesByReport: {},

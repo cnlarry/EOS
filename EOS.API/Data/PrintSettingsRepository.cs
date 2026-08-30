@@ -96,7 +96,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
             SELECT LTRIM(RTRIM(r.REPORT_ID)),LTRIM(RTRIM(ISNULL(r.REPORT_NAME,r.REPORT_ID))),
                    LTRIM(RTRIM(ISNULL(r.HEADER_ID,''))),LTRIM(RTRIM(ISNULL(r.TAIL_ID,''))),
                    LTRIM(RTRIM(ISNULL(r.FOOTER_TEXT,''))),LTRIM(RTRIM(ISNULL(r.ISO_NO,''))),
-                   LTRIM(RTRIM(ISNULL(r.DEFAULT_PAPER,''))),LTRIM(RTRIM(ISNULL(r.REPORT_FILTER,'')))
+                   LTRIM(RTRIM(ISNULL(r.REPORT_FILTER,'')))
             FROM dbo.REPORT r WITH (NOLOCK)
             WHERE r.R_M_IDX=@ModuleId AND r.REPORT_ID=@ReportId;
             """;
@@ -111,8 +111,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
         var defaultTailId = reportReader.GetString(3);
         var footerText = reportReader.GetString(4);
         var isoNo = reportReader.GetString(5);
-        var defaultPaper = reportReader.GetString(6);
-        var reportFilter = reportReader.GetString(7);
+        var reportFilter = reportReader.GetString(6);
         await reportReader.DisposeAsync();
 
         ReportHeaderOption? header = null;
@@ -157,7 +156,6 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
             defaultTailId.Length == 0 ? null : defaultTailId,
             footerText.Length == 0 ? null : footerText,
             isoNo.Length == 0 ? null : isoNo,
-            defaultPaper.Length == 0 ? null : defaultPaper,
             reportFilter.Length == 0 ? null : reportFilter,
             header, tailText, schemes);
     }
@@ -175,7 +173,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
             SELECT r.REPORT_ID,LTRIM(RTRIM(ISNULL(r.REPORT_NAME,r.REPORT_ID))),
                    LTRIM(RTRIM(ISNULL(r.HEADER_ID,''))),LTRIM(RTRIM(ISNULL(r.TAIL_ID,''))),
                    LTRIM(RTRIM(ISNULL(r.FOOTER_TEXT,''))),LTRIM(RTRIM(ISNULL(r.ISO_NO,''))),
-                   LTRIM(RTRIM(ISNULL(r.DEFAULT_PAPER,''))),ISNULL(r.IS_DEFAULT,0)
+                   ISNULL(r.IS_DEFAULT,0)
             FROM dbo.REPORT r WITH (NOLOCK)
             WHERE r.R_M_IDX=@ModuleId
               -- 个人 override 收紧（PREVIEW_TAG=0 → 隐藏）
@@ -213,8 +211,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
                 EmptyToNull(reader.GetString(3)),
                 EmptyToNull(reader.GetString(4)),
                 EmptyToNull(reader.GetString(5)),
-                EmptyToNull(reader.GetString(6)),
-                reader.GetBoolean(7)));
+                reader.GetBoolean(6)));
         }
         return result;
     }

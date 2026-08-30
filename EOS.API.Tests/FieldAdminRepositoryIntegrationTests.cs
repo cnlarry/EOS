@@ -309,7 +309,6 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
                 DELETE FROM dbo.SYSQL_CONDITION WHERE F_ID=@Field AND (T_ID=@Table OR T_ID_R=@Table);
                 DELETE FROM dbo.SYSQL_COND_DFT WHERE F_ID=@Field AND (T_ID=@Table OR T_ID_R=@Table);
                 DELETE FROM dbo.SYSQD_CONDITION WHERE F_ID=@Field AND (T_ID=@Table OR T_ID_R=@Table);
-                DELETE FROM dbo.LISTREPORT_CONDITION WHERE F_ID=@Field AND (T_ID=@Table OR T_ID_R=@Table);
                 DELETE FROM dbo.SYSQQ WHERE F_ID=@TableDotField;
                 DELETE FROM dbo.SYSQR_DEFAULT WHERE F_ID=@TableDotField;
                 """, connection);
