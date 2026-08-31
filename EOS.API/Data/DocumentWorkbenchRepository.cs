@@ -834,16 +834,24 @@ public sealed class DocumentWorkbenchRepository(
         if (!await WorkbenchSql.ColumnsExistAsync(connection, table, columns, token)) return;
 
         var select = string.Join(",", columns.Select(column => $"[{column}]"));
-        await using var command = new SqlCommand(
-            $"SELECT TOP 1 {select} FROM dbo.[{table}] WITH (NOLOCK) WHERE [{keyColumn}]=@Value;", connection);
-        command.Parameters.Add("@Value", SqlDbType.NVarChar, 256).Value = value;
-        await using var reader = await command.ExecuteReaderAsync(token);
-        if (!await reader.ReadAsync(token)) return;
-        foreach (var (field, column) in selected)
+        try
         {
-            var ordinal = reader.GetOrdinal(column);
-            if (reader.IsDBNull(ordinal)) continue;
-            defaults[field.Key] = Convert.ToString(reader.GetValue(ordinal), CultureInfo.InvariantCulture) ?? string.Empty;
+            await using var command = new SqlCommand(
+                $"SELECT TOP 1 {select} FROM dbo.[{table}] WITH (NOLOCK) WHERE [{keyColumn}]=@Value;", connection);
+            command.Parameters.Add("@Value", SqlDbType.NVarChar, 256).Value = value;
+            await using var reader = await command.ExecuteReaderAsync(token);
+            if (!await reader.ReadAsync(token)) return;
+            foreach (var (field, column) in selected)
+            {
+                var ordinal = reader.GetOrdinal(column);
+                if (reader.IsDBNull(ordinal)) continue;
+                defaults[field.Key] = Convert.ToString(reader.GetValue(ordinal), CultureInfo.InvariantCulture) ?? string.Empty;
+            }
+        }
+        catch (Exception ex) when (ex is SqlException or InvalidOperationException)
+        {
+            // 纯体验增强的默认值回填：来源表查询异常（列变更/锁等待等）时降级为空回填，
+            // 不让 form-definition 新增模式因选填名称回填而整体 500（fail-closed）。
         }
     }
 

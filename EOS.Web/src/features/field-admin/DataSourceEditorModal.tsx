@@ -177,6 +177,8 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
   const [returnRows, setReturnRows] = useState<ReturnRowDraft[]>(initial?.returnRows ?? [])
   const [tablePickerOpen, setTablePickerOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [editingRaw, setEditingRaw] = useState<string | null>(null)
+  const [editRawText, setEditRawText] = useState('')
 
   const columnsQuery = useSourceColumns(source.table)
   const targetFieldsQuery = useTargetFields(currentTable)
@@ -195,6 +197,8 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
       setFilterRows(initial?.filterRows ?? [])
       setReturnRows(initial?.returnRows ?? [])
       setError(null)
+      setEditingRaw(null)
+      setEditRawText('')
     }
   }
 
@@ -209,7 +213,24 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
   const updateFilterRows = (rows: FilterRowDraft[]) => setFilterRows(rows)
   const updateReturnRows = (rows: ReturnRowDraft[]) => setReturnRows(rows)
 
+  /** 编辑态应用：把 textarea 内容写回对应 raw 行并退出编辑；JSON 非法返回 false。 */
+  const applyEditRaw = (): boolean => {
+    if (editingRaw == null) return true
+    try {
+      JSON.parse(editRawText)
+    } catch {
+      setError('高级条件 JSON 无法解析，请修正后再保存。')
+      return false
+    }
+    updateFilterRows(filterRows.map(r => r.key === editingRaw ? { ...r, raw: editRawText } : r))
+    setEditingRaw(null)
+    setEditRawText('')
+    return true
+  }
+
   const handleSave = () => {
+    // 处于编辑态时先应用当前 textarea 内容（JSON 非法则阻止确定）
+    if (!applyEditRaw()) return
     // 确定即校验：坏 JSON / 未完成行若静默交给序列化会被丢弃，必须在弹窗内给出反馈
     if (filterRows.some(row => {
       if (!row.raw) return false
@@ -273,13 +294,36 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
                   {columnsQuery.isError && <div className="alert alert-danger py-1 px-2 mb-0 small">来源列加载失败，请确认 API 已重启（/admin/tables/{source.table}/columns）。</div>}
                   {filterRows.length === 0 && <div className="text-secondary small">无过滤条件（空=显式无过滤；迁移待重建来源请先重建再保存）。</div>}
                   {filterRows.map(row => row.raw ? (
-                    <div key={row.key} className="d-flex gap-1 align-items-start">
-                      <div className="flex-grow-1">
-                        <div className="text-secondary small">高级条件（表达式/子查询，JSON 只读兜底）</div>
-                        <pre className="small mb-0 text-break" style={{ whiteSpace: 'pre-wrap' }}>{row.raw}</pre>
+                    editingRaw === row.key ? (
+                      <div key={row.key} className="d-flex gap-1 align-items-start">
+                        <div className="flex-grow-1">
+                          <div className="text-secondary small">高级条件（表达式/子查询，JSON 编辑）</div>
+                          <textarea
+                            className="form-control form-control-sm font-monospace"
+                            rows={4}
+                            value={editRawText}
+                            onChange={event => setEditRawText(event.target.value)}
+                            aria-label="高级条件 JSON"
+                          />
+                        </div>
+                        <div className="d-flex gap-1">
+                          <Button size="sm" variant="primary" onClick={() => { if (applyEditRaw()) setError(null) }}>保存</Button>
+                          <Button size="sm" variant="secondary" onClick={() => { setEditingRaw(null); setEditRawText('') }}>取消</Button>
+                          <Button size="sm" variant="danger" onClick={() => updateFilterRows(filterRows.filter(r => r.key !== row.key))}>删除</Button>
+                        </div>
                       </div>
-                      <Button size="sm" variant="danger" onClick={() => updateFilterRows(filterRows.filter(r => r.key !== row.key))}>删除</Button>
-                    </div>
+                    ) : (
+                      <div key={row.key} className="d-flex gap-1 align-items-start">
+                        <div className="flex-grow-1">
+                          <div className="text-secondary small">高级条件（表达式/子查询，JSON）</div>
+                          <pre className="small mb-0 text-break" style={{ whiteSpace: 'pre-wrap' }}>{row.raw}</pre>
+                        </div>
+                        <div className="d-flex gap-1">
+                          <Button size="sm" variant="secondary" onClick={() => { setEditingRaw(row.key); setEditRawText(row.raw ?? ''); setError(null) }}>编辑</Button>
+                          <Button size="sm" variant="danger" onClick={() => updateFilterRows(filterRows.filter(r => r.key !== row.key))}>删除</Button>
+                        </div>
+                      </div>
+                    )
                   ) : (
                     <div key={row.key} className="d-flex gap-1 align-items-center">
                       <select className="form-select form-select-sm w-auto" value={row.logic ?? 'AND'} disabled={row.logic == null} onChange={event => updateFilterRows(filterRows.map(r => r.key === row.key ? { ...r, logic: event.target.value as 'AND' | 'OR' } : r))}>

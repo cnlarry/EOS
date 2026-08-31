@@ -57,7 +57,7 @@ public sealed class ChooserBackfillRerunTool
         var (converted, keepExisting, stillManual) = await ConvertManualRowsAsync();
         var root = FindRepoRoot();
         var sql = BuildRerunMigrationSql(converted, keepExisting);
-        var migrationPath = Path.Combine(root, "EOS.API", "Data", "Migrations", "021_fields_chooser_rerun.sql");
+        var migrationPath = Path.Combine(root, "EOS.API", "Data", "Migrations", "038_chooser_b_rerun.sql");
         await File.WriteAllTextAsync(migrationPath, sql, new UTF8Encoding(false));
 
         var reportDir = EnsureReportDir(root);
@@ -387,7 +387,17 @@ public sealed class ChooserBackfillRerunTool
             if (expression is null) return;
             if (expression.Kind == "column" && !string.IsNullOrEmpty(expression.Column))
             {
-                pairs.Add((string.IsNullOrEmpty(expression.Table) ? defaultTable : expression.Table, expression.Column));
+                var table = string.IsNullOrEmpty(expression.Table) ? defaultTable : expression.Table;
+                var column = expression.Column;
+                // 带点号列名拆分（对齐运行期 CompileExpression.ResolveColumn 语义）：
+                // 子查询裸列表达式经 QualifyBare 后 Table 为空、Column 为 "表.列"，须拆开再校验
+                var dot = column.IndexOf('.');
+                if (dot > 0 && string.IsNullOrEmpty(expression.Table))
+                {
+                    table = column[..dot].Trim();
+                    column = column[(dot + 1)..].Trim();
+                }
+                pairs.Add((table, column));
             }
             CollectExpression(expression.Left, defaultTable, pairs);
             CollectExpression(expression.Right, defaultTable, pairs);

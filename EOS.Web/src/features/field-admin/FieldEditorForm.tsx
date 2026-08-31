@@ -607,7 +607,6 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                         <label className="form-label">浏览权限模块 ID</label>
                         <select className="form-select" value={draft.browseModuleId ?? ''} onChange={event => setDraft({ ...draft, browseModuleId: event.target.value === '' ? null : Number(event.target.value) })}>
                           <option value="">不限制</option>{modulesQuery.data?.map(item => <option key={item.value} value={item.value}>{item.label} ({item.value})</option>)}</select>
-                        <input type="hidden" value={draft.browseModuleId ?? ''} onChange={event => setDraft({ ...draft, browseModuleId: event.target.value === '' ? null : Number(event.target.value) })} />
                       </div>
                       <div className="col-12 d-flex gap-4">
                         <label className="form-check">
