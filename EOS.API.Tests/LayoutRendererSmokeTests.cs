@@ -145,4 +145,151 @@ public class LayoutRendererSmokeTests
         var layout = MinimalLayout.Replace("\"schemaVersion\": 1", "\"schemaVersion\": 2", StringComparison.Ordinal);
         Assert.Throws<LayoutInvalidException>(() => Renderer.Render(Sample, layout));
     }
+
+    [Fact]
+    public void Render_Barcode_QrAndCode128_ProducesPdf()
+    {
+        const string layout = """
+            {
+              "schemaVersion": 1,
+              "kind": "document",
+              "page": { "size": "A4", "orientation": "portrait",
+                        "margin": { "top": 11.29, "right": 11.29, "bottom": 11.29, "left": 11.29 } },
+              "sections": {
+                "header": { "height": 26, "elements": [] },
+                "content": { "elements": [
+                  { "id": "b1", "type": "barcode", "x": 10, "y": 10, "w": 60, "h": 60,
+                    "barcodeType": "qrcode", "content": "{{MASTER.ORDER_NO}}" },
+                  { "id": "b2", "type": "barcode", "x": 10, "y": 80, "w": 120, "h": 30,
+                    "barcodeType": "code128", "content": "HTP6-32-2" }
+                ] },
+                "footer": { "height": 14, "elements": [] }
+              }
+            }
+            """;
+        var pdf = Renderer.Render(Sample, layout, new LayoutRenderContext("admin"));
+        Assert.True(pdf.Length > 500);
+        Assert.StartsWith("%PDF", Encoding.ASCII.GetString(pdf[..4]));
+    }
+
+    [Fact]
+    public void Render_Table_RowHeightAndNegativeRed_ProducesPdf()
+    {
+        const string layout = """
+            {
+              "schemaVersion": 1,
+              "kind": "document",
+              "page": { "size": "A4", "orientation": "portrait",
+                        "margin": { "top": 11.29, "right": 11.29, "bottom": 11.29, "left": 11.29 } },
+              "sections": {
+                "header": { "height": 26, "elements": [] },
+                "content": { "elements": [
+                  { "id": "t1", "type": "table", "x": 0, "y": 10, "w": 187.4, "h": 0,
+                    "dataSource": "details", "rowHeight": 7, "showHeader": true,
+                    "style": { "striped": true },
+                    "columns": [
+                      { "field": "DETAILS.PRO_NO", "label": "料号", "width": 60 },
+                      { "field": "DETAILS.AMOUNT_TAX", "label": "金额", "width": 60, "align": "right",
+                        "format": "#,##0.00", "negativeRed": true, "isAmount": true }
+                    ] }
+                ] },
+                "footer": { "height": 14, "elements": [] }
+              }
+            }
+            """;
+        var data = Sample with
+        {
+            Details =
+            [
+                new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["PRO_NO"] = "HTP6-32-2", ["AMOUNT_TAX"] = -1240.00m,
+                },
+            ],
+        };
+        var pdf = Renderer.Render(data, layout, new LayoutRenderContext("admin"));
+        Assert.True(pdf.Length > 500);
+        Assert.StartsWith("%PDF", Encoding.ASCII.GetString(pdf[..4]));
+    }
+
+    [Fact]
+    public void Render_PageTemplates_FirstAndContinuationHeaders_ProducesPdf()
+    {
+        const string layout = """
+            {
+              "schemaVersion": 1,
+              "kind": "document",
+              "page": { "size": "A4", "orientation": "portrait",
+                        "margin": { "top": 11.29, "right": 11.29, "bottom": 11.29, "left": 11.29 } },
+              "sections": {
+                "header": { "height": 26, "elements": [
+                  { "id": "h1", "type": "text", "x": 0, "y": 2, "w": 187.4, "h": 6,
+                    "content": "默认页头", "style": { "fontSize": 12 } }
+                ] },
+                "content": { "elements": [
+                  { "id": "t1", "type": "table", "x": 0, "y": 10, "w": 187.4, "h": 0,
+                    "dataSource": "details", "showHeader": true,
+                    "columns": [
+                      { "field": "DETAILS.PRO_NO", "label": "料号", "width": 100 },
+                      { "field": "DETAILS.QTY", "label": "数量", "width": 60, "align": "right" }
+                    ] }
+                ] },
+                "footer": { "height": 14, "elements": [] }
+              },
+              "pageTemplates": {
+                "first": { "header": { "height": 26, "elements": [
+                  { "id": "fh", "type": "text", "x": 0, "y": 2, "w": 187.4, "h": 6,
+                    "content": "第一页页头", "style": { "fontSize": 12 } }
+                ] } },
+                "continuation": { "header": { "height": 26, "elements": [
+                  { "id": "ch", "type": "text", "x": 0, "y": 2, "w": 187.4, "h": 6,
+                    "content": "续页页头", "style": { "fontSize": 12 } }
+                ] } }
+              }
+            }
+            """;
+        // 120 行明细强制多页
+        var details = Enumerable.Range(1, 120)
+            .Select(i => (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                ["PRO_NO"] = $"P{i:0000}", ["QTY"] = i,
+            })
+            .ToList();
+        var pdf = Renderer.Render(Sample with { Details = details }, layout, new LayoutRenderContext("admin"));
+        Assert.True(pdf.Length > 1000);
+        Assert.StartsWith("%PDF", Encoding.ASCII.GetString(pdf[..4]));
+        var outDir = Path.Combine(Environment.CurrentDirectory, "logs", "layout-smoke");
+        Directory.CreateDirectory(outDir);
+        File.WriteAllBytes(Path.Combine(outDir, "page-templates.pdf"), pdf);
+    }
+
+    [Fact]
+    public void Render_Barcode_Upgraded_QrCorrectionAndMoreTypes_ProducesPdf()
+    {
+        const string layout = """
+            {
+              "schemaVersion": 1,
+              "kind": "document",
+              "page": { "size": "A4", "orientation": "portrait",
+                        "margin": { "top": 11.29, "right": 11.29, "bottom": 11.29, "left": 11.29 } },
+              "sections": {
+                "header": { "height": 26, "elements": [] },
+                "content": { "elements": [
+                  { "id": "b1", "type": "barcode", "x": 10, "y": 10, "w": 60, "h": 60,
+                    "barcodeType": "qrcode", "barcodeErrorCorrection": "H",
+                    "barcodeColor": "#1565C0", "content": "{{MASTER.ORDER_NO}}" },
+                  { "id": "b2", "type": "barcode", "x": 10, "y": 80, "w": 120, "h": 30,
+                    "barcodeType": "code93", "content": "CODE93-TEST" },
+                  { "id": "b3", "type": "barcode", "x": 10, "y": 120, "w": 80, "h": 40,
+                    "barcodeType": "datamatrix", "content": "DM-123456" }
+                ] },
+                "footer": { "height": 14, "elements": [] }
+              }
+            }
+            """;
+        var pdf = Renderer.Render(Sample, layout, new LayoutRenderContext("admin"));
+        Assert.True(pdf.Length > 500);
+        Assert.StartsWith("%PDF", Encoding.ASCII.GetString(pdf[..4]));
+    }
 }

@@ -1,0 +1,63 @@
+{
+  "moduleId": 1401,
+  "title": "资料卡",
+  "headerCompany": "示例公司",
+  "headerCompanyEn": "DEMO COMPANY",
+  "headerText": "TEL: 0000-0000000",
+  "footerText": "谢谢惠顾",
+  "tailText": "以下空白",
+  "logoPath": null,
+  "masterFields": [
+    {
+      "key": "CARD_NO",
+      "label": "编号",
+      "displayFormat": null
+    },
+    {
+      "key": "CARD_NAME",
+      "label": "名称",
+      "displayFormat": null
+    },
+    {
+      "key": "CARD_TYPE",
+      "label": "类别",
+      "displayFormat": null
+    },
+    {
+      "key": "CREATE_PERSON",
+      "label": "建立人",
+      "displayFormat": null
+    },
+    {
+      "key": "CREATE_DATE",
+      "label": "建立日期",
+      "displayFormat": null
+    }
+  ],
+  "detailFields": [
+    {
+      "key": "CONTACT_NAME",
+      "label": "联系人",
+      "displayFormat": null
+    },
+    {
+      "key": "CONTACT_TEL",
+      "label": "电话",
+      "displayFormat": null
+    }
+  ],
+  "master": {
+    "CARD_NO": "C001",
+    "CARD_NAME": "深圳测试客户有限公司",
+    "CARD_TYPE": "客户",
+    "CREATE_PERSON": "admin",
+    "CREATE_DATE": "2026-08-31"
+  },
+  "details": [
+    {
+      "CONTACT_NAME": "张三",
+      "CONTACT_TEL": "0755-12345678"
+    }
+  ],
+  "clientProfile": null
+}

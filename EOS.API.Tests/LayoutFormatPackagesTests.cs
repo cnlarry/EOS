@@ -110,6 +110,11 @@ public class LayoutFormatPackagesTests
             var format = JsonSerializer.Deserialize<ReportFormatDefinition>(
                 File.ReadAllText(Path.Combine(dir, "format.json")), JsonOptions)!;
             Assert.Equal("document", format.Kind);
+            // 回退包必须带 sample.json（预览/渲染预览的样例数据源）
+            var sampleJson = File.ReadAllText(Path.Combine(dir, "sample.json"));
+            var parsed = SamplePrintDataFactory.Build(
+                expectedModule.ToString(System.Globalization.CultureInfo.InvariantCulture), sampleJson);
+            Assert.True(parsed.Master.Count > 0, $"{formatId} sample 主表数据缺失");
             var layoutJson = File.ReadAllText(Path.Combine(dir, "layout.json"));
             var errors = new ReportFormatValidator().Validate(format, layoutJson);
             Assert.True(errors.Count == 0, $"{formatId} 应通过校验：{string.Join("; ", errors)}");

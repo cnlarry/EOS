@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using EOS.API.Models;
@@ -6,6 +8,10 @@ using QuestPDF.Elements.Table;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using ZXing;
+using ZXing.Common;
+using ZXing.QrCode.Internal;
+using ZXing.Rendering;
 
 namespace EOS.API.Data;
 
@@ -55,12 +61,21 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
                 var contentWidth = pageSize.Width - Mm(layout.Page.Margin.Left) - Mm(layout.Page.Margin.Right);
                 var contentHeight = pageSize.Height - Mm(layout.Page.Margin.Top) - Mm(layout.Page.Margin.Bottom);
 
-                page.Header().Element(header => RenderFixedSection(
-                    header, layout.Sections.Header, contentWidth, contentHeight, data, effective));
                 page.Content().Element(content => RenderContent(
                     content, layout.Sections.Content, contentWidth, contentHeight, data, effective));
-                page.Footer().Element(footer => RenderFixedSection(
-                    footer, layout.Sections.Footer, contentWidth, contentHeight, data, effective));
+                // 多页模板：页头/页脚按页码选择（第 1 页 / 续页 / 末页，缺省回退默认 sections）
+                page.Header().Dynamic(new PageTemplateDynamic((header, pageNumber, totalPages) =>
+                {
+                    var section = SelectPageTemplate(layout.PageTemplates, pageNumber, totalPages, isHeader: true)
+                        ?? layout.Sections.Header;
+                    RenderFixedSection(header, section, contentWidth, contentHeight, data, effective);
+                }));
+                page.Footer().Dynamic(new PageTemplateDynamic((footer, pageNumber, totalPages) =>
+                {
+                    var section = SelectPageTemplate(layout.PageTemplates, pageNumber, totalPages, isHeader: false)
+                        ?? layout.Sections.Footer;
+                    RenderFixedSection(footer, section, contentWidth, contentHeight, data, effective);
+                }));
             });
         });
         logger.LogDebug("layout.json 渲染 module={ModuleId} rows={RowCount}", data.ModuleId, data.Details.Count);
@@ -77,6 +92,34 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
         catch (JsonException ex)
         {
             throw new LayoutInvalidException($"layout.json 解析失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>多页模板选择：第 1 页用 first；最后一页用 last（优先于 continuation）；中间用 continuation。</summary>
+    private static LayoutSection? SelectPageTemplate(
+        LayoutPageTemplates? templates, int pageNumber, int totalPages, bool isHeader)
+    {
+        if (templates is null) return null;
+        LayoutSection? Of(LayoutPageTemplate? template) => isHeader ? template?.Header : template?.Footer;
+        if (pageNumber == 1)
+            return Of(templates.First) ?? Of(templates.Continuation);
+        if (pageNumber == totalPages && Of(templates.Last) is { } last)
+            return last;
+        return Of(templates.Continuation);
+    }
+
+    /// <summary>QuestPDF Dynamic 组件：按当前页码/总页数组合内容（多页模板核心）。</summary>
+    private sealed class PageTemplateDynamic : IDynamicComponent
+    {
+        private readonly Action<IContainer, int, int> _compose;
+
+        public PageTemplateDynamic(Action<IContainer, int, int> compose) => _compose = compose;
+
+        public DynamicComponentComposeResult Compose(QuestPDF.Elements.DynamicContext context)
+        {
+            var content = context.CreateElement(container =>
+                _compose(container, context.PageNumber, context.TotalPages));
+            return new DynamicComponentComposeResult { Content = content };
         }
     }
 
@@ -223,6 +266,9 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
             case "image":
                 RenderImage(container, element, data);
                 break;
+            case "barcode":
+                RenderBarcode(container, element, data, context);
+                break;
             case "line":
                 container.LineHorizontal((float)(element.Style?.LineWidth ?? 0.5), Unit.Point)
                     .LineColor(ColorOr(element.Style?.Color, Colors.Black));
@@ -279,6 +325,158 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
         else image.FitArea();
     }
 
+    /// <summary>条码/二维码：ZXing 生成位图 → PNG → QuestPDF Image（值支持 {{MASTER.*}}/{{SYS.*}} 模板）。</summary>
+    [SupportedOSPlatform("windows")]
+    private static void RenderBarcode(
+        IContainer container, LayoutElement element, PrintData data, LayoutRenderContext context)
+    {
+        var value = ResolveTemplateText(element.Content ?? string.Empty, data, context);
+        if (string.IsNullOrWhiteSpace(value)) return;
+        var type = ParseBarcodeFormat(element.BarcodeType);
+        var isQr = type == BarcodeFormat.QR_CODE;
+        var options = new EncodingOptions
+        {
+            Width = isQr ? 300 : 400,
+            Height = isQr ? 300 : 110,
+            Margin = isQr ? 2 : 1,
+            PureBarcode = false,
+        };
+        if (isQr)
+        {
+            options.Hints[EncodeHintType.ERROR_CORRECTION] = (element.BarcodeErrorCorrection ?? "M").ToUpperInvariant() switch
+            {
+                "L" => ErrorCorrectionLevel.L,
+                "Q" => ErrorCorrectionLevel.Q,
+                "H" => ErrorCorrectionLevel.H,
+                _ => ErrorCorrectionLevel.M,
+            };
+        }
+        var writer = new BarcodeWriter<PixelData>
+        {
+            Format = type,
+            Options = options,
+            Renderer = new PixelDataRenderer(),
+        };
+        try
+        {
+            var pixelData = writer.Write(value.Trim());
+            using var bitmap = PixelDataToBitmap(pixelData);
+            if (element.BarcodeColor is { } fg) ReplaceForeground(bitmap, ParseHex(fg), element.BarcodeBackground);
+            if (isQr && element.BarcodeLogo is { } logoResource)
+            {
+                var logoBytes = string.Equals(logoResource, "SYS.LOGO", StringComparison.OrdinalIgnoreCase)
+                    ? TryLoadLogo(data.LogoPath)
+                    : null;
+                if (logoBytes is { Length: > 0 }) DrawLogoCenter(bitmap, logoBytes);
+            }
+            using var stream = new MemoryStream();
+            bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+            var image = container.Image(stream.ToArray());
+            if (element.W > 0) image.FitWidth();
+            else if (element.H > 0) image.FitHeight();
+            else image.FitArea();
+        }
+        catch (WriterException)
+        {
+            // 值无法编码（如 EAN13 位数不符）时 fail-closed 不渲染
+        }
+    }
+
+    private static BarcodeFormat ParseBarcodeFormat(string? type)
+    {
+        return (type ?? string.Empty).ToLowerInvariant() switch
+        {
+            "code128" => BarcodeFormat.CODE_128,
+            "code39" => BarcodeFormat.CODE_39,
+            "code93" => BarcodeFormat.CODE_93,
+            "ean13" => BarcodeFormat.EAN_13,
+            "upca" => BarcodeFormat.UPC_A,
+            "upce" => BarcodeFormat.UPC_E,
+            "itf" => BarcodeFormat.ITF,
+            "codabar" => BarcodeFormat.CODABAR,
+            "pdf417" => BarcodeFormat.PDF_417,
+            "datamatrix" => BarcodeFormat.DATA_MATRIX,
+            "aztec" => BarcodeFormat.AZTEC,
+            _ => BarcodeFormat.QR_CODE,
+        };
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static System.Drawing.Bitmap PixelDataToBitmap(PixelData pixelData)
+    {
+        var bitmap = new System.Drawing.Bitmap(pixelData.Width, pixelData.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        var rect = new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height);
+        var bits = bitmap.LockBits(rect, System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        try
+        {
+            Marshal.Copy(pixelData.Pixels, 0, bits.Scan0, pixelData.Pixels.Length);
+        }
+        finally
+        {
+            bitmap.UnlockBits(bits);
+        }
+        return bitmap;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void ReplaceForeground(System.Drawing.Bitmap bitmap, System.Drawing.Color foreground, string? backgroundHex)
+    {
+        var bg = backgroundHex is null ? System.Drawing.Color.White : ParseHex(backgroundHex);
+        for (var y = 0; y < bitmap.Height; y++)
+        {
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                var pixel = bitmap.GetPixel(x, y);
+                // 接近前景（黑）的像素替换为目标色；其余按背景色处理
+                var luminance = (pixel.R + pixel.G + pixel.B) / 3.0;
+                bitmap.SetPixel(x, y, luminance < 140 ? foreground : bg);
+            }
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void DrawLogoCenter(System.Drawing.Bitmap bitmap, byte[] logoBytes)
+    {
+        using var logo = new System.Drawing.Bitmap(new MemoryStream(logoBytes));
+        var size = Math.Max(12, bitmap.Width / 5);
+        var rect = new System.Drawing.Rectangle((bitmap.Width - size) / 2, (bitmap.Height - size) / 2, size, size);
+        using var graphics = System.Drawing.Graphics.FromImage(bitmap);
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        using var whiteBrush = new System.Drawing.SolidBrush(System.Drawing.Color.White);
+        graphics.FillEllipse(whiteBrush, rect);
+        graphics.DrawImage(logo, rect);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static System.Drawing.Color ParseHex(string hex)
+    {
+        try
+        {
+            return System.Drawing.ColorTranslator.FromHtml(hex);
+        }
+        catch
+        {
+            return System.Drawing.Color.Black;
+        }
+    }
+
+    /// <summary>解析 {{...}} 模板（barcode/image 等非文本元素取值用；页码/总页不适用返回空）。</summary>
+    private static string ResolveTemplateText(
+        string template, PrintData data, LayoutRenderContext context)
+    {
+        return TemplatePattern.Replace(template, match =>
+        {
+            var reference = match.Groups[1].Value;
+            if (reference.StartsWith("SYS.", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(reference, "SYS.PAGE_NUMBER", StringComparison.OrdinalIgnoreCase) is false
+                && string.Equals(reference, "SYS.TOTAL_PAGES", StringComparison.OrdinalIgnoreCase) is false)
+                return ResolveSystemValue(reference["SYS.".Length..], data, context) ?? string.Empty;
+            if (reference.StartsWith("MASTER.", StringComparison.OrdinalIgnoreCase))
+                return PdfLayout.FormatValue(data.Master.GetValueOrDefault(reference["MASTER.".Length..]));
+            return string.Empty;
+        });
+    }
+
     // ============================================================================
     // table 渲染（明细自动分页 + 表头重复 + 合计；master 数据源名值对表）
     // ============================================================================
@@ -298,12 +496,12 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
             ? data.DetailFields
                 .Where(field => context.ShowRemark || !PdfLayout.IsRemarkField(field.Key))
                 .Select(field => new TableColumnSpec(
-                    field.Key, field.Label, null, "left", field.DisplayFormat, null, null))
+                    field.Key, field.Label, null, "left", field.DisplayFormat, null, null, null))
                 .ToList()
             : table.Columns!
                 .Select(column => new TableColumnSpec(
                     column.Field, column.Label, column.Width, column.Align, column.Format,
-                    column.Suffix, column.IsAmount))
+                    column.Suffix, column.IsAmount, column.NegativeRed))
                 .ToList();
 
         if (fields.Count == 0) return;
@@ -355,11 +553,17 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
                         ? PdfLayout.FormatValue(row.GetValueOrDefault(fields[i].Field), fields[i].Format)
                         : ResolveTableCell(fields[i], row, index);
                     var align = fields[i].Align ?? "left";
-                    t.Cell()
+                    var cell = t.Cell()
                         .BorderBottom(0.25f).BorderColor(Colors.Grey.Lighten2)
-                        .Padding(2)
-                        .AlignFrom(align)
-                        .Text(value).FontSize(8);
+                        .Padding(2);
+                    if (table.RowHeight is > 0)
+                        cell = cell.MinHeight(Mm((float)table.RowHeight));
+                    if (table.Style?.Striped == true && index % 2 == 0)
+                        cell = cell.Background(Colors.Grey.Lighten4);
+                    var text = cell.AlignFrom(align).Text(value).FontSize(8);
+                    // 金额条件格式：负数红字（列显式开启且值为负数）
+                    if (fields[i].NegativeRed == true && IsNegativeNumber(value))
+                        text.FontColor(Colors.Red.Medium);
                 }
             }
 
@@ -447,10 +651,20 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
     }
 
     private sealed record TableColumnSpec(
-        string Field, string Label, double? Width, string? Align, string? Format, string? Suffix, bool? IsAmount);
+        string Field, string Label, double? Width, string? Align, string? Format,
+        string? Suffix, bool? IsAmount, bool? NegativeRed);
 
     private static string AppendSuffix(string value, string? suffix)
         => string.IsNullOrEmpty(value) || string.IsNullOrWhiteSpace(suffix) ? value : value + suffix;
+
+    /// <summary>金额条件格式判定：去掉千分位/货币符后为负数（用于 negativeRed 列）。</summary>
+    private static bool IsNegativeNumber(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var normalized = value.Trim().Replace(",", string.Empty, StringComparison.Ordinal);
+        return normalized.StartsWith('-') && decimal.TryParse(
+            normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out _);
+    }
 
     // ============================================================================
     // 字段取值（MASTER.* / DETAILS.* / SYS.*；fail-closed 未知 → null）

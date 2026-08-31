@@ -38,9 +38,27 @@
         "content": { "$ref": "#/$defs/section" },
         "footer": { "$ref": "#/$defs/section" }
       }
+    },
+    "pageTemplates": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "多页模板：第一页 / 续页 / 末页各自的页头页脚（缺省回退默认 sections）",
+      "properties": {
+        "first": { "$ref": "#/$defs/pageTemplate" },
+        "continuation": { "$ref": "#/$defs/pageTemplate" },
+        "last": { "$ref": "#/$defs/pageTemplate" }
+      }
     }
   },
   "$defs": {
+    "pageTemplate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "header": { "$ref": "#/$defs/section" },
+        "footer": { "$ref": "#/$defs/section" }
+      }
+    },
     "section": {
       "type": "object",
       "additionalProperties": false,
@@ -60,7 +78,7 @@
       "required": ["id", "type", "x", "y"],
       "properties": {
         "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
-        "type": { "enum": ["text", "field", "image", "line", "rect", "table"] },
+        "type": { "enum": ["text", "field", "image", "line", "rect", "table", "barcode"] },
         "x": { "type": "number", "description": "相对所属 section 顶部的横坐标（mm）" },
         "y": { "type": "number", "description": "相对所属 section 顶部的纵坐标（mm）" },
         "w": { "type": "number", "minimum": 0, "description": "宽度（mm）；0 = 自适应" },
@@ -70,6 +88,11 @@
         "field": { "type": "string", "description": "field：MASTER.* / SYS.*（表内列用 table.columns.field 引用 DETAILS.*）" },
         "format": { "type": ["string", "null"], "description": "DISPLAY_FORMAT 白名单格式（PdfLayout.FormatValue）" },
         "resourceId": { "type": "string", "description": "image：服务端白名单资源 ID（内置 SYS.LOGO）" },
+        "barcodeType": { "enum": ["qrcode", "code128", "code39", "code93", "ean13", "upca", "upce", "itf", "codabar", "pdf417", "datamatrix", "aztec"], "description": "barcode：条码类型（白名单）" },
+        "barcodeErrorCorrection": { "enum": ["L", "M", "Q", "H"], "description": "barcode：二维码纠错级别（L=7% / M=15% / Q=25% / H=30%）" },
+        "barcodeColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "description": "barcode：前景色（hex）" },
+        "barcodeBackground": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "description": "barcode：背景色（hex）" },
+        "barcodeLogo": { "type": "string", "description": "barcode：中心 Logo 资源 ID（服务端白名单，如 SYS.LOGO）" },
         "dataSource": { "enum": ["details", "master"], "description": "table：details=明细行；master=主档字段名值对" },
         "columns": {
           "type": "array",
@@ -82,6 +105,7 @@
         "totalsLabel": { "type": "string", "description": "价税合计行标签（跨列）" },
         "totalsField": { "type": "string", "description": "价税合计行取值字段（MASTER.*）" },
         "maxRows": { "type": "integer", "minimum": 1, "description": "master 数据源最多渲染行数（资料卡 Take(20)）" },
+        "rowHeight": { "type": "number", "minimum": 0, "description": "table：明细行固定行高（mm），0 = 按内容自适应" },
         "title": { "type": "string", "description": "table 上方标题（资料卡'联系人'）" },
         "style": { "$ref": "#/$defs/style" }
       }
@@ -97,7 +121,8 @@
         "align": { "enum": ["left", "center", "right"], "default": "left" },
         "format": { "type": ["string", "null"] },
         "suffix": { "type": ["string", "null"], "description": "非空值追加的后缀（如 '%'）" },
-        "isAmount": { "type": "boolean", "description": "参与合计行求和" }
+        "isAmount": { "type": "boolean", "description": "参与合计行求和" },
+        "negativeRed": { "type": "boolean", "description": "负数显示为红色（金额条件格式）" }
       }
     },
     "style": {
@@ -114,7 +139,8 @@
         "borderColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
         "borderWidth": { "type": "number", "minimum": 0 },
         "padding": { "type": "number", "minimum": 0, "description": "pt" },
-        "lineWidth": { "type": "number", "minimum": 0, "description": "line 线宽（pt）" }
+        "lineWidth": { "type": "number", "minimum": 0, "description": "line 线宽（pt）" },
+        "striped": { "type": "boolean", "description": "table：明细行隔行底色" }
       }
     }
   }

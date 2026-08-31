@@ -51,7 +51,16 @@ public sealed record LayoutDocument(
     int SchemaVersion,
     string Kind,
     LayoutPage Page,
-    LayoutSections Sections);
+    LayoutSections Sections,
+    LayoutPageTemplates? PageTemplates = null);
+
+/// <summary>多页模板（第一页 / 续页 / 末页各自的页头页脚，缺省回退默认 sections）。</summary>
+public sealed record LayoutPageTemplates(
+    LayoutPageTemplate? First,
+    LayoutPageTemplate? Continuation,
+    LayoutPageTemplate? Last);
+
+public sealed record LayoutPageTemplate(LayoutSection? Header, LayoutSection? Footer);
 
 public sealed record LayoutPage(string Size, string Orientation, LayoutMargin Margin);
 
@@ -77,6 +86,11 @@ public sealed record LayoutElement(
     string? Field = null,
     string? Format = null,
     string? ResourceId = null,
+    string? BarcodeType = null,
+    string? BarcodeErrorCorrection = null,
+    string? BarcodeColor = null,
+    string? BarcodeBackground = null,
+    string? BarcodeLogo = null,
     string? DataSource = null,
     IReadOnlyList<LayoutColumn>? Columns = null,
     bool? ShowHeader = null,
@@ -86,6 +100,7 @@ public sealed record LayoutElement(
     string? TotalsField = null,
     int? MaxRows = null,
     string? Title = null,
+    double? RowHeight = null,
     LayoutElementStyle? Style = null);
 
 public sealed record LayoutColumn(
@@ -95,7 +110,8 @@ public sealed record LayoutColumn(
     string? Align = "left",
     string? Format = null,
     string? Suffix = null,
-    bool? IsAmount = null);
+    bool? IsAmount = null,
+    bool? NegativeRed = null);
 
 public sealed record LayoutElementStyle(
     double? FontSize = null,
@@ -108,7 +124,8 @@ public sealed record LayoutElementStyle(
     string? BorderColor = null,
     double? BorderWidth = null,
     double? Padding = null,
-    double? LineWidth = null);
+    double? LineWidth = null,
+    bool? Striped = null);
 
 /// <summary>渲染上下文（解释层扩展参数，接口默认调用可省略）。</summary>
 public sealed record LayoutRenderContext(string? PrintPerson = null, bool ShowRemark = true);

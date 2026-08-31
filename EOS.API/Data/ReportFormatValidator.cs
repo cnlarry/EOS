@@ -34,7 +34,18 @@ public sealed class ReportFormatValidator
 
     private static readonly HashSet<string> ElementTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "text", "field", "image", "line", "rect", "table",
+        "text", "field", "image", "line", "rect", "table", "barcode",
+    };
+
+    private static readonly HashSet<string> BarcodeTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "qrcode", "code128", "code39", "code93", "ean13", "upca", "upce",
+        "itf", "codabar", "pdf417", "datamatrix", "aztec",
+    };
+
+    private static readonly HashSet<string> QrErrorCorrections = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "L", "M", "Q", "H",
     };
 
     private static readonly HashSet<string> DataSources = new(StringComparer.OrdinalIgnoreCase)
@@ -185,6 +196,22 @@ public sealed class ReportFormatValidator
                     CheckReference(id, column.Field, masterKeys, detailKeys, errors);
                 }
             }
+        }
+        if (element.Type == "barcode")
+        {
+            if (element.BarcodeType is not null && !BarcodeTypes.Contains(element.BarcodeType))
+                errors.Add($"{section}[{id}] barcodeType 非法：{element.BarcodeType}。");
+            if (element.BarcodeErrorCorrection is not null
+                && !string.Equals(element.BarcodeType, "qrcode", StringComparison.OrdinalIgnoreCase))
+                errors.Add($"{section}[{id}] 纠错级别仅适用于二维码（qrcode）。");
+            if (element.BarcodeErrorCorrection is not null
+                && !QrErrorCorrections.Contains(element.BarcodeErrorCorrection))
+                errors.Add($"{section}[{id}] 纠错级别非法：{element.BarcodeErrorCorrection}（L/M/Q/H）。");
+            if (element.BarcodeLogo is not null
+                && !string.Equals(element.BarcodeType, "qrcode", StringComparison.OrdinalIgnoreCase))
+                errors.Add($"{section}[{id}] Logo 仅支持二维码（qrcode）。");
+            if (string.IsNullOrWhiteSpace(element.Content))
+                errors.Add($"{section}[{id}] barcode 缺少 content（编码内容，支持 {{MASTER.*}}/{{SYS.*}} 模板）。");
         }
     }
 

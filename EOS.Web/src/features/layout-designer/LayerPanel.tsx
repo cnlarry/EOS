@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { LayoutDocument } from './types'
 
 interface LayerPanelProps {
@@ -7,6 +8,8 @@ interface LayerPanelProps {
   onSelect: (id: string, additive: boolean) => void
   onToggleVisible: (id: string) => void
   onReorder: (id: string, direction: -1 | 1) => void
+  onRename: (id: string, newId: string) => void
+  onRemove: (id: string) => void
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -16,8 +19,11 @@ const TYPE_LABELS: Record<string, string> = {
 const SECTION_LABELS: Record<string, string> = { header: '页头', content: '正文', footer: '页脚' }
 
 export function LayerPanel({
-  doc, selectedIds, canAdjust, onSelect, onToggleVisible, onReorder,
+  doc, selectedIds, canAdjust, onSelect, onToggleVisible, onReorder, onRename, onRemove,
 }: LayerPanelProps) {
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const sections = (['header', 'content', 'footer'] as const).map((key) => ({
     key,
     label: SECTION_LABELS[key],
@@ -27,7 +33,7 @@ export function LayerPanel({
   return (
     <div className="d-flex flex-column">
       <div className="px-3 pt-2 pb-1 text-secondary small">图层</div>
-      <div className="flex-grow-1 overflow-auto" style={{ maxHeight: 210 }}>
+      <div className="flex-grow-1 overflow-auto">
         {sections.map(({ key, label, elements }) => (
           <div key={key}>
             <div className="px-3 py-1 bg-secondary-subtle text-secondary small">{label}</div>
@@ -41,8 +47,39 @@ export function LayerPanel({
                     className={`d-flex align-items-center gap-1 px-3 py-1 small ${selected ? 'bg-primary-subtle' : ''}`}
                     style={{ cursor: 'pointer' }}
                     onClick={(e) => onSelect(el.id, e.shiftKey)}
+                    onDoubleClick={() => {
+                      if (!canAdjust) return
+                      setRenamingId(el.id)
+                      setRenameValue(el.id)
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      if (!canAdjust) return
+                      setMenu({ id: el.id, x: e.clientX, y: e.clientY })
+                    }}
                   >
-                    <span className="flex-grow-1 text-truncate">{el.id}</span>
+                    {renamingId === el.id ? (
+                      <input
+                        autoFocus
+                        className="form-control form-control-sm flex-grow-1"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            onRename(el.id, renameValue.trim() || el.id)
+                            setRenamingId(null)
+                          }
+                          if (e.key === 'Escape') setRenamingId(null)
+                        }}
+                        onBlur={() => {
+                          onRename(el.id, renameValue.trim() || el.id)
+                          setRenamingId(null)
+                        }}
+                      />
+                    ) : (
+                      <span className="flex-grow-1 text-truncate">{el.id}</span>
+                    )}
                     <span className="badge bg-secondary text-nowrap">{TYPE_LABELS[el.type] ?? el.type}</span>
                     <input
                       type="checkbox"
@@ -77,6 +114,28 @@ export function LayerPanel({
           </div>
         ))}
       </div>
+      {menu && (
+        <div className="position-fixed bg-white shadow border rounded py-1"
+          style={{ left: Math.min(menu.x, window.innerWidth - 140), top: Math.min(menu.y, window.innerHeight - 100), zIndex: 1300, minWidth: 130 }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <button type="button" className="d-block w-100 text-start px-3 py-1 small border-0 bg-transparent"
+            style={{ cursor: 'pointer' }}
+            onClick={() => {
+              setRenamingId(menu.id)
+              setRenameValue(menu.id)
+              setMenu(null)
+            }}>
+            重命名
+          </button>
+          <button type="button" className="d-block w-100 text-start px-3 py-1 small border-0 bg-transparent text-danger"
+            style={{ cursor: 'pointer' }}
+            onClick={() => { onRemove(menu.id); setMenu(null) }}>
+            删除
+          </button>
+        </div>
+      )}
     </div>
   )
 }
