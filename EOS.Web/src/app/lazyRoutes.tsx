@@ -28,3 +28,4 @@ export const FlowDesignPage = lazy(() => import('../features/workflow/FlowDesign
 export const FlowMonitorPage = lazy(() => import('../features/workflow/FlowMonitorPage').then((module) => ({ default: module.FlowMonitorPage })))
 export const ReportCenterPage = lazy(() => import('../features/reports/ReportCenterPage').then((module) => ({ default: module.ReportCenterPage })))
 export const ReportInboxPage = lazy(() => import('../features/reports/ReportInboxPage').then((module) => ({ default: module.ReportInboxPage })))
+export const LayoutDesignerPage = lazy(() => import('../features/layout-designer/LayoutDesignerPage').then((module) => ({ default: module.LayoutDesignerPage })))

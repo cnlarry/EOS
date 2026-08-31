@@ -1,4 +1,4 @@
-import { IconArrowDown, IconArrowUp, IconInbox, IconSearch, IconStar, IconStarFilled, IconX } from '@tabler/icons-react'
+import { IconArrowDown, IconArrowUp, IconInbox, IconSearch, IconStar, IconStarFilled, IconX, IconPencil } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -183,6 +183,13 @@ export function ReportCenterPage() {
                                 </button>
                               </span>
                             )}
+                            <button type="button"
+                              className="btn btn-sm report-center-star"
+                              aria-label={`自定义版式 ${item.reportName}`}
+                              title="自定义版式"
+                              onClick={() => navigate(`/layout-designer/${item.moduleId}`)}>
+                              <IconPencil size={16} />
+                            </button>
                             <button type="button"
                               className="btn btn-sm report-center-star"
                               aria-label={item.favorite ? `取消收藏 ${item.reportName}` : `收藏 ${item.reportName}`}

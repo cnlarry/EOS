@@ -1,0 +1,55 @@
+{
+  "formatId": "_card",
+  "kind": "document",
+  "title": "资料卡",
+  "moduleId": 1401,
+  "dataContract": {
+    "columns": [
+      {
+        "key": "CARD_NO",
+        "label": "编号",
+        "type": "string"
+      },
+      {
+        "key": "CARD_NAME",
+        "label": "名称",
+        "type": "string"
+      },
+      {
+        "key": "CARD_TYPE",
+        "label": "类别",
+        "type": "string"
+      },
+      {
+        "key": "CREATE_PERSON",
+        "label": "建立人",
+        "type": "string"
+      },
+      {
+        "key": "CREATE_DATE",
+        "label": "建立日期",
+        "type": "date"
+      }
+    ],
+    "detailColumns": [
+      {
+        "key": "CONTACT_NAME",
+        "label": "联系人",
+        "type": "string"
+      },
+      {
+        "key": "CONTACT_TEL",
+        "label": "电话",
+        "type": "string"
+      }
+    ]
+  },
+  "params": [],
+  "grouping": [],
+  "bindings": [
+    {
+      "docType": "1401",
+      "clientId": null
+    }
+  ]
+}

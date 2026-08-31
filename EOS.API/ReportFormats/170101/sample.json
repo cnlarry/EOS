@@ -1,0 +1,152 @@
+{
+  "moduleId": 170101,
+  "title": "应收货款单",
+  "headerCompany": "示例公司",
+  "headerCompanyEn": "DEMO COMPANY",
+  "headerText": "TEL: 0000-0000000",
+  "footerText": "谢谢惠顾",
+  "tailText": "以下空白",
+  "logoPath": null,
+  "masterFields": [
+    {
+      "key": "key",
+      "label": "label",
+      "displayFormat": null
+    },
+    {
+      "key": "key",
+      "label": "label",
+      "displayFormat": null
+    },
+    {
+      "key": "key",
+      "label": "label",
+      "displayFormat": null
+    },
+    {
+      "key": "key",
+      "label": "label",
+      "displayFormat": null
+    },
+    {
+      "key": "key",
+      "label": "label",
+      "displayFormat": null
+    },
+    {
+      "key": "key",
+      "label": "label",
+      "displayFormat": null
+    },
+    {
+      "key": "key",
+      "label": "label",
+      "displayFormat": null
+    },
+    {
+      "key": "key",
+      "label": "label",
+      "displayFormat": null
+    },
+    {
+      "key": "key",
+      "label": "label",
+      "displayFormat": null
+    },
+    {
+      "key": "key",
+      "label": "label",
+      "displayFormat": null
+    },
+    {
+      "key": "key",
+      "label": "label",
+      "displayFormat": null
+    },
+    {
+      "key": "key",
+      "label": "label",
+      "displayFormat": null
+    }
+  ],
+  "detailFields": [
+    {
+      "key": "PRO_NO",
+      "label": "料号",
+      "displayFormat": null
+    },
+    {
+      "key": "PRO_NAME",
+      "label": "品名",
+      "displayFormat": null
+    },
+    {
+      "key": "PRO_SPEC",
+      "label": "规格",
+      "displayFormat": null
+    },
+    {
+      "key": "QTY",
+      "label": "数量",
+      "displayFormat": null
+    },
+    {
+      "key": "UNIT_ID",
+      "label": "单位",
+      "displayFormat": null
+    },
+    {
+      "key": "PRICE",
+      "label": "单价",
+      "displayFormat": null
+    },
+    {
+      "key": "REBATE",
+      "label": "折扣",
+      "displayFormat": null
+    },
+    {
+      "key": "AMOUNT_TAX",
+      "label": "金额",
+      "displayFormat": null
+    }
+  ],
+  "master": {
+    "ACCOUNT_DATE": "2026-08-31",
+    "CURR_ID": "RMB",
+    "CURR_RATE": "1.0000",
+    "SALES_ID": "admin",
+    "BUYER_ID": "buyer1",
+    "CREATE_PERSON": "admin",
+    "CONFIRM_PERSON": "manager",
+    "ACCOUNT_NO": "DD13010001",
+    "ACCOUNT_TYPE": "A",
+    "CLIENT_ID": "C001",
+    "CLIENT_NAME": "深圳测试客户有限公司",
+    "AMOUNT_TAX": 1240.0
+  },
+  "details": [
+    {
+      "PRO_NO": "HTP6-32-2",
+      "PRO_NAME": "电子元件",
+      "PRO_SPEC": "10KΩ",
+      "QTY": 24000,
+      "UNIT_ID": "PCS",
+      "PRICE": 0.31,
+      "REBATE": 100,
+      "AMOUNT_TAX": 1240.0
+    }
+  ],
+  "clientProfile": {
+    "clientName": "深圳测试客户有限公司",
+    "clientNameCn": "深圳测试客户有限公司",
+    "clientNameEn": "SHENZHEN TEST CLIENT",
+    "deliAddrCn": "深圳市南山区科技园路1号",
+    "deliAddrEn": null,
+    "tel": "0755-12345678",
+    "fax": "0755-87654321",
+    "linkman": "张三",
+    "headerId": null,
+    "isForeign": false
+  }
+}

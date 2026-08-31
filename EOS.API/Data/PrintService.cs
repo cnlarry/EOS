@@ -57,14 +57,14 @@ public sealed class PrintService(
             detailFields=await ReadFieldsAsync(connection,detailTable,canViewCost,canViewSecrecy,deniedDetailFields,token);
             details=await ReadRowsAsync(connection,detailTable,pkOrder,keyValues,detailFields.Select(field=>field.Key).ToList(),token);
         }
-        var (headerCompany,headerText,footerText,logoPath,tailText)=await ReadHeaderFooterAsync(connection,moduleId,headerId,tailId,token);
+        var (headerCompany,headerCompanyEn,headerText,footerText,logoPath,tailText)=await ReadHeaderFooterAsync(connection,moduleId,headerId,tailId,token);
         headerText=ReplacePlaceholders(headerText,master);
         footerText=ReplacePlaceholders(footerText,master);
         var masterResolved=await ResolvePartyNameAsync(connection,masterTable,master,token);
         var clientProfile=await ResolveClientProfileAsync(connection,masterTable,masterResolved,token);
         logger.LogDebug("打印数据 module={ModuleId} master={Master} details={DetailCount} clientProfile={HasClient}",
             moduleId,masterTable,details.Count,clientProfile is not null);
-        return new PrintData(moduleId,title,headerCompany,headerText,footerText,logoPath,tailText,
+        return new PrintData(moduleId,title,headerCompany,headerCompanyEn,headerText,footerText,logoPath,tailText,
             OrderPrintFields(masterFields),OrderPrintFields(detailFields),masterResolved,details,clientProfile);
     }
 
@@ -171,7 +171,7 @@ public sealed class PrintService(
     private static string FieldValue(IReadOnlyDictionary<string,object?> row,string key)=>
         row.TryGetValue(key,out var value)&&value is not null?Convert.ToString(value)!.Trim():"";
 
-    private static async Task<(string? Company,string? Header,string? Footer,string? Logo,string? Tail)> ReadHeaderFooterAsync(
+    private static async Task<(string? Company,string? CompanyEn,string? Header,string? Footer,string? Logo,string? Tail)> ReadHeaderFooterAsync(
         SqlConnection connection,int moduleId,string? headerIdOverride,string? tailIdOverride,CancellationToken token)
     {
         const string sql="""
@@ -199,14 +199,16 @@ public sealed class PrintService(
         headerCommand.Parameters.Add("@Id",SqlDbType.NVarChar,50).Value=headerId;
         await using var headerReader=await headerCommand.ExecuteReaderAsync(token);
         string? company=null;
+        string? companyEn=null;
         string? headerText=null;
         string? logoPath=null;
         if(await headerReader.ReadAsync(token))
         {
             var contentJson=headerReader.GetString(0);
             logoPath=headerReader.IsDBNull(1)?null:headerReader.GetString(1).Trim();
-            var (c,h)=ParseHeaderContent(contentJson);
+            var (c,ce,h)=ParseHeaderContent(contentJson);
             company=c;
+            companyEn=ce;
             headerText=h;
         }
         await headerReader.DisposeAsync();
@@ -220,24 +222,25 @@ public sealed class PrintService(
             tailText=await tailCommand.ExecuteScalarAsync(token) as string;
         }
         tailText=string.IsNullOrWhiteSpace(tailText)?null:tailText.Trim();
-        return (company,headerText,tailText,string.IsNullOrWhiteSpace(logoPath)?null:logoPath.Trim(),tailText);
+        return (company,companyEn,headerText,tailText,string.IsNullOrWhiteSpace(logoPath)?null:logoPath.Trim(),tailText);
     }
 
-    /// <summary>解析 REPORT_LAYOUT 页头 CONTENT JSON（companyName/headerText）。</summary>
-    private static (string? Company,string? HeaderText) ParseHeaderContent(string? json)
+    /// <summary>解析 REPORT_LAYOUT 页头 CONTENT JSON（companyName/companyNameEn/headerText）。</summary>
+    private static (string? Company,string? CompanyEn,string? HeaderText) ParseHeaderContent(string? json)
     {
-        if(string.IsNullOrWhiteSpace(json))return(null,null);
+        if(string.IsNullOrWhiteSpace(json))return(null,null,null);
         try
         {
             using var doc=System.Text.Json.JsonDocument.Parse(json);
             var root=doc.RootElement;
             var company=root.TryGetProperty("companyName",out var c)?c.GetString():null;
+            var companyEn=root.TryGetProperty("companyNameEn",out var ce)?ce.GetString():null;
             var headerText=root.TryGetProperty("headerText",out var h)?h.GetString():null;
-            return(company,headerText);
+            return(company,companyEn,headerText);
         }
         catch
         {
-            return(null,null);
+            return(null,null,null);
         }
     }
 

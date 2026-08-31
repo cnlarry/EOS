@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eos.local/schemas/layout.schema.v1.json",
+  "title": "EOS layout.json schema v1（可视化版式设计器）",
+  "description": "ADR-010 §1：layout.json 三重身份——存储格式 / 渲染契约 / 设计器文档模型。坐标单位 mm；fontSize 单位 pt。schemaVersion 版本化，变更需升版。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "page", "sections"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "enum": ["document"] },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["size", "orientation", "margin"],
+      "properties": {
+        "size": { "enum": ["A3", "A4", "A5", "LETTER", "LEGAL"] },
+        "orientation": { "enum": ["portrait", "landscape"] },
+        "margin": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["top", "right", "bottom", "left"],
+          "properties": {
+            "top": { "type": "number", "minimum": 0 },
+            "right": { "type": "number", "minimum": 0 },
+            "bottom": { "type": "number", "minimum": 0 },
+            "left": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["header", "content", "footer"],
+      "properties": {
+        "header": { "$ref": "#/$defs/section" },
+        "content": { "$ref": "#/$defs/section" },
+        "footer": { "$ref": "#/$defs/section" }
+      }
+    }
+  },
+  "$defs": {
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["elements"],
+      "properties": {
+        "height": { "type": "number", "minimum": 0, "description": "header/footer 固定区域高度（mm）；content 可省略" },
+        "elements": {
+          "type": "array",
+          "maxItems": 500,
+          "items": { "$ref": "#/$defs/element" }
+        }
+      }
+    },
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "x", "y"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+        "type": { "enum": ["text", "field", "image", "line", "rect", "table"] },
+        "x": { "type": "number", "description": "相对所属 section 顶部的横坐标（mm）" },
+        "y": { "type": "number", "description": "相对所属 section 顶部的纵坐标（mm）" },
+        "w": { "type": "number", "minimum": 0, "description": "宽度（mm）；0 = 自适应" },
+        "h": { "type": "number", "minimum": 0, "description": "高度（mm）；0 = 自适应" },
+        "visible": { "type": "boolean", "default": true },
+        "content": { "type": "string", "description": "text：静态文本，支持 {{MASTER.X}} / {{SYS.X}} 占位符" },
+        "field": { "type": "string", "description": "field：MASTER.* / SYS.*（表内列用 table.columns.field 引用 DETAILS.*）" },
+        "format": { "type": ["string", "null"], "description": "DISPLAY_FORMAT 白名单格式（PdfLayout.FormatValue）" },
+        "resourceId": { "type": "string", "description": "image：服务端白名单资源 ID（内置 SYS.LOGO）" },
+        "dataSource": { "enum": ["details", "master"], "description": "table：details=明细行；master=主档字段名值对" },
+        "columns": {
+          "type": "array",
+          "maxItems": 60,
+          "items": { "$ref": "#/$defs/column" }
+        },
+        "showHeader": { "type": "boolean", "default": true },
+        "repeatHeaderOnPageBreak": { "type": "boolean", "default": true },
+        "showTotals": { "type": "boolean", "default": false, "description": "明细金额列逐列合计" },
+        "totalsLabel": { "type": "string", "description": "价税合计行标签（跨列）" },
+        "totalsField": { "type": "string", "description": "价税合计行取值字段（MASTER.*）" },
+        "maxRows": { "type": "integer", "minimum": 1, "description": "master 数据源最多渲染行数（资料卡 Take(20)）" },
+        "title": { "type": "string", "description": "table 上方标题（资料卡'联系人'）" },
+        "style": { "$ref": "#/$defs/style" }
+      }
+    },
+    "column": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "label"],
+      "properties": {
+        "field": { "type": "string", "description": "DETAILS.*（明细表）或 MASTER.*（master 数据源）" },
+        "label": { "type": "string" },
+        "width": { "type": ["number", "null"], "description": "列宽（mm）；null = 均分剩余宽度" },
+        "align": { "enum": ["left", "center", "right"], "default": "left" },
+        "format": { "type": ["string", "null"] },
+        "suffix": { "type": ["string", "null"], "description": "非空值追加的后缀（如 '%'）" },
+        "isAmount": { "type": "boolean", "description": "参与合计行求和" }
+      }
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fontSize": { "type": "number", "minimum": 1, "maximum": 200, "description": "pt" },
+        "bold": { "type": "boolean" },
+        "semiBold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "align": { "enum": ["left", "center", "right"], "default": "left" },
+        "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "backgroundColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "borderColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "borderWidth": { "type": "number", "minimum": 0 },
+        "padding": { "type": "number", "minimum": 0, "description": "pt" },
+        "lineWidth": { "type": "number", "minimum": 0, "description": "line 线宽（pt）" }
+      }
+    }
+  }
+}
