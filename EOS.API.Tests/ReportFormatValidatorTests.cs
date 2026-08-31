@@ -84,7 +84,7 @@ public class ReportFormatValidatorTests
     public void UnknownElementType_IsRejected()
     {
         var layoutJson = LayoutJson.Value.Replace(
-            "\"type\": \"text\"", "\"type\": \"barcode\"", StringComparison.Ordinal);
+            "\"type\": \"text\"", "\"type\": \"chart\"", StringComparison.Ordinal);
         var errors = Validator.Validate(Format.Value, layoutJson);
         Assert.Contains(errors, error => error.Contains("未知元素类型"));
     }

@@ -25,6 +25,7 @@ export interface LayoutElementStyle {
   borderWidth?: number
   padding?: number
   lineWidth?: number
+  striped?: boolean
 }
 
 export interface LayoutColumn {
@@ -35,11 +36,12 @@ export interface LayoutColumn {
   format?: string
   suffix?: string
   isAmount?: boolean
+  negativeRed?: boolean
 }
 
 export interface LayoutElement {
   id: string
-  type: 'text' | 'field' | 'image' | 'line' | 'rect' | 'table'
+  type: 'text' | 'field' | 'image' | 'line' | 'rect' | 'table' | 'barcode'
   x: number
   y: number
   w: number
@@ -49,6 +51,11 @@ export interface LayoutElement {
   field?: string
   format?: string
   resourceId?: string
+  barcodeType?: string
+  barcodeErrorCorrection?: string
+  barcodeColor?: string
+  barcodeBackground?: string
+  barcodeLogo?: string
   dataSource?: string
   columns?: LayoutColumn[]
   showHeader?: boolean
@@ -58,6 +65,7 @@ export interface LayoutElement {
   totalsField?: string
   maxRows?: number
   title?: string
+  rowHeight?: number
   style?: LayoutElementStyle
 }
 
@@ -74,6 +82,11 @@ export interface LayoutDocument {
     header: LayoutSection
     content: LayoutSection
     footer: LayoutSection
+  }
+  pageTemplates?: {
+    first?: { header?: LayoutSection; footer?: LayoutSection }
+    continuation?: { header?: LayoutSection; footer?: LayoutSection }
+    last?: { header?: LayoutSection; footer?: LayoutSection }
   }
 }
 
@@ -115,4 +128,24 @@ export interface LayoutHeaderOption {
   companyEn: string | null
   headerText: string | null
   logoPath: string | null
+}
+
+export interface LayoutTemplateInfo {
+  formatId: string
+  title: string
+  moduleId: number
+  kind: string
+}
+
+export interface LayoutVersionInfo {
+  version: number
+  createPerson: string
+  createDate: string
+}
+
+export interface PreviewSettings {
+  source: 'sample' | 'real'
+  rows?: number
+  variant?: string
+  key?: string
 }

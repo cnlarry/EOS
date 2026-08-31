@@ -167,6 +167,38 @@ public sealed class ReportFormLayoutRepositoryIntegrationTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task VersionHistory_Snapshot_List_AndRestore()
+    {
+        if (ConnectionString.Value is null) return;
+
+        var builtin = await _repository.GetEffectiveLayoutAsync(TestModule, TestClient, TestUser, default);
+        var v1Json = builtin.LayoutJson.Replace("\"id\": \"h1\"", "\"id\": \"h1\"", StringComparison.Ordinal);
+        var layoutId = await _repository.CreateCustomLayoutAsync(
+            TestModule, TestUser, v1Json, TestClient, default);
+        _createdLayoutIds.Add(layoutId);
+
+        // 初始版本 1 快照
+        var versions = await _repository.GetVersionsAsync(layoutId, default);
+        Assert.Single(versions);
+        Assert.Equal(1, versions[0].Version);
+
+        // 更新 → 版本 2，历史保留 v1
+        var v2Json = v1Json.Replace("客户订单", "客户订单V2", StringComparison.Ordinal);
+        await _repository.UpdateCustomLayoutAsync(layoutId, TestUser, v2Json, default);
+        versions = await _repository.GetVersionsAsync(layoutId, default);
+        Assert.Equal(2, versions.Count);
+        Assert.Equal(2, versions[0].Version);
+
+        // 回滚到 v1 → 主表内容恢复 v1，版本 3
+        await _repository.RestoreVersionAsync(layoutId, 1, TestUser, default);
+        var effective = await _repository.GetEffectiveLayoutAsync(TestModule, TestClient, TestUser, default);
+        Assert.Contains("\"id\": \"h1\"", effective.LayoutJson);
+        Assert.DoesNotContain("客户订单V2", effective.LayoutJson);
+        versions = await _repository.GetVersionsAsync(layoutId, default);
+        Assert.Equal(3, versions[0].Version);
+    }
+
     public void Dispose()
     {
         if (ConnectionString.Value is null || _createdLayoutIds.Count == 0) return;

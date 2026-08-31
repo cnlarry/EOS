@@ -22,7 +22,24 @@ public sealed record LayoutDesignerPreviewRequest(
     string LayoutJson,
     string? ClientId = null,
     int? Rows = null,
-    string? Variant = null);
+    string? Variant = null,
+    IReadOnlyList<string>? Key = null,
+    string? ReportId = null,
+    string? HeaderId = null,
+    bool ShowRemark = true);
+
+/// <summary>内置格式包模板（模板库，ADR-010 §4）。</summary>
+public sealed record LayoutTemplateInfo(
+    string FormatId,
+    string Title,
+    int ModuleId,
+    string Kind);
+
+/// <summary>版式版本历史条目（REPORT_FORM_LAYOUT_VERSION）。</summary>
+public sealed record LayoutVersionInfo(
+    int Version,
+    string CreatePerson,
+    DateTime CreateDate);
 
 /// <summary>设计器 definition 响应：布局 + 字段白名单 + 权限模式 + 定制状态。</summary>
 public sealed record LayoutDesignerDefinition(

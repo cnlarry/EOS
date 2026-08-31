@@ -74,4 +74,30 @@ public sealed class ReportFormatRepository(
         if (moduleId is 1401 or 1601) return GetPackage("_card");
         return GetPackage("_generic");
     }
+
+    /// <summary>内置格式包模板清单（模板库：报告全部内置包，跳过 _card/_generic 回退包）。</summary>
+    public IReadOnlyList<LayoutTemplateInfo> ListTemplates()
+    {
+        var root = ResolveRoot();
+        if (!Directory.Exists(root)) return [];
+        var result = new List<LayoutTemplateInfo>();
+        foreach (var directory in Directory.EnumerateDirectories(root))
+        {
+            var formatPath = Path.Combine(directory, "format.json");
+            if (!File.Exists(formatPath)) continue;
+            try
+            {
+                var format = JsonSerializer.Deserialize<ReportFormatDefinition>(
+                    File.ReadAllText(formatPath), JsonOptions);
+                if (format is null) continue;
+                result.Add(new LayoutTemplateInfo(
+                    format.FormatId, format.Title, format.ModuleId, format.Kind));
+            }
+            catch (Exception ex) when (ex is IOException or JsonException)
+            {
+                logger.LogWarning(ex, "模板清单跳过无法解析的格式包：{Directory}", directory);
+            }
+        }
+        return result.OrderBy(template => template.ModuleId).ToList();
+    }
 }

@@ -6,6 +6,8 @@
     <RootNamespace>EOS.API</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- EOS.API 仅部署 Windows（IIS / System.Drawing 字体与条码渲染）：抑制跨平台 CA1416 误报 -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +18,8 @@
     <!-- 显式升级传递依赖：Microsoft.OpenApi 2.0.0 存在高危漏洞 GHSA-v5pm-xwqc-g5wc，2.7.5+ 已修复 -->
     <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
     <PackageReference Include="QuestPDF" Version="2026.7.3" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.11" />
+    <PackageReference Include="ZXing.Net" Version="0.16.11" />
   </ItemGroup>
 
   <ItemGroup>

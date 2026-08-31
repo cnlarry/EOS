@@ -24,6 +24,11 @@ public sealed class LayoutDesignerController(
     ReportFormatRepository formats,
     ReportFormatValidator validator,
     ILayoutRenderer renderer,
+    DocumentWorkbenchRepository workbench,
+    PrintSettingsRepository printSettings,
+    LegacyRightsRepository rightsRepository,
+    PrintService printService,
+    IPermissionService permissions,
     ILogger<LayoutDesignerController> logger) : ControllerBase
 {
     /// <summary>解释层系统值白名单（与 ReportFormatValidator 同源，前端字段下拉展示）。</summary>
@@ -97,14 +102,66 @@ public sealed class LayoutDesignerController(
         var mode = await layouts.GetDesignerModeAsync(userId, moduleId, token);
         if (!mode.CanDesign && !mode.CanAdjust) return Forbid();
         var package = formats.GetDocumentFormat(moduleId);
-        if (package is null || string.IsNullOrWhiteSpace(package.RawSampleJson)) return NotFound();
+        if (package is null) return NotFound();
 
-        var data = SamplePrintDataFactory.Expand(
-            SamplePrintDataFactory.Build(
-                moduleId.ToString(System.Globalization.CultureInfo.InvariantCulture), package.RawSampleJson),
-            request.Rows, request.Variant);
+        PrintData? data;
+        if (request.Key is not null && request.Key.Count > 0)
+        {
+            // 真实单据预览：与打印同权限链（CanBrowse + 报表打印权 + DATA_FILTER 数据范围）
+            data = await ResolveRealPrintDataAsync(moduleId, userId, request, token);
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(package.RawSampleJson)) return NotFound();
+            data = SamplePrintDataFactory.Expand(
+                SamplePrintDataFactory.Build(
+                    moduleId.ToString(System.Globalization.CultureInfo.InvariantCulture), package.RawSampleJson),
+                request.Rows, request.Variant);
+        }
+        if (data is null) return NotFound();
         var pdf = renderer.Render(data, request.LayoutJson, new LayoutRenderContext(userId));
         return File(pdf, "application/pdf", "preview.pdf");
+    }
+
+    /// <summary>真实单据取数：权限链与 PrintController.Pdf 一致（API 是最终权限边界）。</summary>
+    private async Task<PrintData?> ResolveRealPrintDataAsync(
+        int moduleId, string userId, LayoutDesignerPreviewRequest request, CancellationToken token)
+    {
+        var rights = (await permissions.GetAsync(userId, moduleId, token)).Rights;
+        if (!rights.CanBrowse) return null;
+        if (request.Key is not { Count: > 0 } key) return null;
+        var definition = await workbench.GetDefinitionAsync(
+            moduleId, userId, rights.ExecuteTag, rights.CanViewCost, rights.CanViewSecrecy,
+            rights.DeniedMasterFields, rights.DeniedDetailFields, token);
+        if (definition is null) return null;
+
+        var settings = await printSettings.GetAsync(moduleId, userId, token);
+        var report = settings.Reports.FirstOrDefault(item =>
+                !string.IsNullOrWhiteSpace(request.ReportId) && item.ReportId == request.ReportId.Trim())
+            ?? settings.Reports.FirstOrDefault(item => item.IsDefault)
+            ?? settings.Reports.FirstOrDefault();
+        if (report is null) return null;
+        var reportRights = await rightsRepository.GetReportAsync(userId, moduleId, report.ReportId, token);
+        if (!reportRights.CanPrint) return null;
+
+        var headerId = !string.IsNullOrWhiteSpace(request.HeaderId)
+            ? request.HeaderId.Trim()
+            : report.HeaderId ?? string.Empty;
+        var tailId = string.IsNullOrWhiteSpace(report.TailId) ? null : report.TailId.Trim();
+        return await printService.GetPrintDataAsync(
+            definition, key, headerId, tailId,
+            rights.CanViewCost, rights.CanViewSecrecy,
+            rights.DeniedMasterFields, rights.DeniedDetailFields,
+            CombineDataFilters(rights.DataFilter, reportRights.DataFilter), token);
+    }
+
+    private static string CombineDataFilters(params string?[] filters)
+    {
+        var parts = filters
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Select(f => $"({f!.Trim()})")
+            .ToList();
+        return parts.Count == 0 ? string.Empty : string.Join(" AND ", parts);
     }
 
     /// <summary>页头条目列表（页头字典引用，ADR-009 §9.4.2）。</summary>
@@ -144,6 +201,50 @@ public sealed class LayoutDesignerController(
         if (!mode.CanDesign && !mode.CanAdjust) return Forbid();
         await layouts.SaveBindingAsync(moduleId, userId, request, token);
         return Ok(new { saved = true });
+    }
+
+    /// <summary>内置格式包模板清单（模板库）。</summary>
+    [HttpGet("templates")]
+    public IActionResult Templates()
+    {
+        return Ok(formats.ListTemplates());
+    }
+
+    /// <summary>模板 layout.json（套用模板 = 用其布局覆盖当前画布）。</summary>
+    [HttpGet("templates/{formatId}/layout")]
+    public IActionResult TemplateLayout(string formatId)
+    {
+        var package = formats.GetPackage(formatId);
+        if (package is null) return NotFound();
+        return Ok(new { layoutJson = package.RawLayoutJson });
+    }
+
+    /// <summary>当前定制版式的版本历史。</summary>
+    [HttpGet("{moduleId:int}/versions")]
+    public async Task<IActionResult> Versions(int moduleId, string? clientId, CancellationToken token)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is null) return Unauthorized();
+        var mode = await layouts.GetDesignerModeAsync(userId, moduleId, token);
+        if (!mode.CanDesign && !mode.CanAdjust) return Forbid();
+        var effective = await layouts.GetEffectiveLayoutAsync(moduleId, clientId, userId, token);
+        if (effective.LayoutId is not { } layoutId) return Ok(Array.Empty<LayoutVersionInfo>());
+        return Ok(await layouts.GetVersionsAsync(layoutId, token));
+    }
+
+    /// <summary>回滚定制版式到指定历史版本。</summary>
+    [HttpPost("{moduleId:int}/versions/{version:int}/restore")]
+    public async Task<IActionResult> RestoreVersion(
+        int moduleId, int version, string? clientId, CancellationToken token)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is null) return Unauthorized();
+        var mode = await layouts.GetDesignerModeAsync(userId, moduleId, token);
+        if (!mode.CanDesign) return Forbid();
+        var effective = await layouts.GetEffectiveLayoutAsync(moduleId, clientId, userId, token);
+        if (effective.LayoutId is not { } layoutId) return NotFound();
+        await layouts.RestoreVersionAsync(layoutId, version, userId, token);
+        return Ok(new { restored = true });
     }
 
     /// <summary>微调模式约束（ADR-010 决策 5）：只允许位置/尺寸/文本/显隐/字段映射变化。</summary>

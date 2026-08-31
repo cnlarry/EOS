@@ -130,6 +130,7 @@ public sealed class ReportFormLayoutRepository(
                 command.Parameters.Add("@OwnerId", SqlDbType.NVarChar, 50).Value = userId.Trim();
                 layoutId = (int)(await command.ExecuteScalarAsync(token))!;
             }
+            await InsertVersionSnapshotAsync(connection, transaction, layoutId, 1, layoutJson, userId, token);
             await UpsertBindingAsync(connection, transaction, moduleId, clientId, layoutId, userId, token);
             await transaction.CommitAsync(token);
             logger.LogInformation("创建客户定制版式 module={ModuleId} client={ClientId} layoutId={LayoutId}",
@@ -149,20 +150,155 @@ public sealed class ReportFormLayoutRepository(
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            // 读当前版本 → 写新版本快照 → 主表版本 +1
+            const string readSql = """
+                SELECT LAYOUT_VERSION FROM dbo.REPORT_FORM_LAYOUT WITH (NOLOCK)
+                WHERE LAYOUT_ID = @LayoutId;
+                """;
+            int currentVersion;
+            await using (var readCommand = new SqlCommand(readSql, connection, transaction))
+            {
+                readCommand.Parameters.Add("@LayoutId", SqlDbType.Int).Value = layoutId;
+                await using var reader = await readCommand.ExecuteReaderAsync(token);
+                if (!await reader.ReadAsync(token))
+                    throw new InvalidOperationException($"定制版式不存在 layoutId={layoutId}。");
+                currentVersion = reader.GetInt32(0);
+            }
+            // 新版本快照 = 更新后的 JSON（VERSION = currentVersion + 1）
+            await InsertVersionSnapshotAsync(
+                connection, transaction, layoutId, currentVersion + 1, layoutJson, userId, token);
+
+            const string updateSql = """
+                UPDATE dbo.REPORT_FORM_LAYOUT
+                SET LAYOUT_JSON = @LayoutJson,
+                    LAYOUT_VERSION = LAYOUT_VERSION + 1,
+                    LAST_UPDATE_BY = @UserId,
+                    LAST_UPDATE_DATE = SYSDATETIME()
+                WHERE LAYOUT_ID = @LayoutId;
+                """;
+            await using var command = new SqlCommand(updateSql, connection, transaction);
+            command.Parameters.Add("@LayoutId", SqlDbType.Int).Value = layoutId;
+            command.Parameters.Add("@LayoutJson", SqlDbType.NVarChar, -1).Value = layoutJson;
+            command.Parameters.Add("@UserId", SqlDbType.NChar, 40).Value = userId;
+            await command.ExecuteNonQueryAsync(token);
+            await transaction.CommitAsync(token);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
+        logger.LogInformation("更新客户定制版式 layoutId={LayoutId} version+1", layoutId);
+    }
+
+    /// <summary>版本历史列表（含初始版本）。</summary>
+    public async Task<IReadOnlyList<LayoutVersionInfo>> GetVersionsAsync(
+        int layoutId, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
         const string sql = """
-            UPDATE dbo.REPORT_FORM_LAYOUT
-            SET LAYOUT_JSON = @LayoutJson,
-                LAYOUT_VERSION = LAYOUT_VERSION + 1,
-                LAST_UPDATE_BY = @UserId,
-                LAST_UPDATE_DATE = SYSDATETIME()
-            WHERE LAYOUT_ID = @LayoutId;
+            SELECT VERSION, LTRIM(RTRIM(ISNULL(CREATE_PERSON, ''))), CREATE_DATE
+            FROM dbo.REPORT_FORM_LAYOUT_VERSION WITH (NOLOCK)
+            WHERE LAYOUT_ID = @LayoutId
+            ORDER BY VERSION DESC;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@LayoutId", SqlDbType.Int).Value = layoutId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<LayoutVersionInfo>();
+        while (await reader.ReadAsync(token))
+            result.Add(new LayoutVersionInfo(
+                reader.GetInt32(0), reader.GetString(1), reader.GetDateTime(2)));
+        return result;
+    }
+
+    /// <summary>回滚到指定版本：写当前快照 → 主表恢复历史 JSON（版本 +1，历史仍保留）。</summary>
+    public async Task RestoreVersionAsync(
+        int layoutId, int version, string userId, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            const string readVersionSql = """
+                SELECT LAYOUT_JSON FROM dbo.REPORT_FORM_LAYOUT_VERSION WITH (NOLOCK)
+                WHERE LAYOUT_ID = @LayoutId AND VERSION = @Version;
+                """;
+            string restoreJson;
+            await using (var readCommand = new SqlCommand(readVersionSql, connection, transaction))
+            {
+                readCommand.Parameters.Add("@LayoutId", SqlDbType.Int).Value = layoutId;
+                readCommand.Parameters.Add("@Version", SqlDbType.Int).Value = version;
+                await using var reader = await readCommand.ExecuteReaderAsync(token);
+                if (!await reader.ReadAsync(token))
+                    throw new InvalidOperationException($"版本 {version} 不存在 layoutId={layoutId}。");
+                restoreJson = reader.GetString(0);
+            }
+
+            const string readCurrentSql = """
+                SELECT LAYOUT_VERSION FROM dbo.REPORT_FORM_LAYOUT WITH (NOLOCK)
+                WHERE LAYOUT_ID = @LayoutId;
+                """;
+            int currentVersion;
+            await using (var readCommand = new SqlCommand(readCurrentSql, connection, transaction))
+            {
+                readCommand.Parameters.Add("@LayoutId", SqlDbType.Int).Value = layoutId;
+                await using var reader = await readCommand.ExecuteReaderAsync(token);
+                if (!await reader.ReadAsync(token))
+                    throw new InvalidOperationException($"定制版式不存在 layoutId={layoutId}。");
+                currentVersion = reader.GetInt32(0);
+            }
+            // 回滚产生新版本：快照 = 恢复的 JSON（VERSION = currentVersion + 1）
+            await InsertVersionSnapshotAsync(
+                connection, transaction, layoutId, currentVersion + 1, restoreJson, userId, token);
+
+            const string restoreSql = """
+                UPDATE dbo.REPORT_FORM_LAYOUT
+                SET LAYOUT_JSON = @LayoutJson,
+                    LAYOUT_VERSION = LAYOUT_VERSION + 1,
+                    LAST_UPDATE_BY = @UserId,
+                    LAST_UPDATE_DATE = SYSDATETIME()
+                WHERE LAYOUT_ID = @LayoutId;
+                """;
+            await using var command = new SqlCommand(restoreSql, connection, transaction);
+            command.Parameters.Add("@LayoutId", SqlDbType.Int).Value = layoutId;
+            command.Parameters.Add("@LayoutJson", SqlDbType.NVarChar, -1).Value = restoreJson;
+            command.Parameters.Add("@UserId", SqlDbType.NChar, 40).Value = userId;
+            await command.ExecuteNonQueryAsync(token);
+            await transaction.CommitAsync(token);
+            logger.LogInformation("回滚定制版式 layoutId={LayoutId} version={Version} -> 新版本 {NewVersion}",
+                layoutId, version, currentVersion + 1);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
+    }
+
+    private static async Task InsertVersionSnapshotAsync(
+        SqlConnection connection, SqlTransaction transaction, int layoutId, int version,
+        string layoutJson, string userId, CancellationToken token)
+    {
+        const string sql = """
+            IF NOT EXISTS (SELECT 1 FROM dbo.REPORT_FORM_LAYOUT_VERSION
+                           WHERE LAYOUT_ID = @LayoutId AND VERSION = @Version)
+                INSERT INTO dbo.REPORT_FORM_LAYOUT_VERSION
+                    (LAYOUT_ID, VERSION, LAYOUT_JSON, CREATE_PERSON, CREATE_DATE)
+                VALUES
+                    (@LayoutId, @Version, @LayoutJson, @UserId, SYSDATETIME());
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@LayoutId", SqlDbType.Int).Value = layoutId;
+        command.Parameters.Add("@Version", SqlDbType.Int).Value = version;
         command.Parameters.Add("@LayoutJson", SqlDbType.NVarChar, -1).Value = layoutJson;
         command.Parameters.Add("@UserId", SqlDbType.NChar, 40).Value = userId;
         await command.ExecuteNonQueryAsync(token);
-        logger.LogInformation("更新客户定制版式 layoutId={LayoutId} version+1", layoutId);
     }
 
     /// <summary>页头条目列表（REPORT_LAYOUT KIND='HEADER'，ADR-009 §9.4.2 字典引用）。</summary>
