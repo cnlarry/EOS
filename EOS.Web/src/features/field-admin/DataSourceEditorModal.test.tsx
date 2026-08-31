@@ -125,6 +125,41 @@ describe('DataSourceEditorModal', () => {
     expect(onSave).not.toHaveBeenCalled()
   })
 
+  it('高级条件行可进入编辑态修改 JSON 并保存更新', async () => {
+    const onSave = vi.fn()
+    renderModal(
+      { source, filterRows: [{ key: 'r0', field: '', operator: '', value: '', logic: null, raw: '{"logic":"AND","items":[]}' }], returnRows: [] },
+      onSave,
+    )
+    // 只读态：先「编辑」进入编辑态
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+    const editor = screen.getByLabelText('高级条件 JSON') as HTMLTextAreaElement
+    expect(editor.value).toBe('{"logic":"AND","items":[]}')
+    fireEvent.change(editor, { target: { value: '{"logic":"AND","items":[{"field":"CLIENT.CREDIT_LIMIT","operator":"GT","value":"0"}]}' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    // 保存后回到只读态，确定应携带更新后的 JSON
+    fireEvent.click(screen.getByRole('button', { name: '确定' }))
+    expect(onSave).toHaveBeenCalled()
+    const draft = onSave.mock.calls[0][0] as DataSourceDraft
+    expect(draft.filterRows[0].raw).toBe('{"logic":"AND","items":[{"field":"CLIENT.CREDIT_LIMIT","operator":"GT","value":"0"}]}')
+  })
+
+  it('高级条件编辑态坏 JSON 保存按钮给出错误反馈', () => {
+    const onSave = vi.fn()
+    renderModal(
+      { source, filterRows: [{ key: 'r0', field: '', operator: '', value: '', logic: null, raw: '{"logic":"AND","items":[]}' }], returnRows: [] },
+      onSave,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+    const editor = screen.getByLabelText('高级条件 JSON') as HTMLTextAreaElement
+    fireEvent.change(editor, { target: { value: '{"broken' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('JSON 无法解析')
+    // 仍停留在编辑态，未提交；确定应被阻止
+    fireEvent.click(screen.getByRole('button', { name: '确定' }))
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
   it('未选择来源列的过滤条件行阻止确定', () => {
     const onSave = vi.fn()
     renderModal({ source, filterRows: [{ key: 'r0', field: '', operator: 'EQ', value: '', logic: null }], returnRows: [] }, onSave)
