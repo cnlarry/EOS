@@ -792,11 +792,17 @@ button, input, select { font: inherit; }
   min-width: 0;
 }
 
-.erp-form-cell-controls > .erp-form-control { flex: 1 1 auto; min-width: 0; }
-.erp-form-cell-controls > .erp-form-control + .erp-form-control { flex: 0 0 auto; }
+.erp-form-cell-controls > .erp-form-control { flex: 0 0 auto; min-width: 0; }
+.erp-form-cell-controls > .erp-form-control + .erp-form-control { flex: 0 0 auto; min-width: 0; }
 .erp-form-cell-controls .erp-form-control .d-flex { flex-wrap: nowrap; }
-.erp-form-cell-controls > .erp-form-control + .erp-form-control .form-control,
-.erp-form-cell-controls > .erp-form-control + .erp-form-control .form-select { width: 96px; }
+/* 组合字段三件套 [主][选择按钮][从]：按钮与两侧控件等距（gap 与 cell-controls 对齐） */
+.erp-form-cell-controls > .erp-form-control > .d-flex { gap: 4px; }
+/* 组合字段左右固定宽度（左窄右宽，input 64:96 = 4:6）：
+   主字段 input 64px、从字段 input 96px；选择按钮紧贴主字段 input 右侧，不遮挡 */
+.erp-form-cell-controls > .erp-form-control > .d-flex > .form-control,
+.erp-form-cell-controls > .erp-form-control > .d-flex > .form-select { width: 64px; flex: 0 0 auto; }
+.erp-form-cell-controls > .erp-form-control + .erp-form-control > .d-flex > .form-control,
+.erp-form-cell-controls > .erp-form-control + .erp-form-control > .d-flex > .form-select { width: 96px; flex: 0 0 auto; }
 
 .erp-form-field.is-full { grid-column: 1 / -1; }
 
@@ -880,7 +886,8 @@ button, input, select { font: inherit; }
 .erp-form-grid textarea.form-control,
 .erp-form-cell-controls textarea.form-control { height: auto; min-height: 52px; }
 
-/* 选择器按钮：图标化（对齐旧系统省略号按钮意境） */
+/* 选择器按钮：图标化（对齐旧系统省略号按钮意境）；
+   边框颜色与输入控件一致（outline-secondary 的 secondary 色与 form-control 边框色不同） */
 .erp-chooser-btn {
   display: inline-grid;
   place-items: center;
@@ -888,6 +895,54 @@ button, input, select { font: inherit; }
   height: 26px;
   padding: 0;
   flex: 0 0 auto;
+  border-color: var(--tblr-border-color);
+  color: var(--tblr-secondary);
+  background: var(--tblr-bg-surface);
+}
+.erp-chooser-btn:hover,
+.erp-chooser-btn:focus-visible {
+  border-color: var(--tblr-border-color);
+  color: var(--tblr-body-color);
+  background: var(--tblr-bg-surface-secondary);
+}
+
+/* 表单标签右键「字段设置」菜单（旧系统标签右键进入字段设置，canSetup 时启用） */
+.erp-field-setup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+}
+.erp-field-setup-menu {
+  position: fixed;
+  z-index: 1081;
+  min-width: 140px;
+  padding: 4px;
+  background: var(--tblr-bg-surface);
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+.erp-field-setup-header {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--tblr-secondary);
+  border-bottom: 1px solid var(--tblr-border-color);
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+.erp-field-setup-item {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--tblr-body-color);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+}
+.erp-field-setup-item:hover {
+  background: var(--tblr-bg-surface-secondary);
 }
 
 /* 选择器弹窗：查询区（字段下拉 + 条件值）对齐旧系统 Chooser.aspx */
@@ -899,6 +954,17 @@ button, input, select { font: inherit; }
 .erp-chooser-toolbar > .btn { flex: 0 0 auto; }
 .erp-chooser-toolbar .btn { font-size: 12px; }
 .erp-chooser-toolbar .erp-chooser-query { flex: 1 1 auto; min-width: 0; }
+/* 选择器工具行纯图标按钮（高级查询/选择列）：与查询按钮（input-group）同高，方形紧凑 */
+.erp-chooser-icon-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.erp-chooser-icon-btn svg { width: 16px; height: 16px; }
 /* 选择器弹窗固定高度：记录少时不缩矮，记录多时表格区滚动条控制。
    modal-dialog-centered 默认 min-height 近整屏高，必须清零让固定高度生效；
    modal-content 高度 100% 填满弹窗，body 与表格容器 min-height/min-width 归零，

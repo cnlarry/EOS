@@ -13,7 +13,8 @@ namespace EOS.API.Data;
 internal static class RecordPayloadValidator
 {
     public static readonly IReadOnlySet<string> AuditColumns = new HashSet<string>(
-        ["CREATE_PERSON", "CREATE_DATE", "LAST_UPDATE_BY", "LAST_UPDATE_DATE"],
+        ["CREATE_PERSON", "CREATE_DATE", "LAST_UPDATE_BY", "LAST_UPDATE_DATE",
+         "CONFIRM_PERSON", "CONFIRM_DATE", "FINISHED_PERSON", "FINISHED_DATE"],
         StringComparer.OrdinalIgnoreCase);
 
     /// <summary>

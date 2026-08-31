@@ -106,7 +106,7 @@ internal static class FormFieldSelector
         foreach (var row in rows)
         {
             if (!seen.Add(row.Key)) continue; // 防御：同名元数据行只取第一条
-            if (HiddenStatusTags.Contains(row.Key)) continue;
+            if (HiddenStatusTags.Contains(row.Key) && mode != "view") continue;
             // 复合单元格从字段（FORM_CELL_ROLE=2 且配置了组）即使隐藏/幽灵也保留，用于同格联动显示
             var isCellCompanion = row.CellRole == 2 && !string.IsNullOrWhiteSpace(row.CellGroup);
             if (row.IsCost && !canViewCost) continue;
@@ -114,7 +114,8 @@ internal static class FormFieldSelector
             if (deniedView.Contains(row.Key)) continue;
             if (deniedForMode.Contains(row.Key)) continue;
 
-            // 审计列（CREATE_PERSON/CREATE_DATE/LAST_UPDATE_BY/LAST_UPDATE_DATE）一律服务端持有，
+            // 审计列（CREATE_PERSON/CREATE_DATE/LAST_UPDATE_BY/LAST_UPDATE_DATE 与批核/结案
+            // CONFIRM_PERSON/CONFIRM_DATE/FINISHED_PERSON/FINISHED_DATE）一律服务端持有，
             // 即使 FIELDS.IS_READONLY 误标为可编辑（旧页面控件本身也是只读）。
             // 自增主键与"必填且隐藏"字段也标记服务端填充。
             // 注意：必填但只读可见的字段（如 CURR_RATE 汇率，由前端选择币别后联动带出）

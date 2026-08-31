@@ -77,7 +77,8 @@ public sealed class AssistantDraftToolTests
             IReadOnlySet<string> deniedModiDetailFields, CancellationToken token,
             bool canAddNew = false, bool canEdit = false, bool canDelete = false, bool canApprove = false,
             bool canDeapprove = false, bool canEndCase = false, bool canUnEndCase = false,
-            bool canFileView = false, bool canFileUpda = false, bool canFileEdit = false, bool canFileDele = false)
+            bool canFileView = false, bool canFileUpda = false, bool canFileEdit = false, bool canFileDele = false,
+            bool canSetup = false)
             => Task.FromResult(form);
     }
 

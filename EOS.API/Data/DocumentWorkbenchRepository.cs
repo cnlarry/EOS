@@ -72,7 +72,7 @@ public sealed record WorkbenchDefinition(
 public sealed record FormTabDefinition(int No, string Title);
 /// <summary>统一表单下拉选项（解析自 FIELDS.FORM_OPTIONS，如 'O=外含税;I=内含税'）。</summary>
 public sealed record FormOptionItem(string Value, string Label);
-public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify, IReadOnlyList<FormTabDefinition> Tabs = default!, int Columns = 2, IReadOnlyList<WorkbenchButton>? Buttons = null, IReadOnlyDictionary<string,string> DefaultValues = default!, bool HasWorkflow = false, bool IfCopy = false, bool SearchMaster = false, bool SearchDetail = false, bool CanDelete = false, bool CanApprove = false, bool CanDeapprove = false, bool CanEndCase = false, bool CanUnEndCase = false, bool CanFileView = false, bool CanFileUpda = false, bool CanFileEdit = false, bool CanFileDele = false, bool CanAddNew = false, bool CanEdit = false, string? HelpUrl = null);
+public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify, IReadOnlyList<FormTabDefinition> Tabs = default!, int Columns = 2, IReadOnlyList<WorkbenchButton>? Buttons = null, IReadOnlyDictionary<string,string> DefaultValues = default!, bool HasWorkflow = false, bool IfCopy = false, bool SearchMaster = false, bool SearchDetail = false, bool CanDelete = false, bool CanApprove = false, bool CanDeapprove = false, bool CanEndCase = false, bool CanUnEndCase = false, bool CanFileView = false, bool CanFileUpda = false, bool CanFileEdit = false, bool CanFileDele = false, bool CanAddNew = false, bool CanEdit = false, string? HelpUrl = null, bool CanSetup = false);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength, int TabNo = 1, int? FormOrder = null, int Span = 1, bool NewLine = false, string? CellGroup = null, int CellRole = 0, IReadOnlyList<FormOptionItem>? Options = null, bool DisplayOnly = false, bool CanCopy = true,
     int? Precision = null, int? Scale = null);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
@@ -653,7 +653,8 @@ public sealed class DocumentWorkbenchRepository(
         bool canFileView = false,
         bool canFileUpda = false,
         bool canFileEdit = false,
-        bool canFileDele = false)
+        bool canFileDele = false,
+        bool canSetup = false)
     {
         await using var connection=CreateConnection(); await connection.OpenAsync(token);
         var pkColumns=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,definition.MasterTable,token);
@@ -734,7 +735,7 @@ public sealed class DocumentWorkbenchRepository(
             tabs,columns,definition.FormButtons,defaultValues,definition.HasWorkflow,
             definition.IfCopy,definition.SearchMaster,definition.SearchDetail,
             canDelete,canApprove,canDeapprove,canEndCase,canUnEndCase,canFileView,canFileUpda,canFileEdit,canFileDele,
-            canAddNew,canEdit,definition.HelpUrl);
+            canAddNew,canEdit,definition.HelpUrl,canSetup);
     }
 
     /// <summary>
@@ -776,7 +777,74 @@ public sealed class DocumentWorkbenchRepository(
                 && string.IsNullOrEmpty(field.DefaultValue))
                 defaults[field.Key] = today;
         }
+        // 2026-08-31：编号字段有默认值时（默认单别/默认编号），用其选择器回填映射从来源表
+        // 回填「同组名称 companion」（如 1404 默认报价单别 BJD → 单别名称「报价单」），
+        // 避免新增页「默认单别只有编号、右侧名称留空，需重新选择一次才带出」。
+        foreach (var field in masterFields)
+        {
+            if (field.CellRole != 1 || string.IsNullOrWhiteSpace(field.CellGroup)) continue;
+            if (!defaults.TryGetValue(field.Key, out var defaultValue) || string.IsNullOrWhiteSpace(defaultValue)) continue;
+            var source = field.Choosers.FirstOrDefault(item => item.Active && !string.IsNullOrWhiteSpace(item.Table));
+            if (source is null) continue;
+            var companions = masterFields
+                .Where(item => item.CellRole == 2 && string.Equals(item.CellGroup, field.CellGroup, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (companions.Count == 0) continue;
+            await FillChooserNameDefaultsAsync(connection, field, source, companions, defaultValue, defaults, token);
+        }
         return defaults;
+    }
+
+    /// <summary>
+    /// 新增默认值回填：按编号字段的默认值查询选择器来源表，回填同组名称 companion（仅物理列；
+    /// 虚拟列需 JOIN 的场景由选择器运行期处理）。任一校验失败即跳过（fail-closed，不抛错）。
+    /// </summary>
+    private static async Task FillChooserNameDefaultsAsync(
+        SqlConnection connection,
+        FormFieldDefinition main,
+        FieldChooserSource source,
+        IReadOnlyList<FormFieldDefinition> companions,
+        string value,
+        Dictionary<string, string> defaults,
+        CancellationToken token)
+    {
+        var table = source.Table!.Trim();
+        if (!WorkbenchSql.Identifier.IsMatch(table) || !await WorkbenchSql.TableExistsAsync(connection, table, token))
+            return;
+
+        var mapping = ChooserReturnItems.Parse(source.ReturnMapping) ?? [];
+        var keyColumn = mapping.FirstOrDefault(pair =>
+            string.Equals(FormFieldSelector.NormalizeChooserTarget(pair.Target), main.Key, StringComparison.OrdinalIgnoreCase))?.Column;
+        if (string.IsNullOrWhiteSpace(keyColumn)) keyColumn = main.Key;
+        if (!WorkbenchSql.Identifier.IsMatch(keyColumn)) return;
+
+        var selected = new List<(FormFieldDefinition Field, string Column)>();
+        foreach (var companion in companions)
+        {
+            var column = mapping.FirstOrDefault(pair =>
+                string.Equals(FormFieldSelector.NormalizeChooserTarget(pair.Target), companion.Key, StringComparison.OrdinalIgnoreCase))?.Column;
+            if (string.IsNullOrWhiteSpace(column)) column = companion.Key;
+            if (!WorkbenchSql.Identifier.IsMatch(column)) return;
+            selected.Add((companion, column));
+        }
+        if (selected.Count == 0) return;
+
+        var columns = selected.Select(item => item.Column).Append(keyColumn)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (!await WorkbenchSql.ColumnsExistAsync(connection, table, columns, token)) return;
+
+        var select = string.Join(",", columns.Select(column => $"[{column}]"));
+        await using var command = new SqlCommand(
+            $"SELECT TOP 1 {select} FROM dbo.[{table}] WITH (NOLOCK) WHERE [{keyColumn}]=@Value;", connection);
+        command.Parameters.Add("@Value", SqlDbType.NVarChar, 256).Value = value;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token)) return;
+        foreach (var (field, column) in selected)
+        {
+            var ordinal = reader.GetOrdinal(column);
+            if (reader.IsDBNull(ordinal)) continue;
+            defaults[field.Key] = Convert.ToString(reader.GetValue(ordinal), CultureInfo.InvariantCulture) ?? string.Empty;
+        }
     }
 
     private static async Task<IReadOnlyList<FormFieldRow>> ReadFormFieldRows(SqlConnection connection,string masterTable,string targetTable,CancellationToken token,bool includeVirtual=false)
@@ -982,6 +1050,7 @@ public sealed class DocumentWorkbenchRepository(
         int pageSize,
         string? execTag,
         int? scopeModuleId,
+        int formModuleId,
         string userId,
         CancellationToken token)
     {
@@ -1061,7 +1130,7 @@ public sealed class DocumentWorkbenchRepository(
             }
             // 运行期模板绑定（{m.X}/{d.X}/{module}）→ SqlParameter；@cfN 重编号为 @df{offset+N} 与作用域参数连续
             var boundParameters = compiled.Parameters
-                .Select(parameter => (object)ChooserFilterCompiler.BindRuntimeValue(parameter, masterValues, detailValues, scopeModuleId ?? 0))
+                .Select(parameter => (object)ChooserFilterCompiler.BindRuntimeValue(parameter, masterValues, detailValues, formModuleId))
                 .ToList();
             var renumbered = RenumberChooserParameters(compiled.Predicate, scopeParameters.Count);
             scopePredicate = scopePredicate is null
@@ -1101,7 +1170,38 @@ public sealed class DocumentWorkbenchRepository(
         // 过滤字段白名单校验：不在显示列内则忽略（回退为跨列模糊搜索）
         if(!string.IsNullOrWhiteSpace(filterField) && !columns.Any(column=>column.Key.Equals(filterField,StringComparison.OrdinalIgnoreCase)))
             filterField=null;
-        var (rows,total)=await ReadChooserRowsAsync(connection,table,columns,keyword,filterField,scopePredicate,scopeParameters,joins,conditions,allowedFields,sortField,sortDirection,page,pageSize,token);
+        // 2026-08-31：回填映射引用的虚拟列（如 CLIENT.SALES_NAME=SYSDN.EMP_NAME）不在物理列里，
+        // 用 VirtualColumnResolver 受控解析（QUERY_RELATION 白名单 JOIN），使选择后能带出名称，
+        // 而非只回填编号（旧系统 Chooser.aspx 经 QUERY_RELATION 关联同样能带出）。
+        string? virtualSelect=null;
+        string? virtualJoin=null;
+        var returnColumns=(returnItems ?? [])
+            .Select(pair=>pair.Column.Trim())
+            .Where(column=>WorkbenchSql.Identifier.IsMatch(column))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var missingColumns=returnColumns
+            .Where(column=>!all.Any(row=>row.Key.Equals(column,StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        if(missingColumns.Count>0)
+        {
+            var virtualFields=await ReadChooserVirtualFieldsAsync(connection,table,missingColumns,token);
+            if(virtualFields.Count>0)
+            {
+                var resolution=await new VirtualColumnResolver(connection).ResolveAsync(table,virtualFields,token);
+                if(resolution.ResolvedKeys.Count>0)
+                {
+                    virtualSelect=string.Join(",",resolution.SelectFragments);
+                    virtualJoin=resolution.JoinFragment;
+                    foreach(var field in virtualFields)
+                    {
+                        if(!resolution.ResolvedKeys.Contains(field.Key,StringComparer.OrdinalIgnoreCase))continue;
+                        columns.Add(new FormChooserColumn(field.Key,field.Label,field.DataType,null));
+                    }
+                }
+            }
+        }
+        var (rows,total)=await ReadChooserRowsAsync(connection,table,columns,keyword,filterField,scopePredicate,scopeParameters,joins,conditions,allowedFields,sortField,sortDirection,page,pageSize,virtualSelect,virtualJoin,token);
         return new FormChooserResult(columns,rows,total);
     }
 
@@ -1248,10 +1348,6 @@ public sealed class DocumentWorkbenchRepository(
     /// <summary>把编译器输出参数 @cfN 重编号为 @df{offset+N}，与作用域参数（@df0..offset-1）连续绑定。</summary>
     private static string RenumberChooserParameters(string predicate, int offset)
     {
-        if (offset == 0)
-        {
-            return predicate;
-        }
         return System.Text.RegularExpressions.Regex.Replace(
             predicate,
             "@cf(\\d+)",
@@ -1281,10 +1377,40 @@ public sealed class DocumentWorkbenchRepository(
         return rows;
     }
 
+    /// <summary>读取回填映射引用的虚拟列定义（FIELDS.IS_VIRTUAL=1 + VIRTUAL_EXP），供 VirtualColumnResolver 解析。</summary>
+    private static async Task<IReadOnlyList<WorkbenchField>> ReadChooserVirtualFieldsAsync(
+        SqlConnection connection,string table,IReadOnlyList<string> columns,CancellationToken token)
+    {
+        if(columns.Count==0)return [];
+        var placeholders=string.Join(",",columns.Select((_,i)=>$"@C{i}"));
+        var sql=$"""
+            SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),
+                   COALESCE(NULLIF(LTRIM(RTRIM(f.F_TYPE)),''),'nvarchar'),LTRIM(RTRIM(ISNULL(f.VIRTUAL_EXP,'')))
+            FROM dbo.FIELDS f WITH (NOLOCK)
+            WHERE f.T_ID=@Table AND COALESCE(f.IS_VIRTUAL,0)=1 AND f.F_ID IN ({placeholders});
+            """;
+        await using var command=new SqlCommand(sql,connection);
+        command.Parameters.Add("@Table",SqlDbType.NVarChar,128).Value=table;
+        for(var i=0;i<columns.Count;i++)command.Parameters.Add($"@C{i}",SqlDbType.NVarChar,128).Value=columns[i];
+        var result=new List<WorkbenchField>();
+        await using var reader=await command.ExecuteReaderAsync(token);
+        while(await reader.ReadAsync(token))
+        {
+            var key=reader.GetString(0).Trim();
+            var label=reader.GetString(1).Trim();
+            var dataType=reader.GetString(2).Trim();
+            var virtualExp=reader.IsDBNull(3)?null:reader.GetString(3).Trim();
+            if(string.IsNullOrWhiteSpace(virtualExp))continue;
+            result.Add(new WorkbenchField(key,label,dataType,100,null,false,IsVirtual:true,VirtualExpression:virtualExp));
+        }
+        return result;
+    }
+
     private static async Task<(IReadOnlyList<IReadOnlyDictionary<string,object?>> Rows,int Total)> ReadChooserRowsAsync(
-        SqlConnection connection,string table,IReadOnlyList<FormChooserColumn> columns,string? keyword,string? filterField,string? scopePredicate,IReadOnlyList<object> scopeParameters,IReadOnlyList<string> joins,IReadOnlyList<UnifiedChooserCondition>? conditions,IReadOnlySet<string> allowedFields,string? sortField,string? sortDirection,int page,int pageSize,CancellationToken token)
+        SqlConnection connection,string table,IReadOnlyList<FormChooserColumn> columns,string? keyword,string? filterField,string? scopePredicate,IReadOnlyList<object> scopeParameters,IReadOnlyList<string> joins,IReadOnlyList<UnifiedChooserCondition>? conditions,IReadOnlySet<string> allowedFields,string? sortField,string? sortDirection,int page,int pageSize,string? virtualSelect,string? virtualJoin,CancellationToken token)
     {
         var select=string.Join(',',columns.Select(column=>$"[{table}].[{column.Key}]"));
+        if(!string.IsNullOrWhiteSpace(virtualSelect))select+=","+virtualSelect;
         var predicates=new List<string>();
         if(!string.IsNullOrWhiteSpace(keyword))
         {
@@ -1311,6 +1437,7 @@ public sealed class DocumentWorkbenchRepository(
         var where=predicates.Count>0?" WHERE "+string.Join(" AND ",predicates):"";
         var from=$"FROM dbo.[{table}] WITH (NOLOCK)";
         if(joins.Count>0)from+=" "+string.Join(" ",joins);
+        if(!string.IsNullOrWhiteSpace(virtualJoin))from+=virtualJoin;
         var countFrom=$"FROM dbo.[{table}] WITH (NOLOCK)";
         if(joins.Count>0)countFrom+=" "+string.Join(" ",joins);
         // 排序字段必须在显示列白名单内（服务端校验），否则回退首列；方向仅 asc/desc

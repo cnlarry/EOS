@@ -111,7 +111,9 @@ export interface FormDefinition {
    canEdit: boolean
    /** 帮助页地址（MODULES.HELP_URL，非空时浏览态显示帮助按钮） */
    helpUrl?: string | null
-}
+   /** 字段设置权限（2302 字段维护 CanSetup）：为 true 时表单标签右键可进入字段设置页 */
+   canSetup: boolean
+   }
 
 /** 模块权限（与 EOS.API LegacyModuleRights 对应，M0 扩展后） */
 export interface ModuleRights {
