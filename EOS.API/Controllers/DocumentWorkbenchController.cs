@@ -11,6 +11,9 @@ namespace EOS.API.Controllers;
 [ApiController, Authorize, Route("api/v1/document-workbench/{moduleId:int}")]
 public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, IPermissionService permissions, WorkbenchAuditWriter auditWriter, EOS.API.Security.CurrentUserContext userContext, IOptions<UnifiedFormEditorSettings> formSettings, ILogger<DocumentWorkbenchController> logger) : ControllerBase
 {
+    /// <summary>字段维护（数据表/字段设置）模块 ID：表单标签右键进入字段设置页的权限门。</summary>
+    private const int FieldAdminModuleId = 2302;
+
     [HttpGet("definition")]
     public async Task<IActionResult> Definition(int moduleId,CancellationToken token)=>await AuthorizedDefinition(moduleId,token) is { } definition?Ok(definition):NotFound();
 
@@ -60,7 +63,8 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
             rights.DenyNewMasterFields,rights.DenyNewDetailFields,
             rights.DenyModiMasterFields,rights.DenyModiDetailFields,token,
             rights.CanAddNew,rights.CanEdit,rights.CanDelete,rights.CanApprove,rights.CanDeapprove,rights.CanEndCase,rights.CanUnEndCase,
-            rights.CanFileView,rights.CanFileUpda,rights.CanFileEdit,rights.CanFileDele);
+            rights.CanFileView,rights.CanFileUpda,rights.CanFileEdit,rights.CanFileDele,
+            canSetup:(await permissions.GetAsync(userId,FieldAdminModuleId,token)).CanSetup);
         return Ok(form);
     }
 
@@ -252,7 +256,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         {
             return Unauthorized();
         }
-        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,filterField,returnItems,masterValues,detailValues,chooserConditions,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,filterStruct,sortField,sortDirection,page,pageSize,chooserRights.ExecuteTag,source.ModuleId ?? moduleId,chooserUserId,token);
+        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,filterField,returnItems,masterValues,detailValues,chooserConditions,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,filterStruct,sortField,sortDirection,page,pageSize,chooserRights.ExecuteTag,source.ModuleId ?? moduleId,moduleId,chooserUserId,token);
         return result is null?NotFound():Ok(result);
     }
 

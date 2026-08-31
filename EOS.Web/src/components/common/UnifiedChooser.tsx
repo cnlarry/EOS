@@ -1,4 +1,4 @@
-import { IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconAdjustmentsHorizontal, IconColumns, IconPlus, IconTrash } from '@tabler/icons-react'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { formatFieldValue } from '../../features/document-workbench/fieldFormat'
@@ -312,10 +312,22 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
                   <Button variant="primary" loading={loading} onClick={() => void fetchPage(1)}>查询</Button>
                 </div>
               ) : null}
-              <Button onClick={() => setAdvancedOpen(true)} disabled={fieldColumns.length === 0}>
-                高级查询{conditions.length > 0 ? `（${conditions.length}）` : ''}
-              </Button>
-              <Button onClick={() => setColumnsOpen(true)} disabled={fieldColumns.length === 0}>选择列</Button>
+              <Button
+                className="erp-chooser-icon-btn"
+                icon={<IconAdjustmentsHorizontal size={16} />}
+                title={conditions.length > 0 ? `高级查询（${conditions.length}）` : '高级查询'}
+                aria-label="高级查询"
+                disabled={fieldColumns.length === 0}
+                onClick={() => setAdvancedOpen(true)}
+              />
+              <Button
+                className="erp-chooser-icon-btn"
+                icon={<IconColumns size={16} />}
+                title="选择列"
+                aria-label="选择列"
+                disabled={fieldColumns.length === 0}
+                onClick={() => setColumnsOpen(true)}
+              />
             </div>
             {error ? <ErrorState message={error} onRetry={() => void fetchPage(page)} /> : null}
             {!error && loading && rows.length === 0 ? <LoadingState label="正在加载…" /> : null}

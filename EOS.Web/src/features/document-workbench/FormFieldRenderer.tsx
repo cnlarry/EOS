@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import { Button } from '../../components/ui/Button'
-import { IconSearch } from '@tabler/icons-react'
+import { IconListDetails } from '@tabler/icons-react'
 import type { FormFieldDefinition } from './formDefinition'
 import { fieldVariant, isFullWidthField, type FieldVariant } from './formFieldKind'
 import { formatFieldValue } from './fieldFormat'
@@ -13,6 +13,8 @@ interface FormFieldRendererProps {
   error?: string
   onChange: (value: string) => void
   onChoose?: (field: FormFieldDefinition) => void
+  /** 标签右键进入字段设置（仅 canSetup 时传入，传入即启用右键菜单）；x/y 为右键落点坐标 */
+  onFieldSetup?: (field: FormFieldDefinition, x: number, y: number) => void
   /** 复合单元格内联模式：不渲染标签与格线，只渲染控件（供复合格 [主][选择][从] 使用） */
   bare?: boolean
   /** 浏览态：全部字段走只读文本渲染（ADR-006 决策 1，不再是禁用输入框） */
@@ -143,24 +145,27 @@ const CONTROL_RENDERERS: Record<FieldVariant, (props: ControlProps & { error?: s
   checkbox: CheckboxControl,
 }
 
-export function FormFieldRenderer({ field, value, error, onChange, onChoose, bare = false, viewing = false }: FormFieldRendererProps) {
+export function FormFieldRenderer({ field, value, error, onChange, onChoose, onFieldSetup, bare = false, viewing = false }: FormFieldRendererProps) {
   const variant = fieldVariant(field)
   const hasChooser = variant !== 'select' && Boolean(onChoose) && field.choosers.some(source => source.active && source.table)
-  // 只读文本触发条件（ADR-006 决策 1）：浏览态全量；编辑/新增态仅 serverFilled 且无选择器的字段。
-  // serverFilled 但带选择器的联动字段（CURR_ID/TAX_ID）保留只读框+可用选择按钮（对齐旧系统）。
+  // 只读文本触发条件（ADR-006 决策 1）：浏览态全量；编辑/新增态仅 serverFilled 且无选择器的字段
+  // 渲染只读文本（审计列/批核/结案字段不渲染输入框）。isReadonly/displayOnly 从字段渲染只读控件
+  // （disabled 输入框）以保持组合字段左右宽度协调；带选择器的联动字段（CURR_ID/TAX_ID）
+  // 保留只读框+可用选择按钮（对齐旧系统）。
   const readOnlyStatic = viewing || (field.serverFilled && !hasChooser)
   const disabled = !readOnlyStatic && (field.isReadonly || field.serverFilled)
   // 只读联动字段的选择按钮仍可用；serverFilled 无选择器时按钮无意义
   const chooserDisabled = field.serverFilled && !hasChooser
 
   let control: ReactElement
-  if (readOnlyStatic) {
-    // 只读文本 + 状态徽标（bit 渲染 是/否 徽标），不渲染禁用输入框
-    const display = variant === 'checkbox'
-      ? (value === '1' || value === 'true' ? '是' : '否')
-      : formatFieldValue(value, field.dataType, field.displayFormat)
+  if (readOnlyStatic && variant === 'checkbox') {
+    // 浏览态复选框：渲染只读复选框（勾选反映状态），不渲染「是/否」文本徽标
+    control = CONTROL_RENDERERS.checkbox({ field, value, disabled: true, onChange: () => {}, error })
+  } else if (readOnlyStatic) {
+    // 只读文本（非复选框字段）
+    const display = formatFieldValue(value, field.dataType, field.displayFormat)
     control = (
-      <span className={`erp-form-static${variant === 'checkbox' ? ' erp-form-static-badge' : ''}`}>
+      <span className="erp-form-static">
         {display || '—'}
       </span>
     )
@@ -174,7 +179,7 @@ export function FormFieldRenderer({ field, value, error, onChange, onChoose, bar
         {control}
         {hasChooser && !readOnlyStatic ? (
           <Button size="sm" variant="secondary" className="erp-chooser-btn" aria-label="选择" title={`选择${field.label}`} disabled={chooserDisabled} onClick={() => onChoose?.(field)}>
-            <IconSearch size={14} />
+            <IconListDetails size={14} />
           </Button>
         ) : null}
       </div>
@@ -193,7 +198,13 @@ export function FormFieldRenderer({ field, value, error, onChange, onChoose, bar
   ].filter(Boolean).join(' ')
   return (
     <div className={className} data-field-key={field.key}>
-      <label className="erp-form-label" title={field.label}>{field.label}{!readOnlyStatic && variant !== 'checkbox' && !disabled && field.isRequired ? ' *' : ''}</label>
+      <label
+        className="erp-form-label"
+        title={field.label}
+        onContextMenu={onFieldSetup ? event => { event.preventDefault(); onFieldSetup(field, event.clientX, event.clientY) } : undefined}
+      >
+        {field.label}{!readOnlyStatic && variant !== 'checkbox' && !disabled && field.isRequired ? ' *' : ''}
+      </label>
       {container}
     </div>
   )

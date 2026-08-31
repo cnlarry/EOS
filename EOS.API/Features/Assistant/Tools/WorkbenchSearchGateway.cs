@@ -41,7 +41,7 @@ public interface IWorkbenchSearchGateway
         bool canApprove = false, bool canDeapprove = false,
         bool canEndCase = false, bool canUnEndCase = false,
         bool canFileView = false, bool canFileUpda = false,
-        bool canFileEdit = false, bool canFileDele = false);
+        bool canFileEdit = false, bool canFileDele = false, bool canSetup = false);
 }
 
 /// <summary>

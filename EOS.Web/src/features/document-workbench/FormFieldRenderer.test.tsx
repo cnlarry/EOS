@@ -112,11 +112,15 @@ describe('FormFieldRenderer', () => {
     expect(container.querySelector('.erp-form-static')?.textContent).toBe('内容')
   })
 
-  it('浏览态 bit 字段渲染是/否状态徽标', () => {
+  it('浏览态 bit 字段渲染只读复选框（勾选反映状态）', () => {
     const { container, rerender } = render(<FormFieldRenderer field={field({ dataType: 'bit' })} value="1" onChange={() => undefined} viewing />)
-    expect(container.querySelector('.erp-form-static-badge')).toHaveTextContent('是')
+    const checkedBox = container.querySelector('input[type="checkbox"]')
+    expect(checkedBox).not.toBeNull()
+    expect(checkedBox).toBeDisabled()
+    expect(checkedBox).toBeChecked()
+    expect(container.querySelector('.erp-form-static-badge')).toBeNull()
     rerender(<FormFieldRenderer field={field({ dataType: 'bit' })} value="0" onChange={() => undefined} viewing />)
-    expect(container.querySelector('.erp-form-static-badge')).toHaveTextContent('否')
+    expect(container.querySelector('input[type="checkbox"]')).not.toBeChecked()
   })
 
   it('编辑态 serverFilled 无选择器渲染只读文本；带选择器保留只读框+可用按钮', () => {

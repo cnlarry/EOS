@@ -66,6 +66,7 @@ const formDefinition: FormDefinition = {
   canFileUpda: false,
   canFileEdit: false,
   canFileDele: false,
+  canSetup: false,
 }
 
 const recordBundle = {

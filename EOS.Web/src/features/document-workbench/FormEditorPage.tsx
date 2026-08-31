@@ -114,6 +114,8 @@ export function FormEditorPage() {
     | { kind: 'detail'; index: number; field: FormFieldDefinition }
     | null
   >(null)
+  /** 标签右键「字段设置」菜单（仅 canSetup 时触发） */
+  const [fieldSetupMenu, setFieldSetupMenu] = useState<{ field: FormFieldDefinition; x: number; y: number } | null>(null)
   const [selectedDetailRows, setSelectedDetailRows] = useState<Set<number>>(new Set())
   const [detailSort, setDetailSort] = useState<{ key: string; dir: 1 | -1 } | null>(null)
   const [activeTab, setActiveTab] = useState(1)
@@ -739,6 +741,7 @@ export function FormEditorPage() {
       ),
     },
   ]
+  const openFieldSetupMenu = (field: FormFieldDefinition, x: number, y: number) => setFieldSetupMenu({ field, x, y })
   const renderField = (field: FormFieldDefinition, bare = false) => (
     <FormFieldRenderer
       key={field.key}
@@ -752,6 +755,7 @@ export function FormEditorPage() {
         setDirty(true)
       }}
       onChoose={fieldToChoose => openChooser(fieldToChoose, 'master')}
+      onFieldSetup={form.canSetup ? openFieldSetupMenu : undefined}
       bare={bare}
     />
   )
@@ -761,7 +765,12 @@ export function FormEditorPage() {
     const isBoolean = main.dataType.toLowerCase().includes('bit')
     return (
       <div key={main.key} className="erp-form-cell">
-        <label className="erp-form-label">{main.label}{!isBoolean && !main.isReadonly && !main.serverFilled && main.isRequired ? ' *' : ''}</label>
+        <label
+          className="erp-form-label"
+          onContextMenu={form.canSetup ? event => { event.preventDefault(); openFieldSetupMenu(main, event.clientX, event.clientY) } : undefined}
+        >
+          {main.label}{!isBoolean && !main.isReadonly && !main.serverFilled && main.isRequired ? ' *' : ''}
+        </label>
         <div className="erp-form-cell-controls">
           {renderField(main, true)}
           {companions.map(companion => renderField(companion, true))}
@@ -1095,6 +1104,33 @@ export function FormEditorPage() {
           </div>
         </div>
       )}
+      {fieldSetupMenu ? (
+        <div
+          className="erp-field-setup-overlay"
+          onClick={() => setFieldSetupMenu(null)}
+          onContextMenu={event => { event.preventDefault(); setFieldSetupMenu(null) }}
+        >
+          <div
+            className="erp-field-setup-menu"
+            role="menu"
+            style={{ left: fieldSetupMenu.x, top: fieldSetupMenu.y }}
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="erp-field-setup-header">{fieldSetupMenu.field.label}</div>
+            <button
+              type="button"
+              className="erp-field-setup-item"
+              role="menuitem"
+              onClick={() => {
+                navigate(`/admin/fields/${encodeURIComponent(form.masterTable)}/${encodeURIComponent(fieldSetupMenu.field.key)}?moduleId=${moduleId}`)
+                setFieldSetupMenu(null)
+              }}
+            >
+              字段设置
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
