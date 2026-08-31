@@ -1,0 +1,85 @@
+{
+  "formatId": "_generic",
+  "kind": "document",
+  "title": "通用单据",
+  "moduleId": 0,
+  "dataContract": {
+    "columns": [
+      {
+        "key": "NO",
+        "label": "单号",
+        "type": "string"
+      },
+      {
+        "key": "DATE",
+        "label": "日期",
+        "type": "date"
+      },
+      {
+        "key": "CLIENT_ID",
+        "label": "客户",
+        "type": "string"
+      },
+      {
+        "key": "CLIENT_NAME",
+        "label": "客户名称",
+        "type": "string"
+      },
+      {
+        "key": "AMOUNT_TAX",
+        "label": "含税金额",
+        "type": "decimal"
+      },
+      {
+        "key": "CREATE_PERSON",
+        "label": "制单人",
+        "type": "string"
+      },
+      {
+        "key": "CONFIRM_PERSON",
+        "label": "批核人",
+        "type": "string"
+      }
+    ],
+    "detailColumns": [
+      {
+        "key": "PRO_NO",
+        "label": "料号",
+        "type": "string"
+      },
+      {
+        "key": "PRO_NAME",
+        "label": "品名",
+        "type": "string"
+      },
+      {
+        "key": "QTY",
+        "label": "数量",
+        "type": "decimal"
+      },
+      {
+        "key": "UNIT_ID",
+        "label": "单位",
+        "type": "string"
+      },
+      {
+        "key": "PRICE",
+        "label": "单价",
+        "type": "decimal"
+      },
+      {
+        "key": "AMOUNT_TAX",
+        "label": "金额",
+        "type": "decimal"
+      }
+    ]
+  },
+  "params": [],
+  "grouping": [],
+  "bindings": [
+    {
+      "docType": "0",
+      "clientId": null
+    }
+  ]
+}

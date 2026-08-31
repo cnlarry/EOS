@@ -77,6 +77,11 @@ internal static class PrintColumnFormats
 /// 单据 PDF 模板（原 RptBill / 工作台"打印单据"）：
 /// 三种形态——资料卡（1401/1601）、单据版式配置（主表 + 固定明细列 + 价税合计 + 签名行）、
 /// 通用主明细（全部可见字段 + 金额类列合计）。"打印备注"关闭时隐藏 REMARK/NOTE 类列。
+///
+/// 退役状态（ADR-010 决策 6，2026-08-31 拍板）：C# 命令式版式已由 24 张 layout.json
+/// 迁移替代（scripts/check-layout-migration.py 对拍一致），运行时打印统一走
+/// QuestPdfLayoutRenderer 解释层。本类仅保留为迁移对拍基线（LayoutMigrationSnapshotTests），
+/// 对拍完成后整体退役，不得新增调用方。
 /// </summary>
 public sealed class DocumentPdfService(IWebHostEnvironment environment, ILogger<DocumentPdfService> logger)
 {

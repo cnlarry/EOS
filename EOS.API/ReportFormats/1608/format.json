@@ -1,0 +1,120 @@
+{
+  "formatId": "1608",
+  "kind": "document",
+  "title": "退料单",
+  "moduleId": 1608,
+  "dataContract": {
+    "columns": [
+      {
+        "key": "CANCEL_NO",
+        "label": "退料单号",
+        "type": "string"
+      },
+      {
+        "key": "CANCEL_TYPE",
+        "label": "退料单别",
+        "type": "string"
+      },
+      {
+        "key": "CANCEL_DATE",
+        "label": "退料日期",
+        "type": "date"
+      },
+      {
+        "key": "SUPPLIER_ID",
+        "label": "厂商编号",
+        "type": "string"
+      },
+      {
+        "key": "SUPPLIER_NAME",
+        "label": "厂商名称",
+        "type": "string"
+      },
+      {
+        "key": "AMOUNT_TAX",
+        "label": "含税金额",
+        "type": "decimal"
+      },
+      {
+        "key": "CURR_ID",
+        "label": "币别",
+        "type": "string"
+      },
+      {
+        "key": "CURR_RATE",
+        "label": "汇率",
+        "type": "decimal"
+      },
+      {
+        "key": "SALES_ID",
+        "label": "业务",
+        "type": "string"
+      },
+      {
+        "key": "BUYER_ID",
+        "label": "采购",
+        "type": "string"
+      },
+      {
+        "key": "CREATE_PERSON",
+        "label": "制单人",
+        "type": "string"
+      },
+      {
+        "key": "CONFIRM_PERSON",
+        "label": "批核人",
+        "type": "string"
+      }
+    ],
+    "detailColumns": [
+      {
+        "key": "PRO_NO",
+        "label": "料号",
+        "type": "string"
+      },
+      {
+        "key": "PRO_NAME",
+        "label": "品名",
+        "type": "string"
+      },
+      {
+        "key": "PRO_SPEC",
+        "label": "规格",
+        "type": "string"
+      },
+      {
+        "key": "QTY",
+        "label": "数量",
+        "type": "decimal"
+      },
+      {
+        "key": "UNIT_ID",
+        "label": "单位",
+        "type": "string"
+      },
+      {
+        "key": "PRICE",
+        "label": "单价",
+        "type": "decimal"
+      },
+      {
+        "key": "REBATE",
+        "label": "折扣",
+        "type": "decimal"
+      },
+      {
+        "key": "AMOUNT_TAX",
+        "label": "金额",
+        "type": "decimal"
+      }
+    ]
+  },
+  "params": [],
+  "grouping": [],
+  "bindings": [
+    {
+      "docType": "1608",
+      "clientId": null
+    }
+  ]
+}

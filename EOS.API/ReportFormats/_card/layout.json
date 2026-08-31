@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "kind": "document",
+  "page": {
+    "size": "A4",
+    "orientation": "portrait",
+    "margin": {
+      "top": 11.29,
+      "right": 11.29,
+      "bottom": 11.29,
+      "left": 11.29
+    }
+  },
+  "sections": {
+    "header": {
+      "height": 26,
+      "elements": [
+        {
+          "id": "h1",
+          "type": "text",
+          "x": 0,
+          "y": 0.71,
+          "w": 187.4,
+          "h": 7.2,
+          "content": "{{SYS.HEADER_COMPANY}}",
+          "style": {
+            "fontSize": 14,
+            "bold": true,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h2",
+          "type": "text",
+          "x": 0,
+          "y": 7.4,
+          "w": 187.4,
+          "h": 4.5,
+          "content": "{{SYS.HEADER_COMPANY_EN}}",
+          "style": {
+            "fontSize": 9,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h3",
+          "type": "text",
+          "x": 0,
+          "y": 11.7,
+          "w": 187.4,
+          "h": 5.5,
+          "content": "{{SYS.TITLE}}",
+          "style": {
+            "fontSize": 12,
+            "semiBold": true,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h4",
+          "type": "text",
+          "x": 0,
+          "y": 17.0,
+          "w": 187.4,
+          "h": 4.2,
+          "content": "{{SYS.HEADER_TEXT}}",
+          "style": {
+            "fontSize": 8,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h5",
+          "type": "line",
+          "x": 0,
+          "y": 25.4,
+          "w": 187.4,
+          "h": 0.2,
+          "style": {
+            "lineWidth": 0.5
+          }
+        }
+      ]
+    },
+    "content": {
+      "elements": [
+        {
+          "id": "t1",
+          "type": "table",
+          "x": 0,
+          "y": 0,
+          "w": 187.4,
+          "h": 0,
+          "dataSource": "master",
+          "maxRows": 20,
+          "showHeader": false
+        },
+        {
+          "id": "t2",
+          "type": "table",
+          "x": 0,
+          "y": 50,
+          "w": 187.4,
+          "h": 0,
+          "dataSource": "details",
+          "showHeader": true,
+          "repeatHeaderOnPageBreak": true
+        }
+      ]
+    },
+    "footer": {
+      "height": 14,
+      "elements": [
+        {
+          "id": "f1",
+          "type": "text",
+          "x": 0,
+          "y": 9.9,
+          "w": 100,
+          "h": 4.0,
+          "content": "{{SYS.FOOTER_TEXT}}",
+          "style": {
+            "fontSize": 8
+          }
+        },
+        {
+          "id": "f2",
+          "type": "text",
+          "x": 100,
+          "y": 9.9,
+          "w": 87.4,
+          "h": 4.0,
+          "content": "列印人：{{SYS.PRINT_PERSON}}　第 {{SYS.PAGE_NUMBER}} / {{SYS.TOTAL_PAGES}} 页",
+          "style": {
+            "fontSize": 8,
+            "align": "right"
+          }
+        }
+      ]
+    }
+  }
+}

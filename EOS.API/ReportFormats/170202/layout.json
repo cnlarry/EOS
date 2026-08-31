@@ -1,0 +1,309 @@
+{
+  "schemaVersion": 1,
+  "kind": "document",
+  "page": {
+    "size": "A4",
+    "orientation": "portrait",
+    "margin": {
+      "top": 11.29,
+      "right": 11.29,
+      "bottom": 11.29,
+      "left": 11.29
+    }
+  },
+  "sections": {
+    "header": {
+      "height": 26,
+      "elements": [
+        {
+          "id": "h1",
+          "type": "text",
+          "x": 0,
+          "y": 0.71,
+          "w": 187.4,
+          "h": 7.2,
+          "content": "{{SYS.HEADER_COMPANY}}",
+          "style": {
+            "fontSize": 14,
+            "bold": true,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h2",
+          "type": "text",
+          "x": 0,
+          "y": 7.4,
+          "w": 187.4,
+          "h": 4.5,
+          "content": "{{SYS.HEADER_COMPANY_EN}}",
+          "style": {
+            "fontSize": 9,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h3",
+          "type": "text",
+          "x": 0,
+          "y": 11.7,
+          "w": 187.4,
+          "h": 5.5,
+          "content": "{{SYS.TITLE}}",
+          "style": {
+            "fontSize": 12,
+            "semiBold": true,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h4",
+          "type": "text",
+          "x": 0,
+          "y": 17.0,
+          "w": 187.4,
+          "h": 4.2,
+          "content": "{{SYS.HEADER_TEXT}}",
+          "style": {
+            "fontSize": 8,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h5",
+          "type": "line",
+          "x": 0,
+          "y": 25.4,
+          "w": 187.4,
+          "h": 0.2,
+          "style": {
+            "lineWidth": 0.5
+          }
+        }
+      ]
+    },
+    "content": {
+      "elements": [
+        {
+          "id": "c1",
+          "type": "field",
+          "x": 0,
+          "y": 0.0,
+          "w": 187.4,
+          "h": 4.3,
+          "field": "SYS.CLIENT_ADDRESS_LINE",
+          "style": {
+            "fontSize": 8
+          }
+        },
+        {
+          "id": "c2",
+          "type": "text",
+          "x": 0,
+          "y": 4.6,
+          "w": 187.4,
+          "h": 4.8,
+          "content": "编号：{{MASTER.PAY_NO}} / {{MASTER.PAY_TYPE}}　日期：{{MASTER.PAY_DATE}}",
+          "style": {
+            "fontSize": 9,
+            "align": "center"
+          }
+        },
+        {
+          "id": "c3",
+          "type": "text",
+          "x": 0,
+          "y": 9.8,
+          "w": 140,
+          "h": 4.3,
+          "content": "客户/厂商：{{MASTER.SUPPLIER_ID}} {{MASTER.SUPPLIER_NAME}}",
+          "style": {
+            "fontSize": 8
+          }
+        },
+        {
+          "id": "c4",
+          "type": "text",
+          "x": 0,
+          "y": 14.3,
+          "w": 140,
+          "h": 4.3,
+          "content": "币别：{{MASTER.CURR_ID}}　汇率：{{MASTER.CURR_RATE}}",
+          "style": {
+            "fontSize": 8
+          }
+        },
+        {
+          "id": "c5",
+          "type": "text",
+          "x": 100,
+          "y": 9.8,
+          "w": 87.4,
+          "h": 4.3,
+          "content": "业务：{{MASTER.SALES_ID}}{{MASTER.BUYER_ID}}",
+          "style": {
+            "fontSize": 8,
+            "align": "right"
+          }
+        },
+        {
+          "id": "c6",
+          "type": "text",
+          "x": 100,
+          "y": 14.3,
+          "w": 87.4,
+          "h": 4.3,
+          "content": "制单：{{MASTER.CREATE_PERSON}}",
+          "style": {
+            "fontSize": 8,
+            "align": "right"
+          }
+        },
+        {
+          "id": "t1",
+          "type": "table",
+          "x": 0,
+          "y": 20.5,
+          "w": 187.4,
+          "h": 0,
+          "dataSource": "details",
+          "columns": [
+            {
+              "field": "DETAILS.ROW_INDEX",
+              "label": "#",
+              "width": 7.8
+            },
+            {
+              "field": "DETAILS.PRO_NO",
+              "label": "料号",
+              "width": 33.9
+            },
+            {
+              "field": "DETAILS.PRODUCT_TEXT",
+              "label": "品名/规格",
+              "width": 50.8
+            },
+            {
+              "field": "DETAILS.QTY",
+              "label": "数量",
+              "width": 20.3,
+              "align": "right",
+              "format": "#,##0.######"
+            },
+            {
+              "field": "DETAILS.UNIT_ID",
+              "label": "单位",
+              "width": 16.9
+            },
+            {
+              "field": "DETAILS.PRICE",
+              "label": "单价",
+              "width": 20.3,
+              "align": "right",
+              "format": "#,##0.######"
+            },
+            {
+              "field": "DETAILS.REBATE",
+              "label": "折扣",
+              "width": 16.9,
+              "align": "right",
+              "suffix": "%"
+            },
+            {
+              "field": "DETAILS.AMOUNT_TAX",
+              "label": "金额",
+              "width": 20.3,
+              "align": "right",
+              "format": "#,##0.00",
+              "isAmount": true
+            }
+          ],
+          "showHeader": true,
+          "repeatHeaderOnPageBreak": true,
+          "totalsLabel": "价税合计",
+          "totalsField": "MASTER.AMOUNT_TAX"
+        },
+        {
+          "id": "s1",
+          "type": "text",
+          "x": 0,
+          "y": 32.5,
+          "w": 62,
+          "h": 4.3,
+          "content": "制表：{{MASTER.CREATE_PERSON}}",
+          "style": {
+            "fontSize": 8
+          }
+        },
+        {
+          "id": "s2",
+          "type": "text",
+          "x": 62,
+          "y": 32.5,
+          "w": 63,
+          "h": 4.3,
+          "content": "审核：{{MASTER.CONFIRM_PERSON}}",
+          "style": {
+            "fontSize": 8,
+            "align": "center"
+          }
+        },
+        {
+          "id": "s3",
+          "type": "text",
+          "x": 125,
+          "y": 32.5,
+          "w": 62.4,
+          "h": 4.3,
+          "content": "客户/厂商确认：",
+          "style": {
+            "fontSize": 8,
+            "align": "right"
+          }
+        },
+        {
+          "id": "t2",
+          "type": "field",
+          "x": 0,
+          "y": 38.0,
+          "w": 187.4,
+          "h": 4.3,
+          "field": "SYS.TAIL_TEXT",
+          "style": {
+            "fontSize": 8
+          }
+        }
+      ]
+    },
+    "footer": {
+      "height": 14,
+      "elements": [
+        {
+          "id": "f1",
+          "type": "text",
+          "x": 0,
+          "y": 9.9,
+          "w": 100,
+          "h": 4.0,
+          "content": "{{SYS.FOOTER_TEXT}}",
+          "style": {
+            "fontSize": 8
+          }
+        },
+        {
+          "id": "f2",
+          "type": "text",
+          "x": 100,
+          "y": 9.9,
+          "w": 87.4,
+          "h": 4.0,
+          "content": "列印人：{{SYS.PRINT_PERSON}}　第 {{SYS.PAGE_NUMBER}} / {{SYS.TOTAL_PAGES}} 页",
+          "style": {
+            "fontSize": 8,
+            "align": "right"
+          }
+        }
+      ]
+    }
+  }
+}

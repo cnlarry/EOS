@@ -17,7 +17,8 @@ public sealed class PrintController(
     IPermissionService permissions,
     DocumentWorkbenchRepository workbench,
     WorkbenchAuditWriter auditWriter,
-    DocumentPdfService documentPdfService) : ControllerBase
+    ReportFormatRepository reportFormats,
+    ILayoutRenderer layoutRenderer) : ControllerBase
 {
     /// <summary>
     /// 单据 PDF（原 RptBill 的受控等价）：主表 + 明细 + 可选页头/表尾/打印备注，
@@ -64,10 +65,12 @@ public sealed class PrintController(
         var effectiveHeaderId = !string.IsNullOrWhiteSpace(request.HeaderId)
             ? request.HeaderId.Trim()
             : data.ClientProfile?.HeaderId ?? report.HeaderId ?? string.Empty;
-        var header = settings.Headers.FirstOrDefault(item => item.HeaderId == effectiveHeaderId);
-        var tail = settings.Tails.FirstOrDefault(item => item.TailId == tailId);
-        var pdf = documentPdfService.Generate(
-            data, header, tail?.TailText ?? data.TailText, request.ShowRemark, userId);
+        // 内置版式统一走 layout.json 解释层（ADR-010 决策 6：layout.json 唯一真源，
+        // C# 命令式版式已退役）。GetDocumentFormat 按模块号 → _card/_generic 回退。
+        var package = reportFormats.GetDocumentFormat(moduleId);
+        if (package is null) return NotFound();
+        var pdf = layoutRenderer.Render(
+            data, package.RawLayoutJson, new LayoutRenderContext(userId, request.ShowRemark));
         await auditWriter.WriteBestEffortAsync(moduleId, string.Join(',', request.Key), "PRINT", $"打印 {data.Title}", userId, "PRINT", result: 1, null, token);
         return File(pdf, "application/pdf", $"{data.Title}.pdf");
     }

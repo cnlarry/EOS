@@ -26,6 +26,7 @@ public sealed record PrintData(
     int ModuleId,
     string Title,
     string? HeaderCompany,
+    string? HeaderCompanyEn,
     string? HeaderText,
     string? FooterText,
     string? LogoPath,
