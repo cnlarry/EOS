@@ -9,7 +9,7 @@ namespace EOS.API.Controllers;
 
 /// <summary>
 /// 单行参数表设置接口（旧系统 MagSysSet.aspx / TxtSetup.aspx 语义）。
-/// GET 返回参数值与字段元数据（FIELDS 标签 + INFORMATION_SCHEMA 类型/长度），
+/// GET 返回参数值与字段元数据（FIELDS 标签 + sys.* 目录视图类型/长度），
 /// PUT 在事务内 upsert 第一行，并对 SYSSS 复刻旧页副作用：关闭「快查全部字段」时删除
 /// SYSQQ 中 F_ID='all' 的快查条件。权限对齐旧页 DxAuthentication：
 /// 浏览要求 EXEC_TAG<>A，保存要求 EDIT_TAG（个人/组权限经 LegacyRightsRepository 聚合）。

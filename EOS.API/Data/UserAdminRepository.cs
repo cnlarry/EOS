@@ -11,7 +11,10 @@ namespace EOS.API.Data;
 /// 用户管理（ADR-004 随安全升级建设）：列用户、管理员设置密码、启用/停用。
 /// 只允许修改认证/安全相关列（USER_PWD、ACTIVE_TAG、审计列），不触碰业务资料。
 /// </summary>
-public sealed class UserAdminRepository(DbConnectionFactory connections, ILogger<UserAdminRepository> logger)
+public sealed class UserAdminRepository(
+    DbConnectionFactory connections,
+    ILogger<UserAdminRepository> logger,
+    WorkbenchAuditWriter auditWriter)
 {
     private static readonly Regex UserIdPattern = new("^[A-Za-z0-9_-]{1,10}$", RegexOptions.Compiled);
 
@@ -194,17 +197,8 @@ public sealed class UserAdminRepository(DbConnectionFactory connections, ILogger
             insert.Parameters.Add("@By", SqlDbType.NChar, 40).Value = adminName;
             await insert.ExecuteNonQueryAsync(token);
 
-            await using (var audit = new SqlCommand(
-                """
-                INSERT INTO dbo.SYSDF (M_IDX,RECORD_IDX,CONTENT,TYPE,EXEC_BY,EXEC_DATE,OPERFLAG)
-                VALUES (2306,@Record,@Content,'USER_CREATE',@By,GETDATE(),1);
-                """, connection, transaction))
-            {
-                audit.Parameters.Add("@Record", SqlDbType.NVarChar, 100).Value = id;
-                audit.Parameters.Add("@Content", SqlDbType.NVarChar, 1000).Value = $"新增用户 {id}（员工 {emp}）";
-                audit.Parameters.Add("@By", SqlDbType.NVarChar, 50).Value = adminName;
-                await audit.ExecuteNonQueryAsync(token);
-            }
+            await auditWriter.WriteAsync(
+                connection, transaction, 2306, id, "USER_CREATE", $"新增用户 {id}（员工 {emp}）", adminName, token);
 
             await transaction.CommitAsync(token);
             logger.LogInformation("新增用户 userId={UserId} emp={Emp} by={By}", id, emp, adminName);
