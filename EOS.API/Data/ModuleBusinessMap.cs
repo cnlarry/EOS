@@ -87,6 +87,34 @@ public static class ModuleBusinessMap
         Rules.Values.Any(rule =>
             string.Equals(rule.AfterSaveSproc, sprocName, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(rule.WorkflowSproc, sprocName, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// 需批核单据模块 → 主表映射（待办工作台「我的任务」扫描清单，单源，2026-09-01 B6 收编）：
+    /// 业务闭环 17 单据 + 生产/库存核心单据，主表名来自服务端常量。
+    /// 新增需批核模块在此登记，漏登记会导致「我的任务」计数缺失。
+    /// </summary>
+    public static readonly IReadOnlyDictionary<int, string> MasterTables =
+        new Dictionary<int, string>
+        {
+            [1404] = "COP_QUOTE_M",
+            [1405] = "COP_ORDER_M",
+            [1406] = "COP_SEND_M",
+            [1408] = "COP_SHIPMENT_M",
+            [170101] = "COP_ACCOUNT_M",
+            [170102] = "COP_RECEIPT_M",
+            [170103] = "COP_PREPAY_M",
+            [1604] = "PUR_QUOTE_M",
+            [1615] = "PUR_APPLY_M",
+            [1606] = "PUR_PURCHASE_M",
+            [1607] = "PUR_RECEIVE_M",
+            [170201] = "PUR_DUE_M",
+            [170202] = "PUR_PAY_M",
+            [170203] = "PUR_PREPAY_M",
+            [1502] = "MOC_PRODUCE_M",
+            [1505] = "MOC_PRODUCT_IN_M",
+            [130103] = "INV_OCCUR_IN_M",
+            [130104] = "INV_OCCUR_OUT_M",
+        };
 }
 
 /// <summary>

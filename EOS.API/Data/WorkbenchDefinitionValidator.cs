@@ -21,7 +21,6 @@ public sealed class WorkbenchDefinitionValidator(
     IOptions<UnifiedFormEditorSettings> formSettings,
     ILogger<WorkbenchDefinitionValidator> logger)
 {
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     public async Task<WorkbenchDefinitionValidationReport> ValidateAsync(
         int moduleId,
@@ -71,14 +70,14 @@ public sealed class WorkbenchDefinitionValidator(
             checks.Add(new("route_valid", true, "路由契约（M_URL/NEW_URL/MODI_URL）合法。"));
         }
 
-        var masterOk = Identifier.IsMatch(module.MasterTable) && await TableExistsAsync(connection, module.MasterTable, token);
+        var masterOk = WorkbenchSql.Identifier.IsMatch(module.MasterTable) && await WorkbenchSql.TableExistsAsync(connection, module.MasterTable, token);
         checks.Add(masterOk
             ? new("master_table_exists", true, $"主表 {module.MasterTable} 存在。")
             : new("master_table_exists", false, $"主表 {module.MasterTable} 不存在或标识符非法。"));
 
         if (module.DetailTable is { Length: > 0 })
         {
-            var detailOk = Identifier.IsMatch(module.DetailTable) && await TableExistsAsync(connection, module.DetailTable, token);
+            var detailOk = WorkbenchSql.Identifier.IsMatch(module.DetailTable) && await WorkbenchSql.TableExistsAsync(connection, module.DetailTable, token);
             checks.Add(detailOk
                 ? new("detail_table_exists", true, $"子表 {module.DetailTable} 存在。")
                 : new("detail_table_exists", false, $"子表 {module.DetailTable} 不存在或标识符非法。"));
@@ -91,7 +90,7 @@ public sealed class WorkbenchDefinitionValidator(
         IReadOnlyList<string> pkColumns = [];
         if (masterOk)
         {
-            pkColumns = await GetPrimaryKeyColumnsAsync(connection, module.MasterTable, token);
+            pkColumns = await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, null, module.MasterTable, token);
             checks.Add(pkColumns.Count > 0
                 ? new("master_pk_exists", true, $"主表主键：{string.Join(",", pkColumns)}。")
                 : new("master_pk_exists", false, "主表缺少主键定义。"));
@@ -300,40 +299,6 @@ public sealed class WorkbenchDefinitionValidator(
             expressions);
     }
 
-    private static async Task<bool> TableExistsAsync(SqlConnection connection, string table, CancellationToken token)
-    {
-        const string sql = """
-            SELECT 1 FROM sys.objects o
-            JOIN sys.schemas s ON o.schema_id=s.schema_id
-            WHERE s.name=N'dbo' AND o.name=@Table AND o.type IN ('U','V');
-            """;
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
-        return await command.ExecuteScalarAsync(token) is not null;
-    }
-
-    private static async Task<IReadOnlyList<string>> GetPrimaryKeyColumnsAsync(SqlConnection connection, string table, CancellationToken token)
-    {
-        const string sql = """
-            SELECT c.name
-            FROM sys.indexes i
-            JOIN sys.index_columns ic ON i.object_id=ic.object_id AND i.index_id=ic.index_id
-            JOIN sys.columns c ON ic.object_id=c.object_id AND ic.column_id=c.column_id
-            JOIN sys.tables t ON i.object_id=t.object_id
-            JOIN sys.schemas s ON t.schema_id=s.schema_id
-            WHERE s.name=N'dbo' AND t.name=@Table AND i.is_primary_key=1
-            ORDER BY ic.key_ordinal;
-            """;
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var result = new List<string>();
-        while (await reader.ReadAsync(token))
-        {
-            result.Add(reader.GetString(0));
-        }
-        return result;
-    }
 
     private static async Task<IReadOnlySet<string>> GetTableColumnsAsync(SqlConnection connection, string table, CancellationToken token)
     {
@@ -373,7 +338,7 @@ public sealed class WorkbenchDefinitionValidator(
         while (await reader.ReadAsync(token))
         {
             var key = reader.GetString(0).Trim();
-            if (Identifier.IsMatch(key))
+            if (WorkbenchSql.Identifier.IsMatch(key))
             {
                 result.Add(key);
             }
@@ -396,7 +361,7 @@ public sealed class WorkbenchDefinitionValidator(
         while (await reader.ReadAsync(token))
         {
             var key = reader.GetString(0).Trim();
-            if (!Identifier.IsMatch(key))
+            if (!WorkbenchSql.Identifier.IsMatch(key))
             {
                 continue;
             }

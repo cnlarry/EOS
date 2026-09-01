@@ -18,7 +18,6 @@ namespace EOS.API.Data;
 /// </summary>
 public sealed class ReportRepository(DbConnectionFactory connections, ILogger<ReportRepository> logger)
 {
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly Regex FieldRef = new(@"^\s*(\w+)\.(\w+)\s*$", RegexOptions.Compiled);
     private static readonly Regex SelectExpression = new(@"\{([^}]+)\}=(true|false|[+-]?\d+(?:\.\d+)?|'[^']*')\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex SpReference = new(@"\{([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)\}", RegexOptions.Compiled);
@@ -67,7 +66,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         // 空 MASTER_TABLE 放行（列来自 SP 结果集，条件来自 sys.parameters），
         // 非 SP 报表仍要求主表为合法标识符。
         var isSpReport=spName is not null;
-        if(!ModuleRouteValidator.IsReportUrl(url)||(!Identifier.IsMatch(masterTable)&&!isSpReport))
+        if(!ModuleRouteValidator.IsReportUrl(url)||(!WorkbenchSql.Identifier.IsMatch(masterTable)&&!isSpReport))
         {
             logger.LogWarning("报表模块校验失败 module={ModuleId} url={Url} master={Master} sp={Sp}",moduleId,url,masterTable,spName);
             return null;
@@ -78,7 +77,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         foreach(var condition in conditions.Where(item=>item.SelectSource is not null))
         {
             var source=condition.SelectSource!;
-            if(!Identifier.IsMatch(source.Table)||!Identifier.IsMatch(source.IdColumn)||!Identifier.IsMatch(source.ValueColumn))
+            if(!WorkbenchSql.Identifier.IsMatch(source.Table)||!WorkbenchSql.Identifier.IsMatch(source.IdColumn)||!WorkbenchSql.Identifier.IsMatch(source.ValueColumn))
                 conditions=conditions.Select(item=>item==condition?item with{SelectSource=null}:item).ToList();
             else
             {
@@ -115,7 +114,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
     private static async Task<IReadOnlyList<ReportOption>> ReadSelectSourceOptionsAsync(
         SqlConnection connection, ReportSelectSource source, CancellationToken token)
     {
-        if(!Identifier.IsMatch(source.Table)||!Identifier.IsMatch(source.IdColumn)||!Identifier.IsMatch(source.ValueColumn))return [];
+        if(!WorkbenchSql.Identifier.IsMatch(source.Table)||!WorkbenchSql.Identifier.IsMatch(source.IdColumn)||!WorkbenchSql.Identifier.IsMatch(source.ValueColumn))return [];
         var physical=await GetPhysicalColumnsAsync(connection,source.Table,token);
         if(!physical.Any(column=>column.Equals(source.IdColumn,StringComparison.OrdinalIgnoreCase))
            ||!physical.Any(column=>column.Equals(source.ValueColumn,StringComparison.OrdinalIgnoreCase)))
@@ -411,7 +410,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         if(!match.Success)return false;
         var table=match.Groups[1].Value;
         var column=match.Groups[2].Value;
-        if(!Identifier.IsMatch(column))return false;
+        if(!WorkbenchSql.Identifier.IsMatch(column))return false;
         if(table.Equals(definition.MasterTable,StringComparison.OrdinalIgnoreCase))
         {
             foreach(var item in masterPhysical)
@@ -707,7 +706,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
                 string.IsNullOrWhiteSpace(displayFormat)?null:displayFormat.Trim()));
         }
         await reader.DisposeAsync();
-        var pkOrder=await GetPrimaryKeyColumnsAsync(connection,masterTable,token);
+        var pkOrder=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,masterTable,token);
         return (columns,pkOrder);
     }
 
@@ -727,26 +726,6 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         return result;
     }
 
-    private static async Task<IReadOnlyList<string>> GetPrimaryKeyColumnsAsync(SqlConnection connection,string table,CancellationToken token)
-    {
-        const string sql="""
-            SELECT c.name AS COLUMN_NAME
-            FROM sys.indexes i
-            JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            JOIN sys.tables t ON i.object_id = t.object_id
-            JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = N'dbo' AND t.name = @Table AND i.is_primary_key = 1
-            ORDER BY ic.key_ordinal;
-            """;
-        await using var command=new SqlCommand(sql,connection);
-        command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
-        await using var reader=await command.ExecuteReaderAsync(token);
-        var result=new List<string>();
-        while(await reader.ReadAsync(token))result.Add(reader.GetString(0));
-        return result;
-    }
-
     private static bool TryResolveField(string? raw,string masterTable,IReadOnlyList<string> physicalColumns,out string field)
     {
         field=string.Empty;
@@ -755,7 +734,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         if(!match.Success)return false;
         if(!match.Groups[1].Value.Equals(masterTable,StringComparison.OrdinalIgnoreCase))return false;
         field=match.Groups[2].Value;
-        if(!Identifier.IsMatch(field))return false;
+        if(!WorkbenchSql.Identifier.IsMatch(field))return false;
         foreach(var column in physicalColumns)
             if(column.Equals(field,StringComparison.OrdinalIgnoreCase))return true;
         return false;

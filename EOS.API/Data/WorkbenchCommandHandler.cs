@@ -40,7 +40,7 @@ public sealed class WorkbenchCommandHandler(
         }
         var masterFields = form.MasterFields.Where(field => !field.DisplayOnly && !field.IsVirtual).Select(field => field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         // 批核/结案状态列：表单不可编辑，但记录读取契约必须返回
-        foreach (var statusColumn in new[] { "CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE", "FINISHED_TAG" })
+        foreach (var statusColumn in WorkflowStates.RecordStatusColumns)
         {
             if (!masterFields.Contains(statusColumn, StringComparer.OrdinalIgnoreCase)
                 && await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, statusColumn, token))

@@ -1,6 +1,6 @@
 using System.Data;
-using System.Text.RegularExpressions;
 using EOS.API.Models;
+using EOS.API.Security;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
@@ -14,9 +14,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
 {
     private const int MenuAdminModuleId = 2301;
     private const int ReportAdminModuleId = 2201;
-    private const int UserAdminModuleId = 2306;
     private const int FieldAdminModuleId = 2302;
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     /// <summary>注册数据源 → 可排序列白名单（首列为默认排序列，稳定次序列固定追加）。</summary>
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> RegisteredSources =
@@ -161,7 +159,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         "menu-admin.tables" or "menu-admin.fields" or "menu-admin.sprocs" => MenuAdminModuleId,
         "field-admin.tables" or "field-admin.columns" or "field-admin.fields" => FieldAdminModuleId,
         "report-admin.fields" or "report-admin.modules" => ReportAdminModuleId,
-        "user-admin.employees" => UserAdminModuleId,
+        "user-admin.employees" => PermissionModules.SystemManagement,
         _ => null,
     };
 
@@ -183,7 +181,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     {
         if (args is null || !args.TryGetValue("tableId", out var tableId) || string.IsNullOrWhiteSpace(tableId))
             return null;
-        return Identifier.IsMatch(tableId.Trim()) ? tableId.Trim() : null;
+        return WorkbenchSql.Identifier.IsMatch(tableId.Trim()) ? tableId.Trim() : null;
     }
 
     /// <summary>report-admin.fields 共用的 args 校验：moduleId 必须为正整数。</summary>
@@ -652,7 +650,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         while (await metaReader.ReadAsync(token))
         {
             var key = metaReader.GetString(0);
-            if (!Identifier.IsMatch(key)) continue;
+            if (!WorkbenchSql.Identifier.IsMatch(key)) continue;
             var isVirtual = metaReader.GetBoolean(5);
             string? selectExpression = null;
             string? joinClause = null;

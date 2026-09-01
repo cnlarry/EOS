@@ -17,8 +17,8 @@ public sealed class BomController(
     [HttpGet("identity")]
     public async Task<ActionResult<object>> GetIdentity(CancellationToken cancellationToken)
     {
-        var rights = await rightsRepository.GetAsync(userContext.UserId, 1204, cancellationToken);
-        return Ok(new { userId = userContext.UserId, moduleId = 1204, canSetup = rights.CanSetup });
+        var rights = await rightsRepository.GetAsync(userContext.UserId, ModuleIds.BomStructure, cancellationToken);
+        return Ok(new { userId = userContext.UserId, moduleId = ModuleIds.BomStructure, canSetup = rights.CanSetup });
     }
 
     [HttpGet("grid/boms")]
@@ -28,7 +28,7 @@ public sealed class BomController(
         [FromQuery] int limit = 100,
         CancellationToken cancellationToken = default)
     {
-        var rights = await rightsRepository.GetAsync(userContext.UserId, 1204, cancellationToken);
+        var rights = await rightsRepository.GetAsync(userContext.UserId, ModuleIds.BomStructure, cancellationToken);
         if (!rights.CanBrowse) return Forbid();
         return Ok(await dynamicRepository.SearchMasterAsync(
             userContext.UserId,
@@ -48,7 +48,7 @@ public sealed class BomController(
     {
         if (string.IsNullOrWhiteSpace(proNo) || proNo.Length > 30)
             return BadRequest();
-        var rights = await rightsRepository.GetAsync(userContext.UserId, 1204, cancellationToken);
+        var rights = await rightsRepository.GetAsync(userContext.UserId, ModuleIds.BomStructure, cancellationToken);
         if (!rights.CanBrowse) return Forbid();
         return Ok(await dynamicRepository.GetDetailsAsync(
             userContext.UserId,

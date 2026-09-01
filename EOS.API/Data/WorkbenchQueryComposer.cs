@@ -134,16 +134,7 @@ public sealed class WorkbenchQueryComposer(
         await reader.ReadAsync(token);
         var total = Convert.ToInt32(reader.GetInt64(0));
         await reader.NextResultAsync(token);
-        var rows = new List<Dictionary<string, object?>>();
-        while (await reader.ReadAsync(token))
-        {
-            var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < reader.FieldCount; i++)
-            {
-                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-            }
-            rows.Add(row);
-        }
+        var rows = await WorkbenchSql.ReadRowsAsync(reader, token);
         // P4a：带 CONVERT_FUNCTION 的字段按受控函数转换为展示值（函数白名单 + 参数化）
         await virtualColumns.ApplyConvertFunctionsAsync(connection, detail ? definition.DetailFields : definition.MasterFields, rows, token);
         logger.LogDebug("工作台查询完成 detail={Detail} table={Table} page={Page} pageSize={PageSize} total={Total} returned={Returned} elapsedMs={ElapsedMs:F0}",
@@ -195,17 +186,7 @@ public sealed class WorkbenchQueryComposer(
         command.CommandText = selection.HasVirtual
             ? $"SELECT TOP {maxExportRows} {selection.OuterColumns} FROM (SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where}) AS [__base]{selection.JoinFragment} ORDER BY {QualifyOrder(order)};"
             : $"SELECT TOP {maxExportRows} {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK){where} ORDER BY {order};";
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var rows = new List<Dictionary<string, object?>>();
-        while (await reader.ReadAsync(token))
-        {
-            var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < reader.FieldCount; i++)
-            {
-                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-            }
-            rows.Add(row);
-        }
+        var rows = await WorkbenchSql.ReadRowsAsync(command, token);
         logger.LogDebug("工作台导出完成 table={Table} returned={RowCount} elapsedMs={ElapsedMs:F0}", table, rows.Count, stopwatch.Elapsed.TotalMilliseconds);
         metrics.ObserveWorkbenchQuery(stopwatch.Elapsed.TotalMilliseconds);
         return rows;
@@ -269,17 +250,7 @@ public sealed class WorkbenchQueryComposer(
         command.CommandText = selection.HasVirtual
             ? $"SELECT {selection.OuterColumns} FROM (SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK) WHERE {string.Join(" OR ", orParts)}{filterWhere}) AS [__base]{selection.JoinFragment};"
             : $"SELECT {selection.InnerColumns} FROM dbo.[{table}] WITH (NOLOCK) WHERE {string.Join(" OR ", orParts)}{filterWhere};";
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var rows = new List<Dictionary<string, object?>>();
-        while (await reader.ReadAsync(token))
-        {
-            var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < reader.FieldCount; i++)
-            {
-                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-            }
-            rows.Add(row);
-        }
+        var rows = await WorkbenchSql.ReadRowsAsync(command, token);
         metrics.ObserveWorkbenchQuery(stopwatch.Elapsed.TotalMilliseconds);
         return rows;
     }

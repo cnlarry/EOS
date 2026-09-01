@@ -1,5 +1,4 @@
 using System.Data;
-using System.Text.RegularExpressions;
 using EOS.API.Data;
 using EOS.API.Models;
 using EOS.API.Security;
@@ -20,7 +19,6 @@ public sealed class WorkflowController(
     WorkflowEngine workflowEngine,
     IOptions<WorkflowSettings> workflowOptions) : ControllerBase
 {
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     public sealed record ApproveTaskRequest(string ApproveState, string? Message = null, string? JumpNo = null);
     public sealed record WithdrawRequest(int ModuleId, IReadOnlyList<string> Key);
@@ -68,13 +66,13 @@ public sealed class WorkflowController(
     [HttpGet("my-tasks")]
     public async Task<IActionResult> MyTasks(CancellationToken token)
     {
-        if(!(await rightsRepository.GetAsync(userContext.UserId,2102,token)).CanBrowse) return Forbid();
+        if(!(await rightsRepository.GetAsync(userContext.UserId,ModuleIds.MyTasks,token)).CanBrowse) return Forbid();
         var tasks=new List<object>();
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
         var flowTasks = await workflowEngine.GetMyFlowTasksAsync(connection, userContext.UserId, token);
         var hasFlow = flowTasks.Count > 0;
-        foreach(var (moduleId,table) in PendingModules)
+        foreach(var (moduleId,table) in ModuleBusinessMap.MasterTables)
         {
             if(!(await rightsRepository.GetAsync(userContext.UserId,moduleId,token)).CanBrowse) continue;
             string title;
@@ -115,7 +113,7 @@ public sealed class WorkflowController(
     [HttpGet("my-started")]
     public async Task<IActionResult> MyStarted(CancellationToken token)
     {
-        if (!(await rightsRepository.GetAsync(userContext.UserId, 2102, token)).CanBrowse) return Forbid();
+        if (!(await rightsRepository.GetAsync(userContext.UserId, ModuleIds.MyTasks, token)).CanBrowse) return Forbid();
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         var rows = await workflowEngine.GetMyStartedAsync(connection, userContext.UserId, token);
@@ -129,7 +127,7 @@ public sealed class WorkflowController(
     [HttpGet("monitor")]
     public async Task<IActionResult> Monitor([FromQuery] string? status = null, [FromQuery] int moduleId = 0, [FromQuery] string? keyword = null, CancellationToken token = default)
     {
-        if (!(await rightsRepository.GetAsync(userContext.UserId, 2103, token)).CanBrowse) return Forbid();
+        if (!(await rightsRepository.GetAsync(userContext.UserId, ModuleIds.WorkflowMonitor, token)).CanBrowse) return Forbid();
         var state = (status ?? string.Empty).Trim();
         if (state.Length > 0 && state is not ("0" or "1" or "2"))
             return BadRequest(new { code = "INVALID_FLOW_STATE", message = "status 仅支持 0（在途）/1（已完成）/2（已撤回）。" });
@@ -144,7 +142,7 @@ public sealed class WorkflowController(
     [HttpGet("monitor/{wfId:long}")]
     public async Task<IActionResult> MonitorDetail(long wfId, CancellationToken token)
     {
-        if (!(await rightsRepository.GetAsync(userContext.UserId, 2103, token)).CanBrowse) return Forbid();
+        if (!(await rightsRepository.GetAsync(userContext.UserId, ModuleIds.WorkflowMonitor, token)).CanBrowse) return Forbid();
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         var detail = await workflowEngine.GetMonitorDetailAsync(connection, wfId, token);
@@ -176,32 +174,8 @@ public sealed class WorkflowController(
             tableCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
             table = await tableCommand.ExecuteScalarAsync(token) as string;
         }
-        if (string.IsNullOrWhiteSpace(table) || !Identifier.IsMatch(table)) return [];
-        const string sql = """
-            SELECT c.name AS COLUMN_NAME
-            FROM sys.indexes i
-            JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            JOIN sys.tables t ON i.object_id = t.object_id
-            JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = N'dbo' AND t.name = @Table AND i.is_primary_key = 1
-            ORDER BY ic.key_ordinal;
-            """;
-        var result = new List<string>();
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
-        await using var reader = await command.ExecuteReaderAsync(token);
-        while (await reader.ReadAsync(token)) result.Add(reader.GetString(0));
-        return result;
+        if (string.IsNullOrWhiteSpace(table) || !WorkbenchSql.Identifier.IsMatch(table)) return [];
+        return await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, null, table, token);
     }
 
-    /// <summary>需批核单据白名单：业务闭环 17 单据 + 生产/库存核心单据（主表名来自服务端常量）。</summary>
-    private static readonly (int ModuleId,string Table)[] PendingModules =
-    [
-        (1404,"COP_QUOTE_M"),(1405,"COP_ORDER_M"),(1406,"COP_SEND_M"),(1408,"COP_SHIPMENT_M"),
-        (170101,"COP_ACCOUNT_M"),(170102,"COP_RECEIPT_M"),(170103,"COP_PREPAY_M"),
-        (1604,"PUR_QUOTE_M"),(1615,"PUR_APPLY_M"),(1606,"PUR_PURCHASE_M"),(1607,"PUR_RECEIVE_M"),
-        (170201,"PUR_DUE_M"),(170202,"PUR_PAY_M"),(170203,"PUR_PREPAY_M"),
-        (1502,"MOC_PRODUCE_M"),(1505,"MOC_PRODUCT_IN_M"),(130103,"INV_OCCUR_IN_M"),(130104,"INV_OCCUR_OUT_M"),
-    ];
 }

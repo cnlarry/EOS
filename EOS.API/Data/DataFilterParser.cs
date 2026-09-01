@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace EOS.API.Data;
 
@@ -18,7 +17,6 @@ namespace EOS.API.Data;
 internal static class DataFilterParser
 {
     private const int MaxDepth = 8;
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     /// <summary>
     /// CHOOSE_FILTER 子查询白名单（IN (SELECT ...) 受控解析）。
@@ -898,7 +896,7 @@ internal static class DataFilterParser
         var parts = identifier.Split('.', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 1)
         {
-            if (!Identifier.IsMatch(parts[0]) || !allowed.Contains(parts[0])) return false;
+            if (!WorkbenchSql.Identifier.IsMatch(parts[0]) || !allowed.Contains(parts[0])) return false;
             columnSql = context.ForeignTables is null ? $"[{parts[0]}]" : $"[{masterTable}].[{parts[0]}]";
             return true;
         }
@@ -906,14 +904,14 @@ internal static class DataFilterParser
         {
             if (parts[0].Equals(masterTable, StringComparison.OrdinalIgnoreCase))
             {
-                if (!Identifier.IsMatch(parts[1]) || !allowed.Contains(parts[1])) return false;
+                if (!WorkbenchSql.Identifier.IsMatch(parts[1]) || !allowed.Contains(parts[1])) return false;
                 columnSql = context.ForeignTables is null ? $"[{parts[1]}]" : $"[{masterTable}].[{parts[1]}]";
                 return true;
             }
             else if (context.ForeignTables is { } foreign && foreign.ContainsKey(parts[0]))
             {
                 // 白名单外键表列：登记 JOIN 与引用列（物理存在性由调用方在拼 SQL 前校验），
-                if (!Identifier.IsMatch(parts[1])) return false;
+                if (!WorkbenchSql.Identifier.IsMatch(parts[1])) return false;
                 context.Joins.Add(parts[0]);
                 context.ForeignColumns.Add((parts[0], parts[1]));
                 columnSql = $"[{parts[0]}].[{parts[1]}]";

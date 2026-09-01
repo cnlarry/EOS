@@ -17,7 +17,6 @@ namespace EOS.API.Data;
 internal static class GroupExpressionParser
 {
     private const int MaxDepth = 8;
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly Regex Number = new("^[0-9]+(\\.[0-9]+)?$", RegexOptions.Compiled);
 
     public static bool TryCompile(
@@ -388,7 +387,7 @@ internal static class GroupExpressionParser
         {
             return false;
         }
-        return Identifier.IsMatch(field) && allowed.Contains(field);
+        return WorkbenchSql.Identifier.IsMatch(field) && allowed.Contains(field);
     }
 
     private static bool ExpectKeyword(IReadOnlyList<Token> tokens, ref int position, string keyword)

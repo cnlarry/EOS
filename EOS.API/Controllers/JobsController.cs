@@ -19,7 +19,6 @@ public sealed class JobsController(
     AttendanceCalcService attendanceCalc) : ControllerBase
 {
     private static readonly Regex DayColumn = new("^DAY_(0[1-9]|[12][0-9]|3[01])$", RegexOptions.Compiled);
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     /// <summary>
     /// 产品可用库存重计（230901）：受控执行 P_UPDATE_PRO_MRP_ALL（无参白名单 SP）。
@@ -28,7 +27,7 @@ public sealed class JobsController(
     [HttpPost("mrp-recalc")]
     public async Task<IActionResult> MrpRecalc(CancellationToken token)
     {
-        if(!await CanRunAsync(230901,token))return Forbid();
+        if(!await CanRunAsync(ModuleIds.MrpRecalc,token))return Forbid();
         const string sproc="P_UPDATE_PRO_MRP_ALL";
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
@@ -55,7 +54,7 @@ public sealed class JobsController(
     [HttpPost("card-batch")]
     public async Task<IActionResult> CardBatch([FromBody]CardBatchRequest request,CancellationToken token)
     {
-        if(!await CanRunAsync(180218,token))return Forbid();
+        if(!await CanRunAsync(ModuleIds.CardBatch,token))return Forbid();
         if(request.Cards.Count==0||request.Cards.Count>2000)return BadRequest(new{code="INVALID_CARDS",message="发卡数量需在 1~2000 之间。"});
         if(request.StartDate==default)return BadRequest(new{code="INVALID_DATE",message="生效日期不能为空。"});
         await using var connection=connections.Create();
@@ -115,7 +114,7 @@ public sealed class JobsController(
     [HttpPost("attendance-generate")]
     public async Task<IActionResult> AttendanceGenerate([FromBody]AttendanceGenerateRequest request,CancellationToken token)
     {
-        if(!await CanRunAsync(180654,token)&&!await CanRunAsync(180659,token))return Forbid();
+        if(!await CanRunAsync(ModuleIds.AttendanceSimulate,token)&&!await CanRunAsync(ModuleIds.AttendanceExtract,token))return Forbid();
         if(request.StartDate==default||request.EndDate==default||request.EndDate<request.StartDate)
             return BadRequest(new{code="INVALID_RANGE",message="日期范围不合法。"});
         var days=(request.EndDate-request.StartDate).Days+1;
@@ -199,7 +198,7 @@ public sealed class JobsController(
     [HttpPost("attendance-calc")]
     public async Task<IActionResult> AttendanceCalc([FromBody]AttendanceGenerateRequest request,CancellationToken token)
     {
-        if(!await CanRunAsync(180654,token)&&!await CanRunAsync(180659,token))return Forbid();
+        if(!await CanRunAsync(ModuleIds.AttendanceSimulate,token)&&!await CanRunAsync(ModuleIds.AttendanceExtract,token))return Forbid();
         if(request.StartDate==default||request.EndDate==default||request.EndDate<request.StartDate)
             return BadRequest(new{code="INVALID_RANGE",message="日期范围不合法。"});
         var days=(request.EndDate-request.StartDate).Days+1;
@@ -227,7 +226,7 @@ public sealed class JobsController(
     [HttpPost("attendance-adjust-wage")]
     public async Task<IActionResult> AttendanceAdjustWage([FromBody]AttendanceAdjustWageRequest request,CancellationToken token)
     {
-        if(!await CanRunAsync(180505,token))return Forbid();
+        if(!await CanRunAsync(ModuleIds.AttendanceAdjustWage,token))return Forbid();
         var month=(request.Month??"").Trim();
         if(!MonthKey.IsMatch(month))
             return BadRequest(new{code="INVALID_MONTH",message="月份格式应为 yyyyMM。"});
@@ -258,7 +257,7 @@ public sealed class JobsController(
         await reader.CloseAsync();
         var fields=new[]{config.Add,config.Work,config.Over,config.Rest,config.Holiday,config.WorkTime,config.OverTime,config.RestTime,config.HoliTime};
         if(fields.Any(string.IsNullOrWhiteSpace))return null;
-        if(fields.Any(field=>!Identifier.IsMatch(field)))return null;
+        if(fields.Any(field=>!WorkbenchSql.Identifier.IsMatch(field)))return null;
         // 校验配置列均为 HRM_WAGE_D 真实列（白名单），防止配置注入
         var valid=await GetWageDetailColumnsAsync(connection,token);
         return fields.All(valid.Contains)?config:null;
@@ -291,13 +290,16 @@ public sealed class JobsController(
             calc.Parameters.Add("@t",SqlDbType.NVarChar,20).Value=type;
             calc.Parameters.Add("@n",SqlDbType.NVarChar,30).Value=no;
             calc.Parameters.Add("@e",SqlDbType.NVarChar,100).Value="";
-            calc.Parameters.Add("@m",SqlDbType.NVarChar,5).Value="A";
+            calc.Parameters.Add("@m",SqlDbType.NVarChar,5).Value=WageCalcMode;
             calc.Parameters.Add("@s",SqlDbType.Int).Value=0;
             await calc.ExecuteNonQueryAsync(token);
             runs++;
         }
         return runs;
     }
+
+    /// <summary>P_HRM_WAGE_CALC 计算模式：A=全量重算（旧页面固定传值）。</summary>
+    private const string WageCalcMode = "A";
 
     private sealed record WageAdjustment(string EmpId,double Add,double Work,double Over,double Rest,double Holiday,double WorkT,double OverT,double RestT,double HoliT);
 

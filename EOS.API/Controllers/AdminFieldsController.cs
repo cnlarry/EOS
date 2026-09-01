@@ -42,6 +42,6 @@ public sealed class AdminFieldsController(
     }
 
     private async Task<bool> CanSetup(CancellationToken cancellationToken) =>
-        (await rightsRepository.GetAsync(userContext.UserId, 1204, cancellationToken)).CanSetup;
+        (await rightsRepository.GetAsync(userContext.UserId, ModuleIds.BomStructure, cancellationToken)).CanSetup;
 }
 

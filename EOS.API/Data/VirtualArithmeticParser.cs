@@ -18,7 +18,6 @@ internal sealed record VirtualArithmeticToken(string Kind, string? Table, string
 internal static class VirtualArithmeticParser
 {
     private static readonly Regex NumberPattern = new(@"^\d+(\.\d+)?$", RegexOptions.Compiled);
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     private static readonly IReadOnlyDictionary<string, (int MinArgs, int MaxArgs, bool FirstArgString)> Functions =
         new Dictionary<string, (int, int, bool)>(StringComparer.OrdinalIgnoreCase)
@@ -156,8 +155,8 @@ internal static class VirtualArithmeticParser
                     var columnStart = index;
                     while (index < raw.Length && (char.IsLetterOrDigit(raw[index]) || raw[index] == '_')) index++;
                     var column = raw[columnStart..index];
-                    if (column.Length == 0 || !Identifier.IsMatch(column)) { error = $"列名无效：{word}."; return false; }
-                    if (!Identifier.IsMatch(word)) { error = $"表名无效：{word}"; return false; }
+                    if (column.Length == 0 || !WorkbenchSql.Identifier.IsMatch(column)) { error = $"列名无效：{word}."; return false; }
+                    if (!WorkbenchSql.Identifier.IsMatch(word)) { error = $"表名无效：{word}"; return false; }
                     parsed.Add(new VirtualArithmeticToken("Ref", word, column, $"{word}.{column}"));
                     continue;
                 }

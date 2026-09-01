@@ -18,8 +18,6 @@ public sealed class UserAdminController(
     LegacyRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
-    private const int UserAdminModuleId = 2306;
-
     [HttpGet]
     public async Task<IActionResult> Users(
         [FromQuery] string? keyword = null,
@@ -61,8 +59,8 @@ public sealed class UserAdminController(
     }
 
     private async Task<bool> CanBrowse(CancellationToken token) =>
-        (await rightsRepository.GetAsync(userContext.UserId, UserAdminModuleId, token)).CanBrowse;
+        (await rightsRepository.GetAsync(userContext.UserId, PermissionModules.SystemManagement, token)).CanBrowse;
 
     private async Task<bool> CanSetup(CancellationToken token) =>
-        (await rightsRepository.GetAsync(userContext.UserId, UserAdminModuleId, token)).CanSetup;
+        (await rightsRepository.GetAsync(userContext.UserId, PermissionModules.SystemManagement, token)).CanSetup;
 }

@@ -50,7 +50,6 @@ public sealed class RestrictedExpressionService(
     ILogger<RestrictedExpressionService> logger,
     WorkbenchAuditWriter auditWriter)
 {
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly Regex QuotedString = new("^'(?:[^']|'')*'$", RegexOptions.Compiled);
     private static readonly Regex NumericLiteral = new("^[+-]?\\d+(\\.\\d+)?$", RegexOptions.Compiled);
 
@@ -146,16 +145,7 @@ public sealed class RestrictedExpressionService(
             await using var command = new SqlCommand(sql, connection);
             foreach (var (name, paramValue) in parameters)
                 command.Parameters.AddWithValue(name, paramValue);
-            await using var reader = await command.ExecuteReaderAsync(token);
-            var rows = new List<Dictionary<string, object?>>();
-            while (await reader.ReadAsync(token))
-            {
-                var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-                for (var i = 0; i < reader.FieldCount; i++)
-                    row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-                rows.Add(row);
-                if (rows.Count >= 20) break;
-            }
+            var rows = await WorkbenchSql.ReadRowsAsync(command, token);
             stopwatch.Stop();
             return new(true, [], rows, sql, stopwatch.ElapsedMilliseconds);
         }
@@ -192,7 +182,7 @@ public sealed class RestrictedExpressionService(
             RestrictedExpressionKind.DataSourceSql => "DATASOURCE_SQL",
             _ => throw new InvalidOperationException("未知表达式类型。"),
         };
-        if (!Identifier.IsMatch(table) || !Identifier.IsMatch(field))
+        if (!WorkbenchSql.Identifier.IsMatch(table) || !WorkbenchSql.Identifier.IsMatch(field))
             return new(PublishExpressionStatus.Invalid, ["表名或字段名无效。"]);
 
         await using var connection = connections.Create();
@@ -349,7 +339,7 @@ public sealed class RestrictedExpressionService(
                 return;
             }
         }
-        if (!Identifier.IsMatch(table))
+        if (!WorkbenchSql.Identifier.IsMatch(table))
         {
             errors.Add("基表名无效。");
             return;
@@ -405,7 +395,7 @@ public sealed class RestrictedExpressionService(
                 }
                 targetTable = join.Table;
             }
-            if (!await ColumnExistsAsync(connection, targetTable, refColumnName, token))
+            if (!await WorkbenchSql.ColumnExistsAsync(connection, null, targetTable, refColumnName, token))
                 errors.Add($"列 {refTableName}.{refColumnName} 在物理表中不存在。");
         }
         if (errors.Count == 0)
@@ -415,7 +405,7 @@ public sealed class RestrictedExpressionService(
     internal static string? ValidateConvertFunction(string expression)
     {
         expression = expression.Trim();
-        if (!Identifier.IsMatch(expression))
+        if (!WorkbenchSql.Identifier.IsMatch(expression))
             return "转换函数必须是受控注册表内的函数名（如 f_get_emp_name_by_id）。";
         if (!ConvertFunctionRegistry.ContainsKey(expression))
             return $"函数 {expression} 不在受控注册表内；新增函数须先登记注册表。";
@@ -433,19 +423,19 @@ public sealed class RestrictedExpressionService(
         await connection.OpenAsync(token);
         if (parsed.Table is not null)
         {
-            if (!await TableExistsAsync(connection, parsed.Table, token))
+            if (!await WorkbenchSql.TableExistsAsync(connection, parsed.Table, token))
             {
                 errors.Add($"表 {parsed.Table} 不存在。");
                 return;
             }
             foreach (var column in parsed.Columns)
             {
-                if (!await ColumnExistsAsync(connection, parsed.Table, column, token))
+                if (!await WorkbenchSql.ColumnExistsAsync(connection, null, parsed.Table, column, token))
                     errors.Add($"列 {parsed.Table}.{column} 在物理表中不存在。");
             }
-            if (parsed.WhereColumn is not null && !await ColumnExistsAsync(connection, parsed.Table, parsed.WhereColumn, token))
+            if (parsed.WhereColumn is not null && !await WorkbenchSql.ColumnExistsAsync(connection, null, parsed.Table, parsed.WhereColumn, token))
                 errors.Add($"WHERE 列 {parsed.Table}.{parsed.WhereColumn} 在物理表中不存在。");
-            if (parsed.OrderColumn is not null && !await ColumnExistsAsync(connection, parsed.Table, parsed.OrderColumn, token))
+            if (parsed.OrderColumn is not null && !await WorkbenchSql.ColumnExistsAsync(connection, null, parsed.Table, parsed.OrderColumn, token))
                 errors.Add($"ORDER BY 列 {parsed.Table}.{parsed.OrderColumn} 在物理表中不存在。");
         }
         if (errors.Count == 0 && parsed.Table is not null)
@@ -571,7 +561,7 @@ public sealed class RestrictedExpressionService(
             .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
             .Select(column => column.Trim('[', ']', ' '))
             .ToList();
-        if (columns.Count == 0 || columns.Count > 20 || columns.Any(column => !Identifier.IsMatch(column)))
+        if (columns.Count == 0 || columns.Count > 20 || columns.Any(column => !WorkbenchSql.Identifier.IsMatch(column)))
         {
             error = "SELECT 列清单无效（每列须为简单标识符，最多 20 列）。";
             return false;
@@ -620,7 +610,7 @@ public sealed class RestrictedExpressionService(
                 return false;
             }
             orderColumn = orderTokens[0].Trim('[', ']');
-            if (!Identifier.IsMatch(orderColumn))
+            if (!WorkbenchSql.Identifier.IsMatch(orderColumn))
             {
                 error = "ORDER BY 列名无效。";
                 return false;
@@ -633,7 +623,7 @@ public sealed class RestrictedExpressionService(
             }
         }
         var tableName = tableClause.Trim('[', ']', ' ');
-        if (!Identifier.IsMatch(tableName))
+        if (!WorkbenchSql.Identifier.IsMatch(tableName))
         {
             error = "FROM 表名无效。";
             return false;
@@ -679,24 +669,6 @@ public sealed class RestrictedExpressionService(
         return -1;
     }
 
-    private static async Task<bool> TableExistsAsync(SqlConnection connection, string table, CancellationToken token)
-    {
-        await using var command = new SqlCommand(
-            "SELECT CASE WHEN EXISTS (SELECT 1 FROM sys.objects o JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND o.type IN ('U','V')) THEN 1 ELSE 0 END;",
-            connection);
-        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
-        return (int)(await command.ExecuteScalarAsync(token) ?? 0) == 1;
-    }
-
-    private static async Task<bool> ColumnExistsAsync(SqlConnection connection, string table, string column, CancellationToken token)
-    {
-        await using var command = new SqlCommand(
-            "SELECT CASE WHEN EXISTS (SELECT 1 FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name=@Column) THEN 1 ELSE 0 END;",
-            connection);
-        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
-        command.Parameters.Add("@Column", SqlDbType.NVarChar, 100).Value = column;
-        return (int)(await command.ExecuteScalarAsync(token) ?? 0) == 1;
-    }
 }
 
 public enum PublishExpressionStatus

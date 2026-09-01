@@ -1,5 +1,4 @@
 using System.Data;
-using System.Text.RegularExpressions;
 using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Telemetry;
@@ -19,7 +18,6 @@ public sealed class PrintService(
     WorkbenchScopeFilter scopeFilter,
     ILogger<PrintService> logger)
 {
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     public async Task<PrintData?> GetPrintDataAsync(
         WorkbenchDefinition definition,
@@ -52,7 +50,7 @@ public sealed class PrintService(
 
         IReadOnlyList<PrintField> detailFields=[];
         IReadOnlyList<IReadOnlyDictionary<string,object?>> details=[];
-        if(detailTable is { Length: >0 }&&Identifier.IsMatch(detailTable))
+        if(detailTable is { Length: >0 }&&WorkbenchSql.Identifier.IsMatch(detailTable))
         {
             detailFields=await ReadFieldsAsync(connection,detailTable,canViewCost,canViewSecrecy,deniedDetailFields,token);
             details=await ReadRowsAsync(connection,detailTable,pkOrder,keyValues,detailFields.Select(field=>field.Key).ToList(),token);
