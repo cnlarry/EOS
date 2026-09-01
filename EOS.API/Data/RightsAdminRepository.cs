@@ -201,7 +201,8 @@ public sealed class RightsAdminRepository(
     DbConnectionFactory connections,
     NavigationRepository navigationRepository,
     EOS.API.Security.PermissionCache permissionCache,
-    ILogger<RightsAdminRepository> logger)
+    ILogger<RightsAdminRepository> logger,
+    WorkbenchAuditWriter auditWriter)
 {
     private const int AuditModuleId = 2306;
 
@@ -1237,18 +1238,11 @@ public sealed class RightsAdminRepository(
     private static object AddOrNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? DBNull.Value : value;
 
-    private static async Task WriteAuditAsync(
+    private async Task WriteAuditAsync(
         SqlConnection connection, SqlTransaction transaction, string record, string content,
         string by, CancellationToken token, string type = "RIGHTS_SAVE")
     {
-        await using var command = new SqlCommand(
-            "INSERT INTO dbo.SYSDF (M_IDX,RECORD_IDX,CONTENT,TYPE,EXEC_BY,EXEC_DATE,OPERFLAG) VALUES (2306,@Record,@Content,@Type,@By,GETDATE(),1);",
-            connection, transaction);
-        command.Parameters.Add("@Record", SqlDbType.NVarChar, 100).Value = record;
-        command.Parameters.Add("@Content", SqlDbType.NVarChar, 1000).Value = content;
-        command.Parameters.Add("@Type", SqlDbType.NVarChar, 50).Value = type;
-        command.Parameters.Add("@By", SqlDbType.NVarChar, 50).Value = by;
-        await command.ExecuteNonQueryAsync(token);
+        await auditWriter.WriteAsync(connection, transaction, AuditModuleId, record, type, content, by, token);
     }
 
     private async Task EnsureUserExistsAsync(string userId, CancellationToken token)

@@ -47,7 +47,8 @@ public sealed record ExpressionOverview(
 /// </summary>
 public sealed class RestrictedExpressionService(
     DbConnectionFactory connections,
-    ILogger<RestrictedExpressionService> logger)
+    ILogger<RestrictedExpressionService> logger,
+    WorkbenchAuditWriter auditWriter)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly Regex QuotedString = new("^'(?:[^']|'')*'$", RegexOptions.Compiled);
@@ -125,13 +126,22 @@ public sealed class RestrictedExpressionService(
         string? generatedSql = null;
         try
         {
-            var (sql, parameters) = kind switch
+            (string Sql, List<(string Name, object? Value)> Parameters) built;
+            switch (kind)
             {
-                RestrictedExpressionKind.VirtualExp => BuildVirtualPreviewSql(connection, table, field, value, token).GetAwaiter().GetResult(),
-                RestrictedExpressionKind.ConvertFunction => BuildConvertPreviewSql(table, field, value),
-                RestrictedExpressionKind.DataSourceSql => BuildDataSourcePreviewSql(value),
-                _ => throw new InvalidOperationException("未知表达式类型。"),
-            };
+                case RestrictedExpressionKind.VirtualExp:
+                    built = await BuildVirtualPreviewSql(connection, table, field, value, token);
+                    break;
+                case RestrictedExpressionKind.ConvertFunction:
+                    built = BuildConvertPreviewSql(table, field, value);
+                    break;
+                case RestrictedExpressionKind.DataSourceSql:
+                    built = BuildDataSourcePreviewSql(value);
+                    break;
+                default:
+                    throw new InvalidOperationException("未知表达式类型。");
+            }
+            var (sql, parameters) = built;
             generatedSql = sql;
             await using var command = new SqlCommand(sql, connection);
             foreach (var (name, paramValue) in parameters)
@@ -216,16 +226,10 @@ public sealed class RestrictedExpressionService(
                 update.Parameters.Add("@Field", SqlDbType.NVarChar, 100).Value = field.Trim();
                 await update.ExecuteNonQueryAsync(token);
             }
-            await using (var audit = new SqlCommand(
-                "INSERT INTO dbo.SYSDF (M_IDX,RECORD_IDX,CONTENT,TYPE,EXEC_BY,EXEC_DATE,OPERFLAG) VALUES (2302,@Record,@Content,'EXPR_PUBLISH',@By,GETDATE(),1);",
-                connection, transaction))
-            {
-                audit.Parameters.AddWithValue("@Record", $"{table.Trim()}.{field.Trim()}");
-                audit.Parameters.AddWithValue("@Content",
-                    $"[{kind}] {column} {table.Trim()}.{field.Trim()}：{(string.IsNullOrEmpty(current) ? "(空)" : current)} → {(string.IsNullOrEmpty(value) ? "(空)" : value)}（白名单 v{version}，发布人 {employeeName}）");
-                audit.Parameters.AddWithValue("@By", userId);
-                await audit.ExecuteNonQueryAsync(token);
-            }
+            var record = $"{table.Trim()}.{field.Trim()}";
+            var content =
+                $"[{kind}] {column} {record}：{(string.IsNullOrEmpty(current) ? "(空)" : current)} → {(string.IsNullOrEmpty(value) ? "(空)" : value)}（白名单 v{version}，发布人 {employeeName}）";
+            await auditWriter.WriteAsync(connection, transaction, 2302, record, "EXPR_PUBLISH", content, userId, token);
             await transaction.CommitAsync(token);
             logger.LogInformation("受控表达式发布 kind={Kind} table={Table} field={Field} by={User}", kind, table, field, userId);
             return new(PublishExpressionStatus.Published, []);

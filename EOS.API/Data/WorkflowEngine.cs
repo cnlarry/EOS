@@ -590,7 +590,7 @@ public sealed class WorkflowEngine(
         return result is not null && Convert.ToInt32(result) == 1;
     }
 
-    /// <summary>主表物理列白名单（INFORMATION_SCHEMA，服务端权威），供条件评估使用。</summary>
+    /// <summary>主表物理列白名单（sys.columns 目录视图，服务端权威），供条件评估使用。</summary>
     private static async Task<HashSet<string>> LoadMasterColumnsAsync(
         SqlConnection connection, SqlTransaction transaction, string masterTable, CancellationToken token)
     {

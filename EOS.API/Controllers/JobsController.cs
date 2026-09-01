@@ -221,7 +221,7 @@ public sealed class JobsController(
     /// <summary>
     /// 依薪资调整考勤（180505 受控移植）：按当月工资表 WAGE_ADD&lt;0（扣款）的员工，
     /// 从节假日加班→休息日加班→平时加班→正常工时依次清空 HRM_DIARY 对应字段，
-    /// 调整前后各执行一次 P_HRM_WAGE_CALC（受控白名单 SP）。
+    /// 调整前执行一次 P_HRM_WAGE_CALC（受控白名单 SP）。
     /// HR_SETUP 的薪资调整项目列名须为 HRM_WAGE_D 真实列（白名单校验），全部值参数化。
     /// </summary>
     [HttpPost("attendance-adjust-wage")]
@@ -241,9 +241,7 @@ public sealed class JobsController(
         var calcCount=await RunWageCalcForMonthAsync(connection,null,month,token);
         var adjustments=await LoadWageAdjustmentsAsync(connection,null,month,wageFields,token);
         var affected=await AdjustDiaryByWageAsync(connection,null,adjustments,wageFields,token);
-        // TODO: 临时诊断字段，验证后移除
-        var recalcCount=await RunWageCalcForMonthAsync(connection,null,month,token);
-        return Ok(new{Month=month,WageCalcRuns=calcCount+recalcCount,AdjustedEmployees=adjustments.Count,ClearedDiaryRows=affected});
+        return Ok(new{Month=month,WageCalcRuns=calcCount,AdjustedEmployees=adjustments.Count,ClearedDiaryRows=affected});
     }
 
     private static readonly Regex MonthKey=new("^\\d{6}$",RegexOptions.Compiled);
@@ -332,8 +330,16 @@ public sealed class JobsController(
         SqlConnection connection,SqlTransaction? transaction,IReadOnlyList<WageAdjustment> adjustments,WageAdjustConfig c,CancellationToken token)
     {
         if(adjustments.Count==0)return 0;
-        var empIds=string.Join(',',adjustments.Select(a=>$"'{(a.EmpId.Replace("'","''"))}'"));
-        var diaryRows=await LoadDiaryRowsAsync(connection,transaction,empIds,c,token);
+        // 员工集合入临时表（值参数化，替代 IN 字符串拼接，消除二阶注入面）
+        await using (var createTemp=new SqlCommand("CREATE TABLE #wage_emps(EMP_ID nchar(10) PRIMARY KEY);",connection,transaction))
+            await createTemp.ExecuteNonQueryAsync(token);
+        foreach(var wage in adjustments)
+        {
+            await using var insert=new SqlCommand("INSERT INTO #wage_emps(EMP_ID) VALUES(@id);",connection,transaction);
+            insert.Parameters.Add("@id",SqlDbType.NChar,10).Value=wage.EmpId;
+            await insert.ExecuteNonQueryAsync(token);
+        }
+        var diaryRows=await LoadDiaryRowsAsync(connection,transaction,c,token);
         var timeTypes=await LoadTimeTypesAsync(connection,transaction,token);
         var affected=0;
         foreach(var wage in adjustments)
@@ -343,16 +349,36 @@ public sealed class JobsController(
             // 节假日加班 → 休息日加班 → 平时加班 → 正常工时
             if(dAdd<10&&wage.Holiday>0&&wage.HoliT>0)
                 foreach(var row in rows.Where(r=>r.HolidayOvertime>0).ToList())
-                    if(dAdd<10){ dAdd+=wage.Holiday/wage.HoliT*row.HolidayOvertime; ClearDiaryRow(connection,transaction,row,"holiday",timeTypes,token).GetAwaiter().GetResult(); affected++; } else break;
+                {
+                    if(dAdd>=10)break;
+                    dAdd+=wage.Holiday/wage.HoliT*row.HolidayOvertime;
+                    await ClearDiaryRow(connection,transaction,row,"holiday",timeTypes,token);
+                    affected++;
+                }
             if(dAdd<10&&wage.Rest>0&&wage.RestT>0)
                 foreach(var row in rows.Where(r=>r.RestOvertime>0).ToList())
-                    if(dAdd<10){ dAdd+=wage.Rest/wage.RestT*row.RestOvertime; ClearDiaryRow(connection,transaction,row,"rest",timeTypes,token).GetAwaiter().GetResult(); affected++; } else break;
+                {
+                    if(dAdd>=10)break;
+                    dAdd+=wage.Rest/wage.RestT*row.RestOvertime;
+                    await ClearDiaryRow(connection,transaction,row,"rest",timeTypes,token);
+                    affected++;
+                }
             if(dAdd<10&&wage.Over>0&&wage.OverT>0)
                 foreach(var row in rows.Where(r=>r.Overtime>0).ToList())
-                    if(dAdd<10){ dAdd+=wage.Over/wage.OverT*row.Overtime; ClearDiaryRow(connection,transaction,row,"over",timeTypes,token).GetAwaiter().GetResult(); affected++; } else break;
+                {
+                    if(dAdd>=10)break;
+                    dAdd+=wage.Over/wage.OverT*row.Overtime;
+                    await ClearDiaryRow(connection,transaction,row,"over",timeTypes,token);
+                    affected++;
+                }
             if(dAdd<10&&wage.Work>0&&wage.WorkT>0)
                 foreach(var row in rows.Where(r=>r.Worktime>0).ToList())
-                    if(dAdd<10){ dAdd+=wage.Work/wage.WorkT*row.Worktime; ClearDiaryRow(connection,transaction,row,"work",timeTypes,token).GetAwaiter().GetResult(); affected++; } else break;
+                {
+                    if(dAdd>=10)break;
+                    dAdd+=wage.Work/wage.WorkT*row.Worktime;
+                    await ClearDiaryRow(connection,transaction,row,"work",timeTypes,token);
+                    affected++;
+                }
         }
         return affected;
     }
@@ -360,12 +386,13 @@ public sealed class JobsController(
     private sealed record DiaryRow(string EmpId,DateTime CountDate,string? TimeTypeId,double Worktime,double Overtime,double RestOvertime,double HolidayOvertime);
 
     private static async Task<IReadOnlyList<DiaryRow>> LoadDiaryRowsAsync(
-        SqlConnection connection,SqlTransaction? transaction,string empIds,WageAdjustConfig c,CancellationToken token)
+        SqlConnection connection,SqlTransaction? transaction,WageAdjustConfig c,CancellationToken token)
     {
         var sql=$"""
-            SELECT LTRIM(RTRIM(EMP_ID)),COUNT_DATE,LTRIM(RTRIM(ISNULL(TIMETYPE_ID,''))),ISNULL(WORKTIME,0),ISNULL(OVERTIME,0),ISNULL(REST_OVERTIME,0),ISNULL(HOLIDAY_OVERTIME,0)
-            FROM dbo.HRM_DIARY WITH (NOLOCK)
-            WHERE EMP_ID IN ({empIds}) AND (ISNULL(WORKTIME,0)>0 OR ISNULL(OVERTIME,0)>0 OR ISNULL(REST_OVERTIME,0)>0 OR ISNULL(HOLIDAY_OVERTIME,0)>0);
+            SELECT LTRIM(RTRIM(d.EMP_ID)),d.COUNT_DATE,LTRIM(RTRIM(ISNULL(d.TIMETYPE_ID,''))),ISNULL(d.WORKTIME,0),ISNULL(d.OVERTIME,0),ISNULL(d.REST_OVERTIME,0),ISNULL(d.HOLIDAY_OVERTIME,0)
+            FROM dbo.HRM_DIARY d WITH (NOLOCK)
+            INNER JOIN #wage_emps w ON w.EMP_ID=d.EMP_ID
+            WHERE (ISNULL(d.WORKTIME,0)>0 OR ISNULL(d.OVERTIME,0)>0 OR ISNULL(d.REST_OVERTIME,0)>0 OR ISNULL(d.HOLIDAY_OVERTIME,0)>0);
             """;
         await using var command=new SqlCommand(sql,connection,transaction);
         await using var reader=await command.ExecuteReaderAsync(token);

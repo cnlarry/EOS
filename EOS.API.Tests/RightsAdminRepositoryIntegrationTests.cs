@@ -37,7 +37,10 @@ public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
             connections,
             new NavigationRepository(connections, NullLogger<NavigationRepository>.Instance),
             new EOS.API.Security.PermissionCache(config),
-            NullLogger<RightsAdminRepository>.Instance);
+            NullLogger<RightsAdminRepository>.Instance,
+            new WorkbenchAuditWriter(connections, new Microsoft.AspNetCore.Http.HttpContextAccessor(),
+                new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance),
+                Microsoft.Extensions.Options.Options.Create(new EOS.API.Models.AuditSettings())));
     }
 
     [Fact]

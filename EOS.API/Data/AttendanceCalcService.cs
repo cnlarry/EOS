@@ -116,8 +116,8 @@ public sealed class AttendanceCalcService(
                 {
                     var exchangeMonth = DateTime.Parse(exchange.EndDay, CultureInfo.InvariantCulture).ToString("yyyyMM", CultureInfo.InvariantCulture);
                     var exchangeDay = $"DAY_{DateTime.Parse(exchange.EndDay, CultureInfo.InvariantCulture).Day:00}";
-                    timeTypeId = await LoadPlanDayAsync(connection, exchangeMonth, exchangeDay, [empId], token)
-                        .ContinueWith(t => t.Result.GetValueOrDefault(empId), token);
+                    var exchangedPlan = await LoadPlanDayAsync(connection, exchangeMonth, exchangeDay, [empId], token);
+                    timeTypeId = exchangedPlan.GetValueOrDefault(empId);
                 }
                 if (string.IsNullOrWhiteSpace(timeTypeId) || !timeTypes.TryGetValue(timeTypeId.Trim(), out var tt))
                 {
