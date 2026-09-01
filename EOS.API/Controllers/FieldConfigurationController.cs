@@ -18,7 +18,7 @@ public sealed class FieldConfigurationController(
         [FromQuery] string scope = "master",
         CancellationToken cancellationToken = default)
     {
-        var rights = await rightsRepository.GetAsync(userContext.UserId, 1204, cancellationToken);
+        var rights = await rightsRepository.GetAsync(userContext.UserId, ModuleIds.BomStructure, cancellationToken);
         if (!rights.CanBrowse) return Forbid();
         var deniedFields = scope == "detail" ? rights.DeniedDetailFields : rights.DeniedMasterFields;
         return Ok(await repository.GetAsync(
@@ -55,7 +55,7 @@ public sealed class FieldConfigurationController(
                 "单个表格最多允许选择 100 个字段。"));
         }
 
-        var rights = await rightsRepository.GetAsync(userContext.UserId, 1204, cancellationToken);
+        var rights = await rightsRepository.GetAsync(userContext.UserId, ModuleIds.BomStructure, cancellationToken);
         if (!rights.CanBrowse) return Forbid();
         var deniedFields = request.Scope == "detail" ? rights.DeniedDetailFields : rights.DeniedMasterFields;
         await repository.SaveAsync(

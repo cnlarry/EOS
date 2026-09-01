@@ -38,7 +38,6 @@ public static class ChooserFilterCompiler
     };
 
     private const int MaxNestingDepth = 8;
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     /// <summary>模板 token：{m.X}/{d.X}/{module}/{X}（大小写不敏感）。</summary>
     private static readonly Regex TemplateToken = new(
@@ -70,7 +69,7 @@ public static class ChooserFilterCompiler
         {
             return new ChooserFilterCompileResult("", [], [], []);
         }
-        if (!Identifier.IsMatch(sourceTable))
+        if (!WorkbenchSql.Identifier.IsMatch(sourceTable))
         {
             return null;
         }
@@ -302,7 +301,7 @@ public static class ChooserFilterCompiler
                 return null;
             }
             var function = sub.Function.Trim();
-            if (!Identifier.IsMatch(function))
+            if (!WorkbenchSql.Identifier.IsMatch(function))
             {
                 return null;
             }
@@ -323,12 +322,12 @@ public static class ChooserFilterCompiler
             var segments = new List<string>();
             foreach (var t in tables)
             {
-                if (!Identifier.IsMatch(t.Table))
+                if (!WorkbenchSql.Identifier.IsMatch(t.Table))
                 {
                     return null;
                 }
                 var alias = string.IsNullOrWhiteSpace(t.Alias) ? t.Table : t.Alias.Trim();
-                if (!Identifier.IsMatch(alias) || !aliases.Add(alias))
+                if (!WorkbenchSql.Identifier.IsMatch(alias) || !aliases.Add(alias))
                 {
                     return null;
                 }
@@ -360,7 +359,7 @@ public static class ChooserFilterCompiler
             case "IN":
             case "NOT_IN":
             {
-                if (string.IsNullOrWhiteSpace(sub.Column) || !Identifier.IsMatch(sub.Column.Trim()))
+                if (string.IsNullOrWhiteSpace(sub.Column) || !WorkbenchSql.Identifier.IsMatch(sub.Column.Trim()))
                 {
                     return null;
                 }
@@ -380,7 +379,7 @@ public static class ChooserFilterCompiler
             }
             case "IN_FUNCTION":
             {
-                if (string.IsNullOrWhiteSpace(sub.Column) || !Identifier.IsMatch(sub.Column.Trim()))
+                if (string.IsNullOrWhiteSpace(sub.Column) || !WorkbenchSql.Identifier.IsMatch(sub.Column.Trim()))
                 {
                     return null;
                 }
@@ -419,7 +418,7 @@ public static class ChooserFilterCompiler
         var name = field.Trim();
         if (explicitTable is not null)
         {
-            if (!Identifier.IsMatch(explicitTable) || !Identifier.IsMatch(name))
+            if (!WorkbenchSql.Identifier.IsMatch(explicitTable) || !WorkbenchSql.Identifier.IsMatch(name))
             {
                 return null;
             }
@@ -439,7 +438,7 @@ public static class ChooserFilterCompiler
         var dot = name.IndexOf('.');
         if (dot < 0)
         {
-            if (!Identifier.IsMatch(name))
+            if (!WorkbenchSql.Identifier.IsMatch(name))
             {
                 return null;
             }
@@ -447,7 +446,7 @@ public static class ChooserFilterCompiler
         }
         var table = name[..dot].Trim();
         var column = name[(dot + 1)..].Trim();
-        if (!Identifier.IsMatch(table) || !Identifier.IsMatch(column))
+        if (!WorkbenchSql.Identifier.IsMatch(table) || !WorkbenchSql.Identifier.IsMatch(column))
         {
             return null;
         }

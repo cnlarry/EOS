@@ -1,5 +1,4 @@
 using System.Data;
-using System.Text.RegularExpressions;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -14,7 +13,6 @@ namespace EOS.API.Data;
 /// </summary>
 public sealed class SearchCenterRepository(DbConnectionFactory connections, ILogger<SearchCenterRepository> logger)
 {
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     public async Task<IReadOnlyList<SearchableModule>> GetModulesAsync(CancellationToken token)
     {
@@ -45,7 +43,7 @@ public sealed class SearchCenterRepository(DbConnectionFactory connections, ILog
         IReadOnlySet<string> deniedFields,
         CancellationToken token)
     {
-        if(!Identifier.IsMatch(table))return null;
+        if(!WorkbenchSql.Identifier.IsMatch(table))return null;
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
         const string moduleSql="""
@@ -69,7 +67,7 @@ public sealed class SearchCenterRepository(DbConnectionFactory connections, ILog
         if(isMaster&&!search1)return null;
         if(isDetail&&!search2)return null;
         var fields=await ReadFieldsAsync(connection,table,canViewCost,canViewSecrecy,deniedFields,token);
-        var pkOrder=await GetPrimaryKeyColumnsAsync(connection,table,token);
+        var pkOrder=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,table,token);
         return new SearchDefinition(moduleId,title,table,fields,fields,pkOrder);
     }
 
@@ -172,23 +170,4 @@ public sealed class SearchCenterRepository(DbConnectionFactory connections, ILog
         return result;
     }
 
-    private static async Task<IReadOnlyList<string>> GetPrimaryKeyColumnsAsync(SqlConnection connection,string table,CancellationToken token)
-    {
-        const string sql="""
-            SELECT c.name AS COLUMN_NAME
-            FROM sys.indexes i
-            JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            JOIN sys.tables t ON i.object_id = t.object_id
-            JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = N'dbo' AND t.name = @Table AND i.is_primary_key = 1
-            ORDER BY ic.key_ordinal;
-            """;
-        await using var command=new SqlCommand(sql,connection);
-        command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
-        await using var reader=await command.ExecuteReaderAsync(token);
-        var result=new List<string>();
-        while(await reader.ReadAsync(token))result.Add(reader.GetString(0));
-        return result;
-    }
 }

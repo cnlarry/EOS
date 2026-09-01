@@ -1,5 +1,6 @@
 using System.Data;
 using EOS.API.Models;
+using EOS.API.Security;
 using Microsoft.Data.SqlClient;
 
 using EOS.API.Telemetry;
@@ -204,8 +205,6 @@ public sealed class RightsAdminRepository(
     ILogger<RightsAdminRepository> logger,
     WorkbenchAuditWriter auditWriter)
 {
-    private const int AuditModuleId = 2306;
-
     private static readonly string[] ModuleRowColumns =
     [
         "M_IDX",
@@ -1242,7 +1241,7 @@ public sealed class RightsAdminRepository(
         SqlConnection connection, SqlTransaction transaction, string record, string content,
         string by, CancellationToken token, string type = "RIGHTS_SAVE")
     {
-        await auditWriter.WriteAsync(connection, transaction, AuditModuleId, record, type, content, by, token);
+        await auditWriter.WriteAsync(connection, transaction, PermissionModules.SystemManagement, record, type, content, by, token);
     }
 
     private async Task EnsureUserExistsAsync(string userId, CancellationToken token)

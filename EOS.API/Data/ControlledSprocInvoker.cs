@@ -1,6 +1,5 @@
 using Microsoft.Data.SqlClient;
 using System.Data;
-using System.Text.RegularExpressions;
 
 namespace EOS.API.Data;
 
@@ -14,7 +13,6 @@ public sealed record SprocResult(bool Success, string? Message);
 /// </summary>
 public sealed class ControlledSprocInvoker(DbConnectionFactory connections, ILogger<ControlledSprocInvoker> logger)
 {
-    private static readonly Regex SprocName = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     /// <summary>
     /// 构造旧系统 SP 需要的主键条件（@pri_idx / @key_value），如 [QUOTE_TYPE]='BJK' AND [QUOTE_NO]='BJK26080001'。
@@ -124,7 +122,7 @@ public sealed class ControlledSprocInvoker(DbConnectionFactory connections, ILog
     /// （MODULES.UPDATE_SP / AFTERSAVE_SP 元数据或静态白名单），由调用方保证。
     /// </summary>
     private bool IsAllowed(string sprocName) =>
-        !string.IsNullOrWhiteSpace(sprocName) && SprocName.IsMatch(sprocName);
+        !string.IsNullOrWhiteSpace(sprocName) && WorkbenchSql.Identifier.IsMatch(sprocName);
 
     /// <summary>
     /// 存储过程消息可能包含换行/制表符，统一压缩为单行展示文本。

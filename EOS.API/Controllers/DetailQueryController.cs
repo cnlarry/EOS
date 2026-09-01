@@ -35,7 +35,7 @@ public sealed class DetailQueryController(
 
     private static readonly IReadOnlyDictionary<int, QuerySpec> Specs = new Dictionary<int, QuerySpec>
     {
-        [14996] = new(14996, "待生产订单明细",
+        [ModuleIds.DetailQueryOrder] = new(ModuleIds.DetailQueryOrder, "待生产订单明细",
             [
                 new("ORDER_TYPE", "单别", "nvarchar"),
                 new("ORDER_NO", "订单号", "nvarchar"),
@@ -61,7 +61,7 @@ public sealed class DetailQueryController(
             """,
             "m.ORDER_DATE DESC, m.ORDER_TYPE, m.ORDER_NO, d.SERIAL_NO",
             command => command.Parameters.Add("@dateFrom", SqlDbType.DateTime).Value = new DateTime(2014, 10, 1)),
-        [14998] = new(14998, "客户逾期未对帐",
+        [ModuleIds.DetailQuerySend] = new(ModuleIds.DetailQuerySend, "客户逾期未对帐",
             [
                 new("SEND_TYPE", "单别", "nvarchar"),
                 new("SEND_NO", "送货单号", "nvarchar"),
@@ -84,7 +84,7 @@ public sealed class DetailQueryController(
             """,
             "m.SEND_DATE DESC, m.SEND_TYPE, m.SEND_NO, d.SERIAL_NO",
             command => command.Parameters.Add("@dateBoundary", SqlDbType.DateTime).Value = LastMonth26()),
-        [170297] = new(170297, "厂商逾期未对账",
+        [ModuleIds.DetailQueryReceive] = new(ModuleIds.DetailQueryReceive, "厂商逾期未对账",
             [
                 new("RECEIVE_TYPE", "单别", "nvarchar"),
                 new("RECEIVE_NO", "收料单号", "nvarchar"),
@@ -134,14 +134,7 @@ public sealed class DetailQueryController(
         command.Parameters.Add("@PageSize", SqlDbType.Int).Value = pageSize;
         var formats = await ReadDisplayFormatsAsync(connection, spec, token);
         await using var reader = await command.ExecuteReaderAsync(token);
-        var rows = new List<Dictionary<string, object?>>();
-        while (await reader.ReadAsync(token))
-        {
-            var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < reader.FieldCount; i++)
-                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-            rows.Add(row);
-        }
+        var rows = await WorkbenchSql.ReadRowsAsync(reader, token);
         await reader.NextResultAsync(token);
         await reader.ReadAsync(token);
         var total = Convert.ToInt32(reader.GetInt64(0));
@@ -174,9 +167,9 @@ public sealed class DetailQueryController(
         await using var command = new SqlCommand(string.Format(sql, string.Join(',', parameters)), connection);
         command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = spec.ModuleId switch
         {
-            14996 => "COP_ORDER_D",
-            14998 => "COP_SEND_D",
-            170297 => "PUR_RECEIVE_D",
+            ModuleIds.DetailQueryOrder => "COP_ORDER_D",
+            ModuleIds.DetailQuerySend => "COP_SEND_D",
+            ModuleIds.DetailQueryReceive => "PUR_RECEIVE_D",
             _ => "COP_ORDER_D",
         };
         for (var i = 0; i < keys.Count; i++)

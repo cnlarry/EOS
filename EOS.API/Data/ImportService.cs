@@ -1,6 +1,5 @@
 using System.Data;
 using System.Text;
-using System.Text.RegularExpressions;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -15,7 +14,6 @@ namespace EOS.API.Data;
 /// </summary>
 public sealed class ImportService(DbConnectionFactory connections, ILogger<ImportService> logger)
 {
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     public async Task<IReadOnlyList<ImportTable>> GetTablesAsync(CancellationToken token)
     {
@@ -39,14 +37,14 @@ public sealed class ImportService(DbConnectionFactory connections, ILogger<Impor
         while(await reader.ReadAsync(token))
         {
             var table=reader.GetString(0);
-            if(!Identifier.IsMatch(table))continue;
+            if(!WorkbenchSql.Identifier.IsMatch(table))continue;
             tables.Add((table,reader.GetString(1)));
         }
         await reader.DisposeAsync();
         var result=new List<ImportTable>();
         foreach(var (table,desc) in tables)
         {
-            var pks=await GetPrimaryKeyColumnsAsync(connection,table,token);
+            var pks=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,table,token);
             if(pks.Count==0)continue;
             result.Add(new ImportTable(table,desc,pks));
         }
@@ -55,11 +53,11 @@ public sealed class ImportService(DbConnectionFactory connections, ILogger<Impor
 
     public async Task<ImportDefinition?> GetDefinitionAsync(string table,CancellationToken token)
     {
-        if(!Identifier.IsMatch(table))return null;
+        if(!WorkbenchSql.Identifier.IsMatch(table))return null;
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
-        if(!await TableExistsAsync(connection,table,token))return null;
-        var pks=await GetPrimaryKeyColumnsAsync(connection,table,token);
+        if(!await WorkbenchSql.TableExistsAsync(connection,table,token))return null;
+        var pks=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,table,token);
         if(pks.Count==0)return null;
         const string sql="""
             SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),
@@ -103,7 +101,7 @@ public sealed class ImportService(DbConnectionFactory connections, ILogger<Impor
         string employeeName,
         CancellationToken token)
     {
-        if(!Identifier.IsMatch(request.Table))return new(0,request.Rows.Count,[new(0,"表名不合法。")]);
+        if(!WorkbenchSql.Identifier.IsMatch(request.Table))return new(0,request.Rows.Count,[new(0,"表名不合法。")]);
         var definition=await GetDefinitionAsync(request.Table,token);
         if(definition is null)return new(0,request.Rows.Count,[new(0,"表不存在或缺少主键。")]);
         var fieldMap=definition.Fields.ToDictionary(field=>field.Key,StringComparer.OrdinalIgnoreCase);
@@ -210,34 +208,6 @@ public sealed class ImportService(DbConnectionFactory connections, ILogger<Impor
     }
 
     private static object NormalizeValue(object? value)=>value??DBNull.Value;
-
-    private static async Task<bool> TableExistsAsync(SqlConnection connection,string table,CancellationToken token)
-    {
-        const string sql="SELECT 1 FROM sys.objects o JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND o.type IN ('U','V');";
-        await using var command=new SqlCommand(sql,connection);
-        command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
-        return await command.ExecuteScalarAsync(token) is not null;
-    }
-
-    private static async Task<IReadOnlyList<string>> GetPrimaryKeyColumnsAsync(SqlConnection connection,string table,CancellationToken token)
-    {
-        const string sql="""
-            SELECT c.name AS COLUMN_NAME
-            FROM sys.indexes i
-            JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            JOIN sys.tables t ON i.object_id = t.object_id
-            JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = N'dbo' AND t.name = @Table AND i.is_primary_key = 1
-            ORDER BY ic.key_ordinal;
-            """;
-        await using var command=new SqlCommand(sql,connection);
-        command.Parameters.Add("@Table",SqlDbType.NVarChar,100).Value=table;
-        await using var reader=await command.ExecuteReaderAsync(token);
-        var result=new List<string>();
-        while(await reader.ReadAsync(token))result.Add(reader.GetString(0));
-        return result;
-    }
 
     private static List<List<string>> ParseCsvRows(string csvText)
     {

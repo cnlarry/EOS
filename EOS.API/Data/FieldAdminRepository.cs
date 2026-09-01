@@ -14,7 +14,6 @@ public sealed class FieldAdminRepository(
     WorkbenchAuditWriter auditWriter,
     ILogger<FieldAdminRepository> logger)
 {
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly HashSet<string> AllowedTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "nvarchar", "varchar", "nchar", "char", "int", "bigint", "smallint", "tinyint", "decimal", "numeric",
@@ -72,7 +71,7 @@ public sealed class FieldAdminRepository(
         while (await reader.ReadAsync(token))
         {
             var table = reader.GetString(0);
-            if (Identifier.IsMatch(table))
+            if (WorkbenchSql.Identifier.IsMatch(table))
                 result.Add(new(table, reader.GetString(1), NullIfEmpty(reader.GetString(2)), NullIfEmpty(reader.GetString(3)),
                     reader.GetInt32(4), reader.GetInt32(5), reader.GetInt32(6)));
         }
@@ -452,7 +451,7 @@ public sealed class FieldAdminRepository(
         {
             if (total == 0) total = Convert.ToInt32(reader.GetValue(12));
             var field = reader.GetString(0).Trim();
-            if (!Identifier.IsMatch(field)) continue;
+            if (!WorkbenchSql.Identifier.IsMatch(field)) continue;
             items.Add(new(tableId, field, reader.GetString(1), reader.GetString(2),
                 reader.GetBoolean(3), reader.GetBoolean(4), reader.GetBoolean(5), reader.GetBoolean(6),
                 reader.GetBoolean(7), reader.GetBoolean(8), reader.GetBoolean(9),
@@ -484,7 +483,7 @@ public sealed class FieldAdminRepository(
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token)) return null;
         var field = reader.GetString(0).Trim();
-        if (!Identifier.IsMatch(field)) return null;
+        if (!WorkbenchSql.Identifier.IsMatch(field)) return null;
         var input = new FieldAdminInput(
             reader.GetString(1), reader.GetString(2), Math.Clamp(reader.GetInt32(3), 40, 300),
             reader.GetString(4), reader.GetString(5), reader.IsDBNull(6) ? null : reader.GetString(6),
@@ -1023,7 +1022,7 @@ public sealed class FieldAdminRepository(
         {
             if ((source.Table?.Length ?? 0) > 300 || (source.Description?.Length ?? 0) > 50)
                 throw new ArgumentException("数据选择源配置无效（来源表/说明超长）。");
-            if (!string.IsNullOrWhiteSpace(source.Table) && !Identifier.IsMatch(source.Table.Trim()))
+            if (!string.IsNullOrWhiteSpace(source.Table) && !WorkbenchSql.Identifier.IsMatch(source.Table.Trim()))
                 throw new ArgumentException($"数据选择源表名无效：{source.Table}");
             // ADR-008：过滤条件只接受结构化 JSON；旧系统手写 SQL 需经迁移/构建器转换，不做 SQL 后门
             if (!string.IsNullOrWhiteSpace(source.Filter) && !ChooserFilterStruct.TryParse(source.Filter, out _))
@@ -1142,8 +1141,8 @@ public sealed class FieldAdminRepository(
 
     private static void EnsureIdentifier(string tableId, string? fieldId)
     {
-        if (!Identifier.IsMatch(tableId)) throw new ArgumentException("数据表名无效。");
-        if (fieldId is not null && !Identifier.IsMatch(fieldId)) throw new ArgumentException("字段名无效。");
+        if (!WorkbenchSql.Identifier.IsMatch(tableId)) throw new ArgumentException("数据表名无效。");
+        if (fieldId is not null && !WorkbenchSql.Identifier.IsMatch(fieldId)) throw new ArgumentException("字段名无效。");
     }
 
     private static void ValidateTableInput(FieldAdminTableInput input)

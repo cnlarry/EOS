@@ -24,9 +24,9 @@ public sealed class SettingsController(
 {
     private static readonly Dictionary<string, int> SettingTables = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["SYSSS"] = 110111,
-        ["HR_SETUP"] = 180213,
-        ["HRM_SETUP"] = 180662,
+        ["SYSSS"] = ModuleIds.SystemSettings,
+        ["HR_SETUP"] = ModuleIds.HrSetup,
+        ["HRM_SETUP"] = ModuleIds.HrmSetup,
     };
 
     [HttpGet("{table}")]
@@ -38,16 +38,9 @@ public sealed class SettingsController(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         var fields = await GetFieldDefinitionsAsync(connection, table, token);
-        var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        await using (var command = new SqlCommand($"SELECT TOP 1 * FROM dbo.[{table}] WITH (NOLOCK);", connection))
-        await using (var reader = await command.ExecuteReaderAsync(token))
-        {
-            if (await reader.ReadAsync(token))
-            {
-                for (var i = 0; i < reader.FieldCount; i++)
-                    values[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-            }
-        }
+        await using var command = new SqlCommand($"SELECT TOP 1 * FROM dbo.[{table}] WITH (NOLOCK);", connection);
+        var rows = await WorkbenchSql.ReadRowsAsync(command, token);
+        var values = rows.Count > 0 ? rows[0] : new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         return Ok(new { values, fields });
     }
 

@@ -1,5 +1,4 @@
 using System.Data;
-using System.Text.RegularExpressions;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -21,7 +20,6 @@ public sealed class FlowDefinitionService(
     WorkbenchAuditWriter auditWriter,
     ILogger<FlowDefinitionService> logger)
 {
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     public sealed record FlowStepDefinition(
         string SortNo,
@@ -254,7 +252,7 @@ public sealed class FlowDefinitionService(
             if (!hasWorkflow)
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "MODULE_NO_APPROVE", "该模块未配置批核能力（MODULES.UPDATE_SP 为空），不能配置流程。");
         }
-        if (string.IsNullOrWhiteSpace(masterTable) || !Identifier.IsMatch(masterTable))
+        if (string.IsNullOrWhiteSpace(masterTable) || !WorkbenchSql.Identifier.IsMatch(masterTable))
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "INVALID_MASTER_TABLE", "模块主表无效。");
         if (!await WorkbenchSql.ColumnExistsAsync(connection, null, masterTable, "CONFIRM_TAG", token))
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "MASTER_NO_CONFIRM_TAG",

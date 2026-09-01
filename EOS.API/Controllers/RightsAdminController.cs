@@ -20,8 +20,6 @@ public sealed class RightsAdminController(
     LegacyRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
-    private const int AdminModuleId = 2306;
-
     [HttpGet("users/{userId}/rights")]
     public async Task<IActionResult> UserRights(string userId, CancellationToken token)
     {
@@ -153,7 +151,7 @@ public sealed class RightsAdminController(
     public async Task<IActionResult> ModuleFields([FromQuery] int moduleId, CancellationToken token)
     {
         if (!await CanSetup(token)) return Forbid();
-        var rights = await rightsRepository.GetAsync(userContext.UserId, AdminModuleId, token);
+        var rights = await rightsRepository.GetAsync(userContext.UserId, PermissionModules.SystemManagement, token);
         var fields = await repository.GetModuleFieldsAsync(
             moduleId, rights.CanViewCost, rights.CanViewSecrecy, token);
         return fields is null ? NotFound() : Ok(fields);
@@ -175,5 +173,5 @@ public sealed class RightsAdminController(
     }
 
     private async Task<bool> CanSetup(CancellationToken token) =>
-        (await rightsRepository.GetAsync(userContext.UserId, AdminModuleId, token)).CanSetup;
+        (await rightsRepository.GetAsync(userContext.UserId, PermissionModules.SystemManagement, token)).CanSetup;
 }

@@ -48,14 +48,7 @@ public sealed class AuditController(
         await reader.ReadAsync(token);
         var total = Convert.ToInt64(reader.GetInt64(0));
         await reader.NextResultAsync(token);
-        var rows = new List<Dictionary<string, object?>>();
-        while (await reader.ReadAsync(token))
-        {
-            var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < reader.FieldCount; i++)
-                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-            rows.Add(row);
-        }
+        var rows = await WorkbenchSql.ReadRowsAsync(reader, token);
         return Ok(new { Rows = rows, Total = total, Page = page, PageSize = pageSize });
     }
 }

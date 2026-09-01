@@ -27,7 +27,6 @@ public static class LegacyChooserFilterConverter
         IReadOnlyDictionary<string, string>? ColumnTypes = null,
         IReadOnlyDictionary<string, string>? BareColumnTable = null);
 
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
     private static readonly Regex NumberLiteral = new(@"^-?\d+(\.\d+)?$", RegexOptions.Compiled);
 
     private static readonly Regex SegmentPattern = new(
@@ -307,7 +306,7 @@ public static class LegacyChooserFilterConverter
             var valueText = m.Groups["value"].Value;
             var value = NormalizeValue(valueText);
             // 未加引号的裸标识符（列=列/裸列引用）模型表达不了 → 交档二（保守，不猜测）
-            if (value is not null && !valueText.StartsWith('\'') && Identifier.IsMatch(valueText)
+            if (value is not null && !valueText.StartsWith('\'') && WorkbenchSql.Identifier.IsMatch(valueText)
                 && !valueText.StartsWith('{') && !string.Equals(valueText, "NULL", StringComparison.OrdinalIgnoreCase))
             {
                 error = $"右侧为裸列引用：{valueText}";
@@ -573,7 +572,7 @@ public static class LegacyChooserFilterConverter
         foreach (var part in from.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var tableMatch = Regex.Match(part.Trim(), @"^(?<t>[A-Za-z_][A-Za-z0-9_]*)(?:\s+(?<a>[A-Za-z_][A-Za-z0-9_]*))?$", RegexOptions.IgnoreCase);
-            if (!tableMatch.Success || !Identifier.IsMatch(tableMatch.Groups["t"].Value))
+            if (!tableMatch.Success || !WorkbenchSql.Identifier.IsMatch(tableMatch.Groups["t"].Value))
             {
                 error = $"子查询 FROM 无法解析：{part}";
                 return null;
@@ -740,7 +739,7 @@ public static class LegacyChooserFilterConverter
             return new ChooserFilterExpression("template", Value: NormalizeValue(trimmed));
         }
         // 列（表.列 或 裸列）
-        if (Identifier.IsMatch(trimmed) || Regex.IsMatch(trimmed, @"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$"))
+        if (WorkbenchSql.Identifier.IsMatch(trimmed) || Regex.IsMatch(trimmed, @"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$"))
         {
             var normalized = NormalizeField(trimmed);
             var dot = normalized.IndexOf('.');
@@ -772,7 +771,7 @@ public static class LegacyChooserFilterConverter
         {
             return new ChooserFilterExpression("template", Value: NormalizeValue(trimmed));
         }
-        if (Identifier.IsMatch(trimmed) || Regex.IsMatch(trimmed, @"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$"))
+        if (WorkbenchSql.Identifier.IsMatch(trimmed) || Regex.IsMatch(trimmed, @"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$"))
         {
             var normalized = NormalizeField(trimmed);
             var dot = normalized.IndexOf('.');

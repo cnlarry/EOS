@@ -24,7 +24,6 @@ public sealed class WorkflowEngine(
     WorkbenchAuditWriter auditWriter,
     ILogger<WorkflowEngine> logger)
 {
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     /// <summary>流程步骤定义（WFFORM_FLOW 行，权限串/条件串按旧语义逐人解析）。</summary>
     private sealed record FlowStep(
@@ -66,9 +65,9 @@ public sealed class WorkflowEngine(
         SqlConnection connection, SqlTransaction? transaction,
         int moduleId, string keyCondition, CancellationToken token)
     {
-        const string sql = """
+        const string sql = $"""
             SELECT TOP 1 1 FROM dbo.WF_MONITOR WITH (NOLOCK)
-            WHERE WF_M_IDX=@ModuleId AND KEY_VALUE=@KeyValue AND WF_STATE='0';
+            WHERE WF_M_IDX=@ModuleId AND KEY_VALUE=@KeyValue AND WF_STATE='{WorkflowStates.MonitorInProgress}';
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -139,7 +138,7 @@ public sealed class WorkflowEngine(
 
         // 重新提交/刷新：流程状态复位为在途，发起人刷新为当前送审人（覆盖已撤回 '2' 的复位）
         await using (var reset = new SqlCommand(
-            "UPDATE dbo.WF_MONITOR SET WF_STATE='0', START_USER=@UserId, START_DATE=GETDATE() WHERE WF_ID=@WfId;",
+            $"UPDATE dbo.WF_MONITOR SET WF_STATE='{WorkflowStates.MonitorInProgress}', START_USER=@UserId, START_DATE=GETDATE() WHERE WF_ID=@WfId;",
             connection, transaction))
         {
             reset.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
@@ -274,10 +273,10 @@ public sealed class WorkflowEngine(
                 "流程步骤没有具备审批权（PERSON_APP_POWER）的人员，已拒绝启动。");
 
         // 提交送审日志（APPROVE_STATE='A'：发起人送审，MYTASK_ID=0 表示非任务级动作）
-        await using (var submitLog = new SqlCommand("""
+        await using (var submitLog = new SqlCommand($"""
             INSERT INTO dbo.WF_MYTASK_LOG (WF_ID, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, APP_EMP_ID,
                 APPROVE_DATE, APPROVE_STATE, APPROVE_MSG)
-            VALUES (@WfId, 0, '000', N'提交送审', @UserId, GETDATE(), 'A', @Msg);
+            VALUES (@WfId, 0, '000', N'提交送审', @UserId, GETDATE(), '{WorkflowStates.Submitted}', @Msg);
             """, connection, transaction))
         {
             submitLog.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
@@ -376,7 +375,7 @@ public sealed class WorkflowEngine(
             var now = DateTime.Now;
             var effectiveJump = string.IsNullOrWhiteSpace(jumpNo) ? null : jumpNo.Trim();
 
-            if (approveState == 'Y')
+            if (approveState == WorkflowStates.Approved)
             {
                 if (!approvePower)
                     return (false, "NO_APPROVE_POWER", "您没有该步骤的审批权，不能同意。", false, null);
@@ -536,7 +535,7 @@ public sealed class WorkflowEngine(
         try
         {
             await using (var state = new SqlCommand(
-                "UPDATE dbo.WF_MONITOR SET WF_STATE='1' WHERE WF_ID=@WfId;", connection, finalTransaction))
+                $"UPDATE dbo.WF_MONITOR SET WF_STATE='{WorkflowStates.MonitorCompleted}' WHERE WF_ID=@WfId;", connection, finalTransaction))
             {
                 state.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
                 await state.ExecuteNonQueryAsync(token);
@@ -632,9 +631,9 @@ public sealed class WorkflowEngine(
         SqlConnection connection, SqlTransaction transaction, long myTaskId, string userId,
         string? message, DateTime now, CancellationToken token)
     {
-        await using var update = new SqlCommand("""
+        await using var update = new SqlCommand($"""
             UPDATE dbo.WF_MYTASK SET APP_EMP_ID=@UserId, APPROVE_MSG=@Msg, APPROVE_TAG=1,
-                APPROVE_DATE=@Now, APPROVE_STATE='Y'
+                APPROVE_DATE=@Now, APPROVE_STATE='{WorkflowStates.Approved}'
             WHERE MYTASK_ID=@MyTaskId AND ISNULL(APPROVE_STATE,'')='';
             """, connection, transaction);
         update.Parameters.Add("@UserId", SqlDbType.VarChar, 20).Value = userId;
@@ -648,9 +647,9 @@ public sealed class WorkflowEngine(
         SqlConnection connection, SqlTransaction transaction, long wfId, string subflowNo, string userId,
         string? message, DateTime now, CancellationToken token)
     {
-        await using var update = new SqlCommand("""
+        await using var update = new SqlCommand($"""
             UPDATE dbo.WF_MYTASK SET APP_EMP_ID=@UserId, APPROVE_MSG=@Msg, APPROVE_TAG=1,
-                APPROVE_DATE=@Now, APPROVE_STATE='Y'
+                APPROVE_DATE=@Now, APPROVE_STATE='{WorkflowStates.Approved}'
             WHERE WF_ID=@WfId AND SUBFLOW_NO=@SubflowNo AND ISNULL(APPROVE_STATE,'')='';
             """, connection, transaction);
         update.Parameters.Add("@UserId", SqlDbType.VarChar, 20).Value = userId;
@@ -720,7 +719,7 @@ public sealed class WorkflowEngine(
         var where = $"WF_ID=@WfId AND {range}ISNULL(APPROVE_STATE,'')=''";
         await using var update = new SqlCommand($"""
             UPDATE dbo.WF_MYTASK SET APP_EMP_ID='', APPROVE_MSG=@SkipMsg, APPROVE_TAG=1,
-                APPROVE_DATE=@Now, APPROVE_STATE='S'
+                APPROVE_DATE=@Now, APPROVE_STATE='{WorkflowStates.Skipped}'
             WHERE {where};
             """, connection, transaction);
         update.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
@@ -732,11 +731,11 @@ public sealed class WorkflowEngine(
         if (affected <= 0)
             return;
 
-        var logWhere = $"WF_ID=@WfId AND {range}APPROVE_STATE='S' AND APPROVE_MSG=@SkipMsg";
+        var logWhere = $"WF_ID=@WfId AND {range}APPROVE_STATE='{WorkflowStates.Skipped}' AND APPROVE_MSG=@SkipMsg";
         await using var log = new SqlCommand($"""
             INSERT INTO dbo.WF_MYTASK_LOG (WF_ID, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, APP_EMP_ID,
                 APPROVE_DATE, APPROVE_STATE, APPROVE_MSG)
-            SELECT @WfId, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, '', @Now, 'S', @SkipMsg
+            SELECT @WfId, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, '', @Now, '{WorkflowStates.Skipped}', @SkipMsg
             FROM dbo.WF_MYTASK WITH (NOLOCK)
             WHERE {logWhere};
             """, connection, transaction);
@@ -877,7 +876,7 @@ public sealed class WorkflowEngine(
         string fieldsCsv, string keyCondition, List<string> blocked, CancellationToken token)
     {
         var fields = fieldsCsv.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Where(field => Identifier.IsMatch(field)).ToArray();
+            .Where(field => WorkbenchSql.Identifier.IsMatch(field)).ToArray();
         if (fields.Length == 0)
             return;
 
@@ -1107,10 +1106,10 @@ public sealed class WorkflowEngine(
             tableCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
             masterTable = await tableCommand.ExecuteScalarAsync(token) as string;
         }
-        if (string.IsNullOrWhiteSpace(masterTable) || !Identifier.IsMatch(masterTable))
+        if (string.IsNullOrWhiteSpace(masterTable) || !WorkbenchSql.Identifier.IsMatch(masterTable))
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "INVALID_MASTER_TABLE",
                 "模块主表无效。");
-        var pkColumns = await LoadPrimaryKeyColumnsAsync(connection, transaction, masterTable, token);
+        var pkColumns = await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, transaction, masterTable, token);
         if (pkColumns.Count == 0 || pkColumns.Count != keyValues.Count)
             return RecordSaveResult.Failed(RecordAccessStatus.KeyMismatch, "RECORD_KEY_MISMATCH",
                 "主键数量与模块主键不匹配。");
@@ -1153,8 +1152,8 @@ public sealed class WorkflowEngine(
                     "单据已确认，流程已结束，不能撤回。");
         }
 
-        await using (var mark = new SqlCommand("""
-            UPDATE dbo.WF_MYTASK SET APPROVE_STATE='W', IS_CURRENT=0, APPROVE_DATE=GETDATE(),
+        await using (var mark = new SqlCommand($"""
+            UPDATE dbo.WF_MYTASK SET APPROVE_STATE='{WorkflowStates.WithdrawnTask}', IS_CURRENT=0, APPROVE_DATE=GETDATE(),
                 APPROVE_MSG=@Msg
             WHERE WF_ID=@WfId AND ISNULL(APPROVE_STATE,'')='';
             """, connection, transaction))
@@ -1163,11 +1162,11 @@ public sealed class WorkflowEngine(
             mark.Parameters.Add("@Msg", SqlDbType.VarChar, 3000).Value = employeeName + " 撤回流程";
             await mark.ExecuteNonQueryAsync(token);
         }
-        await using (var log = new SqlCommand("""
+        await using (var log = new SqlCommand($"""
             INSERT INTO dbo.WF_MYTASK_LOG (WF_ID, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, APP_EMP_ID,
                 APPROVE_DATE, APPROVE_STATE, APPROVE_MSG)
-            SELECT WF_ID, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, @UserId, GETDATE(), 'W', @Msg
-            FROM dbo.WF_MYTASK WHERE WF_ID=@WfId AND APPROVE_STATE='W';
+            SELECT WF_ID, MYTASK_ID, SUBFLOW_NO, SUBFLOW_DESC, @UserId, GETDATE(), '{WorkflowStates.WithdrawnTask}', @Msg
+            FROM dbo.WF_MYTASK WHERE WF_ID=@WfId AND APPROVE_STATE='{WorkflowStates.WithdrawnTask}';
             """, connection, transaction))
         {
             log.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
@@ -1176,7 +1175,7 @@ public sealed class WorkflowEngine(
             await log.ExecuteNonQueryAsync(token);
         }
         await using (var stateUpdate = new SqlCommand(
-            "UPDATE dbo.WF_MONITOR SET WF_STATE='2' WHERE WF_ID=@WfId;", connection, transaction))
+            $"UPDATE dbo.WF_MONITOR SET WF_STATE='{WorkflowStates.MonitorWithdrawn}' WHERE WF_ID=@WfId;", connection, transaction))
         {
             stateUpdate.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
             await stateUpdate.ExecuteNonQueryAsync(token);
@@ -1186,28 +1185,6 @@ public sealed class WorkflowEngine(
         return RecordSaveResult.Success([]);
     }
 
-    /// <summary>主表主键列（sys.* 元数据，白名单，按 key_ordinal 序）。</summary>
-    private static async Task<IReadOnlyList<string>> LoadPrimaryKeyColumnsAsync(
-        SqlConnection connection, SqlTransaction transaction, string table, CancellationToken token)
-    {
-        const string sql = """
-            SELECT c.name
-            FROM sys.indexes i
-            JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-            JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            JOIN sys.tables t ON i.object_id = t.object_id
-            JOIN sys.schemas s ON t.schema_id = s.schema_id
-            WHERE s.name = N'dbo' AND t.name = @Table AND i.is_primary_key = 1
-            ORDER BY ic.key_ordinal;
-            """;
-        var result = new List<string>();
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
-        await using var reader = await command.ExecuteReaderAsync(token);
-        while (await reader.ReadAsync(token)) result.Add(reader.GetString(0));
-        return result;
-    }
-
     /// <summary>当前用户发起的在途流程（v2.1「我发起的」，撤回入口数据源）。</summary>
     public async Task<IReadOnlyList<object>> GetMyStartedAsync(
         SqlConnection connection,
@@ -1215,14 +1192,14 @@ public sealed class WorkflowEngine(
         CancellationToken token)
     {
         var result = new List<object>();
-        await using var command = new SqlCommand("""
+        await using var command = new SqlCommand($"""
             SELECT M.WF_ID, M.WF_M_IDX,
                    LTRIM(RTRIM(ISNULL((SELECT M_DESC FROM dbo.MODULES WHERE M_IDX=M.WF_M_IDX),''))),
                    M.KEY_VALUE, M.KEY_VALUE_DESC, M.START_DATE,
                    LTRIM(RTRIM(ISNULL(T.SUBFLOW_NO,''))), LTRIM(RTRIM(ISNULL(T.SUBFLOW_DESC,'')))
             FROM dbo.WF_MONITOR M WITH (NOLOCK)
             LEFT JOIN dbo.WF_MYTASK T WITH (NOLOCK) ON T.WF_ID=M.WF_ID AND T.IS_CURRENT=1
-            WHERE LTRIM(RTRIM(ISNULL(M.START_USER,''))) = @UserId AND M.WF_STATE='0'
+            WHERE LTRIM(RTRIM(ISNULL(M.START_USER,''))) = @UserId AND M.WF_STATE='{WorkflowStates.MonitorInProgress}'
             ORDER BY M.START_DATE DESC;
             """, connection);
         command.Parameters.Add("@UserId", SqlDbType.VarChar, 20).Value = userId;

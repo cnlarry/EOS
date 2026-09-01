@@ -129,6 +129,32 @@ internal static class WorkbenchSql
         return result;
     }
 
+    /// <summary>执行命令并读取全部行 → 字典（通用 Reader→Dictionary 收敛，C4；字符串值 Trim）。</summary>
+    internal static async Task<IReadOnlyList<Dictionary<string, object?>>> ReadRowsAsync(
+        SqlCommand command, CancellationToken token)
+    {
+        await using var reader = await command.ExecuteReaderAsync(token);
+        return await ReadRowsAsync(reader, token);
+    }
+
+    /// <summary>从已执行 reader 的当前结果集读取全部行 → 字典（字符串值 Trim）。</summary>
+    internal static async Task<IReadOnlyList<Dictionary<string, object?>>> ReadRowsAsync(
+        SqlDataReader reader, CancellationToken token)
+    {
+        var result = new List<Dictionary<string, object?>>();
+        while (await reader.ReadAsync(token))
+        {
+            var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < reader.FieldCount; i++)
+            {
+                var value = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                row[reader.GetName(i)] = value is string text ? text.Trim() : value;
+            }
+            result.Add(row);
+        }
+        return result;
+    }
+
     internal static async Task<bool> RowExistsAsync(SqlConnection connection, SqlTransaction transaction, string table, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
         var where = string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@k{index}"));

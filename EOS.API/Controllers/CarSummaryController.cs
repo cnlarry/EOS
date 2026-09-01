@@ -16,7 +16,7 @@ public sealed class CarSummaryController(
     LegacyRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
-    private const int ModuleId = 199901;
+    private const int ModuleId = ModuleIds.CarSummary;
     private static readonly Regex Month = new(@"^\d{4}-(0[1-9]|1[0-2])$", RegexOptions.Compiled);
 
     /// <summary>
@@ -48,14 +48,7 @@ public sealed class CarSummaryController(
         command.Parameters.Add("@t",SqlDbType.NChar,40).Value=to;
         command.Parameters.Add("@m1",SqlDbType.Char,7).Value=m1;
         command.Parameters.Add("@m2",SqlDbType.Char,7).Value=m2;
-        await using var reader=await command.ExecuteReaderAsync(token);
-        var rows=new List<Dictionary<string,object?>>();
-        while(await reader.ReadAsync(token))
-        {
-            var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);
-            for(var i=0;i<reader.FieldCount;i++) row[reader.GetName(i)]=reader.IsDBNull(i)?null:reader.GetValue(i);
-            rows.Add(row);
-        }
+        var rows=await WorkbenchSql.ReadRowsAsync(command,token);
         return Ok(new{Columns=rows.Count>0?rows[0].Keys.ToList():new List<string>{"CAR_ID","YM_RPT","RUN_METER","FILLOIL_METER","FILLOIL_TOTAL","FILLOIL_AMOUNT","REPAIR_AMOUNT"},Rows=rows,Count=rows.Count});
     }
 }

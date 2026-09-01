@@ -43,7 +43,7 @@ public sealed class FlowDefinitionController(
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken token)
     {
-        if (!(await rightsRepository.GetAsync(userContext.UserId, 2101, token)).CanBrowse)
+        if (!(await rightsRepository.GetAsync(userContext.UserId, ModuleIds.FlowDesigner, token)).CanBrowse)
             return Forbid();
         var (flows, eligible) = await flowDefinitions.GetDefinitionsAsync(token);
         return Ok(new { Flows = flows, Eligible = eligible });
@@ -53,7 +53,7 @@ public sealed class FlowDefinitionController(
     [HttpGet("{moduleId:int}")]
     public async Task<IActionResult> Detail(int moduleId, CancellationToken token)
     {
-        if (!(await rightsRepository.GetAsync(userContext.UserId, 2101, token)).CanBrowse)
+        if (!(await rightsRepository.GetAsync(userContext.UserId, ModuleIds.FlowDesigner, token)).CanBrowse)
             return Forbid();
         var flow = await flowDefinitions.GetFlowAsync(moduleId, token);
         return flow is null
@@ -65,7 +65,7 @@ public sealed class FlowDefinitionController(
     [HttpGet("people")]
     public async Task<IActionResult> People([FromQuery] string? keyword, CancellationToken token)
     {
-        if (!(await rightsRepository.GetAsync(userContext.UserId, 2101, token)).CanBrowse)
+        if (!(await rightsRepository.GetAsync(userContext.UserId, ModuleIds.FlowDesigner, token)).CanBrowse)
             return Forbid();
         var people = await flowDefinitions.GetPeopleAsync(keyword, token);
         return Ok(new { People = people });
@@ -75,7 +75,7 @@ public sealed class FlowDefinitionController(
     [HttpPost("{moduleId:int}")]
     public async Task<IActionResult> Save(int moduleId, [FromBody] SaveFlowRequest request, CancellationToken token)
     {
-        if (!(await rightsRepository.GetAsync(userContext.UserId, 2101, token)).CanSetup)
+        if (!(await rightsRepository.GetAsync(userContext.UserId, ModuleIds.FlowDesigner, token)).CanSetup)
             return Forbid();
         if (request is null || request.Steps is null)
             return BadRequest(new { code = "INVALID_FLOW_PAYLOAD", message = "请求体不能为空。" });
@@ -95,7 +95,7 @@ public sealed class FlowDefinitionController(
     [HttpDelete("{moduleId:int}")]
     public async Task<IActionResult> Delete(int moduleId, CancellationToken token)
     {
-        if (!(await rightsRepository.GetAsync(userContext.UserId, 2101, token)).CanSetup)
+        if (!(await rightsRepository.GetAsync(userContext.UserId, ModuleIds.FlowDesigner, token)).CanSetup)
             return Forbid();
         var result = await flowDefinitions.DeleteFlowAsync(moduleId, userContext.UserId, userContext.EmployeeName, token);
         if (result.Status != RecordAccessStatus.Ok)

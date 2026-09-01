@@ -1,7 +1,6 @@
 using System.Data;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
-using System.Text.RegularExpressions;
 
 using EOS.API.Telemetry;
 namespace EOS.API.Data;
@@ -22,7 +21,6 @@ public sealed class MenuAdminRepository(
     WorkbenchAuditWriter auditWriter,
     ILogger<MenuAdminRepository> logger)
 {
-    private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
     /// <summary>排序后目标下标（0 起）。非法动作抛 ArgumentException；边界移动为无操作。</summary>
     public static int TargetIndex(int currentIndex, int count, string action) => action switch
@@ -75,7 +73,7 @@ public sealed class MenuAdminRepository(
         while (await reader.ReadAsync(token))
         {
             var table = reader.GetString(0);
-            if (!Identifier.IsMatch(table)) continue;
+            if (!WorkbenchSql.Identifier.IsMatch(table)) continue;
             result.Add(new MenuAdminTableInfo(table, reader.GetString(1), NullIfEmpty(reader.GetString(2)), NullIfEmpty(reader.GetString(3))));
         }
         return result;
@@ -84,7 +82,7 @@ public sealed class MenuAdminRepository(
     /// <summary>菜单管理字段选择器候选：返回表在 FIELDS 中且物理存在的字段。</summary>
     public async Task<IReadOnlyList<MenuAdminFieldInfo>> GetTableFieldsAsync(string table, CancellationToken token)
     {
-        if (!Identifier.IsMatch(table))
+        if (!WorkbenchSql.Identifier.IsMatch(table))
             throw new ArgumentException($"表名无效：{table}");
         const string sql = """
             SELECT LTRIM(RTRIM(f.F_ID)),
@@ -110,7 +108,7 @@ public sealed class MenuAdminRepository(
         while (await reader.ReadAsync(token))
         {
             var field = reader.GetString(0);
-            if (!Identifier.IsMatch(field)) continue;
+            if (!WorkbenchSql.Identifier.IsMatch(field)) continue;
             result.Add(new MenuAdminFieldInfo(field, reader.GetString(1), reader.GetString(2), reader.GetBoolean(3), reader.GetBoolean(4), reader.GetBoolean(5)));
         }
         return result;
@@ -151,7 +149,7 @@ public sealed class MenuAdminRepository(
         while (await reader.ReadAsync(token))
         {
             var key = reader.GetString(0).Trim();
-            if (!Identifier.IsMatch(key)) continue;
+            if (!WorkbenchSql.Identifier.IsMatch(key)) continue;
             fields.Add(new MenuDefaultColumn(key, reader.GetString(1).Trim(), reader.GetBoolean(2), ++order));
         }
         return new MenuDefaultColumns(targetTable, tableKind, fields);
@@ -545,9 +543,9 @@ public sealed class MenuAdminRepository(
         if (string.IsNullOrWhiteSpace(input.M_DESC)) throw new ArgumentException("菜单名称不允许为空。");
         if (input.M_P_IDX is { } parent && parent == input.M_IDX)
             throw new ArgumentException("上级菜单不能是自身。");
-        if (!string.IsNullOrWhiteSpace(input.MASTER_TABLE) && !Identifier.IsMatch(input.MASTER_TABLE))
+        if (!string.IsNullOrWhiteSpace(input.MASTER_TABLE) && !WorkbenchSql.Identifier.IsMatch(input.MASTER_TABLE))
             throw new ArgumentException($"操作主表名无效：{input.MASTER_TABLE}");
-        if (!string.IsNullOrWhiteSpace(input.DETAIL_TABLE) && !Identifier.IsMatch(input.DETAIL_TABLE))
+        if (!string.IsNullOrWhiteSpace(input.DETAIL_TABLE) && !WorkbenchSql.Identifier.IsMatch(input.DETAIL_TABLE))
             throw new ArgumentException($"操作副表名无效：{input.DETAIL_TABLE}");
         if (!ModuleRouteValidator.IsValidHostUrl(input.M_URL))
             throw new ArgumentException("页面链接不符合现代路由契约：应为承载页（如 /workbench，不带编号）、精确路径、直达表单模板或 /legacy/modules/{编号}。");
@@ -615,7 +613,7 @@ public sealed class MenuAdminRepository(
         while (await reader.ReadAsync(token))
         {
             var key = reader.GetString(0).Trim();
-            if (Identifier.IsMatch(key)) result.Add(key);
+            if (WorkbenchSql.Identifier.IsMatch(key)) result.Add(key);
         }
         return result;
     }
@@ -650,7 +648,7 @@ public sealed class MenuAdminRepository(
 
     private static async Task EnsureTableExistsAsync(SqlConnection connection, SqlTransaction transaction, string table, string label, CancellationToken token)
     {
-        if (!Identifier.IsMatch(table))
+        if (!WorkbenchSql.Identifier.IsMatch(table))
             throw new ArgumentException($"{label}名无效：{table}");
         await using var command = new SqlCommand(
             "SELECT CASE WHEN EXISTS(SELECT 1 FROM dbo.TABLES WITH (NOLOCK) WHERE LTRIM(RTRIM(T_ID))=@Table) THEN 1 ELSE 0 END;",
