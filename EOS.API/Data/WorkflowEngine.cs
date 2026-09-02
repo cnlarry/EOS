@@ -2,6 +2,8 @@ using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Text.RegularExpressions;
 
+using EOS.API.Models;
+
 namespace EOS.API.Data;
 
 /// <summary>

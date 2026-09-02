@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using EOS.API.Data;
+using EOS.API.Models;
 using Xunit;
 
 namespace EOS.API.Tests;

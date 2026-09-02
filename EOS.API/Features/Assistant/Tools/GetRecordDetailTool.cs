@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using EOS.API.Data;
+using EOS.API.Models;
 using EOS.API.Security;
 
 namespace EOS.API.Features.Assistant.Tools;

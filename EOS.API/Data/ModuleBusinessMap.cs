@@ -1,22 +1,12 @@
+using EOS.API.Models;
+
 namespace EOS.API.Data;
 
 /// <summary>
-/// 业务单据模块的领域规则注册表。
-/// 对应旧系统 MODULES.UPDATE_SP / AFTERSAVE_SP / BILLKIND 单号配置的受控等价物：
-/// 只有登记在册的模块才允许在统一表单保存管线中调用存储过程，
-/// 且存储过程名必须是本表白名单内的固定值（禁止运行时从外部传入）。
-/// 未登记的模块（包括所有无 SP 的纯 CRUD 模块）走统一表单默认管线，不执行任何存储过程。
+/// Registry of business-module domain rules: only registered modules may execute stored
+/// procedures in the unified save pipeline, and procedure names must come from this table.
+/// Unregistered modules (plain CRUD) use the default pipeline without procedures.
 /// </summary>
-public sealed record ModuleBusinessRule(
-    int ModuleId,
-    string? AfterSaveSproc,
-    string? WorkflowSproc,
-    bool AutoBillNo,
-    string? BillNoField,
-    string? BillTypeField,
-    string? PrepayOffsetTable = null,
-    string? DomainRule = null,
-    bool SprocPendingPorting = false);
 
 public static class ModuleBusinessMap
 {

@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Models;
 using EOS.API.Errors;
 using EOS.API.Telemetry;
 using Microsoft.Data.SqlClient;

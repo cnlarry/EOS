@@ -2,6 +2,8 @@ using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Text.RegularExpressions;
 
+using EOS.API.Models;
+
 namespace EOS.API.Data;
 
 /// <summary>QUERY_RELATION 中一条受控 LEFT JOIN（表/别名/条件全部来自服务端元数据并经严格校验）。</summary>

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using EOS.API.Data;
+using EOS.API.Models;
 using EOS.API.Security;
 
 namespace EOS.API.Features.Assistant.Tools;
@@ -52,7 +53,7 @@ public sealed class GetFormSchemaTool(
     }
 
     /// <summary>模块解析 + 权限门（与 SearchRecordsTool 同口径）。</summary>
-    internal async Task<(Data.WorkbenchDefinition? Definition, ModulePermission? Permission)> ResolveModuleAsync(
+    internal async Task<(WorkbenchDefinition? Definition, ModulePermission? Permission)> ResolveModuleAsync(
         string userId, JsonElement arguments, CancellationToken token)
     {
         var title = arguments.GetStringArg("module_title");
