@@ -76,10 +76,11 @@ internal static class RightsAdminLogic
     public static string NormalizeDenyList(string? value) =>
         string.Join(";", ParseDenyList(value));
 
-    /// <summary>
-    /// 解析字段拒绝串（逗号/分号分隔）。跳过遗留哨兵值 '0'：
-    /// 旧系统导入的历史行把「无禁止字段」写成 '0'（旧网格 Split(';') 后按列名隐藏，无此列即无效果）；
-    /// 新系统视为空，读侧聚合与写侧规范化统一剔除。
+/// <summary>
+    /// Parses a deny-list string (semicolon/comma separated). Skips the legacy sentinel '0':
+    /// legacy imported rows stored '0' as "no denied fields" (the old grid split by ';'
+    /// and hid columns by name — '0' was never a column name, so it had no effect);
+    /// the new system treats it as empty and normalizes it on both read and write.
     /// </summary>
     public static IReadOnlyList<string> ParseDenyList(string? value) =>
         (value ?? string.Empty)
@@ -667,12 +668,10 @@ public sealed class RightsAdminRepository(
         }
     }
 
-    /// <summary>
-    /// 删除用户组（严格删除，向旧系统求证后修正隐患）：
-    /// 旧系统 ModifyToolBar 同事务删除 SYSDG + SYSDH（模块权限）+ SYSDH_REPORT（报表权限），
-    /// 但**不清理 SYSDG_USER（成员）**，留下孤儿成员行（组重建后会误挂回）。
-    /// 新系统更严格：组仍关联成员时拒绝删除（必须先经「成员」页移除），
-    /// 权限/报表权限随组删除同事务级联（对齐旧系统行为）。
+/// <summary>
+    /// Deletes a user group. Unlike the legacy toolbar (which deleted SYSDG + SYSDH + SYSDH_REPORT
+    /// but left SYSDG_USER orphan rows intact), the new system refuses deletion if the group still
+    /// has members. Permissions and report permissions cascade on delete (same transaction).
     /// </summary>
     public async Task DeleteGroupAsync(string groupId, string adminName, CancellationToken token)
     {

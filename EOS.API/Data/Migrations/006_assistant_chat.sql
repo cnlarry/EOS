@@ -1,6 +1,8 @@
--- ADR-007 M2：工作助手会话与消息表（EOS.ERP 唯一业务库，对象名全大写）。
--- 会话按 USER_ID 隔离（对齐 SYSDL 账号）；消息含 token/耗时/关联 ID，替代原网关用量汇总。
--- 审计：M3 接入工具调用（业务数据访问）时写 AUDIT_EVENT；M2 纯对话由本表自身留痕。
+-- Assistant chat sessions and messages (EOS.ERP, all object names uppercase).
+-- Sessions are isolated per USER_ID (aligned to SYSDL accounts); messages record
+-- token counts, elapsed time and correlation ID.
+-- Audit: tool calls (business data access) are written to AUDIT_EVENT; plain chat is
+-- tracked by this table itself.
 
 CREATE TABLE dbo.ASSISTANT_SESSION
 (

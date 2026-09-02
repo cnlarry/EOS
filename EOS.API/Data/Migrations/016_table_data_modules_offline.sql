@@ -1,29 +1,26 @@
 -- ============================================================================
--- EOS.ERP 迁移 016：数据表数据维护模块下线（2310/2312 物理删除，EOS-23）
+-- EOS.ERP migration 016: remove table data maintenance modules (2310/2312)
 -- ----------------------------------------------------------------------------
--- 库：EOS.ERP（全新系统的唯一业务数据库）
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 背景（2026-08-28 用户拍板，决策清单 #37）：
---   旧系统 2310（MagTableData：整表 TRUNCATE）与 2312（MagTableData2：按
---   CREATE_DATE/CLIENT_ID/SUPPLIER_ID 区间清历史 + FK_T_ID_1..5 子表孤儿清理）
---   是两个数据清理工具。现代重构明确不移植任意表破坏性清理：
---     ① 界面内「任选表→清空/删除」违背项目安全边界精神（动态表名 + 不可逆
---        破坏性操作），清库属实施期/DBA 操作，走脚本 + 备份；
---     ② 现代受控只读浏览页（/admin/table-data）直接 SELECT 物理列原始行，
---        是全系统唯一绕过成本/保密/禁止查看字段过滤与 EXEC_TAG/DATA_FILTER
---        数据范围的原始数据窗口，随页一并删除；
---     ③ 业务数据查看走各模块工作台（完整字段权限 + 数据范围）；
---       表结构巡检由 2302（数据表、字段维护）/ 2303（字段审计）承担。
---   用户拍板：2310/2312 整体下线、物理删除，无承接模块（权限直接删除）。
+-- Context: 2310 (MagTableData: full table TRUNCATE) and 2312 (MagTableData2:
+-- range-delete by CREATE_DATE/CLIENT_ID/SUPPLIER_ID + FK orphan cleanup) were
+-- destructive data-cleaning tools that are not ported to the new system because:
+--   ① "Pick any table → truncate/delete" violates the project's security boundary
+--      (dynamic table name + irreversible destruction); DB cleanup is an
+--      implementation/DBA operation via script + backup.
+--   ② The controlled read-only browse page (/admin/table-data) — which bypasses
+--      cost/secrecy/deny-field filters and EXEC_TAG/DATA_FILTER scope — is also removed.
+--   ③ Business data viewing goes through each module's workbench (full field permissions
+--      + data scope). Table structure inspection is handled by 2302 and 2303.
+-- Both modules (2310, 2312) are physically deleted with no replacement module.
 --
--- 处理范围：
---   1. SYSDD / SYSDH：删除 2310/2312 权限行（无承接模块，不合并）；
---   2. WORKBENCH_MODULE_DIRTY / WORKBENCH_DEFINITION_SNAPSHOT：防御性清理；
---   3. MODULES：2310/2312 物理删除；
---   4. 审计/历史（SYSDF、AUDIT_EVENT）保持原样不动（追溯），仅打印计数留档。
---
--- 幂等：全程以 EXISTS/IF 守卫，重复执行无副作用。
--- 命名约定（AGENTS.md 强制）：对象名全大写。
+-- Scope:
+--   1. SYSDD / SYSDH: delete permission rows for 2310/2312;
+--   2. WORKBENCH_MODULE_DIRTY / WORKBENCH_DEFINITION_SNAPSHOT: defensive cleanup;
+--   3. MODULES: physically delete 2310/2312;
+--   4. Audit/history (SYSDF, AUDIT_EVENT) kept intact for traceability.
+-- Idempotent: guarded by EXISTS/IF. Naming convention: all uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;

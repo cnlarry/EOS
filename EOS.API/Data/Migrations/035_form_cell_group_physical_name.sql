@@ -1,14 +1,13 @@
--- 统一表单组合字段分组补齐（四）：物理 _NAME 名称字段（2026-08-31）
+-- Unified form cell grouping backfill (part 4): physical _NAME columns.
 --
--- 背景：032 只处理「虚拟 _NAME」名称字段（IS_VIRTUAL=1）。但部分主表的名称字段
---       是冗余物理列（旧系统把名称冗余落库，如 COP_QUOTE_M.CLIENT_NAME），
---       它们同样要与编号字段同格组合，却被 032 的虚拟字段门槛漏掉，导致
---       「编号+名称」组合错开（1404 客户编号/客户名分开显示）。
--- 规则：为主表（T_ID 以 _M 结尾）「物理 _NAME 名称字段」（IS_VIRTUAL=0）补分组：
---       组名取核心名匹配的编号字段（_ID/_NO 去后缀）的现有 FORM_CELL_GROUP，
---       ROLE=2（从字段）。编号字段本身不重复补（032 已覆盖）。
--- 幂等：仅更新「未配置分组」的物理名称字段。
--- 编号：035（034 已由手工核对边界字段占用）。
+-- Context: part 1 only handled virtual _NAME fields (IS_VIRTUAL=1). Some master tables
+-- store the name redundantly as a physical column (e.g. COP_QUOTE_M.CLIENT_NAME); those
+-- need the same "code + name" grouping but were missed by part 1's virtual-field gate,
+-- leaving the combo split across cells (client code and name shown separately).
+-- Rule: group master-table (T_ID ending _M) physical _NAME fields (IS_VIRTUAL=0):
+-- group name = the FORM_CELL_GROUP of the core-name-matching code field, ROLE=2.
+-- Code fields are not re-grouped here.
+-- Idempotent: only ungrouped physical name fields are updated.
 
 SET NOCOUNT ON;
 

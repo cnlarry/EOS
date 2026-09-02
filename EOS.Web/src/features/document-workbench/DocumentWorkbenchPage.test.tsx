@@ -292,7 +292,7 @@ describe('DocumentWorkbenchPage', () => {
   it('列表不提供编辑按钮（收敛到浏览态）；双击主表行进入浏览态并携带导航上下文', async () => {
     renderPage()
     await loaded()
-    // ADR-006 决策 6 列表工具条收敛：单据级动作不再出现在列表
+    // List toolbar convergence: document-level actions are not in the list
     expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '批核' })).not.toBeInTheDocument()

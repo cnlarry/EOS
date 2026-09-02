@@ -1,23 +1,23 @@
 -- ============================================================================
--- EOS.ERP 迁移 007：180218 员工批量发卡归类特殊页（清空统一表单路由）
+-- EOS.ERP migration 007: 180218 employee card batch delivery as a special page
 -- ----------------------------------------------------------------------------
--- 库：EOS.ERP（全新系统的唯一业务数据库）
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 背景（2026-08-26 用户决策，决策清单 #31）：
---   180218 员工批量发卡在系统内以批量作业页交付（/jobs/card-batch + JobPage），
---   但 MODULES.MODI_URL 仍指向 /document-workbench/{moduleId}/edit（统一表单）。
---   180218 不在统一表单白名单（UnifiedFormEditor.EnabledModuleIds），一旦经工作台
---   列表触发编辑/双击即落入未移植的统一表单（404/不可用）。用户拍板：归类特殊页，
---   清空 MODI_URL（及 NEW_URL），防止误入未移植统一表单；单卡维护 180208 已走
---   employee-card 领域规则并在白名单内，不受影响。
+-- Context: 180218 employee card batch is delivered as a batch job page
+-- (/jobs/card-batch + JobPage), but MODULES.MODI_URL still pointed to the unified
+-- form route (/document-workbench/{moduleId}/edit). 180218 is not in the unified
+-- form whitelist, so triggering edit/double-click from the workbench fell into an
+-- unmigrated form (404/unusable). It is reclassified as a special page by clearing
+-- MODI_URL (and NEW_URL) to prevent that; single-card maintenance 180208 already
+-- follows the employee-card domain rules and stays in the whitelist.
 --
--- 处理范围：
---   1. MODULES 180218：MODI_URL、NEW_URL 清空，REMARK 登记特殊页结论；
---   2. WORKBENCH_MODULE_DIRTY / WORKBENCH_DEFINITION_SNAPSHOT 按 180218 清理
---      （防御性，180218 从未入白名单，通常无记录）。
+-- Scope:
+--   1. MODULES 180218: clear MODI_URL and NEW_URL, record the special-page decision in REMARK;
+--   2. Clean WORKBENCH_MODULE_DIRTY / WORKBENCH_DEFINITION_SNAPSHOT for 180218 (defensive;
+--      180218 was never in the whitelist, so usually no rows).
 --
--- 幂等：全程以 WHERE 守卫，重复执行无副作用。
--- 命名约定（AGENTS.md 强制）：对象名全大写。
+-- Idempotent: guarded by WHERE clauses, safe to re-run.
+-- Naming convention: all object names uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;

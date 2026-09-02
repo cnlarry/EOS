@@ -1,13 +1,13 @@
 -- ============================================================================
--- EOS.ERP 迁移 036：ADR-010 版式版本历史（P0 版本历史+回滚）
+-- EOS.ERP migration 036: layout version history (version history + rollback)
 -- ----------------------------------------------------------------------------
--- 背景（2026-08-31，ADR-010 决策 3 / 设计器 P0）：
---   REPORT_FORM_LAYOUT 单行存最新版（LAYOUT_VERSION 递增但旧版被覆盖），
---   客户定制需版本历史 + 对比 + 回滚 → 新建历史快照表：
---     REPORT_FORM_LAYOUT_VERSION（LAYOUT_ID + VERSION + LAYOUT_JSON + 审计列）
---   保存/回滚时写入快照，内置版式升级不覆盖客户定制（决策 3 语义不变）。
---
--- 幂等性：IF OBJECT_ID 守卫，DbUp 重复执行无副作用。
+-- Context: REPORT_FORM_LAYOUT stores only the latest version per layout row
+-- (LAYOUT_VERSION increments but old versions were overwritten). Customer-customized
+-- layouts need version history + comparison + rollback, so a history snapshot table
+-- is introduced: REPORT_FORM_LAYOUT_VERSION (LAYOUT_ID + VERSION + LAYOUT_JSON + audit).
+-- Save/rollback writes a snapshot; built-in layout upgrades never overwrite customer
+-- customizations.
+-- Idempotent: IF OBJECT_ID guards, safe to re-run.
 -- ============================================================================
 
 SET NOCOUNT ON;

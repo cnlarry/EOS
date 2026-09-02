@@ -8,11 +8,12 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// ADR-009 P4 工具（一次性，默认空转）：把 SYSQR_DEFAULT 存量 F_TYPE/F_EXPR DSL 确定性转换为
-/// FILTER_TEMPLATE JSON（复用 LegacyConditionTemplateConverter，ADR-008 同款三档法）。
+/// One-off tool (no-op by default): deterministically converts legacy SYSQR_DEFAULT
+/// F_TYPE/F_EXPR condition DSL rows into FILTER_TEMPLATE JSON
+/// (reusing the same conversion pipeline used for structured chooser conditions).
 ///
-/// 背景：报表条件定义从专用 DSL（F_TYPE=1范围/2固定单选/4固定多选/3/5数据源）改为结构化
-/// FILTER_TEMPLATE（复用 ADR-008 契约 + {p.X} 参数占位符）。本工具读取存量 568 行，
+/// Background: report condition definitions move from a dedicated DSL (F_TYPE ranges/options/
+/// data sources) to structured FILTER_TEMPLATE with {p.X} placeholders.
 /// 转换成功后生成静态 UPDATE 迁移（024_report_condition_template.sql 的转换段，
 /// 漂移守卫：LEGACY 原文一致且 FILTER_TEMPLATE 仍为 NULL 才落）；失败行入人工清单
 /// （logs/report-condition-migration/manual-list.csv，FILTER_TEMPLATE 保持 NULL 运行期 fail-closed）。

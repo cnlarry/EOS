@@ -228,9 +228,9 @@ public sealed class MenuAdminRepository(
     }
 
     /// <summary>
-    /// 菜单同级排序（top/up/down/bottom）。事务内读取同父兄弟节点，按 SORT_IDX,M_IDX
-    /// （即树当前显示顺序）确定目标位，重写整组 SORT_IDX 为 10 步进，保证显示顺序与
-    /// 旧系统「ORDER BY SORT_IDX」完全一致（含重复值场景）。边界移动为无操作。
+    /// Reorders sibling menu items (top/up/down/bottom). Reads siblings within the same parent,
+    /// determines target position by current display order (SORT_IDX, M_IDX), and rewrites
+    /// the entire group of SORT_IDX values in 10-step increments. Boundary moves are no-ops.
     /// </summary>
     public async Task ReorderAsync(int id, string action, string updatedBy, CancellationToken token)
     {

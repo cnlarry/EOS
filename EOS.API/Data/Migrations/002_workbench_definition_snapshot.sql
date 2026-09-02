@@ -1,17 +1,18 @@
 -- ============================================================================
--- EOS.ERP 迁移 002：Workbench Definition 快照（ADR-005 阶段 2，发布侧）
+-- EOS.ERP migration 002: Workbench Definition snapshot (publish side)
 -- ----------------------------------------------------------------------------
--- 库：EOS.ERP（全新系统的唯一业务数据库）
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 定位：
---   1. WORKBENCH_MODULE_DIRTY：元数据写路径（2302 字段维护、工作台列设置/列宽、
---      菜单默认列）保存后仅把模块标记为「脏」，不逐次生成快照；
---   2. WORKBENCH_DEFINITION_SNAPSHOT：发布动作校验通过后写入的版本化 Definition 快照
---      （定义 JSON + 校验结果 + 发布人/时间），每模块唯一当前快照（过滤唯一索引）。
+-- Purpose:
+--   1. WORKBENCH_MODULE_DIRTY: metadata write paths (2302 field maintenance, workbench
+--      column settings/widths, menu default columns) only mark the module "dirty" on save,
+--      instead of generating a snapshot on every change;
+--   2. WORKBENCH_DEFINITION_SNAPSHOT: versioned Definition snapshot written after a publish
+--      action passes validation (definition JSON + validation result + publisher/time),
+--      one current snapshot per module (filtered unique index).
 --
--- 命名约定（AGENTS.md 强制）：表 / 列 / 索引 / 约束一律全大写。
--- 运行时不可变快照加载与 definitionVersion 传播按 ADR 实施边界保持挂起，
--- 本迁移只落发布侧存储；后续阶段在快照之上追加运行时消费。
+-- Naming convention: tables / columns / indexes / constraints all uppercase.
+-- This migration only creates the publish-side storage.
 -- ============================================================================
 
 SET NOCOUNT ON;

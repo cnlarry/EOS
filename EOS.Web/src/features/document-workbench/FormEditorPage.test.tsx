@@ -522,7 +522,7 @@ describe('FormEditorPage', () => {
       '/document-workbench/1209/record',
       expect.objectContaining({ values: { PRO_NO: 'P9', EDITION: '', QTY: '5', FLAG: '1' }, details: [] }),
     ))
-    // ADR-006 决策 2.1：保存请求必须携带幂等键
+    // Save request must carry an idempotency key
     const saveBody = apiClientMock.post.mock.calls.find(([path]) => path === '/document-workbench/1209/record')?.[1] as { idempotencyKey?: string }
     expect(saveBody?.idempotencyKey).toBeTruthy()
     // 保存成功跳浏览态（返回按钮出现），不再回列表
@@ -572,7 +572,7 @@ describe('FormEditorPage', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.change(masterInputs(container)[0], { target: { value: 'P9' } })
     fireEvent.click(screen.getByRole('button', { name: '新增一行' }))
-    // ADR-006 决策 5：行删除为图标按钮（aria-label 删除第N行）
+    // Row delete uses an icon button (aria-label 删除第N行)
     await waitFor(() => expect(screen.getAllByRole('button', { name: '删除第1行' })).toHaveLength(1))
     fireEvent.click(screen.getByRole('button', { name: '删除第1行' }))
     await waitFor(() => expect(screen.queryByRole('button', { name: '删除第1行' })).not.toBeInTheDocument())
@@ -615,7 +615,7 @@ describe('FormEditorPage', () => {
     })
     const { container } = renderEditor('/workbench/1209/edit/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
-    // ADR-006 决策 1：serverFilled 无选择器字段渲染为只读文本，不再是禁用输入框
+    // Server-filled fields without a chooser render as readonly text, not a disabled input
     const staticCells = container.querySelectorAll('.erp-detail-grid tbody tr:not(.erp-detail-filler) .erp-form-static')
     expect(staticCells.length).toBeGreaterThan(0)
     expect(container.querySelector('.erp-detail-grid tbody tr:not(.erp-detail-filler) input.form-control[data-field-key="PRO_NO"], .erp-detail-grid tbody tr:not(.erp-detail-filler) .erp-form-control[data-field-key="PRO_NO"] input')).toBeNull()

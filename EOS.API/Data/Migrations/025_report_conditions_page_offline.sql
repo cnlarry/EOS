@@ -1,22 +1,21 @@
 -- ============================================================================
--- EOS.ERP 迁移 025：报表过滤条件设置（2205）管理页下线（ADR-009 §11/P4）
+-- EOS.ERP migration 025: 2205 report conditions management page offline
 -- ----------------------------------------------------------------------------
--- 背景（2026-08-30，ADR-009 §11 用户拍板）：
---   2205（旧 RPT/SysqrDft.aspx）维护报表查看器条件面板的默认条件定义。
---   ADR-009 §11 裁定五个报表管理页（2201-2205）全部下线：报表定义/版式/条件
---   迁往开发态资产（进 Git），不再保留运行时管理页。
---   P4 起条件定义存储已改为结构化 FILTER_TEMPLATE（迁移 024），运行时读取
---   ReportRepository.ReadConditionsAsync 仍消费 SYSQR_DEFAULT，用户填值
---   SYSQR_USER 保留为运行态。
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 处理范围（对比 016 物理删除：此处数据表保留，仅撤管理页）：
---   1. MODULES 2205：M_TAG=0 隐藏菜单节点 + 清空 M_URL/NEW_URL/MODI_URL（页面路由已删）；
---   2. WORKBENCH_MODULE_DIRTY / WORKBENCH_DEFINITION_SNAPSHOT：防御性清理（2205 无工作台承载）；
---   3. SYSDD/SYSDH/SYSQR_DA/SYSQR_DEFAULT/SYSQR_USER：保留（运行时读取 + 权限单元）；
---   4. 审计/历史保持原样。
+-- Context: 2205 (formerly RPT/SysqrDft.aspx) maintained default condition definitions
+-- for the report viewer's condition panel. The five report management pages (2201-2205)
+-- are all taken offline: report definitions, layouts and conditions move to developer
+-- assets (under Git). Starting from P4, condition storage uses structured FILTER_TEMPLATE
+-- (migration 024); runtime reading still consumes SYSQR_DEFAULT, and user values
+-- SYSQR_USER remain as runtime state.
 --
--- 幂等：全程以 EXISTS/IF 守卫，重复执行无副作用。
--- 命名约定（AGENTS.md 强制）：对象名全大写。
+-- Scope (contrast with 016 where data tables were deleted; here data tables are kept):
+--   1. MODULES 2205: M_TAG=0 to hide the menu node, clear M_URL/NEW_URL/MODI_URL;
+--   2. WORKBENCH_MODULE_DIRTY / WORKBENCH_DEFINITION_SNAPSHOT: defensive cleanup;
+--   3. SYSDD/SYSDH/SYSQR_DA/SYSQR_DEFAULT/SYSQR_USER: preserved (runtime + permission units);
+--   4. Audit/history left intact.
+-- Idempotent: guarded by EXISTS/IF. Naming convention: all uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;

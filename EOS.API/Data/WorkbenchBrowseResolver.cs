@@ -6,18 +6,16 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 跨模块关联字段浏览链接解析器（FIELDS.BROWSE_M_IDX + BROWSE_URL → 现代记录浏览）。
-///
-/// 旧系统行为：字段级 BROWSE_URL 模板（如 ~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}）
-/// 在网格单元格上以双击打开目标页面查看；新系统映射到现代工作台：
-///   - 目标是工作台承载（MODULES.M_URL=/workbench）且主键可完整解析 → 记录浏览
-///     `/workbench/{m}/view/{目标主键值段}`，键源列经 BROWSE_URL 模板
-///     逐目标主键列映射（IDX 段 COL={SRC}，多键 ^ 分隔），browseKeyFields 为有序来源列；
-///   - 目标是工作台承载但键无法解析（模板非目标主键 / 来源列不存在 / 目标未启用统一表单）
-///     → 降级为目标模块列表链接（保留 BrowseModuleId）；
-///   - 目标是特殊页（M_URL 非工作台承载）→ 无浏览链接（纯文本）。
-/// 权限：本解析只产出链接描述符（静态元数据，可快照化）；目标模块浏览权限由前端
-/// bootstrap 权限位（UX 门）与目标 /view、/record 端点（CanBrowse + 数据范围，最终授权）
+/// Resolves cross-module field browse links (FIELDS.BROWSE_M_IDX + BROWSE_URL) into modern
+/// record navigation links. The legacy BROWSE_URL template (e.g. ~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID})
+/// is mapped to the modern workbench:
+///   - Target is workbench-hosted (M_URL=/workbench) and keys resolve fully → record browse
+///     `/workbench/{m}/view/{key-values}`, key source columns mapped per target primary key order;
+///   - Target is workbench-hosted but keys cannot resolve → degraded to target module list link;
+///   - Target is a special page (M_URL != /workbench) → no link (plain text).
+/// This resolver only produces link descriptors (static metadata, snapshotable); target browse
+/// permissions are enforced by the frontend bootstrap (UX gate) and the target /view, /record
+/// endpoints (CanBrowse + data scope, final authorization).
 /// 双重把关。动态标识符一律来自 FIELDS 元数据并经 sys.* 校验，不信任前端输入。
 /// </summary>
 public static class WorkbenchBrowseResolver

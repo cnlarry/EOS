@@ -162,7 +162,7 @@ public sealed class FieldAdminRepositoryTests
     public void DescribeInput_FlattensChooserSlots()
     {
         var describe = FieldAdminRepository.DescribeInput(FieldInput());
-        // ADR-008：审计扁平化键改为 FIELDS_CHOOSER 条目（SERIAL_NO 维度）
+        // Audit flattening keys are per FIELD_DATASOURCE entry (SERIAL_NO dimension)
         Assert.Equal("1", describe["CHOOSER[1].ACTIVE"]);
         Assert.Equal("CLIENT", describe["CHOOSER[1].SOURCE_T_ID"]);
         Assert.Equal("1401", describe["CHOOSER[1].SOURCE_M_IDX"]);

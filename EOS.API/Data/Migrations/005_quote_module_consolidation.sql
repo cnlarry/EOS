@@ -1,33 +1,28 @@
 -- ============================================================================
--- EOS.ERP 迁移 005：报价单/客户询价单模块收敛
---                 （保留 1404/1403，物理删除 1416/1415）
+-- EOS.ERP migration 005: quote / customer-enquiry module consolidation
+--                 (keep 1404/1403, physically drop 1416/1415)
 -- ----------------------------------------------------------------------------
--- 库：EOS.ERP（全新系统的唯一业务数据库）
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 背景（2026-08-23 用户决策，决策清单 #27）：
---   ① 1404/1416 均为报价单（COP_QUOTE_M/COP_QUOTE_D、~/COP/Quote.aspx、
---      P_COP_QUOTE_After_Save / P_WF_COP_QUOTE），属重复入口。用户拍板：
---      保留 1404（使用习惯 ID），把 1416 的规则（自动单号、工作流、打印、
---      批核联动客户计价表、单据性质、报表）迁移到 1404，1416 模块物理删除。
---   ② 1403/1415 客户询价单（2026-08-19 已决策下线 1415，本次物理删除），
---      保留 1403；1415 的权限/单别/报表等归属合并到 1403。
+-- Context:
+--   ① 1404 and 1416 are both quote modules (COP_QUOTE_M/COP_QUOTE_D, P_COP_QUOTE_After_Save
+--      / P_WF_COP_QUOTE) — duplicate entries. Keep 1404 (the commonly used ID) and migrate
+--      all of 1416's rules (auto numbering, workflow, printing, approval-linked customer
+--      price list, document nature, reports) to 1404, then physically delete 1416.
+--   ② 1403 and 1415 are both customer-enquiry modules. Keep 1403; merge 1415's permissions/
+--      bill types/reports into 1403, then physically delete 1415.
 --
--- 处理范围：
---   1. BILLKIND.B_M_IDX 1416 → 1404（单据性质/单别随模块保留，含 BJK/BJD 历史单别）；
---   2. SYSDD / SYSDH 权限合并：布尔位 OR、EXEC_TAG 取最大、拒绝字段/DATA_FILTER
---      保留 1404 既有值（不新增限制、不丢权限）；
---   3. WFFORM / WFFORM_FLOW 流程定义迁移（1404 无流程定义时整体迁移；
---      1404 已有则保留 1404 的，删除 1416 的）；
---   4. REPORT.R_M_IDX / Q_M_IDX 1416 → 1404（打印/报表模板随模块保留）；
---   5. MODULES 1404 继承 1416 的功能列（非空列 COALESCE 迁移，菜单身份列除外），
---      1416 物理删除；FIELDS 的 CHOOSE_M_IDX*/BROWSE_M_IDX 同步改指 1404；
---   6. WORKBENCH 脏标记 / Definition 快照按 1416 清理（1404 发布时重新生成）；
---      ATTACHMENT.MODULE_ID 1416 → 1404（历史附件在新入口下仍可见）；
---   7. 审计/日志（SYSDF、AUDIT_EVENT、WF_MONITOR/WF_MYTASK/WF_APPROVE 等
---      在途/历史记录）保持原样不动，仅打印计数留档。
---
--- 幂等：全程以 EXISTS/IF 守卫，重复执行无副作用。
--- 命名约定（AGENTS.md 强制）：对象名全大写。
+-- Scope:
+--   1. BILLKIND.B_M_IDX 1416 → 1404 (document nature/bill types kept with the module);
+--   2. SYSDD / SYSDH permission merge: boolean OR, EXEC_TAG max, deny fields/DATA_FILTER keep 1404's values;
+--   3. WFFORM / WFFORM_FLOW workflow definitions migrated (kept if 1404 already has one);
+--   4. REPORT.R_M_IDX / Q_M_IDX 1416 → 1404 (print/report templates follow the module);
+--   5. MODULES 1404 inherits 1416's functional columns (COALESCE, excluding identity columns),
+--      1416 physically deleted; FIELDS CHOOSE_M_IDX*/BROWSE_M_IDX repointed to 1404;
+--   6. WORKBENCH dirty markers / Definition snapshots cleaned for 1416 (regenerated on 1404 publish);
+--      ATTACHMENT.MODULE_ID 1416 → 1404 (historical attachments stay visible under the new entry);
+--   7. Audit/logs (SYSDF, AUDIT_EVENT, WF_MONITOR/WF_MYTASK/WF_APPROVE in-flight/history) kept intact.
+-- Idempotent: guarded by EXISTS/IF throughout. Naming convention: all uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;
@@ -255,7 +250,7 @@ WHERE m.M_IDX=1404;
 DELETE FROM dbo.MODULES WHERE M_IDX=1416;
 PRINT N'[EOS-19] MODULES 1416 物理删除完成（1404 已承接规则）。';
 
--- 9b. 1415 客户询价单物理删除（保留 1403；2026-08-19 已 M_TAG=0 下线）
+-- 9b. 1415 customer-enquiry physical delete (keep 1403; 1415 was already M_TAG=0 offline)
 IF EXISTS (SELECT 1 FROM dbo.MODULES WHERE M_IDX=1415)
 BEGIN
     -- 权限合并到 1403（用户/组不丢访问）

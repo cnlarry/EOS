@@ -12,9 +12,10 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// M4 写能力（draft 级）单元测试：draft_record 草稿校验（白名单剔除/必填缺失/类型粗验/
-/// 新增权限门）与 ChatService Drafts 透传。执行路径复用现有保存管线的部分由前端确认后走
-/// record 端点（其行为已有工作台侧保障），此处聚焦工具自身语义。
+/// Unit tests for the draft-level write tool: draft_record validation (whitelist filtering,
+/// missing-required, type checks, add-new permission gate) and ChatService Drafts passthrough.
+/// Execution reuse of the existing save pipeline is covered on the workbench side; these tests
+/// focus on the tool's own semantics.
 /// </summary>
 public sealed class AssistantDraftToolTests
 {

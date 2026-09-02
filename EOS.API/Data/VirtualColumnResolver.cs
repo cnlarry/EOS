@@ -137,9 +137,9 @@ internal static class VirtualExpressionParser
 public sealed class VirtualColumnResolver(SqlConnection connection)
 {
     /// <summary>
-    /// 受控标量函数白名单（2026-08-23，110303 虚拟列落地）：VIRTUAL_EXP 允许
-    /// dbo.&lt;函数&gt;(&lt;表.列&gt;) 形式，函数必须登记在此（如 f_get_unit_type_desc：
-    /// 旧系统把单位类型 1~5 翻译为 数量/重量/长度/面积/体积 的纯映射函数）。
+    /// Controlled scalar function whitelist. VIRTUAL_EXP may reference dbo.&lt;func&gt;(&lt;table&gt;.&lt;column&gt;).
+    /// Functions must be registered here (e.g. f_get_unit_type_desc: maps unit type 1-5 to
+    /// quantity/weight/length/area/volume labels).
     /// </summary>
     internal static readonly IReadOnlySet<string> ControlledScalarFunctions =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "f_get_unit_type_desc" };

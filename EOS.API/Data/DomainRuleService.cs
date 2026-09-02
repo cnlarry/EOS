@@ -4,14 +4,13 @@ using System.Data;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 确定性领域规则服务（阶段 5：把旧 AFTERSAVE_SP/UPDATE_SP 等价逻辑移植为 C# 领域代码）。
-/// ADR-005 阶段 3 边界：本类只保留既有规则运行入口，**不再新增领域规则**；
-/// 新规则落到 features/ 对应领域服务（ProcurementRules/SalesRules/InventoryRules/
-/// ProductionRules/HrRules/FinanceRules），经 ModuleBusinessMap.DomainRule 注册。
-/// 当前实现：
-/// - purchase-due（170201 应付货款单）：数量校验（等价 P_PUR_DUE_CHECK，收料/退料不超量）
-///   + 主表金额汇总（等价 P_PUR_DUE_After_Save：AMOUNT/TAX_SUM/AMOUNT_TAX/SUM_AMOUNT/QTY_TOTAL，ROUND 2）。
-/// 表名/列名来自服务端元数据与常量，值全部参数化；与受控 SP 调用同事务。
+/// Deterministic domain rule service. Hosts domain rule entry points extracted from
+/// legacy AFTERSAVE_SP/UPDATE_SP equivalents. New rules belong in features/ domain
+/// services (ProcurementRules/SalesRules/InventoryRules/ProductionRules/HrRules/FinanceRules)
+/// registered via ModuleBusinessMap.DomainRule.
+/// Current rules:
+/// - purchase-due (170201): quantity validation + master amount summation (ROUND 2).
+/// Table/column names come from server-side metadata; all values are parameterized.
 /// </summary>
 public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
 {

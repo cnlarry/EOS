@@ -20,7 +20,7 @@ public sealed class FieldAdminRepository(
         "float", "real", "money", "smallmoney", "date", "datetime", "datetime2", "smalldatetime", "time", "bit",
         "uniqueidentifier", "text", "ntext", "image", "varbinary", "binary", "xml", "timestamp", "sql_variant",
         "geometry", "geography", "hierarchyid",
-        // 旧系统伪类型与历史遗留写法（保留可编辑，避免已有行保存失败）
+        // Legacy pseudo-types kept editable so existing rows do not fail on save
         "IDCard", "URL", "Email", "PhoneNo", "ZipCode", "String", "Integer"
     };
     private static readonly HashSet<string> AllowedAlign = new(StringComparer.OrdinalIgnoreCase)
@@ -664,7 +664,7 @@ public sealed class FieldAdminRepository(
         AddInput(command, request.Field, updatedBy);
         if (await command.ExecuteNonQueryAsync(token) != 1)
             throw new InvalidOperationException("新增字段失败。");
-        // ADR-008：数据源独立表事务内写入（任意数量，SERIAL_NO 1..n）
+        // Write chooser data sources in the same transaction (ordered by SERIAL_NO)
         await ReplaceChoosersAsync(connection, transaction, request.TableId, request.FieldId.Trim(), request.Field.Choosers, updatedBy, token);
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
         await transaction.CommitAsync(token);
@@ -714,7 +714,7 @@ public sealed class FieldAdminRepository(
         AddInput(command, field, updatedBy);
         if (await command.ExecuteNonQueryAsync(token) != 1)
             throw new KeyNotFoundException("字段不存在。");
-        // ADR-008：数据源独立表事务内全量替换（DELETE + INSERT，SERIAL_NO 1..n）
+        // Replace chooser data sources in the same transaction (DELETE + INSERT, SERIAL_NO 1..n)
         await ReplaceChoosersAsync(connection, transaction, tableId, fieldId.Trim(), field.Choosers, updatedBy, token);
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
         await transaction.CommitAsync(token);
@@ -1024,7 +1024,7 @@ public sealed class FieldAdminRepository(
                 throw new ArgumentException("数据选择源配置无效（来源表/说明超长）。");
             if (!string.IsNullOrWhiteSpace(source.Table) && !WorkbenchSql.Identifier.IsMatch(source.Table.Trim()))
                 throw new ArgumentException($"数据选择源表名无效：{source.Table}");
-            // ADR-008：过滤条件只接受结构化 JSON；旧系统手写 SQL 需经迁移/构建器转换，不做 SQL 后门
+            // Filter conditions only accept structured JSON; raw SQL is never accepted here
             if (!string.IsNullOrWhiteSpace(source.Filter) && !ChooserFilterStruct.TryParse(source.Filter, out _))
                 throw new ArgumentException("过滤条件必须是结构化 JSON（{\"logic\":\"AND\",\"items\":[...]}）；旧手写 SQL 不再接受。");
             if (!string.IsNullOrWhiteSpace(source.ReturnMapping) && ChooserReturnItems.Parse(source.ReturnMapping) is null)

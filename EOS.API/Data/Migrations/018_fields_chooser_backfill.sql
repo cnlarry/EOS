@@ -1,6 +1,6 @@
-﻿-- ADR-008 P3：存量 CHOOSE_FILTER 二档全自动转换回填（2026-08-28）
--- 全自动转换 291 行（待重建 167 + 兼容重转 124）/ 需人工 500 行；
--- 报告：logs/fields-chooser-migration/（不入库）。
+﻿-- Field data source backfill: automated conversion of CHOOSE_FILTER tier-2 conditions.
+-- 291 rows auto-converted (167 rebuild + 124 compatible re-convert) / 500 rows manual.
+-- Drift guard: writes only when original text matches and FILTER_STRUCT is still NULL.
 
 SET NOCOUNT ON;
 

@@ -5,8 +5,9 @@ using EOS.API.Security;
 namespace EOS.API.Features.Assistant.Tools;
 
 /// <summary>
-/// 受控工具注册表（ADR-007 §4 ToolRegistry）：白名单 + schema 显式声明。
-/// M3 只含 read 级工具；写能力（draft/write/admin-write 分级与结构化确认）按 ADR-007 §6 在 M4 接入。
+/// Controlled tool registry: whitelist + explicit JSON schema per tool.
+/// Read-level tools only; write capability (draft/write/admin-write with structured confirmation)
+/// is added at the write tier.
 /// </summary>
 public sealed class AssistantToolRegistry(IEnumerable<IAssistantTool> tools)
 {

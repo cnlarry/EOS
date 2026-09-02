@@ -1,16 +1,17 @@
 -- ============================================================================
--- EOS.ERP 迁移 004：统一业务审计（ADR-005 阶段 4 / §8）
+-- EOS.ERP migration 004: unified business audit
 -- ----------------------------------------------------------------------------
--- 定位：新系统审计事实源，逐步替代以旧 SYSDF 为核心证据源的做法。
---       AUDIT_EVENT：审计事件主表；AUDIT_FIELD_CHANGE：字段级变更明细。
--- 约束：
---   1. 审计写入与业务事务同生共死（WorkbenchAuditWriter 在业务事务内写入）；
---   2. ACTOR_TYPE：1=用户 2=系统任务 3=Agent 代表用户 4=外部集成；
---   3. CLIENT_TYPE：1=Web 2=API 3=Agent 4=集成调用；
---   4. 密码/密钥/Cookie/附件正文不入审计；大字段或敏感字段只存 hash/掩码/摘要；
---   5. 留存与归档策略见 scripts/audit-retention.ps1（DETAIL_JSON 30 天截断、
---      AUDIT_FIELD_CHANGE 90 天、AUDIT_EVENT 180 天归档）。
--- 命名约定（AGENTS.md 强制）：表 / 列 / 索引 / 约束一律全大写。
+-- Purpose: audit source of truth for the new system.
+--   AUDIT_EVENT: audit event master; AUDIT_FIELD_CHANGE: field-level change detail.
+-- Constraints:
+--   1. Audit writes share the business transaction (WorkbenchAuditWriter writes inside it);
+--   2. ACTOR_TYPE: 1=user 2=system task 3=agent on behalf of user 4=external integration;
+--   3. CLIENT_TYPE: 1=Web 2=API 3=agent 4=integration;
+--   4. Passwords/keys/cookies/attachment content never enter the audit; large or sensitive
+--      fields store only hash/mask/summary;
+--   5. Retention/archival policy: see scripts/audit-retention.ps1 (DETAIL_JSON 30-day truncation,
+--      AUDIT_FIELD_CHANGE 90 days, AUDIT_EVENT 180-day archival).
+-- Naming convention: tables / columns / indexes / constraints all uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;

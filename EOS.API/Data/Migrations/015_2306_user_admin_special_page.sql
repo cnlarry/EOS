@@ -1,20 +1,18 @@
 -- ============================================================================
--- EOS.ERP 迁移 015：2306 用户权限设定归类纯定制页（移除工作台承载）
+-- EOS.ERP migration 015: 2306 user admin reclassified as a pure custom page
 -- ----------------------------------------------------------------------------
--- 库：EOS.ERP（全新系统的唯一业务数据库）
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 背景（2026-08-27 定制页逐页验收，EOS-23）：
---   用户拍板：2306 是定制页，不应与工作台关联。M_URL 已为 /admin/users；
---   本迁移清空 NEW_URL/MODI_URL（MODI_URL 原为 /admin/users 指向列表自身，冗余），
---   清理 Definition 快照与脏标记（2306 已从 UnifiedFormEditor.EnabledModuleIds
---   白名单剔除），并在 REMARK 登记决策。
+-- Context: 2306 user permission settings is a dedicated custom page (/admin/users)
+-- and should not be associated with the workbench. M_URL is already /admin/users.
+-- This migration clears NEW_URL/MODI_URL (MODI_URL was /admin/users pointing to the
+-- list itself, redundant), cleans up Definition snapshots and dirty markers
+-- (2306 is already removed from the unified form whitelist).
 --
--- 处理范围：
---   1. MODULES 2306：NEW_URL/MODI_URL 清空，REMARK 登记决策；
---   2. WORKBENCH_MODULE_DIRTY / WORKBENCH_DEFINITION_SNAPSHOT 按 2306 清理。
---
--- 幂等：全程以 WHERE 守卫，重复执行无副作用。
--- 命名约定（AGENTS.md 强制）：对象名全大写。
+-- Scope:
+--   1. MODULES 2306: clear NEW_URL/MODI_URL, record decision in REMARK;
+--   2. Clean WORKBENCH_MODULE_DIRTY / WORKBENCH_DEFINITION_SNAPSHOT for 2306.
+-- Idempotent: guarded by WHERE clauses. Naming convention: all uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;

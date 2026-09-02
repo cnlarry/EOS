@@ -6,11 +6,9 @@ using System.Text.RegularExpressions;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 旧系统单号生成器（等价 ERP/Comm/GetNewBillNo.aspx.cs + AjaxSaveData.GetNewNo）。
-/// 规则：按模块取 BILLKIND 默认单据类型（IS_DEFAULT=1），
-/// 从 USED_BILL_NO 表达式解析字头（如 BJK{YYMM}0000 → BJK + 当前年月 + 4 位流水），
-/// 查主表当前最大单号（按单别 + 字头前缀）后 +1。
-/// 表名/列名全部来自服务端元数据与白名单配置，值全部参数化，不拼接用户输入。
+/// Bill number generator. Resolves the bill type template (e.g. BJK{YYMM}0000)
+/// into a prefix + sequential number: BJK2608 + 0001.
+/// Table/column names come from server-side metadata whitelist; all values are parameterized.
 /// </summary>
 public static class BillNoGenerator
 {
@@ -29,7 +27,7 @@ public static class BillNoGenerator
         prefix = DateToken.Replace(prefix, match =>
         {
             var token = match.Value[1..^1];
-            // 旧系统规则：{YYMM} → yyMM、{YYYYMM} → yyyyMM、{YYMMDD} → yyMMdd、{YYYY} → yyyy
+            // Date token format: {YYMM} → yyMM, {YYYYMM} → yyyyMM, {YYMMDD} → yyMMdd, {YYYY} → yyyy
             token = token.Replace('Y', 'y').Replace('m', 'M').Replace('D', 'd');
             return now.ToString(token, CultureInfo.InvariantCulture);
         });

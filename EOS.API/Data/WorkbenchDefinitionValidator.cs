@@ -461,7 +461,7 @@ public sealed class WorkbenchDefinitionValidator(
                 : $"存在跨模块死映射 {returnvalErrors.Count} 处（运行时未命中即跳过、无害，随逐模块验收清理）：{string.Join(",", returnvalErrors.Take(8))}{(returnvalErrors.Count > 8 ? " 等" : "")}。",
             "warning"));
 
-        // ADR-008 §7：数据源完整性（阻断）——来源表存在、FILTER_STRUCT 可编译、回填列存在于来源表
+        // Chooser data source integrity (blocking): source table exists, FILTER_STRUCT compiles, return columns exist
         var chooserErrors = new List<string>();
         var chooserWarnings = new List<string>();
         foreach (var table in tables)

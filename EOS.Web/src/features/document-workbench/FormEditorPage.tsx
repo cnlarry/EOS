@@ -79,7 +79,7 @@ export function FormEditorPage() {
   useEffect(() => {
     if ((isEdit || isView) && !keyParam) navigate(workbenchList(moduleId), { replace: true })
   }, [isEdit, isView, keyParam, moduleId, navigate])
-  // ADR-006 决策 6：路由 state 承载两类跨页上下文——保存 warnings 与列表导航（上一条/下一条）
+  // Route state carries cross-page context: save warnings and list navigation (previous/next)
   interface ViewNavState { navKeys?: string[][]; navIndex?: number; warnings?: { code: string; message: string }[] | null }
   const locationState = (location.state ?? null) as ViewNavState | null
   const navKeys = locationState?.navKeys
@@ -96,7 +96,7 @@ export function FormEditorPage() {
       { state: { navKeys, navIndex: next } satisfies ViewNavState })
   }
   const originalRef = useRef<Record<string, string>>({})
-  // ADR-006 决策 2.1：幂等键＝一次用户保存意图；保存成功/取消放弃后换新键，校验失败重试沿用原键
+  // Idempotency key = one user save intent; rotate on success/cancel, reuse on validation failure
   const idempotencyRef = useRef(newIdempotencyKey())
   const [masterValues, setMasterValues] = useState<Record<string, string>>({})
   const [detailRows, setDetailRows] = useState<Record<string, string>[]>([])
@@ -154,8 +154,8 @@ export function FormEditorPage() {
     for (const field of formQuery.data.masterFields) {
       if (field.isVisible) initial[field.key] = defaults[field.key] ?? emptyValue(field)
     }
-    // ADR-007 M4：工作助手「带入表单」预填——sessionStorage 一次性消费；
-    // 助手值覆盖默认值（服务端维护字段在草稿生成时已剔除），最终仍由保存管线权威校验
+    // Assistant pre-fill: one-shot sessionStorage channel; assistant values override defaults
+    // (server-filled fields are already excluded by draft generation), final validation by the save pipeline
     const prefillRaw = sessionStorage.getItem(`erp-assistant-prefill-${moduleId}`)
     if (prefillRaw) {
       sessionStorage.removeItem(`erp-assistant-prefill-${moduleId}`)
@@ -228,7 +228,7 @@ export function FormEditorPage() {
   const save = useMutation({
     mutationFn: async () => {
       if (!formQuery.data) throw new Error('表单定义未加载。')
-      // ADR-006 决策 1/2.5：decimal 变体提交前规范化为不变文化数字串（去千分位/全角）
+      // Normalize decimal values before submit: strip thousands separators and full-width digits
       const toSubmit = (field: FormFieldDefinition): string => {
         const raw = masterValues[field.key] ?? ''
         return fieldVariant(field) === 'decimal' ? canonicalizeDecimalValue(raw) : raw.trim()
@@ -255,8 +255,8 @@ export function FormEditorPage() {
       setDirty(false)
       idempotencyRef.current = newIdempotencyKey()
       await queryClient.invalidateQueries({ queryKey: ['workbench', moduleId] })
-      // ADR-006 决策 6：保存后进入该单据浏览态，key 以保存响应的服务端权威键为准
-      // （自动单号场景预览号≠最终单号，禁止用表单内值拼 key）；warnings 经路由 state 带到浏览态 banner。
+      // After save, enter browse mode. Key comes from the server (authoritative); the preview bill
+      // number from auto-numbering may differ from the final number.
       const key = response?.key?.length ? response.key : buildKey(formQuery.data!, masterValues)
       navigate(workbenchView(moduleId, key),
         { state: { warnings: response?.warnings ?? null } satisfies ViewNavState })
@@ -335,8 +335,7 @@ export function FormEditorPage() {
     if (!window.confirm('确定删除该单据吗？删除后不可恢复。')) return
     try {
       await apiClient.delete(`/document-workbench/${moduleId}/record?key=${encodeURIComponent(keyParam)}`, { headers: { 'X-Idempotency-Key': newIdempotencyKey() } })
-      // ADR-006 决策 6：删除后返回工作台列表并刷新（旧系统 window.close 回主表列表语义）；
-      // 跨模块关联浏览时返回来源工作台
+      // After delete, return to the list and refresh; cross-module browse goes back to the source list
       await queryClient.invalidateQueries({ queryKey: ['workbench', moduleId] })
       navigate(fromModuleId ? workbenchList(fromModuleId) : workbenchList(moduleId))
     } catch (cause) {
@@ -403,7 +402,7 @@ export function FormEditorPage() {
     navigate(fromModuleId ? workbenchList(fromModuleId) : workbenchList(moduleId))
   }
 
-  // ADR-006 决策 5：Ctrl+S 保存（编辑/新增态）；每次渲染重挂监听以捕获最新校验闭包
+  // Ctrl+S to save (edit/new mode); re-mount listener on each render to capture the latest closure
   useEffect(() => {
     if (isView) return
     const handler = (event: KeyboardEvent) => {
@@ -642,9 +641,9 @@ export function FormEditorPage() {
   const hasTabs = form.tabs.length > 0
   const activeTabNo = hasTabs ? activeTab : 1
   const masterCells = buildFormCells(visibleMaster).filter(cell => !hasTabs || cell[0].tabNo === activeTabNo)
-  // ADR-006 决策 1：页签内按 FORM_CELL_GROUP 分节（≥2 个主字段格成节，其余归默认节）
+  // Group master fields by FORM_CELL_GROUP (>=2 fields in a group forms a section; remainder go to default section)
   const masterSections = buildFormSections(masterCells)
-  // 页签错误徽标（ADR-006 背景 4）：隐藏页签的错误以计数徽标提示
+  // Tab error badges: hidden tabs' errors shown as count badges
   const tabErrorCounts = new Map<number, number>()
   for (const field of form.masterFields) {
     if (field.isVisible && fieldErrors[field.key]) tabErrorCounts.set(field.tabNo, (tabErrorCounts.get(field.tabNo) ?? 0) + 1)
@@ -665,7 +664,7 @@ export function FormEditorPage() {
     return indices
   })()
   const detailRowSelection = Object.fromEntries([...selectedDetailRows].map(index => [`r${index}`, true])) as RowSelectionState
-  // ADR-006 决策 5：移除硬编码补空行；空态由 ErpTable empty 渲染「+ 新增一行」虚线入口
+  // Empty state renders a "+ Add Row" dashed entry instead of pre-filling blank rows
   const detailGridRows: DetailGridRow[] = orderedDetailIndices.map(index => ({ __id: `r${index}`, __index: index, ...detailRows[index] }))
   const detailColumns: ColumnDef<DetailGridRow, unknown>[] = [
     {
@@ -729,7 +728,7 @@ export function FormEditorPage() {
       enableHiding: false,
       meta: { className: 'erp-detail-actions text-center', resizable: false, truncate: false },
       cell: ({ row }) => (
-        // ADR-006 决策 5：行内删除改图标按钮，对齐命令栏图标规范
+        // Inline delete as icon button, aligned with command bar icon conventions
         <Button
           size="sm"
           variant="danger"
@@ -803,12 +802,12 @@ export function FormEditorPage() {
                 )}
               </>
             ) : (
-              // ADR-006 决策 6 浏览态工具栏（2026-08-27 顺序用户定序，固定不随 FORM_BUTTONS 顺序漂移）：
-              // 返回/上下条/新增(主操作)/复制/编辑/删除/批核|解批/审批历史/结案|未结案/附件/打印/帮助
+              // Browse-mode toolbar (fixed order, not affected by FORM_BUTTONS config):
+              // back/prev/next/new(primary)/copy/edit/delete/approve|deapprove/history/close|unclose/attach/print/help
               <ErpCommandBar items={(() => {
                 const currentKey = buildKey(form, masterValues)
                 const master = recordQuery.data?.master
-                // ADR-006 决策 6 单据状态（服务端 record 强制返回）：已批核 CONFIRM_TAG / 已结案 FINISHED_TAG
+                // Document status (server-returned): CONFIRM_TAG / FINISHED_TAG
                 const isConfirmed = master?.CONFIRM_TAG === true
                 const isFinished = master?.FINISHED_TAG === true
                 // A3：在途流程状态（WF_MONITOR.WF_STATE='0'）——流程审批中的单据禁止编辑/删除，批核改显示撤回

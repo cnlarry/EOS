@@ -1,12 +1,8 @@
--- ADR-008：字段数据来源表改名 FIELDS_CHOOSER → FIELD_DATASOURCE（2026-08-28 用户拍板）
---
--- 决策来源：docs/decisions/ADR-008-字段数据来源模型重构.md（全页化 UI 打磨登记第 8 点）
--- 理由：CHOOSER 偏控件语义，FIELD_DATASOURCE 更直观表达「字段数据源定义」。
--- 影响：表名/主键/唯一约束/外键/默认约束/索引名统一为 FIELD_DATASOURCE 前缀；
---       依赖该表的存储过程（P_Change_M_IDX）由 sp_rename 自动同步绑定引用；
---       CHOOSER_FILTER_MIGRATION_LOG（迁移审计/待重建队列）保持原名。
--- 顺序：本迁移在 018 之后执行（018 回填仍引用旧名 FIELDS_CHOOSER，先执行再改名）。
--- 编号：019 已被 2205 报表条件迁移占用（019_2205_report_conditions_special_page.sql），本迁移用 020。
+-- Rename FIELD_DATASOURCE table: FIELDS_CHOOSER → FIELD_DATASOURCE.
+-- Reason: "CHOOSER" is control-semantic; "FIELD_DATASOURCE" better expresses the "field data source" concept.
+-- Impact: table name, PK, unique constraint, FK, default constraint, index names all renamed.
+-- The stored procedure P_Change_M_IDX is auto-updated by sp_rename.
+-- CHOOSER_FILTER_MIGRATION_LOG (migration audit queue) keeps its original name.
 
 SET NOCOUNT ON;
 

@@ -1,19 +1,18 @@
 -- ============================================================================
--- 028: ADR-008 字段数据源治理（A 类豁免登记 + D 类脏数据清空）
--- 日期：2026-08-30
--- 决策：docs/plans/业务待定项决策清单.md「ADR-008 字段数据源治理（2026-08-30）」
---       用户拍板：A（与旧系统同败，豁免）→ D（脏数据，清空）先清干净；
---       B（补 QUERY_RELATION 回填）/ C（人工重建）后续按清单处置。
--- 分诊依据：logs/fields-chooser-rerun/triage.md + still-manual.csv（不入库）。
+-- 028: Field data source governance — A-class exemption log + D-class dirty-data clearing
+-- ----------------------------------------------------------------------------
+-- Background: triage of remaining MANUAL chooser filter rows (see triage.md).
+-- Decision: handle A (exemption) and D (dirty data) first; B (backfill via QUERY_RELATION)
+-- and C (manual rebuild) follow per the governance plan.
 --
--- A 类（10 行）：过滤条件含 NOT IN/EXISTS 子查询引用其它单据表，该表不在
---   数据源来源表 QUERY_RELATION JOIN 白名单内——旧系统运行时同样绑定失败
---   （选择器空选项）。处置：保持 FILTER_STRUCT=NULL（fail-closed，不放大
---   数据范围），仅把 CHOOSER_FILTER_MIGRATION_LOG.STATUS 置 EXEMPTED，
---   解除「迁移清单内来源禁止静默清空」对字段设置保存的拦截。
--- D 类（3 行）：脏数据/恒等/表名截断条件。处置：FIELD_DATASOURCE.FILTER_STRUCT
---   清为显式空过滤（选择器恢复可用）；原业务语义若被丢弃，由顾问按需重建。
--- 受影响模块标脏（WORKBENCH_MODULE_DIRTY），触发发布校验重跑。
+-- A class (10 rows): filter conditions contain NOT IN/EXISTS subqueries referencing other
+-- document tables not in the source table's QUERY_RELATION join whitelist — the legacy
+-- runtime also failed to bind them (empty chooser options). Action: keep FILTER_STRUCT=NULL
+-- (fail-closed, no scope expansion), set CHOOSER_FILTER_MIGRATION_LOG.STATUS to EXEMPTED
+-- to unblock field-settings saving for these sources.
+-- D class (3 rows): dirty/identity/truncated-table-name conditions. Action: clear
+-- FIELD_DATASOURCE.FILTER_STRUCT to an explicit empty filter (chooser usable again).
+-- Affected modules are marked dirty (WORKBENCH_MODULE_DIRTY).
 -- ============================================================================
 SET NOCOUNT ON;
 

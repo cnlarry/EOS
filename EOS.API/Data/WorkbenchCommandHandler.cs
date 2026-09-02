@@ -135,7 +135,7 @@ public sealed class WorkbenchCommandHandler(
         RecordPayloadValidator.ApplyDefaults(form.MasterFields, values);
         FormDefaultRules.Apply(definition.ModuleId, form.MasterFields, values);
 
-        // ADR-005 §7 配套：主表存在 OWNER/OWNER_G 时回填制单人/主组
+        // Backfill OWNER/OWNER_G on the master table when those columns exist
         if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "OWNER", token))
         {
             values.TryAdd("OWNER", userId);
@@ -214,8 +214,9 @@ public sealed class WorkbenchCommandHandler(
         {
             identityValue = await InsertRowAsync(connection, transaction, definition.MasterTable, insertFields, values, masterIdentity, token);
         }
-        // ADR-006 决策 2.8（单号冲突友好化）：自动单号模块的默认单号只是预览号，并发开单会撞唯一键；
-        // 仅当冲突索引命中主键/单号列时映射为 BILL_NO_CONFLICT（400），其余唯一键冲突保持原样上抛。
+        // The default bill number from auto-numbering is only a preview; concurrent creation can hit a
+        // unique-key conflict. Map the conflict to BILL_NO_CONFLICT (400) only when the duplicate index
+        // involves the primary key / bill number column; other unique conflicts propagate as-is.
         catch (SqlException ex) when (ex.Number is 2601 or 2627)
         {
             if (businessRule is { AutoBillNo: true, BillNoField: not null }
@@ -233,7 +234,7 @@ public sealed class WorkbenchCommandHandler(
             keyValues = pkColumns.Select(column => ValueToString(values.GetValueOrDefault(column))).ToList();
         }
 
-        // ADR-005 §7 收紧（2026-08-23）：建单后记录必须处于模块契约内（模块 FILTER + DATA_FILTER + EXEC_TAG）
+        // After insert, the record must stay within the module contract (module FILTER + DATA_FILTER + EXEC_TAG)
         if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
@@ -359,7 +360,7 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_IN_PROGRESS_EDIT_FORBIDDEN",
                 "记录流程正在审批中，禁止编辑（请先撤回流程）。");
         }
-        // ADR-005 §7 收紧：编辑前目标记录必须处于模块契约内
+        // Target record must be within the module contract before editing
         if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
@@ -530,7 +531,7 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
         }
-        // ADR-005 §7 收紧：删除前目标记录必须处于模块契约内
+        // Target record must be within the module contract before deletion
         if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
@@ -622,7 +623,7 @@ public sealed class WorkbenchCommandHandler(
         for (var rowIndex = 0; rowIndex < details.Count; rowIndex++)
         {
             var validation = RecordPayloadValidator.ValidateSubmitted(form.DetailFields, details[rowIndex]);
-            // ADR-006 决策 2.2：明细行错误携带行号，前端按行精确定位（不再全部挂到第一行）
+            // Detail row errors carry the row index so the front end can locate the exact row
             errors.AddRange(validation.Errors.Select(error => error with { RowIndex = rowIndex }));
             var row = new Dictionary<string, object?>(validation.Converted, StringComparer.OrdinalIgnoreCase);
             RecordPayloadValidator.ApplyDefaults(form.DetailFields, row);
@@ -1025,7 +1026,7 @@ public sealed class WorkbenchCommandHandler(
             return;
         }
 
-        // ADR-008 §4：回填映射消费有序 RETURN_ITEMS JSON（旧逗号串解析退役）
+        // Return mapping consumed as ordered RETURN_ITEMS JSON
         var mapping = ChooserReturnItems.Parse(source.ReturnMapping) ?? [];
         var keyColumn = mapping.FirstOrDefault(pair => string.Equals(FormFieldSelector.NormalizeChooserTarget(pair.Target), main.Key, StringComparison.OrdinalIgnoreCase))?.Column;
         if (string.IsNullOrWhiteSpace(keyColumn))
