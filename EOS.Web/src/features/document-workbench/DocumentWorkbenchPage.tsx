@@ -274,11 +274,11 @@ export function DocumentWorkbenchPage() {
   const changeDetailSort=(next:SortingState)=>{const first=next[0];setDetailSort(first?{field:first.id,direction:first.desc?'desc':'asc'}:null)}
   const handleRowSelectionChange=(next:RowSelectionState)=>{const selectedKeys=Object.keys(next).filter(key=>next[key]);setSelected(current=>{const result:Record<string,Record<string,unknown>>={};for(const key of selectedKeys){result[key]=current[key]??rows.find(row=>rowKey(row)===key)??{}}return result});if(selectedKeys.length===1){const only=selectedKeys[0];setActiveKey(only)}else if(selectedKeys.length===0){setActiveKey(null)}}
   const handleRowClick=(row:Record<string,unknown>)=>{const key=rowKey(row);setSelected({[key]:row});setActiveKey(key)}
-  // 路由契约（M86）：NEW_URL/MODI_URL 有值时按元数据跳转，无值回退统一表单
+  // Routing contract: NEW_URL/MODI_URL metadata wins when present; fall back to the unified form
   const openNew=()=>{if(!definition.data?.hasAdd)return;navigate(definition.data.newUrl??workbenchNew(moduleId))}
   const canOpenView=Boolean(definition.data?.hasEdit)
-  // ADR-006 决策 6：主表行双击进入浏览态（明细行双击不进入）；查询型模块（无浏览能力）双击无动作。
-  // 携带列表当前显示顺序（排序/过滤后）作为上一条/下一条导航上下文——旧系统 GoPrior/GoNext 语义。
+  // Double-click a master row to open browse mode (detail rows do not); query-only modules have no action.
+  // Carries the current list display order (after sort/filter) as previous/next navigation context.
   const openViewFromRow=(row:Record<string,unknown>)=>{
     if(!definition.data||!canOpenView)return
     const key=definition.data.masterPkOrder.map(column=>String(row[column]??''))
@@ -287,10 +287,10 @@ export function DocumentWorkbenchPage() {
     navigate(workbenchView(moduleId,key),{state:{navKeys,navIndex}})
   }
   const openSearchCenter=()=>{navigate(`/search-center/${moduleId}`)}
-  // FORM_BUTTONS 业务按钮：动作白名单与服务端一致。
-  // ADR-006 决策 6（2026-08-24 列表工具条收敛）：列表仅保留 新增 + 列表自身工具（导出/通用查询）；
-  // 编辑/复制/删除/批核/解批/结案/未结案/打印等单据级动作全部移入统一表单浏览态工具栏，
-  // 破坏性操作必须先进入浏览态确认单据细节（禁止列表勾选直删）。
+  // FORM_BUTTONS business actions: action whitelist mirrors the server.
+  // The list keeps only "new" plus list tools (export / query); document-level actions
+  // (edit/copy/delete/approve/close/print...) live in the unified form browse toolbar,
+  // and destructive actions require opening the browse view first.
   const businessItems:ErpCommandItem[]=(definition.data?.buttons&&definition.data.buttons.length>0
     ?definition.data.buttons
     :[{action:'new'},{action:'export'}]).map((button)=>({

@@ -1,20 +1,19 @@
--- 统一表单组合字段分组补齐（2026-08-31）
+-- Unified form cell grouping backfill.
 --
--- 背景：统一表单「编号+名称」同格组合（如 客户 = 客户编号 + 客户名）依赖
---       FIELDS.FORM_CELL_GROUP / FORM_CELL_ROLE 分组配置。旧系统（ERP/*.aspx）没有
---       该机制（页面硬编码布局），新系统引入后仅零散手工录入，导致绝大多数
---       「编号+名称」组合未配置分组：名称字段是虚拟字段（无物理列、靠编号字段
---       选择器回填带出），主表读取 includeVirtual=false，无物理列且无
---       FORM_CELL_GROUP 的虚拟字段被 WHERE 过滤，于是主表只显示编号。
--- 规则：仅覆盖主表（T_ID 以 _M 结尾）的「编号字段 + 虚拟 _NAME 名称字段」组合。
---       编号字段核心名 = 去 _ID/_NO 后缀（如 CLIENT_ID→CLIENT、PRO_NO→PRO），
---       名称字段核心名 = 去 _NAME 后缀（如 CLIENT_NAME→CLIENT、PRO_NAME→PRO）；
---       两者核心名相等即判定为一组，组名取编号字段核心名。
---       1) 编号字段（有选择器、对应虚拟 _NAME 存在、自身未分组）→ 补分组 + ROLE=1；
---       2) 名称字段（虚拟 _NAME、未分组、核心名匹配的编号字段已有分组）→ 补同组 + ROLE=2。
--- 明细表（_D）不回填：明细读取 includeVirtual=true，虚拟回填字段照常显示。
--- 幂等：仅更新「未配置分组」的字段，重复执行不重复覆盖。
--- 编号：032（031 已由报表表单布局 031_report_form_layout.sql 占用）。
+-- Context: the unified form "code + name" combination cell (e.g. client = client code +
+-- client name) depends on FIELDS.FORM_CELL_GROUP / FORM_CELL_ROLE. This mechanism was
+-- introduced by the new system and only sporadically filled in by hand, so most
+-- "code + name" combos were ungrouped: name fields are virtual (no physical column;
+-- value is brought back by the code field's chooser), but master-table reads use
+-- includeVirtual=false, so virtual fields without FORM_CELL_GROUP were filtered out
+-- and the master grid showed only the code.
+-- Rule: cover only master tables (T_ID ending in _M). The code field's core name =
+-- strip _ID/_NO suffix; the name field's core name = strip _NAME suffix; equal core
+-- names are grouped, group name = code field core name.
+--   1) Code field (has chooser, matching virtual _NAME exists, not yet grouped) → group + ROLE=1;
+--   2) Name field (virtual _NAME, ungrouped, matching code field already grouped) → same group + ROLE=2.
+-- Detail tables (_D) are not backfilled: detail reads use includeVirtual=true.
+-- Idempotent: only ungrouped fields are updated.
 
 SET NOCOUNT ON;
 

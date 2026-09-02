@@ -1,19 +1,13 @@
--- EOS-22：CHOOSE_RETURNVAL 跨模块死映射清理（技术债收口，2026-08-26）
---
--- 背景：WorkbenchDefinitionValidator 的 chooser_returnval_targets 警告在批量 validate 中
--- 几乎全模块命中（264/265），运行时对死映射「未命中即跳过」无害，但长期污染元数据与发布报告。
--- 本次按校验器同源语义一次性收口。
---
--- 判定规则（与 WorkbenchDefinitionValidator.ValidateFormQualityAsync / FormFieldSelector 一致）：
---   1) 回填目标须存在于引用模块「主表 ∪ 子表」的 FIELDS 注册集（比对前去掉 txt_/cho_/dro_/chk_/lab_/hidd_ 前缀）；
---   2) CHOOSE_ACTIVE=0 的选择器运行时从不下发（FormFieldSelector.Select 过滤），其映射整格清空；
---   3) CHOOSE_ACTIVE=1 时仅剥离「对所有引用模块都死」的目标对，保留任一模块存活的对——
---      共享表安全：同一物理表被多模块共用（库内共享主表 138 个）时不破坏其它模块的可用映射；
---   4) 无任何模块引用的孤儿表单元格（82 处）校验器不可见、运行时不可达，不在本次范围。
---
--- 清理口径：631 个单元格 / 322 个受影响模块；剥离死对 3273 - 孤儿部分后见各行注释。
--- 全量前后对照报告：logs/goal/chooser-returnval/dead-mapping-*.csv（OLD/NEW/死对明细）。
--- 执行后：本迁移同时标记受影响模块脏（WORKBENCH_MODULE_DIRTY），快照由发布流水线重建。
+-- CHOOSE_RETURNVAL cross-module dead mapping cleanup.
+-- Removes return-item mappings whose target field no longer exists in any referencing module.
+-- The runtime safely skips dead mappings (no-op), but they polluted metadata and validation reports.
+-- This migration uses the same judgment rules as WorkbenchDefinitionValidator.ValidateFormQualityAsync:
+--   1) A mapping target must exist in the referencing module's master or detail table's FIELDS set;
+--   2) Inactive choosers (CHOOSE_ACTIVE=0) have their mapping entirely cleared;
+--   3) For active choosers, only targets that are dead for ALL referencing modules are stripped;
+--   4) Orphan cell-group fields (82 rows) are invisible at runtime and excluded.
+-- Also marks affected modules as dirty (WORKBENCH_MODULE_DIRTY).
+-- Idempotent: guarded by WHERE clauses.
 
 UPDATE dbo.FIELDS SET CHOOSE_RETURNVAL1 = N'BANK_ID=BANK_ID' -- [strip-dead] modules=110105 old: BANK_ID=BANK_ID,BANK_NAME=BANK_NAME_CN
 WHERE T_ID = N'BANK' AND LTRIM(RTRIM(F_ID)) = N'BANK_ID';

@@ -1,19 +1,21 @@
 -- ============================================================================
--- EOS.ERP 迁移 026：报表中心调度订阅 + Report Inbox（ADR-009 §7/P5b）
+-- EOS.ERP migration 026: report center schedule subscription + Report Inbox
 -- ----------------------------------------------------------------------------
--- 背景（2026-08-30）：报表中心三件套的第三件——调度订阅 + Report Inbox
--- （D365 BC 模式：让报表主动找人）。P5a 已完成收藏排序 + 最近使用。
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 表设计：
---   REPORT_SUBSCRIPTION：用户订阅报表（周期 + 执行时刻 + 启停）
---     - SCHEDULE_TYPE：DAILY 每日 / WEEKLY 每周 / MONTHLY 每月
---     - RUN_HOUR/RUN_MINUTE：执行时刻（0-23 / 0-59）
---     - WEEKDAY（WEEKLY 用，1=周一…7=周日）/ MONTH_DAY（MONTHLY 用，1-31）
---     - 权限：订阅者必须对该报表有可见性（REPORT_TAG），后台按订阅者身份取数
---   REPORT_INBOX：订阅产出记录（PDF 路径 + 生成时间 + 已读标记）
---     - PDF_PATH 相对路径，文件存 Inbox:StorageRoot（默认 %BASE%/report-inbox）
+-- Context: the third piece of the report center — scheduled delivery + Report Inbox
+-- (D365 BC pattern: reports proactively reach the user).
 --
--- 全大写命名（AGENTS.md 强制）；幂等：IF NOT EXISTS 守卫。
+-- Table design:
+--   REPORT_SUBSCRIPTION: user report subscription (period + execution time + enable/disable)
+--     - SCHEDULE_TYPE: DAILY / WEEKLY / MONTHLY
+--     - RUN_HOUR/RUN_MINUTE: execution hour (0-23) / minute (0-59)
+--     - WEEKDAY (for WEEKLY, 1=Mon…7=Sun) / MONTH_DAY (for MONTHLY, 1-31)
+--     - Permission: the subscriber must have visibility on the report (REPORT_TAG)
+--   REPORT_INBOX: subscription output record (PDF path + generation time + read flag)
+--     - PDF_PATH relative path, files stored under Inbox:StorageRoot
+--
+-- Naming convention: all uppercase. Idempotent: IF NOT EXISTS guards.
 -- ============================================================================
 
 SET NOCOUNT ON;

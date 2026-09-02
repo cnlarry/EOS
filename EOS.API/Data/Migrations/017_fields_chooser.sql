@@ -1,14 +1,12 @@
-﻿-- ADR-008：字段数据来源（数据选取）模型重构 P1 存储与迁移（2026-08-28）
---
--- 决策来源：docs/decisions/ADR-008-字段数据来源模型重构.md（用户拍板，已接受）
--- 结构：建 FIELDS_CHOOSER（独立数据源表，任意数量/有序/审计）→ 存量搬移（UNION ALL 展开四组列）
---      → RETURN_ITEMS JSON（SQL 无损转换）→ FILTER_STRUCT 三档规则化转换（本文件为离线生成静态转换，
---        带漂移守卫：仅当对应 CHOOSE_FILTERn 原文与生成时一致才落库，否则保持 NULL（fail-closed）并记 DRIFT）
---      → DROP FIELDS 四组 24 列 → P_Change_M_IDX 改写 → 受影响模块标脏。
--- 验证护栏：档一转换逐条经 LegacyChooserFilterConverter + ChooserFilterValidator 试编译；
---         手工/离线对拍报告见 logs/fields-chooser-migration/（不入库）。
--- 注意：CHOOSER_FILTER_MIGRATION_LOG 是迁移审计/待重建队列（P3 编译器上线后按清单回填），
---       不是运行时通道；FILTER_STRUCT=NULL 的启用来源运行期 fail-closed（空选项）。
+﻿-- Field data source model refactoring: P1 storage and migration (FIELD_DATASOURCE).
+-- Creates FIELDS_CHOOSER (independent data-source table, any number, ordered, audit-trailed)
+-- → migrates existing data (UNION ALL from four groups) → RETURN_ITEMS JSON (lossless SQL conversion)
+-- → FILTER_STRUCT three-tier rule-based conversion (offline generated static conversion with drift guard:
+--   only writes when CHOOSE_FILTERn original text matches; otherwise NULL (fail-closed) with DRIFT logged)
+-- → DROP FIELDS four groups (24 columns) → rewrite P_Change_M_IDX → mark affected modules dirty.
+-- Validation: tier-1 conversion is compile-tested via LegacyChooserFilterConverter + ChooserFilterValidator.
+-- Note: CHOOSER_FILTER_MIGRATION_LOG is the audit/pending-rebuild queue, not a runtime channel.
+-- FILTER_STRUCT=NULL on active sources is fail-closed (empty options) at runtime.
 
 SET NOCOUNT ON;
 
@@ -3735,7 +3733,7 @@ BEGIN
 	update SYSQR  set  R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX
 	--更新字段
 	update FIELDS set BROWSE_M_IDX=@NEW_IDX WHERE BROWSE_M_IDX=@OLD_IDX
-	--更新字段数据源（ADR-008：FIELDS_CHOOSER.SOURCE_M_IDX 取代 FIELDS.CHOOSE_M_IDX1-4）
+	-- Update field data source: FIELD_DATASOURCE.SOURCE_M_IDX replaces FIELDS.CHOOSE_M_IDX1-4
 	update FIELDS_CHOOSER set SOURCE_M_IDX=@NEW_IDX WHERE SOURCE_M_IDX=@OLD_IDX
 	--更新流程表单资料
 	update WFFORM set WF_M_IDX=@NEW_IDX WHERE WF_M_IDX=@OLD_IDX

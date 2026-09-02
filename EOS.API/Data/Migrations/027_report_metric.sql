@@ -1,19 +1,16 @@
 -- ============================================================================
--- EOS.ERP 迁移 027：最小语义层——REPORT_METRIC 度量定义表（ADR-009 §10.2/P7）
+-- EOS.ERP migration 027: REPORT_METRIC metric definition table
 -- ----------------------------------------------------------------------------
--- 背景（2026-08-30）：报表系统中的度量口径散落在至少五处（REPORT.MASTER_TABLE、
--- P_RPT_* 存储过程、LISTREPORT.T_SQL、SYSQL.T_SQL、SYSQR_DEFAULT.F_EXPR），
--- 没有任何一处定义"销售额 = 什么"。P7 在库内建最小度量定义表，使度量口径
--- 「定义一次、机器可读、多处消费」，供报表与 Agent 共同消费。
+-- Metric definitions are scattered across many tables/stored procedures/SQL fields
+-- with no single definition. This table lets a metric be defined once, machine-readable,
+-- and consumed from multiple places.
 --
--- 设计原则（§10.2 决策）：
---   1. 不自建查询引擎、不引入 Cube/dbt 等外部语义层产品；
---   2. 度量定义本身属开发态（§1），进 DbUp 版本化迁移；
---   3. 准入条件：先有高频争议口径清单（来自 T_SQL 审计），再建表；
---   4. 口径定义 = 口径名 + SQL 表达式 + 可用维度 + 业务域 + 版本。
---
--- 全大写命名（AGENTS.md 强制）；幂等：IF NOT EXISTS 守卫。
--- T_SQL 审计报告落 logs/report-metric-audit/。
+-- Design principles:
+--   1. No custom query engine, no external semantic layer (Cube/dbt);
+--   2. Metric definitions are developer-owned and versioned via DbUp migrations;
+--   3. Create only after a list of high-frequency disputed metrics exists;
+--   4. Definition = name + SQL expression + available dimensions + business domain + version.
+-- Naming convention: all uppercase. Idempotent: IF NOT EXISTS guards.
 -- ============================================================================
 
 SET NOCOUNT ON;

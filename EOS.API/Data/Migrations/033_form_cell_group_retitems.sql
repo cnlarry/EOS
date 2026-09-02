@@ -1,17 +1,17 @@
--- 统一表单组合字段分组补齐（二）：按选择器回填映射补齐核心名不匹配的名称字段（2026-08-31）
+-- Unified form cell grouping backfill (part 2): group name fields via the chooser return mapping.
 --
--- 背景：032 按「字段名核心名匹配」（编号字段去 _ID/_NO 后缀 = 名称字段去 _NAME 后缀）
---       补齐了绝大部分「编号+名称」组合；但仍有名称字段与编号字段字段名不匹配，
---       却通过选择器回填（FIELD_DATASOURCE.RETURN_ITEMS）带出，例如：
---         - 类别字段（*_TYPE）→ BILL_NAME（单别名称），如 REPAIR_TYPE→BILL_NAME；
---         - 产品编号（PRO_NO）→ COLOR_NAME（颜色名，选产品连带回填）；
---       这些名称字段仍会因主表读取 includeVirtual=false 且无 FORM_CELL_GROUP 被过滤。
--- 规则：以 FIELD_DATASOURCE.RETURN_ITEMS 为权威关联——编号字段回填的 target 字段中，
---       凡虚拟 _NAME 字段且未分组，归入该编号字段所在组（ROLE=2）；编号字段自身未分组
---       则先补分组（组名 = 去 _ID/_NO 后缀的核心名）+ ROLE=1。
--- 与 032 顺序执行：032 已配组的字段此处因「无分组」条件不满足而跳过，不重复覆盖。
--- 幂等：仅更新「未配置分组」的字段。
--- 编号：033（032 已由组合字段核心名补齐占用）。
+-- Context: part 1 grouped "code + name" combos by core-name match, but some name fields
+-- do not name-match their code field yet are still filled via the chooser return mapping
+-- (FIELD_DATASOURCE.RETURN_ITEMS), e.g.:
+--   - category fields (*_TYPE) → BILL_NAME (bill type name), e.g. REPAIR_TYPE→BILL_NAME;
+--   - product code (PRO_NO) → COLOR_NAME (color name returned with product selection).
+-- These name fields were still filtered because master reads use includeVirtual=false and
+-- they had no FORM_CELL_GROUP.
+-- Rule: use FIELD_DATASOURCE.RETURN_ITEMS as the authoritative link. Any virtual _NAME
+-- target of a code field's return mapping that is ungrouped joins that code field's group
+-- (ROLE=2); if the code field itself is ungrouped, it is grouped first (ROLE=1).
+-- Runs after part 1; fields already grouped there are skipped (ungrouped-only update).
+-- Idempotent: only ungrouped fields are updated.
 
 SET NOCOUNT ON;
 

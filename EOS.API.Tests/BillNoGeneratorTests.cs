@@ -27,7 +27,7 @@ public sealed class BillNoGeneratorTests
     [Fact]
     public void BuildCode_日期token大小写转换()
     {
-        // 旧系统 {yyyymmdd}（小写）等价 {YYYYMMDD}：均输出 20260808
+        // Lowercase {yyyymmdd} is equivalent to {YYYYMMDD}: both produce 20260808
         var (title1, _) = BillNoGenerator.BuildCode("{yyyymmdd}0000", Now);
         var (title2, _) = BillNoGenerator.BuildCode("{YYYYMMDD}0000", Now);
         Assert.Equal("20260808", title1);

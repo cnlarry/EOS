@@ -1,17 +1,15 @@
 -- ============================================================================
--- EOS.ERP 迁移 011：流程设计器（2101）/流程监控（2103）现代路由落地
+-- EOS.ERP migration 013: flow designer (2101) / flow monitor (2103) modern routes
 -- ----------------------------------------------------------------------------
--- 库：EOS.ERP（全新系统的唯一业务数据库）
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 背景（2026-08-27 工作流商用级收口）：
---   2101 表单流程设计、2103 流程监控此前 M_URL 为旧 Web Forms 路径
---   （~/WorkFlow/WF_Design.aspx 等，非 '/' 开头），现代侧回退 /legacy/modules/* 占位页。
---   本次新增现代页面 /workflow/design（流程设计器）与 /workflow/monitor（流程监控），
---   把 2101/2103 的 M_URL 指向现代路由（2102 已于 update.sql 现代化为 /my-tasks）。
+-- Context: 2101 (flow designer) and 2103 (flow monitor) had old Web Forms paths
+-- that fell back to /legacy/modules/* placeholder pages. This migration adds
+-- modern pages /workflow/design and /workflow/monitor, and points M_URL to them.
+-- 2102 was already updated to /my-tasks in a previous migration.
 --
--- 幂等：仅当 M_URL 为空或非现代（不以 '/' 开头）时更新，重复执行无副作用；
---   管理员后续在菜单管理自行改动的值不被覆盖。
--- 命名约定（AGENTS.md 强制）：对象名全大写。
+-- Idempotent: only updates when M_URL is empty or not a modern path (does not start with '/').
+-- Naming convention: all object names uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;

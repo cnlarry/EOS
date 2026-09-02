@@ -160,8 +160,8 @@ internal static class VirtualArithmeticParser
                     parsed.Add(new VirtualArithmeticToken("Ref", word, column, $"{word}.{column}"));
                     continue;
                 }
-                // 旧系统常用未限定基表列（如 DATEDIFF(MM,IN_DATE,GETDATE())）：视为基表列引用，
-                // 表名由调用方按基表解析；若物理不存在则由调用方判为未解析（安全降级）。
+                // Unqualified column reference (e.g. DATEDIFF(MM,IN_DATE,GETDATE())): treat as base-table column.
+                // The caller resolves the base table; if the column does not exist physically, it is safely degraded.
                 parsed.Add(new VirtualArithmeticToken("Ref", null, word, word));
                 continue;
             }

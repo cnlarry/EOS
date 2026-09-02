@@ -1,14 +1,9 @@
--- ADR-009 P2 入口收敛：撤 22 个 XX98 报表查询目录节点，收敛为 1 个「报表中心」
--- 策略：M_TAG=0 隐藏（导航不可见），不物理删除——MODULES 保留 M_IDX 权限单元供
---   SYSDD/SYSDH 权限行继续生效（报表中心目录 API 按 REPORT_TAG 判定可见性，
---   与 SYSDD.EXEC_TAG 无依赖）；SYSDD/SYSDH 权限行本身不动。
--- 保留证据：本迁移 = 撤节点决策史；SYSDD_REPORT override 表与 FAVORITE/LAST_RUN 列承载
---   收藏/最近使用；REPORT 表承载报表目录。
---
--- 撤节点清单 = 以 98 结尾、M_URL 为空、且有 /reports 子节点的目录节点
---   （1198/1298/1398/1498/1598/1698/1998/2098/2198/2298/2398/2498/2698/2798/2898/2998/
---    170198/170298/180198/180298/180398/180498/180698，共 23 个）。
--- 其下 /reports 子节点（报表叶子）一并隐藏，避免菜单树出现孤立叶子。
+-- Report center menu convergence: hide 23 XX98 report query directory nodes, converge to 1 "Report Center".
+-- Strategy: M_TAG=0 to hide (navigation invisible), not physically deleted — MODULES keeps M_IDX
+-- permission units for SYSDD/SYSDH permission rows to remain valid (the report center catalog API
+-- judges visibility by REPORT_TAG, not EXEC_TAG). SYSDD/SYSDH permission rows are untouched.
+-- Hidden nodes: all XX98-ending nodes with M_URL empty and /reports child nodes.
+-- Their /reports leaf nodes are also hidden to avoid orphan leaves in the menu tree.
 
 SET NOCOUNT ON;
 

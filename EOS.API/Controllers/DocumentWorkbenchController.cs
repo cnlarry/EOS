@@ -85,7 +85,7 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
     {
         var access=await FormAccess(moduleId,"new",token);
         if(access is null)return NotFound();
-        // ADR-006 决策 2.1：统一表单写路径强制幂等键（请求体 IdempotencyKey 或 X-Idempotency-Key 头）
+        // Form write path requires an idempotency key (request body or X-Idempotency-Key header)
         if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
         request=request with{IdempotencyKey=request.IdempotencyKey??headerIdempotencyKey};
         logger.LogDebug("统一表单保存请求 module={ModuleId} mode=new fields={Fields} details={DetailCount}",moduleId,string.Join(',',request.Values.Keys),request.Details?.Count??0);
@@ -184,7 +184,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         var (definition,form,rights)=access.Value;
         var field=form.MasterFields.Concat(form.DetailFields).FirstOrDefault(item=>item.Key.Equals(fieldKey,StringComparison.OrdinalIgnoreCase));
         if(field is null)return NotFound();
-        // ADR-008 §2：多来源「各是各的入口」——前端按 serialNo 指定来源；缺省取首个启用来源。
+        // When a field has multiple chooser sources, the front end picks by serialNo; default to the first active source
         // 来源定义（FILTER_STRUCT/RETURN_ITEMS）仅服务端持有，不从表单定义 DTO 读取。
         var source=await repository.GetChooserSourceAsync(definition.MasterTable,definition.DetailTable,fieldKey,serialNo,token);
         if(source is null||!source.Active||string.IsNullOrWhiteSpace(source.Table))return NotFound();
@@ -307,7 +307,7 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.C
 
     private IActionResult MapSaveResult(RecordSaveResult result)=>result.Status switch
     {
-        // ADR-006 决策 2.7：warnings 随保存响应回传（如自动批核失败），前端在浏览态 banner 展示
+        // Return warnings (e.g. auto-approval failure) with the save response; front end shows them in a banner
         RecordAccessStatus.Ok=>Ok(new{key=result.Key,flowStarted=result.FlowStarted,warnings=result.Warnings}),
         RecordAccessStatus.NotFound=>NotFound(),
         RecordAccessStatus.OutOfScope=>StatusCode(403,new{code="RECORD_OUT_OF_SCOPE",message="目标记录不在当前用户数据范围内。"}),

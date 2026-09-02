@@ -1,23 +1,22 @@
 -- ============================================================================
--- EOS.ERP 迁移 031：ADR-010 可视化版式设计器——客户定制布局存储 + 设计权限位
+-- EOS.ERP migration 031: visual layout designer — customer layout storage + design permission bits
 -- ----------------------------------------------------------------------------
--- 背景（2026-08-31，ADR-010 决策 3/4/5，用户拍板）：
---   内置版式为开发态 Git 资产（ReportFormats 格式包，只读，进 Git + code review）；
---   客户定制（copy-on-write）存库，沿用 EOS"配置在库"模式：
---     REPORT_FORM_LAYOUT  = 定制布局本体（复制内置版式后编辑，LAYOUT_VERSION 追踪版本）；
---     REPORT_FORM_BINDING = 绑定表（FORM_TYPE × CLIENT_ID 级配置，空 CLIENT_ID = 单据类型默认；
---                          绑定键沿用 ADR-009 §9.5.3：收货方不作键）。
---   权限位（决策 4/5 三档分级）：角色② 实施顾问 = FORM_DESIGN_TAG（完整设计器）；
---   角色③ 客户维护人员 = FORM_ADJUST_TAG（微调模式）；角色① 开发人员不进运行时权限系统。
+-- Context: built-in layouts are developer-owned Git assets (ReportFormats packages,
+-- read-only, versioned via Git + code review). Customer customization is copy-on-write
+-- stored in the database:
+--     REPORT_FORM_LAYOUT  = customized layout body (copy of the built-in format then edit, LAYOUT_VERSION tracks versions);
+--     REPORT_FORM_BINDING = binding table (FORM_TYPE × CLIENT_ID; empty CLIENT_ID = document-type default).
+-- Permission bits (three tiers): role ② implementer = FORM_DESIGN_TAG (full designer);
+-- role ③ customer maintainer = FORM_ADJUST_TAG (tweak mode); role ① developer stays out of the runtime permission system.
 --
--- 设计：
---   REPORT_FORM_LAYOUT（LAYOUT_ID INT IDENTITY, BASE_FORMAT_ID, OWNER_ID,
---                        LAYOUT_JSON NVARCHAR(MAX), LAYOUT_VERSION, KIND, 审计列）
---   REPORT_FORM_BINDING（FORM_TYPE, CLIENT_ID, LAYOUT_ID, HEADER_ID, TAIL_ID,
---                        PRINT_PRICE, 审计列；PK = (FORM_TYPE, CLIENT_ID)）
---   SYSDD / SYSDH 各加 FORM_DESIGN_TAG / FORM_ADJUST_TAG（默认 0，全大写命名）
+-- Design:
+--   REPORT_FORM_LAYOUT (LAYOUT_ID INT IDENTITY, BASE_FORMAT_ID, OWNER_ID,
+--                        LAYOUT_JSON NVARCHAR(MAX), LAYOUT_VERSION, KIND, audit cols)
+--   REPORT_FORM_BINDING (FORM_TYPE, CLIENT_ID, LAYOUT_ID, HEADER_ID, TAIL_ID,
+--                        PRINT_PRICE, audit cols; PK = (FORM_TYPE, CLIENT_ID))
+--   SYSDD / SYSDH each gain FORM_DESIGN_TAG / FORM_ADJUST_TAG (default 0, uppercase)
 --
--- 幂等性：全程 IF OBJECT_ID / sys.columns 守卫，DbUp 重复执行无副作用。
+-- Idempotent: IF OBJECT_ID / sys.columns guards, safe to re-run.
 -- ============================================================================
 
 SET NOCOUNT ON;
@@ -72,7 +71,7 @@ BEGIN
         ON dbo.REPORT_FORM_BINDING ([LAYOUT_ID]);
 END
 
--- 3. SYSDD / SYSDH 设计权限位（ADR-010 决策 4/5：角色② CanDesign / 角色③ CanAdjust）
+-- 3. SYSDD / SYSDH design permission bits (full designer / tweak mode)
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SYSDD') AND name = 'FORM_DESIGN_TAG')
     ALTER TABLE dbo.SYSDD ADD
         [FORM_DESIGN_TAG] BIT NOT NULL CONSTRAINT [DF_SYSDD_FORM_DESIGN] DEFAULT (0),

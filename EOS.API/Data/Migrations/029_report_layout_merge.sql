@@ -1,24 +1,22 @@
 -- ============================================================================
--- EOS.ERP 迁移 029：P3 存储收敛——REPORT_LAYOUT 四表合一 + 死列删除 + 2202-2204 下线
+-- EOS.ERP migration 029: P3 storage convergence — REPORT_LAYOUT four-in-one,
+-- dead-column removal, 2202-2204 taken offline
 -- ----------------------------------------------------------------------------
--- 背景（2026-08-30，ADR-009 §5/§11，用户拍板"2202/2203/2204 物理删除"）：
---   报表布局四表（REPORT_HEADER/REPORT_FOOTER/REPORT_TAIL/REPORT_IMAGE）合并为
---   单一布局资源表 REPORT_LAYOUT，存量数据搬移后物理删除旧表。
---   页尾语义并入 REPORT.FOOTER_TEXT（444 行既有效行为，REPORT_FOOTER 恒未生效）。
---   REPORT 死列（REPORT_PATH/DEFAULT_PAPER/DEFAULT_PRINTER/IMAGE_ID）物理删除。
---   2202/2203/2204 管理页随表下线（M_TAG=0 隐藏）。
+-- Background: the four report layout tables (REPORT_HEADER/REPORT_FOOTER/REPORT_TAIL/
+-- REPORT_IMAGE) are merged into a single layout resource table REPORT_LAYOUT; the old
+-- tables are physically dropped after moving existing data. Footer semantics merge into
+-- REPORT.FOOTER_TEXT. Dead REPORT columns (REPORT_PATH/DEFAULT_PAPER/DEFAULT_PRINTER/IMAGE_ID)
+-- are removed. The 2202/2203/2204 admin pages are taken offline (M_TAG=0).
 --
--- 设计：
---   REPORT_LAYOUT（LAYOUT_ID, KIND, LAYOUT_DESC, CONTENT, IMAGE_PATH, IS_DEFAULT, 审计列）
+-- Design:
+--   REPORT_LAYOUT (LAYOUT_ID, KIND, LAYOUT_DESC, CONTENT, IMAGE_PATH, IS_DEFAULT, audit cols)
 --   KIND = HEADER / TAIL / FOOTER / IMAGE
---   CONTENT = 文本型（页眉 JSON/页脚纯文本/表尾纯文本）
---   IMAGE_PATH = 图像路径（LOGO）
---   REPORT.HEADER_ID/TAIL_ID 保留语义，指向 REPORT_LAYOUT.LAYOUT_ID
---   REPORT.FOOTER_TEXT 保留（不进布局表）
---   报表级页眉 JSON 结构：{"companyName":"...","companyNameEn":"...","headerText":"..."}
---
--- 幂等性：全程 IF OBJECT_ID 守卫——源表已不存在（如曾手动执行或已部分搬移）则跳过，
---         确保 DbUp 重复执行无副作用。
+--   CONTENT = text (header JSON / footer plain text / tail plain text)
+--   IMAGE_PATH = image path (LOGO)
+--   REPORT.HEADER_ID/TAIL_ID keep semantics, pointing to REPORT_LAYOUT.LAYOUT_ID
+--   REPORT.FOOTER_TEXT kept (not moved into the layout table)
+--   Report-level header JSON: {"companyName":"...","companyNameEn":"...","headerText":"..."}
+-- Idempotent: IF OBJECT_ID guards — skips when source table already gone, safe to re-run.
 -- ============================================================================
 
 SET NOCOUNT ON;

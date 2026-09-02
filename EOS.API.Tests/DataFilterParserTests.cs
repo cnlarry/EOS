@@ -30,7 +30,7 @@ public class DataFilterParserTests
     [Fact]
     public void LegacyBraceFieldSyntax_IsAccepted()
     {
-        // 旧系统 FILTER 使用 {表.列} 花括号语法（如 18069801 HR_EMPLOYEE）。
+        // FILTER uses {Table.Column} brace syntax (e.g. 18069801 HR_EMPLOYEE).
         Assert.True(Try(
             "{HR_EMPLOYEE.STATE}<4 and {HR_EMPLOYEE.IF_SHOW}=1",
             "HR_EMPLOYEE", Fields("STATE", "IF_SHOW"),

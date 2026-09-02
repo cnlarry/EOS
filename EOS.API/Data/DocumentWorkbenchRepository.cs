@@ -777,9 +777,9 @@ public sealed class DocumentWorkbenchRepository(
                 && string.IsNullOrEmpty(field.DefaultValue))
                 defaults[field.Key] = today;
         }
-        // 2026-08-31：编号字段有默认值时（默认单别/默认编号），用其选择器回填映射从来源表
-        // 回填「同组名称 companion」（如 1404 默认报价单别 BJD → 单别名称「报价单」），
-        // 避免新增页「默认单别只有编号、右侧名称留空，需重新选择一次才带出」。
+        // When a defaulted code field (bill type + number) has a companion name field in the same
+        // cell group, backfill the name from the chooser's return mapping so the form shows the
+        // name immediately without a manual re-selection.
         foreach (var field in masterFields)
         {
             if (field.CellRole != 1 || string.IsNullOrWhiteSpace(field.CellGroup)) continue;
@@ -913,7 +913,7 @@ public sealed class DocumentWorkbenchRepository(
         command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
         command.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
         command.Parameters.Add("@IncludeVirtual",SqlDbType.Bit).Value=includeVirtual;
-        // ADR-008：选择器数据源从 FIELD_DATASOURCE 独立读取（按字段聚合），不再嵌入 FIELDS 四组列
+        // Chooser data sources read from FIELD_DATASOURCE (aggregated by field), not embedded in FIELDS columns
         var choosersByField = await ReadChoosersByFieldAsync(connection, targetTable, token);
         await using var reader=await command.ExecuteReaderAsync(token);
         var rows=new List<FormFieldRow>();
@@ -1070,9 +1070,9 @@ public sealed class DocumentWorkbenchRepository(
         var allowedFields=all.Select(row=>row.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var columnTypes=all.ToDictionary(row=>row.Key,row=>row.DataType,StringComparer.OrdinalIgnoreCase);
         logger.LogInformation("选择器过滤 table={Table} filter={Filter}", table, filterStruct is null ? null : filterStruct.ToJson());
-        // ADR-005 §7（C 档落地）：用户数据范围统一经 WorkbenchScopeFilter——
-        // 模块 FILTER（仅源表=模块主表时）+ DATA_FILTER + EXEC_TAG，与列表/详情/打印同口径；
-        // 再与字段选择器自身过滤（FILTER_STRUCT）组合；任一无法安全编译即返回空选项（fail-closed）。
+        // Data scope: module FILTER (only when source table matches module master table)
+        // + DATA_FILTER + EXEC_TAG, combined with the chooser's own FILTER_STRUCT.
+        // If any component cannot be safely compiled, returns empty (fail-closed).
         string? moduleFilter = null;
         string? moduleMasterTable = null;
         if (scopeModuleId is int scopeId)
@@ -1100,14 +1100,14 @@ public sealed class DocumentWorkbenchRepository(
         var joins = new List<string>();
         if (filterStruct is null)
         {
-            // ADR-008：FILTER_STRUCT=NULL 表示存量条件待重建（迁移清单内），fail-closed 空选项，
-            // 防止把「无条件」与「条件待重建」混为一谈导致数据范围放大
+            // FILTER_STRUCT=NULL means the condition is pending migration; fail-closed empty,
+            // so "unconditional" and "pending rebuild" are not conflated
             logger.LogWarning("选择器过滤条件待重建（FILTER_STRUCT 为空）table={Table}", table);
             return new FormChooserResult([], [], 0);
         }
         if (filterStruct is not null && filterStruct.Items.Count > 0)
         {
-            // ADR-008 P3：跨表 JOIN 白名单来自源表 TABLES.QUERY_RELATION（受控解析，进程内缓存）
+            // Cross-table JOIN whitelist from TABLES.QUERY_RELATION (controlled resolution, in-process cache)
             var catalog = await ChooserJoinCatalog.GetAsync(connection, table, token);
             if (catalog.Error is not null)
             {
@@ -1178,9 +1178,9 @@ public sealed class DocumentWorkbenchRepository(
         // 过滤字段白名单校验：不在显示列内则忽略（回退为跨列模糊搜索）
         if(!string.IsNullOrWhiteSpace(filterField) && !columns.Any(column=>column.Key.Equals(filterField,StringComparison.OrdinalIgnoreCase)))
             filterField=null;
-        // 2026-08-31：回填映射引用的虚拟列（如 CLIENT.SALES_NAME=SYSDN.EMP_NAME）不在物理列里，
-        // 用 VirtualColumnResolver 受控解析（QUERY_RELATION 白名单 JOIN），使选择后能带出名称，
-        // 而非只回填编号（旧系统 Chooser.aspx 经 QUERY_RELATION 关联同样能带出）。
+        // Virtual columns referenced by the return mapping (e.g. CLIENT.SALES_NAME=SYSDN.EMP_NAME)
+        // are resolved through the controlled VirtualColumnResolver (QUERY_RELATION whitelist JOIN),
+        // so selecting a row also brings back display names, not just the code.
         string? virtualSelect=null;
         string? virtualJoin=null;
         var returnColumns=(returnItems ?? [])

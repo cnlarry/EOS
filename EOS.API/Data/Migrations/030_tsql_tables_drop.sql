@@ -1,26 +1,22 @@
 -- ============================================================================
--- EOS.ERP 迁移 030：ADR-009 §4/P3 处置——物理删除"用户存 SQL"四表
+-- EOS.ERP migration 030: physically drop the four "user-stored SQL" tables
 -- ----------------------------------------------------------------------------
--- 背景（2026-08-30，用户拍板）：ADR-009 §3.3 三张同构"用户存 SQL"表
---   SYSQD / SYSQL / LISTREPORT（PK 均含 USER_ID+T_ID，列均为 T_SQL/T_CONDITION）
---   与 LISTREPORT 的 WHERE 语法树子表 LISTREPORT_CONDITION 一并物理删除。
---   审计（logs/ADR-009-P3-tsql-tables-audit.md）：现代系统（EOS.API/EOS.Web）
---   零消费；旧系统消费页（QueryDetail/QueryAnalyser/RptList）在现代重构中均未移植，
---   ADR §4 决策"不再新增用户运行时存 SQL"，处置方向 = 物理删除。
+-- Context: three isomorphic "user-stored SQL" tables — SYSQD / SYSQL / LISTREPORT
+-- (PKs all include USER_ID+T_ID, columns T_SQL/T_CONDITION) — plus LISTREPORT's
+-- WHERE-syntax child table LISTREPORT_CONDITION are dropped. An audit confirmed the
+-- modern system (EOS.API/EOS.Web) consumes none of them, and their legacy consumer
+-- pages were not ported. Direction: no longer allow user runtime-stored SQL, so drop.
 --
--- 删除范围：
---   SYSQD / SYSQL / LISTREPORT / LISTREPORT_CONDITION
+-- Dropped: SYSQD / SYSQL / LISTREPORT / LISTREPORT_CONDITION
 --
--- 保留（活表，工作台查询/列配置在用，不得删除）：
+-- Kept (live tables used by workbench query/column config, do not delete):
 --   SYSQD_CONDITION / SYSQL_FIELDS / SYSQL_CONDITION / SYSQL_COND_DFT / SYSQL_DEFAULT
---   （FieldAdminRepository 字段删除清理/引用计数依赖这些表）
+--   (FieldAdminRepository field-delete cleanup / reference counting depends on these)
 --
--- 遗留登记：
---   旧系统存储过程 xp_user_listrpt_fields 引用 LISTREPORT_CONDITION（现代零调用，
---   旧库小写命名遗留对象暂不处理，见技术债登记；删除后该 SP 成为悬空引用，
---   执行即报错，现代系统不调用，不影响运行）。
+-- Note: the legacy stored procedure xp_user_listrpt_fields references LISTREPORT_CONDITION
+-- and becomes a dangling reference after the drop; the modern system never calls it.
 --
--- 幂等性：全程 IF OBJECT_ID 守卫——表已不存在则跳过，DbUp 重复执行无副作用。
+-- Idempotent: IF OBJECT_ID guards — skips when table already gone, safe to re-run.
 -- ============================================================================
 
 SET NOCOUNT ON;

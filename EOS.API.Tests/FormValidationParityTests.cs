@@ -6,10 +6,11 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// ADR-006 决策 2.4 校验单一来源对拍矩阵（服务端侧）：
-/// 消费共享 fixture `form-validation-parity.json`，按保存管线
-/// （ValidateSubmitted → ApplyDefaults(无默认) → CheckRequiredAndRegex）复现每个用例，
-/// 判定码与规范化值必须与前端 evaluateField 结论一致。规则变更必须先改 fixture。
+/// Server-side validation parity matrix: consumes the shared fixture `form-validation-parity.json`,
+/// replays each case through the save pipeline (ValidateSubmitted → ApplyDefaults(no default)
+/// → CheckRequiredAndRegex), and asserts the decision code and normalized value match the front-end
+/// evaluateField result. Rule changes must update the fixture first.
+/// </summary>
 /// </summary>
 public class FormValidationParityTests
 {

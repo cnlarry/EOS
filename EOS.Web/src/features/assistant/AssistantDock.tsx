@@ -230,8 +230,8 @@ export function AssistantDock() {
     }
   }, [input, sessionId, streaming, send, refreshSessions, location.pathname])
 
-  // ADR-007 §6：草稿确认后「带入表单」——经 sessionStorage 一次性通道预填，
-  // 执行走现有统一表单保存管线（幂等键/校验/审计复用），助手不新增写路径
+  // After a draft is confirmed, "open in form" pre-fills through a one-shot sessionStorage channel.
+  // Execution reuses the existing unified form save pipeline; the assistant adds no new write path.
   const handleOpenInForm = useCallback((draft: AssistantFormDraft) => {
     sessionStorage.setItem(`erp-assistant-prefill-${draft.moduleId}`, JSON.stringify(draft.values))
     setOpen(false)

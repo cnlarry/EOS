@@ -84,7 +84,7 @@ internal static class RecordPayloadValidator
                 errors.Add(new FieldError(key, "该字段由服务端维护，不可提交。", "READONLY_FIELD"));
                 continue;
             }
-            // ADR-006 决策 2.4（trim 契约拍板）：保存归一化统一 trim 前后空白，校验与入库基于 trim 后值
+            // Trim whitespace before validation and storage
             var trimmed = raw?.Trim();
             if (trimmed is not null && IsTextType(field.DataType) && field.MaxLength is int maxLength && trimmed.Length > maxLength)
             {
@@ -113,8 +113,8 @@ internal static class RecordPayloadValidator
         {
             if (field.IsReadonly || field.IsVirtual || field.ServerFilled || field.DisplayOnly || values.ContainsKey(field.Key)) continue;
             if (string.IsNullOrWhiteSpace(field.DefaultValue)) continue;
-            // 旧系统日期宏（ADR-006 步骤5 求证）：datetime 字段 DFT_VALUE='D' 表示默认当天
-            // （旧 ERP DFT 宏惯例）；此前按字面量转换失败被静默跳过，HR 在职日期等默认值失效。
+            // Date macro: DFT_VALUE='D' means "today" for datetime fields (legacy convention).
+            // Previously this was silently skipped on conversion failure, breaking defaults like HR in-service dates.
             if (field.DataType.Contains("date", StringComparison.OrdinalIgnoreCase)
                 && field.DefaultValue.Trim().Equals("D", StringComparison.OrdinalIgnoreCase))
             {

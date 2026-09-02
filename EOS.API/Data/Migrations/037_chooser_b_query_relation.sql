@@ -1,15 +1,15 @@
 -- ============================================================================
--- 037: ADR-008 字段数据源治理 B 类补 QUERY_RELATION
--- 日期：2026-08-31
--- 决策：docs/plans/业务待定项决策清单.md「ADR-008 字段数据源治理」
--- 背景：CHOOSER_FILTER_MIGRATION_LOG 中 JOIN_CLOSURE_FAIL 的行（16 行）因
---       过滤条件引用的跨表不在源表 TABLES.QUERY_RELATION aliases 内，导致
---       ChooserJoinCatalog.BuildJoinClause 无法重建 JOIN → fail-closed 空选项。
---       本迁移为源表补标准 LEFT JOIN，使被引用表成为可达 alias。
--- 关联：docs/plans/B类-补QUERY_RELATION确认清单.md
--- 影响：共享表 MOC_PRODUCE_M 的 QUERY_RELATION 变更影响所有以该表为源的选择器/虚拟列。
--- 执行后：重跑 dotnet test EOS.API.Tests\EOS.API.Tests.csproj --filter ChooserBackfillRerunTool
---        + EOS_TOOL_CHOOSER_RERUN=1 生成回填迁移（038）。
+-- 037: Field data source governance B class — add QUERY_RELATION joins
+-- ----------------------------------------------------------------------------
+-- Background: CHOOSER_FILTER_MIGRATION_LOG rows flagged JOIN_CLOSURE_FAIL could not be
+-- rebuilt because the cross-table referenced by the filter condition is not in the source
+-- table's TABLES.QUERY_RELATION aliases, so ChooserJoinCatalog.BuildJoinClause cannot
+-- reconstruct the JOIN → fail-closed empty options. This migration adds the standard
+-- LEFT JOIN for each source table so the referenced table becomes reachable.
+-- Impact: QUERY_RELATION changes on shared table MOC_PRODUCE_M affect all choosers/virtual
+-- columns that use that table as their source.
+-- After running: re-run ChooserBackfillRerunTool (EOS_TOOL_CHOOSER_RERUN=1) to generate
+-- the backfill migration (038).
 -- ============================================================================
 SET NOCOUNT ON;
 

@@ -1,12 +1,12 @@
--- ADR-009 P1 权限语义：SYSDD_REPORT / SYSDH_REPORT 降级为 override 表，加收藏与最近使用列
--- 语义变更（代码侧，见 LegacyRightsRepository.GetReportAsync）：
---   SYSDD.REPORT_TAG 是模块级报表可见性唯一真源；
---   SYSDD_REPORT / SYSDH_REPORT 降级为 override（例外表）：
---   不写行 = 跟随模块 REPORT_TAG 全开（PREVIEW/PRINT/EXPORT 三项）；
---   写行 = 按 override 收紧（PREVIEW/PRINT/EXPORT 覆盖，DATA_FILTER 与模块级过滤器取交集收紧）。
--- 新增列供 P5 报表中心收藏/最近使用；DATA_FILTER 列保留（override 语义）。
--- 存量清理：删除物化展开产生的"默认全开"行（PREVIEW=PRINT=EXPORT=1 且 DATA_FILTER 空），
---   此类行与"跟随模块 REPORT_TAG 全开"行为等价，为 200 用户 × 500 报表 ≈ 10 万行的主体。
+-- Report right model: SYSDD_REPORT / SYSDH_REPORT demoted to override tables, with
+-- favorite and last-run columns added. Semantic change (code side, see LegacyRightsRepository.GetReportAsync):
+--   SYSDD.REPORT_TAG is the single source of truth for module-level report visibility;
+--   SYSDD_REPORT / SYSDH_REPORT become override tables:
+--   no row = follow module REPORT_TAG (preview/print/export all open);
+--   row present = override to tighten (preview/print/export override, DATA_FILTER intersection with module filter).
+-- New columns for the report center (P5 favorites / recent use); DATA_FILTER retained (override semantics).
+-- Cleanup: remove materialized "default-open" rows (PREVIEW=PRINT=EXPORT=1 and DATA_FILTER empty),
+-- which are equivalent to "follow module REPORT_TAG open" and constituted ~100K rows (200 users × 500 reports).
 
 SET NOCOUNT ON;
 

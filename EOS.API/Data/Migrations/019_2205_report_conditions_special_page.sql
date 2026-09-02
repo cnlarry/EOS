@@ -1,21 +1,18 @@
 -- ============================================================================
--- EOS.ERP 迁移 019：2205 报表过滤条件设置归类纯定制页（移除工作台承载）
+-- EOS.ERP migration 019: 2205 report conditions page reclassified as special page
 -- ----------------------------------------------------------------------------
--- 库：EOS.ERP（全新系统的唯一业务数据库）
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 背景（2026-08-28 用户拍板）：
---   2205（旧 RPT/SysqrDft.aspx）维护报表查看器条件面板的默认条件定义
---   （SYSQR_DA 主档 + SYSQR_DEFAULT 条件行），按模块维护、条件语句/数据源
---   为专用 DSL（F_TYPE 1-5），统一表单无法提供类型化编辑与写侧校验，
---   归类定制页 /admin/report-conditions（与 2201 报表排序汇总设置同族同形态）。
---   已从 UnifiedFormEditor.EnabledModuleIds 白名单剔除（随本次代码提交生效）。
+-- Context: 2205 (formerly RPT/SysqrDft.aspx) maintains default condition definitions
+-- for the report viewer's condition panel (SYSQR_DA master + SYSQR_DEFAULT condition rows).
+-- Conditions use a domain-specific DSL (F_TYPE 1-5) that the unified form cannot handle
+-- with typed editing and server-side validation. It is reclassified as a custom page
+-- at /admin/report-conditions.
 --
--- 处理范围：
---   1. MODULES 2205：M_URL 指向定制页，清空 NEW_URL/MODI_URL，REMARK 登记决策；
---   2. WORKBENCH_MODULE_DIRTY / WORKBENCH_DEFINITION_SNAPSHOT 防御性清理。
---
--- 幂等：全程 WHERE 守卫，重复执行无副作用。
--- 命名约定（AGENTS.md 强制）：对象名全大写。
+-- Scope:
+--   1. MODULES 2205: M_URL → /admin/report-conditions, clear NEW_URL/MODI_URL;
+--   2. WORKBENCH_MODULE_DIRTY / WORKBENCH_DEFINITION_SNAPSHOT: defensive cleanup.
+-- Idempotent: guarded by WHERE. Naming convention: all uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;

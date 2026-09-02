@@ -115,8 +115,8 @@ internal static class DataFilterParser
         joins = [];
         foreignColumns = [];
         if (string.IsNullOrWhiteSpace(filter)) return false;
-        // 旧系统 FILTER 字段引用使用 {表.列} 花括号语法（如 {PRODUCT.PRO_TYPE}=1），
-        // 花括号仅为语法包裹，剥离后走同一白名单/参数化路径。
+        // FILTER references use {Table.Column} syntax (e.g. {PRODUCT.PRO_TYPE}=1);
+        // braces only wrap the reference and are stripped before the same whitelist/parameterized path.
         filter = filter.Replace("{", "").Replace("}", "");
         try
         {
@@ -332,7 +332,7 @@ internal static class DataFilterParser
         }
         else if (tokens[position].Text.Equals("isnull", StringComparison.OrdinalIgnoreCase))
         {
-            // 旧系统高频写法 ISNULL(列,0)=0 / ISNULL(列,'')=''：仅白名单列 + 常量，参数化
+            // Common shorthand ISNULL(col,0)=0 / ISNULL(col,'')='': whitelisted column + constant, parameterized
             if (!ParseIsNullLeft(tokens, ref position, masterTable, allowed, context, out left, values)) return false;
         }
         else
@@ -1036,7 +1036,7 @@ internal static class DataFilterParser
                     }
                     else if (c == '[')
                     {
-                        // 旧系统方括号列语法（FIELDS.[T_ID] / [FIELDS.T_ID]）：并入同一标识符
+                        // Bracket column syntax (FIELDS.[T_ID] / [FIELDS.T_ID]): part of the same identifier
                         var close = input.IndexOf(']', index + 1);
                         if (close < 0) throw new FormatException("未闭合的方括号：列引用非法。");
                         builder.Append(input, index + 1, close - index - 1);

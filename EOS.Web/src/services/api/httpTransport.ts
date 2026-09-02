@@ -8,8 +8,8 @@ export class HttpTransport implements ApiTransport {
   async request<TResponse>(request: ApiRequest): Promise<TResponse> {
     const url = new URL(`${this.baseUrl}${request.path}`, window.location.origin)
     Object.entries(request.query ?? {}).forEach(([key, value]) => { if (value !== undefined) url.searchParams.set(key, String(value)) })
-    // ADR-005 §5.1：调用方经 X-Correlation-Id 传入关联 ID（未携带时服务端生成），
-    // X-Client-Id 标识调用方（eos.web），随日志、审计与错误响应透传。
+    // Pass X-Correlation-Id through when provided (the server generates one otherwise);
+    // X-Client-Id identifies the caller and is propagated to logs, audit and error responses.
     const headers: Record<string, string> = {
       'X-Client-Id': 'eos.web',
       'X-Correlation-Id': newCorrelationId(),

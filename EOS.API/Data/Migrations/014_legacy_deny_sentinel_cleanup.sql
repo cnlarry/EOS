@@ -1,17 +1,15 @@
 -- ============================================================================
--- EOS.ERP 迁移 014：清理字段级拒绝遗留哨兵值 '0'
+-- EOS.ERP migration 014: clean up legacy deny-list sentinel value '0'
 -- ----------------------------------------------------------------------------
--- 库：EOS.ERP（全新系统的唯一业务数据库）
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 背景（2026-08-27 定制页验收，EOS-23）：
---   旧系统历史数据把「无禁止字段」写成 '0'（旧网格按 ';' 拆分后把 '0' 当列名隐藏，
---   无此列即无效果）。新系统权限矩阵保存时按字段白名单校验，'0' 不是任何模块的
---   物理字段，导致「批量保存」报 400（主表禁止查看字段 0 不是模块表 X 的字段）。
---   本迁移把 SYSDH/SYSDD 六个字段级拒绝列的遗留 '0' 置空（幂等）；代码侧
---   RightsAdminLogic.ParseDenyList 已同步把 '0' 视为空（读/写统一剔除）。
---
--- 幂等：WHERE 守卫精确匹配 '0'，重复执行无副作用。
--- 命名约定（AGENTS.md 强制）：对象名全大写。
+-- Context: legacy data stored "no denied fields" as '0' (the old grid split by ';'
+-- and hid columns by name — '0' was never a valid column name, so it had no effect).
+-- The new permission matrix validates against the field whitelist on save, so '0'
+-- causes a 400 error ("deny-view field 0 is not a field of module X"). This migration
+-- sets those '0' values to NULL in SYSDH/SYSDD six deny-list columns. The code side
+-- (RightsAdminLogic.ParseDenyList) already treats '0' as empty.
+-- Idempotent: guarded by WHERE for exact match '0'. Naming convention: all uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;

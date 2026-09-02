@@ -126,7 +126,8 @@ public class FormFieldSelectorTests
         var field = Select([Row("P", choosers: choosers)]).Single();
         Assert.Single(field.Choosers);
         Assert.Equal("PRODUCT", field.Choosers[0].Table);
-        // ADR-008 §7：FILTER_STRUCT 仅字段设置可见，普通用户表单定义不下发（服务端按 SerialNo 取权威定义）
+        // FILTER_STRUCT is only visible in field settings; not sent to regular users in the form definition
+        // (server picks the authoritative source by SerialNo)
         Assert.Null(field.Choosers[0].Filter);
         Assert.Equal("PRO_NO=@1", field.Choosers[0].ReturnMapping);
         Assert.Equal(2, field.Choosers[0].SerialNo);

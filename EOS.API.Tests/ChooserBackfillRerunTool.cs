@@ -9,19 +9,21 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// ADR-008 收尾工具（一次性，默认空转）：对 CHOOSER_FILTER_MIGRATION_LOG 中 STATUS=MANUAL 的存量
-/// 过滤条件做确定性重转 / 新旧对拍 / 残余分诊。
+/// One-off tool (no-op by default) for CHOOSER_FILTER_MIGRATION_LOG rows with STATUS=MANUAL:
+/// deterministic re-conversion / parity comparison / residual triage.
 ///
-/// 背景（2026-08-29 盘查结论）：018 的离线生成管线按行非确定性传错源表——同一（原文, 源表）组合
-/// 52 行成功 / 14 行失败并存；约八成 MANUAL 行实为「源表名前缀自引用」（如 OWNER 字段源表=SYSDL、
-/// 条件 ISNULL(SYSDL.ACTIVE_TAG,0)=1）被误判为跨表死配置，迁移后 FILTER_STRUCT=NULL 运行期
-/// fail-closed 空选项。库内提交的 LegacyChooserFilterConverter / ChooserFilterCompiler 对自表
-/// 引用处理正确（ResolveColumn 有「显式表名==源表」分支），本工具以 FIELD_DATASOURCE.SOURCE_T_ID
-/// 为权威源表重转，产出：
-///   - rerun 模式：EOS.API/Data/Migrations/021_fields_chooser_rerun.sql
-///     （漂移守卫：原文一致且现值仍为 NULL 才落；日志状态收敛；受影响模块标脏；同事务）；
-///   - parity 模式：新旧谓词只读对拍报告（同参数绑定，TOP 限行，键集 diff）→ logs/fields-chooser-rerun/parity.csv；
-///   - triage 模式：残余行按唯一模式分诊（引用表/可达性/旧系统行为/建议动作）→ logs/fields-chooser-rerun/triage.csv。
+/// Background: the earlier offline pipeline could misattribute the source table per row,
+/// so some MANUAL rows are actually self-references with an explicit source-table prefix
+/// (e.g. OWNER on SYSDL with condition ISNULL(SYSDL.ACTIVE_TAG,0)=1) and were misjudged as
+/// cross-table dead configs, leaving FILTER_STRUCT=NULL (fail-closed empty at runtime).
+/// The committed LegacyChooserFilterConverter / ChooserFilterCompiler handle self-table
+/// references correctly (ResolveColumn has an "explicit table == source table" branch);
+/// this tool re-runs with FIELD_DATASOURCE.SOURCE_T_ID as the authoritative source table:
+///   - rerun mode: writes EOS.API/Data/Migrations/021_fields_chooser_rerun.sql
+///     (drift guard: only writes when original text unchanged and current value still NULL;
+///     log status converges; affected modules marked dirty; same transaction);
+///   - parity mode: read-only old/new predicate comparison → logs/fields-chooser-rerun/parity.csv;
+///   - triage mode: residual rows grouped by unique pattern → logs/fields-chooser-rerun/triage.csv.
 /// 运行（显式指 csproj，从仓库根）：
 ///   dotnet test EOS.API.Tests\EOS.API.Tests.csproj --filter ChooserBackfillRerunTool
 /// 并按需设环境变量 EOS_TOOL_CHOOSER_RERUN / EOS_TOOL_CHOOSER_PARITY / EOS_TOOL_CHOOSER_TRIAGE = 1。

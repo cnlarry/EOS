@@ -1,21 +1,21 @@
 -- ============================================================================
--- EOS.ERP 迁移 001：业务单据附件元数据（ATTACHMENT）
+-- EOS.ERP migration 001: business document attachment metadata (ATTACHMENT)
 -- ----------------------------------------------------------------------------
--- 库：EOS.ERP（全新系统的唯一业务数据库）
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 定位：统一表单（DocumentWorkbench）单据级附件的元数据存储。文件二进制存文件系统
---      （Attachment:StorageRoot），本表只存元数据 + SHA-256，便于追溯与后续向量化
---      （工作助手经 EOS.API 授权读取，不直连库）。
+-- Purpose: unified-form (DocumentWorkbench) document-level attachment metadata.
+-- File binaries live on the file system (Attachment:StorageRoot); this table stores
+-- only metadata + SHA-256 for traceability and future vectorization (the assistant
+-- reads through EOS.API authorization, never connecting to the database directly).
 --
--- 命名约定（AGENTS.md 强制）：表 / 列 / 索引 / 约束一律全大写。
+-- Naming convention: tables / columns / indexes / constraints all uppercase.
 --
--- 追溯与安全约定（不可破坏）：
---   1. 归属单据用结构化主键（MODULE_ID + MASTER_TABLE + KEY_VALUES JSON 数组），
---      不再用旧 SYS_FILE 的 KEY_VALUE 字符串条件；
---   2. UPLOADED_BY / UPLOADED_BY_DISPLAY 由 EOS.API 服务端从登录会话强制写入，不接受客户端提交；
---   3. 上传/查看/改备注/删除分别由 FILE_UPDA/VIEW/EDIT/DELE_TAG 权限位服务端强制校验；
---   4. CLIENT_FILE_NAME 仅用于展示，服务器实际文件名为服务端生成（防路径穿越）；
---   5. 文件不可达（磁盘缺失）时下载返回 404，元数据保留以便审计定位。
+-- Traceability and security invariants:
+--   1. Documents are keyed by structured primary key (MODULE_ID + MASTER_TABLE + KEY_VALUES JSON array);
+--   2. UPLOADED_BY / UPLOADED_BY_DISPLAY are written by EOS.API from the login session, never accepted from the client;
+--   3. Upload/view/remark/delete are each enforced server-side by FILE_UPDA/VIEW/EDIT/DELE_TAG permission bits;
+--   4. CLIENT_FILE_NAME is display-only; the server generates the real file name (path-traversal safe);
+--   5. Unreachable files (missing on disk) return 404 on download; metadata is kept for audit.
 -- ============================================================================
 
 SET NOCOUNT ON;

@@ -1,16 +1,17 @@
--- 统一表单组合字段分组补齐（三）：手工核对边界字段（2026-08-31）
+-- Unified form cell grouping backfill (part 3): manually verified boundary fields.
 --
--- 背景：032/033 已按「核心名匹配」与「回填映射」补齐 131 个名称字段。剩余 19 个
---       名称字段无法用统一规则安全推导，本迁移按逐个表核对主键/关联列后逐条补齐。
--- 核对结论（名称字段 VIRTUAL_EXP 来源 → 同表编号字段）：
---   BILL_NAME（BILLKIND.BILL_NAME）→ 各表「单据别」主键 *_TYPE 字段（13 组）；
---   EMP_NAME（COP_PREPAY_M，SYSDN.EMP_NAME）→ SALES_ID（业务员，已配组 SALES_ID）；
---   EMP_NAME（HR_DORM，HR_EMPLOYEE.EMP_NAME）→ LEADER_EMP_ID（宿舍负责人）。
--- 以下 4 个为「孤儿」虚拟字段（同表无对应编号列，无法归组，本迁移不处理）：
---   INV_PRO_MONTH_M.COLOR_NAME / PRO_NAME、V_MOC_GET_SHOWSUM.COLOR_NAME / PRO_NAME。
--- 组名统一取编号字段名（_TYPE 字段名 / LEADER_EMP_ID），与既有 SALES_ID 组一致。
--- 幂等：仅更新「未配置分组」的字段。
--- 编号：034（033 已由回填映射补齐占用）。
+-- Context: parts 1-2 grouped 131 name fields by core-name match and return mapping.
+-- The remaining 19 name fields cannot be safely derived by a uniform rule; each is
+-- filled after verifying the master/detail table's key and relation columns.
+-- Verification summary (name field VIRTUAL_EXP source → same-table code field):
+--   BILL_NAME (BILLKIND.BILL_NAME) → each table's bill-type *_TYPE field (13 groups);
+--   EMP_NAME (COP_PREPAY_M, SYSDN.EMP_NAME) → SALES_ID (salesperson, group SALES_ID);
+--   EMP_NAME (HR_DORM, HR_EMPLOYEE.EMP_NAME) → LEADER_EMP_ID (dormitory leader).
+-- The following 4 are orphan virtual fields (no corresponding code column in the same
+-- table, cannot be grouped, not handled here):
+--   INV_PRO_MONTH_M.COLOR_NAME / PRO_NAME, V_MOC_GET_SHOWSUM.COLOR_NAME / PRO_NAME.
+-- Group name = code field name (_TYPE field name / LEADER_EMP_ID).
+-- Idempotent: only ungrouped fields are updated.
 
 SET NOCOUNT ON;
 

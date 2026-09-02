@@ -1,23 +1,22 @@
 -- ============================================================================
--- EOS.ERP 迁移 010：1906 油卡充值单试点审批流程（工作流启用试点）
+-- EOS.ERP migration 010: 1906 fuel card top-up approval pilot workflow
 -- ----------------------------------------------------------------------------
--- 库：EOS.ERP（全新系统的唯一业务数据库）
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 背景（2026-08-26 工作流启用试点）：
---   WorkflowEngine v2/v2.1（EOS.API/Data/WorkflowEngine.cs）已完整实现旧系统
---   P_WF_RUN/P_WF_APPROVE/P_WF_RUN_AUTO 语义（动态条件/会签/跳转/自动执行/撤回），
---   但 EOS.ERP 从未配置任何流程定义（WFFORM/WFFORM_FLOW 空），引擎零生产使用。
---   本次以 1906 油卡充值单为试点：主子表 CAR_FEE_M/CAR_FEE_D（主键 FEE_TYPE,FEE_NO）、
---   批核副作用 P_WF_CAR_FEE、已在统一表单白名单、不在任何 E2E 直接批核断言清单，
---   是验证真实审批链的最小合适模块。批核按钮语义随之切换：送审（启动流程）而非直接批核。
+-- Context: the WorkflowEngine (WorkflowEngine.cs) supports dynamic conditions,
+-- countersign, jump, auto-execute and withdrawal, but the database had no configured
+-- workflow definitions (WFFORM/WFFORM_FLOW tables were empty). This migration
+-- enables 1906 fuel card top-up as a pilot: the form's approve button switches to
+-- "submit" (start a workflow) instead of direct approval.
 --
--- 流程设计（二级审批）：
---   001 一级审批：admin（组 1 对 1906 有 EXEC_TAG=Z；个人权限 Z）
---   002 二级审批：admin（无个人权限，回退组 1 EXEC_TAG=Z，可浏览 1906 单据）
---   末步通过后落主表 CONFIRM_TAG + P_WF_CAR_FEE 副作用 + WF_APPROVE 历史。
+-- Approval design (two-level):
+--   001 first level: admin
+--   002 second level: admin
+-- After the final step passes, CONFIRM_TAG is set, P_WF_CAR_FEE fires, and
+-- WF_APPROVE history is written.
 --
--- 幂等：先按 REMARK 标记清理存量再插入，重复执行无副作用。
--- 命名约定（AGENTS.md 强制）：对象名全大写。
+-- Idempotent: existing definitions are cleaned by REMARK marker before insert.
+-- Naming convention: all object names uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;

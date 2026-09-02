@@ -1,23 +1,21 @@
 -- ============================================================================
--- EOS.ERP 迁移 012：2305 用户组管理归类纯定制页（移除工作台承载）
+-- EOS.ERP migration 012: 2305 group admin reclassified as a pure custom page
 -- ----------------------------------------------------------------------------
--- 库：EOS.ERP（全新系统的唯一业务数据库）
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 背景（2026-08-27 定制页逐页验收，EOS-23）：
---   用户拍板：2305 是定制页面，业务规则特殊，无法由工作台承载——
---   组主档新增/编辑/删除收口到定制页 /admin/groups（弹窗 + 严格删除守卫），
---   组权限/报表权限/成员改为完整页面，不再引导「主档」工作台。
---   EOS-23 迁移 011 已把 M_URL 收敛到 /admin/groups（菜单可达）；本迁移进一步
---   清空 NEW_URL/MODI_URL（防误入统一表单）、清理 Definition 快照与脏标记
---   （2305 已从 UnifiedFormEditor.EnabledModuleIds 白名单剔除，快照不再维护），
---   并在 REMARK 登记最终决策。
+-- Context: 2305 group management is a custom page with special business rules
+-- that the unified form workbench cannot handle. Group master CRUD (add/edit/delete)
+-- is via modals on /admin/groups, and group permissions/report permissions/members
+-- are full sub-pages. This migration clears NEW_URL/MODI_URL (prevents accidental
+-- navigation to the unified form), cleans up Definition snapshots and dirty markers
+-- (2305 is already removed from the unified form whitelist).
 --
--- 处理范围：
---   1. MODULES 2305：NEW_URL/MODI_URL 清空，REMARK 登记决策；
---   2. WORKBENCH_MODULE_DIRTY / WORKBENCH_DEFINITION_SNAPSHOT 按 2305 清理。
+-- Scope:
+--   1. MODULES 2305: clear NEW_URL/MODI_URL, record decision in REMARK;
+--   2. Clean WORKBENCH_MODULE_DIRTY / WORKBENCH_DEFINITION_SNAPSHOT for 2305.
 --
--- 幂等：全程以 WHERE 守卫，重复执行无副作用。
--- 命名约定（AGENTS.md 强制）：对象名全大写。
+-- Idempotent: guarded by WHERE clauses.
+-- Naming convention: all object names uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;

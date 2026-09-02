@@ -1,22 +1,22 @@
 -- ============================================================================
--- EOS.ERP 迁移 008：工作台浏览器路由前缀 /document-workbench → /workbench
+-- EOS.ERP migration 008: workbench browser route prefix /document-workbench → /workbench
 -- ----------------------------------------------------------------------------
--- 库：EOS.ERP（全新系统的唯一业务数据库）
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 背景（2026-08-26 用户拍板，A 档 URL 重构，计划 docs/plans/工作台URL重构.md）：
---   浏览器路由前缀由 /document-workbench 收敛为 /workbench（更短、贴近单据心智），
---   记录键同时从 query 迁入路径段（/workbench/{moduleId}/view/{主键段...}）。
---   本迁移只改 MODULES 元数据（M_URL 承载页、NEW_URL/MODI_URL 动作模板），
---   使菜单导航/表单路由与新前端路由一致；API 路径 /api/v1/document-workbench 不变
---   （非用户可见，控制器路由与前端 apiClient 调用保持原样）。
+-- Context: the browser route prefix converges from /document-workbench to /workbench
+-- (shorter, closer to document semantics); record keys move from query to path segments
+-- (/workbench/{moduleId}/view/{key-segments}). This migration only updates MODULES
+-- metadata (M_URL host page, NEW_URL/MODI_URL action templates) so menu navigation and
+-- form routes match the new front-end routes. API paths /api/v1/document-workbench stay
+-- unchanged (not user-visible; controller routes and apiClient calls are untouched).
 --
--- 处理范围：
---   1. MODULES.M_URL：'/document-workbench' → '/workbench'（282 行，工作台承载模块）；
---   2. MODULES.MODI_URL：模板 '/document-workbench/{moduleId}/edit' → '/workbench/...'（264 行）；
---   3. MODULES.NEW_URL / HELP_URL：同样 REPLACE（当前无命中，幂等兜底）。
+-- Scope:
+--   1. MODULES.M_URL: '/document-workbench' → '/workbench';
+--   2. MODULES.MODI_URL: template '/document-workbench/{moduleId}/edit' → '/workbench/...';
+--   3. MODULES.NEW_URL / HELP_URL: same REPLACE (currently no hits, idempotent fallback).
 --
--- 幂等：REPLACE 天然幂等；LAST_UPDATE_BY/DATE 记录执行时间。
--- 命名约定（AGENTS.md 强制）：对象名全大写。
+-- Idempotent: REPLACE is naturally idempotent; LAST_UPDATE_BY/DATE record execution time.
+-- Naming convention: all object names uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;
@@ -60,8 +60,8 @@ SET HELP_URL = REPLACE(HELP_URL, '/document-workbench', '/workbench'),
 WHERE ISNULL(HELP_URL, '') LIKE '%/document-workbench%';
 PRINT N'[EOS-21] MODULES.HELP_URL /document-workbench → /workbench：' + CAST(@@ROWCOUNT AS NVARCHAR(10)) + N' 行';
 
--- 2. Definition 快照 JSON 同步刷新（ADR-005 运行时快照缓存了 NewUrl/ModiUrl 等派生自
---    旧 M_URL 元数据的路由；不刷新则统一表单「新增/编辑」会导航到不存在的旧浏览器路径）。
+-- 2. Refresh Definition snapshot JSON (the runtime snapshot cached routes derived from the
+--    old M_URL metadata; without refreshing, unified-form "new/edit" would navigate to old paths).
 IF OBJECT_ID('dbo.WORKBENCH_DEFINITION_SNAPSHOT', 'U') IS NOT NULL
 BEGIN
     UPDATE dbo.WORKBENCH_DEFINITION_SNAPSHOT

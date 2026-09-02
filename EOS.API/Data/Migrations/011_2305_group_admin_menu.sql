@@ -1,22 +1,19 @@
 -- ============================================================================
--- EOS.ERP 迁移 011：2305 用户组管理菜单回归专用定制页 /admin/groups
+-- EOS.ERP migration 011: 2305 group admin menu → dedicated page /admin/groups
 -- ----------------------------------------------------------------------------
--- 库：EOS.ERP（全新系统的唯一业务数据库）
+-- Database: EOS.ERP (the single business database of the new system)
 --
--- 背景（2026-08-27 定制页逐页验收，EOS-23）：
---   M92（2026-08-16）决策——2305 用户组管理菜单从工作台（SYSDG 统一表单 CRUD
---   保留）切换到专用页面 /admin/groups（组权限/报表权限/成员），页面内提供
---   「主档」入口延续组主档 CRUD；ModuleRouteValidator 精确路径白名单已含
---   /admin/groups。开发库未吃到该数据变更（M_URL 仍为 /workbench），定制页
---   /admin/groups 无菜单入口，与本清单（docs/plans/定制页面清单.md）不符。
+-- Context: 2305 group management is too complex for the unified form workbench.
+-- The menu URL is changed to /admin/groups (dedicated custom page with group
+-- permissions, report permissions and members). The group master CRUD still uses
+-- the workbench (/workbench/2305) via MODI_URL.
 --
--- 处理范围：
---   1. MODULES 2305：M_URL 收敛到 /admin/groups，REMARK 登记决策结论；
---   2. MODI_URL 保留 /workbench/{moduleId}/edit（主档工作台 /workbench/2305
---      编辑仍可用）；NEW_URL 保持为空（定制页无新增按钮，主档工作台提供）。
+-- Scope:
+--   1. MODULES 2305: M_URL → /admin/groups, REMARK records the decision;
+--   2. MODI_URL kept as /workbench/{moduleId}/edit (master-data workbench still works).
 --
--- 幂等：以 WHERE 守卫（仅当 M_URL 非目标值时更新），重复执行无副作用。
--- 命名约定（AGENTS.md 强制）：对象名全大写。
+-- Idempotent: guarded by WHERE (only updates when M_URL is not the target value).
+-- Naming convention: all object names uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;

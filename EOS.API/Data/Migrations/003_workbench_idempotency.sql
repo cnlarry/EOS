@@ -1,10 +1,11 @@
 -- ============================================================================
--- EOS.ERP 迁移 003：Workbench 写路径幂等键（ADR-005 阶段 3）
+-- EOS.ERP migration 003: Workbench write-path idempotency keys
 -- ----------------------------------------------------------------------------
--- 定位：WorkbenchCommandHandler / WorkbenchApprovalService 写路径的幂等键存储。
---       调用方（EOS.Web / EOS.Client / 集成）传 IdempotencyKey，重复提交返回
---       缓存结果，不重复产生副作用（重复建单、重复批核等）。
--- 命名约定（AGENTS.md 强制）：表 / 列 / 索引 / 约束一律全大写。
+-- Purpose: idempotency-key storage for WorkbenchCommandHandler / WorkbenchApprovalService
+-- write paths. Callers (EOS.Web and integrations) pass an IdempotencyKey; repeated
+-- submissions return the cached result without repeating side effects (duplicate create,
+-- duplicate approval, etc.).
+-- Naming convention: tables / columns / indexes / constraints all uppercase.
 -- ============================================================================
 
 SET NOCOUNT ON;
