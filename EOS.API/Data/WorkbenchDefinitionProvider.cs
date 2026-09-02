@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.Data.SqlClient;
 
+using EOS.API.Models;
+
 namespace EOS.API.Data;
 
 /// <summary>

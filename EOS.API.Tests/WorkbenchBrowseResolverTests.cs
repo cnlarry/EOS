@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 using Xunit;
 

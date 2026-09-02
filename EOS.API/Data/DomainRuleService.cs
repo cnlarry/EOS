@@ -1,6 +1,8 @@
 using Microsoft.Data.SqlClient;
 using System.Data;
 
+using EOS.API.Models;
+
 namespace EOS.API.Data;
 
 /// <summary>
