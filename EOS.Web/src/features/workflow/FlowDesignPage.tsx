@@ -15,6 +15,7 @@ import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { describeApiError } from '../../lib/errors'
 
 interface FlowSummary {
   moduleId: number
@@ -429,7 +430,7 @@ export function FlowDesignPage() {
     { accessorKey: 'stepCount', header: '步骤数', cell: (info) => <span className="font-monospace">{String(info.getValue() ?? 0)}</span> },
   ]
 
-  const errorMessage = list.error instanceof ApiError ? list.error.body.message : '加载失败，请稍后重试。'
+  const errorMessage = describeApiError(list.error, '加载失败，请稍后重试。')
 
   return (
     <div className="d-flex flex-column gap-2 erp-full-list-page" style={{ height: 'calc(100dvh - 96px)' }}>

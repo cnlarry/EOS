@@ -28,6 +28,9 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["menu-admin.sprocs"] = ["SP_NAME"],
             ["report-admin.fields"] = ["T_ID", "F_ID", "F_DESC", "F_TYPE"],
             ["report-admin.modules"] = ["M_IDX", "M_DESC"],
+            // 权限复制来源（C11）：SYSDL 用户账号 / SYSDG 用户组
+            ["rights-admin.users"] = ["USER_ID", "EMP_NAME"],
+            ["rights-admin.groups"] = ["G_IDX", "G_DESC"],
             // 员工源显示列/可排序列来自 110104（SYSDN）字段元数据，运行时动态解析，这里仅登记默认排序列
             ["user-admin.employees"] = ["EMP_ID"],
         };
@@ -44,6 +47,8 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["menu-admin.sprocs"] = ["SP_NAME"],
             ["report-admin.fields"] = ["T_ID", "F_ID"],
             ["report-admin.modules"] = ["M_IDX"],
+            ["rights-admin.users"] = ["USER_ID"],
+            ["rights-admin.groups"] = ["G_IDX"],
             ["user-admin.employees"] = ["EMP_ID"],
         };
 
@@ -95,6 +100,16 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             {
                 ["M_IDX"] = "LTRIM(RTRIM(CAST(m.M_IDX AS nvarchar(20)))) LIKE @Keyword",
                 ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,''))) LIKE @Keyword",
+            },
+            ["rights-admin.users"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["USER_ID"] = "LTRIM(RTRIM(l.USER_ID)) LIKE @Keyword",
+                ["EMP_NAME"] = "COALESCE(NULLIF(LTRIM(RTRIM(n.EMP_NAME)),''),LTRIM(RTRIM(l.USER_ID))) LIKE @Keyword",
+            },
+            ["rights-admin.groups"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["G_IDX"] = "LTRIM(RTRIM(G_IDX)) LIKE @Keyword",
+                ["G_DESC"] = "LTRIM(RTRIM(ISNULL(G_DESC,''))) LIKE @Keyword",
             },
         };
 
@@ -148,6 +163,16 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 ["M_IDX"] = "m.M_IDX",
                 ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,'')))",
             },
+            ["rights-admin.users"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["USER_ID"] = "LTRIM(RTRIM(l.USER_ID))",
+                ["EMP_NAME"] = "COALESCE(NULLIF(LTRIM(RTRIM(n.EMP_NAME)),''),LTRIM(RTRIM(l.USER_ID)))",
+            },
+            ["rights-admin.groups"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["G_IDX"] = "LTRIM(RTRIM(G_IDX))",
+                ["G_DESC"] = "LTRIM(RTRIM(ISNULL(G_DESC,'')))",
+            },
         };
 
     public static bool IsRegistered(string? sourceKey) =>
@@ -159,6 +184,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         "menu-admin.tables" or "menu-admin.fields" or "menu-admin.sprocs" => MenuAdminModuleId,
         "field-admin.tables" or "field-admin.columns" or "field-admin.fields" => FieldAdminModuleId,
         "report-admin.fields" or "report-admin.modules" => ReportAdminModuleId,
+        "rights-admin.users" or "rights-admin.groups" => PermissionModules.SystemManagement,
         "user-admin.employees" => PermissionModules.SystemManagement,
         _ => null,
     };
@@ -206,6 +232,8 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             "menu-admin.sprocs" => await QuerySprocsAsync(request, token),
             "report-admin.fields" => await QueryReportFieldsAsync(request, token, sourceKey!),
             "report-admin.modules" => await QueryModulesAsync(request, token),
+            "rights-admin.users" => await QueryUsersAsync(request, token),
+            "rights-admin.groups" => await QueryGroupsAsync(request, token),
             "user-admin.employees" => await QueryEmployeesAsync(request, token),
             _ => null,
         };
@@ -390,6 +418,96 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             [
                 new UnifiedChooserColumn("M_IDX", "模块号", "int", null),
                 new UnifiedChooserColumn("M_DESC", "模块名", "nvarchar", null),
+            ],
+            rows,
+            total);
+    }
+
+    /// <summary>权限复制来源用户源（rights-admin.users，C11）：SYSDL 账号 + SYSDN 姓名。</summary>
+    private async Task<UnifiedChooserResult> QueryUsersAsync(UnifiedChooserQueryRequest request, CancellationToken token)
+    {
+        const string sourceKey = "rights-admin.users";
+        var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
+        var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand { Connection = connection };
+        AddCommonParameters(command, keyword, page, pageSize);
+        var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
+        var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        const string fromSql = """
+            FROM dbo.SYSDL l WITH (NOLOCK)
+            LEFT JOIN dbo.SYSDN n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
+            """;
+        var sql = $"""
+            SELECT COUNT_BIG(1)
+            {fromSql}
+            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql};
+            SELECT LTRIM(RTRIM(l.USER_ID)) AS USER_ID,
+                   COALESCE(NULLIF(LTRIM(RTRIM(n.EMP_NAME)),''),LTRIM(RTRIM(l.USER_ID))) AS EMP_NAME
+            {fromSql}
+            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+        command.CommandText = sql;
+        await connection.OpenAsync(token);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(reader, ["USER_ID", "EMP_NAME"]);
+        logger.LogInformation("统一选择器用户源查询 page={Page} size={PageSize} total={Total} rows={Rows}",
+            page, pageSize, total, rows.Count);
+        return new UnifiedChooserResult(
+            [
+                new UnifiedChooserColumn("USER_ID", "用户ID", "nvarchar", null),
+                new UnifiedChooserColumn("EMP_NAME", "姓名", "nvarchar", null),
+            ],
+            rows,
+            total);
+    }
+
+    /// <summary>权限复制来源组源（rights-admin.groups，C11）：SYSDG 用户组。</summary>
+    private async Task<UnifiedChooserResult> QueryGroupsAsync(UnifiedChooserQueryRequest request, CancellationToken token)
+    {
+        const string sourceKey = "rights-admin.groups";
+        var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
+        var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand { Connection = connection };
+        AddCommonParameters(command, keyword, page, pageSize);
+        var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
+        var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        var sql = $"""
+            SELECT COUNT_BIG(1) FROM dbo.SYSDG WITH (NOLOCK)
+            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql};
+            SELECT LTRIM(RTRIM(G_IDX)) AS G_IDX, LTRIM(RTRIM(ISNULL(G_DESC,''))) AS G_DESC
+            FROM dbo.SYSDG WITH (NOLOCK)
+            WHERE (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+        command.CommandText = sql;
+        await connection.OpenAsync(token);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(reader, ["G_IDX", "G_DESC"]);
+        logger.LogInformation("统一选择器组源查询 page={Page} size={PageSize} total={Total} rows={Rows}",
+            page, pageSize, total, rows.Count);
+        return new UnifiedChooserResult(
+            [
+                new UnifiedChooserColumn("G_IDX", "组ID", "nvarchar", null),
+                new UnifiedChooserColumn("G_DESC", "组名", "nvarchar", null),
             ],
             rows,
             total);

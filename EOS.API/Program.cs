@@ -155,15 +155,11 @@ builder.Services.AddHealthChecks()
     .AddCheck<MigrationsHealthCheck>("erp_migrations", tags: ["ready", "startup"])
     .AddCheck<AttachmentStorageHealthCheck>("attachment_storage", tags: ["ready"])
     .AddCheck<ConfigurationHealthCheck>("configuration", tags: ["ready"]);
-builder.Services.AddScoped<AdminFieldRepository>();
 builder.Services.AddScoped<AuthenticationRepository>();
 builder.Services.AddScoped<UserAdminRepository>();
 builder.Services.AddScoped<FieldAdminRepository>();
 builder.Services.AddScoped<RestrictedExpressionService>();
 builder.Services.AddScoped<RightsAdminRepository>();
-builder.Services.AddScoped<BomRepository>();
-builder.Services.AddScoped<DynamicBomRepository>();
-builder.Services.AddScoped<FieldConfigurationRepository>();
 builder.Services.AddScoped<LegacyRightsRepository>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddSingleton<PermissionCache>();

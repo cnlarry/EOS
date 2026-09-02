@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
+import { describeApiError } from '../../lib/errors'
 
 export interface UnmanagedField {
   fieldId: string
@@ -105,24 +106,25 @@ export function UnmanagedFieldsModal({ open, tableId, tableDescription, onClose,
       setRowSelection({})
       onSaved()
     } catch (saveError) {
-      setError(saveError instanceof ApiError ? saveError.body.message : '生成失败，请稍后重试。')
+      setError(describeApiError(saveError, '生成失败，请稍后重试。'))
     } finally {
       setSaving(false)
     }
   }
 
-  const errorMessage = fields.error instanceof ApiError ? fields.error.body.message : '发生未知错误，请稍后重试。'
+  const errorMessage = describeApiError(fields.error, '发生未知错误，请稍后重试。')
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-dialog-centered erp-dialog-lg">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">未管理字段批量生成（{tableDescription ?? tableId}）</h2>
-            <button className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
-            <div className="alert alert-info">
+    <Modal
+      title={`未管理字段批量生成（${tableDescription ?? tableId}）`}
+      onClose={onClose}
+      dialogClassName="erp-dialog-lg"
+      footer={<>
+        <Button variant="secondary" className="me-2" onClick={onClose}>关闭</Button>
+        <Button variant="primary" loading={saving} disabled={selectedCount === 0 || saving} onClick={() => void handleGenerate()}>生成</Button>
+      </>}
+    >
+      <div className="alert alert-info">
               下列物理列尚未在 FIELDS 中登记元数据。勾选后按旧系统「未受管理字段」规则生成：
               默认显示/默认列/可查询/可复制，描述取列说明（MS_Description，无则用列名）。
             </div>
@@ -161,15 +163,6 @@ export function UnmanagedFieldsModal({ open, tableId, tableDescription, onClose,
                 </div>
               </>
             )}
-          </div>
-          <div className="card-footer text-end px-3 py-3">
-            <Button variant="secondary" className="me-2" onClick={onClose}>关闭</Button>
-            <Button variant="primary" loading={saving} disabled={selectedCount === 0 || saving} onClick={() => void handleGenerate()}>
-              生成
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

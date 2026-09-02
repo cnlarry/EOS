@@ -7,9 +7,11 @@ import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
 import { workbenchView } from '../document-workbench/workbenchPath'
+import { describeApiError } from '../../lib/errors'
+import { WorkflowTimeline, type WorkflowTimelineRow } from './WorkflowTimeline'
 
 interface MonitorRow {
   wfId: number
@@ -174,7 +176,7 @@ export function FlowMonitorPage() {
     },
   ], [navigate])
 
-  const errorMessage = list.error instanceof ApiError ? list.error.body.message : '加载失败，请稍后重试。'
+  const errorMessage = describeApiError(list.error, '加载失败，请稍后重试。')
   const inFlightCount = rows.filter((row) => row.state === '0').length
   const overdueCount = rows.filter((row) => row.overdue).length
   const selected = detail.data?.monitor
@@ -222,14 +224,13 @@ export function FlowMonitorPage() {
       </ErpListCard>
 
       {selectedWfId != null && (
-        <div className="modal modal-blur show d-block" role="dialog" aria-modal="true" aria-label="流程明细">
-          <div className="modal-dialog modal-dialog-centered modal-xl">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h2 className="modal-title">流程明细</h2>
-                <button type="button" className="btn-close" aria-label="关闭" onClick={() => setSelectedWfId(null)} />
-              </div>
-              <div className="modal-body">
+        <Modal
+          title="流程明细"
+          onClose={() => setSelectedWfId(null)}
+          size="xl"
+          ariaLabel="流程明细"
+          footer={<Button variant="secondary" onClick={() => setSelectedWfId(null)}>关闭</Button>}
+        >
                 {detail.isPending ? <LoadingState label="正在加载流程明细…" /> : selected ? (
                   <div className="d-grid gap-3">
                     <div className="d-flex flex-wrap gap-2 align-items-center">
@@ -301,25 +302,7 @@ export function FlowMonitorPage() {
                         {(detail.data?.logs ?? []).length === 0 ? (
                           <div className="text-center text-secondary py-3">暂无日志</div>
                         ) : (
-                          <ul className="list-unstyled mb-0">
-                            {(detail.data?.logs ?? []).map((log, index) => {
-                              const label = TASK_STATE_LABEL[log.state] ?? log.state
-                              return (
-                                <li key={index} className="d-flex gap-2 align-items-start py-1 border-bottom">
-                                  <span className="badge text-bg-light border mt-1" style={{ minWidth: 44 }}>{log.step || '—'}</span>
-                                  <div className="flex-grow-1">
-                                    <div className="small">
-                                      <span className="fw-semibold">{log.stepDesc || label}</span>
-                                      {log.approver && <span className="font-monospace text-secondary ms-2">{log.approver}</span>}
-                                      <span className={`ms-2 badge ${log.state === 'Y' ? 'text-bg-success' : log.state === 'N' || log.state === 'W' ? 'text-bg-danger' : log.state === 'A' ? 'text-bg-info' : 'text-bg-secondary'}`}>{label}</span>
-                                    </div>
-                                    {log.message && <div className="small text-secondary">{log.message}</div>}
-                                  </div>
-                                  {log.date && <span className="small text-secondary text-nowrap">{log.date}</span>}
-                                </li>
-                              )
-                            })}
-                          </ul>
+                          <WorkflowTimeline rows={(detail.data?.logs ?? []) as WorkflowTimelineRow[]} emptyText="暂无日志" />
                         )}
                       </div>
                     </div>
@@ -327,13 +310,7 @@ export function FlowMonitorPage() {
                 ) : (
                   <ErrorState message="流程明细加载失败" onRetry={() => void detail.refetch()} />
                 )}
-              </div>
-              <div className="modal-footer">
-                <Button variant="secondary" onClick={() => setSelectedWfId(null)}>关闭</Button>
-              </div>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

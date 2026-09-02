@@ -219,3 +219,39 @@ export const navigationIcons: Record<string, typeof IconFolder> = {
   gavel: IconGavel,
   handStop: IconHandStop,
 }
+
+/** 根节点图标解析（模块树/权限矩阵共用，代码质量批 4 D3 收编）：配置覆盖 → 名称关键字 → 旧根映射 → folder。 */
+const ROOT_ICON_OVERRIDES: Record<number, string> = {
+  11: 'base', 12: 'product', 13: 'inventory', 14: 'sales', 15: 'production', 16: 'procurement',
+  17: 'finance', 18: 'hr', 19: 'vehicle', 20: 'barcode', 21: 'workflow', 22: 'report', 23: 'settings',
+  24: 'sample', 25: 'query', 26: 'product', 27: 'production', 28: 'outsource', 29: 'equipment',
+  30: 'customs', 32: 'finance', 33: 'quality', 38: 'hr', 39: 'quality',
+}
+
+const ROOT_ICON_KEYWORDS: [string, string][] = [
+  ['采购', 'procurement'], ['销售', 'sales'], ['生产', 'production'], ['BOM', 'production'],
+  ['制造', 'production'], ['工艺', 'production'], ['制程', 'production'], ['工序', 'production'],
+  ['半成品', 'product'], ['产品', 'product'], ['人事', 'hr'], ['人力资源', 'hr'], ['考勤', 'hr'],
+  ['工资', 'hr'], ['薪资', 'hr'], ['招聘', 'hr'], ['财务', 'finance'], ['应收', 'finance'],
+  ['应付', 'finance'], ['会计', 'finance'], ['海关', 'customs'], ['报关', 'customs'],
+  ['质量', 'quality'], ['质检', 'quality'], ['品管', 'quality'], ['品质', 'quality'], ['品检', 'quality'],
+  ['报表', 'report'], ['查询', 'query'], ['基础资料', 'base'], ['基本资料', 'base'], ['资料', 'base'],
+  ['系统', 'settings'], ['设置', 'settings'], ['权限', 'settings'], ['设备', 'equipment'],
+  ['机器', 'equipment'], ['模具', 'equipment'], ['车辆', 'vehicle'], ['车队', 'vehicle'],
+  ['汽车', 'vehicle'], ['条码', 'barcode'], ['条形码', 'barcode'], ['工作流', 'workflow'],
+  ['流程', 'workflow'], ['打样', 'sample'], ['样品', 'sample'], ['托外', 'outsource'], ['外发', 'outsource'],
+  ['客户', 'customer'], ['供应商', 'supplier'], ['库存', 'inventory'], ['仓存', 'inventory'],
+  ['盘点', 'inventory'], ['单据', 'document'], ['订单', 'document'],
+]
+
+export function resolveRootIcon(rootId: number, rootLabel: string): string {
+  const overrideIcon = ROOT_ICON_OVERRIDES[rootId]
+  if (overrideIcon) return overrideIcon
+  for (const [keyword, icon] of ROOT_ICON_KEYWORDS) {
+    if (rootLabel.includes(keyword)) return icon
+  }
+  if (rootId === 13) return 'inventory'
+  if (rootId === 14) return 'sales'
+  if (rootId === 15) return 'procurement'
+  return 'folder'
+}

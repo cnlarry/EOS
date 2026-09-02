@@ -1,13 +1,12 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { apiClientMock } from '../../test/apiMock'
+import { screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import { DashboardPage } from './DashboardPage'
+import { renderWithProviders } from '../../test/renderWithProviders'
 
-const apiClientMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn(), postFile: vi.fn() }))
-
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 vi.mock('../auth/authContext', () => ({ useAuth: vi.fn() }))
 
 const bootstrap = {
@@ -35,7 +34,6 @@ const myTasks = {
 }
 
 function renderPage() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   vi.mocked(useAuth).mockReturnValue({
     bootstrap,
     loading: false,
@@ -43,12 +41,10 @@ function renderPage() {
     logout: vi.fn(),
     hasPermission: (permission: string) => bootstrap.permissions.includes(permission),
   })
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <DashboardPage />
-      </MemoryRouter>
-    </QueryClientProvider>,
+  return renderWithProviders(
+    <MemoryRouter>
+      <DashboardPage />
+    </MemoryRouter>,
   )
 }
 
@@ -94,13 +90,10 @@ describe('DashboardPage', () => {
       logout: vi.fn(),
       hasPermission: () => false,
     })
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
-          <DashboardPage />
-        </MemoryRouter>
-      </QueryClientProvider>,
+    renderWithProviders(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>,
     )
     expect(screen.getAllByText('无「我的任务」模块权限').length).toBe(3)
     expect(screen.getByText('待批核单据 — 项')).toBeInTheDocument()

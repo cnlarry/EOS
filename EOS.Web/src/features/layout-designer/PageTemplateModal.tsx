@@ -19,7 +19,7 @@ function newId(prefix: string): string {
   return `${prefix}${Date.now().toString(36).slice(-4)}${Math.floor(Math.random() * 36).toString(36)}`
 }
 
-function defaultElement(type: string): LayoutElement {
+function defaultElement(type: LayoutElement['type']): LayoutElement {
   switch (type) {
     case 'field': return { id: newId('f'), type, x: 0, y: 2, w: 80, h: 6, field: '', style: { fontSize: 9 } }
     case 'line': return { id: newId('l'), type, x: 0, y: 22, w: 187.4, h: 0.5, style: { lineWidth: 0.5 } }
@@ -89,7 +89,7 @@ export function PageTemplateModal({ doc, onApply, onClose }: PageTemplateModalPr
             <span className="ms-auto d-flex gap-1">
               {Object.keys(TYPE_LABELS).map((type) => (
                 <Button key={type} variant="secondary" size="sm"
-                  onClick={() => setSection([...elements, defaultElement(type)])}>
+                  onClick={() => setSection([...elements, defaultElement(type as LayoutElement['type'])])}>
                   + {TYPE_LABELS[type]}
                 </Button>
               ))}

@@ -1,10 +1,10 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MenuAdminPage, type MenuAdminModule } from './MenuAdminPage'
 
-const apiClientMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() }))
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const moduleNode = (id: number, desc: string, parent: number | null): MenuAdminModule => ({
   M_IDX: id, M_ALIAS: null, M_DESC: desc, M_URL: null, NEW_URL: null, MODI_URL: null, HELP_URL: null,
@@ -64,12 +64,9 @@ function fieldChooserData(fieldRows: { F_ID: string; F_DESC: string; F_TYPE: str
 }
 
 function renderPage() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
+  return renderWithProviders(
       <MenuAdminPage />
-    </QueryClientProvider>,
-  )
+)
 }
 
 /** 等待菜单树初始渲染（全量并发测试下放宽超时，避免首帧超时抖动）。 */

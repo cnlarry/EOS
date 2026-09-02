@@ -1,20 +1,14 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
 import { useAuth } from '../auth/authContext'
 import { UserAdminPage } from './UserAdminPage'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 vi.mock('../auth/authContext', () => ({ useAuth: vi.fn() }))
 
 const usersPage = {
@@ -45,8 +39,20 @@ const employeeChooserData = {
   total: 1,
 }
 
+const groupChooserData = {
+  columns: [
+    { key: 'G_IDX', label: '组ID', dataType: 'string' },
+    { key: 'G_DESC', label: '组名', dataType: 'string' },
+  ],
+  defaultKeys: ['G_IDX', 'G_DESC'],
+  rows: [
+    { G_IDX: 'CG', G_DESC: '采购' },
+    { G_IDX: 'CW', G_DESC: '财务' },
+  ],
+  total: 2,
+}
+
 function renderPage() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   vi.mocked(useAuth).mockReturnValue({
     bootstrap: { user: { id: 'admin', username: 'admin', displayName: 'Demo User', employeeId: 'E001', avatarText: 'LW', avatarUrl: null, roleName: '系统管理员', organization: { id: 'o', name: 'O' } }, permissions: [], navigation: [] },
     loading: false,
@@ -54,8 +60,7 @@ function renderPage() {
     logout: vi.fn(),
     hasPermission: () => true,
   })
-  return render(
-    <QueryClientProvider client={queryClient}>
+  return renderWithProviders(
       <MemoryRouter initialEntries={['/admin/users']}>
         <Routes>
           <Route path="/admin/users" element={<UserAdminPage />} />
@@ -63,8 +68,7 @@ function renderPage() {
           <Route path="/admin/users/:userId/report-rights" element={<div>USER_REPORT_RIGHTS_PAGE</div>} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
-  )
+)
 }
 
 async function loaded() {
@@ -86,8 +90,11 @@ describe('UserAdminPage', () => {
   beforeEach(() => {
     apiClientMock.get.mockImplementation((path: string) => mockGet(path))
     apiClientMock.put.mockResolvedValue(undefined)
-    apiClientMock.post.mockImplementation((path: string) => {
-      if (path === '/chooser/query') return Promise.resolve(employeeChooserData)
+    apiClientMock.post.mockImplementation((path: string, body?: { sourceKey?: string }) => {
+      if (path === '/chooser/query') {
+        if (body?.sourceKey === 'rights-admin.groups') return Promise.resolve(groupChooserData)
+        return Promise.resolve(employeeChooserData)
+      }
       return Promise.resolve(undefined)
     })
     vi.stubGlobal('confirm', vi.fn(() => true))
@@ -191,9 +198,13 @@ describe('UserAdminPage', () => {
     await loaded()
     fireEvent.click(within(rowOf('viewer')).getByRole('button', { name: '所属组' }))
     await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith('/admin/users/viewer/groups'))
-    const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByText('采购'))
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+    const dialogs = await screen.findAllByRole('dialog')
+    const chooser = dialogs[dialogs.length - 1]
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith('/chooser/query', expect.objectContaining({ sourceKey: 'rights-admin.groups' })))
+    await waitFor(() => expect(within(chooser).getByText('采购')).toBeInTheDocument())
+    fireEvent.click(within(chooser).getByText('采购'))
+    await waitFor(() => expect(within(chooser).getByRole('button', { name: '确认' })).toBeEnabled())
+    fireEvent.click(within(chooser).getByRole('button', { name: '确认' }))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
       '/admin/users/viewer/groups',
       { ids: ['CG'] },

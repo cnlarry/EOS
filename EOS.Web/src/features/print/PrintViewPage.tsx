@@ -4,7 +4,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
+import { describeApiError } from '../../lib/errors'
 
 interface ReportPrintOption { reportId: string; reportName: string; headerId: string | null; tailId: string | null; isDefault: boolean }
 interface ReportHeaderOption { headerId: string; headerName: string; companyName: string; headerText: string | null; logoUrl: string | null }
@@ -69,7 +69,7 @@ export function PrintViewPage() {
       pdfUrlRef.current = next
       setPdfUrl(next)
     } catch (error) {
-      setPdfError(error instanceof ApiError ? error.body.message : 'PDF 生成失败，请重试。')
+      setPdfError(describeApiError(error, 'PDF 生成失败，请重试。'))
     }
   }, [settings.isSuccess, moduleId, key, reportId, headerId, tailId, showRemark])
 
@@ -92,7 +92,7 @@ export function PrintViewPage() {
   }
 
   if (settings.isPending) return <LoadingState label="正在加载打印设置…" />
-  if (settings.isError) return <ErrorState message={settings.error instanceof ApiError ? settings.error.body.message : '打印设置加载失败。'} onRetry={() => void settings.refetch()} />
+  if (settings.isError) return <ErrorState message={describeApiError(settings.error, '打印设置加载失败。')} onRetry={() => void settings.refetch()} />
   if (settings.data.reports.length === 0) return <ErrorState message="没有可打印的报表，或您没有该报表的预览/打印权限。" onRetry={() => void settings.refetch()} />
 
   return (

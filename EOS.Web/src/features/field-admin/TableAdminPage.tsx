@@ -10,9 +10,9 @@ import { ErpTable } from '../../components/common/ErpTable'
 import { radioSelectColumn } from '../../components/common/erpRadioSelectColumn'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
 import { TableEditorModal, type TableEditorEndpoints, type TableDetail } from './TableEditorModal'
 import { ExpressionAuditModal } from './ExpressionAuditModal'
+import { describeApiError } from '../../lib/errors'
 
 export interface FieldAdminTable {
   tableId: string
@@ -54,7 +54,7 @@ export function TableAdminPage() {
     return !keyword || item.tableId.toLowerCase().includes(keyword.toLowerCase()) || item.description.toLowerCase().includes(keyword.toLowerCase())
   })
 
-  const errorMessage = tables.error instanceof ApiError ? tables.error.body.message : '发生未知错误，请稍后重试。'
+  const errorMessage = describeApiError(tables.error, '发生未知错误，请稍后重试。')
 
   const remove = useMutation({
     mutationFn: (tableId: string) => apiClient.delete(`/admin/tables/${encodeURIComponent(tableId)}`),
@@ -178,7 +178,7 @@ export function TableAdminPage() {
           />
         )}
       </ErpListCard>
-      {remove.isError && <div className="alert alert-danger">{remove.error instanceof ApiError ? remove.error.body.message : '删除失败。'}</div>}
+      {remove.isError && <div className="alert alert-danger">{describeApiError(remove.error, '删除失败。')}</div>}
       {editor && (
         <TableEditorModal
           open

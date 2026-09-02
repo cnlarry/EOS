@@ -1,16 +1,13 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SystemSettingsPage } from './SystemSettingsPage'
 import type { SysSettingsField, SysSettingsPayload } from './settingsTypes'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  put: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const bitFields = [
   'PRO_MRP', 'PRO_EDITION_TAG', 'FITOUT_TAG', 'SEND_TAG', 'COP_RETURN_DEPOT_TAG',
@@ -98,16 +95,13 @@ const values: Record<string, string | number | boolean | null> = {
 const sysssPayload: SysSettingsPayload = { values, fields: sysssFields }
 
 function renderPage(path = '/settings/system') {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
+  return renderWithProviders(
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/settings/:table" element={<SystemSettingsPage />} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
-  )
+)
 }
 
 describe('SystemSettingsPage（110111 系统参数设置复刻）', () => {

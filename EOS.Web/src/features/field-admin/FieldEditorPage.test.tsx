@@ -1,19 +1,13 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FieldEditorRoute } from './FieldEditorPage'
 import type { FieldInput } from './FieldEditorForm'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const tables = [
   { tableId: 'PRODUCT_EDITION', description: '产品版次', kind: '主表', type: 'M' },
@@ -50,7 +44,6 @@ const history = [
 ]
 
 function renderPage(initialEntry = '/admin/fields/PRODUCT_EDITION/PRO_NO') {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createMemoryRouter(
     [
       { path: '/admin/fields/:tableId/:fieldId', element: <FieldEditorRoute /> },
@@ -58,11 +51,9 @@ function renderPage(initialEntry = '/admin/fields/PRODUCT_EDITION/PRO_NO') {
     ],
     { initialEntries: [initialEntry] },
   )
-  return render(
-    <QueryClientProvider client={queryClient}>
+  return renderWithProviders(
       <RouterProvider router={router} />
-    </QueryClientProvider>,
-  )
+)
 }
 
 function installMocks() {

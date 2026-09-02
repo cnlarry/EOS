@@ -1,6 +1,7 @@
 import { IconArrowBarToDown, IconArrowBarToLeft, IconArrowBarToRight, IconArrowBarToUp, IconArrowLeft, IconArrowRight } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
+import { Modal } from '../ui/Modal'
 import { LoadingState } from './AsyncState'
 
 export interface ColumnSelectorGroup {
@@ -140,14 +141,22 @@ export function ErpColumnSelector({
   if (!open) return null
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className={`modal-dialog modal-dialog-centered erp-columns-dialog ${groups.length > 1 ? 'erp-dialog-xl' : 'erp-dialog-sm'}`}>
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">{title}</h2>
-            <button className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
+    <Modal
+      title={title}
+      onClose={onClose}
+      dialogClassName={`erp-columns-dialog ${groups.length > 1 ? 'erp-dialog-xl' : 'erp-dialog-sm'}`}
+      footer={<>
+        <Button onClick={restoreDefaults} disabled={!groups.some((group) => group.defaultKeys.length > 0)}>
+          恢复默认
+        </Button>
+        <div className="d-flex gap-2">
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" onClick={() => void handleSave()} loading={saving} disabled={Boolean(canSave && !canSave(draft))}>
+            保存
+          </Button>
+        </div>
+      </>}
+    >
             {loading ? (
               <LoadingState label="正在加载完整字段配置…" />
             ) : loadError ? (
@@ -240,20 +249,6 @@ export function ErpColumnSelector({
               </div>
             )}
             {saveError && <div className="alert alert-danger m-3 mb-0">{saveError}</div>}
-          </div>
-          <div className="modal-footer justify-content-between">
-            <Button onClick={restoreDefaults} disabled={!groups.some((group) => group.defaultKeys.length > 0)}>
-              恢复默认
-            </Button>
-            <div className="d-flex gap-2">
-              <Button onClick={onClose}>取消</Button>
-              <Button variant="primary" onClick={() => void handleSave()} loading={saving} disabled={Boolean(canSave && !canSave(draft))}>
-                保存
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -1,18 +1,12 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { apiClientMock } from '../../test/apiMock'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FlowMonitorPage } from './FlowMonitorPage'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const rows = [
   { wfId: 1, moduleId: 1906, title: '油卡充值单', keyValueDesc: 'FEE_TYPE=FEE  FEE_NO=1001', keyValue: '[FEE_TYPE]=\'FEE\' AND [FEE_NO]=\'1001\'', keyValues: ['FEE', '1001'], startUser: 'admin', startDate: '2026-08-26T10:00:00', ageDays: 1.2, step: '002', stepDesc: '二级审批', state: '0', stateLabel: '在途', overdue: false },
@@ -33,12 +27,9 @@ const detail = {
 }
 
 function renderPage() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  return renderWithProviders(
     <BrowserRouter>
-      <QueryClientProvider client={queryClient}>
-        <FlowMonitorPage />
-      </QueryClientProvider>
+      <FlowMonitorPage />
     </BrowserRouter>,
   )
 }

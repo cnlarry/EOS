@@ -1,18 +1,12 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReportInboxPage } from './ReportInboxPage'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const subscriptions = [
   { id: 1, userId: 'admin', moduleId: 149808, reportId: 'COP_SEND_M_149808', scheduleType: 'DAILY', runHour: 8, runMinute: 0, weekday: null, monthDay: null, enabled: true, lastRunAt: '2026-08-30T08:00:00Z', lastUpdateBy: null, lastUpdateDate: null },
@@ -22,14 +16,11 @@ const inbox = [
 ]
 
 function renderPage() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
+  return renderWithProviders(
       <MemoryRouter>
         <ReportInboxPage />
       </MemoryRouter>
-    </QueryClientProvider>,
-  )
+)
 }
 
 describe('ReportInboxPage', () => {

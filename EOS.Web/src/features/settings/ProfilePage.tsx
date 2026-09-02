@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { useAuth } from '../auth/authContext'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
+import { describeApiError } from '../../lib/errors'
 
 const avatarPalette = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6']
 
@@ -36,7 +36,7 @@ export function ProfilePage() {
       setConfirmPassword('')
     },
     onError: (reason) => {
-      setMessage({ type: 'error', text: reason instanceof ApiError ? reason.body.message : '修改失败，请稍后重试。' })
+      setMessage({ type: 'error', text: describeApiError(reason, '修改失败，请稍后重试。') })
     },
   })
 

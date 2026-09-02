@@ -6,8 +6,8 @@ import { EmptyState, LoadingState } from '../../components/common/AsyncState'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
 import type { ColumnDef } from '@tanstack/react-table'
+import { describeApiError } from '../../lib/errors'
 
 interface Subscription {
   id: number
@@ -71,7 +71,7 @@ export function ReportInboxPage() {
       setDraft({ moduleId: 0, reportId: '', scheduleType: 'DAILY', runHour: 8, runMinute: 0, weekday: null, monthDay: null, enabled: true })
       void queryClient.invalidateQueries({ queryKey: ['report-center', 'subscriptions'] })
     },
-    onError: (reason) => setError(reason instanceof ApiError ? reason.body.message : '新增订阅失败，请重试。'),
+    onError: (reason) => setError(describeApiError(reason, '新增订阅失败，请重试。')),
   })
 
   const subscriptionColumns = useMemo(() => {
@@ -190,7 +190,7 @@ export function ReportInboxPage() {
           )}
           {subscriptions.isPending ? <LoadingState label="正在加载订阅…" /> : subscriptions.isError ? (
             <div className="alert alert-danger d-flex align-items-center justify-content-between">
-              <span>{subscriptions.error instanceof ApiError ? subscriptions.error.body.message : '订阅加载失败。'}</span>
+              <span>{describeApiError(subscriptions.error, '订阅加载失败。')}</span>
               <Button size="sm" variant="danger" onClick={() => void subscriptions.refetch()}>重试</Button>
             </div>
           ) : subscriptions.data.length === 0 ? (
@@ -208,7 +208,7 @@ export function ReportInboxPage() {
         <div className="erp-report-inbox-body p-2">
           {inbox.isPending ? <LoadingState label="正在加载收件箱…" /> : inbox.isError ? (
             <div className="alert alert-danger d-flex align-items-center justify-content-between">
-              <span>{inbox.error instanceof ApiError ? inbox.error.body.message : '收件箱加载失败。'}</span>
+              <span>{describeApiError(inbox.error, '收件箱加载失败。')}</span>
               <Button size="sm" variant="danger" onClick={() => void inbox.refetch()}>重试</Button>
             </div>
           ) : inbox.data.length === 0 ? (

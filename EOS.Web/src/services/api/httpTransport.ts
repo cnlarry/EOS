@@ -1,5 +1,6 @@
 import { ApiError, type ApiErrorBody } from '../../types/api'
 import type { ApiRequest, ApiTransport } from './transport'
+import { createId } from '../../lib/uuid'
 
 export class HttpTransport implements ApiTransport {
   private readonly baseUrl: string
@@ -36,8 +37,5 @@ export class HttpTransport implements ApiTransport {
 }
 
 function newCorrelationId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  return `eos-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+  return createId()
 }

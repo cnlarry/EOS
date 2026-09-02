@@ -3,6 +3,7 @@ import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { formatFieldValue } from '../../features/document-workbench/fieldFormat'
 import { Button } from '../ui/Button'
+import { Modal } from '../ui/Modal'
 import { ErrorState, LoadingState } from './AsyncState'
 import { ErpColumnSelector } from './ErpColumnSelector'
 import { ErpTable } from './ErpTable'
@@ -287,14 +288,16 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
   if (!open) return null
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className={`modal-dialog modal-dialog-centered erp-chooser-dialog ${dialogSize === 'lg' ? 'erp-dialog-lg' : 'erp-dialog-md'}`}>
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">{title}{mode === 'multi' ? '（可多选）' : ''}</h2>
-            <button className="btn-close ms-auto" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
+    <>
+      <Modal
+        title={`${title}${mode === 'multi' ? '（可多选）' : ''}`}
+        onClose={onClose}
+        dialogClassName={`erp-chooser-dialog ${dialogSize === 'lg' ? 'erp-dialog-lg' : 'erp-dialog-md'}`}
+        footer={<div className="d-flex gap-2 ms-auto">
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" disabled={selectedCount === 0} onClick={confirm}>确认</Button>
+        </div>}
+      >
             <div className="erp-chooser-toolbar">
               {searchable ? (
                 <div className="input-group erp-chooser-query">
@@ -364,16 +367,8 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
                 </div>
               </>
             ) : null}
-            <div className="erp-chooser-extra">{extra}</div>
-          </div>
-          <div className="modal-footer">
-            <div className="d-flex gap-2 ms-auto">
-              <Button onClick={onClose}>取消</Button>
-              <Button variant="primary" disabled={selectedCount === 0} onClick={confirm}>确认</Button>
-            </div>
-          </div>
-        </div>
-      </div>
+        <div className="erp-chooser-extra">{extra}</div>
+      </Modal>
       {advancedOpen ? (
         <ChooserAdvancedQuery
           open
@@ -396,7 +391,7 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
           }}
         />
       ) : null}
-    </div>
+    </>
   )
 }
 
@@ -435,14 +430,15 @@ function ChooserAdvancedQuery({
   if (!open) return null
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-dialog-centered erp-dialog-md">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">高级查询</h2>
-            <button className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
+    <Modal
+      title="高级查询"
+      onClose={onClose}
+      dialogClassName="erp-dialog-md"
+      footer={<>
+        <Button onClick={onClose}>取消</Button>
+        <Button variant="primary" onClick={apply}>应用</Button>
+      </>}
+    >
             <div className="erp-filter-rows">
               {rows.map((row, index) => (
                 <div key={index} className="erp-filter-row d-flex gap-2 align-items-center">
@@ -506,13 +502,6 @@ function ChooserAdvancedQuery({
               </Button>
               <Button size="sm" variant="ghost" onClick={() => { onApply([]); onClose() }}>清除</Button>
             </div>
-          </div>
-          <div className="modal-footer">
-            <Button onClick={onClose}>取消</Button>
-            <Button variant="primary" onClick={apply}>应用</Button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

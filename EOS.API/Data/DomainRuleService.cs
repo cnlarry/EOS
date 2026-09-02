@@ -183,7 +183,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         // 1. 补不存在的工序行（MORE × PROCESS_D）
         var maxSerial = await ScalarIntAsync(connection, transaction,
@@ -291,7 +290,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         var depotMissing = await FindLinesAsync(connection, transaction,
             """
@@ -2044,7 +2042,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         var lines = await FindLinesAsync(connection, transaction,
             """
@@ -2071,7 +2068,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         var requireEnactment = await ExistsAsync(connection, transaction,
             "SELECT TOP 1 1 FROM dbo.HR_SETUP WHERE REQUIRE_ENACTMENT=1;", keyValues[0], keyValues[1], token);
         if (!requireEnactment) return new(true, null);
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         var lines = await FindLinesAsync(connection, transaction,
             """
@@ -2100,7 +2096,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         var lines = await FindLinesAsync(connection, transaction,
             """
@@ -2123,7 +2118,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         var lines = await FindLinesAsync(connection, transaction,
             """
@@ -2146,7 +2140,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         var ok = await ExistsAsync(connection, transaction,
             """
@@ -2161,7 +2154,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         if (await ExistsAsync(connection, transaction,
             """
@@ -2195,7 +2187,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         if (await ExistsAsync(connection, transaction,
             """
@@ -2221,7 +2212,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         var lines = await FindLinesAsync(connection, transaction,
             """
@@ -2239,7 +2229,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         if (await ExistsAsync(connection, transaction,
             """
@@ -2291,7 +2280,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         var flags = await ReadSysssFlagsAsync(connection, transaction, token);
 
@@ -2474,7 +2462,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         var supplierOk = await ExistsAsync(connection, transaction,
             """
@@ -2742,7 +2729,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         // 采购单与厂商相符
         var supplierMismatch = await FindLinesAsync(connection, transaction,
@@ -2817,7 +2803,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         var productMissing = await FindLinesAsync(connection, transaction,
             """
@@ -3025,7 +3010,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
 
         // 1. 客户交易天数（SYSSS.CLIENT_DAYS；任一缺失跳过）
@@ -3168,7 +3152,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         var supplierOk = await ExistsAsync(connection, transaction,
             """
@@ -3258,7 +3241,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var (typeColumn, noColumn) = KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
         var clientOk = await ExistsAsync(connection, transaction,
             """

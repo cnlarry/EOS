@@ -26,6 +26,7 @@ import { PageTemplateModal } from './PageTemplateModal'
 import { PreviewDialog } from './PreviewDialog'
 import { PropertyPanel } from './PropertyPanel'
 import { TemplateModal } from './TemplateModal'
+import { describeApiError } from '../../lib/errors'
 import type {
   DesignerDefinition, LayoutDocument, LayoutElement, LayoutTemplateInfo, PreviewSettings,
 } from './types'
@@ -354,7 +355,7 @@ export function LayoutDesignerPage() {
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     },
     onError: (error) => {
-      const message = error instanceof ApiError ? error.body.message : '预览生成失败，请检查后端服务与模块样例数据。'
+      const message = describeApiError(error, '预览生成失败，请检查后端服务与模块样例数据。')
       window.alert(message)
     },
   })
@@ -377,7 +378,7 @@ export function LayoutDesignerPage() {
     },
     onError: (error) => {
       setRenderPreviewError(
-        error instanceof ApiError ? error.body.message : '渲染预览失败，请检查后端服务。')
+        describeApiError(error, '渲染预览失败，请检查后端服务。'))
     },
   })
 

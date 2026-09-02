@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpFieldChooser } from '../../components/common/ErpFieldChooser'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 import { FILTER_OPS, parseFilter, quoteValue, rowIssues, type FilterRow } from './menuFilter'
@@ -151,14 +152,15 @@ export function MenuFilterBuilder({
   if (!open) return null
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-dialog-centered erp-dialog-md">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">构建主表过滤条件</h2>
-            <button className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
+    <Modal
+      title="构建主表过滤条件"
+      onClose={onClose}
+      dialogClassName="erp-dialog-md"
+      footer={<>
+        <Button onClick={onClose}>取消</Button>
+        <Button variant="primary" disabled={errorCount > 0} onClick={handleSave}>确定</Button>
+      </>}
+    >
             {fields.isPending ? (
               <LoadingState label="正在加载字段…" />
             ) : fields.isError ? (
@@ -240,13 +242,6 @@ export function MenuFilterBuilder({
                 )}
               </div>
             )}
-          </div>
-          <div className="modal-footer">
-            <Button onClick={onClose}>取消</Button>
-            <Button variant="primary" disabled={errorCount > 0} onClick={handleSave}>确定</Button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

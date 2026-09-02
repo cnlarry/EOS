@@ -1,19 +1,13 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
 import { TableAdminPage } from './TableAdminPage'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 // 环境负载下（并跑 web dev/API/playwright）弹窗交互用例 5s 默认超时偶发超时，
 // 单独跑 10/10 通过；放宽到 15s 消除偶发（同仓库其它表单页测试同此配置风格）。
@@ -30,17 +24,14 @@ const tables = Array.from({ length: 20 }, (_, index) => ({
 }))
 
 function renderPage() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
+  return renderWithProviders(
       <MemoryRouter initialEntries={['/admin/tables']}>
         <Routes>
           <Route path="/admin/tables" element={<TableAdminPage />} />
           <Route path="/admin/tables/:tableId/fields" element={<div>FIELDS_PAGE</div>} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
-  )
+)
 }
 
 async function loaded() {

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { ReportAdminPage } from '../features/admin/ReportAdminPage'
 import { ReportViewerPage } from '../features/reports/ReportViewerPage'
 import { useAuth } from '../features/auth/authContext'
+import { moduleReadPermission } from '../features/auth/modulePermissions'
 
 const DocumentWorkbenchPage = lazy(() => import('../features/document-workbench/DocumentWorkbenchPage').then((module) => ({ default: module.DocumentWorkbenchPage })))
 const FormEditorPage = lazy(() => import('../features/document-workbench/FormEditorPage').then((module) => ({ default: module.FormEditorPage })))
@@ -36,7 +37,7 @@ export function FormEditorRoute() {
 /** 报表定义维护（2201）：REPORT + REPORT_SORT 主子表。 */
 export function ReportAdminRoute() {
   const { hasPermission } = useAuth()
-  if (!hasPermission('legacy-module.2201.read')) return <ForbiddenPage />
+  if (!hasPermission(moduleReadPermission(2201))) return <ForbiddenPage />
   return <ReportAdminPage />
 }
 

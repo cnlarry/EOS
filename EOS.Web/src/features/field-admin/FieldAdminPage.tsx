@@ -11,9 +11,9 @@ import { ErpTable } from '../../components/common/ErpTable'
 import { radioSelectColumn } from '../../components/common/erpRadioSelectColumn'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
 import type { FieldAdminTable } from './TableAdminPage'
 import { UnmanagedFieldsModal } from './UnmanagedFieldsModal'
+import { describeApiError } from '../../lib/errors'
 
 interface FieldAdminFieldSummary {
   tableId: string
@@ -71,7 +71,7 @@ export function FieldAdminPage() {
   })
 
   const items = fields.data?.items ?? []
-  const errorMessage = fields.error instanceof ApiError ? fields.error.body.message : '发生未知错误，请稍后重试。'
+  const errorMessage = describeApiError(fields.error, '发生未知错误，请稍后重试。')
 
   const confirmDelete = useCallback((fieldId: string, description: string) => {
     if (window.confirm(`确定要删除字段“${fieldId} (${description})”吗？删除后该字段将不再显示与查询，历史配置引用会被一并清理。`)) {
@@ -153,7 +153,7 @@ export function FieldAdminPage() {
           />
         )}
       </ErpListCard>
-      {remove.isError && <div className="alert alert-danger">{remove.error instanceof ApiError ? remove.error.body.message : '删除失败。'}</div>}
+      {remove.isError && <div className="alert alert-danger">{describeApiError(remove.error, '删除失败。')}</div>}
       {unmanagedOpen && (
         <UnmanagedFieldsModal
           open

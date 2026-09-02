@@ -9,9 +9,10 @@ import { ErpPagination } from '../../components/common/ErpPagination'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
 import { formatFieldValue } from '../document-workbench/fieldFormat'
 import { useAuth } from '../auth/authContext'
+import { moduleReadPermission } from '../auth/modulePermissions'
+import { describeApiError } from '../../lib/errors'
 
 interface DetailColumn { key: string; label: string; dataType: string; displayFormat?: string | null }
 interface DetailQueryResult {
@@ -32,7 +33,7 @@ export function DetailQueryPage() {
   const { hasPermission } = useAuth()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
-  const canRead = hasPermission(`legacy-module.${moduleId}.read`)
+  const canRead = hasPermission(moduleReadPermission(moduleId))
   const result = useQuery({
     queryKey: ['detail-query', moduleId, page, pageSize],
     queryFn: () => apiClient.get<DetailQueryResult>(`/detail-query/${moduleId}`, { query: { page, pageSize } }),
@@ -51,7 +52,7 @@ export function DetailQueryPage() {
         return text || '—'
       },
     })), [result.data])
-  const errorMessage = result.error instanceof ApiError ? result.error.body.message : '发生未知错误，请稍后重试。'
+  const errorMessage = describeApiError(result.error, '发生未知错误，请稍后重试。')
   if (!canRead) {
     return <section className="card"><div className="card-body text-center py-5 text-danger">当前账号无权访问此模块。</div></section>
   }

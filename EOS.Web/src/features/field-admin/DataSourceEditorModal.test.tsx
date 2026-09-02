@@ -1,18 +1,12 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DataSourceEditorModal, type DataSourceDraft } from './DataSourceEditorModal'
 import type { ChooserSource } from './FieldEditorForm'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const source: ChooserSource = {
   active: true,
@@ -25,9 +19,7 @@ const source: ChooserSource = {
 }
 
 function renderModal(initial: DataSourceDraft | null, onSave = vi.fn()) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
+  return renderWithProviders(
       <DataSourceEditorModal
         open
         initial={initial}
@@ -36,8 +28,7 @@ function renderModal(initial: DataSourceDraft | null, onSave = vi.fn()) {
         onClose={() => undefined}
         onSave={onSave}
       />
-    </QueryClientProvider>,
-  )
+)
 }
 
 function installMocks() {

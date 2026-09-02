@@ -13,6 +13,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { createSession, deleteSession, listMessages, listSessions } from './api'
 import { extractPageContext } from './pageContext'
 import { useChatStream, type AssistantFormDraft } from './useChatStream'
+import { assistantPrefillKey } from '../../lib/storageKeys'
 import { workbenchNew } from '../document-workbench/workbenchPath'
 import type { AssistantMessage, AssistantSession } from './types'
 
@@ -233,7 +234,7 @@ export function AssistantDock() {
   // After a draft is confirmed, "open in form" pre-fills through a one-shot sessionStorage channel.
   // Execution reuses the existing unified form save pipeline; the assistant adds no new write path.
   const handleOpenInForm = useCallback((draft: AssistantFormDraft) => {
-    sessionStorage.setItem(`erp-assistant-prefill-${draft.moduleId}`, JSON.stringify(draft.values))
+    sessionStorage.setItem(assistantPrefillKey(draft.moduleId), JSON.stringify(draft.values))
     setOpen(false)
     navigate(workbenchNew(draft.moduleId))
   }, [navigate])

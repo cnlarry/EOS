@@ -2,9 +2,10 @@ import { IconUsers } from '@tabler/icons-react'
 import { useState } from 'react'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
 import type { UserGroupSummary } from '../rights-admin/types'
+import { describeApiError } from '../../lib/errors'
 
 interface NewUserModalProps {
   groups: UserGroupSummary[]
@@ -58,21 +59,23 @@ export function NewUserModal({ groups, onClose, onSaved }: NewUserModalProps) {
       })
       onSaved()
     } catch (reason) {
-      setError(reason instanceof ApiError ? reason.body.message : '开户失败，请稍后重试。')
+      setError(describeApiError(reason, '开户失败，请稍后重试。'))
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-dialog-centered">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">新增用户（开户）</h2>
-            <button className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body d-grid gap-3">
+    <>
+      <Modal
+        title="新增用户（开户）"
+        onClose={onClose}
+        footer={<>
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" onClick={() => void submit()} loading={saving} disabled={!canSubmit}>开户</Button>
+        </>}
+      >
+        <div className="d-grid gap-3">
             <div>
               <label className="form-label" htmlFor="new-user-id">用户名</label>
               <input
@@ -120,13 +123,8 @@ export function NewUserModal({ groups, onClose, onSaved }: NewUserModalProps) {
               </select>
             </div>
             {error && <div className="alert alert-danger py-2 mb-0" role="alert">{error}</div>}
-          </div>
-          <div className="modal-footer">
-            <Button onClick={onClose}>取消</Button>
-            <Button variant="primary" onClick={() => void submit()} loading={saving} disabled={!canSubmit}>开户</Button>
-          </div>
         </div>
-      </div>
+      </Modal>
       <UnifiedChooser
         open={chooserOpen}
         title="选择员工"
@@ -152,6 +150,6 @@ export function NewUserModal({ groups, onClose, onSaved }: NewUserModalProps) {
         resizable
         storageKey="new-user-employee-chooser"
       />
-    </div>
+    </>
   )
 }
