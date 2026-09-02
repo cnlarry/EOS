@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 
 export interface ExpressionStaleEntry {
@@ -31,15 +32,8 @@ export function ExpressionAuditModal({ open, onClose }: { open: boolean; onClose
   if (!open) return null
   const data = query.data
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-lg modal-dialog-centered">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">受控表达式审计</h2>
-            <button className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
-            {query.isLoading ? (
+    <Modal title="受控表达式审计" onClose={onClose} size="lg">
+      {query.isLoading ? (
               <p className="text-secondary">正在校验全部表达式…</p>
             ) : query.isError ? (
               <div className="alert alert-danger">表达式审计加载失败，请确认有字段设置权限。</div>
@@ -76,10 +70,7 @@ export function ExpressionAuditModal({ open, onClose }: { open: boolean; onClose
                   <div className="alert alert-success mb-0">全部可见表达式均通过当前白名单校验。</div>
                 )}
               </>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+      )}
+    </Modal>
   )
 }

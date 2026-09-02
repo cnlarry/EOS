@@ -1,17 +1,10 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FieldEditorForm, type FieldEditorEndpoints, type FieldMeta } from './FieldEditorForm'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn().mockResolvedValue([]),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 function meta(overrides: Partial<FieldMeta> = {}): FieldMeta {
   return {
@@ -39,10 +32,8 @@ function renderForm(
   onCancel = vi.fn(),
   onStateChange?: (state: { canSave: boolean; saving: boolean; dirty: boolean }) => void,
 ) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return {
-    ...render(
-      <QueryClientProvider client={queryClient}>
+    ...renderWithProviders(
         <FieldEditorForm
           mode={mode}
           tableId="T1"
@@ -58,8 +49,7 @@ function renderForm(
             </div>
           )}
         />
-      </QueryClientProvider>,
-    ),
+),
     onSaved,
     onCancel,
   }

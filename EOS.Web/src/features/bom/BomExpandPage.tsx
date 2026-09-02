@@ -1,12 +1,27 @@
 import { useQuery } from '@tanstack/react-query'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { ErpTable } from '../../components/common/ErpTable'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 
 interface BomRow { level: number; proNo: string; elementProNo: string; proName: string; proSpec: string; unitId: string; elementQty: number; baseQty: number; lostRate: number; requiredQty: number }
 interface BomResult { proNo: string; qty: number; maxLevel: number; rows: BomRow[] }
+
+const bomColumns: ColumnDef<BomRow, unknown>[] = [
+  { accessorKey: 'level', header: '阶', cell: (info) => <span>{String(info.getValue() ?? '')}</span> },
+  { accessorKey: 'proNo', header: '父料号', cell: (info) => <span className="font-monospace small">{String(info.getValue() ?? '')}</span> },
+  { accessorKey: 'elementProNo', header: '元件料号', cell: (info) => <span className="font-monospace small">{String(info.getValue() ?? '')}</span> },
+  { accessorKey: 'proName', header: '元件名称', cell: (info) => <span>{String(info.getValue() ?? '')}</span> },
+  { accessorKey: 'proSpec', header: '规格', cell: (info) => <span className="text-secondary">{String(info.getValue() ?? '')}</span> },
+  { accessorKey: 'unitId', header: '单位', cell: (info) => <span>{String(info.getValue() ?? '')}</span> },
+  { accessorKey: 'elementQty', header: '用量', meta: { className: 'text-end' }, cell: (info) => <span>{String(info.getValue() ?? '')}</span> },
+  { accessorKey: 'baseQty', header: '基准', meta: { className: 'text-end' }, cell: (info) => <span>{String(info.getValue() ?? '')}</span> },
+  { accessorKey: 'lostRate', header: '损耗率', meta: { className: 'text-end' }, cell: (info) => <span>{String(info.getValue() ?? '')}</span> },
+  { accessorKey: 'requiredQty', header: '需求数量', meta: { className: 'text-end' }, cell: (info) => <span className="fw-medium">{String(info.getValue() ?? '')}</span> },
+]
 
 export function BomExpandPage() {
   const [proNo, setProNo] = useState('')
@@ -47,28 +62,15 @@ export function BomExpandPage() {
           </div>
         </div>
         {result.isPending ? <LoadingState label="正在展开 BOM…" /> : result.isError ? <ErrorState message="展开失败，请检查产品编号。" onRetry={() => void result.refetch()} /> : (
-          <div className="table-responsive">
-            <table className="table table-sm table-vcenter card-table">
-              <thead><tr><th>阶</th><th>父料号</th><th>元件料号</th><th>元件名称</th><th>规格</th><th>单位</th><th className="text-end">用量</th><th className="text-end">基准</th><th className="text-end">损耗率</th><th className="text-end">需求数量</th></tr></thead>
-              <tbody>
-                {result.data?.rows.map((row, index) => (
-                  <tr key={index}>
-                    <td className="text-center">{row.level}</td>
-                    <td className="font-monospace small">{row.proNo}</td>
-                    <td className="font-monospace small">{row.elementProNo}</td>
-                    <td>{row.proName}</td>
-                    <td className="small text-secondary">{row.proSpec}</td>
-                    <td>{row.unitId}</td>
-                    <td className="text-end">{row.elementQty}</td>
-                    <td className="text-end">{row.baseQty}</td>
-                    <td className="text-end">{row.lostRate}</td>
-                    <td className="text-end fw-medium">{row.requiredQty}</td>
-                  </tr>
-                ))}
-                {result.data?.rows.length === 0 && <tr><td colSpan={10} className="text-center text-secondary py-4">该产品暂无 BOM 或未找到。</td></tr>}
-              </tbody>
-            </table>
-          </div>
+          <ErpTable
+            columns={bomColumns}
+            data={result.data?.rows ?? []}
+            getRowId={(row, index) => `${row.elementProNo}-${index}`}
+            resizable
+            dense
+            storageKey="bom-expand"
+            empty={<div className="text-center text-secondary py-4">该产品暂无 BOM 或未找到。</div>}
+          />
         )}
       </ErpListCard>
     </div>

@@ -1,20 +1,14 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
 import { useAuth } from '../auth/authContext'
 import { DocumentWorkbenchPage } from './DocumentWorkbenchPage'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 vi.mock('../auth/authContext', () => ({ useAuth: vi.fn() }))
 
 const definition = {
@@ -123,9 +117,7 @@ function installApiMocks(overrides: {
 }
 
 function renderPage(initialEntry = '/workbench/1209') {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
+  return renderWithProviders(
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/workbench/:moduleId" element={<DocumentWorkbenchPage />} />
@@ -135,8 +127,7 @@ function renderPage(initialEntry = '/workbench/1209') {
           <Route path="/workbench/:moduleId/view/*" element={<div>VIEW_FORM</div>} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
-  )
+)
 }
 
 async function loaded() {
@@ -545,4 +536,5 @@ describe('DocumentWorkbenchPage', () => {
   })
 
 })
+
 

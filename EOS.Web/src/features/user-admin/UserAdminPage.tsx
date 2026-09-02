@@ -8,12 +8,14 @@ import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
+import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { useAuth } from '../auth/authContext'
-import { RightsMemberPicker, type PickerOption } from '../rights-admin/RightsMemberPicker'
 import type { UserGroupItem, UserGroupSummary } from '../rights-admin/types'
 import { apiClient } from '../../services/api'
-import { ApiError, type PageResponse } from '../../types/api'
+import { type PageResponse } from '../../types/api'
 import { NewUserModal } from './NewUserModal'
+import { describeApiError } from '../../lib/errors'
 
 export interface UserAdminSummary {
   userId: string
@@ -49,23 +51,23 @@ function SetPasswordModal({ user, onClose, onSaved }: SetPasswordModalProps) {
       setConfirm('')
       onSaved()
     },
-    onError: (reason) => setError(reason instanceof ApiError ? reason.body.message : '保存失败，请稍后重试。'),
+    onError: (reason) => setError(describeApiError(reason, '保存失败，请稍后重试。')),
   })
 
   if (!user) return null
   const invalid = password.length < 8 || password.length > 64 || password !== password.trim() || password !== confirm
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-dialog-centered">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">设置密码</h2>
-            <button className="btn-close" aria-label="关闭" onClick={() => { setPassword(''); setConfirm(''); onClose() }} />
-          </div>
-          <div className="modal-body">
-            <div className="alert alert-info">为账号 <strong>{user.userId.trim()}</strong>（{user.employeeName}）分配新密码。密码长度需为 8-64 个字符，且不能以空格开头或结尾。</div>
-            <div className="d-grid gap-3">
+    <Modal
+      title="设置密码"
+      onClose={() => { setPassword(''); setConfirm(''); onClose() }}
+      footer={<>
+        <Button variant="ghost" onClick={() => { setPassword(''); setConfirm(''); onClose() }}>取消</Button>
+        <Button variant="primary" loading={save.isPending} disabled={invalid} onClick={() => save.mutate(password)}>保存密码</Button>
+      </>}
+    >
+      <div className="alert alert-info">为账号 <strong>{user.userId.trim()}</strong>（{user.employeeName}）分配新密码。密码长度需为 8-64 个字符，且不能以空格开头或结尾。</div>
+      <div className="d-grid gap-3">
               <div>
                 <label className="form-label" htmlFor="new-password">新密码</label>
                 <input id="new-password" type="password" autoComplete="new-password" className="form-control" value={password} onChange={(event) => setPassword(event.target.value)} />
@@ -76,15 +78,8 @@ function SetPasswordModal({ user, onClose, onSaved }: SetPasswordModalProps) {
               </div>
               {password && confirm && password !== confirm && <div className="text-danger small">两次输入的密码不一致。</div>}
               {error && <div className="alert alert-danger py-2 mb-0" role="alert">{error}</div>}
-            </div>
-          </div>
-          <div className="modal-footer">
-            <Button variant="ghost" onClick={() => { setPassword(''); setConfirm(''); onClose() }}>取消</Button>
-            <Button variant="primary" loading={save.isPending} disabled={invalid} onClick={() => save.mutate(password)}>保存密码</Button>
-          </div>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -104,6 +99,8 @@ export function UserAdminPage() {
   const [passwordTarget, setPasswordTarget] = useState<UserAdminSummary | null>(null)
   const [groupsTarget, setGroupsTarget] = useState<UserAdminSummary | null>(null)
   const [newUserOpen, setNewUserOpen] = useState(false)
+  const [groupsSelection, setGroupsSelection] = useState<RowSelectionState>({})
+  const [groupSaveError, setGroupSaveError] = useState('')
 
   const users = useQuery({
     queryKey: ['user-admin', 'users', keyword, page],
@@ -127,11 +124,25 @@ export function UserAdminPage() {
       await apiClient.put(`/admin/users/${encodeURIComponent(groupsTarget!.userId.trim())}/groups`, { ids })
     },
     onSuccess: () => {
+      setGroupSaveError('')
       setGroupsTarget(null)
       void users.refetch()
       void userGroups.refetch()
     },
+    onError: (reason) => setGroupSaveError(describeApiError(reason, '保存失败，请稍后重试。')),
   })
+
+  // 打开所属组选择器时，把当前已选组回填为初始选中（受控选中键 = G_IDX.trim()）
+  useEffect(() => {
+    if (!groupsTarget) {
+      setGroupsSelection({})
+      return
+    }
+    if (!userGroups.data) return
+    const next: RowSelectionState = {}
+    for (const group of userGroups.data) next[group.groupId.trim()] = true
+    setGroupsSelection(next)
+  }, [groupsTarget, userGroups.data])
   const status = useMutation({
     mutationFn: async ({ userId, isActive }: { userId: string; isActive: boolean }) => {
       await apiClient.put(`/admin/users/${encodeURIComponent(userId.trim())}/status`, { isActive })
@@ -167,7 +178,7 @@ export function UserAdminPage() {
     setHasMore(false)
   }
 
-  const errorMessage = users.error instanceof ApiError ? users.error.body.message : '发生未知错误，请稍后重试。'
+  const errorMessage = describeApiError(users.error, '发生未知错误，请稍后重试。')
   const currentUserId = bootstrap?.user.id.trim().toLowerCase()
   const total = users.data?.total ?? items.length
 
@@ -270,6 +281,7 @@ export function UserAdminPage() {
 
   return (
     <div className="erp-full-list-page">
+      {groupSaveError && <div className="alert alert-danger py-2 mb-2" role="alert">{groupSaveError}</div>}
       <ErpListCard
         ariaLabel="用户管理查询"
         search={<ErpSearchBox value={keyword} onChange={onSearchChange} debounceMs={300} placeholder="搜索用户名、员工号或姓名" ariaLabel="搜索用户" />}
@@ -302,16 +314,25 @@ export function UserAdminPage() {
         onClose={() => setPasswordTarget(null)}
         onSaved={() => { setPasswordTarget(null); void users.refetch() }}
       />
-      <RightsMemberPicker
-        open={groupsTarget !== null}
-        title={`用户所属组：${groupsTarget?.userId.trim() ?? ''}`}
-        hint="用户所属组按用户全量替换保存（个人权限存在时完全覆盖组权限）。"
-        options={(groups.data ?? []).map<PickerOption>((group) => ({ id: group.groupId.trim(), label: group.groupDescription }))}
-        selected={(userGroups.data ?? []).map((group) => group.groupId.trim())}
-        loading={groupsTarget !== null && groups.isPending}
-        onClose={() => setGroupsTarget(null)}
-        onSave={(ids) => saveGroups.mutateAsync(ids)}
-      />
+      {groupsTarget !== null && (
+        <UnifiedChooser
+          open
+          title={`用户所属组：${groupsTarget.userId.trim()}`}
+          source={{ kind: 'sourceKey', key: 'rights-admin.groups' }}
+          mode="multi"
+          getRowId={(row) => String((row as { G_IDX?: unknown }).G_IDX ?? '').trim()}
+          selectedKeys={groupsSelection}
+          onSelectedKeysChange={setGroupsSelection}
+          extra={<div className="small text-secondary">用户所属组按用户全量替换保存（个人权限存在时完全覆盖组权限）。</div>}
+          onPick={(rows) => {
+            const ids = rows.map((row) => String((row as { G_IDX?: unknown }).G_IDX ?? '').trim()).filter(Boolean)
+            void saveGroups.mutateAsync(ids)
+          }}
+          onClose={() => setGroupsTarget(null)}
+          searchPlaceholder="按组ID/组名搜索"
+          storageKey="user-admin-groups-chooser"
+        />
+      )}
       {newUserOpen && (
         <NewUserModal
           groups={groups.data ?? []}

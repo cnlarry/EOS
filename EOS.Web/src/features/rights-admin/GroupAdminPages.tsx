@@ -7,12 +7,13 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/common/As
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { usePageBreadcrumb } from '../../components/layout/PageBreadcrumbContext'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
 import { ReportRightsMatrix } from './ReportRightsMatrix'
 import { RightsMatrix } from './RightsMatrix'
 import type { GroupMemberSummary, UserGroupSummary } from './types'
+import { describeApiError } from '../../lib/errors'
 
 interface UserOption {
   userId: string
@@ -196,7 +197,7 @@ export function GroupMembersPage() {
         )}
       >
         {members.isPending ? <LoadingState label="正在加载组成员…" /> : members.isError ? (
-          <ErrorState message={members.error instanceof ApiError ? members.error.body.message : '加载失败。'} onRetry={() => void members.refetch()} />
+          <ErrorState message={describeApiError(members.error, '加载失败。')} onRetry={() => void members.refetch()} />
         ) : (
           <ErpTable
             columns={columns}
@@ -214,7 +215,7 @@ export function GroupMembersPage() {
       </ErpListCard>
       {saveMembers.isError && (
         <div className="alert alert-danger mb-0" role="alert">
-          {saveMembers.error instanceof ApiError ? saveMembers.error.body.message : '保存失败，请稍后重试。'}
+          {describeApiError(saveMembers.error, '保存失败，请稍后重试。')}
         </div>
       )}
       {addOpen && (
@@ -259,7 +260,7 @@ function MemberAddModal({ groupId, currentIds, onClose, onAdded }: MemberAddModa
       if (!append) setSelection(new Set())
       setPage(nextPage)
     } catch (reason) {
-      setError(reason instanceof ApiError ? reason.body.message : '用户搜索失败。')
+      setError(describeApiError(reason, '用户搜索失败。'))
     } finally {
       setLoading(false)
     }
@@ -285,14 +286,15 @@ function MemberAddModal({ groupId, currentIds, onClose, onAdded }: MemberAddModa
   }
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-dialog-centered modal-lg">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">添加成员到 {groupId}</h2>
-            <button className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
+    <Modal
+      title={`添加成员到 ${groupId}`}
+      onClose={onClose}
+      size="lg"
+      footer={<>
+        <Button onClick={onClose}>取消</Button>
+        <Button variant="primary" onClick={confirm} disabled={selection.size === 0 || loading}>确认添加</Button>
+      </>}
+    >
             <div className="input-group input-group-sm mb-2">
               <span className="input-group-text"><IconSearch size={14} /></span>
               <input
@@ -334,13 +336,6 @@ function MemberAddModal({ groupId, currentIds, onClose, onAdded }: MemberAddModa
                 <Button size="sm" variant="ghost" onClick={() => void runSearch(keyword, page + 1, true)}>加载更多</Button>
               </div>
             )}
-          </div>
-          <div className="modal-footer">
-            <Button onClick={onClose}>取消</Button>
-            <Button variant="primary" onClick={confirm} disabled={selection.size === 0 || loading}>确认添加</Button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

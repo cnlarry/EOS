@@ -1,18 +1,12 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EffectiveModuleRights, ModuleRightsRow } from './types'
 import { RightsMatrix } from './RightsMatrix'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const noneEffective: EffectiveModuleRights = {
   source: 'none', canBrowse: false, execTag: 'A',
@@ -50,12 +44,9 @@ function mockGet(path: string) {
 }
 
 function renderMatrix() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
+  return renderWithProviders(
       <RightsMatrix open mode="user" targetId="viewer" onClose={vi.fn()} />
-    </QueryClientProvider>,
-  )
+)
 }
 
 describe('RightsMatrix', () => {
@@ -110,15 +101,23 @@ describe('RightsMatrix', () => {
     renderMatrix()
     await waitFor(() => expect(screen.getAllByText('用户权限设定').length).toBeGreaterThan(0))
     fireEvent.click(screen.getAllByText('用户权限设定')[0])
-    fireEvent.click(screen.getByRole('button', { name: /复制权限/ }))
-    const select = await screen.findByLabelText('复制来源')
-    await waitFor(() => expect(select.querySelectorAll('option').length).toBeGreaterThan(1))
-    fireEvent.change(select, { target: { value: 'other' } })
+    apiClientMock.post.mockImplementation((path: string) => {
+      if (path === '/chooser/query') return Promise.resolve({
+        columns: [{ key: 'USER_ID', label: '用户ID', dataType: 'nvarchar' }, { key: 'EMP_NAME', label: '姓名', dataType: 'nvarchar' }],
+        rows: [{ USER_ID: 'other', EMP_NAME: '其它用户' }],
+        total: 1,
+      })
+      return Promise.resolve({})
+    })
     apiClientMock.get.mockImplementation((path: string) => {
       if (path === '/admin/users/other/rights') return Promise.resolve([makeRow(2306, '用户权限设定', 0, { execTag: 'Z', addNew: true, fileDele: true })])
       return mockGet(path)
     })
-    fireEvent.click(screen.getByRole('button', { name: '复制' }))
+    fireEvent.click(screen.getByRole('button', { name: /复制权限/ }))
+    await screen.findByText('选择复制来源用户')
+    await waitFor(() => expect(screen.getByText('other')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('other'))
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
     await waitFor(() => expect(screen.getByText(/已从 other 复制「用户权限设定」的权限/)).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalled())

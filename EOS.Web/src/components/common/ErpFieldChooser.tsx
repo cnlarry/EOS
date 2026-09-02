@@ -1,6 +1,7 @@
 import { IconArrowDown, IconArrowUp, IconTrash } from '@tabler/icons-react'
 import { useEffect, useRef, useState, type UIEvent } from 'react'
 import { Button } from '../ui/Button'
+import { Modal } from '../ui/Modal'
 import { ErrorState, LoadingState } from './AsyncState'
 import { loadChooserSource, type UnifiedChooserRow, type UnifiedChooserSource } from './chooserSource'
 
@@ -214,14 +215,15 @@ export function ErpFieldChooser<T extends UnifiedChooserRow = UnifiedChooserRow>
   }
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-dialog-centered erp-dialog-lg erp-field-chooser-dialog">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">{title}{mode === 'sort' ? '（可升/降序）' : ''}</h2>
-            <button className="btn-close ms-auto" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
+    <Modal
+      title={`${title}${mode === 'sort' ? '（可升/降序）' : ''}`}
+      onClose={onClose}
+      dialogClassName="erp-dialog-lg erp-field-chooser-dialog"
+      footer={<>
+        <Button onClick={onClose}>取消</Button>
+        <Button variant="primary" onClick={handleSave}>确认</Button>
+      </>}
+    >
             <div className="erp-field-chooser-layout">
               <div className="erp-field-chooser-pane">
                 <div className="erp-field-chooser-search input-group erp-chooser-query">
@@ -298,13 +300,6 @@ export function ErpFieldChooser<T extends UnifiedChooserRow = UnifiedChooserRow>
                 </div>
               </div>
             </div>
-          </div>
-          <div className="modal-footer">
-            <Button onClick={onClose}>取消</Button>
-            <Button variant="primary" onClick={handleSave}>确认</Button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

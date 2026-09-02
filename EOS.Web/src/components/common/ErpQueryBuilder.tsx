@@ -1,4 +1,5 @@
 import { Button } from '../ui/Button'
+import { Modal } from '../ui/Modal'
 import { emptyQueryCondition, queryOperators, type QueryCondition } from './queryCondition'
 
 interface ErpQueryBuilderProps {
@@ -38,14 +39,15 @@ export function ErpQueryBuilder({
     onChange(conditions.map((item, i) => (i === index ? { ...item, ...patch } : item)))
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-lg modal-dialog-centered">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">{title}</h2>
-            <button type="button" className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
+    <Modal
+      title={title}
+      onClose={onClose}
+      size="lg"
+      footer={<>
+        <Button onClick={onClear}>清空</Button>
+        <Button variant="primary" disabled={!canApply} onClick={onApply}>应用查询</Button>
+      </>}
+    >
             <div className="d-grid gap-2">
               {conditions.map((condition, index) => (
                 <div className="row g-2 align-items-center" key={index}>
@@ -122,13 +124,6 @@ export function ErpQueryBuilder({
             <button type="button" className="btn btn-ghost-primary mt-3" onClick={() => onChange([...conditions, emptyQueryCondition()])}>
               添加条件
             </button>
-          </div>
-          <div className="modal-footer">
-            <Button onClick={onClear}>清空</Button>
-            <Button variant="primary" disabled={!canApply} onClick={onApply}>应用查询</Button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

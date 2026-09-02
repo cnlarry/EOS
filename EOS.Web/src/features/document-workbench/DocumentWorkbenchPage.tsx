@@ -13,6 +13,7 @@ import { ErpSearchBox } from '../../components/common/ErpSearchBox'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
+import { moduleReadPermission } from '../auth/modulePermissions'
 import { ApiError } from '../../types/api'
 import { useAuth } from '../auth/authContext'
 import { alignClass, formatFieldValue } from './fieldFormat'
@@ -170,7 +171,7 @@ export function DocumentWorkbenchPage() {
         const text=formatFieldValue(value,field.dataType,field.format)
         if(!text)return '—'
         return field.browseModuleId&&field.browseModuleId>0
-          ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} browseKeyFields={field.browseKeyFields} row={info.row.original} fromModuleId={moduleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
+          ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} browseKeyFields={field.browseKeyFields} row={info.row.original} fromModuleId={moduleId} canBrowse={hasPermission(moduleReadPermission(field.browseModuleId))}/>
           :text
       },
     })),
@@ -195,7 +196,7 @@ export function DocumentWorkbenchPage() {
       const text=formatFieldValue(value,field.dataType,field.format)
       if(!text)return '—'
       return field.browseModuleId&&field.browseModuleId>0
-        ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} browseKeyFields={field.browseKeyFields} row={info.row.original} fromModuleId={moduleId} canBrowse={hasPermission(`legacy-module.${field.browseModuleId}.read`)}/>
+        ?<FieldBrowseLink value={text} browseModuleId={field.browseModuleId} browseKeyFields={field.browseKeyFields} row={info.row.original} fromModuleId={moduleId} canBrowse={hasPermission(moduleReadPermission(field.browseModuleId))}/>
         :text
     },
   })),[detail,hasPermission,moduleId,navigate,definition.data?.detailTable])
@@ -456,3 +457,4 @@ export function DocumentWorkbenchPage() {
     />}
   </div>
 }
+

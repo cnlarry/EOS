@@ -19,6 +19,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
+import { Modal } from '../../components/ui/Modal'
 import { TabbedPanel } from '../../components/common/TabbedPanel'
 import { navigationIcons } from '../../components/layout/navigationIcons'
 import { childPad, dotLeft, groupPad, lineTree } from '../../components/layout/menuDepth'
@@ -28,6 +29,7 @@ import { notifyMenuChanged } from '../../services/menuEvents'
 import { ApiError } from '../../types/api'
 import { parseFilter } from './menuFilter'
 import { MenuFieldPicker, MenuFilterBuilder } from './MenuFieldPickers'
+import { describeApiError } from '../../lib/errors'
 
 /** 菜单编辑表单页签：基础 / 主表 / 子表 / 分组 / 统一表单。 */
 type MenuFormTab = 'basic' | 'master' | 'detail' | 'group' | 'form'
@@ -593,7 +595,7 @@ export function MenuAdminPage() {
       }])
       setDefaultColumnsOpen({ table })
     } catch (error) {
-      setDefaultColumnsError(error instanceof ApiError ? error.body.message : '加载默认查询列失败。')
+      setDefaultColumnsError(describeApiError(error, '加载默认查询列失败。'))
     } finally {
       setDefaultColumnsLoading(false)
     }
@@ -727,7 +729,7 @@ export function MenuAdminPage() {
     })
   }
 
-  const errorMessage = modules.error instanceof ApiError ? modules.error.body.message : '发生未知错误，请稍后重试。'
+  const errorMessage = describeApiError(modules.error, '发生未知错误，请稍后重试。')
 
   return (
     <div className="erp-menu-admin d-flex flex-column gap-2">
@@ -995,15 +997,12 @@ export function MenuAdminPage() {
         emptyText="没有匹配的表。"
       />
       {iconPickerModule && (
-        <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-          <div className="modal-dialog modal-dialog-centered erp-dialog-lg">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h2 className="modal-title">更换图标：{iconPickerModule.M_DESC}</h2>
-                <button className="btn-close" aria-label="关闭" onClick={() => setIconPickerModule(null)} />
-              </div>
-              <div className="modal-body">
-                <div className="erp-menu-icon-grid">
+        <Modal
+          title={`更换图标：${iconPickerModule.M_DESC}`}
+          onClose={() => setIconPickerModule(null)}
+          dialogClassName="erp-dialog-lg"
+        >
+          <div className="erp-menu-icon-grid">
                   <button
                     type="button"
                     className={`erp-menu-icon-option${iconPickerModule.M_ICON ? '' : ' active'}`}
@@ -1031,11 +1030,8 @@ export function MenuAdminPage() {
                       <span>{name}</span>
                     </button>
                   ))}
-                </div>
-              </div>
-            </div>
           </div>
-        </div>
+        </Modal>
       )}
       <MenuFieldPicker
         open={fieldPicker !== null}

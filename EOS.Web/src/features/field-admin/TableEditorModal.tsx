@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 
 export interface TableInput {
   description: string
@@ -124,15 +125,16 @@ export function TableEditorModal({ open, mode, tableId, endpoints, onClose, onSa
   }
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-lg modal-dialog-centered">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">{isNew ? '新增数据表元数据' : `数据表信息（${draft?.tableId ?? ''}）`}</h2>
-            <button className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
-            <div className="alert alert-warning">
+    <Modal
+      title={isNew ? '新增数据表元数据' : `数据表信息（${draft?.tableId ?? ''}）`}
+      onClose={onClose}
+      size="lg"
+      footer={<>
+        <Button variant="secondary" className="me-2" onClick={onClose}>取消</Button>
+        <Button variant="primary" loading={saving} disabled={!canSave} onClick={() => void handleSave()}>保存</Button>
+      </>}
+    >
+      <div className="alert alert-warning">
               {isNew
                 ? '仅允许登记已存在的物理表/视图元数据；不会创建物理表。新增后可在「管理字段」中生成字段元数据。'
                 : '仅维护低风险表信息（描述/性质/类型/备注）；关联表、查询联表、默认条件等高风险配置由受控机制另行维护。'}
@@ -186,15 +188,6 @@ export function TableEditorModal({ open, mode, tableId, endpoints, onClose, onSa
               </div>
             )}
             {saveError && <div className="alert alert-danger mt-3 mb-0">{saveError}</div>}
-          </div>
-          <div className="card-footer text-end px-3 py-3">
-            <Button variant="secondary" className="me-2" onClick={onClose}>取消</Button>
-            <Button variant="primary" loading={saving} disabled={!canSave} onClick={() => void handleSave()}>
-              保存
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppShell } from '../components/layout/AppShell'
 import { RequireAuth, RequirePermission } from '../features/auth/RouteGuards'
+import { moduleReadPermission } from '../features/auth/modulePermissions'
 import { ErrorPage } from './ErrorPage'
 import {
   DashboardPage,
@@ -46,20 +47,20 @@ export const router = createBrowserRouter([
         { index: true, element: <Navigate to="/dashboard" replace /> },
         { path: 'dashboard', element: withSuspense(<DashboardPage />) },
         { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },
-        { element: <RequirePermission permission="legacy-module.2302.read" />, children: [
+        { element: <RequirePermission permission={moduleReadPermission(2302)} />, children: [
           { path: 'admin/tables', element: withSuspense(<TableAdminPage />) },
           { path: 'admin/tables/:tableId/fields', element: withSuspense(<FieldAdminRoute />) },
           { path: 'admin/fields/:tableId/:fieldId', element: withSuspense(<FieldEditorRoute />) },
         ] },
-        { element: <RequirePermission permission="legacy-module.2301.read" />, children: [{ path: 'admin/menus', element: withSuspense(<MenuAdminPage />) }] },
-        { element: <RequirePermission permission="legacy-module.2305.read" />, children: [
+        { element: <RequirePermission permission={moduleReadPermission(2301)} />, children: [{ path: 'admin/menus', element: withSuspense(<MenuAdminPage />) }] },
+        { element: <RequirePermission permission={moduleReadPermission(2305)} />, children: [
           { path: 'admin/groups', element: withSuspense(<UserGroupAdminPage />) },
           { path: 'admin/groups/:groupId/rights', element: withSuspense(<GroupRightsPage />) },
           { path: 'admin/groups/:groupId/report-rights', element: withSuspense(<GroupReportRightsPage />) },
           { path: 'admin/groups/:groupId/members', element: withSuspense(<GroupMembersPage />) },
         ] },
-        { element: <RequirePermission permission="legacy-module.2303.read" />, children: [{ path: 'admin/field-audit', element: withSuspense(<FieldAuditPage />) }] },
-        { element: <RequirePermission permission="legacy-module.2306.read" />, children: [
+        { element: <RequirePermission permission={moduleReadPermission(2303)} />, children: [{ path: 'admin/field-audit', element: withSuspense(<FieldAuditPage />) }] },
+        { element: <RequirePermission permission={moduleReadPermission(2306)} />, children: [
           { path: 'admin/users', element: withSuspense(<UserAdminPage />) },
           { path: 'admin/users/:userId/rights', element: withSuspense(<UserRightsPage />) },
           { path: 'admin/users/:userId/report-rights', element: withSuspense(<UserReportRightsPage />) },
@@ -78,11 +79,11 @@ export const router = createBrowserRouter([
         { path: 'import', element: withSuspense(<ImportPage />) },
         { path: 'print/:moduleId', element: withSuspense(<PrintViewPage />) },
         { path: 'bom-expand', element: withSuspense(<BomExpandPage />) },
-        { element: <RequirePermission permission="legacy-module.199901.read" />, children: [{ path: 'car-summary', element: withSuspense(<CarSummaryPage />) }] },
+        { element: <RequirePermission permission={moduleReadPermission(199901)} />, children: [{ path: 'car-summary', element: withSuspense(<CarSummaryPage />) }] },
         { path: 'detail-query/:moduleId', element: withSuspense(<DetailQueryPage />) },
-        { element: <RequirePermission permission="legacy-module.2102.read" />, children: [{ path: 'my-tasks', element: withSuspense(<MyTasksPage />) }] },
-        { element: <RequirePermission permission="legacy-module.2101.read" />, children: [{ path: 'workflow/design', element: withSuspense(<FlowDesignPage />) }] },
-        { element: <RequirePermission permission="legacy-module.2103.read" />, children: [{ path: 'workflow/monitor', element: withSuspense(<FlowMonitorPage />) }] },
+        { element: <RequirePermission permission={moduleReadPermission(2102)} />, children: [{ path: 'my-tasks', element: withSuspense(<MyTasksPage />) }] },
+        { element: <RequirePermission permission={moduleReadPermission(2101)} />, children: [{ path: 'workflow/design', element: withSuspense(<FlowDesignPage />) }] },
+        { element: <RequirePermission permission={moduleReadPermission(2103)} />, children: [{ path: 'workflow/monitor', element: withSuspense(<FlowMonitorPage />) }] },
         { path: 'jobs', element: withSuspense(<JobPage />) },
         { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },
         { path: 'settings/profile', element: withSuspense(<ProfilePage />) },

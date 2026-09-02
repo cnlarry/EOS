@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 import { FILTER_OPERATORS, isTypeCompatible, type FilterRowDraft, type ReturnRowDraft } from './chooserDraft'
 import type { ChooserSource, FieldEditorEndpoints } from './FieldEditorForm'
@@ -261,15 +262,18 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
   }
 
   return open ? (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-xl modal-dialog-centered erp-field-settings-dialog">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">{initial ? `编辑数据源：${source.description || source.table || '未命名数据源'}` : '新增数据源'}</h2>
-            <button className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
-            <div className="row g-3">
+    <>
+      <Modal
+        title={initial ? `编辑数据源：${source.description || source.table || '未命名数据源'}` : '新增数据源'}
+        onClose={onClose}
+        size="xl"
+        dialogClassName="erp-field-settings-dialog"
+        footer={<>
+          <Button variant="secondary" icon={<IconX size={16} />} onClick={onClose}>取消</Button>
+          <Button variant="primary" onClick={handleSave}>确定</Button>
+        </>}
+      >
+        <div className="row g-3">
               <div className="col-md-4">
                 <label className="form-label">来源表</label>
                 <div className="d-flex gap-1">
@@ -394,15 +398,9 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
                   </div>
                 </div>
               </div>
-              {error && <div className="alert alert-danger py-2 px-3 small mb-0" role="alert">{error}</div>}
-            </div>
-          </div>
-          <div className="modal-footer">
-            <Button variant="secondary" icon={<IconX size={16} />} onClick={onClose}>取消</Button>
-            <Button variant="primary" onClick={handleSave}>确定</Button>
-          </div>
+          {error && <div className="alert alert-danger py-2 px-3 small mb-0" role="alert">{error}</div>}
         </div>
-      </div>
+      </Modal>
       {tablePickerOpen && (
         <UnifiedChooser
           open
@@ -421,6 +419,6 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
           onClose={() => setTablePickerOpen(false)}
         />
       )}
-    </div>
+    </>
   ) : null
 }

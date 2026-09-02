@@ -1,18 +1,12 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { UserGroupAdminPage } from './UserGroupAdminPage'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const groups = [
   { groupId: 'CG', groupDescription: '采购', memberCount: 2, remark: '采购组备注' },
@@ -20,9 +14,7 @@ const groups = [
 ]
 
 function renderPage() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
+  return renderWithProviders(
       <MemoryRouter initialEntries={['/admin/groups']}>
         <Routes>
           <Route path="/admin/groups" element={<UserGroupAdminPage />} />
@@ -31,8 +23,7 @@ function renderPage() {
           <Route path="/admin/groups/:groupId/members" element={<div>GROUP_MEMBERS_PAGE</div>} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
-  )
+)
 }
 
 async function loaded() {

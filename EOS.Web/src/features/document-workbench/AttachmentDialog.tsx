@@ -2,8 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { IconDownload, IconTrash } from '@tabler/icons-react'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
+import { describeApiError } from '../../lib/errors'
 
 export interface AttachmentItem {
   id: number
@@ -123,15 +124,14 @@ export function AttachmentDialog({ moduleId, masterTable, recordKey: key, title,
   }
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true" aria-label={`${title}附件`}>
-      <div className="modal-dialog modal-dialog-centered erp-dialog-md">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">附件：{title}</h2>
-            <button className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
-            {error && <div className="alert alert-danger">{error}</div>}
+    <Modal
+      title={`附件：${title}`}
+      onClose={onClose}
+      dialogClassName="erp-dialog-md"
+      ariaLabel={`${title}附件`}
+      footer={<Button variant="secondary" onClick={onClose}>关闭</Button>}
+    >
+      {error && <div className="alert alert-danger">{error}</div>}
             {canUpload && (
               <div className="d-flex gap-2 mb-3 align-items-center">
                 <input
@@ -150,7 +150,7 @@ export function AttachmentDialog({ moduleId, masterTable, recordKey: key, title,
               <div className="text-center text-secondary py-4">正在加载附件…</div>
             ) : listQuery.isError ? (
               <div className="alert alert-danger d-flex justify-content-between align-items-center mb-0">
-                <span>{listQuery.error instanceof ApiError ? listQuery.error.body.message : '附件加载失败。'}</span>
+                <span>{describeApiError(listQuery.error, '附件加载失败。')}</span>
                 <button type="button" className="btn btn-sm btn-danger" onClick={() => void listQuery.refetch()}>重新加载</button>
               </div>
             ) : listQuery.data.length === 0 ? (
@@ -189,13 +189,7 @@ export function AttachmentDialog({ moduleId, masterTable, recordKey: key, title,
                   </li>
                 ))}
               </ul>
-            )}
-          </div>
-          <div className="card-footer text-end px-3 py-3">
-            <Button variant="secondary" onClick={onClose}>关闭</Button>
-          </div>
-        </div>
-      </div>
-    </div>
+      )}
+    </Modal>
   )
 }

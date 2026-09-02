@@ -1,20 +1,14 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider, useParams } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
 import { FormEditorPage } from './FormEditorPage'
 import type { FormDefinition } from './formDefinition'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 function field(key: string, label: string, overrides: Partial<FormDefinition['masterFields'][number]> = {}) {
   return {
@@ -99,7 +93,6 @@ function installApiMocks() {
 }
 
 function renderEditor(initialEntry: string) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createMemoryRouter(
     [
       { path: '/workbench/:moduleId', element: <div>BACK_LIST</div> },
@@ -109,7 +102,7 @@ function renderEditor(initialEntry: string) {
     ],
     { initialEntries: [initialEntry] },
   )
-  return render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>)
+  return renderWithProviders(<RouterProvider router={router} />)
 }
 
 function masterInputs(container: HTMLElement): HTMLInputElement[] {
@@ -149,8 +142,7 @@ describe('FormEditorPage', () => {
       ],
       { initialEntries: ['/workbench/1209/view/P1/A?from=1405'] },
     )
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>)
+    renderWithProviders(<RouterProvider router={router} />)
     await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '返回' }))
     await waitFor(() => expect(screen.getByText('BACK_LIST_1405')).toBeInTheDocument())
@@ -164,8 +156,7 @@ describe('FormEditorPage', () => {
       ],
       { initialEntries: ['/workbench/1209/view/P1/A'] },
     )
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>)
+    renderWithProviders(<RouterProvider router={router} />)
     await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '返回' }))
     await waitFor(() => expect(screen.getByText('BACK_LIST_1209')).toBeInTheDocument())
@@ -746,3 +737,4 @@ describe('FormEditorPage', () => {
     expect(masterAmount).toBeTruthy()
   })
 })
+

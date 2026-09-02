@@ -9,12 +9,12 @@ import { ErpTable } from '../../components/common/ErpTable'
 import { navigationIcons } from '../../components/layout/navigationIcons'
 import { Button } from '../../components/ui/Button'
 import { useAuth } from '../auth/authContext'
+import { moduleReadPermission } from '../auth/modulePermissions'
 import { workbenchList } from '../document-workbench/workbenchPath'
 import type { NavigationItem } from '../auth/types'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
-
-const RECENT_MODULES_KEY = 'erp-dashboard-recent'
+import { RECENT_MODULES_KEY } from '../../lib/storageKeys'
+import { describeApiError } from '../../lib/errors'
 
 interface MyTask {
   moduleId: number
@@ -57,7 +57,7 @@ function readRecent(): string[] {
 export function DashboardPage() {
   const navigate = useNavigate()
   const { bootstrap, hasPermission } = useAuth()
-  const canSeeTasks = hasPermission('legacy-module.2102.read')
+  const canSeeTasks = hasPermission(moduleReadPermission(2102))
   const [pendingSelection, setPendingSelection] = useState<RowSelectionState>({})
   const [startedSelection, setStartedSelection] = useState<RowSelectionState>({})
 
@@ -80,7 +80,7 @@ export function DashboardPage() {
       .filter((leaf): leaf is NavigationItem => Boolean(leaf))
   }, [leaves])
 
-  const tasksError = myTasks.error instanceof ApiError ? myTasks.error.body.message : '发生未知错误，请稍后重试。'
+  const tasksError = describeApiError(myTasks.error, '发生未知错误，请稍后重试。')
   const startedRows = myStarted.data?.rows ?? []
   const pendingTasks = (myTasks.data?.tasks ?? []).filter((task) => task.pending > 0)
   const totalPending = pendingTasks.reduce((sum, task) => sum + task.pending, 0)
@@ -312,7 +312,7 @@ export function DashboardPage() {
           {myStarted.isPending ? (
             <LoadingState label="正在加载流程…" />
           ) : myStarted.isError ? (
-            <ErrorState message={myStarted.error instanceof ApiError ? myStarted.error.body.message : '发生未知错误，请稍后重试。'} onRetry={() => void myStarted.refetch()} />
+            <ErrorState message={describeApiError(myStarted.error, '发生未知错误，请稍后重试。')} onRetry={() => void myStarted.refetch()} />
           ) : (
             <ErpTable
               columns={startedColumns}

@@ -11,9 +11,10 @@ import { ErpTable } from '../../components/common/ErpTable'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { emptyQueryCondition, type QueryCondition } from '../../components/common/queryCondition'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
 import { serializeReportFilter } from './reportFilter'
+import { describeApiError } from '../../lib/errors'
 
 interface ModuleOption { moduleId: number; description: string }
 interface IdNameOption { id: string; name: string }
@@ -129,21 +130,23 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
       else await apiClient.post('/report-admin/reports', body)
       onSaved()
     } catch (reason) {
-      setError(reason instanceof ApiError ? reason.body.message : '保存失败，请稍后重试。')
+      setError(describeApiError(reason, '保存失败，请稍后重试。'))
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-dialog-centered modal-lg">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">{mode === 'new' ? '新增报表定义' : `编辑报表：${editingId}`}</h2>
-            <button className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
+    <>
+    <Modal
+      title={mode === 'new' ? '新增报表定义' : `编辑报表：${editingId}`}
+      onClose={onClose}
+      size="lg"
+      footer={<>
+        <Button onClick={onClose}>取消</Button>
+        <Button variant="primary" onClick={() => void submit()} loading={saving}>{mode === 'edit' ? '保存修改' : '新增记录'}</Button>
+      </>}
+    >
             {error && <div className="alert alert-danger py-2 mb-3" role="alert">{error}</div>}
             <div className="row g-3">
               <div className="col-md-4">
@@ -201,13 +204,7 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
                 <input id="report-remark" className="form-control" value={String(draft.remark ?? '')} onChange={(event) => setDraft((state) => ({ ...state, remark: event.target.value }))} />
               </div>
             </div>
-          </div>
-          <div className="modal-footer">
-            <Button onClick={onClose}>取消</Button>
-            <Button variant="primary" onClick={() => void submit()} loading={saving}>{mode === 'edit' ? '保存修改' : '新增记录'}</Button>
-          </div>
-        </div>
-      </div>
+    </Modal>
       {moduleChooserOpen && (
         <UnifiedChooser
           open
@@ -246,7 +243,7 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
           onClose={() => setFilterBuilderOpen(false)}
         />
       )}
-    </div>
+    </>
   )
 }
 
@@ -331,21 +328,23 @@ function SortEditorModal({ open, mode, row, reportId, moduleId, onClose, onSaved
       else await apiClient.post(`/report-admin/sorts?reportId=${encodeURIComponent(reportId)}`, body)
       onSaved()
     } catch (reason) {
-      setError(reason instanceof ApiError ? reason.body.message : '保存失败，请稍后重试。')
+      setError(describeApiError(reason, '保存失败，请稍后重试。'))
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-dialog-centered modal-lg">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">{mode === 'new' ? `新增排序方案：${reportId}` : `编辑排序方案：${reportId}`}</h2>
-            <button className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">
+      <>
+      <Modal
+        title={mode === 'new' ? `新增排序方案：${reportId}` : `编辑排序方案：${reportId}`}
+        onClose={onClose}
+        size="lg"
+        footer={<>
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" onClick={() => void submit()} loading={saving}>{mode === 'edit' ? '保存修改' : '新增方案'}</Button>
+        </>}
+      >
             {error && <div className="alert alert-danger py-2 mb-3" role="alert">{error}</div>}
             <div className="row g-3">
               <div className="col-md-6">
@@ -384,13 +383,7 @@ function SortEditorModal({ open, mode, row, reportId, moduleId, onClose, onSaved
                 <input id="sort-group-desc" className="form-control" value={String(draft.groupDesc ?? '')} onChange={(event) => setDraft((state) => ({ ...state, groupDesc: event.target.value }))} />
               </div>
             </div>
-          </div>
-          <div className="modal-footer">
-            <Button onClick={onClose}>取消</Button>
-            <Button variant="primary" onClick={() => void submit()} loading={saving}>{mode === 'edit' ? '保存修改' : '新增方案'}</Button>
-          </div>
-        </div>
-      </div>
+      </Modal>
       {fieldPicker && (
         <ReportFieldPicker
           open
@@ -401,7 +394,7 @@ function SortEditorModal({ open, mode, row, reportId, moduleId, onClose, onSaved
           onClose={() => setFieldPicker(null)}
         />
       )}
-    </div>
+      </>
   )
 }
 
@@ -529,11 +522,11 @@ export function ReportAdminPage() {
   ], [deleteSort])
 
   if (modules.isPending) return <LoadingState label="正在加载模块…" />
-  if (modules.isError) return <ErrorState message={modules.error instanceof ApiError ? modules.error.body.message : '加载失败。'} onRetry={() => void modules.refetch()} />
+  if (modules.isError) return <ErrorState message={describeApiError(modules.error, '加载失败。')} onRetry={() => void modules.refetch()} />
 
   const selectedRow = rows.find((item) => item.reportId === selectedReport)
-  const reportsError = reports.error instanceof ApiError ? reports.error.body.message : '加载失败。'
-  const sortsError = sorts.error instanceof ApiError ? sorts.error.body.message : '加载失败。'
+  const reportsError = describeApiError(reports.error, '加载失败。')
+  const sortsError = describeApiError(sorts.error, '加载失败。')
 
   return (
     <div className="erp-workbench-page">

@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { EmptyState, LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
+import { describeApiError } from '../../lib/errors'
 
 interface ReportCatalogItem {
   moduleId: number
@@ -128,7 +128,7 @@ export function ReportCenterPage() {
         <div className="erp-report-center-body p-3" style={{ overflow: 'auto' }}>
           {catalog.isPending ? <LoadingState label="正在加载报表目录…" /> : catalog.isError ? (
             <div className="alert alert-danger d-flex align-items-center justify-content-between">
-              <span>{catalog.error instanceof ApiError ? catalog.error.body.message : '报表目录加载失败。'}</span>
+              <span>{describeApiError(catalog.error, '报表目录加载失败。')}</span>
               <button type="button" className="btn btn-danger btn-sm" onClick={() => void catalog.refetch()}>重试</button>
             </div>
           ) : (

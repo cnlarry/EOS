@@ -7,9 +7,9 @@ import { ErpPagination } from '../../components/common/ErpPagination'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
 import { formatFieldValue } from '../document-workbench/fieldFormat'
 import type { ColumnDef } from '@tanstack/react-table'
+import { describeApiError } from '../../lib/errors'
 
 interface ReportOption { label: string; value: string }
 interface ReportSelectSource { table: string; idColumn: string; valueColumn: string }
@@ -179,16 +179,16 @@ export function ReportViewerPage() {
       const url = URL.createObjectURL(blob)
       window.open(url, '_blank')
     } catch (error) {
-      setPrintError(error instanceof ApiError ? error.body.message : 'PDF 生成失败，请重试。')
+      setPrintError(describeApiError(error, 'PDF 生成失败，请重试。'))
     } finally {
       setPrinting(false)
     }
   }
 
   if (definition.isPending) return <LoadingState label="正在加载报表定义…" />
-  if (definition.isError) return <ErrorState message={definition.error instanceof ApiError ? definition.error.body.message : '报表定义加载失败。'} onRetry={() => void definition.refetch()} />
+  if (definition.isError) return <ErrorState message={describeApiError(definition.error, '报表定义加载失败。')} onRetry={() => void definition.refetch()} />
   const def = definition.data!
-  const errorMessage = result.error instanceof ApiError ? result.error.body.message : '查询失败，请重试。'
+  const errorMessage = describeApiError(result.error, '查询失败，请重试。')
 
   return (
     <div className="d-grid gap-2 erp-report-page">

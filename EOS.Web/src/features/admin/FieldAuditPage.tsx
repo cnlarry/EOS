@@ -7,7 +7,7 @@ import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
+import { describeApiError } from '../../lib/errors'
 
 interface FieldAuditRow {
   T_ID: string
@@ -75,7 +75,7 @@ export function FieldAuditPage() {
     { accessorKey: 'IS_VIRTUAL', header: '虚拟字段', cell: (info) => (info.getValue() ? '是' : '—') },
   ], [])
 
-  const errorMessage = result.error instanceof ApiError ? result.error.body.message : '发生未知错误，请稍后重试。'
+  const errorMessage = describeApiError(result.error, '发生未知错误，请稍后重试。')
 
   return (
     <div className="erp-full-list-page">

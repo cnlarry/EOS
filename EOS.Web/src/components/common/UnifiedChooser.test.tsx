@@ -1,16 +1,10 @@
+import { apiClientMock } from '../../test/apiMock'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { UnifiedChooser, type UnifiedChooserSource } from './UnifiedChooser'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const columns = [
   { key: 'CLIENT_ID', label: '客户编号', dataType: 'nvarchar', format: null },

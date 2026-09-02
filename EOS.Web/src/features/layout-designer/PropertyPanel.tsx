@@ -494,7 +494,7 @@ export function PropertyPanel({
               <select
                 className="form-select form-select-sm mt-1"
                 value={element.barcodeLogo ?? ''}
-                onChange={(e) => onChange({ barcodeLogo: e.target.value || null })}
+                 onChange={(e) => onChange({ barcodeLogo: e.target.value || undefined })}
               >
                 <option value="">无</option>
                 <option value="SYS.LOGO">公司 LOGO（SYS.LOGO）</option>

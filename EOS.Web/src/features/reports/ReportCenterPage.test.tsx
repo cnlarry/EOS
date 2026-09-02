@@ -1,18 +1,12 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReportCenterPage } from './ReportCenterPage'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const catalog = [
   { moduleId: 149801, moduleDesc: '客户资料明细', domainDesc: '销售报表查询', reportId: 'R149801', reportName: '客户资料明细', isDefault: true, favorite: true, sortIndex: 1, lastRunAt: '2026-08-30T10:00:00Z' },
@@ -21,14 +15,11 @@ const catalog = [
 ]
 
 function renderPage() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
+  return renderWithProviders(
       <MemoryRouter>
         <ReportCenterPage />
       </MemoryRouter>
-    </QueryClientProvider>,
-  )
+)
 }
 
 describe('ReportCenterPage', () => {

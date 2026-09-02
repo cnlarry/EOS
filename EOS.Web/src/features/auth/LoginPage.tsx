@@ -1,16 +1,17 @@
 import { IconEye, IconEyeOff, IconLock, IconUser } from '@tabler/icons-react'
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { ApiError } from '../../types/api'
 import { useAuth } from './authContext'
+import { REMEMBERED_USER_KEY } from '../../lib/storageKeys'
+import { describeApiError } from '../../lib/errors'
 
 export function LoginPage() {
   const { bootstrap, loading, login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [username, setUsername] = useState(localStorage.getItem('erp-remembered-user') ?? '')
+  const [username, setUsername] = useState(localStorage.getItem(REMEMBERED_USER_KEY) ?? '')
   const [password, setPassword] = useState('')
-  const [remember, setRemember] = useState(Boolean(localStorage.getItem('erp-remembered-user')))
+  const [remember, setRemember] = useState(Boolean(localStorage.getItem(REMEMBERED_USER_KEY)))
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -25,11 +26,11 @@ export function LoginPage() {
     setError('')
     try {
       await login({ userId: username, password, rememberMe: remember })
-      if (remember) localStorage.setItem('erp-remembered-user', username)
-      else localStorage.removeItem('erp-remembered-user')
+      if (remember) localStorage.setItem(REMEMBERED_USER_KEY, username)
+      else localStorage.removeItem(REMEMBERED_USER_KEY)
       navigate(destination, { replace: true })
     } catch (reason) {
-      setError(reason instanceof ApiError ? reason.body.message : '登录失败，请稍后重试。')
+      setError(describeApiError(reason, '登录失败，请稍后重试。'))
     } finally {
       setSubmitting(false)
     }

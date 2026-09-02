@@ -7,9 +7,11 @@ import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 import { workbenchList, workbenchView } from '../document-workbench/workbenchPath'
 import { ApiError } from '../../types/api'
+import { describeApiError } from '../../lib/errors'
 
 interface MyTask {
   moduleId: number
@@ -145,7 +147,7 @@ export function MyTasksPage() {
     },
   ], [navigate])
 
-  const errorMessage = result.error instanceof ApiError ? result.error.body.message : '发生未知错误，请稍后重试。'
+  const errorMessage = describeApiError(result.error, '发生未知错误，请稍后重试。')
   const totalPending = (result.data?.tasks ?? []).reduce((sum, task) => sum + task.pending, 0)
   const flowTasks = result.data?.flowTasks ?? []
 
@@ -190,14 +192,18 @@ export function MyTasksPage() {
   return (
     <div className="d-grid gap-2">
       {pending && (
-        <div className="modal modal-blur show d-block" role="dialog" aria-modal="true" aria-label="流程审批">
-          <div className="modal-dialog modal-dialog-centered erp-dialog-sm">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h2 className="modal-title">{pending.state === 'Y' ? '同意并处理' : '驳回退回'}</h2>
-                <button type="button" className="btn-close" aria-label="关闭" onClick={() => setPending(null)} />
-              </div>
-              <div className="modal-body">
+        <Modal
+          title={pending.state === 'Y' ? '同意并处理' : '驳回退回'}
+          onClose={() => setPending(null)}
+          dialogClassName="erp-dialog-sm"
+          ariaLabel="流程审批"
+          footer={<>
+            <Button variant="secondary" onClick={() => setPending(null)}>取消</Button>
+            <Button variant={pending.state === 'Y' ? 'primary' : 'danger'} onClick={() => void confirmApprove()}>
+              {pending.state === 'Y' ? '确认同意' : '确认驳回'}
+            </Button>
+          </>}
+        >
                 <div className="mb-2 text-secondary small">
                   {pending.task.title} · 步骤 {pending.task.step} {pending.task.stepDesc}
                 </div>
@@ -237,16 +243,7 @@ export function MyTasksPage() {
                     placeholder={pending.state === 'N' ? '填写驳回原因…' : '填写审批意见…'}
                   />
                 </div>
-              </div>
-              <div className="modal-footer">
-                <Button variant="secondary" onClick={() => setPending(null)}>取消</Button>
-                <Button variant={pending.state === 'Y' ? 'primary' : 'danger'} onClick={() => void confirmApprove()}>
-                  {pending.state === 'Y' ? '确认同意' : '确认驳回'}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
       {flowTasks.length > 0 && (
         <ErpListCard

@@ -1,17 +1,11 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AttachmentDialog } from './AttachmentDialog'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const items = [
   {
@@ -27,9 +21,7 @@ const items = [
 ]
 
 function renderDialog(overrides: Partial<Parameters<typeof AttachmentDialog>[0]> = {}) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
+  return renderWithProviders(
       <AttachmentDialog
         moduleId={1209}
         masterTable="PRODUCT_EDITION"
@@ -41,8 +33,7 @@ function renderDialog(overrides: Partial<Parameters<typeof AttachmentDialog>[0]>
         onClose={vi.fn()}
         {...overrides}
       />
-    </QueryClientProvider>,
-  )
+)
 }
 
 describe('AttachmentDialog', () => {

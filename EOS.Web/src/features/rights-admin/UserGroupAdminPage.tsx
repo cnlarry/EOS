@@ -9,9 +9,9 @@ import { ErpSearchBox } from '../../components/common/ErpSearchBox'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
 import { GroupEditorModal } from './GroupEditorModal'
 import type { UserGroupSummary } from './types'
+import { describeApiError } from '../../lib/errors'
 
 type EditorState = { mode: 'new' } | { mode: 'edit'; group: UserGroupSummary }
 
@@ -49,7 +49,7 @@ export function UserGroupAdminPage() {
     remove.mutate(id)
   }, [remove])
 
-  const errorMessage = groups.error instanceof ApiError ? groups.error.body.message : '发生未知错误，请稍后重试。'
+  const errorMessage = describeApiError(groups.error, '发生未知错误，请稍后重试。')
   const filtered = useMemo(() => {
     const text = keyword.trim().toLowerCase()
     if (!text) return groups.data ?? []
@@ -147,7 +147,7 @@ export function UserGroupAdminPage() {
       </ErpListCard>
       {remove.isError && (
         <div className="alert alert-danger mb-0" role="alert">
-          {remove.error instanceof ApiError ? remove.error.body.message : '删除失败，请稍后重试。'}
+          {describeApiError(remove.error, '删除失败，请稍后重试。')}
         </div>
       )}
       {editor && (

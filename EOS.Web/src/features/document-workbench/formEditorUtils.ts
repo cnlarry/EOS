@@ -1,6 +1,7 @@
 import { ApiError } from '../../types/api'
 import { fieldVariant } from './formFieldKind'
 import type { FormDefinition, FormFieldDefinition } from './formDefinition'
+import { createId } from '../../lib/uuid'
 
 /** 统一表单保存载荷（主表 values + 明细 details，edit 时带 original 并发快照；ADR-006 决策 2.1 强制幂等键） */
 export interface SaveRecordRequest {
@@ -19,8 +20,7 @@ export interface RecordSaveResponse {
 
 /** 幂等键生成（ADR-006 决策 2.1）：一次用户操作意图一个键，成功后换新键 */
 export function newIdempotencyKey(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
-  return `eos-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+  return createId()
 }
 
 export interface RecordBundle {

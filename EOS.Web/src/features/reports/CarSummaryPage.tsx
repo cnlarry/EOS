@@ -7,7 +7,7 @@ import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
+import { describeApiError } from '../../lib/errors'
 
 interface CarSummaryResult {
   columns: string[]
@@ -41,7 +41,7 @@ export function CarSummaryPage() {
     })), [result.data])
 
   const runQuery = () => setQueryKey((current) => current + 1)
-  const errorMessage = result.error instanceof ApiError ? result.error.body.message : '发生未知错误，请稍后重试。'
+  const errorMessage = describeApiError(result.error, '发生未知错误，请稍后重试。')
 
   return (
     <div className="d-grid gap-2">

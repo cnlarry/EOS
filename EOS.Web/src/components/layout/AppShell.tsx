@@ -19,15 +19,15 @@ import { childPad, dotLeft, groupPad, lineSidebar } from './menuDepth'
 import { FormBreadcrumbContext, type FormBreadcrumb } from './FormBreadcrumbContext'
 import { PageBreadcrumbContext, type PageBreadcrumb } from './PageBreadcrumbContext'
 import { workbenchAction, workbenchList, workbenchModuleId } from '../../features/document-workbench/workbenchPath'
+import { RECENT_MODULES_KEY, SIDEBAR_COLLAPSED_KEY, SIDEBAR_WIDTH_KEY, THEME_KEY } from '../../lib/storageKeys'
+import { PAGE_META } from '../../app/routeMeta'
 
 type Theme = 'light' | 'dark'
 
-const SIDEBAR_WIDTH_KEY = 'erp-sidebar-width'
 const SIDEBAR_WIDTH_MIN = 160
 const SIDEBAR_WIDTH_MAX = 480
 const DEFAULT_SIDEBAR_WIDTH = 220
 
-const RECENT_MODULES_KEY = 'erp-dashboard-recent'
 const RECENT_MODULES_MAX = 8
 
 const fallbackNavigation = [
@@ -64,15 +64,6 @@ function avatarColor(username: string): string {
   return avatarPalette[hash % avatarPalette.length]
 }
 
-const pageTitles: Record<string, { section: string; title: string }> = {
-  '/dashboard': { section: '首页', title: '首页' },
-  '/admin/tables': { section: '系统管理', title: '数据表维护' },
-  '/admin/menus': { section: '系统管理', title: '菜单管理' },
-  '/admin/groups': { section: '系统管理', title: '用户组管理' },
-  '/admin/users': { section: '系统管理', title: '用户管理' },
-  '/settings/profile': { section: '系统设置', title: '个人设置' },
-}
-
 /** 查找命中路由的完整功能路径（含叶子自身），用于面包屑展示全部层级。 */
 function findPath(items: NavigationItem[], path: string): NavigationItem[] {
   for (const item of items) {
@@ -86,7 +77,7 @@ function findPath(items: NavigationItem[], path: string): NavigationItem[] {
 }
 
 function getInitialTheme(): Theme {
-  const savedTheme = localStorage.getItem('erp-theme')
+  const savedTheme = localStorage.getItem(THEME_KEY)
   if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme
   return window.matchMedia('(prefers-color-scheme: dark)').matches
     ? 'dark'
@@ -118,7 +109,7 @@ function isSubtreeActive(item: NavigationItem, path: string): boolean {
 export function AppShell() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('erp-sidebar-collapsed') === 'true')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true')
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY))
     return Number.isFinite(saved) && saved >= SIDEBAR_WIDTH_MIN && saved <= SIDEBAR_WIDTH_MAX ? saved : DEFAULT_SIDEBAR_WIDTH
@@ -185,7 +176,7 @@ export function AppShell() {
             title: `${op}${moduleLabel}${docNo ? `：${docNo}` : ''}`,
           }
         })()
-      : pageTitles[location.pathname] ?? {
+      : PAGE_META[location.pathname] ?? {
           section: activeGroup?.label ?? 'ERP',
           title: activeMenu?.label ?? '页面',
         }
@@ -207,12 +198,12 @@ export function AppShell() {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-bs-theme', theme)
-    localStorage.setItem('erp-theme', theme)
+    localStorage.setItem(THEME_KEY, theme)
   }, [theme])
 
   useEffect(() => {
     document.documentElement.classList.toggle('erp-sidebar-collapsed', sidebarCollapsed)
-    localStorage.setItem('erp-sidebar-collapsed', String(sidebarCollapsed))
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed))
   }, [sidebarCollapsed])
 
   const clampSidebarWidth = (width: number) =>

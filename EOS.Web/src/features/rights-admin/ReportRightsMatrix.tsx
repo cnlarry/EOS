@@ -5,9 +5,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { EmptyState, LoadingState } from '../../components/common/AsyncState'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
-import { ApiError } from '../../types/api'
 import type { ReportRightsInput, ReportRightsRow } from './types'
+import { describeApiError } from '../../lib/errors'
 
 interface ReportRightsMatrixProps {
   open: boolean
@@ -107,7 +108,7 @@ export function ReportRightsMatrix({ open, mode, targetId, title, onClose, onSav
       onSaved?.()
       await matrix.refetch()
     } catch (reason) {
-      setError(reason instanceof ApiError ? reason.body.message : '保存失败，请稍后重试。')
+      setError(describeApiError(reason, '保存失败，请稍后重试。'))
     } finally {
       setSaving(false)
     }
@@ -244,7 +245,7 @@ export function ReportRightsMatrix({ open, mode, targetId, title, onClose, onSav
       </div>
       {matrix.isPending ? <LoadingState label="正在加载报表权限…" /> : matrix.isError ? (
         <div className="alert alert-danger d-flex align-items-center justify-content-between">
-          <span>{matrix.error instanceof ApiError ? matrix.error.body.message : '报表权限加载失败。'}</span>
+          <span>{describeApiError(matrix.error, '报表权限加载失败。')}</span>
           <Button variant="danger" size="sm" onClick={() => void matrix.refetch()}>重试</Button>
         </div>
       ) : rows.length === 0 ? (
@@ -306,17 +307,8 @@ export function ReportRightsMatrix({ open, mode, targetId, title, onClose, onSav
   }
 
   return (
-    <div className="modal modal-blur show d-block" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-dialog-centered modal-lg">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h2 className="modal-title">{headerTitle}</h2>
-            <button className="btn-close" aria-label="关闭" onClick={onClose} />
-          </div>
-          <div className="modal-body">{matrixBody}</div>
-          <div className="modal-footer">{matrixFooter}</div>
-        </div>
-      </div>
-    </div>
+    <Modal title={headerTitle} onClose={onClose} size="lg" footer={matrixFooter}>
+      {matrixBody}
+    </Modal>
   )
 }

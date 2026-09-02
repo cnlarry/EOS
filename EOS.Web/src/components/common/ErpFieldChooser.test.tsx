@@ -1,16 +1,10 @@
+import { apiClientMock } from '../../test/apiMock'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ErpFieldChooser, type ErpFieldChooserProps } from './ErpFieldChooser'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const columns = [
   { key: 'F_ID', label: '字段名', dataType: 'nvarchar', format: null },

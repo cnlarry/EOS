@@ -1,18 +1,12 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderWithProviders } from '../../test/renderWithProviders'
+import { apiClientMock } from '../../test/apiMock'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReportViewerPage } from './ReportViewerPage'
 
-const apiClientMock = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  put: vi.fn(),
-  delete: vi.fn(),
-  postFile: vi.fn(),
-}))
 
-vi.mock('../../services/api', () => ({ apiClient: apiClientMock }))
+vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const printSettings = {
   reports: [{ reportId: 'RPT_A', reportName: '库存报表', headerId: null, tailId: null, footerText: null, isoNo: null, isDefault: true }],
@@ -62,12 +56,11 @@ function installApiMocks() {
 }
 
 function renderViewer() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createMemoryRouter(
     [{ path: '/reports/:moduleId', element: <ReportViewerPage /> }],
     { initialEntries: ['/reports/1405'] },
   )
-  return render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>)
+  return renderWithProviders(<RouterProvider router={router} />)
 }
 
 describe('ReportViewerPage F_TYPE 5（数据源多选条件）', () => {
