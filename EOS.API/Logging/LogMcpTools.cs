@@ -6,7 +6,7 @@ using ModelContextProtocol.Server;
 namespace EOS.API.Logging;
 
 /// <summary>
-/// 日志分析 MCP Server 工具（ADR-005 §5.4）：search_logs / get_request_trace /
+/// 日志分析 MCP Server 工具：search_logs / get_request_trace /
 /// summarize_errors / explain_slow_request / tail_logs / redact。只读日志、输出统一脱敏、
 /// 限行数/字节；每次查询经 AUDIT_EVENT（LOG_QUERY）留痕。
 /// </summary>

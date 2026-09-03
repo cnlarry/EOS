@@ -8,7 +8,7 @@ namespace EOS.API.Features.Assistant.Tools;
 
 /// <summary>
 /// enum_metrics：返回系统全部已定义的度量口径清单（指标名/定义/来源表/维度/业务域）。
-/// 供 Agent 回答「销售额是什么口径」「有哪些可查询的指标」等，复用最小语义层（ADR-009 §10.2/P7）。
+/// 供 Agent 回答「销售额是什么口径」「有哪些可查询的指标」等，复用最小语义层。
 /// 只读系统元数据（REPORT_METRIC），不取业务数据、不执行指标计算。
 /// </summary>
 public sealed class EnumMetricsTool(DbConnectionFactory connections) : AssistantToolBase

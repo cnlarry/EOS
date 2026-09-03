@@ -6,7 +6,7 @@ namespace EOS.API.Data;
 
 public sealed record NavigationGroup(int Index, string? Description, string? Expression, bool Enabled);
 
-public sealed record LegacyNavigationModule(
+public sealed record NavigationModule(
     int Id,
     string Label,
     string? Alias,
@@ -14,7 +14,7 @@ public sealed record LegacyNavigationModule(
     int RootId,
     int SortIndex,
     bool Enabled,
-    string? LegacyUrl,
+    string? SourceUrl,
     string? MasterTable,
     string? Filter,
     string? Icon,
@@ -22,7 +22,7 @@ public sealed record LegacyNavigationModule(
 
 public sealed class NavigationRepository(DbConnectionFactory connections, ILogger<NavigationRepository> logger)
 {
-    public async Task<IReadOnlyList<LegacyNavigationModule>> GetForUserAsync(string userId, CancellationToken token)
+    public async Task<IReadOnlyList<NavigationModule>> GetForUserAsync(string userId, CancellationToken token)
     {
         using var timing = DbTimingCollector.Instance.Measure();
         const string sql = """
@@ -60,7 +60,7 @@ public sealed class NavigationRepository(DbConnectionFactory connections, ILogge
         command.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
         await connection.OpenAsync(token);
         await using var reader = await command.ExecuteReaderAsync(token);
-        var result = new List<LegacyNavigationModule>();
+        var result = new List<NavigationModule>();
         while (await reader.ReadAsync(token))
         {
             var groups = new List<NavigationGroup>();

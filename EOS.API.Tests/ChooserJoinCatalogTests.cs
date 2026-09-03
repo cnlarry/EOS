@@ -4,8 +4,8 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// ChooserJoinCatalog.BuildJoinClause 闭包单测（ADR-008 P3 回归防护）。
-/// 回归背景（2026-08-29）：原实现要求 ON 条件两侧都已在选中集合内，而 JOIN 自身 ON 必然引用
+/// ChooserJoinCatalog.BuildJoinClause 闭包单测。
+/// 回归背景：原实现要求 ON 条件两侧都已在选中集合内，而 JOIN 自身 ON 必然引用
 /// 其别名（base.col=alias.col），导致任何跨表 JOIN 永远构建失败、运行期跨表过滤全量 fail-closed。
 /// </summary>
 public sealed class ChooserJoinCatalogTests

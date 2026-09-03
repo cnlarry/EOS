@@ -8,13 +8,13 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 菜单管理（模块 2301，对齐旧 Admin/MenuBuilder.aspx）。
+/// 菜单管理（模块 2301，
 /// 读要求 CanBrowse，写要求 CanSetup；编号变更自动级联子级与权限引用。
 /// </summary>
 [ApiController, Authorize, Route("api/v1/admin/menus")]
 public sealed class MenuAdminController(
     MenuAdminRepository repository,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext,
     IConfiguration configuration) : ControllerBase
 {
@@ -84,7 +84,7 @@ public sealed class MenuAdminController(
 
     /// <summary>
     /// 菜单同级排序：top=同级顶部、up=向上一位、down=向下一位、bottom=同级底部。
-    /// 只改写 SORT_IDX（旧系统「排序号」），全部事务内完成。
+    /// 只改写 SORT_IDX，全部事务内完成。
     /// </summary>
     [HttpPut("{id:int}/sort")]
     public async Task<IActionResult> Reorder(int id, MenuReorderRequest request, CancellationToken token)
@@ -106,7 +106,7 @@ public sealed class MenuAdminController(
         return NoContent();
     }
 
-    /// <summary>菜单默认查询列（对齐旧 MenuBuilder「默认查询」）：table=master|detail。</summary>
+    /// <summary>菜单默认查询列：table=master|detail。</summary>
     [HttpGet("{id:int}/default-columns")]
     public async Task<IActionResult> DefaultColumns(int id, [FromQuery] string table = "master", CancellationToken token = default)
     {

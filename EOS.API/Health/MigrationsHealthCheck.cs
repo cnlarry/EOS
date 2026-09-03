@@ -4,7 +4,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 namespace EOS.API.Health;
 
 /// <summary>
-/// /health/startup 与 /health/ready 的迁移状态（ADR-005 §5.3）：
+/// /health/startup 与 /health/ready 的迁移状态：
 /// EOS.ERP 的 DbUp 启动迁移必须成功，失败即服务不应进入就绪。
 /// </summary>
 public sealed class MigrationsHealthCheck : IHealthCheck

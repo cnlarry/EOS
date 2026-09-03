@@ -1,7 +1,7 @@
 namespace EOS.API.Data;
 
 /// <summary>
-/// 工作流状态常量（代码质量审查 E2 收编）：消灭 WorkflowEngine 全文魔法串。
+/// 工作流状态常量：消灭 WorkflowEngine 全文魔法串。
 /// 值对应库内 WF_MONITOR.WF_STATE（流程实例状态）与 WF_MYTASK / WF_MYTASK_LOG.APPROVE_STATE
 /// （任务审批状态）语义；SQL 一律引用本类常量，禁止散落裸字符。
 /// </summary>

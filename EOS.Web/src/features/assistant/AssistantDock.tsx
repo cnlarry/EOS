@@ -69,7 +69,7 @@ export function AssistantDock() {
   const fabMovedRef = useRef(false)
   const { send, stop, streaming } = useChatStream()
 
-  // Ctrl+/ 全局唤起/收起（ADR-007 §2）
+  // Ctrl+/ 全局唤起/收起
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey && event.key === '/') {
@@ -329,7 +329,7 @@ export function AssistantDock() {
             {bubbles.length === 0 && (
               <div className="erp-assistant-empty">
                 我是 EOS 工作助手，有什么可以帮你？
-                <span className="text-secondary d-block mt-1">当前为对话骨架版（M2），业务数据感知将在后续版本接入。</span>
+                <span className="text-secondary d-block mt-1">当前为对话骨架版，业务数据感知将在后续版本接入。</span>
               </div>
             )}
             {bubbles.map(bubble => (
@@ -393,7 +393,7 @@ function toBubble(message: AssistantMessage): Bubble {
   return { key: `m-${message.id}`, role: message.role as 1 | 2, text: message.content }
 }
 
-/** 结构化确认卡片（ADR-007 §6）：字段级预览 + 缺失/警告提示 + 带入表单。 */
+/** 结构化确认卡片：字段级预览 + 缺失/警告提示 + 带入表单。 */
 function DraftCard({ draft, onOpenForm }: { draft: AssistantFormDraft; onOpenForm: (draft: AssistantFormDraft) => void }) {
   const entries = Object.entries(draft.values)
   return (

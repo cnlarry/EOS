@@ -11,7 +11,7 @@ import {
 const EXEC_TAG_OPTIONS = Array.from({ length: 26 }, (_, index) => String.fromCharCode(65 + index))
 
 /**
- * 单模块权限编辑面板（代码质量批 4 D1 收编）：
+ * 单模块权限编辑面板：
  * RightsMatrix 的 modal 变体（formPanel）与页面变体原先各持一份约 100+ 行近似重复
  * （标题行 + 生效值预览 + EXEC_TAG + 基本/文件权限 + 字段级拒绝/DATA_FILTER），
  * 仅预览区样式与 EXEC_TAG 布局不同，统一到本组件（variant 控制差异）。

@@ -3,13 +3,13 @@ using EOS.API.Models;
 namespace EOS.API.Security;
 
 /// <summary>
-/// 模块权限结果（ADR-005 §6）：包装 LegacyModuleRights，提供命名动作判定与
+/// 模块权限结果：包装 ModuleRights，提供命名动作判定与
 /// 字段级权限/数据范围数据（成本/保密/禁止字段/DATA_FILTER/EXEC_TAG）的下发。
-/// 控制器只消费本类型，不直接接触 LegacyRightsRepository。
+/// 控制器只消费本类型，不直接接触 ModuleRightsRepository。
 /// </summary>
-public sealed class ModulePermission(LegacyModuleRights rights)
+public sealed class ModulePermission(ModuleRights rights)
 {
-    public LegacyModuleRights Rights { get; } = rights;
+    public ModuleRights Rights { get; } = rights;
 
     public bool CanBrowse => Rights.CanBrowse;
     public bool CanAddNew => Rights.CanAddNew;

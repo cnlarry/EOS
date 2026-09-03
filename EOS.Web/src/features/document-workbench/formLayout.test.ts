@@ -54,7 +54,7 @@ describe('buildFormRows', () => {
   })
 })
 
-describe('buildFormSections（ADR-006 分区表单）', () => {
+describe('buildFormSections', () => {
   it('无分组字段全部归入默认节（无标题、排最前）', () => {
     const sections = buildFormSections([[field('A')], [field('B')]])
     expect(sections).toEqual([{ title: null, cells: [[expect.objectContaining({ key: 'A' })], [expect.objectContaining({ key: 'B' })]] }])

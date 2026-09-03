@@ -1,6 +1,6 @@
 namespace EOS.API.Models;
 
-/// <summary>设计器权限模式（ADR-010 决策 5 双模式 + 三档权限）。</summary>
+/// <summary>设计器权限模式。</summary>
 public sealed record LayoutDesignerMode(bool CanDesign, bool CanAdjust);
 
 /// <summary>生效版式（内置或客户定制），供设计器编辑与打印读取。</summary>
@@ -28,7 +28,7 @@ public sealed record LayoutDesignerPreviewRequest(
     string? HeaderId = null,
     bool ShowRemark = true);
 
-/// <summary>内置格式包模板（模板库，ADR-010 §4）。</summary>
+/// <summary>内置格式包模板（模板库）。</summary>
 public sealed record LayoutTemplateInfo(
     string FormatId,
     string Title,
@@ -55,7 +55,7 @@ public sealed record LayoutDesignerDefinition(
     string? TailId,
     bool? PrintPrice);
 
-/// <summary>页头条目（REPORT_LAYOUT KIND='HEADER'，ADR-009 §9.4.2 页头字典引用）。</summary>
+/// <summary>页头条目（REPORT_LAYOUT KIND='HEADER'， 页头字典引用）。</summary>
 public sealed record LayoutHeaderOption(
     string HeaderId,
     string Name,
@@ -73,7 +73,7 @@ public sealed record LayoutHeaderSaveRequest(
     string? HeaderText,
     string? LogoPath);
 
-/// <summary>版式绑定保存请求（HEADER_ID/TAIL_ID/PRINT_PRICE 随绑定，ADR-010 决策 3）。</summary>
+/// <summary>版式绑定保存请求（HEADER_ID/TAIL_ID/PRINT_PRICE 随绑定）。</summary>
 public sealed record LayoutBindingSaveRequest(
     string? ClientId,
     string? HeaderId,

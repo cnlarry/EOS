@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace EOS.API.Telemetry;
 
 /// <summary>
-/// JSONL 结构化日志文件提供程序（ADR-005 §5.1/§5.4）：把结构化日志逐行写入滚动文件
+/// JSONL 结构化日志文件提供程序：把结构化日志逐行写入滚动文件
 /// （默认 logs/api-json.log），供 LogQueryService / 日志 MCP 检索与排障。
 /// 每行一个 JSON 对象：ts/level/category/eventId/event/message/fields（结构化状态）/exception。
 /// </summary>

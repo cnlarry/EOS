@@ -9,12 +9,12 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// Resolves cross-module field browse links (FIELDS.BROWSE_M_IDX + BROWSE_URL) into modern
-/// record navigation links. The legacy BROWSE_URL template (e.g. ~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID})
+/// record navigation links. The BROWSE_URL template (e.g. ~?IDX=CLIENT_ID={CLIENT_ID})
 /// is mapped to the modern workbench:
-///   - Target is workbench-hosted (M_URL=/workbench) and keys resolve fully → record browse
-///     `/workbench/{m}/view/{key-values}`, key source columns mapped per target primary key order;
-///   - Target is workbench-hosted but keys cannot resolve → degraded to target module list link;
-///   - Target is a special page (M_URL != /workbench) → no link (plain text).
+/// - Target is workbench-hosted (M_URL=/workbench) and keys resolve fully → record browse
+/// `/workbench/{m}/view/{key-values}`, key source columns mapped per target primary key order;
+/// - Target is workbench-hosted but keys cannot resolve → degraded to target module list link;
+/// - Target is a special page (M_URL != /workbench) → no link (plain text).
 /// This resolver only produces link descriptors (static metadata, snapshotable); target browse
 /// permissions are enforced by the frontend bootstrap (UX gate) and the target /view, /record
 /// endpoints (CanBrowse + data scope, final authorization).

@@ -124,7 +124,7 @@ public static class InvDomainRules
 
     /// <summary>
     /// 生产链单据 AfterSave 通用明细校验：按（类型/单号）限定明细表，逐条检查，返回首个失败。
-    /// 等价旧 SP 的游标+RAISERROR 模式（最多列 10 个序号）。
+    /// 的游标+RAISERROR 模式（最多列 10 个序号）。
     /// </summary>
 
     public static Task<SprocResult> InvLoanAfterSaveAsync(

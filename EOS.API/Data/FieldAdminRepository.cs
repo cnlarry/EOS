@@ -20,7 +20,7 @@ public sealed class FieldAdminRepository(
         "float", "real", "money", "smallmoney", "date", "datetime", "datetime2", "smalldatetime", "time", "bit",
         "uniqueidentifier", "text", "ntext", "image", "varbinary", "binary", "xml", "timestamp", "sql_variant",
         "geometry", "geography", "hierarchyid",
-        // Legacy pseudo-types kept editable so existing rows do not fail on save
+        // Pseudo-types kept editable so existing rows do not fail on save
         "IDCard", "URL", "Email", "PhoneNo", "ZipCode", "String", "Integer"
     };
     private static readonly HashSet<string> AllowedAlign = new(StringComparer.OrdinalIgnoreCase)
@@ -516,7 +516,7 @@ public sealed class FieldAdminRepository(
 
     /// <summary>
     /// 字段变更历史（AUDIT_EVENT/FIELD_CHANGE，RESOURCE_TYPE=FIELD_ADMIN，RESOURCE_KEY=表.字段）。
-    /// 供全尺寸字段设置页「变更历史」选项卡（ADR-008 全页化改造）。
+    /// 供全尺寸字段设置页「变更历史」选项卡。
     /// </summary>
     public async Task<IReadOnlyList<FieldHistoryEvent>> GetFieldHistoryAsync(
         string tableId,
@@ -562,13 +562,16 @@ public sealed class FieldAdminRepository(
         return result;
     }
 
-    /// <summary>表物理列（sys.columns，仅 dbo 表/视图；字段设置构建器下拉用）。</summary>
+    /// <summary>
+    /// 表列（物理列 sys.columns + 来源表内受控虚拟列 FIELDS.IS_VIRTUAL 且 VIRTUAL_EXP 非空）：
+    /// 字段设置回填来源列可选虚拟（对齐旧语义）；过滤条件字段仅取物理列（IsVirtual=false 过滤）。
+    /// </summary>
     public async Task<IReadOnlyList<FieldAdminColumn>> GetTableColumnsAsync(
         string tableId,
         CancellationToken token)
     {
         const string sql = """
-            SELECT c.name, TYPE_NAME(c.user_type_id), LTRIM(RTRIM(COALESCE(f.F_DESC,''))) AS F_DESC
+            SELECT c.name, TYPE_NAME(c.user_type_id), LTRIM(RTRIM(COALESCE(f.F_DESC,''))) AS F_DESC, 0 AS IS_VIRTUAL
             FROM sys.columns c
             JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
             JOIN sys.schemas s ON o.schema_id=s.schema_id
@@ -577,15 +580,38 @@ public sealed class FieldAdminRepository(
             WHERE s.name=N'dbo' AND o.name=@TableId
             ORDER BY c.column_id;
             """;
+        const string virtualSql = """
+            SELECT LTRIM(RTRIM(f.F_ID)), COALESCE(NULLIF(LTRIM(RTRIM(f.F_TYPE)),''),'nvarchar'),
+                   LTRIM(RTRIM(COALESCE(f.F_DESC,''))), 1 AS IS_VIRTUAL
+            FROM dbo.FIELDS f WITH (NOLOCK)
+            WHERE f.T_ID=@TableId AND COALESCE(f.IS_VIRTUAL,0)=1
+              AND LTRIM(RTRIM(ISNULL(f.VIRTUAL_EXP,'')))<>''
+              AND NOT EXISTS (SELECT 1 FROM sys.columns c
+                              JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                              JOIN sys.schemas s ON o.schema_id=s.schema_id
+                              WHERE s.name=N'dbo' AND o.name=@TableId AND c.name=f.F_ID)
+            ORDER BY f.F_ID;
+            """;
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId.Trim();
-        await using var reader = await command.ExecuteReaderAsync(token);
         var result = new List<FieldAdminColumn>();
-        while (await reader.ReadAsync(token))
+        await using (var command = new SqlCommand(sql, connection))
         {
-            result.Add(new FieldAdminColumn(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+            command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId.Trim();
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                result.Add(new FieldAdminColumn(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetBoolean(3)));
+            }
+        }
+        await using (var command = new SqlCommand(virtualSql, connection))
+        {
+            command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId.Trim();
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                result.Add(new FieldAdminColumn(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetBoolean(3)));
+            }
         }
         return result;
     }
@@ -810,7 +836,7 @@ public sealed class FieldAdminRepository(
         return result with { Choosers = await ReadFieldChoosersAsync(connection, transaction, tableId, fieldId, token) };
     }
 
-    /// <summary>读取字段的数据源列表（FIELD_DATASOURCE，按 SERIAL_NO 排序；ADR-008）。</summary>
+    /// <summary>读取字段的数据源列表（FIELD_DATASOURCE，按 SERIAL_NO 排序）。</summary>
     private static async Task<IReadOnlyList<FieldAdminChooser>> ReadFieldChoosersAsync(
         SqlConnection connection,
         SqlTransaction? transaction,
@@ -1063,7 +1089,7 @@ public sealed class FieldAdminRepository(
         for (var i = 0; i < choosers.Count; i++)
         {
             var source = choosers[i];
-            // SERIAL_NO = 列表顺序（1..n），随前端增删/上下移重排；不沿用旧槽位号
+            // SERIAL_NO = 列表顺序（1..n），随前端增删/上下移重排；不沿用既有槽位号
             var serial = i + 1;
             if (string.IsNullOrWhiteSpace(source.Table)) continue;
             var sourceTable = source.Table.Trim();
@@ -1076,7 +1102,7 @@ public sealed class FieldAdminRepository(
             if (!string.IsNullOrWhiteSpace(source.Filter))
             {
                 if (!ChooserFilterStruct.TryParse(source.Filter, out var filterStruct) || filterStruct is null)
-                    throw new ArgumentException($"数据来源 {serial} 的过滤条件不是合法的 ADR-008 结构化 JSON。");
+                    throw new ArgumentException($"数据来源 {serial} 的过滤条件不是合法的  结构化 JSON。");
                 var errors = await ChooserFilterValidator.ValidateAsync(connection, filterStruct, sourceTable, token);
                 if (errors.Count > 0)
                     throw new ArgumentException($"数据来源 {serial} 过滤条件校验失败：{string.Join("；", errors.Take(4))}");
@@ -1085,7 +1111,7 @@ public sealed class FieldAdminRepository(
             else if (await HasPendingMigrationFilterAsync(connection, transaction, tableId, fieldId, serial, token))
             {
                 throw new ArgumentException(
-                    $"数据来源 {serial} 的旧过滤条件尚未重建（ADR-008 迁移清单内）。请先以结构化 JSON 重建；确需无过滤请由顾问处理迁移清单后再保存。");
+                    $"数据来源 {serial} 的旧过滤条件尚未重建。请先以结构化 JSON 重建；确需无过滤请由实施人员处理迁移清单后再保存。");
             }
 
             string? returnItemsJson = null;
@@ -1098,8 +1124,9 @@ public sealed class FieldAdminRepository(
                     throw new ArgumentException($"数据来源 {serial} 回填映射含非法来源列/目标字段名。");
                 var columns = returnItems.Select(item => item.Column.Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-                if (columns.Length > 0 && !await WorkbenchSql.ColumnsExistAsync(connection, sourceTable, columns, token))
-                    throw new ArgumentException($"数据来源 {serial} 回填映射引用了源表 {sourceTable} 不存在的列。");
+                // 来源列允许物理列或来源表内受控虚拟列（来源查询结果集列含 VIRTUAL_EXP 派生值）
+                if (columns.Length > 0 && !await WorkbenchSql.ReturnColumnsExistAsync(connection, sourceTable, columns, token))
+                    throw new ArgumentException($"数据来源 {serial} 回填映射引用了源表 {sourceTable} 中既非物理列也非受控虚拟列的来源字段。");
                 returnItemsJson = ChooserReturnItems.ToJson(returnItems);
             }
 

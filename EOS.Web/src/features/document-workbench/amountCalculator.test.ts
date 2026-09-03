@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { calculateAmount, previewDetailAmount, previewMasterAmounts } from './amountCalculator'
 
-describe('amountCalculator（与 C# AmountCalculatorTests 逐条对拍）', () => {
+describe('amountCalculator（与 C# AmountCalculatorTests 逐条一致性比对）', () => {
   it('O 外含税：金额=10×100=1000，税额=1000×13%=130，价税合计=1130', () => {
     expect(calculateAmount(10, 100, 13, 'O', 100)).toEqual({ amount: 1000, taxSum: 130, amountTax: 1130 })
   })

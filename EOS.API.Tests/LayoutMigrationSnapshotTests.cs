@@ -9,11 +9,11 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 迁移对拍快照（ADR-010 决策 6 / §5 S1 ④）：
+/// 版式一致性快照（迁移校验基线）：
 /// 同一 sample.json 数据分别走 C# 命令式版式（DocumentPdfService，基线）与
 /// layout.json 解释层（QuestPdfLayoutRenderer），产物落盘 logs/layout-migration/，
-/// 由 scripts/check-layout-migration.py 做逐元素对拍（文本内容 + 坐标）。
-/// 对拍通过后 C# 版式退役，本测试随之退役（不持续运行）。
+/// 由比对脚本做逐元素一致性校验（文本内容 + 坐标）。
+/// 该校验通过后本测试随之退役（不持续运行）。
 /// </summary>
 public class LayoutMigrationSnapshotTests
 {
@@ -49,16 +49,16 @@ public class LayoutMigrationSnapshotTests
             var header = new ReportHeaderOption(
                 "H1", "默认", data.HeaderCompany ?? string.Empty,
                 data.HeaderCompanyEn, data.HeaderText, data.LogoPath, null);
-            var legacy = documentService.Generate(
+            var baseline = documentService.Generate(
                 data, header, data.TailText, showRemark: true, "admin");
             var interpreter = Renderer.Render(data, layoutJson, new LayoutRenderContext("admin"));
 
-            Assert.True(legacy.Length > 500, $"{moduleId} C# 版式 PDF 过小");
+            Assert.True(baseline.Length > 500, $"{moduleId} C# 版式 PDF 过小");
             Assert.True(interpreter.Length > 500, $"{moduleId} 解释层 PDF 过小");
 
             var outDir = Path.Combine(outRoot, moduleId);
             Directory.CreateDirectory(outDir);
-            File.WriteAllBytes(Path.Combine(outDir, "legacy.pdf"), legacy);
+            File.WriteAllBytes(Path.Combine(outDir, "baseline.pdf"), baseline);
             File.WriteAllBytes(Path.Combine(outDir, "interpreter.pdf"), interpreter);
         }
     }
@@ -98,11 +98,11 @@ public class LayoutMigrationSnapshotTests
         var header = new ReportHeaderOption(
             "H1", "默认", data.HeaderCompany ?? string.Empty,
             data.HeaderCompanyEn, data.HeaderText, data.LogoPath, null);
-        var legacy = documentService.Generate(data, header, data.TailText, showRemark: true, "admin");
+        var baseline = documentService.Generate(data, header, data.TailText, showRemark: true, "admin");
         var interpreter = Renderer.Render(data, layoutJson, new LayoutRenderContext("admin"));
 
         Directory.CreateDirectory(outDir);
-        File.WriteAllBytes(Path.Combine(outDir, "legacy.pdf"), legacy);
+        File.WriteAllBytes(Path.Combine(outDir, "baseline.pdf"), baseline);
         File.WriteAllBytes(Path.Combine(outDir, "interpreter.pdf"), interpreter);
     }
 

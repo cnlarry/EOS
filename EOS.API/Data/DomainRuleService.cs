@@ -153,7 +153,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         return new(true, null);
     }
 
-    /// <summary>模块是否启用 ERROR_NO_SAVE（旧 SP 决定是否执行 P_*_CHECK 的开关）。</summary>
+    /// <summary>模块是否启用 ERROR_NO_SAVE。</summary>
     internal static async Task<bool> HasErrorNoSaveAsync(
         SqlConnection connection, SqlTransaction transaction, int moduleId, CancellationToken token)
     {

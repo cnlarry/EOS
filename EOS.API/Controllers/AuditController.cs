@@ -8,13 +8,13 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 操作审计查询（旧库 SYSDF 系统日志只读视图）。
-/// 权限门：模块 11（基本参数，旧系统日志所在位置）可浏览。
+/// 操作审计查询。
+/// 权限门：模块 11（基本参数，日志所在位置）可浏览。
 /// </summary>
 [ApiController, Authorize, Route("api/v1/audit")]
 public sealed class AuditController(
     DbConnectionFactory connections,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
     private const int LogModuleId = 11;

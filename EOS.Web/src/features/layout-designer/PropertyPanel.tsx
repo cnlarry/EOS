@@ -18,7 +18,7 @@ const FIELD_OPTIONS = (dataContract: DataContract, systemFields: string[]) => [
   ...systemFields.map((f) => ({ value: f, label: f })),
 ]
 
-// 字段元素只允许绑定主表字段与系统值；明细字段只能在表格内以列形式显示（ADR-010 设计约束）
+// 字段元素只允许绑定主表字段与系统值；明细字段只能在表格内以列形式显示
 const MASTER_AND_SYSTEM_OPTIONS = (dataContract: DataContract, systemFields: string[]) => [
   ...dataContract.columns.map((c) => ({ value: `MASTER.${c.key}`, label: `MASTER.${c.key}（${c.label}）` })),
   ...systemFields.map((f) => ({ value: f, label: f })),
@@ -414,7 +414,7 @@ export function PropertyPanel({
               )}
             </div>
           ) : (
-            <div className="text-secondary small">微调模式不可改 table 列结构（ADR-010 决策 5）。</div>
+            <div className="text-secondary small">微调模式不可改 table 列结构。</div>
           )}
         </div>
       )}

@@ -91,7 +91,7 @@ interface ErpTableProps<TData> {
  * - 行自定义类名（rowClassName，如占位行）与行双击回调（onRowDoubleClick）。
  *
  * 列级行为通过 ColumnMeta 扩展：
- * - `className`：td/th 追加类（对齐、选择列等）；
+ * - `className`：td/th 追加类；
  * - `cellClassName`：仅作用于数据单元格（优先级高于 className）；
  * - `minWidth`：表头最小列宽（工作台 DISPLAY_LENGTH）；
  * - `filterable` / `frozenLeft` / `frozenRight`：列头筛选 / 冻结。

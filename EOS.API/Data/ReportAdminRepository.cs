@@ -5,7 +5,7 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 报表定义维护（旧 2201/229801 的受控等价）：
+/// 报表定义维护：
 /// REPORT 主子表 + REPORT_SORT 方案，固定列白名单、标识符/字段串校验、值参数化。
 /// 字段选择器选项来自 MODULES + FIELDS 元数据（物理列存在校验）。
 /// </summary>

@@ -2,7 +2,7 @@ import type { ErpCommandItem } from '../../components/common/ErpCommandBar'
 import type { FormDefinition } from './formDefinition'
 
 /**
- * 浏览态工具栏单据级动作构建（代码质量批 3 D2 收编）：
+ * 浏览态工具栏单据级动作构建：
  * 原 FORM_BUTTONS 白名单分支与回退集在 FormEditorPage 内近似双份拷贝，
  * 状态禁用条件（isFinished/isConfirmed/flowInProgress）重复 8 遍；抽纯函数后可单测顺序断言。
  * 返回全部 approve/deapprove/endcase/unendcase/print 项，由调用方按固定顺序 filter 插入。

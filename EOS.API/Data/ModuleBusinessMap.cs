@@ -12,15 +12,14 @@ public static class ModuleBusinessMap
 {
     /// <summary>
     /// 模块 → 领域规则。键为 MODULES.M_IDX。
-    /// 存储过程名取自旧系统 MODULES.UPDATE_SP / AFTERSAVE_SP，属受控白名单。
+    /// 存储过程名取自 MODULES.UPDATE_SP / AFTERSAVE_SP，属受控白名单。
     /// </summary>
     private static readonly IReadOnlyDictionary<int, ModuleBusinessRule> Rules =
         new Dictionary<int, ModuleBusinessRule>
         {
             // 1201 产品/料件基本资料（1206/1210/1211 已合并至此）：仅批核工作流（P_WF_PRODUCT），无保存后副作用；PRO_NO 手工编号。
             [1201] = new(1201, null, "P_WF_PRODUCT", false, null, null),
-            // 1404 报价单（2026-08-23 承接原 1416 规则：自动单号 + 工作流 P_WF_COP_QUOTE +
-            // 批核联动客户计价表 1402；1416 已物理删除）
+            // 1404 报价单
             [1404] = new(1404, null, "P_WF_COP_QUOTE", true, "QUOTE_NO", "QUOTE_TYPE",
                 DomainRule: "cop-quote"),
             // 1405 客户订单
@@ -49,17 +48,17 @@ public static class ModuleBusinessMap
             // 170102 收款单（预收冲抵入口）
             [170102] = new(170102, null, "P_WF_COP_RECEIPT", true, "RECEIPT_NO", "RECEIPT_TYPE",
                 PrepayOffsetTable: "COP_RECEIPT_PREPAY", DomainRule: "cop-receipt"),
-            // 170103 预收帐款单（AfterSave 已移植：客户校验 + 金额汇总）
+            // 170103 预收帐款单（AfterSave 已实现：客户校验 + 金额汇总）
             [170103] = new(170103, null, "P_WF_COP_PREPAY", true, "PREPAY_NO", "PREPAY_TYPE",
                 DomainRule: "cop-prepay"),
-            // 170201 应付货款单：AfterSave 已移植为确定性领域规则（purchase-due），
-            // 不再调用 P_PUR_DUE_After_Save（金额汇总 + 数量校验由 C# 等价实现）
+            // 170201 应付货款单：AfterSave 已实现为确定性领域规则（purchase-due），
+            // 不再调用 P_PUR_DUE_After_Save（金额汇总 + 数量校验由 C# 实现）
             [170201] = new(170201, null, "P_WF_PUR_DUE", true, "DUE_NO", "DUE_TYPE",
                 DomainRule: "purchase-due"),
             // 170202 付款单
             [170202] = new(170202, null, "P_WF_PUR_PAY", true, "PAY_NO", "PAY_TYPE",
                 PrepayOffsetTable: "PUR_PAY_PREPAY", DomainRule: "pur-pay"),
-            // 170203 预付帐款单（AfterSave 已移植：厂商校验 + 预付不超采购金额 + 金额汇总）
+            // 170203 预付帐款单（AfterSave 已实现：厂商校验 + 预付不超采购金额 + 金额汇总）
             [170203] = new(170203, null, "P_WF_PUR_PREPAY", true, "PREPAY_NO", "PREPAY_TYPE",
                 DomainRule: "pur-prepay"),
         };
@@ -79,7 +78,7 @@ public static class ModuleBusinessMap
             string.Equals(rule.WorkflowSproc, sprocName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// 需批核单据模块 → 主表映射（待办工作台「我的任务」扫描清单，单源，2026-09-01 B6 收编）：
+    /// 需批核单据模块 → 主表映射（待办工作台「我的任务」扫描清单，单源， ）：
     /// 业务闭环 17 单据 + 生产/库存核心单据，主表名来自服务端常量。
     /// 新增需批核模块在此登记，漏登记会导致「我的任务」计数缺失。
     /// </summary>
@@ -108,7 +107,7 @@ public static class ModuleBusinessMap
 }
 
 /// <summary>
-/// 领域规则覆盖注册表（阶段 5）：对"由 MODULES 元数据自动注册"的模块，
+/// 领域规则覆盖注册表：对"由 MODULES 元数据自动注册"的模块，
 /// 把 AfterSave 从受控 SP 替换为 C# 领域规则（WorkflowSproc/自动单号仍按元数据自动构建）。
 /// </summary>
 public static class DomainRuleMap

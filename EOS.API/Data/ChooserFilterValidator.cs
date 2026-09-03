@@ -4,7 +4,7 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data;
 
 /// <summary>
-/// FILTER_STRUCT 保存即校验（ADR-008 §3 + P3）：来源表物理列存在、算子合法、模板占位符可解析、
+/// FILTER_STRUCT 保存即校验：来源表物理列存在、算子合法、模板占位符可解析、
 /// 跨表引用在源表 QUERY_RELATION JOIN 白名单内、子查询表存在；模型表达不了的条件拒绝保存（fail-closed）。
 /// 与 <see cref="ChooserFilterCompiler"/> 共用同一套白名单与编译 smoke test。
 /// </summary>
@@ -21,7 +21,7 @@ public static class ChooserFilterValidator
         "int", "bigint", "smallint", "tinyint", "decimal", "numeric", "float", "real", "money", "smallmoney",
     };
 
-    /// <summary>ISNULL(列,0) 兼容类型：数值 + bit（SQL Server 允许 ISNULL(bit 列,0)，旧系统广泛使用）。</summary>
+    /// <summary>ISNULL(列,0) 兼容类型：数值 + bit（SQL Server 允许 ISNULL(bit 列,0)，广泛使用）。</summary>
     private static readonly HashSet<string> IsNullZeroTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "int", "bigint", "smallint", "tinyint", "decimal", "numeric", "float", "real", "money", "smallmoney", "bit",

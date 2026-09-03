@@ -19,7 +19,7 @@ using Microsoft.OpenApi;
 using QuestPDF;
 using QuestPDF.Infrastructure;
 
-// QuestPDF Community 许可（公司年收入 < $1M USD 免费；商用前需复核门槛，见 docs/status.md §6）
+// QuestPDF Community 许可（公司年收入 < $1M USD 免费；商用前需复核许可门槛）
 QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -73,7 +73,7 @@ builder.Services.AddOpenApi(options =>
         document.Info.Title = "EOS API";
         document.Info.Version = "v1";
         document.Info.Description =
-            "EOS（原 ERP）业务 API 契约：EOS.Web / Agent / 外部集成的统一受控入口。"
+            "EOS业务 API 契约：EOS.Web / Agent / 外部集成的统一受控入口。"
             + "所有业务接口默认要求登录会话（EOS.Auth Cookie），未登录返回 401，无权返回 403。";
 
         var cookieScheme = new OpenApiSecurityScheme
@@ -165,7 +165,7 @@ builder.Services.AddScoped<UserAdminRepository>();
 builder.Services.AddScoped<FieldAdminRepository>();
 builder.Services.AddScoped<RestrictedExpressionService>();
 builder.Services.AddScoped<RightsAdminRepository>();
-builder.Services.AddScoped<LegacyRightsRepository>();
+builder.Services.AddScoped<ModuleRightsRepository>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddSingleton<PermissionCache>();
 builder.Services.AddScoped<NavigationRepository>();

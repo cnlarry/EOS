@@ -1,8 +1,8 @@
 namespace EOS.API.Security;
 
 /// <summary>
-/// 业务模块号集中定义（代码质量审查 E1/C5 收编）：消除 Controller 与仓储中的魔法模块 ID。
-/// 模块号对应 MODULES.M_IDX（旧系统模块树）；系统管理 2306 见 PermissionModules.SystemManagement。
+/// 业务模块号集中定义：消除 Controller 与仓储中的魔法模块 ID。
+/// 模块号对应 MODULES.M_IDX；系统管理 2306 见 PermissionModules.SystemManagement。
 /// 新增模块权限门一律引用本类常量，禁止在调用点散落裸数字。
 /// </summary>
 public static class ModuleIds

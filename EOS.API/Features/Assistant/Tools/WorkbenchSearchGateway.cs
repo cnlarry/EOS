@@ -4,7 +4,7 @@ using EOS.API.Models;
 namespace EOS.API.Features.Assistant.Tools;
 
 /// <summary>
-/// 助手工具对工作台查询能力的窄接口（ADR-007 §4）。
+/// 助手工具对工作台查询能力的窄接口。
 /// 由 <see cref="DocumentWorkbenchRepository"/> 实现——工具只经此消费列表/定义/记录读取，
 /// EXEC_TAG / DATA_FILTER / 模块 FILTER / 字段隐藏等数据范围全部在既有实现内强制生效。
 /// </summary>
@@ -45,7 +45,7 @@ public interface IWorkbenchSearchGateway
 }
 
 /// <summary>
-/// 工具风险分级（ADR-007 §6）：Read=只读查询；Draft=产出草稿/建议不触发写入；
+/// 工具风险分级：Read=只读查询；Draft=产出草稿/建议不触发写入；
 /// Write=触发业务写入；AdminWrite=元数据/配置变更（额外要求 CanSetup）。
 /// </summary>
 public enum AssistantToolRisk
@@ -63,14 +63,14 @@ public sealed record ToolExecutionResult(bool Ok, string ContentForModel, object
     public static ToolExecutionResult Deny(string reason) => new(false, reason);
 }
 
-/// <summary>单个受控工具的执行契约（ADR-007：模型只能调本注册表白名单，schema 服务端硬编码）。</summary>
+/// <summary>单个受控工具的执行契约。</summary>
 public interface IAssistantTool
 {
     string Name { get; }
 
     string Description { get; }
 
-    /// <summary>风险分级（ADR-007 §6）。</summary>
+    /// <summary>风险分级。</summary>
     AssistantToolRisk Risk { get; }
 
     /// <summary>JSON Schema（OpenAI function parameters 格式）。</summary>

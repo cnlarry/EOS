@@ -20,7 +20,7 @@ namespace EOS.API.Controllers;
 [Route("api/v1/jobs")]
 public sealed class JobsController(
     DbConnectionFactory connections,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext,
     AttendanceCalcService attendanceCalc,
     HumanResourceJobsService hrJobs) : ControllerBase

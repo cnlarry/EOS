@@ -29,7 +29,7 @@ public class FormValidationParityTests
             var nested = Path.Combine(directory.FullName, "EOS.API.Tests", "form-validation-parity.json");
             if (File.Exists(nested)) return nested;
         }
-        throw new InvalidOperationException("未找到 form-validation-parity.json（对拍 fixture）。");
+        throw new InvalidOperationException("未找到 form-validation-parity.json（一致性比对 fixture）。");
     }
 
     private static FormFieldDefinition ToDefinition(ParityField field) =>

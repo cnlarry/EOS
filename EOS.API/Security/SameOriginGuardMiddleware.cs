@@ -8,7 +8,7 @@ namespace EOS.API.Security;
 ///
 /// 对 /api 下的 POST/PUT/PATCH/DELETE：
 /// - 请求带 Origin 头时，仅接受同源（与 Host 一致）或在 Security:AllowedOrigins
-///   白名单内的来源（如 Vite 开发服务器端口），否则返回 403；
+/// 白名单内的来源（如 Vite 开发服务器端口），否则返回 403；
 /// - 无 Origin 头的非浏览器客户端不受影响。
 /// SameSite=Lax Cookie 已阻断跨站表单提交携带会话，本中间件是第二道防线。
 /// </summary>

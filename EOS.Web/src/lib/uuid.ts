@@ -1,5 +1,5 @@
 /**
- * 幂等/关联 ID 生成（代码质量批 3 C8 收编）：formEditorUtils.newIdempotencyKey 与
+ * 幂等/关联 ID 生成：formEditorUtils.newIdempotencyKey 与
  * httpTransport.newCorrelationId 原本逐字相同，统一到本函数。
  */
 export function createId(): string {

@@ -13,7 +13,7 @@ namespace EOS.API.Controllers;
 public sealed class PrintController(
     PrintService service,
     PrintSettingsRepository printSettingsRepository,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     IPermissionService permissions,
     DocumentWorkbenchRepository workbench,
     WorkbenchAuditWriter auditWriter,
@@ -21,7 +21,7 @@ public sealed class PrintController(
     ILayoutRenderer layoutRenderer) : ControllerBase
 {
     /// <summary>
-    /// 单据 PDF（原 RptBill 的受控等价）：主表 + 明细 + 可选页头/表尾/打印备注，
+    /// 单据 PDF：主表 + 明细 + 可选页头/表尾/打印备注，
     /// 生成前校验模块浏览权与报表级打印权；全部字段经服务端元数据过滤。
     /// </summary>
     [HttpPost("{moduleId:int}/pdf")]
@@ -36,7 +36,7 @@ public sealed class PrintController(
         if (definition is null) return NotFound();
 
         var settings = await printSettingsRepository.GetAsync(moduleId, userId, token);
-        // 报表变体选择（对齐旧 RptBill 的 rblReport）：请求指定时白名单校验，
+        // 报表变体选择：请求指定时白名单校验，
         // 否则按默认报表 → 首个可打印报表回退。
         var report = settings.Reports.FirstOrDefault(item =>
                 !string.IsNullOrWhiteSpace(request.ReportId) && item.ReportId == request.ReportId.Trim())
@@ -46,7 +46,7 @@ public sealed class PrintController(
         var reportRights = await rightsRepository.GetReportAsync(userId, moduleId, report.ReportId, token);
         if (!reportRights.CanPrint) return Forbid();
 
-        // 抬头取值优先级（2026-08-31 用户拍板，ADR-009 §9.4.2）：
+        // 抬头取值优先级：
         // 用户本次选择/记忆（request.HeaderId / SYSQR）→ 客户默认（CLIENT.HEADER_ID，
         // 未来由 REPORT_FORM_BINDING.HEADER_ID 按单据类型 × 客户细化）→ 报表默认（REPORT.HEADER_ID）。
         var headerId = !string.IsNullOrWhiteSpace(request.HeaderId)
@@ -60,13 +60,12 @@ public sealed class PrintController(
             CombineDataFilters(rights.DataFilter, reportRights.DataFilter), token);
         if (data is null) return NotFound();
 
-        // 用户本次选择/记忆优先（与旧系统 SYSQR 记忆一致，支持按场景切 A/B 抬头）；
+        // 用户本次选择/记忆优先；
         // 客户默认仅兜底（请求未带页头时生效）。
         var effectiveHeaderId = !string.IsNullOrWhiteSpace(request.HeaderId)
             ? request.HeaderId.Trim()
             : data.ClientProfile?.HeaderId ?? report.HeaderId ?? string.Empty;
-        // 内置版式统一走 layout.json 解释层（ADR-010 决策 6：layout.json 唯一真源，
-        // C# 命令式版式已退役）。GetDocumentFormat 按模块号 → _card/_generic 回退。
+        // 内置版式统一走 layout.json 解释层。GetDocumentFormat 按模块号 → _card/_generic 回退。
         var package = reportFormats.GetDocumentFormat(moduleId);
         if (package is null) return NotFound();
         var pdf = layoutRenderer.Render(

@@ -10,15 +10,14 @@ namespace EOS.API.Controllers;
 /// 报表排序汇总设置（2201，旧名报表定义维护 / 229801 报表设置明细）：
 /// REPORT + REPORT_SORT 主子表 CRUD，字段选择器选项来自模块主/明细表白名单；
 /// 排序/分组字段串必须命中字段白名单；值全部参数化。
-/// 权限门：读要求 CanBrowse(2201)，写要求 CanSetup(2201)（2026-08-28 验收补强，
-/// 原全端点仅查 CanBrowse，写操作缺 Setup 门）。
+/// 权限门：读要求 CanBrowse(2201)，写要求 CanSetup(2201)。
 /// </summary>
 [ApiController]
 [Authorize]
 [Route("api/v1/report-admin")]
 public sealed class ReportAdminController(
     ReportAdminRepository repository,
-    LegacyRightsRepository rightsRepository) : ControllerBase
+    ModuleRightsRepository rightsRepository) : ControllerBase
 {
     [HttpGet("modules")]
     public async Task<IActionResult> Modules(CancellationToken token)

@@ -20,7 +20,7 @@ namespace EOS.API.Controllers;
 [Route("api/v1/detail-query/{moduleId:int}")]
 public sealed class DetailQueryController(
     DbConnectionFactory connections,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
     private sealed record DetailColumn(string Key, string Label, string DataType, string? DisplayFormat = null);
@@ -108,7 +108,7 @@ public sealed class DetailQueryController(
             command => command.Parameters.Add("@dateBoundary", SqlDbType.DateTime).Value = LastMonth26()),
     };
 
-    /// <summary>convert(varchar(7),dateadd(month,-1,getdate()),120)+'-26' 的等价边界：上月 26 日。</summary>
+    /// <summary>convert(varchar(7),dateadd(month,-1,getdate()),120)+'-26' ：上月 26 日。</summary>
     private static DateTime LastMonth26()
     {
         var now = DateTime.Now;

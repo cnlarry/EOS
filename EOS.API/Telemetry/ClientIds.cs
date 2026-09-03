@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace EOS.API.Telemetry;
 
 /// <summary>
-/// 调用方标识（clientId）契约（ADR-005 §5.1）：
+/// 调用方标识（clientId）契约：
 /// 由调用方经 X-Client-Id 请求头传入，服务端透传并随日志、审计与错误响应返回。
 /// 仅接受小写字母/数字/点/下划线/连字符（≤64），非法或缺失统一为 unknown。
 /// </summary>

@@ -1,8 +1,8 @@
 namespace EOS.API.Security;
 
 /// <summary>
-/// EOS.API 内唯一模块权限判断入口（ADR-005 §6）：
-/// 控制器与仓储不再直接调用 LegacyRightsRepository 做模块级权限决策；
+/// EOS.API 内唯一模块权限判断入口：
+/// 控制器与仓储不再直接调用 ModuleRightsRepository 做模块级权限决策；
 /// 个人覆盖组、组布尔 OR、EXEC_TAG 最大值规则由底层聚合保持不变。
 /// </summary>
 public interface IPermissionService

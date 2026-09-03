@@ -28,7 +28,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 内置版式格式包（ADR-009 §12 / ADR-010）：开发态 Git 资产，部署复制到输出目录只读加载 -->
+    <!-- 内置版式格式包：开发态 Git 资产，部署复制到输出目录只读加载 -->
     <None Include="ReportFormats\**\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

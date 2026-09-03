@@ -1,5 +1,5 @@
 {
-  "comment": "ADR-006 决策 2.4 校验单一来源对拍矩阵。消费方：EOS.API.Tests/FormValidationParityTests.cs（服务端 ValidateSubmitted+CheckRequiredAndRegex 管线）与 EOS.Web formValidationParity.test.ts（前端 evaluateField）。两端必须对每个用例给出相同判定码；expectedValue 存在时还须给出相同的规范化值（客户端 canonicalize 输出 / 服务端不变文化序列化）。任一端修改规则必须先改本文件。",
+  "comment": "校验单一来源一致性比对矩阵。消费方：EOS.API.Tests/FormValidationParityTests.cs（服务端 ValidateSubmitted+CheckRequiredAndRegex 管线）与 EOS.Web formValidationParity.test.ts（前端 evaluateField）。两端必须对每个用例给出相同判定码；expectedValue 存在时还须给出相同的规范化值（客户端 canonicalize 输出 / 服务端不变文化序列化）。任一端修改规则必须先改本文件。",
   "cases": [
     {
       "name": "文本前后空白被裁剪（trim 契约）",
@@ -61,7 +61,7 @@
       "expectedCode": "REGEX_MISMATCH"
     },
     {
-      "name": "可选空串跳过 regex（等价 null）",
+      "name": "可选空串跳过 regex",
       "field": { "key": "A", "dataType": "nvarchar", "regex": "^\\d+$" },
       "input": "",
       "expectedCode": "ok",

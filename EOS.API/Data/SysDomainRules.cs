@@ -45,7 +45,7 @@ public static class SysDomainRules
 
     /// <summary>
     /// BOM structure save: validates the product and element numbers, requires a positive
-    /// base quantity, rejects cyclic references, and backfills legacy length/width columns.
+    /// base quantity, rejects cyclic references, and backfills historical length/width columns.
     /// </summary>
     public static async Task<SprocResult> BomStruAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,

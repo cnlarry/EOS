@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 报表中心调度订阅 + Inbox 仓储（ADR-009 §7/P5b）：
+/// 报表中心调度订阅 + Inbox 仓储：
 /// - REPORT_SUBSCRIPTION：用户订阅报表（周期 DAILY/WEEKLY/MONTHLY + 执行时刻 + 启停）；
 /// - REPORT_INBOX：订阅产出记录（PDF 相对路径 + 生成时间 + 已读标记）。
 /// 权限由控制器按订阅者 REPORT_TAG 校验；调度生成时以订阅者身份取数（调度服务内完成）。

@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace EOS.API.Logging;
 
 /// <summary>
-/// 日志/审计输出统一脱敏（ADR-005 §5.1/§5.4）：
+/// 日志/审计输出统一脱敏：
 /// 密码、Token、连接串、Cookie、JWT 等模式一律掩码；不返回附件正文与 LLM 全文
 /// （调用方本就不记录）。输出前对所有字符串字段与消息应用。
 /// </summary>

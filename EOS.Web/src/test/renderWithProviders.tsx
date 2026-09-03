@@ -3,7 +3,7 @@ import { render, type RenderResult } from '@testing-library/react'
 import type { ReactElement } from 'react'
 
 /**
- * 统一测试渲染（代码质量批 3 C9 收编）：
+ * 统一测试渲染：
  * 原 22 处 `new QueryClient` + QueryClientProvider 包装样板收敛到本函数。
  * 默认 queries.retry=false（测试不等待重试），可传入自定义 queryClient。
  */

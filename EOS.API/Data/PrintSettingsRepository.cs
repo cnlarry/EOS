@@ -6,7 +6,7 @@ using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 报表打印设置（旧 RptParent.master 面板的受控等价）：
+/// 报表打印设置：
 /// - 报表清单按报表级预览权限过滤（SYSDD_REPORT 个人覆盖 SYSDH_REPORT 组，组标签取 OR）；
 /// - 页头/表尾来自 REPORT_LAYOUT；
 /// - 排序/分组方案来自 REPORT_SORT（字段串仅服务端消费，白名单校验后进入查询）；
@@ -161,7 +161,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
     }
 
     /// <summary>
-    /// 报表清单（ADR-009 §2 语义：模块 REPORT_TAG 唯一真源，SYSDD_REPORT/SYSDH_REPORT 降级为 override 收紧）。
+    /// 报表清单。
     /// 模块级 REPORT_TAG=1 → 默认全部可见，除非存在 override 收紧（个人 SYSDD_REPORT 或组 SYSDH_REPORT 的 PREVIEW_TAG=0）。
     /// 个人 override 覆盖组 override（有个人行即按个人收紧，不再看组）。
     /// </summary>
@@ -216,7 +216,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
         return result;
     }
 
-    /// <summary>模块级报表可见性唯一真源（ADR-009 §2）：SYSDD.REPORT_TAG 个人优先，否则 SYSDH.REPORT_TAG 组 OR。</summary>
+    /// <summary>模块级报表可见性唯一真源：SYSDD.REPORT_TAG 个人优先，否则 SYSDH.REPORT_TAG 组 OR。</summary>
     private static async Task<bool> GetModuleReportTagAsync(
         SqlConnection connection, string userId, int moduleId, CancellationToken token)
     {

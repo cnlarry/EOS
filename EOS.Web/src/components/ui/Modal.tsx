@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 
 /**
- * 统一弹窗基础组件（代码质量批 3 C6 收编）：
+ * 统一弹窗基础组件：
  * 原 22 文件各自手写 `modal modal-blur show d-block` 壳（header/btn-close/aria 重复），
  * 收敛到本组件；支持标准三段（header/body/footer）、尺寸与滚动。
  */

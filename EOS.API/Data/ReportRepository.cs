@@ -9,10 +9,10 @@ using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 报表查看器数据仓库（旧 RptList2 的受控等价）：
+/// 报表查看器数据仓库：
 /// - 定义：MODULES + SYSQR_DEFAULT 查询条件 + FIELDS 主表可见列（成本/保密/禁止字段过滤）；
 /// - 查询：条件值经白名单字段 + 参数化编译（F_TYPE 1 范围 / 2 固定单选 / 4 固定多选；
-///   F_TYPE 3 数据单选含 SQL 表达式，受控解析完成前不启用）；
+/// F_TYPE 3 数据单选含 SQL 表达式，受控解析完成前不启用）；
 /// - 排序：默认主表 SORT_FIELDS（REPORT_SORT 明细级排序待后续）。
 /// 所有动态标识符来自服务端元数据，值全部参数化。
 /// </summary>
@@ -287,7 +287,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         {
             CommandType=CommandType.StoredProcedure,
         };
-        // 全部参数显式传入：缺失/空白按 DBNull（等价"不过滤"），避免 SQL 报"未提供参数"。
+        // 全部参数显式传入：缺失/空白按 DBNull，避免 SQL 报"未提供参数"。
         for(var i=0;i<definition.SpParameters.Count;i++)
         {
             var spec=definition.SpParameters[i];
@@ -515,7 +515,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
     }
 
     /// <summary>
-    /// 受控过滤应用（M85 定稿）：模块 FILTER / REPORT_FILTER / 报表级 DATA_FILTER
+    /// 受控过滤应用：模块 FILTER / REPORT_FILTER / 报表级 DATA_FILTER
     /// 一律白名单化，解析失败即拒绝（403），不静默跳过；参数名按谓词序号重命名避免冲突。
     /// </summary>
     private static void ApplyControlledFilter(
@@ -615,7 +615,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             var effectiveDefault=string.IsNullOrWhiteSpace(userFrom)?defaultValue:userFrom;
             var effectiveDefaultTo=userTo;
 
-            // FILTER_TEMPLATE 优先（ADR-009 §6）：结构化解析，未转换行回退旧 DSL
+            // FILTER_TEMPLATE 优先：结构化解析，未转换行回退 DSL 语法
             var templateParsed=ConditionTemplateParser.TryParse(filterTemplate,effectiveDefault,effectiveDefaultTo);
             if(templateParsed is not null)
             {

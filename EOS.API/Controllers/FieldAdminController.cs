@@ -14,7 +14,7 @@ public sealed record PublishExpressionRequest(string Kind, string Table, string 
 [Route("api/v1/admin")]
 public sealed class FieldAdminController(
     FieldAdminRepository repository,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext,
     RestrictedExpressionService expressionService) : ControllerBase
 {
@@ -102,7 +102,7 @@ public sealed class FieldAdminController(
         return metadata is null ? NotFound() : Ok(metadata);
     }
 
-    /// <summary>表物理列（sys.columns，含类型；字段设置数据来源/回填构建器下拉用，权限门 CanBrowse 2302）。</summary>
+    /// <summary>表列（物理列 + 来源表内受控虚拟列，含类型与 isVirtual；字段设置数据来源/回填构建器下拉用，权限门 CanBrowse 2302）。</summary>
     [HttpGet("tables/{table}/columns")]
     public async Task<IActionResult> TableColumns(string table, CancellationToken token)
     {

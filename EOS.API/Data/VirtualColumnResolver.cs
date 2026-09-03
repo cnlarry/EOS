@@ -12,7 +12,7 @@ public sealed record VirtualJoin(string Table, string Alias, IReadOnlyList<Virtu
 /// <summary>JOIN ON 条件：两侧均为「表.列」恒等比较，无值、无函数、无子查询。</summary>
 public sealed record VirtualJoinCondition(string LeftTable, string LeftColumn, string RightTable, string RightColumn);
 
-/// <summary>JOIN ON 常量条件（C 类，2026-08-15）：表.列 = '字面量'（或数值），用于按常量定位关联行（如 FIELDS.T_ID='HR_WAGE_D'）。</summary>
+/// <summary>JOIN ON 常量条件（C 类）：表.列 = '字面量'（或数值），用于按常量定位关联行（如 FIELDS.T_ID='HR_WAGE_D'）。</summary>
 public sealed record VirtualJoinConstant(string Table, string Column, string Literal, bool IsString);
 
 /// <summary>虚拟字段受控解析结果：可解析列片段 + 所需 JOIN 片段 + 已解析/未解析字段。</summary>
@@ -24,7 +24,7 @@ public sealed record VirtualColumnResolution(
     IReadOnlyList<string> BaseColumns);
 
 /// <summary>
-/// VIRTUAL_EXP 受控解析（阶段 4 v2）。
+/// VIRTUAL_EXP 受控解析。
 /// 仅接受「表.列」单跨表取值：表必须出现在本表 TABLES.QUERY_RELATION 的 LEFT JOIN 白名单
 /// （按别名解析，别名可不同于物理表名，如 PRODUCT_J），列必须在物理表/视图中真实存在。
 /// QUERY_RELATION 本身也按严格语法解析（仅 LEFT JOIN + 表.列=表.列 条件），

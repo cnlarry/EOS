@@ -9,12 +9,12 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 可视化版式设计器（ADR-010 §4/§5 S2）：
+/// 可视化版式设计器：
 /// - definition：返回内置或客户定制布局 + dataContract 字段白名单 + 权限模式（完整/微调）；
 /// - save：保存校验链（ReportFormatValidator schema + 字段白名单）+ 微调模式约束 +
-///   copy-on-write（首次复制内置 → REPORT_FORM_LAYOUT + REPORT_FORM_BINDING）；
+/// copy-on-write（首次复制内置 → REPORT_FORM_LAYOUT + REPORT_FORM_BINDING）；
 /// - preview：以格式包 sample.json 样例数据渲染当前编辑布局。
-/// 权限门：CanDesign（角色② 完整设计）/ CanAdjust（角色③ 微调），见 ADR-010 决策 4/5。
+/// 权限门：CanDesign（角色② 完整设计）/ CanAdjust（角色③ 微调），见 /5。
 /// </summary>
 [ApiController]
 [Authorize]
@@ -26,7 +26,7 @@ public sealed class LayoutDesignerController(
     ILayoutRenderer renderer,
     DocumentWorkbenchRepository workbench,
     PrintSettingsRepository printSettings,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     PrintService printService,
     IPermissionService permissions,
     ILogger<LayoutDesignerController> logger) : ControllerBase
@@ -164,7 +164,7 @@ public sealed class LayoutDesignerController(
         return parts.Count == 0 ? string.Empty : string.Join(" AND ", parts);
     }
 
-    /// <summary>页头条目列表（页头字典引用，ADR-009 §9.4.2）。</summary>
+    /// <summary>页头条目列表（页头字典引用）。</summary>
     [HttpGet("headers")]
     public async Task<IActionResult> Headers(CancellationToken token)
     {
@@ -190,7 +190,7 @@ public sealed class LayoutDesignerController(
         return Ok(new { saved = true });
     }
 
-    /// <summary>保存版式绑定（HEADER_ID/TAIL_ID/PRINT_PRICE 随绑定，ADR-010 决策 3）。</summary>
+    /// <summary>保存版式绑定（HEADER_ID/TAIL_ID/PRINT_PRICE 随绑定）。</summary>
     [HttpPost("{moduleId:int}/binding")]
     public async Task<IActionResult> SaveBinding(
         int moduleId, [FromBody] LayoutBindingSaveRequest request, CancellationToken token)
@@ -247,7 +247,7 @@ public sealed class LayoutDesignerController(
         return Ok(new { restored = true });
     }
 
-    /// <summary>微调模式约束（ADR-010 决策 5）：只允许位置/尺寸/文本/显隐/字段映射变化。</summary>
+    /// <summary>微调模式约束：只允许位置/尺寸/文本/显隐/字段映射变化。</summary>
     private static List<string> ValidateAdjustOnly(string baselineJson, string editedJson)
     {
         var errors = new List<string>();

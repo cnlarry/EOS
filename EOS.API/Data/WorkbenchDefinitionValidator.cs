@@ -8,12 +8,12 @@ using Microsoft.Extensions.Options;
 namespace EOS.API.Data;
 
 /// <summary>
-/// Workbench Definition 发布前校验器（ADR-005 §3，阶段 2）：
+/// Workbench Definition 发布前校验器：
 /// 覆盖发布前必须校验的全部条目（白名单/路由、主表/子表/主键/关联键、字段白名单、
 /// FILTER/分组表达式受控解析、虚拟列/转换函数、成本/保密/拒绝字段、高风险表达式、
 /// 统一表单定义），输出机器可读报告（code/passed/message），供 CI、发布工具与
 /// 开发 Agent 消费；校验未通过的定义不发布到运行时。
-/// 与 scripts/auto-enable-batch.ps1 放量预检共用同一道闸（流水线启用前先调服务端校验）。
+/// 与 预检共用同一道闸（流水线启用前先调服务端校验）。
 /// </summary>
 public sealed class WorkbenchDefinitionValidator(
     DbConnectionFactory connections,
@@ -241,7 +241,7 @@ public sealed class WorkbenchDefinitionValidator(
             checks.Add(new("form_definition", true, "模块非工作台/表单模块，跳过表单校验。"));
         }
 
-        // ===== ADR-006 决策 4：界面质量类校验（error 三项拦发布闸；warning 仅质量提示） =====
+        // ===== ：界面质量类校验（error 三项拦发布闸；warning 仅质量提示） =====
         if (definition is not null)
         {
             checks.AddRange(await ValidateFormQualityAsync(connection, tables, token));
@@ -409,7 +409,7 @@ public sealed class WorkbenchDefinitionValidator(
     }
 
     /// <summary>
-    /// 界面质量类校验（ADR-006 决策 4）：
+    /// 界面质量类校验：
     /// 阻断——FORM_OPTIONS 格式非法 / CHOOSE_RETURNVAL 映射目标不存在 / DFT_VALUE 按 F_TYPE 不可转换
     /// （GETDATE() 类无参函数表达式跳过）；警告——FORM_ORDER 缺失比例过高、F_DESC 超长
     /// （渲染层「换两行+title」为硬保障，此处仅质量提示）、datetime 缺 DISPLAY_FORMAT。
@@ -439,7 +439,7 @@ public sealed class WorkbenchDefinitionValidator(
             .Select(field => field.Key)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // RETURN_ITEMS 映射目标存在（阻断；模块级聚合一条，消息截断前 8 条防超长；ADR-008 §4）
+        // RETURN_ITEMS 映射目标存在（阻断；模块级聚合一条，消息截断前 8 条防超长）
         var returnvalErrors = new List<string>();
         foreach (var (table, fields) in fieldsByTable)
         {
@@ -458,7 +458,7 @@ public sealed class WorkbenchDefinitionValidator(
         checks.Add(new("chooser_returnval_targets", returnvalErrors.Count == 0,
             returnvalErrors.Count == 0
                 ? "RETURN_ITEMS 映射目标全部存在于模块字段集。"
-                : $"存在跨模块死映射 {returnvalErrors.Count} 处（运行时未命中即跳过、无害，随逐模块验收清理）：{string.Join(",", returnvalErrors.Take(8))}{(returnvalErrors.Count > 8 ? " 等" : "")}。",
+                : $"存在跨模块死映射 {returnvalErrors.Count} 处（运行时未命中即跳过，不影响发布）：{string.Join(",", returnvalErrors.Take(8))}{(returnvalErrors.Count > 8 ? " 等" : "")}。",
             "warning"));
 
         // Chooser data source integrity (blocking): source table exists, FILTER_STRUCT compiles, return columns exist
@@ -501,10 +501,11 @@ public sealed class WorkbenchDefinitionValidator(
                         var columns = returnItems.Select(item => item.Column.Trim())
                             .Where(column => WorkbenchSql.Identifier.IsMatch(column))
                             .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                        // 来源列允许物理列或来源表内受控虚拟列（与保存校验同口径）
                         if (columns.Length > 0
-                            && !await WorkbenchSql.ColumnsExistAsync(connection, source.SourceTable, columns, token))
+                            && !await WorkbenchSql.ReturnColumnsExistAsync(connection, source.SourceTable, columns, token))
                         {
-                            chooserErrors.Add($"{table}.{source.Field}#{source.SerialNo} 回填映射引用了来源表不存在的列");
+                            chooserErrors.Add($"{table}.{source.Field}#{source.SerialNo} 回填映射引用了来源表既非物理列也非受控虚拟列的来源字段");
                         }
                     }
                 }
@@ -518,7 +519,7 @@ public sealed class WorkbenchDefinitionValidator(
         if (chooserWarnings.Count > 0)
         {
             checks.Add(new("chooser_sources_pending", true,
-                $"选择器过滤条件待重建 {chooserWarnings.Count} 处（ADR-008 迁移清单）：{string.Join("；", chooserWarnings.Take(5))}{(chooserWarnings.Count > 5 ? " 等" : "")}。",
+                $"选择器过滤条件待重建 {chooserWarnings.Count} 处：{string.Join("；", chooserWarnings.Take(5))}{(chooserWarnings.Count > 5 ? " 等" : "")}。",
                 "warning"));
         }
 
@@ -550,7 +551,7 @@ public sealed class WorkbenchDefinitionValidator(
             checks.Add(new("form_options_format", optionsErrors.Count == 0,
                 optionsErrors.Count == 0 ? $"{table} FORM_OPTIONS 格式合法。" : $"FORM_OPTIONS 非法：{string.Join(",", optionsErrors)}。"));
 
-            // DFT_VALUE 可转换（阻断；GETDATE() 类无参函数调用与旧系统日期宏 'D'=当天 跳过）
+            // DFT_VALUE 可转换（阻断；GETDATE() 类无参函数调用）
             var dftErrors = new List<string>();
             foreach (var field in fields)
             {
@@ -638,7 +639,7 @@ public sealed class WorkbenchDefinitionValidator(
         return result;
     }
 
-    /// <summary>读取表内全部字段的回填映射（FIELD_DATASOURCE.RETURN_ITEMS，按字段聚合；ADR-008 §4）。</summary>
+    /// <summary>读取表内全部字段的回填映射（FIELD_DATASOURCE.RETURN_ITEMS，按字段聚合）。</summary>
     private static async Task<Dictionary<string, IReadOnlyList<ChooserReturnItem>>> ReadReturnItemsByFieldAsync(
         SqlConnection connection, string table, CancellationToken token)
     {
@@ -668,7 +669,7 @@ public sealed class WorkbenchDefinitionValidator(
         return result;
     }
 
-    /// <summary>读取表内启用数据源（FIELD_DATASOURCE；ADR-008 §7 完整性校验数据源）。</summary>
+    /// <summary>读取表内启用数据源（FIELD_DATASOURCE； 完整性校验数据源）。</summary>
     private static async Task<IReadOnlyList<ChooserSourceRow>> ReadChooserSourcesAsync(
         SqlConnection connection, string table, CancellationToken token)
     {

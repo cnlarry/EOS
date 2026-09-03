@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 报表中心调度订阅 + Inbox（ADR-009 §7/P5b）。
+/// 报表中心调度订阅 + Inbox。
 /// 调度订阅：用户可订阅报表按周期（DAILY/WEEKLY/MONTHLY）自动生成 PDF 进 Inbox。
 /// 权限：订阅/Inbox 的报表必须用户有可见性（REPORT_TAG），由调度服务以订阅者身份取数。
 /// </summary>

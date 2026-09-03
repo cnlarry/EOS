@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 工作助手端点（ADR-007 M2 骨架）：会话 CRUD + SSE 流式对话。
+/// 工作助手端点：会话 CRUD + SSE 流式对话。
 /// 全部登录可用；数据按 USER_ID 服务端强制隔离。SSE 事件：delta（文本增量）、
 /// done（回复已落库，含用量）、error（流中失败）。客户端断开即中止模型调用，
 /// 半截回复不落库，历史经 GET messages 恢复。

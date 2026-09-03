@@ -220,7 +220,7 @@ export const navigationIcons: Record<string, typeof IconFolder> = {
   handStop: IconHandStop,
 }
 
-/** 根节点图标解析（模块树/权限矩阵共用，代码质量批 4 D3 收编）：配置覆盖 → 名称关键字 → 旧根映射 → folder。 */
+/** 根节点图标解析（模块树/权限矩阵共用）：配置覆盖 → 名称关键字 → 内置根映射 → folder。 */
 const ROOT_ICON_OVERRIDES: Record<number, string> = {
   11: 'base', 12: 'product', 13: 'inventory', 14: 'sales', 15: 'production', 16: 'procurement',
   17: 'finance', 18: 'hr', 19: 'vehicle', 20: 'barcode', 21: 'workflow', 22: 'report', 23: 'settings',

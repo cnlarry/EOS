@@ -8,7 +8,7 @@ using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 用户管理（ADR-004 随安全升级建设）：列用户、管理员设置密码、启用/停用。
+/// 用户管理：列用户、管理员设置密码、启用/停用。
 /// 只允许修改认证/安全相关列（USER_PWD、ACTIVE_TAG、审计列），不触碰业务资料。
 /// </summary>
 public sealed class UserAdminRepository(

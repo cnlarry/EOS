@@ -140,7 +140,7 @@ button, input, select { font: inherit; }
 .erp-menu-tree { overflow-y: auto; }
 .erp-menu-sort-bar { background: var(--tblr-bg-surface); position: sticky; top: 0; z-index: 5; }
 .erp-menu-sort-bar .btn { flex: 0 0 auto; white-space: nowrap; }
-/* 复刻左侧系统菜单（AppShell 侧栏）的样式：图标、展开折叠箭头、虚线、圆点 */
+/* 实现左侧系统菜单（AppShell 侧栏）的样式：图标、展开折叠箭头、虚线、圆点 */
 .erp-menu-tree .nav-link {
   display: flex;
   align-items: center;
@@ -390,12 +390,7 @@ button, input, select { font: inherit; }
   .erp-menu-admin > .card > .card-body { display: grid; grid-template-columns: 5fr 7fr; }
   .erp-menu-admin .card-body > .row { display: contents; }
   /* col-lg-* 自带 width 41.66%/58.33%：作为 grid 子项会按自身轨道的百分比再次收缩（只占轨道一部分），
-     改为 auto 让 justify-self:stretch 填满对应轨道，保持 5:7 与旧 col 宽度一致 */
-  .erp-menu-admin .col-lg-5, .erp-menu-admin .col-lg-7 { width: auto; }
-  .erp-menu-admin .col-lg-5.erp-menu-tree { display: flex; flex-direction: column; min-height: 0; max-height: none; }
-  .erp-menu-admin .col-lg-7 { display: flex; flex-direction: column; min-height: 0; }
-}
-/* 数据表、字段维护（2302）：性质筛选下拉固定宽度 */
+     改为 auto 让 justify-self:stretch 填满对应轨道，保持 5:7）：性质筛选下拉固定宽度 */
 .erp-kind-filter { width: 165px; flex: 0 0 165px; }
 /* 通用全高列表页（工作台同款电子表格体验）：列表卡铺满页面高度，
    表格区域内部滚动、表头吸顶；复用 ErpTable 的列宽拖拽/排序/复制/键盘导航 */
@@ -407,7 +402,7 @@ button, input, select { font: inherit; }
 /* 报表权限矩阵页：表格区作为内部滚动容器（吸顶表头随表内滚动） */
 .erp-full-list-page .erp-report-matrix-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .erp-full-list-page .erp-report-matrix-body .erp-table-shell { flex: 1 1 auto; min-height: 0; }
-/* 字段设置全页（ADR-008）：整页随视口高度自适应，左栏字段导航与右栏编辑区各自内部滚动 */
+/* 字段设置全页：整页随视口高度自适应，左栏字段导航与右栏编辑区各自内部滚动 */
 .erp-field-editor-page { flex: 1 1 auto; min-height: 0; }
 .erp-field-editor-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .erp-field-editor-page > .erp-list-card > .card-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
@@ -712,11 +707,11 @@ button, input, select { font: inherit; }
   a[href]::after { content: none !important; }
 }
 
-/* ===== 统一表单编辑页（对齐旧系统编辑页布局） =====
-   旧系统（ERP/*.aspx）编辑页通用结构：顶部工具栏 + 主表"标签-控件"成对网格
+/* ===== 统一表单编辑页 =====
+   编辑页通用结构：顶部工具栏 + 主表"标签-控件"成对网格
    （简单模块 2 对/行、业务单据 2~3 对/行）+ 长文本整行 + 底部灰显只读区 + 明细网格。 */
-/* 设计 token（ADR-006 决策 1）：标签宽/控件高/字号/分区间距统一定义于此。
-   2026-08-30 用户拍板：统一表单全局固定一行四列，标签收窄、行高压矮，对齐旧系统密集表单 */
+/* 设计 token：标签宽/控件高/字号/分区间距统一定义于此。
+   统一表单全局固定一行四列，标签收窄、行高压矮，密集表单风格 */
 :root {
   --erp-form-label-min: 64px;
   --erp-form-label-width: 80px;
@@ -762,7 +757,7 @@ button, input, select { font: inherit; }
   background: var(--tblr-bg-surface);
 }
 
-/* 分节容器与标题（ADR-006 分区表单：FORM_CELL_GROUP ≥2 主字段格成节） */
+/* 分节容器与标题 */
 .erp-form-group + .erp-form-group { margin-top: var(--erp-form-group-gap); }
 .erp-form-group-title {
   display: flex;
@@ -818,7 +813,7 @@ button, input, select { font: inherit; }
 
 .erp-form-label {
   min-width: 0;
-  /* ADR-006 决策 1：禁止静默截断——最多两行换行显示，title 悬停全文兜底 */
+  /* ：禁止静默截断——最多两行换行显示，title 悬停全文兜底 */
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -848,13 +843,11 @@ button, input, select { font: inherit; }
   .erp-form-row { grid-template-columns: 1fr; }
 }
 
-/* 页签（对齐旧系统"客户订单--1/--2"式分组；样式与系统级 TabbedPanel 完全一致，
-   即菜单管理右侧表单同款页签：行左缩进、激活标签向下延伸 1px 用面板底色覆盖网格顶边、
-   圆角用设计令牌，未激活标签完整显示网格顶边） */
+/* 页签 */
 .erp-form-tabs { border-bottom: 0; margin-bottom: 0; padding-left: calc(var(--tblr-border-radius) * 2); }
 .erp-form-tabs .nav-link { padding: 5px 14px; font-size: 13px; border-bottom: 0; border-radius: var(--tblr-border-radius-lg) var(--tblr-border-radius-lg) 0 0; margin-bottom: -1px; }
 .erp-form-tabs .nav-link.active { background-color: var(--tblr-bg-surface); border-bottom: 1px solid var(--tblr-bg-surface); position: relative; z-index: 1; }
-/* 页签错误计数徽标（ADR-006 错误 UX）：隐藏页签的错误可见 */
+/* 页签错误计数徽标：隐藏页签的错误可见 */
 .erp-tab-error-badge {
   display: inline-block;
   margin-left: 6px;
@@ -883,7 +876,7 @@ button, input, select { font: inherit; }
 .erp-form-toolbar .btn { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; }
 .erp-form-toolbar-actions { margin-left: auto; }
 
-/* 统一表单紧凑控件（旧系统编辑页为紧凑输入框，避免"胖"控件；2026-08-30 压矮到 26px） */
+/* 统一表单紧凑控件 */
 .erp-form-grid .form-control,
 .erp-form-grid .form-select,
 .erp-form-cell-controls .form-control,
@@ -896,7 +889,7 @@ button, input, select { font: inherit; }
 .erp-form-grid textarea.form-control,
 .erp-form-cell-controls textarea.form-control { height: auto; min-height: 52px; }
 
-/* 选择器按钮：图标化（对齐旧系统省略号按钮意境）；
+/* 选择器按钮：图标化；
    边框颜色与输入控件一致（outline-secondary 的 secondary 色与 form-control 边框色不同） */
 .erp-chooser-btn {
   display: inline-grid;
@@ -916,7 +909,7 @@ button, input, select { font: inherit; }
   background: var(--tblr-bg-surface-secondary);
 }
 
-/* 表单标签右键「字段设置」菜单（旧系统标签右键进入字段设置，canSetup 时启用） */
+/* 表单标签右键「字段设置」菜单 */
 .erp-field-setup-overlay {
   position: fixed;
   inset: 0;
@@ -955,7 +948,7 @@ button, input, select { font: inherit; }
   background: var(--tblr-bg-surface-secondary);
 }
 
-/* 选择器弹窗：查询区（字段下拉 + 条件值）对齐旧系统 Chooser.aspx */
+/* 选择器弹窗：查询区（字段下拉 + 条件值）系统 */
 .erp-chooser-query .erp-chooser-field { flex: 0 0 170px; width: 170px; }
 .erp-chooser-query .form-control { min-width: 0; }
 /* 选择器工具行：确认/高级查询/选择列按钮固定宽，搜索占满剩余空间，整行与容器等宽；
@@ -1008,11 +1001,11 @@ button, input, select { font: inherit; }
 .erp-form-page > .erp-form-card .card-body { display: flex; flex-direction: column; min-height: 0; }
 .erp-form-page > .erp-form-card .erp-form-toolbar { flex: 0 0 auto; }
 .erp-form-page > .erp-form-card .erp-form-grid { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-/* 明细卡片高度弹性化（ADR-006 决策 5）：min~max 区间随视口伸缩，代替固定 300px */
+/* 明细卡片高度弹性化：min~max 区间随视口伸缩，代替固定 300px */
 .erp-form-page > .card.erp-detail-card { flex: 0 1 auto; height: clamp(220px, 38vh, 480px); display: flex; flex-direction: column; overflow: hidden; }
 .erp-form-page > .card.erp-detail-card .table-responsive { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; }
 
-/* 明细空态「+ 新增一行」虚线入口（ADR-006 决策 5，替代硬编码补空行） */
+/* 明细空态「+ 新增一行」虚线入口 */
 .erp-detail-empty {
   padding: 18px 12px;
 }
@@ -1053,7 +1046,7 @@ button, input, select { font: inherit; }
   border-radius: 3px;
 }
 
-/* 三列分区行：长标签优先，输入控件收窄（旧页控件宽度 100px 量级），标签放不下时换行而非截断 */
+/* 三列分区行：长标签优先，输入控件收窄，标签放不下时换行而非截断 */
 .erp-settings-form .erp-form-row-3 .erp-form-field {
   grid-template-columns: minmax(0, 1fr) minmax(84px, 132px);
 }
@@ -1069,7 +1062,7 @@ button, input, select { font: inherit; }
 .erp-attachment-list .list-group-item { align-items: center; }
 .erp-attachment-remark { font-size: 12px; }
 
-/* ===== 工作助手（ADR-007 M2）：悬浮球 + 右侧抽屉 ===== */
+/* ===== 工作助手：悬浮球 + 右侧抽屉 ===== */
 .erp-assistant-fab {
   position: fixed;
   right: 24px;

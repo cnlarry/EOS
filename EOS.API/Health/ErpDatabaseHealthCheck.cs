@@ -5,7 +5,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 namespace EOS.API.Health;
 
 /// <summary>
-/// /health/ready 的 EOS.ERP 探活（ADR-005 §5.3）：只做轻量 SELECT 1，
+/// /health/ready 的 EOS.ERP 探活：只做轻量 SELECT 1，
 /// 不执行重查询；连接超时收敛到 5 秒，避免数据库不可用时健康检查长时间挂起。
 /// </summary>
 public sealed class ErpDatabaseHealthCheck(DbConnectionFactory connections, ILogger<ErpDatabaseHealthCheck> logger)

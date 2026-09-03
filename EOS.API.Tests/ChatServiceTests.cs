@@ -9,7 +9,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// ChatService 编排单元测试（ADR-007 M2）：用 fake 模型验证多轮上下文组装、
+/// ChatService 编排单元测试：用 fake 模型验证多轮上下文组装、
 /// 流事件序列、落库时机与失败降级。仓储用内存 fake，不发 SQL。
 /// </summary>
 public sealed class ChatServiceTests

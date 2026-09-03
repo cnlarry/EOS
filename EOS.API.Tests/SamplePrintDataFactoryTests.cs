@@ -4,7 +4,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 样例数据场景扩展单测（ADR-010 §4 多行样例数据预览）：
+/// 样例数据场景扩展单测：
 /// rows 控制明细行数、variant 控制长文本/空明细，主表与字段白名单不变。
 /// </summary>
 public class SamplePrintDataFactoryTests

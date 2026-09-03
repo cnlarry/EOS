@@ -1,5 +1,5 @@
 /**
- * 页面标题/分区元数据（代码质量批 4 E4 收编）：
+ * 页面标题/分区元数据：
  * 键与 router.tsx 的静态路由 path 一一对应，AppShell 面包屑兜底消费。
  * 新增静态页面时在此登记标题与分区，避免改 path 后面包屑静默失效；
  * 带参子页（workbench/fields/groups 等）经 usePageBreadcrumb/useFormBreadcrumb 上抛，不走本表。

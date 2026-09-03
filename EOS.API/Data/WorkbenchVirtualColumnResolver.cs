@@ -5,9 +5,9 @@ using EOS.API.Models;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 受控虚拟列 / 转换函数 / 展示计算统一入口（ADR-005 §2 组件表 WorkbenchVirtualColumnResolver）：
+/// 受控虚拟列 / 转换函数 / 展示计算统一入口：
 /// 包装 VirtualColumnResolver（定义与列表虚拟列解析）与 ConvertFunctionResolver（展示转换）。
-/// 阶段 3 先统一消费入口；解析器内部白名单与参数化边界保持不变。
+/// 先统一消费入口；解析器内部白名单与参数化边界保持不变。
 /// </summary>
 public sealed class WorkbenchVirtualColumnResolver
 {

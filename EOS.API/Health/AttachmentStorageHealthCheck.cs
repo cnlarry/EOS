@@ -3,7 +3,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 namespace EOS.API.Health;
 
 /// <summary>
-/// /health/ready 的附件存储探活（ADR-005 §5.3）：附件根目录可写。
+/// /health/ready 的附件存储探活：附件根目录可写。
 /// 根目录解析与 AttachmentController 一致（Attachment:StorageRoot 或默认 attachments）。
 /// </summary>
 public sealed class AttachmentStorageHealthCheck(IConfiguration configuration, ILogger<AttachmentStorageHealthCheck> logger)

@@ -3,9 +3,9 @@ using System.Diagnostics;
 namespace EOS.API.Telemetry;
 
 /// <summary>
-/// 每请求数据库耗时累加器（ADR-005 §5.1 固定字段 dbElapsedMs）。
+/// 每请求数据库耗时累加器。
 /// 通过 AsyncLocal 在请求上下文内累加各 Measure() 区间耗时，供请求日志输出；
-/// 阶段 1 已接入工作台列表/详情/导出/记录读取与打印数据五条路径，其余路径为 0。
+/// 已接入工作台列表/详情/导出/记录读取与打印数据五条路径，其余路径为 0。
 /// </summary>
 public sealed class DbTimingCollector
 {

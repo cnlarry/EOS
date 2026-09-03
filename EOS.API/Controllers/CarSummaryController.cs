@@ -14,15 +14,15 @@ namespace EOS.API.Controllers;
 [Route("api/v1/car-summary")]
 public sealed class CarSummaryController(
     DbConnectionFactory connections,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
     private const int ModuleId = ModuleIds.CarSummary;
     private static readonly Regex Month = new(@"^\d{4}-(0[1-9]|1[0-2])$", RegexOptions.Compiled);
 
     /// <summary>
-    /// 车辆汇总分析表（199901）：受控执行旧 SP RPT_CAR_SUMMARY（服务端常量白名单），
-    /// 参数化传入车牌范围与月份范围（yyyy-MM，与旧页面日历一致）；返回汇总行。
+    /// 车辆汇总分析表（199901）：受控执行 RPT_CAR_SUMMARY（服务端常量白名单），
+    /// 参数化传入车牌范围与月份范围（yyyy-MM，与日历一致）；返回汇总行。
     /// 权限门：模块 199901 可浏览。
     /// </summary>
     [HttpGet]

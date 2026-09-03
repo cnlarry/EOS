@@ -82,7 +82,7 @@ export interface MenuAdminModule {
   Icon: string | null
 }
 
-/** 菜单同级排序动作（对齐旧系统「排序号」SORT_IDX 字段的移动语义）。 */
+/** 菜单同级排序动作。 */
 type MenuSortAction = 'top' | 'up' | 'down' | 'bottom'
 
 /** 拖拽落点：before=目标同级之前、after=目标同级之后、into=成为目标子节点（追加末尾）。 */
@@ -289,7 +289,7 @@ export function MenuAdminPage() {
     if (!module) return false
     const parentKey = parentId ?? 0
     if (parentKeyOf(module) !== parentKey) return true
-    // beforeId 指向自身：同父下等价于原位（例如“插到上一行之后”恰等于当前位置），直接视为无操作
+    // beforeId 指向自身：同父下与原位一致（例如“插到上一行之后”恰等于当前位置），直接视为无操作
     if (beforeId === id) return false
     const list = [...(siblingsByParent.get(parentKey) ?? [])]
     const index = list.indexOf(id)

@@ -3,8 +3,8 @@ using System.Text.Json.Serialization;
 namespace EOS.API.Models;
 
 // ============================================================================
-// 格式包模型（ADR-009 §12）：format.json / layout.json / sample.json 的运行时契约。
-// layout.json 同时是存储格式、渲染契约与设计器文档模型（ADR-010 §1 三件套），
+// 格式包模型：format.json / layout.json / sample.json 的运行时契约。
+// layout.json 同时是存储格式、渲染契约与设计器文档模型，
 // 三个消费方共用同一份 schema（layout.schema.v1.json）与本节类型。
 // 坐标单位：mm（套打行业惯例）；QuestPDF 默认单位 point，解释层统一换算 mm→pt。
 // ============================================================================
@@ -71,7 +71,7 @@ public sealed record LayoutSections(LayoutSection Header, LayoutSection Content,
 public sealed record LayoutSection(double? Height, IReadOnlyList<LayoutElement> Elements);
 
 /// <summary>
-/// 元素最小集（ADR-010 §1.2）：text / field / image / line / rect / table。
+/// 元素最小集：text / field / image / line / rect / table。
 /// x/y 为相对所属 section 顶部的 mm 坐标（绝对定位，非流式）。
 /// </summary>
 public sealed record LayoutElement(

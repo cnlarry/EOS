@@ -792,7 +792,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         return columns;
     }
 
-    /// <summary>FIELDS.F_TYPE → 统一选择器 dataType（对齐 formatFieldValue 支持的类别）。</summary>
+    /// <summary>FIELDS.F_TYPE → 统一选择器 dataType。</summary>
     private static string MapChooserDataType(string fieldType)
     {
         var type = fieldType.Trim().ToLowerInvariant();

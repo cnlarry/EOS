@@ -7,7 +7,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 字段白名单校验器单测（ADR-010 §5 S1 退出条件「字段白名单校验单测绿」）：
+/// 字段白名单校验器单测：
 /// 24 个内置格式包必须全过；越权字段 / 非法坐标 / 未知类型 / 未知系统值必须被拦截。
 /// </summary>
 public class ReportFormatValidatorTests

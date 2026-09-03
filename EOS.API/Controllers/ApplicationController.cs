@@ -46,11 +46,11 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
     }
 
     /// <summary>
-    /// 递归构建完整菜单树（旧系统为「无限级」，实际数据三级：根 → 组 → 叶子）。
+    /// 递归构建完整菜单树。
     /// 叶子携带 moduleId / masterTable / groups，供分组（第 4 级）与搜索使用。
     /// 中间层不再被跳过（此前实现把二级压平成叶子，丢失层级）。
     /// </summary>
-    private static List<object> BuildChildren(int parentId, IReadOnlyList<LegacyNavigationModule> modules, string rootIcon)
+    private static List<object> BuildChildren(int parentId, IReadOnlyList<NavigationModule> modules, string rootIcon)
     {
         var result = new List<object>();
         var direct = modules.Where(module => module.ParentId == parentId && module.Id != parentId)
@@ -65,7 +65,7 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
         return result;
     }
 
-    private static object MenuLeaf(LegacyNavigationModule module, string rootIcon) => new
+    private static object MenuLeaf(NavigationModule module, string rootIcon) => new
     {
         id = $"module-{module.Id}",
         label = module.Label,
@@ -80,10 +80,9 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
             .ToList()
     };
 
-    // MODULES.M_URL 即模块页面链接（现代路由），代码只做安全校验不做翻译；
-    // 迁移见 docs/migrations/update.sql（M_URL 现代化小节）。
-    private static string RouteFor(LegacyNavigationModule module) =>
-        ModuleRouteValidator.Resolve(module.LegacyUrl, module.Id);
+    // MODULES.M_URL 即模块页面链接，代码只做安全校验不做翻译。
+    private static string RouteFor(NavigationModule module) =>
+        ModuleRouteValidator.Resolve(module.SourceUrl, module.Id);
 
     private static string IconFor(int rootId, string rootLabel, IReadOnlyDictionary<string, string?> iconOverrides)
         => MenuIconResolver.Resolve(rootId, rootLabel, iconOverrides);

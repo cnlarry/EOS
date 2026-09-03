@@ -11,7 +11,7 @@ namespace EOS.API.Data;
 /// 主表 + 明细 + 列定义（FIELDS 可见列，成本/保密/禁止过滤）+ 页头/页脚
 /// （REPORT_LAYOUT，按模块默认报表或 DEFAULT）。
 /// 全部标识符来自服务端 Definition 白名单，键值参数化；主表读取应用用户数据范围
-/// （DATA_FILTER + EXEC_TAG，ADR-005 §7）——范围外单据返回 null（404），不输出越权打印。
+/// （DATA_FILTER + EXEC_TAG）——范围外单据返回 null（404），不输出越权打印。
 /// </summary>
 public sealed class PrintService(
     DbConnectionFactory connections,
@@ -93,7 +93,7 @@ public sealed class PrintService(
     }
 
     /// <summary>
-    /// 往来单位资料 + 客户级页头默认（P6，ADR-009 §9.4.2）：按主表 CLIENT_ID/SUPPLIER_ID 从
+    /// 往来单位资料 + 客户级页头默认（P6）：按主表 CLIENT_ID/SUPPLIER_ID 从
     /// CLIENT/SUPPLIER 回查——HEADER_ID / FULL_NAME_CN|EN / DELI_ADDR_CN|EN /
     /// TEL / FAX / LINKMAN / PRINT_PRICE。返回 ClientPrintProfile 供正文往来单位行/单价显隐使用，
     /// HEADER_ID 供控制器解析客户级页头默认（页头公司名不得被客户全称覆盖）。
@@ -151,7 +151,7 @@ public sealed class PrintService(
     }
 
     /// <summary>
-    /// 页头/页脚占位符基础映射（旧 Crystal 参数字段约定）：
+    /// 页头/页脚占位符基础映射：
     /// {1} 制表人、{2} 最后更新、{5} 审核人、{7} 列印人（当前登录员工）。
     /// 其余 {n} 保留原文。
     /// </summary>

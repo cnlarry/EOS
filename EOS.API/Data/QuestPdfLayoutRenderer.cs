@@ -16,10 +16,10 @@ using ZXing.Rendering;
 namespace EOS.API.Data;
 
 /// <summary>
-/// layout.json 解释层（ADR-010 §3，S1 核心）：
+/// layout.json 解释层：
 /// 解析 schema v1 → 绝对定位逐元素绘制（mm→pt 换算）→ table 自动分页 + 表头重复 + 合计。
 /// fail-closed：未知字段引用渲染为空串、非法坐标/结构拒绝，不做猜测。
-/// 内置版式与客户定制统一走本渲染器（ADR-010 决策 6：layout.json 唯一真源）。
+/// 内置版式与客户定制统一走本渲染器。
 /// </summary>
 public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logger) : ILayoutRenderer
 {

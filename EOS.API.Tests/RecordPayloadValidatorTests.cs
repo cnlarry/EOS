@@ -181,7 +181,7 @@ public class RecordPayloadValidatorTests
         Assert.Equal(9, rows[0]["SERIAL_NO"]);
     }
 
-    // ===== ADR-006 决策 2.4：trim 契约与 precision/scale 超精度校验 =====
+    // ===== trim 契约与 precision/scale 超精度校验 =====
 
     [Fact]
     public void TextValue_IsTrimmedOnSave()
@@ -240,7 +240,7 @@ public class RecordPayloadValidatorTests
     [Fact]
     public void FloatAndMoney_NotSubjectToScaleCheck()
     {
-        // float 无精度语义、money 固定 scale=4：均不启用超精度校验（ADR-006 评审第二轮）
+        // float 无精度语义、money 固定 scale=4：均不启用超精度校验
         var fields = new[] { Field("F", dataType: "float"), Field("M", dataType: "money") };
         var result = RecordPayloadValidator.ValidateSubmitted(fields,
             new Dictionary<string, string?> { ["F"] = "1.123456789", ["M"] = "1.123456789" });

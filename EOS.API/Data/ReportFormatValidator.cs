@@ -4,7 +4,7 @@ using EOS.API.Models;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 版式保存校验器（ADR-010 决策 4「保存即校验」，S1 交付物）：
+/// 版式保存校验器：
 /// JSON Schema 级校验（格式合法、坐标在页内、元素数/文件大小上限）+
 /// 字段引用白名单校验（MASTER.* / DETAILS.* 必须 ∈ format.json dataContract，
 /// SYS.* 必须 ∈ 解释层系统值白名单）。渲染时由 QuestPdfLayoutRenderer 二次 fail-closed。

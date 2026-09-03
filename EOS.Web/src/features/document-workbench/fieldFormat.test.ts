@@ -31,7 +31,7 @@ describe('formatFieldValue', () => {
     expect(formatFieldValue(1234.5, 'float', null)).toBe('1234.5')
   })
 
-  it('复刻旧系统自定义数字格式（0.## 等库内实际格式）', () => {
+  it('系统自定义数字格式（0.## 等库内实际格式）', () => {
     expect(formatFieldValue(12, 'float', '0.##')).toBe('12')
     expect(formatFieldValue(12.5, 'float', '0.##')).toBe('12.5')
     expect(formatFieldValue(1234.5678, 'float', '0.##')).toBe('1234.57')

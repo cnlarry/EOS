@@ -7,8 +7,7 @@ using EOS.API.Models;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 通用工作流审批链（旧 P_WF_RUN / P_WF_APPROVE / P_WF_RUN_AUTO 的受控 C# 等价，第二期：
-/// 动态条件 / 会签 / 跳转 / 自动执行）。
+/// 通用工作流审批链。
 /// 复用旧 WF_* 表：WFFORM/WFFORM_FLOW（流程定义）、WF_MONITOR（运行实例）、
 /// WF_MYTASK（待办任务）、WF_MYTASK_LOG（审批日志）、WF_APPROVE（单据批核历史）。
 /// 无流程模块保持"直接批核"（DocumentWorkbenchRepository.WorkflowAsync）不变。
@@ -82,7 +81,7 @@ public sealed class WorkflowEngine(
     /// 动态条件（EXEC_CONDITION/PERSON_CONDITION/AUTO_EXEC_CONDITION）经 DataFilterParser
     /// 受控评估：步骤执行条件为真的步骤才生成任务，审批人条件为真的人员才入任务；
     /// 权限串（PERSON_APP_POWER/PERSON_FORWARD_POWER）按人解析，空串=全部有权限；
-    /// 首个具备审批权的步骤置为当前；自动执行步骤由 SYSTEM 自动同意（P_WF_RUN_AUTO 等价）。
+    /// 首个具备审批权的步骤置为当前；自动执行步骤由 SYSTEM 自动同意。
     /// submitMessage（可选）：送审说明，写入提交送审日志（APPROVE_STATE='A'）并记入审计。
     /// </summary>
     public async Task<RecordSaveResult> StartFlowAsync(
@@ -295,7 +294,7 @@ public sealed class WorkflowEngine(
         await transaction.CommitAsync(token);
         logger.LogInformation("流程启动 module={ModuleId} key={Key} steps={Steps} firstApprove={First}",
             definition.ModuleId, string.Join(',', keyValues), steps.Count, firstApproveStep);
-        // 自动执行：P_WF_RUN_AUTO 等价——当前自动执行任务由 SYSTEM 自动同意（可连跳）
+        // 自动执行：自动执行——当前自动执行任务由 SYSTEM 自动同意（可连跳）
         if (steps.Any(step => step.IsAutoExec))
             await RunAutoExecLoopAsync(wfId, token);
         return RecordSaveResult.SuccessFlowStarted(keyValues);
@@ -304,7 +303,7 @@ public sealed class WorkflowEngine(
     /// <summary>
     /// 任务审批（approveState='Y'/'N'，可选 jumpNo）。
     /// 同意：顺序步整步通过；会签步（IS_SIGN=1）按 PASS_PERCENT 计数阈值 + MUST_SIGNER 推进；
-    ///   非空 jumpNo 且具备 FORWARD_POWER 时向前跳（'0'=直接结束，中间未批任务标记跳过）；
+    /// 非空 jumpNo 且具备 FORWARD_POWER 时向前跳（'0'=直接结束，中间未批任务标记跳过）；
     /// 驳回：解批前置校验（NOT_BACK_FIELDS）后重置 [jumpNo, 当前] 区间任务并退回目标步（空=第一步）；
     /// 末步/跳转结束：落主表 CONFIRM_TAG + WorkflowSproc 副作用 + WF_APPROVE 历史。
     /// </summary>
@@ -329,7 +328,7 @@ public sealed class WorkflowEngine(
         string subflowDesc;
         string? currentState;
         int passPercent;
-        // 阶段 A：任务审批（更新任务 + 日志 + 推进下一步），先提交释放锁
+        // 第一步：任务审批（更新任务 + 日志 + 推进下一步），先提交释放锁
         await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token))
         {
             string approver;
@@ -463,7 +462,7 @@ public sealed class WorkflowEngine(
                 if (string.CompareOrdinal(target, subflowNo) > 0)
                     return (false, "INVALID_JUMP_TARGET", "驳回退回目标步骤必须不晚于当前步骤。", false, null);
 
-                // 解批前置校验（旧 P_WF_GET_NOBACK_STATE 的受控等价）
+                // 解批前置校验
                 var noBack = await CheckNotBackFieldsAsync(connection, transaction, wfId, token);
                 if (noBack is not null)
                     return (false, noBack.Value.ErrorCode, noBack.Value.ErrorMessage, false, null);
@@ -605,7 +604,7 @@ public sealed class WorkflowEngine(
         return columns;
     }
 
-    /// <summary>按人权限判定：空权限串=全部有权限（旧语义，兼容存量无 POWER 配置的流程）。</summary>
+    /// <summary>按人权限判定：空权限串=全部有权限。</summary>
     private static bool HasPower(string user, IReadOnlyList<string> powerList)
         => powerList.Count == 0 || powerList.Contains(user, StringComparer.OrdinalIgnoreCase);
 
@@ -822,7 +821,7 @@ public sealed class WorkflowEngine(
     }
 
     /// <summary>
-    /// 驳回前置校验（旧 P_WF_GET_NOBACK_STATE 的受控等价）：
+    /// 驳回前置校验：
     /// MODULES.NOT_BACK_FIELDS(_M) 配置字段存在"已发生业务"值（CAST(字段 AS varchar(100))>'0'）时禁止驳回退回。
     /// </summary>
     private async Task<(string ErrorCode, string ErrorMessage)?> CheckNotBackFieldsAsync(
@@ -923,7 +922,7 @@ public sealed class WorkflowEngine(
     }
 
     /// <summary>
-    /// P_WF_RUN_AUTO 等价：当前自动执行任务由 SYSTEM 自动同意，循环直至无自动任务（可连跳多步）。
+    /// 自动执行：当前自动执行任务由 SYSTEM 自动同意，循环直至无自动任务（可连跳多步）。
     /// </summary>
     private async Task RunAutoExecLoopAsync(long wfId, CancellationToken token)
     {

@@ -11,7 +11,7 @@ namespace EOS.API.Controllers;
 [Route("api/v1/search-center")]
 public sealed class SearchCenterController(
     SearchCenterRepository repository,
-    LegacyRightsRepository rightsRepository) : ControllerBase
+    ModuleRightsRepository rightsRepository) : ControllerBase
 {
     [HttpGet("modules")]
     public async Task<IActionResult> Modules(CancellationToken token)
@@ -39,7 +39,7 @@ public sealed class SearchCenterController(
         return Ok(await repository.QueryAsync(definition,request,page,pageSize,token));
     }
 
-    private async Task<LegacyModuleRights?> AuthorizedRights(int moduleId,CancellationToken token)
+    private async Task<ModuleRights?> AuthorizedRights(int moduleId,CancellationToken token)
     {
         var userId=User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         return userId is null?null:await rightsRepository.GetAsync(userId,moduleId,token);

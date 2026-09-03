@@ -6,9 +6,9 @@ import { isParseableDateText } from './dateTimeValue'
 export type FieldErrors = Record<string, string>
 
 /**
- * 字段校验判定码（ADR-006 决策 2.4 校验单一来源）：
+ * 字段校验判定码：
  * 与服务端 RecordPayloadValidator 的结论一一对应，两端由同一份
- * `EOS.API.Tests/form-validation-parity.json` 对拍锁定——任一端修改规则必须先改 fixture。
+ * `EOS.API.Tests/form-validation-parity.json` 一致性比对锁定——任一端修改规则必须先改 fixture。
  */
 export type FieldVerdictCode =
   | 'ok'

@@ -125,7 +125,7 @@ export function UnmanagedFieldsModal({ open, tableId, tableDescription, onClose,
       </>}
     >
       <div className="alert alert-info">
-              下列物理列尚未在 FIELDS 中登记元数据。勾选后按旧系统「未受管理字段」规则生成：
+              下列物理列尚未在 FIELDS 中登记元数据。勾选后按「未受管理字段」规则生成：
               默认显示/默认列/可查询/可复制，描述取列说明（MS_Description，无则用列名）。
             </div>
             {result && (

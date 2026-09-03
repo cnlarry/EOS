@@ -7,7 +7,7 @@ using EOS.API.Models;
 namespace EOS.API.Data;
 
 /// <summary>
-/// Workbench 共享 SQL 原语（ADR-005 阶段 3 技术债落地，2026-08-23）：
+/// Workbench 共享 SQL 原语：
 /// 查询/命令/审批组件与仓储共用的底层数据访问工具，从 DocumentWorkbenchRepository 迁出，
 /// 避免仓储继续充当工具箱。只包含确定性原语（标识符白名单、元数据读取、行读写、范围判定），
 /// 不含业务逻辑；动态标识符全部来自服务端白名单，值参数化。
@@ -100,6 +100,38 @@ internal static class WorkbenchSql
         }
         var count = Convert.ToInt32(await command.ExecuteScalarAsync(token));
         return count == columns.Count;
+    }
+
+    /// <summary>
+    /// 选择器回填映射来源列存在性：物理列 或 来源表内受控虚拟列
+    /// （FIELDS.IS_VIRTUAL=1 且 VIRTUAL_EXP 非空，运行时由 VirtualColumnResolver 经受控 JOIN 解析）。
+    /// 来源列取自「来源查询结果集列」（物理 + VIRTUAL_EXP 派生），虚拟来源列合法。
+    /// </summary>
+    internal static async Task<bool> ReturnColumnsExistAsync(SqlConnection connection, string table, IReadOnlyList<string> columns, CancellationToken token)
+    {
+        if (columns.Count == 0) return true;
+        var values = string.Join(",", columns.Select((_, i) => $"(CAST(@C{i} AS nvarchar(128)))"));
+        var sql = """
+            SELECT COUNT(*) FROM (VALUES {values}) AS v(col)
+            WHERE NOT (
+              EXISTS (SELECT 1 FROM sys.columns c
+                      JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                      JOIN sys.schemas s ON o.schema_id=s.schema_id
+                      WHERE s.name=N'dbo' AND o.name=@Table AND c.name=v.col)
+              OR EXISTS (SELECT 1 FROM dbo.FIELDS f WITH (NOLOCK)
+                         WHERE f.T_ID=@Table AND LTRIM(RTRIM(f.F_ID))=v.col
+                           AND COALESCE(f.IS_VIRTUAL,0)=1
+                           AND LTRIM(RTRIM(ISNULL(f.VIRTUAL_EXP,'')))<>'')
+            );
+            """.Replace("{values}", values);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Table", SqlDbType.NVarChar, 128).Value = table;
+        for (var i = 0; i < columns.Count; i++)
+        {
+            command.Parameters.Add($"@C{i}", SqlDbType.NVarChar, 128).Value = columns[i];
+        }
+        var missing = Convert.ToInt32(await command.ExecuteScalarAsync(token));
+        return missing == 0;
     }
 
     internal static async Task<Dictionary<string, object?>?> ReadRowAsync(

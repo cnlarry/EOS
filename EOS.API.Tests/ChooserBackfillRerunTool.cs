@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using EOS.API.Data;
+using EOS.API.Tests.Tools;
 using Microsoft.Data.SqlClient;
 using Xunit;
 
@@ -16,7 +17,7 @@ namespace EOS.API.Tests;
 /// so some MANUAL rows are actually self-references with an explicit source-table prefix
 /// (e.g. OWNER on SYSDL with condition ISNULL(SYSDL.ACTIVE_TAG,0)=1) and were misjudged as
 /// cross-table dead configs, leaving FILTER_STRUCT=NULL (fail-closed empty at runtime).
-/// The committed LegacyChooserFilterConverter / ChooserFilterCompiler handle self-table
+/// The committed ChooserFilterDslConverter / ChooserFilterCompiler handle self-table
 /// references correctly (ResolveColumn has an "explicit table == source table" branch);
 /// this tool re-runs with FIELD_DATASOURCE.SOURCE_T_ID as the authoritative source table:
 ///   - rerun mode: writes EOS.API/Data/Migrations/021_fields_chooser_rerun.sql
@@ -33,8 +34,8 @@ public sealed class ChooserBackfillRerunTool
 {
     private static readonly Lazy<string?> ConnectionString = new(ResolveConnectionString);
 
-    /// <summary>旧系统 CHOOSE 跨表白名单（存量 5 表，ADR-008 P1 登记）：旧运行期仅这些表可绑定。</summary>
-    private static readonly IReadOnlySet<string> LegacyJoinWhitelist = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    /// <summary>CHOOSE 跨表 JOIN 白名单（存量 5 表）：运行期仅这些表可绑定。</summary>
+    private static readonly IReadOnlySet<string> DslJoinWhitelist = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "PRODUCT", "CLIENT_PRICE_M", "CLIENT", "SUPPLIER", "COP_SEND_M",
     };
@@ -71,7 +72,7 @@ public sealed class ChooserBackfillRerunTool
     }
 
     [Fact]
-    public async Task Parity_OldLegacyText_Vs_NewCompiledPredicate()
+    public async Task Parity_DslText_Vs_CompiledPredicate()
     {
         if (Environment.GetEnvironmentVariable("EOS_TOOL_CHOOSER_PARITY") != "1")
         {
@@ -137,7 +138,7 @@ public sealed class ChooserBackfillRerunTool
         await connection.OpenAsync();
 
         var groups = stillManual
-            .GroupBy(row => (Text: Normalize(row.Row.LegacyFilter), row.Row.SourceTable))
+            .GroupBy(row => (Text: Normalize(row.Row.SourceDsl), row.Row.SourceTable))
             .OrderBy(group => group.Key.SourceTable, StringComparer.OrdinalIgnoreCase)
             .ThenByDescending(group => group.Count())
             .ToList();
@@ -161,22 +162,22 @@ public sealed class ChooserBackfillRerunTool
             var oldBehavior = refs.Count == 0
                 ? "无外部表引用（转换/物理校验失败，见 rerun-report）"
                 : unreachable.Count == 0
-                    ? "引用表均可达（旧系统可运行）"
-                    : refs.Any(table => LegacyJoinWhitelist.Contains(table))
-                        ? "部分引用表在旧白名单但 QUERY_RELATION 未覆盖（旧系统部分可运行）"
-                        : "引用表不可达（旧系统运行期同样绑定失败）";
+                    ? "引用表均可达"
+                    : refs.Any(table => DslJoinWhitelist.Contains(table))
+                        ? "部分引用表在白名单但 QUERY_RELATION 未覆盖"
+                        : "引用表不可达（运行期绑定失败）";
             var action = refs.Count == 0
                 ? "REVIEW：查 rerun-report.csv 的失败原因"
                 : unreachable.Count == 0
                     ? "REVIEW：转换失败原因（可能为物理列缺失/超复杂）"
-                    : refs.Any(table => LegacyJoinWhitelist.Contains(table)) || unreachable.Count < refs.Count
+                    : refs.Any(table => DslJoinWhitelist.Contains(table)) || unreachable.Count < refs.Count
                         ? "EXTEND_QUERY_RELATION：为源表补标准关联后重转，否则保持 NULL"
-                        : "KEEP_NULL（默认，与旧系统同败）；确需此过滤则补 QUERY_RELATION 并重转";
+                        : "KEEP_NULL（默认）；确需此过滤则补 QUERY_RELATION 并重转";
             lines.Add(ToCsvLine(group.Key.SourceTable ?? "", group.Count().ToString(),
                 string.Join(";", refs), string.Join(";", unreachable), oldBehavior, action, text));
             markdown.AppendLine($"- **{group.Key.SourceTable ?? "(无源表)"}** ×{group.Count()}：`{text}`");
             markdown.AppendLine($"  引用={string.Join(",", refs.Count > 0 ? refs : new[] { "（无）" })}；不可达={string.Join(",", unreachable.Count > 0 ? unreachable : new[] { "（无）" })}");
-            markdown.AppendLine($"  旧系统：{oldBehavior}；建议：{action}");
+            markdown.AppendLine($"  现状：{oldBehavior}；建议：{action}");
         }
 
         await File.WriteAllLinesAsync(Path.Combine(reportDir, "triage.csv"), lines, new UTF8Encoding(false));
@@ -187,7 +188,7 @@ public sealed class ChooserBackfillRerunTool
     // ==================== 重转核心 ====================
 
     private sealed record ManualRow(
-        int LogId, string TableId, string FieldId, int SerialNo, string LegacyFilter, string Tier,
+        int LogId, string TableId, string FieldId, int SerialNo, string SourceDsl, string Tier,
         string? SourceTable, int? SourceModuleId, bool Active, string? CurrentStruct);
 
     private sealed record ConvertedRow(
@@ -195,7 +196,7 @@ public sealed class ChooserBackfillRerunTool
         IReadOnlyList<ChooserFilterParameter> Parameters, IReadOnlyList<string> Joins,
         IReadOnlyList<(string Table, string Column)> ForeignColumns);
 
-    /// <summary>017/018 已落结构但日志状态仍为 MANUAL 的行：按既有结构参与对拍；FreshCompare=SAME 时日志可直接收敛。</summary>
+    /// <summary>017/018 已落结构但日志状态仍为 MANUAL 的行：按既有结构比对；FreshCompare=SAME 时日志可直接收敛。</summary>
     private sealed record KeepExistingRow(
         ManualRow Row, ChooserFilterStruct Struct, string StructJson, string Predicate,
         IReadOnlyList<ChooserFilterParameter> Parameters, IReadOnlyList<string> Joins,
@@ -252,13 +253,13 @@ public sealed class ChooserBackfillRerunTool
                 catalogs[row.SourceTable] = catalog;
             }
 
-            var result = LegacyChooserFilterConverter.Convert(
-                row.LegacyFilter, row.SourceTable,
-                new LegacyChooserFilterConverter.ConvertOptions(JoinAliases: catalog.Aliases));
+            var result = ChooserFilterDslConverter.Convert(
+                row.SourceDsl, row.SourceTable,
+                new ChooserFilterDslConverter.ConvertOptions(JoinAliases: catalog.Aliases));
 
             if (row.CurrentStruct is not null)
             {
-                // 017/018 已落结构、日志状态未收敛：以既有结构为准参与对拍；与重转结果一致时日志可安全收敛
+                // 017/018 已落结构、日志状态未收敛：以既有结构为准比对；与重转结果一致时日志可安全收敛
                 if (!ChooserFilterStruct.TryParse(row.CurrentStruct, out var existing) || existing is null)
                 {
                     stillManual.Add(new StillManualRow(row, "EXISTING_STRUCT_INVALID：既有 FILTER_STRUCT 无法解析"));
@@ -414,7 +415,7 @@ public sealed class ChooserBackfillRerunTool
         }
     }
 
-    // ==================== 对拍 ====================
+    // ==================== 比对 ====================
 
     private sealed record ParityVerdict(string Verdict, int OldCount, int NewCount, string Mode, string Binding, string OldOnlySample, string NewOnlySample, string Note);
 
@@ -423,7 +424,7 @@ public sealed class ChooserBackfillRerunTool
         IReadOnlyList<ChooserFilterParameter> parameters, IReadOnlyList<string> joins)
     {
         var source = row.SourceTable!;
-        var legacy = Normalize(row.LegacyFilter);
+        var legacy = Normalize(row.SourceDsl);
 
         if (legacy.Contains(';') || legacy.Contains("--") || legacy.Contains("/*"))
         {
@@ -450,7 +451,7 @@ public sealed class ChooserBackfillRerunTool
         }
         var bindingText = string.Join(";", samples.Select(pair => $"{pair.Key}={pair.Value}"));
 
-        var boundLegacy = BindLegacyText(legacy, samples, moduleId);
+        var boundDsl = BindDslText(legacy, samples, moduleId);
 
         var catalog = await ChooserJoinCatalog.GetAsync(connection, source, CancellationToken.None);
         var joinClause = joins.Count == 0 ? string.Empty : ChooserJoinCatalog.BuildJoinClause(catalog, joins)
@@ -461,7 +462,7 @@ public sealed class ChooserBackfillRerunTool
         var groupSuffix = keyColumns.Count > 0 ? $" GROUP BY {string.Join(", ", keyColumns.Select(column => $"[{source}].[{column}]"))}" : "";
         var topPrefix = keyColumns.Count > 0 ? "TOP 600 " : "";
 
-        var oldSql = $"SELECT {topPrefix}{selectList} FROM [{source}] WITH (NOLOCK) {joinClause} WHERE {boundLegacy}{groupSuffix}";
+        var oldSql = $"SELECT {topPrefix}{selectList} FROM [{source}] WITH (NOLOCK) {joinClause} WHERE {boundDsl}{groupSuffix}";
         var newSql = $"SELECT {topPrefix}{selectList} FROM [{source}] WITH (NOLOCK) {joinClause} WHERE {predicate}{groupSuffix}";
 
         var sqlParameters = parameters.Select(parameter => (parameter.Name,
@@ -499,7 +500,7 @@ public sealed class ChooserBackfillRerunTool
     }
 
     /// <summary>旧原文模板绑定：引号内注入原始值，引号外注入 SQL 字面量（数字裸写 / 字符串 N'…'）。</summary>
-    private static string BindLegacyText(string legacy, Dictionary<string, string> samples, int moduleId)
+    private static string BindDslText(string legacy, Dictionary<string, string> samples, int moduleId)
     {
         var builder = new StringBuilder(legacy.Length + 64);
         var inQuote = false;
@@ -591,10 +592,10 @@ public sealed class ChooserBackfillRerunTool
     {
         var convergeSame = keepExisting.Where(row => row.FreshCompare == "SAME").ToList();
         var builder = new StringBuilder();
-        builder.AppendLine("-- ADR-008 收尾：MANUAL 存量确定性重转（2026-08-29）");
+        builder.AppendLine("-- MANUAL 存量确定性重转");
         builder.AppendLine("-- 背景：018 离线管线按行非确定性传错源表（同一（原文, 源表）组合成功/失败并存），");
         builder.AppendLine($"--       本迁移将 {converted.Count} 行 MANUAL 以 FIELD_DATASOURCE.SOURCE_T_ID 为权威源表，经库内提交的");
-        builder.AppendLine("--       LegacyChooserFilterConverter + ChooserFilterCompiler 重转通过（含物理表/列存在校验）。");
+        builder.AppendLine("--       ChooserFilterDslConverter + ChooserFilterCompiler 重转通过（含物理表/列存在校验）。");
         builder.AppendLine("-- 漂移守卫：原文一致且 FILTER_STRUCT 仍为 NULL 才落；状态收敛与标脏同事务。");
         builder.AppendLine("-- 生成工具：EOS.API.Tests/ChooserBackfillRerunTool.cs（rerun 模式，提交入库可复现）。");
         builder.AppendLine();
@@ -617,7 +618,7 @@ public sealed class ChooserBackfillRerunTool
             {
                 var item = chunk[i];
                 builder.AppendLine();
-                builder.Append($"  ({Sql(item.Row.TableId)}, {Sql(item.Row.FieldId)}, {item.Row.SerialNo}, {Sql(Normalize(item.Row.LegacyFilter))}, {Sql(item.Row.SourceTable!)}, {Sql(item.StructJson)}){(i < chunk.Count - 1 ? "," : ";")}");
+                builder.Append($"  ({Sql(item.Row.TableId)}, {Sql(item.Row.FieldId)}, {item.Row.SerialNo}, {Sql(Normalize(item.Row.SourceDsl))}, {Sql(item.Row.SourceTable!)}, {Sql(item.StructJson)}){(i < chunk.Count - 1 ? "," : ";")}");
             }
             builder.AppendLine();
             builder.AppendLine();
@@ -665,7 +666,7 @@ public sealed class ChooserBackfillRerunTool
                 {
                     var item = chunk[i];
                     builder.AppendLine();
-                    builder.Append($"  ({Sql(item.Row.TableId)}, {Sql(item.Row.FieldId)}, {item.Row.SerialNo}, {Sql(Normalize(item.Row.LegacyFilter))}, {Sql(item.Row.SourceTable!)}){(i < chunk.Count - 1 ? "," : ";")}");
+                    builder.Append($"  ({Sql(item.Row.TableId)}, {Sql(item.Row.FieldId)}, {item.Row.SerialNo}, {Sql(Normalize(item.Row.SourceDsl))}, {Sql(item.Row.SourceTable!)}){(i < chunk.Count - 1 ? "," : ";")}");
                 }
                 builder.AppendLine();
                 builder.AppendLine();
@@ -707,15 +708,15 @@ public sealed class ChooserBackfillRerunTool
         var lines = new List<string> { "T_ID,F_ID,SERIAL_NO,SOURCE_T_ID,VERDICT,REASON,TIER,LEGACY_FILTER,STRUCT_JSON" };
         foreach (var row in converted)
         {
-            lines.Add(ToCsvLine(row.Row.TableId, row.Row.FieldId, row.Row.SerialNo.ToString(), row.Row.SourceTable ?? "", "CONVERTED", "", row.Row.Tier, row.Row.LegacyFilter, row.StructJson));
+            lines.Add(ToCsvLine(row.Row.TableId, row.Row.FieldId, row.Row.SerialNo.ToString(), row.Row.SourceTable ?? "", "CONVERTED", "", row.Row.Tier, row.Row.SourceDsl, row.StructJson));
         }
         foreach (var row in keepExisting)
         {
-            lines.Add(ToCsvLine(row.Row.TableId, row.Row.FieldId, row.Row.SerialNo.ToString(), row.Row.SourceTable ?? "", $"KEEP_EXISTING_{row.FreshCompare}", "日志状态未收敛（结构已落，随 021 收敛）", row.Row.Tier, row.Row.LegacyFilter, row.StructJson));
+            lines.Add(ToCsvLine(row.Row.TableId, row.Row.FieldId, row.Row.SerialNo.ToString(), row.Row.SourceTable ?? "", $"KEEP_EXISTING_{row.FreshCompare}", "日志状态未收敛（结构已落，随 021 收敛）", row.Row.Tier, row.Row.SourceDsl, row.StructJson));
         }
         foreach (var row in stillManual)
         {
-            lines.Add(ToCsvLine(row.Row.TableId, row.Row.FieldId, row.Row.SerialNo.ToString(), row.Row.SourceTable ?? "", "STILL_MANUAL", row.Reason, row.Row.Tier, row.Row.LegacyFilter, ""));
+            lines.Add(ToCsvLine(row.Row.TableId, row.Row.FieldId, row.Row.SerialNo.ToString(), row.Row.SourceTable ?? "", "STILL_MANUAL", row.Reason, row.Row.Tier, row.Row.SourceDsl, ""));
         }
         await File.WriteAllLinesAsync(path, lines, new UTF8Encoding(false));
     }
@@ -725,7 +726,7 @@ public sealed class ChooserBackfillRerunTool
         var lines = new List<string> { "T_ID,F_ID,SERIAL_NO,SOURCE_T_ID,REASON,LEGACY_FILTER" };
         foreach (var row in stillManual)
         {
-            lines.Add(ToCsvLine(row.Row.TableId, row.Row.FieldId, row.Row.SerialNo.ToString(), row.Row.SourceTable ?? "", row.Reason, row.Row.LegacyFilter));
+            lines.Add(ToCsvLine(row.Row.TableId, row.Row.FieldId, row.Row.SerialNo.ToString(), row.Row.SourceTable ?? "", row.Reason, row.Row.SourceDsl));
         }
         return File.WriteAllLinesAsync(path, lines, new UTF8Encoding(false));
     }

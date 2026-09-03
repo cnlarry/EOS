@@ -24,9 +24,9 @@ internal static class QuestPdfTestBootstrap
 }
 
 /// <summary>
-/// QuestPdfLayoutRenderer 解释层冒烟测试（ADR-010 §3 / §5 S1）：
+/// QuestPdfLayoutRenderer 解释层冒烟测试：
 /// 绝对定位（Layers + Offset）、table 流动渲染、字段取值、fail-closed。
-/// 渲染产物落盘 logs/layout-smoke/ 供 pdfplumber 对拍脚本复核坐标。
+/// 渲染产物落盘 logs/layout-smoke/ 供 pdfplumber 一致性比对脚本复核坐标。
 /// </summary>
 public class LayoutRendererSmokeTests
 {

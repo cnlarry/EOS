@@ -76,7 +76,7 @@ export function PrintViewPage() {
   useEffect(() => { void loadPdf() }, [loadPdf])
 
   const handlePrint = async () => {
-    // 保存最近一次打印设置（SYSQR IS_LAST=1，对齐旧 RptParent），保存失败不阻断打印
+    // 保存最近一次打印设置（SYSQR IS_LAST=1，
     try {
       await apiClient.post<void>(`/reports/${moduleId}/print-settings`, {
         reportId: reportId || null,

@@ -71,14 +71,14 @@ internal static class RightsAdminLogic
 
     /// <summary>
     /// 字段拒绝串规范化：兼容逗号/分号分隔，去空、去重（忽略大小写），
-    /// 以分号存储（对齐引擎 RightsAggregator 的 ';' 解析）。
+    /// 以分号存储。
     /// </summary>
     public static string NormalizeDenyList(string? value) =>
         string.Join(";", ParseDenyList(value));
 
 /// <summary>
-    /// Parses a deny-list string (semicolon/comma separated). Skips the legacy sentinel '0':
-    /// legacy imported rows stored '0' as "no denied fields" (the old grid split by ';'
+    /// Parses a deny-list string (semicolon/comma separated). Skips the sentinel '0':
+    /// imported rows historically stored '0' as "no denied fields" (the grid split by ';'
     /// and hid columns by name — '0' was never a column name, so it had no effect);
     /// the new system treats it as empty and normalizes it on both read and write.
     /// </summary>
@@ -125,7 +125,7 @@ internal static class RightsAdminLogic
     }
 
     /// <summary>
-    /// 用户/组报表权限生效值（ADR-009 §2 语义）：个人 override 行存在 → 完全采用；
+    /// 用户/组报表权限生效值：个人 override 行存在 → 完全采用；
     /// 否则组 override OR（DATA_FILTER 按 OR 拼接）；无任何 override 行 → 默认开放
     /// （跟随模块 REPORT_TAG 全开，source="default_open"）。
     /// </summary>
@@ -669,7 +669,7 @@ public sealed class RightsAdminRepository(
     }
 
 /// <summary>
-    /// Deletes a user group. Unlike the legacy toolbar (which deleted SYSDG + SYSDH + SYSDH_REPORT
+    /// Deletes a user group. Unlike the original toolbar (which deleted SYSDG + SYSDH + SYSDH_REPORT
     /// but left SYSDG_USER orphan rows intact), the new system refuses deletion if the group still
     /// has members. Permissions and report permissions cascade on delete (same transaction).
     /// </summary>
@@ -838,8 +838,8 @@ public sealed class RightsAdminRepository(
     }
 
     private static ModuleRightsRow BuildModuleRow(
-        LegacyNavigationModule module,
-        IReadOnlyDictionary<int, LegacyNavigationModule> modulesById,
+        NavigationModule module,
+        IReadOnlyDictionary<int, NavigationModule> modulesById,
         ModuleRightsInput? editable,
         IReadOnlyList<ModuleRightsInput> groups,
         EffectiveModuleRights? effectiveOverride = null)
@@ -876,7 +876,7 @@ public sealed class RightsAdminRepository(
     }
 
     private static string BuildGroupPath(
-        IReadOnlyDictionary<int, LegacyNavigationModule> modulesById, int moduleId)
+        IReadOnlyDictionary<int, NavigationModule> modulesById, int moduleId)
     {
         var parts = new List<string>();
         var seen = new HashSet<int>();

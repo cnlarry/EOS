@@ -77,7 +77,7 @@ describe('FormFieldRenderer', () => {
     expect(container.querySelector('textarea')).toHaveValue('说明')
   })
 
-  it('按变体渲染控件类型（ADR-006 决策 1 变体注册表）', () => {
+  it('按变体渲染控件类型', () => {
     const { rerender, container } = render(<FormFieldRenderer field={field({})} value="" onChange={() => undefined} />)
     expect(container.querySelector('input')).toHaveAttribute('type', 'text')
     rerender(<FormFieldRenderer field={field({ dataType: 'money' })} value="" onChange={() => undefined} />)
@@ -138,7 +138,7 @@ describe('FormFieldRenderer', () => {
         onChoose={onChoose}
       />,
     )
-    // 只读联动字段（如 CURR_ID）：输入框禁用但选择按钮仍可用（对齐旧系统）
+    // 只读联动字段（如 CURR_ID）：输入框禁用但选择按钮仍可用（对齐既有交互）
     expect(container.querySelector('input.form-control')).toBeDisabled()
     const button = screen.getByRole('button', { name: '选择' })
     expect(button).not.toBeDisabled()

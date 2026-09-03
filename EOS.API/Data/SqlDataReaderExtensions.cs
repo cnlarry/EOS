@@ -4,7 +4,7 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data;
 
 /// <summary>
-/// SqlDataReader 按列名读取扩展（F1 BOM 四链下线时从 FieldConfigurationRepository 迁出收编）：
+/// SqlDataReader 按列名读取扩展：
 /// 原实现散落在多个仓储文件内嵌的扩展类中，统一到本共享类，避免删除仓储时误删被广泛引用的读取原语。
 /// </summary>
 internal static class SqlDataReaderExtensions

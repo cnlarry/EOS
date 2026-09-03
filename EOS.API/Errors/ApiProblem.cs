@@ -42,8 +42,7 @@ public static class ApiProblem
         Create(StatusCodes.Status403Forbidden, code, message);
 
     /// <summary>
-    /// 附加表单字段级错误（ADR-006 FieldError 数组形状，与模型校验的字段→列表 dict 不同：
-    /// 前端按数组逐项消费 field/message/code/rowIndex）。
+    /// 附加表单字段级错误。
     /// </summary>
     public static ProblemDetails WithFieldErrors(this ProblemDetails problem, IReadOnlyList<FieldError>? fieldErrors)
     {
@@ -60,7 +59,7 @@ public static class ApiProblem
     }
 
     /// <summary>
-    /// 统一请求上下文扩展（ADR-005 §1/§5.1）：traceId / correlationId / clientId /
+    /// 统一请求上下文扩展：traceId / correlationId / clientId /
     /// moduleId（路由携带时）。作为排障关联键随错误响应返回给调用方。
     /// </summary>
     public static void AttachRequestContext(ProblemDetails problem, HttpContext context)

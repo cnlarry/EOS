@@ -6,7 +6,7 @@ namespace EOS.API.Tests;
 public class DocumentLayoutProfileTests
 {
     [Fact]
-    public void AllLegacyLayoutProfiles_AreRegistered()
+    public void AllBuiltinLayoutProfiles_AreRegistered()
     {
         Assert.Equal(24, DocumentLayoutProfiles.All.Count);
         Assert.Contains(1406, DocumentLayoutProfiles.All.Keys); // 送货单

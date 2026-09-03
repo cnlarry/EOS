@@ -4,15 +4,18 @@ using System.Text.Json.Serialization;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 字段选择器结构化过滤条件条目（ADR-008 §3）。
+/// 字段选择器结构化过滤条件条目。
+/// 书写契约：扁平行（field/operator/value/nullSafe）是构建器支持、推荐使用的形式；
+/// 表达式（left/right）、嵌套 group、子查询为存量兼容的高级 JSON 语法（构建器不可视化，
+/// 仅文本 JSON 维护，编译校验失败即拒绝保存）；新增语法需评审，不默认扩展。
 /// 第一版（P1）扁平格式继续有效：field/operator/value/nullSafe；
 /// P3 扩展：left/right 表达式、group 嵌套、negate、subquery（IN/NOT_IN/EXISTS/函数）。
 /// - field：源表物理列（裸列名）或「表.列」跨表引用（须在源表 QUERY_RELATION JOIN 白名单内）；
 /// - operator：EQ/NE/GT/GE/LT/LE/LIKE/NOT_LIKE/IS_NULL/IS_NOT_NULL，宏 ISNULL_ZERO / DAYS_FROM_TODAY，
-///   子查询算子 IN/NOT_IN/EXISTS/NOT_EXISTS/IN_FUNCTION；
+/// 子查询算子 IN/NOT_IN/EXISTS/NOT_EXISTS/IN_FUNCTION；
 /// - value：字面量或运行时模板（{m.X}/{d.X}/{X}/{module}），编译期一律参数化绑定；
 /// - nullSafe：可选扩展（ZERO/EMPTY），把列包成 ISNULL(列,0)/ISNULL(列,'') 再比较，
-///   用于覆盖旧系统高频写法 ISNULL(列,0) op 值（如 ISNULL(HR_EMPLOYEE.STATE,0)&lt;4）。
+/// 用于覆盖高频写法 ISNULL(列,0) op 值（如 ISNULL(HR_EMPLOYEE.STATE,0)&lt;4）。
 /// </summary>
 public sealed record ChooserFilterItem(
     string? Field = null,
@@ -54,13 +57,16 @@ public sealed record ChooserFilterSubquery(
     [property: JsonPropertyName("args")] IReadOnlyList<string>? Args = null,
     [property: JsonPropertyName("filter")] IReadOnlyList<ChooserFilterItem>? Filter = null);
 
-/// <summary>字段选择器结构化过滤条件集（ADR-008 §3）：第一版平铺 + 顶层 logic（AND/OR）。</summary>
+/// <summary>字段选择器结构化过滤条件集：第一版平铺 + 顶层 logic（AND/OR）。</summary>
 public sealed record ChooserFilterStruct(string Logic, IReadOnlyList<ChooserFilterItem> Items)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
+        // 序列化省略 null 键：存量 JSON 曾把 item 全字段（left/right/nullSafe/...）都写成 :null，
+        // 既膨胀体积又干扰结构识别；新写入保持紧凑（解析对 null 键本就兼容）
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
     /// <summary>空/空白视为「无过滤」（合法）；JSON 非法返回 false（调用方 fail-closed）。</summary>
@@ -82,7 +88,7 @@ public sealed record ChooserFilterStruct(string Logic, IReadOnlyList<ChooserFilt
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);
 }
 
-/// <summary>回填映射条目（ADR-008 §4）：target=表单目标字段（去前缀统一），column=来源表物理列。</summary>
+/// <summary>回填映射条目：target=表单目标字段（去前缀统一），column=来源表列（物理列或受控虚拟列，对齐旧语义）。</summary>
 public sealed record ChooserReturnItem(string Target, string Column);
 
 /// <summary>RETURN_ITEMS JSON 数组解析（有序回填映射）。</summary>

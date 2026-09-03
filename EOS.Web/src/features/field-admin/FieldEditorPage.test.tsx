@@ -39,7 +39,7 @@ const history = [
     actorName: '管理员',
     action: 'UPDATE',
     summary: '字段维护更新',
-    changes: [{ name: 'F_DESC', oldValue: '旧标题', newValue: '产品编号' }],
+    changes: [{ name: 'F_DESC', oldValue: '原标题', newValue: '产品编号' }],
   },
 ]
 
@@ -108,7 +108,7 @@ describe('FieldEditorRoute', () => {
     // 变更历史内容
     fireEvent.click(screen.getByRole('tab', { name: '变更历史' }))
     await waitFor(() => expect(screen.getByText('修改')).toBeInTheDocument())
-    expect(screen.getByText('旧标题')).toBeInTheDocument()
+    expect(screen.getByText('原标题')).toBeInTheDocument()
     // 操作人显示姓名（SYSDN 解析）
     expect(screen.getByText(/管理员/)).toBeInTheDocument()
   })

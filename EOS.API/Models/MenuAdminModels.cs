@@ -3,8 +3,8 @@ using System.Text.Json.Serialization;
 namespace EOS.API.Models;
 
 /// <summary>
-/// MODULES 菜单节点（对应旧 Admin/MenuBuilder.aspx 可编辑字段全集）。
-/// JSON 字段名与数据库/旧系统完全一致（M_IDX / MASTER_TABLE / GROUP1..5 等）。
+/// MODULES 菜单节点（对应旧 可编辑字段全集）。
+/// JSON 字段名与数据库/完全一致（M_IDX / MASTER_TABLE / GROUP1..5 等）。
 /// M_P_IDX 为 0 或 null 表示根节点。
 /// </summary>
 public sealed record MenuAdminModule(
@@ -85,7 +85,7 @@ public sealed record SaveMenuDefaultColumns(string Table, IReadOnlyList<string> 
 
 /// <summary>
 /// 菜单同级排序动作：top=移到同级顶部、up=向上一位、down=向下一位、bottom=移到同级底部。
-/// 排序只调整同级节点（M_P_IDX 相同）的 SORT_IDX，与旧系统「排序号」字段语义一致。
+/// 排序只调整同级节点（M_P_IDX 相同）的 SORT_IDX，
 /// </summary>
 public sealed record MenuReorderRequest(string Action);
 

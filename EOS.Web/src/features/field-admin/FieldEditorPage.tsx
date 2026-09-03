@@ -66,7 +66,7 @@ function adminMetaToFieldMeta(meta: FieldAdminMetadata): FieldMeta {
 }
 
 /**
- * 字段设置全尺寸页面（ADR-008 全页化）：左栏同表字段导航 + 右栏选项卡编辑（5 分组 + 变更历史）。
+ * 字段设置全尺寸页面：左栏同表字段导航 + 右栏选项卡编辑（5 分组 + 变更历史）。
  * 入口：2302 字段维护列表、工作台表头「字段设置」（?moduleId= 返回上下文）。
  */
 export function FieldEditorRoute() {
@@ -114,7 +114,7 @@ export function FieldEditorRoute() {
   const [saveState, setSaveState] = useState({ canSave: false, saving: false, dirty: false })
   const dirtyRef = useRef(false)
 
-  // 未保存离开确认（对齐统一表单）：站内跳转（返回/取消/左栏切换/浏览器后退）经 useBlocker 拦截，
+  // 未保存离开确认：站内跳转（返回/取消/左栏切换/浏览器后退）经 useBlocker 拦截，
   // 刷新/关闭页签走 beforeunload；dirtyRef 供 blocker 回调在导航时刻读取最新值。
   useEffect(() => {
     if (!saveState.dirty) return

@@ -12,7 +12,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 数据表/字段维护仓储集成测试：直连 EOS.ERP 开发库验证表统计、表详情、
 /// 未管理字段批量生成（生成后即清理）与删除联动清理。
-/// 连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 Codex 配置；拿不到连接串时跳过。
+/// 连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 本机配置文件；拿不到连接串时跳过。
 /// </summary>
 [Trait("Category", "Integration")]
 public sealed class FieldAdminRepositoryIntegrationTests : IDisposable

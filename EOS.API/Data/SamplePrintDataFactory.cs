@@ -4,7 +4,7 @@ using EOS.API.Models;
 namespace EOS.API.Data;
 
 /// <summary>
-/// sample.json → PrintData 工厂（ADR-009 §12.2 / ADR-010 §5 S1 ⑤）：
+/// sample.json → PrintData 工厂：
 /// 格式包回归护栏与设计器 PDF 预览共用同一样例数据源。
 /// </summary>
 public static class SamplePrintDataFactory
@@ -70,7 +70,7 @@ public static class SamplePrintDataFactory
     }
 
     /// <summary>
-    /// 预览数据场景扩展（ADR-010 §4 设计器"多行样例数据预览"）：
+    /// 预览数据场景扩展：
     /// rows=明细行数（默认保持样例行数）；variant=longText（长文本）/ empty（空明细）。
     /// 仅复制/改写明细，主表与字段白名单不变。
     /// </summary>

@@ -1,12 +1,12 @@
 import { useCallback, useRef, useState } from 'react'
 
-/** SSE 事件（ADR-007 M2/M3/M4）：delta=文本增量；done=回复已落库（含工具摘要与表单草稿）；error=流中失败。 */
+/** SSE 事件：delta=文本增量；done=回复已落库（含工具摘要与表单草稿）；error=流中失败。 */
 export type ChatStreamEvent =
   | { event: 'delta'; text: string }
   | { event: 'done'; message: unknown; toolCalls?: Array<{ name: string; digest: string }>; drafts?: AssistantFormDraft[] }
   | { event: 'error'; code: string; message: string }
 
-/** 表单草稿（ADR-007 §6 结构化变更集）：前端确认后经现有保存管线执行，助手不新增写路径。 */
+/** 表单草稿：前端确认后经现有保存管线执行，助手不新增写路径。 */
 export interface AssistantFormDraft {
   moduleId: number
   moduleTitle: string

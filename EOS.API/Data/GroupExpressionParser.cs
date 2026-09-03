@@ -6,10 +6,10 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// GROUP_EXP（MODULES 分组表达式）受限解析器。
-/// 分组表达式是旧系统直接拼接进 `SELECT DISTINCT &lt;GROUP_EXP&gt; FROM &lt;MASTER_TABLE&gt;`
+/// 分组表达式是直接拼接进 `SELECT DISTINCT &lt;GROUP_EXP&gt; FROM &lt;MASTER_TABLE&gt;`
 /// 的高风险表达式（与 DATA_FILTER 同级），本解析器只接受：
-///   白名单列（可带 MASTER_TABLE 前缀）、字符串/数字字面量、+ - * /、括号、
-///   CASE（simple/searched）、白名单函数 YEAR/MONTH/DATEPART/REPLICATE/CAST/CONVERT。
+/// 白名单列（可带 MASTER_TABLE 前缀）、字符串/数字字面量、+ - * /、括号、
+/// CASE（simple/searched）、白名单函数 YEAR/MONTH/DATEPART/REPLICATE/CAST/CONVERT。
 /// 输出为完全重写的 SELECT 表达式：标识符仅可能来自白名单，字面量由解析器规范化内联
 /// （N'..' 转义 / 数字原文），不存在任何用户输入拼接。
 /// 其余 token / 函数 / 越权列一律失败（返回 false，调用方必须拒绝执行或隐藏该组）。
@@ -226,7 +226,7 @@ internal static class GroupExpressionParser
             expression = $"{left} {op} {right}";
             return true;
         }
-        // 无比较符视为布尔列（旧数据未出现，拒绝以收紧边界）
+        // 无比较符视为布尔列
         return false;
     }
 

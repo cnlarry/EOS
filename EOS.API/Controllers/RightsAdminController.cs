@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 权限管理端点（§5，旧系统 2306 用户权限设定 / 2305 用户组管理）：
+/// 权限管理端点（§5， 2306 用户权限设定 / 2305 用户组管理）：
 /// 个人/组模块权限矩阵、个人/组报表权限矩阵、用户-组与组成员关系、
 /// 字段级拒绝元数据与单模块生效值预览。
 /// 所有端点要求 CanSetup(2306)（权限管理员）；写入走固定列白名单 + 受控校验 + 审计。
@@ -17,7 +17,7 @@ namespace EOS.API.Controllers;
 [Route("api/v1/admin")]
 public sealed class RightsAdminController(
     RightsAdminRepository repository,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
     [HttpGet("users/{userId}/rights")]

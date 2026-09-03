@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace EOS.API.Logging;
 
 /// <summary>
-/// 结构化日志查询（ADR-005 §5.4）：从 JSONL 滚动文件读取并按时间/级别/traceId/
+/// 结构化日志查询：从 JSONL 滚动文件读取并按时间/级别/traceId/
 /// correlationId/userId/moduleId/action/error code 检索；输出统一脱敏、限行数与字节数。
 /// 只读服务，不提供修改/删除日志能力。
 /// </summary>

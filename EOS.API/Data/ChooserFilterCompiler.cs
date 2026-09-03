@@ -19,18 +19,18 @@ public sealed record ChooserFilterCompileResult(
     IReadOnlyList<(string Table, string Column)> ForeignColumns);
 
 /// <summary>
-/// FILTER_STRUCT 受控编译器（ADR-008 §3 + P3 扩展）：
+/// FILTER_STRUCT 受控编译器：
 /// - 第一版算子：EQ/NE/GT/GE/LT/LE/LIKE/NOT_LIKE + 宏 ISNULL_ZERO / DAYS_FROM_TODAY + nullSafe ZERO/EMPTY；
 /// - P3 扩展：表达式（column/literal/template/isnull/arith/datediff）、group 嵌套（AND/OR）、
-///   negate（NOT 组）、子查询 IN/NOT_IN/EXISTS/NOT_EXISTS、受控表值函数 IN_FUNCTION；
+/// negate（NOT 组）、子查询 IN/NOT_IN/EXISTS/NOT_EXISTS、受控表值函数 IN_FUNCTION；
 /// - 跨表字段「表.列」须在源表 QUERY_RELATION JOIN 白名单（joinAliases）内，运行期由
-///   <see cref="ChooserJoinCatalog"/> 重建 JOIN 段；
-/// - value 模板 {m.X}/{d.X}/{module}/{X} 编译为参数占位符（{X} 按字面量绑定，对齐旧行为）。
+/// <see cref="ChooserJoinCatalog"/> 重建 JOIN 段；
+/// - value 模板 {m.X}/{d.X}/{module}/{X} 编译为参数占位符（{X} 按字面量绑定，行为）。
 /// 任何无法编译的输入返回 null（fail-closed），调用方不得执行。
 /// </summary>
 public static class ChooserFilterCompiler
 {
-    /// <summary>选择器受控表值函数白名单（对齐 DataFilterParser.SubqueryTableColumns 既有受控集）。</summary>
+    /// <summary>选择器受控表值函数白名单。</summary>
     public static readonly IReadOnlySet<string> SubqueryFunctions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "f_get_pro_units",
@@ -499,7 +499,7 @@ public static class ChooserFilterCompiler
             {
                 return moduleId.ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
-            // {X} 裸模板：按字面量保留（对齐旧 SubstituteTemplateValues 只替换 m./d. 的行为）
+            // {X} 裸模板：按字面量保留
             return match.Value;
         });
     }

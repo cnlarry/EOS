@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://eos.local/schemas/layout.schema.v1.json",
   "title": "EOS layout.json schema v1（可视化版式设计器）",
-  "description": "ADR-010 §1：layout.json 三重身份——存储格式 / 渲染契约 / 设计器文档模型。坐标单位 mm；fontSize 单位 pt。schemaVersion 版本化，变更需升版。",
+  "description": "layout.json 三重身份——存储格式 / 渲染契约 / 设计器文档模型。坐标单位 mm；fontSize 单位 pt。schemaVersion 版本化，变更需升版。",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "kind", "page", "sections"],

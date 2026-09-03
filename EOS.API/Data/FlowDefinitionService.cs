@@ -5,14 +5,14 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 流程定义维护（模块 2101「表单流程设计」，替代旧 WF_Design.aspx 的受控 C# 实现）。
-/// 维护 WFFORM（流程主）+ WFFORM_FLOW（步骤）两表；保存为全量重建（旧系统主子表单保存语义）。
+/// 流程定义维护（模块 2101「表单流程设计」，替代旧 的受控 C# 实现）。
+/// 维护 WFFORM（流程主）+ WFFORM_FLOW（步骤）两表；保存为全量重建。
 /// 安全边界：
 /// - 只允许给"具备批核能力"的工作台模块配置流程（hasWorkflow：ModuleBusinessMap 静态登记
-///   或 MODULES.UPDATE_SP 非空，且主表有 CONFIRM_TAG 物理列）；
+/// 或 MODULES.UPDATE_SP 非空，且主表有 CONFIRM_TAG 物理列）；
 /// - EXEC_PERSON/权限串/必签名单全部按 SYSDL 真实用户校验（禁止写入不存在的审批人）；
 /// - EXEC_CONDITION/PERSON_CONDITION/AUTO_EXEC_CONDITION 保存前经 DataFilterParser 按主表
-///   物理列白名单预解析（不可解析即拒绝保存，与引擎启动时同源护栏，绝不拼接 SQL）；
+/// 物理列白名单预解析（不可解析即拒绝保存，与引擎启动时同源护栏，绝不拼接 SQL）；
 /// - 已存在在途流程实例（WF_MONITOR WF_STATE='0'）时禁止删除定义（防孤儿实例）。
 /// </summary>
 public sealed class FlowDefinitionService(
@@ -63,7 +63,7 @@ public sealed class FlowDefinitionService(
                 var moduleId = reader.GetInt32(0);
                 if (!ModuleRouteValidator.IsWorkbenchUrl(reader.GetString(3)))
                     continue;
-                // hasWorkflow：静态登记 WorkflowSproc 或 MODULES.UPDATE_SP 非空（自动注册等价）
+                // hasWorkflow：静态登记 WorkflowSproc 或 MODULES.UPDATE_SP 非空（自动注册）
                 var hasWorkflow = ModuleBusinessMap.Get(moduleId)?.WorkflowSproc is not null
                     || !string.IsNullOrWhiteSpace(reader.GetString(4));
                 if (!hasWorkflow)

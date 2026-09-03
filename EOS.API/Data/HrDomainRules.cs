@@ -10,13 +10,12 @@ public static class HrDomainRules
 {
 
     /// <summary>
-    /// 货币资料（110103）AfterSave：本位币唯一 + 本位币汇率必须为 1（等价 P_CURR_After_Save）。
+    /// 货币资料（110103）AfterSave：本位币唯一 + 本位币汇率必须为 1。
     /// 仅校验，无落库副作用。
     /// </summary>
     /// <summary>
-    /// 员工发卡（180208）AfterSave：失效日期不得早于生效日期 + 旧卡到期日联动
-    /// （等价 P_Employee_Card_After_Save：同卡号其它员工旧卡、同员工其它卡到期 =
-    /// 生效日前一天；注释掉的重复占用校验为死代码，不移植）。
+    /// 员工发卡（180208）AfterSave：失效日期不得早于生效日期 + 原卡到期日联动
+    /// 。
     /// </summary>
     public static async Task<SprocResult> EmployeeCardAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
@@ -67,7 +66,7 @@ public static class HrDomainRules
         return new(true, null);
     }
 
-    /// <summary>库存单 AfterSave 通用校验：库别/产品/批号（等价 P_INV_OCCUR_*_After_Save，纯校验无写）。</summary>
+    /// <summary>库存单 AfterSave 通用校验：库别/产品/批号。</summary>
 
     public static async Task<SprocResult> HrEmployeeAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
@@ -97,10 +96,10 @@ public static class HrDomainRules
             : new(false, "\r\n员工工号：" + empNo + "\r\n已分配给：" + owner);
     }
 
-    /// <summary>每月出勤参数（P_HR_ENACTMENT）AfterSave：每人每月一笔（旧 SP 为全局检查，未限定当前单）。</summary>
+    /// <summary>每月出勤参数（P_HR_ENACTMENT）AfterSave：每人每月一笔。</summary>
 
 
-    /// <summary>每月出勤参数（P_HR_ENACTMENT）AfterSave：每人每月一笔（旧 SP 为全局检查，未限定当前单）。</summary>
+    /// <summary>每月出勤参数（P_HR_ENACTMENT）AfterSave：每人每月一笔。</summary>
     public static async Task<SprocResult> HrEnactmentAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
@@ -329,10 +328,10 @@ public static class HrDomainRules
             : new(false, "以下人员当月工资表重复 \r\n" + dup);
     }
 
-    /// <summary>按（类型/单号/月份）收集明细行的辅助（等价旧 SP 游标，最多 10 行）。</summary>
+    /// <summary>按（类型/单号/月份）收集明细行的辅助。</summary>
 
 
-    /// <summary>按（类型/单号/月份）收集明细行的辅助（等价旧 SP 游标，最多 10 行）。</summary>
+    /// <summary>按（类型/单号/月份）收集明细行的辅助。</summary>
     public static async Task<string?> FindMonthDupAsync(
         SqlConnection connection, SqlTransaction transaction, string sql,
         string type, string no, string countMonth, CancellationToken token, Func<SqlDataReader, string> line)

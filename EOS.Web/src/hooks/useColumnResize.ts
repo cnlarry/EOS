@@ -79,7 +79,7 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
         if (!raw) return {}
         const parsed = JSON.parse(raw) as unknown
         if (Array.isArray(parsed)) {
-          // 旧版按列索引存储：迁移为按列键
+          // 早期版本按列索引存储：迁移为按列键
           const result: Record<string, number> = {}
           colKeys().forEach((key, index) => {
             const width = parsed[index]

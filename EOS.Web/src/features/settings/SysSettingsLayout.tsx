@@ -19,9 +19,9 @@ interface SysSettingsLayoutProps {
 }
 
 /**
- * 110111 系统参数设置（SYSSS）：按旧 MagSysSet.aspx 的七分区字段组织，
+ * 110111 系统参数设置（SYSSS）：按旧 的七分区字段组织，
  * 视觉采用系统统一表单编辑网格（erp-form-card + erp-form-grid，12px 标准字号）。
- * 标签来自 FIELDS 元数据（未定义时沿用旧系统 "[未定义标签]" 提示）。
+ * 标签来自 FIELDS 元数据（未定义时沿用既有系统 "[未定义标签]" 提示）。
  */
 export function SysSettingsLayout({ fields, form, onChange, onSave, saving, saved }: SysSettingsLayoutProps) {
   return (

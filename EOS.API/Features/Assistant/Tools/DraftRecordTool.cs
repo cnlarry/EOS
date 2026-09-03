@@ -6,7 +6,7 @@ using EOS.API.Security;
 
 namespace EOS.API.Features.Assistant.Tools;
 
-/// <summary>下发给前端的单据草稿（结构化变更集，ADR-007 §6）。前端确认后经现有保存管线执行，助手不新增写路径。</summary>
+/// <summary>Document draft sent to the frontend (structured change set). The frontend confirms it and executes through the existing save pipeline; the assistant adds no write path.</summary>
 public sealed record AssistantFormDraft(
     int ModuleId,
     string ModuleTitle,

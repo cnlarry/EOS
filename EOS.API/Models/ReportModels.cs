@@ -120,7 +120,7 @@ public sealed record ReportPdfRequest(
     bool ShowGroup,
     bool ShowDetail);
 
-/// <summary>单据 PDF 生成请求（原 RptBill）。</summary>
+/// <summary>单据 PDF 生成请求。</summary>
 public sealed record DocumentPdfRequest(
     IReadOnlyList<string> Key,
     string? ReportId = null,

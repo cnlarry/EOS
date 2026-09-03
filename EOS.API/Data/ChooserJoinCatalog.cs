@@ -4,7 +4,7 @@ using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
 
-/// <summary>源表选择器跨表 JOIN 目录（来自 TABLES.QUERY_RELATION 受控解析，ADR-008 P3）。</summary>
+/// <summary>源表选择器跨表 JOIN 目录（来自 TABLES.QUERY_RELATION 受控解析）。</summary>
 public sealed record ChooserSourceJoins(
     string SourceTable,
     IReadOnlySet<string> Aliases,
@@ -12,7 +12,7 @@ public sealed record ChooserSourceJoins(
     string? Error);
 
 /// <summary>
-/// 选择器跨表 JOIN 目录（ADR-008 P3）：以 TABLES.QUERY_RELATION 为权威来源，经
+/// 选择器跨表 JOIN 目录：以 TABLES.QUERY_RELATION 为权威来源，经
 /// <see cref="VirtualExpressionParser.TryParseRelation"/> 严格受控解析（仅 LEFT JOIN + 表.列=表.列 /
 /// 常量条件），解析失败的源表整体 fail-closed（选择器不跨表）。解析结果进程内缓存，
 /// QUERY_RELATION 变更需重启 API 生效（与 Definition 快照语义一致）。
