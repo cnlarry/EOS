@@ -18,6 +18,8 @@ interface TableColumn {
   name: string
   dataType: string
   description: string
+  /** 来源表受控虚拟列（FIELDS.IS_VIRTUAL）：回填来源列可选，过滤条件字段仅物理列 */
+  isVirtual?: boolean
 }
 
 interface FieldSummaryItem {
@@ -145,7 +147,7 @@ function FieldPickerSelect({ options, value, onChange, placeholder, ariaLabel }:
   )
 }
 
-/** 来源表物理列（下拉选项）。 */
+/** 来源表列（物理列 + 来源表内受控虚拟列，下拉选项）。 */
 function useSourceColumns(table: string | null) {
   return useQuery({
     queryKey: ['field-admin', 'columns', table ?? ''],
@@ -205,7 +207,16 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
 
   const sourceColumns = columnsQuery.data ?? []
   const targetFields = targetFieldsQuery.data ?? []
+  // 过滤条件字段只能是物理列；回填来源列可为物理列或来源表受控虚拟列
+  const physicalSourceColumns = sourceColumns.filter(column => !column.isVirtual)
   const sourceColumnOptions: FieldPickerOption[] = sourceColumns.map(column => ({
+    value: column.name,
+    label: column.isVirtual
+      ? `${column.description || column.name}(${column.name})·虚拟`
+      : `${column.description || column.name}(${column.name})`,
+    dataType: column.dataType,
+  }))
+  const physicalSourceColumnOptions: FieldPickerOption[] = physicalSourceColumns.map(column => ({
     value: column.name,
     label: `${column.description || column.name}(${column.name})`,
     dataType: column.dataType,
@@ -301,7 +312,7 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
                     editingRaw === row.key ? (
                       <div key={row.key} className="d-flex gap-1 align-items-start">
                         <div className="flex-grow-1">
-                          <div className="text-secondary small">高级条件（表达式/子查询，JSON 编辑）</div>
+                          <div className="text-secondary small">高级条件（表达式/子查询，JSON 编辑）——复杂条件以 JSON 维护：扁平行 {`{ field, operator, value }`}，复杂结构 {`{ left/right/negate/group/subquery }`}；编译校验不过会拒绝保存</div>
                           <textarea
                             className="form-control form-control-sm font-monospace"
                             rows={4}
@@ -319,7 +330,7 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
                     ) : (
                       <div key={row.key} className="d-flex gap-1 align-items-start">
                         <div className="flex-grow-1">
-                          <div className="text-secondary small">高级条件（表达式/子查询，JSON）</div>
+                          <div className="text-secondary small">高级条件（表达式/子查询，JSON）——复杂条件以 JSON 维护，如需修改请点「编辑」</div>
                           <pre className="small mb-0 text-break" style={{ whiteSpace: 'pre-wrap' }}>{row.raw}</pre>
                         </div>
                         <div className="d-flex gap-1">
@@ -335,7 +346,7 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
                         <option value="OR">或</option>
                       </select>
                       <FieldPickerSelect
-                        options={sourceColumnOptions.map(option => ({ ...option, value: `${source.table}.${option.value}` }))}
+                        options={physicalSourceColumnOptions.map(option => ({ ...option, value: `${source.table}.${option.value}` }))}
                         value={row.field}
                         onChange={field => updateFilterRows(filterRows.map(r => r.key === row.key ? { ...r, field } : r))}
                         placeholder="选择来源列"
