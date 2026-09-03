@@ -12,6 +12,7 @@ import { emptyQueryCondition, type QueryCondition } from '../../components/commo
 import { ErpSearchBox } from '../../components/common/ErpSearchBox'
 import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
+import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 import { moduleReadPermission } from '../auth/modulePermissions'
 import { ApiError } from '../../types/api'
@@ -52,6 +53,7 @@ export function DocumentWorkbenchPage() {
   const [conditions,setConditions]=useState<QueryCondition[]>([emptyQueryCondition()])
   const [keyword,setKeyword]=useState(initialState.keyword)
   const [exporting,setExporting]=useState(false)
+  const [helpOpen,setHelpOpen]=useState(false)
   const [groupDefs,setGroupDefs]=useState<NavigationGroupDef[]|null>(null)
   const [groupValues,setGroupValues]=useState<string[]|null>(null)
   const [activeGroup,setActiveGroup]=useState<NavigationGroupDef|null>(null)
@@ -163,6 +165,7 @@ export function DocumentWorkbenchPage() {
         dataType:field.dataType,
         truncate:(field.dataType??'').toLowerCase()!=='bit',
         title:({value})=>formatFieldValue(value,field.dataType,field.format)||undefined,
+        copyText:({value})=>formatFieldValue(value,field.dataType,field.format)||'—',
         headerMenu:[{label:'字段设置',onClick:()=>navigate(`/admin/fields/${encodeURIComponent(definition.data?.masterTable ?? '')}/${encodeURIComponent(field.key)}?moduleId=${moduleId}`)}],
       },
       cell:(info)=>{
@@ -188,6 +191,7 @@ export function DocumentWorkbenchPage() {
       dataType:field.dataType,
       truncate:(field.dataType??'').toLowerCase()!=='bit',
       title:({value})=>formatFieldValue(value,field.dataType,field.format)||undefined,
+      copyText:({value})=>formatFieldValue(value,field.dataType,field.format)||'—',
       headerMenu:[{label:'字段设置',onClick:()=>navigate(`/admin/fields/${encodeURIComponent(definition.data?.detailTable ?? '')}/${encodeURIComponent(field.key)}?moduleId=${moduleId}`)}],
     },
     cell:(info)=>{
@@ -204,8 +208,24 @@ export function DocumentWorkbenchPage() {
 
   const rowKey=(row:Record<string,unknown>)=>{const keys=(definition.data?.masterPkOrder??[]).map(column=>String(row[column]??''));return keys.some(key=>key!=='')?keys.join('|'):JSON.stringify(row)}
   const active=activeKey?selected[activeKey]??rows.find(row=>rowKey(row)===activeKey)??null:null
+  // 明细卡标题摘要：优先取主键列值（用户据此识别“这是哪张单”），无主键值回退首个可查询字段
+  const masterDescribe=useMemo(()=>{
+    if(!active||!definition.data)return ''
+    const cols=definition.data.masterPkOrder??[]
+    const items:string[]=[]
+    for(const column of cols){
+      const field=definition.data.masterFields.find(item=>item.key.toLowerCase()===column.toLowerCase())
+      const raw=active[column]
+      if(raw==null)continue
+      const text=field?formatFieldValue(raw,field.dataType,field.format):String(raw)
+      if(text&&text!=='')items.push(text)
+    }
+    if(items.length>0)return items.join(' / ')
+    const fallback=definition.data.masterFields.find(field=>field.isQueryable&&active[field.key]!=null&&String(active[field.key]??'')!=='')
+    return fallback?formatFieldValue(active[fallback.key],fallback.dataType,fallback.format):''
+  },[active,definition.data])
   const keys=useMemo(()=>(definition.data?.masterPkOrder??[]).reduce<Record<string,string>>((result,column)=>{if(active?.[column]!=null)result[column]=String(active[column]);return result},{}),[active,definition.data?.masterPkOrder])
-  const details=useQuery({queryKey:['workbench',moduleId,'details',keys,detailSort],queryFn:()=>apiClient.get<DataResponse>(`/document-workbench/${moduleId}/details`,{query:{...keys,sortField:detailSort?.field,sortDirection:detailSort?.direction}}),enabled:Boolean(active&&definition.data?.detailTable)})
+  const details=useQuery({queryKey:['workbench',moduleId,'details',keys,detailSort],queryFn:()=>apiClient.get<DataResponse>(`/document-workbench/${moduleId}/details`,{query:{...keys,sortField:detailSort?.field,sortDirection:detailSort?.direction}}),enabled:Boolean(active&&definition.data?.detailTable),placeholderData:keepPreviousData})
   // 多槽队列：自适应列宽一次入队多列，逐列串行写回；单槽会被同步循环覆盖导致只保存最后一列
   const widthSaveQueue=useRef<{detail:boolean;fieldKey:string;width:number}[]>([])
   const widthSaveRunning=useRef(false)
@@ -379,13 +399,23 @@ export function DocumentWorkbenchPage() {
             ?[{action:'search',onClick:openSearchCenter}] satisfies ErpCommandItem[]
             :[]),
           {action:'refresh',onClick:()=>{void records.refetch();if(active)void details.refetch()}},
+          {action:'help',onClick:()=>setHelpOpen(true)},
           ...businessItems.filter(item=>item.action==='new'),
         ]} />
       </>}
       footer={
-        <div className="d-flex align-items-center w-100">
-          <span className="text-secondary small">共 {total} 条{rows.length < total ? `，已加载 ${rows.length} 条` : ''}</span>
-          {records.isFetchingNextPage ? <span className="text-secondary small">正在加载更多…</span> : null}
+        <div className="d-flex align-items-center gap-2 w-100">
+          <span className="text-secondary small text-nowrap">共 {total} 条{rows.length < total ? `，已加载 ${rows.length} 条` : ''}</span>
+          {rows.length>0&&rows.length<total&&(
+            <>
+              <div className="erp-load-progress flex-grow-1" role="progressbar" aria-label="已加载进度" aria-valuemin={0} aria-valuemax={total} aria-valuenow={rows.length}>
+                <div className="erp-load-progress-bar" style={{width:`${Math.max(2,Math.round(rows.length/total*100))}%`}} />
+              </div>
+              {records.isFetchingNextPage
+                ? <span className="text-secondary small text-nowrap">正在加载更多…</span>
+                : <span className="text-secondary small text-nowrap">滚动到底自动加载{total-rows.length<=50?`（剩余 ${total-rows.length} 条）`:''}</span>}
+            </>
+          )}
         </div>
       }
     >
@@ -408,6 +438,7 @@ export function DocumentWorkbenchPage() {
           onRowClick={handleRowClick}
           onRowDoubleClick={openViewFromRow}
           activeRowId={activeKey??undefined}
+          virtualize
           resizable
           fitRef={masterFitRef}
           storageKey={`workbench-${moduleId}-master`}
@@ -423,7 +454,13 @@ export function DocumentWorkbenchPage() {
         />}
       </div>
     </ErpListCard>
-    {definition.data.detailTable&&<section className="card erp-detail-card">{details.isError?<div className="alert alert-danger d-flex align-items-center justify-content-between m-2 mb-0"><span>明细数据加载失败。</span><button type="button" className="btn btn-danger btn-sm" onClick={()=>void details.refetch()}>重新加载</button></div>:<ErpTable
+    {definition.data.detailTable&&<section className="card erp-detail-card">
+      <div className="card-header d-flex align-items-center gap-2 py-1">
+        <span className="small fw-semibold text-secondary text-nowrap">明细</span>
+        {active&&masterDescribe?(<div className="small text-truncate" title={masterDescribe}>{masterDescribe}</div>):(<span className="small text-secondary text-nowrap">选择主表行查看明细</span>)}
+        {details.isFetching&&<span className="small text-secondary ms-auto text-nowrap">正在加载明细…</span>}
+      </div>
+      {details.isError?<div className="alert alert-danger d-flex align-items-center justify-content-between m-2 mb-0"><span>明细数据加载失败。</span><button type="button" className="btn btn-danger btn-sm" onClick={()=>void details.refetch()}>重新加载</button></div>:<ErpTable
       columns={detailColumns}
       data={active?details.data?.rows??[]:[]}
       sorting={detailSorting}
@@ -456,6 +493,15 @@ export function DocumentWorkbenchPage() {
       onClear={()=>{setConditions([emptyQueryCondition()]);setAppliedConditions([]);setColumnFilters({});setQueryOpen(false)}}
       onClose={()=>setQueryOpen(false)}
     />}
+    {helpOpen&&<Modal title="列表操作帮助" onClose={()=>setHelpOpen(false)}>
+      <ul className="mb-0 erp-help-list">
+        <li><strong>选择 / 浏览：</strong>单击行选中并加载该行明细（首列复选框可多选）；双击行进入浏览页。</li>
+        <li><strong>表头：</strong>点击右侧箭头排序或筛选；拖动表头文字调整列顺序；拖动列右边线调整宽度；双击列右边线自动适配列宽。</li>
+        <li><strong>复制：</strong>选中行后按 Ctrl+C，或右键单元格选择“复制单元格 / 复制本行 / 复制选中行”（TSV，可直接粘贴进 Excel）。</li>
+        <li><strong>键盘导航：</strong>↑ ↓ / Home / End / PageUp / PageDown 移动活动行，Enter 打开浏览。</li>
+        <li><strong>加载更多：</strong>滚动到底部自动加载下一页；底部进度条显示已加载占比。</li>
+      </ul>
+    </Modal>}
   </div>
 }
 

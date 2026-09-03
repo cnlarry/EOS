@@ -17,6 +17,9 @@ export interface ColumnResizeOptions {
 // 以列键（data-col-key）为键，避免模块切换/选择列变化导致列索引错位。
 const defaultsByTable = new WeakMap<HTMLTableElement, Map<string, number>>()
 
+/** 自适应列宽的单元格测量上限：表行数远超视口时逐行测量会卡顿，采样前 N 行即可代表内容宽度 */
+const MAX_MEASURE_ROWS = 300
+
 /**
  * 表格列宽拖拽调整。
  *
@@ -239,10 +242,17 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
       const thBorder = th.offsetWidth - th.clientWidth
       const headerWidth = measureHeaderContent(th) + thPadding + thBorder
       let dataWidth = 0
-      Array.from(table.tBodies).forEach((tbody) => {
-        Array.from(tbody.rows).forEach((row) => {
+      let measuredRows = 0
+      rowLoop:
+      for (const tbody of table.tBodies) {
+        for (const row of Array.from(tbody.rows)) {
+          // 虚拟化占位行无真实内容，跳过
+          if (row.classList.contains('erp-virtual-spacer')) continue
+          // 大表逐行测量会卡顿（双击/批量自适应），采样前 N 行即可代表内容宽度
+          if (measuredRows >= MAX_MEASURE_ROWS) break rowLoop
+          measuredRows += 1
           const cell = row.cells[index]
-          if (!cell) return
+          if (!cell) continue
           const cellStyle = getComputedStyle(cell)
           const cellPadding = (parseFloat(cellStyle.paddingLeft) || 0) + (parseFloat(cellStyle.paddingRight) || 0)
           const cellBorder = cell.offsetWidth - cell.clientWidth
@@ -251,8 +261,8 @@ export function useColumnResize(tableRef: RefObject<HTMLTableElement | null>, st
             measureCellContent(cell) + cellPadding + cellBorder,
             measureCellInteractive(cell, cellPadding, cellBorder),
           )
-        })
-      })
+        }
+      }
       const cols = ensureCols()
       const maxWidth = parseFloat(th.dataset.colMaxWidth ?? '') || 0
       const width = maxWidth > 0
