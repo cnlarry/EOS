@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using EOS.API.Telemetry;
+using EOS.API.Data;
 
 namespace EOS.API.Errors;
 
@@ -39,6 +40,19 @@ public static class ApiProblem
 
     public static ProblemDetails Forbidden(string message = "无权执行该操作", string code = ApiErrorCodes.Forbidden) =>
         Create(StatusCodes.Status403Forbidden, code, message);
+
+    /// <summary>
+    /// 附加表单字段级错误（ADR-006 FieldError 数组形状，与模型校验的字段→列表 dict 不同：
+    /// 前端按数组逐项消费 field/message/code/rowIndex）。
+    /// </summary>
+    public static ProblemDetails WithFieldErrors(this ProblemDetails problem, IReadOnlyList<FieldError>? fieldErrors)
+    {
+        if (fieldErrors is { Count: > 0 })
+        {
+            problem.Extensions["fieldErrors"] = fieldErrors;
+        }
+        return problem;
+    }
 
     public static void AttachTraceId(ProblemDetails problem, HttpContext context)
     {

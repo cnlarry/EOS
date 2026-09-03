@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -57,7 +58,7 @@ public sealed class FlowDefinitionController(
             return Forbid();
         var flow = await flowDefinitions.GetFlowAsync(moduleId, token);
         return flow is null
-            ? NotFound(new { code = "FLOW_NOT_FOUND", message = "该模块未配置流程。" })
+            ? NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "FLOW_NOT_FOUND", "该模块未配置流程。"))
             : Ok(flow);
     }
 
@@ -78,7 +79,7 @@ public sealed class FlowDefinitionController(
         if (!(await rightsRepository.GetAsync(userContext.UserId, ModuleIds.FlowDesigner, token)).CanSetup)
             return Forbid();
         if (request is null || request.Steps is null)
-            return BadRequest(new { code = "INVALID_FLOW_PAYLOAD", message = "请求体不能为空。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_FLOW_PAYLOAD", "请求体不能为空。"));
         var steps = request.Steps.Select(step => new FlowDefinitionService.FlowStepDefinition(
             step.SortNo, step.Desc, step.People ?? [], step.ExecCondition, step.PersonConditions,
             step.ApprovePowers, step.ForwardPowers, step.AutoExecCondition, step.IsAutoExec,
@@ -87,7 +88,10 @@ public sealed class FlowDefinitionController(
         var result = await flowDefinitions.SaveFlowAsync(
             moduleId, request.FlowName, request.Remark, steps, userContext.UserId, userContext.EmployeeName, token);
         if (result.Status != RecordAccessStatus.Ok)
-            return StatusCode(400, new { code = result.ErrorCode, message = result.ErrorMessage, fieldErrors = result.FieldErrors });
+            return StatusCode(StatusCodes.Status400BadRequest, ApiProblem.Create(
+                StatusCodes.Status400BadRequest,
+                result.ErrorCode ?? ApiErrorCodes.InvalidArgument,
+                result.ErrorMessage ?? "流程定义保存失败。").WithFieldErrors(result.FieldErrors));
         return Ok(new { Saved = true, message = "流程定义已保存。" });
     }
 
@@ -99,8 +103,13 @@ public sealed class FlowDefinitionController(
             return Forbid();
         var result = await flowDefinitions.DeleteFlowAsync(moduleId, userContext.UserId, userContext.EmployeeName, token);
         if (result.Status != RecordAccessStatus.Ok)
-            return StatusCode(result.Status == RecordAccessStatus.NotFound ? 404 : 400,
-                new { code = result.ErrorCode, message = result.ErrorMessage });
+        {
+            var status = result.Status == RecordAccessStatus.NotFound
+                ? StatusCodes.Status404NotFound
+                : StatusCodes.Status400BadRequest;
+            return StatusCode(status, ApiProblem.Create(
+                status, result.ErrorCode ?? ApiErrorCodes.InvalidArgument, result.ErrorMessage ?? "流程定义删除失败。"));
+        }
         return Ok(new { Deleted = true, message = "流程定义已删除。" });
     }
 }

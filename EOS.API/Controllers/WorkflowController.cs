@@ -1,5 +1,6 @@
 using System.Data;
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -31,10 +32,10 @@ public sealed class WorkflowController(
     {
         var state = request.ApproveState.Trim().ToUpperInvariant();
         if (state is not ("Y" or "N"))
-            return BadRequest(new { code = "INVALID_APPROVE_STATE", message = "approveState 仅支持 Y（同意）或 N（驳回）。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_APPROVE_STATE", "approveState 仅支持 Y（同意）或 N（驳回）。"));
         var result = await workflowEngine.ApproveTaskAsync(myTaskId, userContext.UserId, state[0], request.Message, request.JumpNo, token);
         if (!result.Success)
-            return BadRequest(new { code = result.ErrorCode, message = result.ErrorMessage });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, result.ErrorCode ?? ApiErrorCodes.InvalidArgument, result.ErrorMessage ?? "流程任务审批失败。"));
         return Ok(new { Approved = state == "Y", FlowFinished = result.FlowFinished, Message = result.Message });
     }
 
@@ -47,12 +48,12 @@ public sealed class WorkflowController(
         if (!(await rightsRepository.GetAsync(userContext.UserId, moduleId, token)).CanBrowse) return Forbid();
         var keyValues = ParseKey(key);
         if (keyValues is null)
-            return BadRequest(new { code = "INVALID_RECORD_KEY", message = "key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_RECORD_KEY", "key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         var pkColumns = await GetPrimaryKeyColumnsAsync(connection, moduleId, token);
         if (pkColumns.Count == 0 || pkColumns.Count != keyValues.Count)
-            return BadRequest(new { code = "RECORD_KEY_MISMATCH", message = "主键数量与模块主键不匹配。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "RECORD_KEY_MISMATCH", "主键数量与模块主键不匹配。"));
         var rows = await workflowEngine.GetHistoryAsync(connection, moduleId, pkColumns, keyValues, token);
         return Ok(new { Rows = rows });
     }
@@ -99,13 +100,13 @@ public sealed class WorkflowController(
     public async Task<IActionResult> Withdraw([FromBody] WithdrawRequest request, CancellationToken token)
     {
         if (request.ModuleId <= 0 || request.Key is null || request.Key.Count == 0)
-            return BadRequest(new { code = "INVALID_WITHDRAW_REQUEST", message = "moduleId 与 key 不能为空。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_WITHDRAW_REQUEST", "moduleId 与 key 不能为空。"));
         if (!(await rightsRepository.GetAsync(userContext.UserId, request.ModuleId, token)).CanBrowse)
             return Forbid();
         var result = await workflowEngine.WithdrawAsync(
             request.ModuleId, request.Key, userContext.UserId, userContext.EmployeeName, token);
         if (result.Status != RecordAccessStatus.Ok)
-            return BadRequest(new { code = result.ErrorCode, message = result.ErrorMessage });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, result.ErrorCode ?? ApiErrorCodes.InvalidArgument, result.ErrorMessage ?? "流程撤回失败。"));
         return Ok(new { Withdrawn = true, Message = "流程已撤回，单据可修改后重新提交。" });
     }
 
@@ -130,7 +131,7 @@ public sealed class WorkflowController(
         if (!(await rightsRepository.GetAsync(userContext.UserId, ModuleIds.WorkflowMonitor, token)).CanBrowse) return Forbid();
         var state = (status ?? string.Empty).Trim();
         if (state.Length > 0 && state is not ("0" or "1" or "2"))
-            return BadRequest(new { code = "INVALID_FLOW_STATE", message = "status 仅支持 0（在途）/1（已完成）/2（已撤回）。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_FLOW_STATE", "status 仅支持 0（在途）/1（已完成）/2（已撤回）。"));
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         var rows = await workflowEngine.GetMonitorAsync(connection, state, moduleId, keyword,
@@ -147,7 +148,7 @@ public sealed class WorkflowController(
         await connection.OpenAsync(token);
         var detail = await workflowEngine.GetMonitorDetailAsync(connection, wfId, token);
         return detail is null
-            ? NotFound(new { code = "FLOW_NOT_FOUND", message = "流程实例不存在。" })
+            ? NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "FLOW_NOT_FOUND", "流程实例不存在。"))
             : Ok(detail);
     }
 

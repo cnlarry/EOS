@@ -53,6 +53,9 @@ public sealed class RestrictedExpressionService(
     private static readonly Regex QuotedString = new("^'(?:[^']|'')*'$", RegexOptions.Compiled);
     private static readonly Regex NumericLiteral = new("^[+-]?\\d+(\\.\\d+)?$", RegexOptions.Compiled);
 
+    /// <summary>受控表达式只读预览的行数上限（Build*PreviewSql 共用）。</summary>
+    private const int PreviewRowLimit = 20;
+
     /// <summary>白名单版本：解析器语法或注册表变更时递增（P3 将入库版本化）。</summary>
     public const int WhiteListVersion = 1;
 
@@ -444,14 +447,14 @@ public sealed class RestrictedExpressionService(
 
     private (string Sql, List<(string Name, object? Value)> Parameters) BuildConvertPreviewSql(string table, string field, string function)
     {
-        // 函数白名单 + 物理列（已校验），参数 = 字段当前值；只读 SELECT TOP 20
-        return ($"SELECT TOP 20 dbo.[{function}]([{field}]) AS [{field}] FROM dbo.[{table}] WITH (NOLOCK);", []);
+        // 函数白名单 + 物理列（已校验），参数 = 字段当前值；只读 TOP PreviewRowLimit
+        return ($"SELECT TOP {PreviewRowLimit} dbo.[{function}]([{field}]) AS [{field}] FROM dbo.[{table}] WITH (NOLOCK);", []);
     }
 
     private (string Sql, List<(string Name, object? Value)> Parameters) BuildDataSourcePreviewSql(string expression)
     {
-        // 受限 SELECT（解析器已校验），套 TOP 20 只读执行
-        return ($"SELECT TOP 20 * FROM ({expression}) AS [__preview];", []);
+        // 受限 SELECT（解析器已校验），套只读预览行数上限执行
+        return ($"SELECT TOP {PreviewRowLimit} * FROM ({expression}) AS [__preview];", []);
     }
 
     private async Task<(string Sql, List<(string Name, object? Value)> Parameters)> BuildVirtualPreviewSql(
@@ -501,7 +504,7 @@ public sealed class RestrictedExpressionService(
         }
         // QUERY_RELATION 本身即受控 LEFT JOIN（解析器已校验），直接作为预览 FROM；
         // 引用列按 别名.列 限定，避免 JOIN 同名歧义
-        return ($"SELECT TOP 20 {fragment} AS [{field}] {(fromClause.Length == 0 ? string.Empty : $"FROM {fromClause}")};", []);
+        return ($"SELECT TOP {PreviewRowLimit} {fragment} AS [{field}] {(fromClause.Length == 0 ? string.Empty : $"FROM {fromClause}")};", []);
     }
 
     private static string RenderArithmeticFragment(IReadOnlyList<VirtualArithmeticToken> tokens, string baseTable)

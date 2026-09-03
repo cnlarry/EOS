@@ -1,6 +1,7 @@
 using System.Data;
 using System.Diagnostics;
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -24,6 +25,12 @@ public sealed class JobsController(
     AttendanceCalcService attendanceCalc,
     HumanResourceJobsService hrJobs) : ControllerBase
 {
+    // Input and execution limits for batch jobs (kept next to their call sites).
+    private const int MrpRecalcCommandTimeoutSeconds = 600;
+    private const int CardBatchMaxRows = 2000;
+    private const int AttendanceMaxDays = 62;
+    private const int AttendanceCalcMaxEmployees = 500;
+
     /// <summary>
     /// Recalculates available stock (230901) by running the whitelisted procedure
     /// P_UPDATE_PRO_MRP_ALL after verifying it exists.
@@ -39,12 +46,12 @@ public sealed class JobsController(
         await using var existsCommand = new SqlCommand(existsSql, connection);
         existsCommand.Parameters.Add("@Name", SqlDbType.NVarChar, 200).Value = sproc;
         if (await existsCommand.ExecuteScalarAsync(token) is null)
-            return BadRequest(new { code = "SPROC_NOT_FOUND", message = "重算存储过程不存在。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "SPROC_NOT_FOUND", "重算存储过程不存在。"));
         var stopwatch = Stopwatch.StartNew();
         await using var command = new SqlCommand(sproc, connection)
         {
             CommandType = CommandType.StoredProcedure,
-            CommandTimeout = 600,
+            CommandTimeout = MrpRecalcCommandTimeoutSeconds,
         };
         await command.ExecuteNonQueryAsync(token);
         stopwatch.Stop();
@@ -56,8 +63,8 @@ public sealed class JobsController(
     public async Task<IActionResult> CardBatch([FromBody] CardBatchRequest request, CancellationToken token)
     {
         if (!await CanRunAsync(ModuleIds.CardBatch, token)) return Forbid();
-        if (request.Cards.Count == 0 || request.Cards.Count > 2000) return BadRequest(new { code = "INVALID_CARDS", message = "发卡数量需在 1~2000 之间。" });
-        if (request.StartDate == default) return BadRequest(new { code = "INVALID_DATE", message = "生效日期不能为空。" });
+        if (request.Cards.Count == 0 || request.Cards.Count > CardBatchMaxRows) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_CARDS", $"发卡数量需在 1~{CardBatchMaxRows} 之间。"));
+        if (request.StartDate == default) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_DATE", "生效日期不能为空。"));
         var executor = User.Identity?.Name ?? "SYSTEM";
         var result = await hrJobs.BatchCardsAsync(request.Cards, request.StartDate, request.EndDate, executor, token);
         return Ok(new { result.Updated, result.Inserted });
@@ -69,16 +76,16 @@ public sealed class JobsController(
     {
         if (!await CanRunAsync(ModuleIds.AttendanceSimulate, token) && !await CanRunAsync(ModuleIds.AttendanceExtract, token)) return Forbid();
         if (request.StartDate == default || request.EndDate == default || request.EndDate < request.StartDate)
-            return BadRequest(new { code = "INVALID_RANGE", message = "日期范围不合法。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_RANGE", "日期范围不合法。"));
         var days = (request.EndDate - request.StartDate).Days + 1;
-        if (days > 62) return BadRequest(new { code = "RANGE_TOO_LARGE", message = "日期范围不能超过 62 天。" });
+        if (days > AttendanceMaxDays) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "RANGE_TOO_LARGE", $"日期范围不能超过 {AttendanceMaxDays} 天。"));
         if (request.Mode is not ("simulate" or "extract"))
-            return BadRequest(new { code = "INVALID_MODE", message = "mode 仅支持 simulate 或 extract。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_MODE", "mode 仅支持 simulate 或 extract。"));
         var hasTarget = (request.EmpIds ?? []).Any(id => !string.IsNullOrWhiteSpace(id)) || !string.IsNullOrWhiteSpace(request.DeptId);
-        if (!hasTarget) return BadRequest(new { code = "NO_TARGET", message = "请指定员工或部门。" });
+        if (!hasTarget) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "NO_TARGET", "请指定员工或部门。"));
         var result = await hrJobs.GenerateAttendanceAsync(
             request.StartDate, request.EndDate, request.Mode, request.DeptId, request.EmpIds, token);
-        if (result.EmployeeCount == 0) return BadRequest(new { code = "NO_EMPLOYEE", message = "没有符合条件的员工。" });
+        if (result.EmployeeCount == 0) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "NO_EMPLOYEE", "没有符合条件的员工。"));
         return Ok(new { Mode = result.Mode, StartDate = result.StartDate, EndDate = result.EndDate, result.EmployeeCount, result.Inserted, result.Filled });
     }
 
@@ -88,11 +95,11 @@ public sealed class JobsController(
     {
         if (!await CanRunAsync(ModuleIds.AttendanceSimulate, token) && !await CanRunAsync(ModuleIds.AttendanceExtract, token)) return Forbid();
         if (request.StartDate == default || request.EndDate == default || request.EndDate < request.StartDate)
-            return BadRequest(new { code = "INVALID_RANGE", message = "日期范围不合法。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_RANGE", "日期范围不合法。"));
         var days = (request.EndDate - request.StartDate).Days + 1;
-        if (days > 62) return BadRequest(new { code = "RANGE_TOO_LARGE", message = "日期范围不能超过 62 天。" });
+        if (days > AttendanceMaxDays) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "RANGE_TOO_LARGE", $"日期范围不能超过 {AttendanceMaxDays} 天。"));
         var hasTarget = (request.EmpIds ?? []).Any(id => !string.IsNullOrWhiteSpace(id)) || !string.IsNullOrWhiteSpace(request.DeptId);
-        if (!hasTarget) return BadRequest(new { code = "NO_TARGET", message = "请指定员工或部门。" });
+        if (!hasTarget) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "NO_TARGET", "请指定员工或部门。"));
         var empIds = (request.EmpIds ?? [])
             .Select(id => (id ?? "").Trim())
             .Where(id => id.Length > 0)
@@ -122,9 +129,9 @@ public sealed class JobsController(
         if (!await CanRunAsync(ModuleIds.AttendanceAdjustWage, token)) return Forbid();
         var month = (request.Month ?? "").Trim();
         if (!System.Text.RegularExpressions.Regex.IsMatch(month, "^\\d{6}$"))
-            return BadRequest(new { code = "INVALID_MONTH", message = "月份格式应为 yyyyMM。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_MONTH", "月份格式应为 yyyyMM。"));
         var result = await hrJobs.AdjustWageAttendanceAsync(month, token);
-        if (result is null) return BadRequest(new { code = "WAGE_SETUP_MISSING", message = "考勤系统设置错误：未设置薪资表调整项目（HR_SETUP.WAGE_*）。" });
+        if (result is null) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "WAGE_SETUP_MISSING", "考勤系统设置错误：未设置薪资表调整项目（HR_SETUP.WAGE_*）。"));
         return Ok(new { Month = month, WageCalcRuns = result.WageCalcRuns, AdjustedEmployees = result.AdjustedEmployees, ClearedDiaryRows = result.ClearedDiaryRows });
     }
 

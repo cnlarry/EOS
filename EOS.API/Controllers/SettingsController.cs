@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,6 +20,8 @@ public sealed class SettingsController(
     LegacyRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
+    private const int MaxSettingsFields = 100;
+
     [HttpGet("{table}")]
     public async Task<IActionResult> GetSettings(string table, CancellationToken token)
     {
@@ -35,10 +38,10 @@ public sealed class SettingsController(
         var moduleId = SettingsRepository.PermissionModuleId(table);
         if (moduleId is null) return NotFound();
         if (!await CanEditAsync(moduleId.Value, token)) return Forbid();
-        if (values.Count > 100) return BadRequest(new { code = "TOO_MANY_FIELDS", message = "参数数量超出限制。" });
+        if (values.Count > MaxSettingsFields) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "TOO_MANY_FIELDS", "参数数量超出限制。"));
 
         var updated = await repository.UpdateSettingsAsync(table, values, token);
-        if (updated == 0) return BadRequest(new { code = "NO_VALID_FIELDS", message = "没有可更新的参数。" });
+        if (updated == 0) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "NO_VALID_FIELDS", "没有可更新的参数。"));
         return NoContent();
     }
 

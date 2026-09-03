@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Features.Assistant;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -44,7 +45,7 @@ public sealed class AssistantController(
     public async Task<IActionResult> ListMessages(long sessionId, CancellationToken token)
     {
         var session = await repository.GetSessionAsync(userContext.UserId, sessionId, token);
-        if (session is null) return NotFound(new { code = "NOT_FOUND", message = "会话不存在或不属于当前用户。" });
+        if (session is null) return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "会话不存在或不属于当前用户。"));
         return Ok(await repository.ListMessagesAsync(userContext.UserId, sessionId, token));
     }
 

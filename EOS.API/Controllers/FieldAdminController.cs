@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Mvc;
@@ -89,7 +90,7 @@ public sealed class FieldAdminController(
     {
         if (!await CanSetup(token)) return Forbid();
         if (!string.Equals(request.TableId, table, StringComparison.OrdinalIgnoreCase))
-            return BadRequest(new { code = "TABLE_MISMATCH", message = "路径表名与请求体表名不一致。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "TABLE_MISMATCH", "路径表名与请求体表名不一致。"));
         return Ok(await repository.CreateUnmanagedFieldsAsync(request, userContext.EmployeeName, token));
     }
 
@@ -139,7 +140,7 @@ public sealed class FieldAdminController(
     {
         if (!await CanSetup(token)) return Forbid();
         if (!TryParseKind(request.Kind, out var kind))
-            return BadRequest(new { code = "INVALID_EXPRESSION_KIND", message = "kind 仅支持 virtual_exp / convert_function / datasource_sql。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_EXPRESSION_KIND", "kind 仅支持 virtual_exp / convert_function / datasource_sql。"));
         return Ok(await expressionService.ValidateAsync(kind, request.Table, request.Field, request.Expression, token));
     }
 
@@ -149,7 +150,7 @@ public sealed class FieldAdminController(
     {
         if (!await CanSetup(token)) return Forbid();
         if (!TryParseKind(request.Kind, out var kind))
-            return BadRequest(new { code = "INVALID_EXPRESSION_KIND", message = "kind 仅支持 virtual_exp / convert_function / datasource_sql。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_EXPRESSION_KIND", "kind 仅支持 virtual_exp / convert_function / datasource_sql。"));
         return Ok(await expressionService.PreviewAsync(kind, request.Table, request.Field, request.Expression, token));
     }
 
@@ -159,7 +160,7 @@ public sealed class FieldAdminController(
     {
         if (!await CanSetup(token)) return Forbid();
         if (!TryParseKind(request.Kind, out var kind))
-            return BadRequest(new { code = "INVALID_EXPRESSION_KIND", message = "kind 仅支持 virtual_exp / convert_function / datasource_sql。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_EXPRESSION_KIND", "kind 仅支持 virtual_exp / convert_function / datasource_sql。"));
         var outcome = await expressionService.PublishAsync(
             kind, request.Table, request.Field, request.Expression, request.Original,
             userContext.EmployeeName, userContext.UserId, token);
@@ -167,9 +168,9 @@ public sealed class FieldAdminController(
         {
             PublishExpressionStatus.Published => Ok(new { status = "published" }),
             PublishExpressionStatus.NoChange => NoContent(),
-            PublishExpressionStatus.Invalid => BadRequest(new { code = "EXPRESSION_INVALID", message = string.Join("；", outcome.Errors) }),
-            PublishExpressionStatus.NotFound => NotFound(new { code = "FIELD_NOT_FOUND", message = "字段元数据不存在。" }),
-            _ => Conflict(new { code = "CONCURRENT_MODIFIED", message = "字段内容已被他人修改，请刷新后重试。" }),
+            PublishExpressionStatus.Invalid => BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "EXPRESSION_INVALID", string.Join("；", outcome.Errors))),
+            PublishExpressionStatus.NotFound => NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "FIELD_NOT_FOUND", "字段元数据不存在。")),
+            _ => Conflict(ApiProblem.Create(StatusCodes.Status409Conflict, "CONCURRENT_MODIFIED", "字段内容已被他人修改，请刷新后重试。")),
         };
     }
 

@@ -40,7 +40,11 @@ if (builder.Environment.IsDevelopment())
     builder.Logging.AddDebug();
 }
 
-builder.Services.AddControllers(options => options.Filters.Add<ApiExceptionFilter>())
+builder.Services.AddControllers(options =>
+    {
+        options.Filters.Add<ApiExceptionFilter>();
+        options.Filters.Add<ProblemDetailsContextFilter>();
+    })
     .ConfigureApiBehaviorOptions(options =>
     {
         options.InvalidModelStateResponseFactory = context =>
@@ -96,6 +100,7 @@ builder.Services.AddSingleton<ApiMetrics>();
 builder.Services.AddSingleton<DbTimingCollector>();
 builder.Services.AddSingleton<WorkbenchDefinitionProvider>();
 builder.Services.AddScoped<ApiExceptionFilter>();
+builder.Services.AddScoped<ProblemDetailsContextFilter>();
 builder.Services.Configure<LoginThrottleOptions>(builder.Configuration.GetSection("Security:LoginThrottle"));
 builder.Services.AddSingleton<LoginThrottleService>();
 builder.Services.AddDataProtection()

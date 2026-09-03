@@ -1,4 +1,5 @@
 using System.Data;
+using EOS.API.Errors;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -19,7 +20,7 @@ public sealed class BomExpandController(Data.DbConnectionFactory connections) : 
     public async Task<IActionResult> Expand([FromQuery]string proNo,CancellationToken token,[FromQuery]double qty=1,[FromQuery]int maxLevel=99)
     {
         proNo=(proNo??"").Trim();
-        if(proNo.Length==0||proNo.Length>60)return BadRequest(new{code="INVALID_PRO_NO",message="产品编号不能为空。"});
+        if(proNo.Length==0||proNo.Length>60)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_PRO_NO","产品编号不能为空。"));
         maxLevel=Math.Clamp(maxLevel,1,99);
         qty=Math.Max(0.0001,qty);
         await using var connection=connections.Create();
