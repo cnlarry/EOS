@@ -26,7 +26,7 @@ public static class PurDomainRules
         var dueType = keyValues[0];
         var dueNo = keyValues[1];
 
-        // 1. 数量校验：对帐明细不可超出收料/退料单数量（等价 P_PUR_DUE_CHECK）
+        // 1. 数量校验：对帐明细不可超出收料/退料单数量
         var receiveErrors = await DomainRuleService.FindExceededAsync(connection, transaction, dueType, dueNo, token,
             detailTable: "PUR_DUE_D", detailTypeColumn: "DUE_TYPE", detailNoColumn: "DUE_NO",
             detailGroupTypeColumn: "R_C_TYPE", detailGroupNoColumn: "R_C_NO", detailGroupSerialColumn: "R_C_SERIAL_NO",
@@ -40,7 +40,7 @@ public static class PurDomainRules
         if (cancelErrors is not null)
             return new(false, "以下对帐已超出退料单数量\r\n 退料单号  退料数量  已对帐数量  单据数量\r\n" + cancelErrors);
 
-        // 2. 主表金额汇总（等价 P_PUR_DUE_After_Save：ROUND 2）
+        // 2. 主表金额汇总
         const string sql = """
             UPDATE m
             SET m.AMOUNT=d.AMOUNT, m.TAX_SUM=d.TAX_SUM, m.AMOUNT_TAX=d.AMOUNT_TAX,
@@ -319,7 +319,7 @@ public static class PurDomainRules
                 syncReq.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
                 await syncReq.ExecuteNonQueryAsync(token);
             }
-            // e. 明细金额重算（I/O/N 税公式，对齐旧 SP 与 AmountCalculator）
+            // e. Recalculate detail amounts (I/O/N tax formulas, same rules as AmountCalculator)
             await using (var calcAmount = new SqlCommand("""
                 UPDATE dbo.PUR_PURCHASE_D SET
                     AMOUNT=CASE TAX_TYPE WHEN 'I' THEN ROUND((QTY*PRICE*ISNULL(REBATE,100)/100)/(1+ISNULL(TAX_RATE,0)/100),2)
@@ -355,7 +355,7 @@ public static class PurDomainRules
                 calcMaster.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
                 await calcMaster.ExecuteNonQueryAsync(token);
             }
-            // g. 数量分配（等价旧游标）
+            // g. 数量分配
             var detailQty = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
             await using (var readQty = new SqlCommand("""
                 SELECT LTRIM(RTRIM(PRO_NO)), QTY FROM dbo.PUR_PURCHASE_D WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No;
@@ -531,7 +531,7 @@ public static class PurDomainRules
         if (productMissing is not null)
             return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
 
-        // 无 MORE 行时仅清零 REQUIRE_QTY（与旧 SP 一致，主流程幂等）
+        // 无 MORE 行时仅清零 REQUIRE_QTY
         var moreCount = await DomainRuleService.ExistsAsync(connection, transaction,
             "SELECT TOP 1 1 FROM dbo.PUR_APPLY_MORE WHERE APPLY_TYPE=@Type AND APPLY_NO=@No;", type, no, token);
         await using (var clearReq = new SqlCommand(
@@ -620,7 +620,7 @@ public static class PurDomainRules
             syncOrder.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
             await syncOrder.ExecuteNonQueryAsync(token);
         }
-        // 4. 申购数量分配（等价旧游标：按 PRO_NO, SERIAL_NO 顺序从明细 QTY 分配）
+        // 4. 申购数量分配
         var detailQty = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         await using (var readQty = new SqlCommand("""
             SELECT LTRIM(RTRIM(PRO_NO)), QTY FROM dbo.PUR_APPLY_D WHERE APPLY_TYPE=@Type AND APPLY_NO=@No;

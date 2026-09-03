@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 namespace EOS.API.Services;
 
 /// <summary>
-/// 报表中心调度订阅后台服务（ADR-009 §7/P5b）：周期扫描 REPORT_SUBSCRIPTION，
+/// 报表中心调度订阅后台服务：周期扫描 REPORT_SUBSCRIPTION，
 /// 到期订阅以订阅者身份生成报表 PDF 入 REPORT_INBOX。
 /// 调度为进程内定时轮询（无 Hangfire/Quartz 依赖），随 EOS.API 启动运行。
 /// 节流：每次最多处理 10 个到期订阅，间隔由 ReportInboxSettings.ScanIntervalSeconds 控制。
@@ -40,7 +40,7 @@ public sealed class ReportInboxScheduler(
         var repository = scope.ServiceProvider.GetRequiredService<ReportInboxRepository>();
         var reportRepository = scope.ServiceProvider.GetRequiredService<ReportRepository>();
         var printSettingsRepository = scope.ServiceProvider.GetRequiredService<PrintSettingsRepository>();
-        var rightsRepository = scope.ServiceProvider.GetRequiredService<LegacyRightsRepository>();
+        var rightsRepository = scope.ServiceProvider.GetRequiredService<ModuleRightsRepository>();
         var reportPdfService = scope.ServiceProvider.GetRequiredService<ReportPdfService>();
 
         var now = DateTime.Now;

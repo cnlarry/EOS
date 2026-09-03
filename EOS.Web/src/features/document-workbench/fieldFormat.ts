@@ -1,7 +1,7 @@
 /**
- * 元数据字段值显示格式化（复刻旧系统 FIELDS.DISPLAY_FORMAT / F_TYPE 规则）。
+ * 元数据字段值显示格式化。
  *
- * 旧系统 DxGridView 把 DISPLAY_FORMAT 直接作为 .NET 格式串套进 DataFormatString（"{0:...}"），
+ * DISPLAY_FORMAT 直接作为 .NET 格式串生效（"{0:...}" 语义），
  * 数据库实际值以自定义数字格式（0.##、0.00、#,##0.00、0.0000 等）与日期格式（yyyy-MM-dd）为主。
  * 本实现覆盖 .NET 常见自定义数字格式与标准数字格式（N/F/G/E/P/C/D/X），日期 token 与 .NET 对齐。
  *
@@ -47,7 +47,7 @@ function formatDateValue(value: unknown, format: string | null): string {
   return format.trim().replace(/yyyy|yy|MM|M|dd|d|HH|H|hh|h|mm|ss/g, (token) => tokens[token] ?? token)
 }
 
-/** .NET 标准数字格式（N/F/G/E/P/C/D/X + 精度），旧系统 DISPLAY_FORMAT 同样按 .NET 语义生效 */
+/** .NET 标准数字格式（N/F/G/E/P/C/D/X + 精度）， DISPLAY_FORMAT 同样按 .NET 语义生效 */
 function formatStandardNumber(num: number, code: string, digits: number | null): string {
   const d = digits ?? 2
   switch (code.toUpperCase()) {
@@ -124,7 +124,7 @@ function formatCustomNumber(num: number, formatText: string): string {
   const intTokens = intSectionRaw.match(/[0#]/g) ?? []
   const fracTokens = fracSectionRaw.match(/[0#]/g) ?? []
   const fracOut = renderFraction(fracTokens, value)
-  // 无小数占位符时按整数位四舍五入（对齐 .NET "0"/"#"）；有小数位时截断整数部分
+  // 无小数占位符时按整数位四舍五入；有小数位时截断整数部分
   const intDigits = fracTokens.length === 0 ? String(Math.round(value)) : String(Math.trunc(value))
   const intOut = renderInteger(intTokens, intDigits, intSectionRaw.includes(','))
   const sign = negative ? '-' : ''
@@ -160,7 +160,7 @@ export function formatFieldValue(value: unknown, dataType: string, format: strin
 
 /**
  * 字段对齐方式（ITEM_ALIGN / HEADER_ALIGN：left/center/right）映射到 Tabler 文本对齐类。
- * 复刻旧系统 DxGridView 默认：ITEM_ALIGN 为空时 int/float/double 等数字字段右对齐，其余左对齐；
+ * 默认对齐：ITEM_ALIGN 为空时 int/float/double 等数字字段右对齐，其余左对齐；
  * 显式 left/center/right 一律优先。
  */
 export function alignClass(align?: string | null, dataType?: string | null): string {

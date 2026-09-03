@@ -1,6 +1,6 @@
 namespace EOS.API.Models;
 
-/// <summary>报表定义维护草稿（REPORT，旧 2201/229801 的受控等价）。</summary>
+/// <summary>报表定义维护草稿（REPORT， ）。</summary>
 public sealed record ReportAdminDraft(
     string ReportId,
     string? ReportName,

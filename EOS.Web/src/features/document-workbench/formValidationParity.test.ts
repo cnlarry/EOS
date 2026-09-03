@@ -7,7 +7,7 @@ import type { FormFieldDefinition } from './formDefinition'
 import { evaluateField } from './formValidation'
 
 /**
- * ADR-006 决策 2.4 校验单一来源对拍矩阵（前端侧）：
+ *  校验单一来源一致性比对矩阵（前端侧）：
  * 与 EOS.API.Tests/FormValidationParityTests.cs 消费同一份 fixture，
  * evaluateField 的判定码与规范化值必须与服务端保存管线一致。规则变更必须先改 fixture。
  */
@@ -36,7 +36,7 @@ function findFixturePath(): string {
     const candidate = join(directory, 'EOS.API.Tests', 'form-validation-parity.json')
     if (existsSync(candidate)) return candidate
   }
-  throw new Error('未找到 form-validation-parity.json（对拍 fixture）。')
+  throw new Error('未找到 form-validation-parity.json（一致性比对 fixture）。')
 }
 
 function toDefinition(field: ParityField): FormFieldDefinition {
@@ -79,7 +79,7 @@ function toDefinition(field: ParityField): FormFieldDefinition {
 
 const fixture = JSON.parse(readFileSync(findFixturePath(), 'utf-8')) as { cases: ParityCase[] }
 
-describe('form-validation-parity（ADR-006 决策 2.4，与服务端同源 fixture）', () => {
+describe('form-validation-parity', () => {
   it.each(fixture.cases.map(parityCase => [parityCase.name, parityCase] as const))('%s', (_, parityCase) => {
     const verdict = evaluateField(toDefinition(parityCase.field), parityCase.input ?? undefined)
     expect(verdict.code, `用例「${parityCase.name}」判定不一致`).toBe(parityCase.expectedCode)

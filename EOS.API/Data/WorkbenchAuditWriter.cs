@@ -11,8 +11,8 @@ using Microsoft.Extensions.Options;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 统一业务审计写入（ADR-005 §2/§8，阶段 4）：
-/// 业务事务内同写旧 SYSDF（兼容查询来源）与 AUDIT_EVENT（新系统事实源），
+/// 统一业务审计写入：
+/// 业务事务内同写 SYSDF（兼容查询来源）与 AUDIT_EVENT，
 /// UPDATE 另写 AUDIT_FIELD_CHANGE（字段级明细）；大字段/敏感字段只存摘要或 SHA-256。
 /// 读路径（导出/打印/权限拒绝/日志查询留痕）用 WriteBestEffortAsync（独立连接 + 事务，失败忽略）。
 /// </summary>

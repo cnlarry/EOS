@@ -7,7 +7,7 @@ namespace EOS.API.Data;
 public sealed record WorkbenchIdempotencyRecord(string? ResultKey, bool FlowStarted);
 
 /// <summary>
-/// 写路径幂等（ADR-005 §2：WorkbenchCommandHandler 写路径必须支持幂等键）：
+/// 写路径幂等：
 /// 事务内 claim/complete，业务失败回滚即释放；重复提交返回缓存结果，不重复产生副作用。
 /// 并发竞争由主键约束兜底（重复插入重读既有结果）。
 /// </summary>

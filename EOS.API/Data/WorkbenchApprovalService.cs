@@ -6,7 +6,7 @@ using EOS.API.Models;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 工作台审批服务（ADR-005 §2 组件表 WorkbenchApprovalService，阶段 3）：
+/// 工作台审批服务：
 /// 批核/解批/结案/未结案/自动批核 + 状态机副作用 + 幂等 + 删除补偿守卫。
 /// 补偿语义（落定）：
 /// - 结案单据（FINISHED_TAG=1）禁止删除，需先取消结案；
@@ -24,7 +24,7 @@ public sealed class WorkbenchApprovalService(
     ILogger<WorkbenchApprovalService> logger)
 {
     /// <summary>
-    /// 单据批核/解批（旧 P_WF_&lt;DOC&gt; 的受控调用）。
+    /// 单据批核/解批。
     /// 仅对 ModuleBusinessMap 登记的模块开放；成功返回主键，失败返回业务消息。
     /// </summary>
     public async Task<RecordSaveResult> WorkflowAsync(
@@ -53,7 +53,7 @@ public sealed class WorkbenchApprovalService(
     }
 
     /// <summary>
-    /// 结案/取消结案（旧 Comm/DoFinishOne.aspx 的受控 C# 等价，主表单笔结案）。
+    /// 结案/取消结案。
     /// 语义：更新主表 FINISHED_TAG/FINISHED_PERSON/FINISHED_DATE；
     /// 结案仅允许 FINISHED_TAG=0，取消结案仅允许 FINISHED_TAG=1（守卫防重复/冲突）。
     /// </summary>
@@ -83,7 +83,7 @@ public sealed class WorkbenchApprovalService(
 
     /// <summary>
     /// 自动批核（MODULES.AUTO_APPROVE=1）：新增后数据自动为批核状态，无需再点批核。
-    /// 等价批核端点无流程路径：CONFIRM_TAG=1/CONFIRM_PERSON='SYSTEM'/CONFIRM_DATE=GETDATE() +
+    /// 无流程模块的直接批核：CONFIRM_TAG=1/CONFIRM_PERSON='SYSTEM'/CONFIRM_DATE=GETDATE() +
     /// P_WF_&lt;DOC&gt; 业务副作用（WorkflowSproc 存在时）+ APPROVE 审计；守卫防重复。
     /// </summary>
     public async Task<RecordSaveResult> AutoApproveAsync(
@@ -133,7 +133,7 @@ public sealed class WorkbenchApprovalService(
     }
 
     /// <summary>
-    /// 删除补偿守卫（ADR-005 §2，2026-08-23 全量收紧）：
+    /// 删除补偿守卫：
     /// 结案单据禁止删除；任何已批核单据（含自动批核）禁止删除，需先解批；
     /// 已产生库存日志（INV_DEPOT_LOG）的单据禁止删除（解批回退后再删）。
     /// 返回 null 表示允许删除，否则返回阻止原因（RecordSaveResult）。
@@ -237,18 +237,18 @@ public sealed class WorkbenchApprovalService(
             }
         }
         // 有流程定义的模块：批核即"送审"（启动审批链），单据保持未确认；
-        // 无流程模块保持直接批核（对齐旧系统 P_WF_APPROVE_NOFLOW 语义）。
+        // 无流程模块保持直接批核。
         else if (approve && await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token))
         {
             return await workflowEngine.StartFlowAsync(definition, keyValues, employeeName, userId, token, message);
         }
-        // 对齐旧系统 P_WF_APPROVE_NOFLOW：先更新主表确认状态（带守卫），再执行业务 SP。
+        // 系统 P_WF_APPROVE_NOFLOW：先更新主表确认状态（带守卫），再执行业务 SP。
         var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);
         if (originalState is null)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
         }
-        // 解批前置校验（旧 P_WF_GET_NOBACK_STATE 的受控 C# 等价）
+        // 解批前置校验
         if (!approve && originalState.Value.Tag == true)
         {
             var noBack = await CheckNotBackFieldsAsync(connection, definition, keyValues, token);
@@ -321,7 +321,7 @@ public sealed class WorkbenchApprovalService(
         return RecordSaveResult.Success(keyValues);
     }
 
-    /// <summary>解批前置校验（旧 P_WF_GET_NOBACK_STATE 的受控 C# 等价，仅解批路径）。</summary>
+    /// <summary>解批前置校验。</summary>
     private async Task<RecordSaveResult?> CheckNotBackFieldsAsync(
         SqlConnection connection,
         WorkbenchDefinition definition,

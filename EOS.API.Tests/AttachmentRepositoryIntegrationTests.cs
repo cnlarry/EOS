@@ -11,7 +11,7 @@ namespace EOS.API.Tests;
 
 /// <summary>
 /// ATTACHMENT 附件仓储集成测试：直连 EOS.ERP 开发库验证真实 SQL（创建/列表/改备注/删除/项次自增）。
-/// 连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 Codex 配置；拿不到连接串时测试空跑跳过。
+/// 连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 本机配置文件；拿不到连接串时测试空跑跳过。
 /// 测试前置用与生产一致的 DbUp 迁移创建/升级 ATTACHMENT 表；测试数据在 Dispose 中清理。
 /// </summary>
 [Trait("Category", "Integration")]

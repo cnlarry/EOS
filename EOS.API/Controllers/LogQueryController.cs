@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 结构化日志查询（ADR-005 §5.4）：search/trace/errors-summary/slow/tail/redact，
+/// 结构化日志查询：search/trace/errors-summary/slow/tail/redact，
 /// 只读、统一脱敏、限行数/字节、查询留痕；权限门：模块 2306（系统管理）CanSetup。
 /// 默认面向开发/测试环境；生产访问需显式授权（具备 2306 Setup 的用户）。
 /// </summary>

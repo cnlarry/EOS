@@ -7,7 +7,7 @@ using EOS.API.Models;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 运行时 Definition 快照提供者（ADR-005 §3 阶段 2 挂起项落地）：
+/// 运行时 Definition 快照提供者：
 /// 启动或显式刷新时从 WORKBENCH_DEFINITION_SNAPSHOT（IS_CURRENT=1）加载已发布快照，
 /// 提供模块级不可变基线（DefinitionVersion = module-{id}-v{n}）。
 /// DocumentWorkbenchRepository 在模块「已发布且未脏」时优先使用基线构建每用户定义，

@@ -3,7 +3,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 namespace EOS.API.Health;
 
 /// <summary>
-/// /health/ready 的必要配置探活（ADR-005 §5.3）：连接串与运行必需配置存在。
+/// /health/ready 的必要配置探活：连接串与运行必需配置存在。
 /// </summary>
 public sealed class ConfigurationHealthCheck(IConfiguration configuration) : IHealthCheck
 {

@@ -139,5 +139,8 @@ public sealed record FieldHistoryEvent(
     /// <summary>操作人姓名（SYSDN.EMP_NAME 对照解析；无对应员工时回退 ActorUserId）。</summary>
     string ActorName);
 
-/// <summary>表物理列（sys.columns + FIELDS 描述）：字段设置数据来源/回填构建器下拉选项。</summary>
-public sealed record FieldAdminColumn(string Name, string DataType, string Description);
+/// <summary>
+/// 表列（物理列 sys.columns + 来源表内受控虚拟列 FIELDS.IS_VIRTUAL，均带 FIELDS 描述）：
+/// 字段设置数据来源/回填构建器下拉选项。虚拟来源列合法，过滤条件仍只用物理列。
+/// </summary>
+public sealed record FieldAdminColumn(string Name, string DataType, string Description, bool IsVirtual = false);

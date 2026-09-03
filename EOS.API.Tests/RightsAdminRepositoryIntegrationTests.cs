@@ -12,7 +12,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 权限管理仓储集成测试：真实 EOS.ERP 开发库验证矩阵读取、upsert/删除语义、
 /// 组聚合、成员关系与非法输入拒绝。临时用户/组以 ZR*/ZG* 前缀创建并自清理。
-/// 连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 Codex 配置；拿不到时跳过。
+/// 连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 本机配置文件；拿不到时跳过。
 /// </summary>
 [Trait("Category", "Integration")]
 public sealed class RightsAdminRepositoryIntegrationTests : IDisposable

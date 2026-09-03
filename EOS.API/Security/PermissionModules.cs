@@ -1,7 +1,7 @@
 namespace EOS.API.Security;
 
 /// <summary>
-/// 权限资源模块号集中定义（ADR-005 §6），消除控制器中的魔法数字。
+/// 权限资源模块号集中定义，消除控制器中的魔法数字。
 /// </summary>
 public static class PermissionModules
 {

@@ -22,7 +22,7 @@ public sealed class WorkbenchBrowseResolverTests
     [Fact]
     public void ParseBrowseUrl_SingleIdxKey_MapsTargetToSource()
     {
-        var mapping = WorkbenchBrowseResolver.ParseBrowseUrl("~/COP/CLIENT.aspx?IDX=CLIENT_ID={CLIENT_ID}");
+        var mapping = WorkbenchBrowseResolver.ParseBrowseUrl("~/COP/CLIENT?IDX=CLIENT_ID={CLIENT_ID}");
         Assert.Equal("CLIENT_ID", mapping["CLIENT_ID"]);
         Assert.Single(mapping);
     }
@@ -30,7 +30,7 @@ public sealed class WorkbenchBrowseResolverTests
     [Fact]
     public void ParseBrowseUrl_CompositeIdxKeys_PreservesOrder()
     {
-        var mapping = WorkbenchBrowseResolver.ParseBrowseUrl("~/COP/Account.aspx?IDX=ACCOUNT_TYPE={ACCOUNT_TYPE}^ACCOUNT_NO={ACCOUNT_NO}");
+        var mapping = WorkbenchBrowseResolver.ParseBrowseUrl("~/COP/Account?IDX=ACCOUNT_TYPE={ACCOUNT_TYPE}^ACCOUNT_NO={ACCOUNT_NO}");
         Assert.Equal(new[] { "ACCOUNT_TYPE", "ACCOUNT_NO" }, mapping.Keys);
         Assert.Equal("ACCOUNT_TYPE", mapping["ACCOUNT_TYPE"]);
         Assert.Equal("ACCOUNT_NO", mapping["ACCOUNT_NO"]);
@@ -39,7 +39,7 @@ public sealed class WorkbenchBrowseResolverTests
     [Fact]
     public void ParseBrowseUrl_BareQueryParam_MapFallback()
     {
-        var mapping = WorkbenchBrowseResolver.ParseBrowseUrl("~/COP/ClientSearch_Frame.aspx?CLIENT_ID={CLIENT_ID}&title=x");
+        var mapping = WorkbenchBrowseResolver.ParseBrowseUrl("~/COP/ClientSearch_Frame?CLIENT_ID={CLIENT_ID}&title=x");
         Assert.Equal("CLIENT_ID", mapping["CLIENT_ID"]);
         Assert.Single(mapping);
     }
@@ -47,14 +47,14 @@ public sealed class WorkbenchBrowseResolverTests
     [Fact]
     public void ParseBrowseUrl_NoPlaceholders_EmptyMapping()
     {
-        var mapping = WorkbenchBrowseResolver.ParseBrowseUrl("~/Admin/x.aspx?title=x");
+        var mapping = WorkbenchBrowseResolver.ParseBrowseUrl("~/Admin/x?title=x");
         Assert.Empty(mapping);
     }
 
     [Fact]
     public void ParseBrowseUrl_TargetColumn_IsCaseInsensitive()
     {
-        var mapping = WorkbenchBrowseResolver.ParseBrowseUrl("~/x.aspx?IDX=client_id={CLIENT_ID}");
+        var mapping = WorkbenchBrowseResolver.ParseBrowseUrl("~/x?IDX=client_id={CLIENT_ID}");
         Assert.True(mapping.ContainsKey("CLIENT_ID"));
     }
 

@@ -8,7 +8,7 @@ import { FlowDesignPage } from './FlowDesignPage'
 vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
 
 const flows = [
-  { moduleId: 1906, title: '油卡充值单', flowName: '油卡充值单二级审批', remark: 'EOS-PILOT-1906', stepCount: 2, updatedBy: 'EOS-PILOT-1906', updatedAt: '2026-08-26 22:48:48' },
+  { moduleId: 1906, title: '油卡充值单', flowName: '油卡充值单二级审批', remark: 'PILOT-1906', stepCount: 2, updatedBy: 'PILOT-1906', updatedAt: '2026-08-26 22:48:48' },
   { moduleId: 1404, title: '报价单', flowName: '报价二级审批', remark: '', stepCount: 2, updatedBy: 'admin', updatedAt: null },
 ]
 const eligible = [

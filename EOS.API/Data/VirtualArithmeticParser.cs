@@ -7,11 +7,11 @@ namespace EOS.API.Data;
 internal sealed record VirtualArithmeticToken(string Kind, string? Table, string? Column, string Text);
 
 /// <summary>
-/// VIRTUAL_EXP 受控表达式解析器（2026-08-15，P5 算术 + P6 条件/函数）：
+/// VIRTUAL_EXP 受控表达式解析器：
 /// - 支持：`表.列` 引用、数值/字符串字面量、`+ - * /`、括号、一元正负号、
-///   字符串拼接、比较（= &lt;&gt; &lt; &lt;= &gt; &gt;=）、AND/OR、
-///   CASE WHEN（searched/simple，可嵌套）、白名单函数
-///   （ROUND(x,n)/CEILING(x)/DATENAME(unit,x)/DATEDIFF(unit,x,y)/GETDATE()）；
+/// 字符串拼接、比较（= &lt;&gt; &lt; &lt;= &gt; &gt;=）、AND/OR、
+/// CASE WHEN（searched/simple，可嵌套）、白名单函数
+/// （ROUND(x,n)/CEILING(x)/DATENAME(unit,x)/DATEDIFF(unit,x,y)/GETDATE()）；
 /// - 拒绝：未白名单函数、子查询、分号/注释、裸标识符、其它字符。
 /// 纯语法解析不访问数据库；表/列白名单与物理存在性由调用方校验。
 /// </summary>
@@ -40,7 +40,7 @@ internal static class VirtualArithmeticParser
         "decimal", "numeric", "float", "real", "money", "smallmoney", "date", "datetime", "bit",
     };
 
-    /// <summary>DATENAME/DATEDIFF 的日期单位关键字（旧系统不加引号，如 MM/WEEKDAY）。</summary>
+    /// <summary>DATENAME/DATEDIFF 的日期单位关键字。</summary>
     private static readonly IReadOnlySet<string> DateParts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "YEAR", "QUARTER", "MONTH", "DAYOFYEAR", "DAY", "WEEK", "WEEKDAY", "HOUR", "MINUTE", "SECOND",

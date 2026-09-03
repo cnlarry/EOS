@@ -39,7 +39,7 @@ public sealed record ExpressionOverview(
     IReadOnlyList<ExpressionStaleEntry> StaleItems);
 
 /// <summary>
-/// 受控表达式解析工作流（P1/P2，2026-08-15，设计见 docs/plans/受控表达式工作流.md）：
+/// 受控表达式解析工作流（P1/P2，，设计见）：
 /// VIRTUAL_EXP / CONVERT_FUNCTION / DATASOURCE_SQL 三套受限语言的服务端校验、只读预览与发布审计。
 /// - 校验：语法解析 → 表/列物理存在 → 白名单命中，任何失败不进入运行时；
 /// - 发布：事务内写 FIELDS + SYSDF 审计（TYPE=EXPR_PUBLISH），幂等，乐观锁；
@@ -277,7 +277,7 @@ public sealed class RestrictedExpressionService(
         return new ExpressionRescanResult(version, total, stale);
     }
 
-    /// <summary>表达式审计总览：版本 + 可见/隐藏/分类计数 + 重校验结果（供 2302 表达式审计面板与顾问报表）。</summary>
+    /// <summary>表达式审计总览：版本 + 可见/隐藏/分类计数 + 重校验结果（供 2302 表达式审计面板与实施人员报表）。</summary>
     public async Task<ExpressionOverview> OverviewAsync(CancellationToken token)
     {
         await using var connection = connections.Create();

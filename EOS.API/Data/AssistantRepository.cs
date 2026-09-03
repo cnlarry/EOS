@@ -2,7 +2,7 @@ using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
 
-/// <summary>ASSISTANT_SESSION 行（ADR-007 §7）。</summary>
+/// <summary>ASSISTANT_SESSION 行。</summary>
 public sealed record AssistantSessionDto(
     long Id,
     string UserId,
@@ -24,7 +24,7 @@ public sealed record AssistantMessageDto(
     DateTimeOffset CreatedAt);
 
 /// <summary>
-/// 工作助手会话/消息持久化契约（ADR-007 §7）。所有读写按 USER_ID 强制隔离；
+/// 工作助手会话/消息持久化契约。所有读写按 USER_ID 强制隔离；
 /// 越权会话的写入抛 UnauthorizedAccessException，读取返回空/null。
 /// </summary>
 public interface IAssistantRepository

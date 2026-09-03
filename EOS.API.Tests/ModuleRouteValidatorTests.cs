@@ -38,11 +38,11 @@ public class ModuleRouteValidatorTests
     [InlineData("javascript:alert(1)", 129801)]
     [InlineData("data:text/html;base64,xx", 129801)]
     [InlineData("//evil.example/x", 129801)]
-    [InlineData("~/RPT/RptList2.aspx", 129801)]
-    [InlineData("Comm/view_frame.aspx", 1406)]
+    [InlineData("~/RPT/RptList2", 129801)]
+    [InlineData("Comm/unknown_path", 1406)]
     [InlineData("", 129801)]
     [InlineData(null, 129801)]
-    public void InvalidOrLegacyRoutes_FallBackToPlaceholder(string? url, int moduleId)
+    public void InvalidOrPlaceholderRoutes_FallBackToPlaceholder(string? url, int moduleId)
     {
         Assert.Equal($"/legacy/modules/{moduleId}", ModuleRouteValidator.Resolve(url, moduleId));
     }
@@ -69,14 +69,14 @@ public class ModuleRouteValidatorTests
     [Theory]
     [InlineData("")]
     [InlineData(null)]
-    [InlineData("~/BOM/Product.aspx")]
-    [InlineData("~/COP/Return.aspx?m=1")]
+    [InlineData("~/BOM/Product")]
+    [InlineData("~/COP/Return?m=1")]
     [InlineData("/admin/nope")]
     [InlineData("/workbench/1406")]
     [InlineData("https://evil.example/x")]
     [InlineData("javascript:alert(1)")]
     [InlineData("//evil.example/x")]
-    public void ResolveActionUrl_InvalidOrLegacy_ReturnsNull(string? url)
+    public void ResolveActionUrl_InvalidOrUnknown_ReturnsNull(string? url)
     {
         Assert.Null(ModuleRouteValidator.ResolveActionUrl(url, 1406));
     }
@@ -102,8 +102,8 @@ public class ModuleRouteValidatorTests
     [InlineData("/legacy/modules/2307", true)]
     [InlineData("/workbench/1406", false)]
     [InlineData("/reports/129801", false)]
-    [InlineData("~/BOM/Product.aspx", false)]
-    [InlineData("Comm/view_frame.aspx", false)]
+    [InlineData("~/BOM/Product", false)]
+    [InlineData("Comm/unknown_path", false)]
     [InlineData("https://evil.example/x", false)]
     [InlineData("/admin/nope", false)]
     public void IsValidHostUrl_Contract(string? url, bool expected)
@@ -118,7 +118,7 @@ public class ModuleRouteValidatorTests
     [InlineData("/workbench/{moduleId}/edit", true)]
     [InlineData("/admin/tables?table=PRODUCT", true)]
     [InlineData("/admin/menus", true)]
-    [InlineData("~/BOM/Product.aspx", false)]
+    [InlineData("~/BOM/Product", false)]
     [InlineData("/workbench/1406/edit", false)]
     [InlineData("/admin/nope", false)]
     [InlineData("javascript:alert(1)", false)]

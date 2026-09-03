@@ -7,12 +7,12 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// 菜单管理（模块 2301）：MODULES 增删改查。
-/// 语义对齐旧 xp_menu_manage / P_SYS_DelTreeNode / P_Change_M_IDX：
+/// 语义 / P_SYS_DelTreeNode / P_Change_M_IDX：
 /// - 保存：事务内更新/插入，编号变更时级联子级 M_P_IDX、权限与引用表；
 /// - M_ROOT_IDX 按父链根重算并同步到子树；
 /// - 删除：有下级菜单或主/副表已产生数据时拒绝（新保护），叶子且无数据时删除并清理权限引用。
 /// - 排序：同级（M_P_IDX 相同）节点按 SORT_IDX,M_IDX 排序后重写 SORT_IDX（10 步进），
-///   对齐旧系统「排序号」字段驱动的菜单顺序。
+/// 系统「排序号」字段驱动的菜单顺序。
 /// 全部参数化，动态标识符仅来自服务端校验。
 /// </summary>
 public sealed class MenuAdminRepository(
@@ -115,7 +115,7 @@ public sealed class MenuAdminRepository(
     }
 
     /// <summary>
-    /// 菜单默认查询列（对齐旧 MenuBuilder「默认查询」→ SetQueryDefault）：
+    /// 菜单默认查询列：
     /// 返回主表/副表全部可见物理字段及当前 SYSQL_DEFAULT 勾选顺序。
     /// </summary>
     public async Task<MenuDefaultColumns> GetDefaultColumnsAsync(int moduleId, string tableKind, CancellationToken token)
@@ -157,7 +157,7 @@ public sealed class MenuAdminRepository(
 
     /// <summary>
     /// 保存菜单默认查询列（SYSQL_DEFAULT，先删后插、事务、参数化）。
-    /// 对齐旧 SetQueryDefault 语义：T_ID=模块主表，T_ID_R=目标表。
+    /// 语义：T_ID=模块主表，T_ID_R=目标表。
     /// </summary>
     public async Task SaveDefaultColumnsAsync(int moduleId, SaveMenuDefaultColumns request, CancellationToken token)
     {
@@ -357,7 +357,7 @@ public sealed class MenuAdminRepository(
                 target.RemoveAt(currentIndex);
             if (beforeId == id)
             {
-                // beforeId 指向自身：同一父级下等价于原位，直接视为无操作
+                // beforeId 指向自身：同一父级下与原位一致，直接视为无操作
                 if (oldParentKey == newParent)
                 {
                     await transaction.CommitAsync(token);
@@ -417,7 +417,7 @@ public sealed class MenuAdminRepository(
 
     /// <summary>
     /// 新增或更新菜单节点（事务）。oldId 为空表示新增；oldId 非空表示更新该编号的节点
-    /// （允许把 M_IDX 改成新编号，级联子级 M_P_IDX、权限与引用表，对齐旧 OLD_IDX 语义）。
+    /// （允许把 M_IDX 改成新编号，级联子级 M_P_IDX、权限与引用表， 语义）。
     /// </summary>
     public async Task<int> SaveAsync(MenuAdminModule input, int? oldId, string updatedBy, CancellationToken token)
     {
@@ -453,9 +453,9 @@ public sealed class MenuAdminRepository(
                 await NormalizeSubtreeRootAsync(connection, transaction, currentId, effectiveRoot, token);
             if (currentId != input.M_IDX)
             {
-                    // 编号变更级联：子级 M_P_IDX、M_ROOT_IDX、权限与引用表（对齐 P_Change_M_IDX）
+                    // 编号变更级联：子级 M_P_IDX、M_ROOT_IDX、权限与引用表
                     await ChangeModuleIdAsync(connection, transaction, currentId, input.M_IDX, token);
-                    // 子树根编号归一化（对齐 xp_menu_manage 末段）
+                    // 子树根编号归一化
                     await using var normalize = new SqlCommand(
                         "UPDATE dbo.MODULES SET M_ROOT_IDX=@Root WHERE M_ROOT_IDX=@Id;", connection, transaction);
                     normalize.Parameters.Add("@Root", SqlDbType.Int).Value = rootIdx;
@@ -489,8 +489,8 @@ public sealed class MenuAdminRepository(
     }
 
     /// <summary>
-    /// 删除菜单节点：有下级菜单、或主/副表已产生业务数据时拒绝（新保护，旧系统为递归删除且无校验）；
-    /// 通过保护后删除节点并清理 SYSDD/SYSDH 权限引用（旧系统不清理，属遗留问题）。
+    /// 删除菜单节点：有下级菜单、或主/副表已产生业务数据时拒绝（新保护，为递归删除且无校验）；
+    /// 通过保护后删除节点并清理 SYSDD/SYSDH 权限引用。
     /// </summary>
     public async Task DeleteAsync(int id, CancellationToken token)
     {
@@ -847,7 +847,7 @@ public sealed class MenuAdminRepository(
 
     private static async Task ChangeModuleIdAsync(SqlConnection connection, SqlTransaction transaction, int oldId, int newId, CancellationToken token)
     {
-        // 受控存储过程：固定表/列名级联（对齐旧 P_Change_M_IDX），无动态 SQL。
+        // 受控存储过程：固定表/列名级联，无动态 SQL。
         await using var command = new SqlCommand("EXEC dbo.P_Change_M_IDX @OLD_IDX, @NEW_IDX;", connection, transaction);
         command.Parameters.Add("@OLD_IDX", SqlDbType.Int).Value = oldId;
         command.Parameters.Add("@NEW_IDX", SqlDbType.Int).Value = newId;

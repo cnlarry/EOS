@@ -169,7 +169,7 @@ function useTargetFields(currentTable: string) {
 }
 
 /**
- * 数据源编辑弹窗（ADR-008 全页化第 4 点）：来源表/说明/模块 + 过滤构建器 + 回填下拉构建器。
+ * 数据源编辑弹窗：来源表/说明/模块 + 过滤构建器 + 回填下拉构建器。
  * 回填来源列与目标字段均用下拉（表内字段数量可控），目标字段按来源列同类型过滤。
  */
 export function DataSourceEditorModal({ open, initial, currentTable, endpoints, onClose, onSave }: DataSourceEditorModalProps) {

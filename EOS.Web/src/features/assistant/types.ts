@@ -1,4 +1,4 @@
-/** 工作助手（ADR-007 M2）前端类型。ID 一律字符串（架构约定）。 */
+/** 工作助手前端类型。ID 一律字符串（架构约定）。 */
 
 export interface AssistantSession {
   id: string

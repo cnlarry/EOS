@@ -4,12 +4,12 @@ using System.Text;
 namespace EOS.API.Data;
 
 /// <summary>
-/// DATA_FILTER / MODULES.FILTER 受限解析（M2 安全子集 + M79 受控扩展）。
+/// DATA_FILTER / MODULES.FILTER 受限解析。
 /// 接受「白名单字段 运算符 值」谓词（字段可带主表名前缀），AND/OR 组合与括号（深度 ≤ 8）。
 /// 运算符：=、&lt;&gt;、&gt;、&lt;、&gt;=、&lt;=。
 /// 值（右侧）限单引号字符串（'' 转义）、数字字面量，或受控函数表达式：
-///   getdate()、dateadd(month,&lt;整数&gt;,getdate())、convert(varchar(7),&lt;日期表达式&gt;,120)、
-///   及字符串拼接（`+ '字面量'`，如 convert(...)+'-26'）；函数在服务端求值为常量后参数化。
+/// getdate()、dateadd(month,&lt;整数&gt;,getdate())、convert(varchar(7),&lt;日期表达式&gt;,120)、
+/// 及字符串拼接（`+ '字面量'`，如 convert(...)+'-26'）；函数在服务端求值为常量后参数化。
 /// 左侧支持同表白名单列间算术（+ - * /，操作数为列或数字），如 QTY-RECEIVE_QTY&gt;0。
 /// 解析成功编译为参数化谓词；其余一律拒绝。
 /// 空过滤由调用方视为"无行级限制"；解析失败时调用方必须拒绝执行（读/写返回 403）。
@@ -20,7 +20,7 @@ internal static class DataFilterParser
 
     /// <summary>
     /// CHOOSE_FILTER 子查询白名单（IN (SELECT ...) 受控解析）。
-    /// 从 97 条旧配置提取（2026-08-11）：表/函数名 + 允许引用的列；子查询表名/列名必须在此白名单内。
+    /// 从 97 条旧配置提取：表/函数名 + 允许引用的列；子查询表名/列名必须在此白名单内。
     /// F_* 为表值函数（dbo.f_get_pro_units / dbo.f_get_under_m_idx），参数模板后续阶段放开。
     /// </summary>
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> SubqueryTableColumns =
@@ -434,7 +434,7 @@ internal static class DataFilterParser
         // 若绑 decimal 会触发 char→numeric 隐式转换，含非数字值时报 8114）；
         // 列间算术的右值保持 decimal（如 QTY-RECEIVE_QTY>0 的 0）。
         // 数值字面量的绑定类型按字段类型决定：bit/数值列绑数字（避免隐式转换导致索引失效/全表扫描），
-        // char/nvarchar 列绑字符串（对齐旧系统 PRO_TYPE=1 的 char 语义）；未知类型保守绑字符串。
+        // char/nvarchar 列绑字符串；未知类型保守绑字符串。
         var numericAsString = !leftIsArithmetic;
         if (!leftIsArithmetic && !leftToken.Equals("isnull", StringComparison.OrdinalIgnoreCase)
             && context.ColumnTypes is not null)
@@ -709,7 +709,7 @@ internal static class DataFilterParser
         token.Kind is TokenKind.Plus or TokenKind.Minus or TokenKind.Asterisk or TokenKind.Slash;
 
     /// <summary>
-    /// 解析 CAST(列 AS CHAR(n)) 拼接操作数（旧系统单号+序号拼接，如 SHIPMENT_NO+CAST(SERIAL_NO AS CHAR(6))）。
+    /// 解析 CAST(列 AS CHAR(n)) 拼接操作数。
     /// 列必须能解析（白名单校验），宽度 n 限 1~64；resolve 返回列 SQL 片段，null 表示不可解析。
     /// </summary>
     private static bool ParseCastAsChar(
@@ -806,7 +806,7 @@ internal static class DataFilterParser
     /// <summary>
     /// 受控函数白名单（服务端求值为常量后参数化）：
     /// getdate()；dateadd(month,&lt;整数&gt;,&lt;日期表达式&gt;)；
-    /// convert(varchar(7),&lt;日期表达式&gt;,120)（等价 yyyy-MM）。
+    /// convert(varchar(7),&lt;日期表达式&gt;,120)。
     /// 其余函数一律拒绝。
     /// </summary>
     private static bool ParseFunctionExpression(IReadOnlyList<Token> tokens, ref int position, out object value)

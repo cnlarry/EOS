@@ -28,7 +28,7 @@ export interface ErpFieldChooserProps<T extends UnifiedChooserRow = UnifiedChoos
   mode: 'multi' | 'sort'
   /** 行键（左栏勾选即加入右栏的稳定标识），如菜单用 F_ID、报表用 T_ID.F_ID */
   getRowId: (row: T, index: number) => string
-  /** 回显串（兼容旧格式，打开时按 valueFormat 解析） */
+  /** 回显串（按 valueFormat 解析） */
   value: string
   valueFormat: ErpFieldChooserValueFormat
   onSave: (value: string) => void

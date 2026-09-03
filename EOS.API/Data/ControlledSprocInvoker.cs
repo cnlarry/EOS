@@ -9,13 +9,13 @@ public sealed record SprocResult(bool Success, string? Message);
 /// 受控存储过程执行器：仅允许执行 ModuleBusinessMap 白名单内的固定存储过程，
 /// 参数由服务端从模块主键元数据构造（列名来自服务端白名单，值做单引号转义），
 /// 不信任任何来自客户端的表名/列名/存储过程名/条件片段。
-/// 对应旧系统 P_Run_After_Save（AFTERSAVE_SP）与单据批核（P_WF_*）的受控调用。
+/// 对应 P_Run_After_Save（AFTERSAVE_SP）与单据批核（P_WF_*）的受控调用。
 /// </summary>
 public sealed class ControlledSprocInvoker(DbConnectionFactory connections, ILogger<ControlledSprocInvoker> logger)
 {
 
     /// <summary>
-    /// 构造旧系统 SP 需要的主键条件（@pri_idx / @key_value），如 [QUOTE_TYPE]='BJK' AND [QUOTE_NO]='BJK26080001'。
+    /// 构造 SP 需要的主键条件（@pri_idx / @key_value），如 [QUOTE_TYPE]='BJK' AND [QUOTE_NO]='BJK26080001'。
     /// </summary>
     public static string BuildKeyCondition(IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues)
     {
@@ -28,7 +28,7 @@ public sealed class ControlledSprocInvoker(DbConnectionFactory connections, ILog
     private static string Escape(string value) => value.Replace("'", "''");
 
     /// <summary>
-    /// 保存后执行 AFTERSAVE_SP（旧 P_Run_After_Save 的受控等价）。
+    /// 保存后执行 AFTERSAVE_SP。
     /// </summary>
     public async Task<SprocResult> RunAfterSaveAsync(
         int moduleId,

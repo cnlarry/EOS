@@ -30,8 +30,8 @@ import {
   summarizeFieldErrors, writableFields, type DetailGridRow, type RecordBundle, type RecordSaveResponse, type SaveRecordRequest,
 } from './formEditorUtils'
 
-// 统一表单主表布局列数（2026-08-30 用户拍板）：全局固定一行四列，忽略各模块 FORM_COLUMNS 元数据
-//（含显式配置 3 列的 113 个模块），与旧系统密集表单观感保持一致。
+// 统一表单主表布局列数：全局固定一行四列，忽略各模块 FORM_COLUMNS 元数据
+//（含显式配置 3 列的 113 个模块），
 const UNIFIED_FORM_COLUMNS = 4
 
 /** 明细视图排序（快照）：返回按字段排序的物理行序。仅在切换排序/增删行时重算，编辑中不随值漂移。 */
@@ -106,7 +106,7 @@ interface MasterFormGridProps {
 
 /** 主表字段网格（memo）：细节随主表值/错误变化时才重渲染，与明细网格相互隔离 */
 const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs, masterValues, fieldErrors, viewing, canSetup, masterAmountLocked, onFieldChange, onOpenChooser, onFieldSetup }: MasterFormGridProps) {
-  /** 主表 Enter 下一字段（textarea/select/checkbox/日期原生控件不拦截——决策 5） */
+  /** 主表 Enter 下一字段（textarea/select/checkbox/日期原生控件不拦截） */
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (viewing || event.key !== 'Enter') return
     const target = event.target as HTMLElement
@@ -231,7 +231,7 @@ interface DetailFormGridProps {
 
 /** 明细卡（memo）：主表字段输入等不涉及明细行的状态变化时不重渲染 */
 const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailErrors, sortedIndices, detailSort, selectedDetailRows, viewing, storageKey, onAddRow, onRemoveRow, onRemoveSelected, onFieldChange, onChoose, onSortChange, onSelectionChange, onResize }: DetailFormGridProps) {
-  /** 明细网格 Enter：同列下一行继续；末行则新增行后聚焦同列（决策 5 键盘规则） */
+  /** 明细网格 Enter：同列下一行继续；末行则新增行后聚焦同列 */
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Enter') return
     const target = event.target as HTMLElement
@@ -418,7 +418,7 @@ export function FormEditorPage() {
     if (!navKeys || navIndex == null) return
     const next = navIndex + delta
     if (next < 0 || next >= navKeys.length) return
-    // 相邻记录按进入浏览态时的列表当前顺序（旧系统 GoPrior/GoNext 语义），不回退到物理顺序
+    // 相邻记录按进入浏览态时的列表当前顺序，不回退到物理顺序
     navigate(workbenchView(moduleId, navKeys[next]),
       { state: { navKeys, navIndex: next } satisfies ViewNavState })
   }
@@ -435,7 +435,7 @@ export function FormEditorPage() {
   const [detailErrors, setDetailErrors] = useState<FieldErrors[]>([])
   const [detailChooser, setDetailChooser] = useState<{ index: number; field: FormFieldDefinition } | null>(null)
   const [detailChooserSerial, setDetailChooserSerial] = useState<number | null>(null)
-  /** 多来源「各是各的入口」：先弹来源菜单（ADR-008 §2）。 */
+  /** 多来源「各是各的入口」：先弹来源菜单。 */
   const [sourceMenu, setSourceMenu] = useState<
     | { kind: 'master'; field: FormFieldDefinition }
     | { kind: 'detail'; index: number; field: FormFieldDefinition }
@@ -637,7 +637,7 @@ export function FormEditorPage() {
     },
   })
 
-  // C1（2026-08-27）：送审意见弹窗 + 审批历史（流程信息）。审批历史沿用 /workflow/{moduleId}/history 时间线端点。
+  // 送审意见弹窗 + 审批历史（流程信息）。审批历史沿用 /workflow/{moduleId}/history 时间线端点。
   const [approveOpen, setApproveOpen] = useState(false)
   const [submitMessage, setSubmitMessage] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -710,7 +710,7 @@ export function FormEditorPage() {
   }
 
   /**
-   * 错误 UX（ADR-006 决策 2.2/背景 4）：提交校验失败时自动切换到首个错误所在页签，
+   * 错误 UX：提交校验失败时自动切换到首个错误所在页签，
    * 滚动并聚焦首个错误控件；明细错误滚动到明细网格首错单元格。
    */
   const focusFirstError = (fields: FormFieldDefinition[], master: FieldErrors, details: FieldErrors[]) => {
@@ -874,7 +874,7 @@ export function FormEditorPage() {
       setSaveError(`请先填写主表字段：${missing.join('、')}，再新增明细。`)
       return
     }
-    // 主表同名值自动带入新明细行（对齐旧系统 setTRKeyValue 随主表联动带值）
+    // 主表同名值自动带入新明细行
     const empty: Record<string, string> = {}
     for (const field of def.detailFields) {
       if (field.isVisible) empty[field.key] = masterValuesRef.current[field.key] ?? emptyValue(field)
@@ -901,7 +901,7 @@ export function FormEditorPage() {
       }
       return target
     }
-    // 明细多选：逐条追加明细行（对齐旧系统 ReturnMultiValue 的 addTR 语义）
+    // 明细多选：逐条追加明细行
     if (field.chooseMultiple && rows.length > 1) {
       const currentRows = detailRowsRef.current
       const def = formDefRef.current
@@ -964,7 +964,7 @@ export function FormEditorPage() {
     setDirty(true)
   }, [syncMasterPreviewRows])
 
-  /** 多来源「各是各的入口」：1 个直接打开，多个先弹来源菜单（ADR-008 §2）。 */
+  /** 多来源「各是各的入口」：1 个直接打开，多个先弹来源菜单。 */
   const openChooser = useCallback((field: FormFieldDefinition, kind: 'master' | 'detail', detailIndex?: number) => {
     const sources = field.choosers.filter(item => item.active && item.table)
     if (sources.length === 0) return
@@ -1056,7 +1056,7 @@ export function FormEditorPage() {
                 const isFinished = master?.FINISHED_TAG === true
                 // A3：在途流程状态（WF_MONITOR.WF_STATE='0'）——流程审批中的单据禁止编辑/删除，批核改显示撤回
                 const flowInProgress = recordQuery.data?.flowState === 'InProgress'
-                // 已结案：解批/编辑/删除禁用；已审批：批核/编辑/删除禁用；在途流程：编辑/删除禁用（按钮禁用而非隐藏，旧系统 DxAuthentication 语义）
+                // 已结案：解批/编辑/删除禁用；已审批：批核/编辑/删除禁用；在途流程：编辑/删除禁用（按钮禁用而非隐藏，  语义）
                 const editDisabled = isFinished || isConfirmed || flowInProgress
                 const deleteDisabled = isFinished || isConfirmed || flowInProgress
                 const whitelistItems = buildViewToolbarItems(form, { master, isConfirmed, isFinished, flowInProgress, keyParam }, {
@@ -1083,7 +1083,7 @@ export function FormEditorPage() {
                   ...(form.canEdit && form.hasEdit && keyParam
                     ? [{ action: 'edit', disabled: editDisabled, onClick: () => navigate(workbenchEdit(moduleId, currentKey)) } satisfies ErpCommandItem]
                     : []),
-                  // 删除为浏览态标准动作（对齐旧 ModifyToolBar）：权限 canDelete ∧ 单据状态，不依赖 FORM_BUTTONS 配置
+                  // 删除为浏览态标准动作：权限 canDelete ∧ 单据状态，不依赖 FORM_BUTTONS 配置
                   ...(form.canDelete && keyParam
                     ? [{ action: 'delete', variant: 'danger', disabled: deleteDisabled, onClick: () => void deleteRecord() } satisfies ErpCommandItem]
                     : []),
@@ -1092,7 +1092,7 @@ export function FormEditorPage() {
                   ...(flowInProgress && keyParam
                     ? [{ action: 'withdraw', loading: withdraw.isPending, onClick: () => withdraw.mutate() } satisfies ErpCommandItem]
                     : []),
-                  // C1：审批历史（流程信息）——流程模块浏览态显示
+                  // 审批历史（流程信息）——流程模块浏览态显示
                   ...(form.hasWorkflow && keyParam
                     ? [{ action: 'history', onClick: () => setHistoryOpen(true) } satisfies ErpCommandItem]
                     : []),

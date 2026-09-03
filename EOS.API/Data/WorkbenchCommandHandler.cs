@@ -7,7 +7,7 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 工作台命令处理器（ADR-005 §2 组件表 WorkbenchCommandHandler，阶段 3）：
+/// 工作台命令处理器：
 /// 记录读取/新增/修改/删除 + 主子表事务 + 服务端必填/审计列/金额复算 + 幂等键。
 /// 删除路径先经 WorkbenchApprovalService.EnsureDeletionAllowedAsync 补偿守卫；
 /// 审批（批核/结案/自动批核）委托 WorkbenchApprovalService；
@@ -149,12 +149,12 @@ public sealed class WorkbenchCommandHandler(
             }
         }
 
-        // 领域规则：自动单号 + 默认单别（等价旧 GetNewBillNo / GetDefaultBillInfo）
+        // 领域规则：自动单号 + 默认单别
         var businessRule = definition.BusinessRule;
         if (businessRule?.SprocPendingPorting == true)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "SP_NOT_PORTED",
-                "该模块的存盘后处理逻辑尚未移植，禁止保存。");
+                "该模块的存盘后处理逻辑尚未实现，禁止保存。");
         }
         if (businessRule is { AutoBillNo: true, BillNoField: not null, BillTypeField: not null })
         {
@@ -282,7 +282,7 @@ public sealed class WorkbenchCommandHandler(
         if (definition.AutoApprove)
         {
             // 自动批核模块：新增成功后立即进入批核状态（保存事务提交后执行，SP 自带事务）；
-            // 失败不回滚保存（ADR-006 决策 2.7）：以 warnings 回传前端提示「已保存，但自动批核失败」。
+            // 失败不回滚保存：以 warnings 回传前端提示「已保存，但自动批核失败」。
             var autoResult = await approvalService.AutoApproveAsync(connection, definition, keyValues, userId, token);
             if (autoResult.Status != RecordAccessStatus.Ok)
             {
@@ -322,7 +322,7 @@ public sealed class WorkbenchCommandHandler(
         if (definition.BusinessRule?.SprocPendingPorting == true)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "SP_NOT_PORTED",
-                "该模块的存盘后处理逻辑尚未移植，禁止保存。");
+                "该模块的存盘后处理逻辑尚未实现，禁止保存。");
         }
         var pkColumns = await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, transaction, definition.MasterTable, token);
         if (pkColumns.Count != keyValues.Count)
@@ -344,7 +344,7 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
         }
-        // 状态校验（对齐删除补偿守卫）：已结案 / 已批核的单据禁止编辑
+        // 状态校验：已结案 / 已批核的单据禁止编辑
         if (IsStatusTrue(current, "FINISHED_TAG"))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FINISHED_EDIT_FORBIDDEN", "记录已结案，禁止编辑（请先取消结案）。");
@@ -541,7 +541,7 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.OutOfScope, "RECORD_OUT_OF_SCOPE", "目标记录不在当前用户数据范围内。");
         }
-        // 删除补偿守卫（ADR-005 §2）：结案单据/已批核有副作用单据禁止删除
+        // 删除补偿守卫：结案单据/已批核有副作用单据禁止删除
         var guard = await approvalService.EnsureDeletionAllowedAsync(connection, transaction, definition, keyValues, token);
         if (guard is not null)
         {
@@ -1079,7 +1079,7 @@ public sealed class WorkbenchCommandHandler(
         return string.IsNullOrWhiteSpace(normalized) || normalized.Length > 128 ? null : normalized;
     }
 
-    /// <summary>从唯一键冲突异常消息解析索引名（ADR-006 决策 2.8）。消息本地化导致解析失败时返回 false（保持原样上抛）。</summary>
+    /// <summary>从唯一键冲突异常消息解析索引名。消息本地化导致解析失败时返回 false（保持原样上抛）。</summary>
     private static bool TryParseDuplicateIndexName(string message, out string indexName)
     {
         // 英文：Cannot insert duplicate key row in object 'dbo.X' with unique index 'IX_NAME'.
@@ -1092,7 +1092,7 @@ public sealed class WorkbenchCommandHandler(
     }
 
     /// <summary>
-    /// 判定唯一键冲突是否为「单号冲突」（ADR-006 决策 2.8 范围限定）：
+    /// 判定唯一键冲突是否为「单号冲突」：
     /// 冲突索引的列命中单号列，或冲突索引即主键且主键含主键列（自动单号模块主键含 单别+单号）。
     /// </summary>
     private static async Task<bool> IsBillNoUniqueConflictAsync(

@@ -142,7 +142,7 @@ describe('useColumnResize', () => {
     expect((cols[1] as HTMLTableColElement).style.width).toBe('50px')
   })
 
-  it('旧版数组格式按列索引迁移', () => {
+  it('早期数组格式（按列索引）自动迁移', () => {
     localStorage.setItem('erp-table-cols:t1', JSON.stringify([150, 90]))
     const { container } = render(<Harness storageKey="t1" />)
     const cols = container.querySelectorAll('colgroup col')

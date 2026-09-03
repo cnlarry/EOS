@@ -51,16 +51,16 @@ internal sealed record FormChooserRow(
 
 /// <summary>
 /// 纯字段选择逻辑（与数据库解耦，便于单元测试）。
-/// 规则（对齐方案 §4 决策 2 与阶段 1 验收）：
+/// 规则：
 /// - 权限过滤：成本/保密（无权限剔除）、DENY_VIEW 剔除；mode=new 剔 DENY_NEW，mode=edit 剔 DENY_MODI；
 /// - 虚拟字段保留标记 isVirtual 且强制只读；
 /// - 必填且只读/隐藏的字段标记 serverFilled（服务端填充），隐藏且非必填的字段不进表单；
 /// - 输入行顺序即表单顺序：主表行由 SQL 按 SYSQL_DEFAULT.F_IDX 排序；
-///   明细行由调用方按 DocumentWorkbench 子表列配置（用户 SYSQL_FIELDS → 系统默认）对齐后传入。
+/// 明细行由调用方按 DocumentWorkbench 子表列配置（用户 SYSQL_FIELDS → 系统默认）对齐后传入。
 /// </summary>
 internal static class FormFieldSelector
 {
-    /// <summary>批核/结案状态勾选：旧页面即隐藏控件（chk_CONFIRM_TAG CssClass=hidden），统一不进表单。</summary>
+    /// <summary>批核/结案状态勾选：即隐藏控件（chk_CONFIRM_TAG CssClass=hidden），统一不进表单。</summary>
     private static readonly IReadOnlySet<string> HiddenStatusTags = new HashSet<string>(
         ["CONFIRM_TAG", "FINISHED_TAG"], StringComparer.OrdinalIgnoreCase);
 
@@ -118,7 +118,7 @@ internal static class FormFieldSelector
 
             // 审计列（CREATE_PERSON/CREATE_DATE/LAST_UPDATE_BY/LAST_UPDATE_DATE 与批核/结案
             // CONFIRM_PERSON/CONFIRM_DATE/FINISHED_PERSON/FINISHED_DATE）一律服务端持有，
-            // 即使 FIELDS.IS_READONLY 误标为可编辑（旧页面控件本身也是只读）。
+            // 即使 FIELDS.IS_READONLY 误标为可编辑。
             // 自增主键与"必填且隐藏"字段也标记服务端填充。
             // 注意：必填但只读可见的字段（如 CURR_RATE 汇率，由前端选择币别后联动带出）
             // 不属于服务端填充，保留为客户端可提交字段，避免 SERVER_FILL_MISSING 误拦。
@@ -135,7 +135,7 @@ internal static class FormFieldSelector
                     source.Table,
                     source.Description,
                     source.ModuleId,
-                    // FILTER_STRUCT 仅字段设置 CanSetup 可见（ADR-008 §7），普通用户表单定义不下发
+                    // FILTER_STRUCT 仅字段设置 CanSetup 可见，普通用户表单定义不下发
                     Filter: null,
                     source.ReturnMapping,
                     source.SerialNo))

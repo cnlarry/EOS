@@ -14,7 +14,7 @@ namespace EOS.API.Controllers;
 [ApiController, Authorize, Route("api/v1/navigation")]
 public sealed class NavigationGroupsController(
     NavigationGroupsRepository repository,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
     [HttpGet("{moduleId:int}/groups")]
@@ -37,7 +37,7 @@ public sealed class NavigationGroupsController(
         return Ok(new { moduleId, index, values });
     }
 
-    private async Task<LegacyModuleRights?> RightsAsync(int moduleId, CancellationToken token)
+    private async Task<ModuleRights?> RightsAsync(int moduleId, CancellationToken token)
     {
         var rights = await rightsRepository.GetAsync(userContext.UserId, moduleId, token);
         return rights.CanBrowse ? rights : null;

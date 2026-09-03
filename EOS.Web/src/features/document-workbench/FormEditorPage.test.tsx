@@ -410,7 +410,7 @@ describe('FormEditorPage', () => {
     expect(screen.getByText('1')).toBeInTheDocument()
   })
 
-  it('明细网格不再渲染补空行（ADR-006 决策 5）', async () => {
+  it('明细网格不再渲染补空行', async () => {
     const { container } = renderEditor('/workbench/1209/edit/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     // 编辑模式有 1 行真实明细，无任何占位空行
@@ -418,7 +418,7 @@ describe('FormEditorPage', () => {
     expect(container.querySelectorAll('.erp-detail-grid tbody tr')).toHaveLength(1)
   })
 
-  it('新增模式 0 行明细时空态显示「+ 新增一行」入口（ADR-006 决策 5）', async () => {
+  it('新增模式 0 行明细时空态显示「+ 新增一行」入口', async () => {
     const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     expect(container.querySelectorAll('.erp-detail-grid tbody tr')).toHaveLength(0)
@@ -504,7 +504,7 @@ describe('FormEditorPage', () => {
     expect(apiClientMock.post).not.toHaveBeenCalled()
   })
 
-  it('新增保存成功后进入浏览态（ADR-006 决策 6）', async () => {
+  it('新增保存成功后进入浏览态', async () => {
     const { container } = renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.change(masterInputs(container)[0], { target: { value: 'P9' } })
@@ -547,7 +547,7 @@ describe('FormEditorPage', () => {
         details: [{ ITEM: 'X1' }],
       }),
     ))
-    // 保存成功进入浏览态（决策 6）
+    // 保存成功进入浏览态
     await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
   })
 

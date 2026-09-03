@@ -52,7 +52,7 @@ public sealed class AuthenticationRepository(DbConnectionFactory connections, IL
     }
 
     /// <summary>
-    /// 用户自助修改密码（ADR-004 配套）：必须验证当前密码，成功后写入现代哈希并记录审计。
+    /// 用户自助修改密码：必须验证当前密码，成功后写入现代哈希并记录审计。
     /// </summary>
     public async Task<PasswordChangeResult> ChangePasswordAsync(
         string userId,

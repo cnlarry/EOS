@@ -12,7 +12,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 菜单同级排序集成测试：直连 EOS.ERP 开发库验证 ReorderAsync 的 SQL 事务
 /// （top/up/down/bottom、边界无操作、非法动作、SORT_IDX 重写与审计字段）。
-/// 连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 Codex 配置；拿不到连接串时跳过。
+/// 连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 本机配置文件；拿不到连接串时跳过。
 /// 测试使用独立临时 M_IDX 区段（99xxxxxxx），不触碰真实菜单，Dispose 清理。
 /// </summary>
 [Trait("Category", "Integration")]

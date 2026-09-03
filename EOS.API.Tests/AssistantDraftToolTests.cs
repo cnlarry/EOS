@@ -28,7 +28,7 @@ public sealed class AssistantDraftToolTests
         new(key, label, type, 50, null, required, null, null, defaultValue, readOnly, visible,
             false, false, null, [], pk, autoInc, false, false, false, serverFilled, null);
 
-    private static LegacyModuleRights Rights(bool canBrowse = true, bool canAddNew = true) => new(
+    private static ModuleRights Rights(bool canBrowse = true, bool canAddNew = true) => new(
         CanBrowse: canBrowse, CanViewCost: false, CanViewSecrecy: false, CanSetup: false,
         DeniedMasterFields: new HashSet<string>(), DeniedDetailFields: new HashSet<string>(),
         CanAddNew: canAddNew, CanEdit: false, CanDelete: false, CanApprove: false, CanDeapprove: false,
@@ -38,7 +38,7 @@ public sealed class AssistantDraftToolTests
         DenyModiMasterFields: new HashSet<string>(), DenyModiDetailFields: new HashSet<string>(),
         DataFilter: string.Empty, ExecuteTag: "A");
 
-    private sealed class FakePermissions(LegacyModuleRights rights) : IPermissionService
+    private sealed class FakePermissions(ModuleRights rights) : IPermissionService
     {
         public Task<ModulePermission> GetAsync(string userId, int moduleId, CancellationToken cancellationToken)
             => Task.FromResult(new ModulePermission(rights));

@@ -1,5 +1,5 @@
 /**
- * 日期/时间控件值与提交载荷的往返转换（ADR-006 决策 2.3）。
+ * 日期/时间控件值与提交载荷的往返转换。
  *
  * 契约：
  * - 控件值：date → `yyyy-MM-dd`；datetime/smalldatetime → `yyyy-MM-ddTHH:mm:ss`（datetime-local，本地朴素串）
@@ -20,7 +20,7 @@ function parseDateText(text: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-/** 日期/时间文本是否可解析（校验对拍用：与服务端 DateTime.TryParse 的受控子集一致） */
+/** 日期/时间文本是否可解析（校验一致性比对用：与服务端 DateTime.TryParse 的受控子集一致） */
 export function isParseableDateText(text: string): boolean {
   return parseDateText(text) !== null
 }

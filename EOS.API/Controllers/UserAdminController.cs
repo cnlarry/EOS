@@ -7,15 +7,15 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 用户管理（ADR-004）：列用户 / 管理员设置密码 / 启用停用。
-/// 权限门为旧系统「用户权限设定」模块 2306：读要求 CanBrowse，写要求 CanSetup。
+/// 用户管理：列用户 / 管理员设置密码 / 启用停用。
+/// 权限门为「用户权限设定」模块 2306：读要求 CanBrowse，写要求 CanSetup。
 /// </summary>
 [ApiController]
 [Authorize]
 [Route("api/v1/admin/users")]
 public sealed class UserAdminController(
     UserAdminRepository repository,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
     [HttpGet]

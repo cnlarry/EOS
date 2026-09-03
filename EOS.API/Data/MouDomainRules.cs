@@ -72,10 +72,10 @@ public static class MouDomainRules
         => DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues, detailTable, typeColumn, noColumn,
             [("NOT EXISTS (SELECT 1 FROM dbo.MOU_MOULD m WHERE m.MOULD_ID=t.MOULD_ID)", "以下序号项模具编号不存在 ")], token);
 
-    /// <summary>产品模具对照表（P_MOU_PRO）AfterSave：产品/模具存在 + 所用模具汇总（按产品限定——旧 SP 全局更新疑似笔误）。</summary>
+    /// <summary>产品模具对照表（P_MOU_PRO）AfterSave：产品/模具存在 + 所用模具汇总（按产品限定—— 全局更新疑似笔误）。</summary>
 
 
-    /// <summary>产品模具对照表（P_MOU_PRO）AfterSave：产品/模具存在 + 所用模具汇总（按产品限定——旧 SP 全局更新疑似笔误）。</summary>
+    /// <summary>产品模具对照表（P_MOU_PRO）AfterSave：产品/模具存在 + 所用模具汇总（按产品限定—— 全局更新疑似笔误）。</summary>
     public static async Task<SprocResult> MouProAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)

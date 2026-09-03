@@ -22,7 +22,7 @@ function normalizeTable(table: string): string {
 
 /**
  * 单行参数表设置页。
- * - SYSSS（110111 系统参数设置）：完整复刻旧 MagSysSet.aspx 布局（七分区、标签、控件类型、保存副作用）；
+ * - SYSSS（110111 系统参数设置）：完整 布局（七分区、标签、控件类型、保存副作用）；
  * - HR_SETUP / HRM_SETUP（180213 / 180662）：保留通用参数网格。
  */
 export function SystemSettingsPage() {

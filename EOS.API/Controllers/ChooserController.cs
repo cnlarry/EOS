@@ -14,7 +14,7 @@ namespace EOS.API.Controllers;
 [ApiController, Authorize, Route("api/v1/chooser")]
 public sealed class ChooserController(
     ChooserRepository repository,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
     [HttpPost("query")]

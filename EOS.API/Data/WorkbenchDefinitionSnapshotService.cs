@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 namespace EOS.API.Data;
 
 /// <summary>
-/// Workbench Definition 快照服务（ADR-005 §3，阶段 2 发布侧）：
+/// Workbench Definition 快照服务：
 /// 状态（脏标记 + 当前快照）、dry-run 校验、发布（校验→版本递增→写快照→清脏）、
 /// 已启用模块回填。元数据写路径只标脏（WorkbenchDirtyMarker），不逐次生成快照。
 /// 运行时不可变快照加载与 definitionVersion 传播按 ADR 实施边界保持挂起。

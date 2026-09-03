@@ -9,7 +9,7 @@ using EOS.API.Models;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 工作台查询编排（ADR-005 §2 组件表 WorkbenchQueryComposer，阶段 3）：
+/// 工作台查询编排：
 /// 列表/详情/子表/导出 SQL 构建、排序、筛选、字段选择与分页；数据范围统一经
 /// WorkbenchScopeFilter（fail-closed），dbElapsedMs 经 DbTimingCollector 计时。
 /// 动态标识符一律来自服务端 Definition 白名单，用户值全部参数化。

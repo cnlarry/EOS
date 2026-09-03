@@ -6,7 +6,7 @@ using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 通用查询中心（旧 Comm/SearchCenter.aspx 的受控等价）：
+/// 通用查询中心：
 /// 覆盖 2501–2508 查询中心模块——按 MODULES.SEARCH_1/SEARCH_2 提供可搜索模块/表，
 /// 字段 + 值（或关键字）受控查询，结果元数据网格。
 /// 动态标识符全部来自服务端元数据（FIELDS + INFORMATION_SCHEMA），值参数化。

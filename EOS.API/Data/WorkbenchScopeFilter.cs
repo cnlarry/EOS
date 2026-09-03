@@ -8,12 +8,11 @@ using EOS.API.Models;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 工作台数据范围统一构建器（ADR-005 §2/§7，阶段 1）：
+/// 工作台数据范围统一构建器：
 /// 把模块 FILTER、用户 DATA_FILTER、分组表达式、EXEC_TAG 落地为受控 SQL 谓词。
-/// 规则边界（阶段 1 登记）：
+/// 规则边界：
 /// - 列表/导出/详情/记录读取/子表/打印：模块 FILTER + DATA_FILTER + 分组 + EXEC_TAG 全范围一致
-///   （2026-08-23 收紧：模块级过滤条件对一切读取生效；建单/改单/删单也校验模块契约，
-///   表单默认值已对齐，范围外记录不可见也不可写）；
+/// ；
 /// - 子表：通过主表关联键把主表范围推导到明细（缺关联键禁止读取，fail-closed）。
 /// 全部动态标识符来自服务端 Definition 白名单，值参数化；解析失败或范围无法确定时
 /// 抛 DataFilterUnsupportedException/GroupExpressionUnsupportedException（403），不降级为全量查询。
@@ -113,7 +112,7 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
     }
 
     /// <summary>
-    /// 执行范围（EXEC_TAG）行级过滤，对齐旧 DxQueryButton.OtherCondition：
+    /// 执行范围（EXEC_TAG）行级过滤，
     /// B 仅本人（OWNER=当前用户）、C 本人及下级（含 f_get_underling）、
     /// D 本人所属组（OWNER_G）、E 本人及下级所属组；Z/A 无附加范围。
     /// 表缺 OWNER/OWNER_G 列时拒绝查询（不返回越权数据）；值全部参数化。
@@ -341,7 +340,7 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
     }
 
     /// <summary>
-    /// 表单选择器数据范围（ADR-005 §7，C 档落地）：模块 FILTER（仅源表=模块主表时）+
+    /// 表单选择器数据范围：模块 FILTER（仅源表=模块主表时）+
     /// DATA_FILTER + EXEC_TAG，与列表/详情/打印同一口径；解析失败返回 false（调用方返回空选项）。
     /// </summary>
     public bool TryBuildChooserScopePredicate(

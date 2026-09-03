@@ -24,12 +24,12 @@ internal static class PdfLayout
         return landscape ? size.Landscape() : size;
     }
 
-    /// <summary>把旧 LOGO_PATH（~/... 相对 wwwroot）解析为 EOS.API 静态目录下的图片字节；不存在返回 null。</summary>
+    /// <summary>把 LOGO_PATH（~/... 相对 wwwroot）解析为 EOS.API 静态目录下的图片字节；不存在返回 null。</summary>
     public static byte[]? TryLoadLogo(IWebHostEnvironment environment, string? logoPath)
     {
         if (string.IsNullOrWhiteSpace(logoPath) || environment.WebRootPath is null) return null;
         var relative = logoPath.Trim().Replace('\\', '/').TrimStart('~', '/');
-        // 候选根：wwwroot（新 LOGO 上传）、仓库根 UploadFile/（旧系统 LOGO 目录）、wwwroot/print-logo
+        // 候选根：wwwroot（新 LOGO 上传）、仓库根 UploadFile/、wwwroot/print-logo
         var roots = new List<string> { environment.WebRootPath };
         if (environment.ContentRootPath is not null)
         {
@@ -43,7 +43,7 @@ internal static class PdfLayout
             // 越界防护：解析后的路径必须仍位于候选根内（LOGO_PATH 为服务端元数据，防御性校验）
             if (!full.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)) continue;
             if (File.Exists(full)) return File.ReadAllBytes(full);
-            // print-logo 兜底：旧路径文件名若已迁移到 print-logo，按文件名匹配
+            // print-logo 兜底：已有路径文件名若已迁移到 print-logo，按文件名匹配
             if (root.EndsWith("print-logo", StringComparison.OrdinalIgnoreCase))
             {
                 var byName = Path.Combine(root, Path.GetFileName(relative));
@@ -68,7 +68,7 @@ internal static class PdfLayout
     private static readonly Regex DateFormatPattern = new("^[yMdHhms:/\\- ]{1,30}$", RegexOptions.Compiled);
 
     /// <summary>
-    /// 按 FIELDS.DISPLAY_FORMAT 格式化（旧 Crystal 掩码均为 .NET 兼容子集）：
+    /// 按 FIELDS.DISPLAY_FORMAT 格式化：
     /// 数字列套用 #/0/逗号/小数点格式，日期列套用 y/M/d/H/m/s 格式；
     /// 非法/越界格式回退默认显示，避免异常。
     /// </summary>
@@ -91,7 +91,7 @@ internal static class PdfLayout
         value is sbyte or byte or short or ushort or int or uint or long or ulong
             or float or double or decimal;
 
-    /// <summary>金额/数量类列用于合计行判断（与旧前端 isAmountColumn 一致）。</summary>
+    /// <summary>金额/数量类列用于合计行判断。</summary>
     public static bool IsAmountColumn(string key) =>
         key.Contains("QTY", StringComparison.OrdinalIgnoreCase)
         || key.Contains("AMOUNT", StringComparison.OrdinalIgnoreCase)

@@ -12,7 +12,7 @@ namespace EOS.API.Controllers;
 [Route("api/v1/import")]
 public sealed class ImportController(
     ImportService service,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     EOS.API.Security.CurrentUserContext userContext) : ControllerBase
 {
     [HttpGet("tables")]

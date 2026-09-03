@@ -16,7 +16,7 @@ public sealed class ModulePermissionTests
         bool fileView = false,
         bool setup = false)
     {
-        var rights = new LegacyModuleRights(
+        var rights = new ModuleRights(
             browse, false, false, setup,
             new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             new HashSet<string>(StringComparer.OrdinalIgnoreCase),

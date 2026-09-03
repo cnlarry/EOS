@@ -4,13 +4,13 @@ using EOS.API.Models;
 namespace EOS.API.Data;
 
 /// <summary>
-/// FILTER_TEMPLATE JSON → ReportCondition 解析器（ADR-009 §6 运行时消费）。
-/// FILTER_TEMPLATE 与 ADR-008 的 FILTER_STRUCT 同构，新增 {p.X} 参数占位符：
-///   - 范围条件（F_TYPE=1）：items[0].op=GE/LE，无 options/selectSource → Type=1
-///   - 固定单选（F_TYPE=2）：op=EQ + options + parameterName → Type=2
-///   - 数据源单选（F_TYPE=3）：op=EQ + selectSource → Type=3
-///   - 固定多选（F_TYPE=4）：op=IN + options → Type=4
-///   - 数据源多选（F_TYPE=5）：op=IN + selectSource → Type=5
+/// FILTER_TEMPLATE JSON → ReportCondition 解析器。
+/// FILTER_TEMPLATE 与  的 FILTER_STRUCT 同构，新增 {p.X} 参数占位符：
+/// - 范围条件（F_TYPE=1）：items[0].op=GE/LE，无 options/selectSource → Type=1
+/// - 固定单选（F_TYPE=2）：op=EQ + options + parameterName → Type=2
+/// - 数据源单选（F_TYPE=3）：op=EQ + selectSource → Type=3
+/// - 固定多选（F_TYPE=4）：op=IN + options → Type=4
+/// - 数据源多选（F_TYPE=5）：op=IN + selectSource → Type=5
 /// 解析失败 → null（调用方回退 F_TYPE/F_EXPR 旧 DSL 或 fail-closed 空选项）。
 /// </summary>
 internal static class ConditionTemplateParser
@@ -32,7 +32,7 @@ internal static class ConditionTemplateParser
         ReportSelectSource? SelectSource,
         string? DefaultValueTo);
 
-    public static ParseResult? TryParse(string? template, string? legacyDefault, string? legacyDefaultTo)
+    public static ParseResult? TryParse(string? template, string? defaultExpr, string? defaultExprTo)
     {
         if (string.IsNullOrWhiteSpace(template)) return null;
         try
@@ -57,8 +57,8 @@ internal static class ConditionTemplateParser
             var options = ReadOptions(root);
             var selectSource = ReadSelectSource(root);
 
-            var defaultValue = (legacyDefault ?? string.Empty).Trim();
-            var defaultValueTo = (legacyDefaultTo ?? string.Empty).Trim();
+            var defaultValue = (defaultExpr ?? string.Empty).Trim();
+            var defaultValueTo = (defaultExprTo ?? string.Empty).Trim();
 
             // 推导 Type：优先 selectSource → 3/5；options → 2/4；否则范围 1
             int type;

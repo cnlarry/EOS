@@ -8,9 +8,9 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 24 张内置版式格式包冒烟测试（ADR-010 §5 S1 迁移）：
+/// 24 张内置版式格式包冒烟测试：
 /// 逐目录加载 format.json / layout.json / sample.json，用 sample 数据渲染 PDF，
-/// 断言字节有效（%PDF 头）。内容级对拍由迁移对拍脚本（scripts/check-layout-migration.py）负责。
+/// 断言字节有效（%PDF 头）。内容级一致性比对由迁移一致性比对脚本负责。
 /// </summary>
 public class LayoutFormatPackagesTests
 {

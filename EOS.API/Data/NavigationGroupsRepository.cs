@@ -19,7 +19,7 @@ public sealed class NavigationGroupsRepository(DbConnectionFactory connections, 
 
     public async Task<IReadOnlyList<NavigationGroupDefinition>> GetGroupsAsync(
         int moduleId,
-        LegacyModuleRights rights,
+        ModuleRights rights,
         CancellationToken token)
     {
         var (masterTable, expressions, descriptions, enabledFlags) = await ReadGroupMetadataAsync(moduleId, token);
@@ -41,7 +41,7 @@ public sealed class NavigationGroupsRepository(DbConnectionFactory connections, 
     public async Task<IReadOnlyList<string>> GetGroupValuesAsync(
         int moduleId,
         int index,
-        LegacyModuleRights rights,
+        ModuleRights rights,
         CancellationToken token)
     {
         if (index is < 1 or > 5)
@@ -104,7 +104,7 @@ public sealed class NavigationGroupsRepository(DbConnectionFactory connections, 
     /// </summary>
     private async Task<IReadOnlySet<string>> ReadFilterFieldKeysAsync(
         string masterTable,
-        LegacyModuleRights rights,
+        ModuleRights rights,
         CancellationToken token)
     {
         const string sql = """

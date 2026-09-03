@@ -1,4 +1,4 @@
-/** 工作流审批状态标签（单据审批历史 / 流程监控日志共用，代码质量批 4 D5 收编）。 */
+/** 工作流审批状态标签（单据审批历史 / 流程监控日志共用）。 */
 const WORKFLOW_STATE_LABEL: Record<string, string> = {
   Y: '同意',
   N: '驳回',
@@ -20,7 +20,7 @@ export interface WorkflowTimelineRow {
 }
 
 /**
- * 工作流审批时间线（代码质量批 4 D5 收编）：
+ * 工作流审批时间线：
  * FormEditorPage 审批历史与 FlowMonitorPage 审批日志原先各持一份近似 li 列表
  * （step badge + 审批人 + 状态徽标 + 意见 + 时间），统一到本组件。
  */

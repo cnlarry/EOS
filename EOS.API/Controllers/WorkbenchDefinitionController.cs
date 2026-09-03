@@ -8,9 +8,9 @@ using Microsoft.AspNetCore.Mvc;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// Workbench Definition 快照管理（ADR-005 阶段 2 发布侧）：
+/// Workbench Definition 快照管理：
 /// 状态（已编辑但未发布）、dry-run 校验、发布、已启用模块回填。
-/// 权限门：模块 2306（系统管理）CanSetup；发布校验器与放量流水线共用同一道闸。
+/// 权限门：模块 2306（系统管理）CanSetup；发布校验器与流水线共用同一道闸。
 /// </summary>
 [ApiController, Authorize, Route("api/v1/workbench-definitions")]
 public sealed class WorkbenchDefinitionController(
@@ -26,7 +26,7 @@ public sealed class WorkbenchDefinitionController(
         return Ok(await snapshots.GetStatusAsync(token));
     }
 
-    /// <summary>dry-run 校验（不写快照）：与发布共用同一校验器，供放量流水线与 CI 预检。</summary>
+    /// <summary>dry-run 校验（不写快照）：与发布共用同一校验器，供流水线与 CI 预检。</summary>
     [HttpPost("validate")]
     public async Task<IActionResult> Validate([FromBody] WorkbenchDefinitionValidateRequest request, CancellationToken token)
     {

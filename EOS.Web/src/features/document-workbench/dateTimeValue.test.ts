@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { fromDateTimeControlValue, toDateTimeControlValue } from './dateTimeValue'
 
-describe('dateTimeValue（ADR-006 决策 2.3 往返契约）', () => {
+describe('dateTimeValue', () => {
   it('datetime 库内空格分隔串 → datetime-local 控件值（保留时间分量）', () => {
     expect(toDateTimeControlValue('datetime', '2026-08-23 14:30:00')).toBe('2026-08-23T14:30:00')
   })

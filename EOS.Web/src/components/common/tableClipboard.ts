@@ -8,7 +8,7 @@ export function rowsToTsv(headers: string[], rows: string[][]): string {
   return [line(headers), ...rows.map(line)].join('\r\n')
 }
 
-function legacyCopy(text: string) {
+function fallbackCopy(text: string) {
   const area = document.createElement('textarea')
   area.value = text
   area.style.position = 'fixed'
@@ -25,8 +25,8 @@ function legacyCopy(text: string) {
 
 export function writeClipboard(text: string) {
   if (navigator.clipboard?.writeText) {
-    void navigator.clipboard.writeText(text).catch(() => legacyCopy(text))
+    void navigator.clipboard.writeText(text).catch(() => fallbackCopy(text))
     return
   }
-  legacyCopy(text)
+  fallbackCopy(text)
 }

@@ -5,7 +5,7 @@ using EOS.API.Telemetry;
 namespace EOS.API.Middleware;
 
 /// <summary>
-/// 结构化请求日志（ADR-005 §5.1）：为每个请求解析/透传 X-Correlation-Id 与
+/// 结构化请求日志：为每个请求解析/透传 X-Correlation-Id 与
 /// X-Client-Id，输出统一事件 http_request，固定字段含 traceId/spanId/correlationId/
 /// userId/clientId/moduleId/action/status/elapsedMs/dbElapsedMs/error.code；
 /// 同时驱动 HTTP 指标（请求数/错误数/延迟直方图）。

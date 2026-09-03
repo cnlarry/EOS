@@ -10,7 +10,7 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Controllers;
 
 /// <summary>
-/// 报表中心（ADR-009 §3 入口收敛）：列表明细型报表的目录入口。
+/// 报表中心：列表明细型报表的目录入口。
 /// 撤 22 个 XX98 菜单节点后，全部报表经本控制器查询、按业务域分组展示；
 /// 单据打印仍走统一表单工具栏（ReportController Pdf / PrintController，机制不动）。
 /// 权限语义（P1）：模块级 REPORT_TAG 为可见性真源，SYSDD_REPORT 降级为 override 收紧。
@@ -34,7 +34,7 @@ public sealed class ReportCenterController(
         await connection.OpenAsync(token);
 
         // 模块级报表可见性真源：个人 SYSDD.REPORT_TAG 优先，否则组 SYSDH.REPORT_TAG OR
-        // （与 LegacyRightsRepository.GetModuleReportTagAsync 同口径）。
+        // （与 ModuleRightsRepository.GetModuleReportTagAsync 同口径）。
         const string catalogSql = """
             SELECT m.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC, ''))) AS M_DESC,
                    LTRIM(RTRIM(ISNULL(dom.M_DESC, ISNULL(m.M_DESC, '')))) AS DOMAIN_DESC,

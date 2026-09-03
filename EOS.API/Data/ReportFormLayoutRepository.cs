@@ -5,12 +5,12 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 客户定制版式仓储（ADR-010 决策 3/4/5，S2）：
+/// 客户定制版式仓储：
 /// - copy-on-write：首次"自定义"复制内置格式包 layout.json → REPORT_FORM_LAYOUT，
-///   绑定写 REPORT_FORM_BINDING（FORM_TYPE × CLIENT_ID，空 CLIENT_ID = 单据类型默认）；
+/// 绑定写 REPORT_FORM_BINDING（FORM_TYPE × CLIENT_ID，空 CLIENT_ID = 单据类型默认）；
 /// - 生效布局优先级：(FORM_TYPE, CLIENT_ID) → (FORM_TYPE, '') → 内置格式包；
 /// - 权限门：SYSDD.FORM_DESIGN_TAG / FORM_ADJUST_TAG 个人覆盖组（组布尔 OR），
-///   无个人行时取组位，与既有 SYSDD/SYSDH 权限语义一致。
+/// 无个人行时取组位，与既有 SYSDD/SYSDH 权限语义一致。
 /// 绑定行 HEADER_ID / TAIL_ID / PRINT_PRICE 供未来打印解析（S2 绑定优先级命中）。
 /// </summary>
 public sealed class ReportFormLayoutRepository(
@@ -18,7 +18,7 @@ public sealed class ReportFormLayoutRepository(
     ReportFormatRepository formatRepository,
     ILogger<ReportFormLayoutRepository> logger)
 {
-    /// <summary>设计器权限：个人 FORM_DESIGN/ADJUST_TAG 优先，否则组 OR（ADR-010 决策 4/5）。</summary>
+    /// <summary>设计器权限：个人 FORM_DESIGN/ADJUST_TAG 优先，否则组 OR。</summary>
     public async Task<LayoutDesignerMode> GetDesignerModeAsync(
         string userId, int moduleId, CancellationToken token)
     {
@@ -301,7 +301,7 @@ public sealed class ReportFormLayoutRepository(
         await command.ExecuteNonQueryAsync(token);
     }
 
-    /// <summary>页头条目列表（REPORT_LAYOUT KIND='HEADER'，ADR-009 §9.4.2 字典引用）。</summary>
+    /// <summary>页头条目列表（REPORT_LAYOUT KIND='HEADER'， 字典引用）。</summary>
     public async Task<IReadOnlyList<LayoutHeaderOption>> GetHeadersAsync(CancellationToken token)
     {
         await using var connection = connections.Create();

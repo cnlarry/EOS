@@ -8,15 +8,14 @@ namespace EOS.API.Controllers;
 
 /// <summary>
 /// 流程设计器（模块 2101「表单流程设计」）API：模块流程清单/详情/保存/删除 + 人员检索。
-/// 权限门与旧系统一致：读要求 2101 CanBrowse，写要求 2101 CanSetup（服务端强制授权，
-/// 前端 UX 门仅改善体验）。保存与删除由 FlowDefinitionService 做受控校验（模块能力/
+/// 权限门）。保存与删除由 FlowDefinitionService 做受控校验（模块能力/
 /// 人员存在性/条件预解析/在途实例守卫），绝不拼接用户输入。
 /// </summary>
 [ApiController]
 [Authorize]
 [Route("api/v1/workflow/definitions")]
 public sealed class FlowDefinitionController(
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext,
     FlowDefinitionService flowDefinitions) : ControllerBase
 {

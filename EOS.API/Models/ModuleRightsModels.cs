@@ -1,6 +1,6 @@
 namespace EOS.API.Models;
 
-public sealed record LegacyModuleRights(
+public sealed record ModuleRights(
     bool CanBrowse,
     bool CanViewCost,
     bool CanViewSecrecy,

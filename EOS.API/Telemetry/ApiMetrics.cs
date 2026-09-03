@@ -5,7 +5,7 @@ using System.Text;
 namespace EOS.API.Telemetry;
 
 /// <summary>
-/// 进程内基础指标（ADR-005 §5.2 最小集，阶段 1 零外部依赖）：
+/// 进程内基础指标：
 /// HTTP 请求数/错误数/延迟直方图、Workbench 范围过滤拒绝数、慢查询数。
 /// 经 GET /metrics 以 Prometheus 文本格式导出（开发环境匿名，生产要求登录）。
 /// 指标键即完整 Prometheus 行（metric + labels + 值），渲染时排序保证输出稳定。
@@ -47,7 +47,7 @@ public sealed class ApiMetrics
             1, (_, current) => current + 1);
     }
 
-    /// <summary>慢查询（>1s）与查询耗时分布（阶段 1 覆盖工作台查询/导出/打印路径）。</summary>
+    /// <summary>慢查询（>1s）与查询耗时分布。</summary>
     public void ObserveWorkbenchQuery(double elapsedMs)
     {
         if (elapsedMs > 1000)
@@ -61,7 +61,7 @@ public sealed class ApiMetrics
     public string RenderPrometheus()
     {
         var sb = new StringBuilder();
-        sb.AppendLine("# EOS.API 进程内指标（Prometheus 文本格式，ADR-005 §5.2 最小集）");
+        sb.AppendLine("# EOS.API 进程内指标（Prometheus 文本格式， 最小集）");
         foreach (var pair in _counters.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
             sb.Append(pair.Key).Append(' ').Append(pair.Value).Append('\n');

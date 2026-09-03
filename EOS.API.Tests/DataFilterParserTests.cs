@@ -28,7 +28,7 @@ public class DataFilterParserTests
     }
 
     [Fact]
-    public void LegacyBraceFieldSyntax_IsAccepted()
+    public void BraceFieldSyntax_IsAccepted()
     {
         // FILTER uses {Table.Column} brace syntax (e.g. 18069801 HR_EMPLOYEE).
         Assert.True(Try(
@@ -40,10 +40,10 @@ public class DataFilterParserTests
     }
 
     [Fact]
-    public void LegacyBraceAndBooleanLiteral_IsAccepted()
+    public void BraceAndBooleanLiteral_IsAccepted()
     {
         // 存量 MODULES.FILTER 真实写法：{表.列} 花括号 + 裸字段花括号 + TRUE 布尔字面量。
-        // 前端构建器（简单子集）无法表达，但服务端权威解析器必须兼容旧系统。
+        // 前端构建器（简单子集）无法表达，但服务端权威解析器必须兼容。
         Assert.True(Try(
             "{HR_EMPLOYEE.STATE}<4 AND {IF_SHOW}=TRUE",
             "HR_EMPLOYEE", Fields("STATE", "IF_SHOW"),
@@ -127,7 +127,7 @@ public class DataFilterParserTests
     [Fact]
     public void InSubquery_MultiTableFrom_IsRejected()
     {
-        // 多表现已支持（阶段 4）；保留此用例验证「无关联条件的多表」仍拒绝
+        // 多表现已支持；保留此用例验证「无关联条件的多表」仍拒绝
         Assert.False(Try("EMP_ID NOT IN (SELECT EMP_ID FROM HR_BASEPAY_M m, HR_BASEPAY_D d WHERE m.COUNT_MONTH='202608')", "HR_EMPLOYEE",
             Fields("EMP_ID"), out _, out _));
     }

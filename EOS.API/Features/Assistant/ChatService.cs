@@ -24,7 +24,7 @@ public abstract record ChatStreamEvent
 /// <summary>工具调用摘要（落库 TOOL_CALLS_JSON + done 事件下发前端展示）。</summary>
 public sealed record ToolCallSummary(string Name, string ArgumentsJson, string ResultDigest);
 
-/// <summary>自动轻量上下文（ADR-007 §3）：前端从当前路由提取，服务端只作内容注入。</summary>
+/// <summary>自动轻量上下文：前端从当前路由提取，服务端只作内容注入。</summary>
 public sealed record PageContext(int? ModuleId, string? ModuleTitle, string? PageType, string? DocNo)
 {
     public bool IsEmpty => ModuleId is null && string.IsNullOrWhiteSpace(ModuleTitle)
@@ -43,7 +43,7 @@ public sealed record PageContext(int? ModuleId, string? ModuleTitle, string? Pag
 }
 
 /// <summary>
-/// 工作助手对话编排（ADR-007 §4/§6）：归属校验 → 用户消息落库 → 组装上下文 →
+/// 工作助手对话编排：归属校验 → 用户消息落库 → 组装上下文 →
 /// 流式调模型（含受控工具多轮循环，上限 MaxToolRounds）→ 回复聚合落库。
 /// 安全边界：模型只能调 AssistantToolRegistry 白名单工具，工具内部经 IPermissionService
 /// 与工作台同源路径取数（EXEC_TAG/DATA_FILTER/FILTER/字段隐藏全生效）；工具结果只作为

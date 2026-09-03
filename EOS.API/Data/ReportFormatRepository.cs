@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 格式包仓储（ADR-009 §12 / ADR-010 决策 3）：
+/// 格式包仓储：
 /// 内置版式为 Git 资产 + 部署复制到 ReportFormats:StorageRoot（只读）；
 /// 本仓储只读加载 format.json / layout.json / sample.json，不做任何写操作。
 /// formatId 白名单（^[A-Za-z0-9_-]{1,64}$）防止路径穿越；

@@ -13,7 +13,7 @@ namespace EOS.API.Controllers;
 /// <summary>
 /// 统一表单（DocumentWorkbench）单据级附件端点（表 dbo.ATTACHMENT 位于 EOS.ERP 唯一业务库 + 文件系统存储）。
 /// 权限门：模块浏览权限 + FILE_VIEW/UPDA/EDIT/DELE_TAG 各自服务端强制校验
-/// （修正旧系统仅控制按钮不校验的漏洞）；KeyValues 为结构化主键 JSON，不信任客户端拼接。
+/// （修正仅控制按钮不校验的漏洞）；KeyValues 为结构化主键 JSON，不信任客户端拼接。
 /// 文件二进制存 Attachment:StorageRoot，元数据 + SHA-256 入库，下载经本端点授权提供。
 /// </summary>
 [ApiController, Authorize, Route("api/v1/document-workbench/{moduleId:int}/attachments")]

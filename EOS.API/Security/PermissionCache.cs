@@ -3,10 +3,10 @@ using System.Collections.Concurrent;
 namespace EOS.API.Security;
 
 /// <summary>
-/// 模块权限短 TTL 缓存（ADR-005 §6，挂起项落地）：
+/// 模块权限短 TTL 缓存：
 /// 缓存 key = 用户 + 模块；TTL 默认 60 秒（Security:PermissionCache:TtlSeconds）；
 /// 权限管理端写入后经 RightsAdminRepository 调 InvalidateAll 主动失效。
-/// 个人覆盖组、组 OR、EXEC_TAG 最大值等聚合规则仍由底层 LegacyRightsRepository 保证。
+/// 个人覆盖组、组 OR、EXEC_TAG 最大值等聚合规则仍由底层 ModuleRightsRepository 保证。
 /// </summary>
 public sealed class PermissionCache(IConfiguration configuration)
 {

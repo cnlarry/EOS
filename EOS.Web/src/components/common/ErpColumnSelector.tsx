@@ -210,11 +210,9 @@ export function ErpColumnSelector({
                         </div>
                         <div className="col">
                           <label className="form-label">
-                            {group.label}已选字段（
-                            <button type="button" className="erp-column-default-link" aria-label="取默认字段" onClick={() => applyDefault(group.id)}>
+                            {group.label}已选字段（<button type="button" className="erp-column-default-link" aria-label="取默认字段" onClick={() => applyDefault(group.id)}>
                               取默认字段
-                            </button>
-                            ）
+                            </button>）
                           </label>
                           <div className="d-flex gap-2">
                             <select

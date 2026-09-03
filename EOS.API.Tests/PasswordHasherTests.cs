@@ -86,6 +86,6 @@ public sealed class PasswordHasherTests
             if (File.Exists(candidate)) return candidate;
             directory = directory.Parent;
         }
-        throw new FileNotFoundException("未找到 docs/migrations/update.sql。");
+        throw new FileNotFoundException("未找到升级脚本 update.sql（请从仓库根运行测试）。");
     }
 }

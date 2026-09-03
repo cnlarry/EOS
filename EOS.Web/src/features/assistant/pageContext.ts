@@ -1,4 +1,4 @@
-/** 自动轻量页面上下文（ADR-007 §3）：从当前路由提取，随 chat 请求上报，仅作为内容注入。 */
+/** 自动轻量页面上下文：从当前路由提取，随 chat 请求上报，仅作为内容注入。 */
 
 export type AssistantPageType = 'list' | 'view' | 'edit' | 'new' | 'copy'
 
@@ -8,7 +8,7 @@ export interface AssistantPageContext {
   docNo?: string
 }
 
-// 2026-08-26：路由前缀 /workbench；view/edit 的记录主键以路径段表达（主键序），docNo 取自路径段
+// ：路由前缀 /workbench；view/edit 的记录主键以路径段表达（主键序），docNo 取自路径段
 const FORM_PAGE_PATTERN = /^\/workbench\/(\d+)(?:\/(new|copy)|\/(edit|view)(?:\/(.*))?)?$/
 
 export function extractPageContext(pathname: string): AssistantPageContext | null {

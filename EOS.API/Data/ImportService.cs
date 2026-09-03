@@ -6,9 +6,9 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 基本资料导入（旧 Comm/ImportData.aspx 的受控等价）：
+/// 基本资料导入：
 /// - 表/字段全部来自服务端元数据（TABLES + FIELDS + INFORMATION_SCHEMA 主键），
-///   不接受客户端任意表名/字段名；
+/// 不接受客户端任意表名/字段名；
 /// - 行数据参数化批量写入（事务），审计列服务端填充，主键必填校验；
 /// - CSV 解析支持引号与换行；逐行错误收集，不中断整体。
 /// </summary>

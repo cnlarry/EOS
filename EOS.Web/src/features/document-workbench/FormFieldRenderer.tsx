@@ -17,7 +17,7 @@ interface FormFieldRendererProps {
   onFieldSetup?: (field: FormFieldDefinition, x: number, y: number) => void
   /** 复合单元格内联模式：不渲染标签与格线，只渲染控件（供复合格 [主][选择][从] 使用） */
   bare?: boolean
-  /** 浏览态：全部字段走只读文本渲染（ADR-006 决策 1，不再是禁用输入框） */
+  /** 浏览态：全部字段走只读文本渲染 */
   viewing?: boolean
 }
 
@@ -30,7 +30,7 @@ interface ControlProps {
 
 const controlClassName = (error?: string) => `form-control${error ? ' is-invalid' : ''}`
 
-// ===== 控件变体注册表（ADR-006 决策 1）：新控件类型只加条目，不改页面编排 =====
+// ===== 控件变体注册表：新控件类型只加条目，不改页面编排 =====
 
 function TextControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
   return (
@@ -82,7 +82,7 @@ function DateControl({ field, value, disabled, onChange, error }: ControlProps &
   )
 }
 
-/** datetime 变体：datetime-local + 秒分量；提交 yyyy-MM-ddTHH:mm:ss 本地朴素串（决策 2.3） */
+/** datetime 变体：datetime-local + 秒分量；提交 yyyy-MM-ddTHH:mm:ss 本地朴素串 */
 function DateTimeControl({ field, value, disabled, onChange, error }: ControlProps & { error?: string }) {
   return (
     <input
@@ -148,10 +148,10 @@ const CONTROL_RENDERERS: Record<FieldVariant, (props: ControlProps & { error?: s
 export function FormFieldRenderer({ field, value, error, onChange, onChoose, onFieldSetup, bare = false, viewing = false }: FormFieldRendererProps) {
   const variant = fieldVariant(field)
   const hasChooser = variant !== 'select' && Boolean(onChoose) && field.choosers.some(source => source.active && source.table)
-  // 只读文本触发条件（ADR-006 决策 1）：浏览态全量；编辑/新增态仅 serverFilled 且无选择器的字段
+  // 只读文本触发条件：浏览态全量；编辑/新增态仅 serverFilled 且无选择器的字段
   // 渲染只读文本（审计列/批核/结案字段不渲染输入框）。isReadonly/displayOnly 从字段渲染只读控件
   // （disabled 输入框）以保持组合字段左右宽度协调；带选择器的联动字段（CURR_ID/TAX_ID）
-  // 保留只读框+可用选择按钮（对齐旧系统）。
+  // 保留只读框+可用选择按钮。
   const readOnlyStatic = viewing || (field.serverFilled && !hasChooser)
   const disabled = !readOnlyStatic && (field.isReadonly || field.serverFilled)
   // 只读联动字段的选择按钮仍可用；serverFilled 无选择器时按钮无意义

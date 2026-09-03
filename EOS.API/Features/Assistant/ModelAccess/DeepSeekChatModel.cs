@@ -9,7 +9,7 @@ namespace EOS.API.Features.Assistant.ModelAccess;
 
 /// <summary>
 /// DeepSeek（OpenAI 兼容 /chat/completions）流式实现。
-/// 只做出网调用与 SSE 解析：无权限语义、无落库、无提示词组装、不执行工具（ADR-007 §4）。
+/// 只做出网调用与 SSE 解析：无权限语义、无落库、无提示词组装、不执行工具。
 /// 密钥经 IOptions 注入；请求级取消贯穿到 HTTP 流读取，客户端断开即中止出网调用。
 /// </summary>
 public sealed class DeepSeekChatModel(

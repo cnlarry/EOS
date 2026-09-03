@@ -251,7 +251,7 @@ public static class CopDomainRules
         return null;
     }
 
-    /// <summary>P_PUR_CANCEL 退料不超收料（旧 SP 展示「已收=退货」为显示 bug，此处按意图展示 RECEIVE）。</summary>
+    /// <summary>P_PUR_CANCEL 退料不超收料。</summary>
 
 
     /// <summary>送货回执（1413）AfterSave：送/退货已有回执校验。</summary>
@@ -552,7 +552,7 @@ public static class CopDomainRules
             line: r => $"{Convert.ToDouble(r.GetValue(0))}{r.GetString(1).Trim()}");
         if (minOrder is not null)
             return new(false, "总金额小于客户最低订单额:" + minOrder);
-        // 3. 客户信用余额（CREDIT_LIMIT_NUM 为 NULL 时不启用——旧系统 NULL 比较语义）
+        // 3. 客户信用余额（CREDIT_LIMIT_NUM 为 NULL 时不启用—— NULL 比较语义）
         var credit = await DomainRuleService.FindLinesAsync(connection, transaction,
             """
             SELECT c.CREDIT_LIMIT_NUM * ISNULL(r.CURR_RATE,1) - ISNULL(m.AMOUNT_TAX,0) * ISNULL(m.CURR_RATE,1), c.CURR_ID
@@ -564,7 +564,7 @@ public static class CopDomainRules
             line: r => $"{Math.Round(Convert.ToDouble(r.GetValue(0)), 2)}{r.GetString(1).Trim()}");
         if (credit is not null)
             return new(false, "客户信用余额不足：" + credit);
-        // 4. 产品交易天数（SYSSS.PRODUCT_DAYS；客户交易天数缺失时旧系统跳过本检查）
+        // 4. 产品交易天数（SYSSS.PRODUCT_DAYS；客户交易天数缺失时跳过本检查）
         var productDays = await DomainRuleService.FindLinesAsync(connection, transaction,
             """
             SELECT TOP 10 p.PRO_NO FROM dbo.COP_ORDER_D o
@@ -779,8 +779,7 @@ public static class CopDomainRules
     {
         var (typeColumn, noColumn) = DomainRuleService.KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
-        // 预收冲抵汇总（与旧 SP 一致：AMOUNT_TAX 未提交时为 NULL，NULL 算术保持 NULL，
-        // 负值校验不触发——旧系统语义，金额在批核/后续环节补全）
+        // 预收冲抵汇总
         await using var prepaySum = new SqlCommand($"""
             UPDATE m SET PREPAY_SUM=(SELECT SUM(PREPAY_AMOUNT) FROM dbo.COP_RECEIPT_PREPAY
                 WHERE RECEIPT_TYPE=@Type AND RECEIPT_NO=@No),

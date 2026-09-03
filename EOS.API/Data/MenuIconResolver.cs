@@ -1,12 +1,12 @@
 namespace EOS.API.Data;
 
 /// <summary>
-/// 导航/菜单管理图标解析（与旧系统侧栏一致）：
-/// 配置覆盖（NavigationIcons，按根菜单 M_IDX）→ 根菜单名关键字 → 旧根映射 → folder。
+/// 导航/菜单管理图标解析：
+/// 配置覆盖（NavigationIcons，按根菜单 M_IDX）→ 根菜单名关键字 → 内置根映射 → folder。
 /// </summary>
 internal static class MenuIconResolver
 {
-    private static readonly Dictionary<int, string> LegacyRootIcons = new() { [13] = "inventory", [14] = "sales", [15] = "procurement" };
+    private static readonly Dictionary<int, string> RootIconOverrides = new() { [13] = "inventory", [14] = "sales", [15] = "procurement" };
 
     private static readonly (string Keyword, string Icon)[] IconKeywordRules =
     {
@@ -74,7 +74,7 @@ internal static class MenuIconResolver
             return overrideIcon;
         foreach (var (keyword, icon) in IconKeywordRules)
             if (rootLabel.Contains(keyword, StringComparison.OrdinalIgnoreCase)) return icon;
-        if (LegacyRootIcons.TryGetValue(rootId, out var legacyIcon)) return legacyIcon;
+        if (RootIconOverrides.TryGetValue(rootId, out var overrideByRoot)) return overrideByRoot;
         return "folder";
     }
 }

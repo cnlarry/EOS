@@ -54,7 +54,7 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
         if(normalized=="new"&&!rights.CanAddNew)return Forbid();
         if(normalized=="edit"&&!rights.CanEdit)return Forbid();
-        // view 模式仅需浏览权限（对齐旧系统 state=brow 只读查看）
+        // view 模式仅需浏览权限
         if(normalized=="view"&&!rights.CanBrowse)return Forbid();
         if(normalized=="new"&&!definition.HasAdd)return NotFound();
         if(normalized=="edit"&&!definition.HasEdit)return NotFound();
@@ -164,7 +164,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         return MapSaveResult(result);
     }
 
-    /// <summary>ADR-006 决策 2.1：统一表单写路径幂等键强制（缺失或超 128 字符返回 400）。</summary>
+    /// <summary>：统一表单写路径幂等键强制（缺失或超 128 字符返回 400）。</summary>
     private IActionResult? IdempotencyProblem(string? idempotencyKey)
         => string.IsNullOrWhiteSpace(idempotencyKey)||idempotencyKey.Trim().Length>128
             ? BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"IDEMPOTENCY_KEY_REQUIRED","写操作缺少有效幂等键（请求体 idempotencyKey 或 X-Idempotency-Key 请求头，≤128 字符）。"))
@@ -194,7 +194,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
             var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if(userId is not null)chooserRights=(await permissions.GetAsync(userId,moduleIndex,token)).Rights;
         }
-        // FILTER_STRUCT 结构化条件：编译期把 {module} 等模板转为参数占位符，运行期绑定（ADR-008 §3）
+        // FILTER_STRUCT 结构化条件：编译期把 {module} 等模板转为参数占位符，运行期绑定
         // NULL = 存量条件待重建（迁移清单内），fail-closed 返回空选项，绝不退化为「无过滤」放大数据范围
         if (source.Filter is null)
         {
@@ -260,7 +260,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         return result is null?NotFound():Ok(result);
     }
 
-    private async Task<(WorkbenchDefinition Definition,FormDefinition Form,LegacyModuleRights Rights)?> FormAccess(int moduleId,string mode,CancellationToken token)
+    private async Task<(WorkbenchDefinition Definition,FormDefinition Form,ModuleRights Rights)?> FormAccess(int moduleId,string mode,CancellationToken token)
     {
         var definition=await AuthorizedDefinition(moduleId,token);
         var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -353,7 +353,7 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.C
         if(!rights.CanBrowse)return null;
         var definition=await repository.GetDefinitionAsync(moduleId,userId,rights.ExecuteTag,rights.CanViewCost,rights.CanViewSecrecy,rights.DeniedMasterFields,rights.DeniedDetailFields,token);
         if(definition is null)return null;
-        // 路由契约（M86）：NEW_URL/MODI_URL 有值即自定义路由；无值时按统一表单白名单
+        // 路由契约：NEW_URL/MODI_URL 有值即自定义路由；无值时按统一表单白名单
         // 回退（显示按钮走统一表单）或隐藏按钮。
 var formEnabled=formSettings.Value.EnabledModuleIds.Contains(moduleId);
         return definition with
@@ -382,7 +382,7 @@ var formEnabled=formSettings.Value.EnabledModuleIds.Contains(moduleId);
         return System.Text.Encoding.UTF8.GetBytes(writer.ToString());
     }
 
-    /// <summary>导出文件响应：CSV（默认）或 Excel 2003 XML（对齐旧 DataTableToExcel）。</summary>
+    /// <summary>导出文件响应：CSV（默认）或 Excel 2003 XML。</summary>
     private static IActionResult ExportFile(IReadOnlyList<WorkbenchField> fields,IReadOnlyList<Dictionary<string,object?>> rows,string? format,string title)
     {
         var fileName=SanitizeFileName(title);

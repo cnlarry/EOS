@@ -2,6 +2,7 @@ using System.Data;
 using System.Text;
 using System.Text.RegularExpressions;
 using EOS.API.Data;
+using EOS.API.Tests.Tools;
 using Microsoft.Data.SqlClient;
 using Xunit;
 
@@ -49,7 +50,7 @@ public sealed class ReportConditionTemplateBackfillTool
     }
 
     private sealed record SourceRow(int ModuleId, int SerialNo, int Type, string Field, string Expr, string DefaultValue, string ParaName);
-    private sealed record ConvertedRow(SourceRow Row, string Template, string Legacy);
+    private sealed record ConvertedRow(SourceRow Row, string Template, string SourceDsl);
 
     private async Task<(List<ConvertedRow> Converted, List<SourceRow> Manual)> ConvertRowsAsync()
     {
@@ -72,7 +73,7 @@ public sealed class ReportConditionTemplateBackfillTool
                 reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2),
                 reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6));
             var legacy = $"{row.Type}|{row.Expr}";
-            var result = LegacyConditionTemplateConverter.Convert(row.Type, row.Expr, row.DefaultValue, row.Field, row.ParaName);
+            var result = ConditionTemplateDslConverter.Convert(row.Type, row.Expr, row.DefaultValue, row.Field, row.ParaName);
             if (result.Template is not null && result.Error is null)
                 converted.Add(new ConvertedRow(row, result.Template, legacy));
             else
@@ -84,7 +85,7 @@ public sealed class ReportConditionTemplateBackfillTool
     private static string BuildMigrationSql(List<ConvertedRow> converted)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("-- ADR-009 P4 条件结构化：SYSQR_DEFAULT 存量 F_TYPE/F_EXPR DSL → FILTER_TEMPLATE 转换（2026-08-30 工具生成）");
+        builder.AppendLine("-- SYSQR_DEFAULT 存量 F_TYPE/F_EXPR DSL → FILTER_TEMPLATE 转换（工具生成）");
         builder.AppendLine($"--       本迁移由 ReportConditionTemplateBackfillTool 生成（{converted.Count} 行自动转换），");
         builder.AppendLine("--       失败行保持 FILTER_TEMPLATE=NULL（运行期 fail-closed），入 logs/report-condition-migration/manual-list.csv。");
         builder.AppendLine("-- 漂移守卫：LEGACY 原文一致且 FILTER_TEMPLATE 仍为 NULL 才落，不覆盖已人工配置值。");
@@ -108,7 +109,7 @@ public sealed class ReportConditionTemplateBackfillTool
         {
             var c = converted[i];
             var comma = i < converted.Count - 1 ? "," : ";";
-            builder.AppendLine($"  ({c.Row.ModuleId}, {c.Row.SerialNo}, N'{SqlEscape(c.Legacy)}', N'{SqlEscape(c.Template)}'){comma}");
+            builder.AppendLine($"  ({c.Row.ModuleId}, {c.Row.SerialNo}, N'{SqlEscape(c.SourceDsl)}', N'{SqlEscape(c.Template)}'){comma}");
         }
         builder.AppendLine();
         builder.AppendLine("UPDATE dbo.SYSQR_DEFAULT");
@@ -122,7 +123,7 @@ public sealed class ReportConditionTemplateBackfillTool
         builder.AppendLine();
         builder.AppendLine("-- 3. 扩展属性");
         builder.AppendLine("IF NOT EXISTS (SELECT 1 FROM sys.extended_properties WHERE major_id = OBJECT_ID('dbo.SYSQR_DEFAULT') AND minor_id = (SELECT column_id FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SYSQR_DEFAULT') AND name = 'FILTER_TEMPLATE'))");
-        builder.AppendLine("    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'结构化参数定义（ADR-009 §6，FILTER_TEMPLATE JSON，复用 ADR-008 契约 + {p.X} 参数占位符）', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'SYSQR_DEFAULT', @level2type = N'COLUMN', @level2name = N'FILTER_TEMPLATE';");
+        builder.AppendLine("    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'结构化参数定义（FILTER_TEMPLATE JSON，复用 FILTER_STRUCT 契约 + {p.X} 参数占位符）', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'SYSQR_DEFAULT', @level2type = N'COLUMN', @level2name = N'FILTER_TEMPLATE';");
         builder.AppendLine();
         builder.AppendLine("COMMIT TRANSACTION;");
         return builder.ToString();

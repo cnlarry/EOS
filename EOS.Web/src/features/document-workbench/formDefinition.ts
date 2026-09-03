@@ -1,5 +1,5 @@
 /**
- * 表单选择器数据源（与 EOS.API FieldChooserSource 对应；ADR-008）：
+ * 表单选择器数据源（与 EOS.API FieldChooserSource 对应）：
  * - filter 恒为 null（FILTER_STRUCT 仅字段设置可见，运行期由 form-chooser 端点按 serialNo 取权威定义）；
  * - returnMapping = RETURN_ITEMS JSON（有序回填映射，[{target,column}]）；
  * - serialNo：多来源「各是各的入口」时传给 form-chooser 指定来源。
@@ -65,7 +65,7 @@ export interface FormFieldDefinition {
    displayOnly: boolean
    /** 复制（IF_COPY）时是否带出该字段值（FIELDS.CAN_COPY，默认 true） */
    canCopy: boolean
-   /** 数值精度/小数位（sys.types，仅 decimal/numeric；ADR-006 决策 2.4 超精度校验依据） */
+   /** 数值精度/小数位（sys.types，仅 decimal/numeric； 超精度校验依据） */
    precision?: number | null
    scale?: number | null
 }
@@ -96,7 +96,7 @@ export interface FormDefinition {
   searchDetail: boolean
   /** 新增模式服务端默认值（单别/单号/日期等），edit 模式为空对象 */
   defaultValues: Record<string, string>
-   /** 删除/批核/结案/附件操作权限（服务端 LegacyModuleRights 下发，视图按位显隐） */
+   /** 删除/批核/结案/附件操作权限（服务端 ModuleRights 下发，视图按位显隐） */
    canDelete: boolean
    canApprove: boolean
    canDeapprove: boolean
@@ -106,7 +106,7 @@ export interface FormDefinition {
    canFileUpda: boolean
    canFileEdit: boolean
    canFileDele: boolean
-   /** 新增/编辑用户权限（ADR-006 决策 6 浏览态按钮显隐：模块能力 ∧ 用户权限） */
+   /** 新增/编辑用户权限 */
    canAddNew: boolean
    canEdit: boolean
    /** 帮助页地址（MODULES.HELP_URL，非空时浏览态显示帮助按钮） */
@@ -115,7 +115,7 @@ export interface FormDefinition {
    canSetup: boolean
    }
 
-/** 模块权限（与 EOS.API LegacyModuleRights 对应，M0 扩展后） */
+/** 模块权限（与 EOS.API ModuleRights 对应，M0 扩展后） */
 export interface ModuleRights {
   canBrowse: boolean
   canViewCost: boolean

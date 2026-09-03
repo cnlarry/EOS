@@ -1,11 +1,11 @@
 namespace EOS.API.Data;
 
 /// <summary>
-/// 单据明细行金额计算（等价旧系统 JScript calc_row_amount + Round）：
-/// - TAX_TYPE='I'（内含税）：价税合计 = 数量×单价×折扣；金额 = 价税合计/(1+税率)；税额 = 价税合计-金额；
-/// - TAX_TYPE='O'（外含税）：金额 = 数量×单价×折扣；税额 = 金额×税率；价税合计 = 金额+税额；
-/// - TAX_TYPE='N'/其它（不含税）：金额 = 价税合计 = 数量×单价×折扣；税额 = 0。
-/// 金额统一保留 2 位小数（四舍五入，AwayFromZero，对齐旧 Round）。
+/// Document detail line amount calculation:
+/// - TAX_TYPE='I' (tax-inclusive): amount tax sum = qty × price × rebate; amount = tax sum / (1 + rate); tax = tax sum - amount;
+/// - TAX_TYPE='O' (tax-exclusive): amount = qty × price × rebate; tax = amount × rate; tax sum = amount + tax;
+/// - TAX_TYPE='N'/other: amount = tax sum = qty × price × rebate; tax = 0.
+/// Amounts are rounded to 2 decimal places (MidpointRounding.AwayFromZero).
 /// </summary>
 public static class AmountCalculator
 {

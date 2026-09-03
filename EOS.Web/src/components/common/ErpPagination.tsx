@@ -8,7 +8,7 @@ interface ErpPaginationProps {
   onPageChange: (page: number) => void
   onPageSizeChange?: (size: number) => void
   pageSizes?: number[]
-  /** 页码输入直接跳转（借鉴旧系统 DxGridView 分页器） */
+  /** 页码输入直接跳转 */
   showQuickJumper?: boolean
 }
 

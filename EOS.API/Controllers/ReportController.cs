@@ -13,7 +13,7 @@ namespace EOS.API.Controllers;
 public sealed class ReportController(
     ReportRepository repository,
     PrintSettingsRepository printSettingsRepository,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     IPermissionService permissions,
     WorkbenchAuditWriter auditWriter,
     ReportPdfService reportPdfService) : ControllerBase
@@ -137,7 +137,7 @@ public sealed class ReportController(
         return File(pdf, "application/pdf", $"{definition.Title}.pdf");
     }
 
-    /// <summary>CSV 导出：除模块浏览权外，报表级 EXPORT_TAG 必须为真（对齐旧 RptView 导出权限）。</summary>
+    /// <summary>CSV 导出：除模块浏览权外，报表级 EXPORT_TAG 必须为真。</summary>
     [HttpPost("export")]
     public async Task<IActionResult> Export(int moduleId, [FromQuery] string? reportId,
         [FromBody] ReportQueryRequest request, CancellationToken token)

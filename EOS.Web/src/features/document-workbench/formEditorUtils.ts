@@ -3,7 +3,7 @@ import { fieldVariant } from './formFieldKind'
 import type { FormDefinition, FormFieldDefinition } from './formDefinition'
 import { createId } from '../../lib/uuid'
 
-/** 统一表单保存载荷（主表 values + 明细 details，edit 时带 original 并发快照；ADR-006 决策 2.1 强制幂等键） */
+/** 统一表单保存载荷（主表 values + 明细 details，edit 时带 original 并发快照； 强制幂等键） */
 export interface SaveRecordRequest {
   values: Record<string, string>
   details: Record<string, string>[]
@@ -11,14 +11,14 @@ export interface SaveRecordRequest {
   idempotencyKey?: string
 }
 
-/** 保存/批核/结案响应（ADR-006 决策 2.7：warnings 随响应回传，浏览态 banner 展示） */
+/** 保存/批核/结案响应 */
 export interface RecordSaveResponse {
   key: string[]
   flowStarted?: boolean
   warnings?: { code: string; message: string }[]
 }
 
-/** 幂等键生成（ADR-006 决策 2.1）：一次用户操作意图一个键，成功后换新键 */
+/** 幂等键生成：一次用户操作意图一个键，成功后换新键 */
 export function newIdempotencyKey(): string {
   return createId()
 }
@@ -30,7 +30,7 @@ export interface RecordBundle {
   flowState?: 'None' | 'InProgress' | 'Completed' | 'Withdrawn'
 }
 
-/** 明细网格行：__id 为表格行键，__index 映射 detailRows 原始行号（ADR-006 决策 5：不再有占位空行） */
+/** 明细网格行：__id 为表格行键，__index 映射 detailRows 原始行号 */
 export interface DetailGridRow {
   __id: string
   __index: number
@@ -79,7 +79,7 @@ export function detailControlMinWidth(field: FormFieldDefinition): number {
 }
 
 /**
- * 数值输入规范化（ADR-006 决策 1 decimal 变体 / 决策 2.5）：
+ * 数值输入规范化：
  * 全角数字/句点转半角、去除千分位逗号，可解析时输出不变文化的普通数字串；
  * 不可解析（含货币符号等）原样返回，交由校验报错。
  */
@@ -111,7 +111,7 @@ export function chooserTitle(field: FormFieldDefinition): string {
   return `${field.label}${source?.description ? `（${source.description}）` : ''}`
 }
 
-/** 回填映射条目（ADR-008 §4：RETURN_ITEMS 有序 JSON 数组）。 */
+/** 回填映射条目。 */
 export interface ChooserReturnItem {
   target: string
   column: string

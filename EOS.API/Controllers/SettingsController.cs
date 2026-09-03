@@ -8,7 +8,7 @@ namespace EOS.API.Controllers;
 
 /// <summary>
 /// Single-row parameter table settings (SYSSS / HR_SETUP / HRM_SETUP).
-/// Permission gates align with the legacy pages: browse requires EXEC_TAG&lt;&gt;A and save
+/// Permission gates follow the module configuration: browse requires EXEC_TAG&lt;&gt;A and save
 /// requires EDIT_TAG (resolved through the rights repository). Business logic lives in
 /// SettingsRepository; this controller only authorizes and validates input.
 /// </summary>
@@ -17,7 +17,7 @@ namespace EOS.API.Controllers;
 [Route("api/v1/settings")]
 public sealed class SettingsController(
     SettingsRepository repository,
-    LegacyRightsRepository rightsRepository,
+    ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
     private const int MaxSettingsFields = 100;

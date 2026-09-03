@@ -32,7 +32,7 @@ internal static class RecordPayloadValidator
     public static bool IsAuditColumn(string field) => AuditColumns.Contains(field);
 
     /// <summary>
-    /// decimal/numeric 超精度校验（ADR-006 决策 2.4）：precision/scale 源自 sys.types 随 form-definition 下发。
+    /// decimal/numeric 超精度校验：precision/scale 源自 sys.types 随 form-definition 下发。
     /// 仅 decimal/numeric 启用——float 无精度语义、money 固定 scale=4，均不适用。
     /// 校验为拒绝式（不做静默舍入），与服务端 decimal away-from-zero 语义一致。
     /// </summary>
@@ -79,7 +79,7 @@ internal static class RecordPayloadValidator
                 continue;
             }
             // 服务端持有（serverFilled）与虚拟字段拒绝客户端提交；
-            // 只读但可见的联动字段（如 CURR_RATE/CURR_ID/TAX_ID）旧系统由前端联动带值随保存提交，
+            // 只读但可见的联动字段（如 CURR_RATE/CURR_ID/TAX_ID）由前端联动带值随保存提交，
             // 因此允许提交并继续做类型/长度校验（用户无法直接修改，值仍受服务端校验约束）。
             if (field.IsVirtual || field.ServerFilled || field.DisplayOnly)
             {
@@ -155,7 +155,7 @@ internal static class RecordPayloadValidator
     }
 
     /// <summary>
-    /// 明细行序号自动编号（对齐旧系统 SetSerialNo）：
+    /// 明细行序号自动编号：
     /// 明细存在 SERIAL_NO 字段且行内未提供时，按 1..n 顺序赋值。
     /// </summary>
     public static void AssignSerialNumbers(IReadOnlyList<IDictionary<string, object?>> rows, IReadOnlyList<FormFieldDefinition> fields)
@@ -171,7 +171,7 @@ internal static class RecordPayloadValidator
     }
 
     /// <summary>
-    /// 数值输入规范化（ADR-006 决策 2.5）：全角数字/句点转半角、去除千分位逗号。
+    /// 数值输入规范化：全角数字/句点转半角、去除千分位逗号。
     /// 仅用于数值类型分支；日期与文本不受影响（文本 trim 由 ValidateSubmitted 处理）。
     /// </summary>
     private static string NormalizeNumericText(string text)

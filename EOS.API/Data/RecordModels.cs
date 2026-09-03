@@ -15,10 +15,10 @@ public sealed record PrepayOffsetRequest(string Type, string No, decimal? Amount
 
 public sealed record ApproveWorkflowRequest(string Key, string? IdempotencyKey = null, string? Message = null);
 
-/// <summary>字段级校验错误（ADR-006）：RowIndex 仅明细行错误携带（0 起），主表/整单级为 null。</summary>
+/// <summary>字段级校验错误：RowIndex 仅明细行错误携带（0 起），主表/整单级为 null。</summary>
 public sealed record FieldError(string Field, string Message, string Code, int? RowIndex = null);
 
-/// <summary>保存成功但存在后续异常时的非阻断告警（ADR-006 决策 2.7，如自动批核失败）。</summary>
+/// <summary>保存成功但存在后续异常时的非阻断告警。</summary>
 public sealed record SaveWarning(string Code, string Message);
 
 public sealed record RecordBundle(IReadOnlyDictionary<string, object?> Master, IReadOnlyList<IReadOnlyDictionary<string, object?>> Details);

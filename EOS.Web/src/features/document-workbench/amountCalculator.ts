@@ -1,7 +1,7 @@
 /**
  * 单据明细行金额计算（前端预览，与服务端 AmountCalculator 完全等价）。
  *
- * 对齐旧系统 JScript calc_row_amount + Round：
+ * 系统 JScript calc_row_amount + Round：
  * - TAX_TYPE='I'（内含税）：价税合计 = 数量×单价×折扣；金额 = 价税合计/(1+税率)；税额 = 价税合计-金额；
  * - TAX_TYPE='O'（外含税）：金额 = 数量×单价×折扣；税额 = 金额×税率；价税合计 = 金额+税额；
  * - TAX_TYPE='N'/其它（不含税）：金额 = 价税合计 = 数量×单价×折扣；税额 = 0。
@@ -85,7 +85,7 @@ export function previewDetailAmount(
   return next
 }
 
-/** 主表金额汇总预览（对齐服务端 RecalculateMasterAmountsAsync 的 SUM 语义，币别一致场景）。 */
+/** 主表金额汇总预览。 */
 export function previewMasterAmounts(
   masterFields: { key: string }[],
   detailRows: Record<string, string>[],

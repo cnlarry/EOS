@@ -9,7 +9,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 客户定制版式仓储集成测试（ADR-010 §5 S2 copy-on-write）：
+/// 客户定制版式仓储集成测试：
 /// 直连 EOS.ERP 验证真实 SQL——copy-on-write 创建/更新、绑定优先级
 /// （(FORM_TYPE, CLIENT_ID) → (FORM_TYPE, '') → 内置）、权限位读取（个人覆盖组）。
 /// 测试数据在 Dispose 中按测试模块/用户清理。

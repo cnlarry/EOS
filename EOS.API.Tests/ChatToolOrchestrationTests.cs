@@ -16,7 +16,7 @@ public sealed record ModelRound(
     ChatUsage? Usage = null);
 
 /// <summary>
-/// ChatService 工具编排单元测试（ADR-007 M3）：脚本化模型输出验证
+/// ChatService 工具编排单元测试：脚本化模型输出验证
 /// 「问 → tool_call → 受控执行 → 结果回喂 → 最终答复」全链、越权拒绝路径与安全边界。
 /// </summary>
 public sealed class ChatToolOrchestrationTests

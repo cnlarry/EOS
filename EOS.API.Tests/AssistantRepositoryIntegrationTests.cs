@@ -7,7 +7,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 工作助手会话/消息仓储集成测试（ADR-007 M2）：直连 EOS.ERP 验证真实 SQL。
+/// 工作助手会话/消息仓储集成测试：直连 EOS.ERP 验证真实 SQL。
 /// 连接串来源与跳过策略同 AttachmentRepositoryIntegrationTests；
 /// 测试前置用与生产一致的 DbUp 迁移创建/升级 ASSISTANT_SESSION/ASSISTANT_MESSAGE；
 /// 测试数据在 Dispose 中按会话 ID 清理。

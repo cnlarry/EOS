@@ -55,20 +55,20 @@ public sealed class ControlledSprocInvokerTests
 
     [Theory]
     [InlineData("P_WF_COP_QUOTE", true)]
-    [InlineData("P_COP_QUOTE_After_Save", false)] // 已移植为领域规则（cop-quote）
-    [InlineData("P_COP_ACCOUNT_After_Save", false)] // 已移植（cop-account）
-    [InlineData("P_PUR_DUE_After_Save", false)] // 已移植（purchase-due）
-    [InlineData("P_COP_RECEIPT_After_Save", false)] // 已移植（cop-receipt）
-    [InlineData("P_COP_PREPAY_After_Save", false)] // 已移植（cop-prepay）
-    [InlineData("P_PUR_PAY_After_Save", false)] // 已移植（pur-pay）
-    [InlineData("P_PUR_PREPAY_After_Save", false)] // 已移植（pur-prepay）
+    [InlineData("P_COP_QUOTE_After_Save", false)] // 已实现为领域规则（cop-quote）
+    [InlineData("P_COP_ACCOUNT_After_Save", false)] // 已实现（cop-account）
+    [InlineData("P_PUR_DUE_After_Save", false)] // 已实现（purchase-due）
+    [InlineData("P_COP_RECEIPT_After_Save", false)] // 已实现（cop-receipt）
+    [InlineData("P_COP_PREPAY_After_Save", false)] // 已实现（cop-prepay）
+    [InlineData("P_PUR_PAY_After_Save", false)] // 已实现（pur-pay）
+    [InlineData("P_PUR_PREPAY_After_Save", false)] // 已实现（pur-prepay）
     [InlineData("P_WF_PUR_PURCHASE", true)]
-    [InlineData("P_PUR_PURCHASE_After_Save", false)] // 已移植（pur-purchase）
-    [InlineData("P_COP_SEND_JING_After_Save", false)] // 已移植（cop-send）
-    [InlineData("P_COP_ORDER_After_Save", false)] // 已移植为领域规则（cop-order）
-    [InlineData("P_PUR_RECEIVE_After_Save", false)] // 已移植（pur-receive）
-    [InlineData("P_PUR_APPLY_After_Save", false)] // 已移植（pur-apply）
-    [InlineData("P_PUR_QUOTE_After_Save", false)] // 已移植（pur-quote）
+    [InlineData("P_PUR_PURCHASE_After_Save", false)] // 已实现（pur-purchase）
+    [InlineData("P_COP_SEND_JING_After_Save", false)] // 已实现（cop-send）
+    [InlineData("P_COP_ORDER_After_Save", false)] // 已实现为领域规则（cop-order）
+    [InlineData("P_PUR_RECEIVE_After_Save", false)] // 已实现（pur-receive）
+    [InlineData("P_PUR_APPLY_After_Save", false)] // 已实现（pur-apply）
+    [InlineData("P_PUR_QUOTE_After_Save", false)] // 已实现（pur-quote）
     [InlineData("P_UNKNOWN_SPROC", false)]
     [InlineData("DROP TABLE X", false)]
     public void 受控白名单_只允许登记过的存储过程(string sproc, bool expected)

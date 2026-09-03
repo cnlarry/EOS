@@ -9,7 +9,7 @@ namespace EOS.API.Data;
 public static class MocDomainRules
 {
 
-    /// <summary>生产领料单（P_MOC_GET）AfterSave：库别/产品/批号校验（旧 SP 合并逻辑已注释，有效代码仅校验）。</summary>
+    /// <summary>生产领料单（P_MOC_GET）AfterSave：库别/产品/批号校验。</summary>
     public static Task<SprocResult> MocGetAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
@@ -34,7 +34,7 @@ public static class MocDomainRules
         var no = (keyValues[1] ?? string.Empty).Trim();
         if (await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
         {
-            // 等价 P_MOC_PRODUCE_CHECK（SYSSS 开关门控）
+            // 生产领料校验（SYSSS 开关门控）
             if (await DomainRuleService.ExistsAsync(connection, transaction,
                 "SELECT TOP 1 1 FROM dbo.SYSSS WHERE PRODUCE_ORDER_TAG=1;", type, no, token)
                 && await DomainRuleService.ExistsAsync(connection, transaction,
@@ -102,7 +102,7 @@ public static class MocDomainRules
         var no = (keyValues[1] ?? string.Empty).Trim();
         if (await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
         {
-            // 等价 P_MOC_PRODUCT_IN_CHECK：按制令聚合的入库量不能超制令生产量
+            // 入库校验：按制令聚合的入库量不能超制令生产量
             var exceeded = await DomainRuleService.ReadStringsAsync(connection, transaction,
                 """
                 SELECT TOP 11 t.PRODUCE_NO FROM
@@ -139,7 +139,7 @@ public static class MocDomainRules
         var no = (keyValues[1] ?? string.Empty).Trim();
         if (await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
         {
-            // 等价 P_MOC_PRODUCT_OUT_CHECK：FITOUT_TAG=1 走制令可出库，否则走订单可出库
+            // 出库校验：FITOUT_TAG=1 走制令可出库，否则走订单可出库
             var fitout = await DomainRuleService.ExistsAsync(connection, transaction,
                 "SELECT TOP 1 1 FROM dbo.SYSSS WHERE FITOUT_TAG=1;", type, no, token);
             var exceeded = await DomainRuleService.ReadStringsAsync(connection, transaction, fitout
@@ -176,7 +176,7 @@ public static class MocDomainRules
     }
 
 
-    /// <summary>工单BOM（P_MOC_BOM_STRU）AfterSave：孤儿主/明细清理循环（等价旧 SP 的 while 循环）。</summary>
+    /// <summary>工单BOM（P_MOC_BOM_STRU）AfterSave：孤儿主/明细清理循环。</summary>
     public static async Task<SprocResult> MocBomStruAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
@@ -233,7 +233,7 @@ public static class MocDomainRules
         var no = (keyValues[1] ?? string.Empty).Trim();
         if (!await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
             return new(true, null);
-        // 等价 P_MOC_PLAN_CHECK：计划数量/备品不超订单剩余
+        // 计划校验：计划数量/备品不超订单剩余
         var rows = await DomainRuleService.FindLinesAsync(connection, transaction,
             """
             SELECT a.SERIAL_NO, b.QTY, b.DO_PLAN_QTY, a.QTY, b.SPARE_QTY, b.DO_PLAN_SPARE_QTY, a.SPARE_QTY
@@ -297,7 +297,7 @@ public static class MocDomainRules
             : new(false, "以下出库超出工序工单入库数量\r\n工序工单单别   单号   数量   已入库数量   单据数量\r\n" + rows);
     }
 
-    /// <summary>模具单据空转规则（P_MOU_APPLY / P_MOU_ACCEPT：旧 SP 无有效副作用）。</summary>
+    /// <summary>模具单据空转规则（P_MOU_APPLY / P_MOU_ACCEPT： 无有效副作用）。</summary>
 
 
     /// <summary>工序工单（2705）AfterSave：工序工单不超制程数量。</summary>

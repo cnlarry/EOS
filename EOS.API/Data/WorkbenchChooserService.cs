@@ -20,7 +20,7 @@ public sealed class WorkbenchChooserService(
 
 
     /// <summary>
-    /// 选择器数据源（M4/ADR-008）：表名与来源定义来自服务端 FIELD_DATASOURCE（客户端仅传字段 key + serialNo），
+    /// 选择器数据源：表名与来源定义来自服务端 FIELD_DATASOURCE（客户端仅传字段 key + serialNo），
     /// 显示列按权限过滤（成本/保密/禁止查看），DATA_FILTER 受限解析可应用时应用，
     /// FILTER_STRUCT 经受控编译器参数化；任一无法安全编译即返回空列表（不泄漏数据，fail-closed）。
     /// </summary>
@@ -142,7 +142,7 @@ public sealed class WorkbenchChooserService(
             }
         }
         // 显示列：回填映射列优先（保证主键/名称可见），其余按 SYSQL_DEFAULT 顺序，
-        // 保留审计/状态列（对齐旧系统 Chooser.aspx 网格列，如建立人/批核状态等）
+        // 保留审计/状态列
         var preferred = (returnItems ?? [])
             .Select(pair => pair.Column.Trim())
             .Where(column => all.Any(row => row.Key.Equals(column,StringComparison.OrdinalIgnoreCase)))
@@ -199,7 +199,7 @@ public sealed class WorkbenchChooserService(
     }
 
     /// <summary>
-    /// form-chooser 端点权威数据源解析（ADR-008 §2/§7）：按字段 + serialNo 从 FIELD_DATASOURCE 读取
+    /// form-chooser 端点权威数据源解析：按字段 + serialNo 从 FIELD_DATASOURCE 读取
     /// FILTER_STRUCT / RETURN_ITEMS（仅服务端持有；普通用户表单定义不下发过滤条件）。
     /// serialNo 为空时取首个启用来源（向后兼容单来源调用）。
     /// </summary>
@@ -407,7 +407,7 @@ public sealed class WorkbenchChooserService(
         var predicates=new List<string>();
         if(!string.IsNullOrWhiteSpace(keyword))
         {
-            // 指定字段 → 单列模糊；未指定（全部）→ 跨文本列 OR LIKE（对齐旧选择器 droFieldList=全部）
+            // 指定字段 → 单列模糊；未指定（全部）→ 跨文本列 OR LIKE
             if(!string.IsNullOrWhiteSpace(filterField))
                 predicates.Add($"[{table}].[{filterField}] LIKE @kw");
             else

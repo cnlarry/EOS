@@ -11,7 +11,7 @@ namespace EOS.API.Tests;
 
 /// <summary>
 /// 统一选择器数据源集成测试：直连 EOS.ERP 开发库验证 menu-admin.tables / menu-admin.fields
-/// 的关键字过滤、排序列白名单与分页。连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 Codex 配置；
+/// 的关键字过滤、排序列白名单与分页。连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 本机配置文件；
 /// 拿不到连接串时跳过。只读查询，不产生测试数据。
 /// </summary>
 [Trait("Category", "Integration")]

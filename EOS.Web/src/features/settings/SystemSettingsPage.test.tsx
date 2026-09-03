@@ -104,7 +104,7 @@ function renderPage(path = '/settings/system') {
 )
 }
 
-describe('SystemSettingsPage（110111 系统参数设置复刻）', () => {
+describe('SystemSettingsPage（110111 系统参数设置实现）', () => {
   beforeEach(() => {
     apiClientMock.get.mockResolvedValue(sysssPayload)
     apiClientMock.put.mockResolvedValue(undefined)
@@ -117,7 +117,7 @@ describe('SystemSettingsPage（110111 系统参数设置复刻）', () => {
     vi.restoreAllMocks()
   })
 
-  it('按旧页面七分区渲染标题、中文标签与控件类型', async () => {
+  it('按七分区渲染标题、中文标签与控件类型', async () => {
     renderPage()
     expect(await screen.findByText('一：未交易天数限制，超过以下设定天数，对应表单将不能批核。')).toBeInTheDocument()
     expect(screen.getByText('四：业务流程参数')).toBeInTheDocument()
@@ -156,7 +156,7 @@ describe('SystemSettingsPage（110111 系统参数设置复刻）', () => {
     expect(apiClientMock.put).not.toHaveBeenCalled()
   })
 
-  it('保存失败时弹出旧系统提示', async () => {
+  it('保存失败时弹出提示', async () => {
     apiClientMock.put.mockRejectedValue(new Error('boom'))
     renderPage()
     await screen.findByText('四：业务流程参数')

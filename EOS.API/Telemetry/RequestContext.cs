@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc.Controllers;
 namespace EOS.API.Telemetry;
 
 /// <summary>
-/// 请求上下文契约（ADR-005 §1/§5.1）：correlationId / clientId / traceId / spanId /
+/// 请求上下文契约：correlationId / clientId / traceId / spanId /
 /// moduleId / action / error.code 的统一存取入口，供中间件、异常出口与日志使用。
 /// correlationId 由调用方经 X-Correlation-Id 传入（≤128 字符），未携带时回退
 /// HttpContext.TraceIdentifier；clientId 经 X-Client-Id 传入并由 ClientIds.Normalize 归一。
@@ -12,7 +12,7 @@ namespace EOS.API.Telemetry;
 public static class RequestContext
 {
     public const string CorrelationIdKey = "EOS.CorrelationId";
-    public const string ClientIdKey = "EOS.ClientId";
+    public const string ClientIdKey = "eos.clientId";
     public const string ErrorCodeKey = "EOS.ErrorCode";
 
     public static string GetCorrelationId(HttpContext context) =>

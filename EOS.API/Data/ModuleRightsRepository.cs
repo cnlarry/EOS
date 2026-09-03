@@ -4,9 +4,9 @@ using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
 
-public sealed class LegacyRightsRepository(DbConnectionFactory connections, ILogger<LegacyRightsRepository> logger)
+public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILogger<ModuleRightsRepository> logger)
 {
-    public async Task<LegacyModuleRights> GetAsync(string userId, int moduleId, CancellationToken cancellationToken)
+    public async Task<ModuleRights> GetAsync(string userId, int moduleId, CancellationToken cancellationToken)
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken);
@@ -39,7 +39,7 @@ public sealed class LegacyRightsRepository(DbConnectionFactory connections, ILog
     }
 
     /// <summary>
-    /// 报表级权限（ADR-009 §2 语义：SYSDD.REPORT_TAG 唯一真源，SYSDD_REPORT 降级为 override）：
+    /// 报表级权限：
     /// 1. 先判断模块级报表可见性（SYSDD.REPORT_TAG 个人优先，否则 SYSDH.REPORT_TAG 组 OR）；
     /// 2. 若模块 REPORT_TAG 未授予 → 全禁（CanPreview/CanPrint/CanExport all false）；
     /// 3. 若模块 REPORT_TAG 已授予 → 查询 override 行（SYSDD_REPORT 个人优先，否则 SYSDH_REPORT 组 OR）；
@@ -107,7 +107,7 @@ public sealed class LegacyRightsRepository(DbConnectionFactory connections, ILog
         return new ReportRights(true, true, true, string.Empty);
     }
 
-    private void LogRights(string userId, int moduleId, string source, LegacyModuleRights rights) =>
+    private void LogRights(string userId, int moduleId, string source, ModuleRights rights) =>
         logger.LogDebug(
             "模块权限 userId={UserId} module={ModuleId} source={Source} browse={CanBrowse} cost={CanViewCost} secrecy={CanViewSecrecy} setup={CanSetup} addNew={CanAddNew} edit={CanEdit} delete={CanDelete} deniedMaster={DeniedMasterCount} deniedDetail={DeniedDetailCount} denyNewMaster={DenyNewMasterCount} denyModiMaster={DenyModiMasterCount}",
             userId, moduleId, source, rights.CanBrowse, rights.CanViewCost, rights.CanViewSecrecy, rights.CanSetup,
@@ -162,7 +162,7 @@ public sealed class LegacyRightsRepository(DbConnectionFactory connections, ILog
         command.Parameters.Add("@ReportId", SqlDbType.NChar, 50).Value = reportId.Trim();
     }
 
-    /// <summary>模块级报表可见性唯一真源（ADR-009 §2）：SYSDD.REPORT_TAG 个人优先，否则 SYSDH.REPORT_TAG 组 OR。</summary>
+    /// <summary>模块级报表可见性唯一真源：SYSDD.REPORT_TAG 个人优先，否则 SYSDH.REPORT_TAG 组 OR。</summary>
     private static async Task<bool> GetModuleReportTagAsync(
         SqlConnection connection, string userId, int moduleId, CancellationToken token)
     {
@@ -227,7 +227,7 @@ internal sealed record ReportRightRow(bool Preview, bool Print, bool Export, str
 
 /// <summary>
 /// 报表权限聚合（纯逻辑，与数据库解耦，便于单元测试）。
-/// 对齐旧 Admin.GetUserReportRightDetail：个人覆盖组；组标签取 OR；
+/// OR；
 /// DATA_FILTER 非空项以 OR 拼接；无记录全禁。
 /// </summary>
 internal static class ReportRightsAggregator
@@ -253,15 +253,15 @@ internal static class ReportRightsAggregator
 
 /// <summary>
 /// 纯权限聚合逻辑（与数据库解耦，便于单元测试）。
-/// 语义对齐旧系统 Right.cs / Admin.GetUserRightDetail：
+/// 语义系统 Right.cs / Admin.GetUserRightDetail：
 /// - 个人权限覆盖组权限；组权限布尔位取 OR；禁止字段取各组交集（不是并集）；
 /// - EXEC_TAG 从 A 起按字符串比较取最大；无记录时无权；
-/// - DATA_FILTER 仅登记、不执行：旧 Grid.cs 以 " and " 前缀消费，此处以显式 AND 组合登记，
-///   具体运算符留待白名单化解析（受控解析）时定稿。
+/// - DATA_FILTER 仅登记、不执行：以显式 AND 组合登记，
+/// 具体运算符留待白名单化解析（受控解析）时定稿。
 /// </summary>
 internal static class RightsAggregator
 {
-    public static LegacyModuleRights FromPersonal(RightRow row) => new(
+    public static ModuleRights FromPersonal(RightRow row) => new(
         CanBrowse: !string.Equals(row.Execute, "A", StringComparison.OrdinalIgnoreCase),
         CanViewCost: row.Cost,
         CanViewSecrecy: row.Secrecy,
@@ -286,11 +286,11 @@ internal static class RightsAggregator
         DataFilter: row.DataFilter.Trim(),
         ExecuteTag: string.IsNullOrWhiteSpace(row.Execute) ? "A" : row.Execute.Trim());
 
-    public static LegacyModuleRights FromGroups(IReadOnlyList<RightRow> rows)
+    public static ModuleRights FromGroups(IReadOnlyList<RightRow> rows)
     {
         if (rows.Count == 0)
         {
-            return new LegacyModuleRights(false, false, false, false,
+            return new ModuleRights(false, false, false, false,
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 false, false, false,
@@ -304,7 +304,7 @@ internal static class RightsAggregator
         }
 
         var execute = rows.Select(row => row.Execute).OrderByDescending(value => value, StringComparer.Ordinal).First();
-        return new LegacyModuleRights(
+        return new ModuleRights(
             !string.Equals(execute, "A", StringComparison.OrdinalIgnoreCase),
             rows.Any(row => row.Cost),
             rows.Any(row => row.Secrecy),
@@ -357,7 +357,7 @@ internal static class RightsAggregator
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 }
 
-internal static class LegacyRightsReaderExtensions
+internal static class ModuleRightsReaderExtensions
 {
     public static bool GetNullableBoolean(this SqlDataReader reader, string name)
     {

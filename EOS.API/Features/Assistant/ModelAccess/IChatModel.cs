@@ -44,7 +44,7 @@ public sealed record ProposedToolCallFragment(int Index, string? Id, string? Nam
 public sealed record CompletedToolCall(string Id, string Name, string ArgumentsJson);
 
 /// <summary>
-/// 模型接入抽象（ADR-007 §4）：供应商无关的最小流式接口。
+/// 模型接入抽象：供应商无关的最小流式接口。
 /// 实现只负责出网调用与协议解析，不做权限判断、不落库、不组装提示词、不执行工具。
 /// </summary>
 public interface IChatModel

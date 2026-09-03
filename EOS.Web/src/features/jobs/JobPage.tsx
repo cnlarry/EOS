@@ -95,7 +95,7 @@ export function JobPage() {
         </>}
       >
         <div className="p-2">
-          <p className="text-secondary small mb-2">产品可用库存重计（230901）：重算全部产品的可用库存/MRP 数量，由旧系统存储过程受控执行。</p>
+          <p className="text-secondary small mb-2">产品可用库存重计（230901）：重算全部产品的可用库存/MRP 数量，由存储过程受控执行。</p>
           {result && <div className="alert alert-success py-2 mb-0">重计完成（{result.sproc}），耗时 {(result.elapsedMs / 1000).toFixed(1)} 秒。</div>}
         </div>
         <div className="card m-2">
