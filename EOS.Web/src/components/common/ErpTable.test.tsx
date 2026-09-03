@@ -189,6 +189,21 @@ describe('ErpTable', () => {
     expect(container.querySelector('tbody tr td')).toHaveClass('erp-frozen-left')
   })
 
+  it('冻结列 sticky 偏移按列宽累计：选择列 33px 后接业务列不重叠', () => {
+    const columns: ColumnDef<Row, unknown>[] = [
+      { id: 'select', header: '', enableSorting: false, enableHiding: false, meta: { className: 'erp-select-column', frozenLeft: true, resizable: false, truncate: false }, cell: () => null },
+      { accessorKey: 'id', header: 'ID', enableSorting: false, meta: { frozenLeft: true, resizable: false, minWidth: 90 } },
+      { accessorKey: 'name', header: '名称' },
+    ]
+    const { container } = render(<ErpTable columns={columns} data={rows} getRowId={(row) => row.id} />)
+    const ths = Array.from(container.querySelectorAll('thead th'))
+    expect(ths[0]).toHaveStyle({ left: '0px' })
+    expect(ths[1]).toHaveStyle({ left: '33px' })
+    const tds = Array.from(container.querySelectorAll('tbody tr td'))
+    expect(tds[0]).toHaveStyle({ left: '0px' })
+    expect(tds[1]).toHaveStyle({ left: '33px' })
+  })
+
   it('列头筛选：菜单进入筛选弹层应用条件并标记激活', () => {
     const onColumnFilterChange = vi.fn()
     const columns: ColumnDef<Row, unknown>[] = [
@@ -364,31 +379,45 @@ describe('ErpTable', () => {
     expect(container.querySelector('table')?.parentElement).toHaveClass('erp-table-shell')
   })
 
-  it('默认单元格包裹省略层并带 title 全文', () => {
+  it('virtualize 开启但容器不可滚（无布局环境）时回退全量渲染', () => {
+    const many = Array.from({ length: 120 }, (_, i) => ({ id: String(i), name: `行${i}` }))
+    const { container } = render(<ErpTable columns={buildColumns()} data={many} getRowId={(row) => row.id} virtualize />)
+    expect(container.querySelectorAll('tbody tr[data-order-id]').length).toBe(120)
+    expect(container.querySelector('tbody .erp-virtual-spacer')).not.toBeInTheDocument()
+  })
+
+  it('默认单元格包裹省略层，title 悬停时延迟计算全文', () => {
     const columns: ColumnDef<Row, unknown>[] = [{ accessorKey: 'name', header: '名称' }]
     const { container } = render(<ErpTable columns={columns} data={rows} getRowId={(row) => row.id} />)
     const cell = container.querySelector('tbody td')!
     expect(cell.querySelector('.erp-cell-ellipsis')).toBeInTheDocument()
+    // 渲染热路径不预置 title，悬停时才计算
+    expect(cell).not.toHaveAttribute('title')
+    fireEvent.mouseEnter(cell)
     expect(cell).toHaveAttribute('title', 'A')
     expect(cell.textContent).toBe('A')
   })
 
-  it('truncate=false 的列不包裹省略层且无 title', () => {
+  it('truncate=false 的列不包裹省略层，悬停也无 title', () => {
     const columns: ColumnDef<Row, unknown>[] = [
       { accessorKey: 'name', header: '名称', meta: { truncate: false } },
     ]
     const { container } = render(<ErpTable columns={columns} data={rows} getRowId={(row) => row.id} />)
     const cell = container.querySelector('tbody td')!
     expect(cell.querySelector('.erp-cell-ellipsis')).not.toBeInTheDocument()
+    fireEvent.mouseEnter(cell)
     expect(cell).not.toHaveAttribute('title')
   })
 
-  it('meta.title 函数用于悬停全文（格式化显示）', () => {
+  it('meta.title 函数在悬停时用于全文（格式化显示）', () => {
     const columns: ColumnDef<Row, unknown>[] = [
       { accessorKey: 'name', header: '名称', meta: { title: ({ value }) => `格式化:${String(value)}` } },
     ]
     const { container } = render(<ErpTable columns={columns} data={rows} getRowId={(row) => row.id} />)
-    expect(container.querySelector('tbody td')).toHaveAttribute('title', '格式化:A')
+    const cell = container.querySelector('tbody td')!
+    expect(cell).not.toHaveAttribute('title')
+    fireEvent.mouseEnter(cell)
+    expect(cell).toHaveAttribute('title', '格式化:A')
   })
 
   it('滚动到底触发 onEndReached，加载中不重复触发', () => {

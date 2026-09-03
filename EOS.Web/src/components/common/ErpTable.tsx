@@ -9,11 +9,16 @@ import {
   type SortingState,
   type VisibilityState,
 } from '@tanstack/react-table'
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { ErpDataTable } from './ErpDataTable'
 import { ErpColumnFilter } from './ErpColumnFilter'
 import { emptyQueryCondition, type QueryCondition } from './queryCondition'
 import { rowsToTsv, writeClipboard } from './tableClipboard'
+
+/** 行窗口化阈值：少于该行数的数据直接全量渲染（避免小表/布局测量开销） */
+const VIRTUAL_MIN_ROWS = 80
+/** 可视区上/下行数缓冲，保证滚动过程中新入视口的行已被渲染 */
+const VIRTUAL_OVERSCAN = 12
 
 interface ErpTableProps<TData> {
   columns: ColumnDef<TData, unknown>[]
@@ -68,6 +73,9 @@ interface ErpTableProps<TData> {
   hasMore?: boolean
   /** 加载更多进行中（防重复触发，可显示“正在加载更多…”） */
   loadingMore?: boolean
+  /** 大数据行窗口化：行数超过阈值且滚动容器可滚时只渲染可视区行（+overscan）。
+   *  启用后屏幕外行不在 DOM，复制等取文本操作优先使用列 meta.copyText。 */
+  virtualize?: boolean
 }
 
 /**
@@ -121,6 +129,7 @@ export function ErpTable<TData>({
   onEndReached,
   hasMore = false,
   loadingMore = false,
+  virtualize = false,
 }: ErpTableProps<TData>) {
   const shellRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -150,6 +159,11 @@ export function ErpTable<TData>({
   const allLoadedTimerRef = useRef<number | null>(null)
   const seenBottomRef = useRef(false)
   const wasLoadingMoreRef = useRef(false)
+  // 行窗口化（virtualize）：滚动容器、实测行高与当前可视窗口
+  const scrollContainerRef = useRef<HTMLElement | null>(null)
+  const rowHeightRef = useRef(27)
+  const [virtualActive, setVirtualActive] = useState(false)
+  const [virtualWindow, setVirtualWindow] = useState({ start: 0, end: 0 })
 
   /** 短暂提示“已加载全部”（滚动触发加载完成或再次尝试滚动到底时闪现后消失） */
   const flashAllLoaded = () => {
@@ -215,18 +229,129 @@ export function ErpTable<TData>({
 
   const rowsModel = table.getRowModel().rows
 
+  // 可见列与其冻结偏移：冻结组宽度按列键累计（选择列固定 33px，其余用 DISPLAY_LENGTH），
+  // 使 select + 若干业务列同处左侧/右侧时 sticky 偏移互不重叠
+  const visibleColumns = table.getVisibleLeafColumns()
+  const cellCount = visibleColumns.length
+  const frozenOffsets = (() => {
+    const leftByKey = new Map<string, number>()
+    const rightByKey = new Map<string, number>()
+    let left = 0
+    let right = 0
+    for (const column of visibleColumns) {
+      const meta = column.columnDef.meta
+      if (meta?.frozenLeft) {
+        leftByKey.set(column.id, left)
+        left += column.id === 'select' ? 33 : meta.minWidth ?? 100
+      }
+    }
+    for (let i = visibleColumns.length - 1; i >= 0; i--) {
+      const column = visibleColumns[i]!
+      const meta = column.columnDef.meta
+      if (meta?.frozenRight) {
+        rightByKey.set(column.id, right)
+        right += meta.minWidth ?? 100
+      }
+    }
+    return { leftByKey, rightByKey }
+  })()
+
+  // 行窗口化当前渲染区间（非虚拟时即全量）
+  const virtualStart = virtualActive ? Math.min(virtualWindow.start, rowsModel.length) : 0
+  const virtualEnd = virtualActive ? Math.min(virtualWindow.end, rowsModel.length) : rowsModel.length
+  const renderedRows = virtualActive ? rowsModel.slice(virtualStart, virtualEnd) : rowsModel
+
   // 数据变化时钳制键盘焦点行号
   useEffect(() => {
     setFocusIndex((current) => (current === null ? null : Math.min(current, Math.max(rowsModel.length - 1, 0))))
   }, [rowsModel.length])
 
-  // 键盘焦点行滚动到可视区
+  // 键盘焦点行滚动到可视区（虚拟化下按行高换算容器滚动位置）
   useEffect(() => {
-    if (focusIndex == null || !shellRef.current) return
+    if (focusIndex == null) return
+    if (virtualActive) {
+      const container = scrollContainerRef.current
+      const height = rowHeightRef.current
+      if (!container || height <= 0) return
+      const top = focusIndex * height
+      const bottom = top + height
+      const viewTop = container.scrollTop
+      const viewBottom = viewTop + container.clientHeight
+      if (top < viewTop) container.scrollTop = top
+      else if (bottom > viewBottom) container.scrollTop = bottom - container.clientHeight
+      return
+    }
     shellRef.current
-      .querySelector(`tr[data-kb-index="${focusIndex}"]`)
+      ?.querySelector(`tr[data-kb-index="${focusIndex}"]`)
       ?.scrollIntoView?.({ block: 'nearest' })
-  }, [focusIndex])
+  }, [focusIndex, virtualActive])
+
+  // 行窗口化：定位滚动容器（shell 最近的 overflow 祖先，与滚动加载共用同一容器）
+  useEffect(() => {
+    if (!virtualize) {
+      scrollContainerRef.current = null
+      return
+    }
+    let node: HTMLElement | null = shellRef.current
+    while (node) {
+      const style = getComputedStyle(node)
+      if (/(auto|scroll|overlay)/.test(style.overflowY) || /(auto|scroll|overlay)/.test(style.overflow)) {
+        scrollContainerRef.current = node
+        break
+      }
+      node = node.parentElement
+    }
+  }, [virtualize])
+
+  // 按当前滚动位置计算并更新可视窗口（起始行 + 可视行数 + 上下 overscan）
+  const applyScrollWindow = useCallback((container: HTMLElement, total: number) => {
+    const height = rowHeightRef.current
+    if (height <= 0 || total <= 0) return
+    const viewport = container.clientHeight
+    if (viewport <= 0) {
+      setVirtualWindow({ start: 0, end: Math.min(total, VIRTUAL_OVERSCAN * 2 + 10) })
+      return
+    }
+    const start = Math.max(0, Math.floor(container.scrollTop / height) - VIRTUAL_OVERSCAN)
+    const end = Math.min(total, start + Math.ceil(viewport / height) + VIRTUAL_OVERSCAN * 2)
+    setVirtualWindow((current) => (current.start === start && current.end === end ? current : { start, end }))
+  }, [])
+
+  // 行数变化后重估窗口化：行数不足 / 容器不可滚时回退全量渲染
+  useEffect(() => {
+    if (!virtualize) return
+    const container = scrollContainerRef.current
+    const total = rowsModel.length
+    if (!container || total === 0) return
+    if (total < VIRTUAL_MIN_ROWS) {
+      setVirtualActive(false)
+      return
+    }
+    const sample = container.querySelector('tbody tr:not(.erp-virtual-spacer)') as HTMLElement | null
+    const measured = sample ? sample.offsetHeight : 0
+    if (measured > 0) rowHeightRef.current = measured
+    if (container.scrollHeight <= container.clientHeight + 4) {
+      setVirtualActive(false)
+      return
+    }
+    if (!virtualActive) setVirtualActive(true)
+    applyScrollWindow(container, total)
+  }, [virtualize, rowsModel.length, virtualActive, applyScrollWindow])
+
+  // 滚动 / 容器尺寸变化时更新可视窗口（行数变化时重新绑定以使用最新总行数）
+  useEffect(() => {
+    if (!virtualActive) return
+    const container = scrollContainerRef.current
+    if (!container) return
+    const onScroll = () => applyScrollWindow(container, rowsModel.length)
+    const onResize = () => applyScrollWindow(container, rowsModel.length)
+    container.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onResize)
+    return () => {
+      container.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [virtualActive, rowsModel.length, applyScrollWindow])
 
   // 行右键菜单：点击别处关闭
   useEffect(() => {
@@ -273,14 +398,35 @@ export function ErpTable<TData>({
   }, [openFilter])
 
   const copyRows = (ids: string[]) => {
+    if (!ids.length) return
     const tableEl = shellRef.current?.querySelector('table')
-    if (!ids.length || !tableEl) return
+    if (!tableEl) return
     const headers = Array.from(tableEl.querySelectorAll('thead th')).map((th) => (th.textContent ?? '').trim())
+    // 已渲染行走 DOM（与显示一致）；虚拟化下屏幕外行不在 DOM，按列 meta.copyText / 原始值生成
+    const domRows = new Map<string, HTMLTableRowElement>()
+    for (const tr of Array.from(tableEl.querySelectorAll('tbody tr[data-order-id]'))) {
+      const orderId = tr.getAttribute('data-order-id')
+      if (orderId) domRows.set(orderId, tr as HTMLTableRowElement)
+    }
     const rows: string[][] = []
-    tableEl.querySelectorAll('tbody tr').forEach((tr) => {
-      if (!ids.includes(tr.getAttribute('data-order-id') ?? '')) return
-      rows.push(Array.from(tr.querySelectorAll('td')).map((td) => (td.textContent ?? '').trim()))
-    })
+    for (const id of ids) {
+      const row = rowsModel.find((candidate) => candidate.id === id)
+      if (!row) continue
+      const tr = domRows.get(id)
+      const domCells = tr ? Array.from(tr.querySelectorAll(':scope > td')) : []
+      const line = row.getVisibleCells().map((cell, cellIndex) => {
+        const copyText = cell.column.columnDef.meta?.copyText
+        if (copyText) {
+          const text = copyText({ value: cell.getValue(), row: row.original })
+          if (text !== undefined) return text
+        }
+        const domText = domCells[cellIndex]?.textContent?.trim()
+        if (domText != null && domText !== '') return domText
+        const raw = cell.getValue()
+        return typeof raw === 'string' || typeof raw === 'number' ? String(raw) : ''
+      })
+      rows.push(line)
+    }
     if (rows.length === 0) return
     writeClipboard(rowsToTsv(headers, rows))
   }
@@ -396,8 +542,8 @@ export function ErpTable<TData>({
                 const thStyle: CSSProperties = {}
                 if (meta?.minWidth) thStyle.minWidth = meta.minWidth
                 if (meta?.maxWidth) thStyle.maxWidth = meta.maxWidth
-                if (meta?.frozenLeft) thStyle.left = 0
-                if (meta?.frozenRight) thStyle.right = 0
+                if (meta?.frozenLeft) thStyle.left = frozenOffsets.leftByKey.get(header.column.id) ?? 0
+                if (meta?.frozenRight) thStyle.right = frozenOffsets.rightByKey.get(header.column.id) ?? 0
                 const headerLabel = typeof header.column.columnDef.header === 'string'
                   ? header.column.columnDef.header
                   : header.column.id
@@ -518,7 +664,13 @@ export function ErpTable<TData>({
           ))}
         </thead>
         <tbody>
-          {rowsModel.map((row, index) => {
+          {virtualActive && virtualStart > 0 && (
+            <tr className="erp-virtual-spacer" aria-hidden="true">
+              <td colSpan={cellCount} style={{ height: virtualStart * rowHeightRef.current }} />
+            </tr>
+          )}
+          {renderedRows.map((row, offset) => {
+            const index = virtualStart + offset
             const customClass = rowClassName?.(row.original)
             return (
               <tr
@@ -544,23 +696,31 @@ export function ErpTable<TData>({
                   const cellMeta = cell.column.columnDef.meta
                   const cellFrozen = cellMeta?.frozenLeft ? 'erp-frozen-left' : cellMeta?.frozenRight ? 'erp-frozen-right' : ''
                   const cellStyle: CSSProperties = {}
-                  if (cellMeta?.frozenLeft) cellStyle.left = 0
-                  if (cellMeta?.frozenRight) cellStyle.right = 0
+                  if (cellMeta?.frozenLeft) cellStyle.left = frozenOffsets.leftByKey.get(cell.column.id) ?? 0
+                  if (cellMeta?.frozenRight) cellStyle.right = frozenOffsets.rightByKey.get(cell.column.id) ?? 0
                   if (cellMeta?.maxWidth) cellStyle.maxWidth = cellMeta.maxWidth
                   const truncate = cellMeta?.truncate !== false
-                  const cellValue = cell.getValue()
-                  const title = truncate ? (cellMeta?.title != null
-                    ? (typeof cellMeta.title === 'function'
-                      ? cellMeta.title({ value: cellValue, row: row.original })
-                      : cellMeta.title)
-                    : (typeof cellValue === 'string' || typeof cellValue === 'number' ? String(cellValue) : undefined))
-                    : undefined
                   return (
                     <td
                       key={cell.id}
                       className={[cellMeta?.cellClassName ?? cellMeta?.className, cellFrozen].filter(Boolean).join(' ') || undefined}
                       style={Object.keys(cellStyle).length > 0 ? cellStyle : undefined}
-                      title={title}
+                      onMouseEnter={(event) => {
+                        // title 延迟到悬停才计算，避免大列表渲染热路径对每个单元格做格式化
+                        if (cellMeta?.truncate === false) return
+                        const raw = cell.getValue()
+                        const next = cellMeta?.title != null
+                          ? (typeof cellMeta.title === 'function'
+                            ? cellMeta.title({ value: raw, row: row.original })
+                            : cellMeta.title)
+                          : (typeof raw === 'string' || typeof raw === 'number' ? String(raw) : undefined)
+                        const current = event.currentTarget.getAttribute('title')
+                        if (next == null || next === '') {
+                          if (current) event.currentTarget.removeAttribute('title')
+                        } else if (current !== next) {
+                          event.currentTarget.setAttribute('title', next)
+                        }
+                      }}
                       onContextMenu={copyable ? (event) => {
                         event.preventDefault()
                         setCellMenu({
@@ -581,6 +741,11 @@ export function ErpTable<TData>({
               </tr>
             )
           })}
+          {virtualActive && virtualEnd < rowsModel.length && (
+            <tr className="erp-virtual-spacer" aria-hidden="true">
+              <td colSpan={cellCount} style={{ height: (rowsModel.length - virtualEnd) * rowHeightRef.current }} />
+            </tr>
+          )}
         </tbody>
       </ErpDataTable>
       {onEndReached ? (
@@ -673,5 +838,8 @@ declare module '@tanstack/react-table' {
     truncate?: boolean
     /** 悬停 title 全文：默认取单元格原始值；显示文本与原始值不同（如格式化）时用函数返回展示文本 */
     title?: string | ((info: { value: TValue; row: TData }) => string | undefined)
+    /** 复制到剪贴板的文本（单元格/行/选中复制）。虚拟化下屏幕外行不在 DOM，
+     *  提供后优先使用；未提供时回退已渲染单元格文本，再回退原始值。返回 undefined 继续回退。 */
+    copyText?: (info: { value: TValue; row: TData }) => string | undefined
   }
 }

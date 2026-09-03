@@ -602,6 +602,16 @@ button, input, select { font: inherit; }
 /* 滚动加载更多：底部哨兵与提示（ErpTable onEndReached） */
 .erp-table-load-more { display: flex; align-items: center; justify-content: center; min-height: 28px; padding: 4px 0; }
 .erp-table-load-more-hint { font-size: 12px; color: var(--tblr-secondary); }
+/* 行窗口化占位行：仅撑起滚动高度，不参与 hover 高亮 */
+.erp-virtual-spacer td { padding: 0 !important; }
+.erp-data-table tbody tr.erp-virtual-spacer:hover td { background: transparent; box-shadow: none; }
+/* 工作台滚动加载进度条（footer 提示已加载占比） */
+.erp-load-progress { height: 3px; min-width: 48px; border-radius: 2px; background: var(--tblr-border-color-translucent); overflow: hidden; }
+.erp-load-progress-bar { height: 100%; border-radius: 2px; background: var(--tblr-primary); }
+/* 列表操作帮助弹窗条目间距 */
+.erp-help-list { padding-left: 18px; }
+.erp-help-list li { margin-bottom: 6px; }
+.erp-help-list li:last-child { margin-bottom: 0; }
 .erp-detail-card .table { font-size: 12px; }
 .erp-detail-card .table th,
 .erp-detail-card .table td { font-size: 12px; }
