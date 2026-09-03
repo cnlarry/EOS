@@ -17,6 +17,12 @@ public sealed class WorkbenchFieldMetaMapper(
     WorkbenchAuditWriter auditWriter,
     ILogger<WorkbenchFieldMetaMapper> logger)
 {
+    // Column-width bounds [40,300] are enforced on both sides: this mapper clamps widths on
+    // write-back and EOS.Web/src/features/document-workbench/DocumentWorkbenchPage.tsx clamps on
+    // resize. Keep the two sides in sync when either bound changes.
+    private const int MinColumnWidth = 40;
+    private const int MaxColumnWidth = 300;
+
     private SqlConnection CreateConnection()=>connections.Create();
     public async Task<IReadOnlyList<FieldSetupLookup>> GetFieldSetupTablesAsync(CancellationToken token)
     {await using var connection=CreateConnection();await connection.OpenAsync(token);const string sql="SELECT LTRIM(RTRIM(T_ID)),COALESCE(NULLIF(LTRIM(RTRIM(T_DESC)),''),LTRIM(RTRIM(T_ID))) FROM dbo.TABLES WITH (NOLOCK) ORDER BY T_DESC,T_ID";await using var command=new SqlCommand(sql,connection);await using var reader=await command.ExecuteReaderAsync(token);var result=new List<FieldSetupLookup>();while(await reader.ReadAsync(token)){var value=reader.GetString(0);if(WorkbenchSql.Identifier.IsMatch(value))result.Add(new(value,reader.GetString(1)));}return result;}
@@ -122,7 +128,7 @@ public sealed class WorkbenchFieldMetaMapper(
         {
             var field=key.Trim();
             if(field.Length==0||!WorkbenchSql.Identifier.IsMatch(field)||!allowed.Contains(field))continue;
-            result[field]=Math.Clamp(rawWidth,40,300);
+            result[field]=Math.Clamp(rawWidth,MinColumnWidth,MaxColumnWidth);
         }
         return result;
     }
