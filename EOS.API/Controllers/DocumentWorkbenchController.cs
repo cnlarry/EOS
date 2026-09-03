@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 namespace EOS.API.Controllers;
 
 [ApiController, Authorize, Route("api/v1/document-workbench/{moduleId:int}")]
-public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, IPermissionService permissions, WorkbenchAuditWriter auditWriter, EOS.API.Security.CurrentUserContext userContext, IOptions<UnifiedFormEditorSettings> formSettings, ILogger<DocumentWorkbenchController> logger) : ControllerBase
+public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, WorkbenchChooserService chooser, IPermissionService permissions, WorkbenchAuditWriter auditWriter, EOS.API.Security.CurrentUserContext userContext, IOptions<UnifiedFormEditorSettings> formSettings, ILogger<DocumentWorkbenchController> logger) : ControllerBase
 {
     /// <summary>字段维护（数据表/字段设置）模块 ID：表单标签右键进入字段设置页的权限门。</summary>
     private const int FieldAdminModuleId = 2302;
@@ -186,7 +186,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         if(field is null)return NotFound();
         // When a field has multiple chooser sources, the front end picks by serialNo; default to the first active source
         // 来源定义（FILTER_STRUCT/RETURN_ITEMS）仅服务端持有，不从表单定义 DTO 读取。
-        var source=await repository.GetChooserSourceAsync(definition.MasterTable,definition.DetailTable,fieldKey,serialNo,token);
+        var source=await chooser.GetChooserSourceAsync(definition.MasterTable,definition.DetailTable,fieldKey,serialNo,token);
         if(source is null||!source.Active||string.IsNullOrWhiteSpace(source.Table))return NotFound();
         var chooserRights=rights;
         if(source.ModuleId is int moduleIndex&&moduleIndex>0)
@@ -256,7 +256,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         {
             return Unauthorized();
         }
-        var result=await repository.GetChooserOptionsAsync(source.Table,keyword,filterField,returnItems,masterValues,detailValues,chooserConditions,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,filterStruct,sortField,sortDirection,page,pageSize,chooserRights.ExecuteTag,source.ModuleId ?? moduleId,moduleId,chooserUserId,token);
+        var result=await chooser.GetChooserOptionsAsync(source.Table,keyword,filterField,returnItems,masterValues,detailValues,chooserConditions,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,filterStruct,sortField,sortDirection,page,pageSize,chooserRights.ExecuteTag,source.ModuleId ?? moduleId,moduleId,chooserUserId,token);
         return result is null?NotFound():Ok(result);
     }
 
