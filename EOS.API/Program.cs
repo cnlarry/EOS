@@ -188,7 +188,6 @@ builder.Services.AddMcpServer().WithHttpTransport().WithTools<LogMcpTools>();
 builder.Services.AddScoped<AttendanceCalcService>();
 builder.Services.AddScoped<WorkbenchDefinitionBuilder>();
 builder.Services.AddScoped<WorkbenchFieldMetaMapper>();
-builder.Services.AddScoped<WorkbenchChooserService>();
 builder.Services.AddScoped<DocumentWorkbenchRepository>();
 builder.Services.AddScoped<ReportRepository>();
 builder.Services.AddScoped<PrintSettingsRepository>();

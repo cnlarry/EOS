@@ -18,7 +18,7 @@ public sealed class ColumnWidthBatchTests
             { "BAD KEY", 70 },
         };
 
-        var result = DocumentWorkbenchRepository.FilterColumnWidths(input, allowed);
+        var result = WorkbenchFieldMetaMapper.FilterColumnWidths(input, allowed);
 
         Assert.Equal(2, result.Count);
         Assert.Equal(48, result["PRO_NO"]);
@@ -31,7 +31,7 @@ public sealed class ColumnWidthBatchTests
     [Fact]
     public void FilterColumnWidths_ClampsLowerBoundToMinimum()
     {
-        var result = DocumentWorkbenchRepository.FilterColumnWidths(
+        var result = WorkbenchFieldMetaMapper.FilterColumnWidths(
             new Dictionary<string, int> { { "F", 10 } },
             new HashSet<string> { "F" });
 
@@ -41,7 +41,7 @@ public sealed class ColumnWidthBatchTests
     [Fact]
     public void FilterColumnWidths_EmptyInputYieldsEmptyResult()
     {
-        var result = DocumentWorkbenchRepository.FilterColumnWidths(
+        var result = WorkbenchFieldMetaMapper.FilterColumnWidths(
             new Dictionary<string, int>(),
             new HashSet<string> { "A" });
 

@@ -1,0 +1,777 @@
+using EOS.API.Models;
+using EOS.API.Telemetry;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Options;
+using System.Data;
+using System.Globalization;
+using System.Text.RegularExpressions;
+
+namespace EOS.API.Data;
+
+/// <summary>
+/// Builds workbench and unified-form definitions: resolves each user's field view from a
+/// published snapshot baseline or live metadata and turns controlled metadata (FILTER, groups,
+/// sorting, form buttons and tabs) into a runtime definition. Dynamic identifiers always come
+/// from server-side whitelists and values are parameterized.
+/// </summary>
+public sealed class WorkbenchDefinitionBuilder(
+    DbConnectionFactory connections,
+    WorkbenchDefinitionProvider definitionProvider,
+    IOptions<UnifiedFormEditorSettings> formSettings,
+    ILogger<WorkbenchDefinitionBuilder> logger)
+{
+    private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
+    private readonly IReadOnlySet<int> formEnabledModules = formSettings.Value.EnabledModuleIds.ToHashSet();
+
+    private SqlConnection CreateConnection()=>connections.Create();
+    /// <summary>
+    /// Parses MODULES.FORM_BUTTONS (e.g. '1=copy;2=approve;3=print') into a controlled button list.
+    /// Format: semicolon-separated 'index=action' entries; allowed actions are new/edit/delete/copy/
+    /// approve/deapprove/print/export/search. Empty or invalid entries are ignored (server-side
+    /// whitelist, raw config text is not trusted); an empty config returns null.
+    /// </summary>
+    private static IReadOnlyList<WorkbenchButton>? ParseFormButtons(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "new", "edit", "delete", "copy", "approve", "deapprove", "endcase", "unendcase", "print", "export", "search",
+        };
+        var result = new List<WorkbenchButton>();
+        foreach (var part in raw.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            var action = eq >= 0 ? part[(eq + 1)..].Trim() : part.Trim();
+            if (allowed.Contains(action))
+                result.Add(new WorkbenchButton(action));
+        }
+        return result.Count > 0 ? result : null;
+    }
+    /// <summary>
+    /// Whitelist validation for BROWSE_URL browse-link templates.
+    /// Only in-site relative paths are allowed (starting with ~ and no external protocol), and every
+    /// {placeholder} must be an authorized field of the same table (case-insensitive); otherwise null
+    /// is returned and the browse link is not rendered.
+    /// </summary>
+    internal static string? SanitizeBrowseUrl(string? rawUrl, IReadOnlySet<string> allowedFields)
+    {
+        if (string.IsNullOrWhiteSpace(rawUrl)) return null;
+        var url = rawUrl.Trim();
+        if (!url.StartsWith("~/", StringComparison.Ordinal) || url.Contains("://")) return null;
+        foreach (Match match in BrowseUrlPlaceholder.Matches(url))
+        {
+            var token = match.Groups[1].Value.Trim();
+            if (token.Length == 0 || !WorkbenchSql.Identifier.IsMatch(token) || !allowedFields.Contains(token)) return null;
+        }
+        return url;
+    }
+
+    public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token)
+    {
+        using var timing = DbTimingCollector.Instance.Measure();
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        if (definitionProvider.TryGetBaseline(moduleId, out var baseline, out var snapshotVersion)
+            && !await IsDirtyAsync(connection, moduleId, token))
+        {
+            var fromBaseline = await BuildFromBaselineAsync(connection, baseline, snapshotVersion, moduleId, userId, execTag,
+                canViewCost, canViewSecrecy, deniedMasterFields, deniedDetailFields, token);
+            logger.LogDebug("工作台定义（快照）module={ModuleId} version={Version}", moduleId, snapshotVersion);
+            return fromBaseline;
+        }
+        return await BuildFromMetadataAsync(connection, moduleId, userId, execTag, canViewCost, canViewSecrecy,
+            deniedMasterFields, deniedDetailFields, snapshotVersion, token);
+    }
+
+    /// <summary>
+    /// Builds the per-user definition from a published snapshot baseline:
+    /// module-level immutable metadata (tables/routes/keys/filters/forms/business rules) comes from
+    /// the snapshot; per-user field views (permission filtering + column order), the FILTER
+    /// whitelist and group expressions are resolved live per user.
+    /// </summary>
+    private async Task<WorkbenchDefinition> BuildFromBaselineAsync(
+        SqlConnection connection,
+        WorkbenchDefinition baseline,
+        string version,
+        int moduleId,
+        string userId,
+        string? execTag,
+        bool canViewCost,
+        bool canViewSecrecy,
+        IReadOnlySet<string> deniedMasterFields,
+        IReadOnlySet<string> deniedDetailFields,
+        CancellationToken token)
+    {
+        var master = baseline.MasterTable;
+        var detail = baseline.DetailTable;
+        var masterFields = await WorkbenchBrowseResolver.ResolveAsync(connection,
+            await ReadFields(connection, userId, master, master, canViewCost, canViewSecrecy, deniedMasterFields, token),
+            master, formEnabledModules, token);
+        var detailFields = detail is null
+            ? []
+            : await WorkbenchBrowseResolver.ResolveAsync(connection,
+                await ReadFields(connection, userId, master, detail, canViewCost, canViewSecrecy, deniedDetailFields, token),
+                detail, formEnabledModules, token);
+        var (_, groupExpressions) = await ReadGroupExpressionsAsync(connection, moduleId, token);
+        return baseline with
+        {
+            MasterFields = masterFields,
+            DetailFields = detailFields,
+            DefaultSort = NormalizeSort(baseline.DefaultSort, master, masterFields),
+            FilterFieldKeys = await ReadFilterFieldKeys(connection, master, canViewCost, canViewSecrecy, deniedMasterFields, token),
+            UserId = userId.Trim(),
+            ExecTag = string.IsNullOrWhiteSpace(execTag) ? "A" : execTag.Trim(),
+            GroupExpressions = groupExpressions,
+            DefinitionVersion = version,
+        };
+    }
+
+    private async Task<WorkbenchDefinition?> BuildFromMetadataAsync(
+        SqlConnection connection,
+        int moduleId,
+        string userId,
+        string? execTag,
+        bool canViewCost,
+        bool canViewSecrecy,
+        IReadOnlySet<string> deniedMasterFields,
+        IReadOnlySet<string> deniedDetailFields,
+        string? version,
+        CancellationToken token)
+    {
+        const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,UPDATE_SP,AFTERSAVE_SP,AUTO_APPROVE," +
+                           "GROUP1,GROUP_EXP1,GROUP2,GROUP_EXP2,GROUP3,GROUP_EXP3,GROUP4,GROUP_EXP4,GROUP5,GROUP_EXP5," +
+                           "FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,NEW_URL,IF_COPY,SEARCH_1,SEARCH_2,HELP_URL " +
+                           "FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
+        await using var command = new SqlCommand(sql, connection); command.Parameters.Add("@ModuleId", SqlDbType.Int).Value=moduleId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token))
+        {
+            logger.LogDebug("工作台定义未找到 module={ModuleId}", moduleId);
+            return null;
+        }
+        var title=reader.GetString(0).Trim(); var master=reader.IsDBNull(1)?"":reader.GetString(1).Trim();
+        var detail=reader.IsDBNull(2)?null:reader.GetString(2).Trim(); if(detail is not null&&detail.Length==0)detail=null; var url=reader.IsDBNull(3)?"":reader.GetString(3);var defaultSort=reader.IsDBNull(4)?null:reader.GetString(4).Trim();
+        var modiUrl=reader.IsDBNull(5)?"":reader.GetString(5).Trim();
+        var detailNoSave=!reader.IsDBNull(6)&&reader.GetBoolean(6);
+        var detailNoFields=reader.IsDBNull(7)?"":reader.GetString(7).Trim();
+        var moduleFilter=reader.IsDBNull(8)?"":reader.GetString(8).Trim();
+        var updateSproc=reader.IsDBNull(9)?"":reader.GetString(9).Trim();
+        var afterSaveSproc=reader.IsDBNull(10)?"":reader.GetString(10).Trim();
+        var autoApprove=!reader.IsDBNull(11)&&reader.GetBoolean(11);
+        var groupExpressions = new string[5];
+        for (var i = 0; i < 5; i++)
+        {
+            var offset = 12 + i * 2;
+            var enabled = !reader.IsDBNull(offset) && reader.GetBoolean(offset);
+            var expression = reader.IsDBNull(offset + 1) ? string.Empty : reader.GetString(offset + 1).Trim();
+            groupExpressions[i] = enabled ? expression : string.Empty;
+        }
+        var formTabs = reader.IsDBNull(22) ? null : reader.GetString(22).Trim();
+        var formColumns = reader.IsDBNull(23) ? (int?)null : (int)reader.GetByte(23);
+        var formButtons = reader.IsDBNull(24) ? null : reader.GetString(24).Trim();
+        var newUrlRaw = reader.IsDBNull(25) ? string.Empty : reader.GetString(25).Trim();
+        var ifCopy = !reader.IsDBNull(26) && reader.GetBoolean(26);
+        var searchMaster = !reader.IsDBNull(27) && reader.GetBoolean(27);
+        var searchDetail = !reader.IsDBNull(28) && reader.GetBoolean(28);
+        var helpUrl = reader.IsDBNull(29) ? null : reader.GetString(29).Trim();
+        if (string.IsNullOrEmpty(helpUrl)) helpUrl = null;
+        await reader.CloseAsync();
+        if (!ModuleRouteValidator.IsWorkbenchUrl(url) || !WorkbenchSql.Identifier.IsMatch(master) || (detail is not null && !WorkbenchSql.Identifier.IsMatch(detail)))
+        {
+            logger.LogWarning("模块 {ModuleId} 未通过工作台校验 url={Url} master={Master} detail={Detail}", moduleId, url, master, detail);
+            return null;
+        }
+        // NEW_URL/MODI_URL decide the add/edit routes: resolvable modern action routes are sent to
+        // the front end; empty or invalid values return null so the controller falls back or hides
+        // the buttons.
+        var resolvedNewUrl = ModuleRouteValidator.ResolveActionUrl(newUrlRaw, moduleId);
+        var resolvedModiUrl = ModuleRouteValidator.ResolveActionUrl(modiUrl, moduleId);
+        var masterFields=await WorkbenchBrowseResolver.ResolveAsync(connection,
+            await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token),master,formEnabledModules,token);
+        var masterPkOrder=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,master,token);
+        // Domain rules: a static mapping wins (it carries bill-number and offset-table config);
+        // otherwise rules are auto-registered from MODULES metadata.
+        var businessRule=ModuleBusinessMap.Get(moduleId);
+        if(businessRule is null)
+        {
+            var hasSproc=updateSproc.Length>0||afterSaveSproc.Length>0;
+            if(hasSproc)
+            {
+                var hasAutoBillNo=await BillNoGenerator.HasAutoBillNoAsync(connection,null,moduleId,token);
+                string? billNoField=null;
+                string? billTypeField=null;
+                if(hasAutoBillNo&&masterPkOrder.Count>=2)
+                {
+                    billNoField=masterPkOrder.FirstOrDefault(column=>column.Contains("NO",StringComparison.OrdinalIgnoreCase));
+                    if(billNoField is not null)
+                        billTypeField=masterPkOrder.First(column=>!column.Equals(billNoField,StringComparison.OrdinalIgnoreCase));
+                }
+                businessRule=new(moduleId,
+                    afterSaveSproc.Length>0?afterSaveSproc:null,
+                    updateSproc.Length>0?updateSproc:null,
+                    billNoField is not null,
+                    billNoField,
+                    billTypeField);
+                // When a ported C# domain rule exists for an auto-registered module, replace the
+                // controlled AfterSave sproc with the domain rule.
+                if(DomainRuleMap.TryGet(moduleId,out var domainRule))
+                    businessRule=businessRule with { DomainRule=domainRule, AfterSaveSproc=null };
+                // Modules without a ported AfterSave must not silently run the metadata sproc:
+                // clear AfterSave and mark it pending porting (save is refused); the approval
+                // WorkflowSproc (UPDATE_SP) remains a controlled call.
+                else if(afterSaveSproc.Length>0)
+                    businessRule=businessRule with { AfterSaveSproc=null, SprocPendingPorting=true };
+            }
+        }
+        WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,
+            detail is null?[]:await WorkbenchBrowseResolver.ResolveAsync(connection,
+                await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),detail,formEnabledModules,token),NormalizeSort(defaultSort,master,masterFields),
+            resolvedNewUrl is not null || resolvedModiUrl is not null,resolvedModiUrl is not null,detailNoSave,
+            masterPkOrder,detailNoFields,
+            businessRule?.WorkflowSproc is not null,
+            string.IsNullOrWhiteSpace(moduleFilter)?null:moduleFilter,
+            await ReadFilterFieldKeys(connection,master,canViewCost,canViewSecrecy,deniedMasterFields,token),
+            userId.Trim(),
+            string.IsNullOrWhiteSpace(execTag)?"A":execTag.Trim(),
+            await WorkbenchSql.ColumnExistsAsync(connection,null,master,"OWNER",token),
+            await WorkbenchSql.ColumnExistsAsync(connection,null,master,"OWNER_G",token),
+            businessRule,
+            autoApprove,
+            groupExpressions,
+            string.IsNullOrWhiteSpace(formTabs) ? null : formTabs,
+            formColumns,
+            ParseFormButtons(formButtons),
+            ifCopy,
+            searchMaster,
+            searchDetail,
+            resolvedNewUrl,
+            resolvedModiUrl,
+            helpUrl);
+        logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
+            moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
+        return definition with { DefinitionVersion = version };
+    }
+
+
+    /// <summary>
+    /// Builds the unified form definition (entry field view filtered by the current user's rights).
+    /// mode supports new/edit/view (validated by the controller); no high-risk expressions are
+    /// evaluated here. Detail fields stay aligned with the DocumentWorkbench child-table columns:
+    /// the column set and order come from the same workbench source (user SYSQL_FIELDS, then
+    /// SYSQL_DEFAULT, then FIELDS.IS_DEFAULT_FIELDS) so add pages and child tables share one column
+    /// configuration.
+    /// </summary>
+    public async Task<FormDefinition?> GetFormDefinitionAsync(
+        WorkbenchDefinition definition,
+        string userId,
+        string mode,
+        bool canViewCost,
+        bool canViewSecrecy,
+        IReadOnlySet<string> deniedMasterFields,
+        IReadOnlySet<string> deniedDetailFields,
+        IReadOnlySet<string> deniedNewMasterFields,
+        IReadOnlySet<string> deniedNewDetailFields,
+        IReadOnlySet<string> deniedModiMasterFields,
+        IReadOnlySet<string> deniedModiDetailFields,
+        CancellationToken token,
+        bool canAddNew = false,
+        bool canEdit = false,
+        bool canDelete = false,
+        bool canApprove = false,
+        bool canDeapprove = false,
+        bool canEndCase = false,
+        bool canUnEndCase = false,
+        bool canFileView = false,
+        bool canFileUpda = false,
+        bool canFileEdit = false,
+        bool canFileDele = false,
+        bool canSetup = false)
+    {
+        await using var connection=CreateConnection(); await connection.OpenAsync(token);
+        var pkColumns=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,definition.MasterTable,token);
+        var masterRows=await ReadFormFieldRows(connection,definition.MasterTable,definition.MasterTable,token);
+        var masterFields=FormFieldSelector.Select(masterRows,mode,canViewCost,canViewSecrecy,deniedMasterFields,deniedNewMasterFields,deniedModiMasterFields);
+        IReadOnlyList<FormFieldDefinition> detailFields=[];
+        var detailDfVerify="";
+        if(definition.DetailTable is not null)
+        {
+            var workbenchDetail=await ReadFields(connection,userId,definition.MasterTable,definition.DetailTable,canViewCost,canViewSecrecy,deniedDetailFields,token);
+            var detailRows=await ReadFormFieldRows(connection,definition.MasterTable,definition.DetailTable,token,includeVirtual:true);
+            var rowsByKey=new Dictionary<string,FormFieldRow>(StringComparer.OrdinalIgnoreCase);
+            foreach(var row in detailRows) rowsByKey.TryAdd(row.Key,row);
+            var orderedRows=workbenchDetail
+                .Where(field=>rowsByKey.ContainsKey(field.Key))
+                .Select(field=>rowsByKey[field.Key])
+                .ToList();
+            // Required fields (IS_VERIFY=1) must stay in the form: the workbench column config only
+            // controls the list view, not which fields can be entered; a missing required column in
+            // the user/default config would make document creation fail.
+            var includedKeys=new HashSet<string>(orderedRows.Select(row=>row.Key),StringComparer.OrdinalIgnoreCase);
+            foreach(var row in detailRows)
+            {
+                if(!includedKeys.Add(row.Key))continue;
+                if(!row.IsRequired)continue;
+                orderedRows.Add(row);
+            }
+            detailFields=FormFieldSelector.Select(orderedRows,mode,canViewCost,canViewSecrecy,deniedDetailFields,deniedNewDetailFields,deniedModiDetailFields);
+            // Detail master-key columns (columns shared with the master primary key, e.g.
+            // ORDER_TYPE/ORDER_NO) are carried from the master server-side and shown read-only.
+            if(detailFields.Count>0)
+            {
+                detailFields=detailFields
+                    .Select(field=>pkColumns.Any(column=>column.Equals(field.Key,StringComparison.OrdinalIgnoreCase))
+                        || field.Key.Equals("SERIAL_NO",StringComparison.OrdinalIgnoreCase)
+                        ? field with { IsReadonly=true, ServerFilled=true }
+                        : field)
+                    .ToList();
+            }
+            // Master-key columns must stay in the detail form definition because they are supplied
+            // by the master server-side. With detail fields sourced from the workbench column
+            // config, hidden or non-default required key columns would otherwise be lost and
+            // creation rejected by MASTER_KEY_NOT_IN_DETAIL. Missing keys are appended from the
+            // full physical rows as read-only, server-filled columns, applying the same permission
+            // filtering as the field selection.
+            var deniedForMode = mode == "edit" ? deniedModiDetailFields : deniedNewDetailFields;
+            var missingPk = new List<FormFieldDefinition>();
+            foreach (var column in pkColumns)
+            {
+                if (detailFields.Any(field => field.Key.Equals(column, StringComparison.OrdinalIgnoreCase))) continue;
+                if (!rowsByKey.TryGetValue(column, out var pkRow)) continue;
+                if (deniedDetailFields.Contains(column) || deniedForMode.Contains(column)) continue;
+                missingPk.Add(new FormFieldDefinition(
+                    pkRow.Key, pkRow.Label, pkRow.DataType, pkRow.DisplayLength, pkRow.DisplayFormat,
+                    IsRequired: true, pkRow.VerifyIndex, pkRow.Regex, pkRow.DefaultValue,
+                    IsReadonly: true, IsVisible: pkRow.IsVisible, OnlyChoose: false, ChooseMultiple: false, ChoosePage: null,
+                    Choosers: [], IsPrimaryKey: true, IsAutoIncrement: pkRow.IsAutoIncrement, IsVirtual: pkRow.IsVirtual,
+                    IsCost: pkRow.IsCost, IsSecrecy: pkRow.IsSecrecy, ServerFilled: true, pkRow.MaxLength,
+                    pkRow.TabNo, pkRow.FormOrder, pkRow.Span, pkRow.NewLine,
+                    string.IsNullOrWhiteSpace(pkRow.CellGroup) ? null : pkRow.CellGroup, pkRow.CellRole,
+                    FormFieldSelector.ParseOptions(pkRow.Options), DisplayOnly: false,
+                    Precision: pkRow.TypePrecision, Scale: pkRow.TypeScale));
+            }
+            if (missingPk.Count > 0) detailFields = detailFields.Concat(missingPk).ToList();
+            detailDfVerify=(await WorkbenchSql.GetDfVerifyAsync(connection,null,definition.DetailTable,token))??"";
+        }
+        logger.LogDebug("表单定义 module={ModuleId} mode={Mode} master={MasterFieldCount} detail={DetailFieldCount}",
+            definition.ModuleId,mode,masterFields.Count,detailFields.Count);
+        // View mode: every field is read-only; save endpoints are unavailable in this mode.
+        if(mode=="view")
+        {
+            masterFields=masterFields.Select(field=>field with { IsReadonly=true }).ToList();
+            detailFields=detailFields.Select(field=>field with { IsReadonly=true }).ToList();
+        }
+        var tabs = ParseFormTabs(definition.FormTabs);
+        var columns = definition.FormColumns is int formColumns and > 0 ? formColumns : 2;
+        var defaultValues = await BuildNewDefaultsAsync(connection,definition,masterFields,mode,token);
+        return new FormDefinition(definition.ModuleId,definition.Title,definition.MasterTable,definition.DetailTable,
+            definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns,definition.DetailNoFields,detailDfVerify,
+            tabs,columns,definition.FormButtons,defaultValues,definition.HasWorkflow,
+            definition.IfCopy,definition.SearchMaster,definition.SearchDetail,
+            canDelete,canApprove,canDeapprove,canEndCase,canUnEndCase,canFileView,canFileUpda,canFileEdit,canFileDele,
+            canAddNew,canEdit,definition.HelpUrl,canSetup);
+    }
+
+    /// <summary>
+    /// Default values for new mode:
+    /// 1) auto bill-number modules get the default bill type plus the next generated number;
+    /// 2) date fields (editable, not server-filled, no DFT_VALUE) default to today.
+    /// Returned only for mode=new; values are generated server-side for display and re-validated
+    /// by the save pipeline.
+    /// </summary>
+    private static async Task<IReadOnlyDictionary<string,string>> BuildNewDefaultsAsync(
+        SqlConnection connection,
+        WorkbenchDefinition definition,
+        IReadOnlyList<FormFieldDefinition> masterFields,
+        string mode,
+        CancellationToken token)
+    {
+        var defaults = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+        if (mode != "new") return defaults;
+
+        if (definition.BusinessRule is { AutoBillNo: true, BillNoField: not null, BillTypeField: not null })
+        {
+            if (masterFields.Any(field => field.Key.Equals(definition.BusinessRule.BillTypeField,StringComparison.OrdinalIgnoreCase)))
+            {
+                var billCode = await BillNoGenerator.GetDefaultBillCodeAsync(connection,null,definition.ModuleId,token);
+                if (billCode is not null) defaults[definition.BusinessRule.BillTypeField] = billCode;
+            }
+            if (masterFields.Any(field => field.Key.Equals(definition.BusinessRule.BillNoField,StringComparison.OrdinalIgnoreCase)))
+            {
+                var newNo = await BillNoGenerator.GenerateAsync(connection,null,definition.ModuleId,
+                    definition.MasterTable,definition.BusinessRule.BillNoField,definition.BusinessRule.BillTypeField,token);
+                if (newNo is not null) defaults[definition.BusinessRule.BillNoField] = newNo;
+            }
+        }
+
+        var today = DateTime.Today.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture);
+        foreach (var field in masterFields)
+        {
+            if (field is { IsVisible: true, IsReadonly: false, ServerFilled: false, IsVirtual: false, DisplayOnly: false }
+                && field.DataType.Contains("date",StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrEmpty(field.DefaultValue))
+                defaults[field.Key] = today;
+        }
+        // When a defaulted code field (bill type + number) has a companion name field in the same
+        // cell group, backfill the name from the chooser's return mapping so the form shows the
+        // name immediately without a manual re-selection.
+        foreach (var field in masterFields)
+        {
+            if (field.CellRole != 1 || string.IsNullOrWhiteSpace(field.CellGroup)) continue;
+            if (!defaults.TryGetValue(field.Key, out var defaultValue) || string.IsNullOrWhiteSpace(defaultValue)) continue;
+            var source = field.Choosers.FirstOrDefault(item => item.Active && !string.IsNullOrWhiteSpace(item.Table));
+            if (source is null) continue;
+            var companions = masterFields
+                .Where(item => item.CellRole == 2 && string.Equals(item.CellGroup, field.CellGroup, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (companions.Count == 0) continue;
+            await FillChooserNameDefaultsAsync(connection, field, source, companions, defaultValue, defaults, token);
+        }
+        return defaults;
+    }
+
+    /// <summary>
+    /// Backfills new-mode default values: queries the chooser source table by the code-field
+    /// default and fills companion name fields in the same cell group (physical columns only;
+    /// virtual columns needing JOINs are handled by the chooser runtime). Any validation failure
+    /// skips the backfill (fail-closed, never throws).
+    /// </summary>
+    private static async Task FillChooserNameDefaultsAsync(
+        SqlConnection connection,
+        FormFieldDefinition main,
+        FieldChooserSource source,
+        IReadOnlyList<FormFieldDefinition> companions,
+        string value,
+        Dictionary<string, string> defaults,
+        CancellationToken token)
+    {
+        var table = source.Table!.Trim();
+        if (!WorkbenchSql.Identifier.IsMatch(table) || !await WorkbenchSql.TableExistsAsync(connection, table, token))
+            return;
+
+        var mapping = ChooserReturnItems.Parse(source.ReturnMapping) ?? [];
+        var keyColumn = mapping.FirstOrDefault(pair =>
+            string.Equals(FormFieldSelector.NormalizeChooserTarget(pair.Target), main.Key, StringComparison.OrdinalIgnoreCase))?.Column;
+        if (string.IsNullOrWhiteSpace(keyColumn)) keyColumn = main.Key;
+        if (!WorkbenchSql.Identifier.IsMatch(keyColumn)) return;
+
+        var selected = new List<(FormFieldDefinition Field, string Column)>();
+        foreach (var companion in companions)
+        {
+            var column = mapping.FirstOrDefault(pair =>
+                string.Equals(FormFieldSelector.NormalizeChooserTarget(pair.Target), companion.Key, StringComparison.OrdinalIgnoreCase))?.Column;
+            if (string.IsNullOrWhiteSpace(column)) column = companion.Key;
+            if (!WorkbenchSql.Identifier.IsMatch(column)) return;
+            selected.Add((companion, column));
+        }
+        if (selected.Count == 0) return;
+
+        var columns = selected.Select(item => item.Column).Append(keyColumn)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (!await WorkbenchSql.ColumnsExistAsync(connection, table, columns, token)) return;
+
+        var select = string.Join(",", columns.Select(column => $"[{column}]"));
+        try
+        {
+            await using var command = new SqlCommand(
+                $"SELECT TOP 1 {select} FROM dbo.[{table}] WITH (NOLOCK) WHERE [{keyColumn}]=@Value;", connection);
+            command.Parameters.Add("@Value", SqlDbType.NVarChar, 256).Value = value;
+            await using var reader = await command.ExecuteReaderAsync(token);
+            if (!await reader.ReadAsync(token)) return;
+            foreach (var (field, column) in selected)
+            {
+                var ordinal = reader.GetOrdinal(column);
+                if (reader.IsDBNull(ordinal)) continue;
+                defaults[field.Key] = Convert.ToString(reader.GetValue(ordinal), CultureInfo.InvariantCulture) ?? string.Empty;
+            }
+        }
+        catch (Exception ex) when (ex is SqlException or InvalidOperationException)
+        {
+            // Optional display-only backfill: when the source query fails (schema drift, lock
+            // waits), degrade to an empty backfill instead of failing the whole new-mode form
+            // definition (fail-closed).
+        }
+    }
+
+    private static async Task<IReadOnlyList<FormFieldRow>> ReadFormFieldRows(SqlConnection connection,string masterTable,string targetTable,CancellationToken token,bool includeVirtual=false)
+    {
+        const string sql="""
+            SELECT LTRIM(RTRIM(f.F_ID)) AS F_ID,COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))) AS F_DESC,
+                   COALESCE(NULLIF(LTRIM(RTRIM(f.F_TYPE)),''),'nvarchar') AS F_TYPE,COALESCE(f.DISPLAY_LENGTH,100) AS DISPLAY_LENGTH,
+                   f.DISPLAY_FORMAT,CAST(COALESCE(f.IS_VERIFY,0) AS bit) AS IS_VERIFY,f.VERIFY_INDEX,f.REGEX,f.DFT_VALUE,
+                   CAST(COALESCE(f.IS_READONLY,0) AS bit) AS IS_READONLY,CAST(COALESCE(f.IS_VISIBLE,1) AS bit) AS IS_VISIBLE,
+                   CAST(COALESCE(f.ONLY_CHOOSE,0) AS bit) AS ONLY_CHOOSE,CAST(COALESCE(f.CHOOSE_MULTI,0) AS bit) AS CHOOSE_MULTI,
+                   f.CHOOSE_PAGE,
+                   CAST(COALESCE(f.IS_VIRTUAL,0) AS bit) AS IS_VIRTUAL,CAST(COALESCE(f.IS_COST,0) AS bit) AS IS_COST,
+                   CAST(COALESCE(f.IS_SECRECY,0) AS bit) AS IS_SECRECY,CAST(COALESCE(f.IS_AUTOINC,0) AS bit) AS IS_AUTOINC,
+                   CAST(COALESCE(f.CAN_COPY,1) AS bit) AS CAN_COPY,
+                   d.F_IDX,CAST(CASE WHEN pk.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PK,
+                    CASE WHEN col.COLUMN_NAME IS NULL THEN NULL
+                         WHEN col.CHARACTER_LENGTH_FLAG = 0 THEN NULL
+                         WHEN col.MAX_LENGTH = -1 THEN NULL
+                         WHEN col.CHARACTER_LENGTH_FLAG = 2 THEN col.MAX_LENGTH / 2
+                         ELSE col.MAX_LENGTH END AS MAX_LENGTH,
+                   CAST(COALESCE(f.FORM_TAB_NO,1) AS int) AS FORM_TAB_NO,
+                   f.FORM_ORDER AS FORM_ORDER,
+                   CAST(COALESCE(f.FORM_SPAN,1) AS int) AS FORM_SPAN,
+                   CAST(COALESCE(f.FORM_NEW_LINE,0) AS bit) AS FORM_NEW_LINE,
+                   LTRIM(RTRIM(COALESCE(f.FORM_CELL_GROUP,''))) AS FORM_CELL_GROUP,
+                   CAST(COALESCE(f.FORM_CELL_ROLE,0) AS int) AS FORM_CELL_ROLE,
+                   f.FORM_OPTIONS AS FORM_OPTIONS,
+                   col.TYPE_PRECISION AS TYPE_PRECISION,col.TYPE_SCALE AS TYPE_SCALE,
+                   CAST(CASE WHEN col.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PHYSICAL
+            FROM dbo.FIELDS f WITH (NOLOCK)
+            LEFT JOIN (SELECT T_ID,T_ID_R,LTRIM(RTRIM(F_ID)) AS F_ID,MIN(F_IDX) AS F_IDX
+                       FROM dbo.SYSQL_DEFAULT WITH (NOLOCK)
+                       GROUP BY T_ID,T_ID_R,LTRIM(RTRIM(F_ID))) d
+              ON d.T_ID=@MasterTable AND d.T_ID_R=@TargetTable AND d.F_ID=LTRIM(RTRIM(f.F_ID))
+            LEFT JOIN (SELECT c.name AS COLUMN_NAME,c.max_length AS MAX_LENGTH,CAST(t.precision AS int) AS TYPE_PRECISION,CAST(t.scale AS int) AS TYPE_SCALE,
+                        CASE WHEN t.user_type_id IN (231,239) THEN 2
+                             WHEN t.user_type_id IN (167,175,35,99) THEN 1
+                             ELSE 0 END AS CHARACTER_LENGTH_FLAG
+                       FROM sys.columns c
+                       JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                       JOIN sys.schemas s ON o.schema_id=s.schema_id
+                       JOIN sys.types t ON c.user_type_id=t.user_type_id
+                       WHERE s.name=N'dbo' AND o.name=@TargetTable) col
+              ON col.COLUMN_NAME=f.F_ID
+            LEFT JOIN (SELECT c.name AS COLUMN_NAME
+                       FROM sys.indexes i
+                       JOIN sys.index_columns ic ON i.object_id=ic.object_id AND i.index_id=ic.index_id
+                       JOIN sys.columns c ON ic.object_id=c.object_id AND ic.column_id=c.column_id
+                       JOIN sys.tables t2 ON i.object_id=t2.object_id
+                       JOIN sys.schemas s2 ON t2.schema_id=s2.schema_id
+                       WHERE s2.name=N'dbo' AND t2.name=@TargetTable AND i.is_primary_key=1) pk
+              ON pk.COLUMN_NAME=f.F_ID
+            WHERE f.T_ID=@TargetTable
+              AND (COALESCE(f.IS_VIRTUAL,0)=@IncludeVirtual OR col.COLUMN_NAME IS NOT NULL OR LTRIM(RTRIM(COALESCE(f.FORM_CELL_GROUP,'')))<>'')
+            ORDER BY CASE WHEN f.FORM_ORDER IS NULL THEN 1 ELSE 0 END,COALESCE(f.FORM_ORDER,d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
+            """;
+        await using var command=new SqlCommand(sql,connection);
+        command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
+        command.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
+        command.Parameters.Add("@IncludeVirtual",SqlDbType.Bit).Value=includeVirtual;
+        // Chooser data sources read from FIELD_DATASOURCE (aggregated by field), not embedded in FIELDS columns
+        var choosersByField = await ReadChoosersByFieldAsync(connection, targetTable, token);
+        await using var reader=await command.ExecuteReaderAsync(token);
+        var rows=new List<FormFieldRow>();
+        while(await reader.ReadAsync(token))
+        {
+            var row=ReadFormFieldRow(reader);
+            rows.Add(choosersByField.TryGetValue(row.Key, out var choosers) && choosers.Count>0
+                ? row with { Choosers = choosers }
+                : row);
+        }
+        return rows;
+    }
+
+    private static FormFieldRow ReadFormFieldRow(SqlDataReader reader)
+        => new(
+            reader.GetString(reader.GetOrdinal("F_ID")).Trim(),
+            reader.GetString(reader.GetOrdinal("F_DESC")).Trim(),
+            reader.GetString(reader.GetOrdinal("F_TYPE")).Trim(),
+            reader.GetInt32(reader.GetOrdinal("DISPLAY_LENGTH")),
+            reader.GetNullableString("DISPLAY_FORMAT"),
+            reader.GetBoolean(reader.GetOrdinal("IS_VERIFY")),
+            reader.GetNullableInt32("VERIFY_INDEX"),
+            reader.GetNullableString("REGEX"),
+            reader.GetNullableString("DFT_VALUE"),
+            reader.GetBoolean(reader.GetOrdinal("IS_READONLY")),
+            reader.GetBoolean(reader.GetOrdinal("IS_VISIBLE")),
+            reader.GetBoolean(reader.GetOrdinal("ONLY_CHOOSE")),
+            reader.GetBoolean(reader.GetOrdinal("CHOOSE_MULTI")),
+            reader.GetNullableString("CHOOSE_PAGE"),
+            [],
+            reader.GetBoolean(reader.GetOrdinal("IS_VIRTUAL")),
+            reader.GetBoolean(reader.GetOrdinal("IS_COST")),
+            reader.GetBoolean(reader.GetOrdinal("IS_SECRECY")),
+            reader.GetBoolean(reader.GetOrdinal("IS_AUTOINC")),
+            reader.GetBoolean(reader.GetOrdinal("CAN_COPY")),
+            reader.GetBoolean(reader.GetOrdinal("IS_PK")),
+            reader.GetNullableInt32("MAX_LENGTH"),
+            reader.GetInt32(reader.GetOrdinal("FORM_TAB_NO")),
+            reader.GetNullableInt32("FORM_ORDER"),
+            reader.GetInt32(reader.GetOrdinal("FORM_SPAN")),
+            reader.GetBoolean(reader.GetOrdinal("FORM_NEW_LINE")),
+            reader.GetNullableString("FORM_CELL_GROUP"),
+            reader.GetInt32(reader.GetOrdinal("FORM_CELL_ROLE")),
+            reader.GetNullableString("FORM_OPTIONS"),
+            reader.GetBoolean(reader.GetOrdinal("IS_PHYSICAL")),
+            reader.GetNullableInt32("TYPE_PRECISION"),
+            reader.GetNullableInt32("TYPE_SCALE"));
+
+    /// <summary>Reads chooser data sources for all fields of the target table (FIELD_DATASOURCE, ordered by SERIAL_NO).</summary>
+    private static async Task<Dictionary<string, IReadOnlyList<FormChooserRow>>> ReadChoosersByFieldAsync(
+        SqlConnection connection,
+        string targetTable,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(c.F_ID)) AS F_ID,c.SERIAL_NO,CAST(COALESCE(c.ACTIVE_TAG,0) AS bit) AS ACTIVE_TAG,
+                   LTRIM(RTRIM(ISNULL(c.SOURCE_T_ID,''))) AS SOURCE_T_ID,
+                   LTRIM(RTRIM(ISNULL(c.SOURCE_DESC,''))) AS SOURCE_DESC,c.SOURCE_M_IDX,
+                   c.RETURN_ITEMS,c.FILTER_STRUCT
+            FROM dbo.FIELD_DATASOURCE c WITH (NOLOCK)
+            WHERE c.T_ID=@TargetTable
+            ORDER BY c.SERIAL_NO;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@TargetTable", SqlDbType.VarChar, 100).Value = targetTable;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new Dictionary<string, IReadOnlyList<FormChooserRow>>(StringComparer.OrdinalIgnoreCase);
+        while (await reader.ReadAsync(token))
+        {
+            var field = reader.GetString(0).Trim();
+            var table = reader.GetString(3).Trim();
+            if (table.Length == 0)
+            {
+                continue;
+            }
+            var row = new FormChooserRow(
+                reader.GetBoolean(reader.GetOrdinal("ACTIVE_TAG")),
+                table,
+                reader.GetString(4),
+                reader.IsDBNull(reader.GetOrdinal("SOURCE_M_IDX")) ? null : reader.GetInt32(reader.GetOrdinal("SOURCE_M_IDX")),
+                reader.IsDBNull(reader.GetOrdinal("RETURN_ITEMS")) ? null : reader.GetString(reader.GetOrdinal("RETURN_ITEMS")),
+                reader.IsDBNull(reader.GetOrdinal("FILTER_STRUCT")) ? null : reader.GetString(reader.GetOrdinal("FILTER_STRUCT")),
+                reader.GetInt32(reader.GetOrdinal("SERIAL_NO")));
+            if (!result.TryGetValue(field, out var list))
+            {
+                list = new List<FormChooserRow>();
+                result[field] = list;
+            }
+            ((List<FormChooserRow>)list).Add(row);
+        }
+        return result;
+    }
+
+    /// <summary>Parses MODULES.FORM_TABS (e.g. '1=Basic;2=Other'); invalid items are skipped and tabs sort by number.</summary>
+    private static IReadOnlyList<FormTabDefinition> ParseFormTabs(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return [];
+        var tabs = new List<FormTabDefinition>();
+        foreach (var part in raw.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq <= 0) continue;
+            if (!int.TryParse(part[..eq].Trim(), out var no)) continue;
+            var title = part[(eq + 1)..].Trim();
+            if (title.Length == 0) continue;
+            tabs.Add(new FormTabDefinition(no, title));
+        }
+        return tabs.OrderBy(tab => tab.No).ToList();
+    }
+
+    /// <summary>
+    /// Field whitelist for MODULES.FILTER / DATA_FILTER: all physically existing non-virtual master
+    /// fields, including hidden ones (filter expressions may reference hidden fields, so limiting
+    /// to visible fields would reject whole modules). Filtering is server-side row scoping
+    /// independent of the user's column selection, so columns absent from the user config may still
+    /// be used for filtering. Denied, cost and secrecy fields remain restricted.
+    /// </summary>
+    private static async Task<IReadOnlySet<string>> ReadFilterFieldKeys(SqlConnection connection,string targetTable,bool canViewCost,bool canViewSecrecy,IReadOnlySet<string> deniedFields,CancellationToken token)
+    {
+        const string sql="""
+            SELECT LTRIM(RTRIM(f.F_ID)),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit)
+            FROM dbo.FIELDS f WITH (NOLOCK)
+            WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VIRTUAL,0)=0
+              AND EXISTS (SELECT 1 FROM sys.columns c
+                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=@TargetTable AND c.name=f.F_ID)
+            ORDER BY f.F_ID;
+            """;
+        await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@TargetTable",SqlDbType.NVarChar,100).Value=targetTable;
+        await using var reader=await command.ExecuteReaderAsync(token);
+        var result=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while(await reader.ReadAsync(token))
+        {
+            var key=reader.GetString(0).Trim();
+            if(WorkbenchSql.Identifier.IsMatch(key)&&!deniedFields.Contains(key)&&(canViewCost||!reader.GetBoolean(1))&&(canViewSecrecy||!reader.GetBoolean(2)))
+                result.Add(key);
+        }
+        return result;
+    }
+
+    /// <summary>Returns true while a module has unpublished edits, forcing live metadata builds so snapshot consumers see field-maintenance changes immediately.</summary>
+    private static async Task<bool> IsDirtyAsync(SqlConnection connection, int moduleId, CancellationToken token)
+    {
+        const string sql = "SELECT 1 FROM dbo.WORKBENCH_MODULE_DIRTY WITH (NOLOCK) WHERE MODULE_ID=@ModuleId AND DIRTY_TAG=1;";
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        return await command.ExecuteScalarAsync(token) is not null;
+    }
+
+    /// <summary>Reads module group expressions (GROUP1..5/GROUP_EXP1..5); snapshots omit high-risk expressions so these are read live.</summary>
+    private static async Task<(bool[] Enabled, string[] Expressions)> ReadGroupExpressionsAsync(
+        SqlConnection connection, int moduleId, CancellationToken token)
+    {
+        const string sql = """
+            SELECT ISNULL(GROUP1,0),ISNULL(GROUP_EXP1,''),ISNULL(GROUP2,0),ISNULL(GROUP_EXP2,''),
+                   ISNULL(GROUP3,0),ISNULL(GROUP_EXP3,''),ISNULL(GROUP4,0),ISNULL(GROUP_EXP4,''),
+                   ISNULL(GROUP5,0),ISNULL(GROUP_EXP5,'')
+            FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var enabled = new bool[5];
+        var expressions = new string[5];
+        if (await reader.ReadAsync(token))
+        {
+            for (var i = 0; i < 5; i++)
+            {
+                enabled[i] = reader.GetBoolean(i * 2);
+                expressions[i] = reader.IsDBNull(i * 2 + 1) ? string.Empty : reader.GetString(i * 2 + 1).Trim();
+            }
+        }
+        return (enabled, expressions);
+    }
+
+    private static async Task<IReadOnlyList<WorkbenchField>> ReadFields(SqlConnection connection,string userId,string masterTable,string targetTable,bool canViewCost,bool canViewSecrecy,IReadOnlySet<string> deniedFields,CancellationToken token)
+    {
+        const string sql="""
+            WITH UserFields AS (
+              SELECT LTRIM(RTRIM(F_ID)) F_ID,F_IDX FROM dbo.SYSQL_FIELDS WITH (NOLOCK)
+              WHERE USER_ID=@UserId AND T_ID=@MasterTable AND T_ID_R=@TargetTable
+            ), HasConfig AS (SELECT CASE WHEN EXISTS(SELECT 1 FROM UserFields) THEN 1 ELSE 0 END Value)
+            SELECT f.F_ID,COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),f.F_ID),COALESCE(f.F_TYPE,'nvarchar'),
+                   COALESCE(f.DISPLAY_LENGTH,100),NULLIF(LTRIM(RTRIM(f.ITEM_ALIGN)),''),CAST(CASE WHEN EXISTS(SELECT 1 FROM sys.indexes i2 JOIN sys.index_columns ic2 ON i2.object_id=ic2.object_id AND i2.index_id=ic2.index_id JOIN sys.columns c2 ON ic2.object_id=c2.object_id AND ic2.column_id=c2.column_id JOIN sys.tables t3 ON i2.object_id=t3.object_id JOIN sys.schemas s3 ON t3.schema_id=s3.schema_id WHERE s3.name=N'dbo' AND t3.name=@TargetTable AND i2.is_primary_key=1 AND c2.name=f.F_ID) THEN 1 ELSE 0 END AS bit),CAST(COALESCE(f.IS_QUERY,1) AS bit),CAST(COALESCE(f.IS_COST,0) AS bit),CAST(COALESCE(f.IS_SECRECY,0) AS bit),COALESCE(NULLIF(f.HEADER_ALIGN,''),'center'),f.DISPLAY_FORMAT,f.BROWSE_URL,f.BROWSE_M_IDX,CAST(COALESCE(f.IS_VIRTUAL,0) AS bit),f.VIRTUAL_EXP,f.CONVERT_FUNCTION
+            FROM dbo.FIELDS f WITH (NOLOCK) CROSS JOIN HasConfig h LEFT JOIN UserFields u ON u.F_ID=f.F_ID
+            WHERE f.T_ID=@TargetTable AND COALESCE(f.IS_VISIBLE,1)=1
+              AND (COALESCE(f.IS_VIRTUAL,0)=1 OR EXISTS (SELECT 1 FROM sys.columns c
+                          JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=@TargetTable AND c.name=f.F_ID))
+              AND (EXISTS(SELECT 1 FROM sys.indexes i2 JOIN sys.index_columns ic2 ON i2.object_id=ic2.object_id AND i2.index_id=ic2.index_id JOIN sys.columns c2 ON ic2.object_id=c2.object_id AND ic2.column_id=c2.column_id JOIN sys.tables t3 ON i2.object_id=t3.object_id JOIN sys.schemas s3 ON t3.schema_id=s3.schema_id WHERE s3.name=N'dbo' AND t3.name=@TargetTable AND i2.is_primary_key=1 AND c2.name=f.F_ID) OR (h.Value=1 AND u.F_ID IS NOT NULL) OR (h.Value=0 AND COALESCE(f.IS_DEFAULT_FIELDS,0)=1))
+            ORDER BY CASE WHEN EXISTS(SELECT 1 FROM sys.indexes i2 JOIN sys.index_columns ic2 ON i2.object_id=ic2.object_id AND i2.index_id=ic2.index_id JOIN sys.columns c2 ON ic2.object_id=c2.object_id AND ic2.column_id=c2.column_id JOIN sys.tables t3 ON i2.object_id=t3.object_id JOIN sys.schemas s3 ON t3.schema_id=s3.schema_id WHERE s3.name=N'dbo' AND t3.name=@TargetTable AND i2.is_primary_key=1 AND c2.name=f.F_ID) AND u.F_ID IS NULL THEN 0 ELSE 1 END,COALESCE(u.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID OPTION (OPTIMIZE FOR UNKNOWN);
+            """;
+        await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;command.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
+        var fields=new List<WorkbenchField>();
+        await using(var reader=await command.ExecuteReaderAsync(token))
+        {
+            while(await reader.ReadAsync(token)){var key=reader.GetString(0).Trim();if(WorkbenchSql.Identifier.IsMatch(key)&&!deniedFields.Contains(key)&&(canViewCost||!reader.GetBoolean(7))&&(canViewSecrecy||!reader.GetBoolean(8))){var isVirtual=reader.GetBoolean(13);var virtualExpression=reader.IsDBNull(14)?null:reader.GetString(14).Trim();var convertFunction=reader.IsDBNull(15)?null:reader.GetString(15).Trim();fields.Add(new(key,reader.GetString(1).Trim(),reader.GetString(2).Trim(),Math.Clamp(reader.GetInt32(3),40,300),reader.IsDBNull(4)?null:reader.GetString(4).Trim(),reader.GetBoolean(5),true,isVirtual?false:reader.GetBoolean(6),reader.GetString(9),reader.IsDBNull(10)?null:reader.GetString(10),reader.IsDBNull(11)?null:reader.GetString(11),reader.IsDBNull(12)?null:reader.GetInt32(12),isVirtual,virtualExpression,convertFunction));}}
+        }
+        var virtualFields=fields.Where(field=>field.IsVirtual).ToList();
+        if(virtualFields.Count>0)
+        {
+            var resolution=await new VirtualColumnResolver(connection).ResolveAsync(targetTable,virtualFields,token);
+            if(resolution.UnresolvedKeys.Count>0)
+            {
+                var dropped=resolution.UnresolvedKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                fields=fields.Where(field=>!dropped.Contains(field.Key)).ToList();
+            }
+        }
+        var allowedFields=fields.Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for(var i=0;i<fields.Count;i++){var field=fields[i];var safe=SanitizeBrowseUrl(field.BrowseUrl,allowedFields);if(safe!=field.BrowseUrl)fields[i]=field with{BrowseUrl=safe};}
+        return fields;
+    }
+
+
+
+    private static string? NormalizeSort(string? value,string table,IReadOnlyList<WorkbenchField> fields)
+    {
+        if(string.IsNullOrWhiteSpace(value))return null;var allowed=fields.Where(field=>!field.IsVirtual).Select(field=>field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);var result=new List<string>();
+        foreach(var part in value.Split(',',StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries)){var tokens=Regex.Split(part.Trim(),"\\s+");if(tokens.Length is <1 or >2)return null;var identifier=tokens[0].Split('.');if(identifier.Length==2&&!identifier[0].Equals(table,StringComparison.OrdinalIgnoreCase))return null;var field=identifier[^1].Trim('[',']');if(!WorkbenchSql.Identifier.IsMatch(field)||!allowed.Contains(field))return null;var direction=tokens.Length==2&&tokens[1].Equals("DESC",StringComparison.OrdinalIgnoreCase)?" DESC":tokens.Length==1||tokens[1].Equals("ASC",StringComparison.OrdinalIgnoreCase)?" ASC":null;if(direction is null)return null;result.Add($"[{field}]{direction}");}
+        return result.Count==0?null:string.Join(',',result);
+    }
+}
