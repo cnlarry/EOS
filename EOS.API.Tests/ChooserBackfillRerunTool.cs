@@ -28,6 +28,7 @@ namespace EOS.API.Tests;
 /// 运行（显式指 csproj，从仓库根）：
 ///   dotnet test EOS.API.Tests\EOS.API.Tests.csproj --filter ChooserBackfillRerunTool
 /// 并按需设环境变量 EOS_TOOL_CHOOSER_RERUN / EOS_TOOL_CHOOSER_PARITY / EOS_TOOL_CHOOSER_TRIAGE = 1。
+/// 迁移通道已关闭（CHOOSER_FILTER_MIGRATION_LOG 已于迁移 041 删除）；本工具仅历史重跑/审计参考。
 /// </summary>
 [Trait("Category", "Tool")]
 public sealed class ChooserBackfillRerunTool

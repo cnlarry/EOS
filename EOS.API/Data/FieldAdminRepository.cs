@@ -1108,11 +1108,6 @@ public sealed class FieldAdminRepository(
                     throw new ArgumentException($"数据来源 {serial} 过滤条件校验失败：{string.Join("；", errors.Take(4))}");
                 filterStructJson = filterStruct.ToJson();
             }
-            else if (await HasPendingMigrationFilterAsync(connection, transaction, tableId, fieldId, serial, token))
-            {
-                throw new ArgumentException(
-                    $"数据来源 {serial} 的旧过滤条件尚未重建。请先以结构化 JSON 重建；确需无过滤请由实施人员处理迁移清单后再保存。");
-            }
 
             string? returnItemsJson = null;
             if (!string.IsNullOrWhiteSpace(source.ReturnMapping))
@@ -1143,27 +1138,6 @@ public sealed class FieldAdminRepository(
             insert.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
             await insert.ExecuteNonQueryAsync(token);
         }
-    }
-
-    /// <summary>迁移清单内是否存在该来源的待重建过滤条件（PENDING_P3 / MANUAL / DRIFT）。</summary>
-    private static async Task<bool> HasPendingMigrationFilterAsync(
-        SqlConnection connection,
-        SqlTransaction transaction,
-        string tableId,
-        string fieldId,
-        int serialNo,
-        CancellationToken token)
-    {
-        const string sql = """
-            SELECT 1 FROM dbo.CHOOSER_FILTER_MIGRATION_LOG WITH (NOLOCK)
-            WHERE T_ID=@TableId AND LTRIM(RTRIM(F_ID))=@FieldId AND SERIAL_NO=@SerialNo
-              AND STATUS IN (N'PENDING_P3', N'MANUAL', N'DRIFT');
-            """;
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
-        command.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = fieldId;
-        command.Parameters.Add("@SerialNo", SqlDbType.Int).Value = serialNo;
-        return await command.ExecuteScalarAsync(token) is not null;
     }
 
     private static void EnsureIdentifier(string tableId, string? fieldId)

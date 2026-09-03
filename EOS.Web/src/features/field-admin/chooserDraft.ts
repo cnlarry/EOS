@@ -67,12 +67,10 @@ export function serializeFilterRows(rows: FilterRowDraft[]): string {
       continue
     }
     if (!row.field.trim() || !row.operator) continue
-    items.push({
-      field: row.field.trim(),
-      operator: row.operator,
-      value: row.value === '' ? null : row.value,
-      nullSafe: null,
-    })
+    // 简单行仅输出有值键（null 键省略），保持 FILTER_STRUCT 紧凑、便于结构识别
+    const item: Record<string, unknown> = { field: row.field.trim(), operator: row.operator }
+    if (row.value !== '') item.value = row.value
+    items.push(item)
   }
   const logic = rows.find(row => row.logic)?.logic ?? 'AND'
   return JSON.stringify({ logic, items })
