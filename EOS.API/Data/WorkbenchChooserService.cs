@@ -176,6 +176,7 @@ public sealed class WorkbenchChooserService(
         var missingColumns=returnColumns
             .Where(column=>!all.Any(row=>row.Key.Equals(column,StringComparison.OrdinalIgnoreCase)))
             .ToList();
+        var resolvedVirtualKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if(missingColumns.Count>0)
         {
             var virtualFields=await ReadChooserVirtualFieldsAsync(connection,table,missingColumns,token);
@@ -189,12 +190,19 @@ public sealed class WorkbenchChooserService(
                     foreach(var field in virtualFields)
                     {
                         if(!resolution.ResolvedKeys.Contains(field.Key,StringComparer.OrdinalIgnoreCase))continue;
+                        // 虚拟列仅作为返回给前端的显示列（经 virtualSelect 别名取数），
+                        // 不能进入基表物理 SELECT（基表无此列，拼入会导致 Invalid column name）
                         columns.Add(new FormChooserColumn(field.Key,field.Label,field.DataType,null));
+                        resolvedVirtualKeys.Add(field.Key);
                     }
                 }
             }
         }
-        var (rows,total)=await ReadChooserRowsAsync(connection,table,columns,keyword,filterField,scopePredicate,scopeParameters,joins,conditions,allowedFields,sortField,sortDirection,page,pageSize,virtualSelect,virtualJoin,token);
+        // 物理 SELECT 列 = 显示列剔除虚拟列（虚拟列片段已由 virtualSelect 携带）
+        var physicalColumns=resolvedVirtualKeys.Count>0
+            ? columns.Where(column=>!resolvedVirtualKeys.Contains(column.Key)).ToList()
+            : columns;
+        var (rows,total)=await ReadChooserRowsAsync(connection,table,physicalColumns,keyword,filterField,scopePredicate,scopeParameters,joins,conditions,allowedFields,sortField,sortDirection,page,pageSize,virtualSelect,virtualJoin,token);
         return new FormChooserResult(columns,rows,total);
     }
 

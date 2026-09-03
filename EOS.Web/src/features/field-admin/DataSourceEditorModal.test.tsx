@@ -38,6 +38,7 @@ function installMocks() {
         { name: 'CLIENT_ID', dataType: 'nvarchar', description: '客户编号' },
         { name: 'CLIENT_NAME', dataType: 'nvarchar', description: '客户名称' },
         { name: 'CREDIT_LIMIT', dataType: 'decimal', description: '信用额度' },
+        { name: 'SALES_NAME', dataType: 'nvarchar', description: '业务员', isVirtual: true },
       ])
     }
     if (path === '/admin/tables/ORDER_M/fields') {
@@ -82,6 +83,21 @@ describe('DataSourceEditorModal', () => {
     fireEvent.click(screen.getByRole('button', { name: '回填目标字段' }))
     expect(screen.getByRole('option', { name: /金额\(AMOUNT\)/ })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: /客户\(CLIENT_ID\)/ })).not.toBeInTheDocument()
+  })
+
+  it('回填来源列包含受控虚拟列，过滤条件字段仅物理列', async () => {
+    renderModal({ source, filterRows: [], returnRows: [] })
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith('/admin/tables/CLIENT/columns'))
+    // 过滤条件字段：虚拟来源列（业务员）不出现
+    fireEvent.click(screen.getByRole('button', { name: '+ 条件' }))
+    fireEvent.click(screen.getByRole('button', { name: '过滤条件字段' }))
+    await waitFor(() => expect(screen.getByRole('option', { name: /客户编号/ })).toBeInTheDocument())
+    expect(screen.queryByRole('option', { name: /业务员/ })).not.toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('listbox', { name: '过滤条件字段' }), { key: 'Escape' })
+    // 回填来源列：受控虚拟列可选
+    fireEvent.click(screen.getByRole('button', { name: '+ 回填项' }))
+    fireEvent.click(screen.getByRole('button', { name: '回填来源列' }))
+    expect(screen.getByRole('option', { name: /业务员/ })).toBeInTheDocument()
   })
 
   it('保存回调携带过滤行与回填行', async () => {
