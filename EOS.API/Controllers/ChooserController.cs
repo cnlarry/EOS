@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -21,7 +22,7 @@ public sealed class ChooserController(
     {
         var sourceKey = request.SourceKey?.Trim();
         if (!ChooserRepository.IsRegistered(sourceKey))
-            return BadRequest(new { code = "UNKNOWN_SOURCE", message = "未知的选择器数据源。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "UNKNOWN_SOURCE", "未知的选择器数据源。"));
         if (ChooserRepository.PermissionModuleId(sourceKey) is { } moduleId)
         {
             var rights = await rightsRepository.GetAsync(userContext.UserId, moduleId, token);
@@ -29,7 +30,7 @@ public sealed class ChooserController(
         }
         var result = await repository.QueryAsync(request, token);
         return result is null
-            ? NotFound(new { code = "SOURCE_EMPTY", message = "选择器数据源无返回。" })
+            ? NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "SOURCE_EMPTY", "选择器数据源无返回。"))
             : Ok(result);
     }
 }

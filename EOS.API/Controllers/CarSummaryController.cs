@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.RegularExpressions;
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -38,9 +39,9 @@ public sealed class CarSummaryController(
         var m1=(monthFrom??"").Trim();
         var m2=(monthTo??"").Trim();
         if(!Month.IsMatch(m1)||!Month.IsMatch(m2))
-            return BadRequest(new{code="INVALID_MONTH",message="月份格式应为 yyyy-MM。"});
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_MONTH","月份格式应为 yyyy-MM。"));
         if(string.CompareOrdinal(m1,m2)>0)
-            return BadRequest(new{code="INVALID_RANGE",message="起始月份不能大于结束月份。"});
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RANGE","起始月份不能大于结束月份。"));
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
         await using var command=new SqlCommand("EXEC dbo.RPT_CAR_SUMMARY @car_id_1=@f,@car_id_2=@t,@ym_1=@m1,@ym_2=@m2;",connection);

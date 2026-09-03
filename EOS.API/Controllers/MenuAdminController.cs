@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -111,7 +112,7 @@ public sealed class MenuAdminController(
     {
         if (!await CanBrowse(token)) return Forbid();
         if (table is not ("master" or "detail"))
-            return BadRequest(new { code = "INVALID_TABLE_KIND", message = "table 仅支持 master 或 detail。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_TABLE_KIND", "table 仅支持 master 或 detail。"));
         return Ok(await repository.GetDefaultColumnsAsync(id, table, token));
     }
 

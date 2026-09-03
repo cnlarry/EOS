@@ -33,7 +33,7 @@ public sealed class AttachmentController(
         if (access is null) return Forbid();
         if (!access.Value.Permission.Can(PermissionAction.FileView)) return Forbid();
         var keyValues = ParseKey(key);
-        if (keyValues is null) return BadRequest(new { code = "INVALID_RECORD_KEY", message = "key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。" });
+        if (keyValues is null) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_RECORD_KEY", "key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
         var items = await attachments.ListAsync(moduleId, access.Value.Definition.MasterTable, JsonSerializer.Serialize(keyValues), token);
         return Ok(items);
     }
@@ -51,7 +51,7 @@ public sealed class AttachmentController(
         if (access is null) return Forbid();
         if (!access.Value.Permission.Can(PermissionAction.FileUpload)) return Forbid();
         var keyValues = ParseKey(key);
-        if (keyValues is null) return BadRequest(new { code = "INVALID_RECORD_KEY", message = "key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。" });
+        if (keyValues is null) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_RECORD_KEY", "key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
 
         if (file.Length == 0) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, ApiErrorCodes.InvalidArgument, "文件为空"));
         var config = settings.Value;

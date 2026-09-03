@@ -1,5 +1,6 @@
 using System.Data;
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -133,7 +134,7 @@ public sealed class ReportCenterController(
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (userId is null) return Unauthorized();
         if (request.Items is null || request.Items.Count == 0)
-            return BadRequest(new { code = "INVALID_ORDER", message = "收藏顺序不能为空。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ORDER", "收藏顺序不能为空。"));
 
         await using var connection = connections.Create();
         await connection.OpenAsync(token);

@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -29,7 +30,7 @@ public sealed class NavigationGroupsController(
     public async Task<IActionResult> Values(int moduleId, int index, CancellationToken token)
     {
         if (index is < 1 or > 5)
-            return BadRequest(new { code = "INVALID_GROUP_INDEX", message = "group index 必须在 1~5 之间。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_GROUP_INDEX", "group index 必须在 1~5 之间。"));
         var rights = await RightsAsync(moduleId, token);
         if (rights is null) return Forbid();
         var values = await repository.GetGroupValuesAsync(moduleId, index, rights, token);

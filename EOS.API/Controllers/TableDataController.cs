@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -31,7 +32,7 @@ public sealed class TableDataController(
     {
         if(!await CanBrowseFieldAuditAsync(token)) return Forbid();
         var normalized=kind.Trim().ToLowerInvariant();
-        if(normalized is not ("unmanaged" or "orphan")) return BadRequest(new{code="INVALID_AUDIT_KIND",message="kind 仅支持 unmanaged 或 orphan。"});
+        if(normalized is not ("unmanaged" or "orphan")) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_AUDIT_KIND","kind 仅支持 unmanaged 或 orphan。"));
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
         const int limit=2000;

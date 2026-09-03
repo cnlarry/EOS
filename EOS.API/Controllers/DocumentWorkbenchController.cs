@@ -50,7 +50,7 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         if(definition is null||userId is null)return NotFound();
         if(!formSettings.Value.EnabledModuleIds.Contains(moduleId))return NotFound();
         var normalized=mode.Trim().ToLowerInvariant();
-        if(normalized is not ("new" or "edit" or "view"))return BadRequest(new{code="INVALID_FORM_MODE",message="mode 仅支持 new、edit 或 view。"});
+        if(normalized is not ("new" or "edit" or "view"))return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_FORM_MODE","mode 仅支持 new、edit 或 view。"));
         var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
         if(normalized=="new"&&!rights.CanAddNew)return Forbid();
         if(normalized=="edit"&&!rights.CanEdit)return Forbid();
@@ -75,7 +75,7 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
         var access=await FormAccess(moduleId,"view",token) ?? await FormAccess(moduleId,"edit",token);
         if(access is null)return NotFound();
         var keyValues=ParseKey(key);
-        if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
+        if(keyValues is null)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RECORD_KEY","key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
         var result=await repository.GetRecordAsync(access.Value.Definition,access.Value.Form,keyValues,access.Value.Rights.DataFilter,token);
         return MapReadResult(result);
     }
@@ -100,7 +100,7 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
         var access=await FormAccess(moduleId,"edit",token);
         if(access is null)return NotFound();
         var keyValues=ParseKey(key);
-        if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
+        if(keyValues is null)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RECORD_KEY","key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
         if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
         request=request with{IdempotencyKey=request.IdempotencyKey??headerIdempotencyKey};
         logger.LogDebug("统一表单保存请求 module={ModuleId} mode=edit key={Key} fields={Fields} details={DetailCount}",moduleId,string.Join(',',keyValues),string.Join(',',request.Values.Keys),request.Details?.Count??0);
@@ -116,7 +116,7 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
         if(access is null)return NotFound();
         await permissions.RequireAsync(userContext.UserId,moduleId,PermissionAction.Delete,token);
         var keyValues=ParseKey(key);
-        if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
+        if(keyValues is null)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RECORD_KEY","key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
         if(IdempotencyProblem(idempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
         var result=await repository.DeleteRecordAsync(access.Value.Definition,access.Value.Form,keyValues,userContext.UserId,access.Value.Rights.DataFilter,token,idempotencyKey!.Trim());
         LogValidationFailure(moduleId,result);
@@ -144,7 +144,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         var definition=await AuthorizedDefinition(moduleId,token);
         if(definition is null)return NotFound();
         var keyValues=ParseKey(request.Key);
-        if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
+        if(keyValues is null)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RECORD_KEY","key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
         if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
         var result=await repository.WorkflowAsync(definition,keyValues,approve,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey??headerIdempotencyKey,request.Message);
         return MapSaveResult(result);
@@ -158,7 +158,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         if(userId is null)return Unauthorized();
         await permissions.RequireAsync(userId,moduleId,finish?PermissionAction.EndCase:PermissionAction.UnEndCase,token);
         var keyValues=ParseKey(request.Key);
-        if(keyValues is null)return BadRequest(new{code="INVALID_RECORD_KEY",message="key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"});
+        if(keyValues is null)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RECORD_KEY","key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
         if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
         var result=await repository.FinishAsync(definition,keyValues,finish,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey??headerIdempotencyKey);
         return MapSaveResult(result);
@@ -167,7 +167,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
     /// <summary>ADR-006 决策 2.1：统一表单写路径幂等键强制（缺失或超 128 字符返回 400）。</summary>
     private IActionResult? IdempotencyProblem(string? idempotencyKey)
         => string.IsNullOrWhiteSpace(idempotencyKey)||idempotencyKey.Trim().Length>128
-            ? BadRequest(new{code="IDEMPOTENCY_KEY_REQUIRED",message="写操作缺少有效幂等键（请求体 idempotencyKey 或 X-Idempotency-Key 请求头，≤128 字符）。"})
+            ? BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"IDEMPOTENCY_KEY_REQUIRED","写操作缺少有效幂等键（请求体 idempotencyKey 或 X-Idempotency-Key 请求头，≤128 字符）。"))
             :null;
 
     private void LogValidationFailure(int moduleId,RecordSaveResult result)
@@ -204,13 +204,13 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         if (!ChooserFilterStruct.TryParse(source.Filter, out var filterStruct))
         {
             logger.LogWarning("选择器结构化过滤条件非法 module={ModuleId} field={Field} serial={Serial}", moduleId, fieldKey, source.SerialNo);
-            return BadRequest(new { code = "CHOOSER_FILTER_INVALID", message = "选择器过滤条件不是合法的结构化 JSON，请联系系统管理员在字段设置中重建。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "CHOOSER_FILTER_INVALID", "选择器过滤条件不是合法的结构化 JSON，请联系系统管理员在字段设置中重建。"));
         }
         var returnItems = ChooserReturnItems.Parse(source.ReturnMapping);
         if (returnItems is null)
         {
             logger.LogWarning("选择器回填映射非法 module={ModuleId} field={Field} serial={Serial}", moduleId, fieldKey, source.SerialNo);
-            return BadRequest(new { code = "CHOOSER_RETURN_INVALID", message = "选择器回填映射不是合法的 JSON 数组，请联系系统管理员在字段设置中重建。" });
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "CHOOSER_RETURN_INVALID", "选择器回填映射不是合法的 JSON 数组，请联系系统管理员在字段设置中重建。"));
         }
         IReadOnlyDictionary<string,string>? masterValues=null;
         if(!string.IsNullOrWhiteSpace(master))
@@ -300,9 +300,9 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.C
     {
         RecordAccessStatus.Ok=>Ok(new{master=result.Bundle!.Master,details=result.Bundle.Details,flowState=result.FlowState.ToString()}),
         RecordAccessStatus.NotFound=>NotFound(),
-        RecordAccessStatus.OutOfScope=>StatusCode(403,new{code="RECORD_OUT_OF_SCOPE",message="目标记录不在当前用户数据范围内。"}),
-        RecordAccessStatus.FilterUnsupported=>StatusCode(403,new{code="DATA_FILTER_UNSUPPORTED",message="当前数据过滤条件尚不支持，已拒绝执行。"}),
-        _=>BadRequest(new{code="RECORD_KEY_MISMATCH",message="主键数量与模块主键不匹配。"}),
+        RecordAccessStatus.OutOfScope=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,"RECORD_OUT_OF_SCOPE","目标记录不在当前用户数据范围内。")),
+        RecordAccessStatus.FilterUnsupported=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,"DATA_FILTER_UNSUPPORTED","当前数据过滤条件尚不支持，已拒绝执行。")),
+        _=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"RECORD_KEY_MISMATCH","主键数量与模块主键不匹配。")),
     };
 
     private IActionResult MapSaveResult(RecordSaveResult result)=>result.Status switch
@@ -310,10 +310,10 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.C
         // Return warnings (e.g. auto-approval failure) with the save response; front end shows them in a banner
         RecordAccessStatus.Ok=>Ok(new{key=result.Key,flowStarted=result.FlowStarted,warnings=result.Warnings}),
         RecordAccessStatus.NotFound=>NotFound(),
-        RecordAccessStatus.OutOfScope=>StatusCode(403,new{code="RECORD_OUT_OF_SCOPE",message="目标记录不在当前用户数据范围内。"}),
-        RecordAccessStatus.FilterUnsupported=>StatusCode(403,new{code="DATA_FILTER_UNSUPPORTED",message="当前数据过滤条件尚不支持，已拒绝执行。"}),
-        RecordAccessStatus.ConcurrentModified=>BadRequest(new{code="CONCURRENT_MODIFIED",message="字段内容已被他人修改，请刷新后重试！",fieldErrors=result.FieldErrors??Array.Empty<FieldError>()}),
-        _=>BadRequest(new{code=result.ErrorCode??"VALIDATION_FAILED",message=result.ErrorMessage??"数据校验未通过。",fieldErrors=result.FieldErrors??Array.Empty<FieldError>()}),
+        RecordAccessStatus.OutOfScope=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,"RECORD_OUT_OF_SCOPE","目标记录不在当前用户数据范围内。")),
+        RecordAccessStatus.FilterUnsupported=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,"DATA_FILTER_UNSUPPORTED","当前数据过滤条件尚不支持，已拒绝执行。")),
+        RecordAccessStatus.ConcurrentModified=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"CONCURRENT_MODIFIED","字段内容已被他人修改，请刷新后重试！").WithFieldErrors(result.FieldErrors??Array.Empty<FieldError>())),
+        _=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,result.ErrorCode??"VALIDATION_FAILED",result.ErrorMessage??"数据校验未通过。").WithFieldErrors(result.FieldErrors??Array.Empty<FieldError>())),
     };
 
     [HttpGet("columns")]

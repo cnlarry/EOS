@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using EOS.API.Data;
+using EOS.API.Errors;
 using EOS.API.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -40,7 +41,7 @@ public sealed class ImportController(
     public async Task<IActionResult> Execute([FromBody]ImportExecuteRequest request,CancellationToken token)
     {
         if(!await CanImportAsync(token))return Forbid();
-        if(request.Rows.Count>5000)return BadRequest(new{code="IMPORT_TOO_MANY_ROWS",message="单次导入不能超过 5000 行。"});
+        if(request.Rows.Count>5000)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"IMPORT_TOO_MANY_ROWS","单次导入不能超过 5000 行。"));
         var result=await service.ExecuteAsync(request,userContext.EmployeeName,token);
         return Ok(result);
     }
