@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { IconTrash } from '@tabler/icons-react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -34,6 +34,21 @@ import {
 //（含显式配置 3 列的 113 个模块），与旧系统密集表单观感保持一致。
 const UNIFIED_FORM_COLUMNS = 4
 
+/** 明细视图排序（快照）：返回按字段排序的物理行序。仅在切换排序/增删行时重算，编辑中不随值漂移。 */
+function sortDetailIndices(rows: Record<string, string>[], key: string, dir: 1 | -1): number[] {
+  const indices = rows.map((_, index) => index)
+  indices.sort((a, b) => {
+    const va = rows[a][key] ?? ''
+    const vb = rows[b][key] ?? ''
+    const na = Number(va)
+    const nb = Number(vb)
+    const numeric = va !== '' && vb !== '' && !Number.isNaN(na) && !Number.isNaN(nb)
+    const cmp = numeric ? na - nb : String(va).localeCompare(String(vb), 'zh-CN', { numeric: true })
+    return cmp * dir
+  })
+  return indices
+}
+
 /** 按单审批历史时间线行（/workflow/{moduleId}/history 返回）：task=审批动作 / confirm=流程完成确认。 */
 interface WorkflowHistoryRow {
   kind: 'task' | 'confirm'
@@ -44,6 +59,321 @@ interface WorkflowHistoryRow {
   message: string | null
   date: string | null
 }
+
+interface MasterFieldProps {
+  field: FormFieldDefinition
+  value: string
+  error?: string
+  bare: boolean
+  viewing: boolean
+  canSetup: boolean
+  masterAmountLocked: boolean
+  onFieldChange: (key: string, value: string) => void
+  onOpenChooser: (field: FormFieldDefinition) => void
+  onFieldSetup: (field: FormFieldDefinition, x: number, y: number) => void
+}
+
+/** 主表单字段 memo 单元：仅字段值/错误/可见性等变化时才重渲染，阻断键入时无关字段的级联更新 */
+const MasterField = memo(function MasterField({ field, value, error, bare, viewing, canSetup, masterAmountLocked, onFieldChange, onOpenChooser, onFieldSetup }: MasterFieldProps) {
+  const effective = masterAmountLocked && AMOUNT_COLUMN_KEYS.has(field.key.toUpperCase()) ? { ...field, isReadonly: true } : field
+  return (
+    <FormFieldRenderer
+      field={effective}
+      value={value}
+      error={error}
+      viewing={viewing}
+      onChange={next => onFieldChange(field.key, next)}
+      onChoose={onOpenChooser}
+      onFieldSetup={canSetup ? onFieldSetup : undefined}
+      bare={bare}
+    />
+  )
+})
+
+interface MasterFormGridProps {
+  form: FormDefinition
+  activeTabNo: number
+  hasTabs: boolean
+  masterValues: Record<string, string>
+  fieldErrors: FieldErrors
+  viewing: boolean
+  canSetup: boolean
+  masterAmountLocked: boolean
+  onFieldChange: (key: string, value: string) => void
+  onOpenChooser: (field: FormFieldDefinition) => void
+  onFieldSetup: (field: FormFieldDefinition, x: number, y: number) => void
+}
+
+/** 主表字段网格（memo）：细节随主表值/错误变化时才重渲染，与明细网格相互隔离 */
+const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs, masterValues, fieldErrors, viewing, canSetup, masterAmountLocked, onFieldChange, onOpenChooser, onFieldSetup }: MasterFormGridProps) {
+  /** 主表 Enter 下一字段（textarea/select/checkbox/日期原生控件不拦截——决策 5） */
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (viewing || event.key !== 'Enter') return
+    const target = event.target as HTMLElement
+    if (target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.tagName === 'BUTTON') return
+    const inputType = (target as HTMLInputElement).type
+    if (inputType === 'checkbox' || inputType === 'date' || inputType === 'datetime-local') return
+    event.preventDefault()
+    const focusables = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>('input.form-control:not([disabled]), select.form-select:not([disabled])'),
+    )
+    const index = focusables.indexOf(target)
+    ;(focusables[index + 1] ?? focusables[0])?.focus()
+  }
+  const visibleMaster = form.masterFields.filter(field => field.isVisible)
+  const cells = buildFormCells(visibleMaster).filter(cell => !hasTabs || cell[0].tabNo === activeTabNo)
+  const sections = buildFormSections(cells)
+  const renderCell = (cell: FormFieldDefinition[]) => {
+    const [main, ...companions] = cell
+    if (companions.length === 0) {
+      return (
+        <MasterField
+          key={main.key}
+          field={main}
+          value={masterValues[main.key] ?? ''}
+          error={fieldErrors[main.key]}
+          bare={false}
+          viewing={viewing}
+          canSetup={canSetup}
+          masterAmountLocked={masterAmountLocked}
+          onFieldChange={onFieldChange}
+          onOpenChooser={onOpenChooser}
+          onFieldSetup={onFieldSetup}
+        />
+      )
+    }
+    const isBoolean = main.dataType.toLowerCase().includes('bit')
+    return (
+      <div key={main.key} className="erp-form-cell">
+        <label
+          className="erp-form-label"
+          onContextMenu={canSetup ? event => { event.preventDefault(); onFieldSetup(main, event.clientX, event.clientY) } : undefined}
+        >
+          {main.label}{!isBoolean && !main.isReadonly && !main.serverFilled && main.isRequired ? ' *' : ''}
+        </label>
+        <div className="erp-form-cell-controls">
+          {[main, ...companions].map(field => (
+            <MasterField
+              key={field.key}
+              field={field}
+              value={masterValues[field.key] ?? ''}
+              error={fieldErrors[field.key]}
+              bare
+              viewing={viewing}
+              canSetup={canSetup}
+              masterAmountLocked={masterAmountLocked}
+              onFieldChange={onFieldChange}
+              onOpenChooser={onOpenChooser}
+              onFieldSetup={onFieldSetup}
+            />
+          ))}
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="erp-form-grid" onKeyDown={handleKeyDown}>
+      {sections.map((section, sectionIndex) => (
+        <section className="erp-form-group" key={section.title ?? `default-${sectionIndex}`}>
+          {section.title ? <div className="erp-form-group-title">{section.title}</div> : null}
+          {buildFormRows(section.cells, UNIFIED_FORM_COLUMNS).map((row, rowIndex) => (
+            <div className="erp-form-row" key={rowIndex} style={{ '--erp-form-cols': UNIFIED_FORM_COLUMNS } as CSSProperties}>
+              {row.map(cell => renderCell(cell))}
+            </div>
+          ))}
+        </section>
+      ))}
+    </div>
+  )
+})
+
+interface DetailFieldCellProps {
+  field: FormFieldDefinition
+  value: string
+  error?: string
+  index: number
+  onFieldChange: (index: number, key: string, value: string) => void
+  onChoose: (index: number, field: FormFieldDefinition) => void
+}
+
+/** 明细格 memo 单元：输入一个格子时其余行/格不重渲染 */
+const DetailFieldCell = memo(function DetailFieldCell({ field, value, error, index, onFieldChange, onChoose }: DetailFieldCellProps) {
+  return (
+    <FormFieldRenderer
+      field={field}
+      value={value}
+      error={error}
+      onChange={next => onFieldChange(index, field.key, next)}
+      onChoose={choosable => onChoose(index, choosable)}
+      bare
+    />
+  )
+})
+
+interface DetailFormGridProps {
+  form: FormDefinition
+  detailRows: Record<string, string>[]
+  detailErrors: FieldErrors[]
+  sortedIndices: number[] | null
+  detailSort: { key: string; dir: 1 | -1 } | null
+  selectedDetailRows: Set<number>
+  viewing: boolean
+  storageKey: string
+  onAddRow: () => void
+  onRemoveRow: (index: number) => void
+  onRemoveSelected: () => void
+  onFieldChange: (index: number, key: string, value: string) => void
+  onChoose: (index: number, field: FormFieldDefinition) => void
+  onSortChange: (next: SortingState) => void
+  onSelectionChange: (next: RowSelectionState) => void
+  onResize: (fieldKey: string, width: number) => void
+}
+
+/** 明细卡（memo）：主表字段输入等不涉及明细行的状态变化时不重渲染 */
+const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailErrors, sortedIndices, detailSort, selectedDetailRows, viewing, storageKey, onAddRow, onRemoveRow, onRemoveSelected, onFieldChange, onChoose, onSortChange, onSelectionChange, onResize }: DetailFormGridProps) {
+  /** 明细网格 Enter：同列下一行继续；末行则新增行后聚焦同列（决策 5 键盘规则） */
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter') return
+    const target = event.target as HTMLElement
+    if (!(target instanceof HTMLInputElement)) return
+    if (target.type === 'checkbox' || target.type === 'date' || target.type === 'datetime-local') return
+    const row = target.closest('tr')
+    const tbody = target.closest('tbody')
+    if (!row || !tbody) return
+    event.preventDefault()
+    const rows = Array.from(tbody.querySelectorAll('tr'))
+    const rowIndex = rows.indexOf(row)
+    const cellInputs = Array.from(row.querySelectorAll<HTMLElement>('td input.form-control'))
+    const columnIndex = Math.max(0, cellInputs.indexOf(target))
+    if (rowIndex < rows.length - 1) {
+      rows[rowIndex + 1].querySelectorAll<HTMLElement>('td input.form-control')[columnIndex]?.focus()
+      return
+    }
+    onAddRow()
+    window.setTimeout(() => {
+      tbody.querySelector('tr:last-of-type')?.querySelectorAll<HTMLElement>('td input.form-control')[columnIndex]?.focus()
+    }, 30)
+  }
+  const visibleDetail = form.detailFields.filter(field => field.isVisible)
+  const viewIndices = sortedIndices && sortedIndices.length === detailRows.length
+    ? sortedIndices
+    : detailRows.map((_, index) => index)
+  const rowSelection = Object.fromEntries([...selectedDetailRows].map(index => [`r${index}`, true])) as RowSelectionState
+  const gridRows: DetailGridRow[] = viewIndices.map(index => ({ __id: `r${index}`, __index: index, ...detailRows[index] }))
+  const columns: ColumnDef<DetailGridRow, unknown>[] = [
+    {
+      id: '__check',
+      enableSorting: false,
+      enableHiding: false,
+      meta: { className: 'erp-detail-check text-center', resizable: false, truncate: false },
+      header: ({ table }) => (
+        <input
+          className="form-check-input"
+          type="checkbox"
+          aria-label="全选"
+          checked={table.getIsAllPageRowsSelected()}
+          ref={input => { if (input) input.indeterminate = table.getIsSomePageRowsSelected() }}
+          onChange={table.getToggleAllPageRowsSelectedHandler()}
+        />
+      ),
+      cell: ({ row }) => (
+        <input
+          className="form-check-input"
+          type="checkbox"
+          aria-label={`选择第${row.index + 1}行`}
+          checked={row.getIsSelected()}
+          onChange={row.getToggleSelectedHandler()}
+          onClick={event => event.stopPropagation()}
+        />
+      ),
+    },
+    {
+      id: '__rowNo',
+      header: '序号',
+      enableSorting: false,
+      enableHiding: false,
+      meta: { className: 'erp-detail-row-no text-center', resizable: false, truncate: false },
+      cell: ({ row }) => <span className="text-secondary">{row.index + 1}</span>,
+    },
+    ...visibleDetail.map((field): ColumnDef<DetailGridRow, unknown> => ({
+      id: field.key,
+      accessorKey: field.key,
+      header: field.label,
+      enableSorting: true,
+      meta: { minWidth: Math.max(field.displayLength, detailControlMinWidth(field)), dataType: field.dataType, minWidthFloor: true, truncate: false },
+      cell: ({ row }) => {
+        const index = row.original.__index
+        return (
+          <DetailFieldCell
+            key={`${row.original.__id}-${field.key}`}
+            field={field}
+            value={String(row.original[field.key] ?? '')}
+            error={detailErrors[index]?.[field.key]}
+            index={index}
+            onFieldChange={onFieldChange}
+            onChoose={onChoose}
+          />
+        )
+      },
+    })),
+    {
+      id: '__actions',
+      header: '操作',
+      enableSorting: false,
+      enableHiding: false,
+      meta: { className: 'erp-detail-actions text-center', resizable: false, truncate: false },
+      cell: ({ row }) => (
+        // Inline delete as icon button, aligned with command bar icon conventions
+        <Button
+          size="sm"
+          variant="danger"
+          icon={<IconTrash size={16} />}
+          title="删除本行"
+          aria-label={`删除第${row.index + 1}行`}
+          onClick={() => onRemoveRow(row.original.__index)}
+        />
+      ),
+    },
+  ]
+  return (
+    <section className="card erp-detail-card">
+      <div className="card-header erp-detail-toolbar">
+        <div className="d-flex gap-2">
+          <Button size="sm" onClick={onAddRow}>新增一行</Button>
+          <Button size="sm" variant="danger" disabled={selectedDetailRows.size === 0} onClick={onRemoveSelected}>删除所选{selectedDetailRows.size > 0 ? ` (${selectedDetailRows.size})` : ''}</Button>
+          {detailSort && <span className="small text-secondary align-self-center">视图排序（保存顺序以序号 SERIAL_NO 为准）</span>}
+          {/* 子表专用工具栏扩展位：生成请购单等后续加入 */}
+        </div>
+      </div>
+      <div className="table-responsive" onKeyDown={handleKeyDown}>
+        <ErpTable
+          columns={columns}
+          data={gridRows}
+          getRowId={row => row.__id}
+          sorting={detailSort ? [{ id: detailSort.key, desc: detailSort.dir === -1 }] : []}
+          onSortingChange={onSortChange}
+          rowSelection={rowSelection}
+          onRowSelectionChange={onSelectionChange}
+          // 浏览态只读明细可窗口化（行数多时只渲染可视区）；编辑态保留全量 DOM 供 Enter/新增行交互
+          virtualize={viewing}
+          resizable
+          storageKey={storageKey}
+          persistResize={false}
+          onColumnResize={onResize}
+          className="erp-detail-grid"
+          responsive={false}
+          empty={
+            detailRows.length === 0 && !viewing ? (
+              <div className="erp-detail-empty">
+                <Button size="sm" variant="secondary" onClick={onAddRow}>+ 新增一行</Button>
+              </div>
+            ) : undefined
+          }
+        />
+      </div>
+    </section>
+  )
+})
 
 export function FormEditorPage() {
   const params = useParams()
@@ -115,11 +445,18 @@ export function FormEditorPage() {
   const [fieldSetupMenu, setFieldSetupMenu] = useState<{ field: FormFieldDefinition; x: number; y: number } | null>(null)
   const [selectedDetailRows, setSelectedDetailRows] = useState<Set<number>>(new Set())
   const [detailSort, setDetailSort] = useState<{ key: string; dir: 1 | -1 } | null>(null)
+  /** 明细视图排序快照（物理行序）。null=未排序（视图顺序=物理顺序）。 */
+  const [sortedIndices, setSortedIndices] = useState<number[] | null>(null)
   const [activeTab, setActiveTab] = useState(1)
   const [attachOpen, setAttachOpen] = useState(false)
   // 明细列宽统一走服务端（FIELDS.DISPLAY_LENGTH，与工作台一致），拖拽后批量保存
   const widthBatch = useRef<Record<string, number>>({})
   const widthTimer = useRef<number | null>(null)
+  // 稳定回调所需的最新值快照（渲染期同步，仅用于读）
+  const detailRowsRef = useRef<Record<string, string>[]>([])
+  detailRowsRef.current = detailRows
+  const masterValuesRef = useRef<Record<string, string>>({})
+  masterValuesRef.current = masterValues
 
   const formQuery = useQuery({
     queryKey: ['workbench', moduleId, 'form-definition', isEdit ? 'edit' : isView ? 'view' : 'new'],
@@ -193,6 +530,7 @@ export function FormEditorPage() {
     originalRef.current = {}
     for (const field of writableFields(formQuery.data.masterFields)) originalRef.current[field.key] = master[field.key] ?? ''
     setMasterValues(master)
+    setSortedIndices(null)
     setDetailRows(recordQuery.data.details.map(detail => {
       const row: Record<string, string> = {}
       for (const field of formQuery.data?.detailFields ?? []) {
@@ -399,57 +737,22 @@ export function FormEditorPage() {
     navigate(fromModuleId ? workbenchList(fromModuleId) : workbenchList(moduleId))
   }
 
-  // Ctrl+S to save (edit/new mode); re-mount listener on each render to capture the latest closure
+  // Ctrl+S to save (edit/new mode): listener attached once; latest closure kept via ref
+  const saveHotkeyRef = useRef<() => void>(() => undefined)
+  saveHotkeyRef.current = () => {
+    if (save.isPending) return
+    if (validateClient()) save.mutate()
+  }
   useEffect(() => {
     if (isView) return
     const handler = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return
       event.preventDefault()
-      if (save.isPending) return
-      if (validateClient()) save.mutate()
+      saveHotkeyRef.current()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  })
-
-  /** 主表 Enter 下一字段（textarea/select/checkbox/日期原生控件不拦截——决策 5） */
-  const handleMasterKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (isView || event.key !== 'Enter') return
-    const target = event.target as HTMLElement
-    if (target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.tagName === 'BUTTON') return
-    const inputType = (target as HTMLInputElement).type
-    if (inputType === 'checkbox' || inputType === 'date' || inputType === 'datetime-local') return
-    event.preventDefault()
-    const focusables = Array.from(
-      event.currentTarget.querySelectorAll<HTMLElement>('input.form-control:not([disabled]), select.form-select:not([disabled])'),
-    )
-    const index = focusables.indexOf(target)
-    ;(focusables[index + 1] ?? focusables[0])?.focus()
-  }
-
-  /** 明细网格 Enter：同列下一行继续；末行则新增行后聚焦同列（决策 5 键盘规则） */
-  const handleDetailGridKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Enter') return
-    const target = event.target as HTMLElement
-    if (!(target instanceof HTMLInputElement)) return
-    if (target.type === 'checkbox' || target.type === 'date' || target.type === 'datetime-local') return
-    const row = target.closest('tr')
-    const tbody = target.closest('tbody')
-    if (!row || !tbody) return
-    event.preventDefault()
-    const rows = Array.from(tbody.querySelectorAll('tr'))
-    const rowIndex = rows.indexOf(row)
-    const cellInputs = Array.from(row.querySelectorAll<HTMLElement>('td input.form-control'))
-    const columnIndex = Math.max(0, cellInputs.indexOf(target))
-    if (rowIndex < rows.length - 1) {
-      rows[rowIndex + 1].querySelectorAll<HTMLElement>('td input.form-control')[columnIndex]?.focus()
-      return
-    }
-    addDetailRow()
-    window.setTimeout(() => {
-      tbody.querySelector('tr:last-of-type')?.querySelectorAll<HTMLElement>('td input.form-control')[columnIndex]?.focus()
-    }, 30)
-  }
+  }, [isView])
 
   const openPrint = () => {
     if (!formQuery.data) return
@@ -475,39 +778,82 @@ export function FormEditorPage() {
     setChooserField(null)
   }
 
-  const updateDetail = (index: number, key: string, value: string) => {
-    const updatedRow = { ...detailRows[index], [key]: value }
-    // 金额联动：QTY/PRICE/税率/税型/折扣变更时重算该行金额（服务端保存时权威复算）
-    const nextRows = AMOUNT_TRIGGER_KEYS.has(key.toUpperCase())
-      ? recalcRowAmounts(detailRows, index, updatedRow)
-      : detailRows.map((row, i) => i === index ? updatedRow : row)
-    setDetailRows(nextRows)
-    syncMasterPreview(nextRows)
-    setDetailErrors(current => current.map((rowErrors, i) => {
-      if (i !== index) return rowErrors
-      const next = { ...rowErrors }
+  /** 主表字段值更新（稳定回调，供 memo 化主表网格使用） */
+  const changeMasterValue = useCallback((key: string, value: string) => {
+    setMasterValues(current => ({ ...current, [key]: value }))
+    setFieldErrors(current => {
+      const next = { ...current }
       delete next[key]
       return next
-    }))
+    })
     setDirty(true)
-  }
+  }, [])
 
-  /** 明细行金额预览：按行内/主表 TAX_RATE/TAX_TYPE 重算 AMOUNT/TAX_SUM/AMOUNT_TAX。 */
-  const recalcRowAmounts = (rows: Record<string, string>[], index: number, updatedRow: Record<string, string>): Record<string, string>[] => {
-    if (!formQuery.data) return rows
-    const patch = previewDetailAmount(formQuery.data.detailFields, updatedRow, masterValues)
-    return rows.map((row, i) => i === index ? (patch ? { ...updatedRow, ...patch } as Record<string, string> : updatedRow) : row)
-  }
+  /** 主表是否含金额汇总列：无则明细编辑无需同步预览（避免无意义的状态更新拖累整页渲染） */
+  const hasMasterAmountColumns = useMemo(
+    () => (formQuery.data?.masterFields ?? []).some(field => AMOUNT_COLUMN_KEYS.has(field.key.toUpperCase())),
+    [formQuery.data],
+  )
+  const formDefRef = useRef<FormDefinition | null>(null)
+  formDefRef.current = formQuery.data ?? null
+  const hasMasterAmountColumnsRef = useRef(false)
+  hasMasterAmountColumnsRef.current = hasMasterAmountColumns
+  const selectedDetailRowsRef = useRef<Set<number>>(new Set())
+  selectedDetailRowsRef.current = selectedDetailRows
 
-  /** 主表金额汇总预览（明细 SUM，保存后服务端权威聚合覆盖）。 */
-  const syncMasterPreview = (rows: Record<string, string>[]) => {
-    if (!formQuery.data) return
-    setMasterValues(current => ({ ...current, ...previewMasterAmounts(formQuery.data.masterFields, rows) }))
-  }
+  /** 主表金额汇总预览（明细 SUM，保存后服务端权威聚合覆盖；结果不变时跳过 setState 避免无意义渲染） */
+  const syncMasterPreviewRows = useCallback((rows: Record<string, string>[]) => {
+    const def = formDefRef.current
+    if (!def || !hasMasterAmountColumnsRef.current) return
+    const patch = previewMasterAmounts(def.masterFields, rows)
+    const current = masterValuesRef.current
+    let changed = false
+    for (const key of Object.keys(patch)) {
+      if (current[key] !== patch[key]) {
+        changed = true
+        break
+      }
+    }
+    if (!changed) return
+    setMasterValues(currentState => ({ ...currentState, ...patch }))
+  }, [])
+
+  /** 明细行值更新（稳定回调）：合并变更、金额联动预览、清除行内错误，其余行对象保持不变 */
+  const updateDetailRowValues = useCallback((index: number, patch: Record<string, string>) => {
+    const rows = detailRowsRef.current
+    const row = rows[index]
+    if (!row) return
+    const updated = { ...row, ...patch }
+    const nextRows = rows.slice()
+    const def = formDefRef.current
+    // 金额联动：QTY/PRICE/税率/税型/折扣变更时重算该行金额（服务端保存时权威复算）
+    const amountPatch: Partial<Record<string, string>> | null = def && Object.keys(patch).some(key => AMOUNT_TRIGGER_KEYS.has(key.toUpperCase()))
+      ? previewDetailAmount(def.detailFields, updated, masterValuesRef.current)
+      : null
+    nextRows[index] = amountPatch ? { ...updated, ...amountPatch } as Record<string, string> : updated
+    detailRowsRef.current = nextRows
+    setDetailRows(nextRows)
+    syncMasterPreviewRows(nextRows)
+    const touched = Object.keys(patch)
+    setDetailErrors(current => {
+      const rowErrors = current[index]
+      if (!rowErrors || !touched.some(key => key in rowErrors)) return current
+      const nextRow = { ...rowErrors }
+      for (const key of touched) delete nextRow[key]
+      const copy = current.slice()
+      copy[index] = nextRow
+      return copy
+    })
+    setDirty(true)
+  }, [syncMasterPreviewRows])
+
+  const updateDetailField = useCallback((index: number, key: string, value: string) => {
+    updateDetailRowValues(index, { [key]: value })
+  }, [updateDetailRowValues])
 
   /** 明细列宽拖拽：防抖批量保存到服务端（FIELDS.DISPLAY_LENGTH，与工作台 column-widths 一致）。 */
   const saveDetailWidth = useCallback((fieldKey: string, width: number) => {
-    if (!formQuery.data) return
+    if (!formDefRef.current) return
     widthBatch.current[fieldKey] = width
     if (widthTimer.current != null) window.clearTimeout(widthTimer.current)
     widthTimer.current = window.setTimeout(() => {
@@ -515,40 +861,40 @@ export function FormEditorPage() {
       widthBatch.current = {}
       void apiClient.put<void>(`/document-workbench/${moduleId}/column-widths`, { master: {}, detail }).catch(() => {})
     }, 300)
-  }, [formQuery.data, moduleId])
+  }, [moduleId])
 
-  const buildEmptyDetailRow = (): Record<string, string> => {
-    if (!formQuery.data) return {}
-    const row: Record<string, string> = {}
-    for (const field of formQuery.data.detailFields) {
-      // 主表同名值自动带入新明细行（对齐旧系统 setTRKeyValue 随主表联动带值）
-      if (field.isVisible) row[field.key] = masterValues[field.key] ?? emptyValue(field)
-    }
-    return row
-  }
-
-  const addDetailRow = () => {
-    if (!formQuery.data) return
-    const missing = formQuery.data.detailNoFields
+  const addDetailRow = useCallback(() => {
+    const def = formDefRef.current
+    if (!def) return
+    const missing = def.detailNoFields
       .split(';')
       .map(field => field.trim())
-      .filter(field => field && !(masterValues[field] ?? '').trim())
+      .filter(field => field && !(masterValuesRef.current[field] ?? '').trim())
     if (missing.length > 0) {
       setSaveError(`请先填写主表字段：${missing.join('、')}，再新增明细。`)
       return
     }
-    const nextRows = [...detailRows, buildEmptyDetailRow()]
+    // 主表同名值自动带入新明细行（对齐旧系统 setTRKeyValue 随主表联动带值）
+    const empty: Record<string, string> = {}
+    for (const field of def.detailFields) {
+      if (field.isVisible) empty[field.key] = masterValuesRef.current[field.key] ?? emptyValue(field)
+    }
+    const currentRows = detailRowsRef.current
+    const nextRows = [...currentRows, empty]
+    detailRowsRef.current = nextRows
     setDetailRows(nextRows)
-    syncMasterPreview(nextRows)
+    // 快照视图：新行追加到视图末尾
+    setSortedIndices(current => current ? [...current, currentRows.length] : current)
+    syncMasterPreviewRows(nextRows)
     setDetailErrors(current => [...current, {}])
     setDirty(true)
-  }
+  }, [syncMasterPreviewRows])
 
   const applyDetailChooser = (index: number, field: FormFieldDefinition, rows: UnifiedChooserRow[]) => {
     const source = field.choosers.find(item => item.active && item.table && item.serialNo === detailChooserSerial)
       ?? field.choosers.find(item => item.active && item.table)
     const mapping = parseReturnItems(source?.returnMapping)
-    const applyMapping = (target: Record<string, string>, row: UnifiedChooserRow) => {
+    const mappedOf = (target: Record<string, string>, row: UnifiedChooserRow) => {
       for (const item of mapping) {
         if (row[item.column] === undefined) continue
         target[item.target] = String(row[item.column] ?? '')
@@ -557,10 +903,21 @@ export function FormEditorPage() {
     }
     // 明细多选：逐条追加明细行（对齐旧系统 ReturnMultiValue 的 addTR 语义）
     if (field.chooseMultiple && rows.length > 1) {
-      const newRows = rows.map(row => applyMapping(buildEmptyDetailRow(), row))
-      const mergedRows = [...detailRows, ...newRows]
+      const currentRows = detailRowsRef.current
+      const def = formDefRef.current
+      const newRows = rows.map(row => {
+        const empty: Record<string, string> = {}
+        for (const fieldDef of def?.detailFields ?? []) {
+          if (fieldDef.isVisible) empty[fieldDef.key] = masterValuesRef.current[fieldDef.key] ?? emptyValue(fieldDef)
+        }
+        return mappedOf(empty, row)
+      })
+      const mergedRows = [...currentRows, ...newRows]
+      detailRowsRef.current = mergedRows
       setDetailRows(mergedRows)
-      syncMasterPreview(mergedRows)
+      // 快照视图：批量追加的行按序追加到视图末尾
+      setSortedIndices(current => current ? [...current, ...newRows.map((_, offset) => currentRows.length + offset)] : current)
+      syncMasterPreviewRows(mergedRows)
       setDetailErrors(current => [...current, ...newRows.map(() => ({}))])
       setDirty(true)
       setDetailChooser(null)
@@ -568,26 +925,47 @@ export function FormEditorPage() {
     }
     const row = rows[0]
     if (mapping.length > 0) {
-      const updatedRow = applyMapping({ ...detailRows[index] }, row)
-      const nextRows = recalcRowAmounts(detailRows, index, updatedRow)
-      setDetailRows(nextRows)
-      syncMasterPreview(nextRows)
-      setDirty(true)
+      const patch: Record<string, string> = {}
+      for (const item of mapping) {
+        if (row[item.column] === undefined) continue
+        patch[item.target] = String(row[item.column] ?? '')
+      }
+      updateDetailRowValues(index, patch)
     }
     setDetailChooser(null)
   }
 
-  const removeDetailRow = (index: number) => {
-    const nextRows = detailRows.filter((_, i) => i !== index)
+  const removeDetailRow = useCallback((index: number) => {
+    const rows = detailRowsRef.current
+    const nextRows = rows.filter((_, i) => i !== index)
+    detailRowsRef.current = nextRows
     setDetailRows(nextRows)
-    syncMasterPreview(nextRows)
+    // 快照视图：移除对应行并把大于它的行号前移
+    setSortedIndices(current => current ? current.filter(i => i !== index).map(i => (i > index ? i - 1 : i)) : current)
+    syncMasterPreviewRows(nextRows)
     setDetailErrors(current => current.filter((_, i) => i !== index))
     setSelectedDetailRows(current => new Set([...current].filter(i => i !== index).map(i => i > index ? i - 1 : i)))
     setDirty(true)
-  }
+  }, [syncMasterPreviewRows])
+
+  const removeSelectedDetailRows = useCallback(() => {
+    const removed = selectedDetailRowsRef.current
+    const rows = detailRowsRef.current
+    const nextRows = rows.filter((_, index) => !removed.has(index))
+    detailRowsRef.current = nextRows
+    setDetailRows(nextRows)
+    // 快照视图：移除所选行，剩余行按「被删行数」前移
+    setSortedIndices(current => current
+      ? current.filter(i => !removed.has(i)).map(i => i - [...removed].filter(r => r < i).length)
+      : current)
+    syncMasterPreviewRows(nextRows)
+    setDetailErrors(current => current.filter((_, index) => !removed.has(index)))
+    setSelectedDetailRows(new Set())
+    setDirty(true)
+  }, [syncMasterPreviewRows])
 
   /** 多来源「各是各的入口」：1 个直接打开，多个先弹来源菜单（ADR-008 §2）。 */
-  const openChooser = (field: FormFieldDefinition, kind: 'master' | 'detail', detailIndex?: number) => {
+  const openChooser = useCallback((field: FormFieldDefinition, kind: 'master' | 'detail', detailIndex?: number) => {
     const sources = field.choosers.filter(item => item.active && item.table)
     if (sources.length === 0) return
     if (sources.length === 1) {
@@ -601,29 +979,32 @@ export function FormEditorPage() {
       return
     }
     setSourceMenu(kind === 'master' ? { kind, field } : { kind, index: detailIndex!, field })
-  }
+  }, [])
+  const openMasterChooser = useCallback((field: FormFieldDefinition) => openChooser(field, 'master'), [openChooser])
+  const openDetailChooser = useCallback((index: number, field: FormFieldDefinition) => openChooser(field, 'detail', index), [openChooser])
+  const openFieldSetup = useCallback((field: FormFieldDefinition, x: number, y: number) => setFieldSetupMenu({ field, x, y }), [])
 
-  const removeSelectedDetailRows = () => {
-    const nextRows = detailRows.filter((_, index) => !selectedDetailRows.has(index))
-    setDetailRows(nextRows)
-    syncMasterPreview(nextRows)
-    setDetailErrors(current => current.filter((_, index) => !selectedDetailRows.has(index)))
-    setSelectedDetailRows(new Set())
-    setDirty(true)
-  }
-
-  const handleDetailSortingChange = (next: SortingState) => {
+  /** 明细视图排序：切换排序/清空时重算一次快照，编辑中保持行位置稳定（避免打字跳行）。 */
+  const handleDetailSortingChange = useCallback((next: SortingState) => {
     const sort = next[0]
-    setDetailSort(sort ? { key: sort.id, dir: sort.desc ? -1 : 1 } : null)
-  }
+    if (!sort) {
+      setDetailSort(null)
+      setSortedIndices(null)
+      return
+    }
+    const key = sort.id
+    const dir = sort.desc ? -1 : 1
+    setDetailSort({ key, dir })
+    setSortedIndices(sortDetailIndices(detailRowsRef.current, key, dir))
+  }, [])
 
-  const handleDetailRowSelectionChange = (next: RowSelectionState) => {
+  const handleDetailRowSelectionChange = useCallback((next: RowSelectionState) => {
     setSelectedDetailRows(new Set(
       Object.keys(next)
         .filter(id => next[id] && id.startsWith('r'))
         .map(id => Number(id.slice(1))),
     ))
-  }
+  }, [])
 
   if (formQuery.isPending || (isEdit && recordQuery.isPending)) return <LoadingState label="正在加载表单…" />
   if (formQuery.isError) return <section className="card"><div className="card-body text-center py-5">{describeError(formQuery.error)}</div></section>
@@ -633,146 +1014,12 @@ export function FormEditorPage() {
   if (!form) return null
   // 明细走金额汇总（明细表有 AMOUNT 列）时，主表金额列强制只读展示（保存后服务端权威聚合）
   const masterAmountLocked = form.detailFields.some(field => field.key.toUpperCase() === 'AMOUNT')
-  const visibleMaster = form.masterFields.filter(field => field.isVisible)
-  const visibleDetail = form.detailFields.filter(field => field.isVisible)
   const hasTabs = form.tabs.length > 0
   const activeTabNo = hasTabs ? activeTab : 1
-  const masterCells = buildFormCells(visibleMaster).filter(cell => !hasTabs || cell[0].tabNo === activeTabNo)
-  // Group master fields by FORM_CELL_GROUP (>=2 fields in a group forms a section; remainder go to default section)
-  const masterSections = buildFormSections(masterCells)
   // Tab error badges: hidden tabs' errors shown as count badges
   const tabErrorCounts = new Map<number, number>()
   for (const field of form.masterFields) {
     if (field.isVisible && fieldErrors[field.key]) tabErrorCounts.set(field.tabNo, (tabErrorCounts.get(field.tabNo) ?? 0) + 1)
-  }
-  const orderedDetailIndices = (() => {
-    if (!detailSort) return detailRows.map((_, index) => index)
-    const { key, dir } = detailSort
-    const indices = detailRows.map((_, index) => index)
-    indices.sort((a, b) => {
-      const va = detailRows[a][key] ?? ''
-      const vb = detailRows[b][key] ?? ''
-      const na = Number(va)
-      const nb = Number(vb)
-      const numeric = va !== '' && vb !== '' && !Number.isNaN(na) && !Number.isNaN(nb)
-      const cmp = numeric ? na - nb : String(va).localeCompare(String(vb), 'zh-CN', { numeric: true })
-      return cmp * dir
-    })
-    return indices
-  })()
-  const detailRowSelection = Object.fromEntries([...selectedDetailRows].map(index => [`r${index}`, true])) as RowSelectionState
-  // Empty state renders a "+ Add Row" dashed entry instead of pre-filling blank rows
-  const detailGridRows: DetailGridRow[] = orderedDetailIndices.map(index => ({ __id: `r${index}`, __index: index, ...detailRows[index] }))
-  const detailColumns: ColumnDef<DetailGridRow, unknown>[] = [
-    {
-      id: '__check',
-      enableSorting: false,
-      enableHiding: false,
-      meta: { className: 'erp-detail-check text-center', resizable: false, truncate: false },
-      header: ({ table }) => (
-        <input
-          className="form-check-input"
-          type="checkbox"
-          aria-label="全选"
-          checked={table.getIsAllPageRowsSelected()}
-          ref={input => { if (input) input.indeterminate = table.getIsSomePageRowsSelected() }}
-          onChange={table.getToggleAllPageRowsSelectedHandler()}
-        />
-      ),
-      cell: ({ row }) => (
-        <input
-          className="form-check-input"
-          type="checkbox"
-          aria-label={`选择第${row.index + 1}行`}
-          checked={row.getIsSelected()}
-          onChange={row.getToggleSelectedHandler()}
-          onClick={event => event.stopPropagation()}
-        />
-      ),
-    },
-    {
-      id: '__rowNo',
-      header: '序号',
-      enableSorting: false,
-      enableHiding: false,
-      meta: { className: 'erp-detail-row-no text-center', resizable: false, truncate: false },
-      cell: ({ row }) => <span className="text-secondary">{row.index + 1}</span>,
-    },
-    ...visibleDetail.map((field): ColumnDef<DetailGridRow, unknown> => ({
-      id: field.key,
-      accessorKey: field.key,
-      header: field.label,
-      enableSorting: true,
-      meta: { minWidth: Math.max(field.displayLength, detailControlMinWidth(field)), dataType: field.dataType, minWidthFloor: true, truncate: false },
-      cell: ({ row }) => {
-        const index = row.original.__index
-        return (
-          <FormFieldRenderer
-            field={field}
-            value={String(row.original[field.key] ?? '')}
-            error={detailErrors[index]?.[field.key]}
-            onChange={value => updateDetail(index, field.key, value)}
-            onChoose={fieldToChoose => openChooser(fieldToChoose, 'detail', index)}
-            bare
-          />
-        )
-      },
-    })),
-    {
-      id: '__actions',
-      header: '操作',
-      enableSorting: false,
-      enableHiding: false,
-      meta: { className: 'erp-detail-actions text-center', resizable: false, truncate: false },
-      cell: ({ row }) => (
-        // Inline delete as icon button, aligned with command bar icon conventions
-        <Button
-          size="sm"
-          variant="danger"
-          icon={<IconTrash size={16} />}
-          title="删除本行"
-          aria-label={`删除第${row.index + 1}行`}
-          onClick={() => removeDetailRow(row.original.__index)}
-        />
-      ),
-    },
-  ]
-  const openFieldSetupMenu = (field: FormFieldDefinition, x: number, y: number) => setFieldSetupMenu({ field, x, y })
-  const renderField = (field: FormFieldDefinition, bare = false) => (
-    <FormFieldRenderer
-      key={field.key}
-      field={masterAmountLocked && AMOUNT_COLUMN_KEYS.has(field.key.toUpperCase()) ? { ...field, isReadonly: true } : field}
-      value={masterValues[field.key] ?? ''}
-      error={fieldErrors[field.key]}
-      viewing={isView}
-      onChange={value => {
-        setMasterValues(current => ({ ...current, [field.key]: value }))
-        setFieldErrors(current => { const next = { ...current }; delete next[field.key]; return next })
-        setDirty(true)
-      }}
-      onChoose={fieldToChoose => openChooser(fieldToChoose, 'master')}
-      onFieldSetup={form.canSetup ? openFieldSetupMenu : undefined}
-      bare={bare}
-    />
-  )
-  const renderCell = (cell: FormFieldDefinition[]) => {
-    const [main, ...companions] = cell
-    if (companions.length === 0) return renderField(main)
-    const isBoolean = main.dataType.toLowerCase().includes('bit')
-    return (
-      <div key={main.key} className="erp-form-cell">
-        <label
-          className="erp-form-label"
-          onContextMenu={form.canSetup ? event => { event.preventDefault(); openFieldSetupMenu(main, event.clientX, event.clientY) } : undefined}
-        >
-          {main.label}{!isBoolean && !main.isReadonly && !main.serverFilled && main.isRequired ? ' *' : ''}
-        </label>
-        <div className="erp-form-cell-controls">
-          {renderField(main, true)}
-          {companions.map(companion => renderField(companion, true))}
-        </div>
-      </div>
-    )
   }
 
   return (
@@ -872,55 +1119,40 @@ export function FormEditorPage() {
               })}
             </ul>
           ) : null}
-          <div className="erp-form-grid" onKeyDown={handleMasterKeyDown}>
-            {masterSections.map((section, sectionIndex) => (
-              <section className="erp-form-group" key={section.title ?? `default-${sectionIndex}`}>
-                {section.title ? <div className="erp-form-group-title">{section.title}</div> : null}
-                {buildFormRows(section.cells, UNIFIED_FORM_COLUMNS).map((row, rowIndex) => (
-                  <div className="erp-form-row" key={rowIndex} style={{ '--erp-form-cols': UNIFIED_FORM_COLUMNS } as CSSProperties}>
-                    {row.map(cell => renderCell(cell))}
-                  </div>
-                ))}
-              </section>
-            ))}
-          </div>
+          <MasterFormGrid
+            form={form}
+            activeTabNo={activeTabNo}
+            hasTabs={hasTabs}
+            masterValues={masterValues}
+            fieldErrors={fieldErrors}
+            viewing={isView}
+            canSetup={form.canSetup}
+            masterAmountLocked={masterAmountLocked}
+            onFieldChange={changeMasterValue}
+            onOpenChooser={openMasterChooser}
+            onFieldSetup={openFieldSetup}
+          />
         </div>
       </section>
       {form.detailFields.length > 0 ? (
-        <section className="card erp-detail-card">
-          <div className="card-header erp-detail-toolbar">
-            <div className="d-flex gap-2">
-              <Button size="sm" onClick={addDetailRow}>新增一行</Button>
-              <Button size="sm" variant="danger" disabled={selectedDetailRows.size === 0} onClick={removeSelectedDetailRows}>删除所选{selectedDetailRows.size > 0 ? ` (${selectedDetailRows.size})` : ''}</Button>
-              {detailSort && <span className="small text-secondary align-self-center">视图排序（保存顺序以序号 SERIAL_NO 为准）</span>}
-              {/* 子表专用工具栏扩展位：生成请购单等后续加入 */}
-            </div>
-          </div>
-          <div className="table-responsive" onKeyDown={handleDetailGridKeyDown}>
-            <ErpTable
-              columns={detailColumns}
-              data={detailGridRows}
-              getRowId={row => row.__id}
-              sorting={detailSort ? [{ id: detailSort.key, desc: detailSort.dir === -1 }] : []}
-              onSortingChange={handleDetailSortingChange}
-              rowSelection={detailRowSelection}
-              onRowSelectionChange={handleDetailRowSelectionChange}
-              resizable
-              storageKey={`form-detail-${moduleId}`}
-              persistResize={false}
-              onColumnResize={saveDetailWidth}
-              className="erp-detail-grid"
-              responsive={false}
-              empty={
-                detailRows.length === 0 && !isView ? (
-                  <div className="erp-detail-empty">
-                    <Button size="sm" variant="secondary" onClick={addDetailRow}>+ 新增一行</Button>
-                  </div>
-                ) : undefined
-              }
-            />
-          </div>
-        </section>
+        <DetailFormGrid
+          form={form}
+          detailRows={detailRows}
+          detailErrors={detailErrors}
+          sortedIndices={sortedIndices}
+          detailSort={detailSort}
+          selectedDetailRows={selectedDetailRows}
+          viewing={isView}
+          storageKey={`form-detail-${moduleId}`}
+          onAddRow={addDetailRow}
+          onRemoveRow={removeDetailRow}
+          onRemoveSelected={removeSelectedDetailRows}
+          onFieldChange={updateDetailField}
+          onChoose={openDetailChooser}
+          onSortChange={handleDetailSortingChange}
+          onSelectionChange={handleDetailRowSelectionChange}
+          onResize={saveDetailWidth}
+        />
       ) : null}
       {chooserField ? (
         <UnifiedChooser

@@ -657,6 +657,35 @@ describe('FormEditorPage', () => {
     expect(detailInputs()[2]).toHaveValue('A')
   })
 
+  it('明细排序为快照：排序后编辑行值不触发实时跳行', async () => {
+    const withRows: FormDefinition = {
+      ...formDefinition,
+      detailFields: [field('ITEM', '明细项'), field('QTY', '数量', { dataType: 'decimal' })],
+    }
+    const bundle = {
+      master: { PRO_NO: 'P1', EDITION: 'A' },
+      details: [{ ITEM: 'B', QTY: '10' }, { ITEM: 'A', QTY: '2' }],
+    }
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return withRows
+      if (p.includes('/record')) return bundle
+      if (p.includes('/form-chooser/')) return chooserData
+      throw new Error(`unexpected GET ${p}`)
+    })
+    const { container } = renderEditor('/workbench/1209/edit/P1/A')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    const detailInputs = () => Array.from(container.querySelectorAll<HTMLInputElement>('.erp-detail-grid tbody tr:not(.erp-detail-filler) input.form-control'))
+    fireEvent.click(screen.getByLabelText('表头操作数量'))
+    fireEvent.click(screen.getByRole('button', { name: '升序' }))
+    expect(detailInputs()[0]).toHaveValue('A')
+    // 编辑首行数量后视图顺序保持（快照语义：排序只在切换/增删行时重算）
+    fireEvent.change(detailInputs()[1], { target: { value: '99' } })
+    expect(detailInputs()[0]).toHaveValue('A')
+    expect(detailInputs()[2]).toHaveValue('B')
+    expect(container.querySelectorAll('.erp-detail-grid tbody tr:not(.erp-detail-filler)')).toHaveLength(2)
+  })
+
   it('选择器按 returnMapping 回填主表字段并置脏', async () => {
     renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
