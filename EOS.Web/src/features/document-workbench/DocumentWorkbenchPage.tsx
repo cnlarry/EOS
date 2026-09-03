@@ -223,6 +223,7 @@ export function DocumentWorkbenchPage() {
     try{
       while(widthSaveQueue.current.length>0){
         const target=widthSaveQueue.current.shift()!
+        // 列宽钳制 [40,300]：与后端 WorkbenchFieldMetaMapper.FilterColumnWidths 同源（双端各自收紧，改需同步）
         const normalized=Math.min(300,Math.max(40,Math.round(target.width)))
         try{
           await writeFieldWidth(target.detail,target.fieldKey,normalized)
