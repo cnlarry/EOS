@@ -5,9 +5,11 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// 字段选择器结构化过滤条件条目。
-/// 书写契约：扁平行（field/operator/value/nullSafe）是构建器支持、推荐使用的形式；
-/// 表达式（left/right）、嵌套 group、子查询为存量兼容的高级 JSON 语法（构建器不可视化，
-/// 仅文本 JSON 维护，编译校验失败即拒绝保存）；新增语法需评审，不默认扩展。
+/// 结构化契约：人是面向构建器/受控工具配置，不直接书写 JSON。
+/// 扁平行（field/operator/value/nullSafe）由字段设置构建器生成；
+/// 表达式（left/right）、嵌套 group、子查询为运行时/受控工具（含 Agent 配置）生成的语法，
+/// 界面仅作只读展示与过渡期 JSON 编辑，编译校验失败即拒绝保存；
+/// 新增语法需评审，不默认扩展。
 /// 第一版（P1）扁平格式继续有效：field/operator/value/nullSafe；
 /// P3 扩展：left/right 表达式、group 嵌套、negate、subquery（IN/NOT_IN/EXISTS/函数）。
 /// - field：源表物理列（裸列名）或「表.列」跨表引用（须在源表 QUERY_RELATION JOIN 白名单内）；
