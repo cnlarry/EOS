@@ -1,0 +1,30 @@
+{"question": "报价单是哪个模块？主表是哪张表？", "expected": "报价单是模块 1404，主表 COP_QUOTE_M。", "sources": ["ModuleBusinessMap[1404]", "describe_module"]}
+{"question": "客户订单的模块号和主表是什么？", "expected": "客户订单是模块 1405，主表 COP_ORDER_M。", "sources": ["ModuleBusinessMap[1405]", "describe_module"]}
+{"question": "采购单对应哪个模块？主表名？", "expected": "采购单是模块 1606，主表 PUR_PURCHASE_M。", "sources": ["ModuleBusinessMap[1606]", "describe_module"]}
+{"question": "收料单的模块号与主表？", "expected": "收料单是模块 1607，主表 PUR_RECEIVE_M。", "sources": ["ModuleBusinessMap[1607]", "describe_module"]}
+{"question": "送货单是哪个模块？", "expected": "送货单是模块 1406，主表 COP_SEND_M。", "sources": ["ModuleBusinessMap[1406]", "describe_module"]}
+{"question": "list_modules 工具需要什么权限？", "expected": "只需要各模块的 CanBrowse；只能看到有浏览权的通用工作台模块。", "sources": ["ListModulesTool", "决策4"]}
+{"question": "全局 schema 组（查表/视图/存储过程）需要什么权限？", "expected": "需要 2302 的 CanSetup；普通业务用户调用会被拒绝。", "sources": ["AssistantSchemaToolBase", "FieldAdminController"]}
+{"question": "查一张不存在的表会发生什么？", "expected": "describe_table 返回拒绝（表不存在或未登记），不会编造字段。", "sources": ["DescribeTableTool", "AssistantSchemaGateway"]}
+{"question": "销售额在系统里的口径是什么？", "expected": "sales_amount = SUM(AMOUNT_TAX)，来源表 COP_ORDER_D。", "sources": ["027_report_metric.sql", "enum_metrics"]}
+{"question": "库存数量的口径定义？", "expected": "inventory_qty = SUM(QTY)，来源表 INV_PRO_DEPOT。", "sources": ["027_report_metric.sql", "enum_metrics"]}
+{"question": "员工人数指标怎么算？", "expected": "employee_count = COUNT(DISTINCT EMP_ID)，来源表 HR_EMPLOYEE。", "sources": ["027_report_metric.sql", "enum_metrics"]}
+{"question": "流程定义存在哪两张表？主键是什么？", "expected": "WFFORM（流程主）+ WFFORM_FLOW（步骤），主键 WF_M_IDX。", "sources": ["WF_Design.aspx.cs", "FlowDefinitionService"]}
+{"question": "在途流程实例存在哪里？如何判定？", "expected": "WF_MONITOR，WF_STATE='0' 为在途。", "sources": ["WorkflowEngine.HasActiveFlowAsync", "WorkflowStates"]}
+{"question": "个人权限和组权限冲突时听谁的？", "expected": "某模块只要有 SYSDD 个人权限记录，就完全采用个人权限，不合并组权限。", "sources": ["Admin.GetUserRightDetail", "ERP_REFACTOR_HANDOFF.md"]}
+{"question": "多组的布尔权限和禁止字段如何聚合？", "expected": "布尔位取 OR，EXEC_TAG 取最大值，禁止字段取各组交集。", "sources": ["Admin.GetUserRightDetail", "Admin.GetRepeat"]}
+{"question": "search_records 一次最多返回几行？", "expected": "最多 5 行，行附主键值数组 _keys。", "sources": ["SearchRecordsTool"]}
+{"question": "get_record_detail 查不到记录时说什么？", "expected": "返回“记录不存在或不在你的数据范围内”，不泄露范围外记录的存在性。", "sources": ["GetRecordDetailTool"]}
+{"question": "draft_record 会直接写库吗？", "expected": "不会；只产出草稿由人工带入表单，执行走现有保存管线。", "sources": ["DraftRecordTool", "决策6"]}
+{"question": "get_form_schema 返回哪些字段？", "expected": "只返回可写字段：可见、非只读、非主键/自增/服务端维护/虚拟。", "sources": ["GetFormSchemaTool"]}
+{"question": "报表中心替代了什么？", "expected": "替代了 22 个 XX98 报表查询目录节点，统一入口 /report-center。", "sources": ["ADR-009 P2", "ReportCenterController"]}
+{"question": "报表可见性的唯一真源是什么？", "expected": "SYSDD.REPORT_TAG；SYSDD_REPORT 只做收紧型 override。", "sources": ["ADR-009 P1", "ReportMetricController"]}
+{"question": "通用工作台的前端路由是什么？", "expected": "/workbench/:moduleId；查看/编辑记录主键放在路径段。", "sources": ["docs/架构.md", "workbenchPath.ts"]}
+{"question": "1906 油卡充值单的审批链是什么？", "expected": "二级审批：一级 admin，二级 admin。", "sources": ["010_pilot_workflow_1906.sql"]}
+{"question": "单据附件有哪些权限位？", "expected": "FILE_VIEW_TAG 查看、FILE_UPDA_TAG 上传、FILE_EDIT_TAG 改备注、FILE_DELE_TAG 删除。", "sources": ["AttachmentController"]}
+{"question": "跨会话记忆最多存几条？注入几条？", "expected": "每用户上限 200 条，会话注入 Top-5。", "sources": ["043_assistant_memory.sql", "AssistantMemoryStore"]}
+{"question": "get_my_digest 返回谁的数据？", "expected": "只返回当前本人的偏好与显式记忆，不触碰业务模块。", "sources": ["GetMyDigestTool"]}
+{"question": "无权限用户问越权数据时助手应该怎么做？", "expected": "拒绝：返回 Deny/无浏览权，或把范围外记录表现为不存在。", "sources": ["决策1", "决策7"]}
+{"question": "模型没配置时助手怎么响应？", "expected": "快速失败 AI_MODEL_NOT_CONFIGURED，不影响其他 API。", "sources": ["ChatService", "决策11"]}
+{"question": "助手一轮对话最多调几轮工具？", "expected": "最多 4 轮；达到上限时强制纯文本收尾。", "sources": ["AssistantToolRegistry.MaxToolRounds", "ChatService"]}
+{"question": "未知工具名出现时怎么处理？", "expected": "拒绝并回喂模型纠偏，不抛业务异常。", "sources": ["ChatService.ExecuteToolSafelyAsync"]}

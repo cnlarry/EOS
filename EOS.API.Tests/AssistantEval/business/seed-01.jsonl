@@ -1,0 +1,30 @@
+{"question": "单据送审后又点了一次送审，会发生什么？", "expected": "拒绝重复送审（FLOW_IN_PROGRESS），需先撤回再重新提交。", "sources": ["WorkflowEngine.StartFlowAsync"]}
+{"question": "流程在途的单据能编辑或删除吗？", "expected": "不能；在途禁止编辑与删除，避免审批人与数据不一致及孤儿流程实例。", "sources": ["WorkflowEngine.HasActiveFlowAsync"]}
+{"question": "撤回流程后单据是什么状态？", "expected": "回到可编辑状态，修改后重新送审即重新提交。", "sources": ["WorkflowController.Withdraw", "WorkflowStates"]}
+{"question": "已结案的单据能删除吗？", "expected": "不能；必须先取消结案。", "sources": ["WorkbenchApprovalService", "删除补偿守卫"]}
+{"question": "已批核的单据想删除要先做什么？", "expected": "先解批；已产生库存日志（INV_DEPOT_LOG）的单据禁止删除。", "sources": ["WorkbenchApprovalService", "删除补偿守卫"]}
+{"question": "重复提交同一张单据会产生两条记录吗？", "expected": "不会；写路径幂等键保证重复提交不重复产生副作用。", "sources": ["WORKBENCH_IDEMPOTENCY", "WorkbenchCommandHandler"]}
+{"question": "模块 FILTER 只在列表生效吗？", "expected": "不是；列表/详情/子表/导出/打印/建单/改单/删单全范围一致生效。", "sources": ["WorkbenchScopeFilter", "ADR-005"]}
+{"question": "统一表单的选择器和列表的数据范围一致吗？", "expected": "一致：模块 FILTER + DATA_FILTER + EXEC_TAG，无法受控时返回空列表。", "sources": ["TryBuildChooserScopePredicate", "GetChooserOptionsAsync"]}
+{"question": "没有成本权限的用户能通过导出拿到成本字段吗？", "expected": "不能；成本/保密/禁止字段在查询、导出、打印、选择器全链路过滤。", "sources": ["WorkbenchScopeFilter", "决策1"]}
+{"question": "报表查询的数据范围怎么算？", "expected": "用户模块 DATA_FILTER 与报表 override DATA_FILTER 取交集收紧。", "sources": ["ADR-009 P1", "CombineDataFilters"]}
+{"question": "打印单据页头的优先级是什么？", "expected": "本次选择/SYSQR → 客户默认 CLIENT.HEADER_ID → 报表默认 REPORT.HEADER_ID。", "sources": ["PrintController", "ADR-009"]}
+{"question": "单据页头显示的是客户公司还是开单方？", "expected": "开单方主体；客户名称只进正文，不覆盖页头。", "sources": ["ADR-009 P6", "DocumentPdfService"]}
+{"question": "记忆里存的单据引用过期或越权了会怎样？", "expected": "注入前复核权限，失效引用自动跳过不注入。", "sources": ["AssistantMemoryStore.BuildMemoryPrefixAsync"]}
+{"question": "助手会把记忆里的金额快照直接当事实吗？", "expected": "不会；记忆只存引用不存快照，且标注可能过期仅供参考。", "sources": ["决策12", "AssistantMemoryStore.BuildPrefix"]}
+{"question": "记住的内容里有手机号会怎样？", "expected": "提示敏感信息风险，需删除敏感内容或确认风险后重试。", "sources": ["AssistantController.SaveMemory", "MEMORY_PII_RISK"]}
+{"question": "会签步骤什么时候算通过？", "expected": "IS_SIGN=1 时按 PASS_PERCENT 计数阈值，且必签名单（MUST_SIGNER）必须通过。", "sources": ["WorkflowEngine", "WFFORM_FLOW"]}
+{"question": "驳回后流程回到哪里？", "expected": "可退回指定步骤（jumpNo 为空回到第一步），先过解批前置校验。", "sources": ["WorkflowEngine"]}
+{"question": "代理审批有什么限制？", "expected": "仅 CAN_SIR_AGENCY=1 的步骤允许代理，按旧 f_get_sirs 校验。", "sources": ["WorkflowEngine"]}
+{"question": "审批人条件和审批人名单是什么关系？", "expected": "PERSON_CONDITION 与 EXEC_PERSON 一一对应；条件为真的人才进入任务。", "sources": ["WorkflowEngine.StartFlowAsync"]}
+{"question": "权限串为空和必签名单为空分别是什么意思？", "expected": "空权限串=全部有权限；空必签名单=无必签者，两者语义不同。", "sources": ["WorkflowEngine", "FlowStep"]}
+{"question": "流程条件写了系统解析不了的表达式会怎样？", "expected": "拒绝启动流程（FLOW_CONDITION_UNSUPPORTED），绝不拼接执行。", "sources": ["WorkflowEngine", "DataFilterParser"]}
+{"question": "有单据在途时能删除流程定义吗？", "expected": "不能；有在途实例时禁止删除定义，防孤儿实例。", "sources": ["FlowDefinitionService"]}
+{"question": "流程设计里能写不存在的审批人吗？", "expected": "不能；审批人按 SYSDL 真实用户校验。", "sources": ["FlowDefinitionService.SaveFlowAsync"]}
+{"question": "旧系统的用户存 SQL 表还能新增吗？", "expected": "不能；SYSQD/SYSQL/LISTREPORT 已物理删除，不再新增用户运行时存 SQL。", "sources": ["ADR-009 P3", "030_tsql_tables_drop.sql"]}
+{"question": "2205 报表过滤条件设置页还能用吗？", "expected": "已下线；条件走 SYSQR_DEFAULT.FILTER_TEMPLATE 结构化维护。", "sources": ["ADR-009 P4", "025_report_conditions_page_offline.sql"]}
+{"question": "保存单据时必须带什么防重复？", "expected": "幂等键；缺失返回 IDEMPOTENCY_KEY_REQUIRED。", "sources": ["WorkbenchCommandHandler", "ADR-006"]}
+{"question": "单号冲突时系统怎么提示？", "expected": "返回 BILL_NO_CONFLICT 友好提示，而不是静默覆盖或报错 500。", "sources": ["ADR-006", "BillNoGenerator"]}
+{"question": "考勤/薪资重算这类长任务走哪里？", "expected": "走 Jobs 批量作业端点，有行数与天数上限保护。", "sources": ["JobsController", "HumanResourceJobsService"]}
+{"question": "附件删除需要什么权限？", "expected": "FILE_DELE_TAG；服务端强制校验，不只控按钮。", "sources": ["AttachmentController"]}
+{"question": "字段维护的写操作要什么权限？", "expected": "模块 2302 的 CanSetup；读要 CanBrowse。", "sources": ["FieldAdminController"]}
