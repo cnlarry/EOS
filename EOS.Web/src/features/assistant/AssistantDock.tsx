@@ -1,5 +1,6 @@
 import {
   IconArrowUp,
+  IconBookmark,
   IconDots,
   IconLayoutSidebar,
   IconPlayerStop,
@@ -11,6 +12,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { createSession, deleteSession, listMessages, listSessions } from './api'
+import { AssistantMemoryPanel } from './AssistantMemoryPanel'
 import { extractPageContext } from './pageContext'
 import { useChatStream, type AssistantFormDraft } from './useChatStream'
 import { assistantPrefillKey } from '../../lib/storageKeys'
@@ -61,6 +63,7 @@ export function AssistantDock() {
   const [input, setInput] = useState('')
   const [errorText, setErrorText] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [memoryOpen, setMemoryOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fabDragRef = useRef<{ startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
@@ -314,6 +317,11 @@ export function AssistantDock() {
               )}
             </div>
             <button className="btn btn-icon btn-sm btn-ghost-secondary" type="button"
+              title="我的记忆（仅本人可见）" aria-label="我的记忆"
+              onClick={() => setMemoryOpen(value => !value)}>
+              <IconBookmark size={16} />
+            </button>
+            <button className="btn btn-icon btn-sm btn-ghost-secondary" type="button"
               title={wide ? '收窄' : '加宽'} aria-label="调整宽度"
               onClick={() => setWide(value => !value)}>
               <IconLayoutSidebar size={16} />
@@ -324,6 +332,16 @@ export function AssistantDock() {
               <IconX size={16} />
             </button>
           </header>
+
+          {memoryOpen && (
+            <AssistantMemoryPanel
+              onClose={() => setMemoryOpen(false)}
+              onAskDigest={() => {
+                setInput('请总结我的偏好和记住的事项')
+                inputRef.current?.focus()
+              }}
+            />
+          )}
 
           <div className="erp-assistant-messages" ref={scrollRef}>
             {bubbles.length === 0 && (
