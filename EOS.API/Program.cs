@@ -241,6 +241,9 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ModuleFlowGateway>()
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IModuleFlowGateway>(sp =>
     sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ModuleFlowGateway>());
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetModuleFlowTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IModulePlanCatalog,
+    EOS.API.Features.Assistant.Tools.ModulePlanCatalog>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.DiagnoseModuleTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistry>(sp =>
     new EOS.API.Features.Assistant.Tools.AssistantToolRegistry(
     [
@@ -258,6 +261,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetMyDigestTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.KbSearchTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetModuleFlowTool>(),
+         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DiagnoseModuleTool>(),
      ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
