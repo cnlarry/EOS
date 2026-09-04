@@ -1,5 +1,5 @@
 import { apiClient } from '../../services/api'
-import type { AssistantMemoryList, AssistantMessage, AssistantSession, KbDocument } from './types'
+import type { AssistantApplyResult, AssistantMemoryList, AssistantMessage, AssistantSession, KbDocument } from './types'
 
 export function listSessions(limit = 50) {
   return apiClient.get<AssistantSession[]>('/assistant/sessions', { query: { limit } })
@@ -31,4 +31,9 @@ export function deleteMemory(memoryId: string) {
 
 export function getKbDocument(docId: string) {
   return apiClient.get<KbDocument>(`/assistant/kb/documents/${docId}`)
+}
+
+/** 变更集确认执行（M8）：只接受结构化确认卡调用，自然语言确认无效。 */
+export function applyChangeset(changeset: unknown) {
+  return apiClient.post<AssistantApplyResult>('/assistant/apply-changeset', { changeset, confirmed: true })
 }

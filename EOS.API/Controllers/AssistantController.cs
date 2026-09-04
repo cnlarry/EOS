@@ -3,6 +3,7 @@ using System.Text.Json;
 using EOS.API.Data;
 using EOS.API.Errors;
 using EOS.API.Features.Assistant;
+using EOS.API.Features.Assistant.Admin;
 using EOS.API.Features.Assistant.Memory;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -22,7 +23,9 @@ public sealed class AssistantController(
     ChatService chat,
     CurrentUserContext userContext,
     IAssistantMemoryStore memoryStore,
-    WorkbenchAuditWriter auditWriter) : ControllerBase
+    WorkbenchAuditWriter auditWriter,
+    ModuleRightsRepository rightsRepository,
+    ChangeSetService changeSets) : ControllerBase
 {
     private static readonly JsonSerializerOptions SseJson = new(JsonSerializerDefaults.Web);
 
@@ -184,6 +187,41 @@ public sealed class AssistantController(
         catch (ArgumentException ex)
         {
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", ex.Message));
+        }
+    }
+
+    public sealed record ApplyChangeSetRequest(JsonElement Changeset, bool Confirmed);
+
+    /// <summary>
+    /// 变更集确认执行（M8 admin-write）：仅结构化确认卡可调用。自然语言确认无效
+    /// （confirmed 必须为 true）；执行前重跑试算，拦截即拒绝，零部分写入由仓储事务保证。
+    /// </summary>
+    [HttpPost("apply-changeset")]
+    public async Task<IActionResult> ApplyChangeSet([FromBody] ApplyChangeSetRequest request, CancellationToken token)
+    {
+        if (!(await rightsRepository.GetAsync(userContext.UserId, 2302, token)).CanSetup) return Forbid();
+        if (request is null || !request.Confirmed)
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "CONFIRM_REQUIRED",
+                "变更集执行必须经结构化确认卡确认（confirmed=true），自然语言确认无效。"));
+        try
+        {
+            var result = await changeSets.ExecuteAsync(
+                request.Changeset, userContext.EmployeeName ?? userContext.UserId, token);
+            await auditWriter.WriteBestEffortAsync(null, "admin-changeset", "CHANGESET_APPLY",
+                $"助手变更集执行（{result.Goal}）：登记表 {result.TablesRegistered} 个，新增字段 {result.FieldsCreated} 个，跳过 {result.FieldsSkipped} 个",
+                userContext.UserId, "ASSISTANT_ADMIN", result: 1, null, token);
+            return Ok(new
+            {
+                goal = result.Goal,
+                tablesRegistered = result.TablesRegistered,
+                fieldsCreated = result.FieldsCreated,
+                fieldsSkipped = result.FieldsSkipped,
+                notes = result.Notes,
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "CHANGESET_BLOCKED", ex.Message));
         }
     }
 
