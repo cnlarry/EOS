@@ -221,15 +221,19 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetRecordDetailTool>
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetFormSchemaTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.DraftRecordTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.EnumMetricsTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ListModulesTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.DescribeModuleTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistry>(sp =>
     new EOS.API.Features.Assistant.Tools.AssistantToolRegistry(
     [
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.SearchRecordsTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetRecordDetailTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetFormSchemaTool>(),
-        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DraftRecordTool>(),
-        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.EnumMetricsTool>(),
-    ]));
+         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DraftRecordTool>(),
+         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.EnumMetricsTool>(),
+         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListModulesTool>(),
+         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DescribeModuleTool>(),
+     ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
 builder.Services.Configure<AttachmentSettings>(builder.Configuration.GetSection("Attachment"));

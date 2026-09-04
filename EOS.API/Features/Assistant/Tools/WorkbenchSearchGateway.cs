@@ -10,6 +10,8 @@ namespace EOS.API.Features.Assistant.Tools;
 /// </summary>
 public interface IWorkbenchSearchGateway
 {
+    Task<IReadOnlyList<SystemKnowledgeModule>> ListAssistantModulesAsync(string? keyword, CancellationToken token);
+
     Task<int?> FindGenericModuleIdByTitleAsync(string titleKeyword, CancellationToken token);
 
     Task<WorkbenchDefinition?> GetDefinitionAsync(

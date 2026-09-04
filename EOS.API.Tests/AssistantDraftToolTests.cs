@@ -51,6 +51,9 @@ public sealed class AssistantDraftToolTests
     {
         public WorkbenchDefinition LastDefinition { get; set; } = Definition();
 
+        public Task<IReadOnlyList<SystemKnowledgeModule>> ListAssistantModulesAsync(string? keyword, CancellationToken token)
+            => Task.FromResult<IReadOnlyList<SystemKnowledgeModule>>([]);
+
         public Task<int?> FindGenericModuleIdByTitleAsync(string titleKeyword, CancellationToken token)
             => Task.FromResult<int?>(1606);
 
