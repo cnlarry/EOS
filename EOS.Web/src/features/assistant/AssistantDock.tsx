@@ -15,7 +15,8 @@ import { createSession, deleteSession, listMessages, listSessions } from './api'
 import { AssistantMemoryPanel } from './AssistantMemoryPanel'
 import { KbDocDialog, KbSourceText } from './KbSource'
 import { extractPageContext } from './pageContext'
-import { useChatStream, type AssistantFormDraft } from './useChatStream'
+import { useChatStream, type AssistantDraft, type AssistantFormDraft } from './useChatStream'
+import { AdminChangesetCard } from './AdminChangesetCard'
 import { assistantPrefillKey } from '../../lib/storageKeys'
 import { workbenchNew } from '../document-workbench/workbenchPath'
 import type { AssistantMessage, AssistantSession } from './types'
@@ -49,7 +50,7 @@ interface Bubble {
   text: string
   streaming?: boolean
   tools?: Array<{ name: string; digest: string }>
-  drafts?: AssistantFormDraft[]
+  drafts?: AssistantDraft[]
 }
 
 export function AssistantDock() {
@@ -369,8 +370,10 @@ export function AssistantDock() {
                 )}
                 {!bubble.streaming && bubble.drafts && bubble.drafts.length > 0 && (
                   <div className="erp-assistant-drafts">
-                    {bubble.drafts.map((draft, index) => (
-                      <DraftCard key={index} draft={draft} onOpenForm={handleOpenInForm} />
+                    {bubble.drafts.map((draft, index) => 'kind' in draft && draft.kind === 'admin-changeset' ? (
+                      <AdminChangesetCard key={index} draft={draft} />
+                    ) : (
+                      <DraftCard key={index} draft={draft as AssistantFormDraft} onOpenForm={handleOpenInForm} />
                     ))}
                   </div>
                 )}
