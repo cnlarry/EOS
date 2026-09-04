@@ -249,6 +249,8 @@ public sealed class ChatService(
                 saved,
                 toolLog.Count > 0 ? [.. toolLog] : null,
                 drafts.Count > 0 ? [.. drafts] : null);
+            // M9: done 之后异步提炼候选记忆（pending，待用户确认；失败静默，不阻塞对话流）。
+            await DistillSessionBestEffortAsync(userId, saved.Id, history, text, token);
             yield break;
         }
     }
@@ -328,6 +330,43 @@ public sealed class ChatService(
         }
 
         return messages;
+    }
+
+    private async Task DistillSessionBestEffortAsync(
+        string userId, long messageId, IReadOnlyList<(int Role, string Content)> history,
+        string finalText, CancellationToken token)
+    {
+        if (memoryStore is null || !settings.Value.EnableAutoDistill) return;
+        try
+        {
+            var exchanges = history
+                .Where(item => item.Role is 1 or 2 && !string.IsNullOrWhiteSpace(item.Content))
+                .Select(item => (Role: item.Role == 1 ? "user" : "assistant", item.Content))
+                .ToList();
+            if (!string.IsNullOrWhiteSpace(finalText))
+            {
+                exchanges.Add(("assistant", finalText));
+            }
+
+            if (exchanges.Count == 0) return;
+            var prompt = Memory.MemoryDistiller.BuildDistillPrompt(exchanges);
+            var output = new StringBuilder();
+            await foreach (var delta in model.StreamAsync(
+                [new ChatMessage(ChatRole.User, prompt)], null, token))
+            {
+                output.Append(delta.ContentDelta);
+            }
+
+            foreach (var candidate in Memory.MemoryDistiller.Parse(output.ToString()))
+            {
+                await memoryStore.AddPendingAsync(userId, candidate.Type, candidate.Key,
+                    candidate.Value, messageId, candidate.Confidence, token);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogDebug(ex, "助手记忆提炼失败（已忽略，不影响对话）");
+        }
     }
 
     private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];

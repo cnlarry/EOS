@@ -20,6 +20,9 @@ public sealed class AssistantSettings
     /// <summary>单次调用总时长上限（秒），覆盖流式全程。</summary>
     public int TimeoutSeconds { get; set; } = 300;
 
+    /// <summary>会话结束自动提炼（M9）：done 事件后异步提炼候选记忆，失败静默。运维可关闭。</summary>
+    public bool EnableAutoDistill { get; set; } = true;
+
     /// <summary>注入给每轮对话的系统提示词。</summary>
     public string SystemPrompt { get; set; } =
         "你是 EOS ERP 的工作助手。用简体中文简洁、专业地回答；"

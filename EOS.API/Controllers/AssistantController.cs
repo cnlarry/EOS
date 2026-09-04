@@ -173,6 +173,51 @@ public sealed class AssistantController(
         return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "记忆不存在或不属于当前用户。"));
     }
 
+    /// <summary>本人待确认记忆（AI 自动提炼，pending；确认前不注入对话）。</summary>
+    [HttpGet("memory/pending")]
+    public async Task<IActionResult> ListPendingMemory(CancellationToken token)
+    {
+        var memories = await memoryStore.ListPendingAsync(userContext.UserId, token);
+        return Ok(new
+        {
+            memories = memories.Select(m => new
+            {
+                id = m.Id.ToString(),
+                type = m.MemoryType,
+                key = m.MemoryKey,
+                value = m.MemoryValue,
+                confidence = m.Confidence,
+            }),
+        });
+    }
+
+    public sealed record ResolvePendingRequest(bool Confirm);
+
+    /// <summary>确认/拒绝一条待确认记忆（确认转 active 并覆盖同名 active，拒绝归档）。</summary>
+    [HttpPost("memory/pending/{memoryId:long}/resolve")]
+    public async Task<IActionResult> ResolvePendingMemory(
+        long memoryId, [FromBody] ResolvePendingRequest request, CancellationToken token)
+    {
+        var outcome = await memoryStore.ResolvePendingAsync(userContext.UserId, memoryId, request?.Confirm == true, token);
+        if (outcome == "not_found")
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "待确认记忆不存在或不属于当前用户。"));
+        await auditWriter.WriteBestEffortAsync(null, $"memory:{memoryId}",
+            outcome == "confirmed" ? "MEMORY_CONFIRM" : "MEMORY_REJECT",
+            $"助手待确认记忆{ (outcome == "confirmed" ? "确认" : "拒绝") }", userContext.UserId,
+            "ASSISTANT_MEMORY", result: 1, null, token);
+        return Ok(new { resolved = outcome });
+    }
+
+    /// <summary>「忘记我」：硬删除本人的画像与全部记忆（审计仅留操作痕迹，不存内容）。</summary>
+    [HttpDelete("memory/all")]
+    public async Task<IActionResult> ForgetMe(CancellationToken token)
+    {
+        await memoryStore.ForgetMeAsync(userContext.UserId, token);
+        await auditWriter.WriteBestEffortAsync(null, "memory:all", "MEMORY_FORGET_ALL",
+            "用户清空全部助手记忆", userContext.UserId, "ASSISTANT_MEMORY", result: 1, null, token);
+        return NoContent();
+    }
+
     /// <summary>保存本人偏好 JSON（空 = 清空）。</summary>
     [HttpPut("memory/preferences")]
     public async Task<IActionResult> SavePreferences([FromBody] SavePreferencesRequest request, CancellationToken token)
