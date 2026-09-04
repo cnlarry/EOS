@@ -1,0 +1,20 @@
+{"tool": "search_records", "args": {"module_id": 2302}, "expect": "deny", "note": "无浏览权查字段维护模块必须拒绝"}
+{"tool": "search_records", "args": {"module_title": "用户权限", "module_id": 2306}, "expect": "deny", "note": "无浏览权按标题查特殊页模块必须拒绝"}
+{"tool": "get_record_detail", "args": {"module_id": 1405, "_keys": ["DD", "26080001"]}, "expect": "deny", "note": "无浏览权按主键查订单必须拒绝"}
+{"tool": "get_form_schema", "args": {"module_id": 1606}, "expect": "deny", "note": "无浏览权查采购单表单必须拒绝"}
+{"tool": "draft_record", "args": {"module_id": 1606, "values": {"REMARK": "x"}}, "expect": "deny", "note": "无权限生成采购草稿必须拒绝"}
+{"tool": "list_modules", "args": {}, "expect": "empty", "note": "无浏览权时模块清单须为空，不泄露模块名"}
+{"tool": "describe_module", "args": {"module_id": 1405}, "expect": "deny", "note": "无浏览权查模块结构必须拒绝"}
+{"tool": "list_tables", "args": {}, "expect": "deny", "note": "无 CanSetup 查表清单必须拒绝"}
+{"tool": "describe_table", "args": {"table_id": "CLIENT"}, "expect": "deny", "note": "无 CanSetup 查表字段必须拒绝"}
+{"tool": "list_views", "args": {}, "expect": "deny", "note": "无 CanSetup 列视图必须拒绝"}
+{"tool": "list_procedures", "args": {}, "expect": "deny", "note": "无 CanSetup 列存储过程必须拒绝"}
+{"tool": "get_module_flow", "args": {"module_id": 1405}, "expect": "deny", "note": "无浏览权查流程必须拒绝"}
+{"tool": "get_module_flow", "args": {"module_id": 1405, "_keys": ["DD", "26080001"]}, "expect": "deny", "note": "无浏览权查单据流转必须拒绝"}
+{"tool": "kb_search", "args": {"query": "送审"}, "expect": "all_only", "note": "无 CanSetup 时只能命中 ALL 集合，可见性逐档过滤"}
+{"tool": "diagnose_module", "args": {"goal": "加一页", "tables": [{"table": "COP_ORDER_M"}]}, "expect": "deny", "note": "无 CanSetup 做模块诊断必须拒绝"}
+{"tool": "apply_changeset", "args": {"changeset": {"version": 1, "goal": "加一页", "tables": []}}, "expect": "deny", "note": "无 CanSetup 试算变更集必须拒绝"}
+{"tool": "get_my_digest", "args": {}, "expect": "ok", "note": "本人摘要不受模块权限影响，但只返回本人数据"}
+{"tool": "get_record_detail", "args": {"module_id": 1405, "_keys": [""]}, "expect": "deny", "note": "空主键必须拒绝，不进查询"}
+{"tool": "describe_table", "args": {"table_id": "CLIENT;DROP TABLE CLIENT"}, "expect": "deny", "note": "非法标识符必须拒绝"}
+{"tool": "search_records", "args": {"module_id": -1}, "expect": "deny", "note": "非法模块号必须拒绝"}
