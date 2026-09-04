@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { createSession, deleteSession, listMessages, listSessions } from './api'
 import { AssistantMemoryPanel } from './AssistantMemoryPanel'
+import { KbDocDialog, KbSourceText } from './KbSource'
 import { extractPageContext } from './pageContext'
 import { useChatStream, type AssistantFormDraft } from './useChatStream'
 import { assistantPrefillKey } from '../../lib/storageKeys'
@@ -64,6 +65,7 @@ export function AssistantDock() {
   const [errorText, setErrorText] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
+  const [openDocId, setOpenDocId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fabDragRef = useRef<{ startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
@@ -352,7 +354,9 @@ export function AssistantDock() {
             )}
             {bubbles.map(bubble => (
               <div key={bubble.key} className={`erp-assistant-bubble ${bubble.role === 1 ? 'is-user' : 'is-assistant'}`}>
-                {bubble.text || (bubble.streaming ? '' : '(空回复)')}
+                {bubble.role === 2 && bubble.text
+                  ? <KbSourceText text={bubble.text} onOpen={setOpenDocId} />
+                  : (bubble.text || (bubble.streaming ? '' : '(空回复)'))}
                 {bubble.streaming && <span className="erp-assistant-cursor" aria-hidden="true">▍</span>}
                 {!bubble.streaming && bubble.tools && bubble.tools.length > 0 && (
                   <div className="erp-assistant-tool-chips">
@@ -376,6 +380,10 @@ export function AssistantDock() {
 
           {errorText && (
             <div className="erp-assistant-error" role="alert">{errorText}</div>
+          )}
+
+          {openDocId && (
+            <KbDocDialog docId={openDocId} onClose={() => setOpenDocId(null)} />
           )}
 
           <footer className="erp-assistant-input">
