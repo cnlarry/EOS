@@ -1,5 +1,5 @@
 import { apiClient } from '../../services/api'
-import type { AssistantMemoryList, AssistantMessage, AssistantSession } from './types'
+import type { AssistantMemoryList, AssistantMessage, AssistantSession, KbDocument } from './types'
 
 export function listSessions(limit = 50) {
   return apiClient.get<AssistantSession[]>('/assistant/sessions', { query: { limit } })
@@ -27,4 +27,8 @@ export function saveMemory(payload: { memoryType: string; memoryKey: string; mem
 
 export function deleteMemory(memoryId: string) {
   return apiClient.delete<void>(`/assistant/memory/${memoryId}`)
+}
+
+export function getKbDocument(docId: string) {
+  return apiClient.get<KbDocument>(`/assistant/kb/documents/${docId}`)
 }

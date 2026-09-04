@@ -25,6 +25,19 @@ export interface AssistantMemoryList {
   memories: AssistantMemory[]
 }
 
+/** 知识库来源文档（引用链接落点；不可见文档服务端统一 404）。 */
+export interface KbDocChunk {
+  serialNo: number
+  content: string
+}
+
+export interface KbDocument {
+  docId: string
+  title: string
+  sourceUri: string | null
+  chunks: KbDocChunk[]
+}
+
 export interface AssistantMessage {
   id: string
   sessionId: string
