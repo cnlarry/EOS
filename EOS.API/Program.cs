@@ -248,6 +248,11 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Admin.IChangeSetWriter,
     EOS.API.Features.Assistant.Admin.FieldMetaWriter>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Admin.ChangeSetService>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ApplyChangeSetTool>();
+builder.Services.AddScoped<EOS.API.Data.IAssistantUsageRepository, EOS.API.Data.AssistantUsageRepository>();
+builder.Services.AddSingleton(sp => new EOS.API.Features.Assistant.Governance.FailureBreaker(
+    () => DateTimeOffset.UtcNow,
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<EOS.API.Features.Assistant.ModelAccess.AssistantSettings>>().Value.Cost.MaxConsecutiveFailures,
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<EOS.API.Features.Assistant.ModelAccess.AssistantSettings>>().Value.Cost.CooldownSeconds));
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistry>(sp =>
     new EOS.API.Features.Assistant.Tools.AssistantToolRegistry(
     [

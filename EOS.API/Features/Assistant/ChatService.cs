@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using EOS.API.Data;
+using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.Memory;
 using EOS.API.Features.Assistant.ModelAccess;
 using EOS.API.Features.Assistant.Tools;
@@ -56,7 +57,9 @@ public sealed class ChatService(
     AssistantToolRegistry toolRegistry,
     IOptions<AssistantSettings> settings,
     ILogger<ChatService> logger,
-    IAssistantMemoryStore? memoryStore = null)
+    IAssistantMemoryStore? memoryStore = null,
+    IAssistantUsageRepository? usageRepository = null,
+    FailureBreaker? breaker = null)
 {
     /// <summary>单轮携带的最大历史条数（含双方消息），防上下文无限增长。</summary>
     private const int MaxHistoryMessages = 40;
@@ -80,6 +83,32 @@ public sealed class ChatService(
             yield return new ChatStreamEvent.Failed(
                 "AI_MODEL_NOT_CONFIGURED", "工作助手尚未配置模型接入（Assistant:ApiKey），请联系管理员。");
             yield break;
+        }
+
+        // M7 治理门：熔断优先于限额；只计技术失败（模型异常/空回复），权限拒绝与用户取消不计入。
+        if (breaker?.IsBlocked(userId) == true)
+        {
+            yield return new ChatStreamEvent.Failed("RATE_LIMITED", "连续失败次数过多，请稍后再试。");
+            yield break;
+        }
+
+        if (usageRepository is not null)
+        {
+            var cost = settings.Value.Cost;
+            var dayStart = DateTimeOffset.UtcNow.Date;
+            var userUsage = await usageRepository.GetUserDailyUsageAsync(userId, dayStart, token);
+            if (AssistantCost.Calculate(userUsage.PromptTokens, userUsage.CompletionTokens, cost) >= cost.UserDailyCapYuan)
+            {
+                yield return new ChatStreamEvent.Failed("COST_LIMIT_EXCEEDED", "今日个人用量已达上限，请明日再试。");
+                yield break;
+            }
+
+            var globalUsage = await usageRepository.GetGlobalDailyUsageAsync(dayStart, token);
+            if (AssistantCost.Calculate(globalUsage.PromptTokens, globalUsage.CompletionTokens, cost) >= cost.GlobalDailyCapYuan)
+            {
+                yield return new ChatStreamEvent.Failed("COST_LIMIT_EXCEEDED", "今日全局用量已达上限，请明日再试。");
+                yield break;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(content))
@@ -193,6 +222,7 @@ public sealed class ChatService(
 
             if (errorCode is not null)
             {
+                breaker?.RecordFailure(userId);
                 yield return new ChatStreamEvent.Failed(errorCode, "模型调用失败，请稍后重试。");
                 yield break;
             }
@@ -232,6 +262,7 @@ public sealed class ChatService(
 
             if (string.IsNullOrEmpty(text))
             {
+                breaker?.RecordFailure(userId);
                 yield return new ChatStreamEvent.Failed("AI_MODEL_EMPTY_REPLY", "模型没有返回内容，请重试。");
                 yield break;
             }
@@ -245,6 +276,7 @@ public sealed class ChatService(
                     userId, saved.Id, JsonSerializer.Serialize(toolLog), token);
             }
 
+            breaker?.RecordSuccess(userId);
             yield return new ChatStreamEvent.Completed(
                 saved,
                 toolLog.Count > 0 ? [.. toolLog] : null,

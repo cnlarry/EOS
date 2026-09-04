@@ -1,7 +1,21 @@
 # 助手评估集（种子）
 
 > M4 前置产出：`functional/`（检索）与 `business/`（回答）首批各 30 条种子问答。
-> `authz/`（越权）与 `inference/`（推断）按 ADR-011 决策 7 在 M7 前补齐，不在本批次。
+> M7 补齐：`authz/`（越权，20 条，工具级回归 Runner 自动断言，通过率须为 0 泄露）与
+> `inference/`（推断，20 条，答案需跨 ≥3 源 + 至少 1 个口径引用）。
+
+## 行格式
+
+每行一个 JSON：`{question, expected, sources[]}`，与 ADR-011 附录 C 一致。
+`inference/` 另带 `required_sources[]`（必要数据源清单，用于依据链完整性断言）；
+`authz/` 行格式为 `{tool, args, expect, note}`（`expect` ∈ deny/empty/all_only/ok）。
+
+## 判定方式（诚实标注）
+
+- 确定性项（越权拒绝、引用存在性、推断题格式与必要来源声明）进 `dotnet test` 自动回归，
+  不达标阻断发布；其中越权泄露为硬门槛（=0）。
+- 正确率与拒答率需 LLM-as-judge（judge 模型、rubric、季度校准均未就绪），现阶段为人工抽样
+  （每轮 ≥30 条，结果落本目录留痕），暂不阻断发布。
 
 ## 行格式
 

@@ -4,10 +4,12 @@ using EOS.API.Data;
 using EOS.API.Errors;
 using EOS.API.Features.Assistant;
 using EOS.API.Features.Assistant.Admin;
+using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.Memory;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace EOS.API.Controllers;
 
@@ -25,7 +27,9 @@ public sealed class AssistantController(
     IAssistantMemoryStore memoryStore,
     WorkbenchAuditWriter auditWriter,
     ModuleRightsRepository rightsRepository,
-    ChangeSetService changeSets) : ControllerBase
+    ChangeSetService changeSets,
+    IAssistantUsageRepository usageRepository,
+    IOptions<Features.Assistant.ModelAccess.AssistantSettings> assistantOptions) : ControllerBase
 {
     private static readonly JsonSerializerOptions SseJson = new(JsonSerializerDefaults.Web);
 
@@ -268,6 +272,63 @@ public sealed class AssistantController(
         {
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "CHANGESET_BLOCKED", ex.Message));
         }
+    }
+
+    /// <summary>本人今日用量（请求数/token/估算成本 + 限额）。</summary>
+    [HttpGet("usage")]
+    public async Task<IActionResult> MyUsage(CancellationToken token)
+    {
+        var cost = assistantOptions.Value.Cost;
+        var usage = await usageRepository.GetUserDailyUsageAsync(
+            userContext.UserId, DateTimeOffset.UtcNow.Date, token);
+        return Ok(new
+        {
+            day = DateTimeOffset.UtcNow.Date,
+            requests = usage.Requests,
+            promptTokens = usage.PromptTokens,
+            completionTokens = usage.CompletionTokens,
+            estimatedCostYuan = Math.Round(AssistantCost.Calculate(
+                usage.PromptTokens, usage.CompletionTokens, cost), 4),
+            userDailyCapYuan = cost.UserDailyCapYuan,
+            globalDailyCapYuan = cost.GlobalDailyCapYuan,
+        });
+    }
+
+    /// <summary>用量看板（角色③治理可见，2306 CanSetup 门）：全局 + 分用户聚合。</summary>
+    [HttpGet("metrics")]
+    public async Task<IActionResult> Metrics(CancellationToken token)
+    {
+        if (!(await rightsRepository.GetAsync(userContext.UserId, 2306, token)).CanSetup) return Forbid();
+        var cost = assistantOptions.Value.Cost;
+        var dayStart = DateTimeOffset.UtcNow.Date;
+        var global = await usageRepository.GetGlobalDailyUsageAsync(dayStart, token);
+        var perUser = await usageRepository.GetPerUserDailyUsageAsync(dayStart, 20, token);
+        return Ok(new
+        {
+            day = dayStart,
+            global = new
+            {
+                requests = global.Requests,
+                promptTokens = global.PromptTokens,
+                completionTokens = global.CompletionTokens,
+                estimatedCostYuan = Math.Round(AssistantCost.Calculate(
+                    global.PromptTokens, global.CompletionTokens, cost), 4),
+            },
+            users = perUser.Select(entry => new
+            {
+                userId = entry.UserId,
+                requests = entry.Usage.Requests,
+                estimatedCostYuan = Math.Round(AssistantCost.Calculate(
+                    entry.Usage.PromptTokens, entry.Usage.CompletionTokens, cost), 4),
+            }),
+            caps = new
+            {
+                userDailyCapYuan = cost.UserDailyCapYuan,
+                globalDailyCapYuan = cost.GlobalDailyCapYuan,
+                maxConsecutiveFailures = cost.MaxConsecutiveFailures,
+                cooldownSeconds = cost.CooldownSeconds,
+            },
+        });
     }
 
     private static async Task WriteEventAsync(StreamWriter writer, string eventName, object payload, CancellationToken token)
