@@ -237,6 +237,10 @@ builder.Services.AddScoped<EOS.API.Data.IKnowledgeRepository, EOS.API.Data.Knowl
 builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IEmbeddingModel,
     EOS.API.Features.Assistant.ModelAccess.PendingEmbeddingModel>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.KbSearchTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ModuleFlowGateway>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IModuleFlowGateway>(sp =>
+    sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ModuleFlowGateway>());
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetModuleFlowTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistry>(sp =>
     new EOS.API.Features.Assistant.Tools.AssistantToolRegistry(
     [
@@ -253,6 +257,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListProceduresTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetMyDigestTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.KbSearchTool>(),
+         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetModuleFlowTool>(),
      ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));
