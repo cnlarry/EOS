@@ -3,6 +3,7 @@ using System.Text.Json;
 using EOS.API.Data;
 using EOS.API.Errors;
 using EOS.API.Features.Assistant;
+using EOS.API.Features.Assistant.Memory;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,7 +20,9 @@ namespace EOS.API.Controllers;
 public sealed class AssistantController(
     IAssistantRepository repository,
     ChatService chat,
-    CurrentUserContext userContext) : ControllerBase
+    CurrentUserContext userContext,
+    IAssistantMemoryStore memoryStore,
+    WorkbenchAuditWriter auditWriter) : ControllerBase
 {
     private static readonly JsonSerializerOptions SseJson = new(JsonSerializerDefaults.Web);
 
@@ -92,6 +95,95 @@ public sealed class AssistantController(
                     await WriteEventAsync(writer, "error", new { code = fail.Code, message = fail.Message }, token);
                     break;
             }
+        }
+    }
+
+    public sealed record SaveMemoryRequest(
+        string MemoryType, string MemoryKey, string MemoryValue,
+        long? SourceMessageId = null, bool ConfirmedRisk = false);
+
+    public sealed record SavePreferencesRequest(string? PreferencesJson);
+
+    /// <summary>本人记忆：偏好 + 显式记忆列表（仅 active）。</summary>
+    [HttpGet("memory")]
+    public async Task<IActionResult> ListMemory(CancellationToken token)
+    {
+        var userId = userContext.UserId;
+        var memories = await memoryStore.ListMemoriesAsync(userId, token);
+        return Ok(new
+        {
+            preferences = await memoryStore.GetPreferencesAsync(userId, token),
+            memories = memories.Select(m => new
+            {
+                id = m.Id.ToString(),
+                type = m.MemoryType,
+                key = m.MemoryKey,
+                value = m.MemoryValue,
+                source = m.Source,
+                updatedAt = m.UpdatedAt,
+            }),
+        });
+    }
+
+    /// <summary>记住一条显式记忆（本人可见；含敏感模式时需确认风险）。</summary>
+    [HttpPost("memory")]
+    public async Task<IActionResult> SaveMemory([FromBody] SaveMemoryRequest request, CancellationToken token)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.MemoryKey) || string.IsNullOrWhiteSpace(request.MemoryValue))
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "记忆标题与内容不能为空。"));
+        if (AssistantMemoryStore.ContainsSensitivePattern(request.MemoryKey + "\n" + request.MemoryValue)
+            && !request.ConfirmedRisk)
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "MEMORY_PII_RISK",
+                "记忆疑似包含手机号/证件号/银行卡号等敏感信息，请删除敏感内容或确认风险后重试（confirmedRisk=true）。"));
+        try
+        {
+            var item = await memoryStore.AddMemoryAsync(
+                userContext.UserId, request.MemoryType ?? "fact",
+                request.MemoryKey, request.MemoryValue, request.SourceMessageId, token);
+            await auditWriter.WriteBestEffortAsync(null, $"memory:{item.Id}", "MEMORY_SAVE",
+                $"助手显式记忆新增（{item.MemoryType}/{item.MemoryKey}）", userContext.UserId,
+                "ASSISTANT_MEMORY", result: 1, null, token);
+            return Ok(new { id = item.Id.ToString() });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "MEMORY_LIMIT", ex.Message));
+        }
+    }
+
+    /// <summary>删除一条本人记忆（软删除，审计保留痕迹）。</summary>
+    [HttpDelete("memory/{memoryId:long}")]
+    public async Task<IActionResult> DeleteMemory(long memoryId, CancellationToken token)
+    {
+        var deleted = await memoryStore.DeleteMemoryAsync(userContext.UserId, memoryId, token);
+        if (deleted)
+        {
+            await auditWriter.WriteBestEffortAsync(null, $"memory:{memoryId}", "MEMORY_DELETE",
+                "助手显式记忆删除", userContext.UserId, "ASSISTANT_MEMORY", result: 1, null, token);
+            return NoContent();
+        }
+
+        return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "记忆不存在或不属于当前用户。"));
+    }
+
+    /// <summary>保存本人偏好 JSON（空 = 清空）。</summary>
+    [HttpPut("memory/preferences")]
+    public async Task<IActionResult> SavePreferences([FromBody] SavePreferencesRequest request, CancellationToken token)
+    {
+        try
+        {
+            await memoryStore.SetPreferencesAsync(userContext.UserId, request?.PreferencesJson, token);
+            await auditWriter.WriteBestEffortAsync(null, "profile", "MEMORY_PREF",
+                "助手偏好设置保存", userContext.UserId, "ASSISTANT_MEMORY", result: 1, null, token);
+            return NoContent();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", ex.Message));
         }
     }
 

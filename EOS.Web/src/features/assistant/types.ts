@@ -10,6 +10,21 @@ export interface AssistantSession {
 
 export type AssistantRole = 1 | 2 | 3 // 1=USER 2=ASSISTANT 3=SYSTEM
 
+/** 跨会话显式记忆（本人可见；业务数据只存引用，不存快照）。 */
+export interface AssistantMemory {
+  id: string
+  type: string
+  key: string
+  value: string
+  source: string
+  updatedAt: string
+}
+
+export interface AssistantMemoryList {
+  preferences: string | null
+  memories: AssistantMemory[]
+}
+
 export interface AssistantMessage {
   id: string
   sessionId: string

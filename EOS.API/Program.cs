@@ -230,6 +230,9 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ListTablesTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.DescribeTableTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ListViewsTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ListProceduresTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Memory.IAssistantMemoryStore,
+    EOS.API.Features.Assistant.Memory.AssistantMemoryStore>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetMyDigestTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistry>(sp =>
     new EOS.API.Features.Assistant.Tools.AssistantToolRegistry(
     [
@@ -244,6 +247,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DescribeTableTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListViewsTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListProceduresTool>(),
+         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetMyDigestTool>(),
      ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using EOS.API.Data;
+using EOS.API.Features.Assistant.Memory;
 using EOS.API.Features.Assistant.ModelAccess;
 using EOS.API.Features.Assistant.Tools;
 using Microsoft.Extensions.Options;
@@ -54,7 +55,8 @@ public sealed class ChatService(
     IChatModel model,
     AssistantToolRegistry toolRegistry,
     IOptions<AssistantSettings> settings,
-    ILogger<ChatService> logger)
+    ILogger<ChatService> logger,
+    IAssistantMemoryStore? memoryStore = null)
 {
     /// <summary>单轮携带的最大历史条数（含双方消息），防上下文无限增长。</summary>
     private const int MaxHistoryMessages = 40;
@@ -113,7 +115,10 @@ public sealed class ChatService(
             yield break;
         }
 
-        var messages = BuildModelMessages(history, pageContext);
+        var memoryPrefix = memoryStore is null
+            ? string.Empty
+            : await memoryStore.BuildMemoryPrefixAsync(userId, content, token);
+        var messages = BuildModelMessages(history, pageContext, memoryPrefix);
         var toolLog = new List<ToolCallSummary>();
         var drafts = new List<object>();
 
@@ -289,12 +294,19 @@ public sealed class ChatService(
         }
     }
 
-    private List<ChatMessage> BuildModelMessages(IReadOnlyList<(int Role, string Content)> history, PageContext? pageContext)
+    private List<ChatMessage> BuildModelMessages(
+        IReadOnlyList<(int Role, string Content)> history, PageContext? pageContext, string? memoryPrefix = null)
     {
         var systemPrompt = new StringBuilder(settings.Value.SystemPrompt);
         if (pageContext is not null && !pageContext.IsEmpty)
         {
             pageContext.AppendTo(systemPrompt); // 页面元数据作为「内容」注入并声明非指令（提示注入隔离）
+        }
+
+        if (!string.IsNullOrWhiteSpace(memoryPrefix))
+        {
+            systemPrompt.AppendLine();
+            systemPrompt.AppendLine(memoryPrefix); // 用户级显式记忆（标注可能过期，仅参考）
         }
 
         var messages = new List<ChatMessage>(history.Count + 1)
