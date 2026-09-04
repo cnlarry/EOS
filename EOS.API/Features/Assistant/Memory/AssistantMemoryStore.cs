@@ -32,7 +32,13 @@ public interface IAssistantMemoryStore
     Task<AssistantMemoryItem> AddMemoryAsync(
         string userId, string memoryType, string memoryKey, string memoryValue,
         long? sourceMessageId, CancellationToken token);
+    Task<AssistantMemoryItem> AddPendingAsync(
+        string userId, string memoryType, string memoryKey, string memoryValue,
+        long? sourceMessageId, int confidence, CancellationToken token);
+    Task<IReadOnlyList<AssistantMemoryItem>> ListPendingAsync(string userId, CancellationToken token);
+    Task<string> ResolvePendingAsync(string userId, long memoryId, bool confirm, CancellationToken token);
     Task<bool> DeleteMemoryAsync(string userId, long memoryId, CancellationToken token);
+    Task ForgetMeAsync(string userId, CancellationToken token);
     Task<string> BuildMemoryPrefixAsync(string userId, string? keyword, CancellationToken token);
 }
 
@@ -98,7 +104,142 @@ public sealed class AssistantMemoryStore(
         await command.ExecuteNonQueryAsync(token);
     }
 
-    public async Task<IReadOnlyList<AssistantMemoryItem>> ListMemoriesAsync(string userId, CancellationToken token)
+    public Task<IReadOnlyList<AssistantMemoryItem>> ListMemoriesAsync(string userId, CancellationToken token) =>
+        ListByStatusAsync(userId, "active", token);
+
+    public Task<AssistantMemoryItem> AddMemoryAsync(
+        string userId, string memoryType, string memoryKey, string memoryValue,
+        long? sourceMessageId, CancellationToken token) =>
+        InsertMemoryAsync(userId, memoryType, memoryKey, memoryValue, sourceMessageId,
+            source: "manual", status: "active", confidence: null, token);
+
+    public Task<AssistantMemoryItem> AddPendingAsync(
+        string userId, string memoryType, string memoryKey, string memoryValue,
+        long? sourceMessageId, int confidence, CancellationToken token) =>
+        InsertMemoryAsync(userId, memoryType, memoryKey, memoryValue, sourceMessageId,
+            source: "auto", status: "pending", confidence: Math.Clamp(confidence, 0, 100), token);
+
+    public async Task<IReadOnlyList<AssistantMemoryItem>> ListPendingAsync(string userId, CancellationToken token) =>
+        await ListByStatusAsync(userId, "pending", token);
+
+    /// <summary>
+    /// Resolve a pending candidate: confirm turns it active (archiving same-key
+    /// actives = overwrite), reject archives it. Returns confirmed/rejected/not_found.
+    /// </summary>
+    public async Task<string> ResolvePendingAsync(string userId, long memoryId, bool confirm, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        string? key = null;
+        await using (var load = new SqlCommand(
+            "SELECT MEMORY_KEY FROM dbo.ASSISTANT_MEMORY WITH (NOLOCK) WHERE ID=@Id AND USER_ID=@UserId AND STATUS=N'pending';",
+            connection, transaction))
+        {
+            load.Parameters.Add("@Id", SqlDbType.BigInt).Value = memoryId;
+            load.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+            key = await load.ExecuteScalarAsync(token) as string;
+        }
+
+        if (key is null) return "not_found";
+        if (confirm)
+        {
+            await using var archive = new SqlCommand(
+                "UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'archived', UPDATED_AT=SYSUTCDATETIME() WHERE USER_ID=@UserId AND STATUS=N'active' AND MEMORY_KEY=@Key;",
+                connection, transaction);
+            archive.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+            archive.Parameters.Add("@Key", SqlDbType.NVarChar, 200).Value = key;
+            await archive.ExecuteNonQueryAsync(token);
+            await using var activate = new SqlCommand(
+                "UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'active', UPDATED_AT=SYSUTCDATETIME(), LAST_ACCESSED_AT=SYSUTCDATETIME() WHERE ID=@Id AND USER_ID=@UserId AND STATUS=N'pending';",
+                connection, transaction);
+            activate.Parameters.Add("@Id", SqlDbType.BigInt).Value = memoryId;
+            activate.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+            await activate.ExecuteNonQueryAsync(token);
+        }
+        else
+        {
+            await using var reject = new SqlCommand(
+                "UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'archived', UPDATED_AT=SYSUTCDATETIME() WHERE ID=@Id AND USER_ID=@UserId AND STATUS=N'pending';",
+                connection, transaction);
+            reject.Parameters.Add("@Id", SqlDbType.BigInt).Value = memoryId;
+            reject.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+            await reject.ExecuteNonQueryAsync(token);
+        }
+
+        await transaction.CommitAsync(token);
+        return confirm ? "confirmed" : "rejected";
+    }
+
+    /// <summary>「忘记我」：硬删除该用户画像与全部记忆（含向量索引位，暂无向量即空操作）。</summary>
+    public async Task ForgetMeAsync(string userId, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        await using (var memories = new SqlCommand("DELETE FROM dbo.ASSISTANT_MEMORY WHERE USER_ID=@UserId;", connection, transaction))
+        {
+            memories.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+            await memories.ExecuteNonQueryAsync(token);
+        }
+
+        await using (var profile = new SqlCommand("DELETE FROM dbo.ASSISTANT_PROFILE WHERE USER_ID=@UserId;", connection, transaction))
+        {
+            profile.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+            await profile.ExecuteNonQueryAsync(token);
+        }
+
+        await transaction.CommitAsync(token);
+    }
+
+    private async Task<AssistantMemoryItem> InsertMemoryAsync(
+        string userId, string memoryType, string memoryKey, string memoryValue,
+        long? sourceMessageId, string source, string status, int? confidence, CancellationToken token)
+    {
+        var type = ValidateType(memoryType);
+        var key = ValidateKey(memoryKey);
+        var value = ValidateValue(memoryValue);
+        var redacted = LogRedactor.Redact(value);
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using (var countCommand = new SqlCommand(
+            "SELECT COUNT_BIG(1) FROM dbo.ASSISTANT_MEMORY WITH (NOLOCK) WHERE USER_ID=@UserId AND STATUS IN (N'active', N'pending');",
+            connection))
+        {
+            countCommand.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+            if (Convert.ToInt64(await countCommand.ExecuteScalarAsync(token)) >= MaxMemoriesPerUser)
+                throw new InvalidOperationException("记忆已达上限（200 条），请先删除不再需要的记忆。");
+        }
+
+        const string sql = """
+            INSERT INTO dbo.ASSISTANT_MEMORY
+                (USER_ID, MEMORY_TYPE, MEMORY_KEY, MEMORY_VALUE, SOURCE, SOURCE_MESSAGE_ID, CONFIDENCE, STATUS)
+            OUTPUT INSERTED.ID, INSERTED.MEMORY_TYPE, INSERTED.MEMORY_KEY, INSERTED.MEMORY_VALUE,
+                    INSERTED.SOURCE, INSERTED.CONFIDENCE, INSERTED.STATUS,
+                    INSERTED.UPDATED_AT, INSERTED.LAST_ACCESSED_AT
+            VALUES (@UserId, @Type, @Key, @Value, @Source, @SourceMessageId, @Confidence, @Status);
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+        command.Parameters.Add("@Type", SqlDbType.NVarChar, 20).Value = type;
+        command.Parameters.Add("@Key", SqlDbType.NVarChar, 200).Value = key;
+        command.Parameters.Add("@Value", SqlDbType.NVarChar, -1).Value = redacted;
+        command.Parameters.Add("@Source", SqlDbType.NVarChar, 20).Value = source;
+        command.Parameters.Add("@SourceMessageId", SqlDbType.BigInt).Value = (object?)sourceMessageId ?? DBNull.Value;
+        command.Parameters.Add("@Confidence", SqlDbType.TinyInt).Value = (object?)confidence ?? DBNull.Value;
+        command.Parameters.Add("@Status", SqlDbType.NVarChar, 20).Value = status;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token)) throw new InvalidOperationException("保存记忆失败。");
+        return new(
+            reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+            reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetByte(5), reader.GetString(6),
+            new DateTimeOffset(reader.GetDateTime(7), TimeSpan.Zero),
+            new DateTimeOffset(reader.GetDateTime(8), TimeSpan.Zero));
+    }
+
+    private async Task<IReadOnlyList<AssistantMemoryItem>> ListByStatusAsync(
+        string userId, string status, CancellationToken token)
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
@@ -106,11 +247,12 @@ public sealed class AssistantMemoryStore(
             SELECT TOP 200 ID, MEMORY_TYPE, MEMORY_KEY, MEMORY_VALUE, SOURCE,
                    CONFIDENCE, STATUS, UPDATED_AT, LAST_ACCESSED_AT
             FROM dbo.ASSISTANT_MEMORY WITH (NOLOCK)
-            WHERE USER_ID=@UserId AND STATUS=N'active'
+            WHERE USER_ID=@UserId AND STATUS=@Status
             ORDER BY LAST_ACCESSED_AT DESC;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+        command.Parameters.Add("@Status", SqlDbType.NVarChar, 20).Value = status;
         await using var reader = await command.ExecuteReaderAsync(token);
         var items = new List<AssistantMemoryItem>();
         while (await reader.ReadAsync(token))
@@ -124,49 +266,6 @@ public sealed class AssistantMemoryStore(
         }
 
         return items;
-    }
-
-    public async Task<AssistantMemoryItem> AddMemoryAsync(
-        string userId, string memoryType, string memoryKey, string memoryValue,
-        long? sourceMessageId, CancellationToken token)
-    {
-        var type = ValidateType(memoryType);
-        var key = ValidateKey(memoryKey);
-        var value = ValidateValue(memoryValue);
-        var redacted = LogRedactor.Redact(value);
-
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        await using (var countCommand = new SqlCommand(
-            "SELECT COUNT_BIG(1) FROM dbo.ASSISTANT_MEMORY WITH (NOLOCK) WHERE USER_ID=@UserId AND STATUS=N'active';",
-            connection))
-        {
-            countCommand.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
-            if (Convert.ToInt64(await countCommand.ExecuteScalarAsync(token)) >= MaxMemoriesPerUser)
-                throw new InvalidOperationException("记忆已达上限（200 条），请先删除不再需要的记忆。");
-        }
-
-        const string sql = """
-            INSERT INTO dbo.ASSISTANT_MEMORY
-                (USER_ID, MEMORY_TYPE, MEMORY_KEY, MEMORY_VALUE, SOURCE, SOURCE_MESSAGE_ID, STATUS)
-            OUTPUT INSERTED.ID, INSERTED.MEMORY_TYPE, INSERTED.MEMORY_KEY, INSERTED.MEMORY_VALUE,
-                    INSERTED.SOURCE, INSERTED.CONFIDENCE, INSERTED.STATUS,
-                    INSERTED.UPDATED_AT, INSERTED.LAST_ACCESSED_AT
-            VALUES (@UserId, @Type, @Key, @Value, N'manual', @SourceMessageId, N'active');
-            """;
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
-        command.Parameters.Add("@Type", SqlDbType.NVarChar, 20).Value = type;
-        command.Parameters.Add("@Key", SqlDbType.NVarChar, 200).Value = key;
-        command.Parameters.Add("@Value", SqlDbType.NVarChar, -1).Value = redacted;
-        command.Parameters.Add("@SourceMessageId", SqlDbType.BigInt).Value = (object?)sourceMessageId ?? DBNull.Value;
-        await using var reader = await command.ExecuteReaderAsync(token);
-        if (!await reader.ReadAsync(token)) throw new InvalidOperationException("保存记忆失败。");
-        return new(
-            reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
-            reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetByte(5), reader.GetString(6),
-            new DateTimeOffset(reader.GetDateTime(7), TimeSpan.Zero),
-            new DateTimeOffset(reader.GetDateTime(8), TimeSpan.Zero));
     }
 
     public async Task<bool> DeleteMemoryAsync(string userId, long memoryId, CancellationToken token)

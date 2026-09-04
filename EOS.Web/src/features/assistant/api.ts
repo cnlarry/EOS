@@ -29,6 +29,26 @@ export function deleteMemory(memoryId: string) {
   return apiClient.delete<void>(`/assistant/memory/${memoryId}`)
 }
 
+export interface PendingMemory {
+  id: string
+  type: string
+  key: string
+  value: string
+  confidence: number | null
+}
+
+export function listPendingMemory() {
+  return apiClient.get<{ memories: PendingMemory[] }>('/assistant/memory/pending')
+}
+
+export function resolvePendingMemory(memoryId: string, confirm: boolean) {
+  return apiClient.post<{ resolved: string }>(`/assistant/memory/pending/${memoryId}/resolve`, { confirm })
+}
+
+export function forgetAllMemory() {
+  return apiClient.delete<void>('/assistant/memory/all')
+}
+
 export function getKbDocument(docId: string) {
   return apiClient.get<KbDocument>(`/assistant/kb/documents/${docId}`)
 }

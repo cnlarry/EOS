@@ -28,6 +28,18 @@ public sealed class AssistantMemoryTests
             string userId, string memoryType, string memoryKey, string memoryValue,
             long? sourceMessageId, CancellationToken token) => throw new NotSupportedException();
 
+        public Task<AssistantMemoryItem> AddPendingAsync(
+            string userId, string memoryType, string memoryKey, string memoryValue,
+            long? sourceMessageId, int confidence, CancellationToken token) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<AssistantMemoryItem>> ListPendingAsync(string userId, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<AssistantMemoryItem>>([]);
+
+        public Task<string> ResolvePendingAsync(string userId, long memoryId, bool confirm, CancellationToken token) =>
+            Task.FromResult("confirmed");
+
+        public Task ForgetMeAsync(string userId, CancellationToken token) => Task.CompletedTask;
+
         public Task<bool> DeleteMemoryAsync(string userId, long memoryId, CancellationToken token) =>
             Task.FromResult(true);
 

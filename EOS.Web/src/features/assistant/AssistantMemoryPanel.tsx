@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { deleteMemory, listMemory, saveMemory } from './api'
+import { deleteMemory, forgetAllMemory, listMemory, listPendingMemory, resolvePendingMemory, saveMemory } from './api'
+import type { PendingMemory } from './api'
 import type { AssistantMemory } from './types'
 
 /** 显式记忆管理（本人可见）：查看/新增/删除。打开时延迟加载，不影响抽屉主流程。 */
@@ -11,6 +12,8 @@ export function AssistantMemoryPanel({ onAskDigest, onClose }: {
   const [error, setError] = useState<string | null>(null)
   const [preferences, setPreferences] = useState<string | null>(null)
   const [memories, setMemories] = useState<AssistantMemory[]>([])
+  const [pendings, setPendings] = useState<PendingMemory[]>([])
+  const [forgetArmed, setForgetArmed] = useState(false)
   const [memoryType, setMemoryType] = useState('fact')
   const [memoryKey, setMemoryKey] = useState('')
   const [memoryValue, setMemoryValue] = useState('')
@@ -20,9 +23,10 @@ export function AssistantMemoryPanel({ onAskDigest, onClose }: {
     setLoading(true)
     setError(null)
     try {
-      const data = await listMemory()
+      const [data, pending] = await Promise.all([listMemory(), listPendingMemory()])
       setPreferences(data.preferences)
       setMemories(data.memories)
+      setPendings(pending.memories)
     } catch {
       setError('记忆加载失败，请重试。')
     } finally {
@@ -60,6 +64,32 @@ export function AssistantMemoryPanel({ onAskDigest, onClose }: {
     }
   }, [])
 
+  const handleResolve = useCallback(async (id: string, confirm: boolean) => {
+    setError(null)
+    try {
+      await resolvePendingMemory(id, confirm)
+      setPendings(prev => prev.filter(item => item.id !== id))
+      if (confirm) await refresh()
+    } catch {
+      setError('确认记忆失败。')
+    }
+  }, [refresh])
+
+  const handleForget = useCallback(async () => {
+    if (!forgetArmed) {
+      setForgetArmed(true)
+      return
+    }
+    setError(null)
+    try {
+      await forgetAllMemory()
+      setForgetArmed(false)
+      await refresh()
+    } catch {
+      setError('清空记忆失败。')
+    }
+  }, [forgetArmed, refresh])
+
   return (
     <div className="erp-assistant-memory" aria-label="我的记忆">
       <div className="d-flex align-items-center justify-content-between mb-2">
@@ -78,6 +108,36 @@ export function AssistantMemoryPanel({ onAskDigest, onClose }: {
       )}
       {loading && <div className="text-secondary small">加载中…</div>}
       {error && <div className="erp-assistant-error" role="alert">{error}</div>}
+      {pendings.length > 0 && (
+        <div className="mb-2" aria-label="待确认记忆">
+          <div className="text-secondary small mb-1">AI 想记住这些，请确认（确认前不会生效）：</div>
+          {pendings.map(item => (
+            <div key={item.id} className="erp-assistant-memory-item">
+              <span className="badge bg-warning me-1">待确认{item.confidence ?? ''}</span>
+              <strong>{item.key}</strong>
+              <div className="text-secondary small">{item.value}</div>
+              <div className="d-flex gap-1">
+                <button className="btn btn-sm btn-primary" type="button"
+                  aria-label={`确认记住 ${item.key}`}
+                  onClick={() => void handleResolve(item.id, true)}>
+                  确认
+                </button>
+                <button className="btn btn-sm btn-ghost-secondary" type="button"
+                  aria-label={`拒绝记住 ${item.key}`}
+                  onClick={() => void handleResolve(item.id, false)}>
+                  拒绝
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mb-2">
+        <button className="btn btn-sm btn-ghost-danger" type="button"
+          onClick={() => void handleForget()}>
+          {forgetArmed ? '再次点击确认清空全部记忆' : '忘记我（清空全部记忆）'}
+        </button>
+      </div>
       {!loading && memories.length === 0 && (
         <div className="text-secondary small mb-2">暂无记忆，可把常用查询与偏好记下来。</div>
       )}
