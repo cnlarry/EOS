@@ -251,4 +251,32 @@ public sealed class DocumentWorkbenchRepository(
         logger.LogDebug("系统模块清单 total={Total} listed={Listed}", total, modules.Count);
         return new SystemModuleList(total, modules);
     }
+
+    /// <summary>Returns generic workbench modules for assistant-side permission filtering.</summary>
+    public async Task<IReadOnlyList<SystemKnowledgeModule>> ListAssistantModulesAsync(string? keyword, CancellationToken token)
+    {
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        const string sql = """
+            SELECT m.M_IDX, LTRIM(RTRIM(m.M_DESC))
+            FROM dbo.MODULES m WITH (NOLOCK)
+            WHERE NULLIF(LTRIM(RTRIM(m.M_DESC)), '') IS NOT NULL
+              AND NULLIF(LTRIM(RTRIM(m.MASTER_TABLE)), '') IS NOT NULL
+              AND LTRIM(RTRIM(ISNULL(m.M_URL, ''))) = '/workbench'
+              AND (@Keyword = '' OR m.M_DESC LIKE @LikeKeyword)
+            ORDER BY m.SORT_IDX, m.M_IDX;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        var normalizedKeyword = keyword?.Trim() ?? string.Empty;
+        command.Parameters.Add("@Keyword", SqlDbType.NVarChar, 100).Value = normalizedKeyword;
+        command.Parameters.Add("@LikeKeyword", SqlDbType.NVarChar, 202).Value = "%" + normalizedKeyword + "%";
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var modules = new List<SystemKnowledgeModule>();
+        while (await reader.ReadAsync(token))
+        {
+            modules.Add(new(reader.GetInt32(0), reader.GetString(1)));
+        }
+
+        return modules;
+    }
 }
