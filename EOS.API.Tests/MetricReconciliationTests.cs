@@ -1,8 +1,5 @@
 using EOS.API.Data;
 using EOS.API.Features.Assistant.Metrics;
-using EOS.API.Models;
-using EOS.API.Security;
-using EOS.API.Telemetry;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Data.SqlClient;
 using Xunit;
@@ -41,94 +38,57 @@ public sealed class MetricReconciliationTests
         return connectionString;
     }
 
-    private static WorkbenchDefinition Definition() => new(
-        1405, "客户订单", "COP_ORDER_M", "COP_ORDER_D",
-        MasterFields:
-        [
-            new WorkbenchField("ORDER_NO", "订单号", "nvarchar", 100, null, true),
-            new WorkbenchField("ORDER_TYPE", "单别", "nvarchar", 100, null, true),
-            new WorkbenchField("CONFIRM_TAG", "批核", "bit", 100, null, false),
-            new WorkbenchField("ORDER_DATE", "订单日期", "datetime", 100, null, false),
-            new WorkbenchField("CLIENT_ID", "客户", "nvarchar", 100, null, false),
-        ],
-        DetailFields:
-        [
-            new WorkbenchField("ORDER_NO", "订单号", "nvarchar", 100, null, true),
-            new WorkbenchField("ORDER_TYPE", "单别", "nvarchar", 100, null, true),
-            new WorkbenchField("SERIAL_NO", "项次", "int", 100, null, true),
-            new WorkbenchField("AMOUNT_TAX", "含税金额", "decimal", 100, null, false),
-            new WorkbenchField("AMOUNT", "未税金额", "decimal", 100, null, false),
-            new WorkbenchField("QTY", "数量", "decimal", 100, null, false),
-            new WorkbenchField("REBATE", "折扣", "decimal", 100, null, false),
-            new WorkbenchField("COST_AMOUNT", "成本金额", "decimal", 100, null, false),
-        ],
-        DefaultSort: null, HasAdd: true, HasEdit: true, DetailNoSave: false,
-        MasterPkOrder: ["ORDER_TYPE", "ORDER_NO"], DetailNoFields: string.Empty,
-        HasWorkflow: true, UserId: "reconciliation", ExecTag: "A");
-
-    private static WorkbenchDefinition StockDefinition() => new(
-        1408, "产品库存", "INV_PRO_DEPOT", null,
-        MasterFields:
-        [
-            new WorkbenchField("DEPOT_ID", "仓库", "nvarchar", 100, null, true),
-            new WorkbenchField("PRO_NO", "产品", "nvarchar", 100, null, true),
-            new WorkbenchField("QTY", "库存数量", "decimal", 100, null, false),
-            new WorkbenchField("IN_QTY", "入库数量", "decimal", 100, null, false),
-        ],
-        DetailFields: [], DefaultSort: null, HasAdd: true, HasEdit: true, DetailNoSave: false,
-        MasterPkOrder: ["DEPOT_ID", "PRO_NO"], DetailNoFields: string.Empty,
-        HasWorkflow: false, UserId: "reconciliation", ExecTag: "A");
-
     private static async Task<(MetricPlan Plan, MetricDefinitionRow Metric)> BuildPlanAsync(
         string connectionString, IReadOnlyList<MetricDimensionFilter> dimensions, string metricId = MetricId)
     {
-        var repository = new MetricRepository(ConnectionFactory(connectionString));
-        var probe = new SysMetricSchemaProbe(ConnectionFactory(connectionString));
+        var factory = ConnectionFactory(connectionString);
+        var repository = new MetricRepository(factory);
+        var probe = new SysMetricSchemaProbe(factory);
         var validator = new MetricDefinitionValidator(probe);
         var metric = await repository.GetAsync(metricId, CancellationToken.None)
-            ?? throw new InvalidOperationException("口径 sales_amount 不存在。");
+            ?? throw new InvalidOperationException($"口径 {metricId} 不存在。");
         if (!string.Equals(metric.ConfirmStatus, "CONFIRMED", StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException("口径 sales_amount 未确认，对账前提不成立。");
+            throw new InvalidOperationException($"口径 {metricId} 未确认，对账前提不成立。");
         }
 
         var parse = MetricExpressionParser.Parse(metric.Definition);
         Assert.True(parse.Ok, parse.Error);
-        var definition = metric.SourceTable.Equals("COP_ORDER_D", StringComparison.OrdinalIgnoreCase)
-            ? Definition()
-            : StockDefinition();
+
+        // 对账为开发者视角全列可见；EXEC_TAG=A、无 DATA_FILTER、无模块 FILTER——
+        // 对比的是口径计算本身，权限注入一致性由 ResolveMetricTool 单测覆盖。
+        var sourceColumns = await probe.GetColumnsAsync(metric.SourceTable, CancellationToken.None);
+        string? masterTable = null;
+        IReadOnlySet<string>? masterColumns = null;
+        var joinColumns = new List<string>();
+        if (!string.IsNullOrWhiteSpace(metric.RowFilter))
+        {
+            using var filterDoc = System.Text.Json.JsonDocument.Parse(metric.RowFilter);
+            if (filterDoc.RootElement.TryGetProperty("table", out var filterTable)
+                && filterTable.GetString() is { Length: > 0 } tableName
+                && !tableName.Equals(metric.SourceTable, StringComparison.OrdinalIgnoreCase))
+            {
+                masterTable = tableName;
+                masterColumns = await probe.GetColumnsAsync(tableName, CancellationToken.None);
+            }
+            if (filterDoc.RootElement.TryGetProperty("on", out var onArray)
+                && onArray.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                joinColumns.AddRange(onArray.EnumerateArray()
+                    .Select(e => e.GetString() ?? string.Empty)
+                    .Where(name => name.Length > 0));
+            }
+        }
+
         var validation = await validator.ValidateAsync(new MetricValidationInput(
-            parse.Expression!, metric.SourceTable,
-            definition.DetailFields.Select(f => f.Key).ToHashSet(StringComparer.OrdinalIgnoreCase),
-            metric.DimensionKeys, metric.RowFilter,
-            definition.MasterTable,
-            definition.MasterFields.Select(f => f.Key).ToHashSet(StringComparer.OrdinalIgnoreCase)),
-            CancellationToken.None);
+            parse.Expression!, metric.SourceTable, sourceColumns, metric.DimensionKeys,
+            metric.RowFilter, masterTable, masterColumns), CancellationToken.None);
         Assert.True(validation.Ok, validation.Error);
 
-        // 权限范围最小化（EXEC_TAG=A、无 DATA_FILTER）：对账对比的是口径本身，
-        // 范围注入一致性由单元测试与既有 scope 过滤器回归保障。
-        var permission = new ModulePermission(MinimalRights());
-        var scopeFilter = new WorkbenchScopeFilter(new ApiMetrics());
-        Assert.True(scopeFilter.TryBuildRecordScopePredicate(definition, permission.Rights.DataFilter,
-            out var scopePredicate, out var scopeValues));
-
-        var joinColumns = definition.MasterPkOrder;
         var plan = MetricPlanCompiler.Compile(parse.Expression!, metric.SourceTable,
-            validation.RowFilter, dimensions, definition.MasterTable, joinColumns,
-            scopePredicate, scopeValues);
+            validation.RowFilter, dimensions, masterTable, joinColumns, null, null);
         return (plan, metric);
     }
-
-    private static ModuleRights MinimalRights() => new(
-        CanBrowse: true, CanViewCost: false, CanViewSecrecy: false, CanSetup: false,
-        DeniedMasterFields: new HashSet<string>(), DeniedDetailFields: new HashSet<string>(),
-        CanAddNew: false, CanEdit: false, CanDelete: false, CanApprove: false, CanDeapprove: false,
-        CanEndCase: false, CanUnEndCase: false, CanFileView: false, CanFileUpda: false,
-        CanFileEdit: false, CanFileDele: false,
-        DenyNewMasterFields: new HashSet<string>(), DenyNewDetailFields: new HashSet<string>(),
-        DenyModiMasterFields: new HashSet<string>(), DenyModiDetailFields: new HashSet<string>(),
-        DataFilter: string.Empty, ExecuteTag: "A");
 
     /// <summary>人工口径 A 参考查询：明细含税金额合计，仅统计已批核主单。</summary>
     private static string ReferenceSql(string? clientEquals, string? dateRangePredicate)
@@ -234,25 +194,39 @@ public sealed class MetricReconciliationTests
             ReferenceSql(null, $"m.[ORDER_DATE] >= '{from}' AND m.[ORDER_DATE] <= '{to}'"));
         AssertEqual(expected, actual);
     }
-    public static TheoryData<string, string> ConfirmedSalesMetrics() => new()
+    private const string ApprovedJoin =
+        " JOIN dbo.[COP_ORDER_M] m ON m.[ORDER_TYPE]=d.[ORDER_TYPE] AND m.[ORDER_NO]=d.[ORDER_NO] WHERE m.[CONFIRM_TAG] = 1";
+
+    public static TheoryData<string, string> ConfirmedMetricReferences() => new()
     {
-        { "sales_amount_ex", "SUM(d.[AMOUNT])" },
-        { "sales_qty", "SUM(d.[QTY])" },
-        { "sales_discount", "SUM(d.[REBATE])" },
-        { "order_count", "COUNT(DISTINCT d.[ORDER_NO])" },
+        { "sales_amount_ex", "SELECT SUM(d.[AMOUNT]) FROM dbo.[COP_ORDER_D] d" + ApprovedJoin },
+        { "sales_qty", "SELECT SUM(d.[QTY]) FROM dbo.[COP_ORDER_D] d" + ApprovedJoin },
+        { "sales_discount", "SELECT SUM(d.[REBATE]) FROM dbo.[COP_ORDER_D] d" + ApprovedJoin },
+        { "order_count", "SELECT COUNT(DISTINCT d.[ORDER_NO]) FROM dbo.[COP_ORDER_D] d" + ApprovedJoin },
+        { "account_receivable",
+            "SELECT SUM(d.[AMOUNT_TAX]) FROM dbo.[COP_ACCOUNT_D] d" +
+            " JOIN dbo.[COP_ACCOUNT_M] m ON m.[ACCOUNT_TYPE]=d.[ACCOUNT_TYPE] AND m.[ACCOUNT_NO]=d.[ACCOUNT_NO]" +
+            " WHERE m.[CONFIRM_TAG] = 1" },
+        { "payment_amount",
+            "SELECT SUM(d.[AMOUNT]) FROM dbo.[PUR_PAY_D] d" +
+            " JOIN dbo.[PUR_PAY_M] m ON m.[PAY_TYPE]=d.[PAY_TYPE] AND m.[PAY_NO]=d.[PAY_NO]" +
+            " WHERE m.[CONFIRM_TAG] = 1" },
+        { "purchase_amount",
+            "SELECT SUM(d.[AMOUNT_TAX]) FROM dbo.[PUR_PURCHASE_D] d" +
+            " JOIN dbo.[PUR_PURCHASE_M] m ON m.[PURCHASE_TYPE]=d.[PURCHASE_TYPE] AND m.[PURCHASE_NO]=d.[PURCHASE_NO]" +
+            " WHERE m.[CONFIRM_TAG] = 1" },
+        { "employee_count", "SELECT COUNT(DISTINCT [EMP_ID]) FROM dbo.[HR_EMPLOYEE]" },
+        { "inventory_qty", "SELECT SUM([QTY]) FROM dbo.[INV_PRO_DEPOT]" },
     };
 
     [Theory]
-    [MemberData(nameof(ConfirmedSalesMetrics))]
-    public async Task Plan_Matches_Reference_For_Confirmed_Sales_Metrics(string metricId, string manualAggregate)
+    [MemberData(nameof(ConfirmedMetricReferences))]
+    public async Task Plan_Matches_Reference_For_Confirmed_Metrics(string metricId, string referenceSql)
     {
         var connectionString = RequireConnection();
         var (plan, _) = await BuildPlanAsync(connectionString, [], metricId);
         var actual = await new MetricExecutor(ConnectionFactory(connectionString)).ExecuteAsync(plan, CancellationToken.None);
-        var expected = await ExecuteScalarAsync(connectionString,
-            "SELECT " + manualAggregate + " FROM dbo.[COP_ORDER_D] d" +
-            " JOIN dbo.[COP_ORDER_M] m ON m.[ORDER_TYPE]=d.[ORDER_TYPE] AND m.[ORDER_NO]=d.[ORDER_NO]" +
-            " WHERE m.[CONFIRM_TAG] = 1;");
+        var expected = await ExecuteScalarAsync(connectionString, referenceSql + ";");
         AssertEqual(expected, actual);
     }
 
@@ -269,11 +243,10 @@ public sealed class MetricReconciliationTests
             ?? throw new InvalidOperationException("口径 inventory_turnover 不存在。");
         var parse = MetricExpressionParser.Parse(metric.Definition);
         Assert.True(parse.Ok, parse.Error);
-        var definition = StockDefinition();
+        var sourceColumns = await probe.GetColumnsAsync(metric.SourceTable, CancellationToken.None);
         var validation = await validator.ValidateAsync(new MetricValidationInput(
-            parse.Expression!, metric.SourceTable,
-            definition.MasterFields.Select(f => f.Key).ToHashSet(StringComparer.OrdinalIgnoreCase),
-            metric.DimensionKeys, metric.RowFilter, null, null), CancellationToken.None);
+            parse.Expression!, metric.SourceTable, sourceColumns, metric.DimensionKeys,
+            metric.RowFilter, null, null), CancellationToken.None);
         Assert.False(validation.Ok);
         Assert.Contains("不存在", validation.Error);
     }

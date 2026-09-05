@@ -325,9 +325,11 @@ public sealed class AssistantEvalRunnerTests
             Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("expected").GetString()));
             var required = root.GetProperty("required_sources").EnumerateArray()
                 .Select(element => element.GetString()!).ToArray();
-            Assert.True(required.Length >= 3, $"必要来源不足 3 个：{line}");
-            // 涉及金额/数量/比率的推断必须引用口径（决策 14 硬规则 2）；纯流程/状态/拒答题除外。
             var expected = root.GetProperty("expected").GetString()!;
+            // 拒答题（指标尚无定义）只要求声明 enum_metrics 查证来源，豁免多源推断的 ≥3 规则。
+            var isRefusal = expected.Contains("尚无定义", StringComparison.Ordinal);
+            Assert.True(isRefusal || required.Length >= 3, $"必要来源不足 3 个：{line}");
+            // 涉及金额/数量/比率的推断必须引用口径（决策 14 硬规则 2）；纯流程/状态/拒答题除外。
             var quantitative = new[] { "口径", "计算", "金额", "数量", "Top", "汇总", "对照", "税", "毛利",
                 "周转", "应收", "应付", "付款", "收款", "完工", "折扣", "信用", "齐套", "匹配", "配比" }
                 .Any(keyword => expected.Contains(keyword, StringComparison.Ordinal));
