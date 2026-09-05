@@ -134,8 +134,10 @@ public sealed class ChatService(
         // 并发请求在此串行化；超限直接拒绝，不再"先读后放"。
         // 预留放在全部校验与上下文组装之后、首次模型调用之前：空内容/超长/越权会话等
         // 无效请求不触碰额度，避免预留后早退路径泄漏可被反复刷取。
+        // 一次回答最多触发 MaxToolRounds+1 次独立模型调用（工具轮 ≤ MaxToolRounds + 最终轮），
+        // 预留按轮数上限放大，避免进行中请求真实成本超出 SPENT+RESERVED 判定。
         var dayStart = DateTimeOffset.UtcNow.Date;
-        var reserveMicro = settings.Value.Cost.ReserveMicroYuanPerRequest;
+        var reserveMicro = settings.Value.Cost.ReserveMicroYuanPerRequest * (AssistantToolRegistry.MaxToolRounds + 1);
         if (usageRepository is not null)
         {
             var reserved = await usageRepository.TryReserveAsync(userId, dayStart, reserveMicro,
@@ -150,6 +152,10 @@ public sealed class ChatService(
 
         var toolLog = new List<ToolCallSummary>();
         var drafts = new List<object>();
+        var totalPromptTokens = 0;
+        var totalCompletionTokens = 0;
+        var totalElapsedMs = 0;
+        var anyEstimated = false;
 
         for (int round = 0; round <= AssistantToolRegistry.MaxToolRounds; round++)
         {
@@ -239,8 +245,28 @@ public sealed class ChatService(
                     Truncate(kv.Value.Arguments.ToString(), MaxToolArgumentsLength)))
                 .ToList();
 
+            // 每轮模型调用都是独立计费请求：实际 usage 缺失时按该轮输入/输出字符保守估算
+            // （1 字 = 1 token，只多不少）并打估算标记；中间工具轮同样计入请求总额。
+            void AccumulateRoundUsage()
+            {
+                if (usage is not null)
+                {
+                    totalPromptTokens += usage.PromptTokens;
+                    totalCompletionTokens += usage.CompletionTokens;
+                    totalElapsedMs += usage.ElapsedMs;
+                }
+                else
+                {
+                    anyEstimated = true;
+                    var (prompt, completion) = EstimateUsage(EstimatePromptChars(messages), text.Length);
+                    totalPromptTokens += prompt;
+                    totalCompletionTokens += completion;
+                }
+            }
+
             if (calls.Count > 0 && !isFinalRound)
             {
+                AccumulateRoundUsage();
                 // 工具轮：assistant-with-tool-calls 与 tool 结果只存在于本轮内存上下文，
                 // 不落库；摘要随最终回复行落库供审计与前端展示。
                 messages.Add(new ChatMessage(ChatRole.Assistant, text, calls));
@@ -279,22 +305,12 @@ public sealed class ChatService(
                 yield break;
             }
 
-            // M7:供应商 usage 缺失时按服务端保守估算（1 字 = 1 token，只多不少）并打估算标记。
-            var estimated = usage is null;
-            int? promptTokens = usage?.PromptTokens;
-            int? completionTokens = usage?.CompletionTokens;
-            if (usage is null)
-            {
-                (promptTokens, completionTokens) = EstimateUsage(
-                    settings.Value.SystemPrompt.Length + history.Sum(item => item.Content.Length) + content.Length,
-                    text.Length);
-            }
-
+            AccumulateRoundUsage();
             var saved = await repository.AddAssistantMessageAsync(
                 userId, sessionId, text, model.ModelName,
-                promptTokens, completionTokens, usage?.ElapsedMs, correlationId, token, estimated);
+                totalPromptTokens, totalCompletionTokens, totalElapsedMs, correlationId, token, anyEstimated);
             await SettleAsync(userId, dayStart, reserveMicro,
-                ToMicroYuan(AssistantCost.Calculate(promptTokens ?? 0, completionTokens ?? 0, settings.Value.Cost)),
+                ToMicroYuan(AssistantCost.Calculate(totalPromptTokens, totalCompletionTokens, settings.Value.Cost)),
                 completed: true);
             if (toolLog.Count > 0)
             {
@@ -434,7 +450,14 @@ public sealed class ChatService(
 
     internal static long ToMicroYuan(double yuan) => (long)Math.Ceiling(yuan * 1_000_000.0);
 
-    /// <summary>保守估算：中日韩字符约 1 token/字，按 1 字 = 1 token 只多不少。</summary>
+    /// <summary>保守估算单轮输入：消息文本与工具参数按 1 字符 = 1 token 计，只多不少。</summary>
+    private static int EstimatePromptChars(IReadOnlyList<ChatMessage> messages) =>
+        messages.Sum(message =>
+            (message.Content?.Length ?? 0)
+            + (message.ToolCalls?.Sum(call => call.ArgumentsJson.Length) ?? 0)
+            + (message.ToolCallId?.Length ?? 0));
+
+    /// <summary>保守估算单轮用量：中日韩字符约 1 token/字，按 1 字 = 1 token 只多不少。</summary>
     internal static (int PromptTokens, int CompletionTokens) EstimateUsage(int promptChars, int completionChars) =>
         (Math.Max(1, promptChars), Math.Max(1, completionChars));
 

@@ -14,7 +14,10 @@ public sealed class AssistantCostOptions
     /// <summary>每百万 token 输出单价（元）。</summary>
     public double OutputPerMillionYuan { get; set; } = 2;
 
-    /// <summary>单次请求预留额（微元，默认 0.05 元 = 单次平均成本上限）。</summary>
+    /// <summary>
+    /// 每轮模型调用预留额（微元，默认 0.05 元/轮 = 单轮平均成本上限）。
+    /// 单请求实际预留 = 本值 ×（MaxToolRounds + 1），覆盖工具多轮调用的最坏调用次数。
+    /// </summary>
     public long ReserveMicroYuanPerRequest { get; set; } = 50_000;
 }
 
