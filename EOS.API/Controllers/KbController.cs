@@ -2,6 +2,7 @@ using EOS.API.Data;
 using EOS.API.Errors;
 using EOS.API.Features.Assistant.Kb;
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Tools;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,7 +19,8 @@ public sealed class KbController(
     IEmbeddingModel embedding,
     ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext,
-    WorkbenchAuditWriter auditWriter) : ControllerBase
+    WorkbenchAuditWriter auditWriter,
+    IWorkbenchSearchGateway gateway) : ControllerBase
 {
     private const int StewardModuleId = 2302;
     private const int OpsModuleId = 2306;
@@ -53,6 +55,15 @@ public sealed class KbController(
         if (!await CanStewardAsync(token)) return Forbid();
         if (request is null || string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.Content))
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "文档标题与内容不能为空。"));
+        // R1:入库前扫描——敏感信息直接拒入；业务引用须逐条通过权限复核，否则整篇不入可检索集合。
+        var scan = KbIngestScanner.Scan(request.Content);
+        if (scan.SensitiveKinds.Count > 0)
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "KB_SENSITIVE_BLOCKED",
+                $"文档含敏感信息（{string.Join("、", scan.SensitiveKinds)}），请删除后重试。"));
+        var refError = await VerifyReferencesAsync(userContext.UserId, scan.References, token);
+        if (refError is not null)
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "KB_REF_DENIED",
+                $"文档内业务引用复核未通过（{refError}），请删除该引用后重试。"));
         var texts = KbChunker.Split(request.Content);
         if (texts.Count == 0)
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "文档切块为空，无法入库。"));
@@ -155,6 +166,31 @@ public sealed class KbController(
 
     private async Task<bool> CanStewardAsync(CancellationToken token) =>
         (await rightsRepository.GetAsync(userContext.UserId, StewardModuleId, token)).CanSetup;
+
+    /// <summary>
+    /// R1:业务引用二次复核——逐条按既有权限门（CanBrowse + 数据范围）验证，
+    /// 任一条失败即整篇拒入。返回失败原因，null 表示全部通过。
+    /// </summary>
+    private async Task<string?> VerifyReferencesAsync(
+        string userId, IReadOnlyList<BusinessReference> references, CancellationToken token)
+    {
+        foreach (var reference in references)
+        {
+            var rights = await rightsRepository.GetAsync(userId, reference.ModuleId, token);
+            if (!rights.CanBrowse) return $"模块 #{reference.ModuleId} 无浏览权限";
+            var definition = await gateway.GetDefinitionAsync(reference.ModuleId, userId,
+                rights.ExecuteTag, rights.CanViewCost, rights.CanViewSecrecy,
+                rights.DeniedMasterFields, rights.DeniedDetailFields, token);
+            if (definition is null) return $"模块 #{reference.ModuleId} 不是可查询模块";
+            if (reference.Keys.Count != definition.MasterPkOrder.Count)
+                return $"模块 #{reference.ModuleId} 主键长度不符";
+            var rows = await gateway.GetExportRowsByKeysAsync(definition, [reference.Keys], token,
+                dataFilter: rights.DataFilter);
+            if (rows.Count == 0) return $"模块 #{reference.ModuleId} 记录不在数据范围内";
+        }
+
+        return null;
+    }
 
     private async Task<IReadOnlyList<string>> AllowedVisibilitiesAsync(CancellationToken token)
     {

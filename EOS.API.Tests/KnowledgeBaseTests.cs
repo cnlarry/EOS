@@ -59,12 +59,13 @@ public sealed class KnowledgeBaseTests
             Task.FromResult(new float[] { 1, 0, 0, 0 });
     }
 
-    private sealed class FakePermissions(bool consultant, bool ops) : IPermissionService
+    private sealed class FakePermissions(bool consultant, bool ops, IReadOnlySet<int>? deniedModules = null) : IPermissionService
     {
-        private ModulePermission Permission(bool canSetup) => new(Rights(canSetup));
+        private ModulePermission Permission(int moduleId, bool canSetup) =>
+            new(Rights(canSetup, deniedModules?.Contains(moduleId) != true));
 
-        private static ModuleRights Rights(bool canSetup) => new(
-            CanBrowse: true, CanViewCost: false, CanViewSecrecy: false, CanSetup: canSetup,
+        private static ModuleRights Rights(bool canSetup, bool canBrowse = true) => new(
+            CanBrowse: canBrowse, CanViewCost: false, CanViewSecrecy: false, CanSetup: canSetup,
             DeniedMasterFields: new HashSet<string>(), DeniedDetailFields: new HashSet<string>(),
             CanAddNew: false, CanEdit: false, CanDelete: false, CanApprove: false, CanDeapprove: false,
             CanEndCase: false, CanUnEndCase: false, CanFileView: false, CanFileUpda: false,
@@ -73,7 +74,7 @@ public sealed class KnowledgeBaseTests
             DenyModiDetailFields: new HashSet<string>(), DataFilter: string.Empty, ExecuteTag: "A");
 
         public Task<ModulePermission> GetAsync(string userId, int moduleId, CancellationToken cancellationToken) =>
-            Task.FromResult(Permission(moduleId == 2302 ? consultant : ops));
+            Task.FromResult(Permission(moduleId, moduleId == 2302 ? consultant : ops));
 
         public Task<ModulePermission> RequireAsync(string userId, int moduleId, PermissionAction action, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
@@ -106,12 +107,53 @@ public sealed class KnowledgeBaseTests
         }
     }
 
+    private sealed class RecheckGatewayStub(IReadOnlyList<Dictionary<string, object?>> rows) : IWorkbenchSearchGateway
+    {
+        public Task<IReadOnlyList<SystemKnowledgeModule>> ListAssistantModulesAsync(string? keyword, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<SystemKnowledgeModule>>([]);
+
+        public Task<int?> FindGenericModuleIdByTitleAsync(string titleKeyword, CancellationToken token) =>
+            Task.FromResult<int?>(null);
+
+        public Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag,
+            bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields,
+            IReadOnlySet<string> deniedDetailFields, CancellationToken token) =>
+            Task.FromResult<WorkbenchDefinition?>(new(
+                moduleId, "客户订单", "COP_ORDER_M", null,
+                MasterFields: [], DetailFields: [], DefaultSort: null, HasAdd: true, HasEdit: true,
+                DetailNoSave: false, MasterPkOrder: ["ORDER_TYPE", "ORDER_NO"], DetailNoFields: string.Empty,
+                HasWorkflow: false));
+
+        public Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail,
+            IReadOnlyDictionary<string, string> keys, int page, int pageSize, CancellationToken token,
+            WorkbenchQuery? query = null, string? keyword = null, string? sortField = null,
+            string? sortDirection = null, int? groupIndex = null, string? groupValue = null, string? dataFilter = null) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<Dictionary<string, object?>>> GetExportRowsByKeysAsync(
+            WorkbenchDefinition definition, IReadOnlyList<IReadOnlyList<string>> keys, CancellationToken token,
+            int? groupIndex = null, string? groupValue = null, IReadOnlyList<WorkbenchField>? exportFields = null,
+            string? dataFilter = null) => Task.FromResult(rows);
+
+        public Task<FormDefinition?> GetFormDefinitionAsync(WorkbenchDefinition definition, string userId, string mode,
+            bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields,
+            IReadOnlySet<string> deniedDetailFields, IReadOnlySet<string> deniedNewMasterFields,
+            IReadOnlySet<string> deniedNewDetailFields, IReadOnlySet<string> deniedModiMasterFields,
+            IReadOnlySet<string> deniedModiDetailFields, CancellationToken token, bool canAddNew = false,
+            bool canEdit = false, bool canDelete = false, bool canApprove = false, bool canDeapprove = false,
+            bool canEndCase = false, bool canUnEndCase = false, bool canFileView = false, bool canFileUpda = false,
+            bool canFileEdit = false, bool canFileDele = false, bool canSetup = false) =>
+            throw new NotSupportedException();
+    }
+
     [Fact]
     public async Task KbSearch_PassesVisibilityTiers_AndMarksSources()
     {
         var hits = new[] { new KbHit(9, "业务规则", "docs/07", 2, "送审后不得重复送审。", 0.1) };
         var knowledge = new FakeKnowledge(hits);
-        var tool = new KbSearchTool(knowledge, new FakeEmbedding(), new FakePermissions(consultant: true, ops: false));
+        var tool = new KbSearchTool(knowledge, new FakeEmbedding(),
+            new FakePermissions(consultant: true, ops: false),
+            new RecheckGatewayStub([new Dictionary<string, object?>()]));
 
         var result = await tool.ExecuteAsync("u1",
             JsonSerializer.SerializeToElement(new { query = "送审" }), CancellationToken.None);
@@ -123,9 +165,58 @@ public sealed class KnowledgeBaseTests
     }
 
     [Fact]
+    public async Task KbSearch_DropsFragment_WithUnbrowsableReference()
+    {
+        var hits = new[] { new KbHit(9, "业务规则", "docs/07", 2,
+            "参见 module=1405 的单据 _keys=[\"DD\",\"26080001\"]。", 0.1) };
+        var tool = new KbSearchTool(new FakeKnowledge(hits), new FakeEmbedding(),
+            new FakePermissions(false, false, deniedModules: new HashSet<int> { 1405 }),
+            new RecheckGatewayStub([new Dictionary<string, object?>()]));
+
+        var result = await tool.ExecuteAsync("u1",
+            JsonSerializer.SerializeToElement(new { query = "单据" }), CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Contains("没有相关内容", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task KbSearch_DropsFragment_WithOutOfScopeReference()
+    {
+        var hits = new[] { new KbHit(9, "业务规则", "docs/07", 2,
+            "参见 module=1405 的单据 _keys=[\"DD\",\"26080001\"]。", 0.1) };
+        var tool = new KbSearchTool(new FakeKnowledge(hits), new FakeEmbedding(),
+            new FakePermissions(false, false),
+            new RecheckGatewayStub([]));
+
+        var result = await tool.ExecuteAsync("u1",
+            JsonSerializer.SerializeToElement(new { query = "单据" }), CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Contains("没有相关内容", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task KbSearch_KeepsFragment_WithVerifiedReference()
+    {
+        var hits = new[] { new KbHit(9, "业务规则", "docs/07", 2,
+            "参见 module=1405 的单据 _keys=[\"DD\",\"26080001\"]。", 0.1) };
+        var tool = new KbSearchTool(new FakeKnowledge(hits), new FakeEmbedding(),
+            new FakePermissions(false, false),
+            new RecheckGatewayStub([new Dictionary<string, object?> { ["ORDER_NO"] = "26080001" }]));
+
+        var result = await tool.ExecuteAsync("u1",
+            JsonSerializer.SerializeToElement(new { query = "单据" }), CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Contains("[来源：业务规则#2]", result.ContentForModel);
+    }
+
+    [Fact]
     public async Task KbSearch_EmptyKnowledge_AdmitsNoContent()
     {
-        var tool = new KbSearchTool(new FakeKnowledge([]), new FakeEmbedding(), new FakePermissions(false, false));
+        var tool = new KbSearchTool(new FakeKnowledge([]), new FakeEmbedding(), new FakePermissions(false, false),
+            new RecheckGatewayStub([]));
 
         var result = await tool.ExecuteAsync("u1",
             JsonSerializer.SerializeToElement(new { query = "送审" }), CancellationToken.None);
