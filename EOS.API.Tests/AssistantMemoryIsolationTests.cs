@@ -9,7 +9,8 @@ namespace EOS.API.Tests;
 
 /// <summary>
 /// M3/M9 隔离集成测试：跨用户隔离、删除即时生效、pending 不注入、忘记我清空、
-/// 确认覆盖同名。需真库 + 迁移 043；无连接时跳过（跳过≠已验证）。
+/// 确认覆盖同名。需真库 + 迁移 043。
+/// 无连接或记忆表未就绪时测试失败而非跳过——静默跳过会让 CI 把"未验证"误读为"已验证"。
 /// </summary>
 public sealed class AssistantMemoryIsolationTests
 {
@@ -33,6 +34,17 @@ public sealed class AssistantMemoryIsolationTests
             "SELECT 1 WHERE OBJECT_ID(N'dbo.ASSISTANT_MEMORY', N'U') IS NOT NULL AND OBJECT_ID(N'dbo.ASSISTANT_PROFILE', N'U') IS NOT NULL;",
             connection);
         return await command.ExecuteScalarAsync() is not null;
+    }
+
+    private static async Task<string> RequireReadyConnectionAsync()
+    {
+        var connectionString = TestConnection()
+            ?? throw new InvalidOperationException(
+                "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        if (!await TablesReadyAsync(connectionString))
+            throw new InvalidOperationException(
+                "dbo.ASSISTANT_MEMORY / dbo.ASSISTANT_PROFILE 不存在（迁移 043 未执行）；未就绪即失败（跳过≠已验证）。");
+        return connectionString;
     }
 
     private static AssistantMemoryStore CreateStore(string connectionString)
@@ -60,9 +72,7 @@ public sealed class AssistantMemoryIsolationTests
     [Fact]
     public async Task CrossUser_IsolationHolds()
     {
-        var connectionString = TestConnection();
-        if (connectionString is null) return;
-        if (!await TablesReadyAsync(connectionString)) return;
+        var connectionString = await RequireReadyConnectionAsync();
 
         var store = CreateStore(connectionString);
         var userA = "test-iso-a-" + Guid.NewGuid().ToString("N")[..8];
@@ -86,9 +96,7 @@ public sealed class AssistantMemoryIsolationTests
     [Fact]
     public async Task Pending_StaysOutOfActive_UntilConfirmed()
     {
-        var connectionString = TestConnection();
-        if (connectionString is null) return;
-        if (!await TablesReadyAsync(connectionString)) return;
+        var connectionString = await RequireReadyConnectionAsync();
 
         var store = CreateStore(connectionString);
         var user = "test-pending-" + Guid.NewGuid().ToString("N")[..8];
@@ -115,9 +123,7 @@ public sealed class AssistantMemoryIsolationTests
     [Fact]
     public async Task Confirm_Overwrites_SameKey_AndForgetMe_ClearsAll()
     {
-        var connectionString = TestConnection();
-        if (connectionString is null) return;
-        if (!await TablesReadyAsync(connectionString)) return;
+        var connectionString = await RequireReadyConnectionAsync();
 
         var store = CreateStore(connectionString);
         var user = "test-forget-" + Guid.NewGuid().ToString("N")[..8];

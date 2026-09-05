@@ -225,6 +225,39 @@ public sealed class KnowledgeBaseTests
         Assert.Contains("没有相关内容", result.ContentForModel);
     }
 
+    [Fact]
+    public async Task FilterHits_DropsFragment_WithDeniedReferences()
+    {
+        var hits = new[]
+        {
+            new KbHit(1, "制度", null, 1, "无业务引用的通用文本。", 0.1),
+            new KbHit(2, "业务规则", null, 1, "参见 module=1405 的单据 _keys=[\"DD\",\"26080001\"]。", 0.2),
+        };
+
+        var kept = await KbReferenceVerifier.FilterHitsAsync("u1", hits,
+            (_, references, _) => Task.FromResult<string?>(references.Count > 0 ? "denied" : null),
+            CancellationToken.None);
+
+        var only = Assert.Single(kept);
+        Assert.Equal(1, only.DocId);
+    }
+
+    [Fact]
+    public async Task FilterHits_KeepsFragment_WhenReferencesPass()
+    {
+        var hits = new[]
+        {
+            new KbHit(2, "业务规则", null, 1, "参见 module=1405 的单据 _keys=[\"DD\",\"26080001\"]。", 0.2),
+            new KbHit(3, "制度", null, 2, "无业务引用的通用文本。", 0.3),
+        };
+
+        var kept = await KbReferenceVerifier.FilterHitsAsync("u1", hits,
+            (_, _, _) => Task.FromResult<string?>(null),
+            CancellationToken.None);
+
+        Assert.Equal(2, kept.Count);
+    }
+
     private static string? TestConnection() =>
         Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
 
@@ -238,12 +271,21 @@ public sealed class KnowledgeBaseTests
         return await command.ExecuteScalarAsync() is not null;
     }
 
+    private static async Task<string> RequireReadyConnectionAsync()
+    {
+        var connectionString = TestConnection()
+            ?? throw new InvalidOperationException(
+                "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        if (!await KbTablesReadyAsync(connectionString))
+            throw new InvalidOperationException(
+                "dbo.KB_DOCUMENT / dbo.KB_CHUNK 不存在（迁移 044 未执行）；未就绪即失败（跳过≠已验证）。");
+        return connectionString;
+    }
+
     [Fact]
     public async Task Repository_IngestIsIdempotent_VisibilityFilters_AndDeleteSyncs()
     {
-        var connectionString = TestConnection();
-        if (connectionString is null) return;
-        if (!await KbTablesReadyAsync(connectionString)) return; // 迁移 044 待执行时跳过
+        var connectionString = await RequireReadyConnectionAsync();
 
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>

@@ -6,7 +6,8 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// M7 原子扣减并发测试（需真库 + 迁移 045；无连接时跳过——跳过≠已验证，见验收报告）。
+/// M7 原子扣减并发测试（需真库 + 迁移 045）。
+/// 无连接或台账表未就绪时测试失败而非跳过——静默跳过会让 CI 把"未验证"误读为"已验证"。
 /// </summary>
 public sealed class AssistantUsageLedgerTests
 {
@@ -37,9 +38,12 @@ public sealed class AssistantUsageLedgerTests
     [Fact]
     public async Task ConcurrentReserves_NeverBreachCap()
     {
-        var connectionString = TestConnection();
-        if (connectionString is null) return;
-        if (!await LedgerReadyAsync(connectionString)) return;
+        var connectionString = TestConnection()
+            ?? throw new InvalidOperationException(
+                "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        if (!await LedgerReadyAsync(connectionString))
+            throw new InvalidOperationException(
+                "dbo.ASSISTANT_USAGE_DAY 不存在（迁移 045 未执行）；未就绪即失败（跳过≠已验证）。");
 
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
