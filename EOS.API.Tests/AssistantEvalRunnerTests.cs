@@ -159,6 +159,42 @@ public sealed class AssistantEvalRunnerTests
         }
     }
 
+    private sealed class RecheckGatewayStub : IWorkbenchSearchGateway
+    {
+        public Task<IReadOnlyList<SystemKnowledgeModule>> ListAssistantModulesAsync(string? keyword, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<SystemKnowledgeModule>>([]);
+
+        public Task<int?> FindGenericModuleIdByTitleAsync(string titleKeyword, CancellationToken token) =>
+            Task.FromResult<int?>(null);
+
+        public Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag,
+            bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields,
+            IReadOnlySet<string> deniedDetailFields, CancellationToken token) =>
+            Task.FromResult<WorkbenchDefinition?>(null);
+
+        public Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail,
+            IReadOnlyDictionary<string, string> keys, int page, int pageSize, CancellationToken token,
+            WorkbenchQuery? query = null, string? keyword = null, string? sortField = null,
+            string? sortDirection = null, int? groupIndex = null, string? groupValue = null, string? dataFilter = null) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<Dictionary<string, object?>>> GetExportRowsByKeysAsync(
+            WorkbenchDefinition definition, IReadOnlyList<IReadOnlyList<string>> keys, CancellationToken token,
+            int? groupIndex = null, string? groupValue = null, IReadOnlyList<WorkbenchField>? exportFields = null,
+            string? dataFilter = null) =>
+            Task.FromResult<IReadOnlyList<Dictionary<string, object?>>>([]);
+
+        public Task<FormDefinition?> GetFormDefinitionAsync(WorkbenchDefinition definition, string userId, string mode,
+            bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields,
+            IReadOnlySet<string> deniedDetailFields, IReadOnlySet<string> deniedNewMasterFields,
+            IReadOnlySet<string> deniedNewDetailFields, IReadOnlySet<string> deniedModiMasterFields,
+            IReadOnlySet<string> deniedModiDetailFields, CancellationToken token, bool canAddNew = false,
+            bool canEdit = false, bool canDelete = false, bool canApprove = false, bool canDeapprove = false,
+            bool canEndCase = false, bool canUnEndCase = false, bool canFileView = false, bool canFileUpda = false,
+            bool canFileEdit = false, bool canFileDele = false, bool canSetup = false) =>
+            throw new NotSupportedException();
+    }
+
     private sealed class PlanCatalogStub : IModulePlanCatalog
     {
         public Task<IReadOnlyList<FieldAdminTable>> ListTablesAsync(CancellationToken token) =>
@@ -233,7 +269,7 @@ public sealed class AssistantEvalRunnerTests
             ["list_views"] = new ListViewsTool(new SchemaGatewayStub(), deny),
             ["list_procedures"] = new ListProceduresTool(new SchemaGatewayStub(), deny),
             ["get_module_flow"] = new GetModuleFlowTool(searchGateway, new FlowGatewayStub(), deny),
-            ["kb_search"] = new KbSearchTool(knowledge, new FakeEmbedding(), deny),
+            ["kb_search"] = new KbSearchTool(knowledge, new FakeEmbedding(), deny, new RecheckGatewayStub()),
             ["diagnose_module"] = new DiagnoseModuleTool(new PlanCatalogStub(), deny),
             ["apply_changeset"] = new ApplyChangeSetTool(new ChangeSetService(new PlanCatalogStub(), new WriterStub()), deny),
             ["get_my_digest"] = new GetMyDigestTool(new DigestStoreStub()),
