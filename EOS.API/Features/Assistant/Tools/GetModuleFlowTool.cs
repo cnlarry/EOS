@@ -89,8 +89,27 @@ public sealed class GetModuleFlowTool(
             return ToolExecutionResult.Deny("记录不存在或不在你的数据范围内。");
         }
 
+        var confirm = await flows.GetApprovalConfirmAsync(moduleId, keyCondition, token);
+        // 上下游边按目标模块逐个复核 CanBrowse：无权限的目标边整条隐藏。
+        var visibleEdges = new List<(FlowEdge Edge, bool Outgoing)>();
+        foreach (var edge in ModuleFlowEdges.Outgoing(moduleId))
+        {
+            if ((await permissions.GetAsync(userId, edge.ToModule, token)).CanBrowse)
+            {
+                visibleEdges.Add((edge, true));
+            }
+        }
+
+        foreach (var edge in ModuleFlowEdges.Incoming(moduleId))
+        {
+            if ((await permissions.GetAsync(userId, edge.FromModule, token)).CanBrowse)
+            {
+                visibleEdges.Add((edge, false));
+            }
+        }
+
         return ToolExecutionResult.Success(
-            CompressRecord(definition, flow, keys, instance, record, userId, permission));
+            CompressRecord(definition, flow, keys, instance, record, userId, permission, confirm, visibleEdges));
     }
 
     private static IReadOnlyList<string>? ReadKeys(JsonElement arguments)
@@ -185,7 +204,9 @@ public sealed class GetModuleFlowTool(
 
     internal static string CompressRecord(
         WorkbenchDefinition definition, FlowDefinitionInfo? flow, IReadOnlyList<string> keys,
-        FlowInstanceInfo? instance, RecordStateInfo record, string userId, ModulePermission permission)
+        FlowInstanceInfo? instance, RecordStateInfo record, string userId, ModulePermission permission,
+        ApprovalConfirmInfo? confirm = null,
+        IReadOnlyList<(FlowEdge Edge, bool Outgoing)>? edges = null)
     {
         var sb = new StringBuilder($"module={definition.ModuleId}({definition.Title})");
         sb.AppendLine().Append("单据主键：").Append(string.Join("/", keys));
@@ -212,6 +233,11 @@ public sealed class GetModuleFlowTool(
 
         sb.AppendLine().Append("单据标记：").Append(record.Confirmed ? "已批核" : "未批核")
             .Append(record.Finished ? "、已结案" : "、未结案");
+        if (confirm is not null && confirm.Description.Length > 0)
+        {
+            sb.AppendLine().Append("终审确认：").Append(confirm.Description)
+                .Append("（").Append(string.IsNullOrWhiteSpace(confirm.FinishedBy) ? "完成人未留名" : confirm.FinishedBy).Append('）');
+        }
         var input = new FlowActionInput(
             permission.CanApprove, permission.CanEdit, permission.CanDelete,
             permission.CanEndCase, permission.CanUnEndCase, userId, flow is not null,
@@ -225,7 +251,22 @@ public sealed class GetModuleFlowTool(
             sb.AppendLine().Append($"- {action}：{(allowed ? "可" : "否")}（{reason}）");
         }
 
-        sb.AppendLine().Append("上下游：跨模块单据关系尚未在库内结构化登记，此处不推测。");
+        var visible = edges ?? [];
+        if (visible.Count == 0)
+        {
+            sb.AppendLine().Append("上下游：已核对的关系边中暂无本模块，不推测。");
+        }
+        else
+        {
+            sb.AppendLine().Append("上下游（仅已核对登记的边）：");
+            foreach (var (edge, outgoing) in visible)
+            {
+                sb.AppendLine().Append(outgoing
+                    ? $"- 本模块 --{edge.Action}--> #{edge.ToModule}（{edge.Note}）"
+                    : $"- #{edge.FromModule} --{edge.Action}--> 本模块（{edge.Note}）");
+            }
+        }
+
         return sb.ToString().TrimEnd();
     }
 }
