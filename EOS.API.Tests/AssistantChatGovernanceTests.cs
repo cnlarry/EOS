@@ -57,6 +57,8 @@ public sealed class AssistantChatGovernanceTests
     {
         public int Reserves { get; private set; }
         public int Settles { get; private set; }
+        public long LastReserveMicro { get; private set; }
+        public List<(long ReserveMicro, long ActualMicro, bool Completed)> SettleCalls { get; } = [];
 
         public Task<DailyUsage> GetUserDailyUsageAsync(string userId, DateTimeOffset dayStartUtc, CancellationToken token) =>
             Task.FromResult(new DailyUsage(0, 0, 0));
@@ -72,6 +74,7 @@ public sealed class AssistantChatGovernanceTests
             long userCapMicro, long globalCapMicro, CancellationToken token)
         {
             Reserves++;
+            LastReserveMicro = reserveMicro;
             return Task.FromResult(reserveOk);
         }
 
@@ -79,6 +82,7 @@ public sealed class AssistantChatGovernanceTests
             bool completed, CancellationToken token)
         {
             Settles++;
+            SettleCalls.Add((reserveMicro, actualMicro, completed));
             return Task.CompletedTask;
         }
     }
@@ -89,6 +93,7 @@ public sealed class AssistantChatGovernanceTests
 
         public Mode Current { get; set; } = Mode.Text;
         public int Calls { get; private set; }
+        public bool EmitUsage { get; set; }
         public string ModelName => "fake-model";
         public bool IsConfigured => true;
 
@@ -108,10 +113,15 @@ public sealed class AssistantChatGovernanceTests
                 case Mode.UnknownToolThenText when Calls % 2 == 1:
                     yield return new ChatDelta(null, null,
                         [new ProposedToolCallFragment(0, "c1", "nope_tool", "{}")]);
-                    yield break;
+                    break;
                 default:
                     yield return new ChatDelta("好的。", null);
                     break;
+            }
+
+            if (EmitUsage)
+            {
+                yield return new ChatDelta(null, new ChatUsage(10, 5, 123));
             }
         }
     }
@@ -235,5 +245,33 @@ public sealed class AssistantChatGovernanceTests
         Assert.Contains(events, evt => evt is ChatStreamEvent.Completed);
         Assert.Equal(1, usage.Reserves);
         Assert.Equal(1, usage.Settles);
+        // 单请求最多 MaxToolRounds+1 次模型调用：预留 = 每轮 0.05 元 × 5。
+        Assert.Equal(50_000L * (AssistantToolRegistry.MaxToolRounds + 1), usage.LastReserveMicro);
+    }
+
+    [Fact]
+    public async Task MultiRound_SettlesCumulativeUsage_NotJustFinalRound()
+    {
+        var model = new ScriptedModel
+        {
+            Current = ScriptedModel.Mode.UnknownToolThenText,
+            EmitUsage = true,
+        };
+        var usage = new FakeUsage(reserveOk: true);
+        var service = CreateService(new FakeRepo(), model, usage,
+            new FailureBreaker(() => DateTimeOffset.UtcNow, maxFailures: 1, cooldownSeconds: 60));
+
+        var events = await CollectAsync(service, "你好");
+
+        Assert.Contains(events, evt => evt is ChatStreamEvent.Completed);
+        Assert.Equal(2, model.Calls); // 工具轮 + 最终文本轮
+        var settle = Assert.Single(usage.SettleCalls);
+        Assert.True(settle.Completed);
+        // 每轮 usage 固定 10 prompt + 5 completion：两轮累计后结算，而非只按末轮。
+        var options = new AssistantCostOptions();
+        var cumulative = ChatService.ToMicroYuan(AssistantCost.Calculate(20, 10, options));
+        var finalRoundOnly = ChatService.ToMicroYuan(AssistantCost.Calculate(10, 5, options));
+        Assert.Equal(cumulative, settle.ActualMicro);
+        Assert.True(settle.ActualMicro > finalRoundOnly);
     }
 }
