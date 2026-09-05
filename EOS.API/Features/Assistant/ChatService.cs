@@ -70,6 +70,15 @@ public sealed class ChatService(
     /// <summary>工具参数 JSON 最大长度（模型输出的 arguments 防失控）。</summary>
     private const int MaxToolArgumentsLength = 2000;
 
+    /// <summary>
+    /// 量化指标必须走系统口径计算（enum_metrics 查定义 → resolve_metric 取数），
+    /// 无对应口径时如实说明，禁止模型自行拼公式或心算。
+    /// </summary>
+    private const string MetricUsageRule =
+        "回答涉及金额、数量、比率等量化指标时，必须先通过 enum_metrics 查看系统口径，"
+        + "再用 resolve_metric 按口径计算，并在回答中标注所用口径名与数值；"
+        + "若系统内没有对应口径，如实说明「该指标在系统内尚无定义」，禁止自行拼公式估算或心算。";
+
     public async IAsyncEnumerable<ChatStreamEvent> StreamReplyAsync(
         string userId,
         long sessionId,
@@ -374,6 +383,10 @@ public sealed class ChatService(
         IReadOnlyList<(int Role, string Content)> history, PageContext? pageContext, string? memoryPrefix = null)
     {
         var systemPrompt = new StringBuilder(settings.Value.SystemPrompt);
+        systemPrompt.AppendLine();
+        // 涉及量化指标必须走系统口径：先查 enum_metrics 再用 resolve_metric 取数，
+        // 无口径时如实说明，禁止模型自行拼表达式或心算。
+        systemPrompt.Append(MetricUsageRule);
         if (pageContext is not null && !pageContext.IsEmpty)
         {
             pageContext.AppendTo(systemPrompt); // 页面元数据作为「内容」注入并声明非指令（提示注入隔离）
