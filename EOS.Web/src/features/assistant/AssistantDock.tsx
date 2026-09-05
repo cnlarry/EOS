@@ -11,7 +11,7 @@ import {
 } from '@tabler/icons-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { createSession, deleteSession, listMessages, listSessions } from './api'
+import { createSession, deleteSession, listMessages, listSessions, saveMemory } from './api'
 import { AssistantMemoryPanel } from './AssistantMemoryPanel'
 import { KbDocDialog, KbSourceText } from './KbSource'
 import { extractPageContext } from './pageContext'
@@ -67,6 +67,7 @@ export function AssistantDock() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
   const [openDocId, setOpenDocId] = useState<string | null>(null)
+  const [remembered, setRemembered] = useState<ReadonlySet<string>>(new Set())
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fabDragRef = useRef<{ startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
@@ -245,6 +246,26 @@ export function AssistantDock() {
     navigate(workbenchNew(draft.moduleId))
   }, [navigate])
 
+  const handleAskDigest = useCallback(() => {
+    setInput('请总结我的偏好和记住的事项')
+    inputRef.current?.focus()
+  }, [])
+
+  const handleRememberBubble = useCallback(async (bubble: Bubble) => {
+    const text = bubble.text.trim()
+    if (!text || remembered.has(bubble.key)) return
+    try {
+      await saveMemory({
+        memoryType: 'fact',
+        memoryKey: text.slice(0, 20),
+        memoryValue: text.slice(0, 2000),
+      })
+      setRemembered(prev => new Set(prev).add(bubble.key))
+    } catch {
+      setErrorText('记住失败，请重试。')
+    }
+  }, [remembered])
+
   const handleDeleteSession = useCallback(async () => {
     setMenuOpen(false)
     if (!sessionId) return
@@ -339,10 +360,7 @@ export function AssistantDock() {
           {memoryOpen && (
             <AssistantMemoryPanel
               onClose={() => setMemoryOpen(false)}
-              onAskDigest={() => {
-                setInput('请总结我的偏好和记住的事项')
-                inputRef.current?.focus()
-              }}
+              onAskDigest={handleAskDigest}
             />
           )}
 
@@ -351,6 +369,9 @@ export function AssistantDock() {
               <div className="erp-assistant-empty">
                 我是 EOS 工作助手，有什么可以帮你？
                 <span className="text-secondary d-block mt-1">当前为对话骨架版，业务数据感知将在后续版本接入。</span>
+                <button className="btn btn-sm btn-ghost-secondary mt-2" type="button" onClick={handleAskDigest}>
+                  查看今日摘要
+                </button>
               </div>
             )}
             {bubbles.map(bubble => (
@@ -358,6 +379,15 @@ export function AssistantDock() {
                 {bubble.role === 2 && bubble.text
                   ? <KbSourceText text={bubble.text} onOpen={setOpenDocId} />
                   : (bubble.text || (bubble.streaming ? '' : '(空回复)'))}
+                {bubble.role === 1 && bubble.text && !bubble.streaming && (
+                  <button className="btn btn-sm btn-ghost-secondary mt-1" type="button"
+                    title="把这句话记下来（仅本人可见）"
+                    aria-label={`记住这条消息：${bubble.text.slice(0, 12)}`}
+                    disabled={remembered.has(bubble.key)}
+                    onClick={() => void handleRememberBubble(bubble)}>
+                    {remembered.has(bubble.key) ? '已记住 ✓' : '记住'}
+                  </button>
+                )}
                 {bubble.streaming && <span className="erp-assistant-cursor" aria-hidden="true">▍</span>}
                 {!bubble.streaming && bubble.tools && bubble.tools.length > 0 && (
                   <div className="erp-assistant-tool-chips">

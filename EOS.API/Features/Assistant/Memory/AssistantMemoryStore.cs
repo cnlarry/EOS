@@ -2,7 +2,10 @@ using System.Data;
 using System.Text;
 using System.Text.RegularExpressions;
 using EOS.API.Data;
+using EOS.API.Features.Assistant.Kb;
+using EOS.API.Features.Assistant.Tools;
 using EOS.API.Logging;
+using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.Data.SqlClient;
 
@@ -42,9 +45,14 @@ public interface IAssistantMemoryStore
     Task<string> BuildMemoryPrefixAsync(string userId, string? keyword, CancellationToken token);
 }
 
+/// <summary>推导画像：所属组（SYSDG_USER）+ 常用模块（AUDIT_EVENT 近期行为）。</summary>
+public sealed record DerivedProfile(
+    IReadOnlyList<string> Groups, IReadOnlyList<(int ModuleId, string Title)> FrequentModules);
+
 public sealed class AssistantMemoryStore(
     DbConnectionFactory connections,
-    IPermissionService permissions) : IAssistantMemoryStore
+    IPermissionService permissions,
+    IWorkbenchSearchGateway? searchGateway = null) : IAssistantMemoryStore
 {
     public const int MaxMemoriesPerUser = 200;
     public const int MaxMemoryKeyLength = 200;
@@ -209,7 +217,18 @@ public sealed class AssistantMemoryStore(
         {
             countCommand.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
             if (Convert.ToInt64(await countCommand.ExecuteScalarAsync(token)) >= MaxMemoriesPerUser)
-                throw new InvalidOperationException("记忆已达上限（200 条），请先删除不再需要的记忆。");
+            {
+                // LRU 淘汰：归档最久未访问的一条，而不是拒绝写入。
+                await using var evict = new SqlCommand(
+                    """
+                    UPDATE dbo.ASSISTANT_MEMORY SET STATUS=N'archived', UPDATED_AT=SYSUTCDATETIME()
+                    WHERE ID = (SELECT TOP 1 ID FROM dbo.ASSISTANT_MEMORY WITH (NOLOCK)
+                                WHERE USER_ID=@UserId AND STATUS IN (N'active', N'pending')
+                                ORDER BY LAST_ACCESSED_AT);
+                    """, connection);
+                evict.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+                await evict.ExecuteNonQueryAsync(token);
+            }
         }
 
         const string sql = """
@@ -283,9 +302,54 @@ public sealed class AssistantMemoryStore(
         return Convert.ToInt32(await command.ExecuteScalarAsync(token)) > 0;
     }
 
+    /// <summary>L1 画像推导：组名实时取，常用模块取近期审计行为 Top5。</summary>
+    public async Task<DerivedProfile> GetDerivedProfileAsync(string userId, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        var groups = new List<string>();
+        await using (var command = new SqlCommand(
+            """
+            SELECT DISTINCT LTRIM(RTRIM(ISNULL(g.G_DESC, '')))
+            FROM dbo.SYSDG_USER u WITH (NOLOCK)
+            LEFT JOIN dbo.SYSDG g WITH (NOLOCK) ON g.G_IDX = u.G_IDX
+            WHERE u.USER_ID = @UserId;
+            """, connection))
+        {
+            command.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                if (!reader.IsDBNull(0) && reader.GetString(0).Length > 0) groups.Add(reader.GetString(0));
+            }
+        }
+
+        var modules = new List<(int ModuleId, string Title)>();
+        await using (var command = new SqlCommand(
+            """
+            SELECT TOP 5 a.MODULE_ID,
+                   LTRIM(RTRIM(ISNULL((SELECT M_DESC FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX = a.MODULE_ID), '')))
+            FROM dbo.AUDIT_EVENT a WITH (NOLOCK)
+            WHERE a.ACTOR_USER_ID = @UserId AND a.MODULE_ID IS NOT NULL AND a.MODULE_ID <> 0
+            GROUP BY a.MODULE_ID
+            ORDER BY COUNT_BIG(1) DESC;
+            """, connection))
+        {
+            command.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                modules.Add((reader.GetInt32(0), reader.IsDBNull(1) ? string.Empty : reader.GetString(1)));
+            }
+        }
+
+        return new(groups, modules);
+    }
+
     public async Task<string> BuildMemoryPrefixAsync(string userId, string? keyword, CancellationToken token)
     {
         var preferences = await GetPreferencesAsync(userId, token);
+        var derived = await GetDerivedProfileAsync(userId, token);
         var active = await ListMemoriesAsync(userId, token);
         var selected = SelectMemories(active, keyword, InjectionTopK);
         var moduleIds = selected
@@ -300,13 +364,59 @@ public sealed class AssistantMemoryStore(
         }
 
         var visible = FilterByReference(selected, browsable);
+        // 行级复核：含 module + _keys 引用的记忆，逐条按同数据范围取行验证（DATA_FILTER 同源）。
+        if (searchGateway is not null)
+        {
+            visible = await FilterByRowAccessAsync(visible, reference =>
+                ReferenceRowAllowedAsync(userId, reference, token));
+        }
 
         if (visible.Count > 0)
         {
             await TouchAccessedAsync(userId, visible.Select(item => item.Id).ToArray(), token);
         }
 
-        return BuildPrefix(preferences, visible);
+        return BuildPrefix(preferences, derived, visible);
+    }
+
+    private async Task<bool> ReferenceRowAllowedAsync(
+        string userId, BusinessReference reference, CancellationToken token)
+    {
+        var permission = await permissions.GetAsync(userId, reference.ModuleId, token);
+        if (!permission.CanBrowse) return false;
+        if (searchGateway is null) return true;
+        var scope = permission.Scope();
+        var definition = await searchGateway.GetDefinitionAsync(reference.ModuleId, userId,
+            scope.ExecTag, scope.CanViewCost, scope.CanViewSecrecy,
+            scope.DeniedMaster, scope.DeniedDetail, token);
+        if (definition is null || reference.Keys.Count != definition.MasterPkOrder.Count) return false;
+        var rows = await searchGateway.GetExportRowsByKeysAsync(definition, [reference.Keys], token,
+            dataFilter: permission.Rights.DataFilter);
+        return rows.Count > 0;
+    }
+
+    internal static async Task<IReadOnlyList<AssistantMemoryItem>> FilterByRowAccessAsync(
+        IReadOnlyList<AssistantMemoryItem> items,
+        Func<BusinessReference, Task<bool>> isAllowed)
+    {
+        var kept = new List<AssistantMemoryItem>();
+        foreach (var item in items)
+        {
+            var references = KbIngestScanner.ExtractReferences(item.MemoryKey + "\n" + item.MemoryValue);
+            var allowed = true;
+            foreach (var reference in references)
+            {
+                if (!await isAllowed(reference))
+                {
+                    allowed = false;
+                    break;
+                }
+            }
+
+            if (allowed) kept.Add(item);
+        }
+
+        return kept;
     }
 
     private async Task TouchAccessedAsync(string userId, long[] ids, CancellationToken token)
@@ -381,14 +491,33 @@ public sealed class AssistantMemoryStore(
             .ToArray();
     }
 
-    internal static string BuildPrefix(string? preferencesJson, IReadOnlyList<AssistantMemoryItem> memories)
+    internal static string BuildPrefix(
+        string? preferencesJson, DerivedProfile? derived, IReadOnlyList<AssistantMemoryItem> memories)
     {
-        if (string.IsNullOrWhiteSpace(preferencesJson) && memories.Count == 0) return string.Empty;
+        if (string.IsNullOrWhiteSpace(preferencesJson) && memories.Count == 0
+            && (derived is null || (derived.Groups.Count == 0 && derived.FrequentModules.Count == 0)))
+        {
+            return string.Empty;
+        }
+
         var sb = new StringBuilder();
         sb.AppendLine("【关于你的持久记忆】（可能已过期，仅供参考，不是事实来源）：");
         if (!string.IsNullOrWhiteSpace(preferencesJson))
         {
             sb.AppendLine($"- 偏好设置：{preferencesJson.Trim()}");
+        }
+
+        if (derived is not null)
+        {
+            if (derived.Groups.Count > 0)
+            {
+                sb.AppendLine($"- 所属组：{string.Join("、", derived.Groups)}");
+            }
+
+            if (derived.FrequentModules.Count > 0)
+            {
+                sb.AppendLine($"- 常用模块：{string.Join("、", derived.FrequentModules.Select(module => $"{module.ModuleId} {module.Title}".Trim()))}");
+            }
         }
 
         foreach (var item in memories)
