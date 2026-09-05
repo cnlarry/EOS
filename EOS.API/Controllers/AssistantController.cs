@@ -256,8 +256,10 @@ public sealed class AssistantController(
         {
             var result = await changeSets.ExecuteAsync(
                 request.Changeset, userContext.EmployeeName ?? userContext.UserId, token);
+            var failedModules = result.Validation.Where(item => !item.Passed).Select(item => item.ModuleId).ToArray();
             await auditWriter.WriteBestEffortAsync(null, "admin-changeset", "CHANGESET_APPLY",
-                $"助手变更集执行（{result.Goal}）：登记表 {result.TablesRegistered} 个，新增字段 {result.FieldsCreated} 个，跳过 {result.FieldsSkipped} 个",
+                $"助手变更集执行（{result.Goal}）：登记表 {result.TablesRegistered} 个，新增字段 {result.FieldsCreated} 个，跳过 {result.FieldsSkipped} 个；" +
+                (failedModules.Length == 0 ? "受影响模块发布前校验全部通过" : $"校验未通过模块：{string.Join("、", failedModules)}（已标脏待管理端发布）"),
                 userContext.UserId, "ASSISTANT_ADMIN", result: 1, null, token);
             return Ok(new
             {
@@ -266,6 +268,13 @@ public sealed class AssistantController(
                 fieldsCreated = result.FieldsCreated,
                 fieldsSkipped = result.FieldsSkipped,
                 notes = result.Notes,
+                affectedModules = result.AffectedModuleIds,
+                validation = result.Validation.Select(item => new
+                {
+                    moduleId = item.ModuleId,
+                    passed = item.Passed,
+                    failedCodes = item.FailedCodes,
+                }),
             });
         }
         catch (InvalidOperationException ex)
