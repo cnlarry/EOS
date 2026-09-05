@@ -1,7 +1,10 @@
+using System.Data;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using EOS.API.Data;
 using EOS.API.Features.Assistant.Tools;
 using EOS.API.Models;
+using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Features.Assistant.Admin;
 
@@ -16,9 +19,13 @@ public sealed record ChangeSetTrial(
     string Goal, bool Blocked,
     IReadOnlyList<ChangeSetTableResult> Tables, IReadOnlyList<string> Errors);
 
+public sealed record ModuleValidationOutcome(
+    int ModuleId, bool Passed, IReadOnlyList<string> FailedCodes);
+
 public sealed record ChangeSetApplyResult(
     string Goal, int TablesRegistered, int FieldsCreated, int FieldsSkipped,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<string> Notes, IReadOnlyList<int> AffectedModuleIds,
+    IReadOnlyList<ModuleValidationOutcome> Validation);
 
 public interface IChangeSetWriter
 {
@@ -27,7 +34,9 @@ public interface IChangeSetWriter
         string tableId, IReadOnlyList<string> fieldIds, string updatedBy, CancellationToken token);
 }
 
-public sealed class ChangeSetService(IModulePlanCatalog catalog, IChangeSetWriter writer)
+public sealed class ChangeSetService(
+    IModulePlanCatalog catalog, IChangeSetWriter writer,
+    DbConnectionFactory? connections = null, WorkbenchDefinitionValidator? validator = null)
 {
     private static readonly Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.Compiled);
 
@@ -109,7 +118,61 @@ public sealed class ChangeSetService(IModulePlanCatalog catalog, IChangeSetWrite
             index++;
         }
 
-        return new(trial.Goal, tablesRegistered, fieldsCreated, fieldsSkipped, notes);
+        // M8:执行后自动触发受影响模块的发布前校验（dry-run，不自动发布——发布仍走管理端评审；
+        // 脏模块运行时走实时元数据构建，无过期快照风险）。校验结果随响应返回。
+        var affectedTables = changeset.GetProperty("tables").EnumerateArray()
+            .Where(element => element.ValueKind == JsonValueKind.Object
+                && element.TryGetProperty("table", out var tableEl)
+                && tableEl.ValueKind == JsonValueKind.String)
+            .Select(element => element.GetProperty("table").GetString()!.Trim())
+            .Where(table => table.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var affectedModules = await ResolveModulesAsync(affectedTables, token);
+        var validation = new List<ModuleValidationOutcome>();
+        if (validator is not null)
+        {
+            foreach (var moduleId in affectedModules)
+            {
+                var report = await validator.ValidateAsync(moduleId, updatedBy, token);
+                validation.Add(new(moduleId, report.Passed,
+                    report.Checks.Where(check => !check.Passed).Select(check => check.Code).ToArray()));
+                notes.Add(report.Passed
+                    ? $"模块 {moduleId} 发布前校验通过"
+                    : $"模块 {moduleId} 发布前校验未通过（{string.Join("、", validation[^1].FailedCodes)}），已标脏待管理端处理");
+            }
+        }
+
+        return new(trial.Goal, tablesRegistered, fieldsCreated, fieldsSkipped, notes,
+            affectedModules, validation);
+    }
+
+    /// <summary>表→模块：与 WorkbenchDirtyMarker 同源（MASTER/DETAIL_TABLE）。无连接时返回空。</summary>
+    private async Task<IReadOnlyList<int>> ResolveModulesAsync(IReadOnlyList<string> tables, CancellationToken token)
+    {
+        if (connections is null || tables.Count == 0) return [];
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        var names = string.Join(",", tables.Select((_, index) => $"@T{index}"));
+        await using var command = new SqlCommand(
+            $"""
+            SELECT DISTINCT m.M_IDX FROM dbo.MODULES m WITH (NOLOCK)
+            WHERE LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))) IN ({names})
+               OR LTRIM(RTRIM(ISNULL(m.DETAIL_TABLE,''))) IN ({names});
+            """, connection);
+        for (var index = 0; index < tables.Count; index++)
+        {
+            command.Parameters.Add($"@T{index}", SqlDbType.NVarChar, 100).Value = tables[index];
+        }
+
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var modules = new List<int>();
+        while (await reader.ReadAsync(token))
+        {
+            modules.Add(reader.GetInt32(0));
+        }
+
+        return modules;
     }
 
     private async Task<ChangeSetTableResult> TrialTableAsync(

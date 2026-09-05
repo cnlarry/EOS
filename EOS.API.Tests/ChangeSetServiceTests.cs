@@ -108,6 +108,22 @@ public sealed class ChangeSetServiceTests
     }
 
     [Fact]
+    public async Task Execute_WithoutValidator_SkipsPostValidation()
+    {
+        var service = new ChangeSetService(new FakeCatalog(), new FakeWriter());
+
+        var result = await service.ExecuteAsync(Changeset("""
+            {"version":1,"goal":"加一页","tables":[
+              {"table":"COP_VISIT_M","action":"register_table","description":"回访单"}
+            ]}
+            """), "tester", CancellationToken.None);
+
+        Assert.Equal(1, result.TablesRegistered);
+        Assert.Empty(result.AffectedModuleIds);
+        Assert.Empty(result.Validation);
+    }
+
+    [Fact]
     public async Task Execute_WritesInOrder_AfterPassingTrial()
     {
         var writer = new FakeWriter();
