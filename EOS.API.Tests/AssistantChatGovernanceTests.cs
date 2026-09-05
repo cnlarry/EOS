@@ -1,6 +1,7 @@
 using EOS.API.Data;
 using EOS.API.Features.Assistant;
 using EOS.API.Features.Assistant.Governance;
+using EOS.API.Features.Assistant.Memory;
 using EOS.API.Features.Assistant.ModelAccess;
 using EOS.API.Features.Assistant.Tools;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -55,6 +56,7 @@ public sealed class AssistantChatGovernanceTests
 
     private sealed class FakeUsage(bool reserveOk) : IAssistantUsageRepository
     {
+        public int FailFromReserve { get; init; } = int.MaxValue;
         public int Reserves { get; private set; }
         public int Settles { get; private set; }
         public long LastReserveMicro { get; private set; }
@@ -75,6 +77,7 @@ public sealed class AssistantChatGovernanceTests
         {
             Reserves++;
             LastReserveMicro = reserveMicro;
+            if (Reserves >= FailFromReserve) return Task.FromResult(false);
             return Task.FromResult(reserveOk);
         }
 
@@ -85,6 +88,45 @@ public sealed class AssistantChatGovernanceTests
             SettleCalls.Add((reserveMicro, actualMicro, completed));
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class FakeMemoryStore : IAssistantMemoryStore
+    {
+        public int Pendings { get; private set; }
+
+        public Task<string?> GetPreferencesAsync(string userId, CancellationToken token) =>
+            Task.FromResult<string?>(null);
+
+        public Task SetPreferencesAsync(string userId, string? preferencesJson, CancellationToken token) =>
+            Task.CompletedTask;
+
+        public Task<IReadOnlyList<AssistantMemoryItem>> ListMemoriesAsync(string userId, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<AssistantMemoryItem>>([]);
+
+        public Task<AssistantMemoryItem> AddMemoryAsync(string userId, string memoryType, string memoryKey,
+            string memoryValue, long? sourceMessageId, CancellationToken token) => throw new NotSupportedException();
+
+        public Task<AssistantMemoryItem> AddPendingAsync(string userId, string memoryType, string memoryKey,
+            string memoryValue, long? sourceMessageId, int confidence, CancellationToken token)
+        {
+            Pendings++;
+            return Task.FromResult(new AssistantMemoryItem(1, memoryType, memoryKey, memoryValue,
+                "auto", confidence, "pending", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+        }
+
+        public Task<IReadOnlyList<AssistantMemoryItem>> ListPendingAsync(string userId, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<AssistantMemoryItem>>([]);
+
+        public Task<string> ResolvePendingAsync(string userId, long memoryId, bool confirm, CancellationToken token) =>
+            Task.FromResult("confirmed");
+
+        public Task<bool> DeleteMemoryAsync(string userId, long memoryId, CancellationToken token) =>
+            Task.FromResult(true);
+
+        public Task ForgetMeAsync(string userId, CancellationToken token) => Task.CompletedTask;
+
+        public Task<string> BuildMemoryPrefixAsync(string userId, string? keyword, CancellationToken token) =>
+            Task.FromResult(string.Empty);
     }
 
     private sealed class ScriptedModel : IChatModel
@@ -127,10 +169,11 @@ public sealed class AssistantChatGovernanceTests
     }
 
     private static ChatService CreateService(
-        FakeRepo repo, ScriptedModel model, FakeUsage usage, FailureBreaker breaker) =>
+        FakeRepo repo, ScriptedModel model, FakeUsage usage, FailureBreaker breaker,
+        IAssistantMemoryStore? memoryStore = null) =>
         new(repo, model, new AssistantToolRegistry([]),
             Options.Create(new AssistantSettings { SystemPrompt = "SYS" }),
-            NullLogger<ChatService>.Instance, null, usage, breaker);
+            NullLogger<ChatService>.Instance, memoryStore, usage, breaker);
 
     private static async Task<IReadOnlyList<ChatStreamEvent>> ChatAsync(ChatService service, int rounds = 1)
     {
@@ -273,5 +316,45 @@ public sealed class AssistantChatGovernanceTests
         var finalRoundOnly = ChatService.ToMicroYuan(AssistantCost.Calculate(10, 5, options));
         Assert.Equal(cumulative, settle.ActualMicro);
         Assert.True(settle.ActualMicro > finalRoundOnly);
+    }
+
+    [Fact]
+    public async Task Distill_SettlesUsage_AfterCompletedReply()
+    {
+        var model = new ScriptedModel { EmitUsage = true };
+        var usage = new FakeUsage(reserveOk: true);
+        var service = CreateService(new FakeRepo(), model, usage,
+            new FailureBreaker(() => DateTimeOffset.UtcNow, maxFailures: 1, cooldownSeconds: 60),
+            new FakeMemoryStore());
+
+        var events = await CollectAsync(service, "你好");
+
+        Assert.Contains(events, evt => evt is ChatStreamEvent.Completed);
+        Assert.Equal(2, model.Calls); // 对话 1 次 + 会话结束提炼 1 次
+        Assert.Equal(2, usage.Reserves);
+        Assert.True(usage.SettleCalls[0].Completed);
+        var distillSettle = usage.SettleCalls[1];
+        Assert.False(distillSettle.Completed); // 提炼不计入对话请求数
+        Assert.Equal(50_000, distillSettle.ReserveMicro); // 提炼按单轮预留，不按整请求放大
+        var expected = ChatService.ToMicroYuan(AssistantCost.Calculate(10, 5, new AssistantCostOptions()));
+        Assert.Equal(expected, distillSettle.ActualMicro);
+    }
+
+    [Fact]
+    public async Task Distill_SkipsWhenDailyCapReached_AfterReplyCompletes()
+    {
+        var model = new ScriptedModel { EmitUsage = true };
+        var usage = new FakeUsage(reserveOk: true) { FailFromReserve = 2 };
+        var service = CreateService(new FakeRepo(), model, usage,
+            new FailureBreaker(() => DateTimeOffset.UtcNow, maxFailures: 1, cooldownSeconds: 60),
+            new FakeMemoryStore());
+
+        var events = await CollectAsync(service, "你好");
+
+        Assert.Contains(events, evt => evt is ChatStreamEvent.Completed);
+        Assert.Equal(1, model.Calls); // 提炼预留失败 → 不调用模型
+        Assert.Equal(2, usage.Reserves); // 对话预留成功 + 提炼尝试预留失败
+        var settle = Assert.Single(usage.SettleCalls);
+        Assert.True(settle.Completed);
     }
 }

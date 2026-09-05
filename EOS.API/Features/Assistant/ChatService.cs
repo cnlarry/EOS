@@ -324,7 +324,7 @@ public sealed class ChatService(
                 toolLog.Count > 0 ? [.. toolLog] : null,
                 drafts.Count > 0 ? [.. drafts] : null);
             // M9: done 之后异步提炼候选记忆（pending，待用户确认；失败静默，不阻塞对话流）。
-            await DistillSessionBestEffortAsync(userId, saved.Id, history, text, token);
+            await DistillSessionBestEffortAsync(userId, saved.Id, history, text, dayStart, token);
             yield break;
         }
     }
@@ -408,27 +408,56 @@ public sealed class ChatService(
 
     private async Task DistillSessionBestEffortAsync(
         string userId, long messageId, IReadOnlyList<(int Role, string Content)> history,
-        string finalText, CancellationToken token)
+        string finalText, DateTimeOffset dayStart, CancellationToken token)
     {
         if (memoryStore is null || !settings.Value.EnableAutoDistill) return;
+        var exchanges = history
+            .Where(item => item.Role is 1 or 2 && !string.IsNullOrWhiteSpace(item.Content))
+            .Select(item => (Role: item.Role == 1 ? "user" : "assistant", item.Content))
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(finalText))
+        {
+            exchanges.Add(("assistant", finalText));
+        }
+
+        if (exchanges.Count == 0) return;
+
+        // 提炼也是一次独立模型调用，纳入成本限额：先按单轮额度预留，超限时静默跳过
+        // （记忆提炼是后台增强，不做也不影响已完成的对话），成功后按实际用量结算。
+        var reserveMicro = settings.Value.Cost.ReserveMicroYuanPerRequest;
+        var reserved = usageRepository is null
+            || await usageRepository.TryReserveAsync(userId, dayStart, reserveMicro,
+                ToMicroYuan(settings.Value.Cost.UserDailyCapYuan),
+                ToMicroYuan(settings.Value.Cost.GlobalDailyCapYuan), token);
+        if (!reserved)
+        {
+            logger.LogDebug("助手记忆提炼跳过（当日用量不足，session={SessionId}）", messageId);
+            return;
+        }
+
         try
         {
-            var exchanges = history
-                .Where(item => item.Role is 1 or 2 && !string.IsNullOrWhiteSpace(item.Content))
-                .Select(item => (Role: item.Role == 1 ? "user" : "assistant", item.Content))
-                .ToList();
-            if (!string.IsNullOrWhiteSpace(finalText))
-            {
-                exchanges.Add(("assistant", finalText));
-            }
-
-            if (exchanges.Count == 0) return;
             var prompt = Memory.MemoryDistiller.BuildDistillPrompt(exchanges);
             var output = new StringBuilder();
+            ModelAccess.ChatUsage? usage = null;
             await foreach (var delta in model.StreamAsync(
                 [new ChatMessage(ChatRole.User, prompt)], null, token))
             {
+                if (delta.Usage is not null) usage = delta.Usage;
                 output.Append(delta.ContentDelta);
+            }
+
+            var estimated = usage is null;
+            var promptTokens = usage?.PromptTokens ?? Math.Max(1, prompt.Length);
+            var completionTokens = usage?.CompletionTokens ?? Math.Max(1, output.Length);
+            await SettleAsync(userId, dayStart, reserveMicro,
+                ToMicroYuan(AssistantCost.Calculate(promptTokens, completionTokens, settings.Value.Cost)),
+                completed: false);
+            if (estimated)
+            {
+                logger.LogInformation(
+                    "助手记忆提炼用量为估算（session={SessionId} prompt={Prompt} completion={Completion}）",
+                    messageId, promptTokens, completionTokens);
             }
 
             foreach (var candidate in Memory.MemoryDistiller.Parse(output.ToString()))
@@ -442,8 +471,16 @@ public sealed class ChatService(
                 }
             }
         }
+        catch (OperationCanceledException)
+        {
+            // 取消：提炼不产生可用结果，释放预留（不计费），与对话取消口径一致。
+            await SettleAsync(userId, dayStart, reserveMicro, 0, completed: false);
+            throw;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // 失败按预留额计入（与对话失败口径一致）；提炼失败不影响对话。
+            await SettleAsync(userId, dayStart, reserveMicro, reserveMicro, completed: false);
             logger.LogDebug(ex, "助手记忆提炼失败（已忽略，不影响对话）");
         }
     }
