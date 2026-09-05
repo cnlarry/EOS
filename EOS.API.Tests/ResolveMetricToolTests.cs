@@ -255,3 +255,111 @@ public sealed class ResolveMetricToolTests
         Assert.Contains("不可见", result.ContentForModel);
     }
 }
+
+public sealed class ResolveMetricNullResultTests
+{
+    private sealed class NullExecutor : IMetricExecutor
+    {
+        public Task<decimal?> ExecuteAsync(MetricPlan plan, CancellationToken token) =>
+            Task.FromResult<decimal?>(null);
+    }
+
+    [Fact]
+    public async Task Null_Result_Reports_No_Data_With_Evidence()
+    {
+        var metric = new MetricDefinitionRow("inventory_turnover", "库存周转率",
+            "SUM(QTY) / NULLIF(SUM(IN_QTY),0)", "INV_PRO_DEPOT", "DEPOT_ID,PRO_NO", 1,
+            "CONFIRMED", null, null);
+        var tool = new ResolveMetricTool(
+            new SingleMetricRepository(metric),
+            new NullExecutor(),
+            new EmptyProbe(),
+            new MetricDefinitionValidator(new EmptyProbe()),
+            new AlwaysBrowsePermissions(),
+            new NullGateway(),
+            new WorkbenchScopeFilter(new ApiMetrics()));
+        var result = await tool.ExecuteAsync("u1",
+            JsonSerializer.Deserialize<JsonElement>("""{"metric_id":"inventory_turnover"}"""),
+            CancellationToken.None);
+        Assert.True(result.Ok, result.ContentForModel);
+        Assert.Contains("没有数据", result.ContentForModel);
+        Assert.Contains("依据链", result.ContentForModel);
+    }
+
+    private sealed class SingleMetricRepository(MetricDefinitionRow metric) : IMetricRepository
+    {
+        public Task<MetricDefinitionRow?> GetAsync(string metricId, CancellationToken token) =>
+            Task.FromResult<MetricDefinitionRow?>(metric);
+
+        public Task<IReadOnlyList<int>> FindModuleIdsByTableAsync(string table, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<int>>([1408]);
+    }
+
+    private sealed class EmptyProbe : IMetricSchemaProbe
+    {
+        public Task<bool> TableExistsAsync(string table, CancellationToken token) => Task.FromResult(true);
+
+        public Task<IReadOnlySet<string>> GetColumnsAsync(string table, CancellationToken token) =>
+            Task.FromResult<IReadOnlySet<string>>(
+                new HashSet<string>(["QTY", "IN_QTY", "DEPOT_ID", "PRO_NO"], StringComparer.OrdinalIgnoreCase));
+    }
+
+    private sealed class AlwaysBrowsePermissions : IPermissionService
+    {
+        public Task<ModulePermission> GetAsync(string userId, int moduleId, CancellationToken cancellationToken) =>
+            Task.FromResult(new ModulePermission(new ModuleRights(
+                CanBrowse: true, CanViewCost: false, CanViewSecrecy: false, CanSetup: false,
+                DeniedMasterFields: new HashSet<string>(), DeniedDetailFields: new HashSet<string>(),
+                CanAddNew: false, CanEdit: false, CanDelete: false, CanApprove: false, CanDeapprove: false,
+                CanEndCase: false, CanUnEndCase: false, CanFileView: false, CanFileUpda: false,
+                CanFileEdit: false, CanFileDele: false,
+                DenyNewMasterFields: new HashSet<string>(), DenyNewDetailFields: new HashSet<string>(),
+                DenyModiMasterFields: new HashSet<string>(), DenyModiDetailFields: new HashSet<string>(),
+                DataFilter: string.Empty, ExecuteTag: "A")));
+
+        public Task<ModulePermission> RequireAsync(string userId, int moduleId, PermissionAction action, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class NullGateway : IWorkbenchSearchGateway
+    {
+        public Task<IReadOnlyList<SystemKnowledgeModule>> ListAssistantModulesAsync(string? keyword, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<SystemKnowledgeModule>>([]);
+
+        public Task<int?> FindGenericModuleIdByTitleAsync(string titleKeyword, CancellationToken token) =>
+            Task.FromResult<int?>(null);
+
+        public Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag,
+            bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields,
+            IReadOnlySet<string> deniedDetailFields, CancellationToken token) => Task.FromResult<WorkbenchDefinition?>(
+            new WorkbenchDefinition(1408, "库存", "INV_PRO_DEPOT", null,
+                MasterFields: [new WorkbenchField("QTY", "数量", "decimal", 100, null, false),
+                    new WorkbenchField("IN_QTY", "入库", "decimal", 100, null, false),
+                    new WorkbenchField("DEPOT_ID", "仓库", "nvarchar", 100, null, false),
+                    new WorkbenchField("PRO_NO", "产品", "nvarchar", 100, null, false)],
+                DetailFields: [], DefaultSort: null, HasAdd: true, HasEdit: true, DetailNoSave: false,
+                MasterPkOrder: ["DEPOT_ID", "PRO_NO"], DetailNoFields: string.Empty,
+                HasWorkflow: false, UserId: "u1", ExecTag: "A"));
+
+        public Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail,
+            IReadOnlyDictionary<string, string> keys, int page, int pageSize, CancellationToken token,
+            WorkbenchQuery? query = null, string? keyword = null, string? sortField = null,
+            string? sortDirection = null, int? groupIndex = null, string? groupValue = null, string? dataFilter = null) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<Dictionary<string, object?>>> GetExportRowsByKeysAsync(
+            WorkbenchDefinition definition, IReadOnlyList<IReadOnlyList<string>> keys, CancellationToken token,
+            int? groupIndex = null, string? groupValue = null, IReadOnlyList<WorkbenchField>? exportFields = null,
+            string? dataFilter = null) => throw new NotSupportedException();
+
+        public Task<FormDefinition?> GetFormDefinitionAsync(WorkbenchDefinition definition, string userId, string mode,
+            bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields,
+            IReadOnlySet<string> deniedDetailFields, IReadOnlySet<string> deniedNewMasterFields,
+            IReadOnlySet<string> deniedNewDetailFields, IReadOnlySet<string> deniedModiMasterFields,
+            IReadOnlySet<string> deniedModiDetailFields, CancellationToken token, bool canAddNew = false,
+            bool canEdit = false, bool canDelete = false, bool canApprove = false, bool canDeapprove = false,
+            bool canEndCase = false, bool canUnEndCase = false, bool canFileView = false, bool canFileUpda = false,
+            bool canFileEdit = false, bool canFileDele = false, bool canSetup = false) =>
+            throw new NotSupportedException();
+    }
+}

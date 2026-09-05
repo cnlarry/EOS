@@ -142,6 +142,21 @@ public sealed class MetricDefinitionValidator(IMetricSchemaProbe probe)
                     return Walk(aggregate.Argument);
                 case MetricNullIf nullIf:
                     return Walk(nullIf.Left) ?? Walk(nullIf.Right);
+                case MetricBinary { Operator: '/' } division:
+                    // 除零保护：分母要么 NULLIF 包裹（运行时对 0 求值为 NULL），
+                    // 要么是静态可判的非零字面量；零字面量直接拒绝。
+                    switch (division.Right)
+                    {
+                        case MetricNullIf:
+                            break;
+                        case MetricLiteral { Value: 0 }:
+                            return "口径定义除数为零字面量，拒绝计算。";
+                        case MetricLiteral:
+                            break;
+                        default:
+                            return "除法分母必须用 NULLIF 包裹（如 SUM(A) / NULLIF(SUM(B), 0)），否则拒绝计算。";
+                    }
+                    return Walk(division.Left) ?? Walk(division.Right);
                 case MetricBinary binary:
                     return Walk(binary.Left) ?? Walk(binary.Right);
                 default:

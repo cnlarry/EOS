@@ -37,6 +37,7 @@ public sealed class MetricDefinitionValidatorTests
     {
         ["COP_ORDER_D"] = Columns("ORDER_NO", "ORDER_TYPE", "SERIAL_NO", "AMOUNT_TAX", "AMOUNT", "QTY", "REBATE", "PRO_NO"),
         ["COP_ORDER_M"] = Columns("ORDER_NO", "ORDER_TYPE", "CONFIRM_TAG", "ORDER_DATE", "CLIENT_ID", "OWNER"),
+        ["INV_PRO_DEPOT"] = Columns("DEPOT_ID", "PRO_NO", "QTY", "IN_QTY", "OUT_QTY", "AMOUNT"),
     });
 
     private static IReadOnlySet<string> Columns(params string[] names) =>
@@ -164,5 +165,28 @@ public sealed class MetricDefinitionValidatorTests
         Assert.True(result.Ok, result.Error);
         Assert.Equal("COP_ORDER_D", result.RowFilter.Table);
         Assert.Empty(result.RowFilter.JoinColumns);
+    }
+
+    [Theory]
+    [InlineData("SUM(QTY) / NULLIF(SUM(IN_QTY), 0)", true)]
+    [InlineData("SUM(QTY) / NULLIF(SUM(IN_QTY), 0) / NULLIF(SUM(OUT_QTY), 0)", true)]
+    [InlineData("SUM(QTY) / 2", true)]
+    [InlineData("SUM(QTY) / 2.5", true)]
+    [InlineData("SUM(QTY) / SUM(IN_QTY)", false)]
+    [InlineData("SUM(QTY) / 0", false)]
+    [InlineData("AVG(AMOUNT / 1.5)", true)]
+    [InlineData("SUM(QTY) / NULLIF(SUM(IN_QTY), 0) / SUM(OUT_QTY)", false)]
+    public async Task Validate_Division_Denominator_Must_Be_Nullif_Or_Nonzero_Literal(
+        string expression, bool shouldPass)
+    {
+        var validator = new MetricDefinitionValidator(Probe());
+        var result = await validator.ValidateAsync(
+            Input(expression, sourceTable: "INV_PRO_DEPOT",
+                allowedColumns: Columns("QTY", "IN_QTY", "OUT_QTY", "AMOUNT")), CancellationToken.None);
+        Assert.Equal(shouldPass, result.Ok);
+        if (!shouldPass)
+        {
+            Assert.Contains("除", result.Error);
+        }
     }
 }
