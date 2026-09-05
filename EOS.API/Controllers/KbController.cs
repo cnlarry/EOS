@@ -134,6 +134,9 @@ public sealed class KbController(
 
         var hits = await repository.SearchAsync(EmbeddingJson.ToJson(queryVector),
             embedding.Dimension, request.TopK, await AllowedVisibilitiesAsync(token), token);
+        // R2:与 kb_search 工具同口径——命中片段含业务引用时逐条复核，失败片段不返回。
+        hits = await KbReferenceVerifier.FilterHitsAsync(
+            userContext.UserId, hits, VerifyReferencesAsync, token);
         return Ok(new
         {
             hits = hits.Select(hit => new
@@ -170,6 +173,7 @@ public sealed class KbController(
     /// <summary>
     /// R1:业务引用二次复核——逐条按既有权限门（CanBrowse + 数据范围）验证，
     /// 任一条失败即整篇拒入。返回失败原因，null 表示全部通过。
+    /// 规则实现见 KbReferenceVerifier，入库/检索工具/HTTP 检索共用。
     /// </summary>
     private async Task<string?> VerifyReferencesAsync(
         string userId, IReadOnlyList<BusinessReference> references, CancellationToken token)
@@ -177,16 +181,9 @@ public sealed class KbController(
         foreach (var reference in references)
         {
             var rights = await rightsRepository.GetAsync(userId, reference.ModuleId, token);
-            if (!rights.CanBrowse) return $"模块 #{reference.ModuleId} 无浏览权限";
-            var definition = await gateway.GetDefinitionAsync(reference.ModuleId, userId,
-                rights.ExecuteTag, rights.CanViewCost, rights.CanViewSecrecy,
-                rights.DeniedMasterFields, rights.DeniedDetailFields, token);
-            if (definition is null) return $"模块 #{reference.ModuleId} 不是可查询模块";
-            if (reference.Keys.Count != definition.MasterPkOrder.Count)
-                return $"模块 #{reference.ModuleId} 主键长度不符";
-            var rows = await gateway.GetExportRowsByKeysAsync(definition, [reference.Keys], token,
-                dataFilter: rights.DataFilter);
-            if (rows.Count == 0) return $"模块 #{reference.ModuleId} 记录不在数据范围内";
+            var denied = await KbReferenceVerifier.FirstDeniedReasonAsync(
+                userId, reference, rights, gateway, token);
+            if (denied is not null) return $"模块 #{reference.ModuleId} {denied}";
         }
 
         return null;

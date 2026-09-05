@@ -80,15 +80,9 @@ public sealed class KbSearchTool(
         foreach (var reference in references)
         {
             var permission = await permissions.GetAsync(userId, reference.ModuleId, token);
-            if (!permission.CanBrowse) return false;
-            var scope = permission.Scope();
-            var definition = await gateway.GetDefinitionAsync(reference.ModuleId, userId,
-                scope.ExecTag, scope.CanViewCost, scope.CanViewSecrecy,
-                scope.DeniedMaster, scope.DeniedDetail, token);
-            if (definition is null || reference.Keys.Count != definition.MasterPkOrder.Count) return false;
-            var rows = await gateway.GetExportRowsByKeysAsync(definition, [reference.Keys], token,
-                dataFilter: permission.Rights.DataFilter);
-            if (rows.Count == 0) return false;
+            var denied = await KbReferenceVerifier.FirstDeniedReasonAsync(
+                userId, reference, permission.Rights, gateway, token);
+            if (denied is not null) return false;
         }
 
         return true;
