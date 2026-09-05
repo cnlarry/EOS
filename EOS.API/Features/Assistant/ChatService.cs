@@ -92,21 +92,18 @@ public sealed class ChatService(
             yield break;
         }
 
+        // M7 原子预留：同一事务内建行 + 按上限条件扣减（用户行与全局行同时满足），
+        // 并发请求在此串行化；超限直接拒绝，不再"先读后放"。
+        var dayStart = DateTimeOffset.UtcNow.Date;
+        var reserveMicro = settings.Value.Cost.ReserveMicroYuanPerRequest;
         if (usageRepository is not null)
         {
-            var cost = settings.Value.Cost;
-            var dayStart = DateTimeOffset.UtcNow.Date;
-            var userUsage = await usageRepository.GetUserDailyUsageAsync(userId, dayStart, token);
-            if (AssistantCost.Calculate(userUsage.PromptTokens, userUsage.CompletionTokens, cost) >= cost.UserDailyCapYuan)
+            var reserved = await usageRepository.TryReserveAsync(userId, dayStart, reserveMicro,
+                ToMicroYuan(settings.Value.Cost.UserDailyCapYuan),
+                ToMicroYuan(settings.Value.Cost.GlobalDailyCapYuan), token);
+            if (!reserved)
             {
-                yield return new ChatStreamEvent.Failed("COST_LIMIT_EXCEEDED", "今日个人用量已达上限，请明日再试。");
-                yield break;
-            }
-
-            var globalUsage = await usageRepository.GetGlobalDailyUsageAsync(dayStart, token);
-            if (AssistantCost.Calculate(globalUsage.PromptTokens, globalUsage.CompletionTokens, cost) >= cost.GlobalDailyCapYuan)
-            {
-                yield return new ChatStreamEvent.Failed("COST_LIMIT_EXCEEDED", "今日全局用量已达上限，请明日再试。");
+                yield return new ChatStreamEvent.Failed("COST_LIMIT_EXCEEDED", "今日用量已达上限，请明日再试。");
                 yield break;
             }
         }
@@ -175,7 +172,9 @@ public sealed class ChatService(
                 }
                 catch (OperationCanceledException)
                 {
-                    throw; // 客户端断开/超时：半截回复不落库，交由上层结束响应
+                    // 客户端断开/超时：半截回复不落库；已预留额度按 0 释放（取消不计失败）。
+                    await SettleAsync(userId, dayStart, reserveMicro, 0, completed: false);
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -223,6 +222,7 @@ public sealed class ChatService(
             if (errorCode is not null)
             {
                 breaker?.RecordFailure(userId);
+                await SettleAsync(userId, dayStart, reserveMicro, reserveMicro, completed: false);
                 yield return new ChatStreamEvent.Failed(errorCode, "模型调用失败，请稍后重试。");
                 yield break;
             }
@@ -241,15 +241,23 @@ public sealed class ChatService(
                 // 工具轮：assistant-with-tool-calls 与 tool 结果只存在于本轮内存上下文，
                 // 不落库；摘要随最终回复行落库供审计与前端展示。
                 messages.Add(new ChatMessage(ChatRole.Assistant, text, calls));
-                foreach (var call in calls)
+                try
                 {
-                    var result = await ExecuteToolSafelyAsync(userId, call, sessionId, toolLog, token);
-                    if (result.Draft is not null)
+                    foreach (var call in calls)
                     {
-                        drafts.Add(result.Draft); // DRAFT 级工具产出的结构化变更集，随 done 事件下发确认卡片
-                    }
+                        var result = await ExecuteToolSafelyAsync(userId, call, sessionId, toolLog, token);
+                        if (result.Draft is not null)
+                        {
+                            drafts.Add(result.Draft); // DRAFT 级工具产出的结构化变更集，随 done 事件下发确认卡片
+                        }
 
-                    messages.Add(new ChatMessage(ChatRole.Tool, result.ContentForModel, ToolCallId: call.Id));
+                        messages.Add(new ChatMessage(ChatRole.Tool, result.ContentForModel, ToolCallId: call.Id));
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    await SettleAsync(userId, dayStart, reserveMicro, 0, completed: false);
+                    throw;
                 }
 
                 continue; // 进入下一轮：模型消费工具结果并生成面向用户的回答（该轮流式给用户）
@@ -263,13 +271,28 @@ public sealed class ChatService(
             if (string.IsNullOrEmpty(text))
             {
                 breaker?.RecordFailure(userId);
+                await SettleAsync(userId, dayStart, reserveMicro, reserveMicro, completed: false);
                 yield return new ChatStreamEvent.Failed("AI_MODEL_EMPTY_REPLY", "模型没有返回内容，请重试。");
                 yield break;
             }
 
+            // M7:供应商 usage 缺失时按服务端保守估算（1 字 = 1 token，只多不少）并打估算标记。
+            var estimated = usage is null;
+            int? promptTokens = usage?.PromptTokens;
+            int? completionTokens = usage?.CompletionTokens;
+            if (usage is null)
+            {
+                (promptTokens, completionTokens) = EstimateUsage(
+                    settings.Value.SystemPrompt.Length + history.Sum(item => item.Content.Length) + content.Length,
+                    text.Length);
+            }
+
             var saved = await repository.AddAssistantMessageAsync(
                 userId, sessionId, text, model.ModelName,
-                usage?.PromptTokens, usage?.CompletionTokens, usage?.ElapsedMs, correlationId, token);
+                promptTokens, completionTokens, usage?.ElapsedMs, correlationId, token, estimated);
+            await SettleAsync(userId, dayStart, reserveMicro,
+                ToMicroYuan(AssistantCost.Calculate(promptTokens ?? 0, completionTokens ?? 0, settings.Value.Cost)),
+                completed: true);
             if (toolLog.Count > 0)
             {
                 await repository.UpdateToolCallsJsonAsync(
@@ -398,6 +421,27 @@ public sealed class ChatService(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogDebug(ex, "助手记忆提炼失败（已忽略，不影响对话）");
+        }
+    }
+
+    internal static long ToMicroYuan(double yuan) => (long)Math.Ceiling(yuan * 1_000_000.0);
+
+    /// <summary>保守估算：中日韩字符约 1 token/字，按 1 字 = 1 token 只多不少。</summary>
+    internal static (int PromptTokens, int CompletionTokens) EstimateUsage(int promptChars, int completionChars) =>
+        (Math.Max(1, promptChars), Math.Max(1, completionChars));
+
+    private async Task SettleAsync(
+        string userId, DateTimeOffset day, long reserveMicro, long actualMicro, bool completed)
+    {
+        if (usageRepository is null || reserveMicro <= 0) return;
+        try
+        {
+            // 独立 token：即使请求已取消，结算也必须落库（否则预留泄漏锁死当日额度）。
+            await usageRepository.SettleAsync(userId, day, reserveMicro, actualMicro, completed, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "助手用量结算失败（已忽略）");
         }
     }
 
