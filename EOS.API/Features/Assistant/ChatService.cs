@@ -92,22 +92,6 @@ public sealed class ChatService(
             yield break;
         }
 
-        // M7 原子预留：同一事务内建行 + 按上限条件扣减（用户行与全局行同时满足），
-        // 并发请求在此串行化；超限直接拒绝，不再"先读后放"。
-        var dayStart = DateTimeOffset.UtcNow.Date;
-        var reserveMicro = settings.Value.Cost.ReserveMicroYuanPerRequest;
-        if (usageRepository is not null)
-        {
-            var reserved = await usageRepository.TryReserveAsync(userId, dayStart, reserveMicro,
-                ToMicroYuan(settings.Value.Cost.UserDailyCapYuan),
-                ToMicroYuan(settings.Value.Cost.GlobalDailyCapYuan), token);
-            if (!reserved)
-            {
-                yield return new ChatStreamEvent.Failed("COST_LIMIT_EXCEEDED", "今日用量已达上限，请明日再试。");
-                yield break;
-            }
-        }
-
         if (string.IsNullOrWhiteSpace(content))
         {
             yield return new ChatStreamEvent.Failed("INVALID_ARGUMENT", "消息内容不能为空。");
@@ -145,6 +129,25 @@ public sealed class ChatService(
             ? string.Empty
             : await memoryStore.BuildMemoryPrefixAsync(userId, content, token);
         var messages = BuildModelMessages(history, pageContext, memoryPrefix);
+
+        // M7 原子预留：同一事务内建行 + 按上限条件扣减（用户行与全局行同时满足），
+        // 并发请求在此串行化；超限直接拒绝，不再"先读后放"。
+        // 预留放在全部校验与上下文组装之后、首次模型调用之前：空内容/超长/越权会话等
+        // 无效请求不触碰额度，避免预留后早退路径泄漏可被反复刷取。
+        var dayStart = DateTimeOffset.UtcNow.Date;
+        var reserveMicro = settings.Value.Cost.ReserveMicroYuanPerRequest;
+        if (usageRepository is not null)
+        {
+            var reserved = await usageRepository.TryReserveAsync(userId, dayStart, reserveMicro,
+                ToMicroYuan(settings.Value.Cost.UserDailyCapYuan),
+                ToMicroYuan(settings.Value.Cost.GlobalDailyCapYuan), token);
+            if (!reserved)
+            {
+                yield return new ChatStreamEvent.Failed("COST_LIMIT_EXCEEDED", "今日用量已达上限，请明日再试。");
+                yield break;
+            }
+        }
+
         var toolLog = new List<ToolCallSummary>();
         var drafts = new List<object>();
 
