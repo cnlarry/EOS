@@ -250,6 +250,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DraftRecordTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.EnumMetricsTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ResolveMetricTool>(),
+         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetFieldRelationsTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListModulesTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DescribeModuleTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListTablesTool>(),
