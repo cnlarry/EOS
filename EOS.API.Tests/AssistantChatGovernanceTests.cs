@@ -14,6 +14,8 @@ public sealed class AssistantChatGovernanceTests
 {
     private sealed class FakeRepo : IAssistantRepository
     {
+        public bool SessionDenied { get; set; }
+
         public Task<AssistantSessionDto> CreateSessionAsync(string userId, CancellationToken token) =>
             throw new NotSupportedException();
 
@@ -30,9 +32,12 @@ public sealed class AssistantChatGovernanceTests
             throw new NotSupportedException();
 
         public Task<AssistantMessageDto> AddUserMessageAsync(string userId, long sessionId, string content,
-            string correlationId, CancellationToken token) =>
-            Task.FromResult(new AssistantMessageDto(1, sessionId, 1, content, null, null, null, null,
+            string correlationId, CancellationToken token)
+        {
+            if (SessionDenied) throw new UnauthorizedAccessException("会话不属于当前用户。");
+            return Task.FromResult(new AssistantMessageDto(1, sessionId, 1, content, null, null, null, null,
                 correlationId, DateTimeOffset.UtcNow));
+        }
 
         public Task<AssistantMessageDto> AddAssistantMessageAsync(string userId, long sessionId, string content,
             string modelName, int? promptTokens, int? completionTokens, int? elapsedMs, string correlationId,
@@ -50,6 +55,7 @@ public sealed class AssistantChatGovernanceTests
 
     private sealed class FakeUsage(bool reserveOk) : IAssistantUsageRepository
     {
+        public int Reserves { get; private set; }
         public int Settles { get; private set; }
 
         public Task<DailyUsage> GetUserDailyUsageAsync(string userId, DateTimeOffset dayStartUtc, CancellationToken token) =>
@@ -63,8 +69,11 @@ public sealed class AssistantChatGovernanceTests
             Task.FromResult<IReadOnlyList<(string UserId, DailyUsage Usage)>>([]);
 
         public Task<bool> TryReserveAsync(string userId, DateTimeOffset dayStartUtc, long reserveMicro,
-            long userCapMicro, long globalCapMicro, CancellationToken token) =>
-            Task.FromResult(reserveOk);
+            long userCapMicro, long globalCapMicro, CancellationToken token)
+        {
+            Reserves++;
+            return Task.FromResult(reserveOk);
+        }
 
         public Task SettleAsync(string userId, DateTimeOffset dayStartUtc, long reserveMicro, long actualMicro,
             bool completed, CancellationToken token)
@@ -127,6 +136,17 @@ public sealed class AssistantChatGovernanceTests
         return events;
     }
 
+    private static async Task<IReadOnlyList<ChatStreamEvent>> CollectAsync(ChatService service, string content)
+    {
+        var events = new List<ChatStreamEvent>();
+        await foreach (var evt in service.StreamReplyAsync("u1", 7, content, null, "corr", CancellationToken.None))
+        {
+            events.Add(evt);
+        }
+
+        return events;
+    }
+
     [Fact]
     public async Task ModelErrors_TripBreaker_ThenRateLimit()
     {
@@ -170,5 +190,50 @@ public sealed class AssistantChatGovernanceTests
         Assert.Equal(0, model.Calls);
         Assert.Equal(0, usage.Settles);
         Assert.False(breaker.IsBlocked("u1"));
+    }
+
+    [Fact]
+    public async Task InvalidContent_DoesNotReserveOrSettle()
+    {
+        var usage = new FakeUsage(reserveOk: true);
+        var service = CreateService(new FakeRepo(), new ScriptedModel(), usage,
+            new FailureBreaker(() => DateTimeOffset.UtcNow, maxFailures: 1, cooldownSeconds: 60));
+
+        var blank = await CollectAsync(service, "   ");
+        Assert.Equal("INVALID_ARGUMENT", Assert.IsType<ChatStreamEvent.Failed>(Assert.Single(blank)).Code);
+
+        var oversize = await CollectAsync(service, new string('长', ChatService.MaxContentLength + 1));
+        Assert.Equal("INVALID_ARGUMENT", Assert.IsType<ChatStreamEvent.Failed>(Assert.Single(oversize)).Code);
+
+        Assert.Equal(0, usage.Reserves);
+        Assert.Equal(0, usage.Settles);
+    }
+
+    [Fact]
+    public async Task ForeignSession_DoesNotReserveOrSettle()
+    {
+        var usage = new FakeUsage(reserveOk: true);
+        var service = CreateService(new FakeRepo { SessionDenied = true }, new ScriptedModel(), usage,
+            new FailureBreaker(() => DateTimeOffset.UtcNow, maxFailures: 1, cooldownSeconds: 60));
+
+        var events = await CollectAsync(service, "你好");
+
+        Assert.Equal("NOT_FOUND", Assert.IsType<ChatStreamEvent.Failed>(Assert.Single(events)).Code);
+        Assert.Equal(0, usage.Reserves);
+        Assert.Equal(0, usage.Settles);
+    }
+
+    [Fact]
+    public async Task ValidRequest_ReservesOnce_AndSettlesCompleted()
+    {
+        var usage = new FakeUsage(reserveOk: true);
+        var service = CreateService(new FakeRepo(), new ScriptedModel(), usage,
+            new FailureBreaker(() => DateTimeOffset.UtcNow, maxFailures: 1, cooldownSeconds: 60));
+
+        var events = await CollectAsync(service, "你好");
+
+        Assert.Contains(events, evt => evt is ChatStreamEvent.Completed);
+        Assert.Equal(1, usage.Reserves);
+        Assert.Equal(1, usage.Settles);
     }
 }
