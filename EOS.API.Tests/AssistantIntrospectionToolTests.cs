@@ -32,10 +32,19 @@ public sealed class AssistantIntrospectionToolTests
         public Task<int?> FindGenericModuleIdByTitleAsync(string titleKeyword, CancellationToken token) =>
             Task.FromResult<int?>(modules.FirstOrDefault(m => m.Title.Contains(titleKeyword, StringComparison.OrdinalIgnoreCase))?.Id);
 
+        public IReadOnlySet<string>? LastDeniedMaster { get; private set; }
+        public bool LastCanViewCost { get; private set; } = true;
+        public bool LastCanViewSecrecy { get; private set; } = true;
+
         public Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag,
             bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields,
-            IReadOnlySet<string> deniedDetailFields, CancellationToken token) =>
-            Task.FromResult(definitions.TryGetValue(moduleId, out var definition) ? definition : null);
+            IReadOnlySet<string> deniedDetailFields, CancellationToken token)
+        {
+            LastDeniedMaster = deniedMasterFields;
+            LastCanViewCost = canViewCost;
+            LastCanViewSecrecy = canViewSecrecy;
+            return Task.FromResult(definitions.TryGetValue(moduleId, out var definition) ? definition : null);
+        }
 
         public Task<WorkbenchData> GetRowsAsync(WorkbenchDefinition definition, bool detail,
             IReadOnlyDictionary<string, string> keys, int page, int pageSize, CancellationToken token,
@@ -110,6 +119,71 @@ public sealed class AssistantIntrospectionToolTests
         Assert.Contains("主表：MASTER_TABLE", result.ContentForModel);
         Assert.Contains("DOC_NO 单号", result.ContentForModel);
         Assert.Contains("QTY 数量", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task ListModules_FiltersByKeyword()
+    {
+        var gateway = new FakeGateway(
+            [new(100, "客户订单"), new(101, "采购单")],
+            new Dictionary<int, WorkbenchDefinition?>());
+        var permissions = new FakePermissions(new Dictionary<int, ModulePermission>
+        {
+            [100] = Permission(true),
+            [101] = Permission(true),
+        });
+
+        var result = await new ListModulesTool(gateway, permissions).ExecuteAsync("u1",
+            JsonSerializer.SerializeToElement(new { keyword = "采购" }), CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Contains("101 采购单", result.ContentForModel);
+        Assert.DoesNotContain("客户订单", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task DescribeModule_DeniesNonWorkbenchModule()
+    {
+        var gateway = new FakeGateway(
+            [new(2306, "用户权限")],
+            new Dictionary<int, WorkbenchDefinition?>());
+        var permissions = new FakePermissions(new Dictionary<int, ModulePermission>
+        {
+            [2306] = Permission(true),
+        });
+
+        var result = await new DescribeModuleTool(gateway, permissions).ExecuteAsync(
+            "u1", JsonSerializer.SerializeToElement(new { module_id = 2306 }), CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Contains("通用工作台", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task DescribeModule_PassesScopeToDefinition()
+    {
+        var gateway = new FakeGateway(
+            [new(100, "客户订单")],
+            new Dictionary<int, WorkbenchDefinition?> { [100] = Definition(100, "客户订单") });
+        var rights = Rights(true) with
+        {
+            CanViewCost = false,
+            CanViewSecrecy = false,
+            DeniedMasterFields = new HashSet<string> { "SECRET_COL" },
+        };
+        var permissions = new FakePermissions(new Dictionary<int, ModulePermission>
+        {
+            [100] = new ModulePermission(rights),
+        });
+
+        var result = await new DescribeModuleTool(gateway, permissions).ExecuteAsync(
+            "u1", JsonSerializer.SerializeToElement(new { module_id = 100 }), CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Contains("SECRET_COL", gateway.LastDeniedMaster!);
+        Assert.False(gateway.LastCanViewCost);
+        Assert.False(gateway.LastCanViewSecrecy);
+        Assert.DoesNotContain("SECRET_COL", result.ContentForModel.Split("主表字段")[0]);
     }
 
     [Fact]
