@@ -390,7 +390,12 @@ button, input, select { font: inherit; }
   .erp-menu-admin > .card > .card-body { display: grid; grid-template-columns: 5fr 7fr; }
   .erp-menu-admin .card-body > .row { display: contents; }
   /* col-lg-* 自带 width 41.66%/58.33%：作为 grid 子项会按自身轨道的百分比再次收缩（只占轨道一部分），
-     改为 auto 让 justify-self:stretch 填满对应轨道，保持 5:7）：性质筛选下拉固定宽度 */
+     改为 auto 让 justify-self:stretch 填满对应轨道，保持 5:7 与 col-lg-* 原宽度一致 */
+  .erp-menu-admin .col-lg-5, .erp-menu-admin .col-lg-7 { width: auto; }
+  .erp-menu-admin .col-lg-5.erp-menu-tree { display: flex; flex-direction: column; min-height: 0; max-height: none; }
+  .erp-menu-admin .col-lg-7 { display: flex; flex-direction: column; min-height: 0; }
+}
+/* 数据表、字段维护（2302）：性质筛选下拉固定宽度 */
 .erp-kind-filter { width: 165px; flex: 0 0 165px; }
 /* 通用全高列表页（工作台同款电子表格体验）：列表卡铺满页面高度，
    表格区域内部滚动、表头吸顶；复用 ErpTable 的列宽拖拽/排序/复制/键盘导航 */
