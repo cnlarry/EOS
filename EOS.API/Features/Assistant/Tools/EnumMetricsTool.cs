@@ -42,7 +42,8 @@ public sealed class EnumMetricsTool(DbConnectionFactory connections) : Assistant
             SELECT METRIC_ID, METRIC_NAME, DEFINITION, SOURCE_TABLE,
                    LTRIM(RTRIM(ISNULL(DIMENSION_KEYS,''))) AS DIMENSION_KEYS,
                    LTRIM(RTRIM(ISNULL(DOMAIN,''))) AS DOMAIN,
-                   VERSION, LTRIM(RTRIM(ISNULL(DESCRIPTION,''))) AS DESCRIPTION
+                   VERSION, LTRIM(RTRIM(ISNULL(DESCRIPTION,''))) AS DESCRIPTION,
+                   LTRIM(RTRIM(ISNULL(CONFIRM_STATUS,'CANDIDATE'))) AS CONFIRM_STATUS
             FROM dbo.REPORT_METRIC WITH (NOLOCK)
             WHERE (@Domain = '' OR LTRIM(RTRIM(DOMAIN)) = @Domain)
               AND (@Keyword = '' OR METRIC_NAME LIKE '%' + @Keyword + '%'
@@ -69,6 +70,10 @@ public sealed class EnumMetricsTool(DbConnectionFactory connections) : Assistant
                 sb.Append("　域：").Append(reader.GetString(5));
             if (!reader.IsDBNull(7) && !string.IsNullOrWhiteSpace(reader.GetString(7)))
                 sb.Append("　说明：").Append(reader.GetString(7));
+            // Only business-confirmed metrics are computable via resolve_metric;
+            // candidates are listed for definition lookup but refuse computation.
+            var confirmed = string.Equals(reader.GetString(8), "CONFIRMED", StringComparison.OrdinalIgnoreCase);
+            sb.Append(confirmed ? "　[已确认，可用 resolve_metric 计算]" : "　[候选口径，业务未确认，不可计算]");
             sb.AppendLine();
         }
         if (count == 0) return ToolExecutionResult.Success("未找到匹配的度量口径。");

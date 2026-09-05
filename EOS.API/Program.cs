@@ -248,6 +248,14 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Admin.IChangeSetWriter,
     EOS.API.Features.Assistant.Admin.FieldMetaWriter>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Admin.ChangeSetService>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ApplyChangeSetTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IMetricSchemaProbe,
+    EOS.API.Features.Assistant.Metrics.SysMetricSchemaProbe>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.MetricDefinitionValidator>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IMetricRepository,
+    EOS.API.Features.Assistant.Metrics.MetricRepository>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IMetricExecutor,
+    EOS.API.Features.Assistant.Metrics.MetricExecutor>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ResolveMetricTool>();
 builder.Services.AddScoped<EOS.API.Data.IAssistantUsageRepository, EOS.API.Data.AssistantUsageRepository>();
 builder.Services.AddSingleton(sp => new EOS.API.Features.Assistant.Governance.FailureBreaker(
     () => DateTimeOffset.UtcNow,
@@ -261,6 +269,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetFormSchemaTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DraftRecordTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.EnumMetricsTool>(),
+         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ResolveMetricTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListModulesTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DescribeModuleTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListTablesTool>(),

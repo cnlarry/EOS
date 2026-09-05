@@ -154,7 +154,9 @@ public sealed class ChatServiceTests
         // 系统提示 + 有效历史 3 条（脏数据/未知角色剔除）
         Assert.Equal(4, model.LastMessages.Count);
         Assert.Equal(ChatRole.System, model.LastMessages[0].Role);
-        Assert.Equal("SYS", model.LastMessages[0].Content);
+        // 系统提示 = 配置前缀 + 量化指标口径硬规则
+        Assert.StartsWith("SYS", model.LastMessages[0].Content);
+        Assert.Contains("resolve_metric", model.LastMessages[0].Content);
         Assert.Equal(("第一问"), model.LastMessages[1].Content);
         Assert.Equal(ChatRole.User, model.LastMessages[^1].Role);
     }
