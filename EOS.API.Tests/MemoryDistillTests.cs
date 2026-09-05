@@ -117,7 +117,7 @@ public sealed class MemoryDistillTests
 
         public Task<AssistantMessageDto> AddAssistantMessageAsync(string userId, long sessionId, string content,
             string modelName, int? promptTokens, int? completionTokens, int? elapsedMs, string correlationId,
-            CancellationToken token) =>
+            CancellationToken token, bool estimated = false) =>
             Task.FromResult(new AssistantMessageDto(2, sessionId, 2, content, modelName, promptTokens,
                 completionTokens, elapsedMs, correlationId, DateTimeOffset.UtcNow));
 
@@ -175,3 +175,4 @@ public sealed class MemoryDistillTests
         Assert.Equal(82, pending.Confidence);
     }
 }
+

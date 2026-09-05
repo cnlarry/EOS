@@ -1,3 +1,4 @@
+using EOS.API.Features.Assistant;
 using EOS.API.Features.Assistant.Governance;
 using Xunit;
 
@@ -29,6 +30,22 @@ public sealed class AssistantGovernanceTests
 
         now = now.AddSeconds(61);
         Assert.False(breaker.IsBlocked("u1"));
+    }
+
+    [Fact]
+    public void Estimate_IsConservative_OneCharOneToken()
+    {
+        var (prompt, completion) = ChatService.EstimateUsage(1200, 300);
+
+        Assert.Equal(1200, prompt);
+        Assert.Equal(300, completion);
+    }
+
+    [Fact]
+    public void ToMicroYuan_Ceilings()
+    {
+        Assert.Equal(50_000, ChatService.ToMicroYuan(0.05));
+        Assert.Equal(1, ChatService.ToMicroYuan(0.0000001));
     }
 
     [Fact]

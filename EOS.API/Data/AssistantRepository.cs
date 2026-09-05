@@ -45,11 +45,11 @@ public interface IAssistantRepository
     Task<AssistantMessageDto> AddUserMessageAsync(
         string userId, long sessionId, string content, string correlationId, CancellationToken token);
 
-    /// <summary>追加助手回复（含用量统计）。</summary>
+    /// <summary>追加助手回复（含用量统计；estimated 表示用量为服务端保守估算）。</summary>
     Task<AssistantMessageDto> AddAssistantMessageAsync(
         string userId, long sessionId, string content, string modelName,
         int? promptTokens, int? completionTokens, int? elapsedMs, string correlationId,
-        CancellationToken token);
+        CancellationToken token, bool estimated = false);
 
     /// <summary>组装模型上下文用的最近 N 条历史（正序返回）；归属校验在 SQL 内完成。</summary>
     Task<IReadOnlyList<(int Role, string Content)>> LoadRecentHistoryAsync(
@@ -189,15 +189,15 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
     public async Task<AssistantMessageDto> AddAssistantMessageAsync(
         string userId, long sessionId, string content, string modelName,
         int? promptTokens, int? completionTokens, int? elapsedMs, string correlationId,
-        CancellationToken token)
+        CancellationToken token, bool estimated = false)
     {
         const string sql = """
             INSERT INTO dbo.ASSISTANT_MESSAGE (SESSION_ID, ROLE, CONTENT, MODEL_NAME,
-                PROMPT_TOKENS, COMPLETION_TOKENS, ELAPSED_MS, CORRELATION_ID)
+                PROMPT_TOKENS, COMPLETION_TOKENS, ELAPSED_MS, CORRELATION_ID, IS_ESTIMATED)
             OUTPUT INSERTED.ID, INSERTED.SESSION_ID, INSERTED.ROLE, INSERTED.CONTENT,
-                   INSERTED.MODEL_NAME, INSERTED.PROMPT_TOKENS, INSERTED.COMPLETION_TOKENS,
-                   INSERTED.ELAPSED_MS, INSERTED.CORRELATION_ID, INSERTED.CREATED_AT
-            SELECT @SessionId, 2, @Content, @ModelName, @PromptTokens, @CompletionTokens, @ElapsedMs, @CorrelationId
+                    INSERTED.MODEL_NAME, INSERTED.PROMPT_TOKENS, INSERTED.COMPLETION_TOKENS,
+                    INSERTED.ELAPSED_MS, INSERTED.CORRELATION_ID, INSERTED.CREATED_AT
+            SELECT @SessionId, 2, @Content, @ModelName, @PromptTokens, @CompletionTokens, @ElapsedMs, @CorrelationId, @Estimated
             WHERE EXISTS (SELECT 1 FROM dbo.ASSISTANT_SESSION WHERE ID = @SessionId AND USER_ID = @UserId);
             """;
         return await QuerySingleMessage(sql, cmd =>
@@ -210,6 +210,7 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
             AddNullable(cmd, "@CompletionTokens", completionTokens);
             AddNullable(cmd, "@ElapsedMs", elapsedMs);
             cmd.Parameters.AddWithValue("@CorrelationId", correlationId);
+            cmd.Parameters.Add("@Estimated", System.Data.SqlDbType.Bit).Value = estimated;
         }, token)
         ?? throw new UnauthorizedAccessException("会话不存在或不属于当前用户。");
     }
