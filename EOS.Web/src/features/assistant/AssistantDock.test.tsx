@@ -80,4 +80,22 @@ describe('AssistantDock', () => {
     await waitFor(() => expect(screen.getAllByText(/你好|⚠ 中断|在吗/i).length).toBeGreaterThan(0))
     await waitFor(() => expect(screen.getByText(/你好/)).toBeInTheDocument())
   })
+
+  it('用户气泡可一键记住，空态可进今日摘要', async () => {
+    localStorage.setItem('erp-assistant-open', 'true')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json([{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }]))
+      .mockResolvedValueOnce(Response.json([
+        { id: 'm1', sessionId: '11', role: 1, content: '先看送货单', modelName: null, promptTokens: null, completionTokens: null, elapsedMs: null, correlationId: null, createdAt: '' },
+      ]))
+      .mockResolvedValueOnce(Response.json({ id: '21' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDock()
+    const remember = await screen.findByRole('button', { name: /记住这条消息/ })
+    fireEvent.click(remember)
+
+    await waitFor(() => expect(screen.getByText(/已记住/)).toBeInTheDocument())
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
 })

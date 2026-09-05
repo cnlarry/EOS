@@ -44,7 +44,7 @@ public sealed class AssistantMemoryTests
             Task.FromResult(true);
 
         public Task<string> BuildMemoryPrefixAsync(string userId, string? keyword, CancellationToken token) =>
-            Task.FromResult(AssistantMemoryStore.BuildPrefix(preferences,
+            Task.FromResult(AssistantMemoryStore.BuildPrefix(preferences, null,
                 AssistantMemoryStore.SelectMemories(memories, keyword, AssistantMemoryStore.InjectionTopK)));
     }
 
@@ -87,11 +87,40 @@ public sealed class AssistantMemoryTests
     {
         var now = DateTimeOffset.UtcNow;
         var prefix = AssistantMemoryStore.BuildPrefix(
-            """{"theme":"dark"}""", [Item(1, "常用模块", "先看送货单", now)]);
+            """{"theme":"dark"}""", null, [Item(1, "常用模块", "先看送货单", now)]);
 
         Assert.Contains("仅供参考", prefix);
         Assert.Contains("dark", prefix);
         Assert.Contains("送货单", prefix);
+    }
+
+    [Fact]
+    public void BuildPrefix_RendersDerivedProfile()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var prefix = AssistantMemoryStore.BuildPrefix(null,
+            new DerivedProfile(["管理员组"], [(1405, "客户订单")]),
+            [Item(1, "常用模块", "先看送货单", now)]);
+
+        Assert.Contains("管理员组", prefix);
+        Assert.Contains("1405 客户订单", prefix);
+    }
+
+    [Fact]
+    public async Task FilterByRowAccess_DropsUnverifiableReferences()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var items = new[]
+        {
+            Item(1, "偏好", "深色主题", now),
+            Item(2, "跟进单据", "看 module=1405 _keys=[\"DD\",\"1\"]", now),
+        };
+
+        var visible = await AssistantMemoryStore.FilterByRowAccessAsync(items, reference =>
+            Task.FromResult(reference.ModuleId != 1405));
+
+        Assert.Single(visible);
+        Assert.Equal(1, visible[0].Id);
     }
 
     [Fact]
