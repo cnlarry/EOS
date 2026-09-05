@@ -22,8 +22,9 @@ public enum AuditClientType : byte
 public sealed record AuditFieldChange(string FieldName, string? OldValue, string? NewValue, string? ValueHash);
 
 /// <summary>
-/// 审计设置：FieldChangesEnabled=false 时停写 AUDIT_FIELD_CHANGE
-/// 与 DETAIL_JSON，仅保留摘要级 AUDIT_EVENT + SYSDF。默认开启；关闭时启动日志与 README 显式提示。
+/// Audit settings: FieldChangesEnabled=false stops AUDIT_FIELD_CHANGE
+/// and DETAIL_JSON writes, keeping summary-level AUDIT_EVENT only.
+/// Enabled by default; startup log and README call out when disabled.
 /// </summary>
 public sealed class AuditSettings
 {

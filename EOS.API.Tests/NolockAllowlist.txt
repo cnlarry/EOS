@@ -1,0 +1,61 @@
+# NOLOCK allowlist (ADR-005 section 9): files currently using WITH (NOLOCK).
+# New code defaults to no NOLOCK. Strong-consistency paths (save validation,
+# master/detail reads, approval, inventory, amounts, bill numbers) must not
+# add NOLOCK. Adding NOLOCK to a file outside this list fails
+# NolockAllowlistTests; register the file here only after review confirms a
+# read-only/reporting justification. Remove entries that no longer use NOLOCK.
+EOS.API/Controllers/AuditController.cs
+EOS.API/Controllers/BomExpandController.cs
+EOS.API/Controllers/DetailQueryController.cs
+EOS.API/Controllers/ReportCenterController.cs
+EOS.API/Controllers/ReportMetricController.cs
+EOS.API/Controllers/TableDataController.cs
+EOS.API/Controllers/WorkflowController.cs
+EOS.API/Data/AssistantRepository.cs
+EOS.API/Data/AssistantUsageRepository.cs
+EOS.API/Data/AuthenticationRepository.cs
+EOS.API/Data/BillNoGenerator.cs
+EOS.API/Data/ChooserJoinCatalog.cs
+EOS.API/Data/ChooserRepository.cs
+EOS.API/Data/DocumentWorkbenchRepository.cs
+EOS.API/Data/FieldAdminRepository.cs
+EOS.API/Data/FlowDefinitionService.cs
+EOS.API/Data/HumanResourceJobsService.cs
+EOS.API/Data/ImportService.cs
+EOS.API/Data/KnowledgeRepository.cs
+EOS.API/Data/MenuAdminRepository.cs
+EOS.API/Data/ModuleRightsRepository.cs
+EOS.API/Data/NavigationGroupsRepository.cs
+EOS.API/Data/NavigationRepository.cs
+EOS.API/Data/PrintService.cs
+EOS.API/Data/PrintSettingsRepository.cs
+EOS.API/Data/ReportAdminRepository.cs
+EOS.API/Data/ReportFormLayoutRepository.cs
+EOS.API/Data/ReportInboxRepository.cs
+EOS.API/Data/ReportRepository.cs
+EOS.API/Data/RestrictedExpressionService.cs
+EOS.API/Data/RightsAdminRepository.cs
+EOS.API/Data/SearchCenterRepository.cs
+EOS.API/Data/SettingsRepository.cs
+EOS.API/Data/UserAdminRepository.cs
+EOS.API/Data/VirtualColumnResolver.cs
+EOS.API/Data/WorkbenchApprovalService.cs
+EOS.API/Data/WorkbenchBrowseResolver.cs
+EOS.API/Data/WorkbenchChooserService.cs
+EOS.API/Data/WorkbenchCommandHandler.cs
+EOS.API/Data/WorkbenchDefinitionBuilder.cs
+EOS.API/Data/WorkbenchDefinitionProvider.cs
+EOS.API/Data/WorkbenchDefinitionSnapshotService.cs
+EOS.API/Data/WorkbenchDefinitionValidator.cs
+EOS.API/Data/WorkbenchFieldMetaMapper.cs
+EOS.API/Data/WorkbenchQueryComposer.cs
+EOS.API/Data/WorkbenchScopeFilter.cs
+EOS.API/Data/WorkbenchSql.cs
+EOS.API/Data/WorkflowEngine.cs
+EOS.API/Features/Assistant/Admin/ChangeSetService.cs
+EOS.API/Features/Assistant/Memory/AssistantMemoryStore.cs
+EOS.API/Features/Assistant/Metrics/MetricPlanCompiler.cs
+EOS.API/Features/Assistant/Metrics/MetricRepository.cs
+EOS.API/Features/Assistant/Tools/EnumMetricsTool.cs
+EOS.API/Features/Assistant/Tools/GetMyDigestTool.cs
+EOS.API/Features/Assistant/Tools/ModuleFlowGateway.cs

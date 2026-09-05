@@ -5,10 +5,10 @@ using System.Text;
 namespace EOS.API.Telemetry;
 
 /// <summary>
-/// 进程内基础指标：
-/// HTTP 请求数/错误数/延迟直方图、Workbench 范围过滤拒绝数、慢查询数。
-/// 经 GET /metrics 以 Prometheus 文本格式导出（开发环境匿名，生产要求登录）。
-/// 指标键即完整 Prometheus 行（metric + labels + 值），渲染时排序保证输出稳定。
+/// In-process base metrics: HTTP counts / 5xx / 4xx / latency histogram,
+/// Workbench scope rejections, slow queries.
+/// Exported as Prometheus text via GET /metrics (anonymous in development,
+/// login required in production).
 /// </summary>
 public sealed class ApiMetrics
 {
@@ -24,6 +24,11 @@ public sealed class ApiMetrics
         if (status >= 500)
         {
             _counters.AddOrUpdate($"http_errors_total{{method=\"{Escape(method)}\",route=\"{Escape(route)}\"}}",
+                1, (_, current) => current + 1);
+        }
+        else if (status >= 400)
+        {
+            _counters.AddOrUpdate($"http_client_errors_total{{method=\"{Escape(method)}\",route=\"{Escape(route)}\",status=\"{status}\"}}",
                 1, (_, current) => current + 1);
         }
     }

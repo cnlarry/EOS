@@ -42,7 +42,7 @@ public sealed record ExpressionOverview(
 /// 受控表达式解析工作流（P1/P2，，设计见）：
 /// VIRTUAL_EXP / CONVERT_FUNCTION / DATASOURCE_SQL 三套受限语言的服务端校验、只读预览与发布审计。
 /// - 校验：语法解析 → 表/列物理存在 → 白名单命中，任何失败不进入运行时；
-/// - 发布：事务内写 FIELDS + SYSDF 审计（TYPE=EXPR_PUBLISH），幂等，乐观锁；
+/// - 发布：事务内写 FIELDS + AUDIT_EVENT 审计（TYPE=EXPR_PUBLISH），幂等，乐观锁；
 /// - 白名单版本：常量版本号，随解析器/注册表变更递增（P3 将版本化入库）。
 /// </summary>
 public sealed class RestrictedExpressionService(
@@ -160,7 +160,7 @@ public sealed class RestrictedExpressionService(
     }
 
     /// <summary>
-    /// 发布受控表达式：事务内更新 FIELDS + SYSDF 审计；乐观锁（original 不匹配返回 false）。
+    /// 发布受控表达式：事务内更新 FIELDS + AUDIT_EVENT 审计；乐观锁（original 不匹配返回 false）。
     /// 幂等：同值重复发布为 no-op（不产生冗余审计）。
     /// </summary>
     public async Task<PublishExpressionOutcome> PublishAsync(

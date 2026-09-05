@@ -5,11 +5,12 @@ using EOS.API.Telemetry;
 namespace EOS.API.Middleware;
 
 /// <summary>
-/// 结构化请求日志：为每个请求解析/透传 X-Correlation-Id 与
-/// X-Client-Id，输出统一事件 http_request，固定字段含 traceId/spanId/correlationId/
-/// userId/clientId/moduleId/action/status/elapsedMs/dbElapsedMs/error.code；
-/// 同时驱动 HTTP 指标（请求数/错误数/延迟直方图）。
-/// 仅 /api 请求默认输出到 Information，其余按 Debug；5xx 或带 error.code 按 Error。
+/// Structured request log: resolves/forwards X-Correlation-Id and X-Client-Id,
+/// emits a uniform http_request event with traceId/spanId/correlationId/userId/
+/// clientId/moduleId/action/status/elapsedMs/dbElapsedMs/error.code, and feeds
+/// HTTP metrics. Only /api requests log at Information by default, the rest at
+/// Debug; 5xx or error.code log at Error, slow successes (>= 1s) at Warning so
+/// the Warning+ file log keeps every troubleshooting-relevant request.
 /// </summary>
 public sealed class RequestLoggingMiddleware(
     RequestDelegate next,
@@ -18,6 +19,9 @@ public sealed class RequestLoggingMiddleware(
     DbTimingCollector dbTiming,
     EOS.API.Data.WorkbenchDefinitionProvider definitionProvider)
 {
+    /// <summary>Slow request threshold: successes at or above this log at Warning.</summary>
+    public const double SlowRequestThresholdMs = 1000;
+
     public async Task InvokeAsync(HttpContext context)
     {
         var correlationId = ResolveCorrelationId(context);
@@ -60,6 +64,12 @@ public sealed class RequestLoggingMiddleware(
                 if (status >= 500 || errorCode is not null)
                 {
                     logger.LogError(message, "http_request", context.Request.Method,
+                        context.Request.Path.ToString(), status, elapsedMs, dbElapsedMs, user, clientId,
+                        moduleId, action, definitionVersion, correlationId, traceId, spanId, errorCode);
+                }
+                else if (elapsedMs >= SlowRequestThresholdMs)
+                {
+                    logger.LogWarning(message, "http_request", context.Request.Method,
                         context.Request.Path.ToString(), status, elapsedMs, dbElapsedMs, user, clientId,
                         moduleId, action, definitionVersion, correlationId, traceId, spanId, errorCode);
                 }
