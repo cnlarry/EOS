@@ -128,7 +128,7 @@ public sealed class UserAdminRepository(
     /// <summary>
     /// 新增用户（开户，2306）：SYSDL 建号 + 初始密码（现代哈希）+ 可选所属组。
     /// 校验：用户名格式（1-10 位字母数字下划线连字符）、初始密码策略、用户名唯一、
-    /// 员工必须存在于 SYSDN 且尚未开户；写 SYSDF 审计。
+    /// 员工必须存在于 SYSDN 且尚未开户；写 AUDIT_EVENT 审计。
     /// </summary>
     public async Task CreateUserAsync(
         string userId, string employeeId, string password, string? groupId,

@@ -2,7 +2,6 @@ using EOS.API.Data;
 using EOS.API.Services;
 using EOS.API.Errors;
 using EOS.API.Health;
-using EOS.API.Logging;
 using EOS.API.Middleware;
 using EOS.API.Models;
 using EOS.API.Security;
@@ -13,8 +12,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using ModelContextProtocol.AspNetCore;
-using ModelContextProtocol.Server;
 using Microsoft.OpenApi;
 using QuestPDF;
 using QuestPDF.Infrastructure;
@@ -34,7 +31,8 @@ builder.Logging.AddJsonConsole(options =>
 builder.Logging.AddProvider(new JsonFileLoggerProvider(
     builder.Configuration["Logging:File:Path"] ?? Path.Combine(Directory.GetCurrentDirectory(), "logs", "api-json.log"),
     maxBytes: 50L * 1024 * 1024,
-    maxFiles: 3));
+    maxFiles: 3,
+    minimumLevel: LogLevel.Warning));
 if (builder.Environment.IsDevelopment())
 {
     builder.Logging.AddDebug();
@@ -136,25 +134,6 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddAuthorization(options => options.FallbackPolicy =
     new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser().Build());
-var mcpAccessTokens = builder.Configuration.GetSection("Logging:Mcp:AccessTokens").Get<string[]>() ?? [];
-builder.Services.AddAuthorizationBuilder().AddPolicy("LogMcp", policy => policy.RequireAssertion(context =>
-{
-    if (context.User.Identity?.IsAuthenticated == true)
-    {
-        return true;
-    }
-    if (context.Resource is not HttpContext http)
-    {
-        return false;
-    }
-    var header = http.Request.Headers.Authorization.ToString();
-    if (string.IsNullOrWhiteSpace(header) || !header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-    {
-        return false;
-    }
-    var token = header["Bearer ".Length..].Trim();
-    return mcpAccessTokens.Contains(token, StringComparer.Ordinal);
-}));
 builder.Services.AddHealthChecks()
     .AddCheck<ErpDatabaseHealthCheck>("erp_database", tags: ["ready"])
     .AddCheck<MigrationsHealthCheck>("erp_migrations", tags: ["ready", "startup"])
@@ -188,8 +167,6 @@ builder.Services.AddScoped<WorkbenchVirtualColumnResolver>();
 builder.Services.AddScoped<WorkbenchApprovalService>();
 builder.Services.AddScoped<WorkbenchQueryComposer>();
 builder.Services.AddScoped<WorkbenchCommandHandler>();
-builder.Services.AddScoped<LogQueryService>();
-builder.Services.AddMcpServer().WithHttpTransport().WithTools<LogMcpTools>();
 builder.Services.AddScoped<AttendanceCalcService>();
 builder.Services.AddScoped<WorkbenchDefinitionBuilder>();
 builder.Services.AddScoped<WorkbenchFieldMetaMapper>();
@@ -256,6 +233,9 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IMetricRepository,
 builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IMetricExecutor,
     EOS.API.Features.Assistant.Metrics.MetricExecutor>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ResolveMetricTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Metrics.IFieldRelationRepository,
+    EOS.API.Features.Assistant.Metrics.FieldRelationRepository>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetFieldRelationsTool>();
 builder.Services.AddScoped<EOS.API.Data.IAssistantUsageRepository, EOS.API.Data.AssistantUsageRepository>();
 builder.Services.AddSingleton(sp => new EOS.API.Features.Assistant.Governance.FailureBreaker(
     () => DateTimeOffset.UtcNow,
@@ -309,7 +289,15 @@ app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-app.MapOpenApi().AllowAnonymous();
+var openApiEndpoint = app.MapOpenApi();
+if (app.Environment.IsDevelopment())
+{
+    openApiEndpoint.AllowAnonymous();
+}
+else
+{
+    openApiEndpoint.RequireAuthorization();
+}
 app.MapHealthChecks("/health/live").AllowAnonymous();
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
@@ -328,15 +316,6 @@ var metricsEndpoint = app.MapGet("/metrics", (ApiMetrics metrics) =>
 if (app.Environment.IsDevelopment())
 {
     metricsEndpoint.AllowAnonymous();
-}
-var mcpEndpoint = app.MapMcp("/api/log-mcp");
-if (app.Environment.IsDevelopment())
-{
-    mcpEndpoint.AllowAnonymous();
-}
-else
-{
-    mcpEndpoint.RequireAuthorization("LogMcp");
 }
 app.MapFallbackToFile("index.html").RequireAuthorization();
 

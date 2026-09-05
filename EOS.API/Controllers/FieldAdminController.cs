@@ -154,7 +154,7 @@ public sealed class FieldAdminController(
         return Ok(await expressionService.PreviewAsync(kind, request.Table, request.Field, request.Expression, token));
     }
 
-    /// <summary>受控表达式发布（P2）：事务写 FIELDS + SYSDF 审计，乐观锁 + 幂等。</summary>
+    /// <summary>受控表达式发布（P2）：事务写 FIELDS + AUDIT_EVENT 审计，乐观锁 + 幂等。</summary>
     [HttpPost("fields/expressions/publish")]
     public async Task<IActionResult> PublishExpression(PublishExpressionRequest request, CancellationToken token)
     {

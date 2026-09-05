@@ -6,25 +6,31 @@ using Microsoft.Extensions.Logging;
 namespace EOS.API.Telemetry;
 
 /// <summary>
-/// JSONL 结构化日志文件提供程序：把结构化日志逐行写入滚动文件
-/// （默认 logs/api-json.log），供 LogQueryService / 日志 MCP 检索与排障。
-/// 每行一个 JSON 对象：ts/level/category/eventId/event/message/fields（结构化状态）/exception。
+/// JSONL file log provider: appends structured logs to rolling files
+/// (default logs/api-json.log) for file-based troubleshooting
+/// (tail/grep by Agents, mssql for AUDIT_EVENT).
+/// Each line is one JSON object: ts/level/category/eventId/event/message/fields/exception.
+/// Only events at or above MinimumLevel reach the file: routine API requests
+/// stay on the console pipeline, while warnings, errors and slow requests
+/// are the persisted troubleshooting source.
 /// </summary>
 public sealed class JsonFileLoggerProvider : ILoggerProvider
 {
     private readonly string _path;
     private readonly long _maxBytes;
     private readonly int _maxFiles;
+    private readonly LogLevel _minimumLevel;
     private readonly object _gate = new();
     private readonly JsonSerializerOptions _jsonOptions = new() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
     private FileStream? _stream;
     private long _currentBytes;
 
-    public JsonFileLoggerProvider(string path, long maxBytes, int maxFiles)
+    public JsonFileLoggerProvider(string path, long maxBytes, int maxFiles, LogLevel minimumLevel = LogLevel.Warning)
     {
         _path = path;
         _maxBytes = maxBytes;
         _maxFiles = Math.Max(1, maxFiles);
+        _minimumLevel = minimumLevel;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         OpenStream();
     }
@@ -114,7 +120,7 @@ public sealed class JsonFileLoggerProvider : ILoggerProvider
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
-        public bool IsEnabled(LogLevel logLevel) => true;
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= provider._minimumLevel;
 
         public void Log<TState>(
             LogLevel logLevel,
