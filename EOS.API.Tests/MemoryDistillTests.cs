@@ -81,8 +81,13 @@ public sealed class MemoryDistillTests
         public Task<IReadOnlyList<AssistantMemoryItem>> ListPendingAsync(string userId, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<AssistantMemoryItem>>([]);
 
-        public Task<string> ResolvePendingAsync(string userId, long memoryId, bool confirm, CancellationToken token) =>
-            Task.FromResult("confirmed");
+        public List<(long Id, bool Confirm)> Resolves { get; } = [];
+
+        public Task<string> ResolvePendingAsync(string userId, long memoryId, bool confirm, CancellationToken token)
+        {
+            Resolves.Add((memoryId, confirm));
+            return Task.FromResult("confirmed");
+        }
 
         public Task<bool> DeleteMemoryAsync(string userId, long memoryId, CancellationToken token) =>
             Task.FromResult(true);
@@ -173,6 +178,9 @@ public sealed class MemoryDistillTests
         var pending = Assert.Single(store.Pendings);
         Assert.Equal("常用模块", pending.Key);
         Assert.Equal(82, pending.Confidence);
+        // ≥80 已拍板自动转正：提炼后立即确认（覆盖同名）。
+        var resolved = Assert.Single(store.Resolves);
+        Assert.True(resolved.Confirm);
     }
 }
 

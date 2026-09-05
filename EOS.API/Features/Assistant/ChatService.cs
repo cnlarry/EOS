@@ -414,8 +414,13 @@ public sealed class ChatService(
 
             foreach (var candidate in Memory.MemoryDistiller.Parse(output.ToString()))
             {
-                await memoryStore.AddPendingAsync(userId, candidate.Type, candidate.Key,
+                var pending = await memoryStore.AddPendingAsync(userId, candidate.Type, candidate.Key,
                     candidate.Value, messageId, candidate.Confidence, token);
+                // 用户已拍板（2026-09-05）：≥80 置信度自动转正（覆盖同名），以下维持待确认。
+                if (candidate.Confidence >= Memory.MemoryDistiller.SuggestThreshold)
+                {
+                    await memoryStore.ResolvePendingAsync(userId, pending.Id, confirm: true, token);
+                }
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
