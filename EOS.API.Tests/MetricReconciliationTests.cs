@@ -57,19 +57,35 @@ public sealed class MetricReconciliationTests
             new WorkbenchField("ORDER_TYPE", "单别", "nvarchar", 100, null, true),
             new WorkbenchField("SERIAL_NO", "项次", "int", 100, null, true),
             new WorkbenchField("AMOUNT_TAX", "含税金额", "decimal", 100, null, false),
+            new WorkbenchField("AMOUNT", "未税金额", "decimal", 100, null, false),
             new WorkbenchField("QTY", "数量", "decimal", 100, null, false),
+            new WorkbenchField("REBATE", "折扣", "decimal", 100, null, false),
+            new WorkbenchField("COST_AMOUNT", "成本金额", "decimal", 100, null, false),
         ],
         DefaultSort: null, HasAdd: true, HasEdit: true, DetailNoSave: false,
         MasterPkOrder: ["ORDER_TYPE", "ORDER_NO"], DetailNoFields: string.Empty,
         HasWorkflow: true, UserId: "reconciliation", ExecTag: "A");
 
+    private static WorkbenchDefinition StockDefinition() => new(
+        1408, "产品库存", "INV_PRO_DEPOT", null,
+        MasterFields:
+        [
+            new WorkbenchField("DEPOT_ID", "仓库", "nvarchar", 100, null, true),
+            new WorkbenchField("PRO_NO", "产品", "nvarchar", 100, null, true),
+            new WorkbenchField("QTY", "库存数量", "decimal", 100, null, false),
+            new WorkbenchField("IN_QTY", "入库数量", "decimal", 100, null, false),
+        ],
+        DetailFields: [], DefaultSort: null, HasAdd: true, HasEdit: true, DetailNoSave: false,
+        MasterPkOrder: ["DEPOT_ID", "PRO_NO"], DetailNoFields: string.Empty,
+        HasWorkflow: false, UserId: "reconciliation", ExecTag: "A");
+
     private static async Task<(MetricPlan Plan, MetricDefinitionRow Metric)> BuildPlanAsync(
-        string connectionString, IReadOnlyList<MetricDimensionFilter> dimensions)
+        string connectionString, IReadOnlyList<MetricDimensionFilter> dimensions, string metricId = MetricId)
     {
         var repository = new MetricRepository(ConnectionFactory(connectionString));
         var probe = new SysMetricSchemaProbe(ConnectionFactory(connectionString));
         var validator = new MetricDefinitionValidator(probe);
-        var metric = await repository.GetAsync(MetricId, CancellationToken.None)
+        var metric = await repository.GetAsync(metricId, CancellationToken.None)
             ?? throw new InvalidOperationException("口径 sales_amount 不存在。");
         if (!string.Equals(metric.ConfirmStatus, "CONFIRMED", StringComparison.OrdinalIgnoreCase))
         {
@@ -78,7 +94,9 @@ public sealed class MetricReconciliationTests
 
         var parse = MetricExpressionParser.Parse(metric.Definition);
         Assert.True(parse.Ok, parse.Error);
-        var definition = Definition();
+        var definition = metric.SourceTable.Equals("COP_ORDER_D", StringComparison.OrdinalIgnoreCase)
+            ? Definition()
+            : StockDefinition();
         var validation = await validator.ValidateAsync(new MetricValidationInput(
             parse.Expression!, metric.SourceTable,
             definition.DetailFields.Select(f => f.Key).ToHashSet(StringComparer.OrdinalIgnoreCase),
@@ -215,5 +233,48 @@ public sealed class MetricReconciliationTests
         var expected = await ExecuteScalarAsync(connectionString,
             ReferenceSql(null, $"m.[ORDER_DATE] >= '{from}' AND m.[ORDER_DATE] <= '{to}'"));
         AssertEqual(expected, actual);
+    }
+    public static TheoryData<string, string> ConfirmedSalesMetrics() => new()
+    {
+        { "sales_amount_ex", "SUM(d.[AMOUNT])" },
+        { "sales_qty", "SUM(d.[QTY])" },
+        { "sales_discount", "SUM(d.[REBATE])" },
+        { "order_count", "COUNT(DISTINCT d.[ORDER_NO])" },
+    };
+
+    [Theory]
+    [MemberData(nameof(ConfirmedSalesMetrics))]
+    public async Task Plan_Matches_Reference_For_Confirmed_Sales_Metrics(string metricId, string manualAggregate)
+    {
+        var connectionString = RequireConnection();
+        var (plan, _) = await BuildPlanAsync(connectionString, [], metricId);
+        var actual = await new MetricExecutor(ConnectionFactory(connectionString)).ExecuteAsync(plan, CancellationToken.None);
+        var expected = await ExecuteScalarAsync(connectionString,
+            "SELECT " + manualAggregate + " FROM dbo.[COP_ORDER_D] d" +
+            " JOIN dbo.[COP_ORDER_M] m ON m.[ORDER_TYPE]=d.[ORDER_TYPE] AND m.[ORDER_NO]=d.[ORDER_NO]" +
+            " WHERE m.[CONFIRM_TAG] = 1;");
+        AssertEqual(expected, actual);
+    }
+
+    [Fact]
+    public async Task Ghost_Column_Metrics_Are_Deterministically_Refused_On_Production_Data()
+    {
+        // inventory_turnover 引用的 IN_QTY 列在 INV_PRO_DEPOT 上不存在（sys.columns 核实），
+        // validator 必须在生产数据上确定性拒绝，绝不静默降级执行。
+        var connectionString = RequireConnection();
+        var repository = new MetricRepository(ConnectionFactory(connectionString));
+        var probe = new SysMetricSchemaProbe(ConnectionFactory(connectionString));
+        var validator = new MetricDefinitionValidator(probe);
+        var metric = await repository.GetAsync("inventory_turnover", CancellationToken.None)
+            ?? throw new InvalidOperationException("口径 inventory_turnover 不存在。");
+        var parse = MetricExpressionParser.Parse(metric.Definition);
+        Assert.True(parse.Ok, parse.Error);
+        var definition = StockDefinition();
+        var validation = await validator.ValidateAsync(new MetricValidationInput(
+            parse.Expression!, metric.SourceTable,
+            definition.MasterFields.Select(f => f.Key).ToHashSet(StringComparer.OrdinalIgnoreCase),
+            metric.DimensionKeys, metric.RowFilter, null, null), CancellationToken.None);
+        Assert.False(validation.Ok);
+        Assert.Contains("不存在", validation.Error);
     }
 }
