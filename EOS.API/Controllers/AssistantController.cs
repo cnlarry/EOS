@@ -312,6 +312,7 @@ public sealed class AssistantController(
         var dayStart = DateTimeOffset.UtcNow.Date;
         var global = await usageRepository.GetGlobalDailyUsageAsync(dayStart, token);
         var perUser = await usageRepository.GetPerUserDailyUsageAsync(dayStart, 20, token);
+        var latency = await usageRepository.GetGlobalLatencyAsync(dayStart, token);
         return Ok(new
         {
             day = dayStart,
@@ -322,6 +323,12 @@ public sealed class AssistantController(
                 completionTokens = global.CompletionTokens,
                 estimatedCostYuan = Math.Round(AssistantCost.Calculate(
                     global.PromptTokens, global.CompletionTokens, cost), 4),
+            },
+            latency = new
+            {
+                samples = latency.Samples,
+                avgMs = Math.Round(latency.AvgMs, 0),
+                p95Ms = Math.Round(latency.P95Ms, 0),
             },
             users = perUser.Select(entry => new
             {

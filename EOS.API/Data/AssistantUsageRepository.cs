@@ -5,6 +5,9 @@ namespace EOS.API.Data;
 
 public sealed record DailyUsage(int Requests, long PromptTokens, long CompletionTokens);
 
+/// <summary>当日回复延迟聚合（毫秒）：样本数 / 均值 / P95，供治理看板观察延迟水位。</summary>
+public sealed record LatencySummary(int Samples, double AvgMs, double P95Ms);
+
 public interface IAssistantUsageRepository
 {
     Task<DailyUsage> GetUserDailyUsageAsync(string userId, DateTimeOffset dayStartUtc, CancellationToken token);
@@ -19,6 +22,9 @@ public interface IAssistantUsageRepository
     Task<bool> TryReserveAsync(
         string userId, DateTimeOffset dayStartUtc, long reserveMicro,
         long userCapMicro, long globalCapMicro, CancellationToken token);
+
+    /// <summary>当日回复延迟聚合（ROLE=2 且已记录耗时的消息）。</summary>
+    Task<LatencySummary> GetGlobalLatencyAsync(DateTimeOffset dayStartUtc, CancellationToken token);
 
     /// <summary>结算：释放预留并记入实际花费（失败按预留额计入，取消按 0 释放）。</summary>
     Task SettleAsync(
@@ -47,6 +53,32 @@ public sealed class AssistantUsageRepository(DbConnectionFactory connections) : 
             WHERE m.ROLE = 2 AND m.CREATED_AT >= @DayStart;
             """,
             _ => { }, dayStartUtc, token);
+
+    public async Task<LatencySummary> GetGlobalLatencyAsync(DateTimeOffset dayStartUtc, CancellationToken token)
+    {
+        const string sql = """
+            SELECT COUNT_BIG(1), ISNULL(AVG(x.MS), 0), ISNULL(MAX(x.P95), 0)
+            FROM (
+                SELECT CAST(m.ELAPSED_MS AS float) AS MS,
+                       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY CAST(m.ELAPSED_MS AS float)) OVER () AS P95
+                FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
+                WHERE m.ROLE = 2 AND m.ELAPSED_MS IS NOT NULL AND m.CREATED_AT >= @DayStart
+            ) x;
+            """;
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@DayStart", System.Data.SqlDbType.DateTime2).Value = dayStartUtc.UtcDateTime;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token))
+        {
+            return new LatencySummary(0, 0, 0);
+        }
+        return new LatencySummary(
+            Convert.ToInt32(reader.GetValue(0)),
+            Convert.ToDouble(reader.GetValue(1)),
+            Convert.ToDouble(reader.GetValue(2)));
+    }
 
     public async Task<IReadOnlyList<(string UserId, DailyUsage Usage)>> GetPerUserDailyUsageAsync(
         DateTimeOffset dayStartUtc, int top, CancellationToken token)
