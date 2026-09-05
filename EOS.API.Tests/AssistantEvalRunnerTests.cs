@@ -116,6 +116,9 @@ public sealed class AssistantEvalRunnerTests
         public Task<FlowInstanceInfo?> GetInstanceAsync(int moduleId, string keyCondition, CancellationToken token) =>
             Task.FromResult<FlowInstanceInfo?>(null);
 
+        public Task<ApprovalConfirmInfo?> GetApprovalConfirmAsync(int moduleId, string keyCondition, CancellationToken token) =>
+            Task.FromResult<ApprovalConfirmInfo?>(null);
+
         public Task<RecordStateInfo> GetRecordStateAsync(string masterTable, IReadOnlyList<string> pkColumns,
             IReadOnlyList<string> keyValues, CancellationToken token) =>
             Task.FromResult(new RecordStateInfo(true, false, false));

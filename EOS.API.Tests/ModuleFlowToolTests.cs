@@ -66,7 +66,8 @@ public sealed class ModuleFlowToolTests
     }
 
     private sealed class FakeFlowGateway(
-        FlowDefinitionInfo? definition, FlowInstanceInfo? instance, RecordStateInfo record) : IModuleFlowGateway
+        FlowDefinitionInfo? definition, FlowInstanceInfo? instance, RecordStateInfo record,
+        ApprovalConfirmInfo? confirm = null) : IModuleFlowGateway
     {
         public Task<FlowDefinitionInfo?> GetFlowDefinitionAsync(int moduleId, CancellationToken token) =>
             Task.FromResult(definition);
@@ -76,6 +77,19 @@ public sealed class ModuleFlowToolTests
 
         public Task<RecordStateInfo> GetRecordStateAsync(string masterTable, IReadOnlyList<string> pkColumns,
             IReadOnlyList<string> keyValues, CancellationToken token) => Task.FromResult(record);
+
+        public Task<ApprovalConfirmInfo?> GetApprovalConfirmAsync(int moduleId, string keyCondition, CancellationToken token) =>
+            Task.FromResult(confirm);
+    }
+
+    private sealed class PerModulePermissions(IReadOnlyDictionary<int, bool> browse) : IPermissionService
+    {
+        public Task<ModulePermission> GetAsync(string userId, int moduleId, CancellationToken cancellationToken) =>
+            Task.FromResult(new ModulePermission(Rights(
+                canBrowse: !browse.TryGetValue(moduleId, out var denied) || !denied)));
+
+        public Task<ModulePermission> RequireAsync(string userId, int moduleId, PermissionAction action, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private static WorkbenchDefinition Definition() => new(
@@ -139,7 +153,50 @@ public sealed class ModuleFlowToolTests
         Assert.Contains("流转：在途", result.ContentForModel);
         Assert.Contains("审批：可", result.ContentForModel);
         Assert.Contains("编辑：否", result.ContentForModel);
-        Assert.Contains("上下游：跨模块单据关系尚未在库内结构化登记", result.ContentForModel);
+        Assert.Contains("--引用--> 本模块", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task Edges_ToUnbrowsableTarget_AreHidden()
+    {
+        var gateway = new FakeSearchGateway(new(
+            1604, "厂商报价单", "PUR_QUOTE_M", null,
+            MasterFields: [], DetailFields: [], DefaultSort: null, HasAdd: true, HasEdit: true,
+            DetailNoSave: false, MasterPkOrder: ["QUOTE_TYPE", "QUOTE_NO"], DetailNoFields: string.Empty,
+            HasWorkflow: true));
+        var tool = new GetModuleFlowTool(gateway,
+            new FakeFlowGateway(null, null, new(true, false, false)),
+            new PerModulePermissions(new Dictionary<int, bool> { [1602] = true }));
+
+        var result = await tool.ExecuteAsync("u1",
+            JsonSerializer.SerializeToElement(new { module_id = 1604, _keys = new[] { "QT", "1" } }),
+            CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Contains("上下游：已核对的关系边中暂无本模块", result.ContentForModel);
+        Assert.DoesNotContain("1602", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task Edges_ToBrowsableTarget_AreShown_WithApprovalConfirm()
+    {
+        var gateway = new FakeSearchGateway(new(
+            1604, "厂商报价单", "PUR_QUOTE_M", null,
+            MasterFields: [], DetailFields: [], DefaultSort: null, HasAdd: true, HasEdit: true,
+            DetailNoSave: false, MasterPkOrder: ["QUOTE_TYPE", "QUOTE_NO"], DetailNoFields: string.Empty,
+            HasWorkflow: true));
+        var tool = new GetModuleFlowTool(gateway,
+            new FakeFlowGateway(null, null, new(true, true, false),
+                new("厂商报价单 流程审批完成", "admin")),
+            new PerModulePermissions(new Dictionary<int, bool>()));
+
+        var result = await tool.ExecuteAsync("u1",
+            JsonSerializer.SerializeToElement(new { module_id = 1604, _keys = new[] { "QT", "1" } }),
+            CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Contains("--批核--> #1602", result.ContentForModel);
+        Assert.Contains("终审确认：厂商报价单 流程审批完成（admin）", result.ContentForModel);
     }
 
     [Fact]

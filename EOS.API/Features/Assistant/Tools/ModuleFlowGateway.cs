@@ -21,6 +21,8 @@ public sealed record RecordStateInfo(bool Found, bool Confirmed, bool Finished);
 /// Module flow read adapter over existing WF_* facts + record state columns.
 /// No parallel fact source: unknown relations stay unknown, never guessed.
 /// </summary>
+public sealed record ApprovalConfirmInfo(string Description, string? FinishedBy);
+
 public interface IModuleFlowGateway
 {
     Task<FlowDefinitionInfo?> GetFlowDefinitionAsync(int moduleId, CancellationToken token);
@@ -28,6 +30,9 @@ public interface IModuleFlowGateway
     Task<RecordStateInfo> GetRecordStateAsync(
         string masterTable, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues,
         CancellationToken token);
+
+    /// <summary>流程完成确认记录（WF_APPROVE：终审描述与完成人），无记录返回 null。</summary>
+    Task<ApprovalConfirmInfo?> GetApprovalConfirmAsync(int moduleId, string keyCondition, CancellationToken token);
 }
 
 public sealed class ModuleFlowGateway(DbConnectionFactory connections) : IModuleFlowGateway
@@ -118,6 +123,23 @@ public sealed class ModuleFlowGateway(DbConnectionFactory connections) : IModule
         }
 
         return new(wfId, state, startUser, stepNo, stepDesc, approvers, logCount);
+    }
+
+    public async Task<ApprovalConfirmInfo?> GetApprovalConfirmAsync(
+        int moduleId, string keyCondition, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(
+            "SELECT TOP 1 KEY_VALUE_DESC, LAST_UPDATE_BY FROM dbo.WF_APPROVE WITH (NOLOCK) WHERE M_IDX=@ModuleId AND KEY_VALUE=@KeyValue;",
+            connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        command.Parameters.Add("@KeyValue", SqlDbType.VarChar, 200).Value = keyCondition;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token)) return null;
+        return new(
+            reader.IsDBNull(0) ? string.Empty : reader.GetString(0).Trim(),
+            reader.IsDBNull(1) ? null : reader.GetString(1).Trim());
     }
 
     public async Task<RecordStateInfo> GetRecordStateAsync(
