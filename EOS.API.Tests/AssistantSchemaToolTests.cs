@@ -78,6 +78,44 @@ public sealed class AssistantSchemaToolTests
     }
 
     [Fact]
+    public async Task ListTables_ShowsUnmanagedAndOrphanCounts()
+    {
+        var result = await new ListTablesTool(new FakeSchema(), new FakePermissions(true)).ExecuteAsync(
+            "u1", JsonDocument.Parse("{}").RootElement, CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Contains("未纳管 1", result.ContentForModel);
+        Assert.Contains("幽灵 0", result.ContentForModel);
+    }
+
+    [Fact]
+    public async Task DescribeTable_DeniesMissingTable()
+    {
+        var schema = new MissingTableSchema();
+        var result = await new DescribeTableTool(schema, new FakePermissions(true)).ExecuteAsync(
+            "u1", JsonSerializer.SerializeToElement(new { table_id = "NOPE" }), CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Contains("不存在", result.ContentForModel);
+    }
+
+    private sealed class MissingTableSchema : IAssistantSchemaGateway
+    {
+        public Task<IReadOnlyList<FieldAdminTable>> ListTablesAsync(string? kind, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<FieldAdminTable>>([]);
+
+        public Task<(FieldAdminTableDetail? Table, IReadOnlyList<FieldAdminFieldSummary> Fields, IReadOnlyList<FieldAdminUnmanagedField> Unmanaged)> DescribeTableAsync(string tableId, CancellationToken token) =>
+            Task.FromResult<(FieldAdminTableDetail?, IReadOnlyList<FieldAdminFieldSummary>, IReadOnlyList<FieldAdminUnmanagedField>)>(
+                (null, [], []));
+
+        public Task<IReadOnlyList<AssistantSchemaView>> ListViewsAsync(string? keyword, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<AssistantSchemaView>>([]);
+
+        public Task<IReadOnlyList<AssistantSchemaProcedure>> ListProceduresAsync(string? keyword, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<AssistantSchemaProcedure>>([]);
+    }
+
+    [Fact]
     public async Task DescribeTable_RejectsInvalidIdentifier()
     {
         var result = await new DescribeTableTool(new FakeSchema(), new FakePermissions(true)).ExecuteAsync(

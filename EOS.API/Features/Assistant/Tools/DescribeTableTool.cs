@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using EOS.API.Data;
 using EOS.API.Models;
 using EOS.API.Security;
 
@@ -22,7 +23,7 @@ public sealed class DescribeTableTool(
         var denied = await RequireSetupAsync(userId, token);
         if (denied is not null) return denied;
         var tableId = arguments.GetStringArg("table_id").Trim();
-        if (tableId.Length == 0 || !System.Text.RegularExpressions.Regex.IsMatch(tableId, "^[A-Za-z_][A-Za-z0-9_]{0,127}$"))
+        if (tableId.Length == 0 || !WorkbenchSql.Identifier.IsMatch(tableId))
             return ToolExecutionResult.Deny("非法表名。");
         var (table, fields, unmanaged) = await schema.DescribeTableAsync(tableId, token);
         if (table is null) return ToolExecutionResult.Deny("表不存在或未登记。");
