@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/Button'
  * 2301「行为动作·演示」沙盒（仅前端原型）：
  * - 演示「模块加工单 = 事件 → 效果链」及字段级映射形态（A表.B字段 ← 本表.某字段）；
  * - 全部状态仅存于当前页面内存，不调用任何保存/后端接口；
- * - 内置收料单 1607 / 送货单 1406 / 生产入库单 1505 三份加工单示例（单据行为元模型草案附录 A/B/C）。
+ * - 内置收料单 1607 / 送货单 1406 / 生产入库单 1505 三份加工单示例数据。
  */
 
 export interface BehaviorDraftShape {
@@ -268,7 +268,7 @@ const PRESET_1505: DemoEffectRow[] = [
   effectRow(
     '完成度自动结案 / 完工标记',
     '定位制令主表；按数量是否收满判定',
-    '解批：直接清零 END_TAG / INFACT_END（旧逻辑，待业务确认）',
+    '解批：直接清零 END_TAG / INFACT_END（沿用既有行为，待业务确认）',
     [
       f('MOC_PRODUCE_M.END_TAG', '置为', '1（当 FINISHED_QTY ≥ QTY 且 FINISHED_SPARE_QTY ≥ SPARE_QTY）'),
       f('MOC_PRODUCE_M.INFACT_END', '覆盖', '本单主表 PRODUCT_IN_DATE'),
