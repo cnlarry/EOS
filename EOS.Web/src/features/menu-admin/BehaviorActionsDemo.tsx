@@ -323,7 +323,7 @@ const defaultMappings = (templateKey: string): FieldMapping[] => {
     case 'set-state':
       return [f('目标表.状态列', '置为', '目标状态值')]
     default:
-      return [f('（该模板参数待 Phase B 定义）', '置为', '演示占位')]
+      return [f('（该模板参数待定义）', '置为', '演示占位')]
   }
 }
 
