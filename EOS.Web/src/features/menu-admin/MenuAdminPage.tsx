@@ -82,6 +82,7 @@ export interface MenuAdminModule {
   LAST_UPDATE_DATE: string | null
   M_ICON: string | null
   Icon: string | null
+  EFFECT_ENGINE_TAG: boolean
 }
 
 /** 菜单同级排序动作。 */
@@ -130,6 +131,7 @@ const emptyDraft = (parentId: number | null): MenuAdminModule => ({
   LAST_UPDATE_DATE: null,
   M_ICON: null,
   Icon: null,
+  EFFECT_ENGINE_TAG: false,
 })
 
 interface TreeEntry {
@@ -871,6 +873,7 @@ export function MenuAdminPage() {
                           <Checkbox label="自动批核" checked={draft.AUTO_APPROVE} onChange={(checked) => patch((d) => ({ ...d, AUTO_APPROVE: checked }))} />
                           <Checkbox label="可以复制" checked={draft.IF_COPY} onChange={(checked) => patch((d) => ({ ...d, IF_COPY: checked }))} />
                           <Checkbox label="异常记录不可保存" checked={draft.ERROR_NO_SAVE} onChange={(checked) => patch((d) => ({ ...d, ERROR_NO_SAVE: checked }))} />
+                          <Checkbox label="效果引擎（灰度开关）" checked={draft.EFFECT_ENGINE_TAG} onChange={(checked) => patch((d) => ({ ...d, EFFECT_ENGINE_TAG: checked }))} />
                         </div>
                       </>
                     )}

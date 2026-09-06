@@ -45,6 +45,7 @@ const moduleWithTables = (id: number, desc: string): MenuAdminModule => ({
   LAST_UPDATE_DATE: null,
   M_ICON: null,
   Icon: null,
+  EFFECT_ENGINE_TAG: false,
 })
 
 const catalog = {

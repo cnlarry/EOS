@@ -41,7 +41,7 @@ public sealed class MenuAdminRepository(
                    MASTER_TABLE,FILTER,DETAIL_TABLE,UPDATE_SP,AFTERSAVE_SP,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
                    GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
                    GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
-                   FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON
+                   FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG
             FROM dbo.MODULES WITH (NOLOCK)
             WHERE (@Keyword = '' OR M_DESC LIKE @Keyword OR M_ALIAS LIKE @Keyword OR CONVERT(nvarchar(20),M_IDX) LIKE @Keyword)
             ORDER BY ISNULL(M_P_IDX,0),SORT_IDX,M_IDX;
@@ -216,7 +216,7 @@ public sealed class MenuAdminRepository(
                    MASTER_TABLE,FILTER,DETAIL_TABLE,UPDATE_SP,AFTERSAVE_SP,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
                    GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
                    GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
-                   FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON
+                   FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG
             FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@Id;
             """;
         await using var connection = connections.Create();
@@ -575,7 +575,8 @@ public sealed class MenuAdminRepository(
         GetString(reader, 42),
         reader.IsDBNull(43) ? (int?)null : (int)reader.GetByte(43),
         GetString(reader, 44),
-        GetString(reader, 45));
+        GetString(reader, 45),
+        EffectEngineTag: reader.GetBoolean(46));
 
     private async Task<(string? Master, string? Detail)> ResolveModuleTablesAsync(int moduleId, CancellationToken token)
     {
@@ -762,14 +763,14 @@ public sealed class MenuAdminRepository(
               MASTER_TABLE,FILTER,DETAIL_TABLE,UPDATE_SP,AFTERSAVE_SP,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
               GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
               GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
-              FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON)
+              FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG)
              VALUES
               (@M_IDX,@M_ALIAS,@M_DESC,@M_URL,@NEW_URL,@MODI_URL,@HELP_URL,@DETAIL_NO_FIELDS,@DETAIL_NO_SAVE,@SEARCH_1,@SEARCH_2,
               @M_P_IDX,@SORT_IDX,@M_TAG,@M_ROOT_IDX,@AUTO_APPROVE,@IF_COPY,@ERROR_NO_SAVE,@SORT_FIELDS,
               @MASTER_TABLE,@FILTER,@DETAIL_TABLE,@UPDATE_SP,@AFTERSAVE_SP,@NOT_BACK_FIELDS_M,@NOT_BACK_FIELDS,
               @GROUP1,@GROUP_EXP1,@GROUP_DESC1,@GROUP2,@GROUP_EXP2,@GROUP_DESC2,@GROUP3,@GROUP_EXP3,@GROUP_DESC3,
               @GROUP4,@GROUP_EXP4,@GROUP_DESC4,@GROUP5,@GROUP_EXP5,@GROUP_DESC5,@LAST_UPDATE_BY,GETDATE(),
-              @FORM_TABS,@FORM_COLUMNS,@FORM_BUTTONS,@M_ICON);
+              @FORM_TABS,@FORM_COLUMNS,@FORM_BUTTONS,@M_ICON,@EFFECT_ENGINE_TAG);
             """;
         await using var command = BuildCommand(connection, transaction, sql, m, rootIdx, updatedBy);
         await command.ExecuteNonQueryAsync(token);
@@ -791,7 +792,8 @@ public sealed class MenuAdminRepository(
               GROUP4=@GROUP4,GROUP_EXP4=@GROUP_EXP4,GROUP_DESC4=@GROUP_DESC4,
               GROUP5=@GROUP5,GROUP_EXP5=@GROUP_EXP5,GROUP_DESC5=@GROUP_DESC5,
               LAST_UPDATE_BY=@LAST_UPDATE_BY,LAST_UPDATE_DATE=GETDATE(),
-              FORM_TABS=@FORM_TABS,FORM_COLUMNS=@FORM_COLUMNS,FORM_BUTTONS=@FORM_BUTTONS,M_ICON=@M_ICON
+              FORM_TABS=@FORM_TABS,FORM_COLUMNS=@FORM_COLUMNS,FORM_BUTTONS=@FORM_BUTTONS,M_ICON=@M_ICON,
+              EFFECT_ENGINE_TAG=@EFFECT_ENGINE_TAG
             WHERE M_IDX=@OLD_IDX;
             """;
         await using var command = BuildCommand(connection, transaction, sql, m, rootIdx, updatedBy);
@@ -842,6 +844,7 @@ public sealed class MenuAdminRepository(
         command.Parameters.Add("@FORM_COLUMNS", SqlDbType.TinyInt).Value = m.FORM_COLUMNS is { } columns ? (byte)Math.Clamp(columns, 1, 6) : (object)DBNull.Value;
         command.Parameters.AddWithValue("@FORM_BUTTONS", (object?)m.FORM_BUTTONS ?? DBNull.Value);
         command.Parameters.AddWithValue("@M_ICON", (object?)m.M_ICON ?? DBNull.Value);
+        command.Parameters.Add("@EFFECT_ENGINE_TAG", SqlDbType.Bit).Value = m.EffectEngineTag;
         return command;
     }
 

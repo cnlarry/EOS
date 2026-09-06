@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using EOS.API.Data.Effects;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
@@ -263,6 +264,25 @@ public sealed class WorkbenchDefinitionValidator(
             checks.Add(new("business_config_valid", true, "模块无业务动作/校验配置。"));
         }
 
+        var engineEnabled = await ReadEffectEngineTagAsync(connection, moduleId, token);
+        if (engineEnabled && businessConfig is not null)
+        {
+            var pendingKeys = businessConfig.Actions
+                .Select(action => action.EffectKey)
+                .Where(effectKey => !EffectRegistry.IsImplemented(effectKey))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            checks.Add(pendingKeys.Count == 0
+                ? new("effect_engine_keys_implemented", true, "效果引擎开启且动作键全部可执行。")
+                : new("effect_engine_keys_implemented", false,
+                    $"效果引擎开启但存在未实现效果键：{string.Join(",", pendingKeys.Take(8))}{(pendingKeys.Count > 8 ? " 等" : "")}。"));
+        }
+        else
+        {
+            checks.Add(new("effect_engine_keys_implemented", true,
+                engineEnabled ? "效果引擎开启但模块暂无动作配置。" : "模块未开启效果引擎。"));
+        }
+
         var passed = checks.Where(check => check.Severity != "warning").All(check => check.Passed);
         string? definitionJson = null;
         if (passed && definition is not null)
@@ -270,6 +290,9 @@ public sealed class WorkbenchDefinitionValidator(
             // 快照基线：全权限定义；用户相关字段（UserId/ExecTag/CanDelete）归一为占位
             JsonElement? businessActions = null;
             JsonElement? validationRules = null;
+            JsonElement? effectEngine = engineEnabled
+                ? JsonSerializer.SerializeToElement(new { enabled = true })
+                : null;
             if (businessConfig is not null)
             {
                 businessActions = JsonSerializer.SerializeToElement(businessConfig.Actions);
@@ -281,12 +304,25 @@ public sealed class WorkbenchDefinitionValidator(
                 ExecTag = "Z",
                 BusinessActions = businessActions,
                 ValidationRules = validationRules,
+                EffectEngine = effectEngine,
             });
         }
 
         logger.LogInformation("工作台定义校验 module={ModuleId} passed={Passed} checks={CheckCount}",
             moduleId, passed, checks.Count);
         return new(moduleId, module.Title, passed, $"module-{moduleId}-draft", checks, definitionJson);
+    }
+
+    private static async Task<bool> ReadEffectEngineTagAsync(
+        SqlConnection connection,
+        int moduleId,
+        CancellationToken token)
+    {
+        const string sql = "SELECT ISNULL(EFFECT_ENGINE_TAG,0) FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;";
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        var value = await command.ExecuteScalarAsync(token);
+        return value is not null && Convert.ToInt32(value) == 1;
     }
 
     private static async Task<ModuleRow?> ReadModuleAsync(SqlConnection connection, int moduleId, CancellationToken token)
