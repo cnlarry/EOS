@@ -30,9 +30,9 @@ import { ApiError } from '../../types/api'
 import { parseFilter } from './menuFilter'
 import { MenuFieldPicker, MenuFilterBuilder } from './MenuFieldPickers'
 import { describeApiError } from '../../lib/errors'
-import { BehaviorActionsDemoPanel } from './BehaviorActionsDemo'
+import { BusinessActionsPanel } from './BusinessActionsPanel'
 
-/** 菜单编辑表单页签：基础 / 主表 / 子表 / 分组 / 统一表单 / 行为动作·演示。 */
+/** 菜单编辑表单页签：基础 / 主表 / 子表 / 分组 / 统一表单 / 行为动作。 */
 type MenuFormTab = 'basic' | 'master' | 'detail' | 'group' | 'form' | 'actions'
 
 const MENU_FORM_TABS: { key: MenuFormTab; label: string }[] = [
@@ -41,7 +41,7 @@ const MENU_FORM_TABS: { key: MenuFormTab; label: string }[] = [
   { key: 'detail', label: '子表' },
   { key: 'group', label: '分组' },
   { key: 'form', label: '统一表单' },
-  { key: 'actions', label: '行为动作·演示' },
+  { key: 'actions', label: '行为动作' },
 ]
 
 export interface MenuAdminModule {
@@ -966,7 +966,7 @@ export function MenuAdminPage() {
                         </div>
                       </div>
                     )}
-                    {formTab === 'actions' && <BehaviorActionsDemoPanel draft={draft} />}
+                    {formTab === 'actions' && <BusinessActionsPanel module={draft} />}
                   </TabbedPanel>
                   <div className="d-flex gap-2 mt-3">
                     <Button size="sm" loading={save.isPending} onClick={() => void save.mutate(draft)}>保存</Button>
