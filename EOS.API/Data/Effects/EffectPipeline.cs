@@ -1,0 +1,202 @@
+using System.Data;
+using System.Text;
+using System.Text.Json;
+using EOS.API.Models;
+using Microsoft.Data.SqlClient;
+
+namespace EOS.API.Data.Effects;
+
+/// <summary>Execution context handed to a service effect handler.</summary>
+public sealed record ServiceEffectContext(
+    SqlConnection Connection,
+    SqlTransaction Transaction,
+    ModuleEffectPlan Plan,
+    EffectActionPlan Action,
+    EffectEvent ExecutionEvent,
+    string? RecordKey,
+    string Executor);
+
+/// <summary>A C# implementation backing one service-style effect key (parameter-mode).</summary>
+public interface IEffectServiceHandler
+{
+    string EffectKey { get; }
+
+    Task<int> ExecuteAsync(ServiceEffectContext context, CancellationToken token);
+}
+
+/// <summary>
+/// Unified effect pipeline: executes the configured action chain for one module event
+/// inside the caller's transaction. The pipeline knows no modules — behaviour comes
+/// entirely from the effect plan (zero moduleId branches). Validation chain for the
+/// matching stage runs before the action chain; both share the same transaction so a
+/// BLOCK failure rolls the whole event back.
+/// </summary>
+public sealed class EffectPipeline(
+    DbConnectionFactory connections,
+    EffectPlanLoader planLoader,
+    EffectFormulaExecutor formulaExecutor,
+    IEnumerable<IEffectServiceHandler> serviceHandlers,
+    EffectValidationExecutor validationExecutor,
+    WorkbenchAuditWriter auditWriter,
+    ILogger<EffectPipeline> logger)
+{
+    private readonly Dictionary<string, IEffectServiceHandler> _handlers =
+        serviceHandlers.ToDictionary(handler => handler.EffectKey, StringComparer.OrdinalIgnoreCase);
+
+    private readonly EffectConditionCompiler _conditions = new();
+
+    /// <summary>Loads the plan from the current published definition and runs the event.</summary>
+    public async Task<IReadOnlyList<EffectStepResult>> ExecuteAsync(
+        WorkbenchDefinition definition,
+        EffectEvent executionEvent,
+        string recordKey,
+        string executor,
+        CancellationToken token)
+    {
+        var plan = planLoader.Load(definition);
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, token);
+        try
+        {
+            var results = await ExecuteWithinTransactionAsync(
+                connection, transaction, plan, executionEvent, recordKey, executor, token);
+            await transaction.CommitAsync(token);
+            return results;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Runs the validation chain (stage matching the event) and then the action chain,
+    /// inside the caller's open transaction. Throws EffectValidationException when a
+    /// validation fails (BLOCK semantics for all validation failures).
+    /// </summary>
+    public async Task<IReadOnlyList<EffectStepResult>> ExecuteWithinTransactionAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        ModuleEffectPlan plan,
+        EffectEvent executionEvent,
+        string recordKey,
+        string executor,
+        CancellationToken token)
+    {
+        await validationExecutor.ValidateAsync(
+            connection, transaction, plan, StageFor(executionEvent), token);
+
+        var results = new List<EffectStepResult>();
+        foreach (var action in plan.Actions)
+        {
+            if (!EffectEventMapper.TryParse(action.EventCode, out var actionEvent) || actionEvent != executionEvent)
+                continue;
+            if (!action.Enabled)
+                continue;
+
+            try
+            {
+                var rows = await ExecuteActionAsync(
+                    connection, transaction, plan, action, executionEvent, recordKey, executor, token);
+                results.Add(new EffectStepResult(action.Seq, action.EffectKey, Success: true, Warning: null, rows));
+                await auditWriter.WriteEventAsync(
+                    connection, transaction, plan.ModuleId, recordKey,
+                    $"EFFECT:{action.EffectKey}",
+                    $"效果 {action.EffectName ?? action.EffectKey} 执行完成（影响 {rows} 行）",
+                    executor, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
+            }
+            catch (EffectValidationException)
+            {
+                throw;
+            }
+            catch (Exception exception) when (action.FailMode.Equals("WARN", StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogWarning(exception,
+                    "效果步骤失败但按 WARN 继续 module={ModuleId} seq={Seq} key={Key}",
+                    plan.ModuleId, action.Seq, action.EffectKey);
+                results.Add(new EffectStepResult(
+                    action.Seq, action.EffectKey, Success: false, Warning: exception.Message, RowsAffected: 0));
+                await auditWriter.WriteEventAsync(
+                    connection, transaction, plan.ModuleId, recordKey,
+                    $"EFFECT:{action.EffectKey}",
+                    $"效果 {action.EffectName ?? action.EffectKey} 失败（WARN 继续）：{exception.Message}",
+                    executor, "WORKBENCH_RECORD", result: 0, fieldChanges: null, token);
+            }
+        }
+        return results;
+    }
+
+    private async Task<int> ExecuteActionAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        ModuleEffectPlan plan,
+        EffectActionPlan action,
+        EffectEvent executionEvent,
+        string recordKey,
+        string executor,
+        CancellationToken token)
+    {
+        if (action.Condition is { } condition && !await ConditionHoldsAsync(
+                connection, transaction, plan, condition, token))
+            return 0;
+
+        if (action.Ops.Count > 0)
+        {
+            var rows = 0;
+            foreach (var op in action.Ops)
+                rows += await formulaExecutor.ExecuteAsync(
+                    connection, transaction, plan, op, executionEvent, action.Reverse, token);
+            return rows;
+        }
+
+        if (!_handlers.TryGetValue(action.EffectKey, out var handler))
+            throw new EffectConfigException(
+                $"效果键 '{action.EffectKey}' 尚未注册执行实现（模块 {plan.ModuleId} SEQ={action.Seq}）。");
+        return await handler.ExecuteAsync(
+            new ServiceEffectContext(connection, transaction, plan, action, executionEvent, recordKey, executor),
+            token);
+    }
+
+    /// <summary>
+    /// Evaluates an action-level condition against the document context: MASTER/DETAIL
+    /// predicates use EXISTS semantics over the document tables; switches read SYSSS.
+    /// </summary>
+    private async Task<bool> ConditionHoldsAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        ModuleEffectPlan plan,
+        JsonElement condition,
+        CancellationToken token)
+    {
+        if (plan.MasterTable is null)
+            throw new EffectConfigException("两表皆空模块禁止携带条件的效果动作。");
+        var fragment = _conditions.Compile(
+            condition,
+            (scope, _) => scope.ToUpperInvariant() switch
+            {
+                "MASTER" => "M",
+                "DETAIL" => "D",
+                _ => null,
+            },
+            _ => true);
+        var sql = new StringBuilder("SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.")
+            .Append(EffectConditionCompiler.Identifier(plan.MasterTable)).Append(" M");
+        if (plan.DetailTable is not null)
+            sql.Append(" LEFT JOIN dbo.").Append(EffectConditionCompiler.Identifier(plan.DetailTable)).Append(" D ON 1=1");
+        sql.Append(" WHERE ").Append(fragment.Sql).Append(") THEN 1 ELSE 0 END;");
+        await using var command = new SqlCommand(sql.ToString(), connection, transaction);
+        foreach (var parameter in fragment.Parameters)
+            command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(token)) == 1;
+    }
+
+    internal static string StageFor(EffectEvent executionEvent) => executionEvent switch
+    {
+        EffectEvent.Save => "SAVE",
+        EffectEvent.ApproveEffect => "APPROVE",
+        EffectEvent.Deapprove => "DEAPPROVE",
+        _ => "SAVE",
+    };
+}
