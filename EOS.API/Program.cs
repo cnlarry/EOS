@@ -150,6 +150,7 @@ builder.Services.AddSingleton<PermissionCache>();
 builder.Services.AddScoped<NavigationRepository>();
 builder.Services.AddScoped<NavigationGroupsRepository>();
 builder.Services.AddScoped<MenuAdminRepository>();
+builder.Services.AddScoped<ModuleBusinessConfigRepository>();
 builder.Services.AddScoped<ChooserRepository>();
 builder.Services.AddScoped<ControlledSprocInvoker>();
 builder.Services.AddScoped<WorkflowEngine>();
