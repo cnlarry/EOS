@@ -63,4 +63,75 @@ NewUrl: "/workbench/1401/new",
         Assert.True(roundTrip.FilterFieldKeys!.Contains("SALES_ID"));
         Assert.Equal("module-1401-v1", roundTrip.DefinitionVersion);
     }
+
+    [Fact]
+    public void Definition_RoundTrips_BusinessConfigSections()
+    {
+        var actions = JsonSerializer.SerializeToElement(new[]
+        {
+            new
+            {
+                seq = 1,
+                eventCode = "APPROVE_EFFECT",
+                effectKey = "field-accumulate",
+                effectName = "收料量回写采购单",
+                enabled = true,
+                failMode = "BLOCK",
+                ops = new[]
+                {
+                    new
+                    {
+                        opSeq = 1,
+                        targetTable = "PUR_PURCHASE_D",
+                        targetField = "RECEIVE_QTY",
+                        opCode = "ACCUM",
+                        sourceScope = "DETAIL",
+                        sourceField = "QTY",
+                        sourceAgg = "SUM",
+                    },
+                },
+            },
+        });
+        var rules = JsonSerializer.SerializeToElement(new[]
+        {
+            new
+            {
+                seq = 1,
+                stage = "APPROVE",
+                validationKey = "qty-not-exceed",
+                enabled = true,
+                @params = "{\"mode\":\"usage-not-exceed\",\"checks\":[]}",
+            },
+        });
+        var definition = new WorkbenchDefinition(
+            ModuleId: 1607,
+            Title: "收料单",
+            MasterTable: "PUR_RECEIVE_M",
+            DetailTable: "PUR_RECEIVE_D",
+            MasterFields: [],
+            DetailFields: [],
+            DefaultSort: null,
+            HasAdd: true,
+            HasEdit: true,
+            DetailNoSave: false,
+            MasterPkOrder: ["RECEIVE_TYPE", "RECEIVE_NO"],
+            DetailNoFields: "",
+            HasWorkflow: true,
+            UserId: "",
+            ExecTag: "Z",
+            GroupExpressions: ["", "", "", "", ""],
+            DefinitionVersion: "module-1607-v1",
+            BusinessActions: actions,
+            ValidationRules: rules);
+
+        var json = JsonSerializer.Serialize(definition);
+        var roundTrip = JsonSerializer.Deserialize<WorkbenchDefinition>(json, WorkbenchDefinitionProvider.JsonOptions);
+
+        Assert.NotNull(roundTrip);
+        Assert.True(roundTrip!.BusinessActions.HasValue);
+        Assert.Equal(1, roundTrip.BusinessActions.Value.GetArrayLength());
+        Assert.Equal("field-accumulate", roundTrip.BusinessActions.Value[0].GetProperty("effectKey").GetString());
+        Assert.True(roundTrip.ValidationRules.HasValue);
+        Assert.Equal("qty-not-exceed", roundTrip.ValidationRules.Value[0].GetProperty("validationKey").GetString());
+    }
 }

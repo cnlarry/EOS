@@ -18,6 +18,7 @@ namespace EOS.API.Data;
 public sealed class WorkbenchDefinitionValidator(
     DbConnectionFactory connections,
     DocumentWorkbenchRepository workbench,
+    ModuleBusinessConfigRepository configRepository,
     IOptions<UnifiedFormEditorSettings> formSettings,
     ILogger<WorkbenchDefinitionValidator> logger)
 {
@@ -247,12 +248,40 @@ public sealed class WorkbenchDefinitionValidator(
             checks.AddRange(await ValidateFormQualityAsync(connection, tables, token));
         }
 
+        var businessConfig = await configRepository.GetAsync(moduleId, token);
+        if (businessConfig is not null)
+        {
+            var configIssues = ModuleBusinessConfigValidator.Validate(
+                new SaveModuleBusinessConfigRequest(businessConfig.Actions, businessConfig.ValidationRules));
+            checks.Add(configIssues.Count == 0
+                ? new("business_config_valid", true, "业务动作/校验配置通过结构校验。")
+                : new("business_config_valid", false,
+                    $"业务动作/校验配置结构校验失败：{string.Join("；", configIssues.Take(5))}{(configIssues.Count > 5 ? " 等" : "")}。"));
+        }
+        else
+        {
+            checks.Add(new("business_config_valid", true, "模块无业务动作/校验配置。"));
+        }
+
         var passed = checks.Where(check => check.Severity != "warning").All(check => check.Passed);
         string? definitionJson = null;
         if (passed && definition is not null)
         {
             // 快照基线：全权限定义；用户相关字段（UserId/ExecTag/CanDelete）归一为占位
-            definitionJson = JsonSerializer.Serialize(definition with { UserId = string.Empty, ExecTag = "Z" });
+            JsonElement? businessActions = null;
+            JsonElement? validationRules = null;
+            if (businessConfig is not null)
+            {
+                businessActions = JsonSerializer.SerializeToElement(businessConfig.Actions);
+                validationRules = JsonSerializer.SerializeToElement(businessConfig.ValidationRules);
+            }
+            definitionJson = JsonSerializer.Serialize(definition with
+            {
+                UserId = string.Empty,
+                ExecTag = "Z",
+                BusinessActions = businessActions,
+                ValidationRules = validationRules,
+            });
         }
 
         logger.LogInformation("工作台定义校验 module={ModuleId} passed={Passed} checks={CheckCount}",

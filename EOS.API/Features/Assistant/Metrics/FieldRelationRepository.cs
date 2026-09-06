@@ -27,7 +27,8 @@ public sealed class FieldRelationRepository(DbConnectionFactory connections) : I
             SELECT FROM_TABLE, FROM_COLUMN, TO_TABLE, TO_COLUMN,
                    LTRIM(RTRIM(ISNULL(DESCRIPTION, ''))) AS DESCRIPTION
             FROM dbo.FIELD_RELATION WITH (NOLOCK)
-            WHERE (@Keyword = ''
+            WHERE ISNULL(RELATION_KIND, N'READ') = N'READ'
+              AND (@Keyword = ''
                    OR FROM_TABLE LIKE '%' + @Keyword + '%' OR FROM_COLUMN LIKE '%' + @Keyword + '%'
                    OR TO_TABLE LIKE '%' + @Keyword + '%' OR TO_COLUMN LIKE '%' + @Keyword + '%'
                    OR DESCRIPTION LIKE '%' + @Keyword + '%')

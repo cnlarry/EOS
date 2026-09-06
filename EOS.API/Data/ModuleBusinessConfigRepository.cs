@@ -234,8 +234,147 @@ public sealed class ModuleBusinessConfigRepository(
                             issues.Add($"{where}：源加减项字段不存在 {sourceTable}.{field}。");
             }
         }
+        if (await HasFieldRelationEffectColumnsAsync(connection, token))
+        {
+            var edges = await LoadEffectEdgesAsync(connection, token);
+            foreach (var action in request.Actions)
+            {
+                foreach (var op in action.Ops ?? Array.Empty<BusinessActionOpDto>())
+                {
+                    if (string.IsNullOrWhiteSpace(op.Match))
+                        continue;
+                    var matchItems = TryParseMatchItems(op.Match!);
+                    if (matchItems is null || matchItems.Count == 0)
+                        continue;
+                    var resolved = matchItems
+                        .Select(item => new
+                        {
+                            Scope = item.SourceScope,
+                            FromTable = ResolveMatchSourceTable(item.SourceScope, item.SourceTable,
+                                masterTable, detailTable, op.SourceTable),
+                            FromColumn = item.SourceField,
+                            ToColumn = item.TargetColumn,
+                        })
+                        .ToList();
+                    var matched = edges.Values.Any(group =>
+                        group.Count == resolved.Count
+                        && group.Zip(resolved).All(pair =>
+                            pair.First.ToTable == op.TargetTable
+                            && pair.First.FromTable == pair.Second.FromTable
+                            && pair.First.FromColumn == pair.Second.FromColumn
+                            && pair.First.ToColumn == pair.Second.ToColumn
+                            && pair.First.Scope == pair.Second.Scope));
+                    if (!matched)
+                    {
+                        issues.Add(
+                            $"动作 SEQ={action.Seq} 公式行 OP_SEQ={op.OpSeq}：定位键未登记效果关系边（目标表 {op.TargetTable}），请先登记关系再保存。");
+                    }
+                }
+            }
+        }
         return issues;
     }
+
+    private static async Task<bool> HasFieldRelationEffectColumnsAsync(
+        SqlConnection connection,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT CASE WHEN EXISTS (
+                SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.FIELD_RELATION')
+                  AND name = N'RELATION_KIND'
+            ) THEN 1 ELSE 0 END;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(token)) == 1;
+    }
+
+    private static async Task<Dictionary<long, List<EffectEdge>>> LoadEffectEdgesAsync(
+        SqlConnection connection,
+        CancellationToken token)
+    {
+        const string sql = """
+            SELECT RELATION_ID,RELATION_NAME,SOURCE_SCOPE,KEY_ORDINAL,
+                   FROM_TABLE,FROM_COLUMN,TO_TABLE,TO_COLUMN
+            FROM dbo.FIELD_RELATION WITH (NOLOCK)
+            WHERE RELATION_KIND=N'EFFECT'
+            ORDER BY RELATION_ID,KEY_ORDINAL;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new Dictionary<long, List<EffectEdge>>();
+        while (await reader.ReadAsync(token))
+        {
+            var relationId = reader.GetInt64(0);
+            var edge = new EffectEdge(
+                reader.IsDBNull(2) ? null : reader.GetString(2).Trim(),
+                reader.GetInt32(3),
+                reader.GetString(4).Trim(),
+                reader.GetString(5).Trim(),
+                reader.GetString(6).Trim(),
+                reader.GetString(7).Trim());
+            if (!result.TryGetValue(relationId, out var list))
+            {
+                list = new List<EffectEdge>();
+                result[relationId] = list;
+            }
+            list.Add(edge);
+        }
+        return result;
+    }
+
+    private static IReadOnlyList<MatchItem>? TryParseMatchItems(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                return null;
+            var items = new List<MatchItem>();
+            foreach (var element in doc.RootElement.EnumerateArray())
+            {
+                if (element.ValueKind != JsonValueKind.Object
+                    || !element.TryGetProperty("target", out var target)
+                    || target.ValueKind != JsonValueKind.String
+                    || !element.TryGetProperty("source", out var source)
+                    || source.ValueKind != JsonValueKind.Object)
+                {
+                    return null;
+                }
+                var scope = source.TryGetProperty("scope", out var scopeValue)
+                    && scopeValue.ValueKind == JsonValueKind.String
+                        ? scopeValue.GetString()!.Trim().ToUpperInvariant()
+                        : string.Empty;
+                var field = source.TryGetProperty("field", out var fieldValue)
+                    && fieldValue.ValueKind == JsonValueKind.String
+                        ? fieldValue.GetString()!.Trim()
+                        : string.Empty;
+                var sourceTable = source.TryGetProperty("table", out var tableValue)
+                    && tableValue.ValueKind == JsonValueKind.String
+                        ? tableValue.GetString()!.Trim()
+                        : null;
+                items.Add(new MatchItem(target.GetString()!.Trim(), scope, field, sourceTable));
+            }
+            return items;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? ResolveMatchSourceTable(
+        string scope,
+        string? sourceTable,
+        string? masterTable,
+        string? detailTable,
+        string? opSourceTable) => scope switch
+    {
+        "MASTER" => masterTable,
+        "DETAIL" => detailTable,
+        "TABLE" => sourceTable ?? opSourceTable,
+        _ => null,
+    };
 
     private static async Task<long> InsertActionAsync(
         SqlConnection connection,
@@ -408,6 +547,20 @@ public sealed class ModuleBusinessConfigRepository(
     }
 
     private static string Key(string table, string field) => table + "." + field;
+
+    private sealed record EffectEdge(
+        string? Scope,
+        int KeyOrdinal,
+        string FromTable,
+        string FromColumn,
+        string ToTable,
+        string ToColumn);
+
+    private sealed record MatchItem(
+        string TargetColumn,
+        string SourceScope,
+        string SourceField,
+        string? SourceTable);
 
     private static string? GetString(SqlDataReader reader, int index) =>
         reader.IsDBNull(index) ? null : reader.GetString(index).Trim();

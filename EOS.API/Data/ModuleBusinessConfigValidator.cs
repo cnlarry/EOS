@@ -63,6 +63,8 @@ public static class ModuleBusinessConfigValidator
         ValidateJson(action.Condition, $"动作 SEQ={action.Seq} 条件", issues);
         ValidateJson(action.Params, $"动作 SEQ={action.Seq} 参数", issues);
         ValidateJson(action.Reverse, $"动作 SEQ={action.Seq} 反向", issues);
+        foreach (var structIssue in EffectStructSchemas.ValidateActionStructs(action.EffectKey, action.Params, action.Reverse))
+            issues.Add($"动作 SEQ={action.Seq}：{structIssue}");
 
         var ops = action.Ops ?? Array.Empty<BusinessActionOpDto>();
         if (ops.Count > 300)
