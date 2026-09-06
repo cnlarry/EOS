@@ -61,7 +61,7 @@ public class EffectEngineTests
             new[] { new EffectMatchItem("PRO_NO", new EffectSourceRef("DETAIL", null, "PRO_NO", null)) },
             null, null);
         var plan = new ModuleEffectPlan(1607, "PUR_RECEIVE_M", "PUR_RECEIVE_D", "v1",
-            Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
         var (sql, _) = executor.BuildUpdate(op, plan);
         Assert.Contains("UPDATE T SET T.[IN_BUY_QTY] = ISNULL(T.[IN_BUY_QTY], 0) + (", sql);
         Assert.Contains("(SELECT SUM(ISNULL(D.[QTY], 0) + ISNULL(D.[SPARE_QTY], 0)) FROM dbo.[PUR_RECEIVE_D] D", sql);
@@ -109,5 +109,60 @@ public class EffectEngineTests
         var fragment = compiler.Compile(condition, (_, _) => null, column => column == "PRO_MRP");
         Assert.Contains("dbo.SYSSS", fragment.Sql);
         Assert.Contains("= 1", fragment.Sql);
+    }
+}
+/// <summary>Unit tests for service handler parameter parsing and row-set generation (no DB).</summary>
+public class ServiceEffectHandlerTests
+{
+    [Fact]
+    public void InventoryMove_parses_terms_and_direction()
+    {
+        var plan = EOS.API.Data.Effects.ServiceEffectHandlers.InventoryMovePlan.Parse(
+            JsonSerializer.SerializeToElement(new
+            {
+                direction = "IN",
+                mrp = false,
+                fieldMap = new
+                {
+                    masterDate = "RECEIVE_DATE",
+                    qty = new { terms = new[] { new { field = "QTY", coef = 1 }, new { field = "SPARE_QTY", coef = 1 } } },
+                    detail = new[] { "SERIAL_NO", "PRO_NO", "UNIT_ID" },
+                },
+            }));
+        Assert.Equal(1, plan.Direction);
+        Assert.Equal(2, plan.QuantityTerms.Count);
+    }
+
+    [Fact]
+    public void InventoryMove_rejects_missing_master_keys()
+    {
+        var plan = EOS.API.Data.Effects.ServiceEffectHandlers.InventoryMovePlan.Parse(
+            JsonSerializer.SerializeToElement(new
+            {
+                direction = "OUT",
+                fieldMap = new { masterDate = "BACK_DATE", qty = "QTY", detail = new[] { "SERIAL_NO" } },
+            }));
+        var modulePlan = new EOS.API.Data.Effects.ModuleEffectPlan(
+            1607, "PUR_RECEIVE_M", "PUR_RECEIVE_D", "v1", new[] { "RECEIVE_TYPE", "RECEIVE_NO" },
+            Array.Empty<EOS.API.Data.Effects.EffectActionPlan>(),
+            Array.Empty<EOS.API.Data.Effects.EffectValidationPlan>());
+        Assert.Throws<EOS.API.Data.Effects.EffectConfigException>(
+            () => plan.BuildRowSet(modulePlan, Array.Empty<string>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PUR_RECEIVE_D.QTY", "PUR_RECEIVE_D.SERIAL_NO", "PUR_RECEIVE_D.PRO_NO", "PUR_RECEIVE_D.BACK_DATE", "PUR_RECEIVE_M.BACK_DATE", "PUR_RECEIVE_D.DEPOT_ID" }));
+    }
+
+    [Fact]
+    public void Loader_skips_placeholder_op_rows()
+    {
+        var loader = new EOS.API.Data.Effects.EffectPlanLoader();
+        var actions = JsonDocument.Parse(
+            """[{"seq":1,"eventCode":"APPROVE_EFFECT","effectKey":"set-state","params":{"targetTable":"MOC_PRODUCE_M","stateField":"START_TAG","stateValue":1},"ops":[{"opSeq":1}]}]""")
+            .RootElement.Clone();
+        var definition = new WorkbenchDefinition(
+            1503, "制令", "MOC_PRODUCE_M", "MOC_PRODUCE_D",
+            Array.Empty<WorkbenchField>(), Array.Empty<WorkbenchField>(),
+            null, true, true, false, Array.Empty<string>(), string.Empty,
+            HasWorkflow: false, DefinitionVersion: "module-1503-v1", BusinessActions: actions);
+        var plan = loader.Load(definition);
+        Assert.Empty(Assert.Single(plan.Actions).Ops);
     }
 }

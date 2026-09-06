@@ -1,4 +1,3 @@
-using System.Data;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.SqlClient;
@@ -16,6 +15,7 @@ namespace EOS.API.Data.Effects;
 public sealed class EffectFormulaExecutor
 {
     private readonly EffectConditionCompiler _conditions = new();
+    private readonly EffectPhysicalColumns _columns = new();
 
     public async Task<int> ExecuteAsync(
         SqlConnection connection,
@@ -30,7 +30,7 @@ public sealed class EffectFormulaExecutor
         if (effective is null)
             return 0;
 
-        var columns = await LoadPhysicalColumnsAsync(connection, token);
+        var columns = await _columns.LoadAsync(connection, token);
         ValidateIdentifiers(effective, plan, columns);
 
         var (sql, parameters) = BuildUpdate(effective, plan);
@@ -310,24 +310,4 @@ public sealed class EffectFormulaExecutor
             throw new EffectConfigException($"{where}表/字段不存在：{table}.{field}。");
     }
 
-    private static async Task<ISet<string>> LoadPhysicalColumnsAsync(SqlConnection connection, CancellationToken token)
-    {
-        const string sql = """
-            SELECT o.name,c.name
-            FROM sys.objects o
-            JOIN sys.columns c ON c.object_id=o.object_id
-            WHERE o.type IN ('U','V') AND SCHEMA_NAME(o.schema_id)=N'dbo';
-            """;
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var wasOpen = connection.State == ConnectionState.Open;
-        if (!wasOpen)
-            await connection.OpenAsync(token);
-        await using var command = new SqlCommand(sql, connection);
-        await using var reader = await command.ExecuteReaderAsync(token);
-        while (await reader.ReadAsync(token))
-            result.Add(reader.GetString(0) + "." + reader.GetString(1));
-        if (!wasOpen)
-            await connection.CloseAsync();
-        return result;
-    }
 }

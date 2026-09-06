@@ -78,6 +78,7 @@ public sealed record ModuleEffectPlan(
     string? MasterTable,
     string? DetailTable,
     string? DefinitionVersion,
+    IReadOnlyList<string> MasterPkOrder,
     IReadOnlyList<EffectActionPlan> Actions,
     IReadOnlyList<EffectValidationPlan> Rules);
 
