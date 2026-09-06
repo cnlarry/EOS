@@ -67,7 +67,15 @@ public sealed record WorkbenchDefinition(
     bool CanDelete = false,
     string? DefinitionVersion = null,
     [property: JsonPropertyName("businessActions")] JsonElement? BusinessActions = null,
-    [property: JsonPropertyName("validationRules")] JsonElement? ValidationRules = null);
+    [property: JsonPropertyName("validationRules")] JsonElement? ValidationRules = null,
+    [property: JsonPropertyName("effectEngine")] JsonElement? EffectEngine = null)
+{
+    /// <summary>Effect-engine gate read from the published snapshot (effectEngine.enabled).</summary>
+    public bool EffectEngineEnabled =>
+        EffectEngine is { ValueKind: JsonValueKind.Object } section
+        && section.TryGetProperty("enabled", out var enabled)
+        && enabled.ValueKind == JsonValueKind.True;
+}
 
 /// <summary>Form tab definition (parsed from MODULES.FORM_TABS).</summary>
 public sealed record FormTabDefinition(int No, string Title);

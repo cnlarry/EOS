@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.Json;
+using EOS.API.Data.Effects;
 using EOS.API.Models;
 using EOS.API.Telemetry;
 using Microsoft.Data.SqlClient;
@@ -20,6 +21,7 @@ public sealed class WorkbenchCommandHandler(
     WorkbenchScopeFilter scopeFilter,
     DomainRuleService domainRules,
     ControlledSprocInvoker controlledSprocs,
+    EffectEngineInvoker effectEngine,
     WorkbenchIdempotency idempotency,
     ILogger<WorkbenchCommandHandler> logger)
 {
@@ -262,11 +264,20 @@ public sealed class WorkbenchCommandHandler(
         }
         else if (businessRule?.AfterSaveSproc is { } afterSaveSproc)
         {
-            var sprocResult = await controlledSprocs.RunAfterSaveAsync(definition.ModuleId, afterSaveSproc, pkColumns, keyValues, connection, transaction, token);
-            if (!sprocResult.Success)
+            var effectRun = await effectEngine.TryRunAsync(
+                connection, transaction, definition, EffectEvent.Save, keyValues, userId, token);
+            if (effectRun.Ran && effectRun.Error is not null)
             {
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED",
-                    sprocResult.Message ?? "保存后业务校验未通过。");
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", effectRun.Error);
+            }
+            if (!effectRun.Ran)
+            {
+                var sprocResult = await controlledSprocs.RunAfterSaveAsync(definition.ModuleId, afterSaveSproc, pkColumns, keyValues, connection, transaction, token);
+                if (!sprocResult.Success)
+                {
+                    return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED",
+                        sprocResult.Message ?? "保存后业务校验未通过。");
+                }
             }
         }
         await RecalculateMasterAmountsAsync(connection, transaction, definition, token);
@@ -462,11 +473,20 @@ public sealed class WorkbenchCommandHandler(
         }
         else if (businessRule?.AfterSaveSproc is { } afterSaveSproc)
         {
-            var sprocResult = await controlledSprocs.RunAfterSaveAsync(definition.ModuleId, afterSaveSproc, pkColumns, keyValues, connection, transaction, token);
-            if (!sprocResult.Success)
+            var effectRun = await effectEngine.TryRunAsync(
+                connection, transaction, definition, EffectEvent.Save, keyValues, userId, token);
+            if (effectRun.Ran && effectRun.Error is not null)
             {
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED",
-                    sprocResult.Message ?? "保存后业务校验未通过。");
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", effectRun.Error);
+            }
+            if (!effectRun.Ran)
+            {
+                var sprocResult = await controlledSprocs.RunAfterSaveAsync(definition.ModuleId, afterSaveSproc, pkColumns, keyValues, connection, transaction, token);
+                if (!sprocResult.Success)
+                {
+                    return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED",
+                        sprocResult.Message ?? "保存后业务校验未通过。");
+                }
             }
         }
         await RecalculateMasterAmountsAsync(connection, transaction, definition, token);

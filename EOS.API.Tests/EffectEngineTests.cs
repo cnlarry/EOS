@@ -166,3 +166,33 @@ public class ServiceEffectHandlerTests
         Assert.Empty(Assert.Single(plan.Actions).Ops);
     }
 }
+
+public class EffectEngineGateTests
+{
+    [Fact]
+    public void Definition_engine_flag_requires_effectEngine_enabled_true()
+    {
+        EOS.API.Data.Effects.EffectEngineSettings settings = new() { Enabled = true };
+        var invoker = new EOS.API.Data.Effects.EffectEngineInvoker(
+            settings, null!, null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<EOS.API.Data.Effects.EffectEngineInvoker>.Instance);
+        var off = DefinitionWith(JsonDocument.Parse("{}").RootElement.Clone());
+        var on = DefinitionWith(JsonDocument.Parse("{\"enabled\":true}").RootElement.Clone());
+        Assert.False(invoker.IsEnabledFor(off));
+        Assert.True(invoker.IsEnabledFor(on));
+    }
+
+    [Fact]
+    public void Global_master_switch_gates_everything()
+    {
+        var invoker = new EOS.API.Data.Effects.EffectEngineInvoker(
+            new EOS.API.Data.Effects.EffectEngineSettings { Enabled = false }, null!, null!,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<EOS.API.Data.Effects.EffectEngineInvoker>.Instance);
+        Assert.False(invoker.IsEnabledFor(DefinitionWith(JsonDocument.Parse("{\"enabled\":true}").RootElement.Clone())));
+    }
+
+    private static WorkbenchDefinition DefinitionWith(JsonElement effectEngine) => new(
+        1607, "收料单", "PUR_RECEIVE_M", null,
+        Array.Empty<WorkbenchField>(), Array.Empty<WorkbenchField>(),
+        null, true, true, false, Array.Empty<string>(), string.Empty,
+        HasWorkflow: false, EffectEngine: effectEngine);
+}
