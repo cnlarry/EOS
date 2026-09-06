@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Data.Effects;
 using EOS.API.Services;
 using EOS.API.Errors;
 using EOS.API.Health;
@@ -151,6 +152,10 @@ builder.Services.AddScoped<NavigationRepository>();
 builder.Services.AddScoped<NavigationGroupsRepository>();
 builder.Services.AddScoped<MenuAdminRepository>();
 builder.Services.AddScoped<ModuleBusinessConfigRepository>();
+builder.Services.AddScoped<EffectPlanLoader>();
+builder.Services.AddScoped<EffectFormulaExecutor>();
+builder.Services.AddScoped<EffectValidationExecutor>();
+builder.Services.AddScoped<EffectPipeline>();
 builder.Services.AddScoped<ChooserRepository>();
 builder.Services.AddScoped<ControlledSprocInvoker>();
 builder.Services.AddScoped<WorkflowEngine>();
