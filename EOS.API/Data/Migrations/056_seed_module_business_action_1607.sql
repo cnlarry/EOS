@@ -76,7 +76,7 @@ BEGIN
     -- Action 6：库存入库（服务级）
     INSERT dbo.MODULE_BUSINESS_ACTION (MODULE_ID, EVENT_CODE, SEQ, EFFECT_KEY, EFFECT_NAME, ENABLED, FAIL_MODE, PARAM_STRUCT, REVERSE_STRUCT, REMARK, SOURCE_REF, CREATE_PERSON, CREATE_DATE)
     VALUES (1607, N'APPROVE_EFFECT', 6, N'inventory-move', N'收料入库（服务级）', 1, N'BLOCK',
-        N'{"direction":"IN","mrp":false,"fieldMap":{"masterDate":"RECEIVE_DATE","qty":"QTY+SPARE_QTY","detail":["SERIAL_NO","PRO_NO","DEPOT_ID","UNIT_ID","PRICE","CURR_ID","CURR_RATE","AMOUNT","BATCH_NO"]}}',
+        N'{"direction":"IN","mrp":false,"fieldMap":{"masterDate":"RECEIVE_DATE","qty":{"terms":[{"field":"QTY","coef":1},{"field":"SPARE_QTY","coef":1}]},"detail":["SERIAL_NO","PRO_NO","DEPOT_ID","UNIT_ID","PRICE","CURR_ID","CURR_RATE","AMOUNT","BATCH_NO"]}}',
         N'{"kind":"reverse-flow","note":"解批写反向流水，不删除"}',
         NULL, N'P_UPDATE_PRO_DEPOT', N'seed-agent', SYSDATETIME());
 
