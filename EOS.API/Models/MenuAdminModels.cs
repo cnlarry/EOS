@@ -56,7 +56,9 @@ public sealed record MenuAdminModule(
     /// <summary>用户自选图标名（留空时按 NavigationIcons/根名关键字规则解析；仅一级菜单显示）。</summary>
     [property: JsonPropertyName("M_ICON")] string? M_ICON = null,
     /// <summary>只读展示字段：所在根菜单的侧栏图标名（服务端解析，前端保存时忽略）。</summary>
-    [property: JsonPropertyName("Icon")] string? Icon = null);
+    [property: JsonPropertyName("Icon")] string? Icon = null,
+    /// <summary>模块级效果引擎开关（发布后写入 Definition effectEngine.enabled）。</summary>
+    [property: JsonPropertyName("EFFECT_ENGINE_TAG")] bool EffectEngineTag = false);
 
 public sealed record MenuAdminList(int Total, IReadOnlyList<MenuAdminModule> Modules);
 

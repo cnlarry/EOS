@@ -21,6 +21,7 @@ const moduleNode = (id: number, desc: string, parent: number | null): MenuAdminM
   LAST_UPDATE_BY: null, LAST_UPDATE_DATE: null,
   M_ICON: null,
   Icon: null,
+  EFFECT_ENGINE_TAG: false,
 })
 
 const modules = [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), moduleNode(110101, '公司基本资料', 1101)]
