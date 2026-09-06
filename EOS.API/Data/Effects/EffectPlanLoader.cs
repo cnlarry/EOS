@@ -46,6 +46,7 @@ public sealed class EffectPlanLoader
             definition.MasterTable,
             definition.DetailTable,
             definition.DefinitionVersion,
+            definition.MasterPkOrder,
             actions.OrderBy(item => item.Seq).ToList(),
             rules.OrderBy(item => item.Seq).ToList());
     }
@@ -70,7 +71,8 @@ public sealed class EffectPlanLoader
         var ops = new List<EffectOpPlan>();
         if (element.TryGetProperty("ops", out var opsJson) && opsJson.ValueKind == JsonValueKind.Array)
             foreach (var op in opsJson.EnumerateArray())
-                ops.Add(ParseOp(op));
+                if (ParseOp(op) is { } parsed)
+                    ops.Add(parsed);
 
         if (ops.Count == 0 && element.TryGetProperty("opCount", out var opCount)
             && opCount.ValueKind == JsonValueKind.Number && opCount.GetInt32() > 0)
@@ -102,12 +104,26 @@ public sealed class EffectPlanLoader
             ops.OrderBy(item => item.OpSeq).ToList());
     }
 
-    private static EffectOpPlan ParseOp(JsonElement element)
+    /// <summary>
+    /// Row-location semantics (v1.0 gray-release): formula rows consume MATCH_STRUCT
+    /// directly (column-name pairs); the FIELD_RELATION effect edges registered in the
+    /// configuration phase are validated for consistency at save time and re-checked
+    /// here only as identifiers, not resolved back to relation ids. Placeholder rows
+    /// written by the translation phase (empty op code; semantics carried by
+    /// PARAM_STRUCT of a service-style key) are skipped, never executed.
+    /// </summary>
+    private static EffectOpPlan? ParseOp(JsonElement element)
     {
         if (element.ValueKind != JsonValueKind.Object)
             throw new EffectConfigException("公式行配置项必须是对象。");
 
-        var opCode = RequiredString(element, "opCode");
+        var opCode = OptionalString(element, "opCode");
+        if (string.IsNullOrEmpty(opCode)
+            && OptionalString(element, "targetTable") is null
+            && OptionalString(element, "targetField") is null)
+            return null; // translation-phase placeholder row; service key params carry the semantics
+
+        opCode = RequiredString(element, "opCode");
         if (!OpCodes.Contains(opCode))
             throw new EffectConfigException($"公式行算子 '{opCode}' 不在封闭算子集内。");
 

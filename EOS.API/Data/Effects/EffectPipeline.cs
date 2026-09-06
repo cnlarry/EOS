@@ -14,6 +14,7 @@ public sealed record ServiceEffectContext(
     EffectActionPlan Action,
     EffectEvent ExecutionEvent,
     string? RecordKey,
+    IReadOnlyList<string> MasterKeyValues,
     string Executor);
 
 /// <summary>A C# implementation backing one service-style effect key (parameter-mode).</summary>
@@ -83,7 +84,8 @@ public sealed class EffectPipeline(
         EffectEvent executionEvent,
         string recordKey,
         string executor,
-        CancellationToken token)
+        CancellationToken token,
+        IReadOnlyList<string>? masterKeyValues = null)
     {
         await validationExecutor.ValidateAsync(
             connection, transaction, plan, StageFor(executionEvent), token);
@@ -99,7 +101,8 @@ public sealed class EffectPipeline(
             try
             {
                 var rows = await ExecuteActionAsync(
-                    connection, transaction, plan, action, executionEvent, recordKey, executor, token);
+                    connection, transaction, plan, action, executionEvent, recordKey, executor,
+                    masterKeyValues ?? Array.Empty<string>(), token);
                 results.Add(new EffectStepResult(action.Seq, action.EffectKey, Success: true, Warning: null, rows));
                 await auditWriter.WriteEventAsync(
                     connection, transaction, plan.ModuleId, recordKey,
@@ -136,6 +139,7 @@ public sealed class EffectPipeline(
         EffectEvent executionEvent,
         string recordKey,
         string executor,
+        IReadOnlyList<string> masterKeyValues,
         CancellationToken token)
     {
         if (action.Condition is { } condition && !await ConditionHoldsAsync(
@@ -151,11 +155,14 @@ public sealed class EffectPipeline(
             return rows;
         }
 
+        if (!EffectRegistry.IsImplemented(action.EffectKey))
+            throw new EffectConfigException(
+                $"效果键 '{action.EffectKey}' 尚未实现执行（模块 {plan.ModuleId} SEQ={action.Seq}），灰度开启前需补齐 Handler。");
         if (!_handlers.TryGetValue(action.EffectKey, out var handler))
             throw new EffectConfigException(
-                $"效果键 '{action.EffectKey}' 尚未注册执行实现（模块 {plan.ModuleId} SEQ={action.Seq}）。");
+                $"效果键 '{action.EffectKey}' 未注册服务 Handler（模块 {plan.ModuleId} SEQ={action.Seq}）。");
         return await handler.ExecuteAsync(
-            new ServiceEffectContext(connection, transaction, plan, action, executionEvent, recordKey, executor),
+            new ServiceEffectContext(connection, transaction, plan, action, executionEvent, recordKey, masterKeyValues, executor),
             token);
     }
 
