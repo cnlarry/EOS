@@ -2,6 +2,7 @@ using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Text.RegularExpressions;
 
+using EOS.API.Data.Effects;
 using EOS.API.Models;
 
 namespace EOS.API.Data;
@@ -23,6 +24,8 @@ public sealed class WorkflowEngine(
     DbConnectionFactory connections,
     ControlledSprocInvoker controlledSprocs,
     WorkbenchAuditWriter auditWriter,
+    WorkbenchDefinitionProvider definitionProvider,
+    EffectEngineInvoker effectEngine,
     ILogger<WorkflowEngine> logger)
 {
 
@@ -487,7 +490,8 @@ public sealed class WorkflowEngine(
 
     /// <summary>
     /// 流程完成（末步/跳转结束）：主表确认 + WorkflowSproc 副作用 + WF_APPROVE 历史。
-    /// 任务锁已释放，SP 在独立连接执行，避免跨连接锁冲突/死锁。
+    /// 任务锁已释放；legacy SP 仍走独立连接（既有行为），效果引擎开启时
+    /// 动作链与状态更新在同一事务内执行。
     /// </summary>
     private async Task<(bool Success, string? ErrorCode, string? ErrorMessage, bool FlowFinished, string? Message)> CompleteFlowAsync(
         SqlConnection connection, long wfId, string userId, CancellationToken token)
@@ -497,6 +501,8 @@ public sealed class WorkflowEngine(
         string keyCondition;
         string? updateSproc;
         string? title;
+        WorkbenchDefinition? baseline = null;
+        IReadOnlyList<string>? engineKeyValues = null;
         await using (var monitorCommand = new SqlCommand("""
             SELECT WF_M_IDX, KEY_VALUE
             FROM dbo.WF_MONITOR WITH (NOLOCK) WHERE WF_ID=@WfId;
@@ -524,7 +530,15 @@ public sealed class WorkflowEngine(
             title = reader.GetString(2);
         }
 
-        if (!string.IsNullOrWhiteSpace(updateSproc))
+        var hasBaseline = definitionProvider.TryGetBaseline(moduleId, out baseline, out _);
+        var engineEnabled = hasBaseline && baseline is not null && effectEngine.IsEnabledFor(baseline);
+        if (engineEnabled)
+        {
+            engineKeyValues = ParseKeyValues(keyCondition);
+            if (engineKeyValues.Count == 0)
+                return (false, "WORKFLOW_FAILED", "主键值无法从流程实例解析，效果引擎拒绝执行。", false, null);
+        }
+        else if (!string.IsNullOrWhiteSpace(updateSproc))
         {
             var sprocResult = await controlledSprocs.RunWorkflowAsync(
                 moduleId, updateSproc, Array.Empty<string>(), Array.Empty<string>(), true, token, keyCondition);
@@ -548,6 +562,17 @@ public sealed class WorkflowEngine(
             var affected = await confirm.ExecuteNonQueryAsync(token);
             if (affected == 0)
                 return (false, "WORKFLOW_STATE_CONFLICT", "记录不存在或已批核，无法重复批核。", false, null);
+
+            if (engineEnabled)
+            {
+                var (_, engineError) = await effectEngine.TryRunAsync(
+                    connection, finalTransaction, baseline!, EffectEvent.ApproveEffect, engineKeyValues!, userId, token);
+                if (engineError is not null)
+                {
+                    await finalTransaction.RollbackAsync(token);
+                    return (false, "WORKFLOW_FAILED", engineError, false, null);
+                }
+            }
 
             await using var history = new SqlCommand("""
                 INSERT INTO dbo.WF_APPROVE (M_IDX, KEY_VALUE, KEY_VALUE_DESC)
