@@ -117,7 +117,6 @@ public sealed class EffectValidationExecutor
                 : throw new EffectConfigException("reference-exists.check 缺少 refTable。");
             var allowEmpty = check.TryGetProperty("allowEmpty", out var ae) && ae.ValueKind == JsonValueKind.True;
 
-            string sourceSql;
             string referenceSql;
             if (check.TryGetProperty("join", out var join) && join.ValueKind == JsonValueKind.Array)
             {
