@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Text.Json;
 
 namespace EOS.API.Models;
 
@@ -64,7 +65,9 @@ public sealed record WorkbenchDefinition(
     string? ModiUrl = null,
     string? HelpUrl = null,
     bool CanDelete = false,
-    string? DefinitionVersion = null);
+    string? DefinitionVersion = null,
+    [property: JsonPropertyName("businessActions")] JsonElement? BusinessActions = null,
+    [property: JsonPropertyName("validationRules")] JsonElement? ValidationRules = null);
 
 /// <summary>Form tab definition (parsed from MODULES.FORM_TABS).</summary>
 public sealed record FormTabDefinition(int No, string Title);

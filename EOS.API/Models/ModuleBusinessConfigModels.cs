@@ -60,3 +60,24 @@ public sealed record ModuleBusinessConfigDto(
 public sealed record SaveModuleBusinessConfigRequest(
     [property: JsonPropertyName("actions")] IReadOnlyList<BusinessActionDto> Actions,
     [property: JsonPropertyName("validationRules")] IReadOnlyList<ModuleValidationRuleDto> ValidationRules);
+
+/// <summary>配置编辑目录（2301 下拉来源；与 BusinessActionCatalog 闭式集合一致）。</summary>
+public sealed record BusinessConfigCatalogDto(
+    [property: JsonPropertyName("events")] IReadOnlyList<string> Events,
+    [property: JsonPropertyName("failModes")] IReadOnlyList<string> FailModes,
+    [property: JsonPropertyName("effectKeys")] IReadOnlyList<string> EffectKeys,
+    [property: JsonPropertyName("opCodes")] IReadOnlyList<string> OpCodes,
+    [property: JsonPropertyName("sourceScopes")] IReadOnlyList<string> SourceScopes,
+    [property: JsonPropertyName("sourceAggregates")] IReadOnlyList<string> SourceAggregates,
+    [property: JsonPropertyName("validationStages")] IReadOnlyList<string> ValidationStages,
+    [property: JsonPropertyName("validationKeys")] IReadOnlyList<string> ValidationKeys);
+
+/// <summary>效果参数 Schema 元数据（根键白名单；供 2301 按 Schema 渲染参数编辑器）。</summary>
+public sealed record EffectParamSchemaDto(
+    [property: JsonPropertyName("effectKey")] string EffectKey,
+    [property: JsonPropertyName("rootKeys")] IReadOnlyList<string> RootKeys);
+
+/// <summary>配置编辑 Schema 目录（效果参数根键 + 反向 kind 枚举）。</summary>
+public sealed record BusinessConfigSchemasDto(
+    [property: JsonPropertyName("effects")] IReadOnlyList<EffectParamSchemaDto> Effects,
+    [property: JsonPropertyName("reverseKinds")] IReadOnlyList<string> ReverseKinds);
