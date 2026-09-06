@@ -24,6 +24,7 @@ public sealed class EffectFormulaExecutor
         EffectOpPlan op,
         EffectEvent executionEvent,
         JsonElement? reverseStruct,
+        IReadOnlyList<string> masterKeyValues,
         CancellationToken token)
     {
         var effective = ResolveOpForEvent(op, executionEvent, reverseStruct);
@@ -33,7 +34,7 @@ public sealed class EffectFormulaExecutor
         var columns = await _columns.LoadAsync(connection, token);
         ValidateIdentifiers(effective, plan, columns);
 
-        var (sql, parameters) = BuildUpdate(effective, plan);
+        var (sql, parameters) = BuildUpdate(effective, plan, masterKeyValues);
         await using var command = new SqlCommand(sql, connection, transaction);
         foreach (var parameter in parameters)
             command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
@@ -68,9 +69,11 @@ public sealed class EffectFormulaExecutor
 
     internal (string Sql, IReadOnlyList<EffectSqlParameter> Parameters) BuildUpdate(
         EffectOpPlan op,
-        ModuleEffectPlan plan)
+        ModuleEffectPlan plan,
+        IReadOnlyList<string> masterKeyValues)
     {
         _plan = plan;
+        _masterKeyValues = masterKeyValues;
         var targetAlias = "T";
         var parameters = new List<EffectSqlParameter>();
         var builder = new StringBuilder();
@@ -101,6 +104,11 @@ public sealed class EffectFormulaExecutor
             where = where.Length == 0 ? fragment.Sql : where + " AND " + fragment.Sql;
             parameters.AddRange(fragment.Parameters);
         }
+        var documentScope = BuildDocumentScopeFilter(op, targetAlias, parameters);
+        if (where.Length == 0)
+            where = documentScope;
+        else if (documentScope.Length > 0)
+            where = where + " AND " + documentScope;
         builder.Append(" WHERE ").Append(where.Length == 0 ? "1=1" : where);
 
         return (builder.ToString(), parameters);
@@ -134,7 +142,8 @@ public sealed class EffectFormulaExecutor
         if (correlation.Length == 0)
             throw new EffectConfigException(
                 $"公式行 OP_SEQ={op.OpSeq}：来源域 {source.Scope} 缺少定位键，禁止无条件读取 {table}。");
-        return $"(SELECT {aggregation}({innerExpression}) FROM dbo.{EffectConditionCompiler.Identifier(table)} {alias} WHERE {correlation})";
+        var documentScope = BuildSourceDocumentScope(alias, parameters);
+        return $"(SELECT {aggregation}({innerExpression}) FROM dbo.{EffectConditionCompiler.Identifier(table)} {alias} WHERE {correlation}{documentScope})";
     }
 
     private string BuildConstantParameter(EffectOpPlan op, List<EffectSqlParameter> parameters)
@@ -166,6 +175,55 @@ public sealed class EffectFormulaExecutor
     };
 
     private ModuleEffectPlan _plan = null!;
+    private IReadOnlyList<string> _masterKeyValues = Array.Empty<string>();
+
+    private string AddMasterKeyParameters(List<EffectSqlParameter> parameters)
+    {
+        var keys = Math.Min(_plan.MasterPkOrder.Count, _masterKeyValues.Count);
+        if (keys == 0)
+            throw new EffectConfigException("公式行缺少主表主键值，禁止无单据范围执行。");
+        var parts = new List<string>();
+        for (var index = 0; index < keys; index++)
+        {
+            var name = _conditions.NextParameterName();
+            parameters.Add(new EffectSqlParameter(name, _masterKeyValues[index]));
+            parts.Add($"M.{EffectConditionCompiler.Identifier(_plan.MasterPkOrder[index])} = {name}");
+        }
+        return string.Join(" AND ", parts);
+    }
+
+    /// <summary>
+    /// Restricts the statement to the current document: DETAIL-sourced ops locate target
+    /// rows through this document's detail rows (master-joined); master-table targets are
+    /// constrained by the key values directly. Without this the match correlation alone
+    /// would touch rows of unrelated documents.
+    /// </summary>
+    private string BuildDocumentScopeFilter(EffectOpPlan op, string targetAlias, List<EffectSqlParameter> parameters)
+    {
+        var masterFilter = AddMasterKeyParameters(parameters);
+        if (op.Match is { Count: > 0 }
+            && op.Match.Any(item => item.Source.Scope.Equals("DETAIL", StringComparison.OrdinalIgnoreCase))
+            && _plan.DetailTable is not null)
+        {
+            var masterJoin = string.Join(" AND ", _plan.MasterPkOrder.Select(pk =>
+                $"D.{EffectConditionCompiler.Identifier(pk)} = M.{EffectConditionCompiler.Identifier(pk)}"));
+            return $"EXISTS (SELECT 1 FROM dbo.{EffectConditionCompiler.Identifier(_plan.DetailTable)} D "
+                + $"JOIN dbo.{EffectConditionCompiler.Identifier(_plan.MasterTable!)} M ON {masterJoin} WHERE {masterFilter})";
+        }
+        if (op.TargetTable.Equals(_plan.MasterTable, StringComparison.OrdinalIgnoreCase))
+            return masterFilter.Replace("M.", targetAlias + ".");
+        return string.Empty;
+    }
+
+    /// <summary>Document scope for scalar source subqueries (DETAIL/TABLE sources).</summary>
+    private string BuildSourceDocumentScope(string alias, List<EffectSqlParameter> parameters)
+    {
+        var masterFilter = AddMasterKeyParameters(parameters);
+        var join = string.Join(" AND ", _plan.MasterPkOrder.Select(pk =>
+            $"{alias}.{EffectConditionCompiler.Identifier(pk)} = M.{EffectConditionCompiler.Identifier(pk)}"));
+        return $" AND EXISTS (SELECT 1 FROM dbo.{EffectConditionCompiler.Identifier(_plan.MasterTable!)} M "
+            + $"WHERE {join} AND {masterFilter})";
+    }
 
     private (string Table, string Alias) SourceTableFor(EffectOpPlan op) => op.Source.Scope.ToUpperInvariant() switch
     {
@@ -247,7 +305,7 @@ public sealed class EffectFormulaExecutor
             }
             // MASTER / TARGET: correlated directly to the outer statement.
             var sourceSide = item.Source.Scope.Equals("MASTER", StringComparison.OrdinalIgnoreCase)
-                ? $"(SELECT M.{EffectConditionCompiler.Identifier(item.Source.Field!)} FROM dbo.{EffectConditionCompiler.Identifier(_plan.MasterTable!)} M)"
+                ? $"(SELECT M.{EffectConditionCompiler.Identifier(item.Source.Field!)} FROM dbo.{EffectConditionCompiler.Identifier(_plan.MasterTable!)} M WHERE {AddMasterKeyParameters(parameters)})"
                 : $"{targetAlias}.{EffectConditionCompiler.Identifier(item.Source.Field!)}";
             parts.Add($"{targetAlias}.{EffectConditionCompiler.Identifier(item.TargetColumn)} = {sourceSide}");
         }

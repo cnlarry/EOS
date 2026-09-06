@@ -62,10 +62,14 @@ public class EffectEngineTests
             null, null);
         var plan = new ModuleEffectPlan(1607, "PUR_RECEIVE_M", "PUR_RECEIVE_D", "v1",
             Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
-        var (sql, _) = executor.BuildUpdate(op, plan);
+        plan = plan with { MasterPkOrder = new[] { "RECEIVE_TYPE", "RECEIVE_NO" } };
+        var (sql, parameters) = executor.BuildUpdate(op, plan, new[] { "RT1", "R0001" });
         Assert.Contains("UPDATE T SET T.[IN_BUY_QTY] = ISNULL(T.[IN_BUY_QTY], 0) + (", sql);
         Assert.Contains("(SELECT SUM(ISNULL(D.[QTY], 0) + ISNULL(D.[SPARE_QTY], 0)) FROM dbo.[PUR_RECEIVE_D] D", sql);
-        Assert.Contains("EXISTS (SELECT 1 FROM dbo.[PUR_RECEIVE_D] D WHERE D.[PRO_NO] = T.[PRO_NO])", sql);
+        Assert.Contains("D.[PRO_NO] = T.[PRO_NO]", sql);
+        Assert.Contains("EXISTS (SELECT 1 FROM dbo.[PUR_RECEIVE_D] D JOIN dbo.[PUR_RECEIVE_M] M ON D.[RECEIVE_TYPE] = M.[RECEIVE_TYPE] AND D.[RECEIVE_NO] = M.[RECEIVE_NO] WHERE", sql);
+        // value subquery and the WHERE scope each bind the two key values
+        Assert.Equal(4, parameters.Count(parameter => parameter.Name.StartsWith("@cp", StringComparison.Ordinal)));
     }
 
     [Fact]

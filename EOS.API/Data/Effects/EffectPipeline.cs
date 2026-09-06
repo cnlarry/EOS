@@ -47,12 +47,24 @@ public sealed class EffectPipeline(
     private readonly EffectConditionCompiler _conditions = new();
 
     /// <summary>Loads the plan from the current published definition and runs the event.</summary>
-    public async Task<IReadOnlyList<EffectStepResult>> ExecuteAsync(
+    public Task<IReadOnlyList<EffectStepResult>> ExecuteAsync(
         WorkbenchDefinition definition,
         EffectEvent executionEvent,
         string recordKey,
         string executor,
-        CancellationToken token)
+        CancellationToken token,
+        IReadOnlyList<string>? masterKeyValues = null)
+    {
+        return ExecuteLoadedAsync(definition, executionEvent, recordKey, executor, token, masterKeyValues ?? Array.Empty<string>());
+    }
+
+    private async Task<IReadOnlyList<EffectStepResult>> ExecuteLoadedAsync(
+        WorkbenchDefinition definition,
+        EffectEvent executionEvent,
+        string recordKey,
+        string executor,
+        CancellationToken token,
+        IReadOnlyList<string> masterKeyValues)
     {
         var plan = planLoader.Load(definition);
         await using var connection = connections.Create();
@@ -61,7 +73,7 @@ public sealed class EffectPipeline(
         try
         {
             var results = await ExecuteWithinTransactionAsync(
-                connection, transaction, plan, executionEvent, recordKey, executor, token);
+                connection, transaction, plan, executionEvent, recordKey, executor, token, masterKeyValues);
             await transaction.CommitAsync(token);
             return results;
         }
@@ -151,7 +163,7 @@ public sealed class EffectPipeline(
             var rows = 0;
             foreach (var op in action.Ops)
                 rows += await formulaExecutor.ExecuteAsync(
-                    connection, transaction, plan, op, executionEvent, action.Reverse, token);
+                    connection, transaction, plan, op, executionEvent, action.Reverse, masterKeyValues, token);
             return rows;
         }
 
