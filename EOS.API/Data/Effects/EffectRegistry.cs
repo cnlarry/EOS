@@ -35,9 +35,9 @@ public static class EffectRegistry
             ["inventory-move"] = Status.Service,
             ["set-state"] = Status.Service,
             // Placeholder-row + params shapes collected; handlers pending (see docs/plans/服务键形态证据.md)
-            ["balance-adjust"] = Status.Pending,
-            ["link-stamp"] = Status.Pending,
-            ["field-copy"] = Status.Pending,
+            ["balance-adjust"] = Status.Service, // net-replace shape refused at runtime (evidence pending)
+            ["link-stamp"] = Status.Service,
+            ["field-copy"] = Status.Service,
             ["callback-reprice"] = Status.Pending,
             ["return-writeback"] = Status.Pending,
             ["client-price-sync"] = Status.Pending,

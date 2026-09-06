@@ -1,6 +1,7 @@
 using System.Data;
 using Microsoft.Data.SqlClient;
 
+using EOS.API.Data.Effects;
 using EOS.API.Models;
 
 namespace EOS.API.Data;
@@ -20,6 +21,7 @@ public sealed class WorkbenchApprovalService(
     WorkbenchAuditWriter auditWriter,
     WorkflowEngine workflowEngine,
     ControlledSprocInvoker controlledSprocs,
+    EffectEngineInvoker effectEngine,
     WorkbenchIdempotency idempotency,
     ILogger<WorkbenchApprovalService> logger)
 {
@@ -270,7 +272,18 @@ public sealed class WorkbenchApprovalService(
                     approve ? "记录不存在或已批核，无法重复批核。" : "记录不存在或未批核，无法解批。");
             }
         }
-        var result = await controlledSprocs.RunWorkflowAsync(definition.ModuleId, sproc, definition.MasterPkOrder, keyValues, approve, token);
+        var effectRun = await effectEngine.TryRunAsync(
+            connection, null, definition,
+            approve ? EffectEvent.ApproveEffect : EffectEvent.Deapprove,
+            keyValues, userId, token);
+        if (effectRun.Ran && effectRun.Error is not null)
+        {
+            await RestoreConfirmStateAsync(connection, definition.MasterTable, keyCondition, originalState.Value, token);
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED", effectRun.Error);
+        }
+        var result = effectRun.Ran
+            ? new SprocResult(true, null)
+            : await controlledSprocs.RunWorkflowAsync(definition.ModuleId, sproc, definition.MasterPkOrder, keyValues, approve, token);
         if (!result.Success)
         {
             await RestoreConfirmStateAsync(connection, definition.MasterTable, keyCondition, originalState.Value, token);
