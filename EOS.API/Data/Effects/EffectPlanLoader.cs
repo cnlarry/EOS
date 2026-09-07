@@ -118,9 +118,9 @@ public sealed class EffectPlanLoader
             throw new EffectConfigException("公式行配置项必须是对象。");
 
         var opCode = OptionalString(element, "opCode");
-        if (string.IsNullOrEmpty(opCode)
-            && OptionalString(element, "targetTable") is null
-            && OptionalString(element, "targetField") is null)
+        if (string.IsNullOrWhiteSpace(opCode)
+            && string.IsNullOrWhiteSpace(OptionalString(element, "targetTable"))
+            && string.IsNullOrWhiteSpace(OptionalString(element, "targetField")))
             return null; // translation-phase placeholder row; service key params carry the semantics
 
         opCode = RequiredString(element, "opCode");
@@ -164,8 +164,11 @@ public sealed class EffectPlanLoader
 
     private static IReadOnlyList<EffectTerm>? ParseTerms(JsonElement element)
     {
-        if (!element.TryGetProperty("sourceTerms", out var terms) || terms.ValueKind != JsonValueKind.Array)
+        var parsed = ParseEmbeddedArray(element, "sourceTerms");
+        if (parsed is not { } terms)
+        {
             return null;
+        }
         var result = new List<EffectTerm>();
         foreach (var term in terms.EnumerateArray())
         {
@@ -184,8 +187,11 @@ public sealed class EffectPlanLoader
 
     private static IReadOnlyList<EffectMatchItem>? ParseMatch(JsonElement element)
     {
-        if (!element.TryGetProperty("match", out var match) || match.ValueKind != JsonValueKind.Array)
+        var parsed = ParseEmbeddedArray(element, "match");
+        if (parsed is not { } match)
+        {
             return null;
+        }
         var items = new List<EffectMatchItem>();
         foreach (var item in match.EnumerateArray())
         {
@@ -209,6 +215,33 @@ public sealed class EffectPlanLoader
         return items;
     }
 
+    /// <summary>Reads a JSON array property, accepting either an inline array or a JSON text string.</summary>
+    private static JsonElement? ParseEmbeddedArray(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value)
+            || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            var text = value.GetString()?.Trim();
+            if (string.IsNullOrEmpty(text))
+            {
+                return null;
+            }
+            try
+            {
+                value = JsonDocument.Parse(text).RootElement.Clone();
+            }
+            catch (JsonException exception)
+            {
+                throw new EffectConfigException($"配置项 '{name}' 内嵌 JSON 解析失败：{exception.Message}");
+            }
+        }
+        return value.ValueKind == JsonValueKind.Array ? value : null;
+    }
+
     private static EffectValidationPlan ParseValidationRule(JsonElement element)
     {
         if (element.ValueKind != JsonValueKind.Object)
@@ -222,7 +255,7 @@ public sealed class EffectPlanLoader
         var paramsJson = OptionalElement(element, "params") ?? JsonSerializer.SerializeToElement(new { });
         var issues = new List<string>();
         ValidationRuleRegistry.Validate(new ValidationRuleConfig(
-            OptionalString(element, "ruleId") ?? string.Empty,
+            OptionalString(element, "ruleId") ?? $"module-validation-{RequiredInt(element, "seq")}",
             validationKey,
             stage,
             OptionalBool(element, "enabled") ?? true,
@@ -264,10 +297,34 @@ public sealed class EffectPlanLoader
                 ? false
                 : null;
 
-    private static JsonElement? OptionalElement(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
-            ? value.Clone()
-            : null;
+    private static JsonElement? OptionalElement(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value)
+            || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            // Published snapshots carry structured JSON columns (PARAM_STRUCT,
+            // REVERSE_STRUCT, MATCH_STRUCT, ...) as text; parse them back into the
+            // element shape the compiler consumes.
+            var text = value.GetString()?.Trim();
+            if (string.IsNullOrEmpty(text))
+            {
+                return null;
+            }
+            try
+            {
+                return JsonDocument.Parse(text).RootElement.Clone();
+            }
+            catch (JsonException exception)
+            {
+                throw new EffectConfigException($"配置项 '{name}' 内嵌 JSON 解析失败：{exception.Message}");
+            }
+        }
+        return value.Clone();
+    }
 }
 
 /// <summary>Effect plan rejected the configuration; treated as a hard config error.</summary>

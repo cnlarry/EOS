@@ -31,14 +31,23 @@ public sealed class EffectFormulaExecutor
         if (effective is null)
             return 0;
 
-        var columns = await _columns.LoadAsync(connection, token);
+        var columns = await _columns.LoadAsync(connection, token, transaction);
         ValidateIdentifiers(effective, plan, columns);
 
         var (sql, parameters) = BuildUpdate(effective, plan, masterKeyValues);
         await using var command = new SqlCommand(sql, connection, transaction);
         foreach (var parameter in parameters)
             command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
-        return await command.ExecuteNonQueryAsync(token);
+        try
+        {
+            return await command.ExecuteNonQueryAsync(token);
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException(
+                $"公式行执行失败 OP_SEQ={op.OpSeq} table={op.TargetTable} field={op.TargetField}：{exception.Message}",
+                exception);
+        }
     }
 
     /// <summary>Returns the op adjusted for the running event, or null when the step is a no-op.</summary>
@@ -78,17 +87,29 @@ public sealed class EffectFormulaExecutor
         var parameters = new List<EffectSqlParameter>();
         var builder = new StringBuilder();
 
-        var assignment = op.OpCode.ToUpperInvariant() switch
+        var targetField = $"{targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)}";
+        string assignment;
+        switch (op.OpCode.ToUpperInvariant())
         {
-            "ACCUM" => $"{targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)} = ISNULL({targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)}, 0) + ({BuildValue(op, targetAlias, parameters)})",
-            "DEACCUM" => $"{targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)} = ISNULL({targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)}, 0) - ({BuildValue(op, targetAlias, parameters)})",
-            "ASSIGN" => $"{targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)} = ({BuildValue(op, targetAlias, parameters)})",
-            "ASSIGN_MAX" => $"{targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)} = CASE WHEN ({BuildValue(op, targetAlias, parameters)}) > {targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)} OR {targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)} IS NULL THEN ({PopLastValue(op, targetAlias, parameters)}) ELSE {targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)} END",
-            "ASSIGN_MIN" => $"{targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)} = CASE WHEN ({BuildValue(op, targetAlias, parameters)}) < {targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)} OR {targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)} IS NULL THEN ({PopLastValue(op, targetAlias, parameters)}) ELSE {targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)} END",
-            "APPEND_UNIQ" => BuildAppendUniq(op, targetAlias, parameters),
-            "SET_WHEN" => $"{targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)} = {BuildConstantParameter(op, parameters)}",
-            _ => throw new EffectConfigException($"公式行算子 '{op.OpCode}' 不在封闭算子集内。"),
-        };
+            case "SET_WHEN":
+                assignment = $"{targetField} = {BuildConstantParameter(op, parameters)}";
+                break;
+            case "APPEND_UNIQ":
+                assignment = BuildAppendUniq(op, targetAlias, parameters);
+                break;
+            default:
+                var value = BuildValue(op, targetAlias, parameters);
+                assignment = op.OpCode.ToUpperInvariant() switch
+                {
+                    "ACCUM" => $"{targetField} = ISNULL({targetField}, 0) + ({value})",
+                    "DEACCUM" => $"{targetField} = ISNULL({targetField}, 0) - ({value})",
+                    "ASSIGN" => $"{targetField} = ({value})",
+                    "ASSIGN_MAX" => $"{targetField} = CASE WHEN ({value}) > {targetField} OR {targetField} IS NULL THEN ({value}) ELSE {targetField} END",
+                    "ASSIGN_MIN" => $"{targetField} = CASE WHEN ({value}) < {targetField} OR {targetField} IS NULL THEN ({value}) ELSE {targetField} END",
+                    _ => throw new EffectConfigException($"公式行算子 '{op.OpCode}' 不在封闭算子集内。"),
+                };
+                break;
+        }
 
         builder.Append("UPDATE ").Append(targetAlias).Append(" SET ").Append(assignment)
             .Append(" FROM dbo.").Append(EffectConditionCompiler.Identifier(op.TargetTable)).Append(' ').Append(targetAlias);
@@ -114,9 +135,6 @@ public sealed class EffectFormulaExecutor
         return (builder.ToString(), parameters);
     }
 
-    private static string PopLastValue(EffectOpPlan op, string targetAlias, List<EffectSqlParameter> parameters) =>
-        parameters[^1].Name;
-
     /// <summary>Builds the scalar value expression for the op source.</summary>
     private string BuildValue(EffectOpPlan op, string targetAlias, List<EffectSqlParameter> parameters)
     {
@@ -127,6 +145,13 @@ public sealed class EffectFormulaExecutor
                 return BuildConstantParameter(op, parameters);
             case "TARGET":
                 return $"{targetAlias}.{EffectConditionCompiler.Identifier(source.Field!)}";
+            case "MASTER":
+                // Master rows are the single current document row: the value is the
+                // master field of this document, located by its own primary key. Match
+                // keys in the op only position the target rows (e.g. via detail rows)
+                // and never constrain the master sub-query.
+                return $"(SELECT M.{EffectConditionCompiler.Identifier(source.Field!)} FROM dbo."
+                    + $"{EffectConditionCompiler.Identifier(_plan.MasterTable!)} M WHERE {AddMasterKeyParameters(parameters)})";
         }
 
         var (table, alias) = SourceTableFor(op);
@@ -150,6 +175,12 @@ public sealed class EffectFormulaExecutor
     {
         var constant = op.Source.Constant
             ?? throw new EffectConfigException($"公式行 OP_SEQ={op.OpSeq}：CONSTANT 来源缺少 sourceConstant。");
+        if (constant.Equals("SYSDATETIME", StringComparison.OrdinalIgnoreCase))
+        {
+            // Reserved marker for the current database time; only the exact marker is
+            // mapped to the built-in function, every other constant stays parameterized.
+            return "SYSDATETIME()";
+        }
         var name = _conditions.NextParameterName();
         parameters.Add(new EffectSqlParameter(name, ParseScalar(constant)));
         return name;
@@ -280,22 +311,23 @@ public sealed class EffectFormulaExecutor
         if (op.Match is not { Count: > 0 })
             return string.Empty;
         var parts = new List<string>();
-        foreach (var item in op.Match)
+        foreach (var group in op.Match
+                     .Where(item => item.Source.Scope.Equals("DETAIL", StringComparison.OrdinalIgnoreCase)
+                         || item.Source.Scope.Equals("TABLE", StringComparison.OrdinalIgnoreCase))
+                     .GroupBy(item => item.Source.Scope.Equals("DETAIL", StringComparison.OrdinalIgnoreCase)
+                         ? (_plan.DetailTable!, "D")
+                         : (item.Source.Table!, "S_" + EffectConditionCompiler.TargetAlias(item.Source.Table!))))
         {
-            if (item.Source.Scope.Equals("DETAIL", StringComparison.OrdinalIgnoreCase)
-                || (item.Source.Scope.Equals("TABLE", StringComparison.OrdinalIgnoreCase)))
-            {
-                var table = item.Source.Scope.Equals("DETAIL", StringComparison.OrdinalIgnoreCase)
-                    ? _plan.DetailTable!
-                    : item.Source.Table!;
-                var alias = item.Source.Scope.Equals("DETAIL", StringComparison.OrdinalIgnoreCase)
-                    ? "D"
-                    : "S_" + EffectConditionCompiler.TargetAlias(table);
-                parts.Add(
-                    $"EXISTS (SELECT 1 FROM dbo.{EffectConditionCompiler.Identifier(table)} {alias} "
-                    + $"WHERE {alias}.{EffectConditionCompiler.Identifier(item.Source.Field!)} = {targetAlias}.{EffectConditionCompiler.Identifier(item.TargetColumn)})");
-                continue;
-            }
+            var (table, alias) = group.Key;
+            parts.Add(
+                $"EXISTS (SELECT 1 FROM dbo.{EffectConditionCompiler.Identifier(table)} {alias} "
+                + $"WHERE {string.Join(" AND ", group.Select(item =>
+                    $"{alias}.{EffectConditionCompiler.Identifier(item.Source.Field!)} = {targetAlias}.{EffectConditionCompiler.Identifier(item.TargetColumn)}"))})");
+        }
+        foreach (var item in op.Match.Where(item =>
+                     !item.Source.Scope.Equals("DETAIL", StringComparison.OrdinalIgnoreCase)
+                     && !item.Source.Scope.Equals("TABLE", StringComparison.OrdinalIgnoreCase)))
+        {
             if (item.Source.Scope.Equals("CONSTANT", StringComparison.OrdinalIgnoreCase))
             {
                 var name = _conditions.NextParameterName();

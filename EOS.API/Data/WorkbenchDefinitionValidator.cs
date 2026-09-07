@@ -686,11 +686,11 @@ public sealed class WorkbenchDefinitionValidator(
                    f.DISPLAY_FORMAT
             FROM dbo.FIELDS f WITH (NOLOCK) WHERE f.T_ID=@Table;
             """;
+        var returnItemsByField = await ReadReturnItemsByFieldAsync(connection, table, token);
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
         await using var reader = await command.ExecuteReaderAsync(token);
         var result = new List<FormQualityField>();
-        var returnItemsByField = await ReadReturnItemsByFieldAsync(connection, table, token);
         while (await reader.ReadAsync(token))
         {
             result.Add(new FormQualityField(

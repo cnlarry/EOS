@@ -20,7 +20,7 @@ public sealed class LinkStampHandler : IEffectServiceHandler
         var plan = context.Plan;
         if (plan.MasterTable is null)
             throw new EffectConfigException("link-stamp 需要主表形态。");
-        var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token);
+        var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
 
         var affected = 0;
         if (root.TryGetProperty("targets", out var targets) && targets.ValueKind == JsonValueKind.Array)
@@ -122,7 +122,7 @@ public sealed class FieldCopyHandler : IEffectServiceHandler
         var plan = context.Plan;
         if (plan.MasterTable is null)
             throw new EffectConfigException("field-copy 需要主表形态。");
-        var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token);
+        var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
 
         var affected = 0;
         if (root.TryGetProperty("targets", out var targets) && targets.ValueKind == JsonValueKind.Array)

@@ -23,15 +23,17 @@ public sealed class EffectValidationExecutor
         SqlTransaction transaction,
         ModuleEffectPlan plan,
         string stage,
-        CancellationToken token)
+        CancellationToken token,
+        IReadOnlyList<string>? masterKeyValues = null)
     {
+        var keyValues = masterKeyValues ?? Array.Empty<string>();
         foreach (var rule in plan.Rules)
         {
             if (!rule.Enabled || !rule.Stage.Equals(stage, StringComparison.OrdinalIgnoreCase))
                 continue;
             var violation = rule.ValidationKey.ToLowerInvariant() switch
             {
-                "qty-not-exceed" => await CheckQuantityNotExceedAsync(connection, transaction, plan, rule, stage, token),
+                "qty-not-exceed" => await CheckQuantityNotExceedAsync(connection, transaction, plan, rule, stage, keyValues, token),
                 "reference-exists" => await CheckReferenceExistsAsync(connection, transaction, plan, rule, token),
                 "duplicate-check" => await CheckDuplicateAsync(connection, transaction, plan, rule, token),
                 _ => throw new EffectConfigException($"校验键 '{rule.ValidationKey}' 尚未实现运行时执行。"),
@@ -53,6 +55,7 @@ public sealed class EffectValidationExecutor
         ModuleEffectPlan plan,
         EffectValidationPlan rule,
         string stage,
+        IReadOnlyList<string> masterKeyValues,
         CancellationToken token)
     {
         var root = rule.Params;
@@ -90,15 +93,44 @@ public sealed class EffectValidationExecutor
                 ? $"{limitSql} + {thisSql} < {usageSql}" // reduction would fall below accumulated progress
                 : $"{usageSql} + {thisSql} > {limitSql}";
 
+            var (documentScope, parameters) = BuildDocumentScope(plan, masterKeyValues);
             var sql = new StringBuilder("SELECT TOP 1 1 FROM dbo.")
                 .Append(EffectConditionCompiler.Identifier(sourceTable)).Append(" S CROSS JOIN dbo.")
                 .Append(EffectConditionCompiler.Identifier(targetTable)).Append(" T WHERE ")
-                .Append(correlation).Append(" AND ").Append(comparison);
+                .Append(correlation).Append(" AND ").Append(documentScope).Append(" AND ").Append(comparison);
             await using var command = new SqlCommand(sql.ToString(), connection, transaction);
+            foreach (var parameter in parameters)
+            {
+                command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+            }
             if (await command.ExecuteScalarAsync(token) is not null)
                 return $"存在超出{(mode == "not-below-progress" ? "进度" : "限额")}的明细行（{stage}）。";
         }
         return null;
+    }
+
+    /// <summary>
+    /// Restricts the source rows to the current document by master primary-key values;
+    /// comparing without the document scope would double-count previously received rows.
+    /// </summary>
+    private static (string Sql, List<EffectSqlParameter> Parameters) BuildDocumentScope(
+        ModuleEffectPlan plan,
+        IReadOnlyList<string> masterKeyValues)
+    {
+        if (plan.MasterPkOrder.Count == 0 || masterKeyValues.Count == 0)
+        {
+            throw new EffectConfigException("数量校验缺少单据主键上下文，禁止跨单比较。");
+        }
+        var keys = Math.Min(plan.MasterPkOrder.Count, masterKeyValues.Count);
+        var parts = new List<string>();
+        var parameters = new List<EffectSqlParameter>();
+        for (var index = 0; index < keys; index++)
+        {
+            var name = "@mk" + index;
+            parameters.Add(new EffectSqlParameter(name, masterKeyValues[index]));
+            parts.Add($"S.{EffectConditionCompiler.Identifier(plan.MasterPkOrder[index])} = {name}");
+        }
+        return (string.Join(" AND ", parts), parameters);
     }
 
     private async Task<string?> CheckReferenceExistsAsync(

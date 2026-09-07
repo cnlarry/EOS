@@ -100,12 +100,12 @@ public sealed class EffectPipeline(
         IReadOnlyList<string>? masterKeyValues = null)
     {
         await validationExecutor.ValidateAsync(
-            connection, transaction, plan, StageFor(executionEvent), token);
+            connection, transaction, plan, StageFor(executionEvent), token, masterKeyValues ?? Array.Empty<string>());
 
         var results = new List<EffectStepResult>();
         foreach (var action in plan.Actions)
         {
-            if (!EffectEventMapper.TryParse(action.EventCode, out var actionEvent) || actionEvent != executionEvent)
+            if (!EffectEventMapper.AppliesTo(action.EventCode, executionEvent))
                 continue;
             if (!action.Enabled)
                 continue;
@@ -120,7 +120,8 @@ public sealed class EffectPipeline(
                     connection, transaction, plan.ModuleId, recordKey,
                     $"EFFECT:{action.EffectKey}",
                     $"效果 {action.EffectName ?? action.EffectKey} 执行完成（影响 {rows} 行）",
-                    executor, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
+                    executor, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token,
+                    detailJson: BuildActionSnapshot(action));
             }
             catch (EffectValidationException)
             {
@@ -137,7 +138,8 @@ public sealed class EffectPipeline(
                     connection, transaction, plan.ModuleId, recordKey,
                     $"EFFECT:{action.EffectKey}",
                     $"效果 {action.EffectName ?? action.EffectKey} 失败（WARN 继续）：{exception.Message}",
-                    executor, "WORKBENCH_RECORD", result: 0, fieldChanges: null, token);
+                    executor, "WORKBENCH_RECORD", result: 0, fieldChanges: null, token,
+                    detailJson: BuildActionSnapshot(action));
             }
         }
         return results;
@@ -217,5 +219,46 @@ public sealed class EffectPipeline(
         EffectEvent.ApproveEffect => "APPROVE",
         EffectEvent.Deapprove => "DEAPPROVE",
         _ => "SAVE",
+    };
+
+    /// <summary>
+    /// Snapshots the configured action (parameters and expanded formula rows) into the
+    /// audit payload so the rule a document was processed under can be replayed later.
+    /// </summary>
+    private static string BuildActionSnapshot(EffectActionPlan action)
+    {
+        var payload = new
+        {
+            eventCode = action.EventCode,
+            action = new
+            {
+                action.Seq,
+                action.EffectKey,
+                action.EffectName,
+                action.Enabled,
+                action.FailMode,
+                action.Condition,
+                Params = action.Params,
+                action.Reverse,
+                ops = action.Ops.Select(op => new
+                {
+                    op.OpSeq,
+                    op.TargetTable,
+                    op.TargetField,
+                    op.OpCode,
+                    source = new { op.Source.Scope, op.Source.Table, op.Source.Field },
+                    op.SourceAgg,
+                    op.Terms,
+                    op.Match,
+                    op.Remark,
+                }),
+            },
+        };
+        return JsonSerializer.Serialize(payload, SnapshotJsonOptions);
+    }
+
+    private static readonly JsonSerializerOptions SnapshotJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 }
