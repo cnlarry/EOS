@@ -1095,7 +1095,7 @@ public sealed class FieldAdminRepository(
             var sourceTable = source.Table.Trim();
             if (!WorkbenchSql.Identifier.IsMatch(sourceTable))
                 throw new ArgumentException($"数据选择源表名无效：{sourceTable}");
-            if (!await WorkbenchSql.TableExistsAsync(connection, sourceTable, token))
+            if (!await WorkbenchSql.TableExistsAsync(connection, sourceTable, token, transaction))
                 throw new ArgumentException($"数据选择源表 {sourceTable} 不存在。");
 
             string? filterStructJson = null;
@@ -1103,7 +1103,7 @@ public sealed class FieldAdminRepository(
             {
                 if (!ChooserFilterStruct.TryParse(source.Filter, out var filterStruct) || filterStruct is null)
                     throw new ArgumentException($"数据来源 {serial} 的过滤条件不是合法的  结构化 JSON。");
-                var errors = await ChooserFilterValidator.ValidateAsync(connection, filterStruct, sourceTable, token);
+                var errors = await ChooserFilterValidator.ValidateAsync(connection, filterStruct, sourceTable, token, transaction);
                 if (errors.Count > 0)
                     throw new ArgumentException($"数据来源 {serial} 过滤条件校验失败：{string.Join("；", errors.Take(4))}");
                 filterStructJson = filterStruct.ToJson();
@@ -1120,7 +1120,7 @@ public sealed class FieldAdminRepository(
                 var columns = returnItems.Select(item => item.Column.Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
                 // 来源列允许物理列或来源表内受控虚拟列（来源查询结果集列含 VIRTUAL_EXP 派生值）
-                if (columns.Length > 0 && !await WorkbenchSql.ReturnColumnsExistAsync(connection, sourceTable, columns, token))
+                if (columns.Length > 0 && !await WorkbenchSql.ReturnColumnsExistAsync(connection, sourceTable, columns, token, transaction))
                     throw new ArgumentException($"数据来源 {serial} 回填映射引用了源表 {sourceTable} 中既非物理列也非受控虚拟列的来源字段。");
                 returnItemsJson = ChooserReturnItems.ToJson(returnItems);
             }
