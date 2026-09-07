@@ -11,6 +11,19 @@ namespace EOS.API.Data;
 /// </summary>
 public static class ModuleBusinessConfigValidator
 {
+    /// <summary>
+    /// Same-event chain prerequisites: an effect may require another effect earlier in
+    /// the same event chain because it consumes rows/amounts produced there (e.g. the
+    /// completion decision must run after quantity write-back, inventory after
+    /// write-back). The dependency is registered per effect key, never per module.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> ChainPrerequisites =
+        new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["completion-close"] = Set("field-accumulate"),
+            ["inventory-move"] = Set("field-accumulate"),
+        };
+
     public static IReadOnlyList<string> Validate(SaveModuleBusinessConfigRequest request)
     {
         var issues = new List<string>();
@@ -20,8 +33,15 @@ public static class ModuleBusinessConfigValidator
             issues.Add("校验规则数量超过上限（100）。");
 
         var actionKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var action in request.Actions)
+        var actionsByEvent = request.Actions
+            .Where(action => !string.IsNullOrWhiteSpace(action.EventCode))
+            .GroupBy(action => action.EventCode!.Trim().ToUpperInvariant(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.OrderBy(item => item.Seq).ToList(), StringComparer.OrdinalIgnoreCase);
+        foreach (var action in request.Actions.OrderBy(item => item.Seq))
+        {
             ValidateAction(action, actionKeys, issues);
+            ValidateChainPrerequisite(action, actionsByEvent, issues);
+        }
 
         var ruleKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var rule in request.ValidationRules)
@@ -29,6 +49,42 @@ public static class ModuleBusinessConfigValidator
 
         return issues;
     }
+
+    private static void ValidateChainPrerequisite(
+        BusinessActionDto action,
+        IReadOnlyDictionary<string, List<BusinessActionDto>> actionsByEvent,
+        ICollection<string> issues)
+    {
+        var eventCode = action.EventCode?.Trim().ToUpperInvariant() ?? string.Empty;
+        if (eventCode.Length == 0)
+        {
+            return;
+        }
+        if (ChainPrerequisites.TryGetValue(action.EffectKey, out var prerequisites))
+        {
+            foreach (var prerequisite in prerequisites)
+            {
+                // The prerequisite is required only when the chain actually contains it:
+                // a pure inventory/state chain without a write-back step is legal.
+                if (!actionsByEvent.TryGetValue(eventCode, out var chain))
+                {
+                    continue;
+                }
+                var hasPrerequisiteBefore = chain.Any(item =>
+                    item.Seq < action.Seq
+                    && item.EffectKey.Equals(prerequisite, StringComparison.OrdinalIgnoreCase));
+                var hasPrerequisiteAnywhere = chain.Any(item =>
+                    item.EffectKey.Equals(prerequisite, StringComparison.OrdinalIgnoreCase));
+                if (hasPrerequisiteAnywhere && !hasPrerequisiteBefore)
+                {
+                    issues.Add($"动作 SEQ={action.Seq}：效果 '{action.EffectKey}' 依赖同链前置效果 '{prerequisite}'（顺序 lint：依赖效果须先于本动作执行）。");
+                }
+            }
+        }
+    }
+
+    private static HashSet<string> Set(params string[] values) =>
+        new(values, StringComparer.OrdinalIgnoreCase);
 
     private static void ValidateAction(
         BusinessActionDto action,
@@ -84,6 +140,14 @@ public static class ModuleBusinessConfigValidator
         ICollection<string> issues)
     {
         var where = $"动作 SEQ={actionSeq} 公式行 OP_SEQ={op.OpSeq}";
+        if (string.IsNullOrWhiteSpace(op.OpCode)
+            && string.IsNullOrWhiteSpace(op.TargetTable)
+            && string.IsNullOrWhiteSpace(op.TargetField))
+        {
+            // Translation-phase placeholder row on a service-style effect; the loader
+            // skips such rows at runtime, so the save lint tolerates them too.
+            return;
+        }
         if (op.OpSeq < 1 || !opSeqs.Add(op.OpSeq))
         {
             issues.Add($"{where}：顺序号缺失或重复。");

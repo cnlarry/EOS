@@ -9,6 +9,21 @@ namespace EOS.API.Data.ValidationRules;
 /// </summary>
 public static class ValidationRuleRegistry
 {
+    private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> ParamKeysByTemplate =
+        new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["qty-not-exceed"] = KeySet("mode", "checks"),
+            ["reference-exists"] = KeySet("checks"),
+            ["duplicate-check"] = KeySet("mode", "table", "keyFields", "excludeSelf"),
+        };
+
+    private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "message");
+    private static readonly IReadOnlySet<string> QtyBlockKeys = KeySet("scope", "terms", "fields");
+    private static readonly IReadOnlySet<string> ReferenceCheckKeys = KeySet("refTable", "allowEmpty", "join", "refKey", "activeTag", "message", "lineField");
+    private static readonly IReadOnlySet<string> ReferencePairKeys = KeySet("target", "source");
+    private static readonly IReadOnlySet<string> ExcludeSelfKeys = KeySet("keyFields", "source");
+    private static readonly IReadOnlySet<string> SourceBlockKeys = KeySet("scope", "fields");
+
     private static readonly HashSet<string> KnownKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "qty-not-exceed",
@@ -49,6 +64,8 @@ public static class ValidationRuleRegistry
             issues.Add($"校验规则 {Label(rule)}：params 必须是 JSON 对象");
             return;
         }
+        if (ParamKeysByTemplate.TryGetValue(rule.ValidationKey, out var allowedParams))
+            RejectUnknownKeys(rule, p, allowedParams, "params", issues);
         switch (rule.ValidationKey.ToLowerInvariant())
         {
             case "qty-not-exceed":
@@ -68,6 +85,7 @@ public static class ValidationRuleRegistry
         var mode = GetString(p, "mode");
         if (mode is not ("usage-not-exceed" or "not-below-progress"))
             issues.Add($"校验规则 {Label(rule)}：qty-not-exceed.mode 仅允许 usage-not-exceed / not-below-progress");
+        var requireLimit = mode is null or "usage-not-exceed";
         var checks = GetArray(p, "checks");
         if (checks is not { } arr || arr.GetArrayLength() == 0)
         {
@@ -84,14 +102,21 @@ public static class ValidationRuleRegistry
                 index++;
                 continue;
             }
+            RejectUnknownKeys(rule, check, QtyCheckKeys, where, issues);
             var match = GetArray(check, "match");
             if (match is null || match.Value.GetArrayLength() == 0)
                 issues.Add($"校验规则 {Label(rule)}：{where}.match 必须是非空数组");
             else
                 ValidateMatchItems(rule, match.Value, $"{where}.match", issues);
-            ValidateQtyBlock(rule, check, "thisQty", $"{where}.thisQty", issues);
-            ValidateQtyBlock(rule, check, "usage", $"{where}.usage", issues);
-            ValidateQtyBlock(rule, check, "limit", $"{where}.limit", issues);
+            if (!ValidateQtyBlock(rule, check, "thisQty", $"{where}.thisQty", issues))
+                issues.Add($"校验规则 {Label(rule)}：{where}.thisQty 缺失");
+            if (!ValidateQtyBlock(rule, check, "usage", $"{where}.usage", issues))
+                issues.Add($"校验规则 {Label(rule)}：{where}.usage 缺失");
+            var hasLimit = GetObject(check, "limit") is not null;
+            if (requireLimit && !hasLimit)
+                issues.Add($"校验规则 {Label(rule)}：{where}.limit 缺失（usage-not-exceed 模式必须给出限额）");
+            if (hasLimit)
+                ValidateQtyBlock(rule, check, "limit", $"{where}.limit", issues);
             var offset = GetObject(check, "offset");
             if (offset is not null)
                 ValidateQtyBlock(rule, offset.Value, "offset", $"{where}.offset", issues);
@@ -99,14 +124,14 @@ public static class ValidationRuleRegistry
         }
     }
 
-    private static void ValidateQtyBlock(ValidationRuleConfig rule, JsonElement parent, string prop, string where, List<string> issues)
+    private static bool ValidateQtyBlock(ValidationRuleConfig rule, JsonElement parent, string prop, string where, List<string> issues)
     {
         var block = GetObject(parent, prop);
         if (block is null)
         {
-            issues.Add($"校验规则 {Label(rule)}：缺少 {where}");
-            return;
+            return false;
         }
+        RejectUnknownKeys(rule, block.Value, QtyBlockKeys, where, issues);
         var scope = GetString(block.Value, "scope");
         if (scope is null || !KnownScopes.Contains(scope))
             issues.Add($"校验规则 {Label(rule)}：{where}.scope 必须是 MASTER/DETAIL/TABLE/TARGET/CONSTANT");
@@ -129,17 +154,32 @@ public static class ValidationRuleRegistry
             if (fields is not { } f || f.GetArrayLength() == 0)
                 issues.Add($"校验规则 {Label(rule)}：{where} 需要 terms 或 fields 之一");
         }
+        return true;
     }
 
     private static void ValidateMatchItems(ValidationRuleConfig rule, JsonElement match, string where, List<string> issues)
     {
         foreach (var item in match.EnumerateArray())
         {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                issues.Add($"校验规则 {Label(rule)}：{where}[] 必须是对象");
+                continue;
+            }
+            RejectUnknownKeys(rule, item, ReferencePairKeys, where + "[]", issues);
             if (string.IsNullOrWhiteSpace(GetString(item, "target")))
                 issues.Add($"校验规则 {Label(rule)}：{where}[].target 不能为空");
             var source = GetObject(item, "source");
             if (source is null || string.IsNullOrWhiteSpace(GetString(source.Value, "field")))
                 issues.Add($"校验规则 {Label(rule)}：{where}[].source.field 不能为空");
+            if (source is { } sourceObject)
+            {
+                var allowedSource = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    "scope", "field", "table", "constant",
+                };
+                RejectUnknownKeys(rule, sourceObject, allowedSource, where + "[].source", issues);
+            }
         }
     }
 
@@ -155,6 +195,13 @@ public static class ValidationRuleRegistry
         foreach (var check in arr.EnumerateArray())
         {
             var where = $"checks[{index}]";
+            if (check.ValueKind != JsonValueKind.Object)
+            {
+                issues.Add($"校验规则 {Label(rule)}：{where} 必须是对象");
+                index++;
+                continue;
+            }
+            RejectUnknownKeys(rule, check, ReferenceCheckKeys, where, issues);
             if (string.IsNullOrWhiteSpace(GetString(check, "refTable")))
                 issues.Add($"校验规则 {Label(rule)}：{where}.refTable 不能为空");
             var refKey = GetObject(check, "refKey");
@@ -163,6 +210,53 @@ public static class ValidationRuleRegistry
                 issues.Add($"校验规则 {Label(rule)}：{where} 需要 refKey 或 join");
             if (refKey is not null && string.IsNullOrWhiteSpace(GetString(refKey.Value, "field")))
                 issues.Add($"校验规则 {Label(rule)}：{where}.refKey.field 不能为空");
+            if (refKey is { } refKeyObject)
+            {
+                var allowedRefKey = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "scope", "field" };
+                RejectUnknownKeys(rule, refKeyObject, allowedRefKey, where + ".refKey", issues);
+            }
+            if (join is { } joinArray)
+                foreach (var pair in joinArray.EnumerateArray())
+                {
+                    if (pair.ValueKind != JsonValueKind.Object)
+                    {
+                        issues.Add($"校验规则 {Label(rule)}：{where}.join[] 必须是对象");
+                        continue;
+                    }
+                    RejectUnknownKeys(rule, pair, ReferencePairKeys, where + ".join[]", issues);
+                    if (string.IsNullOrWhiteSpace(GetString(pair, "target")))
+                        issues.Add($"校验规则 {Label(rule)}：{where}.join[].target 不能为空");
+                    var pairSource = GetObject(pair, "source");
+                    if (pairSource is null || string.IsNullOrWhiteSpace(GetString(pairSource.Value, "field")))
+                        issues.Add($"校验规则 {Label(rule)}：{where}.join[].source.field 不能为空");
+                    if (pairSource is { } pairSourceObject)
+                    {
+                        var allowedPairSource = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            "scope", "field", "table", "constant",
+                        };
+                        RejectUnknownKeys(rule, pairSourceObject, allowedPairSource, where + ".join[].source", issues);
+                    }
+                }
+            if (check.TryGetProperty("allowEmpty", out var allowEmpty)
+                && allowEmpty.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                issues.Add($"校验规则 {Label(rule)}：{where}.allowEmpty 必须是布尔值");
+            if (check.TryGetProperty("activeTag", out var activeTag))
+            {
+                if (activeTag.ValueKind != JsonValueKind.Object)
+                {
+                    issues.Add($"校验规则 {Label(rule)}：{where}.activeTag 必须是对象");
+                }
+                else
+                {
+                    var activeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "field", "expect" };
+                    RejectUnknownKeys(rule, activeTag, activeKeys, where + ".activeTag", issues);
+                    if (string.IsNullOrWhiteSpace(GetString(activeTag, "field")))
+                        issues.Add($"校验规则 {Label(rule)}：{where}.activeTag.field 不能为空");
+                    if (activeTag.TryGetProperty("expect", out var expect) && expect.ValueKind != JsonValueKind.Number)
+                        issues.Add($"校验规则 {Label(rule)}：{where}.activeTag.expect 必须是数字");
+                }
+            }
             index++;
         }
     }
@@ -172,17 +266,40 @@ public static class ValidationRuleRegistry
         var mode = GetString(p, "mode");
         if (mode is not ("within-doc" or "entity"))
             issues.Add($"校验规则 {Label(rule)}：duplicate-check.mode 仅允许 within-doc / entity");
+        if (mode == "entity" && string.IsNullOrWhiteSpace(GetString(p, "table")))
+            issues.Add($"校验规则 {Label(rule)}：duplicate-check.table 必填（entity 模式）");
         var keyFields = GetArray(p, "keyFields");
         if (keyFields is not { } k || k.GetArrayLength() == 0)
             issues.Add($"校验规则 {Label(rule)}：duplicate-check.keyFields 必须是非空数组");
         var exclude = GetObject(p, "excludeSelf");
         if (exclude is not null)
         {
+            RejectUnknownKeys(rule, exclude.Value, ExcludeSelfKeys, "excludeSelf", issues);
             var excludeKeys = GetArray(exclude.Value, "keyFields");
             if (excludeKeys is null || excludeKeys.Value.GetArrayLength() == 0)
                 issues.Add($"校验规则 {Label(rule)}：excludeSelf.keyFields 必须是非空数组");
+            var excludeSource = GetObject(exclude.Value, "source");
+            if (excludeSource is not null)
+                RejectUnknownKeys(rule, excludeSource.Value, SourceBlockKeys, "excludeSelf.source", issues);
         }
     }
+
+    private static void RejectUnknownKeys(
+        ValidationRuleConfig rule,
+        JsonElement element,
+        IReadOnlySet<string> allowedKeys,
+        string where,
+        ICollection<string> issues)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (!allowedKeys.Contains(property.Name))
+                issues.Add($"校验规则 {Label(rule)}：未知参数键 {where}.{property.Name}");
+        }
+    }
+
+    private static IReadOnlySet<string> KeySet(params string[] keys) =>
+        new HashSet<string>(keys, StringComparer.OrdinalIgnoreCase);
 
     private static string Label(ValidationRuleConfig rule) =>
         string.IsNullOrWhiteSpace(rule.RuleId) ? $"({rule.ValidationKey})" : rule.RuleId;

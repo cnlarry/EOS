@@ -67,6 +67,63 @@ public class ModuleBusinessConfigValidatorTests
     }
 
     [Fact]
+    public void Validate_OrderLint_AcceptsWriteBackBeforeCompletionAndInventory()
+    {
+        var request = new SaveModuleBusinessConfigRequest(
+            [
+                new BusinessActionDto(1, "APPROVE_EFFECT", "field-accumulate", Ops: []),
+                new BusinessActionDto(2, "APPROVE_EFFECT", "completion-close", Ops: []),
+                new BusinessActionDto(3, "APPROVE_EFFECT", "inventory-move", Ops: []),
+            ],
+            []);
+        var issues = ModuleBusinessConfigValidator.Validate(request);
+        Assert.DoesNotContain(issues, issue => issue.Contains("顺序 lint"));
+    }
+
+    [Fact]
+    public void Validate_OrderLint_AllowsInventoryWithoutWriteBack()
+    {
+        // A pure inventory module (e.g. opening balance) has no write-back step in the
+        // chain; the prerequisite applies only when a write-back step exists.
+        var request = new SaveModuleBusinessConfigRequest(
+            [
+                new BusinessActionDto(1, "APPROVE_EFFECT", "inventory-move", Ops: []),
+            ],
+            []);
+        var issues = ModuleBusinessConfigValidator.Validate(request);
+        Assert.DoesNotContain(issues, issue => issue.Contains("顺序 lint"));
+    }
+
+    [Fact]
+    public void Validate_RejectsWriteBackAfterInventory()
+    {
+        var request = new SaveModuleBusinessConfigRequest(
+            [
+                new BusinessActionDto(1, "APPROVE_EFFECT", "inventory-move", Ops: []),
+                new BusinessActionDto(2, "APPROVE_EFFECT", "field-accumulate", Ops: []),
+            ],
+            []);
+        var issues = ModuleBusinessConfigValidator.Validate(request);
+        Assert.Contains(issues, issue => issue.Contains("顺序 lint"));
+    }
+
+    [Fact]
+    public void Validate_ToleratesPlaceholderOpOnServiceEffect()
+    {
+        var request = new SaveModuleBusinessConfigRequest(
+            [
+                new BusinessActionDto(
+                    1, "APPROVE_EFFECT", "inventory-move", Ops:
+                    [
+                        new BusinessActionOpDto(1, "", "", "", "", SourceField: null),
+                    ]),
+            ],
+            []);
+        var issues = ModuleBusinessConfigValidator.Validate(request);
+        Assert.DoesNotContain(issues, issue => issue.Contains("公式行"));
+    }
+
+    [Fact]
     public void Validate_DuplicateEventSeqAndRuleStageSeq_ReturnsIssues()
     {
         var request = new SaveModuleBusinessConfigRequest(

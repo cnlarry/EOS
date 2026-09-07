@@ -49,7 +49,8 @@ public sealed class WorkbenchAuditWriter(
         string resourceType,
         byte result,
         IReadOnlyList<AuditFieldChange>? fieldChanges,
-        CancellationToken token)
+        CancellationToken token,
+        string? detailJson = null)
     {
         var context = httpContextAccessor.HttpContext;
         var correlationId = context is null ? "system" : RequestContext.GetCorrelationId(context);
@@ -99,8 +100,11 @@ public sealed class WorkbenchAuditWriter(
             context is null ? DBNull.Value : (object?)RequestContext.GetErrorCode(context) ?? DBNull.Value;
         command.Parameters.Add("@DefinitionVersion", SqlDbType.NVarChar, 64).Value = (object?)definitionVersion ?? DBNull.Value;
         command.Parameters.Add("@Summary", SqlDbType.NVarChar, 1000).Value = summary is { Length: > 0 } ? (object)Truncate(summary, 1000) : DBNull.Value;
+        var effectiveDetailJson = detailJson ?? (effectiveFieldChanges is { Count: > 0 }
+            ? JsonSerializer.Serialize(effectiveFieldChanges)
+            : null);
         command.Parameters.Add("@DetailJson", SqlDbType.NVarChar, -1).Value =
-            effectiveFieldChanges is { Count: > 0 } ? (object)JsonSerializer.Serialize(effectiveFieldChanges) : DBNull.Value;
+            effectiveDetailJson is { Length: > 0 } ? effectiveDetailJson : DBNull.Value;
         var eventId = Convert.ToInt64(await command.ExecuteScalarAsync(token));
 
         if (effectiveFieldChanges is { Count: > 0 })

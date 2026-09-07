@@ -26,6 +26,16 @@ public static class EffectEventMapper
             default: value = default; return false;
         }
     }
+
+    /// <summary>
+    /// Whether a configured action participates in the running event. DEAPPROVE mirrors
+    /// the APPROVE_EFFECT chain (each action executes its reverse semantics), so approve
+    /// actions are candidates for a deapprove run as well.
+    /// </summary>
+    public static bool AppliesTo(string eventCode, EffectEvent executionEvent) =>
+        TryParse(eventCode, out var configured)
+        && (configured == executionEvent
+            || (executionEvent == EffectEvent.Deapprove && configured == EffectEvent.ApproveEffect));
 }
 
 /// <summary>A formula operand reference: MASTER/DETAIL/TABLE/TARGET source or a constant.</summary>

@@ -81,7 +81,7 @@ public sealed class SetStateHandler : IEffectServiceHandler
     {
         var root = context.Action.Params ?? throw new EffectConfigException("set-state 缺少参数。");
         var plan = context.Plan;
-        var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token);
+        var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
         var parameters = new List<EffectSqlParameter>();
         var statements = new List<string>();
 

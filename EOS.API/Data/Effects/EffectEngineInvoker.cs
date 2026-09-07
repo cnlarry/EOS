@@ -41,15 +41,14 @@ public sealed class EffectEngineInvoker(
         if (!IsEnabledFor(definition))
             return (false, null);
 
-        var plan = planLoader.Load(definition);
-        var hasActions = plan.Actions.Any(action =>
-            EffectEventMapper.TryParse(action.EventCode, out var actionEvent) && actionEvent == executionEvent);
-        if (!hasActions)
-            return (false, null);
-
         var recordKey = string.Join(',', keyValues);
         try
         {
+            var plan = planLoader.Load(definition);
+            var hasActions = plan.Actions.Any(action =>
+                EffectEventMapper.AppliesTo(action.EventCode, executionEvent));
+            if (!hasActions)
+                return (false, null);
             if (transaction is not null)
             {
                 await pipeline.ExecuteWithinTransactionAsync(
@@ -57,7 +56,7 @@ public sealed class EffectEngineInvoker(
             }
             else
             {
-                await pipeline.ExecuteAsync(definition, executionEvent, recordKey, executor, token);
+                await pipeline.ExecuteAsync(definition, executionEvent, recordKey, executor, token, keyValues);
             }
             logger.LogInformation(
                 "效果引擎接管事件 module={ModuleId} event={Event} version={Version}",

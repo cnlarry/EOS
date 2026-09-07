@@ -23,11 +23,10 @@ public sealed class InventoryMoveHandler : IEffectServiceHandler
     public async Task<int> ExecuteAsync(ServiceEffectContext context, CancellationToken token)
     {
         var plan = InventoryMovePlan.Parse(context.Action.Params ?? JsonSerializer.SerializeToElement(new { }));
-        var columns = await _columns.LoadAsync(context.Connection, token);
+        var columns = await _columns.LoadAsync(context.Connection, token, context.Transaction);
         var sql = plan.BuildRowSet(context.Plan, context.MasterKeyValues, columns);
         var executor = new InventoryMoveSql(
-            context.Connection, context.Transaction, plan, context.ExecutionEvent,
-            context.Plan.ModuleId.ToString());
+            context.Connection, context.Transaction, plan, context.ExecutionEvent);
         return await executor.RunAsync(sql, token);
     }
 }
@@ -121,6 +120,8 @@ public sealed record InventoryMovePlan(
         var keys = Math.Min(plan.MasterPkOrder.Count, Math.Max(masterKeyValues.Count, 0));
         if (keys == 0)
             throw new EffectConfigException("inventory-move 缺少主表主键值，禁止无条件读取。");
+        if (keys < 2)
+            throw new EffectConfigException("inventory-move 需要单据双键（类型+单号）主表形态，禁止单键执行。");
 
         var check = new[] { MasterDateField, DepotField }.Concat(DetailFields).Concat(QuantityTerms.Select(t => t.Field))
             .Concat(plan.MasterPkOrder.Take(keys));
@@ -135,8 +136,8 @@ public sealed record InventoryMovePlan(
         // the INSERT column list are generated from the same sequence so they always align.
         var rowColumns = new List<(string Column, string Source)>
         {
-            ("BILL_TYPE", "@billType"),
-            ("BILL_NO", $"M.{Q(plan.MasterPkOrder[0])}"),
+            ("BILL_TYPE", $"M.{Q(plan.MasterPkOrder[0])}"),
+            ("BILL_NO", $"M.{Q(plan.MasterPkOrder[1])}"),
             ("BILL_DATE", $"M.{Q(MasterDateField)}"),
             ("SERIAL_NO", "D.[SERIAL_NO]"),
             ("PRO_NO", "D.[PRO_NO]"),
@@ -205,20 +206,17 @@ public sealed class InventoryMoveSql
     private readonly SqlTransaction _transaction;
     private readonly InventoryMovePlan _plan;
     private readonly EffectEvent _event;
-    private readonly string _billType;
 
     public InventoryMoveSql(
         SqlConnection connection,
         SqlTransaction transaction,
         InventoryMovePlan plan,
-        EffectEvent executionEvent,
-        string billType)
+        EffectEvent executionEvent)
     {
         _connection = connection;
         _transaction = transaction;
         _plan = plan;
         _event = executionEvent;
-        _billType = billType;
     }
 
     private bool IsApprove => _event is EffectEvent.ApproveEffect or EffectEvent.Save;
@@ -232,7 +230,6 @@ public sealed class InventoryMoveSql
 
         var insertSql = $"INSERT INTO {Tmp} (" + string.Join(",", rowSet.Columns.Select(InventoryMovePlan.Q)) + ") " + rowSet.Sql;
         var fill = new SqlCommand(insertSql, _connection, _transaction);
-        fill.Parameters.Add("@billType", SqlDbType.NVarChar, 10).Value = _billType;
         foreach (var parameter in rowSet.Parameters)
             fill.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
         await fill.ExecuteNonQueryAsync(token);
@@ -418,9 +415,14 @@ public sealed class InventoryMoveSql
             ("@positive", IsApprove ? 1 : 0),
             ("@signedDirect", _plan.Direction));
         affected += await WriteLogAsync(token);
-        affected += await ExecAsync(
-            "UPDATE p SET p.LAST_PURCHASE_PRICE = t.PRICE, p.LAST_PURCHASE_UNIT_ID = t.UNIT_ID, p.LAST_PURCHASE_CURR_ID = t.CURR_ID "
-            + $"FROM {Tmp} t JOIN dbo.PRODUCT p ON p.PRO_NO=t.PRO_NO", token);
+        if (IsApprove)
+        {
+            // Legacy procedure only refreshes the last purchase price on approve;
+            // deapprove rolls back stock without touching that stamp.
+            affected += await ExecAsync(
+                "UPDATE p SET p.LAST_PURCHASE_PRICE = t.PRICE, p.LAST_PURCHASE_UNIT_ID = t.UNIT_ID, p.LAST_PURCHASE_CURR_ID = t.CURR_ID "
+                + $"FROM {Tmp} t JOIN dbo.PRODUCT p ON p.PRO_NO=t.PRO_NO", token);
+        }
         return affected;
     }
 

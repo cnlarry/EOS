@@ -21,7 +21,7 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
         var plan = context.Plan;
         if (plan.MasterTable is null)
             throw new EffectConfigException("balance-adjust 需要主表形态。");
-        var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token);
+        var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
 
         var amountLocal = BuildAmountExpression(plan, columns);
         // Approve applies the configured direction; deapprove applies the inverse

@@ -118,7 +118,14 @@ public sealed class WorkbenchApprovalService(
                 return RecordSaveResult.Success(keyValues);
             }
         }
-        if (definition.BusinessRule?.WorkflowSproc is { } sproc)
+        var effectRun = await effectEngine.TryRunAsync(
+            connection, null, definition, EffectEvent.ApproveEffect, keyValues, userId, token);
+        if (effectRun.Ran && effectRun.Error is not null)
+        {
+            await RestoreConfirmStateAsync(connection, definition.MasterTable, keyCondition, originalState.Value, token);
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED", effectRun.Error);
+        }
+        if (!effectRun.Ran && definition.BusinessRule?.WorkflowSproc is { } sproc)
         {
             var result = await controlledSprocs.RunWorkflowAsync(definition.ModuleId, sproc, definition.MasterPkOrder, keyValues, true, token);
             if (!result.Success)

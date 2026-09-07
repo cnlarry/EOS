@@ -70,7 +70,13 @@ BEGIN
             N'{"logic":"AND","items":[{"type":"field-compare","left":{"scope":"TARGET","field":"RECEIVE_QTY"},"op":"GE","right":{"scope":"TARGET","field":"QTY"}},{"type":"field-compare","left":{"scope":"TARGET","field":"RECEIVE_SPARE_QTY"},"op":"GE","right":{"scope":"TARGET","field":"SPARE_QTY"}}]}',
             N'[{"target":"PURCHASE_TYPE","source":{"scope":"DETAIL","field":"PURCHASE_TYPE"}},{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}},{"target":"SERIAL_NO","source":{"scope":"DETAIL","field":"PURCHASE_SERIAL_NO"}}]'),
         (@A, 2, N'PUR_PURCHASE_M', N'FINISHED_TAG', N'SET_WHEN', N'CONSTANT', N'1',
-            N'{"logic":"AND","items":[{"type":"not-exists","targetTable":"PUR_PURCHASE_D","condition":{"left":{"scope":"TARGET","field":"FINISHED_TAG"},"op":"EQ","right":{"value":0}}}]}',
+            N'{"logic":"AND","items":[{"type":"not-exists","targetTable":"PUR_PURCHASE_D","match":[{"target":"PURCHASE_TYPE","source":{"field":"PURCHASE_TYPE"}},{"target":"PURCHASE_NO","source":{"field":"PURCHASE_NO"}}],"condition":{"left":{"scope":"TARGET","field":"FINISHED_TAG"},"op":"EQ","right":{"value":0}}}]}',
+            N'[{"target":"PURCHASE_TYPE","source":{"scope":"DETAIL","field":"PURCHASE_TYPE"}},{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}}]'),
+        (@A, 3, N'PUR_PURCHASE_M', N'FINISHED_PERSON', N'SET_WHEN', N'CONSTANT', N'SYSTEM',
+            N'{"logic":"AND","items":[{"type":"not-exists","targetTable":"PUR_PURCHASE_D","match":[{"target":"PURCHASE_TYPE","source":{"field":"PURCHASE_TYPE"}},{"target":"PURCHASE_NO","source":{"field":"PURCHASE_NO"}}],"condition":{"left":{"scope":"TARGET","field":"FINISHED_TAG"},"op":"EQ","right":{"value":0}}}]}',
+            N'[{"target":"PURCHASE_TYPE","source":{"scope":"DETAIL","field":"PURCHASE_TYPE"}},{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}}]'),
+        (@A, 4, N'PUR_PURCHASE_M', N'FINISHED_DATE', N'SET_WHEN', N'CONSTANT', N'SYSDATETIME',
+            N'{"logic":"AND","items":[{"type":"not-exists","targetTable":"PUR_PURCHASE_D","match":[{"target":"PURCHASE_TYPE","source":{"field":"PURCHASE_TYPE"}},{"target":"PURCHASE_NO","source":{"field":"PURCHASE_NO"}}],"condition":{"left":{"scope":"TARGET","field":"FINISHED_TAG"},"op":"EQ","right":{"value":0}}}]}',
             N'[{"target":"PURCHASE_TYPE","source":{"scope":"DETAIL","field":"PURCHASE_TYPE"}},{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}}]');
 
     -- Action 6：库存入库（服务级）

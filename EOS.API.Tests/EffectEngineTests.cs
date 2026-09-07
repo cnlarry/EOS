@@ -50,6 +50,22 @@ public class EffectEngineTests
     }
 
     [Fact]
+    public void Load_accepts_structured_json_stored_as_text()
+    {
+        var loader = new EffectPlanLoader();
+        // Published snapshots serialize PARAM_STRUCT / REVERSE_STRUCT / MATCH_STRUCT
+        // columns as text; the loader must parse them back into element shapes.
+        var json = ActionsJson(
+            """{"seq":1,"eventCode":"APPROVE_EFFECT","effectKey":"field-accumulate","reverse":"{\"kind\":\"auto-reverse\",\"note\":\"x\"}","params":"{\"mode\":\"x\"}","ops":[{"opSeq":1,"targetTable":"PRODUCT","targetField":"IN_BUY_QTY","opCode":"ACCUM","sourceScope":"DETAIL","sourceTerms":"[{\"field\":\"QTY\",\"coef\":1}]","match":"[{\"target\":\"PRO_NO\",\"source\":{\"scope\":\"DETAIL\",\"field\":\"PRO_NO\"}}]"}]}""");
+        var plan = loader.Load(Definition(json));
+        var action = Assert.Single(plan.Actions);
+        var op = Assert.Single(action.Ops);
+        Assert.Equal(1, op.Terms!.Count);
+        Assert.Single(op.Match!);
+        Assert.Equal("auto-reverse", action.Reverse!.Value.GetProperty("kind").GetString());
+    }
+
+    [Fact]
     public void Formula_builds_accum_with_terms_subquery_and_match_exists()
     {
         var executor = new EffectFormulaExecutor();
@@ -73,6 +89,52 @@ public class EffectEngineTests
     }
 
     [Fact]
+    public void Formula_master_source_uses_document_key_not_detail_match_columns()
+    {
+        var executor = new EffectFormulaExecutor();
+        var op = new EffectOpPlan(
+            3, "PUR_PURCHASE_D", "REAL_DELIVERY_DATE", "ASSIGN",
+            new EffectSourceRef("MASTER", null, "RECEIVE_DATE", null),
+            null, null,
+            new[]
+            {
+                new EffectMatchItem("PURCHASE_TYPE", new EffectSourceRef("DETAIL", null, "PURCHASE_TYPE", null)),
+                new EffectMatchItem("PURCHASE_NO", new EffectSourceRef("DETAIL", null, "PURCHASE_NO", null)),
+                new EffectMatchItem("SERIAL_NO", new EffectSourceRef("DETAIL", null, "PURCHASE_SERIAL_NO", null)),
+            },
+            null, null);
+        var plan = new ModuleEffectPlan(1607, "PUR_RECEIVE_M", "PUR_RECEIVE_D", "v1",
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+        plan = plan with { MasterPkOrder = new[] { "RECEIVE_TYPE", "RECEIVE_NO" } };
+        var (sql, _) = executor.BuildUpdate(op, plan, new[] { "CGSL", "SLD18070037" });
+        Assert.Contains("(SELECT M.[RECEIVE_DATE] FROM dbo.[PUR_RECEIVE_M] M WHERE M.[RECEIVE_TYPE] = @cp0 AND M.[RECEIVE_NO] = @cp1)", sql);
+        Assert.DoesNotContain("M.[PURCHASE_TYPE]", sql);
+        Assert.DoesNotContain("SUM(ISNULL(M.[RECEIVE_DATE]", sql);
+        // target rows are still positioned through the document detail rows
+        Assert.Contains(
+            "EXISTS (SELECT 1 FROM dbo.[PUR_RECEIVE_D] D WHERE D.[PURCHASE_TYPE] = T.[PURCHASE_TYPE] "
+            + "AND D.[PURCHASE_NO] = T.[PURCHASE_NO] AND D.[PURCHASE_SERIAL_NO] = T.[SERIAL_NO])",
+            sql);
+    }
+
+    [Fact]
+    public void Formula_sysdatetime_marker_compiles_to_function_without_parameter()
+    {
+        var executor = new EffectFormulaExecutor();
+        var op = new EffectOpPlan(
+            1, "PUR_PURCHASE_M", "FINISHED_DATE", "SET_WHEN",
+            new EffectSourceRef("CONSTANT", null, null, "SYSDATETIME"),
+            null, null, null, null, null);
+        var plan = new ModuleEffectPlan(1607, "PUR_RECEIVE_M", "PUR_RECEIVE_D", "v1",
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+        plan = plan with { MasterPkOrder = new[] { "RECEIVE_TYPE", "RECEIVE_NO" } };
+        var (sql, parameters) = executor.BuildUpdate(op, plan, new[] { "CGSL", "SLD18070037" });
+        Assert.Contains("T.[FINISHED_DATE] = SYSDATETIME()", sql);
+        Assert.DoesNotContain("FINISHED_DATE] = @cp", sql);
+        Assert.DoesNotContain(parameters, parameter => parameter.Value as string == "SYSDATETIME");
+    }
+
+    [Fact]
     public void Reverse_swaps_accum_and_deaccum_on_deapprove()
     {
         var op = new EffectOpPlan(1, "PRODUCT", "F", "ACCUM",
@@ -85,6 +147,15 @@ public class EffectEngineTests
         var dropped = EffectFormulaExecutor.ResolveOpForEvent(
             op, EffectEvent.Deapprove, JsonSerializer.SerializeToElement(new { kind = "no-reverse" }));
         Assert.Null(dropped);
+    }
+
+    [Fact]
+    public void Deapprove_mirrors_approve_effect_chain()
+    {
+        Assert.True(EffectEventMapper.AppliesTo("APPROVE_EFFECT", EffectEvent.Deapprove));
+        Assert.True(EffectEventMapper.AppliesTo("DEAPPROVE", EffectEvent.Deapprove));
+        Assert.True(EffectEventMapper.AppliesTo("APPROVE_EFFECT", EffectEvent.ApproveEffect));
+        Assert.False(EffectEventMapper.AppliesTo("SAVE", EffectEvent.Deapprove));
     }
 
     [Fact]
@@ -166,6 +237,22 @@ public class ServiceEffectHandlerTests
             Array.Empty<WorkbenchField>(), Array.Empty<WorkbenchField>(),
             null, true, true, false, Array.Empty<string>(), string.Empty,
             HasWorkflow: false, DefinitionVersion: "module-1503-v1", BusinessActions: actions);
+        var plan = loader.Load(definition);
+        Assert.Empty(Assert.Single(plan.Actions).Ops);
+    }
+
+    [Fact]
+    public void Loader_skips_placeholder_op_rows_with_empty_strings()
+    {
+        var loader = new EOS.API.Data.Effects.EffectPlanLoader();
+        var actions = JsonDocument.Parse(
+            """[{"seq":1,"eventCode":"APPROVE_EFFECT","effectKey":"inventory-move","ops":[{"opSeq":1,"opCode":"","targetTable":"","targetField":""}]}]""")
+            .RootElement.Clone();
+        var definition = new WorkbenchDefinition(
+            130102, "期初开帐单", "INV_OCCUR_INIT_M", "INV_OCCUR_INIT_D",
+            Array.Empty<WorkbenchField>(), Array.Empty<WorkbenchField>(),
+            null, true, true, false, Array.Empty<string>(), string.Empty,
+            HasWorkflow: false, DefinitionVersion: "module-130102-v3", BusinessActions: actions);
         var plan = loader.Load(definition);
         Assert.Empty(Assert.Single(plan.Actions).Ops);
     }
