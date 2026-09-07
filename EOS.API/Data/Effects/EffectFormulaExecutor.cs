@@ -160,7 +160,7 @@ public sealed class EffectFormulaExecutor
         {
             "MAX" => "MAX",
             "MIN" => "MIN",
-            "DISTINCT" => "MAX", // a distinct string pick is expressed as MAX until a real use appears
+            "DISTINCT" => "MAX", // single distinct pick per correlated group (e.g. depot-place append)
             _ => "SUM",
         };
         var correlation = BuildCorrelation(op, alias, targetAlias, parameters, subQuery: true);
@@ -189,21 +189,17 @@ public sealed class EffectFormulaExecutor
     private string BuildAppendUniq(EffectOpPlan op, string targetAlias, List<EffectSqlParameter> parameters)
     {
         var field = $"{targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)}";
+        // The appended value must be a scalar bound to this document: a bare D.column
+        // has no source table in the UPDATE scope, so DETAIL/TABLE/MASTER sources go
+        // through the same scalar-subquery builder as ordinary values (DISTINCT folds
+        // to MAX, matching the legacy per-group max() append).
         var value = op.Source.Scope.Equals("CONSTANT", StringComparison.OrdinalIgnoreCase)
             ? BuildConstantParameter(op, parameters)
-            : $"{BuildSourceAlias(op)}.{EffectConditionCompiler.Identifier(op.Source.Field!)}";
+            : BuildValue(op, targetAlias, parameters);
         return $"{field} = CASE WHEN COALESCE({field}, '') = '' THEN {value} "
             + $"WHEN CHARINDEX({value}, {field}) > 0 THEN {field} "
             + $"ELSE {field} + ',' + {value} END";
     }
-
-    private static string BuildSourceAlias(EffectOpPlan op) => op.Source.Scope.ToUpperInvariant() switch
-    {
-        "MASTER" => "M",
-        "DETAIL" => "D",
-        "TARGET" => "T",
-        _ => "S_" + EffectConditionCompiler.TargetAlias(op.Source.Table ?? string.Empty),
-    };
 
     private ModuleEffectPlan _plan = null!;
     private IReadOnlyList<string> _masterKeyValues = Array.Empty<string>();
