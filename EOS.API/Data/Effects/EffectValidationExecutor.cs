@@ -36,11 +36,37 @@ public sealed class EffectValidationExecutor
                 "qty-not-exceed" => await CheckQuantityNotExceedAsync(connection, transaction, plan, rule, stage, keyValues, token),
                 "reference-exists" => await CheckReferenceExistsAsync(connection, transaction, plan, rule, token),
                 "duplicate-check" => await CheckDuplicateAsync(connection, transaction, plan, rule, token),
+                "line-require" => await CheckLineRequireAsync(connection, transaction, plan, rule, keyValues, token),
                 _ => throw new EffectConfigException($"校验键 '{rule.ValidationKey}' 尚未实现运行时执行。"),
             };
             if (violation is not null)
                 throw new EffectValidationException(rule.Message ?? violation);
         }
+    }
+
+    /// <summary>
+    /// Optional per-check SYSSS gate (closed operator, same semantics as the condition
+    /// compiler switch): the check only applies when the switch column equals expect
+    /// (default 1). Unknown columns fail closed via Identifier validation / SQL error.
+    /// </summary>
+    private static async Task<bool> ShouldSkipOnSwitchAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        JsonElement check,
+        CancellationToken token)
+    {
+        if (!check.TryGetProperty("switch", out var gate) || gate.ValueKind != JsonValueKind.Object)
+            return false;
+        var key = gate.TryGetProperty("key", out var keyElement) && keyElement.ValueKind == JsonValueKind.String
+            ? keyElement.GetString()!.Trim()
+            : throw new EffectConfigException("qty-not-exceed.check.switch 缺少 key。");
+        var expect = gate.TryGetProperty("expect", out var expectElement) && expectElement.ValueKind == JsonValueKind.Number
+            ? expectElement.GetInt32()
+            : 1;
+        var sql = $"SELECT COALESCE(MAX(CAST({EffectConditionCompiler.Identifier(key)} AS int)), 0) FROM dbo.SYSSS WITH (NOLOCK)";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        var actual = await command.ExecuteScalarAsync(token);
+        return Convert.ToInt32(actual) != expect;
     }
 
     private record CheckPlan(
@@ -67,6 +93,8 @@ public sealed class EffectValidationExecutor
 
         foreach (var check in checks.EnumerateArray())
         {
+            if (await ShouldSkipOnSwitchAsync(connection, transaction, check, token))
+                continue;
             var match = ParseMatchPairs(check);
             var thisQty = ParseScopeTerms(check, "thisQty");
             var usage = ParseFieldList(check, "usage");
@@ -91,7 +119,9 @@ public sealed class EffectValidationExecutor
             var correlation = BuildMatchCorrelation(match, "S", "T");
             var comparison = mode.Equals("not-below-progress", StringComparison.OrdinalIgnoreCase)
                 ? $"{limitSql} + {thisSql} < {usageSql}" // reduction would fall below accumulated progress
-                : $"{usageSql} + {thisSql} > {limitSql}";
+                : mode.Equals("this-not-exceed", StringComparison.OrdinalIgnoreCase)
+                    ? $"{thisSql} > {limitSql}" // document quantity must not exceed the referenced cap
+                    : $"{usageSql} + {thisSql} > {limitSql}";
 
             var (documentScope, parameters) = BuildDocumentScope(plan, masterKeyValues);
             var sql = new StringBuilder("SELECT TOP 1 1 FROM dbo.")
@@ -104,7 +134,11 @@ public sealed class EffectValidationExecutor
                 command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
             }
             if (await command.ExecuteScalarAsync(token) is not null)
-                return $"存在超出{(mode == "not-below-progress" ? "进度" : "限额")}的明细行（{stage}）。";
+                return check.TryGetProperty("message", out var checkMessage)
+                    && checkMessage.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(checkMessage.GetString())
+                    ? checkMessage.GetString()!
+                    : $"存在超出{(mode == "not-below-progress" ? "进度" : "限额")}的明细行（{stage}）。";
         }
         return null;
     }
@@ -265,6 +299,74 @@ public sealed class EffectValidationExecutor
         await using var command = new SqlCommand(sql, connection, transaction);
         if (await command.ExecuteScalarAsync(token) is not null)
             return rule.Message ?? "数据重复。";
+        return null;
+    }
+
+    /// <summary>
+    /// line-require: document detail lines matching any trigger must carry a
+    /// non-empty field (e.g. lines with bad quantity require a bad depot).
+    /// </summary>
+    private async Task<string?> CheckLineRequireAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        ModuleEffectPlan plan,
+        EffectValidationPlan rule,
+        IReadOnlyList<string> masterKeyValues,
+        CancellationToken token)
+    {
+        if (plan.DetailTable is null)
+            throw new EffectConfigException("line-require 需要明细表（模块形态不足）。");
+        if (!rule.Params.TryGetProperty("checks", out var checks) || checks.ValueKind != JsonValueKind.Array)
+            throw new EffectConfigException("line-require 缺少 checks 数组。");
+        var (documentScope, parameters) = BuildDocumentScope(plan, masterKeyValues);
+        foreach (var check in checks.EnumerateArray())
+        {
+            var field = check.TryGetProperty("field", out var fieldElement) && fieldElement.ValueKind == JsonValueKind.String
+                ? fieldElement.GetString()!.Trim()
+                : throw new EffectConfigException("line-require.check 缺少 field。");
+            if (!check.TryGetProperty("triggers", out var triggers) || triggers.ValueKind != JsonValueKind.Array)
+                throw new EffectConfigException("line-require.check 缺少 triggers 数组。");
+            var triggerSql = new List<string>();
+            foreach (var trigger in triggers.EnumerateArray())
+            {
+                var triggerColumn = trigger.TryGetProperty("field", out var triggerFieldElement) && triggerFieldElement.ValueKind == JsonValueKind.String
+                    ? triggerFieldElement.GetString()!.Trim()
+                    : throw new EffectConfigException("line-require.trigger 缺少 field。");
+                var op = trigger.TryGetProperty("op", out var opElement) && opElement.ValueKind == JsonValueKind.String
+                    ? opElement.GetString()!.Trim().ToUpperInvariant()
+                    : throw new EffectConfigException("line-require.trigger 缺少 op。");
+                var sqlOp = op switch
+                {
+                    "GT" => ">",
+                    "GE" => ">=",
+                    "LT" => "<",
+                    "LE" => "<=",
+                    "EQ" => "=",
+                    "NEQ" => "<>",
+                    _ => throw new EffectConfigException($"line-require.trigger 比较符 '{op}' 不在封闭集内。"),
+                };
+                var value = trigger.TryGetProperty("value", out var valueElement) && valueElement.ValueKind == JsonValueKind.Number
+                    ? valueElement.GetDouble()
+                    : 0;
+                triggerSql.Add($"COALESCE(S.{EffectConditionCompiler.Identifier(triggerColumn)}, 0) {sqlOp} {value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+            }
+            var sql = "SELECT TOP 1 1 FROM dbo." + EffectConditionCompiler.Identifier(plan.DetailTable)
+                + " S WHERE " + documentScope
+                + " AND (" + string.Join(" OR ", triggerSql) + ")"
+                + $" AND (S.{EffectConditionCompiler.Identifier(field)} IS NULL OR S.{EffectConditionCompiler.Identifier(field)} = '')";
+            await using var command = new SqlCommand(sql, connection, transaction);
+            foreach (var parameter in parameters)
+            {
+                command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+            }
+            var hit = await command.ExecuteScalarAsync(token);
+            if (hit is not null)
+            {
+                return check.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String
+                    ? msg.GetString()
+                    : "明细行必填字段缺失。";
+            }
+        }
         return null;
     }
 

@@ -23,6 +23,43 @@ public sealed class EffectConditionCompiler
     private static readonly IReadOnlySet<string> CompareOperators =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "EQ", "NEQ", "GT", "GE", "LT", "LE" };
 
+    /// <summary>
+    /// Comparison operand: either a single field ({scope, field}) or a closed
+    /// signed sum ({scope, terms:[{field, coef:1/-1}]}, same shape as SOURCE_TERMS).
+    /// Terms let completion conditions express offset groups such as
+    /// FINISHED_SEND_QTY + BACK_MATERIAL + BACK_BAD; coefficients stay ±1, no
+    /// arithmetic beyond addition/subtraction, identifiers fail closed.
+    /// </summary>
+    private static string CompareFieldOrTerms(JsonElement side, string alias)
+    {
+        if (side.ValueKind == JsonValueKind.Object
+            && side.TryGetProperty("terms", out var terms)
+            && terms.ValueKind == JsonValueKind.Array
+            && terms.GetArrayLength() > 0)
+        {
+            var parts = new List<string>();
+            foreach (var term in terms.EnumerateArray())
+            {
+                var field = term.ValueKind == JsonValueKind.Object
+                    && term.TryGetProperty("field", out var f) && f.ValueKind == JsonValueKind.String
+                    ? f.GetString()!.Trim()
+                    : null;
+                if (string.IsNullOrWhiteSpace(field))
+                    throw new EffectConfigException("比较加减项缺少字符串 field。");
+                var coef = term.TryGetProperty("coef", out var c) && c.ValueKind == JsonValueKind.Number && c.TryGetInt32(out var n)
+                    ? n
+                    : 1;
+                if (coef is not (1 or -1))
+                    throw new EffectConfigException($"比较加减项 '{field}' 的 coef 仅允许 1 / -1。");
+                var column = $"COALESCE({alias}.{Identifier(field)}, 0)";
+                parts.Add(coef == -1 ? "- " + column : (parts.Count == 0 ? "" : "+ ") + column);
+            }
+            var expression = string.Join(" ", parts);
+            return parts.Count > 1 && expression.StartsWith("- ") ? "(" + expression + ")" : expression;
+        }
+        return $"{alias}.{Identifier(side)}";
+    }
+
     private static string SqlOp(string op) => op.ToUpperInvariant() switch
     {
         "EQ" => "=",
@@ -131,7 +168,7 @@ public sealed class EffectConditionCompiler
             ? NextParameter(ExtractValue(leftValue)).Name
             : leftAlias is null
                 ? throw new EffectConfigException("比较左项来源域不可用。")
-                : $"{leftAlias}.{Identifier(left)}";
+                : CompareFieldOrTerms(left, leftAlias);
 
         string rightSql;
         var rightParameters = Array.Empty<EffectSqlParameter>();
@@ -145,7 +182,7 @@ public sealed class EffectConditionCompiler
         {
             var rightAlias = AliasFor(right, resolveAlias)
                 ?? throw new EffectConfigException("比较右项来源域不可用。");
-            rightSql = $"{rightAlias}.{Identifier(right)}";
+            rightSql = CompareFieldOrTerms(right, rightAlias);
         }
         var opElement = op;
         var operatorSql = SqlOp(opElement.ValueKind == JsonValueKind.String ? opElement.GetString()! : string.Empty);

@@ -15,9 +15,14 @@ public static class ValidationRuleRegistry
             ["qty-not-exceed"] = KeySet("mode", "checks"),
             ["reference-exists"] = KeySet("checks"),
             ["duplicate-check"] = KeySet("mode", "table", "keyFields", "excludeSelf"),
+            ["line-require"] = KeySet("checks"),
         };
 
-    private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "message");
+    private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "message", "switch");
+    private static readonly IReadOnlySet<string> QtySwitchKeys = KeySet("key", "expect");
+    private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "message");
+    private static readonly IReadOnlySet<string> LineRequireTriggerKeys = KeySet("scope", "field", "op", "value");
+    private static readonly IReadOnlySet<string> LineRequireOps = KeySet("GT", "GE", "LT", "LE", "EQ", "NEQ");
     private static readonly IReadOnlySet<string> QtyBlockKeys = KeySet("scope", "terms", "fields");
     private static readonly IReadOnlySet<string> ReferenceCheckKeys = KeySet("refTable", "allowEmpty", "join", "refKey", "activeTag", "message", "lineField");
     private static readonly IReadOnlySet<string> ReferencePairKeys = KeySet("target", "source");
@@ -29,6 +34,7 @@ public static class ValidationRuleRegistry
         "qty-not-exceed",
         "reference-exists",
         "duplicate-check",
+        "line-require",
     };
 
     private static readonly HashSet<string> KnownStages = new(StringComparer.OrdinalIgnoreCase)
@@ -77,15 +83,18 @@ public static class ValidationRuleRegistry
             case "duplicate-check":
                 ValidateDuplicateCheck(rule, p, issues);
                 break;
+            case "line-require":
+                ValidateLineRequire(rule, p, issues);
+                break;
         }
     }
 
     private static void ValidateQtyNotExceed(ValidationRuleConfig rule, JsonElement p, List<string> issues)
     {
         var mode = GetString(p, "mode");
-        if (mode is not ("usage-not-exceed" or "not-below-progress"))
-            issues.Add($"校验规则 {Label(rule)}：qty-not-exceed.mode 仅允许 usage-not-exceed / not-below-progress");
-        var requireLimit = mode is null or "usage-not-exceed";
+        if (mode is not ("usage-not-exceed" or "not-below-progress" or "this-not-exceed"))
+            issues.Add($"校验规则 {Label(rule)}：qty-not-exceed.mode 仅允许 usage-not-exceed / not-below-progress / this-not-exceed");
+        var requireLimit = mode is null or "usage-not-exceed" or "this-not-exceed";
         var checks = GetArray(p, "checks");
         if (checks is not { } arr || arr.GetArrayLength() == 0)
         {
@@ -103,6 +112,9 @@ public static class ValidationRuleRegistry
                 continue;
             }
             RejectUnknownKeys(rule, check, QtyCheckKeys, where, issues);
+            var switchElement = GetObject(check, "switch");
+            if (switchElement is not null)
+                ValidateSwitchShape(rule, switchElement.Value, $"{where}.switch", issues);
             var match = GetArray(check, "match");
             if (match is null || match.Value.GetArrayLength() == 0)
                 issues.Add($"校验规则 {Label(rule)}：{where}.match 必须是非空数组");
@@ -110,16 +122,89 @@ public static class ValidationRuleRegistry
                 ValidateMatchItems(rule, match.Value, $"{where}.match", issues);
             if (!ValidateQtyBlock(rule, check, "thisQty", $"{where}.thisQty", issues))
                 issues.Add($"校验规则 {Label(rule)}：{where}.thisQty 缺失");
-            if (!ValidateQtyBlock(rule, check, "usage", $"{where}.usage", issues))
+            var requireUsage = mode is null or "usage-not-exceed" or "not-below-progress";
+            if (requireUsage && !ValidateQtyBlock(rule, check, "usage", $"{where}.usage", issues))
                 issues.Add($"校验规则 {Label(rule)}：{where}.usage 缺失");
             var hasLimit = GetObject(check, "limit") is not null;
             if (requireLimit && !hasLimit)
-                issues.Add($"校验规则 {Label(rule)}：{where}.limit 缺失（usage-not-exceed 模式必须给出限额）");
+                issues.Add($"校验规则 {Label(rule)}：{where}.limit 缺失（{mode ?? "usage-not-exceed"} 模式必须给出限额）");
             if (hasLimit)
                 ValidateQtyBlock(rule, check, "limit", $"{where}.limit", issues);
             var offset = GetObject(check, "offset");
             if (offset is not null)
                 ValidateQtyBlock(rule, offset.Value, "offset", $"{where}.offset", issues);
+            index++;
+        }
+    }
+
+    private static void ValidateSwitchShape(ValidationRuleConfig rule, JsonElement element, string where, List<string> issues)
+    {
+        RejectUnknownKeys(rule, element, QtySwitchKeys, where, issues);
+        if (string.IsNullOrWhiteSpace(GetString(element, "key")))
+            issues.Add($"校验规则 {Label(rule)}：{where}.key 不能为空（SYSSS 开关列名）");
+        if (element.TryGetProperty("expect", out var expect) && expect.ValueKind != JsonValueKind.Number)
+            issues.Add($"校验规则 {Label(rule)}：{where}.expect 必须是数字（0/1）");
+    }
+
+    /// <summary>
+    /// line-require: document lines matching any trigger must carry a non-empty
+    /// field (v1: DETAIL scope only, e.g. bad-quantity lines require a bad depot).
+    /// </summary>
+    private static void ValidateLineRequire(ValidationRuleConfig rule, JsonElement p, List<string> issues)
+    {
+        var checks = GetArray(p, "checks");
+        if (checks is not { } arr || arr.GetArrayLength() == 0)
+        {
+            issues.Add($"校验规则 {Label(rule)}：line-require.checks 必须是非空数组");
+            return;
+        }
+        var index = 0;
+        foreach (var check in arr.EnumerateArray())
+        {
+            var where = $"checks[{index}]";
+            if (check.ValueKind != JsonValueKind.Object)
+            {
+                issues.Add($"校验规则 {Label(rule)}：{where} 必须是对象");
+                index++;
+                continue;
+            }
+            RejectUnknownKeys(rule, check, LineRequireCheckKeys, where, issues);
+            var scope = GetString(check, "scope");
+            if (!string.Equals(scope, "DETAIL", StringComparison.OrdinalIgnoreCase))
+                issues.Add($"校验规则 {Label(rule)}：{where}.scope 仅允许 DETAIL");
+            if (string.IsNullOrWhiteSpace(GetString(check, "field")))
+                issues.Add($"校验规则 {Label(rule)}：{where}.field 不能为空");
+            var triggers = GetArray(check, "triggers");
+            if (triggers is not { } triggersArr || triggersArr.GetArrayLength() == 0)
+            {
+                issues.Add($"校验规则 {Label(rule)}：{where}.triggers 必须是非空数组");
+            }
+            else
+            {
+                var triggerIndex = 0;
+                foreach (var trigger in triggersArr.EnumerateArray())
+                {
+                    var triggerWhere = $"{where}.triggers[{triggerIndex}]";
+                    if (trigger.ValueKind != JsonValueKind.Object)
+                    {
+                        issues.Add($"校验规则 {Label(rule)}：{triggerWhere} 必须是对象");
+                    }
+                    else
+                    {
+                        RejectUnknownKeys(rule, trigger, LineRequireTriggerKeys, triggerWhere, issues);
+                        if (!string.Equals(GetString(trigger, "scope"), "DETAIL", StringComparison.OrdinalIgnoreCase))
+                            issues.Add($"校验规则 {Label(rule)}：{triggerWhere}.scope 仅允许 DETAIL");
+                        if (string.IsNullOrWhiteSpace(GetString(trigger, "field")))
+                            issues.Add($"校验规则 {Label(rule)}：{triggerWhere}.field 不能为空");
+                        var op = GetString(trigger, "op");
+                        if (op is null || !LineRequireOps.Contains(op))
+                            issues.Add($"校验规则 {Label(rule)}：{triggerWhere}.op 仅允许 GT/GE/LT/LE/EQ/NEQ");
+                        if (trigger.TryGetProperty("value", out var value) && value.ValueKind != JsonValueKind.Number)
+                            issues.Add($"校验规则 {Label(rule)}：{triggerWhere}.value 必须是数字");
+                    }
+                    triggerIndex++;
+                }
+            }
             index++;
         }
     }

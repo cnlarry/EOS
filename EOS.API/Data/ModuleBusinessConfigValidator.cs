@@ -171,12 +171,12 @@ public static class ModuleBusinessConfigValidator
             issues.Add($"{where}：未知源范围 '{op.SourceScope}'。");
             return;
         }
-        if (op.SourceAgg is { } agg && !BusinessActionCatalog.SourceAggregates.Contains(agg))
+        if (op.SourceAgg is { } agg && !string.IsNullOrWhiteSpace(agg) && !BusinessActionCatalog.SourceAggregates.Contains(agg))
             issues.Add($"{where}：未知源聚合 '{agg}'。");
 
         var hasField = !string.IsNullOrWhiteSpace(op.SourceField);
         var hasTerms = !string.IsNullOrWhiteSpace(op.SourceTerms);
-        var hasConstant = op.SourceConstant is not null;
+        var hasConstant = !string.IsNullOrWhiteSpace(op.SourceConstant);
         var hasSourceTable = !string.IsNullOrWhiteSpace(op.SourceTable);
 
         if (hasField && hasTerms)
