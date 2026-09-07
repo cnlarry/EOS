@@ -37,7 +37,8 @@ public sealed record InventoryMovePlan(
     string MasterDateField,
     string DepotField,
     IReadOnlyList<EffectTerm> QuantityTerms,
-    IReadOnlyList<string> DetailFields)
+    IReadOnlyList<string> DetailFields,
+    IReadOnlyList<string> RowPositiveFields)
 {
     public static InventoryMovePlan Parse(JsonElement root)
     {
@@ -88,12 +89,33 @@ public sealed record InventoryMovePlan(
                 if (item.ValueKind == JsonValueKind.String)
                     detailFields.Add(item.GetString()!.Trim());
 
+        // Optional row gate: only rows with any of these detail fields positive take
+        // part in the move (mirrors legacy per-call row filters such as "bad quantity
+        // present"); absent means all document rows participate (existing behavior).
+        var rowPositiveFields = new List<string>();
+        if (root.TryGetProperty("rowFilter", out var rowFilter) && rowFilter.ValueKind == JsonValueKind.Object)
+        {
+            if (rowFilter.TryGetProperty("anyPositive", out var anyPositive) && anyPositive.ValueKind == JsonValueKind.Array)
+                foreach (var item in anyPositive.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(item.GetString()))
+                        throw new EffectConfigException("inventory-move.rowFilter.anyPositive 必须是非空字段名数组。");
+                    rowPositiveFields.Add(item.GetString()!.Trim());
+                }
+            foreach (var property in rowFilter.EnumerateObject())
+                if (!property.NameEquals("anyPositive"))
+                    throw new EffectConfigException($"inventory-move.rowFilter 未知键 '{property.Name}'。");
+            if (rowPositiveFields.Count == 0)
+                throw new EffectConfigException("inventory-move.rowFilter.anyPositive 不可为空。");
+        }
+
         return new InventoryMovePlan(
             direction == "IN" ? 1 : -1,
             masterDate,
             depotField,
             terms,
-            detailFields);
+            detailFields,
+            rowPositiveFields);
     }
 
     /// <summary>Generated row-set statement: target column list + aligned SELECT + parameters.</summary>
@@ -124,6 +146,7 @@ public sealed record InventoryMovePlan(
             throw new EffectConfigException("inventory-move 需要单据双键（类型+单号）主表形态，禁止单键执行。");
 
         var check = new[] { MasterDateField, DepotField }.Concat(DetailFields).Concat(QuantityTerms.Select(t => t.Field))
+            .Concat(RowPositiveFields)
             .Concat(plan.MasterPkOrder.Take(keys));
         foreach (var field in check)
         {
@@ -173,6 +196,8 @@ public sealed record InventoryMovePlan(
             parameters.Add(new EffectSqlParameter(name, masterKeyValues[index]));
             where.Add($"M.{Q(plan.MasterPkOrder[index])} = {name}");
         }
+        if (RowPositiveFields.Count > 0)
+            where.Add("(" + string.Join(" OR ", RowPositiveFields.Select(field => $"ISNULL(D.{Q(field)}, 0) > 0")) + ")");
         select.Append(string.Join(" AND ", where));
         return new RowSetStatement(
             rowColumns.Select(item => item.Column).ToList(),
@@ -220,6 +245,15 @@ public sealed class InventoryMoveSql
     }
 
     private bool IsApprove => _event is EffectEvent.ApproveEffect or EffectEvent.Save;
+
+    /// <summary>
+    /// Inventory-log direction for the movement being recorded: the document's stock
+    /// impact sign (IN=+1, OUT=-1) times the event sign (approve=+1, deapprove=-1).
+    /// Deapprove therefore writes the mirrored direction, never colliding with the
+    /// original row (whose key it otherwise shares).
+    /// </summary>
+    internal static string FlowDirectionChar(int direction, bool approve) =>
+        direction * (approve ? 1 : -1) == 1 ? "I" : "O";
 
     public async Task<int> RunAsync(InventoryMovePlan.RowSetStatement rowSet, CancellationToken token)
     {
@@ -393,27 +427,27 @@ public sealed class InventoryMoveSql
     /// <summary>Inventory log rows; deapprove writes mirrored rows with flipped direction and negative quantities.</summary>
     private async Task<int> WriteLogAsync(CancellationToken token) => await ExecAsync(
         "INSERT INTO dbo.INV_DEPOT_LOG(PRO_NO, MUTUALITY_DATE, IN_OUT, MUTUALITY_TYPE, MUTUALITY_NO, MUTUALITY_SERIAL_NO, DEPOT_ID, QTY, PRICE, AMOUNT, BATCH_NO, MUTUALITY_QTY, MUTUALITY_UNIT_ID, MUTUALITY_PRICE, MUTUALITY_CURR_ID, MUTUALITY_CURR_RATE, MUTUALITY_AMOUNT) "
-        + "SELECT t.PRO_NO, t.BILL_DATE, CASE WHEN @positive = 1 THEN 'I' ELSE 'O' END, t.BILL_TYPE, t.BILL_NO, t.SERIAL_NO, t.DEPOT_ID, "
+        + "SELECT t.PRO_NO, t.BILL_DATE, @io, t.BILL_TYPE, t.BILL_NO, t.SERIAL_NO, t.DEPOT_ID, "
         + "CASE WHEN @positive = 1 THEN t.BASE_QTY ELSE -t.BASE_QTY END, t.BASE_PRICE, "
         + "CASE WHEN @positive = 1 THEN t.AMOUNT*t.CURR_RATE ELSE -t.AMOUNT*t.CURR_RATE END, t.BATCH_NO, "
         + "CASE WHEN @positive = 1 THEN t.QTY ELSE -t.QTY END, t.UNIT_ID, t.PRICE, t.CURR_ID, t.CURR_RATE, "
         + "CASE WHEN @positive = 1 THEN t.AMOUNT ELSE -t.AMOUNT END "
-        + $"FROM {Tmp} t", token, ("@positive", IsApprove ? 1 : 0));
+        + $"FROM {Tmp} t", token, ("@positive", IsApprove ? 1 : 0), ("@io", FlowDirectionChar(_plan.Direction, IsApprove)));
 
     private async Task<int> UpdateProductAsync(CancellationToken token)
     {
         var affected = await ExecAsync(
             "UPDATE p SET "
-            + "p.LAST_IN_DATE = CASE WHEN @positive = 1 AND s.BILL_DATE > ISNULL(p.LAST_IN_DATE,'1900-01-01') THEN s.BILL_DATE ELSE p.LAST_IN_DATE END, "
-            + "p.LAST_OUT_DATE = CASE WHEN @positive = 0 AND s.BILL_DATE > ISNULL(p.LAST_OUT_DATE,'1900-01-01') THEN s.BILL_DATE ELSE p.LAST_OUT_DATE END, "
+            + "p.LAST_IN_DATE = CASE WHEN @inbound = 1 AND s.BILL_DATE > ISNULL(p.LAST_IN_DATE,'1900-01-01') THEN s.BILL_DATE ELSE p.LAST_IN_DATE END, "
+            + "p.LAST_OUT_DATE = CASE WHEN @inbound = 0 AND s.BILL_DATE > ISNULL(p.LAST_OUT_DATE,'1900-01-01') THEN s.BILL_DATE ELSE p.LAST_OUT_DATE END, "
             + "p.QTY = ISNULL(p.QTY,0) + ISNULL(s.BASE_QTY,0) * @signedDirect, "
             + "p.PRICE = ROUND(CASE WHEN (p.QTY + s.BASE_QTY*@signedDirect)=0 THEN p.PRICE ELSE (p.AMOUNT + s.AMOUNT*@signedDirect)/(p.QTY + s.BASE_QTY*@signedDirect) END, 8), "
             + "p.AMOUNT = ROUND(p.AMOUNT + s.AMOUNT*@signedDirect, 2) "
             + $"FROM (SELECT PRO_NO, MAX(BILL_DATE) BILL_DATE, SUM(BASE_QTY) BASE_QTY, SUM(AMOUNT*CURR_RATE) AMOUNT FROM {Tmp} GROUP BY PRO_NO) s "
             + "JOIN dbo.PRODUCT p ON p.PRO_NO=s.PRO_NO",
             token,
-            ("@positive", IsApprove ? 1 : 0),
-            ("@signedDirect", _plan.Direction));
+            ("@inbound", _plan.Direction * (IsApprove ? 1 : -1) == 1 ? 1 : 0),
+            ("@signedDirect", _plan.Direction * (IsApprove ? 1 : -1)));
         affected += await WriteLogAsync(token);
         if (IsApprove)
         {
