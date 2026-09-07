@@ -82,9 +82,10 @@ internal static class WorkbenchSql
     internal static IReadOnlySet<string> ScopeFields(IReadOnlyList<FormFieldDefinition> fields, IReadOnlyList<string> pkColumns) =>
         fields.Where(field => !field.DisplayOnly).Select(field => field.Key).Concat(pkColumns).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    internal static async Task<bool> TableExistsAsync(SqlConnection connection, string table, CancellationToken token)
+    /// <summary>表/视图存在性检查；调用方处于数据库事务中时必须传入 transaction。</summary>
+    internal static async Task<bool> TableExistsAsync(SqlConnection connection, string table, CancellationToken token, SqlTransaction? transaction = null)
     {
-        await using var command = new SqlCommand("SELECT 1 FROM sys.objects o JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND o.type IN ('U','V');", connection);
+        await using var command = new SqlCommand("SELECT 1 FROM sys.objects o JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND o.type IN ('U','V');", connection, transaction);
         command.Parameters.Add("@Table", SqlDbType.NVarChar, 128).Value = table;
         return await command.ExecuteScalarAsync(token) is not null;
     }
@@ -107,7 +108,7 @@ internal static class WorkbenchSql
     /// （FIELDS.IS_VIRTUAL=1 且 VIRTUAL_EXP 非空，运行时由 VirtualColumnResolver 经受控 JOIN 解析）。
     /// 来源列取自「来源查询结果集列」（物理 + VIRTUAL_EXP 派生），虚拟来源列合法。
     /// </summary>
-    internal static async Task<bool> ReturnColumnsExistAsync(SqlConnection connection, string table, IReadOnlyList<string> columns, CancellationToken token)
+    internal static async Task<bool> ReturnColumnsExistAsync(SqlConnection connection, string table, IReadOnlyList<string> columns, CancellationToken token, SqlTransaction? transaction = null)
     {
         if (columns.Count == 0) return true;
         var values = string.Join(",", columns.Select((_, i) => $"(CAST(@C{i} AS nvarchar(128)))"));
@@ -124,7 +125,7 @@ internal static class WorkbenchSql
                            AND LTRIM(RTRIM(ISNULL(f.VIRTUAL_EXP,'')))<>'')
             );
             """.Replace("{values}", values);
-        await using var command = new SqlCommand(sql, connection);
+        await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.Add("@Table", SqlDbType.NVarChar, 128).Value = table;
         for (var i = 0; i < columns.Count; i++)
         {

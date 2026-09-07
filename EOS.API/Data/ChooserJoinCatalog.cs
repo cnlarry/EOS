@@ -24,24 +24,26 @@ public static class ChooserJoinCatalog
     public static async Task<ChooserSourceJoins> GetAsync(
         SqlConnection connection,
         string sourceTable,
-        CancellationToken token)
+        CancellationToken token,
+        SqlTransaction? transaction = null)
     {
         var lazy = Cache.GetOrAdd(sourceTable, _ => new Lazy<Task<ChooserSourceJoins>>(
-            () => LoadAsync(connection, sourceTable, token)));
+            () => LoadAsync(connection, sourceTable, token, transaction)));
         return await lazy.Value.ConfigureAwait(false);
     }
 
     private static async Task<ChooserSourceJoins> LoadAsync(
         SqlConnection connection,
         string sourceTable,
-        CancellationToken token)
+        CancellationToken token,
+        SqlTransaction? transaction = null)
     {
         const string sql = """
             SELECT LTRIM(RTRIM(ISNULL(QUERY_RELATION,'')))
             FROM dbo.TABLES WITH (NOLOCK)
             WHERE LTRIM(RTRIM(T_ID))=@Table;
             """;
-        await using var command = new SqlCommand(sql, connection);
+        await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = sourceTable;
         var relation = await command.ExecuteScalarAsync(token) as string;
         if (string.IsNullOrWhiteSpace(relation))

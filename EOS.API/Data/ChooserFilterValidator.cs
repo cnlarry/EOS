@@ -71,10 +71,11 @@ public static class ChooserFilterValidator
         SqlConnection connection,
         ChooserFilterStruct? filter,
         string sourceTable,
-        CancellationToken token)
+        CancellationToken token,
+        SqlTransaction? transaction = null)
     {
         if (filter is null) return [];
-        var catalog = await ChooserJoinCatalog.GetAsync(connection, sourceTable, token);
+        var catalog = await ChooserJoinCatalog.GetAsync(connection, sourceTable, token, transaction);
         if (catalog.Error is not null)
         {
             return [$"源表 {sourceTable} 的 QUERY_RELATION 解析失败（fail-closed）：{catalog.Error}"];
@@ -92,7 +93,7 @@ public static class ChooserFilterValidator
                 JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
                 JOIN sys.schemas s ON o.schema_id=s.schema_id
                 WHERE s.name=N'dbo' AND o.name=@Table;
-                """, connection);
+                """, connection, transaction);
             command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
             await using var reader = await command.ExecuteReaderAsync(token);
             while (await reader.ReadAsync(token))
