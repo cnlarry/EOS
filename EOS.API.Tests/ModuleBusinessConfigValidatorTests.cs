@@ -48,6 +48,40 @@ public class ModuleBusinessConfigValidatorTests
     }
 
     [Fact]
+    public void Validate_EmptyStringAggAndConstant_AreToleratedAsAbsent()
+    {
+        // P1 translation data stores '' for inapplicable optional cells; the lint
+        // treats whitespace the same as null instead of rejecting the save.
+        var request = new SaveModuleBusinessConfigRequest(
+            [
+                new BusinessActionDto(
+                    1,
+                    "APPROVE_EFFECT",
+                    "field-accumulate",
+                    FailMode: "BLOCK",
+                    Ops:
+                    [
+                        new BusinessActionOpDto(
+                            1,
+                            "COP_ORDER_D",
+                            "FINISHED_SEND_QTY",
+                            "ACCUM",
+                            "DETAIL",
+                            SourceField: "QTY",
+                            SourceAgg: "",
+                            SourceConstant: "",
+                            SourceTable: "",
+                            Match: """[{"target":"ORDER_NO","source":{"scope":"DETAIL","field":"ORDER_NO"}}]""")
+                    ])
+            ],
+            []);
+
+        var issues = ModuleBusinessConfigValidator.Validate(request);
+
+        Assert.Empty(issues);
+    }
+
+    [Fact]
     public void Validate_UnknownEffectKeyAndOpCode_ReturnsIssues()
     {
         var request = new SaveModuleBusinessConfigRequest(
