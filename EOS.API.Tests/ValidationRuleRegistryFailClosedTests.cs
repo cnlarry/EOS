@@ -85,6 +85,44 @@ public class ValidationRuleRegistryFailClosedTests
     }
 
     [Fact]
+    public void QuantityCheck_ThisNotExceed_RequiresLimitButNotUsage()
+    {
+        var issues = Validate("qty-not-exceed", Params("""
+            {"mode":"this-not-exceed","checks":[{"targetTable":"COP_ORDER_D",
+             "match":[{"target":"ORDER_NO","source":{"scope":"DETAIL","field":"ORDER_NO"}}],
+             "thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]},
+             "limit":{"scope":"TARGET","fields":["FINISHED_SEND_QTY"]}}]}
+            """));
+        Assert.Empty(issues);
+        var missingLimit = Validate("qty-not-exceed", Params("""
+            {"mode":"this-not-exceed","checks":[{"targetTable":"COP_ORDER_D",
+             "match":[{"target":"ORDER_NO","source":{"scope":"DETAIL","field":"ORDER_NO"}}],
+             "thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]}}]}
+            """));
+        Assert.Contains(missingLimit, issue => issue.Contains("limit 缺失"));
+    }
+
+    [Fact]
+    public void LineRequire_AcceptsKnownShape_RejectsBadShapes()
+    {
+        var ok = Validate("line-require", Params("""
+            {"checks":[{"scope":"DETAIL","field":"BAD_DEPOT_ID","message":"请输入不良品存放仓库",
+             "triggers":[{"scope":"DETAIL","field":"BAD_QTY","op":"GT","value":0},
+                         {"scope":"DETAIL","field":"BAD_SPARE_QTY","op":"GT","value":0}]}]}
+            """));
+        Assert.Empty(ok);
+        var bad = Validate("line-require", Params("""
+            {"checks":[{"scope":"MASTER","field":"","triggers":[{"scope":"DETAIL","field":"BAD_QTY","op":"LIKE","value":"x"}]}]}
+            """));
+        Assert.Contains(bad, issue => issue.Contains("scope 仅允许 DETAIL"));
+        Assert.Contains(bad, issue => issue.Contains("field 不能为空"));
+        Assert.Contains(bad, issue => issue.Contains("op 仅允许"));
+        Assert.Contains(bad, issue => issue.Contains("value 必须是数字"));
+        var empty = Validate("line-require", Params("""{"checks":[]}"""));
+        Assert.Contains(empty, issue => issue.Contains("checks 必须是非空数组"));
+    }
+
+    [Fact]
     public void MatchItem_RejectsUnknownSourceKeys()
     {
         var issues = Validate("reference-exists", Params("""
@@ -92,4 +130,96 @@ public class ValidationRuleRegistryFailClosedTests
             """));
         Assert.Contains(issues, issue => issue.Contains("未知参数键 checks[0].join[].source.hint"));
     }
+
+    [Fact]
+    public void QuantityCheck_SwitchGate_AcceptsKnownShape()
+    {
+        var issues = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"COP_ORDER_D",
+             "switch":{"key":"SEND_ORDER_TAG","expect":1},
+             "match":[{"target":"ORDER_NO","source":{"scope":"DETAIL","field":"ORDER_NO"}}],
+             "thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["FINISHED_SEND_QTY"]},
+             "limit":{"scope":"TARGET","fields":["QTY"]}}]}
+            """));
+        Assert.DoesNotContain(issues, issue => issue.Contains("未知参数键"));
+        Assert.DoesNotContain(issues, issue => issue.Contains("switch"));
+    }
+
+    [Fact]
+    public void QuantityCheck_SwitchGate_RejectsMissingKeyAndUnknownKeys()
+    {
+        var issues = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"COP_ORDER_D",
+             "switch":{"expect":"yes","extra":1},
+             "match":[{"target":"ORDER_NO","source":{"scope":"DETAIL","field":"ORDER_NO"}}],
+             "thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["FINISHED_SEND_QTY"]},
+             "limit":{"scope":"TARGET","fields":["QTY"]}}]}
+            """));
+        Assert.Contains(issues, issue => issue.Contains("switch.key 不能为空"));
+        Assert.Contains(issues, issue => issue.Contains("switch.expect 必须是数字"));
+        Assert.Contains(issues, issue => issue.Contains("未知参数键 checks[0].switch.extra"));
+    }
+
+    [Fact]
+    public void QuantityCheck_1406SeedParams_PassRegistry()
+    {
+        // Mirror of logs/adr012-acceptance/fixture/1406-validation-params.json (MODULE_VALIDATION_RULE 1406/APPROVE).
+        var issues = Validate("qty-not-exceed", Params("""
+{"checks":[{"limit":{"fields":["FINISHED_FITOUT_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"ORDER_TYPE","scope":"DETAIL"},"target":"ORDER_TYPE"},{"source":{"field":"ORDER_NO","scope":"DETAIL"},"target":"ORDER_NO"},{"source":{"field":"ORDER_SERIAL_NO","scope":"DETAIL"},"target":"SERIAL_NO"}],"message":"送货数量超过订单已备货数量","switch":{"expect":1,"key":"SEND_ORDER_FITOUT_TAG"},"targetTable":"COP_ORDER_D","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"QTY"}]},"usage":{"fields":["FINISHED_SEND_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_FITOUT_SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"ORDER_TYPE","scope":"DETAIL"},"target":"ORDER_TYPE"},{"source":{"field":"ORDER_NO","scope":"DETAIL"},"target":"ORDER_NO"},{"source":{"field":"ORDER_SERIAL_NO","scope":"DETAIL"},"target":"SERIAL_NO"}],"message":"送货备品超过订单已备备品数量","switch":{"expect":1,"key":"SEND_ORDER_FITOUT_TAG"},"targetTable":"COP_ORDER_D","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"SPARE_QTY"}]},"usage":{"fields":["FINISHED_SPARE_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_FITOUT_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"送货数量超过工单已备货数量","switch":{"expect":1,"key":"SEND_PRODUCE_FITOUT_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"QTY"}]},"usage":{"fields":["FINISHED_SEND_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_FITOUT_SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"送货备品超过工单已备备品数量","switch":{"expect":1,"key":"SEND_PRODUCE_FITOUT_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"SPARE_QTY"}]},"usage":{"fields":["FINISHED_SEND_SPARE_QTY"],"scope":"TARGET"}},{"limit":{"fields":["QTY"],"scope":"TARGET"},"match":[{"source":{"field":"FITOUT_TYPE","scope":"DETAIL"},"target":"FITOUT_TYPE"},{"source":{"field":"FITOUT_NO","scope":"DETAIL"},"target":"FITOUT_NO"},{"source":{"field":"FITOUT_SERIAL_NO","scope":"DETAIL"},"target":"SERIAL_NO"}],"message":"送货数量超过备货单数量","switch":{"expect":1,"key":"SEND_FITOUT_TAG"},"targetTable":"COP_FITOUT_D","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"QTY"}]},"usage":{"fields":["FINISHED_QTY","RETURN_QTY"],"scope":"TARGET"}},{"limit":{"fields":["SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"FITOUT_TYPE","scope":"DETAIL"},"target":"FITOUT_TYPE"},{"source":{"field":"FITOUT_NO","scope":"DETAIL"},"target":"FITOUT_NO"},{"source":{"field":"FITOUT_SERIAL_NO","scope":"DETAIL"},"target":"SERIAL_NO"}],"message":"送货备品超过备货单备品数量","switch":{"expect":1,"key":"SEND_FITOUT_TAG"},"targetTable":"COP_FITOUT_D","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"SPARE_QTY"}]},"usage":{"fields":["FINISHED_SPARE_QTY","RETURN_SPARE_QTY"],"scope":"TARGET"}},{"limit":{"fields":["QTY"],"scope":"TARGET"},"match":[{"source":{"field":"ORDER_TYPE","scope":"DETAIL"},"target":"ORDER_TYPE"},{"source":{"field":"ORDER_NO","scope":"DETAIL"},"target":"ORDER_NO"},{"source":{"field":"ORDER_SERIAL_NO","scope":"DETAIL"},"target":"SERIAL_NO"}],"message":"送货数量超过订单数量","switch":{"expect":1,"key":"SEND_ORDER_TAG"},"targetTable":"COP_ORDER_D","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"QTY"}]},"usage":{"fields":["BACK_BAD","BACK_MATERIAL","FINISHED_SEND_QTY"],"scope":"TARGET"}},{"limit":{"fields":["SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"ORDER_TYPE","scope":"DETAIL"},"target":"ORDER_TYPE"},{"source":{"field":"ORDER_NO","scope":"DETAIL"},"target":"ORDER_NO"},{"source":{"field":"ORDER_SERIAL_NO","scope":"DETAIL"},"target":"SERIAL_NO"}],"message":"送货备品超过订单备品数量","switch":{"expect":1,"key":"SEND_ORDER_TAG"},"targetTable":"COP_ORDER_D","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"SPARE_QTY"}]},"usage":{"fields":["FINISHED_SPARE_QTY"],"scope":"TARGET"}},{"limit":{"fields":["QTY"],"scope":"TARGET"},"match":[{"source":{"field":"SHIPMENT_TYPE","scope":"DETAIL"},"target":"SHIPMENT_TYPE"},{"source":{"field":"SHIPMENT_NO","scope":"DETAIL"},"target":"SHIPMENT_NO"},{"source":{"field":"SHIPMENT_SERIAL_NO","scope":"DETAIL"},"target":"SERIAL_NO"}],"message":"送货数量超过排程数量","targetTable":"COP_SHIPMENT_D","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"QTY"}]},"usage":{"fields":["FINISHED_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"送货数量超过工单生产数量","switch":{"expect":1,"key":"SEND_PRODUCE_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"QTY"}]},"usage":{"fields":["FINISHED_SEND_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"送货备品超过工单生产备品数量","switch":{"expect":1,"key":"SEND_PRODUCE_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"SPARE_QTY"}]},"usage":{"fields":["FINISHED_SEND_SPARE_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_TRANSFER_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"送货数量超过工单已调拨数量","switch":{"expect":1,"key":"SEND_PRODUCE_TRANSFER_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"QTY"}]},"usage":{"fields":["FINISHED_SEND_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_TRANSFER_SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"送货备品超过工单已调拨备品数量","switch":{"expect":1,"key":"SEND_PRODUCE_TRANSFER_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"SPARE_QTY"}]},"usage":{"fields":["FINISHED_SEND_SPARE_QTY"],"scope":"TARGET"}}],"mode":"usage-not-exceed"}
+"""));
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public void QuantityCheck_1505ApproveParams_PassRegistry()
+    {
+        // Mirror of logs/adr012-acceptance/fixture/1505-validation-params-approve.json.
+        var issues = Validate("qty-not-exceed", Params("""
+{"checks":[{"limit":{"fields":["QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"入库数量超过制令生产数量","targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"QTY"}]},"usage":{"fields":["FINISHED_QTY","SCRAP_IN_QTY"],"scope":"TARGET"}},{"limit":{"fields":["SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"入库备品超过制令备品数量","targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"SPARE_QTY"}]},"usage":{"fields":["FINISHED_SPARE_QTY","SCRAP_IN_SPARE_QTY"],"scope":"TARGET"}}],"mode":"usage-not-exceed"}
+"""));
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public void QuantityCheck_1505DeapproveGuard_PassRegistry()
+    {
+        // Mirror of logs/adr012-acceptance/fixture/1505-validation-params-deapprove.json.
+        var issues = Validate("qty-not-exceed", Params("""
+{"checks":[{"limit":{"fields":["FINISHED_FITOUT_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"解批后入库数量将低于备货数量","switch":{"expect":1,"key":"FITOUT_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":-1,"field":"QTY"}]},"usage":{"fields":["FINISHED_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_FITOUT_SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"解批后入库备品将低于备货备品数量","switch":{"expect":1,"key":"FITOUT_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":-1,"field":"SPARE_QTY"}]},"usage":{"fields":["FINISHED_SPARE_QTY"],"scope":"TARGET"}}],"mode":"not-below-progress"}
+"""));
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public void ReturnRequireRule_PassRegistry()
+    {
+        // Mirror of logs/adr012-acceptance/fixture/1407-approve-linerequire.json.
+        var issues = Validate("line-require", Params("""
+{"checks":[{"field":"BAD_DEPOT_ID","message":"以下序号项请输入不良品存放仓库","scope":"DETAIL","triggers":[{"field":"BAD_QTY","op":"GT","scope":"DETAIL","value":0},{"field":"BAD_SPARE_QTY","op":"GT","scope":"DETAIL","value":0}]}]}
+"""));
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public void ReturnUpperBoundRule_PassRegistry()
+    {
+        // Mirror of logs/adr012-acceptance/fixture/1407-approve-upperbound.json.
+        var issues = Validate("qty-not-exceed", Params("""
+{"checks":[{"limit":{"fields":["FINISHED_SEND_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"ORDER_TYPE","scope":"DETAIL"},"target":"ORDER_TYPE"},{"source":{"field":"ORDER_NO","scope":"DETAIL"},"target":"ORDER_NO"},{"source":{"field":"ORDER_SERIAL_NO","scope":"DETAIL"},"target":"SERIAL_NO"}],"message":"以下退货已超出订单送货数量","switch":{"expect":1,"key":"RETURN_ORDER_SEND_TAG"},"targetTable":"COP_ORDER_D","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"QTY"}]}},{"limit":{"fields":["FINISHED_SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"ORDER_TYPE","scope":"DETAIL"},"target":"ORDER_TYPE"},{"source":{"field":"ORDER_NO","scope":"DETAIL"},"target":"ORDER_NO"},{"source":{"field":"ORDER_SERIAL_NO","scope":"DETAIL"},"target":"SERIAL_NO"}],"message":"以下退货备品已超出订单送货备品数量","switch":{"expect":1,"key":"RETURN_ORDER_SEND_TAG"},"targetTable":"COP_ORDER_D","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"SPARE_QTY"}]}},{"limit":{"fields":["FINISHED_SEND_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"以下退货已超出工单送货数量","switch":{"expect":1,"key":"RETURN_PRODUCE_SEND_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"QTY"}]}},{"limit":{"fields":["FINISHED_SEND_SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"以下退货备品已超出工单送货备品数量","switch":{"expect":1,"key":"RETURN_PRODUCE_SEND_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"SPARE_QTY"}]}}],"mode":"this-not-exceed"}
+"""));
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public void ReturnDeapproveGuards_PassRegistry()
+    {
+        // Mirror of logs/adr012-acceptance/fixture/1407-deapprove-guards.json.
+        var issues = Validate("qty-not-exceed", Params("""
+{"checks":[{"limit":{"fields":["QTY"],"scope":"TARGET"},"match":[{"source":{"field":"ORDER_TYPE","scope":"DETAIL"},"target":"ORDER_TYPE"},{"source":{"field":"ORDER_NO","scope":"DETAIL"},"target":"ORDER_NO"},{"source":{"field":"ORDER_SERIAL_NO","scope":"DETAIL"},"target":"SERIAL_NO"}],"message":"以下解批会出现订单已送货数量超出订单数量","switch":{"expect":1,"key":"SEND_ORDER_TAG"},"targetTable":"COP_ORDER_D","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"QTY"}]},"usage":{"fields":["FINISHED_SEND_QTY"],"scope":"TARGET"}},{"limit":{"fields":["SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"ORDER_TYPE","scope":"DETAIL"},"target":"ORDER_TYPE"},{"source":{"field":"ORDER_NO","scope":"DETAIL"},"target":"ORDER_NO"},{"source":{"field":"ORDER_SERIAL_NO","scope":"DETAIL"},"target":"SERIAL_NO"}],"message":"以下解批会出现订单已送备品超出订单备品数量","switch":{"expect":1,"key":"SEND_ORDER_TAG"},"targetTable":"COP_ORDER_D","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"SPARE_QTY"}]},"usage":{"fields":["FINISHED_SPARE_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_FITOUT_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"ORDER_TYPE","scope":"DETAIL"},"target":"ORDER_TYPE"},{"source":{"field":"ORDER_NO","scope":"DETAIL"},"target":"ORDER_NO"},{"source":{"field":"ORDER_SERIAL_NO","scope":"DETAIL"},"target":"SERIAL_NO"}],"message":"以下解批会出现订单已送货数量超出已备货数量","switch":{"expect":1,"key":"SEND_ORDER_FITOUT_TAG"},"targetTable":"COP_ORDER_D","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"QTY"}]},"usage":{"fields":["FINISHED_SEND_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_FITOUT_SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"ORDER_TYPE","scope":"DETAIL"},"target":"ORDER_TYPE"},{"source":{"field":"ORDER_NO","scope":"DETAIL"},"target":"ORDER_NO"},{"source":{"field":"ORDER_SERIAL_NO","scope":"DETAIL"},"target":"SERIAL_NO"}],"message":"以下解批会出现订单已送备品超出已备备品数量","switch":{"expect":1,"key":"SEND_ORDER_FITOUT_TAG"},"targetTable":"COP_ORDER_D","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"SPARE_QTY"}]},"usage":{"fields":["FINISHED_SPARE_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"以下解批会出现工单已送货数量超出已生产数量","switch":{"expect":1,"key":"SEND_PRODUCE_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"GOOD_QTY"}]},"usage":{"fields":["FINISHED_SEND_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"以下解批会出现工单已送备品超出已生产备品数量","switch":{"expect":1,"key":"SEND_PRODUCE_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"GOOD_SPARE_QTY"}]},"usage":{"fields":["FINISHED_SEND_SPARE_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_TRANSFER_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"以下解批会出现工单已送货数量超出已调拨数量","switch":{"expect":1,"key":"SEND_PRODUCE_TRANSFER_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"GOOD_QTY"}]},"usage":{"fields":["FINISHED_SEND_QTY"],"scope":"TARGET"}},{"limit":{"fields":["FINISHED_TRANSFER_SPARE_QTY"],"scope":"TARGET"},"match":[{"source":{"field":"PRODUCE_TYPE","scope":"DETAIL"},"target":"PRODUCE_TYPE"},{"source":{"field":"PRODUCE_NO","scope":"DETAIL"},"target":"PRODUCE_NO"}],"message":"以下解批会出现工单已送备品超出已调拨备品数量","switch":{"expect":1,"key":"SEND_PRODUCE_TRANSFER_TAG"},"targetTable":"MOC_PRODUCE_M","thisQty":{"scope":"DETAIL","terms":[{"coef":1,"field":"GOOD_SPARE_QTY"}]},"usage":{"fields":["FINISHED_SEND_SPARE_QTY"],"scope":"TARGET"}}],"mode":"usage-not-exceed"}
+"""));
+        Assert.Empty(issues);
+    }
 }
+

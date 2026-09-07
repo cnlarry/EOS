@@ -38,6 +38,25 @@ public class EffectStructSchemasTests
     }
 
     [Fact]
+    public void ValidateParams_InventoryRowFilter_Accepted()
+    {
+        var issues = EffectStructSchemas.ValidateParams(
+            "inventory-move",
+            """{"direction":"IN","mrp":false,"fieldMap":{"masterDate":"RETURN_DATE","qty":{"terms":[{"field":"BAD_QTY","coef":1}]},"detail":["SERIAL_NO"]},"rowFilter":{"anyPositive":["BAD_QTY","BAD_SPARE_QTY"]}}""");
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public void ValidateParams_InventoryRowFilter_RejectsUnknownKeyAndEmpty()
+    {
+        var issues = EffectStructSchemas.ValidateParams(
+            "inventory-move",
+            """{"direction":"IN","mrp":false,"fieldMap":{"masterDate":"RETURN_DATE","qty":"QTY","detail":[]},"rowFilter":{"anyPositive":[],"other":1}}""");
+        Assert.Contains(issues, issue => issue.Contains("rowFilter 含未登记键 'other'"));
+        Assert.Contains(issues, issue => issue.Contains("anyPositive 必须是非空"));
+    }
+
+    [Fact]
     public void ValidateParams_UnknownRootKeyAndReservedKeyWithParams_Rejected()
     {
         var issues = EffectStructSchemas.ValidateParams(
