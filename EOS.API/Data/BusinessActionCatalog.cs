@@ -40,12 +40,9 @@ public static class BusinessActionCatalog
         "client-price-sync",
         "supplier-price-sync",
         "field-copy",
-        "return-writeback",
         "hr-usage-sync",
         "employee-contract-sync",
-        "mould-balance-adjust",
         "mould-batch-apply",
-        "sample-stock-adjust",
         "mrp-plan-alloc",
         "order-change-apply",
         "produce-change-apply",
@@ -104,6 +101,7 @@ public static class BusinessActionCatalog
         "qty-not-exceed",
         "reference-exists",
         "duplicate-check",
+        "line-require",
     };
 
     public static bool IsKnownEvent(string value) => Events.Contains(value);

@@ -67,14 +67,14 @@ public static class EffectStructSchemas
         {
             ["adjust-projection"] = Set("mode", "inFields", "getFields"),
             ["balance-adjust"] = Set("client", "supplier", "bank"),
-            ["callback-reprice"] = Set("fields", "sendTargets", "returnTargets", "deapprove"),
+            ["callback-reprice"] = Set("sendTargets", "returnTargets", "fields", "duplicateGuardMarked", "deapprove"),
             ["client-price-sync"] = Set("master", "detail", "quoteRefs", "preserveOld"),
             ["completion-close"] = Set("targets", "condition", "marker", "direction", "offsets"),
             ["employee-contract-sync"] = Set("targetTable", "fields", "source", "includeSelfOnApprove"),
             ["field-accumulate"] = Set("mode", "targets"),
             ["field-copy"] = Set("targetTable", "field", "fields", "targets", "sourceField", "headerFields"),
             ["hr-usage-sync"] = Set("targetTable", "scopeKey", "sourceFields", "targetFields"),
-            ["inventory-move"] = Set("direction", "mrp", "depotField", "targetTable", "fieldMap"),
+            ["inventory-move"] = Set("direction", "mrp", "depotField", "targetTable", "fieldMap", "rowFilter"),
             ["link-stamp"] = Set("targetTable", "field", "fields", "targets", "mode", "finish"),
             ["mould-balance-adjust"] = Set("targetTable", "mode", "qty", "amount", "dateField", "dateFields", "dateMode", "dateValueField", "useCountField"),
             ["mould-batch-apply"] = Set("branchField", "acceptTargets", "scrapTarget", "productFields"),
@@ -161,6 +161,88 @@ public static class EffectStructSchemas
         {
             issues.AddRange(ValidateFieldMap(root));
         }
+        if (effectKey.Equals("inventory-move", StringComparison.OrdinalIgnoreCase)
+            && root.TryGetProperty("rowFilter", out var rowFilter))
+        {
+            issues.AddRange(ValidateRowFilter(rowFilter));
+        }
+        if (effectKey.Equals("callback-reprice", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.AddRange(ValidateCallbackTargets(root));
+        }
+        return issues;
+    }
+
+    private static readonly IReadOnlySet<string> CallbackTargetKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "detail", "master", "typeCol", "noCol", "serialCol",
+        "copyFromCallback", "amountTo", "markFromDoc", "markFromCallback",
+    };
+
+    private static IReadOnlyList<string> ValidateCallbackTargets(JsonElement root)
+    {
+        var issues = new List<string>();
+        foreach (var group in new[] { "sendTargets", "returnTargets" })
+        {
+            if (!root.TryGetProperty(group, out var array))
+                continue;
+            if (array.ValueKind != JsonValueKind.Array)
+            {
+                issues.Add($"callback-reprice.{group} 必须是数组。");
+                continue;
+            }
+            var index = 0;
+            foreach (var item in array.EnumerateArray())
+            {
+                var where = $"{group}[{index}]";
+                if (item.ValueKind != JsonValueKind.Object)
+                {
+                    issues.Add($"callback-reprice.{where} 必须是对象。");
+                }
+                else
+                {
+                    RejectUnknown(item, CallbackTargetKeys, $"callback-reprice.{where}", issues);
+                    foreach (var required in new[] { "detail", "master", "typeCol", "noCol", "serialCol" })
+                        if (!item.TryGetProperty(required, out var v) || v.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(v.GetString()))
+                            issues.Add($"callback-reprice.{where}.{required} 不能为空");
+                    foreach (var listKey in new[] { "copyFromCallback", "amountTo", "markFromDoc", "markFromCallback" })
+                        if (item.TryGetProperty(listKey, out var arr) && arr.ValueKind != JsonValueKind.Array)
+                            issues.Add($"callback-reprice.{where}.{listKey} 必须是数组");
+                }
+                index++;
+            }
+        }
+        return issues;
+    }
+
+    private static void RejectUnknown(JsonElement element, IReadOnlySet<string> allowed, string where, ICollection<string> issues)
+    {
+        foreach (var property in element.EnumerateObject())
+            if (!allowed.Contains(property.Name))
+                issues.Add($"callback-reprice {where} 含未登记键 '{property.Name}'");
+    }
+
+    private static IReadOnlyList<string> ValidateRowFilter(JsonElement value)
+    {
+        var issues = new List<string>();
+        if (value.ValueKind != JsonValueKind.Object)
+        {
+            issues.Add("rowFilter 必须是 JSON 对象。");
+            return issues;
+        }
+        foreach (var property in value.EnumerateObject())
+            if (!property.NameEquals("anyPositive"))
+                issues.Add($"rowFilter 含未登记键 '{property.Name}'（仅允许 anyPositive）。");
+        if (!value.TryGetProperty("anyPositive", out var anyPositive)
+            || anyPositive.ValueKind != JsonValueKind.Array
+            || anyPositive.GetArrayLength() == 0)
+        {
+            issues.Add("rowFilter.anyPositive 必须是非空字段名数组。");
+            return issues;
+        }
+        foreach (var item in anyPositive.EnumerateArray())
+            if (item.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(item.GetString()))
+                issues.Add("rowFilter.anyPositive 存在空字段名。");
         return issues;
     }
 
