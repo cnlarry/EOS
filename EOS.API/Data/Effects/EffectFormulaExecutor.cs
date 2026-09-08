@@ -94,8 +94,10 @@ public sealed class EffectFormulaExecutor
             case "SET_WHEN":
                 assignment = $"{targetField} = {BuildConstantParameter(op, parameters)}";
                 break;
+            case "APPEND":
             case "APPEND_UNIQ":
-                assignment = BuildAppendUniq(op, targetAlias, parameters);
+                assignment = BuildAppend(op, targetAlias, parameters,
+                    op.OpCode.Equals("APPEND_UNIQ", StringComparison.OrdinalIgnoreCase));
                 break;
             default:
                 var value = BuildValue(op, targetAlias, parameters);
@@ -136,7 +138,11 @@ public sealed class EffectFormulaExecutor
     }
 
     /// <summary>Builds the scalar value expression for the op source.</summary>
-    private string BuildValue(EffectOpPlan op, string targetAlias, List<EffectSqlParameter> parameters)
+    private string BuildValue(
+        EffectOpPlan op,
+        string targetAlias,
+        List<EffectSqlParameter> parameters,
+        string? aggregateOverride = null)
     {
         var source = op.Source;
         switch (source.Scope.ToUpperInvariant())
@@ -156,7 +162,9 @@ public sealed class EffectFormulaExecutor
 
         var (table, alias) = SourceTableFor(op);
         var innerExpression = BuildTermExpression(op, alias);
-        var aggregation = op.SourceAgg?.ToUpperInvariant() switch
+        // Append sources are single correlated rows (1:1 by line number), so a text
+        // column must not be SUMmed; the append path folds with MAX instead.
+        var aggregation = aggregateOverride ?? op.SourceAgg?.ToUpperInvariant() switch
         {
             "MAX" => "MAX",
             "MIN" => "MIN",
@@ -186,7 +194,7 @@ public sealed class EffectFormulaExecutor
         return name;
     }
 
-    private string BuildAppendUniq(EffectOpPlan op, string targetAlias, List<EffectSqlParameter> parameters)
+    private string BuildAppend(EffectOpPlan op, string targetAlias, List<EffectSqlParameter> parameters, bool dedupe)
     {
         var field = $"{targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)}";
         // The appended value must be a scalar bound to this document: a bare D.column
@@ -195,10 +203,13 @@ public sealed class EffectFormulaExecutor
         // to MAX, matching the legacy per-group max() append).
         var value = op.Source.Scope.Equals("CONSTANT", StringComparison.OrdinalIgnoreCase)
             ? BuildConstantParameter(op, parameters)
-            : BuildValue(op, targetAlias, parameters);
-        return $"{field} = CASE WHEN COALESCE({field}, '') = '' THEN {value} "
-            + $"WHEN CHARINDEX({value}, {field}) > 0 THEN {field} "
-            + $"ELSE {field} + ',' + {value} END";
+            : BuildValue(op, targetAlias, parameters, aggregateOverride: "MAX");
+        return dedupe
+            ? $"{field} = CASE WHEN COALESCE({field}, '') = '' THEN {value} "
+                + $"WHEN CHARINDEX({value}, {field}) > 0 THEN {field} "
+                + $"ELSE {field} + ',' + {value} END"
+            : $"{field} = CASE WHEN {field} IS NULL OR LTRIM(RTRIM({field})) = '' THEN {value} "
+                + $"ELSE RTRIM({field}) + {value} END";
     }
 
     private ModuleEffectPlan _plan = null!;

@@ -31,7 +31,11 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
             return 0;
         }
 
-        var amountLocal = BuildAmountExpression(plan, columns);
+        // The master amount expression is only needed by occupy/release/prepay/bank
+        // branches; the net-replace branch reads the referenced original document
+        // instead and would fail on change masters without amount columns.
+        string? amountLocalCache = null;
+        string AmountLocal() => amountLocalCache ??= BuildAmountExpression(plan, columns);
         // Approve applies the configured direction; deapprove applies the inverse
         // (usable quota: occupy=−/release=+ on approve, flipped on deapprove).
         var sign = context.ExecutionEvent == EffectEvent.Deapprove ? -1 : 1;
@@ -64,7 +68,7 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
                         "release" => sign,
                         _ => throw new EffectConfigException("balance-adjust credit 仅支持 occupy/release/net-replace。"),
                     };
-                    affected += await AdjustAsync(context, tableName, keyColumn, "CREDIT_LIMIT_NUM", amountLocal, delta, token);
+                    affected += await AdjustAsync(context, tableName, keyColumn, "CREDIT_LIMIT_NUM", AmountLocal(), delta, token);
                 }
             }
             if (branch.TryGetProperty("prepay", out var prepay))
@@ -77,7 +81,7 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
                     "decrease" => -sign,
                     _ => throw new EffectConfigException("balance-adjust prepay 仅支持 increase/decrease。"),
                 };
-                affected += await AdjustAsync(context, tableName, keyColumn, "PREPAY_SUM", amountLocal, delta, token);
+                affected += await AdjustAsync(context, tableName, keyColumn, "PREPAY_SUM", AmountLocal(), delta, token);
             }
         }
 
@@ -91,8 +95,8 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
             if (!columns.Contains("BANK.AMOUNT") || !columns.Contains(plan.MasterTable + ".BANK_ID"))
                 throw new EffectConfigException("balance-adjust bank 分支缺 BANK.AMOUNT 或主表 BANK_ID。");
             var delta = direction == "IN" ? sign : -sign;
-            await CheckBankBalanceAsync(context, amountLocal, delta, token);
-            affected += await AdjustAsync(context, "BANK", "BANK_ID", "AMOUNT", amountLocal, delta, token);
+            await CheckBankBalanceAsync(context, AmountLocal(), delta, token);
+            affected += await AdjustAsync(context, "BANK", "BANK_ID", "AMOUNT", AmountLocal(), delta, token);
         }
         return affected;
     }
@@ -143,6 +147,7 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
         if (plan.MasterTable is null || plan.DetailTable is null)
             throw new EffectConfigException("balance-adjust net-replace 需要主子表形态。");
         var originalTable = plan.MasterTable.Replace("_CHANGE", "", StringComparison.OrdinalIgnoreCase);
+        var originalDetail = originalTable.TrimEnd('M') + "D";
         var purchaseSide = originalTable.StartsWith("PUR_", StringComparison.OrdinalIgnoreCase);
         var pkPrefix = purchaseSide ? "PURCHASE" : "ORDER";
         var pk0 = pkPrefix + "_TYPE";
@@ -150,9 +155,11 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
         var serialCol = pkPrefix + "_SERIAL_NO";
         foreach (var reference in new[]
         {
-            originalTable, originalTable + "." + pk0, originalTable + "." + pk1,
-            originalTable + ".AMOUNT_TAX", originalTable + ".CURR_RATE", originalTable + ".SERIAL_NO",
-            originalTable + ".REBATE", originalTable + ".TAX_TYPE", originalTable + ".TAX_RATE",
+            originalTable, originalDetail,
+            originalTable + "." + pk0, originalTable + "." + pk1,
+            originalTable + ".AMOUNT_TAX", originalTable + ".CURR_RATE",
+            originalDetail + "." + pk0, originalDetail + "." + pk1, originalDetail + ".SERIAL_NO",
+            originalDetail + ".REBATE", originalDetail + ".TAX_TYPE", originalDetail + ".TAX_RATE",
             plan.DetailTable + "." + pk0, plan.DetailTable + "." + pk1, plan.DetailTable + "." + serialCol,
             plan.DetailTable + ".OLD_QTY", plan.DetailTable + ".OLD_PRICE",
             plan.MasterTable + "." + pk0, plan.MasterTable + "." + pk1,
@@ -185,6 +192,7 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
         var partyValue = readReader.IsDBNull(0) ? null : readReader.GetString(0).Trim();
         var ref0Value = readReader.IsDBNull(1) ? null : readReader.GetString(1).Trim();
         var ref1Value = readReader.IsDBNull(2) ? null : readReader.GetString(2).Trim();
+        await readReader.DisposeAsync();
         if (string.IsNullOrWhiteSpace(ref0Value) || string.IsNullOrWhiteSpace(ref1Value))
             throw new EffectConfigException("balance-adjust net-replace 变更主表缺少原单键。");
         parameters.Add(new EffectSqlParameter(party, partyValue));
@@ -211,7 +219,7 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
             + $"THEN d.OLD_QTY*d.OLD_PRICE*COALESCE(T.REBATE,0)/100*(1+T.TAX_RATE/100) "
             + $"ELSE d.OLD_QTY*d.OLD_PRICE*COALESCE(T.REBATE,0)/100 END,2)),2) "
             + $"FROM dbo.{ServiceEffectSql.Q(plan.DetailTable)} d "
-            + $"JOIN dbo.{ServiceEffectSql.Q(originalTable)} T "
+            + $"JOIN dbo.{ServiceEffectSql.Q(originalDetail)} T "
             + $"ON T.{ServiceEffectSql.Q(pk0)}=d.{ServiceEffectSql.Q(pk0)} "
             + $"AND T.{ServiceEffectSql.Q(pk1)}=d.{ServiceEffectSql.Q(pk1)} AND T.SERIAL_NO=d.{ServiceEffectSql.Q(serialCol)} "
             + $"WHERE d.{ServiceEffectSql.Q(plan.MasterPkOrder[0])}=@mk0 AND d.{ServiceEffectSql.Q(plan.MasterPkOrder[1])}=@mk1";
