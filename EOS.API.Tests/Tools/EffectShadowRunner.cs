@@ -29,7 +29,8 @@ namespace EOS.API.Tests.Tools;
 /// is PASS when the engine executes cleanly with zero residue.
 /// Supported modules: 1607 (purchase receipt), 1406 (customer delivery),
 /// 1505 (production inbound), 1407 (customer return), 1413 (delivery callback),
-/// 170101 (customer settlement), 170201 (supplier settlement).
+/// 170101 (customer settlement), 170201 (supplier settlement),
+/// 1404 (customer quote), 1604 (supplier quote).
 /// </summary>
 [Trait("Category", "Tool")]
 public sealed class EffectShadowRunner
@@ -106,8 +107,14 @@ public sealed class EffectShadowRunner
         170201 => new(170201, "170201", "PUR_DUE_M", "PUR_DUE_D",
             "DUE_TYPE", "DUE_NO", "DUE_DATE",
             "SUPPLIER_ID", "SUPPLIER", "SUPPLIER_ID", "厂商对账单"),
+        1404 => new(1404, "1404", "COP_QUOTE_M", "COP_QUOTE_D",
+            "QUOTE_TYPE", "QUOTE_NO", "QUOTE_DATE",
+            "CLIENT_ID", "CLIENT", "CLIENT_ID", "客户报价单"),
+        1604 => new(1604, "1604", "PUR_QUOTE_M", "PUR_QUOTE_D",
+            "QUOTE_TYPE", "QUOTE_NO", "QUOTE_DATE",
+            "SUPPLIER_ID", "SUPPLIER", "SUPPLIER_ID", "厂商报价单"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/170101/170201 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/170101/170201/1404/1604 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -207,9 +214,9 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 170101 or 170201))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 170101 or 170201 or 1404 or 1604))
         {
-            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/170101/170201 only.");
+            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/170101/170201/1404/1604 only.");
         }
         var spec = GetSpec(options.ModuleId);
         var deapprove = options.Event.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
@@ -351,6 +358,14 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 170201)
         {
             return await ResolveRecordKeys170201Async(connection, deapprove, failure);
+        }
+        if (spec.ModuleId == 1404)
+        {
+            return await ResolveRecordKeys1404Async(connection, deapprove, failure);
+        }
+        if (spec.ModuleId == 1604)
+        {
+            return await ResolveRecordKeys1604Async(connection, deapprove, failure);
         }
         if (failure)
         {
@@ -705,6 +720,11 @@ public sealed class EffectShadowRunner
                 new InventoryMoveHandler(new EffectPhysicalColumns()),
                 new CallbackRepriceHandler(),
                 new PaymentDateCalcHandler(),
+                new ClientPriceSyncHandler(),
+                new SupplierPriceSyncHandler(),
+                new QuoteParameterRecalcHandler(),
+                new LinkStampHandler(),
+                new StampLastActivityHandler(),
             },
             new EffectValidationExecutor(),
             auditWriter,
@@ -800,6 +820,14 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 1413)
         {
             return await ReadDetailContext1413Async(connection, transaction, keys);
+        }
+        if (spec.ModuleId == 1404)
+        {
+            return await ReadDetailContext1404Async(connection, transaction, keys);
+        }
+        if (spec.ModuleId == 1604)
+        {
+            return await ReadDetailContext1604Async(connection, transaction, keys);
         }
         if (spec.ModuleId is 170101 or 170201)
         {
@@ -897,6 +925,14 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 170201)
         {
             return BuildTableSpecs170201(master);
+        }
+        if (spec.ModuleId == 1404)
+        {
+            return BuildTableSpecs1404(master, details);
+        }
+        if (spec.ModuleId == 1604)
+        {
+            return BuildTableSpecs1604(master, details);
         }
         var specs = new List<TableSpec>
         {
@@ -1322,6 +1358,65 @@ public sealed class EffectShadowRunner
         return Array.Empty<DetailRow>();
     }
 
+    private static async Task<IReadOnlyList<DetailRow>> ReadDetailContext1404Async(
+        SqlConnection connection, SqlTransaction transaction, IReadOnlyList<string> keys)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(ISNULL(D.PRO_NO,''))),
+                   LTRIM(RTRIM(ISNULL(D.CHAFFER_TYPE,''))), LTRIM(RTRIM(ISNULL(D.CHAFFER_NO,''))),
+                   D.CHAFFER_SERIAL_NO, D.SERIAL_NO
+            FROM dbo.COP_QUOTE_D D
+            WHERE D.QUOTE_TYPE=@Key1 AND D.QUOTE_NO=@Key2
+            ORDER BY D.SERIAL_NO;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@Key1", SqlDbType.NVarChar, 20).Value = keys[0];
+        command.Parameters.Add("@Key2", SqlDbType.NVarChar, 30).Value = keys[1];
+        await using var reader = await command.ExecuteReaderAsync();
+        var result = new List<DetailRow>();
+        static int? SmallInt(SqlDataReader reader, int ordinal) =>
+            reader.IsDBNull(ordinal) ? null : (int?)reader.GetInt16(ordinal);
+        while (await reader.ReadAsync())
+        {
+            // The chaffer (inquiry) references ride in the Shipment* slots, the same
+            // convention 1407 uses for its send references; the snapshot builder
+            // resolves COP_CHAFFER_D rows from those slots.
+            result.Add(new DetailRow(
+                string.Empty, string.Empty, null,
+                string.Empty, string.Empty,
+                reader.GetString(0), string.Empty, string.Empty,
+                SmallInt(reader, 4),
+                ShipmentType: reader.GetString(1), ShipmentNo: reader.GetString(2),
+                ShipmentSerialNo: SmallInt(reader, 3)));
+        }
+        return result;
+    }
+
+    private static async Task<IReadOnlyList<DetailRow>> ReadDetailContext1604Async(
+        SqlConnection connection, SqlTransaction transaction, IReadOnlyList<string> keys)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(ISNULL(D.PRO_NO,''))), D.SERIAL_NO
+            FROM dbo.PUR_QUOTE_D D
+            WHERE D.QUOTE_TYPE=@Key1 AND D.QUOTE_NO=@Key2
+            ORDER BY D.SERIAL_NO;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@Key1", SqlDbType.NVarChar, 20).Value = keys[0];
+        command.Parameters.Add("@Key2", SqlDbType.NVarChar, 30).Value = keys[1];
+        await using var reader = await command.ExecuteReaderAsync();
+        var result = new List<DetailRow>();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new DetailRow(
+                string.Empty, string.Empty, null,
+                string.Empty, string.Empty,
+                reader.GetString(0), string.Empty, string.Empty,
+                reader.IsDBNull(1) ? null : (int?)reader.GetInt16(1)));
+        }
+        return result;
+    }
+
     private static IReadOnlyList<TableSpec> BuildTableSpecs1413(MasterContext master, IReadOnlyList<DetailRow> details)
     {
         var specs = new List<TableSpec>
@@ -1424,6 +1519,137 @@ public sealed class EffectShadowRunner
             throw new InvalidOperationException("未找到可对拍的未批核厂商对账单（自动选单无结果）。");
         }
         return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
+
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys1404Async(
+        SqlConnection connection, bool deapprove, bool failure)
+    {
+        if (deapprove || failure)
+        {
+            // Deapprove restores the stored old price behind a latest-quote guard and
+            // leaves the chaffer link stamps in place, while the engine reverse kinds
+            // (restore-old-price / clear-refs) have not been compared against that
+            // legacy behaviour yet; no APPROVE validation rule is configured either,
+            // so only the approve path is specified (same trade-off as 170101/170201).
+            throw new NotSupportedException(
+                "1404 影子规格仅支持 APPROVE（解批/失败分支的等价性尚未分析）。");
+        }
+        const string sql = """
+            SELECT TOP 1 M.QUOTE_TYPE, M.QUOTE_NO
+            FROM dbo.COP_QUOTE_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=0
+              AND EXISTS (SELECT 1 FROM dbo.COP_QUOTE_D D
+                          WHERE D.QUOTE_TYPE=M.QUOTE_TYPE AND D.QUOTE_NO=M.QUOTE_NO)
+            ORDER BY M.QUOTE_DATE DESC, M.QUOTE_NO DESC;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            throw new InvalidOperationException("未找到可对拍的未批核客户报价单（自动选单无结果）。");
+        }
+        return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
+
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys1604Async(
+        SqlConnection connection, bool deapprove, bool failure)
+    {
+        if (deapprove || failure)
+        {
+            // Deapprove shares the recalc-confirmed cost-parameter semantics with
+            // approve and restores the stored old price; that equivalence has not
+            // been compared against the legacy procedure yet, and no APPROVE
+            // validation rule is configured, so only approve is specified.
+            throw new NotSupportedException(
+                "1604 影子规格仅支持 APPROVE（解批/失败分支的等价性尚未分析）。");
+        }
+        const string sql = """
+            SELECT TOP 1 M.QUOTE_TYPE, M.QUOTE_NO
+            FROM dbo.PUR_QUOTE_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=0
+              AND EXISTS (SELECT 1 FROM dbo.PUR_QUOTE_D D
+                          WHERE D.QUOTE_TYPE=M.QUOTE_TYPE AND D.QUOTE_NO=M.QUOTE_NO)
+            ORDER BY M.QUOTE_DATE DESC, M.QUOTE_NO DESC;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            throw new InvalidOperationException("未找到可对拍的未批核厂商报价单（自动选单无结果）。");
+        }
+        return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1404(MasterContext master, IReadOnlyList<DetailRow> details)
+    {
+        var specs = new List<TableSpec>
+        {
+            new("COP_QUOTE_M", new[] { "QUOTE_TYPE", "QUOTE_NO" },
+                "@qt=QUOTE_TYPE AND @qn=QUOTE_NO", new[] { new SqlParameter("@qt", master.ReceiveType), new SqlParameter("@qn", master.ReceiveNo) }),
+            new("COP_QUOTE_D", new[] { "QUOTE_TYPE", "QUOTE_NO", "SERIAL_NO" },
+                "@qt=QUOTE_TYPE AND @qn=QUOTE_NO", new[] { new SqlParameter("@qt", master.ReceiveType), new SqlParameter("@qn", master.ReceiveNo) }),
+        };
+        // The whole party price book is snapshotted: the sync updates matched lines
+        // by key and inserts missing ones, so scoping to the quoted products only
+        // would miss pre-existing rows the legacy procedure also rewrites.
+        if (master.SupplierId is not null)
+        {
+            specs.Add(new("CLIENT_PRICE_M", new[] { "CLIENT_ID" }, "CLIENT_ID=@cid", new[] { new SqlParameter("@cid", master.SupplierId) }));
+            specs.Add(new("CLIENT_PRICE_D", new[] { "CLIENT_ID", "PRO_NO", "CURR_ID", "TAX_ID", "TAX_TYPE", "UNIT_ID", "REBATE" },
+                "CLIENT_ID=@cid", new[] { new SqlParameter("@cid", master.SupplierId) }));
+            specs.Add(new("CLIENT", new[] { "CLIENT_ID" }, "CLIENT_ID=@cid", new[] { new SqlParameter("@cid", master.SupplierId) }));
+        }
+        var productKeys = details.Select(row => row.ProNo).Where(pro => pro.Length > 0).Distinct().ToArray();
+        if (productKeys.Length > 0)
+        {
+            specs.Add(new("PRODUCT", new[] { "PRO_NO" }, InClause("PRO_NO", productKeys), productKeys.Select((value, index) => new SqlParameter("@p" + index, value)).ToArray()));
+        }
+        // Inquiry lines the quote answers (link-stamp target), located through the
+        // chaffer references carried in the Shipment* detail slots.
+        var chafferKeys = details
+            .Where(row => row.ShipmentType.Length > 0 && row.ShipmentNo.Length > 0 && row.ShipmentSerialNo is not null)
+            .Select(row => (row.ShipmentType, row.ShipmentNo, row.ShipmentSerialNo!.Value))
+            .Distinct()
+            .ToArray();
+        if (chafferKeys.Length > 0)
+        {
+            specs.Add(BuildValuesSpec("COP_CHAFFER_D",
+                new[] { "CHAFFER_TYPE", "CHAFFER_NO", "SERIAL_NO" },
+                chafferKeys, "CHAFFER_TYPE", "CHAFFER_NO", "SERIAL_NO"));
+        }
+        return specs;
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1604(MasterContext master, IReadOnlyList<DetailRow> details)
+    {
+        var specs = new List<TableSpec>
+        {
+            new("PUR_QUOTE_M", new[] { "QUOTE_TYPE", "QUOTE_NO" },
+                "@qt=QUOTE_TYPE AND @qn=QUOTE_NO", new[] { new SqlParameter("@qt", master.ReceiveType), new SqlParameter("@qn", master.ReceiveNo) }),
+            new("PUR_QUOTE_D", new[] { "QUOTE_TYPE", "QUOTE_NO", "SERIAL_NO" },
+                "@qt=QUOTE_TYPE AND @qn=QUOTE_NO", new[] { new SqlParameter("@qt", master.ReceiveType), new SqlParameter("@qn", master.ReceiveNo) }),
+        };
+        if (master.SupplierId is not null)
+        {
+            specs.Add(new("SUPPLIER_PRICE_M", new[] { "SUPPLIER_ID" }, "SUPPLIER_ID=@sid", new[] { new SqlParameter("@sid", master.SupplierId) }));
+            specs.Add(new("SUPPLIER_PRICE_D", new[] { "SUPPLIER_ID", "PRO_NO", "CURR_ID", "TAX_ID", "TAX_TYPE", "UNIT_ID", "REBATE" },
+                "SUPPLIER_ID=@sid", new[] { new SqlParameter("@sid", master.SupplierId) }));
+            specs.Add(new("SUPPLIER", new[] { "SUPPLIER_ID" }, "SUPPLIER_ID=@sid", new[] { new SqlParameter("@sid", master.SupplierId) }));
+        }
+        var productKeys = details.Select(row => row.ProNo).Where(pro => pro.Length > 0).Distinct().ToArray();
+        if (productKeys.Length > 0)
+        {
+            // Material-quoted lines update every product sharing the same STUFF_ID,
+            // so the snapshot covers both direct and material-matched products.
+            var parameters = new List<SqlParameter>();
+            var proFilter = ParameterizedIn("PRO_NO", productKeys.Select(value => (object)value).ToArray(), "qp", parameters);
+            var stuffFilter = ParameterizedIn("STUFF_ID", productKeys.Select(value => (object)value).ToArray(), "qs", parameters);
+            specs.Add(new TableSpec("PRODUCT", new[] { "PRO_NO" }, proFilter + " OR " + stuffFilter, parameters));
+            var paramParameters = new List<SqlParameter>();
+            var paramFilter = ParameterizedIn("STUFF_ID", productKeys.Select(value => (object)value).ToArray(), "cp", paramParameters);
+            specs.Add(new TableSpec("COP_QUOTE_PARAMETER", new[] { "STUFF_ID" }, paramFilter, paramParameters));
+        }
+        return specs;
     }
 
     private static IReadOnlyList<TableSpec> BuildTableSpecs170101(MasterContext master)

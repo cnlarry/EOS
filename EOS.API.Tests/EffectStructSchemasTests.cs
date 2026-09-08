@@ -57,6 +57,58 @@ public class EffectStructSchemasTests
     }
 
     [Fact]
+    public void ValidateParams_LinkStamp_DetailSourceShapeAccepted()
+    {
+        var issues = EffectStructSchemas.ValidateParams("link-stamp",
+            """
+            {"targets":[{"table":"COP_CHAFFER_D","refs":["CHAFFER_TYPE","CHAFFER_NO","SERIAL_NO"],
+                         "fromDetail":true,
+                         "sourceRefs":["CHAFFER_TYPE","CHAFFER_NO","CHAFFER_SERIAL_NO"]}],
+             "fields":["QUOTE_TYPE","QUOTE_NO",{"target":"QUOTE_SERIAL_NO","source":"SERIAL_NO"}]}
+            """);
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public void ValidateParams_LinkStamp_LegacyShapesStillAccepted()
+    {
+        Assert.Empty(EffectStructSchemas.ValidateParams("link-stamp",
+            """{"targetTable":"MOU_ASSESS_M","field":"APPLY_NO","mode":"assign"}"""));
+        Assert.Empty(EffectStructSchemas.ValidateParams("link-stamp",
+            """
+            {"targets":[{"table":"CUS_ACCOUNT_M","ref":["ACCOUNT_TYPE","ACCOUNT_NO"]}],
+             "fields":["EXPORT_TYPE","EXPORT_NO"],"finish":true}
+            """));
+    }
+
+    [Fact]
+    public void ValidateParams_LinkStamp_RejectsUnknownTargetKeyAndBrokenDetailShape()
+    {
+        var unknownKey = EffectStructSchemas.ValidateParams("link-stamp",
+            """{"targets":[{"table":"COP_CHAFFER_D","joinOn":["X"]}],"fields":["QUOTE_NO"]}""");
+        Assert.Contains(unknownKey, issue => issue.Contains("未登记键 'joinOn'"));
+
+        var missingSource = EffectStructSchemas.ValidateParams("link-stamp",
+            """
+            {"targets":[{"table":"COP_CHAFFER_D","refs":["CHAFFER_TYPE"],"fromDetail":true}],
+             "fields":["QUOTE_NO"]}
+            """);
+        Assert.Contains(missingSource, issue => issue.Contains("sourceRefs"));
+
+        var mismatch = EffectStructSchemas.ValidateParams("link-stamp",
+            """
+            {"targets":[{"table":"COP_CHAFFER_D","refs":["CHAFFER_TYPE","CHAFFER_NO","SERIAL_NO"],
+                         "fromDetail":true,"sourceRefs":["CHAFFER_TYPE","CHAFFER_NO"]}],
+             "fields":["QUOTE_NO"]}
+            """);
+        Assert.Contains(mismatch, issue => issue.Contains("列数必须一致"));
+
+        var badField = EffectStructSchemas.ValidateParams("link-stamp",
+            """{"targets":[{"table":"COP_CHAFFER_D"}],"fields":["QUOTE_NO",{"target":"QUOTE_TYPE"}]}""");
+        Assert.Contains(badField, issue => issue.Contains("source"));
+    }
+
+    [Fact]
     public void ValidateParams_UnknownRootKeyAndReservedKeyWithParams_Rejected()
     {
         var issues = EffectStructSchemas.ValidateParams(
