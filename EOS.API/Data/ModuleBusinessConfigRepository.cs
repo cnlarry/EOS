@@ -209,6 +209,8 @@ public sealed class ModuleBusinessConfigRepository(
             foreach (var op in action.Ops ?? Array.Empty<BusinessActionOpDto>())
             {
                 var where = $"动作 SEQ={action.Seq} 公式行 OP_SEQ={op.OpSeq}";
+                if (ModuleBusinessConfigValidator.IsPlaceholderOp(op.OpCode, op.TargetTable, op.TargetField))
+                    continue;
                 if (!columns.Contains(Key(op.TargetTable, op.TargetField)))
                     issues.Add($"{where}：目标表/字段不存在 {op.TargetTable}.{op.TargetField}。");
 
@@ -245,6 +247,14 @@ public sealed class ModuleBusinessConfigRepository(
                         continue;
                     var matchItems = TryParseMatchItems(op.Match!);
                     if (matchItems is null || matchItems.Count == 0)
+                        continue;
+                    // The effect-edge catalog registers row-level (detail) correlations
+                    // only; master completion rows locate their targets through the same
+                    // match keys without an edge entry (their target table has no rows
+                    // in the catalog). Enforce the edge check only when the target table
+                    // itself participates in the catalog, otherwise the row shape is
+                    // validated by the physical and condition checks below.
+                    if (!edges.Values.Any(group => group.Any(edge => edge.ToTable == op.TargetTable)))
                         continue;
                     var resolved = matchItems
                         .Select(item => new
@@ -439,7 +449,10 @@ public sealed class ModuleBusinessConfigRepository(
         AddNullable(command, "@SourceTable", op.SourceTable, 64);
         AddNullable(command, "@SourceField", op.SourceField, 64);
         AddNullable(command, "@SourceAgg", op.SourceAgg, 10);
-        AddNullable(command, "@SourceConstant", op.SourceConstant, null);
+        // The empty string is a legal clear value for CONSTANT sources (e.g.
+        // FINISHED_PERSON=''), so it must survive storage instead of collapsing to NULL.
+        var constantParameter = command.Parameters.Add("@SourceConstant", SqlDbType.NVarChar, -1);
+        constantParameter.Value = op.SourceConstant is null ? DBNull.Value : op.SourceConstant.Trim();
         AddNullable(command, "@SourceTerms", op.SourceTerms, null);
         AddNullable(command, "@Match", op.Match, null);
         AddNullable(command, "@Condition", op.Condition, null);

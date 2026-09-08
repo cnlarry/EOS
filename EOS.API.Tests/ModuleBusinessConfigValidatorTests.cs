@@ -223,4 +223,78 @@ public class ModuleBusinessConfigValidatorTests
         Assert.Contains(issues, issue => issue.Contains("不是合法 JSON"));
         Assert.Contains(issues, issue => issue.Contains("未知校验模板键") || issue.Contains("no-such-template"));
     }
+
+    [Fact]
+    public void IsPlaceholderOp_MatchesLoaderSkipSemantics()
+    {
+        Assert.True(ModuleBusinessConfigValidator.IsPlaceholderOp("", "", ""));
+        Assert.True(ModuleBusinessConfigValidator.IsPlaceholderOp(null, null, null));
+        Assert.True(ModuleBusinessConfigValidator.IsPlaceholderOp("   ", " ", null));
+        Assert.False(ModuleBusinessConfigValidator.IsPlaceholderOp("ACCUM", "", ""));
+        Assert.False(ModuleBusinessConfigValidator.IsPlaceholderOp("", "COP_ACCOUNT_M", ""));
+        Assert.False(ModuleBusinessConfigValidator.IsPlaceholderOp("", "", "PRE_RECEIVE_DATE"));
+    }
+
+    [Fact]
+    public void Validate_FormulaEffectWithoutExpandedOps_ReturnsIssue()
+    {
+        var request = new SaveModuleBusinessConfigRequest(
+            [
+                new BusinessActionDto(4, "APPROVE_EFFECT", "completion-close",
+                    Ops: [new BusinessActionOpDto(1, "", "", "", "")])
+            ],
+            []);
+
+        var issues = ModuleBusinessConfigValidator.Validate(request);
+
+        Assert.Contains(issues, issue => issue.Contains("completion-close") && issue.Contains("无公式行展开"));
+    }
+
+    [Fact]
+    public void Validate_FormulaEffectWithExpandedOps_Passes()
+    {
+        var request = new SaveModuleBusinessConfigRequest(
+            [
+                new BusinessActionDto(4, "APPROVE_EFFECT", "completion-close",
+                    Ops:
+                    [
+                        new BusinessActionOpDto(1, "COP_SEND_D", "FINISHED_TAG", "SET_WHEN", "CONSTANT",
+                            SourceConstant: "1"),
+                        new BusinessActionOpDto(2, "", "", "", ""),
+                    ])
+            ],
+            []);
+
+        Assert.Empty(ModuleBusinessConfigValidator.Validate(request));
+    }
+
+    [Fact]
+    public void Validate_ConstantScopeAcceptsEmptyStringClearValue()
+    {
+        var request = new SaveModuleBusinessConfigRequest(
+            [
+                new BusinessActionDto(1, "APPROVE_EFFECT", "completion-close",
+                    Ops: [new BusinessActionOpDto(1, "COP_SEND_M", "FINISHED_PERSON", "SET_WHEN", "CONSTANT", SourceConstant: "")])
+            ],
+            []);
+
+        var issues = ModuleBusinessConfigValidator.Validate(request);
+
+        Assert.DoesNotContain(issues, issue => issue.Contains("必须提供 sourceConstant"));
+    }
+
+    [Fact]
+    public void Validate_ConstantScopeWithoutValue_ReturnsIssue()
+    {
+        var request = new SaveModuleBusinessConfigRequest(
+            [
+                new BusinessActionDto(1, "APPROVE_EFFECT", "completion-close",
+                    Ops: [new BusinessActionOpDto(1, "COP_SEND_M", "FINISHED_PERSON", "SET_WHEN", "CONSTANT", SourceConstant: null)])
+            ],
+            []);
+
+        var issues = ModuleBusinessConfigValidator.Validate(request);
+
+        Assert.Contains(issues, issue => issue.Contains("必须提供 sourceConstant"));
+    }
 }
