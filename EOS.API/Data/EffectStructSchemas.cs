@@ -22,7 +22,10 @@ public static class EffectStructSchemas
         "auto-reverse",
         "clear-on-deapprove",
         "no-reverse",
+        "clear-refs",
         "recompute",
+        "recalc-confirmed",
+        "restore-old-price",
         "reverse-flow",
         "snapshot",
     };
@@ -70,7 +73,7 @@ public static class EffectStructSchemas
             ["adjust-projection"] = Set("mode", "inFields", "getFields"),
             ["balance-adjust"] = Set("client", "supplier", "bank"),
             ["callback-reprice"] = Set("sendTargets", "returnTargets", "fields", "duplicateGuardMarked", "deapprove"),
-            ["client-price-sync"] = Set("master", "detail", "quoteRefs", "preserveOld"),
+            ["client-price-sync"] = Set("master", "detail", "quoteRefs", "preserveOld", "overwriteIfNewer"),
             ["completion-close"] = Set("targets", "condition", "marker", "direction", "offsets"),
             ["employee-contract-sync"] = Set("targetTable", "fields", "source", "includeSelfOnApprove"),
             ["field-accumulate"] = Set("mode", "targets"),
@@ -90,7 +93,7 @@ public static class EffectStructSchemas
             ["sample-stock-adjust"] = Set("direction", "targetTable", "fieldMap"),
             ["set-state"] = Set("targetTable", "stateField", "stateValue", "state", "sourceField", "source", "dateField", "dateMode", "targets"),
             ["stamp-last-activity"] = Set("targetTable", "field", "fields", "sourceField", "matchBy", "condition"),
-            ["supplier-price-sync"] = Set("master", "detail", "quoteRefs", "preserveOld"),
+            ["supplier-price-sync"] = Set("master", "detail", "quoteRefs", "preserveOld", "overwriteIfNewer"),
         };
 
     /// <summary>校验动作级 params/reverse 结构，返回问题列表。</summary>
@@ -176,6 +179,11 @@ public static class EffectStructSchemas
         {
             issues.AddRange(ValidatePaymentDateParams(root));
         }
+        if (effectKey.Equals("client-price-sync", StringComparison.OrdinalIgnoreCase)
+            || effectKey.Equals("supplier-price-sync", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.AddRange(ValidatePriceSyncParams(root));
+        }
         return issues;
     }
 
@@ -250,6 +258,32 @@ public static class EffectStructSchemas
         return issues;
     }
 
+    private static IReadOnlyList<string> ValidatePriceSyncParams(JsonElement root)
+    {
+        var issues = new List<string>();
+        foreach (var required in new[] { "master", "detail" })
+        {
+            if (!root.TryGetProperty(required, out var value) || value.ValueKind != JsonValueKind.String
+                || !Identifier.IsMatch(value.GetString() ?? string.Empty))
+                issues.Add("price-sync." + required + " 必须是非空大写表名。");
+        }
+        if (!root.TryGetProperty("quoteRefs", out var refs) || refs.ValueKind != JsonValueKind.Array || refs.GetArrayLength() == 0)
+        {
+            issues.Add("price-sync.quoteRefs 必须是非空数组。");
+        }
+        else
+        {
+            foreach (var item in refs.EnumerateArray())
+                if (item.ValueKind != JsonValueKind.String || !Identifier.IsMatch(item.GetString() ?? string.Empty))
+                    issues.Add("price-sync.quoteRefs 存在非法字段名。");
+        }
+        foreach (var flag in new[] { "preserveOld", "overwriteIfNewer" })
+        {
+            if (root.TryGetProperty(flag, out var value) && value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                issues.Add("price-sync." + flag + " 必须是布尔。");
+        }
+        return issues;
+    }
     private static void RejectUnknown(JsonElement element, IReadOnlySet<string> allowed, string where, ICollection<string> issues)
     {
         foreach (var property in element.EnumerateObject())

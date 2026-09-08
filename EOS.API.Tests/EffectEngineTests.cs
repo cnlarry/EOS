@@ -470,6 +470,42 @@ public class ServiceEffectHandlerTests
         Assert.Empty(action.Ops);
         Assert.Equal("clear-on-deapprove", action.Reverse!.Value.GetProperty("kind").GetString());
     }
+    [Fact]
+    public void Price_sync_keys_implemented_and_schema_validated()
+    {
+        Assert.True(EOS.API.Data.Effects.EffectRegistry.IsImplemented("client-price-sync"));
+        Assert.True(EOS.API.Data.Effects.EffectRegistry.IsImplemented("supplier-price-sync"));
+        var ok = """{"master":"CLIENT_PRICE_M","detail":"CLIENT_PRICE_D","preserveOld":true,"quoteRefs":["QUOTE_TYPE","QUOTE_NO","QUOTE_SERIAL_NO"],"overwriteIfNewer":false}""";
+        Assert.Empty(EOS.API.Data.EffectStructSchemas.ValidateParams("client-price-sync", ok));
+        Assert.Empty(EOS.API.Data.EffectStructSchemas.ValidateReverse("""{"kind":"restore-old-price","note":"还原旧价"}"""));
+        var bad = EOS.API.Data.EffectStructSchemas.ValidateParams("client-price-sync", """{"master":"CLIENT_PRICE_M","detail":"CLIENT_PRICE_D","quoteRefs":[]}""");
+        Assert.Contains(bad, issue => issue.Contains("quoteRefs 必须是非空数组"));
+    }
+
+    [Fact]
+    public void Price_sync_parse_resolves_party_and_rejects_missing_columns()
+    {
+        var plan = new ModuleEffectPlan(1404, "COP_QUOTE_M", "COP_QUOTE_D", "v1",
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+        plan = plan with { MasterPkOrder = new[] { "QUOTE_TYPE", "QUOTE_NO" } };
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "CLIENT_PRICE_M", "CLIENT_PRICE_M.CLIENT_ID", "CLIENT_PRICE_M.CREATE_PERSON", "CLIENT_PRICE_M.CREATE_DATE",
+            "CLIENT_PRICE_D", "CLIENT_PRICE_D.CLIENT_ID", "CLIENT_PRICE_D.PRO_NO", "CLIENT_PRICE_D.UNIT_ID",
+            "CLIENT_PRICE_D.CURR_ID", "CLIENT_PRICE_D.TAX_ID", "CLIENT_PRICE_D.TAX_TYPE", "CLIENT_PRICE_D.REBATE",
+            "CLIENT_PRICE_D.PRICE", "CLIENT_PRICE_D.OLD_PRICE", "CLIENT_PRICE_D.VERIFY_PRICE_DATE", "CLIENT_PRICE_D.IN_EFFECT_DATE",
+            "CLIENT_PRICE_D.CLIENT_PRO_NO", "CLIENT_PRICE_D.QUOTE_TYPE", "CLIENT_PRICE_D.QUOTE_NO", "CLIENT_PRICE_D.QUOTE_SERIAL_NO",
+            "COP_QUOTE_M", "COP_QUOTE_M.CLIENT_ID", "COP_QUOTE_M.QUOTE_DATE", "COP_QUOTE_M.IN_EFFECT_DATE",
+            "COP_QUOTE_M.QUOTE_TYPE", "COP_QUOTE_M.QUOTE_NO", "COP_QUOTE_D", "COP_QUOTE_D.SERIAL_NO", "COP_QUOTE_D.PRO_NO",
+        };
+        var ok = JsonDocument.Parse("""{"master":"CLIENT_PRICE_M","detail":"CLIENT_PRICE_D","preserveOld":true,"quoteRefs":["QUOTE_TYPE","QUOTE_NO","QUOTE_SERIAL_NO"]}""").RootElement.Clone();
+        var cfg = EOS.API.Data.Effects.ServiceEffectHandlers.PriceSyncConfig.Parse(ok, plan, columns);
+        Assert.Equal("CLIENT_ID", cfg.PartyColumn);
+        Assert.Equal("CLIENT_PRO_NO", cfg.PartyProNo);
+        var missing = new HashSet<string>(columns.Where(item => item != "CLIENT_PRICE_D.OLD_PRICE"));
+        Assert.Throws<EOS.API.Data.Effects.EffectConfigException>(
+            () => EOS.API.Data.Effects.ServiceEffectHandlers.PriceSyncConfig.Parse(ok, plan, missing));
+    }
 }
 
 public class EffectEngineGateTests

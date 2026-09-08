@@ -38,10 +38,10 @@ public static class EffectRegistry
         ["link-stamp"] = Status.Service,
         ["field-copy"] = Status.Service,
         ["callback-reprice"] = Status.Service,
+        ["client-price-sync"] = Status.Service,
+        ["supplier-price-sync"] = Status.Service,
         ["payment-date-calc"] = Status.Service,
         // Placeholder-row + params shapes collected; handlers pending (see docs/plans/服务键形态证据.md)
-        ["client-price-sync"] = Status.Pending,
-        ["supplier-price-sync"] = Status.Pending,
         ["hr-usage-sync"] = Status.Pending,
         ["employee-contract-sync"] = Status.Pending,
         ["mould-batch-apply"] = Status.Pending,
