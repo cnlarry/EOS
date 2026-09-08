@@ -4,7 +4,10 @@ using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data.Effects;
 
-/// <summary>Loads the dbo schema physical column whitelist (table.column, case-insensitive).</summary>
+/// <summary>
+/// Loads the dbo schema physical whitelist: both bare table names (existence checks)
+/// and table.column entries (column checks), case-insensitive.
+/// </summary>
 public sealed class EffectPhysicalColumns
 {
     public async Task<ISet<string>> LoadAsync(SqlConnection connection, CancellationToken token, SqlTransaction? transaction = null)
@@ -22,7 +25,11 @@ public sealed class EffectPhysicalColumns
         await using var command = new SqlCommand(sql, connection, transaction);
         await using var reader = await command.ExecuteReaderAsync(token);
         while (await reader.ReadAsync(token))
-            result.Add(reader.GetString(0) + "." + reader.GetString(1));
+        {
+            var table = reader.GetString(0);
+            result.Add(table);
+            result.Add(table + "." + reader.GetString(1));
+        }
         if (!wasOpen)
             await connection.CloseAsync();
         return result;

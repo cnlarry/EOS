@@ -65,11 +65,10 @@ internal static class PriceSyncExecutor
         var affected = await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction, ensureMaster, parameters, token);
 
         // Overwrite existing party price lines with the quoted values.
-        var keyJoin = $"{ServiceEffectSql.Q(cfg.PartyColumn)}, PRO_NO, CURR_ID, TAX_ID, TAX_TYPE, UNIT_ID, REBATE"
-            .Split(',')
-            .Select(column => $"P.{ServiceEffectSql.Q(column.Trim())}=Q.{ServiceEffectSql.Q(column.Trim())}")
-            .Append($"P.{ServiceEffectSql.Q(cfg.PartyColumn)}=M.{ServiceEffectSql.Q(cfg.PartyColumn)}")
-            .ToList();
+        var keyColumns = new[] { "PRO_NO", "CURR_ID", "TAX_ID", "TAX_TYPE", "UNIT_ID", "REBATE" };
+        var keyJoin = string.Join(" AND ", keyColumns
+                .Select(column => $"P.{ServiceEffectSql.Q(column)}=Q.{ServiceEffectSql.Q(column)}"))
+            + $" AND P.{ServiceEffectSql.Q(cfg.PartyColumn)}=M.{ServiceEffectSql.Q(cfg.PartyColumn)}";
         var update = $"UPDATE P SET "
             + $"P.UNIT_ID=Q.UNIT_ID, P.CURR_ID=Q.CURR_ID, P.CURR_RATE=Q.CURR_RATE, P.TAX_ID=Q.TAX_ID, "
             + $"P.TAX_RATE=Q.TAX_RATE, P.TAX_TYPE=Q.TAX_TYPE, P.PRICE=Q.PRICE, P.PROCESS_PRICE=Q.PROCESS_PRICE, "
