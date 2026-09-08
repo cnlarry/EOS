@@ -660,6 +660,60 @@ public class ServiceEffectHandlerTests
         Assert.Equal("PRODUCE_TYPE", cfg.PrefixType);
         Assert.False(cfg.Totals);
         Assert.False(cfg.HasAmount);
+        Assert.Null(cfg.ProjectionMode);
+    }
+    [Fact]
+    public void Produce_change_apply_projection_net_replace_parses_and_builds_statements()
+    {
+        var plan = new ModuleEffectPlan(1509, "MOC_PRODUCE_CHANGE_M", "MOC_PRODUCE_CHANGE_D", "v1",
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+        plan = plan with { MasterPkOrder = new[] { "CHANGE_PRODUCE_TYPE", "CHANGE_PRODUCE_NO" } };
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "MOC_PRODUCE_M", "MOC_PRODUCE_M.PRODUCE_TYPE", "MOC_PRODUCE_M.PRODUCE_NO",
+            "MOC_PRODUCE_M.QTY", "MOC_PRODUCE_M.SPARE_QTY", "MOC_PRODUCE_M.PRE_SEND_DATE",
+            "MOC_PRODUCE_M.PLAN_START", "MOC_PRODUCE_M.PLAN_END", "MOC_PRODUCE_M.START_TAG",
+            "MOC_PRODUCE_M.END_TAG", "MOC_PRODUCE_M.ATTENTION", "MOC_PRODUCE_M.FINISHED_QTY",
+            "MOC_PRODUCE_M.FINISHED_SPARE_QTY", "MOC_PRODUCE_M.FINISHED_SEND_QTY",
+            "MOC_PRODUCE_M.FINISHED_SEND_SPARE_QTY", "MOC_PRODUCE_M.FINISHED_FITOUT_QTY",
+            "MOC_PRODUCE_M.FINISHED_FITOUT_SPARE_QTY",
+            "MOC_PRODUCE_D", "MOC_PRODUCE_D.PRODUCE_TYPE", "MOC_PRODUCE_D.PRODUCE_NO", "MOC_PRODUCE_D.SERIAL_NO",
+            "MOC_PRODUCE_D.NEED_QTY", "MOC_PRODUCE_D.USED_QTY", "MOC_PRODUCE_D.APPLY_QTY",
+            "MOC_PRODUCE_CHANGE_M", "MOC_PRODUCE_CHANGE_M.PRODUCE_TYPE", "MOC_PRODUCE_CHANGE_M.PRODUCE_NO",
+            "MOC_PRODUCE_CHANGE_M.QTY", "MOC_PRODUCE_CHANGE_M.SPARE_QTY", "MOC_PRODUCE_CHANGE_M.PRE_SEND_DATE",
+            "MOC_PRODUCE_CHANGE_M.PLAN_START", "MOC_PRODUCE_CHANGE_M.PLAN_END",
+            "MOC_PRODUCE_CHANGE_M.START_TAG", "MOC_PRODUCE_CHANGE_M.END_TAG",
+            "MOC_PRODUCE_CHANGE_M.ATTENTION", "MOC_PRODUCE_CHANGE_M.FINISHED_QTY",
+            "MOC_PRODUCE_CHANGE_M.FINISHED_SPARE_QTY", "MOC_PRODUCE_CHANGE_M.FINISHED_SEND_QTY",
+            "MOC_PRODUCE_CHANGE_M.FINISHED_SEND_SPARE_QTY", "MOC_PRODUCE_CHANGE_M.FINISHED_FITOUT_QTY",
+            "MOC_PRODUCE_CHANGE_M.FINISHED_FITOUT_SPARE_QTY", "MOC_PRODUCE_CHANGE_M.CHANGE_PRODUCE_TYPE",
+            "MOC_PRODUCE_CHANGE_M.CHANGE_PRODUCE_NO",
+            "MOC_PRODUCE_CHANGE_D", "MOC_PRODUCE_CHANGE_D.PRODUCE_TYPE", "MOC_PRODUCE_CHANGE_D.PRODUCE_NO",
+            "MOC_PRODUCE_CHANGE_D.PRODUCE_SERIAL_NO", "MOC_PRODUCE_CHANGE_D.NEED_QTY",
+            "MOC_PRODUCE_CHANGE_D.USED_QTY", "MOC_PRODUCE_CHANGE_D.APPLY_QTY",
+        };
+        var ok = JsonDocument.Parse("""{"master":{"fields":["QTY","SPARE_QTY"]},"detail":{"fields":["NEED_QTY","USED_QTY","APPLY_QTY"]},"projection":{"mode":"net-replace"}}""").RootElement.Clone();
+        var cfg = EOS.API.Data.Effects.ServiceEffectHandlers.ChangeApplyConfig.Parse(ok, plan, columns);
+        Assert.Equal("MOC_PRODUCE_M", cfg.MasterTarget);
+        Assert.Equal("net-replace", cfg.ProjectionMode);
+
+        var release = EOS.API.Data.Effects.ServiceEffectHandlers.ProduceChangeProjection.BuildStatements(cfg, reoccupy: false);
+        var reoccupy = EOS.API.Data.Effects.ServiceEffectHandlers.ProduceChangeProjection.BuildStatements(cfg, reoccupy: true);
+        Assert.Equal(4, release.Count);
+        Assert.Equal(4, reoccupy.Count);
+        // Finished-product expected-in release subtracts the old occupancy; reoccupy adds it back.
+        Assert.Contains("ISNULL(T.[NOT_IN_QTY],0) - ISNULL(P.[QTY],0) - ISNULL(P.[SPARE_QTY],0)", release[0]);
+        Assert.Contains("ISNULL(T.[NOT_IN_QTY],0) + ISNULL(P.[QTY],0) + ISNULL(P.[SPARE_QTY],0)", reoccupy[0]);
+        // Raw-material expected-get: NOT_GET follows needs, MRP_QTY moves opposite.
+        Assert.Contains("ISNULL(T.[NOT_GET_QTY],0) - A.[QTY]", release[1]);
+        Assert.Contains("[MRP_QTY] = ISNULL(T.[MRP_QTY],0) + A.[QTY]", release[1]);
+        Assert.Contains("ISNULL(T.[NOT_GET_QTY],0) + A.[QTY]", reoccupy[1]);
+        Assert.Contains("[MRP_QTY] = ISNULL(T.[MRP_QTY],0) - A.[QTY]", reoccupy[1]);
+        // Plan and order planned quantities move with the produce quantity.
+        Assert.Contains("MOC_PLAN_MOC L", release[2]);
+        Assert.Contains("COP_ORDER_D O", release[3]);
+        Assert.Contains("FINISHED_PLAN_SPARE_QTY", release[3]);
+        Assert.Contains("FINISHED_PLAN_SPARE_QTY", reoccupy[3]);
     }
     [Fact]
     public void FieldCopy_refs_builds_mapped_join_with_document_scope()
