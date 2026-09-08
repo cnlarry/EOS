@@ -1,14 +1,25 @@
+using System.Text;
 using System.Text.Json;
 
 namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 
 /// <summary>
-/// link-stamp: writes link reference numbers / states from the module master onto a
-/// related document. Shape A {targetTable, field|fields, mode}: same-named master
-/// columns copied onto the target rows, joined on same-named master key columns.
+/// link-stamp: writes link reference numbers / states of the approved document onto a
+/// related document. Three closed shapes:
+/// Shape A {targetTable, field|fields, mode}: same-named master columns copied onto the
+/// target rows, joined on same-named master key columns.
 /// Shape B {targets:[{table, ref:[cols]}], fields, finish}: ref names the target-side
 /// columns tying back to the master key; finish=true additionally sets FINISHED_TAG=1
 /// on the target (standard lifecycle column; revisited if evidence contradicts).
+/// Shape C {targets:[{table, refs:[target cols], fromDetail:true, sourceRefs:[detail cols]}],
+/// fields}: a detail-to-detail link — the target rows are located by the reference
+/// columns carried by the document detail, and the stamped values are read from that
+/// detail row. A fields entry is either a column name (same name on both sides) or a
+/// {target, source} object when the detail column is named differently.
+/// Every statement is scoped to the current document by its master key values and every
+/// identifier is checked against the physical column whitelist (fail-closed).
+/// Deapprove honours reverse.kind: clear-refs empties the stamped columns (SERIAL-like
+/// columns are reset to 0), no-reverse does nothing, anything else is rejected.
 /// </summary>
 public sealed class LinkStampHandler : IEffectServiceHandler
 {
@@ -21,72 +32,252 @@ public sealed class LinkStampHandler : IEffectServiceHandler
         if (plan.MasterTable is null)
             throw new EffectConfigException("link-stamp 需要主表形态。");
         var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
+        var spec = LinkStampSpec.Parse(root, plan, columns);
 
+        if (context.ExecutionEvent is EffectEvent.ApproveEffect or EffectEvent.Save)
+            return await StampAsync(context, spec, token);
+
+        var kind = RequireReverseKind(context.Action.Reverse);
+        return kind == "no-reverse" ? 0 : await ClearAsync(context, spec, token);
+    }
+
+    private static async Task<int> StampAsync(ServiceEffectContext context, LinkStampSpec spec, CancellationToken token)
+    {
         var affected = 0;
-        if (root.TryGetProperty("targets", out var targets) && targets.ValueKind == JsonValueKind.Array)
+        foreach (var target in spec.Targets)
         {
-            var fields = ReadFields(root, "fields");
-            var finish = root.TryGetProperty("finish", out var f) && f.ValueKind == JsonValueKind.True;
-            foreach (var target in targets.EnumerateArray())
-            {
-                var table = target.TryGetProperty("table", out var t) && t.ValueKind == JsonValueKind.String
-                    ? t.GetString()!.Trim()
-                    : throw new EffectConfigException("link-stamp targets 项缺少 table。");
-                var refs = ReadFields(target, "ref");
-                affected += await StampAsync(context, table, refs, fields, finish, columns, token);
-            }
-        }
-        else
-        {
-            var table = Required(root, "targetTable");
-            var fields = ReadFields(root, "field") is { Length: > 0 } single
-                ? single
-                : ReadFields(root, "fields");
-            affected += await StampAsync(context, table, Array.Empty<string>(), fields, finish: false, columns, token);
+            var parameters = new List<EffectSqlParameter>();
+            var sql = BuildUpdate(
+                context.Plan, target, context.MasterKeyValues, StampAssignments(target), parameters);
+            affected += await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction, sql, parameters, token);
         }
         return affected;
     }
 
-    private static async Task<int> StampAsync(
-        ServiceEffectContext context,
-        string table,
-        IReadOnlyList<string> refs,
-        IReadOnlyList<string> fields,
-        bool finish,
-        ISet<string> columns,
-        CancellationToken token)
+    /// <summary>
+    /// Clears the stamped columns on the very rows the approval stamped, located through
+    /// the same reference keys — the link is removed, no other column is touched.
+    /// </summary>
+    private static async Task<int> ClearAsync(ServiceEffectContext context, LinkStampSpec spec, CancellationToken token)
     {
-        var plan = context.Plan;
-        if (!columns.Contains(table))
-            throw new EffectConfigException($"link-stamp 目标表不存在：{table}。");
-        var sets = new List<string>();
-        foreach (var field in fields)
+        var affected = 0;
+        foreach (var target in spec.Targets)
         {
-            if (!columns.Contains(table + "." + field) || !columns.Contains(plan.MasterTable + "." + field))
-                throw new EffectConfigException($"link-stamp 字段不存在（主表或目标表）：{field}。");
-            sets.Add($"T.{ServiceEffectSql.Q(field)} = M.{ServiceEffectSql.Q(field)}");
+            var parameters = new List<EffectSqlParameter>();
+            var sql = BuildUpdate(
+                context.Plan, target, context.MasterKeyValues, ClearAssignments(target), parameters);
+            affected += await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction, sql, parameters, token);
         }
-        if (finish)
-        {
-            if (!columns.Contains(table + ".FINISHED_TAG"))
-                throw new EffectConfigException($"link-stamp finish=true 但目标表 {table} 无 FINISHED_TAG 列。");
-            sets.Add("T.[FINISHED_TAG] = 1");
-        }
-        if (sets.Count == 0)
-            throw new EffectConfigException("link-stamp 缺少可回写字段。");
-
-        var joinCondition = refs.Count > 0
-            ? string.Join(" AND ", refs.Zip(plan.MasterPkOrder)
-                .Select(pair => $"T.{ServiceEffectSql.Q(pair.First)} = M.{ServiceEffectSql.Q(pair.Second)}"))
-            : ServiceEffectSql.SameNameKeyJoin(plan, "T");
-        if (refs.Count > 0 && refs.Count != plan.MasterPkOrder.Count)
-            throw new EffectConfigException($"link-stamp ref 列数({refs.Count})与主表主键数({plan.MasterPkOrder.Count})不一致。");
-        var sql = $"UPDATE T SET {string.Join(", ", sets)} FROM dbo.{ServiceEffectSql.Q(table)} T "
-            + $"JOIN dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M ON {joinCondition}";
-        return await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction, sql, Array.Empty<EffectSqlParameter>(), token);
+        return affected;
     }
 
-    private static string[] ReadFields(JsonElement element, string name)
+    /// <summary>T.&lt;column&gt; = &lt;source&gt;.&lt;column&gt;, plus FINISHED_TAG=1 when finish is set.</summary>
+    internal static IReadOnlyList<string> StampAssignments(LinkStampTarget target)
+    {
+        var alias = target.FromDetail ? "D" : "M";
+        var assignments = target.Fields
+            .Select(field => $"T.{ServiceEffectSql.Q(field.Target)} = {alias}.{ServiceEffectSql.Q(field.Source)}")
+            .ToList();
+        if (target.Finish)
+            assignments.Add("T.[FINISHED_TAG] = 1");
+        return assignments;
+    }
+
+    /// <summary>Reference columns are emptied; SERIAL-like columns are numeric and reset to 0.</summary>
+    internal static IReadOnlyList<string> ClearAssignments(LinkStampTarget target) =>
+        target.Fields
+            .Select(field => $"T.{ServiceEffectSql.Q(field.Target)} = {(IsSerialColumn(field.Target) ? "0" : "''")}")
+            .ToList();
+
+    /// <summary>
+    /// UPDATE T SET &lt;assignments&gt; FROM target T [JOIN detail D ON refs = sourceRefs]
+    /// JOIN master M ON … WHERE the master key values. The document scope is mandatory:
+    /// a link-stamp never touches rows belonging to another document.
+    /// </summary>
+    internal static string BuildUpdate(
+        ModuleEffectPlan plan,
+        LinkStampTarget target,
+        IReadOnlyList<string> masterKeyValues,
+        IReadOnlyList<string> assignments,
+        List<EffectSqlParameter> parameters)
+    {
+        if (assignments.Count == 0)
+            throw new EffectConfigException("link-stamp 缺少可回写字段。");
+        var from = new StringBuilder("dbo.").Append(ServiceEffectSql.Q(target.Table)).Append(" T");
+        if (target.FromDetail)
+        {
+            from.Append(" JOIN dbo.").Append(ServiceEffectSql.Q(plan.DetailTable!)).Append(" D ON ")
+                .Append(string.Join(" AND ", target.Refs.Zip(target.SourceRefs,
+                    (reference, source) => $"T.{ServiceEffectSql.Q(reference)} = D.{ServiceEffectSql.Q(source)}")))
+                .Append(" JOIN dbo.").Append(ServiceEffectSql.Q(plan.MasterTable!)).Append(" M ON ")
+                .Append(ServiceEffectSql.SameNameKeyJoin(plan, "D"));
+        }
+        else
+        {
+            from.Append(" JOIN dbo.").Append(ServiceEffectSql.Q(plan.MasterTable!)).Append(" M ON ")
+                .Append(MasterJoin(plan, target));
+        }
+        return $"UPDATE T SET {string.Join(", ", assignments)} FROM {from} "
+            + $"WHERE {ServiceEffectSql.MasterKeyFilter(plan, masterKeyValues, parameters)}";
+    }
+
+    private static string MasterJoin(ModuleEffectPlan plan, LinkStampTarget target) =>
+        target.Refs.Count > 0
+            ? string.Join(" AND ", target.Refs.Zip(plan.MasterPkOrder)
+                .Select(pair => $"T.{ServiceEffectSql.Q(pair.First)} = M.{ServiceEffectSql.Q(pair.Second)}"))
+            : ServiceEffectSql.SameNameKeyJoin(plan, "T");
+
+    private static bool IsSerialColumn(string column) =>
+        column.Contains("SERIAL", StringComparison.OrdinalIgnoreCase);
+
+    internal static string RequireReverseKind(JsonElement? reverse)
+    {
+        var kind = reverse is { } element
+            && element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty("kind", out var value)
+            && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+        return kind switch
+        {
+            "clear-refs" or "no-reverse" => kind,
+            null => throw new EffectConfigException("link-stamp 解批缺少 reverse.kind，禁止无守卫执行。"),
+            _ => throw new EffectConfigException($"link-stamp 解批 reverse.kind '{kind}' 不受支持。"),
+        };
+    }
+}
+
+/// <summary>One stamped column: the target column and the source column feeding it.</summary>
+internal sealed record LinkStampField(string Target, string Source);
+
+/// <summary>
+/// One resolved stamp target: target table, its locating columns, whether the values and
+/// the locating values come from the document detail, and the resolved field pairs.
+/// </summary>
+internal sealed record LinkStampTarget(
+    string Table,
+    IReadOnlyList<string> Refs,
+    bool FromDetail,
+    IReadOnlyList<string> SourceRefs,
+    IReadOnlyList<LinkStampField> Fields,
+    bool Finish);
+
+/// <summary>Parsed link-stamp parameters (all shapes) validated against physical columns.</summary>
+internal sealed record LinkStampSpec(IReadOnlyList<LinkStampTarget> Targets)
+{
+    public static LinkStampSpec Parse(JsonElement root, ModuleEffectPlan plan, ISet<string> columns)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new EffectConfigException("link-stamp 参数必须是 JSON 对象。");
+        var finish = root.TryGetProperty("finish", out var flag) && flag.ValueKind == JsonValueKind.True;
+        var declared = ReadFields(root, "field") is { Length: > 0 } single
+            ? single
+            : ReadFields(root, "fields");
+        if (declared.Length == 0)
+            throw new EffectConfigException("link-stamp 缺少可回写字段。");
+
+        var targets = new List<LinkStampTarget>();
+        if (root.TryGetProperty("targets", out var array) && array.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in array.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object)
+                    throw new EffectConfigException("link-stamp targets 项必须是对象。");
+                var refs = ReadNames(item, "refs") is { Length: > 0 } plural
+                    ? plural
+                    : ReadNames(item, "ref");
+                targets.Add(Resolve(
+                    Required(item, "table"), refs,
+                    item.TryGetProperty("fromDetail", out var detail) && detail.ValueKind == JsonValueKind.True,
+                    ReadNames(item, "sourceRefs"),
+                    declared, plan, columns, finish));
+            }
+        }
+        else
+        {
+            targets.Add(Resolve(
+                Required(root, "targetTable"), Array.Empty<string>(), false, Array.Empty<string>(),
+                declared, plan, columns, finish));
+        }
+        if (targets.Count == 0)
+            throw new EffectConfigException("link-stamp 未配置任何目标表。");
+        return new LinkStampSpec(targets);
+    }
+
+    private static LinkStampTarget Resolve(
+        string table,
+        IReadOnlyList<string> refs,
+        bool fromDetail,
+        IReadOnlyList<string> sourceRefs,
+        IReadOnlyList<LinkStampField> declared,
+        ModuleEffectPlan plan,
+        ISet<string> columns,
+        bool finish)
+    {
+        var sourceTable = fromDetail
+            ? plan.DetailTable ?? throw new EffectConfigException("link-stamp fromDetail=true 需要模块明细表（模块形态不足）。")
+            : plan.MasterTable!;
+        if (!HasColumns(columns, table))
+            throw new EffectConfigException($"link-stamp 目标表不存在：{table}。");
+        if (!HasColumns(columns, sourceTable))
+            throw new EffectConfigException($"link-stamp 来源表不存在：{sourceTable}。");
+
+        if (fromDetail)
+        {
+            if (refs.Count == 0 || sourceRefs.Count == 0)
+                throw new EffectConfigException($"link-stamp 目标 {table} fromDetail=true 需要 refs 与 sourceRefs。");
+            if (refs.Count != sourceRefs.Count)
+                throw new EffectConfigException(
+                    $"link-stamp 目标 {table} refs 列数({refs.Count})与 sourceRefs 列数({sourceRefs.Count})不一致。");
+            foreach (var key in plan.MasterPkOrder)
+                if (!columns.Contains(sourceTable + "." + key))
+                    throw new EffectConfigException(
+                        $"link-stamp 明细表 {sourceTable} 缺少主表主键列 {key}，无法限定单据范围。");
+        }
+        else if (refs.Count > 0 && refs.Count != plan.MasterPkOrder.Count)
+        {
+            throw new EffectConfigException($"link-stamp ref 列数({refs.Count})与主表主键数({plan.MasterPkOrder.Count})不一致。");
+        }
+        foreach (var reference in refs)
+            if (!columns.Contains(table + "." + reference))
+                throw new EffectConfigException($"link-stamp 目标定位列不存在：{table}.{reference}。");
+        foreach (var source in sourceRefs)
+            if (!columns.Contains(sourceTable + "." + source))
+                throw new EffectConfigException($"link-stamp 来源定位列不存在：{sourceTable}.{source}。");
+
+        var fields = new List<LinkStampField>();
+        foreach (var field in declared)
+        {
+            if (!columns.Contains(table + "." + field.Target))
+                throw new EffectConfigException($"link-stamp 目标列不存在：{table}.{field.Target}。");
+            if (!columns.Contains(sourceTable + "." + field.Source))
+                throw new EffectConfigException($"link-stamp 来源列不存在：{sourceTable}.{field.Source}。");
+            fields.Add(field);
+        }
+        if (finish && !columns.Contains(table + ".FINISHED_TAG"))
+            throw new EffectConfigException($"link-stamp finish=true 但目标表 {table} 无 FINISHED_TAG 列。");
+        return new LinkStampTarget(table, refs, fromDetail, sourceRefs, fields, finish);
+    }
+
+    private static LinkStampField[] ReadFields(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value))
+            return Array.Empty<LinkStampField>();
+        if (value.ValueKind == JsonValueKind.String)
+            return new[] { SameName(value.GetString()!.Trim()) };
+        if (value.ValueKind == JsonValueKind.Array)
+            return value.EnumerateArray()
+                .Select(item => item.ValueKind switch
+                {
+                    JsonValueKind.String => SameName(item.GetString()!.Trim()),
+                    JsonValueKind.Object => new LinkStampField(ObjectName(item, "target"), ObjectName(item, "source")),
+                    _ => throw new EffectConfigException($"link-stamp {name} 项必须是字段名或 {{target,source}} 对象。"),
+                })
+                .ToArray();
+        throw new EffectConfigException($"link-stamp {name} 必须是字段名或字段名数组。");
+    }
+
+    private static string[] ReadNames(JsonElement element, string name)
     {
         if (!element.TryGetProperty(name, out var value))
             return Array.Empty<string>();
@@ -94,11 +285,29 @@ public sealed class LinkStampHandler : IEffectServiceHandler
             return new[] { value.GetString()!.Trim() };
         if (value.ValueKind == JsonValueKind.Array)
             return value.EnumerateArray()
-                .Where(item => item.ValueKind == JsonValueKind.String)
-                .Select(item => item.GetString()!.Trim())
+                .Select(item => item.ValueKind == JsonValueKind.String
+                    ? item.GetString()!.Trim()
+                    : throw new EffectConfigException($"link-stamp {name} 必须是字段名数组。"))
                 .ToArray();
         throw new EffectConfigException($"link-stamp {name} 必须是字段名或字段名数组。");
     }
+
+    /// <summary>
+    /// The physical column whitelist carries TABLE.COLUMN entries only, so a table is
+    /// present when at least one of its columns is; a table with no column entry can
+    /// never be stamped and is rejected.
+    /// </summary>
+    private static bool HasColumns(ISet<string> columns, string table) =>
+        columns.Any(entry => entry.StartsWith(table + ".", StringComparison.OrdinalIgnoreCase));
+
+    private static LinkStampField SameName(string column) => new(column, column);
+
+    private static string ObjectName(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.String
+        && !string.IsNullOrWhiteSpace(value.GetString())
+            ? value.GetString()!.Trim()
+            : throw new EffectConfigException($"link-stamp 字段项缺少字符串 '{name}'。");
 
     private static string Required(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
