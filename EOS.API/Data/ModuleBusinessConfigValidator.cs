@@ -1,4 +1,5 @@
 using System.Text.Json;
+using EOS.API.Data.Effects;
 using EOS.API.Data.ValidationRules;
 using EOS.API.Models;
 
@@ -11,6 +12,16 @@ namespace EOS.API.Data;
 /// </summary>
 public static class ModuleBusinessConfigValidator
 {
+    /// <summary>
+    /// Translation-phase placeholder row on a service-style effect (empty op code and
+    /// target identifiers): the loader, the save lint and the physical column check all
+    /// skip such rows, keeping one shared predicate instead of three divergent copies.
+    /// </summary>
+    public static bool IsPlaceholderOp(string? opCode, string? targetTable, string? targetField) =>
+        string.IsNullOrWhiteSpace(opCode)
+        && string.IsNullOrWhiteSpace(targetTable)
+        && string.IsNullOrWhiteSpace(targetField);
+
     /// <summary>
     /// Same-event chain prerequisites: an effect may require another effect earlier in
     /// the same event chain because it consumes rows/amounts produced there (e.g. the
@@ -110,7 +121,19 @@ public static class ModuleBusinessConfigValidator
         if (!keys.Add(trimmedEvent + "|" + action.Seq))
             issues.Add($"动作 SEQ={action.Seq}：事件 {trimmedEvent} 内顺序号重复。");
         if (!BusinessActionCatalog.IsKnownEffectKey(action.EffectKey))
+        {
             issues.Add($"动作 SEQ={action.Seq}：未知效果键 '{action.EffectKey}'。");
+        }
+        else if (EffectRegistry.Keys.TryGetValue(action.EffectKey, out var status)
+                 && status == EffectRegistry.Status.Formula
+                 && !(action.Ops ?? Array.Empty<BusinessActionOpDto>())
+                     .Any(op => !IsPlaceholderOp(op.OpCode, op.TargetTable, op.TargetField)))
+        {
+            // A formula effect without expanded rows cannot run: the loader skips
+            // translation-phase placeholder rows, leaving an empty op list that the
+            // pipeline would treat as a missing service handler.
+            issues.Add($"动作 SEQ={action.Seq}：公式型效果 '{action.EffectKey}' 无公式行展开（占位行仅限服务型效果），引擎无法执行。");
+        }
         if (!BusinessActionCatalog.FailModes.Contains(action.FailMode))
             issues.Add($"动作 SEQ={action.Seq}：失败模式仅支持 BLOCK / WARN。");
         if (TooLong(action.EffectName, 200)) issues.Add($"动作 SEQ={action.Seq}：效果名称超过 200 字符。");
@@ -140,14 +163,8 @@ public static class ModuleBusinessConfigValidator
         ICollection<string> issues)
     {
         var where = $"动作 SEQ={actionSeq} 公式行 OP_SEQ={op.OpSeq}";
-        if (string.IsNullOrWhiteSpace(op.OpCode)
-            && string.IsNullOrWhiteSpace(op.TargetTable)
-            && string.IsNullOrWhiteSpace(op.TargetField))
-        {
-            // Translation-phase placeholder row on a service-style effect; the loader
-            // skips such rows at runtime, so the save lint tolerates them too.
+        if (IsPlaceholderOp(op.OpCode, op.TargetTable, op.TargetField))
             return;
-        }
         if (op.OpSeq < 1 || !opSeqs.Add(op.OpSeq))
         {
             issues.Add($"{where}：顺序号缺失或重复。");
@@ -189,7 +206,7 @@ public static class ModuleBusinessConfigValidator
         switch (scope)
         {
             case "CONSTANT":
-                if (!hasConstant)
+                if (op.SourceConstant is null)
                     issues.Add($"{where}：源范围为 CONSTANT 时必须提供 sourceConstant。");
                 if (hasField || hasTerms || hasSourceTable)
                     issues.Add($"{where}：源范围为 CONSTANT 时不得再提供字段/加减项/源表。");
