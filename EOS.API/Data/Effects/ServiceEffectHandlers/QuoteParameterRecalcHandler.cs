@@ -114,13 +114,21 @@ internal sealed record QuoteParameterConfig(string TargetTable, string Mode, str
         foreach (var reference in required)
             if (!columns.Contains(reference))
                 throw new EffectConfigException($"quote-parameter-recalc 列不存在：{reference}。");
+        var feeList = new List<string>();
         foreach (var fee in feeFields)
         {
             var pct = fee.Replace("_SUM", "", StringComparison.Ordinal) + "_PCT";
-            if (!columns.Contains(target + "." + fee) || !columns.Contains(target + "." + pct))
-                throw new EffectConfigException($"quote-parameter-recalc 费用列不存在：{target}.{fee}/{pct}。");
+            if (!columns.Contains(target + "." + fee))
+                throw new EffectConfigException($"quote-parameter-recalc 费用列不存在：{target}.{fee}。");
+            // Only PRICE*PCT fee entries take part in the breakdown: MATERIAL_SUM and
+            // PRICE carry their own formulas, and fields without a matching PCT column
+            // are not fee entries either.
+            if (columns.Contains(target + "." + pct)
+                && !fee.Equals("MATERIAL_SUM", StringComparison.OrdinalIgnoreCase)
+                && !fee.Equals("PRICE", StringComparison.OrdinalIgnoreCase))
+                feeList.Add(fee);
         }
-        return new QuoteParameterConfig(target, mode, feeFields);
+        return new QuoteParameterConfig(target, mode, feeList.ToArray());
     }
 
     private static string Req(JsonElement e, string n) =>
