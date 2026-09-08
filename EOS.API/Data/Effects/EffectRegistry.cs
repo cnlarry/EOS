@@ -29,7 +29,7 @@ public static class EffectRegistry
         // Formula-covered (interpreter consumes their OP rows)
         ["field-accumulate"] = Status.Formula,
         ["adjust-projection"] = Status.Formula,
-        ["stamp-last-activity"] = Status.Formula,
+        ["stamp-last-activity"] = Status.Service, // formula instances keep their OP rows; parameter instances run the handler
         ["completion-close"] = Status.Formula, // parameter-form instances pending handler
         // Service handlers registered
         ["inventory-move"] = Status.Service,
