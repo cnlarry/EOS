@@ -51,7 +51,7 @@ internal static class ChangeApplyExecutor
 
         if (context.ExecutionEvent is EffectEvent.ApproveEffect or EffectEvent.Save)
         {
-            return await ApproveAsync(context, cfg, token);
+            return await ApproveAsync(context, cfg, columns, token);
         }
         // reverse kind "none": the legacy change procedures leave the target untouched
         // on deapprove.
@@ -63,12 +63,33 @@ internal static class ChangeApplyExecutor
         throw new EffectConfigException($"change-apply 解批 reverse.kind '{kind}' 不受支持（仅 none/no-reverse）。");
     }
 
-    private static async Task<int> ApproveAsync(ServiceEffectContext context, ChangeApplyConfig cfg, CancellationToken token)
+    private static async Task<int> ApproveAsync(
+        ServiceEffectContext context,
+        ChangeApplyConfig cfg,
+        ISet<string> columns,
+        CancellationToken token)
     {
         var plan = context.Plan;
         var parameters = new List<EffectSqlParameter>();
         var masterWhere = ServiceEffectSql.MasterKeyFilter(plan, context.MasterKeyValues, parameters);
         var affected = 0;
+
+        // Produce-change (1509) re-projects MRP expected-in/expected-get and the plan /
+        // order planned quantities around the document overwrite: release the old
+        // occupancy while the produce still holds original values, then reoccupy the new
+        // values after the copy (same transaction). Only the referenced produce (keys on
+        // the change master) is touched, mirroring P_WF_MOC_PRODUCE_CHANGE.
+        ProduceReference? produceReference = null;
+        if (cfg.ProjectionMode is not null)
+        {
+            ProduceChangeProjection.ValidateColumns(cfg, columns);
+            produceReference = await ProduceChangeProjection.ReadReferenceAsync(context, cfg, token);
+            if (produceReference is not null)
+            {
+                affected += await ProduceChangeProjection.ExecuteStatementsAsync(
+                    context, cfg, produceReference, reoccupy: false, columns, token);
+            }
+        }
 
         if (cfg.MasterFields.Count > 0)
         {
@@ -101,6 +122,12 @@ internal static class ChangeApplyExecutor
         if (cfg.Totals)
         {
             affected += await RecalcMasterTotalsAsync(context, cfg, parameters, token);
+        }
+
+        if (produceReference is not null)
+        {
+            affected += await ProduceChangeProjection.ExecuteStatementsAsync(
+                context, cfg, produceReference, reoccupy: true, columns, token);
         }
         return affected;
     }
@@ -185,7 +212,8 @@ internal sealed record ChangeApplyConfig(
     IReadOnlyList<string> MasterFields,
     IReadOnlyList<ChangeApplyFieldPair> DetailFieldPairs,
     bool Totals,
-    bool HasAmount)
+    bool HasAmount,
+    string? ProjectionMode)
 {
     public static ChangeApplyConfig Parse(JsonElement root, ModuleEffectPlan plan, ISet<string> columns)
     {
@@ -261,8 +289,31 @@ internal sealed record ChangeApplyConfig(
                     throw new EffectConfigException($"change-apply 金额列不存在：{reference}。");
             }
         }
+        var projectionMode = ParseProjectionMode(root);
         return new ChangeApplyConfig(masterTarget, detailTarget, prefixType, prefixNo, serialColumn,
-            masterFields, pairs, totals && hasAmount && columns.Contains(detailTarget + ".AMOUNT"), hasAmount);
+            masterFields, pairs, totals && hasAmount && columns.Contains(detailTarget + ".AMOUNT"),
+            hasAmount, projectionMode);
+    }
+
+    /// <summary>
+    /// Optional produce-change projection ("net-replace"): before the overwrite the old
+    /// occupancy on PRODUCT / MOC_PLAN_MOC / COP_ORDER_D is released and after the
+    /// overwrite the new values are occupied again, all inside the apply transaction.
+    /// Any other mode is a configuration error (closed set).
+    /// </summary>
+    private static string? ParseProjectionMode(JsonElement root)
+    {
+        if (!root.TryGetProperty("projection", out var projection))
+            return null;
+        if (projection.ValueKind != JsonValueKind.Object)
+            throw new EffectConfigException("change-apply 净替换投影 projection 必须是 JSON 对象。");
+        var mode = projection.TryGetProperty("mode", out var value) && value.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(value.GetString())
+            ? value.GetString()!.Trim().ToLowerInvariant()
+            : "net-replace";
+        if (mode != "net-replace")
+            throw new EffectConfigException($"change-apply 净替换投影 mode '{mode}' 不受支持（仅 net-replace）。");
+        return mode;
     }
 
     private static string[] StrArr(JsonElement e, string n)

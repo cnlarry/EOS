@@ -94,7 +94,7 @@ public static class EffectStructSchemas
             ["mrp-plan-alloc"] = Set("targetTable", "mode", "scope", "field", "fields", "stockSource", "note"),
             ["order-change-apply"] = Set("detail", "totals"),
             ["payment-date-calc"] = Set("targetField", "dateField", "monthField", "paymentDaysFrom"),
-            ["produce-change-apply"] = Set("master", "detail"),
+            ["produce-change-apply"] = Set("master", "detail", "projection"),
             ["purchase-change-apply"] = Set("master", "detail", "totals"),
             ["quote-parameter-recalc"] = Set("targetTable", "mode", "feeFields"),
             ["return-writeback"] = Set("order", "produce", "conditions"),
@@ -340,6 +340,29 @@ public static class EffectStructSchemas
         if (root.TryGetProperty("serialColumn", out var serial) && serial.ValueKind == JsonValueKind.String
             && !Identifier.IsMatch(serial.GetString() ?? string.Empty))
             issues.Add("order-change-apply.serialColumn 必须是大写标识符。");
+        if (root.TryGetProperty("projection", out var projection))
+        {
+            if (projection.ValueKind != JsonValueKind.Object)
+            {
+                issues.Add("change-apply.projection 必须是对象。");
+            }
+            else
+            {
+                if (projection.TryGetProperty("mode", out var mode))
+                {
+                    if (mode.ValueKind != JsonValueKind.String
+                        || !mode.GetString()!.Equals("net-replace", StringComparison.OrdinalIgnoreCase))
+                        issues.Add("change-apply.projection.mode 仅支持 net-replace。");
+                }
+                else
+                {
+                    issues.Add("change-apply.projection.mode 必填（net-replace）。");
+                }
+                foreach (var property in projection.EnumerateObject())
+                    if (!property.NameEquals("mode"))
+                        issues.Add($"change-apply.projection 含未登记键 '{property.Name}'（仅允许 mode）。");
+            }
+        }
         return issues;
     }
     private static IReadOnlyList<string> ValidateLinkStampTargets(JsonElement root)

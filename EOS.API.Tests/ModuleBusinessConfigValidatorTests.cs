@@ -269,6 +269,44 @@ public class ModuleBusinessConfigValidatorTests
     }
 
     [Fact]
+    public void Validate_1509ConvergedChain_ServiceProjectionPlusCompletion_ReturnsNoIssues()
+    {
+        // After convergence the produce-change chain is: produce-change-apply (service,
+        // with the net-replace projection folded in) then completion-close (expanded).
+        // Neither SEQ1 adjust-projection nor SEQ2 field-accumulate placeholder formula
+        // actions exist any more, so the "formula effect without rows" gate stays silent.
+        var request = new SaveModuleBusinessConfigRequest(
+            [
+                new BusinessActionDto(1, "APPROVE_EFFECT", "produce-change-apply",
+                    Params: """{"master":{"fields":["QTY","SPARE_QTY"]},"detail":{"fields":["NEED_QTY","USED_QTY","APPLY_QTY"]},"projection":{"mode":"net-replace"}}"""),
+                new BusinessActionDto(2, "APPROVE_EFFECT", "completion-close",
+                    Ops:
+                    [
+                        new BusinessActionOpDto(1, "MOC_PRODUCE_D", "FINISHED_TAG", "SET_WHEN", "CONSTANT", SourceConstant: "1"),
+                    ])
+            ],
+            []);
+        var issues = ModuleBusinessConfigValidator.Validate(request);
+        Assert.DoesNotContain(issues, issue => issue.Contains("无公式行展开"));
+        Assert.DoesNotContain(issues, issue => issue.Contains("顺序 lint"));
+    }
+
+    [Fact]
+    public void Validate_ChangeApplyProjectionOnNonProduceChain_IsRejected()
+    {
+        // The projection section is a produce-change-apply option; adding it to a
+        // purchase-change chain fails on the unknown root key.
+        var request = new SaveModuleBusinessConfigRequest(
+            [
+                new BusinessActionDto(1, "APPROVE_EFFECT", "purchase-change-apply",
+                    Params: """{"master":{"fields":["PAY_CONDITION"]},"detail":{"fields":["QTY"]},"projection":{"mode":"net-replace"}}""")
+            ],
+            []);
+        var issues = ModuleBusinessConfigValidator.Validate(request);
+        Assert.Contains(issues, issue => issue.Contains("未登记根键 'projection'"));
+    }
+
+    [Fact]
     public void Validate_ConstantScopeAcceptsEmptyStringClearValue()
     {
         var request = new SaveModuleBusinessConfigRequest(

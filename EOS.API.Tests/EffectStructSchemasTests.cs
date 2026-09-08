@@ -109,6 +109,26 @@ public class EffectStructSchemasTests
     }
 
     [Fact]
+    public void ValidateParams_ChangeApplyProjection_AcceptedForProduce_AndClosuredElsewhere()
+    {
+        var ok = """{"master":{"fields":["QTY","SPARE_QTY"]},"detail":{"fields":["NEED_QTY"]},"projection":{"mode":"net-replace"}}""";
+        Assert.Empty(EffectStructSchemas.ValidateParams("produce-change-apply", ok));
+
+        var badMode = EffectStructSchemas.ValidateParams("produce-change-apply",
+            """{"master":{"fields":["QTY"]},"detail":{"fields":["NEED_QTY"]},"projection":{"mode":"release-old"}}""");
+        Assert.Contains(badMode, issue => issue.Contains("projection.mode 仅支持 net-replace"));
+
+        var unknownKey = EffectStructSchemas.ValidateParams("produce-change-apply",
+            """{"master":{"fields":["QTY"]},"detail":{"fields":["NEED_QTY"]},"projection":{"mode":"net-replace","targets":[]}}""");
+        Assert.Contains(unknownKey, issue => issue.Contains("projection 含未登记键 'targets'"));
+
+        // 1609/1418 param roots do not accept the projection section.
+        var purchase = EffectStructSchemas.ValidateParams("purchase-change-apply",
+            """{"master":{"fields":["PAY_CONDITION"]},"detail":{"fields":["QTY"]},"projection":{"mode":"net-replace"}}""");
+        Assert.Contains(purchase, issue => issue.Contains("未登记根键 'projection'"));
+    }
+
+    [Fact]
     public void ValidateParams_UnknownRootKeyAndReservedKeyWithParams_Rejected()
     {
         var issues = EffectStructSchemas.ValidateParams(
