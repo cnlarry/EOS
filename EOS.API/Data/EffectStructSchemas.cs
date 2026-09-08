@@ -23,6 +23,7 @@ public static class EffectStructSchemas
         "clear-on-deapprove",
         "no-reverse",
         "clear-refs",
+        "net-replace",
         "none",
         "recompute",
         "recalc-confirmed",
@@ -36,6 +37,12 @@ public static class EffectStructSchemas
     {
         "kind",
         "note",
+    };
+
+    /// <summary>link-stamp targets 项允许的键。</summary>
+    private static readonly IReadOnlySet<string> LinkStampTargetKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "table", "ref", "refs", "fromDetail", "sourceRefs",
     };
 
     /// <summary>库存类 fieldMap 允许的键。</summary>
@@ -175,6 +182,10 @@ public static class EffectStructSchemas
         if (effectKey.Equals("callback-reprice", StringComparison.OrdinalIgnoreCase))
         {
             issues.AddRange(ValidateCallbackTargets(root));
+        }
+        if (effectKey.Equals("link-stamp", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.AddRange(ValidateLinkStampTargets(root));
         }
         if (effectKey.Equals("payment-date-calc", StringComparison.OrdinalIgnoreCase))
         {
@@ -316,6 +327,114 @@ public static class EffectStructSchemas
             issues.Add("order-change-apply.serialColumn 必须是大写标识符。");
         return issues;
     }
+    private static IReadOnlyList<string> ValidateLinkStampTargets(JsonElement root)
+    {
+        var issues = new List<string>();
+        if (!root.TryGetProperty("targets", out var array))
+            return issues;
+        if (array.ValueKind != JsonValueKind.Array)
+        {
+            issues.Add("link-stamp.targets 必须是数组。");
+            return issues;
+        }
+        issues.AddRange(ValidateLinkStampFields(root));
+        var index = 0;
+        foreach (var item in array.EnumerateArray())
+        {
+            var where = $"link-stamp.targets[{index++}]";
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                issues.Add($"{where} 必须是对象。");
+                continue;
+            }
+            foreach (var property in item.EnumerateObject())
+                if (!LinkStampTargetKeys.Contains(property.Name))
+                    issues.Add($"{where} 含未登记键 '{property.Name}'");
+            if (!item.TryGetProperty("table", out var table)
+                || table.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(table.GetString()))
+                issues.Add($"{where}.table 不能为空");
+            if (item.TryGetProperty("fromDetail", out var flag)
+                && flag.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                issues.Add($"{where}.fromDetail 必须是布尔。");
+            var fromDetail = item.TryGetProperty("fromDetail", out var detail) && detail.ValueKind == JsonValueKind.True;
+            var refs = NameCount(item, "refs", issues) ?? NameCount(item, "ref", issues);
+            var sourceRefs = NameCount(item, "sourceRefs", issues);
+            if (!fromDetail)
+                continue;
+            if (refs is null or 0)
+                issues.Add($"{where} fromDetail=true 需要非空 refs。");
+            if (sourceRefs is null or 0)
+                issues.Add($"{where} fromDetail=true 需要非空 sourceRefs。");
+            if (refs > 0 && sourceRefs > 0 && refs != sourceRefs)
+                issues.Add($"{where} refs 与 sourceRefs 列数必须一致。");
+        }
+        return issues;
+    }
+
+    /// <summary>字段数（字符串记 1，数组记元素数）；类型非法时记问题并返回 -1。</summary>
+    private static int? NameCount(JsonElement element, string name, ICollection<string> issues)
+    {
+        if (!element.TryGetProperty(name, out var value))
+            return null;
+        if (value.ValueKind == JsonValueKind.String)
+            return string.IsNullOrWhiteSpace(value.GetString()) ? 0 : 1;
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            issues.Add($"link-stamp {name} 必须是字段名或字段名数组。");
+            return -1;
+        }
+        foreach (var entry in value.EnumerateArray())
+            if (entry.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(entry.GetString()))
+                issues.Add($"link-stamp {name} 存在空字段名。");
+        return value.GetArrayLength();
+    }
+
+    private static IReadOnlyList<string> ValidateLinkStampFields(JsonElement root)
+    {
+        var issues = new List<string>();
+        foreach (var name in new[] { "field", "fields" })
+        {
+            if (!root.TryGetProperty(name, out var value))
+                continue;
+            if (value.ValueKind == JsonValueKind.String)
+            {
+                if (string.IsNullOrWhiteSpace(value.GetString()))
+                    issues.Add($"link-stamp.{name} 不能为空。");
+                continue;
+            }
+            if (value.ValueKind != JsonValueKind.Array)
+            {
+                issues.Add($"link-stamp.{name} 必须是字段名或字段名数组。");
+                continue;
+            }
+            var index = 0;
+            foreach (var entry in value.EnumerateArray())
+            {
+                var where = $"link-stamp.{name}[{index++}]";
+                if (entry.ValueKind == JsonValueKind.String)
+                {
+                    if (string.IsNullOrWhiteSpace(entry.GetString()))
+                        issues.Add($"{where} 不能为空。");
+                }
+                else if (entry.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var key in new[] { "target", "source" })
+                        if (!entry.TryGetProperty(key, out var text)
+                            || text.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(text.GetString()))
+                            issues.Add($"{where}.{key} 不能为空");
+                    foreach (var property in entry.EnumerateObject())
+                        if (!property.NameEquals("target") && !property.NameEquals("source"))
+                            issues.Add($"{where} 含未登记键 '{property.Name}'");
+                }
+                else
+                {
+                    issues.Add($"{where} 必须是字段名或 {{target,source}} 对象。");
+                }
+            }
+        }
+        return issues;
+    }
+
     private static void RejectUnknown(JsonElement element, IReadOnlySet<string> allowed, string where, ICollection<string> issues)
     {
         foreach (var property in element.EnumerateObject())
