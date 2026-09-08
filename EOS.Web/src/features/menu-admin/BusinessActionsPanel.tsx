@@ -8,6 +8,7 @@ import {
   IconEdit,
   IconPlus,
   IconRefresh,
+  IconRocket,
   IconTrash,
 } from '@tabler/icons-react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -85,6 +86,24 @@ interface EffectParamSchema {
 interface BusinessConfigSchemas {
   effects: EffectParamSchema[]
   reverseKinds: string[]
+}
+
+interface PublishValidationCheck {
+  code: string
+  passed: boolean
+  message: string
+  severity: string
+}
+
+interface WorkbenchPublishResult {
+  moduleId: number
+  title: string
+  published: boolean
+  version: number | null
+  definitionVersion: string | null
+  passed: boolean
+  checks: PublishValidationCheck[]
+  error?: string | null
 }
 
 interface BusinessActionsPanelProps {
@@ -201,16 +220,31 @@ export function BusinessActionsPanel({ module }: BusinessActionsPanelProps) {
     [selectedAction],
   )
 
+  const persistConfig = async () => {
+    await apiClient.put(`/admin/module-business-config/${moduleId}`, {
+      actions: actions.map((action) => ({
+        ...action,
+        ops: (action.ops ?? []).map((op) =>
+          op.sourceScope === 'CONSTANT' ? { ...op, sourceConstant: op.sourceConstant ?? '' } : op,
+        ),
+      })),
+      validationRules: rules,
+    })
+    await queryClient.invalidateQueries({ queryKey: ['module-business-config', moduleId] })
+  }
+
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      await apiClient.put(`/admin/module-business-config/${moduleId}`, {
-        actions: actions.map((action) => ({
-          ...action,
-          ops: action.ops ?? [],
-        })),
-        validationRules: rules,
-      })
-      await queryClient.invalidateQueries({ queryKey: ['module-business-config', moduleId] })
+    mutationFn: persistConfig,
+  })
+
+  const publishMutation = useMutation({
+    mutationFn: async (): Promise<WorkbenchPublishResult> => {
+      // 发布快照读取的是已落库配置，先把当前编辑内容保存，校验失败则中止发布。
+      await persistConfig()
+      const results = await apiClient.post<WorkbenchPublishResult[]>(
+        `/admin/module-business-config/${moduleId}/publish`,
+      )
+      return results[0]
     },
   })
 
@@ -340,10 +374,20 @@ export function BusinessActionsPanel({ module }: BusinessActionsPanelProps) {
             variant="primary"
             icon={<IconDeviceFloppy size={16} />}
             loading={saveMutation.isPending}
-            disabled={!ready}
+            disabled={!ready || publishMutation.isPending}
             onClick={() => saveMutation.mutate()}
           >
             保存配置
+          </Button>
+          <Button
+            size="sm"
+            icon={<IconRocket size={16} />}
+            loading={publishMutation.isPending}
+            disabled={!ready || saveMutation.isPending}
+            title="保存当前配置并发布模块 Definition 快照（校验通过才生效）"
+            onClick={() => publishMutation.mutate()}
+          >
+            发布配置
           </Button>
         </div>
       </div>
@@ -375,6 +419,28 @@ export function BusinessActionsPanel({ module }: BusinessActionsPanelProps) {
       {saveMutation.isSuccess ? (
         <div className="alert alert-success py-2 mb-0" role="alert">
           配置已保存并重新加载。
+        </div>
+      ) : null}
+      {publishMutation.isError ? (
+        <div className="alert alert-danger py-2 mb-0" role="alert">
+          发布失败：{describeApiError(publishMutation.error, '服务端拒绝发布。')}
+        </div>
+      ) : null}
+      {publishMutation.isSuccess && publishMutation.data.published ? (
+        <div className="alert alert-success py-2 mb-0" role="alert">
+          发布成功：{publishMutation.data.definitionVersion ?? `module-${moduleId}-v${publishMutation.data.version}`}。
+        </div>
+      ) : null}
+      {publishMutation.isSuccess && !publishMutation.data.published ? (
+        <div className="alert alert-warning py-2 mb-0" role="alert">
+          发布未通过校验，未写入新快照：
+          <ul className="mb-0 mt-1">
+            {publishMutation.data.checks
+              .filter((check) => !check.passed)
+              .map((check) => (
+                <li key={check.code}>{check.message}</li>
+              ))}
+          </ul>
         </div>
       ) : null}
 

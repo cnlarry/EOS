@@ -139,4 +139,53 @@ describe('BusinessActionsPanel', () => {
     ))
     expect(await screen.findByText('配置已保存并重新加载。')).toBeInTheDocument()
   })
+
+  it('发布配置先保存当前内容再发布并提示版本', async () => {
+    apiClientMock.post.mockResolvedValue([
+      {
+        moduleId: 1607,
+        title: '收料单',
+        published: true,
+        version: 5,
+        definitionVersion: 'module-1607-v5',
+        passed: true,
+        checks: [],
+      },
+    ])
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
+    await screen.findByText('业务动作（1）')
+
+    fireEvent.click(screen.getByRole('button', { name: /发布配置/ }))
+
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
+      '/admin/module-business-config/1607',
+      expect.objectContaining({ actions: expect.any(Array), validationRules: expect.any(Array) }),
+    ))
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/admin/module-business-config/1607/publish',
+    ))
+    expect(await screen.findByText(/发布成功：module-1607-v5/)).toBeInTheDocument()
+  })
+
+  it('发布校验失败时展示失败原因且不提示成功', async () => {
+    apiClientMock.post.mockResolvedValue([
+      {
+        moduleId: 1607,
+        title: '收料单',
+        published: false,
+        version: null,
+        definitionVersion: null,
+        passed: false,
+        checks: [{ code: 'chooser_sources', passed: false, message: '选择器来源配置非法', severity: 'error' }],
+      },
+    ])
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
+    await screen.findByText('业务动作（1）')
+
+    fireEvent.click(screen.getByRole('button', { name: /发布配置/ }))
+
+    expect(await screen.findByText(/发布未通过校验，未写入新快照/)).toBeInTheDocument()
+    expect(screen.getByText('选择器来源配置非法')).toBeInTheDocument()
+    expect(screen.queryByText(/发布成功/)).not.toBeInTheDocument()
+  })
 })

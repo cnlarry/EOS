@@ -14,6 +14,7 @@ namespace EOS.API.Controllers;
 public sealed class ModuleBusinessConfigController(
     ModuleBusinessConfigRepository repository,
     ModuleRightsRepository rightsRepository,
+    WorkbenchDefinitionSnapshotService snapshotService,
     CurrentUserContext userContext) : ControllerBase
 {
     private const int MenuAdminModuleId = 2301;
@@ -66,6 +67,18 @@ public sealed class ModuleBusinessConfigController(
         if (!await CanSetup(token)) return Forbid();
         await repository.SaveAsync(moduleId, request, userContext.EmployeeName, token);
         return NoContent();
+    }
+
+    /// <summary>
+    /// 发布当前模块 Definition 快照（校验通过才写快照并清脏，失败保留脏标记）。
+    /// 与工作台快照发布共用同一校验器与写入服务；2301 配置区提供页面内发布入口。
+    /// </summary>
+    [HttpPost("{moduleId:int}/publish")]
+    public async Task<IActionResult> Publish(int moduleId, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        var results = await snapshotService.PublishAsync(new[] { moduleId }, userContext.EmployeeName, token);
+        return Ok(results);
     }
 
     private async Task<bool> CanBrowse(CancellationToken token) =>
