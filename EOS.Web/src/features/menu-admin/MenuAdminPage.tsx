@@ -265,6 +265,11 @@ export function MenuAdminPage() {
     ),
     [modules.data],
   )
+  // 全部父节点均已展开时视为「已全部展开」，切换按钮显示折叠全部
+  const allExpanded = useMemo(
+    () => parentIds.size > 0 && [...parentIds].every((id) => expandedIds.has(id)),
+    [parentIds, expandedIds],
+  )
 
   /** nodeId 是否位于 ancestorId 的子树内（沿 M_P_IDX 上溯）。 */
   const isDescendantOf = (ancestorId: number, nodeId: number) => {
@@ -749,28 +754,35 @@ export function MenuAdminPage() {
         <div className="card-body p-0">
           <div className="row g-0">
             <div className="col-lg-5 border-end erp-menu-tree">
-              <div className="erp-menu-tree-toolbar p-2 border-bottom d-flex gap-1 align-items-center">
-                <div className="erp-nav-search erp-menu-search">
-                  <IconSearch size={16} aria-hidden="true" />
-                  <input
-                    type="search"
-                    value={treeQuery}
-                    onChange={(event) => setTreeQuery(event.target.value)}
-                    placeholder="搜索菜单…"
-                    aria-label="搜索菜单树"
-                  />
-                  {treeQuery && (
-                    <button type="button" className="erp-nav-search-clear" aria-label="清除搜索" onClick={() => setTreeQuery('')}>×</button>
-                  )}
+              <div className="erp-menu-tree-header">
+                <div className="erp-menu-tree-toolbar p-2 border-bottom d-flex gap-1 align-items-center">
+                  <div className="erp-nav-search erp-menu-search">
+                    <IconSearch size={16} aria-hidden="true" />
+                    <input
+                      type="search"
+                      value={treeQuery}
+                      onChange={(event) => setTreeQuery(event.target.value)}
+                      placeholder="搜索菜单…"
+                      aria-label="搜索菜单树"
+                    />
+                    {treeQuery && (
+                      <button type="button" className="erp-nav-search-clear" aria-label="清除搜索" onClick={() => setTreeQuery('')}>×</button>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setExpandedIds(allExpanded ? new Set() : new Set(parentIds))}
+                  >
+                    {allExpanded ? '折叠全部' : '展开全部'}
+                  </Button>
                 </div>
-                <Button size="sm" variant="ghost" onClick={() => setExpandedIds(new Set(parentIds))}>展开全部</Button>
-                <Button size="sm" variant="ghost" onClick={() => setExpandedIds(new Set())}>折叠全部</Button>
-              </div>
-              <div className="erp-menu-sort-bar d-flex gap-1 p-2 border-bottom align-items-center">
-                <Button size="sm" variant="secondary" icon={<IconArrowBarToUp size={16} />} title="将所选菜单移动到同级最前" disabled={!canMoveUp} onClick={() => requestSort('top')}>最前</Button>
-                <Button size="sm" variant="secondary" icon={<IconArrowUp size={16} />} title="将所选菜单向前移动一位" disabled={!canMoveUp} onClick={() => requestSort('up')}>前一步</Button>
-                <Button size="sm" variant="secondary" icon={<IconArrowDown size={16} />} title="将所选菜单向后移动一位" disabled={!canMoveDown} onClick={() => requestSort('down')}>后一步</Button>
-                <Button size="sm" variant="secondary" icon={<IconArrowBarToDown size={16} />} title="将所选菜单移动到同级最后" disabled={!canMoveDown} onClick={() => requestSort('bottom')}>最后</Button>
+                <div className="erp-menu-sort-bar d-flex gap-1 p-2 border-bottom align-items-center">
+                  <Button size="sm" variant="secondary" icon={<IconArrowBarToUp size={16} />} title="将所选菜单移动到同级最前" disabled={!canMoveUp} onClick={() => requestSort('top')}>最前</Button>
+                  <Button size="sm" variant="secondary" icon={<IconArrowUp size={16} />} title="将所选菜单向前移动一位" disabled={!canMoveUp} onClick={() => requestSort('up')}>前一步</Button>
+                  <Button size="sm" variant="secondary" icon={<IconArrowDown size={16} />} title="将所选菜单向后移动一位" disabled={!canMoveDown} onClick={() => requestSort('down')}>后一步</Button>
+                  <Button size="sm" variant="secondary" icon={<IconArrowBarToDown size={16} />} title="将所选菜单移动到同级最后" disabled={!canMoveDown} onClick={() => requestSort('bottom')}>最后</Button>
+                </div>
               </div>
               {modules.isPending ? <LoadingState label="正在加载菜单…" /> : modules.isError ? (
                 <ErrorState message={errorMessage} onRetry={() => void modules.refetch()} />

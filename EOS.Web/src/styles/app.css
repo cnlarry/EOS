@@ -138,7 +138,10 @@ button, input, select { font: inherit; }
 
 /* ---- 菜单管理（2301） ---- */
 .erp-menu-tree { overflow-y: auto; }
-.erp-menu-sort-bar { background: var(--tblr-bg-surface); position: sticky; top: 0; z-index: 5; }
+/* 树列滚动时工具行（搜索/展开折叠）与排序行整体吸顶：
+   sticky 由 header 容器统一承担，避免两行各自 top:0 互相覆盖 */
+.erp-menu-tree-header { background: var(--tblr-bg-surface); position: sticky; top: 0; z-index: 5; }
+.erp-menu-tree-header .erp-menu-tree-toolbar { position: static; }
 .erp-menu-sort-bar .btn { flex: 0 0 auto; white-space: nowrap; }
 /* 实现左侧系统菜单（AppShell 侧栏）的样式：图标、展开折叠箭头、虚线、圆点 */
 .erp-menu-tree .nav-link {
@@ -424,8 +427,10 @@ button, input, select { font: inherit; }
 .erp-tabbed-panel-tabs { border-bottom: 0; margin-bottom: 0; padding-left: calc(var(--tblr-border-radius) * 2); }
 .erp-tabbed-panel-tabs .nav-link { padding: 5px 14px; font-size: 13px; border-bottom: 0; border-radius: var(--tblr-border-radius-lg) var(--tblr-border-radius-lg) 0 0; margin-bottom: -1px; }
 .erp-tabbed-panel-tabs .nav-link.active { background-color: var(--tblr-bg-surface); border-bottom: 1px solid var(--tblr-bg-surface); position: relative; z-index: 1; }
-.erp-tabbed-panel-tabs .nav-item + .nav-item .nav-link:not(.active) { border-left: 0 !important; }
-.erp-tabbed-panel-tabs .nav-item:has(+ .nav-item .nav-link.active) .nav-link { border-right: 0 !important; }
+/* 相邻标签重叠 1px：相邻的右/左边框共享同一像素列。Tabler 默认非激活标签边框为
+   1px 透明占位、hover/激活仅切换颜色，任何状态切换都不改变边框宽度，
+   布局恒定（悬停/激活零抖动），相邻处视觉恒为 1px 线 */
+.erp-tabbed-panel-tabs .nav-item + .nav-item .nav-link { margin-left: -1px; }
 .erp-tabbed-panel-body { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background-color: var(--tblr-bg-surface); padding: 10px; }
 .erp-mobile-menu-trigger { position: fixed; top: 8px; left: 8px; z-index: 1035; }
 .erp-list-command-bar { display: flex; min-height: 48px; align-items: center; gap: 5px; padding: 6px 8px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); border-radius: var(--tblr-border-radius) var(--tblr-border-radius) 0 0; }

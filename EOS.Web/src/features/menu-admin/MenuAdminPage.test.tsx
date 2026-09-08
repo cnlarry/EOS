@@ -183,6 +183,20 @@ describe('MenuAdminPage', () => {
     }
   })
 
+  it('展开/折叠全部为单一切换按钮：随树状态切换文案', async () => {
+    renderPage()
+    await waitForMenuTree()
+    // 初始全部折叠：子节点不可见，按钮显示展开全部
+    expect(screen.queryByRole('button', { name: /系统参数/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '展开全部' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /系统参数/ })).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /公司基本资料/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '折叠全部' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '折叠全部' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: /系统参数/ })).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '展开全部' })).toBeInTheDocument()
+  })
+
   it('排序按钮调用 PUT /sort 并按动作移动同级节点', async () => {
     const state = twoRoots.map((module) => ({ ...module }))
     const parentKeyOf = (module: MenuAdminModule) => (module.M_P_IDX != null && module.M_P_IDX > 0 ? module.M_P_IDX : 0)
