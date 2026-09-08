@@ -23,6 +23,7 @@ public static class EffectStructSchemas
         "clear-on-deapprove",
         "no-reverse",
         "clear-refs",
+        "none",
         "recompute",
         "recalc-confirmed",
         "restore-old-price",
@@ -184,6 +185,10 @@ public static class EffectStructSchemas
         {
             issues.AddRange(ValidatePriceSyncParams(root));
         }
+        if (effectKey.Equals("order-change-apply", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.AddRange(ValidateChangeApplyParams(root));
+        }
         return issues;
     }
 
@@ -282,6 +287,33 @@ public static class EffectStructSchemas
             if (root.TryGetProperty(flag, out var value) && value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
                 issues.Add("price-sync." + flag + " 必须是布尔。");
         }
+        return issues;
+    }
+    private static IReadOnlyList<string> ValidateChangeApplyParams(JsonElement root)
+    {
+        var issues = new List<string>();
+        if (root.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.Object)
+        {
+            if (!detail.TryGetProperty("fields", out var fields) || fields.ValueKind != JsonValueKind.Array || fields.GetArrayLength() == 0)
+            {
+                issues.Add("order-change-apply.detail.fields 必须是非空数组。");
+            }
+            else
+            {
+                foreach (var item in fields.EnumerateArray())
+                    if (item.ValueKind != JsonValueKind.String || !Identifier.IsMatch(item.GetString() ?? string.Empty))
+                        issues.Add("order-change-apply.detail.fields 存在非法字段名。");
+            }
+        }
+        else
+        {
+            issues.Add("order-change-apply.detail 缺少对象配置。");
+        }
+        if (root.TryGetProperty("totals", out var totals) && totals.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            issues.Add("order-change-apply.totals 必须是布尔。");
+        if (root.TryGetProperty("serialColumn", out var serial) && serial.ValueKind == JsonValueKind.String
+            && !Identifier.IsMatch(serial.GetString() ?? string.Empty))
+            issues.Add("order-change-apply.serialColumn 必须是大写标识符。");
         return issues;
     }
     private static void RejectUnknown(JsonElement element, IReadOnlySet<string> allowed, string where, ICollection<string> issues)

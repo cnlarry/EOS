@@ -41,13 +41,13 @@ public static class EffectRegistry
         ["client-price-sync"] = Status.Service,
         ["supplier-price-sync"] = Status.Service,
         ["quote-parameter-recalc"] = Status.Service,
+        ["order-change-apply"] = Status.Service,
         ["payment-date-calc"] = Status.Service,
         // Placeholder-row + params shapes collected; handlers pending (see docs/plans/服务键形态证据.md)
         ["hr-usage-sync"] = Status.Pending,
         ["employee-contract-sync"] = Status.Pending,
         ["mould-batch-apply"] = Status.Pending,
         ["mrp-plan-alloc"] = Status.Pending,
-        ["order-change-apply"] = Status.Pending,
         ["produce-change-apply"] = Status.Pending,
         ["purchase-change-apply"] = Status.Pending,
         // Catalog reserved keys (no instances)
