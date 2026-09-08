@@ -14,11 +14,13 @@ public static class EffectStructSchemas
 {
     private static readonly Regex Identifier = new(@"^[A-Z][A-Z0-9_]*$", RegexOptions.Compiled);
     private static readonly Regex TermField = new(@"^[A-Z][A-Z0-9_]*$", RegexOptions.Compiled);
+    private static readonly Regex TableColumnSource = new(@"^[A-Z][A-Z0-9_]*\.[A-Z][A-Z0-9_]*$", RegexOptions.Compiled);
 
     /// <summary>反向结构 kind 枚举（覆盖现有种子与快照补偿语义）。</summary>
     private static readonly IReadOnlySet<string> ReverseKinds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "auto-reverse",
+        "clear-on-deapprove",
         "no-reverse",
         "recompute",
         "reverse-flow",
@@ -170,6 +172,39 @@ public static class EffectStructSchemas
         {
             issues.AddRange(ValidateCallbackTargets(root));
         }
+        if (effectKey.Equals("payment-date-calc", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.AddRange(ValidatePaymentDateParams(root));
+        }
+        return issues;
+    }
+
+    private static IReadOnlyList<string> ValidatePaymentDateParams(JsonElement root)
+    {
+        var issues = new List<string>();
+        foreach (var required in new[] { "targetField", "monthField", "dateField" })
+        {
+            if (!root.TryGetProperty(required, out var value)
+                || value.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(value.GetString()))
+            {
+                issues.Add($"payment-date-calc.{required} 不能为空");
+            }
+            else if (!Identifier.IsMatch(value.GetString()!))
+            {
+                issues.Add($"payment-date-calc.{required} 必须是全大写标识符");
+            }
+        }
+        if (!root.TryGetProperty("paymentDaysFrom", out var source)
+            || source.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(source.GetString()))
+        {
+            issues.Add("payment-date-calc.paymentDaysFrom 不能为空");
+        }
+        else if (!TableColumnSource.IsMatch(source.GetString()!))
+        {
+            issues.Add("payment-date-calc.paymentDaysFrom 必须是 'TABLE.COLUMN' 全大写形式");
+        }
         return issues;
     }
 
@@ -289,6 +324,11 @@ public static class EffectStructSchemas
                     || !CompareOperators.Contains(op.GetString()!)))
             {
                 issues.Add("参数 condition field-compare 缺少闭式 op。");
+            }
+            if (item.TryGetProperty("negate", out var negate)
+                && negate.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            {
+                issues.Add("参数 condition item.negate 必须是布尔。");
             }
         }
         return issues;
