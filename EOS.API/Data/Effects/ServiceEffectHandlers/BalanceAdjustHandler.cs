@@ -22,6 +22,14 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
         if (plan.MasterTable is null)
             throw new EffectConfigException("balance-adjust 需要主表形态。");
         var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
+        // The reverse structure states the deapprove semantics explicitly: the
+        // net-replace change documents leave the credit untouched on deapprove
+        // (legacy no-op), so a none/no-reverse kind short-circuits the whole step.
+        if (context.ExecutionEvent is not (EffectEvent.ApproveEffect or EffectEvent.Save)
+            && ReverseKind(context) is "none" or "no-reverse")
+        {
+            return 0;
+        }
 
         var amountLocal = BuildAmountExpression(plan, columns);
         // Approve applies the configured direction; deapprove applies the inverse
@@ -240,6 +248,14 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
             + $"WHERE {ServiceEffectSql.Q(partyColumn)}={party}";
         return await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction, update, parameters, token);
     }
+    private static string? ReverseKind(ServiceEffectContext context)
+    {
+        if (context.Action.Reverse is not { } reverse || reverse.ValueKind != JsonValueKind.Object
+            || !reverse.TryGetProperty("kind", out var kind) || kind.ValueKind != JsonValueKind.String)
+            return null;
+        return kind.GetString();
+    }
+
     private static async Task<int> AdjustAsync(
         ServiceEffectContext context,
         string tableName,
