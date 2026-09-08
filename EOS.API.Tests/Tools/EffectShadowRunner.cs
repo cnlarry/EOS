@@ -119,8 +119,11 @@ public sealed class EffectShadowRunner
         1418 => new(1418, "1418", "COP_ORDER_CHANGE_M", "COP_ORDER_CHANGE_D",
             "CHANGE_ORDER_TYPE", "CHANGE_ORDER_NO", "CHANGE_ORDER_DATE",
             null, null, null, "订单变更单"),
+        1609 => new(1609, "1609", "PUR_PURCHASE_CHANGE_M", "PUR_PURCHASE_CHANGE_D",
+            "CHANGE_PURCHASE_TYPE", "CHANGE_PURCHASE_NO", "CHANGE_PURCHASE_DATE",
+            null, null, null, "采购变更单"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -220,7 +223,7 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609))
         {
             throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604 only.");
         }
@@ -372,6 +375,9 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 1418)
         {
             return await ResolveRecordKeys1418Async(connection, deapprove, failure);
+        }        if (spec.ModuleId == 1609)
+        {
+            return await ResolveRecordKeys1609Async(connection, deapprove, failure);
         }
         if (spec.ModuleId == 1404)
         {
@@ -868,6 +874,11 @@ public sealed class EffectShadowRunner
             // Change detail rows reference the original order lines via the master's
             // ORDER_TYPE/NO; the snapshot specs query those tables directly.
             return Array.Empty<DetailRow>();
+        }        if (spec.ModuleId == 1609)
+        {
+            // Change detail rows reference the original purchase lines via the master's
+            // PURCHASE_TYPE/NO; the snapshot specs query those tables directly.
+            return Array.Empty<DetailRow>();
         }
         const string sql = """
             SELECT LTRIM(RTRIM(ISNULL(D.PURCHASE_TYPE,''))), LTRIM(RTRIM(ISNULL(D.PURCHASE_NO,''))),
@@ -966,6 +977,9 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 1418)
         {
             return BuildTableSpecs1418(master);
+        }        if (spec.ModuleId == 1609)
+        {
+            return BuildTableSpecs1609(master);
         }
         if (spec.ModuleId == 1404)
         {
@@ -1913,6 +1927,63 @@ public sealed class EffectShadowRunner
                 + "AND " + table + ".ORDER_TYPE=R.ORDER_TYPE AND " + table + ".ORDER_NO=R.ORDER_NO)",
                 new[] { ct, cn }));
         }
+        return specs;
+    }
+
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys1609Async(
+        SqlConnection connection, bool deapprove, bool failure)
+    {
+        if (failure)
+        {
+            throw new NotSupportedException("1609 影子规格未规格化失败分支（模块无校验规则）。");
+        }
+        var confirm = deapprove ? "1" : "0";
+        const string sql = """
+            SELECT TOP 1 M.CHANGE_PURCHASE_TYPE, M.CHANGE_PURCHASE_NO
+            FROM dbo.PUR_PURCHASE_CHANGE_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
+              AND EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_CHANGE_D D
+                          WHERE D.CHANGE_PURCHASE_TYPE=M.CHANGE_PURCHASE_TYPE AND D.CHANGE_PURCHASE_NO=M.CHANGE_PURCHASE_NO)
+            ORDER BY ISNULL(M.CONFIRM_DATE, M.CHANGE_PURCHASE_DATE) DESC;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@confirm", confirm);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+            throw new InvalidOperationException(deapprove
+                ? "未找到可解批对拍的已批核采购变更单（自动选单无结果）。"
+                : "未找到可对拍的未批核采购变更单（自动选单无结果）。");
+        return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1609(MasterContext master)
+    {
+        var ct = new SqlParameter("@ct", master.ReceiveType);
+        var cn = new SqlParameter("@cn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("PUR_PURCHASE_CHANGE_M", new[] { "CHANGE_PURCHASE_TYPE", "CHANGE_PURCHASE_NO" },
+                "@ct=CHANGE_PURCHASE_TYPE AND @cn=CHANGE_PURCHASE_NO", new[] { ct, cn }),
+            new("PUR_PURCHASE_CHANGE_D", new[] { "CHANGE_PURCHASE_TYPE", "CHANGE_PURCHASE_NO", "SERIAL_NO" },
+                "@ct=CHANGE_PURCHASE_TYPE AND @cn=CHANGE_PURCHASE_NO", new[] { ct, cn }),
+        };
+        specs.Add(new("PUR_PURCHASE_M", new[] { "PURCHASE_TYPE", "PURCHASE_NO" },
+            "EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_CHANGE_M R WHERE R.CHANGE_PURCHASE_TYPE=@ct AND R.CHANGE_PURCHASE_NO=@cn "
+            + "AND PUR_PURCHASE_M.PURCHASE_TYPE=R.PURCHASE_TYPE AND PUR_PURCHASE_M.PURCHASE_NO=R.PURCHASE_NO)",
+            new[] { ct, cn }));
+        specs.Add(new("PUR_PURCHASE_D", new[] { "PURCHASE_TYPE", "PURCHASE_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_CHANGE_M R WHERE R.CHANGE_PURCHASE_TYPE=@ct AND R.CHANGE_PURCHASE_NO=@cn "
+            + "AND PUR_PURCHASE_D.PURCHASE_TYPE=R.PURCHASE_TYPE AND PUR_PURCHASE_D.PURCHASE_NO=R.PURCHASE_NO)",
+            new[] { ct, cn }));
+        specs.Add(new("SUPPLIER", new[] { "SUPPLIER_ID" },
+            "EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_CHANGE_M R WHERE R.CHANGE_PURCHASE_TYPE=@ct AND R.CHANGE_PURCHASE_NO=@cn "
+            + "AND SUPPLIER.SUPPLIER_ID=R.SUPPLIER_ID)",
+            new[] { ct, cn }));
+        specs.Add(new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_CHANGE_D R WHERE R.CHANGE_PURCHASE_TYPE=@ct AND R.CHANGE_PURCHASE_NO=@cn "
+            + "AND COP_ORDER_D.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=R.ORDER_NO "
+            + "AND COP_ORDER_D.SERIAL_NO=R.ORDER_SERIAL_NO)",
+            new[] { ct, cn }));
         return specs;
     }
 

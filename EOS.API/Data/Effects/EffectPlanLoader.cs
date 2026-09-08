@@ -16,7 +16,7 @@ public sealed class EffectPlanLoader
 {
     private static readonly IReadOnlySet<string> OpCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "ACCUM", "DEACCUM", "ASSIGN", "ASSIGN_MAX", "ASSIGN_MIN", "APPEND_UNIQ", "SET_WHEN",
+        "ACCUM", "DEACCUM", "ASSIGN", "ASSIGN_MAX", "ASSIGN_MIN", "APPEND", "APPEND_UNIQ", "SET_WHEN",
     };
 
     private static readonly IReadOnlySet<string> SourceScopes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
