@@ -28,7 +28,8 @@ namespace EOS.API.Tests.Tools;
 /// (its stored procedures were retired) and only the engine path runs; the verdict
 /// is PASS when the engine executes cleanly with zero residue.
 /// Supported modules: 1607 (purchase receipt), 1406 (customer delivery),
-/// 1505 (production inbound).
+/// 1505 (production inbound), 1407 (customer return), 1413 (delivery callback),
+/// 170101 (customer settlement), 170201 (supplier settlement).
 /// </summary>
 [Trait("Category", "Tool")]
 public sealed class EffectShadowRunner
@@ -99,8 +100,14 @@ public sealed class EffectShadowRunner
         1413 => new(1413, "1413", "COP_CALLBACK_M", "COP_CALLBACK_D",
             "CALLBACK_TYPE", "CALLBACK_NO", "CALLBACK_DATE",
             null, null, null, "送货单回执"),
+        170101 => new(170101, "170101", "COP_ACCOUNT_M", "COP_ACCOUNT_D",
+            "ACCOUNT_TYPE", "ACCOUNT_NO", "ACCOUNT_DATE",
+            "CLIENT_ID", "CLIENT", "CLIENT_ID", "客户对账单"),
+        170201 => new(170201, "170201", "PUR_DUE_M", "PUR_DUE_D",
+            "DUE_TYPE", "DUE_NO", "DUE_DATE",
+            "SUPPLIER_ID", "SUPPLIER", "SUPPLIER_ID", "厂商对账单"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/170101/170201 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -200,9 +207,9 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId != 1607 && options.ModuleId != 1406 && options.ModuleId != 1505 && options.ModuleId != 1407 && options.ModuleId != 1413)
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 170101 or 170201))
         {
-            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413 only.");
+            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/170101/170201 only.");
         }
         var spec = GetSpec(options.ModuleId);
         var deapprove = options.Event.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
@@ -336,6 +343,14 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 1413)
         {
             return await ResolveRecordKeys1413Async(connection, deapprove, failure);
+        }
+        if (spec.ModuleId == 170101)
+        {
+            return await ResolveRecordKeys170101Async(connection, deapprove, failure);
+        }
+        if (spec.ModuleId == 170201)
+        {
+            return await ResolveRecordKeys170201Async(connection, deapprove, failure);
         }
         if (failure)
         {
@@ -685,7 +700,12 @@ public sealed class EffectShadowRunner
             connections,
             new EffectPlanLoader(),
             new EffectFormulaExecutor(),
-            new IEffectServiceHandler[] { new InventoryMoveHandler(new EffectPhysicalColumns()), new CallbackRepriceHandler() },
+            new IEffectServiceHandler[]
+            {
+                new InventoryMoveHandler(new EffectPhysicalColumns()),
+                new CallbackRepriceHandler(),
+                new PaymentDateCalcHandler(),
+            },
             new EffectValidationExecutor(),
             auditWriter,
             NullLogger<EffectPipeline>.Instance);
@@ -781,6 +801,13 @@ public sealed class EffectShadowRunner
         {
             return await ReadDetailContext1413Async(connection, transaction, keys);
         }
+        if (spec.ModuleId is 170101 or 170201)
+        {
+            // Settlement detail rows reference external delivery/receive lines via
+            // S_R_* / R_C_*; the snapshot specs query those tables directly (see
+            // BuildTableSpecs170101/BuildTableSpecs170201), so no context rows here.
+            return Array.Empty<DetailRow>();
+        }
         const string sql = """
             SELECT LTRIM(RTRIM(ISNULL(D.PURCHASE_TYPE,''))), LTRIM(RTRIM(ISNULL(D.PURCHASE_NO,''))),
                    D.PURCHASE_SERIAL_NO, LTRIM(RTRIM(ISNULL(D.ORDER_TYPE,''))), LTRIM(RTRIM(ISNULL(D.ORDER_NO,''))),
@@ -862,6 +889,14 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 1413)
         {
             return BuildTableSpecs1413(master, details);
+        }
+        if (spec.ModuleId == 170101)
+        {
+            return BuildTableSpecs170101(master);
+        }
+        if (spec.ModuleId == 170201)
+        {
+            return BuildTableSpecs170201(master);
         }
         var specs = new List<TableSpec>
         {
@@ -1314,6 +1349,140 @@ public sealed class EffectShadowRunner
             "EXISTS (SELECT 1 FROM dbo.COP_CALLBACK_D R WHERE R.CALLBACK_TYPE=@ct AND R.CALLBACK_NO=@cn "
             + "AND COP_RETURN_M.RETURN_TYPE=R.S_R_TYPE AND COP_RETURN_M.RETURN_NO=R.S_R_NO)",
             new[] { new SqlParameter("@ct", master.ReceiveType), new SqlParameter("@cn", master.ReceiveNo) }));
+        return specs;
+    }
+
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys170101Async(
+        SqlConnection connection, bool deapprove, bool failure)
+    {
+        if (deapprove || failure)
+        {
+            throw new NotSupportedException(
+                "170101 影子规格仅支持 APPROVE（解批含新语义清空预计收款日，与旧 SP 不回滚不同；失败分支未规格化）。");
+        }
+        const string sql = """
+            SELECT TOP 1 M.ACCOUNT_TYPE, M.ACCOUNT_NO
+            FROM dbo.COP_ACCOUNT_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=0
+              AND EXISTS (SELECT 1 FROM dbo.COP_ACCOUNT_D D
+                          WHERE D.ACCOUNT_TYPE=M.ACCOUNT_TYPE AND D.ACCOUNT_NO=M.ACCOUNT_NO)
+              AND NOT EXISTS (
+                  SELECT 1 FROM dbo.COP_ACCOUNT_D A
+                  JOIN dbo.COP_SEND_D S
+                    ON S.SEND_TYPE=A.S_R_TYPE AND S.SEND_NO=A.S_R_NO AND S.SERIAL_NO=A.S_R_SERIAL_NO
+                  WHERE A.ACCOUNT_TYPE=M.ACCOUNT_TYPE AND A.ACCOUNT_NO=M.ACCOUNT_NO
+                    AND ISNULL(S.FINISHED_QTY,0) + A.QTY > ISNULL(S.QTY,0))
+              AND NOT EXISTS (
+                  SELECT 1 FROM dbo.COP_ACCOUNT_D A
+                  JOIN dbo.COP_RETURN_D R
+                    ON R.RETURN_TYPE=A.S_R_TYPE AND R.RETURN_NO=A.S_R_NO AND R.SERIAL_NO=A.S_R_SERIAL_NO
+                  WHERE A.ACCOUNT_TYPE=M.ACCOUNT_TYPE AND A.ACCOUNT_NO=M.ACCOUNT_NO
+                    AND ISNULL(R.FINISHED_QTY,0) + A.QTY > ISNULL(R.QTY,0))
+            ORDER BY M.ACCOUNT_DATE DESC, M.ACCOUNT_NO DESC;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            throw new InvalidOperationException("未找到可对拍的未批核客户对账单（自动选单无结果）。");
+        }
+        return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
+
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys170201Async(
+        SqlConnection connection, bool deapprove, bool failure)
+    {
+        if (deapprove || failure)
+        {
+            throw new NotSupportedException(
+                "170201 影子规格仅支持 APPROVE（解批含新语义清空预计付款日，与旧 SP 不回滚不同；失败分支未规格化）。");
+        }
+        const string sql = """
+            SELECT TOP 1 M.DUE_TYPE, M.DUE_NO
+            FROM dbo.PUR_DUE_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=0
+              AND EXISTS (SELECT 1 FROM dbo.PUR_DUE_D D
+                          WHERE D.DUE_TYPE=M.DUE_TYPE AND D.DUE_NO=M.DUE_NO)
+              AND NOT EXISTS (
+                  SELECT 1 FROM dbo.PUR_DUE_D A
+                  JOIN dbo.PUR_RECEIVE_D S
+                    ON S.RECEIVE_TYPE=A.R_C_TYPE AND S.RECEIVE_NO=A.R_C_NO AND S.SERIAL_NO=A.R_C_SERIAL_NO
+                  WHERE A.DUE_TYPE=M.DUE_TYPE AND A.DUE_NO=M.DUE_NO
+                    AND ISNULL(S.FINISHED_QTY,0) + A.QTY > ISNULL(S.QTY,0))
+              AND NOT EXISTS (
+                  SELECT 1 FROM dbo.PUR_DUE_D A
+                  JOIN dbo.PUR_CANCEL_D R
+                    ON R.CANCEL_TYPE=A.R_C_TYPE AND R.CANCEL_NO=A.R_C_NO AND R.SERIAL_NO=A.R_C_SERIAL_NO
+                  WHERE A.DUE_TYPE=M.DUE_TYPE AND A.DUE_NO=M.DUE_NO
+                    AND ISNULL(R.FINISHED_QTY,0) + A.QTY > ISNULL(R.QTY,0))
+            ORDER BY M.DUE_DATE DESC, M.DUE_NO DESC;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            throw new InvalidOperationException("未找到可对拍的未批核厂商对账单（自动选单无结果）。");
+        }
+        return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs170101(MasterContext master)
+    {
+        var specs = new List<TableSpec>
+        {
+            new("COP_ACCOUNT_M", new[] { "ACCOUNT_TYPE", "ACCOUNT_NO" },
+                "@at=ACCOUNT_TYPE AND @an=ACCOUNT_NO", new[] { new SqlParameter("@at", master.ReceiveType), new SqlParameter("@an", master.ReceiveNo) }),
+            new("COP_ACCOUNT_D", new[] { "ACCOUNT_TYPE", "ACCOUNT_NO", "SERIAL_NO" },
+                "@at=ACCOUNT_TYPE AND @an=ACCOUNT_NO", new[] { new SqlParameter("@at", master.ReceiveType), new SqlParameter("@an", master.ReceiveNo) }),
+        };
+        // Snapshot every delivery and return line the settlement references (S_R_*),
+        // plus their masters; the write-back and completion effects land there.
+        specs.Add(new("COP_SEND_D", new[] { "SEND_TYPE", "SEND_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_ACCOUNT_D R WHERE R.ACCOUNT_TYPE=@at AND R.ACCOUNT_NO=@an "
+            + "AND COP_SEND_D.SEND_TYPE=R.S_R_TYPE AND COP_SEND_D.SEND_NO=R.S_R_NO AND COP_SEND_D.SERIAL_NO=R.S_R_SERIAL_NO)",
+            new[] { new SqlParameter("@at", master.ReceiveType), new SqlParameter("@an", master.ReceiveNo) }));
+        specs.Add(new("COP_SEND_M", new[] { "SEND_TYPE", "SEND_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_ACCOUNT_D R WHERE R.ACCOUNT_TYPE=@at AND R.ACCOUNT_NO=@an "
+            + "AND COP_SEND_M.SEND_TYPE=R.S_R_TYPE AND COP_SEND_M.SEND_NO=R.S_R_NO)",
+            new[] { new SqlParameter("@at", master.ReceiveType), new SqlParameter("@an", master.ReceiveNo) }));
+        specs.Add(new("COP_RETURN_D", new[] { "RETURN_TYPE", "RETURN_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_ACCOUNT_D R WHERE R.ACCOUNT_TYPE=@at AND R.ACCOUNT_NO=@an "
+            + "AND COP_RETURN_D.RETURN_TYPE=R.S_R_TYPE AND COP_RETURN_D.RETURN_NO=R.S_R_NO AND COP_RETURN_D.SERIAL_NO=R.S_R_SERIAL_NO)",
+            new[] { new SqlParameter("@at", master.ReceiveType), new SqlParameter("@an", master.ReceiveNo) }));
+        specs.Add(new("COP_RETURN_M", new[] { "RETURN_TYPE", "RETURN_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_ACCOUNT_D R WHERE R.ACCOUNT_TYPE=@at AND R.ACCOUNT_NO=@an "
+            + "AND COP_RETURN_M.RETURN_TYPE=R.S_R_TYPE AND COP_RETURN_M.RETURN_NO=R.S_R_NO)",
+            new[] { new SqlParameter("@at", master.ReceiveType), new SqlParameter("@an", master.ReceiveNo) }));
+        return specs;
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs170201(MasterContext master)
+    {
+        var specs = new List<TableSpec>
+        {
+            new("PUR_DUE_M", new[] { "DUE_TYPE", "DUE_NO" },
+                "@dt=DUE_TYPE AND @dn=DUE_NO", new[] { new SqlParameter("@dt", master.ReceiveType), new SqlParameter("@dn", master.ReceiveNo) }),
+            new("PUR_DUE_D", new[] { "DUE_TYPE", "DUE_NO", "SERIAL_NO" },
+                "@dt=DUE_TYPE AND @dn=DUE_NO", new[] { new SqlParameter("@dt", master.ReceiveType), new SqlParameter("@dn", master.ReceiveNo) }),
+        };
+        // Snapshot every receive and cancel line the settlement references (R_C_*),
+        // plus their masters; the write-back and completion effects land there.
+        specs.Add(new("PUR_RECEIVE_D", new[] { "RECEIVE_TYPE", "RECEIVE_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.PUR_DUE_D R WHERE R.DUE_TYPE=@dt AND R.DUE_NO=@dn "
+            + "AND PUR_RECEIVE_D.RECEIVE_TYPE=R.R_C_TYPE AND PUR_RECEIVE_D.RECEIVE_NO=R.R_C_NO AND PUR_RECEIVE_D.SERIAL_NO=R.R_C_SERIAL_NO)",
+            new[] { new SqlParameter("@dt", master.ReceiveType), new SqlParameter("@dn", master.ReceiveNo) }));
+        specs.Add(new("PUR_RECEIVE_M", new[] { "RECEIVE_TYPE", "RECEIVE_NO" },
+            "EXISTS (SELECT 1 FROM dbo.PUR_DUE_D R WHERE R.DUE_TYPE=@dt AND R.DUE_NO=@dn "
+            + "AND PUR_RECEIVE_M.RECEIVE_TYPE=R.R_C_TYPE AND PUR_RECEIVE_M.RECEIVE_NO=R.R_C_NO)",
+            new[] { new SqlParameter("@dt", master.ReceiveType), new SqlParameter("@dn", master.ReceiveNo) }));
+        specs.Add(new("PUR_CANCEL_D", new[] { "CANCEL_TYPE", "CANCEL_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.PUR_DUE_D R WHERE R.DUE_TYPE=@dt AND R.DUE_NO=@dn "
+            + "AND PUR_CANCEL_D.CANCEL_TYPE=R.R_C_TYPE AND PUR_CANCEL_D.CANCEL_NO=R.R_C_NO AND PUR_CANCEL_D.SERIAL_NO=R.R_C_SERIAL_NO)",
+            new[] { new SqlParameter("@dt", master.ReceiveType), new SqlParameter("@dn", master.ReceiveNo) }));
+        specs.Add(new("PUR_CANCEL_M", new[] { "CANCEL_TYPE", "CANCEL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.PUR_DUE_D R WHERE R.DUE_TYPE=@dt AND R.DUE_NO=@dn "
+            + "AND PUR_CANCEL_M.CANCEL_TYPE=R.R_C_TYPE AND PUR_CANCEL_M.CANCEL_NO=R.R_C_NO)",
+            new[] { new SqlParameter("@dt", master.ReceiveType), new SqlParameter("@dn", master.ReceiveNo) }));
         return specs;
     }
 
@@ -1959,6 +2128,14 @@ public sealed class EffectShadowRunner
         }
         if (oldValue is null || newValue is null)
         {
+            // Null and empty string are the same "unspecified" value for text columns
+            // (empty-value semantics, decision #61): a null-vs-empty diff is normalised.
+            var oldText = NormalizeValue(oldValue) as string;
+            var newText = NormalizeValue(newValue) as string;
+            if ((oldText is { Length: 0 }) || (newText is { Length: 0 }))
+            {
+                return (true, true);
+            }
             return (false, false);
         }
         if (NowLikeColumns.Contains(column) && oldValue is DateTime && newValue is DateTime)
