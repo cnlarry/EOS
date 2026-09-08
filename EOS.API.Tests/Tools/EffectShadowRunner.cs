@@ -29,7 +29,7 @@ namespace EOS.API.Tests.Tools;
 /// is PASS when the engine executes cleanly with zero residue.
 /// Supported modules: 1607 (purchase receipt), 1406 (customer delivery),
 /// 1505 (production inbound), 1407 (customer return), 1413 (delivery callback),
-/// 170101 (customer settlement), 170201 (supplier settlement),
+/// 1610 (purchase callback), 170101 (customer settlement), 170201 (supplier settlement),
 /// 1404 (customer quote), 1604 (supplier quote).
 /// </summary>
 [Trait("Category", "Tool")]
@@ -101,6 +101,9 @@ public sealed class EffectShadowRunner
         1413 => new(1413, "1413", "COP_CALLBACK_M", "COP_CALLBACK_D",
             "CALLBACK_TYPE", "CALLBACK_NO", "CALLBACK_DATE",
             null, null, null, "送货单回执"),
+        1610 => new(1610, "1610", "PUR_CALLBACK_M", "PUR_CALLBACK_D",
+            "CALLBACK_TYPE", "CALLBACK_NO", "CALLBACK_DATE",
+            "SUPPLIER_ID", "SUPPLIER", "SUPPLIER_ID", "收料核价单"),
         170101 => new(170101, "170101", "COP_ACCOUNT_M", "COP_ACCOUNT_D",
             "ACCOUNT_TYPE", "ACCOUNT_NO", "ACCOUNT_DATE",
             "CLIENT_ID", "CLIENT", "CLIENT_ID", "客户对账单"),
@@ -113,8 +116,11 @@ public sealed class EffectShadowRunner
         1604 => new(1604, "1604", "PUR_QUOTE_M", "PUR_QUOTE_D",
             "QUOTE_TYPE", "QUOTE_NO", "QUOTE_DATE",
             "SUPPLIER_ID", "SUPPLIER", "SUPPLIER_ID", "厂商报价单"),
+        1418 => new(1418, "1418", "COP_ORDER_CHANGE_M", "COP_ORDER_CHANGE_D",
+            "CHANGE_ORDER_TYPE", "CHANGE_ORDER_NO", "CHANGE_ORDER_DATE",
+            null, null, null, "订单变更单"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/170101/170201/1404/1604 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -214,9 +220,9 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 170101 or 170201 or 1404 or 1604))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418))
         {
-            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/170101/170201/1404/1604 only.");
+            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604 only.");
         }
         var spec = GetSpec(options.ModuleId);
         var deapprove = options.Event.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
@@ -351,6 +357,10 @@ public sealed class EffectShadowRunner
         {
             return await ResolveRecordKeys1413Async(connection, deapprove, failure);
         }
+        if (spec.ModuleId == 1610)
+        {
+            return await ResolveRecordKeys1610Async(connection, deapprove, failure);
+        }
         if (spec.ModuleId == 170101)
         {
             return await ResolveRecordKeys170101Async(connection, deapprove, failure);
@@ -358,6 +368,10 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 170201)
         {
             return await ResolveRecordKeys170201Async(connection, deapprove, failure);
+        }
+        if (spec.ModuleId == 1418)
+        {
+            return await ResolveRecordKeys1418Async(connection, deapprove, failure);
         }
         if (spec.ModuleId == 1404)
         {
@@ -725,6 +739,13 @@ public sealed class EffectShadowRunner
                 new QuoteParameterRecalcHandler(),
                 new LinkStampHandler(),
                 new StampLastActivityHandler(),
+                new MrpPlanAllocHandler(),
+                new FieldCopyHandler(),
+                new SetStateHandler(),
+                new BalanceAdjustHandler(),
+                new OrderChangeApplyHandler(),
+                new PurchaseChangeApplyHandler(),
+                new ProduceChangeApplyHandler(),
             },
             new EffectValidationExecutor(),
             auditWriter,
@@ -821,6 +842,13 @@ public sealed class EffectShadowRunner
         {
             return await ReadDetailContext1413Async(connection, transaction, keys);
         }
+        if (spec.ModuleId == 1610)
+        {
+            // Purchase callback detail rows reference external receive/cancel lines via
+            // S_R_TYPE/S_R_NO/S_R_SERIAL_NO; the snapshot specs query those tables directly
+            // (see BuildTableSpecs1610), so detail context rows are not materialised here.
+            return Array.Empty<DetailRow>();
+        }
         if (spec.ModuleId == 1404)
         {
             return await ReadDetailContext1404Async(connection, transaction, keys);
@@ -834,6 +862,11 @@ public sealed class EffectShadowRunner
             // Settlement detail rows reference external delivery/receive lines via
             // S_R_* / R_C_*; the snapshot specs query those tables directly (see
             // BuildTableSpecs170101/BuildTableSpecs170201), so no context rows here.
+            return Array.Empty<DetailRow>();
+        }        if (spec.ModuleId == 1418)
+        {
+            // Change detail rows reference the original order lines via the master's
+            // ORDER_TYPE/NO; the snapshot specs query those tables directly.
             return Array.Empty<DetailRow>();
         }
         const string sql = """
@@ -918,6 +951,10 @@ public sealed class EffectShadowRunner
         {
             return BuildTableSpecs1413(master, details);
         }
+        if (spec.ModuleId == 1610)
+        {
+            return BuildTableSpecs1610(master, details);
+        }
         if (spec.ModuleId == 170101)
         {
             return BuildTableSpecs170101(master);
@@ -925,6 +962,10 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 170201)
         {
             return BuildTableSpecs170201(master);
+        }
+        if (spec.ModuleId == 1418)
+        {
+            return BuildTableSpecs1418(master);
         }
         if (spec.ModuleId == 1404)
         {
@@ -1447,6 +1488,92 @@ public sealed class EffectShadowRunner
         return specs;
     }
 
+    /// <summary>
+    /// 1610 (收料核价单) sample selection. A callback is comparable when its detail rows
+    /// point at existing receive or cancel lines — otherwise both paths would update
+    /// nothing and the comparison would be meaningless. Deapprove is a no-op on both
+    /// sides (the action is configured with deapprove=none and the legacy procedure only
+    /// resets the confirm flag), so it proves zero residue rather than equality of an
+    /// effect. The failure branch does not exist: the module carries no validation rule
+    /// and the legacy procedure has no failure exit.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys1610Async(
+        SqlConnection connection, bool deapprove, bool failure)
+    {
+        if (failure)
+        {
+            throw new NotSupportedException(
+                "1610 影子规格不支持失败分支（模块无校验规则，旧存储过程亦无失败出口）。");
+        }
+        const string approveSql = """
+            SELECT TOP 1 M.CALLBACK_TYPE, M.CALLBACK_NO
+            FROM dbo.PUR_CALLBACK_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=0
+              AND EXISTS (SELECT 1 FROM dbo.PUR_CALLBACK_D D
+                          WHERE D.CALLBACK_TYPE=M.CALLBACK_TYPE AND D.CALLBACK_NO=M.CALLBACK_NO
+                            AND (EXISTS (SELECT 1 FROM dbo.PUR_RECEIVE_D R
+                                         WHERE R.RECEIVE_TYPE=D.S_R_TYPE AND R.RECEIVE_NO=D.S_R_NO
+                                           AND R.SERIAL_NO=D.S_R_SERIAL_NO)
+                              OR EXISTS (SELECT 1 FROM dbo.PUR_CANCEL_D C
+                                         WHERE C.CANCEL_TYPE=D.S_R_TYPE AND C.CANCEL_NO=D.S_R_NO
+                                           AND C.SERIAL_NO=D.S_R_SERIAL_NO)))
+            ORDER BY M.CALLBACK_DATE DESC, M.CALLBACK_NO DESC;
+            """;
+        const string deapproveSql = """
+            SELECT TOP 1 M.CALLBACK_TYPE, M.CALLBACK_NO
+            FROM dbo.PUR_CALLBACK_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=1
+              AND EXISTS (SELECT 1 FROM dbo.PUR_CALLBACK_D D
+                          WHERE D.CALLBACK_TYPE=M.CALLBACK_TYPE AND D.CALLBACK_NO=M.CALLBACK_NO)
+            ORDER BY ISNULL(M.CONFIRM_DATE, M.CALLBACK_DATE) DESC, M.CALLBACK_NO DESC;
+            """;
+        await using var command = new SqlCommand(deapprove ? deapproveSql : approveSql, connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            throw new InvalidOperationException(deapprove
+                ? "未找到可对拍的已批核收料核价单（1610，自动选单无结果）。"
+                : "未找到可对拍的未批核收料核价单（1610，明细引用行不存在）。");
+        }
+        return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
+
+    /// <summary>
+    /// 1610 snapshot scope: the callback document itself plus every receive and cancel
+    /// line it references (S_R_*) and their masters. The legacy procedure reprices the
+    /// receive lines and — only when no receive master was touched (its @@ROWCOUNT gate)
+    /// — the cancel lines, while the engine reprices both target families.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1610(MasterContext master, IReadOnlyList<DetailRow> details)
+    {
+        var parameters = new[]
+        {
+            new SqlParameter("@ct", master.ReceiveType),
+            new SqlParameter("@cn", master.ReceiveNo),
+        };
+        return new List<TableSpec>
+        {
+            new("PUR_CALLBACK_M", new[] { "CALLBACK_TYPE", "CALLBACK_NO" },
+                "@ct=CALLBACK_TYPE AND @cn=CALLBACK_NO", parameters),
+            new("PUR_CALLBACK_D", new[] { "CALLBACK_TYPE", "CALLBACK_NO", "SERIAL_NO" },
+                "@ct=CALLBACK_TYPE AND @cn=CALLBACK_NO", parameters),
+            new("PUR_RECEIVE_D", new[] { "RECEIVE_TYPE", "RECEIVE_NO", "SERIAL_NO" },
+                "EXISTS (SELECT 1 FROM dbo.PUR_CALLBACK_D R WHERE R.CALLBACK_TYPE=@ct AND R.CALLBACK_NO=@cn "
+                + "AND PUR_RECEIVE_D.RECEIVE_TYPE=R.S_R_TYPE AND PUR_RECEIVE_D.RECEIVE_NO=R.S_R_NO "
+                + "AND PUR_RECEIVE_D.SERIAL_NO=R.S_R_SERIAL_NO)", parameters),
+            new("PUR_RECEIVE_M", new[] { "RECEIVE_TYPE", "RECEIVE_NO" },
+                "EXISTS (SELECT 1 FROM dbo.PUR_CALLBACK_D R WHERE R.CALLBACK_TYPE=@ct AND R.CALLBACK_NO=@cn "
+                + "AND PUR_RECEIVE_M.RECEIVE_TYPE=R.S_R_TYPE AND PUR_RECEIVE_M.RECEIVE_NO=R.S_R_NO)", parameters),
+            new("PUR_CANCEL_D", new[] { "CANCEL_TYPE", "CANCEL_NO", "SERIAL_NO" },
+                "EXISTS (SELECT 1 FROM dbo.PUR_CALLBACK_D R WHERE R.CALLBACK_TYPE=@ct AND R.CALLBACK_NO=@cn "
+                + "AND PUR_CANCEL_D.CANCEL_TYPE=R.S_R_TYPE AND PUR_CANCEL_D.CANCEL_NO=R.S_R_NO "
+                + "AND PUR_CANCEL_D.SERIAL_NO=R.S_R_SERIAL_NO)", parameters),
+            new("PUR_CANCEL_M", new[] { "CANCEL_TYPE", "CANCEL_NO" },
+                "EXISTS (SELECT 1 FROM dbo.PUR_CALLBACK_D R WHERE R.CALLBACK_TYPE=@ct AND R.CALLBACK_NO=@cn "
+                + "AND PUR_CANCEL_M.CANCEL_TYPE=R.S_R_TYPE AND PUR_CANCEL_M.CANCEL_NO=R.S_R_NO)", parameters),
+        };
+    }
+
     private static async Task<IReadOnlyList<string>> ResolveRecordKeys170101Async(
         SqlConnection connection, bool deapprove, bool failure)
     {
@@ -1709,6 +1836,83 @@ public sealed class EffectShadowRunner
             "EXISTS (SELECT 1 FROM dbo.PUR_DUE_D R WHERE R.DUE_TYPE=@dt AND R.DUE_NO=@dn "
             + "AND PUR_CANCEL_M.CANCEL_TYPE=R.R_C_TYPE AND PUR_CANCEL_M.CANCEL_NO=R.R_C_NO)",
             new[] { new SqlParameter("@dt", master.ReceiveType), new SqlParameter("@dn", master.ReceiveNo) }));
+        return specs;
+    }
+
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys1418Async(
+        SqlConnection connection, bool deapprove, bool failure)
+    {
+        if (failure)
+        {
+            throw new NotSupportedException("1418 影子规格未规格化失败分支（模块无校验规则）。");
+        }
+        if (deapprove)
+        {
+            const string sql = """
+                SELECT TOP 1 M.CHANGE_ORDER_TYPE, M.CHANGE_ORDER_NO
+                FROM dbo.COP_ORDER_CHANGE_M M
+                WHERE ISNULL(M.CONFIRM_TAG,0)=1
+                  AND EXISTS (SELECT 1 FROM dbo.COP_ORDER_CHANGE_D D
+                              WHERE D.CHANGE_ORDER_TYPE=M.CHANGE_ORDER_TYPE AND D.CHANGE_ORDER_NO=M.CHANGE_ORDER_NO)
+                ORDER BY ISNULL(M.CONFIRM_DATE, M.CHANGE_ORDER_DATE) DESC;
+                """;
+            await using var command = new SqlCommand(sql, connection);
+            await using var reader = await command.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+                throw new InvalidOperationException("未找到可解批对拍的已批核订单变更单（自动选单无结果）。");
+            return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+        }
+        const string approveSql = """
+            SELECT TOP 1 M.CHANGE_ORDER_TYPE, M.CHANGE_ORDER_NO
+            FROM dbo.COP_ORDER_CHANGE_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=0
+              AND EXISTS (SELECT 1 FROM dbo.COP_ORDER_CHANGE_D D
+                          WHERE D.CHANGE_ORDER_TYPE=M.CHANGE_ORDER_TYPE AND D.CHANGE_ORDER_NO=M.CHANGE_ORDER_NO)
+            ORDER BY M.CHANGE_ORDER_DATE DESC;
+            """;
+        await using var approveCommand = new SqlCommand(approveSql, connection);
+        await using var approveReader = await approveCommand.ExecuteReaderAsync();
+        if (!await approveReader.ReadAsync())
+            throw new InvalidOperationException("未找到可对拍的未批核订单变更单（自动选单无结果）。");
+        return new[] { approveReader.GetString(0).Trim(), approveReader.GetString(1).Trim() };
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1418(MasterContext master)
+    {
+        var ct = new SqlParameter("@ct", master.ReceiveType);
+        var cn = new SqlParameter("@cn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("COP_ORDER_CHANGE_M", new[] { "CHANGE_ORDER_TYPE", "CHANGE_ORDER_NO" },
+                "@ct=CHANGE_ORDER_TYPE AND @cn=CHANGE_ORDER_NO", new[] { ct, cn }),
+            new("COP_ORDER_CHANGE_D", new[] { "CHANGE_ORDER_TYPE", "CHANGE_ORDER_NO", "SERIAL_NO" },
+                "@ct=CHANGE_ORDER_TYPE AND @cn=CHANGE_ORDER_NO", new[] { ct, cn }),
+        };
+        // Original order master/detail rows referenced by the change master, plus the
+        // documents whose CLIENT_ORDER_NO is stamped by field-copy.
+        specs.Add(new("COP_ORDER_M", new[] { "ORDER_TYPE", "ORDER_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_ORDER_CHANGE_M R WHERE R.CHANGE_ORDER_TYPE=@ct AND R.CHANGE_ORDER_NO=@cn "
+            + "AND COP_ORDER_M.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_M.ORDER_NO=R.ORDER_NO)",
+            new[] { ct, cn }));
+        specs.Add(new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_ORDER_CHANGE_M R WHERE R.CHANGE_ORDER_TYPE=@ct AND R.CHANGE_ORDER_NO=@cn "
+            + "AND COP_ORDER_D.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=R.ORDER_NO)",
+            new[] { ct, cn }));
+        specs.Add(new("CLIENT", new[] { "CLIENT_ID" },
+            "EXISTS (SELECT 1 FROM dbo.COP_ORDER_CHANGE_M R WHERE R.CHANGE_ORDER_TYPE=@ct AND R.CHANGE_ORDER_NO=@cn "
+            + "AND CLIENT.CLIENT_ID=R.CLIENT_ID)",
+            new[] { ct, cn }));
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_ORDER_CHANGE_D R WHERE R.CHANGE_ORDER_TYPE=@ct AND R.CHANGE_ORDER_NO=@cn "
+            + "AND PRODUCT.PRO_NO=R.PRO_NO)",
+            new[] { ct, cn }));
+        foreach (var table in new[] { "PUR_APPLY_D", "PUR_PURCHASE_D", "PUR_PURCHASE_CHANGE_D" })
+        {
+            specs.Add(new(table, new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+                "EXISTS (SELECT 1 FROM dbo.COP_ORDER_CHANGE_M R WHERE R.CHANGE_ORDER_TYPE=@ct AND R.CHANGE_ORDER_NO=@cn "
+                + "AND " + table + ".ORDER_TYPE=R.ORDER_TYPE AND " + table + ".ORDER_NO=R.ORDER_NO)",
+                new[] { ct, cn }));
+        }
         return specs;
     }
 
