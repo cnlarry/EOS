@@ -584,6 +584,105 @@ public class ServiceEffectHandlerTests
         Assert.Throws<EOS.API.Data.Effects.EffectConfigException>(
             () => EOS.API.Data.Effects.ServiceEffectHandlers.ChangeApplyConfig.Parse(ok, plan, missing));
     }
+    [Fact]
+    public void Purchase_change_apply_parse_supports_master_fields_and_prefix()
+    {
+        var plan = new ModuleEffectPlan(1609, "PUR_PURCHASE_CHANGE_M", "PUR_PURCHASE_CHANGE_D", "v1",
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+        plan = plan with { MasterPkOrder = new[] { "CHANGE_PURCHASE_TYPE", "CHANGE_PURCHASE_NO" } };
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "PUR_PURCHASE_M", "PUR_PURCHASE_M.PURCHASE_TYPE", "PUR_PURCHASE_M.PURCHASE_NO",
+            "PUR_PURCHASE_M.PAY_CONDITION", "PUR_PURCHASE_M.PRICE_CONDITION", "PUR_PURCHASE_M.DELIVERY_ADDRESS",
+            "PUR_PURCHASE_M.RECKONING_ADDRESS", "PUR_PURCHASE_M.BILL_ADDRESS", "PUR_PURCHASE_M.AMOUNT",
+            "PUR_PURCHASE_M.AMOUNT_TAX", "PUR_PURCHASE_M.TAX_SUM", "PUR_PURCHASE_M.CURR_RATE",
+            "PUR_PURCHASE_D", "PUR_PURCHASE_D.PURCHASE_TYPE", "PUR_PURCHASE_D.PURCHASE_NO", "PUR_PURCHASE_D.SERIAL_NO",
+            "PUR_PURCHASE_D.PAY_CONDITION", "PUR_PURCHASE_D.PRICE_CONDITION", "PUR_PURCHASE_D.DELIVERY_ADDRESS",
+            "PUR_PURCHASE_D.RECKONING_ADDRESS", "PUR_PURCHASE_D.BILL_ADDRESS", "PUR_PURCHASE_D.QTY",
+            "PUR_PURCHASE_D.PRICE", "PUR_PURCHASE_D.PLAN_DELIVERY_DATE", "PUR_PURCHASE_D.SPARE_QTY",
+            "PUR_PURCHASE_D.RECEIVE_QTY", "PUR_PURCHASE_D.RECEIVE_SPARE_QTY", "PUR_PURCHASE_D.AMOUNT",
+            "PUR_PURCHASE_D.AMOUNT_TAX", "PUR_PURCHASE_D.TAX_SUM", "PUR_PURCHASE_D.REBATE",
+            "PUR_PURCHASE_D.TAX_TYPE", "PUR_PURCHASE_D.TAX_RATE", "PUR_PURCHASE_D.CURR_RATE",
+            "PUR_PURCHASE_CHANGE_M", "PUR_PURCHASE_CHANGE_M.PURCHASE_TYPE", "PUR_PURCHASE_CHANGE_M.PURCHASE_NO",
+            "PUR_PURCHASE_CHANGE_M.PAY_CONDITION", "PUR_PURCHASE_CHANGE_M.PRICE_CONDITION",
+            "PUR_PURCHASE_CHANGE_M.DELIVERY_ADDRESS", "PUR_PURCHASE_CHANGE_M.RECKONING_ADDRESS",
+            "PUR_PURCHASE_CHANGE_M.BILL_ADDRESS", "PUR_PURCHASE_CHANGE_M.CHANGE_PURCHASE_TYPE",
+            "PUR_PURCHASE_CHANGE_M.CHANGE_PURCHASE_NO",
+            "PUR_PURCHASE_CHANGE_D", "PUR_PURCHASE_CHANGE_D.PURCHASE_TYPE", "PUR_PURCHASE_CHANGE_D.PURCHASE_NO",
+            "PUR_PURCHASE_CHANGE_D.PURCHASE_SERIAL_NO", "PUR_PURCHASE_CHANGE_D.QTY", "PUR_PURCHASE_CHANGE_D.PRICE",
+            "PUR_PURCHASE_CHANGE_D.PLAN_DELIVERY_DATE", "PUR_PURCHASE_CHANGE_D.SPARE_QTY",
+            "PUR_PURCHASE_CHANGE_D.RECEIVE_QTY", "PUR_PURCHASE_CHANGE_D.RECEIVE_SPARE_QTY",
+        };
+        var ok = JsonDocument.Parse("""{"master":{"fields":["PAY_CONDITION","PRICE_CONDITION","DELIVERY_ADDRESS","RECKONING_ADDRESS","BILL_ADDRESS"]},"detail":{"fields":["QTY","PRICE","PLAN_DELIVERY_DATE","SPARE_QTY","RECEIVE_QTY","RECEIVE_SPARE_QTY","AMOUNT","AMOUNT_TAX","TAX_SUM"]},"totals":true}""").RootElement.Clone();
+        var cfg = EOS.API.Data.Effects.ServiceEffectHandlers.ChangeApplyConfig.Parse(ok, plan, columns);
+        Assert.Equal("PUR_PURCHASE_M", cfg.MasterTarget);
+        Assert.Equal("PUR_PURCHASE_D", cfg.DetailTarget);
+        Assert.Equal("PURCHASE_TYPE", cfg.PrefixType);
+        Assert.Equal("PURCHASE_SERIAL_NO", cfg.SerialColumn);
+        Assert.Equal(5, cfg.MasterFields.Count);
+        Assert.True(cfg.Totals);
+        Assert.True(cfg.HasAmount);
+    }
+
+    [Fact]
+    public void Produce_change_apply_parse_no_amount_shape()
+    {
+        var plan = new ModuleEffectPlan(1509, "MOC_PRODUCE_CHANGE_M", "MOC_PRODUCE_CHANGE_D", "v1",
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+        plan = plan with { MasterPkOrder = new[] { "CHANGE_PRODUCE_TYPE", "CHANGE_PRODUCE_NO" } };
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "MOC_PRODUCE_M", "MOC_PRODUCE_M.PRODUCE_TYPE", "MOC_PRODUCE_M.PRODUCE_NO",
+            "MOC_PRODUCE_M.QTY", "MOC_PRODUCE_M.SPARE_QTY", "MOC_PRODUCE_M.PRE_SEND_DATE",
+            "MOC_PRODUCE_M.PLAN_START", "MOC_PRODUCE_M.PLAN_END", "MOC_PRODUCE_M.START_TAG",
+            "MOC_PRODUCE_M.END_TAG", "MOC_PRODUCE_M.ATTENTION", "MOC_PRODUCE_M.FINISHED_QTY",
+            "MOC_PRODUCE_M.FINISHED_SPARE_QTY", "MOC_PRODUCE_M.FINISHED_SEND_QTY",
+            "MOC_PRODUCE_M.FINISHED_SEND_SPARE_QTY", "MOC_PRODUCE_M.FINISHED_FITOUT_QTY",
+            "MOC_PRODUCE_M.FINISHED_FITOUT_SPARE_QTY",
+            "MOC_PRODUCE_D", "MOC_PRODUCE_D.PRODUCE_TYPE", "MOC_PRODUCE_D.PRODUCE_NO", "MOC_PRODUCE_D.SERIAL_NO",
+            "MOC_PRODUCE_D.NEED_QTY", "MOC_PRODUCE_D.USED_QTY", "MOC_PRODUCE_D.APPLY_QTY",
+            "MOC_PRODUCE_CHANGE_M", "MOC_PRODUCE_CHANGE_M.PRODUCE_TYPE", "MOC_PRODUCE_CHANGE_M.PRODUCE_NO",
+            "MOC_PRODUCE_CHANGE_M.QTY", "MOC_PRODUCE_CHANGE_M.SPARE_QTY", "MOC_PRODUCE_CHANGE_M.PRE_SEND_DATE",
+            "MOC_PRODUCE_CHANGE_M.PLAN_START", "MOC_PRODUCE_CHANGE_M.PLAN_END",
+            "MOC_PRODUCE_CHANGE_M.START_TAG", "MOC_PRODUCE_CHANGE_M.END_TAG",
+            "MOC_PRODUCE_CHANGE_M.ATTENTION", "MOC_PRODUCE_CHANGE_M.FINISHED_QTY",
+            "MOC_PRODUCE_CHANGE_M.FINISHED_SPARE_QTY", "MOC_PRODUCE_CHANGE_M.FINISHED_SEND_QTY",
+            "MOC_PRODUCE_CHANGE_M.FINISHED_SEND_SPARE_QTY", "MOC_PRODUCE_CHANGE_M.FINISHED_FITOUT_QTY",
+            "MOC_PRODUCE_CHANGE_M.FINISHED_FITOUT_SPARE_QTY", "MOC_PRODUCE_CHANGE_M.CHANGE_PRODUCE_TYPE",
+            "MOC_PRODUCE_CHANGE_M.CHANGE_PRODUCE_NO",
+            "MOC_PRODUCE_CHANGE_D", "MOC_PRODUCE_CHANGE_D.PRODUCE_TYPE", "MOC_PRODUCE_CHANGE_D.PRODUCE_NO",
+            "MOC_PRODUCE_CHANGE_D.PRODUCE_SERIAL_NO", "MOC_PRODUCE_CHANGE_D.NEED_QTY",
+            "MOC_PRODUCE_CHANGE_D.USED_QTY", "MOC_PRODUCE_CHANGE_D.APPLY_QTY",
+        };
+        var ok = JsonDocument.Parse("""{"master":{"fields":["QTY","SPARE_QTY","PRE_SEND_DATE","PLAN_START","PLAN_END","START_TAG","END_TAG","ATTENTION","FINISHED_QTY","FINISHED_SPARE_QTY","FINISHED_SEND_QTY","FINISHED_SEND_SPARE_QTY","FINISHED_FITOUT_QTY","FINISHED_FITOUT_SPARE_QTY"]},"detail":{"fields":["NEED_QTY","USED_QTY","APPLY_QTY"]}}""").RootElement.Clone();
+        var cfg = EOS.API.Data.Effects.ServiceEffectHandlers.ChangeApplyConfig.Parse(ok, plan, columns);
+        Assert.Equal("MOC_PRODUCE_M", cfg.MasterTarget);
+        Assert.Equal("PRODUCE_TYPE", cfg.PrefixType);
+        Assert.False(cfg.Totals);
+        Assert.False(cfg.HasAmount);
+    }
+    [Fact]
+    public void FieldCopy_refs_builds_mapped_join_with_document_scope()
+    {
+        var plan = new ModuleEffectPlan(1418, "COP_ORDER_CHANGE_M", "COP_ORDER_CHANGE_D", "v1",
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+        plan = plan with { MasterPkOrder = new[] { "CHANGE_ORDER_TYPE", "CHANGE_ORDER_NO" } };
+        var parameters = new List<EffectSqlParameter>();
+        var sql = EOS.API.Data.Effects.ServiceEffectHandlers.FieldCopyHandler.BuildCopyUpdate(
+            plan, "COP_ORDER_M",
+            new[] { (Target: "CLIENT_ORDER_NO", Source: "CLIENT_ORDER_NO") },
+            new[]
+            {
+                (Target: "ORDER_TYPE", Source: "ORDER_TYPE"),
+                (Target: "ORDER_NO", Source: "ORDER_NO"),
+            },
+            new[] { "E2E", "E2ESL0817124138OC01" },
+            parameters);
+        Assert.Contains("T.[ORDER_TYPE] = M.[ORDER_TYPE] AND T.[ORDER_NO] = M.[ORDER_NO]", sql);
+        Assert.Contains("T.[CLIENT_ORDER_NO] = M.[CLIENT_ORDER_NO]", sql);
+        Assert.Contains("WHERE M.[CHANGE_ORDER_TYPE] = @mk0 AND M.[CHANGE_ORDER_NO] = @mk1", sql);
+        Assert.Equal(new object?[] { "E2E", "E2ESL0817124138OC01" }, parameters.Select(p => p.Value));
+    }
 }
 
 public class EffectEngineGateTests
