@@ -541,6 +541,42 @@ public class ServiceEffectHandlerTests
         Assert.Throws<EOS.API.Data.Effects.EffectConfigException>(
             () => EOS.API.Data.Effects.ServiceEffectHandlers.QuoteParameterConfig.Parse(ok, plan, missing));
     }
+    [Fact]
+    public void Order_change_apply_key_implemented_and_schema_validated()
+    {
+        Assert.True(EOS.API.Data.Effects.EffectRegistry.IsImplemented("order-change-apply"));
+        var ok = """{"detail":{"fields":["QTY","PRICE","PRE_SEND_DATE","AMOUNT","AMOUNT_TAX","TAX_SUM"]},"totals":true}""";
+        Assert.Empty(EOS.API.Data.EffectStructSchemas.ValidateParams("order-change-apply", ok));
+        Assert.Empty(EOS.API.Data.EffectStructSchemas.ValidateReverse("""{"kind":"none","note":"解批不还原原单"}"""));
+        var bad = EOS.API.Data.EffectStructSchemas.ValidateParams("order-change-apply", """{"detail":{"fields":[]},"totals":true}""");
+        Assert.Contains(bad, issue => issue.Contains("detail.fields 必须是非空数组"));
+    }
+
+    [Fact]
+    public void Order_change_apply_parse_resolves_targets_and_rejects_missing_columns()
+    {
+        var plan = new ModuleEffectPlan(1418, "COP_ORDER_CHANGE_M", "COP_ORDER_CHANGE_D", "v1",
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+        plan = plan with { MasterPkOrder = new[] { "CHANGE_ORDER_TYPE", "CHANGE_ORDER_NO" } };
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "COP_ORDER_M", "COP_ORDER_M.ORDER_TYPE", "COP_ORDER_M.ORDER_NO", "COP_ORDER_M.CURR_RATE",
+            "COP_ORDER_D", "COP_ORDER_D.ORDER_TYPE", "COP_ORDER_D.ORDER_NO", "COP_ORDER_D.SERIAL_NO",
+            "COP_ORDER_D.REBATE", "COP_ORDER_D.TAX_TYPE", "COP_ORDER_D.TAX_RATE", "COP_ORDER_D.QTY",
+            "COP_ORDER_D.PRICE", "COP_ORDER_D.CURR_RATE", "COP_ORDER_D.PRE_SEND_DATE",
+            "COP_ORDER_CHANGE_M", "COP_ORDER_CHANGE_M.ORDER_TYPE", "COP_ORDER_CHANGE_M.ORDER_NO",
+            "COP_ORDER_CHANGE_D", "COP_ORDER_CHANGE_D.ORDER_TYPE", "COP_ORDER_CHANGE_D.ORDER_NO",
+            "COP_ORDER_CHANGE_D.ORDER_SERIAL_NO", "COP_ORDER_CHANGE_D.PRE_DELIVERY_DATE",
+        };
+        var ok = JsonDocument.Parse("""{"detail":{"fields":["QTY","PRE_SEND_DATE"]},"totals":true}""").RootElement.Clone();
+        var cfg = EOS.API.Data.Effects.ServiceEffectHandlers.ChangeApplyConfig.Parse(ok, plan, columns);
+        Assert.Equal("COP_ORDER_M", cfg.MasterTarget);
+        Assert.Equal("COP_ORDER_D", cfg.DetailTarget);
+        Assert.Equal("ORDER_SERIAL_NO", cfg.SerialColumn);
+        var missing = new HashSet<string>(columns.Where(item => item != "COP_ORDER_D.CURR_RATE"));
+        Assert.Throws<EOS.API.Data.Effects.EffectConfigException>(
+            () => EOS.API.Data.Effects.ServiceEffectHandlers.ChangeApplyConfig.Parse(ok, plan, missing));
+    }
 }
 
 public class EffectEngineGateTests
