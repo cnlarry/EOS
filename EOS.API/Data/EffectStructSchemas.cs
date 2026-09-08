@@ -196,7 +196,9 @@ public static class EffectStructSchemas
         {
             issues.AddRange(ValidatePriceSyncParams(root));
         }
-        if (effectKey.Equals("order-change-apply", StringComparison.OrdinalIgnoreCase))
+        if (effectKey.Equals("order-change-apply", StringComparison.OrdinalIgnoreCase)
+            || effectKey.Equals("purchase-change-apply", StringComparison.OrdinalIgnoreCase)
+            || effectKey.Equals("produce-change-apply", StringComparison.OrdinalIgnoreCase))
         {
             issues.AddRange(ValidateChangeApplyParams(root));
         }
@@ -303,6 +305,19 @@ public static class EffectStructSchemas
     private static IReadOnlyList<string> ValidateChangeApplyParams(JsonElement root)
     {
         var issues = new List<string>();
+        if (root.TryGetProperty("master", out var master) && master.ValueKind == JsonValueKind.Object)
+        {
+            if (!master.TryGetProperty("fields", out var fields) || fields.ValueKind != JsonValueKind.Array || fields.GetArrayLength() == 0)
+            {
+                issues.Add("change-apply.master.fields 必须是非空数组。");
+            }
+            else
+            {
+                foreach (var item in fields.EnumerateArray())
+                    if (item.ValueKind != JsonValueKind.String || !Identifier.IsMatch(item.GetString() ?? string.Empty))
+                        issues.Add("change-apply.master.fields 存在非法字段名。");
+            }
+        }
         if (root.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.Object)
         {
             if (!detail.TryGetProperty("fields", out var fields) || fields.ValueKind != JsonValueKind.Array || fields.GetArrayLength() == 0)

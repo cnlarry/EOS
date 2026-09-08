@@ -38,7 +38,7 @@ public sealed class LinkStampHandler : IEffectServiceHandler
             return await StampAsync(context, spec, token);
 
         var kind = RequireReverseKind(context.Action.Reverse);
-        return kind == "no-reverse" ? 0 : await ClearAsync(context, spec, token);
+        return kind is "no-reverse" or "none" ? 0 : await ClearAsync(context, spec, token);
     }
 
     private static async Task<int> StampAsync(ServiceEffectContext context, LinkStampSpec spec, CancellationToken token)
@@ -140,7 +140,7 @@ public sealed class LinkStampHandler : IEffectServiceHandler
                 : null;
         return kind switch
         {
-            "clear-refs" or "no-reverse" => kind,
+            "clear-refs" or "no-reverse" or "none" => kind,
             null => throw new EffectConfigException("link-stamp 解批缺少 reverse.kind，禁止无守卫执行。"),
             _ => throw new EffectConfigException($"link-stamp 解批 reverse.kind '{kind}' 不受支持。"),
         };
@@ -340,12 +340,18 @@ public sealed class FieldCopyHandler : IEffectServiceHandler
             var headerFields = ServiceEffectFields.Read(root, "headerFields");
             foreach (var target in targets.EnumerateArray())
             {
-                var table = target.GetString()!.Trim();
+                // Shape B/C: a plain table name keeps the legacy same-name key join;
+                // an object adds explicit refs [{target, source}] locating the target
+                // row from the master columns (e.g. the referenced original document
+                // keys on a change master) and may narrow the copied fields per target.
+                var (table, refs, perTargetFields) = target.ValueKind == JsonValueKind.String
+                    ? (target.GetString()!.Trim(), Array.Empty<(string Target, string Source)>(), fields)
+                    : ParseTargetObject(target);
                 var isMasterShape = table.EndsWith("_M", StringComparison.OrdinalIgnoreCase);
-                var pairs = fields.Select(field => (Target: field, Source: field))
+                var pairs = perTargetFields.Select(field => (Target: field, Source: field))
                     .Concat(isMasterShape ? headerFields.Select(field => (Target: field, Source: field)) : Array.Empty<(string, string)>())
                     .ToList();
-                affected += await CopyAsync(context, table, pairs, columns, token);
+                affected += await CopyAsync(context, table, pairs, refs, columns, token);
             }
         }
         else
@@ -354,15 +360,42 @@ public sealed class FieldCopyHandler : IEffectServiceHandler
             var field = ServiceEffectFields.Required(root, "field");
             var sourceField = ServiceEffectFields.Required(root, "sourceField");
             affected += await CopyAsync(context, table,
-                new[] { (Target: field, Source: sourceField) }, columns, token);
+                new[] { (Target: field, Source: sourceField) }, Array.Empty<(string, string)>(), columns, token);
         }
         return affected;
+    }
+
+    private static (string Table, IReadOnlyList<(string Target, string Source)> Refs, string[] Fields) ParseTargetObject(JsonElement target)
+    {
+        var table = ServiceEffectFields.Required(target, "table");
+        var fields = target.TryGetProperty("fields", out var fieldsValue) && fieldsValue.ValueKind == JsonValueKind.Array
+            ? fieldsValue.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString()!.Trim()).ToArray()
+            : Array.Empty<string>();
+        if (fields.Length == 0)
+            throw new EffectConfigException("field-copy targets 对象缺少非空 fields。");
+        var refs = new List<(string Target, string Source)>();
+        if (target.TryGetProperty("refs", out var refsValue) && refsValue.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in refsValue.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object
+                    || !item.TryGetProperty("target", out var t) || t.ValueKind != JsonValueKind.String
+                    || !item.TryGetProperty("source", out var s) || s.ValueKind != JsonValueKind.String)
+                    throw new EffectConfigException("field-copy refs 项必须是 {target, source}。");
+                refs.Add((t.GetString()!.Trim(), s.GetString()!.Trim()));
+            }
+        }
+        if (refs.Count == 0)
+            throw new EffectConfigException("field-copy targets 对象缺少非空 refs。");
+        return (table, refs, fields);
     }
 
     private static async Task<int> CopyAsync(
         ServiceEffectContext context,
         string table,
         IReadOnlyList<(string Target, string Source)> pairs,
+        IReadOnlyList<(string Target, string Source)> refs,
         ISet<string> columns,
         CancellationToken token)
     {
@@ -380,9 +413,39 @@ public sealed class FieldCopyHandler : IEffectServiceHandler
         }
         if (sets.Count == 0)
             throw new EffectConfigException("field-copy 缺少可复制字段。");
-        var sql = $"UPDATE T SET {string.Join(", ", sets)} FROM dbo.{ServiceEffectSql.Q(table)} T "
-            + $"JOIN dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M ON {ServiceEffectSql.SameNameKeyJoin(plan, "T")}";
-        return await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction, sql, Array.Empty<EffectSqlParameter>(), token);
+        var join = refs.Count > 0
+            ? string.Join(" AND ", refs.Select(reference =>
+                $"T.{ServiceEffectSql.Q(reference.Target)} = M.{ServiceEffectSql.Q(reference.Source)}"))
+            : ServiceEffectSql.SameNameKeyJoin(plan, "T");
+        foreach (var reference in refs)
+        {
+            if (!columns.Contains(table + "." + reference.Target))
+                throw new EffectConfigException($"field-copy 定位列不存在：{table}.{reference.Target}。");
+            if (!columns.Contains(plan.MasterTable + "." + reference.Source))
+                throw new EffectConfigException($"field-copy 主表定位列不存在：{plan.MasterTable}.{reference.Source}。");
+        }
+        var parameters = new List<EffectSqlParameter>();
+        var sql = BuildCopyUpdate(plan, table, pairs, refs, context.MasterKeyValues, parameters);
+        return await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction, sql, parameters, token);
+    }
+
+    internal static string BuildCopyUpdate(
+        ModuleEffectPlan plan,
+        string table,
+        IReadOnlyList<(string Target, string Source)> pairs,
+        IReadOnlyList<(string Target, string Source)> refs,
+        IReadOnlyList<string> masterKeyValues,
+        List<EffectSqlParameter> parameters)
+    {
+        var join = refs.Count > 0
+            ? string.Join(" AND ", refs.Select(reference =>
+                $"T.{ServiceEffectSql.Q(reference.Target)} = M.{ServiceEffectSql.Q(reference.Source)}"))
+            : ServiceEffectSql.SameNameKeyJoin(plan, "T");
+        var sets = string.Join(", ", pairs.Select(pair =>
+            $"T.{ServiceEffectSql.Q(pair.Target)} = M.{ServiceEffectSql.Q(pair.Source)}"));
+        var where = ServiceEffectSql.MasterKeyFilter(plan, masterKeyValues, parameters);
+        return $"UPDATE T SET {sets} FROM dbo.{ServiceEffectSql.Q(table)} T "
+            + $"JOIN dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M ON {join} WHERE {where}";
     }
 }
 

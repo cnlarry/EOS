@@ -4,13 +4,13 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 
 /// <summary>
-/// order-change-apply: on approval the referenced order detail lines are overwritten
-/// from the change document (quantities, prices, plan dates, finished counters) and the
-/// tax-split amounts are recomputed, then the order master totals are re-aggregated.
-/// Ported from P_WF_COP_ORDER_CHANGE. Deapprove is a no-op (reverse kind "none"),
-/// matching the legacy procedure which leaves the order untouched on deapprove.
-/// All identifiers come from closed configuration checked against physical columns;
-/// only key values travel as parameters.
+/// order/purchase/produce-change-apply: on approval the referenced business document is
+/// overwritten from the change document — header fields copied from the change master,
+/// detail lines copied from the change detail (quantities, prices, plan dates, finished
+/// counters) with the tax-split amounts recomputed, then master totals re-aggregated.
+/// Ported from P_WF_COP_ORDER_CHANGE / P_WF_PUR_PURCHASE_CHANGE / P_WF_MOC_PRODUCE_CHANGE.
+/// Deapprove is a no-op (reverse kind "none"), matching the legacy procedures.
+/// All identifiers come from closed configuration checked against physical columns.
 /// </summary>
 public sealed class OrderChangeApplyHandler : IEffectServiceHandler
 {
@@ -20,18 +20,32 @@ public sealed class OrderChangeApplyHandler : IEffectServiceHandler
         ChangeApplyExecutor.ExecuteAsync(context, token);
 }
 
+public sealed class PurchaseChangeApplyHandler : IEffectServiceHandler
+{
+    public string EffectKey => "purchase-change-apply";
+
+    public Task<int> ExecuteAsync(ServiceEffectContext context, CancellationToken token) =>
+        ChangeApplyExecutor.ExecuteAsync(context, token);
+}
+
+public sealed class ProduceChangeApplyHandler : IEffectServiceHandler
+{
+    public string EffectKey => "produce-change-apply";
+
+    public Task<int> ExecuteAsync(ServiceEffectContext context, CancellationToken token) =>
+        ChangeApplyExecutor.ExecuteAsync(context, token);
+}
+
 internal static class ChangeApplyExecutor
 {
-    internal static readonly IReadOnlySet<string> ChangeAmountColumns =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "AMOUNT", "AMOUNT_TAX", "TAX_SUM" };
     public static async Task<int> ExecuteAsync(ServiceEffectContext context, CancellationToken token)
     {
-        var root = context.Action.Params ?? throw new EffectConfigException("order-change-apply 缺少参数。");
+        var root = context.Action.Params ?? throw new EffectConfigException("change-apply 缺少参数。");
         var plan = context.Plan;
         if (plan.MasterTable is null || plan.DetailTable is null)
-            throw new EffectConfigException("order-change-apply 需要主子表形态。");
+            throw new EffectConfigException("change-apply 需要主子表形态。");
         if (context.MasterKeyValues.Count < 2)
-            throw new EffectConfigException("order-change-apply 缺少单据主键值。");
+            throw new EffectConfigException("change-apply 缺少单据主键值。");
         var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
         var cfg = ChangeApplyConfig.Parse(root, plan, columns);
 
@@ -39,92 +53,94 @@ internal static class ChangeApplyExecutor
         {
             return await ApproveAsync(context, cfg, token);
         }
-        return await DeapproveAsync(context, token);
+        // reverse kind "none": the legacy change procedures leave the target untouched
+        // on deapprove.
+        var kind = ReverseKind(context);
+        if (kind is "none" or "no-reverse")
+        {
+            return 0;
+        }
+        throw new EffectConfigException($"change-apply 解批 reverse.kind '{kind}' 不受支持（仅 none/no-reverse）。");
     }
 
     private static async Task<int> ApproveAsync(ServiceEffectContext context, ChangeApplyConfig cfg, CancellationToken token)
     {
         var plan = context.Plan;
         var parameters = new List<EffectSqlParameter>();
-        var changeWhere = ServiceEffectSql.MasterKeyFilter(plan, context.MasterKeyValues, parameters);
-        var changeType = context.MasterKeyValues[0];
-        var changeNo = context.MasterKeyValues[1];
-        parameters.Add(new EffectSqlParameter("@ct", changeType));
-        parameters.Add(new EffectSqlParameter("@cn", changeNo));
+        var masterWhere = ServiceEffectSql.MasterKeyFilter(plan, context.MasterKeyValues, parameters);
+        var affected = 0;
 
-        // Read the referenced order key from the change master.
-        var orderType = "@ot";
-        var orderNo = "@on";
-        string? orderTypeValue;
-        string? orderNoValue;
-        var read = $"SELECT M.ORDER_TYPE, M.ORDER_NO FROM dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M WHERE {changeWhere}";
-        await using (var command = new SqlCommand(read, context.Connection, context.Transaction))
+        if (cfg.MasterFields.Count > 0)
         {
-            foreach (var parameter in parameters)
-                command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
-            await using var reader = await command.ExecuteReaderAsync(token);
-            if (!await reader.ReadAsync(token))
-                throw new EffectConfigException("order-change-apply 读不到变更主表行。");
-            orderTypeValue = reader.IsDBNull(0) ? null : reader.GetString(0).Trim();
-            orderNoValue = reader.IsDBNull(1) ? null : reader.GetString(1).Trim();
+            var masterSets = string.Join(", ", cfg.MasterFields.Select(field =>
+                $"T.{ServiceEffectSql.Q(field)} = M.{ServiceEffectSql.Q(field)}"));
+            var masterSql = $"UPDATE T SET {masterSets} "
+                + $"FROM dbo.{ServiceEffectSql.Q(cfg.MasterTarget)} T "
+                + $"JOIN dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M "
+                + $"ON T.{ServiceEffectSql.Q(cfg.PrefixType)}=M.{ServiceEffectSql.Q(cfg.PrefixType)} "
+                + $"AND T.{ServiceEffectSql.Q(cfg.PrefixNo)}=M.{ServiceEffectSql.Q(cfg.PrefixNo)} "
+                + $"WHERE {masterWhere}";
+            affected += await ExecRawAsync(context, masterSql, parameters, token);
         }
-        if (string.IsNullOrWhiteSpace(orderTypeValue) || string.IsNullOrWhiteSpace(orderNoValue))
-            throw new EffectConfigException("order-change-apply 变更主表缺少原单键。");
 
-        // Overwrite the referenced order detail lines.
         var copy = new List<string>();
-        foreach (var field in cfg.DetailFields)
+        foreach (var pair in cfg.DetailFieldPairs)
         {
-            if (ChangeApplyExecutor.ChangeAmountColumns.Contains(field))
-            {
-                continue;
-            }
-            var sourceColumn = field.Equals("PRE_SEND_DATE", StringComparison.OrdinalIgnoreCase)
-                ? "PRE_DELIVERY_DATE"
-                : field;
-            copy.Add($"T.{ServiceEffectSql.Q(field)} = d.{ServiceEffectSql.Q(sourceColumn)}");
+            copy.Add($"T.{ServiceEffectSql.Q(pair.Target)} = d.{ServiceEffectSql.Q(pair.Source)}");
         }
-        copy.AddRange(AmountAssignments("T", "d"));
+        copy.AddRange(AmountAssignments(cfg.HasAmount, "T", "d"));
         var detailSql = $"UPDATE T SET {string.Join(", ", copy)} "
             + $"FROM dbo.{ServiceEffectSql.Q(cfg.DetailTarget)} T JOIN dbo.{ServiceEffectSql.Q(plan.DetailTable!)} d "
-            + $"ON T.ORDER_TYPE=d.ORDER_TYPE AND T.ORDER_NO=d.ORDER_NO AND T.SERIAL_NO=d.{ServiceEffectSql.Q(cfg.SerialColumn)} "
-            + $"WHERE d.{ServiceEffectSql.Q(plan.MasterPkOrder[0])}=@ct "
-            + $"AND d.{ServiceEffectSql.Q(plan.MasterPkOrder[1])}=@cn";
-        var affected = await ExecRawAsync(context, detailSql, parameters, token);
+            + $"ON T.{ServiceEffectSql.Q(cfg.PrefixType)}=d.{ServiceEffectSql.Q(cfg.PrefixType)} "
+            + $"AND T.{ServiceEffectSql.Q(cfg.PrefixNo)}=d.{ServiceEffectSql.Q(cfg.PrefixNo)} "
+            + $"AND T.SERIAL_NO=d.{ServiceEffectSql.Q(cfg.SerialColumn)} "
+            + $"WHERE d.{ServiceEffectSql.Q(plan.MasterPkOrder[0])}=@mk0 "
+            + $"AND d.{ServiceEffectSql.Q(plan.MasterPkOrder[1])}=@mk1";
+        affected += await ExecRawAsync(context, detailSql, parameters, token);
 
         if (cfg.Totals)
         {
-            parameters.Add(new EffectSqlParameter(orderType, orderTypeValue));
-            parameters.Add(new EffectSqlParameter(orderNo, orderNoValue));
-            var sub = $"(SELECT T.ORDER_TYPE, T.ORDER_NO, SUM(T.AMOUNT*T.CURR_RATE) AMOUNT, "
-                + $"SUM(T.AMOUNT_TAX*T.CURR_RATE) AMOUNT_TAX, SUM(T.TAX_SUM*T.CURR_RATE) TAX_SUM "
-                + $"FROM dbo.{ServiceEffectSql.Q(cfg.DetailTarget)} T "
-                + $"WHERE T.ORDER_TYPE=@ot AND T.ORDER_NO=@on "
-                + "GROUP BY T.ORDER_TYPE, T.ORDER_NO) S";
-            var totalsSql = $"UPDATE {ServiceEffectSql.Q(cfg.MasterTarget)} SET "
-                + $"AMOUNT=ROUND(S.AMOUNT/{ServiceEffectSql.Q(cfg.MasterTarget)}.CURR_RATE,2), "
-                + $"AMOUNT_TAX=ROUND(S.AMOUNT_TAX/{ServiceEffectSql.Q(cfg.MasterTarget)}.CURR_RATE,2), "
-                + $"TAX_SUM=ROUND(S.TAX_SUM/{ServiceEffectSql.Q(cfg.MasterTarget)}.CURR_RATE,2) "
-                + $"FROM {sub} WHERE {ServiceEffectSql.Q(cfg.MasterTarget)}.ORDER_TYPE=S.ORDER_TYPE "
-                + $"AND {ServiceEffectSql.Q(cfg.MasterTarget)}.ORDER_NO=S.ORDER_NO";
-            affected += await ExecRawAsync(context, totalsSql, parameters, token);
+            affected += await RecalcMasterTotalsAsync(context, cfg, parameters, token);
         }
         return affected;
     }
 
-    private static Task<int> DeapproveAsync(ServiceEffectContext context, CancellationToken token)
+    private static async Task<int> RecalcMasterTotalsAsync(
+        ServiceEffectContext context, ChangeApplyConfig cfg, List<EffectSqlParameter> parameters, CancellationToken token)
     {
-        // reverse kind "none": the legacy order-change procedure is a no-op on deapprove.
-        var kind = ReverseKind(context);
-        if (kind is not null && kind.Equals("none", StringComparison.OrdinalIgnoreCase))
-        {
-            return Task.FromResult(0);
-        }
-        if (kind is not null && kind.Equals("no-reverse", StringComparison.OrdinalIgnoreCase))
-        {
-            return Task.FromResult(0);
-        }
-        throw new EffectConfigException($"order-change-apply 解批 reverse.kind '{kind}' 不受支持（仅 none/no-reverse）。");
+        var plan = context.Plan;
+        var prefixType = ServiceEffectSql.Q(cfg.PrefixType);
+        var prefixNo = ServiceEffectSql.Q(cfg.PrefixNo);
+        var sub = $"(SELECT T.{prefixType}, T.{prefixNo}, SUM(T.AMOUNT*T.CURR_RATE) AMOUNT, "
+            + $"SUM(T.AMOUNT_TAX*T.CURR_RATE) AMOUNT_TAX, SUM(T.TAX_SUM*T.CURR_RATE) TAX_SUM "
+            + $"FROM dbo.{ServiceEffectSql.Q(cfg.DetailTarget)} T "
+            + $"WHERE T.{prefixType}=@ot AND T.{prefixNo}=@on "
+            + $"GROUP BY T.{prefixType}, T.{prefixNo}) S";
+        var sql = $"UPDATE {ServiceEffectSql.Q(cfg.MasterTarget)} SET "
+            + $"AMOUNT=ROUND(S.AMOUNT/{ServiceEffectSql.Q(cfg.MasterTarget)}.CURR_RATE,2), "
+            + $"AMOUNT_TAX=ROUND(S.AMOUNT_TAX/{ServiceEffectSql.Q(cfg.MasterTarget)}.CURR_RATE,2), "
+            + $"TAX_SUM=ROUND(S.TAX_SUM/{ServiceEffectSql.Q(cfg.MasterTarget)}.CURR_RATE,2) "
+            + $"FROM {sub} WHERE {ServiceEffectSql.Q(cfg.MasterTarget)}.{prefixType}=S.{prefixType} "
+            + $"AND {ServiceEffectSql.Q(cfg.MasterTarget)}.{prefixNo}=S.{prefixNo}";
+        // Resolve the referenced original document key from the change master; the
+        // master key parameters were already added by the caller's MasterKeyFilter.
+        await using var read = new SqlCommand(
+            $"SELECT M.{prefixType}, M.{prefixNo} FROM dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M "
+            + $"WHERE M.{ServiceEffectSql.Q(plan.MasterPkOrder[0])}=@mk0 AND M.{ServiceEffectSql.Q(plan.MasterPkOrder[1])}=@mk1",
+            context.Connection, context.Transaction);
+        foreach (var parameter in parameters)
+            read.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+        await using var reader = await read.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token))
+            throw new EffectConfigException("change-apply 读不到变更主表行。");
+        var typeValue = reader.IsDBNull(0) ? null : reader.GetString(0).Trim();
+        var noValue = reader.IsDBNull(1) ? null : reader.GetString(1).Trim();
+        await reader.DisposeAsync();
+        if (string.IsNullOrWhiteSpace(typeValue) || string.IsNullOrWhiteSpace(noValue))
+            throw new EffectConfigException("change-apply 变更主表缺少原单键。");
+        parameters.Add(new EffectSqlParameter("@ot", typeValue));
+        parameters.Add(new EffectSqlParameter("@on", noValue));
+        return await ExecRawAsync(context, sql, parameters, token);
     }
 
     private static async Task<int> ExecRawAsync(
@@ -136,8 +152,10 @@ internal static class ChangeApplyExecutor
         return await command.ExecuteNonQueryAsync(token);
     }
 
-    private static IReadOnlyList<string> AmountAssignments(string targetAlias, string sourceAlias)
+    private static IReadOnlyList<string> AmountAssignments(bool hasAmount, string targetAlias, string sourceAlias)
     {
+        if (!hasAmount)
+            return Array.Empty<string>();
         var baseExpr = $"ROUND({sourceAlias}.QTY * {sourceAlias}.PRICE * COALESCE({targetAlias}.REBATE, 0) / 100, 2)";
         return new[]
         {
@@ -156,53 +174,95 @@ internal static class ChangeApplyExecutor
     }
 }
 
+internal sealed record ChangeApplyFieldPair(string Target, string Source);
+
 internal sealed record ChangeApplyConfig(
     string MasterTarget,
     string DetailTarget,
-    string[] DetailFields,
+    string PrefixType,
+    string PrefixNo,
     string SerialColumn,
-    bool Totals)
+    IReadOnlyList<string> MasterFields,
+    IReadOnlyList<ChangeApplyFieldPair> DetailFieldPairs,
+    bool Totals,
+    bool HasAmount)
 {
     public static ChangeApplyConfig Parse(JsonElement root, ModuleEffectPlan plan, ISet<string> columns)
     {
         if (root.ValueKind != JsonValueKind.Object)
-            throw new EffectConfigException("order-change-apply 参数必须是 JSON 对象。");
+            throw new EffectConfigException("change-apply 参数必须是 JSON 对象。");
+        var masterFields = root.TryGetProperty("master", out var master) && master.ValueKind == JsonValueKind.Object
+            ? StrArr(master, "fields")
+            : Array.Empty<string>();
         if (!root.TryGetProperty("detail", out var detail) || detail.ValueKind != JsonValueKind.Object)
-            throw new EffectConfigException("order-change-apply.detail 必须是对象。");
-        var fields = StrArr(detail, "fields");
-        if (fields.Length == 0)
-            throw new EffectConfigException("order-change-apply.detail.fields 不能为空。");
+            throw new EffectConfigException("change-apply.detail 必须是对象。");
+        var detailFields = StrArr(detail, "fields");
+        if (detailFields.Length == 0)
+            throw new EffectConfigException("change-apply.detail.fields 不能为空。");
         var totals = root.TryGetProperty("totals", out var t) && t.ValueKind == JsonValueKind.True;
-        var serialColumn = root.TryGetProperty("serialColumn", out var sc) && sc.ValueKind == JsonValueKind.String
-            ? sc.GetString()!.Trim()
-            : "ORDER_SERIAL_NO";
 
         var masterTarget = plan.MasterTable!.Replace("_CHANGE", "", StringComparison.OrdinalIgnoreCase);
         var detailTarget = plan.DetailTable!.Replace("_CHANGE", "", StringComparison.OrdinalIgnoreCase);
         if (!columns.Contains(masterTarget) || !columns.Contains(detailTarget))
-            throw new EffectConfigException($"order-change-apply 目标表不存在：{masterTarget}/{detailTarget}。");
-        foreach (var field in fields)
+            throw new EffectConfigException($"change-apply 目标表不存在：{masterTarget}/{detailTarget}。");
+
+        var entity = detailTarget.EndsWith("_D", StringComparison.OrdinalIgnoreCase)
+            ? detailTarget[..^2]
+            : detailTarget.EndsWith("_M", StringComparison.OrdinalIgnoreCase)
+                ? detailTarget[..^2]
+                : detailTarget;
+        var prefix = entity[(entity.LastIndexOf('_') + 1)..];
+        var prefixType = prefix + "_TYPE";
+        var prefixNo = prefix + "_NO";
+        var serialColumn = prefix + "_SERIAL_NO";
+
+        foreach (var field in masterFields)
+            if (!columns.Contains(masterTarget + "." + field) || !columns.Contains(plan.MasterTable + "." + field))
+                throw new EffectConfigException($"change-apply 主表字段不存在：{field}。");
+
+        var pairs = new List<ChangeApplyFieldPair>();
+        foreach (var field in detailFields)
         {
-            var sourceColumn = field.Equals("PRE_SEND_DATE", StringComparison.OrdinalIgnoreCase) ? "PRE_DELIVERY_DATE" : field;
-            if (!columns.Contains(detailTarget + "." + field) && !ChangeApplyExecutor.ChangeAmountColumns.Contains(field))
-                throw new EffectConfigException($"order-change-apply 目标列不存在：{detailTarget}.{field}。");
-            if (!columns.Contains(plan.DetailTable + "." + sourceColumn) && !ChangeApplyExecutor.ChangeAmountColumns.Contains(field))
-                throw new EffectConfigException($"order-change-apply 源列不存在：{plan.DetailTable}.{sourceColumn}。");
+            if (field is "AMOUNT" or "AMOUNT_TAX" or "TAX_SUM")
+            {
+                // recomputed from QTY/PRICE/TAX on the target row, not copied
+                continue;
+            }
+            var sourceColumn = field.Equals("PRE_SEND_DATE", StringComparison.OrdinalIgnoreCase)
+                ? "PRE_DELIVERY_DATE"
+                : field;
+            if (!columns.Contains(detailTarget + "." + field) || !columns.Contains(plan.DetailTable + "." + sourceColumn))
+                throw new EffectConfigException($"change-apply 明细字段不存在：{detailTarget}.{field}/{sourceColumn}。");
+            pairs.Add(new ChangeApplyFieldPair(field, sourceColumn));
         }
-        foreach (var reference in new[]
+
+        var required = new[]
         {
-            plan.MasterTable + ".ORDER_TYPE", plan.MasterTable + ".ORDER_NO",
-            plan.DetailTable + ".ORDER_TYPE", plan.DetailTable + ".ORDER_NO", plan.DetailTable + "." + serialColumn,
-            detailTarget + ".ORDER_TYPE", detailTarget + ".ORDER_NO", detailTarget + ".SERIAL_NO",
-            detailTarget + ".REBATE", detailTarget + ".TAX_TYPE", detailTarget + ".TAX_RATE",
-            detailTarget + ".QTY", detailTarget + ".PRICE", detailTarget + ".CURR_RATE",
-            masterTarget + ".ORDER_TYPE", masterTarget + ".ORDER_NO", masterTarget + ".CURR_RATE",
-        })
-        {
+            plan.MasterTable + "." + prefixType, plan.MasterTable + "." + prefixNo,
+            plan.DetailTable + "." + prefixType, plan.DetailTable + "." + prefixNo,
+            plan.DetailTable + "." + serialColumn,
+            detailTarget + "." + prefixType, detailTarget + "." + prefixNo, detailTarget + ".SERIAL_NO",
+            masterTarget + "." + prefixType, masterTarget + "." + prefixNo,
+        };
+        foreach (var reference in required)
             if (!columns.Contains(reference))
-                throw new EffectConfigException($"order-change-apply 列不存在：{reference}。");
+                throw new EffectConfigException($"change-apply 列不存在：{reference}。");
+        var hasAmount = detailFields.Any(field => field is "AMOUNT" or "AMOUNT_TAX" or "TAX_SUM");
+        if (hasAmount)
+        {
+            foreach (var reference in new[]
+            {
+                detailTarget + ".QTY", detailTarget + ".PRICE", detailTarget + ".REBATE",
+                detailTarget + ".TAX_TYPE", detailTarget + ".TAX_RATE", detailTarget + ".CURR_RATE",
+                masterTarget + ".CURR_RATE",
+            })
+            {
+                if (!columns.Contains(reference))
+                    throw new EffectConfigException($"change-apply 金额列不存在：{reference}。");
+            }
         }
-        return new ChangeApplyConfig(masterTarget, detailTarget, fields, serialColumn, totals);
+        return new ChangeApplyConfig(masterTarget, detailTarget, prefixType, prefixNo, serialColumn,
+            masterFields, pairs, totals && hasAmount && columns.Contains(detailTarget + ".AMOUNT"), hasAmount);
     }
 
     private static string[] StrArr(JsonElement e, string n)
@@ -213,7 +273,7 @@ internal sealed record ChangeApplyConfig(
         foreach (var item in v.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(item.GetString()))
-                throw new EffectConfigException($"order-change-apply.{n} 必须是非空字段名数组。");
+                throw new EffectConfigException($"change-apply.{n} 必须是非空字段名数组。");
             list.Add(item.GetString()!.Trim());
         }
         return list.ToArray();
