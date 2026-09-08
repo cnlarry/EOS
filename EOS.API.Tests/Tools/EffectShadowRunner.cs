@@ -30,7 +30,9 @@ namespace EOS.API.Tests.Tools;
 /// Supported modules: 1607 (purchase receipt), 1406 (customer delivery),
 /// 1505 (production inbound), 1407 (customer return), 1413 (delivery callback),
 /// 1610 (purchase callback), 170101 (customer settlement), 170201 (supplier settlement),
-/// 1404 (customer quote), 1604 (supplier quote).
+/// 1404 (customer quote), 1604 (supplier quote), 1418 (order change),
+/// 1609 (purchase change), 1509 (produce change), 1405 (customer order MRP),
+/// 1502 (produce MRP material-provide).
 /// </summary>
 [Trait("Category", "Tool")]
 public sealed class EffectShadowRunner
@@ -43,6 +45,8 @@ public sealed class EffectShadowRunner
         "QTY", "SPARE_QTY", "BASE_QTY", "RECEIVE_QTY", "RECEIVE_SPARE_QTY", "NEED_QTY", "APPLY_QTY",
         "USED_QTY", "PURCHASE_QTY", "LOST_QTY", "REQUIRE_QTY", "INIT_QTY", "USEABLE_QTY", "IN_SUM",
         "OUT_SUM", "MUTUALITY_QTY", "IN_BUY_QTY", "MRP_QTY", "FINISHED_AMOUNT",
+        "NOT_SEND_QTY", "NOT_IN_QTY", "NOT_GET_QTY", "PLAN_QTY", "PLAN_SPARE_QTY", "DEPOT_QTY",
+        "PRODUCE_QTY", "FINISHED_PLAN_QTY", "FINISHED_PLAN_SPARE_QTY",
     };
 
     private static readonly IReadOnlySet<string> AmountColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -122,8 +126,17 @@ public sealed class EffectShadowRunner
         1609 => new(1609, "1609", "PUR_PURCHASE_CHANGE_M", "PUR_PURCHASE_CHANGE_D",
             "CHANGE_PURCHASE_TYPE", "CHANGE_PURCHASE_NO", "CHANGE_PURCHASE_DATE",
             null, null, null, "采购变更单"),
+        1509 => new(1509, "1509", "MOC_PRODUCE_CHANGE_M", "MOC_PRODUCE_CHANGE_D",
+            "CHANGE_PRODUCE_TYPE", "CHANGE_PRODUCE_NO", "CHANGE_PRODUCE_DATE",
+            null, null, null, "制令变更单"),
+        1405 => new(1405, "1405", "COP_ORDER_M", "COP_ORDER_D",
+            "ORDER_TYPE", "ORDER_NO", "ORDER_DATE",
+            "CLIENT_ID", "CLIENT", "CLIENT_ID", "客户订单"),
+        1502 => new(1502, "1502", "MOC_PRODUCE_M", "MOC_PRODUCE_D",
+            "PRODUCE_TYPE", "PRODUCE_NO", "PRODUCE_DATE",
+            null, null, null, "制令单"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -223,7 +236,7 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502))
         {
             throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604 only.");
         }
@@ -375,9 +388,22 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 1418)
         {
             return await ResolveRecordKeys1418Async(connection, deapprove, failure);
-        }        if (spec.ModuleId == 1609)
+        }
+        if (spec.ModuleId == 1609)
         {
             return await ResolveRecordKeys1609Async(connection, deapprove, failure);
+        }
+        if (spec.ModuleId == 1509)
+        {
+            return await ResolveRecordKeys1509Async(connection, deapprove, failure);
+        }
+        if (spec.ModuleId == 1405)
+        {
+            return await ResolveRecordKeys1405Async(connection, deapprove, failure);
+        }
+        if (spec.ModuleId == 1502)
+        {
+            return await ResolveRecordKeys1502Async(connection, deapprove, failure);
         }
         if (spec.ModuleId == 1404)
         {
@@ -880,6 +906,18 @@ public sealed class EffectShadowRunner
             // PURCHASE_TYPE/NO; the snapshot specs query those tables directly.
             return Array.Empty<DetailRow>();
         }
+        if (spec.ModuleId == 1509)
+        {
+            // Produce-change detail rows reference the original produce rows via the
+            // master's PRODUCE_TYPE/NO; the snapshot specs query those tables directly.
+            return Array.Empty<DetailRow>();
+        }
+        if (spec.ModuleId is 1405 or 1502)
+        {
+            // MRP snapshot specs filter target tables by the document keys on the
+            // master rows; no detail context rows are materialised here.
+            return Array.Empty<DetailRow>();
+        }
         const string sql = """
             SELECT LTRIM(RTRIM(ISNULL(D.PURCHASE_TYPE,''))), LTRIM(RTRIM(ISNULL(D.PURCHASE_NO,''))),
                    D.PURCHASE_SERIAL_NO, LTRIM(RTRIM(ISNULL(D.ORDER_TYPE,''))), LTRIM(RTRIM(ISNULL(D.ORDER_NO,''))),
@@ -977,9 +1015,22 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 1418)
         {
             return BuildTableSpecs1418(master);
-        }        if (spec.ModuleId == 1609)
+        }
+        if (spec.ModuleId == 1609)
         {
             return BuildTableSpecs1609(master);
+        }
+        if (spec.ModuleId == 1509)
+        {
+            return BuildTableSpecs1509(master);
+        }
+        if (spec.ModuleId == 1405)
+        {
+            return BuildTableSpecs1405(master);
+        }
+        if (spec.ModuleId == 1502)
+        {
+            return BuildTableSpecs1502(master);
         }
         if (spec.ModuleId == 1404)
         {
@@ -1984,6 +2035,192 @@ public sealed class EffectShadowRunner
             + "AND COP_ORDER_D.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=R.ORDER_NO "
             + "AND COP_ORDER_D.SERIAL_NO=R.ORDER_SERIAL_NO)",
             new[] { ct, cn }));
+        return specs;
+    }
+
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys1509Async(
+        SqlConnection connection, bool deapprove, bool failure)
+    {
+        if (failure)
+        {
+            throw new NotSupportedException("1509 影子规格未规格化失败分支（模块无校验规则）。");
+        }
+        var confirm = deapprove ? "1" : "0";
+        const string sql = """
+            SELECT TOP 1 M.CHANGE_PRODUCE_TYPE, M.CHANGE_PRODUCE_NO
+            FROM dbo.MOC_PRODUCE_CHANGE_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
+              AND EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_CHANGE_D D
+                          WHERE D.CHANGE_PRODUCE_TYPE=M.CHANGE_PRODUCE_TYPE AND D.CHANGE_PRODUCE_NO=M.CHANGE_PRODUCE_NO)
+            ORDER BY ISNULL(M.CONFIRM_DATE, M.CHANGE_PRODUCE_DATE) DESC;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@confirm", confirm);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+            throw new InvalidOperationException(deapprove
+                ? "未找到可解批对拍的已批核制令变更单（自动选单无结果）。"
+                : "未找到可对拍的未批核制令变更单（自动选单无结果）。");
+        return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
+
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys1405Async(
+        SqlConnection connection, bool deapprove, bool failure)
+    {
+        if (failure)
+        {
+            throw new NotSupportedException("1405 影子规格未规格化失败分支（模块无校验规则）。");
+        }
+        var confirm = deapprove ? "1" : "0";
+        // Prefer orders whose lines have a positive MRP footprint so the intended
+        // segmentation is exercised (the legacy cursor degenerates to PLAN=QTY/DEPOT=0;
+        // see mrp-plan-alloc-design.md).
+        const string sql = """
+            SELECT TOP 1 M.ORDER_TYPE, M.ORDER_NO
+            FROM dbo.COP_ORDER_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
+              AND EXISTS (SELECT 1 FROM dbo.COP_ORDER_D D
+                          WHERE D.ORDER_TYPE=M.ORDER_TYPE AND D.ORDER_NO=M.ORDER_NO)
+              AND EXISTS (SELECT 1 FROM dbo.COP_ORDER_D D
+                          JOIN dbo.PRODUCT P ON P.PRO_NO=D.PRO_NO
+                          WHERE D.ORDER_TYPE=M.ORDER_TYPE AND D.ORDER_NO=M.ORDER_NO
+                            AND ISNULL(P.MRP_QTY,0)>0)
+            ORDER BY M.ORDER_DATE DESC, M.ORDER_NO DESC;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@confirm", confirm);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+            throw new InvalidOperationException(deapprove
+                ? "未找到可解批对拍的已批核客户订单（自动选单无结果）。"
+                : "未找到可对拍的未批核客户订单（自动选单无结果）。");
+        return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
+
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys1502Async(
+        SqlConnection connection, bool deapprove, bool failure)
+    {
+        if (failure)
+        {
+            throw new NotSupportedException("1502 影子规格未规格化失败分支（模块无校验规则）。");
+        }
+        var confirm = deapprove ? "1" : "0";
+        const string sql = """
+            SELECT TOP 1 M.PRODUCE_TYPE, M.PRODUCE_NO
+            FROM dbo.MOC_PRODUCE_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
+              AND EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_D D
+                          WHERE D.PRODUCE_TYPE=M.PRODUCE_TYPE AND D.PRODUCE_NO=M.PRODUCE_NO)
+            ORDER BY ISNULL(M.CONFIRM_DATE, M.PRODUCE_DATE) DESC, M.PRODUCE_NO DESC;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@confirm", confirm);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+            throw new InvalidOperationException(deapprove
+                ? "未找到可解批对拍的已批核制令单（自动选单无结果）。"
+                : "未找到可对拍的未批核制令单（自动选单无结果）。");
+        return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1509(MasterContext master)
+    {
+        var ct = new SqlParameter("@ct", master.ReceiveType);
+        var cn = new SqlParameter("@cn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("MOC_PRODUCE_CHANGE_M", new[] { "CHANGE_PRODUCE_TYPE", "CHANGE_PRODUCE_NO" },
+                "@ct=CHANGE_PRODUCE_TYPE AND @cn=CHANGE_PRODUCE_NO", new[] { ct, cn }),
+            new("MOC_PRODUCE_CHANGE_D", new[] { "CHANGE_PRODUCE_TYPE", "CHANGE_PRODUCE_NO", "SERIAL_NO" },
+                "@ct=CHANGE_PRODUCE_TYPE AND @cn=CHANGE_PRODUCE_NO", new[] { ct, cn }),
+        };
+        // Original produce master/detail rows referenced by the change master.
+        specs.Add(new("MOC_PRODUCE_M", new[] { "PRODUCE_TYPE", "PRODUCE_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_CHANGE_M R WHERE R.CHANGE_PRODUCE_TYPE=@ct AND R.CHANGE_PRODUCE_NO=@cn "
+            + "AND MOC_PRODUCE_M.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_M.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { ct, cn }));
+        specs.Add(new("MOC_PRODUCE_D", new[] { "PRODUCE_TYPE", "PRODUCE_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_CHANGE_M R WHERE R.CHANGE_PRODUCE_TYPE=@ct AND R.CHANGE_PRODUCE_NO=@cn "
+            + "AND MOC_PRODUCE_D.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_D.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { ct, cn }));
+        // MRP footprints: finished product (produce master PRO_NO) and raw materials
+        // (produce detail PRO_NO) on PRODUCT, plan and order planned quantities.
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_CHANGE_M R JOIN dbo.MOC_PRODUCE_M P "
+            + "ON P.PRODUCE_TYPE=R.PRODUCE_TYPE AND P.PRODUCE_NO=R.PRODUCE_NO "
+            + "WHERE R.CHANGE_PRODUCE_TYPE=@ct AND R.CHANGE_PRODUCE_NO=@cn AND PRODUCT.PRO_NO=P.PRO_NO) "
+            + "OR EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_CHANGE_M R JOIN dbo.MOC_PRODUCE_D D "
+            + "ON D.PRODUCE_TYPE=R.PRODUCE_TYPE AND D.PRODUCE_NO=R.PRODUCE_NO "
+            + "WHERE R.CHANGE_PRODUCE_TYPE=@ct AND R.CHANGE_PRODUCE_NO=@cn AND PRODUCT.PRO_NO=D.PRO_NO)",
+            new[] { ct, cn }));
+        specs.Add(new("MOC_PLAN_MOC", new[] { "PLAN_TYPE", "PLAN_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_CHANGE_M R JOIN dbo.MOC_PRODUCE_M P "
+            + "ON P.PRODUCE_TYPE=R.PRODUCE_TYPE AND P.PRODUCE_NO=R.PRODUCE_NO "
+            + "WHERE R.CHANGE_PRODUCE_TYPE=@ct AND R.CHANGE_PRODUCE_NO=@cn "
+            + "AND MOC_PLAN_MOC.PLAN_TYPE=P.PLAN_TYPE AND MOC_PLAN_MOC.PLAN_NO=P.PLAN_NO "
+            + "AND MOC_PLAN_MOC.SERIAL_NO=P.PLAN_SERIAL_NO)",
+            new[] { ct, cn }));
+        specs.Add(new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_CHANGE_M R JOIN dbo.MOC_PRODUCE_M P "
+            + "ON P.PRODUCE_TYPE=R.PRODUCE_TYPE AND P.PRODUCE_NO=R.PRODUCE_NO "
+            + "WHERE R.CHANGE_PRODUCE_TYPE=@ct AND R.CHANGE_PRODUCE_NO=@cn "
+            + "AND COP_ORDER_D.ORDER_TYPE=P.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=P.ORDER_NO "
+            + "AND COP_ORDER_D.SERIAL_NO=P.ORDER_SERIAL_NO)",
+            new[] { ct, cn }));
+        return specs;
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1405(MasterContext master)
+    {
+        var ot = new SqlParameter("@ot", master.ReceiveType);
+        var on = new SqlParameter("@on", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("COP_ORDER_M", new[] { "ORDER_TYPE", "ORDER_NO" },
+                "@ot=ORDER_TYPE AND @on=ORDER_NO", new[] { ot, on }),
+            new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+                "@ot=ORDER_TYPE AND @on=ORDER_NO", new[] { ot, on }),
+        };
+        specs.Add(new("CLIENT", new[] { "CLIENT_ID" },
+            "EXISTS (SELECT 1 FROM dbo.COP_ORDER_M R WHERE R.ORDER_TYPE=@ot AND R.ORDER_NO=@on "
+            + "AND CLIENT.CLIENT_ID=R.CLIENT_ID)",
+            new[] { ot, on }));
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_ORDER_D R WHERE R.ORDER_TYPE=@ot AND R.ORDER_NO=@on "
+            + "AND PRODUCT.PRO_NO=R.PRO_NO)",
+            new[] { ot, on }));
+        return specs;
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1502(MasterContext master)
+    {
+        var pt = new SqlParameter("@pt", master.ReceiveType);
+        var pn = new SqlParameter("@pn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("MOC_PRODUCE_M", new[] { "PRODUCE_TYPE", "PRODUCE_NO" },
+                "@pt=PRODUCE_TYPE AND @pn=PRODUCE_NO", new[] { pt, pn }),
+            new("MOC_PRODUCE_D", new[] { "PRODUCE_TYPE", "PRODUCE_NO", "SERIAL_NO" },
+                "@pt=PRODUCE_TYPE AND @pn=PRODUCE_NO", new[] { pt, pn }),
+        };
+        // Finished product (produce master PRO_NO) and raw materials (detail PRO_NO).
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_M R WHERE R.PRODUCE_TYPE=@pt AND R.PRODUCE_NO=@pn "
+            + "AND PRODUCT.PRO_NO=R.PRO_NO) "
+            + "OR EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_D R WHERE R.PRODUCE_TYPE=@pt AND R.PRODUCE_NO=@pn "
+            + "AND PRODUCT.PRO_NO=R.PRO_NO)",
+            new[] { pt, pn }));
+        // Order/plan lines stamped by field-accumulate on produce approval.
+        specs.Add(new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_M R WHERE R.PRODUCE_TYPE=@pt AND R.PRODUCE_NO=@pn "
+            + "AND COP_ORDER_D.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=R.ORDER_NO "
+            + "AND COP_ORDER_D.SERIAL_NO=R.ORDER_SERIAL_NO)",
+            new[] { pt, pn }));
+        specs.Add(new("MOC_PLAN_MOC", new[] { "PLAN_TYPE", "PLAN_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_M R WHERE R.PRODUCE_TYPE=@pt AND R.PRODUCE_NO=@pn "
+            + "AND MOC_PLAN_MOC.PLAN_TYPE=R.PLAN_TYPE AND MOC_PLAN_MOC.PLAN_NO=R.PLAN_NO "
+            + "AND MOC_PLAN_MOC.SERIAL_NO=R.PLAN_SERIAL_NO)",
+            new[] { pt, pn }));
         return specs;
     }
 
