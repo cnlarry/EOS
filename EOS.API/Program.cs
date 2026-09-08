@@ -162,6 +162,7 @@ builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.D
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.LinkStampHandler>();
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.FieldCopyHandler>();
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.CallbackRepriceHandler>();
+builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.PaymentDateCalcHandler>();
 builder.Services.AddSingleton(builder.Configuration.GetSection("EffectEngine").Get<EffectEngineSettings>() ?? new EffectEngineSettings());
 builder.Services.AddScoped<EffectEngineInvoker>();
 builder.Services.AddScoped<EffectPipeline>();

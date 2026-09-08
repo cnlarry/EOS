@@ -135,6 +135,35 @@ public class EffectEngineTests
     }
 
     [Fact]
+    public void Condition_negated_not_exists_compiles_to_exists()
+    {
+        var condition = JsonDocument.Parse(
+            """{"logic":"AND","items":[{"type":"not-exists","targetTable":"COP_SEND_D","condition":{"left":{"scope":"TARGET","field":"FINISHED_TAG"},"op":"EQ","right":{"value":0}},"match":[{"target":"SEND_TYPE","source":{"field":"SEND_TYPE"}},{"target":"SEND_NO","source":{"field":"SEND_NO"}}],"negate":true}]}""")
+            .RootElement.Clone();
+        var fragment = new EffectConditionCompiler().Compile(
+            condition, (scope, _) => scope.Equals("TARGET", StringComparison.OrdinalIgnoreCase) ? "T" : null,
+            _ => true, "T");
+        Assert.Contains("EXISTS (SELECT 1 FROM dbo.[COP_SEND_D]", fragment.Sql);
+        Assert.DoesNotContain("NOT EXISTS", fragment.Sql);
+    }
+
+    [Fact]
+    public void Formula_null_constant_compiles_to_null_parameter()
+    {
+        var executor = new EffectFormulaExecutor();
+        var op = new EffectOpPlan(
+            1, "COP_SEND_M", "FINISHED_DATE", "SET_WHEN",
+            new EffectSourceRef("CONSTANT", null, null, "NULL"),
+            null, null, null, null, null);
+        var plan = new ModuleEffectPlan(170101, "COP_ACCOUNT_M", "COP_ACCOUNT_D", "v1",
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+        plan = plan with { MasterPkOrder = new[] { "ACCOUNT_TYPE", "ACCOUNT_NO" } };
+        var (sql, parameters) = executor.BuildUpdate(op, plan, new[] { "YFDZ", "YJD2018187" });
+        Assert.Contains("T.[FINISHED_DATE] = @cp", sql);
+        Assert.Contains(parameters, parameter => parameter.Value is null);
+    }
+
+    [Fact]
     public void Reverse_swaps_accum_and_deaccum_on_deapprove()
     {
         var op = new EffectOpPlan(1, "PRODUCT", "F", "ACCUM",
@@ -375,6 +404,71 @@ public class ServiceEffectHandlerTests
             """{"sendTargets":[{"detail":"COP_SEND_D","master":"COP_SEND_M","typo":"X"}],"nonsense":1}""");
         Assert.Contains(bad, issue => issue.Contains("'nonsense'"));
         Assert.Contains(bad, issue => issue.Contains(".typeCol 不能为空"));
+    }
+
+    [Fact]
+    public void Payment_date_calc_is_implemented_and_schema_accepts_clear_on_deapprove()
+    {
+        Assert.True(EOS.API.Data.Effects.EffectRegistry.IsImplemented("payment-date-calc"));
+        Assert.Empty(EOS.API.Data.EffectStructSchemas.ValidateParams("payment-date-calc",
+            """{"targetField":"PRE_RECEIVE_DATE","monthField":"ACCOUNT_MONTH","dateField":"ACCOUNT_DATE","paymentDaysFrom":"CLIENT.PAYMENT_DAY"}"""));
+        Assert.Empty(EOS.API.Data.EffectStructSchemas.ValidateReverse("""{"kind":"clear-on-deapprove"}"""));
+        var bad = EOS.API.Data.EffectStructSchemas.ValidateParams("payment-date-calc",
+            """{"targetField":"pre_receive_date","monthField":"ACCOUNT_MONTH","dateField":"ACCOUNT_DATE","paymentDaysFrom":"client.payment_day"}""");
+        Assert.Contains(bad, issue => issue.Contains("必须是全大写标识符"));
+        Assert.Contains(bad, issue => issue.Contains("'TABLE.COLUMN'"));
+    }
+
+    [Fact]
+    public void Payment_date_calc_parse_resolves_party_key_and_rejects_missing_columns()
+    {
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "COP_ACCOUNT_M.ACCOUNT_TYPE",
+            "COP_ACCOUNT_M.ACCOUNT_NO",
+            "COP_ACCOUNT_M.CLIENT_ID",
+            "COP_ACCOUNT_M.PRE_RECEIVE_DATE",
+            "COP_ACCOUNT_M.ACCOUNT_MONTH",
+            "COP_ACCOUNT_M.ACCOUNT_DATE",
+            "CLIENT.CLIENT_ID",
+            "CLIENT.PAYMENT_DAY",
+        };
+        var plan = new EOS.API.Data.Effects.ModuleEffectPlan(
+            170101, "COP_ACCOUNT_M", null, "module-170101-v3",
+            new[] { "ACCOUNT_TYPE", "ACCOUNT_NO" }, Array.Empty<EOS.API.Data.Effects.EffectActionPlan>(),
+            Array.Empty<EOS.API.Data.Effects.EffectValidationPlan>());
+        var root = JsonDocument.Parse(
+            """{"targetField":"PRE_RECEIVE_DATE","monthField":"ACCOUNT_MONTH","dateField":"ACCOUNT_DATE","paymentDaysFrom":"CLIENT.PAYMENT_DAY"}""")
+            .RootElement.Clone();
+        var config = EOS.API.Data.Effects.ServiceEffectHandlers.PaymentDateConfig.Parse(root, plan, columns);
+        Assert.Equal("PRE_RECEIVE_DATE", config.TargetField);
+        Assert.Equal("CLIENT", config.PartyTable);
+        Assert.Equal("CLIENT_ID", config.PartyKeyColumn);
+        Assert.Equal("PAYMENT_DAY", config.DaysColumn);
+
+        var missing = new HashSet<string>(columns) { "CLIENT.PAYMENT_DAY" };
+        missing.Remove("CLIENT.PAYMENT_DAY");
+        var exception = Assert.Throws<EOS.API.Data.Effects.EffectConfigException>(
+            () => EOS.API.Data.Effects.ServiceEffectHandlers.PaymentDateConfig.Parse(root, plan, missing));
+        Assert.Contains("主档天数列不存在", exception.Message);
+    }
+
+    [Fact]
+    public void Payment_date_calc_action_loads_with_placeholder_op_and_clear_reverse()
+    {
+        var loader = new EOS.API.Data.Effects.EffectPlanLoader();
+        var actions = JsonDocument.Parse(
+            """[{"seq":3,"eventCode":"APPROVE_EFFECT","effectKey":"payment-date-calc","effectName":"账期推算","enabled":true,"failMode":"BLOCK","params":{"targetField":"PRE_RECEIVE_DATE","monthField":"ACCOUNT_MONTH","dateField":"ACCOUNT_DATE","paymentDaysFrom":"CLIENT.PAYMENT_DAY"},"reverse":{"kind":"clear-on-deapprove"},"ops":[{"opSeq":1,"opCode":"","targetTable":"","targetField":""}]}]""")
+            .RootElement.Clone();
+        var definition = new WorkbenchDefinition(
+            170101, "应收货款单", "COP_ACCOUNT_M", "COP_ACCOUNT_D",
+            Array.Empty<WorkbenchField>(), Array.Empty<WorkbenchField>(),
+            null, true, true, false, Array.Empty<string>(), string.Empty,
+            HasWorkflow: false, DefinitionVersion: "module-170101-v3", BusinessActions: actions);
+        var action = Assert.Single(loader.Load(definition).Actions);
+        Assert.Equal("payment-date-calc", action.EffectKey);
+        Assert.Empty(action.Ops);
+        Assert.Equal("clear-on-deapprove", action.Reverse!.Value.GetProperty("kind").GetString());
     }
 }
 

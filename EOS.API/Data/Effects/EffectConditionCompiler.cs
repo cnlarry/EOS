@@ -142,7 +142,16 @@ public sealed class EffectConditionCompiler
                     new[] { parameter });
             }
             case "NOT-EXISTS":
-                return CompileNotExists(item, resolveAlias, isSysssColumn, outerAlias);
+                var notExists = CompileNotExists(item, resolveAlias, isSysssColumn, outerAlias);
+                // negate:true turns NOT EXISTS into EXISTS — used by master completion
+                // reset rows ("there is an unfinished line") that mirror the legacy
+                // deapprove branch of the finished-flag procedures.
+                if (item.TryGetProperty("negate", out var negate)
+                    && negate.ValueKind == JsonValueKind.True)
+                {
+                    return new EffectSqlFragment("EXISTS" + notExists.Sql[("NOT EXISTS").Length..], notExists.Parameters);
+                }
+                return notExists;
             case "SWITCH":
                 return CompileSwitch(item, isSysssColumn);
             default:

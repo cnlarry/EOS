@@ -38,6 +38,7 @@ public static class EffectRegistry
         ["link-stamp"] = Status.Service,
         ["field-copy"] = Status.Service,
         ["callback-reprice"] = Status.Service,
+        ["payment-date-calc"] = Status.Service,
         // Placeholder-row + params shapes collected; handlers pending (see docs/plans/服务键形态证据.md)
         ["client-price-sync"] = Status.Pending,
         ["supplier-price-sync"] = Status.Pending,
@@ -48,7 +49,6 @@ public static class EffectRegistry
         ["order-change-apply"] = Status.Pending,
         ["produce-change-apply"] = Status.Pending,
         ["purchase-change-apply"] = Status.Pending,
-        ["payment-date-calc"] = Status.Pending,
         ["quote-parameter-recalc"] = Status.Pending,
         // Catalog reserved keys (no instances)
         ["meta-link"] = Status.Reserved,

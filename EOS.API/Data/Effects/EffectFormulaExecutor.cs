@@ -351,7 +351,8 @@ public sealed class EffectFormulaExecutor
         };
 
     private static object? ParseScalar(string text) =>
-        long.TryParse(text, out var l) ? l
+        text.Equals("NULL", StringComparison.OrdinalIgnoreCase) ? null
+        : long.TryParse(text, out var l) ? l
         : decimal.TryParse(text, out var d) ? d
         : bool.TryParse(text, out var b) ? b
         : text;
