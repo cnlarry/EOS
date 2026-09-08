@@ -40,6 +40,7 @@ public static class EffectRegistry
         ["callback-reprice"] = Status.Service,
         ["client-price-sync"] = Status.Service,
         ["supplier-price-sync"] = Status.Service,
+        ["quote-parameter-recalc"] = Status.Service,
         ["payment-date-calc"] = Status.Service,
         // Placeholder-row + params shapes collected; handlers pending (see docs/plans/服务键形态证据.md)
         ["hr-usage-sync"] = Status.Pending,
@@ -49,7 +50,6 @@ public static class EffectRegistry
         ["order-change-apply"] = Status.Pending,
         ["produce-change-apply"] = Status.Pending,
         ["purchase-change-apply"] = Status.Pending,
-        ["quote-parameter-recalc"] = Status.Pending,
         // Catalog reserved keys (no instances)
         ["meta-link"] = Status.Reserved,
         ["flow-trigger"] = Status.Reserved,

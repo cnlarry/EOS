@@ -506,6 +506,41 @@ public class ServiceEffectHandlerTests
         Assert.Throws<EOS.API.Data.Effects.EffectConfigException>(
             () => EOS.API.Data.Effects.ServiceEffectHandlers.PriceSyncConfig.Parse(ok, plan, missing));
     }
+    [Fact]
+    public void Quote_parameter_recalc_key_implemented_and_schema_validated()
+    {
+        Assert.True(EOS.API.Data.Effects.EffectRegistry.IsImplemented("quote-parameter-recalc"));
+        var ok = """{"targetTable":"COP_QUOTE_PARAMETER","mode":"recalc-confirmed","feeFields":["MATERIAL_SUM","PRICE","TAX_SUM"]}""";
+        Assert.Empty(EOS.API.Data.EffectStructSchemas.ValidateParams("quote-parameter-recalc", ok));
+        Assert.Empty(EOS.API.Data.EffectStructSchemas.ValidateReverse("""{"kind":"recalc-confirmed","note":"按已确认生效报价集重算"}"""));
+        var bad = EOS.API.Data.EffectStructSchemas.ValidateParams("quote-parameter-recalc", """{"targetTable":"COP_QUOTE_PARAMETER","mode":"recalc-confirmed","feeFields":[]}""");
+        Assert.Contains(bad, issue => issue.Contains("quote-parameter-recalc.feeFields 不能为空"));
+    }
+
+    [Fact]
+    public void Quote_parameter_recalc_parse_resolves_fee_fields_and_rejects_missing_columns()
+    {
+        var plan = new ModuleEffectPlan(1604, "PUR_QUOTE_M", "PUR_QUOTE_D", "v1",
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+        plan = plan with { MasterPkOrder = new[] { "QUOTE_TYPE", "QUOTE_NO" } };
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "COP_QUOTE_PARAMETER", "COP_QUOTE_PARAMETER.STUFF_ID", "COP_QUOTE_PARAMETER.MATERIAL_SUM",
+            "COP_QUOTE_PARAMETER.MATERIAL_PCT", "COP_QUOTE_PARAMETER.PRICE", "COP_QUOTE_PARAMETER.TAX_SUM",
+            "COP_QUOTE_PARAMETER.TAX_PCT", "STUFF", "STUFF.STUFF_ID",
+            "PUR_QUOTE_M", "PUR_QUOTE_M.QUOTE_TYPE", "PUR_QUOTE_M.QUOTE_NO", "PUR_QUOTE_M.CONFIRM_TAG",
+            "PUR_QUOTE_M.IN_EFFECT_DATE", "PUR_QUOTE_D", "PUR_QUOTE_D.PRO_NO", "PUR_QUOTE_D.PRICE",
+            "PUR_QUOTE_D.CURR_RATE", "PUR_QUOTE_D.TAX_TYPE", "PUR_QUOTE_D.TAX_RATE",
+            "PUR_QUOTE_D.QUOTE_TYPE", "PUR_QUOTE_D.QUOTE_NO",
+        };
+        var ok = JsonDocument.Parse("""{"targetTable":"COP_QUOTE_PARAMETER","mode":"recalc-confirmed","feeFields":["TAX_SUM"]}""").RootElement.Clone();
+        var cfg = EOS.API.Data.Effects.ServiceEffectHandlers.QuoteParameterConfig.Parse(ok, plan, columns);
+        Assert.Equal("COP_QUOTE_PARAMETER", cfg.TargetTable);
+        Assert.Equal(new[] { "TAX_SUM" }, cfg.FeeFields);
+        var missing = new HashSet<string>(columns.Where(item => item != "COP_QUOTE_PARAMETER.TAX_PCT"));
+        Assert.Throws<EOS.API.Data.Effects.EffectConfigException>(
+            () => EOS.API.Data.Effects.ServiceEffectHandlers.QuoteParameterConfig.Parse(ok, plan, missing));
+    }
 }
 
 public class EffectEngineGateTests
