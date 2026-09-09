@@ -331,6 +331,18 @@ public sealed class FieldCopyHandler : IEffectServiceHandler
         var plan = context.Plan;
         if (plan.MasterTable is null)
             throw new EffectConfigException("field-copy 需要主表形态。");
+        // The copy is approve-direction only. The reverse structure states the
+        // deapprove semantics explicitly: none/no-reverse means a no-op; anything
+        // else is refused as an unguarded reverse write.
+        if (context.ExecutionEvent is not (EffectEvent.ApproveEffect or EffectEvent.Save))
+        {
+            var kind = ReverseKind(context);
+            if (kind is "none" or "no-reverse")
+            {
+                return 0;
+            }
+            throw new EffectConfigException("field-copy 解批缺少 reverse.kind（none/no-reverse），禁止无守卫执行。");
+        }
         var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
 
         var affected = 0;
@@ -427,6 +439,14 @@ public sealed class FieldCopyHandler : IEffectServiceHandler
         var parameters = new List<EffectSqlParameter>();
         var sql = BuildCopyUpdate(plan, table, pairs, refs, context.MasterKeyValues, parameters);
         return await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction, sql, parameters, token);
+    }
+
+    private static string? ReverseKind(ServiceEffectContext context)
+    {
+        if (context.Action.Reverse is not { } reverse || reverse.ValueKind != JsonValueKind.Object
+            || !reverse.TryGetProperty("kind", out var kind) || kind.ValueKind != JsonValueKind.String)
+            return null;
+        return kind.GetString();
     }
 
     internal static string BuildCopyUpdate(
