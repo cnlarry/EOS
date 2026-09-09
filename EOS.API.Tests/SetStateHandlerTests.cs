@@ -23,6 +23,14 @@ public class SetStateHandlerTests
             """{"kind":"clear-finish","note":"解批清结案"}"""));
     }
 
+    [Fact]
+    public void Clear_refs_unfinish_reverse_kind_registered()
+    {
+        Assert.Contains("clear-refs-unfinish", EOS.API.Data.EffectStructSchemas.AllReverseKinds());
+        Assert.Empty(EOS.API.Data.EffectStructSchemas.ValidateReverse(
+            """{"kind":"clear-refs-unfinish","note":"解批清引用并卸载结案"}"""));
+    }
+
     [Theory]
     [InlineData("true", "1")]
     [InlineData("false", "0")]

@@ -31,6 +31,7 @@ public static class EffectStructSchemas
         "restore-old-price",
         "reverse-flow",
         "clear-finish",
+        "clear-refs-unfinish",
         "snapshot",
     };
 

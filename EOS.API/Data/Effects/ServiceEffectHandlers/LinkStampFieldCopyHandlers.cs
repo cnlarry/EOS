@@ -38,7 +38,7 @@ public sealed class LinkStampHandler : IEffectServiceHandler
             return await StampAsync(context, spec, token);
 
         var kind = RequireReverseKind(context.Action.Reverse);
-        return kind is "no-reverse" or "none" ? 0 : await ClearAsync(context, spec, token);
+        return kind is "no-reverse" or "none" ? 0 : await ClearAsync(context, spec, kind == "clear-refs-unfinish", token);
     }
 
     private static async Task<int> StampAsync(ServiceEffectContext context, LinkStampSpec spec, CancellationToken token)
@@ -58,14 +58,21 @@ public sealed class LinkStampHandler : IEffectServiceHandler
     /// Clears the stamped columns on the very rows the approval stamped, located through
     /// the same reference keys — the link is removed, no other column is touched.
     /// </summary>
-    private static async Task<int> ClearAsync(ServiceEffectContext context, LinkStampSpec spec, CancellationToken token)
+    private static async Task<int> ClearAsync(ServiceEffectContext context, LinkStampSpec spec, bool unfinish, CancellationToken token)
     {
         var affected = 0;
         foreach (var target in spec.Targets)
         {
             var parameters = new List<EffectSqlParameter>();
+            var assignments = ClearAssignments(target).ToList();
+            if (unfinish)
+            {
+                assignments.Add("T.[FINISHED_TAG] = 0");
+                assignments.Add("T.[FINISHED_PERSON] = 'SYSTEM'");
+                assignments.Add("T.[FINISHED_DATE] = SYSDATETIME()");
+            }
             var sql = BuildUpdate(
-                context.Plan, target, context.MasterKeyValues, ClearAssignments(target), parameters);
+                context.Plan, target, context.MasterKeyValues, assignments, parameters);
             affected += await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction, sql, parameters, token);
         }
         return affected;
@@ -79,7 +86,11 @@ public sealed class LinkStampHandler : IEffectServiceHandler
             .Select(field => $"T.{ServiceEffectSql.Q(field.Target)} = {alias}.{ServiceEffectSql.Q(field.Source)}")
             .ToList();
         if (target.Finish)
+        {
             assignments.Add("T.[FINISHED_TAG] = 1");
+            assignments.Add("T.[FINISHED_PERSON] = 'SYSTEM'");
+            assignments.Add("T.[FINISHED_DATE] = SYSDATETIME()");
+        }
         return assignments;
     }
 
@@ -140,7 +151,7 @@ public sealed class LinkStampHandler : IEffectServiceHandler
                 : null;
         return kind switch
         {
-            "clear-refs" or "no-reverse" or "none" => kind,
+            "clear-refs" or "clear-refs-unfinish" or "no-reverse" or "none" => kind,
             null => throw new EffectConfigException("link-stamp 解批缺少 reverse.kind，禁止无守卫执行。"),
             _ => throw new EffectConfigException($"link-stamp 解批 reverse.kind '{kind}' 不受支持。"),
         };
