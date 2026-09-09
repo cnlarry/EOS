@@ -47,9 +47,9 @@ public static class EffectRegistry
         ["payment-date-calc"] = Status.Service,
         ["mrp-plan-alloc"] = Status.Service,
         // Placeholder-row + params shapes collected; handlers pending (see docs/plans/服务键形态证据.md)
-        ["hr-usage-sync"] = Status.Pending,
-        ["employee-contract-sync"] = Status.Pending,
-        ["mould-batch-apply"] = Status.Pending,
+        ["hr-usage-sync"] = Status.Service,
+        ["employee-contract-sync"] = Status.Service,
+        ["mould-batch-apply"] = Status.Service,
         // Catalog reserved keys (no instances)
         ["meta-link"] = Status.Reserved,
         ["flow-trigger"] = Status.Reserved,
