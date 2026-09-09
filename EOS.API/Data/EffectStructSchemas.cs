@@ -30,6 +30,7 @@ public static class EffectStructSchemas
         "recalc-confirmed",
         "restore-old-price",
         "reverse-flow",
+        "clear-finish",
         "snapshot",
     };
 
