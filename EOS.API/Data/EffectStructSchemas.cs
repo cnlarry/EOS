@@ -26,6 +26,7 @@ public static class EffectStructSchemas
         "net-replace",
         "none",
         "recompute",
+        "recompute-excluding-self",
         "recalc-confirmed",
         "restore-old-price",
         "reverse-flow",
