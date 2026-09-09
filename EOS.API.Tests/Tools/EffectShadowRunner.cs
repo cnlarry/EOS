@@ -135,6 +135,48 @@ public sealed class EffectShadowRunner
         1502 => new(1502, "1502", "MOC_PRODUCE_M", "MOC_PRODUCE_D",
             "PRODUCE_TYPE", "PRODUCE_NO", "PRODUCE_DATE",
             null, null, null, "制令单"),
+        1512 => new(1512, "1512", "MOC_PRODUCE_M", "MOC_PRODUCE_D",
+            "PRODUCE_TYPE", "PRODUCE_NO", "PRODUCE_DATE",
+            null, null, null, "重工生产单"),
+        1522 => new(1522, "1522", "MOC_PRODUCE_M", "MOC_PRODUCE_D",
+            "PRODUCE_TYPE", "PRODUCE_NO", "PRODUCE_DATE",
+            null, null, null, "半成品制令单"),
+        2803 => new(2803, "2803", "MOC_PRODUCE_M", "MOC_PRODUCE_D",
+            "PRODUCE_TYPE", "PRODUCE_NO", "PRODUCE_DATE",
+            null, null, null, "托外生产单"),
+        2804 => new(2804, "2804", "MOC_PRODUCE_M", "MOC_PRODUCE_D",
+            "PRODUCE_TYPE", "PRODUCE_NO", "PRODUCE_DATE",
+            null, null, null, "托外重工单"),
+        2816 => new(2816, "2816", "MOC_PRODUCT_IN_M", "MOC_PRODUCT_IN_D",
+            "PRODUCT_IN_TYPE", "PRODUCT_IN_NO", "PRODUCT_IN_DATE",
+            null, null, null, "托外入库单"),
+        1503 => new(1503, "1503", "MOC_GET_M", "MOC_GET_D",
+            "GET_TYPE", "GET_NO", "GET_DATE",
+            null, null, null, "生产领料单"),
+        1514 => new(1514, "1514", "MOC_GET_M", "MOC_GET_D",
+            "GET_TYPE", "GET_NO", "GET_DATE",
+            null, null, null, "生产补料单"),
+        1517 => new(1517, "1517", "MOC_GET_M", "MOC_GET_D",
+            "GET_TYPE", "GET_NO", "GET_DATE",
+            null, null, null, "生产领料单(外)"),
+        2805 => new(2805, "2805", "MOC_GET_M", "MOC_GET_D",
+            "GET_TYPE", "GET_NO", "GET_DATE",
+            null, null, null, "托外领料单"),
+        2806 => new(2806, "2806", "MOC_GET_M", "MOC_GET_D",
+            "GET_TYPE", "GET_NO", "GET_DATE",
+            null, null, null, "托外补料单"),
+        1615 => new(1615, "1615", "PUR_APPLY_M", "PUR_APPLY_D",
+            "APPLY_TYPE", "APPLY_NO", "APPLY_DATE",
+            null, null, null, "成品请购单"),
+        1616 => new(1616, "1616", "PUR_APPLY_M", "PUR_APPLY_D",
+            "APPLY_TYPE", "APPLY_NO", "APPLY_DATE",
+            null, null, null, "备料单"),
+        2817 => new(2817, "2817", "INV_OCCUR_IN_M", "INV_OCCUR_IN_D",
+            "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE",
+            null, null, null, "品检收料入库"),
+        2818 => new(2818, "2818", "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D",
+            "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE",
+            null, null, null, "品检良品出库单"),
         2906 => new(2906, "2906", "MOU_BATCH_M", "MOU_BATCH_D",
             "BATCH_TYPE", "BATCH_NO", "BATCH_DATE",
             null, null, null, "量产模具（开模完工）单"),
@@ -248,7 +290,7 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818))
         {
             throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604 only.");
         }
@@ -417,7 +459,15 @@ public sealed class EffectShadowRunner
         {
             return await ResolveRecordKeys1502Async(connection, deapprove, failure);
         }
-        if (spec.ModuleId is 2906 or 180106 or 180206 or 180207)
+        if (spec.ModuleId is 1512 or 1522 or 2803 or 2804)
+        {
+            return await ResolveRecordKeys1502Async(connection, deapprove, failure);
+        }
+        if (spec.ModuleId == 2816)
+        {
+            return await ResolveRecordKeys1505Async(connection, deapprove, failure);
+        }
+        if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818)
         {
             return await ResolveRecordKeysByConfirmAsync(connection, spec, deapprove, failure);
         }
@@ -757,7 +807,10 @@ public sealed class EffectShadowRunner
             {
                 await log.WriteLineAsync("engine path exception: " + exception);
             }
-            return new EnginePathResult(new ShadowPathStatus("blocked", exception.Message), null, 0, Array.Empty<string>());
+            var detail = Environment.GetEnvironmentVariable("EOS_SHADOW_DEBUG") == "1"
+                ? exception.ToString()
+                : exception.Message;
+            return new EnginePathResult(new ShadowPathStatus("blocked", detail), null, 0, Array.Empty<string>());
         }
     }
 
@@ -885,6 +938,10 @@ public sealed class EffectShadowRunner
         {
             return await ReadDetailContext1505Async(connection, transaction, keys);
         }
+        if (spec.ModuleId == 2816)
+        {
+            return await ReadDetailContext1505Async(connection, transaction, keys);
+        }
         if (spec.ModuleId == 1407)
         {
             return await ReadDetailContext1407Async(connection, transaction, keys);
@@ -937,7 +994,7 @@ public sealed class EffectShadowRunner
             // master rows; no detail context rows are materialised here.
             return Array.Empty<DetailRow>();
         }
-        if (spec.ModuleId is 2906 or 180106 or 180206 or 180207)
+        if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818)
         {
             // HR/mould snapshot specs filter target tables by document keys and the
             // derived month/date/emp sets; no detail context rows are materialised.
@@ -1056,6 +1113,30 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 1502)
         {
             return BuildTableSpecs1502(master);
+        }
+        if (spec.ModuleId is 1512 or 1522 or 2803 or 2804)
+        {
+            return BuildTableSpecs1502(master);
+        }
+        if (spec.ModuleId == 2816)
+        {
+            return BuildTableSpecs1505(master, details);
+        }
+        if (spec.ModuleId is 1503 or 1514 or 1517 or 2805 or 2806)
+        {
+            return BuildBasicTableSpecs(master, "MOC_GET_M", "MOC_GET_D", "GET_TYPE", "GET_NO", "GET_DATE");
+        }
+        if (spec.ModuleId is 1615 or 1616)
+        {
+            return BuildBasicTableSpecs(master, "PUR_APPLY_M", "PUR_APPLY_D", "APPLY_TYPE", "APPLY_NO", "APPLY_DATE");
+        }
+        if (spec.ModuleId == 2817)
+        {
+            return BuildBasicTableSpecs(master, "INV_OCCUR_IN_M", "INV_OCCUR_IN_D", "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE");
+        }
+        if (spec.ModuleId == 2818)
+        {
+            return BuildBasicTableSpecs(master, "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D", "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE");
         }
         if (spec.ModuleId == 2906)
         {
@@ -2263,6 +2344,27 @@ public sealed class EffectShadowRunner
             + "AND MOC_PLAN_MOC.SERIAL_NO=R.PLAN_SERIAL_NO)",
             new[] { pt, pn }));
         return specs;
+    }
+
+    /// <summary>
+    /// Minimal snapshot spec for modules whose side effects are still being validated:
+    /// the module master and detail rows only. Used by engine-only regression runs to
+    /// prove the published chain executes cleanly with zero residue; expand the table
+    /// set once shadow comparison of each module is scheduled.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildBasicTableSpecs(
+        MasterContext master, string masterTable, string detailTable,
+        string key1, string key2, string dateColumn)
+    {
+        var k1 = new SqlParameter("@k1", master.ReceiveType);
+        var k2 = new SqlParameter("@k2", master.ReceiveNo);
+        return new List<TableSpec>
+        {
+            new(masterTable, new[] { key1, key2 },
+                $"@k1={key1} AND @k2={key2}", new[] { k1, k2 }),
+            new(detailTable, new[] { key1, key2, "SERIAL_NO" },
+                $"@k1={key1} AND @k2={key2}", new[] { k1, k2 }),
+        };
     }
 
     /// <summary>
