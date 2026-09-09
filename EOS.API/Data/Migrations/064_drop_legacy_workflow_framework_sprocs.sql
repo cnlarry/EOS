@@ -15,8 +15,9 @@
 
 SET NOCOUNT ON;
 
+DECLARE @GUARD_MESSAGE NVARCHAR(400) = N'本脚本只能在 EOS.ERP 数据库内执行，当前库为 ' + DB_NAME() + N'。';
 IF DB_NAME() <> N'EOS.ERP'
-    THROW 50000, N'本脚本只能在 EOS.ERP 数据库内执行，当前库为 ' + DB_NAME() + N'。', 1;
+    THROW 50000, @GUARD_MESSAGE, 1;
 
 /* 动态守卫：本批名单之外的对象若 exec 引用本批过程，中止（防漏删仍被调用者）。 */
 IF EXISTS (
