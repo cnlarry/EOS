@@ -32,7 +32,11 @@ namespace EOS.API.Tests.Tools;
 /// 1610 (purchase callback), 170101 (customer settlement), 170201 (supplier settlement),
 /// 1404 (customer quote), 1604 (supplier quote), 1418 (order change),
 /// 1609 (purchase change), 1509 (produce change), 1405 (customer order MRP),
-/// 1502 (produce MRP material-provide).
+/// 1502 (produce MRP material-provide), 1512/1522/2803/2804 (produce variants),
+/// 2816 (outsourced inbound), 1503/1514/1517/2805/2806 (material issue),
+/// 1615/1616 (purchase request), 2817/2818 (misc in/out), 2906 (mould batch),
+/// 180106/180206/180207 (HR), 2705/2706/2707/2708 (work-order family),
+/// 2815 (product outbound), 2903/2904 (mould apply/accept), 2907/2913 (mould issue).
 /// </summary>
 [Trait("Category", "Tool")]
 public sealed class EffectShadowRunner
@@ -189,8 +193,37 @@ public sealed class EffectShadowRunner
         180207 => new(180207, "180207", "HR_WORKTIME_M", "HR_WORKTIME_D",
             "WORKTIME_TYPE", "WORKTIME_NO", "WORKTIME_DATE",
             null, null, null, "工时录入表"),
+        2705 => new(2705, "2705", "MOC_WORK_M", "MOC_WORK_D",
+            "WORK_TYPE", "WORK_NO", "WORK_DATE",
+            null, null, null, "工序工单"),
+        2706 => new(2706, "2706", "MOC_WORK_IN_M", "MOC_WORK_IN_D",
+            "WORK_IN_TYPE", "WORK_IN_NO", "WORK_IN_DATE",
+            null, null, null, "工序完工单"),
+        2707 => new(2707, "2707", "MOC_WORK_OUT_M", "MOC_WORK_OUT_D",
+            "WORK_OUT_TYPE", "WORK_OUT_NO", "WORK_OUT_DATE",
+            null, null, null, "工序发料单"),
+        2708 => new(2708, "2708", "SFC_PLAN_M", "SFC_PLAN_D",
+            "PLAN_TYPE", "PLAN_NO", "PLAN_DATE",
+            null, null, null, "工序生产计划"),
+        2815 => new(2815, "2815", "MOC_PRODUCT_OUT_M", "MOC_PRODUCT_OUT_D",
+            "PRODUCT_OUT_TYPE", "PRODUCT_OUT_NO", "PRODUCT_OUT_DATE",
+            null, null, null, "生产出库单"),
+        2903 => new(2903, "2903", "MOU_APPLY_M", "MOU_APPLY_D",
+            "APPLY_TYPE", "APPLY_NO", "APPLY_DATE",
+            null, null, null, "开模申请单"),
+        // 2904 has no physical detail table (MOU_ACCEPT_D does not exist in sys.objects):
+        // the placeholder is never queried (master-only resolve, dedicated snapshot builder).
+        2904 => new(2904, "2904", "MOU_ACCEPT_M", "MOU_ACCEPT_D",
+            "ACCEPT_TYPE", "ACCEPT_NO", "ACCEPT_DATE",
+            null, null, null, "模具承认单"),
+        2907 => new(2907, "2907", "MOU_GET_M", "MOU_GET_D",
+            "GET_TYPE", "GET_NO", "GET_DATE",
+            null, null, null, "模房领料单"),
+        2913 => new(2913, "2913", "MOU_GET2_M", "MOU_GET2_D",
+            "GET_TYPE", "GET_NO", "GET_DATE",
+            null, null, null, "模具耗料单"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/2906/180106/180206/180207 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -290,9 +323,9 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913))
         {
-            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604 only.");
+            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913 only.");
         }
         var spec = GetSpec(options.ModuleId);
         var deapprove = options.Event.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
@@ -467,9 +500,14 @@ public sealed class EffectShadowRunner
         {
             return await ResolveRecordKeys1505Async(connection, deapprove, failure);
         }
-        if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818)
+        if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818
+            or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2907 or 2913)
         {
             return await ResolveRecordKeysByConfirmAsync(connection, spec, deapprove, failure);
+        }
+        if (spec.ModuleId == 2904)
+        {
+            return await ResolveRecordKeys2904Async(connection, deapprove, failure);
         }
         if (spec.ModuleId == 1404)
         {
@@ -994,10 +1032,11 @@ public sealed class EffectShadowRunner
             // master rows; no detail context rows are materialised here.
             return Array.Empty<DetailRow>();
         }
-        if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818)
+        if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818
+            or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913)
         {
-            // HR/mould snapshot specs filter target tables by document keys and the
-            // derived month/date/emp sets; no detail context rows are materialised.
+            // 2xxx snapshot specs filter target tables by document keys and EXISTS
+            // subqueries off the master; no detail context rows are materialised.
             return Array.Empty<DetailRow>();
         }
         const string sql = """
@@ -1137,6 +1176,42 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 2818)
         {
             return BuildBasicTableSpecs(master, "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D", "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE");
+        }
+        if (spec.ModuleId == 2705)
+        {
+            return BuildTableSpecs2705(master);
+        }
+        if (spec.ModuleId == 2706)
+        {
+            return BuildTableSpecs2706(master);
+        }
+        if (spec.ModuleId == 2707)
+        {
+            return BuildTableSpecs2707(master);
+        }
+        if (spec.ModuleId == 2708)
+        {
+            return BuildTableSpecs2708(master);
+        }
+        if (spec.ModuleId == 2815)
+        {
+            return BuildTableSpecs2815(master);
+        }
+        if (spec.ModuleId == 2903)
+        {
+            return BuildTableSpecs2903(master);
+        }
+        if (spec.ModuleId == 2904)
+        {
+            return BuildTableSpecs2904(master);
+        }
+        if (spec.ModuleId == 2907)
+        {
+            return BuildTableSpecs2907(master);
+        }
+        if (spec.ModuleId == 2913)
+        {
+            return BuildTableSpecs2913(master);
         }
         if (spec.ModuleId == 2906)
         {
@@ -2393,6 +2468,323 @@ public sealed class EffectShadowRunner
                 ? $"未找到可解批对拍的已批核单据（{spec.DocName}，自动选单无结果）。"
                 : $"未找到可对拍的未批核单据（{spec.DocName}，自动选单无结果）。");
         return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
+
+    /// <summary>
+    /// 2904 (mould accept) has no physical detail table: approve picks an
+    /// unconfirmed accept master, deapprove a confirmed one.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys2904Async(
+        SqlConnection connection, bool deapprove, bool failure)
+    {
+        if (failure)
+        {
+            throw new NotSupportedException("2904 影子规格未规格化失败分支（模块无校验规则）。");
+        }
+        var confirm = deapprove ? "1" : "0";
+        const string sql = """
+            SELECT TOP 1 M.ACCEPT_TYPE, M.ACCEPT_NO
+            FROM dbo.MOU_ACCEPT_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
+            ORDER BY ISNULL(M.CONFIRM_DATE, M.ACCEPT_DATE) DESC;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@confirm", confirm);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+            throw new InvalidOperationException(deapprove
+                ? "未找到可解批对拍的已批核模具承认单（自动选单无结果）。"
+                : "未找到可对拍的未批核模具承认单（自动选单无结果）。");
+        return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
+
+    /// <summary>
+    /// Master-scoped inventory-log spec for 2xxx outbound documents: unlike the
+    /// row-level BuildLogSpec (which narrows by detail serials/products/depots),
+    /// this filters by document date + key pair only. Both paths execute the same
+    /// document inside symmetric rolled-back transactions, so the wider scope is
+    /// comparison-safe and needs no detail context rows.
+    /// </summary>
+    private static TableSpec BuildLogSpecByMaster(
+        string moduleNumber, MasterContext master)
+    {
+        var date = master.ReceiveDate!.Value.ToString(SqlDateFormat);
+        var parameters = new List<SqlParameter>
+        {
+            new("@rdate", date),
+            new("@rt", master.ReceiveType),
+            new("@rn", master.ReceiveNo),
+        };
+        var builder = new StringBuilder("CONVERT(nvarchar(19),MUTUALITY_DATE,120)=@rdate")
+            .Append($" AND ((MUTUALITY_TYPE='{moduleNumber}' AND MUTUALITY_NO=@rt) OR (MUTUALITY_TYPE=@rt AND MUTUALITY_NO=@rn))");
+        return new TableSpec(
+            "INV_DEPOT_LOG",
+            new[] { "PRO_NO", "MUTUALITY_DATE", "IN_OUT", "MUTUALITY_SERIAL_NO", "DEPOT_ID", "BATCH_NO" },
+            builder.ToString(),
+            parameters);
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs2705(MasterContext master)
+    {
+        var wt = new SqlParameter("@wt", master.ReceiveType);
+        var wn = new SqlParameter("@wn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("MOC_WORK_M", new[] { "WORK_TYPE", "WORK_NO" },
+                "@wt=WORK_TYPE AND @wn=WORK_NO", new[] { wt, wn }),
+            new("MOC_WORK_D", new[] { "WORK_TYPE", "WORK_NO", "SERIAL_NO" },
+                "@wt=WORK_TYPE AND @wn=WORK_NO", new[] { wt, wn }),
+        };
+        // field-accumulate targets reached through the work detail produce refs.
+        specs.Add(new("MOC_PRODUCE_M", new[] { "PRODUCE_TYPE", "PRODUCE_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_WORK_D R WHERE R.WORK_TYPE=@wt AND R.WORK_NO=@wn "
+            + "AND MOC_PRODUCE_M.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_M.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { wt, wn }));
+        specs.Add(new("MOC_PRODUCE_PROCESS_D", new[] { "PRODUCE_TYPE", "PRODUCE_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_WORK_D R WHERE R.WORK_TYPE=@wt AND R.WORK_NO=@wn "
+            + "AND MOC_PRODUCE_PROCESS_D.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_PROCESS_D.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { wt, wn }));
+        return specs;
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs2706(MasterContext master)
+    {
+        var wt = new SqlParameter("@wt", master.ReceiveType);
+        var wn = new SqlParameter("@wn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("MOC_WORK_IN_M", new[] { "WORK_IN_TYPE", "WORK_IN_NO" },
+                "@wt=WORK_IN_TYPE AND @wn=WORK_IN_NO", new[] { wt, wn }),
+            new("MOC_WORK_IN_D", new[] { "WORK_IN_TYPE", "WORK_IN_NO", "SERIAL_NO" },
+                "@wt=WORK_IN_TYPE AND @wn=WORK_IN_NO", new[] { wt, wn }),
+        };
+        // Referenced work-order rows (completion targets of the inbound).
+        specs.Add(new("MOC_WORK_M", new[] { "WORK_TYPE", "WORK_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_WORK_IN_D R WHERE R.WORK_IN_TYPE=@wt AND R.WORK_IN_NO=@wn "
+            + "AND MOC_WORK_M.WORK_TYPE=R.WORK_TYPE AND MOC_WORK_M.WORK_NO=R.WORK_NO)",
+            new[] { wt, wn }));
+        specs.Add(new("MOC_WORK_D", new[] { "WORK_TYPE", "WORK_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_WORK_IN_D R WHERE R.WORK_IN_TYPE=@wt AND R.WORK_IN_NO=@wn "
+            + "AND MOC_WORK_D.WORK_TYPE=R.WORK_TYPE AND MOC_WORK_D.WORK_NO=R.WORK_NO "
+            + "AND MOC_WORK_D.SERIAL_NO=R.WORK_SERIAL_NO)",
+            new[] { wt, wn }));
+        specs.Add(new("MOC_PRODUCE_M", new[] { "PRODUCE_TYPE", "PRODUCE_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_WORK_IN_D R WHERE R.WORK_IN_TYPE=@wt AND R.WORK_IN_NO=@wn "
+            + "AND MOC_PRODUCE_M.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_M.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { wt, wn }));
+        specs.Add(new("MOC_PRODUCE_PROCESS_D", new[] { "PRODUCE_TYPE", "PRODUCE_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_WORK_IN_D R WHERE R.WORK_IN_TYPE=@wt AND R.WORK_IN_NO=@wn "
+            + "AND MOC_PRODUCE_PROCESS_D.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_PROCESS_D.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { wt, wn }));
+        return specs;
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs2707(MasterContext master)
+    {
+        var wt = new SqlParameter("@wt", master.ReceiveType);
+        var wn = new SqlParameter("@wn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("MOC_WORK_OUT_M", new[] { "WORK_OUT_TYPE", "WORK_OUT_NO" },
+                "@wt=WORK_OUT_TYPE AND @wn=WORK_OUT_NO", new[] { wt, wn }),
+            new("MOC_WORK_OUT_D", new[] { "WORK_OUT_TYPE", "WORK_OUT_NO", "SERIAL_NO" },
+                "@wt=WORK_OUT_TYPE AND @wn=WORK_OUT_NO", new[] { wt, wn }),
+        };
+        // completion-close targets (MOC_WORK_D/M) reached through the issue refs.
+        specs.Add(new("MOC_WORK_M", new[] { "WORK_TYPE", "WORK_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_WORK_OUT_D R WHERE R.WORK_OUT_TYPE=@wt AND R.WORK_OUT_NO=@wn "
+            + "AND MOC_WORK_M.WORK_TYPE=R.WORK_TYPE AND MOC_WORK_M.WORK_NO=R.WORK_NO)",
+            new[] { wt, wn }));
+        specs.Add(new("MOC_WORK_D", new[] { "WORK_TYPE", "WORK_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_WORK_OUT_D R WHERE R.WORK_OUT_TYPE=@wt AND R.WORK_OUT_NO=@wn "
+            + "AND MOC_WORK_D.WORK_TYPE=R.WORK_TYPE AND MOC_WORK_D.WORK_NO=R.WORK_NO)",
+            new[] { wt, wn }));
+        specs.Add(new("MOC_PRODUCE_M", new[] { "PRODUCE_TYPE", "PRODUCE_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_WORK_OUT_D R WHERE R.WORK_OUT_TYPE=@wt AND R.WORK_OUT_NO=@wn "
+            + "AND MOC_PRODUCE_M.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_M.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { wt, wn }));
+        specs.Add(new("MOC_PRODUCE_PROCESS_D", new[] { "PRODUCE_TYPE", "PRODUCE_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_WORK_OUT_D R WHERE R.WORK_OUT_TYPE=@wt AND R.WORK_OUT_NO=@wn "
+            + "AND MOC_PRODUCE_PROCESS_D.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_PROCESS_D.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { wt, wn }));
+        return specs;
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs2708(MasterContext master)
+    {
+        var pt = new SqlParameter("@pt", master.ReceiveType);
+        var pn = new SqlParameter("@pn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("SFC_PLAN_M", new[] { "PLAN_TYPE", "PLAN_NO" },
+                "@pt=PLAN_TYPE AND @pn=PLAN_NO", new[] { pt, pn }),
+            new("SFC_PLAN_D", new[] { "PLAN_TYPE", "PLAN_NO", "SERIAL_NO" },
+                "@pt=PLAN_TYPE AND @pn=PLAN_NO", new[] { pt, pn }),
+            new("SFC_PLAN_MORE", new[] { "PLAN_TYPE", "PLAN_NO", "SERIAL_NO" },
+                "@pt=PLAN_TYPE AND @pn=PLAN_NO", new[] { pt, pn }),
+        };
+        // field-accumulate target reached through the plan detail produce refs.
+        specs.Add(new("MOC_PRODUCE_M", new[] { "PRODUCE_TYPE", "PRODUCE_NO" },
+            "EXISTS (SELECT 1 FROM dbo.SFC_PLAN_D R WHERE R.PLAN_TYPE=@pt AND R.PLAN_NO=@pn "
+            + "AND MOC_PRODUCE_M.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_M.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { pt, pn }));
+        return specs;
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs2815(MasterContext master)
+    {
+        var ot = new SqlParameter("@ot", master.ReceiveType);
+        var on = new SqlParameter("@on", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("MOC_PRODUCT_OUT_M", new[] { "PRODUCT_OUT_TYPE", "PRODUCT_OUT_NO" },
+                "@ot=PRODUCT_OUT_TYPE AND @on=PRODUCT_OUT_NO", new[] { ot, on }),
+            new("MOC_PRODUCT_OUT_D", new[] { "PRODUCT_OUT_TYPE", "PRODUCT_OUT_NO", "SERIAL_NO" },
+                "@ot=PRODUCT_OUT_TYPE AND @on=PRODUCT_OUT_NO", new[] { ot, on }),
+        };
+        // Produce write-back (field-accumulate + completion-close pair).
+        specs.Add(new("MOC_PRODUCE_M", new[] { "PRODUCE_TYPE", "PRODUCE_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
+            + "AND MOC_PRODUCE_M.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_M.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { ot, on }));
+        specs.Add(new("MOC_PRODUCE_D", new[] { "PRODUCE_TYPE", "PRODUCE_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
+            + "AND MOC_PRODUCE_D.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_D.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { ot, on }));
+        // Order write-back (adjust-projection target).
+        specs.Add(new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
+            + "AND COP_ORDER_D.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=R.ORDER_NO "
+            + "AND COP_ORDER_D.SERIAL_NO=R.ORDER_SERIAL_NO)",
+            new[] { ot, on }));
+        // Stock footprint of the outbound move.
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
+            + "AND PRODUCT.PRO_NO=R.PRO_NO)",
+            new[] { ot, on }));
+        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
+            + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
+            new[] { ot, on }));
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("2815", master));
+        }
+        return specs;
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs2903(MasterContext master)
+    {
+        var at = new SqlParameter("@at", master.ReceiveType);
+        var an = new SqlParameter("@an", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("MOU_APPLY_M", new[] { "APPLY_TYPE", "APPLY_NO" },
+                "@at=APPLY_TYPE AND @an=APPLY_NO", new[] { at, an }),
+            new("MOU_APPLY_D", new[] { "APPLY_TYPE", "APPLY_NO", "SERIAL_NO" },
+                "@at=APPLY_TYPE AND @an=APPLY_NO", new[] { at, an }),
+        };
+        // link-stamp target: the assessment referencing this application.
+        specs.Add(new("MOU_ASSESS_M", new[] { "ASSESS_TYPE", "ASSESS_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOU_APPLY_M R WHERE R.APPLY_TYPE=@at AND R.APPLY_NO=@an "
+            + "AND MOU_ASSESS_M.APPLY_TYPE=R.APPLY_TYPE AND MOU_ASSESS_M.APPLY_NO=R.APPLY_NO)",
+            new[] { at, an }));
+        return specs;
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs2904(MasterContext master)
+    {
+        var at = new SqlParameter("@at", master.ReceiveType);
+        var an = new SqlParameter("@an", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("MOU_ACCEPT_M", new[] { "ACCEPT_TYPE", "ACCEPT_NO" },
+                "@at=ACCEPT_TYPE AND @an=ACCEPT_NO", new[] { at, an }),
+        };
+        // link-stamp target: the application referenced by the accept master.
+        specs.Add(new("MOU_APPLY_M", new[] { "APPLY_TYPE", "APPLY_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOU_ACCEPT_M R WHERE R.ACCEPT_TYPE=@at AND R.ACCEPT_NO=@an "
+            + "AND MOU_APPLY_M.APPLY_TYPE=R.APPLY_TYPE AND MOU_APPLY_M.APPLY_NO=R.APPLY_NO)",
+            new[] { at, an }));
+        specs.Add(new("MOU_APPLY_D", new[] { "APPLY_TYPE", "APPLY_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOU_ACCEPT_M R WHERE R.ACCEPT_TYPE=@at AND R.ACCEPT_NO=@an "
+            + "AND MOU_APPLY_D.APPLY_TYPE=R.APPLY_TYPE AND MOU_APPLY_D.APPLY_NO=R.APPLY_NO)",
+            new[] { at, an }));
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOU_ACCEPT_M R WHERE R.ACCEPT_TYPE=@at AND R.ACCEPT_NO=@an "
+            + "AND PRODUCT.PRO_NO=R.PRO_NO)",
+            new[] { at, an }));
+        return specs;
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs2907(MasterContext master)
+    {
+        var gt = new SqlParameter("@gt", master.ReceiveType);
+        var gn = new SqlParameter("@gn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("MOU_GET_M", new[] { "GET_TYPE", "GET_NO" },
+                "@gt=GET_TYPE AND @gn=GET_NO", new[] { gt, gn }),
+            new("MOU_GET_D", new[] { "GET_TYPE", "GET_NO", "SERIAL_NO" },
+                "@gt=GET_TYPE AND @gn=GET_NO", new[] { gt, gn }),
+        };
+        // Dual-leg move touches both the issue depot and the receipt depot.
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOU_GET_D R WHERE R.GET_TYPE=@gt AND R.GET_NO=@gn "
+            + "AND PRODUCT.PRO_NO=R.PRO_NO)",
+            new[] { gt, gn }));
+        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            "EXISTS (SELECT 1 FROM dbo.MOU_GET_D R WHERE R.GET_TYPE=@gt AND R.GET_NO=@gn "
+            + "AND ((INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID) "
+            + "OR (INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.IN_DEPOT_ID)))",
+            new[] { gt, gn }));
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("2907", master));
+        }
+        return specs;
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs2913(MasterContext master)
+    {
+        var gt = new SqlParameter("@gt", master.ReceiveType);
+        var gn = new SqlParameter("@gn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("MOU_GET2_M", new[] { "GET_TYPE", "GET_NO" },
+                "@gt=GET_TYPE AND @gn=GET_NO", new[] { gt, gn }),
+            new("MOU_GET2_D", new[] { "GET_TYPE", "GET_NO", "SERIAL_NO" },
+                "@gt=GET_TYPE AND @gn=GET_NO", new[] { gt, gn }),
+        };
+        // set-state targets reached through the apply refs on the consume lines,
+        // then the accept refs on the application (apply -> accept -> batch chain).
+        specs.Add(new("MOU_APPLY_M", new[] { "APPLY_TYPE", "APPLY_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOU_GET2_D R WHERE R.GET_TYPE=@gt AND R.GET_NO=@gn "
+            + "AND MOU_APPLY_M.APPLY_TYPE=R.APPLY_TYPE AND MOU_APPLY_M.APPLY_NO=R.APPLY_NO)",
+            new[] { gt, gn }));
+        specs.Add(new("MOU_APPLY_D", new[] { "APPLY_TYPE", "APPLY_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOU_GET2_D R WHERE R.GET_TYPE=@gt AND R.GET_NO=@gn "
+            + "AND MOU_APPLY_D.APPLY_TYPE=R.APPLY_TYPE AND MOU_APPLY_D.APPLY_NO=R.APPLY_NO)",
+            new[] { gt, gn }));
+        specs.Add(new("MOU_BATCH_M", new[] { "BATCH_TYPE", "BATCH_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOU_GET2_D R JOIN dbo.MOU_APPLY_M A "
+            + "ON A.APPLY_TYPE=R.APPLY_TYPE AND A.APPLY_NO=R.APPLY_NO "
+            + "WHERE R.GET_TYPE=@gt AND R.GET_NO=@gn "
+            + "AND MOU_BATCH_M.ACCEPT_TYPE=A.ACCEPT_TYPE AND MOU_BATCH_M.ACCEPT_NO=A.ACCEPT_NO)",
+            new[] { gt, gn }));
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOU_GET2_D R WHERE R.GET_TYPE=@gt AND R.GET_NO=@gn "
+            + "AND PRODUCT.PRO_NO=R.PRO_NO)",
+            new[] { gt, gn }));
+        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            "EXISTS (SELECT 1 FROM dbo.MOU_GET2_D R WHERE R.GET_TYPE=@gt AND R.GET_NO=@gn "
+            + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
+            new[] { gt, gn }));
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("2913", master));
+        }
+        return specs;
     }
 
     private static IReadOnlyList<TableSpec> BuildTableSpecs2906(MasterContext master)
