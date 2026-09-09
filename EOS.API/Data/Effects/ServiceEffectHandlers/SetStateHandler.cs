@@ -85,6 +85,18 @@ public sealed class SetStateHandler : IEffectServiceHandler
         var parameters = new List<EffectSqlParameter>();
         var statements = new List<string>();
 
+        // Deapprove semantics come from the reverse structure: none/no-reverse is a
+        // no-op (plan traces are not rolled back), clear-finish rebuilds the state
+        // mapping as the cleared inverse, and legacy shapes without a kind keep the
+        // forward placement for now.
+        var isDeapprove = context.ExecutionEvent == EffectEvent.Deapprove;
+        var reverseKind = isDeapprove ? ReverseKind(context) : null;
+        if (isDeapprove && reverseKind is "none" or "no-reverse")
+        {
+            return 0;
+        }
+        var clear = isDeapprove && reverseKind == "clear-finish";
+
         if (root.TryGetProperty("targets", out var targets) && targets.ValueKind == JsonValueKind.Array)
         {
             if (!root.TryGetProperty("state", out var state) || state.ValueKind != JsonValueKind.Object)
@@ -99,18 +111,10 @@ public sealed class SetStateHandler : IEffectServiceHandler
                 {
                     if (!columns.Contains(table + "." + property.Name))
                         throw new EffectConfigException($"set-state 目标列不存在：{table}.{property.Name}。");
-                    var value = property.Value.ValueKind switch
-                    {
-                        JsonValueKind.Number => property.Value.GetRawText(),
-                        JsonValueKind.String => property.Value.GetString() == "now"
-                            ? "SYSDATETIME()"
-                            : "@sv_" + property.Name,
-                        JsonValueKind.True => "1",
-                        JsonValueKind.False => "0",
-                        _ => throw new EffectConfigException("set-state 状态值必须是标量。"),
-                    };
-                    if (value.StartsWith("@sv_", StringComparison.Ordinal))
-                        parameters.Add(new EffectSqlParameter(value, property.Value.GetString()));
+                    var (fragment, needsParameter) = ResolveStateValue(property.Value, clear);
+                    var value = needsParameter ? fragment + property.Name : fragment;
+                    if (needsParameter)
+                        parameters.Add(new EffectSqlParameter(value, clear ? string.Empty : property.Value.GetString()));
                     sets.Add($"{ServiceEffectSql.Q(property.Name)} = {value}");
                 }
                 // A master-table target is filtered directly by key values; other targets
@@ -124,6 +128,8 @@ public sealed class SetStateHandler : IEffectServiceHandler
         }
         else
         {
+            if (clear)
+                throw new EffectConfigException("set-state clear-finish 反向仅支持 targets/state 形态。");
             var table = Required(root, "targetTable");
             var stateField = Required(root, "stateField");
             var stateValue = Required(root, "stateValue");
@@ -175,6 +181,14 @@ public sealed class SetStateHandler : IEffectServiceHandler
         return affected;
     }
 
+    private static string? ReverseKind(ServiceEffectContext context)
+    {
+        if (context.Action.Reverse is not { } reverse || reverse.ValueKind != JsonValueKind.Object
+            || !reverse.TryGetProperty("kind", out var kind) || kind.ValueKind != JsonValueKind.String)
+            return null;
+        return kind.GetString();
+    }
+
     private static string MasterWhere(ModuleEffectPlan plan, ServiceEffectContext context, List<EffectSqlParameter> parameters)
     {
         var parts = new List<string>();
@@ -194,4 +208,36 @@ public sealed class SetStateHandler : IEffectServiceHandler
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()!.Trim()
             : throw new EffectConfigException($"set-state 缺少字符串字段 '{name}'。");
+
+    /// <summary>
+    /// Maps a configured state value to its SQL fragment. In clear mode (deapprove
+    /// with reverse kind "clear-finish") booleans flip, "now" becomes NULL and other
+    /// strings clear to the empty string; otherwise the forward placement applies.
+    /// Parameter fragments carry the "@sv_"/"@cv_" prefix and the caller appends the
+    /// column name for a unique parameter.
+    /// </summary>
+    internal static (string Fragment, bool NeedsParameter) ResolveStateValue(JsonElement value, bool clear)
+    {
+        if (clear)
+        {
+            return value.ValueKind switch
+            {
+                JsonValueKind.True => ("0", false),
+                JsonValueKind.False => ("1", false),
+                JsonValueKind.Number => ("0", false),
+                JsonValueKind.String when value.GetString() == "now" => ("NULL", false),
+                JsonValueKind.String => ("@cv_", true),
+                _ => throw new EffectConfigException("set-state 状态值必须是标量。"),
+            };
+        }
+        return value.ValueKind switch
+        {
+            JsonValueKind.Number => (value.GetRawText(), false),
+            JsonValueKind.String when value.GetString() == "now" => ("SYSDATETIME()", false),
+            JsonValueKind.String => ("@sv_", true),
+            JsonValueKind.True => ("1", false),
+            JsonValueKind.False => ("0", false),
+            _ => throw new EffectConfigException("set-state 状态值必须是标量。"),
+        };
+    }
 }
