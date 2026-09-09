@@ -132,12 +132,20 @@ public sealed class SetStateHandler : IEffectServiceHandler
                 throw new EffectConfigException("set-state clear-finish 反向仅支持 targets/state 形态。");
             var table = Required(root, "targetTable");
             var stateField = Required(root, "stateField");
-            var stateValue = Required(root, "stateValue");
             if (!columns.Contains(table + "." + stateField))
                 throw new EffectConfigException($"set-state 目标列不存在：{table}.{stateField}。");
-            var stateParameter = new EffectSqlParameter("@stateValue", stateValue);
-            parameters.Add(stateParameter);
-            var sets = new List<string> { $"{ServiceEffectSql.Q(stateField)} = @stateValue" };
+            if (!root.TryGetProperty("stateValue", out var stateValueElement)
+                || stateValueElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                throw new EffectConfigException("set-state 缺少 stateValue。");
+            var (stateFragment, stateParameterized) = ResolveStateValue(stateValueElement, clear: false);
+            var stateAssignment = stateParameterized
+                ? stateFragment + "sv"
+                : stateFragment;
+            if (stateParameterized)
+                parameters.Add(new EffectSqlParameter(stateAssignment, stateValueElement.ValueKind == JsonValueKind.Number
+                    ? stateValueElement.GetRawText()
+                    : stateValueElement.GetString()));
+            var sets = new List<string> { $"{ServiceEffectSql.Q(stateField)} = {stateAssignment}" };
 
             if (root.TryGetProperty("dateField", out var dateField) && dateField.ValueKind == JsonValueKind.String)
             {
