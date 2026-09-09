@@ -267,6 +267,8 @@ public sealed class EffectFormulaExecutor
     {
         "MASTER" => (_plan.MasterTable!, "M"),
         "DETAIL" => (_plan.DetailTable!, "D"),
+        "TABLE" when string.IsNullOrWhiteSpace(op.Source.Table) =>
+            throw new EffectConfigException($"公式行 OP_SEQ={op.OpSeq}：TABLE 来源缺少 SOURCE_TABLE。"),
         "TABLE" => (op.Source.Table!, "S_" + EffectConditionCompiler.TargetAlias(op.Source.Table!)),
         _ => throw new EffectConfigException($"公式行 OP_SEQ={op.OpSeq}：来源域 '{op.Source.Scope}' 不支持标量取值。"),
     };
@@ -322,14 +324,27 @@ public sealed class EffectFormulaExecutor
                      .Where(item => item.Source.Scope.Equals("DETAIL", StringComparison.OrdinalIgnoreCase)
                          || item.Source.Scope.Equals("TABLE", StringComparison.OrdinalIgnoreCase))
                      .GroupBy(item => item.Source.Scope.Equals("DETAIL", StringComparison.OrdinalIgnoreCase)
-                         ? (_plan.DetailTable!, "D")
-                         : (item.Source.Table!, "S_" + EffectConditionCompiler.TargetAlias(item.Source.Table!))))
+                         ? (Table: _plan.DetailTable!, Alias: "D", IsDetail: true)
+                         : (Table: ResolveTableSource(op, item), Alias: "S_" + EffectConditionCompiler.TargetAlias(ResolveTableSource(op, item)), IsDetail: false)))
         {
-            var (table, alias) = group.Key;
-            parts.Add(
-                $"EXISTS (SELECT 1 FROM dbo.{EffectConditionCompiler.Identifier(table)} {alias} "
-                + $"WHERE {string.Join(" AND ", group.Select(item =>
-                    $"{alias}.{EffectConditionCompiler.Identifier(item.Source.Field!)} = {targetAlias}.{EffectConditionCompiler.Identifier(item.TargetColumn)}"))})");
+            var (table, alias, isDetail) = group.Key;
+            var correlation = string.Join(" AND ", group.Select(item =>
+                $"{alias}.{EffectConditionCompiler.Identifier(item.Source.Field!)} = {targetAlias}.{EffectConditionCompiler.Identifier(item.TargetColumn)}"));
+            if (isDetail)
+            {
+                parts.Add($"EXISTS (SELECT 1 FROM dbo.{EffectConditionCompiler.Identifier(table)} {alias} WHERE {correlation})");
+                continue;
+            }
+            // TABLE-scoped location keys reference a registered context table whose rows
+            // belong to this document (the context table carries the module master key
+            // columns). The EXISTS must join back to the master row, otherwise a global
+            // table scan would touch rows of other documents.
+            var masterJoin = string.Join(" AND ", _plan.MasterPkOrder.Select(pk =>
+                $"{alias}.{EffectConditionCompiler.Identifier(pk)} = M.{EffectConditionCompiler.Identifier(pk)}"));
+            var masterFilter = AddMasterKeyParameters(parameters);
+            parts.Add($"EXISTS (SELECT 1 FROM dbo.{EffectConditionCompiler.Identifier(table)} {alias} "
+                + $"JOIN dbo.{EffectConditionCompiler.Identifier(_plan.MasterTable!)} M ON {masterJoin} "
+                + $"WHERE {masterFilter} AND {correlation})");
         }
         foreach (var item in op.Match.Where(item =>
                      !item.Source.Scope.Equals("DETAIL", StringComparison.OrdinalIgnoreCase)
@@ -350,6 +365,20 @@ public sealed class EffectFormulaExecutor
         }
         return string.Join(" AND ", parts);
     }
+
+    /// <summary>
+    /// Resolves the physical table behind a TABLE-scoped match item. The location
+    /// entries written by the translation phase omit an inline table (the formula
+    /// row's SOURCE_TABLE carries it), so the op-level source table is authoritative;
+    /// an inline table is honoured when present. Missing both is a hard config error.
+    /// </summary>
+    private string ResolveTableSource(EffectOpPlan op, EffectMatchItem item) =>
+        !string.IsNullOrWhiteSpace(op.Source.Table)
+            ? op.Source.Table!
+            : !string.IsNullOrWhiteSpace(item.Source.Table)
+                ? item.Source.Table!
+                : throw new EffectConfigException(
+                    $"公式行 OP_SEQ={op.OpSeq}：TABLE 定位键缺少源表（公式行 SOURCE_TABLE 或定位键 table）。");
 
     private string ResolveConditionAlias(string scope, string? table, EffectOpPlan op, string targetAlias) =>
         scope.ToUpperInvariant() switch
