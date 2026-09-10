@@ -1225,7 +1225,7 @@ public sealed class EffectShadowRunner
         }
         if (spec.ModuleId is 1615 or 1616)
         {
-            return BuildBasicTableSpecs(master, "PUR_APPLY_M", "PUR_APPLY_D", "APPLY_TYPE", "APPLY_NO", "APPLY_DATE");
+            return BuildTableSpecs1615(master);
         }
         if (spec.ModuleId == 2817)
         {
@@ -2855,6 +2855,49 @@ public sealed class EffectShadowRunner
         {
             specs.Add(BuildLogSpecByMaster("1503", master));
         }
+        return specs;
+    }
+
+    /// <summary>
+    /// Purchase apply documents (1615 finished-goods request / 1616 material request):
+    /// the approval writes apply quantities back to the produce line and the plan row,
+    /// stamps the order line with the apply reference, and accumulates the order MORE row.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1615(MasterContext master)
+    {
+        var at = new SqlParameter("@at", master.ReceiveType);
+        var an = new SqlParameter("@an", master.ReceiveNo);
+        var docMore = "R.APPLY_TYPE=@at AND R.APPLY_NO=@an";
+        var docDetail = "D.APPLY_TYPE=@at AND D.APPLY_NO=@an";
+        var specs = new List<TableSpec>
+        {
+            new("PUR_APPLY_M", new[] { "APPLY_TYPE", "APPLY_NO" }, "@at=APPLY_TYPE AND @an=APPLY_NO", new[] { at, an }),
+            new("PUR_APPLY_D", new[] { "APPLY_TYPE", "APPLY_NO", "SERIAL_NO" }, "@at=APPLY_TYPE AND @an=APPLY_NO", new[] { at, an }),
+            new("PUR_APPLY_MORE", new[] { "APPLY_TYPE", "APPLY_NO", "SERIAL_NO" }, "@at=APPLY_TYPE AND @an=APPLY_NO", new[] { at, an }),
+        };
+        // Produce line: apply quantity accumulation fed by PUR_APPLY_MORE.
+        specs.Add(new("MOC_PRODUCE_D", new[] { "PRODUCE_TYPE", "PRODUCE_NO", "PRO_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.PUR_APPLY_MORE R WHERE {docMore} "
+            + "AND MOC_PRODUCE_D.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_D.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { at, an }));
+        // Plan row: apply quantity + reference stamp fed by PUR_APPLY_D.
+        specs.Add(new("MOC_PLAN_PUR", new[] { "PLAN_TYPE", "PLAN_NO", "SERIAL_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.PUR_APPLY_D D WHERE {docDetail} "
+            + "AND MOC_PLAN_PUR.PLAN_TYPE=D.PLAN_TYPE AND MOC_PLAN_PUR.PLAN_NO=D.PLAN_NO "
+            + "AND MOC_PLAN_PUR.SERIAL_NO=D.PLAN_SERIAL_NO)",
+            new[] { at, an }));
+        // Order line: apply reference write-back fed by PUR_APPLY_D.
+        specs.Add(new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.PUR_APPLY_D D WHERE {docDetail} "
+            + "AND COP_ORDER_D.ORDER_TYPE=D.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=D.ORDER_NO "
+            + "AND COP_ORDER_D.SERIAL_NO=D.ORDER_SERIAL_NO)",
+            new[] { at, an }));
+        // Order MORE row: apply quantity accumulation fed by PUR_APPLY_D.
+        specs.Add(new("COP_ORDER_MORE", new[] { "ORDER_TYPE", "ORDER_NO", "PRO_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.PUR_APPLY_D D WHERE {docDetail} "
+            + "AND COP_ORDER_MORE.ORDER_TYPE=D.ORDER_TYPE AND COP_ORDER_MORE.ORDER_NO=D.ORDER_NO "
+            + "AND COP_ORDER_MORE.PRO_NO=D.PRO_NO)",
+            new[] { at, an }));
         return specs;
     }
 
