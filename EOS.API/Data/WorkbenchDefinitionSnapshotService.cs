@@ -16,6 +16,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
     DbConnectionFactory connections,
     WorkbenchDefinitionValidator validator,
     WorkbenchDefinitionProvider definitionProvider,
+    WorkbenchAuditWriter auditWriter,
     IOptions<UnifiedFormEditorSettings> formSettings,
     ILogger<WorkbenchDefinitionSnapshotService> logger)
 {
@@ -146,6 +147,10 @@ public sealed class WorkbenchDefinitionSnapshotService(
 
                 await transaction.CommitAsync(token);
                 await definitionProvider.RefreshAsync(token);
+                await auditWriter.WriteBestEffortAsync(
+                    moduleId, "WORKBENCH_DEFINITION_SNAPSHOT", "PUBLISH",
+                    $"发布模块定义快照 module-{moduleId}-v{next}", publishedBy, "MENU",
+                    result: 1, fieldChanges: null, token);
                 logger.LogInformation("快照发布 module={ModuleId} version={Version} by={PublishedBy}",
                     moduleId, next, publishedBy);
                 return new WorkbenchPublishResult(moduleId, report.Title, true, next,

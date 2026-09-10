@@ -105,6 +105,16 @@ describe('BusinessActionsPanel', () => {
     vi.clearAllMocks()
   })
 
+  it('标题按主/副表显示「描述(表名)」', async () => {
+    renderWithProviders(
+      <BusinessActionsPanel
+        module={{ ...moduleWithTables(1607, '收料单'), MASTER_TABLE_DESC: '收料主表', DETAIL_TABLE_DESC: '收料明细' }}
+      />,
+    )
+
+    expect(await screen.findByText('收料主表(PUR_RECEIVE_M) / 收料明细(PUR_RECEIVE_D)')).toBeInTheDocument()
+  })
+
   it('加载并展示业务动作与公式行', async () => {
     renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
 
@@ -127,65 +137,41 @@ describe('BusinessActionsPanel', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('保存配置调用 PUT 并提示成功', async () => {
+  it('不提供保存/发布按钮（保存与发布已统一到模块工具栏）', async () => {
     renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
     await screen.findByText('业务动作（1）')
 
-    fireEvent.click(screen.getByRole('button', { name: /保存配置/ }))
-
-    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
-      '/admin/module-business-config/1607',
-      expect.objectContaining({ actions: expect.any(Array), validationRules: expect.any(Array) }),
-    ))
-    expect(await screen.findByText('配置已保存并重新加载。')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /保存配置/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /发布配置/ })).not.toBeInTheDocument()
   })
 
-  it('发布配置先保存当前内容再发布并提示版本', async () => {
-    apiClientMock.post.mockResolvedValue([
-      {
-        moduleId: 1607,
-        title: '收料单',
-        published: true,
-        version: 5,
-        definitionVersion: 'module-1607-v5',
-        passed: true,
-        checks: [],
-      },
-    ])
-    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
+  it('装载完成后把草稿上报给主页面（带模块编号与未改动标记）', async () => {
+    const onDraftChange = vi.fn()
+    renderWithProviders(
+      <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} onDraftChange={onDraftChange} />,
+    )
     await screen.findByText('业务动作（1）')
 
-    fireEvent.click(screen.getByRole('button', { name: /发布配置/ }))
-
-    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
-      '/admin/module-business-config/1607',
-      expect.objectContaining({ actions: expect.any(Array), validationRules: expect.any(Array) }),
-    ))
-    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
-      '/admin/module-business-config/1607/publish',
-    ))
-    expect(await screen.findByText(/发布成功：module-1607-v5/)).toBeInTheDocument()
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledWith(expect.objectContaining({
+      moduleId: 1607,
+      dirty: false,
+      validationRules: [],
+    })))
+    expect(onDraftChange.mock.calls.at(-1)![0].actions).toHaveLength(1)
   })
 
-  it('发布校验失败时展示失败原因且不提示成功', async () => {
-    apiClientMock.post.mockResolvedValue([
-      {
-        moduleId: 1607,
-        title: '收料单',
-        published: false,
-        version: null,
-        definitionVersion: null,
-        passed: false,
-        checks: [{ code: 'chooser_sources', passed: false, message: '选择器来源配置非法', severity: 'error' }],
-      },
-    ])
-    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
+  it('编辑动作后上报的草稿标记为已改动', async () => {
+    const onDraftChange = vi.fn()
+    renderWithProviders(
+      <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} onDraftChange={onDraftChange} />,
+    )
     await screen.findByText('业务动作（1）')
 
-    fireEvent.click(screen.getByRole('button', { name: /发布配置/ }))
+    fireEvent.click(screen.getByRole('button', { name: '新增' }))
+    await screen.findByRole('dialog')
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
-    expect(await screen.findByText(/发布未通过校验，未写入新快照/)).toBeInTheDocument()
-    expect(screen.getByText('选择器来源配置非法')).toBeInTheDocument()
-    expect(screen.queryByText(/发布成功/)).not.toBeInTheDocument()
+    await waitFor(() => expect(onDraftChange.mock.calls.at(-1)![0].dirty).toBe(true))
+    expect(onDraftChange.mock.calls.at(-1)![0].actions).toHaveLength(2)
   })
 })

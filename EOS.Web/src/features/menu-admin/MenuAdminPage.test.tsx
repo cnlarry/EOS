@@ -103,7 +103,74 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
     fireEvent.change(screen.getByLabelText('菜单名称'), { target: { value: '基本参数-改' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith('/admin/menus/11', expect.objectContaining({ M_DESC: '基本参数-改' })))
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith('/admin/menus/11',
+      expect.objectContaining({ module: expect.objectContaining({ M_DESC: '基本参数-改' }) })))
+  })
+
+  it('保存已有节点后仍停留在该节点，表单不被清空', async () => {
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    // onSuccess 以「保存成功」提示收尾，此时草稿回填已完成
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('菜单保存成功。'))
+    expect(screen.getByText('已选择：基本参数（ID：11）')).toBeInTheDocument()
+    expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数')
+    expect(screen.queryByText(/请在左侧选择菜单节点/)).not.toBeInTheDocument()
+  })
+
+  it('按服务端状态显示模块发布徽标并在改动后转为未保存', async () => {
+    apiClientMock.get.mockResolvedValue({
+      total: 1,
+      modules: [{
+        ...moduleNode(11, '基本参数', null),
+        DIRTY_TAG: true,
+        PUBLISH_VERSION: 3,
+        PUBLISHED_AT: '2026-09-11T10:00:00',
+      }],
+    })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
+    expect(screen.getByText('已保存未发布')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('菜单名称'), { target: { value: '基本参数-改' } })
+    expect(screen.getByText('已修改未保存')).toBeInTheDocument()
+  })
+
+  it('未改动且未置脏时显示当前发布版本', async () => {
+    apiClientMock.get.mockResolvedValue({
+      total: 1,
+      modules: [{ ...moduleNode(11, '基本参数', null), DIRTY_TAG: false, PUBLISH_VERSION: 7 }],
+    })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
+    expect(screen.getByText('已发布 module-11-v7')).toBeInTheDocument()
+  })
+
+  it('版本历史弹窗展示该模块的历史发布版本', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path.endsWith('/versions')) {
+        return [
+          { version: 2, definitionVersion: 'module-11-v2', publishedBy: 'SYSTEM', publishedAt: '2026-09-11T09:00:00', validationStatus: 'PASS', isCurrent: true },
+          { version: 1, definitionVersion: 'module-11-v1', publishedBy: 'SYSTEM', publishedAt: '2026-09-10T09:00:00', validationStatus: 'PASS', isCurrent: false },
+        ]
+      }
+      return { total: 1, modules: [moduleNode(11, '基本参数', null)] }
+    })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '版本历史' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: '版本历史' }))
+
+    expect(await screen.findByText('module-11-v2')).toBeInTheDocument()
+    expect(screen.getByText('module-11-v1')).toBeInTheDocument()
+    expect(screen.getByText('是')).toBeInTheDocument()
   })
 
   it('新增根节点调用 POST', async () => {
@@ -113,7 +180,8 @@ describe('MenuAdminPage', () => {
     await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue(''))
     fireEvent.change(screen.getByLabelText('菜单名称'), { target: { value: '新菜单' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith('/admin/menus', expect.objectContaining({ M_IDX: 0, M_DESC: '新菜单' })))
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith('/admin/menus',
+      expect.objectContaining({ module: expect.objectContaining({ M_IDX: 0, M_DESC: '新菜单' }) })))
   })
 
   it('新增根节点保存后选中服务端返回的新编号', async () => {
@@ -168,9 +236,16 @@ describe('MenuAdminPage', () => {
         .toEqual(expect.arrayContaining(['C_ID', 'ADDR']))
     })
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    // 默认查询列不再即时落库，随模块「保存」在同一事务内提交
+    expect(apiClientMock.put).not.toHaveBeenCalledWith('/admin/menus/110101/default-columns', expect.anything())
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
-      '/admin/menus/110101/default-columns',
-      { table: 'master', fieldIds: ['C_ID', 'ADDR'] },
+      '/admin/menus/110101',
+      expect.objectContaining({
+        module: expect.objectContaining({ M_IDX: 110101 }),
+        defaultColumns: [{ table: 'master', fieldIds: ['C_ID', 'ADDR'] }],
+      }),
     ))
   })
 
@@ -435,8 +510,8 @@ describe('MenuAdminPage', () => {
     fireEvent.keyDown(renameInput, { key: 'Enter' })
 
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
-      '/admin/menus/11',
-      expect.objectContaining({ M_DESC: '基本参数-新名' }),
+      '/admin/menus/11/rename',
+      { description: '基本参数-新名' },
     ))
     expect(dispatchSpy.mock.calls.some(([event]) => (event as Event).type === 'eos:menu-changed')).toBe(true)
   })
@@ -448,9 +523,19 @@ describe('MenuAdminPage', () => {
     fireEvent.contextMenu(row, { clientX: 120, clientY: 80 })
     fireEvent.click(screen.getByRole('menuitem', { name: '停用' }))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
-      '/admin/menus/11',
-      expect.objectContaining({ M_TAG: false }),
+      '/admin/menus/11/enabled',
+      { enabled: false },
     ))
+  })
+
+  it('停用节点在左侧树上有停用标记', async () => {
+    apiClientMock.get.mockResolvedValue({
+      total: 1,
+      modules: [{ ...moduleNode(11, '基本参数', null), M_TAG: false }],
+    })
+    renderPage()
+    await waitForMenuTree()
+    expect(screen.getByText('停用')).toBeInTheDocument()
   })
 
   it('右键删除经确认后调用 DELETE', async () => {
@@ -473,7 +558,7 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByTitle('product'))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
       '/admin/menus/11',
-      expect.objectContaining({ M_ICON: 'product' }),
+      expect.objectContaining({ module: expect.objectContaining({ M_ICON: 'product' }) }),
     ))
   })
 

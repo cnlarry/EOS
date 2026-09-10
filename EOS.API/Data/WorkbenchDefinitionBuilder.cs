@@ -71,8 +71,10 @@ public sealed class WorkbenchDefinitionBuilder(
         using var timing = DbTimingCollector.Instance.Measure();
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
-        if (definitionProvider.TryGetBaseline(moduleId, out var baseline, out var snapshotVersion)
-            && !await IsDirtyAsync(connection, moduleId, token))
+        // 运行时的生效定义只有一个来源：最近一次发布的快照。未发布的元数据改动不参与执行
+        // （「已保存未发布」只改变管理端状态），因此这里不再按脏标记回退实时元数据——
+        // 回退会让快照内的效果引擎配置段丢失，使引擎静默退出而落到旧批核路径。
+        if (definitionProvider.TryGetBaseline(moduleId, out var baseline, out var snapshotVersion))
         {
             var fromBaseline = await BuildFromBaselineAsync(connection, baseline, snapshotVersion, moduleId, userId, execTag,
                 canViewCost, canViewSecrecy, deniedMasterFields, deniedDetailFields, token);
@@ -690,15 +692,6 @@ public sealed class WorkbenchDefinitionBuilder(
                 result.Add(key);
         }
         return result;
-    }
-
-    /// <summary>Returns true while a module has unpublished edits, forcing live metadata builds so snapshot consumers see field-maintenance changes immediately.</summary>
-    private static async Task<bool> IsDirtyAsync(SqlConnection connection, int moduleId, CancellationToken token)
-    {
-        const string sql = "SELECT 1 FROM dbo.WORKBENCH_MODULE_DIRTY WITH (NOLOCK) WHERE MODULE_ID=@ModuleId AND DIRTY_TAG=1;";
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-        return await command.ExecuteScalarAsync(token) is not null;
     }
 
     /// <summary>Reads module group expressions (GROUP1..5/GROUP_EXP1..5); snapshots omit high-risk expressions so these are read live.</summary>

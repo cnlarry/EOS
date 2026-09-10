@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import {
   IconArrowDown,
@@ -8,7 +8,6 @@ import {
   IconEdit,
   IconPlus,
   IconRefresh,
-  IconRocket,
   IconTrash,
 } from '@tabler/icons-react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -35,7 +34,7 @@ interface BusinessActionOp {
   remark?: string | null
 }
 
-interface BusinessAction {
+export interface BusinessAction {
   seq: number
   eventCode: string
   effectKey: string
@@ -50,7 +49,7 @@ interface BusinessAction {
   ops?: BusinessActionOp[]
 }
 
-interface ValidationRule {
+export interface ValidationRule {
   seq: number
   stage: string
   validationKey: string
@@ -65,6 +64,15 @@ interface ModuleBusinessConfig {
   moduleId: number
   actions: BusinessAction[]
   validationRules: ValidationRule[]
+}
+
+/** 面板当前编辑中的配置草稿：由主页面汇总后随模块一起保存。 */
+export interface ModuleBusinessConfigDraft {
+  moduleId: number
+  actions: BusinessAction[]
+  validationRules: ValidationRule[]
+  /** 当前编辑内容与已落库配置不一致（用于「已修改未保存」状态判断）。 */
+  dirty: boolean
 }
 
 interface BusinessConfigCatalog {
@@ -88,26 +96,10 @@ interface BusinessConfigSchemas {
   reverseKinds: string[]
 }
 
-interface PublishValidationCheck {
-  code: string
-  passed: boolean
-  message: string
-  severity: string
-}
-
-interface WorkbenchPublishResult {
-  moduleId: number
-  title: string
-  published: boolean
-  version: number | null
-  definitionVersion: string | null
-  passed: boolean
-  checks: PublishValidationCheck[]
-  error?: string | null
-}
-
 interface BusinessActionsPanelProps {
   module: MenuAdminModule
+  /** 草稿上报：配置装载完成或编辑变化时回调；null 表示当前没有可提交的草稿（未装载/无表模块）。 */
+  onDraftChange?: (draft: ModuleBusinessConfigDraft | null) => void
 }
 
 type EditorState =
@@ -166,10 +158,9 @@ const emptyRule = (stage: string): ValidationRule => ({
   sourceRef: null,
 })
 
-export function BusinessActionsPanel({ module }: BusinessActionsPanelProps) {
+export function BusinessActionsPanel({ module, onDraftChange }: BusinessActionsPanelProps) {
   const moduleId = module.M_IDX
   const hasTables = module.MASTER_TABLE != null || module.DETAIL_TABLE != null
-  const queryClient = useQueryClient()
 
   const configQuery = useQuery({
     queryKey: ['module-business-config', moduleId],
@@ -191,19 +182,39 @@ export function BusinessActionsPanel({ module }: BusinessActionsPanelProps) {
   const [rules, setRules] = useState<ValidationRule[]>([])
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [editor, setEditor] = useState<EditorState | null>(null)
+  // 已从服务端装载完成的模块编号：只有装载完成才向上报草稿，避免切换模块的瞬间
+  // 用空配置覆盖主页面持有的草稿。
+  const [loadedModuleId, setLoadedModuleId] = useState<number | null>(null)
 
   useEffect(() => {
     setActions([])
     setRules([])
     setSelectedKey(null)
     setEditor(null)
+    setLoadedModuleId(null)
   }, [moduleId])
 
   useEffect(() => {
     if (!configQuery.data) return
     setActions((configQuery.data.actions ?? []).map(cloneAction))
     setRules((configQuery.data.validationRules ?? []).map(cloneRule))
+    setLoadedModuleId(configQuery.data.moduleId)
   }, [configQuery.data])
+
+  const configDirty = useMemo(() => {
+    if (!configQuery.data) return false
+    return JSON.stringify(actions) !== JSON.stringify((configQuery.data.actions ?? []).map(cloneAction))
+      || JSON.stringify(rules) !== JSON.stringify((configQuery.data.validationRules ?? []).map(cloneRule))
+  }, [actions, rules, configQuery.data])
+
+  useEffect(() => {
+    if (!onDraftChange) return
+    if (loadedModuleId !== moduleId) {
+      onDraftChange(null)
+      return
+    }
+    onDraftChange({ moduleId, actions, validationRules: rules, dirty: configDirty })
+  }, [actions, rules, configDirty, loadedModuleId, moduleId, onDraftChange])
 
   const sortedActions = useMemo(
     () => [...actions].sort((a, b) => a.eventCode.localeCompare(b.eventCode) || a.seq - b.seq),
@@ -219,34 +230,6 @@ export function BusinessActionsPanel({ module }: BusinessActionsPanelProps) {
     () => [...(selectedAction?.ops ?? [])].sort((a, b) => a.opSeq - b.opSeq),
     [selectedAction],
   )
-
-  const persistConfig = async () => {
-    await apiClient.put(`/admin/module-business-config/${moduleId}`, {
-      actions: actions.map((action) => ({
-        ...action,
-        ops: (action.ops ?? []).map((op) =>
-          op.sourceScope === 'CONSTANT' ? { ...op, sourceConstant: op.sourceConstant ?? '' } : op,
-        ),
-      })),
-      validationRules: rules,
-    })
-    await queryClient.invalidateQueries({ queryKey: ['module-business-config', moduleId] })
-  }
-
-  const saveMutation = useMutation({
-    mutationFn: persistConfig,
-  })
-
-  const publishMutation = useMutation({
-    mutationFn: async (): Promise<WorkbenchPublishResult> => {
-      // 发布快照读取的是已落库配置，先把当前编辑内容保存，校验失败则中止发布。
-      await persistConfig()
-      const results = await apiClient.post<WorkbenchPublishResult[]>(
-        `/admin/module-business-config/${moduleId}/publish`,
-      )
-      return results[0]
-    },
-  })
 
   const replaceAction = (index: number, value: BusinessAction) =>
     setActions((prev) => prev.map((item, i) => (i === index ? cloneAction(value) : item)))
@@ -360,34 +343,11 @@ export function BusinessActionsPanel({ module }: BusinessActionsPanelProps) {
     <div className="d-flex flex-column gap-3">
       <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div>
-          <strong>{module.M_DESC}</strong>
-          <span className="text-secondary ms-2">
-            主表 {emptyText(module.MASTER_TABLE ?? '')} / 副表 {emptyText(module.DETAIL_TABLE ?? '')}
-          </span>
+          <strong>{tableTitle(module.MASTER_TABLE, module.MASTER_TABLE_DESC)} / {tableTitle(module.DETAIL_TABLE, module.DETAIL_TABLE_DESC)}</strong>
         </div>
         <div className="d-flex gap-2">
-          <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void configQuery.refetch()} disabled={saveMutation.isPending}>
+          <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void configQuery.refetch()}>
             重新加载
-          </Button>
-          <Button
-            size="sm"
-            variant="primary"
-            icon={<IconDeviceFloppy size={16} />}
-            loading={saveMutation.isPending}
-            disabled={!ready || publishMutation.isPending}
-            onClick={() => saveMutation.mutate()}
-          >
-            保存配置
-          </Button>
-          <Button
-            size="sm"
-            icon={<IconRocket size={16} />}
-            loading={publishMutation.isPending}
-            disabled={!ready || saveMutation.isPending}
-            title="保存当前配置并发布模块 Definition 快照（校验通过才生效）"
-            onClick={() => publishMutation.mutate()}
-          >
-            发布配置
           </Button>
         </div>
       </div>
@@ -410,38 +370,6 @@ export function BusinessActionsPanel({ module }: BusinessActionsPanelProps) {
           message={`Schema 目录加载失败：${describeApiError(schemasQuery.error, '无法读取效果 Schema。')}`}
           onRetry={() => void schemasQuery.refetch()}
         />
-      ) : null}
-      {saveMutation.isError ? (
-        <div className="alert alert-danger py-2 mb-0" role="alert">
-          保存失败：{describeApiError(saveMutation.error, '服务端拒绝保存。')}
-        </div>
-      ) : null}
-      {saveMutation.isSuccess ? (
-        <div className="alert alert-success py-2 mb-0" role="alert">
-          配置已保存并重新加载。
-        </div>
-      ) : null}
-      {publishMutation.isError ? (
-        <div className="alert alert-danger py-2 mb-0" role="alert">
-          发布失败：{describeApiError(publishMutation.error, '服务端拒绝发布。')}
-        </div>
-      ) : null}
-      {publishMutation.isSuccess && publishMutation.data.published ? (
-        <div className="alert alert-success py-2 mb-0" role="alert">
-          发布成功：{publishMutation.data.definitionVersion ?? `module-${moduleId}-v${publishMutation.data.version}`}。
-        </div>
-      ) : null}
-      {publishMutation.isSuccess && !publishMutation.data.published ? (
-        <div className="alert alert-warning py-2 mb-0" role="alert">
-          发布未通过校验，未写入新快照：
-          <ul className="mb-0 mt-1">
-            {publishMutation.data.checks
-              .filter((check) => !check.passed)
-              .map((check) => (
-                <li key={check.code}>{check.message}</li>
-              ))}
-          </ul>
-        </div>
       ) : null}
 
       {ready ? (
@@ -1162,4 +1090,11 @@ function eventLabel(event: string, catalog: BusinessConfigCatalog): string {
 
 function emptyText(text: string): string {
   return text.trim() === '' ? '—' : text
+}
+
+/** 表标识：描述(表名)；缺描述时退化为表名，表名为空显示占位符。 */
+function tableTitle(table: string | null, description?: string | null): string {
+  const tableId = (table ?? '').trim()
+  if (tableId === '') return '—'
+  return `${(description ?? '').trim() || tableId}(${tableId})`
 }

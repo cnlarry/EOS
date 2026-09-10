@@ -58,7 +58,39 @@ public sealed record MenuAdminModule(
     /// <summary>只读展示字段：所在根菜单的侧栏图标名（服务端解析，前端保存时忽略）。</summary>
     [property: JsonPropertyName("Icon")] string? Icon = null,
     /// <summary>模块级效果引擎开关（发布后写入 Definition effectEngine.enabled）。</summary>
-    [property: JsonPropertyName("EFFECT_ENGINE_TAG")] bool EffectEngineTag = false);
+    [property: JsonPropertyName("EFFECT_ENGINE_TAG")] bool EffectEngineTag = false,
+    /// <summary>只读展示字段：操作主表描述（TABLES.T_DESC，服务端解析，保存时忽略）。</summary>
+    [property: JsonPropertyName("MASTER_TABLE_DESC")] string? MasterTableDesc = null,
+    /// <summary>只读展示字段：操作副表描述（TABLES.T_DESC，服务端解析，保存时忽略）。</summary>
+    [property: JsonPropertyName("DETAIL_TABLE_DESC")] string? DetailTableDesc = null,
+    /// <summary>只读状态：已有保存但未发布的改动（WORKBENCH_MODULE_DIRTY）。</summary>
+    [property: JsonPropertyName("DIRTY_TAG")] bool DirtyTag = false,
+    /// <summary>只读状态：当前生效的 Definition 快照版本（无则未发布）。</summary>
+    [property: JsonPropertyName("PUBLISH_VERSION")] int? PublishVersion = null,
+    /// <summary>只读状态：当前生效版本的发布时间。</summary>
+    [property: JsonPropertyName("PUBLISHED_AT")] DateTime? PublishedAt = null);
+
+/// <summary>
+/// 菜单保存载荷：模块行 + 可选的行为动作/校验规则 + 可选的默认查询列，三者在同一事务内落库。
+/// BusinessConfig / DefaultColumns 传 null 或空表示该部分保持不动（仅保存模块行）。
+/// </summary>
+public sealed record SaveMenuModuleRequest(
+    [property: JsonPropertyName("module")] MenuAdminModule Module,
+    [property: JsonPropertyName("businessConfig")] SaveModuleBusinessConfigRequest? BusinessConfig = null,
+    [property: JsonPropertyName("defaultColumns")] IReadOnlyList<SaveMenuDefaultColumns>? DefaultColumns = null);
+
+public sealed record MenuRenameRequest([property: JsonPropertyName("description")] string Description);
+
+/// <summary>模块定义快照的历史版本（只读）。</summary>
+public sealed record MenuModuleVersion(
+    [property: JsonPropertyName("version")] int Version,
+    [property: JsonPropertyName("definitionVersion")] string DefinitionVersion,
+    [property: JsonPropertyName("publishedBy")] string? PublishedBy,
+    [property: JsonPropertyName("publishedAt")] DateTime? PublishedAt,
+    [property: JsonPropertyName("validationStatus")] string ValidationStatus,
+    [property: JsonPropertyName("isCurrent")] bool IsCurrent);
+
+public sealed record MenuEnabledRequest([property: JsonPropertyName("enabled")] bool Enabled);
 
 public sealed record MenuAdminList(int Total, IReadOnlyList<MenuAdminModule> Modules);
 
