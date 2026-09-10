@@ -121,8 +121,10 @@ public class EffectEngineTests
     public void Formula_sysdatetime_marker_compiles_to_function_without_parameter()
     {
         var executor = new EffectFormulaExecutor();
+        // The target is the module master: an unscoped write to any other table is
+        // rejected by the executor, so the fixture keeps the scoped shape.
         var op = new EffectOpPlan(
-            1, "PUR_PURCHASE_M", "FINISHED_DATE", "SET_WHEN",
+            1, "PUR_RECEIVE_M", "FINISHED_DATE", "SET_WHEN",
             new EffectSourceRef("CONSTANT", null, null, "SYSDATETIME"),
             null, null, null, null, null);
         var plan = new ModuleEffectPlan(1607, "PUR_RECEIVE_M", "PUR_RECEIVE_D", "v1",
@@ -152,7 +154,7 @@ public class EffectEngineTests
     {
         var executor = new EffectFormulaExecutor();
         var op = new EffectOpPlan(
-            1, "COP_SEND_M", "FINISHED_DATE", "SET_WHEN",
+            1, "COP_ACCOUNT_M", "FINISHED_DATE", "SET_WHEN",
             new EffectSourceRef("CONSTANT", null, null, "NULL"),
             null, null, null, null, null);
         var plan = new ModuleEffectPlan(170101, "COP_ACCOUNT_M", "COP_ACCOUNT_D", "v1",
@@ -768,4 +770,52 @@ public class EffectEngineGateTests
         null, true, true, false, Array.Empty<string>(), string.Empty,
         HasWorkflow: false, EffectEngine: effectEngine);
 
+}
+
+/// <summary>
+/// Formula rows must be scoped: an update to any table other than the document master
+/// requires locating keys or a condition, otherwise the statement would touch every row.
+/// </summary>
+public class EffectFormulaScopeGuardTests
+{
+    private static ModuleEffectPlan Plan() => new(
+        1607, "PUR_RECEIVE_M", "PUR_RECEIVE_D", "v1",
+        new[] { "RECEIVE_TYPE", "RECEIVE_NO" },
+        Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+
+    [Fact]
+    public void Unscoped_update_on_foreign_table_is_rejected()
+    {
+        var op = new EffectOpPlan(
+            1, "PRODUCT", "LAST_TRADE_DATE", "ASSIGN_MAX",
+            new EffectSourceRef("MASTER", null, "RECEIVE_DATE", null),
+            null, null, null, null, null);
+        var exception = Assert.Throws<EffectConfigException>(() =>
+            new EffectFormulaExecutor().BuildUpdate(op, Plan(), new[] { "CGSL", "SLD18070037" }));
+        Assert.Contains("禁止无条件更新", exception.Message);
+    }
+
+    [Fact]
+    public void Update_on_the_module_master_stays_allowed()
+    {
+        var op = new EffectOpPlan(
+            1, "PUR_RECEIVE_M", "FINISHED_DATE", "SET_WHEN",
+            new EffectSourceRef("CONSTANT", null, null, "SYSDATETIME"),
+            null, null, null, null, null);
+        var (sql, _) = new EffectFormulaExecutor().BuildUpdate(op, Plan(), new[] { "CGSL", "SLD18070037" });
+        Assert.Contains("WHERE T.[RECEIVE_TYPE]", sql);
+    }
+
+    [Fact]
+    public void Unscoped_update_becomes_legal_once_locating_keys_are_present()
+    {
+        var op = new EffectOpPlan(
+            1, "PRODUCT", "LAST_TRADE_DATE", "ASSIGN_MAX",
+            new EffectSourceRef("MASTER", null, "RECEIVE_DATE", null),
+            null, null,
+            new[] { new EffectMatchItem("PRO_NO", new EffectSourceRef("DETAIL", null, "PRO_NO", null)) },
+            null, null);
+        var (sql, _) = new EffectFormulaExecutor().BuildUpdate(op, Plan(), new[] { "CGSL", "SLD18070037" });
+        Assert.DoesNotContain("WHERE 1=1", sql);
+    }
 }
