@@ -36,7 +36,8 @@ namespace EOS.API.Tests.Tools;
 /// 2816 (outsourced inbound), 1503/1514/1517/2805/2806 (material issue),
 /// 1615/1616 (purchase request), 2817/2818 (misc in/out), 2906 (mould batch),
 /// 180106/180206/180207/180310/1803101 (HR), 2705/2706/2707/2708 (work-order family),
-/// 2815 (product outbound), 2903/2904 (mould apply/accept), 2907/2913 (mould issue).
+/// 2815 (product outbound), 2903/2904 (mould apply/accept), 2907/2913 (mould issue),
+/// 1423 (production-defect material return).
 /// </summary>
 [Trait("Category", "Tool")]
 public sealed class EffectShadowRunner
@@ -109,6 +110,9 @@ public sealed class EffectShadowRunner
         1413 => new(1413, "1413", "COP_CALLBACK_M", "COP_CALLBACK_D",
             "CALLBACK_TYPE", "CALLBACK_NO", "CALLBACK_DATE",
             null, null, null, "送货单回执"),
+        1423 => new(1423, "1423", "COP_BACK_M", "COP_BACK_D",
+            "BACK_TYPE", "BACK_NO", "BACK_DATE",
+            null, null, null, "退料单(生产不良)"),
         1610 => new(1610, "1610", "PUR_CALLBACK_M", "PUR_CALLBACK_D",
             "CALLBACK_TYPE", "CALLBACK_NO", "CALLBACK_DATE",
             "SUPPLIER_ID", "SUPPLIER", "SUPPLIER_ID", "收料核价单"),
@@ -368,7 +372,7 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423))
         {
             throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101 only.");
         }
@@ -552,7 +556,7 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818
             or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2907 or 2913
             or 130101 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
-            or 300301 or 300302 or 300304 or 300305)
+            or 300301 or 300302 or 300304 or 300305 or 1423)
         {
             return await ResolveRecordKeysByConfirmAsync(connection, spec, deapprove, failure);
         }
@@ -1087,7 +1091,7 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818
             or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913
             or 130101 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
-            or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101)
+            or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423)
         {
             // 2xxx snapshot specs filter target tables by document keys and EXISTS
             // subqueries off the master; no detail context rows are materialised.
@@ -1217,7 +1221,7 @@ public sealed class EffectShadowRunner
         }
         if (spec.ModuleId is 1503 or 1514 or 1517 or 2805 or 2806)
         {
-            return BuildBasicTableSpecs(master, "MOC_GET_M", "MOC_GET_D", "GET_TYPE", "GET_NO", "GET_DATE");
+            return BuildTableSpecsMaterialIssue(master);
         }
         if (spec.ModuleId is 1615 or 1616)
         {
@@ -1225,11 +1229,11 @@ public sealed class EffectShadowRunner
         }
         if (spec.ModuleId == 2817)
         {
-            return BuildBasicTableSpecs(master, "INV_OCCUR_IN_M", "INV_OCCUR_IN_D", "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE");
+            return BuildTableSpecsOccurInventory(master, "INV_OCCUR_IN_M", "INV_OCCUR_IN_D");
         }
         if (spec.ModuleId == 2818)
         {
-            return BuildBasicTableSpecs(master, "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D", "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE");
+            return BuildTableSpecsOccurInventory(master, "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D");
         }
         if (spec.ModuleId == 130101)
         {
@@ -1238,8 +1242,8 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId is 130103 or 130104 or 130110 or 3901)
         {
             return spec.ModuleId == 130103
-                ? BuildBasicTableSpecs(master, "INV_OCCUR_IN_M", "INV_OCCUR_IN_D", "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE")
-                : BuildBasicTableSpecs(master, "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D", "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE");
+                ? BuildTableSpecsOccurInventory(master, "INV_OCCUR_IN_M", "INV_OCCUR_IN_D")
+                : BuildTableSpecsOccurInventory(master, "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D");
         }
         if (spec.ModuleId == 130105)
         {
@@ -1284,6 +1288,10 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 2815)
         {
             return BuildTableSpecs2815(master);
+        }
+        if (spec.ModuleId == 1423)
+        {
+            return BuildTableSpecs1423(master);
         }
         if (spec.ModuleId == 2903)
         {
@@ -2800,6 +2808,127 @@ public sealed class EffectShadowRunner
         if (master.ReceiveDate is not null)
         {
             specs.Add(BuildLogSpecByMaster("2815", master));
+        }
+        return specs;
+    }
+
+    /// <summary>
+    /// Material issue family (1503/1514/1517/2805/2806, legacy P_WF_MOC_GET): the document
+    /// consumes the produce (used quantity on the produce line), the customer order MORE
+    /// row, the product's expected-get projection and the outbound stock move. Replaces the
+    /// master+detail-only spec whose PASS could not see any of those tables.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecsMaterialIssue(MasterContext master)
+    {
+        var gt = new SqlParameter("@gt", master.ReceiveType);
+        var gn = new SqlParameter("@gn", master.ReceiveNo);
+        var doc = "R.GET_TYPE=@gt AND R.GET_NO=@gn";
+        var specs = new List<TableSpec>
+        {
+            new("MOC_GET_M", new[] { "GET_TYPE", "GET_NO" }, "@gt=GET_TYPE AND @gn=GET_NO", new[] { gt, gn }),
+            new("MOC_GET_D", new[] { "GET_TYPE", "GET_NO", "SERIAL_NO" }, "@gt=GET_TYPE AND @gn=GET_NO", new[] { gt, gn }),
+        };
+        // Produce write-back: USED_QTY per line, start tags on the produce master.
+        specs.Add(new("MOC_PRODUCE_M", new[] { "PRODUCE_TYPE", "PRODUCE_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.MOC_GET_D R WHERE {doc} "
+            + "AND MOC_PRODUCE_M.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_M.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { gt, gn }));
+        specs.Add(new("MOC_PRODUCE_D", new[] { "PRODUCE_TYPE", "PRODUCE_NO", "SERIAL_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.MOC_GET_D R WHERE {doc} "
+            + "AND MOC_PRODUCE_D.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_D.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { gt, gn }));
+        // Customer order MORE row (no serial column: located by order keys + product).
+        specs.Add(new("COP_ORDER_MORE", new[] { "ORDER_TYPE", "ORDER_NO", "PRO_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.MOC_GET_D R WHERE {doc} "
+            + "AND COP_ORDER_MORE.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_MORE.ORDER_NO=R.ORDER_NO "
+            + "AND COP_ORDER_MORE.PRO_NO=R.PRO_NO)",
+            new[] { gt, gn }));
+        // Product projection + stock footprint of the outbound move.
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.MOC_GET_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)",
+            new[] { gt, gn }));
+        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            $"EXISTS (SELECT 1 FROM dbo.MOC_GET_D R WHERE {doc} "
+            + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
+            new[] { gt, gn }));
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("1503", master));
+        }
+        return specs;
+    }
+
+    /// <summary>
+    /// Miscellaneous stock in/out documents sharing the INV_OCCUR tables (130103/130104/
+    /// 130110/2817/2818/3901): a single stock move, so the compared footprint is the
+    /// document, the product row and the depot balance plus the inventory log.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecsOccurInventory(
+        MasterContext master, string masterTable, string detailTable)
+    {
+        var ot = new SqlParameter("@ot", master.ReceiveType);
+        var on = new SqlParameter("@on", master.ReceiveNo);
+        var doc = "R.OCCUR_TYPE=@ot AND R.OCCUR_NO=@on";
+        var specs = new List<TableSpec>
+        {
+            new(masterTable, new[] { "OCCUR_TYPE", "OCCUR_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
+            new(detailTable, new[] { "OCCUR_TYPE", "OCCUR_NO", "SERIAL_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
+            new("PRODUCT", new[] { "PRO_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.{detailTable} R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)",
+                new[] { ot, on }),
+            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.{detailTable} R WHERE {doc} "
+                + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
+                new[] { ot, on }),
+        };
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster(masterTable.StartsWith("INV_OCCUR_IN", StringComparison.OrdinalIgnoreCase)
+                ? "130103"
+                : "130104", master));
+        }
+        return specs;
+    }
+
+    /// <summary>
+    /// Production-defect material return (1423): order-line write-back (BACK_MATERIAL /
+    /// BACK_BAD chosen by BACK_CODE), the order completion recompute, the outbound stock
+    /// leg and the inventory log. The stock row-set supplies the amount slots as
+    /// configuration constants, so no amount column is read from this document.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1423(MasterContext master)
+    {
+        var bt = new SqlParameter("@bt", master.ReceiveType);
+        var bn = new SqlParameter("@bn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("COP_BACK_M", new[] { "BACK_TYPE", "BACK_NO" },
+                "@bt=BACK_TYPE AND @bn=BACK_NO", new[] { bt, bn }),
+            new("COP_BACK_D", new[] { "BACK_TYPE", "BACK_NO", "SERIAL_NO" },
+                "@bt=BACK_TYPE AND @bn=BACK_NO", new[] { bt, bn }),
+        };
+        // Order line write-back (field-accumulate) and order completion (completion-close).
+        specs.Add(new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_BACK_D R WHERE R.BACK_TYPE=@bt AND R.BACK_NO=@bn "
+            + "AND COP_ORDER_D.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=R.ORDER_NO "
+            + "AND COP_ORDER_D.SERIAL_NO=R.ORDER_SERIAL_NO)",
+            new[] { bt, bn }));
+        specs.Add(new("COP_ORDER_M", new[] { "ORDER_TYPE", "ORDER_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_BACK_D R WHERE R.BACK_TYPE=@bt AND R.BACK_NO=@bn "
+            + "AND COP_ORDER_M.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_M.ORDER_NO=R.ORDER_NO)",
+            new[] { bt, bn }));
+        // Stock footprint of the outbound move.
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_BACK_D R WHERE R.BACK_TYPE=@bt AND R.BACK_NO=@bn "
+            + "AND PRODUCT.PRO_NO=R.PRO_NO)",
+            new[] { bt, bn }));
+        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            "EXISTS (SELECT 1 FROM dbo.COP_BACK_D R WHERE R.BACK_TYPE=@bt AND R.BACK_NO=@bn "
+            + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
+            new[] { bt, bn }));
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("1423", master));
         }
         return specs;
     }
