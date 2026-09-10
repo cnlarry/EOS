@@ -104,9 +104,26 @@ public sealed class SetStateHandler : IEffectServiceHandler
             var targetIndex = 0;
             foreach (var target in targets.EnumerateArray())
             {
-                var table = target.GetString()!.Trim();
+                // A plain table name keeps the master-key join convention; an object
+                // adds explicit detail references that locate the target row through
+                // the document detail (non-key correlations such as the source
+                // document's application keys).
+                var (table, detailRefs) = target.ValueKind == JsonValueKind.String
+                    ? (target.GetString()!.Trim(), new List<(string Target, string Source)>())
+                    : ParseTargetObject(target);
                 if (!columns.Contains(table))
                     throw new EffectConfigException($"set-state 目标表不存在：{table}。");
+                var join = detailRefs.Count > 0
+                    ? string.Join(" AND ", detailRefs.Select(reference =>
+                        $"T.{ServiceEffectSql.Q(reference.Target)} = D.{ServiceEffectSql.Q(reference.Source)}"))
+                    : ServiceEffectSql.SameNameKeyJoin(plan, "T");
+                foreach (var reference in detailRefs)
+                {
+                    if (!columns.Contains(table + "." + reference.Target))
+                        throw new EffectConfigException($"set-state 目标定位列不存在：{table}.{reference.Target}。");
+                    if (!columns.Contains(plan.DetailTable + "." + reference.Source))
+                        throw new EffectConfigException($"set-state 明细定位列不存在：{plan.DetailTable}.{reference.Source}。");
+                }
                 var sets = new List<string>();
                 foreach (var property in state.EnumerateObject())
                 {
@@ -123,8 +140,13 @@ public sealed class SetStateHandler : IEffectServiceHandler
                 var where = table == plan.MasterTable
                     ? MasterWhere(plan, context, parameters)
                     : "1=1";
-                statements.Add(
-                    $"UPDATE T SET {string.Join(", ", sets)} FROM dbo.{ServiceEffectSql.Q(table)} T JOIN dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M ON {ServiceEffectSql.SameNameKeyJoin(plan, "T")} WHERE {where}");
+                var from = $"dbo.{ServiceEffectSql.Q(table)} T";
+                if (detailRefs.Count > 0)
+                    from += $" JOIN dbo.{ServiceEffectSql.Q(plan.DetailTable!)} D ON {join}"
+                        + $" JOIN dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M ON {ServiceEffectSql.SameNameKeyJoin(plan, "D")}";
+                else
+                    from += $" JOIN dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M ON {join}";
+                statements.Add($"UPDATE T SET {string.Join(", ", sets)} FROM {from} WHERE {where}");
                 targetIndex++;
             }
         }
@@ -218,6 +240,34 @@ public sealed class SetStateHandler : IEffectServiceHandler
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()!.Trim()
             : throw new EffectConfigException($"set-state 缺少字符串字段 '{name}'。");
+
+    /// <summary>
+    /// Parses an object target: { table, refs: [{ target, source }] } locates the
+    /// target rows through the module detail columns (the detail is already scoped
+    /// to the current document by its master keys).
+    /// </summary>
+    private static (string Table, List<(string Target, string Source)> Refs) ParseTargetObject(JsonElement target)
+    {
+        if (target.ValueKind != JsonValueKind.Object
+            || !target.TryGetProperty("table", out var tableValue) || tableValue.ValueKind != JsonValueKind.String)
+            throw new EffectConfigException("set-state targets 项必须是表名或 {table, refs} 对象。");
+        var refs = new List<(string Target, string Source)>();
+        if (target.TryGetProperty("refs", out var refsValue) && refsValue.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in refsValue.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object
+                    || !item.TryGetProperty("target", out var t) || t.ValueKind != JsonValueKind.String
+                    || !item.TryGetProperty("source", out var s) || s.ValueKind != JsonValueKind.String)
+                    throw new EffectConfigException("set-state targets.refs 项必须是 {target, source}。");
+                refs.Add((t.GetString()!.Trim(), s.GetString()!.Trim()));
+            }
+        }
+        foreach (var property in target.EnumerateObject())
+            if (!property.NameEquals("table") && !property.NameEquals("refs"))
+                throw new EffectConfigException($"set-state targets 项含未登记键 '{property.Name}'。");
+        return (tableValue.GetString()!.Trim(), refs);
+    }
 
     /// <summary>
     /// Maps a configured state value to its SQL fragment. In clear mode (deapprove
