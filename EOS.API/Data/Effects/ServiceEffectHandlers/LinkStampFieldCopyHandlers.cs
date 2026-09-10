@@ -119,7 +119,7 @@ public sealed class LinkStampHandler : IEffectServiceHandler
         {
             from.Append(" JOIN dbo.").Append(ServiceEffectSql.Q(plan.DetailTable!)).Append(" D ON ")
                 .Append(string.Join(" AND ", target.Refs.Zip(target.SourceRefs,
-                    (reference, source) => $"T.{ServiceEffectSql.Q(reference)} = D.{ServiceEffectSql.Q(source)}")))
+                    (reference, source) => $"T.{ServiceEffectSql.Q(reference.Target)} = D.{ServiceEffectSql.Q(source)}")))
                 .Append(" JOIN dbo.").Append(ServiceEffectSql.Q(plan.MasterTable!)).Append(" M ON ")
                 .Append(ServiceEffectSql.SameNameKeyJoin(plan, "D"));
         }
@@ -134,8 +134,8 @@ public sealed class LinkStampHandler : IEffectServiceHandler
 
     private static string MasterJoin(ModuleEffectPlan plan, LinkStampTarget target) =>
         target.Refs.Count > 0
-            ? string.Join(" AND ", target.Refs.Zip(plan.MasterPkOrder)
-                .Select(pair => $"T.{ServiceEffectSql.Q(pair.First)} = M.{ServiceEffectSql.Q(pair.Second)}"))
+            ? string.Join(" AND ", target.Refs.Select((reference, index) =>
+                $"T.{ServiceEffectSql.Q(reference.Target)} = M.{ServiceEffectSql.Q(reference.Source ?? plan.MasterPkOrder[index])}"))
             : ServiceEffectSql.SameNameKeyJoin(plan, "T");
 
     private static bool IsSerialColumn(string column) =>
@@ -167,11 +167,19 @@ internal sealed record LinkStampField(string Target, string Source);
 /// </summary>
 internal sealed record LinkStampTarget(
     string Table,
-    IReadOnlyList<string> Refs,
+    IReadOnlyList<LinkStampRef> Refs,
     bool FromDetail,
     IReadOnlyList<string> SourceRefs,
     IReadOnlyList<LinkStampField> Fields,
     bool Finish);
+
+/// <summary>
+/// One locating key for a link-stamp target: the target column and the master /
+/// source column feeding it. The source is omitted for the legacy positional form
+/// (paired with the module primary key order) and explicit for {target, source}
+/// entries that locate rows through non-key columns.
+/// </summary>
+internal sealed record LinkStampRef(string Target, string? Source);
 
 /// <summary>Parsed link-stamp parameters (all shapes) validated against physical columns.</summary>
 internal sealed record LinkStampSpec(IReadOnlyList<LinkStampTarget> Targets)
@@ -194,9 +202,9 @@ internal sealed record LinkStampSpec(IReadOnlyList<LinkStampTarget> Targets)
             {
                 if (item.ValueKind != JsonValueKind.Object)
                     throw new EffectConfigException("link-stamp targets 项必须是对象。");
-                var refs = ReadNames(item, "refs") is { Length: > 0 } plural
+                var refs = ReadRefs(item, "refs") is { Length: > 0 } plural
                     ? plural
-                    : ReadNames(item, "ref");
+                    : ReadRefs(item, "ref");
                 targets.Add(Resolve(
                     Required(item, "table"), refs,
                     item.TryGetProperty("fromDetail", out var detail) && detail.ValueKind == JsonValueKind.True,
@@ -207,7 +215,7 @@ internal sealed record LinkStampSpec(IReadOnlyList<LinkStampTarget> Targets)
         else
         {
             targets.Add(Resolve(
-                Required(root, "targetTable"), Array.Empty<string>(), false, Array.Empty<string>(),
+                Required(root, "targetTable"), Array.Empty<LinkStampRef>(), false, Array.Empty<string>(),
                 declared, plan, columns, finish));
         }
         if (targets.Count == 0)
@@ -217,7 +225,7 @@ internal sealed record LinkStampSpec(IReadOnlyList<LinkStampTarget> Targets)
 
     private static LinkStampTarget Resolve(
         string table,
-        IReadOnlyList<string> refs,
+        IReadOnlyList<LinkStampRef> refs,
         bool fromDetail,
         IReadOnlyList<string> sourceRefs,
         IReadOnlyList<LinkStampField> declared,
@@ -237,6 +245,8 @@ internal sealed record LinkStampSpec(IReadOnlyList<LinkStampTarget> Targets)
         {
             if (refs.Count == 0 || sourceRefs.Count == 0)
                 throw new EffectConfigException($"link-stamp 目标 {table} fromDetail=true 需要 refs 与 sourceRefs。");
+            if (refs.Any(reference => reference.Source is not null))
+                throw new EffectConfigException($"link-stamp 目标 {table} fromDetail=true 的 refs 不允许显式 source（与 sourceRefs 按序配对）。");
             if (refs.Count != sourceRefs.Count)
                 throw new EffectConfigException(
                     $"link-stamp 目标 {table} refs 列数({refs.Count})与 sourceRefs 列数({sourceRefs.Count})不一致。");
@@ -245,13 +255,17 @@ internal sealed record LinkStampSpec(IReadOnlyList<LinkStampTarget> Targets)
                     throw new EffectConfigException(
                         $"link-stamp 明细表 {sourceTable} 缺少主表主键列 {key}，无法限定单据范围。");
         }
-        else if (refs.Count > 0 && refs.Count != plan.MasterPkOrder.Count)
+        else if (refs.Count > 0 && refs.Any(reference => reference.Source is null) && refs.Count != plan.MasterPkOrder.Count)
         {
             throw new EffectConfigException($"link-stamp ref 列数({refs.Count})与主表主键数({plan.MasterPkOrder.Count})不一致。");
         }
         foreach (var reference in refs)
-            if (!columns.Contains(table + "." + reference))
-                throw new EffectConfigException($"link-stamp 目标定位列不存在：{table}.{reference}。");
+        {
+            if (!columns.Contains(table + "." + reference.Target))
+                throw new EffectConfigException($"link-stamp 目标定位列不存在：{table}.{reference.Target}。");
+            if (reference.Source is not null && !columns.Contains(sourceTable + "." + reference.Source))
+                throw new EffectConfigException($"link-stamp 定位来源列不存在：{sourceTable}.{reference.Source}。");
+        }
         foreach (var source in sourceRefs)
             if (!columns.Contains(sourceTable + "." + source))
                 throw new EffectConfigException($"link-stamp 来源定位列不存在：{sourceTable}.{source}。");
@@ -299,6 +313,34 @@ internal sealed record LinkStampSpec(IReadOnlyList<LinkStampTarget> Targets)
                 .Select(item => item.ValueKind == JsonValueKind.String
                     ? item.GetString()!.Trim()
                     : throw new EffectConfigException($"link-stamp {name} 必须是字段名数组。"))
+                .ToArray();
+        throw new EffectConfigException($"link-stamp {name} 必须是字段名或字段名数组。");
+    }
+
+    /// <summary>
+    /// Reads locating keys: a plain name keeps the legacy positional pairing with
+    /// the module primary key order, while an object {target, source} locates the
+    /// target row through an explicit master column (non-key correlations).
+    /// </summary>
+    private static LinkStampRef[] ReadRefs(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value))
+            return Array.Empty<LinkStampRef>();
+        if (value.ValueKind == JsonValueKind.String)
+            return new[] { new LinkStampRef(value.GetString()!.Trim(), null) };
+        if (value.ValueKind == JsonValueKind.Array)
+            return value.EnumerateArray()
+                .Select(item => item.ValueKind switch
+                {
+                    JsonValueKind.String => new LinkStampRef(item.GetString()!.Trim(), null),
+                    JsonValueKind.Object => new LinkStampRef(
+                        ObjectName(item, "target"),
+                        item.TryGetProperty("source", out var source) && source.ValueKind == JsonValueKind.String
+                            && !string.IsNullOrWhiteSpace(source.GetString())
+                                ? source.GetString()!.Trim()
+                                : null),
+                    _ => throw new EffectConfigException($"link-stamp {name} 项必须是字段名或 {{target,source}} 对象。"),
+                })
                 .ToArray();
         throw new EffectConfigException($"link-stamp {name} 必须是字段名或字段名数组。");
     }

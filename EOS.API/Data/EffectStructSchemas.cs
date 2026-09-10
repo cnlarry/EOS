@@ -400,7 +400,7 @@ public static class EffectStructSchemas
                 && flag.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
                 issues.Add($"{where}.fromDetail 必须是布尔。");
             var fromDetail = item.TryGetProperty("fromDetail", out var detail) && detail.ValueKind == JsonValueKind.True;
-            var refs = NameCount(item, "refs", issues) ?? NameCount(item, "ref", issues);
+            var refs = RefCount(item, "refs", issues) ?? RefCount(item, "ref", issues);
             var sourceRefs = NameCount(item, "sourceRefs", issues);
             if (!fromDetail)
                 continue;
@@ -429,6 +429,50 @@ public static class EffectStructSchemas
         foreach (var entry in value.EnumerateArray())
             if (entry.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(entry.GetString()))
                 issues.Add($"link-stamp {name} 存在空字段名。");
+        return value.GetArrayLength();
+    }
+
+    /// <summary>
+    /// Locating keys accept a plain name or a {target[, source]} object so anchors
+    /// may be expressed through non-key master columns; the count drives the
+    /// positional pairing checks.
+    /// </summary>
+    private static int? RefCount(JsonElement element, string name, ICollection<string> issues)
+    {
+        if (!element.TryGetProperty(name, out var value))
+            return null;
+        if (value.ValueKind == JsonValueKind.String)
+            return string.IsNullOrWhiteSpace(value.GetString()) ? 0 : 1;
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            issues.Add($"link-stamp {name} 必须是字段名或字段名数组。");
+            return -1;
+        }
+        var index = 0;
+        foreach (var entry in value.EnumerateArray())
+        {
+            var where = $"link-stamp {name}[{index++}]";
+            if (entry.ValueKind == JsonValueKind.String)
+            {
+                if (string.IsNullOrWhiteSpace(entry.GetString()))
+                    issues.Add($"{where} 存在空字段名。");
+                continue;
+            }
+            if (entry.ValueKind == JsonValueKind.Object)
+            {
+                if (!entry.TryGetProperty("target", out var target) || target.ValueKind != JsonValueKind.String
+                    || string.IsNullOrWhiteSpace(target.GetString()))
+                    issues.Add($"{where}.target 不能为空");
+                if (entry.TryGetProperty("source", out var source)
+                    && (source.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(source.GetString())))
+                    issues.Add($"{where}.source 必须是非空字符串");
+                foreach (var property in entry.EnumerateObject())
+                    if (!property.NameEquals("target") && !property.NameEquals("source"))
+                        issues.Add($"{where} 含未登记键 '{property.Name}'");
+                continue;
+            }
+            issues.Add($"{where} 必须是字段名或 {{target,source}} 对象。");
+        }
         return value.GetArrayLength();
     }
 

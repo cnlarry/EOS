@@ -266,14 +266,20 @@ public sealed class ModuleBusinessConfigRepository(
                             ToColumn = item.TargetColumn,
                         })
                         .ToList();
+                    // A match may use a subset of a registered edge: every key must
+                    // correspond to a registered (scope, from-table, from-column,
+                    // to-table, to-column) tuple on the same target table, while the
+                    // edge may carry additional keys the formula does not constrain.
+                    // Keys without a registered counterpart still fail closed.
                     var matched = edges.Values.Any(group =>
-                        group.Count == resolved.Count
-                        && group.Zip(resolved).All(pair =>
-                            pair.First.ToTable == op.TargetTable
-                            && pair.First.FromTable == pair.Second.FromTable
-                            && pair.First.FromColumn == pair.Second.FromColumn
-                            && pair.First.ToColumn == pair.Second.ToColumn
-                            && pair.First.Scope == pair.Second.Scope));
+                        group.Count > 0
+                        && group.Any(edge => edge.ToTable == op.TargetTable)
+                        && resolved.All(item => group.Any(edge =>
+                            edge.ToTable == op.TargetTable
+                            && edge.FromTable == item.FromTable
+                            && edge.FromColumn == item.FromColumn
+                            && edge.ToColumn == item.ToColumn
+                            && edge.Scope == item.Scope)));
                     if (!matched)
                     {
                         issues.Add(

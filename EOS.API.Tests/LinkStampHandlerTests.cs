@@ -40,6 +40,34 @@ public class LinkStampHandlerTests
         Assert.Single(LinkStampSpec.Parse(JsonDocument.Parse(DetailShapeJson).RootElement, QuotePlan(), QuoteColumns()).Targets);
 
     [Fact]
+    public void LinkStamp_ExplicitRefSource_LocatesThroughNonKeyMasterColumns()
+    {
+        // 2904 mould accept: the application row is found through the APPLY keys —
+        // not the accept master's own primary key.
+        var plan = new ModuleEffectPlan(2904, "MOU_ACCEPT_M", "MOU_ACCEPT_D", "v1",
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+        plan = plan with { MasterPkOrder = new[] { "ACCEPT_TYPE", "ACCEPT_NO" } };
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "MOU_ACCEPT_M.ACCEPT_TYPE", "MOU_ACCEPT_M.ACCEPT_NO",
+            "MOU_ACCEPT_M.APPLY_TYPE", "MOU_ACCEPT_M.APPLY_NO",
+            "MOU_ACCEPT_M.ACCEPT_STATE",
+            "MOU_APPLY_M.APPLY_TYPE", "MOU_APPLY_M.APPLY_NO",
+            "MOU_APPLY_M.ACCEPT_STATE", "MOU_APPLY_M.ACCEPT_TYPE", "MOU_APPLY_M.ACCEPT_NO",
+        };
+        var json = """{"targets":[{"table":"MOU_APPLY_M","refs":[{"target":"APPLY_TYPE","source":"APPLY_TYPE"},{"target":"APPLY_NO","source":"APPLY_NO"}]}],"fields":["ACCEPT_STATE","ACCEPT_TYPE","ACCEPT_NO"]}""";
+        var target = Assert.Single(LinkStampSpec.Parse(JsonDocument.Parse(json).RootElement, plan, columns).Targets);
+        var parameters = new List<EffectSqlParameter>();
+        var sql = LinkStampHandler.BuildUpdate(plan, target, new[] { "AC", "A26090001" },
+            LinkStampHandler.StampAssignments(target), parameters);
+        Assert.Contains("T.[APPLY_TYPE] = M.[APPLY_TYPE]", sql);
+        Assert.Contains("T.[APPLY_NO] = M.[APPLY_NO]", sql);
+        // The locate join must not fall back to the accept primary key.
+        Assert.DoesNotContain("ON T.[ACCEPT_TYPE] = M.[ACCEPT_TYPE]", sql);
+        Assert.Contains("T.[ACCEPT_STATE] = M.[ACCEPT_STATE]", sql);
+    }
+
+    [Fact]
     public void LinkStamp_DetailSourceShape_LocatesTargetRowsByDetailReferenceKeys()
     {
         var plan = QuotePlan();
@@ -160,7 +188,13 @@ public class LinkStampHandlerTests
              "fields":["QUOTE_NO"],"finish":true}
             """).RootElement, plan, QuoteColumns()).Targets);
         Assert.Equal(
-            new[] { "T.[QUOTE_NO] = M.[QUOTE_NO]", "T.[FINISHED_TAG] = 1" },
+            new[]
+            {
+                "T.[QUOTE_NO] = M.[QUOTE_NO]",
+                "T.[FINISHED_TAG] = 1",
+                "T.[FINISHED_PERSON] = 'SYSTEM'",
+                "T.[FINISHED_DATE] = SYSDATETIME()",
+            },
             LinkStampHandler.StampAssignments(target));
     }
 }
