@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.SqlClient;
@@ -31,13 +32,21 @@ public sealed class InventoryMoveHandler : IEffectServiceHandler
     }
 }
 
+/// <summary>
+/// One column of the generated row set: the document detail column of that name, or — when
+/// <see cref="Constant"/> is set — a configured literal written into the slot instead (the
+/// legacy procedures filled slots a document does not carry, such as the amount of a
+/// document without amount columns, with inline literals).
+/// </summary>
+public sealed record InventoryRowColumn(string Column, string? Constant = null);
+
 /// <summary>Parsed inventory-move parameters with closed shapes only.</summary>
 public sealed record InventoryMovePlan(
     int Direction,
     string MasterDateField,
     string DepotField,
     IReadOnlyList<EffectTerm> QuantityTerms,
-    IReadOnlyList<string> DetailFields,
+    IReadOnlyList<InventoryRowColumn> DetailColumns,
     IReadOnlyList<string> RowPositiveFields)
 {
     public static InventoryMovePlan Parse(JsonElement root)
@@ -83,11 +92,22 @@ public sealed record InventoryMovePlan(
         if (terms.Count == 0)
             throw new EffectConfigException("inventory-move.fieldMap 缺少可用的 qty。");
 
-        var detailFields = new List<string>();
+        var detailColumns = new List<InventoryRowColumn>();
         if (fieldMap.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.Array)
             foreach (var item in detail.EnumerateArray())
+            {
                 if (item.ValueKind == JsonValueKind.String)
-                    detailFields.Add(item.GetString()!.Trim());
+                {
+                    var column = item.GetString()!.Trim();
+                    if (column.Length > 0)
+                        detailColumns.Add(new InventoryRowColumn(column));
+                    continue;
+                }
+                if (item.ValueKind != JsonValueKind.Object)
+                    throw new EffectConfigException(
+                        "inventory-move.fieldMap.detail 项必须是列名或 {column, constant} 对象。");
+                detailColumns.Add(ParseRowColumnConstant(item));
+            }
 
         // Optional row gate: only rows with any of these detail fields positive take
         // part in the move (mirrors legacy per-call row filters such as "bad quantity
@@ -114,9 +134,58 @@ public sealed record InventoryMovePlan(
             masterDate,
             depotField,
             terms,
-            detailFields,
+            detailColumns,
             rowPositiveFields);
     }
+
+    /// <summary>
+    /// Reads a constant row-set entry: {column, constant} writes the configured value into
+    /// that row-set column instead of reading a document column. The legacy procedures used
+    /// inline literals for slots a document does not carry (for example the amount slot of a
+    /// document without amount columns); the closed form keeps the same semantics while the
+    /// value travels as a bound parameter rather than as statement text.
+    /// </summary>
+    private static InventoryRowColumn ParseRowColumnConstant(JsonElement item)
+    {
+        string? column = null;
+        var hasConstant = false;
+        var constant = default(JsonElement);
+        foreach (var property in item.EnumerateObject())
+        {
+            switch (property.Name)
+            {
+                case "column":
+                    if (property.Value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(property.Value.GetString()))
+                        throw new EffectConfigException("inventory-move.fieldMap.detail.column 必须是非空列名。");
+                    column = property.Value.GetString()!.Trim();
+                    break;
+                case "constant":
+                    constant = property.Value;
+                    hasConstant = true;
+                    break;
+                default:
+                    throw new EffectConfigException(
+                        $"inventory-move.fieldMap.detail 含未登记键 '{property.Name}'（仅允许 column/constant）。");
+            }
+        }
+        if (column is null)
+            throw new EffectConfigException("inventory-move.fieldMap.detail 缺少 column。");
+        if (!hasConstant)
+            throw new EffectConfigException("inventory-move.fieldMap.detail 缺少 constant。");
+        var text = constant.ValueKind switch
+        {
+            JsonValueKind.String => constant.GetString() ?? string.Empty,
+            JsonValueKind.Number => constant.GetRawText(),
+            _ => throw new EffectConfigException("inventory-move.fieldMap.detail.constant 必须是字符串或数字。"),
+        };
+        return new InventoryRowColumn(column, text);
+    }
+
+    /// <summary>Binds a configured constant: numbers stay numeric, any other text binds as text.</summary>
+    internal static object ParseConstant(string text) =>
+        decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var number)
+            ? number
+            : text;
 
     /// <summary>Generated row-set statement: target column list + aligned SELECT + parameters.</summary>
     public sealed record RowSetStatement(
@@ -145,7 +214,9 @@ public sealed record InventoryMovePlan(
         if (keys < 2)
             throw new EffectConfigException("inventory-move 需要单据双键（类型+单号）主表形态，禁止单键执行。");
 
-        var check = new[] { MasterDateField, DepotField }.Concat(DetailFields).Concat(QuantityTerms.Select(t => t.Field))
+        var check = new[] { MasterDateField, DepotField }
+            .Concat(DetailColumns.Where(column => column.Constant is null).Select(column => column.Column))
+            .Concat(QuantityTerms.Select(t => t.Field))
             .Concat(RowPositiveFields)
             .Concat(plan.MasterPkOrder.Take(keys));
         foreach (var field in check)
@@ -166,13 +237,21 @@ public sealed record InventoryMovePlan(
             ("PRO_NO", "D.[PRO_NO]"),
             ("DEPOT_ID", $"D.{Q(DepotField)}"),
         };
-        foreach (var field in DetailFields)
+        var constantIndex = 0;
+        foreach (var entry in DetailColumns)
         {
-            if (field is "SERIAL_NO" or "PRO_NO")
+            if (entry.Column is "SERIAL_NO" or "PRO_NO")
                 continue;
-            if (rowColumns.Any(item => item.Column == field))
+            if (rowColumns.Any(item => item.Column == entry.Column))
                 continue;
-            rowColumns.Add((field, $"D.{Q(field)}"));
+            if (entry.Constant is { } constant)
+            {
+                var name = "@dc" + constantIndex++;
+                parameters.Add(new EffectSqlParameter(name, ParseConstant(constant)));
+                rowColumns.Add((entry.Column, name));
+                continue;
+            }
+            rowColumns.Add((entry.Column, $"D.{Q(entry.Column)}"));
         }
         rowColumns.Add(("QTY", BuildQuantityExpression("D")));
 

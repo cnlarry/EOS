@@ -348,6 +348,48 @@ public class ServiceEffectHandlerTests
     }
 
     [Fact]
+    public void InventoryMove_constant_row_column_binds_a_parameter_and_skips_the_column_check()
+    {
+        var plan = EOS.API.Data.Effects.ServiceEffectHandlers.InventoryMovePlan.Parse(
+            JsonSerializer.SerializeToElement(new
+            {
+                direction = "OUT",
+                fieldMap = new
+                {
+                    masterDate = "BACK_DATE",
+                    qty = "QTY",
+                    detail = new object[]
+                    {
+                        "SERIAL_NO", "PRO_NO", "DEPOT_ID", "UNIT_ID",
+                        new { column = "AMOUNT", constant = 0 },
+                        new { column = "CURR_ID", constant = "" },
+                    },
+                },
+            }));
+        Assert.Equal(6, plan.DetailColumns.Count);
+        Assert.Equal("0", plan.DetailColumns[4].Constant);
+
+        var modulePlan = new EOS.API.Data.Effects.ModuleEffectPlan(
+            1423, "COP_BACK_M", "COP_BACK_D", "v1", new[] { "BACK_TYPE", "BACK_NO" },
+            Array.Empty<EOS.API.Data.Effects.EffectActionPlan>(),
+            Array.Empty<EOS.API.Data.Effects.EffectValidationPlan>());
+        // The detail table deliberately carries no AMOUNT / CURR_ID column: the constant
+        // entries must not be resolved against the physical schema.
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "COP_BACK_M.BACK_DATE", "COP_BACK_D.BACK_TYPE", "COP_BACK_D.BACK_NO",
+            "COP_BACK_D.SERIAL_NO", "COP_BACK_D.PRO_NO", "COP_BACK_D.DEPOT_ID", "COP_BACK_D.UNIT_ID", "COP_BACK_D.QTY",
+        };
+        var rowSet = plan.BuildRowSet(modulePlan, new[] { "BKT", "BK001" }, columns);
+
+        Assert.Contains("AMOUNT", rowSet.Columns);
+        Assert.Contains("@dc0 AS [AMOUNT]", rowSet.Sql);
+        Assert.DoesNotContain("D.[AMOUNT]", rowSet.Sql);
+        Assert.Contains(rowSet.Parameters, parameter => parameter.Name == "@dc0" && Convert.ToDecimal(parameter.Value) == 0m);
+        Assert.Contains(rowSet.Parameters, parameter => parameter.Name == "@dc1" && (string?)parameter.Value == "");
+    }
+
+    [Fact]
     public void InventoryMove_rejects_missing_master_keys()
     {
         var plan = EOS.API.Data.Effects.ServiceEffectHandlers.InventoryMovePlan.Parse(
