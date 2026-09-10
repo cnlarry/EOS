@@ -583,26 +583,111 @@ public static class EffectStructSchemas
             issues.Add("参数 condition.items 必须是非空数组。");
             return issues;
         }
+        ValidateConditionItems(items, "参数 condition", issues);
+        return issues;
+    }
+
+    /// <summary>
+    /// Shape validation for a condition item list, shared by the parameter-level check and
+    /// the formula-row / action-level conditions. Each item type has one accepted shape;
+    /// a bare field name where the compiler expects {scope, field} is rejected here rather
+    /// than surfacing as an execution error when a document is approved.
+    /// </summary>
+    public static void ValidateConditionItems(JsonElement items, string where, ICollection<string> issues)
+    {
+        if (items.ValueKind != JsonValueKind.Array)
+        {
+            issues.Add($"{where}.items 必须是数组。");
+            return;
+        }
+        var index = 0;
         foreach (var item in items.EnumerateArray())
         {
+            var at = $"{where}.items[{index++}]";
             if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("type", out var type)
                 || type.ValueKind != JsonValueKind.String || !ConditionTypes.Contains(type.GetString()!))
             {
-                issues.Add($"参数 condition.items 存在非法类型 '{item}'。");
+                issues.Add($"{at} 存在非法类型。");
                 continue;
             }
-            if (type.GetString()!.Equals("field-compare", StringComparison.OrdinalIgnoreCase)
-                && (!item.TryGetProperty("op", out var op) || op.ValueKind != JsonValueKind.String
-                    || !CompareOperators.Contains(op.GetString()!)))
+            var kind = type.GetString()!;
+            switch (kind.ToLowerInvariant())
             {
-                issues.Add("参数 condition field-compare 缺少闭式 op。");
+                case "field-compare":
+                    if (!item.TryGetProperty("op", out var op) || op.ValueKind != JsonValueKind.String
+                        || !CompareOperators.Contains(op.GetString()!))
+                        issues.Add($"{at} field-compare 缺少闭式 op。");
+                    if (!HasFieldOrTerms(item, "left")) issues.Add($"{at} field-compare 缺少 left 字段引用。");
+                    if (!HasFieldOrTerms(item, "right")) issues.Add($"{at} field-compare 缺少 right 字段引用。");
+                    break;
+                case "value-eq":
+                case "value-neq":
+                    if (!HasObjectField(item, "field"))
+                        issues.Add($"{at} {kind} 的 field 必须是 {{\"scope\":…,\"field\":…}} 对象。");
+                    if (!item.TryGetProperty("value", out _))
+                        issues.Add($"{at} {kind} 缺少 value。");
+                    break;
+                case "not-exists":
+                    if (!item.TryGetProperty("targetTable", out var target) || target.ValueKind != JsonValueKind.String)
+                        issues.Add($"{at} not-exists 缺少字符串 targetTable。");
+                    if (!item.TryGetProperty("condition", out var inner) || inner.ValueKind != JsonValueKind.Object)
+                        issues.Add($"{at} not-exists 缺少 condition 对象。");
+                    if (!item.TryGetProperty("match", out var match) || match.ValueKind != JsonValueKind.Array)
+                        issues.Add($"{at} not-exists 缺少 match 数组。");
+                    break;
+                case "switch":
+                    if (!item.TryGetProperty("key", out var key) || key.ValueKind != JsonValueKind.String)
+                        issues.Add($"{at} switch 缺少字符串 key。");
+                    if (!item.TryGetProperty("value", out _))
+                        issues.Add($"{at} switch 缺少 value。");
+                    break;
             }
             if (item.TryGetProperty("negate", out var negate)
                 && negate.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
             {
-                issues.Add("参数 condition item.negate 必须是布尔。");
+                issues.Add($"{at} negate 必须是布尔。");
             }
         }
+    }
+
+    /// <summary>True when the member is a field reference object carrying field or terms.</summary>
+    private static bool HasFieldOrTerms(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.Object
+        && (value.TryGetProperty("field", out var field) && field.ValueKind == JsonValueKind.String
+            || value.TryGetProperty("terms", out var terms) && terms.ValueKind == JsonValueKind.Array);
+
+    /// <summary>True when the member is {scope, field} with a string field.</summary>
+    private static bool HasObjectField(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.Object
+        && value.TryGetProperty("field", out var field)
+        && field.ValueKind == JsonValueKind.String
+        && !string.IsNullOrWhiteSpace(field.GetString());
+
+    /// <summary>Validates a condition JSON text (formula row / action level); empty when absent.</summary>
+    public static IReadOnlyList<string> ValidateConditionJson(string? json, string where)
+    {
+        var issues = new List<string>();
+        if (string.IsNullOrWhiteSpace(json))
+            return issues;
+        if (!TryParseObject(json!, out var root, out var parseIssue))
+        {
+            issues.Add($"{where} 不是合法 JSON 对象：{parseIssue}");
+            return issues;
+        }
+        if (!root.TryGetProperty("logic", out var logic) || logic.ValueKind != JsonValueKind.String
+            || logic.GetString() is not ("AND" or "OR"))
+        {
+            issues.Add($"{where} 必须是 {{logic:AND/OR, items:[…]}} 结构化条件。");
+            return issues;
+        }
+        if (!root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() == 0)
+        {
+            issues.Add($"{where}.items 必须是非空数组。");
+            return issues;
+        }
+        ValidateConditionItems(items, where, issues);
         return issues;
     }
 
@@ -630,9 +715,7 @@ public static class EffectStructSchemas
                     if (property.Value.ValueKind != JsonValueKind.Array)
                         issues.Add("fieldMap.detail 必须是字段名数组。");
                     else
-                        foreach (var item in property.Value.EnumerateArray())
-                            if (item.ValueKind != JsonValueKind.String || !Identifier.IsMatch(item.GetString() ?? string.Empty))
-                                issues.Add($"fieldMap.detail 存在非法字段名 '{item}'。");
+                        ValidateDetailEntries(property.Value, issues);
                     break;
                 case "masterDate":
                 case "amount":
@@ -642,6 +725,44 @@ public static class EffectStructSchemas
             }
         }
         return issues;
+    }
+
+    /// <summary>
+    /// Row-set entries are either a document column name or a closed constant entry
+    /// {column, constant} that fills a slot the document does not carry. Kept as an exact
+    /// key set so a stray key can never reach the generated statement.
+    /// </summary>
+    private static void ValidateDetailEntries(JsonElement array, ICollection<string> issues)
+    {
+        var index = 0;
+        foreach (var item in array.EnumerateArray())
+        {
+            var where = $"fieldMap.detail[{index++}]";
+            if (item.ValueKind == JsonValueKind.String)
+            {
+                if (!Identifier.IsMatch(item.GetString() ?? string.Empty))
+                    issues.Add($"{where} 存在非法字段名 '{item}'。");
+                continue;
+            }
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                issues.Add($"{where} 必须是字段名或 {{column, constant}} 对象。");
+                continue;
+            }
+            foreach (var property in item.EnumerateObject())
+                if (!property.NameEquals("column") && !property.NameEquals("constant"))
+                    issues.Add($"{where} 含未登记键 '{property.Name}'（仅允许 column/constant）。");
+            if (!item.TryGetProperty("column", out var column)
+                || column.ValueKind != JsonValueKind.String
+                || !Identifier.IsMatch(column.GetString() ?? string.Empty))
+            {
+                issues.Add($"{where}.column 必须是非空字段名。");
+            }
+            if (!item.TryGetProperty("constant", out var constant))
+                issues.Add($"{where} 缺少 constant。");
+            else if (constant.ValueKind is not (JsonValueKind.String or JsonValueKind.Number))
+                issues.Add($"{where}.constant 必须是字符串或数字。");
+        }
     }
 
     private static void ValidateQty(JsonElement value, ICollection<string> issues)

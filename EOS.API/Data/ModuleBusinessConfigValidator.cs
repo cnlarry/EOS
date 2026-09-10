@@ -140,6 +140,8 @@ public static class ModuleBusinessConfigValidator
         if (TooLong(action.Remark, 500)) issues.Add($"动作 SEQ={action.Seq}：说明超过 500 字符。");
         if (TooLong(action.SourceRef, 100)) issues.Add($"动作 SEQ={action.Seq}：溯源超过 100 字符。");
         ValidateJson(action.Condition, $"动作 SEQ={action.Seq} 条件", issues);
+        foreach (var conditionIssue in EffectStructSchemas.ValidateConditionJson(action.Condition, $"动作 SEQ={action.Seq} 条件"))
+            issues.Add(conditionIssue);
         ValidateJson(action.Params, $"动作 SEQ={action.Seq} 参数", issues);
         ValidateJson(action.Reverse, $"动作 SEQ={action.Seq} 反向", issues);
         foreach (var structIssue in EffectStructSchemas.ValidateActionStructs(action.EffectKey, action.Params, action.Reverse))
@@ -230,6 +232,8 @@ public static class ModuleBusinessConfigValidator
             ValidateTerms(op.SourceTerms!, $"{where} 源加减项", issues);
         ValidateJson(op.Match, $"{where} 定位键", issues);
         ValidateJson(op.Condition, $"{where} 条件", issues);
+        foreach (var conditionIssue in EffectStructSchemas.ValidateConditionJson(op.Condition, $"{where} 条件"))
+            issues.Add(conditionIssue);
         if (TooLong(op.Remark, 200)) issues.Add($"{where}：说明超过 200 字符。");
     }
 

@@ -286,6 +286,9 @@ public sealed class EffectConditionCompiler
 
     private static string? AliasFor(JsonElement field, ScopeAliasResolver resolveAlias)
     {
+        if (field.ValueKind != JsonValueKind.Object)
+            throw new EffectConfigException(
+                "条件项 field 必须是 {scope, field} 对象（例如 {\"scope\":\"TARGET\",\"field\":\"QTY\"}），当前为 " + field.ValueKind + "。");
         var scope = field.TryGetProperty("scope", out var s) && s.ValueKind == JsonValueKind.String
             ? s.GetString()!.Trim().ToUpperInvariant()
             : string.Empty;

@@ -6,6 +6,25 @@ namespace EOS.API.Tests;
 public class EffectStructSchemasTests
 {
     [Fact]
+    public void ValidateParams_InventoryDetail_AcceptsClosedConstantEntries()
+    {
+        var accepted = EffectStructSchemas.ValidateParams(
+            "inventory-move",
+            """{"direction":"OUT","fieldMap":{"masterDate":"BACK_DATE","qty":"QTY","detail":["SERIAL_NO","PRO_NO",{"column":"AMOUNT","constant":0},{"column":"CURR_ID","constant":""}]}}""");
+        Assert.Empty(accepted);
+
+        var rejected = EffectStructSchemas.ValidateParams(
+            "inventory-move",
+            """{"direction":"OUT","fieldMap":{"masterDate":"BACK_DATE","qty":"QTY","detail":[{"column":"AMOUNT","constant":"0","extra":1}]}}""");
+        Assert.Contains(rejected, issue => issue.Contains("未登记键 'extra'"));
+
+        var missing = EffectStructSchemas.ValidateParams(
+            "inventory-move",
+            """{"direction":"OUT","fieldMap":{"masterDate":"BACK_DATE","qty":"QTY","detail":[{"column":"AMOUNT"}]}}""");
+        Assert.Contains(missing, issue => issue.Contains("缺少 constant"));
+    }
+
+    [Fact]
     public void ValidateReverse_AcceptsKnownKinds_AndRejectsUnknown()
     {
         Assert.Empty(EffectStructSchemas.ValidateReverse("""{"kind":"auto-reverse","note":"数量 -=；日期不回退"}"""));
