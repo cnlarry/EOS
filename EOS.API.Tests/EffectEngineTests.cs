@@ -118,6 +118,50 @@ public class EffectEngineTests
     }
 
     [Fact]
+    public void Formula_master_scope_condition_binds_master_alias_in_from()
+    {
+        var condition = JsonDocument.Parse(
+            """{"logic":"AND","items":[{"type":"value-eq","field":{"scope":"MASTER","field":"BACK_CODE"},"value":"1"}]}""")
+            .RootElement.Clone();
+        var op = new EffectOpPlan(
+            1, "COP_ORDER_D", "BACK_MATERIAL", "ACCUM",
+            new EffectSourceRef("DETAIL", null, "QTY", null),
+            "SUM", null,
+            new[] { new EffectMatchItem("ORDER_TYPE", new EffectSourceRef("DETAIL", null, "ORDER_TYPE", null)) },
+            condition, null);
+        var plan = new ModuleEffectPlan(1423, "COP_BACK_M", "COP_BACK_D", "v1",
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+        plan = plan with { MasterPkOrder = new[] { "BACK_TYPE", "BACK_NO" } };
+        var (sql, parameters) = new EffectFormulaExecutor().BuildUpdate(op, plan, new[] { "ADR12", "ADR012BACK1423001" });
+        Assert.Contains("FROM dbo.[COP_ORDER_D] T JOIN dbo.[COP_BACK_M] M ON M.[BACK_TYPE] = @cp", sql);
+        Assert.Contains("AND M.[BACK_NO] = @cp", sql);
+        Assert.Contains("M.[BACK_CODE] = @cp", sql);
+        Assert.Contains(parameters, parameter => parameter.Value as string == "1");
+    }
+
+    [Fact]
+    public void Condition_value_neq_null_as_match_compiles_to_null_or_neq()
+    {
+        var compiler = new EffectConditionCompiler();
+        var condition = JsonSerializer.SerializeToElement(new
+        {
+            logic = "AND",
+            items = new object[] { new { type = "value-neq", field = new { scope = "TARGET", field = "BACK_CODE" }, value = "1", nullAsMatch = true } },
+        });
+        var fragment = compiler.Compile(condition, (_, _) => "T", _ => true);
+        Assert.Contains("(T.[BACK_CODE] <> @cp0 OR T.[BACK_CODE] IS NULL)", fragment.Sql);
+
+        var strict = JsonSerializer.SerializeToElement(new
+        {
+            logic = "AND",
+            items = new object[] { new { type = "value-neq", field = new { scope = "TARGET", field = "BACK_CODE" }, value = "1" } },
+        });
+        var strictFragment = compiler.Compile(strict, (_, _) => "T", _ => true);
+        Assert.Contains("T.[BACK_CODE] <> @cp", strictFragment.Sql);
+        Assert.DoesNotContain("IS NULL", strictFragment.Sql);
+    }
+
+    [Fact]
     public void Formula_sysdatetime_marker_compiles_to_function_without_parameter()
     {
         var executor = new EffectFormulaExecutor();

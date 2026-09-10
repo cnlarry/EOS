@@ -626,6 +626,9 @@ public static class EffectStructSchemas
                         issues.Add($"{at} {kind} 的 field 必须是 {{\"scope\":…,\"field\":…}} 对象。");
                     if (!item.TryGetProperty("value", out _))
                         issues.Add($"{at} {kind} 缺少 value。");
+                    if (item.TryGetProperty("nullAsMatch", out var nullFlag)
+                        && nullFlag.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                        issues.Add($"{at} nullAsMatch 必须是布尔。");
                     break;
                 case "not-exists":
                     if (!item.TryGetProperty("targetTable", out var target) || target.ValueKind != JsonValueKind.String)
