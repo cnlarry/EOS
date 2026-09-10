@@ -181,6 +181,33 @@ public sealed class EffectShadowRunner
         2818 => new(2818, "2818", "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D",
             "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE",
             null, null, null, "品检良品出库单"),
+        130101 => new(130101, "130101", "INV_CHECK_STOCK_M", "INV_CHECK_STOCK_D",
+            "CHECK_STOCK_TYPE", "CHECK_STOCK_NO", "CHECK_DATE",
+            null, null, null, "库存盘点单"),
+        130103 => new(130103, "130103", "INV_OCCUR_IN_M", "INV_OCCUR_IN_D",
+            "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE",
+            null, null, null, "其它入库单"),
+        130104 => new(130104, "130104", "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D",
+            "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE",
+            null, null, null, "其它出库单"),
+        130105 => new(130105, "130105", "INV_OCCUR_TRANSFER_M", "INV_OCCUR_TRANSFER_D",
+            "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE",
+            null, null, null, "仓库调拔单"),
+        130110 => new(130110, "130110", "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D",
+            "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE",
+            null, null, null, "样品出库单"),
+        3303 => new(3303, "3303", "QC_ANALYSIS_M", "QC_ANALYSIS_D",
+            "ANALYSIS_TYPE", "ANALYSIS_NO", "ANALYSIS_DATE",
+            null, null, null, "品质日分析单"),
+        3901 => new(3901, "3901", "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D",
+            "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE",
+            null, null, null, "品检不良品出库"),
+        170103 => new(170103, "170103", "COP_PREPAY_M", "COP_PREPAY_D",
+            "PREPAY_TYPE", "PREPAY_NO", "PREPAY_DATE",
+            null, null, null, "预收帐款单"),
+        170203 => new(170203, "170203", "PUR_PREPAY_M", "PUR_PREPAY_D",
+            "PREPAY_TYPE", "PREPAY_NO", "PREPAY_DATE",
+            null, null, null, "预付帐款单"),
         2906 => new(2906, "2906", "MOU_BATCH_M", "MOU_BATCH_D",
             "BATCH_TYPE", "BATCH_NO", "BATCH_DATE",
             null, null, null, "量产模具（开模完工）单"),
@@ -323,7 +350,7 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203))
         {
             throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913 only.");
         }
@@ -501,7 +528,8 @@ public sealed class EffectShadowRunner
             return await ResolveRecordKeys1505Async(connection, deapprove, failure);
         }
         if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818
-            or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2907 or 2913)
+            or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2907 or 2913
+            or 130101 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203)
         {
             return await ResolveRecordKeysByConfirmAsync(connection, spec, deapprove, failure);
         }
@@ -1033,7 +1061,8 @@ public sealed class EffectShadowRunner
             return Array.Empty<DetailRow>();
         }
         if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818
-            or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913)
+            or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913
+            or 130101 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203)
         {
             // 2xxx snapshot specs filter target tables by document keys and EXISTS
             // subqueries off the master; no detail context rows are materialised.
@@ -1176,6 +1205,32 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 2818)
         {
             return BuildBasicTableSpecs(master, "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D", "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE");
+        }
+        if (spec.ModuleId == 130101)
+        {
+            return BuildBasicTableSpecs(master, "INV_CHECK_STOCK_M", "INV_CHECK_STOCK_D", "CHECK_STOCK_TYPE", "CHECK_STOCK_NO", "CHECK_DATE");
+        }
+        if (spec.ModuleId is 130103 or 130104 or 130110 or 3901)
+        {
+            return spec.ModuleId == 130103
+                ? BuildBasicTableSpecs(master, "INV_OCCUR_IN_M", "INV_OCCUR_IN_D", "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE")
+                : BuildBasicTableSpecs(master, "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D", "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE");
+        }
+        if (spec.ModuleId == 130105)
+        {
+            return BuildBasicTableSpecs(master, "INV_OCCUR_TRANSFER_M", "INV_OCCUR_TRANSFER_D", "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE");
+        }
+        if (spec.ModuleId == 3303)
+        {
+            return BuildBasicTableSpecs(master, "QC_ANALYSIS_M", "QC_ANALYSIS_D", "ANALYSIS_TYPE", "ANALYSIS_NO", "ANALYSIS_DATE");
+        }
+        if (spec.ModuleId == 170103)
+        {
+            return BuildBasicTableSpecs(master, "COP_PREPAY_M", "COP_PREPAY_D", "PREPAY_TYPE", "PREPAY_NO", "PREPAY_DATE");
+        }
+        if (spec.ModuleId == 170203)
+        {
+            return BuildBasicTableSpecs(master, "PUR_PREPAY_M", "PUR_PREPAY_D", "PREPAY_TYPE", "PREPAY_NO", "PREPAY_DATE");
         }
         if (spec.ModuleId == 2705)
         {
