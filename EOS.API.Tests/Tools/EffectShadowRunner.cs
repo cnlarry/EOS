@@ -2947,7 +2947,7 @@ public sealed class EffectShadowRunner
         // link-stamp target: the assessment referencing this application.
         specs.Add(new("MOU_ASSESS_M", new[] { "ASSESS_TYPE", "ASSESS_NO" },
             "EXISTS (SELECT 1 FROM dbo.MOU_APPLY_M R WHERE R.APPLY_TYPE=@at AND R.APPLY_NO=@an "
-            + "AND MOU_ASSESS_M.APPLY_TYPE=R.APPLY_TYPE AND MOU_ASSESS_M.APPLY_NO=R.APPLY_NO)",
+            + "AND MOU_ASSESS_M.ASSESS_TYPE=R.ASSESS_TYPE AND MOU_ASSESS_M.ASSESS_NO=R.ASSESS_NO)",
             new[] { at, an }));
         return specs;
     }
