@@ -59,18 +59,49 @@ public sealed class MenuAdminController(
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(MenuAdminModule input, CancellationToken token)
+    public async Task<IActionResult> Create(SaveMenuModuleRequest input, CancellationToken token)
     {
         if (!await CanSetup(token)) return Forbid();
-        var id = await repository.SaveAsync(input, null, userContext.EmployeeName, token);
+        var id = await repository.SaveAllAsync(input, null, userContext.EmployeeName, token);
         return Created($"/api/admin/menus/{id}", new { id });
     }
 
+    /// <summary>保存模块：模块行 + 行为动作/校验规则 + 默认查询列在同一事务内落库。</summary>
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, MenuAdminModule input, CancellationToken token)
+    public async Task<IActionResult> Update(int id, SaveMenuModuleRequest input, CancellationToken token)
     {
         if (!await CanSetup(token)) return Forbid();
-        await repository.SaveAsync(input, id, userContext.EmployeeName, token);
+        await repository.SaveAllAsync(input, id, userContext.EmployeeName, token);
+        return NoContent();
+    }
+
+    /// <summary>模块定义快照的历史版本（只读；运行时始终按最新版本执行）。</summary>
+    [HttpGet("{id:int}/versions")]
+    public async Task<IActionResult> Versions(int id, CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        return Ok(await repository.GetVersionsAsync(id, token));
+    }
+
+    /// <summary>
+    /// 仅改名：菜单名称属呈现属性，立即在导航生效、不标脏、不需要发布。
+    /// </summary>
+    [HttpPut("{id:int}/rename")]
+    public async Task<IActionResult> Rename(int id, MenuRenameRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        await repository.RenameAsync(id, request.Description, userContext.EmployeeName, token);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// 启用/停用：只决定侧栏是否显示该模块，不标脏、不需要发布。
+    /// </summary>
+    [HttpPut("{id:int}/enabled")]
+    public async Task<IActionResult> SetEnabled(int id, MenuEnabledRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        await repository.SetEnabledAsync(id, request.Enabled, userContext.EmployeeName, token);
         return NoContent();
     }
 

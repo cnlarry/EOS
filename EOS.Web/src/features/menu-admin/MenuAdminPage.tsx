@@ -7,18 +7,23 @@ import {
   IconColumns,
   IconEdit,
   IconFolder,
+  IconHistory,
   IconPhoto,
   IconPlus,
   IconPower,
   IconRefresh,
+  IconRocket,
   IconSearch,
   IconTrash,
 } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { ErpCommandBar } from '../../components/common/ErpCommandBar'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { ErpColumnSelector, type ColumnSelectorGroup } from '../../components/common/ErpColumnSelector'
+import { ErpTable } from '../../components/common/ErpTable'
+import type { ColumnDef } from '@tanstack/react-table'
 import { Modal } from '../../components/ui/Modal'
 import { TabbedPanel } from '../../components/common/TabbedPanel'
 import { navigationIcons } from '../../components/layout/navigationIcons'
@@ -30,7 +35,7 @@ import { ApiError } from '../../types/api'
 import { parseFilter } from './menuFilter'
 import { MenuFieldPicker, MenuFilterBuilder } from './MenuFieldPickers'
 import { describeApiError } from '../../lib/errors'
-import { BusinessActionsPanel } from './BusinessActionsPanel'
+import { BusinessActionsPanel, type ModuleBusinessConfigDraft } from './BusinessActionsPanel'
 
 /** 菜单编辑表单页签：基础 / 主表 / 子表 / 分组 / 统一表单 / 行为动作。 */
 type MenuFormTab = 'basic' | 'master' | 'detail' | 'group' | 'form' | 'actions'
@@ -83,6 +88,42 @@ export interface MenuAdminModule {
   M_ICON: string | null
   Icon: string | null
   EFFECT_ENGINE_TAG: boolean
+  /** 只读展示字段：操作主/副表描述（服务端由 TABLES.T_DESC 解析，保存时忽略）。 */
+  MASTER_TABLE_DESC?: string | null
+  DETAIL_TABLE_DESC?: string | null
+  /** 只读状态字段：已保存未发布的改动、当前生效快照版本与发布时间。 */
+  DIRTY_TAG?: boolean
+  PUBLISH_VERSION?: number | null
+  PUBLISHED_AT?: string | null
+}
+
+/** 发布校验结果与发布结果（与后端 WorkbenchPublishResult 对应）。 */
+interface PublishValidationCheck {
+  code: string
+  passed: boolean
+  message: string
+  severity: string
+}
+
+interface WorkbenchPublishResult {
+  moduleId: number
+  title: string
+  published: boolean
+  version: number | null
+  definitionVersion: string | null
+  passed: boolean
+  checks: PublishValidationCheck[]
+  error?: string | null
+}
+
+/** 模块定义快照的历史版本（只读）。 */
+interface MenuModuleVersion {
+  version: number
+  definitionVersion: string
+  publishedBy: string | null
+  publishedAt: string | null
+  validationStatus: string
+  isCurrent: boolean
 }
 
 /** 菜单同级排序动作。 */
@@ -137,6 +178,47 @@ const emptyDraft = (parentId: number | null): MenuAdminModule => ({
 interface TreeEntry {
   module: MenuAdminModule
   children: TreeEntry[]
+}
+
+/**
+ * 模块状态的直观提示：未保存 > 已保存未发布 > 已发布（未发布过则提示未发布）。
+ * 「已保存未发布」表示运行时仍按当前生效快照版本执行，发布后新配置才生效。
+ */
+function moduleStateBadge(
+  draft: MenuAdminModule | null,
+  selected: MenuAdminModule | null,
+  hasExtraDrafts = false,
+): { label: string; className: string; title: string } | null {
+  if (!draft) return null
+  if (!selected) {
+    return { label: '新增未保存', className: 'bg-warning-subtle text-warning', title: '该节点尚未保存到模块表。' }
+  }
+  if (hasExtraDrafts || JSON.stringify(draft) !== JSON.stringify(selected)) {
+    return { label: '已修改未保存', className: 'bg-warning-subtle text-warning', title: '当前表单有改动尚未保存。' }
+  }
+  if (selected.DIRTY_TAG) {
+    return {
+      label: '已保存未发布',
+      className: 'bg-warning-subtle text-warning',
+      title: selected.PUBLISH_VERSION == null
+        ? '已保存但尚未发布过定义快照，运行时按实时元数据读取。'
+        : `运行时仍按 module-${selected.M_IDX}-v${selected.PUBLISH_VERSION} 执行，发布后才切换到新配置。`,
+    }
+  }
+  if (selected.PUBLISH_VERSION != null) {
+    return {
+      label: `已发布 module-${selected.M_IDX}-v${selected.PUBLISH_VERSION}`,
+      className: 'bg-success-subtle text-success',
+      title: selected.PUBLISHED_AT
+        ? `发布于 ${new Date(selected.PUBLISHED_AT).toLocaleString()}，与当前元数据一致。`
+        : '已发布，与当前元数据一致。',
+    }
+  }
+  return {
+    label: '未发布',
+    className: 'bg-secondary-subtle text-secondary',
+    title: '该模块尚未发布过定义快照，运行时按实时元数据读取。',
+  }
 }
 
 interface DefaultColumnField { key: string; label: string; isSelected: boolean; order: number }
@@ -215,7 +297,21 @@ export function MenuAdminPage() {
   const [formTab, setFormTab] = useState<MenuFormTab>('basic')
   const [treeQuery, setTreeQuery] = useState('')
   const draggedIdRef = useRef<number | null>(null)
+  // 行为动作/校验规则草稿：由行为动作页签上报（未打开该页签时为 null，保存时保持不动）
+  const [actionsDraft, setActionsDraft] = useState<ModuleBusinessConfigDraft | null>(null)
+  // 本次在界面上编辑过的默认查询列（未编辑的表不参与保存）
+  const [defaultColumnDrafts, setDefaultColumnDrafts] = useState<Record<string, string[]> | null>(null)
+  const [publishResult, setPublishResult] = useState<WorkbenchPublishResult | null>(null)
+  const [publishError, setPublishError] = useState<string | null>(null)
+  const [versionsOpen, setVersionsOpen] = useState(false)
+  // 发布内部会先保存，避免保存成功提示打断发布流程
+  const publishingRef = useRef(false)
   const modules = useQuery({ queryKey: ['menu-admin', 'modules'], queryFn: () => apiClient.get<{ total: number; modules: MenuAdminModule[] }>('/admin/menus') })
+  const versions = useQuery({
+    queryKey: ['menu-admin', 'versions', selectedId],
+    queryFn: () => apiClient.get<MenuModuleVersion[]>(`/admin/menus/${selectedId}/versions`),
+    enabled: versionsOpen && selectedId != null,
+  })
 
   const byId = useMemo(() => new Map((modules.data?.modules ?? []).map((module) => [module.M_IDX, module])), [modules.data])
   const filteredModules = useMemo(() => {
@@ -239,6 +335,34 @@ export function MenuAdminPage() {
   }, [modules.data, treeQuery])
   const tree = useMemo(() => buildTree(filteredModules), [filteredModules])
   const selected = selectedId != null ? byId.get(selectedId) ?? null : null
+  const stateBadge = moduleStateBadge(draft, selected, defaultColumnDrafts != null || actionsDraft?.dirty === true)
+
+  // 切换模块时丢弃上一模块的关联草稿与发布结果，避免误提交到新模块
+  useEffect(() => {
+    setActionsDraft(null)
+    setDefaultColumnDrafts(null)
+    setPublishResult(null)
+    setPublishError(null)
+  }, [selectedId])
+
+  const handleActionsDraftChange = useCallback((next: ModuleBusinessConfigDraft | null) => {
+    setActionsDraft(next)
+  }, [])
+
+  const versionColumns = useMemo<ColumnDef<MenuModuleVersion, unknown>[]>(() => [
+    { accessorKey: 'definitionVersion', header: '版本', cell: (info) => <code>{String(info.getValue())}</code> },
+    {
+      accessorKey: 'publishedAt',
+      header: '发布时间',
+      cell: (info) => {
+        const value = info.getValue() as string | null
+        return value ? new Date(value).toLocaleString() : '—'
+      },
+    },
+    { accessorKey: 'publishedBy', header: '发布人', cell: (info) => String(info.getValue() ?? '—') },
+    { accessorKey: 'validationStatus', header: '校验', cell: (info) => String(info.getValue() ?? '') },
+    { accessorKey: 'isCurrent', header: '当前生效', cell: (info) => (info.getValue() ? '是' : '') },
+  ], [])
 
   // 同级兄弟显示顺序（SORT_IDX,M_IDX），供排序按钮与拖拽定位使用
   const siblingsByParent = useMemo(() => {
@@ -324,24 +448,117 @@ export function MenuAdminPage() {
     return canAcceptChildren ? 'into' : 'before'
   }
 
+  /**
+   * 保存载荷：模块行 + 行为动作/校验规则 + 默认查询列，由服务端在同一事务内落库。
+   * 未加载或未编辑过的部分传 null，表示保持不动。
+   */
+  const buildBusinessConfig = (input: MenuAdminModule) => {
+    if (!actionsDraft || actionsDraft.moduleId !== input.M_IDX) return null
+    if (input.MASTER_TABLE == null && input.DETAIL_TABLE == null) return null
+    return {
+      actions: actionsDraft.actions.map((action) => ({
+        ...action,
+        ops: (action.ops ?? []).map((op) =>
+          op.sourceScope === 'CONSTANT' ? { ...op, sourceConstant: op.sourceConstant ?? '' } : op,
+        ),
+      })),
+      validationRules: actionsDraft.validationRules,
+    }
+  }
+
+  const buildDefaultColumns = () =>
+    defaultColumnDrafts == null
+      ? null
+      : Object.entries(defaultColumnDrafts).map(([table, fieldIds]) => ({ table, fieldIds }))
+
   const save = useMutation({
     mutationFn: async (input: MenuAdminModule) => {
+      const payload = {
+        module: input,
+        businessConfig: buildBusinessConfig(input),
+        defaultColumns: buildDefaultColumns(),
+      }
       if (selectedId != null && byId.has(selectedId)) {
-        await apiClient.put(`/admin/menus/${selectedId}`, input)
+        await apiClient.put(`/admin/menus/${selectedId}`, payload)
         return selectedId
       }
-      const created = await apiClient.post<{ id: number }>('/admin/menus', input)
+      const created = await apiClient.post<{ id: number }>('/admin/menus', payload)
       return created.id
     },
-    onSuccess: async (savedId) => {
+    onSuccess: async (savedId, input) => {
       await queryClient.invalidateQueries({ queryKey: ['menu-admin', 'modules'] })
+      await queryClient.invalidateQueries({ queryKey: ['module-business-config', savedId] })
       notifyMenuChanged()
       setSelectedId(savedId)
-      setDraft(null)
-      window.alert('菜单保存成功。')
+      // 保存后保持该节点处于编辑态：用刷新后的列表数据回填草稿；列表尚未包含该节点时
+      // 回退为本次提交的内容，避免表单被清空、需要用户重新在左侧选中。
+      const data = queryClient.getQueryData<{ total: number; modules: MenuAdminModule[] }>(['menu-admin', 'modules'])
+      const fresh = data?.modules.find((module) => module.M_IDX === savedId)
+      setDraft(fresh ? { ...fresh } : { ...input, M_IDX: savedId })
+      setDefaultColumnDrafts(null)
+      setPublishResult(null)
+      setPublishError(null)
+      if (!publishingRef.current) window.alert('菜单保存成功。')
     },
     onError: (error) => {
       window.alert(error instanceof ApiError ? `保存失败：${error.body.message}` : '保存失败。')
+    },
+  })
+
+  /** 发布：先按当前编辑内容保存（同一事务），再发布模块定义快照。 */
+  const publish = useMutation({
+    mutationFn: async () => {
+      if (!draft) throw new Error('没有可发布的模块。')
+      publishingRef.current = true
+      let savedId: number
+      try {
+        savedId = await save.mutateAsync(draft)
+      } finally {
+        publishingRef.current = false
+      }
+      const results = await apiClient.post<WorkbenchPublishResult[]>(
+        `/admin/module-business-config/${savedId}/publish`,
+      )
+      return results[0]
+    },
+    onSuccess: async (result) => {
+      setPublishError(null)
+      setPublishResult(result)
+      await queryClient.invalidateQueries({ queryKey: ['menu-admin', 'modules'] })
+    },
+    onError: (error) => {
+      setPublishResult(null)
+      setPublishError(describeApiError(error, '发布失败。'))
+    },
+  })
+
+  /** 树内改名：菜单名称属呈现属性，立即生效、不标脏、不需要发布。 */
+  const rename = useMutation({
+    mutationFn: async ({ id, description }: { id: number; description: string }) => {
+      await apiClient.put(`/admin/menus/${id}/rename`, { description })
+    },
+    onSuccess: async (_, { id, description }) => {
+      await queryClient.invalidateQueries({ queryKey: ['menu-admin', 'modules'] })
+      notifyMenuChanged()
+      setDraft((current) => (current && current.M_IDX === id ? { ...current, M_DESC: description } : current))
+    },
+    onError: (error) => {
+      window.alert(error instanceof ApiError ? `重命名失败：${error.body.message}` : '重命名失败。')
+    },
+  })
+
+  /** 启用/停用：只决定侧栏是否显示，不标脏、不需要发布。 */
+  const setEnabled = useMutation({
+    mutationFn: async ({ id, enabled }: { id: number; enabled: boolean }) => {
+      await apiClient.put(`/admin/menus/${id}/enabled`, { enabled })
+    },
+    onSuccess: async (_, { id, enabled }) => {
+      await queryClient.invalidateQueries({ queryKey: ['menu-admin', 'modules'] })
+      notifyMenuChanged()
+      setDraft((current) => (current && current.M_IDX === id ? { ...current, M_TAG: enabled } : current))
+    },
+    onError: (error) => {
+      window.alert(error instanceof ApiError ? `启停失败：${error.body.message}` : '启停失败。')
     },
   })
 
@@ -358,21 +575,6 @@ export function MenuAdminPage() {
     },
     onError: (error) => {
       window.alert(error instanceof ApiError ? `删除失败：${error.body.message}` : '删除失败。')
-    },
-  })
-
-  const saveDefaultColumns = useMutation({
-    mutationFn: async (selection: Record<string, string[]>) => {
-      if (selectedId == null || defaultColumnsOpen == null) return
-      await apiClient.put(`/admin/menus/${selectedId}/default-columns`, { table: defaultColumnsOpen.table, fieldIds: selection.default ?? [] })
-    },
-    onSuccess: async () => {
-      setDefaultColumnsOpen(null)
-      setDefaultColumnGroups([])
-      window.alert('默认查询列保存成功。')
-    },
-    onError: (error) => {
-      window.alert(error instanceof ApiError ? `保存失败：${error.body.message}` : '保存失败。')
     },
   })
 
@@ -482,13 +684,22 @@ export function MenuAdminPage() {
     const value = renameValue.trim()
     setEditingId(null)
     if (value && value !== module.M_DESC) {
-      void save.mutate({ ...module, M_DESC: value })
+      rename.mutate({ id: module.M_IDX, description: value })
     }
   }
 
   const toggleEnabled = (module: MenuAdminModule) => {
     closeContextMenu()
-    void save.mutate({ ...module, M_TAG: !module.M_TAG })
+    setEnabled.mutate({ id: module.M_IDX, enabled: !module.M_TAG })
+  }
+
+  /** 取消编辑：丢弃模块表单、默认查询列与行为动作的未保存改动。 */
+  const discardDraft = () => {
+    setDraft(selected ? { ...selected } : null)
+    setDefaultColumnDrafts(null)
+    setPublishResult(null)
+    setPublishError(null)
+    if (selectedId != null) void queryClient.invalidateQueries({ queryKey: ['module-business-config', selectedId] })
   }
 
   const addChildOf = (module: MenuAdminModule) => {
@@ -516,8 +727,13 @@ export function MenuAdminPage() {
 
   const iconEntries = useMemo(() => Object.entries(navigationIcons), [])
 
-  const pickTable = (kind: 'master' | 'detail', tableId: string) => {
-    patch((d) => ({ ...d, [kind === 'master' ? 'MASTER_TABLE' : 'DETAIL_TABLE']: tableId }))
+  const pickTable = (kind: 'master' | 'detail', tableId: string, tableDesc: string | null) => {
+    patch((d) => ({
+      ...d,
+      ...(kind === 'master'
+        ? { MASTER_TABLE: tableId, MASTER_TABLE_DESC: tableDesc }
+        : { DETAIL_TABLE: tableId, DETAIL_TABLE_DESC: tableDesc }),
+    }))
     setTableChooser(null)
   }
 
@@ -661,6 +877,7 @@ export function MenuAdminPage() {
         <span className="nav-link-title">
           <span className={module.M_TAG ? '' : 'text-secondary'}>{module.M_DESC || '（未命名）'}</span>
           <span className="erp-menu-tree-id">{module.M_IDX}</span>
+          {!module.M_TAG && <span className="badge bg-secondary-subtle text-secondary ms-1">停用</span>}
         </span>
       )
       const dragProps = {
@@ -748,6 +965,7 @@ export function MenuAdminPage() {
           <div className="ms-auto d-flex gap-2">
             <Button size="sm" icon={<IconPlus size={16} />} onClick={startNewRoot}>新增根节点</Button>
             <Button size="sm" icon={<IconPlus size={16} />} onClick={startNewChild}>新增子节点</Button>
+            <Button size="sm" icon={<IconHistory size={16} />} title="查看该模块的历史发布版本" disabled={selectedId == null} onClick={() => setVersionsOpen(true)}>版本历史</Button>
             <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void modules.refetch()}>刷新</Button>
           </div>
         </div>
@@ -850,8 +1068,8 @@ export function MenuAdminPage() {
                             <Input label="操作主表名" readOnly value={draft.MASTER_TABLE ?? ''} onChange={(value) => patch((d) => ({ ...d, MASTER_TABLE: value || null }))} />
                             <div className="d-flex gap-2">
                               <Button size="sm" onClick={() => openTableChooser('master')}>选择…</Button>
-                              <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('master')} disabled={!draft.MASTER_TABLE}>默认列</Button>
-                              <Button size="sm" variant="ghost" title="清除操作主表名" onClick={() => patch((d) => ({ ...d, MASTER_TABLE: null }))}>清除</Button>
+                              <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('master')} disabled={!draft.MASTER_TABLE || selectedId == null}>默认列</Button>
+                              <Button size="sm" variant="ghost" title="清除操作主表名" onClick={() => patch((d) => ({ ...d, MASTER_TABLE: null, MASTER_TABLE_DESC: null }))}>清除</Button>
                             </div>
                           </div>
                           <div className="col-6">
@@ -896,8 +1114,8 @@ export function MenuAdminPage() {
                             <Input label="操作副表名" readOnly value={draft.DETAIL_TABLE ?? ''} onChange={(value) => patch((d) => ({ ...d, DETAIL_TABLE: value || null }))} />
                             <div className="d-flex gap-2">
                               <Button size="sm" onClick={() => openTableChooser('detail')}>选择…</Button>
-                              <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('detail')} disabled={!draft.DETAIL_TABLE}>默认列</Button>
-                              <Button size="sm" variant="ghost" title="清除操作副表名" onClick={() => patch((d) => ({ ...d, DETAIL_TABLE: null }))}>清除</Button>
+                              <Button size="sm" icon={<IconColumns size={14} />} onClick={() => void openDefaultColumns('detail')} disabled={!draft.DETAIL_TABLE || selectedId == null}>默认列</Button>
+                              <Button size="sm" variant="ghost" title="清除操作副表名" onClick={() => patch((d) => ({ ...d, DETAIL_TABLE: null, DETAIL_TABLE_DESC: null }))}>清除</Button>
                             </div>
                           </div>
                           <div className="col-6">
@@ -981,11 +1199,48 @@ export function MenuAdminPage() {
                         </div>
                       </div>
                     )}
-                    {formTab === 'actions' && <BusinessActionsPanel module={draft} />}
+                    {formTab === 'actions' && (
+                      <BusinessActionsPanel module={draft} onDraftChange={handleActionsDraftChange} />
+                    )}
                   </TabbedPanel>
-                  <div className="d-flex gap-2 mt-3">
-                    <Button size="sm" loading={save.isPending} onClick={() => void save.mutate(draft)}>保存</Button>
-                    <Button size="sm" variant="secondary" onClick={() => setDraft(selected ? { ...selected } : null)}>取消</Button>
+                  {publishError && (
+                    <div className="alert alert-danger py-2 mb-0 mt-3" role="alert">发布失败：{publishError}</div>
+                  )}
+                  {publishResult?.published && (
+                    <div className="alert alert-success py-2 mb-0 mt-3" role="alert">
+                      发布成功：{publishResult.definitionVersion ?? `module-${publishResult.moduleId}-v${publishResult.version}`}。
+                    </div>
+                  )}
+                  {publishResult && !publishResult.published && (
+                    <div className="alert alert-warning py-2 mb-0 mt-3" role="alert">
+                      发布未通过校验，未写入新快照：
+                      <ul className="mb-0 mt-1">
+                        {publishResult.checks
+                          .filter((check) => !check.passed)
+                          .map((check) => (
+                            <li key={check.code}>{check.message}</li>
+                          ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div className="d-flex align-items-center gap-2 mt-3 flex-wrap">
+                    <ErpCommandBar
+                      items={[
+                        { action: 'save', label: '保存', variant: 'primary', loading: save.isPending, onClick: () => void save.mutate(draft) },
+                        {
+                          action: 'publish',
+                          label: '发布',
+                          icon: <IconRocket size={16} />,
+                          loading: publish.isPending,
+                          disabled: save.isPending,
+                          onClick: () => publish.mutate(),
+                        },
+                        { action: 'cancel', label: '取消', onClick: discardDraft },
+                      ]}
+                    />
+                    {stateBadge && (
+                      <span className={`badge ${stateBadge.className}`} title={stateBadge.title}>{stateBadge.label}</span>
+                    )}
                   </div>
                   {selected?.LAST_UPDATE_BY && (
                     <div className="text-secondary mt-2" style={{ fontSize: 12 }}>
@@ -1006,7 +1261,10 @@ export function MenuAdminPage() {
         source={{ kind: 'sourceKey', key: 'menu-admin.tables' }}
         getRowId={(row) => String(row.T_ID)}
         mode="single"
-        onPick={(rows) => { const row = rows[0]; if (row && tableChooser) pickTable(tableChooser, String(row.T_ID)) }}
+        onPick={(rows) => {
+          const row = rows[0]
+          if (row && tableChooser) pickTable(tableChooser, String(row.T_ID), row.T_DESC == null ? null : String(row.T_DESC))
+        }}
         onClose={() => setTableChooser(null)}
         searchPlaceholder="搜索表名/描述…"
         columnRenderers={{
@@ -1078,6 +1336,28 @@ export function MenuAdminPage() {
         onSave={(value) => patch((d) => ({ ...d, FILTER: value || null }))}
         onClose={() => setFilterBuilderOpen(false)}
       />
+      {versionsOpen && (
+        <Modal
+          title={`版本历史：${selected?.M_DESC ?? ''}`}
+          onClose={() => setVersionsOpen(false)}
+          size="lg"
+          scrollable
+          footer={<div className="d-flex justify-content-end"><Button variant="secondary" onClick={() => setVersionsOpen(false)}>关闭</Button></div>}
+        >
+          {versions.isPending ? <LoadingState label="正在加载版本…" /> : versions.isError ? (
+            <ErrorState message={describeApiError(versions.error, '加载版本历史失败。')} onRetry={() => void versions.refetch()} />
+          ) : (
+            <ErpTable
+              columns={versionColumns}
+              data={versions.data ?? []}
+              getRowId={(row) => String(row.version)}
+              clientSideSorting
+              copyable={false}
+              empty={<div className="p-3 text-secondary">该模块尚未发布过定义快照。</div>}
+            />
+          )}
+        </Modal>
+      )}
       <ErpColumnSelector
         open={defaultColumnsOpen !== null}
         title={defaultColumnsOpen?.table === 'detail' ? '副表默认查询列' : '主表默认查询列'}
@@ -1085,9 +1365,19 @@ export function MenuAdminPage() {
         loading={defaultColumnsLoading}
         loadError={defaultColumnsError}
         onRetry={() => defaultColumnsOpen && void openDefaultColumns(defaultColumnsOpen.table)}
-        saving={saveDefaultColumns.isPending}
+        saving={false}
         onClose={() => { setDefaultColumnsOpen(null); setDefaultColumnGroups([]); setDefaultColumnsError(null) }}
-        onSave={(selection) => saveDefaultColumns.mutateAsync(selection)}
+        onSave={async (selection) => {
+          // 只记录草稿，随「保存」与模块一起提交（同一事务）
+          const table = defaultColumnsOpen?.table
+          if (table) {
+            const fieldIds = selection.default ?? []
+            setDefaultColumnDrafts((current) => ({ ...(current ?? {}), [table]: fieldIds }))
+          }
+          setDefaultColumnsOpen(null)
+          setDefaultColumnGroups([])
+          setDefaultColumnsError(null)
+        }}
       />
     </div>
   )

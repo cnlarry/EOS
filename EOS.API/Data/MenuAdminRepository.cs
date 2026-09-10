@@ -17,6 +17,7 @@ namespace EOS.API.Data;
 /// </summary>
 public sealed class MenuAdminRepository(
     DbConnectionFactory connections,
+    ModuleBusinessConfigRepository businessConfigRepository,
     WorkbenchDirtyMarker dirtyMarker,
     WorkbenchAuditWriter auditWriter,
     ILogger<MenuAdminRepository> logger)
@@ -41,8 +42,15 @@ public sealed class MenuAdminRepository(
                    MASTER_TABLE,FILTER,DETAIL_TABLE,UPDATE_SP,AFTERSAVE_SP,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
                    GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
                    GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
-                   FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG
+                   FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG,
+                   (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
+                     WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.MASTER_TABLE))) AS MASTER_TABLE_DESC,
+                   (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
+                     WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.DETAIL_TABLE))) AS DETAIL_TABLE_DESC,
+                   ISNULL(d.DIRTY_TAG,0) AS DIRTY_TAG,s.VERSION AS PUBLISH_VERSION,s.PUBLISHED_AT
             FROM dbo.MODULES WITH (NOLOCK)
+            LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.MODULE_ID=MODULES.M_IDX
+            LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.MODULE_ID=MODULES.M_IDX AND s.IS_CURRENT=1
             WHERE (@Keyword = '' OR M_DESC LIKE @Keyword OR M_ALIAS LIKE @Keyword OR CONVERT(nvarchar(20),M_IDX) LIKE @Keyword)
             ORDER BY ISNULL(M_P_IDX,0),SORT_IDX,M_IDX;
             """;
@@ -161,40 +169,13 @@ public sealed class MenuAdminRepository(
     /// </summary>
     public async Task SaveDefaultColumnsAsync(int moduleId, SaveMenuDefaultColumns request, CancellationToken token)
     {
-        if (request.Table is not ("master" or "detail"))
-            throw new ArgumentException("table 仅支持 master 或 detail。");
-        if (request.FieldIds.Count > 200 || request.FieldIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() != request.FieldIds.Count)
-            throw new ArgumentException("默认查询列配置无效（字段重复或过多）。");
         var (masterTable, detailTable) = await ResolveModuleTablesAsync(moduleId, token);
-        if (masterTable is null) throw new ArgumentException("该模块未配置操作主表。");
-        var targetTable = ResolveTargetTable(masterTable, detailTable, request.Table)
-            ?? throw new ArgumentException("该模块未配置操作" + (request.Table == "master" ? "主表" : "副表") + "。");
-        var allowed = await ReadVisibleFieldKeysAsync(targetTable, token);
-        if (request.FieldIds.Any(field => !allowed.Contains(field)))
-            throw new ArgumentException("默认查询列包含无效字段。");
-
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
         try
         {
-            await using (var delete = new SqlCommand("DELETE FROM dbo.SYSQL_DEFAULT WHERE T_ID=@MasterTable AND T_ID_R=@TargetTable;", connection, transaction))
-            {
-                delete.Parameters.Add("@MasterTable", SqlDbType.NVarChar, 100).Value = masterTable;
-                delete.Parameters.Add("@TargetTable", SqlDbType.NVarChar, 100).Value = targetTable;
-                await delete.ExecuteNonQueryAsync(token);
-            }
-            for (var i = 0; i < request.FieldIds.Count; i++)
-            {
-                await using var insert = new SqlCommand(
-                    "INSERT INTO dbo.SYSQL_DEFAULT (T_ID,T_ID_R,F_ID,F_IDX) VALUES (@MasterTable,@TargetTable,@FieldId,@Position);",
-                    connection, transaction);
-                insert.Parameters.Add("@MasterTable", SqlDbType.NVarChar, 100).Value = masterTable;
-                insert.Parameters.Add("@TargetTable", SqlDbType.NVarChar, 100).Value = targetTable;
-                insert.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = request.FieldIds[i];
-                insert.Parameters.Add("@Position", SqlDbType.Int).Value = i + 1;
-                await insert.ExecuteNonQueryAsync(token);
-            }
+            await SaveDefaultColumnsScopedAsync(connection, transaction, masterTable, detailTable, request, token);
             await dirtyMarker.MarkDirtyAsync(connection, transaction, moduleId, "SYSTEM", token);
             await transaction.CommitAsync(token);
         }
@@ -203,9 +184,52 @@ public sealed class MenuAdminRepository(
             await transaction.RollbackAsync(token);
             throw;
         }
+        var targetTable = ResolveTargetTable(masterTable, detailTable, request.Table) ?? string.Empty;
         await auditWriter.WriteBestEffortAsync(moduleId, targetTable, "SAVE", "保存默认查询列", "SYSTEM", "MENU", result: 1, null, token);
         logger.LogInformation("保存默认查询列 module={ModuleId} kind={Kind} table={Table} fields={FieldCount}",
             moduleId, request.Table, targetTable, request.FieldIds.Count);
+    }
+
+    /// <summary>
+    /// 在调用方事务内重写某一张表的默认查询列（先删后插、不提交、不标脏）。
+    /// 表名由调用方给出（模块形态可能刚在同一事务内写入），字段仍按可见字段白名单校验。
+    /// </summary>
+    public async Task SaveDefaultColumnsScopedAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string? masterTable,
+        string? detailTable,
+        SaveMenuDefaultColumns request,
+        CancellationToken token)
+    {
+        if (request.Table is not ("master" or "detail"))
+            throw new ArgumentException("table 仅支持 master 或 detail。");
+        if (request.FieldIds.Count > 200 || request.FieldIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() != request.FieldIds.Count)
+            throw new ArgumentException("默认查询列配置无效（字段重复或过多）。");
+        if (masterTable is null) throw new ArgumentException("该模块未配置操作主表。");
+        var targetTable = ResolveTargetTable(masterTable, detailTable, request.Table)
+            ?? throw new ArgumentException("该模块未配置操作" + (request.Table == "master" ? "主表" : "副表") + "。");
+        var allowed = await ReadVisibleFieldKeysAsync(targetTable, token);
+        if (request.FieldIds.Any(field => !allowed.Contains(field)))
+            throw new ArgumentException("默认查询列包含无效字段。");
+
+        await using (var delete = new SqlCommand("DELETE FROM dbo.SYSQL_DEFAULT WHERE T_ID=@MasterTable AND T_ID_R=@TargetTable;", connection, transaction))
+        {
+            delete.Parameters.Add("@MasterTable", SqlDbType.NVarChar, 100).Value = masterTable;
+            delete.Parameters.Add("@TargetTable", SqlDbType.NVarChar, 100).Value = targetTable;
+            await delete.ExecuteNonQueryAsync(token);
+        }
+        for (var i = 0; i < request.FieldIds.Count; i++)
+        {
+            await using var insert = new SqlCommand(
+                "INSERT INTO dbo.SYSQL_DEFAULT (T_ID,T_ID_R,F_ID,F_IDX) VALUES (@MasterTable,@TargetTable,@FieldId,@Position);",
+                connection, transaction);
+            insert.Parameters.Add("@MasterTable", SqlDbType.NVarChar, 100).Value = masterTable;
+            insert.Parameters.Add("@TargetTable", SqlDbType.NVarChar, 100).Value = targetTable;
+            insert.Parameters.Add("@FieldId", SqlDbType.NVarChar, 100).Value = request.FieldIds[i];
+            insert.Parameters.Add("@Position", SqlDbType.Int).Value = i + 1;
+            await insert.ExecuteNonQueryAsync(token);
+        }
     }
 
     public async Task<MenuAdminModule?> GetModuleAsync(int id, CancellationToken token)
@@ -216,8 +240,16 @@ public sealed class MenuAdminRepository(
                    MASTER_TABLE,FILTER,DETAIL_TABLE,UPDATE_SP,AFTERSAVE_SP,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
                    GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
                    GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
-                   FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG
-            FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@Id;
+                   FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG,
+                   (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
+                     WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.MASTER_TABLE))) AS MASTER_TABLE_DESC,
+                   (SELECT TOP 1 LTRIM(RTRIM(t.T_DESC)) FROM dbo.TABLES t WITH (NOLOCK)
+                     WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.DETAIL_TABLE))) AS DETAIL_TABLE_DESC,
+                   ISNULL(d.DIRTY_TAG,0) AS DIRTY_TAG,s.VERSION AS PUBLISH_VERSION,s.PUBLISHED_AT
+            FROM dbo.MODULES WITH (NOLOCK)
+            LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.MODULE_ID=MODULES.M_IDX
+            LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.MODULE_ID=MODULES.M_IDX AND s.IS_CURRENT=1
+            WHERE M_IDX=@Id;
             """;
         await using var connection = connections.Create();
         await using var command = new SqlCommand(sql, connection);
@@ -419,8 +451,18 @@ public sealed class MenuAdminRepository(
     /// 新增或更新菜单节点（事务）。oldId 为空表示新增；oldId 非空表示更新该编号的节点
     /// （允许把 M_IDX 改成新编号，级联子级 M_P_IDX、权限与引用表， 语义）。
     /// </summary>
-    public async Task<int> SaveAsync(MenuAdminModule input, int? oldId, string updatedBy, CancellationToken token)
+    /// <summary>兼容入口：只保存模块行本身（关联配置由各自入口单独保存）。</summary>
+    public Task<int> SaveAsync(MenuAdminModule input, int? oldId, string updatedBy, CancellationToken token)
+        => SaveAllAsync(new SaveMenuModuleRequest(input, null, null), oldId, updatedBy, token);
+
+    /// <summary>
+    /// 保存模块：模块行 + 行为动作/校验规则 + 默认查询列在同一事务内落库。
+    /// 顺序固定为「先模块、后关联配置」——动作配置的物理校验依赖刚写入的主/副表形态。
+    /// BusinessConfig / DefaultColumns 为 null 或空表示该部分保持不动。
+    /// </summary>
+    public async Task<int> SaveAllAsync(SaveMenuModuleRequest request, int? oldId, string updatedBy, CancellationToken token)
     {
+        var input = request.Module;
         if (oldId is { } updateId && input.M_IDX <= 0)
             throw new ArgumentException("菜单编号必须为正整数。");
         Validate(input);
@@ -471,6 +513,18 @@ public sealed class MenuAdminRepository(
                     throw new ArgumentException($"菜单编号 {input.M_IDX} 已存在。");
                 await InsertAsync(connection, transaction, input, rootIdx, updatedBy, token);
             }
+            if (request.BusinessConfig is { } businessConfig)
+            {
+                await businessConfigRepository.SaveScopedAsync(
+                    connection, transaction, input.M_IDX, businessConfig, updatedBy, token);
+            }
+            if (request.DefaultColumns is { Count: > 0 } defaultColumns)
+            {
+                var masterTable = string.IsNullOrWhiteSpace(input.MASTER_TABLE) ? null : input.MASTER_TABLE.Trim();
+                var detailTable = string.IsNullOrWhiteSpace(input.DETAIL_TABLE) ? null : input.DETAIL_TABLE.Trim();
+                foreach (var columns in defaultColumns)
+                    await SaveDefaultColumnsScopedAsync(connection, transaction, masterTable, detailTable, columns, token);
+            }
             await dirtyMarker.MarkDirtyAsync(connection, transaction, input.M_IDX, updatedBy, token);
             if (oldId is { } oldModuleId && oldModuleId != input.M_IDX)
             {
@@ -486,6 +540,76 @@ public sealed class MenuAdminRepository(
             await transaction.RollbackAsync(token);
             throw;
         }
+    }
+
+    /// <summary>模块定义快照的历史版本列表（新→旧），供管理端查看发布记录。</summary>
+    public async Task<IReadOnlyList<MenuModuleVersion>> GetVersionsAsync(int moduleId, CancellationToken token)
+    {
+        const string sql = """
+            SELECT VERSION,PUBLISHED_BY,PUBLISHED_AT,VALIDATION_STATUS,IS_CURRENT
+            FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WITH (NOLOCK)
+            WHERE MODULE_ID=@ModuleId
+            ORDER BY VERSION DESC;
+            """;
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        await connection.OpenAsync(token);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new List<MenuModuleVersion>();
+        while (await reader.ReadAsync(token))
+        {
+            var version = reader.GetInt32(0);
+            result.Add(new MenuModuleVersion(
+                version,
+                $"module-{moduleId}-v{version}",
+                GetString(reader, 1),
+                reader.IsDBNull(2) ? null : reader.GetDateTime(2),
+                GetString(reader, 3) ?? string.Empty,
+                reader.GetBoolean(4)));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 仅改名（菜单树的轻量操作）：只写 M_DESC，不标脏、不进模块保存事务。
+    /// 名称属菜单呈现属性，保存后立即在导航生效；模块定义快照在下一次发布时带出新名称。
+    /// </summary>
+    public async Task RenameAsync(int id, string description, string updatedBy, CancellationToken token)
+    {
+        var name = (description ?? string.Empty).Trim();
+        if (name.Length == 0) throw new ArgumentException("菜单名称不允许为空。");
+        if (name.Length > 500) throw new ArgumentException("菜单名称过长（最多 500 字）。");
+        const string sql = "UPDATE dbo.MODULES SET M_DESC=@Name,LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE() WHERE M_IDX=@Id;";
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Name", SqlDbType.NVarChar, 500).Value = name;
+        command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
+        command.Parameters.Add("@Id", SqlDbType.Int).Value = id;
+        await connection.OpenAsync(token);
+        if (await command.ExecuteNonQueryAsync(token) == 0)
+            throw new KeyNotFoundException($"菜单节点 {id} 不存在。");
+        await auditWriter.WriteBestEffortAsync(id, id.ToString(), "RENAME", "菜单重命名", updatedBy, "MENU", result: 1, null, token);
+        logger.LogInformation("菜单重命名 module={ModuleId} name={Name}", id, name);
+    }
+
+    /// <summary>
+    /// 启用/停用（M_TAG）：菜单呈现属性，只决定侧栏是否显示该模块，不标脏、不需发布。
+    /// </summary>
+    public async Task SetEnabledAsync(int id, bool enabled, string updatedBy, CancellationToken token)
+    {
+        const string sql = "UPDATE dbo.MODULES SET M_TAG=@Enabled,LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE() WHERE M_IDX=@Id;";
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Enabled", SqlDbType.Bit).Value = enabled;
+        command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
+        command.Parameters.Add("@Id", SqlDbType.Int).Value = id;
+        await connection.OpenAsync(token);
+        if (await command.ExecuteNonQueryAsync(token) == 0)
+            throw new KeyNotFoundException($"菜单节点 {id} 不存在。");
+        await auditWriter.WriteBestEffortAsync(id, id.ToString(), enabled ? "ENABLE" : "DISABLE",
+            enabled ? "启用菜单" : "停用菜单", updatedBy, "MENU", result: 1, null, token);
+        logger.LogInformation("菜单启停 module={ModuleId} enabled={Enabled}", id, enabled);
     }
 
     /// <summary>
@@ -576,7 +700,12 @@ public sealed class MenuAdminRepository(
         reader.IsDBNull(43) ? (int?)null : (int)reader.GetByte(43),
         GetString(reader, 44),
         GetString(reader, 45),
-        EffectEngineTag: reader.GetBoolean(46));
+        EffectEngineTag: reader.GetBoolean(46),
+        MasterTableDesc: GetString(reader, 47),
+        DetailTableDesc: GetString(reader, 48),
+        DirtyTag: reader.GetBoolean(49),
+        PublishVersion: reader.IsDBNull(50) ? null : reader.GetInt32(50),
+        PublishedAt: reader.IsDBNull(51) ? null : reader.GetDateTime(51));
 
     private async Task<(string? Master, string? Detail)> ResolveModuleTablesAsync(int moduleId, CancellationToken token)
     {

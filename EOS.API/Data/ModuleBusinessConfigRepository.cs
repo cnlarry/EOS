@@ -129,51 +129,12 @@ public sealed class ModuleBusinessConfigRepository(
         string updatedBy,
         CancellationToken token)
     {
-        var issues = ModuleBusinessConfigValidator.Validate(request);
-        if (issues.Count > 0)
-            throw new ArgumentException("业务动作配置校验未通过：\r\n" + string.Join("\r\n", issues));
-
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
         try
         {
-            var (masterTable, detailTable) = await ReadModuleShapeAsync(connection, transaction, moduleId, token)
-                ?? throw new KeyNotFoundException($"模块 {moduleId} 不存在。");
-            if (masterTable is null && detailTable is null
-                && (request.Actions.Count > 0 || request.ValidationRules.Count > 0))
-                throw new ArgumentException("两表皆空模块禁止配置业务动作/校验规则。");
-
-            var physicalIssues = await ValidatePhysicalAsync(
-                moduleId, masterTable, detailTable, request, token);
-            if (physicalIssues.Count > 0)
-                throw new ArgumentException("业务动作配置物理校验未通过：\r\n" + string.Join("\r\n", physicalIssues));
-
-            await using (var deleteRules = new SqlCommand(
-                "DELETE FROM dbo.MODULE_VALIDATION_RULE WHERE MODULE_ID=@ModuleId;",
-                connection, transaction))
-            {
-                deleteRules.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-                await deleteRules.ExecuteNonQueryAsync(token);
-            }
-            await using (var deleteActions = new SqlCommand(
-                "DELETE FROM dbo.MODULE_BUSINESS_ACTION WHERE MODULE_ID=@ModuleId;",
-                connection, transaction))
-            {
-                deleteActions.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-                await deleteActions.ExecuteNonQueryAsync(token);
-            }
-
-            foreach (var action in request.Actions.OrderBy(item => item.Seq))
-            {
-                var actionId = await InsertActionAsync(connection, transaction, moduleId, action, updatedBy, token);
-                if (action.Ops is { Count: > 0 })
-                    foreach (var op in action.Ops.OrderBy(item => item.OpSeq))
-                        await InsertOpAsync(connection, transaction, actionId, op, token);
-            }
-            foreach (var rule in request.ValidationRules.OrderBy(item => item.Seq))
-                await InsertRuleAsync(connection, transaction, moduleId, rule, updatedBy, token);
-
+            await SaveScopedAsync(connection, transaction, moduleId, request, updatedBy, token);
             await dirtyMarker.MarkDirtyAsync(connection, transaction, moduleId, updatedBy, token);
             await transaction.CommitAsync(token);
         }
@@ -189,6 +150,59 @@ public sealed class ModuleBusinessConfigRepository(
         logger.LogInformation(
             "保存业务动作配置 module={ModuleId} actions={Actions} rules={Rules}",
             moduleId, request.Actions.Count, request.ValidationRules.Count);
+    }
+
+    /// <summary>
+    /// 在调用方事务内替换模块的业务动作/校验规则：不提交、不标脏（脏标记与审计由调用方统一处理），
+    /// 供「模块 + 动作配置」同事务保存使用。
+    /// </summary>
+    public async Task SaveScopedAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int moduleId,
+        SaveModuleBusinessConfigRequest request,
+        string updatedBy,
+        CancellationToken token)
+    {
+        var issues = ModuleBusinessConfigValidator.Validate(request);
+        if (issues.Count > 0)
+            throw new ArgumentException("业务动作配置校验未通过：\r\n" + string.Join("\r\n", issues));
+
+        var (masterTable, detailTable) = await ReadModuleShapeAsync(connection, transaction, moduleId, token)
+            ?? throw new KeyNotFoundException($"模块 {moduleId} 不存在。");
+        if (masterTable is null && detailTable is null
+            && (request.Actions.Count > 0 || request.ValidationRules.Count > 0))
+            throw new ArgumentException("两表皆空模块禁止配置业务动作/校验规则。");
+
+        var physicalIssues = await ValidatePhysicalAsync(
+            moduleId, masterTable, detailTable, request, token);
+        if (physicalIssues.Count > 0)
+            throw new ArgumentException("业务动作配置物理校验未通过：\r\n" + string.Join("\r\n", physicalIssues));
+
+        await using (var deleteRules = new SqlCommand(
+            "DELETE FROM dbo.MODULE_VALIDATION_RULE WHERE MODULE_ID=@ModuleId;",
+            connection, transaction))
+        {
+            deleteRules.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+            await deleteRules.ExecuteNonQueryAsync(token);
+        }
+        await using (var deleteActions = new SqlCommand(
+            "DELETE FROM dbo.MODULE_BUSINESS_ACTION WHERE MODULE_ID=@ModuleId;",
+            connection, transaction))
+        {
+            deleteActions.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+            await deleteActions.ExecuteNonQueryAsync(token);
+        }
+
+        foreach (var action in request.Actions.OrderBy(item => item.Seq))
+        {
+            var actionId = await InsertActionAsync(connection, transaction, moduleId, action, updatedBy, token);
+            if (action.Ops is { Count: > 0 })
+                foreach (var op in action.Ops.OrderBy(item => item.OpSeq))
+                    await InsertOpAsync(connection, transaction, actionId, op, token);
+        }
+        foreach (var rule in request.ValidationRules.OrderBy(item => item.Seq))
+            await InsertRuleAsync(connection, transaction, moduleId, rule, updatedBy, token);
     }
 
     private async Task<IReadOnlyList<string>> ValidatePhysicalAsync(
