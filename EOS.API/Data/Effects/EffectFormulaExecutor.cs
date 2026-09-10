@@ -132,7 +132,13 @@ public sealed class EffectFormulaExecutor
             where = documentScope;
         else if (documentScope.Length > 0)
             where = where + " AND " + documentScope;
-        builder.Append(" WHERE ").Append(where.Length == 0 ? "1=1" : where);
+        // Fail closed on an unscoped statement: a formula row whose target is not the
+        // document master and that carries neither locating keys nor a condition would
+        // otherwise update every row of the target table.
+        if (where.Length == 0)
+            throw new EffectConfigException(
+                $"公式行 OP_SEQ={op.OpSeq}：目标表 {op.TargetTable} 既无定位键也无条件，禁止无条件更新（拒绝全表更新）。");
+        builder.Append(" WHERE ").Append(where);
 
         return (builder.ToString(), parameters);
     }
