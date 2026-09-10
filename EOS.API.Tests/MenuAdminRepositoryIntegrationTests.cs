@@ -34,11 +34,14 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
                 ["ConnectionStrings:ErpDatabase"] = ConnectionString.Value,
             })
             .Build();
-        _repository = new MenuAdminRepository(new DbConnectionFactory(config), new WorkbenchDirtyMarker(new DbConnectionFactory(config)),
-            new WorkbenchAuditWriter(new DbConnectionFactory(config), new Microsoft.AspNetCore.Http.HttpContextAccessor(),
-                new WorkbenchDefinitionProvider(new DbConnectionFactory(config), NullLogger<WorkbenchDefinitionProvider>.Instance),
-                Microsoft.Extensions.Options.Options.Create(new EOS.API.Models.AuditSettings())),
-            NullLogger<MenuAdminRepository>.Instance);
+        var connections = new DbConnectionFactory(config);
+        var dirtyMarker = new WorkbenchDirtyMarker(connections);
+        var auditWriter = new WorkbenchAuditWriter(connections, new Microsoft.AspNetCore.Http.HttpContextAccessor(),
+            new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance),
+            Microsoft.Extensions.Options.Options.Create(new EOS.API.Models.AuditSettings()));
+        _repository = new MenuAdminRepository(connections,
+            new ModuleBusinessConfigRepository(connections, dirtyMarker, auditWriter, NullLogger<ModuleBusinessConfigRepository>.Instance),
+            dirtyMarker, auditWriter, NullLogger<MenuAdminRepository>.Instance);
         var baseId = 990000000 + Random.Shared.Next(0, 9999999);
         _parentId = baseId;
         _childIds = [baseId + 1, baseId + 2, baseId + 3, baseId + 4];
