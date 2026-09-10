@@ -158,4 +158,22 @@ public class EffectStructSchemasTests
         var reserved = EffectStructSchemas.ValidateParams("meta-link", """{"a":1}""");
         Assert.Contains(reserved, issue => issue.Contains("尚未登记参数 Schema"));
     }
+
+    [Fact]
+    public void ValidateCondition_RequiresScopeField_And_ValidatesNullAsMatch()
+    {
+        Assert.Empty(EffectStructSchemas.ValidateConditionJson(
+            """{"logic":"AND","items":[{"type":"value-neq","field":{"scope":"MASTER","field":"BACK_CODE"},"value":"1","nullAsMatch":true}]}""",
+            "测试条件"));
+
+        var flat = EffectStructSchemas.ValidateConditionJson(
+            """{"logic":"AND","items":[{"type":"value-eq","field":"BACK_CODE","value":"1"}]}""",
+            "测试条件");
+        Assert.Contains(flat, issue => issue.Contains("field 必须是"));
+
+        var badFlag = EffectStructSchemas.ValidateConditionJson(
+            """{"logic":"AND","items":[{"type":"value-neq","field":{"scope":"MASTER","field":"BACK_CODE"},"value":"1","nullAsMatch":"yes"}]}""",
+            "测试条件");
+        Assert.Contains(badFlag, issue => issue.Contains("nullAsMatch 必须是布尔"));
+    }
 }

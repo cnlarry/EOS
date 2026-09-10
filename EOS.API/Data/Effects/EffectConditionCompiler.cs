@@ -137,8 +137,20 @@ public sealed class EffectConditionCompiler
                 var alias = AliasFor(field, resolveAlias)
                     ?? throw new EffectConfigException($"条件字段 {field.GetProperty("field")} 的来源域不可用。");
                 var parameter = NextParameter(ExtractValue(Required(item, "value")));
+                var qualified = $"{alias}.{Identifier(field)}";
+                var isEq = type.GetString()!.Equals("value-eq", StringComparison.OrdinalIgnoreCase);
+                if (isEq)
+                {
+                    return new EffectSqlFragment($"{qualified} = {parameter.Name}", new[] { parameter });
+                }
+                // value-neq defaults to SQL <> (NULL rows excluded). nullAsMatch:true mirrors
+                // legacy IF/ELSE branches where a NULL value takes the "not equal" path.
+                var nullAsMatch = item.TryGetProperty("nullAsMatch", out var nullFlag)
+                    && nullFlag.ValueKind == JsonValueKind.True;
                 return new EffectSqlFragment(
-                    $"{alias}.{Identifier(field)} {(type.GetString()!.EndsWith("EQ", StringComparison.OrdinalIgnoreCase) ? "=" : "<>")} {parameter.Name}",
+                    nullAsMatch
+                        ? $"({qualified} <> {parameter.Name} OR {qualified} IS NULL)"
+                        : $"{qualified} <> {parameter.Name}",
                     new[] { parameter });
             }
             case "NOT-EXISTS":

@@ -126,6 +126,14 @@ public sealed class EffectFormulaExecutor
                 targetAlias);
             where = where.Length == 0 ? fragment.Sql : where + " AND " + fragment.Sql;
             parameters.AddRange(fragment.Parameters);
+            // A condition referencing the document master (e.g. BACK_CODE on the back
+            // document) needs the master alias bound in this statement's FROM. The master
+            // is a single row by its own primary key, so the JOIN never multiplies rows.
+            if (ConditionReferencesScope(condition, "MASTER"))
+            {
+                builder.Append(" JOIN dbo.").Append(EffectConditionCompiler.Identifier(_plan.MasterTable!))
+                    .Append(" M ON ").Append(AddMasterKeyParameters(parameters));
+            }
         }
         var documentScope = BuildDocumentScopeFilter(op, targetAlias, parameters);
         if (where.Length == 0)
@@ -395,6 +403,33 @@ public sealed class EffectFormulaExecutor
             "TABLE" => "S_" + EffectConditionCompiler.TargetAlias(table ?? string.Empty),
             _ => throw new EffectConfigException($"条件来源域 '{scope}' 不可用。"),
         };
+
+    /// <summary>True when the condition JSON references the given scope anywhere.</summary>
+    private static bool ConditionReferencesScope(JsonElement condition, string scope)
+    {
+        switch (condition.ValueKind)
+        {
+            case JsonValueKind.Object:
+                if (condition.TryGetProperty("scope", out var value) && value.ValueKind == JsonValueKind.String
+                    && value.GetString()!.Equals(scope, StringComparison.OrdinalIgnoreCase))
+                    return true;
+                foreach (var property in condition.EnumerateObject())
+                {
+                    if (ConditionReferencesScope(property.Value, scope))
+                        return true;
+                }
+                return false;
+            case JsonValueKind.Array:
+                foreach (var item in condition.EnumerateArray())
+                {
+                    if (ConditionReferencesScope(item, scope))
+                        return true;
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
 
     private static object? ParseScalar(string text) =>
         text.Equals("NULL", StringComparison.OrdinalIgnoreCase) ? null
