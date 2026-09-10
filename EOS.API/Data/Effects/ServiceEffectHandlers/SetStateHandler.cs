@@ -101,6 +101,7 @@ public sealed class SetStateHandler : IEffectServiceHandler
         {
             if (!root.TryGetProperty("state", out var state) || state.ValueKind != JsonValueKind.Object)
                 throw new EffectConfigException("set-state targets 形态缺少 state 映射。");
+            var targetIndex = 0;
             foreach (var target in targets.EnumerateArray())
             {
                 var table = target.GetString()!.Trim();
@@ -112,7 +113,7 @@ public sealed class SetStateHandler : IEffectServiceHandler
                     if (!columns.Contains(table + "." + property.Name))
                         throw new EffectConfigException($"set-state 目标列不存在：{table}.{property.Name}。");
                     var (fragment, needsParameter) = ResolveStateValue(property.Value, clear);
-                    var value = needsParameter ? fragment + property.Name : fragment;
+                    var value = needsParameter ? fragment + targetIndex + "_" + property.Name : fragment;
                     if (needsParameter)
                         parameters.Add(new EffectSqlParameter(value, clear ? string.Empty : property.Value.GetString()));
                     sets.Add($"{ServiceEffectSql.Q(property.Name)} = {value}");
@@ -124,6 +125,7 @@ public sealed class SetStateHandler : IEffectServiceHandler
                     : "1=1";
                 statements.Add(
                     $"UPDATE T SET {string.Join(", ", sets)} FROM dbo.{ServiceEffectSql.Q(table)} T JOIN dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M ON {ServiceEffectSql.SameNameKeyJoin(plan, "T")} WHERE {where}");
+                targetIndex++;
             }
         }
         else
