@@ -35,7 +35,7 @@ namespace EOS.API.Tests.Tools;
 /// 1502 (produce MRP material-provide), 1512/1522/2803/2804 (produce variants),
 /// 2816 (outsourced inbound), 1503/1514/1517/2805/2806 (material issue),
 /// 1615/1616 (purchase request), 2817/2818 (misc in/out), 2906 (mould batch),
-/// 180106/180206/180207 (HR), 2705/2706/2707/2708 (work-order family),
+/// 180106/180206/180207/180310/1803101 (HR), 2705/2706/2707/2708 (work-order family),
 /// 2815 (product outbound), 2903/2904 (mould apply/accept), 2907/2913 (mould issue).
 /// </summary>
 [Trait("Category", "Tool")]
@@ -261,8 +261,14 @@ public sealed class EffectShadowRunner
         2913 => new(2913, "2913", "MOU_GET2_M", "MOU_GET2_D",
             "GET_TYPE", "GET_NO", "GET_DATE",
             null, null, null, "模具耗料单"),
+        180310 => new(180310, "180310", "HR_WAGE_M", "HR_WAGE_D",
+            "WAGE_TYPE", "WAGE_NO", "WAGE_DATE",
+            null, null, null, "离职工资表"),
+        1803101 => new(1803101, "1803101", "HR_WAGE_M", "HR_WAGE_D",
+            "WAGE_TYPE", "WAGE_NO", "WAGE_DATE",
+            null, null, null, "保密离职工资表"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -362,9 +368,9 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101))
         {
-            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913 only.");
+            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101 only.");
         }
         var spec = GetSpec(options.ModuleId);
         var deapprove = options.Event.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
@@ -538,6 +544,10 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 2816)
         {
             return await ResolveRecordKeys1505Async(connection, deapprove, failure);
+        }
+        if (spec.ModuleId is 180310 or 1803101)
+        {
+            return await ResolveRecordKeys180310Async(connection, spec, deapprove, failure);
         }
         if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818
             or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2907 or 2913
@@ -1077,7 +1087,7 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818
             or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913
             or 130101 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
-            or 300301 or 300302 or 300304 or 300305)
+            or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101)
         {
             // 2xxx snapshot specs filter target tables by document keys and EXISTS
             // subqueries off the master; no detail context rows are materialised.
@@ -1306,6 +1316,10 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 180207)
         {
             return BuildTableSpecs180207(master);
+        }
+        if (spec.ModuleId is 180310 or 1803101)
+        {
+            return BuildTableSpecs180310(master);
         }
         if (spec.ModuleId == 1404)
         {
@@ -2398,6 +2412,45 @@ public sealed class EffectShadowRunner
         return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
     }
 
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys180310Async(
+        SqlConnection connection, ModuleShadowSpec spec, bool deapprove, bool failure)
+    {
+        if (failure)
+        {
+            throw new NotSupportedException($"{spec.ModuleId} 影子规格未规格化失败分支（模块无校验规则）。");
+        }
+        // The dimission-sync effect is meaningful only when at least one detail row both
+        // references an existing dimission document and points at an existing employee;
+        // otherwise approve is a no-op on both paths and proves nothing.
+        var confirm = deapprove ? "1" : "0";
+        var secrecy = spec.ModuleId == 1803101 ? "1" : "0";
+        const string sql = """
+            SELECT TOP 1 M.WAGE_TYPE, M.WAGE_NO
+            FROM dbo.HR_WAGE_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
+              AND ISNULL(M.IF_SECRECY,0)=@secrecy
+              AND EXISTS (
+                  SELECT 1 FROM dbo.HR_WAGE_D D
+                  WHERE D.WAGE_TYPE=M.WAGE_TYPE AND D.WAGE_NO=M.WAGE_NO
+                    AND EXISTS (
+                        SELECT 1 FROM dbo.HR_DIMISSION_M DM
+                        WHERE DM.DIMISSION_TYPE=D.DIMISSION_TYPE
+                          AND DM.DIMISSION_NO=D.DIMISSION_NO)
+                    AND EXISTS (
+                        SELECT 1 FROM dbo.HR_EMPLOYEE E WHERE E.EMP_ID=D.EMP_ID))
+            ORDER BY ISNULL(M.CONFIRM_DATE, M.WAGE_DATE) DESC, M.WAGE_NO DESC;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@confirm", confirm);
+        command.Parameters.AddWithValue("@secrecy", secrecy);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+            throw new InvalidOperationException(deapprove
+                ? $"未找到可解批对拍的已批核离职工资表（{spec.DocName}，自动选单无结果）。"
+                : $"未找到可对拍的未批核离职工资表（{spec.DocName}，自动选单无结果）。");
+        return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
+
     private static IReadOnlyList<TableSpec> BuildTableSpecs1509(MasterContext master)
     {
         var ct = new SqlParameter("@ct", master.ReceiveType);
@@ -2971,6 +3024,28 @@ public sealed class EffectShadowRunner
             + "AND EXISTS (SELECT 1 FROM dbo.HR_APPLY_M AM "
             + "WHERE AM.APPLY_TYPE=HR_APPLY_D.APPLY_TYPE AND AM.APPLY_NO=HR_APPLY_D.APPLY_NO "
             + "AND AM.COUNT_DATE=W.COUNT_DATE))",
+            new[] { wt, wn }));
+        return specs;
+    }
+
+    private static IReadOnlyList<TableSpec> BuildTableSpecs180310(MasterContext master)
+    {
+        var wt = new SqlParameter("@wt", master.ReceiveType);
+        var wn = new SqlParameter("@wn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("HR_WAGE_M", new[] { "WAGE_TYPE", "WAGE_NO" },
+                "@wt=WAGE_TYPE AND @wn=WAGE_NO", new[] { wt, wn }),
+            new("HR_WAGE_D", new[] { "WAGE_TYPE", "WAGE_NO", "SERIAL_NO" },
+                "@wt=WAGE_TYPE AND @wn=WAGE_NO", new[] { wt, wn }),
+        };
+        // 180310/1803101 employee-dimission-sync: approve marks the document's wage
+        // detail employees dimitted (STATE=5, DIMISSION_DATE from HR_DIMISSION_M), and
+        // deapprove restores the same employee set to active — the effect lives on
+        // HR_EMPLOYEE, correlated through HR_WAGE_D.
+        specs.Add(new("HR_EMPLOYEE", new[] { "EMP_ID" },
+            "EXISTS (SELECT 1 FROM dbo.HR_WAGE_D R WHERE R.WAGE_TYPE=@wt AND R.WAGE_NO=@wn "
+            + "AND HR_EMPLOYEE.EMP_ID=R.EMP_ID)",
             new[] { wt, wn }));
         return specs;
     }
