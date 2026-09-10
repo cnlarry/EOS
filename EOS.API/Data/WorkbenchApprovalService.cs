@@ -223,8 +223,11 @@ public sealed class WorkbenchApprovalService(
         CancellationToken token,
         string? message = null)
     {
+        // 批核能力有两个来源：已发布定义的效果链（数据驱动）与静态登记的旧批核 SP
+        // （过渡桥）。两者都不可用时才拒绝——效果链不依赖静态模块映射即可授权批核。
         var rule = definition.BusinessRule;
-        if (rule?.WorkflowSproc is not { } sproc)
+        var sproc = rule?.WorkflowSproc;
+        if (sproc is null && !effectEngine.IsEnabledFor(definition))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "WORKFLOW_NOT_SUPPORTED", "该模块不支持批核操作。");
         }
@@ -288,9 +291,15 @@ public sealed class WorkbenchApprovalService(
             await RestoreConfirmStateAsync(connection, definition.MasterTable, keyCondition, originalState.Value, token);
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED", effectRun.Error);
         }
+        if (!effectRun.Ran && sproc is null)
+        {
+            await RestoreConfirmStateAsync(connection, definition.MasterTable, keyCondition, originalState.Value, token);
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED",
+                "该模块未配置批核效果，且无兼容批核处理。");
+        }
         var result = effectRun.Ran
             ? new SprocResult(true, null)
-            : await controlledSprocs.RunWorkflowAsync(definition.ModuleId, sproc, definition.MasterPkOrder, keyValues, approve, token);
+            : await controlledSprocs.RunWorkflowAsync(definition.ModuleId, sproc!, definition.MasterPkOrder, keyValues, approve, token);
         if (!result.Success)
         {
             await RestoreConfirmStateAsync(connection, definition.MasterTable, keyCondition, originalState.Value, token);
