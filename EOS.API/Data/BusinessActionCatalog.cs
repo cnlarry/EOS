@@ -42,6 +42,7 @@ public static class BusinessActionCatalog
         "field-copy",
         "hr-usage-sync",
         "employee-contract-sync",
+        "employee-dimission-sync",
         "mould-batch-apply",
         "mrp-plan-alloc",
         "order-change-apply",

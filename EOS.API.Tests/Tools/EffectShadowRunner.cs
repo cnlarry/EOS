@@ -929,6 +929,7 @@ public sealed class EffectShadowRunner
                 new ContractSyncHandler(),
                 new HrUsageSyncHandler(),
                 new MouldBatchApplyHandler(),
+                new DimissionSyncHandler(),
             },
             new EffectValidationExecutor(),
             auditWriter,
