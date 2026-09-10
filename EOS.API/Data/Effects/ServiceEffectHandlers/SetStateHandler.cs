@@ -82,6 +82,7 @@ public sealed class SetStateHandler : IEffectServiceHandler
         var root = context.Action.Params ?? throw new EffectConfigException("set-state 缺少参数。");
         var plan = context.Plan;
         var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
+        ValidateParams(root, plan, columns);
         var parameters = new List<EffectSqlParameter>();
         var statements = new List<string>();
 
@@ -111,24 +112,13 @@ public sealed class SetStateHandler : IEffectServiceHandler
                 var (table, detailRefs) = target.ValueKind == JsonValueKind.String
                     ? (target.GetString()!.Trim(), new List<(string Target, string Source)>())
                     : ParseTargetObject(target);
-                if (!columns.Contains(table))
-                    throw new EffectConfigException($"set-state 目标表不存在：{table}。");
                 var join = detailRefs.Count > 0
                     ? string.Join(" AND ", detailRefs.Select(reference =>
                         $"T.{ServiceEffectSql.Q(reference.Target)} = D.{ServiceEffectSql.Q(reference.Source)}"))
                     : ServiceEffectSql.SameNameKeyJoin(plan, "T");
-                foreach (var reference in detailRefs)
-                {
-                    if (!columns.Contains(table + "." + reference.Target))
-                        throw new EffectConfigException($"set-state 目标定位列不存在：{table}.{reference.Target}。");
-                    if (!columns.Contains(plan.DetailTable + "." + reference.Source))
-                        throw new EffectConfigException($"set-state 明细定位列不存在：{plan.DetailTable}.{reference.Source}。");
-                }
                 var sets = new List<string>();
                 foreach (var property in state.EnumerateObject())
                 {
-                    if (!columns.Contains(table + "." + property.Name))
-                        throw new EffectConfigException($"set-state 目标列不存在：{table}.{property.Name}。");
                     var (fragment, needsParameter) = ResolveStateValue(property.Value, clear);
                     var value = needsParameter ? fragment + targetIndex + "_" + property.Name : fragment;
                     if (needsParameter)
@@ -156,8 +146,6 @@ public sealed class SetStateHandler : IEffectServiceHandler
                 throw new EffectConfigException("set-state clear-finish 反向仅支持 targets/state 形态。");
             var table = Required(root, "targetTable");
             var stateField = Required(root, "stateField");
-            if (!columns.Contains(table + "." + stateField))
-                throw new EffectConfigException($"set-state 目标列不存在：{table}.{stateField}。");
             if (!root.TryGetProperty("stateValue", out var stateValueElement)
                 || stateValueElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
                 throw new EffectConfigException("set-state 缺少 stateValue。");
@@ -174,26 +162,20 @@ public sealed class SetStateHandler : IEffectServiceHandler
             if (root.TryGetProperty("dateField", out var dateField) && dateField.ValueKind == JsonValueKind.String)
             {
                 var dateColumn = dateField.GetString()!.Trim();
-                if (!columns.Contains(table + "." + dateColumn))
-                    throw new EffectConfigException($"set-state 日期列不存在：{table}.{dateColumn}。");
                 var sourceField = Required(root, "sourceField");
                 var sourceTable = plan.DetailTable;
                 if (root.TryGetProperty("source", out var source) && source.ValueKind == JsonValueKind.Object)
                 {
-                    var scope = source.GetProperty("scope").GetString()!.Trim().ToUpperInvariant();
-                    if (scope != "TABLE")
-                        throw new EffectConfigException("set-state source.scope 仅支持 TABLE。");
-                    sourceTable = source.GetProperty("table").GetString()!.Trim();
+                    sourceTable = source.TryGetProperty("table", out var sourceTableValue)
+                        && sourceTableValue.ValueKind == JsonValueKind.String
+                            ? sourceTableValue.GetString()!.Trim()
+                            : sourceTable;
                 }
                 if (sourceTable is null)
                     throw new EffectConfigException("set-state 缺少日期来源表。");
-                if (!columns.Contains(sourceTable + "." + sourceField))
-                    throw new EffectConfigException($"set-state 日期来源列不存在：{sourceTable}.{sourceField}。");
                 var mode = root.TryGetProperty("dateMode", out var dm) && dm.ValueKind == JsonValueKind.String
                     ? dm.GetString()!.Trim().ToUpperInvariant()
                     : "MIN";
-                if (mode is not ("MIN" or "MAX"))
-                    throw new EffectConfigException("set-state dateMode 仅支持 MIN/MAX。");
                 var sourceAlias = table == sourceTable ? "T" : "S";
                 var correlation = sourceAlias == "S" ? ServiceEffectSql.SameNameKeyJoin(plan, "S") : ServiceEffectSql.SameNameKeyJoin(plan, "T");
                 var aggregate = $"(SELECT {mode}({ServiceEffectSql.Q(sourceField)}) FROM dbo.{ServiceEffectSql.Q(sourceTable)} {sourceAlias} WHERE {correlation})";
@@ -211,6 +193,85 @@ public sealed class SetStateHandler : IEffectServiceHandler
         foreach (var statement in statements)
             affected += await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction, statement, parameters, token);
         return affected;
+    }
+
+    /// <summary>
+    /// Closed-shape and physical validation of the set-state parameters. Shared by the
+    /// executor (which calls it before building any statement) and the save-time
+    /// configuration check, so one set of rules decides both whether a document may be
+    /// approved and whether the configuration may be saved.
+    /// </summary>
+    internal static void ValidateParams(JsonElement root, ModuleEffectPlan plan, ISet<string> columns)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new EffectConfigException("set-state 参数必须是 JSON 对象。");
+        if (root.TryGetProperty("targets", out var targets) && targets.ValueKind == JsonValueKind.Array)
+        {
+            if (!root.TryGetProperty("state", out var state) || state.ValueKind != JsonValueKind.Object)
+                throw new EffectConfigException("set-state targets 形态缺少 state 映射。");
+            if (targets.GetArrayLength() == 0)
+                throw new EffectConfigException("set-state targets 不能为空。");
+            foreach (var target in targets.EnumerateArray())
+            {
+                var (table, detailRefs) = target.ValueKind == JsonValueKind.String
+                    ? (target.GetString()!.Trim(), new List<(string Target, string Source)>())
+                    : ParseTargetObject(target);
+                if (!columns.Contains(table))
+                    throw new EffectConfigException($"set-state 目标表不存在：{table}。");
+                if (detailRefs.Count > 0 && plan.DetailTable is null)
+                    throw new EffectConfigException($"set-state 目标 {table} 使用明细定位键，但模块未配置明细表。");
+                foreach (var reference in detailRefs)
+                {
+                    if (!columns.Contains(table + "." + reference.Target))
+                        throw new EffectConfigException($"set-state 目标定位列不存在：{table}.{reference.Target}。");
+                    if (!columns.Contains(plan.DetailTable + "." + reference.Source))
+                        throw new EffectConfigException($"set-state 明细定位列不存在：{plan.DetailTable}.{reference.Source}。");
+                }
+                foreach (var property in state.EnumerateObject())
+                {
+                    if (!columns.Contains(table + "." + property.Name))
+                        throw new EffectConfigException($"set-state 目标列不存在：{table}.{property.Name}。");
+                    _ = ResolveStateValue(property.Value, clear: false);
+                }
+            }
+            return;
+        }
+
+        var singleTable = Required(root, "targetTable");
+        var stateField = Required(root, "stateField");
+        if (!columns.Contains(singleTable + "." + stateField))
+            throw new EffectConfigException($"set-state 目标列不存在：{singleTable}.{stateField}。");
+        if (!root.TryGetProperty("stateValue", out var stateValue) || stateValue.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            throw new EffectConfigException("set-state 缺少 stateValue。");
+        _ = ResolveStateValue(stateValue, clear: false);
+
+        if (root.TryGetProperty("dateField", out var dateField) && dateField.ValueKind == JsonValueKind.String)
+        {
+            var dateColumn = dateField.GetString()!.Trim();
+            if (!columns.Contains(singleTable + "." + dateColumn))
+                throw new EffectConfigException($"set-state 日期列不存在：{singleTable}.{dateColumn}。");
+            var sourceField = Required(root, "sourceField");
+            var sourceTable = plan.DetailTable;
+            if (root.TryGetProperty("source", out var source) && source.ValueKind == JsonValueKind.Object)
+            {
+                if (!source.TryGetProperty("scope", out var scope) || scope.ValueKind != JsonValueKind.String
+                    || !scope.GetString()!.Trim().Equals("TABLE", StringComparison.OrdinalIgnoreCase))
+                    throw new EffectConfigException("set-state source.scope 仅支持 TABLE。");
+                if (!source.TryGetProperty("table", out var tableValue) || tableValue.ValueKind != JsonValueKind.String
+                    || string.IsNullOrWhiteSpace(tableValue.GetString()))
+                    throw new EffectConfigException("set-state source.table 不能为空。");
+                sourceTable = tableValue.GetString()!.Trim();
+            }
+            if (sourceTable is null)
+                throw new EffectConfigException("set-state 缺少日期来源表。");
+            if (!columns.Contains(sourceTable + "." + sourceField))
+                throw new EffectConfigException($"set-state 日期来源列不存在：{sourceTable}.{sourceField}。");
+            var mode = root.TryGetProperty("dateMode", out var dm) && dm.ValueKind == JsonValueKind.String
+                ? dm.GetString()!.Trim().ToUpperInvariant()
+                : "MIN";
+            if (mode is not ("MIN" or "MAX"))
+                throw new EffectConfigException("set-state dateMode 仅支持 MIN/MAX。");
+        }
     }
 
     private static string? ReverseKind(ServiceEffectContext context)

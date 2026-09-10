@@ -399,6 +399,21 @@ public sealed class FieldCopyHandler : IEffectServiceHandler
         var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
 
         var affected = 0;
+        foreach (var target in ResolveTargets(root))
+            affected += await CopyAsync(context, target, columns, token);
+        return affected;
+    }
+
+    /// <summary>
+    /// Expands the two closed parameter shapes into concrete copy targets. Free of any
+    /// database access so the save-time physical check and the executor resolve the very
+    /// same target list instead of keeping two divergent readings of the configuration.
+    /// </summary>
+    internal static IReadOnlyList<FieldCopyTarget> ResolveTargets(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new EffectConfigException("field-copy 参数必须是 JSON 对象。");
+        var result = new List<FieldCopyTarget>();
         if (root.TryGetProperty("targets", out var targets) && targets.ValueKind == JsonValueKind.Array)
         {
             var fields = ServiceEffectFields.Read(root, "fields");
@@ -416,18 +431,48 @@ public sealed class FieldCopyHandler : IEffectServiceHandler
                 var pairs = perTargetFields.Select(field => (Target: field, Source: field))
                     .Concat(isMasterShape ? headerFields.Select(field => (Target: field, Source: field)) : Array.Empty<(string, string)>())
                     .ToList();
-                affected += await CopyAsync(context, table, pairs, refs, columns, token);
+                result.Add(new FieldCopyTarget(table, pairs, refs));
             }
+            return result;
         }
-        else
+        var singleTable = ServiceEffectFields.Required(root, "targetTable");
+        var singleField = ServiceEffectFields.Required(root, "field");
+        var singleSource = ServiceEffectFields.Required(root, "sourceField");
+        result.Add(new FieldCopyTarget(singleTable,
+            new[] { (Target: singleField, Source: singleSource) }, Array.Empty<(string, string)>()));
+        return result;
+    }
+
+    /// <summary>Physical check of one copy target: every referenced table/column must exist.</summary>
+    internal static void ValidateTarget(FieldCopyTarget target, ModuleEffectPlan plan, ISet<string> columns)
+    {
+        if (!columns.Contains(target.Table))
+            throw new EffectConfigException($"field-copy 目标表不存在：{target.Table}。");
+        foreach (var (field, source) in target.Pairs)
         {
-            var table = ServiceEffectFields.Required(root, "targetTable");
-            var field = ServiceEffectFields.Required(root, "field");
-            var sourceField = ServiceEffectFields.Required(root, "sourceField");
-            affected += await CopyAsync(context, table,
-                new[] { (Target: field, Source: sourceField) }, Array.Empty<(string, string)>(), columns, token);
+            if (!columns.Contains(target.Table + "." + field))
+                throw new EffectConfigException($"field-copy 目标列不存在：{target.Table}.{field}。");
+            if (!columns.Contains(plan.MasterTable + "." + source))
+                throw new EffectConfigException($"field-copy 主表来源列不存在：{plan.MasterTable}.{source}。");
         }
-        return affected;
+        if (target.Pairs.Count == 0)
+            throw new EffectConfigException("field-copy 缺少可复制字段。");
+        foreach (var reference in target.Refs)
+        {
+            if (!columns.Contains(target.Table + "." + reference.Target))
+                throw new EffectConfigException($"field-copy 定位列不存在：{target.Table}.{reference.Target}。");
+            if (!columns.Contains(plan.MasterTable + "." + reference.Source))
+                throw new EffectConfigException($"field-copy 主表定位列不存在：{plan.MasterTable}.{reference.Source}。");
+        }
+    }
+
+    /// <summary>Save-time entry point: resolves the parameter shapes and checks them physically.</summary>
+    internal static void ValidateParams(JsonElement root, ModuleEffectPlan plan, ISet<string> columns)
+    {
+        if (plan.MasterTable is null)
+            throw new EffectConfigException("field-copy 需要主表形态。");
+        foreach (var target in ResolveTargets(root))
+            ValidateTarget(target, plan, columns);
     }
 
     private static (string Table, IReadOnlyList<(string Target, string Source)> Refs, string[] Fields) ParseTargetObject(JsonElement target)
@@ -458,39 +503,14 @@ public sealed class FieldCopyHandler : IEffectServiceHandler
 
     private static async Task<int> CopyAsync(
         ServiceEffectContext context,
-        string table,
-        IReadOnlyList<(string Target, string Source)> pairs,
-        IReadOnlyList<(string Target, string Source)> refs,
+        FieldCopyTarget target,
         ISet<string> columns,
         CancellationToken token)
     {
         var plan = context.Plan;
-        if (!columns.Contains(table))
-            throw new EffectConfigException($"field-copy 目标表不存在：{table}。");
-        var sets = new List<string>();
-        foreach (var (target, source) in pairs)
-        {
-            if (!columns.Contains(table + "." + target))
-                throw new EffectConfigException($"field-copy 目标列不存在：{table}.{target}。");
-            if (!columns.Contains(plan.MasterTable + "." + source))
-                throw new EffectConfigException($"field-copy 主表来源列不存在：{plan.MasterTable}.{source}。");
-            sets.Add($"T.{ServiceEffectSql.Q(target)} = M.{ServiceEffectSql.Q(source)}");
-        }
-        if (sets.Count == 0)
-            throw new EffectConfigException("field-copy 缺少可复制字段。");
-        var join = refs.Count > 0
-            ? string.Join(" AND ", refs.Select(reference =>
-                $"T.{ServiceEffectSql.Q(reference.Target)} = M.{ServiceEffectSql.Q(reference.Source)}"))
-            : ServiceEffectSql.SameNameKeyJoin(plan, "T");
-        foreach (var reference in refs)
-        {
-            if (!columns.Contains(table + "." + reference.Target))
-                throw new EffectConfigException($"field-copy 定位列不存在：{table}.{reference.Target}。");
-            if (!columns.Contains(plan.MasterTable + "." + reference.Source))
-                throw new EffectConfigException($"field-copy 主表定位列不存在：{plan.MasterTable}.{reference.Source}。");
-        }
+        ValidateTarget(target, plan, columns);
         var parameters = new List<EffectSqlParameter>();
-        var sql = BuildCopyUpdate(plan, table, pairs, refs, context.MasterKeyValues, parameters);
+        var sql = BuildCopyUpdate(plan, target.Table, target.Pairs, target.Refs, context.MasterKeyValues, parameters);
         return await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction, sql, parameters, token);
     }
 
@@ -521,6 +541,13 @@ public sealed class FieldCopyHandler : IEffectServiceHandler
             + $"JOIN dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M ON {join} WHERE {where}";
     }
 }
+
+/// <summary>One resolved field-copy target: the table, its copied field pairs, and the
+/// locating column pairs (empty when the legacy same-name master key join applies).</summary>
+internal sealed record FieldCopyTarget(
+    string Table,
+    IReadOnlyList<(string Target, string Source)> Pairs,
+    IReadOnlyList<(string Target, string Source)> Refs);
 
 internal static class ServiceEffectFields
 {

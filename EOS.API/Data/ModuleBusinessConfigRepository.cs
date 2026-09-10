@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.Json;
+using EOS.API.Data.Effects;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -204,6 +205,14 @@ public sealed class ModuleBusinessConfigRepository(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         var columns = await LoadPhysicalColumnsAsync(connection, token);
+        // Service-effect parameters locate their tables through the module shape, so the
+        // same context the runtime plan carries is rebuilt here for the physical check.
+        var masterPkOrder = masterTable is null
+            ? Array.Empty<string>()
+            : (await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, null, masterTable, token)).ToArray();
+        var plan = new ModuleEffectPlan(
+            moduleId, masterTable, detailTable, null, masterPkOrder,
+            Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
         foreach (var action in request.Actions)
         {
             foreach (var op in action.Ops ?? Array.Empty<BusinessActionOpDto>())
@@ -213,6 +222,14 @@ public sealed class ModuleBusinessConfigRepository(
                     continue;
                 if (!columns.Contains(Key(op.TargetTable, op.TargetField)))
                     issues.Add($"{where}：目标表/字段不存在 {op.TargetTable}.{op.TargetField}。");
+                // Unscoped write guard: a row targeting a table other than the document
+                // master without locating keys and without a condition would update every
+                // row of that table. The executor refuses it too, but refusing at save
+                // time keeps the defect out of the configuration in the first place.
+                if (!op.TargetTable.Equals(masterTable, StringComparison.OrdinalIgnoreCase)
+                    && string.IsNullOrWhiteSpace(op.Match)
+                    && string.IsNullOrWhiteSpace(op.Condition))
+                    issues.Add($"{where}：目标表 {op.TargetTable} 既无定位键也无条件，禁止保存（执行时会更新整表）。");
 
                 var scope = op.SourceScope.Trim().ToUpperInvariant();
                 var sourceTable = scope switch
@@ -235,6 +252,11 @@ public sealed class ModuleBusinessConfigRepository(
                         if (!columns.Contains(Key(sourceTable, field)))
                             issues.Add($"{where}：源加减项字段不存在 {sourceTable}.{field}。");
             }
+            // Service-effect parameters reference tables/columns of their own; the
+            // handler parsers resolve them, so a broken reference is rejected here
+            // rather than blocking the document when it is approved.
+            foreach (var issue in EffectParamPhysicalValidator.Validate(action.EffectKey, action.Params, plan, columns))
+                issues.Add($"动作 SEQ={action.Seq}：{issue}");
         }
         if (await HasFieldRelationEffectColumnsAsync(connection, token))
         {
