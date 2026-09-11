@@ -1255,11 +1255,11 @@ public sealed class EffectShadowRunner
         }
         if (spec.ModuleId == 170103)
         {
-            return BuildBasicTableSpecs(master, "COP_PREPAY_M", "COP_PREPAY_D", "PREPAY_TYPE", "PREPAY_NO", "PREPAY_DATE");
+            return BuildTableSpecs170103(master);
         }
         if (spec.ModuleId == 170203)
         {
-            return BuildBasicTableSpecs(master, "PUR_PREPAY_M", "PUR_PREPAY_D", "PREPAY_TYPE", "PREPAY_NO", "PREPAY_DATE");
+            return BuildTableSpecs170203(master);
         }
         if (spec.ModuleId is 300301 or 300304)
         {
@@ -2198,6 +2198,58 @@ public sealed class EffectShadowRunner
             "EXISTS (SELECT 1 FROM dbo.PUR_DUE_D R WHERE R.DUE_TYPE=@dt AND R.DUE_NO=@dn "
             + "AND PUR_CANCEL_M.CANCEL_TYPE=R.R_C_TYPE AND PUR_CANCEL_M.CANCEL_NO=R.R_C_NO)",
             new[] { new SqlParameter("@dt", master.ReceiveType), new SqlParameter("@dn", master.ReceiveNo) }));
+        return specs;
+    }
+
+    /// <summary>
+    /// Customer prepayment (170103, P_WF_COP_PREPAY): the approval adds the document
+    /// amount to the bank balance and to the client's credit/prepay balances and
+    /// accumulates the detail amounts onto the referenced order lines.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs170103(MasterContext master)
+    {
+        var pt = new SqlParameter("@pt", master.ReceiveType);
+        var pn = new SqlParameter("@pn", master.ReceiveNo);
+        var doc = "R.PREPAY_TYPE=@pt AND R.PREPAY_NO=@pn";
+        var specs = new List<TableSpec>
+        {
+            new("COP_PREPAY_M", new[] { "PREPAY_TYPE", "PREPAY_NO" }, "@pt=PREPAY_TYPE AND @pn=PREPAY_NO", new[] { pt, pn }),
+            new("COP_PREPAY_D", new[] { "PREPAY_TYPE", "PREPAY_NO", "SERIAL_NO" }, "@pt=PREPAY_TYPE AND @pn=PREPAY_NO", new[] { pt, pn }),
+        };
+        specs.Add(new("BANK", new[] { "BANK_ID" },
+            $"EXISTS (SELECT 1 FROM dbo.COP_PREPAY_M R WHERE {doc} AND BANK.BANK_ID=R.BANK_ID)", new[] { pt, pn }));
+        specs.Add(new("CLIENT", new[] { "CLIENT_ID" },
+            $"EXISTS (SELECT 1 FROM dbo.COP_PREPAY_M R WHERE {doc} AND CLIENT.CLIENT_ID=R.CLIENT_ID)", new[] { pt, pn }));
+        specs.Add(new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.COP_PREPAY_D R WHERE {doc} "
+            + "AND COP_ORDER_D.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=R.ORDER_NO "
+            + "AND COP_ORDER_D.SERIAL_NO=R.ORDER_SERIAL_NO)", new[] { pt, pn }));
+        return specs;
+    }
+
+    /// <summary>
+    /// Supplier prepayment (170203, P_WF_PUR_PREPAY): the approval deducts the document
+    /// amount from the bank balance, adds it to the supplier's credit/prepay balances and
+    /// accumulates the detail amounts onto the referenced purchase lines.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs170203(MasterContext master)
+    {
+        var pt = new SqlParameter("@pt", master.ReceiveType);
+        var pn = new SqlParameter("@pn", master.ReceiveNo);
+        var doc = "R.PREPAY_TYPE=@pt AND R.PREPAY_NO=@pn";
+        var specs = new List<TableSpec>
+        {
+            new("PUR_PREPAY_M", new[] { "PREPAY_TYPE", "PREPAY_NO" }, "@pt=PREPAY_TYPE AND @pn=PREPAY_NO", new[] { pt, pn }),
+            new("PUR_PREPAY_D", new[] { "PREPAY_TYPE", "PREPAY_NO", "SERIAL_NO" }, "@pt=PREPAY_TYPE AND @pn=PREPAY_NO", new[] { pt, pn }),
+        };
+        specs.Add(new("BANK", new[] { "BANK_ID" },
+            $"EXISTS (SELECT 1 FROM dbo.PUR_PREPAY_M R WHERE {doc} AND BANK.BANK_ID=R.BANK_ID)", new[] { pt, pn }));
+        specs.Add(new("SUPPLIER", new[] { "SUPPLIER_ID" },
+            $"EXISTS (SELECT 1 FROM dbo.PUR_PREPAY_M R WHERE {doc} AND SUPPLIER.SUPPLIER_ID=R.SUPPLIER_ID)", new[] { pt, pn }));
+        specs.Add(new("PUR_PURCHASE_D", new[] { "PURCHASE_TYPE", "PURCHASE_NO", "SERIAL_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.PUR_PREPAY_D R WHERE {doc} "
+            + "AND PUR_PURCHASE_D.PURCHASE_TYPE=R.PURCHASE_TYPE AND PUR_PURCHASE_D.PURCHASE_NO=R.PURCHASE_NO "
+            + "AND PUR_PURCHASE_D.SERIAL_NO=R.PURCHASE_SERIAL_NO)", new[] { pt, pn }));
         return specs;
     }
 
