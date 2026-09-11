@@ -187,13 +187,20 @@ public sealed class CallbackRepriceHandler : IEffectServiceHandler
             assignments.Add($"D.{ServiceEffectSql.Q(mark)} = ''");
         if (assignments.Count == 0)
             return 0;
+        // Locate the marked lines through the callback detail's S_R_* references, the same
+        // join the approval uses — the callback key and the target line key are different
+        // columns (CALLBACK_TYPE/NO vs SEND_TYPE/NO), so matching on the target key columns
+        // would miss every row.
+        var cbDetail = ServiceEffectSql.Q(plan.MasterTable!.Replace("_M", "_D"));
+        var cbType = ServiceEffectSql.Q(plan.MasterPkOrder[0]);
+        var cbNo = ServiceEffectSql.Q(plan.MasterPkOrder[1]);
         var sql = $"UPDATE D SET {string.Join(", ", assignments)} "
-            + $"FROM dbo.{detail} D WHERE EXISTS (SELECT 1 FROM dbo.{ServiceEffectSql.Q(target.Master)} M "
-            + "WHERE M." + typeCol + "=D." + typeCol + " AND M." + noCol + "=D." + noCol + ") "
-            + "AND D." + typeCol + "=@mt AND D." + noCol + "=@mn";
+            + $"FROM dbo.{detail} D JOIN dbo.{cbDetail} R "
+            + $"ON D.{typeCol}=R.S_R_TYPE AND D.{noCol}=R.S_R_NO AND D.{serialCol}=R.S_R_SERIAL_NO "
+            + $"WHERE R.{cbType}=@ct AND R.{cbNo}=@cn";
         await using var command = new SqlCommand(sql, context.Connection, context.Transaction);
-        command.Parameters.AddWithValue("@mt", type);
-        command.Parameters.AddWithValue("@mn", no);
+        command.Parameters.AddWithValue("@ct", type);
+        command.Parameters.AddWithValue("@cn", no);
         return await command.ExecuteNonQueryAsync(token);
     }
 }

@@ -1735,20 +1735,29 @@ public sealed class EffectShadowRunner
     private static async Task<IReadOnlyList<string>> ResolveRecordKeys1413Async(
         SqlConnection connection, bool deapprove, bool failure)
     {
-        if (deapprove || failure)
-            throw new NotSupportedException("1413 影子规格仅支持 APPROVE（失败/解批分支未规格化）。");
-        const string sql = """
-            SELECT TOP 1 M.CALLBACK_TYPE, M.CALLBACK_NO
-            FROM dbo.COP_CALLBACK_M M
-            WHERE ISNULL(M.CONFIRM_TAG,0)=0
-              AND EXISTS (SELECT 1 FROM dbo.COP_CALLBACK_D D
-                          WHERE D.CALLBACK_TYPE=M.CALLBACK_TYPE AND D.CALLBACK_NO=M.CALLBACK_NO)
-            ORDER BY M.CALLBACK_DATE DESC, M.CALLBACK_NO DESC;
-            """;
+        if (failure)
+            throw new NotSupportedException("1413 影子规格不支持失败分支（模块无校验规则，旧存储过程无失败出口）。");
+        var sql = deapprove
+            ? """
+              SELECT TOP 1 M.CALLBACK_TYPE, M.CALLBACK_NO
+              FROM dbo.COP_CALLBACK_M M
+              WHERE ISNULL(M.CONFIRM_TAG,0)=1
+              ORDER BY ISNULL(M.CONFIRM_DATE, M.CALLBACK_DATE) DESC, M.CALLBACK_NO DESC;
+              """
+            : """
+              SELECT TOP 1 M.CALLBACK_TYPE, M.CALLBACK_NO
+              FROM dbo.COP_CALLBACK_M M
+              WHERE ISNULL(M.CONFIRM_TAG,0)=0
+                AND EXISTS (SELECT 1 FROM dbo.COP_CALLBACK_D D
+                            WHERE D.CALLBACK_TYPE=M.CALLBACK_TYPE AND D.CALLBACK_NO=M.CALLBACK_NO)
+              ORDER BY M.CALLBACK_DATE DESC, M.CALLBACK_NO DESC;
+              """;
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
-            throw new InvalidOperationException("未找到可对拍的未批核回执单（1413）。");
+            throw new InvalidOperationException(deapprove
+                ? "未找到可对拍的已批核回执单（1413，自动选单无结果）。"
+                : "未找到可对拍的未批核回执单（1413）。");
         return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
     }
 
