@@ -1263,11 +1263,11 @@ public sealed class EffectShadowRunner
         }
         if (spec.ModuleId is 300301 or 300304)
         {
-            return BuildBasicTableSpecs(master, "CUS_EXPORT_M", "CUS_EXPORT_D", "EXPORT_TYPE", "EXPORT_NO", "EXPORT_DATE");
+            return BuildTableSpecs300301(master);
         }
         if (spec.ModuleId is 300302 or 300305)
         {
-            return BuildBasicTableSpecs(master, "CUS_IMPORT_M", "CUS_IMPORT_D", "IMPORT_TYPE", "IMPORT_NO", "IMPORT_DATE");
+            return BuildTableSpecs300302(master);
         }
         if (spec.ModuleId == 2705)
         {
@@ -2250,6 +2250,58 @@ public sealed class EffectShadowRunner
             $"EXISTS (SELECT 1 FROM dbo.PUR_PREPAY_D R WHERE {doc} "
             + "AND PUR_PURCHASE_D.PURCHASE_TYPE=R.PURCHASE_TYPE AND PUR_PURCHASE_D.PURCHASE_NO=R.PURCHASE_NO "
             + "AND PUR_PURCHASE_D.SERIAL_NO=R.PURCHASE_SERIAL_NO)", new[] { pt, pn }));
+        return specs;
+    }
+
+    /// <summary>
+    /// Export customs declaration (300301/300304, P_WF_CUS_EXPORT): the approval stamps
+    /// the export reference number and finishes the referenced account and seal documents
+    /// (link-stamp), then accumulates the detail quantities onto the manual product rows
+    /// (field-accumulate). Deapprove clears the reference and unfinishes (clear-refs-unfinish)
+    /// and reverses the accumulation.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs300301(MasterContext master)
+    {
+        var et = new SqlParameter("@et", master.ReceiveType);
+        var en = new SqlParameter("@en", master.ReceiveNo);
+        var doc = "R.EXPORT_TYPE=@et AND R.EXPORT_NO=@en";
+        var specs = new List<TableSpec>
+        {
+            new("CUS_EXPORT_M", new[] { "EXPORT_TYPE", "EXPORT_NO" }, "@et=EXPORT_TYPE AND @en=EXPORT_NO", new[] { et, en }),
+            new("CUS_EXPORT_D", new[] { "EXPORT_TYPE", "EXPORT_NO", "SERIAL_NO" }, "@et=EXPORT_TYPE AND @en=EXPORT_NO", new[] { et, en }),
+        };
+        // Account and seal documents the master references; the link-stamp lands there.
+        specs.Add(new("CUS_ACCOUNT_M", new[] { "ACCOUNT_TYPE", "ACCOUNT_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.CUS_EXPORT_M R WHERE {doc} "
+            + "AND CUS_ACCOUNT_M.ACCOUNT_TYPE=R.ACCOUNT_TYPE AND CUS_ACCOUNT_M.ACCOUNT_NO=R.ACCOUNT_NO)", new[] { et, en }));
+        specs.Add(new("CUS_SEAL_M", new[] { "SEAL_TYPE", "SEAL_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.CUS_EXPORT_M R WHERE {doc} "
+            + "AND CUS_SEAL_M.SEAL_TYPE=R.SEAL_TYPE AND CUS_SEAL_M.SEAL_NO=R.SEAL_NO)", new[] { et, en }));
+        // Manual product rows the detail references; the accumulate lands there.
+        specs.Add(new("CUS_MANUAL_PRO", new[] { "MANUAL_NO", "SERIAL_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.CUS_EXPORT_D R WHERE {doc} "
+            + "AND CUS_MANUAL_PRO.MANUAL_NO=R.MANUAL_NO AND CUS_MANUAL_PRO.SERIAL_NO=R.PRO_SERIAL_NO)", new[] { et, en }));
+        return specs;
+    }
+
+    /// <summary>
+    /// Import customs declaration (300302/300305, P_WF_CUS_IMPORT): the approval
+    /// accumulates the detail quantities onto the manual material rows (field-accumulate;
+    /// the internal-name write-back is intentionally not carried, decision #70).
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs300302(MasterContext master)
+    {
+        var it = new SqlParameter("@it", master.ReceiveType);
+        var ino = new SqlParameter("@in", master.ReceiveNo);
+        var doc = "R.IMPORT_TYPE=@it AND R.IMPORT_NO=@in";
+        var specs = new List<TableSpec>
+        {
+            new("CUS_IMPORT_M", new[] { "IMPORT_TYPE", "IMPORT_NO" }, "@it=IMPORT_TYPE AND @in=IMPORT_NO", new[] { it, ino }),
+            new("CUS_IMPORT_D", new[] { "IMPORT_TYPE", "IMPORT_NO", "SERIAL_NO" }, "@it=IMPORT_TYPE AND @in=IMPORT_NO", new[] { it, ino }),
+        };
+        specs.Add(new("CUS_MANUAL_MAT", new[] { "MANUAL_NO", "SERIAL_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.CUS_IMPORT_D R WHERE {doc} "
+            + "AND CUS_MANUAL_MAT.MANUAL_NO=R.MANUAL_NO AND CUS_MANUAL_MAT.SERIAL_NO=R.MAT_SERIAL_NO)", new[] { it, ino }));
         return specs;
     }
 
