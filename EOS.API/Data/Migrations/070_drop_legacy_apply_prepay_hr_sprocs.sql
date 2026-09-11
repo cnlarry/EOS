@@ -14,7 +14,9 @@
 -- 移出 Build 组供考古。
 -- 保存侧 AFTERSAVE_SP（P_PUR_APPLY_After_Save / P_COP_PREPAY_After_Save 等）与共享助手
 -- （P_PUR_PREPAY_CHECK / P_UPDATE_PRO_DEPOT 等）仍被使用，不在本迁移范围。
--- 幂等：OBJECT_ID 守卫；动态守卫：任何非本批对象若 exec 引用即中止（保守）。
+-- 幂等：OBJECT_ID 守卫；动态守卫：任何非本批对象若引用即中止（保守）。
+-- 守卫用 sys.sql_expression_dependencies 精确查依赖（毫秒级），不用
+-- sys.sql_modules.definition LIKE 全表扫（本库 20 秒+，曾致 DbUp 启动超时）。
 -- ============================================================================
 
 SET NOCOUNT ON;
@@ -23,26 +25,22 @@ DECLARE @GUARD_MESSAGE NVARCHAR(400) = N'本脚本只能在 EOS.ERP 数据库内
 IF DB_NAME() <> N'EOS.ERP'
     THROW 50000, @GUARD_MESSAGE, 1;
 
-/* 动态守卫：本批名单之外的对象若 exec 引用本批过程，中止（防漏删仍被调用者）。 */
+/* 动态守卫：本批名单之外的对象若引用本批过程，中止（防漏删仍被调用者）。
+   sys.sql_expression_dependencies 记录静态依赖（含 exec 调用、函数/视图/触发器引用），
+   毫秒级完成，替代 definition LIKE 全表扫。 */
 IF EXISTS (
     SELECT 1
-    FROM sys.sql_modules m
-    JOIN sys.objects o ON o.object_id = m.object_id
+    FROM sys.sql_expression_dependencies d
+    JOIN sys.objects o ON o.object_id = d.referencing_id
     WHERE o.type IN (N'P', N'FN', N'IF', N'TF', N'TR', N'V')
       AND o.name NOT IN (N'P_WF_PUR_APPLY', N'P_WF_COP_PREPAY', N'P_WF_PUR_PREPAY',
                          N'P_WF_HR_CONTRACT', N'P_WF_HR_WAGE_LZ', N'P_WF_COP_BACK',
                          N'P_WF_PUR_CALLBACK')
-      AND (m.definition LIKE N'%exec P_WF_PUR_APPLY%' OR m.definition LIKE N'%EXEC P_WF_PUR_APPLY%'
-        OR m.definition LIKE N'%exec P_WF_COP_PREPAY%' OR m.definition LIKE N'%EXEC P_WF_COP_PREPAY%'
-        OR m.definition LIKE N'%exec P_WF_PUR_PREPAY%' OR m.definition LIKE N'%EXEC P_WF_PUR_PREPAY%'
-        OR m.definition LIKE N'%exec P_WF_HR_CONTRACT%' OR m.definition LIKE N'%EXEC P_WF_HR_CONTRACT%'
-        OR m.definition LIKE N'%exec P_WF_HR_WAGE_LZ%' OR m.definition LIKE N'%EXEC P_WF_HR_WAGE_LZ%'
-        OR m.definition LIKE N'%exec P_WF_COP_BACK%' OR m.definition LIKE N'%EXEC P_WF_COP_BACK%'
-        OR m.definition LIKE N'%exec P_WF_PUR_CALLBACK%' OR m.definition LIKE N'%EXEC P_WF_PUR_CALLBACK%'
-        OR m.definition LIKE N'%exec dbo.P_WF_PUR_APPLY%' OR m.definition LIKE N'%exec dbo.P_WF_COP_PREPAY%'
-        OR m.definition LIKE N'%exec dbo.P_WF_PUR_PREPAY%' OR m.definition LIKE N'%exec dbo.P_WF_HR_CONTRACT%'
-        OR m.definition LIKE N'%exec dbo.P_WF_HR_WAGE_LZ%' OR m.definition LIKE N'%exec dbo.P_WF_COP_BACK%'
-        OR m.definition LIKE N'%exec dbo.P_WF_PUR_CALLBACK%')
+      AND d.referenced_class = 1
+      AND d.referenced_schema_name = N'dbo'
+      AND d.referenced_entity_name IN (N'P_WF_PUR_APPLY', N'P_WF_COP_PREPAY', N'P_WF_PUR_PREPAY',
+                                       N'P_WF_HR_CONTRACT', N'P_WF_HR_WAGE_LZ', N'P_WF_COP_BACK',
+                                       N'P_WF_PUR_CALLBACK')
 )
     THROW 50001, N'仍有本批名单外对象引用本批旧请购/预收预付/HR 批核过程，迁移中止（先核实引用方）。', 1;
 
