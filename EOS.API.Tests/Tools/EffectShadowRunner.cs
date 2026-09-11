@@ -1251,7 +1251,7 @@ public sealed class EffectShadowRunner
         }
         if (spec.ModuleId == 3303)
         {
-            return BuildBasicTableSpecs(master, "QC_ANALYSIS_M", "QC_ANALYSIS_D", "ANALYSIS_TYPE", "ANALYSIS_NO", "ANALYSIS_DATE");
+            return BuildTableSpecs3303(master);
         }
         if (spec.ModuleId == 170103)
         {
@@ -2949,6 +2949,27 @@ public sealed class EffectShadowRunner
         {
             specs.Add(BuildLogSpecByMaster("130105", master));
         }
+        return specs;
+    }
+
+    /// <summary>
+    /// Quality daily analysis document (3303): the approval accumulates the analysed
+    /// quantity onto the produce master and stamps the analysis date; deapprove subtracts
+    /// the quantity only (the date is not rolled back on either path).
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs3303(MasterContext master)
+    {
+        var at = new SqlParameter("@at", master.ReceiveType);
+        var an = new SqlParameter("@an", master.ReceiveNo);
+        var doc = "R.ANALYSIS_TYPE=@at AND R.ANALYSIS_NO=@an";
+        var specs = new List<TableSpec>
+        {
+            new("QC_ANALYSIS_M", new[] { "ANALYSIS_TYPE", "ANALYSIS_NO" }, "@at=ANALYSIS_TYPE AND @an=ANALYSIS_NO", new[] { at, an }),
+            new("QC_ANALYSIS_D", new[] { "ANALYSIS_TYPE", "ANALYSIS_NO", "SERIAL_NO" }, "@at=ANALYSIS_TYPE AND @an=ANALYSIS_NO", new[] { at, an }),
+        };
+        specs.Add(new("MOC_PRODUCE_M", new[] { "PRODUCE_TYPE", "PRODUCE_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.QC_ANALYSIS_D R WHERE {doc} "
+            + "AND MOC_PRODUCE_M.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_M.PRODUCE_NO=R.PRODUCE_NO)", new[] { at, an }));
         return specs;
     }
 
