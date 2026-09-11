@@ -1237,7 +1237,7 @@ public sealed class EffectShadowRunner
         }
         if (spec.ModuleId == 130101)
         {
-            return BuildBasicTableSpecs(master, "INV_CHECK_STOCK_M", "INV_CHECK_STOCK_D", "CHECK_STOCK_TYPE", "CHECK_STOCK_NO", "CHECK_DATE");
+            return BuildTableSpecs130101(master);
         }
         if (spec.ModuleId is 130103 or 130104 or 130110 or 3901)
         {
@@ -1247,7 +1247,7 @@ public sealed class EffectShadowRunner
         }
         if (spec.ModuleId == 130105)
         {
-            return BuildBasicTableSpecs(master, "INV_OCCUR_TRANSFER_M", "INV_OCCUR_TRANSFER_D", "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE");
+            return BuildTableSpecs130105(master);
         }
         if (spec.ModuleId == 3303)
         {
@@ -2898,6 +2898,57 @@ public sealed class EffectShadowRunner
             + "AND COP_ORDER_MORE.ORDER_TYPE=D.ORDER_TYPE AND COP_ORDER_MORE.ORDER_NO=D.ORDER_NO "
             + "AND COP_ORDER_MORE.PRO_NO=D.PRO_NO)",
             new[] { at, an }));
+        return specs;
+    }
+
+    /// <summary>
+    /// Stock check document (130101): the approval stamps the last check date onto the
+    /// product and the depot balance rows (max-merge; deapprove is a no-op on both paths).
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs130101(MasterContext master)
+    {
+        var ct = new SqlParameter("@ct", master.ReceiveType);
+        var cn = new SqlParameter("@cn", master.ReceiveNo);
+        var doc = "R.CHECK_STOCK_TYPE=@ct AND R.CHECK_STOCK_NO=@cn";
+        var specs = new List<TableSpec>
+        {
+            new("INV_CHECK_STOCK_M", new[] { "CHECK_STOCK_TYPE", "CHECK_STOCK_NO" }, "@ct=CHECK_STOCK_TYPE AND @cn=CHECK_STOCK_NO", new[] { ct, cn }),
+            new("INV_CHECK_STOCK_D", new[] { "CHECK_STOCK_TYPE", "CHECK_STOCK_NO", "SERIAL_NO" }, "@ct=CHECK_STOCK_TYPE AND @cn=CHECK_STOCK_NO", new[] { ct, cn }),
+        };
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.INV_CHECK_STOCK_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { ct, cn }));
+        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            $"EXISTS (SELECT 1 FROM dbo.INV_CHECK_STOCK_D R WHERE {doc} "
+            + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)", new[] { ct, cn }));
+        return specs;
+    }
+
+    /// <summary>
+    /// Warehouse transfer document (130105): a single line moves stock out of DEPOT_ID and
+    /// into IN_DEPOT_ID, so the compared footprint is both depot balances, the product row
+    /// and the inventory log.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs130105(MasterContext master)
+    {
+        var ot = new SqlParameter("@ot", master.ReceiveType);
+        var on = new SqlParameter("@on", master.ReceiveNo);
+        var doc = "R.OCCUR_TYPE=@ot AND R.OCCUR_NO=@on";
+        var specs = new List<TableSpec>
+        {
+            new("INV_OCCUR_TRANSFER_M", new[] { "OCCUR_TYPE", "OCCUR_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
+            new("INV_OCCUR_TRANSFER_D", new[] { "OCCUR_TYPE", "OCCUR_NO", "SERIAL_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
+            new("PRODUCT", new[] { "PRO_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_TRANSFER_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { ot, on }),
+            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_TRANSFER_D R WHERE {doc} "
+                + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO "
+                + "AND (INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID OR INV_PRO_DEPOT.DEPOT_ID=R.IN_DEPOT_ID))",
+                new[] { ot, on }),
+        };
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("130105", master));
+        }
         return specs;
     }
 
