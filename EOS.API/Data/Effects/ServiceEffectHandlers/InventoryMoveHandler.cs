@@ -539,6 +539,13 @@ public sealed class InventoryMoveSql
         return affected;
     }
 
+    /// <summary>
+    /// Available-quantity refresh: the per-depot delta first, then the full
+    /// <c>P_UPDATE_PRO_MRP_ALL</c> recompute. The gate is the <c>SYSSS.PRO_MRP</c> switch
+    /// only — the configured <c>mrp</c> parameter is intentionally not read, matching the
+    /// legacy <c>P_UPDATE_PRO_DEPOT</c> where the <c>@mrp</c> branch is commented out; it is
+    /// kept in the stored parameters as a documented no-op rather than a behaviour switch.
+    /// </summary>
     private async Task UpdateMrpAsync(CancellationToken token)
     {
         var gate = await ScalarAsync("SELECT COUNT(*) FROM dbo.SYSSS WITH (NOLOCK) WHERE PRO_MRP=1", token);
