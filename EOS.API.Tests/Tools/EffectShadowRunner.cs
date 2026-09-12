@@ -188,6 +188,9 @@ public sealed class EffectShadowRunner
         130101 => new(130101, "130101", "INV_CHECK_STOCK_M", "INV_CHECK_STOCK_D",
             "CHECK_STOCK_TYPE", "CHECK_STOCK_NO", "CHECK_DATE",
             null, null, null, "库存盘点单"),
+        130102 => new(130102, "130102", "INV_OCCUR_INIT_M", "INV_OCCUR_INIT_D",
+            "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE",
+            null, null, null, "期初开帐单"),
         130103 => new(130103, "130103", "INV_OCCUR_IN_M", "INV_OCCUR_IN_D",
             "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE",
             null, null, null, "其它入库单"),
@@ -272,7 +275,7 @@ public sealed class EffectShadowRunner
             "WAGE_TYPE", "WAGE_NO", "WAGE_DATE",
             null, null, null, "保密离职工资表"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -372,9 +375,9 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423))
         {
-            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101 only.");
+            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102 only.");
         }
         var spec = GetSpec(options.ModuleId);
         var deapprove = options.Event.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
@@ -555,7 +558,7 @@ public sealed class EffectShadowRunner
         }
         if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818
             or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2907 or 2913
-            or 130101 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
+            or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
             or 300301 or 300302 or 300304 or 300305 or 1423)
         {
             return await ResolveRecordKeysByConfirmAsync(connection, spec, deapprove, failure);
@@ -1090,7 +1093,7 @@ public sealed class EffectShadowRunner
         }
         if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818
             or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913
-            or 130101 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
+            or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
             or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423)
         {
             // 2xxx snapshot specs filter target tables by document keys and EXISTS
@@ -1238,6 +1241,10 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 130101)
         {
             return BuildTableSpecs130101(master);
+        }
+        if (spec.ModuleId == 130102)
+        {
+            return BuildTableSpecs130102(master);
         }
         if (spec.ModuleId is 130103 or 130104 or 130110 or 3901)
         {
@@ -3033,6 +3040,33 @@ public sealed class EffectShadowRunner
         specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
             $"EXISTS (SELECT 1 FROM dbo.INV_CHECK_STOCK_D R WHERE {doc} "
             + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)", new[] { ct, cn }));
+        return specs;
+    }
+
+    /// <summary>
+    /// Opening-stock document (130102, P_WF_INV_OCCUR_INIT): a single inbound stock move
+    /// into DEPOT_ID, so the compared footprint is the document, the product row and the
+    /// depot balance plus the inventory log (auto-approve module).
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs130102(MasterContext master)
+    {
+        var ot = new SqlParameter("@ot", master.ReceiveType);
+        var on = new SqlParameter("@on", master.ReceiveNo);
+        var doc = "R.OCCUR_TYPE=@ot AND R.OCCUR_NO=@on";
+        var specs = new List<TableSpec>
+        {
+            new("INV_OCCUR_INIT_M", new[] { "OCCUR_TYPE", "OCCUR_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
+            new("INV_OCCUR_INIT_D", new[] { "OCCUR_TYPE", "OCCUR_NO", "SERIAL_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
+            new("PRODUCT", new[] { "PRO_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_INIT_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { ot, on }),
+            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_INIT_D R WHERE {doc} "
+                + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)", new[] { ot, on }),
+        };
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("130102", master));
+        }
         return specs;
     }
 
