@@ -203,6 +203,30 @@ public sealed class EffectShadowRunner
         130110 => new(130110, "130110", "INV_OCCUR_OUT_M", "INV_OCCUR_OUT_D",
             "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE",
             null, null, null, "样品出库单"),
+        130106 => new(130106, "130106", "INV_OCCUR_SCRAP_M", "INV_OCCUR_SCRAP_D",
+            "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE",
+            null, null, null, "库存报废单"),
+        130107 => new(130107, "130107", "INV_OCCUR_ADJUST_M", "INV_OCCUR_ADJUST_D",
+            "OCCUR_TYPE", "OCCUR_NO", "OCCUR_DATE",
+            null, null, null, "库存调整单"),
+        130108 => new(130108, "130108", "INV_LOAN_M", "INV_LOAN_D",
+            "LOAN_TYPE", "LOAN_NO", "LOAN_DATE",
+            null, null, null, "借出单"),
+        130109 => new(130109, "130109", "INV_RETURN_M", "INV_RETURN_D",
+            "RETURN_TYPE", "RETURN_NO", "RETURN_DATE",
+            null, null, null, "返还单"),
+        170102 => new(170102, "170102", "COP_RECEIPT_M", "COP_RECEIPT_D",
+            "RECEIPT_TYPE", "RECEIPT_NO", "RECEIPT_DATE",
+            null, null, null, "收款单"),
+        170202 => new(170202, "170202", "PUR_PAY_M", "PUR_PAY_D",
+            "PAY_TYPE", "PAY_NO", "PAY_DATE",
+            null, null, null, "付款单"),
+        1608 => new(1608, "1608", "PUR_CANCEL_M", "PUR_CANCEL_D",
+            "CANCEL_TYPE", "CANCEL_NO", "CANCEL_DATE",
+            null, null, null, "采购退料单"),
+        1612 => new(1612, "1612", "PUR_CANCEL_M", "PUR_CANCEL_D",
+            "CANCEL_TYPE", "CANCEL_NO", "CANCEL_DATE",
+            null, null, null, "采购扣款退料单"),
         3303 => new(3303, "3303", "QC_ANALYSIS_M", "QC_ANALYSIS_D",
             "ANALYSIS_TYPE", "ANALYSIS_NO", "ANALYSIS_DATE",
             null, null, null, "品质日分析单"),
@@ -275,7 +299,7 @@ public sealed class EffectShadowRunner
             "WAGE_TYPE", "WAGE_NO", "WAGE_DATE",
             null, null, null, "保密离职工资表"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -375,9 +399,9 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109 or 170102 or 170202 or 1608 or 1612))
         {
-            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102 only.");
+            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612 only.");
         }
         var spec = GetSpec(options.ModuleId);
         var deapprove = options.Event.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
@@ -559,7 +583,8 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818
             or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2907 or 2913
             or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
-            or 300301 or 300302 or 300304 or 300305 or 1423)
+            or 300301 or 300302 or 300304 or 300305 or 1423 or 130106 or 130107 or 130108 or 130109
+            or 170102 or 170202 or 1608 or 1612)
         {
             return await ResolveRecordKeysByConfirmAsync(connection, spec, deapprove, failure);
         }
@@ -1094,7 +1119,8 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818
             or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913
             or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
-            or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423)
+            or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109
+            or 170102 or 170202 or 1608 or 1612)
         {
             // 2xxx snapshot specs filter target tables by document keys and EXISTS
             // subqueries off the master; no detail context rows are materialised.
@@ -1255,6 +1281,34 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 130105)
         {
             return BuildTableSpecs130105(master);
+        }
+        if (spec.ModuleId == 130106)
+        {
+            return BuildTableSpecs130106(master);
+        }
+        if (spec.ModuleId == 130107)
+        {
+            return BuildTableSpecs130107(master);
+        }
+        if (spec.ModuleId == 130108)
+        {
+            return BuildTableSpecs130108(master);
+        }
+        if (spec.ModuleId == 130109)
+        {
+            return BuildTableSpecs130109(master);
+        }
+        if (spec.ModuleId == 170102)
+        {
+            return BuildTableSpecs170102(master);
+        }
+        if (spec.ModuleId == 170202)
+        {
+            return BuildTableSpecs170202(master);
+        }
+        if (spec.ModuleId is 1608 or 1612)
+        {
+            return BuildTableSpecsPurCancel(spec.ModuleId, master);
         }
         if (spec.ModuleId == 3303)
         {
@@ -3095,6 +3149,227 @@ public sealed class EffectShadowRunner
         if (master.ReceiveDate is not null)
         {
             specs.Add(BuildLogSpecByMaster("130105", master));
+        }
+        return specs;
+    }
+
+    /// <summary>
+    /// Scrap document (130106, P_WF_INV_OCCUR_SCRAP): the approval moves QTY+SPARE_QTY out of
+    /// DEPOT_ID and into IN_DEPOT_ID, so both depot balances, the product row and the
+    /// inventory log are compared alongside the document itself.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs130106(MasterContext master)
+    {
+        var ot = new SqlParameter("@ot", master.ReceiveType);
+        var on = new SqlParameter("@on", master.ReceiveNo);
+        var doc = "R.OCCUR_TYPE=@ot AND R.OCCUR_NO=@on";
+        var specs = new List<TableSpec>
+        {
+            new("INV_OCCUR_SCRAP_M", new[] { "OCCUR_TYPE", "OCCUR_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
+            new("INV_OCCUR_SCRAP_D", new[] { "OCCUR_TYPE", "OCCUR_NO", "SERIAL_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
+            new("PRODUCT", new[] { "PRO_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_SCRAP_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { ot, on }),
+            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_SCRAP_D R WHERE {doc} "
+                + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO "
+                + "AND (INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID OR INV_PRO_DEPOT.DEPOT_ID=R.IN_DEPOT_ID))",
+                new[] { ot, on }),
+        };
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("130106", master));
+        }
+        return specs;
+    }
+
+    /// <summary>
+    /// Stock adjustment document (130107, P_WF_INV_OCCUR_ADJUST): a single inbound move
+    /// into DEPOT_ID, so the compared footprint is the document, the product row, the
+    /// depot balance and the inventory log.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs130107(MasterContext master)
+    {
+        var ot = new SqlParameter("@ot", master.ReceiveType);
+        var on = new SqlParameter("@on", master.ReceiveNo);
+        var doc = "R.OCCUR_TYPE=@ot AND R.OCCUR_NO=@on";
+        var specs = new List<TableSpec>
+        {
+            new("INV_OCCUR_ADJUST_M", new[] { "OCCUR_TYPE", "OCCUR_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
+            new("INV_OCCUR_ADJUST_D", new[] { "OCCUR_TYPE", "OCCUR_NO", "SERIAL_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
+            new("PRODUCT", new[] { "PRO_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_ADJUST_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { ot, on }),
+            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_ADJUST_D R WHERE {doc} "
+                + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
+                new[] { ot, on }),
+        };
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("130107", master));
+        }
+        return specs;
+    }
+
+    /// <summary>
+    /// Loan document (130108, P_WF_INV_LOAN): the item leaves DEPOT_ID and moves into
+    /// IN_DEPOT_ID when one is set, so both depot balances, the product row and the
+    /// inventory log are compared alongside the document itself.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs130108(MasterContext master)
+    {
+        var lt = new SqlParameter("@lt", master.ReceiveType);
+        var ln = new SqlParameter("@ln", master.ReceiveNo);
+        var doc = "R.LOAN_TYPE=@lt AND R.LOAN_NO=@ln";
+        var specs = new List<TableSpec>
+        {
+            new("INV_LOAN_M", new[] { "LOAN_TYPE", "LOAN_NO" }, "@lt=LOAN_TYPE AND @ln=LOAN_NO", new[] { lt, ln }),
+            new("INV_LOAN_D", new[] { "LOAN_TYPE", "LOAN_NO", "SERIAL_NO" }, "@lt=LOAN_TYPE AND @ln=LOAN_NO", new[] { lt, ln }),
+            new("PRODUCT", new[] { "PRO_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.INV_LOAN_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { lt, ln }),
+            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.INV_LOAN_D R WHERE {doc} "
+                + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO "
+                + "AND (INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID OR INV_PRO_DEPOT.DEPOT_ID=R.IN_DEPOT_ID))",
+                new[] { lt, ln }),
+        };
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("130108", master));
+        }
+        return specs;
+    }
+
+    /// <summary>
+    /// Return document (130109, P_WF_INV_RETURN): the approval accumulates RETURN_QTY on the
+    /// referenced loan lines and moves stock out of OUT_DEPOT_ID back into DEPOT_ID, so the
+    /// loan lines, both depot balances, the product row and the inventory log are compared.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs130109(MasterContext master)
+    {
+        var rt = new SqlParameter("@rt", master.ReceiveType);
+        var rn = new SqlParameter("@rn", master.ReceiveNo);
+        var doc = "R.RETURN_TYPE=@rt AND R.RETURN_NO=@rn";
+        var specs = new List<TableSpec>
+        {
+            new("INV_RETURN_M", new[] { "RETURN_TYPE", "RETURN_NO" }, "@rt=RETURN_TYPE AND @rn=RETURN_NO", new[] { rt, rn }),
+            new("INV_RETURN_D", new[] { "RETURN_TYPE", "RETURN_NO", "SERIAL_NO" }, "@rt=RETURN_TYPE AND @rn=RETURN_NO", new[] { rt, rn }),
+            new("INV_LOAN_D", new[] { "LOAN_TYPE", "LOAN_NO", "SERIAL_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.INV_RETURN_D R WHERE {doc} "
+                + "AND INV_LOAN_D.LOAN_TYPE=R.LOAN_TYPE AND INV_LOAN_D.LOAN_NO=R.LOAN_NO "
+                + "AND INV_LOAN_D.SERIAL_NO=R.LOAN_SERIAL_NO)", new[] { rt, rn }),
+            new("PRODUCT", new[] { "PRO_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.INV_RETURN_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { rt, rn }),
+            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.INV_RETURN_D R WHERE {doc} "
+                + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO "
+                + "AND (INV_PRO_DEPOT.DEPOT_ID=R.OUT_DEPOT_ID OR INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID))",
+                new[] { rt, rn }),
+        };
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("130109", master));
+        }
+        return specs;
+    }
+
+    /// <summary>
+    /// Customer receipt (170102, P_WF_COP_RECEIPT): the approval credits the bank balance,
+    /// accumulates the received amount onto the referenced customer statement, offsets the
+    /// referenced prepayment documents, releases the customer credit / prepayment balances
+    /// and recomputes the statement close flags.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs170102(MasterContext master)
+    {
+        var rt = new SqlParameter("@rt", master.ReceiveType);
+        var rn = new SqlParameter("@rn", master.ReceiveNo);
+        var doc = "R.RECEIPT_TYPE=@rt AND R.RECEIPT_NO=@rn";
+        var specs = new List<TableSpec>
+        {
+            new("COP_RECEIPT_M", new[] { "RECEIPT_TYPE", "RECEIPT_NO" }, "@rt=RECEIPT_TYPE AND @rn=RECEIPT_NO", new[] { rt, rn }),
+            new("COP_RECEIPT_D", new[] { "RECEIPT_TYPE", "RECEIPT_NO", "SERIAL_NO" }, "@rt=RECEIPT_TYPE AND @rn=RECEIPT_NO", new[] { rt, rn }),
+            new("COP_RECEIPT_PREPAY", new[] { "RECEIPT_TYPE", "RECEIPT_NO", "SERIAL_NO" }, "@rt=RECEIPT_TYPE AND @rn=RECEIPT_NO", new[] { rt, rn }),
+            new("BANK", new[] { "BANK_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.COP_RECEIPT_M R WHERE {doc} AND BANK.BANK_ID=R.BANK_ID)", new[] { rt, rn }),
+            new("CLIENT", new[] { "CLIENT_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.COP_RECEIPT_M R WHERE {doc} AND CLIENT.CLIENT_ID=R.CLIENT_ID)", new[] { rt, rn }),
+            new("COP_ACCOUNT_M", new[] { "ACCOUNT_TYPE", "ACCOUNT_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.COP_RECEIPT_D R WHERE {doc} "
+                + "AND COP_ACCOUNT_M.ACCOUNT_TYPE=R.ACCOUNT_TYPE AND COP_ACCOUNT_M.ACCOUNT_NO=R.ACCOUNT_NO)", new[] { rt, rn }),
+            new("COP_PREPAY_M", new[] { "PREPAY_TYPE", "PREPAY_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.COP_RECEIPT_PREPAY R WHERE {doc} "
+                + "AND COP_PREPAY_M.PREPAY_TYPE=R.PREPAY_TYPE AND COP_PREPAY_M.PREPAY_NO=R.PREPAY_NO)", new[] { rt, rn }),
+        };
+        return specs;
+    }
+
+    /// <summary>
+    /// Supplier payment (170202, P_WF_PUR_PAY): the approval debits the bank balance,
+    /// accumulates the paid amount onto the referenced supplier statement, offsets the
+    /// referenced prepayment documents, releases the supplier credit / prepayment balances
+    /// and recomputes the statement close flags.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs170202(MasterContext master)
+    {
+        var pt = new SqlParameter("@pt", master.ReceiveType);
+        var pn = new SqlParameter("@pn", master.ReceiveNo);
+        var doc = "R.PAY_TYPE=@pt AND R.PAY_NO=@pn";
+        var specs = new List<TableSpec>
+        {
+            new("PUR_PAY_M", new[] { "PAY_TYPE", "PAY_NO" }, "@pt=PAY_TYPE AND @pn=PAY_NO", new[] { pt, pn }),
+            new("PUR_PAY_D", new[] { "PAY_TYPE", "PAY_NO", "SERIAL_NO" }, "@pt=PAY_TYPE AND @pn=PAY_NO", new[] { pt, pn }),
+            new("PUR_PAY_PREPAY", new[] { "PAY_TYPE", "PAY_NO", "SERIAL_NO" }, "@pt=PAY_TYPE AND @pn=PAY_NO", new[] { pt, pn }),
+            new("BANK", new[] { "BANK_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.PUR_PAY_M R WHERE {doc} AND BANK.BANK_ID=R.BANK_ID)", new[] { pt, pn }),
+            new("SUPPLIER", new[] { "SUPPLIER_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.PUR_PAY_M R WHERE {doc} AND SUPPLIER.SUPPLIER_ID=R.SUPPLIER_ID)", new[] { pt, pn }),
+            new("PUR_DUE_M", new[] { "DUE_TYPE", "DUE_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.PUR_PAY_D R WHERE {doc} "
+                + "AND PUR_DUE_M.DUE_TYPE=R.DUE_TYPE AND PUR_DUE_M.DUE_NO=R.DUE_NO)", new[] { pt, pn }),
+            new("PUR_PREPAY_M", new[] { "PREPAY_TYPE", "PREPAY_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.PUR_PAY_PREPAY R WHERE {doc} "
+                + "AND PUR_PREPAY_M.PREPAY_TYPE=R.PREPAY_TYPE AND PUR_PREPAY_M.PREPAY_NO=R.PREPAY_NO)", new[] { pt, pn }),
+        };
+        return specs;
+    }
+
+    /// <summary>
+    /// Purchase return / deduction-return (1608/1612, P_WF_PUR_CANCEL): the approval
+    /// moves the received quantity off the purchase line onto the receipt line's cancel
+    /// quantity, recomputes the purchase close flags, moves stock out of the detail depot
+    /// and adjusts the product's expected-in projection.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecsPurCancel(int moduleId, MasterContext master)
+    {
+        var ct = new SqlParameter("@ct", master.ReceiveType);
+        var cn = new SqlParameter("@cn", master.ReceiveNo);
+        var doc = "R.CANCEL_TYPE=@ct AND R.CANCEL_NO=@cn";
+        var specs = new List<TableSpec>
+        {
+            new("PUR_CANCEL_M", new[] { "CANCEL_TYPE", "CANCEL_NO" }, "@ct=CANCEL_TYPE AND @cn=CANCEL_NO", new[] { ct, cn }),
+            new("PUR_CANCEL_D", new[] { "CANCEL_TYPE", "CANCEL_NO", "SERIAL_NO" }, "@ct=CANCEL_TYPE AND @cn=CANCEL_NO", new[] { ct, cn }),
+            new("PUR_PURCHASE_D", new[] { "PURCHASE_TYPE", "PURCHASE_NO", "SERIAL_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.PUR_CANCEL_D R WHERE {doc} "
+                + "AND PUR_PURCHASE_D.PURCHASE_TYPE=R.PURCHASE_TYPE AND PUR_PURCHASE_D.PURCHASE_NO=R.PURCHASE_NO "
+                + "AND PUR_PURCHASE_D.SERIAL_NO=R.PURCHASE_SERIAL_NO)", new[] { ct, cn }),
+            new("PUR_PURCHASE_M", new[] { "PURCHASE_TYPE", "PURCHASE_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.PUR_CANCEL_D R WHERE {doc} "
+                + "AND PUR_PURCHASE_M.PURCHASE_TYPE=R.PURCHASE_TYPE AND PUR_PURCHASE_M.PURCHASE_NO=R.PURCHASE_NO)", new[] { ct, cn }),
+            new("PUR_RECEIVE_D", new[] { "RECEIVE_TYPE", "RECEIVE_NO", "SERIAL_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.PUR_CANCEL_D R WHERE {doc} "
+                + "AND PUR_RECEIVE_D.RECEIVE_TYPE=R.RECEIVE_TYPE AND PUR_RECEIVE_D.RECEIVE_NO=R.RECEIVE_NO "
+                + "AND PUR_RECEIVE_D.SERIAL_NO=R.RECEIVE_SERIAL_NO)", new[] { ct, cn }),
+            new("PUR_RECEIVE_M", new[] { "RECEIVE_TYPE", "RECEIVE_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.PUR_CANCEL_D R WHERE {doc} "
+                + "AND PUR_RECEIVE_M.RECEIVE_TYPE=R.RECEIVE_TYPE AND PUR_RECEIVE_M.RECEIVE_NO=R.RECEIVE_NO)", new[] { ct, cn }),
+            new("PRODUCT", new[] { "PRO_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.PUR_CANCEL_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { ct, cn }),
+            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.PUR_CANCEL_D R WHERE {doc} "
+                + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)", new[] { ct, cn }),
+        };
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster(moduleId.ToString(), master));
         }
         return specs;
     }
