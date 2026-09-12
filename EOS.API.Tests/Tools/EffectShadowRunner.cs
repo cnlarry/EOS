@@ -107,6 +107,24 @@ public sealed class EffectShadowRunner
         1407 => new(1407, "1407", "COP_RETURN_M", "COP_RETURN_D",
             "RETURN_TYPE", "RETURN_NO", "RETURN_DATE",
             null, null, null, "客户退货单"),
+        1411 => new(1411, "1411", "COP_FITOUT_M", "COP_FITOUT_D",
+            "FITOUT_TYPE", "FITOUT_NO", "FITOUT_DATE",
+            null, null, null, "备货单"),
+        1412 => new(1412, "1412", "COP_FITIN_M", "COP_FITIN_D",
+            "FITIN_TYPE", "FITIN_NO", "FITIN_DATE",
+            null, null, null, "备货返仓单"),
+        1606 => new(1606, "1606", "PUR_PURCHASE_M", "PUR_PURCHASE_D",
+            "PURCHASE_TYPE", "PURCHASE_NO", "PURCHASE_DATE",
+            "SUPPLIER_ID", "SUPPLIER", "SUPPLIER_ID", "采购单"),
+        1515 => new(1515, "1515", "MOC_PRODUCT_OUT_M", "MOC_PRODUCT_OUT_D",
+            "PRODUCT_OUT_TYPE", "PRODUCT_OUT_NO", "PRODUCT_OUT_DATE",
+            null, null, null, "返工单"),
+        1507 => new(1507, "1507", "MOC_PLAN_M", "MOC_PLAN_D",
+            "PLAN_TYPE", "PLAN_NO", "PLAN_DATE",
+            null, null, null, "生产计划"),
+        2404 => new(2404, "2404", "SAM_OUT_M", "SAM_OUT_D",
+            "OUT_TYPE", "OUT_NO", "OUT_DATE",
+            null, null, null, "打样出库单"),
         1413 => new(1413, "1413", "COP_CALLBACK_M", "COP_CALLBACK_D",
             "CALLBACK_TYPE", "CALLBACK_NO", "CALLBACK_DATE",
             null, null, null, "送货单回执"),
@@ -318,7 +336,7 @@ public sealed class EffectShadowRunner
             "WAGE_TYPE", "WAGE_NO", "WAGE_DATE",
             null, null, null, "保密离职工资表"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -418,9 +436,9 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109 or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109 or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606))
         {
-            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519 only.");
+            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606 only.");
         }
         var spec = GetSpec(options.ModuleId);
         var deapprove = options.Event.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
@@ -603,7 +621,7 @@ public sealed class EffectShadowRunner
             or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2907 or 2913
             or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
             or 300301 or 300302 or 300304 or 300305 or 1423 or 130106 or 130107 or 130108 or 130109
-            or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519)
+            or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606)
         {
             return await ResolveRecordKeysByConfirmAsync(connection, spec, deapprove, failure);
         }
@@ -1139,7 +1157,7 @@ public sealed class EffectShadowRunner
             or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913
             or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
             or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109
-            or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519)
+            or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606)
         {
             // 2xxx snapshot specs filter target tables by document keys and EXISTS
             // subqueries off the master; no detail context rows are materialised.
@@ -1222,6 +1240,30 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId is 1407 or 1409)
         {
             return BuildTableSpecs1407(master, details);
+        }
+        if (spec.ModuleId == 1606)
+        {
+            return BuildTableSpecs1606(master);
+        }
+        if (spec.ModuleId == 1515)
+        {
+            return BuildTableSpecs1515(master);
+        }
+        if (spec.ModuleId == 1507)
+        {
+            return BuildTableSpecs1507(master);
+        }
+        if (spec.ModuleId == 2404)
+        {
+            return BuildTableSpecs2404(master);
+        }
+        if (spec.ModuleId == 1411)
+        {
+            return BuildTableSpecs1411(master);
+        }
+        if (spec.ModuleId == 1412)
+        {
+            return BuildTableSpecs1412(master);
         }
         if (spec.ModuleId == 1413)
         {
@@ -3492,6 +3534,235 @@ public sealed class EffectShadowRunner
             specs.Add(BuildLogSpecByMaster(masterTable.StartsWith("INV_OCCUR_IN", StringComparison.OrdinalIgnoreCase)
                 ? "130103"
                 : "130104", master));
+        }
+        return specs;
+    }
+
+    /// <summary>
+    /// Purchase order (1606, P_WF_PUR_PURCHASE): the approval links the purchase lines
+    /// back onto the requested lines, stamps the order line's planned date / remark,
+    /// occupies the supplier credit, accumulates the produced and ordered quantities,
+    /// recomputes the request close flags and raises the product's expected-in quantity
+    /// (and available quantity) — the widest footprint of the family.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1606(MasterContext master)
+    {
+        var pt = new SqlParameter("@pt", master.ReceiveType);
+        var pn = new SqlParameter("@pn", master.ReceiveNo);
+        var doc = "R.PURCHASE_TYPE=@pt AND R.PURCHASE_NO=@pn";
+        var specs = new List<TableSpec>
+        {
+            new("PUR_PURCHASE_M", new[] { "PURCHASE_TYPE", "PURCHASE_NO" }, "@pt=PURCHASE_TYPE AND @pn=PURCHASE_NO", new[] { pt, pn }),
+            new("PUR_PURCHASE_D", new[] { "PURCHASE_TYPE", "PURCHASE_NO", "SERIAL_NO" }, "@pt=PURCHASE_TYPE AND @pn=PURCHASE_NO", new[] { pt, pn }),
+            new("PUR_PURCHASE_MORE", new[] { "PURCHASE_TYPE", "PURCHASE_NO", "SERIAL_NO" }, "@pt=PURCHASE_TYPE AND @pn=PURCHASE_NO", new[] { pt, pn }),
+        };
+        specs.Add(new("PUR_APPLY_D", new[] { "APPLY_TYPE", "APPLY_NO", "SERIAL_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_D R WHERE {doc} "
+            + "AND PUR_APPLY_D.APPLY_TYPE=R.APPLY_TYPE AND PUR_APPLY_D.APPLY_NO=R.APPLY_NO "
+            + "AND PUR_APPLY_D.SERIAL_NO=R.APPLY_SERIAL_NO)",
+            new[] { pt, pn }));
+        specs.Add(new("PUR_APPLY_M", new[] { "APPLY_TYPE", "APPLY_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_D R WHERE {doc} "
+            + "AND PUR_APPLY_M.APPLY_TYPE=R.APPLY_TYPE AND PUR_APPLY_M.APPLY_NO=R.APPLY_NO)",
+            new[] { pt, pn }));
+        specs.Add(new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_D R WHERE {doc} "
+            + "AND COP_ORDER_D.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=R.ORDER_NO "
+            + "AND COP_ORDER_D.SERIAL_NO=R.ORDER_SERIAL_NO)",
+            new[] { pt, pn }));
+        specs.Add(new("COP_ORDER_MORE", new[] { "ORDER_TYPE", "ORDER_NO", "PRO_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_D R WHERE {doc} "
+            + "AND COP_ORDER_MORE.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_MORE.ORDER_NO=R.ORDER_NO "
+            + "AND COP_ORDER_MORE.PRO_NO=R.PRO_NO)",
+            new[] { pt, pn }));
+        specs.Add(new("MOC_PRODUCE_D", new[] { "PRODUCE_TYPE", "PRODUCE_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_MORE R WHERE R.PURCHASE_TYPE=@pt AND R.PURCHASE_NO=@pn "
+            + "AND MOC_PRODUCE_D.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_D.PRODUCE_NO=R.PRODUCE_NO "
+            + "AND MOC_PRODUCE_D.SERIAL_NO=R.PRODUCE_SERIAL_NO)",
+            new[] { pt, pn }));
+        specs.Add(new("SUPPLIER", new[] { "SUPPLIER_ID" },
+            $"EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_M R WHERE {doc} AND SUPPLIER.SUPPLIER_ID=R.SUPPLIER_ID)",
+            new[] { pt, pn }));
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            $"EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)",
+            new[] { pt, pn }));
+        return specs;
+    }
+
+    /// <summary>
+    /// Rework product-out document (1515, P_WF_MOC_PRODUCT_OUT): the approval takes the
+    /// shipped quantity off the produce master, recomputes the produce close markers
+    /// (detail pick-complete flag plus master finish flag/person/date), moves stock out of
+    /// the detail depot and adjusts the product's expected-in projection.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1515(MasterContext master)
+    {
+        var ot = new SqlParameter("@ot", master.ReceiveType);
+        var on = new SqlParameter("@on", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("MOC_PRODUCT_OUT_M", new[] { "PRODUCT_OUT_TYPE", "PRODUCT_OUT_NO" }, "@ot=PRODUCT_OUT_TYPE AND @on=PRODUCT_OUT_NO", new[] { ot, on }),
+            new("MOC_PRODUCT_OUT_D", new[] { "PRODUCT_OUT_TYPE", "PRODUCT_OUT_NO", "SERIAL_NO" }, "@ot=PRODUCT_OUT_TYPE AND @on=PRODUCT_OUT_NO", new[] { ot, on }),
+        };
+        specs.Add(new("MOC_PRODUCE_M", new[] { "PRODUCE_TYPE", "PRODUCE_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
+            + "AND MOC_PRODUCE_M.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_M.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { ot, on }));
+        specs.Add(new("MOC_PRODUCE_D", new[] { "PRODUCE_TYPE", "PRODUCE_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
+            + "AND MOC_PRODUCE_D.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_D.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { ot, on }));
+        specs.Add(new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
+            + "AND COP_ORDER_D.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=R.ORDER_NO "
+            + "AND COP_ORDER_D.SERIAL_NO=R.ORDER_SERIAL_NO)",
+            new[] { ot, on }));
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
+            + "AND PRODUCT.PRO_NO=R.PRO_NO)",
+            new[] { ot, on }));
+        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
+            + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
+            new[] { ot, on }));
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("1515", master));
+        }
+        return specs;
+    }
+
+    /// <summary>
+    /// Production plan (1507, P_WF_MOC_PLAN): the approval accumulates the planned
+    /// quantity of this document onto the referenced order lines, so the plan itself and
+    /// the order lines it writes back to are compared.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1507(MasterContext master)
+    {
+        var pt = new SqlParameter("@pt", master.ReceiveType);
+        var pn = new SqlParameter("@pn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("MOC_PLAN_M", new[] { "PLAN_TYPE", "PLAN_NO" }, "@pt=PLAN_TYPE AND @pn=PLAN_NO", new[] { pt, pn }),
+            new("MOC_PLAN_D", new[] { "PLAN_TYPE", "PLAN_NO", "SERIAL_NO" }, "@pt=PLAN_TYPE AND @pn=PLAN_NO", new[] { pt, pn }),
+        };
+        specs.Add(new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.MOC_PLAN_D R WHERE R.PLAN_TYPE=@pt AND R.PLAN_NO=@pn "
+            + "AND COP_ORDER_D.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=R.ORDER_NO "
+            + "AND COP_ORDER_D.SERIAL_NO=R.ORDER_SERIAL_NO)",
+            new[] { pt, pn }));
+        return specs;
+    }
+
+    /// <summary>
+    /// Sample outbound document (2404, P_WF_SAM_OUT): the approval takes the quantity and
+    /// amount off the sample product row and accumulates the shipped quantity onto the
+    /// referenced sample-inbound line, so both rows are compared alongside the document.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs2404(MasterContext master)
+    {
+        var ot = new SqlParameter("@ot", master.ReceiveType);
+        var on = new SqlParameter("@on", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("SAM_OUT_M", new[] { "OUT_TYPE", "OUT_NO" }, "@ot=OUT_TYPE AND @on=OUT_NO", new[] { ot, on }),
+            new("SAM_OUT_D", new[] { "OUT_TYPE", "OUT_NO", "SERIAL_NO" }, "@ot=OUT_TYPE AND @on=OUT_NO", new[] { ot, on }),
+        };
+        specs.Add(new("SAMPLE_PRO", new[] { "PRO_NO" },
+            "EXISTS (SELECT 1 FROM dbo.SAM_OUT_D R WHERE R.OUT_TYPE=@ot AND R.OUT_NO=@on "
+            + "AND SAMPLE_PRO.PRO_NO=R.PRO_NO)",
+            new[] { ot, on }));
+        specs.Add(new("SAM_IN_D", new[] { "IN_TYPE", "IN_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.SAM_OUT_D R WHERE R.OUT_TYPE=@ot AND R.OUT_NO=@on "
+            + "AND SAM_IN_D.IN_TYPE=R.IN_TYPE AND SAM_IN_D.IN_NO=R.IN_NO "
+            + "AND SAM_IN_D.SERIAL_NO=R.IN_SERIAL_NO)",
+            new[] { ot, on }));
+        return specs;
+    }
+
+    /// <summary>
+    /// Stock-provision document (1411, P_WF_COP_FITOUT): the approval accumulates the
+    /// provisioned quantity onto the referenced order line and produce master and moves
+    /// stock out of the detail depot, so the order line, the produce master, the product
+    /// row, the depot balance and the inventory log are compared alongside the document.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1411(MasterContext master)
+    {
+        var ft = new SqlParameter("@ft", master.ReceiveType);
+        var fn = new SqlParameter("@fn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("COP_FITOUT_M", new[] { "FITOUT_TYPE", "FITOUT_NO" }, "@ft=FITOUT_TYPE AND @fn=FITOUT_NO", new[] { ft, fn }),
+            new("COP_FITOUT_D", new[] { "FITOUT_TYPE", "FITOUT_NO", "SERIAL_NO" }, "@ft=FITOUT_TYPE AND @fn=FITOUT_NO", new[] { ft, fn }),
+        };
+        specs.Add(new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_FITOUT_D R WHERE R.FITOUT_TYPE=@ft AND R.FITOUT_NO=@fn "
+            + "AND COP_ORDER_D.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=R.ORDER_NO "
+            + "AND COP_ORDER_D.SERIAL_NO=R.ORDER_SERIAL_NO)",
+            new[] { ft, fn }));
+        specs.Add(new("MOC_PRODUCE_M", new[] { "PRODUCE_TYPE", "PRODUCE_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_FITOUT_D R WHERE R.FITOUT_TYPE=@ft AND R.FITOUT_NO=@fn "
+            + "AND MOC_PRODUCE_M.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_M.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { ft, fn }));
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_FITOUT_D R WHERE R.FITOUT_TYPE=@ft AND R.FITOUT_NO=@fn "
+            + "AND PRODUCT.PRO_NO=R.PRO_NO)",
+            new[] { ft, fn }));
+        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            "EXISTS (SELECT 1 FROM dbo.COP_FITOUT_D R WHERE R.FITOUT_TYPE=@ft AND R.FITOUT_NO=@fn "
+            + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
+            new[] { ft, fn }));
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("1411", master));
+        }
+        return specs;
+    }
+
+    /// <summary>
+    /// Stock-provision return document (1412, P_WF_COP_FITIN): the approval credits the
+    /// provisioned quantity back off the order line and produce master, accumulates the
+    /// returned quantity onto the referenced provision lines, recomputes the provision
+    /// document close flags and moves the stock back into the detail depot.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs1412(MasterContext master)
+    {
+        var ft = new SqlParameter("@ft", master.ReceiveType);
+        var fn = new SqlParameter("@fn", master.ReceiveNo);
+        var specs = new List<TableSpec>
+        {
+            new("COP_FITIN_M", new[] { "FITIN_TYPE", "FITIN_NO" }, "@ft=FITIN_TYPE AND @fn=FITIN_NO", new[] { ft, fn }),
+            new("COP_FITIN_D", new[] { "FITIN_TYPE", "FITIN_NO", "SERIAL_NO" }, "@ft=FITIN_TYPE AND @fn=FITIN_NO", new[] { ft, fn }),
+        };
+        specs.Add(new("COP_ORDER_D", new[] { "ORDER_TYPE", "ORDER_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_FITIN_D R WHERE R.FITIN_TYPE=@ft AND R.FITIN_NO=@fn "
+            + "AND COP_ORDER_D.ORDER_TYPE=R.ORDER_TYPE AND COP_ORDER_D.ORDER_NO=R.ORDER_NO "
+            + "AND COP_ORDER_D.SERIAL_NO=R.ORDER_SERIAL_NO)",
+            new[] { ft, fn }));
+        specs.Add(new("MOC_PRODUCE_M", new[] { "PRODUCE_TYPE", "PRODUCE_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_FITIN_D R WHERE R.FITIN_TYPE=@ft AND R.FITIN_NO=@fn "
+            + "AND MOC_PRODUCE_M.PRODUCE_TYPE=R.PRODUCE_TYPE AND MOC_PRODUCE_M.PRODUCE_NO=R.PRODUCE_NO)",
+            new[] { ft, fn }));
+        specs.Add(new("COP_FITOUT_D", new[] { "FITOUT_TYPE", "FITOUT_NO", "SERIAL_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_FITIN_D R WHERE R.FITIN_TYPE=@ft AND R.FITIN_NO=@fn "
+            + "AND COP_FITOUT_D.FITOUT_TYPE=R.FITOUT_TYPE AND COP_FITOUT_D.FITOUT_NO=R.FITOUT_NO "
+            + "AND COP_FITOUT_D.SERIAL_NO=R.FITOUT_SERIAL_NO)",
+            new[] { ft, fn }));
+        specs.Add(new("COP_FITOUT_M", new[] { "FITOUT_TYPE", "FITOUT_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_FITIN_D R WHERE R.FITIN_TYPE=@ft AND R.FITIN_NO=@fn "
+            + "AND COP_FITOUT_M.FITOUT_TYPE=R.FITOUT_TYPE AND COP_FITOUT_M.FITOUT_NO=R.FITOUT_NO)",
+            new[] { ft, fn }));
+        specs.Add(new("PRODUCT", new[] { "PRO_NO" },
+            "EXISTS (SELECT 1 FROM dbo.COP_FITIN_D R WHERE R.FITIN_TYPE=@ft AND R.FITIN_NO=@fn "
+            + "AND PRODUCT.PRO_NO=R.PRO_NO)",
+            new[] { ft, fn }));
+        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            "EXISTS (SELECT 1 FROM dbo.COP_FITIN_D R WHERE R.FITIN_TYPE=@ft AND R.FITIN_NO=@fn "
+            + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
+            new[] { ft, fn }));
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster("1412", master));
         }
         return specs;
     }
