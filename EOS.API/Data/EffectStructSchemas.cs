@@ -109,6 +109,22 @@ public static class EffectStructSchemas
             ["supplier-price-sync"] = Set("master", "detail", "quoteRefs", "preserveOld", "overwriteIfNewer"),
         };
 
+    /// <summary>balance-adjust 往来分支允许的键（credit/prepay 及金额列覆盖）。</summary>
+    private static readonly IReadOnlySet<string> BalanceAdjustPartyKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "credit",
+        "prepay",
+        "creditField",
+        "prepayField",
+    };
+
+    /// <summary>balance-adjust 银行分支允许的键。</summary>
+    private static readonly IReadOnlySet<string> BalanceAdjustBankKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "direction",
+        "amountField",
+    };
+
     /// <summary>校验动作级 params/reverse 结构，返回问题列表。</summary>
     public static IReadOnlyList<string> ValidateActionStructs(
         string effectKey,
@@ -206,6 +222,42 @@ public static class EffectStructSchemas
             || effectKey.Equals("produce-change-apply", StringComparison.OrdinalIgnoreCase))
         {
             issues.AddRange(ValidateChangeApplyParams(root));
+        }
+        if (effectKey.Equals("balance-adjust", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.AddRange(ValidateBalanceAdjustParams(root));
+        }
+        return issues;
+    }
+
+    /// <summary>balance-adjust 分支结构：client/supplier 只认 credit/prepay(+金额列覆盖)，bank 只认 direction/amountField。</summary>
+    private static IReadOnlyList<string> ValidateBalanceAdjustParams(JsonElement root)
+    {
+        var issues = new List<string>();
+        foreach (var name in new[] { "client", "supplier", "bank" })
+        {
+            if (!root.TryGetProperty(name, out var branch))
+                continue;
+            if (branch.ValueKind != JsonValueKind.Object)
+            {
+                issues.Add($"balance-adjust.{name} 必须是对象。");
+                continue;
+            }
+            var allowed = name == "bank" ? BalanceAdjustBankKeys : BalanceAdjustPartyKeys;
+            foreach (var property in branch.EnumerateObject())
+            {
+                if (!allowed.Contains(property.Name))
+                    issues.Add($"balance-adjust.{name} 含未登记键 '{property.Name}'（允许：{string.Join(",", allowed)}）。");
+            }
+            var fieldKeys = name == "bank" ? new[] { "amountField" } : new[] { "creditField", "prepayField" };
+            foreach (var fieldKey in fieldKeys)
+            {
+                if (branch.TryGetProperty(fieldKey, out var value)
+                    && (value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString())))
+                {
+                    issues.Add($"balance-adjust.{fieldKey} 必须是非空字符串");
+                }
+            }
         }
         return issues;
     }

@@ -7,7 +7,9 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 /// balance-adjust: client/supplier usable-credit and prepay adjustments plus bank
 /// balance movements, with per-side currency rate conversion (ported from the legacy
 /// workflow procedures). Amount source = the module master's AMOUNT_TAX, falling back
-/// to AMOUNT; a master without either is a hard configuration error. "net-replace"
+/// to AMOUNT, or the column named by the branch (creditField/prepayField/amountField)
+/// when the source document carries its own received/paid amounts; a master without
+/// any of these is a hard configuration error. "net-replace"
 /// (order-change release-and-reoccupy) has no master amount column and is refused
 /// until its evidence base is complete.
 /// </summary>
@@ -33,9 +35,19 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
 
         // The master amount expression is only needed by occupy/release/prepay/bank
         // branches; the net-replace branch reads the referenced original document
-        // instead and would fail on change masters without amount columns.
-        string? amountLocalCache = null;
-        string AmountLocal() => amountLocalCache ??= BuildAmountExpression(plan, columns);
+        // instead and would fail on change masters without amount columns. Branches may
+        // name their own amount column (receipts use RECEIVE_SUM, payments PAYOUT_SUM)
+        // because the legacy procedures pick different columns per document type.
+        var amountCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string AmountFor(string? amountField)
+        {
+            var cacheKey = amountField ?? string.Empty;
+            if (amountCache.TryGetValue(cacheKey, out var cached))
+                return cached;
+            var expression = BuildAmountExpression(plan, columns, amountField);
+            amountCache[cacheKey] = expression;
+            return expression;
+        }
         // Approve applies the configured direction; deapprove applies the inverse
         // (usable quota: occupy=−/release=+ on approve, flipped on deapprove).
         var sign = context.ExecutionEvent == EffectEvent.Deapprove ? -1 : 1;
@@ -68,7 +80,8 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
                         "release" => sign,
                         _ => throw new EffectConfigException("balance-adjust credit 仅支持 occupy/release/net-replace。"),
                     };
-                    affected += await AdjustAsync(context, tableName, keyColumn, "CREDIT_LIMIT_NUM", AmountLocal(), delta, token);
+                    affected += await AdjustAsync(context, tableName, keyColumn, "CREDIT_LIMIT_NUM",
+                        AmountFor(AmountFieldName(branch, "creditField")), delta, token);
                 }
             }
             if (branch.TryGetProperty("prepay", out var prepay))
@@ -81,7 +94,8 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
                     "decrease" => -sign,
                     _ => throw new EffectConfigException("balance-adjust prepay 仅支持 increase/decrease。"),
                 };
-                affected += await AdjustAsync(context, tableName, keyColumn, "PREPAY_SUM", AmountLocal(), delta, token);
+                affected += await AdjustAsync(context, tableName, keyColumn, "PREPAY_SUM",
+                    AmountFor(AmountFieldName(branch, "prepayField")), delta, token);
             }
         }
 
@@ -95,18 +109,42 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
             if (!columns.Contains("BANK.AMOUNT") || !columns.Contains(plan.MasterTable + ".BANK_ID"))
                 throw new EffectConfigException("balance-adjust bank 分支缺 BANK.AMOUNT 或主表 BANK_ID。");
             var delta = direction == "IN" ? sign : -sign;
-            await CheckBankBalanceAsync(context, AmountLocal(), delta, token);
-            affected += await AdjustAsync(context, "BANK", "BANK_ID", "AMOUNT", AmountLocal(), delta, token);
+            var bankAmount = AmountFor(AmountFieldName(bank, "amountField"));
+            await CheckBankBalanceAsync(context, bankAmount, delta, token);
+            affected += await AdjustAsync(context, "BANK", "BANK_ID", "AMOUNT", bankAmount, delta, token);
         }
         return affected;
     }
 
-    /// <summary>Document amount in local currency: master AMOUNT_TAX (fallback AMOUNT) × master CURR_RATE when present.</summary>
-    private static string BuildAmountExpression(ModuleEffectPlan plan, ISet<string> columns)
+    /// <summary>Optional master amount column override on a branch (must be a non-empty string when present).</summary>
+    private static string? AmountFieldName(JsonElement branch, string key)
     {
-        var amountColumn = columns.Contains(plan.MasterTable + ".AMOUNT_TAX") ? "AMOUNT_TAX"
-            : columns.Contains(plan.MasterTable + ".AMOUNT") ? "AMOUNT"
-            : throw new EffectConfigException($"主表 {plan.MasterTable} 缺少 AMOUNT_TAX/AMOUNT 金额列，balance-adjust 无法取值。");
+        if (!branch.TryGetProperty(key, out var value))
+            return null;
+        if (value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
+            throw new EffectConfigException($"balance-adjust {key} 必须是非空字符串。");
+        return value.GetString()!.Trim();
+    }
+
+    /// <summary>
+    /// Document amount in local currency: the branch amount column (default master
+    /// AMOUNT_TAX, falling back to AMOUNT) × master CURR_RATE when present.
+    /// </summary>
+    private static string BuildAmountExpression(ModuleEffectPlan plan, ISet<string> columns, string? amountField)
+    {
+        string amountColumn;
+        if (amountField is not null)
+        {
+            if (!columns.Contains(plan.MasterTable + "." + amountField))
+                throw new EffectConfigException($"主表 {plan.MasterTable} 缺少 {amountField} 列，balance-adjust 无法取值。");
+            amountColumn = amountField;
+        }
+        else
+        {
+            amountColumn = columns.Contains(plan.MasterTable + ".AMOUNT_TAX") ? "AMOUNT_TAX"
+                : columns.Contains(plan.MasterTable + ".AMOUNT") ? "AMOUNT"
+                : throw new EffectConfigException($"主表 {plan.MasterTable} 缺少 AMOUNT_TAX/AMOUNT 金额列，balance-adjust 无法取值。");
+        }
         var rate = columns.Contains(plan.MasterTable + ".CURR_RATE")
             ? "ISNULL(M.[CURR_RATE], 1)"
             : "1";

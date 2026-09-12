@@ -602,6 +602,18 @@ public class ServiceEffectHandlerTests
     }
 
     [Fact]
+    public void Balance_adjust_branch_amount_field_schema_validated()
+    {
+        // 收/付款单据按实收/实付与冲帐金额取值，故分支允许覆盖主表金额列。
+        var ok = """{"bank":{"direction":"IN","amountField":"RECEIVE_SUM"},"client":{"credit":"release","prepay":"decrease","creditField":"RECEIVE_SUM","prepayField":"PREPAY_SUM"}}""";
+        Assert.Empty(EOS.API.Data.EffectStructSchemas.ValidateParams("balance-adjust", ok));
+        var badKey = EOS.API.Data.EffectStructSchemas.ValidateParams("balance-adjust", """{"bank":{"direction":"IN","amount":"RECEIVE_SUM"}}""");
+        Assert.Contains(badKey, issue => issue.Contains("balance-adjust.bank 含未登记键 'amount'"));
+        var badField = EOS.API.Data.EffectStructSchemas.ValidateParams("balance-adjust", """{"client":{"credit":"release","creditField":""}}""");
+        Assert.Contains(badField, issue => issue.Contains("balance-adjust.creditField 必须是非空字符串"));
+    }
+
+    [Fact]
     public void Quote_parameter_recalc_key_implemented_and_schema_validated()
     {
         Assert.True(EOS.API.Data.Effects.EffectRegistry.IsImplemented("quote-parameter-recalc"));
