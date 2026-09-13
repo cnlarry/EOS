@@ -375,8 +375,10 @@ public sealed class EffectShadowRunner
         var moduleId = int.TryParse(Environment.GetEnvironmentVariable("EOS_SHADOW_MODULE"), out var module)
             ? module
             : 1607;
+        var shadowEvent = Environment.GetEnvironmentVariable("EOS_SHADOW_EVENT") ?? "APPROVE_EFFECT";
         var keys = Environment.GetEnvironmentVariable("EOS_SHADOW_KEYS");
-        var options = new ShadowOptions(moduleId, "APPROVE_EFFECT", keys, RunId: null, Failure: true);
+        var runId = Environment.GetEnvironmentVariable("EOS_SHADOW_RUN_ID");
+        var options = new ShadowOptions(moduleId, shadowEvent, keys, runId, Failure: true);
         var report = await RunAsync(options, Console.Out);
 
         // New-semantics failure gate: the engine must block before executing any action
@@ -384,6 +386,19 @@ public sealed class EffectShadowRunner
         Assert.Equal("blocked", report.NewPath.Status);
         Assert.NotEmpty(report.NewPath.Error ?? string.Empty);
         Assert.Empty(report.Tables);
+
+        // The legacy path decides whether this is equivalence evidence or an engine-only smoke
+        // test: a retired procedure can no longer block on its own, so it is skipped.
+        if (report.OldPath.Status == "skipped")
+        {
+            Console.WriteLine($"failure-case ENGINE_ONLY module={moduleId} event={shadowEvent} (legacy procedure retired)");
+        }
+        else
+        {
+            Assert.Equal("blocked", report.OldPath.Status);
+            Assert.NotEmpty(report.OldPath.Error ?? string.Empty);
+        }
+
         Console.WriteLine($"failure-case verdict={report.Summary.Verdict} old={report.OldPath.Status} new={report.NewPath.Status}");
     }
 
@@ -469,18 +484,24 @@ public sealed class EffectShadowRunner
         {
             throw new InvalidOperationException($"模块 {options.ModuleId} 快照 v{version} 缺少 businessActions 配置段。请先发布。");
         }
-        if (definition.BusinessRule?.WorkflowSproc is not { Length: > 0 } workflowSproc)
+        // The legacy stored procedure is only required when the legacy path actually runs.
+        // Engine-only mode exists precisely for modules whose procedure was retired; a failure
+        // run keeps its value without it as well, because the gate under test is the engine
+        // blocking before any effect is written.
+        var workflowSproc = definition.BusinessRule?.WorkflowSproc;
+        var legacyAvailable = !options.EngineOnly && !string.IsNullOrWhiteSpace(workflowSproc);
+        if (!legacyAvailable && !options.EngineOnly && !options.Failure)
         {
             throw new InvalidOperationException($"模块 {options.ModuleId} 无 WorkflowSproc，旧路径无法执行。");
         }
 
         var keys = await ResolveRecordKeysAsync(connection, spec, options.ModuleId, options.Keys, deapprove, options.Failure);
-        await log.WriteLineAsync($"shadow run={runId} module={options.ModuleId} event={options.Event} version={version} keys={string.Join("|", keys)} sproc={workflowSproc}");
+        await log.WriteLineAsync($"shadow run={runId} module={options.ModuleId} event={options.Event} version={version} keys={string.Join("|", keys)} sproc={workflowSproc ?? "(none)"}");
 
         var definitionVersion = $"module-{options.ModuleId}-v{version}";
-        var legacy = options.EngineOnly
-            ? new LegacyPathResult("skipped", "旧路径已退役（061），引擎单跑模式跳过。", null, 0, Array.Empty<string>())
-            : await RunLegacyPathAsync(connection, definition, spec, workflowSproc, keys, deapprove, log);
+        var legacy = legacyAvailable
+            ? await RunLegacyPathAsync(connection, definition, spec, workflowSproc!, keys, deapprove, log)
+            : new LegacyPathResult("skipped", "旧路径不可用（过程已退役或模式为引擎单跑）。", null, 0, Array.Empty<string>());
         var engineResult = await RunEnginePathAsync(definition, spec, keys, deapprove, log);
         var engine = engineResult.Status;
         List<ShadowTableDiff> tables;
@@ -510,6 +531,12 @@ public sealed class EffectShadowRunner
         }
         else if (options.EngineOnly && engine.Status == "ok")
         {
+            verdict = "PASS";
+        }
+        else if (options.Failure && legacy.Status == "skipped" && engine.Status == "blocked")
+        {
+            // Legacy procedure retired: the failure gate that still matters is the engine
+            // refusing the document before writing anything.
             verdict = "PASS";
         }
         else
