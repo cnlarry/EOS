@@ -55,9 +55,8 @@ public sealed class QuoteParameterRecalcHandler : IEffectServiceHandler
         foreach (var fee in cfg.FeeFields)
         {
             var pct = fee.Replace("_SUM", "", StringComparison.Ordinal) + "_PCT";
-            feeAssignments.Add($"{ServiceEffectSql.Q(fee)}=ROUND(P.{ServiceEffectSql.Q(fee)}*P.{ServiceEffectSql.Q(pct)}/100,3)");
+            feeAssignments.Add($"{ServiceEffectSql.Q(fee)}=ROUND(P.PRICE*P.{ServiceEffectSql.Q(pct)}/100,3)");
         }
-        sets.AddRange(feeAssignments);
         var update = $"UPDATE P SET {string.Join(", ", sets)} "
             + $"FROM dbo.{ServiceEffectSql.Q(cfg.TargetTable)} P JOIN {quotePrice} Q ON P.STUFF_ID=Q.PRO_NO";
         var affected = await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction, update, parameters, token);
