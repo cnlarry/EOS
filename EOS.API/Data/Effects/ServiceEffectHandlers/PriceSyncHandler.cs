@@ -137,6 +137,7 @@ internal static class PriceSyncExecutor
                 throw new EffectConfigException("price-sync 解批读不到报价主表行。");
             var partyValue = reader.IsDBNull(0) ? null : reader.GetString(0).Trim();
             var inEffectValue = reader.IsDBNull(1) ? null : (object?)reader.GetDateTime(1);
+            await reader.CloseAsync();
             parameters.Add(new EffectSqlParameter(party, partyValue));
             parameters.Add(new EffectSqlParameter(inEffect, inEffectValue));
             var guardSql = $"SELECT TOP 1 1 FROM dbo.{ServiceEffectSql.Q(cfg.Detail)} P "
