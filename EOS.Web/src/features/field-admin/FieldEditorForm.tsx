@@ -500,9 +500,14 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                       </div>
                       <div className="col-md-4">
                         <label className="form-label">数据库类型</label>
-                        <select className="form-select" value={draft.dataType} disabled={!isNew} onChange={event => setDraft({ ...draft, dataType: event.target.value })}>
+                        <select className="form-select" value={draft.dataType} onChange={event => setDraft({ ...draft, dataType: event.target.value })}>
                           {ALLOWED_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
                         </select>
+                        {!isNew && (
+                          <div className="form-hint">
+                            类型决定录入控件与显示格式（date 只取日期、datetime 含时间）；改类型只更新元数据，不变更物理列
+                          </div>
+                        )}
                       </div>
                       <div className="col-md-3">
                         <label className="form-label">列宽</label>
