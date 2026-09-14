@@ -753,6 +753,8 @@ button, input, select { font: inherit; }
   --erp-form-control-height: 26px;
   --erp-form-control-font: 12px;
   --erp-form-group-gap: 10px;
+  /* 控件与其附属按钮（选择器）的间距，复合格内按钮两侧统一使用，保证等距 */
+  --erp-form-control-gap: 6px;
 }
 
 .erp-form-grid {
@@ -825,24 +827,36 @@ button, input, select { font: inherit; }
   border-radius: 6px;
 }
 
-.erp-form-cell-controls {
-  display: flex;
+/* 控件行：输入控件 + 附属按钮（选择器）。间距统一取 --erp-form-control-gap，
+   不用 gap-* 工具类（!important 会压过复合格内的等距覆盖） */
+.erp-control-row {
   align-items: center;
-  gap: 4px;
+  gap: var(--erp-form-control-gap);
+  flex-wrap: nowrap;
   min-width: 0;
 }
 
-.erp-form-cell-controls > .erp-form-control { flex: 0 0 auto; min-width: 0; }
-.erp-form-cell-controls > .erp-form-control + .erp-form-control { flex: 0 0 auto; min-width: 0; }
+.erp-form-cell-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--erp-form-control-gap);
+  min-width: 0;
+}
+
+/* 组合字段三件套 [主][选择按钮][从]：
+   按钮两侧间距都取自 --erp-form-control-gap（按钮在主营控件内，按钮右侧即本容器 gap），
+   因此 [主]—按钮—[从] 三段距离相等。
+   宽度上主控件按内容（编号短）不抢占、从控件 flex-grow 占满剩余（描述长）；
+   格子宽度不足时两者按比例收缩（原先固定 64/96 且不可收缩，会溢出格子被表单圆角裁切）。 */
+.erp-form-cell-controls > .erp-form-control { flex: 0 1 auto; min-width: 0; }
+.erp-form-cell-controls > .erp-form-control + .erp-form-control { flex: 1 1 auto; min-width: 0; }
 .erp-form-cell-controls .erp-form-control .d-flex { flex-wrap: nowrap; }
-/* 组合字段三件套 [主][选择按钮][从]：按钮与两侧控件等距（gap 与 cell-controls 对齐） */
-.erp-form-cell-controls > .erp-form-control > .d-flex { gap: 4px; }
-/* 组合字段左右固定宽度（左窄右宽，input 64:96 = 4:6）：
-   主字段 input 64px、从字段 input 96px；选择按钮紧贴主字段 input 右侧，不遮挡 */
-.erp-form-cell-controls > .erp-form-control > .d-flex > .form-control,
-.erp-form-cell-controls > .erp-form-control > .d-flex > .form-select { width: 64px; flex: 0 0 auto; }
-.erp-form-cell-controls > .erp-form-control + .erp-form-control > .d-flex > .form-control,
-.erp-form-cell-controls > .erp-form-control + .erp-form-control > .d-flex > .form-select { width: 96px; flex: 0 0 auto; }
+.erp-form-cell-controls .form-control,
+.erp-form-cell-controls .form-select { min-width: 0; }
+.erp-form-cell-controls > .erp-form-control > .erp-control-row > .form-control,
+.erp-form-cell-controls > .erp-form-control > .erp-control-row > .form-select { width: 64px; flex: 0 1 auto; min-width: 44px; }
+.erp-form-cell-controls > .erp-form-control + .erp-form-control > .erp-control-row > .form-control,
+.erp-form-cell-controls > .erp-form-control + .erp-form-control > .erp-control-row > .form-select { width: 96px; flex: 1 1 auto; min-width: 56px; }
 
 .erp-form-field.is-full { grid-column: 1 / -1; }
 

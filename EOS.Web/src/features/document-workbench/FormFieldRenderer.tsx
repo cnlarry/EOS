@@ -175,7 +175,7 @@ export function FormFieldRenderer({ field, value, error, onChange, onChoose, onF
 
   const container = (
     <div className="erp-form-control" data-field-key={field.key}>
-      <div className="d-flex gap-2">
+      <div className="d-flex erp-control-row">
         {control}
         {hasChooser && !readOnlyStatic ? (
           <Button size="sm" variant="secondary" className="erp-chooser-btn" aria-label="选择" title={`选择${field.label}`} disabled={chooserDisabled} onClick={() => onChoose?.(field)}>
