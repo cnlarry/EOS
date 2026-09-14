@@ -18,12 +18,16 @@ EOS.API/Data/BillNoGenerator.cs
 EOS.API/Data/ChooserJoinCatalog.cs
 EOS.API/Data/ChooserRepository.cs
 EOS.API/Data/DocumentWorkbenchRepository.cs
+EOS.API/Data/Effects/EffectConditionCompiler.cs
+EOS.API/Data/Effects/EffectValidationExecutor.cs
+EOS.API/Data/Effects/ServiceEffectHandlers/InventoryMoveHandler.cs
 EOS.API/Data/FieldAdminRepository.cs
 EOS.API/Data/FlowDefinitionService.cs
 EOS.API/Data/HumanResourceJobsService.cs
 EOS.API/Data/ImportService.cs
 EOS.API/Data/KnowledgeRepository.cs
 EOS.API/Data/MenuAdminRepository.cs
+EOS.API/Data/ModuleBusinessConfigRepository.cs
 EOS.API/Data/ModuleRightsRepository.cs
 EOS.API/Data/NavigationGroupsRepository.cs
 EOS.API/Data/NavigationRepository.cs
