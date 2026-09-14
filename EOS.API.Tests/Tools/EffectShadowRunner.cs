@@ -242,9 +242,37 @@ public sealed class EffectShadowRunner
          1504 => new(1504, "1504", "MOC_BACK_M", "MOC_BACK_D",
              "BACK_TYPE", "BACK_NO", "BACK_DATE",
              null, null, null, "生产退料单"),
-         1518 => new(1518, "1518", "MOC_BACK_M", "MOC_BACK_D",
-             "BACK_TYPE", "BACK_NO", "BACK_DATE",
-             null, null, null, "领料退回单(外)"),
+          1518 => new(1518, "1518", "MOC_BACK_M", "MOC_BACK_D",
+              "BACK_TYPE", "BACK_NO", "BACK_DATE",
+              null, null, null, "领料退回单(外)"),
+          1906 => new(1906, "1906", "CAR_FEE_M", "CAR_FEE_D",
+              "FEE_TYPE", "FEE_NO", "FEE_DATE",
+              null, null, null, "油卡充值单"),
+          1908 => new(1908, "1908", "CAR_ADDUP_M", "CAR_ADDUP_D",
+              "ADDUP_TYPE", "ADDUP_NO", "ADDUP_DATE",
+              null, null, null, "出车统计表"),
+          2403 => new(2403, "2403", "SAM_IN_M", "SAM_IN_D",
+              "IN_TYPE", "IN_NO", "IN_DATE",
+              null, null, null, "打样入库单"),
+          // 3307 has no physical detail table (QC_SAMPLE_D does not exist in sys.objects)
+          // and a single-column master key (PRO_NO): Key2Column repeats Key1Column and
+          // the key resolver is master-only (see ResolveRecordKeys3307Async); the
+          // placeholder detail is never queried.
+          3307 => new(3307, "3307", "QC_SAMPLE_M", "QC_SAMPLE_D",
+              "PRO_NO", "PRO_NO", "CONFIRM_DATE",
+              null, null, null, "样品管理"),
+          2917 => new(2917, "2917", "MOU_ACCEPTDELE_M", "MOU_ACCEPTDELE_D",
+              "ACCEPTDELE_TYPE", "ACCEPTDELE_NO", "ACCEPTDELE_DATE",
+              null, null, null, "承认单模具报废"),
+          2709 => new(2709, "2709", "SFC_PLAN_PROCESS_M", "SFC_PLAN_PROCESS_D",
+              "PLAN_PROCESS_TYPE", "PLAN_PROCESS_NO", "PLAN_PROCESS_DATE",
+              null, null, null, "成型计划"),
+          2710 => new(2710, "2710", "SFC_PLAN_PROCESS_M", "SFC_PLAN_PROCESS_D",
+              "PLAN_PROCESS_TYPE", "PLAN_PROCESS_NO", "PLAN_PROCESS_DATE",
+              null, null, null, "冲裁包装计划"),
+          2711 => new(2711, "2711", "SFC_PLAN_PROCESS_M", "SFC_PLAN_PROCESS_D",
+              "PLAN_PROCESS_TYPE", "PLAN_PROCESS_NO", "PLAN_PROCESS_DATE",
+              null, null, null, "冲压计划"),
         170102 => new(170102, "170102", "COP_RECEIPT_M", "COP_RECEIPT_D",
             "RECEIPT_TYPE", "RECEIPT_NO", "RECEIPT_DATE",
             null, null, null, "收款单"),
@@ -348,7 +376,7 @@ public sealed class EffectShadowRunner
             "WAGE_TYPE", "WAGE_NO", "WAGE_DATE",
             null, null, null, "保密离职工资表"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802/1504/1518 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802/1504/1518/1906/1908/2403/3307/2917/2709/2710/2711 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -463,9 +491,9 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109 or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606 or 2801 or 2802 or 1504 or 1518))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109 or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606              or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 3307 or 2917 or 2709 or 2710 or 2711))
         {
-            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802/1504/1518 only.");
+            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802/1504/1518/1906/1908/2403/3307/2917/2709/2710/2711 only.");
         }
         var spec = GetSpec(options.ModuleId);
         var deapprove = options.Event.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
@@ -660,11 +688,15 @@ public sealed class EffectShadowRunner
             or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2907 or 2913
             or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
             or 300301 or 300302 or 300304 or 300305 or 1423 or 130106 or 130107 or 130108 or 130109
-            or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606
-            or 2801 or 2802 or 1504 or 1518)
-        {
-            return await ResolveRecordKeysByConfirmAsync(connection, spec, deapprove, failure);
-        }
+             or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606
+             or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 2917 or 2709 or 2710 or 2711)
+         {
+             return await ResolveRecordKeysByConfirmAsync(connection, spec, deapprove, failure);
+         }
+         if (spec.ModuleId == 3307)
+         {
+             return await ResolveRecordKeys3307Async(connection, deapprove, failure);
+         }
         if (spec.ModuleId == 2904)
         {
             return await ResolveRecordKeys2904Async(connection, deapprove, failure);
@@ -1196,13 +1228,14 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId is 2906 or 180106 or 180206 or 180207 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818
             or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913
             or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
-            or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109
-            or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606)
-        {
-            // 2xxx snapshot specs filter target tables by document keys and EXISTS
-            // subqueries off the master; no detail context rows are materialised.
-            return Array.Empty<DetailRow>();
-        }
+             or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109
+             or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606
+             or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 3307 or 2917 or 2709 or 2710 or 2711)
+         {
+             // 2xxx snapshot specs filter target tables by document keys and EXISTS
+             // subqueries off the master; no detail context rows are materialised.
+             return Array.Empty<DetailRow>();
+         }
         const string sql = """
             SELECT LTRIM(RTRIM(ISNULL(D.PURCHASE_TYPE,''))), LTRIM(RTRIM(ISNULL(D.PURCHASE_NO,''))),
                    D.PURCHASE_SERIAL_NO, LTRIM(RTRIM(ISNULL(D.ORDER_TYPE,''))), LTRIM(RTRIM(ISNULL(D.ORDER_NO,''))),
@@ -1406,6 +1439,30 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId is 1504 or 1518)
         {
             return BuildTableSpecsMocBack(spec.ModuleId, master);
+        }
+        if (spec.ModuleId == 1906)
+        {
+            return BuildTableSpecsCarFee(master);
+        }
+        if (spec.ModuleId == 1908)
+        {
+            return BuildTableSpecsCarAddup(master);
+        }
+        if (spec.ModuleId == 2403)
+        {
+            return BuildTableSpecsSamIn(master);
+        }
+        if (spec.ModuleId == 3307)
+        {
+            return BuildTableSpecs3307(master);
+        }
+        if (spec.ModuleId == 2917)
+        {
+            return BuildTableSpecsMouAcceptdele(master);
+        }
+        if (spec.ModuleId is 2709 or 2710 or 2711)
+        {
+            return BuildTableSpecsSfcPlanProcess(master);
         }
         if (spec.ModuleId == 170102)
         {
@@ -2925,7 +2982,35 @@ public sealed class EffectShadowRunner
     }
 
     /// <summary>
-    /// Master-scoped inventory-log spec for 2xxx outbound documents: unlike the
+    /// 3307 (sample management) has no physical detail table and a single-column
+    /// master key: approve picks an unconfirmed sample master, deapprove a confirmed
+    /// one. Both returned keys carry PRO_NO (Key2Column repeats Key1Column).
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys3307Async(
+        SqlConnection connection, bool deapprove, bool failure)
+    {
+        if (failure)
+        {
+            throw new NotSupportedException("3307 影子规格未规格化失败分支（模块无校验规则）。");
+        }
+        var confirm = deapprove ? "1" : "0";
+        const string sql = """
+            SELECT TOP 1 M.PRO_NO, M.PRO_NO
+            FROM dbo.QC_SAMPLE_M M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
+            ORDER BY ISNULL(M.CONFIRM_DATE, M.CREATE_DATE) DESC;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@confirm", confirm);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            throw new InvalidOperationException(deapprove
+                ? "未找到可解批对拍的已批核样品管理单（自动选单无结果）。"
+                : "未找到可对拍的未批核样品管理单（自动选单无结果）。");
+        }
+        return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
     /// row-level BuildLogSpec (which narrows by detail serials/products/depots),
     /// this filters by document date + key pair only. Both paths execute the same
     /// document inside symmetric rolled-back transactions, so the wider scope is
@@ -3388,6 +3473,134 @@ public sealed class EffectShadowRunner
             specs.Add(BuildLogSpecByMaster("1504", master));
         }
         return specs;
+    }
+
+    /// <summary>
+    /// Oil-card recharge document (1906, P_WF_CAR_FEE): approval accumulates the
+    /// detail amount onto the oil-card balance, deapproval reverses it. The compared
+    /// footprint is the document plus the referenced oil-card rows.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecsCarFee(MasterContext master)
+    {
+        var ft = new SqlParameter("@ft", master.ReceiveType);
+        var fn = new SqlParameter("@fn", master.ReceiveNo);
+        var doc = "R.FEE_TYPE=@ft AND R.FEE_NO=@fn";
+        return new List<TableSpec>
+        {
+            new("CAR_FEE_M", new[] { "FEE_TYPE", "FEE_NO" }, "@ft=FEE_TYPE AND @fn=FEE_NO", new[] { ft, fn }),
+            new("CAR_FEE_D", new[] { "FEE_TYPE", "FEE_NO", "SERIAL_NO" }, "@ft=FEE_TYPE AND @fn=FEE_NO", new[] { ft, fn }),
+            new("CAR_OILCARD", new[] { "OILCARD_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.CAR_FEE_D R WHERE {doc} AND CAR_OILCARD.OILCARD_ID=R.OILCARD_ID)",
+                new[] { ft, fn }),
+        };
+    }
+
+    /// <summary>
+    /// Vehicle mission statistics (1908, P_WF_CAR_ADDUP): approval stamps
+    /// FINISHED_TAG=1 on the referenced missions, deapproval clears it. The compared
+    /// footprint is the document plus the stamped mission rows.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecsCarAddup(MasterContext master)
+    {
+        var at = new SqlParameter("@at", master.ReceiveType);
+        var an = new SqlParameter("@an", master.ReceiveNo);
+        var doc = "R.ADDUP_TYPE=@at AND R.ADDUP_NO=@an";
+        return new List<TableSpec>
+        {
+            new("CAR_ADDUP_M", new[] { "ADDUP_TYPE", "ADDUP_NO" }, "@at=ADDUP_TYPE AND @an=ADDUP_NO", new[] { at, an }),
+            new("CAR_ADDUP_D", new[] { "ADDUP_TYPE", "ADDUP_NO", "SERIAL_NO" }, "@at=ADDUP_TYPE AND @an=ADDUP_NO", new[] { at, an }),
+            new("CAR_MISSION_M", new[] { "MISSION_TYPE", "MISSION_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.CAR_ADDUP_D R WHERE {doc} "
+                + "AND CAR_MISSION_M.MISSION_TYPE=R.MISSION_TYPE AND CAR_MISSION_M.MISSION_NO=R.MISSION_NO)",
+                new[] { at, an }),
+        };
+    }
+
+    /// <summary>
+    /// Sample inbound document (2403, P_WF_SAM_IN): approval accumulates quantity
+    /// and amount onto the sample stock and overwrites the unit price; deapproval
+    /// reverses quantity/amount and leaves the price. The compared footprint is the
+    /// document plus the touched sample-stock rows.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecsSamIn(MasterContext master)
+    {
+        var it = new SqlParameter("@it", master.ReceiveType);
+        var ino = new SqlParameter("@inno", master.ReceiveNo);
+        var doc = "R.IN_TYPE=@it AND R.IN_NO=@inno";
+        return new List<TableSpec>
+        {
+            new("SAM_IN_M", new[] { "IN_TYPE", "IN_NO" }, "@it=IN_TYPE AND @inno=IN_NO", new[] { it, ino }),
+            new("SAM_IN_D", new[] { "IN_TYPE", "IN_NO", "SERIAL_NO" }, "@it=IN_TYPE AND @inno=IN_NO", new[] { it, ino }),
+            new("SAMPLE_PRO", new[] { "PRO_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.SAM_IN_D R WHERE {doc} AND SAMPLE_PRO.PRO_NO=R.PRO_NO)",
+                new[] { it, ino }),
+        };
+    }
+
+    /// <summary>
+    /// Sample management (3307, P_WF_QC_SAMPLE): approval stamps the sample box
+    /// number from the master row onto the product, deapproval clears it. The master
+    /// key is the single PRO_NO column (Key2Column repeats it), so the snapshot is
+    /// the master row plus the stamped product row.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecs3307(MasterContext master)
+    {
+        var pn = new SqlParameter("@pn", master.ReceiveType);
+        return new List<TableSpec>
+        {
+            new("QC_SAMPLE_M", new[] { "PRO_NO" }, "@pn=PRO_NO", new[] { pn }),
+            new("PRODUCT", new[] { "PRO_NO" },
+                "EXISTS (SELECT 1 FROM dbo.QC_SAMPLE_M R WHERE R.PRO_NO=@pn AND PRODUCT.PRO_NO=R.PRO_NO)",
+                new[] { pn }),
+        };
+    }
+
+    /// <summary>
+    /// Accept-deletion document (2917, P_WF_MOU_ACCEPTDELE): approval closes the
+    /// referenced accepts (FINISHED_TAG/DATE/PERSON), deapproval reopens them. The
+    /// compared footprint is the document plus the stamped accept rows.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecsMouAcceptdele(MasterContext master)
+    {
+        var at = new SqlParameter("@at", master.ReceiveType);
+        var an = new SqlParameter("@an", master.ReceiveNo);
+        var doc = "R.ACCEPTDELE_TYPE=@at AND R.ACCEPTDELE_NO=@an";
+        return new List<TableSpec>
+        {
+            new("MOU_ACCEPTDELE_M", new[] { "ACCEPTDELE_TYPE", "ACCEPTDELE_NO" },
+                "@at=ACCEPTDELE_TYPE AND @an=ACCEPTDELE_NO", new[] { at, an }),
+            new("MOU_ACCEPTDELE_D", new[] { "ACCEPTDELE_TYPE", "ACCEPTDELE_NO", "SERIAL_NO" },
+                "@at=ACCEPTDELE_TYPE AND @an=ACCEPTDELE_NO", new[] { at, an }),
+            new("MOU_ACCEPT_M", new[] { "ACCEPT_TYPE", "ACCEPT_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.MOU_ACCEPTDELE_D R WHERE {doc} "
+                + "AND MOU_ACCEPT_M.ACCEPT_TYPE=R.ACCEPT_TYPE AND MOU_ACCEPT_M.ACCEPT_NO=R.ACCEPT_NO)",
+                new[] { at, an }),
+        };
+    }
+
+    /// <summary>
+    /// Process-plan documents (2709/2710/2711, P_WF_SFC_PLAN_PROCESS): approval
+    /// accumulates the detail quantity onto the referenced plan lines and recomputes
+    /// their FINISHED_TAG by quantity; deapproval mirrors it. The compared footprint
+    /// is the document plus the touched plan lines.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecsSfcPlanProcess(MasterContext master)
+    {
+        var pt = new SqlParameter("@pt", master.ReceiveType);
+        var pn = new SqlParameter("@pn", master.ReceiveNo);
+        var doc = "R.PLAN_PROCESS_TYPE=@pt AND R.PLAN_PROCESS_NO=@pn";
+        return new List<TableSpec>
+        {
+            new("SFC_PLAN_PROCESS_M", new[] { "PLAN_PROCESS_TYPE", "PLAN_PROCESS_NO" },
+                "@pt=PLAN_PROCESS_TYPE AND @pn=PLAN_PROCESS_NO", new[] { pt, pn }),
+            new("SFC_PLAN_PROCESS_D", new[] { "PLAN_PROCESS_TYPE", "PLAN_PROCESS_NO", "SERIAL_NO" },
+                "@pt=PLAN_PROCESS_TYPE AND @pn=PLAN_PROCESS_NO", new[] { pt, pn }),
+            new("SFC_PLAN_D", new[] { "PLAN_TYPE", "PLAN_NO", "SERIAL_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.SFC_PLAN_PROCESS_D R WHERE {doc} "
+                + "AND SFC_PLAN_D.PLAN_TYPE=R.PLAN_TYPE AND SFC_PLAN_D.PLAN_NO=R.PLAN_NO "
+                + "AND SFC_PLAN_D.SERIAL_NO=R.PLAN_SERIAL_NO)",
+                new[] { pt, pn }),
+        };
     }
 
     /// <summary>
