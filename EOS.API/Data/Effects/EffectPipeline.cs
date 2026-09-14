@@ -157,7 +157,7 @@ public sealed class EffectPipeline(
         CancellationToken token)
     {
         if (action.Condition is { } condition && !await ConditionHoldsAsync(
-                connection, transaction, plan, condition, token))
+                connection, transaction, plan, condition, masterKeyValues, token))
             return 0;
 
         if (action.Ops.Count > 0)
@@ -181,14 +181,18 @@ public sealed class EffectPipeline(
     }
 
     /// <summary>
-    /// Evaluates an action-level condition against the document context: MASTER/DETAIL
-    /// predicates use EXISTS semantics over the document tables; switches read SYSSS.
+    /// Evaluates an action-level condition against the current document: MASTER
+    /// predicates are scoped by the document master keys (a bare EXISTS would be
+    /// true whenever ANY document carries the value, wrongly firing the action for
+    /// documents the legacy procedure skips); DETAIL predicates keep the historical
+    /// unscoped EXISTS semantics; switches read SYSSS.
     /// </summary>
     private async Task<bool> ConditionHoldsAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         ModuleEffectPlan plan,
         JsonElement condition,
+        IReadOnlyList<string> masterKeyValues,
         CancellationToken token)
     {
         if (plan.MasterTable is null)
@@ -202,13 +206,26 @@ public sealed class EffectPipeline(
                 _ => null,
             },
             _ => true);
+        var parameters = new List<EffectSqlParameter>(fragment.Parameters);
         var sql = new StringBuilder("SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.")
             .Append(EffectConditionCompiler.Identifier(plan.MasterTable)).Append(" M");
         if (plan.DetailTable is not null)
             sql.Append(" LEFT JOIN dbo.").Append(EffectConditionCompiler.Identifier(plan.DetailTable)).Append(" D ON 1=1");
-        sql.Append(" WHERE ").Append(fragment.Sql).Append(") THEN 1 ELSE 0 END;");
+        var keys = Math.Min(plan.MasterPkOrder.Count, masterKeyValues.Count);
+        if (keys == 0)
+            throw new EffectConfigException("条件求值缺少主表主键值，禁止无单据范围执行。");
+        var keyPredicates = new List<string>();
+        for (var index = 0; index < keys; index++)
+        {
+            var name = "@cmk" + index;
+            parameters.Add(new EffectSqlParameter(name, masterKeyValues[index]));
+            keyPredicates.Add($"M.{EffectConditionCompiler.Identifier(plan.MasterPkOrder[index])} = {name}");
+        }
+        sql.Append(" WHERE ").Append(fragment.Sql)
+            .Append(" AND ").Append(string.Join(" AND ", keyPredicates))
+            .Append(") THEN 1 ELSE 0 END;");
         await using var command = new SqlCommand(sql.ToString(), connection, transaction);
-        foreach (var parameter in fragment.Parameters)
+        foreach (var parameter in parameters)
             command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
         return Convert.ToInt32(await command.ExecuteScalarAsync(token)) == 1;
     }
