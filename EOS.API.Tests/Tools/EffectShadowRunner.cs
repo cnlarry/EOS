@@ -230,9 +230,15 @@ public sealed class EffectShadowRunner
         130108 => new(130108, "130108", "INV_LOAN_M", "INV_LOAN_D",
             "LOAN_TYPE", "LOAN_NO", "LOAN_DATE",
             null, null, null, "借出单"),
-        130109 => new(130109, "130109", "INV_RETURN_M", "INV_RETURN_D",
-            "RETURN_TYPE", "RETURN_NO", "RETURN_DATE",
-            null, null, null, "返还单"),
+         130109 => new(130109, "130109", "INV_RETURN_M", "INV_RETURN_D",
+             "RETURN_TYPE", "RETURN_NO", "RETURN_DATE",
+             null, null, null, "返还单"),
+         2801 => new(2801, "2801", "MOC_OUT_PRODUCT_IN_M", "MOC_OUT_PRODUCT_IN_D",
+             "OUT_PRODUCT_IN_TYPE", "OUT_PRODUCT_IN_NO", "OUT_PRODUCT_IN_DATE",
+             null, null, null, "托外进货单管理"),
+         2802 => new(2802, "2802", "MOC_OUT_PRODUCT_OUT_M", "MOC_OUT_PRODUCT_OUT_D",
+             "OUT_PRODUCT_OUT_TYPE", "OUT_PRODUCT_OUT_NO", "OUT_PRODUCT_OUT_DATE",
+             null, null, null, "托外退货单管理"),
         170102 => new(170102, "170102", "COP_RECEIPT_M", "COP_RECEIPT_D",
             "RECEIPT_TYPE", "RECEIPT_NO", "RECEIPT_DATE",
             null, null, null, "收款单"),
@@ -336,7 +342,7 @@ public sealed class EffectShadowRunner
             "WAGE_TYPE", "WAGE_NO", "WAGE_DATE",
             null, null, null, "保密离职工资表"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -451,9 +457,9 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109 or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109 or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606 or 2801 or 2802))
         {
-            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606 only.");
+            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802 only.");
         }
         var spec = GetSpec(options.ModuleId);
         var deapprove = options.Event.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
@@ -648,7 +654,8 @@ public sealed class EffectShadowRunner
             or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2907 or 2913
             or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
             or 300301 or 300302 or 300304 or 300305 or 1423 or 130106 or 130107 or 130108 or 130109
-            or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606)
+            or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606
+            or 2801 or 2802)
         {
             return await ResolveRecordKeysByConfirmAsync(connection, spec, deapprove, failure);
         }
@@ -1385,6 +1392,10 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 130109)
         {
             return BuildTableSpecs130109(master);
+        }
+        if (spec.ModuleId is 2801 or 2802)
+        {
+            return BuildTableSpecsOutSourcing(spec.ModuleId, master);
         }
         if (spec.ModuleId == 170102)
         {
@@ -3298,6 +3309,36 @@ public sealed class EffectShadowRunner
         if (master.ReceiveDate is not null)
         {
             specs.Add(BuildLogSpecByMaster("130107", master));
+        }
+        return specs;
+    }
+
+    /// <summary>
+    /// Out-sourcing in/out documents (2801/2802): a single inventory move (IN for the
+    /// inbound, OUT for the returned one), so the compared footprint is the document,
+    /// the product row, the depot balance and the inventory log.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecsOutSourcing(int moduleId, MasterContext master)
+    {
+        var (masterTable, detailTable, key1, key2, logModule) = moduleId == 2801
+            ? ("MOC_OUT_PRODUCT_IN_M", "MOC_OUT_PRODUCT_IN_D", "OUT_PRODUCT_IN_TYPE", "OUT_PRODUCT_IN_NO", "2801")
+            : ("MOC_OUT_PRODUCT_OUT_M", "MOC_OUT_PRODUCT_OUT_D", "OUT_PRODUCT_OUT_TYPE", "OUT_PRODUCT_OUT_NO", "2802");
+        var k1 = new SqlParameter("@k1", master.ReceiveType);
+        var k2 = new SqlParameter("@k2", master.ReceiveNo);
+        var doc = $"R.{key1}=@k1 AND R.{key2}=@k2";
+        var specs = new List<TableSpec>
+        {
+            new(masterTable, new[] { key1, key2 }, $"@k1={key1} AND @k2={key2}", new[] { k1, k2 }),
+            new(detailTable, new[] { key1, key2, "SERIAL_NO" }, $"@k1={key1} AND @k2={key2}", new[] { k1, k2 }),
+            new("PRODUCT", new[] { "PRO_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.{detailTable} R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { k1, k2 }),
+            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+                $"EXISTS (SELECT 1 FROM dbo.{detailTable} R WHERE {doc} "
+                + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)", new[] { k1, k2 }),
+        };
+        if (master.ReceiveDate is not null)
+        {
+            specs.Add(BuildLogSpecByMaster(logModule, master));
         }
         return specs;
     }
