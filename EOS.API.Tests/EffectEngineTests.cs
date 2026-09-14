@@ -673,14 +673,14 @@ public class ServiceEffectHandlerTests
             "COP_ORDER_D.PRICE", "COP_ORDER_D.CURR_RATE", "COP_ORDER_D.PRE_SEND_DATE",
             "COP_ORDER_CHANGE_M", "COP_ORDER_CHANGE_M.ORDER_TYPE", "COP_ORDER_CHANGE_M.ORDER_NO",
             "COP_ORDER_CHANGE_D", "COP_ORDER_CHANGE_D.ORDER_TYPE", "COP_ORDER_CHANGE_D.ORDER_NO",
-            "COP_ORDER_CHANGE_D.ORDER_SERIAL_NO", "COP_ORDER_CHANGE_D.PRE_DELIVERY_DATE",
+            "COP_ORDER_CHANGE_D.ORDER_SERIAL_NO", "COP_ORDER_CHANGE_D.QTY", "COP_ORDER_CHANGE_D.PRE_DELIVERY_DATE",
         };
         var ok = JsonDocument.Parse("""{"detail":{"fields":["QTY","PRE_SEND_DATE"]},"totals":true}""").RootElement.Clone();
         var cfg = EOS.API.Data.Effects.ServiceEffectHandlers.ChangeApplyConfig.Parse(ok, plan, columns);
         Assert.Equal("COP_ORDER_M", cfg.MasterTarget);
         Assert.Equal("COP_ORDER_D", cfg.DetailTarget);
         Assert.Equal("ORDER_SERIAL_NO", cfg.SerialColumn);
-        var missing = new HashSet<string>(columns.Where(item => item != "COP_ORDER_D.CURR_RATE"));
+        var missing = new HashSet<string>(columns.Where(item => item != "COP_ORDER_CHANGE_D.PRE_DELIVERY_DATE"));
         Assert.Throws<EOS.API.Data.Effects.EffectConfigException>(
             () => EOS.API.Data.Effects.ServiceEffectHandlers.ChangeApplyConfig.Parse(ok, plan, missing));
     }

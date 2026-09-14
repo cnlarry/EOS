@@ -223,6 +223,10 @@ public static class EffectStructSchemas
         {
             issues.AddRange(ValidateChangeApplyParams(root));
         }
+        if (effectKey.Equals("quote-parameter-recalc", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.AddRange(ValidateQuoteParameterParams(root));
+        }
         if (effectKey.Equals("balance-adjust", StringComparison.OrdinalIgnoreCase))
         {
             issues.AddRange(ValidateBalanceAdjustParams(root));
@@ -419,6 +423,36 @@ public static class EffectStructSchemas
                     if (!property.NameEquals("mode"))
                         issues.Add($"change-apply.projection 含未登记键 '{property.Name}'（仅允许 mode）。");
             }
+        }
+        return issues;
+    }
+    private static IReadOnlyList<string> ValidateQuoteParameterParams(JsonElement root)
+    {
+        var issues = new List<string>();
+        if (!root.TryGetProperty("targetTable", out var target) || target.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(target.GetString()))
+        {
+            issues.Add("quote-parameter-recalc.targetTable 不能为空");
+        }
+        else if (!Identifier.IsMatch(target.GetString()!))
+        {
+            issues.Add("quote-parameter-recalc.targetTable 必须是全大写标识符");
+        }
+        if (!root.TryGetProperty("mode", out var mode) || mode.ValueKind != JsonValueKind.String
+            || !mode.GetString()!.Equals("recalc-confirmed", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.Add("quote-parameter-recalc.mode 仅支持 recalc-confirmed。");
+        }
+        if (!root.TryGetProperty("feeFields", out var feeFields) || feeFields.ValueKind != JsonValueKind.Array
+            || feeFields.GetArrayLength() == 0)
+        {
+            issues.Add("quote-parameter-recalc.feeFields 不能为空。");
+        }
+        else
+        {
+            foreach (var item in feeFields.EnumerateArray())
+                if (item.ValueKind != JsonValueKind.String || !Identifier.IsMatch(item.GetString() ?? string.Empty))
+                    issues.Add("quote-parameter-recalc.feeFields 存在非法字段名。");
         }
         return issues;
     }
