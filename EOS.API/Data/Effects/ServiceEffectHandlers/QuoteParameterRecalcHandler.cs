@@ -119,13 +119,18 @@ internal sealed record QuoteParameterConfig(string TargetTable, string Mode, str
             var pct = fee.Replace("_SUM", "", StringComparison.Ordinal) + "_PCT";
             if (!columns.Contains(target + "." + fee))
                 throw new EffectConfigException($"quote-parameter-recalc 费用列不存在：{target}.{fee}。");
-            // Only PRICE*PCT fee entries take part in the breakdown: MATERIAL_SUM and
-            // PRICE carry their own formulas, and fields without a matching PCT column
-            // are not fee entries either.
-            if (columns.Contains(target + "." + pct)
-                && !fee.Equals("MATERIAL_SUM", StringComparison.OrdinalIgnoreCase)
-                && !fee.Equals("PRICE", StringComparison.OrdinalIgnoreCase))
-                feeList.Add(fee);
+            // MATERIAL_SUM and PRICE carry their own formulas and are not fee
+            // breakdown entries; every other declared fee field must have its
+            // percentage column present, otherwise the recalc SQL would fail at run
+            // time and the config would silently drop the fee.
+            if (fee.Equals("MATERIAL_SUM", StringComparison.OrdinalIgnoreCase)
+                || fee.Equals("PRICE", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            if (!columns.Contains(target + "." + pct))
+                throw new EffectConfigException($"quote-parameter-recalc 费用字段缺少百分比列：{target}.{pct}（feeFields 声明 {fee}）。");
+            feeList.Add(fee);
         }
         return new QuoteParameterConfig(target, mode, feeList.ToArray());
     }
