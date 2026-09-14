@@ -410,14 +410,39 @@ button, input, select { font: inherit; }
 /* 报表权限矩阵页：表格区作为内部滚动容器（吸顶表头随表内滚动） */
 .erp-full-list-page .erp-report-matrix-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .erp-full-list-page .erp-report-matrix-body .erp-table-shell { flex: 1 1 auto; min-height: 0; }
-/* 字段设置全页：整页随视口高度自适应，左栏字段导航与右栏编辑区各自内部滚动 */
+/* 字段设置全页：整页随视口高度自适应，左栏字段导航与右栏编辑区各自内部滚动。
+   卡片体直接作为 grid 承载两栏（row/col 的 flex 行对内部行高度不是确定尺寸，栏会按内容
+   高度撑开而不滚动）；行轨道 minmax(0,1fr) 给出确定高度，两栏 min-height:0 + 滚动条生效 */
 .erp-field-editor-page { flex: 1 1 auto; min-height: 0; }
 .erp-field-editor-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.erp-field-editor-page > .erp-list-card > .card-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
-.erp-field-editor-page .card-body .row.g-0 { height: 100%; }
-.erp-field-editor-page .card-body .row.g-0 > .col { min-height: 0; overflow-y: auto; }
-.erp-field-editor-page .erp-field-nav-item { cursor: pointer; }
+.erp-field-editor-page > .erp-list-card > .card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.erp-field-editor-page .card-body > .row.g-0 { display: contents; }
+.erp-field-editor-page .erp-field-nav { width: 260px; min-width: 0; min-height: 0; }
+.erp-field-editor-page .erp-field-nav > .overflow-auto { min-height: 0; }
+.erp-field-editor-page .card-body > .row.g-0 > .col { min-width: 0; min-height: 0; overflow-y: auto; }
+/* 字段导航项：底色由本规则给透明（不用 bg-transparent 工具类——它是 !important，
+   会盖掉 hover 底色）；当前项用 bg-primary-lt，hover 时以亮度微调给出反馈。
+   左右 10px 用 padding 而非 margin：字段项整行可点，hover 底色需铺满整行到左栏边框 */
+.erp-field-editor-page .erp-field-nav-header { padding: 8px 10px; }
+.erp-field-editor-page .erp-field-nav-item { cursor: pointer; background-color: transparent; padding-right: 10px; padding-left: 10px; }
 .erp-field-editor-page .erp-field-nav-item:hover { background-color: var(--tblr-gray-100, rgba(15, 23, 42, 0.06)); }
+.erp-field-editor-page .erp-field-nav-item.bg-primary-lt:hover { filter: brightness(0.96); }
+/* 右栏内边距 10px：选项卡面板自带边框，与卡片边框之间保留 10px */
+.erp-field-editor-page .erp-field-editor-body { padding: 10px; }
+@media (max-width: 767.98px) {
+  /* 窄屏两栏改为上下堆叠：不再限高，交由页面滚动 */
+  .erp-field-editor-page > .erp-list-card { overflow: visible; }
+  .erp-field-editor-page > .erp-list-card > .card-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; overflow: visible; }
+  .erp-field-editor-page .erp-field-nav { width: 100%; max-height: 45vh; }
+  .erp-field-editor-page .card-body > .row.g-0 > .col { overflow-y: visible; }
+}
 /* 未管理字段弹窗：电子表格列表限高内部滚动 */
 .erp-unmanaged-table .erp-table-shell { max-height: 46vh; overflow-y: auto; }
 .erp-unmanaged-table .table-responsive { overflow: visible; }

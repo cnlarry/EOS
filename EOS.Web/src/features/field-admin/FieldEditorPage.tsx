@@ -177,8 +177,8 @@ export function FieldEditorRoute() {
         </section>
           <div className="card-body p-0">
             <div className="row g-0">
-              <div className="col-auto border-end d-flex flex-column erp-field-nav" style={{ width: 260 }}>
-                <div className="p-2 border-bottom d-flex justify-content-between align-items-center">
+              <div className="col-auto border-end d-flex flex-column erp-field-nav">
+                <div className="erp-field-nav-header border-bottom d-flex justify-content-between align-items-center">
                   <strong className="small">字段列表（{fieldsQuery.data?.length ?? '…'}）</strong>
                   <Button size="sm" variant="primary" icon={<IconPlus size={16} />} onClick={() => gotoField('new')}>新增</Button>
                 </div>
@@ -188,7 +188,7 @@ export function FieldEditorRoute() {
                     <button
                       key={item.fieldId}
                       type="button"
-                      className={`erp-field-nav-item d-block w-100 text-start px-2 py-1 border-0 bg-transparent ${item.fieldId.toLowerCase() === fieldId.toLowerCase() ? 'bg-primary-lt' : ''}`}
+                      className={`erp-field-nav-item d-block w-100 text-start py-1 border-0 ${item.fieldId.toLowerCase() === fieldId.toLowerCase() ? 'bg-primary-lt' : ''}`}
                       onClick={() => gotoField(item.fieldId)}
                     >
                       <div className="small fw-semibold font-monospace text-truncate">{item.fieldId}</div>
@@ -198,7 +198,7 @@ export function FieldEditorRoute() {
                 </div>
               </div>
               <div className="col">
-                <div className="p-3">
+                <div className="erp-field-editor-body">
                   <FieldEditorForm
                     mode={isNew ? 'new' : 'edit'}
                     tableId={tableId}
