@@ -106,16 +106,16 @@ public sealed class SetStateHandler : IEffectServiceHandler
             foreach (var target in targets.EnumerateArray())
             {
                 // A plain table name keeps the master-key join convention; an object
-                // adds explicit detail references that locate the target row through
-                // the document detail (non-key correlations such as the source
-                // document's application keys).
-                var (table, detailRefs) = target.ValueKind == JsonValueKind.String
-                    ? (target.GetString()!.Trim(), new List<(string Target, string Source)>())
+                // adds explicit references that locate the target row either through
+                // the document detail (source: a detail column, e.g. the source
+                // document's application keys) or directly through the document
+                // master (masterSource: a master column, for targets keyed by
+                // master-row values such as scrap application keys). One target
+                // uses a single locating kind, never a mix.
+                var (table, refs) = target.ValueKind == JsonValueKind.String
+                    ? (target.GetString()!.Trim(), new List<(string Target, string Source, bool FromMaster)>())
                     : ParseTargetObject(target);
-                var join = detailRefs.Count > 0
-                    ? string.Join(" AND ", detailRefs.Select(reference =>
-                        $"T.{ServiceEffectSql.Q(reference.Target)} = D.{ServiceEffectSql.Q(reference.Source)}"))
-                    : ServiceEffectSql.SameNameKeyJoin(plan, "T");
+                var fromMaster = refs.Count > 0 && refs.All(reference => reference.FromMaster);
                 var sets = new List<string>();
                 foreach (var property in state.EnumerateObject())
                 {
@@ -125,18 +125,7 @@ public sealed class SetStateHandler : IEffectServiceHandler
                         parameters.Add(new EffectSqlParameter(value, clear ? string.Empty : property.Value.GetString()));
                     sets.Add($"{ServiceEffectSql.Q(property.Name)} = {value}");
                 }
-                // A master-table target is filtered directly by key values; other targets
-                // are already tied to the master by the same-name key join.
-                var where = table == plan.MasterTable
-                    ? MasterWhere(plan, context, parameters)
-                    : "1=1";
-                var from = $"dbo.{ServiceEffectSql.Q(table)} T";
-                if (detailRefs.Count > 0)
-                    from += $" JOIN dbo.{ServiceEffectSql.Q(plan.DetailTable!)} D ON {join}"
-                        + $" JOIN dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M ON {ServiceEffectSql.SameNameKeyJoin(plan, "D")}";
-                else
-                    from += $" JOIN dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M ON {join}";
-                statements.Add($"UPDATE T SET {string.Join(", ", sets)} FROM {from} WHERE {where}");
+                statements.Add(BuildUpdate(plan, table, refs, fromMaster, sets, context.MasterKeyValues, parameters));
                 targetIndex++;
             }
         }
@@ -213,19 +202,23 @@ public sealed class SetStateHandler : IEffectServiceHandler
                 throw new EffectConfigException("set-state targets 不能为空。");
             foreach (var target in targets.EnumerateArray())
             {
-                var (table, detailRefs) = target.ValueKind == JsonValueKind.String
-                    ? (target.GetString()!.Trim(), new List<(string Target, string Source)>())
+                var (table, refs) = target.ValueKind == JsonValueKind.String
+                    ? (target.GetString()!.Trim(), new List<(string Target, string Source, bool FromMaster)>())
                     : ParseTargetObject(target);
                 if (!columns.Contains(table))
                     throw new EffectConfigException($"set-state 目标表不存在：{table}。");
-                if (detailRefs.Count > 0 && plan.DetailTable is null)
+                var fromMaster = refs.Count > 0 && refs.All(reference => reference.FromMaster);
+                if (refs.Count > 0 && !fromMaster && plan.DetailTable is null)
                     throw new EffectConfigException($"set-state 目标 {table} 使用明细定位键，但模块未配置明细表。");
-                foreach (var reference in detailRefs)
+                if (fromMaster && plan.MasterTable is null)
+                    throw new EffectConfigException($"set-state 目标 {table} 使用主表定位键，但模块未配置主表。");
+                foreach (var reference in refs)
                 {
                     if (!columns.Contains(table + "." + reference.Target))
                         throw new EffectConfigException($"set-state 目标定位列不存在：{table}.{reference.Target}。");
-                    if (!columns.Contains(plan.DetailTable + "." + reference.Source))
-                        throw new EffectConfigException($"set-state 明细定位列不存在：{plan.DetailTable}.{reference.Source}。");
+                    var sourceTable = reference.FromMaster ? plan.MasterTable! : plan.DetailTable;
+                    if (!columns.Contains(sourceTable + "." + reference.Source))
+                        throw new EffectConfigException($"set-state {(reference.FromMaster ? "主表" : "明细")}定位列不存在：{sourceTable}.{reference.Source}。");
                 }
                 foreach (var property in state.EnumerateObject())
                 {
@@ -282,17 +275,60 @@ public sealed class SetStateHandler : IEffectServiceHandler
         return kind.GetString();
     }
 
-    private static string MasterWhere(ModuleEffectPlan plan, ServiceEffectContext context, List<EffectSqlParameter> parameters)
+    /// <summary>
+    /// Builds the UPDATE statement for one targets/state target. A master-table
+    /// target is filtered directly by key values; a master-located target is scoped
+    /// to the current document through its master row (T correlated to M by the
+    /// master refs, M pinned by the document keys); other targets are already tied
+    /// to the master by the same-name key join.
+    /// </summary>
+    internal static string BuildUpdate(
+        ModuleEffectPlan plan,
+        string table,
+        IReadOnlyList<(string Target, string Source, bool FromMaster)> refs,
+        bool fromMaster,
+        IReadOnlyList<string> sets,
+        IReadOnlyList<string> masterKeyValues,
+        List<EffectSqlParameter> parameters)
+    {
+        if (sets.Count == 0)
+            throw new EffectConfigException("set-state 缺少可回写字段。");
+        var join = refs.Count == 0
+            ? ServiceEffectSql.SameNameKeyJoin(plan, "T")
+            : fromMaster
+                ? string.Join(" AND ", refs.Select(reference =>
+                    $"T.{ServiceEffectSql.Q(reference.Target)} = M.{ServiceEffectSql.Q(reference.Source)}"))
+                : string.Join(" AND ", refs.Select(reference =>
+                    $"T.{ServiceEffectSql.Q(reference.Target)} = D.{ServiceEffectSql.Q(reference.Source)}"));
+        var where = table == plan.MasterTable
+            ? MasterKeysWhere(plan, masterKeyValues, parameters, "T")
+            : fromMaster
+                ? MasterKeysWhere(plan, masterKeyValues, parameters, "M")
+                : "1=1";
+        var from = $"dbo.{ServiceEffectSql.Q(table)} T";
+        if (refs.Count > 0 && !fromMaster)
+            from += $" JOIN dbo.{ServiceEffectSql.Q(plan.DetailTable!)} D ON {join}"
+                + $" JOIN dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M ON {ServiceEffectSql.SameNameKeyJoin(plan, "D")}";
+        else
+            from += $" JOIN dbo.{ServiceEffectSql.Q(plan.MasterTable!)} M ON {join}";
+        return $"UPDATE T SET {string.Join(", ", sets)} FROM {from} WHERE {where}";
+    }
+
+    private static string MasterWhere(ModuleEffectPlan plan, ServiceEffectContext context, List<EffectSqlParameter> parameters) =>
+        MasterKeysWhere(plan, context.MasterKeyValues, parameters, "T");
+
+    private static string MasterKeysWhere(
+        ModuleEffectPlan plan, IReadOnlyList<string> masterKeyValues, List<EffectSqlParameter> parameters, string alias)
     {
         var parts = new List<string>();
-        var keys = Math.Min(plan.MasterPkOrder.Count, context.MasterKeyValues.Count);
+        var keys = Math.Min(plan.MasterPkOrder.Count, masterKeyValues.Count);
         if (keys == 0)
             throw new EffectConfigException("set-state 缺少主表主键值。");
         for (var index = 0; index < keys; index++)
         {
             var name = "@sk" + index;
-            parameters.Add(new EffectSqlParameter(name, context.MasterKeyValues[index]));
-            parts.Add($"T.{ServiceEffectSql.Q(plan.MasterPkOrder[index])} = {name}");
+            parameters.Add(new EffectSqlParameter(name, masterKeyValues[index]));
+            parts.Add($"{alias}.{ServiceEffectSql.Q(plan.MasterPkOrder[index])} = {name}");
         }
         return string.Join(" AND ", parts);
     }
@@ -305,24 +341,37 @@ public sealed class SetStateHandler : IEffectServiceHandler
     /// <summary>
     /// Parses an object target: { table, refs: [{ target, source }] } locates the
     /// target rows through the module detail columns (the detail is already scoped
-    /// to the current document by its master keys).
+    /// to the current document by its master keys); { target, masterSource } locates
+    /// them through the document master row itself (for targets keyed by master-row
+    /// values the detail does not carry). One target commits to a single locating
+    /// kind; mixing source and masterSource in one target is rejected fail-closed.
     /// </summary>
-    private static (string Table, List<(string Target, string Source)> Refs) ParseTargetObject(JsonElement target)
+    private static (string Table, List<(string Target, string Source, bool FromMaster)> Refs) ParseTargetObject(JsonElement target)
     {
         if (target.ValueKind != JsonValueKind.Object
             || !target.TryGetProperty("table", out var tableValue) || tableValue.ValueKind != JsonValueKind.String)
             throw new EffectConfigException("set-state targets 项必须是表名或 {table, refs} 对象。");
-        var refs = new List<(string Target, string Source)>();
+        var refs = new List<(string Target, string Source, bool FromMaster)>();
         if (target.TryGetProperty("refs", out var refsValue) && refsValue.ValueKind == JsonValueKind.Array)
         {
             foreach (var item in refsValue.EnumerateArray())
             {
                 if (item.ValueKind != JsonValueKind.Object
-                    || !item.TryGetProperty("target", out var t) || t.ValueKind != JsonValueKind.String
-                    || !item.TryGetProperty("source", out var s) || s.ValueKind != JsonValueKind.String)
-                    throw new EffectConfigException("set-state targets.refs 项必须是 {target, source}。");
-                refs.Add((t.GetString()!.Trim(), s.GetString()!.Trim()));
+                    || !item.TryGetProperty("target", out var t) || t.ValueKind != JsonValueKind.String)
+                    throw new EffectConfigException("set-state targets.refs 项必须是 {target, source|masterSource}。");
+                var hasSource = item.TryGetProperty("source", out var s) && s.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(s.GetString());
+                var hasMasterSource = item.TryGetProperty("masterSource", out var m) && m.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(m.GetString());
+                if (hasSource == hasMasterSource)
+                    throw new EffectConfigException("set-state targets.refs 项必须且只能含 source / masterSource 其一。");
+                refs.Add((t.GetString()!.Trim(),
+                    hasSource ? s.GetString()!.Trim() : m.GetString()!.Trim(),
+                    hasMasterSource));
             }
+            if (refs.Count > 0 && refs.Any(reference => reference.FromMaster)
+                && refs.Any(reference => !reference.FromMaster))
+                throw new EffectConfigException("set-state targets.refs 项不得混用 source 与 masterSource。");
         }
         foreach (var property in target.EnumerateObject())
             if (!property.NameEquals("table") && !property.NameEquals("refs"))
