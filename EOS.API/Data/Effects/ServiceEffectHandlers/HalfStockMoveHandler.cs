@@ -177,7 +177,14 @@ public sealed class HalfStockMoveSql
     public async Task<int> RunAsync(HalfStockMovePlan.RowSetStatement rowSet, CancellationToken token)
     {
         await ExecAsync($"IF OBJECT_ID('tempdb..{Tmp}') IS NOT NULL DROP TABLE {Tmp}", token);
-        var fill = new SqlCommand($"SELECT * INTO {Tmp} FROM ({rowSet.Sql}) R", _connection, _transaction);
+        // Explicit temp shape (same pattern as the finished-goods move): widths follow
+        // the document detail columns so no value is ever silently truncated.
+        await ExecAsync(
+            $"CREATE TABLE {Tmp}(PRO_NO nchar(60), PROCEDURE_TYPE_ID nchar(20), DEPOT_ID nchar(20), QTY float)", token);
+        var fill = new SqlCommand(
+            $"INSERT INTO {Tmp}(PRO_NO, PROCEDURE_TYPE_ID, DEPOT_ID, QTY) "
+            + $"SELECT PRO_NO, PROCEDURE_TYPE_ID, DEPOT_ID, QTY FROM ({rowSet.Sql}) R",
+            _connection, _transaction);
         foreach (var parameter in rowSet.Parameters)
             fill.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
         await fill.ExecuteNonQueryAsync(token);
