@@ -49,6 +49,7 @@ public static class EffectParamPhysicalValidator
         "callback-reprice",
         "half-stock-move",
         "car-filloil-sync",
+        "detail-field-sync",
     };
 
     /// <summary>True when the key either carries no reference or is resolved by this validator.</summary>
@@ -142,6 +143,9 @@ public static class EffectParamPhysicalValidator
                     break;
                 case "half-stock-move":
                     HalfStockMovePlan.Parse(root).ValidateColumns(plan, columns);
+                    break;
+                case "detail-field-sync":
+                    _ = DetailFieldSyncSpec.Parse(root, plan, columns);
                     break;
                 case "car-filloil-sync":
                     _ = CarFilloilSyncSpec.Parse(root, plan, columns);
