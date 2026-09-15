@@ -577,7 +577,15 @@ public sealed class ModuleBusinessConfigRepository(
         await using var reader = await command.ExecuteReaderAsync(token);
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         while (await reader.ReadAsync(token))
+        {
+            // Both bare table names (target-table existence checks in the service
+            // handlers) and table.column entries, mirroring EffectPhysicalColumns
+            // used at execution time: a save-time set without bare names rejects
+            // every targets-shape set-state/link-stamp save while the same config
+            // executes fine.
+            result.Add(reader.GetString(0));
             result.Add(Key(reader.GetString(0), reader.GetString(1)));
+        }
         return result;
     }
 
