@@ -200,6 +200,7 @@ builder.Services.AddScoped<WorkbenchApprovalService>();
 builder.Services.AddScoped<WorkbenchQueryComposer>();
 builder.Services.AddScoped<WorkbenchCommandHandler>();
 builder.Services.AddScoped<AttendanceCalcService>();
+builder.Services.AddScoped<HumanResourceJobsService>();
 builder.Services.AddScoped<WorkbenchDefinitionBuilder>();
 builder.Services.AddScoped<WorkbenchFieldMetaMapper>();
 builder.Services.AddScoped<DocumentWorkbenchRepository>();
