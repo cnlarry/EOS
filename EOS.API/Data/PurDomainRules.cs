@@ -94,10 +94,10 @@ public static class PurDomainRules
             """
             SELECT d.SERIAL_NO,
                    SUM(CASE WHEN p.SRC='P' THEN p.QTY END) PUR_QTY,
-                   SUM(CASE WHEN p.SRC='R' THEN p.QTY END) REC_QTY,
+                   ISNULL(SUM(CASE WHEN p.SRC='R' THEN p.QTY END),0) REC_QTY,
                    SUM(CASE WHEN p.SRC='C' THEN p.QTY END) RET_QTY,
                    SUM(CASE WHEN p.SRC='P' THEN p.SPARE_QTY END) PUR_SPARE_QTY,
-                   SUM(CASE WHEN p.SRC='R' THEN p.SPARE_QTY END) REC_SPARE_QTY,
+                   ISNULL(SUM(CASE WHEN p.SRC='R' THEN p.SPARE_QTY END),0) REC_SPARE_QTY,
                    SUM(CASE WHEN p.SRC='C' THEN p.SPARE_QTY END) RET_SPARE_QTY
             FROM dbo.PUR_CANCEL_D d
             INNER JOIN (
@@ -109,8 +109,8 @@ public static class PurDomainRules
             ) p ON p.PURCHASE_TYPE=d.PURCHASE_TYPE AND p.PURCHASE_NO=d.PURCHASE_NO AND p.PURCHASE_SERIAL_NO=d.PURCHASE_SERIAL_NO
             WHERE d.CANCEL_TYPE=@Type AND d.CANCEL_NO=@No
             GROUP BY d.SERIAL_NO
-            HAVING SUM(CASE WHEN p.SRC='C' THEN p.QTY END) > SUM(CASE WHEN p.SRC='R' THEN p.QTY END)
-                OR SUM(CASE WHEN p.SRC='C' THEN p.SPARE_QTY END) > SUM(CASE WHEN p.SRC='R' THEN p.SPARE_QTY END);
+            HAVING SUM(CASE WHEN p.SRC='C' THEN p.QTY END) > ISNULL(SUM(CASE WHEN p.SRC='R' THEN p.QTY END),0)
+                OR SUM(CASE WHEN p.SRC='C' THEN p.SPARE_QTY END) > ISNULL(SUM(CASE WHEN p.SRC='R' THEN p.SPARE_QTY END),0);
             """, type, no, token,
             line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
         return rows is null
