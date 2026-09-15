@@ -43,7 +43,7 @@ INSERT INTO @RULES (MODULE_ID, SEQ, VALIDATION_KEY, PARAM_STRUCT, MESSAGE, REMAR
 (180106, 2, N'duplicate-check',
  N'{"mode":"within-doc","keyFields":["EMP_ID"],'
  + N'"displayLookup":{"table":"HR_EMPLOYEE","linkField":"EMP_ID","displayField":"EMP_NAME"},'
- + N'"diagnosticFields":["@display","EMP_ID"]}',
+ + N'"diagnosticFields":["@display"]}',
  N'以下人员资料重复 ' + @NL + N'{ROWS}',
  N'同一单据内同一人员只能出现一次', N'hr-contract');
 
@@ -59,7 +59,7 @@ INSERT INTO @RULES (MODULE_ID, SEQ, VALIDATION_KEY, PARAM_STRUCT, MESSAGE, REMAR
 (180107, 2, N'duplicate-check',
  N'{"mode":"within-doc","keyFields":["EMP_ID","SAFE_ID"],'
  + N'"displayLookup":{"table":"HR_EMPLOYEE","linkField":"EMP_ID","displayField":"EMP_NAME"},'
- + N'"diagnosticFields":["@display","EMP_ID"]}',
+ + N'"diagnosticFields":["@display","SAFE_ID"]}',
  N'以下人员重复投保 ' + @NL + N'{ROWS}',
  N'同一单据内同一人同一险种只能出现一次', N'hr-safe');
 
@@ -75,7 +75,7 @@ INSERT INTO @RULES (MODULE_ID, SEQ, VALIDATION_KEY, PARAM_STRUCT, MESSAGE, REMAR
 (180108, 2, N'duplicate-check',
  N'{"mode":"within-doc","keyFields":["EMP_ID","CERTIFY_ID"],'
  + N'"displayLookup":{"table":"HR_EMPLOYEE","linkField":"EMP_ID","displayField":"EMP_NAME"},'
- + N'"diagnosticFields":["@display","EMP_ID"]}',
+ + N'"diagnosticFields":["@display","CERTIFY_ID"]}',
  N'以下人员证件重复 ' + @NL + N'{ROWS}',
  N'同一单据内同一人同一证件只能出现一次', N'hr-certify');
 
