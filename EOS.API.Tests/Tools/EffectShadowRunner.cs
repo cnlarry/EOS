@@ -273,6 +273,12 @@ public sealed class EffectShadowRunner
           2711 => new(2711, "2711", "SFC_PLAN_PROCESS_M", "SFC_PLAN_PROCESS_D",
               "PLAN_PROCESS_TYPE", "PLAN_PROCESS_NO", "PLAN_PROCESS_DATE",
               null, null, null, "冲压计划"),
+          2915 => new(2915, "2915", "MOU_BATCHTOP_M", "MOU_BATCHTOP_D",
+              "BATCH_TYPE", "BATCH_NO", "BATCH_DATE",
+              null, null, null, "上模开模单"),
+          2916 => new(2916, "2916", "MOU_BATCHTOP_M", "MOU_BATCHTOP_D",
+              "BATCH_TYPE", "BATCH_NO", "BATCH_DATE",
+              null, null, null, "刀模开模单"),
         170102 => new(170102, "170102", "COP_RECEIPT_M", "COP_RECEIPT_D",
             "RECEIPT_TYPE", "RECEIPT_NO", "RECEIPT_DATE",
             null, null, null, "收款单"),
@@ -376,7 +382,7 @@ public sealed class EffectShadowRunner
             "WAGE_TYPE", "WAGE_NO", "WAGE_DATE",
             null, null, null, "保密离职工资表"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802/1504/1518/1906/1908/2403/3307/2917/2709/2710/2711 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802/1504/1518/1906/1908/2403/3307/2917/2709/2710/2711/2915/2916 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -491,9 +497,9 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109 or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606              or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 3307 or 2917 or 2709 or 2710 or 2711))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109 or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606              or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 3307 or 2917 or 2709 or 2710 or 2711 or 2915 or 2916))
         {
-            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802/1504/1518/1906/1908/2403/3307/2917/2709/2710/2711 only.");
+            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802/1504/1518/1906/1908/2403/3307/2917/2709/2710/2711/2915/2916 only.");
         }
         var spec = GetSpec(options.ModuleId);
         var deapprove = options.Event.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
@@ -689,7 +695,7 @@ public sealed class EffectShadowRunner
             or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
             or 300301 or 300302 or 300304 or 300305 or 1423 or 130106 or 130107 or 130108 or 130109
              or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606
-             or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 2917 or 2709 or 2710 or 2711)
+             or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 2917 or 2709 or 2710 or 2711 or 2915 or 2916)
          {
              return await ResolveRecordKeysByConfirmAsync(connection, spec, deapprove, failure);
          }
@@ -1230,7 +1236,7 @@ public sealed class EffectShadowRunner
             or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
              or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109
              or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606
-             or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 3307 or 2917 or 2709 or 2710 or 2711)
+             or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 3307 or 2917 or 2709 or 2710 or 2711 or 2915 or 2916)
          {
              // 2xxx snapshot specs filter target tables by document keys and EXISTS
              // subqueries off the master; no detail context rows are materialised.
@@ -1463,6 +1469,10 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId is 2709 or 2710 or 2711)
         {
             return BuildTableSpecsSfcPlanProcess(master);
+        }
+        if (spec.ModuleId is 2915 or 2916)
+        {
+            return BuildTableSpecsMouBatchtop(master);
         }
         if (spec.ModuleId == 170102)
         {
@@ -3600,6 +3610,31 @@ public sealed class EffectShadowRunner
                 + "AND SFC_PLAN_D.PLAN_TYPE=R.PLAN_TYPE AND SFC_PLAN_D.PLAN_NO=R.PLAN_NO "
                 + "AND SFC_PLAN_D.SERIAL_NO=R.PLAN_SERIAL_NO)",
                 new[] { pt, pn }),
+        };
+    }
+
+    /// <summary>
+    /// Batch-top documents (2915/2916, P_WF_MOU_BATCHTOP): approval stamps
+    /// BATCH_STATE=1 on the scrap line referenced by the master row (only when
+    /// BATCH_SORT='3'), deapproval clears it. The compared footprint is the document
+    /// plus the stamped scrap line.
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecsMouBatchtop(MasterContext master)
+    {
+        var bt = new SqlParameter("@bt", master.ReceiveType);
+        var bn = new SqlParameter("@bn", master.ReceiveNo);
+        var doc = "R.BATCH_TYPE=@bt AND R.BATCH_NO=@bn";
+        return new List<TableSpec>
+        {
+            new("MOU_BATCHTOP_M", new[] { "BATCH_TYPE", "BATCH_NO" },
+                "@bt=BATCH_TYPE AND @bn=BATCH_NO", new[] { bt, bn }),
+            new("MOU_BATCHTOP_D", new[] { "BATCH_TYPE", "BATCH_NO", "SERIAL_NO" },
+                "@bt=BATCH_TYPE AND @bn=BATCH_NO", new[] { bt, bn }),
+            new("MOU_SCRAP_D", new[] { "SCRAP_TYPE", "SCRAP_NO", "SERIAL_NO" },
+                $"EXISTS (SELECT 1 FROM dbo.MOU_BATCHTOP_M R WHERE {doc} "
+                + "AND MOU_SCRAP_D.SCRAP_TYPE=R.SCRAP_TYPE AND MOU_SCRAP_D.SCRAP_NO=R.SCRAP_NO "
+                + "AND MOU_SCRAP_D.SERIAL_NO=R.SCRAP_SERIAL_NO)",
+                new[] { bt, bn }),
         };
     }
 
