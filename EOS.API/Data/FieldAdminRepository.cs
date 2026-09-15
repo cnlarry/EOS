@@ -523,22 +523,29 @@ public sealed class FieldAdminRepository(
         string fieldId,
         CancellationToken token)
     {
+        // 一次取回事件与其字段级明细，由调用端按 EVENT_ID 分组。
+        // 不能用 JSON_QUERY((SELECT ... FOR JSON PATH))：SQL Server 不允许在子查询里使用 FOR JSON，
+        // 该写法在解析阶段即报语法错误（端点必然 500）。事件上限 200 条由内层 TOP 限定。
         const string sql = """
-            SELECT CONVERT(varchar(19), e.OCCURRED_AT, 120) AS OCCURRED_AT,
-                   e.ACTOR_USER_ID,
-                   ISNULL(NULLIF(LTRIM(RTRIM(dn.EMP_NAME)), N''), e.ACTOR_USER_ID) AS ACTOR_NAME, e.ACTION, e.SUMMARY,
-                   ISNULL((SELECT JSON_QUERY((
-                            SELECT fc.FIELD_NAME AS [name], fc.OLD_VALUE AS [oldValue], fc.NEW_VALUE AS [newValue]
-                            FROM dbo.AUDIT_FIELD_CHANGE fc
-                            WHERE fc.EVENT_ID = e.EVENT_ID
-                            FOR JSON PATH)), '[]') AS CHANGES_JSON
-            FROM dbo.AUDIT_EVENT e WITH (NOLOCK)
+            ;WITH ev AS (
+                SELECT TOP 200 e.EVENT_ID, e.OCCURRED_AT, e.ACTOR_USER_ID, e.ACTION, e.SUMMARY
+                FROM dbo.AUDIT_EVENT e WITH (NOLOCK)
+                WHERE e.RESOURCE_TYPE = N'FIELD_ADMIN'
+                  AND e.RESOURCE_KEY = @Key
+                ORDER BY e.OCCURRED_AT DESC, e.EVENT_ID DESC
+            )
+            SELECT ev.EVENT_ID,
+                   CONVERT(varchar(19), ev.OCCURRED_AT, 120) AS OCCURRED_AT,
+                   ev.ACTOR_USER_ID,
+                   ISNULL(NULLIF(LTRIM(RTRIM(dn.EMP_NAME)), N''), ev.ACTOR_USER_ID) AS ACTOR_NAME,
+                   ev.ACTION, ev.SUMMARY,
+                   fc.FIELD_NAME, fc.OLD_VALUE, fc.NEW_VALUE
+            FROM ev
             LEFT JOIN dbo.SYSDN dn WITH (NOLOCK)
-              ON LTRIM(RTRIM(dn.EMP_ID)) = LTRIM(RTRIM(e.ACTOR_USER_ID))
-            WHERE e.RESOURCE_TYPE = N'FIELD_ADMIN'
-              AND e.RESOURCE_KEY = @Key
-            ORDER BY e.OCCURRED_AT DESC, e.EVENT_ID DESC
-            OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY;
+              ON LTRIM(RTRIM(dn.EMP_ID)) = LTRIM(RTRIM(ev.ACTOR_USER_ID))
+            LEFT JOIN dbo.AUDIT_FIELD_CHANGE fc WITH (NOLOCK)
+              ON fc.EVENT_ID = ev.EVENT_ID
+            ORDER BY ev.OCCURRED_AT DESC, ev.EVENT_ID DESC, fc.FIELD_NAME;
             """;
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
@@ -546,19 +553,34 @@ public sealed class FieldAdminRepository(
         command.Parameters.Add("@Key", SqlDbType.NVarChar, 220).Value = $"{tableId}.{fieldId}";
         await using var reader = await command.ExecuteReaderAsync(token);
         var result = new List<FieldHistoryEvent>();
+        long currentEventId = -1;
+        FieldHistoryEvent? current = null;
+        var changes = new List<FieldHistoryChange>();
         while (await reader.ReadAsync(token))
         {
-            var changes = System.Text.Json.JsonSerializer.Deserialize<List<FieldHistoryChange>>(
-                reader.GetString(5),
-                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
-            result.Add(new FieldHistoryEvent(
-                DateTime.Parse(reader.GetString(0), System.Globalization.CultureInfo.InvariantCulture),
-                reader.GetString(1),
-                reader.GetString(3),
-                reader.IsDBNull(4) ? null : reader.GetString(4),
-                changes,
-                reader.GetString(2)));
+            var eventId = Convert.ToInt64(reader.GetValue(0));
+            if (current is null || eventId != currentEventId)
+            {
+                if (current is not null) result.Add(current with { Changes = changes });
+                currentEventId = eventId;
+                changes = [];
+                current = new FieldHistoryEvent(
+                    DateTime.Parse(reader.GetString(1), System.Globalization.CultureInfo.InvariantCulture),
+                    reader.GetString(2),
+                    reader.GetString(4),
+                    reader.IsDBNull(5) ? null : reader.GetString(5),
+                    [],
+                    reader.GetString(3));
+            }
+            if (!reader.IsDBNull(6))
+            {
+                changes.Add(new FieldHistoryChange(
+                    reader.GetString(6),
+                    reader.IsDBNull(7) ? null : reader.GetString(7),
+                    reader.IsDBNull(8) ? null : reader.GetString(8)));
+            }
         }
+        if (current is not null) result.Add(current with { Changes = changes });
         return result;
     }
 
