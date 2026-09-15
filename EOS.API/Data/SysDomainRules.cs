@@ -10,7 +10,10 @@ namespace EOS.API.Data;
 /// </summary>
 public static class SysDomainRules
 {
-    /// <summary>Currency save: only one currency may be marked as base and its rate must be 1.</summary>
+    /// <summary>
+    /// Currency save: the base currency rate must be 1. 唯一性（只允许一种本位币）已由校验目录
+    /// 的 duplicate-check 实例承担（110103 SAVE），此处只保留字段取值约束。
+    /// </summary>
     public static async Task<SprocResult> CurrAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
@@ -28,16 +31,6 @@ public static class SysDomainRules
             rate = reader.IsDBNull(1) ? null : Convert.ToDecimal(reader.GetValue(1));
         }
         if (isBase != true) return new(true, null);
-        string? otherBase;
-        await using (var other = new SqlCommand(
-            "SELECT TOP 1 LTRIM(RTRIM(CURR_ID)) FROM dbo.CURR WHERE CURR_ID<>@CurrId AND IS_BASE=1;",
-            connection, transaction))
-        {
-            other.Parameters.Add("@CurrId", SqlDbType.NChar, 10).Value = currId;
-            otherBase = (string?)await other.ExecuteScalarAsync(token);
-        }
-        if (!string.IsNullOrEmpty(otherBase))
-            return new(false, $"已将币别 [{otherBase}] 设为本位币，不能存在两种本位币");
         if (rate is null || rate.Value != 1m)
             return new(false, "本位币汇率只能为1");
         return new(true, null);

@@ -153,24 +153,14 @@ public static class DomainRuleMap
         [1608] = "pur-cancel",
         [1612] = "pur-cancel",
         [1616] = "pur-apply",
-        [180102] = "hr-employee",
-        [180105] = "hr-employee",
         [180106] = "hr-contract",
         [180107] = "hr-safe",
         [180108] = "hr-certify",
-        [180110] = "hr-employee",
-        [180111] = "hr-employee",
-        [180205] = "hr-enactment",
-        [180211] = "hr-plan",
         [180206] = "hr-apply",
         [180301] = "hr-wage-item",
-        [180309] = "hr-wage",
-        [1803091] = "hr-wage",
         [180310] = "hr-wage-lz",
         [1803101] = "hr-wage-lz",
         [180502] = "hrm-wage-item",
-        [180504] = "hrm-wage",
-        [180651] = "hrm-plan",
         [130108] = "inv-loan",
         [130109] = "inv-return",
         [1506] = "moc-bom-stru",
@@ -187,7 +177,6 @@ public static class DomainRuleMap
         [2911] = "mou-pro",
         [2912] = "mou-batchin",
         [2913] = "mou-get2",
-        [2914] = "mou-assess",
         [300301] = "cus-export",
         [300302] = "cus-import",
         [300304] = "cus-export",
@@ -209,4 +198,23 @@ public static class DomainRuleMap
     };
 
     public static bool TryGet(int moduleId, out string? rule) => Rules.TryGetValue(moduleId, out rule);
+}
+
+/// <summary>
+/// 保存后行为已由校验目录（MODULE_VALIDATION_RULE）承接的模块：这些模块保留 MODULES 上的
+/// 保存后钩子字段（单号自动生成等定义装配仍需经"有钩子"分支推导），但不再调用遗留过程、
+/// 也不再登记 C# 领域规则；保存期校验完全由目录实例执行。
+/// </summary>
+public static class CatalogAfterSaveMap
+{
+    private static readonly IReadOnlySet<int> Modules = new HashSet<int>
+    {
+        2914,              // 料号开模评估资料唯一
+        180102, 180105, 180110, 180111,   // 员工工号唯一
+        180205,            // 每人每月一笔出勤参数
+        180211, 180651,    // 当月每人一班排班
+        180309, 1803091, 180504,          // 当月每人一份工资表
+    };
+
+    public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);
 }

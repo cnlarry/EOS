@@ -78,56 +78,6 @@ public static class HrDomainRules
         }
     }
 
-    /// <summary>库存单 AfterSave 通用校验：库别/产品/批号。</summary>
-
-    public static async Task<SprocResult> HrEmployeeAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 1 || keyValues.Count < 1) return new(false, "员工资料领域规则缺少主键。");
-        var empId = (keyValues[0] ?? string.Empty).Trim();
-        string? empNo;
-        await using (var read = new SqlCommand(
-            "SELECT LTRIM(RTRIM(ISNULL(EMP_NO,''))) FROM dbo.HR_EMPLOYEE WHERE EMP_ID=@EmpId;", connection, transaction))
-        {
-            read.Parameters.Add("@EmpId", SqlDbType.NChar, 10).Value = empId;
-            empNo = (string?)await read.ExecuteScalarAsync(token);
-        }
-        if (string.IsNullOrWhiteSpace(empNo)) return new(true, null);
-        string? owner;
-        await using (var dup = new SqlCommand(
-            "SELECT TOP 1 LTRIM(RTRIM(EMP_NAME)) FROM dbo.HR_EMPLOYEE WHERE EMP_ID<>@EmpId AND EMP_NO=@EmpNo AND STATE<>5;",
-            connection, transaction))
-        {
-            dup.Parameters.Add("@EmpId", SqlDbType.NChar, 10).Value = empId;
-            dup.Parameters.Add("@EmpNo", SqlDbType.NChar, 20).Value = empNo;
-            owner = (string?)await dup.ExecuteScalarAsync(token);
-        }
-        return string.IsNullOrEmpty(owner)
-            ? new(true, null)
-            : new(false, "\r\n员工工号：" + empNo + "\r\n已分配给：" + owner);
-    }
-
-    /// <summary>每月出勤参数（P_HR_ENACTMENT）AfterSave：每人每月一笔。</summary>
-
-
-    /// <summary>每月出勤参数（P_HR_ENACTMENT）AfterSave：每人每月一笔。</summary>
-    public static async Task<SprocResult> HrEnactmentAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        await using var cmd = new SqlCommand("""
-            SELECT TOP 1 1 FROM (
-                SELECT COUNT(*) C FROM dbo.HR_ENACTMENT_M m
-                INNER JOIN dbo.HR_ENACTMENT_D d ON d.ENACTMENT_TYPE=m.ENACTMENT_TYPE AND d.ENACTMENT_NO=m.ENACTMENT_NO
-                GROUP BY m.COUNT_MONTH, d.EMP_ID
-            ) g WHERE g.C >= 2;
-            """, connection, transaction);
-        if (await cmd.ExecuteScalarAsync(token) is not null)
-            return new(false, "资料重复!每个员工每个月份只可有一笔资料");
-        return new(true, null);
-    }
-
     /// <summary>工资项目设定（P_HR_WAGE_ITEM / P_HRM_WAGE_ITEM）AfterSave：FIELDS 元数据联动（显隐/名称/格式/备注）。</summary>
 
 
@@ -255,50 +205,11 @@ public static class HrDomainRules
         return new(true, null);
     }
 
-    /// <summary>排班（P_HR_PLAN / P_HRM_PLAN）AfterSave：每月每人一排班。</summary>
-
-
-    /// <summary>排班（P_HR_PLAN / P_HRM_PLAN）AfterSave：每月每人一排班。</summary>
-    public static async Task<SprocResult> HrPlanAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        string masterTable, string detailTable,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "排班领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        string? countMonth;
-        await using (var read = new SqlCommand(
-            $"SELECT LTRIM(RTRIM(ISNULL(COUNT_MONTH,''))) FROM dbo.[{masterTable}] WHERE PLAN_TYPE=@Type AND PLAN_NO=@No;",
-            connection, transaction))
-        {
-            read.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
-            read.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
-            countMonth = (string?)await read.ExecuteScalarAsync(token);
-        }
-        if (string.IsNullOrWhiteSpace(countMonth)) return new(true, null);
-        var dup = await FindMonthDupAsync(connection, transaction,
-            $"""
-            SELECT MAX(d.SERIAL_NO) FROM dbo.[{masterTable}] m
-            INNER JOIN dbo.[{detailTable}] d ON d.PLAN_TYPE=m.PLAN_TYPE AND d.PLAN_NO=m.PLAN_NO
-            WHERE m.COUNT_MONTH=@CountMonth
-              AND EXISTS (SELECT 1 FROM dbo.[{detailTable}] x WHERE x.PLAN_TYPE=@Type AND x.PLAN_NO=@No AND x.EMP_ID=d.EMP_ID)
-            GROUP BY d.EMP_ID HAVING COUNT(*)>1;
-            """, type, no, countMonth, token,
-            line: r => Convert.ToInt32(r.GetValue(0)).ToString() + "\t");
-        return dup is null
-            ? new(true, null)
-            : new(false, "以下序号项人员当月排班重复 \r\n" + dup);
-    }
-
-    /// <summary>工资表（P_HR_WAGE / P_HRM_WAGE / P_HR_WAGE_LZ）AfterSave：每月每人一份；离职工资表先删旧档。</summary>
-
-
-    /// <summary>工资表（P_HR_WAGE / P_HRM_WAGE / P_HR_WAGE_LZ）AfterSave：每月每人一份；离职工资表先删旧档。</summary>
+    /// <summary>工资表（P_HR_WAGE_LZ）AfterSave：离职工资表先删同月旧档，再按每月每人一份校验。</summary>
     public static async Task<SprocResult> HrWageAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         string masterTable, string detailTable,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token, bool deleteDup)
+        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
         if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "工资表领域规则缺少主键。");
         var type = (keyValues[0] ?? string.Empty).Trim();
@@ -313,15 +224,14 @@ public static class HrDomainRules
             countMonth = (string?)await read.ExecuteScalarAsync(token);
         }
         if (string.IsNullOrWhiteSpace(countMonth)) return new(true, null);
-        if (deleteDup)
+        await using (var clean = new SqlCommand($"""
+            DELETE d FROM dbo.[{detailTable}] d
+            WHERE EXISTS (SELECT 1 FROM dbo.[{masterTable}] m
+                          WHERE m.COUNT_MONTH=@CountMonth AND m.WAGE_TYPE=d.WAGE_TYPE AND m.WAGE_NO=d.WAGE_NO)
+              AND NOT (d.WAGE_TYPE=@Type AND d.WAGE_NO=@No)
+              AND d.EMP_ID IN (SELECT EMP_ID FROM dbo.[{detailTable}] WHERE WAGE_TYPE=@Type AND WAGE_NO=@No);
+            """, connection, transaction))
         {
-            await using var clean = new SqlCommand($"""
-                DELETE d FROM dbo.[{detailTable}] d
-                WHERE EXISTS (SELECT 1 FROM dbo.[{masterTable}] m
-                              WHERE m.COUNT_MONTH=@CountMonth AND m.WAGE_TYPE=d.WAGE_TYPE AND m.WAGE_NO=d.WAGE_NO)
-                  AND NOT (d.WAGE_TYPE=@Type AND d.WAGE_NO=@No)
-                  AND d.EMP_ID IN (SELECT EMP_ID FROM dbo.[{detailTable}] WHERE WAGE_TYPE=@Type AND WAGE_NO=@No);
-                """, connection, transaction);
             clean.Parameters.Add("@CountMonth", SqlDbType.NChar, 6).Value = countMonth;
             clean.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
             clean.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
@@ -361,7 +271,10 @@ public static class HrDomainRules
     /// <summary>加班申请单（P_HR_APPLY）AfterSave：每日每人一单 + 不超过每月加班额。</summary>
 
 
-    /// <summary>加班申请单（P_HR_APPLY）AfterSave：每日每人一单 + 不超过每月加班额。</summary>
+    /// <summary>
+    /// 加班申请单（P_HR_APPLY）AfterSave：不超过每月加班额（先决条件是当月出勤参数已维护）。
+    /// "每日每人一单"已由校验目录的 duplicate-check 实例承担（180206 SAVE）。
+    /// </summary>
     public static async Task<SprocResult> HrApplyAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
@@ -380,26 +293,7 @@ public static class HrDomainRules
             countDate = v is null or DBNull ? null : Convert.ToDateTime(v);
         }
         if (countDate is null) return new(true, null);
-        // 1. 每日每人一单
-        string? dup = null;
-        await using (var dupCmd = new SqlCommand("""
-            SELECT d.EMP_ID FROM dbo.HR_APPLY_M m
-            INNER JOIN dbo.HR_APPLY_D d ON d.APPLY_TYPE=m.APPLY_TYPE AND d.APPLY_NO=m.APPLY_NO
-            WHERE m.COUNT_DATE=@CountDate
-              AND EXISTS (SELECT 1 FROM dbo.HR_APPLY_D x WHERE x.APPLY_TYPE=@Type AND x.APPLY_NO=@No AND x.EMP_ID=d.EMP_ID)
-            GROUP BY d.EMP_ID HAVING COUNT(*)>1;
-            """, connection, transaction))
-        {
-            dupCmd.Parameters.Add("@CountDate", SqlDbType.DateTime).Value = countDate.Value;
-            dupCmd.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
-            dupCmd.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
-            await using var reader = await dupCmd.ExecuteReaderAsync(token);
-            var lines = new List<string>();
-            while (await reader.ReadAsync(token)) lines.Add(reader.GetString(0).Trim() + "\t");
-            if (lines.Count > 0) dup = string.Join("\r\n", lines.Take(10));
-        }
-        if (dup is not null) return new(false, "以下人员当日加班申请重复 \r\n" + dup);
-        // 2. 每月加班额（当月出勤参数限额）
+        // 每月加班额（当月出勤参数限额）
         string? countMonth;
         await using (var month = new SqlCommand(
             "SELECT LTRIM(RTRIM(ISNULL(COUNT_MONTH,''))) FROM dbo.HR_ENACTMENT_M WHERE COUNT_MONTH=CONVERT(varchar(6),@CountDate,112);",
@@ -408,7 +302,12 @@ public static class HrDomainRules
             month.Parameters.Add("@CountDate", SqlDbType.DateTime).Value = countDate.Value;
             countMonth = (string?)await month.ExecuteScalarAsync(token);
         }
-        if (string.IsNullOrWhiteSpace(countMonth)) return new(true, null);
+        // 硬规则：必须先维护当月出勤参数才允许提交加班申请（未生成即拒绝，不再静默放行）
+        if (string.IsNullOrWhiteSpace(countMonth))
+        {
+            return new(false,
+                $"未生成 {countDate.Value:yyyyMM} 月度出勤参数，加班申请不能保存；请先在「每月出勤参数」维护本月的加班额度。");
+        }
         await using (var ena = new SqlCommand(
             "SELECT TOP 1 LTRIM(RTRIM(ENACTMENT_TYPE)), LTRIM(RTRIM(ENACTMENT_NO)) FROM dbo.HR_ENACTMENT_M WHERE COUNT_MONTH=@CountMonth;",
             connection, transaction))
@@ -417,7 +316,11 @@ public static class HrDomainRules
             await using var reader = await ena.ExecuteReaderAsync(token);
             if (await reader.ReadAsync(token)) { enaType = reader.GetString(0); enaNo = reader.GetString(1); }
         }
-        if (enaType is null) return new(true, null);
+        if (enaType is null)
+        {
+            return new(false,
+                $"未生成 {countDate.Value:yyyyMM} 月度出勤参数，加班申请不能保存；请先在「每月出勤参数」维护本月的加班额度。");
+        }
         string? exceeded = null;
         await using (var cmd = new SqlCommand("""
             SELECT t.EMP_ID, ISNULL(e.OVERTIME,0), ISNULL(e.REST_OVERTIME,0), ISNULL(e.HOLIDAY_OVERTIME,0),
