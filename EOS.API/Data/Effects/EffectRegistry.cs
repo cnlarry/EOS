@@ -49,6 +49,7 @@ public static class EffectRegistry
         ["half-stock-move"] = Status.Service,
         ["car-filloil-sync"] = Status.Service,
         ["detail-field-sync"] = Status.Service,
+        ["sample-edition-bump"] = Status.Service,
         // Placeholder-row + params shapes collected; handlers pending (see docs/plans/服务键形态证据.md)
         ["hr-usage-sync"] = Status.Service,
         ["employee-contract-sync"] = Status.Service,
