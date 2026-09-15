@@ -59,7 +59,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "curr" => await SysDomainRules.CurrAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "bom-stru" => await SysDomainRules.BomStruAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "sysdg" => await SysDomainRules.SysdgAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "sysdl" => await SysDomainRules.SysdlAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "employee-card" => await HrDomainRules.EmployeeCardAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "inv-in" => await InvDomainRules.InvOccurInAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "inv-out" => await InvDomainRules.InvOccurOutAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
