@@ -40,4 +40,19 @@
     <InternalsVisibleTo Include="EOS.API.Tests" />
   </ItemGroup>
 
+  <!-- 构建元数据：把 Git 提交与构建时间写进程序集，供 /health/version 报告。
+       用途：区分「运行中的进程」与「磁盘上的二进制」是否同一份构建（排障/部署漂移）。
+       无 .git（发布快照解包等）时跳过，端点会如实报告 unknown。 -->
+  <Target Name="AddBuildMetadata" BeforeTargets="GetAssemblyAttributes"
+          Condition="Exists('$(MSBuildProjectDirectory)\..\.git')">
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true"
+          StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitSha" />
+    </Exec>
+    <ItemGroup>
+      <AssemblyMetadata Include="GitCommit" Value="$(GitCommitSha)" />
+      <AssemblyMetadata Include="BuildTimeUtc" Value="$([System.DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))" />
+    </ItemGroup>
+  </Target>
+
 </Project>
