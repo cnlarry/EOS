@@ -247,12 +247,18 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "RECORD_OUT_OF_MODULE_FILTER", "新建记录不满足模块过滤条件，无法保存。");
         }
 
-        var detailErrors = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, values, request.Details ?? [], employeeName, true, token);
+        var detailErrors = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, values, request.Details, employeeName, true, token);
         if (detailErrors is not null)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "VALIDATION_FAILED", "明细数据校验未通过。", detailErrors);
         }
         await SavePrepayOffsetsAsync(connection, transaction, businessRule, pkColumns, keyValues, request.PrepayOffsets, token);
+        // 目录校验（SAVE 阶段）是模块的声明式校验目录，独立于"谁负责保存后行为"：
+        // 无论该模块走 C# 领域规则、效果动作还是遗留钩子，都必须先过这道闸。
+        if (await effectEngine.ValidateStageAsync(connection, transaction, definition, EffectEvent.Save, keyValues, token) is { } saveValidation)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", saveValidation);
+        }
         if (businessRule?.DomainRule is { } domainRule)
         {
             var domainResult = await domainRules.RunAfterSaveAsync(domainRule, connection, transaction, definition, pkColumns, keyValues, token);
@@ -455,13 +461,19 @@ public sealed class WorkbenchCommandHandler(
             }
         }
 
-        var detailErrors = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, merged, request.Details ?? [], employeeName, false, token);
+        var detailErrors = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, merged, request.Details, employeeName, false, token);
         if (detailErrors is not null)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "VALIDATION_FAILED", "明细数据校验未通过。", detailErrors);
         }
         var businessRule = definition.BusinessRule;
         await SavePrepayOffsetsAsync(connection, transaction, businessRule, pkColumns, keyValues, request.PrepayOffsets, token);
+        // 目录校验（SAVE 阶段）是模块的声明式校验目录，独立于"谁负责保存后行为"：
+        // 无论该模块走 C# 领域规则、效果动作还是遗留钩子，都必须先过这道闸。
+        if (await effectEngine.ValidateStageAsync(connection, transaction, definition, EffectEvent.Save, keyValues, token) is { } saveValidation)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", saveValidation);
+        }
         if (businessRule?.DomainRule is { } domainRule)
         {
             var domainResult = await domainRules.RunAfterSaveAsync(domainRule, connection, transaction, definition, pkColumns, keyValues, token);
@@ -605,11 +617,19 @@ public sealed class WorkbenchCommandHandler(
         IReadOnlyList<string> pkColumns,
         IReadOnlyList<string> keyValues,
         IReadOnlyDictionary<string, object?> masterValues,
-        IReadOnlyList<IReadOnlyDictionary<string, string?>> details,
+        IReadOnlyList<IReadOnlyDictionary<string, string?>>? details,
         string employeeName,
         bool isNew,
         CancellationToken token)
     {
+        // Absent details and an explicitly empty detail list mean different things: an
+        // update that only touches master fields must leave existing detail rows alone,
+        // while an empty list is the caller asking to clear (or, on modules that require
+        // details, a rejected save). Collapsing the two would silently wipe details.
+        if (details is null)
+        {
+            return null;
+        }
         if (definition.DetailTable is null || form.DetailFields.Count == 0)
         {
             return null;
