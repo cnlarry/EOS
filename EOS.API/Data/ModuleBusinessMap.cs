@@ -153,9 +153,6 @@ public static class DomainRuleMap
         [1608] = "pur-cancel",
         [1612] = "pur-cancel",
         [1616] = "pur-apply",
-        [180106] = "hr-contract",
-        [180107] = "hr-safe",
-        [180108] = "hr-certify",
         [180206] = "hr-apply",
         [180301] = "hr-wage-item",
         [180310] = "hr-wage-lz",
@@ -214,6 +211,7 @@ public static class CatalogAfterSaveMap
         180205,            // 每人每月一笔出勤参数
         180211, 180651,    // 当月每人一班排班
         180309, 1803091, 180504,          // 当月每人一份工资表
+        180106, 180107, 180108,           // 合同/投保/证件的期间不重叠与同单重复
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);

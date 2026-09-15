@@ -79,9 +79,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "pur-cancel" => await PurDomainRules.PurCancelAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "hr-wage-item" => await HrDomainRules.HrWageItemAfterSaveAsync(connection, transaction, "HR_WAGE_D", "HR_WAGE", token),
                 "hrm-wage-item" => await HrDomainRules.HrWageItemAfterSaveAsync(connection, transaction, "HRM_WAGE_D", "HRM_WAGE", token),
-                "hr-contract" => await HrDomainRules.HrContractAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "hr-safe" => await HrDomainRules.HrSafeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "hr-certify" => await HrDomainRules.HrCertifyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 // 离职工资表：先删同月旧档再判重（删除是保存后写操作，顺序与旧实现一致，故不迁目录）
                 "hr-wage-lz" => await HrDomainRules.HrWageAfterSaveAsync(connection, transaction, "HR_WAGE_M", "HR_WAGE_D", pkColumns, keyValues, token),
                 "hr-apply" => await HrDomainRules.HrApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
