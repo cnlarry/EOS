@@ -102,7 +102,7 @@ public static class EffectStructSchemas
             ["produce-change-apply"] = Set("master", "detail", "projection"),
             ["purchase-change-apply"] = Set("master", "detail", "totals"),
             ["quote-parameter-recalc"] = Set("targetTable", "mode", "feeFields"),
-            ["return-writeback"] = Set("order", "produce", "conditions"),
+            ["half-stock-move"] = Set("direction", "fieldMap"),            ["return-writeback"] = Set("order", "produce", "conditions"),
             ["sample-stock-adjust"] = Set("direction", "targetTable", "fieldMap"),
             ["set-state"] = Set("targetTable", "stateField", "stateValue", "state", "sourceField", "source", "dateField", "dateMode", "targets"),
             ["stamp-last-activity"] = Set("targetTable", "field", "fields", "sourceField", "matchBy", "condition"),

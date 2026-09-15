@@ -47,6 +47,7 @@ public static class EffectParamPhysicalValidator
         "employee-dimission-sync",
         "mould-batch-apply",
         "callback-reprice",
+        "half-stock-move",
     };
 
     /// <summary>True when the key either carries no reference or is resolved by this validator.</summary>
@@ -137,6 +138,9 @@ public static class EffectParamPhysicalValidator
                     break;
                 case "callback-reprice":
                     _ = CallbackConfig.Parse(root, plan, columns);
+                    break;
+                case "half-stock-move":
+                    HalfStockMovePlan.Parse(root).ValidateColumns(plan, columns);
                     break;
                 default:
                     return issues;

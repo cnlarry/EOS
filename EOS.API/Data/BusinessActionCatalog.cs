@@ -24,7 +24,7 @@ public static class BusinessActionCatalog
         "WARN",
     };
 
-    /// <summary>效果键（目录 v0.2：24 个已落库键 + 4 个保留键）。</summary>
+    /// <summary>效果键（目录 v0.2：25 个已落库键 + 4 个保留键）。</summary>
     public static readonly IReadOnlySet<string> EffectKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         // 已落库（P1 翻译/全面审查）
@@ -50,6 +50,7 @@ public static class BusinessActionCatalog
         "purchase-change-apply",
         "payment-date-calc",
         "quote-parameter-recalc",
+        "half-stock-move",
         // 保留键（暂无落库实例，登记保留）
         "meta-link",
         "flow-trigger",
