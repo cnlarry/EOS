@@ -48,6 +48,7 @@ public static class EffectParamPhysicalValidator
         "mould-batch-apply",
         "callback-reprice",
         "half-stock-move",
+        "car-filloil-sync",
     };
 
     /// <summary>True when the key either carries no reference or is resolved by this validator.</summary>
@@ -141,6 +142,9 @@ public static class EffectParamPhysicalValidator
                     break;
                 case "half-stock-move":
                     HalfStockMovePlan.Parse(root).ValidateColumns(plan, columns);
+                    break;
+                case "car-filloil-sync":
+                    _ = CarFilloilSyncSpec.Parse(root, plan, columns);
                     break;
                 default:
                     return issues;
