@@ -13,7 +13,7 @@ public sealed record EffectSqlFragment(string Sql, IReadOnlyList<EffectSqlParame
 
 /// <summary>
 /// Compiles CONDITION_STRUCT (closed operator JSON) into a parameterized SQL predicate.
-/// Supported closed types: field-compare / value-eq / value-neq / not-exists / switch.
+/// Supported closed types: field-compare / value-eq / value-neq / not-exists / switch / blank.
 /// Identifiers in the output are configuration identifiers already validated at save
 /// time and re-validated here against the physical-column whitelist; user values only
 /// ever travel as SQL parameters.
@@ -166,6 +166,18 @@ public sealed class EffectConditionCompiler
                 return notExists;
             case "SWITCH":
                 return CompileSwitch(item, isSysssColumn);
+            case "BLANK":
+            {
+                // 字符串列"去空格后为空"：对应旧实现的 string.IsNullOrWhiteSpace 判据。
+                // negate:true 取反（非空），供"键为空则不校验"这类适用条件使用。
+                var field = Required(item, "field");
+                var alias = AliasFor(field, resolveAlias)
+                    ?? throw new EffectConfigException($"条件字段 {field.GetProperty("field")} 的来源域不可用。");
+                var isBlank = $"NULLIF(LTRIM(RTRIM({alias}.{Identifier(field)})), '') IS NULL";
+                var blankNegated = item.TryGetProperty("negate", out var negateFlag)
+                    && negateFlag.ValueKind == JsonValueKind.True;
+                return new EffectSqlFragment(blankNegated ? "NOT (" + isBlank + ")" : isBlank, Array.Empty<EffectSqlParameter>());
+            }
             default:
                 throw new EffectConfigException($"条件类型 '{type.GetString()}' 不在封闭条件类型集内。");
         }

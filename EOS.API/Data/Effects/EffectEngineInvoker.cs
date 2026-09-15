@@ -74,4 +74,45 @@ public sealed class EffectEngineInvoker(
             return (true, "效果配置错误：" + exception.Message);
         }
     }
+
+    /// <summary>
+    /// Runs the validation chain of the given stage without executing any action, and
+    /// returns the blocking message (null when everything passes). Validation rules are a
+    /// declarative catalog of the module's save-time rules, so they are NOT gated by the
+    /// effect-engine switch or by the module takeover flag: gating them there would make an
+    /// enabled rule silently do nothing. The caller supplies its open transaction so a
+    /// failure rolls the whole save back.
+    /// </summary>
+    public async Task<string?> ValidateStageAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        WorkbenchDefinition definition,
+        EffectEvent executionEvent,
+        IReadOnlyList<string> keyValues,
+        CancellationToken token)
+    {
+        var plan = planLoader.Load(definition);
+        var stage = EffectPipeline.StageFor(executionEvent);
+        var applicable = plan.Rules.Any(rule =>
+            rule.Enabled && rule.Stage.Equals(stage, StringComparison.OrdinalIgnoreCase));
+        if (!applicable)
+            return null;
+
+        try
+        {
+            await pipeline.ValidateWithinTransactionAsync(
+                connection, transaction, plan, executionEvent, token, keyValues);
+            return null;
+        }
+        catch (EffectValidationException exception)
+        {
+            return exception.Message;
+        }
+        catch (EffectConfigException exception)
+        {
+            logger.LogError(exception,
+                "效果引擎配置错误 module={ModuleId} event={Event}", definition.ModuleId, executionEvent);
+            return "效果配置错误：" + exception.Message;
+        }
+    }
 }

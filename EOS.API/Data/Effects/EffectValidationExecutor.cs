@@ -1,6 +1,8 @@
 using System.Data;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data.Effects;
@@ -31,17 +33,66 @@ public sealed class EffectValidationExecutor
         {
             if (!rule.Enabled || !rule.Stage.Equals(stage, StringComparison.OrdinalIgnoreCase))
                 continue;
+            if (!await RuleAppliesAsync(connection, transaction, plan, rule, keyValues, token))
+                continue;
             var violation = rule.ValidationKey.ToLowerInvariant() switch
             {
                 "qty-not-exceed" => await CheckQuantityNotExceedAsync(connection, transaction, plan, rule, stage, keyValues, token),
-                "reference-exists" => await CheckReferenceExistsAsync(connection, transaction, plan, rule, token),
-                "duplicate-check" => await CheckDuplicateAsync(connection, transaction, plan, rule, token),
+                "reference-exists" => await CheckReferenceExistsAsync(connection, transaction, plan, rule, keyValues, token),
+                "duplicate-check" => await CheckDuplicateAsync(connection, transaction, plan, rule, keyValues, token),
                 "line-require" => await CheckLineRequireAsync(connection, transaction, plan, rule, keyValues, token),
                 _ => throw new EffectConfigException($"校验键 '{rule.ValidationKey}' 尚未实现运行时执行。"),
             };
             if (violation is not null)
-                throw new EffectValidationException(rule.Message ?? violation);
+            {
+                // 各校验返回的已是最终文案（含自身渲染的占位符替换）；rule.Message 的覆盖
+                // 已在各校验内部完成，这里只做兜底，避免用原始模板盖掉渲染结果。
+                throw new EffectValidationException(violation);
+            }
         }
+    }
+
+    /// <summary>
+    /// 规则级适用条件（params.when，可选）：条件不成立即跳过该校验。旧域规则普遍先读当前
+    /// 单据的判据字段、为空则直接放行，这条键就是该语义的通用承载；条件走闭式条件编译器，
+    /// 三值逻辑与 SQL 一致（NULL 比较为 UNKNOWN，即视为不适用）。
+    /// </summary>
+    private async Task<bool> RuleAppliesAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        ModuleEffectPlan plan,
+        EffectValidationPlan rule,
+        IReadOnlyList<string> masterKeyValues,
+        CancellationToken token)
+    {
+        if (!rule.Params.TryGetProperty("when", out var when) || when.ValueKind != JsonValueKind.Object)
+            return true;
+
+        var compiled = new EffectConditionCompiler().Compile(
+            when,
+            (scope, _) => scope.ToUpperInvariant() switch
+            {
+                "MASTER" => "M",
+                // 纯主表模块的明细表可能是空串（而非 null），按"无明细表"处理。
+                "DETAIL" => string.IsNullOrWhiteSpace(plan.DetailTable)
+                    ? throw new EffectConfigException("校验 when 来源域 DETAIL 不可用（模块无明细表）。")
+                    : "D",
+                _ => null,
+            },
+            _ => true,
+            outerAlias: "M");
+        var (documentScope, parameters) = BuildDocumentScopeParts(plan, masterKeyValues, "M");
+        var from = "dbo." + EffectConditionCompiler.Identifier(plan.MasterTable!) + " M"
+            + (string.IsNullOrWhiteSpace(plan.DetailTable)
+                ? string.Empty
+                : " CROSS JOIN dbo." + EffectConditionCompiler.Identifier(plan.DetailTable) + " D");
+        var sql = "SELECT TOP 1 1 FROM " + from
+            + " WHERE " + string.Join(" AND ", documentScope)
+            + " AND (" + compiled.Sql + ")";
+        await using var command = new SqlCommand(sql, connection, transaction);
+        foreach (var parameter in parameters.Concat(compiled.Parameters))
+            command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+        return await command.ExecuteScalarAsync(token) is not null;
     }
 
     /// <summary>
@@ -134,11 +185,12 @@ public sealed class EffectValidationExecutor
                 command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
             }
             if (await command.ExecuteScalarAsync(token) is not null)
-                return check.TryGetProperty("message", out var checkMessage)
-                    && checkMessage.ValueKind == JsonValueKind.String
-                    && !string.IsNullOrWhiteSpace(checkMessage.GetString())
-                    ? checkMessage.GetString()!
-                    : $"存在超出{(mode == "not-below-progress" ? "进度" : "限额")}的明细行（{stage}）。";
+                return rule.Message
+                    ?? (check.TryGetProperty("message", out var checkMessage)
+                        && checkMessage.ValueKind == JsonValueKind.String
+                        && !string.IsNullOrWhiteSpace(checkMessage.GetString())
+                            ? checkMessage.GetString()!
+                            : $"存在超出{(mode == "not-below-progress" ? "进度" : "限额")}的明细行（{stage}）。");
         }
         return null;
     }
@@ -151,9 +203,23 @@ public sealed class EffectValidationExecutor
         ModuleEffectPlan plan,
         IReadOnlyList<string> masterKeyValues)
     {
+        var (parts, parameters) = BuildDocumentScopeParts(plan, masterKeyValues, "S");
+        return (string.Join(" AND ", parts), parameters);
+    }
+
+    /// <summary>
+    /// Scopes a statement to the current document by master primary-key values. The alias
+    /// names the relation that carries the master key columns (master table, or the detail
+    /// table which repeats them).
+    /// </summary>
+    private static (List<string> Parts, List<EffectSqlParameter> Parameters) BuildDocumentScopeParts(
+        ModuleEffectPlan plan,
+        IReadOnlyList<string> masterKeyValues,
+        string alias)
+    {
         if (plan.MasterPkOrder.Count == 0 || masterKeyValues.Count == 0)
         {
-            throw new EffectConfigException("数量校验缺少单据主键上下文，禁止跨单比较。");
+            throw new EffectConfigException("校验缺少单据主键上下文，禁止跨单比较。");
         }
         var keys = Math.Min(plan.MasterPkOrder.Count, masterKeyValues.Count);
         var parts = new List<string>();
@@ -162,144 +228,412 @@ public sealed class EffectValidationExecutor
         {
             var name = "@mk" + index;
             parameters.Add(new EffectSqlParameter(name, masterKeyValues[index]));
-            parts.Add($"S.{EffectConditionCompiler.Identifier(plan.MasterPkOrder[index])} = {name}");
+            parts.Add($"{alias}.{EffectConditionCompiler.Identifier(plan.MasterPkOrder[index])} = {name}");
         }
-        return (string.Join(" AND ", parts), parameters);
+        return (parts, parameters);
     }
 
+    /// <summary>
+    /// reference-exists 逐项断言"当前单据引用的资料存在"：来源行限定在当前单据内
+    /// （主表按主键参数、明细按同一单据关联），否则他单的历史坏引用会拦下本次保存。
+    /// </summary>
     private async Task<string?> CheckReferenceExistsAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         ModuleEffectPlan plan,
         EffectValidationPlan rule,
+        IReadOnlyList<string> masterKeyValues,
         CancellationToken token)
     {
         if (!rule.Params.TryGetProperty("checks", out var checks) || checks.ValueKind != JsonValueKind.Array)
             throw new EffectConfigException("reference-exists 缺少 checks 数组。");
         foreach (var check in checks.EnumerateArray())
         {
-            var refTable = check.TryGetProperty("refTable", out var rt) && rt.ValueKind == JsonValueKind.String
-                ? rt.GetString()!.Trim()
-                : throw new EffectConfigException("reference-exists.check 缺少 refTable。");
-            var allowEmpty = check.TryGetProperty("allowEmpty", out var ae) && ae.ValueKind == JsonValueKind.True;
-
-            string referenceSql;
-            if (check.TryGetProperty("join", out var join) && join.ValueKind == JsonValueKind.Array)
-            {
-                var pairs = new List<string>();
-                foreach (var pair in join.EnumerateArray())
-                {
-                    var targetColumn = pair.TryGetProperty("target", out var t) && t.ValueKind == JsonValueKind.String
-                        ? t.GetString()!.Trim()
-                        : throw new EffectConfigException("reference-exists.join 缺少 target。");
-                    var source = pair.TryGetProperty("source", out var s) ? s : default;
-                    var scope = source.TryGetProperty("scope", out var sc) && sc.ValueKind == JsonValueKind.String
-                        ? sc.GetString()!.Trim().ToUpperInvariant()
-                        : string.Empty;
-                    var field = source.TryGetProperty("field", out var f) && f.ValueKind == JsonValueKind.String
-                        ? f.GetString()!.Trim()
-                        : throw new EffectConfigException("reference-exists.join 缺少 source.field。");
-                    pairs.Add($"R.{EffectConditionCompiler.Identifier(targetColumn)} = "
-                        + (scope == "MASTER" ? "M." : "D.") + EffectConditionCompiler.Identifier(field));
-                }
-                referenceSql = string.Join(" AND ", pairs);
-            }
-            else
-            {
-                if (!check.TryGetProperty("refKey", out var refKey) || refKey.ValueKind != JsonValueKind.Object)
-                    throw new EffectConfigException("reference-exists.check 缺少 refKey。");
-                var scope = refKey.GetProperty("scope").GetString()!.Trim().ToUpperInvariant();
-                var field = refKey.GetProperty("field").GetString()!.Trim();
-                var sourceSide = (scope == "MASTER" ? "M." : "D.") + EffectConditionCompiler.Identifier(field);
-                referenceSql = $"R.{EffectConditionCompiler.Identifier(field)} = {sourceSide}";
-                if (allowEmpty)
-                    referenceSql = $"({sourceSide} IS NULL OR {sourceSide} = '' OR {referenceSql})";
-            }
-
-            var activeTag = string.Empty;
-            if (check.TryGetProperty("activeTag", out var active) && active.ValueKind == JsonValueKind.Object)
-            {
-                var field = active.GetProperty("field").GetString()!.Trim();
-                var expect = active.TryGetProperty("expect", out var e) && e.ValueKind == JsonValueKind.Number
-                    ? e.GetInt32()
-                    : 0;
-                activeTag = $" AND R.{EffectConditionCompiler.Identifier(field)} = {expect}";
-            }
-
-            var fromMaster = "dbo." + EffectConditionCompiler.Identifier(plan.MasterTable!) + " M";
-            var fromDetail = plan.DetailTable is null
-                ? string.Empty
-                : " CROSS JOIN dbo." + EffectConditionCompiler.Identifier(plan.DetailTable) + " D";
-            var sql = "SELECT TOP 1 1 FROM " + fromMaster + fromDetail
-                + " WHERE NOT EXISTS (SELECT 1 FROM dbo." + EffectConditionCompiler.Identifier(refTable)
-                + " R WITH (NOLOCK) WHERE " + referenceSql + activeTag + ")";
-            await using var command = new SqlCommand(sql, connection, transaction);
+            var compiled = BuildReferenceExistsCheckSql(plan, check, masterKeyValues);
+            await using var command = new SqlCommand(compiled.Sql, connection, transaction);
+            foreach (var parameter in compiled.Parameters)
+                command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
             if (await command.ExecuteScalarAsync(token) is not null)
-                return check.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String
-                    ? msg.GetString()
-                    : "引用数据不存在。";
+                return rule.Message ?? compiled.Message;
         }
         return null;
     }
 
+    /// <summary>Compiled single reference-exists assertion plus its user-facing message.</summary>
+    internal sealed record ReferenceExistsSql(
+        string Sql,
+        IReadOnlyList<EffectSqlParameter> Parameters,
+        string Message);
+
+    internal static ReferenceExistsSql BuildReferenceExistsCheckSql(
+        ModuleEffectPlan plan,
+        JsonElement check,
+        IReadOnlyList<string> masterKeyValues)
+    {
+        var refTable = check.TryGetProperty("refTable", out var rt) && rt.ValueKind == JsonValueKind.String
+            ? rt.GetString()!.Trim()
+            : throw new EffectConfigException("reference-exists.check 缺少 refTable。");
+        var allowEmpty = check.TryGetProperty("allowEmpty", out var ae) && ae.ValueKind == JsonValueKind.True;
+
+        string referenceSql;
+        if (check.TryGetProperty("join", out var join) && join.ValueKind == JsonValueKind.Array)
+        {
+            var pairs = new List<string>();
+            foreach (var pair in join.EnumerateArray())
+            {
+                var targetColumn = pair.TryGetProperty("target", out var t) && t.ValueKind == JsonValueKind.String
+                    ? t.GetString()!.Trim()
+                    : throw new EffectConfigException("reference-exists.join 缺少 target。");
+                var source = pair.TryGetProperty("source", out var s) ? s : default;
+                var scope = source.TryGetProperty("scope", out var sc) && sc.ValueKind == JsonValueKind.String
+                    ? sc.GetString()!.Trim().ToUpperInvariant()
+                    : string.Empty;
+                var field = source.TryGetProperty("field", out var f) && f.ValueKind == JsonValueKind.String
+                    ? f.GetString()!.Trim()
+                    : throw new EffectConfigException("reference-exists.join 缺少 source.field。");
+                pairs.Add($"R.{EffectConditionCompiler.Identifier(targetColumn)} = "
+                    + (scope == "MASTER" ? "M." : "D.") + EffectConditionCompiler.Identifier(field));
+            }
+            referenceSql = string.Join(" AND ", pairs);
+        }
+        else
+        {
+            if (!check.TryGetProperty("refKey", out var refKey) || refKey.ValueKind != JsonValueKind.Object)
+                throw new EffectConfigException("reference-exists.check 缺少 refKey。");
+            var scope = refKey.GetProperty("scope").GetString()!.Trim().ToUpperInvariant();
+            var field = refKey.GetProperty("field").GetString()!.Trim();
+            var sourceSide = (scope == "MASTER" ? "M." : "D.") + EffectConditionCompiler.Identifier(field);
+            referenceSql = $"R.{EffectConditionCompiler.Identifier(field)} = {sourceSide}";
+            if (allowEmpty)
+                referenceSql = $"({sourceSide} IS NULL OR {sourceSide} = '' OR {referenceSql})";
+        }
+
+        var activeTag = string.Empty;
+        if (check.TryGetProperty("activeTag", out var active) && active.ValueKind == JsonValueKind.Object)
+        {
+            var field = active.GetProperty("field").GetString()!.Trim();
+            var expect = active.TryGetProperty("expect", out var e) && e.ValueKind == JsonValueKind.Number
+                ? e.GetInt32()
+                : 0;
+            activeTag = $" AND R.{EffectConditionCompiler.Identifier(field)} = {expect}";
+        }
+
+        var (documentScope, scopeParameters) = BuildDocumentScopeParts(plan, masterKeyValues, "M");
+        var fromMaster = "dbo." + EffectConditionCompiler.Identifier(plan.MasterTable!) + " M";
+        var fromDetail = plan.DetailTable is null
+            ? string.Empty
+            : " CROSS JOIN dbo." + EffectConditionCompiler.Identifier(plan.DetailTable) + " D";
+        var sql = "SELECT TOP 1 1 FROM " + fromMaster + fromDetail
+            + " WHERE " + string.Join(" AND ", documentScope)
+            + " AND NOT EXISTS (SELECT 1 FROM dbo." + EffectConditionCompiler.Identifier(refTable)
+            + " R WITH (NOLOCK) WHERE " + referenceSql + activeTag + ")";
+        var message = check.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String
+            ? msg.GetString() ?? "引用数据不存在。"
+            : "引用数据不存在。";
+        return new ReferenceExistsSql(sql, scopeParameters, message);
+    }
+
+    /// <summary>
+    /// master-detail 形态：跨单据的"主表维度 × 明细分组键"唯一。以当前单据行 cur 为锚，
+    /// 在与其主表维度相同的其它单据（m）中按明细分组键分组，命中组数大于 1 即重复。
+    /// 可选 documentDetailFields 追加"本单员工"限定（只统计本单出现过的分组键），
+    /// 未提供时与旧实现的整月扫描一致。诊断列按组聚合（MAX）成多行，供消息 {ROWS} 回填。
+    /// </summary>
+    internal static DuplicateCheckSql BuildMasterDetailUniqueSql(
+        ModuleEffectPlan plan,
+        JsonElement root,
+        IReadOnlyList<string> masterKeyValues)
+    {
+        var masterTableName = RequiredString(root, "masterTable", "duplicate-check master-detail 缺少 masterTable。");
+        var detailTableName = RequiredString(root, "detailTable", "duplicate-check master-detail 缺少 detailTable。");
+        var groupFields = ParseStringArray(root, "groupFields");
+        if (groupFields.Length == 0)
+            throw new EffectConfigException("duplicate-check master-detail 缺少 groupFields。");
+        var masterGroupFields = ParseStringArray(root, "masterGroupFields");
+        if (masterGroupFields.Length == 0)
+            throw new EffectConfigException("duplicate-check master-detail 缺少 masterGroupFields。");
+
+        if (!root.TryGetProperty("joinFields", out var joinFields) || joinFields.ValueKind != JsonValueKind.Object)
+            throw new EffectConfigException("duplicate-check master-detail 缺少 joinFields。");
+        var joinMaster = ParseStringArray(joinFields, "master");
+        var joinDetail = ParseStringArray(joinFields, "detail");
+        if (joinMaster.Length == 0 || joinMaster.Length != joinDetail.Length)
+            throw new EffectConfigException("duplicate-check master-detail joinFields.master/detail 必须等长非空。");
+
+        var (documentScope, parameters) = BuildDocumentScopeParts(plan, masterKeyValues, "cur");
+        var on = string.Join(" AND ", joinMaster.Select((field, index) =>
+            $"d.{EffectConditionCompiler.Identifier(joinDetail[index])} = m.{EffectConditionCompiler.Identifier(field)}"));
+
+        var predicates = new List<string>();
+        foreach (var field in masterGroupFields)
+        {
+            predicates.Add($"m.{EffectConditionCompiler.Identifier(field)} = cur.{EffectConditionCompiler.Identifier(field)}");
+        }
+
+        var documentDetailFields = ParseStringArray(root, "documentDetailFields");
+        if (documentDetailFields.Length > 0)
+        {
+            if (string.IsNullOrWhiteSpace(plan.DetailTable))
+                throw new EffectConfigException("duplicate-check master-detail documentDetailFields 需要明细表。");
+            if (documentDetailFields.Length != parameters.Count)
+            {
+                throw new EffectConfigException(
+                    $"duplicate-check master-detail documentDetailFields 数量（{documentDetailFields.Length}）与单据主键数量（{parameters.Count}）不一致。");
+            }
+            var scopeParts = new List<string>();
+            for (var index = 0; index < documentDetailFields.Length; index++)
+            {
+                scopeParts.Add($"x.{EffectConditionCompiler.Identifier(documentDetailFields[index])} = @mk{index}");
+            }
+            var groupMatch = string.Join(" AND ", groupFields.Select(field =>
+                $"x.{EffectConditionCompiler.Identifier(field)} = d.{EffectConditionCompiler.Identifier(field)}"));
+            predicates.Add("EXISTS (SELECT 1 FROM dbo." + EffectConditionCompiler.Identifier(detailTableName)
+                + " x WHERE " + string.Join(" AND ", scopeParts) + " AND " + groupMatch + ")");
+        }
+
+        var diagnostics = ParseStringArray(root, "diagnosticFields");
+        var maxRows = root.TryGetProperty("maxRows", out var maxRowsElement)
+            && maxRowsElement.ValueKind == JsonValueKind.Number
+            && maxRowsElement.TryGetInt32(out var declaredMax)
+                ? Math.Clamp(declaredMax, 1, 100)
+                : 10;
+        var selected = diagnostics.Length > 0
+            ? string.Join(", ", diagnostics.Select(field => $"MAX(d.{EffectConditionCompiler.Identifier(field)})"))
+            : "1";
+        var groupBy = string.Join(", ", groupFields.Select(field => "d." + EffectConditionCompiler.Identifier(field)));
+        var sql = new StringBuilder("SELECT TOP ").Append(maxRows).Append(' ').Append(selected)
+            .Append(" FROM dbo.").Append(EffectConditionCompiler.Identifier(masterTableName)).Append(" cur")
+            .Append(" CROSS JOIN dbo.").Append(EffectConditionCompiler.Identifier(masterTableName)).Append(" m")
+            .Append(" INNER JOIN dbo.").Append(EffectConditionCompiler.Identifier(detailTableName)).Append(" d ON ").Append(on)
+            .Append(" WHERE ").Append(string.Join(" AND ", documentScope))
+            .Append(" AND ").Append(string.Join(" AND ", predicates))
+            .Append(" GROUP BY ").Append(groupBy)
+            .Append(" HAVING COUNT(*) > 1");
+        return new DuplicateCheckSql(sql.ToString(), parameters, diagnostics, MultiRow: true);
+    }
+
+    private static string RequiredString(JsonElement element, string name, string error)
+    {
+        return element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(value.GetString())
+                ? value.GetString()!.Trim()
+                : throw new EffectConfigException(error);
+    }
+
+    /// <summary>
+    /// duplicate-check 以当前单据的主键上下文为锚：entity 模式把已保存行（主表 M，必要时
+    /// 加明细 D）的键值同目标表的其它行逐一比对，within-doc 模式只看当前单据的明细行。
+    /// 两种模式都必须限定在当前单据内——脱离单据范围会把其它单据的历史重复算到本次保存头上。
+    /// </summary>
     private async Task<string?> CheckDuplicateAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         ModuleEffectPlan plan,
         EffectValidationPlan rule,
+        IReadOnlyList<string> masterKeyValues,
         CancellationToken token)
     {
-        var root = rule.Params;
+        var compiled = BuildDuplicateCheckSql(plan, rule.Params, masterKeyValues);
+        await using var command = new SqlCommand(compiled.Sql, connection, transaction);
+        foreach (var parameter in compiled.Parameters)
+            command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+
+        if (compiled.Diagnostics.Count == 0)
+        {
+            return await command.ExecuteScalarAsync(token) is not null
+                ? (compiled.MultiRow ? (rule.Message ?? "数据重复。").Replace("{ROWS}", string.Empty) : rule.Message ?? "数据重复。")
+                : null;
+        }
+
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token))
+            return null;
+        if (compiled.MultiRow)
+        {
+            // master-detail 形态命中多行（每组一行），按 {ROWS} 占位符整块回填：
+            // 每行把诊断列以制表符相连并保留行尾制表符，与旧实现逐行拼接一致。
+            var lines = new List<string>();
+            do
+            {
+                var cells = new List<string>(compiled.Diagnostics.Count);
+                for (var index = 0; index < compiled.Diagnostics.Count; index++)
+                    cells.Add(reader.IsDBNull(index) ? string.Empty : Convert.ToString(reader.GetValue(index), CultureInfo.InvariantCulture)?.Trim() ?? string.Empty);
+                lines.Add(string.Join("\t", cells) + "\t");
+            }
+            while (await reader.ReadAsync(token));
+            return (rule.Message ?? "数据重复。").Replace("{ROWS}", string.Join("\r\n", lines));
+        }
+
+        var values = new List<string?>(compiled.Diagnostics.Count);
+        for (var index = 0; index < compiled.Diagnostics.Count; index++)
+            values.Add(reader.IsDBNull(index) ? null : Convert.ToString(reader.GetValue(index), CultureInfo.InvariantCulture));
+        return RenderDiagnosticMessage(rule.Message, compiled.Diagnostics, values);
+    }
+
+    /// <summary>Compiled duplicate-check statement plus the candidate columns echoed into the message.</summary>
+    internal sealed record DuplicateCheckSql(
+        string Sql,
+        IReadOnlyList<EffectSqlParameter> Parameters,
+        IReadOnlyList<string> Diagnostics,
+        bool MultiRow = false);
+
+    internal static DuplicateCheckSql BuildDuplicateCheckSql(
+        ModuleEffectPlan plan,
+        JsonElement root,
+        IReadOnlyList<string> masterKeyValues)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new EffectConfigException("duplicate-check 参数必须是对象。");
         var mode = root.TryGetProperty("mode", out var modeElement) && modeElement.ValueKind == JsonValueKind.String
             ? modeElement.GetString()!
             : "entity";
+
+        if (mode.Equals("master-detail", StringComparison.OrdinalIgnoreCase))
+            return BuildMasterDetailUniqueSql(plan, root, masterKeyValues);
+
+        var keyFields = ParseStringArray(root, "keyFields");
+        if (keyFields.Length == 0)
+            throw new EffectConfigException("duplicate-check 缺少 keyFields。");
+        var diagnostics = ParseStringArray(root, "diagnostics");
+
+        if (mode.Equals("within-doc", StringComparison.OrdinalIgnoreCase))
+        {
+            if (plan.DetailTable is null)
+                throw new EffectConfigException("duplicate-check within-doc 需要明细表（模块形态不足）。");
+            if (diagnostics.Length > 0)
+                throw new EffectConfigException("duplicate-check within-doc 不支持 diagnostics。");
+            // 明细表按约定携带主表主键列，据此把分组限定在当前单据内。
+            var (detailScope, detailParameters) = BuildDocumentScopeParts(plan, masterKeyValues, "D");
+            var columns = string.Join(", ", keyFields.Select(field => "D." + EffectConditionCompiler.Identifier(field)));
+            var withinDocSql = "SELECT TOP 1 1 FROM dbo." + EffectConditionCompiler.Identifier(plan.DetailTable)
+                + " D WHERE " + string.Join(" AND ", detailScope)
+                + " GROUP BY " + columns + " HAVING COUNT(*) > 1";
+            return new DuplicateCheckSql(withinDocSql, detailParameters, Array.Empty<string>());
+        }
+
         if (!root.TryGetProperty("table", out var tableElement) || tableElement.ValueKind != JsonValueKind.String)
             throw new EffectConfigException("duplicate-check 缺少 table。");
         var table = tableElement.GetString()!.Trim();
-        var keyFields = ParseStringArray(root, "keyFields");
 
-        string sql;
-        if (mode.Equals("within-doc", StringComparison.OrdinalIgnoreCase))
+        // 键来源：缺省即候选表同名列（MASTER 域）；显式 keySource 时按其域与列名对齐。
+        var sourceScope = "MASTER";
+        var sourceFields = keyFields;
+        if (root.TryGetProperty("keySource", out var keySource) && keySource.ValueKind == JsonValueKind.Object)
         {
-            var columns = string.Join(", ", keyFields.Select(field => "D." + EffectConditionCompiler.Identifier(field)));
-            sql = "SELECT TOP 1 1 FROM dbo." + EffectConditionCompiler.Identifier(plan.DetailTable!)
-                + " D GROUP BY " + columns + " HAVING COUNT(*) > 1";
-        }
-        else
-        {
-            if (keyFields.Length == 0
-                || !root.TryGetProperty("excludeSelf", out var excludeSelf)
-                || !excludeSelf.TryGetProperty("source", out var source))
-                throw new EffectConfigException("duplicate-check 缺少 keyFields/excludeSelf.source。");
-            var sourceScope = source.TryGetProperty("scope", out var sc) && sc.ValueKind == JsonValueKind.String
-                ? sc.GetString()!.Trim().ToUpperInvariant()
+            sourceScope = keySource.TryGetProperty("scope", out var scopeElement) && scopeElement.ValueKind == JsonValueKind.String
+                ? scopeElement.GetString()!.Trim().ToUpperInvariant()
                 : "MASTER";
-            var sourceFields = ParseStringArray(source, "fields");
+            sourceFields = ParseStringArray(keySource, "fields");
             if (sourceFields.Length != keyFields.Length)
-                throw new EffectConfigException("duplicate-check keyFields 与 excludeSelf.source.fields 数量不一致。");
-            var alias = sourceScope == "MASTER" ? "M" : "D";
-            var conditions = new List<string>();
-            for (var index = 0; index < keyFields.Length; index++)
-                conditions.Add($"X.{EffectConditionCompiler.Identifier(keyFields[index])} = {alias}.{EffectConditionCompiler.Identifier(sourceFields[index])}");
-            var selfExclusion = new List<string>();
-            if (excludeSelf.TryGetProperty("keyFields", out var selfKeys)
-                && selfKeys.ValueKind == JsonValueKind.Array && selfKeys.GetArrayLength() > 0)
-            {
-                var selfKeyList = ParseStringArray(excludeSelf, "keyFields");
-                var selfSourceFields = ParseStringArray(source, "fields");
-                for (var index = 0; index < Math.Min(selfKeyList.Length, selfSourceFields.Length); index++)
-                    selfExclusion.Add($"X.{EffectConditionCompiler.Identifier(selfKeyList[index])} = {alias}.{EffectConditionCompiler.Identifier(selfSourceFields[index])}");
-            }
-            var exclusion = selfExclusion.Count > 0
-                ? " AND NOT (" + string.Join(" AND ", selfExclusion) + ")"
-                : string.Empty;
-            sql = "SELECT TOP 1 1 FROM dbo." + EffectConditionCompiler.Identifier(table) + " X WITH (NOLOCK) WHERE "
-                + string.Join(" AND ", conditions) + exclusion;
+                throw new EffectConfigException("duplicate-check keyFields 与 keySource.fields 数量不一致。");
         }
-        await using var command = new SqlCommand(sql, connection, transaction);
-        if (await command.ExecuteScalarAsync(token) is not null)
-            return rule.Message ?? "数据重复。";
-        return null;
+        var sourceAlias = sourceScope switch
+        {
+            "MASTER" => "M",
+            "DETAIL" => "D",
+            _ => throw new EffectConfigException($"duplicate-check 来源域 '{sourceScope}' 仅允许 MASTER/DETAIL。"),
+        };
+        if (sourceAlias == "D" && plan.DetailTable is null)
+            throw new EffectConfigException("duplicate-check 来源域 DETAIL 不可用（模块无明细表）。");
+
+        var from = new StringBuilder("dbo.")
+            .Append(EffectConditionCompiler.Identifier(plan.MasterTable!)).Append(" M");
+        if (sourceAlias == "D")
+            from.Append(" CROSS JOIN dbo.").Append(EffectConditionCompiler.Identifier(plan.DetailTable!)).Append(" D");
+        from.Append(" CROSS JOIN dbo.").Append(EffectConditionCompiler.Identifier(table)).Append(" X WITH (NOLOCK)");
+
+        var conditions = new List<string>();
+        for (var index = 0; index < keyFields.Length; index++)
+        {
+            conditions.Add($"X.{EffectConditionCompiler.Identifier(keyFields[index])} = "
+                + $"{sourceAlias}.{EffectConditionCompiler.Identifier(sourceFields[index])}");
+        }
+
+        var (documentScope, parameters) = BuildDocumentScopeParts(plan, masterKeyValues, "M");
+        // 自排除：候选行主键等于当前单据主键，即刚保存的这行本身。
+        var selfExclusion = new List<string>();
+        if (root.TryGetProperty("excludeSelf", out var excludeSelf) && excludeSelf.ValueKind == JsonValueKind.Object)
+        {
+            var selfKeys = ParseStringArray(excludeSelf, "keyFields");
+            if (selfKeys.Length == 0)
+                throw new EffectConfigException("duplicate-check excludeSelf.keyFields 必须是非空数组。");
+            if (selfKeys.Length != parameters.Count)
+            {
+                throw new EffectConfigException(
+                    $"duplicate-check excludeSelf.keyFields 数量（{selfKeys.Length}）与单据主键数量（{parameters.Count}）不一致。");
+            }
+            for (var index = 0; index < selfKeys.Length; index++)
+            {
+                selfExclusion.Add($"X.{EffectConditionCompiler.Identifier(selfKeys[index])} = @mk{index}");
+            }
+        }
+        if (selfExclusion.Count == 0
+            && string.Equals(table, plan.MasterTable, StringComparison.OrdinalIgnoreCase))
+        {
+            // 候选表就是主表时，刚保存的行必然命中自身键值；缺自排除即等于永远拒绝保存。
+            throw new EffectConfigException(
+                $"duplicate-check 目标表与模块主表同名（{table}）时必须声明 excludeSelf.keyFields。");
+        }
+
+        var filterSql = string.Empty;
+        if (root.TryGetProperty("filter", out var filter) && filter.ValueKind == JsonValueKind.Object)
+        {
+            // 过滤条件只作用于候选行（TARGET→X）或当前单据行；算子与取值全走闭式条件编译器。
+            var compiled = new EffectConditionCompiler().Compile(
+                filter,
+                (scope, _) => scope.ToUpperInvariant() switch
+                {
+                    "TARGET" => "X",
+                    "MASTER" => "M",
+                    "DETAIL" => sourceAlias == "D"
+                        ? "D"
+                        : throw new EffectConfigException("duplicate-check filter 来源域 DETAIL 不可用。"),
+                    _ => null,
+                },
+                _ => true,
+                outerAlias: "X");
+            filterSql = compiled.Sql;
+            parameters.AddRange(compiled.Parameters);
+        }
+
+        var selected = diagnostics.Length > 0
+            ? string.Join(", ", diagnostics.Select(field => "X." + EffectConditionCompiler.Identifier(field)))
+            : "1";
+        var sql = new StringBuilder("SELECT TOP 1 ").Append(selected)
+            .Append(" FROM ").Append(from)
+            .Append(" WHERE ").Append(string.Join(" AND ", documentScope))
+            .Append(" AND ").Append(string.Join(" AND ", conditions));
+        if (selfExclusion.Count > 0)
+            sql.Append(" AND NOT (").Append(string.Join(" AND ", selfExclusion)).Append(")");
+        if (filterSql.Length > 0)
+            sql.Append(" AND (").Append(filterSql).Append(")");
+
+        return new DuplicateCheckSql(sql.ToString(), parameters, diagnostics);
+    }
+
+    /// <summary>
+    /// Substitutes {COLUMN} placeholders in the configured message with the candidate row's
+    /// values. Unknown placeholders stay verbatim so a misconfigured message is visible
+    /// rather than silently emptied.
+    /// </summary>
+    internal static string RenderDiagnosticMessage(
+        string? template,
+        IReadOnlyList<string> diagnostics,
+        IReadOnlyList<string?> values)
+    {
+        if (string.IsNullOrWhiteSpace(template))
+            return "数据重复。";
+        var text = template;
+        for (var index = 0; index < diagnostics.Count; index++)
+        {
+            var value = index < values.Count ? values[index]?.Trim() ?? string.Empty : string.Empty;
+            text = Regex.Replace(
+                text,
+                "\\{" + Regex.Escape(diagnostics[index]) + "\\}",
+                value.Replace("$", "$$"),
+                RegexOptions.IgnoreCase);
+        }
+        return text;
     }
 
     /// <summary>
@@ -362,9 +696,10 @@ public sealed class EffectValidationExecutor
             var hit = await command.ExecuteScalarAsync(token);
             if (hit is not null)
             {
-                return check.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String
-                    ? msg.GetString()
-                    : "明细行必填字段缺失。";
+                return rule.Message
+                    ?? (check.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String
+                        ? msg.GetString()
+                        : "明细行必填字段缺失。");
             }
         }
         return null;

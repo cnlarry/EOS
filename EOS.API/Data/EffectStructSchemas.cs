@@ -67,6 +67,7 @@ public static class EffectStructSchemas
         "value-neq",
         "not-exists",
         "switch",
+        "blank",
     };
 
     private static readonly IReadOnlySet<string> CompareOperators = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -733,6 +734,10 @@ public static class EffectStructSchemas
                         issues.Add($"{at} switch 缺少字符串 key。");
                     if (!item.TryGetProperty("value", out _))
                         issues.Add($"{at} switch 缺少 value。");
+                    break;
+                case "blank":
+                    if (!HasObjectField(item, "field"))
+                        issues.Add($"{at} blank 的 field 必须是 {{\"scope\":…,\"field\":…}} 对象。");
                     break;
             }
             if (item.TryGetProperty("negate", out var negate)
