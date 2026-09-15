@@ -280,10 +280,18 @@ public sealed class EffectPlanLoader
         OptionalInt(element, name)
         ?? throw new EffectConfigException($"配置项缺少必填整数 '{name}'。");
 
-    private static string? OptionalString(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()!.Trim()
-            : null;
+    /// <summary>
+    /// 读取可选字符串字段：空白串一律视为"未设置"（返回 null）。既有配置里存在以空串表达
+    /// 未设置的列（如公式行的聚合/来源域），而闭式算子集不含空串——若按原样透传，加载即抛
+    /// 配置异常，使该模块的保存/批核全部失败。空串与缺省在这里语义相同，一律按缺省处理。
+    /// </summary>
+    private static string? OptionalString(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String)
+            return null;
+        var text = value.GetString()!.Trim();
+        return text.Length == 0 ? null : text;
+    }
 
     private static int? OptionalInt(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var n)
