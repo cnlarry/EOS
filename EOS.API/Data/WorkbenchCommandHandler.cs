@@ -842,7 +842,12 @@ public sealed class WorkbenchCommandHandler(
         };
     }
 
-    /// <summary>主表金额汇总与余额字段初始化（明细聚合 + PREPAY/RECEIVE 余额）。</summary>
+    /// <summary>
+    /// 主表金额汇总与余额字段初始化（明细聚合 + PREPAY/RECEIVE 余额）。
+    /// 主表 AMOUNT/AMOUNT_TAX/TAX_SUM 以本汇总为权威（对齐单据明细金额的通用口径），
+    /// 在保存后处理之后执行、会覆盖领域规则写入的同名列；明细行异币别折算未实现
+    /// （明细币别与主表一致时 SUM 与折算等价）。
+    /// </summary>
     private static async Task RecalculateMasterAmountsAsync(
         SqlConnection connection,
         SqlTransaction transaction,
