@@ -118,63 +118,6 @@ public static class SysDomainRules
         return new(true, null);
     }
 
-    /// <summary>
-    /// User-rights save: joins the default group, then cleans orphaned personal permission
-    /// rows whose module or report no longer exists. Report permissions resolve from
-    /// SYSDD.REPORT_TAG at read time, so no materialized expansion is maintained here.
-    /// </summary>
-    public static async Task<SprocResult> SysdlAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 1 || keyValues.Count < 1) return new(false, "用户权限领域规则缺少主键。");
-        var keyUser = (keyValues[0] ?? string.Empty).Trim();
-        string? userId;
-        await using (var read = new SqlCommand(
-            "SELECT TOP 1 LTRIM(RTRIM(USER_ID)) FROM dbo.SYSDD WHERE USER_ID=@UserId;",
-            connection, transaction))
-        {
-            read.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = keyUser;
-            userId = (string?)await read.ExecuteScalarAsync(token);
-        }
-        if (!string.IsNullOrEmpty(userId))
-        {
-            string? groupId;
-            await using (var readGroup = new SqlCommand(
-                "SELECT LTRIM(RTRIM(ISNULL(G_IDX,''))) FROM dbo.SYSDL WHERE USER_ID=@UserId;",
-                connection, transaction))
-            {
-                readGroup.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId;
-                groupId = (string?)await readGroup.ExecuteScalarAsync(token);
-            }
-            if (!string.IsNullOrWhiteSpace(groupId))
-            {
-                await using var join = new SqlCommand("""
-                    INSERT INTO dbo.SYSDG_USER (G_IDX, USER_ID)
-                    SELECT @GIdx, @UserId
-                    WHERE NOT EXISTS (SELECT 1 FROM dbo.SYSDG_USER WHERE G_IDX=@GIdx AND USER_ID=@UserId);
-                    """, connection, transaction);
-                join.Parameters.Add("@GIdx", SqlDbType.NChar, 10).Value = groupId;
-                join.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId;
-                await join.ExecuteNonQueryAsync(token);
-            }
-        }
-        await using (var cleanDd = new SqlCommand(
-            "DELETE FROM dbo.SYSDD WHERE M_IDX NOT IN (SELECT M_IDX FROM dbo.MODULES);",
-            connection, transaction))
-        {
-            await cleanDd.ExecuteNonQueryAsync(token);
-        }
-        await using (var cleanDdReport = new SqlCommand("""
-            DELETE FROM dbo.SYSDD_REPORT
-            WHERE M_IDX NOT IN (SELECT M_IDX FROM dbo.MODULES) OR REPORT_ID NOT IN (SELECT REPORT_ID FROM dbo.REPORT);
-            """, connection, transaction))
-        {
-            await cleanDdReport.ExecuteNonQueryAsync(token);
-        }
-        return new(true, null);
-    }
-
     private static async Task<string?> ReadBomMissingAsync(
         SqlConnection connection, SqlTransaction transaction, string sql, string proNo, CancellationToken token)
     {
