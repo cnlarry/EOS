@@ -145,6 +145,22 @@ public sealed class EffectPipeline(
         return results;
     }
 
+    /// <summary>
+    /// Runs only the validation chain for the event's stage, inside the caller's open
+    /// transaction. Validation rules are the module's declarative validation catalog, so
+    /// callers run them independently of whether the engine has also taken over the
+    /// module's actions (a module may carry validations without any configured action).
+    /// </summary>
+    public Task ValidateWithinTransactionAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        ModuleEffectPlan plan,
+        EffectEvent executionEvent,
+        CancellationToken token,
+        IReadOnlyList<string>? masterKeyValues = null) =>
+        validationExecutor.ValidateAsync(
+            connection, transaction, plan, StageFor(executionEvent), token, masterKeyValues ?? Array.Empty<string>());
+
     private async Task<int> ExecuteActionAsync(
         SqlConnection connection,
         SqlTransaction transaction,

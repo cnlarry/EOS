@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace EOS.API.Data.ValidationRules;
 
@@ -9,13 +10,19 @@ namespace EOS.API.Data.ValidationRules;
 /// </summary>
 public static class ValidationRuleRegistry
 {
+    /// <summary>所有模板共用的可选键：params.when ＝ 规则级适用条件（不成立即跳过该校验）。</summary>
+    private static readonly IReadOnlySet<string> SharedParamKeys = KeySet("when");
+
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> ParamKeysByTemplate =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["qty-not-exceed"] = KeySet("mode", "checks"),
-            ["reference-exists"] = KeySet("checks"),
-            ["duplicate-check"] = KeySet("mode", "table", "keyFields", "excludeSelf"),
-            ["line-require"] = KeySet("checks"),
+            ["qty-not-exceed"] = WithWhen(KeySet("mode", "checks")),
+            ["reference-exists"] = WithWhen(KeySet("checks")),
+            ["duplicate-check"] = WithWhen(KeySet(
+                "mode", "table", "keyFields", "keySource", "excludeSelf", "filter", "diagnostics",
+                "masterTable", "detailTable", "joinFields", "groupFields", "masterGroupFields",
+                "documentDetailFields", "diagnosticFields", "maxRows")),
+            ["line-require"] = WithWhen(KeySet("checks")),
         };
 
     private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "message", "switch");
@@ -26,8 +33,8 @@ public static class ValidationRuleRegistry
     private static readonly IReadOnlySet<string> QtyBlockKeys = KeySet("scope", "terms", "fields");
     private static readonly IReadOnlySet<string> ReferenceCheckKeys = KeySet("refTable", "allowEmpty", "join", "refKey", "activeTag", "message", "lineField");
     private static readonly IReadOnlySet<string> ReferencePairKeys = KeySet("target", "source");
-    private static readonly IReadOnlySet<string> ExcludeSelfKeys = KeySet("keyFields", "source");
-    private static readonly IReadOnlySet<string> SourceBlockKeys = KeySet("scope", "fields");
+    private static readonly IReadOnlySet<string> ExcludeSelfKeys = KeySet("keyFields");
+    private static readonly IReadOnlySet<string> KeySourceKeys = KeySet("scope", "fields");
 
     private static readonly HashSet<string> KnownKeys = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -72,6 +79,8 @@ public static class ValidationRuleRegistry
         }
         if (ParamKeysByTemplate.TryGetValue(rule.ValidationKey, out var allowedParams))
             RejectUnknownKeys(rule, p, allowedParams, "params", issues);
+        if (GetObject(p, "when") is { } when)
+            ValidateConditionShape(rule, when, "when", issues);
         switch (rule.ValidationKey.ToLowerInvariant())
         {
             case "qty-not-exceed":
@@ -349,13 +358,74 @@ public static class ValidationRuleRegistry
     private static void ValidateDuplicateCheck(ValidationRuleConfig rule, JsonElement p, List<string> issues)
     {
         var mode = GetString(p, "mode");
-        if (mode is not ("within-doc" or "entity"))
-            issues.Add($"校验规则 {Label(rule)}：duplicate-check.mode 仅允许 within-doc / entity");
+        if (mode is not ("within-doc" or "entity" or "master-detail"))
+            issues.Add($"校验规则 {Label(rule)}：duplicate-check.mode 仅允许 within-doc / entity / master-detail");
+        if (mode == "master-detail")
+        {
+            ValidateMasterDetailUnique(rule, p, issues);
+            return;
+        }
+        var withinDoc = mode == "within-doc";
         if (mode == "entity" && string.IsNullOrWhiteSpace(GetString(p, "table")))
             issues.Add($"校验规则 {Label(rule)}：duplicate-check.table 必填（entity 模式）");
         var keyFields = GetArray(p, "keyFields");
         if (keyFields is not { } k || k.GetArrayLength() == 0)
             issues.Add($"校验规则 {Label(rule)}：duplicate-check.keyFields 必须是非空数组");
+        ValidateFilterAndDiagnostics(rule, p, withinDoc, issues);
+        ValidatePlaceholders(rule, issues);
+    }
+
+    /// <summary>
+    /// master-detail 形态：跨单据的"主表维度 × 明细分组键"唯一。要求声明主从表、关联列、
+    /// 分组键与主表比较维度；documentDetailFields 为可选的"本单"限定（数量须与单据主键一致，
+    /// 执行期校验）；diagnosticFields/maxRows 控制多行诊断。
+    /// </summary>
+    private static void ValidateMasterDetailUnique(ValidationRuleConfig rule, JsonElement p, List<string> issues)
+    {
+        if (string.IsNullOrWhiteSpace(GetString(p, "masterTable")))
+            issues.Add($"校验规则 {Label(rule)}：duplicate-check.masterTable 必填（master-detail 模式）");
+        if (string.IsNullOrWhiteSpace(GetString(p, "detailTable")))
+            issues.Add($"校验规则 {Label(rule)}：duplicate-check.detailTable 必填（master-detail 模式）");
+        if (GetArray(p, "groupFields") is not { } groupFields || groupFields.GetArrayLength() == 0)
+            issues.Add($"校验规则 {Label(rule)}：duplicate-check.groupFields 必须是非空数组");
+        if (GetArray(p, "masterGroupFields") is not { } masterGroupFields || masterGroupFields.GetArrayLength() == 0)
+            issues.Add($"校验规则 {Label(rule)}：duplicate-check.masterGroupFields 必须是非空数组");
+
+        var joinFields = GetObject(p, "joinFields");
+        if (joinFields is null)
+        {
+            issues.Add($"校验规则 {Label(rule)}：duplicate-check.joinFields 必填（master-detail 模式）");
+        }
+        else
+        {
+            RejectUnknownKeys(rule, joinFields.Value, KeySet("master", "detail"), "joinFields", issues);
+            var joinMaster = GetArray(joinFields.Value, "master");
+            var joinDetail = GetArray(joinFields.Value, "detail");
+            if (joinMaster is not { } masterArray || masterArray.GetArrayLength() == 0)
+                issues.Add($"校验规则 {Label(rule)}：duplicate-check.joinFields.master 必须是非空数组");
+            else if (joinDetail is not { } detailArray || detailArray.GetArrayLength() != masterArray.GetArrayLength())
+                issues.Add($"校验规则 {Label(rule)}：duplicate-check.joinFields.detail 数量必须与 master 一致");
+        }
+
+        if (GetArray(p, "documentDetailFields") is { } documentDetailFields && documentDetailFields.GetArrayLength() == 0)
+            issues.Add($"校验规则 {Label(rule)}：duplicate-check.documentDetailFields 不能为空数组（不需要则省略该键）");
+        if (GetArray(p, "diagnosticFields") is { } diagnosticFields && diagnosticFields.GetArrayLength() == 0)
+            issues.Add($"校验规则 {Label(rule)}：duplicate-check.diagnosticFields 不能为空数组（不需要则省略该键）");
+        if (p.TryGetProperty("maxRows", out var maxRows)
+            && (maxRows.ValueKind != JsonValueKind.Number || !maxRows.TryGetInt32(out var rows) || rows is < 1 or > 100))
+        {
+            issues.Add($"校验规则 {Label(rule)}：duplicate-check.maxRows 必须是 1..100 的整数");
+        }
+        ValidateFilterAndDiagnostics(rule, p, withinDoc: false, issues);
+        ValidatePlaceholders(rule, issues);
+    }
+
+    private static void ValidateFilterAndDiagnostics(
+        ValidationRuleConfig rule,
+        JsonElement p,
+        bool withinDoc,
+        List<string> issues)
+    {
         var exclude = GetObject(p, "excludeSelf");
         if (exclude is not null)
         {
@@ -363,9 +433,74 @@ public static class ValidationRuleRegistry
             var excludeKeys = GetArray(exclude.Value, "keyFields");
             if (excludeKeys is null || excludeKeys.Value.GetArrayLength() == 0)
                 issues.Add($"校验规则 {Label(rule)}：excludeSelf.keyFields 必须是非空数组");
-            var excludeSource = GetObject(exclude.Value, "source");
-            if (excludeSource is not null)
-                RejectUnknownKeys(rule, excludeSource.Value, SourceBlockKeys, "excludeSelf.source", issues);
+        }
+        var keySource = GetObject(p, "keySource");
+        if (keySource is not null)
+        {
+            RejectUnknownKeys(rule, keySource.Value, KeySourceKeys, "keySource", issues);
+            var keyScope = GetString(keySource.Value, "scope");
+            if (keyScope is not ("MASTER" or "DETAIL"))
+                issues.Add($"校验规则 {Label(rule)}：keySource.scope 仅允许 MASTER / DETAIL");
+            var keySourceFields = GetArray(keySource.Value, "fields");
+            if (keySourceFields is null || keySourceFields.Value.GetArrayLength() == 0)
+                issues.Add($"校验规则 {Label(rule)}：keySource.fields 必须是非空数组");
+            else if (GetArray(p, "keyFields") is { } declaredKeys && declaredKeys.GetArrayLength() != keySourceFields.Value.GetArrayLength())
+            {
+                issues.Add(
+                    $"校验规则 {Label(rule)}：keySource.fields 数量（{keySourceFields.Value.GetArrayLength()}）"
+                    + $"与 keyFields 数量（{declaredKeys.GetArrayLength()}）不一致");
+            }
+        }
+        if (withinDoc && exclude is not null)
+            issues.Add($"校验规则 {Label(rule)}：duplicate-check.excludeSelf 仅用于 entity 模式");
+        if (withinDoc && GetObject(p, "filter") is not null)
+            issues.Add($"校验规则 {Label(rule)}：duplicate-check.filter 仅用于 entity 模式");
+        if (withinDoc && keySource is not null)
+            issues.Add($"校验规则 {Label(rule)}：duplicate-check.keySource 仅用于 entity 模式");
+
+        if (GetObject(p, "filter") is { } filter)
+            ValidateConditionShape(rule, filter, "filter", issues);
+
+        var diagnostics = GetArray(p, "diagnostics");
+        if (diagnostics is not null)
+        {
+            if (withinDoc)
+                issues.Add($"校验规则 {Label(rule)}：duplicate-check.diagnostics 仅用于 entity 模式");
+            if (diagnostics.Value.GetArrayLength() == 0)
+                issues.Add($"校验规则 {Label(rule)}：duplicate-check.diagnostics 必须是非空数组");
+            foreach (var item in diagnostics.Value.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(item.GetString()))
+                    issues.Add($"校验规则 {Label(rule)}：duplicate-check.diagnostics 只能是非空字符串数组");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 消息占位符必须能取到值：列名占位符要出现在 diagnostics / diagnosticFields 内，
+    /// {ROWS} 是 master-detail 的多行整块占位符。
+    /// </summary>
+    private static void ValidatePlaceholders(ValidationRuleConfig rule, List<string> issues)
+    {
+        var declared = new List<string>();
+        var p = rule.Params ?? default;
+        foreach (var name in new[] { "diagnostics", "diagnosticFields" })
+        {
+            if (GetArray(p, name) is not { } array)
+                continue;
+            foreach (var item in array.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString()))
+                    declared.Add(item.GetString()!.Trim());
+            }
+        }
+        foreach (Match placeholder in Regex.Matches(rule.Message ?? string.Empty, "\\{([A-Za-z0-9_]+)\\}"))
+        {
+            var name = placeholder.Groups[1].Value;
+            if (name.Equals("ROWS", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!declared.Contains(name, StringComparer.OrdinalIgnoreCase))
+                issues.Add($"校验规则 {Label(rule)}：消息占位符 {{{name}}} 未出现在 duplicate-check 的 diagnostics/diagnosticFields 内");
         }
     }
 
@@ -385,6 +520,23 @@ public static class ValidationRuleRegistry
 
     private static IReadOnlySet<string> KeySet(params string[] keys) =>
         new HashSet<string>(keys, StringComparer.OrdinalIgnoreCase);
+
+    private static IReadOnlySet<string> WithWhen(IReadOnlySet<string> keys) =>
+        new HashSet<string>(keys.Concat(SharedParamKeys), StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>结构化条件形状校验（与 EffectConditionCompiler 的闭式契约一致）。</summary>
+    private static void ValidateConditionShape(
+        ValidationRuleConfig rule,
+        JsonElement condition,
+        string where,
+        ICollection<string> issues)
+    {
+        var logic = GetString(condition, "logic");
+        if (logic is not ("AND" or "OR"))
+            issues.Add($"校验规则 {Label(rule)}：{where}.logic 仅允许 AND / OR");
+        if (GetArray(condition, "items") is null)
+            issues.Add($"校验规则 {Label(rule)}：{where}.items 必须是数组");
+    }
 
     private static string Label(ValidationRuleConfig rule) =>
         string.IsNullOrWhiteSpace(rule.RuleId) ? $"({rule.ValidationKey})" : rule.RuleId;

@@ -221,5 +221,186 @@ public class ValidationRuleRegistryFailClosedTests
 """));
         Assert.Empty(issues);
     }
+
+    private static List<string> ValidateWithMessage(string key, string? message, JsonElement parameters)
+    {
+        var issues = new List<string>();
+        ValidationRuleRegistry.Validate(
+            new ValidationRuleConfig("rule-1", key, "SAVE", true, message, parameters), issues);
+        return issues;
+    }
+
+    [Fact]
+    public void DuplicateCheck_EntityFilterAndDiagnostics_PassRegistry()
+    {
+        var issues = ValidateWithMessage(
+            "duplicate-check",
+            "\r\n员工工号：{EMP_NO}\r\n已分配给：{EMP_NAME}",
+            Params("""
+                {"mode":"entity","table":"HR_EMPLOYEE","keyFields":["EMP_NO"],
+                 "excludeSelf":{"keyFields":["EMP_ID"]},
+                 "filter":{"logic":"AND","items":[{"type":"VALUE-NEQ","field":{"scope":"TARGET","field":"STATE"},"value":5,"nullAsMatch":true}]},
+                 "diagnostics":["EMP_NO","EMP_NAME"]}
+                """));
+
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public void DuplicateCheck_PlaceholderOutsideDiagnostics_IsRejected()
+    {
+        var issues = ValidateWithMessage(
+            "duplicate-check",
+            "已分配给：{EMP_NAME}",
+            Params("""
+                {"mode":"entity","table":"HR_EMPLOYEE","keyFields":["EMP_NO"],
+                 "excludeSelf":{"keyFields":["EMP_ID"]},
+                 "diagnostics":["EMP_NO"]}
+                """));
+
+        Assert.Contains(issues, issue => issue.Contains("占位符 {EMP_NAME}"));
+    }
+
+    [Fact]
+    public void DuplicateCheck_FilterLogicOutsideClosedSet_IsRejected()
+    {
+        var issues = Validate("duplicate-check", Params("""
+            {"mode":"entity","table":"HR_EMPLOYEE","keyFields":["EMP_NO"],
+             "excludeSelf":{"keyFields":["EMP_ID"]},
+             "filter":{"logic":"XOR","items":[]}}
+            """));
+
+        Assert.Contains(issues, issue => issue.Contains("filter.logic 仅允许 AND / OR"));
+    }
+
+    [Fact]
+    public void DuplicateCheck_WithinDocRejectsEntityOnlyKeys()
+    {
+        var issues = Validate("duplicate-check", Params("""
+            {"mode":"within-doc","keyFields":["EMP_ID"],
+             "excludeSelf":{"keyFields":["EMP_ID"]},
+             "keySource":{"scope":"DETAIL","fields":["EMP_ID"]},
+             "diagnostics":["EMP_ID"],
+             "filter":{"logic":"AND","items":[]}}
+            """));
+
+        Assert.Contains(issues, issue => issue.Contains("excludeSelf 仅用于 entity 模式"));
+        Assert.Contains(issues, issue => issue.Contains("filter 仅用于 entity 模式"));
+        Assert.Contains(issues, issue => issue.Contains("diagnostics 仅用于 entity 模式"));
+        Assert.Contains(issues, issue => issue.Contains("keySource 仅用于 entity 模式"));
+    }
+
+    [Fact]
+    public void DuplicateCheck_KeySourceFieldCountMismatch_IsRejected()
+    {
+        var issues = Validate("duplicate-check", Params("""
+            {"mode":"entity","table":"HR_PLAN_M","keyFields":["EMP_ID"],
+             "keySource":{"scope":"DETAIL","fields":["EMP_ID","SERIAL_NO"]}}
+            """));
+
+        Assert.Contains(issues, issue => issue.Contains("keySource.fields 数量"));
+    }
+
+    [Fact]
+    public void DuplicateCheck_KeySourceScopeOutsideClosedSet_IsRejected()
+    {
+        var issues = Validate("duplicate-check", Params("""
+            {"mode":"entity","table":"HR_PLAN_M","keyFields":["EMP_ID"],
+             "keySource":{"scope":"TABLE","fields":["EMP_ID"]}}
+            """));
+
+        Assert.Contains(issues, issue => issue.Contains("keySource.scope 仅允许 MASTER / DETAIL"));
+    }
+
+    [Fact]
+    public void DuplicateCheck_ExcludeSelfSourceBlock_IsRejected()
+    {
+        var issues = Validate("duplicate-check", Params("""
+            {"mode":"entity","table":"MOU_ASSESS_M","keyFields":["PRO_NO"],
+             "excludeSelf":{"keyFields":["ASSESS_TYPE","ASSESS_NO"],"source":{"scope":"MASTER","fields":["ASSESS_TYPE","ASSESS_NO"]}}}
+            """));
+
+        Assert.Contains(issues, issue => issue.Contains("未知参数键 excludeSelf.source"));
+    }
+
+    [Fact]
+    public void DuplicateCheck_MasterDetailShape_PassRegistry()
+    {
+        var issues = ValidateWithMessage(
+            "duplicate-check",
+            "以下序号项人员当月排班重复 \r\n{ROWS}",
+            Params("""
+                {"mode":"master-detail","masterTable":"HR_PLAN_M","detailTable":"HR_PLAN_D",
+                 "joinFields":{"master":["PLAN_TYPE","PLAN_NO"],"detail":["PLAN_TYPE","PLAN_NO"]},
+                 "masterGroupFields":["COUNT_MONTH"],"groupFields":["EMP_ID"],
+                 "documentDetailFields":["PLAN_TYPE","PLAN_NO"],"diagnosticFields":["SERIAL_NO"],
+                 "when":{"logic":"AND","items":[{"type":"VALUE-NEQ","field":{"scope":"MASTER","field":"COUNT_MONTH"},"value":""}]}}
+                """));
+
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public void DuplicateCheck_MasterDetailMissingKeys_AreRejected()
+    {
+        var issues = Validate("duplicate-check", Params("""{"mode":"master-detail","groupFields":["EMP_ID"]}"""));
+
+        Assert.Contains(issues, issue => issue.Contains("masterTable 必填"));
+        Assert.Contains(issues, issue => issue.Contains("detailTable 必填"));
+        Assert.Contains(issues, issue => issue.Contains("masterGroupFields 必须是非空数组"));
+        Assert.Contains(issues, issue => issue.Contains("joinFields 必填"));
+    }
+
+    [Fact]
+    public void DuplicateCheck_MasterDetailJoinLengthMismatch_IsRejected()
+    {
+        var issues = Validate("duplicate-check", Params("""
+            {"mode":"master-detail","masterTable":"HR_PLAN_M","detailTable":"HR_PLAN_D",
+             "joinFields":{"master":["PLAN_TYPE","PLAN_NO"],"detail":["PLAN_TYPE"]},
+             "masterGroupFields":["COUNT_MONTH"],"groupFields":["EMP_ID"]}
+            """));
+
+        Assert.Contains(issues, issue => issue.Contains("joinFields.detail 数量必须与 master 一致"));
+    }
+
+    [Fact]
+    public void DuplicateCheck_MessagePlaceholderMustResolve()
+    {
+        var issues = ValidateWithMessage(
+            "duplicate-check",
+            "重复：{SERIAL_NO}",
+            Params("""
+                {"mode":"master-detail","masterTable":"HR_PLAN_M","detailTable":"HR_PLAN_D",
+                 "joinFields":{"master":["PLAN_TYPE"],"detail":["PLAN_TYPE"]},
+                 "masterGroupFields":["COUNT_MONTH"],"groupFields":["EMP_ID"],"diagnosticFields":["EMP_ID"]}
+                """));
+
+        Assert.Contains(issues, issue => issue.Contains("占位符 {SERIAL_NO}"));
+    }
+
+    [Fact]
+    public void WhenConditionShape_IsValidatedForEveryTemplate()
+    {
+        var issues = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","when":{"logic":"XOR","items":[]},
+             "checks":[{"match":[{"target":"A","source":{"scope":"DETAIL","field":"B"}}],
+              "thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]},
+              "usage":{"scope":"TARGET","fields":["X"]},
+              "limit":{"scope":"TARGET","fields":["Y"]}}]}
+            """));
+
+        Assert.Contains(issues, issue => issue.Contains("when.logic 仅允许 AND / OR"));
+    }
+
+    [Fact]
+    public void WhenCondition_IsAcceptedAsSharedKey()
+    {
+        var issues = Validate("reference-exists", Params("""
+            {"checks":[{"refTable":"SUPPLIER","refKey":{"scope":"MASTER","field":"SUPPLIER_ID"}}],
+             "when":{"logic":"AND","items":[{"type":"VALUE-NEQ","field":{"scope":"MASTER","field":"SUPPLIER_ID"},"value":""}]}}
+            """));
+
+        Assert.DoesNotContain(issues, issue => issue.Contains("未知参数键"));
+    }
 }
 
