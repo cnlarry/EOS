@@ -7,6 +7,7 @@ using EOS.API.Middleware;
 using EOS.API.Models;
 using EOS.API.Security;
 using EOS.API.Telemetry;
+using System.Reflection;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -352,6 +353,33 @@ if (app.Environment.IsDevelopment())
 {
     metricsEndpoint.AllowAnonymous();
 }
+// 构建/部署漂移判定：进程启动时间早于二进制构建时间 ⇒ 运行中的进程不是当前构建（需重启）。
+var versionEndpoint = app.MapGet("/health/version", () =>
+{
+    var assembly = typeof(Program).Assembly;
+    var builtUtc = GetAssemblyMetadata(assembly, "BuildTimeUtc");
+    var process = System.Diagnostics.Process.GetCurrentProcess();
+    var binaryUtc = File.Exists(assembly.Location)
+        ? File.GetLastWriteTimeUtc(assembly.Location).ToString("yyyy-MM-ddTHH:mm:ssZ")
+        : null;
+    return Results.Json(new
+    {
+        commit = GetAssemblyMetadata(assembly, "GitCommit") ?? "unknown",
+        buildTimeUtc = builtUtc ?? "unknown",
+        binaryWriteTimeUtc = binaryUtc ?? "unknown",
+        processStartTimeUtc = process.StartTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"),
+        informationalVersion = assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion,
+        assemblyVersion = assembly.GetName().Version?.ToString(),
+        environment = app.Environment.EnvironmentName,
+        stale = builtUtc is not null
+            && DateTime.TryParse(builtUtc, null, System.Globalization.DateTimeStyles.AdjustToUniversal, out var built)
+            && process.StartTime.ToUniversalTime() < built,
+    });
+});
+if (app.Environment.IsDevelopment())
+{
+    versionEndpoint.AllowAnonymous();
+}
 app.MapFallbackToFile("index.html").RequireAuthorization();
 
 ErpDatabaseInitializer.Run(builder.Configuration, app.Logger);
@@ -368,6 +396,10 @@ static void RegisterPdfFont()
     // 进程内只注册一次；QuestPDF 内部持有字体数据，流保持打开由进程回收
     QuestPDF.Drawing.FontManager.RegisterFontWithCustomName("Noto Sans CJK SC", File.OpenRead(fontPath));
 }
+
+static string? GetAssemblyMetadata(System.Reflection.Assembly assembly, string key) =>
+    assembly.GetCustomAttributes<System.Reflection.AssemblyMetadataAttribute>()
+        .FirstOrDefault(attribute => string.Equals(attribute.Key, key, StringComparison.Ordinal))?.Value;
 
 static DirectoryInfo GetDataProtectionKeysDirectory(IConfiguration configuration)
 {
