@@ -199,8 +199,27 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         await command.ExecuteNonQueryAsync(token);
     }
 
+    /// <summary>
+    /// 主表某列按 MORE 表去重值串联回写的 UPDATE 语句；主表与键列由调用方按模块常量给出，
+    /// 标识符先校验（不接受外部输入）。
+    /// </summary>
+    internal static string BuildDistinctFieldUpdateSql(
+        string masterTable, string masterColumn, string masterTypeColumn, string masterNoColumn)
+    {
+        if (!WorkbenchSql.Identifier.IsMatch(masterTable) || !WorkbenchSql.Identifier.IsMatch(masterTypeColumn)
+            || !WorkbenchSql.Identifier.IsMatch(masterNoColumn) || !WorkbenchSql.Identifier.IsMatch(masterColumn))
+            throw new ArgumentException("主表/主表键列标识符不合法。");
+        return $"UPDATE dbo.[{masterTable}] SET [{masterColumn}]=@Value " +
+               $"WHERE [{masterTypeColumn}]=@Type AND [{masterNoColumn}]=@No;";
+    }
+
+    /// <summary>
+    /// 把 MORE 表中某列的去重非空值串联后回写主表同名列。
+    /// 主表与主表键列由调用方按模块常量给出（不接受外部输入），并做标识符校验。
+    /// </summary>
     internal static async Task UpdateDistinctFieldAsync(
         SqlConnection connection, SqlTransaction transaction,
+        string masterTable, string masterTypeColumn, string masterNoColumn,
         string type, string no, string masterColumn, string moreTable, string moreColumn,
         string moreTypeColumn, string moreNoColumn, CancellationToken token)
     {
@@ -210,7 +229,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
             type, no, token);
         if (values.Count == 0) return;
         await using var command = new SqlCommand(
-            $"UPDATE dbo.PUR_APPLY_M SET [{masterColumn}]=@Value WHERE APPLY_TYPE=@Type AND APPLY_NO=@No;",
+            BuildDistinctFieldUpdateSql(masterTable, masterColumn, masterTypeColumn, masterNoColumn),
             connection, transaction);
         command.Parameters.Add("@Value", SqlDbType.NVarChar, 300).Value = string.Join(',', values);
         command.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;

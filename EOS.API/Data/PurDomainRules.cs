@@ -409,9 +409,11 @@ public static class PurDomainRules
             }
         }
         // 主表 ORDER_NO / PRODUCE_NO 汇总（MORE 有值才更新）
-        await DomainRuleService.UpdateDistinctFieldAsync(connection, transaction, type, no, "ORDER_NO", "PUR_PURCHASE_MORE", "ORDER_NO",
+        await DomainRuleService.UpdateDistinctFieldAsync(connection, transaction, "PUR_PURCHASE_M", "PURCHASE_TYPE", "PURCHASE_NO",
+            type, no, "ORDER_NO", "PUR_PURCHASE_MORE", "ORDER_NO",
             moreTypeColumn: "PURCHASE_TYPE", moreNoColumn: "PURCHASE_NO", token);
-        await DomainRuleService.UpdateDistinctFieldAsync(connection, transaction, type, no, "PRODUCE_NO", "PUR_PURCHASE_MORE", "PRODUCE_NO",
+        await DomainRuleService.UpdateDistinctFieldAsync(connection, transaction, "PUR_PURCHASE_M", "PURCHASE_TYPE", "PURCHASE_NO",
+            type, no, "PRODUCE_NO", "PUR_PURCHASE_MORE", "PRODUCE_NO",
             moreTypeColumn: "PURCHASE_TYPE", moreNoColumn: "PURCHASE_NO", token);
         return new(true, null);
     }
@@ -660,9 +662,11 @@ public static class PurDomainRules
             }
         }
         // 5. 主表 ORDER_NO / PRODUCE_NO 汇总
-        await DomainRuleService.UpdateDistinctFieldAsync(connection, transaction, type, no, "ORDER_NO", "PUR_APPLY_MORE", "ORDER_NO",
+        await DomainRuleService.UpdateDistinctFieldAsync(connection, transaction, "PUR_APPLY_M", "APPLY_TYPE", "APPLY_NO",
+            type, no, "ORDER_NO", "PUR_APPLY_MORE", "ORDER_NO",
             moreTypeColumn: "APPLY_TYPE", moreNoColumn: "APPLY_NO", token);
-        await DomainRuleService.UpdateDistinctFieldAsync(connection, transaction, type, no, "PRODUCE_NO", "PUR_APPLY_MORE", "PRODUCE_NO",
+        await DomainRuleService.UpdateDistinctFieldAsync(connection, transaction, "PUR_APPLY_M", "APPLY_TYPE", "APPLY_NO",
+            type, no, "PRODUCE_NO", "PUR_APPLY_MORE", "PRODUCE_NO",
             moreTypeColumn: "APPLY_TYPE", moreNoColumn: "APPLY_NO", token);
         return new(true, null);
     }
