@@ -140,37 +140,5 @@ public static class MouDomainRules
             : new(false, "以下序号项量产模入库不能大于模具完工未入数量\r\n" + rows);
     }
 
-    /// <summary>吸塑开模评估（P_MOU_ASSESS）AfterSave：料号开模评估唯一。</summary>
-
-
-    /// <summary>吸塑开模评估（P_MOU_ASSESS）AfterSave：料号开模评估唯一。</summary>
-    public static async Task<SprocResult> MouAssessAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "开模评估领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        string? proNo;
-        await using (var read = new SqlCommand(
-            "SELECT LTRIM(RTRIM(ISNULL(PRO_NO,''))) FROM dbo.MOU_ASSESS_M WHERE ASSESS_TYPE=@Type AND ASSESS_NO=@No;",
-            connection, transaction))
-        {
-            read.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
-            read.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
-            proNo = (string?)await read.ExecuteScalarAsync(token);
-        }
-        if (string.IsNullOrWhiteSpace(proNo)) return new(true, null);
-        await using var cmd = new SqlCommand(
-            "SELECT TOP 1 1 FROM dbo.MOU_ASSESS_M WHERE PRO_NO=@ProNo AND NOT (ASSESS_TYPE=@Type AND ASSESS_NO=@No);",
-            connection, transaction);
-        cmd.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
-        cmd.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
-        cmd.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
-        return await cmd.ExecuteScalarAsync(token) is not null
-            ? new(false, "此料号开模评估资料已经存在")
-            : new(true, null);
-    }
-
     /// <summary>出口报关单（P_CUS_EXPORT）AfterSave：ERROR_NO_SAVE 门控的报关不超合同检查。</summary>
 }

@@ -218,6 +218,10 @@ public sealed class WorkbenchDefinitionBuilder(
                 // controlled AfterSave sproc with the domain rule.
                 if(DomainRuleMap.TryGet(moduleId,out var domainRule))
                     businessRule=businessRule with { DomainRule=domainRule, AfterSaveSproc=null };
+                // Modules whose save-time behaviour moved into the validation catalog drop the
+                // legacy sproc without being marked pending (their rules run on the save path).
+                else if(CatalogAfterSaveMap.IsPorted(moduleId))
+                    businessRule=businessRule with { AfterSaveSproc=null };
                 // Modules without a ported AfterSave must not silently run the metadata sproc:
                 // clear AfterSave and mark it pending porting (save is refused); the approval
                 // WorkflowSproc (UPDATE_SP) remains a controlled call.
