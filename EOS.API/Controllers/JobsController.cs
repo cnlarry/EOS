@@ -65,6 +65,8 @@ public sealed class JobsController(
         if (!await CanRunAsync(ModuleIds.CardBatch, token)) return Forbid();
         if (request.Cards.Count == 0 || request.Cards.Count > CardBatchMaxRows) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_CARDS", $"发卡数量需在 1~{CardBatchMaxRows} 之间。"));
         if (request.StartDate == default) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_DATE", "生效日期不能为空。"));
+        if (request.EndDate is { } endDate && endDate < request.StartDate)
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_DATE", "失效日期不得早于生效日期。"));
         var executor = User.Identity?.Name ?? "SYSTEM";
         var result = await hrJobs.BatchCardsAsync(request.Cards, request.StartDate, request.EndDate, executor, token);
         return Ok(new { result.Updated, result.Inserted });
