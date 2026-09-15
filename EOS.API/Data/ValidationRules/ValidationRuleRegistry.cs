@@ -21,8 +21,11 @@ public static class ValidationRuleRegistry
             ["duplicate-check"] = WithWhen(KeySet(
                 "mode", "table", "keyFields", "keySource", "excludeSelf", "filter", "diagnostics",
                 "masterTable", "detailTable", "joinFields", "groupFields", "masterGroupFields",
-                "documentDetailFields", "diagnosticFields", "maxRows")),
+                "documentDetailFields", "diagnosticFields", "maxRows", "displayLookup")),
             ["line-require"] = WithWhen(KeySet("checks")),
+            ["period-overlap"] = WithWhen(KeySet(
+                "detailTable", "rangeFields", "scopeFields", "groupFields",
+                "displayLookup", "diagnosticFields", "maxRows")),
         };
 
     private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "message", "switch");
@@ -42,6 +45,7 @@ public static class ValidationRuleRegistry
         "reference-exists",
         "duplicate-check",
         "line-require",
+        "period-overlap",
     };
 
     private static readonly HashSet<string> KnownStages = new(StringComparer.OrdinalIgnoreCase)
@@ -95,7 +99,107 @@ public static class ValidationRuleRegistry
             case "line-require":
                 ValidateLineRequire(rule, p, issues);
                 break;
+            case "period-overlap":
+                ValidatePeriodOverlap(rule, p, issues);
+                break;
         }
+    }
+
+    /// <summary>
+    /// 诊断列与显示名连接：诊断列取冲突行（或明细行）的列，@display 取 displayLookup 的显示名；
+    /// 用 @display 必须配 displayLookup（fail-closed）。
+    /// </summary>
+    private static void ValidateDiagnosticShape(ValidationRuleConfig rule, JsonElement p, List<string> issues)
+    {
+        var lookup = GetObject(p, "displayLookup");
+        if (lookup is not null)
+        {
+            RejectUnknownKeys(rule, lookup.Value, KeySet("table", "linkField", "displayField"), "displayLookup", issues);
+            foreach (var key in new[] { "table", "linkField", "displayField" })
+            {
+                if (string.IsNullOrWhiteSpace(GetString(lookup.Value, key)))
+                    issues.Add($"校验规则 {Label(rule)}：displayLookup.{key} 必填");
+            }
+        }
+        if (GetArray(p, "diagnosticFields") is not { } diagnostics)
+            return;
+        if (diagnostics.GetArrayLength() == 0)
+        {
+            issues.Add($"校验规则 {Label(rule)}：diagnosticFields 必须是非空数组");
+            return;
+        }
+        foreach (var item in diagnostics.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(item.GetString()))
+            {
+                issues.Add($"校验规则 {Label(rule)}：diagnosticFields 只能是非空字符串数组");
+                continue;
+            }
+            if (item.GetString()!.Trim().Equals("@display", StringComparison.OrdinalIgnoreCase) && lookup is null)
+                issues.Add($"校验规则 {Label(rule)}：诊断列使用 @display 时必须提供 displayLookup");
+        }
+    }
+
+    /// <summary>
+    /// period-overlap：同一维度（人／险种／证件）的期间不得与其它单据的期间相交。
+    /// 必填：明细表、起止列、单据标识列（数量须与单据主键一致，执行期校验）、维度键；
+    /// 可选：displayLookup（诊断显示名）、diagnosticFields（@display 或冲突行列）、maxRows。
+    /// </summary>
+    private static void ValidatePeriodOverlap(ValidationRuleConfig rule, JsonElement p, List<string> issues)
+    {
+        if (string.IsNullOrWhiteSpace(GetString(p, "detailTable")))
+            issues.Add($"校验规则 {Label(rule)}：period-overlap.detailTable 必填");
+        var range = GetObject(p, "rangeFields");
+        if (range is null)
+        {
+            issues.Add($"校验规则 {Label(rule)}：period-overlap.rangeFields 必填");
+        }
+        else
+        {
+            RejectUnknownKeys(rule, range.Value, KeySet("begin", "end"), "rangeFields", issues);
+            if (string.IsNullOrWhiteSpace(GetString(range.Value, "begin")))
+                issues.Add($"校验规则 {Label(rule)}：period-overlap.rangeFields.begin 必填");
+            if (string.IsNullOrWhiteSpace(GetString(range.Value, "end")))
+                issues.Add($"校验规则 {Label(rule)}：period-overlap.rangeFields.end 必填");
+        }
+        if (GetArray(p, "scopeFields") is not { } scopeFields || scopeFields.GetArrayLength() == 0)
+            issues.Add($"校验规则 {Label(rule)}：period-overlap.scopeFields 必须是非空数组");
+        if (GetArray(p, "groupFields") is not { } groupFields || groupFields.GetArrayLength() == 0)
+            issues.Add($"校验规则 {Label(rule)}：period-overlap.groupFields 必须是非空数组");
+
+        var lookup = GetObject(p, "displayLookup");
+        if (lookup is not null)
+        {
+            RejectUnknownKeys(rule, lookup.Value, KeySet("table", "linkField", "displayField"), "displayLookup", issues);
+            foreach (var key in new[] { "table", "linkField", "displayField" })
+            {
+                if (string.IsNullOrWhiteSpace(GetString(lookup.Value, key)))
+                    issues.Add($"校验规则 {Label(rule)}：period-overlap.displayLookup.{key} 必填");
+            }
+        }
+
+        var diagnostics = GetArray(p, "diagnosticFields");
+        if (diagnostics is not null)
+        {
+            if (diagnostics.Value.GetArrayLength() == 0)
+                issues.Add($"校验规则 {Label(rule)}：period-overlap.diagnosticFields 必须是非空数组");
+            foreach (var item in diagnostics.Value.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(item.GetString()))
+                {
+                    issues.Add($"校验规则 {Label(rule)}：period-overlap.diagnosticFields 只能是非空字符串数组");
+                    continue;
+                }
+                if (item.GetString()!.Trim().Equals("@display", StringComparison.OrdinalIgnoreCase) && lookup is null)
+                    issues.Add($"校验规则 {Label(rule)}：period-overlap 诊断列使用 @display 时必须提供 displayLookup");
+            }
+        }
+        if (p.TryGetProperty("maxRows", out var maxRows)
+            && (maxRows.ValueKind != JsonValueKind.Number || !maxRows.TryGetInt32(out var rows) || rows is < 1 or > 100))
+        {
+            issues.Add($"校验规则 {Label(rule)}：period-overlap.maxRows 必须是 1..100 的整数");
+        }
+        ValidatePlaceholders(rule, issues);
     }
 
     private static void ValidateQtyNotExceed(ValidationRuleConfig rule, JsonElement p, List<string> issues)
@@ -360,6 +464,7 @@ public static class ValidationRuleRegistry
         var mode = GetString(p, "mode");
         if (mode is not ("within-doc" or "entity" or "master-detail"))
             issues.Add($"校验规则 {Label(rule)}：duplicate-check.mode 仅允许 within-doc / entity / master-detail");
+        ValidateDiagnosticShape(rule, p, issues);
         if (mode == "master-detail")
         {
             ValidateMasterDetailUnique(rule, p, issues);

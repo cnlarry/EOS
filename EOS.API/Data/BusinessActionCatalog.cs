@@ -107,6 +107,7 @@ public static class BusinessActionCatalog
         "reference-exists",
         "duplicate-check",
         "line-require",
+        "period-overlap",
     };
 
     public static bool IsKnownEvent(string value) => Events.Contains(value);
