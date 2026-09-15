@@ -294,6 +294,12 @@ public sealed class EffectShadowRunner
           180103 => new(180103, "180103", "HR_REDEPLOY_M", "HR_REDEPLOY_D",
               "REDEPLOY_TYPE", "REDEPLOY_NO", "REDEPLOY_DATE",
               null, null, null, "员工调动单"),
+          // 2401 has no physical detail table (SAMPLE_PRO_D does not exist in
+          // sys.objects) and a single-column master key: Key2Column repeats
+          // Key1Column with a master-only resolver (3307 pattern).
+          2401 => new(2401, "2401", "SAMPLE_PRO", "SAMPLE_PRO_D",
+              "PRO_NO", "PRO_NO", "CONFIRM_DATE",
+              null, null, null, "样品基本资料"),
         170102 => new(170102, "170102", "COP_RECEIPT_M", "COP_RECEIPT_D",
             "RECEIPT_TYPE", "RECEIPT_NO", "RECEIPT_DATE",
             null, null, null, "收款单"),
@@ -397,7 +403,7 @@ public sealed class EffectShadowRunner
             "WAGE_TYPE", "WAGE_NO", "WAGE_DATE",
             null, null, null, "保密离职工资表"),
         _ => throw new NotSupportedException(
-            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802/1504/1518/1906/1908/2403/3307/2917/2709/2710/2711/2915/2916/2603/2604/1902/180103 only (requested {moduleId})."),
+            $"Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802/1504/1518/1906/1908/2403/3307/2917/2709/2710/2711/2915/2916/2603/2604/1902/180103/2401 only (requested {moduleId})."),
     };
 
     [Fact]
@@ -512,9 +518,9 @@ public sealed class EffectShadowRunner
     /// <summary>Runs the shadow comparison and writes the JSON report; returns the report.</summary>
     public async Task<ShadowReport> RunAsync(ShadowOptions options, TextWriter log)
     {
-        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109 or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606              or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 3307 or 2917 or 2709 or 2710 or 2711 or 2915 or 2916 or 2603 or 2604 or 1902 or 180103))
+        if (options.ModuleId is not (1607 or 1406 or 1505 or 1407 or 1413 or 1610 or 170101 or 170201 or 1404 or 1604 or 1418 or 1609 or 1509 or 1405 or 1502 or 2906 or 180106 or 180206 or 180207 or 1512 or 1522 or 2803 or 2804 or 2816 or 1503 or 1514 or 1517 or 2805 or 2806 or 1615 or 1616 or 2817 or 2818 or 2705 or 2706 or 2707 or 2708 or 2815 or 2903 or 2904 or 2907 or 2913 or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203 or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109 or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606              or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 3307 or 2917 or 2709 or 2710 or 2711 or 2915 or 2916 or 2603 or 2604 or 1902 or 180103 or 2401))
         {
-            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802/1504/1518/1906/1908/2403/3307/2917/2709/2710/2711/2915/2916/2603/2604/1902/180103 only.");
+            throw new NotSupportedException("Effect shadow snapshot specs are implemented for modules 1607/1406/1505/1407/1413/1610/170101/170201/1404/1604/1418/1609/1509/1405/1502/1512/1522/2803/2804/2816/1503/1514/1517/2805/2806/1615/1616/2817/2818/2906/180106/180206/180207/2705/2706/2707/2708/2815/2903/2904/2907/2913/180310/1803101/130101/130102/130106/130107/130108/130109/170102/170202/1608/1612/2908/2909/2910/2912/1409/1519/1411/1412/2404/1507/1515/1606/2801/2802/1504/1518/1906/1908/2403/3307/2917/2709/2710/2711/2915/2916/2603/2604/1902/180103/2401 only.");
         }
         var spec = GetSpec(options.ModuleId);
         var deapprove = options.Event.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
@@ -713,6 +719,10 @@ public sealed class EffectShadowRunner
              or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 2917 or 2709 or 2710 or 2711 or 2915 or 2916 or 2603 or 2604 or 180103)
          {
              return await ResolveRecordKeysByConfirmAsync(connection, spec, deapprove, failure);
+         }
+         if (spec.ModuleId == 2401)
+         {
+             return await ResolveRecordKeys2401Async(connection, deapprove, failure);
          }
          if (spec.ModuleId == 1902)
          {
@@ -1109,6 +1119,7 @@ public sealed class EffectShadowRunner
                 new HalfStockMoveHandler(),
                 new CarFilloilSyncHandler(),
                 new DetailFieldSyncHandler(),
+                new SampleEditionBumpHandler(),
             },
             new EffectValidationExecutor(),
             auditWriter,
@@ -1258,7 +1269,7 @@ public sealed class EffectShadowRunner
             or 130101 or 130102 or 130103 or 130104 or 130105 or 130110 or 3303 or 3901 or 170103 or 170203
              or 300301 or 300302 or 300304 or 300305 or 180310 or 1803101 or 1423 or 130106 or 130107 or 130108 or 130109
              or 170102 or 170202 or 1608 or 1612 or 2908 or 2909 or 2910 or 2912 or 1409 or 1519 or 1411 or 1412 or 2404 or 1507 or 1515 or 1606
-             or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 3307 or 2917 or 2709 or 2710 or 2711 or 2915 or 2916 or 2603 or 2604 or 1902 or 180103)
+             or 2801 or 2802 or 1504 or 1518 or 1906 or 1908 or 2403 or 3307 or 2917 or 2709 or 2710 or 2711 or 2915 or 2916 or 2603 or 2604 or 1902 or 180103 or 2401)
          {
              // 2xxx snapshot specs filter target tables by document keys and EXISTS
              // subqueries off the master; no detail context rows are materialised.
@@ -1503,6 +1514,10 @@ public sealed class EffectShadowRunner
         if (spec.ModuleId == 180103)
         {
             return BuildTableSpecsRedeploy(master);
+        }
+        if (spec.ModuleId == 2401)
+        {
+            return BuildTableSpecsSamplePro(master);
         }
         if (spec.ModuleId == 1902)
         {
@@ -3026,6 +3041,24 @@ public sealed class EffectShadowRunner
     }
 
     /// <summary>
+    /// Sample master (2401, P_WF_SAMPLE_PRO): approval bumps the edition stamp;
+    /// the unported first-time creation chain is out of scope. The snapshot covers
+    /// the sample row plus the same-number product row (the legacy first-time path
+    /// inserts it when missing).
+    /// </summary>
+    private static IReadOnlyList<TableSpec> BuildTableSpecsSamplePro(MasterContext master)
+    {
+        var pn = new SqlParameter("@pn", master.ReceiveType);
+        return new List<TableSpec>
+        {
+            new("SAMPLE_PRO", new[] { "PRO_NO" }, "@pn=PRO_NO", new[] { pn }),
+            new("PRODUCT", new[] { "PRO_NO" },
+                "EXISTS (SELECT 1 FROM dbo.SAMPLE_PRO R WHERE R.PRO_NO=@pn AND PRODUCT.PRO_NO=R.PRO_NO)",
+                new[] { pn }),
+        };
+    }
+
+    /// <summary>
     /// Redeploy document (180103, P_WF_HR_REDEPLOY): approval syncs the detail new
     /// values onto the employees, deapproval restores the old values. The compared
     /// footprint is the document plus the touched employee rows.
@@ -3133,7 +3166,37 @@ public sealed class EffectShadowRunner
         }
         return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
     }
-    /// row-level BuildLogSpec (which narrows by detail serials/products/depots),
+
+    /// <summary>
+    /// 2401 (sample master) has no physical detail table and a single-column master
+    /// key: approve picks an unconfirmed sample master, deapprove a confirmed one.
+    /// Both returned keys carry PRO_NO (Key2Column repeats Key1Column).
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> ResolveRecordKeys2401Async(
+        SqlConnection connection, bool deapprove, bool failure)
+    {
+        if (failure)
+        {
+            throw new NotSupportedException("2401 影子规格未规格化失败分支（首转门控走独立失败用例）。");
+        }
+        var confirm = deapprove ? "1" : "0";
+        const string sql = """
+            SELECT TOP 1 M.PRO_NO, M.PRO_NO
+            FROM dbo.SAMPLE_PRO M
+            WHERE ISNULL(M.CONFIRM_TAG,0)=@confirm
+            ORDER BY ISNULL(M.CONFIRM_DATE, M.CREATE_DATE) DESC;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@confirm", confirm);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            throw new InvalidOperationException(deapprove
+                ? "未找到可解批对拍的已批核样品单（自动选单无结果）。"
+                : "未找到可对拍的未批核样品单（自动选单无结果）。");
+        }
+        return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
+    }
     /// this filters by document date + key pair only. Both paths execute the same
     /// document inside symmetric rolled-back transactions, so the wider scope is
     /// comparison-safe and needs no detail context rows.
