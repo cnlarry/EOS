@@ -39,31 +39,43 @@ public static class HrDomainRules
         if (endDate < beginDate) return new(false, "失于日期应在生效日期后");
         if (beginDate is not null)
         {
-            var expires = beginDate.Value.AddDays(-1);
-            await using (var updCard = new SqlCommand("""
-                UPDATE dbo.HR_EMPLOYEE_CARD SET END_DATE=@Expires
-                WHERE CARD_ID=@CardId AND EMP_ID<>@EmpId AND (END_DATE IS NULL OR END_DATE>=@BeginDate);
-                """, connection, transaction))
-            {
-                updCard.Parameters.Add("@Expires", SqlDbType.DateTime).Value = expires;
-                updCard.Parameters.Add("@CardId", SqlDbType.NChar, 20).Value = cardId;
-                updCard.Parameters.Add("@EmpId", SqlDbType.NChar, 10).Value = empId;
-                updCard.Parameters.Add("@BeginDate", SqlDbType.DateTime).Value = beginDate.Value;
-                await updCard.ExecuteNonQueryAsync(token);
-            }
-            await using (var updEmp = new SqlCommand("""
-                UPDATE dbo.HR_EMPLOYEE_CARD SET END_DATE=@Expires
-                WHERE EMP_ID=@EmpId AND CARD_ID<>@CardId AND (END_DATE IS NULL OR END_DATE>=@BeginDate);
-                """, connection, transaction))
-            {
-                updEmp.Parameters.Add("@Expires", SqlDbType.DateTime).Value = expires;
-                updEmp.Parameters.Add("@EmpId", SqlDbType.NChar, 10).Value = empId;
-                updEmp.Parameters.Add("@CardId", SqlDbType.NChar, 20).Value = cardId;
-                updEmp.Parameters.Add("@BeginDate", SqlDbType.DateTime).Value = beginDate.Value;
-                await updEmp.ExecuteNonQueryAsync(token);
-            }
+            await CloseConflictingCardsAsync(connection, transaction, empId, cardId, beginDate.Value, token);
         }
         return new(true, null);
+    }
+
+    /// <summary>
+    /// 关闭与本次生效卡冲突的旧卡：同一卡号下的其他持卡人、以及同一员工名下的其他卡，
+    /// 到期日统一置为本次生效日的前一天（仅当旧卡未填到期日或不早于本次生效日）。
+    /// 单卡维护（180208）与批量发卡（180218 /jobs/card-batch）共用同一语义。
+    /// </summary>
+    internal static async Task CloseConflictingCardsAsync(
+        SqlConnection connection, SqlTransaction transaction,
+        string empId, string cardId, DateTime beginDate, CancellationToken token)
+    {
+        var expires = beginDate.AddDays(-1);
+        await using (var updCard = new SqlCommand("""
+            UPDATE dbo.HR_EMPLOYEE_CARD SET END_DATE=@Expires
+            WHERE CARD_ID=@CardId AND EMP_ID<>@EmpId AND (END_DATE IS NULL OR END_DATE>=@BeginDate);
+            """, connection, transaction))
+        {
+            updCard.Parameters.Add("@Expires", SqlDbType.DateTime).Value = expires;
+            updCard.Parameters.Add("@CardId", SqlDbType.NChar, 20).Value = cardId;
+            updCard.Parameters.Add("@EmpId", SqlDbType.NChar, 10).Value = empId;
+            updCard.Parameters.Add("@BeginDate", SqlDbType.DateTime).Value = beginDate;
+            await updCard.ExecuteNonQueryAsync(token);
+        }
+        await using (var updEmp = new SqlCommand("""
+            UPDATE dbo.HR_EMPLOYEE_CARD SET END_DATE=@Expires
+            WHERE EMP_ID=@EmpId AND CARD_ID<>@CardId AND (END_DATE IS NULL OR END_DATE>=@BeginDate);
+            """, connection, transaction))
+        {
+            updEmp.Parameters.Add("@Expires", SqlDbType.DateTime).Value = expires;
+            updEmp.Parameters.Add("@EmpId", SqlDbType.NChar, 10).Value = empId;
+            updEmp.Parameters.Add("@CardId", SqlDbType.NChar, 20).Value = cardId;
+            updEmp.Parameters.Add("@BeginDate", SqlDbType.DateTime).Value = beginDate;
+            await updEmp.ExecuteNonQueryAsync(token);
+        }
     }
 
     /// <summary>库存单 AfterSave 通用校验：库别/产品/批号。</summary>
