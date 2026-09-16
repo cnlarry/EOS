@@ -310,9 +310,11 @@ public sealed class EffectValidationExecutor
 
         var (emptyParts, allowEmptyUsesDetail) = BuildAllowEmptyParts(check);
         usesDetail |= allowEmptyUsesDetail;
+        // 断言查的是"缺失行"：来源键为空时该行不参与判定，故守卫是否定型（为空 ⇒ 条件为假 ⇒ 不命中），
+        // 写成 OR 会让"未引用"的行反而命中。
         var guard = emptyParts.Count == 0
             ? string.Empty
-            : "(" + string.Join(" OR ", emptyParts.Select(part => part + " IS NULL OR " + part + " = ''")) + ") OR ";
+            : "NOT (" + string.Join(" OR ", emptyParts.Select(part => part + " IS NULL OR " + part + " = ''")) + ") AND ";
 
         var lineExpression = BuildReferenceLineExpression(check);
         usesDetail |= lineExpression is not null;
