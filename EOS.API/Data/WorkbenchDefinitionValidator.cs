@@ -19,6 +19,7 @@ namespace EOS.API.Data;
 public sealed class WorkbenchDefinitionValidator(
     DbConnectionFactory connections,
     DocumentWorkbenchRepository workbench,
+    WorkbenchDefinitionBuilder definitionBuilder,
     ModuleBusinessConfigRepository configRepository,
     IOptions<UnifiedFormEditorSettings> formSettings,
     ILogger<WorkbenchDefinitionValidator> logger)
@@ -202,12 +203,15 @@ public sealed class WorkbenchDefinitionValidator(
         WorkbenchDefinition? definition = null;
         if (workbenchUrl || enabled)
         {
-            definition = await workbench.GetDefinitionAsync(
+            // 发布路径的"可构建"校验必须以"元数据重建"后的定义为准（与写入快照的定义一致）：
+            // 走 forPublish=true 会忽略已发布基线，让校验反映当前代码+元数据，而不是旧快照。
+            definition = await definitionBuilder.GetDefinitionAsync(
                 moduleId, userId, "Z", true, true,
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                new HashSet<string>(StringComparer.OrdinalIgnoreCase), token);
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase), token,
+                forPublish: true);
             checks.Add(definition is not null
-                ? new("definition_build", true, "工作台定义可构建。")
+                ? new("definition_build", true, "工作台定义可构建（按当前代码+元数据重建）。")
                 : new("definition_build", false, "无法构建工作台定义（路由/主表/字段/虚拟列解析失败）。"));
         }
         else
