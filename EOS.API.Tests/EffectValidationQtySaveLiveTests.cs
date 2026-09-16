@@ -97,6 +97,61 @@ public sealed class EffectValidationQtySaveLiveTests
         return (receiveType, receiveNo, serial, delta);
     }
 
+    [Theory]
+    [InlineData(1607)] // 收料单
+    [InlineData(1507)] // 生产计划
+    [InlineData(1502)] // 制令单（含 PRODUCE_*_TAG 开关）
+    [InlineData(1423)] // 退料单
+    [InlineData(1412)] // 备货返仓单（含 FITOUT_*_TAG 开关，8 条断言）
+    [InlineData(1505)] // 入库单
+    [InlineData(1519)] // 入库单管理(外)
+    [InlineData(1406)] // 送货单（含 SEND_ORDER_TAG 开关）
+    public async Task 八个模块的保存侧不超量规则都能装载并执行(int moduleId)
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            var plan = await LoadPlanAsync(connection, transaction, moduleId, "qty-not-exceed", token);
+            var keyValues = await PickKeyValuesAsync(connection, transaction, plan, token);
+            if (keyValues is null)
+                return; // 该表暂无数据，跳过（不算证据，也不算失败）
+
+            try
+            {
+                await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, keyValues);
+            }
+            catch (EffectValidationException)
+            {
+                // 现存单据本就超量（历史数据）——属正常业务拒绝，证明规则跑通
+            }
+            // 关键：不得出现 EffectConfigException（配置错）或 SqlException（列/表写错）
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
+    private static async Task<string[]?> PickKeyValuesAsync(
+        SqlConnection connection, SqlTransaction transaction, ModuleEffectPlan plan, CancellationToken token)
+    {
+        var columns = string.Join(", ", plan.MasterPkOrder.Select(column => "[" + column + "]"));
+        await using var command = new SqlCommand(
+            $"SELECT TOP 1 {columns} FROM dbo.[{plan.MasterTable}];", connection, transaction);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token))
+            return null;
+        var values = new string[plan.MasterPkOrder.Count];
+        for (var index = 0; index < values.Length; index++)
+            values[index] = reader.IsDBNull(index)
+                ? string.Empty
+                : Convert.ToString(reader.GetValue(index), System.Globalization.CultureInfo.InvariantCulture)!.Trim();
+        return values;
+    }
+
     [Fact]
     public async Task 收料超采购被拒并回填诊断行()
     {
