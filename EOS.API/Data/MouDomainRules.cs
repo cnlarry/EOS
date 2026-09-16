@@ -55,31 +55,13 @@ public static class MouDomainRules
             ], token);
 
     /// <summary>产品模具对照表（P_MOU_PRO）AfterSave：产品/模具存在 + 所用模具汇总（按产品限定—— 全局更新疑似笔误）。</summary>
+    /// <summary>产品模具对照表（P_MOU_PRO）AfterSave：按产品回写所用模具汇总。</summary>
     public static async Task<SprocResult> MouProAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
         if (pkColumns.Count < 1 || keyValues.Count < 1) return new(false, "产品模具对照领域规则缺少主键。");
         var proNo = (keyValues[0] ?? string.Empty).Trim();
-        await using var product = new SqlCommand(
-            "SELECT TOP 1 1 FROM dbo.PRODUCT WHERE PRO_NO=@ProNo;", connection, transaction);
-        product.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
-        if (await product.ExecuteScalarAsync(token) is null)
-            return new(false, "产品编号不存在");
-        await using (var mould = new SqlCommand("""
-            SELECT TOP 11 SERIAL_NO FROM dbo.MOU_PRO_D t
-            WHERE t.PRO_NO=@ProNo
-              AND NOT EXISTS (SELECT 1 FROM dbo.MOU_MOULD m WHERE m.MOULD_ID=t.MOULD_ID)
-            ORDER BY SERIAL_NO;
-            """, connection, transaction))
-        {
-            mould.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
-            await using var reader = await mould.ExecuteReaderAsync(token);
-            var lines = new List<string>();
-            while (await reader.ReadAsync(token)) lines.Add(Convert.ToInt32(reader.GetValue(0)).ToString());
-            if (lines.Count > 0)
-                return new(false, "以下序号项模具编号不存在 \r\n" + string.Join("\r\n", lines.Take(10)));
-        }
         await using var update = new SqlCommand(
             "UPDATE dbo.MOU_PRO_M SET MOULD_IDS=dbo.f_get_pro_moulds(PRO_NO) WHERE PRO_NO=@ProNo;", connection, transaction);
         update.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
