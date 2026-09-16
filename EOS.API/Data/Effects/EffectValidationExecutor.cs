@@ -283,15 +283,20 @@ public sealed class EffectValidationExecutor
                 scope = field.TryGetProperty("scope", out var scopeElement) && scopeElement.ValueKind == JsonValueKind.String
                     ? scopeElement.GetString()!.Trim().ToUpperInvariant()
                     : "SOURCE";
+                // THIS 是"本单数量"，分组形态下即求和值，无需列名。
                 name = field.TryGetProperty("field", out var nameElement) && nameElement.ValueKind == JsonValueKind.String
                     ? nameElement.GetString()!.Trim()
-                    : throw new EffectConfigException("qty-not-exceed.diagnosticFields 缺少 field。");
+                    : scope == "THIS"
+                        ? null
+                        : throw new EffectConfigException("qty-not-exceed.diagnosticFields 缺少 field。");
             }
             cells.Add(scope switch
             {
-                "THIS" => aggregate ? sourceAlias + ".[__THIS_QTY]" : "S." + EffectConditionCompiler.Identifier(name),
-                "TARGET" => "T." + EffectConditionCompiler.Identifier(name),
-                _ => sourceAlias + "." + EffectConditionCompiler.Identifier(name),
+                "THIS" => aggregate
+                    ? sourceAlias + ".[__THIS_QTY]"
+                    : "S." + EffectConditionCompiler.Identifier(name ?? throw new EffectConfigException("qty-not-exceed.diagnosticFields 的 THIS 作用域在非分组形态下必须给出 field。")),
+                "TARGET" => "T." + EffectConditionCompiler.Identifier(name!),
+                _ => sourceAlias + "." + EffectConditionCompiler.Identifier(name!),
             });
         }
         return cells;
