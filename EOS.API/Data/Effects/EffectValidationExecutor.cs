@@ -260,10 +260,11 @@ public sealed class EffectValidationExecutor
                     continue;
             }
 
-            var message = rule.Message ?? compiled.Message;
+            // 断言自带文案优先：一条规则可含多条断言（如"库别不存在/产品不存在"），
+            // 规则级 message 只是工作区里的概述，盖住断言文案会让用户看到错的那一条。
+            var message = compiled.Message ?? rule.Message ?? "引用数据不存在。";
             if (compiled.LineSql is null)
                 return message;
-
             var lines = new List<string>();
             await using var lineCommand = new SqlCommand(compiled.LineSql, connection, transaction);
             foreach (var parameter in compiled.Parameters)
@@ -280,7 +281,7 @@ public sealed class EffectValidationExecutor
     internal sealed record ReferenceExistsSql(
         string Sql,
         IReadOnlyList<EffectSqlParameter> Parameters,
-        string Message,
+        string? Message,
         string? LineSql = null);
 
     internal static ReferenceExistsSql BuildReferenceExistsCheckSql(
@@ -333,8 +334,8 @@ public sealed class EffectValidationExecutor
             + " AND " + string.Join(" AND ", missingParts);
         var sql = "SELECT TOP 1 1 FROM " + fromMaster + fromDetail + " WHERE " + predicate;
         var message = check.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String
-            ? msg.GetString() ?? "引用数据不存在。"
-            : "引用数据不存在。";
+            ? msg.GetString()
+            : null;
         return new ReferenceExistsSql(sql, scopeParameters, message,
             lineExpression is null
                 ? null
