@@ -738,7 +738,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     private static readonly Dictionary<string, (string Join, string Select)> SysdnVirtualLookups = new(StringComparer.OrdinalIgnoreCase)
     {
         ["DEPT_NAME"] = ("LEFT JOIN dbo.DEPT dd WITH (NOLOCK) ON dd.DEPT_ID = n.DEPT_ID", "[dd].[DEPT_NAME]"),
-        ["COMPANY_NAME"] = ("LEFT JOIN dbo.COMPANY cc WITH (NOLOCK) ON cc.COMPANY_ID = n.COMPANY_ID", "[cc].[NAME_CN]"),
+        ["COMPANY_NAME"] = ("LEFT JOIN dbo.COMPANY cc WITH (NOLOCK) ON cc.COMPANY_ID = n.CI", "[cc].[NAME_CN]"),
         ["DUTY_NAME"] = ("LEFT JOIN dbo.HR_DUTY hd WITH (NOLOCK) ON hd.DUTY_ID = n.DUTY_ID", "[hd].[DUTY_NAME]"),
     };
 

@@ -16,7 +16,7 @@ public sealed class AuthenticationRepository(DbConnectionFactory connections, IL
 
         const string sql = """
             SELECT l.USER_ID,l.G_IDX,l.USER_PWD,l.EMP_ID,n.EMP_NAME,n.DEPT_ID,
-                   dbo.f_get_dept_desc(n.DEPT_ID) AS DEPT_DESC,n.COMPANY_ID,l.ACTIVE_TAG
+                   dbo.f_get_dept_desc(n.DEPT_ID) AS DEPT_DESC,n.CI,l.ACTIVE_TAG
             FROM dbo.SYSDL l WITH (NOLOCK)
             INNER JOIN dbo.SYSDN n WITH (NOLOCK) ON l.EMP_ID=n.EMP_ID
             WHERE l.USER_ID=@UserId;
@@ -46,7 +46,7 @@ public sealed class AuthenticationRepository(DbConnectionFactory connections, IL
             reader.GetString("USER_ID").Trim(), reader.GetString("EMP_ID").Trim(),
             reader.GetString("EMP_NAME").Trim(), reader.GetString("DEPT_ID").Trim(),
             reader.GetNullableString("DEPT_DESC") ?? string.Empty,
-            reader.GetString("COMPANY_ID").Trim(), reader.GetNullableString("G_IDX") ?? string.Empty);
+            reader.GetString("CI").Trim(), reader.GetNullableString("G_IDX") ?? string.Empty);
         logger.LogInformation("登录成功 userId={UserId} employee={EmployeeName}", user.UserId, user.EmployeeName);
         return new(LoginFailure.None, user);
     }

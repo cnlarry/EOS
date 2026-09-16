@@ -37,7 +37,7 @@ public sealed class UserAdminRepository(
                        COALESCE(NULLIF(LTRIM(RTRIM(n.EMP_NAME)),''), LTRIM(RTRIM(l.EMP_ID))) EMP_NAME,
                        LTRIM(RTRIM(ISNULL(n.DEPT_ID,''))) DEPT_ID,
                        COALESCE(NULLIF(LTRIM(RTRIM(dbo.f_get_dept_desc(n.DEPT_ID))),''),'') DEPT_DESC,
-                       LTRIM(RTRIM(ISNULL(n.COMPANY_ID,''))) COMPANY_ID,
+                       LTRIM(RTRIM(ISNULL(n.CI,''))) CI,
                        LTRIM(RTRIM(ISNULL(l.G_IDX,''))) G_IDX,
                        CAST(ISNULL(l.ACTIVE_TAG,0) AS bit) ACTIVE_TAG,
                        CAST(CASE WHEN LEN(ISNULL(l.USER_PWD,'')) > 0 THEN 1 ELSE 0 END AS bit) HAS_PASSWORD,
@@ -46,7 +46,7 @@ public sealed class UserAdminRepository(
                 FROM dbo.SYSDL l WITH (NOLOCK)
                 LEFT JOIN dbo.SYSDN n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
             )
-            SELECT USER_ID,EMP_ID,EMP_NAME,DEPT_ID,DEPT_DESC,COMPANY_ID,G_IDX,ACTIVE_TAG,HAS_PASSWORD,
+            SELECT USER_ID,EMP_ID,EMP_NAME,DEPT_ID,DEPT_DESC,CI,G_IDX,ACTIVE_TAG,HAS_PASSWORD,
                    LAST_UPDATE_BY,LAST_UPDATE_DATE,
                    OUTER_APPLY_GROUPS.GROUPS,
                    COUNT(*) OVER() AS Total
