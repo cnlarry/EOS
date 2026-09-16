@@ -69,7 +69,9 @@ public sealed class EffectValidationReferenceExistsTests
                 """),
             ["PUR", "P-1"]);
 
-        Assert.Contains("WHERE (M.[SUPPLIER_ID] IS NULL OR M.[SUPPLIER_ID] = '') OR M.[PURCHASE_TYPE] = @mk0", compiled.Sql);
+        // 命中集是"缺失行"：来源键为空的行必须被守卫排除，而不是被当成命中。
+        Assert.Contains("WHERE NOT (M.[SUPPLIER_ID] IS NULL OR M.[SUPPLIER_ID] = '') AND M.[PURCHASE_TYPE] = @mk0", compiled.Sql);
+        Assert.DoesNotContain(") OR M.[PURCHASE_TYPE]", compiled.Sql);
         // 断言未自带文案时返回 null，由调用方回落到规则级 message。
         Assert.Null(compiled.Message);
     }
@@ -89,7 +91,7 @@ public sealed class EffectValidationReferenceExistsTests
             ["R", "R-1"]);
 
         // 订单别为空的行视为"未引用订单"，不参与存在性断言。
-        Assert.Contains("(D.[ORDER_TYPE] IS NULL OR D.[ORDER_TYPE] = '') OR M.[RETURN_TYPE] = @mk0", compiled.Sql);
+        Assert.Contains("NOT (D.[ORDER_TYPE] IS NULL OR D.[ORDER_TYPE] = '') AND M.[RETURN_TYPE] = @mk0", compiled.Sql);
         Assert.Contains("R.[ORDER_TYPE] = D.[ORDER_TYPE] AND R.[ORDER_NO] = D.[ORDER_NO]", compiled.Sql);
     }
 
