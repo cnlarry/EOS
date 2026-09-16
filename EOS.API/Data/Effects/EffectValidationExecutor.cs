@@ -224,14 +224,77 @@ public sealed class EffectValidationExecutor
                 command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
             }
             if (await command.ExecuteScalarAsync(token) is not null)
-                return rule.Message
+            {
+                var message = rule.Message
                     ?? (check.TryGetProperty("message", out var checkMessage)
                         && checkMessage.ValueKind == JsonValueKind.String
                         && !string.IsNullOrWhiteSpace(checkMessage.GetString())
                             ? checkMessage.GetString()!
                             : $"存在超出{(mode == "not-below-progress" ? "进度" : "限额")}的明细行（{stage}）。");
+                var cells = BuildQtyDiagnosticCells(check, fromSql, correlation, comparison, aggregate);
+                if (cells is null)
+                    return message;
+                var lines = new List<string>();
+                await using var lineCommand = new SqlCommand(
+                    "SELECT TOP (" + MaxRowsOf(check).ToString(CultureInfo.InvariantCulture) + ") "
+                    + string.Join(", ", cells) + " FROM " + fromSql + " WHERE " + correlation + " AND " + comparison,
+                    connection, transaction);
+                foreach (var parameter in parameters)
+                    lineCommand.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+                await using var reader = await lineCommand.ExecuteReaderAsync(token);
+                while (await reader.ReadAsync(token))
+                {
+                    var row = new List<string>(cells.Count);
+                    for (var index = 0; index < cells.Count; index++)
+                        row.Add(reader.IsDBNull(index) ? string.Empty : FormatCell(reader, index));
+                    // 旧实现的诊断行是"列间 4 空格、行间 CRLF"，逐字保持。
+                    lines.Add(string.Join("    ", row));
+                }
+                if (lines.Count == 0)
+                    return message;
+                return message.Replace("{ROWS}", string.Join("\r\n", lines));
+            }
         }
         return null;
+    }
+
+    /// <summary>
+    /// 命中行的诊断列（可选）：SOURCE 指来源别名（分组形态下是分组键所在的子查询）、TARGET 指被引用行、
+    /// THIS 指本单数量（分组时为求和值）。未配置返回 null，此时消息只回表头。
+    /// </summary>
+    private static List<string>? BuildQtyDiagnosticCells(
+        JsonElement check,
+        string fromSql,
+        string correlation,
+        string comparison,
+        bool aggregate)
+    {
+        if (!check.TryGetProperty("diagnosticFields", out var fields) || fields.ValueKind != JsonValueKind.Array
+            || fields.GetArrayLength() == 0)
+            return null;
+        var sourceAlias = aggregate ? "S1" : "S";
+        var cells = new List<string>();
+        foreach (var field in fields.EnumerateArray())
+        {
+            var scope = "SOURCE";
+            var name = field.ValueKind == JsonValueKind.String ? field.GetString()!.Trim() : null;
+            if (name is null)
+            {
+                scope = field.TryGetProperty("scope", out var scopeElement) && scopeElement.ValueKind == JsonValueKind.String
+                    ? scopeElement.GetString()!.Trim().ToUpperInvariant()
+                    : "SOURCE";
+                name = field.TryGetProperty("field", out var nameElement) && nameElement.ValueKind == JsonValueKind.String
+                    ? nameElement.GetString()!.Trim()
+                    : throw new EffectConfigException("qty-not-exceed.diagnosticFields 缺少 field。");
+            }
+            cells.Add(scope switch
+            {
+                "THIS" => aggregate ? sourceAlias + ".[__THIS_QTY]" : "S." + EffectConditionCompiler.Identifier(name),
+                "TARGET" => "T." + EffectConditionCompiler.Identifier(name),
+                _ => sourceAlias + "." + EffectConditionCompiler.Identifier(name),
+            });
+        }
+        return cells;
     }
 
     /// <summary>

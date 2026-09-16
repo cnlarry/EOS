@@ -28,7 +28,7 @@ public static class ValidationRuleRegistry
                 "displayLookup", "diagnosticFields", "maxRows")),
         };
 
-    private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "message", "switch");
+    private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "message", "switch", "diagnosticFields", "maxRows");
     private static readonly IReadOnlySet<string> QtySwitchKeys = KeySet("key", "expect");
     private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "message");
     private static readonly IReadOnlySet<string> LineRequireTriggerKeys = KeySet("scope", "field", "op", "value");
@@ -230,6 +230,40 @@ public static class ValidationRuleRegistry
                 continue;
             }
             RejectUnknownKeys(rule, check, QtyCheckKeys, where, issues);
+            var diagnostics = GetArray(check, "diagnosticFields");
+            if (diagnostics is { } diagnosticArray)
+            {
+                var diagnosticIndex = 0;
+                foreach (var diagnostic in diagnosticArray.EnumerateArray())
+                {
+                    var diagnosticWhere = $"{where}.diagnosticFields[{diagnosticIndex}]";
+                    if (diagnostic.ValueKind == JsonValueKind.String)
+                    {
+                        if (string.IsNullOrWhiteSpace(diagnostic.GetString()))
+                            issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere} 不能为空");
+                    }
+                    else if (diagnostic.ValueKind == JsonValueKind.Object)
+                    {
+                        RejectUnknownKeys(rule, diagnostic, ReferenceSourceKeys, diagnosticWhere, issues);
+                        if (string.IsNullOrWhiteSpace(GetString(diagnostic, "field")))
+                            issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.field 不能为空");
+                        var diagnosticScope = GetString(diagnostic, "scope");
+                        if (diagnosticScope is not null
+                            && diagnosticScope.ToUpperInvariant() is not ("SOURCE" or "TARGET" or "THIS"))
+                            issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.scope 仅允许 SOURCE/TARGET/THIS");
+                    }
+                    else
+                    {
+                        issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere} 必须是字符串或对象");
+                    }
+                    diagnosticIndex++;
+                }
+                if (diagnostics.Value.GetArrayLength() > 0
+                    && check.TryGetProperty("message", out var diagnosticMessage)
+                    && diagnosticMessage.ValueKind == JsonValueKind.String
+                    && !diagnosticMessage.GetString()!.Contains("{ROWS}", StringComparison.Ordinal))
+                    issues.Add($"校验规则 {Label(rule)}：{where} 配置 diagnosticFields 时 message 必须包含 {{ROWS}} 占位符");
+            }
             var switchElement = GetObject(check, "switch");
             if (switchElement is not null)
                 ValidateSwitchShape(rule, switchElement.Value, $"{where}.switch", issues);
