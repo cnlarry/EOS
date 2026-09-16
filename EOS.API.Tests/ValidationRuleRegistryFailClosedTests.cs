@@ -80,8 +80,71 @@ public class ValidationRuleRegistryFailClosedTests
             {"checks":[{"refTable":"PRODUCT","refKey":{"scope":"MASTER","field":"PRO_NO"},
              "allowEmpty":"yes","activeTag":{"expect":1}}]}
             """));
-        Assert.Contains(issues, issue => issue.Contains("allowEmpty 必须是布尔值"));
+        Assert.Contains(issues, issue => issue.Contains("allowEmpty 必须是布尔值或数组"));
         Assert.Contains(issues, issue => issue.Contains("activeTag.field 不能为空"));
+    }
+
+    [Fact]
+    public void ReferenceExists_AcceptsMissingLineFieldAndMultipleTargets()
+    {
+        var issues = Validate("reference-exists", Params("""
+            {"checks":[
+              {"refTable":"PRODUCT","refKey":{"scope":"DETAIL","field":"PRO_NO"},
+               "lineField":"SERIAL_NO","maxRows":10,"message":"以下序号项产品编号不存在 \r\n{ROWS}"},
+              {"targets":[
+                 {"refTable":"COP_SEND_D","join":[{"target":"SEND_NO","source":{"scope":"DETAIL","field":"S_R_NO"}}]},
+                 {"refTable":"COP_RETURN_D","activeTag":{"field":"BUSINESS_TAG","expect":0},
+                  "join":[{"target":"RETURN_NO","source":{"scope":"DETAIL","field":"S_R_NO"}}]}],
+               "allowEmpty":[{"scope":"DETAIL","field":"S_R_TYPE"},"S_R_NO"],
+               "lineField":{"scope":"DETAIL","field":"SERIAL_NO"},
+               "message":"以下序号项送/退货单不存在 \r\n{ROWS}"}]}
+            """));
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public void ReferenceExists_LineFieldRequiresRowsPlaceholderAndDetailScope()
+    {
+        var missingPlaceholder = Validate("reference-exists", Params("""
+            {"checks":[{"refTable":"PRODUCT","refKey":{"scope":"DETAIL","field":"PRO_NO"},
+             "lineField":"SERIAL_NO","message":"以下序号项产品编号不存在"}]}
+            """));
+        Assert.Contains(missingPlaceholder, issue => issue.Contains("必须包含 {ROWS} 占位符"));
+
+        var masterScope = Validate("reference-exists", Params("""
+            {"checks":[{"refTable":"PRODUCT","refKey":{"scope":"DETAIL","field":"PRO_NO"},
+             "lineField":{"scope":"MASTER","field":"PRO_NO"},"message":"{ROWS}"}]}
+            """));
+        Assert.Contains(masterScope, issue => issue.Contains("lineField.scope 仅允许 DETAIL"));
+    }
+
+    [Fact]
+    public void ReferenceExists_TargetsCannotMixWithRootReference()
+    {
+        var issues = Validate("reference-exists", Params("""
+            {"checks":[{"refTable":"PRODUCT","targets":[{"refTable":"DEPOT","refKey":{"field":"DEPOT_ID"}}]}]}
+            """));
+        Assert.Contains(issues, issue => issue.Contains("与 targets 不能并用"));
+    }
+
+    [Fact]
+    public void ReferenceExists_AllowEmptyTrueNeedsRefKeyAndMaxRowsIsBounded()
+    {
+        var issues = Validate("reference-exists", Params("""
+            {"checks":[{"refTable":"DEPOT","join":[{"target":"DEPOT_ID","source":{"scope":"DETAIL","field":"DEPOT_ID"}}],
+             "allowEmpty":true,"maxRows":0}]}
+            """));
+        Assert.Contains(issues, issue => issue.Contains("allowEmpty=true 需要配合 refKey"));
+        Assert.Contains(issues, issue => issue.Contains("maxRows 必须是 1..100 的整数"));
+    }
+
+    [Fact]
+    public void ReferenceExists_TargetRejectsUnknownKeys()
+    {
+        var issues = Validate("reference-exists", Params("""
+            {"checks":[{"targets":[{"refTable":"DEPOT","refKey":{"field":"DEPOT_ID","alias":"d"}}]}]}
+            """));
+        Assert.Contains(issues, issue => issue.Contains("未知参数键"));
     }
 
     [Fact]
@@ -128,7 +191,7 @@ public class ValidationRuleRegistryFailClosedTests
         var issues = Validate("reference-exists", Params("""
             {"checks":[{"refTable":"PRODUCT","join":[{"target":"PRO_NO","source":{"scope":"DETAIL","field":"PRO_NO","hint":"x"}}]}]}
             """));
-        Assert.Contains(issues, issue => issue.Contains("未知参数键 checks[0].join[].source.hint"));
+        Assert.Contains(issues, issue => issue.Contains("未知参数键 checks[0].join[0].source.hint"));
     }
 
     [Fact]

@@ -34,8 +34,12 @@ public static class ValidationRuleRegistry
     private static readonly IReadOnlySet<string> LineRequireTriggerKeys = KeySet("scope", "field", "op", "value");
     private static readonly IReadOnlySet<string> LineRequireOps = KeySet("GT", "GE", "LT", "LE", "EQ", "NEQ");
     private static readonly IReadOnlySet<string> QtyBlockKeys = KeySet("scope", "terms", "fields");
-    private static readonly IReadOnlySet<string> ReferenceCheckKeys = KeySet("refTable", "allowEmpty", "join", "refKey", "activeTag", "message", "lineField");
+    private static readonly IReadOnlySet<string> ReferenceCheckKeys = KeySet(
+        "refTable", "allowEmpty", "join", "refKey", "activeTag", "message", "lineField", "targets", "maxRows");
+    private static readonly IReadOnlySet<string> ReferenceTargetKeys = KeySet("refTable", "join", "refKey", "activeTag");
+    private static readonly IReadOnlySet<string> ActiveTagKeys = KeySet("field", "expect");
     private static readonly IReadOnlySet<string> ReferencePairKeys = KeySet("target", "source");
+    private static readonly IReadOnlySet<string> ReferenceSourceKeys = KeySet("scope", "field");
     private static readonly IReadOnlySet<string> ExcludeSelfKeys = KeySet("keyFields");
     private static readonly IReadOnlySet<string> KeySourceKeys = KeySet("scope", "fields");
 
@@ -400,63 +404,176 @@ public static class ValidationRuleRegistry
                 continue;
             }
             RejectUnknownKeys(rule, check, ReferenceCheckKeys, where, issues);
-            if (string.IsNullOrWhiteSpace(GetString(check, "refTable")))
-                issues.Add($"校验规则 {Label(rule)}：{where}.refTable 不能为空");
-            var refKey = GetObject(check, "refKey");
-            var join = GetArray(check, "join");
-            if (refKey is null && (join is null || join.Value.GetArrayLength() == 0))
-                issues.Add($"校验规则 {Label(rule)}：{where} 需要 refKey 或 join");
-            if (refKey is not null && string.IsNullOrWhiteSpace(GetString(refKey.Value, "field")))
-                issues.Add($"校验规则 {Label(rule)}：{where}.refKey.field 不能为空");
-            if (refKey is { } refKeyObject)
+
+            var targets = GetArray(check, "targets");
+            var hasRootTarget = check.TryGetProperty("refTable", out _)
+                || GetObject(check, "refKey") is not null
+                || GetArray(check, "join") is not null;
+            if (targets is { } targetArray)
             {
-                var allowedRefKey = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "scope", "field" };
-                RejectUnknownKeys(rule, refKeyObject, allowedRefKey, where + ".refKey", issues);
-            }
-            if (join is { } joinArray)
-                foreach (var pair in joinArray.EnumerateArray())
+                if (targetArray.GetArrayLength() == 0)
+                    issues.Add($"校验规则 {Label(rule)}：{where}.targets 必须是非空数组");
+                if (hasRootTarget)
+                    issues.Add($"校验规则 {Label(rule)}：{where} 的 refTable/refKey/join 与 targets 不能并用");
+                var targetIndex = 0;
+                foreach (var target in targetArray.EnumerateArray())
                 {
-                    if (pair.ValueKind != JsonValueKind.Object)
-                    {
-                        issues.Add($"校验规则 {Label(rule)}：{where}.join[] 必须是对象");
-                        continue;
-                    }
-                    RejectUnknownKeys(rule, pair, ReferencePairKeys, where + ".join[]", issues);
-                    if (string.IsNullOrWhiteSpace(GetString(pair, "target")))
-                        issues.Add($"校验规则 {Label(rule)}：{where}.join[].target 不能为空");
-                    var pairSource = GetObject(pair, "source");
-                    if (pairSource is null || string.IsNullOrWhiteSpace(GetString(pairSource.Value, "field")))
-                        issues.Add($"校验规则 {Label(rule)}：{where}.join[].source.field 不能为空");
-                    if (pairSource is { } pairSourceObject)
-                    {
-                        var allowedPairSource = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                        {
-                            "scope", "field", "table", "constant",
-                        };
-                        RejectUnknownKeys(rule, pairSourceObject, allowedPairSource, where + ".join[].source", issues);
-                    }
-                }
-            if (check.TryGetProperty("allowEmpty", out var allowEmpty)
-                && allowEmpty.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-                issues.Add($"校验规则 {Label(rule)}：{where}.allowEmpty 必须是布尔值");
-            if (check.TryGetProperty("activeTag", out var activeTag))
-            {
-                if (activeTag.ValueKind != JsonValueKind.Object)
-                {
-                    issues.Add($"校验规则 {Label(rule)}：{where}.activeTag 必须是对象");
-                }
-                else
-                {
-                    var activeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "field", "expect" };
-                    RejectUnknownKeys(rule, activeTag, activeKeys, where + ".activeTag", issues);
-                    if (string.IsNullOrWhiteSpace(GetString(activeTag, "field")))
-                        issues.Add($"校验规则 {Label(rule)}：{where}.activeTag.field 不能为空");
-                    if (activeTag.TryGetProperty("expect", out var expect) && expect.ValueKind != JsonValueKind.Number)
-                        issues.Add($"校验规则 {Label(rule)}：{where}.activeTag.expect 必须是数字");
+                    ValidateReferenceTarget(rule, target, $"{where}.targets[{targetIndex}]", issues, rejectUnknownKeys: true);
+                    targetIndex++;
                 }
             }
+            else
+            {
+                // 根级对象的未知键已在上面按 ReferenceCheckKeys 判过，这里只判目标本身。
+                ValidateReferenceTarget(rule, check, where, issues, rejectUnknownKeys: false);
+            }
+
+            ValidateReferenceAllowEmpty(rule, check, where, issues);
+            ValidateReferenceLineField(rule, check, where, issues);
+            if (check.TryGetProperty("maxRows", out var maxRows)
+                && (maxRows.ValueKind != JsonValueKind.Number
+                    || !maxRows.TryGetInt32(out var declared)
+                    || declared < 1
+                    || declared > 100))
+                issues.Add($"校验规则 {Label(rule)}：{where}.maxRows 必须是 1..100 的整数");
             index++;
         }
+    }
+
+    /// <summary>单个引用目标：refTable 必填，refKey 与 join 二选一，activeTag 可选。</summary>
+    private static void ValidateReferenceTarget(
+        ValidationRuleConfig rule,
+        JsonElement target,
+        string where,
+        List<string> issues,
+        bool rejectUnknownKeys)
+    {
+        if (target.ValueKind != JsonValueKind.Object)
+        {
+            issues.Add($"校验规则 {Label(rule)}：{where} 必须是对象");
+            return;
+        }
+        if (rejectUnknownKeys)
+            RejectUnknownKeys(rule, target, ReferenceTargetKeys, where, issues);
+        if (string.IsNullOrWhiteSpace(GetString(target, "refTable")))
+            issues.Add($"校验规则 {Label(rule)}：{where}.refTable 不能为空");
+        var refKey = GetObject(target, "refKey");
+        var join = GetArray(target, "join");
+        if (refKey is null && (join is null || join.Value.GetArrayLength() == 0))
+            issues.Add($"校验规则 {Label(rule)}：{where} 需要 refKey 或 join");
+        if (refKey is { } refKeyObject)
+        {
+            RejectUnknownKeys(rule, refKeyObject, ReferenceSourceKeys, where + ".refKey", issues);
+            if (string.IsNullOrWhiteSpace(GetString(refKeyObject, "field")))
+                issues.Add($"校验规则 {Label(rule)}：{where}.refKey.field 不能为空");
+        }
+        if (join is { } joinArray)
+        {
+            var pairIndex = 0;
+            foreach (var pair in joinArray.EnumerateArray())
+            {
+                var pairWhere = $"{where}.join[{pairIndex}]";
+                if (pair.ValueKind != JsonValueKind.Object)
+                {
+                    issues.Add($"校验规则 {Label(rule)}：{pairWhere} 必须是对象");
+                    pairIndex++;
+                    continue;
+                }
+                RejectUnknownKeys(rule, pair, ReferencePairKeys, pairWhere, issues);
+                if (string.IsNullOrWhiteSpace(GetString(pair, "target")))
+                    issues.Add($"校验规则 {Label(rule)}：{pairWhere}.target 不能为空");
+                var pairSource = GetObject(pair, "source");
+                if (pairSource is null)
+                    issues.Add($"校验规则 {Label(rule)}：{pairWhere}.source 不能为空");
+                else
+                    ValidateReferenceSource(rule, pairSource.Value, pairWhere + ".source", issues);
+                pairIndex++;
+            }
+        }
+        if (GetObject(target, "activeTag") is { } activeTag)
+        {
+            RejectUnknownKeys(rule, activeTag, ActiveTagKeys, where + ".activeTag", issues);
+            if (string.IsNullOrWhiteSpace(GetString(activeTag, "field")))
+                issues.Add($"校验规则 {Label(rule)}：{where}.activeTag.field 不能为空");
+            if (activeTag.TryGetProperty("expect", out var expect) && expect.ValueKind != JsonValueKind.Number)
+                issues.Add($"校验规则 {Label(rule)}：{where}.activeTag.expect 必须是数字");
+        }
+        else if (target.TryGetProperty("activeTag", out var activeTagRaw) && activeTagRaw.ValueKind != JsonValueKind.Null)
+        {
+            issues.Add($"校验规则 {Label(rule)}：{where}.activeTag 必须是对象");
+        }
+    }
+
+    /// <summary>
+    /// allowEmpty：true 表示 refKey 的来源列可为空；数组逐列声明，命中任一为空即放行本项
+    /// （复合键里允许为空的列，如"订单别 + 订单号"中订单别为空）。
+    /// </summary>
+    private static void ValidateReferenceAllowEmpty(ValidationRuleConfig rule, JsonElement check, string where, List<string> issues)
+    {
+        if (!check.TryGetProperty("allowEmpty", out var allow) || allow.ValueKind == JsonValueKind.Null)
+            return;
+        if (allow.ValueKind == JsonValueKind.True)
+        {
+            if (GetObject(check, "refKey") is null)
+                issues.Add($"校验规则 {Label(rule)}：{where}.allowEmpty=true 需要配合 refKey 使用");
+            return;
+        }
+        if (allow.ValueKind == JsonValueKind.False)
+            return;
+        if (allow.ValueKind != JsonValueKind.Array)
+        {
+            issues.Add($"校验规则 {Label(rule)}：{where}.allowEmpty 必须是布尔值或数组");
+            return;
+        }
+        if (allow.GetArrayLength() == 0)
+            issues.Add($"校验规则 {Label(rule)}：{where}.allowEmpty 数组不能为空");
+        var itemIndex = 0;
+        foreach (var item in allow.EnumerateArray())
+        {
+            var itemWhere = $"{where}.allowEmpty[{itemIndex}]";
+            if (item.ValueKind == JsonValueKind.Object)
+                ValidateReferenceSource(rule, item, itemWhere, issues);
+            else if (item.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(item.GetString()))
+                issues.Add($"校验规则 {Label(rule)}：{itemWhere} 必须是非空字符串或 {{scope, field}} 对象");
+            itemIndex++;
+        }
+    }
+
+    private static void ValidateReferenceSource(ValidationRuleConfig rule, JsonElement source, string where, List<string> issues)
+    {
+        RejectUnknownKeys(rule, source, ReferenceSourceKeys, where, issues);
+        if (string.IsNullOrWhiteSpace(GetString(source, "field")))
+            issues.Add($"校验规则 {Label(rule)}：{where}.field 不能为空");
+        var scope = GetString(source, "scope");
+        if (scope is not null && scope.ToUpperInvariant() is not ("MASTER" or "DETAIL"))
+            issues.Add($"校验规则 {Label(rule)}：{where}.scope 仅允许 MASTER/DETAIL");
+    }
+
+    /// <summary>缺失行行号列：仅在明细级、且消息含 {ROWS} 占位符时才有意义（fail-closed）。</summary>
+    private static void ValidateReferenceLineField(ValidationRuleConfig rule, JsonElement check, string where, List<string> issues)
+    {
+        if (!check.TryGetProperty("lineField", out var line) || line.ValueKind == JsonValueKind.Null)
+            return;
+        if (line.ValueKind == JsonValueKind.String)
+        {
+            if (string.IsNullOrWhiteSpace(line.GetString()))
+                issues.Add($"校验规则 {Label(rule)}：{where}.lineField 不能为空");
+        }
+        else if (line.ValueKind == JsonValueKind.Object)
+        {
+            ValidateReferenceSource(rule, line, where + ".lineField", issues);
+            var scope = GetString(line, "scope");
+            if (scope is not null && !string.Equals(scope, "DETAIL", StringComparison.OrdinalIgnoreCase))
+                issues.Add($"校验规则 {Label(rule)}：{where}.lineField.scope 仅允许 DETAIL");
+        }
+        else
+        {
+            issues.Add($"校验规则 {Label(rule)}：{where}.lineField 必须是字符串或 {{scope, field}} 对象");
+            return;
+        }
+        var message = GetString(check, "message");
+        if (message is null || !message.Contains("{ROWS}", StringComparison.Ordinal))
+            issues.Add($"校验规则 {Label(rule)}：{where} 配置 lineField 时 message 必须包含 {{ROWS}} 占位符");
     }
 
     private static void ValidateDuplicateCheck(ValidationRuleConfig rule, JsonElement p, List<string> issues)

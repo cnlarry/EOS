@@ -237,6 +237,7 @@ public sealed class EffectValidationExecutor
     /// <summary>
     /// reference-exists 逐项断言"当前单据引用的资料存在"：来源行限定在当前单据内
     /// （主表按主键参数、明细按同一单据关联），否则他单的历史坏引用会拦下本次保存。
+    /// 配置 lineField 时，命中项把缺失行的行号回填进消息的 {ROWS} 占位符。
     /// </summary>
     private async Task<string?> CheckReferenceExistsAsync(
         SqlConnection connection,
@@ -251,11 +252,26 @@ public sealed class EffectValidationExecutor
         foreach (var check in checks.EnumerateArray())
         {
             var compiled = BuildReferenceExistsCheckSql(plan, check, masterKeyValues);
-            await using var command = new SqlCommand(compiled.Sql, connection, transaction);
+            await using (var command = new SqlCommand(compiled.Sql, connection, transaction))
+            {
+                foreach (var parameter in compiled.Parameters)
+                    command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+                if (await command.ExecuteScalarAsync(token) is null)
+                    continue;
+            }
+
+            var message = rule.Message ?? compiled.Message;
+            if (compiled.LineSql is null)
+                return message;
+
+            var lines = new List<string>();
+            await using var lineCommand = new SqlCommand(compiled.LineSql, connection, transaction);
             foreach (var parameter in compiled.Parameters)
-                command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
-            if (await command.ExecuteScalarAsync(token) is not null)
-                return rule.Message ?? compiled.Message;
+                lineCommand.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+            await using var reader = await lineCommand.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+                lines.Add(reader.IsDBNull(0) ? string.Empty : FormatCell(reader, 0));
+            return message.Replace("{ROWS}", string.Join("\r\n", lines));
         }
         return null;
     }
@@ -264,74 +280,156 @@ public sealed class EffectValidationExecutor
     internal sealed record ReferenceExistsSql(
         string Sql,
         IReadOnlyList<EffectSqlParameter> Parameters,
-        string Message);
+        string Message,
+        string? LineSql = null);
 
     internal static ReferenceExistsSql BuildReferenceExistsCheckSql(
         ModuleEffectPlan plan,
         JsonElement check,
         IReadOnlyList<string> masterKeyValues)
     {
-        var refTable = check.TryGetProperty("refTable", out var rt) && rt.ValueKind == JsonValueKind.String
-            ? rt.GetString()!.Trim()
-            : throw new EffectConfigException("reference-exists.check 缺少 refTable。");
-        var allowEmpty = check.TryGetProperty("allowEmpty", out var ae) && ae.ValueKind == JsonValueKind.True;
+        var targets = check.TryGetProperty("targets", out var declared) && declared.ValueKind == JsonValueKind.Array
+            ? declared.EnumerateArray().ToList()
+            : [check];
+        if (targets.Count == 0)
+            throw new EffectConfigException("reference-exists.targets 不能为空数组。");
 
-        string referenceSql;
-        if (check.TryGetProperty("join", out var join) && join.ValueKind == JsonValueKind.Array)
+        // 每个目标表一条断言、彼此取 AND：整行只要在任一目标表里存在即视为通过
+        // （对应旧实现把多张表 UNION ALL 后做一次存在性判断）。
+        var missingParts = new List<string>();
+        var usesDetail = false;
+        foreach (var target in targets)
         {
-            var pairs = new List<string>();
-            foreach (var pair in join.EnumerateArray())
-            {
-                var targetColumn = pair.TryGetProperty("target", out var t) && t.ValueKind == JsonValueKind.String
-                    ? t.GetString()!.Trim()
-                    : throw new EffectConfigException("reference-exists.join 缺少 target。");
-                var source = pair.TryGetProperty("source", out var s) ? s : default;
-                var scope = source.TryGetProperty("scope", out var sc) && sc.ValueKind == JsonValueKind.String
-                    ? sc.GetString()!.Trim().ToUpperInvariant()
-                    : string.Empty;
-                var field = source.TryGetProperty("field", out var f) && f.ValueKind == JsonValueKind.String
-                    ? f.GetString()!.Trim()
-                    : throw new EffectConfigException("reference-exists.join 缺少 source.field。");
-                pairs.Add($"R.{EffectConditionCompiler.Identifier(targetColumn)} = "
-                    + (scope == "MASTER" ? "M." : "D.") + EffectConditionCompiler.Identifier(field));
-            }
-            referenceSql = string.Join(" AND ", pairs);
-        }
-        else
-        {
-            if (!check.TryGetProperty("refKey", out var refKey) || refKey.ValueKind != JsonValueKind.Object)
-                throw new EffectConfigException("reference-exists.check 缺少 refKey。");
-            var scope = refKey.GetProperty("scope").GetString()!.Trim().ToUpperInvariant();
-            var field = refKey.GetProperty("field").GetString()!.Trim();
-            var sourceSide = (scope == "MASTER" ? "M." : "D.") + EffectConditionCompiler.Identifier(field);
-            referenceSql = $"R.{EffectConditionCompiler.Identifier(field)} = {sourceSide}";
-            if (allowEmpty)
-                referenceSql = $"({sourceSide} IS NULL OR {sourceSide} = '' OR {referenceSql})";
+            var refTable = RequiredString(target, "refTable", "reference-exists.check 缺少 refTable。");
+            var (match, matchUsesDetail) = BuildReferenceMatch(target);
+            usesDetail |= matchUsesDetail;
+            missingParts.Add("NOT EXISTS (SELECT 1 FROM dbo." + EffectConditionCompiler.Identifier(refTable)
+                + " R WITH (NOLOCK) WHERE " + match + BuildActiveTag(target) + ")");
         }
 
-        var activeTag = string.Empty;
-        if (check.TryGetProperty("activeTag", out var active) && active.ValueKind == JsonValueKind.Object)
-        {
-            var field = active.GetProperty("field").GetString()!.Trim();
-            var expect = active.TryGetProperty("expect", out var e) && e.ValueKind == JsonValueKind.Number
-                ? e.GetInt32()
-                : 0;
-            activeTag = $" AND R.{EffectConditionCompiler.Identifier(field)} = {expect}";
-        }
+        var (emptyParts, allowEmptyUsesDetail) = BuildAllowEmptyParts(check);
+        usesDetail |= allowEmptyUsesDetail;
+        var guard = emptyParts.Count == 0
+            ? string.Empty
+            : "(" + string.Join(" OR ", emptyParts.Select(part => part + " IS NULL OR " + part + " = ''")) + ") OR ";
+
+        var lineExpression = BuildReferenceLineExpression(check);
+        usesDetail |= lineExpression is not null;
 
         var (documentScope, scopeParameters) = BuildDocumentScopeParts(plan, masterKeyValues, "M");
+        var scopeParts = new List<string>(documentScope);
+        var fromDetail = string.Empty;
+        if (usesDetail)
+        {
+            if (plan.DetailTable is null)
+                throw new EffectConfigException("reference-exists 明细级断言需要模块明细表（模块形态不足）。");
+            // 明细表按约定携带主表主键列，据此把来源行限定在当前单据内；参数与主表作用域同名同值，只登记一次。
+            scopeParts.AddRange(BuildDocumentScopeParts(plan, masterKeyValues, "D").Parts);
+            fromDetail = " CROSS JOIN dbo." + EffectConditionCompiler.Identifier(plan.DetailTable) + " D";
+        }
+
         var fromMaster = "dbo." + EffectConditionCompiler.Identifier(plan.MasterTable!) + " M";
-        var fromDetail = plan.DetailTable is null
-            ? string.Empty
-            : " CROSS JOIN dbo." + EffectConditionCompiler.Identifier(plan.DetailTable) + " D";
-        var sql = "SELECT TOP 1 1 FROM " + fromMaster + fromDetail
-            + " WHERE " + string.Join(" AND ", documentScope)
-            + " AND NOT EXISTS (SELECT 1 FROM dbo." + EffectConditionCompiler.Identifier(refTable)
-            + " R WITH (NOLOCK) WHERE " + referenceSql + activeTag + ")";
+        var predicate = guard + string.Join(" AND ", scopeParts)
+            + " AND " + string.Join(" AND ", missingParts);
+        var sql = "SELECT TOP 1 1 FROM " + fromMaster + fromDetail + " WHERE " + predicate;
         var message = check.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String
             ? msg.GetString() ?? "引用数据不存在。"
             : "引用数据不存在。";
-        return new ReferenceExistsSql(sql, scopeParameters, message);
+        return new ReferenceExistsSql(sql, scopeParameters, message,
+            lineExpression is null
+                ? null
+                : "SELECT TOP (" + MaxRowsOf(check).ToString(CultureInfo.InvariantCulture) + ") " + lineExpression
+                    + " FROM " + fromMaster + fromDetail + " WHERE " + predicate + " ORDER BY " + lineExpression);
+    }
+
+    /// <summary>单个目标表的匹配条件：join 逐列配对，refKey 为"两侧同名列"的简写。</summary>
+    private static (string Sql, bool UsesDetail) BuildReferenceMatch(JsonElement target)
+    {
+        if (target.TryGetProperty("join", out var join) && join.ValueKind == JsonValueKind.Array)
+        {
+            var pairs = new List<string>();
+            var usesDetail = false;
+            foreach (var pair in join.EnumerateArray())
+            {
+                var targetColumn = RequiredString(pair, "target", "reference-exists.join 缺少 target。");
+                var source = pair.TryGetProperty("source", out var declaredSource) ? declaredSource : default;
+                var (expression, sourceUsesDetail) = SourceExpression(source);
+                usesDetail |= sourceUsesDetail;
+                pairs.Add("R." + EffectConditionCompiler.Identifier(targetColumn) + " = " + expression);
+            }
+            if (pairs.Count == 0)
+                throw new EffectConfigException("reference-exists.join 不能为空数组。");
+            return (string.Join(" AND ", pairs), usesDetail);
+        }
+        if (!target.TryGetProperty("refKey", out var refKey) || refKey.ValueKind != JsonValueKind.Object)
+            throw new EffectConfigException("reference-exists.check 缺少 refKey。");
+        var field = RequiredString(refKey, "field", "reference-exists.refKey 缺少 field。");
+        var (keyExpression, keyUsesDetail) = SourceExpression(refKey);
+        return ("R." + EffectConditionCompiler.Identifier(field) + " = " + keyExpression, keyUsesDetail);
+    }
+
+    private static string BuildActiveTag(JsonElement target)
+    {
+        if (!target.TryGetProperty("activeTag", out var active) || active.ValueKind != JsonValueKind.Object)
+            return string.Empty;
+        var field = RequiredString(active, "field", "reference-exists.activeTag 缺少 field。");
+        var expect = active.TryGetProperty("expect", out var declared) && declared.ValueKind == JsonValueKind.Number
+            ? declared.GetInt32()
+            : 0;
+        return " AND R." + EffectConditionCompiler.Identifier(field)
+            + " = " + expect.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// allowEmpty：来源侧键为空即放行本项（旧实现 "ISNULL(类型,'')&lt;&gt;''" 的语义）。
+    /// true 表示 refKey 的来源列；数组形式逐列声明，用于复合键里允许为空的列
+    /// （如"订单别 + 订单号"中订单别为空即整行不校验）。
+    /// </summary>
+    private static (List<string> Parts, bool UsesDetail) BuildAllowEmptyParts(JsonElement check)
+    {
+        var parts = new List<string>();
+        if (!check.TryGetProperty("allowEmpty", out var allow)
+            || allow.ValueKind is JsonValueKind.Null or JsonValueKind.False or JsonValueKind.Undefined)
+            return (parts, false);
+        var usesDetail = false;
+        if (allow.ValueKind == JsonValueKind.True)
+        {
+            if (!check.TryGetProperty("refKey", out var refKey) || refKey.ValueKind != JsonValueKind.Object)
+                throw new EffectConfigException("reference-exists.allowEmpty=true 需要配合 refKey 使用。");
+            var (expression, sourceUsesDetail) = SourceExpression(refKey);
+            parts.Add(expression);
+            return (parts, sourceUsesDetail);
+        }
+        if (allow.ValueKind != JsonValueKind.Array)
+            throw new EffectConfigException("reference-exists.allowEmpty 必须是布尔或数组。");
+        foreach (var item in allow.EnumerateArray())
+        {
+            var (expression, sourceUsesDetail) = SourceExpression(item);
+            usesDetail |= sourceUsesDetail;
+            parts.Add(expression);
+        }
+        return (parts, usesDetail);
+    }
+
+    /// <summary>来源侧表达式：缺省按明细列解析，显式 MASTER 才取主表列。</summary>
+    private static (string Sql, bool UsesDetail) SourceExpression(JsonElement source)
+    {
+        var scope = source.TryGetProperty("scope", out var declared) && declared.ValueKind == JsonValueKind.String
+            ? declared.GetString()!.Trim().ToUpperInvariant()
+            : "DETAIL";
+        var field = RequiredString(source, "field", "reference-exists 来源列缺少 field。");
+        var usesDetail = !string.Equals(scope, "MASTER", StringComparison.OrdinalIgnoreCase);
+        return ((usesDetail ? "D." : "M.") + EffectConditionCompiler.Identifier(field), usesDetail);
+    }
+
+    /// <summary>缺失行行号集合：逐行渲染时取明细行号（字符串写法即明细列）。</summary>
+    private static string? BuildReferenceLineExpression(JsonElement check)
+    {
+        if (!check.TryGetProperty("lineField", out var line) || line.ValueKind == JsonValueKind.Null)
+            return null;
+        if (line.ValueKind == JsonValueKind.String)
+            return "D." + EffectConditionCompiler.Identifier(line.GetString()!.Trim());
+        return SourceExpression(line).Sql;
     }
 
     /// <summary>
