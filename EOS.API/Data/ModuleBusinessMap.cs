@@ -19,15 +19,13 @@ public static class ModuleBusinessMap
         {
             // 1201 产品/料件基本资料（1206/1210/1211 已合并至此）：仅批核工作流（P_WF_PRODUCT），无保存后副作用；PRO_NO 手工编号。
             [1201] = new(1201, null, "P_WF_PRODUCT", false, null, null),
-            // 1404 报价单
-            [1404] = new(1404, null, "P_WF_COP_QUOTE", true, "QUOTE_NO", "QUOTE_TYPE",
-                DomainRule: "cop-quote"),
+            // 1404 报价单：保存后校验已由校验目录承接，仅保留批核工作流与自动单号。
+            [1404] = new(1404, null, "P_WF_COP_QUOTE", true, "QUOTE_NO", "QUOTE_TYPE"),
             // 1405 客户订单
             [1405] = new(1405, null, "P_WF_COP_ORDER", true, "ORDER_NO", "ORDER_TYPE",
                 DomainRule: "cop-order"),
-            // 1604 厂商报价单 → 批核联动厂商计价表（1602）
-            [1604] = new(1604, null, "P_WF_PUR_QUOTE", true, "QUOTE_NO", "QUOTE_TYPE",
-                DomainRule: "pur-quote"),
+            // 1604 厂商报价单 → 批核联动厂商计价表（1602）：保存后校验已由校验目录承接。
+            [1604] = new(1604, null, "P_WF_PUR_QUOTE", true, "QUOTE_NO", "QUOTE_TYPE"),
             // 1615 成品请购单
             [1615] = new(1615, null, "P_WF_PUR_APPLY", true, "APPLY_NO", "APPLY_TYPE",
                 DomainRule: "pur-apply"),
@@ -177,7 +175,6 @@ public static class DomainRuleMap
         [3006] = "cus-manual",
         [3014] = "cus-account",
         [3303] = "qc-analysis",
-        [1610] = "pur-callback",
         [1509] = "moc-produce-change",
         [1609] = "pur-purchase-change",
         [2404] = "sam-out",
@@ -210,6 +207,9 @@ public static class CatalogAfterSaveMap
         180106, 180107, 180108,           // 合同/投保/证件的期间不重叠与同单重复
         2704,              // 工单制程：制令单引用存在
         2908, 2909, 2910,  // 模具出/入库与报废：模具编号引用存在
+        1404,              // 报价单：客户与询价单引用存在
+        1604,              // 厂商报价单：厂商与询价单引用存在
+        1610,              // 收料核价单：厂商引用存在
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);
