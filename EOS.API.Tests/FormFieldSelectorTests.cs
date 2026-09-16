@@ -137,9 +137,23 @@ public class FormFieldSelectorTests
     [Fact]
     public void AuditColumns_AreServerOwned()
     {
-        var field = Select([Row("LAST_UPDATE_BY")]).Single();
+        var field = Select([Row("LAST_UPDATE_BY")], "view").Single();
         Assert.True(field.ServerFilled);
         Assert.True(field.IsReadonly);
+    }
+
+    [Fact]
+    public void LifecycleActorColumns_HiddenInNewAndEdit_ShownReadonlyInView()
+    {
+        var rows = new[] { Row("CREATE_PERSON"), Row("CONFIRM_DATE"), Row("FINISHED_PERSON"), Row("A") };
+        Assert.Equal(["A"], Select(rows, "new").Select(field => field.Key));
+        Assert.Equal(["A"], Select(rows, "edit").Select(field => field.Key));
+        var viewed = Select(rows, "view");
+        Assert.Equal(4, viewed.Count);
+        foreach (var field in viewed.Where(field => field.Key != "A"))
+        {
+            Assert.True(field.IsReadonly);
+        }
     }
 
     [Fact]
@@ -200,5 +214,16 @@ public class FormFieldSelectorTests
     {
         var result = Select([Row("CONFIRM_TAG"), Row("FINISHED_TAG"), Row("A")]);
         Assert.Equal(["A"], result.Select(field => field.Key));
+    }
+
+    [Fact]
+    public void StatusTagFields_ShownReadonlyInView()
+    {
+        var viewed = Select([Row("CONFIRM_TAG"), Row("FINISHED_TAG")], "view");
+        Assert.Equal(2, viewed.Count);
+        foreach (var field in viewed)
+        {
+            Assert.True(field.IsReadonly);
+        }
     }
 }

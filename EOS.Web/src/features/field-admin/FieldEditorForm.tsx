@@ -73,6 +73,8 @@ export interface FieldMeta extends FieldInput {
   physicalExists?: boolean
   physicalType?: string | null
   typeMatches?: boolean | null
+  /** 单据生命周期系统列（ADR-013）：结构锁定，仅名称/显示/备注类可改。 */
+  isSystemColumn?: boolean
 }
 
 export interface SetupLookup {
@@ -418,6 +420,8 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
   }
 
   const isNew = mode === 'new'
+  /** 系统列结构锁（ADR-013 §3.5）：新建态不涉及，编辑态锁定类型/校验/数据源/权限与分组。 */
+  const locked = !isNew && draft?.isSystemColumn === true
   const tabs: TabbedPanelTab<FieldSection>[] = historyTab
     ? [...SECTION_TABS, { key: 'history', label: '变更历史' }]
     : SECTION_TABS
@@ -475,6 +479,11 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                 <div className="alert alert-danger">无法加载该字段的元数据，请确认当前账号具有字段设置权限。</div>
               ) : draft ? (
                 <div onPointerDown={event => event.stopPropagation()}>
+                  {!isNew && draft.isSystemColumn === true && (
+                    <div className="alert alert-info py-2 px-3 small mb-3">
+                      系统列（单据生命周期列由管线持有）：类型、校验、数据源、权限与分组结构锁定，仅名称、显示与备注类可改；不可删除。
+                    </div>
+                  )}
                   <TabbedPanel tabs={tabs} activeKey={section} onActiveKeyChange={setSection} label="字段设置分区">
                     <div className="row g-3">
                     {section === 'basic' && <>
@@ -500,7 +509,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                       </div>
                       <div className="col-md-4">
                         <label className="form-label">数据库类型</label>
-                        <select className="form-select" value={draft.dataType} onChange={event => setDraft({ ...draft, dataType: event.target.value })}>
+                        <select className="form-select" value={draft.dataType} disabled={locked} onChange={event => setDraft({ ...draft, dataType: event.target.value })}>
                           {ALLOWED_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
                         </select>
                         {!isNew && (
@@ -571,7 +580,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                     </div>
                       <div className="col-md-4">
                         <label className="form-label">默认值</label>
-                        <input className="form-control" value={draft.defaultValue ?? ''} onChange={event => setDraft({ ...draft, defaultValue: event.target.value })} />
+                        <input className="form-control" value={draft.defaultValue ?? ''} disabled={locked} onChange={event => setDraft({ ...draft, defaultValue: event.target.value })} />
                       </div>
                       <div className="col-md-4">
                         <label className="form-label">检验顺序</label>
@@ -579,16 +588,16 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                       </div>
                       <div className="col-12">
                         <label className="form-label">正则表达式</label>
-                        <input className={`form-control${regexIssue(draft.regex) ? ' is-invalid' : ''}`} value={draft.regex ?? ''} placeholder="如 ^[A-Z0-9]{8}$" onChange={event => setDraft({ ...draft, regex: event.target.value })} />
+                        <input className={`form-control${regexIssue(draft.regex) ? ' is-invalid' : ''}`} value={draft.regex ?? ''} disabled={locked} placeholder="如 ^[A-Z0-9]{8}$" onChange={event => setDraft({ ...draft, regex: event.target.value })} />
                         {regexIssue(draft.regex) && <div className="invalid-feedback">{regexIssue(draft.regex)}</div>}
                       </div>
                       <div className="col-12 d-flex gap-4">
                         <label className="form-check">
-                          <input className="form-check-input" type="checkbox" checked={draft.isRequired} onChange={() => setDraft({ ...draft, isRequired: !draft.isRequired })} />
+                          <input className="form-check-input" type="checkbox" checked={draft.isRequired} disabled={locked} onChange={() => setDraft({ ...draft, isRequired: !draft.isRequired })} />
                           <span className="form-check-label">不能为空</span>
                         </label>
                         <label className="form-check">
-                          <input className="form-check-input" type="checkbox" checked={draft.isReadonly} onChange={() => setDraft({ ...draft, isReadonly: !draft.isReadonly })} />
+                          <input className="form-check-input" type="checkbox" checked={draft.isReadonly} disabled={locked} onChange={() => setDraft({ ...draft, isReadonly: !draft.isReadonly })} />
                           <span className="form-check-label">只读</span>
                         </label>
                       </div>
@@ -596,41 +605,41 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                     {section === 'permissions' && <>
                       <div className="col-12 d-flex gap-4">
                         <label className="form-check">
-                          <input className="form-check-input" type="checkbox" checked={draft.isCost} onChange={() => setDraft({ ...draft, isCost: !draft.isCost })} />
+                          <input className="form-check-input" type="checkbox" checked={draft.isCost} disabled={locked} onChange={() => setDraft({ ...draft, isCost: !draft.isCost })} />
                           <span className="form-check-label">成本字段</span>
                         </label>
                         <label className="form-check">
-                          <input className="form-check-input" type="checkbox" checked={draft.isSecrecy} onChange={() => setDraft({ ...draft, isSecrecy: !draft.isSecrecy })} />
+                          <input className="form-check-input" type="checkbox" checked={draft.isSecrecy} disabled={locked} onChange={() => setDraft({ ...draft, isSecrecy: !draft.isSecrecy })} />
                           <span className="form-check-label">保密字段</span>
                         </label>
                       </div>
                       <div className="col-md-8">
                         <label className="form-label">查看详情 URL</label>
-                        <input className="form-control" placeholder="仅允许站内相对路径" value={draft.browseUrl ?? ''} onChange={event => setDraft({ ...draft, browseUrl: event.target.value })} />
+                        <input className="form-control" placeholder="仅允许站内相对路径" value={draft.browseUrl ?? ''} disabled={locked} onChange={event => setDraft({ ...draft, browseUrl: event.target.value })} />
                       </div>
                       <div className="col-md-4">
                         <label className="form-label">浏览权限模块 ID</label>
-                        <select className="form-select" value={draft.browseModuleId ?? ''} onChange={event => setDraft({ ...draft, browseModuleId: event.target.value === '' ? null : Number(event.target.value) })}>
+                        <select className="form-select" value={draft.browseModuleId ?? ''} disabled={locked} onChange={event => setDraft({ ...draft, browseModuleId: event.target.value === '' ? null : Number(event.target.value) })}>
                           <option value="">不限制</option>{modulesQuery.data?.map(item => <option key={item.value} value={item.value}>{item.label} ({item.value})</option>)}</select>
                       </div>
                       <div className="col-12 d-flex gap-4">
                         <label className="form-check">
-                          <input className="form-check-input" type="checkbox" checked={draft.onlyChoose} onChange={() => setDraft({ ...draft, onlyChoose: !draft.onlyChoose })} />
+                          <input className="form-check-input" type="checkbox" checked={draft.onlyChoose} disabled={locked} onChange={() => setDraft({ ...draft, onlyChoose: !draft.onlyChoose })} />
                           <span className="form-check-label">数据仅可选入</span>
                         </label>
                         <label className="form-check">
-                          <input className="form-check-input" type="checkbox" checked={draft.chooseMultiple} onChange={() => setDraft({ ...draft, chooseMultiple: !draft.chooseMultiple })} />
+                          <input className="form-check-input" type="checkbox" checked={draft.chooseMultiple} disabled={locked} onChange={() => setDraft({ ...draft, chooseMultiple: !draft.chooseMultiple })} />
                           <span className="form-check-label">支持多笔选入</span>
                         </label>
                       </div>
                       <div className="col-12">
                         <label className="form-label">自定义数据选择页面</label>
-                        <input className="form-control" value={draft.choosePage ?? ''} onChange={event => setDraft({ ...draft, choosePage: event.target.value })} />
+                        <input className="form-control" value={draft.choosePage ?? ''} disabled={locked} onChange={event => setDraft({ ...draft, choosePage: event.target.value })} />
                       </div>
                     </>}
                     {section === 'sources' && <>
                       <div className="col-12 d-flex justify-content-end mb-2">
-                        <Button size="sm" variant="primary" icon={<IconPlus size={16} />} onClick={() => setDataSourceEditor({ index: draft.choosers.length })}>新增数据源</Button>
+                        <Button size="sm" variant="primary" icon={<IconPlus size={16} />} disabled={locked} onClick={() => setDataSourceEditor({ index: draft.choosers.length })}>新增数据源</Button>
                       </div>
                       {draft.choosers.length === 0 && (
                         <div className="col-12 text-secondary">暂无数据源。点击右上角「新增数据源」配置取数通道（过滤条件/回填映射在弹窗内构建）。</div>
@@ -638,17 +647,17 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                       {draft.choosers.map((source, index) => (
                         <div className="col-12" key={chooserUiKey(index)}>
                           <div className="border rounded p-2 d-flex align-items-center gap-2">
-                            <input className="form-check-input" type="checkbox" checked={source.active} onChange={() => updateChooser(index, { active: !source.active })} title="启用/停用" />
+                            <input className="form-check-input" type="checkbox" checked={source.active} disabled={locked} onChange={() => updateChooser(index, { active: !source.active })} title="启用/停用" />
                             <div className="flex-grow-1">
                               <div className="fw-semibold">{source.description || source.table || '未命名数据源'}</div>
                               <div className="text-secondary small font-monospace">
                                 {source.table ?? ''}{source.moduleId != null ? ` · ${modulesQuery.data?.find(item => item.value === String(source.moduleId))?.label ?? `模块 ${source.moduleId}`}` : ''}
                               </div>
                             </div>
-                            <Button size="sm" variant="secondary" disabled={index === 0} title="上移" onClick={() => moveChooser(index, -1)}>↑</Button>
-                            <Button size="sm" variant="secondary" disabled={index === draft.choosers.length - 1} title="下移" onClick={() => moveChooser(index, 1)}>↓</Button>
-                            <Button size="sm" variant="ghost" icon={<IconPencil size={16} />} onClick={() => setDataSourceEditor({ index })}>编辑</Button>
-                            <Button size="sm" variant="danger" icon={<IconTrash size={16} />} onClick={() => removeChooser(index)}>删除</Button>
+                            <Button size="sm" variant="secondary" disabled={locked || index === 0} title="上移" onClick={() => moveChooser(index, -1)}>↑</Button>
+                            <Button size="sm" variant="secondary" disabled={locked || index === draft.choosers.length - 1} title="下移" onClick={() => moveChooser(index, 1)}>↓</Button>
+                            <Button size="sm" variant="ghost" icon={<IconPencil size={16} />} disabled={locked} onClick={() => setDataSourceEditor({ index })}>编辑</Button>
+                            <Button size="sm" variant="danger" icon={<IconTrash size={16} />} disabled={locked} onClick={() => removeChooser(index)}>删除</Button>
                           </div>
                         </div>
                       ))}
@@ -674,7 +683,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                       </div>
                       <div className="col-md-4">
                         <label className="form-label">复合格角色（FORM_CELL_ROLE）</label>
-                        <select className="form-select" value={draft.cellRole} onChange={event => setDraft({ ...draft, cellRole: Number(event.target.value) })}>
+                        <select className="form-select" value={draft.cellRole} disabled={locked} onChange={event => setDraft({ ...draft, cellRole: Number(event.target.value) })}>
                           <option value={0}>普通字段</option>
                           <option value={1}>主字段（带标签 + 选择器）</option>
                           <option value={2}>从字段（同格联动显示）</option>
@@ -682,7 +691,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                       </div>
                       <div className="col-md-4">
                         <label className="form-label">复合格组（FORM_CELL_GROUP）</label>
-                        <input className="form-control" value={draft.cellGroup ?? ''} placeholder="如 CLIENT，同组字段同一格" onChange={event => setDraft({ ...draft, cellGroup: event.target.value || null })} />
+                        <input className="form-control" value={draft.cellGroup ?? ''} disabled={locked} placeholder="如 CLIENT，同组字段同一格" onChange={event => setDraft({ ...draft, cellGroup: event.target.value || null })} />
                       </div>
                       <div className="col-md-4 d-flex align-items-end pb-2">
                         <label className="form-check">
@@ -692,7 +701,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                       </div>
                       <div className="col-12">
                         <label className="form-label">下拉选项（FORM_OPTIONS）</label>
-                        <input className="form-control" value={draft.options ?? ''} placeholder="如 O=外含税;I=内含税;N=不含税；有值即渲染下拉框" onChange={event => setDraft({ ...draft, options: event.target.value || null })} />
+                        <input className="form-control" value={draft.options ?? ''} disabled={locked} placeholder="如 O=外含税;I=内含税;N=不含税；有值即渲染下拉框" onChange={event => setDraft({ ...draft, options: event.target.value || null })} />
                       </div>
                     </>}
                     {section === 'advanced' && <>
@@ -705,7 +714,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                           <span className="form-check-label">虚拟字段</span>
                         </label>
                         <label className="form-check">
-                          <input className="form-check-input" type="checkbox" checked={draft.canCopy} onChange={() => setDraft({ ...draft, canCopy: !draft.canCopy })} />
+                          <input className="form-check-input" type="checkbox" checked={draft.canCopy} disabled={locked} onChange={() => setDraft({ ...draft, canCopy: !draft.canCopy })} />
                           <span className="form-check-label">数据可复制</span>
                         </label>
                         <label className="form-check">

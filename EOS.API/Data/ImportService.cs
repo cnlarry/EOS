@@ -81,11 +81,7 @@ public sealed class ImportService(DbConnectionFactory connections, ILogger<Impor
         return new ImportDefinition(table,fields,pks);
     }
 
-    public static bool IsAuditColumn(string field) =>
-        field.Equals("CREATE_PERSON",StringComparison.OrdinalIgnoreCase)
-        ||field.Equals("CREATE_DATE",StringComparison.OrdinalIgnoreCase)
-        ||field.Equals("LAST_UPDATE_BY",StringComparison.OrdinalIgnoreCase)
-        ||field.Equals("LAST_UPDATE_DATE",StringComparison.OrdinalIgnoreCase);
+    public static bool IsAuditColumn(string field) => RecordPayloadValidator.IsAuditColumn(field);
 
     public static ImportPreview ParseCsv(string csvText)
     {

@@ -781,6 +781,31 @@ describe('MenuAdminPage', () => {
     }
   })
 
+  it('主表缺状态列且具备批核能力时提示发布将被拦截', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path.includes('/admin/tables/') && path.endsWith('/columns')) return [{ name: 'ORDER_NO' }]
+      return { total: 2, modules: [moduleNode(11, '基本参数', null), { ...withTables, M_IDX: 1405, M_DESC: '客户订单', M_P_IDX: null, AUTO_APPROVE: true }] }
+    })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /客户订单/ }))
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
+    await waitFor(() => expect(screen.getByText(/缺少 CONFIRM_TAG/)).toBeInTheDocument())
+  })
+
+  it('主表具备状态列时不提示', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path.includes('/admin/tables/') && path.endsWith('/columns')) return [{ name: 'ORDER_NO' }, { name: 'CONFIRM_TAG' }]
+      return { total: 2, modules: [moduleNode(11, '基本参数', null), { ...withTables, M_IDX: 1405, M_DESC: '客户订单', M_P_IDX: null, AUTO_APPROVE: true }] }
+    })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /客户订单/ }))
+    fireEvent.click(screen.getByRole('tab', { name: '主表' }))
+    await waitFor(() => expect(screen.getByLabelText('操作主表名')).toHaveValue('COMPANY'))
+    expect(screen.queryByText(/缺少 CONFIRM_TAG/)).not.toBeInTheDocument()
+  })
+
 })
 
 const rect = (height: number): DOMRect => ({

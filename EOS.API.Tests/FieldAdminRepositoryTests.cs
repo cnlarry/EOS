@@ -182,4 +182,55 @@ public sealed class FieldAdminRepositoryTests
         Assert.Equal("备注A", change.OldValue);
         Assert.Equal("备注B", change.NewValue);
     }
+
+    [Theory]
+    [InlineData("CONFIRM_TAG")]
+    [InlineData("confirm_tag")]
+    [InlineData("FINISHED_PERSON")]
+    [InlineData("CREATE_DATE")]
+    [InlineData("OWNER_G")]
+    public async Task Delete_SystemColumn_RejectedBeforeOpeningConnection(string fieldId)
+    {
+        var repository = CreateRepository();
+        var error = await Assert.ThrowsAsync<ArgumentException>(
+            () => repository.DeleteAsync("COP_ORDER_M", fieldId, "IT", CancellationToken.None));
+        Assert.Contains("系统列不允许删除", error.Message);
+    }
+
+    [Fact]
+    public void SystemColumnUpdate_AllowsOnlyEditableMembers()
+    {
+        var current = FieldInput();
+        Assert.Null(FieldAdminRepository.BuildSystemColumnUpdateError(
+            current, current with { Label = "新名称", Width = 120, Remark = "备注", IsVisible = false }));
+    }
+
+    [Theory]
+    [InlineData("DataType", "varchar")]
+    [InlineData("Regex", "^\\d+$")]
+    [InlineData("DefaultValue", "X")]
+    public void SystemColumnUpdate_RejectsStructuralChange(string member, string value)
+    {
+        var current = FieldInput();
+        var next = member switch
+        {
+            "DataType" => current with { DataType = value },
+            "Regex" => current with { Regex = value },
+            "DefaultValue" => current with { DefaultValue = value },
+            _ => current,
+        };
+        Assert.NotNull(FieldAdminRepository.BuildSystemColumnUpdateError(current, next));
+    }
+
+    [Fact]
+    public void SystemColumnUpdate_RejectsPermissionAndGroupingChange()
+    {
+        var current = FieldInput();
+        Assert.NotNull(FieldAdminRepository.BuildSystemColumnUpdateError(
+            current, current with { IsRequired = true }));
+        Assert.NotNull(FieldAdminRepository.BuildSystemColumnUpdateError(
+            current, current with { IsCost = true }));
+        Assert.NotNull(FieldAdminRepository.BuildSystemColumnUpdateError(
+            current, current with { CellGroup = "G", CellRole = 2 }));
+    }
 }

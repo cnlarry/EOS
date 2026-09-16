@@ -378,4 +378,16 @@ describe('FieldEditorForm', () => {
     await waitFor(() => expect(screen.getByText(/该字段元数据引用的物理列不存在/)).toBeInTheDocument())
     expect(screen.getByText('物理列：不存在')).toBeInTheDocument()
   })
+
+  it('系统列编辑态锁定结构控件并提示', async () => {
+    const { container } = renderForm('edit', {
+      load: vi.fn().mockResolvedValue(meta({ key: 'CONFIRM_TAG', label: '批核状态', isSystemColumn: true })),
+      save: vi.fn(),
+    })
+    await waitFor(() => expect(screen.getByDisplayValue('批核状态')).toBeInTheDocument())
+    expect(screen.getByText(/结构锁定/)).toBeInTheDocument()
+    // 数据库类型下拉被锁定，标题仍可编辑
+    expect(container.querySelectorAll<HTMLSelectElement>('select.form-select')[0]).toBeDisabled()
+    expect(screen.getByDisplayValue('批核状态')).not.toBeDisabled()
+  })
 })

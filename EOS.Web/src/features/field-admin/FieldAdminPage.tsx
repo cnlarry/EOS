@@ -29,6 +29,7 @@ interface FieldAdminFieldSummary {
   isSecrecy: boolean
   isPrimaryKey: boolean
   physicalExists: boolean
+  isSystemColumn?: boolean
 }
 
 interface FieldAdminPageResult {
@@ -53,6 +54,8 @@ export function FieldAdminPage() {
   const [page, setPage] = useState(1)
   const [unmanagedOpen, setUnmanagedOpen] = useState(false)
   const [selectedField, setSelectedField] = useState<string | null>(null)
+  // ADR-013 系统列组默认隐藏；打开后服务端即不过滤（含徽标与删除保护）。
+  const [showSystem, setShowSystem] = useState(false)
 
   const tablesQuery = useQuery({
     queryKey: ['field-admin', 'tables'],
@@ -61,8 +64,8 @@ export function FieldAdminPage() {
   const table = tablesQuery.data?.find((item) => item.tableId.toLowerCase() === tableId.toLowerCase())
 
   const fields = useQuery({
-    queryKey: ['field-admin', 'fields', tableId, keyword, page],
-    queryFn: () => apiClient.get<FieldAdminPageResult>(`/admin/tables/${encodeURIComponent(tableId)}/fields`, { query: { keyword, page, pageSize } }),
+    queryKey: ['field-admin', 'fields', tableId, keyword, page, showSystem],
+    queryFn: () => apiClient.get<FieldAdminPageResult>(`/admin/tables/${encodeURIComponent(tableId)}/fields`, { query: { keyword, page, pageSize, excludeSystem: showSystem ? undefined : 'true' } }),
   })
 
   const remove = useMutation({
@@ -81,7 +84,7 @@ export function FieldAdminPage() {
 
   const columns = useMemo<ColumnDef<FieldAdminFieldSummary, unknown>[]>(() => [
     radioSelectColumn<FieldAdminFieldSummary>(`field-admin-fields-${tableId}`, selectedField, setSelectedField),
-    { accessorKey: 'fieldId', header: '字段名', cell: (info) => <span className="font-monospace fw-semibold">{String(info.getValue())}</span> },
+    { accessorKey: 'fieldId', header: '字段名', cell: (info) => <span className="font-monospace fw-semibold">{String(info.getValue())}{info.row.original.isSystemColumn && <span className="badge bg-azure-lt ms-1" title="单据生命周期系统列：结构锁定、不可删除">系统</span>}</span> },
     { accessorKey: 'description', header: '标题' },
     { accessorKey: 'dataType', header: '类型', cell: (info) => <span className="text-secondary">{String(info.getValue())}</span> },
     { accessorKey: 'isPrimaryKey', header: '主键', cell: (info) => booleanCell('主键', Boolean(info.getValue())) },
@@ -110,7 +113,9 @@ export function FieldAdminPage() {
         <div className="d-flex gap-1 justify-content-end">
           <Button size="sm" variant="ghost" icon={<IconCopy size={14} />} title="复制" onClick={() => navigate(`/admin/fields/${encodeURIComponent(tableId)}/new?copyFrom=${encodeURIComponent(row.original.fieldId)}`)}>复制</Button>
           <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} title="编辑" onClick={() => navigate(`/admin/fields/${encodeURIComponent(tableId)}/${encodeURIComponent(row.original.fieldId)}`)}>编辑</Button>
-          <Button size="sm" variant="ghost" icon={<IconTrash size={14} />} title="删除" loading={remove.isPending && remove.variables === row.original.fieldId} disabled={remove.isPending} onClick={() => confirmDelete(row.original.fieldId, row.original.description)}>删除</Button>
+          {!row.original.isSystemColumn && (
+            <Button size="sm" variant="ghost" icon={<IconTrash size={14} />} title="删除" loading={remove.isPending && remove.variables === row.original.fieldId} disabled={remove.isPending} onClick={() => confirmDelete(row.original.fieldId, row.original.description)}>删除</Button>
+          )}
         </div>
       ),
     },
@@ -123,6 +128,7 @@ export function FieldAdminPage() {
         search={<ErpSearchBox value={keyword} onChange={(value) => { setKeyword(value); setPage(1) }} debounceMs={300} placeholder="搜索字段名或标题" ariaLabel="搜索字段" />}
         actions={<>
           <Button size="sm" icon={<IconPlus size={16} />} onClick={() => navigate(`/admin/fields/${encodeURIComponent(tableId)}/new`)}>新增</Button>
+          <Button size="sm" variant={showSystem ? 'primary' : 'secondary'} title="单据生命周期系统列默认隐藏（结构锁定、不可删除）" onClick={() => { setShowSystem((value) => !value); setPage(1) }}>{showSystem ? '隐藏系统列' : '显示系统列'}</Button>
           <Button size="sm" icon={<IconListDetails size={16} />} onClick={() => setUnmanagedOpen(true)}>未管理字段</Button>
           <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void fields.refetch()}>刷新</Button>
           <Button size="sm" onClick={() => navigate('/admin/tables')}>返回</Button>

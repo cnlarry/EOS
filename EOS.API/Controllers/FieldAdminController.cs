@@ -72,10 +72,11 @@ public sealed class FieldAdminController(
         [FromQuery] string? keyword = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
+        [FromQuery] bool excludeSystem = false,
         CancellationToken token = default)
     {
         if (!await CanBrowse(token)) return Forbid();
-        return Ok(await repository.GetFieldsAsync(table, keyword, page, pageSize, token));
+        return Ok(await repository.GetFieldsAsync(table, keyword, page, pageSize, token, excludeSystem));
     }
 
     [HttpGet("tables/{table}/fields/unmanaged")]

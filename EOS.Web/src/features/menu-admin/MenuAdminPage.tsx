@@ -313,6 +313,26 @@ export function MenuAdminPage() {
     enabled: versionsOpen && selectedId != null,
   })
 
+  // ADR-013 §6.2 配置期提示：主表缺少 CONFIRM_TAG 但具备批核能力（自动批核/批核过程/
+  // 批核按钮）时预警——发布会被 lifecycle_columns 门拦截。仅提示不阻断保存（草稿工作区），
+  // 不自动补列（物理列变更走 DbUp 版本化迁移，不设一键补列）；是否发布由服务端终裁。
+  const masterTableName = draft?.MASTER_TABLE ?? null
+  const masterColumns = useQuery({
+    queryKey: ['menu-admin', 'master-columns', masterTableName ?? ''],
+    queryFn: async () => masterTableName
+      ? apiClient.get<{ name: string }[]>(`/admin/tables/${encodeURIComponent(masterTableName)}/columns`)
+      : [],
+    enabled: Boolean(masterTableName),
+  })
+  const approveButtonActions = (draft?.FORM_BUTTONS ?? '').split(';').map((part) => {
+    const eq = part.indexOf('=')
+    return (eq >= 0 ? part.slice(eq + 1) : part).trim().toLowerCase()
+  })
+  const masterMissingConfirmTag = Boolean(masterTableName)
+    && (draft?.AUTO_APPROVE === true || Boolean(draft?.UPDATE_SP?.trim()) || approveButtonActions.includes('approve') || approveButtonActions.includes('deapprove'))
+    && masterColumns.data !== undefined
+    && !masterColumns.data.some((column) => column.name.toLowerCase() === 'confirm_tag')
+
   const byId = useMemo(() => new Map((modules.data?.modules ?? []).map((module) => [module.M_IDX, module])), [modules.data])
   const filteredModules = useMemo(() => {
     const query = treeQuery.trim().toLowerCase()
@@ -1081,6 +1101,11 @@ export function MenuAdminPage() {
                             </div>
                           </div>
                         </div>
+                        {masterMissingConfirmTag && (
+                          <div className="alert alert-warning py-2 px-3 small mb-2">
+                            主表缺少 CONFIRM_TAG：当前配置具备批核能力（自动批核/批核过程/批核按钮），发布时将被 lifecycle_columns 门拦截。请补列后重发布，或关闭批核能力（ADR-013 §3.7）。
+                          </div>
+                        )}
                         <div className="row g-2">
                           <div className="col-6">
                             <Input label="排序字段" readOnly value={draft.SORT_FIELDS ?? ''} onChange={(value) => patch((d) => ({ ...d, SORT_FIELDS: value || null }))} />

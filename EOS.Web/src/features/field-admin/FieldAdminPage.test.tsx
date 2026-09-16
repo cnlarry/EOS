@@ -157,6 +157,45 @@ describe('FieldAdminPage', () => {
     expect(screen.getByText('TABLE_LIST')).toBeInTheDocument()
   })
 
+  it('默认按 excludeSystem 查询并提供显示开关', async () => {
+    renderPage()
+    await loaded()
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      '/admin/tables/PRODUCT_EDITION/fields',
+      expect.objectContaining({ query: expect.objectContaining({ excludeSystem: 'true' }) }),
+    ))
+    fireEvent.click(screen.getByRole('button', { name: '显示系统列' }))
+    await waitFor(() => expect(apiClientMock.get).toHaveBeenCalledWith(
+      '/admin/tables/PRODUCT_EDITION/fields',
+      expect.objectContaining({ query: expect.objectContaining({ excludeSystem: undefined }) }),
+    ))
+  })
+
+  it('系统列显示徽标且无删除按钮', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p === '/admin/tables') return tables
+      if (p.includes('/admin/tables/') && p.endsWith('/fields')) return {
+        items: [
+          fieldsPage.items[0],
+          { ...fieldsPage.items[1], fieldId: 'CONFIRM_TAG', description: '批核状态', isSystemColumn: true },
+        ],
+        total: 2,
+        page: 1,
+        pageSize: 16,
+      }
+      if (p.endsWith('/fields/unmanaged')) return []
+      if (p.includes('/admin/fields/')) return fieldMeta
+      if (p === '/admin/lookups/modules') return []
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderPage()
+    await loaded()
+    expect(screen.getByText('系统')).toBeInTheDocument()
+    // 仅非系统行有删除按钮
+    expect(screen.getAllByRole('button', { name: '删除' })).toHaveLength(1)
+  })
+
   it('未管理字段弹窗可批量生成并展示结果', async () => {
     renderPage()
     await loaded()

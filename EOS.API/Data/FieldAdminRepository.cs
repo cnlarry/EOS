@@ -401,7 +401,8 @@ public sealed class FieldAdminRepository(
         string? keyword,
         int page,
         int pageSize,
-        CancellationToken token)
+        CancellationToken token,
+        bool excludeSystemColumns = false)
     {
         EnsureIdentifier(tableId, null);
         page = Math.Max(1, page);
@@ -409,7 +410,11 @@ public sealed class FieldAdminRepository(
         var pattern = $"%{keyword?.Trim() ?? ""}%";
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
-        const string sql = """
+        // 系统列排除：闭式代码侧常量（WorkflowStates.LifecycleColumns），非用户输入，不拼接用户值。
+        var systemFilter = excludeSystemColumns
+            ? "AND F_ID NOT IN (" + string.Join(",", WorkflowStates.LifecycleColumns.Select(column => "N'" + column + "'")) + ")"
+            : string.Empty;
+        const string sqlTemplate = """
             ;WITH base AS (
                 SELECT LTRIM(RTRIM(F_ID)) F_ID,
                        COALESCE(NULLIF(LTRIM(RTRIM(F_DESC)),''),LTRIM(RTRIM(F_ID))) F_DESC,
@@ -435,9 +440,11 @@ public sealed class FieldAdminRepository(
                    COUNT(*) OVER() AS Total
             FROM base
             WHERE (@Keyword='' OR F_ID LIKE @Pattern OR F_DESC LIKE @Pattern)
+            /*SYSTEM_FILTER*/
             ORDER BY F_ID
             OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
             """;
+        var sql = sqlTemplate.Replace("/*SYSTEM_FILTER*/", systemFilter, StringComparison.Ordinal);
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = tableId;
         command.Parameters.Add("@Keyword", SqlDbType.NVarChar, 200).Value = keyword?.Trim() ?? "";
@@ -455,7 +462,8 @@ public sealed class FieldAdminRepository(
             items.Add(new(tableId, field, reader.GetString(1), reader.GetString(2),
                 reader.GetBoolean(3), reader.GetBoolean(4), reader.GetBoolean(5), reader.GetBoolean(6),
                 reader.GetBoolean(7), reader.GetBoolean(8), reader.GetBoolean(9),
-                reader.GetBoolean(10), reader.GetBoolean(11)));
+                reader.GetBoolean(10), reader.GetBoolean(11),
+                WorkflowStates.IsLifecycleColumn(field)));
         }
         return new(items, total, page, pageSize);
     }
@@ -511,7 +519,8 @@ public sealed class FieldAdminRepository(
             lastUpdatedBy, lastUpdatedAt, isPrimaryKey,
             physicalType is not null,
             physicalType,
-            physicalType is null ? null : string.Equals(physicalType, input.DataType.Trim(), StringComparison.OrdinalIgnoreCase));
+            physicalType is null ? null : string.Equals(physicalType, input.DataType.Trim(), StringComparison.OrdinalIgnoreCase),
+            WorkflowStates.IsLifecycleColumn(field));
     }
 
     /// <summary>
@@ -744,6 +753,11 @@ public sealed class FieldAdminRepository(
             logger.LogWarning("字段乐观锁冲突 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
             throw new ArgumentException("字段内容已被他人修改，请刷新后重试！", nameof(field));
         }
+        // ADR-013 §3.5 系统列组：类型/校验/数据源/权限与分组结构锁定，仅名称显示备注与表单位置可改。
+        if (WorkflowStates.IsLifecycleColumn(fieldId) && BuildSystemColumnUpdateError(current, field) is { } locked)
+        {
+            throw new ArgumentException(locked, nameof(field));
+        }
 
         const string sql = """
             UPDATE dbo.FIELDS SET
@@ -774,6 +788,11 @@ public sealed class FieldAdminRepository(
     public async Task DeleteAsync(string tableId, string fieldId, string updatedBy, CancellationToken token)
     {
         EnsureIdentifier(tableId, fieldId);
+        // ADR-013 §3.5 系统列组：单据生命周期列由管线持有，不可删除（开连接前即拒绝，不触库）。
+        if (WorkflowStates.IsLifecycleColumn(fieldId.Trim()))
+        {
+            throw new ArgumentException("系统列不允许删除（单据生命周期列由管线持有）。", nameof(fieldId));
+        }
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
@@ -1044,6 +1063,40 @@ public sealed class FieldAdminRepository(
         a.Active == b.Active && NullableEquals(a.Table, b.Table) && NullableEquals(a.Description, b.Description)
         && a.ModuleId == b.ModuleId && NullableEquals(a.Filter, b.Filter) && NullableEquals(a.ReturnMapping, b.ReturnMapping)
         && a.SerialNo == b.SerialNo;
+
+    /// <summary>
+    /// 系统列更新结构锁（ADR-013 §3.5）：仅名称、显示与备注类（标签/列宽/对齐/格式/
+    /// 可见/默认/查询/备注/校验顺序/表单位置）可改；类型/校验/数据源/权限与分组结构
+    /// 锁定。返回 null 表示仅动了可改项，否则返回拒绝原因（不触库，便于单测）。
+    /// </summary>
+    internal static string? BuildSystemColumnUpdateError(FieldAdminInput current, FieldAdminInput next)
+    {
+        var editableOnly = next with
+        {
+            Label = current.Label,
+            Width = current.Width,
+            Align = current.Align,
+            HeaderAlign = current.HeaderAlign,
+            Format = current.Format,
+            IsVisible = current.IsVisible,
+            IsDefault = current.IsDefault,
+            IsQueryable = current.IsQueryable,
+            Remark = current.Remark,
+            VerifyIndex = current.VerifyIndex,
+            TabNo = current.TabNo,
+            FormOrder = current.FormOrder,
+            Span = current.Span,
+            NewLine = current.NewLine,
+        };
+        if (!SameInput(editableOnly, current)
+            || !NullableEquals(current.CellGroup, next.CellGroup)
+            || current.CellRole != next.CellRole
+            || !NullableEquals(current.Options, next.Options))
+        {
+            return "系统列只允许修改名称、显示与备注类属性，类型、校验、数据源、权限与分组结构锁定。";
+        }
+        return null;
+    }
 
     private static bool NullableEquals(string? a, string? b) =>
         string.IsNullOrWhiteSpace(a) ? string.IsNullOrWhiteSpace(b) : string.Equals(a.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);

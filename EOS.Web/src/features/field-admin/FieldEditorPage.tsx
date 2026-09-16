@@ -28,6 +28,7 @@ interface FieldAdminMetadata {
   dataSourceSql: string | null
   lastUpdatedBy: string | null
   lastUpdatedAt: string | null
+  isSystemColumn?: boolean
 }
 
 interface FieldSummaryItem {
@@ -62,6 +63,7 @@ function adminMetaToFieldMeta(meta: FieldAdminMetadata): FieldMeta {
     dataSourceSql: meta.dataSourceSql,
     lastUpdatedBy: meta.lastUpdatedBy,
     lastUpdatedAt: meta.lastUpdatedAt,
+    isSystemColumn: meta.isSystemColumn,
   }
 }
 
