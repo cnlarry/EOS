@@ -28,7 +28,7 @@ public static class ValidationRuleRegistry
                 "displayLookup", "diagnosticFields", "maxRows")),
         };
 
-    private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "message", "switch", "diagnosticFields", "maxRows");
+    private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "message", "switch", "diagnosticFields", "maxRows", "diagnosticCellSeparator", "diagnosticRowSeparator");
     private static readonly IReadOnlySet<string> QtySwitchKeys = KeySet("key", "expect");
     private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "message");
     private static readonly IReadOnlySet<string> LineRequireTriggerKeys = KeySet("scope", "field", "op", "value");
