@@ -567,26 +567,8 @@ public sealed class ModuleBusinessConfigRepository(
         SqlConnection connection,
         CancellationToken token)
     {
-        const string sql = """
-            SELECT o.name,c.name
-            FROM sys.objects o
-            JOIN sys.columns c ON c.object_id=o.object_id
-            WHERE o.type IN ('U','V') AND SCHEMA_NAME(o.schema_id)=N'dbo';
-            """;
-        await using var command = new SqlCommand(sql, connection);
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        while (await reader.ReadAsync(token))
-        {
-            // Both bare table names (target-table existence checks in the service
-            // handlers) and table.column entries, mirroring EffectPhysicalColumns
-            // used at execution time: a save-time set without bare names rejects
-            // every targets-shape set-state/link-stamp save while the same config
-            // executes fine.
-            result.Add(reader.GetString(0));
-            result.Add(Key(reader.GetString(0), reader.GetString(1)));
-        }
-        return result;
+        var loaded = await new EffectPhysicalColumns().LoadAsync(connection, token);
+        return new HashSet<string>(loaded, StringComparer.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<string> ReadTermFields(string json)
