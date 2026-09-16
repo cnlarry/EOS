@@ -74,9 +74,11 @@ public static class WorkflowStates
     public static readonly string[] OwnershipColumns = ["CI", "OWNER", "OWNER_G"];
 
     /// <summary>
-    /// 单公司部署的实际归属兜底：会话用户无公司归属时回填此值并记警告（CK-01/HS01 待补公司资料）。
+    /// 归属兜底公司：会话用户无公司归属时回填此值并记警告。
+    /// 哨兵公司（COMPANY.COMPANY_ID='DEFAULT'），不得指向任何真实客户公司——
+    /// 否则无法归属的行会被静默算到该客户名下。
     /// </summary>
-    public const string DefaultCompanyId = "DEMO";
+    public const string DefaultCompanyId = "DEFAULT";
 
     /// <summary>
     /// 是否单据生命周期系统列（ADR-013 §3.5 系统列组，全 13 列含归属三列）。
