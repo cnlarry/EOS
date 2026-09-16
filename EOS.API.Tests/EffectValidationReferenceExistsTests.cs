@@ -70,7 +70,8 @@ public sealed class EffectValidationReferenceExistsTests
             ["PUR", "P-1"]);
 
         Assert.Contains("WHERE (M.[SUPPLIER_ID] IS NULL OR M.[SUPPLIER_ID] = '') OR M.[PURCHASE_TYPE] = @mk0", compiled.Sql);
-        Assert.Equal("引用数据不存在。", compiled.Message);
+        // 断言未自带文案时返回 null，由调用方回落到规则级 message。
+        Assert.Null(compiled.Message);
     }
 
     [Fact]

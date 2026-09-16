@@ -28,31 +28,33 @@ IF DB_NAME() <> N'EOS.ERP'
 PRINT N'== 播种引用存在性校验（库存/生产/模具/制程） ==';
 
 DECLARE @NL NVARCHAR(2) = NCHAR(13) + NCHAR(10);
+-- JSON 字符串内不能出现裸控制字符，换行必须写成转义序列（反斜杠 + r + 反斜杠 + n）。
+DECLARE @NLJ NVARCHAR(4) = N'\r\n';
 
 -- 共用断言片段：refKey 形态下两侧同列名，lineField 定位到缺失明细行的行号。
 DECLARE @DEPOT NVARCHAR(MAX) =
     N'{"refTable":"DEPOT","refKey":{"scope":"DETAIL","field":"DEPOT_ID"},'
-    + N'"lineField":"SERIAL_NO","message":"以下序号项库别编号不存在 ' + @NL + N'{ROWS}"}';
+    + N'"lineField":"SERIAL_NO","message":"以下序号项库别编号不存在 ' + @NLJ + N'{ROWS}"}';
 DECLARE @DEPOT_IN NVARCHAR(MAX) =
     N'{"refTable":"DEPOT","refKey":{"scope":"DETAIL","field":"IN_DEPOT_ID"},'
-    + N'"lineField":"SERIAL_NO","message":"以下序号项入库别编号不存在 ' + @NL + N'{ROWS}"}';
+    + N'"lineField":"SERIAL_NO","message":"以下序号项入库别编号不存在 ' + @NLJ + N'{ROWS}"}';
 DECLARE @PRODUCT NVARCHAR(MAX) =
     N'{"refTable":"PRODUCT","refKey":{"scope":"DETAIL","field":"PRO_NO"},'
-    + N'"lineField":"SERIAL_NO","message":"以下序号项产品编号不存在 ' + @NL + N'{ROWS}"}';
+    + N'"lineField":"SERIAL_NO","message":"以下序号项产品编号不存在 ' + @NLJ + N'{ROWS}"}';
 DECLARE @MOULD NVARCHAR(MAX) =
     N'{"refTable":"MOU_MOULD","refKey":{"scope":"DETAIL","field":"MOULD_ID"},'
-    + N'"lineField":"SERIAL_NO","message":"以下序号项模具编号不存在 ' + @NL + N'{ROWS}"}';
+    + N'"lineField":"SERIAL_NO","message":"以下序号项模具编号不存在 ' + @NLJ + N'{ROWS}"}';
 DECLARE @PRODUCE_LINE NVARCHAR(MAX) =
     N'{"refTable":"MOC_PRODUCE_M","join":['
     + N'{"target":"PRODUCE_TYPE","source":{"scope":"DETAIL","field":"PRODUCE_TYPE"}},'
     + N'{"target":"PRODUCE_NO","source":{"scope":"DETAIL","field":"PRODUCE_NO"}}],'
-    + N'"lineField":"SERIAL_NO","message":"以下序号项制令单不存在 ' + @NL + N'{ROWS}"}';
+    + N'"lineField":"SERIAL_NO","message":"以下序号项制令单不存在 ' + @NLJ + N'{ROWS}"}';
 DECLARE @PROCESS_LINE NVARCHAR(MAX) =
     N'{"refTable":"MOC_PRODUCE_PROCESS_D","join":['
     + N'{"target":"PRODUCE_TYPE","source":{"scope":"DETAIL","field":"PRODUCE_TYPE"}},'
     + N'{"target":"PRODUCE_NO","source":{"scope":"DETAIL","field":"PRODUCE_NO"}},'
     + N'{"target":"PROCEDURE_ID","source":{"scope":"DETAIL","field":"PROCEDURE_ID"}}],'
-    + N'"lineField":"SERIAL_NO","message":"以下序号项制令制程不存在 ' + @NL + N'{ROWS}"}';
+    + N'"lineField":"SERIAL_NO","message":"以下序号项制令制程不存在 ' + @NLJ + N'{ROWS}"}';
 -- 主表级：订单别为空的行视为未引用订单（旧实现的 ISNULL(ORDER_NO,'')<>'' 语义）。
 DECLARE @ORDER_MASTER NVARCHAR(MAX) =
     N'{"refTable":"COP_ORDER_D","join":['
@@ -60,7 +62,7 @@ DECLARE @ORDER_MASTER NVARCHAR(MAX) =
     + N'{"target":"ORDER_NO","source":{"scope":"MASTER","field":"ORDER_NO"}},'
     + N'{"target":"SERIAL_NO","source":{"scope":"MASTER","field":"ORDER_SERIAL_NO"}}],'
     + N'"allowEmpty":[{"scope":"MASTER","field":"ORDER_NO"}],'
-    + N'"message":"订单不存在  ' + @NL + N'"}';
+    + N'"message":"订单不存在  ' + @NLJ + N'"}';
 DECLARE @PRODUCE_MASTER NVARCHAR(MAX) =
     N'{"refTable":"MOC_PRODUCE_M","join":['
     + N'{"target":"PRODUCE_TYPE","source":{"scope":"MASTER","field":"PRODUCE_TYPE"}},'
@@ -68,14 +70,14 @@ DECLARE @PRODUCE_MASTER NVARCHAR(MAX) =
     + N'"message":"制令单不存在。 "}';
 DECLARE @SFC_PRODUCT NVARCHAR(MAX) =
     N'{"refTable":"PRODUCT","refKey":{"scope":"MASTER","field":"PRO_NO"},'
-    + N'"message":"产品编号不存在 ' + @NL + N'"}';
+    + N'"message":"产品编号不存在 ' + @NLJ + N'"}';
 -- 盘点单旧实现不设条数上限，取模板上限 100 以尽量贴近日志式清单。
 DECLARE @DEPOT_WIDE NVARCHAR(MAX) =
     N'{"refTable":"DEPOT","refKey":{"scope":"DETAIL","field":"DEPOT_ID"},'
-    + N'"lineField":"SERIAL_NO","maxRows":100,"message":"以下序号项库别编号不存在 ' + @NL + N'{ROWS}"}';
+    + N'"lineField":"SERIAL_NO","maxRows":100,"message":"以下序号项库别编号不存在 ' + @NLJ + N'{ROWS}"}';
 DECLARE @PRODUCT_WIDE NVARCHAR(MAX) =
     N'{"refTable":"PRODUCT","refKey":{"scope":"DETAIL","field":"PRO_NO"},'
-    + N'"lineField":"SERIAL_NO","maxRows":100,"message":"以下序号项产品编号不存在 ' + @NL + N'{ROWS}"}';
+    + N'"lineField":"SERIAL_NO","maxRows":100,"message":"以下序号项产品编号不存在 ' + @NLJ + N'{ROWS}"}';
 
 DECLARE @RULES TABLE (
     MODULE_ID INT, SEQ INT, VALIDATION_KEY NVARCHAR(50),
