@@ -10,8 +10,19 @@ namespace EOS.API.Data.Effects;
 /// </summary>
 public sealed class EffectPhysicalColumns
 {
+    private static readonly object Gate = new();
+    private static ISet<string>? _cache;
+    private static DateTime _cacheLoadedUtc;
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
+
     public async Task<ISet<string>> LoadAsync(SqlConnection connection, CancellationToken token, SqlTransaction? transaction = null)
     {
+        lock (Gate)
+        {
+            if (_cache is not null && DateTime.UtcNow - _cacheLoadedUtc < CacheTtl)
+                return _cache;
+        }
+
         const string sql = """
             SELECT o.name,c.name
             FROM sys.objects o
@@ -32,6 +43,12 @@ public sealed class EffectPhysicalColumns
         }
         if (!wasOpen)
             await connection.CloseAsync();
+
+        lock (Gate)
+        {
+            _cache = result;
+            _cacheLoadedUtc = DateTime.UtcNow;
+        }
         return result;
     }
 }
