@@ -225,25 +225,28 @@ public sealed class WorkbenchApprovalService(
         CancellationToken token,
         string? message = null)
     {
-        // 批核能力有两个来源：已发布定义的效果链（数据驱动）与静态登记的旧批核 SP
-        // （过渡桥）。两者都不可用时才拒绝——效果链不依赖静态模块映射即可授权批核。
+        // 批核能力有三个来源：静态登记的批核过程（过渡桥）、已发布定义的效果链（数据驱动）、
+        // 自动批核模块的无副作用状态翻转。三者皆无才拒绝——效果链不依赖静态模块映射即可授权批核。
         var rule = definition.BusinessRule;
         var sproc = rule?.WorkflowSproc;
-        if (sproc is null && !effectEngine.IsEnabledFor(definition))
+        var effectsEnabled = effectEngine.IsEnabledFor(definition);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        // 流程定义一次查询，供无副作用判定与送审分支复用。
+        var hasFlow = await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token);
+        // 无副作用批核必须在能力守卫之前判定：它与按钮显隐共用同一条件，
+        // 否则按钮显示可点、请求却在守卫处被判不支持（自动批核模块无法手动解批）。
+        var stateless = WorkflowStates.IsStatelessApproveCapable(
+            definition.AutoApprove, sproc is not null, effectsEnabled, hasFlow);
+        if (!stateless && sproc is null && !effectsEnabled)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "WORKFLOW_NOT_SUPPORTED", "该模块不支持批核操作。");
         }
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(token);
         var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
-        // 自动批核模块的无副作用批核/解批（无批核过程、无效果链、无流程定义）：
-        // 保存路径的自动批核本就是纯状态翻转，显式动作同口径——否则"能自动批、
-        // 不能手动解"（如 110101 公司资料，解批恒报 WORKFLOW_NOT_SUPPORTED）。
-        // 有流程定义的仍走送审，有过程/效果链的仍走原路径。
+        // 无副作用批核/解批（自动批核且无批核过程/效果链/流程定义）：保存路径的自动批核
+        // 本就是纯状态翻转，显式动作同口径。有流程定义的仍走送审，有过程/效果链的仍走原路径。
         // 判定与表单按钮显隐共用 WorkflowStates.IsStatelessApproveCapable，两边不得分叉。
-        if (WorkflowStates.IsStatelessApproveCapable(
-                definition.AutoApprove, sproc is not null, effectEngine.IsEnabledFor(definition),
-                await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token)))
+        if (stateless)
         {
             return await StatelessApproveAsync(connection, definition, keyValues, keyCondition, approve, employeeName, userId, token);
         }
@@ -270,7 +273,7 @@ public sealed class WorkbenchApprovalService(
         }
         // 有流程定义的模块：批核即"送审"（启动审批链），单据保持未确认；
         // 无流程模块保持直接批核。
-        else if (approve && await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token))
+        else if (approve && hasFlow)
         {
             return await workflowEngine.StartFlowAsync(definition, keyValues, employeeName, userId, token, message);
         }
