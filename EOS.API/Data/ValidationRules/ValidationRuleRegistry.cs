@@ -245,9 +245,11 @@ public static class ValidationRuleRegistry
                     else if (diagnostic.ValueKind == JsonValueKind.Object)
                     {
                         RejectUnknownKeys(rule, diagnostic, ReferenceSourceKeys, diagnosticWhere, issues);
-                        if (string.IsNullOrWhiteSpace(GetString(diagnostic, "field")))
-                            issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.field 不能为空");
                         var diagnosticScope = GetString(diagnostic, "scope");
+                        // THIS 指"本单数量"，分组形态下即求和值，无需列名。
+                        if (string.IsNullOrWhiteSpace(GetString(diagnostic, "field"))
+                            && !string.Equals(diagnosticScope, "THIS", StringComparison.OrdinalIgnoreCase))
+                            issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.field 不能为空");
                         if (diagnosticScope is not null
                             && diagnosticScope.ToUpperInvariant() is not ("SOURCE" or "TARGET" or "THIS"))
                             issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.scope 仅允许 SOURCE/TARGET/THIS");
