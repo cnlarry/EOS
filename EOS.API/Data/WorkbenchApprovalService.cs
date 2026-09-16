@@ -95,9 +95,11 @@ public sealed class WorkbenchApprovalService(
         string userId,
         CancellationToken token)
     {
+        // ADR-013 §3.7：缺列不再静默返回成功（调用方会误以为已批核），而是显式失败并引导补列。
         if (!await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "CONFIRM_TAG", token))
         {
-            return RecordSaveResult.Success(keyValues);
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
+                $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
         }
         var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
         var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);
@@ -238,6 +240,13 @@ public sealed class WorkbenchApprovalService(
         // 且不进入流程送审（用户语义：自动批核模块不走新增、审核模式）。
         if (approve && definition.AutoApprove)
         {
+            // ADR-013 §3.7：与保存路径同口径，缺列显式失败（否则 ReadConfirmStateAsync 直查
+            // CONFIRM_TAG 会抛 SQL 异常，以 500 收场）。
+            if (!await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "CONFIRM_TAG", token))
+            {
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
+                    $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
+            }
             var state = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);
             if (state is null)
             {

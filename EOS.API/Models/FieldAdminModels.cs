@@ -24,7 +24,8 @@ public sealed record FieldAdminFieldSummary(
     bool IsCost,
     bool IsSecrecy,
     bool IsPrimaryKey,
-    bool PhysicalExists);
+    bool PhysicalExists,
+    bool IsSystemColumn = false);
 
 /// <summary>数据表完整元数据（编辑弹窗用；高风险表达式列仅展示不参与写入）。</summary>
 public sealed record FieldAdminTableDetail(
@@ -118,7 +119,8 @@ public sealed record FieldAdminMetadata(
     bool IsPrimaryKey,
     bool PhysicalExists,
     string? PhysicalType,
-    bool? TypeMatches);
+    bool? TypeMatches,
+    bool IsSystemColumn = false);
 
 public sealed record CreateFieldAdminRequest(string TableId, string FieldId, FieldAdminInput Field);
 

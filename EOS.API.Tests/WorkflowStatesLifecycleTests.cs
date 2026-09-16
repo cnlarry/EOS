@@ -1,0 +1,71 @@
+using EOS.API.Data;
+using Xunit;
+
+namespace EOS.API.Tests;
+
+public class WorkflowStatesLifecycleTests
+{
+    [Fact]
+    public void LifecycleColumns_ContainFullTwelveColumnSet()
+    {
+        Assert.Equal(
+            new[]
+            {
+                "CREATE_PERSON", "CREATE_DATE", "LAST_UPDATE_BY", "LAST_UPDATE_DATE",
+                "CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE",
+                "FINISHED_TAG", "FINISHED_PERSON", "FINISHED_DATE",
+                "OWNER", "OWNER_G",
+            },
+            WorkflowStates.LifecycleColumns);
+    }
+
+    [Fact]
+    public void LifecycleSubsets_AreConsistent()
+    {
+        Assert.Equal(["CONFIRM_TAG", "FINISHED_TAG"], WorkflowStates.LifecycleTagColumns);
+        Assert.Equal(8, WorkflowStates.LifecycleActorColumns.Length);
+        Assert.Equal(
+            ["CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE", "FINISHED_TAG", "FINISHED_PERSON", "FINISHED_DATE"],
+            WorkflowStates.RecordStatusColumns);
+        // 读取契约是全集的子集；状态位与经办列不相交
+        foreach (var column in WorkflowStates.RecordStatusColumns)
+        {
+            Assert.Contains(column, WorkflowStates.LifecycleColumns);
+        }
+        Assert.Empty(WorkflowStates.LifecycleTagColumns.Intersect(WorkflowStates.LifecycleActorColumns));
+        // 载荷审计列与经办列同源（单点定义）
+        Assert.Equal(
+            WorkflowStates.LifecycleActorColumns.OrderBy(column => column),
+            RecordPayloadValidator.AuditColumns.OrderBy(column => column));
+    }
+
+    [Theory]
+    [InlineData("CONFIRM_TAG", true)]
+    [InlineData("finished_date", true)]
+    [InlineData("OWNER", true)]
+    [InlineData("OWNER_G", true)]
+    [InlineData("REMARK", false)]
+    [InlineData("CLIENT_ID", false)]
+    public void IsLifecycleColumn_MatchesColumnSet(string fieldId, bool expected)
+    {
+        Assert.Equal(expected, WorkflowStates.IsLifecycleColumn(fieldId));
+    }
+
+    [Theory]
+    [InlineData(true, false, false, null, true)]
+    [InlineData(false, true, false, null, true)]
+    [InlineData(false, false, true, null, true)]
+    [InlineData(false, false, false, new[] { "APPROVE_EFFECT" }, true)]
+    [InlineData(false, false, false, new[] { "DEAPPROVE" }, true)]
+    [InlineData(false, false, false, new[] { "approve_effect" }, true)]
+    [InlineData(false, false, false, new[] { "SAVE" }, false)]
+    [InlineData(false, false, false, new[] { "ENDCASE" }, false)]
+    [InlineData(false, false, false, new[] { "UNKNOWN_EVENT" }, false)]
+    [InlineData(false, false, false, null, false)]
+    [InlineData(false, false, false, new string[] { }, false)]
+    public void NeedsApproveColumn_FollowsBackendCapability(
+        bool autoApprove, bool hasSproc, bool hasWorkflow, string[]? events, bool expected)
+    {
+        Assert.Equal(expected, WorkflowStates.NeedsApproveColumn(autoApprove, hasSproc, hasWorkflow, events));
+    }
+}

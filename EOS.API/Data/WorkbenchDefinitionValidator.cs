@@ -264,6 +264,32 @@ public sealed class WorkbenchDefinitionValidator(
             checks.Add(new("business_config_valid", true, "模块无业务动作/校验配置。"));
         }
 
+        // ADR-013 §3.7 能力 → 列单向强制：具备批核能力的模块必须有 CONFIRM_TAG，
+        // 缺列在发布期报错并引导补列，不再允许"无列却有能力"的配置进入运行时。
+        if (definition is not null && masterOk)
+        {
+            var enabledEvents = businessConfig?.Actions
+                .Where(action => action.Enabled)
+                .Select(action => action.EventCode);
+            var needsApprove = WorkflowStates.NeedsApproveColumn(
+                definition.AutoApprove,
+                definition.BusinessRule?.WorkflowSproc is not null,
+                definition.HasWorkflow,
+                enabledEvents);
+            if (needsApprove)
+            {
+                var masterColumns = await GetTableColumnsAsync(connection, module.MasterTable, token);
+                checks.Add(masterColumns.Contains("CONFIRM_TAG", StringComparer.OrdinalIgnoreCase)
+                    ? new("lifecycle_columns", true, "模块具备批核能力且主表有 CONFIRM_TAG。")
+                    : new("lifecycle_columns", false,
+                        $"模块具备批核能力（自动批核/批核过程/工作流/批核效果链）但主表 {module.MasterTable} 缺少 CONFIRM_TAG：请补列后重发布，或关闭对应批核能力。"));
+            }
+            else
+            {
+                checks.Add(new("lifecycle_columns", true, "模块无批核能力，无需状态位。"));
+            }
+        }
+
         var engineEnabled = await ReadEffectEngineTagAsync(connection, moduleId, token);
         if (engineEnabled && businessConfig is not null)
         {
