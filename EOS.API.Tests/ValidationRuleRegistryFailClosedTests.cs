@@ -195,6 +195,59 @@ public class ValidationRuleRegistryFailClosedTests
     }
 
     [Fact]
+    public void QuantityCheck_AcceptsSaveSideExtensionsAndRejectsBadOnes()
+    {
+        // B4 保存侧新能力：offset 容差、thisQty.agg 分组求和、诊断行、诊断分隔符
+        var ok = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"PUR_PURCHASE_D",
+             "match":[{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}}],
+             "thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["RECEIVE_QTY"]},
+             "limit":{"scope":"TARGET","fields":["QTY"]},
+             "offset":0.1,
+             "diagnosticFields":[{"scope":"TARGET","field":"QTY"},{"scope":"THIS"}],
+             "diagnosticRowSeparator":"  ","diagnosticCellSeparator":"    ",
+             "message":"超出数量 \r\n{ROWS}"}]}
+            """));
+        Assert.Empty(ok);
+
+        var badAgg = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"PUR_PURCHASE_D",
+             "match":[{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}}],
+             "thisQty":{"scope":"DETAIL","agg":"AVG","terms":[{"field":"QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["RECEIVE_QTY"]},
+             "limit":{"scope":"TARGET","fields":["QTY"]}}]}
+            """));
+        Assert.Contains(badAgg, issue => issue.Contains("agg 仅允许 SUM"));
+
+        var badDiagnostic = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"PUR_PURCHASE_D",
+             "match":[{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}}],
+             "thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["RECEIVE_QTY"]},
+             "limit":{"scope":"TARGET","fields":["QTY"]},
+             "diagnosticFields":[{"scope":"OTHER","field":"QTY"}],
+             "message":"超出数量"}]}
+            """));
+        Assert.Contains(badDiagnostic, issue => issue.Contains("scope 仅允许 SOURCE/TARGET/THIS"));
+        Assert.Contains(badDiagnostic, issue => issue.Contains("必须包含 {ROWS} 占位符"));
+    }
+
+    [Fact]
+    public void QuantityCheck_ControllerKeys()
+    {
+        var issues = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"PUR_PURCHASE_D",
+             "match":[{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}}],
+             "thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["RECEIVE_QTY"]},
+             "limit":{"scope":"TARGET","fields":["QTY"]},
+             "unknownKey":1}]}
+            """));
+        Assert.Contains(issues, issue => issue.Contains("未知参数键"));
+    }
+
+    [Fact]
     public void QuantityCheck_SwitchGate_AcceptsKnownShape()
     {
         var issues = Validate("qty-not-exceed", Params("""
