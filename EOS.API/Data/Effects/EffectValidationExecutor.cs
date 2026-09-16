@@ -303,9 +303,16 @@ public sealed class EffectValidationExecutor
         {
             var refTable = RequiredString(target, "refTable", "reference-exists.check 缺少 refTable。");
             var (match, matchUsesDetail) = BuildReferenceMatch(target);
-            usesDetail |= matchUsesDetail;
-            missingParts.Add("NOT EXISTS (SELECT 1 FROM dbo." + EffectConditionCompiler.Identifier(refTable)
-                + " R WITH (NOLOCK) WHERE " + match + BuildActiveTag(target) + ")");
+            var (mismatch, mismatchUsesDetail) = BuildReferenceMismatch(target);
+            usesDetail |= matchUsesDetail || mismatchUsesDetail;
+            // 无 mismatch ＝ 断言"引用必须存在"；带 mismatch ＝ 断言"引用存在时该列必须与来源一致"
+            // （旧实现的反向一致性断言，命中条件是存在一行且两列不等）。
+            var body = match + BuildActiveTag(target);
+            missingParts.Add(mismatch is null
+                ? "NOT EXISTS (SELECT 1 FROM dbo." + EffectConditionCompiler.Identifier(refTable)
+                    + " R WITH (NOLOCK) WHERE " + body + ")"
+                : "EXISTS (SELECT 1 FROM dbo." + EffectConditionCompiler.Identifier(refTable)
+                    + " R WITH (NOLOCK) WHERE " + body + " AND " + mismatch + ")");
         }
 
         var (emptyParts, allowEmptyUsesDetail) = BuildAllowEmptyParts(check);
@@ -369,6 +376,20 @@ public sealed class EffectValidationExecutor
         var field = RequiredString(refKey, "field", "reference-exists.refKey 缺少 field。");
         var (keyExpression, keyUsesDetail) = SourceExpression(refKey);
         return ("R." + EffectConditionCompiler.Identifier(field) + " = " + keyExpression, keyUsesDetail);
+    }
+
+    /// <summary>
+    /// 反向一致性断言（可选）：引用行与来源行的某一列必须相等，不等即命中。
+    /// 用 EXISTS + &lt;&gt; 表达，而不是"NOT EXISTS 相等"，否则引用本身缺失时会被误报成"不一致"。
+    /// </summary>
+    private static (string? Sql, bool UsesDetail) BuildReferenceMismatch(JsonElement target)
+    {
+        if (!target.TryGetProperty("mismatch", out var mismatch) || mismatch.ValueKind != JsonValueKind.Object)
+            return (null, false);
+        var column = RequiredString(mismatch, "target", "reference-exists.mismatch 缺少 target。");
+        var source = mismatch.TryGetProperty("source", out var declared) ? declared : default;
+        var (expression, usesDetail) = SourceExpression(source);
+        return ("R." + EffectConditionCompiler.Identifier(column) + " <> " + expression, usesDetail);
     }
 
     private static string BuildActiveTag(JsonElement target)

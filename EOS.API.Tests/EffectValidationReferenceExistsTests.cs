@@ -136,6 +136,25 @@ public sealed class EffectValidationReferenceExistsTests
     }
 
     [Fact]
+    public void 反向一致性断言用存在且不等表达()
+    {
+        var compiled = EffectValidationExecutor.BuildReferenceExistsCheckSql(
+            Plan("COP_RETURN_M", "COP_RETURN_D", "RETURN_TYPE", "RETURN_NO"),
+            Check("""
+                {"refTable":"COP_ORDER_M",
+                 "join":[{"target":"ORDER_TYPE","source":{"scope":"DETAIL","field":"ORDER_TYPE"}},
+                         {"target":"ORDER_NO","source":{"scope":"DETAIL","field":"ORDER_NO"}}],
+                 "mismatch":{"target":"CLIENT_ID","source":{"scope":"MASTER","field":"CLIENT_ID"}},
+                 "lineField":"SERIAL_NO","message":"以下序号项退货单与订单客户不符 \r\n{ROWS}"}
+                """),
+            ["R", "R-1"]);
+
+        // 必须 EXISTS + <>：用"NOT EXISTS 相等"会把"订单不存在"误报成"客户不符"。
+        Assert.Contains("EXISTS (SELECT 1 FROM dbo.[COP_ORDER_M] R WITH (NOLOCK) WHERE R.[ORDER_TYPE] = D.[ORDER_TYPE] AND R.[ORDER_NO] = D.[ORDER_NO] AND R.[CLIENT_ID] <> M.[CLIENT_ID])", compiled.Sql);
+        Assert.DoesNotContain("NOT EXISTS (SELECT 1 FROM dbo.[COP_ORDER_M]", compiled.Sql);
+    }
+
+    [Fact]
     public void 明细级断言缺少明细表时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>

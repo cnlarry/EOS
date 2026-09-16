@@ -35,8 +35,9 @@ public static class ValidationRuleRegistry
     private static readonly IReadOnlySet<string> LineRequireOps = KeySet("GT", "GE", "LT", "LE", "EQ", "NEQ");
     private static readonly IReadOnlySet<string> QtyBlockKeys = KeySet("scope", "terms", "fields");
     private static readonly IReadOnlySet<string> ReferenceCheckKeys = KeySet(
-        "refTable", "allowEmpty", "join", "refKey", "activeTag", "message", "lineField", "targets", "maxRows");
-    private static readonly IReadOnlySet<string> ReferenceTargetKeys = KeySet("refTable", "join", "refKey", "activeTag");
+        "refTable", "allowEmpty", "join", "refKey", "activeTag", "message", "lineField", "targets", "maxRows", "mismatch");
+    private static readonly IReadOnlySet<string> ReferenceTargetKeys = KeySet("refTable", "join", "refKey", "activeTag", "mismatch");
+    private static readonly IReadOnlySet<string> ReferenceMismatchKeys = KeySet("target", "source");
     private static readonly IReadOnlySet<string> ActiveTagKeys = KeySet("field", "expect");
     private static readonly IReadOnlySet<string> ReferencePairKeys = KeySet("target", "source");
     private static readonly IReadOnlySet<string> ReferenceSourceKeys = KeySet("scope", "field");
@@ -501,6 +502,27 @@ public static class ValidationRuleRegistry
         else if (target.TryGetProperty("activeTag", out var activeTagRaw) && activeTagRaw.ValueKind != JsonValueKind.Null)
         {
             issues.Add($"校验规则 {Label(rule)}：{where}.activeTag 必须是对象");
+        }
+        if (target.TryGetProperty("mismatch", out var mismatchRaw) && mismatchRaw.ValueKind != JsonValueKind.Null)
+        {
+            if (mismatchRaw.ValueKind != JsonValueKind.Object)
+            {
+                issues.Add($"校验规则 {Label(rule)}：{where}.mismatch 必须是对象");
+            }
+            else
+            {
+                RejectUnknownKeys(rule, mismatchRaw, ReferenceMismatchKeys, where + ".mismatch", issues);
+                if (string.IsNullOrWhiteSpace(GetString(mismatchRaw, "target")))
+                    issues.Add($"校验规则 {Label(rule)}：{where}.mismatch.target 不能为空");
+                var mismatchSource = GetObject(mismatchRaw, "source");
+                if (mismatchSource is null)
+                    issues.Add($"校验规则 {Label(rule)}：{where}.mismatch.source 不能为空");
+                else
+                    ValidateReferenceSource(rule, mismatchSource.Value, where + ".mismatch.source", issues);
+                // 反向断言需要"哪些列算同一行"的匹配条件，缺 join 就无法确定比对对象。
+                if (join is null || join.Value.GetArrayLength() == 0)
+                    issues.Add($"校验规则 {Label(rule)}：{where} 配置 mismatch 时必须同时给出 join");
+            }
         }
     }
 
