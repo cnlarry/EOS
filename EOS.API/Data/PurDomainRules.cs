@@ -75,11 +75,6 @@ public static class PurDomainRules
         var validated = await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
             "PUR_CANCEL_D", "CANCEL_TYPE", "CANCEL_NO",
             [
-                ("EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_M o JOIN dbo.PUR_CANCEL_M m ON m.CANCEL_TYPE=@Type AND m.CANCEL_NO=@No WHERE o.PURCHASE_TYPE=t.PURCHASE_TYPE AND o.PURCHASE_NO=t.PURCHASE_NO AND o.SUPPLIER_ID<>m.SUPPLIER_ID)", "以下序号项收料单与采购单厂商不符 "),
-                ("ISNULL(t.PURCHASE_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_M o WHERE o.PURCHASE_TYPE=t.PURCHASE_TYPE AND o.PURCHASE_NO=t.PURCHASE_NO)", "以下序号项采购订单不存在 "),
-                ("ISNULL(t.PURCHASE_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_D o WHERE o.PURCHASE_TYPE=t.PURCHASE_TYPE AND o.PURCHASE_NO=t.PURCHASE_NO AND o.SERIAL_NO=t.PURCHASE_SERIAL_NO AND o.PRO_NO=t.PRO_NO)", "以下序号项采购订单序号与产品编号不相符 "),
-                ("ISNULL(t.RECEIVE_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.PUR_RECEIVE_D o WHERE o.RECEIVE_TYPE=t.RECEIVE_TYPE AND o.RECEIVE_NO=t.RECEIVE_NO AND o.SERIAL_NO=t.RECEIVE_SERIAL_NO AND o.PRO_NO=t.PRO_NO)", "以下序号项送货单序号与产品编号不相符 "),
-                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
                 ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
             ], token);
         if (!validated.Success) return validated;
@@ -156,12 +151,6 @@ public static class PurDomainRules
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
         var type = keyValues[0]; var no = keyValues[1];
-        var supplierOk = await DomainRuleService.ExistsAsync(connection, transaction,
-            """
-            SELECT TOP 1 1 FROM dbo.PUR_PURCHASE_M m JOIN dbo.SUPPLIER c ON c.SUPPLIER_ID=m.SUPPLIER_ID
-            WHERE m.PURCHASE_TYPE=@Type AND m.PURCHASE_NO=@No AND c.BUSINESS_TAG=0;
-            """, type, no, token);
-        if (!supplierOk) return new(false, "厂商编号不存在或已停止交易。");
         // 产品计价有效期
         var priceExpired = await DomainRuleService.FindLinesAsync(connection, transaction,
             """
@@ -183,35 +172,6 @@ public static class PurDomainRules
             """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (deliveryLines is not null)
             return new(false, "以下序号项预交日期小于采购单日期 \r\n" + deliveryLines);
-        // 申购单存在
-        var applyMissing = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.PUR_PURCHASE_D d
-            WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No AND ISNULL(APPLY_TYPE,'')<>''
-              AND NOT EXISTS (SELECT 1 FROM dbo.PUR_APPLY_M q WHERE q.APPLY_TYPE=d.APPLY_TYPE AND q.APPLY_NO=d.APPLY_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (applyMissing is not null)
-            return new(false, "以下序号项申购单不存在 \r\n" + applyMissing);
-        // 申购单序号与产品编号相符
-        var applyProduct = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.PUR_PURCHASE_D d
-            WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No AND ISNULL(APPLY_TYPE,'')<>''
-              AND NOT EXISTS (SELECT 1 FROM dbo.PUR_APPLY_D q
-                              WHERE q.APPLY_TYPE=d.APPLY_TYPE AND q.APPLY_NO=d.APPLY_NO
-                                AND q.SERIAL_NO=d.APPLY_SERIAL_NO AND q.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (applyProduct is not null)
-            return new(false, "以下序号项申购单序号与产品编号不相符 \r\n" + applyProduct);
-        // 产品编号存在
-        var productMissing = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.PUR_PURCHASE_D d
-            WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No
-              AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (productMissing is not null)
-            return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
 
         var hasMore = await DomainRuleService.ExistsAsync(connection, transaction,
             "SELECT TOP 1 1 FROM dbo.PUR_PURCHASE_MORE WHERE PURCHASE_TYPE=@Type AND PURCHASE_NO=@No;", type, no, token);
@@ -430,45 +390,6 @@ public static class PurDomainRules
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
         var type = keyValues[0]; var no = keyValues[1];
-        // 采购单与厂商相符
-        var supplierMismatch = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT d.SERIAL_NO FROM dbo.PUR_PURCHASE_M o
-            INNER JOIN dbo.PUR_RECEIVE_D d ON o.PURCHASE_TYPE=d.PURCHASE_TYPE AND o.PURCHASE_NO=d.PURCHASE_NO
-            INNER JOIN dbo.PUR_RECEIVE_M m ON m.RECEIVE_TYPE=d.RECEIVE_TYPE AND m.RECEIVE_NO=d.RECEIVE_NO
-            WHERE m.RECEIVE_TYPE=@Type AND m.RECEIVE_NO=@No AND o.SUPPLIER_ID<>m.SUPPLIER_ID;
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (supplierMismatch is not null)
-            return new(false, "以下序号项收料单与采购单厂商不符 \r\n" + supplierMismatch);
-        // 采购单存在
-        var purchaseMissing = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.PUR_RECEIVE_D d
-            WHERE RECEIVE_TYPE=@Type AND RECEIVE_NO=@No AND ISNULL(PURCHASE_TYPE,'')<>''
-              AND NOT EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_M o WHERE o.PURCHASE_TYPE=d.PURCHASE_TYPE AND o.PURCHASE_NO=d.PURCHASE_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (purchaseMissing is not null)
-            return new(false, "以下序号项采购订单不存在 \r\n" + purchaseMissing);
-        // 采购订单序号与产品编号相符
-        var purchaseProduct = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.PUR_RECEIVE_D d
-            WHERE RECEIVE_TYPE=@Type AND RECEIVE_NO=@No AND ISNULL(PURCHASE_TYPE,'')<>''
-              AND NOT EXISTS (SELECT 1 FROM dbo.PUR_PURCHASE_D o
-                              WHERE o.PURCHASE_TYPE=d.PURCHASE_TYPE AND o.PURCHASE_NO=d.PURCHASE_NO
-                                AND o.SERIAL_NO=d.PURCHASE_SERIAL_NO AND o.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (purchaseProduct is not null)
-            return new(false, "以下序号项采购订单序号与产品编号不相符 \r\n" + purchaseProduct);
-        // 产品编号存在
-        var productMissing = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.PUR_RECEIVE_D d
-            WHERE RECEIVE_TYPE=@Type AND RECEIVE_NO=@No
-              AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (productMissing is not null)
-            return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
         // 需批号产品必须填写 BATCH_NO
         var batchMissing = await DomainRuleService.FindLinesAsync(connection, transaction,
             """
@@ -510,14 +431,6 @@ public static class PurDomainRules
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
         var type = keyValues[0]; var no = keyValues[1];
-        var productMissing = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.PUR_APPLY_D d
-            WHERE APPLY_TYPE=@Type AND APPLY_NO=@No
-              AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (productMissing is not null)
-            return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
 
         // 无 MORE 行时仅清零 REQUIRE_QTY
         var moreCount = await DomainRuleService.ExistsAsync(connection, transaction,
@@ -706,19 +619,13 @@ public static class PurDomainRules
     /// <summary>预付帐款单（170203）AfterSave：厂商校验 + 预付不超采购金额 + 金额汇总。</summary>
 
 
-    /// <summary>预付帐款单（170203）AfterSave：厂商校验 + 预付不超采购金额 + 金额汇总。</summary>
+    /// <summary>预付帐款单（170203）AfterSave：预付不超采购金额 + 金额汇总。</summary>
     public static async Task<SprocResult> PurPrepayAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
         var (typeColumn, noColumn) = DomainRuleService.KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
-        var supplierOk = await DomainRuleService.ExistsAsync(connection, transaction,
-            """
-            SELECT TOP 1 1 FROM dbo.PUR_PREPAY_M m JOIN dbo.SUPPLIER c ON c.SUPPLIER_ID=m.SUPPLIER_ID
-            WHERE m.PREPAY_TYPE=@Type AND m.PREPAY_NO=@No AND c.BUSINESS_TAG=0;
-            """, type, no, token);
-        if (!supplierOk) return new(false, "厂商编号不存在或已停止交易。");
         // 采购单引用联动校验：填了采购单号就必须同时填单别/序号（三者要么全填、要么全不填），
         // 支持"无采购单预付"（打样/合作开发等场景），避免存半截引用。
         var incompleteRef = await DomainRuleService.FindLinesAsync(connection, transaction,

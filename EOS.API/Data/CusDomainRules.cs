@@ -169,22 +169,6 @@ public static class CusDomainRules
             if (ret is not null) return new(false, "以下对帐已超出退货单数量\r\n 退货单号  退货数量  已对帐数量  单据数量\r\n" + ret);
         }
         // 客户存在
-        await using (var customer = new SqlCommand("""
-            SELECT TOP 1 1 FROM dbo.CUS_ACCOUNT_M m
-            INNER JOIN dbo.CLIENT c ON c.CLIENT_ID=m.CLIENT_ID
-            WHERE m.ACCOUNT_TYPE=@Type AND m.ACCOUNT_NO=@No AND ISNULL(c.BUSINESS_TAG,0)=0;
-            """, connection, transaction))
-        {
-            customer.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
-            customer.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
-            if (await customer.ExecuteScalarAsync(token) is null)
-                return new(false, "客户编号不存在或已停止交易。 ");
-        }
-        // 送/退货单存在
-        var sRMissing = await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
-            "CUS_ACCOUNT_D", "ACCOUNT_TYPE", "ACCOUNT_NO",
-            [("NOT EXISTS (SELECT SERIAL_NO FROM dbo.COP_SEND_D s WHERE s.SEND_TYPE=t.S_R_TYPE AND s.SEND_NO=t.S_R_NO AND s.SERIAL_NO=t.S_R_SERIAL_NO UNION ALL SELECT SERIAL_NO FROM dbo.COP_RETURN_D s WHERE s.RETURN_TYPE=t.S_R_TYPE AND s.RETURN_NO=t.S_R_NO AND s.SERIAL_NO=t.S_R_SERIAL_NO)", "以下序号项送/退货单不存在 ")], token);
-        if (!sRMissing.Success) return sRMissing;
         // 明细重量/金额 + 主表汇总
         await using (var detail = new SqlCommand("""
             UPDATE d SET d.SUTTLE=p.SUTTLE, d.CUS_QTY=d.QTY*ISNULL(p.SUTTLE,0),
