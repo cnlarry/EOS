@@ -104,65 +104,71 @@ public sealed class WorkbenchDefinitionSnapshotService(
         var sourceVersion = await ReadSourceMetadataVersionAsync(moduleId, masterTable, detailTable, token);
         var reportJson = JsonSerializer.Serialize(report.Checks);
 
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
-        try
+        int next;
+        await using (var connection = connections.Create())
         {
-            const string nextVersionSql = """
-                SELECT ISNULL(MAX(VERSION),0)+1 FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WITH (UPDLOCK, HOLDLOCK)
-                WHERE MODULE_ID=@ModuleId;
-                """;
-            await using (var versionCommand = new SqlCommand(nextVersionSql, connection, transaction))
+            await connection.OpenAsync(token);
+            await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+            try
             {
-                versionCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-                var next = Convert.ToInt32(await versionCommand.ExecuteScalarAsync(token));
-
-                const string retireSql = "UPDATE dbo.WORKBENCH_DEFINITION_SNAPSHOT SET IS_CURRENT=0 WHERE MODULE_ID=@ModuleId AND IS_CURRENT=1;";
-                await using (var retire = new SqlCommand(retireSql, connection, transaction))
+                const string nextVersionSql = """
+                    SELECT ISNULL(MAX(VERSION),0)+1 FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WITH (UPDLOCK, HOLDLOCK)
+                    WHERE MODULE_ID=@ModuleId;
+                    """;
+                await using (var versionCommand = new SqlCommand(nextVersionSql, connection, transaction))
                 {
-                    retire.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-                    await retire.ExecuteNonQueryAsync(token);
+                    versionCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+                    next = Convert.ToInt32(await versionCommand.ExecuteScalarAsync(token));
+
+                    const string retireSql = "UPDATE dbo.WORKBENCH_DEFINITION_SNAPSHOT SET IS_CURRENT=0 WHERE MODULE_ID=@ModuleId AND IS_CURRENT=1;";
+                    await using (var retire = new SqlCommand(retireSql, connection, transaction))
+                    {
+                        retire.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+                        await retire.ExecuteNonQueryAsync(token);
+                    }
+
+                    const string insertSql = """
+                        INSERT INTO dbo.WORKBENCH_DEFINITION_SNAPSHOT
+                            (MODULE_ID, VERSION, DEFINITION_JSON, SOURCE_METADATA_VERSION, VALIDATION_STATUS,
+                             VALIDATION_REPORT_JSON, PUBLISHED_BY, PUBLISHED_AT, IS_CURRENT)
+                        VALUES (@ModuleId, @Version, @DefinitionJson, @SourceVersion, N'PASS', @ReportJson, @PublishedBy, SYSDATETIME(), 1);
+                        """;
+                    await using var insert = new SqlCommand(insertSql, connection, transaction);
+                    insert.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+                    insert.Parameters.Add("@Version", SqlDbType.Int).Value = next;
+                    insert.Parameters.Add("@DefinitionJson", SqlDbType.NVarChar, -1).Value = report.DefinitionJson ?? string.Empty;
+                    insert.Parameters.Add("@SourceVersion", SqlDbType.NVarChar, 100).Value = (object?)sourceVersion ?? DBNull.Value;
+                    insert.Parameters.Add("@ReportJson", SqlDbType.NVarChar, -1).Value = reportJson;
+                    insert.Parameters.Add("@PublishedBy", SqlDbType.NVarChar, 100).Value = publishedBy;
+                    await insert.ExecuteNonQueryAsync(token);
+
+                    const string clearDirtySql = "DELETE FROM dbo.WORKBENCH_MODULE_DIRTY WHERE MODULE_ID=@ModuleId;";
+                    await using var clearDirty = new SqlCommand(clearDirtySql, connection, transaction);
+                    clearDirty.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+                    await clearDirty.ExecuteNonQueryAsync(token);
                 }
 
-                const string insertSql = """
-                    INSERT INTO dbo.WORKBENCH_DEFINITION_SNAPSHOT
-                        (MODULE_ID, VERSION, DEFINITION_JSON, SOURCE_METADATA_VERSION, VALIDATION_STATUS,
-                         VALIDATION_REPORT_JSON, PUBLISHED_BY, PUBLISHED_AT, IS_CURRENT)
-                    VALUES (@ModuleId, @Version, @DefinitionJson, @SourceVersion, N'PASS', @ReportJson, @PublishedBy, SYSDATETIME(), 1);
-                    """;
-                await using var insert = new SqlCommand(insertSql, connection, transaction);
-                insert.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-                insert.Parameters.Add("@Version", SqlDbType.Int).Value = next;
-                insert.Parameters.Add("@DefinitionJson", SqlDbType.NVarChar, -1).Value = report.DefinitionJson ?? string.Empty;
-                insert.Parameters.Add("@SourceVersion", SqlDbType.NVarChar, 100).Value = (object?)sourceVersion ?? DBNull.Value;
-                insert.Parameters.Add("@ReportJson", SqlDbType.NVarChar, -1).Value = reportJson;
-                insert.Parameters.Add("@PublishedBy", SqlDbType.NVarChar, 100).Value = publishedBy;
-                await insert.ExecuteNonQueryAsync(token);
-
-                const string clearDirtySql = "DELETE FROM dbo.WORKBENCH_MODULE_DIRTY WHERE MODULE_ID=@ModuleId;";
-                await using var clearDirty = new SqlCommand(clearDirtySql, connection, transaction);
-                clearDirty.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-                await clearDirty.ExecuteNonQueryAsync(token);
-
                 await transaction.CommitAsync(token);
-                await definitionProvider.RefreshAsync(token);
-                await auditWriter.WriteBestEffortAsync(
-                    moduleId, "WORKBENCH_DEFINITION_SNAPSHOT", "PUBLISH",
-                    $"发布模块定义快照 module-{moduleId}-v{next}", publishedBy, "MENU",
-                    result: 1, fieldChanges: null, token);
-                logger.LogInformation("快照发布 module={ModuleId} version={Version} by={PublishedBy}",
-                    moduleId, next, publishedBy);
-                return new WorkbenchPublishResult(moduleId, report.Title, true, next,
-                    $"module-{moduleId}-v{next}", true, report.Checks,
-                    Error: null);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(token);
+                throw;
             }
         }
-        catch
-        {
-            await transaction.RollbackAsync(token);
-            throw;
-        }
+
+        // 提交后的非事务工作：刷新该模块缓存（无当前快照时移除基线）、审计、日志。
+        // 放在事务 try/catch 之外，避免缓存刷新异常被误当作回滚失败。
+        await definitionProvider.RefreshModuleAsync(moduleId, token);
+        await auditWriter.WriteBestEffortAsync(
+            moduleId, "WORKBENCH_DEFINITION_SNAPSHOT", "PUBLISH",
+            $"发布模块定义快照 module-{moduleId}-v{next}", publishedBy, "MENU",
+            result: 1, fieldChanges: null, token);
+        logger.LogInformation("快照发布 module={ModuleId} version={Version} by={PublishedBy}",
+            moduleId, next, publishedBy);
+        return new WorkbenchPublishResult(moduleId, report.Title, true, next,
+            $"module-{moduleId}-v{next}", true, report.Checks,
+            Error: null);
     }
 
     private async Task<(string Master, string? Detail)> ReadModuleTablesAsync(int moduleId, CancellationToken token)

@@ -66,11 +66,25 @@ public sealed class WorkbenchDefinitionBuilder(
         return url;
     }
 
-    public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token)
+    /// <summary>
+    /// 运行时/发布共用的定义构建入口。默认（forPublish=false）运行时语义：已发布且未脏的
+    /// 模块以快照基线为模块级事实源（未发布的元数据改动不参与执行），字段视图按用户实时重建。
+    /// forPublish=true 时一律走元数据重建（<see cref="BuildFromMetadataAsync"/>），忽略基线——
+    /// 发布/校验产出的是"当前代码 + 当前元数据"的定义，模块级字段（表/主键/业务规则/系统列/
+    /// 明细必填口径/校验规则等）每次发布都重新推导，不再继承旧快照。
+    /// </summary>
+    public async Task<WorkbenchDefinition?> GetDefinitionAsync(int moduleId, string userId, string? execTag, bool canViewCost, bool canViewSecrecy, IReadOnlySet<string> deniedMasterFields, IReadOnlySet<string> deniedDetailFields, CancellationToken token, bool forPublish = false)
     {
         using var timing = DbTimingCollector.Instance.Measure();
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
+        // 发布路径不读基线缓存：即使库里已无当前快照或批次首模块命中旧缓存，发布所得
+        // 定义都从 MODULES/FIELDS/代码注册表重建，杜绝「删码后快照仍指向已删族名」。
+        if (forPublish)
+        {
+            return await BuildFromMetadataAsync(connection, moduleId, userId, execTag, canViewCost, canViewSecrecy,
+                deniedMasterFields, deniedDetailFields, version: null, token);
+        }
         // 运行时的生效定义只有一个来源：最近一次发布的快照。未发布的元数据改动不参与执行
         // （「已保存未发布」只改变管理端状态），因此这里不再按脏标记回退实时元数据——
         // 回退会让快照内的效果引擎配置段丢失，使引擎静默退出而落到旧批核路径。
@@ -82,7 +96,7 @@ public sealed class WorkbenchDefinitionBuilder(
             return fromBaseline;
         }
         return await BuildFromMetadataAsync(connection, moduleId, userId, execTag, canViewCost, canViewSecrecy,
-            deniedMasterFields, deniedDetailFields, snapshotVersion, token);
+            deniedMasterFields, deniedDetailFields, version: string.Empty, token);
     }
 
     /// <summary>
