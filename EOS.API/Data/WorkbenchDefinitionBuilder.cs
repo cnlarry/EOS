@@ -369,12 +369,18 @@ public sealed class WorkbenchDefinitionBuilder(
         var tabs = ParseFormTabs(definition.FormTabs);
         var columns = definition.FormColumns is int formColumns and > 0 ? formColumns : 2;
         var defaultValues = await BuildNewDefaultsAsync(connection,definition,masterFields,mode,token);
+        // 无副作用批核能力与服务端分支同口径（WorkflowStates.IsStatelessApproveCapable），
+        // 工具栏据此显隐批核/解批：有能力即显示，无能力即隐藏，不出现点后必败的死按钮。
+        var hasStatelessApprove = WorkflowStates.IsStatelessApproveCapable(
+            definition.AutoApprove, definition.BusinessRule?.WorkflowSproc is not null,
+            definition.EffectEngineEnabled,
+            await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token));
         return new FormDefinition(definition.ModuleId,definition.Title,definition.MasterTable,definition.DetailTable,
             definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns,definition.DetailNoFields,detailDfVerify,
             tabs,columns,definition.FormButtons,defaultValues,definition.HasWorkflow,
             definition.IfCopy,definition.SearchMaster,definition.SearchDetail,
             canDelete,canApprove,canDeapprove,canEndCase,canUnEndCase,canFileView,canFileUpda,canFileEdit,canFileDele,
-            canAddNew,canEdit,definition.HelpUrl,canSetup);
+            canAddNew,canEdit,definition.HelpUrl,canSetup,hasStatelessApprove);
     }
 
     /// <summary>

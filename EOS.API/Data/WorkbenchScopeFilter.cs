@@ -167,6 +167,11 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
                 predicates.Add($"[OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID IN (SELECT {ownerParameter} UNION ALL SELECT USER_ID FROM dbo.f_get_underling({ownerParameter})))");
                 command.Parameters.AddWithValue(ownerParameter, definition.UserId);
                 break;
+            default:
+                // 旧系统 DxAuthentication 无 default 分支，EXEC_TAG 为空串或未知字母时静默全可见；
+                // 此处 fail-closed：未知取值直接拒绝，不返回越权数据。
+                metrics.IncrementScopeRejected("exec_tag_unknown");
+                throw new DataFilterUnsupportedException("不支持的执行范围。");
         }
     }
 

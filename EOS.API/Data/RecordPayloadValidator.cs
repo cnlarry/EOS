@@ -15,7 +15,7 @@ namespace EOS.API.Data;
 internal static class RecordPayloadValidator
 {
     public static readonly IReadOnlySet<string> AuditColumns = new HashSet<string>(
-        WorkflowStates.LifecycleActorColumns,
+        WorkflowStates.LifecycleActorColumns.Concat(WorkflowStates.OwnershipColumns),
         StringComparer.OrdinalIgnoreCase);
 
     /// <summary>

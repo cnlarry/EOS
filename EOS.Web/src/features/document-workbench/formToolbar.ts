@@ -32,15 +32,18 @@ export function buildViewToolbarItems(
   handlers: ViewToolbarHandlers,
 ): ErpCommandItem[] {
   const { master, isFinished, flowInProgress, keyParam } = state
+  // 批核能力 = 工作流（过程/效果链/流程定义）或无副作用自动批核（与服务端同口径）；
+  // 无能力即不显示按钮，不出现点后必败的死按钮。
+  const canWorkflow = form.hasWorkflow || form.hasStatelessApprove
   if (form.buttons && form.buttons.length > 0)
     return form.buttons.flatMap((button): ErpCommandItem[] => {
       switch (button.action) {
         case 'approve':
-          return form.hasWorkflow && form.canApprove && keyParam && master && master.CONFIRM_TAG !== true && !flowInProgress
+          return canWorkflow && form.canApprove && keyParam && master && master.CONFIRM_TAG !== true && !flowInProgress
             ? [{ action: 'approve', disabled: isFinished, loading: handlers.workflowPending, onClick: handlers.openApprove }]
             : []
         case 'deapprove':
-          return form.hasWorkflow && form.canDeapprove && keyParam && master && master.CONFIRM_TAG === true
+          return canWorkflow && form.canDeapprove && keyParam && master && master.CONFIRM_TAG === true
             ? [{ action: 'deapprove', disabled: isFinished, loading: handlers.workflowPending, onClick: handlers.deapprove }]
             : []
         case 'endcase':
@@ -60,10 +63,10 @@ export function buildViewToolbarItems(
 
   // 未配置 FORM_BUTTONS 的回退集（保持既有行为：工作流/结案/打印）
   return [
-    ...(form.hasWorkflow && keyParam && master && master.CONFIRM_TAG !== true && !flowInProgress && form.canApprove
+    ...(canWorkflow && keyParam && master && master.CONFIRM_TAG !== true && !flowInProgress && form.canApprove
       ? [{ action: 'approve', disabled: isFinished, loading: handlers.workflowPending, onClick: handlers.openApprove } satisfies ErpCommandItem]
       : []),
-    ...(form.hasWorkflow && keyParam && master && master.CONFIRM_TAG === true && form.canDeapprove
+    ...(canWorkflow && keyParam && master && master.CONFIRM_TAG === true && form.canDeapprove
       ? [{ action: 'deapprove', disabled: isFinished, loading: handlers.workflowPending, onClick: handlers.deapprove } satisfies ErpCommandItem]
       : []),
     ...(keyParam && form.canEndCase && master && master.FINISHED_TAG !== true

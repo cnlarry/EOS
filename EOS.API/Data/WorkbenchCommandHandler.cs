@@ -137,18 +137,33 @@ public sealed class WorkbenchCommandHandler(
         RecordPayloadValidator.ApplyDefaults(form.MasterFields, values);
         FormDefaultRules.Apply(definition.ModuleId, form.MasterFields, values);
 
-        // Backfill OWNER/OWNER_G on the master table when those columns exist
+        // 数据归属三列服务端独占写入：新建一律按当前会话覆盖（客户端提交值直接丢弃，
+        // 此前 TryAdd 会让伪造的 OWNER 生效，属归属伪造缺口）；更新时保持创建归属不变。
         if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "OWNER", token))
         {
-            values.TryAdd("OWNER", userId);
+            values["OWNER"] = userId;
         }
         if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "OWNER_G", token))
         {
             var primaryGroup = await WorkbenchSql.GetPrimaryGroupAsync(connection, transaction, userId, token);
             if (primaryGroup is not null)
             {
-                values.TryAdd("OWNER_G", primaryGroup);
+                values["OWNER_G"] = primaryGroup;
             }
+            else
+            {
+                values.Remove("OWNER_G");
+            }
+        }
+        if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "CI", token))
+        {
+            var company = await WorkbenchSql.GetUserCompanyAsync(connection, transaction, userId, token);
+            if (company is null)
+            {
+                logger.LogWarning("用户无公司归属，回填默认公司 userId={UserId}", userId);
+                company = WorkflowStates.DefaultCompanyId;
+            }
+            values["CI"] = company;
         }
 
         // 领域规则：自动单号 + 默认单别
@@ -206,15 +221,19 @@ public sealed class WorkbenchCommandHandler(
 
         var keyValues = pkColumns.Select(column => ValueToString(values.GetValueOrDefault(column))).ToList();
 
-        var insertFields = form.MasterFields.Where(field => !field.IsVirtual && values.ContainsKey(field.Key) && !masterIdentity.Contains(field.Key)).ToList();
-        if (insertFields.Count == 0)
+        var formKeys = form.MasterFields.Where(field => !field.IsVirtual && values.ContainsKey(field.Key) && !masterIdentity.Contains(field.Key)).Select(field => field.Key).ToList();
+        // 服务端持有值（审计/归属回填）可能不在表单定义内（表单隐藏），按物理存在补回；
+        // 非物理键一律排除，阻断幽灵列进入 INSERT。
+        var masterPhysical = await WorkbenchSql.GetPhysicalColumnsAsync(connection, transaction, definition.MasterTable, token);
+        var insertColumns = BuildInsertColumns(formKeys, values, masterPhysical, masterIdentity);
+        if (insertColumns.Count == 0)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "NO_WRITABLE_FIELDS", "没有可写入的字段。");
         }
         decimal? identityValue;
         try
         {
-            identityValue = await InsertRowAsync(connection, transaction, definition.MasterTable, insertFields, values, masterIdentity, token);
+            identityValue = await InsertRowAsync(connection, transaction, definition.MasterTable, insertColumns, values, masterIdentity, token);
         }
         // The default bill number from auto-numbering is only a preview; concurrent creation can hit a
         // unique-key conflict. Map the conflict to BILL_NO_CONFLICT (400) only when the duplicate index
@@ -720,6 +739,7 @@ public sealed class WorkbenchCommandHandler(
         }
 
         await WorkbenchSql.DeleteDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token);
+        var detailPhysical = await WorkbenchSql.GetPhysicalColumnsAsync(connection, transaction, definition.DetailTable, token);
         for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
             var row = rows[rowIndex];
@@ -728,12 +748,13 @@ public sealed class WorkbenchCommandHandler(
             {
                 return fillErrors.Select(error => error with { RowIndex = rowIndex }).ToList();
             }
-            var insertFields = form.DetailFields.Where(field => !field.IsVirtual && row.ContainsKey(field.Key) && !detailIdentity.Contains(field.Key)).ToList();
-            if (insertFields.Count == 0)
+            var detailFormKeys = form.DetailFields.Where(field => !field.IsVirtual && row.ContainsKey(field.Key) && !detailIdentity.Contains(field.Key)).Select(field => field.Key).ToList();
+            var detailColumns = BuildInsertColumns(detailFormKeys, row, detailPhysical, detailIdentity);
+            if (detailColumns.Count == 0)
             {
                 continue;
             }
-            await InsertRowAsync(connection, transaction, definition.DetailTable, insertFields, row, detailIdentity, token);
+            await InsertRowAsync(connection, transaction, definition.DetailTable, detailColumns, row, detailIdentity, token);
         }
         return null;
     }
@@ -922,18 +943,18 @@ public sealed class WorkbenchCommandHandler(
         SqlConnection connection,
         SqlTransaction transaction,
         string table,
-        IReadOnlyList<FormFieldDefinition> insertFields,
+        IReadOnlyList<string> columns,
         IReadOnlyDictionary<string, object?> values,
         IReadOnlyList<string> identityColumns,
         CancellationToken token)
     {
-        var columns = string.Join(',', insertFields.Select(field => $"[{field.Key}]"));
-        var parameters = string.Join(',', insertFields.Select((_, index) => $"@v{index}"));
-        var sql = $"INSERT INTO dbo.[{table}] ({columns}) VALUES ({parameters});";
+        var columnList = string.Join(',', columns.Select(column => $"[{column}]"));
+        var parameters = string.Join(',', columns.Select((_, index) => $"@v{index}"));
+        var sql = $"INSERT INTO dbo.[{table}] ({columnList}) VALUES ({parameters});";
         await using var command = new SqlCommand(sql, connection, transaction);
-        for (var i = 0; i < insertFields.Count; i++)
+        for (var i = 0; i < columns.Count; i++)
         {
-            command.Parameters.AddWithValue($"@v{i}", WorkbenchSql.NormalizeDbValue(values[insertFields[i].Key]));
+            command.Parameters.AddWithValue($"@v{i}", WorkbenchSql.NormalizeDbValue(values[columns[i]]));
         }
         if (identityColumns.Count > 0)
         {
@@ -942,6 +963,38 @@ public sealed class WorkbenchCommandHandler(
         }
         await command.ExecuteNonQueryAsync(token);
         return null;
+    }
+
+    /// <summary>
+    /// INSERT 列清单 = 表单字段（维持有序）∪ 服务端持有值的物理列。
+    /// 表单隐藏的审计/归属列（FillServerColumns/回填已写入 values）按物理存在补回，
+    /// 否则 legacy-NOT NULL 列保存即 500；非表单、非物理的键（幽灵/串表）一律排除；
+    /// 自增列排除；附加列按名排序保证语句稳定可测。
+    /// </summary>
+    internal static IReadOnlyList<string> BuildInsertColumns(
+        IReadOnlyList<string> formKeys,
+        IReadOnlyDictionary<string, object?> values,
+        ISet<string> physicalColumns,
+        IReadOnlyList<string> identityColumns)
+    {
+        var ordered = new List<string>(formKeys.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in formKeys)
+        {
+            if (seen.Add(key))
+            {
+                ordered.Add(key);
+            }
+        }
+        var extras = values.Keys
+            .Where(key => !seen.Contains(key)
+                && !identityColumns.Contains(key, StringComparer.OrdinalIgnoreCase)
+                && physicalColumns.Contains(key)
+                && WorkbenchSql.Identifier.IsMatch(key))
+            .OrderBy(key => key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        ordered.AddRange(extras);
+        return ordered;
     }
 
     private async Task<IReadOnlyList<FieldError>> FillServerColumnsAsync(

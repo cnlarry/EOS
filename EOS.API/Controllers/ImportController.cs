@@ -42,7 +42,7 @@ public sealed class ImportController(
     {
         if(!await CanImportAsync(token))return Forbid();
         if(request.Rows.Count>5000)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"IMPORT_TOO_MANY_ROWS","单次导入不能超过 5000 行。"));
-        var result=await service.ExecuteAsync(request,userContext.EmployeeName,token);
+        var result=await service.ExecuteAsync(request,userContext.EmployeeName,userContext.UserId,token);
         return Ok(result);
     }
 

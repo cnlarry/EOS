@@ -34,15 +34,14 @@ public static class WorkflowStates
     public const char WithdrawnTask = 'W';
 
     /// <summary>
-    /// 单据生命周期列全集（ADR-013 §3.3 / §3.5 系统列组）：单据主表的标准系统列。
-    /// OWNER/OWNER_G 为数据范围行归属（同族但语义不同），纳入列集治理但不参与状态位口径。
+    /// 单据生命周期列全集（ADR-013 §3.3 / §3.5 系统列组 + 归属三列）：单据主表的标准系统列。
     /// </summary>
     public static readonly string[] LifecycleColumns =
     [
         "CREATE_PERSON", "CREATE_DATE", "LAST_UPDATE_BY", "LAST_UPDATE_DATE",
         "CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE",
         "FINISHED_TAG", "FINISHED_PERSON", "FINISHED_DATE",
-        "OWNER", "OWNER_G",
+        "OWNER", "OWNER_G", "CI",
     ];
 
     /// <summary>
@@ -68,11 +67,35 @@ public static class WorkflowStates
         ["CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE", "FINISHED_TAG", "FINISHED_PERSON", "FINISHED_DATE"];
 
     /// <summary>
-    /// 是否单据生命周期系统列（ADR-013 §3.5 系统列组，全 12 列含 OWNER/OWNER_G）。
+    /// 数据归属三列：CI=行公司（取当前用户所属公司），OWNER=建单用户账号，
+    /// OWNER_G=建单用户主组。服务端独占写入（新建覆盖回填、更新忽略客户端提交），
+    /// 表单新增/编辑态隐藏、浏览态只读。
+    /// </summary>
+    public static readonly string[] OwnershipColumns = ["CI", "OWNER", "OWNER_G"];
+
+    /// <summary>
+    /// 单公司部署的实际归属兜底：会话用户无公司归属时回填此值并记警告（CK-01/HS01 待补公司资料）。
+    /// </summary>
+    public const string DefaultCompanyId = "DEMO";
+
+    /// <summary>
+    /// 是否单据生命周期系统列（ADR-013 §3.5 系统列组，全 13 列含归属三列）。
     /// 字段管理侧据此打标：默认隐藏、结构只读、不可删除。
     /// </summary>
     internal static bool IsLifecycleColumn(string fieldId) =>
         LifecycleColumns.Contains(fieldId, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 无副作用批核能力（自动批核模块且无批核过程/效果链/流程定义）：
+    /// 保存路径的自动批核本就是纯状态翻转，显式批核/解批同口径。
+    /// 服务端分支与表单按钮显隐共用此判定，两边不得分叉。
+    /// </summary>
+    internal static bool IsStatelessApproveCapable(
+        bool autoApprove,
+        bool hasWorkflowSproc,
+        bool effectEnabled,
+        bool hasFlow) =>
+        autoApprove && !hasWorkflowSproc && !effectEnabled && !hasFlow;
 
     /// <summary>
     /// 模块是否具备批核能力（ADR-013 §3.7 能力 → 列单向强制的输入侧）。
