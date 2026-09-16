@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FormFieldDefinition } from './formDefinition'
-import { buildFormCells, buildFormRows, buildFormSections } from './formLayout'
+import { buildFormCells, buildFormRows, buildFormSections, moveLifecycleToTail } from './formLayout'
 
 function field(key: string, overrides: Partial<FormFieldDefinition> = {}): FormFieldDefinition {
   return {
@@ -98,5 +98,59 @@ describe('buildFormSections', () => {
 
   it('空输入返回单个默认节', () => {
     expect(buildFormSections([])).toEqual([])
+  })
+})
+
+describe('moveLifecycleToTail', () => {
+  it('生命周期列从各节摘出，追加为末尾一节', () => {
+    const sections = buildFormSections([
+      [field('NAME')],
+      [field('CREATE_PERSON')],
+      [field('REMARK')],
+      [field('CONFIRM_TAG')],
+    ])
+    const result = moveLifecycleToTail(sections)
+    expect(result.map(section => section.title)).toEqual([null, null])
+    expect(result[0].cells.map(cell => cell[0].key)).toEqual(['NAME', 'REMARK'])
+    expect(result[1].cells.map(cell => cell[0].key)).toEqual(['CREATE_PERSON', 'CONFIRM_TAG'])
+  })
+
+  it('尾部按固定次序排列，不受元数据顺序影响', () => {
+    const sections = buildFormSections([[field('CONFIRM_TAG')], [field('CREATE_DATE')], [field('CREATE_PERSON')]])
+    const result = moveLifecycleToTail(sections)
+    expect(result[result.length - 1].cells.map(cell => cell[0].key))
+      .toEqual(['CREATE_PERSON', 'CREATE_DATE', 'CONFIRM_TAG'])
+  })
+
+  it('分组内的生命周期列同样摘出，尾部块排在最后一节之后', () => {
+    const sections = buildFormSections([
+      [field('A')],
+      [field('G1', { cellGroup: '发货信息' })],
+      [field('G2', { cellGroup: '发货信息' })],
+      [field('FINISHED_TAG')],
+    ])
+    const result = moveLifecycleToTail(sections)
+    expect(result.map(section => section.title)).toEqual([null, '发货信息', null])
+    expect(result[2].cells.map(cell => cell[0].key)).toEqual(['FINISHED_TAG'])
+  })
+
+  it('字段名大小写不敏感', () => {
+    const sections = buildFormSections([[field('create_person')], [field('A')]])
+    const result = moveLifecycleToTail(sections)
+    expect(result[0].cells.map(cell => cell[0].key)).toEqual(['A'])
+    expect(result[1].cells.map(cell => cell[0].key)).toEqual(['create_person'])
+  })
+
+  it('无生命周期列时保持原分节不变', () => {
+    const sections = buildFormSections([
+      [field('S1', { cellGroup: '发货信息' })],
+      [field('S2', { cellGroup: '发货信息' })],
+      [field('A')],
+    ])
+    expect(moveLifecycleToTail(sections)).toEqual(sections)
+  })
+
+  it('空输入返回空', () => {
+    expect(moveLifecycleToTail([])).toEqual([])
   })
 })

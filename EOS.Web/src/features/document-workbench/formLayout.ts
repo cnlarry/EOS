@@ -8,6 +8,50 @@ import { isFullWidthField } from './formFieldKind'
  * 从字段跟随主字段渲染进同一格（对应 [ID][选择][名称] 三件套）。
  * 行 = 按 FORM_COLUMNS 每行对数 + FORM_NEW_LINE 强制换行 + 整行独占（span=2 / REMARK 类）切分。
  */
+/**
+ * 浏览态尾部字段：单据生命周期系统列（建立/修改/审核/结案的人·日期·状态）。
+ * 服务端独占写入并在新增/编辑态隐藏，浏览态只读；这里只决定它们的排布次序。
+ */
+const LIFECYCLE_TAIL_KEYS = [
+  'CREATE_PERSON', 'CREATE_DATE',
+  'LAST_UPDATE_BY', 'LAST_UPDATE_DATE',
+  'CONFIRM_PERSON', 'CONFIRM_DATE', 'CONFIRM_TAG',
+  'FINISHED_PERSON', 'FINISHED_DATE', 'FINISHED_TAG',
+] as const
+
+const LIFECYCLE_TAIL_RANK = new Map<string, number>(LIFECYCLE_TAIL_KEYS.map((key, index) => [key, index]))
+
+/** 单元格在尾部块中的次序；非生命周期列返回 -1。复合格任一项命中即整格归入尾部。 */
+function lifecycleRank(cell: FormFieldDefinition[]): number {
+  for (const item of cell) {
+    const rank = LIFECYCLE_TAIL_RANK.get(item.key.toUpperCase())
+    if (rank != null) return rank
+  }
+  return -1
+}
+
+/**
+ * 浏览态把生命周期列挪到其它内容之后：先从各节摘出，再按固定次序追加为末尾一节
+ * （无标题，只有 10px 节间距），无论元数据顺序与分节如何都排在表单尾部。
+ */
+export function moveLifecycleToTail(sections: FormSection[]): FormSection[] {
+  const tail: { rank: number; cell: FormFieldDefinition[] }[] = []
+  const kept = sections
+    .map(section => {
+      const cells: FormFieldDefinition[][] = []
+      for (const cell of section.cells) {
+        const rank = lifecycleRank(cell)
+        if (rank >= 0) tail.push({ rank, cell })
+        else cells.push(cell)
+      }
+      return { ...section, cells }
+    })
+    .filter(section => section.cells.length > 0)
+  if (tail.length === 0) return kept
+  const ordered = tail.sort((left, right) => left.rank - right.rank).map(item => item.cell)
+  return [...kept, { title: null, cells: ordered }]
+}
+
 export function buildFormCells(fields: FormFieldDefinition[]): FormFieldDefinition[][] {
   const companions = new Map<string, FormFieldDefinition[]>()
   for (const field of fields) {

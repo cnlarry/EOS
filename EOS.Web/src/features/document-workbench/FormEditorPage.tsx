@@ -18,7 +18,7 @@ import { ApiError } from '../../types/api'
 import { assistantPrefillKey } from '../../lib/storageKeys'
 import { FormFieldRenderer } from './FormFieldRenderer'
 import type { FormDefinition, FormFieldDefinition } from './formDefinition'
-import { buildFormCells, buildFormRows, buildFormSections } from './formLayout'
+import { buildFormCells, buildFormRows, buildFormSections, moveLifecycleToTail } from './formLayout'
 import { fieldVariant } from './formFieldKind'
 import { validateDetailRows, validateMasterFields, type FieldErrors } from './formValidation'
 import { buildViewToolbarItems } from './formToolbar'
@@ -122,7 +122,8 @@ const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs
   }
   const visibleMaster = form.masterFields.filter(field => field.isVisible)
   const cells = buildFormCells(visibleMaster).filter(cell => !hasTabs || cell[0].tabNo === activeTabNo)
-  const sections = buildFormSections(cells)
+  // 浏览态：建立/修改/审核/结案的人·日期·状态排在其它内容之后
+  const sections = viewing ? moveLifecycleToTail(buildFormSections(cells)) : buildFormSections(cells)
   const renderCell = (cell: FormFieldDefinition[]) => {
     const [main, ...companions] = cell
     if (companions.length === 0) {
