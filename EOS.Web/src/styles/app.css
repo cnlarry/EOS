@@ -759,6 +759,8 @@ button, input, select { font: inherit; }
 
 .erp-form-grid {
   display: block;
+  /* 容器内边距取页面标准间距 10px：表单内容与四周边框等距，不再贴边 */
+  padding: 10px;
   border: 1px solid var(--tblr-border-color);
   border-radius: 8px;
   overflow: hidden;
