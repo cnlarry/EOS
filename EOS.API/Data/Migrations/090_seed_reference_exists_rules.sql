@@ -35,8 +35,9 @@ DECLARE @NLJ NVARCHAR(4) = N'\r\n';
 DECLARE @DEPOT NVARCHAR(MAX) =
     N'{"refTable":"DEPOT","refKey":{"scope":"DETAIL","field":"DEPOT_ID"},'
     + N'"lineField":"SERIAL_NO","message":"以下序号项库别编号不存在 ' + @NLJ + N'{ROWS}"}';
+-- 入库别与库别同查 DEPOT，但明细列名与主档主键不同名，必须显式 join（refKey 是同名简写）。
 DECLARE @DEPOT_IN NVARCHAR(MAX) =
-    N'{"refTable":"DEPOT","refKey":{"scope":"DETAIL","field":"IN_DEPOT_ID"},'
+    N'{"refTable":"DEPOT","join":[{"target":"DEPOT_ID","source":{"scope":"DETAIL","field":"IN_DEPOT_ID"}}],'
     + N'"lineField":"SERIAL_NO","message":"以下序号项入库别编号不存在 ' + @NLJ + N'{ROWS}"}';
 DECLARE @PRODUCT NVARCHAR(MAX) =
     N'{"refTable":"PRODUCT","refKey":{"scope":"DETAIL","field":"PRO_NO"},'
