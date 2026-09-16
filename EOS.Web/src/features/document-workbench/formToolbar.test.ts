@@ -23,6 +23,7 @@ function form(overrides: Partial<FormDefinition> = {}): FormDefinition {
     columns: 4,
     buttons: null,
     hasWorkflow: true,
+    hasStatelessApprove: false,
     defaultValues: {},
     canDelete: true,
     canApprove: true,
@@ -96,5 +97,20 @@ describe('buildViewToolbarItems', () => {
     const f = form({ buttons: [{ action: 'approve' }, { action: 'print' }], canApprove: false })
     const items = buildViewToolbarItems(f, state(), handlers())
     expect(items.map(item => item.action)).toEqual(['print'])
+  })
+
+  it('无批核能力时不显示批核/解批（无死按钮）', () => {
+    const f = form({ hasWorkflow: false, hasStatelessApprove: false })
+    const items = buildViewToolbarItems(f, state(), handlers())
+    expect(items.some(item => item.action === 'approve' || item.action === 'deapprove')).toBe(false)
+    const confirmed = buildViewToolbarItems(f, state({ master: { CONFIRM_TAG: true, FINISHED_TAG: false } }), handlers())
+    expect(confirmed.some(item => item.action === 'approve' || item.action === 'deapprove')).toBe(false)
+  })
+
+  it('无副作用自动批核显示批核/解批（与服务端同口径）', () => {
+    const f = form({ hasWorkflow: false, hasStatelessApprove: true })
+    expect(buildViewToolbarItems(f, state(), handlers()).map(item => item.action)).toContain('approve')
+    const confirmed = buildViewToolbarItems(f, state({ master: { CONFIRM_TAG: true, FINISHED_TAG: false } }), handlers())
+    expect(confirmed.map(item => item.action)).toContain('deapprove')
   })
 })

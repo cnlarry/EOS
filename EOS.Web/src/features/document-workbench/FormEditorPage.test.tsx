@@ -48,6 +48,7 @@ const formDefinition: FormDefinition = {
   columns: 4,
   buttons: null,
   hasWorkflow: false,
+  hasStatelessApprove: false,
   defaultValues: {},
   canDelete: true,
   canApprove: true,

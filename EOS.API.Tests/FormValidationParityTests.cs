@@ -21,13 +21,27 @@ public class FormValidationParityTests
 
     private static string FindFixturePath()
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        for (var depth = 0; depth < 12 && directory is not null; depth++, directory = directory.Parent)
+        // 优先用 csproj 注入的 RepoRoot（构建期绝对路径，与运行输出目录无关，
+        // 输出被重定向到仓外时 BaseDirectory/CWD 双 walk-up 都找不到）。
+        var repoRoot = typeof(FormValidationParityTests).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+            .Cast<System.Reflection.AssemblyMetadataAttribute>()
+            .FirstOrDefault(attr => attr.Key == "RepoRoot")?.Value;
+        if (!string.IsNullOrWhiteSpace(repoRoot))
         {
-            var direct = Path.Combine(directory.FullName, "form-validation-parity.json");
-            if (directory.Name == "EOS.API.Tests" && File.Exists(direct)) return direct;
-            var nested = Path.Combine(directory.FullName, "EOS.API.Tests", "form-validation-parity.json");
-            if (File.Exists(nested)) return nested;
+            var viaRoot = Path.Combine(repoRoot, "EOS.API.Tests", "form-validation-parity.json");
+            if (File.Exists(viaRoot)) return viaRoot;
+        }
+        foreach (var root in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
+        {
+            var directory = new DirectoryInfo(root);
+            for (var depth = 0; depth < 12 && directory is not null; depth++, directory = directory.Parent)
+            {
+                var direct = Path.Combine(directory.FullName, "form-validation-parity.json");
+                if (directory.Name == "EOS.API.Tests" && File.Exists(direct)) return direct;
+                var nested = Path.Combine(directory.FullName, "EOS.API.Tests", "form-validation-parity.json");
+                if (File.Exists(nested)) return nested;
+            }
         }
         throw new InvalidOperationException("未找到 form-validation-parity.json（一致性比对 fixture）。");
     }

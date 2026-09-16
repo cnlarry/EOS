@@ -61,6 +61,20 @@ internal static class WorkbenchSql
         return await command.ExecuteScalarAsync(token) as int?;
     }
 
+    /// <summary>取用户所属公司（SYSDL→SYSDN.COMPANY_ID），用于 CI 回填；无归属返回 null（调用方兜底）。</summary>
+    internal static async Task<string?> GetUserCompanyAsync(SqlConnection connection, SqlTransaction transaction, string userId, CancellationToken token)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(n.COMPANY_ID)) FROM dbo.SYSDL l WITH (NOLOCK)
+            INNER JOIN dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = l.EMP_ID
+            WHERE LTRIM(RTRIM(l.USER_ID)) = @UserId;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId.Trim();
+        var result = await command.ExecuteScalarAsync(token) as string;
+        return string.IsNullOrWhiteSpace(result) ? null : result;
+    }
+
     internal static async Task<bool> ColumnExistsAsync(SqlConnection connection, SqlTransaction? transaction, string table, string column, CancellationToken token)
     {
         const string sql = "SELECT 1 FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name=@Column;";
@@ -101,6 +115,31 @@ internal static class WorkbenchSql
         }
         var count = Convert.ToInt32(await command.ExecuteScalarAsync(token));
         return count == columns.Count;
+    }
+
+    /// <summary>
+    /// 取表/视图的物理列集合（大小写不敏感），用于 INSERT 列清单与表单字段求并：
+    /// 表单隐藏的服务端持有列（审计/归属）仍需按物理存在写入，幽灵键一律排除。
+    /// 调用方处于数据库事务中时必须传入 transaction。
+    /// </summary>
+    internal static async Task<HashSet<string>> GetPhysicalColumnsAsync(
+        SqlConnection connection, SqlTransaction? transaction, string table, CancellationToken token)
+    {
+        const string sql = """
+            SELECT c.name FROM sys.columns c
+            JOIN sys.objects o ON c.object_id = o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id = s.schema_id
+            WHERE s.name = N'dbo' AND o.name = @Table;
+            """;
+        await using var command = new SqlCommand(sql, connection, transaction);
+        command.Parameters.Add("@Table", SqlDbType.NVarChar, 128).Value = table;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (await reader.ReadAsync(token))
+        {
+            result.Add(reader.GetString(0));
+        }
+        return result;
     }
 
     /// <summary>

@@ -226,4 +226,18 @@ public class FormFieldSelectorTests
             Assert.True(field.IsReadonly);
         }
     }
+
+    [Fact]
+    public void OwnershipColumns_HiddenInNewAndEdit_ShownReadonlyInView()
+    {
+        var rows = new[] { Row("CI"), Row("OWNER"), Row("OWNER_G"), Row("A") };
+        Assert.Equal(["A"], Select(rows, "new").Select(field => field.Key));
+        Assert.Equal(["A"], Select(rows, "edit").Select(field => field.Key));
+        var viewed = Select(rows, "view");
+        Assert.Equal(4, viewed.Count);
+        foreach (var field in viewed.Where(field => field.Key != "A"))
+        {
+            Assert.True(field.IsReadonly);
+        }
+    }
 }

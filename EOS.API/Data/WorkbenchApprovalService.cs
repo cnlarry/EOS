@@ -236,6 +236,17 @@ public sealed class WorkbenchApprovalService(
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
+        // 自动批核模块的无副作用批核/解批（无批核过程、无效果链、无流程定义）：
+        // 保存路径的自动批核本就是纯状态翻转，显式动作同口径——否则"能自动批、
+        // 不能手动解"（如 110101 公司资料，解批恒报 WORKFLOW_NOT_SUPPORTED）。
+        // 有流程定义的仍走送审，有过程/效果链的仍走原路径。
+        // 判定与表单按钮显隐共用 WorkflowStates.IsStatelessApproveCapable，两边不得分叉。
+        if (WorkflowStates.IsStatelessApproveCapable(
+                definition.AutoApprove, sproc is not null, effectEngine.IsEnabledFor(definition),
+                await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token)))
+        {
+            return await StatelessApproveAsync(connection, definition, keyValues, keyCondition, approve, employeeName, userId, token);
+        }
         // 自动批核模块（MODULES.AUTO_APPROVE=1）：新增即已确认（SYSTEM），显式批核幂等返回成功，
         // 且不进入流程送审（用户语义：自动批核模块不走新增、审核模式）。
         if (approve && definition.AutoApprove)
@@ -316,6 +327,59 @@ public sealed class WorkbenchApprovalService(
                 result.Message ?? (approve ? "批核失败。" : "解批失败。"));
         }
         logger.LogInformation("统一表单{Action} module={ModuleId} key={Key}", approve ? "批核" : "解批", definition.ModuleId, string.Join(',', keyValues));
+        await auditWriter.WriteEventAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
+            approve ? "APPROVE" : "DEAPPROVE", approve ? "批核" : "解批", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
+        return RecordSaveResult.Success(keyValues);
+    }
+
+    /// <summary>
+    /// 无副作用批核/解批（自动批核模块且无批核过程/效果链/流程定义）：
+    /// 仅翻转 CONFIRM_TAG（+经办人/日期）并写审计；解批保留 NOT_BACK_FIELDS 前置校验。
+    /// 与保存路径的自动批核对称（那边无能力即纯状态翻转）。
+    /// </summary>
+    private async Task<RecordSaveResult> StatelessApproveAsync(
+        SqlConnection connection,
+        WorkbenchDefinition definition,
+        IReadOnlyList<string> keyValues,
+        string keyCondition,
+        bool approve,
+        string employeeName,
+        string userId,
+        CancellationToken token)
+    {
+        if (!await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "CONFIRM_TAG", token))
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
+                $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
+        }
+        var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);
+        if (originalState is null)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
+        }
+        if (approve && originalState.Value.Tag == true)
+        {
+            return RecordSaveResult.Success(keyValues);
+        }
+        if (!approve && originalState.Value.Tag == true)
+        {
+            var noBack = await CheckNotBackFieldsAsync(connection, definition, keyValues, token);
+            if (noBack is not null)
+            {
+                return noBack;
+            }
+        }
+        var confirmSql = approve
+            ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};"
+            : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyCondition};";
+        await using var confirmCommand = new SqlCommand(confirmSql, connection);
+        confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = employeeName.Trim();
+        if (await confirmCommand.ExecuteNonQueryAsync(token) == 0)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_STATE_CONFLICT",
+                approve ? "记录不存在或已批核，无法重复批核。" : "记录不存在或未批核，无法解批。");
+        }
+        logger.LogInformation("统一表单{Action}（无副作用） module={ModuleId} key={Key}", approve ? "批核" : "解批", definition.ModuleId, string.Join(',', keyValues));
         await auditWriter.WriteEventAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
             approve ? "APPROVE" : "DEAPPROVE", approve ? "批核" : "解批", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
         return RecordSaveResult.Success(keyValues);

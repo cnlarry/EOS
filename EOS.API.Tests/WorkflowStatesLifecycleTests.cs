@@ -6,7 +6,7 @@ namespace EOS.API.Tests;
 public class WorkflowStatesLifecycleTests
 {
     [Fact]
-    public void LifecycleColumns_ContainFullTwelveColumnSet()
+    public void LifecycleColumns_ContainFullThirteenColumnSet()
     {
         Assert.Equal(
             new[]
@@ -14,9 +14,10 @@ public class WorkflowStatesLifecycleTests
                 "CREATE_PERSON", "CREATE_DATE", "LAST_UPDATE_BY", "LAST_UPDATE_DATE",
                 "CONFIRM_TAG", "CONFIRM_PERSON", "CONFIRM_DATE",
                 "FINISHED_TAG", "FINISHED_PERSON", "FINISHED_DATE",
-                "OWNER", "OWNER_G",
+                "OWNER", "OWNER_G", "CI",
             },
             WorkflowStates.LifecycleColumns);
+        Assert.Equal(["CI", "OWNER", "OWNER_G"], WorkflowStates.OwnershipColumns);
     }
 
     [Fact]
@@ -33,9 +34,9 @@ public class WorkflowStatesLifecycleTests
             Assert.Contains(column, WorkflowStates.LifecycleColumns);
         }
         Assert.Empty(WorkflowStates.LifecycleTagColumns.Intersect(WorkflowStates.LifecycleActorColumns));
-        // 载荷审计列与经办列同源（单点定义）
+        // 载荷持有列 = 经办列 + 归属三列（单点定义）
         Assert.Equal(
-            WorkflowStates.LifecycleActorColumns.OrderBy(column => column),
+            WorkflowStates.LifecycleActorColumns.Concat(WorkflowStates.OwnershipColumns).OrderBy(column => column),
             RecordPayloadValidator.AuditColumns.OrderBy(column => column));
     }
 
@@ -67,5 +68,17 @@ public class WorkflowStatesLifecycleTests
         bool autoApprove, bool hasSproc, bool hasWorkflow, string[]? events, bool expected)
     {
         Assert.Equal(expected, WorkflowStates.NeedsApproveColumn(autoApprove, hasSproc, hasWorkflow, events));
+    }
+
+    [Theory]
+    [InlineData(true, false, false, false, true)]
+    [InlineData(true, true, false, false, false)]
+    [InlineData(true, false, true, false, false)]
+    [InlineData(true, false, false, true, false)]
+    [InlineData(false, false, false, false, false)]
+    public void IsStatelessApproveCapable_RequiresAutoWithoutSideEffects(
+        bool autoApprove, bool hasSproc, bool effectEnabled, bool hasFlow, bool expected)
+    {
+        Assert.Equal(expected, WorkflowStates.IsStatelessApproveCapable(autoApprove, hasSproc, effectEnabled, hasFlow));
     }
 }

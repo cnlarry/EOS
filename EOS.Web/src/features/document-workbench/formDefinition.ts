@@ -89,6 +89,8 @@ export interface FormDefinition {
   buttons: WorkbenchButton[] | null
   /** 模块是否具备批核工作流（MODULES.UPDATE_SP → ModuleBusinessMap.WorkflowSproc 非空） */
   hasWorkflow: boolean
+  /** 无副作用批核能力（自动批核且无过程/效果链/流程定义）：批核/解批按钮据此与 hasWorkflow 取并集显隐 */
+  hasStatelessApprove: boolean
   /** 模块允许复制（MODULES.IF_COPY） */
   ifCopy: boolean
   /** 模块纳入通用查询（MODULES.SEARCH_1/SEARCH_2） */

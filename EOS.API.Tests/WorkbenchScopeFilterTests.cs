@@ -72,6 +72,21 @@ public sealed class WorkbenchScopeFilterTests
         Assert.Empty(predicates);
     }
 
+    [Theory]
+    [InlineData("Q")]
+    [InlineData("F")]
+    [InlineData("BB")]
+    public void ExecTagUnknown_ThrowsFailClosed(string execTag)
+    {
+        var filter = new WorkbenchScopeFilter(new ApiMetrics());
+        var predicates = new List<string>();
+        using var command = new SqlCommand();
+
+        Assert.Throws<DataFilterUnsupportedException>(
+            () => filter.ApplyExecTagScope(Definition(execTag: execTag), predicates, command));
+        Assert.Empty(predicates);
+    }
+
     [Fact]
     public void ModuleFilter_ParsesWhitelistedColumn_AndParameterizes()
     {
