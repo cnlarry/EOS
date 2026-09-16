@@ -35,18 +35,13 @@ public static class MouDomainRules
             : new(true, null);
     }
 
-    /// <summary>模房领料/耗料单（P_MOU_GET / P_MOU_GET2）AfterSave：库别/产品/批号校验。</summary>
-
-
-    /// <summary>模房领料/耗料单（P_MOU_GET / P_MOU_GET2）AfterSave：库别/产品/批号校验。</summary>
+    /// <summary>模房领料/耗料单（P_MOU_GET / P_MOU_GET2）AfterSave：批号条件必填。</summary>
     public static Task<SprocResult> MouGetAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
         => DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
             "MOU_GET_D", "GET_TYPE", "GET_NO",
             [
-                ("NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=t.DEPOT_ID)", "以下序号项库别编号不存在 "),
-                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
                 ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
             ], token);
 
@@ -56,24 +51,8 @@ public static class MouDomainRules
         => DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
             "MOU_GET2_D", "GET_TYPE", "GET_NO",
             [
-                ("NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=t.DEPOT_ID)", "以下序号项库别编号不存在 "),
-                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
                 ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
             ], token);
-
-    /// <summary>模具领用/返还/报废（P_MOU_OUT/IN/SCRAP）AfterSave：明细模具编号存在。</summary>
-
-
-    /// <summary>模具领用/返还/报废（P_MOU_OUT/IN/SCRAP）AfterSave：明细模具编号存在。</summary>
-    public static Task<SprocResult> MouMouldCheckAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues,
-        string detailTable, string typeColumn, string noColumn, CancellationToken token)
-        => DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues, detailTable, typeColumn, noColumn,
-            [("NOT EXISTS (SELECT 1 FROM dbo.MOU_MOULD m WHERE m.MOULD_ID=t.MOULD_ID)", "以下序号项模具编号不存在 ")], token);
-
-    /// <summary>产品模具对照表（P_MOU_PRO）AfterSave：产品/模具存在 + 所用模具汇总（按产品限定—— 全局更新疑似笔误）。</summary>
-
 
     /// <summary>产品模具对照表（P_MOU_PRO）AfterSave：产品/模具存在 + 所用模具汇总（按产品限定—— 全局更新疑似笔误）。</summary>
     public static async Task<SprocResult> MouProAfterSaveAsync(
@@ -108,10 +87,7 @@ public static class MouDomainRules
         return new(true, null);
     }
 
-    /// <summary>量产模入库（P_MOU_BATCHIN）AfterSave：模具存在 + ERROR_NO_SAVE 门控的不超完工未入检查。</summary>
-
-
-    /// <summary>量产模入库（P_MOU_BATCHIN）AfterSave：模具存在 + ERROR_NO_SAVE 门控的不超完工未入检查。</summary>
+    /// <summary>量产模入库（P_MOU_BATCHIN）AfterSave：ERROR_NO_SAVE 门控的不超完工未入检查。</summary>
     public static async Task<SprocResult> MouBatchinAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction, int moduleId,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
@@ -119,9 +95,6 @@ public static class MouDomainRules
         if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "量产模入库领域规则缺少主键。");
         var type = (keyValues[0] ?? string.Empty).Trim();
         var no = (keyValues[1] ?? string.Empty).Trim();
-        var mould = await MouMouldCheckAfterSaveAsync(connection, transaction, pkColumns, keyValues,
-            "MOU_BATCHIN_D", "BATCHIN_TYPE", "BATCHIN_NO", token);
-        if (!mould.Success) return mould;
         if (!await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
             return new(true, null);
         var rows = await DomainRuleService.FindLinesAsync(connection, transaction,

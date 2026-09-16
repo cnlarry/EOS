@@ -162,15 +162,11 @@ public static class DomainRuleMap
         [130109] = "inv-return",
         [1506] = "moc-bom-stru",
         [1507] = "moc-plan",
-        [2704] = "moc-produce-process",
         [2707] = "moc-work-out",
         [2903] = "mou-apply",
         [2904] = "mou-accept",
         [2906] = "mou-batch",
         [2907] = "mou-get",
-        [2908] = "mou-out",
-        [2909] = "mou-in",
-        [2910] = "mou-scrap",
         [2911] = "mou-pro",
         [2912] = "mou-batchin",
         [2913] = "mou-get2",
@@ -212,6 +208,8 @@ public static class CatalogAfterSaveMap
         180211, 180651,    // 当月每人一班排班
         180309, 1803091, 180504,          // 当月每人一份工资表
         180106, 180107, 180108,           // 合同/投保/证件的期间不重叠与同单重复
+        2704,              // 工单制程：制令单引用存在
+        2908, 2909, 2910,  // 模具出/入库与报废：模具编号引用存在
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);

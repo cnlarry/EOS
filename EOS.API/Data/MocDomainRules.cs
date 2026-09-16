@@ -9,22 +9,17 @@ namespace EOS.API.Data;
 public static class MocDomainRules
 {
 
-    /// <summary>生产领料单（P_MOC_GET）AfterSave：库别/产品/批号校验。</summary>
+    /// <summary>生产领料单（P_MOC_GET）AfterSave：批号条件必填。</summary>
     public static Task<SprocResult> MocGetAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
         => DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
             "MOC_GET_D", "GET_TYPE", "GET_NO",
             [
-                ("NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=t.DEPOT_ID)", "以下序号项库别编号不存在 "),
-                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
                 ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
             ], token);
 
-    /// <summary>制令单（P_MOC_PRODUCE）AfterSave：CHECK 分支 + 订单存在 + 明细产品存在 + 明细订单号回填。</summary>
-
-
-    /// <summary>制令单（P_MOC_PRODUCE）AfterSave：CHECK 分支 + 订单存在 + 明细产品存在 + 明细订单号回填。</summary>
+    /// <summary>制令单（P_MOC_PRODUCE）AfterSave：CHECK 分支 + 明细订单号回填。</summary>
     public static async Task<SprocResult> MocProduceAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction, int moduleId,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
@@ -59,22 +54,6 @@ public static class MocDomainRules
                 """, type, no, token))
                 return new(false, "生产数量超出生产计划数量");
         }
-        await using (var order = new SqlCommand("""
-            SELECT TOP 1 1 FROM dbo.MOC_PRODUCE_M m
-            WHERE m.PRODUCE_TYPE=@Type AND m.PRODUCE_NO=@No AND ISNULL(m.ORDER_NO,'')<>''
-              AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_D d
-                              WHERE d.ORDER_TYPE=m.ORDER_TYPE AND d.ORDER_NO=m.ORDER_NO AND d.SERIAL_NO=m.ORDER_SERIAL_NO);
-            """, connection, transaction))
-        {
-            order.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
-            order.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
-            if (await order.ExecuteScalarAsync(token) is not null)
-                return new(false, "订单不存在  \r\n");
-        }
-        var product = await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
-            "MOC_PRODUCE_D", "PRODUCE_TYPE", "PRODUCE_NO",
-            [("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 ")], token);
-        if (!product.Success) return product;
         await using (var backfill = new SqlCommand("""
             UPDATE d SET d.ORDER_TYPE=m.ORDER_TYPE, d.ORDER_NO=m.ORDER_NO, d.ORDER_SERIAL_NO=m.ORDER_SERIAL_NO
             FROM dbo.MOC_PRODUCE_D d INNER JOIN dbo.MOC_PRODUCE_M m
@@ -89,10 +68,7 @@ public static class MocDomainRules
         return new(true, null);
     }
 
-    /// <summary>生产入库单（P_MOC_PRODUCT_IN）AfterSave：CHECK 分支 + 制令/库别/产品/批号校验。</summary>
-
-
-    /// <summary>生产入库单（P_MOC_PRODUCT_IN）AfterSave：CHECK 分支 + 制令/库别/产品/批号校验。</summary>
+    /// <summary>生产入库单（P_MOC_PRODUCT_IN）AfterSave：CHECK 分支 + 批号条件必填。</summary>
     public static async Task<SprocResult> MocProductInAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction, int moduleId,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
@@ -119,9 +95,6 @@ public static class MocDomainRules
         return await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
             "MOC_PRODUCT_IN_D", "PRODUCT_IN_TYPE", "PRODUCT_IN_NO",
             [
-                ("NOT EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_M c WHERE c.PRODUCE_TYPE=t.PRODUCE_TYPE AND c.PRODUCE_NO=t.PRODUCE_NO)", "以下序号项制令单不存在 "),
-                ("NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=t.DEPOT_ID)", "以下序号项库别编号不存在 "),
-                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
                 ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
             ], token);
     }
@@ -168,9 +141,6 @@ public static class MocDomainRules
         return await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
             "MOC_PRODUCT_OUT_D", "PRODUCT_OUT_TYPE", "PRODUCT_OUT_NO",
             [
-                ("NOT EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_M c WHERE c.PRODUCE_TYPE=t.PRODUCE_TYPE AND c.PRODUCE_NO=t.PRODUCE_NO)", "以下序号项制令单不存在 "),
-                ("NOT EXISTS (SELECT 1 FROM dbo.DEPOT c WHERE c.DEPOT_ID=t.DEPOT_ID)", "以下序号项库别编号不存在 "),
-                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
                 ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
             ], token);
     }
@@ -251,24 +221,6 @@ public static class MocDomainRules
 
     /// <summary>工单制程（P_MOC_PRODUCE_PROCESS）AfterSave：制令存在校验。</summary>
 
-
-    /// <summary>工单制程（P_MOC_PRODUCE_PROCESS）AfterSave：制令存在校验。</summary>
-    public static async Task<SprocResult> MocProduceProcessAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "工单制程领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        await using var cmd = new SqlCommand(
-            "SELECT TOP 1 1 FROM dbo.MOC_PRODUCE_PROCESS_M t INNER JOIN dbo.MOC_PRODUCE_M c ON c.PRODUCE_TYPE=t.PRODUCE_TYPE AND c.PRODUCE_NO=t.PRODUCE_NO WHERE t.PRODUCE_TYPE=@Type AND t.PRODUCE_NO=@No;",
-            connection, transaction);
-        cmd.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
-        cmd.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
-        return await cmd.ExecuteScalarAsync(token) is null
-            ? new(false, "制令单不存在。 ")
-            : new(true, null);
-    }
 
     /// <summary>工序发料单（P_MOC_WORK_OUT）AfterSave：ERROR_NO_SAVE 门控的出库不超工序入库检查。</summary>
 
