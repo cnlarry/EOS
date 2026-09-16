@@ -114,21 +114,13 @@ public static class SfcDomainRules
         return new(true, null);
     }
 
-    /// <summary>Process save: requires an existing product and a positive fixed time when fixed time is used.</summary>
+    /// <summary>Process save: requires a positive fixed time when fixed time is used.</summary>
     public static async Task<SprocResult> SfcProcessAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
         if (pkColumns.Count < 1 || keyValues.Count < 1) return new(false, "产品制程领域规则缺少主键。");
         var proNo = (keyValues[0] ?? string.Empty).Trim();
-        await using (var product = new SqlCommand(
-            "SELECT TOP 1 1 FROM dbo.SFC_PROCESS_M t INNER JOIN dbo.PRODUCT p ON p.PRO_NO=t.PRO_NO WHERE t.PRO_NO=@ProNo;",
-            connection, transaction))
-        {
-            product.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
-            if (await product.ExecuteScalarAsync(token) is null)
-                return new(false, "产品编号不存在 \r\n");
-        }
         await using (var std = new SqlCommand("""
             SELECT TOP 1 1 FROM dbo.SFC_PROCESS_D t
             WHERE t.PRO_NO=@ProNo AND t.STANDARD_TIME_TAG=1 AND ISNULL(t.STANDARD_TIME,0)=0;
@@ -142,8 +134,7 @@ public static class SfcDomainRules
     }
 
     /// <summary>
-    /// Daily-record save: requires existing process entries and rejects quantities above the
-    /// maximum allowed by the production process.
+    /// Daily-record save: rejects quantities above the maximum allowed by the production process.
     /// </summary>
     public static async Task<SprocResult> SfcDailyAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
@@ -152,10 +143,6 @@ public static class SfcDomainRules
         if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "生产记录单领域规则缺少主键。");
         var type = (keyValues[0] ?? string.Empty).Trim();
         var no = (keyValues[1] ?? string.Empty).Trim();
-        var process = await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
-            "SFC_DAILY_D", "DAILY_TYPE", "DAILY_NO",
-            [("NOT EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_PROCESS_D c WHERE c.PRODUCE_TYPE=t.PRODUCE_TYPE AND c.PRODUCE_NO=t.PRODUCE_NO AND c.PROCEDURE_ID=t.PROCEDURE_ID)", "以下序号项制令制程不存在 ")], token);
-        if (!process.Success) return process;
         await using (var qty = new SqlCommand("""
             SELECT TOP 11 d.SERIAL_NO
             FROM dbo.SFC_DAILY_D d
