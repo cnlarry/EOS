@@ -167,13 +167,21 @@ public sealed class EffectValidationExecutor
 
             var usageSql = string.Join(" + ", usage.Select(field => $"COALESCE(T.{EffectConditionCompiler.Identifier(field)}, 0)"));
             var limitSql = string.Join(" + ", limit.Select(field => $"COALESCE(T.{EffectConditionCompiler.Identifier(field)}, 0)"));
+            // 容差：旧实现常带 0.1 之类的余量（如收料不超采购 +0.1），注册表已允许 offset，此处落实。
+            var offset = check.TryGetProperty("offset", out var offsetElement) && offsetElement.ValueKind == JsonValueKind.Number
+                && offsetElement.TryGetDecimal(out var declaredOffset)
+                    ? declaredOffset
+                    : 0m;
+            var limitWithOffset = offset == 0m
+                ? limitSql
+                : $"({limitSql} + {offset.ToString(CultureInfo.InvariantCulture)})";
             var thisSql = BuildTermSql(thisQty, "S");
             var correlation = BuildMatchCorrelation(match, "S", "T");
             var comparison = mode.Equals("not-below-progress", StringComparison.OrdinalIgnoreCase)
                 ? $"{limitSql} + {thisSql} < {usageSql}" // reduction would fall below accumulated progress
                 : mode.Equals("this-not-exceed", StringComparison.OrdinalIgnoreCase)
-                    ? $"{thisSql} > {limitSql}" // document quantity must not exceed the referenced cap
-                    : $"{usageSql} + {thisSql} > {limitSql}";
+                    ? $"{thisSql} > {limitWithOffset}" // document quantity must not exceed the referenced cap
+                    : $"{usageSql} + {thisSql} > {limitWithOffset}";
 
             var (documentScope, parameters) = BuildDocumentScope(plan, masterKeyValues);
             var sql = new StringBuilder("SELECT TOP 1 1 FROM dbo.")
