@@ -175,19 +175,49 @@ public sealed class EffectValidationExecutor
             var limitWithOffset = offset == 0m
                 ? limitSql
                 : $"({limitSql} + {offset.ToString(CultureInfo.InvariantCulture)})";
-            var thisSql = BuildTermSql(thisQty, "S");
-            var correlation = BuildMatchCorrelation(match, "S", "T");
+            var termSql = BuildTermSql(thisQty, "S");
+            var (documentScope, parameters) = BuildDocumentScope(plan, masterKeyValues);
+
+            // 聚合形态：旧实现多按单据分组求和后再比较（如"同一采购行的收料合计"）。
+            // 逐行比较在"同一单据里同一引用键有多行"时会弱于旧判据（单行没超、合计已超），
+            // 等于悄悄放宽约束，故 thisQty.agg=SUM 时先按 match 键分组求和再比。
+            var aggregate = check.TryGetProperty("thisQty", out var thisQtyElement)
+                && thisQtyElement.ValueKind == JsonValueKind.Object
+                && thisQtyElement.TryGetProperty("agg", out var aggElement)
+                && aggElement.ValueKind == JsonValueKind.String
+                && aggElement.GetString()!.Equals("SUM", StringComparison.OrdinalIgnoreCase);
+            string fromSql;
+            string correlation;
+            string thisSql;
+            if (aggregate)
+            {
+                var groupBy = string.Join(", ", match.Select(pair =>
+                    "S." + EffectConditionCompiler.Identifier(pair.Source.Field!)));
+                correlation = string.Join(" AND ", match.Select(pair =>
+                    "T." + EffectConditionCompiler.Identifier(pair.TargetColumn) + " = S1." + EffectConditionCompiler.Identifier(pair.Source.Field!)));
+                thisSql = "S1.[__THIS_QTY]";
+                fromSql = "(SELECT " + groupBy + ", SUM(" + termSql + ") AS [__THIS_QTY] FROM dbo."
+                    + EffectConditionCompiler.Identifier(sourceTable) + " S WHERE " + documentScope
+                    + " GROUP BY " + groupBy + ") S1 CROSS JOIN dbo."
+                    + EffectConditionCompiler.Identifier(targetTable) + " T";
+            }
+            else
+            {
+                correlation = BuildMatchCorrelation(match, "S", "T");
+                thisSql = termSql;
+                fromSql = "dbo." + EffectConditionCompiler.Identifier(sourceTable) + " S CROSS JOIN dbo."
+                    + EffectConditionCompiler.Identifier(targetTable) + " T";
+            }
+
             var comparison = mode.Equals("not-below-progress", StringComparison.OrdinalIgnoreCase)
                 ? $"{limitSql} + {thisSql} < {usageSql}" // reduction would fall below accumulated progress
                 : mode.Equals("this-not-exceed", StringComparison.OrdinalIgnoreCase)
                     ? $"{thisSql} > {limitWithOffset}" // document quantity must not exceed the referenced cap
                     : $"{usageSql} + {thisSql} > {limitWithOffset}";
 
-            var (documentScope, parameters) = BuildDocumentScope(plan, masterKeyValues);
-            var sql = new StringBuilder("SELECT TOP 1 1 FROM dbo.")
-                .Append(EffectConditionCompiler.Identifier(sourceTable)).Append(" S CROSS JOIN dbo.")
-                .Append(EffectConditionCompiler.Identifier(targetTable)).Append(" T WHERE ")
-                .Append(correlation).Append(" AND ").Append(documentScope).Append(" AND ").Append(comparison);
+            var sql = new StringBuilder("SELECT TOP 1 1 FROM ")
+                .Append(fromSql).Append(" WHERE ")
+                .Append(correlation).Append(" AND ").Append(comparison);
             await using var command = new SqlCommand(sql.ToString(), connection, transaction);
             foreach (var parameter in parameters)
             {
