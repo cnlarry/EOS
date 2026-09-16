@@ -143,6 +143,8 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
     {
         var definition=await AuthorizedDefinition(moduleId,token);
         if(definition is null)return NotFound();
+        // API 是最终权限边界：批核/解批必须服务端复核，前端按钮显隐只改善体验。
+        await permissions.RequireAsync(userContext.UserId,moduleId,approve?PermissionAction.Approve:PermissionAction.Deapprove,token);
         var keyValues=ParseKey(request.Key);
         if(keyValues is null)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RECORD_KEY","key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
         if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
