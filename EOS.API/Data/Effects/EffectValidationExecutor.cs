@@ -234,6 +234,11 @@ public sealed class EffectValidationExecutor
                 var cells = BuildQtyDiagnosticCells(check, fromSql, correlation, comparison, aggregate);
                 if (cells is null)
                     return message;
+                // 诊断行的拼接方式各族不同：多为"列间 4 空格、行间 CRLF"，也有"单列多值、一行内联"（值间 2 空格）。
+                var cellSeparator = check.TryGetProperty("diagnosticCellSeparator", out var cellElement)
+                    && cellElement.ValueKind == JsonValueKind.String ? cellElement.GetString()! : "    ";
+                var rowSeparator = check.TryGetProperty("diagnosticRowSeparator", out var rowElement)
+                    && rowElement.ValueKind == JsonValueKind.String ? rowElement.GetString()! : "\r\n";
                 var lines = new List<string>();
                 await using var lineCommand = new SqlCommand(
                     "SELECT TOP (" + MaxRowsOf(check).ToString(CultureInfo.InvariantCulture) + ") "
@@ -247,12 +252,12 @@ public sealed class EffectValidationExecutor
                     var row = new List<string>(cells.Count);
                     for (var index = 0; index < cells.Count; index++)
                         row.Add(reader.IsDBNull(index) ? string.Empty : FormatCell(reader, index));
-                    // 旧实现的诊断行是"列间 4 空格、行间 CRLF"，逐字保持。
-                    lines.Add(string.Join("    ", row));
+                    // 旧实现的诊断行多为"列间 4 空格、行间 CRLF"（少数为单列内联），逐字保持。
+                    lines.Add(string.Join(cellSeparator, row));
                 }
                 if (lines.Count == 0)
                     return message;
-                return message.Replace("{ROWS}", string.Join("\r\n", lines));
+                return message.Replace("{ROWS}", string.Join(rowSeparator, lines));
             }
         }
         return null;
