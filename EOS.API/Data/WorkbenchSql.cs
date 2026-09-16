@@ -61,11 +61,11 @@ internal static class WorkbenchSql
         return await command.ExecuteScalarAsync(token) as int?;
     }
 
-    /// <summary>取用户所属公司（SYSDL→SYSDN.COMPANY_ID），用于 CI 回填；无归属返回 null（调用方兜底）。</summary>
+    /// <summary>取用户所属公司（SYSDL→SYSDN.CI），用于 CI 回填；无归属返回 null（调用方兜底）。</summary>
     internal static async Task<string?> GetUserCompanyAsync(SqlConnection connection, SqlTransaction transaction, string userId, CancellationToken token)
     {
         const string sql = """
-            SELECT LTRIM(RTRIM(n.COMPANY_ID)) FROM dbo.SYSDL l WITH (NOLOCK)
+            SELECT LTRIM(RTRIM(n.CI)) FROM dbo.SYSDL l WITH (NOLOCK)
             INNER JOIN dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = l.EMP_ID
             WHERE LTRIM(RTRIM(l.USER_ID)) = @UserId;
             """;

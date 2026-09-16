@@ -1,7 +1,7 @@
 -- ============================================================================
 -- EOS.ERP migration 089: CI 行公司启用（服务端持有 + 存量关系回填 + 收紧）
 -- ----------------------------------------------------------------------------
--- 决议：CI=行公司，取当前用户所属公司（SYSDL→SYSDN.COMPANY_ID），用户不可改、
+-- 决议：CI=行公司，取当前用户所属公司（SYSDL→SYSDN.CI），用户不可改、
 -- 不可选填；新建由服务端覆盖回填，更新保持创建归属（见 WorkbenchCommandHandler）。
 -- 本迁移只处理"有 OWNER 列的业务表"（254 张）：
 --   · 存量空 CI 按归属关系回填（OWNER→账号→员工→公司），无归属/链路缺失 fallback DEMO；
@@ -45,7 +45,7 @@ BEGIN
 
     -- 1) 关系回填：OWNER→账号→员工→公司；链路缺失 fallback DEMO；非空行不动
     SET @Sql = N'UPDATE ' + @QuotedTable
-        + N' SET CI = COALESCE((SELECT TOP 1 NULLIF(LTRIM(RTRIM(n.COMPANY_ID)), N'''')'
+        + N' SET CI = COALESCE((SELECT TOP 1 NULLIF(LTRIM(RTRIM(n.CI)), N'''')'
         + N' FROM dbo.SYSDL l WITH (NOLOCK) INNER JOIN dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = l.EMP_ID'
         + N' WHERE LTRIM(RTRIM(l.USER_ID)) = LTRIM(RTRIM(' + @QuotedTable + N'.OWNER))), N''DEMO'')'
         + N' WHERE NULLIF(LTRIM(RTRIM(CI)), N'''') IS NULL;';
