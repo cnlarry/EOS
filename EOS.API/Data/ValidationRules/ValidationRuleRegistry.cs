@@ -33,7 +33,7 @@ public static class ValidationRuleRegistry
     private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "message");
     private static readonly IReadOnlySet<string> LineRequireTriggerKeys = KeySet("scope", "field", "op", "value");
     private static readonly IReadOnlySet<string> LineRequireOps = KeySet("GT", "GE", "LT", "LE", "EQ", "NEQ");
-    private static readonly IReadOnlySet<string> QtyBlockKeys = KeySet("scope", "terms", "fields");
+    private static readonly IReadOnlySet<string> QtyBlockKeys = KeySet("scope", "terms", "fields", "agg");
     private static readonly IReadOnlySet<string> ReferenceCheckKeys = KeySet(
         "refTable", "allowEmpty", "join", "refKey", "activeTag", "message", "lineField", "targets", "maxRows", "mismatch");
     private static readonly IReadOnlySet<string> ReferenceTargetKeys = KeySet("refTable", "join", "refKey", "activeTag", "mismatch");
@@ -338,6 +338,10 @@ public static class ValidationRuleRegistry
         var scope = GetString(block.Value, "scope");
         if (scope is null || !KnownScopes.Contains(scope))
             issues.Add($"校验规则 {Label(rule)}：{where}.scope 必须是 MASTER/DETAIL/TABLE/TARGET/CONSTANT");
+        if (block.Value.TryGetProperty("agg", out var agg) && agg.ValueKind != JsonValueKind.Null
+            && (agg.ValueKind != JsonValueKind.String
+                || !string.Equals(agg.GetString(), "SUM", StringComparison.OrdinalIgnoreCase)))
+            issues.Add($"校验规则 {Label(rule)}：{where}.agg 仅允许 SUM（按 match 键分组求和后比较）");
         var terms = GetArray(block.Value, "terms");
         if (terms is { } t && t.GetArrayLength() > 0)
         {
