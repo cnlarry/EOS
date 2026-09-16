@@ -8,23 +8,17 @@ namespace EOS.API.Data;
 /// </summary>
 public static class CopDomainRules
 {
+    /// <summary>退货单（P_COP_RETURN）AfterSave：批号条件必填。</summary>
     public static Task<SprocResult> CopReturnAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
         => DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
             "COP_RETURN_D", "RETURN_TYPE", "RETURN_NO",
             [
-                ("EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o JOIN dbo.COP_RETURN_M m ON m.RETURN_TYPE=@Type AND m.RETURN_NO=@No WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.CLIENT_ID<>m.CLIENT_ID)", "以下序号项退货单与订单客户不符 "),
-                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO)", "以下序号项订单不存在 "),
-                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_D o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.SERIAL_NO=t.ORDER_SERIAL_NO AND o.PRO_NO=t.PRO_NO)", "以下序号项订单序号与产品编号不相符 "),
-                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
                 ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
             ], token);
 
-    /// <summary>备货单（P_COP_FITOUT）AfterSave：CHECK 分支（SYSSS 门控）+ 客户/订单/产品/批号校验。</summary>
-
-
-    /// <summary>备货单（P_COP_FITOUT）AfterSave：CHECK 分支（SYSSS 门控）+ 客户/订单/产品/批号校验。</summary>
+    /// <summary>备货单（P_COP_FITOUT）AfterSave：CHECK 分支（SYSSS 门控）+ 批号条件必填。</summary>
     public static async Task<SprocResult> CopFitoutAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction, int moduleId,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
@@ -40,18 +34,11 @@ public static class CopDomainRules
         return await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
             "COP_FITOUT_D", "FITOUT_TYPE", "FITOUT_NO",
             [
-                ("EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o JOIN dbo.COP_FITOUT_M m ON m.FITOUT_TYPE=@Type AND m.FITOUT_NO=@No WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.CLIENT_ID<>m.CLIENT_ID)", "以下序号项送货单与订单客户不符 "),
-                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO)", "以下序号项订单不存在 "),
-                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_D o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.SERIAL_NO=t.ORDER_SERIAL_NO AND o.PRO_NO=t.PRO_NO)", "以下序号项订单序号与产品编号不相符 "),
-                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
                 ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号! "),
             ], token);
     }
 
-    /// <summary>备货返仓单（P_COP_FITIN）AfterSave：CHECK 分支（SYSSS 门控）+ 客户/订单/产品/批号校验。</summary>
-
-
-    /// <summary>备货返仓单（P_COP_FITIN）AfterSave：CHECK 分支（SYSSS 门控）+ 客户/订单/产品/批号校验。</summary>
+    /// <summary>备货返仓单（P_COP_FITIN）AfterSave：CHECK 分支（SYSSS 门控）+ 批号条件必填。</summary>
     public static async Task<SprocResult> CopFitinAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction, int moduleId,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
@@ -67,18 +54,11 @@ public static class CopDomainRules
         return await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
             "COP_FITIN_D", "FITIN_TYPE", "FITIN_NO",
             [
-                ("EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o JOIN dbo.COP_FITIN_M m ON m.FITIN_TYPE=@Type AND m.FITIN_NO=@No WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.CLIENT_ID<>m.CLIENT_ID)", "以下序号项与订单客户不符 "),
-                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO)", "以下序号项订单不存在 "),
-                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_D o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.SERIAL_NO=t.ORDER_SERIAL_NO AND o.PRO_NO=t.PRO_NO)", "以下序号项订单序号与产品编号不相符 "),
-                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
                 ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
             ], token);
     }
 
-    /// <summary>客户退料单（P_COP_BACK）AfterSave：CHECK 分支（退料不超订单）+ 客户/订单/产品/批号校验。</summary>
-
-
-    /// <summary>客户退料单（P_COP_BACK）AfterSave：CHECK 分支（退料不超订单）+ 客户/订单/产品/批号校验。</summary>
+    /// <summary>客户退料单（P_COP_BACK）AfterSave：CHECK 分支（退料不超订单）+ 批号条件必填。</summary>
     public static async Task<SprocResult> CopBackAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction, int moduleId,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
@@ -94,10 +74,6 @@ public static class CopDomainRules
         return await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
             "COP_BACK_D", "BACK_TYPE", "BACK_NO",
             [
-                ("EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o JOIN dbo.COP_BACK_M m ON m.BACK_TYPE=@Type AND m.BACK_NO=@No WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.CLIENT_ID<>m.CLIENT_ID)", "以下序号项退料单与订单客户不符 "),
-                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO)", "以下序号项订单不存在 "),
-                ("ISNULL(t.ORDER_TYPE,'')<>'' AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_D o WHERE o.ORDER_TYPE=t.ORDER_TYPE AND o.ORDER_NO=t.ORDER_NO AND o.SERIAL_NO=t.ORDER_SERIAL_NO AND o.PRO_NO=t.PRO_NO)", "以下序号项订单序号与产品编号不相符 "),
-                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
                 ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
             ], token);
     }
@@ -379,42 +355,7 @@ public static class CopDomainRules
                 return new(false, "以下会出现订单已送货数量超出订单数量\r\n订单单号   数量  已送数量  单据数量  备品  已送备品  单据备品\r\n" + orderLines);
         }
 
-        // 订单一致性：客户相符 / 订单存在 / 序号产品相符 / 产品存在 / 批号
-        var clientMismatch = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT d.SERIAL_NO FROM dbo.COP_ORDER_M o
-            INNER JOIN dbo.COP_SEND_D d ON o.ORDER_TYPE=d.ORDER_TYPE AND o.ORDER_NO=d.ORDER_NO
-            INNER JOIN dbo.COP_SEND_M m ON m.SEND_TYPE=d.SEND_TYPE AND m.SEND_NO=d.SEND_NO
-            WHERE m.SEND_TYPE=@Type AND m.SEND_NO=@No AND o.CLIENT_ID<>m.CLIENT_ID;
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (clientMismatch is not null)
-            return new(false, "以下序号项送货单与订单客户不符 \r\n" + clientMismatch);
-        var orderMissing = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.COP_SEND_D d
-            WHERE SEND_TYPE=@Type AND SEND_NO=@No AND ISNULL(ORDER_TYPE,'')<>''
-              AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_M o WHERE o.ORDER_TYPE=d.ORDER_TYPE AND o.ORDER_NO=d.ORDER_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (orderMissing is not null)
-            return new(false, "以下序号项订单不存在 \r\n" + orderMissing);
-        var orderProduct = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.COP_SEND_D d
-            WHERE SEND_TYPE=@Type AND SEND_NO=@No AND ISNULL(ORDER_TYPE,'')<>''
-              AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_D o
-                              WHERE o.ORDER_TYPE=d.ORDER_TYPE AND o.ORDER_NO=d.ORDER_NO
-                                AND o.SERIAL_NO=d.ORDER_SERIAL_NO AND o.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (orderProduct is not null)
-            return new(false, "以下序号项订单序号与产品编号不相符 \r\n" + orderProduct);
-        var productMissing = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.COP_SEND_D d
-            WHERE SEND_TYPE=@Type AND SEND_NO=@No
-              AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (productMissing is not null)
-            return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
+        // 批号必填（订单一致性/产品存在性由校验目录承接）
         var batchMissing = await DomainRuleService.FindLinesAsync(connection, transaction,
             """
             SELECT SERIAL_NO FROM dbo.COP_SEND_D d
@@ -598,13 +539,6 @@ public static class CopDomainRules
         if (minProduce is not null)
             return new(false, "以下产品编号订单量低于最小生产要求数量\r\n" + minProduce);
 
-        // AfterSave 校验：客户存在
-        var clientOk = await DomainRuleService.ExistsAsync(connection, transaction,
-            """
-            SELECT TOP 1 1 FROM dbo.COP_ORDER_M m JOIN dbo.CLIENT c ON c.CLIENT_ID=m.CLIENT_ID
-            WHERE m.ORDER_TYPE=@Type AND m.ORDER_NO=@No AND c.BUSINESS_TAG=0;
-            """, type, no, token);
-        if (!clientOk) return new(false, "客户编号不存在或已停止交易。");
         // 客户订单号不重复（排除自身）
         var duplicateOrderNo = await DomainRuleService.ExistsAsync(connection, transaction,
             """
@@ -622,85 +556,11 @@ public static class CopDomainRules
             """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (preSendLines is not null)
             return new(false, "以下序号项预交日期小于订单日期 \r\n" + preSendLines);
-        // 报价单与订单客户一致
-        var quoteMismatch = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT d.SERIAL_NO FROM dbo.COP_QUOTE_M q
-            INNER JOIN dbo.COP_ORDER_D d ON q.QUOTE_TYPE=d.QUOTE_TYPE AND q.QUOTE_NO=d.QUOTE_NO
-            INNER JOIN dbo.COP_ORDER_M m ON m.ORDER_TYPE=d.ORDER_TYPE AND m.ORDER_NO=d.ORDER_NO
-            WHERE m.ORDER_TYPE=@Type AND m.ORDER_NO=@No AND q.CLIENT_ID<>m.CLIENT_ID;
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (quoteMismatch is not null)
-            return new(false, "以下序号项报价单与订单客户不符 \r\n" + quoteMismatch);
-        // 报价单存在
-        var quoteMissing = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.COP_ORDER_D d
-            WHERE ORDER_TYPE=@Type AND ORDER_NO=@No AND ISNULL(QUOTE_TYPE,'')<>''
-              AND NOT EXISTS (SELECT 1 FROM dbo.COP_QUOTE_M q WHERE q.QUOTE_TYPE=d.QUOTE_TYPE AND q.QUOTE_NO=d.QUOTE_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (quoteMissing is not null)
-            return new(false, "以下序号项报价单不存在 \r\n" + quoteMissing);
-        // 报价单序号与产品编号相符
-        var quoteProduct = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.COP_ORDER_D d
-            WHERE ORDER_TYPE=@Type AND ORDER_NO=@No AND ISNULL(QUOTE_TYPE,'')<>''
-              AND NOT EXISTS (SELECT 1 FROM dbo.COP_QUOTE_D q
-                              WHERE q.QUOTE_TYPE=d.QUOTE_TYPE AND q.QUOTE_NO=d.QUOTE_NO
-                                AND q.SERIAL_NO=d.QUOTE_SERIAL_NO AND q.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (quoteProduct is not null)
-            return new(false, "以下序号项报价单序号与产品编号不相符 \r\n" + quoteProduct);
-        // 产品编号存在
-        var productMissing = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.COP_ORDER_D d
-            WHERE ORDER_TYPE=@Type AND ORDER_NO=@No
-              AND NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (productMissing is not null)
-            return new(false, "以下序号项产品编号不存在 \r\n" + productMissing);
         return new(true, null);
     }
 
     /// <summary>厂商报价单（1604）AfterSave：厂商校验 + 询价单一致性校验（镜像 cop-quote，厂商侧）。</summary>
 
-
-    /// <summary>报价单（1404，原 1416 规则迁移）AfterSave：客户校验 + 询价单一致性校验。</summary>
-    public static async Task<SprocResult> CopQuoteAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var type = keyValues[0]; var no = keyValues[1];
-        var clientOk = await DomainRuleService.ExistsAsync(connection, transaction,
-            """
-            SELECT TOP 1 1 FROM dbo.COP_QUOTE_M m JOIN dbo.CLIENT c ON c.CLIENT_ID=m.CLIENT_ID
-            WHERE m.QUOTE_TYPE=@Type AND m.QUOTE_NO=@No AND c.BUSINESS_TAG=0;
-            """, type, no, token);
-        if (!clientOk) return new(false, "客户编号不存在或已停止交易。");
-        // 询价单与报价单客户不符
-        var mismatchLines = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT d.SERIAL_NO
-            FROM dbo.COP_CHAFFER_M q
-            INNER JOIN dbo.COP_QUOTE_D d ON q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO
-            INNER JOIN dbo.COP_QUOTE_M m ON m.QUOTE_TYPE=d.QUOTE_TYPE AND m.QUOTE_NO=d.QUOTE_NO
-            WHERE m.QUOTE_TYPE=@Type AND m.QUOTE_NO=@No AND q.CLIENT_ID<>m.CLIENT_ID;
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (mismatchLines is not null)
-            return new(false, "以下序号项询价单与报价单客户不符 \r\n" + mismatchLines);
-        // 询价单不存在
-        var missingLines = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.COP_QUOTE_D d
-            WHERE QUOTE_TYPE=@Type AND QUOTE_NO=@No AND ISNULL(CHAFFER_TYPE,'')<>''
-              AND NOT EXISTS (SELECT 1 FROM dbo.COP_CHAFFER_M q WHERE q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (missingLines is not null)
-            return new(false, "以下序号项询价单不存在 \r\n" + missingLines);
-        return new(true, null);
-    }
 
     /// <summary>应收货款单（170101）AfterSave：对帐不超送/退货量 + 客户校验 + 单证存在性 + 金额汇总。</summary>
 
@@ -724,25 +584,6 @@ public static class CopDomainRules
             sourceTable: "COP_RETURN_D", sourceTypeColumn: "RETURN_TYPE", sourceNoColumn: "RETURN_NO");
         if (returnErrors is not null)
             return new(false, "以下对帐已超出退货单数量\r\n 退货单号  退货数量  已对帐数量  单据数量\r\n" + returnErrors);
-
-        var clientOk = await DomainRuleService.ExistsAsync(connection, transaction,
-            """
-            SELECT TOP 1 1 FROM dbo.COP_ACCOUNT_M m JOIN dbo.CLIENT c ON c.CLIENT_ID=m.CLIENT_ID
-            WHERE m.ACCOUNT_TYPE=@Type AND m.ACCOUNT_NO=@No AND c.BUSINESS_TAG=0;
-            """, type, no, token);
-        if (!clientOk) return new(false, "客户编号不存在或已停止交易。");
-        // 送/退货单存在性（明细引用的送/退货行必须存在）
-        var missingLines = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.COP_ACCOUNT_D d
-            WHERE ACCOUNT_TYPE=@Type AND ACCOUNT_NO=@No
-              AND NOT EXISTS (SELECT 1 FROM dbo.COP_SEND_D s
-                              WHERE s.SEND_TYPE=d.S_R_TYPE AND s.SEND_NO=d.S_R_NO AND s.SERIAL_NO=d.S_R_SERIAL_NO)
-              AND NOT EXISTS (SELECT 1 FROM dbo.COP_RETURN_D s
-                              WHERE s.RETURN_TYPE=d.S_R_TYPE AND s.RETURN_NO=d.S_R_NO AND s.SERIAL_NO=d.S_R_SERIAL_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (missingLines is not null)
-            return new(false, "以下序号项送/退货单不存在 \r\n" + missingLines);
 
         // 主表金额汇总（ROUND 2，SUM_AMOUNT=AMOUNT_TAX+OTHER_PRICE，QTY_TOTAL=SUM(QTY)）
         const string sql = """
@@ -819,22 +660,13 @@ public static class CopDomainRules
         return new(true, null);
     }
 
-    /// <summary>预收帐款单（170103）AfterSave：客户校验 + 金额汇总。</summary>
-
-
-    /// <summary>预收帐款单（170103）AfterSave：客户校验 + 金额汇总。</summary>
+    /// <summary>预收帐款单（170103）AfterSave：金额汇总。</summary>
     public static async Task<SprocResult> CopPrepayAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
         var (typeColumn, noColumn) = DomainRuleService.KeyColumns(pkColumns);
         var type = keyValues[0]; var no = keyValues[1];
-        var clientOk = await DomainRuleService.ExistsAsync(connection, transaction,
-            """
-            SELECT TOP 1 1 FROM dbo.COP_PREPAY_M m JOIN dbo.CLIENT c ON c.CLIENT_ID=m.CLIENT_ID
-            WHERE m.PREPAY_TYPE=@Type AND m.PREPAY_NO=@No AND c.BUSINESS_TAG=0;
-            """, type, no, token);
-        if (!clientOk) return new(false, "客户编号不存在或已停止交易。");
         await using var amount = new SqlCommand($"""
             UPDATE m SET AMOUNT=ROUND((SELECT SUM(AMOUNT) FROM dbo.COP_PREPAY_D
                 WHERE PREPAY_TYPE=@Type AND PREPAY_NO=@No),3)

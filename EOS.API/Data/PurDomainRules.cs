@@ -121,20 +121,6 @@ public static class PurDomainRules
     /// <summary>员工基本资料（P_HR_EMPLOYEE）AfterSave：工号唯一（他人占用且 STATE<>5 即拒绝）。</summary>
 
 
-    /// <summary>收料核价单（1610）AfterSave：厂商校验。</summary>
-    public static async Task<SprocResult> PurCallbackAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var type = keyValues[0]; var no = keyValues[1];
-        var ok = await DomainRuleService.ExistsAsync(connection, transaction,
-            """
-            SELECT TOP 1 1 FROM dbo.PUR_CALLBACK_M m JOIN dbo.SUPPLIER c ON c.SUPPLIER_ID=m.SUPPLIER_ID
-            WHERE m.CALLBACK_TYPE=@Type AND m.CALLBACK_NO=@No AND c.BUSINESS_TAG=0;
-            """, type, no, token);
-        return ok ? new(true, null) : new(false, "厂商编号不存在或已停止交易。");
-    }
-
     /// <summary>制造命令单变更（1509）AfterSave：原单已批核 + 变更量不小于已生产/已领料。</summary>
 
 
@@ -672,48 +658,7 @@ public static class PurDomainRules
     }
 
 
-    public static async Task<SprocResult> PurQuoteAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var type = keyValues[0]; var no = keyValues[1];
-        var supplierOk = await DomainRuleService.ExistsAsync(connection, transaction,
-            """
-            SELECT TOP 1 1 FROM dbo.PUR_QUOTE_M m JOIN dbo.SUPPLIER c ON c.SUPPLIER_ID=m.SUPPLIER_ID
-            WHERE m.QUOTE_TYPE=@Type AND m.QUOTE_NO=@No AND c.BUSINESS_TAG=0;
-            """, type, no, token);
-        if (!supplierOk) return new(false, "厂商编号不存在或已停止交易。");
-        var mismatchLines = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT d.SERIAL_NO
-            FROM dbo.PUR_CHAFFER_M q
-            INNER JOIN dbo.PUR_QUOTE_D d ON q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO
-            INNER JOIN dbo.PUR_QUOTE_M m ON m.QUOTE_TYPE=d.QUOTE_TYPE AND m.QUOTE_NO=d.QUOTE_NO
-            WHERE m.QUOTE_TYPE=@Type AND m.QUOTE_NO=@No AND q.SUPPLIER_ID<>m.SUPPLIER_ID;
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (mismatchLines is not null)
-            return new(false, "以下序号项询价单与报价单厂商不符 \r\n" + mismatchLines);
-        var missingLines = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.PUR_QUOTE_D d
-            WHERE QUOTE_TYPE=@Type AND QUOTE_NO=@No AND ISNULL(CHAFFER_TYPE,'')<>''
-              AND NOT EXISTS (SELECT 1 FROM dbo.PUR_CHAFFER_M q WHERE q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (missingLines is not null)
-            return new(false, "以下序号项询价单不存在 \r\n" + missingLines);
-        // 询价单序号与产品编号相符
-        var productMismatch = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.PUR_QUOTE_D d
-            WHERE QUOTE_TYPE=@Type AND QUOTE_NO=@No AND ISNULL(CHAFFER_TYPE,'')<>''
-              AND NOT EXISTS (SELECT 1 FROM dbo.PUR_CHAFFER_D q
-                              WHERE q.CHAFFER_TYPE=d.CHAFFER_TYPE AND q.CHAFFER_NO=d.CHAFFER_NO
-                                AND q.SERIAL_NO=d.CHAFFER_SERIAL_NO AND q.PRO_NO=d.PRO_NO);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (productMismatch is not null)
-            return new(false, "以下序号项询价单序号与产品编号不相符 \r\n" + productMismatch);
-        return new(true, null);
-    }
+    /// <summary>预付帐款单（170203）AfterSave：三件套完整性 + 金额比较 + 主表 AMOUNT 汇总。</summary>
 
 
     public static async Task<SprocResult> PurPayAfterSaveAsync(
