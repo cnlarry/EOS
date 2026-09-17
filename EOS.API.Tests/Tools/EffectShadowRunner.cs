@@ -425,7 +425,8 @@ public sealed class EffectShadowRunner
         var report = await RunAsync(options, Console.Out);
         Console.WriteLine($"shadow verdict={report.Summary.Verdict} run={report.RunId} " +
                           $"old={report.OldPath.Status} new={report.NewPath.Status} " +
-                          $"diff={report.Summary.DiffCount} unnormalized={report.Summary.UnnormalizedDiffCount}");
+                          $"diff={report.Summary.DiffCount} unnormalized={report.Summary.UnnormalizedDiffCount} " +
+                          $"accepted={report.Summary.AcceptedDivergenceCount}");
 
         Assert.True(report.Summary.Verdict == "PASS",
             $"影子对拍未通过：{report.Summary.UnnormalizedDiffCount} 处未归一化差异，报告见 logs/shadow/{report.RunId}.json");
@@ -575,7 +576,7 @@ public sealed class EffectShadowRunner
         ShadowAudit audit;
         if (legacy.Status == "ok" && engine.Status == "ok")
         {
-            (tables, audit) = CompareSnapshots(legacy.Snapshot!, engineResult.Snapshot!, deapprove);
+            (tables, audit) = CompareSnapshots(options.ModuleId, options.Event, legacy.Snapshot!, engineResult.Snapshot!, deapprove);
         }
         else
         {
@@ -587,6 +588,7 @@ public sealed class EffectShadowRunner
         var verdict = "PASS";
         var unnormalized = tables.Sum(table => table.Diffs.Count(diff => diff.Verdict == "diff" && !diff.Normalized));
         var diffCount = tables.Sum(table => table.Diffs.Count(diff => diff.Verdict == "diff"));
+        var accepted = tables.Sum(table => table.Diffs.Count(diff => diff.Decision is not null));
         if (legacy.Status == "ok" && engine.Status == "ok" && unnormalized == 0)
         {
             verdict = "PASS";
@@ -621,7 +623,7 @@ public sealed class EffectShadowRunner
             engine,
             tables,
             audit,
-            new ShadowSummary(verdict, diffCount, unnormalized));
+            new ShadowSummary(verdict, diffCount, unnormalized, accepted));
         if (options.WriteReport)
         {
             await WriteReportAsync(report);
@@ -5130,7 +5132,11 @@ public sealed class EffectShadowRunner
     }
 
     private static (List<ShadowTableDiff> Tables, ShadowAudit Audit) CompareSnapshots(
-        ShadowSnapshot legacy, ShadowSnapshot engine, bool deapprove)
+        int moduleId,
+        string shadowEvent,
+        ShadowSnapshot legacy,
+        ShadowSnapshot engine,
+        bool deapprove)
     {
         var tables = new List<ShadowTableDiff>();
         foreach (var table in legacy.Rows.Keys.Union(engine.Rows.Keys, StringComparer.Ordinal).OrderBy(name => name, StringComparer.Ordinal))
@@ -5157,7 +5163,7 @@ public sealed class EffectShadowRunner
                     new[] { "BATCH_NO", "PRO_NO", "BATCH_SERIAL_NO", "DEPOT_ID",
                         "BATCH_ORDER_TYPE", "BATCH_ORDER_NO", "BATCH_DATE" });
             }
-            tables.Add(CompareTable(table, oldRows, newRows));
+            tables.Add(CompareTable(moduleId, shadowEvent, table, oldRows, newRows));
         }
         var audit = new ShadowAudit(legacy.AuditCount, engine.AuditCount, legacy.AuditActions, engine.AuditActions);
         return (tables, audit);
@@ -5248,7 +5254,12 @@ public sealed class EffectShadowRunner
         }
     }
 
-    private static ShadowTableDiff CompareTable(string table, IReadOnlyList<ShadowRow> oldRows, IReadOnlyList<ShadowRow> newRows)
+    private static ShadowTableDiff CompareTable(
+        int moduleId,
+        string shadowEvent,
+        string table,
+        IReadOnlyList<ShadowRow> oldRows,
+        IReadOnlyList<ShadowRow> newRows)
     {
         var diffs = new List<ShadowFieldDiff>();
         var oldByKey = oldRows.GroupBy(row => row.Key).ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
@@ -5264,11 +5275,15 @@ public sealed class EffectShadowRunner
                 var newRow = index < current.Count ? current[index] : null;
                 if (oldRow is null || newRow is null)
                 {
+                    // 整行缺失同样可能是已拍板口径差（如解批反向流水成对抵消后剩余行）：
+                    // 命中白名单即标注出处，仍保留在报告里可见。
+                    var rowAccepted = MatchAcceptedDivergence(moduleId, shadowEvent, table, "*row*");
                     diffs.Add(new ShadowFieldDiff(
                         key, "*row*",
                         oldRow is null ? null : RowSummary(oldRow),
                         newRow is null ? null : RowSummary(newRow),
-                        Normalized: false, Verdict: "diff"));
+                        Normalized: rowAccepted is not null, Verdict: rowAccepted is not null ? "diff" : "diff",
+                        rowAccepted?.Decision));
                     continue;
                 }
                 foreach (var column in oldRow.Cells.Keys.Union(newRow.Cells.Keys, StringComparer.OrdinalIgnoreCase)
@@ -5277,15 +5292,125 @@ public sealed class EffectShadowRunner
                     oldRow.Cells.TryGetValue(column, out var oldValue);
                     newRow.Cells.TryGetValue(column, out var newValue);
                     var (equal, normalized) = CellsEquivalent(column, oldValue, newValue);
-                    if (!equal)
+                    if (equal)
                     {
-                        diffs.Add(new ShadowFieldDiff(key, column, oldValue, newValue, normalized, normalized ? "equal" : "diff"));
+                        continue;
                     }
+                    if (!normalized)
+                    {
+                        var accepted = MatchAcceptedDivergence(moduleId, shadowEvent, table, column);
+                        if (accepted is not null)
+                        {
+                            // 已拍板的口径差异：仍记为 diff（报告里看得见），但标 normalized 并附决策出处，
+                            // 从而不计入"未归一差异"，不影响 PASS 判定。
+                            diffs.Add(new ShadowFieldDiff(key, column, oldValue, newValue, true, "diff", accepted.Decision));
+                            continue;
+                        }
+                    }
+                    diffs.Add(new ShadowFieldDiff(key, column, oldValue, newValue, normalized, normalized ? "equal" : "diff"));
                 }
             }
         }
         return new ShadowTableDiff(table, oldRows.Count, newRows.Count, diffs);
     }
+
+    /// <summary>
+    /// 已拍板的口径差异：新旧实现**有意不同**，不算回归——ADR-012 §16 业务语义拍板与各模块
+    /// 翻译台账的 intended 语义（旧码方向相反、游标退化、净替换倍数、按员工汇总等）。
+    /// 命中即标记 normalized 并在报告里附 decision 出处，差异本身仍然保留可见。
+    /// 纪律：只登记有出处的项（ADR §16 / `docs/plans/业务待定项决策清单.md` / 翻译台账），
+    /// 且必须写明具体列，禁止"某表整表放过"这类粗放规则。
+    /// </summary>
+    private static readonly IReadOnlyList<AcceptedDivergence> AcceptedDivergences =
+    [
+        new("ADR §16.6 + 决策 #64",
+            "信用字段统一为「可用额度」：批核=占用（减）、解批=释放（加）；旧码方向相反或未跟",
+            0, "*", "*", "CREDIT_LIMIT_NUM"),
+        new("决策 #62",
+            "1405 计划量/在途量按 intended 分段语义（旧游标 @pro_no 未初始化导致退化）",
+            1405, "*", "*", "PLAN_QTY"),
+        new("决策 #62",
+            "1405 计划量/在途量按 intended 分段语义（旧游标退化）",
+            1405, "*", "*", "DEPOT_QTY"),
+        new("决策 #62",
+            "1405 PRODUCT 净替换按 intended 语义（旧码退化）",
+            1405, "*", "*", "MRP_QTY"),
+        new("决策 #62",
+            "1405 PRODUCT 净替换按 intended 语义（旧码退化）",
+            1405, "*", "*", "NOT_SEND_QTY"),
+        new("决策 #63",
+            "1418 订单变更 PRODUCT 净替换按 1×DELTA（旧码 2×DELTA 缺陷）",
+            1418, "*", "*", "MRP_QTY"),
+        new("决策 #63",
+            "1418 订单变更 PRODUCT 净替换按 1×DELTA（旧码 2×DELTA 缺陷）",
+            1418, "*", "*", "NOT_SEND_QTY"),
+        new("决策 #63 + §16.1",
+            "1418 结案标志按当前量重算（旧 SP 批核无条件置结案）",
+            1418, "*", "COP_ORDER_D", "FINISHED_TAG"),
+        new("决策 #63 + §16.1",
+            "1418 结案标志按当前量重算（旧 SP 批核无条件置结案）",
+            1418, "*", "COP_ORDER_M", "FINISHED_TAG"),
+        new("决策 #63 + §16.1",
+            "1418 结案标志按当前量重算（旧 SP 批核无条件置结案）",
+            1418, "*", "COP_ORDER_M", "FINISHED_PERSON"),
+        new("决策 #63 + §16.1",
+            "1418 结案标志按当前量重算（旧 SP 批核无条件置结案）",
+            1418, "*", "COP_ORDER_M", "FINISHED_DATE"),
+        new("ADR §17 P0/P1 + 翻译台账 1608/1612",
+            "采购退料/扣款退料批核减少在途采购量、解批加回（旧 SP 未实现该步）",
+            1608, "*", "*", "IN_BUY_QTY"),
+        new("ADR §17 P0/P1 + 翻译台账 1608/1612",
+            "采购退料/扣款退料批核减少在途采购量、解批加回（旧 SP 未实现该步）",
+            1612, "*", "*", "IN_BUY_QTY"),
+        new("决策 #66 H1",
+            "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
+            180206, "*", "*", "USED_WORKTIME"),
+        new("决策 #66 H1",
+            "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
+            180206, "*", "*", "USED_OVERTIME"),
+        new("决策 #66 H1",
+            "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
+            180206, "*", "*", "USED_HOLIDAY_OVERTIME"),
+        new("决策 #66 H1",
+            "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
+            180207, "*", "*", "USED_WORKTIME"),
+        new("决策 #66 H1",
+            "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
+            180207, "*", "*", "USED_REST_OVERTIME"),
+        new("决策 #69",
+            "解批按 clear-finish 清完工戳（完成标记解除）；旧实现保留",
+            2913, "*", "*", "FINISHED_TAG"),
+        new("决策 #69",
+            "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
+            2913, "*", "*", "FINISHED_PERSON"),
+        new("决策 #69",
+            "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
+            2913, "*", "*", "FINISHED_DATE"),
+        new("决策 #69",
+            "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
+            2917, "*", "*", "FINISHED_PERSON"),
+        new("决策 #69",
+            "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
+            2917, "*", "*", "FINISHED_DATE"),
+        new("决策 #69",
+            "解批按 clear-finish 清完工戳（完成标记解除）；旧实现保留",
+            2917, "*", "*", "FINISHED_TAG"),
+    ];
+
+    private sealed record AcceptedDivergence(
+        string Decision,
+        string Reason,
+        int ModuleId,
+        string Event,
+        string Table,
+        string Column);
+
+    private static AcceptedDivergence? MatchAcceptedDivergence(int moduleId, string shadowEvent, string table, string column) =>
+        AcceptedDivergences.FirstOrDefault(item =>
+            (item.ModuleId == 0 || item.ModuleId == moduleId)
+            && (item.Event == "*" || item.Event.Equals(shadowEvent, StringComparison.OrdinalIgnoreCase))
+            && (item.Table == "*" || item.Table.Equals(table, StringComparison.OrdinalIgnoreCase))
+            && item.Column.Equals(column, StringComparison.OrdinalIgnoreCase));
 
     private static (bool Equal, bool Normalized) CellsEquivalent(string column, object? oldValue, object? newValue)
     {
@@ -5458,11 +5583,24 @@ public sealed class EffectShadowRunner
 
     public sealed record ShadowTableDiff(string Table, int RowsOld, int RowsNew, IReadOnlyList<ShadowFieldDiff> Diffs);
 
-    public sealed record ShadowFieldDiff(string Key, string Field, object? Old, object? New, bool Normalized, string Verdict);
+    public sealed record ShadowFieldDiff(
+        string Key,
+        string Field,
+        object? Old,
+        object? New,
+        bool Normalized,
+        string Verdict,
+        // 已拍板口径差异的出处（ADR 章节 / 决策清单编号 / 翻译台账）；普通差异为 null。
+        string? Decision = null);
 
     public sealed record ShadowAudit(int OldCount, int NewCount, IReadOnlyList<string> OldActions, IReadOnlyList<string> NewActions);
 
-    public sealed record ShadowSummary(string Verdict, int DiffCount, int UnnormalizedDiffCount);
+    public sealed record ShadowSummary(
+        string Verdict,
+        int DiffCount,
+        int UnnormalizedDiffCount,
+        // 其中属"已拍板口径差异"（白名单命中、附 decision 出处）的条数：报告里可见，不计入未归一。
+        int AcceptedDivergenceCount = 0);
 
     private sealed record MasterContext(DateTime? ReceiveDate, string? SupplierId, string ReceiveType, string ReceiveNo);
 

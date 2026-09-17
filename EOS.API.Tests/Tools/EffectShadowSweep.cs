@@ -43,7 +43,9 @@ public sealed class EffectShadowSweep
         int Tables,
         string Keys,
         string KeysSource,
-        string? Error);
+        string? Error,
+        // 其中属"已拍板口径差异"的条数（白名单命中、附 decision 出处）
+        int Accepted = 0);
 
     [Fact]
     public async Task Sweep_RefreshLedgerEvidence()
@@ -100,7 +102,8 @@ public sealed class EffectShadowSweep
                 var detail = flattened.Length > 0 ? " | " + flattened[..Math.Min(160, flattened.Length)] : string.Empty;
                 Console.WriteLine(
                     $"  {result.ModuleId,-8} {result.Event,-15} {result.Version,-18} {result.Verdict,-5} " +
-                    $"old={result.Old,-8} new={result.New,-8} tables={result.Tables} keys={result.KeysSource}{detail}");
+                    $"old={result.Old,-8} new={result.New,-8} tables={result.Tables} " +
+                    $"accepted={result.Accepted} keys={result.KeysSource}{detail}");
             }
         }
 
@@ -239,7 +242,7 @@ public sealed class EffectShadowSweep
                 moduleId, shadowEvent, report.DefinitionVersion, report.Summary.Verdict,
                 report.OldPath.Status, report.NewPath.Status, report.Tables.Count,
                 string.Join('|', report.RecordKeys), keys is null ? "auto" : "scan",
-                report.NewPath.Error ?? report.OldPath.Error);
+                report.NewPath.Error ?? report.OldPath.Error, report.Summary.AcceptedDivergenceCount);
         }
         catch (Exception exception)
         {
