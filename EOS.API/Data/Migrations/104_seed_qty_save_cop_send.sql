@@ -55,17 +55,17 @@ DECLARE @PARAM NVARCHAR(MAX) =
     + N'"diagnosticFields":[{"scope":"TARGET","field":"ORDER_NO"},{"scope":"TARGET","field":"QTY"},{"scope":"TARGET","field":"FINISHED_SEND_QTY"},{"scope":"TARGET","field":"SPARE_QTY"},{"scope":"TARGET","field":"FINISHED_SPARE_QTY"},{"scope":"THIS"}],'
     + N'"message":"' + @MSG2 + N'"}]}';
 
-IF EXISTS (SELECT 1 FROM dbo.MODULE_VALIDATION_RULE WHERE MODULE_ID = 1406 AND STAGE = N'SAVE' AND SEQ = 1)
+IF EXISTS (SELECT 1 FROM dbo.MODULE_VALIDATION_RULE WHERE MODULE_ID = 1406 AND STAGE = N'SAVE' AND SEQ = 2)
     UPDATE dbo.MODULE_VALIDATION_RULE
     SET VALIDATION_KEY = N'qty-not-exceed', ENABLED = 1, PARAM_STRUCT = @PARAM, MESSAGE = NULL,
         REMARK = N'保存侧送货不超排程/订单（订单侧受 SEND_ORDER_TAG 门控）', SOURCE_REF = N'cop-send',
         LAST_UPDATE_BY = N'migration-104', LAST_UPDATE_DATE = SYSDATETIME()
-    WHERE MODULE_ID = 1406 AND STAGE = N'SAVE' AND SEQ = 1;
+    WHERE MODULE_ID = 1406 AND STAGE = N'SAVE' AND SEQ = 2;
 ELSE
     INSERT INTO dbo.MODULE_VALIDATION_RULE
         (MODULE_ID, STAGE, SEQ, VALIDATION_KEY, ENABLED, PARAM_STRUCT, MESSAGE, REMARK, SOURCE_REF, CREATE_PERSON, CREATE_DATE)
     VALUES
-        (1406, N'SAVE', 1, N'qty-not-exceed', 1, @PARAM, NULL,
+        (1406, N'SAVE', 2, N'qty-not-exceed', 1, @PARAM, NULL,
          N'保存侧送货不超排程/订单（订单侧受 SEND_ORDER_TAG 门控）', N'cop-send', N'migration-104', SYSDATETIME());
 
 PRINT N'-- 落库结果 --';

@@ -47,18 +47,18 @@ DECLARE @PARAM NVARCHAR(MAX) =
     + N'{"scope":"THIS"}],'
     + N'"message":"以下项收料数量超出采购数量 ' + @NLJ + N'序号  采购数量  已收数量  单据数量 ' + @NLJ + N'{ROWS}"}]}';
 
-IF EXISTS (SELECT 1 FROM dbo.MODULE_VALIDATION_RULE WHERE MODULE_ID = 1607 AND STAGE = N'SAVE' AND SEQ = 1)
+IF EXISTS (SELECT 1 FROM dbo.MODULE_VALIDATION_RULE WHERE MODULE_ID = 1607 AND STAGE = N'SAVE' AND SEQ = 2)
     UPDATE dbo.MODULE_VALIDATION_RULE
     SET VALIDATION_KEY = N'qty-not-exceed', ENABLED = 1, PARAM_STRUCT = @PARAM, MESSAGE = NULL,
         REMARK = N'保存侧收料不超采购（按采购行分组求和 + 0.1 容差）',
         SOURCE_REF = N'pur-receive',
         LAST_UPDATE_BY = N'migration-099', LAST_UPDATE_DATE = SYSDATETIME()
-    WHERE MODULE_ID = 1607 AND STAGE = N'SAVE' AND SEQ = 1;
+    WHERE MODULE_ID = 1607 AND STAGE = N'SAVE' AND SEQ = 2;
 ELSE
     INSERT INTO dbo.MODULE_VALIDATION_RULE
         (MODULE_ID, STAGE, SEQ, VALIDATION_KEY, ENABLED, PARAM_STRUCT, MESSAGE, REMARK, SOURCE_REF, CREATE_PERSON, CREATE_DATE)
     VALUES
-        (1607, N'SAVE', 1, N'qty-not-exceed', 1, @PARAM, NULL,
+        (1607, N'SAVE', 2, N'qty-not-exceed', 1, @PARAM, NULL,
          N'保存侧收料不超采购（按采购行分组求和 + 0.1 容差）', N'pur-receive', N'migration-099', SYSDATETIME());
 
 PRINT N'-- 影响面：现存收料按采购行合计后超采购量的行数（只读） --';

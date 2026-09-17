@@ -88,8 +88,8 @@ DECLARE @PARAM_1502 NVARCHAR(MAX) =
 
 MERGE dbo.MODULE_VALIDATION_RULE AS t
 USING (VALUES
-    (1507, 1, N'qty-not-exceed', @PARAM_1507, N'生产计划超订单'),
-    (1502, 1, N'qty-not-exceed', @PARAM_1502, N'制令单超订单/生产计划')
+    (1507, 2, N'qty-not-exceed', @PARAM_1507, N'生产计划超订单'),
+    (1502, 2, N'qty-not-exceed', @PARAM_1502, N'制令单超订单/生产计划')
 ) AS s (MODULE_ID, SEQ, VALIDATION_KEY, PARAM_STRUCT, REMARK)
 ON t.MODULE_ID = s.MODULE_ID AND t.STAGE = N'SAVE' AND t.SEQ = s.SEQ
 WHEN MATCHED THEN UPDATE SET

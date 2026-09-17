@@ -85,17 +85,17 @@ DECLARE @C8 NVARCHAR(MAX) =
 DECLARE @PARAM NVARCHAR(MAX) = N'{"mode":"usage-not-exceed","checks":['
     + @C1 + N',' + @C2 + N',' + @C3 + N',' + @C4 + N',' + @C5 + N',' + @C6 + N',' + @C7 + N',' + @C8 + N']}';
 
-IF EXISTS (SELECT 1 FROM dbo.MODULE_VALIDATION_RULE WHERE MODULE_ID = 1412 AND STAGE = N'SAVE' AND SEQ = 1)
+IF EXISTS (SELECT 1 FROM dbo.MODULE_VALIDATION_RULE WHERE MODULE_ID = 1412 AND STAGE = N'SAVE' AND SEQ = 2)
     UPDATE dbo.MODULE_VALIDATION_RULE
     SET VALIDATION_KEY = N'qty-not-exceed', ENABLED = 1, PARAM_STRUCT = @PARAM, MESSAGE = NULL,
         REMARK = N'保存侧返仓/送货/调拔不超备货（数量与备品各一条，SYSSS 门控）', SOURCE_REF = N'cop-fitin',
         LAST_UPDATE_BY = N'migration-102', LAST_UPDATE_DATE = SYSDATETIME()
-    WHERE MODULE_ID = 1412 AND STAGE = N'SAVE' AND SEQ = 1;
+    WHERE MODULE_ID = 1412 AND STAGE = N'SAVE' AND SEQ = 2;
 ELSE
     INSERT INTO dbo.MODULE_VALIDATION_RULE
         (MODULE_ID, STAGE, SEQ, VALIDATION_KEY, ENABLED, PARAM_STRUCT, MESSAGE, REMARK, SOURCE_REF, CREATE_PERSON, CREATE_DATE)
     VALUES
-        (1412, N'SAVE', 1, N'qty-not-exceed', 1, @PARAM, NULL,
+        (1412, N'SAVE', 2, N'qty-not-exceed', 1, @PARAM, NULL,
          N'保存侧返仓/送货/调拔不超备货（数量与备品各一条，SYSSS 门控）', N'cop-fitin', N'migration-102', SYSDATETIME());
 
 PRINT N'-- 落库结果 --';

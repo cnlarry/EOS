@@ -45,17 +45,17 @@ DECLARE @PARAM NVARCHAR(MAX) =
     + N'{"scope":"THIS"}],'
     + N'"message":"以下退料已超出订单数量 ' + @NLJ + N' 订单单号  订单数量  已送数量  已退数量  已退次品  单据数量 ' + @NLJ + N'{ROWS}"}]}';
 
-IF EXISTS (SELECT 1 FROM dbo.MODULE_VALIDATION_RULE WHERE MODULE_ID = 1423 AND STAGE = N'SAVE' AND SEQ = 1)
+IF EXISTS (SELECT 1 FROM dbo.MODULE_VALIDATION_RULE WHERE MODULE_ID = 1423 AND STAGE = N'SAVE' AND SEQ = 2)
     UPDATE dbo.MODULE_VALIDATION_RULE
     SET VALIDATION_KEY = N'qty-not-exceed', ENABLED = 1, PARAM_STRUCT = @PARAM, MESSAGE = NULL,
         REMARK = N'保存侧退料不超订单（按订单行分组求和）', SOURCE_REF = N'cop-back',
         LAST_UPDATE_BY = N'migration-101', LAST_UPDATE_DATE = SYSDATETIME()
-    WHERE MODULE_ID = 1423 AND STAGE = N'SAVE' AND SEQ = 1;
+    WHERE MODULE_ID = 1423 AND STAGE = N'SAVE' AND SEQ = 2;
 ELSE
     INSERT INTO dbo.MODULE_VALIDATION_RULE
         (MODULE_ID, STAGE, SEQ, VALIDATION_KEY, ENABLED, PARAM_STRUCT, MESSAGE, REMARK, SOURCE_REF, CREATE_PERSON, CREATE_DATE)
     VALUES
-        (1423, N'SAVE', 1, N'qty-not-exceed', 1, @PARAM, NULL,
+        (1423, N'SAVE', 2, N'qty-not-exceed', 1, @PARAM, NULL,
          N'保存侧退料不超订单（按订单行分组求和）', N'cop-back', N'migration-101', SYSDATETIME());
 
 PRINT N'-- 落库结果 --';
