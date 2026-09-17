@@ -8,8 +8,9 @@ namespace EOS.API.Data;
 /// 流程定义维护（模块 2101「表单流程设计」，替代旧 的受控 C# 实现）。
 /// 维护 WFFORM（流程主）+ WFFORM_FLOW（步骤）两表；保存为全量重建。
 /// 安全边界：
-/// - 只允许给"具备批核能力"的工作台模块配置流程（hasWorkflow：ModuleBusinessMap 静态登记
-/// 或 MODULES.UPDATE_SP 非空，且主表有 CONFIRM_TAG 物理列）；
+/// - 只允许给"具备批核能力"的工作台模块配置流程（WorkflowStates.HasApproveCapability：
+/// 静态登记批核过程 / MODULES.UPDATE_SP 非空 / 效果引擎接管 / 自动批核 / 已配置流程，
+/// 且主表有 CONFIRM_TAG 物理列）；
 /// - EXEC_PERSON/权限串/必签名单全部按 SYSDL 真实用户校验（禁止写入不存在的审批人）；
 /// - EXEC_CONDITION/PERSON_CONDITION/AUTO_EXEC_CONDITION 保存前经 DataFilterParser 按主表
 /// 物理列白名单预解析（不可解析即拒绝保存，与引擎启动时同源护栏，绝不拼接 SQL）；
@@ -51,7 +52,9 @@ public sealed class FlowDefinitionService(
         await using (var command = new SqlCommand("""
             SELECT m.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC,''))), LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),
                    LTRIM(RTRIM(ISNULL(m.M_URL,''))), LTRIM(RTRIM(ISNULL(m.UPDATE_SP,''))),
-                   ISNULL(m.AUTO_APPROVE,0)
+                   ISNULL(m.AUTO_APPROVE,0), ISNULL(m.EFFECT_ENGINE_TAG,0),
+                   CASE WHEN EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=m.M_IDX)
+                        THEN 1 ELSE 0 END
             FROM dbo.MODULES m WITH (NOLOCK)
             WHERE LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,'')))<>''
             ORDER BY m.M_IDX;
@@ -63,9 +66,13 @@ public sealed class FlowDefinitionService(
                 var moduleId = reader.GetInt32(0);
                 if (!ModuleRouteValidator.IsWorkbenchUrl(reader.GetString(3)))
                     continue;
-                // hasWorkflow：静态登记 WorkflowSproc 或 MODULES.UPDATE_SP 非空（自动注册）
-                var hasWorkflow = ModuleBusinessMap.Get(moduleId)?.WorkflowSproc is not null
-                    || !string.IsNullOrWhiteSpace(reader.GetString(4));
+                // 批核能力：静态登记批核过程 / MODULES.UPDATE_SP / 效果引擎接管 / 自动批核 / 已配置流程
+                var hasWorkflow = WorkflowStates.HasApproveCapability(
+                    reader.GetBoolean(5),
+                    ModuleBusinessMap.Get(moduleId)?.WorkflowSproc is not null,
+                    reader.GetString(4),
+                    reader.GetBoolean(6),
+                    reader.GetBoolean(7));
                 if (!hasWorkflow)
                     continue;
                 eligible.Add(new
@@ -234,7 +241,10 @@ public sealed class FlowDefinitionService(
         string? masterTable;
         await using (var moduleCommand = new SqlCommand("""
             SELECT LTRIM(RTRIM(ISNULL(M_DESC,''))), LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),
-                   LTRIM(RTRIM(ISNULL(M_URL,''))), LTRIM(RTRIM(ISNULL(UPDATE_SP,'')))
+                   LTRIM(RTRIM(ISNULL(M_URL,''))), LTRIM(RTRIM(ISNULL(UPDATE_SP,''))),
+                   ISNULL(AUTO_APPROVE,0), ISNULL(EFFECT_ENGINE_TAG,0),
+                   CASE WHEN EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=M_IDX)
+                        THEN 1 ELSE 0 END
             FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
             """, connection))
         {
@@ -248,9 +258,14 @@ public sealed class FlowDefinitionService(
             var updateSproc = reader.GetString(3);
             if (!ModuleRouteValidator.IsWorkbenchUrl(moduleUrl))
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "MODULE_NOT_WORKBENCH", "只能给通用工作台模块配置审批流程。");
-            var hasWorkflow = ModuleBusinessMap.Get(moduleId)?.WorkflowSproc is not null || !string.IsNullOrWhiteSpace(updateSproc);
+            var hasWorkflow = WorkflowStates.HasApproveCapability(
+                reader.GetBoolean(4),
+                ModuleBusinessMap.Get(moduleId)?.WorkflowSproc is not null,
+                updateSproc,
+                reader.GetBoolean(5),
+                reader.GetBoolean(6));
             if (!hasWorkflow)
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "MODULE_NO_APPROVE", "该模块未配置批核能力（MODULES.UPDATE_SP 为空），不能配置流程。");
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "MODULE_NO_APPROVE", "该模块未配置批核能力（无批核过程、效果链与自动批核），不能配置流程。");
         }
         if (string.IsNullOrWhiteSpace(masterTable) || !WorkbenchSql.Identifier.IsMatch(masterTable))
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "INVALID_MASTER_TABLE", "模块主表无效。");

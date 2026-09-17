@@ -113,9 +113,13 @@ public sealed class ControlledSprocInvokerTests
     }
 
     [Theory]
-    // 批核过程退役后即从受控白名单移除：白名单只减不增（P_WF_COP_QUOTE 已随效果链接管退役）
+    // 批核过程退役后即从受控白名单移除：白名单只减不增
+    // （P_WF_COP_QUOTE / P_WF_COP_ORDER / P_WF_COP_RECEIPT / P_WF_PUR_PAY / P_WF_PRODUCT 已随效果链接管退役）
     [InlineData("P_WF_COP_QUOTE", false)]
-    [InlineData("P_WF_PRODUCT", true)]
+    [InlineData("P_WF_COP_ORDER", false)]
+    [InlineData("P_WF_COP_RECEIPT", false)]
+    [InlineData("P_WF_PUR_PAY", false)]
+    [InlineData("P_WF_PRODUCT", false)]
     [InlineData("P_COP_QUOTE_After_Save", false)] // 已实现为领域规则（cop-quote）
     [InlineData("P_COP_ACCOUNT_After_Save", false)] // 已实现（cop-account）
     [InlineData("P_PUR_DUE_After_Save", false)] // 已实现（purchase-due）
@@ -123,7 +127,7 @@ public sealed class ControlledSprocInvokerTests
     [InlineData("P_COP_PREPAY_After_Save", false)] // 已实现（cop-prepay）
     [InlineData("P_PUR_PAY_After_Save", false)] // 已实现（pur-pay）
     [InlineData("P_PUR_PREPAY_After_Save", false)] // 已实现（pur-prepay）
-    [InlineData("P_WF_PUR_PURCHASE", true)]
+    [InlineData("P_WF_PUR_PURCHASE", false)] // 已随效果链接管退役
     [InlineData("P_PUR_PURCHASE_After_Save", false)] // 已实现（pur-purchase）
     [InlineData("P_COP_SEND_JING_After_Save", false)] // 已实现（cop-send）
     [InlineData("P_COP_ORDER_After_Save", false)] // 已实现为领域规则（cop-order）

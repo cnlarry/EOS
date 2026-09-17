@@ -5422,6 +5422,12 @@ public sealed class EffectShadowRunner
         new("决策 #110 + ADR §11.3",
             "返还单解批反向减扣：旧实现 NULL+(-qty) 恒为 NULL（NULL 累加失效，按业务意图修正为 coalesce 后再反向）",
             130109, "*", "INV_LOAN_D", "RETURN_QTY"),
+        new("决策 #110 + ADR §11.3",
+            "采购单回写请购行已采购量：旧实现 NULL+qty 恒为 NULL（NULL 累加失效），按业务意图修正为 coalesce 后再累加",
+            1606, "*", "PUR_APPLY_D", "PURCHASE_QTY"),
+        new("决策 #110 + ADR §11.3",
+            "请购行结案判定随已采购量：旧实现在已采购量为 NULL 时比较退化为假，按 coalesce 后的数量重算",
+            1606, "*", "PUR_APPLY_D", "FINISHED_TAG"),
     ];
 
     private sealed record AcceptedDivergence(
