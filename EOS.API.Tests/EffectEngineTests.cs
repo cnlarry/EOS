@@ -433,6 +433,35 @@ public class ServiceEffectHandlerTests
         Assert.Contains(rowSet.Parameters, parameter => parameter.Name == "@dc1" && (string?)parameter.Value == "");
     }
 
+    /// <summary>
+    /// 库位为空的明细行必须被跳过：借出单/返还单的"归还库位"列常年为空，原实现用
+    /// isnull(&lt;库位列&gt;,'')&lt;&gt;'' 跳过；照搬会往 INV_PRO_DEPOT 写 NULL 库位而整单报错。
+    /// </summary>
+    [Fact]
+    public void InventoryMove_skips_rows_without_depot()
+    {
+        var plan = EOS.API.Data.Effects.ServiceEffectHandlers.InventoryMovePlan.Parse(
+            JsonSerializer.SerializeToElement(new
+            {
+                direction = "IN",
+                depotField = "IN_DEPOT_ID",
+                fieldMap = new { masterDate = "LOAN_DATE", qty = "QTY", detail = new[] { "SERIAL_NO" } },
+            }));
+        var modulePlan = new EOS.API.Data.Effects.ModuleEffectPlan(
+            130108, "INV_LOAN_M", "INV_LOAN_D", "v1", new[] { "LOAN_TYPE", "LOAN_NO" },
+            Array.Empty<EOS.API.Data.Effects.EffectActionPlan>(),
+            Array.Empty<EOS.API.Data.Effects.EffectValidationPlan>());
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "INV_LOAN_D.SERIAL_NO", "INV_LOAN_D.PRO_NO", "INV_LOAN_D.IN_DEPOT_ID", "INV_LOAN_D.QTY",
+            "INV_LOAN_M.LOAN_DATE", "INV_LOAN_D.LOAN_TYPE", "INV_LOAN_D.LOAN_NO",
+        };
+
+        var rowSet = plan.BuildRowSet(modulePlan, new[] { "JC", "JC001" }, columns);
+
+        Assert.Contains("ISNULL(D.[IN_DEPOT_ID], '') <> ''", rowSet.Sql);
+    }
+
     [Fact]
     public void InventoryMove_rejects_missing_master_keys()
     {
