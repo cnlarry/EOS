@@ -548,5 +548,51 @@ public class ValidationRuleRegistryFailClosedTests
 
         Assert.DoesNotContain(issues, issue => issue.Contains("未知参数键"));
     }
+
+    [Fact]
+    public void QuantityCheck_ModuleScopeGate_IsAccepted()
+    {
+        var issues = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[
+              {"targetTable":"T","match":[{"target":"A","source":{"scope":"DETAIL","field":"B"}}],
+               "thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"QTY","coef":1}]},
+               "usage":{"scope":"TARGET","fields":["X"]},
+               "limit":{"scope":"TARGET","fields":["Y"]},
+               "switch":{"gates":[{"scope":"MODULE","key":"ERROR_NO_SAVE","expect":1},
+                                  {"scope":"SYSSS","key":"FITOUT_TAG","expect":1}]}}]}
+            """));
+
+        Assert.DoesNotContain(issues, issue => issue.Contains("switch") || issue.Contains("未知参数键"));
+    }
+
+    [Fact]
+    public void QuantityCheck_UnknownGateScope_IsRejected()
+    {
+        var issues = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[
+              {"targetTable":"T","match":[{"target":"A","source":{"scope":"DETAIL","field":"B"}}],
+               "thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]},
+               "usage":{"scope":"TARGET","fields":["X"]},
+               "limit":{"scope":"TARGET","fields":["Y"]},
+               "switch":{"gates":[{"scope":"SYSDD","key":"ERROR_NO_SAVE","expect":1}]}}]}
+            """));
+
+        Assert.Contains(issues, issue => issue.Contains("scope 仅支持 SYSSS / MODULE"));
+    }
+
+    [Fact]
+    public void QuantityCheck_EmptyGateList_IsRejected()
+    {
+        var issues = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[
+              {"targetTable":"T","match":[{"target":"A","source":{"scope":"DETAIL","field":"B"}}],
+               "thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]},
+               "usage":{"scope":"TARGET","fields":["X"]},
+               "limit":{"scope":"TARGET","fields":["Y"]},
+               "switch":{"gates":[]}}]}
+            """));
+
+        Assert.Contains(issues, issue => issue.Contains("gates 不能为空数组"));
+    }
 }
 

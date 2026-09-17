@@ -29,7 +29,9 @@ public static class ValidationRuleRegistry
         };
 
     private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "message", "switch", "diagnosticFields", "maxRows", "diagnosticCellSeparator", "diagnosticRowSeparator");
-    private static readonly IReadOnlySet<string> QtySwitchKeys = KeySet("key", "expect");
+    private static readonly IReadOnlySet<string> QtySwitchKeys = KeySet("key", "expect", "gates");
+    private static readonly IReadOnlySet<string> QtyGateKeys = KeySet("scope", "key", "expect");
+    private static readonly IReadOnlySet<string> QtyGateScopes = KeySet("SYSSS", "MODULE");
     private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "condition", "message", "diagnosticFields");
     private static readonly IReadOnlySet<string> LineRequireTriggerKeys = KeySet("scope", "field", "op", "value");
     private static readonly IReadOnlySet<string> LineRequireOps = KeySet("GT", "GE", "LT", "LE", "EQ", "NEQ");
@@ -294,10 +296,40 @@ public static class ValidationRuleRegistry
     private static void ValidateSwitchShape(ValidationRuleConfig rule, JsonElement element, string where, List<string> issues)
     {
         RejectUnknownKeys(rule, element, QtySwitchKeys, where, issues);
-        if (string.IsNullOrWhiteSpace(GetString(element, "key")))
+        var hasSingle = element.TryGetProperty("key", out _);
+        var hasList = element.TryGetProperty("gates", out var gates) && gates.ValueKind == JsonValueKind.Array;
+        if (!hasSingle && !hasList)
+            issues.Add($"校验规则 {Label(rule)}：{where}.key 不能为空（SYSSS 开关列名）");
+        if (hasSingle && string.IsNullOrWhiteSpace(GetString(element, "key")))
             issues.Add($"校验规则 {Label(rule)}：{where}.key 不能为空（SYSSS 开关列名）");
         if (element.TryGetProperty("expect", out var expect) && expect.ValueKind != JsonValueKind.Number)
             issues.Add($"校验规则 {Label(rule)}：{where}.expect 必须是数字（0/1）");
+        if (!hasList)
+            return;
+        if (gates.GetArrayLength() == 0)
+            issues.Add($"校验规则 {Label(rule)}：{where}.gates 不能为空数组");
+        var index = 0;
+        foreach (var item in gates.EnumerateArray())
+        {
+            var gateWhere = $"{where}.gates[{index}]";
+            index++;
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                issues.Add($"校验规则 {Label(rule)}：{gateWhere} 必须是对象");
+                continue;
+            }
+            RejectUnknownKeys(rule, item, QtyGateKeys, gateWhere, issues);
+            if (string.IsNullOrWhiteSpace(GetString(item, "key")))
+                issues.Add($"校验规则 {Label(rule)}：{gateWhere}.key 不能为空");
+            if (item.TryGetProperty("scope", out var scope))
+            {
+                var text = scope.ValueKind == JsonValueKind.String ? scope.GetString()!.Trim() : string.Empty;
+                if (!QtyGateScopes.Contains(text))
+                    issues.Add($"校验规则 {Label(rule)}：{gateWhere}.scope 仅支持 SYSSS / MODULE");
+            }
+            if (item.TryGetProperty("expect", out var gateExpect) && gateExpect.ValueKind != JsonValueKind.Number)
+                issues.Add($"校验规则 {Label(rule)}：{gateWhere}.expect 必须是数字（0/1）");
+        }
     }
 
     /// <summary>

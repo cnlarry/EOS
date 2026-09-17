@@ -488,6 +488,68 @@ public sealed class EffectValidationLiveDataTests
     }
 
     [Fact]
+    public async Task 品质日分析_受模块门控的数量校验_开关关闭跳过_打开命中且文案一致()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            // 造一张品质日分析单：明细指向一张"品检额度已满"的生产单
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, QTY, FINISHED_ANALYSIS_QTY)
+                VALUES (N'ZZ', N'ZZT2609PRD01', 10, 10);
+                INSERT INTO dbo.QC_ANALYSIS_M (ANALYSIS_TYPE, ANALYSIS_NO) VALUES (N'ZZ', N'ZZT2609QA01');
+                INSERT INTO dbo.QC_ANALYSIS_D (ANALYSIS_TYPE, ANALYSIS_NO, SERIAL_NO, PRODUCE_TYPE, PRODUCE_NO, PRO_NO, PRODUCE_QTY)
+                VALUES (N'ZZ', N'ZZT2609QA01', 1, N'ZZ', N'ZZT2609PRD01', N'ZZT2609PRO01', 5);
+                INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME) VALUES (N'ZZT2609PRO01', N'集成测试品号');
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            var plan = await LoadPlanAsync(connection, transaction, 3303, token, "qty-not-exceed");
+
+            // 模块开关关闭（库内 3303 的 ERROR_NO_SAVE=0）→ 门控跳过整条校验，超量也放行
+            var flag = Convert.ToInt32(await new SqlCommand(
+                "SELECT ISNULL(ERROR_NO_SAVE,0) FROM dbo.MODULES WHERE M_IDX=3303;", connection, transaction)
+                .ExecuteScalarAsync(token));
+            Assert.Equal(0, flag);
+            await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609QA01"]);
+
+            // 门控打开（事务内临时置 1）→ 命中并回报生产单号，文案与旧实现逐字一致
+            await using (var open = new SqlCommand(
+                "UPDATE dbo.MODULES SET ERROR_NO_SAVE=1 WHERE M_IDX=3303;", connection, transaction))
+            {
+                await open.ExecuteNonQueryAsync(token);
+            }
+            var exception = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609QA01"]));
+            Assert.Contains("以下生产单号已品检数量超出生产单生产数量！", exception.Message);
+            Assert.Contains("ZZT2609PRD01", exception.Message);
+
+            // 无门控的引用校验（该族里当前**生效**的那部分）：明细指向不存在的制令单 → 拒绝
+            await using (var missing = new SqlCommand("""
+                UPDATE dbo.MODULES SET ERROR_NO_SAVE=0 WHERE M_IDX=3303;
+                UPDATE dbo.QC_ANALYSIS_D SET PRODUCE_NO = N'ZZT2609NOPROD'
+                 WHERE ANALYSIS_TYPE = N'ZZ' AND ANALYSIS_NO = N'ZZT2609QA01' AND SERIAL_NO = 1;
+                """, connection, transaction))
+            {
+                await missing.ExecuteNonQueryAsync(token);
+            }
+            var referencePlan = await LoadPlanAsync(connection, transaction, 3303, token, "reference-exists");
+            var reference = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, referencePlan, "SAVE", token, ["ZZ", "ZZT2609QA01"]));
+            Assert.Contains("以下序号项制令单不存在", reference.Message);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
+    [Fact]
     public async Task 量产模具完工_申请数量超承认单可申请数量_拒绝_固定文案()
     {
         var token = CancellationToken.None;
