@@ -690,7 +690,10 @@ button, input, select { font: inherit; }
   .erp-sidebar-collapsed .erp-sidebar .navbar-brand { justify-content: center !important; padding-inline: 6px !important; }
   .erp-sidebar-collapsed .erp-sidebar .navbar-brand > span:last-child,
   .erp-sidebar-collapsed .erp-sidebar .nav-link-title { display: none; }
-  .erp-sidebar-collapsed .erp-sidebar .nav-link { justify-content: center !important; margin-inline: 7px; padding-inline: 8px; }
+  .erp-sidebar-collapsed .erp-sidebar .nav-link { justify-content: center !important; min-width: 0; margin-inline: 7px; padding-inline: 8px; }
+  /* 折叠态图标居中：导航列常溢出，右侧经典滚动条占位会把内容盒挤向左侧；
+     两侧预留等宽 gutter 后图标相对 72px 居中（overlay/细滚动条下 gutter 为 0，依然居中） */
+  .erp-sidebar-collapsed .erp-sidebar .navbar-nav { scrollbar-gutter: stable both-edges; }
   .erp-sidebar-collapsed .erp-sidebar .nav-link-icon { margin: 0; }
   .erp-sidebar-collapsed .erp-nav-chevron { display: none; }
 }
