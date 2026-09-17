@@ -532,6 +532,50 @@ public sealed class EffectValidationLiveDataTests
     }
 
     [Fact]
+    public async Task 工序发料_受门控的出库不超工序工单入库_门关跳过门开命中五列诊断()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            // 工序工单行：已出库 9、已入库 10；本单发料 5 ⇒ 9+5 > 10 超量
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.MOC_WORK_D (WORK_TYPE, WORK_NO, SERIAL_NO, PROCESS_QTY, FINISHED_OUT_QTY, FINISHED_IN_QTY)
+                VALUES (N'ZZ', N'ZZT2609WO01', 1, 10, 9, 10);
+                INSERT INTO dbo.MOC_WORK_OUT_M (WORK_OUT_TYPE, WORK_OUT_NO) VALUES (N'ZZ', N'ZZT2609WOOUT01');
+                INSERT INTO dbo.MOC_WORK_OUT_D (WORK_OUT_TYPE, WORK_OUT_NO, SERIAL_NO, WORK_TYPE, WORK_NO, WORK_SERIAL_NO, QTY)
+                VALUES (N'ZZ', N'ZZT2609WOOUT01', 1, N'ZZ', N'ZZT2609WO01', 1, 5);
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            var plan = await LoadPlanAsync(connection, transaction, 2707, token, "qty-not-exceed");
+
+            // 门控关（库内 2707 的 ERROR_NO_SAVE=0）→ 跳过，超量也放行
+            await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609WOOUT01"]);
+
+            // 门控开 → 命中：文案头部逐字 + 五列诊断（工单单别/单号/数量/已入库/单据数量）
+            await using (var open = new SqlCommand(
+                "UPDATE dbo.MODULES SET ERROR_NO_SAVE=1 WHERE M_IDX=2707;", connection, transaction))
+            {
+                await open.ExecuteNonQueryAsync(token);
+            }
+            var exception = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609WOOUT01"]));
+            Assert.Contains("以下出库超出工序工单入库数量", exception.Message);
+            Assert.Contains("工序工单单别   单号   数量   已入库数量   单据数量", exception.Message);
+            Assert.Contains("ZZT2609WO01", exception.Message);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
+    [Fact]
     public async Task 品质日分析_受模块门控的数量校验_开关关闭跳过_打开命中且文案一致()
     {
         var token = CancellationToken.None;
