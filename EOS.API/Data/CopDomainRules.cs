@@ -38,36 +38,6 @@ public static class CopDomainRules
             ], token);
     }
 
-    /// <summary>备货返仓单（P_COP_FITIN）AfterSave：CHECK 分支（SYSSS 门控）+ 批号条件必填。</summary>
-    public static async Task<SprocResult> CopFitinAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction, int moduleId,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "备货返仓单领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        return await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
-            "COP_FITIN_D", "FITIN_TYPE", "FITIN_NO",
-            [
-                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
-            ], token);
-    }
-
-    /// <summary>客户退料单（P_COP_BACK）AfterSave：CHECK 分支（退料不超订单）+ 批号条件必填。</summary>
-    public static async Task<SprocResult> CopBackAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction, int moduleId,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "客户退料单领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        return await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
-            "COP_BACK_D", "BACK_TYPE", "BACK_NO",
-            [
-                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
-            ], token);
-    }
-
     /// <summary>采购退料单（P_PUR_CANCEL）AfterSave：6 项引用校验 + 退料不超收料。</summary>
 
 
