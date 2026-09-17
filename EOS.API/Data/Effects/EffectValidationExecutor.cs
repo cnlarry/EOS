@@ -215,9 +215,14 @@ public sealed class EffectValidationExecutor
                     ? $"{thisSql} > {limitWithOffset}" // document quantity must not exceed the referenced cap
                     : $"{usageSql} + {thisSql} > {limitWithOffset}";
 
+            // 来源行的单据范围：分组形态已把范围写进子查询，逐行形态必须作为顶层谓词补上，
+            // 否则比较的是全库历史行，他单的超量会拦下本次操作（同 reference-exists 的旧缺陷）。
+            var predicate = aggregate
+                ? correlation + " AND " + comparison
+                : correlation + " AND " + documentScope + " AND " + comparison;
+
             var sql = new StringBuilder("SELECT TOP 1 1 FROM ")
-                .Append(fromSql).Append(" WHERE ")
-                .Append(correlation).Append(" AND ").Append(comparison);
+                .Append(fromSql).Append(" WHERE ").Append(predicate);
             await using var command = new SqlCommand(sql.ToString(), connection, transaction);
             foreach (var parameter in parameters)
             {
@@ -242,7 +247,7 @@ public sealed class EffectValidationExecutor
                 var lines = new List<string>();
                 await using var lineCommand = new SqlCommand(
                     "SELECT TOP (" + MaxRowsOf(check).ToString(CultureInfo.InvariantCulture) + ") "
-                    + string.Join(", ", cells) + " FROM " + fromSql + " WHERE " + correlation + " AND " + comparison,
+                    + string.Join(", ", cells) + " FROM " + fromSql + " WHERE " + predicate,
                     connection, transaction);
                 foreach (var parameter in parameters)
                     lineCommand.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
