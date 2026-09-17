@@ -87,53 +87,7 @@ public static class CopDomainRules
     /// <summary>工时录入（180207）AfterSave：HR_SETUP.REQUIRE_ENACTMENT=1 时校验加班不超申请（当前环境=0，跳过）。</summary>
 
 
-    /// <summary>客户订单变更（1418）AfterSave：原单已批核 + 变更量校验 + 订单号唯一。</summary>
-    public static async Task<SprocResult> CopOrderChangeAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var type = keyValues[0]; var no = keyValues[1];
-        if (await DomainRuleService.ExistsAsync(connection, transaction,
-            """
-            SELECT TOP 1 1 FROM dbo.COP_ORDER_M m
-            INNER JOIN dbo.COP_ORDER_CHANGE_M c ON c.ORDER_TYPE=m.ORDER_TYPE AND c.ORDER_NO=m.ORDER_NO
-            WHERE c.CHANGE_ORDER_TYPE=@Type AND c.CHANGE_ORDER_NO=@No AND m.CONFIRM_TAG=0;
-            """, type, no, token))
-            return new(false, "订单未批核，不可变更");
-        var lines = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT oc.SERIAL_NO FROM dbo.COP_ORDER_D od
-            INNER JOIN dbo.COP_ORDER_CHANGE_D oc
-              ON oc.ORDER_TYPE=od.ORDER_TYPE AND oc.ORDER_NO=od.ORDER_NO AND oc.ORDER_SERIAL_NO=od.SERIAL_NO
-            WHERE oc.CHANGE_ORDER_TYPE=@Type AND oc.CHANGE_ORDER_NO=@No
-              AND (oc.QTY < ISNULL(od.FINISHED_SEND_QTY,0) OR oc.SPARE_QTY < ISNULL(od.FINISHED_SPARE_QTY,0)
-                OR oc.QTY < ISNULL(od.FINISHED_PRODUCE_QTY,0) OR oc.SPARE_QTY < ISNULL(od.FINISHED_PRODUCE_SPARE_QTY,0));
-            """, type, no, token, line: r => "    " + Convert.ToInt32(r.GetValue(0)).ToString());
-        if (lines is not null)
-            return new(false, "变更后以下序号项订单数量小于已完工或已送货数量\r\n" + lines);
-        var planLines = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT oc.SERIAL_NO FROM dbo.COP_ORDER_D od
-            INNER JOIN dbo.COP_ORDER_CHANGE_D oc
-              ON oc.ORDER_TYPE=od.ORDER_TYPE AND oc.ORDER_NO=od.ORDER_NO AND oc.ORDER_SERIAL_NO=od.SERIAL_NO
-            WHERE oc.CHANGE_ORDER_TYPE=@Type AND oc.CHANGE_ORDER_NO=@No AND oc.PLAN_QTY < ISNULL(od.FINISHED_PRODUCE_QTY,0);
-            """, type, no, token, line: r => "    " + Convert.ToInt32(r.GetValue(0)).ToString());
-        if (planLines is not null)
-            return new(false, "变更后以下序号项计划生产数量小于已下生产单数量\r\n" + planLines);
-        // 客户订单号不重复
-        if (await DomainRuleService.ExistsAsync(connection, transaction,
-            """
-            SELECT TOP 1 1 FROM dbo.COP_ORDER_M
-            WHERE CLIENT_ORDER_NO=(SELECT CLIENT_ORDER_NO FROM dbo.COP_ORDER_CHANGE_M
-                                   WHERE CHANGE_ORDER_TYPE=@Type AND CHANGE_ORDER_NO=@No)
-              AND ISNULL(CLIENT_ORDER_NO,'')<>''
-              AND NOT EXISTS (SELECT 1 FROM dbo.COP_ORDER_CHANGE_M c
-                              WHERE c.ORDER_TYPE=COP_ORDER_M.ORDER_TYPE AND c.ORDER_NO=COP_ORDER_M.ORDER_NO
-                                AND c.CHANGE_ORDER_TYPE=@Type AND c.CHANGE_ORDER_NO=@No);
-            """, type, no, token))
-            return new(false, "客户订单号重复。");
-        return new(true, null);
-    }
+    /// <summary>客户订单变更（1418）AfterSave：原单批核、变更量下限与订单号唯一由校验目录承担。</summary>
 
     /// <summary>
     /// 送货单（1406）AfterSave：排程/订单量校验（SYSSS 标志门控）+ 库存可用校验 +

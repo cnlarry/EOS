@@ -21,6 +21,31 @@ public sealed class EffectValidationDuplicateCheckTests
     private static JsonElement Params(string json) => JsonDocument.Parse(json).RootElement.Clone();
 
     [Fact]
+    public void Entity_被本单引用的候选行按excludeVia排除()
+    {
+        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+            Plan("COP_ORDER_CHANGE_M", "COP_ORDER_CHANGE_D", "CHANGE_ORDER_TYPE", "CHANGE_ORDER_NO"),
+            Params("""
+                {"mode":"entity","table":"COP_ORDER_M","keyFields":["CLIENT_ORDER_NO"],
+                 "keySource":{"scope":"MASTER","fields":["CLIENT_ORDER_NO"]},
+                 "filter":{"logic":"AND","items":[{"type":"blank","field":{"scope":"TARGET","field":"CLIENT_ORDER_NO"},"negate":true}]},
+                 "excludeVia":{"table":"COP_ORDER_CHANGE_M",
+                   "join":[{"target":"ORDER_TYPE","source":{"scope":"TARGET","field":"ORDER_TYPE"}},
+                           {"target":"ORDER_NO","source":{"scope":"TARGET","field":"ORDER_NO"}}]}}
+                """),
+            ["E2E", "E2ESL01"]);
+
+        // 候选行（同客户订单号的其它订单）中，被本单引用的原单由 excludeVia 子查询排除
+        Assert.Contains("X.[CLIENT_ORDER_NO] = M.[CLIENT_ORDER_NO]", compiled.Sql);
+        Assert.Contains("NOT EXISTS (SELECT 1 FROM dbo.[COP_ORDER_CHANGE_M] V WITH (NOLOCK) WHERE "
+            + "V.[CHANGE_ORDER_TYPE] = @mk0 AND V.[CHANGE_ORDER_NO] = @mk1 "
+            + "AND V.[ORDER_TYPE] = X.[ORDER_TYPE] AND V.[ORDER_NO] = X.[ORDER_NO])", compiled.Sql);
+        // 空串客户订单号不参与重复判定（filter 的非空守卫）
+        Assert.Contains("NOT (NULLIF(LTRIM(RTRIM(X.[CLIENT_ORDER_NO])), '') IS NULL)", compiled.Sql);
+        Assert.Equal(["E2E", "E2ESL01"], compiled.Parameters.Select(parameter => parameter.Value).Distinct());
+    }
+
+    [Fact]
     public void Entity_候选行与主表别名都进入FROM_键值按参数绑定()
     {
         var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(

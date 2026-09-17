@@ -21,7 +21,7 @@ public static class ValidationRuleRegistry
             ["duplicate-check"] = WithWhen(KeySet(
                 "mode", "table", "keyFields", "keySource", "excludeSelf", "filter", "diagnostics",
                 "masterTable", "detailTable", "joinFields", "groupFields", "masterGroupFields",
-                "documentDetailFields", "diagnosticFields", "maxRows", "displayLookup")),
+                "documentDetailFields", "diagnosticFields", "maxRows", "displayLookup", "excludeVia")),
             ["line-require"] = WithWhen(KeySet("checks")),
             ["period-overlap"] = WithWhen(KeySet(
                 "detailTable", "rangeFields", "scopeFields", "groupFields",
