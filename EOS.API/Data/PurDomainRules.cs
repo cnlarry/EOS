@@ -119,30 +119,7 @@ public static class PurDomainRules
     /// <summary>制造命令单变更（1509）AfterSave：原单已批核 + 变更量不小于已生产/已领料。</summary>
 
 
-    /// <summary>采购单变更（1609）AfterSave：原单已批核 + 变更量不小于已收货。</summary>
-    public static async Task<SprocResult> PurPurchaseChangeAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var type = keyValues[0]; var no = keyValues[1];
-        if (await DomainRuleService.ExistsAsync(connection, transaction,
-            """
-            SELECT TOP 1 1 FROM dbo.PUR_PURCHASE_M m
-            INNER JOIN dbo.PUR_PURCHASE_CHANGE_M c ON c.PURCHASE_TYPE=m.PURCHASE_TYPE AND c.PURCHASE_NO=m.PURCHASE_NO
-            WHERE c.CHANGE_PURCHASE_TYPE=@Type AND c.CHANGE_PURCHASE_NO=@No AND m.CONFIRM_TAG=0;
-            """, type, no, token))
-            return new(false, "采购单未批核，不可变更");
-        var lines = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT oc.SERIAL_NO FROM dbo.PUR_PURCHASE_D od
-            INNER JOIN dbo.PUR_PURCHASE_CHANGE_D oc
-              ON oc.PURCHASE_TYPE=od.PURCHASE_TYPE AND oc.PURCHASE_NO=od.PURCHASE_NO AND oc.PURCHASE_SERIAL_NO=od.SERIAL_NO
-            WHERE oc.CHANGE_PURCHASE_TYPE=@Type AND oc.CHANGE_PURCHASE_NO=@No AND oc.QTY < ISNULL(od.RECEIVE_QTY,0);
-            """, type, no, token, line: r => "    " + Convert.ToInt32(r.GetValue(0)).ToString());
-        return lines is null
-            ? new(true, null)
-            : new(false, "变更后以下序号项采购单数量小于已收货数量\r\n" + lines);
-    }
+    /// <summary>采购单变更（1609）AfterSave：原单已批核与变更量下限由校验目录承担。</summary>
 
     /// <summary>打样出库单（2404）AfterSave：样品库存校验。</summary>
 
