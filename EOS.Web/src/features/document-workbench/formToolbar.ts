@@ -33,8 +33,8 @@ export function buildViewToolbarItems(
 ): ErpCommandItem[] {
   const { master, isFinished, flowInProgress, keyParam } = state
   // 批核能力 = 工作流（过程/效果链/流程定义）或无副作用自动批核（与服务端同口径）；
-  // 无能力即不显示按钮，不出现点后必败的死按钮。
-  const canWorkflow = form.hasWorkflow || form.hasStatelessApprove
+  // 服务端已按"四者取并集"给出 hasApproveCapability，缺字段时回退到旧的两个标志。
+  const canWorkflow = form.hasApproveCapability ?? (form.hasWorkflow || form.hasStatelessApprove)
   if (form.buttons && form.buttons.length > 0)
     return form.buttons.flatMap((button): ErpCommandItem[] => {
       switch (button.action) {

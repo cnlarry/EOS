@@ -91,6 +91,11 @@ export interface FormDefinition {
   hasWorkflow: boolean
   /** 无副作用批核能力（自动批核且无过程/效果链/流程定义）：批核/解批按钮据此与 hasWorkflow 取并集显隐 */
   hasStatelessApprove: boolean
+  /**
+   * 批核/解批入口能力：流程 / 遗留批核过程 / 效果链 / 无副作用自动批核四者取并集（服务端判定）。
+   * 效果链接管的模块没有过程也没有流程，只有这个标志为真，按钮必须据此显示。
+   */
+  hasApproveCapability?: boolean
   /** 模块允许复制（MODULES.IF_COPY） */
   ifCopy: boolean
   /** 模块纳入通用查询（MODULES.SEARCH_1/SEARCH_2） */

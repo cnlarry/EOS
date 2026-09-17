@@ -113,4 +113,19 @@ describe('buildViewToolbarItems', () => {
     const confirmed = buildViewToolbarItems(f, state({ master: { CONFIRM_TAG: true, FINISHED_TAG: false } }), handlers())
     expect(confirmed.map(item => item.action)).toContain('deapprove')
   })
+
+  it('效果链接管批核（无过程、无流程）同样显示批核/解批', () => {
+    // 服务端 hasApproveCapability 四者取并集：效果链已接管的模块既无 WorkflowSproc 也无流程，
+    // 但批核/解批入口必须照常显示（退役遗留过程后按钮不得消失）。
+    const f = form({ hasWorkflow: false, hasStatelessApprove: false, hasApproveCapability: true })
+    expect(buildViewToolbarItems(f, state(), handlers()).map(item => item.action)).toContain('approve')
+    const confirmed = buildViewToolbarItems(f, state({ master: { CONFIRM_TAG: true, FINISHED_TAG: false } }), handlers())
+    expect(confirmed.map(item => item.action)).toContain('deapprove')
+  })
+
+  it('服务端明确无批核能力时不显示（hasApproveCapability=false 覆盖旧标志）', () => {
+    const f = form({ hasWorkflow: true, hasStatelessApprove: true, hasApproveCapability: false })
+    const items = buildViewToolbarItems(f, state(), handlers())
+    expect(items.some(item => item.action === 'approve' || item.action === 'deapprove')).toBe(false)
+  })
 })
