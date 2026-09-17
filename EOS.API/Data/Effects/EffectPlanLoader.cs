@@ -155,11 +155,16 @@ public sealed class EffectPlanLoader
         var scope = OptionalString(element, "sourceScope") ?? "MASTER";
         if (!SourceScopes.Contains(scope))
             throw new EffectConfigException($"公式行来源域 '{scope}' 不在 MASTER/DETAIL/TABLE/TARGET/CONSTANT 内。");
+        // CONSTANT 的取值本身可以是空串（"清空该列"是真实语义，如 FINISHED_PERSON=''），
+        // 故常量不做空白归一；真正缺省时属性不存在，仍按未设置 fail-closed。
+        var constant = scope.Equals("CONSTANT", StringComparison.OrdinalIgnoreCase)
+            ? RawString(element, "sourceConstant")
+            : OptionalString(element, "sourceConstant");
         return new EffectSourceRef(
             scope,
             OptionalString(element, "sourceTable"),
             OptionalString(element, "sourceField"),
-            OptionalString(element, "sourceConstant"));
+            constant);
     }
 
     private static IReadOnlyList<EffectTerm>? ParseTerms(JsonElement element)
@@ -292,6 +297,14 @@ public sealed class EffectPlanLoader
         var text = value.GetString()!.Trim();
         return text.Length == 0 ? null : text;
     }
+
+    /// <summary>
+    /// 读取字符串字段的原始取值：只去首尾空白，不把空串当成"未设置"（常量取值用）。
+    /// </summary>
+    private static string? RawString(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()!.Trim()
+            : null;
 
     private static int? OptionalInt(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var n)
