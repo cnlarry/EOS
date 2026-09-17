@@ -38,8 +38,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "cop-account" => await CopDomainRules.CopAccountAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-order" => await CopDomainRules.CopOrderAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-send" => await CopDomainRules.CopSendAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "moc-work" => await MocDomainRules.MocWorkAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "moc-work-in" => await MocDomainRules.MocWorkInAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "moc-produce-change" => await MocDomainRules.MocProduceChangeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-purchase-change" => await PurDomainRules.PurPurchaseChangeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-order-change" => await CopDomainRules.CopOrderChangeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
