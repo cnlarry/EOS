@@ -311,40 +311,6 @@ public static class CopDomainRules
         var type = keyValues[0]; var no = keyValues[1];
         var flags = await ReadSysssFlagsAsync(connection, transaction, token);
 
-        // P_COP_SEND_CHECK：排程量校验（无条件）
-        var shipmentLines = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT od.SHIPMENT_NO, od.QTY, od.FINISHED_QTY, sd.QTY
-            FROM dbo.COP_SHIPMENT_D od
-            INNER JOIN (SELECT SHIPMENT_TYPE, SHIPMENT_NO, SHIPMENT_SERIAL_NO, SUM(QTY) QTY
-                        FROM dbo.COP_SEND_D WHERE SEND_TYPE=@Type AND SEND_NO=@No
-                        GROUP BY SHIPMENT_TYPE, SHIPMENT_NO, SHIPMENT_SERIAL_NO) sd
-              ON od.SHIPMENT_TYPE=sd.SHIPMENT_TYPE AND od.SHIPMENT_NO=sd.SHIPMENT_NO
-             AND od.SERIAL_NO=sd.SHIPMENT_SERIAL_NO
-            WHERE od.FINISHED_QTY+sd.QTY > od.QTY;
-            """, type, no, token,
-            line: r => $"{r.GetString(0).Trim()}    {Convert.ToDouble(r.GetValue(1))}    {Convert.ToDouble(r.GetValue(2))}    {Convert.ToDouble(r.GetValue(3))}");
-        if (shipmentLines is not null)
-            return new(false, "以下会出现已送货数量超出排程数量\r\n排程单号   数量  已送数量  单据数量\r\n" + shipmentLines);
-        // 订单量校验（SEND_ORDER_TAG=1）
-        if (flags.GetValueOrDefault("SEND_ORDER_TAG") == 1)
-        {
-            var orderLines = await DomainRuleService.FindLinesAsync(connection, transaction,
-                """
-                SELECT od.ORDER_NO, od.QTY, od.SPARE_QTY, od.FINISHED_SEND_QTY, od.FINISHED_SPARE_QTY, sd.QTY, sd.SPARE_QTY
-                FROM dbo.COP_ORDER_D od
-                INNER JOIN (SELECT ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
-                            FROM dbo.COP_SEND_D WHERE SEND_TYPE=@Type AND SEND_NO=@No
-                            GROUP BY ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO) sd
-                  ON od.ORDER_TYPE=sd.ORDER_TYPE AND od.ORDER_NO=sd.ORDER_NO AND od.SERIAL_NO=sd.ORDER_SERIAL_NO
-                WHERE od.FINISHED_SEND_QTY+ISNULL(od.BACK_MATERIAL,0)+ISNULL(od.BACK_BAD,0)+sd.QTY > od.QTY
-                   OR od.FINISHED_SPARE_QTY+sd.SPARE_QTY > ISNULL(od.SPARE_QTY,0);
-                """, type, no, token,
-                line: r => $"{r.GetString(0).Trim()}    {Convert.ToDouble(r.GetValue(1))}    {Convert.ToDouble(r.GetValue(3))}    {Convert.ToDouble(r.GetValue(5))}    {Convert.ToDouble(r.GetValue(2))}    {Convert.ToDouble(r.GetValue(4))}    {Convert.ToDouble(r.GetValue(6))}");
-            if (orderLines is not null)
-                return new(false, "以下会出现订单已送货数量超出订单数量\r\n订单单号   数量  已送数量  单据数量  备品  已送备品  单据备品\r\n" + orderLines);
-        }
-
         // 批号必填（订单一致性/产品存在性由校验目录承接）
         var batchMissing = await DomainRuleService.FindLinesAsync(connection, transaction,
             """
