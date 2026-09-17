@@ -622,8 +622,40 @@ public sealed class EffectShadowRunner
             tables,
             audit,
             new ShadowSummary(verdict, diffCount, unnormalized));
-        await WriteReportAsync(report);
+        if (options.WriteReport)
+        {
+            await WriteReportAsync(report);
+        }
         return report;
+    }
+
+    /// <summary>
+    /// Key columns and tables of a supported module's shadow specification, so batch tooling can
+    /// enumerate candidate documents without duplicating the per-module table map.
+    /// </summary>
+    internal static bool TryGetSpecColumns(
+        int moduleId,
+        out string masterTable,
+        out string detailTable,
+        out string key1Column,
+        out string key2Column,
+        out string dateColumn)
+    {
+        masterTable = detailTable = key1Column = key2Column = dateColumn = string.Empty;
+        try
+        {
+            var spec = GetSpec(moduleId);
+            masterTable = spec.MasterTable;
+            detailTable = spec.DetailTable;
+            key1Column = spec.Key1Column;
+            key2Column = spec.Key2Column;
+            dateColumn = spec.DateColumn;
+            return true;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
     }
 
     private static bool LegacySameBlock(LegacyPathResult legacy, ShadowPathStatus engine) =>
@@ -5405,7 +5437,10 @@ public sealed class EffectShadowRunner
         string? Keys = null,
         string? RunId = null,
         bool Failure = false,
-        bool EngineOnly = false);
+        bool EngineOnly = false,
+        // Batch tooling probes several candidate documents before it commits to one; probing
+        // runs must not leave a report behind, or the ledger would read a rejected probe.
+        bool WriteReport = true);
 
     public sealed record ShadowPathStatus(string Status, string? Error);
 
