@@ -30,7 +30,7 @@ public static class ValidationRuleRegistry
 
     private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "message", "switch", "diagnosticFields", "maxRows", "diagnosticCellSeparator", "diagnosticRowSeparator");
     private static readonly IReadOnlySet<string> QtySwitchKeys = KeySet("key", "expect");
-    private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "message");
+    private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "condition", "message", "diagnosticFields");
     private static readonly IReadOnlySet<string> LineRequireTriggerKeys = KeySet("scope", "field", "op", "value");
     private static readonly IReadOnlySet<string> LineRequireOps = KeySet("GT", "GE", "LT", "LE", "EQ", "NEQ");
     private static readonly IReadOnlySet<string> QtyBlockKeys = KeySet("scope", "terms", "fields", "agg");
@@ -323,15 +323,33 @@ public static class ValidationRuleRegistry
                 continue;
             }
             RejectUnknownKeys(rule, check, LineRequireCheckKeys, where, issues);
+            if (check.TryGetProperty("diagnosticFields", out var diagnostics))
+            {
+                if (diagnostics.ValueKind != JsonValueKind.Array || diagnostics.GetArrayLength() == 0)
+                    issues.Add($"校验规则 {Label(rule)}：{where}.diagnosticFields 必须是非空字符串数组");
+                else
+                    foreach (var item in diagnostics.EnumerateArray())
+                    {
+                        if (item.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(item.GetString()))
+                            issues.Add($"校验规则 {Label(rule)}：{where}.diagnosticFields 元素必须是非空字符串");
+                    }
+            }
             var scope = GetString(check, "scope");
             if (!string.Equals(scope, "DETAIL", StringComparison.OrdinalIgnoreCase))
                 issues.Add($"校验规则 {Label(rule)}：{where}.scope 仅允许 DETAIL");
             if (string.IsNullOrWhiteSpace(GetString(check, "field")))
                 issues.Add($"校验规则 {Label(rule)}：{where}.field 不能为空");
             var triggers = GetArray(check, "triggers");
+            var condition = GetObject(check, "condition");
+            if (condition is not null)
+            {
+                ValidateConditionShape(rule, condition.Value, $"{where}.condition", issues);
+            }
             if (triggers is not { } triggersArr || triggersArr.GetArrayLength() == 0)
             {
-                issues.Add($"校验规则 {Label(rule)}：{where}.triggers 必须是非空数组");
+                // triggers 可省略：改用 condition（结构化条件，可表达跨表存在性判据，如"产品为批管"）。
+                if (condition is null)
+                    issues.Add($"校验规则 {Label(rule)}：{where} 需要非空 triggers 或 condition");
             }
             else
             {

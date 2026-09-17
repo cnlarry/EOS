@@ -186,6 +186,36 @@ public class ValidationRuleRegistryFailClosedTests
     }
 
     [Fact]
+    public void LineRequire_AcceptsStructuredConditionTrigger()
+    {
+        // 跨表条件触发器：无需 triggers，改用 condition（DETAIL 域即明细行别名，可表达"产品为批管"）
+        var ok = Validate("line-require", Params("""
+            {"checks":[{"scope":"DETAIL","field":"BATCH_NO","message":"以下序号项需要输入批号 ",
+             "condition":{"logic":"AND","items":[
+                {"type":"not-exists","targetTable":"PRODUCT","negate":true,
+                 "condition":{"type":"value-eq","field":{"scope":"TARGET","field":"MANAGE_BATCH"},"value":1},
+                 "match":[{"target":"PRO_NO","source":{"scope":"DETAIL","field":"PRO_NO"}}]}]}}]}
+            """));
+        Assert.Empty(ok);
+
+        // 两者皆无 → 拒绝
+        var none = Validate("line-require", Params("""
+            {"checks":[{"scope":"DETAIL","field":"BATCH_NO","message":"x"}]}
+            """));
+        Assert.Contains(none, issue => issue.Contains("需要非空 triggers 或 condition"));
+
+        // condition 形状非法 → 拒绝；未知键 → 拒绝
+        var badCondition = Validate("line-require", Params("""
+            {"checks":[{"scope":"DETAIL","field":"BATCH_NO","condition":{"logic":"XOR","items":[]}}]}
+            """));
+        Assert.Contains(badCondition, issue => issue.Contains("condition"));
+        var unknown = Validate("line-require", Params("""
+            {"checks":[{"scope":"DETAIL","field":"BATCH_NO","triggers":[{"scope":"DETAIL","field":"QTY","op":"GT","value":0}],"conditionX":{}}]}
+            """));
+        Assert.Contains(unknown, issue => issue.Contains("未知参数键"));
+    }
+
+    [Fact]
     public void MatchItem_RejectsUnknownSourceKeys()
     {
         var issues = Validate("reference-exists", Params("""
