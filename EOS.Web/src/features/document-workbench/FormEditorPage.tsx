@@ -671,9 +671,36 @@ export function FormEditorPage() {
     if (!window.confirm('确定删除该单据吗？删除后不可恢复。')) return
     try {
       await apiClient.delete(`/document-workbench/${moduleId}/record?key=${encodeURIComponent(keyParam)}`, { headers: { 'X-Idempotency-Key': newIdempotencyKey() } })
-      // After delete, return to the list and refresh; cross-module browse goes back to the source list
-      await queryClient.invalidateQueries({ queryKey: ['workbench', moduleId] })
-      navigate(fromModuleId ? workbenchList(fromModuleId) : workbenchList(moduleId))
+      window.alert('删除成功。')
+      // 删除后沿进入浏览态时的列表顺序定向：下一条；被删的是最后一条则回到第一条；
+      // 无剩余记录或顺序不可用则返回工作台列表。按当前主键值定位，不轻信传入的 navIndex
+      //（顺序可能过期；定错会导航回被删记录自身、同 URL 跳转即页面纹丝不动）。
+      // 定长字符主键（nchar）尾空格在拼 URL 时已修剪，比较时同样忽略尾空格。
+      let remaining: string[][] | null = null
+      let targetIndex = 0
+      if (navKeys && navKeys.length > 0) {
+        let currentKey: string[] | null = null
+        try { currentKey = JSON.parse(keyParam) as string[] } catch { currentKey = null }
+        const sameKey = (a: string[], b: string[]) =>
+          a.length === b.length && a.every((value, i) => value.trimEnd() === b[i].trimEnd())
+        const found = currentKey ? navKeys.findIndex(candidate => sameKey(candidate, currentKey!)) : -1
+        if (found >= 0) {
+          remaining = navKeys.filter(candidate => !sameKey(candidate, currentKey!))
+          targetIndex = found < remaining.length ? found : 0
+        }
+      }
+      // 先跳转，再做缓存清理：被删记录若参与整体失效，其重取 404 会走默认 3 次重试退避，
+      // 等它完成会把导航拖住数秒（看起来像“删完没跳转”），故导航不同步等待后台刷新。
+      if (remaining && remaining.length > 0) {
+        navigate(workbenchView(moduleId, remaining[targetIndex]),
+          { state: { navKeys: remaining, navIndex: targetIndex } })
+      } else {
+        // 无列表顺序上下文（如直接地址进入）或顺序已对不上：回到列表，避免停留在已删除记录的空白浏览态
+        navigate(fromModuleId ? workbenchList(fromModuleId) : workbenchList(moduleId))
+      }
+      // 被删记录的缓存查询直接移除（不再重取）；列表/定义后台失效刷新，不阻塞导航
+      queryClient.removeQueries({ queryKey: ['workbench', moduleId, 'record', keyParam] })
+      void queryClient.invalidateQueries({ queryKey: ['workbench', moduleId] })
     } catch (cause) {
       window.alert(cause instanceof Error ? `删除失败：${cause.message}` : '删除失败。')
     }
@@ -1010,6 +1037,20 @@ export function FormEditorPage() {
   if (formQuery.isPending || (isEdit && recordQuery.isPending)) return <LoadingState label="正在加载表单…" />
   if (formQuery.isError) return <section className="card"><div className="card-body text-center py-5">{describeError(formQuery.error)}</div></section>
   if (isEdit && recordQuery.isError) return <section className="card"><div className="card-body text-center py-5">{describeError(recordQuery.error)}</div></section>
+  // 浏览态记录加载失败（如记录已被删除）：不渲染陈旧空白表单，给出明确错误与返回入口
+  if (isView && recordQuery.isError) {
+    return (
+      <section className="card">
+        <div className="card-body text-center py-5 d-flex flex-column gap-3 align-items-center">
+          <span>{describeError(recordQuery.error)}</span>
+          <span>
+            <button type="button" className="btn btn-secondary me-2" onClick={() => void recordQuery.refetch()}>重新加载</button>
+            <button type="button" className="btn btn-primary" onClick={back}>返回列表</button>
+          </span>
+        </div>
+      </section>
+    )
+  }
 
   const form = formQuery.data
   if (!form) return null
