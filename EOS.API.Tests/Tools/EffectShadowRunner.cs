@@ -623,7 +623,8 @@ public sealed class EffectShadowRunner
             engine,
             tables,
             audit,
-            new ShadowSummary(verdict, diffCount, unnormalized, accepted));
+            new ShadowSummary(verdict, diffCount, unnormalized, accepted),
+            Failure: options.Failure);
         if (options.WriteReport)
         {
             await WriteReportAsync(report);
@@ -5131,6 +5132,13 @@ public sealed class EffectShadowRunner
         return Convert.ToInt64(await command.ExecuteScalarAsync() ?? 0L);
     }
 
+    /// <summary>
+    /// 解批方向只记录行数、不逐行比较的流水表（ADR §7-6 拍板口径：库存余额一致 + 流水语义改良，
+    /// 明确不逐行对拍 INV_DEPOT_LOG；批次明细同属反向流水）。
+    /// </summary>
+    private static readonly IReadOnlySet<string> ReverseFlowInformationalTables =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "INV_DEPOT_LOG", "INV_BATCH_D" };
+
     private static (List<ShadowTableDiff> Tables, ShadowAudit Audit) CompareSnapshots(
         int moduleId,
         string shadowEvent,
@@ -5150,18 +5158,28 @@ public sealed class EffectShadowRunner
             if (deapprove && table == "INV_DEPOT_LOG")
             {
                 // The engine mirrors deapproved movements by writing a compensating row
-                // (direction flipped, quantity negated) instead of deleting history.
+                // (direction flipped, quantity negated) instead of deleting history; that row is
+                // dated at the reversal moment, so the pairing must not require equal dates.
                 // Cancel each paired original/reverse row so the remaining set can be
                 // compared with the legacy post-delete set.
                 newRows = CancelReverseRows(newRows, "IN_OUT", "QTY",
-                    new[] { "PRO_NO", "MUTUALITY_DATE", "MUTUALITY_TYPE", "MUTUALITY_NO",
+                    new[] { "PRO_NO", "MUTUALITY_TYPE", "MUTUALITY_NO",
                         "MUTUALITY_SERIAL_NO", "DEPOT_ID", "BATCH_NO" });
             }
             else if (deapprove && table == "INV_BATCH_D")
             {
                 newRows = CancelReverseRows(newRows, "EFFECT_DEPOT", "QTY",
                     new[] { "BATCH_NO", "PRO_NO", "BATCH_SERIAL_NO", "DEPOT_ID",
-                        "BATCH_ORDER_TYPE", "BATCH_ORDER_NO", "BATCH_DATE" });
+                        "BATCH_ORDER_TYPE", "BATCH_ORDER_NO" });
+            }
+            if (deapprove && ReverseFlowInformationalTables.Contains(table))
+            {
+                // ADR §7-6 拍板：解批流水由 DELETE 改为写反向记录（流水语义改良），验收口径是
+                // 「库存余额一致 + 流水语义改良」，**明确不逐行对拍 INV_DEPOT_LOG**；批次流水同理。
+                // 故解批方向这两张表只记录行数（报告里仍可见），不参与逐行比较；
+                // 库存余额（INV_PRO_DEPOT）等其余表照常严格比较。
+                tables.Add(new ShadowTableDiff(table, oldRows.Count, newRows.Count, Array.Empty<ShadowFieldDiff>()));
+                continue;
             }
             tables.Add(CompareTable(moduleId, shadowEvent, table, oldRows, newRows));
         }
@@ -5395,6 +5413,12 @@ public sealed class EffectShadowRunner
         new("决策 #69",
             "解批按 clear-finish 清完工戳（完成标记解除）；旧实现保留",
             2917, "*", "*", "FINISHED_TAG"),
+        new("决策 #110",
+            "打样入库解批按量减扣：旧 P_WF_SAM_IN 解批分支误写 +d.QTY（批核/解批同向），采纳引擎",
+            2403, "*", "SAMPLE_PRO", "QTY"),
+        new("决策 #110 + ADR §11.3",
+            "返还单解批反向减扣：旧实现 NULL+(-qty) 恒为 NULL（NULL 累加失效，按业务意图修正为 coalesce 后再反向）",
+            130109, "*", "INV_LOAN_D", "RETURN_QTY"),
     ];
 
     private sealed record AcceptedDivergence(
@@ -5579,7 +5603,10 @@ public sealed class EffectShadowRunner
         ShadowPathStatus NewPath,
         IReadOnlyList<ShadowTableDiff> Tables,
         ShadowAudit Audit,
-        ShadowSummary Summary);
+        ShadowSummary Summary,
+        // 失败分支运行（EOS_SHADOW_FAILURE=1）：账本据此把失败证据与成功路径证据分开取，
+        // 否则同一模块/事件的后续成功对拍会把失败证据挤掉。
+        bool Failure = false);
 
     public sealed record ShadowTableDiff(string Table, int RowsOld, int RowsNew, IReadOnlyList<ShadowFieldDiff> Diffs);
 
