@@ -836,9 +836,12 @@ public sealed class FieldAdminRepository(
         string fieldId,
         CancellationToken token)
     {
+        // Snapshot defaults must mirror GetMetadataAsync ('left' align, 'nvarchar' type):
+        // the optimistic lock compares the client round-tripped snapshot against this read,
+        // so any defaulting mismatch reports a phantom concurrent modification on every save.
         const string sql = """
-            SELECT COALESCE(NULLIF(LTRIM(RTRIM(F_DESC)),''),LTRIM(RTRIM(F_ID))),COALESCE(F_TYPE,''),COALESCE(DISPLAY_LENGTH,100),
-                   NULLIF(LTRIM(RTRIM(ITEM_ALIGN)),''),COALESCE(NULLIF(HEADER_ALIGN,''),'center'),DISPLAY_FORMAT,
+             SELECT COALESCE(NULLIF(LTRIM(RTRIM(F_DESC)),''),LTRIM(RTRIM(F_ID))),COALESCE(F_TYPE,'nvarchar'),COALESCE(DISPLAY_LENGTH,100),
+                    COALESCE(NULLIF(LTRIM(RTRIM(ITEM_ALIGN)),''),'left'),COALESCE(NULLIF(HEADER_ALIGN,''),'center'),DISPLAY_FORMAT,
                    CAST(COALESCE(IS_VISIBLE,1) AS bit),CAST(COALESCE(IS_DEFAULT_FIELDS,0) AS bit),CAST(COALESCE(IS_QUERY,1) AS bit),
                    CAST(COALESCE(IS_READONLY,0) AS bit),CAST(COALESCE(IS_VERIFY,0) AS bit),CAST(COALESCE(IS_COST,0) AS bit),
                    CAST(COALESCE(IS_SECRECY,0) AS bit),DFT_VALUE,VERIFY_INDEX,REGEX,F_REMARK,BROWSE_URL,BROWSE_M_IDX,
@@ -857,7 +860,7 @@ public sealed class FieldAdminRepository(
         if (!await reader.ReadAsync(token)) return null;
         var result = new FieldAdminInput(
             reader.GetString(0), reader.GetString(1), Math.Clamp(reader.GetInt32(2), 40, 300),
-            reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5),
+            reader.GetString(3), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5),
             reader.GetBoolean(6), reader.GetBoolean(7), reader.GetBoolean(8), reader.GetBoolean(9), reader.GetBoolean(10),
             reader.GetBoolean(11), reader.GetBoolean(12), reader.IsDBNull(13) ? null : reader.GetString(13),
             reader.IsDBNull(14) ? null : reader.GetInt32(14), reader.IsDBNull(15) ? null : reader.GetString(15),
