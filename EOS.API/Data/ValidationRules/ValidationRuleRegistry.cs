@@ -214,8 +214,8 @@ public static class ValidationRuleRegistry
     private static void ValidateQtyNotExceed(ValidationRuleConfig rule, JsonElement p, List<string> issues)
     {
         var mode = GetString(p, "mode");
-        if (mode is not ("usage-not-exceed" or "not-below-progress" or "this-not-exceed"))
-            issues.Add($"校验规则 {Label(rule)}：qty-not-exceed.mode 仅允许 usage-not-exceed / not-below-progress / this-not-exceed");
+        if (mode is not ("usage-not-exceed" or "not-below-progress" or "this-not-exceed" or "not-below-usage"))
+            issues.Add($"校验规则 {Label(rule)}：qty-not-exceed.mode 仅允许 usage-not-exceed / not-below-progress / this-not-exceed / not-below-usage");
         var requireLimit = mode is null or "usage-not-exceed" or "this-not-exceed";
         var checks = GetArray(p, "checks");
         if (checks is not { } arr || arr.GetArrayLength() == 0)
@@ -296,7 +296,7 @@ public static class ValidationRuleRegistry
                 ValidateMatchItems(rule, match.Value, $"{where}.match", issues);
             if (!ValidateQtyBlock(rule, check, "thisQty", $"{where}.thisQty", issues))
                 issues.Add($"校验规则 {Label(rule)}：{where}.thisQty 缺失");
-            var requireUsage = mode is null or "usage-not-exceed" or "not-below-progress";
+            var requireUsage = mode is null or "usage-not-exceed" or "not-below-progress" or "not-below-usage";
             if (requireUsage && !ValidateQtyBlock(rule, check, "usage", $"{where}.usage", issues))
                 issues.Add($"校验规则 {Label(rule)}：{where}.usage 缺失");
             var hasLimit = GetObject(check, "limit") is not null;

@@ -212,7 +212,9 @@ public sealed class EffectValidationExecutor
             var limit = ParseFieldList(check, "limit");
             if (match.Count == 0)
                 throw new EffectConfigException("qty-not-exceed.check 缺少 match 定位键。");
-            if (thisQty.Count == 0 || limit.Count == 0)
+            // not-below-usage 只比较"本单量 vs 已发生量"，没有上限列，故不要求 limit（与注册表口径一致）。
+            var usesLimit = !mode.Equals("not-below-usage", StringComparison.OrdinalIgnoreCase);
+            if (thisQty.Count == 0 || (usesLimit && limit.Count == 0))
                 throw new EffectConfigException("qty-not-exceed.check 缺少 thisQty/limit。");
 
             var targetTable = check.TryGetProperty("targetTable", out var tt) && tt.ValueKind == JsonValueKind.String
@@ -274,11 +276,15 @@ public sealed class EffectValidationExecutor
                     + EffectConditionCompiler.Identifier(targetTable) + " T";
             }
 
+            // 三种比较形态：本条超限额（usage + this > limit）、按进度不得减少（limit + this < usage）、
+            // 不得低于已发生量（this < usage，用于"变更后数量不得小于已发生量"且无上限列的场景）。
             var comparison = mode.Equals("not-below-progress", StringComparison.OrdinalIgnoreCase)
                 ? $"{limitSql} + {thisSql} < {usageSql}" // reduction would fall below accumulated progress
                 : mode.Equals("this-not-exceed", StringComparison.OrdinalIgnoreCase)
                     ? $"{thisSql} > {limitWithOffset}" // document quantity must not exceed the referenced cap
-                    : $"{usageSql} + {thisSql} > {limitWithOffset}";
+                    : mode.Equals("not-below-usage", StringComparison.OrdinalIgnoreCase)
+                        ? $"{thisSql} < {usageSql}" // document quantity must not fall below what already happened
+                        : $"{usageSql} + {thisSql} > {limitWithOffset}";
 
             // 来源行的单据范围：分组形态已把范围写进子查询，逐行形态必须作为顶层谓词补上，
             // 否则比较的是全库历史行，他单的超量会拦下本次操作（同 reference-exists 的旧缺陷）。
@@ -300,7 +306,7 @@ public sealed class EffectValidationExecutor
                         && checkMessage.ValueKind == JsonValueKind.String
                         && !string.IsNullOrWhiteSpace(checkMessage.GetString())
                             ? checkMessage.GetString()!
-                            : $"存在超出{(mode == "not-below-progress" ? "进度" : "限额")}的明细行（{stage}）。");
+                            : $"存在{(mode == "not-below-progress" ? "低于进度" : mode == "not-below-usage" ? "低于已发生量" : "超出限额")}的明细行（{stage}）。");
                 var cells = BuildQtyDiagnosticCells(check, fromSql, correlation, comparison, aggregate, diagnosticAggregates);
                 if (cells is null)
                     return message;

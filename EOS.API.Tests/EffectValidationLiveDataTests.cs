@@ -532,6 +532,75 @@ public sealed class EffectValidationLiveDataTests
     }
 
     [Fact]
+    public async Task 制令变更_原单批核与变更量下限_三态校验()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            // 制令单：未批核 + 已生产 8（变更主表数量 5 更低）；制令明细已领料 4（变更明细应领 2 更低）
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, CONFIRM_TAG, FINISHED_QTY, FINISHED_SPARE_QTY)
+                VALUES (N'ZZ', N'ZZT2609PRD03', 0, 8, 0);
+                INSERT INTO dbo.MOC_PRODUCE_D (PRODUCE_TYPE, PRODUCE_NO, PRO_NO, SERIAL_NO, USED_QTY)
+                VALUES (N'ZZ', N'ZZT2609PRD03', N'ZZT2609PRO02', 1, 4);
+                INSERT INTO dbo.MOC_PRODUCE_CHANGE_M (CHANGE_PRODUCE_TYPE, CHANGE_PRODUCE_NO, PRODUCE_TYPE, PRODUCE_NO, QTY, SPARE_QTY)
+                VALUES (N'ZZ', N'ZZT2609PC01', N'ZZ', N'ZZT2609PRD03', 5, 0);
+                INSERT INTO dbo.MOC_PRODUCE_CHANGE_D (CHANGE_PRODUCE_TYPE, CHANGE_PRODUCE_NO, SERIAL_NO, PRODUCE_TYPE, PRODUCE_NO, PRODUCE_SERIAL_NO, NEED_QTY)
+                VALUES (N'ZZ', N'ZZT2609PC01', 1, N'ZZ', N'ZZT2609PRD03', 1, 2);
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            // ① 原单未批核 → 拒绝
+            var refPlan = await LoadPlanAsync(connection, transaction, 1509, token, "reference-exists");
+            var notApproved = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, refPlan, "SAVE", token, ["ZZ", "ZZT2609PC01"]));
+            Assert.Contains("生产单未批核，不可变更", notApproved.Message);
+
+            // ② 原单批核后：变更量不得小于已生产（主表级）
+            await using (var approve = new SqlCommand(
+                "UPDATE dbo.MOC_PRODUCE_M SET CONFIRM_TAG = 1 WHERE PRODUCE_TYPE = N'ZZ' AND PRODUCE_NO = N'ZZT2609PRD03';",
+                connection, transaction))
+            {
+                await approve.ExecuteNonQueryAsync(token);
+            }
+            var qtyPlan = await LoadPlanAsync(connection, transaction, 1509, token, "qty-not-exceed");
+            // 主表数量 5 < 已生产 8 → 命中；此处先把变更量抬到 8 以便单独验证明细级判据
+            var masterTooLow = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, ["ZZ", "ZZT2609PC01"]));
+            Assert.Contains("变更后以下序号项数量小于已生产数量", masterTooLow.Message);
+
+            // ③ 主表数量合规、明细应领料 2 < 已领料 4 → 命中明细级判据并回报本单序号
+            await using (var fix = new SqlCommand(
+                "UPDATE dbo.MOC_PRODUCE_CHANGE_M SET QTY = 8 WHERE CHANGE_PRODUCE_TYPE = N'ZZ' AND CHANGE_PRODUCE_NO = N'ZZT2609PC01';",
+                connection, transaction))
+            {
+                await fix.ExecuteNonQueryAsync(token);
+            }
+            var lineTooLow = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, ["ZZ", "ZZT2609PC01"]));
+            Assert.Contains("变更后以下序号项应领料数量小于制令已领料", lineTooLow.Message);
+
+            // ④ 明细应领料补齐到 4 → 放行
+            await using (var ok = new SqlCommand(
+                "UPDATE dbo.MOC_PRODUCE_CHANGE_D SET NEED_QTY = 4 WHERE CHANGE_PRODUCE_TYPE = N'ZZ' AND CHANGE_PRODUCE_NO = N'ZZT2609PC01' AND SERIAL_NO = 1;",
+                connection, transaction))
+            {
+                await ok.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, ["ZZ", "ZZT2609PC01"]);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
+    [Fact]
     public async Task 送货回执_被引用行已有回执即拒绝_未回执放行()
     {
         var token = CancellationToken.None;
