@@ -103,36 +103,5 @@ public static class MocDomainRules
     /// <summary>工单制程（P_MOC_PRODUCE_PROCESS）AfterSave：制令存在校验。</summary>
 
 
-    /// <summary>工序发料单（P_MOC_WORK_OUT）AfterSave：出库不超工序工单入库由校验目录（qty-not-exceed）承担。</summary>
-    public static async Task<SprocResult> MocProduceChangeAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var type = keyValues[0]; var no = keyValues[1];
-        if (await DomainRuleService.ExistsAsync(connection, transaction,
-            """
-            SELECT TOP 1 1 FROM dbo.MOC_PRODUCE_M m
-            INNER JOIN dbo.MOC_PRODUCE_CHANGE_M c ON c.PRODUCE_TYPE=m.PRODUCE_TYPE AND c.PRODUCE_NO=m.PRODUCE_NO
-            WHERE c.CHANGE_PRODUCE_TYPE=@Type AND c.CHANGE_PRODUCE_NO=@No AND m.CONFIRM_TAG=0;
-            """, type, no, token))
-            return new(false, "生产单未批核，不可变更");
-        if (await DomainRuleService.ExistsAsync(connection, transaction,
-            """
-            SELECT TOP 1 1 FROM dbo.MOC_PRODUCE_M m
-            INNER JOIN dbo.MOC_PRODUCE_CHANGE_M c ON c.PRODUCE_TYPE=m.PRODUCE_TYPE AND c.PRODUCE_NO=m.PRODUCE_NO
-            WHERE c.CHANGE_PRODUCE_TYPE=@Type AND c.CHANGE_PRODUCE_NO=@No
-              AND (ISNULL(m.FINISHED_QTY,0)>ISNULL(c.QTY,0) OR ISNULL(m.FINISHED_SPARE_QTY,0)>ISNULL(c.SPARE_QTY,0));
-            """, type, no, token))
-            return new(false, "变更后以下序号项数量小于已生产数量");
-        var lines = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT oc.SERIAL_NO FROM dbo.MOC_PRODUCE_D od
-            INNER JOIN dbo.MOC_PRODUCE_CHANGE_D oc
-              ON oc.PRODUCE_TYPE=od.PRODUCE_TYPE AND oc.PRODUCE_NO=od.PRODUCE_NO AND oc.PRODUCE_SERIAL_NO=od.SERIAL_NO
-            WHERE oc.CHANGE_PRODUCE_TYPE=@Type AND oc.CHANGE_PRODUCE_NO=@No AND oc.NEED_QTY < ISNULL(od.USED_QTY,0);
-            """, type, no, token, line: r => "    " + Convert.ToInt32(r.GetValue(0)).ToString());
-        return lines is null
-            ? new(true, null)
-            : new(false, "变更后以下序号项应领料数量小于制令已领料\r\n" + lines);
-    }
+    /// <summary>制令变更（P_MOC_PRODUCE_CHANGE）AfterSave：原单已批核与变更量下限由校验目录承担。</summary>
 }
