@@ -150,7 +150,6 @@ public static class DomainRuleMap
         [1509] = "moc-produce-change",
         [1609] = "pur-purchase-change",
         [1418] = "cop-order-change",
-        [1413] = "cop-callback",
         [1522] = "moc-produce",
         [180207] = "hr-worktime",
         [130101] = "inv-check-stock",
@@ -177,6 +176,7 @@ public static class CatalogAfterSaveMap
         2707,              // 工序发料：出库不超工序工单入库数量（受门控）
         2815, 1515,        // 生产出库：出库不超制令/订单可出库（受门控，FITOUT_TAG 二选一）+ 批管品必填批号
         2703,              // 产品制程：用固定时间时固定时间不得为零
+        1413,              // 送货回执：送/退货行不得已有回执（被引用行条件断言）
         180102, 180105, 180110, 180111,   // 员工工号唯一
         180205,            // 每人每月一笔出勤参数
         180211, 180651,    // 当月每人一班排班

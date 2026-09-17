@@ -550,6 +550,44 @@ public class ValidationRuleRegistryFailClosedTests
     }
 
     [Fact]
+    public void ReferenceCheck_RefCondition_IsAccepted()
+    {
+        var issues = Validate("reference-exists", Params("""
+            {"checks":[{"refTable":"COP_SEND_D",
+             "join":[{"target":"SEND_NO","source":{"scope":"DETAIL","field":"S_R_NO"}}],
+             "refCondition":{"logic":"AND","items":[{"type":"blank","field":{"scope":"TARGET","field":"CALLBACK_NO"},"negate":true}]},
+             "lineField":"SERIAL_NO","message":"以下序号项送、退货已有回执\r\n{ROWS}"}]}
+            """));
+
+        Assert.DoesNotContain(issues, issue => issue.Contains("未知参数键") || issue.Contains("refCondition"));
+    }
+
+    [Fact]
+    public void ReferenceCheck_RefConditionWithMismatch_IsRejected()
+    {
+        var issues = Validate("reference-exists", Params("""
+            {"checks":[{"refTable":"COP_SEND_D",
+             "join":[{"target":"SEND_NO","source":{"scope":"DETAIL","field":"S_R_NO"}}],
+             "mismatch":{"target":"CALLBACK_NO","source":{"scope":"DETAIL","field":"S_R_NO"}},
+             "refCondition":{"logic":"AND","items":[{"type":"blank","field":{"scope":"TARGET","field":"CALLBACK_NO"},"negate":true}]}}]}
+            """));
+
+        Assert.Contains(issues, issue => issue.Contains("mismatch 与 refCondition 不能同时配置"));
+    }
+
+    [Fact]
+    public void ReferenceCheck_RefConditionMustBeObject()
+    {
+        var issues = Validate("reference-exists", Params("""
+            {"checks":[{"refTable":"COP_SEND_D",
+             "join":[{"target":"SEND_NO","source":{"scope":"DETAIL","field":"S_R_NO"}}],
+             "refCondition":"非空"}]}
+            """));
+
+        Assert.Contains(issues, issue => issue.Contains("refCondition 必须是条件对象"));
+    }
+
+    [Fact]
     public void QuantityCheck_ModuleScopeGate_IsAccepted()
     {
         var issues = Validate("qty-not-exceed", Params("""

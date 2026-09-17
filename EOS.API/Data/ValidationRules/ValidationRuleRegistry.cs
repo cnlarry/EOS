@@ -39,8 +39,8 @@ public static class ValidationRuleRegistry
     private static readonly IReadOnlySet<string> LineRequireOps = KeySet("GT", "GE", "LT", "LE", "EQ", "NEQ");
     private static readonly IReadOnlySet<string> QtyBlockKeys = KeySet("scope", "terms", "fields", "agg");
     private static readonly IReadOnlySet<string> ReferenceCheckKeys = KeySet(
-        "refTable", "allowEmpty", "join", "refKey", "activeTag", "message", "lineField", "targets", "maxRows", "mismatch");
-    private static readonly IReadOnlySet<string> ReferenceTargetKeys = KeySet("refTable", "join", "refKey", "activeTag", "mismatch");
+        "refTable", "allowEmpty", "join", "refKey", "activeTag", "message", "lineField", "targets", "maxRows", "mismatch", "refCondition");
+    private static readonly IReadOnlySet<string> ReferenceTargetKeys = KeySet("refTable", "join", "refKey", "activeTag", "mismatch", "refCondition");
     private static readonly IReadOnlySet<string> ReferenceMismatchKeys = KeySet("target", "source");
     private static readonly IReadOnlySet<string> ActiveTagKeys = KeySet("field", "expect");
     private static readonly IReadOnlySet<string> ReferencePairKeys = KeySet("target", "source");
@@ -570,6 +570,14 @@ public static class ValidationRuleRegistry
         var join = GetArray(target, "join");
         if (refKey is null && (join is null || join.Value.GetArrayLength() == 0))
             issues.Add($"校验规则 {Label(rule)}：{where} 需要 refKey 或 join");
+        if (target.TryGetProperty("refCondition", out var refCondition))
+        {
+            // 被引用行的闭式条件：与 mismatch 同形（EXISTS + 条件 ⇒ 命中即违规）。
+            if (refCondition.ValueKind != JsonValueKind.Object)
+                issues.Add($"校验规则 {Label(rule)}：{where}.refCondition 必须是条件对象");
+            else if (target.TryGetProperty("mismatch", out _))
+                issues.Add($"校验规则 {Label(rule)}：{where} 的 mismatch 与 refCondition 不能同时配置");
+        }
         if (refKey is { } refKeyObject)
         {
             RejectUnknownKeys(rule, refKeyObject, ReferenceSourceKeys, where + ".refKey", issues);

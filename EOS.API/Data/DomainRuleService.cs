@@ -41,7 +41,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "moc-produce-change" => await MocDomainRules.MocProduceChangeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-purchase-change" => await PurDomainRules.PurPurchaseChangeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-order-change" => await CopDomainRules.CopOrderChangeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "cop-callback" => await CopDomainRules.CopCallbackAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "hr-worktime" => await HrDomainRules.HrWorktimeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "inv-check-stock" => await InvDomainRules.InvCheckStockAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "sfc-plan" => await SfcDomainRules.SfcPlanAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),

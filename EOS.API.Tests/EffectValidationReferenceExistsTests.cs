@@ -96,6 +96,30 @@ public sealed class EffectValidationReferenceExistsTests
     }
 
     [Fact]
+    public void 被引用行条件断言_引用行存在且满足条件即命中()
+    {
+        var compiled = EffectValidationExecutor.BuildReferenceExistsCheckSql(
+            Plan("COP_CALLBACK_M", "COP_CALLBACK_D", "CALLBACK_TYPE", "CALLBACK_NO"),
+            Check("""
+                {"refTable":"COP_SEND_D",
+                 "join":[{"target":"SEND_TYPE","source":{"scope":"DETAIL","field":"S_R_TYPE"}},
+                         {"target":"SEND_NO","source":{"scope":"DETAIL","field":"S_R_NO"}},
+                         {"target":"SERIAL_NO","source":{"scope":"DETAIL","field":"S_R_SERIAL_NO"}}],
+                 "refCondition":{"logic":"AND","items":[{"type":"blank","field":{"scope":"TARGET","field":"CALLBACK_NO"},"negate":true}]},
+                 "lineField":"SERIAL_NO","message":"以下序号项送、退货已有回执\r\n{ROWS}"}
+                """),
+            ["E2E", "CB001"]);
+
+        // EXISTS 形态：引用行存在**且** CALLBACK_NO 非空 ⇒ 命中（与"引用必须存在"的 NOT EXISTS 形态相反）
+        Assert.Contains("EXISTS (SELECT 1 FROM dbo.[COP_SEND_D] R WITH (NOLOCK) WHERE", compiled.Sql);
+        Assert.Contains("R.[SEND_TYPE] = D.[S_R_TYPE]", compiled.Sql);
+        Assert.Contains("NOT (NULLIF(LTRIM(RTRIM(R.[CALLBACK_NO])), '') IS NULL)", compiled.Sql);
+        Assert.DoesNotContain("NOT EXISTS (SELECT 1 FROM dbo.[COP_SEND_D]", compiled.Sql);
+        Assert.NotNull(compiled.LineSql);
+        Assert.Contains("R.[SERIAL_NO]", compiled.LineSql!);
+    }
+
+    [Fact]
     public void 缺失行清单按明细行号升序取前maxRows行()
     {
         var compiled = EffectValidationExecutor.BuildReferenceExistsCheckSql(

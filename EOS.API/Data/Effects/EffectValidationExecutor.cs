@@ -532,20 +532,25 @@ public sealed class EffectValidationExecutor
         // （对应旧实现把多张表 UNION ALL 后做一次存在性判断）。
         var missingParts = new List<string>();
         var usesDetail = false;
+        var conditionParameters = new List<EffectSqlParameter>();
         foreach (var target in targets)
         {
             var refTable = RequiredString(target, "refTable", "reference-exists.check 缺少 refTable。");
             var (match, matchUsesDetail) = BuildReferenceMatch(target);
             var (mismatch, mismatchUsesDetail) = BuildReferenceMismatch(target);
-            usesDetail |= matchUsesDetail || mismatchUsesDetail;
+            var (refCondition, refConditionUsesDetail, refConditionParameters) = BuildReferenceCondition(target);
+            usesDetail |= matchUsesDetail || mismatchUsesDetail || refConditionUsesDetail;
+            conditionParameters.AddRange(refConditionParameters);
             // 无 mismatch ＝ 断言"引用必须存在"；带 mismatch ＝ 断言"引用存在时该列必须与来源一致"
-            // （旧实现的反向一致性断言，命中条件是存在一行且两列不等）。
+            // （旧实现的反向一致性断言，命中条件是存在一行且两列不等）；
+            // refCondition ＝ 断言"引用行存在且满足该条件即命中"（同样是 EXISTS 形态）。
             var body = match + BuildActiveTag(target);
-            missingParts.Add(mismatch is null
+            var extra = mismatch is null ? refCondition : mismatch;
+            missingParts.Add(extra is null
                 ? "NOT EXISTS (SELECT 1 FROM dbo." + EffectConditionCompiler.Identifier(refTable)
                     + " R WITH (NOLOCK) WHERE " + body + ")"
                 : "EXISTS (SELECT 1 FROM dbo." + EffectConditionCompiler.Identifier(refTable)
-                    + " R WITH (NOLOCK) WHERE " + body + " AND " + mismatch + ")");
+                    + " R WITH (NOLOCK) WHERE " + body + " AND " + extra + ")");
         }
 
         var (emptyParts, allowEmptyUsesDetail) = BuildAllowEmptyParts(check);
@@ -578,7 +583,7 @@ public sealed class EffectValidationExecutor
         var message = check.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String
             ? msg.GetString()
             : null;
-        return new ReferenceExistsSql(sql, scopeParameters, message,
+        return new ReferenceExistsSql(sql, [.. scopeParameters, .. conditionParameters], message,
             lineExpression is null
                 ? null
                 : "SELECT TOP (" + MaxRowsOf(check).ToString(CultureInfo.InvariantCulture) + ") " + lineExpression
@@ -623,6 +628,37 @@ public sealed class EffectValidationExecutor
         var source = mismatch.TryGetProperty("source", out var declared) ? declared : default;
         var (expression, usesDetail) = SourceExpression(source);
         return ("R." + EffectConditionCompiler.Identifier(column) + " <> " + expression, usesDetail);
+    }
+
+    /// <summary>
+    /// 被引用行的闭式条件（可选，`refCondition`）：与 mismatch 同形（EXISTS + 条件），
+    /// 用于"引用行存在**且**满足某条件即命中"的断言——如"被引用的送货/退货行已有回执号
+    /// （CALLBACK_NO 非空）"。条件走闭式条件编译器，R 即被引用行别名。
+    /// </summary>
+    private static (string? Sql, bool UsesDetail, IReadOnlyList<EffectSqlParameter> Parameters) BuildReferenceCondition(
+        JsonElement target)
+    {
+        if (!target.TryGetProperty("refCondition", out var condition) || condition.ValueKind != JsonValueKind.Object)
+            return (null, false, Array.Empty<EffectSqlParameter>());
+        var usesDetail = false;
+        var compiled = new EffectConditionCompiler().Compile(
+            condition,
+            (scope, _) => scope.ToUpperInvariant() switch
+            {
+                "TARGET" => "R",
+                "DETAIL" => DetailAlias(),
+                "MASTER" => "M",
+                _ => null,
+            },
+            _ => true,
+            outerAlias: "R");
+        return (compiled.Sql, usesDetail, compiled.Parameters);
+
+        string DetailAlias()
+        {
+            usesDetail = true;
+            return "D";
+        }
     }
 
     private static string BuildActiveTag(JsonElement target)
