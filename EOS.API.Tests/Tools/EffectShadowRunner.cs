@@ -1176,8 +1176,8 @@ public sealed class EffectShadowRunner
         command.Parameters.Add("@Person", SqlDbType.NVarChar, 50).Value = "shadow";
         command.Parameters.Add("@ConfirmTag", SqlDbType.Bit).Value = deapprove ? false : true;
         command.Parameters.Add("@ExpectTag", SqlDbType.Bit).Value = deapprove ? true : false;
-        command.Parameters.Add("@Key1", SqlDbType.NVarChar, 20).Value = keys[0];
-        command.Parameters.Add("@Key2", SqlDbType.NVarChar, 30).Value = keys[1];
+        command.Parameters.Add("@Key1", SqlDbType.NVarChar, Math.Max(keys[0].Length, 1)).Value = keys[0];
+        command.Parameters.Add("@Key2", SqlDbType.NVarChar, Math.Max(keys[1].Length, 1)).Value = keys[1];
         if (await command.ExecuteNonQueryAsync() == 0)
         {
             throw new InvalidOperationException(deapprove
@@ -1223,8 +1223,8 @@ public sealed class EffectShadowRunner
             WHERE M.{spec.Key1Column}=@Key1 AND M.{spec.Key2Column}=@Key2;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@Key1", SqlDbType.NVarChar, 20).Value = keys[0];
-        command.Parameters.Add("@Key2", SqlDbType.NVarChar, 30).Value = keys[1];
+        command.Parameters.Add("@Key1", SqlDbType.NVarChar, Math.Max(keys[0].Length, 1)).Value = keys[0];
+        command.Parameters.Add("@Key2", SqlDbType.NVarChar, Math.Max(keys[1].Length, 1)).Value = keys[1];
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
         {
@@ -1323,8 +1323,8 @@ public sealed class EffectShadowRunner
             ORDER BY D.SERIAL_NO;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@Key1", SqlDbType.NVarChar, 20).Value = keys[0];
-        command.Parameters.Add("@Key2", SqlDbType.NVarChar, 30).Value = keys[1];
+        command.Parameters.Add("@Key1", SqlDbType.NVarChar, Math.Max(keys[0].Length, 1)).Value = keys[0];
+        command.Parameters.Add("@Key2", SqlDbType.NVarChar, Math.Max(keys[1].Length, 1)).Value = keys[1];
         await using var reader = await command.ExecuteReaderAsync();
         var result = new List<DetailRow>();
         while (await reader.ReadAsync())
@@ -1354,8 +1354,8 @@ public sealed class EffectShadowRunner
             ORDER BY D.SERIAL_NO;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@Key1", SqlDbType.NVarChar, 20).Value = keys[0];
-        command.Parameters.Add("@Key2", SqlDbType.NVarChar, 30).Value = keys[1];
+        command.Parameters.Add("@Key1", SqlDbType.NVarChar, Math.Max(keys[0].Length, 1)).Value = keys[0];
+        command.Parameters.Add("@Key2", SqlDbType.NVarChar, Math.Max(keys[1].Length, 1)).Value = keys[1];
         await using var reader = await command.ExecuteReaderAsync();
         var result = new List<DetailRow>();
         static int? SmallInt(SqlDataReader reader, int ordinal) =>
@@ -1766,8 +1766,8 @@ public sealed class EffectShadowRunner
             ORDER BY D.SERIAL_NO;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@Key1", SqlDbType.NVarChar, 20).Value = keys[0];
-        command.Parameters.Add("@Key2", SqlDbType.NVarChar, 30).Value = keys[1];
+        command.Parameters.Add("@Key1", SqlDbType.NVarChar, Math.Max(keys[0].Length, 1)).Value = keys[0];
+        command.Parameters.Add("@Key2", SqlDbType.NVarChar, Math.Max(keys[1].Length, 1)).Value = keys[1];
         await using var reader = await command.ExecuteReaderAsync();
         var result = new List<DetailRow>();
         static int? SmallInt(SqlDataReader reader, int ordinal) =>
@@ -1874,8 +1874,8 @@ public sealed class EffectShadowRunner
             ORDER BY D.SERIAL_NO;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@Key1", SqlDbType.NVarChar, 20).Value = keys[0];
-        command.Parameters.Add("@Key2", SqlDbType.NVarChar, 30).Value = keys[1];
+        command.Parameters.Add("@Key1", SqlDbType.NVarChar, Math.Max(keys[0].Length, 1)).Value = keys[0];
+        command.Parameters.Add("@Key2", SqlDbType.NVarChar, Math.Max(keys[1].Length, 1)).Value = keys[1];
         await using var reader = await command.ExecuteReaderAsync();
         var result = new List<DetailRow>();
         static int? SmallInt(SqlDataReader reader, int ordinal) =>
@@ -2110,8 +2110,8 @@ public sealed class EffectShadowRunner
             ORDER BY D.SERIAL_NO;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@Key1", SqlDbType.NVarChar, 20).Value = keys[0];
-        command.Parameters.Add("@Key2", SqlDbType.NVarChar, 30).Value = keys[1];
+        command.Parameters.Add("@Key1", SqlDbType.NVarChar, Math.Max(keys[0].Length, 1)).Value = keys[0];
+        command.Parameters.Add("@Key2", SqlDbType.NVarChar, Math.Max(keys[1].Length, 1)).Value = keys[1];
         await using var reader = await command.ExecuteReaderAsync();
         var result = new List<DetailRow>();
         static int? SmallInt(SqlDataReader reader, int ordinal) =>
@@ -2142,8 +2142,8 @@ public sealed class EffectShadowRunner
             ORDER BY D.SERIAL_NO;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@Key1", SqlDbType.NVarChar, 20).Value = keys[0];
-        command.Parameters.Add("@Key2", SqlDbType.NVarChar, 30).Value = keys[1];
+        command.Parameters.Add("@Key1", SqlDbType.NVarChar, Math.Max(keys[0].Length, 1)).Value = keys[0];
+        command.Parameters.Add("@Key2", SqlDbType.NVarChar, Math.Max(keys[1].Length, 1)).Value = keys[1];
         await using var reader = await command.ExecuteReaderAsync();
         var result = new List<DetailRow>();
         while (await reader.ReadAsync())

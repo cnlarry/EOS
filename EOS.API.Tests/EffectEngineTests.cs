@@ -258,11 +258,47 @@ public class EffectEngineTests
     }
 
     [Fact]
+    public void Reverse_clear_refs_unfinish_clears_refs_and_restates_finish_triple()
+    {
+        var unfinish = JsonSerializer.SerializeToElement(new { kind = "clear-refs-unfinish" });
+        var reference = EffectFormulaExecutor.ResolveOpForEvent(
+            new EffectOpPlan(1, "CUS_ACCOUNT_M", "EXPORT_NO", "ASSIGN",
+                new EffectSourceRef("MASTER", null, "EXPORT_NO", null), null, null, null, null, null),
+            EffectEvent.Deapprove, unfinish);
+        Assert.Equal("SET_WHEN", reference!.OpCode);
+        Assert.Equal(string.Empty, reference.Source.Constant);
+
+        var serial = EffectFormulaExecutor.ResolveOpForEvent(
+            new EffectOpPlan(2, "CUS_ACCOUNT_M", "EXPORT_SERIAL_NO", "ASSIGN",
+                new EffectSourceRef("MASTER", null, "SERIAL_NO", null), null, null, null, null, null),
+            EffectEvent.Deapprove, unfinish);
+        Assert.Equal("0", serial!.Source.Constant);
+
+        var flag = EffectFormulaExecutor.ResolveOpForEvent(
+            new EffectOpPlan(3, "CUS_ACCOUNT_M", "FINISHED_TAG", "ASSIGN",
+                new EffectSourceRef("CONSTANT", null, null, "1"), null, null, null, null, null),
+            EffectEvent.Deapprove, unfinish);
+        Assert.Equal("0", flag!.Source.Constant);
+
+        var person = EffectFormulaExecutor.ResolveOpForEvent(
+            new EffectOpPlan(4, "CUS_ACCOUNT_M", "FINISHED_PERSON", "ASSIGN",
+                new EffectSourceRef("CONSTANT", null, null, "SYSTEM"), null, null, null, null, null),
+            EffectEvent.Deapprove, unfinish);
+        Assert.Equal("SYSTEM", person!.Source.Constant);
+
+        var date = EffectFormulaExecutor.ResolveOpForEvent(
+            new EffectOpPlan(5, "CUS_ACCOUNT_M", "FINISHED_DATE", "ASSIGN",
+                new EffectSourceRef("CONSTANT", null, null, "SYSDATETIME"), null, null, null, null, null),
+            EffectEvent.Deapprove, unfinish);
+        Assert.Equal("SYSDATETIME", date!.Source.Constant);
+    }
+
+    [Fact]
     public void Reverse_refuses_clear_kinds_that_need_several_rows()
     {
         var op = new EffectOpPlan(1, "COP_ORDER_M", "APPLY_NO", "ASSIGN",
             new EffectSourceRef("MASTER", null, "APPLY_NO", null), null, null, null, null, null);
-        foreach (var kind in new[] { "clear-refs-unfinish", "clear-on-deapprove" })
+        foreach (var kind in new[] { "clear-on-deapprove" })
         {
             var exception = Assert.Throws<EffectConfigException>(() =>
                 EffectFormulaExecutor.ResolveOpForEvent(

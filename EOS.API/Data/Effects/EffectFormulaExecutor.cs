@@ -10,9 +10,9 @@ namespace EOS.API.Data.Effects;
 /// UPDATE statements inside the caller's transaction. Identifiers come exclusively from
 /// configuration and are re-validated against the physical column whitelist before use;
 /// values travel only as SQL parameters. Reverse semantics (DEAPPROVE): ACCUM and
-/// DEACCUM are mutual inverses; clear-finish / clear-refs unset the placed marker or
-/// reference column; other operators have no default reverse unless the action declares
-/// a "recompute" reverse kind, which re-runs the same row.
+/// DEACCUM are mutual inverses; clear-finish / clear-refs / clear-refs-unfinish unset
+/// the placed marker or reference column; other operators have no default reverse unless
+/// the action declares a "recompute" reverse kind, which re-runs the same row.
 /// </summary>
 public sealed class EffectFormulaExecutor
 {
@@ -70,12 +70,11 @@ public sealed class EffectFormulaExecutor
             return op; // recomputed from current facts / handled by a service handler
         if (kind == "no-reverse")
             return null;
-        if (kind is "clear-finish" or "clear-refs")
+        if (kind is "clear-finish" or "clear-refs" or "clear-refs-unfinish")
             return ClearOp(op, kind);
-        if (kind is "clear-refs-unfinish" or "clear-on-deapprove")
-            // Both write more than the placement row itself (finish stamps / restored
-            // dates). A single row cannot express that, and skipping silently would
-            // leave the document half-reversed: refuse instead.
+        if (kind is "clear-on-deapprove")
+            // Restores dates/quantities captured elsewhere; a single row cannot express
+            // that, and skipping silently would leave the document half-reversed: refuse.
             throw new EffectConfigException(
                 $"公式行的反向 kind '{kind}' 无法由单条公式行表达，请改用 DEAPPROVE 动作承载。");
         return op.OpCode.ToUpperInvariant() switch
@@ -92,9 +91,11 @@ public sealed class EffectFormulaExecutor
     /// back to "unset" with one assignment, mirroring the placement vocabulary:
     /// clear-finish maps a numeric marker to 0, the SYSDATETIME marker to NULL, any
     /// other text marker to the empty string and a copied value to NULL; clear-refs
-    /// resets SERIAL-like columns to 0 and empties the remaining reference columns.
-    /// Accumulation rows keep their own reverse (ACCUM/DEACCUM swap) because the clear
-    /// kinds never apply to them.
+    /// resets SERIAL-like columns to 0 and empties the remaining reference columns;
+    /// clear-refs-unfinish does the reference clearing and re-states the finish triple
+    /// the approve direction stamps (FINISHED_TAG 0, FINISHED_PERSON 'SYSTEM',
+    /// FINISHED_DATE now). Accumulation rows keep their own reverse (ACCUM/DEACCUM
+    /// swap) because the clear kinds never apply to them.
     /// </summary>
     private static EffectOpPlan? ClearOp(EffectOpPlan op, string kind) =>
         op.OpCode.ToUpperInvariant() switch
@@ -105,14 +106,24 @@ public sealed class EffectFormulaExecutor
                 op with
                 {
                     OpCode = "SET_WHEN",
-                    Source = new EffectSourceRef(
-                        "CONSTANT", null, null,
-                        kind == "clear-refs"
-                            ? (IsSerialColumn(op.TargetField) ? "0" : string.Empty)
-                            : ClearFinishValue(op.Source)),
+                    Source = new EffectSourceRef("CONSTANT", null, null, ClearValue(op, kind)),
                 },
             _ => null,
         };
+
+    /// <summary>Value one reverse assignment writes for the clear kinds.</summary>
+    private static string ClearValue(EffectOpPlan op, string kind) => kind switch
+    {
+        "clear-refs" => IsSerialColumn(op.TargetField) ? "0" : string.Empty,
+        "clear-refs-unfinish" => op.TargetField.ToUpperInvariant() switch
+        {
+            "FINISHED_TAG" => "0",
+            "FINISHED_PERSON" => "SYSTEM",
+            "FINISHED_DATE" => "SYSDATETIME",
+            _ => IsSerialColumn(op.TargetField) ? "0" : string.Empty,
+        },
+        _ => ClearFinishValue(op.Source),
+    };
 
     /// <summary>Value a clear-finish reverse writes: unset marker of the forward value.</summary>
     private static string ClearFinishValue(EffectSourceRef source)
