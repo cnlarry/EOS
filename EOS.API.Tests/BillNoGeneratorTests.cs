@@ -113,7 +113,9 @@ public sealed class ControlledSprocInvokerTests
     }
 
     [Theory]
-    [InlineData("P_WF_COP_QUOTE", true)]
+    // 批核过程退役后即从受控白名单移除：白名单只减不增（P_WF_COP_QUOTE 已随效果链接管退役）
+    [InlineData("P_WF_COP_QUOTE", false)]
+    [InlineData("P_WF_PRODUCT", true)]
     [InlineData("P_COP_QUOTE_After_Save", false)] // 已实现为领域规则（cop-quote）
     [InlineData("P_COP_ACCOUNT_After_Save", false)] // 已实现（cop-account）
     [InlineData("P_PUR_DUE_After_Save", false)] // 已实现（purchase-due）

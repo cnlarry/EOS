@@ -19,45 +19,47 @@ public static class ModuleBusinessMap
         {
             // 1201 产品/料件基本资料（1206/1210/1211 已合并至此）：仅批核工作流（P_WF_PRODUCT），无保存后副作用；PRO_NO 手工编号。
             [1201] = new(1201, null, "P_WF_PRODUCT", false, null, null),
-            // 1404 报价单：保存后校验已由校验目录承接，仅保留批核工作流与自动单号。
-            [1404] = new(1404, null, "P_WF_COP_QUOTE", true, "QUOTE_NO", "QUOTE_TYPE"),
+            // 1404 报价单：保存后校验已由校验目录承接，批核已由效果链接管（旧 P_WF_COP_QUOTE 已退役），保留自动单号。
+            [1404] = new(1404, null, null, true, "QUOTE_NO", "QUOTE_TYPE"),
             // 1405 客户订单
             [1405] = new(1405, null, "P_WF_COP_ORDER", true, "ORDER_NO", "ORDER_TYPE",
                 DomainRule: "cop-order"),
-            // 1604 厂商报价单 → 批核联动厂商计价表（1602）：保存后校验已由校验目录承接。
-            [1604] = new(1604, null, "P_WF_PUR_QUOTE", true, "QUOTE_NO", "QUOTE_TYPE"),
-            // 1615 成品请购单
-            [1615] = new(1615, null, "P_WF_PUR_APPLY", true, "APPLY_NO", "APPLY_TYPE",
+            // 1604 厂商报价单 → 批核联动厂商计价表（1602）：保存后校验已由校验目录承接，批核已由效果链接管（旧 P_WF_PUR_QUOTE 已退役）。
+            [1604] = new(1604, null, null, true, "QUOTE_NO", "QUOTE_TYPE"),
+            // 1615 成品请购单（批核已由效果链接管，旧 P_WF_PUR_APPLY 已退役）
+            [1615] = new(1615, null, null, true, "APPLY_NO", "APPLY_TYPE",
                 DomainRule: "pur-apply"),
             // 1606 采购单
             [1606] = new(1606, null, "P_WF_PUR_PURCHASE", true, "PURCHASE_NO", "PURCHASE_TYPE",
                 DomainRule: "pur-purchase"),
-            // 1607 收料单
-            [1607] = new(1607, null, "P_WF_PUR_RECEIVE", true, "RECEIVE_NO", "RECEIVE_TYPE",
+            // 1607 收料单（批核已由效果链接管，旧 P_WF_PUR_RECEIVE 已退役）
+            [1607] = new(1607, null, null, true, "RECEIVE_NO", "RECEIVE_TYPE",
                 DomainRule: "pur-receive"),
-            // 1406 送货单
-            [1406] = new(1406, null, "P_WF_COP_SEND", true, "SEND_NO", "SEND_TYPE",
+            // 1406 送货单（批核已由效果链接管，旧 P_WF_COP_SEND 已退役）
+            [1406] = new(1406, null, null, true, "SEND_NO", "SEND_TYPE",
                 DomainRule: "cop-send"),
             // 1408 出货通知单：无 SP，仅自动单号（默认单别 CHPC，历史配置待业务确认）
             [1408] = new(1408, null, null, true, "SHIPMENT_NO", "SHIPMENT_TYPE"),
-            // 财务：170101 应收货款单（对帐单）
-            [170101] = new(170101, null, "P_WF_COP_ACCOUNT", true, "ACCOUNT_NO", "ACCOUNT_TYPE",
+            // 财务：170101 应收货款单（对帐单，批核已由效果链接管，旧 P_WF_COP_ACCOUNT 已退役）
+            [170101] = new(170101, null, null, true, "ACCOUNT_NO", "ACCOUNT_TYPE",
                 DomainRule: "cop-account"),
             // 170102 收款单（预收冲抵入口）
             [170102] = new(170102, null, "P_WF_COP_RECEIPT", true, "RECEIPT_NO", "RECEIPT_TYPE",
                 PrepayOffsetTable: "COP_RECEIPT_PREPAY", DomainRule: "cop-receipt"),
-            // 170103 预收帐款单（AfterSave 已实现：客户校验 + 金额汇总）
-            [170103] = new(170103, null, "P_WF_COP_PREPAY", true, "PREPAY_NO", "PREPAY_TYPE",
+            // 170103 预收帐款单（AfterSave 已实现：客户校验 + 金额汇总；批核已由效果链接管，旧 P_WF_COP_PREPAY 已退役）
+            [170103] = new(170103, null, null, true, "PREPAY_NO", "PREPAY_TYPE",
                 DomainRule: "cop-prepay"),
             // 170201 应付货款单：AfterSave 已实现为确定性领域规则（purchase-due），
-            // 不再调用 P_PUR_DUE_After_Save（金额汇总 + 数量校验由 C# 实现）
-            [170201] = new(170201, null, "P_WF_PUR_DUE", true, "DUE_NO", "DUE_TYPE",
+            // 不再调用 P_PUR_DUE_After_Save（金额汇总 + 数量校验由 C# 实现）；
+            // 批核已由效果链接管，旧 P_WF_PUR_DUE 已退役
+            [170201] = new(170201, null, null, true, "DUE_NO", "DUE_TYPE",
                 DomainRule: "purchase-due"),
             // 170202 付款单
             [170202] = new(170202, null, "P_WF_PUR_PAY", true, "PAY_NO", "PAY_TYPE",
                 PrepayOffsetTable: "PUR_PAY_PREPAY", DomainRule: "pur-pay"),
-            // 170203 预付帐款单（AfterSave 已实现：厂商校验 + 预付不超采购金额 + 金额汇总）
-            [170203] = new(170203, null, "P_WF_PUR_PREPAY", true, "PREPAY_NO", "PREPAY_TYPE",
+            // 170203 预付帐款单（AfterSave 已实现：厂商校验 + 预付不超采购金额 + 金额汇总；
+            // 批核已由效果链接管，旧 P_WF_PUR_PREPAY 已退役）
+            [170203] = new(170203, null, null, true, "PREPAY_NO", "PREPAY_TYPE",
                 DomainRule: "pur-prepay"),
         };
 
