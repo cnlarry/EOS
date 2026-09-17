@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.SqlClient;
@@ -9,8 +10,9 @@ namespace EOS.API.Data.Effects;
 /// UPDATE statements inside the caller's transaction. Identifiers come exclusively from
 /// configuration and are re-validated against the physical column whitelist before use;
 /// values travel only as SQL parameters. Reverse semantics (DEAPPROVE): ACCUM and
-/// DEACCUM are mutual inverses; other operators have no default reverse unless the
-/// action declares a "recompute" reverse kind, which re-runs the same row.
+/// DEACCUM are mutual inverses; clear-finish / clear-refs unset the placed marker or
+/// reference column; other operators have no default reverse unless the action declares
+/// a "recompute" reverse kind, which re-runs the same row.
 /// </summary>
 public sealed class EffectFormulaExecutor
 {
@@ -68,6 +70,14 @@ public sealed class EffectFormulaExecutor
             return op; // recomputed from current facts / handled by a service handler
         if (kind == "no-reverse")
             return null;
+        if (kind is "clear-finish" or "clear-refs")
+            return ClearOp(op, kind);
+        if (kind is "clear-refs-unfinish" or "clear-on-deapprove")
+            // Both write more than the placement row itself (finish stamps / restored
+            // dates). A single row cannot express that, and skipping silently would
+            // leave the document half-reversed: refuse instead.
+            throw new EffectConfigException(
+                $"公式行的反向 kind '{kind}' 无法由单条公式行表达，请改用 DEAPPROVE 动作承载。");
         return op.OpCode.ToUpperInvariant() switch
         {
             "ACCUM" => op with { OpCode = "DEACCUM" },
@@ -75,6 +85,50 @@ public sealed class EffectFormulaExecutor
             _ => null, // ASSIGN family / APPEND_UNIQ / SET_WHEN leave no reverse by default
         };
     }
+
+    /// <summary>
+    /// Reverse of a placement row for the clear kinds. The approve direction places a
+    /// marker or a copied value into the target column; the reverse puts that column
+    /// back to "unset" with one assignment, mirroring the placement vocabulary:
+    /// clear-finish maps a numeric marker to 0, the SYSDATETIME marker to NULL, any
+    /// other text marker to the empty string and a copied value to NULL; clear-refs
+    /// resets SERIAL-like columns to 0 and empties the remaining reference columns.
+    /// Accumulation rows keep their own reverse (ACCUM/DEACCUM swap) because the clear
+    /// kinds never apply to them.
+    /// </summary>
+    private static EffectOpPlan? ClearOp(EffectOpPlan op, string kind) =>
+        op.OpCode.ToUpperInvariant() switch
+        {
+            "ACCUM" => op with { OpCode = "DEACCUM" },
+            "DEACCUM" => op with { OpCode = "ACCUM" },
+            "ASSIGN" or "ASSIGN_MAX" or "ASSIGN_MIN" or "SET_WHEN" or "APPEND" or "APPEND_UNIQ" =>
+                op with
+                {
+                    OpCode = "SET_WHEN",
+                    Source = new EffectSourceRef(
+                        "CONSTANT", null, null,
+                        kind == "clear-refs"
+                            ? (IsSerialColumn(op.TargetField) ? "0" : string.Empty)
+                            : ClearFinishValue(op.Source)),
+                },
+            _ => null,
+        };
+
+    /// <summary>Value a clear-finish reverse writes: unset marker of the forward value.</summary>
+    private static string ClearFinishValue(EffectSourceRef source)
+    {
+        if (!source.Scope.Equals("CONSTANT", StringComparison.OrdinalIgnoreCase) || source.Constant is null)
+            return "NULL"; // a copied value is unset rather than recomputed
+        var constant = source.Constant;
+        if (constant.Equals("SYSDATETIME", StringComparison.OrdinalIgnoreCase))
+            return "NULL";
+        if (decimal.TryParse(constant, NumberStyles.Any, CultureInfo.InvariantCulture, out _))
+            return "0";
+        return string.Empty;
+    }
+
+    private static bool IsSerialColumn(string column) =>
+        column.Contains("SERIAL", StringComparison.OrdinalIgnoreCase);
 
     internal (string Sql, IReadOnlyList<EffectSqlParameter> Parameters) BuildUpdate(
         EffectOpPlan op,
