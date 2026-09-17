@@ -316,9 +316,9 @@ public sealed class WorkbenchCommandHandler(
         IReadOnlyList<SaveWarning>? warnings = null;
         if (definition.AutoApprove)
         {
-            // 自动批核模块：新增成功后立即进入批核状态（保存事务提交后执行，SP 自带事务）；
-            // 失败不回滚保存：以 warnings 回传前端提示「已保存，但自动批核失败」。
-            var autoResult = await approvalService.AutoApproveAsync(connection, definition, keyValues, userId, token);
+            // 自动批核模块：保存成功后立即进入批核生效（保存事务提交后执行，生效链自带事务）；
+            // 失败不回滚保存：以 warnings 回传前端提示「已保存，但自动批核失败」，单据停在未批核态可重试。
+            var autoResult = await approvalService.AutoApproveAsync(definition, keyValues, userId, token);
             if (autoResult.Status != RecordAccessStatus.Ok)
             {
                 logger.LogWarning("自动批核失败 module={ModuleId} key={Key} code={Code} message={Message}",
@@ -546,7 +546,22 @@ public sealed class WorkbenchCommandHandler(
         }
         await transaction.CommitAsync(token);
         logger.LogInformation("统一表单修改 module={ModuleId} master={Master} key={Key}", definition.ModuleId, definition.MasterTable, string.Join(',', keyValues));
-        return RecordSaveResult.Success(keyValues);
+        IReadOnlyList<SaveWarning>? updateWarnings = null;
+        if (definition.AutoApprove)
+        {
+            // 「保存即批核」对新增与修改同口径：未批核的单据（例如上次自动批核失败、
+            // 或启用自动批核之前建立的草稿）在下一次保存时补上批核生效；
+            // 已批核单据本就被编辑守卫挡住，故这里不会重复累计效果。
+            var autoResult = await approvalService.AutoApproveAsync(definition, keyValues, userId, token);
+            if (autoResult.Status != RecordAccessStatus.Ok)
+            {
+                logger.LogWarning("自动批核失败（修改） module={ModuleId} key={Key} code={Code} message={Message}",
+                    definition.ModuleId, string.Join(',', keyValues), autoResult.ErrorCode, autoResult.ErrorMessage);
+                updateWarnings = [new SaveWarning("AUTO_APPROVE_FAILED",
+                    $"已保存，但自动批核失败：{autoResult.ErrorMessage ?? autoResult.ErrorCode ?? "未知原因"}")];
+            }
+        }
+        return RecordSaveResult.Success(keyValues, updateWarnings);
     }
 
     public async Task<RecordSaveResult> DeleteRecordAsync(
