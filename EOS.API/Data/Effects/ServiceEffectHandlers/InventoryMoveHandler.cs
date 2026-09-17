@@ -277,6 +277,9 @@ public sealed record InventoryMovePlan(
         }
         if (RowPositiveFields.Count > 0)
             where.Add("(" + string.Join(" OR ", RowPositiveFields.Select(field => $"ISNULL(D.{Q(field)}, 0) > 0")) + ")");
+        // 库位为空的行没有可移动的库位：原实现以 isnull(<库位列>,'')<>'' 跳过这类行
+        // （借出单/返还单的"归还库位"列常年为空），照搬会往 INV_PRO_DEPOT 写 NULL 库位而整单失败。
+        where.Add($"ISNULL(D.{Q(DepotField)}, '') <> ''");
         select.Append(string.Join(" AND ", where));
         return new RowSetStatement(
             rowColumns.Select(item => item.Column).ToList(),
@@ -500,13 +503,20 @@ public sealed class InventoryMoveSql
     /// <summary>Reverse semantics: compensating batch detail rows instead of deleting history.</summary>
     private async Task<int> WriteReverseBatchesAsync(CancellationToken token) => await ExecAsync(
         "INSERT INTO dbo.INV_BATCH_D(BATCH_NO, PRO_NO, BATCH_DATE, BATCH_ORDER_TYPE, BATCH_ORDER_NO, BATCH_SERIAL_NO, DEPOT_ID, EFFECT_DEPOT, QTY, MUTUALITY_QTY, MUTUALITY_UNIT_ID, MUTUALITY_PRICE, MUTUALITY_CURR_ID, MUTUALITY_CURR_RATE, MUTUALITY_AMOUNT) "
-        + $"SELECT t.BATCH_NO, t.PRO_NO, t.BILL_DATE, t.BILL_TYPE, t.BILL_NO, t.SERIAL_NO, t.DEPOT_ID, '{(_plan.Direction == 1 ? 'O' : 'I')}', -t.BASE_QTY, -t.QTY, t.UNIT_ID, t.PRICE, t.CURR_ID, t.CURR_RATE, -t.AMOUNT "
+        + $"SELECT t.BATCH_NO, t.PRO_NO, {LedgerDateExpression()}, t.BILL_TYPE, t.BILL_NO, t.SERIAL_NO, t.DEPOT_ID, '{(_plan.Direction == 1 ? 'O' : 'I')}', -t.BASE_QTY, -t.QTY, t.UNIT_ID, t.PRICE, t.CURR_ID, t.CURR_RATE, -t.AMOUNT "
         + $"FROM {Tmp} t WHERE ISNULL(t.BATCH_NO,'') != ''", token);
+
+    /// <summary>
+    /// 流水日期：批核写单据日期；解批写的是"解批当时发生的反向流水"，取当前时间——既如实反映
+    /// 发生时刻，也避开 INV_DEPOT_LOG 主键 (单据, 日期, 方向, 行号, 库位) 与批核原始行的重复：
+    /// 报废/借出这类"两条腿同库位"的单据，批核会同时写 O、I 两行，解批镜像时沿用单据日期必然撞键。
+    /// </summary>
+    private string LedgerDateExpression() => IsApprove ? "t.BILL_DATE" : "SYSDATETIME()";
 
     /// <summary>Inventory log rows; deapprove writes mirrored rows with flipped direction and negative quantities.</summary>
     private async Task<int> WriteLogAsync(CancellationToken token) => await ExecAsync(
         "INSERT INTO dbo.INV_DEPOT_LOG(PRO_NO, MUTUALITY_DATE, IN_OUT, MUTUALITY_TYPE, MUTUALITY_NO, MUTUALITY_SERIAL_NO, DEPOT_ID, QTY, PRICE, AMOUNT, BATCH_NO, MUTUALITY_QTY, MUTUALITY_UNIT_ID, MUTUALITY_PRICE, MUTUALITY_CURR_ID, MUTUALITY_CURR_RATE, MUTUALITY_AMOUNT) "
-        + "SELECT t.PRO_NO, t.BILL_DATE, @io, t.BILL_TYPE, t.BILL_NO, t.SERIAL_NO, t.DEPOT_ID, "
+        + $"SELECT t.PRO_NO, {LedgerDateExpression()}, @io, t.BILL_TYPE, t.BILL_NO, t.SERIAL_NO, t.DEPOT_ID, "
         + "CASE WHEN @positive = 1 THEN t.BASE_QTY ELSE -t.BASE_QTY END, t.BASE_PRICE, "
         + "CASE WHEN @positive = 1 THEN t.AMOUNT*t.CURR_RATE ELSE -t.AMOUNT*t.CURR_RATE END, t.BATCH_NO, "
         + "CASE WHEN @positive = 1 THEN t.QTY ELSE -t.QTY END, t.UNIT_ID, t.PRICE, t.CURR_ID, t.CURR_RATE, "
