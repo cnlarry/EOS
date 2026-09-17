@@ -278,6 +278,7 @@ public sealed class WorkbenchDefinitionValidator(
             var needsApprove = WorkflowStates.NeedsApproveColumn(
                 definition.AutoApprove,
                 definition.BusinessRule?.WorkflowSproc is not null,
+                definition.EffectEngineEnabled,
                 definition.HasWorkflow,
                 enabledEvents);
             if (needsApprove)
@@ -286,7 +287,7 @@ public sealed class WorkbenchDefinitionValidator(
                 checks.Add(masterColumns.Contains("CONFIRM_TAG", StringComparer.OrdinalIgnoreCase)
                     ? new("lifecycle_columns", true, "模块具备批核能力且主表有 CONFIRM_TAG。")
                     : new("lifecycle_columns", false,
-                        $"模块具备批核能力（自动批核/批核过程/工作流/批核效果链）但主表 {module.MasterTable} 缺少 CONFIRM_TAG：请补列后重发布，或关闭对应批核能力。"));
+                        $"模块具备批核能力（自动批核/批核过程/效果引擎接管/工作流/批核效果链）但主表 {module.MasterTable} 缺少 CONFIRM_TAG：请补列后重发布，或关闭对应批核能力。"));
             }
             else
             {
