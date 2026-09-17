@@ -147,7 +147,6 @@ public static class DomainRuleMap
         [300305] = "cus-import",
         [3006] = "cus-manual",
         [3014] = "cus-account",
-        [1609] = "pur-purchase-change",
         [1418] = "cop-order-change",
         [1522] = "moc-produce",
         [180207] = "hr-worktime",
@@ -177,6 +176,7 @@ public static class CatalogAfterSaveMap
         2703,              // 产品制程：用固定时间时固定时间不得为零
         1413,              // 送货回执：送/退货行不得已有回执（被引用行条件断言）
         1509,              // 制令变更：原单已批核 + 变更量不小于已生产/已领料
+        1609,              // 采购变更：原单已批核 + 变更量不小于已收货
         180102, 180105, 180110, 180111,   // 员工工号唯一
         180205,            // 每人每月一笔出勤参数
         180211, 180651,    // 当月每人一班排班

@@ -532,6 +532,63 @@ public sealed class EffectValidationLiveDataTests
     }
 
     [Fact]
+    public async Task 采购变更_原单批核与变更量下限_三态校验()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.PUR_PURCHASE_M (PURCHASE_TYPE, PURCHASE_NO, CONFIRM_TAG)
+                VALUES (N'ZZ', N'ZZT2609PUR01', 0);
+                INSERT INTO dbo.PUR_PURCHASE_D (PURCHASE_TYPE, PURCHASE_NO, SERIAL_NO, RECEIVE_QTY)
+                VALUES (N'ZZ', N'ZZT2609PUR01', 1, 6);
+                INSERT INTO dbo.PUR_PURCHASE_CHANGE_M (CHANGE_PURCHASE_TYPE, CHANGE_PURCHASE_NO, PURCHASE_TYPE, PURCHASE_NO)
+                VALUES (N'ZZ', N'ZZT2609PCG01', N'ZZ', N'ZZT2609PUR01');
+                INSERT INTO dbo.PUR_PURCHASE_CHANGE_D (CHANGE_PURCHASE_TYPE, CHANGE_PURCHASE_NO, SERIAL_NO, PURCHASE_TYPE, PURCHASE_NO, PURCHASE_SERIAL_NO, QTY)
+                VALUES (N'ZZ', N'ZZT2609PCG01', 1, N'ZZ', N'ZZT2609PUR01', 1, 4);
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            // ① 原单未批核 → 拒绝
+            var refPlan = await LoadPlanAsync(connection, transaction, 1609, token, "reference-exists");
+            var notApproved = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, refPlan, "SAVE", token, ["ZZ", "ZZT2609PCG01"]));
+            Assert.Contains("采购单未批核，不可变更", notApproved.Message);
+
+            // ② 原单批核后：变更明细数量 4 < 已收货 6 → 命中并回报本单序号
+            await using (var approve = new SqlCommand(
+                "UPDATE dbo.PUR_PURCHASE_M SET CONFIRM_TAG = 1 WHERE PURCHASE_TYPE = N'ZZ' AND PURCHASE_NO = N'ZZT2609PUR01';",
+                connection, transaction))
+            {
+                await approve.ExecuteNonQueryAsync(token);
+            }
+            var qtyPlan = await LoadPlanAsync(connection, transaction, 1609, token, "qty-not-exceed");
+            var tooLow = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, ["ZZ", "ZZT2609PCG01"]));
+            Assert.Contains("变更后以下序号项采购单数量小于已收货数量", tooLow.Message);
+            Assert.Contains("1", tooLow.Message);
+
+            // ③ 变更量补齐到 6 → 放行
+            await using (var ok = new SqlCommand(
+                "UPDATE dbo.PUR_PURCHASE_CHANGE_D SET QTY = 6 WHERE CHANGE_PURCHASE_TYPE = N'ZZ' AND CHANGE_PURCHASE_NO = N'ZZT2609PCG01' AND SERIAL_NO = 1;",
+                connection, transaction))
+            {
+                await ok.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, ["ZZ", "ZZT2609PCG01"]);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
+    [Fact]
     public async Task 制令变更_原单批核与变更量下限_三态校验()
     {
         var token = CancellationToken.None;
