@@ -71,26 +71,6 @@ public static class CopDomainRules
     /// <summary>采购退料单（P_PUR_CANCEL）AfterSave：6 项引用校验 + 退料不超收料。</summary>
 
 
-    /// <summary>P_COP_BACK_CHECK 内联：退料不超订单数量。</summary>
-    public static async Task<SprocResult?> CopBackCheckAsync(
-        SqlConnection connection, SqlTransaction transaction, string type, string no, CancellationToken token)
-    {
-        var rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT od.ORDER_NO, od.QTY, od.FINISHED_SEND_QTY, od.BACK_MATERIAL, od.BACK_BAD, sd.QTY
-            FROM dbo.COP_ORDER_D od
-            INNER JOIN (SELECT ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
-                        FROM dbo.COP_BACK_D WHERE BACK_TYPE=@Type AND BACK_NO=@No
-                        GROUP BY ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO) sd
-              ON od.ORDER_TYPE=sd.ORDER_TYPE AND od.ORDER_NO=sd.ORDER_NO AND od.SERIAL_NO=sd.ORDER_SERIAL_NO
-            WHERE ISNULL(od.FINISHED_SEND_QTY,0)+ISNULL(od.BACK_MATERIAL,0)+ISNULL(od.BACK_BAD,0)+sd.QTY > od.QTY;
-            """, type, no, token,
-            line: r => $"{r.GetString(0).Trim()}    {Convert.ToString(r.GetValue(1))}    {Convert.ToString(r.GetValue(2))}    {Convert.ToString(r.GetValue(3))}    {Convert.ToString(r.GetValue(4))}    {Convert.ToString(r.GetValue(5))}");
-        return rows is null
-            ? null
-            : new(false, "以下退料已超出订单数量\r\n 订单单号  订单数量  已送数量  已退数量  已退次品  单据数量\r\n" + rows);
-    }
-
     /// <summary>P_COP_FITOUT_CHECK 内联：已备货不超订单/工单完工数量（SYSSS 门控）。</summary>
 
 
@@ -138,84 +118,6 @@ public static class CopDomainRules
     }
 
     /// <summary>P_COP_FITIN_CHECK 内联：返仓不超备货/送货不超备货（订单/工单/调拨，SYSSS 门控）。</summary>
-
-
-    /// <summary>P_COP_FITIN_CHECK 内联：返仓不超备货/送货不超备货（订单/工单/调拨，SYSSS 门控）。</summary>
-    public static async Task<SprocResult?> CopFitinCheckAsync(
-        SqlConnection connection, SqlTransaction transaction, string type, string no, CancellationToken token)
-    {
-        // 1. 返仓不超备货
-        var rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT od.FITOUT_NO, od.QTY, od.FINISHED_QTY, od.RETURN_QTY, sd.QTY, od.SPARE_QTY, od.FINISHED_SPARE_QTY, od.RETURN_SPARE_QTY, sd.SPARE_QTY
-            FROM dbo.COP_FITOUT_D od
-            INNER JOIN (SELECT FITOUT_TYPE, FITOUT_NO, FITOUT_SERIAL_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
-                        FROM dbo.COP_FITIN_D WHERE FITIN_TYPE=@Type AND FITIN_NO=@No
-                        GROUP BY FITOUT_TYPE, FITOUT_NO, FITOUT_SERIAL_NO) sd
-              ON od.FITOUT_TYPE=sd.FITOUT_TYPE AND od.FITOUT_NO=sd.FITOUT_NO AND od.SERIAL_NO=sd.FITOUT_SERIAL_NO
-            WHERE (ISNULL(od.QTY,0)-ISNULL(od.FINISHED_QTY,0)-ISNULL(od.RETURN_QTY,0) < sd.QTY
-                OR ISNULL(od.SPARE_QTY,0)-ISNULL(od.FINISHED_SPARE_QTY,0)-ISNULL(od.RETURN_SPARE_QTY,0)-sd.SPARE_QTY < 0);
-            """, type, no, token,
-            line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
-        if (rows is not null)
-            return new(false, "以下返仓已超出备货单数量\r\n备货单号   数量  已送货   已返仓数量  单据数量  备品  已送备品  已返仓备品  单据备品\r\n" + rows);
-        // 2-4. 送货/调拨不超备货（SYSSS 门控）
-        if (await DomainRuleService.ExistsAsync(connection, transaction,
-            "SELECT TOP 1 1 FROM dbo.SYSSS WHERE FITOUT_ORDER_TAG=1;", type, no, token))
-        {
-            rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-                """
-                SELECT od.ORDER_NO, od.FINISHED_FITOUT_QTY, od.FINISHED_SEND_QTY, sd.QTY, od.FINISHED_FITOUT_SPARE_QTY, od.FINISHED_SPARE_QTY, sd.SPARE_QTY
-                FROM dbo.COP_ORDER_D od
-                INNER JOIN (SELECT ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
-                            FROM dbo.COP_FITIN_D WHERE FITIN_TYPE=@Type AND FITIN_NO=@No
-                            GROUP BY ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO) sd
-                  ON od.ORDER_TYPE=sd.ORDER_TYPE AND od.ORDER_NO=sd.ORDER_NO AND od.SERIAL_NO=sd.ORDER_SERIAL_NO
-                WHERE (ISNULL(od.FINISHED_FITOUT_QTY,0)-sd.QTY < ISNULL(od.FINISHED_SEND_QTY,0)
-                    OR ISNULL(od.FINISHED_FITOUT_SPARE_QTY,0)-sd.SPARE_QTY < ISNULL(od.FINISHED_SPARE_QTY,0));
-                """, type, no, token,
-                line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
-            if (rows is not null)
-                return new(false, "以下会出现已送货数量超出已备货数量\r\n订单号  备货数量  已送货  单据数量  备货备品  已送备品  单据备品\r\n" + rows);
-        }
-        if (await DomainRuleService.ExistsAsync(connection, transaction,
-            "SELECT TOP 1 1 FROM dbo.SYSSS WHERE FITOUT_PRODUCE_TAG=1;", type, no, token))
-        {
-            rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-                """
-                SELECT od.PRODUCE_NO, od.FINISHED_FITOUT_QTY, od.FINISHED_SEND_QTY, sd.QTY, od.FINISHED_FITOUT_SPARE_QTY, od.FINISHED_SEND_SPARE_QTY, sd.SPARE_QTY
-                FROM dbo.MOC_PRODUCE_M od
-                INNER JOIN (SELECT PRODUCE_TYPE, PRODUCE_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
-                            FROM dbo.COP_FITIN_D WHERE FITIN_TYPE=@Type AND FITIN_NO=@No
-                            GROUP BY PRODUCE_TYPE, PRODUCE_NO) sd
-                  ON od.PRODUCE_TYPE=sd.PRODUCE_TYPE AND od.PRODUCE_NO=sd.PRODUCE_NO
-                WHERE (ISNULL(od.FINISHED_FITOUT_QTY,0)-sd.QTY < ISNULL(od.FINISHED_SEND_QTY,0)
-                    OR ISNULL(od.FINISHED_FITOUT_SPARE_QTY,0)-sd.SPARE_QTY < ISNULL(od.FINISHED_SEND_SPARE_QTY,0));
-                """, type, no, token,
-                line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
-            if (rows is not null)
-                return new(false, "以下会出现已送货数量超出已备货数量\r\n工单号  备货数量  已送货  单据数量  备货备品  已送备品  单据备品\r\n" + rows);
-        }
-        if (await DomainRuleService.ExistsAsync(connection, transaction,
-            "SELECT TOP 1 1 FROM dbo.SYSSS WHERE FITOUT_PRODUCE_TRANSFER_TAG=1;", type, no, token))
-        {
-            rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-                """
-                SELECT od.PRODUCE_NO, od.FINISHED_FITOUT_QTY, od.FINISHED_TRANSFER_QTY, sd.QTY, od.FINISHED_FITOUT_SPARE_QTY, od.FINISHED_TRANSFER_SPARE_QTY, sd.SPARE_QTY
-                FROM dbo.MOC_PRODUCE_M od
-                INNER JOIN (SELECT PRODUCE_TYPE, PRODUCE_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
-                            FROM dbo.COP_FITIN_D WHERE FITIN_TYPE=@Type AND FITIN_NO=@No
-                            GROUP BY PRODUCE_TYPE, PRODUCE_NO) sd
-                  ON od.PRODUCE_TYPE=sd.PRODUCE_TYPE AND od.PRODUCE_NO=sd.PRODUCE_NO
-                WHERE (ISNULL(od.FINISHED_FITOUT_QTY,0)-sd.QTY < ISNULL(od.FINISHED_TRANSFER_QTY,0)
-                    OR ISNULL(od.FINISHED_FITOUT_SPARE_QTY,0)-sd.SPARE_QTY < ISNULL(od.FINISHED_TRANSFER_SPARE_QTY,0));
-                """, type, no, token,
-                line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
-            if (rows is not null)
-                return new(false, "以下会出现已调拔数量超出已备货数量\r\n工单号  备货数量  已调拔  单据数量  备货备品  已调拔备品  单据备品\r\n" + rows);
-        }
-        return null;
-    }
 
     /// <summary>P_PUR_CANCEL 退料不超收料。</summary>
 
