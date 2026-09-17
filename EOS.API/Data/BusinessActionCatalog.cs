@@ -83,13 +83,14 @@ public static class BusinessActionCatalog
         "CONSTANT",
     };
 
-    /// <summary>源聚合（null = 单值；闭式）。</summary>
+    /// <summary>源聚合（null = 单值；闭式）。PICK＝按定位键的唯一相关行原值取值（不做数值默认）。</summary>
     public static readonly IReadOnlySet<string> SourceAggregates = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "SUM",
         "MAX",
         "MIN",
         "DISTINCT",
+        "PICK",
     };
 
     /// <summary>校验规则阶段（§15 统一管线：SAVE/APPROVE/DEAPPROVE）。</summary>

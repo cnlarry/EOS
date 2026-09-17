@@ -26,7 +26,7 @@ public sealed class EffectPlanLoader
 
     private static readonly IReadOnlySet<string> Aggregations = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "NONE", "SUM", "MAX", "MIN", "DISTINCT",
+        "NONE", "SUM", "MAX", "MIN", "DISTINCT", "PICK",
     };
 
     public ModuleEffectPlan Load(WorkbenchDefinition definition)

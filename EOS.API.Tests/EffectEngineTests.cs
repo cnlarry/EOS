@@ -210,6 +210,43 @@ public class EffectEngineTests
     }
 
     [Fact]
+    public void Pick_aggregate_keeps_source_value_as_is()
+    {
+        var executor = new EffectFormulaExecutor();
+        var plan = new ModuleEffectPlan(1418, "COP_ORDER_CHANGE_M", "COP_ORDER_CHANGE_D", "v1",
+            Array.Empty<string>(), Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
+        plan = plan with { MasterPkOrder = new[] { "CHANGE_ORDER_TYPE", "CHANGE_ORDER_NO" } };
+        var match = new[]
+        {
+            new EffectMatchItem("ORDER_TYPE", new EffectSourceRef("TABLE", "COP_ORDER_CHANGE_D", "ORDER_TYPE", null)),
+            new EffectMatchItem("ORDER_NO", new EffectSourceRef("TABLE", "COP_ORDER_CHANGE_D", "ORDER_NO", null)),
+            new EffectMatchItem("SERIAL_NO", new EffectSourceRef("TABLE", "COP_ORDER_CHANGE_D", "ORDER_SERIAL_NO", null)),
+        };
+        var pick = new EffectOpPlan(1, "COP_ORDER_D", "CLIENT_PRO_NO", "ASSIGN",
+            new EffectSourceRef("TABLE", "COP_ORDER_CHANGE_D", "CLIENT_PRO_NO", null),
+            "PICK", null, match, null, null);
+
+        var (sql, _) = executor.BuildUpdate(pick, plan, new[] { "E2E", "E2ESL0817124138OC01" });
+
+        // 取值原样（非数值列不再被 ISNULL(...,0) 包成 '0'）；别名由表名派生：S_T_COPORD
+        Assert.Contains("MAX(S_T_COPORD.[CLIENT_PRO_NO])", sql);
+        Assert.DoesNotContain("ISNULL(S_T_COPORD.[CLIENT_PRO_NO]", sql);
+        // 目标行定位带本单范围（TABLE 域 EXISTS 内 JOIN 主表 + 主键过滤）
+        Assert.Contains("EXISTS (SELECT 1 FROM dbo.[COP_ORDER_CHANGE_D] S_T_COPORD JOIN dbo.[COP_ORDER_CHANGE_M] M ON", sql);
+        Assert.Contains("M.[CHANGE_ORDER_TYPE] = @cp", sql);
+
+        // 既有聚合（SUM 数值投影）仍带数值默认，行为不变
+        var sumMatch = new[]
+        {
+            new EffectMatchItem("PRO_NO", new EffectSourceRef("DETAIL", null, "PRO_NO", null)),
+        };
+        var sum = new EffectOpPlan(2, "PRODUCT", "NOT_SEND_QTY", "ACCUM",
+            new EffectSourceRef("DETAIL", null, "QTY", null), null, null, sumMatch, null, null);
+        var (sumSql, _) = executor.BuildUpdate(sum, plan, new[] { "E2E", "E2ESL0817124138OC01" });
+        Assert.Contains("ISNULL(D.[QTY], 0)", sumSql);
+    }
+
+    [Fact]
     public void Reverse_clear_finish_unsets_placed_markers_on_deapprove()
     {
         var clearFinish = JsonSerializer.SerializeToElement(new { kind = "clear-finish" });
