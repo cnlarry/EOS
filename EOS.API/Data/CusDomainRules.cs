@@ -10,23 +10,6 @@ namespace EOS.API.Data;
 /// </summary>
 public static class CusDomainRules
 {
-    /// <summary>Sample stock-out save: rejects quantities above the sample product stock.</summary>
-    public static async Task<SprocResult> SamOutAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var type = keyValues[0]; var no = keyValues[1];
-        var lines = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT d.SERIAL_NO FROM dbo.SAM_OUT_D d
-            INNER JOIN dbo.SAMPLE_PRO p ON p.PRO_NO=d.PRO_NO
-            WHERE d.OUT_TYPE=@Type AND d.OUT_NO=@No AND d.QTY > p.QTY;
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString() + "    ");
-        return lines is null
-            ? new(true, null)
-            : new(false, "以下序号项样品库存不足 \r\n" + lines);
-    }
-
     public static async Task<SprocResult> CusExportAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction, int moduleId,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
