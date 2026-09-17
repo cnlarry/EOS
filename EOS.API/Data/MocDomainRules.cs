@@ -27,33 +27,6 @@ public static class MocDomainRules
         if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "制令单领域规则缺少主键。");
         var type = (keyValues[0] ?? string.Empty).Trim();
         var no = (keyValues[1] ?? string.Empty).Trim();
-        if (await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
-        {
-            // 生产领料校验（SYSSS 开关门控）
-            if (await DomainRuleService.ExistsAsync(connection, transaction,
-                "SELECT TOP 1 1 FROM dbo.SYSSS WHERE PRODUCE_ORDER_TAG=1;", type, no, token)
-                && await DomainRuleService.ExistsAsync(connection, transaction,
-                """
-                SELECT TOP 1 1 FROM dbo.COP_ORDER_D od
-                INNER JOIN dbo.MOC_PRODUCE_M pr
-                  ON pr.ORDER_TYPE=od.ORDER_TYPE AND pr.ORDER_NO=od.ORDER_NO AND pr.ORDER_SERIAL_NO=od.SERIAL_NO
-                WHERE pr.PRODUCE_TYPE=@Type AND pr.PRODUCE_NO=@No
-                  AND (od.PLAN_QTY < ISNULL(od.FINISHED_PLAN_QTY,0)+ISNULL(pr.QTY,0)
-                    OR od.PLAN_SPARE_QTY < ISNULL(od.FINISHED_PLAN_SPARE_QTY,0)+ISNULL(pr.SPARE_QTY,0));
-                """, type, no, token))
-                return new(false, "生产数量或备品生产数量超出订单数量");
-            if (await DomainRuleService.ExistsAsync(connection, transaction,
-                "SELECT TOP 1 1 FROM dbo.SYSSS WHERE PRODUCE_PLAN_MOC_TAG=1;", type, no, token)
-                && await DomainRuleService.ExistsAsync(connection, transaction,
-                """
-                SELECT TOP 1 1 FROM dbo.MOC_PLAN_MOC od
-                INNER JOIN dbo.MOC_PRODUCE_M pr
-                  ON pr.PLAN_TYPE=od.PLAN_TYPE AND pr.PLAN_NO=od.PLAN_NO AND pr.PLAN_SERIAL_NO=od.SERIAL_NO
-                WHERE pr.PRODUCE_TYPE=@Type AND pr.PRODUCE_NO=@No
-                  AND od.REQUIRE_QTY < ISNULL(od.PRODUCE_QTY,0)+ISNULL(pr.QTY,0);
-                """, type, no, token))
-                return new(false, "生产数量超出生产计划数量");
-        }
         await using (var backfill = new SqlCommand("""
             UPDATE d SET d.ORDER_TYPE=m.ORDER_TYPE, d.ORDER_NO=m.ORDER_NO, d.ORDER_SERIAL_NO=m.ORDER_SERIAL_NO
             FROM dbo.MOC_PRODUCE_D d INNER JOIN dbo.MOC_PRODUCE_M m
@@ -76,22 +49,6 @@ public static class MocDomainRules
         if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "生产入库领域规则缺少主键。");
         var type = (keyValues[0] ?? string.Empty).Trim();
         var no = (keyValues[1] ?? string.Empty).Trim();
-        if (await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
-        {
-            // 入库校验：按制令聚合的入库量不能超制令生产量
-            var exceeded = await DomainRuleService.ReadStringsAsync(connection, transaction,
-                """
-                SELECT TOP 11 t.PRODUCE_NO FROM
-                (SELECT PRODUCE_TYPE, PRODUCE_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
-                 FROM dbo.MOC_PRODUCT_IN_D
-                 WHERE PRODUCT_IN_TYPE=@Type AND PRODUCT_IN_NO=@No GROUP BY PRODUCE_TYPE, PRODUCE_NO) t
-                INNER JOIN dbo.MOC_PRODUCE_M m ON m.PRODUCE_TYPE=t.PRODUCE_TYPE AND m.PRODUCE_NO=t.PRODUCE_NO
-                WHERE (t.QTY+ISNULL(m.FINISHED_QTY,0)+ISNULL(m.SCRAP_IN_QTY,0) > ISNULL(m.QTY,0)
-                    OR t.SPARE_QTY+ISNULL(m.FINISHED_SPARE_QTY,0)+ISNULL(m.SCRAP_IN_SPARE_QTY,0) > ISNULL(m.SPARE_QTY,0));
-                """, type, no, token);
-            if (exceeded.Count > 0)
-                return new(false, "以下生产单入库数量超出制令生产 \r\n" + string.Join("  ", exceeded.Take(10)));
-        }
         return await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
             "MOC_PRODUCT_IN_D", "PRODUCT_IN_TYPE", "PRODUCT_IN_NO",
             [
@@ -193,31 +150,11 @@ public static class MocDomainRules
     /// <summary>生产计划（P_MOC_PLAN）AfterSave：ERROR_NO_SAVE 门控的生产计划不超订单检查。</summary>
 
 
-    /// <summary>生产计划（P_MOC_PLAN）AfterSave：ERROR_NO_SAVE 门控的生产计划不超订单检查。</summary>
-    public static async Task<SprocResult> MocPlanAfterSaveAsync(
+    /// <summary>生产计划（P_MOC_PLAN）AfterSave：计划量不超订单由校验目录（qty-not-exceed）承担。</summary>
+    public static Task<SprocResult> MocPlanAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction, int moduleId,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "生产计划领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        if (!await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
-            return new(true, null);
-        // 计划校验：计划数量/备品不超订单剩余
-        var rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT a.SERIAL_NO, b.QTY, b.DO_PLAN_QTY, a.QTY, b.SPARE_QTY, b.DO_PLAN_SPARE_QTY, a.SPARE_QTY
-            FROM dbo.MOC_PLAN_D a
-            INNER JOIN dbo.COP_ORDER_D b ON b.ORDER_TYPE=a.ORDER_TYPE AND b.ORDER_NO=a.ORDER_NO AND b.SERIAL_NO=a.ORDER_SERIAL_NO
-            WHERE a.PLAN_TYPE=@Type AND a.PLAN_NO=@No
-              AND (a.QTY > ISNULL(b.QTY,0)-ISNULL(b.DO_PLAN_QTY,0)
-                OR a.SPARE_QTY > ISNULL(b.QTY,0)-ISNULL(b.DO_PLAN_SPARE_QTY,0));
-            """, type, no, token,
-            line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
-        return rows is null
-            ? new(true, null)
-            : new(false, "以下序号项生产计划超出订单\r\n序号  订单数量  已计划数  本次数量  订单备品  已计划备品  本次备品\r\n" + rows);
-    }
+        => Task.FromResult(new SprocResult(true, null));
 
     /// <summary>工单制程（P_MOC_PRODUCE_PROCESS）AfterSave：制令存在校验。</summary>
 
