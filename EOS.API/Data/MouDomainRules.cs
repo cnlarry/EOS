@@ -32,31 +32,5 @@ public static class MouDomainRules
         return new(true, null);
     }
 
-    /// <summary>量产模入库（P_MOU_BATCHIN）AfterSave：ERROR_NO_SAVE 门控的不超完工未入检查。</summary>
-    public static async Task<SprocResult> MouBatchinAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction, int moduleId,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "量产模入库领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        if (!await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
-            return new(true, null);
-        var rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT d.SERIAL_NO
-            FROM dbo.MOU_BATCH_M m
-            INNER JOIN (SELECT BATCH_TYPE, BATCH_NO, MAX(SERIAL_NO) SERIAL_NO, SUM(QTY) QTY
-                        FROM dbo.MOU_BATCHIN_D WHERE BATCHIN_TYPE=@Type AND BATCHIN_NO=@No
-                        GROUP BY BATCH_TYPE, BATCH_NO) d
-              ON m.BATCH_TYPE=d.BATCH_TYPE AND m.BATCH_NO=d.BATCH_NO
-            WHERE ISNULL(m.QTY,0) < ISNULL(m.FINISHED_QTY,0) + d.QTY;
-            """, type, no, token,
-            line: r => Convert.ToInt32(r.GetValue(0)).ToString() + "    ");
-        return rows is null
-            ? new(true, null)
-            : new(false, "以下序号项量产模入库不能大于模具完工未入数量\r\n" + rows);
-    }
-
     /// <summary>出口报关单（P_CUS_EXPORT）AfterSave：ERROR_NO_SAVE 门控的报关不超合同检查。</summary>
 }
