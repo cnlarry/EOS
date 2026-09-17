@@ -252,7 +252,7 @@ public sealed class WorkbenchDefinitionBuilder(
                 await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),detail,formEnabledModules,token),NormalizeSort(defaultSort,master,masterFields),
             resolvedNewUrl is not null || resolvedModiUrl is not null,resolvedModiUrl is not null,detailNoSave,
             masterPkOrder,detailNoFields,
-            businessRule?.WorkflowSproc is not null,
+            businessRule?.WorkflowSproc is not null || await WorkflowEngine.HasFlowAsync(connection,moduleId,token),
             string.IsNullOrWhiteSpace(moduleFilter)?null:moduleFilter,
             await ReadFilterFieldKeys(connection,master,canViewCost,canViewSecrecy,deniedMasterFields,token),
             userId.Trim(),
