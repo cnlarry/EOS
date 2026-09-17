@@ -488,6 +488,50 @@ public sealed class EffectValidationLiveDataTests
     }
 
     [Fact]
+    public async Task 量产模入库_受门控的入库不超完工未入_分组求和与源列聚合诊断()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            // 同一批次两行入库共 4，模具数量 3、完工未入 0 ⇒ 合计超量；
+            // 诊断应回报该分组的 MAX(SERIAL_NO)=2（源列聚合），而不是分组键。
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.MOU_BATCH_M (BATCH_TYPE, BATCH_NO, QTY, FINISHED_QTY)
+                VALUES (N'ZZ', N'ZZT2609BATCH01', 3, 0);
+                INSERT INTO dbo.MOU_BATCHIN_D (BATCHIN_TYPE, BATCHIN_NO, SERIAL_NO, BATCH_TYPE, BATCH_NO, QTY)
+                VALUES (N'ZZ', N'ZZT2609BI01', 1, N'ZZ', N'ZZT2609BATCH01', 2),
+                       (N'ZZ', N'ZZT2609BI01', 2, N'ZZ', N'ZZT2609BATCH01', 2);
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            var plan = await LoadPlanAsync(connection, transaction, 2912, token, "qty-not-exceed");
+
+            // 门控关（库内 2912 的 ERROR_NO_SAVE=0）→ 跳过，超量也放行
+            await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609BI01"]);
+
+            // 门控开 → 命中：文案逐字 + 分组内最大序号（源列聚合诊断）
+            await using (var open = new SqlCommand(
+                "UPDATE dbo.MODULES SET ERROR_NO_SAVE=1 WHERE M_IDX=2912;", connection, transaction))
+            {
+                await open.ExecuteNonQueryAsync(token);
+            }
+            var exception = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609BI01"]));
+            Assert.Contains("以下序号项量产模入库不能大于模具完工未入数量", exception.Message);
+            Assert.Contains("2", exception.Message);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
+    [Fact]
     public async Task 品质日分析_受模块门控的数量校验_开关关闭跳过_打开命中且文案一致()
     {
         var token = CancellationToken.None;

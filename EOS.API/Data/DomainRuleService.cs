@@ -70,7 +70,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "moc-work-out" => await MocDomainRules.MocWorkOutAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
                 "mou-get" => await MouDomainRules.MouGetAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "mou-pro" => await MouDomainRules.MouProAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "mou-batchin" => await MouDomainRules.MouBatchinAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
                 "cus-export" => await CusDomainRules.CusExportAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
                 "cus-import" => await CusDomainRules.CusImportAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
                 "cus-manual" => await CusDomainRules.CusManualAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),

@@ -245,6 +245,7 @@ public sealed class EffectValidationExecutor
                 && thisQtyElement.TryGetProperty("agg", out var aggElement)
                 && aggElement.ValueKind == JsonValueKind.String
                 && aggElement.GetString()!.Equals("SUM", StringComparison.OrdinalIgnoreCase);
+            var diagnosticAggregates = ParseDiagnosticAggregates(check, aggregate);
             string fromSql;
             string correlation;
             string thisSql;
@@ -255,7 +256,12 @@ public sealed class EffectValidationExecutor
                 correlation = string.Join(" AND ", match.Select(pair =>
                     "T." + EffectConditionCompiler.Identifier(pair.TargetColumn) + " = S1." + EffectConditionCompiler.Identifier(pair.Source.Field!)));
                 thisSql = "S1.[__THIS_QTY]";
-                fromSql = "(SELECT " + groupBy + ", SUM(" + termSql + ") AS [__THIS_QTY] FROM dbo."
+                // 分组形态的诊断列若要求对源列聚合（如"该批次的最大序号"），必须把该聚合放进分组子查询，
+                // 外层再投影——分组键之外的原列在 S1 里取不到。
+                var extras = string.Concat(diagnosticAggregates.Select(item =>
+                    ", " + item.Aggregate + "(S." + EffectConditionCompiler.Identifier(item.Field)
+                    + ") AS [" + item.Alias + "]"));
+                fromSql = "(SELECT " + groupBy + ", SUM(" + termSql + ") AS [__THIS_QTY]" + extras + " FROM dbo."
                     + EffectConditionCompiler.Identifier(sourceTable) + " S WHERE " + documentScope
                     + " GROUP BY " + groupBy + ") S1 CROSS JOIN dbo."
                     + EffectConditionCompiler.Identifier(targetTable) + " T";
@@ -295,7 +301,7 @@ public sealed class EffectValidationExecutor
                         && !string.IsNullOrWhiteSpace(checkMessage.GetString())
                             ? checkMessage.GetString()!
                             : $"存在超出{(mode == "not-below-progress" ? "进度" : "限额")}的明细行（{stage}）。");
-                var cells = BuildQtyDiagnosticCells(check, fromSql, correlation, comparison, aggregate);
+                var cells = BuildQtyDiagnosticCells(check, fromSql, correlation, comparison, aggregate, diagnosticAggregates);
                 if (cells is null)
                     return message;
                 // 诊断行的拼接方式各族不同：多为"列间 4 空格、行间 CRLF"，也有"单列多值、一行内联"（值间 2 空格）。
@@ -330,21 +336,26 @@ public sealed class EffectValidationExecutor
     /// <summary>
     /// 命中行的诊断列（可选）：SOURCE 指来源别名（分组形态下是分组键所在的子查询）、TARGET 指被引用行、
     /// THIS 指本单数量（分组时为求和值）。未配置返回 null，此时消息只回表头。
+    /// 分组形态下 `{"scope":"SOURCE","field":…,"agg":"MAX|MIN|SUM"}` 取该源列的聚合值（如批次最大序号）。
     /// </summary>
     private static List<string>? BuildQtyDiagnosticCells(
         JsonElement check,
         string fromSql,
         string correlation,
         string comparison,
-        bool aggregate)
+        bool aggregate,
+        IReadOnlyList<DiagnosticAggregate> diagnosticAggregates)
     {
         if (!check.TryGetProperty("diagnosticFields", out var fields) || fields.ValueKind != JsonValueKind.Array
             || fields.GetArrayLength() == 0)
             return null;
         var sourceAlias = aggregate ? "S1" : "S";
         var cells = new List<string>();
+        var index = 0;
         foreach (var field in fields.EnumerateArray())
         {
+            var aggregateColumn = diagnosticAggregates.FirstOrDefault(item => item.FieldIndex == index);
+            index++;
             var scope = "SOURCE";
             var name = field.ValueKind == JsonValueKind.String ? field.GetString()!.Trim() : null;
             if (name is null)
@@ -359,6 +370,11 @@ public sealed class EffectValidationExecutor
                         ? null
                         : throw new EffectConfigException("qty-not-exceed.diagnosticFields 缺少 field。");
             }
+            if (aggregateColumn is not null)
+            {
+                cells.Add(sourceAlias + ".[" + aggregateColumn.Alias + "]");
+                continue;
+            }
             cells.Add(scope switch
             {
                 "THIS" => aggregate
@@ -370,6 +386,48 @@ public sealed class EffectValidationExecutor
         }
         return cells;
     }
+
+    /// <summary>
+    /// 诊断列里的源列聚合声明（分组形态专用）：字段序号 → 子查询里的聚合列别名。
+    /// 非分组形态出现聚合声明即拒绝（那里没有 GROUP BY，聚合会把整表塌成一行）。
+    /// </summary>
+    private static IReadOnlyList<DiagnosticAggregate> ParseDiagnosticAggregates(JsonElement check, bool aggregate)
+    {
+        if (!check.TryGetProperty("diagnosticFields", out var fields) || fields.ValueKind != JsonValueKind.Array)
+            return Array.Empty<DiagnosticAggregate>();
+        var result = new List<DiagnosticAggregate>();
+        var index = 0;
+        foreach (var field in fields.EnumerateArray())
+        {
+            var current = index++;
+            if (field.ValueKind != JsonValueKind.Object
+                || !field.TryGetProperty("agg", out var aggElement) || aggElement.ValueKind != JsonValueKind.String)
+                continue;
+            var agg = aggElement.GetString()!.Trim().ToUpperInvariant();
+            var function = agg switch
+            {
+                "MAX" or "DISTINCT" => "MAX",
+                "MIN" => "MIN",
+                "SUM" => "SUM",
+                _ => throw new EffectConfigException($"qty-not-exceed.diagnosticFields.agg '{agg}' 不在闭集内（MAX/MIN/SUM/DISTINCT）。"),
+            };
+            if (!aggregate)
+                throw new EffectConfigException("qty-not-exceed.diagnosticFields.agg 仅在 thisQty.agg=SUM 的分组形态下可用。");
+            var name = field.TryGetProperty("field", out var nameElement) && nameElement.ValueKind == JsonValueKind.String
+                ? nameElement.GetString()!.Trim()
+                : throw new EffectConfigException("qty-not-exceed.diagnosticFields 带 agg 时必须给出 field。");
+            var scope = field.TryGetProperty("scope", out var scopeElement) && scopeElement.ValueKind == JsonValueKind.String
+                ? scopeElement.GetString()!.Trim().ToUpperInvariant()
+                : "SOURCE";
+            if (scope != "SOURCE")
+                throw new EffectConfigException("qty-not-exceed.diagnosticFields 带 agg 时 scope 只能是 SOURCE。");
+            result.Add(new DiagnosticAggregate(current, name, function, $"__DIAG_{current}"));
+        }
+        return result;
+    }
+
+    /// <summary>分组形态诊断列的源列聚合声明。</summary>
+    private sealed record DiagnosticAggregate(int FieldIndex, string Field, string Aggregate, string Alias);
 
     /// <summary>
     /// Restricts the source rows to the current document by master primary-key values;

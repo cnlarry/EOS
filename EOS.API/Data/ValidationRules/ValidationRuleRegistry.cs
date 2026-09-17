@@ -32,6 +32,8 @@ public static class ValidationRuleRegistry
     private static readonly IReadOnlySet<string> QtySwitchKeys = KeySet("key", "expect", "gates");
     private static readonly IReadOnlySet<string> QtyGateKeys = KeySet("scope", "key", "expect");
     private static readonly IReadOnlySet<string> QtyGateScopes = KeySet("SYSSS", "MODULE");
+    private static readonly IReadOnlySet<string> QtyDiagnosticKeys = KeySet("scope", "field", "agg");
+    private static readonly IReadOnlySet<string> QtyDiagnosticAggregates = KeySet("MAX", "MIN", "SUM", "DISTINCT");
     private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "condition", "message", "diagnosticFields");
     private static readonly IReadOnlySet<string> LineRequireTriggerKeys = KeySet("scope", "field", "op", "value");
     private static readonly IReadOnlySet<string> LineRequireOps = KeySet("GT", "GE", "LT", "LE", "EQ", "NEQ");
@@ -246,7 +248,7 @@ public static class ValidationRuleRegistry
                     }
                     else if (diagnostic.ValueKind == JsonValueKind.Object)
                     {
-                        RejectUnknownKeys(rule, diagnostic, ReferenceSourceKeys, diagnosticWhere, issues);
+                        RejectUnknownKeys(rule, diagnostic, QtyDiagnosticKeys, diagnosticWhere, issues);
                         var diagnosticScope = GetString(diagnostic, "scope");
                         // THIS 指"本单数量"，分组形态下即求和值，无需列名。
                         if (string.IsNullOrWhiteSpace(GetString(diagnostic, "field"))
@@ -255,6 +257,22 @@ public static class ValidationRuleRegistry
                         if (diagnosticScope is not null
                             && diagnosticScope.ToUpperInvariant() is not ("SOURCE" or "TARGET" or "THIS"))
                             issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.scope 仅允许 SOURCE/TARGET/THIS");
+                        if (GetString(diagnostic, "agg") is { } diagnosticAgg)
+                        {
+                            if (!QtyDiagnosticAggregates.Contains(diagnosticAgg))
+                                issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.agg 仅允许 MAX/MIN/SUM/DISTINCT");
+                            else if (diagnosticScope is not null
+                                && !diagnosticScope.Equals("SOURCE", StringComparison.OrdinalIgnoreCase))
+                                issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.agg 仅在 scope=SOURCE 时可用");
+                            // 源列聚合要靠分组子查询承载，因此只在本 check 走分组形态（thisQty.agg=SUM）时成立。
+                            var grouped = check.TryGetProperty("thisQty", out var diagnosticThisQty)
+                                && diagnosticThisQty.ValueKind == JsonValueKind.Object
+                                && diagnosticThisQty.TryGetProperty("agg", out var diagnosticThisAgg)
+                                && diagnosticThisAgg.ValueKind == JsonValueKind.String
+                                && diagnosticThisAgg.GetString()!.Equals("SUM", StringComparison.OrdinalIgnoreCase);
+                            if (!grouped)
+                                issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.agg 仅在 thisQty.agg=SUM 的分组形态下可用");
+                        }
                     }
                     else
                     {
