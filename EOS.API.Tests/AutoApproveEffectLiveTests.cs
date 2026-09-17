@@ -32,6 +32,9 @@ public sealed class AutoApproveEffectLiveTests
     private const string LoanNo = "ADR12AUTOLOAN01";
     private const string ReceiveNo = "ADR12AUTORECV01";
     private const string PurchaseNo = "ADR12AUTOPO01";
+
+    /// <summary>自动批核的经办人应当就是保存人（测试里模拟一个具体的人，不用 SYSTEM 占位）。</summary>
+    private const string ConfirmPerson = "测试保存人";
     private const string NoStockProNo = "ADR12AUTONOSTOCKPRO";
 
     private static DbConnectionFactory Connections()
@@ -116,17 +119,22 @@ public sealed class AutoApproveEffectLiveTests
             // 审计表是追加式的：只统计本次用例新增的事件（历史 ADR12 行不动）
             var auditBaseline = await ScalarAsync(connection, "SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;");
 
-            var first = await service.AutoApproveAsync(definition, [BatchNo, BatchProNo], "tester", CancellationToken.None);
+            var first = await service.AutoApproveAsync(definition, [BatchNo, BatchProNo], ConfirmPerson, "tester", CancellationToken.None);
             Assert.Equal(RecordAccessStatus.Ok, first.Status);
             Assert.Equal(1, await ScalarAsync(connection,
                 "SELECT ISNULL(CONFIRM_TAG,0) FROM dbo.INV_BATCH_M WHERE BATCH_NO=@B AND PRO_NO=@P;",
                 ("@B", BatchNo), ("@P", BatchProNo)));
-            Assert.Equal("SYSTEM", (await ScalarStringAsync(connection,
+            // 经办人 = 保存人（不是 SYSTEM 占位）
+            Assert.Equal(ConfirmPerson, (await ScalarStringAsync(connection,
                 "SELECT CONFIRM_PERSON FROM dbo.INV_BATCH_M WHERE BATCH_NO=@B AND PRO_NO=@P;",
                 ("@B", BatchNo), ("@P", BatchProNo))).Trim());
+            // 审计摘要保留"自动批核"的区分（状态列已不再承担该信息）
+            Assert.Equal(1, await ScalarAsync(connection,
+                "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE EVENT_ID > @Baseline AND MODULE_ID=1302 AND ACTION=N'APPROVE' AND SUMMARY=N'自动批核' AND RESOURCE_KEY LIKE @K;",
+                ("@Baseline", auditBaseline), ("@K", $"%{BatchNo}%")));
 
             // 重复触发：仍是成功（幂等），且不产生第二条批核审计
-            var second = await service.AutoApproveAsync(definition, [BatchNo, BatchProNo], "tester", CancellationToken.None);
+            var second = await service.AutoApproveAsync(definition, [BatchNo, BatchProNo], ConfirmPerson, "tester", CancellationToken.None);
             Assert.Equal(RecordAccessStatus.Ok, second.Status);
             Assert.Equal(1, await ScalarAsync(connection,
                 "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE EVENT_ID > @Baseline AND MODULE_ID=1302 AND ACTION=N'APPROVE' AND RESOURCE_KEY LIKE @K;",
@@ -157,7 +165,7 @@ public sealed class AutoApproveEffectLiveTests
             Assert.True(definition.EffectEngineEnabled, "130108 快照应已开启效果引擎（本用例前提）");
             var service = CreateService(Connections(), engineEnabled: true);
 
-            var result = await service.AutoApproveAsync(definition, ["ADR12", LoanNo], "tester", CancellationToken.None);
+            var result = await service.AutoApproveAsync(definition, ["ADR12", LoanNo], ConfirmPerson, "tester", CancellationToken.None);
 
             // 引擎在写入任何效果之前拦截（本夹具的品号不在主档，引擎的引用校验先挡住）
             Assert.NotEqual(RecordAccessStatus.Ok, result.Status);

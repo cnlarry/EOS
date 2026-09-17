@@ -85,21 +85,24 @@ public sealed class WorkbenchApprovalService(
 
     /// <summary>
     /// 自动批核（MODULES.AUTO_APPROVE=1）：保存成功后立即进入批核生效——
-    /// 与手工批核**共用同一条生效链**，差异只在确认人（SYSTEM）与触发入口（保存动作），
+    /// 与手工批核**共用同一条生效链**，差异只在触发入口（保存动作 vs 按钮）与审计摘要，
     /// 运行时代码不按模块号分支：引擎接管走 <see cref="RunEngineApprovalAsync"/>，
     /// 未接管且登记了批核过程时走过渡桥（§15.3），两者皆无即纯状态翻转。
+    /// 经办人 = 保存人（确认人/日期与该单据的建立人/修改人一致）：谁保存的这条记录，
+    /// 就是谁让它生效的；"是自动还是手工批核"记在审计摘要里，不再靠 SYSTEM 占位区分。
     /// 失败不回滚保存：以结果回传前端提示「已保存，但自动批核失败」，单据停在未批核态可重试。
     /// </summary>
     public async Task<RecordSaveResult> AutoApproveAsync(
         WorkbenchDefinition definition,
         IReadOnlyList<string> keyValues,
+        string confirmPerson,
         string userId,
         CancellationToken token)
     {
         if (effectEngine.IsEnabledFor(definition))
         {
-            return await RunEngineApprovalAsync(definition, keyValues, approve: true, "SYSTEM", userId, token,
-                idempotentWhenSettled: true);
+            return await RunEngineApprovalAsync(definition, keyValues, approve: true, confirmPerson, userId, token,
+                idempotentWhenSettled: true, auditSummary: "自动批核");
         }
 
         // 过渡桥：旧批核过程在独立连接上执行，无法与状态翻转同事务，失败按补偿还原。
@@ -124,7 +127,7 @@ public sealed class WorkbenchApprovalService(
         var confirmSql = $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};";
         await using (var confirmCommand = new SqlCommand(confirmSql, connection))
         {
-            confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = "SYSTEM";
+            confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = confirmPerson.Trim();
             if (await confirmCommand.ExecuteNonQueryAsync(token) == 0)
             {
                 return RecordSaveResult.Success(keyValues);
@@ -162,7 +165,10 @@ public sealed class WorkbenchApprovalService(
         CancellationToken token,
         // 保存触发的自动批核是幂等的（重复保存直接成功）；用户手工点批核则保持
         // 「已批核 → WORKFLOW_STATE_CONFLICT」的显式冲突提示，两者对重复触发的口径不同。
-        bool idempotentWhenSettled = false)
+        bool idempotentWhenSettled = false,
+        // 审计摘要：保留"自动批核 / 批核"的区分——经办人改成保存人之后，
+        // 状态列不再承担"是不是自动批的"这个信息，改由审计承载。
+        string? auditSummary = null)
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
@@ -232,7 +238,7 @@ public sealed class WorkbenchApprovalService(
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED", effectRun.Error);
             }
             await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues),
-                approve ? "APPROVE" : "DEAPPROVE", approve ? "批核" : "解批", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
+                approve ? "APPROVE" : "DEAPPROVE", auditSummary ?? (approve ? "批核" : "解批"), userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
             await transaction.CommitAsync(token);
         }
         catch
@@ -352,8 +358,8 @@ public sealed class WorkbenchApprovalService(
         {
             return await StatelessApproveAsync(connection, definition, keyValues, keyCondition, approve, employeeName, userId, token);
         }
-        // 自动批核模块（MODULES.AUTO_APPROVE=1）：新增即已确认（SYSTEM），显式批核幂等返回成功，
-        // 且不进入流程送审（用户语义：自动批核模块不走新增、审核模式）。
+        // 自动批核模块（MODULES.AUTO_APPROVE=1）：保存即已确认（经办人=保存人），
+        // 显式批核幂等返回成功，且不进入流程送审（用户语义：自动批核模块不走新增、审核模式）。
         if (approve && definition.AutoApprove)
         {
             // ADR-013 §3.7：与保存路径同口径，缺列显式失败（否则 ReadConfirmStateAsync 直查

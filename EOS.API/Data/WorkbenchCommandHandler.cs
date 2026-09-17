@@ -317,8 +317,9 @@ public sealed class WorkbenchCommandHandler(
         if (definition.AutoApprove)
         {
             // 自动批核模块：保存成功后立即进入批核生效（保存事务提交后执行，生效链自带事务）；
+            // 经办人取当前保存人——谁保存的这条记录，就是谁让它生效的；
             // 失败不回滚保存：以 warnings 回传前端提示「已保存，但自动批核失败」，单据停在未批核态可重试。
-            var autoResult = await approvalService.AutoApproveAsync(definition, keyValues, userId, token);
+            var autoResult = await approvalService.AutoApproveAsync(definition, keyValues, employeeName, userId, token);
             if (autoResult.Status != RecordAccessStatus.Ok)
             {
                 logger.LogWarning("自动批核失败 module={ModuleId} key={Key} code={Code} message={Message}",
@@ -551,8 +552,8 @@ public sealed class WorkbenchCommandHandler(
         {
             // 「保存即批核」对新增与修改同口径：未批核的单据（例如上次自动批核失败、
             // 或启用自动批核之前建立的草稿）在下一次保存时补上批核生效；
-            // 已批核单据本就被编辑守卫挡住，故这里不会重复累计效果。
-            var autoResult = await approvalService.AutoApproveAsync(definition, keyValues, userId, token);
+            // 经办人取当前编辑人，已批核单据本就被编辑守卫挡住，故这里不会重复累计效果。
+            var autoResult = await approvalService.AutoApproveAsync(definition, keyValues, employeeName, userId, token);
             if (autoResult.Status != RecordAccessStatus.Ok)
             {
                 logger.LogWarning("自动批核失败（修改） module={ModuleId} key={Key} code={Code} message={Message}",
