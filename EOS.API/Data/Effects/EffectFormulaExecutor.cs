@@ -240,7 +240,14 @@ public sealed class EffectFormulaExecutor
         }
 
         var (table, alias) = SourceTableFor(op);
-        var innerExpression = BuildTermExpression(op, alias);
+        // PICK takes the value of the single row the locating keys correlate to (one row
+        // per key by construction, e.g. a document line referenced by its serial number)
+        // and keeps NULL as NULL; every other aggregate is a quantity projection and
+        // therefore defaults a missing value to 0.
+        var pick = aggregateOverride is null
+            && op.SourceAgg is { } declared
+            && declared.Equals("PICK", StringComparison.OrdinalIgnoreCase);
+        var innerExpression = BuildTermExpression(op, alias, pick);
         // Append sources are single correlated rows (1:1 by line number), so a text
         // column must not be SUMmed; the append path folds with MAX instead.
         var aggregation = aggregateOverride ?? op.SourceAgg?.ToUpperInvariant() switch
@@ -248,6 +255,7 @@ public sealed class EffectFormulaExecutor
             "MAX" => "MAX",
             "MIN" => "MIN",
             "DISTINCT" => "MAX", // single distinct pick per correlated group (e.g. depot-place append)
+            "PICK" => "MAX",     // single pick per correlated group, value taken as-is
             _ => "SUM",
         };
         var correlation = BuildCorrelation(op, alias, targetAlias, parameters, subQuery: true);
@@ -352,7 +360,7 @@ public sealed class EffectFormulaExecutor
         _ => throw new EffectConfigException($"公式行 OP_SEQ={op.OpSeq}：来源域 '{op.Source.Scope}' 不支持标量取值。"),
     };
 
-    private string BuildTermExpression(EffectOpPlan op, string alias)
+    private string BuildTermExpression(EffectOpPlan op, string alias, bool pick = false)
     {
         if (op.Terms is { Count: > 0 })
         {
@@ -362,7 +370,12 @@ public sealed class EffectFormulaExecutor
             return op.Terms[0].Coef == -1 ? "(" + expression + ")" : expression;
         }
         if (op.Source.Field is { Length: > 0 })
-            return $"ISNULL({alias}.{EffectConditionCompiler.Identifier(op.Source.Field)}, 0)";
+        {
+            var field = $"{alias}.{EffectConditionCompiler.Identifier(op.Source.Field)}";
+            // A pick copies the correlated row's value: NULL stays NULL (the numeric
+            // default would turn a missing text/date value into '0'/1900-01-01).
+            return pick ? field : $"ISNULL({field}, 0)";
+        }
         throw new EffectConfigException($"公式行 OP_SEQ={op.OpSeq}：缺少来源字段或加减项。");
     }
 

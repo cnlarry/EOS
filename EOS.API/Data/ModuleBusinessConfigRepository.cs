@@ -303,10 +303,13 @@ public sealed class ModuleBusinessConfigRepository(
                         })
                         .ToList();
                     // A match may use a subset of a registered edge: every key must
-                    // correspond to a registered (scope, from-table, from-column,
-                    // to-table, to-column) tuple on the same target table, while the
-                    // edge may carry additional keys the formula does not constrain.
-                    // Keys without a registered counterpart still fail closed.
+                    // correspond to a registered (from-table, from-column, to-table,
+                    // to-column) tuple on the same target table, while the edge may carry
+                    // additional keys the formula does not constrain. Keys without a
+                    // registered counterpart still fail closed. The source scope is not
+                    // compared: the edge table is keyed by the column pair alone (one row
+                    // per relation), and the same relation is reachable both as the
+                    // module detail and as an explicitly named context table.
                     var matched = edges.Values.Any(group =>
                         group.Count > 0
                         && group.Any(edge => edge.ToTable == op.TargetTable)
@@ -314,8 +317,7 @@ public sealed class ModuleBusinessConfigRepository(
                             edge.ToTable == op.TargetTable
                             && edge.FromTable == item.FromTable
                             && edge.FromColumn == item.FromColumn
-                            && edge.ToColumn == item.ToColumn
-                            && edge.Scope == item.Scope)));
+                            && edge.ToColumn == item.ToColumn)));
                     if (!matched)
                     {
                         issues.Add(
