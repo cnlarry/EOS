@@ -97,28 +97,87 @@ public sealed class EffectValidationExecutor
     }
 
     /// <summary>
-    /// Optional per-check SYSSS gate (closed operator, same semantics as the condition
-    /// compiler switch): the check only applies when the switch column equals expect
-    /// (default 1). Unknown columns fail closed via Identifier validation / SQL error.
+    /// Optional per-check gate (closed operator, same semantics as the condition compiler
+    /// switch): the check only applies while every declared gate matches. Two shapes are
+    /// accepted — the legacy single gate <c>{"key":"&lt;SYSSS column&gt;","expect":1}</c> and
+    /// the list form <c>{"gates":[{"scope":"SYSSS|MODULE","key":"...","expect":1}, …]}</c>
+    /// (all gates must hold). The MODULE scope reads the current module's own column
+    /// (e.g. ERROR_NO_SAVE), which is how the legacy per-module validation switch is
+    /// carried over without making the switch inert: flag on = rule applies, flag off =
+    /// rule skipped, exactly as the retired C# branch behaved. Unknown scopes and unknown
+    /// columns fail closed.
     /// </summary>
     private static async Task<bool> ShouldSkipOnSwitchAsync(
         SqlConnection connection,
         SqlTransaction transaction,
+        ModuleEffectPlan plan,
         JsonElement check,
         CancellationToken token)
     {
         if (!check.TryGetProperty("switch", out var gate) || gate.ValueKind != JsonValueKind.Object)
             return false;
-        var key = gate.TryGetProperty("key", out var keyElement) && keyElement.ValueKind == JsonValueKind.String
+        foreach (var entry in EnumerateGates(gate))
+        {
+            if (await GateFailsAsync(connection, transaction, plan, entry, token))
+                return true;
+        }
+        return false;
+    }
+
+    private static IEnumerable<JsonElement> EnumerateGates(JsonElement gate)
+    {
+        if (gate.TryGetProperty("key", out _))
+            yield return gate;
+        if (gate.TryGetProperty("gates", out var list) && list.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in list.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object)
+                    throw new EffectConfigException("校验 switch.gates 项必须是对象。");
+                yield return item;
+            }
+        }
+    }
+
+    private static async Task<bool> GateFailsAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        ModuleEffectPlan plan,
+        JsonElement entry,
+        CancellationToken token)
+    {
+        var key = entry.TryGetProperty("key", out var keyElement) && keyElement.ValueKind == JsonValueKind.String
             ? keyElement.GetString()!.Trim()
-            : throw new EffectConfigException("qty-not-exceed.check.switch 缺少 key。");
-        var expect = gate.TryGetProperty("expect", out var expectElement) && expectElement.ValueKind == JsonValueKind.Number
+            : throw new EffectConfigException("校验 switch 门控缺少 key。");
+        var expect = entry.TryGetProperty("expect", out var expectElement) && expectElement.ValueKind == JsonValueKind.Number
             ? expectElement.GetInt32()
             : 1;
-        var sql = $"SELECT COALESCE(MAX(CAST({EffectConditionCompiler.Identifier(key)} AS int)), 0) FROM dbo.SYSSS WITH (NOLOCK)";
-        await using var command = new SqlCommand(sql, connection, transaction);
-        var actual = await command.ExecuteScalarAsync(token);
-        return Convert.ToInt32(actual) != expect;
+        var scope = entry.TryGetProperty("scope", out var scopeElement) && scopeElement.ValueKind == JsonValueKind.String
+            ? scopeElement.GetString()!.Trim().ToUpperInvariant()
+            : "SYSSS";
+        var column = EffectConditionCompiler.Identifier(key);
+        string sql;
+        SqlCommand command;
+        if (scope == "SYSSS")
+        {
+            sql = $"SELECT COALESCE(MAX(CAST({column} AS int)), 0) FROM dbo.SYSSS WITH (NOLOCK)";
+            command = new SqlCommand(sql, connection, transaction);
+        }
+        else if (scope == "MODULE")
+        {
+            sql = $"SELECT COALESCE(MAX(CAST({column} AS int)), 0) FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX = @ModuleId";
+            command = new SqlCommand(sql, connection, transaction);
+            command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = plan.ModuleId;
+        }
+        else
+        {
+            throw new EffectConfigException($"校验 switch 门控来源域 '{scope}' 不支持（仅 SYSSS / MODULE）。");
+        }
+        await using (command)
+        {
+            var actual = await command.ExecuteScalarAsync(token);
+            return Convert.ToInt32(actual) != expect;
+        }
     }
 
     private record CheckPlan(
@@ -145,7 +204,7 @@ public sealed class EffectValidationExecutor
 
         foreach (var check in checks.EnumerateArray())
         {
-            if (await ShouldSkipOnSwitchAsync(connection, transaction, check, token))
+            if (await ShouldSkipOnSwitchAsync(connection, transaction, plan, check, token))
                 continue;
             var match = ParseMatchPairs(check);
             var thisQty = ParseScopeTerms(check, "thisQty");

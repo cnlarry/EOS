@@ -75,7 +75,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "cus-import" => await CusDomainRules.CusImportAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
                 "cus-manual" => await CusDomainRules.CusManualAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cus-account" => await CusDomainRules.CusAccountAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
-                "qc-analysis" => await CusDomainRules.QcAnalysisAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
                 _ => new(false, $"未登记的领域规则：{ruleName}"),
             };
         }

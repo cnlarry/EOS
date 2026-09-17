@@ -195,36 +195,5 @@ public static class CusDomainRules
     }
 
     /// <summary>品质日分析单（P_QC_ANALYSIS）AfterSave：CHECK 分支 + 制令/产品存在。</summary>
-
-
-    /// <summary>品质日分析单（P_QC_ANALYSIS）AfterSave：CHECK 分支 + 制令/产品存在。</summary>
-    public static async Task<SprocResult> QcAnalysisAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction, int moduleId,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "品质日分析领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        if (await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
-        {
-            var rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-                """
-                SELECT t.PRODUCE_NO FROM
-                (SELECT PRODUCE_TYPE, PRODUCE_NO, SUM(PRODUCE_QTY) QTY
-                 FROM dbo.QC_ANALYSIS_D WHERE ANALYSIS_TYPE=@Type AND ANALYSIS_NO=@No
-                 GROUP BY PRODUCE_TYPE, PRODUCE_NO) t
-                INNER JOIN dbo.MOC_PRODUCE_M m ON m.PRODUCE_TYPE=t.PRODUCE_TYPE AND m.PRODUCE_NO=t.PRODUCE_NO
-                WHERE ISNULL(m.FINISHED_ANALYSIS_QTY,0) + t.QTY > ISNULL(m.QTY,0);
-                """, type, no, token,
-                line: r => r.GetString(0).Trim() + "  ");
-            if (rows is not null)
-                return new(false, "以下生产单号已品检数量超出生产单生产数量！ \r\n" + rows);
-        }
-        return await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
-            "QC_ANALYSIS_D", "ANALYSIS_TYPE", "ANALYSIS_NO",
-            [
-                ("NOT EXISTS (SELECT 1 FROM dbo.MOC_PRODUCE_M c WHERE c.PRODUCE_TYPE=t.PRODUCE_TYPE AND c.PRODUCE_NO=t.PRODUCE_NO)", "以下序号项制令单不存在 "),
-                ("NOT EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO)", "以下序号项产品编号不存在 "),
-            ], token);
-    }
 }
+

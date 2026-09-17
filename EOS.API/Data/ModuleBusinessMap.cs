@@ -151,7 +151,6 @@ public static class DomainRuleMap
         [300305] = "cus-import",
         [3006] = "cus-manual",
         [3014] = "cus-account",
-        [3303] = "qc-analysis",
         [1509] = "moc-produce-change",
         [1609] = "pur-purchase-change",
         [1418] = "cop-order-change",
@@ -178,6 +177,7 @@ public static class CatalogAfterSaveMap
     {
         2914,              // 料号开模评估资料唯一
         2906,              // 量产模具完工：申请数量不超承认单可申请数量
+        3303,              // 品质日分析：制令/产品引用存在 + 受门控的品检数量不超生产单
         180102, 180105, 180110, 180111,   // 员工工号唯一
         180205,            // 每人每月一笔出勤参数
         180211, 180651,    // 当月每人一班排班
