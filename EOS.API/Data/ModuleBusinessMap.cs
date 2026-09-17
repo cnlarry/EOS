@@ -33,9 +33,8 @@ public static class ModuleBusinessMap
             // 1606 采购单（批核/解批已由效果链接管，旧 P_WF_PUR_PURCHASE 已退役）
             [1606] = new(1606, null, null, true, "PURCHASE_NO", "PURCHASE_TYPE",
                 DomainRule: "pur-purchase"),
-            // 1607 收料单（批核已由效果链接管，旧 P_WF_PUR_RECEIVE 已退役）
-            [1607] = new(1607, null, null, true, "RECEIVE_NO", "RECEIVE_TYPE",
-                DomainRule: "pur-receive"),
+            // 1607 收料单（批核已由效果链接管，旧 P_WF_PUR_RECEIVE 已退役；保存期判据已迁校验目录）
+            [1607] = new(1607, null, null, true, "RECEIVE_NO", "RECEIVE_TYPE"),
             // 1406 送货单（批核已由效果链接管，旧 P_WF_COP_SEND 已退役）
             [1406] = new(1406, null, null, true, "SEND_NO", "SEND_TYPE",
                 DomainRule: "cop-send"),
@@ -158,7 +157,6 @@ public static class DomainRuleMap
         [3303] = "qc-analysis",
         [1509] = "moc-produce-change",
         [1609] = "pur-purchase-change",
-        [2404] = "sam-out",
         [1418] = "cop-order-change",
         [1413] = "cop-callback",
         [1522] = "moc-produce",
@@ -195,6 +193,7 @@ public static class CatalogAfterSaveMap
         130102, 130103, 130104, 130105, 130106, 130107, 130110, 2817, 2818, 3901,   // 库存异动族：批管品必填批号（保存期 line-require）
         1423, 1412, 130108, 130109, 1505, 1519, 2816,   // 同形族：批管品必填批号（保存期 line-require）
         1407, 1409, 2913,   // 同形族：批管品必填批号（保存期 line-require）
+        2404,               // 样品出库不超样品库存（保存期 this-not-exceed）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);

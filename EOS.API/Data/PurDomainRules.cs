@@ -384,24 +384,6 @@ public static class PurDomainRules
     /// <summary>收料单（1607）AfterSave：采购单一致性 + 批号要求 + 不超采购数量。</summary>
 
 
-    /// <summary>收料单（1607）AfterSave：采购单一致性 + 批号要求 + 不超采购数量。</summary>
-    public static async Task<SprocResult> PurReceiveAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var type = keyValues[0]; var no = keyValues[1];
-        // 需批号产品必须填写 BATCH_NO
-        var batchMissing = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT SERIAL_NO FROM dbo.PUR_RECEIVE_D d
-            WHERE RECEIVE_TYPE=@Type AND RECEIVE_NO=@No AND ISNULL(BATCH_NO,'')=''
-              AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=d.PRO_NO AND p.MANAGE_BATCH=1);
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
-        if (batchMissing is not null)
-            return new(false, "以下序号项需要输入批号 \r\n" + batchMissing);
-        return new(true, null);
-    }
-
     /// <summary>
     /// 请购单（1615）AfterSave：产品存在性 + PUR_APPLY_MORE 汇总同步
     /// （补明细行、REQUIRE_QTY/LOST_QTY 回填、订单/生产单号、申购数量分配）。
