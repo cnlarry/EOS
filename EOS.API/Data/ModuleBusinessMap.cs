@@ -128,7 +128,6 @@ public static class DomainRuleMap
         [2804] = "moc-produce",
         [2805] = "moc-get",
         [2806] = "moc-get",
-        [2815] = "moc-product-out",
         [180401] = "sfc-daily",
         [1411] = "cop-fitout",
         [1608] = "pur-cancel",
@@ -155,7 +154,6 @@ public static class DomainRuleMap
         [1413] = "cop-callback",
         [1522] = "moc-produce",
         [180207] = "hr-worktime",
-        [1515] = "moc-product-out",
         [130101] = "inv-check-stock",
         [2708] = "sfc-plan",
     };
@@ -178,6 +176,7 @@ public static class CatalogAfterSaveMap
         3303,              // 品质日分析：制令/产品引用存在 + 受门控的品检数量不超生产单
         2912,              // 量产模入库：入库不超模具完工未入数量（受门控）
         2707,              // 工序发料：出库不超工序工单入库数量（受门控）
+        2815, 1515,        // 生产出库：出库不超制令/订单可出库（受门控，FITOUT_TAG 二选一）+ 批管品必填批号
         180102, 180105, 180110, 180111,   // 员工工号唯一
         180205,            // 每人每月一笔出勤参数
         180211, 180651,    // 当月每人一班排班

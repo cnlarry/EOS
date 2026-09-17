@@ -44,48 +44,7 @@ public static class MocDomainRules
     /// <summary>生产出库单（P_MOC_PRODUCT_OUT）AfterSave：CHECK 分支 + 制令/库别/产品/批号校验。</summary>
 
 
-    /// <summary>生产出库单（P_MOC_PRODUCT_OUT）AfterSave：CHECK 分支 + 制令/库别/产品/批号校验。</summary>
-    public static async Task<SprocResult> MocProductOutAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction, int moduleId,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "生产出库领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        if (await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
-        {
-            // 出库校验：FITOUT_TAG=1 走制令可出库，否则走订单可出库
-            var fitout = await DomainRuleService.ExistsAsync(connection, transaction,
-                "SELECT TOP 1 1 FROM dbo.SYSSS WHERE FITOUT_TAG=1;", type, no, token);
-            var exceeded = await DomainRuleService.ReadStringsAsync(connection, transaction, fitout
-                ? """
-                  SELECT TOP 11 t.PRODUCE_NO FROM
-                  (SELECT PRODUCE_TYPE, PRODUCE_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
-                   FROM dbo.MOC_PRODUCT_OUT_D
-                   WHERE PRODUCT_OUT_TYPE=@Type AND PRODUCT_OUT_NO=@No GROUP BY PRODUCE_TYPE, PRODUCE_NO) t
-                  INNER JOIN dbo.MOC_PRODUCE_M m ON m.PRODUCE_TYPE=t.PRODUCE_TYPE AND m.PRODUCE_NO=t.PRODUCE_NO
-                  WHERE (t.QTY+ISNULL(m.FINISHED_FITOUT_QTY,0) > ISNULL(m.FINISHED_QTY,0)
-                      OR t.SPARE_QTY+ISNULL(m.FINISHED_FITOUT_SPARE_QTY,0) > ISNULL(m.FINISHED_SPARE_QTY,0));
-                  """
-                : """
-                  SELECT TOP 11 t.PRODUCE_NO FROM
-                  (SELECT PRODUCE_TYPE, PRODUCE_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
-                   FROM dbo.MOC_PRODUCT_OUT_D
-                   WHERE PRODUCT_OUT_TYPE=@Type AND PRODUCT_OUT_NO=@No GROUP BY PRODUCE_TYPE, PRODUCE_NO) t
-                  INNER JOIN dbo.MOC_PRODUCE_M m ON m.PRODUCE_TYPE=t.PRODUCE_TYPE AND m.PRODUCE_NO=t.PRODUCE_NO
-                  WHERE (t.QTY+ISNULL(m.FINISHED_SEND_QTY,0) > ISNULL(m.FINISHED_QTY,0)
-                      OR t.SPARE_QTY+ISNULL(m.FINISHED_SEND_SPARE_QTY,0) > ISNULL(m.FINISHED_SPARE_QTY,0));
-                  """, type, no, token);
-            if (exceeded.Count > 0)
-                return new(false, (fitout ? "以下生产单出库数量超出制令可出库 \r\n" : "以下生产单出库数量超出订单可出库 \r\n")
-                    + string.Join("  ", exceeded.Take(10)));
-        }
-        return await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
-            "MOC_PRODUCT_OUT_D", "PRODUCT_OUT_TYPE", "PRODUCT_OUT_NO",
-            [
-                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
-            ], token);
-    }
+    /// <summary>生产出库单（P_MOC_PRODUCT_OUT）AfterSave：出库数量与批号必填由校验目录承担。</summary>
 
 
     /// <summary>工单BOM（P_MOC_BOM_STRU）AfterSave：孤儿主/明细清理循环。</summary>
