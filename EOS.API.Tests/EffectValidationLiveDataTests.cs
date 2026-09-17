@@ -532,6 +532,83 @@ public sealed class EffectValidationLiveDataTests
     }
 
     [Fact]
+    public async Task 订单变更_四段判据_原单批核变更量下限与订单号唯一()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.COP_ORDER_M (ORDER_TYPE, ORDER_NO, CONFIRM_TAG, CLIENT_ORDER_NO)
+                VALUES (N'DD', N'ZZT2609ORD01', 0, NULL);
+                INSERT INTO dbo.COP_ORDER_D (ORDER_TYPE, ORDER_NO, SERIAL_NO, FINISHED_SEND_QTY, FINISHED_SPARE_QTY, FINISHED_PRODUCE_QTY, FINISHED_PRODUCE_SPARE_QTY)
+                VALUES (N'DD', N'ZZT2609ORD01', 1, 5, 0, 5, 0);
+                INSERT INTO dbo.COP_ORDER_CHANGE_M (CHANGE_ORDER_TYPE, CHANGE_ORDER_NO, ORDER_TYPE, ORDER_NO, CLIENT_ORDER_NO)
+                VALUES (N'ZZ', N'ZZT2609OC01', N'DD', N'ZZT2609ORD01', N'ZZT2609CON01');
+                INSERT INTO dbo.COP_ORDER_CHANGE_D (CHANGE_ORDER_TYPE, CHANGE_ORDER_NO, SERIAL_NO, ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO, QTY, SPARE_QTY, PLAN_QTY)
+                VALUES (N'ZZ', N'ZZT2609OC01', 1, N'DD', N'ZZT2609ORD01', 1, 2, 0, 1);
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            // ① 原订单未批核 → 拒绝
+            var refPlan = await LoadPlanAsync(connection, transaction, 1418, token, "reference-exists");
+            var notApproved = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, refPlan, "SAVE", token, ["ZZ", "ZZT2609OC01"]));
+            Assert.Contains("订单未批核，不可变更", notApproved.Message);
+
+            // ② 批核后：变更明细数量 2 < 已送货 5 → 命中
+            await using (var approve = new SqlCommand(
+                "UPDATE dbo.COP_ORDER_M SET CONFIRM_TAG = 1 WHERE ORDER_TYPE = N'DD' AND ORDER_NO = N'ZZT2609ORD01';",
+                connection, transaction))
+            {
+                await approve.ExecuteNonQueryAsync(token);
+            }
+            var qtyPlan = await LoadPlanAsync(connection, transaction, 1418, token, "qty-not-exceed");
+            var tooLow = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, ["ZZ", "ZZT2609OC01"]));
+            Assert.Contains("变更后以下序号项订单数量小于已完工或已送货数量", tooLow.Message);
+
+            // ③ 数量补齐后：计划量 1 < 已下生产单 5 → 命中计划量判据
+            await using (var fix = new SqlCommand(
+                "UPDATE dbo.COP_ORDER_CHANGE_D SET QTY = 5, PLAN_QTY = 5 WHERE CHANGE_ORDER_TYPE = N'ZZ' AND CHANGE_ORDER_NO = N'ZZT2609OC01' AND SERIAL_NO = 1;",
+                connection, transaction))
+            {
+                await fix.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, ["ZZ", "ZZT2609OC01"]);
+
+            // ④ 客户订单号与另一订单重复 → 拒绝
+            await using (var dup = new SqlCommand(
+                "INSERT INTO dbo.COP_ORDER_M (ORDER_TYPE, ORDER_NO, CONFIRM_TAG, CLIENT_ORDER_NO) VALUES (N'DD', N'ZZT2609ORD02', 1, N'ZZT2609CON01');",
+                connection, transaction))
+            {
+                await dup.ExecuteNonQueryAsync(token);
+            }
+            var dupPlan = await LoadPlanAsync(connection, transaction, 1418, token, "duplicate-check");
+            var duplicated = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, dupPlan, "SAVE", token, ["ZZ", "ZZT2609OC01"]));
+            Assert.Contains("客户订单号重复", duplicated.Message);
+
+            // ⑤ 该订单号改为唯一 → 放行（原单自身不算重复：excludeVia 生效）
+            await using (var uniq = new SqlCommand(
+                "UPDATE dbo.COP_ORDER_M SET CLIENT_ORDER_NO = N'ZZT2609CON02' WHERE ORDER_NO = N'ZZT2609ORD02';",
+                connection, transaction))
+            {
+                await uniq.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, dupPlan, "SAVE", token, ["ZZ", "ZZT2609OC01"]);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
+    [Fact]
     public async Task 采购变更_原单批核与变更量下限_三态校验()
     {
         var token = CancellationToken.None;

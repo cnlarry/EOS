@@ -1186,6 +1186,43 @@ public sealed class EffectValidationExecutor
                 $"duplicate-check 目标表与模块主表同名（{table}）时必须声明 excludeSelf.keyFields。");
         }
 
+        // 被本单引用的候选行排除（excludeVia）：例如"客户订单号在本单所引用的原单之外不得重复"——
+        // 排除表按约定携带本模块主表主键列，据此限定在当前单据内；join 把排除表的相关列
+        // 与候选行（TARGET→X）或本单主表行（MASTER→M）对齐。
+        if (root.TryGetProperty("excludeVia", out var excludeVia) && excludeVia.ValueKind == JsonValueKind.Object)
+        {
+            var viaTable = RequiredString(excludeVia, "table", "duplicate-check excludeVia 缺少 table。");
+            var viaJoin = new List<string>();
+            if (excludeVia.TryGetProperty("join", out var viaJoinArray) && viaJoinArray.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var pair in viaJoinArray.EnumerateArray())
+                {
+                    var targetColumn = RequiredString(pair, "target", "duplicate-check excludeVia.join 缺少 target。");
+                    var source = pair.TryGetProperty("source", out var declaredSource) ? declaredSource : default;
+                    var viaScopeName = source.ValueKind == JsonValueKind.Object
+                        && source.TryGetProperty("scope", out var scopeValue) && scopeValue.ValueKind == JsonValueKind.String
+                            ? scopeValue.GetString()!.Trim().ToUpperInvariant()
+                            : "TARGET";
+                    var sourceField = RequiredString(source, "field", "duplicate-check excludeVia.join 缺少 source.field。");
+                    var sourceSide = viaScopeName switch
+                    {
+                        "TARGET" => "X",
+                        "MASTER" => "M",
+                        _ => throw new EffectConfigException(
+                            $"duplicate-check excludeVia.join 来源域 '{viaScopeName}' 仅允许 TARGET/MASTER。"),
+                    };
+                    viaJoin.Add($"V.{EffectConditionCompiler.Identifier(targetColumn)} = "
+                        + $"{sourceSide}.{EffectConditionCompiler.Identifier(sourceField)}");
+                }
+            }
+            if (viaJoin.Count == 0)
+                throw new EffectConfigException("duplicate-check excludeVia.join 必须是非空数组。");
+            // 排除表的单据范围与本单主表作用域同名同值（@mk*），只登记一次参数即可。
+            var (viaScope, _) = BuildDocumentScopeParts(plan, masterKeyValues, "V");
+            conditions.Add("NOT EXISTS (SELECT 1 FROM dbo." + EffectConditionCompiler.Identifier(viaTable)
+                + " V WITH (NOLOCK) WHERE " + string.Join(" AND ", viaScope.Concat(viaJoin)) + ")");
+        }
+
         var filterSql = string.Empty;
         if (root.TryGetProperty("filter", out var filter) && filter.ValueKind == JsonValueKind.Object)
         {
