@@ -104,21 +104,56 @@ public sealed class WorkbenchDefinitionSnapshotService(
         var sourceVersion = await ReadSourceMetadataVersionAsync(moduleId, masterTable, detailTable, token);
         var reportJson = JsonSerializer.Serialize(report.Checks);
 
-        int next;
+        var definitionJson = report.DefinitionJson ?? string.Empty;
+        int version;
+        var reused = false;
         await using (var connection = connections.Create())
         {
             await connection.OpenAsync(token);
             await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
             try
             {
-                const string nextVersionSql = """
-                    SELECT ISNULL(MAX(VERSION),0)+1 FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WITH (UPDLOCK, HOLDLOCK)
-                    WHERE MODULE_ID=@ModuleId;
+                // 当前快照内容（同一把锁下读，避免与并发发布交叉判断）
+                const string currentSql = """
+                    SELECT TOP 1 VERSION, DEFINITION_JSON FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WITH (UPDLOCK, HOLDLOCK)
+                    WHERE MODULE_ID=@ModuleId AND IS_CURRENT=1 ORDER BY VERSION DESC;
                     """;
-                await using (var versionCommand = new SqlCommand(nextVersionSql, connection, transaction))
+                int? currentVersion = null;
+                string? currentJson = null;
+                await using (var current = new SqlCommand(currentSql, connection, transaction))
                 {
+                    current.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+                    await using var reader = await current.ExecuteReaderAsync(token);
+                    if (await reader.ReadAsync(token))
+                    {
+                        currentVersion = reader.GetInt32(0);
+                        currentJson = reader.GetString(1);
+                    }
+                }
+
+                const string clearDirtySql = "DELETE FROM dbo.WORKBENCH_MODULE_DIRTY WHERE MODULE_ID=@ModuleId;";
+                await using (var clearDirty = new SqlCommand(clearDirtySql, connection, transaction))
+                {
+                    clearDirty.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+                    await clearDirty.ExecuteNonQueryAsync(token);
+                }
+
+                // 定义内容未变即复用当前版本：重发布不再制造新版本，否则每次"重发一遍"
+                // 都会把既有验收证据判成过期快照（对拍报告按定义版本判定新鲜度）。
+                if (currentVersion is not null && string.Equals(currentJson, definitionJson, StringComparison.Ordinal))
+                {
+                    version = currentVersion.Value;
+                    reused = true;
+                }
+                else
+                {
+                    const string nextVersionSql = """
+                        SELECT ISNULL(MAX(VERSION),0)+1 FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WITH (UPDLOCK, HOLDLOCK)
+                        WHERE MODULE_ID=@ModuleId;
+                        """;
+                    await using var versionCommand = new SqlCommand(nextVersionSql, connection, transaction);
                     versionCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-                    next = Convert.ToInt32(await versionCommand.ExecuteScalarAsync(token));
+                    version = Convert.ToInt32(await versionCommand.ExecuteScalarAsync(token));
 
                     const string retireSql = "UPDATE dbo.WORKBENCH_DEFINITION_SNAPSHOT SET IS_CURRENT=0 WHERE MODULE_ID=@ModuleId AND IS_CURRENT=1;";
                     await using (var retire = new SqlCommand(retireSql, connection, transaction))
@@ -135,17 +170,12 @@ public sealed class WorkbenchDefinitionSnapshotService(
                         """;
                     await using var insert = new SqlCommand(insertSql, connection, transaction);
                     insert.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-                    insert.Parameters.Add("@Version", SqlDbType.Int).Value = next;
-                    insert.Parameters.Add("@DefinitionJson", SqlDbType.NVarChar, -1).Value = report.DefinitionJson ?? string.Empty;
+                    insert.Parameters.Add("@Version", SqlDbType.Int).Value = version;
+                    insert.Parameters.Add("@DefinitionJson", SqlDbType.NVarChar, -1).Value = definitionJson;
                     insert.Parameters.Add("@SourceVersion", SqlDbType.NVarChar, 100).Value = (object?)sourceVersion ?? DBNull.Value;
                     insert.Parameters.Add("@ReportJson", SqlDbType.NVarChar, -1).Value = reportJson;
                     insert.Parameters.Add("@PublishedBy", SqlDbType.NVarChar, 100).Value = publishedBy;
                     await insert.ExecuteNonQueryAsync(token);
-
-                    const string clearDirtySql = "DELETE FROM dbo.WORKBENCH_MODULE_DIRTY WHERE MODULE_ID=@ModuleId;";
-                    await using var clearDirty = new SqlCommand(clearDirtySql, connection, transaction);
-                    clearDirty.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-                    await clearDirty.ExecuteNonQueryAsync(token);
                 }
 
                 await transaction.CommitAsync(token);
@@ -160,14 +190,25 @@ public sealed class WorkbenchDefinitionSnapshotService(
         // 提交后的非事务工作：刷新该模块缓存（无当前快照时移除基线）、审计、日志。
         // 放在事务 try/catch 之外，避免缓存刷新异常被误当作回滚失败。
         await definitionProvider.RefreshModuleAsync(moduleId, token);
+        var summary = reused
+            ? $"复用模块定义快照 module-{moduleId}-v{version}（内容未变，不递增版本）"
+            : $"发布模块定义快照 module-{moduleId}-v{version}";
         await auditWriter.WriteBestEffortAsync(
             moduleId, "WORKBENCH_DEFINITION_SNAPSHOT", "PUBLISH",
-            $"发布模块定义快照 module-{moduleId}-v{next}", publishedBy, "MENU",
+            summary, publishedBy, "MENU",
             result: 1, fieldChanges: null, token);
-        logger.LogInformation("快照发布 module={ModuleId} version={Version} by={PublishedBy}",
-            moduleId, next, publishedBy);
-        return new WorkbenchPublishResult(moduleId, report.Title, true, next,
-            $"module-{moduleId}-v{next}", true, report.Checks,
+        if (reused)
+        {
+            logger.LogInformation("快照内容未变，复用 module={ModuleId} version={Version} by={PublishedBy}",
+                moduleId, version, publishedBy);
+        }
+        else
+        {
+            logger.LogInformation("快照发布 module={ModuleId} version={Version} by={PublishedBy}",
+                moduleId, version, publishedBy);
+        }
+        return new WorkbenchPublishResult(moduleId, report.Title, !reused, version,
+            $"module-{moduleId}-v{version}", true, report.Checks,
             Error: null);
     }
 
