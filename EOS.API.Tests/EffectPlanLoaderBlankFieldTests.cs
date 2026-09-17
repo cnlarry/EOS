@@ -56,4 +56,44 @@ public sealed class EffectPlanLoaderBlankFieldTests
         var plan = new EffectPlanLoader().Load(definition);
         Assert.Null(Assert.Single(Assert.Single(plan.Actions).Ops!).SourceAgg);
     }
+
+    [Fact]
+    public void 常量来源的空串是清空取值而非未设置()
+    {
+        // "结案后不再满足条件时把经手人清空"在配置里就是常量空串，属真实取值；
+        // 若按"空白即未设置"归一，加载后执行器即报"缺少 sourceConstant"，该模块批核全部失败。
+        var definition = Definition(Json("""
+            {"ModuleId":1607,"Title":"收料单","MasterTable":"PUR_RECEIVE_M","DetailTable":"PUR_RECEIVE_D",
+             "MasterPkOrder":["RECEIVE_TYPE","RECEIVE_NO"],
+             "BusinessActions":[
+               {"seq":5,"eventCode":"APPROVE_EFFECT","effectKey":"field-accumulate","effectName":"结案","enabled":true,
+                "ops":[{"opSeq":7,"targetTable":"PUR_PURCHASE_M","targetField":"FINISHED_PERSON","opCode":"SET_WHEN",
+                        "sourceScope":"CONSTANT","sourceConstant":""}]}]}
+            """));
+
+        var plan = new EffectPlanLoader().Load(definition);
+
+        var op = Assert.Single(Assert.Single(plan.Actions).Ops!);
+        Assert.Equal("CONSTANT", op.Source.Scope);
+        Assert.Equal(string.Empty, op.Source.Constant);
+    }
+
+    [Fact]
+    public void 常量来源缺少取值时保持未设置()
+    {
+        var definition = Definition(Json("""
+            {"ModuleId":1607,"Title":"收料单","MasterTable":"PUR_RECEIVE_M","DetailTable":"PUR_RECEIVE_D",
+             "MasterPkOrder":["RECEIVE_TYPE","RECEIVE_NO"],
+             "BusinessActions":[
+               {"seq":5,"eventCode":"APPROVE_EFFECT","effectKey":"field-accumulate","effectName":"结案","enabled":true,
+                "ops":[{"opSeq":7,"targetTable":"PUR_PURCHASE_M","targetField":"FINISHED_PERSON","opCode":"SET_WHEN",
+                        "sourceScope":"CONSTANT"}]}]}
+            """));
+
+        // 属性缺失才是"未设置"：加载后为 null，执行期由执行器 fail-closed 拒绝。
+        var plan = new EffectPlanLoader().Load(definition);
+
+        var op = Assert.Single(Assert.Single(plan.Actions).Ops!);
+        Assert.Null(op.Source.Constant);
+    }
 }
