@@ -84,17 +84,27 @@ public sealed class WorkbenchApprovalService(
     }
 
     /// <summary>
-    /// 自动批核（MODULES.AUTO_APPROVE=1）：新增后数据自动为批核状态，无需再点批核。
-    /// 无流程模块的直接批核：CONFIRM_TAG=1/CONFIRM_PERSON='SYSTEM'/CONFIRM_DATE=GETDATE() +
-    /// P_WF_&lt;DOC&gt; 业务副作用（WorkflowSproc 存在时）+ APPROVE 审计；守卫防重复。
+    /// 自动批核（MODULES.AUTO_APPROVE=1）：保存成功后立即进入批核生效——
+    /// 与手工批核**共用同一条生效链**，差异只在确认人（SYSTEM）与触发入口（保存动作），
+    /// 运行时代码不按模块号分支：引擎接管走 <see cref="RunEngineApprovalAsync"/>，
+    /// 未接管且登记了批核过程时走过渡桥（§15.3），两者皆无即纯状态翻转。
+    /// 失败不回滚保存：以结果回传前端提示「已保存，但自动批核失败」，单据停在未批核态可重试。
     /// </summary>
     public async Task<RecordSaveResult> AutoApproveAsync(
-        SqlConnection connection,
         WorkbenchDefinition definition,
         IReadOnlyList<string> keyValues,
         string userId,
         CancellationToken token)
     {
+        if (effectEngine.IsEnabledFor(definition))
+        {
+            return await RunEngineApprovalAsync(definition, keyValues, approve: true, "SYSTEM", userId, token,
+                idempotentWhenSettled: true);
+        }
+
+        // 过渡桥：旧批核过程在独立连接上执行，无法与状态翻转同事务，失败按补偿还原。
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
         // ADR-013 §3.7：缺列不再静默返回成功（调用方会误以为已批核），而是显式失败并引导补列。
         if (!await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "CONFIRM_TAG", token))
         {
@@ -120,14 +130,7 @@ public sealed class WorkbenchApprovalService(
                 return RecordSaveResult.Success(keyValues);
             }
         }
-        var effectRun = await effectEngine.TryRunAsync(
-            connection, null, definition, EffectEvent.ApproveEffect, keyValues, userId, token);
-        if (effectRun.Ran && effectRun.Error is not null)
-        {
-            await RestoreConfirmStateAsync(connection, definition.MasterTable, keyCondition, originalState.Value, token);
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED", effectRun.Error);
-        }
-        if (!effectRun.Ran && definition.BusinessRule?.WorkflowSproc is { } sproc)
+        if (definition.BusinessRule?.WorkflowSproc is { } sproc)
         {
             var result = await controlledSprocs.RunWorkflowAsync(definition.ModuleId, sproc, definition.MasterPkOrder, keyValues, true, token);
             if (!result.Success)
@@ -139,7 +142,106 @@ public sealed class WorkbenchApprovalService(
         }
         await auditWriter.WriteEventAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
             "APPROVE", "自动批核", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
-        logger.LogInformation("自动批核 module={ModuleId} key={Key} executor={User}", definition.ModuleId, string.Join(',', keyValues), userId);
+        logger.LogInformation("自动批核（过渡桥） module={ModuleId} key={Key} executor={User}", definition.ModuleId, string.Join(',', keyValues), userId);
+        return RecordSaveResult.Success(keyValues);
+    }
+
+    /// <summary>
+    /// 效果引擎接管后的批核/解批生效链——自动批核与手工批核**共用这一条**：
+    /// 同一事务内依次执行「该阶段校验闸 → 守卫翻转确认状态 → 效果链 → 审计」，
+    /// 任一步失败整链回滚：确认状态自然还原、效果零写入（ADR §4 的阻断语义，无需补偿写）。
+    /// 幂等与并发安全：状态翻转带 `ISNULL(CONFIRM_TAG,0)=0` 守卫，重复触发/并发触发时
+    /// 只有第一个写者会执行效果链，其余直接按"已生效"成功返回，不会重复累计。
+    /// </summary>
+    private async Task<RecordSaveResult> RunEngineApprovalAsync(
+        WorkbenchDefinition definition,
+        IReadOnlyList<string> keyValues,
+        bool approve,
+        string confirmPerson,
+        string userId,
+        CancellationToken token,
+        // 保存触发的自动批核是幂等的（重复保存直接成功）；用户手工点批核则保持
+        // 「已批核 → WORKFLOW_STATE_CONFLICT」的显式冲突提示，两者对重复触发的口径不同。
+        bool idempotentWhenSettled = false)
+    {
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        if (!await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "CONFIRM_TAG", token))
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
+                $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
+        }
+        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
+        var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);
+        if (originalState is null)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
+        }
+        if (approve && originalState.Value.Tag == true)
+        {
+            return idempotentWhenSettled
+                ? RecordSaveResult.Success(keyValues)
+                : RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_STATE_CONFLICT",
+                    "记录不存在或已批核，无法重复批核。");
+        }
+        if (!approve && originalState.Value.Tag != true)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_STATE_CONFLICT",
+                "记录不存在或未批核，无法解批。");
+        }
+        if (!approve)
+        {
+            var noBack = await CheckNotBackFieldsAsync(connection, definition, keyValues, token);
+            if (noBack is not null)
+            {
+                return noBack;
+            }
+        }
+
+        var eventKind = approve ? EffectEvent.ApproveEffect : EffectEvent.Deapprove;
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            // 校验闸先行（ADR §15.2 的批核生效顺序）：被拦时状态与效果都没有落库。
+            if (await effectEngine.ValidateStageAsync(connection, transaction, definition, eventKind, keyValues, token) is { } blocked)
+            {
+                await transaction.RollbackAsync(token);
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", blocked);
+            }
+            var confirmSql = approve
+                ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};"
+                : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyCondition};";
+            await using (var confirmCommand = new SqlCommand(confirmSql, connection, transaction))
+            {
+                confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = confirmPerson.Trim();
+                if (await confirmCommand.ExecuteNonQueryAsync(token) == 0)
+                {
+                    // 并发下已被另一方翻转：不重复执行效果链。
+                    await transaction.RollbackAsync(token);
+                    return idempotentWhenSettled
+                        ? RecordSaveResult.Success(keyValues)
+                        : RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_STATE_CONFLICT",
+                            approve ? "记录不存在或已批核，无法重复批核。" : "记录不存在或未批核，无法解批。");
+                }
+            }
+            var effectRun = await effectEngine.TryRunAsync(
+                connection, transaction, definition, eventKind, keyValues, userId, token);
+            if (effectRun.Error is not null)
+            {
+                await transaction.RollbackAsync(token);
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED", effectRun.Error);
+            }
+            await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues),
+                approve ? "APPROVE" : "DEAPPROVE", approve ? "批核" : "解批", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
+            await transaction.CommitAsync(token);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
+        logger.LogInformation("统一表单{Action} module={ModuleId} key={Key} executor={User} confirmPerson={Person}",
+            approve ? "批核" : "解批", definition.ModuleId, string.Join(',', keyValues), userId, confirmPerson);
         return RecordSaveResult.Success(keyValues);
     }
 
@@ -277,7 +379,13 @@ public sealed class WorkbenchApprovalService(
         {
             return await workflowEngine.StartFlowAsync(definition, keyValues, employeeName, userId, token, message);
         }
-        // 系统 P_WF_APPROVE_NOFLOW：先更新主表确认状态（带守卫），再执行业务 SP。
+        // 引擎接管（手工批核/解批）：与自动批核共用同一条生效链（校验闸 → 状态 → 效果 → 审计，同一事务）。
+        if (effectsEnabled)
+        {
+            return await RunEngineApprovalAsync(definition, keyValues, approve, employeeName, userId, token);
+        }
+        // 过渡桥（引擎未接管）：状态先落定，再调遗留批核过程；过程在独立连接执行，
+        // 无法与状态同事务，失败按补偿还原（§15.3 桥接语义）。
         var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);
         if (originalState is null)
         {
@@ -292,10 +400,15 @@ public sealed class WorkbenchApprovalService(
                 return noBack;
             }
         }
-        var confirmSql = approve
+        if (sproc is null)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED",
+                "该模块未配置批核效果，且无兼容批核处理。");
+        }
+        var bridgeConfirmSql = approve
             ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};"
             : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyCondition};";
-        await using (var confirmCommand = new SqlCommand(confirmSql, connection))
+        await using (var confirmCommand = new SqlCommand(bridgeConfirmSql, connection))
         {
             confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = employeeName.Trim();
             var affected = await confirmCommand.ExecuteNonQueryAsync(token);
@@ -305,31 +418,14 @@ public sealed class WorkbenchApprovalService(
                     approve ? "记录不存在或已批核，无法重复批核。" : "记录不存在或未批核，无法解批。");
             }
         }
-        var effectRun = await effectEngine.TryRunAsync(
-            connection, null, definition,
-            approve ? EffectEvent.ApproveEffect : EffectEvent.Deapprove,
-            keyValues, userId, token);
-        if (effectRun.Ran && effectRun.Error is not null)
-        {
-            await RestoreConfirmStateAsync(connection, definition.MasterTable, keyCondition, originalState.Value, token);
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED", effectRun.Error);
-        }
-        if (!effectRun.Ran && sproc is null)
-        {
-            await RestoreConfirmStateAsync(connection, definition.MasterTable, keyCondition, originalState.Value, token);
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED",
-                "该模块未配置批核效果，且无兼容批核处理。");
-        }
-        var result = effectRun.Ran
-            ? new SprocResult(true, null)
-            : await controlledSprocs.RunWorkflowAsync(definition.ModuleId, sproc!, definition.MasterPkOrder, keyValues, approve, token);
+        var result = await controlledSprocs.RunWorkflowAsync(definition.ModuleId, sproc, definition.MasterPkOrder, keyValues, approve, token);
         if (!result.Success)
         {
             await RestoreConfirmStateAsync(connection, definition.MasterTable, keyCondition, originalState.Value, token);
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED",
                 result.Message ?? (approve ? "批核失败。" : "解批失败。"));
         }
-        logger.LogInformation("统一表单{Action} module={ModuleId} key={Key}", approve ? "批核" : "解批", definition.ModuleId, string.Join(',', keyValues));
+        logger.LogInformation("统一表单{Action}（过渡桥） module={ModuleId} key={Key}", approve ? "批核" : "解批", definition.ModuleId, string.Join(',', keyValues));
         await auditWriter.WriteEventAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
             approve ? "APPROVE" : "DEAPPROVE", approve ? "批核" : "解批", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
         return RecordSaveResult.Success(keyValues);
