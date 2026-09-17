@@ -486,4 +486,52 @@ public sealed class EffectValidationLiveDataTests
             await transaction.RollbackAsync(token);
         }
     }
+
+    [Fact]
+    public async Task 量产模具完工_申请数量超承认单可申请数量_拒绝_固定文案()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.MOU_ACCEPT_M (ACCEPT_TYPE, ACCEPT_NO, QTY, FINISHED_QTY)
+                VALUES (N'ZZ', N'ZZT2609AC01', 100, 0);
+                INSERT INTO dbo.MOU_BATCH_M (BATCH_TYPE, BATCH_NO, ACCEPT_TYPE, ACCEPT_NO, QTY)
+                VALUES (N'ZZ', N'ZZT2609BT01', N'ZZ', N'ZZT2609AC01', 101);
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            var plan = await LoadPlanAsync(connection, transaction, 2906, token, "qty-not-exceed");
+            var exception = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609BT01"]));
+            Assert.Contains("申请数量已超过承认单可申请数量", exception.Message);
+
+            // 本单数量落到"已完工 + 本单 ≤ 可申请"之内 → 放行
+            await using (var fix = new SqlCommand(
+                "UPDATE dbo.MOU_BATCH_M SET QTY = 99 WHERE BATCH_TYPE = N'ZZ' AND BATCH_NO = N'ZZT2609BT01';",
+                connection, transaction))
+            {
+                await fix.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609BT01"]);
+
+            // 边界：已完工 1 + 本单 99 == 承认单 100 → 恰好用满额度，放行（判据是严格大于）
+            await using (var fill = new SqlCommand(
+                "UPDATE dbo.MOU_ACCEPT_M SET FINISHED_QTY = 1 WHERE ACCEPT_TYPE = N'ZZ' AND ACCEPT_NO = N'ZZT2609AC01';",
+                connection, transaction))
+            {
+                await fill.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609BT01"]);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
 }

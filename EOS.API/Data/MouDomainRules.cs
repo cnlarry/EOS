@@ -8,27 +8,6 @@ namespace EOS.API.Data;
 /// </summary>
 public static class MouDomainRules
 {
-    /// <summary>量产模具完工（P_MOU_BATCH）AfterSave：申请数量不超承认单可申请数量。</summary>
-    public static async Task<SprocResult> MouBatchAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "量产模具完工领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        await using var cmd = new SqlCommand("""
-            SELECT TOP 1 1 FROM dbo.MOU_BATCH_M d
-            INNER JOIN dbo.MOU_ACCEPT_M m ON m.ACCEPT_TYPE=d.ACCEPT_TYPE AND m.ACCEPT_NO=d.ACCEPT_NO
-            WHERE d.BATCH_TYPE=@Type AND d.BATCH_NO=@No
-              AND ISNULL(m.QTY,0) < ISNULL(m.FINISHED_QTY,0) + ISNULL(d.QTY,0);
-            """, connection, transaction);
-        cmd.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
-        cmd.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
-        return await cmd.ExecuteScalarAsync(token) is not null
-            ? new(false, "申请数量已超过承认单可申请数量")
-            : new(true, null);
-    }
-
     /// <summary>模房领料/耗料单（P_MOU_GET / P_MOU_GET2）AfterSave：批号条件必填。</summary>
     public static Task<SprocResult> MouGetAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,

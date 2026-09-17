@@ -142,7 +142,6 @@ public static class DomainRuleMap
         [1506] = "moc-bom-stru",
         [1507] = "moc-plan",
         [2707] = "moc-work-out",
-        [2906] = "mou-batch",
         [2907] = "mou-get",
         [2911] = "mou-pro",
         [2912] = "mou-batchin",
@@ -178,6 +177,7 @@ public static class CatalogAfterSaveMap
     private static readonly IReadOnlySet<int> Modules = new HashSet<int>
     {
         2914,              // 料号开模评估资料唯一
+        2906,              // 量产模具完工：申请数量不超承认单可申请数量
         180102, 180105, 180110, 180111,   // 员工工号唯一
         180205,            // 每人每月一笔出勤参数
         180211, 180651,    // 当月每人一班排班
