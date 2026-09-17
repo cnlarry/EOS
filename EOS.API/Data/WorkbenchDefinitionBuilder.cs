@@ -211,9 +211,12 @@ public sealed class WorkbenchDefinitionBuilder(
         if(businessRule is null)
         {
             var hasSproc=updateSproc.Length>0||afterSaveSproc.Length>0;
-            if(hasSproc)
+            // 是否自动编号只取决于 BILLKIND 里有没有该模块的单号规则，与模块是否登记
+            // 保存后处理无关（此前靠"有没有保存后钩子"推断，于是校验搬到目录后仍要
+            // 保留空壳钩子才能编号）。
+            var hasAutoBillNo=await BillNoGenerator.HasAutoBillNoAsync(connection,null,moduleId,token);
+            if(hasSproc||hasAutoBillNo)
             {
-                var hasAutoBillNo=await BillNoGenerator.HasAutoBillNoAsync(connection,null,moduleId,token);
                 string? billNoField=null;
                 string? billTypeField=null;
                 if(hasAutoBillNo&&masterPkOrder.Count>=2)
@@ -423,8 +426,7 @@ public sealed class WorkbenchDefinitionBuilder(
             }
             if (masterFields.Any(field => field.Key.Equals(definition.BusinessRule.BillNoField,StringComparison.OrdinalIgnoreCase)))
             {
-                var newNo = await BillNoGenerator.GenerateAsync(connection,null,definition.ModuleId,
-                    definition.MasterTable,definition.BusinessRule.BillNoField,definition.BusinessRule.BillTypeField,token);
+                var newNo = await BillNoGenerator.PeekAsync(connection,null,definition.ModuleId,token);
                 if (newNo is not null) defaults[definition.BusinessRule.BillNoField] = newNo;
             }
         }
