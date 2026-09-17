@@ -114,24 +114,7 @@ public static class SfcDomainRules
         return new(true, null);
     }
 
-    /// <summary>Process save: requires a positive fixed time when fixed time is used.</summary>
-    public static async Task<SprocResult> SfcProcessAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 1 || keyValues.Count < 1) return new(false, "产品制程领域规则缺少主键。");
-        var proNo = (keyValues[0] ?? string.Empty).Trim();
-        await using (var std = new SqlCommand("""
-            SELECT TOP 1 1 FROM dbo.SFC_PROCESS_D t
-            WHERE t.PRO_NO=@ProNo AND t.STANDARD_TIME_TAG=1 AND ISNULL(t.STANDARD_TIME,0)=0;
-            """, connection, transaction))
-        {
-            std.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = proNo;
-            if (await std.ExecuteScalarAsync(token) is not null)
-                return new(false, "产品编号使用固定时间时，固定时间不能为0 \r\n");
-        }
-        return new(true, null);
-    }
+    /// <summary>产品制程（P_SFC_PROCESS）AfterSave：固定时间不得为 0 由校验目录（line-require）承担。</summary>
 
     /// <summary>
     /// Daily-record save: rejects quantities above the maximum allowed by the production process.
