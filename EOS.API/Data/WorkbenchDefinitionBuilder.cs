@@ -4,6 +4,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 using System.Data;
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace EOS.API.Data;
@@ -392,12 +393,45 @@ public sealed class WorkbenchDefinitionBuilder(
             definition.AutoApprove, definition.BusinessRule?.WorkflowSproc is not null,
             definition.EffectEngineEnabled,
             await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token));
+        // 批核/解批入口能力（工具栏显隐）：流程 / 遗留批核过程 / 效果链 / 无副作用自动批核四者取并集，
+        // 与 ADR-013 §3.7 的 lifecycle 门共用同一判定——效果链接管批核的模块（无过程、无流程）
+        // 同样要有入口，否则退役遗留过程后按钮会凭空消失。
+        var hasApproveCapability = WorkflowStates.NeedsApproveColumn(
+            definition.AutoApprove,
+            definition.BusinessRule?.WorkflowSproc is not null,
+            definition.HasWorkflow,
+            EnabledActionEventCodes(definition).ToList());
         return new FormDefinition(definition.ModuleId,definition.Title,definition.MasterTable,definition.DetailTable,
             definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns,definition.DetailNoFields,detailDfVerify,
             tabs,columns,definition.FormButtons,defaultValues,definition.HasWorkflow,
             definition.IfCopy,definition.SearchMaster,definition.SearchDetail,
             canDelete,canApprove,canDeapprove,canEndCase,canUnEndCase,canFileView,canFileUpda,canFileEdit,canFileDele,
-            canAddNew,canEdit,definition.HelpUrl,canSetup,hasStatelessApprove);
+            canAddNew,canEdit,definition.HelpUrl,canSetup,hasStatelessApprove,hasApproveCapability);
+    }
+
+    /// <summary>已发布定义里启用的效果动作事件码（供批核能力判定；未启用/占位行不计）。</summary>
+    private static IEnumerable<string> EnabledActionEventCodes(WorkbenchDefinition definition)
+    {
+        if (definition.BusinessActions is not { ValueKind: JsonValueKind.Array } actions)
+        {
+            yield break;
+        }
+        foreach (var action in actions.EnumerateArray())
+        {
+            if (action.ValueKind != JsonValueKind.Object
+                || !action.TryGetProperty("enabled", out var enabled)
+                || enabled.ValueKind != JsonValueKind.True
+                || !action.TryGetProperty("eventCode", out var code)
+                || code.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+            var text = code.GetString();
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                yield return text;
+            }
+        }
     }
 
     /// <summary>
