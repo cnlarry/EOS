@@ -8,12 +8,6 @@ namespace EOS.API.Data;
 /// </summary>
 public static class MouDomainRules
 {
-    public static Task<SprocResult> MouldNoopAfterSaveAsync(CancellationToken token)
-        => Task.FromResult(new SprocResult(true, null));
-
-    /// <summary>量产模具完工（P_MOU_BATCH）AfterSave：申请数量不超承认单可申请数量。</summary>
-
-
     /// <summary>量产模具完工（P_MOU_BATCH）AfterSave：申请数量不超承认单可申请数量。</summary>
     public static async Task<SprocResult> MouBatchAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,

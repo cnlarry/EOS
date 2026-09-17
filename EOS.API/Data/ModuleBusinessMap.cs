@@ -164,8 +164,6 @@ public static class DomainRuleMap
         [1506] = "moc-bom-stru",
         [1507] = "moc-plan",
         [2707] = "moc-work-out",
-        [2903] = "mou-apply",
-        [2904] = "mou-accept",
         [2906] = "mou-batch",
         [2907] = "mou-get",
         [2911] = "mou-pro",
