@@ -46,11 +46,6 @@ public static class CopDomainRules
         if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "备货返仓单领域规则缺少主键。");
         var type = (keyValues[0] ?? string.Empty).Trim();
         var no = (keyValues[1] ?? string.Empty).Trim();
-        if (await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
-        {
-            var check = await CopFitinCheckAsync(connection, transaction, type, no, token);
-            if (check is not null) return check;
-        }
         return await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
             "COP_FITIN_D", "FITIN_TYPE", "FITIN_NO",
             [
@@ -66,11 +61,6 @@ public static class CopDomainRules
         if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "客户退料单领域规则缺少主键。");
         var type = (keyValues[0] ?? string.Empty).Trim();
         var no = (keyValues[1] ?? string.Empty).Trim();
-        if (await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
-        {
-            var check = await CopBackCheckAsync(connection, transaction, type, no, token);
-            if (check is not null) return check;
-        }
         return await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
             "COP_BACK_D", "BACK_TYPE", "BACK_NO",
             [
