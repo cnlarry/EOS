@@ -532,6 +532,55 @@ public sealed class EffectValidationLiveDataTests
     }
 
     [Fact]
+    public async Task 产品制程_用固定时间时固定时间不得为零_条件触发与放行()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.SFC_PROCESS_M (PRO_NO) VALUES (N'ZZT2609SP01');
+                INSERT INTO dbo.SFC_PROCESS_D (PRO_NO, SERIAL_NO, STANDARD_TIME_TAG, STANDARD_TIME)
+                VALUES (N'ZZT2609SP01', 1, 1, 0);
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            var plan = await LoadPlanAsync(connection, transaction, 2703, token, "line-require");
+
+            // 固定时间标记=1 且时间为 0 → 拒绝，文案与旧实现逐字一致（含尾部 " \r\n"）
+            var exception = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZT2609SP01"]));
+            Assert.Contains("产品编号使用固定时间时，固定时间不能为0", exception.Message);
+
+            // 填上固定时间 → 放行
+            await using (var fill = new SqlCommand(
+                "UPDATE dbo.SFC_PROCESS_D SET STANDARD_TIME = 5 WHERE PRO_NO = N'ZZT2609SP01' AND SERIAL_NO = 1;",
+                connection, transaction))
+            {
+                await fill.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZT2609SP01"]);
+
+            // 不用固定时间（标记=0）时，时间仍为 0 也放行（触发条件不成立）
+            await using (var noTag = new SqlCommand(
+                "UPDATE dbo.SFC_PROCESS_D SET STANDARD_TIME_TAG = 0, STANDARD_TIME = 0 WHERE PRO_NO = N'ZZT2609SP01' AND SERIAL_NO = 1;",
+                connection, transaction))
+            {
+                await noTag.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZT2609SP01"]);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
+    [Fact]
     public async Task 生产出库_受门控的出库不超可出库_门关跳过门开命中_批号必填无门控生效()
     {
         var token = CancellationToken.None;
