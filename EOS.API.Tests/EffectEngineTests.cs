@@ -210,6 +210,68 @@ public class EffectEngineTests
     }
 
     [Fact]
+    public void Reverse_clear_finish_unsets_placed_markers_on_deapprove()
+    {
+        var clearFinish = JsonSerializer.SerializeToElement(new { kind = "clear-finish" });
+        var flag = EffectFormulaExecutor.ResolveOpForEvent(
+            new EffectOpPlan(1, "CAR_MISSION_M", "FINISHED_TAG", "ASSIGN",
+                new EffectSourceRef("CONSTANT", null, null, "1"), null, null, null, null, null),
+            EffectEvent.Deapprove, clearFinish);
+        Assert.Equal("SET_WHEN", flag!.OpCode);
+        Assert.Equal("CONSTANT", flag.Source.Scope);
+        Assert.Equal("0", flag.Source.Constant);
+
+        var date = EffectFormulaExecutor.ResolveOpForEvent(
+            new EffectOpPlan(2, "MOU_ACCEPT_M", "FINISHED_DATE", "ASSIGN",
+                new EffectSourceRef("CONSTANT", null, null, "SYSDATETIME"), null, null, null, null, null),
+            EffectEvent.Deapprove, clearFinish);
+        Assert.Equal("NULL", date!.Source.Constant);
+
+        var person = EffectFormulaExecutor.ResolveOpForEvent(
+            new EffectOpPlan(3, "MOU_ACCEPT_M", "FINISHED_PERSON", "ASSIGN",
+                new EffectSourceRef("CONSTANT", null, null, "SYSTEM"), null, null, null, null, null),
+            EffectEvent.Deapprove, clearFinish);
+        Assert.Equal(string.Empty, person!.Source.Constant);
+
+        var copied = EffectFormulaExecutor.ResolveOpForEvent(
+            new EffectOpPlan(4, "COP_ORDER_M", "CLIENT_ORDER_NO", "ASSIGN",
+                new EffectSourceRef("MASTER", null, "CLIENT_ORDER_NO", null), null, null, null, null, null),
+            EffectEvent.Deapprove, clearFinish);
+        Assert.Equal("NULL", copied!.Source.Constant);
+    }
+
+    [Fact]
+    public void Reverse_clear_refs_empties_reference_columns_on_deapprove()
+    {
+        var clearRefs = JsonSerializer.SerializeToElement(new { kind = "clear-refs" });
+        var serial = EffectFormulaExecutor.ResolveOpForEvent(
+            new EffectOpPlan(1, "PUR_APPLY_D", "PURCHASE_SERIAL_NO", "ASSIGN",
+                new EffectSourceRef("MASTER", null, "SERIAL_NO", null), null, null, null, null, null),
+            EffectEvent.Deapprove, clearRefs);
+        Assert.Equal("0", serial!.Source.Constant);
+
+        var reference = EffectFormulaExecutor.ResolveOpForEvent(
+            new EffectOpPlan(2, "PUR_APPLY_D", "PURCHASE_NO", "ASSIGN",
+                new EffectSourceRef("MASTER", null, "PURCHASE_NO", null), null, null, null, null, null),
+            EffectEvent.Deapprove, clearRefs);
+        Assert.Equal(string.Empty, reference!.Source.Constant);
+    }
+
+    [Fact]
+    public void Reverse_refuses_clear_kinds_that_need_several_rows()
+    {
+        var op = new EffectOpPlan(1, "COP_ORDER_M", "APPLY_NO", "ASSIGN",
+            new EffectSourceRef("MASTER", null, "APPLY_NO", null), null, null, null, null, null);
+        foreach (var kind in new[] { "clear-refs-unfinish", "clear-on-deapprove" })
+        {
+            var exception = Assert.Throws<EffectConfigException>(() =>
+                EffectFormulaExecutor.ResolveOpForEvent(
+                    op, EffectEvent.Deapprove, JsonSerializer.SerializeToElement(new { kind })));
+            Assert.Contains(kind, exception.Message);
+        }
+    }
+
+    [Fact]
     public void Reverse_swaps_accum_and_deaccum_on_deapprove()
     {
         var op = new EffectOpPlan(1, "PRODUCT", "F", "ACCUM",
