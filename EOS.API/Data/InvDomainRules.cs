@@ -23,24 +23,4 @@ public static class InvDomainRules
         if (negative is not null) return new(false, "以下序号项盘点数小于0 \r\n" + negative);
         return new(true, null);
     }
-
-    /// <summary>借出单（P_INV_LOAN）AfterSave：批号条件必填。</summary>
-    public static Task<SprocResult> InvLoanAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-        => DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
-            "INV_LOAN_D", "LOAN_TYPE", "LOAN_NO",
-            [
-                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
-            ], token);
-
-    /// <summary>返还单（P_INV_RETURN）AfterSave：批号条件必填。</summary>
-    public static Task<SprocResult> InvReturnAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-        => DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
-            "INV_RETURN_D", "RETURN_TYPE", "RETURN_NO",
-            [
-                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
-            ], token);
 }

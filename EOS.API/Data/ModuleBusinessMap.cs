@@ -123,24 +123,19 @@ public static class DomainRuleMap
         [2706] = "moc-work-in",
         [1502] = "moc-produce",
         [1503] = "moc-get",
-        [1505] = "moc-product-in",
         [1512] = "moc-produce",
         [1514] = "moc-get",
         [1517] = "moc-get",
-        [1519] = "moc-product-in",
         [2703] = "sfc-process",
         [2803] = "moc-produce",
         [2804] = "moc-produce",
         [2805] = "moc-get",
         [2806] = "moc-get",
         [2815] = "moc-product-out",
-        [2816] = "moc-product-in",
         [180401] = "sfc-daily",
         [1407] = "cop-return",
         [1409] = "cop-return",
         [1411] = "cop-fitout",
-        [1412] = "cop-fitin",
-        [1423] = "cop-back",
         [1608] = "pur-cancel",
         [1612] = "pur-cancel",
         [1616] = "pur-apply",
@@ -149,8 +144,6 @@ public static class DomainRuleMap
         [180310] = "hr-wage-lz",
         [1803101] = "hr-wage-lz",
         [180502] = "hrm-wage-item",
-        [130108] = "inv-loan",
-        [130109] = "inv-return",
         [1506] = "moc-bom-stru",
         [1507] = "moc-plan",
         [2707] = "moc-work-out",
@@ -203,6 +196,7 @@ public static class CatalogAfterSaveMap
         1604,              // 厂商报价单：厂商与询价单引用存在
         1610,              // 收料核价单：厂商引用存在
         130102, 130103, 130104, 130105, 130106, 130107, 130110, 2817, 2818, 3901,   // 库存异动族：批管品必填批号（保存期 line-require）
+        1423, 1412, 130108, 130109, 1505, 1519, 2816,   // 同形族：批管品必填批号（保存期 line-require）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);
