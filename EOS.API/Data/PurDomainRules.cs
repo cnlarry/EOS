@@ -399,20 +399,6 @@ public static class PurDomainRules
             """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString());
         if (batchMissing is not null)
             return new(false, "以下序号项需要输入批号 \r\n" + batchMissing);
-        // 收料数量不超出采购数量（+0.1 容差）
-        var overReceive = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT i.PURCHASE_SERIAL_NO, o.QTY, ISNULL(o.RECEIVE_QTY,0), i.QTY
-            FROM (SELECT PURCHASE_TYPE, PURCHASE_NO, PURCHASE_SERIAL_NO, MAX(SERIAL_NO) SERIAL_NO, SUM(QTY) QTY
-                  FROM dbo.PUR_RECEIVE_D WHERE RECEIVE_TYPE=@Type AND RECEIVE_NO=@No
-                  GROUP BY PURCHASE_TYPE, PURCHASE_NO, PURCHASE_SERIAL_NO) i
-            INNER JOIN dbo.PUR_PURCHASE_D o
-              ON o.PURCHASE_TYPE=i.PURCHASE_TYPE AND o.PURCHASE_NO=i.PURCHASE_NO AND o.SERIAL_NO=i.PURCHASE_SERIAL_NO
-            WHERE i.QTY > o.QTY-ISNULL(o.RECEIVE_QTY,0)+0.1;
-            """, type, no, token,
-            line: r => $"{Convert.ToInt32(r.GetValue(0))}    {Convert.ToDouble(r.GetValue(1))}    {Convert.ToDouble(r.GetValue(2))}    {Convert.ToDouble(r.GetValue(3))}");
-        if (overReceive is not null)
-            return new(false, "以下项收料数量超出采购数量\r\n序号  采购数量  已收数量  单据数量\r\n" + overReceive);
         return new(true, null);
     }
 
