@@ -532,6 +532,64 @@ public sealed class EffectValidationLiveDataTests
     }
 
     [Fact]
+    public async Task 送货回执_被引用行已有回执即拒绝_未回执放行()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.COP_CALLBACK_M (CALLBACK_TYPE, CALLBACK_NO) VALUES (N'ZZ', N'ZZT2609CB01');
+                INSERT INTO dbo.COP_CALLBACK_D (CALLBACK_TYPE, CALLBACK_NO, SERIAL_NO, S_R_TYPE, S_R_NO, S_R_SERIAL_NO)
+                VALUES (N'ZZ', N'ZZT2609CB01', 1, N'ZZ', N'ZZT2609SND01', 1);
+                INSERT INTO dbo.COP_SEND_D (SEND_TYPE, SEND_NO, SERIAL_NO, CALLBACK_NO)
+                VALUES (N'ZZ', N'ZZT2609SND01', 1, NULL);
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            var plan = await LoadPlanAsync(connection, transaction, 1413, token, "reference-exists");
+
+            // 被引用的送货行尚未回执 → 放行
+            await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609CB01"]);
+
+            // 该送货行已有回执号 → 拒绝，回报**本单明细**序号（与旧实现取 c.SERIAL_NO 一致）
+            await using (var receipt = new SqlCommand(
+                "UPDATE dbo.COP_SEND_D SET CALLBACK_NO = N'RC001' WHERE SEND_TYPE = N'ZZ' AND SEND_NO = N'ZZT2609SND01' AND SERIAL_NO = 1;",
+                connection, transaction))
+            {
+                await receipt.ExecuteNonQueryAsync(token);
+            }
+            var exception = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609CB01"]));
+            Assert.Contains("以下序号项送、退货已有回执", exception.Message);
+            Assert.Contains("1", exception.Message);
+
+            // 退货侧同形断言：引用行已有回执同样命中
+            await using (var ret = new SqlCommand("""
+                UPDATE dbo.COP_SEND_D SET CALLBACK_NO = NULL WHERE SEND_TYPE = N'ZZ' AND SEND_NO = N'ZZT2609SND01' AND SERIAL_NO = 1;
+                UPDATE dbo.COP_CALLBACK_D SET S_R_TYPE = N'ZZ', S_R_NO = N'ZZT2609RET01', S_R_SERIAL_NO = 1
+                 WHERE CALLBACK_TYPE = N'ZZ' AND CALLBACK_NO = N'ZZT2609CB01' AND SERIAL_NO = 1;
+                INSERT INTO dbo.COP_RETURN_D (RETURN_TYPE, RETURN_NO, SERIAL_NO, CALLBACK_NO)
+                VALUES (N'ZZ', N'ZZT2609RET01', 1, N'RC002');
+                """, connection, transaction))
+            {
+                await ret.ExecuteNonQueryAsync(token);
+            }
+            var returned = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609CB01"]));
+            Assert.Contains("以下序号项送、退货已有回执", returned.Message);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
+    [Fact]
     public async Task 产品制程_用固定时间时固定时间不得为零_条件触发与放行()
     {
         var token = CancellationToken.None;

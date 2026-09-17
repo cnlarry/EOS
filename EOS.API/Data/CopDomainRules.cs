@@ -82,28 +82,7 @@ public static class CopDomainRules
     /// <summary>P_PUR_CANCEL 退料不超收料。</summary>
 
 
-    /// <summary>送货回执（1413）AfterSave：送/退货已有回执校验。</summary>
-    public static async Task<SprocResult> CopCallbackAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var type = keyValues[0]; var no = keyValues[1];
-        var lines = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT c.SERIAL_NO FROM dbo.COP_SEND_D s
-            INNER JOIN dbo.COP_CALLBACK_D c
-              ON s.SEND_TYPE=c.S_R_TYPE AND s.SEND_NO=c.S_R_NO AND s.SERIAL_NO=c.S_R_SERIAL_NO
-            WHERE c.CALLBACK_TYPE=@Type AND c.CALLBACK_NO=@No AND ISNULL(s.CALLBACK_NO,'')<>''
-            UNION ALL
-            SELECT c.SERIAL_NO FROM dbo.COP_RETURN_D s
-            INNER JOIN dbo.COP_CALLBACK_D c
-              ON s.RETURN_TYPE=c.S_R_TYPE AND s.RETURN_NO=c.S_R_NO AND s.SERIAL_NO=c.S_R_SERIAL_NO
-            WHERE c.CALLBACK_TYPE=@Type AND c.CALLBACK_NO=@No AND ISNULL(s.CALLBACK_NO,'')<>'';
-            """, type, no, token, line: r => Convert.ToInt32(r.GetValue(0)).ToString() + "    ");
-        return lines is null
-            ? new(true, null)
-            : new(false, "以下序号项送、退货已有回执\r\n" + lines);
-    }
+    /// <summary>送货回执（1413）AfterSave：送/退货已有回执由校验目录（reference-exists）承担。</summary>
 
     /// <summary>工时录入（180207）AfterSave：HR_SETUP.REQUIRE_ENACTMENT=1 时校验加班不超申请（当前环境=0，跳过）。</summary>
 
