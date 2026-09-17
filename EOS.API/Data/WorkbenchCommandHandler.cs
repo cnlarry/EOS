@@ -178,8 +178,7 @@ public sealed class WorkbenchCommandHandler(
             var existingNo = values.GetValueOrDefault(businessRule.BillNoField);
             if (existingNo is null || string.IsNullOrWhiteSpace(ValueToString(existingNo)))
             {
-                var newNo = await BillNoGenerator.GenerateAsync(connection, transaction, definition.ModuleId,
-                    definition.MasterTable, businessRule.BillNoField, businessRule.BillTypeField, token);
+                var newNo = await BillNoGenerator.GenerateAsync(connection, transaction, definition.ModuleId, token);
                 if (newNo is not null)
                 {
                     values[businessRule.BillNoField] = newNo;

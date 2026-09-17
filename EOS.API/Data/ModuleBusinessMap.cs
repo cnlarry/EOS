@@ -191,9 +191,10 @@ public static class DomainRuleMap
 }
 
 /// <summary>
-/// 保存后行为已由校验目录（MODULE_VALIDATION_RULE）承接的模块：这些模块保留 MODULES 上的
-/// 保存后钩子字段（单号自动生成等定义装配仍需经"有钩子"分支推导），但不再调用遗留过程、
-/// 也不再登记 C# 领域规则；保存期校验完全由目录实例执行。
+/// 保存后行为已由校验目录（MODULE_VALIDATION_RULE）承接的模块：这些模块不再调用遗留
+/// 保存后过程、也不再登记 C# 领域规则，保存期校验完全由目录实例执行。
+/// 本表只是"遗留钩子已迁目录"的事实登记，与自动单号无关——是否自动编号只看 BILLKIND
+/// 里有没有该模块的单号规则。
 /// </summary>
 public static class CatalogAfterSaveMap
 {
