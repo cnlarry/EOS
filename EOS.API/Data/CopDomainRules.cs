@@ -8,16 +8,6 @@ namespace EOS.API.Data;
 /// </summary>
 public static class CopDomainRules
 {
-    /// <summary>退货单（P_COP_RETURN）AfterSave：批号条件必填。</summary>
-    public static Task<SprocResult> CopReturnAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-        => DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
-            "COP_RETURN_D", "RETURN_TYPE", "RETURN_NO",
-            [
-                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
-            ], token);
-
     /// <summary>备货单（P_COP_FITOUT）AfterSave：CHECK 分支（SYSSS 门控）+ 批号条件必填。</summary>
     public static async Task<SprocResult> CopFitoutAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction, int moduleId,
