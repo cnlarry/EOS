@@ -430,4 +430,60 @@ public sealed class EffectValidationLiveDataTests
             await transaction.RollbackAsync(token);
         }
     }
+
+    /// <summary>
+    /// line-require 的跨表条件触发器（condition）：判据"产品为批管则批号必填"需要
+    /// PRODUCT.MANAGE_BATCH 这类**跨表存在性**条件，旧的 triggers 只支持明细列与常量比较，
+    /// 表达不了。本用例验证 condition 触发器命中、诊断序号回填，以及补上批号后放行。
+    /// </summary>
+    [Fact]
+    public async Task 批管品必填批号_跨表条件触发器命中并回报序号()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, MANAGE_BATCH) VALUES (N'ADR12BATCHP', N'集成测试批管品', 1);
+                INSERT INTO dbo.INV_OCCUR_IN_D (OCCUR_TYPE, OCCUR_NO, SERIAL_NO, PRO_NO, BATCH_NO)
+                    VALUES (N'ADR12', N'ADR12LINEREQ1', 1, N'ADR12BATCHP', N'');
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            var plan = await LoadPlanAsync(connection, transaction, 130103, token, "line-require");
+            var exception = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ADR12", "ADR12LINEREQ1"]));
+            Assert.Contains("以下序号项需要输入批号", exception.Message);
+            Assert.Contains("1", exception.Message);
+
+            // 同一单据、非批管品 → 放行（条件不成立）
+            await using (var swap = new SqlCommand("""
+                INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, MANAGE_BATCH) VALUES (N'ADR12PLAINP', N'集成测试非批管品', 0);
+                UPDATE dbo.INV_OCCUR_IN_D SET PRO_NO = N'ADR12PLAINP'
+                    WHERE OCCUR_TYPE = N'ADR12' AND OCCUR_NO = N'ADR12LINEREQ1' AND SERIAL_NO = 1;
+                """, connection, transaction))
+            {
+                await swap.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ADR12", "ADR12LINEREQ1"]);
+
+            // 批管品补上批号 → 放行
+            await using (var fix = new SqlCommand("""
+                UPDATE dbo.INV_OCCUR_IN_D SET PRO_NO = N'ADR12BATCHP', BATCH_NO = N'B001'
+                    WHERE OCCUR_TYPE = N'ADR12' AND OCCUR_NO = N'ADR12LINEREQ1' AND SERIAL_NO = 1;
+                """, connection, transaction))
+            {
+                await fix.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ADR12", "ADR12LINEREQ1"]);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
 }

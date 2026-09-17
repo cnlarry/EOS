@@ -1110,32 +1110,53 @@ public sealed class EffectValidationExecutor
             var field = check.TryGetProperty("field", out var fieldElement) && fieldElement.ValueKind == JsonValueKind.String
                 ? fieldElement.GetString()!.Trim()
                 : throw new EffectConfigException("line-require.check 缺少 field。");
-            if (!check.TryGetProperty("triggers", out var triggers) || triggers.ValueKind != JsonValueKind.Array)
-                throw new EffectConfigException("line-require.check 缺少 triggers 数组。");
+            // 触发条件二选一或并用：triggers（明细列与常量的数值比较）与 condition
+            // （结构化条件，走闭式条件编译器；DETAIL 域即本行别名 S，可表达"产品为批管"这类
+            // 跨表存在性判据）。两者取 OR，任一成立即要求 field 已填。
             var triggerSql = new List<string>();
-            foreach (var trigger in triggers.EnumerateArray())
+            if (check.TryGetProperty("triggers", out var triggers) && triggers.ValueKind == JsonValueKind.Array)
             {
-                var triggerColumn = trigger.TryGetProperty("field", out var triggerFieldElement) && triggerFieldElement.ValueKind == JsonValueKind.String
-                    ? triggerFieldElement.GetString()!.Trim()
-                    : throw new EffectConfigException("line-require.trigger 缺少 field。");
-                var op = trigger.TryGetProperty("op", out var opElement) && opElement.ValueKind == JsonValueKind.String
-                    ? opElement.GetString()!.Trim().ToUpperInvariant()
-                    : throw new EffectConfigException("line-require.trigger 缺少 op。");
-                var sqlOp = op switch
+                foreach (var trigger in triggers.EnumerateArray())
                 {
-                    "GT" => ">",
-                    "GE" => ">=",
-                    "LT" => "<",
-                    "LE" => "<=",
-                    "EQ" => "=",
-                    "NEQ" => "<>",
-                    _ => throw new EffectConfigException($"line-require.trigger 比较符 '{op}' 不在封闭集内。"),
-                };
-                var value = trigger.TryGetProperty("value", out var valueElement) && valueElement.ValueKind == JsonValueKind.Number
-                    ? valueElement.GetDouble()
-                    : 0;
-                triggerSql.Add($"COALESCE(S.{EffectConditionCompiler.Identifier(triggerColumn)}, 0) {sqlOp} {value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+                    var triggerColumn = trigger.TryGetProperty("field", out var triggerFieldElement) && triggerFieldElement.ValueKind == JsonValueKind.String
+                        ? triggerFieldElement.GetString()!.Trim()
+                        : throw new EffectConfigException("line-require.trigger 缺少 field。");
+                    var op = trigger.TryGetProperty("op", out var opElement) && opElement.ValueKind == JsonValueKind.String
+                        ? opElement.GetString()!.Trim().ToUpperInvariant()
+                        : throw new EffectConfigException("line-require.trigger 缺少 op。");
+                    var sqlOp = op switch
+                    {
+                        "GT" => ">",
+                        "GE" => ">=",
+                        "LT" => "<",
+                        "LE" => "<=",
+                        "EQ" => "=",
+                        "NEQ" => "<>",
+                        _ => throw new EffectConfigException($"line-require.trigger 比较符 '{op}' 不在封闭集内。"),
+                    };
+                    var value = trigger.TryGetProperty("value", out var valueElement) && valueElement.ValueKind == JsonValueKind.Number
+                        ? valueElement.GetDouble()
+                        : 0;
+                    triggerSql.Add($"COALESCE(S.{EffectConditionCompiler.Identifier(triggerColumn)}, 0) {sqlOp} {value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+                }
             }
+            if (check.TryGetProperty("condition", out var conditionElement) && conditionElement.ValueKind == JsonValueKind.Object)
+            {
+                var compiled = new EffectConditionCompiler().Compile(
+                    conditionElement,
+                    (scope, _) => scope.ToUpperInvariant() switch
+                    {
+                        "DETAIL" => "S",
+                        "TARGET" => "S",
+                        _ => null,
+                    },
+                    _ => true,
+                    outerAlias: "S");
+                triggerSql.Add("(" + compiled.Sql + ")");
+                parameters.AddRange(compiled.Parameters);
+            }
+            if (triggerSql.Count == 0)
+                throw new EffectConfigException("line-require.check 缺少 triggers 或 condition。");
             var sql = "SELECT TOP 1 1 FROM dbo." + EffectConditionCompiler.Identifier(plan.DetailTable)
                 + " S WHERE " + documentScope
                 + " AND (" + string.Join(" OR ", triggerSql) + ")"
@@ -1148,10 +1169,42 @@ public sealed class EffectValidationExecutor
             var hit = await command.ExecuteScalarAsync(token);
             if (hit is not null)
             {
-                return rule.Message
+                var message = rule.Message
                     ?? (check.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String
                         ? msg.GetString()
                         : "明细行必填字段缺失。");
+                // 逐行诊断：配置 diagnosticFields（明细行列名）时，把命中行按"每行一列值、行间 \r\n"
+                // 追加到消息后（与既有实现的消息形态一致，最多 10 行）。
+                var diagnostics = ParseStringArray(check, "diagnosticFields");
+                if (diagnostics.Length > 0)
+                {
+                    var selectList = string.Join(", ", diagnostics.Select(name => "S." + EffectConditionCompiler.Identifier(name)));
+                    var diagnosticSql = "SELECT TOP 10 " + selectList
+                        + " FROM dbo." + EffectConditionCompiler.Identifier(plan.DetailTable)
+                        + " S WHERE " + documentScope
+                        + " AND (" + string.Join(" OR ", triggerSql) + ")"
+                        + $" AND (S.{EffectConditionCompiler.Identifier(field)} IS NULL OR S.{EffectConditionCompiler.Identifier(field)} = '')"
+                        + " ORDER BY S." + EffectConditionCompiler.Identifier(diagnostics[0]);
+                    await using var diagnosticCommand = new SqlCommand(diagnosticSql, connection, transaction);
+                    foreach (var parameter in parameters)
+                    {
+                        diagnosticCommand.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+                    }
+                    var rows = new List<string>();
+                    await using var reader = await diagnosticCommand.ExecuteReaderAsync(token);
+                    while (await reader.ReadAsync(token))
+                    {
+                        var cells = new List<string>();
+                        for (var index = 0; index < diagnostics.Length; index++)
+                        {
+                            cells.Add(reader.IsDBNull(index) ? string.Empty : Convert.ToString(reader.GetValue(index))!.Trim());
+                        }
+                        rows.Add(string.Join("    ", cells));
+                    }
+                    if (rows.Count > 0)
+                        message = message + "\r\n" + string.Join("\r\n", rows);
+                }
+                return message;
             }
         }
         return null;

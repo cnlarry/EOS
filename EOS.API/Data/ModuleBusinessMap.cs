@@ -117,18 +117,8 @@ public static class DomainRuleMap
     {
         [110103] = "curr",
         [1204] = "bom-stru",
-        [130102] = "inv-init",
-        [130103] = "inv-in",
-        [130104] = "inv-out",
-        [130105] = "inv-transfer",
-        [130106] = "inv-scrap",
-        [130107] = "inv-adjust",
-        [130110] = "inv-out",
         [180208] = "employee-card",
         [2305] = "sysdg",
-        [2817] = "inv-in",
-        [2818] = "inv-out",
-        [3901] = "inv-out",
         [2705] = "moc-work",
         [2706] = "moc-work-in",
         [1502] = "moc-produce",
@@ -212,6 +202,7 @@ public static class CatalogAfterSaveMap
         1404,              // 报价单：客户与询价单引用存在
         1604,              // 厂商报价单：厂商与询价单引用存在
         1610,              // 收料核价单：厂商引用存在
+        130102, 130103, 130104, 130105, 130106, 130107, 130110, 2817, 2818, 3901,   // 库存异动族：批管品必填批号（保存期 line-require）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);
