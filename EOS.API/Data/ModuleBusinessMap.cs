@@ -118,8 +118,6 @@ public static class DomainRuleMap
         [1204] = "bom-stru",
         [180208] = "employee-card",
         [2305] = "sysdg",
-        [2705] = "moc-work",
-        [2706] = "moc-work-in",
         [1502] = "moc-produce",
         [1503] = "moc-get",
         [1512] = "moc-produce",
@@ -194,6 +192,7 @@ public static class CatalogAfterSaveMap
         1423, 1412, 130108, 130109, 1505, 1519, 2816,   // 同形族：批管品必填批号（保存期 line-require）
         1407, 1409, 2913,   // 同形族：批管品必填批号（保存期 line-require）
         2404,               // 样品出库不超样品库存（保存期 this-not-exceed）
+        2705, 2706,         // 工序工单/工序入库不超量（保存期 usage-not-exceed）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);
