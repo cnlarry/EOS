@@ -532,6 +532,63 @@ public sealed class EffectValidationLiveDataTests
     }
 
     [Fact]
+    public async Task 生产出库_受门控的出库不超可出库_门关跳过门开命中_批号必填无门控生效()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            // 制令单：订单可出库 10、已出库 9；本单出库 5 ⇒ 9+5 > 10 超量（当前 SYSSS.FITOUT_TAG=0 走"订单"分支）
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, QTY, FINISHED_SEND_QTY, FINISHED_SPARE_QTY)
+                VALUES (N'ZZ', N'ZZT2609PRD02', 10, 9, 0);
+                INSERT INTO dbo.MOC_PRODUCT_OUT_M (PRODUCT_OUT_TYPE, PRODUCT_OUT_NO) VALUES (N'ZZ', N'ZZT2609POUT01');
+                INSERT INTO dbo.MOC_PRODUCT_OUT_D (PRODUCT_OUT_TYPE, PRODUCT_OUT_NO, SERIAL_NO, PRODUCE_TYPE, PRODUCE_NO, PRO_NO, QTY, BATCH_NO)
+                VALUES (N'ZZ', N'ZZT2609POUT01', 1, N'ZZ', N'ZZT2609PRD02', N'ZZT2609PRO01', 5, NULL);
+                INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, MANAGE_BATCH) VALUES (N'ZZT2609PRO01', N'集成测试品号', 0);
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            var qtyPlan = await LoadPlanAsync(connection, transaction, 2815, token, "qty-not-exceed");
+
+            // 门控关（库内 2815 的 ERROR_NO_SAVE=0）→ 跳过数量校验
+            await Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, ["ZZ", "ZZT2609POUT01"]);
+
+            // 门控开 → 命中"订单可出库"分支，文案逐字并回报制令单号
+            await using (var open = new SqlCommand(
+                "UPDATE dbo.MODULES SET ERROR_NO_SAVE=1 WHERE M_IDX=2815;", connection, transaction))
+            {
+                await open.ExecuteNonQueryAsync(token);
+            }
+            var exception = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, ["ZZ", "ZZT2609POUT01"]));
+            Assert.Contains("以下生产单出库数量超出订单可出库", exception.Message);
+            Assert.Contains("ZZT2609PRD02", exception.Message);
+
+            // 批号必填（**无门控**，当前即生效）：批管品未填批号 → 拒绝并回报序号
+            await using (var batch = new SqlCommand("""
+                UPDATE dbo.MODULES SET ERROR_NO_SAVE=0 WHERE M_IDX=2815;
+                UPDATE dbo.PRODUCT SET MANAGE_BATCH = 1 WHERE PRO_NO = N'ZZT2609PRO01';
+                """, connection, transaction))
+            {
+                await batch.ExecuteNonQueryAsync(token);
+            }
+            var linePlan = await LoadPlanAsync(connection, transaction, 2815, token, "line-require");
+            var lineException = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, linePlan, "SAVE", token, ["ZZ", "ZZT2609POUT01"]));
+            Assert.Contains("以下序号项需要输入批号", lineException.Message);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
+    [Fact]
     public async Task 工序发料_受门控的出库不超工序工单入库_门关跳过门开命中五列诊断()
     {
         var token = CancellationToken.None;
