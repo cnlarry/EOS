@@ -1114,12 +1114,15 @@ public sealed class EffectShadowRunner
         }
     }
 
-    private EffectPipeline BuildPipeline()
+    private EffectPipeline BuildPipeline() => BuildPipelineFor(ConnectionString.Value!);
+
+    /// <summary>按连接串构造完整效果管线（含全部服务 Handler），供其它真库测试复用。</summary>
+    internal static EffectPipeline BuildPipelineFor(string connectionString)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:ErpDatabase"] = ConnectionString.Value,
+                ["ConnectionStrings:ErpDatabase"] = connectionString,
             })
             .Build();
         var connections = new DbConnectionFactory(configuration);

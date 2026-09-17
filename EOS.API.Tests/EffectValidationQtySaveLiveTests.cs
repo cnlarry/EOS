@@ -9,7 +9,10 @@ namespace EOS.API.Tests;
 /// <summary>
 /// B4 保存侧不超量规则的真库验证（不依赖发布与 HTTP）：直接装载模块计划并调用执行器，
 /// 断言"按分组求和 + 容差 + 诊断行回填"的实际行为与设计一致。
+/// 与其它真库用例同属 live-database 集合：本类按 TOP 1 无排序挑采购行造数，
+/// 与并行的真库用例同表会互相干扰。
 /// </summary>
+[Collection("live-database")]
 public sealed class EffectValidationQtySaveLiveTests
 {
     private static readonly string ConnectionString =
