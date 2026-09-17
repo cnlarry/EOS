@@ -39,16 +39,6 @@ public static class MouDomainRules
                 ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
             ], token);
 
-    public static Task<SprocResult> MouGet2AfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-        => DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
-            "MOU_GET2_D", "GET_TYPE", "GET_NO",
-            [
-                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
-            ], token);
-
-    /// <summary>产品模具对照表（P_MOU_PRO）AfterSave：产品/模具存在 + 所用模具汇总（按产品限定—— 全局更新疑似笔误）。</summary>
     /// <summary>产品模具对照表（P_MOU_PRO）AfterSave：按产品回写所用模具汇总。</summary>
     public static async Task<SprocResult> MouProAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,

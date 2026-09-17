@@ -133,8 +133,6 @@ public static class DomainRuleMap
         [2806] = "moc-get",
         [2815] = "moc-product-out",
         [180401] = "sfc-daily",
-        [1407] = "cop-return",
-        [1409] = "cop-return",
         [1411] = "cop-fitout",
         [1608] = "pur-cancel",
         [1612] = "pur-cancel",
@@ -151,7 +149,6 @@ public static class DomainRuleMap
         [2907] = "mou-get",
         [2911] = "mou-pro",
         [2912] = "mou-batchin",
-        [2913] = "mou-get2",
         [300301] = "cus-export",
         [300302] = "cus-import",
         [300304] = "cus-export",
@@ -197,6 +194,7 @@ public static class CatalogAfterSaveMap
         1610,              // 收料核价单：厂商引用存在
         130102, 130103, 130104, 130105, 130106, 130107, 130110, 2817, 2818, 3901,   // 库存异动族：批管品必填批号（保存期 line-require）
         1423, 1412, 130108, 130109, 1505, 1519, 2816,   // 同形族：批管品必填批号（保存期 line-require）
+        1407, 1409, 2913,   // 同形族：批管品必填批号（保存期 line-require）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);
