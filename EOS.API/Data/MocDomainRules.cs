@@ -144,33 +144,7 @@ public static class MocDomainRules
     /// <summary>工单制程（P_MOC_PRODUCE_PROCESS）AfterSave：制令存在校验。</summary>
 
 
-    /// <summary>工序发料单（P_MOC_WORK_OUT）AfterSave：ERROR_NO_SAVE 门控的出库不超工序入库检查。</summary>
-
-
-    /// <summary>工序发料单（P_MOC_WORK_OUT）AfterSave：ERROR_NO_SAVE 门控的出库不超工序入库检查。</summary>
-    public static async Task<SprocResult> MocWorkOutAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction, int moduleId,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "工序发料领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        if (!await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
-            return new(true, null);
-        var rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT od.WORK_TYPE, od.WORK_NO, od.PROCESS_QTY, od.FINISHED_OUT_QTY, sd.QTY
-            FROM dbo.MOC_WORK_D od
-            INNER JOIN dbo.MOC_WORK_OUT_D sd ON sd.WORK_TYPE=od.WORK_TYPE AND sd.WORK_NO=od.WORK_NO AND sd.WORK_SERIAL_NO=od.SERIAL_NO
-            WHERE sd.WORK_OUT_TYPE=@Type AND sd.WORK_OUT_NO=@No
-              AND ISNULL(od.FINISHED_OUT_QTY,0) + ISNULL(sd.QTY,0) > ISNULL(od.FINISHED_IN_QTY,0);
-            """, type, no, token,
-            line: r => $"{r.GetString(0).Trim()}    {r.GetString(1).Trim()}    {Convert.ToString(r.GetValue(2))}    {Convert.ToString(r.GetValue(3))}    {Convert.ToString(r.GetValue(4))}");
-        return rows is null
-            ? new(true, null)
-            : new(false, "以下出库超出工序工单入库数量\r\n工序工单单别   单号   数量   已入库数量   单据数量\r\n" + rows);
-    }
-
+    /// <summary>工序发料单（P_MOC_WORK_OUT）AfterSave：出库不超工序工单入库由校验目录（qty-not-exceed）承担。</summary>
     public static async Task<SprocResult> MocProduceChangeAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)

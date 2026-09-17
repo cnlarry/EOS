@@ -67,7 +67,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "hr-apply" => await HrDomainRules.HrApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "moc-bom-stru" => await MocDomainRules.MocBomStruAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "moc-plan" => await MocDomainRules.MocPlanAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
-                "moc-work-out" => await MocDomainRules.MocWorkOutAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
                 "mou-get" => await MouDomainRules.MouGetAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "mou-pro" => await MouDomainRules.MouProAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cus-export" => await CusDomainRules.CusExportAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
