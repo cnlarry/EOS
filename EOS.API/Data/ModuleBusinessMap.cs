@@ -51,7 +51,7 @@ public static class ModuleBusinessMap
             [170201] = new(170201, null, null, true, "DUE_NO", "DUE_TYPE"),
             // 170202 付款单（批核/解批已由效果链接管，旧 P_WF_PUR_PAY 已退役）
             [170202] = new(170202, null, null, true, "PAY_NO", "PAY_TYPE",
-                PrepayOffsetTable: "PUR_PAY_PREPAY", DomainRule: "pur-pay"),
+                PrepayOffsetTable: "PUR_PAY_PREPAY"),
             // 170203 预付帐款单（保存期厂商校验、引用三件套与预付额度校验、金额汇总已由效果目录承接；
             // 批核已由效果链接管，旧 P_WF_PUR_PREPAY 已退役）
             [170203] = new(170203, null, null, true, "PREPAY_NO", "PREPAY_TYPE"),
