@@ -73,7 +73,6 @@ public static class BusinessActionCatalog
         "meta-link",
         "flow-trigger",
         "job-enqueue",
-        "legacy-sproc",
     };
 
     /// <summary>公式行运算（§9.2 封闭集 + APPEND 已转正；与 MODULE_BUSINESS_ACTION_OP.OP_CODE 对应）。</summary>

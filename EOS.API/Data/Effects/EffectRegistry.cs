@@ -74,7 +74,6 @@ public static class EffectRegistry
         ["meta-link"] = Status.Reserved,
         ["flow-trigger"] = Status.Reserved,
         ["job-enqueue"] = Status.Reserved,
-        ["legacy-sproc"] = Status.Reserved,
     };
 
     public static bool IsImplemented(string effectKey) =>
