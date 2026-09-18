@@ -69,8 +69,9 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
     /// <summary>
     /// 发布路径按代码注册表重建 DomainRule，且不因 provider 缓存里的旧基线而改变：
     /// 构造一个内存基线（BusinessRule.DomainRule 指向已删的幽灵族名），发布路径必须
-    /// 产出与代码一致的 DomainRule（当前夹具 180206 → hr-apply），而不是幽灵族名。
-    /// 夹具族随批 4 推进更换（1502 → 3006 → 1204 → 180206）：必须选一个**仍在册**的族，否则该用例失去证明力。
+    /// 产出与代码一致的结果——<see cref="DomainRuleMap"/> 现已清空（全部族迁入校验/效果目录），
+    /// 故发布产出 `DomainRule=null`，而运行时路径仍读基线里的幽灵族名。
+    /// 该用例的证明力不依赖"库里还有族"：它证明的是"发布忽略基线、按代码重建"。
     /// </summary>
     [Fact]
     public async Task PublishBuild_IgnoresBaselineAndRebuildsDomainRule_FromCodeRegistry()
@@ -89,10 +90,10 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
             BusinessRule: new ModuleBusinessRule(180206, null, null, false, null, null, DomainRule: "ghost-deleted-rule"));
         provider.SeedBaselineForTest(180206, staleBaseline, "module-180206-v999");
 
-        // 发布路径：忽略基线，DomainRule 重建为当前代码注册表里的族名（180206 → hr-apply）。
+        // 发布路径：忽略基线，DomainRule 按当前代码注册表重建（注册表已清空 ⇒ null）。
         var publish = await builder.GetDefinitionAsync(180206, "admin", "Z", true, true, emptyDenied, emptyDenied, CancellationToken.None, forPublish: true);
         Assert.NotNull(publish);
-        Assert.Equal("hr-apply", publish!.BusinessRule?.DomainRule);
+        Assert.Null(publish!.BusinessRule?.DomainRule);
         Assert.NotEqual("ghost-deleted-rule", publish.BusinessRule?.DomainRule);
 
         // 运行时路径（forPublish=false）：有基线时仍走基线（已发布快照为运行时事实源）。
@@ -170,7 +171,7 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
     public async Task DomainRuleService_RejectsUnregisteredRule_OnSave()
     {
         var connections = Connections();
-        var service = new DomainRuleService(NullLogger<DomainRuleService>.Instance);
+        var service = new DomainRuleService();
         await using var connection = new SqlConnection(ConnectionString.Value);
         await connection.OpenAsync();
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();

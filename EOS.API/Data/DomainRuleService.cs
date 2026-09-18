@@ -11,15 +11,17 @@ namespace EOS.API.Data;
 /// caller's transaction after a module save. Table and column names come from server-side
 /// metadata and all values are parameterized.
 /// </summary>
-public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
+public sealed class DomainRuleService
 {
     internal static (string TypeColumn, string NoColumn) KeyColumns(IReadOnlyList<string> pkColumns)
         => (pkColumns[0], pkColumns[1]);
 
     /// <summary>
     /// 执行领域规则（保存后）。返回 false 表示业务校验失败（message 给用户）。
+    /// 过渡桥已清空：全部"由 SP 翻译而来的领域规则族"均已迁入校验/效果目录，
+    /// 因此任何仍带着族名的请求一律拒绝（防"删码与发布不同步"造成静默放行）。
     /// </summary>
-    public async Task<SprocResult> RunAfterSaveAsync(
+    public Task<SprocResult> RunAfterSaveAsync(
         string ruleName,
         SqlConnection connection,
         SqlTransaction transaction,
@@ -27,21 +29,7 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         IReadOnlyList<string> pkColumns,
         IReadOnlyList<string> keyValues,
         CancellationToken token)
-    {
-        try
-        {
-            return ruleName.ToLowerInvariant() switch
-            {
-                "hr-apply" => await HrDomainRules.HrApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                _ => new(false, $"未登记的领域规则：{ruleName}"),
-            };
-        }
-        catch (SqlException ex)
-        {
-            logger.LogWarning("领域规则执行异常 rule={Rule} message={Message}", ruleName, ex.Message);
-            return new(false, ex.Message);
-        }
-    }
+        => Task.FromResult(new SprocResult(false, $"未登记的领域规则：{ruleName}"));
     internal static async Task<SprocResult> ValidateDetailAsync(
         SqlConnection connection, SqlTransaction transaction,
         IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues,
