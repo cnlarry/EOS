@@ -60,6 +60,7 @@ public static class EffectParamPhysicalValidator
         "sfc-plan-sync",
         "cus-account-sync",
         "pur-apply-sync",
+        "bom-size-backfill",
     };
 
     /// <summary>True when the key either carries no reference or is resolved by this validator.</summary>
@@ -183,6 +184,9 @@ public static class EffectParamPhysicalValidator
                     break;
                 case "pur-apply-sync":
                     _ = PurApplySyncHandler.Parse(root, columns);
+                    break;
+                case "bom-size-backfill":
+                    _ = BomSizeBackfillHandler.Parse(root, plan.MasterTable!, columns);
                     break;
                 case "detail-field-sync":
                     _ = DetailFieldSyncSpec.Parse(root, plan, columns);

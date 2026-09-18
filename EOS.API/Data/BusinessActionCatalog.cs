@@ -63,6 +63,7 @@ public static class BusinessActionCatalog
         "sfc-plan-sync",
         "cus-account-sync",
         "pur-apply-sync",
+        "bom-size-backfill",
         // 保留键（暂无落库实例，登记保留）
         "meta-link",
         "flow-trigger",
@@ -118,6 +119,7 @@ public static class BusinessActionCatalog
         "duplicate-check",
         "line-require",
         "period-overlap",
+        "no-cycle",
     };
 
     public static bool IsKnownEvent(string value) => Events.Contains(value);
