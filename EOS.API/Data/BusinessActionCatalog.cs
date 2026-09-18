@@ -67,6 +67,7 @@ public static class BusinessActionCatalog
         "cop-account-rollup",
         "cop-prepay-rollup",
         "purchase-due-rollup",
+        "pur-prepay-rollup",
         // 保留键（暂无落库实例，登记保留）
         "meta-link",
         "flow-trigger",

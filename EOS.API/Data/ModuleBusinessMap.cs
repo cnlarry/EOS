@@ -52,10 +52,9 @@ public static class ModuleBusinessMap
             // 170202 付款单（批核/解批已由效果链接管，旧 P_WF_PUR_PAY 已退役）
             [170202] = new(170202, null, null, true, "PAY_NO", "PAY_TYPE",
                 PrepayOffsetTable: "PUR_PAY_PREPAY", DomainRule: "pur-pay"),
-            // 170203 预付帐款单（AfterSave 已实现：厂商校验 + 预付不超采购金额 + 金额汇总；
+            // 170203 预付帐款单（保存期厂商校验、引用三件套与预付额度校验、金额汇总已由效果目录承接；
             // 批核已由效果链接管，旧 P_WF_PUR_PREPAY 已退役）
-            [170203] = new(170203, null, null, true, "PREPAY_NO", "PREPAY_TYPE",
-                DomainRule: "pur-prepay"),
+            [170203] = new(170203, null, null, true, "PREPAY_NO", "PREPAY_TYPE"),
         };
 
     public static bool TryGet(int moduleId, out ModuleBusinessRule? rule) =>
@@ -167,6 +166,7 @@ public static class CatalogAfterSaveMap
         1615, 1616,         // 请购单（含对外）：产品引用存在 + 待购表汇总同步与申购数量分配（SAVE 期 pur-apply-sync）
         1204,               // 产品 BOM：产品/元件引用存在 + 元件底数下界 + 成环检测（no-cycle）+ 历史长宽列回填（SAVE 期 bom-size-backfill）
         170201,             // 应付对帐单：对帐不超收料/退料单数量（受门控）+ 主表金额汇总（SAVE 期 purchase-due-rollup）
+        170203,             // 预付帐款单：引用三件套完整性 + 预付不超采购行未结金额（受门控）+ 金额汇总（SAVE 期 pur-prepay-rollup）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);
