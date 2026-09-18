@@ -291,6 +291,75 @@ public class ValidationRuleRegistryFailClosedTests
     }
 
     [Fact]
+    public void QuantityCheck_AcceptsOrMergedDimensionsAndRejectsBadOnes()
+    {
+        // 多量纲：旧实现把"数量"与"备品"合成 `WHERE a OR b`，用 dimensions 表达（诊断行只输出一次）
+        var ok = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"COP_ORDER_D",
+             "match":[{"target":"ORDER_NO","source":{"scope":"DETAIL","field":"ORDER_NO"}}],
+             "dimensions":[
+              {"thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"QTY","coef":1}]},
+               "usage":{"scope":"TARGET","fields":["FINISHED_FITOUT_QTY"]},
+               "limit":{"scope":"TARGET","fields":["QTY"]}},
+              {"thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"SPARE_QTY","coef":1}]},
+               "usage":{"scope":"TARGET","fields":["FINISHED_FITOUT_SPARE_QTY"]},
+               "limit":{"scope":"TARGET","fields":["SPARE_QTY"]}}],
+             "diagnosticFields":[{"scope":"TARGET","field":"ORDER_NO"},{"scope":"THIS","dimension":1},
+                                 {"scope":"THIS","dimension":2}],
+             "message":"已备货超出 \r\n{ROWS}"}]}
+            """));
+        Assert.Empty(ok);
+
+        // 互斥：用了 dimensions 就不能再写单量纲块
+        var mixed = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"COP_ORDER_D",
+             "match":[{"target":"ORDER_NO","source":{"scope":"DETAIL","field":"ORDER_NO"}}],
+             "thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]},
+             "dimensions":[{"thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]},
+                            "usage":{"scope":"TARGET","fields":["FINISHED_FITOUT_QTY"]},
+                            "limit":{"scope":"TARGET","fields":["QTY"]}}]}]}
+            """));
+        Assert.Contains(mixed, issue => issue.Contains("不能再写 thisQty/usage/limit/offset"));
+
+        // 各量纲必须一致地分组：否则分组子查询与逐行比较会混在同一句 SQL 里
+        var inconsistent = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"COP_ORDER_D",
+             "match":[{"target":"ORDER_NO","source":{"scope":"DETAIL","field":"ORDER_NO"}}],
+             "dimensions":[
+              {"thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"QTY","coef":1}]},
+               "usage":{"scope":"TARGET","fields":["FINISHED_FITOUT_QTY"]},
+               "limit":{"scope":"TARGET","fields":["QTY"]}},
+              {"thisQty":{"scope":"DETAIL","terms":[{"field":"SPARE_QTY","coef":1}]},
+               "usage":{"scope":"TARGET","fields":["FINISHED_FITOUT_SPARE_QTY"]},
+               "limit":{"scope":"TARGET","fields":["SPARE_QTY"]}}]}]}
+            """));
+        Assert.Contains(inconsistent, issue => issue.Contains("一致地使用"));
+
+        // 量纲序号越界、空数组
+        var badDimension = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"COP_ORDER_D",
+             "match":[{"target":"ORDER_NO","source":{"scope":"DETAIL","field":"ORDER_NO"}}],
+             "dimensions":[
+              {"thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"QTY","coef":1}]},
+               "usage":{"scope":"TARGET","fields":["FINISHED_FITOUT_QTY"]},
+               "limit":{"scope":"TARGET","fields":["QTY"]}},
+              {"thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"SPARE_QTY","coef":1}]},
+               "usage":{"scope":"TARGET","fields":["FINISHED_FITOUT_SPARE_QTY"]},
+               "limit":{"scope":"TARGET","fields":["SPARE_QTY"]}}],
+             "diagnosticFields":[{"scope":"THIS","dimension":3}],
+             "message":"x \r\n{ROWS}"}]}
+            """));
+        Assert.Contains(badDimension, issue => issue.Contains("dimension 必须是 1..2"));
+
+        var empty = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"COP_ORDER_D",
+             "match":[{"target":"ORDER_NO","source":{"scope":"DETAIL","field":"ORDER_NO"}}],
+             "dimensions":[]}]}
+            """));
+        Assert.Contains(empty, issue => issue.Contains("dimensions 必须是非空数组"));
+    }
+
+    [Fact]
     public void QuantityCheck_ControllerKeys()
     {
         var issues = Validate("qty-not-exceed", Params("""

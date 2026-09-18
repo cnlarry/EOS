@@ -49,7 +49,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "employee-card" => await HrDomainRules.EmployeeCardAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "moc-produce" => await MocDomainRules.MocProduceAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
                 "sfc-daily" => await SfcDomainRules.SfcDailyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "cop-fitout" => await CopDomainRules.CopFitoutAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
                 "pur-cancel" => await PurDomainRules.PurCancelAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "hr-wage-item" => await HrDomainRules.HrWageItemAfterSaveAsync(connection, transaction, "HR_WAGE_D", "HR_WAGE", token),
                 "hrm-wage-item" => await HrDomainRules.HrWageItemAfterSaveAsync(connection, transaction, "HRM_WAGE_D", "HRM_WAGE", token),

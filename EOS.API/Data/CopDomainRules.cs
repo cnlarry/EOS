@@ -8,74 +8,7 @@ namespace EOS.API.Data;
 /// </summary>
 public static class CopDomainRules
 {
-    /// <summary>备货单（P_COP_FITOUT）AfterSave：CHECK 分支（SYSSS 门控）+ 批号条件必填。</summary>
-    public static async Task<SprocResult> CopFitoutAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction, int moduleId,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "备货单领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        if (await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
-        {
-            var check = await CopFitoutCheckAsync(connection, transaction, type, no, token);
-            if (check is not null) return check;
-        }
-        return await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
-            "COP_FITOUT_D", "FITOUT_TYPE", "FITOUT_NO",
-            [
-                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号! "),
-            ], token);
-    }
-
-    /// <summary>采购退料单（P_PUR_CANCEL）AfterSave：6 项引用校验 + 退料不超收料。</summary>
-
-
-    /// <summary>P_COP_FITOUT_CHECK 内联：已备货不超订单/工单完工数量（SYSSS 门控）。</summary>
-
-
-    /// <summary>P_COP_FITOUT_CHECK 内联：已备货不超订单/工单完工数量（SYSSS 门控）。</summary>
-    public static async Task<SprocResult?> CopFitoutCheckAsync(
-        SqlConnection connection, SqlTransaction transaction, string type, string no, CancellationToken token)
-    {
-        if (await DomainRuleService.ExistsAsync(connection, transaction,
-            "SELECT TOP 1 1 FROM dbo.SYSSS WHERE FITOUT_ORDER_TAG=1;", type, no, token))
-        {
-            var rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-                """
-                SELECT od.ORDER_NO, od.QTY, od.FINISHED_FITOUT_QTY, sd.QTY, od.SPARE_QTY, od.FINISHED_FITOUT_SPARE_QTY, sd.SPARE_QTY
-                FROM dbo.COP_ORDER_D od
-                INNER JOIN (SELECT ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
-                            FROM dbo.COP_FITOUT_D WHERE FITOUT_TYPE=@Type AND FITOUT_NO=@No
-                            GROUP BY ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO) sd
-                  ON od.ORDER_TYPE=sd.ORDER_TYPE AND od.ORDER_NO=sd.ORDER_NO AND od.SERIAL_NO=sd.ORDER_SERIAL_NO
-                WHERE (ISNULL(od.FINISHED_FITOUT_QTY,0)+sd.QTY > ISNULL(od.QTY,0)
-                    OR ISNULL(od.FINISHED_FITOUT_SPARE_QTY,0)+sd.SPARE_QTY > ISNULL(od.SPARE_QTY,0));
-                """, type, no, token,
-                line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
-            if (rows is not null)
-                return new(false, "以下会出现已备货数量超出订单数量\r\n订单号   数量   已备货数量  单据数量  备品  已备货备品  单据备品\r\n" + rows);
-        }
-        if (await DomainRuleService.ExistsAsync(connection, transaction,
-            "SELECT TOP 1 1 FROM dbo.SYSSS WHERE FITOUT_PRODUCE_TAG=1;", type, no, token))
-        {
-            var rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-                """
-                SELECT od.PRODUCE_NO, od.FINISHED_QTY, od.FINISHED_FITOUT_QTY, sd.QTY, od.FINISHED_SPARE_QTY, od.FINISHED_FITOUT_SPARE_QTY, sd.SPARE_QTY
-                FROM dbo.MOC_PRODUCE_M od
-                INNER JOIN (SELECT PRODUCE_TYPE, PRODUCE_NO, SUM(QTY) QTY, SUM(SPARE_QTY) SPARE_QTY
-                            FROM dbo.COP_FITOUT_D WHERE FITOUT_TYPE=@Type AND FITOUT_NO=@No
-                            GROUP BY PRODUCE_TYPE, PRODUCE_NO) sd
-                  ON od.PRODUCE_TYPE=sd.PRODUCE_TYPE AND od.PRODUCE_NO=sd.PRODUCE_NO
-                WHERE (ISNULL(od.FINISHED_FITOUT_QTY,0)+sd.QTY > ISNULL(od.FINISHED_QTY,0)
-                    OR ISNULL(od.FINISHED_FITOUT_SPARE_QTY,0)+sd.SPARE_QTY > ISNULL(od.FINISHED_SPARE_QTY,0));
-                """, type, no, token,
-                line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
-            if (rows is not null)
-                return new(false, "以下会出现已备货数量超出工单完工数量\r\n工单号   数量   已备货数量  单据数量  备品  已备货备品  单据备品\r\n" + rows);
-        }
-        return null;
-    }
+    /// <summary>备货单（1411）AfterSave：量纲校验与批号必填均由校验目录承担。</summary>
 
     /// <summary>P_COP_FITIN_CHECK 内联：返仓不超备货/送货不超备货（订单/工单/调拨，SYSSS 门控）。</summary>
 
