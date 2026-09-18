@@ -32,7 +32,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         {
             return ruleName.ToLowerInvariant() switch
             {
-                "cop-send" => await CopDomainRules.CopSendAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "hr-worktime" => await HrDomainRules.HrWorktimeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-purchase" => await PurDomainRules.PurPurchaseAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "hr-apply" => await HrDomainRules.HrApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),

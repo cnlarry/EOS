@@ -33,9 +33,8 @@ public static class ModuleBusinessMap
                 DomainRule: "pur-purchase"),
             // 1607 收料单（批核已由效果链接管，旧 P_WF_PUR_RECEIVE 已退役；保存期判据已迁校验目录）
             [1607] = new(1607, null, null, true, "RECEIVE_NO", "RECEIVE_TYPE"),
-            // 1406 送货单（批核已由效果链接管，旧 P_WF_COP_SEND 已退役）
-            [1406] = new(1406, null, null, true, "SEND_NO", "SEND_TYPE",
-                DomainRule: "cop-send"),
+            // 1406 送货单（批核已由效果链接管，旧 P_WF_COP_SEND 已退役；保存期判据与包装标记已由目录承接）
+            [1406] = new(1406, null, null, true, "SEND_NO", "SEND_TYPE"),
             // 1408 出货通知单：无 SP，仅自动单号（默认单别 CHPC，历史配置待业务确认）
             [1408] = new(1408, null, null, true, "SHIPMENT_NO", "SHIPMENT_TYPE"),
             // 财务：170101 应收货款单（对帐单，批核已由效果链接管，旧 P_WF_COP_ACCOUNT 已退役；保存期动作已由效果目录承接）
@@ -167,6 +166,7 @@ public static class CatalogAfterSaveMap
         170201,             // 应付对帐单：对帐不超收料/退料单数量（受门控）+ 主表金额汇总（SAVE 期 purchase-due-rollup）
         170203,             // 预付帐款单：引用三件套完整性 + 预付不超采购行未结金额（受门控）+ 金额汇总（SAVE 期 pur-prepay-rollup）
         1405,               // 客户订单：交易天数/最低订单额/信用余额/产品交易天数/计价有效期/最小生产量/订单号重复/预交日期（custom-validation → cop-order-check）
+        1406,               // 送货单：批号必填/送货日期超期/库别存在/库存与批号库存不足（custom-validation → cop-send-check）+ 包装标记（SAVE 期 cop-send-mo-flag）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);
