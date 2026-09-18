@@ -551,7 +551,8 @@ public sealed class InventoryMoveSql
 
     /// <summary>
     /// Available-quantity refresh: the per-depot delta first, then the full
-    /// <c>P_UPDATE_PRO_MRP_ALL</c> recompute. The gate is the <c>SYSSS.PRO_MRP</c> switch
+    /// product-level MRP recompute (in-process since the legacy procedure was retired).
+    /// The gate is the <c>SYSSS.PRO_MRP</c> switch
     /// only — the configured <c>mrp</c> parameter is intentionally not read, matching the
     /// legacy <c>P_UPDATE_PRO_DEPOT</c> where the <c>@mrp</c> branch is commented out; it is
     /// kept in the stored parameters as a documented no-op rather than a behaviour switch.
@@ -568,7 +569,7 @@ public sealed class InventoryMoveSql
             token,
             ("@approveTag", IsApprove ? 1 : -1),
             ("@direct", _plan.Direction));
-        await ExecAsync("EXEC dbo.P_UPDATE_PRO_MRP_ALL", token);
+        await MrpRecalcService.RecalcAsync(_connection, _transaction, token);
     }
 
     private async Task<int> CleanTrailingAsync(CancellationToken token) => await ExecAsync(

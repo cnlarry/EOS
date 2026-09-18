@@ -5,7 +5,7 @@ import { apiClient } from '../../services/api'
 
 export function JobPage() {
   const [running, setRunning] = useState(false)
-  const [result, setResult] = useState<{ sproc: string; elapsedMs: number } | null>(null)
+  const [result, setResult] = useState<{ job: string; elapsedMs: number } | null>(null)
   const [cardStartDate, setCardStartDate] = useState('2026-08-09')
   const [cardList, setCardList] = useState('admin,CARD001\nuser02,CARD002')
   const [cardResult, setCardResult] = useState<{ updated: number; inserted: number } | null>(null)
@@ -21,7 +21,7 @@ export function JobPage() {
     setRunning(true)
     setResult(null)
     try {
-      const data = await apiClient.post<{ sproc: string; elapsedMs: number }>('/jobs/mrp-recalc')
+      const data = await apiClient.post<{ job: string; elapsedMs: number }>('/jobs/mrp-recalc')
       setResult(data)
     } catch (error) {
       window.alert(error instanceof Error ? `重算失败：${error.message}` : '重算失败。')
@@ -95,8 +95,8 @@ export function JobPage() {
         </>}
       >
         <div className="p-2">
-          <p className="text-secondary small mb-2">产品可用库存重计（230901）：重算全部产品的可用库存/MRP 数量，由存储过程受控执行。</p>
-          {result && <div className="alert alert-success py-2 mb-0">重计完成（{result.sproc}），耗时 {(result.elapsedMs / 1000).toFixed(1)} 秒。</div>}
+          <p className="text-secondary small mb-2">产品可用库存重计（230901）：重算全部产品的可用库存/MRP 数量（服务端受控执行）。</p>
+          {result && <div className="alert alert-success py-2 mb-0">重计完成（{result.job}），耗时 {(result.elapsedMs / 1000).toFixed(1)} 秒。</div>}
         </div>
         <div className="card m-2">
           <div className="card-body py-2">
