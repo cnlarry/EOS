@@ -118,6 +118,8 @@ public static class EffectStructSchemas
             ["cus-account-sync"] = Set("master", "detail", "product", "roundDigits"),
             ["pur-apply-sync"] = Set("master", "detail", "more", "product", "orderMaster", "orderDetail"),
             ["bom-size-backfill"] = Set("sourceTable", "sourceKey", "masterKey", "fields"),
+            ["cop-account-rollup"] = Set("master", "detail", "roundDigits"),
+            ["cop-prepay-rollup"] = Set("master", "detail", "roundDigits"),
             ["sample-stock-adjust"] = Set("direction", "targetTable", "fieldMap"),
             ["set-state"] = Set("targetTable", "stateField", "stateValue", "state", "sourceField", "source", "dateField", "dateMode", "targets"),
             ["stamp-last-activity"] = Set("targetTable", "field", "fields", "sourceField", "matchBy", "condition"),

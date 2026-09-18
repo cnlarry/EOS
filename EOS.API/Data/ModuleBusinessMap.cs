@@ -39,15 +39,13 @@ public static class ModuleBusinessMap
                 DomainRule: "cop-send"),
             // 1408 出货通知单：无 SP，仅自动单号（默认单别 CHPC，历史配置待业务确认）
             [1408] = new(1408, null, null, true, "SHIPMENT_NO", "SHIPMENT_TYPE"),
-            // 财务：170101 应收货款单（对帐单，批核已由效果链接管，旧 P_WF_COP_ACCOUNT 已退役）
-            [170101] = new(170101, null, null, true, "ACCOUNT_NO", "ACCOUNT_TYPE",
-                DomainRule: "cop-account"),
+            // 财务：170101 应收货款单（对帐单，批核已由效果链接管，旧 P_WF_COP_ACCOUNT 已退役；保存期动作已由效果目录承接）
+            [170101] = new(170101, null, null, true, "ACCOUNT_NO", "ACCOUNT_TYPE"),
             // 170102 收款单（预收冲抵入口；批核/解批已由效果链接管，旧 P_WF_COP_RECEIPT 已退役）
             [170102] = new(170102, null, null, true, "RECEIPT_NO", "RECEIPT_TYPE",
                 PrepayOffsetTable: "COP_RECEIPT_PREPAY", DomainRule: "cop-receipt"),
             // 170103 预收帐款单（AfterSave 已实现：客户校验 + 金额汇总；批核已由效果链接管，旧 P_WF_COP_PREPAY 已退役）
-            [170103] = new(170103, null, null, true, "PREPAY_NO", "PREPAY_TYPE",
-                DomainRule: "cop-prepay"),
+            [170103] = new(170103, null, null, true, "PREPAY_NO", "PREPAY_TYPE"),
             // 170201 应付货款单：AfterSave 已实现为确定性领域规则（purchase-due），
             // 不再调用 P_PUR_DUE_After_Save（金额汇总 + 数量校验由 C# 实现）；
             // 批核已由效果链接管，旧 P_WF_PUR_DUE 已退役

@@ -245,58 +245,6 @@ public static class CopDomainRules
 
     /// <summary>厂商报价单（1604）AfterSave：厂商校验 + 询价单一致性校验（镜像 cop-quote，厂商侧）。</summary>
 
-
-    /// <summary>应收货款单（170101）AfterSave：对帐不超送/退货量 + 客户校验 + 单证存在性 + 金额汇总。</summary>
-
-
-    /// <summary>应收货款单（170101）AfterSave：对帐不超送/退货量 + 客户校验 + 单证存在性 + 金额汇总。</summary>
-    public static async Task<SprocResult> CopAccountAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var (typeColumn, noColumn) = DomainRuleService.KeyColumns(pkColumns);
-        var type = keyValues[0]; var no = keyValues[1];
-        var sendErrors = await DomainRuleService.FindExceededAsync(connection, transaction, type, no, token,
-            detailTable: "COP_ACCOUNT_D", detailTypeColumn: "ACCOUNT_TYPE", detailNoColumn: "ACCOUNT_NO",
-            detailGroupTypeColumn: "S_R_TYPE", detailGroupNoColumn: "S_R_NO", detailGroupSerialColumn: "S_R_SERIAL_NO",
-            sourceTable: "COP_SEND_D", sourceTypeColumn: "SEND_TYPE", sourceNoColumn: "SEND_NO");
-        if (sendErrors is not null)
-            return new(false, "以下对帐已超出送货单数量\r\n 送货单号  送货数量  已对帐数量  单据数量\r\n" + sendErrors);
-        var returnErrors = await DomainRuleService.FindExceededAsync(connection, transaction, type, no, token,
-            detailTable: "COP_ACCOUNT_D", detailTypeColumn: "ACCOUNT_TYPE", detailNoColumn: "ACCOUNT_NO",
-            detailGroupTypeColumn: "S_R_TYPE", detailGroupNoColumn: "S_R_NO", detailGroupSerialColumn: "S_R_SERIAL_NO",
-            sourceTable: "COP_RETURN_D", sourceTypeColumn: "RETURN_TYPE", sourceNoColumn: "RETURN_NO");
-        if (returnErrors is not null)
-            return new(false, "以下对帐已超出退货单数量\r\n 退货单号  退货数量  已对帐数量  单据数量\r\n" + returnErrors);
-
-        // 主表金额汇总（ROUND 2，SUM_AMOUNT=AMOUNT_TAX+OTHER_PRICE，QTY_TOTAL=SUM(QTY)）
-        const string sql = """
-            UPDATE m
-            SET m.AMOUNT=d.AMOUNT, m.TAX_SUM=d.TAX_SUM, m.AMOUNT_TAX=d.AMOUNT_TAX,
-                m.SUM_AMOUNT=d.AMOUNT_TAX+ISNULL(m.OTHER_PRICE,0), m.QTY_TOTAL=d.QTY_ALL
-            FROM dbo.COP_ACCOUNT_M m
-            INNER JOIN (
-                SELECT ACCOUNT_TYPE, ACCOUNT_NO,
-                       ROUND(SUM(AMOUNT_TAX),2) AS AMOUNT_TAX,
-                       ROUND(SUM(AMOUNT),2) AS AMOUNT,
-                       ROUND(SUM(TAX_SUM),2) AS TAX_SUM,
-                       ROUND(SUM(QTY),2) AS QTY_ALL
-                FROM dbo.COP_ACCOUNT_D
-                WHERE ACCOUNT_TYPE=@Type AND ACCOUNT_NO=@No
-                GROUP BY ACCOUNT_TYPE, ACCOUNT_NO
-            ) d ON m.ACCOUNT_TYPE=d.ACCOUNT_TYPE AND m.ACCOUNT_NO=d.ACCOUNT_NO
-            WHERE m.ACCOUNT_TYPE=@Type AND m.ACCOUNT_NO=@No;
-            """;
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
-        command.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
-        await command.ExecuteNonQueryAsync(token);
-        return new(true, null);
-    }
-
-    /// <summary>收款单（170102）AfterSave：预收汇总 + 实收校验 + 对帐不超收。</summary>
-
-
     /// <summary>收款单（170102）AfterSave：预收汇总 + 实收校验 + 对帐不超收。</summary>
     public static async Task<SprocResult> CopReceiptAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
@@ -344,23 +292,6 @@ public static class CopDomainRules
         return new(true, null);
     }
 
-    /// <summary>预收帐款单（170103）AfterSave：金额汇总。</summary>
-    public static async Task<SprocResult> CopPrepayAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var (typeColumn, noColumn) = DomainRuleService.KeyColumns(pkColumns);
-        var type = keyValues[0]; var no = keyValues[1];
-        await using var amount = new SqlCommand($"""
-            UPDATE m SET AMOUNT=ROUND((SELECT SUM(AMOUNT) FROM dbo.COP_PREPAY_D
-                WHERE PREPAY_TYPE=@Type AND PREPAY_NO=@No),3)
-            FROM dbo.COP_PREPAY_M m WHERE m.[{typeColumn}]=@Type AND m.[{noColumn}]=@No;
-            """, connection, transaction);
-        amount.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
-        amount.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
-        await amount.ExecuteNonQueryAsync(token);
-        return new(true, null);
-    }
 
     /// <summary>付款单（170202）AfterSave：预付汇总 + 实付校验 + 对帐不超付。</summary>
 }
