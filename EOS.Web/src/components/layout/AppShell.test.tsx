@@ -1,11 +1,41 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, MemoryRouter, Route, Routes, createMemoryRouter, RouterProvider, useLocation, type RouteObject } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '../../features/auth/authContext'
 import type { AppBootstrap } from '../../features/auth/types'
+import { WORKSPACE_TABS_ENABLED_KEY, workspaceTabsKey } from '../../lib/storageKeys'
 import { AppShell } from './AppShell'
+import { useTabDirty } from './workspaceDirty'
 
 vi.mock('../../features/auth/authContext', () => ({ useAuth: vi.fn() }))
+
+/** 记录浏览器真实地址，用于断言标签切换后地址栏跟随 */
+function LocationProbe() {
+  const location = useLocation()
+  return <span data-testid="browser-location">{location.pathname}{location.search}</span>
+}
+
+/** 带本地状态的页面：用于验证切换标签后组件常驻、状态不丢 */
+function CounterPage() {
+  const [count, setCount] = useState(0)
+  return <button type="button" onClick={() => setCount((current) => current + 1)}>计数 {count}</button>
+}
+
+/** 会置脏的页面：用于验证脏点、关闭确认与离开拦截 */
+function DirtyPage() {
+  const [value, setValue] = useState('')
+  useTabDirty(value !== '', {
+    save: async () => { setValue('') },
+    discard: () => setValue(''),
+  })
+  return (
+    <div>
+      <input aria-label="标题" value={value} onChange={(event) => setValue(event.target.value)} />
+      <Link to="/counter">去计数器</Link>
+    </div>
+  )
+}
 
 const bootstrap: AppBootstrap = {
   user: {
@@ -40,8 +70,22 @@ const bootstrap: AppBootstrap = {
       ],
     },
     { id: 'settings', label: '个人设置', route: '/settings/profile', icon: 'settings' },
+    { id: 'counter', label: '计数器', route: '/counter', icon: 'dashboard' },
+    { id: 'dirty', label: '脏页演示', route: '/dirty', icon: 'dashboard' },
   ],
 }
+
+/** 工作区路由夹具：AppShell 自己按标签地址求值渲染，因此必须注入路由表而不是用子路由 */
+const fixtureRoutes: RouteObject[] = [
+  { path: 'dashboard', element: <div>DASH</div> },
+  { path: 'settings/profile', element: <div>PROFILE</div> },
+  { path: 'counter', element: <CounterPage /> },
+  { path: 'dirty', element: <DirtyPage /> },
+  { path: 'admin/tables/:tableId/fields', element: <div>FIELDS</div> },
+  { path: 'workbench/:moduleId', element: <div>WB</div> },
+  { path: 'workbench/:moduleId/new', element: <div>NEW_FORM</div> },
+  { path: 'workbench/:moduleId/view/*', element: <div>VIEW_FORM</div> },
+]
 
 function renderShell(initialEntry: string, auth: Partial<ReturnType<typeof useAuth>> = {}) {
   const logout = vi.fn().mockResolvedValue(undefined)
@@ -55,16 +99,10 @@ function renderShell(initialEntry: string, auth: Partial<ReturnType<typeof useAu
   })
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
+      <LocationProbe />
       <Routes>
-        <Route element={<AppShell />}>
-          <Route path="/dashboard" element={<div>DASH</div>} />
-          <Route path="/settings/profile" element={<div>PROFILE</div>} />
-          <Route path="/admin/tables/:tableId/fields" element={<div>FIELDS</div>} />
-          <Route path="/workbench/:moduleId" element={<div>WB</div>} />
-          <Route path="/workbench/:moduleId/new" element={<div>NEW_FORM</div>} />
-          <Route path="/workbench/:moduleId/view/*" element={<div>VIEW_FORM</div>} />
-          <Route path="/login" element={<div>LOGIN_PAGE</div>} />
-        </Route>
+        <Route path="/*" element={<AppShell routes={fixtureRoutes} />} />
+        <Route path="/login" element={<div>LOGIN_PAGE</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -272,6 +310,249 @@ describe('AppShell', () => {
       expect(index).toBeGreaterThan(cursor)
       cursor = index
     }
+  })
+
+  it('点菜单开新标签，重复打开复用已有标签，切换标签时地址栏跟随', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/settings/profile')
+    expect(screen.getAllByRole('tab')).toHaveLength(2)
+    expect(screen.getByText('PROFILE')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /首页/ }))
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/dashboard')
+    expect(screen.getByText('DASH')).toBeInTheDocument()
+
+    // 再次从菜单打开同一地址：聚焦已有标签，不新增
+    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    expect(screen.getAllByRole('tab')).toHaveLength(2)
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/settings/profile')
+  })
+
+  it('切换标签不卸载页面：各自的本地状态保持', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('link', { name: '计数器' }))
+    fireEvent.click(screen.getByRole('button', { name: '计数 0' }))
+    expect(screen.getByRole('button', { name: '计数 1' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /首页/ }))
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/dashboard')
+    fireEvent.click(screen.getByRole('tab', { name: /计数器/ }))
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/counter')
+    // 组件未卸载，计数没有回到 0
+    expect(screen.getByRole('button', { name: '计数 1' })).toBeInTheDocument()
+  })
+
+  it('脏标签显示脏点，关闭先确认；取消则保留，不保存则关闭', async () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('link', { name: '脏页演示' }))
+    fireEvent.change(screen.getByLabelText('标题'), { target: { value: '改动' } })
+    await waitFor(() => expect(screen.getByLabelText('有未保存的改动')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭标签 脏页演示' }))
+    expect(screen.getByRole('dialog', { name: '未保存改动确认' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.queryByRole('dialog', { name: '未保存改动确认' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('tab')).toHaveLength(2)
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭标签 脏页演示' }))
+    fireEvent.click(screen.getByRole('button', { name: '不保存并关闭' }))
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(1))
+  })
+
+  it('脏标签的「保存并关闭」先保存再关闭', async () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('link', { name: '脏页演示' }))
+    fireEvent.change(screen.getByLabelText('标题'), { target: { value: '改动' } })
+    await waitFor(() => expect(screen.getByLabelText('有未保存的改动')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭标签 脏页演示' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存并关闭' }))
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(1))
+    expect(screen.getByText('DASH')).toBeInTheDocument()
+  })
+
+  it('「关闭其他」保留当前标签与脏标签', async () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('link', { name: '脏页演示' }))
+    fireEvent.change(screen.getByLabelText('标题'), { target: { value: '改动' } })
+    await waitFor(() => expect(screen.getByLabelText('有未保存的改动')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    expect(screen.getAllByRole('tab')).toHaveLength(3)
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭其他' }))
+    // 当前标签（个人设置）+ 脏标签（脏页演示）保留，首页被关掉
+    expect(screen.getAllByRole('tab')).toHaveLength(2)
+    expect(screen.getByRole('tab', { name: /个人设置/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /脏页演示/ })).toBeInTheDocument()
+  })
+
+  it('「关闭全部」涉及脏标签时先确认，确认后落到首页', async () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('link', { name: '脏页演示' }))
+    fireEvent.change(screen.getByLabelText('标题'), { target: { value: '改动' } })
+    await waitFor(() => expect(screen.getByLabelText('有未保存的改动')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭全部' }))
+    expect(screen.getByRole('dialog', { name: '未保存改动确认' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '不保存并关闭' }))
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(1))
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/dashboard')
+    expect(screen.getByText('DASH')).toBeInTheDocument()
+  })
+
+  it('存在脏标签时浏览器刷新/关闭被拦下', async () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('link', { name: '脏页演示' }))
+    fireEvent.change(screen.getByLabelText('标题'), { target: { value: '改动' } })
+    await waitFor(() => expect(screen.getByLabelText('有未保存的改动')).toBeInTheDocument())
+
+    const event = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('标签栏键盘可操作：左右方向键切换、Delete 关闭', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    fireEvent.click(screen.getByRole('link', { name: '计数器' }))
+    expect(screen.getByRole('tablist', { name: '工作区标签' })).toBeInTheDocument()
+    expect(screen.getAllByRole('tab')).toHaveLength(3)
+
+    fireEvent.keyDown(screen.getAllByRole('tab')[2], { key: 'ArrowLeft' })
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/settings/profile')
+
+    fireEvent.keyDown(screen.getAllByRole('tab')[1], { key: 'ArrowRight' })
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/counter')
+
+    fireEvent.keyDown(screen.getAllByRole('tab')[2], { key: 'Delete' })
+    expect(screen.getAllByRole('tab')).toHaveLength(2)
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/settings/profile')
+  })
+
+  it('撞顶：已达上限 12 时拒绝新建并提示', () => {
+    const saved = Array.from({ length: 12 }, (_, index) => ({ id: `t${index + 1}`, url: `/p${index + 1}`, label: `页${index + 1}` }))
+    localStorage.setItem(workspaceTabsKey('u1'), JSON.stringify(saved))
+    renderShell('/p1')
+    expect(screen.getAllByRole('tab')).toHaveLength(12)
+
+    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    expect(screen.getByText('标签已达上限 12 个，请先关闭一个标签')).toBeInTheDocument()
+    expect(screen.getAllByRole('tab')).toHaveLength(12)
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/p1')
+  })
+
+  it('刷新恢复标签列表，未激活的标签不挂载（懒挂载）', () => {
+    localStorage.setItem(workspaceTabsKey('u1'), JSON.stringify([
+      { id: 't1', url: '/dashboard', label: '首页' },
+      { id: 't2', url: '/counter', label: '计数器' },
+    ]))
+    renderShell('/dashboard')
+    expect(screen.getAllByRole('tab')).toHaveLength(2)
+    expect(screen.getByText('DASH')).toBeInTheDocument()
+    // 未激活的恢复标签尚未挂载：其页面组件不在 DOM 中
+    expect(screen.queryByRole('button', { name: '计数 0' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /计数器/ }))
+    expect(screen.getByRole('button', { name: '计数 0' })).toBeInTheDocument()
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/counter')
+  })
+
+  it('标签列表按用户持久化（last-write-wins）', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    const saved = JSON.parse(localStorage.getItem(workspaceTabsKey('u1')) ?? '[]') as { url: string }[]
+    expect(saved.map((tab) => tab.url)).toEqual(['/dashboard', '/settings/profile'])
+  })
+
+  it('回退开关关闭：隐藏标签栏并原地导航（单标签行为）', () => {
+    localStorage.setItem(WORKSPACE_TABS_ENABLED_KEY, 'off')
+    renderShell('/dashboard')
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    expect(screen.getByText('PROFILE')).toBeInTheDocument()
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/settings/profile')
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+    // 回退模式不落盘标签列表
+    expect(localStorage.getItem(workspaceTabsKey('u1'))).toBeNull()
+  })
+
+  it('存在脏标签时退出登录先确认，取消则留在工作区', async () => {    const logout = vi.fn().mockResolvedValue(undefined)
+    renderShell('/dashboard', { logout })
+    fireEvent.click(screen.getByRole('link', { name: '脏页演示' }))
+    fireEvent.change(screen.getByLabelText('标题'), { target: { value: '改动' } })
+    await waitFor(() => expect(screen.getByLabelText('有未保存的改动')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: '用户菜单' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '退出登录' }))
+    expect(screen.getByRole('dialog', { name: '未保存改动确认' })).toBeInTheDocument()
+    expect(logout).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.queryByText('LOGIN_PAGE')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('标题')).toHaveValue('改动')
+  })
+
+  it('关闭标签后由相邻标签接管，地址栏不留停在已关闭标签上', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/settings/profile')
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭标签 个人设置' }))
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/dashboard')
+    expect(screen.getByText('DASH')).toBeInTheDocument()
+  })
+})
+
+describe('AppShell 脏页导航拦截（数据路由）', () => {
+  function renderDataRouterShell(initialEntry: string) {
+    vi.mocked(useAuth).mockReturnValue({
+      bootstrap,
+      loading: false,
+      login: vi.fn(),
+      logout: vi.fn().mockResolvedValue(undefined),
+      hasPermission: () => false,
+    })
+    const router = createMemoryRouter(
+      [
+        { path: '/*', element: <AppShell routes={fixtureRoutes} /> },
+        { path: '/login', element: <div>LOGIN_PAGE</div> },
+      ],
+      { initialEntries: [initialEntry] },
+    )
+    return render(<RouterProvider router={router} />)
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('标签内导航离开脏页被拦下，取消后停留原处', async () => {
+    renderDataRouterShell('/dashboard')
+    fireEvent.click(screen.getByRole('link', { name: '脏页演示' }))
+    fireEvent.change(screen.getByLabelText('标题'), { target: { value: '改动' } })
+    await waitFor(() => expect(screen.getByLabelText('有未保存的改动')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('link', { name: '去计数器' }))
+    await waitFor(() => expect(screen.getByRole('dialog', { name: '未保存改动确认' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '未保存改动确认' })).not.toBeInTheDocument())
+    expect(screen.getByLabelText('标题')).toBeInTheDocument()
+  })
+
+  it('切换标签不算离开脏页，不弹确认', async () => {
+    renderDataRouterShell('/dashboard')
+    fireEvent.click(screen.getByRole('link', { name: '脏页演示' }))
+    fireEvent.change(screen.getByLabelText('标题'), { target: { value: '改动' } })
+    await waitFor(() => expect(screen.getByLabelText('有未保存的改动')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('tab', { name: /首页/ }))
+    await waitFor(() => expect(screen.getByText('DASH')).toBeInTheDocument())
+    expect(screen.queryByRole('dialog', { name: '未保存改动确认' })).not.toBeInTheDocument()
+    // 草稿随标签常驻，未被丢弃
+    expect(screen.getByLabelText('标题')).toHaveValue('改动')
   })
 })
 

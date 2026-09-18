@@ -25,3 +25,13 @@ export const ASSISTANT_PREFILL_PREFIX = 'erp-assistant-prefill-'
 export function assistantPrefillKey(moduleId: number | string): string {
   return `${ASSISTANT_PREFILL_PREFIX}${moduleId}`
 }
+
+/** 工作区标签列表（AppShell 写入并恢复），键 = 前缀 + 用户标识。 */
+export const WORKSPACE_TABS_PREFIX = 'erp-workspace-tabs-'
+
+export function workspaceTabsKey(userId: string): string {
+  return `${WORKSPACE_TABS_PREFIX}${userId}`
+}
+
+/** 工作区多标签特性开关：置为 `off` 即回退到单标签行为（默认开启）。 */
+export const WORKSPACE_TABS_ENABLED_KEY = 'erp-workspace-tabs-enabled'

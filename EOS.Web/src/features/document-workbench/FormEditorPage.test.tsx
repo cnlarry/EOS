@@ -2,6 +2,7 @@ import { renderWithProviders } from '../../test/renderWithProviders'
 import { apiClientMock } from '../../test/apiMock'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider, useParams } from 'react-router-dom'
+import { WorkspaceDirtyContext, WorkspaceTabContext, type TabDirtyHandlers } from '../../components/layout/workspaceDirty'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
 import { FormEditorPage } from './FormEditorPage'
@@ -93,7 +94,10 @@ function installApiMocks() {
   apiClientMock.put.mockResolvedValue({ key: ['P1', 'A'] })
 }
 
-function renderEditor(initialEntry: string) {
+function renderEditor(initialEntry: string, dirty?: {
+  setDirty: (tabId: string, dirty: boolean) => void
+  register: (tabId: string, handlers: TabDirtyHandlers) => () => void
+}) {
   const router = createMemoryRouter(
     [
       { path: '/workbench/:moduleId', element: <div>BACK_LIST</div> },
@@ -103,7 +107,14 @@ function renderEditor(initialEntry: string) {
     ],
     { initialEntries: [initialEntry] },
   )
-  return renderWithProviders(<RouterProvider router={router} />)
+  // 脏位登记给外壳（WorkspaceDirtyContext），未注入时按无外壳独立渲染
+  return renderWithProviders(
+    <WorkspaceTabContext.Provider value="t1">
+      <WorkspaceDirtyContext.Provider value={dirty ? { register: dirty.register, setDirty: dirty.setDirty } : null}>
+        <RouterProvider router={router} />
+      </WorkspaceDirtyContext.Provider>
+    </WorkspaceTabContext.Provider>,
+  )
 }
 
 function masterInputs(container: HTMLElement): HTMLInputElement[] {
@@ -688,7 +699,8 @@ describe('FormEditorPage', () => {
   })
 
   it('选择器按 returnMapping 回填主表字段并置脏', async () => {
-    renderEditor('/workbench/1209/new')
+    const setDirty = vi.fn()
+    renderEditor('/workbench/1209/new', { setDirty, register: vi.fn() })
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '选择' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: '产品编号' })).toBeInTheDocument())
@@ -697,18 +709,15 @@ describe('FormEditorPage', () => {
     fireEvent.click(screen.getByText('高强钢').closest('tr')! as HTMLElement)
     fireEvent.click(screen.getByRole('button', { name: '确认' }))
     await waitFor(() => expect(screen.getByDisplayValue('P9')).toBeInTheDocument())
-    const event = new Event('beforeunload', { cancelable: true })
-    window.dispatchEvent(event)
-    expect(event.defaultPrevented).toBe(true)
+    await waitFor(() => expect(setDirty).toHaveBeenCalledWith('t1', true))
   })
 
-  it('修改字段后触发未保存离开提示', async () => {
-    const { container } = renderEditor('/workbench/1209/new')
+  it('修改字段后把脏位上报告外壳（离开确认由外壳统一处理）', async () => {
+    const setDirty = vi.fn()
+    const { container } = renderEditor('/workbench/1209/new', { setDirty, register: vi.fn() })
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.change(masterInputs(container)[0], { target: { value: 'X' } })
-    const event = new Event('beforeunload', { cancelable: true })
-    window.dispatchEvent(event)
-    expect(event.defaultPrevented).toBe(true)
+    await waitFor(() => expect(setDirty).toHaveBeenCalledWith('t1', true))
   })
 
   it('保存失败展示通用错误', async () => {

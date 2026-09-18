@@ -155,7 +155,7 @@ interface FieldEditorFormProps {
   /** 全尺寸页面模式：追加「变更历史」选项卡（AUDIT_EVENT 字段级明细）。 */
   historyTab?: boolean
   /** 保存动作句柄（页面工具栏按钮触发 Form 内部保存；React 19 ref 作为普通 prop）。 */
-  actionRef?: React.MutableRefObject<{ save: () => void } | null>
+  actionRef?: React.MutableRefObject<{ save: () => void; saveAsync: () => Promise<void> } | null>
   /** 保存状态回调（页面工具栏按钮禁用/loading 联动；dirty 供页面做未保存离开确认）。 */
   onStateChange?: (state: { canSave: boolean; saving: boolean; dirty: boolean }) => void
   /** 底部操作区渲染（弹窗用）；页面模式由页面工具栏承担，不传。 */
@@ -432,7 +432,12 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
   const lastStateRef = useRef<{ canSave: boolean; saving: boolean; dirty: boolean } | null>(null)
 
   useEffect(() => {
-    if (actionRef) actionRef.current = { save: () => draft && save.mutate(draft) }
+    if (actionRef) {
+      actionRef.current = {
+        save: () => { if (draft) save.mutate(draft) },
+        saveAsync: () => (draft ? save.mutateAsync(draft).then(() => undefined) : Promise.resolve()),
+      }
+    }
     const next = { canSave, saving: save.isPending, dirty }
     const last = lastStateRef.current
     if (!last || last.canSave !== next.canSave || last.saving !== next.saving || last.dirty !== next.dirty) {
