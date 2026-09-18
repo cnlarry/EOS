@@ -977,10 +977,38 @@ public sealed class MenuAdminRepository(
         return command;
     }
 
-    private static async Task ChangeModuleIdAsync(SqlConnection connection, SqlTransaction transaction, int oldId, int newId, CancellationToken token)
+    /// <summary>
+    /// 模块编号变更的引用级联：把 17 张表里指向旧编号的列改指新编号（本节点 / 子节点 / 根节点、
+    /// 个人与组权限、报表与查询、字段与选择器、流程定义与流转、单据性质、待办）。
+    /// 语句与顺序对照原 `P_Change_M_IDX` 过程本体；**唯一差异**是选择器数据源那张表：
+    /// 原过程写的是已被 ADR-008 取代的 `FIELDS_CHOOSER`（该表在库内已不存在，原过程本体因此
+    /// 整条跑不通），这里改用现表 `FIELD_DATASOURCE` 的同名列 `SOURCE_M_IDX`。
+    /// 全部参数化、无动态标识符。
+    /// </summary>
+    internal const string ChangeModuleIndexSql = """
+        UPDATE dbo.MODULES SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
+        UPDATE dbo.MODULES SET M_P_IDX=@NEW_IDX WHERE M_P_IDX=@OLD_IDX;
+        UPDATE dbo.MODULES SET M_ROOT_IDX=@NEW_IDX WHERE M_ROOT_IDX=@OLD_IDX;
+        UPDATE dbo.SYSDD SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
+        UPDATE dbo.SYSDD_REPORT SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
+        UPDATE dbo.SYSDH SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
+        UPDATE dbo.SYSDH_REPORT SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
+        UPDATE dbo.REPORT SET R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX;
+        UPDATE dbo.REPORT SET Q_M_IDX=@NEW_IDX WHERE Q_M_IDX=@OLD_IDX;
+        UPDATE dbo.SYSQR SET R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX;
+        UPDATE dbo.FIELDS SET BROWSE_M_IDX=@NEW_IDX WHERE BROWSE_M_IDX=@OLD_IDX;
+        UPDATE dbo.FIELD_DATASOURCE SET SOURCE_M_IDX=@NEW_IDX WHERE SOURCE_M_IDX=@OLD_IDX;
+        UPDATE dbo.WFFORM SET WF_M_IDX=@NEW_IDX WHERE WF_M_IDX=@OLD_IDX;
+        UPDATE dbo.WFFORM_FLOW SET WF_M_IDX=@NEW_IDX WHERE WF_M_IDX=@OLD_IDX;
+        UPDATE dbo.WF_MONITOR SET WF_M_IDX=@NEW_IDX WHERE WF_M_IDX=@OLD_IDX;
+        UPDATE dbo.BILLKIND SET B_M_IDX=@NEW_IDX WHERE B_M_IDX=@OLD_IDX;
+        UPDATE dbo.TASK SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
+        """;
+
+    internal static async Task ChangeModuleIdAsync(SqlConnection connection, SqlTransaction transaction, int oldId, int newId, CancellationToken token)
     {
-        // 受控存储过程：固定表/列名级联，无动态 SQL。
-        await using var command = new SqlCommand("EXEC dbo.P_Change_M_IDX @OLD_IDX, @NEW_IDX;", connection, transaction);
+        // 级联语句固定表/列名，参数化传值；新旧编号同批执行，顺序与旧过程一致。
+        await using var command = new SqlCommand(ChangeModuleIndexSql, connection, transaction);
         command.Parameters.Add("@OLD_IDX", SqlDbType.Int).Value = oldId;
         command.Parameters.Add("@NEW_IDX", SqlDbType.Int).Value = newId;
         await command.ExecuteNonQueryAsync(token);
