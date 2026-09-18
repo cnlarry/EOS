@@ -84,6 +84,8 @@ internal static class CopSendCheck
             if (depotMissing is not null)
                 return config.Messages.DepotMissing + depotMissing;
 
+            // 库存侧先按 (料号, 库别) 汇总再比较：余额表同一组合可能存在多行，
+            // 直接按两列关联会取到其中一行而非合计，从而误判库存不足。
             var stockSql = $"""
                 SELECT a.PRO_NO, a.DEPOT_ID, a.QTY, ISNULL(b.QTY,0)
                 FROM (SELECT d.{Q(config.Detail.ProductField)} AS PRO_NO, d.{Q(config.Detail.DepotField)} AS DEPOT_ID,
@@ -91,8 +93,12 @@ internal static class CopSendCheck
                         FROM dbo.{detail} d INNER JOIN dbo.{product} p ON p.{Q(config.Product.KeyField)}=d.{Q(config.Detail.ProductField)}
                        WHERE {detailScope}
                        GROUP BY d.{Q(config.Detail.ProductField)}, d.{Q(config.Detail.DepotField)}) a
-                LEFT JOIN dbo.{stock} b ON b.{Q(config.Stock.ProductField)}=a.PRO_NO AND b.{Q(config.Stock.DepotField)}=a.DEPOT_ID
-                WHERE a.QTY > ISNULL(b.{Q(config.Stock.QtyField)},0);
+                LEFT JOIN (SELECT s.{Q(config.Stock.ProductField)} AS PRO_NO, s.{Q(config.Stock.DepotField)} AS DEPOT_ID,
+                                  SUM(s.{Q(config.Stock.QtyField)}) AS QTY
+                             FROM dbo.{stock} s
+                            GROUP BY s.{Q(config.Stock.ProductField)}, s.{Q(config.Stock.DepotField)}) b
+                       ON b.PRO_NO=a.PRO_NO AND b.DEPOT_ID=a.DEPOT_ID
+                WHERE a.QTY > ISNULL(b.QTY,0);
                 """;
             var stockLines = await LinesAsync(context, stockSql, type, no, token,
                 reader => Str(reader, 0) + "    " + Str(reader, 1) + "    " + Num(reader, 2) + "    "
