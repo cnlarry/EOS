@@ -22,9 +22,8 @@ public static class ModuleBusinessMap
             [1201] = new(1201, null, null, false, null, null),
             // 1404 报价单：保存后校验已由校验目录承接，批核已由效果链接管（旧 P_WF_COP_QUOTE 已退役），保留自动单号。
             [1404] = new(1404, null, null, true, "QUOTE_NO", "QUOTE_TYPE"),
-            // 1405 客户订单（批核/解批已由效果链接管，旧 P_WF_COP_ORDER 已退役）
-            [1405] = new(1405, null, null, true, "ORDER_NO", "ORDER_TYPE",
-                DomainRule: "cop-order"),
+            // 1405 客户订单（批核/解批已由效果链接管，旧 P_WF_COP_ORDER 已退役；保存期判据已由校验目录承接）
+            [1405] = new(1405, null, null, true, "ORDER_NO", "ORDER_TYPE"),
             // 1604 厂商报价单 → 批核联动厂商计价表（1602）：保存后校验已由校验目录承接，批核已由效果链接管（旧 P_WF_PUR_QUOTE 已退役）。
             [1604] = new(1604, null, null, true, "QUOTE_NO", "QUOTE_TYPE"),
             // 1615 成品请购单（批核已由效果链接管，旧 P_WF_PUR_APPLY 已退役；保存期动作已由效果目录承接）
@@ -167,6 +166,7 @@ public static class CatalogAfterSaveMap
         1204,               // 产品 BOM：产品/元件引用存在 + 元件底数下界 + 成环检测（no-cycle）+ 历史长宽列回填（SAVE 期 bom-size-backfill）
         170201,             // 应付对帐单：对帐不超收料/退料单数量（受门控）+ 主表金额汇总（SAVE 期 purchase-due-rollup）
         170203,             // 预付帐款单：引用三件套完整性 + 预付不超采购行未结金额（受门控）+ 金额汇总（SAVE 期 pur-prepay-rollup）
+        1405,               // 客户订单：交易天数/最低订单额/信用余额/产品交易天数/计价有效期/最小生产量/订单号重复/预交日期（custom-validation → cop-order-check）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);

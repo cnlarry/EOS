@@ -1,4 +1,5 @@
 using System.Text.Json;
+using EOS.API.Data.Effects;
 using System.Text.RegularExpressions;
 
 namespace EOS.API.Data.ValidationRules;
@@ -24,6 +25,7 @@ public static class ValidationRuleRegistry
                 "documentDetailFields", "diagnosticFields", "maxRows", "displayLookup", "excludeVia")),
             ["line-require"] = WithWhen(KeySet("checks")),
             ["no-cycle"] = WithWhen(KeySet("checks")),
+            ["custom-validation"] = WithWhen(KeySet("handler", "check")),
             ["period-overlap"] = WithWhen(KeySet(
                 "detailTable", "rangeFields", "scopeFields", "groupFields",
                 "displayLookup", "diagnosticFields", "maxRows")),
@@ -65,6 +67,7 @@ public static class ValidationRuleRegistry
         "line-require",
         "period-overlap",
         "no-cycle",
+        "custom-validation",
     };
 
     private static readonly HashSet<string> KnownStages = new(StringComparer.OrdinalIgnoreCase)
@@ -124,7 +127,29 @@ public static class ValidationRuleRegistry
             case "no-cycle":
                 ValidateNoCycle(rule, p, issues);
                 break;
+            case "custom-validation":
+                ValidateCustomValidation(rule, p, issues);
+                break;
         }
+    }
+
+    /// <summary>
+    /// custom-validation（定制校验）：把"现有模板表达不了的表达式级跨表判据"交给**代码注册**的实现，
+    /// 参数只允许 `handler`（必须是已注册的校验键，闭集；未注册即配置错）。用法与文案由实现自身决定。
+    /// </summary>
+    private static void ValidateCustomValidation(ValidationRuleConfig rule, JsonElement p, List<string> issues)
+    {
+        var handler = GetString(p, "handler");
+        if (string.IsNullOrWhiteSpace(handler))
+        {
+            issues.Add($"校验规则 {Label(rule)}：custom-validation.handler 必填");
+            return;
+        }
+        if (!CustomValidationChecks.Keys.Contains(handler, StringComparer.OrdinalIgnoreCase))
+            issues.Add($"校验规则 {Label(rule)}：custom-validation.handler '{handler}' 未注册"
+                + $"（已注册：{string.Join(", ", CustomValidationChecks.Keys)}）");
+        if (GetObject(p, "check") is null)
+            issues.Add($"校验规则 {Label(rule)}：custom-validation.check 必填（该实现自己的参数对象）");
     }
 
     /// <summary>
