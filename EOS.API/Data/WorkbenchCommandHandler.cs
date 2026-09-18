@@ -19,7 +19,6 @@ public sealed class WorkbenchCommandHandler(
     WorkbenchAuditWriter auditWriter,
     WorkbenchApprovalService approvalService,
     WorkbenchScopeFilter scopeFilter,
-    DomainRuleService domainRules,
     ControlledSprocInvoker controlledSprocs,
     EffectEngineInvoker effectEngine,
     WorkbenchIdempotency idempotency,
@@ -272,40 +271,28 @@ public sealed class WorkbenchCommandHandler(
         }
         await SavePrepayOffsetsAsync(connection, transaction, businessRule, pkColumns, keyValues, request.PrepayOffsets, token);
         // 目录校验（SAVE 阶段）是模块的声明式校验目录，独立于"谁负责保存后行为"：
-        // 无论该模块走 C# 领域规则、效果动作还是遗留钩子，都必须先过这道闸。
+        // 无论该模块走效果动作还是遗留钩子，都必须先过这道闸。
         if (await effectEngine.ValidateStageAsync(connection, transaction, definition, EffectEvent.Save, keyValues, token) is { } saveValidation)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", saveValidation);
         }
-        if (businessRule?.DomainRule is { } domainRule)
+        // 保存后行为来自效果目录（SAVE 阶段动作链）；只有该模块确实没有配置任何 SAVE 动作时，
+        // 才回落到遗留保存后过程。
+        // （原实现把"跑效果链"挂在 AfterSaveSproc 分支下，导致行为已迁入效果目录、
+        //   但定义里没有遗留钩子的模块永远不执行 SAVE 动作。）
+        var effectRun = await effectEngine.TryRunAsync(
+            connection, transaction, definition, EffectEvent.Save, keyValues, userId, token);
+        if (effectRun.Ran && effectRun.Error is not null)
         {
-            var domainResult = await domainRules.RunAfterSaveAsync(domainRule, connection, transaction, definition, pkColumns, keyValues, token);
-            if (!domainResult.Success)
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", effectRun.Error);
+        }
+        if (!effectRun.Ran && businessRule?.AfterSaveSproc is { } afterSaveSproc)
+        {
+            var sprocResult = await controlledSprocs.RunAfterSaveAsync(definition.ModuleId, afterSaveSproc, pkColumns, keyValues, connection, transaction, token);
+            if (!sprocResult.Success)
             {
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED",
-                    domainResult.Message ?? "保存后业务校验未通过。");
-            }
-        }
-        else
-        {
-            // 没有 C# 领域规则时，保存后行为来自效果目录（SAVE 阶段动作链）；
-            // 只有该模块确实没有配置任何 SAVE 动作时，才回落到遗留保存后过程。
-            // （原实现把"跑效果链"挂在 AfterSaveSproc 分支下，导致行为已迁入效果目录、
-            //   但定义里没有遗留钩子的模块永远不执行 SAVE 动作。）
-            var effectRun = await effectEngine.TryRunAsync(
-                connection, transaction, definition, EffectEvent.Save, keyValues, userId, token);
-            if (effectRun.Ran && effectRun.Error is not null)
-            {
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", effectRun.Error);
-            }
-            if (!effectRun.Ran && businessRule?.AfterSaveSproc is { } afterSaveSproc)
-            {
-                var sprocResult = await controlledSprocs.RunAfterSaveAsync(definition.ModuleId, afterSaveSproc, pkColumns, keyValues, connection, transaction, token);
-                if (!sprocResult.Success)
-                {
-                    return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED",
-                        sprocResult.Message ?? "保存后业务校验未通过。");
-                }
+                    sprocResult.Message ?? "保存后业务校验未通过。");
             }
         }
         await RecalculateMasterAmountsAsync(connection, transaction, definition, token);
@@ -492,37 +479,25 @@ public sealed class WorkbenchCommandHandler(
         var businessRule = definition.BusinessRule;
         await SavePrepayOffsetsAsync(connection, transaction, businessRule, pkColumns, keyValues, request.PrepayOffsets, token);
         // 目录校验（SAVE 阶段）是模块的声明式校验目录，独立于"谁负责保存后行为"：
-        // 无论该模块走 C# 领域规则、效果动作还是遗留钩子，都必须先过这道闸。
+        // 无论该模块走效果动作还是遗留钩子，都必须先过这道闸。
         if (await effectEngine.ValidateStageAsync(connection, transaction, definition, EffectEvent.Save, keyValues, token) is { } saveValidation)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", saveValidation);
         }
-        if (businessRule?.DomainRule is { } domainRule)
+        // 同新增路径：执行 SAVE 阶段动作链，未配置动作才回落遗留过程。
+        var effectRun = await effectEngine.TryRunAsync(
+            connection, transaction, definition, EffectEvent.Save, keyValues, userId, token);
+        if (effectRun.Ran && effectRun.Error is not null)
         {
-            var domainResult = await domainRules.RunAfterSaveAsync(domainRule, connection, transaction, definition, pkColumns, keyValues, token);
-            if (!domainResult.Success)
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", effectRun.Error);
+        }
+        if (!effectRun.Ran && businessRule?.AfterSaveSproc is { } afterSaveSproc)
+        {
+            var sprocResult = await controlledSprocs.RunAfterSaveAsync(definition.ModuleId, afterSaveSproc, pkColumns, keyValues, connection, transaction, token);
+            if (!sprocResult.Success)
             {
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED",
-                    domainResult.Message ?? "保存后业务校验未通过。");
-            }
-        }
-        else
-        {
-            // 同新增路径：没有 C# 领域规则时执行 SAVE 阶段动作链，未配置动作才回落遗留过程。
-            var effectRun = await effectEngine.TryRunAsync(
-                connection, transaction, definition, EffectEvent.Save, keyValues, userId, token);
-            if (effectRun.Ran && effectRun.Error is not null)
-            {
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", effectRun.Error);
-            }
-            if (!effectRun.Ran && businessRule?.AfterSaveSproc is { } afterSaveSproc)
-            {
-                var sprocResult = await controlledSprocs.RunAfterSaveAsync(definition.ModuleId, afterSaveSproc, pkColumns, keyValues, connection, transaction, token);
-                if (!sprocResult.Success)
-                {
-                    return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED",
-                        sprocResult.Message ?? "保存后业务校验未通过。");
-                }
+                    sprocResult.Message ?? "保存后业务校验未通过。");
             }
         }
         await RecalculateMasterAmountsAsync(connection, transaction, definition, token);

@@ -206,8 +206,8 @@ public sealed class WorkbenchDefinitionBuilder(
         var masterFields=await WorkbenchBrowseResolver.ResolveAsync(connection,
             await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token),master,formEnabledModules,token);
         var masterPkOrder=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,master,token);
-        // Domain rules: a static mapping wins (it carries bill-number and offset-table config);
-        // otherwise rules are auto-registered from MODULES metadata.
+        // Business rule: a static mapping wins (it carries bill-number and offset-table config);
+        // otherwise it is auto-registered from MODULES metadata.
         var businessRule=ModuleBusinessMap.Get(moduleId);
         if(businessRule is null)
         {
@@ -216,11 +216,10 @@ public sealed class WorkbenchDefinitionBuilder(
             // 保存后处理无关（此前靠"有没有保存后钩子"推断，于是校验搬到目录后仍要
             // 保留空壳钩子才能编号）。
             var hasAutoBillNo=await BillNoGenerator.HasAutoBillNoAsync(connection,null,moduleId,token);
-            // 领域规则与"目录承接"同样与钩子字段无关：钩子字段退役后规则必须照常装配，
-            // 否则「有 C# 规则、但既无钩子又不自动编号」的模块会静默丢规则（保存期行为消失）。
-            var domainRule=DomainRuleMap.TryGet(moduleId,out var mappedRule)?mappedRule:null;
+            // 「目录承接」与钩子字段无关：钩子字段退役后规则必须照常装配，
+            // 否则「行为已迁目录、但既无钩子又不自动编号」的模块会静默丢规则（保存期行为消失）。
             var catalogPorted=CatalogAfterSaveMap.IsPorted(moduleId);
-            if(hasSproc||hasAutoBillNo||domainRule is not null||catalogPorted)
+            if(hasSproc||hasAutoBillNo||catalogPorted)
             {
                 string? billNoField=null;
                 string? billTypeField=null;
@@ -236,13 +235,10 @@ public sealed class WorkbenchDefinitionBuilder(
                     billNoField is not null,
                     billNoField,
                     billTypeField);
-                // When a ported C# domain rule exists for an auto-registered module, replace the
-                // controlled AfterSave sproc with the domain rule.
-                if(domainRule is not null)
-                    businessRule=businessRule with { DomainRule=domainRule, AfterSaveSproc=null };
-                // Modules whose save-time behaviour moved into the validation catalog drop the
-                // legacy sproc without being marked pending (their rules run on the save path).
-                else if(catalogPorted)
+                // Modules whose save-time behaviour lives in the validation catalog (and, for
+                // writes, in the effect catalog) drop the legacy AfterSave sproc without being
+                // marked pending: their rules run on the unified save path.
+                if(catalogPorted)
                     businessRule=businessRule with { AfterSaveSproc=null };
                 // Modules without a ported AfterSave must not silently run the metadata sproc:
                 // clear AfterSave and mark it pending porting (save is refused); the approval
