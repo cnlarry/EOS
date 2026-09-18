@@ -115,8 +115,8 @@ internal static class FormFieldSelector
         {
             if (!seen.Add(row.Key)) continue; // 防御：同名元数据行只取第一条
             if (HiddenStatusTags.Contains(row.Key) && mode != "view") continue;
-            // ADR-013 §3.6 + 归属列决议：系统列组（生命周期经办人/日期）与归属三列
-            // （CI/OWNER/OWNER_G）在新增/编辑态隐藏，仅浏览态只读显示。
+            // 系统列组（生命周期经办人/日期）与归属三列（CI/OWNER/OWNER_G）
+            // 在新增/编辑态隐藏，仅浏览态只读显示。
             if (mode != "view" && (WorkflowStates.LifecycleActorColumns.Contains(row.Key, StringComparer.OrdinalIgnoreCase)
                 || WorkflowStates.OwnershipColumns.Contains(row.Key, StringComparer.OrdinalIgnoreCase))) continue;
             // 复合单元格从字段（FORM_CELL_ROLE=2 且配置了组）即使隐藏/幽灵也保留，用于同格联动显示

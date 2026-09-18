@@ -379,7 +379,7 @@ public sealed class WorkbenchDefinitionBuilder(
             definition.EffectEngineEnabled,
             await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token));
         // 批核/解批入口能力（工具栏显隐）：流程 / 效果引擎接管 / 效果链 / 无副作用自动批核
-        // 四者取并集，与 ADR-013 §3.7 的 lifecycle 门共用同一判定——效果链接管批核的模块（无过程、无流程）
+        // 四者取并集，与发布门的 lifecycle_columns 检查共用同一判定——效果链接管批核的模块（无过程、无流程）
         // 同样要有入口，否则退役遗留过程后按钮会凭空消失。
         var hasApproveCapability = WorkflowStates.NeedsApproveColumn(
             definition.AutoApprove,

@@ -268,7 +268,7 @@ public sealed class WorkbenchDefinitionValidator(
             checks.Add(new("business_config_valid", true, "模块无业务动作/校验配置。"));
         }
 
-        // ADR-013 §3.7 能力 → 列单向强制：具备批核能力的模块必须有 CONFIRM_TAG，
+        // 能力 → 列单向强制：具备批核能力的模块必须有 CONFIRM_TAG，
         // 缺列在发布期报错并引导补列，不再允许"无列却有能力"的配置进入运行时。
         if (definition is not null && masterOk)
         {

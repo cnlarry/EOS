@@ -34,7 +34,7 @@ public static class WorkflowStates
     public const char WithdrawnTask = 'W';
 
     /// <summary>
-    /// 单据生命周期列全集（ADR-013 §3.3 / §3.5 系统列组 + 归属三列）：单据主表的标准系统列。
+    /// 单据生命周期列全集（系统列组 + 归属三列）：单据主表的标准系统列。
     /// </summary>
     public static readonly string[] LifecycleColumns =
     [
@@ -81,7 +81,7 @@ public static class WorkflowStates
     public const string DefaultCompanyId = "DEFAULT";
 
     /// <summary>
-    /// 是否单据生命周期系统列（ADR-013 §3.5 系统列组，全 13 列含归属三列）。
+    /// 是否单据生命周期系统列（系统列组，全 13 列含归属三列）。
     /// 字段管理侧据此打标：默认隐藏、结构只读、不可删除。
     /// </summary>
     internal static bool IsLifecycleColumn(string fieldId) =>
@@ -100,7 +100,7 @@ public static class WorkflowStates
         autoApprove && !effectEnabled && !hasFlow;
 
     /// <summary>
-    /// 模块是否具备批核能力（ADR-013 §3.7 能力 → 列单向强制的输入侧）。
+    /// 模块是否具备批核能力（"能力 → 列"单向强制的输入侧）。
     /// 只认会触达 CONFIRM_TAG 写/读路径的后端事实（自动批核、效果引擎接管、工作流、
     /// 批核/解批效果链；解批镜像批核链，同样需要状态位），不认仅控制显示的 FORM_BUTTONS。
     /// </summary>

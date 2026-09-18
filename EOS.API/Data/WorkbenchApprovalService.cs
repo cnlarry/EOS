@@ -107,7 +107,7 @@ public sealed class WorkbenchApprovalService(
         // 过渡桥：旧批核过程在独立连接上执行，无法与状态翻转同事务，失败按补偿还原。
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
-        // ADR-013 §3.7：缺列不再静默返回成功（调用方会误以为已批核），而是显式失败并引导补列。
+        // 缺列不再静默返回成功（调用方会误以为已批核），而是显式失败并引导补列。
         if (!await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "CONFIRM_TAG", token))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
@@ -349,7 +349,7 @@ public sealed class WorkbenchApprovalService(
         // 显式批核幂等返回成功，且不进入流程送审（用户语义：自动批核模块不走新增、审核模式）。
         if (approve && definition.AutoApprove)
         {
-            // ADR-013 §3.7：与保存路径同口径，缺列显式失败（否则 ReadConfirmStateAsync 直查
+            // 与保存路径同口径，缺列显式失败（否则 ReadConfirmStateAsync 直查
             // CONFIRM_TAG 会抛 SQL 异常，以 500 收场）。
             if (!await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "CONFIRM_TAG", token))
             {

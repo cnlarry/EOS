@@ -753,7 +753,7 @@ public sealed class FieldAdminRepository(
             logger.LogWarning("字段乐观锁冲突 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
             throw new ArgumentException("字段内容已被他人修改，请刷新后重试！", nameof(field));
         }
-        // ADR-013 §3.5 系统列组：类型/校验/数据源/权限与分组结构锁定，仅名称显示备注与表单位置可改。
+        // 系统列组：类型/校验/数据源/权限与分组结构锁定，仅名称显示备注与表单位置可改。
         if (WorkflowStates.IsLifecycleColumn(fieldId) && BuildSystemColumnUpdateError(current, field) is { } locked)
         {
             throw new ArgumentException(locked, nameof(field));
@@ -788,7 +788,7 @@ public sealed class FieldAdminRepository(
     public async Task DeleteAsync(string tableId, string fieldId, string updatedBy, CancellationToken token)
     {
         EnsureIdentifier(tableId, fieldId);
-        // ADR-013 §3.5 系统列组：单据生命周期列由管线持有，不可删除（开连接前即拒绝，不触库）。
+        // 系统列组：单据生命周期列由管线持有，不可删除（开连接前即拒绝，不触库）。
         if (WorkflowStates.IsLifecycleColumn(fieldId.Trim()))
         {
             throw new ArgumentException("系统列不允许删除（单据生命周期列由管线持有）。", nameof(fieldId));
@@ -1068,7 +1068,7 @@ public sealed class FieldAdminRepository(
         && a.SerialNo == b.SerialNo;
 
     /// <summary>
-    /// 系统列更新结构锁（ADR-013 §3.5）：仅名称、显示与备注类（标签/列宽/对齐/格式/
+    /// 系统列更新结构锁：仅名称、显示与备注类（标签/列宽/对齐/格式/
     /// 可见/默认/查询/备注/校验顺序/表单位置）可改；类型/校验/数据源/权限与分组结构
     /// 锁定。返回 null 表示仅动了可改项，否则返回拒绝原因（不触库，便于单测）。
     /// </summary>

@@ -54,7 +54,7 @@ export function FieldAdminPage() {
   const [page, setPage] = useState(1)
   const [unmanagedOpen, setUnmanagedOpen] = useState(false)
   const [selectedField, setSelectedField] = useState<string | null>(null)
-  // ADR-013 系统列组默认隐藏；打开后服务端即不过滤（含徽标与删除保护）。
+  // 系统列组默认隐藏；打开后服务端即不过滤（含徽标与删除保护）。
   const [showSystem, setShowSystem] = useState(false)
 
   const tablesQuery = useQuery({
