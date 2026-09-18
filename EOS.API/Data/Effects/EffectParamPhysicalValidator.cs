@@ -57,6 +57,7 @@ public static class EffectParamPhysicalValidator
         "detail-flag-and-rollup",
         "wage-month-doc-prune",
         "doc-orphan-prune",
+        "sfc-plan-sync",
     };
 
     /// <summary>True when the key either carries no reference or is resolved by this validator.</summary>
@@ -171,6 +172,9 @@ public static class EffectParamPhysicalValidator
                     break;
                 case "doc-orphan-prune":
                     _ = DocOrphanPruneHandler.Parse(root, columns);
+                    break;
+                case "sfc-plan-sync":
+                    _ = SfcPlanSyncHandler.Parse(root, columns);
                     break;
                 case "detail-field-sync":
                     _ = DetailFieldSyncSpec.Parse(root, plan, columns);

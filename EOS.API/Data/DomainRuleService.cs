@@ -39,7 +39,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "cop-order" => await CopDomainRules.CopOrderAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-send" => await CopDomainRules.CopSendAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "hr-worktime" => await HrDomainRules.HrWorktimeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "sfc-plan" => await SfcDomainRules.SfcPlanAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-apply" => await PurDomainRules.PurApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-purchase" => await PurDomainRules.PurPurchaseAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-pay" => await PurDomainRules.PurPayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
