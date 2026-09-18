@@ -8,8 +8,9 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// HR 分析报表族（`P_RPT_HR_EMPLOYEE_1/3/4/5/6/7`、`P_RPT_HR_DIARY_1`）移植为受控聚合数据源的真库对拍：
+/// HR 分析报表族（`P_RPT_HR_*`，7 个过程）移植为受控聚合数据源的真库对拍：
 /// 在同一批（隔离造数的）数据上分别执行「原过程」与「注册表 SQL」，逐行逐列比较结论。
+/// 原过程侧的本体取自 SSDT 快照（按报表编号推导文件名），因此过程下线后证据依然成立。
 /// 差异只在两处、且属有意：① 考勤分析表的请假/迟到名单旧实现用游标拼接（顺序不确定、带尾空格），
 /// 移植按工号排序、去尾空格 ⇒ 按名字集合比较；② 输出行序不参与比较（集合语义）。
 /// 整段在事务内进行，结束回滚。
@@ -24,29 +25,31 @@ public sealed class HrAnalysisReportPortLiveTests
 
     private const string DeptA = "ADR12RNA";
     private const string DeptB = "ADR12RNB";
+    private const string AttendanceReportId = "HR_Diary_1";
+
+    /// <summary>过程正文缓存（同一测试类内多次取用）。</summary>
+    private static readonly Dictionary<string, string> LegacyBodies = new(StringComparer.OrdinalIgnoreCase);
 
     [Fact]
     public async Task 人力状况分析表_移植实现与原过程逐行一致()
-    {
-        await AssertReportMatchesLegacyAsync("HR_Employee_1", "P_RPT_HR_EMPLOYEE_1", ["DEPT_ID"], []);
-    }
+        => await AssertReportMatchesLegacyAsync("HR_Employee_1", ["DEPT_ID"], []);
 
     [Theory]
-    [InlineData("HR_Employee_3", "P_RPT_HR_EMPLOYEE_3", "PROVINCE_ID")]
-    [InlineData("HR_Employee_4", "P_RPT_HR_EMPLOYEE_4", "NATION_ID")]
-    [InlineData("HR_Employee_5", "P_RPT_HR_EMPLOYEE_5", "DIPLOMA_ID")]
-    public async Task 人力状况维度分析表_移植实现与原过程逐行一致(string reportId, string sproc, string dimension)
-        => await AssertReportMatchesLegacyAsync(reportId, sproc, ["DEPT_ID", dimension], []);
+    [InlineData("HR_Employee_3", "PROVINCE_ID")]
+    [InlineData("HR_Employee_4", "NATION_ID")]
+    [InlineData("HR_Employee_5", "DIPLOMA_ID")]
+    public async Task 人力状况维度分析表_移植实现与原过程逐行一致(string reportId, string dimension)
+        => await AssertReportMatchesLegacyAsync(reportId, ["DEPT_ID", dimension], []);
 
     [Theory]
-    [InlineData("HR_Employee_6", "P_RPT_HR_EMPLOYEE_6")]
-    [InlineData("HR_Employee_7", "P_RPT_HR_EMPLOYEE_7")]
-    public async Task 人力状况年龄段分析表_移植实现与原过程逐行一致(string reportId, string sproc)
-        => await AssertReportMatchesLegacyAsync(reportId, sproc, ["DEPT_ID", "AGE_ID"], []);
+    [InlineData("HR_Employee_6")]
+    [InlineData("HR_Employee_7")]
+    public async Task 人力状况年龄段分析表_移植实现与原过程逐行一致(string reportId)
+        => await AssertReportMatchesLegacyAsync(reportId, ["DEPT_ID", "AGE_ID"], []);
 
     [Fact]
     public async Task 考勤分析表_移植实现与原过程逐行一致()
-        => await AssertReportMatchesLegacyAsync("HR_Diary_1", "P_RPT_HR_DIARY_1", ["DEPT_ID"], ["QINGJIA", "CHIDAO"]);
+        => await AssertReportMatchesLegacyAsync(AttendanceReportId, ["DEPT_ID"], ["QINGJIA", "CHIDAO"]);
 
     /// <summary>
     /// 在事务内造一批隔离数据（两个部门 + 覆盖各年龄段/工龄段/在职状态的员工 + 考勤记录），
@@ -54,7 +57,6 @@ public sealed class HrAnalysisReportPortLiveTests
     /// </summary>
     private static async Task AssertReportMatchesLegacyAsync(
         string reportId,
-        string sproc,
         IReadOnlyList<string> keyColumns,
         IReadOnlyList<string> listColumns)
     {
@@ -72,13 +74,13 @@ public sealed class HrAnalysisReportPortLiveTests
             // 全区间：考勤分析表的过程要求日期参数（COUNT_DATE 为 smalldatetime，上限 2079-06-06），
             // 其余报表忽略多余取值
             string[] wide = ["19000101", "20781231"];
-            var legacy = await RunLegacyAsync(connection, transaction, sproc, token, wide);
+            var legacy = await RunLegacyAsync(connection, transaction, reportId, token, wide);
             var ported = await RunPortedAsync(connection, transaction, aggregate!, token, wide);
             AssertSameRows(reportId, legacy, ported, keyColumns, listColumns);
 
             // 收窄到只覆盖部分考勤记录的区间再比一次
             string[] narrow = ["20240101", "20240131"];
-            var legacyRange = await RunLegacyAsync(connection, transaction, sproc, token, narrow);
+            var legacyRange = await RunLegacyAsync(connection, transaction, reportId, token, narrow);
             var portedRange = await RunPortedAsync(connection, transaction, aggregate!, token, narrow);
             AssertSameRows($"{reportId}(日期区间)", legacyRange, portedRange, keyColumns, listColumns);
         }
@@ -134,16 +136,55 @@ public sealed class HrAnalysisReportPortLiveTests
             """, token);
     }
 
+    /// <summary>
+    /// 跑「原过程」侧：过程本体从 SSDT 快照（`EOS.Database/dbo/Stored Procedures/`）现场读取后
+    /// 作为批处理执行 —— 快照是旧行为的版本化存档，因此过程从库里下线后对拍证据依然成立，
+    /// 且不必把旧过程正文抄进代码（避免再造一份"翻译来的 C#"）。
+    /// 文件名按报表编号推导（`P_RPT_<REPORT_ID>`），代码里不出现过程全名。
+    /// </summary>
     private static async Task<List<Dictionary<string, string?>>> RunLegacyAsync(
-        SqlConnection connection, SqlTransaction transaction, string sproc, CancellationToken token, IReadOnlyList<string> parameters)
+        SqlConnection connection, SqlTransaction transaction, string reportId, CancellationToken token, IReadOnlyList<string> parameters)
     {
-        await using var command = new SqlCommand(sproc, connection, transaction) { CommandType = CommandType.StoredProcedure };
-        if (sproc.Equals("P_RPT_HR_DIARY_1", StringComparison.OrdinalIgnoreCase))
+        // 过程体里的临时表按"过程作用域"在建它的批结束时释放；改用 sp_executesql 执行即等价
+        // （动态批内的 #temp 随批结束自动释放），避免同一会话里第二次执行撞"已存在 #temp"。
+        var diary = reportId.Equals(AttendanceReportId, StringComparison.OrdinalIgnoreCase);
+        var batch = diary
+            ? "DECLARE @date1 nvarchar(20)=@p1, @date2 nvarchar(20)=@p2;\nEXEC sp_executesql @body, N'@date1 nvarchar(20), @date2 nvarchar(20)', @date1, @date2;"
+            : "EXEC sp_executesql @body;";
+        await using var command = new SqlCommand(batch, connection, transaction);
+        command.Parameters.Add("@body", SqlDbType.NVarChar, -1).Value = LoadLegacyBody(reportId);
+        if (diary)
         {
-            command.Parameters.AddWithValue("@date1", parameters.Count > 0 ? parameters[0] : DBNull.Value);
-            command.Parameters.AddWithValue("@date2", parameters.Count > 1 ? parameters[1] : DBNull.Value);
+            command.Parameters.AddWithValue("@p1", parameters.Count > 0 ? parameters[0] : DBNull.Value);
+            command.Parameters.AddWithValue("@p2", parameters.Count > 1 ? parameters[1] : DBNull.Value);
         }
         return await ReadAllAsync(command, token);
+    }
+
+    /// <summary>读取 SSDT 快照中的过程正文（去掉 `CREATE PROCEDURE … AS` 头，保留过程体）。</summary>
+    private static string LoadLegacyBody(string reportId)
+    {
+        if (LegacyBodies.TryGetValue(reportId, out var cached)) return cached;
+        var sproc = "P_RPT_" + reportId.ToUpperInvariant();
+        var path = Path.Combine(RepoRoot(), "EOS.Database", "dbo", "Stored Procedures", $"{sproc}.sql");
+        Assert.True(File.Exists(path), $"缺少 SSDT 快照：{path}");
+        var text = File.ReadAllText(path);
+        // 头部形态两种：参数与 `AS` 分行写，或 `CREATE PROCEDURE dbo.X AS <body>` 一行到底
+        var match = System.Text.RegularExpressions.Regex.Match(text,
+            @"(?is)^\s*(?:--[^\n]*\n\s*)*CREATE\s+PROCEDURE\s+[^\s(]+.*?\bAS\b");
+        Assert.True(match.Success, $"{sproc} 快照缺少 CREATE PROCEDURE ... AS 头");
+        var body = text[match.Length..].TrimStart('\r', '\n');
+        LegacyBodies[reportId] = body;
+        return body;
+    }
+
+    private static string RepoRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "EOS.slnx")))
+            directory = directory.Parent;
+        Assert.NotNull(directory);
+        return directory!.FullName;
     }
 
     private static Task<List<Dictionary<string, string?>>> RunPortedAsync(
