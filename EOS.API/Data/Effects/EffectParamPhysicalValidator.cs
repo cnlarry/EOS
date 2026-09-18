@@ -68,6 +68,7 @@ public static class EffectParamPhysicalValidator
         "pur-pay-offset",
         "cop-receipt-offset",
         "cop-send-mo-flag",
+        "pur-purchase-sync",
     };
 
     /// <summary>True when the key either carries no reference or is resolved by this validator.</summary>
@@ -213,6 +214,9 @@ public static class EffectParamPhysicalValidator
                     break;
                 case "cop-send-mo-flag":
                     _ = CopSendMoFlagHandler.Parse(root, plan.MasterTable!, columns);
+                    break;
+                case "pur-purchase-sync":
+                    _ = PurPurchaseSyncHandler.Parse(root, plan.MasterTable!, columns);
                     break;
                 case "detail-field-sync":
                     _ = DetailFieldSyncSpec.Parse(root, plan, columns);

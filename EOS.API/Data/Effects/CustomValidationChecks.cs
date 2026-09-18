@@ -27,6 +27,7 @@ internal static class CustomValidationChecks
         {
             [CopOrderCheck.HandlerKey] = CopOrderCheck.CheckAsync,
             [CopSendCheck.HandlerKey] = CopSendCheck.CheckAsync,
+            [PurPurchaseCheck.HandlerKey] = PurPurchaseCheck.CheckAsync,
         };
 
     public static bool TryGet(string key,

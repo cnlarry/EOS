@@ -28,9 +28,8 @@ public static class ModuleBusinessMap
             [1604] = new(1604, null, null, true, "QUOTE_NO", "QUOTE_TYPE"),
             // 1615 成品请购单（批核已由效果链接管，旧 P_WF_PUR_APPLY 已退役；保存期动作已由效果目录承接）
             [1615] = new(1615, null, null, true, "APPLY_NO", "APPLY_TYPE"),
-            // 1606 采购单（批核/解批已由效果链接管，旧 P_WF_PUR_PURCHASE 已退役）
-            [1606] = new(1606, null, null, true, "PURCHASE_NO", "PURCHASE_TYPE",
-                DomainRule: "pur-purchase"),
+            // 1606 采购单（批核/解批已由效果链接管，旧 P_WF_PUR_PURCHASE 已退役；保存期判据与待购表同步已由目录承接）
+            [1606] = new(1606, null, null, true, "PURCHASE_NO", "PURCHASE_TYPE"),
             // 1607 收料单（批核已由效果链接管，旧 P_WF_PUR_RECEIVE 已退役；保存期判据已迁校验目录）
             [1607] = new(1607, null, null, true, "RECEIVE_NO", "RECEIVE_TYPE"),
             // 1406 送货单（批核已由效果链接管，旧 P_WF_COP_SEND 已退役；保存期判据与包装标记已由目录承接）
@@ -167,6 +166,7 @@ public static class CatalogAfterSaveMap
         170203,             // 预付帐款单：引用三件套完整性 + 预付不超采购行未结金额（受门控）+ 金额汇总（SAVE 期 pur-prepay-rollup）
         1405,               // 客户订单：交易天数/最低订单额/信用余额/产品交易天数/计价有效期/最小生产量/订单号重复/预交日期（custom-validation → cop-order-check）
         1406,               // 送货单：批号必填/送货日期超期/库别存在/库存与批号库存不足（custom-validation → cop-send-check）+ 包装标记（SAVE 期 cop-send-mo-flag）
+        1606,               // 采购单：产品计价有效期与预交日期（custom-validation → pur-purchase-check）+ 待购表汇总同步（SAVE 期 pur-purchase-sync）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);

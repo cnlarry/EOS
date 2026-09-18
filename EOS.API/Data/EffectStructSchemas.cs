@@ -125,6 +125,7 @@ public static class EffectStructSchemas
             ["pur-pay-offset"] = Set("master", "offset", "due", "detail", "gateFlag", "negativeMessage", "exceedMessage", "dueMessage", "exceedOffset"),
             ["cop-receipt-offset"] = Set("master", "offset", "due", "detail", "gateFlag", "negativeMessage", "exceedMessage", "dueMessage", "exceedOffset"),
             ["cop-send-mo-flag"] = Set("detail", "typeField", "noField"),
+            ["pur-purchase-sync"] = Set("master", "detail", "more", "product", "supplierPrice"),
             ["sample-stock-adjust"] = Set("direction", "targetTable", "fieldMap"),
             ["set-state"] = Set("targetTable", "stateField", "stateValue", "state", "sourceField", "source", "dateField", "dateMode", "targets"),
             ["stamp-last-activity"] = Set("targetTable", "field", "fields", "sourceField", "matchBy", "condition"),
