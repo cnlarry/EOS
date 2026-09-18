@@ -262,6 +262,176 @@ public static class ReportAggregateRegistry
             new ReportColumn("DEPT_NAME", "部门", "nvarchar"),
         ]);
 
+    /// <summary>
+    /// 库存日报：期初结存（最近一期已确认月结 + 其后到区间起点的流水，按加权平均单价）+
+    /// 本期收发明细 + 每日发出成本（当日累计加权平均）+ 品名/规格/单据名称/类别/颜色。
+    /// </summary>
+    /// <remarks>
+    /// 参数按查询条件绑定：仓库/类别/料号/日期四个范围条件取起止值，成本计法（`@cb1`）取单值。
+    /// **范围条件的空值语义**：旧实现把空上界替换为 `char(255)` 哨兵，而该哨兵在
+    /// `Chinese_PRC_CI_AS` 下排序位置并不在末尾（`N'Z9' &lt;= NCHAR(255)` 实测为假），
+    /// 会**静默截断上界**；此处改为"空值即无界"的显式谓词（语义即旧实现的本意，且可走索引）。
+    /// **有意差异（决策 #118，两处旧实现公式缺陷）**：① 旧期初单价的累加写成
+    /// `@price_sum=(@price_sum*@qty_sum+@price*@qty)/(@qty_sum+@qty)`，而 SQL Server 在同一条 SELECT 内
+    /// 变量赋值"左到右立即生效"（实测 `SELECT @a=@a+1,@b=@a` ⇒ `@b=2`），实际分母是 `Q_old+2q`，
+    /// 使每笔进价权重失真（首笔尤为明显）；此处按**加权平均** `SUM(QTY*PRICE)/SUM(QTY)` 实现。
+    /// ② 旧"每日发出成本"的游标首行（排序第一对的期初行）被首次取值消费掉、未进入累计，
+    /// 且算出均价后把当日发出量从累计里再扣一次；此处按当日累计加权平均实现
+    /// （与 `INV_PRO_DEPOT.COST_PRICE` 的维护口径一致）。
+    /// **保留的旧行为**：`@jc1`（全部/有结存/无结存）在旧实现里整段被注释 ⇒ 参数无效，此处同样不参与；
+    /// 料件类别硬编码 `PRO_TYPE='3'`（原料），与旧实现一致。
+    /// </remarks>
+    private static readonly ReportAggregate InventoryDaily = new(
+        "INV_Pro_Depot_1",
+        """
+        WITH PAIR AS (
+            SELECT i.DEPOT_ID, i.PRO_NO
+            FROM dbo.INV_PRO_DEPOT i
+            JOIN dbo.PRODUCT pr ON pr.PRO_NO = i.PRO_NO
+            WHERE pr.PRO_TYPE = '3'
+              AND (@depot1 IS NULL OR @depot1 = '' OR i.DEPOT_ID >= @depot1)
+              AND (@depot2 IS NULL OR @depot2 = '' OR i.DEPOT_ID <= @depot2)
+              AND (@pro1 IS NULL OR @pro1 = '' OR i.PRO_NO >= @pro1)
+              AND (@pro2 IS NULL OR @pro2 = '' OR i.PRO_NO <= @pro2)
+              AND (@sort1 IS NULL OR @sort1 = '' OR pr.SORT_ID >= @sort1)
+              AND (@sort2 IS NULL OR @sort2 = '' OR pr.SORT_ID <= @sort2)
+        ),
+        MONTHROW AS (
+            SELECT pa.DEPOT_ID, pa.PRO_NO, x.MONTH_DATE, x.QTY, x.PRICE
+            FROM PAIR pa
+            CROSS APPLY (
+                SELECT TOP 1 m.MONTH_DATE, d.QTY, d.PRICE
+                FROM dbo.INV_PRO_MONTH_M m
+                JOIN dbo.INV_PRO_MONTH_D d ON d.MONTH_TYPE = m.MONTH_TYPE AND d.MONTH_NO = m.MONTH_NO
+                WHERE d.DEPOT_ID = pa.DEPOT_ID AND d.PRO_NO = pa.PRO_NO AND m.MONTH_DATE < @date1
+                ORDER BY m.MONTH_DATE DESC
+            ) x
+            WHERE EXISTS (
+                SELECT 1 FROM dbo.INV_PRO_MONTH_M m
+                JOIN dbo.INV_PRO_MONTH_D d ON d.MONTH_TYPE = m.MONTH_TYPE AND d.MONTH_NO = m.MONTH_NO
+                WHERE d.DEPOT_ID = pa.DEPOT_ID AND d.PRO_NO = pa.PRO_NO
+                  AND m.MONTH_DATE < @date1 AND m.CONFIRM_TAG = 1
+            )
+        ),
+        OPENROWS AS (
+            SELECT DEPOT_ID, PRO_NO, MONTH_DATE AS APP_DATE, QTY, PRICE FROM MONTHROW
+            UNION ALL
+            SELECT l.DEPOT_ID, l.PRO_NO, l.MUTUALITY_DATE,
+                   CASE WHEN l.IN_OUT = 'I' THEN l.QTY ELSE -l.QTY END, l.PRICE
+            FROM dbo.INV_DEPOT_LOG l
+            JOIN MONTHROW mr ON mr.DEPOT_ID = l.DEPOT_ID AND mr.PRO_NO = l.PRO_NO
+            WHERE l.MUTUALITY_DATE > mr.MONTH_DATE AND l.MUTUALITY_DATE < @date1
+            UNION ALL
+            SELECT l.DEPOT_ID, l.PRO_NO, l.MUTUALITY_DATE,
+                   CASE WHEN l.IN_OUT = 'I' THEN l.QTY ELSE -l.QTY END, l.PRICE
+            FROM dbo.INV_DEPOT_LOG l
+            JOIN PAIR pa ON pa.DEPOT_ID = l.DEPOT_ID AND pa.PRO_NO = l.PRO_NO
+            WHERE l.MUTUALITY_DATE < @date1
+              AND NOT EXISTS (SELECT 1 FROM MONTHROW mr WHERE mr.DEPOT_ID = l.DEPOT_ID AND mr.PRO_NO = l.PRO_NO)
+        ),
+        OPENING AS (
+            SELECT o.DEPOT_ID, o.PRO_NO,
+                   SUM(o.QTY) AS QTY_Q,
+                   CASE WHEN SUM(o.QTY) = 0 THEN 0 ELSE SUM(o.QTY * o.PRICE) / SUM(o.QTY) END AS PRICE_Q
+            FROM (
+                SELECT DEPOT_ID, PRO_NO, APP_DATE, QTY, PRICE FROM OPENROWS
+                UNION ALL
+                SELECT pa.DEPOT_ID, pa.PRO_NO, CAST('1900-01-01' AS datetime), CAST(0 AS float), CAST(0 AS float)
+                FROM PAIR pa
+            ) o
+            GROUP BY o.DEPOT_ID, o.PRO_NO
+        ),
+        PERIOD AS (
+            SELECT l.DEPOT_ID, l.PRO_NO, l.MUTUALITY_DATE AS APP_DATE,
+                   CASE WHEN l.IN_OUT = 'I' THEN l.QTY ELSE 0 END AS QTY_J,
+                   CASE WHEN l.IN_OUT = 'I' THEN l.PRICE ELSE 0 END AS PRICE_J,
+                   CASE WHEN l.IN_OUT = 'O' THEN l.QTY ELSE 0 END AS QTY_X,
+                   CASE WHEN l.IN_OUT = 'O' THEN l.PRICE ELSE 0 END AS PRICE_X,
+                   l.MUTUALITY_TYPE AS BILL_CODE, l.MUTUALITY_NO AS BILL_NO
+            FROM dbo.INV_DEPOT_LOG l
+            JOIN PAIR pa ON pa.DEPOT_ID = l.DEPOT_ID AND pa.PRO_NO = l.PRO_NO
+            WHERE l.MUTUALITY_DATE BETWEEN @date1 AND @date2
+        ),
+        LIST AS (
+            SELECT o.DEPOT_ID, o.PRO_NO, CAST('1900-01-01' AS datetime) AS APP_DATE, o.QTY_Q,
+                   CAST(0 AS float) AS QTY_J, CAST(0 AS float) AS QTY_X, o.PRICE_Q,
+                   CAST(0 AS float) AS PRICE_J, CAST(0 AS float) AS PRICE_X,
+                   CAST(NULL AS nchar(10)) AS BILL_CODE, CAST(NULL AS nchar(20)) AS BILL_NO
+            FROM OPENING o
+            UNION ALL
+            SELECT p.DEPOT_ID, p.PRO_NO, p.APP_DATE, CAST(0 AS float), p.QTY_J, p.QTY_X,
+                   CAST(0 AS float), p.PRICE_J, p.PRICE_X, p.BILL_CODE, p.BILL_NO
+            FROM PERIOD p
+        ),
+        DAILY AS (
+            SELECT DEPOT_ID, PRO_NO, APP_DATE,
+                   SUM(QTY_Q + QTY_J) AS QTY_IN,
+                   SUM(QTY_Q * PRICE_Q + QTY_J * PRICE_J) AS AMT_IN,
+                   SUM(QTY_X) AS QTY_X
+            FROM LIST
+            GROUP BY DEPOT_ID, PRO_NO, APP_DATE
+        ),
+        COST AS (
+            SELECT d.DEPOT_ID, d.PRO_NO, d.APP_DATE, d.QTY_X,
+                   SUM(d.QTY_IN) OVER (PARTITION BY d.DEPOT_ID, d.PRO_NO ORDER BY d.APP_DATE ROWS UNBOUNDED PRECEDING) AS QTY_RUN,
+                   SUM(d.AMT_IN) OVER (PARTITION BY d.DEPOT_ID, d.PRO_NO ORDER BY d.APP_DATE ROWS UNBOUNDED PRECEDING) AS AMT_RUN
+            FROM DAILY d
+        )
+        SELECT l.DEPOT_ID, l.PRO_NO, l.APP_DATE, l.QTY_Q, l.QTY_J, l.QTY_X,
+               CASE WHEN @cb1 = 1 THEN CASE WHEN ISNULL(pr.LAST_PURCHASE_PRICE, 0) > 0 AND ISNULL(cu.CURR_RATE, 0) > 0
+                                            THEN pr.LAST_PURCHASE_PRICE * cu.CURR_RATE ELSE 0 END
+                    ELSE l.PRICE_Q END AS PRICE_Q,
+               CASE WHEN @cb1 = 1 THEN CASE WHEN ISNULL(pr.LAST_PURCHASE_PRICE, 0) > 0 AND ISNULL(cu.CURR_RATE, 0) > 0
+                                            THEN pr.LAST_PURCHASE_PRICE * cu.CURR_RATE ELSE 0 END
+                    ELSE l.PRICE_J END AS PRICE_J,
+               CASE WHEN @cb1 = 1 THEN CASE WHEN ISNULL(pr.LAST_PURCHASE_PRICE, 0) > 0 AND ISNULL(cu.CURR_RATE, 0) > 0
+                                            THEN pr.LAST_PURCHASE_PRICE * cu.CURR_RATE ELSE 0 END
+                    ELSE CASE WHEN l.QTY_X > 0
+                              THEN CASE WHEN ISNULL(c.QTY_RUN, 0) > 0 THEN c.AMT_RUN / c.QTY_RUN ELSE 0 END
+                              ELSE 0 END END AS PRICE_X,
+               l.BILL_CODE, l.BILL_NO, pr.PRO_NAME, pr.PRO_SPEC, b.BILL_NAME,
+               pr.SORT_ID, pr.COLOR_ID, s.SORT_NAME, cl.COLOR_NAME
+        FROM LIST l
+        LEFT JOIN COST c ON c.DEPOT_ID = l.DEPOT_ID AND c.PRO_NO = l.PRO_NO AND c.APP_DATE = l.APP_DATE
+        LEFT JOIN dbo.PRODUCT pr ON pr.PRO_NO = l.PRO_NO
+        LEFT JOIN dbo.BILLKIND b ON b.BILL_CODE = l.BILL_CODE
+        LEFT JOIN dbo.[SORT] s ON s.SORT_ID = pr.SORT_ID
+        LEFT JOIN dbo.COLOR cl ON cl.COLOR_ID = pr.COLOR_ID
+        LEFT JOIN dbo.CURR cu ON cu.CURR_ID = pr.LAST_PURCHASE_CURR_ID
+        """,
+        "DEPOT_ID, PRO_NO, APP_DATE",
+        [
+            new ReportAggregateParameter("depot1", "nchar", 10, SerialNo: 1),
+            new ReportAggregateParameter("depot2", "nchar", 10, SerialNo: 1, IsTo: true),
+            new ReportAggregateParameter("sort1", "nchar", 10, SerialNo: 2),
+            new ReportAggregateParameter("sort2", "nchar", 10, SerialNo: 2, IsTo: true),
+            new ReportAggregateParameter("pro1", "nvarchar", 30, SerialNo: 3),
+            new ReportAggregateParameter("pro2", "nvarchar", 30, SerialNo: 3, IsTo: true),
+            new ReportAggregateParameter("date1", "datetime", 8, SerialNo: 4),
+            new ReportAggregateParameter("date2", "datetime", 8, SerialNo: 4, IsTo: true),
+            new ReportAggregateParameter("cb1", "int", 4, SerialNo: 6),
+        ],
+        [
+            new ReportColumn("DEPOT_ID", "仓库编号", "nchar"),
+            new ReportColumn("PRO_NO", "料号", "nchar"),
+            new ReportColumn("APP_DATE", "日期", "datetime"),
+            new ReportColumn("QTY_Q", "期初数量", "float"),
+            new ReportColumn("QTY_J", "本期收入", "float"),
+            new ReportColumn("QTY_X", "本期发出", "float"),
+            new ReportColumn("PRICE_Q", "期初单价", "float"),
+            new ReportColumn("PRICE_J", "收入单价", "float"),
+            new ReportColumn("PRICE_X", "发出单价", "float"),
+            new ReportColumn("BILL_CODE", "单据类别", "nchar"),
+            new ReportColumn("BILL_NO", "单据号码", "nchar"),
+            new ReportColumn("PRO_NAME", "品名", "nvarchar"),
+            new ReportColumn("PRO_SPEC", "规格", "nvarchar"),
+            new ReportColumn("BILL_NAME", "单据名称", "nvarchar"),
+            new ReportColumn("SORT_ID", "类别编号", "nchar"),
+            new ReportColumn("COLOR_ID", "颜色编号", "nchar"),
+            new ReportColumn("SORT_NAME", "类别", "nvarchar"),
+            new ReportColumn("COLOR_NAME", "颜色", "nvarchar"),
+        ]);
+
     private static readonly Dictionary<string, ReportAggregate> Map =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -272,5 +442,10 @@ public static class ReportAggregateRegistry
             [HrEmployeeAge.ReportId] = HrEmployeeAge,
             [HrEmployeeSeniority.ReportId] = HrEmployeeSeniority,
             [HrDiary.ReportId] = HrDiary,
+            // 库存日报三个变体（正表 / 横表 / 汇总）在旧实现里共用同一个过程、同参数、同输出列，
+            // 差异只存在于旧打印模板 ⇒ 现代引擎下三者数据相同
+            [InventoryDaily.ReportId] = InventoryDaily,
+            ["INV_Pro_Depot_1_H"] = InventoryDaily with { ReportId = "INV_Pro_Depot_1_H" },
+            ["INV_Pro_Depot_1_sum"] = InventoryDaily with { ReportId = "INV_Pro_Depot_1_sum" },
         };
 }
