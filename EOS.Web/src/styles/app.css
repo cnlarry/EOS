@@ -538,10 +538,16 @@ button, input, select { font: inherit; }
 .erp-workspace-tabs .nav-link:hover { position: relative; z-index: 1; }
 /* 激活标签下方是页面底色而非面板，故吃掉分隔线用 body 底色（系统面板版用的是 surface） */
 .erp-workspace-tabs .nav-link.active { border-bottom: 1px solid var(--tblr-body-bg); }
+/* 激活态再加一条蓝色粗线压在分隔线上：白底之外多一层"我在哪儿"的强提示。
+   用伪元素而非 border-bottom，避免边框宽度变化挤动标签文字。 */
+.erp-workspace-tabs .nav-link.active::after { position: absolute; right: -1px; bottom: -1px; left: -1px; height: 3px; content: ''; background: var(--tblr-primary); }
 .erp-workspace-tabs .nav-link:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }
+/* 标签文字吃掉剩余宽度：关闭按钮因此贴右（与右边框留出 padding 的 10px），
+   长标题则在此处省略号截断 */
+.erp-workspace-tabs .erp-tab-label { flex: 1 1 auto; min-width: 0; }
 .erp-tab-label { overflow: hidden; text-overflow: ellipsis; }
 .erp-tab-dirty { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--tblr-primary); }
-.erp-tab-close { display: grid; flex: 0 0 auto; place-items: center; width: 18px; height: 18px; padding: 0; color: inherit; background: transparent; border: 0; border-radius: 4px; opacity: .6; }
+.erp-tab-close { display: grid; flex: 0 0 auto; place-items: center; width: 18px; height: 18px; margin-left: auto; padding: 0; color: inherit; background: transparent; border: 0; border-radius: 4px; opacity: .6; }
 .erp-tab-close:hover { opacity: 1; background: var(--tblr-border-color); }
 .erp-tabbar-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; margin-left: auto; }
 .erp-tab-hint { display: flex; align-items: center; padding: 0 10px; color: var(--tblr-primary); font-size: 12px; white-space: nowrap; }
