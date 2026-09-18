@@ -63,6 +63,7 @@ public static class EffectRegistry
         ["cop-account-rollup"] = Status.Service,
         ["cop-prepay-rollup"] = Status.Service,
         ["purchase-due-rollup"] = Status.Service,
+        ["pur-prepay-rollup"] = Status.Service,
         // Placeholder-row + params shapes collected; handlers pending (see docs/plans/服务键形态证据.md)
         ["hr-usage-sync"] = Status.Service,
         ["employee-contract-sync"] = Status.Service,

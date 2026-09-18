@@ -121,6 +121,7 @@ public static class EffectStructSchemas
             ["cop-account-rollup"] = Set("master", "detail", "roundDigits"),
             ["cop-prepay-rollup"] = Set("master", "detail", "roundDigits"),
             ["purchase-due-rollup"] = Set("master", "detail", "roundDigits"),
+            ["pur-prepay-rollup"] = Set("master", "detail", "roundDigits"),
             ["sample-stock-adjust"] = Set("direction", "targetTable", "fieldMap"),
             ["set-state"] = Set("targetTable", "stateField", "stateValue", "state", "sourceField", "source", "dateField", "dateMode", "targets"),
             ["stamp-last-activity"] = Set("targetTable", "field", "fields", "sourceField", "matchBy", "condition"),
