@@ -797,6 +797,92 @@ public sealed class EffectValidationLiveDataTests
         }
     }
 
+    /// <summary>
+    /// 生产记录单（180401）"完工数量不超制令制程允许生产最大数量"已由保存期 qty-not-exceed 承担：
+    /// 来源按（制令别/制令号/工序）分组求和，被引用行按同一键取 `MAX`（旧实现即 `MAX(允许量)`／
+    /// `MAX(计划量)`，同一工序有多条制程行时不能按"任意一行"取数），命中回报本单**逐条明细序号**。
+    /// 用例把旧实现的那条 SQL 内联为基准，逐字比对引擎输出。
+    /// </summary>
+    [Fact]
+    public async Task 生产记录单_不超制令制程允许最大数量_被引用行聚合与逐明细序号诊断()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.MOC_PRODUCE_PROCESS_D (PRODUCE_TYPE, PRODUCE_NO, SERIAL_NO, PROCEDURE_ID, PROCESS_OVER_QTY, FINISHED_PLAN_QTY)
+                    VALUES (N'ADR12', N'ADR12PRO1', 1, N'PROC1', 100, 50),
+                           (N'ADR12', N'ADR12PRO1', 2, N'PROC1', 200, 0);
+                INSERT INTO dbo.SFC_DAILY_D (DAILY_TYPE, DAILY_NO, SERIAL_NO, PRODUCE_TYPE, PRODUCE_NO, PROCEDURE_ID, FINISHED_QTY)
+                    VALUES (N'ADR12', N'ADR12DAILY1', 1, N'ADR12', N'ADR12PRO1', N'PROC1', 30),
+                           (N'ADR12', N'ADR12DAILY1', 2, N'ADR12', N'ADR12PRO1', N'PROC1', 40);
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            var plan = await LoadPlanAsync(connection, transaction, 180401, token, "qty-not-exceed");
+            var keys = new[] { "ADR12", "ADR12DAILY1" };
+
+            // 被引用行取 MAX：允许量 200 vs 计划量 0 + 本单 70 → 不超，放行；
+            // 若按"任意一行"（允许量 100 / 计划量 50）取数会误判为超量——这一步正是聚合口径的守卫。
+            await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, keys);
+            Assert.Null(await LegacyDailyMessageAsync(connection, transaction, token));
+
+            // 计划量的最大值抬到 200 → 200 < 200 + 70 命中，逐明细回报序号，文案与旧实现逐字一致
+            await using (var raise = new SqlCommand("""
+                UPDATE dbo.MOC_PRODUCE_PROCESS_D SET FINISHED_PLAN_QTY = 200
+                    WHERE PRODUCE_TYPE = N'ADR12' AND PRODUCE_NO = N'ADR12PRO1' AND SERIAL_NO = 2;
+                """, connection, transaction))
+            {
+                await raise.ExecuteNonQueryAsync(token);
+            }
+            var legacy = await LegacyDailyMessageAsync(connection, transaction, token);
+            var failure = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, keys));
+            Assert.Equal("以下序号项数量超过制令制程允许生产最大数量 \r\n1\r\n2", failure.Message);
+            Assert.Equal(legacy, failure.Message);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
+    /// <summary>已退役的 C# 判据原样内联，作为本用例的基准文案（不在生产代码里保留）。</summary>
+    private static async Task<string?> LegacyDailyMessageAsync(
+        SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    {
+        await using var qty = new SqlCommand("""
+            SELECT TOP 11 d.SERIAL_NO
+            FROM dbo.SFC_DAILY_D d
+            JOIN (SELECT d2.PRODUCE_TYPE, d2.PRODUCE_NO, d2.PROCEDURE_ID,
+                         MAX(ISNULL(p.PROCESS_OVER_QTY,0)) PROCESS_OVER_QTY,
+                         MAX(ISNULL(p.FINISHED_PLAN_QTY,0)) FINISHED_PLAN_QTY,
+                         SUM(ISNULL(d2.FINISHED_QTY,0)) DAILY_QTY
+                  FROM dbo.SFC_DAILY_D d2
+                  JOIN dbo.MOC_PRODUCE_PROCESS_D p
+                    ON p.PRODUCE_TYPE=d2.PRODUCE_TYPE AND p.PRODUCE_NO=d2.PRODUCE_NO AND p.PROCEDURE_ID=d2.PROCEDURE_ID
+                  WHERE d2.DAILY_TYPE=@Type AND d2.DAILY_NO=@No
+                  GROUP BY d2.PRODUCE_TYPE, d2.PRODUCE_NO, d2.PROCEDURE_ID) g
+              ON g.PRODUCE_TYPE=d.PRODUCE_TYPE AND g.PRODUCE_NO=d.PRODUCE_NO AND g.PROCEDURE_ID=d.PROCEDURE_ID
+            WHERE d.DAILY_TYPE=@Type AND d.DAILY_NO=@No
+              AND g.PROCESS_OVER_QTY < g.FINISHED_PLAN_QTY + g.DAILY_QTY
+            ORDER BY d.SERIAL_NO;
+            """, connection, transaction);
+        qty.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = "ADR12";
+        qty.Parameters.Add("@No", SqlDbType.NChar, 20).Value = "ADR12DAILY1";
+        await using var reader = await qty.ExecuteReaderAsync(token);
+        var lines = new List<string>();
+        while (await reader.ReadAsync(token)) lines.Add(Convert.ToInt32(reader.GetValue(0)).ToString());
+        return lines.Count == 0
+            ? null
+            : "以下序号项数量超过制令制程允许生产最大数量 \r\n" + string.Join("\r\n", lines.Take(10));
+    }
+
     [Fact]
     public async Task 量产模入库_受门控的入库不超完工未入_分组求和与源列聚合诊断()
     {

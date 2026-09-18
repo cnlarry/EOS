@@ -242,6 +242,10 @@ public sealed class EffectValidationExecutor
             // 等于悄悄放宽约束，故 thisQty.agg=SUM 时先按 match 键分组求和再比。
             var grouped = dimensions.Any(dimension => dimension.Aggregate);
             var diagnosticAggregates = ParseDiagnosticAggregates(check, grouped);
+            var sourceRowDiagnostics = ParseSourceRowDiagnostics(check, grouped);
+            // 被引用行聚合：旧实现按定位键 `MAX(列)` 取值（如同一制令工序有多条制程行时取允许量的最大值），
+            // 直接取"任意一行"会比旧判据更严，故需要时把被引用表先按定位键聚合成一行。
+            var targetAggregate = ParseTargetAggregate(check);
             string fromSql;
             string correlation;
             if (grouped)
@@ -263,14 +267,14 @@ public sealed class EffectValidationExecutor
                 }
                 fromSql = "(SELECT " + groupBy + projections + extras + " FROM dbo."
                     + EffectConditionCompiler.Identifier(sourceTable) + " S WHERE " + documentScope
-                    + " GROUP BY " + groupBy + ") S1 CROSS JOIN dbo."
-                    + EffectConditionCompiler.Identifier(targetTable) + " T";
+                    + " GROUP BY " + groupBy + ") S1 CROSS JOIN "
+                    + TargetSourceSql(targetTable, match, targetAggregate, dimensions, check);
             }
             else
             {
                 correlation = BuildMatchCorrelation(match, "S", "T");
-                fromSql = "dbo." + EffectConditionCompiler.Identifier(sourceTable) + " S CROSS JOIN dbo."
-                    + EffectConditionCompiler.Identifier(targetTable) + " T";
+                fromSql = "dbo." + EffectConditionCompiler.Identifier(sourceTable) + " S CROSS JOIN "
+                    + TargetSourceSql(targetTable, match, targetAggregate, dimensions, check);
             }
 
             // 比较形态：本条超限额（usage + this > limit）、按进度不得减少（limit + this < usage）、
@@ -320,7 +324,9 @@ public sealed class EffectValidationExecutor
                         && !string.IsNullOrWhiteSpace(checkMessage.GetString())
                             ? checkMessage.GetString()!
                             : $"存在{(mode == "not-below-progress" ? "低于进度" : mode == "not-below-usage" ? "低于已发生量" : "超出限额")}的明细行（{stage}）。");
-                var cells = BuildQtyDiagnosticCells(check, grouped, multiDimension, diagnosticAggregates);
+                var cells = sourceRowDiagnostics
+                    ? BuildSourceRowDiagnosticCells(check)
+                    : BuildQtyDiagnosticCells(check, grouped, multiDimension, diagnosticAggregates);
                 if (cells is null)
                     return message;
                 // 诊断行的拼接方式各族不同：多为"列间 4 空格、行间 CRLF"，也有"单列多值、一行内联"（值间 2 空格）。
@@ -328,11 +334,14 @@ public sealed class EffectValidationExecutor
                     && cellElement.ValueKind == JsonValueKind.String ? cellElement.GetString()! : "    ";
                 var rowSeparator = check.TryGetProperty("diagnosticRowSeparator", out var rowElement)
                     && rowElement.ValueKind == JsonValueKind.String ? rowElement.GetString()! : "\r\n";
+                // 诊断口径一：每个违规分组一行（默认）。口径二（diagnosticRows=SOURCE）：列出违规分组下的
+                // **源明细行**，如"以下序号项数量超过允许值"要回报本单所有越界明细的序号。
+                var diagnosticSql = sourceRowDiagnostics
+                    ? BuildSourceRowDiagnosticSql(check, cells, match, sourceTable!, fromSql, predicate, documentScope)
+                    : "SELECT TOP (" + MaxRowsOf(check).ToString(CultureInfo.InvariantCulture) + ") "
+                        + string.Join(", ", cells) + " FROM " + fromSql + " WHERE " + predicate;
                 var lines = new List<string>();
-                await using var lineCommand = new SqlCommand(
-                    "SELECT TOP (" + MaxRowsOf(check).ToString(CultureInfo.InvariantCulture) + ") "
-                    + string.Join(", ", cells) + " FROM " + fromSql + " WHERE " + predicate,
-                    connection, transaction);
+                await using var lineCommand = new SqlCommand(diagnosticSql, connection, transaction);
                 foreach (var parameter in parameters)
                     lineCommand.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
                 await using var reader = await lineCommand.ExecuteReaderAsync(token);
@@ -350,6 +359,136 @@ public sealed class EffectValidationExecutor
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// 被引用表的取数形式：默认直接引用（`dbo.TBL T`）；声明 `targetAgg` 时先按 match 的定位键
+    /// 聚合成一行再参与比较（`MAX/MIN/SUM`，如"同一制令工序有多条制程行时取允许量最大值"）。
+    /// 聚合列 = usage/limit 与 TARGET 诊断用到的列（定位键列原样投影）。
+    /// </summary>
+    private static string TargetSourceSql(
+        string targetTable,
+        IReadOnlyList<EffectMatchItem> match,
+        string? targetAggregate,
+        IReadOnlyList<QuantityDimension> dimensions,
+        JsonElement check)
+    {
+        var table = "dbo." + EffectConditionCompiler.Identifier(targetTable);
+        if (targetAggregate is null)
+            return table + " T";
+        var keys = match.Select(pair => pair.TargetColumn).ToList();
+        var aggregated = new List<string>();
+        foreach (var column in dimensions.SelectMany(item => item.UsageFields.Concat(item.LimitFields))
+                     .Concat(DiagnosticTargetColumns(check)))
+        {
+            if (!keys.Contains(column, StringComparer.OrdinalIgnoreCase) && !aggregated.Contains(column, StringComparer.OrdinalIgnoreCase))
+                aggregated.Add(column);
+        }
+        var projections = keys.Select(key => "T0." + EffectConditionCompiler.Identifier(key))
+            .Concat(aggregated.Select(column => targetAggregate + "(T0." + EffectConditionCompiler.Identifier(column)
+                + ") AS " + EffectConditionCompiler.Identifier(column)));
+        return "(SELECT " + string.Join(", ", projections) + " FROM " + table + " T0 GROUP BY "
+            + string.Join(", ", keys.Select(key => "T0." + EffectConditionCompiler.Identifier(key))) + ") T";
+    }
+
+    private static IEnumerable<string> DiagnosticTargetColumns(JsonElement check)
+    {
+        if (!check.TryGetProperty("diagnosticFields", out var fields) || fields.ValueKind != JsonValueKind.Array)
+            yield break;
+        foreach (var field in fields.EnumerateArray())
+        {
+            if (field.ValueKind != JsonValueKind.Object)
+                continue;
+            var scope = field.TryGetProperty("scope", out var scopeElement) && scopeElement.ValueKind == JsonValueKind.String
+                ? scopeElement.GetString()!.Trim().ToUpperInvariant()
+                : "SOURCE";
+            if (scope != "TARGET")
+                continue;
+            if (field.TryGetProperty("field", out var nameElement) && nameElement.ValueKind == JsonValueKind.String)
+                yield return nameElement.GetString()!.Trim();
+        }
+    }
+
+    /// <summary>
+    /// `targetAgg`（被引用行按定位键聚合后取值，闭集 MAX/MIN/SUM）：整条 check 共用一个聚合函数——
+    /// 不同列用不同聚合会让"哪一列是什么口径"无从判断，配置侧也按此校验。
+    /// </summary>
+    private static string? ParseTargetAggregate(JsonElement check)
+    {
+        if (!check.TryGetProperty("targetAgg", out var element) || element.ValueKind != JsonValueKind.String)
+            return null;
+        var value = element.GetString()!.Trim().ToUpperInvariant();
+        return value switch
+        {
+            "MAX" or "MIN" or "SUM" => value,
+            _ => throw new EffectConfigException($"qty-not-exceed.targetAgg '{value}' 不在闭集内（MAX/MIN/SUM）。"),
+        };
+    }
+
+    /// <summary>
+    /// `diagnosticRows=SOURCE`：诊断不按"每组一行"输出，而是列出违规分组下的**源明细行**
+    /// （如"以下序号项数量超过允许值"回报本单每条越界明细的序号）。要求来源走分组形态。
+    /// </summary>
+    private static bool ParseSourceRowDiagnostics(JsonElement check, bool grouped)
+    {
+        if (!check.TryGetProperty("diagnosticRows", out var element) || element.ValueKind != JsonValueKind.String)
+            return false;
+        var value = element.GetString()!.Trim().ToUpperInvariant();
+        if (value != "SOURCE")
+            throw new EffectConfigException($"qty-not-exceed.diagnosticRows '{value}' 不在闭集内（仅 SOURCE）。");
+        if (!grouped)
+            throw new EffectConfigException("qty-not-exceed.diagnosticRows=SOURCE 需要 thisQty.agg=SUM 的分组形态。");
+        return true;
+    }
+
+    /// <summary>
+    /// `diagnosticRows=SOURCE` 的诊断列：只能是**源明细列**（外层查询里没有被引用行、也没有分组
+    /// 求和投影可引用，故一律取原始来源别名 `S`）。
+    /// </summary>
+    private static List<string>? BuildSourceRowDiagnosticCells(JsonElement check)
+    {
+        if (!check.TryGetProperty("diagnosticFields", out var fields) || fields.ValueKind != JsonValueKind.Array
+            || fields.GetArrayLength() == 0)
+            return null;
+        var cells = new List<string>();
+        foreach (var field in fields.EnumerateArray())
+        {
+            var name = field.ValueKind == JsonValueKind.String
+                ? field.GetString()!.Trim()
+                : field.ValueKind == JsonValueKind.Object
+                    && field.TryGetProperty("field", out var nameElement)
+                    && nameElement.ValueKind == JsonValueKind.String
+                        ? nameElement.GetString()!.Trim()
+                        : throw new EffectConfigException("qty-not-exceed.diagnosticFields 缺少 field。");
+            cells.Add("S." + EffectConditionCompiler.Identifier(name));
+        }
+        return cells;
+    }
+
+    /// <summary>
+    /// 逐源明细行的诊断查询：把违规分组（按 match 键定位）与源明细表重新连接，
+    /// 列出每个违规分组下的明细行，按第一个诊断列排序（与旧实现 `ORDER BY SERIAL_NO` 一致）。
+    /// </summary>
+    private static string BuildSourceRowDiagnosticSql(
+        JsonElement check,
+        IReadOnlyList<string> cells,
+        IReadOnlyList<EffectMatchItem> match,
+        string sourceTable,
+        string fromSql,
+        string predicate,
+        string documentScope)
+    {
+        var keys = string.Join(", ", match.Select(pair =>
+            "S1." + EffectConditionCompiler.Identifier(pair.Source.Field!)));
+        var join = string.Join(" AND ", match.Select(pair =>
+            "V." + EffectConditionCompiler.Identifier(pair.Source.Field!) + " = S."
+            + EffectConditionCompiler.Identifier(pair.Source.Field!)));
+        return "SELECT TOP (" + MaxRowsOf(check).ToString(CultureInfo.InvariantCulture) + ") "
+            + string.Join(", ", cells)
+            + " FROM dbo." + EffectConditionCompiler.Identifier(sourceTable) + " S"
+            + " INNER JOIN (SELECT " + keys + " FROM " + fromSql + " WHERE " + predicate + ") V ON " + join
+            + " WHERE " + documentScope
+            + " ORDER BY " + cells[0];
     }
 
     /// <summary>

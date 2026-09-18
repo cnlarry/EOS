@@ -360,6 +360,67 @@ public class ValidationRuleRegistryFailClosedTests
     }
 
     [Fact]
+    public void QuantityCheck_AcceptsTargetAggregateAndSourceRowDiagnostics()
+    {
+        // 被引用行按定位键聚合（MAX/MIN/SUM）+ 逐源明细行的诊断（diagnosticRows=SOURCE）
+        var ok = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"MOC_PRODUCE_PROCESS_D",
+             "match":[{"target":"PRODUCE_TYPE","source":{"scope":"DETAIL","field":"PRODUCE_TYPE"}},
+                      {"target":"PRODUCE_NO","source":{"scope":"DETAIL","field":"PRODUCE_NO"}}],
+             "thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"FINISHED_QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["FINISHED_PLAN_QTY"]},
+             "limit":{"scope":"TARGET","fields":["PROCESS_OVER_QTY"]},
+             "targetAgg":"MAX","diagnosticRows":"SOURCE",
+             "diagnosticFields":["SERIAL_NO"],
+             "message":"超出允许数量 \r\n{ROWS}"}]}
+            """));
+        Assert.Empty(ok);
+
+        var badAgg = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"MOC_PRODUCE_PROCESS_D",
+             "match":[{"target":"PRODUCE_NO","source":{"scope":"DETAIL","field":"PRODUCE_NO"}}],
+             "thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"FINISHED_QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["FINISHED_PLAN_QTY"]},
+             "limit":{"scope":"TARGET","fields":["PROCESS_OVER_QTY"]},
+             "targetAgg":"AVG"}]}
+            """));
+        Assert.Contains(badAgg, issue => issue.Contains("targetAgg 仅允许 MAX/MIN/SUM"));
+
+        // 逐明细诊断要求分组形态，且诊断列不能取被引用行或求和投影
+        var notGrouped = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"MOC_PRODUCE_PROCESS_D",
+             "match":[{"target":"PRODUCE_NO","source":{"scope":"DETAIL","field":"PRODUCE_NO"}}],
+             "thisQty":{"scope":"DETAIL","terms":[{"field":"FINISHED_QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["FINISHED_PLAN_QTY"]},
+             "limit":{"scope":"TARGET","fields":["PROCESS_OVER_QTY"]},
+             "targetAgg":"MAX","diagnosticRows":"SOURCE","diagnosticFields":["SERIAL_NO"]}]}
+            """));
+        Assert.Contains(notGrouped, issue => issue.Contains("需要 thisQty.agg=SUM 的分组形态"));
+
+        var badScope = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"MOC_PRODUCE_PROCESS_D",
+             "match":[{"target":"PRODUCE_NO","source":{"scope":"DETAIL","field":"PRODUCE_NO"}}],
+             "thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"FINISHED_QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["FINISHED_PLAN_QTY"]},
+             "limit":{"scope":"TARGET","fields":["PROCESS_OVER_QTY"]},
+             "targetAgg":"MAX","diagnosticRows":"SOURCE",
+             "diagnosticFields":[{"scope":"TARGET","field":"PROCESS_OVER_QTY"}],
+             "message":"超出 \r\n{ROWS}"}]}
+            """));
+        Assert.Contains(badScope, issue => issue.Contains("仅允许 SOURCE"));
+
+        var badRows = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"MOC_PRODUCE_PROCESS_D",
+             "match":[{"target":"PRODUCE_NO","source":{"scope":"DETAIL","field":"PRODUCE_NO"}}],
+             "thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"FINISHED_QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["FINISHED_PLAN_QTY"]},
+             "limit":{"scope":"TARGET","fields":["PROCESS_OVER_QTY"]},
+             "diagnosticRows":"GROUP"}]}
+            """));
+        Assert.Contains(badRows, issue => issue.Contains("diagnosticRows 仅允许 SOURCE"));
+    }
+
+    [Fact]
     public void QuantityCheck_ControllerKeys()
     {
         var issues = Validate("qty-not-exceed", Params("""

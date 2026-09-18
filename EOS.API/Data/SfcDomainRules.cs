@@ -116,42 +116,5 @@ public static class SfcDomainRules
 
     /// <summary>产品制程（P_SFC_PROCESS）AfterSave：固定时间不得为 0 由校验目录（line-require）承担。</summary>
 
-    /// <summary>
-    /// Daily-record save: rejects quantities above the maximum allowed by the production process.
-    /// </summary>
-    public static async Task<SprocResult> SfcDailyAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "生产记录单领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        await using (var qty = new SqlCommand("""
-            SELECT TOP 11 d.SERIAL_NO
-            FROM dbo.SFC_DAILY_D d
-            JOIN (SELECT d2.PRODUCE_TYPE, d2.PRODUCE_NO, d2.PROCEDURE_ID,
-                         MAX(ISNULL(p.PROCESS_OVER_QTY,0)) PROCESS_OVER_QTY,
-                         MAX(ISNULL(p.FINISHED_PLAN_QTY,0)) FINISHED_PLAN_QTY,
-                         SUM(ISNULL(d2.FINISHED_QTY,0)) DAILY_QTY
-                  FROM dbo.SFC_DAILY_D d2
-                  JOIN dbo.MOC_PRODUCE_PROCESS_D p
-                    ON p.PRODUCE_TYPE=d2.PRODUCE_TYPE AND p.PRODUCE_NO=d2.PRODUCE_NO AND p.PROCEDURE_ID=d2.PROCEDURE_ID
-                  WHERE d2.DAILY_TYPE=@Type AND d2.DAILY_NO=@No
-                  GROUP BY d2.PRODUCE_TYPE, d2.PRODUCE_NO, d2.PROCEDURE_ID) g
-              ON g.PRODUCE_TYPE=d.PRODUCE_TYPE AND g.PRODUCE_NO=d.PRODUCE_NO AND g.PROCEDURE_ID=d.PROCEDURE_ID
-            WHERE d.DAILY_TYPE=@Type AND d.DAILY_NO=@No
-              AND g.PROCESS_OVER_QTY < g.FINISHED_PLAN_QTY + g.DAILY_QTY
-            ORDER BY d.SERIAL_NO;
-            """, connection, transaction))
-        {
-            qty.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
-            qty.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
-            await using var reader = await qty.ExecuteReaderAsync(token);
-            var lines = new List<string>();
-            while (await reader.ReadAsync(token)) lines.Add(Convert.ToInt32(reader.GetValue(0)).ToString());
-            if (lines.Count > 0)
-                return new(false, "以下序号项数量超过制令制程允许生产最大数量 \r\n" + string.Join("\r\n", lines.Take(10)));
-        }
-        return new(true, null);
-    }
+    /// <summary>生产记录单（P_SFC_DAILY）AfterSave：完工数量不超制令制程允许最大数量由校验目录承担。</summary>
 }
