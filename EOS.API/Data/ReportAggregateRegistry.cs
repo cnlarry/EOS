@@ -285,7 +285,9 @@ public static class ReportAggregateRegistry
         "INV_Pro_Depot_1",
         """
         WITH PAIR AS (
-            SELECT i.DEPOT_ID, i.PRO_NO
+            -- 同一 (库别, 料号) 在余额表中可能对应多行，先取出唯一组合，
+            -- 否则后续按这两列关联流水时会成倍放大期初与本期收发。
+            SELECT DISTINCT i.DEPOT_ID, i.PRO_NO
             FROM dbo.INV_PRO_DEPOT i
             JOIN dbo.PRODUCT pr ON pr.PRO_NO = i.PRO_NO
             WHERE pr.PRO_TYPE = '3'
