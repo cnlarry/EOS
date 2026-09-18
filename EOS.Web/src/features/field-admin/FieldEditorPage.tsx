@@ -1,10 +1,11 @@
 import { IconArrowLeft, IconDeviceFloppy, IconPlus, IconX } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useBlocker, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
 import { usePageBreadcrumb } from '../../components/layout/PageBreadcrumbContext'
+import { useTabDirty } from '../../components/layout/workspaceDirty'
 import { apiClient } from '../../services/api'
 import {
   FieldEditorForm,
@@ -112,25 +113,14 @@ export function FieldEditorRoute() {
   const gotoField = (key: string) => {
     navigate(`/admin/fields/${encodeURIComponent(tableId)}/${encodeURIComponent(key)}${moduleId ? `?moduleId=${moduleId}` : ''}`)
   }
-  const actionRef = useRef<{ save: () => void } | null>(null)
+  const actionRef = useRef<{ save: () => void; saveAsync: () => Promise<void> } | null>(null)
   const [saveState, setSaveState] = useState({ canSave: false, saving: false, dirty: false })
-  const dirtyRef = useRef(false)
 
-  // 未保存离开确认：站内跳转（返回/取消/左栏切换/浏览器后退）经 useBlocker 拦截，
-  // 刷新/关闭页签走 beforeunload；dirtyRef 供 blocker 回调在导航时刻读取最新值。
-  useEffect(() => {
-    if (!saveState.dirty) return
-    const handler = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
-  }, [saveState.dirty])
-
-  const blocker = useBlocker(() => dirtyRef.current)
-  useEffect(() => {
-    if (blocker.state !== 'blocked') return
-    if (window.confirm('字段设置有未保存的修改，确定离开吗？')) blocker.proceed()
-    else blocker.reset()
-  }, [blocker])
+  // 未保存改动登记给外壳：关闭标签、离开当前标签时的确认与保存由外壳统一处理
+  useTabDirty(saveState.dirty, {
+    save: () => actionRef.current?.saveAsync(),
+    discard: () => {},
+  })
 
   const endpoints: FieldEditorEndpoints = useMemo(() => ({
     load: async () => {
@@ -210,7 +200,7 @@ export function FieldEditorRoute() {
                     onSaved={() => navigate(backTo)}
                     historyTab={!isNew}
                     actionRef={actionRef}
-                    onStateChange={state => { dirtyRef.current = state.dirty; setSaveState(state) }}
+                    onStateChange={setSaveState}
                   />
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { tabLinkHandler, useOpenTab } from '../../components/layout/WorkspaceNavContext'
 import { workbenchList, workbenchView } from './workbenchPath'
 
 interface FieldBrowseLinkProps {
@@ -22,12 +23,13 @@ interface FieldBrowseLinkProps {
  * （目标模块可达性 + 主键映射 + 白名单均服务端判定；权限最终由目标 /view、/record
  * 端点重新授权）。此处：
  *  - 目标模块可用且有权限时，优先跳转目标记录浏览
- *    `/workbench/{m}/view/{主键段...}?from={来源模块}`（同页签，与列表双击进浏览一致）；
+ *    `/workbench/{m}/view/{主键段...}?from={来源模块}`，并在新标签中打开，来源工作台保持不动；
  *  - 键无法完整组装（目标不可记录浏览/键值缺失）时降级为目标模块列表 `/workbench/{m}`；
  *  - 无权限或目标不可达时按纯文本渲染。
  * 点击链接不触发行选择（stopPropagation）。
  */
 export function FieldBrowseLink({ value, browseModuleId, browseKeyFields, row, fromModuleId, canBrowse = true }: FieldBrowseLinkProps) {
+  const openTab = useOpenTab()
   if (!value || !browseModuleId || browseModuleId <= 0 || !canBrowse) return <>{value}</>
   const recordKeys = browseKeyFields?.length && row
     ? browseKeyFields.map(key => String(row[key] ?? '')).filter(keyValue => keyValue !== '')
@@ -36,8 +38,16 @@ export function FieldBrowseLink({ value, browseModuleId, browseKeyFields, row, f
   const target = isRecordLink
     ? workbenchView(browseModuleId, recordKeys, fromModuleId)
     : workbenchList(browseModuleId)
+  const handleClick = tabLinkHandler(openTab, target)
   return (
-    <Link className="erp-browse-link" to={target} onClick={(event) => event.stopPropagation()}>
+    <Link
+      className="erp-browse-link"
+      to={target}
+      onClick={(event) => {
+        event.stopPropagation()
+        handleClick(event)
+      }}
+    >
       {value}
     </Link>
   )

@@ -40,17 +40,19 @@ describe('RouteGuards', () => {
     expect(screen.getByText('OK')).toBeInTheDocument()
   })
 
-  it('RequirePermission 无权限跳转 /forbidden', () => {
+  it('RequirePermission 无权限就地渲染 403，不跳转（避免连带卸载工作区）', () => {
     vi.mocked(useAuth).mockReturnValue({ ...authed, hasPermission: () => false })
     render(
       <MemoryRouter initialEntries={['/p']}>
         <Routes>
-          <Route path="/forbidden" element={<div>FORBIDDEN</div>} />
+          <Route path="/forbidden" element={<div>FORBIDDEN_PAGE</div>} />
           <Route element={<RequirePermission permission="x" />}><Route path="/p" element={<div>OK</div>} /></Route>
         </Routes>
       </MemoryRouter>,
     )
-    expect(screen.getByText('FORBIDDEN')).toBeInTheDocument()
+    expect(screen.getByText('没有访问权限')).toBeInTheDocument()
+    expect(screen.queryByText('FORBIDDEN_PAGE')).not.toBeInTheDocument()
+    expect(screen.queryByText('OK')).not.toBeInTheDocument()
   })
 
   it('RequirePermission 有权限渲染子路由', () => {

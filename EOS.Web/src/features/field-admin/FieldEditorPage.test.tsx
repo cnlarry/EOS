@@ -3,6 +3,7 @@ import { apiClientMock } from '../../test/apiMock'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { WorkspaceDirtyContext, WorkspaceTabContext, type TabDirtyHandlers } from '../../components/layout/workspaceDirty'
 import { FieldEditorRoute } from './FieldEditorPage'
 import type { FieldInput } from './FieldEditorForm'
 
@@ -43,7 +44,10 @@ const history = [
   },
 ]
 
-function renderPage(initialEntry = '/admin/fields/PRODUCT_EDITION/PRO_NO') {
+function renderPage(initialEntry = '/admin/fields/PRODUCT_EDITION/PRO_NO', dirty?: {
+  setDirty: (tabId: string, dirty: boolean) => void
+  register: (tabId: string, handlers: TabDirtyHandlers) => () => void
+}) {
   const router = createMemoryRouter(
     [
       { path: '/admin/fields/:tableId/:fieldId', element: <FieldEditorRoute /> },
@@ -51,9 +55,14 @@ function renderPage(initialEntry = '/admin/fields/PRODUCT_EDITION/PRO_NO') {
     ],
     { initialEntries: [initialEntry] },
   )
+  // 脏位登记给外壳（WorkspaceDirtyContext），未注入时按无外壳独立渲染
   return renderWithProviders(
-      <RouterProvider router={router} />
-)
+    <WorkspaceTabContext.Provider value="t1">
+      <WorkspaceDirtyContext.Provider value={dirty ? { register: dirty.register, setDirty: dirty.setDirty } : null}>
+        <RouterProvider router={router} />
+      </WorkspaceDirtyContext.Provider>
+    </WorkspaceTabContext.Provider>,
+  )
 }
 
 function installMocks() {
@@ -113,14 +122,12 @@ describe('FieldEditorRoute', () => {
     expect(screen.getByText(/管理员/)).toBeInTheDocument()
   })
 
-  it('有未保存修改时返回弹出离开确认，取消则留在页面', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    renderPage()
+  it('有未保存修改时把脏位登记给外壳（离开确认与保存由外壳统一处理）', async () => {
+    const setDirty = vi.fn()
+    renderPage('/admin/fields/PRODUCT_EDITION/PRO_NO', { setDirty, register: vi.fn() })
     await waitFor(() => expect(screen.getByDisplayValue('产品编号')).toBeInTheDocument())
     fireEvent.change(screen.getByDisplayValue('产品编号'), { target: { value: '改过的标题' } })
-    fireEvent.click(screen.getByRole('button', { name: '返回' }))
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalledWith('字段设置有未保存的修改，确定离开吗？'))
-    expect(screen.getByDisplayValue('改过的标题')).toBeInTheDocument()
+    await waitFor(() => expect(setDirty).toHaveBeenCalledWith('t1', true))
   })
 
   it('无未保存修改时返回不弹确认直接离开', async () => {

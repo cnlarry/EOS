@@ -330,6 +330,8 @@ export function ErpTable<TData>({
     const sample = container.querySelector('tbody tr:not(.erp-virtual-spacer)') as HTMLElement | null
     const measured = sample ? sample.offsetHeight : 0
     if (measured > 0) rowHeightRef.current = measured
+    // 容器暂无布局高度（所在标签被隐藏）时不能据此判定“无需窗口化”，否则恢复可见后不会自恢复
+    if (container.clientHeight === 0) return
     if (container.scrollHeight <= container.clientHeight + 4) {
       setVirtualActive(false)
       return

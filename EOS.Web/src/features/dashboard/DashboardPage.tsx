@@ -2,11 +2,12 @@ import { IconArrowUpRight, IconChecklist, IconClockHour4, IconFolder, IconGitBra
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { ErpListCard } from '../../components/common/ErpListCard'
 import { ErpTable } from '../../components/common/ErpTable'
 import { navigationIcons } from '../../components/layout/navigationIcons'
+import { tabLinkHandler, useOpenTab } from '../../components/layout/WorkspaceNavContext'
 import { Button } from '../../components/ui/Button'
 import { useAuth } from '../auth/authContext'
 import { moduleReadPermission } from '../auth/modulePermissions'
@@ -55,7 +56,8 @@ function readRecent(): string[] {
 }
 
 export function DashboardPage() {
-  const navigate = useNavigate()
+  // 首页快捷入口与待办跳转都开新标签，与点菜单一致
+  const openTab = useOpenTab()
   const { bootstrap, hasPermission } = useAuth()
   const canSeeTasks = hasPermission(moduleReadPermission(2102))
   const [pendingSelection, setPendingSelection] = useState<RowSelectionState>({})
@@ -130,7 +132,7 @@ export function DashboardPage() {
       enableHiding: false,
       meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
       cell: ({ row }) => (
-        <Button size="sm" className="erp-table-action" onClick={() => navigate(workbenchList(row.original.moduleId))}>去处理</Button>
+        <Button size="sm" className="erp-table-action" onClick={() => openTab(workbenchList(row.original.moduleId))}>去处理</Button>
       ),
     },
   ]
@@ -188,7 +190,7 @@ export function DashboardPage() {
       enableHiding: false,
       meta: { className: 'text-end', frozenRight: true, resizable: false, truncate: false },
       cell: ({ row }) => (
-        <Button size="sm" className="erp-table-action" onClick={() => navigate(workbenchList(row.original.moduleId))}>查看</Button>
+        <Button size="sm" className="erp-table-action" onClick={() => openTab(workbenchList(row.original.moduleId))}>查看</Button>
       ),
     },
   ]
@@ -252,7 +254,7 @@ export function DashboardPage() {
             ariaLabel="待批核单据"
             search={null}
             actions={canSeeTasks ? (
-              <Button size="sm" icon={<IconArrowUpRight size={16} />} onClick={() => navigate('/my-tasks')}>查看全部</Button>
+              <Button size="sm" icon={<IconArrowUpRight size={16} />} onClick={() => openTab('/my-tasks')}>查看全部</Button>
             ) : undefined}
             header={<div className="px-3 pt-2 small text-secondary">待批核单据 {canSeeTasks ? pendingTasks.length : '—'} 项</div>}
           >
@@ -290,7 +292,7 @@ export function DashboardPage() {
                 recent.map((item) => {
                   const Icon = navigationIcons[item.icon] ?? IconFolder
                   return (
-                    <Link className="list-group-item list-group-item-action d-flex align-items-center gap-2" to={item.route!} key={item.route}>
+                    <Link className="list-group-item list-group-item-action d-flex align-items-center gap-2" to={item.route!} key={item.route} onClick={tabLinkHandler(openTab, item.route!)}>
                       <Icon size={18} stroke={1.7} className="text-blue" />
                       <span className="fw-semibold text-truncate">{item.label}</span>
                     </Link>
@@ -306,7 +308,7 @@ export function DashboardPage() {
         <ErpListCard
           ariaLabel="我发起的在途流程"
           search={null}
-          actions={<Button size="sm" icon={<IconArrowUpRight size={16} />} onClick={() => navigate('/my-tasks')}>查看全部</Button>}
+          actions={<Button size="sm" icon={<IconArrowUpRight size={16} />} onClick={() => openTab('/my-tasks')}>查看全部</Button>}
           header={<div className="px-3 pt-2 small text-secondary">我发起的在途流程 {startedRows.length} 项</div>}
         >
           {myStarted.isPending ? (

@@ -1,0 +1,86 @@
+import { Navigate, type RouteObject } from 'react-router-dom'
+import { RequirePermission } from '../features/auth/RouteGuards'
+import { moduleReadPermission } from '../features/auth/modulePermissions'
+import {
+  DashboardPage,
+  DetailQueryPage,
+  FieldAuditPage,
+  FieldEditorRoute,
+  BomExpandPage,
+  CarSummaryPage,
+  ImportPage,
+  JobPage,
+  LegacyModulePage,
+  MyTasksPage,
+  FlowDesignPage,
+  FlowMonitorPage,
+  PrintViewPage,
+  ProfilePage,
+  SearchCenterPage,
+  SystemSettingsPage,
+  TableAdminPage,
+  UserAdminPage,
+  UserRightsPage,
+  UserReportRightsPage,
+  UserGroupAdminPage,
+  GroupRightsPage,
+  GroupReportRightsPage,
+  GroupMembersPage,
+  MenuAdminPage,
+  ReportCenterPage,
+  ReportInboxPage,
+  LayoutDesignerPage,
+} from './lazyRoutes'
+import { FieldAdminRoute, FormEditorRoute, ReportAdminRoute, ReportViewerRoute, WorkbenchRoute } from './routeElements'
+import { withSuspense } from './suspense'
+
+/**
+ * 工作区路由表：标签 host 用嵌套 useRoutes 按各标签自身的 URL 求值渲染。
+ * 表中只允许 element 形式（含 React.lazy + Suspense）——useRoutes 不执行 loader/action/数据 lazy，
+ * 此类声明不会报错但静默不生效；需要数据 API 时须改造标签 host，不得直接写进本表。
+ */
+export const WORKSPACE_ROUTES: RouteObject[] = [
+  { index: true, element: <Navigate to="/dashboard" replace /> },
+  { path: 'dashboard', element: withSuspense(<DashboardPage />) },
+  { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },
+  { element: <RequirePermission permission={moduleReadPermission(2302)} />, children: [
+    { path: 'admin/tables', element: withSuspense(<TableAdminPage />) },
+    { path: 'admin/tables/:tableId/fields', element: withSuspense(<FieldAdminRoute />) },
+    { path: 'admin/fields/:tableId/:fieldId', element: withSuspense(<FieldEditorRoute />) },
+  ] },
+  { element: <RequirePermission permission={moduleReadPermission(2301)} />, children: [{ path: 'admin/menus', element: withSuspense(<MenuAdminPage />) }] },
+  { element: <RequirePermission permission={moduleReadPermission(2305)} />, children: [
+    { path: 'admin/groups', element: withSuspense(<UserGroupAdminPage />) },
+    { path: 'admin/groups/:groupId/rights', element: withSuspense(<GroupRightsPage />) },
+    { path: 'admin/groups/:groupId/report-rights', element: withSuspense(<GroupReportRightsPage />) },
+    { path: 'admin/groups/:groupId/members', element: withSuspense(<GroupMembersPage />) },
+  ] },
+  { element: <RequirePermission permission={moduleReadPermission(2303)} />, children: [{ path: 'admin/field-audit', element: withSuspense(<FieldAuditPage />) }] },
+  { element: <RequirePermission permission={moduleReadPermission(2306)} />, children: [
+    { path: 'admin/users', element: withSuspense(<UserAdminPage />) },
+    { path: 'admin/users/:userId/rights', element: withSuspense(<UserRightsPage />) },
+    { path: 'admin/users/:userId/report-rights', element: withSuspense(<UserReportRightsPage />) },
+  ] },
+  { path: 'admin/report-setup', element: withSuspense(<ReportAdminRoute />) },
+  { path: 'workbench/:moduleId', element: withSuspense(<WorkbenchRoute />) },
+  { path: 'workbench/:moduleId/new', element: withSuspense(<FormEditorRoute />) },
+  { path: 'workbench/:moduleId/edit/*', element: withSuspense(<FormEditorRoute />) },
+  { path: 'workbench/:moduleId/view/*', element: withSuspense(<FormEditorRoute />) },
+  { path: 'workbench/:moduleId/copy', element: withSuspense(<FormEditorRoute />) },
+  { path: 'reports/:moduleId', element: withSuspense(<ReportViewerRoute />) },
+  { path: 'report-center', element: withSuspense(<ReportCenterPage />) },
+  { path: 'report-center/inbox', element: withSuspense(<ReportInboxPage />) },
+  { path: 'layout-designer/:moduleId', element: withSuspense(<LayoutDesignerPage />) },
+  { path: 'search-center/:moduleId?', element: withSuspense(<SearchCenterPage />) },
+  { path: 'import', element: withSuspense(<ImportPage />) },
+  { path: 'print/:moduleId', element: withSuspense(<PrintViewPage />) },
+  { path: 'bom-expand', element: withSuspense(<BomExpandPage />) },
+  { element: <RequirePermission permission={moduleReadPermission(199901)} />, children: [{ path: 'car-summary', element: withSuspense(<CarSummaryPage />) }] },
+  { path: 'detail-query/:moduleId', element: withSuspense(<DetailQueryPage />) },
+  { element: <RequirePermission permission={moduleReadPermission(2102)} />, children: [{ path: 'my-tasks', element: withSuspense(<MyTasksPage />) }] },
+  { element: <RequirePermission permission={moduleReadPermission(2101)} />, children: [{ path: 'workflow/design', element: withSuspense(<FlowDesignPage />) }] },
+  { element: <RequirePermission permission={moduleReadPermission(2103)} />, children: [{ path: 'workflow/monitor', element: withSuspense(<FlowMonitorPage />) }] },
+  { path: 'jobs', element: withSuspense(<JobPage />) },
+  { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
+  { path: 'settings/:table', element: withSuspense(<SystemSettingsPage />) },
+]

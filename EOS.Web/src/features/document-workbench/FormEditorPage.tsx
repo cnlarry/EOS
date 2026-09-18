@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { IconTrash } from '@tabler/icons-react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
@@ -10,6 +10,7 @@ import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpC
 import { ErpTable } from '../../components/common/ErpTable'
 import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
 import { useFormBreadcrumb } from '../../components/layout/FormBreadcrumbContext'
+import { useTabDirty } from '../../components/layout/workspaceDirty'
 import { AttachmentDialog } from './AttachmentDialog'
 import { WorkflowTimeline, type WorkflowTimelineRow } from '../workflow/WorkflowTimeline'
 import { parseWorkbenchKey, workbenchAction, workbenchCopy, workbenchEdit, workbenchList, workbenchNew, workbenchView } from './workbenchPath'
@@ -547,19 +548,14 @@ export function FormEditorPage() {
     }))
   }, [formQuery.data, recordQuery.data, isCopy])
 
-  useEffect(() => {
-    if (!dirty) return
-    const handler = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
-  }, [dirty])
-
-  const blocker = useBlocker(dirty)
-  useEffect(() => {
-    if (blocker.state !== 'blocked') return
-    if (window.confirm('有未保存的修改，确定离开吗？')) blocker.proceed()
-    else blocker.reset()
-  }, [blocker])
+  // 未保存改动登记给外壳：关闭标签、离开当前标签时的确认与保存由外壳统一处理
+  useTabDirty(dirty, {
+    save: async () => {
+      if (!validateClient()) throw new Error('表单校验未通过。')
+      await save.mutateAsync()
+    },
+    discard: () => setDirty(false),
+  })
 
   const save = useMutation({
     mutationFn: async () => {

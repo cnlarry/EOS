@@ -1,94 +1,20 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter } from 'react-router-dom'
 import { AppShell } from '../components/layout/AppShell'
-import { RequireAuth, RequirePermission } from '../features/auth/RouteGuards'
-import { moduleReadPermission } from '../features/auth/modulePermissions'
+import { RequireAuth } from '../features/auth/RouteGuards'
 import { ErrorPage } from './ErrorPage'
-import {
-  DashboardPage,
-  DetailQueryPage,
-  FieldAuditPage,
-  FieldEditorRoute,
-  BomExpandPage,
-  CarSummaryPage,
-  ImportPage,
-  JobPage,
-  LegacyModulePage,
-  LoginPage,
-  MyTasksPage,
-  FlowDesignPage,
-  FlowMonitorPage,
-  PrintViewPage,
-  ProfilePage,
-  SearchCenterPage,
-  SystemSettingsPage,
-  TableAdminPage,
-  UserAdminPage,
-  UserRightsPage,
-  UserReportRightsPage,
-  UserGroupAdminPage,
-  GroupRightsPage,
-  GroupReportRightsPage,
-  GroupMembersPage,
-  MenuAdminPage,
-  ReportCenterPage,
-  ReportInboxPage,
-  LayoutDesignerPage,
-} from './lazyRoutes'
-import { FieldAdminRoute, ForbiddenPage, FormEditorRoute, ReportAdminRoute, ReportViewerRoute, WorkbenchRoute } from './routeElements'
+import { LoginPage } from './lazyRoutes'
+import { ForbiddenPage } from './routeElements'
 import { withSuspense } from './suspense'
 
+/**
+ * 外壳只声明到 AppShell 一层：具体工作区路由由 AppShell 内的标签 host 按各标签地址求值渲染
+ * （见 app/workspaceRoutes.tsx），因此这里必须是通配路径，否则深层地址匹配不到外壳。
+ */
 export const router = createBrowserRouter([
   { path: '/login', element: withSuspense(<LoginPage />) },
   { path: '/forbidden', element: <ForbiddenPage /> },
   {
     element: <RequireAuth />,
-    children: [{
-      path: '/', element: <AppShell />, errorElement: <ErrorPage />, children: [
-        { index: true, element: <Navigate to="/dashboard" replace /> },
-        { path: 'dashboard', element: withSuspense(<DashboardPage />) },
-        { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },
-        { element: <RequirePermission permission={moduleReadPermission(2302)} />, children: [
-          { path: 'admin/tables', element: withSuspense(<TableAdminPage />) },
-          { path: 'admin/tables/:tableId/fields', element: withSuspense(<FieldAdminRoute />) },
-          { path: 'admin/fields/:tableId/:fieldId', element: withSuspense(<FieldEditorRoute />) },
-        ] },
-        { element: <RequirePermission permission={moduleReadPermission(2301)} />, children: [{ path: 'admin/menus', element: withSuspense(<MenuAdminPage />) }] },
-        { element: <RequirePermission permission={moduleReadPermission(2305)} />, children: [
-          { path: 'admin/groups', element: withSuspense(<UserGroupAdminPage />) },
-          { path: 'admin/groups/:groupId/rights', element: withSuspense(<GroupRightsPage />) },
-          { path: 'admin/groups/:groupId/report-rights', element: withSuspense(<GroupReportRightsPage />) },
-          { path: 'admin/groups/:groupId/members', element: withSuspense(<GroupMembersPage />) },
-        ] },
-        { element: <RequirePermission permission={moduleReadPermission(2303)} />, children: [{ path: 'admin/field-audit', element: withSuspense(<FieldAuditPage />) }] },
-        { element: <RequirePermission permission={moduleReadPermission(2306)} />, children: [
-          { path: 'admin/users', element: withSuspense(<UserAdminPage />) },
-          { path: 'admin/users/:userId/rights', element: withSuspense(<UserRightsPage />) },
-          { path: 'admin/users/:userId/report-rights', element: withSuspense(<UserReportRightsPage />) },
-        ] },
-        { path: 'admin/report-setup', element: withSuspense(<ReportAdminRoute />) },
-        { path: 'workbench/:moduleId', element: withSuspense(<WorkbenchRoute />) },
-        { path: 'workbench/:moduleId/new', element: withSuspense(<FormEditorRoute />) },
-        { path: 'workbench/:moduleId/edit/*', element: withSuspense(<FormEditorRoute />) },
-        { path: 'workbench/:moduleId/view/*', element: withSuspense(<FormEditorRoute />) },
-        { path: 'workbench/:moduleId/copy', element: withSuspense(<FormEditorRoute />) },
-        { path: 'reports/:moduleId', element: withSuspense(<ReportViewerRoute />) },
-        { path: 'report-center', element: withSuspense(<ReportCenterPage />) },
-        { path: 'report-center/inbox', element: withSuspense(<ReportInboxPage />) },
-        { path: 'layout-designer/:moduleId', element: withSuspense(<LayoutDesignerPage />) },
-        { path: 'search-center/:moduleId?', element: withSuspense(<SearchCenterPage />) },
-        { path: 'import', element: withSuspense(<ImportPage />) },
-        { path: 'print/:moduleId', element: withSuspense(<PrintViewPage />) },
-        { path: 'bom-expand', element: withSuspense(<BomExpandPage />) },
-        { element: <RequirePermission permission={moduleReadPermission(199901)} />, children: [{ path: 'car-summary', element: withSuspense(<CarSummaryPage />) }] },
-        { path: 'detail-query/:moduleId', element: withSuspense(<DetailQueryPage />) },
-        { element: <RequirePermission permission={moduleReadPermission(2102)} />, children: [{ path: 'my-tasks', element: withSuspense(<MyTasksPage />) }] },
-        { element: <RequirePermission permission={moduleReadPermission(2101)} />, children: [{ path: 'workflow/design', element: withSuspense(<FlowDesignPage />) }] },
-        { element: <RequirePermission permission={moduleReadPermission(2103)} />, children: [{ path: 'workflow/monitor', element: withSuspense(<FlowMonitorPage />) }] },
-        { path: 'jobs', element: withSuspense(<JobPage />) },
-        { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },
-        { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
-        { path: 'settings/:table', element: withSuspense(<SystemSettingsPage />) },
-      ],
-    }],
+    children: [{ path: '/*', element: <AppShell />, errorElement: <ErrorPage /> }],
   },
 ])
