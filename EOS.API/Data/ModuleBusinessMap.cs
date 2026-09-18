@@ -106,7 +106,6 @@ public static class DomainRuleMap
     private static readonly IReadOnlyDictionary<int, string> Rules = new Dictionary<int, string>
     {
         [180206] = "hr-apply",
-        [180207] = "hr-worktime",
     };
 
     public static bool TryGet(int moduleId, out string? rule) => Rules.TryGetValue(moduleId, out rule);
@@ -167,6 +166,7 @@ public static class CatalogAfterSaveMap
         1405,               // 客户订单：交易天数/最低订单额/信用余额/产品交易天数/计价有效期/最小生产量/订单号重复/预交日期（custom-validation → cop-order-check）
         1406,               // 送货单：批号必填/送货日期超期/库别存在/库存与批号库存不足（custom-validation → cop-send-check）+ 包装标记（SAVE 期 cop-send-mo-flag）
         1606,               // 采购单：产品计价有效期与预交日期（custom-validation → pur-purchase-check）+ 待购表汇总同步（SAVE 期 pur-purchase-sync）
+        180207,             // 工时录入：本月加班工时不超过已申请加班工时（受业务设置表门控；custom-validation → hr-worktime-check）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);

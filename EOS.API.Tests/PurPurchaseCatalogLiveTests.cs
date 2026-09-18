@@ -48,7 +48,7 @@ public sealed class PurPurchaseCatalogLiveTests
             await SeedAsync(connection, transaction, token, priceInEffectDaysAgo: 10);
             var priceExpired = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [Type, No]));
-            Assert.StartsWith("以下产品计价已过有效期", priceExpired.Message);
+            Assert.StartsWith("以下产品计价已过有效期\r\n", priceExpired.Message);
 
             // ② 校验：预交日期早于采购日期（用未过期的计价行，避免先命中计价判据）
             await SeedAsync(connection, transaction, token, priceInEffectDaysAgo: -1, planDeliveryDaysBefore: 5);

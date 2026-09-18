@@ -32,7 +32,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         {
             return ruleName.ToLowerInvariant() switch
             {
-                "hr-worktime" => await HrDomainRules.HrWorktimeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "hr-apply" => await HrDomainRules.HrApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 _ => new(false, $"未登记的领域规则：{ruleName}"),
             };

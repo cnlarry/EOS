@@ -194,9 +194,9 @@ internal static class CopSendCheck
             new CopSendBatchStockFields(Required(batchStock, "table"), Required(batchStock, "batchField"),
                 Required(batchStock, "productField"), Required(batchStock, "inField"), Required(batchStock, "outField")),
             Required(root, "gateFlag"), OptionalInt(root, "maxDays", 30),
-            new CopSendMessages(Required(messages, "batchRequired"), Required(messages, "dateTooOld"),
-                Required(messages, "depotMissing"), Required(messages, "stockNotEnough"),
-                Required(messages, "batchStockNotEnough")));
+            new CopSendMessages(Verbatim(messages, "batchRequired"), Required(messages, "dateTooOld"),
+                Verbatim(messages, "depotMissing"), Verbatim(messages, "stockNotEnough"),
+                Verbatim(messages, "batchStockNotEnough")));
         foreach (var (table, column) in new[]
                  {
                      (masterTable, config.Master.TypeField), (masterTable, config.Master.NoField),
@@ -242,6 +242,13 @@ internal static class CopSendCheck
         => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             && !string.IsNullOrWhiteSpace(value.GetString())
                 ? value.GetString()!.Trim()
+                : throw new EffectConfigException($"cop-send-check 缺少字符串字段 {name}。");
+
+    /// <summary>文案按**逐字**取值（不裁剪）：旧文案自带换行与尾随空格，裁剪会改变用户看到的排版。</summary>
+    private static string Verbatim(JsonElement element, string name)
+        => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(value.GetString())
+                ? value.GetString()!
                 : throw new EffectConfigException($"cop-send-check 缺少字符串字段 {name}。");
 
     private static int OptionalInt(JsonElement element, string name, int fallback)

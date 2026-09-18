@@ -15,9 +15,6 @@ public static class HrDomainRules
     /// </summary>
 
 
-    /// <summary>加班申请单（P_HR_APPLY）AfterSave：每日每人一单 + 不超过每月加班额。</summary>
-
-
     /// <summary>
     /// 加班申请单（P_HR_APPLY）AfterSave：不超过每月加班额（先决条件是当月出勤参数已维护）。
     /// "每日每人一单"已由校验目录的 duplicate-check 实例承担（180206 SAVE）。
@@ -99,37 +96,5 @@ public static class HrDomainRules
         return exceeded is null
             ? new(true, null)
             : new(false, "以下人员时间超出:\r\n工号--加班时--休息日加班时--节假日加班时\r\n" + exceeded);
-    }
-
-    /// <summary>借出单（P_INV_LOAN）AfterSave：库别/产品/批号校验。</summary>
-
-    public static async Task<SprocResult> HrWorktimeAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var requireEnactment = await DomainRuleService.ExistsAsync(connection, transaction,
-            "SELECT TOP 1 1 FROM dbo.HR_SETUP WHERE REQUIRE_ENACTMENT=1;", keyValues[0], keyValues[1], token);
-        if (!requireEnactment) return new(true, null);
-        var type = keyValues[0]; var no = keyValues[1];
-        var lines = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT a.EMP_ID, a.OVERTIME, a.REST_OVERTIME, a.HOLIDAY_OVERTIME, w.OVERTIME, w.REST_OVERTIME, w.HOLIDAY_OVERTIME
-            FROM (SELECT m.EMP_ID, SUM(m.OVERTIME) OVERTIME, SUM(m.REST_OVERTIME) REST_OVERTIME, SUM(m.HOLIDAY_OVERTIME) HOLIDAY_OVERTIME
-                  FROM dbo.HR_WORKTIME_M m INNER JOIN dbo.HR_WORKTIME_D d
-                    ON d.WORKTIME_TYPE=m.WORKTIME_TYPE AND d.WORKTIME_NO=m.WORKTIME_NO
-                  WHERE m.WORKTIME_TYPE=@Type AND m.WORKTIME_NO=@No
-                  GROUP BY m.EMP_ID) w
-            LEFT JOIN (SELECT d.EMP_ID, SUM(d.OVERTIME) OVERTIME, SUM(d.REST_OVERTIME) REST_OVERTIME, SUM(d.HOLIDAY_OVERTIME) HOLIDAY_OVERTIME
-                       FROM dbo.HR_APPLY_M m INNER JOIN dbo.HR_APPLY_D d
-                         ON d.APPLY_TYPE=m.APPLY_TYPE AND d.APPLY_NO=m.APPLY_NO
-                       WHERE m.COUNT_DATE=(SELECT TOP 1 COUNT_DATE FROM dbo.HR_WORKTIME_M WHERE WORKTIME_TYPE=@Type AND WORKTIME_NO=@No)
-                       GROUP BY d.EMP_ID) a ON a.EMP_ID=w.EMP_ID
-            WHERE w.OVERTIME > ISNULL(a.OVERTIME,0) OR w.REST_OVERTIME > ISNULL(a.REST_OVERTIME,0)
-               OR w.HOLIDAY_OVERTIME > ISNULL(a.HOLIDAY_OVERTIME,0);
-            """, type, no, token,
-            line: r => $"{r.GetString(0).Trim()}  {Convert.ToDouble(r.GetValue(1))}  {Convert.ToDouble(r.GetValue(2))}  {Convert.ToDouble(r.GetValue(3))}  已录入   {Convert.ToDouble(r.GetValue(4))}  {Convert.ToDouble(r.GetValue(5))}  {Convert.ToDouble(r.GetValue(6))}");
-        return lines is null
-            ? new(true, null)
-            : new(false, "以下人员时间超出:\r\n工号---加班时--休息日加班时--节假日加班时\r\n" + lines);
     }
 }

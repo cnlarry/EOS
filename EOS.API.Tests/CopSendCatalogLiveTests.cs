@@ -60,14 +60,14 @@ public sealed class CopSendCatalogLiveTests
                 sendDaysBeforeCreate: 0, depotExists: false, stockQty: 100);
             var depotMissing = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [Type, No]));
-            Assert.StartsWith("以下库别不存在", depotMissing.Message);
+            Assert.StartsWith("以下库别不存在\r\n序号----库别\r\n", depotMissing.Message);
 
             // ④ 库存不足（出库 10 > 库存 3）⇒ 拒绝
             await SeedAsync(connection, transaction, token, manageBatch: false, batch: null,
                 sendDaysBeforeCreate: 0, depotExists: true, stockQty: 3);
             var stockNotEnough = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [Type, No]));
-            Assert.StartsWith("库存数量不足", stockNotEnough.Message);
+            Assert.StartsWith("库存数量不足\r\n料号---------------库别----出库数量----库存数量---不足数量\r\n", stockNotEnough.Message);
 
             // ⑤ 批号库存不足 ⇒ 拒绝
             await SeedAsync(connection, transaction, token, manageBatch: false, batch: "ADR12CSB1",
