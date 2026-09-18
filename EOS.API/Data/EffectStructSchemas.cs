@@ -109,6 +109,7 @@ public static class EffectStructSchemas
             ["detail-field-sync"] = Set("targetTable", "key", "pairs"),
             ["sample-edition-bump"] = Set("master"),            ["return-writeback"] = Set("order", "produce", "conditions"),
             ["mould-ids-sync"] = Set("table", "keyField", "valueField"),
+            ["card-sibling-close"] = Set("table", "beginField", "endField", "keyField", "ownerField", "offsetDays"),
             ["sample-stock-adjust"] = Set("direction", "targetTable", "fieldMap"),
             ["set-state"] = Set("targetTable", "stateField", "stateValue", "state", "sourceField", "source", "dateField", "dateMode", "targets"),
             ["stamp-last-activity"] = Set("targetTable", "field", "fields", "sourceField", "matchBy", "condition"),

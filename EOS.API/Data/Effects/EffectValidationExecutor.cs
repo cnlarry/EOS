@@ -1571,10 +1571,27 @@ public sealed class EffectValidationExecutor
                     "NEQ" => "<>",
                     _ => throw new EffectConfigException($"line-require.assert.op '{assertOp}' 不在封闭集内。"),
                 };
-                if (!assertElement.TryGetProperty("value", out var assertValue) || assertValue.ValueKind != JsonValueKind.Number)
-                    throw new EffectConfigException("line-require.assert 缺少数值 value。");
-                assertSql = "COALESCE(" + rowAlias + "." + EffectConditionCompiler.Identifier(field) + ", 0) "
-                    + assertSqlOp + " " + assertValue.GetDouble().ToString(System.Globalization.CultureInfo.InvariantCulture);
+                var assertCompareField = assertElement.TryGetProperty("compareField", out var compareFieldElement)
+                    && compareFieldElement.ValueKind == JsonValueKind.String
+                        ? compareFieldElement.GetString()!.Trim()
+                        : null;
+                if (!string.IsNullOrWhiteSpace(assertCompareField))
+                {
+                    // 与同行另一列比较：任一为空都不算违规（复刻旧实现"可空日期比较为 false"），
+                    // 因此断言形态写成"空 或 关系成立"，违规谓词取其反。
+                    var compareIdentifier = EffectConditionCompiler.Identifier(assertCompareField);
+                    assertSql = "(" + rowAlias + "." + EffectConditionCompiler.Identifier(field) + " IS NULL"
+                        + " OR " + rowAlias + "." + compareIdentifier + " IS NULL"
+                        + " OR " + rowAlias + "." + EffectConditionCompiler.Identifier(field)
+                        + " " + assertSqlOp + " " + rowAlias + "." + compareIdentifier + ")";
+                }
+                else
+                {
+                    if (!assertElement.TryGetProperty("value", out var assertValue) || assertValue.ValueKind != JsonValueKind.Number)
+                        throw new EffectConfigException("line-require.assert 缺少数值 value 或字符串 compareField。");
+                    assertSql = "COALESCE(" + rowAlias + "." + EffectConditionCompiler.Identifier(field) + ", 0) "
+                        + assertSqlOp + " " + assertValue.GetDouble().ToString(System.Globalization.CultureInfo.InvariantCulture);
+                }
             }
             if (triggerSql.Count == 0 && assertSql is null)
                 throw new EffectConfigException("line-require.check 缺少 triggers 或 condition。");

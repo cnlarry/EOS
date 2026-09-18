@@ -208,8 +208,17 @@ public class ValidationRuleRegistryFailClosedTests
             {"checks":[{"scope":"DETAIL","field":"CHECK_QTY","assert":{"op":"LIKE","value":"x","extra":1}}]}
             """));
         Assert.Contains(badAssert, issue => issue.Contains("assert.op 仅允许"));
-        Assert.Contains(badAssert, issue => issue.Contains("assert.value 必须是数字"));
+        Assert.Contains(badAssert, issue => issue.Contains("需要数值 value 或字符串 compareField"));
         Assert.Contains(badAssert, issue => issue.Contains("未知参数键"));
+        // compareField 形态：与同行另一列比较，和数值 value 互斥（空值不违规由执行器保证）
+        var compareAssert = Validate("line-require", Params("""
+            {"checks":[{"scope":"MASTER","field":"END_DATE","assert":{"op":"GE","compareField":"BEGIN_DATE"}}]}
+            """));
+        Assert.Empty(compareAssert);
+        var bothAssert = Validate("line-require", Params("""
+            {"checks":[{"scope":"MASTER","field":"END_DATE","assert":{"op":"GE","value":0,"compareField":"BEGIN_DATE"}}]}
+            """));
+        Assert.Contains(bothAssert, issue => issue.Contains("value 与 compareField 不能同时配置"));
     }
 
     [Fact]

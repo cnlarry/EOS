@@ -286,15 +286,19 @@ public sealed class WorkbenchCommandHandler(
                     domainResult.Message ?? "保存后业务校验未通过。");
             }
         }
-        else if (businessRule?.AfterSaveSproc is { } afterSaveSproc)
+        else
         {
+            // 没有 C# 领域规则时，保存后行为来自效果目录（SAVE 阶段动作链）；
+            // 只有该模块确实没有配置任何 SAVE 动作时，才回落到遗留保存后过程。
+            // （原实现把"跑效果链"挂在 AfterSaveSproc 分支下，导致行为已迁入效果目录、
+            //   但定义里没有遗留钩子的模块永远不执行 SAVE 动作。）
             var effectRun = await effectEngine.TryRunAsync(
                 connection, transaction, definition, EffectEvent.Save, keyValues, userId, token);
             if (effectRun.Ran && effectRun.Error is not null)
             {
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", effectRun.Error);
             }
-            if (!effectRun.Ran)
+            if (!effectRun.Ran && businessRule?.AfterSaveSproc is { } afterSaveSproc)
             {
                 var sprocResult = await controlledSprocs.RunAfterSaveAsync(definition.ModuleId, afterSaveSproc, pkColumns, keyValues, connection, transaction, token);
                 if (!sprocResult.Success)
@@ -502,15 +506,16 @@ public sealed class WorkbenchCommandHandler(
                     domainResult.Message ?? "保存后业务校验未通过。");
             }
         }
-        else if (businessRule?.AfterSaveSproc is { } afterSaveSproc)
+        else
         {
+            // 同新增路径：没有 C# 领域规则时执行 SAVE 阶段动作链，未配置动作才回落遗留过程。
             var effectRun = await effectEngine.TryRunAsync(
                 connection, transaction, definition, EffectEvent.Save, keyValues, userId, token);
             if (effectRun.Ran && effectRun.Error is not null)
             {
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", effectRun.Error);
             }
-            if (!effectRun.Ran)
+            if (!effectRun.Ran && businessRule?.AfterSaveSproc is { } afterSaveSproc)
             {
                 var sprocResult = await controlledSprocs.RunAfterSaveAsync(definition.ModuleId, afterSaveSproc, pkColumns, keyValues, connection, transaction, token);
                 if (!sprocResult.Success)

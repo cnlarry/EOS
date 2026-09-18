@@ -39,7 +39,7 @@ public static class ValidationRuleRegistry
     private static readonly IReadOnlySet<string> QtyDiagnosticAggregates = KeySet("MAX", "MIN", "SUM", "DISTINCT");
     private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "condition", "assert", "message", "diagnosticFields");
     private static readonly IReadOnlySet<string> LineRequireTriggerKeys = KeySet("scope", "field", "op", "value");
-    private static readonly IReadOnlySet<string> LineRequireAssertKeys = KeySet("op", "value");
+    private static readonly IReadOnlySet<string> LineRequireAssertKeys = KeySet("op", "value", "compareField");
     private static readonly IReadOnlySet<string> LineRequireOps = KeySet("GT", "GE", "LT", "LE", "EQ", "NEQ");
     private static readonly IReadOnlySet<string> LineRequireScopes = KeySet("DETAIL", "MASTER");
     private static readonly IReadOnlySet<string> QtyBlockKeys = KeySet("scope", "terms", "fields", "agg");
@@ -514,8 +514,21 @@ public static class ValidationRuleRegistry
                 var assertOp = GetString(assert.Value, "op");
                 if (assertOp is null || !LineRequireOps.Contains(assertOp))
                     issues.Add($"校验规则 {Label(rule)}：{where}.assert.op 仅允许 GT/GE/LT/LE/EQ/NEQ");
-                if (!assert.Value.TryGetProperty("value", out var assertValue) || assertValue.ValueKind != JsonValueKind.Number)
-                    issues.Add($"校验规则 {Label(rule)}：{where}.assert.value 必须是数字");
+                // 断言右值二选一：数值 value，或与**同行的另一列**比较（compareField，
+                // 空值视为不违规——复刻旧实现"可空日期比较为 false"的语义）。
+                var assertCompareField = GetString(assert.Value, "compareField");
+                var hasAssertValue = assert.Value.TryGetProperty("value", out var assertValue) && assertValue.ValueKind == JsonValueKind.Number;
+                if (assertCompareField is not null)
+                {
+                    if (string.IsNullOrWhiteSpace(assertCompareField))
+                        issues.Add($"校验规则 {Label(rule)}：{where}.assert.compareField 不能为空");
+                    if (hasAssertValue)
+                        issues.Add($"校验规则 {Label(rule)}：{where}.assert 的 value 与 compareField 不能同时配置");
+                }
+                else if (!hasAssertValue)
+                {
+                    issues.Add($"校验规则 {Label(rule)}：{where}.assert 需要数值 value 或字符串 compareField");
+                }
             }
             if (triggers is not { } triggersArr || triggersArr.GetArrayLength() == 0)
             {
