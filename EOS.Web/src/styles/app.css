@@ -532,18 +532,18 @@ button, input, select { font: inherit; }
    标签视觉直接沿用系统级页签（TabbedPanel 的 nav-tabs 设计语言）：未激活透明、
    悬停显描边、激活填白底并向下吃掉标签栏分隔线，与下方内容连成一片。
    这里只补工作区特有的几何：与标签栏等高、最小/最大宽度、关闭按钮与脏点。 */
-.erp-tabbar { display: flex; flex: 0 0 auto; align-items: stretch; height: var(--erp-tabbar-height); padding: 0 10px; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); scrollbar-width: none; }
+/* 底部分隔线用内阴影画在标签栏内侧最后 1px：标签栏要横向滚动所以带 overflow 裁剪，
+   若用 border-bottom 画线，那 1px 落在裁剪区之外，激活标签的背景再高也盖不住它。 */
+.erp-tabbar { display: flex; flex: 0 0 auto; align-items: stretch; height: var(--erp-tabbar-height); padding: 0 10px; overflow-x: auto; overflow-y: hidden; background: var(--tblr-bg-surface); box-shadow: inset 0 -1px 0 var(--tblr-border-color); scrollbar-width: none; }
 .erp-tabbar::-webkit-scrollbar { display: none; }
 .erp-workspace-tabs { padding-left: 10px; }
 .erp-workspace-tabs .nav-item { display: flex; min-width: 0; }
 .erp-workspace-tabs .nav-link { display: flex; align-items: center; gap: 6px; min-width: 96px; max-width: 200px; padding: 0 10px; line-height: 1; white-space: nowrap; cursor: pointer; user-select: none; }
 .erp-workspace-tabs .nav-link:hover { position: relative; z-index: 1; }
-/* 激活标签用次级底色（白条上"按下"的观感），底边用页面底色吃掉分隔线；
-   未激活标签保持白底（透明即白），与顶部条同一片 */
-.erp-workspace-tabs .nav-link.active { background-color: var(--tblr-bg-surface-secondary); border-bottom: 1px solid var(--tblr-body-bg); }
-/* 激活态再加一条蓝色粗线压在分隔线上：白底之外多一层"我在哪儿"的强提示。
-   用伪元素而非 border-bottom，避免边框宽度变化挤动标签文字。 */
-.erp-workspace-tabs .nav-link.active::after { position: absolute; right: -1px; bottom: -1px; left: -1px; height: 3px; content: ''; background: var(--tblr-primary); }
+/* 激活标签：次级底色（白条上"按下"的观感）+ 去掉下边框。
+   底色与工作区底色同色，并盖住标签栏最底部那条线，于是它与下方工作区连成一体，
+   不再需要额外的强调线。下边框只改颜色不改宽度：宽度一变，居中文字会跟着抖动。 */
+.erp-workspace-tabs .nav-link.active { background-color: var(--tblr-bg-surface-secondary); border-bottom-color: transparent; }
 .erp-workspace-tabs .nav-link:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }
 /* 标签文字吃掉剩余宽度：关闭按钮因此贴右（与右边框留出 padding 的 10px），
    长标题则在此处省略号截断 */
