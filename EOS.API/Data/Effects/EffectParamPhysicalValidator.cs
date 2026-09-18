@@ -61,10 +61,7 @@ public static class EffectParamPhysicalValidator
         "cus-account-sync",
         "pur-apply-sync",
         "bom-size-backfill",
-        "cop-account-rollup",
-        "cop-prepay-rollup",
-        "purchase-due-rollup",
-        "pur-prepay-rollup",
+        "detail-rollup",
         "pur-pay-offset",
         "cop-receipt-offset",
         "cop-send-mo-flag",
@@ -196,17 +193,8 @@ public static class EffectParamPhysicalValidator
                 case "bom-size-backfill":
                     _ = BomSizeBackfillHandler.Parse(root, plan.MasterTable!, columns);
                     break;
-                case "cop-account-rollup":
-                    _ = CopAccountRollupHandler.Parse(root, plan.MasterTable!, columns);
-                    break;
-                case "cop-prepay-rollup":
-                    _ = CopPrepayRollupHandler.Parse(root, plan.MasterTable!, columns);
-                    break;
-                case "purchase-due-rollup":
-                    _ = PurchaseDueRollupHandler.Parse(root, plan.MasterTable!, columns);
-                    break;
-                case "pur-prepay-rollup":
-                    _ = PurPrepayRollupHandler.Parse(root, plan.MasterTable!, columns);
+                case "detail-rollup":
+                    _ = DetailRollupHandler.Parse(root, plan.MasterTable!, columns);
                     break;
                 case "pur-pay-offset":
                 case "cop-receipt-offset":

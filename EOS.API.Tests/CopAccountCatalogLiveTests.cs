@@ -46,11 +46,11 @@ public sealed class CopAccountCatalogLiveTests
         {
             await SeedAccountAsync(connection, transaction, token);
             var action = await LoadActionAsync(connection, transaction, token, 170101);
-            Assert.Equal("cop-account-rollup", action.EffectKey);
+            Assert.Equal("detail-rollup", action.EffectKey);
             var plan = new ModuleEffectPlan(170101, "COP_ACCOUNT_M", "COP_ACCOUNT_D", "live-cop-account",
                 ["ACCOUNT_TYPE", "ACCOUNT_NO"], [action], []);
 
-            await new CopAccountRollupHandler().ExecuteAsync(
+            await new DetailRollupHandler().ExecuteAsync(
                 new ServiceEffectContext(connection, transaction, plan, action, EffectEvent.Save,
                     No, [Type, No], "live-test"), token);
             var byEffect = await ReadAccountAsync(connection, transaction, token);
@@ -134,11 +134,11 @@ public sealed class CopAccountCatalogLiveTests
         {
             await SeedPrepayAsync(connection, transaction, token);
             var action = await LoadActionAsync(connection, transaction, token, 170103);
-            Assert.Equal("cop-prepay-rollup", action.EffectKey);
+            Assert.Equal("detail-rollup", action.EffectKey);
             var plan = new ModuleEffectPlan(170103, "COP_PREPAY_M", "COP_PREPAY_D", "live-cop-prepay",
                 ["PREPAY_TYPE", "PREPAY_NO"], [action], []);
 
-            await new CopPrepayRollupHandler().ExecuteAsync(
+            await new DetailRollupHandler().ExecuteAsync(
                 new ServiceEffectContext(connection, transaction, plan, action, EffectEvent.Save,
                     PrepayNo, [PrepayType, PrepayNo], "live-test"), token);
             var byEffect = await ReadPrepayAsync(connection, transaction, token);

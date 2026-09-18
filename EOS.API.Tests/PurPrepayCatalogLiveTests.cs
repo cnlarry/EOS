@@ -44,11 +44,11 @@ public sealed class PurPrepayCatalogLiveTests
         {
             await SeedAsync(connection, transaction, token);
             var action = await LoadActionAsync(connection, transaction, token);
-            Assert.Equal("pur-prepay-rollup", action.EffectKey);
+            Assert.Equal("detail-rollup", action.EffectKey);
             var plan = new ModuleEffectPlan(ModuleId, "PUR_PREPAY_M", "PUR_PREPAY_D", "live-pur-prepay",
                 ["PREPAY_TYPE", "PREPAY_NO"], [action], []);
 
-            await new PurPrepayRollupHandler().ExecuteAsync(
+            await new DetailRollupHandler().ExecuteAsync(
                 new ServiceEffectContext(connection, transaction, plan, action, EffectEvent.Save,
                     No, [Type, No], "live-test"), token);
             var byEffect = await ReadAmountAsync(connection, transaction, token);

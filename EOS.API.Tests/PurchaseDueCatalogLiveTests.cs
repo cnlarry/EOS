@@ -43,11 +43,11 @@ public sealed class PurchaseDueCatalogLiveTests
         {
             await SeedAsync(connection, transaction, token);
             var action = await LoadActionAsync(connection, transaction, token);
-            Assert.Equal("purchase-due-rollup", action.EffectKey);
+            Assert.Equal("detail-rollup", action.EffectKey);
             var plan = new ModuleEffectPlan(ModuleId, "PUR_DUE_M", "PUR_DUE_D", "live-purchase-due",
                 ["DUE_TYPE", "DUE_NO"], [action], []);
 
-            await new PurchaseDueRollupHandler().ExecuteAsync(
+            await new DetailRollupHandler().ExecuteAsync(
                 new ServiceEffectContext(connection, transaction, plan, action, EffectEvent.Save,
                     No, [Type, No], "live-test"), token);
             var byEffect = await ReadMasterAsync(connection, transaction, token);
