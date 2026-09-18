@@ -245,53 +245,6 @@ public static class CopDomainRules
 
     /// <summary>厂商报价单（1604）AfterSave：厂商校验 + 询价单一致性校验（镜像 cop-quote，厂商侧）。</summary>
 
-    /// <summary>收款单（170102）AfterSave：预收汇总 + 实收校验 + 对帐不超收。</summary>
-    public static async Task<SprocResult> CopReceiptAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var (typeColumn, noColumn) = DomainRuleService.KeyColumns(pkColumns);
-        var type = keyValues[0]; var no = keyValues[1];
-        // 预收冲抵汇总
-        await using var prepaySum = new SqlCommand($"""
-            UPDATE m SET PREPAY_SUM=(SELECT SUM(PREPAY_AMOUNT) FROM dbo.COP_RECEIPT_PREPAY
-                WHERE RECEIPT_TYPE=@Type AND RECEIPT_NO=@No),
-                RECEIVE_SUM=AMOUNT_TAX-REBATE_SUM-(SELECT SUM(PREPAY_AMOUNT) FROM dbo.COP_RECEIPT_PREPAY
-                WHERE RECEIPT_TYPE=@Type AND RECEIPT_NO=@No),
-                LAST_UPDATE_DATE=GETDATE()
-            FROM dbo.COP_RECEIPT_M m WHERE m.[{typeColumn}]=@Type AND m.[{noColumn}]=@No;
-            """, connection, transaction);
-        prepaySum.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
-        prepaySum.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
-        await prepaySum.ExecuteNonQueryAsync(token);
-
-        // 实收金额不能为负数
-        var negative = await DomainRuleService.ExistsAsync(connection, transaction,
-            $"SELECT TOP 1 1 FROM dbo.COP_RECEIPT_M WHERE [{typeColumn}]=@Type AND [{noColumn}]=@No AND RECEIVE_SUM<0;",
-            type, no, token);
-        if (negative) return new(false, "实收金额不能为负数");
-        // 实收不能大于应收-折扣-预收冲帐
-        var exceedMaster = await DomainRuleService.ExistsAsync(connection, transaction,
-            $"SELECT TOP 1 1 FROM dbo.COP_RECEIPT_M WHERE [{typeColumn}]=@Type AND [{noColumn}]=@No AND RECEIVE_SUM>AMOUNT_TAX-REBATE_SUM-PREPAY_SUM+0.1;",
-            type, no, token);
-        if (exceedMaster) return new(false, "实收金额 不能大于 应收金额-现金折扣-预收冲帐");
-        // 对帐单已收款不能大于应收款
-        var accountErrors = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT od.ACCOUNT_NO, od.SUM_AMOUNT, od.RECEIVE_AMOUNT, sd.RECEIVE_AMOUNT
-            FROM dbo.COP_ACCOUNT_M od
-            INNER JOIN (SELECT ACCOUNT_TYPE, ACCOUNT_NO, SUM(RECEIVE_AMOUNT) RECEIVE_AMOUNT
-                        FROM dbo.COP_RECEIPT_D WHERE RECEIPT_TYPE=@Type AND RECEIPT_NO=@No
-                        GROUP BY ACCOUNT_TYPE, ACCOUNT_NO) sd
-              ON od.ACCOUNT_TYPE=sd.ACCOUNT_TYPE AND od.ACCOUNT_NO=sd.ACCOUNT_NO
-            WHERE od.RECEIVE_AMOUNT + sd.RECEIVE_AMOUNT > od.SUM_AMOUNT;
-            """, type, no, token,
-            line: r => $"{r.GetString(0).Trim()}       {Convert.ToDouble(r.GetValue(1))}          {Convert.ToDouble(r.GetValue(2))}          {Convert.ToDouble(r.GetValue(3))}");
-        if (accountErrors is not null)
-            return new(false, "以下会出现对帐单已收款大于应收款\r\n对帐单号     应收款       已收款       本次收款\r\n" + accountErrors);
-        return new(true, null);
-    }
-
-
-    /// <summary>付款单（170202）AfterSave：预付汇总 + 实付校验 + 对帐不超付。</summary>
+    /// <summary>收款单（170102）保存后动作已由效果目录承接（cop-receipt-offset）。</summary>
+    /// <summary>付款单（170202）保存后动作已由效果目录承接（pur-pay-offset）。</summary>
 }

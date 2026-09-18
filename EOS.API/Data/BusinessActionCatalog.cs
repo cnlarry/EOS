@@ -69,6 +69,7 @@ public static class BusinessActionCatalog
         "purchase-due-rollup",
         "pur-prepay-rollup",
         "pur-pay-offset",
+        "cop-receipt-offset",
         // 保留键（暂无落库实例，登记保留）
         "meta-link",
         "flow-trigger",

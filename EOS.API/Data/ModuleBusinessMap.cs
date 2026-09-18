@@ -43,7 +43,7 @@ public static class ModuleBusinessMap
             [170101] = new(170101, null, null, true, "ACCOUNT_NO", "ACCOUNT_TYPE"),
             // 170102 收款单（预收冲抵入口；批核/解批已由效果链接管，旧 P_WF_COP_RECEIPT 已退役）
             [170102] = new(170102, null, null, true, "RECEIPT_NO", "RECEIPT_TYPE",
-                PrepayOffsetTable: "COP_RECEIPT_PREPAY", DomainRule: "cop-receipt"),
+                PrepayOffsetTable: "COP_RECEIPT_PREPAY"),
             // 170103 预收帐款单（AfterSave 已实现：客户校验 + 金额汇总；批核已由效果链接管，旧 P_WF_COP_PREPAY 已退役）
             [170103] = new(170103, null, null, true, "PREPAY_NO", "PREPAY_TYPE"),
             // 170201 应付货款单：保存期数量校验与金额汇总已由效果目录承接（SAVE 期 qty-not-exceed + purchase-due-rollup）；
