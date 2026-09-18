@@ -53,6 +53,7 @@ public static class EffectParamPhysicalValidator
         "sample-edition-bump",
         "mould-ids-sync",
         "card-sibling-close",
+        "fields-metadata-sync",
     };
 
     /// <summary>True when the key either carries no reference or is resolved by this validator.</summary>
@@ -155,6 +156,9 @@ public static class EffectParamPhysicalValidator
                     break;
                 case "card-sibling-close":
                     _ = CardSiblingCloseHandler.Parse(root, plan, columns);
+                    break;
+                case "fields-metadata-sync":
+                    _ = FieldsMetadataSyncHandler.Parse(root, columns);
                     break;
                 case "detail-field-sync":
                     _ = DetailFieldSyncSpec.Parse(root, plan, columns);

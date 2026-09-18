@@ -56,6 +56,7 @@ public static class BusinessActionCatalog
         "sample-edition-bump",
         "mould-ids-sync",
         "card-sibling-close",
+        "fields-metadata-sync",
         // 保留键（暂无落库实例，登记保留）
         "meta-link",
         "flow-trigger",
