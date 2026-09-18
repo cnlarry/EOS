@@ -15,8 +15,8 @@ interface ReportOption { label: string; value: string }
 interface ReportSelectSource { table: string; idColumn: string; valueColumn: string }
 interface ReportCondition { serialNo: number; field: string | null; desc: string; type: number; expression: string | null; defaultValue: string | null; parameterName: string | null; options: ReportOption[]; selectSource: ReportSelectSource | null; defaultValueTo: string | null }
 interface ReportColumn { key: string; label: string; dataType: string; displayFormat?: string | null }
-interface ReportDefinition { moduleId: number; title: string; masterTable: string; conditions: ReportCondition[]; columns: ReportColumn[]; masterPkOrder: string[]; spName: string | null; spParameters: ReportSpParameter[] }
-interface ReportSpParameter { name: string; dataType: string; maxLength: number }
+interface ReportDefinition { moduleId: number; title: string; masterTable: string; conditions: ReportCondition[]; columns: ReportColumn[]; masterPkOrder: string[]; dataSource: 'table' | 'aggregate' | 'sproc'; parameters: ReportSpParameter[] }
+interface ReportSpParameter { name: string; dataType: string; maxLength: number; serialNo: number; isTo: boolean; constant: string | null }
 interface ReportQueryResult { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }
 interface ReportPrintOption { reportId: string; reportName: string; headerId: string | null; tailId: string | null; footerText: string | null; isoNo: string | null; isDefault: boolean }
 interface ReportHeaderOption { headerId: string; headerName: string; companyName: string; headerText: string | null; logoUrl: string | null }
@@ -48,7 +48,7 @@ export function ReportViewerPage() {
   const [showDetail, setShowDetail] = useState(true)
   const [printing, setPrinting] = useState(false)
   const [printError, setPrintError] = useState<string | null>(null)
-  /** SP 报表（空主表无 FIELDS 列定义）查询后的结果集动态列 */
+  /** 无列定义的报表（空主表聚合/过程报表）查询后的结果集动态列 */
   const [spResultColumns, setSpResultColumns] = useState<ColumnDef<Record<string, unknown>, unknown>[] | null>(null)
   const settingsApplied = useRef(false)
   const defaultsApplied = useRef(false)
@@ -109,9 +109,9 @@ export function ReportViewerPage() {
     [definition.data, spResultColumns],
   )
 
-  // SP 报表：结果集行键即权威列（空主表模块无 definition.columns）
+  // 无列定义的报表：结果集行键即权威列（definition.columns 为空的模块）
   useEffect(() => {
-    if (!definition.data?.spName) {
+    if ((definition.data?.columns?.length ?? 0) > 0) {
       setSpResultColumns(null)
       return
     }
@@ -124,7 +124,7 @@ export function ReportViewerPage() {
       header: key,
       cell: (info) => String(info.getValue() ?? '—'),
     })))
-  }, [definition.data?.spName, result.data])
+  }, [definition.data?.columns, result.data])
 
   const runQuery = () => { setPage(1); setQueryKey((current) => current + 1) }
 
@@ -278,18 +278,18 @@ export function ReportViewerPage() {
         </>}
         footer={<ErpPagination total={result.data?.total ?? 0} page={page} pageSize={pageSize} onPageChange={setPage} pageSizes={[50, 100, 200]} onPageSizeChange={(size) => { setPageSize(size); setPage(1) }} />}
       >
-        {def.spName ? (
+        {def.dataSource === 'sproc' ? (
           <div className="card mb-2">
             <div className="card-body py-2">
               <div className="row g-2">
-                {def.spParameters.map((parameter, index) => (
+                {def.parameters.map((parameter) => (
                   <div className="col-md-4 col-lg-3" key={parameter.name}>
                     <label className="form-label mb-1 small">{parameter.name}（{parameter.dataType}）</label>
                     <input
                       className="form-control form-control-sm"
                       type={parameter.dataType.includes('datetime') || parameter.dataType.includes('date') ? 'date' : 'text'}
-                      value={values[index + 1] ?? ''}
-                      onChange={(event) => setValues((current) => ({ ...current, [index + 1]: event.target.value }))}
+                      value={values[parameter.serialNo] ?? ''}
+                      onChange={(event) => setValues((current) => ({ ...current, [parameter.serialNo]: event.target.value }))}
                     />
                   </div>
                 ))}
