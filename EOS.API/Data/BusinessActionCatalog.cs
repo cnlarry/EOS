@@ -62,6 +62,7 @@ public static class BusinessActionCatalog
         "doc-orphan-prune",
         "sfc-plan-sync",
         "cus-account-sync",
+        "pur-apply-sync",
         // 保留键（暂无落库实例，登记保留）
         "meta-link",
         "flow-trigger",
