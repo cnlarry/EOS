@@ -87,11 +87,9 @@ public sealed class EffectShadowSweep
             }
             var definition = JsonSerializer.Deserialize<WorkbenchDefinition>(
                 definitionJson, WorkbenchDefinitionProvider.JsonOptions);
-            var sproc = definition?.BusinessRule?.WorkflowSproc;
-            // A snapshot may still name a procedure that was retired afterwards: replaying the
-            // legacy side would then only record "找不到存储过程", which is a harness artifact
-            // rather than equivalence evidence. Those modules are replayed engine-only.
-            var engineOnly = string.IsNullOrWhiteSpace(sproc) || !await ProcedureExistsAsync(connection, sproc!);
+            // 遗留批核过程钩子（MODULES.UPDATE_SP）已从库内物理删除：旧侧不复存在，
+            // 所有回放一律按"引擎单跑"（B 类证据）。
+            const bool engineOnly = true;
 
             foreach (var shadowEvent in events)
             {
@@ -384,14 +382,6 @@ public sealed class EffectShadowSweep
             return (null, null);
         }
         return (reader.GetInt32(0), reader.GetString(1));
-    }
-
-    private static async Task<bool> ProcedureExistsAsync(SqlConnection connection, string name)
-    {
-        const string sql = "SELECT CASE WHEN OBJECT_ID(@Name, 'P') IS NULL THEN 0 ELSE 1 END;";
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@Name", SqlDbType.NVarChar, 300).Value = name;
-        return Convert.ToInt32(await command.ExecuteScalarAsync()) == 1;
     }
 
     private static async Task<string> WriteSummaryAsync(IReadOnlyList<SweepResult> results)

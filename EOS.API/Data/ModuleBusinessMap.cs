@@ -19,39 +19,39 @@ public static class ModuleBusinessMap
         {
             // 1201 产品/料件基本资料（1206/1210/1211 已合并至此）：批核为纯状态翻转（旧 P_WF_PRODUCT 已退役，
             // 其版次递增逻辑受 SYSSS.PRO_EDITION_TAG 门控，该开关打开时需另配效果）；PRO_NO 手工编号。
-            [1201] = new(1201, null, null, false, null, null),
+            [1201] = new(1201, false, null, null),
             // 1404 报价单：保存后校验已由校验目录承接，批核已由效果链接管（旧 P_WF_COP_QUOTE 已退役），保留自动单号。
-            [1404] = new(1404, null, null, true, "QUOTE_NO", "QUOTE_TYPE"),
+            [1404] = new(1404, true, "QUOTE_NO", "QUOTE_TYPE"),
             // 1405 客户订单（批核/解批已由效果链接管，旧 P_WF_COP_ORDER 已退役；保存期判据已由校验目录承接）
-            [1405] = new(1405, null, null, true, "ORDER_NO", "ORDER_TYPE"),
+            [1405] = new(1405, true, "ORDER_NO", "ORDER_TYPE"),
             // 1604 厂商报价单 → 批核联动厂商计价表（1602）：保存后校验已由校验目录承接，批核已由效果链接管（旧 P_WF_PUR_QUOTE 已退役）。
-            [1604] = new(1604, null, null, true, "QUOTE_NO", "QUOTE_TYPE"),
+            [1604] = new(1604, true, "QUOTE_NO", "QUOTE_TYPE"),
             // 1615 成品请购单（批核已由效果链接管，旧 P_WF_PUR_APPLY 已退役；保存期动作已由效果目录承接）
-            [1615] = new(1615, null, null, true, "APPLY_NO", "APPLY_TYPE"),
+            [1615] = new(1615, true, "APPLY_NO", "APPLY_TYPE"),
             // 1606 采购单（批核/解批已由效果链接管，旧 P_WF_PUR_PURCHASE 已退役；保存期判据与待购表同步已由目录承接）
-            [1606] = new(1606, null, null, true, "PURCHASE_NO", "PURCHASE_TYPE"),
+            [1606] = new(1606, true, "PURCHASE_NO", "PURCHASE_TYPE"),
             // 1607 收料单（批核已由效果链接管，旧 P_WF_PUR_RECEIVE 已退役；保存期判据已迁校验目录）
-            [1607] = new(1607, null, null, true, "RECEIVE_NO", "RECEIVE_TYPE"),
+            [1607] = new(1607, true, "RECEIVE_NO", "RECEIVE_TYPE"),
             // 1406 送货单（批核已由效果链接管，旧 P_WF_COP_SEND 已退役；保存期判据与包装标记已由目录承接）
-            [1406] = new(1406, null, null, true, "SEND_NO", "SEND_TYPE"),
+            [1406] = new(1406, true, "SEND_NO", "SEND_TYPE"),
             // 1408 出货通知单：无 SP，仅自动单号（默认单别 CHPC，历史配置待业务确认）
-            [1408] = new(1408, null, null, true, "SHIPMENT_NO", "SHIPMENT_TYPE"),
+            [1408] = new(1408, true, "SHIPMENT_NO", "SHIPMENT_TYPE"),
             // 财务：170101 应收货款单（对帐单，批核已由效果链接管，旧 P_WF_COP_ACCOUNT 已退役；保存期动作已由效果目录承接）
-            [170101] = new(170101, null, null, true, "ACCOUNT_NO", "ACCOUNT_TYPE"),
+            [170101] = new(170101, true, "ACCOUNT_NO", "ACCOUNT_TYPE"),
             // 170102 收款单（预收冲抵入口；批核/解批已由效果链接管，旧 P_WF_COP_RECEIPT 已退役）
-            [170102] = new(170102, null, null, true, "RECEIPT_NO", "RECEIPT_TYPE",
+            [170102] = new(170102, true, "RECEIPT_NO", "RECEIPT_TYPE",
                 PrepayOffsetTable: "COP_RECEIPT_PREPAY"),
             // 170103 预收帐款单（AfterSave 已实现：客户校验 + 金额汇总；批核已由效果链接管，旧 P_WF_COP_PREPAY 已退役）
-            [170103] = new(170103, null, null, true, "PREPAY_NO", "PREPAY_TYPE"),
+            [170103] = new(170103, true, "PREPAY_NO", "PREPAY_TYPE"),
             // 170201 应付货款单：保存期数量校验与金额汇总已由效果目录承接（SAVE 期 qty-not-exceed + detail-rollup）；
             // 批核已由效果链接管，旧 P_WF_PUR_DUE 已退役
-            [170201] = new(170201, null, null, true, "DUE_NO", "DUE_TYPE"),
+            [170201] = new(170201, true, "DUE_NO", "DUE_TYPE"),
             // 170202 付款单（批核/解批已由效果链接管，旧 P_WF_PUR_PAY 已退役）
-            [170202] = new(170202, null, null, true, "PAY_NO", "PAY_TYPE",
+            [170202] = new(170202, true, "PAY_NO", "PAY_TYPE",
                 PrepayOffsetTable: "PUR_PAY_PREPAY"),
             // 170203 预付帐款单（保存期厂商校验、引用三件套与预付额度校验、金额汇总已由效果目录承接；
             // 批核已由效果链接管，旧 P_WF_PUR_PREPAY 已退役）
-            [170203] = new(170203, null, null, true, "PREPAY_NO", "PREPAY_TYPE"),
+            [170203] = new(170203, true, "PREPAY_NO", "PREPAY_TYPE"),
         };
 
     public static bool TryGet(int moduleId, out ModuleBusinessRule? rule) =>
@@ -59,14 +59,6 @@ public static class ModuleBusinessMap
 
     public static ModuleBusinessRule? Get(int moduleId) =>
         Rules.TryGetValue(moduleId, out var rule) ? rule : null;
-
-    /// <summary>
-    /// 受控存储过程名白名单（与 Rules 表一致），运行时只允许执行登记过的过程。
-    /// </summary>
-    public static bool IsKnownSproc(string sprocName) =>
-        Rules.Values.Any(rule =>
-            string.Equals(rule.AfterSaveSproc, sprocName, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(rule.WorkflowSproc, sprocName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// 需批核单据模块 → 主表映射（待办工作台「我的任务」扫描清单，单源， ）：

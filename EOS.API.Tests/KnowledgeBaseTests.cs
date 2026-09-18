@@ -296,9 +296,11 @@ public sealed class KnowledgeBaseTests
         var repository = new KnowledgeRepository(new DbConnectionFactory(config));
         var token = CancellationToken.None;
         const string collection = "kb_test_m5";
-        await repository.EnsureCollectionAsync(collection, "M5 测试集合", "test@1", 4, "ALL", token);
+        await repository.EnsureCollectionAsync(collection, "M5 测试集合", "test@1", 1024, "ALL", token);
 
-        var vector = new float[] { 1, 0, 0, 0 };
+        var vector = new float[1024];
+        vector[0] = 1f;
+        var queryVectorJson = "[" + string.Join(",", vector.Select(value => value.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture))) + "]";
         var content = "M5 集成测试文档。" + Guid.NewGuid();
         var first = await repository.IngestDocumentAsync(collection, "M5 测试", "test/m5",
             content, "CONSULTANT", [("M5 集成测试文档。", vector)], "test", token);
@@ -309,16 +311,16 @@ public sealed class KnowledgeBaseTests
         Assert.True(second.Reused);
         Assert.Equal(first.DocId, second.DocId);
 
-        var hidden = await repository.SearchAsync("[1,0,0,0]", 4, 5, ["ALL"], token);
+        var hidden = await repository.SearchAsync(queryVectorJson, 1024, 5, ["ALL"], token);
         Assert.DoesNotContain(hidden, hit => hit.DocId == first.DocId);
-        var visible = await repository.SearchAsync("[1,0,0,0]", 4, 5, ["ALL", "CONSULTANT"], token);
+        var visible = await repository.SearchAsync(queryVectorJson, 1024, 5, ["ALL", "CONSULTANT"], token);
         Assert.Contains(visible, hit => hit.DocId == first.DocId);
 
         Assert.True(await repository.DeleteDocumentAsync(first.DocId, token));
         var afterDelete = await repository.GetDocumentAsync(first.DocId, token);
         Assert.Equal("deleted", afterDelete.Document!.Status);
         Assert.Empty(afterDelete.Chunks);
-        var searchAfterDelete = await repository.SearchAsync("[1,0,0,0]", 4, 5, ["ALL", "CONSULTANT"], token);
+        var searchAfterDelete = await repository.SearchAsync(queryVectorJson, 1024, 5, ["ALL", "CONSULTANT"], token);
         Assert.DoesNotContain(searchAfterDelete, hit => hit.DocId == first.DocId);
     }
 }

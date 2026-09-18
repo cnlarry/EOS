@@ -94,50 +94,21 @@ public sealed class BillNoGeneratorTests
     }
 }
 
-public sealed class ControlledSprocInvokerTests
+public sealed class WorkbenchKeyConditionTests
 {
     [Fact]
-    public void BuildKeyCondition_构造主键条件并转义单引号()
+    public void Build_构造主键条件并转义单引号()
     {
-        var condition = ControlledSprocInvoker.BuildKeyCondition(
+        var condition = WorkbenchKeyCondition.Build(
             new[] { "QUOTE_TYPE", "QUOTE_NO" },
             new[] { "BJK", "BJK'O8" });
         Assert.Equal("[QUOTE_TYPE]='BJK' AND [QUOTE_NO]='BJK''O8'", condition);
     }
 
     [Fact]
-    public void BuildKeyCondition_列值与数量不一致时抛异常()
+    public void Build_列值与数量不一致时抛异常()
     {
         Assert.Throws<ArgumentException>(() =>
-            ControlledSprocInvoker.BuildKeyCondition(new[] { "A", "B" }, new[] { "1" }));
-    }
-
-    [Theory]
-    // 批核过程退役后即从受控白名单移除：白名单只减不增
-    // （P_WF_COP_QUOTE / P_WF_COP_ORDER / P_WF_COP_RECEIPT / P_WF_PUR_PAY / P_WF_PRODUCT 已随效果链接管退役）
-    [InlineData("P_WF_COP_QUOTE", false)]
-    [InlineData("P_WF_COP_ORDER", false)]
-    [InlineData("P_WF_COP_RECEIPT", false)]
-    [InlineData("P_WF_PUR_PAY", false)]
-    [InlineData("P_WF_PRODUCT", false)]
-    [InlineData("P_COP_QUOTE_After_Save", false)] // 已实现为领域规则（cop-quote）
-    [InlineData("P_COP_ACCOUNT_After_Save", false)] // 已实现（cop-account）
-    [InlineData("P_PUR_DUE_After_Save", false)] // 已实现（purchase-due）
-    [InlineData("P_COP_RECEIPT_After_Save", false)] // 已实现（cop-receipt）
-    [InlineData("P_COP_PREPAY_After_Save", false)] // 已实现（cop-prepay）
-    [InlineData("P_PUR_PAY_After_Save", false)] // 已实现（pur-pay）
-    [InlineData("P_PUR_PREPAY_After_Save", false)] // 已实现（pur-prepay）
-    [InlineData("P_WF_PUR_PURCHASE", false)] // 已随效果链接管退役
-    [InlineData("P_PUR_PURCHASE_After_Save", false)] // 已实现（pur-purchase）
-    [InlineData("P_COP_SEND_JING_After_Save", false)] // 已实现（cop-send）
-    [InlineData("P_COP_ORDER_After_Save", false)] // 已实现为领域规则（cop-order）
-    [InlineData("P_PUR_RECEIVE_After_Save", false)] // 已实现（pur-receive）
-    [InlineData("P_PUR_APPLY_After_Save", false)] // 已实现（pur-apply）
-    [InlineData("P_PUR_QUOTE_After_Save", false)] // 已实现（pur-quote）
-    [InlineData("P_UNKNOWN_SPROC", false)]
-    [InlineData("DROP TABLE X", false)]
-    public void 受控白名单_只允许登记过的存储过程(string sproc, bool expected)
-    {
-        Assert.Equal(expected, ModuleBusinessMap.IsKnownSproc(sproc));
+            WorkbenchKeyCondition.Build(new[] { "A", "B" }, new[] { "1" }));
     }
 }

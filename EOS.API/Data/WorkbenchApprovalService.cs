@@ -20,7 +20,6 @@ public sealed class WorkbenchApprovalService(
     DbConnectionFactory connections,
     WorkbenchAuditWriter auditWriter,
     WorkflowEngine workflowEngine,
-    ControlledSprocInvoker controlledSprocs,
     EffectEngineInvoker effectEngine,
     WorkbenchIdempotency idempotency,
     ILogger<WorkbenchApprovalService> logger)
@@ -114,7 +113,7 @@ public sealed class WorkbenchApprovalService(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
                 $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
         }
-        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
+        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
         var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);
         if (originalState is null)
         {
@@ -133,19 +132,9 @@ public sealed class WorkbenchApprovalService(
                 return RecordSaveResult.Success(keyValues);
             }
         }
-        if (definition.BusinessRule?.WorkflowSproc is { } sproc)
-        {
-            var result = await controlledSprocs.RunWorkflowAsync(definition.ModuleId, sproc, definition.MasterPkOrder, keyValues, true, token);
-            if (!result.Success)
-            {
-                await RestoreConfirmStateAsync(connection, definition.MasterTable, keyCondition, originalState.Value, token);
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED",
-                    result.Message ?? "自动批核失败。");
-            }
-        }
         await auditWriter.WriteEventAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
             "APPROVE", "自动批核", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
-        logger.LogInformation("自动批核（过渡桥） module={ModuleId} key={Key} executor={User}", definition.ModuleId, string.Join(',', keyValues), userId);
+        logger.LogInformation("自动批核（无副作用） module={ModuleId} key={Key} executor={User}", definition.ModuleId, string.Join(',', keyValues), userId);
         return RecordSaveResult.Success(keyValues);
     }
 
@@ -177,7 +166,7 @@ public sealed class WorkbenchApprovalService(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
                 $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
         }
-        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
+        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
         var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);
         if (originalState is null)
         {
@@ -271,7 +260,7 @@ public sealed class WorkbenchApprovalService(
             return null;
         }
 
-        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
+        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
         var stateColumns = new List<string>();
         if (hasConfirm)
         {
@@ -333,10 +322,8 @@ public sealed class WorkbenchApprovalService(
         CancellationToken token,
         string? message = null)
     {
-        // 批核能力有三个来源：静态登记的批核过程（过渡桥）、已发布定义的效果链（数据驱动）、
-        // 自动批核模块的无副作用状态翻转。三者皆无才拒绝——效果链不依赖静态模块映射即可授权批核。
-        var rule = definition.BusinessRule;
-        var sproc = rule?.WorkflowSproc;
+        // 批核能力有两个来源：已发布定义的效果链（数据驱动）、自动批核模块的无副作用状态翻转。
+        // 遗留批核过程钩子（MODULES.UPDATE_SP）已物理删除，故不再有"静态登记批核过程"这一维度。
         var effectsEnabled = effectEngine.IsEnabledFor(definition);
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
@@ -346,11 +333,11 @@ public sealed class WorkbenchApprovalService(
         // 否则按钮显示可点、请求却在守卫处被判不支持（自动批核模块无法手动解批）。
         var stateless = WorkflowStates.IsStatelessApproveCapable(
             definition.AutoApprove, effectsEnabled, hasFlow);
-        if (!stateless && sproc is null && !effectsEnabled)
+        if (!stateless && !effectsEnabled)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "WORKFLOW_NOT_SUPPORTED", "该模块不支持批核操作。");
         }
-        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
+        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
         // 无副作用批核/解批（自动批核且无批核过程/效果链/流程定义）：保存路径的自动批核
         // 本就是纯状态翻转，显式动作同口径。有流程定义的仍走送审，有过程/效果链的仍走原路径。
         // 判定与表单按钮显隐共用 WorkflowStates.IsStatelessApproveCapable，两边不得分叉。
@@ -390,51 +377,10 @@ public sealed class WorkbenchApprovalService(
         {
             return await RunEngineApprovalAsync(definition, keyValues, approve, employeeName, userId, token);
         }
-        // 过渡桥（引擎未接管）：状态先落定，再调遗留批核过程；过程在独立连接执行，
-        // 无法与状态同事务，失败按补偿还原（§15.3 桥接语义）。
-        var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);
-        if (originalState is null)
-        {
-            return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
-        }
-        // 解批前置校验
-        if (!approve && originalState.Value.Tag == true)
-        {
-            var noBack = await CheckNotBackFieldsAsync(connection, definition, keyValues, token);
-            if (noBack is not null)
-            {
-                return noBack;
-            }
-        }
-        if (sproc is null)
-        {
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED",
-                "该模块未配置批核效果，且无兼容批核处理。");
-        }
-        var bridgeConfirmSql = approve
-            ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};"
-            : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyCondition};";
-        await using (var confirmCommand = new SqlCommand(bridgeConfirmSql, connection))
-        {
-            confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = employeeName.Trim();
-            var affected = await confirmCommand.ExecuteNonQueryAsync(token);
-            if (affected == 0)
-            {
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_STATE_CONFLICT",
-                    approve ? "记录不存在或已批核，无法重复批核。" : "记录不存在或未批核，无法解批。");
-            }
-        }
-        var result = await controlledSprocs.RunWorkflowAsync(definition.ModuleId, sproc, definition.MasterPkOrder, keyValues, approve, token);
-        if (!result.Success)
-        {
-            await RestoreConfirmStateAsync(connection, definition.MasterTable, keyCondition, originalState.Value, token);
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED",
-                result.Message ?? (approve ? "批核失败。" : "解批失败。"));
-        }
-        logger.LogInformation("统一表单{Action}（过渡桥） module={ModuleId} key={Key}", approve ? "批核" : "解批", definition.ModuleId, string.Join(',', keyValues));
-        await auditWriter.WriteEventAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
-            approve ? "APPROVE" : "DEAPPROVE", approve ? "批核" : "解批", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
-        return RecordSaveResult.Success(keyValues);
+        // 引擎未接管：没有可执行的生效链。遗留批核过程钩子（MODULES.UPDATE_SP）已从库内物理删除，
+        // 因此这里 fail-closed 拒绝，不再回落到"状态先落定、再调过程、失败补偿还原"的旧桥接语义。
+        return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED",
+            "该模块未启用效果引擎，且不再支持遗留批核过程。");
     }
 
     /// <summary>
@@ -500,7 +446,7 @@ public sealed class WorkbenchApprovalService(
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
-        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
+        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
         var hasTag = await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "FINISHED_TAG", token);
         if (!hasTag)
         {
@@ -556,7 +502,7 @@ public sealed class WorkbenchApprovalService(
         }
 
         var blocked = new List<string>();
-        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
+        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
         if (!string.IsNullOrWhiteSpace(masterFields) && !string.IsNullOrWhiteSpace(definition.MasterTable))
         {
             await CheckNotBackTableAsync(connection, definition.ModuleId, definition.MasterTable, masterFields, keyCondition, blocked, token);
@@ -654,17 +600,6 @@ public sealed class WorkbenchApprovalService(
         var person = reader.IsDBNull(1) ? null : reader.GetString(1);
         var date = reader.IsDBNull(2) ? (DateTime?)null : reader.GetDateTime(2);
         return (tag, person, date);
-    }
-
-    private static async Task RestoreConfirmStateAsync(
-        SqlConnection connection, string table, string keyCondition, (bool? Tag, string? Person, DateTime? Date) state, CancellationToken token)
-    {
-        var sql = $"UPDATE dbo.[{table}] SET CONFIRM_TAG=@Tag,CONFIRM_PERSON=@Person,CONFIRM_DATE=@Date WHERE {keyCondition};";
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@Tag", SqlDbType.Bit).Value = (object?)state.Tag ?? DBNull.Value;
-        command.Parameters.Add("@Person", SqlDbType.NVarChar, 50).Value = (object?)state.Person ?? DBNull.Value;
-        command.Parameters.Add("@Date", SqlDbType.DateTime).Value = (object?)state.Date ?? DBNull.Value;
-        await command.ExecuteNonQueryAsync(token);
     }
 
     private async Task<WorkbenchIdempotencyRecord?> ClaimIdempotencyAsync(int moduleId, string action, string key, CancellationToken token)

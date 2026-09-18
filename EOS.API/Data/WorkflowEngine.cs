@@ -97,7 +97,7 @@ public sealed class WorkflowEngine(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
-        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keyValues);
+        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
 
         long wfId;
         string existingState = string.Empty;
@@ -976,7 +976,7 @@ public sealed class WorkflowEngine(
         IReadOnlyList<string> keyValues,
         CancellationToken token)
     {
-        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(pkColumns, keyValues);
+        var keyCondition = WorkbenchKeyCondition.Build(pkColumns, keyValues);
         var result = new List<object>();
         await using var command = new SqlCommand("""
             SELECT L.SUBFLOW_NO, L.SUBFLOW_DESC, L.APP_EMP_ID, L.APPROVE_STATE, L.APPROVE_MSG,
@@ -1131,7 +1131,7 @@ public sealed class WorkflowEngine(
         if (pkColumns.Count == 0 || pkColumns.Count != keyValues.Count)
             return RecordSaveResult.Failed(RecordAccessStatus.KeyMismatch, "RECORD_KEY_MISMATCH",
                 "主键数量与模块主键不匹配。");
-        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(pkColumns, keyValues);
+        var keyCondition = WorkbenchKeyCondition.Build(pkColumns, keyValues);
 
         long wfId;
         string state;

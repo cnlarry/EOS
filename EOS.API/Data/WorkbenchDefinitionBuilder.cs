@@ -227,8 +227,6 @@ public sealed class WorkbenchDefinitionBuilder(
                         billTypeField=masterPkOrder.First(column=>!column.Equals(billNoField,StringComparison.OrdinalIgnoreCase));
                 }
                 businessRule=new(moduleId,
-                    null,
-                    null,
                     billNoField is not null,
                     billNoField,
                     billTypeField);
