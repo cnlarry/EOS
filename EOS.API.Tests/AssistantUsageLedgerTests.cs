@@ -35,6 +35,24 @@ public sealed class AssistantUsageLedgerTests
         await command.ExecuteNonQueryAsync();
     }
 
+    /// <summary>读当日台账行（该用户那一行）：REQUESTS / 预扣余额 / 实扣累计。</summary>
+    private static async Task<(int Requests, long Reserved, long Spent)> ReadDayRowAsync(
+        string connectionString, string userId)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("""
+            SELECT REQUESTS, RESERVED_MICROYUAN, SPENT_MICROYUAN
+            FROM dbo.ASSISTANT_USAGE_DAY
+            WHERE USER_ID = @UserId AND USAGE_DATE = CAST(SYSUTCDATETIME() AS date);
+            """, connection);
+        command.Parameters.AddWithValue("@UserId", userId);
+        await using var reader = await command.ExecuteReaderAsync();
+        return await reader.ReadAsync()
+            ? (reader.GetInt32(0), reader.GetInt64(1), reader.GetInt64(2))
+            : (0, 0L, 0L);
+    }
+
     [Fact]
     public async Task ConcurrentReserves_NeverBreachCap()
     {
@@ -53,7 +71,9 @@ public sealed class AssistantUsageLedgerTests
             .Build();
         var repository = new AssistantUsageRepository(new DbConnectionFactory(config));
         var userId = "test-cap-" + Guid.NewGuid().ToString("N")[..8];
-        var day = DateTimeOffset.UtcNow.Date;
+        // 用真正的 DateTimeOffset（不是 .Date 那个 Kind=Unspecified 的 DateTime）：
+        // 后者经隐式转换会被当成本地时间，再折回 UTC 会跨到前一天，导致台账行落在昨天的键上。
+        var day = DateTimeOffset.UtcNow;
         await CleanupAsync(connectionString, userId);
         try
         {
@@ -68,8 +88,13 @@ public sealed class AssistantUsageLedgerTests
 
             Assert.Equal(5, results.Count(succeeded => succeeded));
             await repository.SettleAsync(userId, day, reserve, reserve, completed: true, CancellationToken.None);
-            var usage = await repository.GetUserDailyUsageAsync(userId, day, CancellationToken.None);
-            Assert.Equal(1, usage.Requests);
+            // 结算记账落在 ASSISTANT_USAGE_DAY（REQUESTS/RESERVED/SPENT），而
+            // GetUserDailyUsageAsync 读的是**消息日志**（ROLE=2 的条数）——两者口径不同，
+            // 故这里直接断台账行：恰好结算一笔 ⇒ 计数 +1、预扣归还 1 笔、实扣落账 1 笔。
+            var (requests, reserved, spent) = await ReadDayRowAsync(connectionString, userId);
+            Assert.Equal(1, requests);
+            Assert.Equal(4 * reserve, reserved);
+            Assert.Equal(reserve, spent);
         }
         finally
         {

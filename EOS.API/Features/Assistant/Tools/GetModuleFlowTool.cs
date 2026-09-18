@@ -80,7 +80,7 @@ public sealed class GetModuleFlowTool(
                 $"主键长度不符：该模块主键为 {definition.MasterPkOrder.Count} 段（{string.Join("/", definition.MasterPkOrder)}）。");
         }
 
-        var keyCondition = ControlledSprocInvoker.BuildKeyCondition(definition.MasterPkOrder, keys);
+        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keys);
         var instance = await flows.GetInstanceAsync(moduleId, keyCondition, token);
         var record = await flows.GetRecordStateAsync(
             definition.MasterTable, definition.MasterPkOrder, keys, token);

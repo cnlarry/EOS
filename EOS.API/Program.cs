@@ -199,7 +199,6 @@ builder.Services.AddSingleton(builder.Configuration.GetSection("EffectEngine").G
 builder.Services.AddScoped<EffectEngineInvoker>();
 builder.Services.AddScoped<EffectPipeline>();
 builder.Services.AddScoped<ChooserRepository>();
-builder.Services.AddScoped<ControlledSprocInvoker>();
 builder.Services.AddScoped<WorkflowEngine>();
 builder.Services.AddScoped<FlowDefinitionService>();
 builder.Services.Configure<WorkflowSettings>(builder.Configuration.GetSection("Workflow"));

@@ -19,7 +19,6 @@ public sealed class WorkbenchCommandHandler(
     WorkbenchAuditWriter auditWriter,
     WorkbenchApprovalService approvalService,
     WorkbenchScopeFilter scopeFilter,
-    ControlledSprocInvoker controlledSprocs,
     EffectEngineInvoker effectEngine,
     WorkbenchIdempotency idempotency,
     ILogger<WorkbenchCommandHandler> logger)
@@ -72,7 +71,7 @@ public sealed class WorkbenchCommandHandler(
             var detailFields = form.DetailFields.Where(field => !field.DisplayOnly && !field.IsVirtual).Select(field => field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             detailRows.AddRange(await WorkbenchSql.ReadRowsAsync(connection, null, definition.DetailTable, pkColumns, keyValues, detailFields, token));
         }
-        var flowState = await ReadFlowStateAsync(connection, definition.ModuleId, ControlledSprocInvoker.BuildKeyCondition(pkColumns, keyValues), token);
+        var flowState = await ReadFlowStateAsync(connection, definition.ModuleId, WorkbenchKeyCondition.Build(pkColumns, keyValues), token);
         return new(RecordAccessStatus.Ok, new RecordBundle(current, detailRows), flowState);
     }
 
@@ -167,11 +166,6 @@ public sealed class WorkbenchCommandHandler(
 
         // 领域规则：自动单号 + 默认单别
         var businessRule = definition.BusinessRule;
-        if (businessRule?.SprocPendingPorting == true)
-        {
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "SP_NOT_PORTED",
-                "该模块的存盘后处理逻辑尚未实现，禁止保存。");
-        }
         if (businessRule is { AutoBillNo: true, BillNoField: not null, BillTypeField: not null })
         {
             var existingNo = values.GetValueOrDefault(businessRule.BillNoField);
@@ -276,24 +270,13 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", saveValidation);
         }
-        // 保存后行为来自效果目录（SAVE 阶段动作链）；只有该模块确实没有配置任何 SAVE 动作时，
-        // 才回落到遗留保存后过程。
-        // （原实现把"跑效果链"挂在 AfterSaveSproc 分支下，导致行为已迁入效果目录、
-        //   但定义里没有遗留钩子的模块永远不执行 SAVE 动作。）
+        // 保存后行为来自效果目录（SAVE 阶段动作链）。遗留保存后过程钩子（MODULES.AFTERSAVE_SP）
+        // 已从库内物理删除，故没有"未配动作就回落调过程"这一分支了。
         var effectRun = await effectEngine.TryRunAsync(
             connection, transaction, definition, EffectEvent.Save, keyValues, userId, token);
         if (effectRun.Ran && effectRun.Error is not null)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", effectRun.Error);
-        }
-        if (!effectRun.Ran && businessRule?.AfterSaveSproc is { } afterSaveSproc)
-        {
-            var sprocResult = await controlledSprocs.RunAfterSaveAsync(definition.ModuleId, afterSaveSproc, pkColumns, keyValues, connection, transaction, token);
-            if (!sprocResult.Success)
-            {
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED",
-                    sprocResult.Message ?? "保存后业务校验未通过。");
-            }
         }
         await RecalculateMasterAmountsAsync(connection, transaction, definition, token);
         await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues),
@@ -346,11 +329,6 @@ public sealed class WorkbenchCommandHandler(
             }
         }
 
-        if (definition.BusinessRule?.SprocPendingPorting == true)
-        {
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "SP_NOT_PORTED",
-                "该模块的存盘后处理逻辑尚未实现，禁止保存。");
-        }
         var pkColumns = await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, transaction, definition.MasterTable, token);
         if (pkColumns.Count != keyValues.Count)
         {
@@ -381,7 +359,7 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "CONFIRMED_EDIT_FORBIDDEN", "记录已批核，禁止编辑（请先解批）。");
         }
         // 在途流程守卫：流程审批中的单据禁止编辑（审批人批的是送审时快照，改后需先撤回再重提）
-        var editKeyCondition = ControlledSprocInvoker.BuildKeyCondition(pkColumns, keyValues);
+        var editKeyCondition = WorkbenchKeyCondition.Build(pkColumns, keyValues);
         if (await WorkflowEngine.HasActiveFlowAsync(connection, transaction, definition.ModuleId, editKeyCondition, token))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_IN_PROGRESS_EDIT_FORBIDDEN",
@@ -484,21 +462,12 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", saveValidation);
         }
-        // 同新增路径：执行 SAVE 阶段动作链，未配置动作才回落遗留过程。
+        // 同新增路径：执行 SAVE 阶段动作链（遗留保存后过程钩子已物理删除，无回落分支）。
         var effectRun = await effectEngine.TryRunAsync(
             connection, transaction, definition, EffectEvent.Save, keyValues, userId, token);
         if (effectRun.Ran && effectRun.Error is not null)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", effectRun.Error);
-        }
-        if (!effectRun.Ran && businessRule?.AfterSaveSproc is { } afterSaveSproc)
-        {
-            var sprocResult = await controlledSprocs.RunAfterSaveAsync(definition.ModuleId, afterSaveSproc, pkColumns, keyValues, connection, transaction, token);
-            if (!sprocResult.Success)
-            {
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED",
-                    sprocResult.Message ?? "保存后业务校验未通过。");
-            }
         }
         await RecalculateMasterAmountsAsync(connection, transaction, definition, token);
         // 收紧：修改后记录仍须满足模块契约（防止把记录改出过滤范围）
@@ -594,7 +563,7 @@ public sealed class WorkbenchCommandHandler(
             return guard;
         }
         // 在途流程守卫：流程审批中的单据禁止删除（防止留下孤儿流程实例与在途任务）
-        var deleteKeyCondition = ControlledSprocInvoker.BuildKeyCondition(pkColumns, keyValues);
+        var deleteKeyCondition = WorkbenchKeyCondition.Build(pkColumns, keyValues);
         if (await WorkflowEngine.HasActiveFlowAsync(connection, transaction, definition.ModuleId, deleteKeyCondition, token))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_IN_PROGRESS_DELETE_FORBIDDEN",

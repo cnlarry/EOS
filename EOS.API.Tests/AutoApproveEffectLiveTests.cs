@@ -49,7 +49,6 @@ public sealed class AutoApproveEffectLiveTests
     {
         var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
         var auditWriter = new WorkbenchAuditWriter(connections, new HttpContextAccessor(), provider, Options.Create(new AuditSettings()));
-        var sprocs = new ControlledSprocInvoker(connections, NullLogger<ControlledSprocInvoker>.Instance);
         var engine = new EffectEngineInvoker(
             new EffectEngineSettings { Enabled = engineEnabled },
             new EffectPlanLoader(),
@@ -57,7 +56,7 @@ public sealed class AutoApproveEffectLiveTests
             NullLogger<EffectEngineInvoker>.Instance);
         var workflow = new WorkflowEngine(connections, auditWriter, provider, engine, NullLogger<WorkflowEngine>.Instance);
         return new WorkbenchApprovalService(
-            connections, auditWriter, workflow, sprocs, engine, new WorkbenchIdempotency(),
+            connections, auditWriter, workflow, engine, new WorkbenchIdempotency(),
             NullLogger<WorkbenchApprovalService>.Instance);
     }
 

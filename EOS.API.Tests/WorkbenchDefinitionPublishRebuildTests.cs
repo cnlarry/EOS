@@ -66,40 +66,38 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
             NullLogger<WorkbenchDefinitionBuilder>.Instance);
 
     /// <summary>
-    /// 发布路径按代码 + 元数据重建业务规则，且不因 provider 缓存里的旧基线而改变：
-    /// 构造一个内存基线（BusinessRule 声明了已不存在的保存后过程），发布路径必须
-    /// 产出与元数据一致的结果——180206 的保存期行为已在校验目录里（`CatalogAfterSaveMap`），
-    /// 故发布产出 `AfterSaveSproc=null`、`SprocPendingPorting=false`，而运行时路径仍读基线。
+    /// 发布路径按代码 + 元数据重建模块级字段，且不因 provider 缓存里的旧基线而改变：
+    /// 构造一个内存基线（行级过滤条件写成一个库里并不存在的幽灵值），发布路径必须产出
+    /// 与当前元数据一致的结果，而运行时路径仍读基线（已发布快照为运行时事实源）。
     /// 该用例证明的是"发布忽略基线、按元数据重建"，与具体字段无关。
     /// </summary>
     [Fact]
-    public async Task PublishBuild_IgnoresBaselineAndRebuildsBusinessRule()
+    public async Task PublishBuild_IgnoresBaselineAndRebuildsFromMetadata()
     {
         var connections = Connections();
         var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
         var builder = Builder(connections, provider);
         var emptyDenied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // 造一个「快照声明了幽灵保存后过程」的旧基线，塞进 provider 缓存（模拟删码后未重发布的脏快照）。
+        // 造一个「快照带着幽灵过滤条件」的旧基线，塞进 provider 缓存（模拟未重发布的脏快照）。
         var staleBaseline = new WorkbenchDefinition(
             ModuleId: 180206, Title: "员工申请单", MasterTable: "HR_APPLY_M", DetailTable: "HR_APPLY_D",
             MasterFields: [], DetailFields: [], DefaultSort: null, HasAdd: true, HasEdit: true,
             DetailNoSave: false, MasterPkOrder: ["APPLY_TYPE", "APPLY_NO"], DetailNoFields: "", HasWorkflow: false,
+            ModuleFilter: "GHOST_FIELD='1'",
             UserId: "", ExecTag: "Z",
-            BusinessRule: new ModuleBusinessRule(180206, "P_GHOST_After_Save", null, false, null, null,
-                SprocPendingPorting: true));
+            BusinessRule: new ModuleBusinessRule(180206, false, null, null));
         provider.SeedBaselineForTest(180206, staleBaseline, "module-180206-v999");
 
-        // 发布路径：忽略基线，业务规则按当前元数据 + 目录承接重建。
+        // 发布路径：忽略基线，模块级字段按当前元数据重新派生。
         var publish = await builder.GetDefinitionAsync(180206, "admin", "Z", true, true, emptyDenied, emptyDenied, CancellationToken.None, forPublish: true);
         Assert.NotNull(publish);
-        Assert.Null(publish!.BusinessRule?.AfterSaveSproc);
-        Assert.False(publish.BusinessRule?.SprocPendingPorting ?? true);
+        Assert.NotEqual("GHOST_FIELD='1'", publish!.ModuleFilter);
 
-        // 运行时路径（forPublish=false）：有基线时仍走基线（已发布快照为运行时事实源）。
+        // 运行时路径（forPublish=false）：有基线时仍走基线。
         var runtime = await builder.GetDefinitionAsync(180206, "admin", "Z", true, true, emptyDenied, emptyDenied, CancellationToken.None);
         Assert.NotNull(runtime);
-        Assert.Equal("P_GHOST_After_Save", runtime!.BusinessRule?.AfterSaveSproc);
+        Assert.Equal("GHOST_FIELD='1'", runtime!.ModuleFilter);
     }
 
     /// <summary>

@@ -35,7 +35,7 @@ public sealed class WorkbenchDefinitionSnapshotRoundTripTests
             ExecTag: "Z",
             HasOwnerColumn: true,
             HasOwnerGroupColumn: true,
-            BusinessRule: new ModuleBusinessRule(1401, null, "P_WF_TEST", true, "CLIENT_ID", "X"),
+            BusinessRule: new ModuleBusinessRule(1401, true, "CLIENT_ID", "X"),
             AutoApprove: false,
             GroupExpressions: ["", "", "", "", ""],
             FormTabs: null,
@@ -58,7 +58,8 @@ NewUrl: "/workbench/1401/new",
         Assert.Equal(["CLIENT_ID"], roundTrip.MasterPkOrder);
         Assert.Equal("CLIENT.SALES_ID='A'", roundTrip.ModuleFilter);
         Assert.Equal(2, roundTrip.MasterFields.Count);
-        Assert.Equal("P_WF_TEST", roundTrip.BusinessRule!.WorkflowSproc);
+        Assert.True(roundTrip.BusinessRule!.AutoBillNo);
+        Assert.Equal("CLIENT_ID", roundTrip.BusinessRule!.BillNoField);
         Assert.Equal("approve", roundTrip.FormButtons!.Single().Action);
         Assert.True(roundTrip.FilterFieldKeys!.Contains("SALES_ID"));
         Assert.Equal("module-1401-v1", roundTrip.DefinitionVersion);

@@ -552,16 +552,10 @@ public sealed class EffectShadowRunner
         {
             throw new InvalidOperationException($"模块 {options.ModuleId} 快照 v{version} 缺少 businessActions 配置段。请先发布。");
         }
-        // The legacy stored procedure is only required when the legacy path actually runs.
-        // Engine-only mode exists precisely for modules whose procedure was retired; a failure
-        // run keeps its value without it as well, because the gate under test is the engine
-        // blocking before any effect is written.
-        var workflowSproc = definition.BusinessRule?.WorkflowSproc;
-        var legacyAvailable = !options.EngineOnly && !string.IsNullOrWhiteSpace(workflowSproc);
-        if (!legacyAvailable && !options.EngineOnly && !options.Failure)
-        {
-            throw new InvalidOperationException($"模块 {options.ModuleId} 无 WorkflowSproc，旧路径无法执行。");
-        }
+        // 遗留批核过程钩子（MODULES.UPDATE_SP）已从库内物理删除：旧路径不复存在，
+        // 因此所有对拍都是**引擎单跑**（B 类证据）；失败分支同样成立——待验的闸门是引擎在写入之前阻断。
+        string? workflowSproc = null;
+        const bool legacyAvailable = false;
 
         var keys = await ResolveRecordKeysAsync(connection, spec, options.ModuleId, options.Keys, deapprove, options.Failure);
         await log.WriteLineAsync($"shadow run={runId} module={options.ModuleId} event={options.Event} version={version} keys={string.Join("|", keys)} sproc={workflowSproc ?? "(none)"}");
