@@ -621,6 +621,76 @@ public sealed class EffectValidationLiveDataTests
         }
     }
 
+    /// <summary>
+    /// 进出口报关单（300301/300304 出口、300302/300305 进口）的"报关数量不超备案合同数量"
+    /// 已由保存期 qty-not-exceed（usage-not-exceed + MODULE 门控）承担：门关跳过、门开命中且
+    /// 四列诊断（手册编号 / 合同数量 / 已报关数量 / 本单数量）逐字一致、数量降到额度内放行。
+    /// </summary>
+    [Fact]
+    public async Task 报关单_受门控的报关不超合同数量_门关跳过门开命中四列诊断()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.CUS_MANUAL_PRO (MANUAL_NO, SERIAL_NO, QTY, EXP_QTY, ZC_QTY, ZR_QTY)
+                    VALUES (N'ADR12MANUALPRO', 1, 100, 95, 0, 0);
+                INSERT INTO dbo.CUS_EXPORT_D (EXPORT_TYPE, EXPORT_NO, SERIAL_NO, MANUAL_NO, PRO_SERIAL_NO, QTY)
+                    VALUES (N'ADR12', N'ADR12EXP1', 1, N'ADR12MANUALPRO', 1, 10);
+                INSERT INTO dbo.CUS_MANUAL_MAT (MANUAL_NO, SERIAL_NO, QTY, IMP_QTY, TRAN_QTY, ZC_QTY, BF_QTY, ZR_QTY)
+                    VALUES (N'ADR12MANUALMAT', 1, 100, 95, 0, 0, 0, 0);
+                INSERT INTO dbo.CUS_IMPORT_D (IMPORT_TYPE, IMPORT_NO, SERIAL_NO, MANUAL_NO, MAT_SERIAL_NO, QTY)
+                    VALUES (N'ADR12', N'ADR12IMP1', 1, N'ADR12MANUALMAT', 1, 10);
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            var exportPlan = await LoadPlanAsync(connection, transaction, 300301, token, "qty-not-exceed");
+            var importPlan = await LoadPlanAsync(connection, transaction, 300302, token, "qty-not-exceed");
+
+            // 门关（两个模块当前 ERROR_NO_SAVE=0）→ 超量也放行，与旧 C# 的早退分支一致
+            await Executor.ValidateAsync(connection, transaction, exportPlan, "SAVE", token, ["ADR12", "ADR12EXP1"]);
+            await Executor.ValidateAsync(connection, transaction, importPlan, "SAVE", token, ["ADR12", "ADR12IMP1"]);
+
+            await using (var gate = new SqlCommand(
+                "UPDATE dbo.MODULES SET ERROR_NO_SAVE = 1 WHERE M_IDX IN (300301, 300302);", connection, transaction))
+            {
+                await gate.ExecuteNonQueryAsync(token);
+            }
+
+            var exportFailure = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, exportPlan, "SAVE", token, ["ADR12", "ADR12EXP1"]));
+            Assert.Equal("以下报关单已超出合同数量\r\n 手册编号  数 量  已出数量  单据数量\r\nADR12MANUALPRO    100    95    10",
+                exportFailure.Message);
+
+            var importFailure = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, importPlan, "SAVE", token, ["ADR12", "ADR12IMP1"]));
+            Assert.Equal("以下报关单已超出合同数量\r\n 手册编号  数 量  已进数量  单据数量\r\nADR12MANUALMAT    100    95    10",
+                importFailure.Message);
+
+            // 本单数量降到额度内（已报关 95 + 本单 5 = 100，不再大于合同 100）→ 放行
+            await using (var fix = new SqlCommand("""
+                UPDATE dbo.CUS_EXPORT_D SET QTY = 5
+                    WHERE EXPORT_TYPE = N'ADR12' AND EXPORT_NO = N'ADR12EXP1' AND SERIAL_NO = 1;
+                UPDATE dbo.CUS_IMPORT_D SET QTY = 5
+                    WHERE IMPORT_TYPE = N'ADR12' AND IMPORT_NO = N'ADR12IMP1' AND SERIAL_NO = 1;
+                """, connection, transaction))
+            {
+                await fix.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, exportPlan, "SAVE", token, ["ADR12", "ADR12EXP1"]);
+            await Executor.ValidateAsync(connection, transaction, importPlan, "SAVE", token, ["ADR12", "ADR12IMP1"]);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
     [Fact]
     public async Task 量产模入库_受门控的入库不超完工未入_分组求和与源列聚合诊断()
     {
