@@ -120,7 +120,6 @@ public static class DomainRuleMap
         [180310] = "hr-wage-lz",
         [1803101] = "hr-wage-lz",
         [1506] = "moc-bom-stru",
-        [3006] = "cus-manual",
         [3014] = "cus-account",
         [180207] = "hr-worktime",
         [2708] = "sfc-plan",

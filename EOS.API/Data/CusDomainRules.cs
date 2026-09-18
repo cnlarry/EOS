@@ -10,52 +10,6 @@ namespace EOS.API.Data;
 /// </summary>
 public static class CusDomainRules
 {
-    /// <summary>加工备案手册（P_CUS_MANUAL）AfterSave：成品单耗状态 + 加工金额/数量汇总。</summary>
-    public static async Task<SprocResult> CusManualAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 1 || keyValues.Count < 1) return new(false, "加工备案手册领域规则缺少主键。");
-        var manualNo = (keyValues[0] ?? string.Empty).Trim();
-        await using (var state = new SqlCommand(
-            "UPDATE dbo.CUS_MANUAL_PRO SET USE_STATE=0 WHERE MANUAL_NO=@ManualNo;", connection, transaction))
-        {
-            state.Parameters.Add("@ManualNo", SqlDbType.NVarChar, 50).Value = manualNo;
-            await state.ExecuteNonQueryAsync(token);
-        }
-        await using (var stateOn = new SqlCommand("""
-            UPDATE dbo.CUS_MANUAL_PRO SET USE_STATE=1
-            WHERE MANUAL_NO=@ManualNo
-              AND EXISTS (SELECT 1 FROM dbo.CUS_MANUAL_BOM WHERE SERIAL_NO=CUS_MANUAL_PRO.SERIAL_NO AND MANUAL_NO=@ManualNo);
-            """, connection, transaction))
-        {
-            stateOn.Parameters.Add("@ManualNo", SqlDbType.NVarChar, 50).Value = manualNo;
-            await stateOn.ExecuteNonQueryAsync(token);
-        }
-        await using (var price = new SqlCommand("""
-            UPDATE p SET p.PROCESS_PRICE=m.PROCESS_PRICE, p.PROCESS_AMOUNT=p.PROCESS_PRICE*p.CUS_QTY
-            FROM dbo.CUS_MANUAL_PRO p INNER JOIN dbo.CUS_MANUAL_M m ON m.MANUAL_NO=p.MANUAL_NO
-            WHERE p.MANUAL_NO=@ManualNo;
-            """, connection, transaction))
-        {
-            price.Parameters.Add("@ManualNo", SqlDbType.NVarChar, 50).Value = manualNo;
-            await price.ExecuteNonQueryAsync(token);
-        }
-        await using (var master = new SqlCommand("""
-            UPDATE m SET m.PROCESS_AMOUNT=d.PROCESS_AMOUNT, m.CUS_QTY=d.CUS_QTY
-            FROM dbo.CUS_MANUAL_M m
-            INNER JOIN (SELECT MANUAL_NO, ROUND(SUM(PROCESS_AMOUNT),2) PROCESS_AMOUNT, ROUND(SUM(CUS_QTY),2) CUS_QTY
-                        FROM dbo.CUS_MANUAL_PRO WHERE MANUAL_NO=@ManualNo GROUP BY MANUAL_NO) d
-              ON d.MANUAL_NO=m.MANUAL_NO
-            WHERE m.MANUAL_NO=@ManualNo;
-            """, connection, transaction))
-        {
-            master.Parameters.Add("@ManualNo", SqlDbType.NVarChar, 50).Value = manualNo;
-            await master.ExecuteNonQueryAsync(token);
-        }
-        return new(true, null);
-    }
-
     /// <summary>海关对帐单（P_CUS_ACCOUNT）AfterSave：CHECK 分支 + 客户/送退货存在 + 明细重量金额与主表汇总。</summary>
 
 
