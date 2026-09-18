@@ -487,6 +487,69 @@ public sealed class EffectValidationLiveDataTests
         }
     }
 
+    /// <summary>
+    /// 生产领料族（1503 MOC_GET_D）与模房领料（2907 MOU_GET_D）的"批管品必填批号"已由保存期
+    /// line-require 承担：命中拒绝并回报明细序号，补上批号后放行。两张明细表同形，用例一并覆盖，
+    /// 确认迁移后两个族名（moc-get / mou-get）不再需要 C# 分派。
+    /// </summary>
+    [Fact]
+    public async Task 领料族必填批号_迁目录后仍命中并回报序号()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, MANAGE_BATCH) VALUES (N'ADR12GETP', N'集成测试领料批管品', 1);
+                INSERT INTO dbo.MOC_GET_D (GET_TYPE, GET_NO, SERIAL_NO, PRO_NO, BATCH_NO)
+                    VALUES (N'ADR12', N'ADR12MOCGET1', 1, N'ADR12GETP', N'');
+                INSERT INTO dbo.MOU_GET_D (GET_TYPE, GET_NO, SERIAL_NO, PRO_NO, BATCH_NO)
+                    VALUES (N'ADR12', N'ADR12MOUGET1', 1, N'ADR12GETP', N'');
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            // 生产领料单（1503）：批管品缺批号 → 拒绝且回报序号
+            var mocPlan = await LoadPlanAsync(connection, transaction, 1503, token, "line-require");
+            var mocFailure = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, mocPlan, "SAVE", token, ["ADR12", "ADR12MOCGET1"]));
+            Assert.Contains("以下序号项需要输入批号", mocFailure.Message);
+            Assert.Contains("1", mocFailure.Message);
+
+            // 生产领料单（1514 生产补料单，共用 MOC_GET_D）：同形判据同样生效
+            var refillPlan = await LoadPlanAsync(connection, transaction, 1514, token, "line-require");
+            var refillFailure = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, refillPlan, "SAVE", token, ["ADR12", "ADR12MOCGET1"]));
+            Assert.Contains("以下序号项需要输入批号", refillFailure.Message);
+
+            // 模房领料单（2907，MOU_GET_D）→ 拒绝
+            var mouPlan = await LoadPlanAsync(connection, transaction, 2907, token, "line-require");
+            var mouFailure = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, mouPlan, "SAVE", token, ["ADR12", "ADR12MOUGET1"]));
+            Assert.Contains("以下序号项需要输入批号", mouFailure.Message);
+
+            // 补上批号 → 两单均放行
+            await using (var fix = new SqlCommand("""
+                UPDATE dbo.MOC_GET_D SET BATCH_NO = N'B001'
+                    WHERE GET_TYPE = N'ADR12' AND GET_NO = N'ADR12MOCGET1' AND SERIAL_NO = 1;
+                UPDATE dbo.MOU_GET_D SET BATCH_NO = N'B001'
+                    WHERE GET_TYPE = N'ADR12' AND GET_NO = N'ADR12MOUGET1' AND SERIAL_NO = 1;
+                """, connection, transaction))
+            {
+                await fix.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, mocPlan, "SAVE", token, ["ADR12", "ADR12MOCGET1"]);
+            await Executor.ValidateAsync(connection, transaction, mouPlan, "SAVE", token, ["ADR12", "ADR12MOUGET1"]);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
     [Fact]
     public async Task 量产模入库_受门控的入库不超完工未入_分组求和与源列聚合诊断()
     {

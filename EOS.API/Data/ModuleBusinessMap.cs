@@ -119,14 +119,9 @@ public static class DomainRuleMap
         [180208] = "employee-card",
         [2305] = "sysdg",
         [1502] = "moc-produce",
-        [1503] = "moc-get",
         [1512] = "moc-produce",
-        [1514] = "moc-get",
-        [1517] = "moc-get",
         [2803] = "moc-produce",
         [2804] = "moc-produce",
-        [2805] = "moc-get",
-        [2806] = "moc-get",
         [180401] = "sfc-daily",
         [1411] = "cop-fitout",
         [1608] = "pur-cancel",
@@ -138,8 +133,6 @@ public static class DomainRuleMap
         [1803101] = "hr-wage-lz",
         [180502] = "hrm-wage-item",
         [1506] = "moc-bom-stru",
-        [1507] = "moc-plan",
-        [2907] = "mou-get",
         [2911] = "mou-pro",
         [300301] = "cus-export",
         [300302] = "cus-import",
@@ -177,6 +170,8 @@ public static class CatalogAfterSaveMap
         1509,              // 制令变更：原单已批核 + 变更量不小于已生产/已领料
         1609,              // 采购变更：原单已批核 + 变更量不小于已收货
         1418,              // 订单变更：原单已批核 + 变更量下限 + 客户订单号不重复
+        1503, 1514, 1517, 2805, 2806, 2907,   // 生产领料族与模房领料：批管品必填批号（保存期 line-require）
+        1507,              // 生产计划：计划量不超订单（目录 qty-not-exceed 已承接，原 C# 为空实现）
         180102, 180105, 180110, 180111,   // 员工工号唯一
         180205,            // 每人每月一笔出勤参数
         180211, 180651,    // 当月每人一班排班
