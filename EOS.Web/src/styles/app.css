@@ -527,10 +527,14 @@ button, input, select { font: inherit; }
 /* 隐藏面板用隐藏属性收起：常驻不卸载以保留页面本地状态 */
 .erp-tab-panel[hidden] { display: none; }
 /* ===== 工作区标签栏 ===== */
-.erp-tabbar { display: flex; flex: 0 0 auto; align-items: stretch; gap: 2px; height: var(--erp-tabbar-height); padding: 0 10px; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); scrollbar-width: none; }
+.erp-tabbar { display: flex; flex: 0 0 auto; align-items: stretch; gap: 0; height: var(--erp-tabbar-height); padding: 0 10px; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); scrollbar-width: none; }
 .erp-tabbar::-webkit-scrollbar { display: none; }
 /* 标签：上圆角 + 描边；底边不描边，坐在标签栏的分隔线上 */
 .erp-tab { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: 6px; min-width: 96px; max-width: 200px; padding: 0 10px; color: var(--tblr-secondary); font-size: 13px; line-height: 1; white-space: nowrap; cursor: pointer; user-select: none; background: transparent; border: 1px solid var(--tblr-border-color); border-bottom: 0; border-radius: 8px 8px 0 0; }
+/* 相邻标签共享一条边框：负外边距让两边的 1px 描边重叠，紧贴成一体 */
+.erp-tab + .erp-tab { margin-left: -1px; }
+/* 描边重叠处由活动/悬停标签压在上层，避免自己的边框被邻标签盖掉 */
+.erp-tab:hover, .erp-tab.is-active { z-index: 1; }
 .erp-tab:hover { color: var(--tblr-body-color); background: var(--tblr-bg-surface); }
 .erp-tab.is-active { color: var(--tblr-body-color); font-weight: 600; background: var(--tblr-bg-surface); }
 /* 激活态：底部蓝色粗线，压在标签栏分隔线上（与下方内容连成一片） */
