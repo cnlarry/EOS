@@ -515,12 +515,12 @@ button, input, select { font: inherit; }
 .erp-toolbar-search .form-select { width: 105px; }
 .erp-toolbar-search input[type="date"] { width: 135px; }
 .erp-toolbar-divider { align-self: stretch; width: 1px; margin: 0 3px; background: var(--tblr-border-color); }
-/* 工作区标签栏占高：无标签栏时为 0。
-   表格区域的高度上限按视口计算，需同步扣除标签栏高度，避免整页变高出现双滚动条。 */
-:root { --erp-tabbar-height: 0px; }
+/* 工作区顶部：上留白与标签栏高度分开记账——标签栏不贴浏览器上边缘，保留与其他区域一致的 10px 留白。
+   表格区域的高度上限按视口计算，两者都要同步扣除，避免整页变高出现双滚动条。 */
+:root { --erp-tabbar-height: 0px; --erp-workspace-gap: 10px; }
 /* 高度链：page-body 只管撑满高度与上下留白，不承担滚动；滚动权下放给标签面板，
    每个标签面板各持一个滚动位，切换标签才能各自保持滚动位置。 */
-.page-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; height: 100vh; overflow: hidden; margin: 0 !important; padding: 0 !important; }
+.page-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; height: 100vh; overflow: hidden; margin: 0 !important; padding: var(--erp-workspace-gap) 0 0 !important; }
 .erp-workspace { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
 .erp-tab-panel { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; padding: 10px 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 /* 隐藏面板用隐藏属性收起：常驻不卸载以保留页面本地状态 */
@@ -552,13 +552,13 @@ button, input, select { font: inherit; }
 .erp-tab-panel > .container-fluid > :first-child { margin-top: 0 !important; }
 .erp-command-bar .card-body { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
 .erp-row-active td { background: var(--tblr-primary-lt) !important; }
-.erp-master-table-region { position: relative; min-height: 341px; max-height: calc(100vh - 266px - var(--erp-tabbar-height)); overflow-y: auto; overscroll-behavior: contain; transition: opacity .12s ease; }
+.erp-master-table-region { position: relative; min-height: 341px; max-height: calc(100vh - 266px - var(--erp-tabbar-height) - var(--erp-workspace-gap)); overflow-y: auto; overscroll-behavior: contain; transition: opacity .12s ease; }
 .erp-master-table-region.is-loading { pointer-events: none; opacity: .62; }
 .erp-master-table-region.is-loading::after { position: absolute; top: 10px; right: 12px; width: 16px; height: 16px; content: ''; border: 2px solid var(--tblr-border-color); border-top-color: var(--tblr-primary); border-radius: 50%; animation: spinner-border .65s linear infinite; }
 .erp-detail-card { overflow: hidden; }
 .erp-detail-card .card-header { min-height: 2.8rem; }
 .erp-detail-card .card-header.erp-detail-toolbar { padding: 10px; }
-.erp-detail-card .table-responsive { min-height: 150px; max-height: calc(100vh - 366px - var(--erp-tabbar-height)); overflow-y: auto; overscroll-behavior: contain; border-radius: 0 0 var(--tblr-border-radius) var(--tblr-border-radius); }
+.erp-detail-card .table-responsive { min-height: 150px; max-height: calc(100vh - 366px - var(--erp-tabbar-height) - var(--erp-workspace-gap)); overflow-y: auto; overscroll-behavior: contain; border-radius: 0 0 var(--tblr-border-radius) var(--tblr-border-radius); }
 .erp-detail-card tfoot td { background: var(--tblr-bg-surface-secondary); }
 .erp-detail-card tfoot tr:last-child td:first-child { border-bottom-left-radius: var(--tblr-border-radius); }
 .erp-detail-card tfoot tr:last-child td:last-child { border-bottom-right-radius: var(--tblr-border-radius); }
