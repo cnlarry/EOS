@@ -521,8 +521,10 @@ button, input, select { font: inherit; }
 :root { --erp-tabbar-height: 0px; --erp-workspace-gap: 10px; }
 /* 高度链：page-body 只管撑满高度与上下留白，不承担滚动；滚动权下放给标签面板，
    每个标签面板各持一个滚动位，切换标签才能各自保持滚动位置。 */
-.page-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; height: 100vh; overflow: hidden; margin: 0 !important; padding: var(--erp-workspace-gap) 0 0 !important; }
-.erp-workspace { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
+/* 高度链：page-body 顶部留白 + 标签栏是一整条白底区域，工作区内部恢复页面底色，
+   页面里的卡片才有"浮在浅灰底上"的层次（不改的话卡片会和底色糊成一片）。 */
+.page-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; height: 100vh; overflow: hidden; margin: 0 !important; padding: var(--erp-workspace-gap) 0 0 !important; background: var(--tblr-bg-surface); }
+.erp-workspace { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; background: var(--tblr-body-bg); }
 .erp-tab-panel { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; padding: 10px 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 /* 隐藏面板用隐藏属性收起：常驻不卸载以保留页面本地状态 */
 .erp-tab-panel[hidden] { display: none; }
@@ -530,14 +532,15 @@ button, input, select { font: inherit; }
    标签视觉直接沿用系统级页签（TabbedPanel 的 nav-tabs 设计语言）：未激活透明、
    悬停显描边、激活填白底并向下吃掉标签栏分隔线，与下方内容连成一片。
    这里只补工作区特有的几何：与标签栏等高、最小/最大宽度、关闭按钮与脏点。 */
-.erp-tabbar { display: flex; flex: 0 0 auto; align-items: stretch; height: var(--erp-tabbar-height); padding: 0 10px; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); scrollbar-width: none; }
+.erp-tabbar { display: flex; flex: 0 0 auto; align-items: stretch; height: var(--erp-tabbar-height); padding: 0 10px; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); scrollbar-width: none; }
 .erp-tabbar::-webkit-scrollbar { display: none; }
 .erp-workspace-tabs { padding-left: 10px; }
 .erp-workspace-tabs .nav-item { display: flex; min-width: 0; }
 .erp-workspace-tabs .nav-link { display: flex; align-items: center; gap: 6px; min-width: 96px; max-width: 200px; padding: 0 10px; line-height: 1; white-space: nowrap; cursor: pointer; user-select: none; }
 .erp-workspace-tabs .nav-link:hover { position: relative; z-index: 1; }
-/* 激活标签下方是页面底色而非面板，故吃掉分隔线用 body 底色（系统面板版用的是 surface） */
-.erp-workspace-tabs .nav-link.active { border-bottom: 1px solid var(--tblr-body-bg); }
+/* 激活标签用次级底色（白条上"按下"的观感），底边用页面底色吃掉分隔线；
+   未激活标签保持白底（透明即白），与顶部条同一片 */
+.erp-workspace-tabs .nav-link.active { background-color: var(--tblr-bg-surface-secondary); border-bottom: 1px solid var(--tblr-body-bg); }
 /* 激活态再加一条蓝色粗线压在分隔线上：白底之外多一层"我在哪儿"的强提示。
    用伪元素而非 border-bottom，避免边框宽度变化挤动标签文字。 */
 .erp-workspace-tabs .nav-link.active::after { position: absolute; right: -1px; bottom: -1px; left: -1px; height: 3px; content: ''; background: var(--tblr-primary); }
@@ -773,6 +776,7 @@ button, input, select { font: inherit; }
   /* 打印时解开高度链：固定高度 + 裁剪会把长页面截成一屏 */
   .page-body { height: auto !important; overflow: visible !important; }
   .erp-workspace, .erp-tab-panel { overflow: visible !important; }
+  .page-body, .erp-workspace { background: #fff !important; }
   .card { box-shadow: none !important; border: 0 !important; }
   .card-header { display: none; }
   .erp-list-card, .erp-detail-card { break-inside: avoid; }
