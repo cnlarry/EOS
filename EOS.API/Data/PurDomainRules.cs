@@ -262,49 +262,5 @@ public static class PurDomainRules
 
 
 
-    /// <summary>预付帐款单（170203）AfterSave：三件套完整性 + 金额比较 + 主表 AMOUNT 汇总。</summary>
-
-
-    public static async Task<SprocResult> PurPayAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        var (typeColumn, noColumn) = DomainRuleService.KeyColumns(pkColumns);
-        var type = keyValues[0]; var no = keyValues[1];
-        await using var prepaySum = new SqlCommand($"""
-            UPDATE m SET PREPAY_SUM=(SELECT SUM(PREPAY_AMOUNT) FROM dbo.PUR_PAY_PREPAY
-                WHERE PAY_TYPE=@Type AND PAY_NO=@No),
-                PAYOUT_SUM=AMOUNT_TAX-REBATE_SUM-(SELECT SUM(PREPAY_AMOUNT) FROM dbo.PUR_PAY_PREPAY
-                WHERE PAY_TYPE=@Type AND PAY_NO=@No),
-                LAST_UPDATE_DATE=GETDATE()
-            FROM dbo.PUR_PAY_M m WHERE m.[{typeColumn}]=@Type AND m.[{noColumn}]=@No;
-            """, connection, transaction);
-        prepaySum.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = type;
-        prepaySum.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = no;
-        await prepaySum.ExecuteNonQueryAsync(token);
-
-        var negative = await DomainRuleService.ExistsAsync(connection, transaction,
-            $"SELECT TOP 1 1 FROM dbo.PUR_PAY_M WHERE [{typeColumn}]=@Type AND [{noColumn}]=@No AND PAYOUT_SUM<0;",
-            type, no, token);
-        if (negative) return new(false, "实付金额不能为负数");
-        var exceedMaster = await DomainRuleService.ExistsAsync(connection, transaction,
-            $"SELECT TOP 1 1 FROM dbo.PUR_PAY_M WHERE [{typeColumn}]=@Type AND [{noColumn}]=@No AND PAYOUT_SUM>AMOUNT_TAX-REBATE_SUM-PREPAY_SUM;",
-            type, no, token);
-        if (exceedMaster) return new(false, "实付金额 不能大于 应付金额-现金折扣-预付冲帐");
-        var dueErrors = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT od.DUE_NO, od.SUM_AMOUNT, od.PAYOUT_AMOUNT, sd.PAYOUT_AMOUNT
-            FROM dbo.PUR_DUE_M od
-            INNER JOIN (SELECT DUE_TYPE, DUE_NO, SUM(PAYOUT_AMOUNT) PAYOUT_AMOUNT
-                        FROM dbo.PUR_PAY_D WHERE PAY_TYPE=@Type AND PAY_NO=@No
-                        GROUP BY DUE_TYPE, DUE_NO) sd
-              ON od.DUE_TYPE=sd.DUE_TYPE AND od.DUE_NO=sd.DUE_NO
-            WHERE od.PAYOUT_AMOUNT + sd.PAYOUT_AMOUNT > od.SUM_AMOUNT;
-            """, type, no, token,
-            line: r => $"{r.GetString(0).Trim()}       {Convert.ToDouble(r.GetValue(1))}          {Convert.ToDouble(r.GetValue(2))}          {Convert.ToDouble(r.GetValue(3))}");
-        if (dueErrors is not null)
-            return new(false, "以下会出现对帐单已付款大于应付款\r\n对帐单号     应付款       已付款       本次付款\r\n" + dueErrors);
-        return new(true, null);
-    }
 
 }

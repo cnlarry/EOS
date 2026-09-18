@@ -37,7 +37,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "cop-send" => await CopDomainRules.CopSendAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "hr-worktime" => await HrDomainRules.HrWorktimeAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-purchase" => await PurDomainRules.PurPurchaseAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "pur-pay" => await PurDomainRules.PurPayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "hr-apply" => await HrDomainRules.HrApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 _ => new(false, $"未登记的领域规则：{ruleName}"),
             };
