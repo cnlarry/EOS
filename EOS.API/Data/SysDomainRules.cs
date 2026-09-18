@@ -36,22 +36,9 @@ public static class SysDomainRules
             "SELECT TOP 11 SERIAL_NO FROM dbo.BOM_STRU_D WHERE PRO_NO=@ProNo AND BASE_QTY<=0 ORDER BY SERIAL_NO;",
             proNo, token);
         if (baseQty is not null) return new(false, "以下序号项元件底数不能小于0 \r\n" + baseQty);
-        // Cycle detection delegates to the stored procedure because recursive BOM walking
-        // is complex to express safely in C#.
-        await using (var check = new SqlCommand("dbo.P_BOM_CHECK", connection, transaction)
-        {
-            CommandType = CommandType.StoredProcedure,
-        })
-        {
-            check.Parameters.Add("@ProNo", SqlDbType.NVarChar, 50).Value = proNo;
-            var ok = check.Parameters.Add("@ok", SqlDbType.Int);
-            ok.Direction = ParameterDirection.Output;
-            var errCode = check.Parameters.Add("@errCode", SqlDbType.NVarChar, 50);
-            errCode.Direction = ParameterDirection.Output;
-            await check.ExecuteNonQueryAsync(token);
-            if (ok.Value is not int okValue || okValue != 1)
-                return new(false, "以下元件在BOM结构中循环使用 \r\n" + Convert.ToString(errCode.Value));
-        }
+        var cycle = await FindBomCycleAsync(connection, transaction, proNo, token);
+        if (cycle is not null)
+            return new(false, "以下元件在BOM结构中循环使用 \r\n" + cycle);
         await using (var backfill = new SqlCommand("""
             UPDATE m SET m.P_LENGTH_OLD=p.P_LENGTH, m.P_WIDTH_OLD=p.P_WIDTH
             FROM dbo.BOM_STRU_M m INNER JOIN dbo.PRODUCT p ON p.PRO_NO=m.PRO_NO
@@ -62,6 +49,57 @@ public static class SysDomainRules
             await backfill.ExecuteNonQueryAsync(token);
         }
         return new(true, null);
+    }
+
+    /// <summary>
+    /// BOM 成环检测（原 `P_BOM_CHECK`）：从该产品出发按层展开（第 N 层 = 以第 N-1 层元件的
+    /// 产品号继续展开），只要某一层出现"元件号 = 本产品"的行即判为循环，回报该行的产品号。
+    /// 语句与遍历方式逐条对照原过程本体：逐层扫描、层内任取一行（原实现是 `TOP 1` 无 `ORDER BY`）、
+    /// 产品号按原过程的 `NVARCHAR(50)` 变量口径取值（`BOM_STRU_D.PRO_NO` 是 `NCHAR(30)`，定长补空格
+    /// 因此原样保留——`CONVERT(NVARCHAR(50), …)` 复刻该赋值口径）。
+    /// **唯一有意差异**：原过程在没有"回到根"的环（如根→X→Y→X）时会无限展开、永远挂住保存；
+    /// 这里到第 100 层即判定为循环（fail-closed），把"挂死"换成"拒绝并报循环"。
+    /// </summary>
+    internal const string BomCycleSql = """
+        DECLARE @ok INT = 1, @errCode NVARCHAR(50), @step INT = 1;
+        IF OBJECT_ID('tempdb..#BomCycleLevel') IS NOT NULL DROP TABLE #BomCycleLevel;
+        SELECT @step AS StepNo, PRO_NO, ELEMENT_PRO_NO INTO #BomCycleLevel FROM dbo.BOM_STRU_D WHERE PRO_NO = @ProNo;
+        WHILE 1 = 1
+        BEGIN
+            SELECT TOP 1 @errCode = CONVERT(NVARCHAR(50), PRO_NO)
+            FROM #BomCycleLevel WHERE ELEMENT_PRO_NO = @ProNo AND StepNo = @step;
+            IF ISNULL(@errCode, N'') <> N''
+            BEGIN
+                SELECT @ok = 0;
+                BREAK;
+            END
+            SELECT @step = @step + 1;
+            INSERT INTO #BomCycleLevel
+            SELECT @step, b.PRO_NO, b.ELEMENT_PRO_NO
+            FROM dbo.BOM_STRU_D b, #BomCycleLevel t
+            WHERE b.PRO_NO = t.ELEMENT_PRO_NO AND t.StepNo = @step - 1;
+            IF @@ROWCOUNT <= 0 BREAK;
+            IF @step >= 100
+            BEGIN
+                SELECT @ok = 0,
+                       @errCode = (SELECT TOP 1 CONVERT(NVARCHAR(50), PRO_NO) FROM #BomCycleLevel WHERE StepNo = @step);
+                BREAK;
+            END
+        END
+        SELECT @ok AS Ok, @errCode AS ErrCode;
+        """;
+
+    /// <summary>返回循环元件所在行的产品号（无环返回 null）；供保存期校验与真库对拍共用。</summary>
+    internal static async Task<string?> FindBomCycleAsync(
+        SqlConnection connection, SqlTransaction transaction, string proNo, CancellationToken token)
+    {
+        await using var command = new SqlCommand(BomCycleSql, connection, transaction);
+        command.Parameters.Add("@ProNo", SqlDbType.NVarChar, 50).Value = proNo;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token)) return null;
+        var ok = reader.IsDBNull(0) ? 1 : Convert.ToInt32(reader.GetValue(0));
+        if (ok == 1) return null;
+        return reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
     }
 
     /// <summary>User-group save: removes group permission rows whose module or report no longer exists.</summary>
