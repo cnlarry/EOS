@@ -124,7 +124,6 @@ public static class DomainRuleMap
         [1803101] = "hr-wage-lz",
         [180502] = "hrm-wage-item",
         [1506] = "moc-bom-stru",
-        [2911] = "mou-pro",
         [3006] = "cus-manual",
         [3014] = "cus-account",
         [180207] = "hr-worktime",
@@ -179,6 +178,7 @@ public static class CatalogAfterSaveMap
         2705, 2706,         // 工序工单/工序入库不超量（保存期 usage-not-exceed）
         1608, 1612,         // 采购退料单：批管品必填批号 + 退料合计不超收料合计（两量纲，两侧均取自被引用侧）
         1502, 1512, 1522, 2803, 2804,   // 制令单族：明细订单号回填（SAVE 期 link-stamp 效果）
+        2911,               // 产品模具对照：按产品回写 f_get_pro_moulds 汇总（SAVE 期 mould-ids-sync）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);
