@@ -116,7 +116,6 @@ public static class DomainRuleMap
     {
         [1204] = "bom-stru",
         [180208] = "employee-card",
-        [2305] = "sysdg",
         [1616] = "pur-apply",
         [180206] = "hr-apply",
         [180301] = "hr-wage-item",

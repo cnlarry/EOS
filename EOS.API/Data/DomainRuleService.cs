@@ -45,7 +45,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "pur-pay" => await PurDomainRules.PurPayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-prepay" => await PurDomainRules.PurPrepayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "bom-stru" => await SysDomainRules.BomStruAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "sysdg" => await SysDomainRules.SysdgAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "employee-card" => await HrDomainRules.EmployeeCardAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "hr-wage-item" => await HrDomainRules.HrWageItemAfterSaveAsync(connection, transaction, "HR_WAGE_D", "HR_WAGE", token),
                 "hrm-wage-item" => await HrDomainRules.HrWageItemAfterSaveAsync(connection, transaction, "HRM_WAGE_D", "HRM_WAGE", token),
