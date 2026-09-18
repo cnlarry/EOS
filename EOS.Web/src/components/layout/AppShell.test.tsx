@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useState } from 'react'
 import { Link, MemoryRouter, Route, Routes, createMemoryRouter, RouterProvider, useLocation, type RouteObject } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -108,6 +108,22 @@ function renderShell(initialEntry: string, auth: Partial<ReturnType<typeof useAu
   )
 }
 
+/** 打开侧栏底部的用户菜单 */
+function openUserMenu() {
+  fireEvent.click(screen.getByRole('button', { name: '用户菜单' }))
+}
+
+/** 个人设置改由用户菜单进入（主导航不再提供该入口） */
+function openProfileTab() {
+  openUserMenu()
+  fireEvent.click(screen.getByRole('menuitem', { name: '个人设置' }))
+}
+
+/** 在某个标签上打开右键操作菜单 */
+function openTabMenu(name: string | RegExp) {
+  fireEvent.contextMenu(screen.getByRole('tab', { name }))
+}
+
 describe('AppShell', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -129,14 +145,18 @@ describe('AppShell', () => {
     document.documentElement.classList.remove('erp-sidebar-collapsed')
   })
 
-  it('渲染品牌、导航与用户信息', () => {
+  it('渲染品牌、导航与侧栏底部用户信息', () => {
     renderShell('/dashboard')
     expect(screen.getByText('EOS')).toBeInTheDocument()
     expect(screen.getAllByText('首页').length).toBeGreaterThan(0)
     expect(screen.getByText('销售管理')).toBeInTheDocument()
+    // 用户信息移到侧栏底部：显示姓名与角色
     expect(screen.getByText('Demo User')).toBeInTheDocument()
-    expect(screen.getByText('admin')).toBeInTheDocument()
+    expect(screen.getByText('系统管理员')).toBeInTheDocument()
     expect(screen.getByText('LW')).toBeInTheDocument()
+    // 顶部信息条已移除，工作区从标签栏开始
+    expect(document.querySelector('.erp-context-bar')).toBeNull()
+    expect(document.querySelector('.page-body > .erp-tabbar')).not.toBeNull()
   })
 
   it('无 bootstrap 时使用兜底导航', () => {
@@ -180,10 +200,11 @@ describe('AppShell', () => {
     expect(screen.getByText('没有匹配的菜单')).toBeInTheDocument()
   })
 
-  it('主题切换写入 data-bs-theme 与 localStorage', () => {
+  it('主题切换（用户菜单内）写入 data-bs-theme 与 localStorage', () => {
     renderShell('/dashboard')
     expect(document.documentElement.getAttribute('data-bs-theme')).toBe('light')
-    fireEvent.click(screen.getByRole('button', { name: '切换到深色主题' }))
+    openUserMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: '深色模式' }))
     expect(document.documentElement.getAttribute('data-bs-theme')).toBe('dark')
     expect(localStorage.getItem('erp-theme')).toBe('dark')
   })
@@ -223,48 +244,36 @@ describe('AppShell', () => {
     expect(screen.getByText('PROFILE')).toBeInTheDocument()
   })
 
-  it('页面标题随路由变化', () => {
+  it('页面标题随路由变化（由标签标题承担）', () => {
     renderShell('/dashboard')
-    expect(screen.getByRole('heading', { name: '首页' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /首页/ })).toBeInTheDocument()
     renderShell('/settings/profile')
-    expect(screen.getByRole('heading', { name: '个人设置' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /个人设置/ })).toBeInTheDocument()
     renderShell('/workbench/1209/new')
-    expect(screen.getByRole('heading', { name: '新增分组模块' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /新增分组模块/ })).toBeInTheDocument()
   })
 
-  it('表单页面包屑含完整层级，叶子可点击返回模块工作台', async () => {
-    renderShell('/workbench/1209/new')
-    const crumbs = within(screen.getByRole('navigation', { name: '当前位置' }))
-    // 层级：销售管理 > 销售子组 > 分组模块（叶子可点击）> 新增分组模块
-    expect(crumbs.getByText('销售管理')).toBeInTheDocument()
-    expect(crumbs.getByText('销售子组')).toBeInTheDocument()
-    const leaf = crumbs.getByText('分组模块')
-    expect(leaf).toHaveAttribute('href', '/workbench/1209')
-    fireEvent.click(leaf)
-    expect(screen.getByText('WB')).toBeInTheDocument()
-  })
-
-  it('跨模块关联浏览（from 参数）面包屑按来源模块路径呈现', () => {
-    renderShell('/workbench/1401/view/A?from=1209')
-    const crumbs = within(screen.getByRole('navigation', { name: '当前位置' }))
-    // 来源模块 1209（分组模块）的完整层级，叶子可点击返回来源工作台
-    expect(crumbs.getByText('销售管理')).toBeInTheDocument()
-    expect(crumbs.getByText('销售子组')).toBeInTheDocument()
-    expect(crumbs.getByText('分组模块')).toHaveAttribute('href', '/workbench/1209')
-  })
-
-  it('常规浏览（无 from 参数）面包屑不显示来源模块路径', () => {
-    renderShell('/workbench/1401/view/A')
-    const crumbs = within(screen.getByRole('navigation', { name: '当前位置' }))
-    expect(crumbs.queryByText('分组模块')).not.toBeInTheDocument()
-    expect(crumbs.queryByText('销售子组')).not.toBeInTheDocument()
-  })
-
-  it('渲染当前日期时间元素', () => {
+  it('主导航不再提供个人设置入口，该页仍可由用户菜单打开', () => {
     renderShell('/dashboard')
-    const time = document.querySelector('time')
-    expect(time).toBeInTheDocument()
-    expect(time!.getAttribute('dateTime')).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(screen.queryByRole('link', { name: '个人设置' })).not.toBeInTheDocument()
+    openProfileTab()
+    expect(screen.getByText('PROFILE')).toBeInTheDocument()
+  })
+
+  it('跨模块关联浏览（from 参数）时标签标题附来源模块', () => {
+    renderShell('/workbench/1401/view/A?from=1209')
+    expect(screen.getByRole('tab', { name: /← 分组模块/ })).toBeInTheDocument()
+  })
+
+  it('常规浏览（无 from 参数）标签标题不带来源', () => {
+    renderShell('/workbench/1401/view/A')
+    const tab = screen.getByRole('tab')
+    expect(tab.textContent ?? '').not.toContain('←')
+  })
+
+  it('字段维护子页标题固定为「字段」', () => {
+    renderShell('/admin/tables/PRODUCT_EDITION/fields')
+    expect(screen.getByRole('tab', { name: /字段/ })).toBeInTheDocument()
   })
 
   it('拖拽手柄可调整侧栏宽度并持久化', () => {
@@ -299,22 +308,9 @@ describe('AppShell', () => {
     expect(localStorage.getItem('erp-sidebar-width')).toBe('160')
   })
 
-  it('字段维护子页面包屑固定为 系统管理 > 数据表维护 > 数据表维护 > 表名 > 字段', () => {
-    renderShell('/admin/tables/PRODUCT_EDITION/fields')
-    const nav = screen.getByRole('navigation', { name: '当前位置' })
-    const text = nav.textContent ?? ''
-    const order = ['系统管理', '数据表维护', '数据表维护', 'PRODUCT_EDITION', '字段']
-    let cursor = -1
-    for (const segment of order) {
-      const index = text.indexOf(segment, cursor + 1)
-      expect(index).toBeGreaterThan(cursor)
-      cursor = index
-    }
-  })
-
   it('点菜单开新标签，重复打开复用已有标签，切换标签时地址栏跟随', () => {
     renderShell('/dashboard')
-    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    openProfileTab()
     expect(screen.getByTestId('browser-location')).toHaveTextContent('/settings/profile')
     expect(screen.getAllByRole('tab')).toHaveLength(2)
     expect(screen.getByText('PROFILE')).toBeInTheDocument()
@@ -324,7 +320,7 @@ describe('AppShell', () => {
     expect(screen.getByText('DASH')).toBeInTheDocument()
 
     // 再次从菜单打开同一地址：聚焦已有标签，不新增
-    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    openProfileTab()
     expect(screen.getAllByRole('tab')).toHaveLength(2)
     expect(screen.getByTestId('browser-location')).toHaveTextContent('/settings/profile')
   })
@@ -372,33 +368,53 @@ describe('AppShell', () => {
     expect(screen.getByText('DASH')).toBeInTheDocument()
   })
 
-  it('「关闭其他」保留当前标签与脏标签', async () => {
+  it('右键「关闭其它」保留被右键的标签与脏标签', async () => {
     renderShell('/dashboard')
     fireEvent.click(screen.getByRole('link', { name: '脏页演示' }))
     fireEvent.change(screen.getByLabelText('标题'), { target: { value: '改动' } })
     await waitFor(() => expect(screen.getByLabelText('有未保存的改动')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    openProfileTab()
     expect(screen.getAllByRole('tab')).toHaveLength(3)
 
-    fireEvent.click(screen.getByRole('button', { name: '关闭其他' }))
-    // 当前标签（个人设置）+ 脏标签（脏页演示）保留，首页被关掉
+    openTabMenu(/个人设置/)
+    fireEvent.click(screen.getByRole('menuitem', { name: '关闭其它' }))
+    // 被右键的标签（个人设置）+ 脏标签（脏页演示）保留，首页被关掉，且被右键者成为活动标签
     expect(screen.getAllByRole('tab')).toHaveLength(2)
     expect(screen.getByRole('tab', { name: /个人设置/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /脏页演示/ })).toBeInTheDocument()
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/settings/profile')
   })
 
-  it('「关闭全部」涉及脏标签时先确认，确认后落到首页', async () => {
+  it('右键「关闭全部」涉及脏标签时先确认，确认后落到首页', async () => {
     renderShell('/dashboard')
     fireEvent.click(screen.getByRole('link', { name: '脏页演示' }))
     fireEvent.change(screen.getByLabelText('标题'), { target: { value: '改动' } })
     await waitFor(() => expect(screen.getByLabelText('有未保存的改动')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByRole('button', { name: '关闭全部' }))
+    openTabMenu(/脏页演示/)
+    fireEvent.click(screen.getByRole('menuitem', { name: '关闭全部' }))
     expect(screen.getByRole('dialog', { name: '未保存改动确认' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '不保存并关闭' }))
     await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(1))
     expect(screen.getByTestId('browser-location')).toHaveTextContent('/dashboard')
     expect(screen.getByText('DASH')).toBeInTheDocument()
+  })
+
+  it('标签操作菜单：只剩一个标签时三项均禁用', () => {
+    renderShell('/dashboard')
+    openTabMenu(/首页/)
+    expect(screen.getByRole('menuitem', { name: '关闭当前' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: '关闭其它' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: '关闭全部' })).toBeDisabled()
+  })
+
+  it('右键「关闭当前」关闭被右键的标签', () => {
+    renderShell('/dashboard')
+    openProfileTab()
+    openTabMenu(/首页/)
+    fireEvent.click(screen.getByRole('menuitem', { name: '关闭当前' }))
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
+    expect(screen.getByRole('tab', { name: /个人设置/ })).toBeInTheDocument()
   })
 
   it('存在脏标签时浏览器刷新/关闭被拦下', async () => {
@@ -414,7 +430,7 @@ describe('AppShell', () => {
 
   it('标签栏键盘可操作：左右方向键切换、Delete 关闭', () => {
     renderShell('/dashboard')
-    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    openProfileTab()
     fireEvent.click(screen.getByRole('link', { name: '计数器' }))
     expect(screen.getByRole('tablist', { name: '工作区标签' })).toBeInTheDocument()
     expect(screen.getAllByRole('tab')).toHaveLength(3)
@@ -436,7 +452,7 @@ describe('AppShell', () => {
     renderShell('/p1')
     expect(screen.getAllByRole('tab')).toHaveLength(12)
 
-    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    openProfileTab()
     expect(screen.getByText('标签已达上限 12 个，请先关闭一个标签')).toBeInTheDocument()
     expect(screen.getAllByRole('tab')).toHaveLength(12)
     expect(screen.getByTestId('browser-location')).toHaveTextContent('/p1')
@@ -460,7 +476,7 @@ describe('AppShell', () => {
 
   it('标签列表按用户持久化（last-write-wins）', () => {
     renderShell('/dashboard')
-    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    openProfileTab()
     const saved = JSON.parse(localStorage.getItem(workspaceTabsKey('u1')) ?? '[]') as { url: string }[]
     expect(saved.map((tab) => tab.url)).toEqual(['/dashboard', '/settings/profile'])
   })
@@ -470,7 +486,7 @@ describe('AppShell', () => {
     renderShell('/dashboard')
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    openProfileTab()
     expect(screen.getByText('PROFILE')).toBeInTheDocument()
     expect(screen.getByTestId('browser-location')).toHaveTextContent('/settings/profile')
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
@@ -496,7 +512,7 @@ describe('AppShell', () => {
 
   it('关闭标签后由相邻标签接管，地址栏不留停在已关闭标签上', () => {
     renderShell('/dashboard')
-    fireEvent.click(screen.getByRole('link', { name: '个人设置' }))
+    openProfileTab()
     expect(screen.getByTestId('browser-location')).toHaveTextContent('/settings/profile')
 
     fireEvent.click(screen.getByRole('button', { name: '关闭标签 个人设置' }))
