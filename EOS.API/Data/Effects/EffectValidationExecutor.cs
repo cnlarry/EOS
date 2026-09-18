@@ -207,15 +207,23 @@ public sealed class EffectValidationExecutor
             if (await ShouldSkipOnSwitchAsync(connection, transaction, plan, check, token))
                 continue;
             var match = ParseMatchPairs(check);
-            var thisQty = ParseScopeTerms(check, "thisQty");
-            var usage = ParseFieldList(check, "usage");
-            var limit = ParseFieldList(check, "limit");
             if (match.Count == 0)
                 throw new EffectConfigException("qty-not-exceed.check 缺少 match 定位键。");
+            // 量纲：单量纲直接写在 check 上；多量纲写在 dimensions 数组里。旧实现常把"数量"与
+            // "备品"两类判据合成一句 `WHERE a OR b`——多量纲正是这个形态，按 OR 合并成一个
+            // 违规判据，命中时诊断行只输出一次（与旧实现的单条 SELECT 一致）。
+            var dimensions = ParseQuantityDimensions(check);
+            var multiDimension = check.TryGetProperty("dimensions", out _);
             // not-below-usage 只比较"本单量 vs 已发生量"，没有上限列，故不要求 limit（与注册表口径一致）。
             var usesLimit = !mode.Equals("not-below-usage", StringComparison.OrdinalIgnoreCase);
-            if (thisQty.Count == 0 || (usesLimit && limit.Count == 0))
-                throw new EffectConfigException("qty-not-exceed.check 缺少 thisQty/limit。");
+            var usesUsage = !mode.Equals("this-not-exceed", StringComparison.OrdinalIgnoreCase);
+            foreach (var dimension in dimensions)
+            {
+                if (dimension.Terms.Count == 0 || (usesLimit && dimension.LimitFields.Count == 0))
+                    throw new EffectConfigException("qty-not-exceed.check 缺少 thisQty/limit。");
+                if (usesUsage && dimension.UsageFields.Count == 0)
+                    throw new EffectConfigException("qty-not-exceed.check 缺少 thisQty/usage。");
+            }
 
             var targetTable = check.TryGetProperty("targetTable", out var tt) && tt.ValueKind == JsonValueKind.String
                 ? tt.GetString()!.Trim()
@@ -226,44 +234,34 @@ public sealed class EffectValidationExecutor
             if (sourceTable is null)
                 throw new EffectConfigException("qty-not-exceed 来源表不可用（模块形态不足）。");
 
-            var usageSql = string.Join(" + ", usage.Select(field => $"COALESCE(T.{EffectConditionCompiler.Identifier(field)}, 0)"));
-            var limitSql = string.Join(" + ", limit.Select(field => $"COALESCE(T.{EffectConditionCompiler.Identifier(field)}, 0)"));
-            // 容差：旧实现常带 0.1 之类的余量（如收料不超采购 +0.1），注册表已允许 offset，此处落实。
-            var offset = check.TryGetProperty("offset", out var offsetElement) && offsetElement.ValueKind == JsonValueKind.Number
-                && offsetElement.TryGetDecimal(out var declaredOffset)
-                    ? declaredOffset
-                    : 0m;
-            var limitWithOffset = offset == 0m
-                ? limitSql
-                : $"({limitSql} + {offset.ToString(CultureInfo.InvariantCulture)})";
-            var termSql = BuildTermSql(thisQty, "S");
+            var termSqls = dimensions.Select(dimension => BuildTermSql(dimension.Terms, "S")).ToList();
             var (documentScope, parameters) = BuildDocumentScope(plan, masterKeyValues);
 
             // 聚合形态：旧实现多按单据分组求和后再比较（如"同一采购行的收料合计"）。
             // 逐行比较在"同一单据里同一引用键有多行"时会弱于旧判据（单行没超、合计已超），
             // 等于悄悄放宽约束，故 thisQty.agg=SUM 时先按 match 键分组求和再比。
-            var aggregate = check.TryGetProperty("thisQty", out var thisQtyElement)
-                && thisQtyElement.ValueKind == JsonValueKind.Object
-                && thisQtyElement.TryGetProperty("agg", out var aggElement)
-                && aggElement.ValueKind == JsonValueKind.String
-                && aggElement.GetString()!.Equals("SUM", StringComparison.OrdinalIgnoreCase);
-            var diagnosticAggregates = ParseDiagnosticAggregates(check, aggregate);
+            var grouped = dimensions.Any(dimension => dimension.Aggregate);
+            var diagnosticAggregates = ParseDiagnosticAggregates(check, grouped);
             string fromSql;
             string correlation;
-            string thisSql;
-            if (aggregate)
+            if (grouped)
             {
                 var groupBy = string.Join(", ", match.Select(pair =>
                     "S." + EffectConditionCompiler.Identifier(pair.Source.Field!)));
                 correlation = string.Join(" AND ", match.Select(pair =>
                     "T." + EffectConditionCompiler.Identifier(pair.TargetColumn) + " = S1." + EffectConditionCompiler.Identifier(pair.Source.Field!)));
-                thisSql = "S1.[__THIS_QTY]";
                 // 分组形态的诊断列若要求对源列聚合（如"该批次的最大序号"），必须把该聚合放进分组子查询，
                 // 外层再投影——分组键之外的原列在 S1 里取不到。
                 var extras = string.Concat(diagnosticAggregates.Select(item =>
                     ", " + item.Aggregate + "(S." + EffectConditionCompiler.Identifier(item.Field)
                     + ") AS [" + item.Alias + "]"));
-                fromSql = "(SELECT " + groupBy + ", SUM(" + termSql + ") AS [__THIS_QTY]" + extras + " FROM dbo."
+                var projections = new StringBuilder();
+                for (var index = 0; index < termSqls.Count; index++)
+                {
+                    projections.Append(", SUM(").Append(termSqls[index]).Append(") AS ")
+                        .Append(ThisQtyAlias(index, multiDimension));
+                }
+                fromSql = "(SELECT " + groupBy + projections + extras + " FROM dbo."
                     + EffectConditionCompiler.Identifier(sourceTable) + " S WHERE " + documentScope
                     + " GROUP BY " + groupBy + ") S1 CROSS JOIN dbo."
                     + EffectConditionCompiler.Identifier(targetTable) + " T";
@@ -271,24 +269,39 @@ public sealed class EffectValidationExecutor
             else
             {
                 correlation = BuildMatchCorrelation(match, "S", "T");
-                thisSql = termSql;
                 fromSql = "dbo." + EffectConditionCompiler.Identifier(sourceTable) + " S CROSS JOIN dbo."
                     + EffectConditionCompiler.Identifier(targetTable) + " T";
             }
 
-            // 三种比较形态：本条超限额（usage + this > limit）、按进度不得减少（limit + this < usage）、
-            // 不得低于已发生量（this < usage，用于"变更后数量不得小于已发生量"且无上限列的场景）。
-            var comparison = mode.Equals("not-below-progress", StringComparison.OrdinalIgnoreCase)
-                ? $"{limitSql} + {thisSql} < {usageSql}" // reduction would fall below accumulated progress
-                : mode.Equals("this-not-exceed", StringComparison.OrdinalIgnoreCase)
-                    ? $"{thisSql} > {limitWithOffset}" // document quantity must not exceed the referenced cap
-                    : mode.Equals("not-below-usage", StringComparison.OrdinalIgnoreCase)
-                        ? $"{thisSql} < {usageSql}" // document quantity must not fall below what already happened
-                        : $"{usageSql} + {thisSql} > {limitWithOffset}";
+            // 比较形态：本条超限额（usage + this > limit）、按进度不得减少（limit + this < usage）、
+            // 不得低于已发生量（this < usage，用于"变更后数量不得小于已发生量"且无上限列的场景）、
+            // 本条不得超过被引用行上限（this > limit）。多量纲逐条编译后按 OR 合并。
+            var comparisons = new List<string>(dimensions.Count);
+            for (var index = 0; index < dimensions.Count; index++)
+            {
+                var dimension = dimensions[index];
+                var usageSql = string.Join(" + ", dimension.UsageFields.Select(field =>
+                    $"COALESCE(T.{EffectConditionCompiler.Identifier(field)}, 0)"));
+                var limitSql = string.Join(" + ", dimension.LimitFields.Select(field =>
+                    $"COALESCE(T.{EffectConditionCompiler.Identifier(field)}, 0)"));
+                // 容差：旧实现常带 0.1 之类的余量（如收料不超采购 +0.1），注册表已允许 offset，此处落实。
+                var limitWithOffset = dimension.Offset == 0m
+                    ? limitSql
+                    : $"({limitSql} + {dimension.Offset.ToString(CultureInfo.InvariantCulture)})";
+                var thisSql = grouped ? "S1." + ThisQtyAlias(index, multiDimension) : termSqls[index];
+                comparisons.Add(mode.Equals("not-below-progress", StringComparison.OrdinalIgnoreCase)
+                    ? $"{limitSql} + {thisSql} < {usageSql}" // reduction would fall below accumulated progress
+                    : mode.Equals("this-not-exceed", StringComparison.OrdinalIgnoreCase)
+                        ? $"{thisSql} > {limitWithOffset}" // document quantity must not exceed the referenced cap
+                        : mode.Equals("not-below-usage", StringComparison.OrdinalIgnoreCase)
+                            ? $"{thisSql} < {usageSql}" // document quantity must not fall below what already happened
+                            : $"{usageSql} + {thisSql} > {limitWithOffset}");
+            }
+            var comparison = comparisons.Count == 1 ? comparisons[0] : "(" + string.Join(" OR ", comparisons) + ")";
 
             // 来源行的单据范围：分组形态已把范围写进子查询，逐行形态必须作为顶层谓词补上，
             // 否则比较的是全库历史行，他单的超量会拦下本次操作（同 reference-exists 的旧缺陷）。
-            var predicate = aggregate
+            var predicate = grouped
                 ? correlation + " AND " + comparison
                 : correlation + " AND " + documentScope + " AND " + comparison;
 
@@ -307,7 +320,7 @@ public sealed class EffectValidationExecutor
                         && !string.IsNullOrWhiteSpace(checkMessage.GetString())
                             ? checkMessage.GetString()!
                             : $"存在{(mode == "not-below-progress" ? "低于进度" : mode == "not-below-usage" ? "低于已发生量" : "超出限额")}的明细行（{stage}）。");
-                var cells = BuildQtyDiagnosticCells(check, fromSql, correlation, comparison, aggregate, diagnosticAggregates);
+                var cells = BuildQtyDiagnosticCells(check, grouped, multiDimension, diagnosticAggregates);
                 if (cells is null)
                     return message;
                 // 诊断行的拼接方式各族不同：多为"列间 4 空格、行间 CRLF"，也有"单列多值、一行内联"（值间 2 空格）。
@@ -341,15 +354,14 @@ public sealed class EffectValidationExecutor
 
     /// <summary>
     /// 命中行的诊断列（可选）：SOURCE 指来源别名（分组形态下是分组键所在的子查询）、TARGET 指被引用行、
-    /// THIS 指本单数量（分组时为求和值）。未配置返回 null，此时消息只回表头。
+    /// THIS 指本单数量（分组时为求和值；多量纲时用 `dimension` 指定第几组，省略即第一组）。
+    /// 未配置返回 null，此时消息只回表头。
     /// 分组形态下 `{"scope":"SOURCE","field":…,"agg":"MAX|MIN|SUM"}` 取该源列的聚合值（如批次最大序号）。
     /// </summary>
     private static List<string>? BuildQtyDiagnosticCells(
         JsonElement check,
-        string fromSql,
-        string correlation,
-        string comparison,
         bool aggregate,
+        bool multiDimension,
         IReadOnlyList<DiagnosticAggregate> diagnosticAggregates)
     {
         if (!check.TryGetProperty("diagnosticFields", out var fields) || fields.ValueKind != JsonValueKind.Array
@@ -375,16 +387,17 @@ public sealed class EffectValidationExecutor
                     : scope == "THIS"
                         ? null
                         : throw new EffectConfigException("qty-not-exceed.diagnosticFields 缺少 field。");
-            }
-            if (aggregateColumn is not null)
+            }            if (aggregateColumn is not null)
             {
                 cells.Add(sourceAlias + ".[" + aggregateColumn.Alias + "]");
                 continue;
             }
             cells.Add(scope switch
             {
+                // 分组形态的"本单量"是求和后的投影列；多量纲时用 dimension 选第几组
+                // （省略即第一个量纲，与既有单量纲配置一致；非分组形态仍按列名取原值）。
                 "THIS" => aggregate
-                    ? sourceAlias + ".[__THIS_QTY]"
+                    ? sourceAlias + "." + ThisQtyAlias(DiagnosticDimension(field) - 1, multiDimension)
                     : "S." + EffectConditionCompiler.Identifier(name ?? throw new EffectConfigException("qty-not-exceed.diagnosticFields 的 THIS 作用域在非分组形态下必须给出 field。")),
                 "TARGET" => "T." + EffectConditionCompiler.Identifier(name!),
                 _ => sourceAlias + "." + EffectConditionCompiler.Identifier(name!),
@@ -392,6 +405,17 @@ public sealed class EffectValidationExecutor
         }
         return cells;
     }
+
+    /// <summary>
+    /// 诊断列里的"The 本单量属第几个量纲"（1 起；省略即第一组）。多量纲判据里
+    /// "数量"与"备品"两类求和值要在同一诊断行分别输出，靠这个序号区分。
+    /// </summary>
+    private static int DiagnosticDimension(JsonElement field)
+        => field.TryGetProperty("dimension", out var dimensionElement)
+            && dimensionElement.ValueKind == JsonValueKind.Number
+            && dimensionElement.TryGetInt32(out var dimension) && dimension >= 1
+                ? dimension
+                : 1;
 
     /// <summary>
     /// 诊断列里的源列聚合声明（分组形态专用）：字段序号 → 子查询里的聚合列别名。
@@ -1461,6 +1485,61 @@ public sealed class EffectValidationExecutor
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// 数量判据的一个"量纲"：本单量（thisQty）、已发生量与限额三组字段，外加可选容差。
+    /// 一个 check 可以带多个量纲（旧实现把"数量"与"备品"合成 `WHERE a OR b`），
+    /// 也可只带一个（直接写在 check 上，与既有配置完全兼容）。
+    /// </summary>
+    private sealed record QuantityDimension(
+        IReadOnlyList<EffectTerm> Terms,
+        IReadOnlyList<string> UsageFields,
+        IReadOnlyList<string> LimitFields,
+        decimal Offset,
+        bool Aggregate);
+
+    /// <summary>分组形态下"本单量"投影列：单量纲沿用 `[__THIS_QTY]`，多量纲按序号取别名。</summary>
+    private static string ThisQtyAlias(int index, bool multiDimension)
+        => multiDimension ? $"[__THIS_QTY_{index + 1}]" : "[__THIS_QTY]";
+
+    private static QuantityDimension ParseQuantityDimension(JsonElement owner)
+    {
+        var offset = owner.TryGetProperty("offset", out var offsetElement) && offsetElement.ValueKind == JsonValueKind.Number
+            && offsetElement.TryGetDecimal(out var declaredOffset)
+                ? declaredOffset
+                : 0m;
+        var aggregate = owner.TryGetProperty("thisQty", out var thisQtyElement)
+            && thisQtyElement.ValueKind == JsonValueKind.Object
+            && thisQtyElement.TryGetProperty("agg", out var aggElement)
+            && aggElement.ValueKind == JsonValueKind.String
+            && aggElement.GetString()!.Equals("SUM", StringComparison.OrdinalIgnoreCase);
+        return new QuantityDimension(
+            ParseScopeTerms(owner, "thisQty"),
+            ParseFieldList(owner, "usage"),
+            ParseFieldList(owner, "limit"),
+            offset,
+            aggregate);
+    }
+
+    private static IReadOnlyList<QuantityDimension> ParseQuantityDimensions(JsonElement check)
+    {
+        if (!check.TryGetProperty("dimensions", out var dimensionsElement)
+            || dimensionsElement.ValueKind != JsonValueKind.Array)
+            return [ParseQuantityDimension(check)];
+        var dimensions = new List<QuantityDimension>();
+        foreach (var dimension in dimensionsElement.EnumerateArray())
+        {
+            if (dimension.ValueKind != JsonValueKind.Object)
+                throw new EffectConfigException("qty-not-exceed.dimensions[] 必须是对象。");
+            dimensions.Add(ParseQuantityDimension(dimension));
+        }
+        if (dimensions.Count == 0)
+            throw new EffectConfigException("qty-not-exceed.dimensions 不能为空数组。");
+        // 各量纲必须一致地分组或不分组：否则分组子查询与逐行比较混在一句 SQL 里无意义。
+        if (dimensions.Select(item => item.Aggregate).Distinct().Count() > 1)
+            throw new EffectConfigException("qty-not-exceed.dimensions 的各量纲必须一致地使用（或不使用）thisQty.agg=SUM。");
+        return dimensions;
     }
 
     private IReadOnlyList<EffectMatchItem> ParseMatchPairs(JsonElement check)

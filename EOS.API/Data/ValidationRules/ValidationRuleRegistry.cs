@@ -28,11 +28,12 @@ public static class ValidationRuleRegistry
                 "displayLookup", "diagnosticFields", "maxRows")),
         };
 
-    private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "message", "switch", "diagnosticFields", "maxRows", "diagnosticCellSeparator", "diagnosticRowSeparator");
+    private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "dimensions", "message", "switch", "diagnosticFields", "maxRows", "diagnosticCellSeparator", "diagnosticRowSeparator");
+    private static readonly IReadOnlySet<string> QtyDimensionKeys = KeySet("thisQty", "usage", "limit", "offset");
     private static readonly IReadOnlySet<string> QtySwitchKeys = KeySet("key", "expect", "gates");
     private static readonly IReadOnlySet<string> QtyGateKeys = KeySet("scope", "key", "expect");
     private static readonly IReadOnlySet<string> QtyGateScopes = KeySet("SYSSS", "MODULE");
-    private static readonly IReadOnlySet<string> QtyDiagnosticKeys = KeySet("scope", "field", "agg");
+    private static readonly IReadOnlySet<string> QtyDiagnosticKeys = KeySet("scope", "field", "agg", "dimension");
     private static readonly IReadOnlySet<string> QtyDiagnosticAggregates = KeySet("MAX", "MIN", "SUM", "DISTINCT");
     private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "condition", "assert", "message", "diagnosticFields");
     private static readonly IReadOnlySet<string> LineRequireTriggerKeys = KeySet("scope", "field", "op", "value");
@@ -219,6 +220,7 @@ public static class ValidationRuleRegistry
         if (mode is not ("usage-not-exceed" or "not-below-progress" or "this-not-exceed" or "not-below-usage"))
             issues.Add($"校验规则 {Label(rule)}：qty-not-exceed.mode 仅允许 usage-not-exceed / not-below-progress / this-not-exceed / not-below-usage");
         var requireLimit = mode is null or "usage-not-exceed" or "this-not-exceed";
+        var requireUsage = mode is null or "usage-not-exceed" or "not-below-progress" or "not-below-usage";
         var checks = GetArray(p, "checks");
         if (checks is not { } arr || arr.GetArrayLength() == 0)
         {
@@ -236,6 +238,50 @@ public static class ValidationRuleRegistry
                 continue;
             }
             RejectUnknownKeys(rule, check, QtyCheckKeys, where, issues);
+            // 量纲：单量纲直接写在 check 上；多量纲写在 dimensions（旧实现把"数量"与"备品"
+            // 合成 `WHERE a OR b` 的形态），两者互斥，各量纲的 agg 用法必须一致。
+            var dimensionCount = 1;
+            if (GetArray(check, "dimensions") is { } dimensionItems)
+            {
+                if (dimensionItems.GetArrayLength() == 0)
+                    issues.Add($"校验规则 {Label(rule)}：{where}.dimensions 必须是非空数组");
+                dimensionCount = dimensionItems.GetArrayLength();
+                if (GetObject(check, "thisQty") is not null || GetObject(check, "usage") is not null
+                    || GetObject(check, "limit") is not null || GetObject(check, "offset") is not null)
+                    issues.Add($"校验规则 {Label(rule)}：{where} 使用了 dimensions 时不能再写 thisQty/usage/limit/offset");
+                var dimensionIndex = 0;
+                bool? dimensionAggregate = null;
+                foreach (var dimension in dimensionItems.EnumerateArray())
+                {
+                    var dimensionWhere = $"{where}.dimensions[{dimensionIndex}]";
+                    dimensionIndex++;
+                    if (dimension.ValueKind != JsonValueKind.Object)
+                    {
+                        issues.Add($"校验规则 {Label(rule)}：{dimensionWhere} 必须是对象");
+                        continue;
+                    }
+                    RejectUnknownKeys(rule, dimension, QtyDimensionKeys, dimensionWhere, issues);
+                    var hasThisQty = ValidateQtyBlock(rule, dimension, "thisQty", $"{dimensionWhere}.thisQty", issues);
+                    if (!hasThisQty)
+                        issues.Add($"校验规则 {Label(rule)}：{dimensionWhere}.thisQty 缺失");
+                    if (requireUsage && !ValidateQtyBlock(rule, dimension, "usage", $"{dimensionWhere}.usage", issues))
+                        issues.Add($"校验规则 {Label(rule)}：{dimensionWhere}.usage 缺失");
+                    var hasDimensionLimit = GetObject(dimension, "limit") is not null;
+                    if (requireLimit && !hasDimensionLimit)
+                        issues.Add($"校验规则 {Label(rule)}：{dimensionWhere}.limit 缺失（{mode ?? "usage-not-exceed"} 模式必须给出限额）");
+                    if (hasDimensionLimit)
+                        ValidateQtyBlock(rule, dimension, "limit", $"{dimensionWhere}.limit", issues);
+                    if (GetObject(dimension, "offset") is { } dimensionOffset)
+                        ValidateQtyBlock(rule, dimension, "offset", $"{dimensionWhere}.offset", issues);
+                    var dimensionAgg = GetObject(dimension, "thisQty") is { } dimensionThisQty
+                        && dimensionThisQty.TryGetProperty("agg", out var dimensionAggElement)
+                        && dimensionAggElement.ValueKind == JsonValueKind.String;
+                    if (dimensionAggregate is null)
+                        dimensionAggregate = dimensionAgg;
+                    else if (dimensionAggregate != dimensionAgg)
+                        issues.Add($"校验规则 {Label(rule)}：{where}.dimensions 的各量纲必须一致地使用（或不使用）thisQty.agg=SUM");
+                }
+            }
             var diagnostics = GetArray(check, "diagnosticFields");
             if (diagnostics is { } diagnosticArray)
             {
@@ -266,15 +312,29 @@ public static class ValidationRuleRegistry
                             else if (diagnosticScope is not null
                                 && !diagnosticScope.Equals("SOURCE", StringComparison.OrdinalIgnoreCase))
                                 issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.agg 仅在 scope=SOURCE 时可用");
-                            // 源列聚合要靠分组子查询承载，因此只在本 check 走分组形态（thisQty.agg=SUM）时成立。
-                            var grouped = check.TryGetProperty("thisQty", out var diagnosticThisQty)
-                                && diagnosticThisQty.ValueKind == JsonValueKind.Object
-                                && diagnosticThisQty.TryGetProperty("agg", out var diagnosticThisAgg)
-                                && diagnosticThisAgg.ValueKind == JsonValueKind.String
-                                && diagnosticThisAgg.GetString()!.Equals("SUM", StringComparison.OrdinalIgnoreCase);
+                            // 源列聚合要靠分组子查询承载，因此只在本 check 走分组形态（thisQty.agg=SUM
+                            // 或任一量纲 thisQty.agg=SUM）时成立。
+                            var grouped = (check.TryGetProperty("thisQty", out var diagnosticThisQty)
+                                    && diagnosticThisQty.ValueKind == JsonValueKind.Object
+                                    && diagnosticThisQty.TryGetProperty("agg", out var diagnosticThisAgg)
+                                    && diagnosticThisAgg.ValueKind == JsonValueKind.String
+                                    && diagnosticThisAgg.GetString()!.Equals("SUM", StringComparison.OrdinalIgnoreCase))
+                                || (GetArray(check, "dimensions") is { } diagnosticDimensions
+                                    && diagnosticDimensions.EnumerateArray().Any(item =>
+                                        GetObject(item, "thisQty") is { } itemThisQty
+                                        && itemThisQty.TryGetProperty("agg", out var itemAgg)
+                                        && itemAgg.ValueKind == JsonValueKind.String
+                                        && itemAgg.GetString()!.Equals("SUM", StringComparison.OrdinalIgnoreCase)));
                             if (!grouped)
                                 issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.agg 仅在 thisQty.agg=SUM 的分组形态下可用");
                         }
+                        // "本单量"是求和投影列时用 dimension 指定第几组量纲（1 起，省略即第一组）。
+                        if (diagnostic.TryGetProperty("dimension", out var diagnosticDimension)
+                            && (diagnosticDimension.ValueKind != JsonValueKind.Number
+                                || !diagnosticDimension.TryGetInt32(out var diagnosticDimensionValue)
+                                || diagnosticDimensionValue < 1
+                                || diagnosticDimensionValue > dimensionCount))
+                            issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.dimension 必须是 1..{dimensionCount} 的整数（量纲序号）");
                     }
                     else
                     {
@@ -296,19 +356,21 @@ public static class ValidationRuleRegistry
                 issues.Add($"校验规则 {Label(rule)}：{where}.match 必须是非空数组");
             else
                 ValidateMatchItems(rule, match.Value, $"{where}.match", issues);
-            if (!ValidateQtyBlock(rule, check, "thisQty", $"{where}.thisQty", issues))
-                issues.Add($"校验规则 {Label(rule)}：{where}.thisQty 缺失");
-            var requireUsage = mode is null or "usage-not-exceed" or "not-below-progress" or "not-below-usage";
-            if (requireUsage && !ValidateQtyBlock(rule, check, "usage", $"{where}.usage", issues))
-                issues.Add($"校验规则 {Label(rule)}：{where}.usage 缺失");
-            var hasLimit = GetObject(check, "limit") is not null;
-            if (requireLimit && !hasLimit)
-                issues.Add($"校验规则 {Label(rule)}：{where}.limit 缺失（{mode ?? "usage-not-exceed"} 模式必须给出限额）");
-            if (hasLimit)
-                ValidateQtyBlock(rule, check, "limit", $"{where}.limit", issues);
-            var offset = GetObject(check, "offset");
-            if (offset is not null)
-                ValidateQtyBlock(rule, offset.Value, "offset", $"{where}.offset", issues);
+            if (dimensionCount <= 1 && GetArray(check, "dimensions") is null)
+            {
+                if (!ValidateQtyBlock(rule, check, "thisQty", $"{where}.thisQty", issues))
+                    issues.Add($"校验规则 {Label(rule)}：{where}.thisQty 缺失");
+                if (requireUsage && !ValidateQtyBlock(rule, check, "usage", $"{where}.usage", issues))
+                    issues.Add($"校验规则 {Label(rule)}：{where}.usage 缺失");
+                var hasLimit = GetObject(check, "limit") is not null;
+                if (requireLimit && !hasLimit)
+                    issues.Add($"校验规则 {Label(rule)}：{where}.limit 缺失（{mode ?? "usage-not-exceed"} 模式必须给出限额）");
+                if (hasLimit)
+                    ValidateQtyBlock(rule, check, "limit", $"{where}.limit", issues);
+                var offset = GetObject(check, "offset");
+                if (offset is not null)
+                    ValidateQtyBlock(rule, offset.Value, "offset", $"{where}.offset", issues);
+            }
             index++;
         }
     }

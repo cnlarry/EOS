@@ -691,6 +691,112 @@ public sealed class EffectValidationLiveDataTests
         }
     }
 
+    /// <summary>
+    /// 备货单（1411）"已备货不超订单/工单完工"已由保存期 qty-not-exceed 承担，且**数量与备品
+    /// 两个量纲合成同一判据**（旧实现是一句 `WHERE a OR b`，靠 dimensions + OR 合并复刻）：
+    /// 门关跳过；订单口径命中回报七列；只违反备品量纲时同样命中（证明 OR 合并与第二个量纲的
+    /// 诊断投影都生效）；切到工单口径走另一张被引用表；最后无门控的批号必填仍拦。
+    /// </summary>
+    [Fact]
+    public async Task 备货单_两量纲不超订单与工单_门控与批号必填()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, MANAGE_BATCH) VALUES (N'ADR12FITP', N'集成测试备货批管品', 1);
+                INSERT INTO dbo.COP_ORDER_D (ORDER_TYPE, ORDER_NO, SERIAL_NO, QTY, SPARE_QTY, FINISHED_FITOUT_QTY, FINISHED_FITOUT_SPARE_QTY)
+                    VALUES (N'ADR12', N'ADR12ORD1', 1, 100, 50, 80, 40);
+                INSERT INTO dbo.MOC_PRODUCE_M (PRODUCE_TYPE, PRODUCE_NO, FINISHED_QTY, FINISHED_SPARE_QTY, FINISHED_FITOUT_QTY, FINISHED_FITOUT_SPARE_QTY)
+                    VALUES (N'ADR12', N'ADR12PRO1', 200, 60, 80, 40);
+                INSERT INTO dbo.COP_FITOUT_D (FITOUT_TYPE, FITOUT_NO, SERIAL_NO, ORDER_TYPE, ORDER_NO, ORDER_SERIAL_NO,
+                                              PRODUCE_TYPE, PRODUCE_NO, QTY, SPARE_QTY, BATCH_NO, PRO_NO)
+                    VALUES (N'ADR12', N'ADR12FIT1', 1, N'ADR12', N'ADR12ORD1', 1, N'ADR12', N'ADR12PRO1', 30, 5, N'', N'ADR12FITP');
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            var qtyPlan = await LoadPlanAsync(connection, transaction, 1411, token, "qty-not-exceed");
+            var batchPlan = await LoadPlanAsync(connection, transaction, 1411, token, "line-require");
+            var keys = new[] { "ADR12", "ADR12FIT1" };
+
+            // 门关（ERROR_NO_SAVE=0、两个全局口径开关均为 0）→ 超量也放行
+            await Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, keys);
+
+            // 订单口径：数量量纲命中（已备货 80 + 本单 30 > 订单 100），七列诊断逐字一致
+            await using (var gate = new SqlCommand(
+                "UPDATE dbo.MODULES SET ERROR_NO_SAVE = 1 WHERE M_IDX = 1411; UPDATE dbo.SYSSS SET FITOUT_ORDER_TAG = 1;",
+                connection, transaction))
+            {
+                await gate.ExecuteNonQueryAsync(token);
+            }
+            var orderFailure = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, keys));
+            Assert.Equal("以下会出现已备货数量超出订单数量\r\n订单号   数量   已备货数量  单据数量  备品  已备货备品  单据备品\r\nADR12ORD1    100    80    30    50    40    5",
+                orderFailure.Message);
+
+            // 只违反备品量纲（数量降到额度内）→ 同一个 check 仍命中，且诊断第 7 列取第二量纲求和张
+            await using (var spareOnly = new SqlCommand("""
+                UPDATE dbo.COP_FITOUT_D SET QTY = 5, SPARE_QTY = 15
+                    WHERE FITOUT_TYPE = N'ADR12' AND FITOUT_NO = N'ADR12FIT1' AND SERIAL_NO = 1;
+                """, connection, transaction))
+            {
+                await spareOnly.ExecuteNonQueryAsync(token);
+            }
+            var spareFailure = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, keys));
+            Assert.Equal("以下会出现已备货数量超出订单数量\r\n订单号   数量   已备货数量  单据数量  备品  已备货备品  单据备品\r\nADR12ORD1    100    80    5    50    40    15",
+                spareFailure.Message);
+
+            // 切到工单口径（本单 15 备品 vs 工单已备货 40 + 15 > 完工备品 60？→ 55 ≤ 60 不超；数量 80+5 ≤ 200 不超）
+            // 故此处先把工单完工备品降到 50 以命中工单口径
+            await using (var produceGate = new SqlCommand("""
+                UPDATE dbo.SYSSS SET FITOUT_ORDER_TAG = 0, FITOUT_PRODUCE_TAG = 1;
+                UPDATE dbo.MOC_PRODUCE_M SET FINISHED_SPARE_QTY = 50
+                    WHERE PRODUCE_TYPE = N'ADR12' AND PRODUCE_NO = N'ADR12PRO1';
+                """, connection, transaction))
+            {
+                await produceGate.ExecuteNonQueryAsync(token);
+            }
+            var produceFailure = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, keys));
+            Assert.Equal("以下会出现已备货数量超出工单完工数量\r\n工单号   数量   已备货数量  单据数量  备品  已备货备品  单据备品\r\nADR12PRO1    200    80    5    50    40    15",
+                produceFailure.Message);
+
+            // 数量与备品都降到额度内 → 量纲校验放行，但批管品缺批号仍由无门控的 line-require 拦下
+            await using (var clear = new SqlCommand("""
+                UPDATE dbo.COP_FITOUT_D SET SPARE_QTY = 0
+                    WHERE FITOUT_TYPE = N'ADR12' AND FITOUT_NO = N'ADR12FIT1' AND SERIAL_NO = 1;
+                """, connection, transaction))
+            {
+                await clear.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, qtyPlan, "SAVE", token, keys);
+            var batchFailure = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, batchPlan, "SAVE", token, keys));
+            Assert.Contains("以下序号项需要输入批号! ", batchFailure.Message);
+            Assert.Contains("\r\n1", batchFailure.Message);
+
+            // 补上批号 → 放行
+            await using (var fixBatch = new SqlCommand("""
+                UPDATE dbo.COP_FITOUT_D SET BATCH_NO = N'B001'
+                    WHERE FITOUT_TYPE = N'ADR12' AND FITOUT_NO = N'ADR12FIT1' AND SERIAL_NO = 1;
+                """, connection, transaction))
+            {
+                await fixBatch.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, batchPlan, "SAVE", token, keys);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
     [Fact]
     public async Task 量产模入库_受门控的入库不超完工未入_分组求和与源列聚合诊断()
     {
