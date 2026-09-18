@@ -54,6 +54,7 @@ public static class BusinessActionCatalog
         "car-filloil-sync",
         "detail-field-sync",
         "sample-edition-bump",
+        "mould-ids-sync",
         // 保留键（暂无落库实例，登记保留）
         "meta-link",
         "flow-trigger",

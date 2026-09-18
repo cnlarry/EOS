@@ -53,7 +53,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "hr-wage-lz" => await HrDomainRules.HrWageAfterSaveAsync(connection, transaction, "HR_WAGE_M", "HR_WAGE_D", pkColumns, keyValues, token),
                 "hr-apply" => await HrDomainRules.HrApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "moc-bom-stru" => await MocDomainRules.MocBomStruAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "mou-pro" => await MouDomainRules.MouProAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cus-manual" => await CusDomainRules.CusManualAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cus-account" => await CusDomainRules.CusAccountAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
                 _ => new(false, $"未登记的领域规则：{ruleName}"),
