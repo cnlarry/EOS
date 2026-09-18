@@ -550,6 +550,77 @@ public sealed class EffectValidationLiveDataTests
         }
     }
 
+    /// <summary>
+    /// 行字段断言（line-require.check.assert）两条迁移路径的真库用例：
+    /// ① 货币资料（110103）：主表行作用域（scope=MASTER）+ 触发器 IS_BASE=1 + 断言 CURR_RATE=1；
+    /// ② 库存盘点单（130101）：明细行无条件断言 CHECK_QTY&gt;=0，命中回报序号。
+    /// </summary>
+    [Fact]
+    public async Task 行字段断言_本位币汇率与盘点数下界_迁目录后仍生效()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            await using (var seed = new SqlCommand("""
+                INSERT INTO dbo.CURR (CURR_ID, CURR_NAME, CURR_RATE, IS_BASE, CREATE_PERSON, CREATE_DATE, CONFIRM_TAG, CI)
+                    VALUES (N'ADR12CUR1', N'集成测试本位币', 2, 1, N'ADR12', GETDATE(), 0, N'');
+                INSERT INTO dbo.INV_CHECK_STOCK_D (CHECK_STOCK_TYPE, CHECK_STOCK_NO, SERIAL_NO, CHECK_QTY)
+                    VALUES (N'ADR12', N'ADR12STOCK1', 1, -5);
+                """, connection, transaction))
+            {
+                await seed.ExecuteNonQueryAsync(token);
+            }
+
+            var currencyPlan = await LoadPlanAsync(connection, transaction, 110103, token, "line-require");
+            var currencyFailure = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, currencyPlan, "SAVE", token, ["ADR12CUR1"]));
+            Assert.Equal("本位币汇率只能为1", currencyFailure.Message);
+
+            var stockPlan = await LoadPlanAsync(connection, transaction, 130101, token, "line-require");
+            var stockFailure = await Assert.ThrowsAsync<EffectValidationException>(() =>
+                Executor.ValidateAsync(connection, transaction, stockPlan, "SAVE", token, ["ADR12", "ADR12STOCK1"]));
+            Assert.Contains("以下序号项盘点数小于0", stockFailure.Message);
+            Assert.Contains("1", stockFailure.Message);
+
+            // 汇率改为 1 → 放行；非本位币即使汇率非 1 也放行（触发器不成立）
+            await using (var fixRate = new SqlCommand(
+                "UPDATE dbo.CURR SET CURR_RATE = 1 WHERE CURR_ID = N'ADR12CUR1';", connection, transaction))
+            {
+                await fixRate.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, currencyPlan, "SAVE", token, ["ADR12CUR1"]);
+            await using (var clearBase = new SqlCommand(
+                "UPDATE dbo.CURR SET IS_BASE = 0, CURR_RATE = 2 WHERE CURR_ID = N'ADR12CUR1';", connection, transaction))
+            {
+                await clearBase.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, currencyPlan, "SAVE", token, ["ADR12CUR1"]);
+
+            // 盘点数为零（下界取等号）与空值均放行
+            await using (var fixQty = new SqlCommand(
+                "UPDATE dbo.INV_CHECK_STOCK_D SET CHECK_QTY = 0 WHERE CHECK_STOCK_TYPE = N'ADR12' AND CHECK_STOCK_NO = N'ADR12STOCK1';",
+                connection, transaction))
+            {
+                await fixQty.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, stockPlan, "SAVE", token, ["ADR12", "ADR12STOCK1"]);
+            await using (var nullQty = new SqlCommand(
+                "UPDATE dbo.INV_CHECK_STOCK_D SET CHECK_QTY = NULL WHERE CHECK_STOCK_TYPE = N'ADR12' AND CHECK_STOCK_NO = N'ADR12STOCK1';",
+                connection, transaction))
+            {
+                await nullQty.ExecuteNonQueryAsync(token);
+            }
+            await Executor.ValidateAsync(connection, transaction, stockPlan, "SAVE", token, ["ADR12", "ADR12STOCK1"]);
+        }
+        finally
+        {
+            await transaction.RollbackAsync(token);
+        }
+    }
+
     [Fact]
     public async Task 量产模入库_受门控的入库不超完工未入_分组求和与源列聚合诊断()
     {

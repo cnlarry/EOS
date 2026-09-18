@@ -11,32 +11,6 @@ namespace EOS.API.Data;
 public static class SysDomainRules
 {
     /// <summary>
-    /// Currency save: the base currency rate must be 1. 唯一性（只允许一种本位币）已由校验目录
-    /// 的 duplicate-check 实例承担（110103 SAVE），此处只保留字段取值约束。
-    /// </summary>
-    public static async Task<SprocResult> CurrAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 1 || keyValues.Count < 1) return new(false, "货币资料领域规则缺少主键。");
-        var currId = (keyValues[0] ?? string.Empty).Trim();
-        bool? isBase; decimal? rate;
-        await using (var read = new SqlCommand(
-            "SELECT IS_BASE, CURR_RATE FROM dbo.CURR WHERE CURR_ID=@CurrId;", connection, transaction))
-        {
-            read.Parameters.Add("@CurrId", SqlDbType.NChar, 10).Value = currId;
-            await using var reader = await read.ExecuteReaderAsync(token);
-            if (!await reader.ReadAsync(token)) return new(true, null);
-            isBase = reader.IsDBNull(0) ? null : reader.GetBoolean(0);
-            rate = reader.IsDBNull(1) ? null : Convert.ToDecimal(reader.GetValue(1));
-        }
-        if (isBase != true) return new(true, null);
-        if (rate is null || rate.Value != 1m)
-            return new(false, "本位币汇率只能为1");
-        return new(true, null);
-    }
-
-    /// <summary>
     /// BOM structure save: validates the product and element numbers, requires a positive
     /// base quantity, rejects cyclic references, and backfills historical length/width columns.
     /// </summary>

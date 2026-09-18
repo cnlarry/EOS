@@ -175,14 +175,41 @@ public class ValidationRuleRegistryFailClosedTests
             """));
         Assert.Empty(ok);
         var bad = Validate("line-require", Params("""
-            {"checks":[{"scope":"MASTER","field":"","triggers":[{"scope":"DETAIL","field":"BAD_QTY","op":"LIKE","value":"x"}]}]}
+            {"checks":[{"scope":"DETAILX","field":"","triggers":[{"scope":"MASTER","field":"BAD_QTY","op":"LIKE","value":"x"}]}]}
             """));
-        Assert.Contains(bad, issue => issue.Contains("scope 仅允许 DETAIL"));
+        Assert.Contains(bad, issue => issue.Contains("scope 仅允许 DETAIL/MASTER"));
         Assert.Contains(bad, issue => issue.Contains("field 不能为空"));
         Assert.Contains(bad, issue => issue.Contains("op 仅允许"));
         Assert.Contains(bad, issue => issue.Contains("value 必须是数字"));
+        // 触发器作用域必须与同一 check 一致：否则判据会写成两个关系之间的无意义比较
+        Assert.Contains(bad, issue => issue.Contains("必须与同一 check 的 scope 一致"));
         var empty = Validate("line-require", Params("""{"checks":[]}"""));
         Assert.Contains(empty, issue => issue.Contains("checks 必须是非空数组"));
+    }
+
+    [Fact]
+    public void LineRequire_AcceptsValueAssertionAndMasterScope()
+    {
+        // 断言形态：无触发器（无条件生效）＋数值比较＋主表行作用域（无明细表的模块，如货币资料）
+        var ok = Validate("line-require", Params("""
+            {"checks":[{"scope":"MASTER","field":"CURR_RATE","assert":{"op":"EQ","value":1},
+             "triggers":[{"scope":"MASTER","field":"IS_BASE","op":"EQ","value":1}],
+             "message":"本位币汇率只能为1"}]}
+            """));
+        Assert.Empty(ok);
+        // 明细行无条件下界断言：assert 存在即无需 triggers/condition
+        var unconditional = Validate("line-require", Params("""
+            {"checks":[{"scope":"DETAIL","field":"CHECK_QTY","assert":{"op":"GE","value":0},
+             "message":"以下序号项盘点数小于0 ","diagnosticFields":["SERIAL_NO"]}]}
+            """));
+        Assert.Empty(unconditional);
+
+        var badAssert = Validate("line-require", Params("""
+            {"checks":[{"scope":"DETAIL","field":"CHECK_QTY","assert":{"op":"LIKE","value":"x","extra":1}}]}
+            """));
+        Assert.Contains(badAssert, issue => issue.Contains("assert.op 仅允许"));
+        Assert.Contains(badAssert, issue => issue.Contains("assert.value 必须是数字"));
+        Assert.Contains(badAssert, issue => issue.Contains("未知参数键"));
     }
 
     [Fact]

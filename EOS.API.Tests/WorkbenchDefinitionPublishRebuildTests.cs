@@ -69,7 +69,7 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
     /// <summary>
     /// 发布路径按代码注册表重建 DomainRule，且不因 provider 缓存里的旧基线而改变：
     /// 构造一个内存基线（BusinessRule.DomainRule 指向已删的幽灵族名），发布路径必须
-    /// 产出与代码一致的 DomainRule（110103 → curr），而不是幽灵族名。
+    /// 产出与代码一致的 DomainRule（1502 → moc-produce），而不是幽灵族名。
     /// </summary>
     [Fact]
     public async Task PublishBuild_IgnoresBaselineAndRebuildsDomainRule_FromCodeRegistry()
@@ -81,21 +81,21 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
 
         // 造一个「快照指向已删幽灵族」的旧基线，塞进 provider 缓存（模拟删码后未重发布的脏快照）。
         var staleBaseline = new WorkbenchDefinition(
-            ModuleId: 110103, Title: "币别", MasterTable: "CURR", DetailTable: null,
+            ModuleId: 1502, Title: "制令单", MasterTable: "MOC_PRODUCE_M", DetailTable: "MOC_PRODUCE_D",
             MasterFields: [], DetailFields: [], DefaultSort: null, HasAdd: true, HasEdit: true,
-            DetailNoSave: false, MasterPkOrder: ["CURR_ID"], DetailNoFields: "", HasWorkflow: false,
+            DetailNoSave: false, MasterPkOrder: ["PRODUCE_TYPE", "PRODUCE_NO"], DetailNoFields: "", HasWorkflow: false,
             UserId: "", ExecTag: "Z",
-            BusinessRule: new ModuleBusinessRule(110103, null, null, false, null, null, DomainRule: "ghost-deleted-rule"));
-        provider.SeedBaselineForTest(110103, staleBaseline, "module-110103-v999");
+            BusinessRule: new ModuleBusinessRule(1502, null, null, false, null, null, DomainRule: "ghost-deleted-rule"));
+        provider.SeedBaselineForTest(1502, staleBaseline, "module-1502-v999");
 
-        // 发布路径：忽略基线，DomainRule 重建为当前代码注册表里的族名（110103 → curr）。
-        var publish = await builder.GetDefinitionAsync(110103, "admin", "Z", true, true, emptyDenied, emptyDenied, CancellationToken.None, forPublish: true);
+        // 发布路径：忽略基线，DomainRule 重建为当前代码注册表里的族名（1502 → moc-produce）。
+        var publish = await builder.GetDefinitionAsync(1502, "admin", "Z", true, true, emptyDenied, emptyDenied, CancellationToken.None, forPublish: true);
         Assert.NotNull(publish);
-        Assert.Equal("curr", publish!.BusinessRule?.DomainRule);
+        Assert.Equal("moc-produce", publish!.BusinessRule?.DomainRule);
         Assert.NotEqual("ghost-deleted-rule", publish.BusinessRule?.DomainRule);
 
         // 运行时路径（forPublish=false）：有基线时仍走基线（已发布快照为运行时事实源）。
-        var runtime = await builder.GetDefinitionAsync(110103, "admin", "Z", true, true, emptyDenied, emptyDenied, CancellationToken.None);
+        var runtime = await builder.GetDefinitionAsync(1502, "admin", "Z", true, true, emptyDenied, emptyDenied, CancellationToken.None);
         Assert.NotNull(runtime);
         Assert.Equal("ghost-deleted-rule", runtime!.BusinessRule?.DomainRule);
     }
