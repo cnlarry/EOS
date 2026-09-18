@@ -554,16 +554,11 @@ public sealed class EffectShadowRunner
         }
         // 遗留批核过程钩子（MODULES.UPDATE_SP）已从库内物理删除：旧路径不复存在，
         // 因此所有对拍都是**引擎单跑**（B 类证据）；失败分支同样成立——待验的闸门是引擎在写入之前阻断。
-        string? workflowSproc = null;
-        const bool legacyAvailable = false;
-
         var keys = await ResolveRecordKeysAsync(connection, spec, options.ModuleId, options.Keys, deapprove, options.Failure);
-        await log.WriteLineAsync($"shadow run={runId} module={options.ModuleId} event={options.Event} version={version} keys={string.Join("|", keys)} sproc={workflowSproc ?? "(none)"}");
+        await log.WriteLineAsync($"shadow run={runId} module={options.ModuleId} event={options.Event} version={version} keys={string.Join("|", keys)} sproc=(none)");
 
         var definitionVersion = $"module-{options.ModuleId}-v{version}";
-        var legacy = legacyAvailable
-            ? await RunLegacyPathAsync(connection, definition, spec, workflowSproc!, keys, deapprove, log)
-            : new LegacyPathResult("skipped", "旧路径不可用（过程已退役或模式为引擎单跑）。", null, 0, Array.Empty<string>());
+        var legacy = new LegacyPathResult("skipped", "旧路径已退役（遗留过程钩子从库内物理删除）。", null, 0, Array.Empty<string>());
         var engineResult = await RunEnginePathAsync(definition, spec, keys, deapprove, log);
         var engine = engineResult.Status;
         List<ShadowTableDiff> tables;
@@ -980,66 +975,6 @@ public sealed class EffectShadowRunner
         return new[] { reader.GetString(0).Trim(), reader.GetString(1).Trim() };
     }
 
-    private async Task<LegacyPathResult> RunLegacyPathAsync(
-        SqlConnection connection,
-        WorkbenchDefinition definition,
-        ModuleShadowSpec spec,
-        string workflowSproc,
-        IReadOnlyList<string> keys,
-        bool deapprove,
-        TextWriter log)
-    {
-        await using var scoped = new SqlConnection(ConnectionString.Value);
-        await scoped.OpenAsync();
-        var transaction = (SqlTransaction)await scoped.BeginTransactionAsync(IsolationLevel.ReadCommitted);
-        try
-        {
-            await SetConfirmAsync(scoped, transaction, spec, keys, deapprove);
-            var keyCondition = BuildKeyCondition(spec, keys);
-            await using var command = new SqlCommand(workflowSproc, scoped, transaction)
-            {
-                CommandType = CommandType.StoredProcedure,
-            };
-            command.Parameters.Add("@key_value", SqlDbType.VarChar, 200).Value = keyCondition;
-            command.Parameters.Add("@approve_tag", SqlDbType.Int).Value = deapprove ? -1 : 1;
-            var message = command.Parameters.Add("@msg", SqlDbType.VarChar, 8000);
-            message.Direction = ParameterDirection.Output;
-            var rc = command.Parameters.Add("@rc", SqlDbType.Int);
-            rc.Direction = ParameterDirection.ReturnValue;
-            await command.ExecuteNonQueryAsync();
-            var success = rc.Value is int code && code == 1;
-            var error = success ? null : (message.Value as string);
-            if (!success)
-            {
-                await transaction.RollbackAsync();
-                return new LegacyPathResult("blocked", error ?? "旧批核存储过程返回失败。", null, 0, Array.Empty<string>());
-            }
-            var snapshot = await CaptureSnapshotAsync(scoped, transaction, spec, keys);
-            await transaction.RollbackAsync();
-            await log.WriteLineAsync($"legacy path ok rows={snapshot.Rows.Sum(entry => entry.Value.Count)}");
-            if (Environment.GetEnvironmentVariable("EOS_SHADOW_DEBUG") == "1")
-            {
-                await DumpSnapshot(log, "legacy", snapshot);
-            }
-            return new LegacyPathResult("ok", null, snapshot, snapshot.AuditCount, snapshot.AuditActions);
-        }
-        catch (Exception exception)
-        {
-            try
-            {
-                await transaction.RollbackAsync();
-            }
-            catch
-            {
-                // transaction may already be rolled back by the failing statement
-            }
-            if (Environment.GetEnvironmentVariable("EOS_SHADOW_DEBUG") == "1")
-            {
-                await log.WriteLineAsync("legacy path exception: " + exception);
-            }
-            return new LegacyPathResult("blocked", exception.Message, null, 0, Array.Empty<string>());
-        }
-    }
 
     private async Task<EnginePathResult> RunEnginePathAsync(
         WorkbenchDefinition definition,

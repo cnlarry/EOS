@@ -307,7 +307,7 @@ public sealed class WorkflowEngine(
     /// 同意：顺序步整步通过；会签步（IS_SIGN=1）按 PASS_PERCENT 计数阈值 + MUST_SIGNER 推进；
     /// 非空 jumpNo 且具备 FORWARD_POWER 时向前跳（'0'=直接结束，中间未批任务标记跳过）；
     /// 驳回：解批前置校验（NOT_BACK_FIELDS）后重置 [jumpNo, 当前] 区间任务并退回目标步（空=第一步）；
-    /// 末步/跳转结束：落主表 CONFIRM_TAG + WorkflowSproc 副作用 + WF_APPROVE 历史。
+    /// 末步/跳转结束：落主表 CONFIRM_TAG + 效果链副作用 + WF_APPROVE 历史。
     /// </summary>
     public async Task<(bool Success, string? ErrorCode, string? ErrorMessage, bool FlowFinished, string? Message)> ApproveTaskAsync(
         long myTaskId,
@@ -488,7 +488,7 @@ public sealed class WorkflowEngine(
     }
 
     /// <summary>
-    /// 流程完成（末步/跳转结束）：主表确认 + WorkflowSproc 副作用 + WF_APPROVE 历史。
+    /// 流程完成（末步/跳转结束）：主表确认 + 效果链副作用 + WF_APPROVE 历史。
     /// 任务锁已释放；legacy SP 仍走独立连接（既有行为），效果引擎开启时
     /// 动作链与状态更新在同一事务内执行。
     /// </summary>
