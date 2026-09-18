@@ -277,7 +277,6 @@ public sealed class WorkbenchDefinitionValidator(
                 .Select(action => action.EventCode);
             var needsApprove = WorkflowStates.NeedsApproveColumn(
                 definition.AutoApprove,
-                definition.BusinessRule?.WorkflowSproc is not null,
                 definition.EffectEngineEnabled,
                 definition.HasWorkflow,
                 enabledEvents);

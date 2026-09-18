@@ -39,7 +39,7 @@ public sealed class MenuAdminRepository(
         var sql = """
             SELECT M_IDX,M_ALIAS,M_DESC,M_URL,NEW_URL,MODI_URL,HELP_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
-                   MASTER_TABLE,FILTER,DETAIL_TABLE,UPDATE_SP,AFTERSAVE_SP,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
+                   MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
                    GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
                    GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
                    FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG,
@@ -237,7 +237,7 @@ public sealed class MenuAdminRepository(
         var sql = """
             SELECT M_IDX,M_ALIAS,M_DESC,M_URL,NEW_URL,MODI_URL,HELP_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
-                   MASTER_TABLE,FILTER,DETAIL_TABLE,UPDATE_SP,AFTERSAVE_SP,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
+                   MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
                    GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
                    GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
                    FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG,
@@ -688,24 +688,24 @@ public sealed class MenuAdminRepository(
         reader.GetInt32(12), reader.GetBoolean(13), reader.GetBoolean(14), reader.GetBoolean(15),
         reader.GetBoolean(16), GetString(reader, 17),
         GetString(reader, 18), GetString(reader, 19), GetString(reader, 20),
-        GetString(reader, 21), GetString(reader, 22), GetString(reader, 23), GetString(reader, 24),
-        reader.GetBoolean(25), GetString(reader, 26), GetString(reader, 27),
-        reader.GetBoolean(28), GetString(reader, 29), GetString(reader, 30),
-        reader.GetBoolean(31), GetString(reader, 32), GetString(reader, 33),
-        reader.GetBoolean(34), GetString(reader, 35), GetString(reader, 36),
-        reader.GetBoolean(37), GetString(reader, 38), GetString(reader, 39),
+        GetString(reader, 21), GetString(reader, 22),
+        reader.GetBoolean(23), GetString(reader, 24), GetString(reader, 25),
+        reader.GetBoolean(26), GetString(reader, 27), GetString(reader, 28),
+        reader.GetBoolean(29), GetString(reader, 30), GetString(reader, 31),
+        reader.GetBoolean(32), GetString(reader, 33), GetString(reader, 34),
+        reader.GetBoolean(35), GetString(reader, 36), GetString(reader, 37),
+        GetString(reader, 38),
+        reader.IsDBNull(39) ? null : reader.GetDateTime(39),
         GetString(reader, 40),
-        reader.IsDBNull(41) ? null : reader.GetDateTime(41),
+        reader.IsDBNull(41) ? (int?)null : (int)reader.GetByte(41),
         GetString(reader, 42),
-        reader.IsDBNull(43) ? (int?)null : (int)reader.GetByte(43),
-        GetString(reader, 44),
-        GetString(reader, 45),
-        EffectEngineTag: reader.GetBoolean(46),
-        MasterTableDesc: GetString(reader, 47),
-        DetailTableDesc: GetString(reader, 48),
-        DirtyTag: reader.GetBoolean(49),
-        PublishVersion: reader.IsDBNull(50) ? null : reader.GetInt32(50),
-        PublishedAt: reader.IsDBNull(51) ? null : reader.GetDateTime(51));
+        GetString(reader, 43),
+        EffectEngineTag: reader.GetBoolean(44),
+        MasterTableDesc: GetString(reader, 45),
+        DetailTableDesc: GetString(reader, 46),
+        DirtyTag: reader.GetBoolean(47),
+        PublishVersion: reader.IsDBNull(48) ? null : reader.GetInt32(48),
+        PublishedAt: reader.IsDBNull(49) ? null : reader.GetDateTime(49));
 
     private async Task<(string? Master, string? Detail)> ResolveModuleTablesAsync(int moduleId, CancellationToken token)
     {
@@ -889,14 +889,14 @@ public sealed class MenuAdminRepository(
             INSERT INTO dbo.MODULES
              (M_IDX,M_ALIAS,M_DESC,M_URL,NEW_URL,MODI_URL,HELP_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,SEARCH_1,SEARCH_2,
               M_P_IDX,SORT_IDX,M_TAG,M_ROOT_IDX,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
-              MASTER_TABLE,FILTER,DETAIL_TABLE,UPDATE_SP,AFTERSAVE_SP,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
+              MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
               GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
               GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
               FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG)
              VALUES
               (@M_IDX,@M_ALIAS,@M_DESC,@M_URL,@NEW_URL,@MODI_URL,@HELP_URL,@DETAIL_NO_FIELDS,@DETAIL_NO_SAVE,@SEARCH_1,@SEARCH_2,
               @M_P_IDX,@SORT_IDX,@M_TAG,@M_ROOT_IDX,@AUTO_APPROVE,@IF_COPY,@ERROR_NO_SAVE,@SORT_FIELDS,
-              @MASTER_TABLE,@FILTER,@DETAIL_TABLE,@UPDATE_SP,@AFTERSAVE_SP,@NOT_BACK_FIELDS_M,@NOT_BACK_FIELDS,
+              @MASTER_TABLE,@FILTER,@DETAIL_TABLE,@NOT_BACK_FIELDS_M,@NOT_BACK_FIELDS,
               @GROUP1,@GROUP_EXP1,@GROUP_DESC1,@GROUP2,@GROUP_EXP2,@GROUP_DESC2,@GROUP3,@GROUP_EXP3,@GROUP_DESC3,
               @GROUP4,@GROUP_EXP4,@GROUP_DESC4,@GROUP5,@GROUP_EXP5,@GROUP_DESC5,@LAST_UPDATE_BY,GETDATE(),
               @FORM_TABS,@FORM_COLUMNS,@FORM_BUTTONS,@M_ICON,@EFFECT_ENGINE_TAG);
@@ -913,8 +913,8 @@ public sealed class MenuAdminRepository(
               DETAIL_NO_FIELDS=@DETAIL_NO_FIELDS,DETAIL_NO_SAVE=@DETAIL_NO_SAVE,SEARCH_1=@SEARCH_1,SEARCH_2=@SEARCH_2,
               M_P_IDX=@M_P_IDX,SORT_IDX=@SORT_IDX,M_TAG=@M_TAG,M_ROOT_IDX=@M_ROOT_IDX,AUTO_APPROVE=@AUTO_APPROVE,
               IF_COPY=@IF_COPY,ERROR_NO_SAVE=@ERROR_NO_SAVE,SORT_FIELDS=@SORT_FIELDS,
-              MASTER_TABLE=@MASTER_TABLE,FILTER=@FILTER,DETAIL_TABLE=@DETAIL_TABLE,UPDATE_SP=@UPDATE_SP,
-              AFTERSAVE_SP=@AFTERSAVE_SP,NOT_BACK_FIELDS_M=@NOT_BACK_FIELDS_M,NOT_BACK_FIELDS=@NOT_BACK_FIELDS,
+              MASTER_TABLE=@MASTER_TABLE,FILTER=@FILTER,DETAIL_TABLE=@DETAIL_TABLE,
+              NOT_BACK_FIELDS_M=@NOT_BACK_FIELDS_M,NOT_BACK_FIELDS=@NOT_BACK_FIELDS,
               GROUP1=@GROUP1,GROUP_EXP1=@GROUP_EXP1,GROUP_DESC1=@GROUP_DESC1,
               GROUP2=@GROUP2,GROUP_EXP2=@GROUP_EXP2,GROUP_DESC2=@GROUP_DESC2,
               GROUP3=@GROUP3,GROUP_EXP3=@GROUP_EXP3,GROUP_DESC3=@GROUP_DESC3,
@@ -955,8 +955,6 @@ public sealed class MenuAdminRepository(
         command.Parameters.AddWithValue("@MASTER_TABLE", (object?)m.MASTER_TABLE ?? DBNull.Value);
         command.Parameters.AddWithValue("@FILTER", (object?)m.FILTER ?? DBNull.Value);
         command.Parameters.AddWithValue("@DETAIL_TABLE", (object?)m.DETAIL_TABLE ?? DBNull.Value);
-        command.Parameters.AddWithValue("@UPDATE_SP", (object?)m.UPDATE_SP ?? DBNull.Value);
-        command.Parameters.AddWithValue("@AFTERSAVE_SP", (object?)m.AFTERSAVE_SP ?? DBNull.Value);
         command.Parameters.AddWithValue("@NOT_BACK_FIELDS_M", (object?)m.NOT_BACK_FIELDS_M ?? DBNull.Value);
         command.Parameters.AddWithValue("@NOT_BACK_FIELDS", (object?)m.NOT_BACK_FIELDS ?? DBNull.Value);
         for (var i = 0; i < 5; i++)

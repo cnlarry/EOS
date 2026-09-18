@@ -155,7 +155,7 @@ public sealed class WorkbenchDefinitionBuilder(
         string? version,
         CancellationToken token)
     {
-        const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,UPDATE_SP,AFTERSAVE_SP,AUTO_APPROVE," +
+        const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,AUTO_APPROVE," +
                            "GROUP1,GROUP_EXP1,GROUP2,GROUP_EXP2,GROUP3,GROUP_EXP3,GROUP4,GROUP_EXP4,GROUP5,GROUP_EXP5," +
                            "FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,NEW_URL,IF_COPY,SEARCH_1,SEARCH_2,HELP_URL " +
                            "FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
@@ -172,25 +172,23 @@ public sealed class WorkbenchDefinitionBuilder(
         var detailNoSave=!reader.IsDBNull(6)&&reader.GetBoolean(6);
         var detailNoFields=reader.IsDBNull(7)?"":reader.GetString(7).Trim();
         var moduleFilter=reader.IsDBNull(8)?"":reader.GetString(8).Trim();
-        var updateSproc=reader.IsDBNull(9)?"":reader.GetString(9).Trim();
-        var afterSaveSproc=reader.IsDBNull(10)?"":reader.GetString(10).Trim();
-        var autoApprove=!reader.IsDBNull(11)&&reader.GetBoolean(11);
+        var autoApprove=!reader.IsDBNull(9)&&reader.GetBoolean(9);
         var groupExpressions = new string[5];
         for (var i = 0; i < 5; i++)
         {
-            var offset = 12 + i * 2;
+            var offset = 10 + i * 2;
             var enabled = !reader.IsDBNull(offset) && reader.GetBoolean(offset);
             var expression = reader.IsDBNull(offset + 1) ? string.Empty : reader.GetString(offset + 1).Trim();
             groupExpressions[i] = enabled ? expression : string.Empty;
         }
-        var formTabs = reader.IsDBNull(22) ? null : reader.GetString(22).Trim();
-        var formColumns = reader.IsDBNull(23) ? (int?)null : (int)reader.GetByte(23);
-        var formButtons = reader.IsDBNull(24) ? null : reader.GetString(24).Trim();
-        var newUrlRaw = reader.IsDBNull(25) ? string.Empty : reader.GetString(25).Trim();
-        var ifCopy = !reader.IsDBNull(26) && reader.GetBoolean(26);
-        var searchMaster = !reader.IsDBNull(27) && reader.GetBoolean(27);
-        var searchDetail = !reader.IsDBNull(28) && reader.GetBoolean(28);
-        var helpUrl = reader.IsDBNull(29) ? null : reader.GetString(29).Trim();
+        var formTabs = reader.IsDBNull(20) ? null : reader.GetString(20).Trim();
+        var formColumns = reader.IsDBNull(21) ? (int?)null : (int)reader.GetByte(21);
+        var formButtons = reader.IsDBNull(22) ? null : reader.GetString(22).Trim();
+        var newUrlRaw = reader.IsDBNull(23) ? string.Empty : reader.GetString(23).Trim();
+        var ifCopy = !reader.IsDBNull(24) && reader.GetBoolean(24);
+        var searchMaster = !reader.IsDBNull(25) && reader.GetBoolean(25);
+        var searchDetail = !reader.IsDBNull(26) && reader.GetBoolean(26);
+        var helpUrl = reader.IsDBNull(27) ? null : reader.GetString(27).Trim();
         if (string.IsNullOrEmpty(helpUrl)) helpUrl = null;
         await reader.CloseAsync();
         if (!ModuleRouteValidator.IsWorkbenchUrl(url) || !WorkbenchSql.Identifier.IsMatch(master) || (detail is not null && !WorkbenchSql.Identifier.IsMatch(detail)))
@@ -211,15 +209,14 @@ public sealed class WorkbenchDefinitionBuilder(
         var businessRule=ModuleBusinessMap.Get(moduleId);
         if(businessRule is null)
         {
-            var hasSproc=updateSproc.Length>0||afterSaveSproc.Length>0;
             // 是否自动编号只取决于 BILLKIND 里有没有该模块的单号规则，与模块是否登记
             // 保存后处理无关（此前靠"有没有保存后钩子"推断，于是校验搬到目录后仍要
             // 保留空壳钩子才能编号）。
             var hasAutoBillNo=await BillNoGenerator.HasAutoBillNoAsync(connection,null,moduleId,token);
-            // 「目录承接」与钩子字段无关：钩子字段退役后规则必须照常装配，
-            // 否则「行为已迁目录、但既无钩子又不自动编号」的模块会静默丢规则（保存期行为消失）。
+            // 「目录承接」同样与遗留钩子无关：钩子字段（UPDATE_SP/AFTERSAVE_SP）已物理删除，
+            // 但保存期行为必须照常装配，否则「行为已迁目录、又不自动编号」的模块会静默丢规则。
             var catalogPorted=CatalogAfterSaveMap.IsPorted(moduleId);
-            if(hasSproc||hasAutoBillNo||catalogPorted)
+            if(hasAutoBillNo||catalogPorted)
             {
                 string? billNoField=null;
                 string? billTypeField=null;
@@ -230,21 +227,11 @@ public sealed class WorkbenchDefinitionBuilder(
                         billTypeField=masterPkOrder.First(column=>!column.Equals(billNoField,StringComparison.OrdinalIgnoreCase));
                 }
                 businessRule=new(moduleId,
-                    afterSaveSproc.Length>0?afterSaveSproc:null,
-                    updateSproc.Length>0?updateSproc:null,
+                    null,
+                    null,
                     billNoField is not null,
                     billNoField,
                     billTypeField);
-                // Modules whose save-time behaviour lives in the validation catalog (and, for
-                // writes, in the effect catalog) drop the legacy AfterSave sproc without being
-                // marked pending: their rules run on the unified save path.
-                if(catalogPorted)
-                    businessRule=businessRule with { AfterSaveSproc=null };
-                // Modules without a ported AfterSave must not silently run the metadata sproc:
-                // clear AfterSave and mark it pending porting (save is refused); the approval
-                // WorkflowSproc (UPDATE_SP) remains a controlled call.
-                else if(afterSaveSproc.Length>0)
-                    businessRule=businessRule with { AfterSaveSproc=null, SprocPendingPorting=true };
             }
         }
         WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,
@@ -252,7 +239,7 @@ public sealed class WorkbenchDefinitionBuilder(
                 await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),detail,formEnabledModules,token),NormalizeSort(defaultSort,master,masterFields),
             resolvedNewUrl is not null || resolvedModiUrl is not null,resolvedModiUrl is not null,detailNoSave,
             masterPkOrder,detailNoFields,
-            businessRule?.WorkflowSproc is not null || await WorkflowEngine.HasFlowAsync(connection,moduleId,token),
+            await WorkflowEngine.HasFlowAsync(connection,moduleId,token),
             string.IsNullOrWhiteSpace(moduleFilter)?null:moduleFilter,
             await ReadFilterFieldKeys(connection,master,canViewCost,canViewSecrecy,deniedMasterFields,token),
             userId.Trim(),
@@ -390,15 +377,14 @@ public sealed class WorkbenchDefinitionBuilder(
         // 无副作用批核能力与服务端分支同口径（WorkflowStates.IsStatelessApproveCapable），
         // 工具栏据此显隐批核/解批：有能力即显示，无能力即隐藏，不出现点后必败的死按钮。
         var hasStatelessApprove = WorkflowStates.IsStatelessApproveCapable(
-            definition.AutoApprove, definition.BusinessRule?.WorkflowSproc is not null,
+            definition.AutoApprove,
             definition.EffectEngineEnabled,
             await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token));
-        // 批核/解批入口能力（工具栏显隐）：流程 / 遗留批核过程 / 效果引擎接管 / 效果链 / 无副作用自动批核
-        // 五者取并集，与 ADR-013 §3.7 的 lifecycle 门共用同一判定——效果链接管批核的模块（无过程、无流程）
+        // 批核/解批入口能力（工具栏显隐）：流程 / 效果引擎接管 / 效果链 / 无副作用自动批核
+        // 四者取并集，与 ADR-013 §3.7 的 lifecycle 门共用同一判定——效果链接管批核的模块（无过程、无流程）
         // 同样要有入口，否则退役遗留过程后按钮会凭空消失。
         var hasApproveCapability = WorkflowStates.NeedsApproveColumn(
             definition.AutoApprove,
-            definition.BusinessRule?.WorkflowSproc is not null,
             definition.EffectEngineEnabled,
             definition.HasWorkflow,
             EnabledActionEventCodes(definition).ToList());

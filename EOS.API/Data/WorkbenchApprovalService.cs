@@ -345,7 +345,7 @@ public sealed class WorkbenchApprovalService(
         // 无副作用批核必须在能力守卫之前判定：它与按钮显隐共用同一条件，
         // 否则按钮显示可点、请求却在守卫处被判不支持（自动批核模块无法手动解批）。
         var stateless = WorkflowStates.IsStatelessApproveCapable(
-            definition.AutoApprove, sproc is not null, effectsEnabled, hasFlow);
+            definition.AutoApprove, effectsEnabled, hasFlow);
         if (!stateless && sproc is null && !effectsEnabled)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "WORKFLOW_NOT_SUPPORTED", "该模块不支持批核操作。");

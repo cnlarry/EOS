@@ -31,7 +31,6 @@ interface EligibleModule {
   moduleId: number
   title: string
   masterTable: string
-  updateSproc: string
   autoApprove: boolean
 }
 
@@ -383,7 +382,7 @@ export function FlowDesignPage() {
       moduleId: module.moduleId,
       title: module.title,
       masterTable: module.masterTable,
-      updateSproc: module.updateSproc,
+
       flowName: flow?.flowName ?? '',
       stepCount: flow?.stepCount ?? 0,
       configured: configuredSet.has(module.moduleId),

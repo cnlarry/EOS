@@ -71,8 +71,6 @@ export interface MenuAdminModule {
   MASTER_TABLE: string | null
   FILTER: string | null
   DETAIL_TABLE: string | null
-  UPDATE_SP: string | null
-  AFTERSAVE_SP: string | null
   NOT_BACK_FIELDS_M: string | null
   NOT_BACK_FIELDS: string | null
   GROUP1: boolean; GROUP_EXP1: string | null; GROUP_DESC1: string | null
@@ -156,8 +154,6 @@ const emptyDraft = (parentId: number | null): MenuAdminModule => ({
   MASTER_TABLE: null,
   FILTER: null,
   DETAIL_TABLE: null,
-  UPDATE_SP: null,
-  AFTERSAVE_SP: null,
   NOT_BACK_FIELDS_M: null,
   NOT_BACK_FIELDS: null,
   GROUP1: false, GROUP_EXP1: null, GROUP_DESC1: null,
@@ -329,7 +325,7 @@ export function MenuAdminPage() {
     return (eq >= 0 ? part.slice(eq + 1) : part).trim().toLowerCase()
   })
   const masterMissingConfirmTag = Boolean(masterTableName)
-    && (draft?.AUTO_APPROVE === true || Boolean(draft?.UPDATE_SP?.trim()) || approveButtonActions.includes('approve') || approveButtonActions.includes('deapprove'))
+    && (draft?.AUTO_APPROVE === true || approveButtonActions.includes('approve') || approveButtonActions.includes('deapprove'))
     && masterColumns.data !== undefined
     && !masterColumns.data.some((column) => column.name.toLowerCase() === 'confirm_tag')
 

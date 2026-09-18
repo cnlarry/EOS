@@ -10,7 +10,7 @@ const moduleNode = (id: number, desc: string, parent: number | null): MenuAdminM
   M_IDX: id, M_ALIAS: null, M_DESC: desc, M_URL: null, NEW_URL: null, MODI_URL: null, HELP_URL: null,
   DETAIL_NO_FIELDS: null, DETAIL_NO_SAVE: false, SEARCH_1: false, SEARCH_2: false, M_P_IDX: parent,
   SORT_IDX: 0, M_TAG: true, AUTO_APPROVE: false, IF_COPY: false, ERROR_NO_SAVE: false, SORT_FIELDS: null,
-  MASTER_TABLE: null, FILTER: null, DETAIL_TABLE: null, UPDATE_SP: null, AFTERSAVE_SP: null,
+  MASTER_TABLE: null, FILTER: null, DETAIL_TABLE: null,
   NOT_BACK_FIELDS_M: null, NOT_BACK_FIELDS: null,
   GROUP1: false, GROUP_EXP1: null, GROUP_DESC1: null,
   GROUP2: false, GROUP_EXP2: null, GROUP_DESC2: null,

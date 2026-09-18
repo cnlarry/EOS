@@ -87,7 +87,7 @@ export interface FormDefinition {
   tabs: FormTab[]
   columns: number
   buttons: WorkbenchButton[] | null
-  /** 模块是否具备批核工作流（MODULES.UPDATE_SP → ModuleBusinessMap.WorkflowSproc 非空） */
+  /** 模块是否具备批核工作流（效果引擎接管 / 已配置流程 / 自动批核） */
   hasWorkflow: boolean
   /** 无副作用批核能力（自动批核且无过程/效果链/流程定义）：批核/解批按钮据此与 hasWorkflow 取并集显隐 */
   hasStatelessApprove: boolean
