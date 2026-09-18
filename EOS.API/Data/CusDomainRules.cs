@@ -10,63 +10,6 @@ namespace EOS.API.Data;
 /// </summary>
 public static class CusDomainRules
 {
-    public static async Task<SprocResult> CusExportAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction, int moduleId,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "出口报关单领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        if (!await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
-            return new(true, null);
-        var rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT od.MANUAL_NO, od.QTY, od.EXP_QTY, sd.QTY
-            FROM dbo.CUS_MANUAL_PRO od
-            INNER JOIN (SELECT MANUAL_NO, PRO_SERIAL_NO, SUM(QTY) QTY
-                        FROM dbo.CUS_EXPORT_D WHERE EXPORT_TYPE=@Type AND EXPORT_NO=@No
-                        GROUP BY MANUAL_NO, PRO_SERIAL_NO) sd
-              ON od.MANUAL_NO=sd.MANUAL_NO AND od.SERIAL_NO=sd.PRO_SERIAL_NO
-            WHERE ISNULL(od.EXP_QTY,0)+ISNULL(od.ZC_QTY,0)+sd.QTY > ISNULL(od.QTY,0)+ISNULL(od.ZR_QTY,0);
-            """, type, no, token,
-            line: r => $"{r.GetString(0).Trim()}    {Convert.ToString(r.GetValue(1))}    {Convert.ToString(r.GetValue(2))}    {Convert.ToString(r.GetValue(3))}");
-        return rows is null
-            ? new(true, null)
-            : new(false, "以下报关单已超出合同数量\r\n 手册编号  数 量  已出数量  单据数量\r\n" + rows);
-    }
-
-    /// <summary>进口报关单（P_CUS_IMPORT）AfterSave：ERROR_NO_SAVE 门控的报关不超合同检查。</summary>
-
-
-    /// <summary>进口报关单（P_CUS_IMPORT）AfterSave：ERROR_NO_SAVE 门控的报关不超合同检查。</summary>
-    public static async Task<SprocResult> CusImportAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction, int moduleId,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "进口报关单领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        if (!await DomainRuleService.HasErrorNoSaveAsync(connection, transaction, moduleId, token))
-            return new(true, null);
-        var rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT od.MANUAL_NO, od.QTY, od.IMP_QTY, sd.QTY
-            FROM dbo.CUS_MANUAL_MAT od
-            INNER JOIN (SELECT MANUAL_NO, MAT_SERIAL_NO, SUM(QTY) QTY
-                        FROM dbo.CUS_IMPORT_D WHERE IMPORT_TYPE=@Type AND IMPORT_NO=@No
-                        GROUP BY MANUAL_NO, MAT_SERIAL_NO) sd
-              ON od.MANUAL_NO=sd.MANUAL_NO AND od.SERIAL_NO=sd.MAT_SERIAL_NO
-            WHERE ISNULL(od.IMP_QTY,0)+ISNULL(od.TRAN_QTY,0)+ISNULL(od.ZC_QTY,0)+ISNULL(od.BF_QTY,0)+sd.QTY > ISNULL(od.QTY,0)+ISNULL(od.ZR_QTY,0);
-            """, type, no, token,
-            line: r => $"{r.GetString(0).Trim()}    {Convert.ToString(r.GetValue(1))}    {Convert.ToString(r.GetValue(2))}    {Convert.ToString(r.GetValue(3))}");
-        return rows is null
-            ? new(true, null)
-            : new(false, "以下报关单已超出合同数量\r\n 手册编号  数 量  已进数量  单据数量\r\n" + rows);
-    }
-
-    /// <summary>加工备案手册（P_CUS_MANUAL）AfterSave：成品单耗状态 + 加工金额/数量汇总。</summary>
-
-
     /// <summary>加工备案手册（P_CUS_MANUAL）AfterSave：成品单耗状态 + 加工金额/数量汇总。</summary>
     public static async Task<SprocResult> CusManualAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
