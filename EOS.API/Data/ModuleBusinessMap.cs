@@ -117,7 +117,6 @@ public static class DomainRuleMap
         [1204] = "bom-stru",
         [1616] = "pur-apply",
         [180206] = "hr-apply",
-        [3014] = "cus-account",
         [180207] = "hr-worktime",
     };
 
@@ -171,6 +170,7 @@ public static class CatalogAfterSaveMap
         1502, 1512, 1522, 2803, 2804,   // 制令单族：明细订单号回填（SAVE 期 link-stamp 效果）
         2911,               // 产品模具对照：按产品回写 f_get_pro_moulds 汇总（SAVE 期 mould-ids-sync）
         180208,             // 员工发卡：失效日期不早于生效日（主表行断言）+ 冲突旧卡到期日收口（SAVE 期 card-sibling-close）
+        3014,               // 海关对帐单：客户与送/退货单引用存在 + 对帐不超送/退货单数量（受门控）+ 主表汇总（SAVE 期 cus-account-sync）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);

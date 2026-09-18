@@ -115,6 +115,7 @@ public static class EffectStructSchemas
             ["wage-month-doc-prune"] = Set("masterTable", "detailTable", "typeField", "noField", "monthField", "empField", "duplicateMessage"),
             ["doc-orphan-prune"] = Set("masterTable", "detailTable", "typeField", "noField", "masterProductField", "detailProductField", "detailRefField", "rootTable", "rootField"),
             ["sfc-plan-sync"] = Set("master", "detail", "more", "process", "processDetail", "product"),
+            ["cus-account-sync"] = Set("master", "detail", "product", "roundDigits"),
             ["sample-stock-adjust"] = Set("direction", "targetTable", "fieldMap"),
             ["set-state"] = Set("targetTable", "stateField", "stateValue", "state", "sourceField", "source", "dateField", "dateMode", "targets"),
             ["stamp-last-activity"] = Set("targetTable", "field", "fields", "sourceField", "matchBy", "condition"),
