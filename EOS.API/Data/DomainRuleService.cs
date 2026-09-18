@@ -45,8 +45,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "pur-pay" => await PurDomainRules.PurPayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-prepay" => await PurDomainRules.PurPrepayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "bom-stru" => await SysDomainRules.BomStruAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                // 离职工资表：先删同月旧档再判重（删除是保存后写操作，顺序与旧实现一致，故不迁目录）
-                "hr-wage-lz" => await HrDomainRules.HrWageAfterSaveAsync(connection, transaction, "HR_WAGE_M", "HR_WAGE_D", pkColumns, keyValues, token),
                 "hr-apply" => await HrDomainRules.HrApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "moc-bom-stru" => await MocDomainRules.MocBomStruAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cus-account" => await CusDomainRules.CusAccountAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),

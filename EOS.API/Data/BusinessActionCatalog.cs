@@ -58,6 +58,7 @@ public static class BusinessActionCatalog
         "card-sibling-close",
         "fields-metadata-sync",
         "detail-flag-and-rollup",
+        "wage-month-doc-prune",
         // 保留键（暂无落库实例，登记保留）
         "meta-link",
         "flow-trigger",

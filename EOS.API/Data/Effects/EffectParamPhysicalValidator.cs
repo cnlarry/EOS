@@ -55,6 +55,7 @@ public static class EffectParamPhysicalValidator
         "card-sibling-close",
         "fields-metadata-sync",
         "detail-flag-and-rollup",
+        "wage-month-doc-prune",
     };
 
     /// <summary>True when the key either carries no reference or is resolved by this validator.</summary>
@@ -163,6 +164,9 @@ public static class EffectParamPhysicalValidator
                     break;
                 case "detail-flag-and-rollup":
                     _ = DetailFlagAndRollupHandler.Parse(root, columns);
+                    break;
+                case "wage-month-doc-prune":
+                    _ = WageMonthDocPruneHandler.Parse(root, columns);
                     break;
                 case "detail-field-sync":
                     _ = DetailFieldSyncSpec.Parse(root, plan, columns);
