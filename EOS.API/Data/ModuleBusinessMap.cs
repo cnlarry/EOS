@@ -117,10 +117,6 @@ public static class DomainRuleMap
         [1204] = "bom-stru",
         [180208] = "employee-card",
         [2305] = "sysdg",
-        [1502] = "moc-produce",
-        [1512] = "moc-produce",
-        [2803] = "moc-produce",
-        [2804] = "moc-produce",
         [1616] = "pur-apply",
         [180206] = "hr-apply",
         [180301] = "hr-wage-item",
@@ -131,7 +127,6 @@ public static class DomainRuleMap
         [2911] = "mou-pro",
         [3006] = "cus-manual",
         [3014] = "cus-account",
-        [1522] = "moc-produce",
         [180207] = "hr-worktime",
         [2708] = "sfc-plan",
     };
@@ -183,6 +178,7 @@ public static class CatalogAfterSaveMap
         2404,               // 样品出库不超样品库存（保存期 this-not-exceed）
         2705, 2706,         // 工序工单/工序入库不超量（保存期 usage-not-exceed）
         1608, 1612,         // 采购退料单：批管品必填批号 + 退料合计不超收料合计（两量纲，两侧均取自被引用侧）
+        1502, 1512, 1522, 2803, 2804,   // 制令单族：明细订单号回填（SAVE 期 link-stamp 效果）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);

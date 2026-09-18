@@ -8,28 +8,6 @@ namespace EOS.API.Data;
 /// </summary>
 public static class MocDomainRules
 {
-    /// <summary>制令单（P_MOC_PRODUCE）AfterSave：明细订单号回填。</summary>
-    public static async Task<SprocResult> MocProduceAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction, int moduleId,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "制令单领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        await using (var backfill = new SqlCommand("""
-            UPDATE d SET d.ORDER_TYPE=m.ORDER_TYPE, d.ORDER_NO=m.ORDER_NO, d.ORDER_SERIAL_NO=m.ORDER_SERIAL_NO
-            FROM dbo.MOC_PRODUCE_D d INNER JOIN dbo.MOC_PRODUCE_M m
-              ON m.PRODUCE_TYPE=d.PRODUCE_TYPE AND m.PRODUCE_NO=d.PRODUCE_NO
-            WHERE d.PRODUCE_TYPE=@Type AND d.PRODUCE_NO=@No;
-            """, connection, transaction))
-        {
-            backfill.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
-            backfill.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
-            await backfill.ExecuteNonQueryAsync(token);
-        }
-        return new(true, null);
-    }
-
     /// <summary>工单BOM（P_MOC_BOM_STRU）AfterSave：孤儿主/明细清理循环。</summary>
     public static async Task<SprocResult> MocBomStruAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
