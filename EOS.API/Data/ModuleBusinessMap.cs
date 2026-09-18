@@ -114,7 +114,6 @@ public static class DomainRuleMap
 {
     private static readonly IReadOnlyDictionary<int, string> Rules = new Dictionary<int, string>
     {
-        [110103] = "curr",
         [1204] = "bom-stru",
         [180208] = "employee-card",
         [2305] = "sysdg",
@@ -142,7 +141,6 @@ public static class DomainRuleMap
         [3014] = "cus-account",
         [1522] = "moc-produce",
         [180207] = "hr-worktime",
-        [130101] = "inv-check-stock",
         [2708] = "sfc-plan",
     };
 
@@ -172,6 +170,8 @@ public static class CatalogAfterSaveMap
         1418,              // 订单变更：原单已批核 + 变更量下限 + 客户订单号不重复
         1503, 1514, 1517, 2805, 2806, 2907,   // 生产领料族与模房领料：批管品必填批号（保存期 line-require）
         1507,              // 生产计划：计划量不超订单（目录 qty-not-exceed 已承接，原 C# 为空实现）
+        110103,            // 货币资料：本位币汇率只能为一（主表行字段断言）＋本位币唯一
+        130101,            // 库存盘点单：盘点数不小于零（明细行字段断言，命中回报序号）
         180102, 180105, 180110, 180111,   // 员工工号唯一
         180205,            // 每人每月一笔出勤参数
         180211, 180651,    // 当月每人一班排班

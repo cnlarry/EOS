@@ -34,9 +34,11 @@ public static class ValidationRuleRegistry
     private static readonly IReadOnlySet<string> QtyGateScopes = KeySet("SYSSS", "MODULE");
     private static readonly IReadOnlySet<string> QtyDiagnosticKeys = KeySet("scope", "field", "agg");
     private static readonly IReadOnlySet<string> QtyDiagnosticAggregates = KeySet("MAX", "MIN", "SUM", "DISTINCT");
-    private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "condition", "message", "diagnosticFields");
+    private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "condition", "assert", "message", "diagnosticFields");
     private static readonly IReadOnlySet<string> LineRequireTriggerKeys = KeySet("scope", "field", "op", "value");
+    private static readonly IReadOnlySet<string> LineRequireAssertKeys = KeySet("op", "value");
     private static readonly IReadOnlySet<string> LineRequireOps = KeySet("GT", "GE", "LT", "LE", "EQ", "NEQ");
+    private static readonly IReadOnlySet<string> LineRequireScopes = KeySet("DETAIL", "MASTER");
     private static readonly IReadOnlySet<string> QtyBlockKeys = KeySet("scope", "terms", "fields", "agg");
     private static readonly IReadOnlySet<string> ReferenceCheckKeys = KeySet(
         "refTable", "allowEmpty", "join", "refKey", "activeTag", "message", "lineField", "targets", "maxRows", "mismatch", "refCondition");
@@ -385,8 +387,9 @@ public static class ValidationRuleRegistry
                     }
             }
             var scope = GetString(check, "scope");
-            if (!string.Equals(scope, "DETAIL", StringComparison.OrdinalIgnoreCase))
-                issues.Add($"校验规则 {Label(rule)}：{where}.scope 仅允许 DETAIL");
+            if (scope is not null && !LineRequireScopes.Contains(scope))
+                issues.Add($"校验规则 {Label(rule)}：{where}.scope 仅允许 DETAIL/MASTER");
+            var checkScope = scope ?? "DETAIL";
             if (string.IsNullOrWhiteSpace(GetString(check, "field")))
                 issues.Add($"校验规则 {Label(rule)}：{where}.field 不能为空");
             var triggers = GetArray(check, "triggers");
@@ -395,10 +398,22 @@ public static class ValidationRuleRegistry
             {
                 ValidateConditionShape(rule, condition.Value, $"{where}.condition", issues);
             }
+            // 断言行取值约束（数值比较）：与"字段必填"二选一；给出 assert 时触发器可省略（无条件生效）。
+            var assert = GetObject(check, "assert");
+            if (assert is not null)
+            {
+                RejectUnknownKeys(rule, assert.Value, LineRequireAssertKeys, $"{where}.assert", issues);
+                var assertOp = GetString(assert.Value, "op");
+                if (assertOp is null || !LineRequireOps.Contains(assertOp))
+                    issues.Add($"校验规则 {Label(rule)}：{where}.assert.op 仅允许 GT/GE/LT/LE/EQ/NEQ");
+                if (!assert.Value.TryGetProperty("value", out var assertValue) || assertValue.ValueKind != JsonValueKind.Number)
+                    issues.Add($"校验规则 {Label(rule)}：{where}.assert.value 必须是数字");
+            }
             if (triggers is not { } triggersArr || triggersArr.GetArrayLength() == 0)
             {
-                // triggers 可省略：改用 condition（结构化条件，可表达跨表存在性判据，如"产品为批管"）。
-                if (condition is null)
+                // triggers 可省略：改用 condition（结构化条件，可表达跨表存在性判据，如"产品为批管"），
+                // 或断言形态的 assert（无需触发条件即对全行生效）。
+                if (condition is null && assert is null)
                     issues.Add($"校验规则 {Label(rule)}：{where} 需要非空 triggers 或 condition");
             }
             else
@@ -414,8 +429,11 @@ public static class ValidationRuleRegistry
                     else
                     {
                         RejectUnknownKeys(rule, trigger, LineRequireTriggerKeys, triggerWhere, issues);
-                        if (!string.Equals(GetString(trigger, "scope"), "DETAIL", StringComparison.OrdinalIgnoreCase))
-                            issues.Add($"校验规则 {Label(rule)}：{triggerWhere}.scope 仅允许 DETAIL");
+                        var triggerScope = GetString(trigger, "scope");
+                        if (triggerScope is null || !LineRequireScopes.Contains(triggerScope))
+                            issues.Add($"校验规则 {Label(rule)}：{triggerWhere}.scope 仅允许 DETAIL/MASTER");
+                        else if (!string.Equals(triggerScope, checkScope, StringComparison.OrdinalIgnoreCase))
+                            issues.Add($"校验规则 {Label(rule)}：{triggerWhere}.scope 必须与同一 check 的 scope 一致");
                         if (string.IsNullOrWhiteSpace(GetString(trigger, "field")))
                             issues.Add($"校验规则 {Label(rule)}：{triggerWhere}.field 不能为空");
                         var op = GetString(trigger, "op");
