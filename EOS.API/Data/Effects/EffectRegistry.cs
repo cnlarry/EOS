@@ -57,6 +57,7 @@ public static class EffectRegistry
         ["wage-month-doc-prune"] = Status.Service,
         ["doc-orphan-prune"] = Status.Service,
         ["sfc-plan-sync"] = Status.Service,
+        ["cus-account-sync"] = Status.Service,
         // Placeholder-row + params shapes collected; handlers pending (see docs/plans/服务键形态证据.md)
         ["hr-usage-sync"] = Status.Service,
         ["employee-contract-sync"] = Status.Service,

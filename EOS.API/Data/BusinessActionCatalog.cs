@@ -61,6 +61,7 @@ public static class BusinessActionCatalog
         "wage-month-doc-prune",
         "doc-orphan-prune",
         "sfc-plan-sync",
+        "cus-account-sync",
         // 保留键（暂无落库实例，登记保留）
         "meta-link",
         "flow-trigger",

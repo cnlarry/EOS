@@ -45,7 +45,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "pur-prepay" => await PurDomainRules.PurPrepayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "bom-stru" => await SysDomainRules.BomStruAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "hr-apply" => await HrDomainRules.HrApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "cus-account" => await CusDomainRules.CusAccountAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
                 _ => new(false, $"未登记的领域规则：{ruleName}"),
             };
         }
