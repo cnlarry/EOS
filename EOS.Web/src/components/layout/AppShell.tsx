@@ -1,13 +1,9 @@
 import {
-  IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
   IconFolder,
-  IconHome,
   IconMenu2,
-  IconMoon,
   IconSearch,
-  IconSun,
 } from '@tabler/icons-react'
 import { Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react'
 import { NavLink, UNSAFE_DataRouterContext, parsePath, useLocation, useNavigate, type RouteObject } from 'react-router-dom'
@@ -51,6 +47,20 @@ const SIDEBAR_WIDTH_MIN = 160
 const SIDEBAR_WIDTH_MAX = 480
 const DEFAULT_SIDEBAR_WIDTH = 220
 
+/** 个人设置改由侧栏底部的用户菜单进入，主导航不再保留该入口。 */
+const PROFILE_ROUTE = '/settings/profile'
+
+/** 去掉指向指定路由的菜单叶子；分组因此变空时一并去掉分组。 */
+function filterNavRoute(items: NavigationItem[], route: string): NavigationItem[] {
+  return items.flatMap((item) => {
+    if (item.children?.length) {
+      const children = filterNavRoute(item.children, route)
+      return children.length > 0 ? [{ ...item, children }] : []
+    }
+    return item.route === route ? [] : [item]
+  })
+}
+
 /** 待确认的关闭/离开动作 */
 type PendingConfirm = { kind: 'close'; tabId: string } | { kind: 'all' } | { kind: 'logout' } | null
 
@@ -77,7 +87,6 @@ const fallbackNavigation = [
       { id: 'transfer', label: '调拨单', route: '/inventory/transfers', icon: 'inventory' },
     ],
   },
-  { id: 'settings', label: '个人设置', route: '/settings/profile', icon: 'settings' },
 ]
 
 const avatarPalette = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6']
@@ -88,18 +97,6 @@ function avatarColor(username: string): string {
     hash = (hash * 31 + username.charCodeAt(index)) >>> 0
   }
   return avatarPalette[hash % avatarPalette.length]
-}
-
-/** 查找命中路由的完整功能路径（含叶子自身），用于面包屑展示全部层级。 */
-function findPath(items: NavigationItem[], path: string): NavigationItem[] {
-  for (const item of items) {
-    if (item.route === path) return [item]
-    if (item.children?.length) {
-      const nested = findPath(item.children, path)
-      if (nested.length) return [item, ...nested]
-    }
-  }
-  return []
 }
 
 function getInitialTheme(): Theme {
@@ -147,14 +144,16 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   })
   const [sidebarResizing, setSidebarResizing] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const [currentDate, setCurrentDate] = useState(() => new Date())
   const [menuQuery, setMenuQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const { bootstrap, logout } = useAuth()
   // 数据路由下才支持导航拦截；其他路由形态（如单测的 MemoryRouter）退化为无拦截
   const dataRouter = useContext(UNSAFE_DataRouterContext)
   const navigate = useNavigate()
-  const navigation = bootstrap?.navigation ?? fallbackNavigation as unknown as NavigationItem[]
+  const navigation = useMemo(
+    () => filterNavRoute((bootstrap?.navigation ?? fallbackNavigation) as unknown as NavigationItem[], PROFILE_ROUTE),
+    [bootstrap?.navigation],
+  )
   const location = useLocation()
   // 事件回调里需要"当前值"，用 ref 取值避免把回调身份绑到每次导航上
   const navigateRef = useRef(navigate)
@@ -288,22 +287,6 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
           section: activeGroup?.label ?? 'ERP',
           title: activeMenu?.label ?? '页面',
         }
-  const breadcrumbPath = useMemo(() => findPath(navigation, crumbBasePath), [navigation, crumbBasePath])
-  // 完整路径：命中导航树时展示全部祖先 + 叶子；未命中（如直达维护页）回退「分区 + 标题」。
-  // 统一表单页（查看/编辑/新增）：叶子也作为面包屑项且可点击返回工作台列表；
-  // 其余页面保持「祖先 + 叶子标题」两段式（叶子由 h1 承担）。
-  const breadcrumbLeads: { label: string; to?: string }[] = fieldAdminCrumb
-    ? fieldAdminCrumb.leads.map(label => ({ label }))
-    : pageCrumb
-      ? pageCrumb.leads
-      : breadcrumbPath.length === 0
-      ? [{ label: page.section }]
-      : isFormEditor
-        ? breadcrumbPath.map((item, index) => (index === breadcrumbPath.length - 1
-            ? { label: item.label, to: item.route }
-            : { label: item.label }))
-        : breadcrumbPath.slice(0, -1).map(item => ({ label: item.label }))
-
   // ===== 标签工作区行为 =====
   /** 新标签的临时标题：激活后由标题同步效应刷新为页面真实标题 */
   const labelForUrl = useCallback((url: string) => {
@@ -395,21 +378,22 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     applyClose(id)
   }, [applyClose])
 
-  /** 关闭其他：保留当前标签与所有脏标签，其余直接关闭（不涉及丢弃，无需确认） */
-  const closeOthers = useCallback(() => {
+  /** 关闭其他：保留被右键的标签（并激活它）与所有脏标签，其余直接关闭（不涉及丢弃，无需确认） */
+  const closeOthers = useCallback((keepId: string) => {
     const { tabs, activeId } = workspaceRef.current
     if (tabs.length <= 1) return
-    const keep = tabs.filter((tab) => tab.id === activeId || dirtyFlagsRef.current[tab.id])
+    const keep = tabs.filter((tab) => tab.id === keepId || dirtyFlagsRef.current[tab.id])
     const removed = tabs.filter((tab) => !keep.some((item) => item.id === tab.id)).map((tab) => tab.id)
     if (removed.length === 0) return
-    dispatch({ type: 'closeOthers', keepIds: keep.map((tab) => tab.id) })
+    dispatch({ type: 'closeOthers', keepIds: keep.map((tab) => tab.id), activeId: keepId })
     setCrumbs((prev) => {
       const copy = { ...prev }
       for (const id of removed) delete copy[id]
       return copy
     })
     for (const id of removed) dropDirty(id)
-  }, [dropDirty])
+    if (activeId !== keepId) activateTab(keepId)
+  }, [dropDirty, activateTab])
 
   /** 关闭全部：落到首页；涉及脏标签时先走确认 */
   const closeAll = useCallback(() => {
@@ -629,29 +613,6 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     }
   }, [userMenuOpen])
 
-  useEffect(() => {
-    const updateDate = () => setCurrentDate(new Date())
-    const now = new Date()
-    const millisecondsUntilTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - now.getTime()
-    let dailyTimer: number | undefined
-    const midnightTimer = window.setTimeout(() => {
-      updateDate()
-      dailyTimer = window.setInterval(updateDate, 24 * 60 * 60 * 1000)
-    }, millisecondsUntilTomorrow)
-
-    return () => {
-      window.clearTimeout(midnightTimer)
-      if (dailyTimer !== undefined) window.clearInterval(dailyTimer)
-    }
-  }, [])
-
-  const dateLabel = new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(currentDate)
-  const weekdayLabel = new Intl.DateTimeFormat('zh-CN', { weekday: 'long' }).format(currentDate)
-
   const toggleExpanded = (id: string) => {
     setExpandedIds((current) => {
       const next = new Set(current)
@@ -815,15 +776,62 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
               renderChildren(navigation, 1)
             )}
           </div>
-          <button
-            className="btn btn-icon btn-ghost-secondary erp-sidebar-toggle d-none d-lg-inline-flex"
-            type="button"
-            aria-label={sidebarCollapsed ? '展开导航' : '折叠导航'}
-            title={sidebarCollapsed ? '展开导航' : '折叠导航'}
-            onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
-          >
-            {sidebarCollapsed ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
-          </button>
+          <div className="erp-sidebar-footer">
+            <div className="dropdown dropup erp-user-menu">
+              <button
+                className="btn erp-user"
+                type="button"
+                aria-label="用户菜单"
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+                onClick={() => setUserMenuOpen((open) => !open)}
+              >
+                {bootstrap?.user.avatarUrl ? (
+                  <span className="avatar avatar-sm"><img src={bootstrap.user.avatarUrl} alt="" /></span>
+                ) : (
+                  <span className="avatar avatar-sm" style={{ backgroundColor: avatarColor(bootstrap?.user.username ?? 'user') }}>{bootstrap?.user.avatarText}</span>
+                )}
+                <span className="erp-user-meta">
+                  <span className="erp-user-name">{bootstrap?.user.displayName}</span>
+                  <small className="erp-user-role">{bootstrap?.user.roleName ?? bootstrap?.user.username}</small>
+                </span>
+              </button>
+              {userMenuOpen && (
+                <div className="dropdown-menu show" role="menu">
+                  <button
+                    className="dropdown-item"
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setUserMenuOpen(false)
+                      openTab('/settings/profile')
+                    }}
+                  >
+                    个人设置
+                  </button>
+                  <button
+                    className="dropdown-item"
+                    type="button"
+                    role="menuitem"
+                    onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                  >
+                    {theme === 'light' ? '深色模式' : '浅色模式'}
+                  </button>
+                  <div className="dropdown-divider" />
+                  <button className="dropdown-item text-danger" type="button" role="menuitem" onClick={handleLogout}>退出登录</button>
+                </div>
+              )}
+            </div>
+            <button
+              className="btn btn-icon btn-ghost-secondary erp-sidebar-toggle d-none d-lg-inline-flex"
+              type="button"
+              aria-label={sidebarCollapsed ? '展开导航' : '折叠导航'}
+              title={sidebarCollapsed ? '展开导航' : '折叠导航'}
+              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+            >
+              {sidebarCollapsed ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -849,67 +857,6 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
       )}
 
       <div className="page-wrapper">
-        <div className="erp-context-bar d-print-none">
-          <div className="container-fluid px-3 px-lg-4">
-            <nav aria-label="当前位置">
-              <IconHome className="erp-context-home" size={18} stroke={2} aria-hidden="true" />
-              {breadcrumbLeads.map((crumb, index) => (
-                <Fragment key={`${crumb.label}-${index}`}>
-                  {crumb.to ? (
-                    <NavLink to={crumb.to} className="erp-context-section erp-context-link">{crumb.label}</NavLink>
-                  ) : (
-                    <span className="erp-context-section">{crumb.label}</span>
-                  )}
-                  <IconChevronRight className="erp-context-separator" size={16} stroke={2} aria-hidden="true" />
-                </Fragment>
-              ))}
-              <h1>{page.title}</h1>
-            </nav>
-            <div className="erp-context-user ms-auto">
-              <time className="erp-context-date d-none d-md-flex" dateTime={currentDate.toISOString().slice(0, 10)} title="今天">
-                <span>{dateLabel}</span>
-                <strong>{weekdayLabel}</strong>
-              </time>
-              <button
-                className="btn btn-icon btn-ghost-secondary"
-                type="button"
-                aria-label={theme === 'light' ? '切换到深色主题' : '切换到浅色主题'}
-                onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-              >
-                {theme === 'light' ? <IconMoon size={20} /> : <IconSun size={20} />}
-              </button>
-              <div className="dropdown erp-user-menu">
-                <button
-                  className="btn erp-user"
-                  type="button"
-                  aria-label="用户菜单"
-                  aria-haspopup="menu"
-                  aria-expanded={userMenuOpen}
-                  onClick={() => setUserMenuOpen((open) => !open)}
-                >
-                  {bootstrap?.user.avatarUrl ? (
-                    <span className="avatar avatar-sm"><img src={bootstrap.user.avatarUrl} alt="" /></span>
-                  ) : (
-                    <span className="avatar avatar-sm" style={{ backgroundColor: avatarColor(bootstrap?.user.username ?? 'user') }}>{bootstrap?.user.avatarText}</span>
-                  )}
-                  <span className="d-none d-sm-block text-start">
-                    <span className="d-block fw-semibold">{bootstrap?.user.displayName}</span>
-                    <small className="text-secondary">{bootstrap?.user.username}</small>
-                  </span>
-                  <IconChevronDown size={16} className="text-secondary" />
-                </button>
-                {userMenuOpen && (
-                  <div className="dropdown-menu dropdown-menu-end show" role="menu">
-                    <button className="dropdown-item" type="button" role="menuitem" onClick={() => openTab('/settings/profile')}>个人设置</button>
-                    <div className="dropdown-divider" />
-                    <button className="dropdown-item text-danger" type="button" role="menuitem" onClick={handleLogout}>退出登录</button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
         <button
           className="btn btn-icon btn-ghost-secondary d-lg-none erp-mobile-menu-trigger"
           type="button"

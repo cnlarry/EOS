@@ -52,8 +52,8 @@ export type WorkspaceAction =
   | { type: 'open'; id: string; url: string; label: string; fromModuleId?: string }
   | { type: 'activate'; id: string }
   | { type: 'close'; id: string }
-  /** 关闭其他：只保留指定标签（调用方已把脏标签与当前标签计入保留集） */
-  | { type: 'closeOthers'; keepIds: string[] }
+  /** 关闭其他：只保留指定标签（调用方已把脏标签与要保留的标签计入保留集） */
+  | { type: 'closeOthers'; keepIds: string[]; activeId: string }
   | { type: 'closeAll' }
   /** 地址事件（标签内导航 / 前进后退）：命中其它标签地址即激活该标签，否则改写活动标签地址 */
   | { type: 'sync'; url: string; label: string; fromModuleId?: string }
@@ -211,7 +211,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       const keep = new Set(action.keepIds)
       const tabs = state.tabs.filter((tab) => keep.has(tab.id))
       if (tabs.length === state.tabs.length) return state
-      const activeId = keep.has(state.activeId) ? state.activeId : (tabs[0]?.id ?? '')
+      const activeId = keep.has(action.activeId) ? action.activeId : (tabs[0]?.id ?? '')
       return { tabs, activeId, hint: null }
     }
     case 'closeAll':

@@ -132,7 +132,6 @@ button, input, select { font: inherit; }
 .erp-sidebar-resizer:hover, .erp-sidebar-resizer:active { background: color-mix(in srgb, var(--tblr-primary) 22%, transparent); }
 .erp-sidebar-resizing { user-select: none; }
 .erp-sidebar-resizing .erp-sidebar,
-.erp-sidebar-resizing .erp-context-bar,
 .erp-sidebar-resizing > .page-wrapper { transition: none !important; }
 .erp-sidebar-collapsed .erp-sidebar-resizer { display: none; }
 
@@ -495,17 +494,19 @@ button, input, select { font: inherit; }
   z-index: 1030;
   min-width: 10rem;
 }
-.erp-shell > .page-wrapper { display: flex; flex-direction: column; min-width: 0; width: 100%; max-width: none; min-height: 100vh; padding-top: 64px; }
-/* 面包屑导航容器固定定位：不随页面滚动消失；溢出交由 page-body 内部滚动。
-   overflow 不能为 hidden，否则固定定位容器内的用户下拉菜单（向下展开超出 64px）会被裁切/被下方工作区遮挡；
-   面包屑文本自身的截断由 .erp-context-bar nav 的 overflow:hidden 单独承担。 */
-.erp-context-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 1030; display: flex; align-items: center; height: 64px; padding: 0 10px; border: 0; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); box-shadow: none; overflow: visible; }
-.erp-context-bar > .container-fluid { display: flex; height: 100%; min-width: 0; align-items: center; padding: 0 !important; }
-.erp-context-user { display: flex; flex: 0 0 auto; height: 100%; align-items: center; gap: 4px; }
-.erp-context-user .erp-user { height: 100%; border-radius: 0; }
-.erp-context-date { height: 32px; align-items: center; gap: 8px; margin-right: 4px; padding: 0 10px; color: var(--tblr-secondary); border-right: 1px solid var(--tblr-border-color); font-size: 13px; line-height: 1; white-space: nowrap; }
-.erp-context-date strong { color: var(--tblr-body-color); font-weight: 600; }
-.erp-context-bar nav { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; gap: 7px; color: var(--tblr-secondary); font-size: 14px; font-weight: 600; line-height: 1; overflow: hidden; }
+/* 侧栏底部用户区：头像 + 姓名/角色，点开向上弹出（个人设置 / 主题 / 退出登录） */
+.erp-sidebar-footer { display: flex; flex: 0 0 auto; align-items: center; padding: 6px 8px; border-top: 1px solid var(--tblr-border-color); }
+.erp-sidebar-footer .erp-user-menu { width: 100%; min-width: 0; }
+.erp-sidebar-footer .erp-user { display: flex; width: 100%; min-width: 0; align-items: center; gap: 10px; padding: 5px 8px; border: 0; border-radius: 7px; text-align: left; }
+.erp-sidebar-footer .erp-user-meta { min-width: 0; }
+.erp-sidebar-footer .erp-user-name { display: block; overflow: hidden; color: var(--tblr-body-color); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.erp-sidebar-footer .erp-user-role { display: block; overflow: hidden; color: var(--tblr-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+/* 菜单向上弹出：覆盖 .erp-user-menu .dropdown-menu 的向下定位 */
+.erp-sidebar-footer .erp-user-menu .dropdown-menu { top: auto; bottom: 100%; inset-inline-end: auto; inset-inline-start: 0; width: 100%; min-width: 9rem; margin: 0 0 .25rem; }
+.erp-sidebar-collapsed .erp-sidebar-footer { padding: 6px 0; }
+.erp-sidebar-collapsed .erp-sidebar-footer .erp-user { justify-content: center; gap: 0; padding: 5px 0; }
+.erp-sidebar-collapsed .erp-sidebar-footer .erp-user-meta { display: none; }
+.erp-shell > .page-wrapper { display: flex; flex-direction: column; min-width: 0; width: 100%; max-width: none; min-height: 100vh; padding-top: 0; }
 .erp-page-toolbar { padding: 6px 10px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); }
 .erp-page-toolbar > .container-fluid { display: flex; align-items: center; gap: 5px; padding: 0 !important; }
 .erp-page-toolbar .btn { white-space: nowrap; }
@@ -514,20 +515,14 @@ button, input, select { font: inherit; }
 .erp-toolbar-search .form-select { width: 105px; }
 .erp-toolbar-search input[type="date"] { width: 135px; }
 .erp-toolbar-divider { align-self: stretch; width: 1px; margin: 0 3px; background: var(--tblr-border-color); }
-.erp-context-home { color: var(--tblr-secondary); flex: 0 0 auto; }
-.erp-context-section { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
-.erp-context-link { color: var(--tblr-secondary); text-decoration: none; }
-.erp-context-link:hover { color: var(--tblr-primary); text-decoration: underline; }
-.erp-context-bar h1 { margin: 0; max-width: 280px; overflow: hidden; text-overflow: ellipsis; color: var(--tblr-body-color); font-size: 14px; font-weight: 600; line-height: 1; white-space: nowrap; }
-.erp-context-separator { color: var(--tblr-secondary); opacity: .65; }
-/* 工作区标签栏占高：无标签栏时为 0，标签栏落地后按实际高度（约 34～36px）改写。
+/* 工作区标签栏占高：无标签栏时为 0。
    表格区域的高度上限按视口计算，需同步扣除标签栏高度，避免整页变高出现双滚动条。 */
 :root { --erp-tabbar-height: 0px; }
 /* 高度链：page-body 只管撑满高度与上下留白，不承担滚动；滚动权下放给标签面板，
    每个标签面板各持一个滚动位，切换标签才能各自保持滚动位置。 */
-.page-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; height: calc(100vh - 64px); overflow: hidden; margin: 0 !important; padding: 10px 0 !important; }
+.page-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; height: 100vh; overflow: hidden; margin: 0 !important; padding: 0 !important; }
 .erp-workspace { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
-.erp-tab-panel { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.erp-tab-panel { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; padding: 10px 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 /* 隐藏面板用隐藏属性收起：常驻不卸载以保留页面本地状态 */
 .erp-tab-panel[hidden] { display: none; }
 /* ===== 工作区标签栏 ===== */
@@ -546,6 +541,8 @@ button, input, select { font: inherit; }
 .erp-tabbar-action:hover { color: var(--tblr-body-color); background: var(--tblr-bg-surface); }
 .erp-tabbar-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; margin-left: auto; }
 .erp-tab-hint { display: flex; align-items: center; padding: 0 8px; color: var(--tblr-primary); font-size: 12px; white-space: nowrap; }
+/* 窄屏：标签栏左端给移动端菜单按钮（固定定位在左上角）留位 */
+@media (max-width: 991.98px) { .erp-tabbar { padding-left: 46px; } }
 /* 页面级禁止横向滚动：横向溢出一律交给表格等内部滚动容器（.table-responsive / erp-table-shell）。
    页面根（flex 列子项）与页面内 d-grid 直接子项默认 min-width:auto 会按内容撑开，导致
    行内内容过长时页面出现横向滚动条；改为 min-width:0 让其收缩到容器宽度，由表格容器内部滚动。 */
@@ -555,13 +552,13 @@ button, input, select { font: inherit; }
 .erp-tab-panel > .container-fluid > :first-child { margin-top: 0 !important; }
 .erp-command-bar .card-body { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
 .erp-row-active td { background: var(--tblr-primary-lt) !important; }
-.erp-master-table-region { position: relative; min-height: 341px; max-height: calc(100vh - 330px - var(--erp-tabbar-height)); overflow-y: auto; overscroll-behavior: contain; transition: opacity .12s ease; }
+.erp-master-table-region { position: relative; min-height: 341px; max-height: calc(100vh - 266px - var(--erp-tabbar-height)); overflow-y: auto; overscroll-behavior: contain; transition: opacity .12s ease; }
 .erp-master-table-region.is-loading { pointer-events: none; opacity: .62; }
 .erp-master-table-region.is-loading::after { position: absolute; top: 10px; right: 12px; width: 16px; height: 16px; content: ''; border: 2px solid var(--tblr-border-color); border-top-color: var(--tblr-primary); border-radius: 50%; animation: spinner-border .65s linear infinite; }
 .erp-detail-card { overflow: hidden; }
 .erp-detail-card .card-header { min-height: 2.8rem; }
 .erp-detail-card .card-header.erp-detail-toolbar { padding: 10px; }
-.erp-detail-card .table-responsive { min-height: 150px; max-height: calc(100vh - 430px - var(--erp-tabbar-height)); overflow-y: auto; overscroll-behavior: contain; border-radius: 0 0 var(--tblr-border-radius) var(--tblr-border-radius); }
+.erp-detail-card .table-responsive { min-height: 150px; max-height: calc(100vh - 366px - var(--erp-tabbar-height)); overflow-y: auto; overscroll-behavior: contain; border-radius: 0 0 var(--tblr-border-radius) var(--tblr-border-radius); }
 .erp-detail-card tfoot td { background: var(--tblr-bg-surface-secondary); }
 .erp-detail-card tfoot tr:last-child td:first-child { border-bottom-left-radius: var(--tblr-border-radius); }
 .erp-detail-card tfoot tr:last-child td:last-child { border-bottom-right-radius: var(--tblr-border-radius); }
@@ -760,7 +757,7 @@ button, input, select { font: inherit; }
 /* ===== 打印 ===== */
 @media print {
   body { background: #fff !important; }
-  .erp-sidebar, .erp-context-bar, .erp-mobile-menu-trigger, .erp-list-command-bar, .erp-pagination-footer, .erp-tabbar, .modal, .modal-backdrop, .dropdown-menu, .erp-sidebar-backdrop, .btn-close { display: none !important; }
+  .erp-sidebar, .erp-mobile-menu-trigger, .erp-list-command-bar, .erp-pagination-footer, .erp-tabbar, .modal, .modal-backdrop, .dropdown-menu, .erp-sidebar-backdrop, .btn-close { display: none !important; }
   .page-wrapper { margin-left: 0 !important; }
   .page-body, .page-body .container-fluid { padding: 0 !important; margin: 0 !important; max-width: none !important; }
   /* 打印时解开高度链：固定高度 + 裁剪会把长页面截成一屏 */
