@@ -54,6 +54,7 @@ public static class EffectParamPhysicalValidator
         "mould-ids-sync",
         "card-sibling-close",
         "fields-metadata-sync",
+        "detail-flag-and-rollup",
     };
 
     /// <summary>True when the key either carries no reference or is resolved by this validator.</summary>
@@ -159,6 +160,9 @@ public static class EffectParamPhysicalValidator
                     break;
                 case "fields-metadata-sync":
                     _ = FieldsMetadataSyncHandler.Parse(root, columns);
+                    break;
+                case "detail-flag-and-rollup":
+                    _ = DetailFlagAndRollupHandler.Parse(root, columns);
                     break;
                 case "detail-field-sync":
                     _ = DetailFieldSyncSpec.Parse(root, plan, columns);
