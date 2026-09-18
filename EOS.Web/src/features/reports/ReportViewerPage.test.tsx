@@ -33,6 +33,8 @@ const definition = {
   masterPkOrder: ['ORDER_NO'],
   spName: null,
   spParameters: [],
+  dataSource: 'table',
+  parameters: [],
 }
 
 const conditionOptions = [

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace EOS.API.Models;
 
 /// <summary>报表查询条件定义（SYSQR_DEFAULT 受控解释）。</summary>
@@ -32,9 +34,48 @@ public sealed record ReportDefinition(
     IReadOnlyList<string> SortFields,
     string? SpName = null,
     IReadOnlyList<ReportSpParameter> SpParameters = null!,
-    string? ModuleFilter = null);
+    string? ModuleFilter = null)
+{
+    /// <summary>汇总报表受控数据源；为空表示按主表（+ 子表）列构建查询。不下发客户端。</summary>
+    [JsonIgnore] public ReportAggregate? Aggregate { get; init; }
+
+    /// <summary>数据源类型：table 主表查询 / aggregate 服务端聚合 / sproc 遗留过程。</summary>
+    public string DataSource => Aggregate is not null ? "aggregate" : SpName is not null ? "sproc" : "table";
+
+    /// <summary>
+    /// 参数面板元数据：聚合报表来自服务端注册表（按查询条件序号取值），
+    /// 遗留过程报表来自 sys.parameters（按序号位置取值）。
+    /// </summary>
+    public IReadOnlyList<ReportAggregateParameter> Parameters =>
+        Aggregate is not null
+            ? Aggregate.Parameters
+            : SpParameters.Select((item, index) => new ReportAggregateParameter(item.Name, item.DataType, item.MaxLength, index + 1)).ToList();
+}
 
 public sealed record ReportSpParameter(string Name, string DataType, int MaxLength);
+
+/// <summary>
+/// 汇总报表受控数据源的参数绑定：按查询条件序号（<see cref="SerialNo"/>）取"起值"或"止值"
+/// （范围条件），或使用固定常量。值一律参数化传入，不拼接用户输入。
+/// </summary>
+public sealed record ReportAggregateParameter(
+    string Name,
+    string DataType,
+    int MaxLength,
+    int SerialNo = 0,
+    bool IsTo = false,
+    string? Constant = null);
+
+/// <summary>
+/// 汇总报表（RptInteg）受控数据源：聚合 SQL、默认排序与输出列全部来自服务端注册表；
+/// 客户端只能提供条件值，不能提供 SQL 片段。
+/// </summary>
+public sealed record ReportAggregate(
+    string ReportId,
+    string Sql,
+    string OrderBy,
+    IReadOnlyList<ReportAggregateParameter> Parameters,
+    IReadOnlyList<ReportColumn> Columns);
 
 public sealed record ReportQueryRequest(
     IReadOnlyDictionary<int, string?> Values,
