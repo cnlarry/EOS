@@ -188,6 +188,7 @@ builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.D
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.DocOrphanPruneHandler>();
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.SfcPlanSyncHandler>();
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.CusAccountSyncHandler>();
+builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.PurApplySyncHandler>();
 builder.Services.AddSingleton(builder.Configuration.GetSection("EffectEngine").Get<EffectEngineSettings>() ?? new EffectEngineSettings());
 builder.Services.AddScoped<EffectEngineInvoker>();
 builder.Services.AddScoped<EffectPipeline>();

@@ -59,6 +59,7 @@ public static class EffectParamPhysicalValidator
         "doc-orphan-prune",
         "sfc-plan-sync",
         "cus-account-sync",
+        "pur-apply-sync",
     };
 
     /// <summary>True when the key either carries no reference or is resolved by this validator.</summary>
@@ -179,6 +180,9 @@ public static class EffectParamPhysicalValidator
                     break;
                 case "cus-account-sync":
                     _ = CusAccountSyncHandler.Parse(root, columns);
+                    break;
+                case "pur-apply-sync":
+                    _ = PurApplySyncHandler.Parse(root, columns);
                     break;
                 case "detail-field-sync":
                     _ = DetailFieldSyncSpec.Parse(root, plan, columns);

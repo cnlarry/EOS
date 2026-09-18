@@ -27,9 +27,8 @@ public static class ModuleBusinessMap
                 DomainRule: "cop-order"),
             // 1604 厂商报价单 → 批核联动厂商计价表（1602）：保存后校验已由校验目录承接，批核已由效果链接管（旧 P_WF_PUR_QUOTE 已退役）。
             [1604] = new(1604, null, null, true, "QUOTE_NO", "QUOTE_TYPE"),
-            // 1615 成品请购单（批核已由效果链接管，旧 P_WF_PUR_APPLY 已退役）
-            [1615] = new(1615, null, null, true, "APPLY_NO", "APPLY_TYPE",
-                DomainRule: "pur-apply"),
+            // 1615 成品请购单（批核已由效果链接管，旧 P_WF_PUR_APPLY 已退役；保存期动作已由效果目录承接）
+            [1615] = new(1615, null, null, true, "APPLY_NO", "APPLY_TYPE"),
             // 1606 采购单（批核/解批已由效果链接管，旧 P_WF_PUR_PURCHASE 已退役）
             [1606] = new(1606, null, null, true, "PURCHASE_NO", "PURCHASE_TYPE",
                 DomainRule: "pur-purchase"),
@@ -115,7 +114,6 @@ public static class DomainRuleMap
     private static readonly IReadOnlyDictionary<int, string> Rules = new Dictionary<int, string>
     {
         [1204] = "bom-stru",
-        [1616] = "pur-apply",
         [180206] = "hr-apply",
         [180207] = "hr-worktime",
     };
@@ -171,6 +169,7 @@ public static class CatalogAfterSaveMap
         2911,               // 产品模具对照：按产品回写 f_get_pro_moulds 汇总（SAVE 期 mould-ids-sync）
         180208,             // 员工发卡：失效日期不早于生效日（主表行断言）+ 冲突旧卡到期日收口（SAVE 期 card-sibling-close）
         3014,               // 海关对帐单：客户与送/退货单引用存在 + 对帐不超送/退货单数量（受门控）+ 主表汇总（SAVE 期 cus-account-sync）
+        1615, 1616,         // 请购单（含对外）：产品引用存在 + 待购表汇总同步与申购数量分配（SAVE 期 pur-apply-sync）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);
