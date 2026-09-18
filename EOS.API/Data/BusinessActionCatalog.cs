@@ -59,6 +59,7 @@ public static class BusinessActionCatalog
         "fields-metadata-sync",
         "detail-flag-and-rollup",
         "wage-month-doc-prune",
+        "doc-orphan-prune",
         // 保留键（暂无落库实例，登记保留）
         "meta-link",
         "flow-trigger",

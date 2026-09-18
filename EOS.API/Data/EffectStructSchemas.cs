@@ -113,6 +113,7 @@ public static class EffectStructSchemas
             ["fields-metadata-sync"] = Set("targetId", "prefix", "target", "source"),
             ["detail-flag-and-rollup"] = Set("masterTable", "detailTable", "keyField", "bomTable", "bomKeyField", "bomSerialField", "detailSerialField", "stateField", "priceField", "amountField", "qtyField", "roundDigits"),
             ["wage-month-doc-prune"] = Set("masterTable", "detailTable", "typeField", "noField", "monthField", "empField", "duplicateMessage"),
+            ["doc-orphan-prune"] = Set("masterTable", "detailTable", "typeField", "noField", "masterProductField", "detailProductField", "detailRefField", "rootTable", "rootField"),
             ["sample-stock-adjust"] = Set("direction", "targetTable", "fieldMap"),
             ["set-state"] = Set("targetTable", "stateField", "stateValue", "state", "sourceField", "source", "dateField", "dateMode", "targets"),
             ["stamp-last-activity"] = Set("targetTable", "field", "fields", "sourceField", "matchBy", "condition"),
