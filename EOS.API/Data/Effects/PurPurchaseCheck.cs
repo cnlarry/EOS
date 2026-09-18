@@ -100,7 +100,7 @@ internal static class PurPurchaseCheck
                 Required(supplierPrice, "supplierField"), Required(supplierPrice, "productField"),
                 Required(supplierPrice, "currencyField"), Required(supplierPrice, "taxIdField"),
                 Required(supplierPrice, "taxTypeField"), Required(supplierPrice, "inEffectDateField")),
-            new PurPurchaseMessages(Required(messages, "priceExpired"), Required(messages, "deliveryDate")));
+            new PurPurchaseMessages(Verbatim(messages, "priceExpired"), Verbatim(messages, "deliveryDate")));
         foreach (var (table, column) in new[]
                  {
                      (masterTable, config.Master.TypeField), (masterTable, config.Master.NoField),
@@ -134,6 +134,13 @@ internal static class PurPurchaseCheck
         => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             && !string.IsNullOrWhiteSpace(value.GetString())
                 ? value.GetString()!.Trim()
+                : throw new EffectConfigException($"pur-purchase-check 缺少字符串字段 {name}。");
+
+    /// <summary>文案按**逐字**取值（不裁剪）：旧文案自带换行与尾随空格，裁剪会改变用户看到的排版。</summary>
+    private static string Verbatim(JsonElement element, string name)
+        => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(value.GetString())
+                ? value.GetString()!
                 : throw new EffectConfigException($"pur-purchase-check 缺少字符串字段 {name}。");
 }
 

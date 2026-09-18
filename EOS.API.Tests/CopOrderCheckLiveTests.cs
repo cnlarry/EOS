@@ -70,7 +70,7 @@ public sealed class CopOrderCheckLiveTests
                 lastTradeDaysAgo: 0, productTradeDaysAgo: 10);
             var productDays = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [Type, No]));
-            Assert.StartsWith("以下产品编号已超出产品交易天数限制", productDays.Message);
+            Assert.StartsWith("以下产品编号已超出产品交易天数限制\r\n", productDays.Message);
 
             // ⑤ 产品计价有效期：客户计价行的生效日早于订单日期
             await SeedAsync(connection, transaction, token, priceInEffectDaysAgo: 10);

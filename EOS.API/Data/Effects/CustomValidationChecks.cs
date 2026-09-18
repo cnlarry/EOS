@@ -28,6 +28,7 @@ internal static class CustomValidationChecks
             [CopOrderCheck.HandlerKey] = CopOrderCheck.CheckAsync,
             [CopSendCheck.HandlerKey] = CopSendCheck.CheckAsync,
             [PurPurchaseCheck.HandlerKey] = PurPurchaseCheck.CheckAsync,
+            [HrWorktimeCheck.HandlerKey] = HrWorktimeCheck.CheckAsync,
         };
 
     public static bool TryGet(string key,
@@ -251,9 +252,9 @@ internal static class CopOrderCheck
             new CopOrderSettingsFields(Required(settings, "table"), Required(settings, "clientDaysField"),
                 Required(settings, "productDaysField")),
             new CopOrderMessages(Required(messages, "tradeDays"), Required(messages, "minOrder"),
-                Required(messages, "credit"), Required(messages, "productDays"), Required(messages, "priceExpired"),
-                Required(messages, "minProduce"), Required(messages, "duplicateOrderNo"),
-                Required(messages, "preSend")));
+                Required(messages, "credit"), Verbatim(messages, "productDays"), Verbatim(messages, "priceExpired"),
+                Verbatim(messages, "minProduce"), Required(messages, "duplicateOrderNo"),
+                Verbatim(messages, "preSend")));
         foreach (var (table, column) in new[]
                  {
                      (masterTable, config.Master.TypeField), (masterTable, config.Master.NoField),
@@ -296,6 +297,13 @@ internal static class CopOrderCheck
         => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             && !string.IsNullOrWhiteSpace(value.GetString())
                 ? value.GetString()!.Trim()
+                : throw new EffectConfigException($"cop-order-check 缺少字符串字段 {name}。");
+
+    /// <summary>文案按**逐字**取值（不裁剪）：旧文案自带换行与尾随空格，裁剪会改变用户看到的排版。</summary>
+    private static string Verbatim(JsonElement element, string name)
+        => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(value.GetString())
+                ? value.GetString()!
                 : throw new EffectConfigException($"cop-order-check 缺少字符串字段 {name}。");
 }
 
