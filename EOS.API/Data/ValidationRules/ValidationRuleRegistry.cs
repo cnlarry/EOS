@@ -28,7 +28,9 @@ public static class ValidationRuleRegistry
                 "displayLookup", "diagnosticFields", "maxRows")),
         };
 
-    private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "dimensions", "message", "switch", "diagnosticFields", "maxRows", "diagnosticCellSeparator", "diagnosticRowSeparator");
+    private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "dimensions", "targetAgg", "diagnosticRows", "message", "switch", "diagnosticFields", "maxRows", "diagnosticCellSeparator", "diagnosticRowSeparator");
+    private static readonly IReadOnlySet<string> QtyTargetAggregates = KeySet("MAX", "MIN", "SUM");
+    private static readonly IReadOnlySet<string> QtyDiagnosticRowScopes = KeySet("SOURCE");
     private static readonly IReadOnlySet<string> QtyDimensionKeys = KeySet("thisQty", "usage", "limit", "offset");
     private static readonly IReadOnlySet<string> QtySwitchKeys = KeySet("key", "expect", "gates");
     private static readonly IReadOnlySet<string> QtyGateKeys = KeySet("scope", "key", "expect");
@@ -283,6 +285,26 @@ public static class ValidationRuleRegistry
                 }
             }
             var diagnostics = GetArray(check, "diagnosticFields");
+            // 被引用行按定位键聚合（如"同一制令工序取允许量最大值"）：整条 check 共用一个聚合函数。
+            if (GetString(check, "targetAgg") is { } targetAgg)
+            {
+                if (!QtyTargetAggregates.Contains(targetAgg))
+                    issues.Add($"校验规则 {Label(rule)}：{where}.targetAgg 仅允许 MAX/MIN/SUM");
+            }
+            // 诊断口径二：列出违规分组下的源明细行（要求分组形态，且诊断列只能取源列）。
+            var sourceRowDiagnostics = false;
+            if (GetString(check, "diagnosticRows") is { } diagnosticRows)
+            {
+                if (!QtyDiagnosticRowScopes.Contains(diagnosticRows))
+                    issues.Add($"校验规则 {Label(rule)}：{where}.diagnosticRows 仅允许 SOURCE");
+                else
+                    sourceRowDiagnostics = true;
+                var dimensionAggregated = GetObject(check, "thisQty") is { } rowThisQty
+                    && rowThisQty.TryGetProperty("agg", out var rowAgg)
+                    && rowAgg.ValueKind == JsonValueKind.String;
+                if (!dimensionAggregated)
+                    issues.Add($"校验规则 {Label(rule)}：{where}.diagnosticRows=SOURCE 需要 thisQty.agg=SUM 的分组形态");
+            }
             if (diagnostics is { } diagnosticArray)
             {
                 var diagnosticIndex = 0;
@@ -305,6 +327,12 @@ public static class ValidationRuleRegistry
                         if (diagnosticScope is not null
                             && diagnosticScope.ToUpperInvariant() is not ("SOURCE" or "TARGET" or "THIS"))
                             issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.scope 仅允许 SOURCE/TARGET/THIS");
+                        // 源明细行诊断的列只能是源列（外层查询里没有被引用行与求和投影可引用）。
+                        if (sourceRowDiagnostics
+                            && !string.Equals(diagnosticScope ?? "SOURCE", "SOURCE", StringComparison.OrdinalIgnoreCase))
+                            issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.scope 在 diagnosticRows=SOURCE 时仅允许 SOURCE");
+                        if (sourceRowDiagnostics && diagnostic.TryGetProperty("agg", out _))
+                            issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.agg 不能与 diagnosticRows=SOURCE 同时使用");
                         if (GetString(diagnostic, "agg") is { } diagnosticAgg)
                         {
                             if (!QtyDiagnosticAggregates.Contains(diagnosticAgg))
