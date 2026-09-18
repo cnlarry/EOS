@@ -11,59 +11,6 @@ namespace EOS.API.Data;
 public static class PurDomainRules
 {
 
-    public static async Task<SprocResult> PurchaseDueAfterSaveAsync(
-        SqlConnection connection,
-        SqlTransaction transaction,
-        WorkbenchDefinition definition,
-        IReadOnlyList<string> pkColumns,
-        IReadOnlyList<string> keyValues,
-        CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || definition.MasterTable is not { } master)
-            return new(false, "应付货款单领域规则缺少主键或主表定义。");
-        var typeColumn = pkColumns[0];
-        var noColumn = pkColumns[1];
-        var dueType = keyValues[0];
-        var dueNo = keyValues[1];
-
-        // 1. 数量校验：对帐明细不可超出收料/退料单数量
-        var receiveErrors = await DomainRuleService.FindExceededAsync(connection, transaction, dueType, dueNo, token,
-            detailTable: "PUR_DUE_D", detailTypeColumn: "DUE_TYPE", detailNoColumn: "DUE_NO",
-            detailGroupTypeColumn: "R_C_TYPE", detailGroupNoColumn: "R_C_NO", detailGroupSerialColumn: "R_C_SERIAL_NO",
-            sourceTable: "PUR_RECEIVE_D", sourceTypeColumn: "RECEIVE_TYPE", sourceNoColumn: "RECEIVE_NO");
-        if (receiveErrors is not null)
-            return new(false, "以下对帐已超出收料单数量\r\n 收料单号  收料数量  已对帐数量  单据数量\r\n" + receiveErrors);
-        var cancelErrors = await DomainRuleService.FindExceededAsync(connection, transaction, dueType, dueNo, token,
-            detailTable: "PUR_DUE_D", detailTypeColumn: "DUE_TYPE", detailNoColumn: "DUE_NO",
-            detailGroupTypeColumn: "R_C_TYPE", detailGroupNoColumn: "R_C_NO", detailGroupSerialColumn: "R_C_SERIAL_NO",
-            sourceTable: "PUR_CANCEL_D", sourceTypeColumn: "CANCEL_TYPE", sourceNoColumn: "CANCEL_NO");
-        if (cancelErrors is not null)
-            return new(false, "以下对帐已超出退料单数量\r\n 退料单号  退料数量  已对帐数量  单据数量\r\n" + cancelErrors);
-
-        // 2. 主表金额汇总
-        const string sql = """
-            UPDATE m
-            SET m.AMOUNT=d.AMOUNT, m.TAX_SUM=d.TAX_SUM, m.AMOUNT_TAX=d.AMOUNT_TAX,
-                m.SUM_AMOUNT=d.AMOUNT_TAX+ISNULL(m.OTHER_PRICE,0), m.QTY_TOTAL=d.QTY_TOTAL
-            FROM dbo.PUR_DUE_M m
-            INNER JOIN (
-                SELECT DUE_TYPE, DUE_NO,
-                       ROUND(SUM(AMOUNT_TAX),2) AS AMOUNT_TAX,
-                       ROUND(SUM(AMOUNT),2) AS AMOUNT,
-                       ROUND(SUM(TAX_SUM),2) AS TAX_SUM,
-                       ROUND(SUM(QTY),2) AS QTY_TOTAL
-                FROM dbo.PUR_DUE_D
-                WHERE DUE_TYPE=@Type AND DUE_NO=@No
-                GROUP BY DUE_TYPE, DUE_NO
-            ) d ON m.DUE_TYPE=d.DUE_TYPE AND m.DUE_NO=d.DUE_NO
-            WHERE m.DUE_TYPE=@Type AND m.DUE_NO=@No;
-            """;
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = dueType;
-        command.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = dueNo;
-        await command.ExecuteNonQueryAsync(token);
-        return new(true, null);
-    }
 
     /// <summary>员工基本资料（P_HR_EMPLOYEE）AfterSave：工号唯一（他人占用且 STATE<>5 即拒绝）。</summary>
 

@@ -63,6 +63,7 @@ public static class EffectParamPhysicalValidator
         "bom-size-backfill",
         "cop-account-rollup",
         "cop-prepay-rollup",
+        "purchase-due-rollup",
     };
 
     /// <summary>True when the key either carries no reference or is resolved by this validator.</summary>
@@ -195,6 +196,9 @@ public static class EffectParamPhysicalValidator
                     break;
                 case "cop-prepay-rollup":
                     _ = CopPrepayRollupHandler.Parse(root, plan.MasterTable!, columns);
+                    break;
+                case "purchase-due-rollup":
+                    _ = PurchaseDueRollupHandler.Parse(root, plan.MasterTable!, columns);
                     break;
                 case "detail-field-sync":
                     _ = DetailFieldSyncSpec.Parse(root, plan, columns);
