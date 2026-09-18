@@ -65,54 +65,6 @@ public static class PurDomainRules
         return new(true, null);
     }
 
-    public static async Task<SprocResult> PurCancelAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "采购退料单领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        var validated = await DomainRuleService.ValidateDetailAsync(connection, transaction, pkColumns, keyValues,
-            "PUR_CANCEL_D", "CANCEL_TYPE", "CANCEL_NO",
-            [
-                ("ISNULL(t.BATCH_NO,'')='' AND EXISTS (SELECT 1 FROM dbo.PRODUCT p WHERE p.PRO_NO=t.PRO_NO AND p.MANAGE_BATCH=1)", "以下序号项需要输入批号 "),
-            ], token);
-        if (!validated.Success) return validated;
-        var qtyCheck = await PurCancelQtyCheckAsync(connection, transaction, type, no, token);
-        return qtyCheck ?? new(true, null);
-    }
-
-    public static async Task<SprocResult?> PurCancelQtyCheckAsync(
-        SqlConnection connection, SqlTransaction transaction, string type, string no, CancellationToken token)
-    {
-        var rows = await DomainRuleService.FindLinesAsync(connection, transaction,
-            """
-            SELECT d.SERIAL_NO,
-                   SUM(CASE WHEN p.SRC='P' THEN p.QTY END) PUR_QTY,
-                   ISNULL(SUM(CASE WHEN p.SRC='R' THEN p.QTY END),0) REC_QTY,
-                   SUM(CASE WHEN p.SRC='C' THEN p.QTY END) RET_QTY,
-                   SUM(CASE WHEN p.SRC='P' THEN p.SPARE_QTY END) PUR_SPARE_QTY,
-                   ISNULL(SUM(CASE WHEN p.SRC='R' THEN p.SPARE_QTY END),0) REC_SPARE_QTY,
-                   SUM(CASE WHEN p.SRC='C' THEN p.SPARE_QTY END) RET_SPARE_QTY
-            FROM dbo.PUR_CANCEL_D d
-            INNER JOIN (
-                SELECT PURCHASE_TYPE, PURCHASE_NO, SERIAL_NO AS PURCHASE_SERIAL_NO, QTY, SPARE_QTY, 'P' SRC FROM dbo.PUR_PURCHASE_D
-                UNION ALL
-                SELECT PURCHASE_TYPE, PURCHASE_NO, PURCHASE_SERIAL_NO, QTY, SPARE_QTY, 'R' SRC FROM dbo.PUR_RECEIVE_D
-                UNION ALL
-                SELECT PURCHASE_TYPE, PURCHASE_NO, PURCHASE_SERIAL_NO, QTY, SPARE_QTY, 'C' SRC FROM dbo.PUR_CANCEL_D
-            ) p ON p.PURCHASE_TYPE=d.PURCHASE_TYPE AND p.PURCHASE_NO=d.PURCHASE_NO AND p.PURCHASE_SERIAL_NO=d.PURCHASE_SERIAL_NO
-            WHERE d.CANCEL_TYPE=@Type AND d.CANCEL_NO=@No
-            GROUP BY d.SERIAL_NO
-            HAVING SUM(CASE WHEN p.SRC='C' THEN p.QTY END) > ISNULL(SUM(CASE WHEN p.SRC='R' THEN p.QTY END),0)
-                OR SUM(CASE WHEN p.SRC='C' THEN p.SPARE_QTY END) > ISNULL(SUM(CASE WHEN p.SRC='R' THEN p.SPARE_QTY END),0);
-            """, type, no, token,
-            line: r => string.Join("    ", Enumerable.Range(0, r.FieldCount).Select(i => (Convert.ToString(r.GetValue(i)) ?? string.Empty).Trim())));
-        return rows is null
-            ? null
-            : new(false, "以下序号项退料数量大于收料\r\n 序号  采购数量   已收  退料   采购备品   已收备品  退备品\r\n" + rows);
-    }
-
     /// <summary>员工基本资料（P_HR_EMPLOYEE）AfterSave：工号唯一（他人占用且 STATE<>5 即拒绝）。</summary>
 
 

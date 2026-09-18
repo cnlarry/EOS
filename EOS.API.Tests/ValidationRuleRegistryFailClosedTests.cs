@@ -291,6 +291,69 @@ public class ValidationRuleRegistryFailClosedTests
     }
 
     [Fact]
+    public void QuantityCheck_AcceptsUsageOnlyAndRejectsConflictingShapes()
+    {
+        // usageOnly：判据两侧都取自被引用侧（如"退料合计 > 收料合计"），本单侧贡献为 0，
+        // 因此不写 thisQty；多量纲（数量 + 备品）依旧可用。
+        var ok = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"V_PUR_CANCEL_ALLOC","usageOnly":true,
+             "match":[{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}}],
+             "dimensions":[
+              {"usage":{"scope":"TARGET","fields":["RET_QTY"]},"limit":{"scope":"TARGET","fields":["REC_QTY"]}},
+              {"usage":{"scope":"TARGET","fields":["RET_SPARE_QTY"]},"limit":{"scope":"TARGET","fields":["REC_SPARE_QTY"]}}],
+             "diagnosticFields":["SERIAL_NO",{"scope":"TARGET","field":"RET_QTY"}],
+             "message":"以下序号项退料数量大于收料 \r\n{ROWS}"}]}
+            """));
+        Assert.Empty(ok);
+
+        // 单量纲同样可省略 thisQty
+        var single = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"V_PUR_CANCEL_ALLOC","usageOnly":true,
+             "match":[{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}}],
+             "usage":{"scope":"TARGET","fields":["RET_QTY"]},
+             "limit":{"scope":"TARGET","fields":["REC_QTY"]}}]}
+            """));
+        Assert.Empty(single);
+
+        // 与 thisQty 互斥（写了也无处参与比较）
+        var withThis = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"V_PUR_CANCEL_ALLOC","usageOnly":true,
+             "match":[{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}}],
+             "thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["RET_QTY"]},
+             "limit":{"scope":"TARGET","fields":["REC_QTY"]}}]}
+            """));
+        Assert.Contains(withThis, issue => issue.Contains("usageOnly 与 thisQty 互斥"));
+
+        // 仅适用于 usage-not-exceed 模式
+        var wrongMode = Validate("qty-not-exceed", Params("""
+            {"mode":"this-not-exceed","checks":[{"targetTable":"V_PUR_CANCEL_ALLOC","usageOnly":true,
+             "match":[{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}}],
+             "usage":{"scope":"TARGET","fields":["RET_QTY"]},
+             "limit":{"scope":"TARGET","fields":["REC_QTY"]}}]}
+            """));
+        Assert.Contains(wrongMode, issue => issue.Contains("usageOnly 仅适用于 usage-not-exceed"));
+
+        // 非布尔值即拒绝
+        var wrongType = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"V_PUR_CANCEL_ALLOC","usageOnly":"yes",
+             "match":[{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}}],
+             "usage":{"scope":"TARGET","fields":["RET_QTY"]},
+             "limit":{"scope":"TARGET","fields":["REC_QTY"]}}]}
+            """));
+        Assert.Contains(wrongType, issue => issue.Contains("usageOnly 必须是布尔值"));
+
+        // 不写 usageOnly 时 thisQty 仍必须给出（既有口径不放宽）
+        var missingThis = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"V_PUR_CANCEL_ALLOC",
+             "match":[{"target":"PURCHASE_NO","source":{"scope":"DETAIL","field":"PURCHASE_NO"}}],
+             "usage":{"scope":"TARGET","fields":["RET_QTY"]},
+             "limit":{"scope":"TARGET","fields":["REC_QTY"]}}]}
+            """));
+        Assert.Contains(missingThis, issue => issue.Contains("thisQty 缺失"));
+    }
+
+    [Fact]
     public void QuantityCheck_AcceptsOrMergedDimensionsAndRejectsBadOnes()
     {
         // 多量纲：旧实现把"数量"与"备品"合成 `WHERE a OR b`，用 dimensions 表达（诊断行只输出一次）
