@@ -43,7 +43,7 @@ public static class ModuleBusinessMap
                 PrepayOffsetTable: "COP_RECEIPT_PREPAY"),
             // 170103 预收帐款单（AfterSave 已实现：客户校验 + 金额汇总；批核已由效果链接管，旧 P_WF_COP_PREPAY 已退役）
             [170103] = new(170103, null, null, true, "PREPAY_NO", "PREPAY_TYPE"),
-            // 170201 应付货款单：保存期数量校验与金额汇总已由效果目录承接（SAVE 期 qty-not-exceed + purchase-due-rollup）；
+            // 170201 应付货款单：保存期数量校验与金额汇总已由效果目录承接（SAVE 期 qty-not-exceed + detail-rollup）；
             // 批核已由效果链接管，旧 P_WF_PUR_DUE 已退役
             [170201] = new(170201, null, null, true, "DUE_NO", "DUE_TYPE"),
             // 170202 付款单（批核/解批已由效果链接管，旧 P_WF_PUR_PAY 已退役）
@@ -147,8 +147,8 @@ public static class CatalogAfterSaveMap
         3014,               // 海关对帐单：客户与送/退货单引用存在 + 对帐不超送/退货单数量（受门控）+ 主表汇总（SAVE 期 cus-account-sync）
         1615, 1616,         // 请购单（含对外）：产品引用存在 + 待购表汇总同步与申购数量分配（SAVE 期 pur-apply-sync）
         1204,               // 产品 BOM：产品/元件引用存在 + 元件底数下界 + 成环检测（no-cycle）+ 历史长宽列回填（SAVE 期 bom-size-backfill）
-        170201,             // 应付对帐单：对帐不超收料/退料单数量（受门控）+ 主表金额汇总（SAVE 期 purchase-due-rollup）
-        170203,             // 预付帐款单：引用三件套完整性 + 预付不超采购行未结金额（受门控）+ 金额汇总（SAVE 期 pur-prepay-rollup）
+        170201,             // 应付对帐单：对帐不超收料/退料单数量（受门控）+ 主表金额汇总（SAVE 期 detail-rollup）
+        170203,             // 预付帐款单：引用三件套完整性 + 预付不超采购行未结金额（受门控）+ 金额汇总（SAVE 期 detail-rollup）
         1405,               // 客户订单：交易天数/最低订单额/信用余额/产品交易天数/计价有效期/最小生产量/订单号重复/预交日期（custom-validation → cop-order-check）
         1406,               // 送货单：批号必填/送货日期超期/库别存在/库存与批号库存不足（custom-validation → cop-send-check）+ 包装标记（SAVE 期 cop-send-mo-flag）
         1606,               // 采购单：产品计价有效期与预交日期（custom-validation → pur-purchase-check）+ 待购表汇总同步（SAVE 期 pur-purchase-sync）
