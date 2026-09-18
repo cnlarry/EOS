@@ -28,7 +28,7 @@ public static class ValidationRuleRegistry
                 "displayLookup", "diagnosticFields", "maxRows")),
         };
 
-    private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "dimensions", "targetAgg", "diagnosticRows", "message", "switch", "diagnosticFields", "maxRows", "diagnosticCellSeparator", "diagnosticRowSeparator");
+    private static readonly IReadOnlySet<string> QtyCheckKeys = KeySet("targetTable", "match", "thisQty", "usage", "limit", "offset", "dimensions", "targetAgg", "diagnosticRows", "message", "switch", "diagnosticFields", "maxRows", "diagnosticCellSeparator", "diagnosticRowSeparator", "usageOnly");
     private static readonly IReadOnlySet<string> QtyTargetAggregates = KeySet("MAX", "MIN", "SUM");
     private static readonly IReadOnlySet<string> QtyDiagnosticRowScopes = KeySet("SOURCE");
     private static readonly IReadOnlySet<string> QtyDimensionKeys = KeySet("thisQty", "usage", "limit", "offset");
@@ -240,6 +240,22 @@ public static class ValidationRuleRegistry
                 continue;
             }
             RejectUnknownKeys(rule, check, QtyCheckKeys, where, issues);
+            // usageOnly：判据两侧都取自被引用侧（本单侧贡献为 0），如"退料合计 > 收料合计"。
+            // 此时不写 thisQty（写了也无处参与比较），且仅适用于 usage-not-exceed。
+            var usageOnly = false;
+            if (check.TryGetProperty("usageOnly", out var usageOnlyElement))
+            {
+                if (usageOnlyElement.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                    issues.Add($"校验规则 {Label(rule)}：{where}.usageOnly 必须是布尔值");
+                usageOnly = usageOnlyElement.ValueKind == JsonValueKind.True;
+            }
+            if (usageOnly)
+            {
+                if (mode is not (null or "usage-not-exceed"))
+                    issues.Add($"校验规则 {Label(rule)}：{where}.usageOnly 仅适用于 usage-not-exceed 模式");
+                if (GetObject(check, "thisQty") is not null)
+                    issues.Add($"校验规则 {Label(rule)}：{where}.usageOnly 与 thisQty 互斥");
+            }
             // 量纲：单量纲直接写在 check 上；多量纲写在 dimensions（旧实现把"数量"与"备品"
             // 合成 `WHERE a OR b` 的形态），两者互斥，各量纲的 agg 用法必须一致。
             var dimensionCount = 1;
@@ -264,8 +280,10 @@ public static class ValidationRuleRegistry
                     }
                     RejectUnknownKeys(rule, dimension, QtyDimensionKeys, dimensionWhere, issues);
                     var hasThisQty = ValidateQtyBlock(rule, dimension, "thisQty", $"{dimensionWhere}.thisQty", issues);
-                    if (!hasThisQty)
+                    if (!hasThisQty && !usageOnly)
                         issues.Add($"校验规则 {Label(rule)}：{dimensionWhere}.thisQty 缺失");
+                    if (hasThisQty && usageOnly)
+                        issues.Add($"校验规则 {Label(rule)}：{dimensionWhere}.thisQty 与 {where}.usageOnly 互斥");
                     if (requireUsage && !ValidateQtyBlock(rule, dimension, "usage", $"{dimensionWhere}.usage", issues))
                         issues.Add($"校验规则 {Label(rule)}：{dimensionWhere}.usage 缺失");
                     var hasDimensionLimit = GetObject(dimension, "limit") is not null;
@@ -386,7 +404,7 @@ public static class ValidationRuleRegistry
                 ValidateMatchItems(rule, match.Value, $"{where}.match", issues);
             if (dimensionCount <= 1 && GetArray(check, "dimensions") is null)
             {
-                if (!ValidateQtyBlock(rule, check, "thisQty", $"{where}.thisQty", issues))
+                if (!usageOnly && !ValidateQtyBlock(rule, check, "thisQty", $"{where}.thisQty", issues))
                     issues.Add($"校验规则 {Label(rule)}：{where}.thisQty 缺失");
                 if (requireUsage && !ValidateQtyBlock(rule, check, "usage", $"{where}.usage", issues))
                     issues.Add($"校验规则 {Label(rule)}：{where}.usage 缺失");

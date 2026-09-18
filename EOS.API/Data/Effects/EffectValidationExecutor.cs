@@ -212,6 +212,10 @@ public sealed class EffectValidationExecutor
             // 量纲：单量纲直接写在 check 上；多量纲写在 dimensions 数组里。旧实现常把"数量"与
             // "备品"两类判据合成一句 `WHERE a OR b`——多量纲正是这个形态，按 OR 合并成一个
             // 违规判据，命中时诊断行只输出一次（与旧实现的单条 SELECT 一致）。
+            // usageOnly：判据两侧都取自被引用侧（本单侧贡献为 0），如"退料合计（跨单累计）> 收料合计"。
+            // 此时比较式退化为 `usage(T) > limit(T)`，本单项取常量 0。
+            var usageOnly = check.TryGetProperty("usageOnly", out var usageOnlyElement)
+                && usageOnlyElement.ValueKind == JsonValueKind.True;
             var dimensions = ParseQuantityDimensions(check);
             var multiDimension = check.TryGetProperty("dimensions", out _);
             // not-below-usage 只比较"本单量 vs 已发生量"，没有上限列，故不要求 limit（与注册表口径一致）。
@@ -219,10 +223,12 @@ public sealed class EffectValidationExecutor
             var usesUsage = !mode.Equals("this-not-exceed", StringComparison.OrdinalIgnoreCase);
             foreach (var dimension in dimensions)
             {
-                if (dimension.Terms.Count == 0 || (usesLimit && dimension.LimitFields.Count == 0))
+                if ((!usageOnly && dimension.Terms.Count == 0) || (usesLimit && dimension.LimitFields.Count == 0))
                     throw new EffectConfigException("qty-not-exceed.check 缺少 thisQty/limit。");
                 if (usesUsage && dimension.UsageFields.Count == 0)
                     throw new EffectConfigException("qty-not-exceed.check 缺少 thisQty/usage。");
+                if (usageOnly && dimension.Aggregate)
+                    throw new EffectConfigException("qty-not-exceed.check 的 usageOnly 与 thisQty.agg=SUM 互斥。");
             }
 
             var targetTable = check.TryGetProperty("targetTable", out var tt) && tt.ValueKind == JsonValueKind.String
@@ -234,7 +240,9 @@ public sealed class EffectValidationExecutor
             if (sourceTable is null)
                 throw new EffectConfigException("qty-not-exceed 来源表不可用（模块形态不足）。");
 
-            var termSqls = dimensions.Select(dimension => BuildTermSql(dimension.Terms, "S")).ToList();
+            var termSqls = usageOnly
+                ? dimensions.Select(_ => "0").ToList()
+                : dimensions.Select(dimension => BuildTermSql(dimension.Terms, "S")).ToList();
             var (documentScope, parameters) = BuildDocumentScope(plan, masterKeyValues);
 
             // 聚合形态：旧实现多按单据分组求和后再比较（如"同一采购行的收料合计"）。
@@ -292,7 +300,7 @@ public sealed class EffectValidationExecutor
                 var limitWithOffset = dimension.Offset == 0m
                     ? limitSql
                     : $"({limitSql} + {dimension.Offset.ToString(CultureInfo.InvariantCulture)})";
-                var thisSql = grouped ? "S1." + ThisQtyAlias(index, multiDimension) : termSqls[index];
+                var thisSql = usageOnly ? "0" : grouped ? "S1." + ThisQtyAlias(index, multiDimension) : termSqls[index];
                 comparisons.Add(mode.Equals("not-below-progress", StringComparison.OrdinalIgnoreCase)
                     ? $"{limitSql} + {thisSql} < {usageSql}" // reduction would fall below accumulated progress
                     : mode.Equals("this-not-exceed", StringComparison.OrdinalIgnoreCase)

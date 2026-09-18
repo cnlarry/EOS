@@ -48,7 +48,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "sysdg" => await SysDomainRules.SysdgAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "employee-card" => await HrDomainRules.EmployeeCardAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "moc-produce" => await MocDomainRules.MocProduceAfterSaveAsync(connection, transaction, definition.ModuleId, pkColumns, keyValues, token),
-                "pur-cancel" => await PurDomainRules.PurCancelAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "hr-wage-item" => await HrDomainRules.HrWageItemAfterSaveAsync(connection, transaction, "HR_WAGE_D", "HR_WAGE", token),
                 "hrm-wage-item" => await HrDomainRules.HrWageItemAfterSaveAsync(connection, transaction, "HRM_WAGE_D", "HRM_WAGE", token),
                 // 离职工资表：先删同月旧档再判重（删除是保存后写操作，顺序与旧实现一致，故不迁目录）
