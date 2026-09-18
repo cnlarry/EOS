@@ -13,10 +13,11 @@ public sealed class ReportAggregateRegistryTests
     [
         "HR_Employee_1", "HR_Employee_3", "HR_Employee_4", "HR_Employee_5",
         "HR_Employee_6", "HR_Employee_7", "HR_Diary_1",
+        "INV_Pro_Depot_1", "INV_Pro_Depot_1_H", "INV_Pro_Depot_1_sum",
     ];
 
     [Fact]
-    public void Registry_CoversHrAnalysisReports_AndLookupIsCaseInsensitive()
+    public void Registry_CoversPortedReports_AndLookupIsCaseInsensitive()
     {
         Assert.Equal(ExpectedReportIds.OrderBy(item => item), ReportAggregateRegistry.RegisteredReportIds.OrderBy(item => item));
         foreach (var reportId in ExpectedReportIds)
@@ -40,8 +41,7 @@ public sealed class ReportAggregateRegistryTests
             Assert.False(string.IsNullOrWhiteSpace(aggregate.Sql));
             // 排序由查询层统一追加：SQL 本体不得自带收尾 ORDER BY、也不得以分号结束（否则拼出非法语句）；
             // WITHIN GROUP (ORDER BY …) 属合法用法，只禁"结尾处"的 ORDER BY
-            Assert.False(System.Text.RegularExpressions.Regex.IsMatch(aggregate.Sql.Trim(),
-                @"(?i)order\s+by\s+\[?[A-Za-z_][A-Za-z0-9_]*\]?\s*$"));
+            Assert.DoesNotMatch(@"(?i)order\s+by\s+\[?[A-Za-z_][A-Za-z0-9_]*\]?\s*$", aggregate.Sql.Trim());
             Assert.DoesNotContain(";", aggregate.Sql);
             Assert.False(string.IsNullOrWhiteSpace(aggregate.OrderBy));
             Assert.NotEmpty(aggregate.Columns);
