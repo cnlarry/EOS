@@ -53,8 +53,8 @@ public sealed class FlowDefinitionService(
             SELECT m.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC,''))), LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),
                    LTRIM(RTRIM(ISNULL(m.M_URL,''))), LTRIM(RTRIM(ISNULL(m.UPDATE_SP,''))),
                    ISNULL(m.AUTO_APPROVE,0), ISNULL(m.EFFECT_ENGINE_TAG,0),
-                   CASE WHEN EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=m.M_IDX)
-                        THEN 1 ELSE 0 END
+                   CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=m.M_IDX)
+                        THEN 1 ELSE 0 END)
             FROM dbo.MODULES m WITH (NOLOCK)
             WHERE LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,'')))<>''
             ORDER BY m.M_IDX;
