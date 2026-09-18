@@ -32,30 +32,34 @@ public sealed class JobsController(
     private const int AttendanceCalcMaxEmployees = 500;
 
     /// <summary>
-    /// Recalculates available stock (230901) by running the whitelisted procedure
-    /// P_UPDATE_PRO_MRP_ALL after verifying it exists.
+    /// Recalculates available stock (230901) with the in-process product-level MRP recompute
+    /// (the legacy <c>P_UPDATE_PRO_MRP_ALL</c> procedure was retired).
     /// </summary>
     [HttpPost("mrp-recalc")]
     public async Task<IActionResult> MrpRecalc(CancellationToken token)
     {
         if (!await CanRunAsync(ModuleIds.MrpRecalc, token)) return Forbid();
-        const string sproc = "P_UPDATE_PRO_MRP_ALL";
+        const string job = "mrp-recalc";
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
-        const string existsSql = "SELECT 1 FROM sys.objects WHERE object_id=OBJECT_ID(@Name) AND type='P';";
-        await using var existsCommand = new SqlCommand(existsSql, connection);
-        existsCommand.Parameters.Add("@Name", SqlDbType.NVarChar, 200).Value = sproc;
-        if (await existsCommand.ExecuteScalarAsync(token) is null)
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "SPROC_NOT_FOUND", "重算存储过程不存在。"));
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
         var stopwatch = Stopwatch.StartNew();
-        await using var command = new SqlCommand(sproc, connection)
+        try
         {
-            CommandType = CommandType.StoredProcedure,
-            CommandTimeout = MrpRecalcCommandTimeoutSeconds,
-        };
-        await command.ExecuteNonQueryAsync(token);
+            await using var command = new SqlCommand(MrpRecalcService.RecalcSql, connection, transaction)
+            {
+                CommandTimeout = MrpRecalcCommandTimeoutSeconds,
+            };
+            await command.ExecuteNonQueryAsync(token);
+            await transaction.CommitAsync(token);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
         stopwatch.Stop();
-        return Ok(new { sproc, elapsedMs = stopwatch.ElapsedMilliseconds });
+        return Ok(new { job, elapsedMs = stopwatch.ElapsedMilliseconds });
     }
 
     /// <summary>Batch upserts employee access cards (1..2000 rows per request).</summary>
