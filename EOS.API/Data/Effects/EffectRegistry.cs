@@ -52,6 +52,7 @@ public static class EffectRegistry
         ["sample-edition-bump"] = Status.Service,
         ["mould-ids-sync"] = Status.Service,
         ["card-sibling-close"] = Status.Service,
+        ["fields-metadata-sync"] = Status.Service,
         // Placeholder-row + params shapes collected; handlers pending (see docs/plans/服务键形态证据.md)
         ["hr-usage-sync"] = Status.Service,
         ["employee-contract-sync"] = Status.Service,

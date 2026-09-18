@@ -14,32 +14,6 @@ public static class HrDomainRules
     /// 仅校验，无落库副作用。
     /// </summary>
 
-    /// <summary>工资项目设定（P_HR_WAGE_ITEM / P_HRM_WAGE_ITEM）AfterSave：FIELDS 元数据联动（显隐/名称/格式/备注）。</summary>
-
-
-    /// <summary>工资项目设定（P_HR_WAGE_ITEM / P_HRM_WAGE_ITEM）AfterSave：FIELDS 元数据联动（显隐/名称/格式/备注）。</summary>
-    public static async Task<SprocResult> HrWageItemAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        string fieldsTable, string wageTable, CancellationToken token)
-    {
-        await using (var reset = new SqlCommand(
-            "UPDATE dbo.FIELDS SET IS_VISIBLE=0 WHERE T_ID=@TId AND F_ID LIKE 'WAGE_ITEM%';", connection, transaction))
-        {
-            reset.Parameters.Add("@TId", SqlDbType.NVarChar, 50).Value = fieldsTable;
-            await reset.ExecuteNonQueryAsync(token);
-        }
-        await using (var sync = new SqlCommand($"""
-            UPDATE f SET f.IS_VISIBLE=w.IS_USED, f.F_DESC=w.WAGE_NAME, f.DISPLAY_FORMAT=w.DISPLAY_FORMAT, f.F_REMARK=w.SQL_REMARK
-            FROM dbo.FIELDS f INNER JOIN dbo.[{wageTable}] w ON f.F_ID=w.WAGE_FIELD
-            WHERE f.T_ID=@TId;
-            """, connection, transaction))
-        {
-            sync.Parameters.Add("@TId", SqlDbType.NVarChar, 50).Value = fieldsTable;
-            await sync.ExecuteNonQueryAsync(token);
-        }
-        return new(true, null);
-    }
-
     /// <summary>工资表（P_HR_WAGE_LZ）AfterSave：离职工资表先删同月旧档，再按每月每人一份校验。</summary>
     public static async Task<SprocResult> HrWageAfterSaveAsync(
         SqlConnection connection, SqlTransaction transaction,
