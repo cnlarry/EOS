@@ -309,7 +309,7 @@ export function MenuAdminPage() {
     enabled: versionsOpen && selectedId != null,
   })
 
-  // ADR-013 §6.2 配置期提示：主表缺少 CONFIRM_TAG 但具备批核能力（自动批核/批核过程/
+  // 配置期提示：主表缺少 CONFIRM_TAG 但具备批核能力（自动批核/批核过程/
   // 批核按钮）时预警——发布会被 lifecycle_columns 门拦截。仅提示不阻断保存（草稿工作区），
   // 不自动补列（物理列变更走 DbUp 版本化迁移，不设一键补列）；是否发布由服务端终裁。
   const masterTableName = draft?.MASTER_TABLE ?? null
@@ -1099,7 +1099,7 @@ export function MenuAdminPage() {
                         </div>
                         {masterMissingConfirmTag && (
                           <div className="alert alert-warning py-2 px-3 small mb-2">
-                            主表缺少 CONFIRM_TAG：当前配置具备批核能力（自动批核/批核过程/批核按钮），发布时将被 lifecycle_columns 门拦截。请补列后重发布，或关闭批核能力（ADR-013 §3.7）。
+                            主表缺少 CONFIRM_TAG：当前配置具备批核能力（自动批核/批核过程/批核按钮），发布时将被 lifecycle_columns 门拦截。请补列后重发布，或关闭批核能力。
                           </div>
                         )}
                         <div className="row g-2">

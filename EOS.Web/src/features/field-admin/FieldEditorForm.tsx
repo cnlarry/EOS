@@ -73,7 +73,7 @@ export interface FieldMeta extends FieldInput {
   physicalExists?: boolean
   physicalType?: string | null
   typeMatches?: boolean | null
-  /** 单据生命周期系统列（ADR-013）：结构锁定，仅名称/显示/备注类可改。 */
+  /** 单据生命周期系统列：结构锁定，仅名称/显示/备注类可改。 */
   isSystemColumn?: boolean
 }
 
@@ -420,7 +420,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
   }
 
   const isNew = mode === 'new'
-  /** 系统列结构锁（ADR-013 §3.5）：新建态不涉及，编辑态锁定类型/校验/数据源/权限与分组。 */
+  /** 系统列结构锁：新建态不涉及，编辑态锁定类型/校验/数据源/权限与分组。 */
   const locked = !isNew && draft?.isSystemColumn === true
   const tabs: TabbedPanelTab<FieldSection>[] = historyTab
     ? [...SECTION_TABS, { key: 'history', label: '变更历史' }]
