@@ -67,6 +67,7 @@ public static class EffectParamPhysicalValidator
         "pur-prepay-rollup",
         "pur-pay-offset",
         "cop-receipt-offset",
+        "cop-send-mo-flag",
     };
 
     /// <summary>True when the key either carries no reference or is resolved by this validator.</summary>
@@ -209,6 +210,9 @@ public static class EffectParamPhysicalValidator
                 case "pur-pay-offset":
                 case "cop-receipt-offset":
                     _ = PrepayOffsetRunner.Parse(root, plan.MasterTable!, columns, "offset-check");
+                    break;
+                case "cop-send-mo-flag":
+                    _ = CopSendMoFlagHandler.Parse(root, plan.MasterTable!, columns);
                     break;
                 case "detail-field-sync":
                     _ = DetailFieldSyncSpec.Parse(root, plan, columns);

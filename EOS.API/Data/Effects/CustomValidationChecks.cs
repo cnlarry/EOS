@@ -26,6 +26,7 @@ internal static class CustomValidationChecks
         Checks = new(StringComparer.OrdinalIgnoreCase)
         {
             [CopOrderCheck.HandlerKey] = CopOrderCheck.CheckAsync,
+            [CopSendCheck.HandlerKey] = CopSendCheck.CheckAsync,
         };
 
     public static bool TryGet(string key,
