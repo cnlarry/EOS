@@ -101,28 +101,6 @@ public static class SysDomainRules
         if (ok == 1) return null;
         return reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
     }
-
-    /// <summary>User-group save: removes group permission rows whose module or report no longer exists.</summary>
-    public static async Task<SprocResult> SysdgAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        await using (var cleanGroup = new SqlCommand(
-            "DELETE FROM dbo.SYSDH WHERE M_IDX NOT IN (SELECT M_IDX FROM dbo.MODULES);",
-            connection, transaction))
-        {
-            await cleanGroup.ExecuteNonQueryAsync(token);
-        }
-        await using (var cleanReport = new SqlCommand("""
-            DELETE FROM dbo.SYSDH_REPORT
-            WHERE M_IDX NOT IN (SELECT M_IDX FROM dbo.MODULES) OR REPORT_ID NOT IN (SELECT REPORT_ID FROM dbo.REPORT);
-            """, connection, transaction))
-        {
-            await cleanReport.ExecuteNonQueryAsync(token);
-        }
-        return new(true, null);
-    }
-
     private static async Task<string?> ReadBomMissingAsync(
         SqlConnection connection, SqlTransaction transaction, string sql, string proNo, CancellationToken token)
     {
