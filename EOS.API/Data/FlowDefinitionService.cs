@@ -51,7 +51,7 @@ public sealed class FlowDefinitionService(
         var eligible = new List<object>();
         await using (var command = new SqlCommand("""
             SELECT m.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC,''))), LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),
-                   LTRIM(RTRIM(ISNULL(m.M_URL,''))), LTRIM(RTRIM(ISNULL(m.UPDATE_SP,''))),
+                   LTRIM(RTRIM(ISNULL(m.M_URL,''))),
                    ISNULL(m.AUTO_APPROVE,0), ISNULL(m.EFFECT_ENGINE_TAG,0),
                    CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=m.M_IDX)
                         THEN 1 ELSE 0 END)
@@ -66,13 +66,11 @@ public sealed class FlowDefinitionService(
                 var moduleId = reader.GetInt32(0);
                 if (!ModuleRouteValidator.IsWorkbenchUrl(reader.GetString(3)))
                     continue;
-                // 批核能力：静态登记批核过程 / MODULES.UPDATE_SP / 效果引擎接管 / 自动批核 / 已配置流程
+                // 批核能力：效果引擎接管 / 自动批核 / 已配置流程（遗留批核过程字段已物理删除）
                 var hasWorkflow = WorkflowStates.HasApproveCapability(
+                    reader.GetBoolean(4),
                     reader.GetBoolean(5),
-                    ModuleBusinessMap.Get(moduleId)?.WorkflowSproc is not null,
-                    reader.GetString(4),
-                    reader.GetBoolean(6),
-                    reader.GetBoolean(7));
+                    reader.GetBoolean(6));
                 if (!hasWorkflow)
                     continue;
                 eligible.Add(new
@@ -80,8 +78,7 @@ public sealed class FlowDefinitionService(
                     ModuleId = moduleId,
                     Title = reader.GetString(1),
                     MasterTable = reader.GetString(2),
-                    UpdateSproc = reader.GetString(4),
-                    AutoApprove = reader.GetBoolean(5),
+                    AutoApprove = reader.GetBoolean(4),
                 });
             }
         }
@@ -241,7 +238,7 @@ public sealed class FlowDefinitionService(
         string? masterTable;
         await using (var moduleCommand = new SqlCommand("""
             SELECT LTRIM(RTRIM(ISNULL(M_DESC,''))), LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),
-                   LTRIM(RTRIM(ISNULL(M_URL,''))), LTRIM(RTRIM(ISNULL(UPDATE_SP,''))),
+                   LTRIM(RTRIM(ISNULL(M_URL,''))),
                    ISNULL(AUTO_APPROVE,0), ISNULL(EFFECT_ENGINE_TAG,0),
                    CASE WHEN EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=M_IDX)
                         THEN 1 ELSE 0 END
@@ -255,17 +252,14 @@ public sealed class FlowDefinitionService(
             title = reader.GetString(0);
             masterTable = reader.GetString(1);
             var moduleUrl = reader.GetString(2);
-            var updateSproc = reader.GetString(3);
             if (!ModuleRouteValidator.IsWorkbenchUrl(moduleUrl))
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "MODULE_NOT_WORKBENCH", "只能给通用工作台模块配置审批流程。");
             var hasWorkflow = WorkflowStates.HasApproveCapability(
+                reader.GetBoolean(3),
                 reader.GetBoolean(4),
-                ModuleBusinessMap.Get(moduleId)?.WorkflowSproc is not null,
-                updateSproc,
-                reader.GetBoolean(5),
-                reader.GetBoolean(6));
+                reader.GetBoolean(5));
             if (!hasWorkflow)
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "MODULE_NO_APPROVE", "该模块未配置批核能力（无批核过程、效果链与自动批核），不能配置流程。");
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "MODULE_NO_APPROVE", "该模块未配置批核能力（无效果链、无自动批核），不能配置流程。");
         }
         if (string.IsNullOrWhiteSpace(masterTable) || !WorkbenchSql.Identifier.IsMatch(masterTable))
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "INVALID_MASTER_TABLE", "模块主表无效。");

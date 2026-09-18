@@ -88,30 +88,29 @@ public static class WorkflowStates
         LifecycleColumns.Contains(fieldId, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// 无副作用批核能力（自动批核模块且无批核过程/效果链/流程定义）：
+    /// 无副作用批核能力（自动批核模块且无效果链/流程定义）：
     /// 保存路径的自动批核本就是纯状态翻转，显式批核/解批同口径。
     /// 服务端分支与表单按钮显隐共用此判定，两边不得分叉。
+    /// （遗留批核过程字段已物理删除，故不再有"批核 SP"这一维度。）
     /// </summary>
     internal static bool IsStatelessApproveCapable(
         bool autoApprove,
-        bool hasWorkflowSproc,
         bool effectEnabled,
         bool hasFlow) =>
-        autoApprove && !hasWorkflowSproc && !effectEnabled && !hasFlow;
+        autoApprove && !effectEnabled && !hasFlow;
 
     /// <summary>
     /// 模块是否具备批核能力（ADR-013 §3.7 能力 → 列单向强制的输入侧）。
-    /// 只认会触达 CONFIRM_TAG 写/读路径的后端事实（自动批核、批核 SP、效果引擎接管、工作流、
+    /// 只认会触达 CONFIRM_TAG 写/读路径的后端事实（自动批核、效果引擎接管、工作流、
     /// 批核/解批效果链；解批镜像批核链，同样需要状态位），不认仅控制显示的 FORM_BUTTONS。
     /// </summary>
     internal static bool NeedsApproveColumn(
         bool autoApprove,
-        bool hasWorkflowSproc,
         bool effectEnabled,
         bool hasWorkflow,
         IEnumerable<string>? enabledActionEventCodes)
     {
-        if (autoApprove || hasWorkflowSproc || effectEnabled || hasWorkflow)
+        if (autoApprove || effectEnabled || hasWorkflow)
         {
             return true;
         }
@@ -135,19 +134,14 @@ public static class WorkflowStates
     }
 
     /// <summary>
-    /// 模块是否具备批核能力中的"可配置审批流程"口径：批核过程（静态登记或 MODULES.UPDATE_SP）、
-    /// 效果引擎接管、自动批核、已配置流程任一声明即可。与 <see cref="NeedsApproveColumn"/> 同源，
-    /// 避免退役遗留批核过程时连带关闭流程配置入口。
+    /// 模块是否具备批核能力中的"可配置审批流程"口径：效果引擎接管、自动批核、已配置流程任一声明即可。
+    /// 与 <see cref="NeedsApproveColumn"/> 同源，避免退役遗留批核过程时连带关闭流程配置入口。
     /// </summary>
     internal static bool HasApproveCapability(
         bool autoApprove,
-        bool hasWorkflowSproc,
-        string? updateSproc,
         bool effectEnabled,
         bool hasFlow) =>
         autoApprove
-        || hasWorkflowSproc
-        || !string.IsNullOrWhiteSpace(updateSproc)
         || effectEnabled
         || hasFlow;
 }

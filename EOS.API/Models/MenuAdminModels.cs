@@ -29,8 +29,6 @@ public sealed record MenuAdminModule(
     [property: JsonPropertyName("MASTER_TABLE")] string? MASTER_TABLE,
     [property: JsonPropertyName("FILTER")] string? FILTER,
     [property: JsonPropertyName("DETAIL_TABLE")] string? DETAIL_TABLE,
-    [property: JsonPropertyName("UPDATE_SP")] string? UPDATE_SP,
-    [property: JsonPropertyName("AFTERSAVE_SP")] string? AFTERSAVE_SP,
     [property: JsonPropertyName("NOT_BACK_FIELDS_M")] string? NOT_BACK_FIELDS_M,
     [property: JsonPropertyName("NOT_BACK_FIELDS")] string? NOT_BACK_FIELDS,
     [property: JsonPropertyName("GROUP1")] bool GROUP1,

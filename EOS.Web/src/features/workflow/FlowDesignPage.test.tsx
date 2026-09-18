@@ -12,9 +12,9 @@ const flows = [
   { moduleId: 1404, title: '报价单', flowName: '报价二级审批', remark: '', stepCount: 2, updatedBy: 'admin', updatedAt: null },
 ]
 const eligible = [
-  { moduleId: 1906, title: '油卡充值单', masterTable: 'CAR_FEE_M', updateSproc: 'P_WF_CAR_FEE', autoApprove: false },
-  { moduleId: 1404, title: '报价单', masterTable: 'COP_QUOTE_M', updateSproc: 'P_WF_COP_QUOTE', autoApprove: false },
-  { moduleId: 1405, title: '客户订单', masterTable: 'COP_ORDER_M', updateSproc: 'P_WF_COP_ORDER', autoApprove: false },
+  { moduleId: 1906, title: '油卡充值单', masterTable: 'CAR_FEE_M', autoApprove: false },
+  { moduleId: 1404, title: '报价单', masterTable: 'COP_QUOTE_M', autoApprove: false },
+  { moduleId: 1405, title: '客户订单', masterTable: 'COP_ORDER_M', autoApprove: false },
 ]
 const flowDetail = {
   moduleId: 1404,

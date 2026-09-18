@@ -22,7 +22,6 @@ namespace EOS.API.Data;
 /// </summary>
 public sealed class WorkflowEngine(
     DbConnectionFactory connections,
-    ControlledSprocInvoker controlledSprocs,
     WorkbenchAuditWriter auditWriter,
     WorkbenchDefinitionProvider definitionProvider,
     EffectEngineInvoker effectEngine,
@@ -499,7 +498,6 @@ public sealed class WorkflowEngine(
         int moduleId;
         string masterTable;
         string keyCondition;
-        string? updateSproc;
         string? title;
         WorkbenchDefinition? baseline = null;
         IReadOnlyList<string>? engineKeyValues = null;
@@ -516,7 +514,7 @@ public sealed class WorkflowEngine(
             keyCondition = reader.GetString(1);
         }
         await using (var moduleCommand = new SqlCommand("""
-            SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))), LTRIM(RTRIM(ISNULL(UPDATE_SP,''))),
+            SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),
                    LTRIM(RTRIM(ISNULL(M_DESC,'')))
             FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
             """, connection))
@@ -526,8 +524,7 @@ public sealed class WorkflowEngine(
             if (!await reader.ReadAsync(token))
                 return (false, "MODULE_NOT_FOUND", "模块不存在。", false, null);
             masterTable = reader.GetString(0);
-            updateSproc = reader.IsDBNull(1) ? null : reader.GetString(1);
-            title = reader.GetString(2);
+            title = reader.GetString(1);
         }
 
         var hasBaseline = definitionProvider.TryGetBaseline(moduleId, out baseline, out _);
@@ -538,13 +535,8 @@ public sealed class WorkflowEngine(
             if (engineKeyValues.Count == 0)
                 return (false, "WORKFLOW_FAILED", "主键值无法从流程实例解析，效果引擎拒绝执行。", false, null);
         }
-        else if (!string.IsNullOrWhiteSpace(updateSproc))
-        {
-            var sprocResult = await controlledSprocs.RunWorkflowAsync(
-                moduleId, updateSproc, Array.Empty<string>(), Array.Empty<string>(), true, token, keyCondition);
-            if (!sprocResult.Success)
-                return (false, "WORKFLOW_FAILED", sprocResult.Message ?? "末步业务处理失败。", false, null);
-        }
+        // 未接管效果引擎时不再有"末步执行遗留批核过程"的回落：MODULES.UPDATE_SP 已物理删除，
+        // 批核副作用统一由效果链承载（无副作用模块只翻转状态位）。
 
         await using var finalTransaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
         try

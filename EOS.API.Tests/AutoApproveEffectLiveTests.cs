@@ -55,7 +55,7 @@ public sealed class AutoApproveEffectLiveTests
             new EffectPlanLoader(),
             EffectShadowRunner.BuildPipelineFor(ConnectionString),
             NullLogger<EffectEngineInvoker>.Instance);
-        var workflow = new WorkflowEngine(connections, sprocs, auditWriter, provider, engine, NullLogger<WorkflowEngine>.Instance);
+        var workflow = new WorkflowEngine(connections, auditWriter, provider, engine, NullLogger<WorkflowEngine>.Instance);
         return new WorkbenchApprovalService(
             connections, auditWriter, workflow, sprocs, engine, new WorkbenchIdempotency(),
             NullLogger<WorkbenchApprovalService>.Instance);

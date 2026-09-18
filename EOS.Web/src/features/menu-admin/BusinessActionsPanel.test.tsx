@@ -29,8 +29,6 @@ const moduleWithTables = (id: number, desc: string): MenuAdminModule => ({
   MASTER_TABLE: 'PUR_RECEIVE_M',
   FILTER: null,
   DETAIL_TABLE: 'PUR_RECEIVE_D',
-  UPDATE_SP: null,
-  AFTERSAVE_SP: null,
   NOT_BACK_FIELDS_M: null,
   NOT_BACK_FIELDS: null,
   GROUP1: false, GROUP_EXP1: null, GROUP_DESC1: null,
