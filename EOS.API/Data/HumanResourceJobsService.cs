@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.RegularExpressions;
+using EOS.API.Data.Effects.ServiceEffectHandlers;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -74,8 +75,9 @@ public sealed class HumanResourceJobsService(DbConnectionFactory connections)
                 await insert.ExecuteNonQueryAsync(token);
                 inserted++;
             }
-            // 发新卡即作废旧卡：同一卡号的其他持卡人、同员工名下其他卡（与 180208 同语义）
-            await HrDomainRules.CloseConflictingCardsAsync(connection, transaction, empId, cardId, startDate, token);
+            // 发新卡即作废旧卡：同一卡号的其他持卡人、同员工名下其他卡（与 180208 同一实现）
+            await CardSiblingCloseHandler.CloseAsync(connection, transaction, CardSiblingCloseHandler.CardBatchConfig,
+                cardId, empId, startDate, token);
         }
         await transaction.CommitAsync(token);
         return new CardBatchResult(updated, inserted);
