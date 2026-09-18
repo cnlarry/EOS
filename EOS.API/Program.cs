@@ -206,7 +206,6 @@ builder.Services.AddScoped<ControlledSprocInvoker>();
 builder.Services.AddScoped<WorkflowEngine>();
 builder.Services.AddScoped<FlowDefinitionService>();
 builder.Services.Configure<WorkflowSettings>(builder.Configuration.GetSection("Workflow"));
-builder.Services.AddScoped<DomainRuleService>();
 builder.Services.AddScoped<WorkbenchScopeFilter>();
 builder.Services.AddScoped<WorkbenchChooserService>();
 builder.Services.AddScoped<WorkbenchDirtyMarker>();

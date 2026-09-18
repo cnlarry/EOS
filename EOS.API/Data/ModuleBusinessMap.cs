@@ -98,21 +98,6 @@ public static class ModuleBusinessMap
 }
 
 /// <summary>
-/// 领域规则覆盖注册表：对"由 MODULES 元数据自动注册"的模块，
-/// 把 AfterSave 从受控 SP 替换为 C# 领域规则（WorkflowSproc/自动单号仍按元数据自动构建）。
-/// **已清空**：原 53 个"由 SP 翻译而来的 C#"族全部迁入校验/效果目录，此处不再登记任何模块；
-/// 保留空表是为了让"带族名的旧快照"继续走拒绝路径（见 <see cref="DomainRuleService.RunAfterSaveAsync"/>）。
-/// </summary>
-public static class DomainRuleMap
-{
-    private static readonly IReadOnlyDictionary<int, string> Rules = new Dictionary<int, string>
-    {
-    };
-
-    public static bool TryGet(int moduleId, out string? rule) => Rules.TryGetValue(moduleId, out rule);
-}
-
-/// <summary>
 /// 保存后行为已由校验目录（MODULE_VALIDATION_RULE）承接的模块：这些模块不再调用遗留
 /// 保存后过程、也不再登记 C# 领域规则，保存期校验完全由目录实例执行。
 /// 本表只是"遗留钩子已迁目录"的事实登记，与自动单号无关——是否自动编号只看 BILLKIND

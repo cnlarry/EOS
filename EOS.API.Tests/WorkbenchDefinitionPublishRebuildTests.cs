@@ -12,13 +12,12 @@ namespace EOS.API.Tests;
 
 /// <summary>
 /// 发布链路重派生回归：发布/校验所用定义必须从「当前代码 + 元数据」重建模块级字段
-/// （BusinessRule、DetailNoSave、系统列等），不能继承已发布快照基线——否则删掉一条 C#
-/// 领域规则后重发布，快照仍指向已删除的族名，保存会因「未登记的领域规则」拒存。
+/// （BusinessRule、DetailNoSave、系统列等），不能继承已发布快照基线——否则元数据改了却
+/// 没重发布，快照会继续指向已经不存在的过程/配置。
 ///
 /// 核心断言：
-///  1. 发布路径（forPublish=true）忽略 provider 基线，按代码注册表重建 DomainRule；
-///  2. provider 单模块刷新在「库里已无当前快照」时把该模块基线从缓存移除；
-///  3. 未登记族名在保存分派处被拒存（删码后果的守卫，保证「删了必须重发布」）。
+///  1. 发布路径（forPublish=true）忽略 provider 基线，按代码 + 元数据重建业务规则；
+///  2. provider 单模块刷新在「库里已无当前快照」时把该模块基线从缓存移除。
 ///
 /// 需要 EOS_ERP_TEST_CONNECTION（与本仓库其它真库测试一致的约定）。
 /// </summary>
@@ -67,39 +66,40 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
             NullLogger<WorkbenchDefinitionBuilder>.Instance);
 
     /// <summary>
-    /// 发布路径按代码注册表重建 DomainRule，且不因 provider 缓存里的旧基线而改变：
-    /// 构造一个内存基线（BusinessRule.DomainRule 指向已删的幽灵族名），发布路径必须
-    /// 产出与代码一致的结果——<see cref="DomainRuleMap"/> 现已清空（全部族迁入校验/效果目录），
-    /// 故发布产出 `DomainRule=null`，而运行时路径仍读基线里的幽灵族名。
-    /// 该用例的证明力不依赖"库里还有族"：它证明的是"发布忽略基线、按代码重建"。
+    /// 发布路径按代码 + 元数据重建业务规则，且不因 provider 缓存里的旧基线而改变：
+    /// 构造一个内存基线（BusinessRule 声明了已不存在的保存后过程），发布路径必须
+    /// 产出与元数据一致的结果——180206 的保存期行为已在校验目录里（`CatalogAfterSaveMap`），
+    /// 故发布产出 `AfterSaveSproc=null`、`SprocPendingPorting=false`，而运行时路径仍读基线。
+    /// 该用例证明的是"发布忽略基线、按元数据重建"，与具体字段无关。
     /// </summary>
     [Fact]
-    public async Task PublishBuild_IgnoresBaselineAndRebuildsDomainRule_FromCodeRegistry()
+    public async Task PublishBuild_IgnoresBaselineAndRebuildsBusinessRule()
     {
         var connections = Connections();
         var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
         var builder = Builder(connections, provider);
         var emptyDenied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // 造一个「快照指向已删幽灵族」的旧基线，塞进 provider 缓存（模拟删码后未重发布的脏快照）。
+        // 造一个「快照声明了幽灵保存后过程」的旧基线，塞进 provider 缓存（模拟删码后未重发布的脏快照）。
         var staleBaseline = new WorkbenchDefinition(
             ModuleId: 180206, Title: "员工申请单", MasterTable: "HR_APPLY_M", DetailTable: "HR_APPLY_D",
             MasterFields: [], DetailFields: [], DefaultSort: null, HasAdd: true, HasEdit: true,
             DetailNoSave: false, MasterPkOrder: ["APPLY_TYPE", "APPLY_NO"], DetailNoFields: "", HasWorkflow: false,
             UserId: "", ExecTag: "Z",
-            BusinessRule: new ModuleBusinessRule(180206, null, null, false, null, null, DomainRule: "ghost-deleted-rule"));
+            BusinessRule: new ModuleBusinessRule(180206, "P_GHOST_After_Save", null, false, null, null,
+                SprocPendingPorting: true));
         provider.SeedBaselineForTest(180206, staleBaseline, "module-180206-v999");
 
-        // 发布路径：忽略基线，DomainRule 按当前代码注册表重建（注册表已清空 ⇒ null）。
+        // 发布路径：忽略基线，业务规则按当前元数据 + 目录承接重建。
         var publish = await builder.GetDefinitionAsync(180206, "admin", "Z", true, true, emptyDenied, emptyDenied, CancellationToken.None, forPublish: true);
         Assert.NotNull(publish);
-        Assert.Null(publish!.BusinessRule?.DomainRule);
-        Assert.NotEqual("ghost-deleted-rule", publish.BusinessRule?.DomainRule);
+        Assert.Null(publish!.BusinessRule?.AfterSaveSproc);
+        Assert.False(publish.BusinessRule?.SprocPendingPorting ?? true);
 
         // 运行时路径（forPublish=false）：有基线时仍走基线（已发布快照为运行时事实源）。
         var runtime = await builder.GetDefinitionAsync(180206, "admin", "Z", true, true, emptyDenied, emptyDenied, CancellationToken.None);
         Assert.NotNull(runtime);
-        Assert.Equal("ghost-deleted-rule", runtime!.BusinessRule?.DomainRule);
+        Assert.Equal("P_GHOST_After_Save", runtime!.BusinessRule?.AfterSaveSproc);
     }
 
     /// <summary>
@@ -160,34 +160,6 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
                 connection);
             command.Parameters.Add("@Id", SqlDbType.Int).Value = moduleId;
             await command.ExecuteNonQueryAsync();
-        }
-    }
-
-    /// <summary>
-    /// 删码后果守卫：DomainRuleService 对未登记族名拒存（「未登记的领域规则」），
-    /// 因此删掉一条规则后若快照未重发布，保存必然被拦——这是「删了必须重发布」的机制保证。
-    /// </summary>
-    [Fact]
-    public async Task DomainRuleService_RejectsUnregisteredRule_OnSave()
-    {
-        var connections = Connections();
-        var service = new DomainRuleService();
-        await using var connection = new SqlConnection(ConnectionString.Value);
-        await connection.OpenAsync();
-        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
-        try
-        {
-            var result = await service.RunAfterSaveAsync(
-                "ghost-deleted-rule", connection, transaction,
-                new WorkbenchDefinition(110103, "币别", "CURR", null, [], [], null, false, false, false,
-                    ["CURR_ID"], "", false),
-                ["CURR_ID"], ["XX"], CancellationToken.None);
-            Assert.False(result.Success);
-            Assert.Contains("未登记的领域规则", result.Message);
-        }
-        finally
-        {
-            await transaction.RollbackAsync();
         }
     }
 }
