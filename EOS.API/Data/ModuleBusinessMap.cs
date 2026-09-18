@@ -46,11 +46,9 @@ public static class ModuleBusinessMap
                 PrepayOffsetTable: "COP_RECEIPT_PREPAY", DomainRule: "cop-receipt"),
             // 170103 预收帐款单（AfterSave 已实现：客户校验 + 金额汇总；批核已由效果链接管，旧 P_WF_COP_PREPAY 已退役）
             [170103] = new(170103, null, null, true, "PREPAY_NO", "PREPAY_TYPE"),
-            // 170201 应付货款单：AfterSave 已实现为确定性领域规则（purchase-due），
-            // 不再调用 P_PUR_DUE_After_Save（金额汇总 + 数量校验由 C# 实现）；
+            // 170201 应付货款单：保存期数量校验与金额汇总已由效果目录承接（SAVE 期 qty-not-exceed + purchase-due-rollup）；
             // 批核已由效果链接管，旧 P_WF_PUR_DUE 已退役
-            [170201] = new(170201, null, null, true, "DUE_NO", "DUE_TYPE",
-                DomainRule: "purchase-due"),
+            [170201] = new(170201, null, null, true, "DUE_NO", "DUE_TYPE"),
             // 170202 付款单（批核/解批已由效果链接管，旧 P_WF_PUR_PAY 已退役）
             [170202] = new(170202, null, null, true, "PAY_NO", "PAY_TYPE",
                 PrepayOffsetTable: "PUR_PAY_PREPAY", DomainRule: "pur-pay"),
@@ -168,6 +166,7 @@ public static class CatalogAfterSaveMap
         3014,               // 海关对帐单：客户与送/退货单引用存在 + 对帐不超送/退货单数量（受门控）+ 主表汇总（SAVE 期 cus-account-sync）
         1615, 1616,         // 请购单（含对外）：产品引用存在 + 待购表汇总同步与申购数量分配（SAVE 期 pur-apply-sync）
         1204,               // 产品 BOM：产品/元件引用存在 + 元件底数下界 + 成环检测（no-cycle）+ 历史长宽列回填（SAVE 期 bom-size-backfill）
+        170201,             // 应付对帐单：对帐不超收料/退料单数量（受门控）+ 主表金额汇总（SAVE 期 purchase-due-rollup）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);

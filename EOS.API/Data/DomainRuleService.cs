@@ -32,7 +32,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
         {
             return ruleName.ToLowerInvariant() switch
             {
-                "purchase-due" => await PurDomainRules.PurchaseDueAfterSaveAsync(connection, transaction, definition, pkColumns, keyValues, token),
                 "cop-receipt" => await CopDomainRules.CopReceiptAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-order" => await CopDomainRules.CopOrderAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "cop-send" => await CopDomainRules.CopSendAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
