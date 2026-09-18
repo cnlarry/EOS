@@ -23,6 +23,7 @@ public static class ValidationRuleRegistry
                 "masterTable", "detailTable", "joinFields", "groupFields", "masterGroupFields",
                 "documentDetailFields", "diagnosticFields", "maxRows", "displayLookup", "excludeVia")),
             ["line-require"] = WithWhen(KeySet("checks")),
+            ["no-cycle"] = WithWhen(KeySet("checks")),
             ["period-overlap"] = WithWhen(KeySet(
                 "detailTable", "rangeFields", "scopeFields", "groupFields",
                 "displayLookup", "diagnosticFields", "maxRows")),
@@ -39,10 +40,13 @@ public static class ValidationRuleRegistry
     private static readonly IReadOnlySet<string> QtyDiagnosticAggregates = KeySet("MAX", "MIN", "SUM", "DISTINCT");
     private static readonly IReadOnlySet<string> LineRequireCheckKeys = KeySet("scope", "field", "triggers", "condition", "assert", "message", "diagnosticFields");
     private static readonly IReadOnlySet<string> LineRequireTriggerKeys = KeySet("scope", "field", "op", "value");
-    private static readonly IReadOnlySet<string> LineRequireAssertKeys = KeySet("op", "value", "compareField");
+    private static readonly IReadOnlySet<string> LineRequireAssertKeys = KeySet("op", "value", "compareField", "nullSkips");
     private static readonly IReadOnlySet<string> LineRequireOps = KeySet("GT", "GE", "LT", "LE", "EQ", "NEQ");
     private static readonly IReadOnlySet<string> LineRequireScopes = KeySet("DETAIL", "MASTER");
     private static readonly IReadOnlySet<string> QtyBlockKeys = KeySet("scope", "terms", "fields", "agg");
+    private static readonly IReadOnlySet<string> NoCycleCheckKeys =
+        KeySet("table", "parentField", "childField", "start", "maxDepth", "message", "switch");
+    private static readonly IReadOnlySet<string> NoCycleStartKeys = KeySet("scope", "field");
     private static readonly IReadOnlySet<string> ReferenceCheckKeys = KeySet(
         "refTable", "allowEmpty", "join", "refKey", "activeTag", "message", "lineField", "targets", "maxRows", "mismatch", "refCondition");
     private static readonly IReadOnlySet<string> ReferenceTargetKeys = KeySet("refTable", "join", "refKey", "activeTag", "mismatch", "refCondition");
@@ -60,6 +64,7 @@ public static class ValidationRuleRegistry
         "duplicate-check",
         "line-require",
         "period-overlap",
+        "no-cycle",
     };
 
     private static readonly HashSet<string> KnownStages = new(StringComparer.OrdinalIgnoreCase)
@@ -116,6 +121,62 @@ public static class ValidationRuleRegistry
             case "period-overlap":
                 ValidatePeriodOverlap(rule, p, issues);
                 break;
+            case "no-cycle":
+                ValidateNoCycle(rule, p, issues);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// no-cycle（成环检测）：从当前单据的起点值出发按层展开引用关系，某一层的子项回到起点即判为循环。
+    /// 必填：关系表、父列、子列、起点（仅 MASTER 域，取当前单据主表行的一列）；
+    /// 可选：maxDepth（1..1000，默认 100 层，防"没有回到起点的环"把保存挂死）、message、switch 门控。
+    /// </summary>
+    private static void ValidateNoCycle(ValidationRuleConfig rule, JsonElement p, List<string> issues)
+    {
+        var checks = GetArray(p, "checks");
+        if (checks is null || checks.Value.GetArrayLength() == 0)
+        {
+            issues.Add($"校验规则 {Label(rule)}：no-cycle.checks 必须是非空数组");
+            return;
+        }
+        var index = 0;
+        foreach (var check in checks.Value.EnumerateArray())
+        {
+            var where = $"no-cycle.checks[{index}]";
+            index++;
+            if (check.ValueKind != JsonValueKind.Object)
+            {
+                issues.Add($"校验规则 {Label(rule)}：{where} 必须是对象");
+                continue;
+            }
+            RejectUnknownKeys(rule, check, NoCycleCheckKeys, where, issues);
+            foreach (var key in new[] { "table", "parentField", "childField" })
+            {
+                if (string.IsNullOrWhiteSpace(GetString(check, key)))
+                    issues.Add($"校验规则 {Label(rule)}：{where}.{key} 必填");
+            }
+            if (GetObject(check, "start") is not { } start)
+            {
+                issues.Add($"校验规则 {Label(rule)}：{where}.start 必填");
+            }
+            else
+            {
+                RejectUnknownKeys(rule, start, NoCycleStartKeys, $"{where}.start", issues);
+                var scope = GetString(start, "scope");
+                if (string.IsNullOrWhiteSpace(scope)
+                    || !scope.Equals("MASTER", StringComparison.OrdinalIgnoreCase))
+                    issues.Add($"校验规则 {Label(rule)}：{where}.start.scope 仅允许 MASTER");
+                if (string.IsNullOrWhiteSpace(GetString(start, "field")))
+                    issues.Add($"校验规则 {Label(rule)}：{where}.start.field 必填");
+            }
+            if (check.TryGetProperty("maxDepth", out var depth))
+            {
+                if (depth.ValueKind != JsonValueKind.Number || !depth.TryGetInt32(out var value) || value is < 1 or > 1000)
+                    issues.Add($"校验规则 {Label(rule)}：{where}.maxDepth 必须是 1..1000 的整数");
+            }
+            if (check.TryGetProperty("switch", out var switchElement))
+                ValidateSwitchShape(rule, switchElement, $"{where}.switch", issues);
         }
     }
 
@@ -529,6 +590,9 @@ public static class ValidationRuleRegistry
                 {
                     issues.Add($"校验规则 {Label(rule)}：{where}.assert 需要数值 value 或字符串 compareField");
                 }
+                if (assert.Value.TryGetProperty("nullSkips", out var nullSkips)
+                    && nullSkips.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                    issues.Add($"校验规则 {Label(rule)}：{where}.assert.nullSkips 必须是布尔值");
             }
             if (triggers is not { } triggersArr || triggersArr.GetArrayLength() == 0)
             {

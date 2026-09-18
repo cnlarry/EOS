@@ -42,7 +42,6 @@ public sealed class DomainRuleService(ILogger<DomainRuleService> logger)
                 "pur-purchase" => await PurDomainRules.PurPurchaseAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-pay" => await PurDomainRules.PurPayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "pur-prepay" => await PurDomainRules.PurPrepayAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
-                "bom-stru" => await SysDomainRules.BomStruAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 "hr-apply" => await HrDomainRules.HrApplyAfterSaveAsync(connection, transaction, pkColumns, keyValues, token),
                 _ => new(false, $"未登记的领域规则：{ruleName}"),
             };

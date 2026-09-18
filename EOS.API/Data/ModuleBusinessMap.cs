@@ -113,7 +113,6 @@ public static class DomainRuleMap
 {
     private static readonly IReadOnlyDictionary<int, string> Rules = new Dictionary<int, string>
     {
-        [1204] = "bom-stru",
         [180206] = "hr-apply",
         [180207] = "hr-worktime",
     };
@@ -170,6 +169,7 @@ public static class CatalogAfterSaveMap
         180208,             // 员工发卡：失效日期不早于生效日（主表行断言）+ 冲突旧卡到期日收口（SAVE 期 card-sibling-close）
         3014,               // 海关对帐单：客户与送/退货单引用存在 + 对帐不超送/退货单数量（受门控）+ 主表汇总（SAVE 期 cus-account-sync）
         1615, 1616,         // 请购单（含对外）：产品引用存在 + 待购表汇总同步与申购数量分配（SAVE 期 pur-apply-sync）
+        1204,               // 产品 BOM：产品/元件引用存在 + 元件底数下界 + 成环检测（no-cycle）+ 历史长宽列回填（SAVE 期 bom-size-backfill）
     };
 
     public static bool IsPorted(int moduleId) => Modules.Contains(moduleId);

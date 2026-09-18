@@ -69,8 +69,8 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
     /// <summary>
     /// 发布路径按代码注册表重建 DomainRule，且不因 provider 缓存里的旧基线而改变：
     /// 构造一个内存基线（BusinessRule.DomainRule 指向已删的幽灵族名），发布路径必须
-    /// 产出与代码一致的 DomainRule（当前夹具 1204 → bom-stru），而不是幽灵族名。
-    /// 夹具族随批 4 推进更换（1502 → 3006 → 1204）：必须选一个**仍在册**的族，否则该用例失去证明力。
+    /// 产出与代码一致的 DomainRule（当前夹具 180206 → hr-apply），而不是幽灵族名。
+    /// 夹具族随批 4 推进更换（1502 → 3006 → 1204 → 180206）：必须选一个**仍在册**的族，否则该用例失去证明力。
     /// </summary>
     [Fact]
     public async Task PublishBuild_IgnoresBaselineAndRebuildsDomainRule_FromCodeRegistry()
@@ -82,21 +82,21 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
 
         // 造一个「快照指向已删幽灵族」的旧基线，塞进 provider 缓存（模拟删码后未重发布的脏快照）。
         var staleBaseline = new WorkbenchDefinition(
-            ModuleId: 1204, Title: "产品BOM表", MasterTable: "BOM_STRU_M", DetailTable: "BOM_STRU_D",
+            ModuleId: 180206, Title: "员工申请单", MasterTable: "HR_APPLY_M", DetailTable: "HR_APPLY_D",
             MasterFields: [], DetailFields: [], DefaultSort: null, HasAdd: true, HasEdit: true,
-            DetailNoSave: false, MasterPkOrder: ["PRO_NO"], DetailNoFields: "", HasWorkflow: false,
+            DetailNoSave: false, MasterPkOrder: ["APPLY_TYPE", "APPLY_NO"], DetailNoFields: "", HasWorkflow: false,
             UserId: "", ExecTag: "Z",
-            BusinessRule: new ModuleBusinessRule(1204, null, null, false, null, null, DomainRule: "ghost-deleted-rule"));
-        provider.SeedBaselineForTest(1204, staleBaseline, "module-1204-v999");
+            BusinessRule: new ModuleBusinessRule(180206, null, null, false, null, null, DomainRule: "ghost-deleted-rule"));
+        provider.SeedBaselineForTest(180206, staleBaseline, "module-180206-v999");
 
-        // 发布路径：忽略基线，DomainRule 重建为当前代码注册表里的族名（3006 → cus-manual）。
-        var publish = await builder.GetDefinitionAsync(1204, "admin", "Z", true, true, emptyDenied, emptyDenied, CancellationToken.None, forPublish: true);
+        // 发布路径：忽略基线，DomainRule 重建为当前代码注册表里的族名（180206 → hr-apply）。
+        var publish = await builder.GetDefinitionAsync(180206, "admin", "Z", true, true, emptyDenied, emptyDenied, CancellationToken.None, forPublish: true);
         Assert.NotNull(publish);
-        Assert.Equal("bom-stru", publish!.BusinessRule?.DomainRule);
+        Assert.Equal("hr-apply", publish!.BusinessRule?.DomainRule);
         Assert.NotEqual("ghost-deleted-rule", publish.BusinessRule?.DomainRule);
 
         // 运行时路径（forPublish=false）：有基线时仍走基线（已发布快照为运行时事实源）。
-        var runtime = await builder.GetDefinitionAsync(1204, "admin", "Z", true, true, emptyDenied, emptyDenied, CancellationToken.None);
+        var runtime = await builder.GetDefinitionAsync(180206, "admin", "Z", true, true, emptyDenied, emptyDenied, CancellationToken.None);
         Assert.NotNull(runtime);
         Assert.Equal("ghost-deleted-rule", runtime!.BusinessRule?.DomainRule);
     }
