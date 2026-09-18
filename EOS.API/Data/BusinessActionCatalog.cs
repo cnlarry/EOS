@@ -126,6 +126,7 @@ public static class BusinessActionCatalog
         "line-require",
         "period-overlap",
         "no-cycle",
+        "custom-validation",
     };
 
     public static bool IsKnownEvent(string value) => Events.Contains(value);
