@@ -117,8 +117,6 @@ public static class DomainRuleMap
         [1204] = "bom-stru",
         [1616] = "pur-apply",
         [180206] = "hr-apply",
-        [180310] = "hr-wage-lz",
-        [1803101] = "hr-wage-lz",
         [1506] = "moc-bom-stru",
         [3014] = "cus-account",
         [180207] = "hr-worktime",

@@ -14,68 +14,6 @@ public static class HrDomainRules
     /// 仅校验，无落库副作用。
     /// </summary>
 
-    /// <summary>工资表（P_HR_WAGE_LZ）AfterSave：离职工资表先删同月旧档，再按每月每人一份校验。</summary>
-    public static async Task<SprocResult> HrWageAfterSaveAsync(
-        SqlConnection connection, SqlTransaction transaction,
-        string masterTable, string detailTable,
-        IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
-    {
-        if (pkColumns.Count < 2 || keyValues.Count < 2) return new(false, "工资表领域规则缺少主键。");
-        var type = (keyValues[0] ?? string.Empty).Trim();
-        var no = (keyValues[1] ?? string.Empty).Trim();
-        string? countMonth;
-        await using (var read = new SqlCommand(
-            $"SELECT LTRIM(RTRIM(ISNULL(COUNT_MONTH,''))) FROM dbo.[{masterTable}] WHERE WAGE_TYPE=@Type AND WAGE_NO=@No;",
-            connection, transaction))
-        {
-            read.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
-            read.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
-            countMonth = (string?)await read.ExecuteScalarAsync(token);
-        }
-        if (string.IsNullOrWhiteSpace(countMonth)) return new(true, null);
-        await using (var clean = new SqlCommand($"""
-            DELETE d FROM dbo.[{detailTable}] d
-            WHERE EXISTS (SELECT 1 FROM dbo.[{masterTable}] m
-                          WHERE m.COUNT_MONTH=@CountMonth AND m.WAGE_TYPE=d.WAGE_TYPE AND m.WAGE_NO=d.WAGE_NO)
-              AND NOT (d.WAGE_TYPE=@Type AND d.WAGE_NO=@No)
-              AND d.EMP_ID IN (SELECT EMP_ID FROM dbo.[{detailTable}] WHERE WAGE_TYPE=@Type AND WAGE_NO=@No);
-            """, connection, transaction))
-        {
-            clean.Parameters.Add("@CountMonth", SqlDbType.NChar, 6).Value = countMonth;
-            clean.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
-            clean.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
-            await clean.ExecuteNonQueryAsync(token);
-        }
-        var dup = await FindMonthDupAsync(connection, transaction,
-            $"""
-            SELECT d.EMP_ID FROM dbo.[{masterTable}] m
-            INNER JOIN dbo.[{detailTable}] d ON d.WAGE_TYPE=m.WAGE_TYPE AND d.WAGE_NO=m.WAGE_NO
-            WHERE m.COUNT_MONTH=@CountMonth
-            GROUP BY d.EMP_ID HAVING COUNT(*)>1;
-            """, type, no, countMonth, token,
-            line: r => r.GetString(0).Trim() + "\t");
-        return dup is null
-            ? new(true, null)
-            : new(false, "以下人员当月工资表重复 \r\n" + dup);
-    }
-
-    /// <summary>按（类型/单号/月份）收集明细行的辅助。</summary>
-
-
-    /// <summary>按（类型/单号/月份）收集明细行的辅助。</summary>
-    public static async Task<string?> FindMonthDupAsync(
-        SqlConnection connection, SqlTransaction transaction, string sql,
-        string type, string no, string countMonth, CancellationToken token, Func<SqlDataReader, string> line)
-    {
-        await using var cmd = new SqlCommand(sql, connection, transaction);
-        cmd.Parameters.Add("@Type", SqlDbType.NChar, 10).Value = type;
-        cmd.Parameters.Add("@No", SqlDbType.NChar, 20).Value = no;
-        cmd.Parameters.Add("@CountMonth", SqlDbType.NChar, 6).Value = countMonth;
-        await using var reader = await cmd.ExecuteReaderAsync(token);
-        var lines = new List<string>();
-        while (await reader.ReadAsync(token)) lines.Add(line(reader));
-        return lines.Count > 0 ? string.Join("\r\n", lines.Take(10)) : null;
-    }
 
     /// <summary>加班申请单（P_HR_APPLY）AfterSave：每日每人一单 + 不超过每月加班额。</summary>
 
