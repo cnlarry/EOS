@@ -30,6 +30,9 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     /// <summary>部署级默认行的作用域键。</summary>
     public const string DeploymentScope = "*";
 
+    /// <summary>余额表里"未指定位置"的哨兵值。</summary>
+    public const string SentinelLocationNo = "-";
+
     /// <summary>本版未实现的批次档位（必填 + 效期）：保存期一律拒绝。</summary>
     public const int UnimplementedBatchMode = 3;
 
@@ -174,7 +177,8 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     /// §3.10.3 要求的是"必须留痕"，best-effort 写在配置变更失败时不会有人发现。
     /// </summary>
     public async Task<SavePolicyResult> SaveAsync(
-        DepotStockPolicy candidate, string actor, bool confirmDestructive = false, CancellationToken token = default)
+        DepotStockPolicy candidate, string actor, bool confirmDestructive = false, string? relocateTo = null,
+        CancellationToken token = default)
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
@@ -242,6 +246,50 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         {
             await MergeLocationsIntoSentinelAsync(candidate.DepotId, connection, transaction, token);
             warnings.Add($"已完成归并：{pendingMerge} 组（料号/批次）分散在库位上的存量已并入『未指定位置』行，库别总量不变。");
+        }
+
+        // 升档归位（§3.10.2 的另一半）：档位一升，系统就按库位出入库，而还记在『未指定位置』上的货
+        // **按库位取不出来**（那个库位账上是 0）。调用方给了目标库位就代搬；没给就要求明确表态，
+        // 不能静默放过——否则仓库会在"已经开了位置管理"的错觉下卡住出库。
+        if (candidate.LocationMode > previous.LocationMode)
+        {
+            var sentinelPending = await CountSentinelRowsToRelocateAsync(candidate.DepotId, connection, transaction, token);
+            if (sentinelPending > 0)
+            {
+                if (string.IsNullOrWhiteSpace(relocateTo))
+                {
+                    if (!confirmDestructive)
+                    {
+                        return new SavePolicyResult(
+                            false,
+                            new[]
+                            {
+                                $"位置档位 {previous.LocationMode}→{candidate.LocationMode} 后系统将按库位出入库，"
+                                + $"而该库别还有 {sentinelPending} 组（料号/批次）的货记在『未指定位置』上——不先归位，这些货按库位取不出来。"
+                                + "两条出路：① 在请求里指定目标库位（`relocateTo`，例如收货暂存区），确认时由系统代搬；"
+                                + "② 带确认标志表示暂不归位，稍后用盘点按实际位置逐步归位。",
+                            },
+                            warnings,
+                            RequiresConfirmation: true);
+                    }
+                    warnings.Add(
+                        $"该库别还有 {sentinelPending} 组（料号/批次）的货记在『未指定位置』上：升档后按库位出库取不到它们，"
+                        + "请用盘点按实际位置逐步归位。");
+                }
+                else
+                {
+                    var target = relocateTo.Trim();
+                    if (string.Equals(target, SentinelLocationNo, StringComparison.Ordinal))
+                        return new SavePolicyResult(false, new[] { "目标库位不能是『未指定位置』本身。" }, warnings);
+                    if (!await LocationExistsAsync(candidate.DepotId, target, connection, transaction, token))
+                        return new SavePolicyResult(false,
+                            new[] { $"目标库位 {candidate.DepotId}/{target} 不存在或已停用，无法归位。" }, warnings);
+
+                    await RelocateSentinelAsync(candidate.DepotId, target, connection, transaction, token);
+                    warnings.Add(
+                        $"已完成归位：{sentinelPending} 组（料号/批次）记在『未指定位置』上的存量已改记到 {target}，库别总量不变。");
+                }
+            }
         }
 
         // 收紧混放限制时给出存量违规清单：按 §3.10.2 允许保存，但必须让人知道哪些库位要整改。
@@ -508,6 +556,80 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             "UPDATE dbo.INV_PRO_DEPOT SET QTY = 0 "
             + "WHERE DEPOT_ID=@depot AND LOCATION_NO <> N'-' AND ISNULL(QTY,0) <> 0;", connection, transaction);
         clear.Parameters.AddWithValue("@depot", depotId);
+        await clear.ExecuteNonQueryAsync(token);
+    }
+
+    /// <summary>该库别有多少组（料号 / 批次）的存量还压在哨兵行上——升档是否需要归位就看它。</summary>
+    private static async Task<int> CountSentinelRowsToRelocateAsync(
+        string depotId, SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    {
+        await using var command = new SqlCommand(
+            "SELECT COUNT(*) FROM (SELECT PRO_NO, BATCH_NO FROM dbo.INV_PRO_DEPOT "
+            + "WHERE DEPOT_ID=@depot AND LOCATION_NO = @sentinel AND ISNULL(QTY,0) <> 0 "
+            + "GROUP BY PRO_NO, BATCH_NO) x", connection, transaction);
+        command.Parameters.AddWithValue("@depot", depotId);
+        command.Parameters.AddWithValue("@sentinel", SentinelLocationNo);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(token));
+    }
+
+    private static async Task<bool> LocationExistsAsync(
+        string depotId, string locationNo, SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    {
+        await using var command = new SqlCommand(
+            "SELECT COUNT(*) FROM dbo.DEPOT_LOCATION WHERE DEPOT_ID=@depot AND LOCATION_NO=@loc AND STATUS=N'A'",
+            connection, transaction);
+        command.Parameters.AddWithValue("@depot", depotId);
+        command.Parameters.AddWithValue("@loc", locationNo);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(token)) > 0;
+    }
+
+    /// <summary>
+    /// 升档归位（§3.10.2）：把哨兵行的数量改记到**目标库位**上，哨兵行数量清零但**行保留**。
+    ///
+    /// 与降档归并（<see cref="MergeLocationsIntoSentinelAsync"/>）严格对称：同样按 **(料号, 批次)**
+    /// 分组、同样先补目标行、同样按 **MAX** 复制库别级三字段（绝不 SUM），因此 `SUM(QTY)` 逐库别守恒。
+    ///
+    /// 注意这是**一次账面认定**，不是实地发现：它把"未指定位置"的货**当作**就在目标库位。
+    /// 适用前提是"知道这批货大致在哪，或接受先认到一个默认位"；货散在各处时应当用盘点逐步归位。
+    /// </summary>
+    private static async Task RelocateSentinelAsync(
+        string depotId, string targetLocation, SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    {
+        await using (var ensure = new SqlCommand(
+            "INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, INIT_QTY, COST_PRICE, COST_AMOUNT) "
+            + "SELECT s.PRO_NO, s.DEPOT_ID, @target, s.BATCH_NO, 0, "
+            + "  (SELECT MAX(ISNULL(b.INIT_QTY,0)) FROM dbo.INV_PRO_DEPOT b WHERE b.PRO_NO=s.PRO_NO AND b.DEPOT_ID=s.DEPOT_ID), "
+            + "  (SELECT MAX(ISNULL(b.COST_PRICE,0)) FROM dbo.INV_PRO_DEPOT b WHERE b.PRO_NO=s.PRO_NO AND b.DEPOT_ID=s.DEPOT_ID), "
+            + "  (SELECT MAX(ISNULL(b.COST_AMOUNT,0)) FROM dbo.INV_PRO_DEPOT b WHERE b.PRO_NO=s.PRO_NO AND b.DEPOT_ID=s.DEPOT_ID) "
+            + "FROM (SELECT DISTINCT PRO_NO, DEPOT_ID, BATCH_NO FROM dbo.INV_PRO_DEPOT "
+            + "      WHERE DEPOT_ID=@depot AND LOCATION_NO = @sentinel) s "
+            + "WHERE NOT EXISTS (SELECT 1 FROM dbo.INV_PRO_DEPOT d WHERE d.PRO_NO=s.PRO_NO AND d.DEPOT_ID=s.DEPOT_ID "
+            + "                  AND d.LOCATION_NO=@target AND d.BATCH_NO=s.BATCH_NO);", connection, transaction))
+        {
+            ensure.Parameters.AddWithValue("@depot", depotId);
+            ensure.Parameters.AddWithValue("@target", targetLocation);
+            ensure.Parameters.AddWithValue("@sentinel", SentinelLocationNo);
+            await ensure.ExecuteNonQueryAsync(token);
+        }
+
+        await using (var move = new SqlCommand(
+            "UPDATE d SET d.QTY = ISNULL(d.QTY,0) + x.QTY "
+            + "FROM dbo.INV_PRO_DEPOT d JOIN (SELECT PRO_NO, BATCH_NO, SUM(ISNULL(QTY,0)) AS QTY "
+            + "  FROM dbo.INV_PRO_DEPOT WHERE DEPOT_ID=@depot AND LOCATION_NO=@sentinel GROUP BY PRO_NO, BATCH_NO) x "
+            + "  ON x.PRO_NO=d.PRO_NO AND x.BATCH_NO=d.BATCH_NO "
+            + "WHERE d.DEPOT_ID=@depot AND d.LOCATION_NO=@target;", connection, transaction))
+        {
+            move.Parameters.AddWithValue("@depot", depotId);
+            move.Parameters.AddWithValue("@target", targetLocation);
+            move.Parameters.AddWithValue("@sentinel", SentinelLocationNo);
+            await move.ExecuteNonQueryAsync(token);
+        }
+
+        await using var clear = new SqlCommand(
+            "UPDATE dbo.INV_PRO_DEPOT SET QTY = 0 "
+            + "WHERE DEPOT_ID=@depot AND LOCATION_NO=@sentinel AND ISNULL(QTY,0) <> 0;", connection, transaction);
+        clear.Parameters.AddWithValue("@depot", depotId);
+        clear.Parameters.AddWithValue("@sentinel", SentinelLocationNo);
         await clear.ExecuteNonQueryAsync(token);
     }
 

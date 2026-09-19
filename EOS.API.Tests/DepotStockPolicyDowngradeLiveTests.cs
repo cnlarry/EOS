@@ -154,7 +154,7 @@ public sealed class DepotStockPolicyDowngradeLiveTests
         {
             var result = await PolicyServiceFactory.Create(connectionString).SaveAsync(
                 new DepotStockPolicy(Depot, 0, "FIXED", 0, 0, true, true, true, false),
-                "adr27-test", confirmDestructive: confirm, CancellationToken.None);
+                "adr27-test", confirmDestructive: confirm, token: CancellationToken.None);
             return new Observed(result, await ReadBalancesAsync(), await ReadLocationModeAsync());
         }
         finally
