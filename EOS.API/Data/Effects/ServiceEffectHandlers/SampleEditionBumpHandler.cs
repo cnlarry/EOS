@@ -37,6 +37,18 @@ public sealed class SampleEditionBumpHandler : IEffectServiceHandler
         };
         if (context.ExecutionEvent is EffectEvent.ApproveEffect or EffectEvent.Save)
         {
+            // fail-closed：首次（EDITION 为空）且 PRODUCT 无对应行时拒绝。这次拒绝原先由
+            // SQL 文本里的 THROW 表达——业务拒绝被当成数据库异常穿透成 500，原始库错误进日志。
+            // 改成先判定再抛受控的业务拒绝（引擎映射为 400 BUSINESS_VALIDATION_FAILED）。
+            await using (var guard = new SqlCommand(BuildFirstPromotionGuardQuery(spec), context.Connection, context.Transaction))
+            {
+                guard.Parameters.AddWithValue("@pn", context.MasterKeyValues[0] ?? (object)DBNull.Value);
+                var blocked = Convert.ToInt32(await guard.ExecuteScalarAsync(token)) > 0;
+                if (blocked)
+                {
+                    throw new EffectValidationException("样品首次转正式：产品资料不存在，转正式需人工处理。");
+                }
+            }
             return await ServiceEffectSql.ExecAsync(
                 context.Connection, context.Transaction, BuildApproveStatement(spec), parameters, token);
         }
@@ -49,20 +61,31 @@ public sealed class SampleEditionBumpHandler : IEffectServiceHandler
     }
 
     /// <summary>
-    /// Approve: refuse a first-time sample without a product row (its creation chain
-    /// is unported), otherwise stamp the bumped edition. Both statements are static
-    /// text; only the document key travels as a parameter.
+    /// First-promotion guard: counts the document when it is a first-time sample
+    /// (empty edition) with no matching product row. Non-zero means the approval must
+    /// be refused — the legacy creation chain (row copy + P_WF_RUN) is unported.
+    /// </summary>
+    internal static string BuildFirstPromotionGuardQuery(SampleEditionBumpSpec spec)
+    {
+        var q = ServiceEffectSql.Q;
+        var trimmed = $"LTRIM(RTRIM(ISNULL(M.{q("EDITION")},'')))";
+        return $"SELECT COUNT(*) FROM dbo.{q(spec.MasterTable)} M WHERE M.{q(spec.MasterNoColumn)} = @pn "
+            + $"AND {trimmed} = '' "
+            + $"AND NOT EXISTS (SELECT 1 FROM dbo.{q("PRODUCT")} P WHERE P.{q(spec.MasterNoColumn)} = M.{q(spec.MasterNoColumn)});";
+    }
+
+    /// <summary>
+    /// Approve: stamp the bumped edition. The first-promotion refusal is decided in
+    /// C# (see <see cref="BuildFirstPromotionGuardQuery"/>) so that a business refusal
+    /// surfaces as a readable 400 instead of a database exception. Both statements are
+    /// static text; only the document key travels as a parameter.
     /// </summary>
     internal static string BuildApproveStatement(SampleEditionBumpSpec spec)
     {
         var q = ServiceEffectSql.Q;
         var trimmed = $"LTRIM(RTRIM(ISNULL(M.{q("EDITION")},'')))";
         var bumped = $"CAST(CAST(LTRIM(RTRIM(M.{q("EDITION")})) AS int) + 1 AS varchar(12))";
-        return $"IF EXISTS (SELECT 1 FROM dbo.{q(spec.MasterTable)} M WHERE M.{q(spec.MasterNoColumn)} = @pn "
-            + $"AND {trimmed} = '' "
-            + $"AND NOT EXISTS (SELECT 1 FROM dbo.{q("PRODUCT")} P WHERE P.{q(spec.MasterNoColumn)} = M.{q(spec.MasterNoColumn)})) "
-            + "THROW 50000, N'样品首次转正式：产品资料不存在，转正式需人工处理。', 1; "
-            + $"UPDATE M SET M.{q("EDITION")} = CASE WHEN {trimmed} = '' THEN '01' "
+        return $"UPDATE M SET M.{q("EDITION")} = CASE WHEN {trimmed} = '' THEN '01' "
             + $"WHEN LEN({bumped}) = 1 THEN '0' + {bumped} ELSE {bumped} END "
             + $"FROM dbo.{q(spec.MasterTable)} M WHERE M.{q(spec.MasterNoColumn)} = @pn";
     }
