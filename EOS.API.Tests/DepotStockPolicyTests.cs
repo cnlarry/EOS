@@ -22,16 +22,7 @@ public sealed class DepotStockPolicyTests
         return value!;
     }
 
-    private static DepotStockPolicyService CreateService()
-    {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:ErpDatabase"] = RequireConnection(),
-            })
-            .Build();
-        return new DepotStockPolicyService(new DbConnectionFactory(configuration));
-    }
+    private static DepotStockPolicyService CreateService() => PolicyServiceFactory.Create(RequireConnection());
 
     /// <summary>测试用构造：六个维度 + 月结两维（默认取部署级口径）。</summary>
     private static DepotStockPolicy Policy(
@@ -241,5 +232,192 @@ public sealed class DepotStockPolicyTests
         {
             await transaction.RollbackAsync(CancellationToken.None);
         }
+    }
+
+    // ---------- 变更审计与破坏性下调二次确认（真库） ----------
+
+    private const string AuditDepot = "ADR14AUDP";
+
+    /// <summary>
+    /// 策略变更必须留审计痕迹，且**记的是真实前后值**。审计与策略写在同一个事务里
+    /// （§3.10.3 要求的是"必须留痕"，best-effort 写在配置变更失败时不会有人发现）。
+    ///
+    /// 断言方式沿用仓库既有做法：取 `MAX(EVENT_ID)` 基线，只看基线之后本用例资源键的行——
+    /// 审计表是事实源，测试**不删审计行**。
+    /// </summary>
+    [Fact]
+    public async Task 策略变更写审计并记录前后档位值()
+    {
+        var connectionString = RequireConnection();
+        var service = CreateService();
+        try
+        {
+            await CleanupAsync(connectionString);
+            var baseline = await MaxEventIdAsync(connectionString);
+
+            // 新增：旧值为空
+            var created = await service.SaveAsync(Policy(AuditDepot, 3, "FIXED", 2, 0), "adr14-audit");
+            Assert.True(created.Saved, string.Join("；", created.Errors));
+
+            var createEvent = await ReadAuditAsync(connectionString, AuditDepot, baseline);
+            Assert.NotNull(createEvent);
+            Assert.Equal("CREATE", createEvent!.Action);
+            Assert.Contains("库存策略新增", createEvent.Summary);
+            Assert.Contains(createEvent.Changes, c => c.Field == "LOCATION_MODE" && c.Old is null && c.New == "3");
+            Assert.Contains(createEvent.Changes, c => c.Field == "BATCH_MODE" && c.Old is null && c.New == "2");
+
+            // 更新：只记**真正变化**的维度，且带前后值。
+            // 这里刻意只改存放方式：任何档位**降低**都会触发二次确认（见下一个用例），
+            // 用它来验"只记变化维度"会把两件事混在一起。
+            var updateBaseline = await MaxEventIdAsync(connectionString);
+            var updated = await service.SaveAsync(Policy(AuditDepot, 3, "RANDOM", 2, 0), "adr14-audit");
+            Assert.True(updated.Saved, string.Join("；", updated.Errors));
+
+            var updateEvent = await ReadAuditAsync(connectionString, AuditDepot, updateBaseline);
+            Assert.NotNull(updateEvent);
+            Assert.Equal("UPDATE", updateEvent!.Action);
+            var storage = Assert.Single(updateEvent.Changes, c => c.Field == "STORAGE_MODE");
+            Assert.Equal("FIXED", storage.Old);
+            Assert.Equal("RANDOM", storage.New);
+            // 没变的维度不该出现在审计里（否则真实变更会被噪声淹没）
+            Assert.DoesNotContain(updateEvent.Changes, c => c.Field == "LOCATION_MODE");
+            Assert.DoesNotContain(updateEvent.Changes, c => c.Field == "BATCH_MODE");
+        }
+        finally
+        {
+            await CleanupAsync(connectionString);
+        }
+    }
+
+    /// <summary>
+    /// 档位下调是破坏性变更：未确认时**不写入任何改动**（fail-closed），确认后才落库。
+    /// 门槛放在服务端而不是界面——直连 API 同样绕不过去。
+    /// </summary>
+    [Fact]
+    public async Task 档位下调需二次确认且未确认时不写入任何改动()
+    {
+        var connectionString = RequireConnection();
+        var service = CreateService();
+        try
+        {
+            await CleanupAsync(connectionString);
+            var seeded = await service.SaveAsync(Policy(AuditDepot, 3, "FIXED", 2, 0), "adr14-audit");
+            Assert.True(seeded.Saved, string.Join("；", seeded.Errors));
+
+            var baseline = await MaxEventIdAsync(connectionString);
+            var unconfirmed = await service.SaveAsync(Policy(AuditDepot, 1, "FIXED", 0, 0), "adr14-audit");
+
+            Assert.False(unconfirmed.Saved);
+            Assert.True(unconfirmed.RequiresConfirmation);
+            Assert.Contains(unconfirmed.Errors, message => message.Contains("二次确认"));
+            Assert.Contains(unconfirmed.Errors, message => message.Contains("位置档位 3→1"));
+            Assert.Contains(unconfirmed.Errors, message => message.Contains("批次档位 2→0"));
+
+            // 未确认 = 什么都没发生：库里的行没变，审计也没有多出一条
+            var stored = (await service.ListAsync()).Single(row => row.DepotId == AuditDepot);
+            Assert.Equal(3, stored.LocationMode);
+            Assert.Equal(2, stored.BatchMode);
+            Assert.Null(await ReadAuditAsync(connectionString, AuditDepot, baseline));
+
+            // 确认后放行
+            var confirmed = await service.SaveAsync(Policy(AuditDepot, 1, "FIXED", 0, 0), "adr14-audit", confirmDestructive: true);
+            Assert.True(confirmed.Saved, string.Join("；", confirmed.Errors));
+            Assert.False(confirmed.RequiresConfirmation);
+            var afterConfirm = (await service.ListAsync()).Single(row => row.DepotId == AuditDepot);
+            Assert.Equal(1, afterConfirm.LocationMode);
+            Assert.Equal(0, afterConfirm.BatchMode);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString);
+        }
+    }
+
+    /// <summary>升档（或平级重存）不是破坏性操作，不该向用户要求确认。</summary>
+    [Fact]
+    public async Task 升档不需要二次确认()
+    {
+        var connectionString = RequireConnection();
+        var service = CreateService();
+        try
+        {
+            await CleanupAsync(connectionString);
+            var seeded = await service.SaveAsync(Policy(AuditDepot, 1, "FIXED", 1, 0), "adr14-audit");
+            Assert.True(seeded.Saved, string.Join("；", seeded.Errors));
+
+            var upgraded = await service.SaveAsync(Policy(AuditDepot, 3, "FIXED", 2, 0), "adr14-audit");
+            Assert.True(upgraded.Saved, string.Join("；", upgraded.Errors));
+            Assert.False(upgraded.RequiresConfirmation);
+
+            // 平级重存同样不要求确认
+            var same = await service.SaveAsync(Policy(AuditDepot, 3, "RANDOM", 2, 0), "adr14-audit");
+            Assert.True(same.Saved, string.Join("；", same.Errors));
+            Assert.False(same.RequiresConfirmation);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString);
+        }
+    }
+
+    private static async Task CleanupAsync(string connectionString)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var cleanup = new SqlCommand("DELETE FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID=@d", connection);
+        cleanup.Parameters.AddWithValue("@d", AuditDepot);
+        await cleanup.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<long> MaxEventIdAsync(string connectionString)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT", connection);
+        return Convert.ToInt64(await command.ExecuteScalarAsync());
+    }
+
+    private sealed record AuditedChange(string Field, string? Old, string? New);
+
+    private sealed record AuditedEvent(string Action, string Summary, IReadOnlyList<AuditedChange> Changes);
+
+    private static async Task<AuditedEvent?> ReadAuditAsync(string connectionString, string depot, long baseline)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        long eventId;
+        string action;
+        string summary;
+        await using (var command = new SqlCommand(
+            "SELECT EVENT_ID, ACTION, ISNULL(SUMMARY, N'') FROM dbo.AUDIT_EVENT "
+            + "WHERE EVENT_ID > @baseline AND RESOURCE_TYPE = N'DEPOT_STOCK_POLICY' AND RESOURCE_KEY = @key",
+            connection))
+        {
+            command.Parameters.AddWithValue("@baseline", baseline);
+            command.Parameters.AddWithValue("@key", depot);
+            await using var reader = await command.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+                return null;
+            eventId = reader.GetInt64(0);
+            action = reader.GetString(1).Trim();
+            summary = reader.GetString(2);
+        }
+
+        var changes = new List<AuditedChange>();
+        await using (var command = new SqlCommand(
+            "SELECT FIELD_NAME, OLD_VALUE, NEW_VALUE FROM dbo.AUDIT_FIELD_CHANGE WHERE EVENT_ID = @id ORDER BY FIELD_NAME",
+            connection))
+        {
+            command.Parameters.AddWithValue("@id", eventId);
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                changes.Add(new AuditedChange(
+                    reader.GetString(0).Trim(),
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2)));
+        }
+
+        return new AuditedEvent(action, summary, changes);
     }
 }

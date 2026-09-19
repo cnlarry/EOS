@@ -37,12 +37,7 @@ public sealed class BatchModeTierLiveTests
 
     /// <summary>策略求值服务：档位判据必须走它，本用例不自行拼默认值。</summary>
     private static DepotStockPolicyService Policies(string connectionString) =>
-        new(new DbConnectionFactory(new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:ErpDatabase"] = connectionString,
-            })
-            .Build()));
+        PolicyServiceFactory.Create(connectionString);
 
     [Fact]
     public async Task 档0把非批管料件的批号归零()

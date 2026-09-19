@@ -1064,7 +1064,7 @@ public sealed class EffectShadowRunner
             new EffectFormulaExecutor(),
             new IEffectServiceHandler[]
             {
-                new InventoryMoveHandler(new EffectPhysicalColumns(), new DepotStockPolicyService(connections)),
+                new InventoryMoveHandler(new EffectPhysicalColumns(), new DepotStockPolicyService(connections, auditWriter)),
                 new CallbackRepriceHandler(),
                 new PaymentDateCalcHandler(),
                 new ClientPriceSyncHandler(),

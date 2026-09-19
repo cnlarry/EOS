@@ -1,3 +1,4 @@
+using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
@@ -24,7 +25,7 @@ public sealed record DepotStockPolicy(
 /// 求值必须收口在这里 —— 各处自行拼装默认值会让"库别无行时取什么"出现多个口径，而这类
 /// 分歧只在某个库别真的没有配置行时才显形。
 /// </summary>
-public sealed class DepotStockPolicyService(DbConnectionFactory connections)
+public sealed class DepotStockPolicyService(DbConnectionFactory connections, WorkbenchAuditWriter auditWriter)
 {
     /// <summary>部署级默认行的作用域键。</summary>
     public const string DeploymentScope = "*";
@@ -136,11 +137,16 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections)
             ? "月结维度只在部署级生效，库别行不能覆盖（跨仓粒度不一致会让汇总重复计数或漏计）。"
             : null;
 
-    /// <summary>保存一条策略行的结果：硬性规则违例即拒存，软性规则作为告警返回。</summary>
+    /// <summary>
+    /// 保存一条策略行的结果：硬性规则违例即拒存，软性规则作为告警返回。
+    /// <paramref name="RequiresConfirmation"/> 为真时表示**这是一次破坏性档位下调且尚未确认**，
+    /// 调用方确认后应原样重发并带上确认标志（区别于"参数非法"）。
+    /// </summary>
     public sealed record SavePolicyResult(
         bool Saved,
         IReadOnlyList<string> Errors,
-        IReadOnlyList<string> Warnings);
+        IReadOnlyList<string> Warnings,
+        bool RequiresConfirmation = false);
 
     /// <summary>列出全部策略行（部署级默认 + 各库别覆盖）。</summary>
     public async Task<IReadOnlyList<DepotStockPolicy>> ListAsync(CancellationToken token = default)
@@ -162,9 +168,13 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections)
     /// <summary>
     /// 保存一条策略行。硬性组合规则（R-C1/C2/C3/C4）与月结作用域违规一律**拒存**
     /// （fail-closed：服务端拒绝，不依赖界面拦截）；软性规则作为告警随结果返回，配置照常保存。
+    ///
+    /// 两处**服务端**（而非界面）强制的门槛：① 档位下调属破坏性变更，必须显式二次确认；
+    /// ② 全部变更写 `AUDIT_EVENT` + `AUDIT_FIELD_CHANGE`（含变更前后值），且**与策略写在同一个事务里**——
+    /// §3.10.3 要求的是"必须留痕"，best-effort 写在配置变更失败时不会有人发现。
     /// </summary>
     public async Task<SavePolicyResult> SaveAsync(
-        DepotStockPolicy candidate, string actor, CancellationToken token = default)
+        DepotStockPolicy candidate, string actor, bool confirmDestructive = false, CancellationToken token = default)
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
@@ -188,9 +198,22 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections)
         if (errors.Count > 0)
             return new SavePolicyResult(false, errors, warnings);
 
+        // 旧行（可能不存在）与"生效中的旧策略"是两回事：审计要记的是前者的真实前后值，
+        // 而档位下调 / 混放收紧的判据要用后者（库别无行时以部署级默认为基准）。
+        var existing = await ReadExistingAsync(candidate.DepotId, connection, transaction, token);
+        var previous = existing ?? deployment;
+
+        if (IsDestructiveDowngrade(candidate, previous) && !confirmDestructive)
+        {
+            var detail = DescribeDowngrade(candidate, previous);
+            return new SavePolicyResult(
+                false,
+                new[] { $"档位下调属于破坏性变更（{detail}），需二次确认后重发并带上确认标志。确认前不写入任何改动。" },
+                warnings,
+                RequiresConfirmation: true);
+        }
+
         // 收紧混放限制时给出存量违规清单：按 §3.10.2 允许保存，但必须让人知道哪些库位要整改。
-        // 基准是**生效中的旧策略**（库别行存在则取它自己，否则取部署级默认），与"整行覆盖"同口径。
-        var previous = await ResolveAsync(candidate.DepotId, connection, transaction, token);
         warnings.AddRange(await ListMixedLocationWarningsAsync(candidate, previous, connection, transaction, token));
 
         // 部署级行的月结维度由它自己定义；库别行一律写入部署级取值（求值也只读部署级）。
@@ -223,8 +246,93 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections)
             await upsert.ExecuteNonQueryAsync(token);
         }
 
+        // 落库的月结维度是上面算出来的实际写入值，审计必须记实际值而不是请求里的值。
+        var stored = new DepotStockPolicy(
+            candidate.DepotId, candidate.LocationMode, candidate.StorageMode, candidate.BatchMode, candidate.CapacityMode,
+            candidate.MixProduct, candidate.MixBatch, monthBatch, monthLocation);
+        await auditWriter.WriteEventAsync(
+            connection, transaction, StockPolicyModuleId, candidate.DepotId,
+            existing is null ? "CREATE" : "UPDATE",
+            DescribeChange(existing, stored),
+            actor, "DEPOT_STOCK_POLICY", result: 1,
+            BuildFieldChanges(existing, stored), token);
+
         await transaction.CommitAsync(token);
         return new SavePolicyResult(true, Array.Empty<string>(), warnings);
+    }
+
+    /// <summary>策略配置所在的模块号（110310 库存策略）；审计的 <c>MODULE_ID</c> 用它。</summary>
+    public const int StockPolicyModuleId = 110310;
+
+    /// <summary>
+    /// 破坏性下调的判据：位置档位或批次档位**降低**。
+    /// 按 §3.10.2 这两种下调都会让已有库存"看着还在、实际按新档位用不了"，所以要先确认——
+    /// 注意这里是"要确认"而不是"拒绝"：档位下调本身是合法操作。
+    /// </summary>
+    public static bool IsDestructiveDowngrade(DepotStockPolicy candidate, DepotStockPolicy previous) =>
+        candidate.LocationMode < previous.LocationMode || candidate.BatchMode < previous.BatchMode;
+
+    private static string DescribeDowngrade(DepotStockPolicy candidate, DepotStockPolicy previous)
+    {
+        var parts = new List<string>();
+        if (candidate.LocationMode < previous.LocationMode)
+            parts.Add($"位置档位 {previous.LocationMode}→{candidate.LocationMode}");
+        if (candidate.BatchMode < previous.BatchMode)
+            parts.Add($"批次档位 {previous.BatchMode}→{candidate.BatchMode}");
+        return string.Join("、", parts);
+    }
+
+    /// <summary>读取该作用域**自身**的策略行；不存在返回 null（区别于"回落部署级默认"）。</summary>
+    private static async Task<DepotStockPolicy?> ReadExistingAsync(
+        string depotId, SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    {
+        await using var command = new SqlCommand(
+            "SELECT DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH, "
+            + "MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID = @depot",
+            connection, transaction);
+        command.Parameters.AddWithValue("@depot", depotId);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        return await reader.ReadAsync(token) ? Read(reader) : null;
+    }
+
+    /// <summary>只记录**真正变化**的维度：新增行记全部（旧值为空），更新行记差异，避免审计被噪声淹没。</summary>
+    private static IReadOnlyList<AuditFieldChange> BuildFieldChanges(DepotStockPolicy? before, DepotStockPolicy after)
+    {
+        var changes = new List<AuditFieldChange>();
+        void Compare(string field, object? oldValue, object? newValue)
+        {
+            var oldText = Format(oldValue);
+            var newText = Format(newValue);
+            if (before is not null && string.Equals(oldText, newText, StringComparison.Ordinal))
+                return;
+            changes.Add(new AuditFieldChange(field, before is null ? null : oldText, newText, null));
+        }
+
+        Compare("LOCATION_MODE", before?.LocationMode, after.LocationMode);
+        Compare("STORAGE_MODE", before?.StorageMode, after.StorageMode);
+        Compare("BATCH_MODE", before?.BatchMode, after.BatchMode);
+        Compare("CAPACITY_MODE", before?.CapacityMode, after.CapacityMode);
+        Compare("MIX_PRODUCT", before?.MixProduct, after.MixProduct);
+        Compare("MIX_BATCH", before?.MixBatch, after.MixBatch);
+        Compare("MONTH_CLOSE_BY_BATCH", before?.MonthCloseByBatch, after.MonthCloseByBatch);
+        Compare("MONTH_CLOSE_BY_LOCATION", before?.MonthCloseByLocation, after.MonthCloseByLocation);
+        return changes;
+    }
+
+    private static string Format(object? value) => value switch
+    {
+        null => string.Empty,
+        bool flag => flag ? "1" : "0",
+        _ => value.ToString() ?? string.Empty,
+    };
+
+    private static string DescribeChange(DepotStockPolicy? before, DepotStockPolicy after)
+    {
+        var prefix = before is null ? "库存策略新增" : "库存策略更新";
+        var changes = BuildFieldChanges(before, after);
+        return changes.Count == 0
+            ? $"{prefix}（{after.DepotId}）：无字段变化"
+            : $"{prefix}（{after.DepotId}）：" + string.Join("、", changes.Select(c => $"{c.FieldName} {c.OldValue}→{c.NewValue}"));
     }
 
     /// <summary>R-S2 的判据：该库别下存在批管料件（有库存余额行）而批次档位为 0。

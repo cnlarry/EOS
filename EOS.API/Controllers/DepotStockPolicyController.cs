@@ -53,9 +53,11 @@ public sealed class DepotStockPolicyController(
             request.MonthCloseByBatch,
             request.MonthCloseByLocation);
 
-        var result = await service.SaveAsync(candidate, userContext.EmployeeName, token);
+        var result = await service.SaveAsync(candidate, userContext.EmployeeName, request.ConfirmDowngrade, token);
 
-        var payload = new DepotStockPolicySaveResultDto(result.Saved, result.Errors, result.Warnings);
+        var payload = new DepotStockPolicySaveResultDto(result.Saved, result.Errors, result.Warnings, result.RequiresConfirmation);
+        // 需要二次确认时同样返回 400，但响应里 requiresConfirmation=true 是机器可判的信号：
+        // 调用方据此弹确认，确认后原样重发并带上 confirmDowngrade=true。
         return result.Saved ? Ok(payload) : BadRequest(payload);
     }
 
@@ -96,10 +98,14 @@ public sealed record SaveDepotStockPolicyRequest(
     bool MixProduct,
     bool MixBatch,
     bool MonthCloseByBatch,
-    bool MonthCloseByLocation);
+    bool MonthCloseByLocation,
+    /// <summary>档位下调（位置 / 批次档位降低）的二次确认标志；不确认则拒存且不写入任何改动。</summary>
+    bool ConfirmDowngrade = false);
 
-/// <summary>保存结果：<c>Saved=false</c> 时 <c>Errors</c> 说明被拒原因；<c>Warnings</c> 为软性提示（可保存）。</summary>
+/// <summary>保存结果：<c>Saved=false</c> 时 <c>Errors</c> 说明被拒原因；<c>Warnings</c> 为软性提示（可保存）。
+/// <c>RequiresConfirmation=true</c> 表示这是一次尚未确认的破坏性档位下调。</summary>
 public sealed record DepotStockPolicySaveResultDto(
     bool Saved,
     IReadOnlyList<string> Errors,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    bool RequiresConfirmation);
