@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { Link, MemoryRouter, Route, Routes, createMemoryRouter, RouterProvider, useLocation, type RouteObject } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -240,6 +240,149 @@ describe('AppShell', () => {
     // 气泡向右弹出，需要侧栏放开 overflow，否则菜单会被 72px 宽度裁掉
     expect(document.querySelector('.erp-sidebar.erp-menu-open')).not.toBeNull()
     expect(screen.getByRole('menuitem', { name: '个人设置' })).toBeInTheDocument()
+  })
+
+  it('展开中的分组及其祖先保持激活态，收起后恢复', () => {
+    renderShell('/dashboard')
+    const group = screen.getByRole('button', { name: '销售管理' })
+    expect(group.className).not.toContain('group-open')
+
+    fireEvent.click(group)
+    expect(group.className).toContain('group-open')
+
+    fireEvent.click(screen.getByRole('button', { name: '销售子组' }))
+    // 子级展开后祖先仍高亮，看得出当前展开分支挂在谁下面
+    expect(group.className).toContain('group-open')
+    expect(screen.getByRole('button', { name: '销售子组' }).className).toContain('group-open')
+
+    fireEvent.click(screen.getByRole('button', { name: '销售子组' }))
+    expect(screen.getByRole('button', { name: '销售子组' }).className).not.toContain('group-open')
+    expect(group.className).toContain('group-open')
+  })
+
+  it('折叠态浮层按触发项位置落在可视区内，行数超上限改为内部滚动', () => {
+    const longNav: AppBootstrap = {
+      ...bootstrap,
+      navigation: [
+        { id: 'dashboard', label: '首页', route: '/dashboard', icon: 'dashboard' },
+        {
+          id: 'big',
+          label: '大数据',
+          icon: 'sales',
+          children: Array.from({ length: 12 }, (_, index) => ({
+            id: `m${index}`,
+            label: `模块${index + 1}`,
+            route: `/big/${index}`,
+            icon: 'sales',
+          })),
+        },
+      ],
+    }
+    renderShell('/dashboard', { bootstrap: longNav })
+    fireEvent.click(screen.getByRole('button', { name: '折叠导航' }))
+
+    // 触发项贴近视口下沿：浮层整体上移，不越过屏幕底部
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      top: 740, bottom: 772, left: 16, right: 56, width: 40, height: 32, x: 16, y: 740,
+      toJSON: () => ({}),
+    } as DOMRect)
+    fireEvent.click(screen.getByRole('button', { name: '大数据' }))
+
+    const flyout = screen.getByRole('menu', { name: '大数据' })
+    const top = Number.parseFloat(flyout.style.top)
+    const maxHeight = Number.parseFloat(flyout.style.maxHeight)
+    expect(top).toBeGreaterThanOrEqual(8)
+    expect(top + maxHeight).toBeLessThanOrEqual(window.innerHeight - 8)
+    // 12 个子项不整块铺开：最多直接显示 10 行（行高 30px），其余走内部滚动
+    expect(maxHeight).toBeLessThan(12 * 30)
+    spy.mockRestore()
+  })
+
+  it('折叠态点一级菜单图标只弹出第一层，侧栏保持折叠', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('button', { name: '折叠导航' }))
+    expect(document.documentElement.classList.contains('erp-sidebar-collapsed')).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: '销售管理' }))
+    // 关键：不再自动展开侧栏
+    expect(document.documentElement.classList.contains('erp-sidebar-collapsed')).toBe(true)
+    const flyout = screen.getByRole('menu', { name: '销售管理' })
+    expect(within(flyout).getByRole('menuitem', { name: '销售订单' })).toBeInTheDocument()
+    // 只列当前一层的分组，不把整棵子树一次铺开
+    expect(within(flyout).getByRole('menuitem', { name: '销售子组' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: '分组模块' })).not.toBeInTheDocument()
+  })
+
+  it('悬停分组项逐级展开下一层（N 级菜单）', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('button', { name: '折叠导航' }))
+    fireEvent.click(screen.getByRole('button', { name: '销售管理' }))
+
+    fireEvent.mouseEnter(within(screen.getByRole('menu', { name: '销售管理' })).getByRole('menuitem', { name: '销售子组' }))
+    const subMenu = screen.getByRole('menu', { name: '销售子组' })
+    expect(within(subMenu).getByRole('menuitem', { name: '销售子页' })).toBeInTheDocument()
+    expect(within(subMenu).getByRole('menuitem', { name: '分组模块' })).toBeInTheDocument()
+    // 父层保留在屏幕上，形成级联
+    expect(screen.getByRole('menu', { name: '销售管理' })).toBeInTheDocument()
+  })
+
+  it('点浮层最深一层的菜单项直达页面并收起全部浮层，侧栏仍折叠', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('button', { name: '折叠导航' }))
+    fireEvent.click(screen.getByRole('button', { name: '销售管理' }))
+    fireEvent.mouseEnter(screen.getByRole('menuitem', { name: '销售子组' }))
+
+    fireEvent.click(screen.getByRole('menuitem', { name: '分组模块' }))
+    expect(screen.getByText('WB')).toBeInTheDocument()
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(document.documentElement.classList.contains('erp-sidebar-collapsed')).toBe(true)
+  })
+
+  it('浮层再点图标、按 Esc、点外部均可收起', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('button', { name: '折叠导航' }))
+    const groupToggle = screen.getByRole('button', { name: '销售管理' })
+
+    fireEvent.click(groupToggle)
+    expect(screen.getByRole('menu', { name: '销售管理' })).toBeInTheDocument()
+    fireEvent.click(groupToggle)
+    expect(screen.queryByRole('menu', { name: '销售管理' })).not.toBeInTheDocument()
+
+    fireEvent.click(groupToggle)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('menu', { name: '销售管理' })).not.toBeInTheDocument()
+
+    fireEvent.click(groupToggle)
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('menu', { name: '销售管理' })).not.toBeInTheDocument()
+  })
+
+  it('浮层内滚动保持打开，浮层外的滚动才收起', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('button', { name: '折叠导航' }))
+    fireEvent.click(screen.getByRole('button', { name: '销售管理' }))
+    const flyout = screen.getByRole('menu', { name: '销售管理' })
+
+    // 菜单项多时需要在浮层内部滚动查看，滚动条一动不该把菜单关掉
+    fireEvent.scroll(flyout)
+    expect(screen.getByRole('menu', { name: '销售管理' })).toBeInTheDocument()
+    fireEvent.scroll(flyout.querySelector('.erp-nav-flyout-item')!)
+    expect(screen.getByRole('menu', { name: '销售管理' })).toBeInTheDocument()
+
+    // 侧栏导航滚动会让触发项位置失效，这时才收起
+    fireEvent.scroll(document.querySelector('.navbar-nav')!)
+    expect(screen.queryByRole('menu', { name: '销售管理' })).not.toBeInTheDocument()
+  })
+
+  it('侧栏展开后浮层收起，恢复树形展开行为', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('button', { name: '折叠导航' }))
+    fireEvent.click(screen.getByRole('button', { name: '销售管理' }))
+    expect(screen.getByRole('menu', { name: '销售管理' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '展开导航' }))
+    expect(screen.queryByRole('menu', { name: '销售管理' })).not.toBeInTheDocument()
+    expect(document.documentElement.classList.contains('erp-sidebar-collapsed')).toBe(false)
   })
 
   it('侧边栏折叠切换', () => {
