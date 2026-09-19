@@ -12,6 +12,11 @@ namespace EOS.API.Tests;
 /// hand-written reference query. Scenario dimensions are sampled from live data
 /// so the check stays valid as data evolves. Requires a real database connection.
 /// </summary>
+/// <remarks>
+/// 加入真库串行集合：本类读余额表做合计对账，与"事务内建数/删数"的真库用例并行时
+/// 会读到被锁行或半成品数据，表现为与代码无关的偶发失败（隔离跑稳定通过）。
+/// </remarks>
+[Collection("live-database")]
 public sealed class MetricReconciliationTests
 {
     private const string ConnectionStringEnvironmentVariable = "EOS_ERP_TEST_CONNECTION";
