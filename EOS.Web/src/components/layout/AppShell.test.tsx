@@ -200,13 +200,46 @@ describe('AppShell', () => {
     expect(screen.getByText('没有匹配的菜单')).toBeInTheDocument()
   })
 
-  it('主题切换（用户菜单内）写入 data-bs-theme 与 localStorage', () => {
+  it('显示模式切换以单图标按钮显示在侧栏底部，点击写入 data-bs-theme 与 localStorage', () => {
     renderShell('/dashboard')
     expect(document.documentElement.getAttribute('data-bs-theme')).toBe('light')
-    openUserMenu()
-    fireEvent.click(screen.getByRole('menuitem', { name: '深色模式' }))
+    // 按钮始终展示"切换后"的模式：当前浅色 → 显示切换到深色
+    fireEvent.click(screen.getByRole('button', { name: '切换到深色模式' }))
     expect(document.documentElement.getAttribute('data-bs-theme')).toBe('dark')
     expect(localStorage.getItem('erp-theme')).toBe('dark')
+
+    fireEvent.click(screen.getByRole('button', { name: '切换到浅色模式' }))
+    expect(document.documentElement.getAttribute('data-bs-theme')).toBe('light')
+    expect(localStorage.getItem('erp-theme')).toBe('light')
+  })
+
+  it('用户菜单只保留个人设置与退出登录（模式切换已移出）', () => {
+    renderShell('/dashboard')
+    openUserMenu()
+    expect(screen.getByRole('menuitem', { name: '个人设置' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '退出登录' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: '深色模式' })).not.toBeInTheDocument()
+  })
+
+  it('折叠态下模式切换按钮保留在同一位置，仍可切换主题', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('button', { name: '折叠导航' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '切换到深色模式' }))
+    expect(document.documentElement.getAttribute('data-bs-theme')).toBe('dark')
+    expect(localStorage.getItem('erp-theme')).toBe('dark')
+    // 切换后按钮文案随之翻转
+    fireEvent.click(screen.getByRole('button', { name: '切换到浅色模式' }))
+    expect(document.documentElement.getAttribute('data-bs-theme')).toBe('light')
+  })
+
+  it('折叠态打开用户菜单：放开侧栏裁剪，菜单项可用', () => {
+    renderShell('/dashboard')
+    fireEvent.click(screen.getByRole('button', { name: '折叠导航' }))
+    openUserMenu()
+    // 气泡向右弹出，需要侧栏放开 overflow，否则菜单会被 72px 宽度裁掉
+    expect(document.querySelector('.erp-sidebar.erp-menu-open')).not.toBeNull()
+    expect(screen.getByRole('menuitem', { name: '个人设置' })).toBeInTheDocument()
   })
 
   it('侧边栏折叠切换', () => {
