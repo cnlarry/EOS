@@ -105,6 +105,21 @@ describe('workspaceReducer', () => {
     expect(workspaceReducer(state, { type: 'sync', url: '/dashboard', label: '首页' })).toBe(state)
   })
 
+  it('标题解析不出来时保持原标签文字，不被空标题覆盖', () => {
+    const state: WorkspaceState = { tabs: [{ id: 't1', url: '/p1', label: '采购订单', mounted: true }], activeId: 't1', hint: null }
+    const next = workspaceReducer(state, { type: 'sync', url: '/p1', label: '' })
+    expect(next.tabs[0].label).toBe('采购订单')
+  })
+
+  it('模块域路由（报表/明细查询/打印等）也能解析出模块 ID', () => {
+    expect(moduleIdOfUrl('/reports/1606')).toBe('1606')
+    expect(moduleIdOfUrl('/detail-query/1606?x=1')).toBe('1606')
+    expect(moduleIdOfUrl('/print/1606')).toBe('1606')
+    expect(moduleIdOfUrl('/layout-designer/1606')).toBe('1606')
+    expect(moduleIdOfUrl('/legacy/modules/1606')).toBe('1606')
+    expect(moduleIdOfUrl('/dashboard')).toBeNull()
+  })
+
   it('隐藏标签的导航只改自身地址', () => {
     const state: WorkspaceState = { tabs: [
       { id: 't1', url: '/dashboard', label: '首页', mounted: true },

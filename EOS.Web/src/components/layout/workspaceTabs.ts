@@ -91,11 +91,18 @@ export function tabUrlOf(location: { pathname: string; search: string; hash: str
   return `${location.pathname}${location.search}${location.hash}`
 }
 
-/** 地址中的工作台模块 ID（非工作台地址返回 null）。 */
+/** 地址中的模块 ID：工作台/报表/明细查询/打印/版式设计/旧模块这几类模块域路由都算。 */
 export function moduleIdOfUrl(url: string): string | null {
-  const matched = /\/workbench\/(\d+)/.exec(url)
+  const matched = /^\/(?:workbench|reports|detail-query|print|layout-designer|legacy\/modules)\/(\d+)/.exec(url.split(/[?#]/)[0])
   return matched ? matched[1] : null
 }
+
+/**
+ * 标题暂不可解析时的占位文案（如页面尚未上抛标题、且该地址不在导航树里）。
+ * 它只用于"从零开始"的场合，**不得用来覆盖标签上已有的标题**——否则一次上下文未就绪
+ * 就会把标签永久改成占位文案。
+ */
+export const UNRESOLVED_TAB_LABEL = '页面'
 
 /** 跨模块关联浏览的来源模块：`from` 须为纯数字模块 ID，且不等于目标模块自身。 */
 export function fromModuleIdOf(url: string, moduleId: string | null): string | null {
@@ -110,10 +117,14 @@ function newTab(id: string, url: string, label: string, fromModuleId: string | u
   return { id, url, label, fromModuleId, mounted }
 }
 
-/** 只改标题/来源，内容相同时保持原对象引用（避免无谓重渲染）。 */
+/**
+ * 只改标题/来源，内容相同时保持原对象引用（避免无谓重渲染）。
+ * 标题为空表示"本次没解析出标题"，保留原标题——标签只在解码出真实标题时才被改写。
+ */
 function relabel(tab: WorkspaceTab, label: string, fromModuleId?: string): WorkspaceTab {
-  if (tab.label === label && tab.fromModuleId === fromModuleId) return tab
-  return { ...tab, label, fromModuleId }
+  const nextLabel = label || tab.label
+  if (nextLabel === tab.label && tab.fromModuleId === fromModuleId) return tab
+  return { ...tab, label: nextLabel, fromModuleId }
 }
 
 /** 标记已挂载（内容未变时保持原对象引用）。 */

@@ -40,6 +40,7 @@ import {
   restoreWorkspaceState,
   serializeTabs,
   tabUrlOf,
+  UNRESOLVED_TAB_LABEL,
   workspaceReducer,
   workspaceTabsEnabled,
   type TabCrumb,
@@ -303,6 +304,15 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   const allLeaves = useMemo(() => flattenLeaves(navigation), [navigation])
   const activeMenu = allLeaves.find((item) => item.route === crumbBasePath)
   const activeGroup = navigation.find((item) => item.children?.some((child) => isSubtreeActive(child, crumbBasePath)))
+  /**
+   * 模块域路由（报表/明细查询/打印/版式设计/旧模块等）在导航树里没有同名叶子，
+   * 但它们的模块 ID 指向的模块通常有；据此兜底出可读标题，避免退化成占位文案。
+   */
+  const moduleLabelOfPath = useCallback((pathname: string): string | null => {
+    const moduleId = moduleIdOfUrl(pathname)
+    if (!moduleId) return null
+    return allLeaves.find((item) => item.route === workbenchList(moduleId))?.label ?? null
+  }, [allLeaves])
   // 字段维护子页（2302 /admin/tables/:tableId/fields）：
   // 面包屑固定为 系统管理 > 数据表维护 > 数据表维护 > {表名} > 字段
   const fieldAdminFields = location.pathname.match(/^\/admin\/tables\/([^/]+)\/fields$/)
@@ -335,7 +345,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
         })()
       : PAGE_META[location.pathname] ?? {
           section: activeGroup?.label ?? 'ERP',
-          title: activeMenu?.label ?? '页面',
+          title: activeMenu?.label ?? moduleLabelOfPath(location.pathname) ?? UNRESOLVED_TAB_LABEL,
         }
   // ===== 标签工作区行为 =====
   /** 新标签的临时标题：激活后由标题同步效应刷新为页面真实标题 */
@@ -350,7 +360,10 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
       const prefix = action === 'new' ? '新增' : action === 'copy' ? '复制' : action === 'view' ? '查看' : action === 'edit' ? '编辑' : ''
       return `${prefix}${leaf?.label ?? moduleId}`
     }
-    return allLeaves.find((item) => item.route === pathname)?.label ?? '页面'
+    const leaf = allLeaves.find((item) => item.route === pathname)
+    if (leaf) return leaf.label
+    // 都命中不了时用路径末段顶着（如 /settings/PRODUCT → PRODUCT），页面挂载后会被真实标题刷新
+    return decodeURIComponent(pathname.split('/').filter(Boolean).pop() ?? '') || UNRESOLVED_TAB_LABEL
   }, [allLeaves])
 
   /** 打开标签：已开则聚焦，未开则新建；撞顶只提示，既不新建也不跳转 */
@@ -523,8 +536,27 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
 
   const activeUrl = tabUrlOf(location)
   const fromLabel = fromParam ? allLeaves.find((item) => item.route === workbenchList(fromParam))?.label : undefined
+  /**
+   * 标题尚未解析出来时下发空串，让标签保留原标题——页面标题依赖"页面自己上抛"或"导航树命中"，
+   * 二者都可能短暂缺位（页面刚挂载还没上抛、后台刷新期间上下文换了），
+   * 此时若把占位文案写进标签，标签就会被永久改成「页面」。
+   */
+  const resolvedTitle = page.title === UNRESOLVED_TAB_LABEL ? '' : page.title
   // 带来源的标签标题附上来源，否则同一模块因来源不同开出两个标签时无法区分
-  const tabLabel = fromLabel ? `${page.title} ← ${fromLabel}` : page.title
+  const tabLabel = resolvedTitle ? (fromLabel ? `${resolvedTitle} ← ${fromLabel}` : resolvedTitle) : ''
+
+  // 标题解析不出来时在开发态留一条线索：这个地址既不在导航树里、页面也没上抛标题
+  const unresolvedWarnedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!import.meta.env.DEV || resolvedTitle) return
+    if (unresolvedWarnedRef.current.has(location.pathname)) return
+    unresolvedWarnedRef.current.add(location.pathname)
+    console.warn('[workspace] 标签标题未解析出来，暂用标签原值顶着', {
+      pathname: location.pathname,
+      hasFocus: document.hasFocus(),
+      navLeaves: allLeaves.length,
+    })
+  }, [resolvedTitle, location.pathname, allLeaves.length])
 
   // 地址同步：命中其它标签的地址即激活该标签，否则改写活动标签地址（标签内导航）
   useLayoutEffect(() => {
@@ -533,11 +565,11 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     const active = tabs.find((tab) => tab.id === activeId)
     // 首页标签常驻且地址固定：它内部若发生导航（如助手跳转），另开一个标签承载，不改写首页
     if (active && isHomeTab(active) && !isHomeUrl(activeUrl)) {
-      dispatch({ type: 'open', id: nextTabId(), url: activeUrl, label: tabLabel, fromModuleId: fromParam ?? undefined })
+      dispatch({ type: 'open', id: nextTabId(), url: activeUrl, label: tabLabel || labelForUrl(activeUrl), fromModuleId: fromParam ?? undefined })
       return
     }
     dispatch({ type: 'sync', url: activeUrl, label: tabLabel, fromModuleId: fromParam ?? undefined })
-  }, [activeUrl, tabLabel, fromParam, nextTabId])
+  }, [activeUrl, tabLabel, fromParam, nextTabId, labelForUrl])
 
   // 标签列表清空后兜底重建（正常路径由关闭动作保证非空）
   useLayoutEffect(() => {
