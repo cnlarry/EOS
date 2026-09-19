@@ -385,6 +385,7 @@ public sealed class InventoryMoveSql
         affected += await NormalizePriceAsync(token);
         await EnsureDepotRowsAsync(token);
         await RequireBatchesAsync(token);
+        await RequireLocationsAsync(token);
         // 加货的一侧才可能造成混放：批核入库 direct*approve=+1，解批出库同样为 +1（把货加回去）。
         if (direct * approveTag == 1)
             await CheckMixingAsync(token);
@@ -423,7 +424,7 @@ public sealed class InventoryMoveSql
         await ExecAsync($"IF OBJECT_ID('tempdb..{PolicyTmp}') IS NOT NULL DROP TABLE {PolicyTmp}", token);
         await ExecAsync(
             $"CREATE TABLE {PolicyTmp}(DEPOT_ID nchar(10) NOT NULL PRIMARY KEY, "
-            + "BATCH_MODE int NOT NULL, MIX_PRODUCT bit NOT NULL, MIX_BATCH bit NOT NULL)", token);
+            + "LOCATION_MODE int NOT NULL, BATCH_MODE int NOT NULL, MIX_PRODUCT bit NOT NULL, MIX_BATCH bit NOT NULL)", token);
 
         var depots = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -443,9 +444,10 @@ public sealed class InventoryMoveSql
             return;
 
         await using var insert = new SqlCommand(
-            $"INSERT INTO {PolicyTmp}(DEPOT_ID, BATCH_MODE, MIX_PRODUCT, MIX_BATCH) VALUES (@depot, @mode, @mixProduct, @mixBatch)",
+            $"INSERT INTO {PolicyTmp}(DEPOT_ID, LOCATION_MODE, BATCH_MODE, MIX_PRODUCT, MIX_BATCH) VALUES (@depot, @locationMode, @mode, @mixProduct, @mixBatch)",
             _connection, _transaction);
         insert.Parameters.Add("@depot", SqlDbType.NChar, 10);
+        insert.Parameters.Add("@locationMode", SqlDbType.Int);
         insert.Parameters.Add("@mode", SqlDbType.Int);
         insert.Parameters.Add("@mixProduct", SqlDbType.Bit);
         insert.Parameters.Add("@mixBatch", SqlDbType.Bit);
@@ -453,6 +455,7 @@ public sealed class InventoryMoveSql
         {
             var policy = await _policies.ResolveAsync(depot, _connection, _transaction, token);
             insert.Parameters["@depot"].Value = depot;
+            insert.Parameters["@locationMode"].Value = policy.LocationMode;
             insert.Parameters["@mode"].Value = policy.BatchMode;
             insert.Parameters["@mixProduct"].Value = policy.MixProduct;
             insert.Parameters["@mixBatch"].Value = policy.MixBatch;
@@ -573,6 +576,24 @@ public sealed class InventoryMoveSql
             + "WHERE ISNULL(t.BATCH_NO,'')='' AND (ISNULL(p.MANAGE_BATCH,0)=1 OR ISNULL(pol.BATCH_MODE,0)>=2)", token);
         if (missing.Count > 0)
             throw new EffectValidationException("以下品号需要输入批号信息\n" + FormatPairs(missing));
+    }
+
+    /// <summary>
+    /// 位置必填：库别策略档 3（强制）时，该库别的过账必须指明库位。判据落在**档位**上而不是
+    /// "该库别有没有策略行"——库别无行时回落到部署级默认，而默认档位未必是 0（与批号必填同源）。
+    ///
+    /// 哨兵行在档 3 下同样不合格：它是"未指定位置"的兜底，不是位置。放在归一化**之后**判定，
+    /// 是为了让"压根没填"与"填了哨兵"走同一条判据——否则前者会被归一化悄悄救回来。
+    /// </summary>
+    private async Task RequireLocationsAsync(CancellationToken token)
+    {
+        var missing = await QueryListAsync(
+            $"SELECT DISTINCT t.SERIAL_NO, LTRIM(RTRIM(t.DEPOT_ID)) FROM {Tmp} t "
+            + $"JOIN {PolicyTmp} pol ON pol.DEPOT_ID = t.DEPOT_ID "
+            + $"WHERE t.LOCATION_NO = N'-' AND ISNULL(pol.LOCATION_MODE, 0) >= 3", token);
+        if (missing.Count > 0)
+            throw new EffectValidationException(
+                "以下序号项所在库别必须指定库位（位置档位 3 强制）\n序号----库  别\n" + FormatPairs(missing));
     }
 
     /// <summary>
