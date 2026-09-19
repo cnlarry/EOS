@@ -251,6 +251,7 @@ public sealed class EffectPipeline(
         EffectEvent.Save => "SAVE",
         EffectEvent.ApproveEffect => "APPROVE",
         EffectEvent.Deapprove => "DEAPPROVE",
+        EffectEvent.Delete => "DELETE",
         _ => "SAVE",
     };
 

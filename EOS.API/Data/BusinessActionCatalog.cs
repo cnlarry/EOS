@@ -69,6 +69,8 @@ public static class BusinessActionCatalog
         "cop-receipt-offset",
         "cop-send-mo-flag",
         "pur-purchase-sync",
+        "location-path-recalc",
+        "depot-sentinel-location",
         // 保留键（暂无落库实例，登记保留）
         "meta-link",
         "flow-trigger",
@@ -107,12 +109,14 @@ public static class BusinessActionCatalog
         "PICK",
     };
 
-    /// <summary>校验规则阶段（§15 统一管线：SAVE/APPROVE/DEAPPROVE）。</summary>
+    /// <summary>校验规则阶段（§15 统一管线：SAVE/APPROVE/DEAPPROVE/DELETE）。
+    /// DELETE 用于"删除前"的守卫：删除不产生保存后行为，但主档里的受保护行要在删除前拦下。</summary>
     public static readonly IReadOnlySet<string> ValidationStages = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "SAVE",
         "APPROVE",
         "DEAPPROVE",
+        "DELETE",
     };
 
     /// <summary>校验模板键（目录 v0.1；新模板落地后随注册表同步扩展）。</summary>

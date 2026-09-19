@@ -10,6 +10,8 @@ public enum EffectEvent
     Deapprove,
     Endcase,
     Unendcase,
+    /// <summary>删除前校验：删除不产生"保存后行为"，但主档里的受保护行（如哨兵行）需要在删除前拦下。</summary>
+    Delete,
 }
 
 public static class EffectEventMapper
@@ -23,6 +25,7 @@ public static class EffectEventMapper
             case "DEAPPROVE": value = EffectEvent.Deapprove; return true;
             case "ENDCASE": value = EffectEvent.Endcase; return true;
             case "UNENDCASE": value = EffectEvent.Unendcase; return true;
+            case "DELETE": value = EffectEvent.Delete; return true;
             default: value = default; return false;
         }
     }

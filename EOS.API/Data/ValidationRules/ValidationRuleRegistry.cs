@@ -75,6 +75,8 @@ public static class ValidationRuleRegistry
         "SAVE",
         "APPROVE",
         "DEAPPROVE",
+        // 删除前守卫：删除不产生保存后行为，但主档里的受保护行要在删除前拦下。
+        "DELETE",
     };
 
     private static readonly HashSet<string> KnownScopes = new(StringComparer.OrdinalIgnoreCase)
@@ -97,7 +99,7 @@ public static class ValidationRuleRegistry
         if (!IsKnownKey(rule.ValidationKey))
             issues.Add($"校验规则 {Label(rule)}：未知 validationKey '{rule.ValidationKey}'");
         if (!IsKnownStage(rule.Stage))
-            issues.Add($"校验规则 {Label(rule)}：未知 stage '{rule.Stage}'（仅 SAVE/APPROVE/DEAPPROVE）");
+            issues.Add($"校验规则 {Label(rule)}：未知 stage '{rule.Stage}'（仅 SAVE/APPROVE/DEAPPROVE/DELETE）");
         if (rule.Params is not { } p || p.ValueKind != JsonValueKind.Object)
         {
             issues.Add($"校验规则 {Label(rule)}：params 必须是 JSON 对象");

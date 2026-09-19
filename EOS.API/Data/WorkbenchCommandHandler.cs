@@ -569,6 +569,11 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_IN_PROGRESS_DELETE_FORBIDDEN",
                 "记录流程正在审批中，禁止删除（请先撤回流程）。");
         }
+        // 删除前校验目录（DELETE 阶段）：主档里的受保护行（如库位哨兵行）要在这里拦下。
+        if (await effectEngine.ValidateStageAsync(connection, transaction, definition, EffectEvent.Delete, keyValues, token) is { } deleteValidation)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", deleteValidation);
+        }
         if (definition.DetailTable is not null)
         {
             await WorkbenchSql.DeleteDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token);
