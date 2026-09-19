@@ -127,8 +127,60 @@ describe('workspaceReducer', () => {
   })
 })
 
-describe('workspaceTabs 持久化', () => {
-  it('序列化丢掉组件状态，只留地址与标题', () => {
+describe('首页标签常驻', () => {
+  const home = { id: 'home', url: '/dashboard', label: '首页', mounted: true }
+  const counter = { id: 't1', url: '/counter', label: '计数器', mounted: true }
+  const profile = { id: 't2', url: '/settings/profile', label: '个人设置', mounted: true }
+
+  it('初始状态把首页放在首位（当前地址不是首页时）', () => {
+    const state = createWorkspaceState('/counter', 't1', '计数器', true)
+    expect(state.tabs.map((tab) => tab.url)).toEqual(['/dashboard', '/counter'])
+    expect(state.activeId).toBe('t1')
+  })
+
+  it('恢复列表里没有首页时补上并置首', () => {
+    const state = restoreWorkspaceState([
+      { id: 't1', url: '/counter', label: '计数器' },
+      { id: 't2', url: '/settings/profile', label: '个人设置' },
+    ], '/counter', () => 't3', true)
+    expect(state.tabs[0].url).toBe('/dashboard')
+    expect(state.tabs.map((tab) => tab.url)).toEqual(['/dashboard', '/counter', '/settings/profile'])
+  })
+
+  it('恢复列表里首页不在首位时移到首位', () => {
+    const state = restoreWorkspaceState([
+      { id: 't1', url: '/counter', label: '计数器' },
+      { id: 'home', url: '/dashboard', label: '首页' },
+    ], '/counter', () => 't3', true)
+    expect(state.tabs.map((tab) => tab.url)).toEqual(['/dashboard', '/counter'])
+  })
+
+  it('关闭首页是空操作', () => {
+    const state: WorkspaceState = { tabs: [home, counter], activeId: 'home', hint: null }
+    expect(workspaceReducer(state, { type: 'close', id: 'home' })).toBe(state)
+  })
+
+  it('「关闭其它」始终保留首页', () => {
+    const state: WorkspaceState = { tabs: [home, counter, profile], activeId: 't2', hint: null }
+    const next = workspaceReducer(state, { type: 'closeOthers', keepIds: ['t2'], activeId: 't2' })
+    expect(next.tabs.map((tab) => tab.url)).toEqual(['/dashboard', '/settings/profile'])
+    expect(next.activeId).toBe('t2')
+  })
+
+  it('「关闭全部」只保留首页', () => {
+    const state: WorkspaceState = { tabs: [home, counter, profile], activeId: 't2', hint: null }
+    const next = workspaceReducer(state, { type: 'closeAll' })
+    expect(next.tabs).toEqual([home])
+    expect(next.activeId).toBe('home')
+  })
+
+  it('只剩首页时「关闭全部」保持原状态', () => {
+    const state: WorkspaceState = { tabs: [home], activeId: 'home', hint: null }
+    expect(workspaceReducer(state, { type: 'closeAll' })).toBe(state)
+  })
+})
+
+describe('workspaceTabs 持久化', () => {  it('序列化丢掉组件状态，只留地址与标题', () => {
     const state = createWorkspaceState('/dashboard', 't1', '首页')
     expect(serializeTabs(state.tabs)).toEqual([{ id: 't1', url: '/dashboard', label: '首页', fromModuleId: undefined }])
   })

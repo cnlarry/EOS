@@ -443,8 +443,9 @@ describe('AppShell', () => {
 
   it('常规浏览（无 from 参数）标签标题不带来源', () => {
     renderShell('/workbench/1401/view/A')
-    const tab = screen.getByRole('tab')
-    expect(tab.textContent ?? '').not.toContain('←')
+    // 首页标签常驻首位，当前页是最后一个标签
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs[tabs.length - 1].textContent ?? '').not.toContain('←')
   })
 
   it('字段维护子页标题固定为「字段」', () => {
@@ -554,8 +555,9 @@ describe('AppShell', () => {
 
     openTabMenu(/个人设置/)
     fireEvent.click(screen.getByRole('menuitem', { name: '关闭其它' }))
-    // 被右键的标签（个人设置）+ 脏标签（脏页演示）保留，首页被关掉，且被右键者成为活动标签
-    expect(screen.getAllByRole('tab')).toHaveLength(2)
+    // 被右键的标签（个人设置）+ 脏标签（脏页演示）+ 常驻首页保留，且被右键者成为活动标签
+    expect(screen.getAllByRole('tab')).toHaveLength(3)
+    expect(screen.getByRole('tab', { name: /首页/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /个人设置/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /脏页演示/ })).toBeInTheDocument()
     expect(screen.getByTestId('browser-location')).toHaveTextContent('/settings/profile')
@@ -587,10 +589,44 @@ describe('AppShell', () => {
   it('右键「关闭当前」关闭被右键的标签', () => {
     renderShell('/dashboard')
     openProfileTab()
-    openTabMenu(/首页/)
+    openTabMenu(/个人设置/)
     fireEvent.click(screen.getByRole('menuitem', { name: '关闭当前' }))
     expect(screen.getAllByRole('tab')).toHaveLength(1)
-    expect(screen.getByRole('tab', { name: /个人设置/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /首页/ })).toBeInTheDocument()
+  })
+
+  it('首页标签常驻首位、无关闭按钮，右键时「关闭当前」禁用', () => {
+    renderShell('/counter')
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs).toHaveLength(2)
+    // 首位是首页，即使当前打开的是别的地址
+    expect(tabs[0]).toHaveTextContent('首页')
+    expect(screen.getByRole('tab', { name: /首页/ })).toBeInTheDocument()
+    // 首页不提供关闭入口
+    expect(screen.queryByRole('button', { name: '关闭标签 首页' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '关闭标签 计数器' })).toBeInTheDocument()
+
+    openTabMenu(/首页/)
+    expect(screen.getByRole('menuitem', { name: '关闭当前' })).toBeDisabled()
+  })
+
+  it('首页标签不可关闭：Delete 与关闭按钮都不生效', () => {
+    renderShell('/counter')
+    const home = screen.getByRole('tab', { name: /首页/ })
+    fireEvent.keyDown(home, { key: 'Delete' })
+    expect(screen.getAllByRole('tab')).toHaveLength(2)
+  })
+
+  it('刷新恢复时列表里没有首页也会补上并置首', () => {
+    localStorage.setItem(workspaceTabsKey('u1'), JSON.stringify([
+      { id: 't1', url: '/counter', label: '计数器' },
+      { id: 't2', url: '/settings/profile', label: '个人设置' },
+    ]))
+    renderShell('/counter')
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs).toHaveLength(3)
+    expect(tabs[0]).toHaveTextContent('首页')
+    expect(tabs[1]).toHaveTextContent('计数器')
   })
 
   it('存在脏标签时浏览器刷新/关闭被拦下', async () => {

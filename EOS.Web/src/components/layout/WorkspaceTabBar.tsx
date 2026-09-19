@@ -1,6 +1,6 @@
 import { IconX } from '@tabler/icons-react'
 import { useEffect, useState, type KeyboardEvent, type MouseEvent } from 'react'
-import type { WorkspaceTab } from './workspaceTabs'
+import { isHomeTab, type WorkspaceTab } from './workspaceTabs'
 
 interface WorkspaceTabBarProps {
   tabs: WorkspaceTab[]
@@ -90,6 +90,7 @@ export function WorkspaceTabBar({ tabs, activeId, dirtyIds, hint, onActivate, on
     <div className="erp-tabbar nav nav-tabs erp-tabbed-panel-tabs erp-workspace-tabs" role="tablist" aria-label="工作区标签">
       {tabs.map((tab, index) => {
         const active = tab.id === activeId
+        const closable = !isHomeTab(tab)
         return (
           <div className="nav-item" role="presentation" key={tab.id}>
             <div
@@ -108,7 +109,7 @@ export function WorkspaceTabBar({ tabs, activeId, dirtyIds, hint, onActivate, on
             >
               <span className="erp-tab-label">{tab.label}</span>
               {dirtyIds.has(tab.id) && <span className="erp-tab-dirty" role="img" aria-label="有未保存的改动" />}
-              {tabs.length > 1 && (
+              {closable && (
                 <button
                   type="button"
                   className="erp-tab-close"
@@ -128,40 +129,46 @@ export function WorkspaceTabBar({ tabs, activeId, dirtyIds, hint, onActivate, on
       <div className="erp-tabbar-actions">
         {hint && <span className="erp-tab-hint" role="status">{hint}</span>}
       </div>
-      {menu && (
-        <div
-          className="erp-menu-context-menu"
-          role="menu"
-          aria-label="标签操作"
-          style={{ left: menu.x, top: menu.y }}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            disabled={tabs.length <= 1}
-            onClick={() => { setMenu(null); onClose(menu.tabId) }}
+      {menu && (() => {
+        const menuTab = tabs.find((tab) => tab.id === menu.tabId)
+        // 首页不可关闭，也不计入"可关闭的其它标签"
+        const closableOthers = tabs.filter((tab) => tab.id !== menu.tabId && !isHomeTab(tab)).length
+        const closableAny = tabs.filter((tab) => !isHomeTab(tab)).length
+        return (
+          <div
+            className="erp-menu-context-menu"
+            role="menu"
+            aria-label="标签操作"
+            style={{ left: menu.x, top: menu.y }}
+            onPointerDown={(event) => event.stopPropagation()}
           >
-            关闭当前
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled={tabs.length <= 1}
-            onClick={() => { setMenu(null); onCloseOthers(menu.tabId) }}
-          >
-            关闭其它
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled={tabs.length <= 1}
-            onClick={() => { setMenu(null); onCloseAll() }}
-          >
-            关闭全部
-          </button>
-        </div>
-      )}
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!menuTab || isHomeTab(menuTab)}
+              onClick={() => { setMenu(null); onClose(menu.tabId) }}
+            >
+              关闭当前
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={closableOthers === 0}
+              onClick={() => { setMenu(null); onCloseOthers(menu.tabId) }}
+            >
+              关闭其它
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={closableAny === 0}
+              onClick={() => { setMenu(null); onCloseAll() }}
+            >
+              关闭全部
+            </button>
+          </div>
+        )
+      })()}
     </div>
   )
 }
