@@ -1654,7 +1654,7 @@ public sealed class EffectShadowRunner
             .ToArray();
         if (depotKeys.Length > 0)
         {
-            specs.Add(BuildValuesSpec("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" }, depotKeys, "PRO_NO", "DEPOT_ID"));
+            specs.Add(BuildValuesSpec("INV_PRO_DEPOT", InventoryKeyColumns, depotKeys, "PRO_NO", "DEPOT_ID"));
         }
 
         var batchKeys = details
@@ -1762,7 +1762,7 @@ public sealed class EffectShadowRunner
             .ToArray();
         if (depotKeys.Length > 0)
         {
-            specs.Add(BuildValuesSpec("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" }, depotKeys, "PRO_NO", "DEPOT_ID"));
+            specs.Add(BuildValuesSpec("INV_PRO_DEPOT", InventoryKeyColumns, depotKeys, "PRO_NO", "DEPOT_ID"));
         }
 
         var batchKeys = details
@@ -1876,7 +1876,7 @@ public sealed class EffectShadowRunner
             .ToArray();
         if (depotPairs.Length > 0)
         {
-            specs.Add(BuildValuesSpec("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" }, depotPairs, "PRO_NO", "DEPOT_ID"));
+            specs.Add(BuildValuesSpec("INV_PRO_DEPOT", InventoryKeyColumns, depotPairs, "PRO_NO", "DEPOT_ID"));
         }
         var batchKeys = details
             .Where(row => row.ProNo.Length > 0 && row.BatchNo.Length > 0)
@@ -3325,7 +3325,7 @@ public sealed class EffectShadowRunner
             "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
             + "AND PRODUCT.PRO_NO=R.PRO_NO)",
             new[] { ot, on }));
-        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+        specs.Add(new("INV_PRO_DEPOT", InventoryKeyColumns,
             "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
             + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
             new[] { ot, on }));
@@ -3371,7 +3371,7 @@ public sealed class EffectShadowRunner
         specs.Add(new("PRODUCT", new[] { "PRO_NO" },
             $"EXISTS (SELECT 1 FROM dbo.MOC_GET_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)",
             new[] { gt, gn }));
-        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+        specs.Add(new("INV_PRO_DEPOT", InventoryKeyColumns,
             $"EXISTS (SELECT 1 FROM dbo.MOC_GET_D R WHERE {doc} "
             + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
             new[] { gt, gn }));
@@ -3441,7 +3441,7 @@ public sealed class EffectShadowRunner
         };
         specs.Add(new("PRODUCT", new[] { "PRO_NO" },
             $"EXISTS (SELECT 1 FROM dbo.INV_CHECK_STOCK_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { ct, cn }));
-        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+        specs.Add(new("INV_PRO_DEPOT", InventoryKeyColumns,
             $"EXISTS (SELECT 1 FROM dbo.INV_CHECK_STOCK_D R WHERE {doc} "
             + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)", new[] { ct, cn }));
         return specs;
@@ -3463,7 +3463,7 @@ public sealed class EffectShadowRunner
             new("INV_OCCUR_INIT_D", new[] { "OCCUR_TYPE", "OCCUR_NO", "SERIAL_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
             new("PRODUCT", new[] { "PRO_NO" },
                 $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_INIT_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { ot, on }),
-            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            new("INV_PRO_DEPOT", InventoryKeyColumns,
                 $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_INIT_D R WHERE {doc} "
                 + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)", new[] { ot, on }),
         };
@@ -3490,7 +3490,7 @@ public sealed class EffectShadowRunner
             new("INV_OCCUR_TRANSFER_D", new[] { "OCCUR_TYPE", "OCCUR_NO", "SERIAL_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
             new("PRODUCT", new[] { "PRO_NO" },
                 $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_TRANSFER_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { ot, on }),
-            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            new("INV_PRO_DEPOT", InventoryKeyColumns,
                 $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_TRANSFER_D R WHERE {doc} "
                 + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO "
                 + "AND (INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID OR INV_PRO_DEPOT.DEPOT_ID=R.IN_DEPOT_ID))",
@@ -3519,7 +3519,7 @@ public sealed class EffectShadowRunner
             new("INV_OCCUR_SCRAP_D", new[] { "OCCUR_TYPE", "OCCUR_NO", "SERIAL_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
             new("PRODUCT", new[] { "PRO_NO" },
                 $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_SCRAP_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { ot, on }),
-            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            new("INV_PRO_DEPOT", InventoryKeyColumns,
                 $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_SCRAP_D R WHERE {doc} "
                 + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO "
                 + "AND (INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID OR INV_PRO_DEPOT.DEPOT_ID=R.IN_DEPOT_ID))",
@@ -3548,7 +3548,7 @@ public sealed class EffectShadowRunner
             new("INV_OCCUR_ADJUST_D", new[] { "OCCUR_TYPE", "OCCUR_NO", "SERIAL_NO" }, "@ot=OCCUR_TYPE AND @on=OCCUR_NO", new[] { ot, on }),
             new("PRODUCT", new[] { "PRO_NO" },
                 $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_ADJUST_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { ot, on }),
-            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            new("INV_PRO_DEPOT", InventoryKeyColumns,
                 $"EXISTS (SELECT 1 FROM dbo.INV_OCCUR_ADJUST_D R WHERE {doc} "
                 + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
                 new[] { ot, on }),
@@ -3579,7 +3579,7 @@ public sealed class EffectShadowRunner
             new(detailTable, new[] { key1, key2, "SERIAL_NO" }, $"@k1={key1} AND @k2={key2}", new[] { k1, k2 }),
             new("PRODUCT", new[] { "PRO_NO" },
                 $"EXISTS (SELECT 1 FROM dbo.{detailTable} R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { k1, k2 }),
-            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            new("INV_PRO_DEPOT", InventoryKeyColumns,
                 $"EXISTS (SELECT 1 FROM dbo.{detailTable} R WHERE {doc} "
                 + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)", new[] { k1, k2 }),
         };
@@ -3616,7 +3616,7 @@ public sealed class EffectShadowRunner
                 new[] { bt, bn }),
             new("PRODUCT", new[] { "PRO_NO" },
                 $"EXISTS (SELECT 1 FROM dbo.MOC_BACK_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { bt, bn }),
-            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            new("INV_PRO_DEPOT", InventoryKeyColumns,
                 $"EXISTS (SELECT 1 FROM dbo.MOC_BACK_D R WHERE {doc} "
                 + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)", new[] { bt, bn }),
         };
@@ -3823,7 +3823,7 @@ public sealed class EffectShadowRunner
             new("INV_LOAN_D", new[] { "LOAN_TYPE", "LOAN_NO", "SERIAL_NO" }, "@lt=LOAN_TYPE AND @ln=LOAN_NO", new[] { lt, ln }),
             new("PRODUCT", new[] { "PRO_NO" },
                 $"EXISTS (SELECT 1 FROM dbo.INV_LOAN_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { lt, ln }),
-            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            new("INV_PRO_DEPOT", InventoryKeyColumns,
                 $"EXISTS (SELECT 1 FROM dbo.INV_LOAN_D R WHERE {doc} "
                 + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO "
                 + "AND (INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID OR INV_PRO_DEPOT.DEPOT_ID=R.IN_DEPOT_ID))",
@@ -3856,7 +3856,7 @@ public sealed class EffectShadowRunner
                 + "AND INV_LOAN_D.SERIAL_NO=R.LOAN_SERIAL_NO)", new[] { rt, rn }),
             new("PRODUCT", new[] { "PRO_NO" },
                 $"EXISTS (SELECT 1 FROM dbo.INV_RETURN_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { rt, rn }),
-            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            new("INV_PRO_DEPOT", InventoryKeyColumns,
                 $"EXISTS (SELECT 1 FROM dbo.INV_RETURN_D R WHERE {doc} "
                 + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO "
                 + "AND (INV_PRO_DEPOT.DEPOT_ID=R.OUT_DEPOT_ID OR INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID))",
@@ -3960,7 +3960,7 @@ public sealed class EffectShadowRunner
                 + "AND PUR_RECEIVE_M.RECEIVE_TYPE=R.RECEIVE_TYPE AND PUR_RECEIVE_M.RECEIVE_NO=R.RECEIVE_NO)", new[] { ct, cn }),
             new("PRODUCT", new[] { "PRO_NO" },
                 $"EXISTS (SELECT 1 FROM dbo.PUR_CANCEL_D R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)", new[] { ct, cn }),
-            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            new("INV_PRO_DEPOT", InventoryKeyColumns,
                 $"EXISTS (SELECT 1 FROM dbo.PUR_CANCEL_D R WHERE {doc} "
                 + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)", new[] { ct, cn }),
         };
@@ -4056,7 +4056,7 @@ public sealed class EffectShadowRunner
             new("PRODUCT", new[] { "PRO_NO" },
                 $"EXISTS (SELECT 1 FROM dbo.{detailTable} R WHERE {doc} AND PRODUCT.PRO_NO=R.PRO_NO)",
                 new[] { ot, on }),
-            new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+            new("INV_PRO_DEPOT", InventoryKeyColumns,
                 $"EXISTS (SELECT 1 FROM dbo.{detailTable} R WHERE {doc} "
                 + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
                 new[] { ot, on }),
@@ -4153,7 +4153,7 @@ public sealed class EffectShadowRunner
             "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
             + "AND PRODUCT.PRO_NO=R.PRO_NO)",
             new[] { ot, on }));
-        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+        specs.Add(new("INV_PRO_DEPOT", InventoryKeyColumns,
             "EXISTS (SELECT 1 FROM dbo.MOC_PRODUCT_OUT_D R WHERE R.PRODUCT_OUT_TYPE=@ot AND R.PRODUCT_OUT_NO=@on "
             + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
             new[] { ot, on }));
@@ -4240,7 +4240,7 @@ public sealed class EffectShadowRunner
             "EXISTS (SELECT 1 FROM dbo.COP_FITOUT_D R WHERE R.FITOUT_TYPE=@ft AND R.FITOUT_NO=@fn "
             + "AND PRODUCT.PRO_NO=R.PRO_NO)",
             new[] { ft, fn }));
-        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+        specs.Add(new("INV_PRO_DEPOT", InventoryKeyColumns,
             "EXISTS (SELECT 1 FROM dbo.COP_FITOUT_D R WHERE R.FITOUT_TYPE=@ft AND R.FITOUT_NO=@fn "
             + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
             new[] { ft, fn }));
@@ -4288,7 +4288,7 @@ public sealed class EffectShadowRunner
             "EXISTS (SELECT 1 FROM dbo.COP_FITIN_D R WHERE R.FITIN_TYPE=@ft AND R.FITIN_NO=@fn "
             + "AND PRODUCT.PRO_NO=R.PRO_NO)",
             new[] { ft, fn }));
-        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+        specs.Add(new("INV_PRO_DEPOT", InventoryKeyColumns,
             "EXISTS (SELECT 1 FROM dbo.COP_FITIN_D R WHERE R.FITIN_TYPE=@ft AND R.FITIN_NO=@fn "
             + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
             new[] { ft, fn }));
@@ -4331,7 +4331,7 @@ public sealed class EffectShadowRunner
             "EXISTS (SELECT 1 FROM dbo.COP_BACK_D R WHERE R.BACK_TYPE=@bt AND R.BACK_NO=@bn "
             + "AND PRODUCT.PRO_NO=R.PRO_NO)",
             new[] { bt, bn }));
-        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+        specs.Add(new("INV_PRO_DEPOT", InventoryKeyColumns,
             "EXISTS (SELECT 1 FROM dbo.COP_BACK_D R WHERE R.BACK_TYPE=@bt AND R.BACK_NO=@bn "
             + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
             new[] { bt, bn }));
@@ -4402,7 +4402,7 @@ public sealed class EffectShadowRunner
             "EXISTS (SELECT 1 FROM dbo.MOU_GET_D R WHERE R.GET_TYPE=@gt AND R.GET_NO=@gn "
             + "AND PRODUCT.PRO_NO=R.PRO_NO)",
             new[] { gt, gn }));
-        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+        specs.Add(new("INV_PRO_DEPOT", InventoryKeyColumns,
             "EXISTS (SELECT 1 FROM dbo.MOU_GET_D R WHERE R.GET_TYPE=@gt AND R.GET_NO=@gn "
             + "AND ((INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID) "
             + "OR (INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.IN_DEPOT_ID)))",
@@ -4445,7 +4445,7 @@ public sealed class EffectShadowRunner
             "EXISTS (SELECT 1 FROM dbo.MOU_GET2_D R WHERE R.GET_TYPE=@gt AND R.GET_NO=@gn "
             + "AND PRODUCT.PRO_NO=R.PRO_NO)",
             new[] { gt, gn }));
-        specs.Add(new("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" },
+        specs.Add(new("INV_PRO_DEPOT", InventoryKeyColumns,
             "EXISTS (SELECT 1 FROM dbo.MOU_GET2_D R WHERE R.GET_TYPE=@gt AND R.GET_NO=@gn "
             + "AND INV_PRO_DEPOT.PRO_NO=R.PRO_NO AND INV_PRO_DEPOT.DEPOT_ID=R.DEPOT_ID)",
             new[] { gt, gn }));
@@ -4740,7 +4740,7 @@ public sealed class EffectShadowRunner
             .ToArray();
         if (depotKeys.Length > 0)
         {
-            specs.Add(BuildValuesSpec("INV_PRO_DEPOT", new[] { "PRO_NO", "DEPOT_ID" }, depotKeys, "PRO_NO", "DEPOT_ID"));
+            specs.Add(BuildValuesSpec("INV_PRO_DEPOT", InventoryKeyColumns, depotKeys, "PRO_NO", "DEPOT_ID"));
         }
 
         var batchKeys = details
@@ -4860,6 +4860,18 @@ public sealed class EffectShadowRunner
             .Append(" AND V.SC=").Append(secondColumn).Append(')');
         return builder.ToString();
     }
+
+    /// <summary>
+    /// 库存余额表的影子比对键，**必须是四键**。四键改造后同一个 `(料号, 库别)` 会有多行
+    /// （库位 / 批次维度），只按两键取键会让同组多行落到同一个 key 上，而比对是**按出现顺序
+    /// 逐行配对**的——两边顺序不同即产生假差异，顺序巧合则掩盖真差异。两键口径在"存量全在
+    /// 哨兵行"时恰好等价，所以过去一直看不出问题；一旦出现真实库位 / 批次行（按区盘点生成明细、
+    /// 升档归位都会产生）这个前提就不再成立。
+    /// 键列之所以够用：快照的投影是**该表全部物理列**（`ReadPhysicalColumnsAsync`），
+    /// 键里点到的新列一定在 cells 里；反之若某处投影缺列，键会退化成空串——故下方
+    /// <see cref="CompareTable"/> 另设一道"同键多行"闸门兜底。
+    /// </summary>
+    private static readonly string[] InventoryKeyColumns = { "PRO_NO", "DEPOT_ID", "LOCATION_NO", "BATCH_NO" };
 
     private static TableSpec BuildValuesSpec(
         string table,
@@ -5204,7 +5216,7 @@ public sealed class EffectShadowRunner
         }
     }
 
-    private static ShadowTableDiff CompareTable(
+    internal static ShadowTableDiff CompareTable(
         int moduleId,
         string shadowEvent,
         string table,
@@ -5218,6 +5230,20 @@ public sealed class EffectShadowRunner
         {
             var old = oldByKey.TryGetValue(key, out var oldGroup) ? oldGroup : new List<ShadowRow>();
             var current = newByKey.TryGetValue(key, out var newGroup) ? newGroup : new List<ShadowRow>();
+
+            // 同键多行 = 比对键不足以唯一标识一行。此时下面的逐行配对是按**出现顺序**做的：
+            // 两边顺序不同即假差异、顺序巧合即掩盖真差异，两种都不可信。故不再逐字段比，
+            // 直接落一条不可归一化的差异把这一轮判为失败——**宁可报错，不可静默**。
+            if (old.Count > 1 || current.Count > 1)
+            {
+                diffs.Add(new ShadowFieldDiff(
+                    key, "*dupkey*",
+                    $"旧路径 {old.Count} 行", $"新路径 {current.Count} 行",
+                    Normalized: false, Verdict: "diff",
+                    Decision: "比对键不唯一（同键多行）——按出现顺序配对不可信，请把该维度加进 TableSpec 键列（ADR-014 §4.8.4）"));
+                continue;
+            }
+
             var count = Math.Max(old.Count, current.Count);
             for (var index = 0; index < count; index++)
             {
@@ -5592,7 +5618,7 @@ public sealed class EffectShadowRunner
 
     private sealed record TableSpec(string Table, IReadOnlyList<string> KeyColumns, string FilterSql, IReadOnlyList<SqlParameter> Parameters);
 
-    private sealed record ShadowRow(string Key, Dictionary<string, object?> Cells);
+    internal sealed record ShadowRow(string Key, Dictionary<string, object?> Cells);
 
     private sealed record ShadowSnapshot(
         IReadOnlyDictionary<string, List<ShadowRow>> Rows,
