@@ -473,6 +473,76 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
         Assert.DoesNotContain(fields, field => !System.Text.RegularExpressions.Regex.IsMatch(field.FieldId, "^[A-Za-z_][A-Za-z0-9_]*$"));
     }
 
+    /// <summary>
+    /// 模块行里那批**可空** bit 标志位为 NULL 时，列表必须照常返回（NULL 当 0），不能抛
+    /// SqlNullValueException 把整个菜单管理打成 500。
+    ///
+    /// 两类 NULL 来源都覆盖：
+    ///   ① 行本身就是 NULL——历史上 MODULES 整批标志位 NULL 过，与并发无关；
+    ///   ② **另一个连接上未提交**的 NULL——列表查询用 NOLOCK，会读到它。这正是端点冒烟与
+    ///      真库单测并行跑时踩到的那条路径（读到单测事务里尚未提交的半成品行）。
+    /// </summary>
+    [Fact]
+    public async Task 可空标志位为NULL时列表照常返回()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return;
+        }
+
+        var committedNullId = _parentId + 5000;
+        var dirtyReadId = _parentId + 5001;
+        await using (var seed = new SqlConnection(ConnectionString.Value))
+        {
+            await seed.OpenAsync();
+            await using var insert = new SqlCommand(
+                """
+                INSERT INTO dbo.MODULES
+                    (M_IDX,M_DESC,M_P_IDX,SORT_IDX,M_TAG,SEARCH_1,SEARCH_2,IF_COPY,ERROR_NO_SAVE,GROUP1,GROUP5,DETAIL_NO_SAVE)
+                VALUES
+                    (@Committed,N'空标志位（已提交 NULL）',NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),
+                    (@Dirty,N'空标志位（未提交 NULL）',NULL,0,1,1,1,1,1,1,1,1);
+                """, seed);
+            insert.Parameters.Add("@Committed", SqlDbType.Int).Value = committedNullId;
+            insert.Parameters.Add("@Dirty", SqlDbType.Int).Value = dirtyReadId;
+            await insert.ExecuteNonQueryAsync();
+        }
+        _createdIds.Add(committedNullId);
+        _createdIds.Add(dirtyReadId);
+
+        // ②：另开连接 + 事务把标志位置 NULL 且**不提交**，列表用 NOLOCK 会读到未提交值。
+        await using var holder = new SqlConnection(ConnectionString.Value);
+        await holder.OpenAsync();
+        await using var transaction = (SqlTransaction)await holder.BeginTransactionAsync();
+        await using (var update = new SqlCommand(
+            "UPDATE dbo.MODULES SET M_TAG=NULL,SEARCH_1=NULL,IF_COPY=NULL,GROUP1=NULL WHERE M_IDX=@Id;",
+            holder, transaction))
+        {
+            update.Parameters.Add("@Id", SqlDbType.Int).Value = dirtyReadId;
+            await update.ExecuteNonQueryAsync();
+        }
+
+        MenuAdminList list;
+        try
+        {
+            list = await _repository.GetModulesAsync(null, CancellationToken.None);
+        }
+        finally
+        {
+            await transaction.RollbackAsync();
+        }
+
+        var committed = list.Modules.Single(module => module.M_IDX == committedNullId);
+        Assert.False(committed.M_TAG);
+        Assert.False(committed.SEARCH_1);
+        Assert.False(committed.IF_COPY);
+        Assert.False(committed.GROUP1);
+        Assert.False(committed.DETAIL_NO_SAVE);
+        // ② 那行只要"读得到、不抛异常"即可：它的值取决于 NOLOCK 是否读到未提交数据，
+        // 断言具体取值会把测试绑死在隔离级别的实现细节上。
+        Assert.Contains(list.Modules, module => module.M_IDX == dirtyReadId);
+    }
+
     public void Dispose()
     {
         if (ConnectionString.Value is null || _createdIds.Count == 0)

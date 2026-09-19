@@ -683,27 +683,27 @@ public sealed class MenuAdminRepository(
         reader.GetInt32(0),
         GetString(reader, 1), GetString(reader, 2) ?? string.Empty, GetString(reader, 3), GetString(reader, 4),
         GetString(reader, 5), GetString(reader, 6), GetString(reader, 7),
-        reader.GetBoolean(8), reader.GetBoolean(9), reader.GetBoolean(10),
+        GetBool(reader, 8), GetBool(reader, 9), GetBool(reader, 10),
         reader.IsDBNull(11) ? null : reader.GetInt32(11),
-        reader.GetInt32(12), reader.GetBoolean(13), reader.GetBoolean(14), reader.GetBoolean(15),
-        reader.GetBoolean(16), GetString(reader, 17),
+        reader.GetInt32(12), GetBool(reader, 13), GetBool(reader, 14), GetBool(reader, 15),
+        GetBool(reader, 16), GetString(reader, 17),
         GetString(reader, 18), GetString(reader, 19), GetString(reader, 20),
         GetString(reader, 21), GetString(reader, 22),
-        reader.GetBoolean(23), GetString(reader, 24), GetString(reader, 25),
-        reader.GetBoolean(26), GetString(reader, 27), GetString(reader, 28),
-        reader.GetBoolean(29), GetString(reader, 30), GetString(reader, 31),
-        reader.GetBoolean(32), GetString(reader, 33), GetString(reader, 34),
-        reader.GetBoolean(35), GetString(reader, 36), GetString(reader, 37),
+        GetBool(reader, 23), GetString(reader, 24), GetString(reader, 25),
+        GetBool(reader, 26), GetString(reader, 27), GetString(reader, 28),
+        GetBool(reader, 29), GetString(reader, 30), GetString(reader, 31),
+        GetBool(reader, 32), GetString(reader, 33), GetString(reader, 34),
+        GetBool(reader, 35), GetString(reader, 36), GetString(reader, 37),
         GetString(reader, 38),
         reader.IsDBNull(39) ? null : reader.GetDateTime(39),
         GetString(reader, 40),
         reader.IsDBNull(41) ? (int?)null : (int)reader.GetByte(41),
         GetString(reader, 42),
         GetString(reader, 43),
-        EffectEngineTag: reader.GetBoolean(44),
+        EffectEngineTag: GetBool(reader, 44),
         MasterTableDesc: GetString(reader, 45),
         DetailTableDesc: GetString(reader, 46),
-        DirtyTag: reader.GetBoolean(47),
+        DirtyTag: GetBool(reader, 47),
         PublishVersion: reader.IsDBNull(48) ? null : reader.GetInt32(48),
         PublishedAt: reader.IsDBNull(49) ? null : reader.GetDateTime(49));
 
@@ -750,6 +750,18 @@ public sealed class MenuAdminRepository(
 
     private static string? GetString(SqlDataReader reader, int index) =>
         reader.IsDBNull(index) ? null : reader.GetString(index).Trim();
+
+    /// <summary>
+    /// 读可空 bit 列：NULL 一律当 0。
+    ///
+    /// MODULES 里这批标志位（M_TAG / AUTO_APPROVE / IF_COPY / ERROR_NO_SAVE / GROUP1..5 /
+    /// EFFECT_ENGINE_TAG 等）**是可空的**——历史上就出现过整批 NULL。直接 GetBoolean 会在
+    /// 遇到 NULL 时抛 SqlNullValueException，把整个菜单管理列表打成 500；而本查询用的是
+    /// NOLOCK，还会读到别的事务里尚未提交、这些列为 NULL 的半成品行，进一步放大触发面。
+    /// "NULL 当 0"与库内其它读取口径（`ISNULL(列,0)`）一致。
+    /// </summary>
+    private static bool GetBool(SqlDataReader reader, int index) =>
+        reader.IsDBNull(index) ? false : reader.GetBoolean(index);
 
     private static string? NullIfEmpty(string value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
