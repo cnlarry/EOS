@@ -24,7 +24,6 @@ export interface UserAdminSummary {
   departmentId: string
   departmentName: string
   companyId: string
-  groupId: string
   groups: string
   isActive: boolean
   hasPassword: boolean

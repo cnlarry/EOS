@@ -1,5 +1,6 @@
-import { IconUsers } from '@tabler/icons-react'
+import { IconShield, IconUsers } from '@tabler/icons-react'
 import { useState } from 'react'
+import type { RowSelectionState } from '@tanstack/react-table'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
@@ -27,16 +28,29 @@ interface SelectedEmployee {
   departmentName?: string
 }
 
-/** 新增用户（开户）弹窗：用户名 + 员工（统一选择器）+ 初始密码 + 可选所属组。 */
+/** 新增用户（开户）弹窗：用户名 + 员工（统一选择器）+ 初始密码 + 可选所属组（多选）。 */
 export function NewUserModal({ groups, onClose, onSaved }: NewUserModalProps) {
   const [userId, setUserId] = useState('')
   const [employee, setEmployee] = useState<SelectedEmployee | null>(null)
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [groupId, setGroupId] = useState('')
+  const [groupIds, setGroupIds] = useState<string[]>([])
+  const [groupsOpen, setGroupsOpen] = useState(false)
+  const [groupSelection, setGroupSelection] = useState<RowSelectionState>({})
   const [chooserOpen, setChooserOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  /** 已选组以「组ID（组名）」展示，组名取用户管理页已加载的组列表 */
+  const groupLabel = (groupId: string) => {
+    const hit = groups.find((group) => group.groupId.trim() === groupId)
+    return hit ? `${groupId}（${hit.groupDescription}）` : groupId
+  }
+
+  const openGroupChooser = () => {
+    setGroupSelection(Object.fromEntries(groupIds.map((groupId) => [groupId, true])))
+    setGroupsOpen(true)
+  }
 
   const passwordValid = password.length >= 8 && password.length <= 64 && password === password.trim()
   const canSubmit = userId.trim().length > 0
@@ -55,7 +69,7 @@ export function NewUserModal({ groups, onClose, onSaved }: NewUserModalProps) {
         userId: userId.trim(),
         employeeId: employee.employeeId,
         password,
-        groupId: groupId || null,
+        groupIds,
       })
       onSaved()
     } catch (reason) {
@@ -116,11 +130,18 @@ export function NewUserModal({ groups, onClose, onSaved }: NewUserModalProps) {
             {password && !passwordValid && <div className="text-danger small">密码长度需为 8-64 个字符，且不能以空格开头或结尾。</div>}
             {password && confirm && password !== confirm && <div className="text-danger small">两次输入的密码不一致。</div>}
             <div>
-              <label className="form-label" htmlFor="new-user-group">所属组（选填）</label>
-              <select id="new-user-group" className="form-select" value={groupId} onChange={(event) => setGroupId(event.target.value)}>
-                <option value="">暂不加入用户组</option>
-                {groups.map((group) => <option key={group.groupId.trim()} value={group.groupId.trim()}>{group.groupId.trim()}（{group.groupDescription}）</option>)}
-              </select>
+              <label className="form-label">所属组（选填，可多组）</label>
+              <div className="input-group">
+                <input
+                  className="form-control"
+                  readOnly
+                  value={groupIds.map(groupLabel).join('、')}
+                  placeholder="点击右侧按钮选择用户组"
+                  aria-label="已选用户组"
+                />
+                <Button size="md" icon={<IconShield size={16} />} onClick={openGroupChooser}>选择用户组</Button>
+              </div>
+              <div className="small text-secondary mt-1">用户与用户组为多对多关系；该用户存在个人权限时，个人权限完全覆盖组权限。</div>
             </div>
             {error && <div className="alert alert-danger py-2 mb-0" role="alert">{error}</div>}
         </div>
@@ -149,6 +170,23 @@ export function NewUserModal({ groups, onClose, onSaved }: NewUserModalProps) {
         serverPaging
         resizable
         storageKey="new-user-employee-chooser"
+      />
+      <UnifiedChooser
+        open={groupsOpen}
+        title="选择用户组"
+        source={{ kind: 'sourceKey', key: 'rights-admin.groups' }}
+        mode="multi"
+        selectedKeys={groupSelection}
+        onSelectedKeysChange={setGroupSelection}
+        getRowId={(row) => String((row as { G_IDX?: unknown }).G_IDX ?? '').trim()}
+        onPick={(rows) => {
+          setGroupIds(rows.map((row) => String((row as { G_IDX?: unknown }).G_IDX ?? '').trim()).filter(Boolean))
+          setGroupsOpen(false)
+        }}
+        onClose={() => setGroupsOpen(false)}
+        searchPlaceholder="按组ID/组名搜索"
+        extra={<div className="small text-secondary">可多选；开户后也可在用户管理的「所属组」中调整。</div>}
+        storageKey="new-user-group-chooser"
       />
     </>
   )

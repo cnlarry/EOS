@@ -13,8 +13,8 @@ vi.mock('../auth/authContext', () => ({ useAuth: vi.fn() }))
 
 const usersPage = {
   items: [
-    { userId: 'admin', employeeId: 'E001', employeeName: 'Demo User', departmentId: 'D1', departmentName: '信息部', companyId: 'C1', groupId: 'G1', groups: '超级用户组', isActive: true, hasPassword: true, lastUpdatedBy: 'admin', lastUpdatedAt: '2026-08-01T00:00:00Z' },
-    { userId: 'viewer', employeeId: 'E002', employeeName: '只读用户', departmentId: 'D2', departmentName: '财务部', companyId: 'C1', groupId: 'G2', groups: '采购、财务', isActive: false, hasPassword: false, lastUpdatedBy: 'admin', lastUpdatedAt: null },
+    { userId: 'admin', employeeId: 'E001', employeeName: 'Demo User', departmentId: 'D1', departmentName: '信息部', companyId: 'C1', groups: '超级用户组', isActive: true, hasPassword: true, lastUpdatedBy: 'admin', lastUpdatedAt: '2026-08-01T00:00:00Z' },
+    { userId: 'viewer', employeeId: 'E002', employeeName: '只读用户', departmentId: 'D2', departmentName: '财务部', companyId: 'C1', groups: '采购、财务', isActive: false, hasPassword: false, lastUpdatedBy: 'admin', lastUpdatedAt: null },
   ],
   page: 1,
   pageSize: 50,
@@ -238,7 +238,7 @@ describe('UserAdminPage', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '开户' }))
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/admin/users',
-      { userId: 'newuser', employeeId: 'E999', password: 'long-enough-1', groupId: null },
+      { userId: 'newuser', employeeId: 'E999', password: 'long-enough-1', groupIds: [] },
     ))
   })
 })
