@@ -158,6 +158,11 @@ public sealed class InventoryReportPortLiveTests
             DELETE FROM dbo.INV_DEPOT_LOG WHERE DEPOT_ID=@Depot;
             DELETE FROM dbo.INV_PRO_DEPOT WHERE DEPOT_ID=@Depot;
             DELETE FROM dbo.PRODUCT WHERE PRO_NO IN (@Pro1, @Pro2, 'ADR12INV9');
+            IF NOT EXISTS(SELECT 1 FROM dbo.DEPOT WHERE DEPOT_ID=@Depot)
+                INSERT INTO dbo.DEPOT (DEPOT_ID, DEPOT_NAME) VALUES (@Depot, N'ADR12 仓库');
+            IF NOT EXISTS(SELECT 1 FROM dbo.DEPOT_LOCATION WHERE DEPOT_ID=@Depot AND LOCATION_NO=N'-')
+                INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID, LOCATION_NO, PARENT_NO, LOCATION_PATH, LOCATION_TYPE, LOCATION_NAME, STORAGE_TYPE, SEQ_NO, STATUS)
+                VALUES (@Depot, N'-', NULL, N'/-', N'BIN', N'未指定位置（待归位）', NULL, 0, N'A');
             INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, PRO_SPEC, PRO_TYPE, SORT_ID, LAST_PURCHASE_PRICE, LAST_PURCHASE_CURR_ID)
             VALUES (@Pro1, N'ADR12 有历史料件', N'规格A', '3', @SortId, 12, 'ADR12CUR'),
                    (@Pro2, N'ADR12 单笔料件', N'规格B', '3', @SortId, 12, 'ADR12CUR'),

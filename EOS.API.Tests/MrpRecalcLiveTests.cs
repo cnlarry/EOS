@@ -173,6 +173,9 @@ public sealed class MrpRecalcLiveTests
         await using var seed = new SqlCommand("""
             INSERT INTO dbo.DEPOT (DEPOT_ID, DEPOT_NAME, MRP) VALUES (N'ADRMRP1', N'MRP库别', 1);
             INSERT INTO dbo.DEPOT (DEPOT_ID, DEPOT_NAME, MRP) VALUES (N'ADRMRP0', N'非MRP库别', 0);
+            INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID, LOCATION_NO, PARENT_NO, LOCATION_PATH, LOCATION_TYPE, LOCATION_NAME, STORAGE_TYPE, SEQ_NO, STATUS)
+                VALUES (N'ADRMRP1', N'-', NULL, N'/-', N'BIN', N'未指定位置（待归位）', NULL, 0, N'A'),
+                       (N'ADRMRP0', N'-', NULL, N'/-', N'BIN', N'未指定位置（待归位）', NULL, 0, N'A');
             INSERT INTO dbo.PRODUCT (PRO_NO, QTY, SAFETY_QTY, NOT_SEND_QTY, NOT_IN_QTY, NOT_GET_QTY, IN_BUY_QTY, MRP_QTY)
                 VALUES (N'ADRMRPA', 0, 0, 999, 999, 999, 999, 999),
                        (N'ADRMRPB', 0, 0, 999, 999, 999, 999, 999),
