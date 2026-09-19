@@ -159,6 +159,8 @@ builder.Services.AddScoped<EffectFormulaExecutor>();
 builder.Services.AddScoped<EffectValidationExecutor>();
 builder.Services.AddScoped<EffectPhysicalColumns>();
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.InventoryMoveHandler>();
+builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.LocationPathRecalcHandler>();
+builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.DepotSentinelLocationHandler>();
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.SetStateHandler>();
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.StampLastActivityHandler>();
 builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.BalanceAdjustHandler>();
