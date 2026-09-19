@@ -30,6 +30,8 @@ internal static class CustomValidationChecks
             [PurPurchaseCheck.HandlerKey] = PurPurchaseCheck.CheckAsync,
             [HrWorktimeCheck.HandlerKey] = HrWorktimeCheck.CheckAsync,
             [HrApplyCheck.HandlerKey] = HrApplyCheck.CheckAsync,
+            [DepotLocationGuard.HandlerKey] = DepotLocationGuard.CheckAsync,
+            [DepotLocationDeleteGuard.HandlerKey] = DepotLocationDeleteGuard.CheckAsync,
         };
 
     public static bool TryGet(string key,
