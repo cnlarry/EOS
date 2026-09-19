@@ -278,6 +278,10 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", effectRun.Error);
         }
+        if (await DetailRequirementAsync(connection, transaction, definition, pkColumns, keyValues, request.Details, token) is { } detailRequirement)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "VALIDATION_FAILED", "明细数据校验未通过。", detailRequirement);
+        }
         await RecalculateMasterAmountsAsync(connection, transaction, definition, token);
         await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues),
             "INSERT", "新增记录", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
@@ -469,6 +473,10 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", effectRun.Error);
         }
+        if (await DetailRequirementAsync(connection, transaction, definition, pkColumns, keyValues, request.Details, token) is { } detailRequirement)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "VALIDATION_FAILED", "明细数据校验未通过。", detailRequirement);
+        }
         await RecalculateMasterAmountsAsync(connection, transaction, definition, token);
         // 收紧：修改后记录仍须满足模块契约（防止把记录改出过滤范围）
         if (!string.IsNullOrWhiteSpace(scopePredicate)
@@ -597,6 +605,53 @@ public sealed class WorkbenchCommandHandler(
         return RecordSaveResult.Success(keyValues);
     }
 
+    /// <summary>
+    /// 保存期效果的明细兜底判定：模块声明"无明细不可保存"且调用方提交了空明细时，效果动作
+    /// 可能已经把明细派生出来了（见 DetailGeneratorKeys）。效果跑完后明细表仍为空才判失败，
+    /// 语义是"保存结束时这张单据必须有明细"，而不是"调用方必须提交明细"。
+    /// 仅对声明了明细生成者的模块生效，其它模块仍在 SaveDetailsAsync 里就地拒绝。
+    /// </summary>
+    private async Task<IReadOnlyList<FieldError>?> DetailRequirementAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        WorkbenchDefinition definition,
+        IReadOnlyList<string> pkColumns,
+        IReadOnlyList<string> keyValues,
+        IReadOnlyList<IReadOnlyDictionary<string, string?>>? submittedDetails,
+        CancellationToken token)
+    {
+        if (definition.DetailTable is null || submittedDetails is not { Count: 0 })
+            return null;
+        if (EmptyDetailPolicyFor(definition.DetailNoSave, effectEngine.GeneratesDetailRows(definition))
+            != EmptyDetailPolicy.RejectAfterEffects)
+            return null;
+        if (await WorkbenchSql.HasDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token))
+            return null;
+        return [new FieldError("", "该模块无明细资料不可保存。", "DETAIL_REQUIRED")];
+    }
+
+    /// <summary>提交了空明细时，模块的"无明细不可保存"该如何处置。</summary>
+    internal enum EmptyDetailPolicy
+    {
+        /// <summary>模块不要求明细：按显式清空处理。</summary>
+        Clear,
+
+        /// <summary>要求明细，且没有任何东西会派生明细：就地拒绝。</summary>
+        Reject,
+
+        /// <summary>要求明细，但保存期效果会派生明细：把判定推到效果执行之后。</summary>
+        RejectAfterEffects,
+    }
+
+    /// <summary>
+    /// "无明细不可保存"的判定时点。声明了明细生成者的模块不能就地拒绝，否则生成者永远
+    /// 跑不到（保存路径先于效果链判定）；此时判据后移为"保存结束时明细表必须有行"。
+    /// </summary>
+    internal static EmptyDetailPolicy EmptyDetailPolicyFor(bool detailNoSave, bool generatesDetailRows) =>
+        !detailNoSave ? EmptyDetailPolicy.Clear
+        : generatesDetailRows ? EmptyDetailPolicy.RejectAfterEffects
+        : EmptyDetailPolicy.Reject;
+
     private async Task<IReadOnlyList<FieldError>?> SaveDetailsAsync(
         SqlConnection connection,
         SqlTransaction transaction,
@@ -624,7 +679,11 @@ public sealed class WorkbenchCommandHandler(
         }
         if (details.Count == 0)
         {
-            if (definition.DetailNoSave)
+            // 明细可以由保存期的效果动作自行派生（如盘点单按库区范围展开明细）。此时
+            // "调用方没提交明细"不等于"这张单据最终没有明细"，不能在这里直接拒绝——
+            // 真正的判据是效果跑完后明细表里有没有行，由 DetailRequirementAsync 复核。
+            if (EmptyDetailPolicyFor(definition.DetailNoSave, effectEngine.GeneratesDetailRows(definition))
+                == EmptyDetailPolicy.Reject)
             {
                 return [new FieldError("", "该模块无明细资料不可保存。", "DETAIL_REQUIRED")];
             }

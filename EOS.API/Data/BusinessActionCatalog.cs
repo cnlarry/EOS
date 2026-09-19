@@ -71,6 +71,7 @@ public static class BusinessActionCatalog
         "pur-purchase-sync",
         "location-path-recalc",
         "depot-sentinel-location",
+        "stocktake-scope-generate",
         // 保留键（暂无落库实例，登记保留）
         "meta-link",
         "flow-trigger",
@@ -142,4 +143,14 @@ public static class BusinessActionCatalog
     public static bool IsKnownValidationKey(string value) => ValidationKeys.Contains(value);
 
     public static bool IsKnownValidationStage(string value) => ValidationStages.Contains(value);
+
+    /// <summary>明细行由服务端在保存期派生的效果键（按主表声明写出明细行）。
+    /// 模块声明其中任一动作时，"调用方没提交明细"不等于"这张单据保存后没有明细"，
+    /// 保存路径不得据此直接拒绝——真正的判据是保存结束时明细表里有没有行。</summary>
+    public static readonly IReadOnlySet<string> DetailGeneratorKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "stocktake-scope-generate",
+    };
+
+    public static bool IsDetailGenerator(string value) => DetailGeneratorKeys.Contains(value);
 }

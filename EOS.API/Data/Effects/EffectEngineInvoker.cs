@@ -1,3 +1,4 @@
+using System.Text.Json;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -23,6 +24,40 @@ public sealed class EffectEngineInvoker(
 {
     public bool IsEnabledFor(WorkbenchDefinition definition) =>
         settings.Enabled && definition.EffectEngineEnabled;
+
+    /// <summary>
+    /// True when the module's SAVE chain derives detail rows itself (e.g. a stocktake expanding
+    /// its zone scope into lines). The save path must not reject a document merely because the
+    /// caller submitted no details then: the authoritative question is whether the detail table
+    /// still has no rows once the effect chain has run.
+    /// </summary>
+    public bool GeneratesDetailRows(WorkbenchDefinition definition) =>
+        IsEnabledFor(definition) && DeclaresDetailGenerator(definition.BusinessActions);
+
+    /// <summary>
+    /// Whether the effect catalog of a module declares a save-time detail generator. Split out as
+    /// a pure function so the rule can be asserted without standing up the whole pipeline.
+    /// </summary>
+    internal static bool DeclaresDetailGenerator(JsonElement? businessActions)
+    {
+        if (businessActions is not { ValueKind: JsonValueKind.Array } actions)
+            return false;
+        foreach (var action in actions.EnumerateArray())
+        {
+            if (action.ValueKind != JsonValueKind.Object)
+                continue;
+            if (action.TryGetProperty("enabled", out var enabled) && enabled.ValueKind == JsonValueKind.False)
+                continue;
+            if (!action.TryGetProperty("effectKey", out var effectKey) || effectKey.ValueKind != JsonValueKind.String
+                || !BusinessActionCatalog.IsDetailGenerator(effectKey.GetString()!))
+                continue;
+            if (!action.TryGetProperty("eventCode", out var eventCode) || eventCode.ValueKind != JsonValueKind.String
+                || !EffectEventMapper.AppliesTo(eventCode.GetString()!, EffectEvent.Save))
+                continue;
+            return true;
+        }
+        return false;
+    }
 
     /// <summary>
     /// Runs the effect chain for the event. Returns (ran=false) when the engine is off
