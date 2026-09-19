@@ -47,7 +47,7 @@ public sealed class BatchModeTierLiveTests
     [Fact]
     public async Task 档0把非批管料件的批号归零()
     {
-        var observed = await RunAsync(batchMode: 0, batchNo: "LOT0");
+        var observed = await RunAsync(depotBatchMode: 0, batchNo: "LOT0");
 
         // 余额行落哨兵批号，且不进批次账 —— 与四键改造前的行为一致。
         Assert.Equal(string.Empty, observed.BalanceBatch);
@@ -58,7 +58,7 @@ public sealed class BatchModeTierLiveTests
     [Fact]
     public async Task 档1保留非批管料件的批号并进批次账()
     {
-        var observed = await RunAsync(batchMode: 1, batchNo: "LOT1");
+        var observed = await RunAsync(depotBatchMode: 1, batchNo: "LOT1");
 
         Assert.Equal("LOT1", observed.BalanceBatch);
         Assert.Equal(1, observed.BatchMasterCount);
@@ -73,12 +73,29 @@ public sealed class BatchModeTierLiveTests
     {
         // 非批管料件未填批号 ⇒ 被拒（档 0/1 都放行）
         var exception = await Assert.ThrowsAsync<EffectValidationException>(
-            () => RunAsync(batchMode: 2, batchNo: string.Empty));
+            () => RunAsync(depotBatchMode: 2, batchNo: string.Empty));
         Assert.Contains("需要输入批号", exception.Message);
 
         // 填了批号 ⇒ 放行，且落在那一个批次行上
-        var observed = await RunAsync(batchMode: 2, batchNo: "LOT2");
+        var observed = await RunAsync(depotBatchMode: 2, batchNo: "LOT2");
         Assert.Equal("LOT2", observed.BalanceBatch);
+        Assert.Equal(1, observed.BatchDetailCount);
+    }
+
+    /// <summary>
+    /// 库别无策略行时按**部署级默认**的档位执行，而不是"没有行就算档 0"。
+    ///
+    /// 这条是本轮真正的判别点：档位静默失效的那个缺陷（策略清单在行集落表之前读，读到空表）
+    /// 在三档用例下表现为"全部按档 0"，而**只有当部署级默认不是 0 时**，
+    /// "库别无行"与"档 0"才会给出不同结果。
+    /// </summary>
+    [Fact]
+    public async Task 库别无策略行时回落部署级默认档位()
+    {
+        var observed = await RunAsync(depotBatchMode: null, batchNo: "LOTD", deploymentBatchMode: 1);
+
+        Assert.Equal("LOTD", observed.BalanceBatch);
+        Assert.Equal(1, observed.BatchMasterCount);
         Assert.Equal(1, observed.BatchDetailCount);
     }
 
@@ -91,8 +108,10 @@ public sealed class BatchModeTierLiveTests
 
     /// <summary>
     /// 在一个事务内：建策略行与单据 → 批核出库 → 读出结果 → 回滚。
+    /// <paramref name="depotBatchMode"/> 为 <c>null</c> 表示该库别**没有策略行**（走部署级默认）；
+    /// <paramref name="deploymentBatchMode"/> 非空时临时改写部署级默认行的档位。
     /// </summary>
-    private static async Task<Observed> RunAsync(int batchMode, string batchNo)
+    private static async Task<Observed> RunAsync(int? depotBatchMode, string batchNo, int? deploymentBatchMode = null)
     {
         var connectionString = RequireConnection();
         await using var connection = new SqlConnection(connectionString);
@@ -100,8 +119,11 @@ public sealed class BatchModeTierLiveTests
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
         try
         {
-            await SeedAsync(connection, transaction, batchMode,
-                batchMode == 0 ? string.Empty : batchNo.Trim());
+            // 余额行的批号必须是**归一化之后**的那个：档 0 归零成哨兵，档 ≥1 保留原值，
+            // 否则 CheckStock 会在另一行走空。
+            var effectiveMode = depotBatchMode ?? deploymentBatchMode ?? 0;
+            await SeedAsync(connection, transaction, depotBatchMode, deploymentBatchMode,
+                effectiveMode == 0 ? string.Empty : batchNo.Trim());
 
             var columns = await new EffectPhysicalColumns().LoadAsync(connection, CancellationToken.None, transaction);
             var plan = Plan();
@@ -186,7 +208,8 @@ public sealed class BatchModeTierLiveTests
     }
 
     private static async Task SeedAsync(
-        SqlConnection connection, SqlTransaction transaction, int batchMode, string balanceBatch)
+        SqlConnection connection, SqlTransaction transaction,
+        int? depotBatchMode, int? deploymentBatchMode, string balanceBatch)
     {
         await ExecuteAsync(connection, transaction, """
             DELETE FROM dbo.INV_DEPOT_LOG WHERE MUTUALITY_TYPE=@Type;
@@ -204,12 +227,7 @@ public sealed class BatchModeTierLiveTests
             INSERT INTO dbo.DEPOT (DEPOT_ID, DEPOT_NAME) VALUES (@Depot, N'ADR14BM 档位仓');
             INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID, LOCATION_NO, PARENT_NO, LOCATION_PATH, LOCATION_TYPE, LOCATION_NAME, SEQ_NO, STATUS)
                 VALUES (@Depot, N'-', NULL, N'/-', N'BIN', N'未指定位置（待归位）', 0, N'A');
-            -- 库别行整行覆盖部署级默认：只有 BATCH_MODE 随用例变化，其余维度保持最松配置。
-            INSERT INTO dbo.DEPOT_STOCK_POLICY (DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH)
-                VALUES (@Depot, 0, N'FIXED', @BatchMode, 0, 1, 1);
 
-            -- 出库按四键定位，余额行的批号必须是**归一化之后**的那个：档 0 归零成哨兵，
-            -- 档 1/2 保留原值，否则 CheckStock 会在另一行走空。
             INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, INIT_QTY, COST_PRICE, COST_AMOUNT)
                 VALUES (@Pro, @Depot, N'-', @BalBatch, 10, 10, 5, 50);
 
@@ -219,7 +237,20 @@ public sealed class BatchModeTierLiveTests
                 VALUES (@Type, @No, 1, @Pro, 4, @Depot, N'-', @Unit);
             """,
             ("@Pro", Plain), ("@Depot", Depot), ("@Unit", Unit), ("@Type", Type), ("@No", No),
-            ("@BatchMode", batchMode), ("@BalBatch", balanceBatch));
+            ("@BalBatch", balanceBatch));
+
+        // 库别行整行覆盖部署级默认：只有 BATCH_MODE 随用例变化，其余维度保持最松配置。
+        // 传 null 表示该库别**不建策略行**，用于验证回落部署级默认的那一跳。
+        if (depotBatchMode is { } depotMode)
+            await ExecuteAsync(connection, transaction,
+                "INSERT INTO dbo.DEPOT_STOCK_POLICY (DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH) "
+                + "VALUES (@Depot, 0, N'FIXED', @Mode, 0, 1, 1)",
+                ("@Depot", Depot), ("@Mode", depotMode));
+
+        if (deploymentBatchMode is { } deploymentMode)
+            await ExecuteAsync(connection, transaction,
+                "UPDATE dbo.DEPOT_STOCK_POLICY SET BATCH_MODE=@Mode WHERE DEPOT_ID=N'*'",
+                ("@Mode", deploymentMode));
     }
 
     private static async Task ExecuteAsync(
