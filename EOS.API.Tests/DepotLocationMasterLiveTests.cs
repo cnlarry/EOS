@@ -54,6 +54,23 @@ public sealed class DepotLocationMasterLiveTests
         Assert.Equal("/A/A-R1", result.PathOf(RackA));
     }
 
+    /// <summary>
+    /// 新建行的路径先是列默认值（空串）。旧前缀为空时绝不能用它去匹配后代——
+    /// 空串拼上 '/' 会匹配到每一个以 '/' 开头的路径，把整张表的路径全部改写。
+    /// </summary>
+    [Fact]
+    public async Task 新建行路径尚为空串时不得改写其它行()
+    {
+        var result = await RunPathAsync(locationNo: "NEW", parentNo: ZoneA, insertWithPath: string.Empty);
+
+        Assert.Equal("/A/NEW", result.PathOf("NEW"));   // 自身按上级算出
+        Assert.Equal(1, result.Affected);               // 只有自身
+        Assert.Equal("/A", result.PathOf(ZoneA));       // 其余行一律不动
+        Assert.Equal("/B", result.PathOf(ZoneB));
+        Assert.Equal("/A/A-R1", result.PathOf(RackA));
+        Assert.Equal("/A/A-R1/A-R1-B1", result.PathOf(BinA));
+    }
+
     [Fact]
     public async Task 把节点挂到自己的下级之下被拒()
     {
@@ -167,7 +184,8 @@ public sealed class DepotLocationMasterLiveTests
         public string PathOf(string location) => Paths[location];
     }
 
-    private static async Task<PathResult> RunPathAsync(string locationNo, string parentNo)
+    private static async Task<PathResult> RunPathAsync(
+        string locationNo, string parentNo, string? insertWithPath = null)
     {
         var connectionString = RequireConnection();
         await using var connection = new SqlConnection(connectionString);
@@ -176,9 +194,20 @@ public sealed class DepotLocationMasterLiveTests
         try
         {
             await SeedAsync(connection, transaction, withSentinel: true);
-            await ExecuteAsync(connection, transaction,
-                "UPDATE dbo.DEPOT_LOCATION SET PARENT_NO=@parent WHERE DEPOT_ID=@d AND LOCATION_NO=@self",
-                ("@parent", parentNo), ("@d", Depot), ("@self", locationNo));
+            if (insertWithPath is null)
+            {
+                await ExecuteAsync(connection, transaction,
+                    "UPDATE dbo.DEPOT_LOCATION SET PARENT_NO=@parent WHERE DEPOT_ID=@d AND LOCATION_NO=@self",
+                    ("@parent", parentNo), ("@d", Depot), ("@self", locationNo));
+            }
+            else
+            {
+                // 模拟"刚插入、路径还是列默认值"的那一行
+                await ExecuteAsync(connection, transaction,
+                    "INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID, LOCATION_NO, PARENT_NO, LOCATION_PATH, LOCATION_TYPE, STATUS) "
+                    + "VALUES (@d, @self, @parent, @path, N'BIN', N'A')",
+                    ("@d", Depot), ("@self", locationNo), ("@parent", parentNo), ("@path", insertWithPath));
+            }
 
             var affected = await new LocationPathRecalcHandler().ExecuteAsync(
                 new ServiceEffectContext(connection, transaction, LocationPlan(), PathActionPlan(),

@@ -53,15 +53,21 @@ public sealed class LocationPathRecalcHandler : IEffectServiceHandler
             [new EffectSqlParameter("@newPath", newPath), new EffectSqlParameter("@depot", depot),
              new EffectSqlParameter("@location", locationNo)], token);
 
-        // 后代路径 = 新前缀 + 旧路径去掉旧前缀的剩余部分。
-        // 用"截断比较"而不是 LIKE：库位号里可能含 % 或 _，LIKE 会把它们当通配符。
-        affected += await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction,
-            $"UPDATE d SET d.{q(config.PathField)} = @newPath + SUBSTRING(d.{q(config.PathField)}, LEN(@oldPath)+1, 3900) "
-            + $"FROM dbo.{q(config.Table)} d WHERE d.{q(config.DepotField)}=@depot "
-            + $"AND SUBSTRING(d.{q(config.PathField)}, 1, LEN(@oldPath)+1) = @oldPath + '/' "
-            + $"AND d.{q(config.LocationField)}<>@location;",
-            [new EffectSqlParameter("@newPath", newPath), new EffectSqlParameter("@oldPath", oldPath),
-             new EffectSqlParameter("@depot", depot), new EffectSqlParameter("@location", locationNo)], token);
+        // 旧路径为空 = 这行还没有路径（新建那一刻由列默认值给出）。此时没有"旧前缀"可言：
+        // 空串拼上 '/' 会匹配到每一个以 '/' 开头的路径，把整张表的路径全部改写。
+        // 新建行不可能有后代，直接跳过。
+        if (oldPath.Length > 0)
+        {
+            // 后代路径 = 新前缀 + 旧路径去掉旧前缀的剩余部分。
+            // 用"截断比较"而不是 LIKE：库位号里可能含 % 或 _，LIKE 会把它们当通配符。
+            affected += await ServiceEffectSql.ExecAsync(context.Connection, context.Transaction,
+                $"UPDATE d SET d.{q(config.PathField)} = @newPath + SUBSTRING(d.{q(config.PathField)}, LEN(@oldPath)+1, 3900) "
+                + $"FROM dbo.{q(config.Table)} d WHERE d.{q(config.DepotField)}=@depot "
+                + $"AND SUBSTRING(d.{q(config.PathField)}, 1, LEN(@oldPath)+1) = @oldPath + '/' "
+                + $"AND d.{q(config.LocationField)}<>@location;",
+                [new EffectSqlParameter("@newPath", newPath), new EffectSqlParameter("@oldPath", oldPath),
+                 new EffectSqlParameter("@depot", depot), new EffectSqlParameter("@location", locationNo)], token);
+        }
         return affected;
     }
 
