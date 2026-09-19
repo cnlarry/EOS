@@ -37,13 +37,13 @@ public sealed class UserAdminController(
         return NoContent();
     }
 
-    /// <summary>新增用户（开户）：用户名 + 员工（选择器）+ 初始密码 + 可选所属组；要求 CanSetup(2306)。</summary>
+    /// <summary>新增用户（开户）：用户名 + 员工（选择器）+ 初始密码 + 可选所属组（可多组）；要求 CanSetup(2306)。</summary>
     [HttpPost]
     public async Task<IActionResult> CreateUser(CreateUserRequest request, CancellationToken token)
     {
         if (!await CanSetup(token)) return Forbid();
         await repository.CreateUserAsync(
-            request.UserId, request.EmployeeId, request.Password, request.GroupId,
+            request.UserId, request.EmployeeId, request.Password, request.GroupIds,
             userContext.EmployeeName, token);
         return NoContent();
     }

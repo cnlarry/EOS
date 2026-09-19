@@ -14,7 +14,8 @@ namespace EOS.API.Data;
 public sealed class UserAdminRepository(
     DbConnectionFactory connections,
     ILogger<UserAdminRepository> logger,
-    WorkbenchAuditWriter auditWriter)
+    WorkbenchAuditWriter auditWriter,
+    PermissionCache permissionCache)
 {
     private static readonly Regex UserIdPattern = new("^[A-Za-z0-9_-]{1,10}$", RegexOptions.Compiled);
 
@@ -38,7 +39,6 @@ public sealed class UserAdminRepository(
                        LTRIM(RTRIM(ISNULL(n.DEPT_ID,''))) DEPT_ID,
                        COALESCE(NULLIF(LTRIM(RTRIM(dbo.f_get_dept_desc(n.DEPT_ID))),''),'') DEPT_DESC,
                        LTRIM(RTRIM(ISNULL(n.CI,''))) CI,
-                       LTRIM(RTRIM(ISNULL(l.G_IDX,''))) G_IDX,
                        CAST(ISNULL(l.ACTIVE_TAG,0) AS bit) ACTIVE_TAG,
                        CAST(CASE WHEN LEN(ISNULL(l.USER_PWD,'')) > 0 THEN 1 ELSE 0 END AS bit) HAS_PASSWORD,
                        LTRIM(RTRIM(ISNULL(l.LAST_UPDATE_BY,''))) LAST_UPDATE_BY,
@@ -46,7 +46,7 @@ public sealed class UserAdminRepository(
                 FROM dbo.SYSDL l WITH (NOLOCK)
                 LEFT JOIN dbo.SYSDN n WITH (NOLOCK) ON l.EMP_ID = n.EMP_ID
             )
-            SELECT USER_ID,EMP_ID,EMP_NAME,DEPT_ID,DEPT_DESC,CI,G_IDX,ACTIVE_TAG,HAS_PASSWORD,
+            SELECT USER_ID,EMP_ID,EMP_NAME,DEPT_ID,DEPT_DESC,CI,ACTIVE_TAG,HAS_PASSWORD,
                    LAST_UPDATE_BY,LAST_UPDATE_DATE,
                    OUTER_APPLY_GROUPS.GROUPS,
                    COUNT(*) OVER() AS Total
@@ -74,13 +74,13 @@ public sealed class UserAdminRepository(
         var total = 0;
         while (await reader.ReadAsync(token))
         {
-            if (total == 0) total = Convert.ToInt32(reader.GetValue(12));
+            if (total == 0) total = Convert.ToInt32(reader.GetValue(11));
             items.Add(new(
                 reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
-                reader.GetString(4), reader.GetString(5), reader.GetString(6),
-                reader.IsDBNull(11) ? string.Empty : reader.GetString(11),
-                reader.GetBoolean(7), reader.GetBoolean(8), NullIfEmpty(reader, 9),
-                reader.IsDBNull(10) ? null : reader.GetDateTime(10)));
+                reader.GetString(4), reader.GetString(5),
+                reader.IsDBNull(10) ? string.Empty : reader.GetString(10),
+                reader.GetBoolean(6), reader.GetBoolean(7), NullIfEmpty(reader, 8),
+                reader.IsDBNull(9) ? null : reader.GetDateTime(9)));
         }
         return new(items, total, page, pageSize);
     }
@@ -126,12 +126,12 @@ public sealed class UserAdminRepository(
     }
 
     /// <summary>
-    /// 新增用户（开户，2306）：SYSDL 建号 + 初始密码（现代哈希）+ 可选所属组。
+    /// 新增用户（开户，2306）：SYSDL 建号 + 初始密码（现代哈希）+ 可选所属组（可多组）。
     /// 校验：用户名格式（1-10 位字母数字下划线连字符）、初始密码策略、用户名唯一、
-    /// 员工必须存在于 SYSDN 且尚未开户；写 AUDIT_EVENT 审计。
+    /// 员工必须存在于 SYSDN 且尚未开户、所选用户组存在；写 AUDIT_EVENT 审计。
     /// </summary>
     public async Task CreateUserAsync(
-        string userId, string employeeId, string password, string? groupId,
+        string userId, string employeeId, string password, IReadOnlyList<string>? groupIds,
         string adminName, CancellationToken token)
     {
         ValidateUserId(userId);
@@ -140,7 +140,11 @@ public sealed class UserAdminRepository(
         var emp = (employeeId ?? string.Empty).Trim();
         if (emp.Length == 0)
             throw new ArgumentException("请选择员工。", nameof(employeeId));
-        var group = (groupId ?? string.Empty).Trim();
+        var groups = (groupIds ?? [])
+            .Select(groupId => (groupId ?? string.Empty).Trim())
+            .Where(groupId => groupId.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         var hash = PasswordHasher.Hash(password);
 
         await using var connection = connections.Create();
@@ -175,7 +179,7 @@ public sealed class UserAdminRepository(
                 if (Convert.ToInt32(await accountCheck.ExecuteScalarAsync(token)) > 0)
                     throw new ArgumentException($"员工 {emp} 已有登录账号，不能重复开户。", nameof(employeeId));
             }
-            if (group.Length > 0)
+            foreach (var group in groups)
             {
                 await using var groupCheck = new SqlCommand(
                     "SELECT COUNT(1) FROM dbo.SYSDG WITH (NOLOCK) WHERE LTRIM(RTRIM(G_IDX))=@GroupId;",
@@ -187,21 +191,37 @@ public sealed class UserAdminRepository(
 
             await using var insert = new SqlCommand(
                 """
-                INSERT INTO dbo.SYSDL (USER_ID,EMP_ID,G_IDX,USER_PWD,ACTIVE_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
-                VALUES (@UserId,@Emp,@Group,@Hash,1,@By,GETDATE(),@By,GETDATE());
+                INSERT INTO dbo.SYSDL (USER_ID,EMP_ID,USER_PWD,ACTIVE_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                VALUES (@UserId,@Emp,@Hash,1,@By,GETDATE(),@By,GETDATE());
                 """, connection, transaction);
             insert.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = id;
             insert.Parameters.Add("@Emp", SqlDbType.NChar, 10).Value = emp;
-            insert.Parameters.Add("@Group", SqlDbType.NChar, 10).Value = group.Length > 0 ? group : DBNull.Value;
             insert.Parameters.Add("@Hash", SqlDbType.NVarChar, 50).Value = hash;
             insert.Parameters.Add("@By", SqlDbType.NChar, 40).Value = adminName;
             await insert.ExecuteNonQueryAsync(token);
 
+            // 用户与用户组是多对多关系，唯一落在 SYSDG_USER；用户表不再保存所属组
+            foreach (var group in groups)
+            {
+                await using var link = new SqlCommand(
+                    "INSERT INTO dbo.SYSDG_USER (G_IDX,USER_ID) VALUES (@GroupId,@UserId);",
+                    connection, transaction);
+                link.Parameters.Add("@GroupId", SqlDbType.NChar, 10).Value = group;
+                link.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = id;
+                await link.ExecuteNonQueryAsync(token);
+            }
+
             await auditWriter.WriteAsync(
-                connection, transaction, 2306, id, "USER_CREATE", $"新增用户 {id}（员工 {emp}）", adminName, token);
+                connection, transaction, 2306, id, "USER_CREATE",
+                groups.Count == 0
+                    ? $"新增用户 {id}（员工 {emp}）"
+                    : $"新增用户 {id}（员工 {emp}，所属组 {string.Join(',', groups)}）",
+                adminName, token);
 
             await transaction.CommitAsync(token);
-            logger.LogInformation("新增用户 userId={UserId} emp={Emp} by={By}", id, emp, adminName);
+            permissionCache.InvalidateAll();
+            logger.LogInformation("新增用户 userId={UserId} emp={Emp} groups={Groups} by={By}",
+                id, emp, string.Join(',', groups), adminName);
         }
         catch
         {

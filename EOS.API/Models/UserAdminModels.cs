@@ -7,7 +7,6 @@ public sealed record UserAdminSummary(
     string DepartmentId,
     string DepartmentName,
     string CompanyId,
-    string GroupId,
     string Groups,
     bool IsActive,
     bool HasPassword,
@@ -24,5 +23,5 @@ public sealed record SetUserPasswordRequest(string NewPassword);
 
 public sealed record SetUserStatusRequest(bool IsActive);
 
-/// <summary>新增用户（开户）请求：SYSDL 账号 + 初始密码 + 可选所属组。</summary>
-public sealed record CreateUserRequest(string UserId, string EmployeeId, string Password, string? GroupId);
+/// <summary>新增用户（开户）请求：SYSDL 账号 + 初始密码 + 可选所属组（多对多，可多组）。</summary>
+public sealed record CreateUserRequest(string UserId, string EmployeeId, string Password, IReadOnlyList<string>? GroupIds);
