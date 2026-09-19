@@ -181,17 +181,26 @@ public sealed class CopSendCatalogLiveTests
             DELETE FROM dbo.COP_SEND_M WHERE SEND_TYPE=@Type;
             DELETE FROM dbo.INV_BATCH_M WHERE BATCH_NO LIKE 'ADR12CSB%';
             DELETE FROM dbo.INV_PRO_DEPOT WHERE PRO_NO=@Pro;
+            DELETE FROM dbo.DEPOT_LOCATION WHERE DEPOT_ID=@Depot;
             DELETE FROM dbo.DEPOT WHERE DEPOT_ID=@Depot;
             DELETE FROM dbo.PRODUCT WHERE PRO_NO=@Pro;
             UPDATE dbo.SYSSS SET SEND_TAG=@SendTag;
             """, ("@Type", Type), ("@Pro", Pro), ("@Depot", Depot), ("@SendTag", sendTag));
         if (depotExists)
-            await ExecuteAsync(connection, transaction, token,
-                "INSERT INTO dbo.DEPOT (DEPOT_ID, DEPOT_NAME) VALUES (@Depot, N'ADR12CS仓库');", ("@Depot", Depot));
+            await ExecuteAsync(connection, transaction, token, """
+                INSERT INTO dbo.DEPOT (DEPOT_ID, DEPOT_NAME) VALUES (@Depot, N'ADR12CS仓库');
+                INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID, LOCATION_NO, PARENT_NO, LOCATION_PATH, LOCATION_TYPE, LOCATION_NAME, STORAGE_TYPE, SEQ_NO, STATUS)
+                VALUES (@Depot, N'-', NULL, N'/-', N'BIN', N'未指定位置（待归位）', NULL, 0, N'A');
+                """, ("@Depot", Depot));
         await ExecuteAsync(connection, transaction, token, """
             INSERT INTO dbo.PRODUCT (PRO_NO, MANAGE_BATCH, UNIT_ID) VALUES (@Pro, @ManageBatch, N'ADR12CSU');
-            INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, QTY) VALUES (@Pro, @Depot, @StockQty);
-            """, ("@Pro", Pro), ("@ManageBatch", manageBatch ? 1 : 0), ("@Depot", Depot), ("@StockQty", stockQty));
+            """, ("@Pro", Pro), ("@ManageBatch", manageBatch ? 1 : 0));
+        // 余额行的库别必须存在于仓库主档（并因此拥有哨兵位置行），
+        // 因此"库别不存在"的用例本身不再造库存。
+        if (depotExists)
+            await ExecuteAsync(connection, transaction, token, """
+                INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, QTY) VALUES (@Pro, @Depot, @StockQty);
+                """, ("@Pro", Pro), ("@Depot", Depot), ("@StockQty", stockQty));
         if (batchStockIn > 0)
         {
             await ExecuteAsync(connection, transaction, token, """
