@@ -53,7 +53,8 @@ public sealed class DepotStockPolicyController(
             request.MonthCloseByBatch,
             request.MonthCloseByLocation);
 
-        var result = await service.SaveAsync(candidate, userContext.EmployeeName, request.ConfirmDowngrade, token);
+        var result = await service.SaveAsync(
+            candidate, userContext.EmployeeName, request.ConfirmDowngrade, request.RelocateTo, token);
 
         var payload = new DepotStockPolicySaveResultDto(result.Saved, result.Errors, result.Warnings, result.RequiresConfirmation);
         // 需要二次确认时同样返回 400，但响应里 requiresConfirmation=true 是机器可判的信号：
@@ -100,7 +101,10 @@ public sealed record SaveDepotStockPolicyRequest(
     bool MonthCloseByBatch,
     bool MonthCloseByLocation,
     /// <summary>档位下调（位置 / 批次档位降低）的二次确认标志；不确认则拒存且不写入任何改动。</summary>
-    bool ConfirmDowngrade = false);
+    bool ConfirmDowngrade = false,
+    /// <summary>位置档位**升档**时的归位目标库位：给了就把「未指定位置」的存量改记到该库位。
+    /// 不给且确有存量时会要求明确表态（见 <see cref="DepotStockPolicyService.SaveAsync"/> 的说明）。</summary>
+    string? RelocateTo = null);
 
 /// <summary>保存结果：<c>Saved=false</c> 时 <c>Errors</c> 说明被拒原因；<c>Warnings</c> 为软性提示（可保存）。
 /// <c>RequiresConfirmation=true</c> 表示这是一次尚未确认的破坏性档位下调。</summary>
