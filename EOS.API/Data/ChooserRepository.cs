@@ -20,6 +20,8 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> RegisteredSources =
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
+            // 库位主档（权限门 110309）：列与排序白名单由服务端控制，不信任前端提交
+            ["depot-admin.locations"] = ["DEPOT_ID", "LOCATION_NO", "LOCATION_NAME", "LOCATION_TYPE", "STORAGE_TYPE", "PARENT_NO", "SEQ_NO", "STATUS"],
             ["menu-admin.tables"] = ["T_DESC", "T_ID", "T_KIND", "T_TYPE"],
             ["field-admin.tables"] = ["T_DESC", "T_ID", "T_KIND", "T_TYPE"],
             ["field-admin.columns"] = ["COLUMN_NAME", "DATA_TYPE"],
@@ -39,6 +41,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> StableSortColumns =
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
+            ["depot-admin.locations"] = ["DEPOT_ID", "LOCATION_NO"],
             ["menu-admin.tables"] = ["T_ID"],
             ["field-admin.tables"] = ["T_ID"],
             ["field-admin.columns"] = ["COLUMN_NAME"],
@@ -56,6 +59,12 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> KeywordExpressions =
         new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
         {
+            ["depot-admin.locations"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["LOCATION_NO"] = "LTRIM(RTRIM(L.LOCATION_NO)) LIKE @Keyword",
+                ["LOCATION_NAME"] = "LTRIM(RTRIM(ISNULL(L.LOCATION_NAME,''))) LIKE @Keyword",
+                ["PARENT_NO"] = "LTRIM(RTRIM(ISNULL(L.PARENT_NO,''))) LIKE @Keyword",
+            },
             ["menu-admin.tables"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["T_ID"] = "LTRIM(RTRIM(T_ID)) LIKE @Keyword",
@@ -117,6 +126,14 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> ColumnExpressions =
         new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
         {
+            ["depot-admin.locations"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["DEPOT_ID"] = "LTRIM(RTRIM(L.DEPOT_ID))",
+                ["LOCATION_NO"] = "LTRIM(RTRIM(L.LOCATION_NO))",
+                ["LOCATION_TYPE"] = "LTRIM(RTRIM(L.LOCATION_TYPE))",
+                ["STORAGE_TYPE"] = "LTRIM(RTRIM(ISNULL(L.STORAGE_TYPE,'')))",
+                ["STATUS"] = "LTRIM(RTRIM(L.STATUS))",
+            },
             ["menu-admin.tables"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["T_ID"] = "LTRIM(RTRIM(T_ID))",
@@ -186,6 +203,8 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         "report-admin.fields" or "report-admin.modules" => ReportAdminModuleId,
         "rights-admin.users" or "rights-admin.groups" => PermissionModules.SystemManagement,
         "user-admin.employees" => PermissionModules.SystemManagement,
+        // 库位主档：权限门挂 110309（库位主档模块）
+        "depot-admin.locations" => 110309,
         _ => null,
     };
 
@@ -235,8 +254,66 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             "rights-admin.users" => await QueryUsersAsync(request, token),
             "rights-admin.groups" => await QueryGroupsAsync(request, token),
             "user-admin.employees" => await QueryEmployeesAsync(request, token),
+            "depot-admin.locations" => await QueryDepotLocationsAsync(request, token),
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// depot-admin.locations：库位主档数据源（权限门 110309）。
+    /// **哨兵行（LOCATION_NO = '-'）一律不出现在结果里**：那是"未指定位置"的内部占位，
+    /// 由过账路径在归一化时产生，不允许用户在选择器里手工选中。
+    /// </summary>
+    private async Task<UnifiedChooserResult?> QueryDepotLocationsAsync(UnifiedChooserQueryRequest request, CancellationToken token)
+    {
+        const string sourceKey = "depot-admin.locations";
+        var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
+        var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand { Connection = connection };
+        AddCommonParameters(command, keyword, page, pageSize);
+        var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
+        var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        var sql = $"""
+            SELECT COUNT_BIG(1) FROM dbo.DEPOT_LOCATION L WITH (NOLOCK)
+            WHERE L.LOCATION_NO <> N'-' AND (@Keyword = '' OR {keywordPredicate}){conditionSql};
+            SELECT LTRIM(RTRIM(L.DEPOT_ID)) AS DEPOT_ID,LTRIM(RTRIM(L.LOCATION_NO)) AS LOCATION_NO,
+                   LTRIM(RTRIM(ISNULL(L.LOCATION_NAME,''))) AS LOCATION_NAME,
+                   LTRIM(RTRIM(L.LOCATION_TYPE)) AS LOCATION_TYPE,
+                   LTRIM(RTRIM(ISNULL(L.STORAGE_TYPE,''))) AS STORAGE_TYPE,
+                   LTRIM(RTRIM(ISNULL(L.PARENT_NO,''))) AS PARENT_NO,
+                   L.SEQ_NO AS SEQ_NO,LTRIM(RTRIM(L.STATUS)) AS STATUS
+            FROM dbo.DEPOT_LOCATION L WITH (NOLOCK)
+            WHERE L.LOCATION_NO <> N'-' AND (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+        command.CommandText = sql;
+        await connection.OpenAsync(token);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(reader, ["DEPOT_ID", "LOCATION_NO", "LOCATION_NAME", "LOCATION_TYPE", "STORAGE_TYPE", "PARENT_NO", "SEQ_NO", "STATUS"]);
+        logger.LogInformation("统一选择器查询 source={Source} page={Page} size={PageSize} total={Total} rows={Rows}",
+            sourceKey, page, pageSize, total, rows.Count);
+        return new UnifiedChooserResult(
+            [
+                new UnifiedChooserColumn("DEPOT_ID", "库别", "nvarchar", null),
+                new UnifiedChooserColumn("LOCATION_NO", "库位编号", "nvarchar", null),
+                new UnifiedChooserColumn("LOCATION_NAME", "位置名称", "nvarchar", null),
+                new UnifiedChooserColumn("LOCATION_TYPE", "位置类型", "nvarchar", null),
+                new UnifiedChooserColumn("STORAGE_TYPE", "存放用途", "nvarchar", null),
+                new UnifiedChooserColumn("PARENT_NO", "上级库位", "nvarchar", null),
+                new UnifiedChooserColumn("SEQ_NO", "排序", "int", null),
+                new UnifiedChooserColumn("STATUS", "状态", "nvarchar", null),
+            ],
+            rows,
+            total);
     }
 
     private async Task<UnifiedChooserResult?> QuerySprocsAsync(UnifiedChooserQueryRequest request, CancellationToken token)
