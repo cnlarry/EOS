@@ -66,6 +66,7 @@ public static class EffectParamPhysicalValidator
         "cop-receipt-offset",
         "cop-send-mo-flag",
         "pur-purchase-sync",
+        "stocktake-scope-generate",
     };
 
     /// <summary>True when the key either carries no reference or is resolved by this validator.</summary>
@@ -211,6 +212,10 @@ public static class EffectParamPhysicalValidator
                     break;
                 case "car-filloil-sync":
                     _ = CarFilloilSyncSpec.Parse(root, plan, columns);
+                    break;
+                case "stocktake-scope-generate":
+                    _ = StocktakeScopeConfig.Parse(
+                        root, plan.MasterTable ?? string.Empty, plan.DetailTable ?? string.Empty, columns);
                     break;
                 default:
                     return issues;

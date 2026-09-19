@@ -258,6 +258,16 @@ internal static class WorkbenchSql
         await command.ExecuteNonQueryAsync(token);
     }
 
+    /// <summary>明细表是否已有该单据的行。保存期效果可能自行派生明细，因此"有没有明细"必须现查，
+    /// 不能用调用方提交了什么来推断。</summary>
+    internal static async Task<bool> HasDetailRowsAsync(SqlConnection connection, SqlTransaction transaction, string detailTable, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
+    {
+        var where = string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@k{index}"));
+        await using var command = new SqlCommand($"SELECT TOP 1 1 FROM dbo.[{detailTable}] WHERE {where};", connection, transaction);
+        AddKeyParameters(command, pkColumns, keyValues);
+        return await command.ExecuteScalarAsync(token) is not null;
+    }
+
     internal static void AddKeyParameters(SqlCommand command, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues)
     {
         for (var i = 0; i < pkColumns.Count; i++)
