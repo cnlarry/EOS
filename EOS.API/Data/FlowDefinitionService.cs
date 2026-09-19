@@ -21,6 +21,15 @@ public sealed class FlowDefinitionService(
     WorkbenchAuditWriter auditWriter,
     ILogger<FlowDefinitionService> logger)
 {
+    /// <summary>
+    /// 模块批核能力三开关（自动批核 / 效果引擎接管 / 已配置流程）。三列一律显式 CAST 成 bit：
+    /// `CASE … THEN 1 ELSE 0 END` 的结果类型是 int，读端按 `GetBoolean` 取会抛
+    /// `InvalidCastException`（流程设计器保存曾因此整链接 500）。两处查询共用本常量，
+    /// 读端固定按 0..2 序取这三列，禁止在调用点各写一份。
+    /// </summary>
+    internal const string ApproveCapabilityColumns =
+        "CONVERT(bit, ISNULL(m.AUTO_APPROVE,0)), CONVERT(bit, ISNULL(m.EFFECT_ENGINE_TAG,0)), "
+        + "CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=m.M_IDX) THEN 1 ELSE 0 END)";
 
     public sealed record FlowStepDefinition(
         string SortNo,
@@ -49,12 +58,10 @@ public sealed class FlowDefinitionService(
         await connection.OpenAsync(token);
 
         var eligible = new List<object>();
-        await using (var command = new SqlCommand("""
+        await using (var command = new SqlCommand($"""
             SELECT m.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC,''))), LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),
                    LTRIM(RTRIM(ISNULL(m.M_URL,''))),
-                   ISNULL(m.AUTO_APPROVE,0), ISNULL(m.EFFECT_ENGINE_TAG,0),
-                   CONVERT(bit, CASE WHEN EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=m.M_IDX)
-                        THEN 1 ELSE 0 END)
+                   {ApproveCapabilityColumns}
             FROM dbo.MODULES m WITH (NOLOCK)
             WHERE LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,'')))<>''
             ORDER BY m.M_IDX;
@@ -236,13 +243,11 @@ public sealed class FlowDefinitionService(
         // 模块 + 批核能力校验
         string? title;
         string? masterTable;
-        await using (var moduleCommand = new SqlCommand("""
-            SELECT LTRIM(RTRIM(ISNULL(M_DESC,''))), LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),
-                   LTRIM(RTRIM(ISNULL(M_URL,''))),
-                   ISNULL(AUTO_APPROVE,0), ISNULL(EFFECT_ENGINE_TAG,0),
-                   CASE WHEN EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=M_IDX)
-                        THEN 1 ELSE 0 END
-            FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
+        await using (var moduleCommand = new SqlCommand($"""
+            SELECT LTRIM(RTRIM(ISNULL(m.M_DESC,''))), LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))),
+                   LTRIM(RTRIM(ISNULL(m.M_URL,''))),
+                   {ApproveCapabilityColumns}
+            FROM dbo.MODULES m WITH (NOLOCK) WHERE m.M_IDX=@ModuleId;
             """, connection))
         {
             moduleCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
