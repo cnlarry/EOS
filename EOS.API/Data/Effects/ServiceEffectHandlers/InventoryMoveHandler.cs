@@ -456,8 +456,8 @@ public sealed class InventoryMoveSql
 
     /// <summary>
     /// 库别级加权平均：成本口径固定在 (料号, 库别)，与该库别下有几个库位 / 批次行无关。
-    /// 先按库别合计现有全部行，再叠加本次移动量算出新的库别金额与加权单价，然后同步写回
-    /// 该库别的**所有**行 —— 这三列是库别级字段，每行冗余存储同一个值。
+    /// 数量按行级字段 QTY 求和；金额取 MAX —— COST_AMOUNT 是库别级字段、每行冗余存储同一个
+    /// 值，对它求和会按行数成倍虚增。算出新的库别金额与加权单价后同步写回该库别的**所有**行。
     /// 必须在按行改数量**之前**执行：这里用的是"更新前的合计 + 增量"，顺序颠倒会重复计入。
     /// </summary>
     private Task<int> SyncDepotLevelCostAsync(int sign, CancellationToken token) => ExecAsync(
@@ -466,7 +466,7 @@ public sealed class InventoryMoveSql
         + "FROM dbo.INV_PRO_DEPOT d JOIN ("
         + "SELECT b.PRO_NO, b.DEPOT_ID, "
         + "SUM(ISNULL(b.QTY,0)) + @sign * ISNULL(x.BASE_QTY,0) AS NEW_QTY, "
-        + "SUM(ISNULL(b.COST_AMOUNT,0)) + @sign * ISNULL(x.AMOUNT,0) AS NEW_AMOUNT "
+        + "MAX(ISNULL(b.COST_AMOUNT,0)) + @sign * ISNULL(x.AMOUNT,0) AS NEW_AMOUNT "
         + $"FROM dbo.INV_PRO_DEPOT b JOIN (SELECT PRO_NO, DEPOT_ID, SUM(BASE_QTY) BASE_QTY, SUM(AMOUNT*CURR_RATE) AMOUNT FROM {Tmp} "
         + "GROUP BY PRO_NO, DEPOT_ID) x ON b.PRO_NO=x.PRO_NO AND b.DEPOT_ID=x.DEPOT_ID "
         + "GROUP BY b.PRO_NO, b.DEPOT_ID, x.BASE_QTY, x.AMOUNT) a "
