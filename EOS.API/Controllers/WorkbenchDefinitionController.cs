@@ -26,6 +26,14 @@ public sealed class WorkbenchDefinitionController(
         return Ok(await snapshots.GetStatusAsync(token));
     }
 
+    /// <summary>快照落后检测（只读）：逐模块比对已发布快照与按当前配置重建的定义，不写快照、不动脏标记。</summary>
+    [HttpGet("staleness")]
+    public async Task<IActionResult> Staleness(CancellationToken token)
+    {
+        await RequireSetupAsync(token);
+        return Ok(await snapshots.DetectStalenessAsync(token));
+    }
+
     /// <summary>dry-run 校验（不写快照）：与发布共用同一校验器，供流水线与 CI 预检。</summary>
     [HttpPost("validate")]
     public async Task<IActionResult> Validate([FromBody] WorkbenchDefinitionValidateRequest request, CancellationToken token)

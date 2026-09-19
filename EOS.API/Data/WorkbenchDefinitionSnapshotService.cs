@@ -63,6 +63,96 @@ public sealed class WorkbenchDefinitionSnapshotService(
     public Task<WorkbenchDefinitionValidationReport> ValidateAsync(int moduleId, string userId, CancellationToken token)
         => validator.ValidateAsync(moduleId, userId, token);
 
+    /// <summary>
+    /// 「快照 vs 重建定义」的落后检测：逐模块把定义按**当前代码 + 当前元数据**重建，
+    /// 与已发布快照的 <c>DEFINITION_JSON</c> 逐字比较。判据与发布时的"内容未变即复用版本"
+    /// 完全同源，不另立一套标准。**只读**：不写快照、不动脏标记。
+    ///
+    /// 输出里同时带 <c>Dirty</c>：<c>Stale &amp;&amp; !Dirty</c> 才是静默落后（配置变了却没有任何
+    /// 标记提示需要重发布，运行期仍按旧定义跑）。清一色的 <c>Stale &amp;&amp; Dirty</c> 属已知的
+    /// 待发布积压，不算异常。
+    /// </summary>
+    public async Task<IReadOnlyList<WorkbenchSnapshotStaleness>> DetectStalenessAsync(CancellationToken token)
+    {
+        var snapshotSql = """
+            SELECT s.MODULE_ID, LTRIM(RTRIM(ISNULL(m.M_DESC,''))), ISNULL(d.DIRTY_TAG,0), s.VERSION, s.DEFINITION_JSON
+            FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK)
+            JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX = s.MODULE_ID
+            LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.MODULE_ID = s.MODULE_ID
+            WHERE s.IS_CURRENT = 1
+            ORDER BY s.MODULE_ID;
+            """;
+        var rows = new List<(int ModuleId, string Title, bool Dirty, int Version, string StoredJson)>();
+        await using (var connection = connections.Create())
+        {
+            await connection.OpenAsync(token);
+            await using var command = new SqlCommand(snapshotSql, connection);
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                rows.Add((reader.GetInt32(0), reader.GetString(1), reader.GetBoolean(2), reader.GetInt32(3), reader.GetString(4)));
+            }
+        }
+
+        var enabled = formSettings.Value.EnabledModuleIds.ToHashSet();
+        var result = new List<WorkbenchSnapshotStaleness>(rows.Count);
+        foreach (var row in rows)
+        {
+            string? rebuilt = null;
+            string? reason = null;
+            try
+            {
+                var report = await validator.ValidateAsync(row.ModuleId, "staleness-check", token);
+                rebuilt = report.DefinitionJson;
+                if (rebuilt is null)
+                {
+                    reason = "当前配置重建不出定义（未通过发布校验）";
+                }
+            }
+            catch (Exception exception)
+            {
+                reason = $"重建定义失败：{exception.Message}";
+            }
+
+            var stale = reason is not null || !string.Equals(row.StoredJson, rebuilt, StringComparison.Ordinal);
+            result.Add(new WorkbenchSnapshotStaleness(
+                row.ModuleId, row.Title, enabled.Contains(row.ModuleId), row.Version, row.Dirty, stale, reason,
+                row.StoredJson.Length, rebuilt?.Length ?? 0,
+                stale ? DescribeFirstDifference(row.StoredJson, rebuilt) : null));
+        }
+
+        logger.LogInformation("快照落后检测完成 modules={Checked} stale={Stale} silent={Silent}",
+            result.Count, result.Count(item => item.Stale), result.Count(item => item.Stale && !item.Dirty));
+        return result;
+    }
+
+    /// <summary>
+    /// 首个差异位置的上下文片段（两侧各取 60 字符）。落后报告只给"是/否"没法定位，
+    /// 给一段上下文就能一眼看出是字段元数据、业务动作还是别的东西变了。
+    /// </summary>
+    private static string? DescribeFirstDifference(string stored, string? rebuilt)
+    {
+        if (rebuilt is null)
+        {
+            return null;
+        }
+        var limit = Math.Min(stored.Length, rebuilt.Length);
+        var index = 0;
+        while (index < limit && stored[index] == rebuilt[index])
+        {
+            index++;
+        }
+        if (index == limit && stored.Length == rebuilt.Length)
+        {
+            return null;
+        }
+        const int padding = 60;
+        var start = Math.Max(0, index - padding);
+        var storedSnippet = stored.Substring(start, Math.Min(padding * 2, stored.Length - start));
+        var rebuiltSnippet = rebuilt.Substring(start, Math.Min(padding * 2, rebuilt.Length - start));
+        return $"位置 {index}：快照…{storedSnippet}… vs 重建…{rebuiltSnippet}…";
+    }
+
     /// <summary>发布：逐模块校验，通过则写快照（版本递增、IS_CURRENT 切换）并清脏；失败不发布、脏标记保留。</summary>
     public async Task<IReadOnlyList<WorkbenchPublishResult>> PublishAsync(
         IReadOnlyList<int> moduleIds,
