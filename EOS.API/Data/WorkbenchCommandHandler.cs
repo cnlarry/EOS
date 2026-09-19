@@ -247,15 +247,14 @@ public sealed class WorkbenchCommandHandler(
             keyValues = pkColumns.Select(column => ValueToString(values.GetValueOrDefault(column))).ToList();
         }
 
-        // After insert, the record must stay within the module contract (module FILTER + DATA_FILTER + EXEC_TAG)
+        // After insert, the record must stay within the module contract (module FILTER + DATA_FILTER + EXEC_TAG).
+        // 谓词在这里先构建（配置不支持即早失败、与记录内容无关），但**判定后移到 SAVE 效果链之后**：
+        // 有些模块的过滤条件依赖"判别字段"（如托外/补料标志、模具性质、报关方式），而这些字段是
+        // 模块身份、由服务端在保存期写入（旧系统亦然）。早期判定会把这类新建一律拒掉——效果再写也来不及。
+        // 修改路径本来就是"改完 + 跑完效果再判"，这里与它对齐。
         if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
         {
             return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
-        }
-        if (!string.IsNullOrWhiteSpace(scopePredicate)
-            && !await WorkbenchSql.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
-        {
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "RECORD_OUT_OF_MODULE_FILTER", "新建记录不满足模块过滤条件，无法保存。");
         }
 
         var detailErrors = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, values, request.Details, employeeName, true, token);
@@ -283,6 +282,12 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "VALIDATION_FAILED", "明细数据校验未通过。", detailRequirement);
         }
         await RecalculateMasterAmountsAsync(connection, transaction, definition, token);
+        // 与修改路径同一落点：跑完 SAVE 效果链之后再判"记录是否仍在模块范围内"。
+        if (!string.IsNullOrWhiteSpace(scopePredicate)
+            && !await WorkbenchSql.RecordInScopeAsync(connection, transaction, definition.MasterTable, pkColumns, keyValues, scopePredicate, scopeParameters, token))
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "RECORD_OUT_OF_MODULE_FILTER", "新建记录不满足模块过滤条件，无法保存。");
+        }
         await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues),
             "INSERT", "新增记录", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
         if (idempotencyKey is not null)
