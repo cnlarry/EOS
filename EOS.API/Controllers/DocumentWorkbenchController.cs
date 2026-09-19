@@ -143,6 +143,10 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
     {
         var definition=await AuthorizedDefinition(moduleId,token);
         if(definition is null)return NotFound();
+        // 批核/解批同属统一表单写路径，与新增/修改/删除共用同一道闸门：既不在统一表单白名单、
+        // 也没有自定义表单路由的模块（只读列表、由服务端服务托管的配置表）按钮本就不显示，
+        // 不得经本端点改数据。
+        if(!definition.HasAdd&&!definition.HasEdit)return NotFound();
         // API 是最终权限边界：批核/解批必须服务端复核，前端按钮显隐只改善体验。
         await permissions.RequireAsync(userContext.UserId,moduleId,approve?PermissionAction.Approve:PermissionAction.Deapprove,token);
         var keyValues=ParseKey(request.Key);
@@ -156,6 +160,8 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
     {
         var definition=await AuthorizedDefinition(moduleId,token);
         if(definition is null)return NotFound();
+        // 结案/取消结案与批核同一道闸门，理由同 RunWorkflow。
+        if(!definition.HasAdd&&!definition.HasEdit)return NotFound();
         var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if(userId is null)return Unauthorized();
         await permissions.RequireAsync(userId,moduleId,finish?PermissionAction.EndCase:PermissionAction.UnEndCase,token);
