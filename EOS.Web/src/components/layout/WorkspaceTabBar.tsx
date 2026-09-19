@@ -94,7 +94,7 @@ export function WorkspaceTabBar({ tabs, activeId, dirtyIds, hint, onActivate, on
         return (
           <div className="nav-item" role="presentation" key={tab.id}>
             <div
-              className={`nav-link erp-workspace-tab${active ? ' active' : ''}`}
+              className={`nav-link erp-workspace-tab${closable ? '' : ' erp-tab-home'}${active ? ' active' : ''}`}
               role="tab"
               aria-selected={active}
               tabIndex={active ? 0 : -1}

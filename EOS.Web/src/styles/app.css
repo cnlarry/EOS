@@ -589,6 +589,8 @@ button, input, select { font: inherit; }
 .erp-workspace-tabs { padding-left: 10px; }
 .erp-workspace-tabs .nav-item { display: flex; min-width: 0; }
 .erp-workspace-tabs .nav-link { display: flex; align-items: center; gap: 6px; min-width: 96px; max-width: 200px; padding: 0 10px; line-height: 1; white-space: nowrap; cursor: pointer; user-select: none; }
+/* 首页标签没有关闭按钮：别人的最小宽度是为 × 留位，它按内容收窄即可 */
+.erp-workspace-tabs .erp-tab-home { min-width: 64px; }
 .erp-workspace-tabs .nav-link:hover { position: relative; z-index: 1; }
 /* 激活标签：次级底色（白条上"按下"的观感）+ 去掉下边框。
    底色与工作区底色同色，并盖住标签栏最底部那条线，于是它与下方工作区连成一体，
