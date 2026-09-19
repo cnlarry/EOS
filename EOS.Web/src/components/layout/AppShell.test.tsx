@@ -629,6 +629,22 @@ describe('AppShell', () => {
     expect(tabs[1]).toHaveTextContent('计数器')
   })
 
+  it('刷新恢复的标签若标题解析不出来，保留原标题而不是退化成「页面」', () => {
+    localStorage.setItem(workspaceTabsKey('u1'), JSON.stringify([
+      { id: 't1', url: '/p1', label: '采购订单' },
+    ]))
+    renderShell('/p1')
+    expect(screen.getByRole('tab', { name: /采购订单/ })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /页面/ })).not.toBeInTheDocument()
+  })
+
+  it('导航树里没有的地址用模块标题或路径末段顶着，不写占位文案', () => {
+    // 报表路由在导航树里没有同名叶子，但模块 1209 有（分组模块）
+    renderShell('/reports/1209')
+    expect(screen.getByRole('tab', { name: /分组模块/ })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /^页面$/ })).not.toBeInTheDocument()
+  })
+
   it('存在脏标签时浏览器刷新/关闭被拦下', async () => {
     renderShell('/dashboard')
     fireEvent.click(screen.getByRole('link', { name: '脏页演示' }))
