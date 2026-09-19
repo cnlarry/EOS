@@ -32,16 +32,24 @@ public sealed class DepotStockPolicyTests
         return new DepotStockPolicyService(new DbConnectionFactory(configuration));
     }
 
+    /// <summary>测试用构造：六个维度 + 月结两维（默认取部署级口径）。</summary>
+    private static DepotStockPolicy Policy(
+        string depot, int locationMode, string storageMode, int batchMode, int capacityMode,
+        bool mixProduct = true, bool mixBatch = true,
+        bool monthCloseByBatch = true, bool monthCloseByLocation = false)
+        => new(depot, locationMode, storageMode, batchMode, capacityMode, mixProduct, mixBatch,
+            monthCloseByBatch, monthCloseByLocation);
+
     // ---------- 组合规则（纯逻辑，不需要数据库） ----------
 
     [Fact]
     public void 未实现档位在保存期被拒()
     {
-        var batch3 = new DepotStockPolicy("CP", 3, "FIXED", 3, 0, true, true);
+        var batch3 = Policy("CP", 3, "FIXED", 3, 0, true, true);
         var (errors, _) = DepotStockPolicyService.Validate(batch3);
         Assert.Contains(errors, message => message.Contains("批次档位 3"));
 
-        var capacity = new DepotStockPolicy("CP", 3, "FIXED", 0, 2, true, true);
+        var capacity = Policy("CP", 3, "FIXED", 0, 2, true, true);
         var (errors2, _) = DepotStockPolicyService.Validate(capacity);
         Assert.Contains(errors2, message => message.Contains("容量档位"));
     }
@@ -52,16 +60,16 @@ public sealed class DepotStockPolicyTests
         // R-C1：位置档位 0/1（不管 / 可填）配随机或混合存放 ⇒ 货必然丢失
         foreach (var locationMode in new[] { 0, 1 })
         {
-            var (errors, _) = DepotStockPolicyService.Validate(new DepotStockPolicy("CP", locationMode, "RANDOM", 0, 0, true, true));
+            var (errors, _) = DepotStockPolicyService.Validate(Policy("CP", locationMode, "RANDOM", 0, 0, true, true));
             Assert.Contains(errors, message => message.Contains("随机存放"));
         }
 
         // 档位 2/3 不触发硬性拒绝；档位 2 只出软性告警
-        var (okErrors, okWarnings) = DepotStockPolicyService.Validate(new DepotStockPolicy("CP", 3, "RANDOM", 0, 0, true, true));
+        var (okErrors, okWarnings) = DepotStockPolicyService.Validate(Policy("CP", 3, "RANDOM", 0, 0, true, true));
         Assert.Empty(okErrors);
         Assert.Empty(okWarnings);
 
-        var (_, warned) = DepotStockPolicyService.Validate(new DepotStockPolicy("CP", 2, "MIXED", 0, 0, true, true));
+        var (_, warned) = DepotStockPolicyService.Validate(Policy("CP", 2, "MIXED", 0, 0, true, true));
         Assert.Contains(warned, message => message.Contains("扫码"));
     }
 
@@ -69,20 +77,40 @@ public sealed class DepotStockPolicyTests
     public void 容量与效期都以位置为前提()
     {
         // R-C2：位置档位 0 时不能启用容量校验
-        var (errors, _) = DepotStockPolicyService.Validate(new DepotStockPolicy("CP", 0, "FIXED", 0, 1, true, true));
+        var (errors, _) = DepotStockPolicyService.Validate(Policy("CP", 0, "FIXED", 0, 1, true, true));
         Assert.Contains(errors, message => message.Contains("容量校验"));
 
         // R-C3：效期追溯要求位置强制（档位 3）
-        var (errors2, _) = DepotStockPolicyService.Validate(new DepotStockPolicy("CP", 2, "FIXED", 3, 0, true, true));
+        var (errors2, _) = DepotStockPolicyService.Validate(Policy("CP", 2, "FIXED", 3, 0, true, true));
         Assert.Contains(errors2, message => message.Contains("效期追溯"));
     }
 
     [Fact]
     public void 最松配置不产生任何错误或告警()
     {
-        var (errors, warnings) = DepotStockPolicyService.Validate(new DepotStockPolicy("*", 0, "FIXED", 0, 0, true, true));
+        var (errors, warnings) = DepotStockPolicyService.Validate(Policy("*", 0, "FIXED", 0, 0, true, true));
         Assert.Empty(errors);
         Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public void 月结维度不接受库别覆盖()
+    {
+        var deployment = Policy("*", 0, "FIXED", 0, 0, true, true, true, false);
+
+        // 部署级自身：任何取值都合法（它就是基准）
+        Assert.Null(DepotStockPolicyService.ValidateMonthCloseScope(
+            Policy("*", 0, "FIXED", 0, 0, true, true, false, true), deployment));
+
+        // 库别行与部署级一致：放行
+        Assert.Null(DepotStockPolicyService.ValidateMonthCloseScope(
+            Policy("CP", 3, "RANDOM", 2, 0, false, false, true, false), deployment));
+
+        // 库别行试图改月结粒度：拒绝（跨仓粒度不一致会让汇总重复计数或漏计）
+        Assert.NotNull(DepotStockPolicyService.ValidateMonthCloseScope(
+            Policy("CP", 3, "RANDOM", 2, 0, false, false, false, false), deployment));
+        Assert.NotNull(DepotStockPolicyService.ValidateMonthCloseScope(
+            Policy("CP", 3, "RANDOM", 2, 0, false, false, true, true), deployment));
     }
 
     // ---------- 两跳求值（真库） ----------

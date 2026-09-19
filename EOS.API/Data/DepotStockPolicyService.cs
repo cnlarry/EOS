@@ -13,7 +13,9 @@ public sealed record DepotStockPolicy(
     int BatchMode,
     int CapacityMode,
     bool MixProduct,
-    bool MixBatch);
+    bool MixBatch,
+    bool MonthCloseByBatch,
+    bool MonthCloseByLocation);
 
 /// <summary>
 /// 库存策略的唯一求值入口。策略决定"管到多细"（位置 / 存放 / 批次 / 容量 / 混品号 / 混批次），
@@ -54,9 +56,14 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections)
         var scope = string.IsNullOrWhiteSpace(depotId) ? DeploymentScope : depotId.Trim();
 
         await using var command = new SqlCommand(
-            "SELECT TOP 1 DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH "
-            + "FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID IN (@scope, @default) "
-            + "ORDER BY CASE WHEN DEPOT_ID = @scope THEN 0 ELSE 1 END",
+            // 月结维度一律取部署级行的值：库别行即使被直连改库写入，运行时口径也不会分裂。
+            "SELECT r.DEPOT_ID, r.LOCATION_MODE, r.STORAGE_MODE, r.BATCH_MODE, r.CAPACITY_MODE, r.MIX_PRODUCT, r.MIX_BATCH, "
+            + "d.MONTH_CLOSE_BY_BATCH, d.MONTH_CLOSE_BY_LOCATION "
+            + "FROM (SELECT TOP 1 DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH "
+            + "        FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID IN (@scope, @default) "
+            + "       ORDER BY CASE WHEN DEPOT_ID = @scope THEN 0 ELSE 1 END) r "
+            + "CROSS JOIN (SELECT MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION "
+            + "              FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID = @default) d",
             connection, transaction);
         command.Parameters.AddWithValue("@scope", scope);
         command.Parameters.AddWithValue("@default", DeploymentScope);
@@ -103,6 +110,18 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections)
     }
 
     /// <summary>
+    /// 月结维度只在部署级生效：库别行提交与部署级不同的取值一律拒绝。若允许按库别配不同
+    /// 粒度，同一个月的月结数据粒度就不一致，跨仓汇总会重复计数或漏计，且事后无法补救
+    /// （月结是历史快照）。运行时求值也只取部署级值，所以这里拦的是"配上了却不生效"的配置。
+    /// </summary>
+    public static string? ValidateMonthCloseScope(DepotStockPolicy candidate, DepotStockPolicy deployment) =>
+        candidate.DepotId != DeploymentScope
+        && (candidate.MonthCloseByBatch != deployment.MonthCloseByBatch
+            || candidate.MonthCloseByLocation != deployment.MonthCloseByLocation)
+            ? "月结维度只在部署级生效，库别行不能覆盖（跨仓粒度不一致会让汇总重复计数或漏计）。"
+            : null;
+
+    /// <summary>
     /// R-S2 的判据：该库别下存在批管料件（有库存余额行）而批次档位为 0。
     /// 「取严者胜」会兜住产品级要求，但仍应提示，避免客户以为批次在这里被管起来了。
     /// </summary>
@@ -137,5 +156,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections)
         reader.GetInt32(3),
         reader.GetInt32(4),
         reader.GetBoolean(5),
-        reader.GetBoolean(6));
+        reader.GetBoolean(6),
+        reader.GetBoolean(7),
+        reader.GetBoolean(8));
 }
