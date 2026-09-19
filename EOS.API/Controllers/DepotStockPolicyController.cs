@@ -8,8 +8,8 @@ namespace EOS.API.Controllers;
 /// <summary>
 /// 库存策略（管到多细：位置 / 存放 / 批次 / 容量 / 混品号 / 混批次 + 月结维度）的读写。
 ///
-/// 权限门挂在 <c>110306 仓库资料</c> 上：策略决定全仓作业方式与数据语义，属高权限配置，
-/// 不应与日常的库位维护同权限。读要求 CanBrowse、写要求 CanSetup。
+/// 权限门挂在 <c>110310 库存策略</c> 模块上：策略决定全仓作业方式与数据语义，属高权限配置，
+/// 不应与日常的库位维护（110309）或仓库资料（110306）同权限。读要求 CanBrowse、写要求 CanSetup。
 /// </summary>
 /// <remarks>
 /// 保存与求值共用 <see cref="DepotStockPolicyService"/> 这一个出口：界面能看到的取值口径，
@@ -22,7 +22,7 @@ public sealed class DepotStockPolicyController(
     ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
-    private const int DepotAdminModuleId = 110306;
+    private const int StockPolicyModuleId = 110310;
 
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken token)
@@ -60,10 +60,10 @@ public sealed class DepotStockPolicyController(
     }
 
     private async Task<bool> CanBrowse(CancellationToken token) =>
-        (await rightsRepository.GetAsync(userContext.UserId, DepotAdminModuleId, token)).CanBrowse;
+        (await rightsRepository.GetAsync(userContext.UserId, StockPolicyModuleId, token)).CanBrowse;
 
     private async Task<bool> CanSetup(CancellationToken token) =>
-        (await rightsRepository.GetAsync(userContext.UserId, DepotAdminModuleId, token)).CanSetup;
+        (await rightsRepository.GetAsync(userContext.UserId, StockPolicyModuleId, token)).CanSetup;
 
     private static DepotStockPolicyDto ToDto(DepotStockPolicy policy) => new(
         policy.DepotId,
