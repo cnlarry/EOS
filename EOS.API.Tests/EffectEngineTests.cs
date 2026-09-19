@@ -557,7 +557,8 @@ public class ServiceEffectHandlerTests
         var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "COP_BACK_M.BACK_DATE", "COP_BACK_D.BACK_TYPE", "COP_BACK_D.BACK_NO",
-            "COP_BACK_D.SERIAL_NO", "COP_BACK_D.PRO_NO", "COP_BACK_D.DEPOT_ID", "COP_BACK_D.UNIT_ID", "COP_BACK_D.QTY",
+            "COP_BACK_D.SERIAL_NO", "COP_BACK_D.PRO_NO", "COP_BACK_D.DEPOT_ID", "COP_BACK_D.LOCATION_NO",
+            "COP_BACK_D.UNIT_ID", "COP_BACK_D.QTY",
         };
         var rowSet = plan.BuildRowSet(modulePlan, new[] { "BKT", "BK001" }, columns);
 
@@ -588,13 +589,15 @@ public class ServiceEffectHandlerTests
             Array.Empty<EOS.API.Data.Effects.EffectValidationPlan>());
         var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "INV_LOAN_D.SERIAL_NO", "INV_LOAN_D.PRO_NO", "INV_LOAN_D.IN_DEPOT_ID", "INV_LOAN_D.QTY",
+            "INV_LOAN_D.SERIAL_NO", "INV_LOAN_D.PRO_NO", "INV_LOAN_D.IN_DEPOT_ID", "INV_LOAN_D.IN_LOCATION_NO", "INV_LOAN_D.QTY",
             "INV_LOAN_M.LOAN_DATE", "INV_LOAN_D.LOAN_TYPE", "INV_LOAN_D.LOAN_NO",
         };
 
         var rowSet = plan.BuildRowSet(modulePlan, new[] { "JC", "JC001" }, columns);
 
         Assert.Contains("ISNULL(D.[IN_DEPOT_ID], '') <> ''", rowSet.Sql);
+        // 位置列由库别列派生：IN_DEPOT_ID → IN_LOCATION_NO
+        Assert.Contains("[IN_LOCATION_NO]", rowSet.Sql);
     }
 
     [Fact]

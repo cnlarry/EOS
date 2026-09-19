@@ -49,6 +49,18 @@ public sealed record InventoryMovePlan(
     IReadOnlyList<InventoryRowColumn> DetailColumns,
     IReadOnlyList<string> RowPositiveFields)
 {
+    /// <summary>
+    /// 库位列由库别列派生：DEPOT_ID→LOCATION_NO、IN_DEPOT_ID→IN_LOCATION_NO、
+    /// OUT_DEPOT_ID→OUT_LOCATION_NO、BAD_DEPOT_ID→BAD_LOCATION_NO。明细表的位置列与库别列
+    /// 一一对应，因此不需要再增加一个配置项，也就不存在"配了库别却漏配库位"这种漏配。
+    /// </summary>
+    public string LocationField => DeriveLocationField(DepotField);
+
+    public static string DeriveLocationField(string depotField) =>
+        depotField.EndsWith("DEPOT_ID", StringComparison.OrdinalIgnoreCase)
+            ? depotField[..^"DEPOT_ID".Length] + "LOCATION_NO"
+            : "LOCATION_NO";
+
     public static InventoryMovePlan Parse(JsonElement root)
     {
         if (root.ValueKind != JsonValueKind.Object)
@@ -214,7 +226,7 @@ public sealed record InventoryMovePlan(
         if (keys < 2)
             throw new EffectConfigException("inventory-move 需要单据双键（类型+单号）主表形态，禁止单键执行。");
 
-        var check = new[] { MasterDateField, DepotField }
+        var check = new[] { MasterDateField, DepotField, LocationField }
             .Concat(DetailColumns.Where(column => column.Constant is null).Select(column => column.Column))
             .Concat(QuantityTerms.Select(t => t.Field))
             .Concat(RowPositiveFields)
@@ -236,6 +248,7 @@ public sealed record InventoryMovePlan(
             ("SERIAL_NO", "D.[SERIAL_NO]"),
             ("PRO_NO", "D.[PRO_NO]"),
             ("DEPOT_ID", $"D.{Q(DepotField)}"),
+            ("LOCATION_NO", $"D.{Q(LocationField)}"),
         };
         var constantIndex = 0;
         foreach (var entry in DetailColumns)
@@ -354,6 +367,8 @@ public sealed class InventoryMoveSql
         if (IsApprove)
             affected += await PrecheckAsync(token);
         affected += await NormalizeAsync(token);
+        // 位置校验必须在归一化之后：未填位置此时已被归一为哨兵 N'-'。
+        await PrecheckLocationsAsync(token);
         affected += await NormalizePriceAsync(token);
         await EnsureDepotRowsAsync(token);
         await RequireBatchesAsync(token);
@@ -375,7 +390,7 @@ public sealed class InventoryMoveSql
     {
         await ExecAsync(
             $"CREATE TABLE {Tmp}(BILL_TYPE nchar(10),BILL_NO nchar(30),BILL_DATE datetime,SERIAL_NO int,PRO_NO nchar(30),"
-            + "DEPOT_ID nchar(10),QTY float,BASE_QTY float,UNIT_ID nchar(10),PRICE float,BASE_PRICE float,"
+            + "DEPOT_ID nchar(10),LOCATION_NO nvarchar(30),QTY float,BASE_QTY float,UNIT_ID nchar(10),PRICE float,BASE_PRICE float,"
             + "CURR_ID nchar(10),CURR_RATE float,AMOUNT float,BATCH_NO nchar(30))", token);
     }
 
@@ -392,8 +407,26 @@ public sealed class InventoryMoveSql
         return 0;
     }
 
+    /// <summary>
+    /// 位置必须在库位主档中存在（余额表有指向它的外键）。必须先由
+    /// <see cref="NormalizeAsync"/> 把未填位置归一到哨兵，否则明细里那些 NULL 位置
+    /// 会全部命中"主档里找不到"，把正常单据整单拦下。
+    /// </summary>
+    private async Task PrecheckLocationsAsync(CancellationToken token)
+    {
+        var missing = await QueryListAsync(
+            $"SELECT DISTINCT t.SERIAL_NO, t.LOCATION_NO FROM {Tmp} t "
+            + "WHERE NOT EXISTS (SELECT 1 FROM dbo.DEPOT_LOCATION l WITH (NOLOCK) "
+            + "WHERE l.DEPOT_ID=t.DEPOT_ID AND l.LOCATION_NO=t.LOCATION_NO)", token);
+        if (missing.Count > 0)
+            throw new EffectValidationException("以下库位不存在\n序号----库  位\n" + FormatPairs(missing));
+    }
+
     private async Task<int> NormalizeAsync(CancellationToken token) => await ExecAsync(
         $"UPDATE t SET t.BATCH_NO = CASE ISNULL(p.MANAGE_BATCH,0) WHEN 0 THEN '' ELSE t.BATCH_NO END, "
+        // 未填位置一律归一到哨兵 N'-'：余额表的位置列是主键列，主键不接受 NULL，
+        // 且唯一性比较把 NULL 视为相等，多行 NULL 会直接判为重复键冲突。
+        + "t.LOCATION_NO = ISNULL(NULLIF(LTRIM(RTRIM(t.LOCATION_NO)), ''), N'-'), "
         + "t.BASE_QTY = t.QTY * CASE t.UNIT_ID WHEN p.UNIT_ID THEN 1 WHEN p.UNIT_ID_1 THEN p.UNIT_RATE_1 "
         + "WHEN p.UNIT_ID_2 THEN p.UNIT_RATE_2 WHEN p.UNIT_ID_3 THEN p.UNIT_RATE_3 WHEN p.UNIT_ID_4 THEN p.UNIT_RATE_4 ELSE 1 END, "
         + "t.CURR_RATE = CASE ISNULL(t.CURR_RATE,0) WHEN 0 THEN 1 ELSE t.CURR_RATE END "
@@ -403,12 +436,14 @@ public sealed class InventoryMoveSql
         "UPDATE t SET t.BASE_PRICE = ROUND(CASE ISNULL(t.PRICE,0) WHEN 0 THEN d.COST_PRICE "
         + "ELSE CASE ISNULL(t.BASE_QTY,0) WHEN 0 THEN d.COST_PRICE ELSE (t.AMOUNT*t.CURR_RATE)/t.BASE_QTY END END, 8), "
         + "t.CURR_RATE = CASE ISNULL(t.PRICE,0) WHEN 0 THEN 1 ELSE t.CURR_RATE END "
-        + $"FROM {Tmp} t JOIN dbo.INV_PRO_DEPOT d ON t.PRO_NO=d.PRO_NO AND t.DEPOT_ID=d.DEPOT_ID", token);
+        + $"FROM {Tmp} t JOIN dbo.INV_PRO_DEPOT d ON t.PRO_NO=d.PRO_NO AND t.DEPOT_ID=d.DEPOT_ID "
+        + "AND t.LOCATION_NO=d.LOCATION_NO AND t.BATCH_NO=d.BATCH_NO", token);
 
     private async Task EnsureDepotRowsAsync(CancellationToken token) => await ExecAsync(
-        "INSERT INTO dbo.INV_PRO_DEPOT(PRO_NO, DEPOT_ID, QTY, INIT_QTY, COST_PRICE, COST_AMOUNT) "
-        + $"SELECT DISTINCT t.PRO_NO, t.DEPOT_ID, 0, 0, 0, 0 FROM {Tmp} t "
-        + "WHERE NOT EXISTS (SELECT 1 FROM dbo.INV_PRO_DEPOT d WHERE d.PRO_NO=t.PRO_NO AND d.DEPOT_ID=t.DEPOT_ID)", token);
+        "INSERT INTO dbo.INV_PRO_DEPOT(PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, INIT_QTY, COST_PRICE, COST_AMOUNT) "
+        + $"SELECT DISTINCT t.PRO_NO, t.DEPOT_ID, t.LOCATION_NO, t.BATCH_NO, 0, 0, 0, 0 FROM {Tmp} t "
+        + "WHERE NOT EXISTS (SELECT 1 FROM dbo.INV_PRO_DEPOT d WHERE d.PRO_NO=t.PRO_NO AND d.DEPOT_ID=t.DEPOT_ID "
+        + "AND d.LOCATION_NO=t.LOCATION_NO AND d.BATCH_NO=t.BATCH_NO)", token);
 
     private async Task RequireBatchesAsync(CancellationToken token)
     {
@@ -419,14 +454,36 @@ public sealed class InventoryMoveSql
             throw new EffectValidationException("以下品号需要输入批号信息\n" + FormatPairs(missing));
     }
 
+    /// <summary>
+    /// 库别级加权平均：成本口径固定在 (料号, 库别)，与该库别下有几个库位 / 批次行无关。
+    /// 先按库别合计现有全部行，再叠加本次移动量算出新的库别金额与加权单价，然后同步写回
+    /// 该库别的**所有**行 —— 这三列是库别级字段，每行冗余存储同一个值。
+    /// 必须在按行改数量**之前**执行：这里用的是"更新前的合计 + 增量"，顺序颠倒会重复计入。
+    /// </summary>
+    private Task<int> SyncDepotLevelCostAsync(int sign, CancellationToken token) => ExecAsync(
+        "UPDATE d SET d.COST_AMOUNT = a.NEW_AMOUNT, "
+        + "d.COST_PRICE = ROUND(CASE WHEN a.NEW_QTY=0 THEN d.COST_PRICE ELSE a.NEW_AMOUNT/a.NEW_QTY END, 8) "
+        + "FROM dbo.INV_PRO_DEPOT d JOIN ("
+        + "SELECT b.PRO_NO, b.DEPOT_ID, "
+        + "SUM(ISNULL(b.QTY,0)) + @sign * ISNULL(x.BASE_QTY,0) AS NEW_QTY, "
+        + "SUM(ISNULL(b.COST_AMOUNT,0)) + @sign * ISNULL(x.AMOUNT,0) AS NEW_AMOUNT "
+        + $"FROM dbo.INV_PRO_DEPOT b JOIN (SELECT PRO_NO, DEPOT_ID, SUM(BASE_QTY) BASE_QTY, SUM(AMOUNT*CURR_RATE) AMOUNT FROM {Tmp} "
+        + "GROUP BY PRO_NO, DEPOT_ID) x ON b.PRO_NO=x.PRO_NO AND b.DEPOT_ID=x.DEPOT_ID "
+        + "GROUP BY b.PRO_NO, b.DEPOT_ID, x.BASE_QTY, x.AMOUNT) a "
+        + "ON a.PRO_NO=d.PRO_NO AND a.DEPOT_ID=d.DEPOT_ID", token, ("@sign", sign));
+
+    /// <summary>按四键把移动量落到具体库位 / 批次行上。</summary>
+    private Task<int> ApplyRowQuantitiesAsync(int sign, CancellationToken token) => ExecAsync(
+        "UPDATE d SET d.QTY = ISNULL(d.QTY,0) + @sign * ISNULL(s.BASE_QTY,0) "
+        + $"FROM (SELECT PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, SUM(BASE_QTY) BASE_QTY FROM {Tmp} "
+        + "GROUP BY PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO) s "
+        + "JOIN dbo.INV_PRO_DEPOT d ON d.PRO_NO=s.PRO_NO AND d.DEPOT_ID=s.DEPOT_ID "
+        + "AND d.LOCATION_NO=s.LOCATION_NO AND d.BATCH_NO=s.BATCH_NO", token, ("@sign", sign));
+
     private async Task<int> ApplyInAsync(CancellationToken token)
     {
-        var affected = await ExecAsync(
-            "UPDATE d SET d.QTY = ISNULL(d.QTY,0) + ISNULL(s.BASE_QTY,0), "
-            + "d.COST_PRICE = ROUND(CASE WHEN (d.QTY + s.BASE_QTY)=0 THEN d.COST_PRICE ELSE (d.COST_AMOUNT + s.AMOUNT)/(d.QTY + s.BASE_QTY) END, 8), "
-            + "d.COST_AMOUNT = ISNULL(d.COST_AMOUNT,0) + ISNULL(s.AMOUNT,0) "
-            + $"FROM (SELECT PRO_NO, DEPOT_ID, SUM(BASE_QTY) BASE_QTY, SUM(AMOUNT*CURR_RATE) AMOUNT FROM {Tmp} GROUP BY PRO_NO, DEPOT_ID) s "
-            + "JOIN dbo.INV_PRO_DEPOT d ON d.PRO_NO=s.PRO_NO AND d.DEPOT_ID=s.DEPOT_ID", token);
+        var affected = await SyncDepotLevelCostAsync(1, token);
+        affected += await ApplyRowQuantitiesAsync(1, token);
         affected += await ApplyBatchesAsync(effect: 'I', inSummary: true, token);
         return affected;
     }
@@ -434,12 +491,8 @@ public sealed class InventoryMoveSql
     private async Task<int> ApplyOutAsync(CancellationToken token)
     {
         await CheckStockAsync(token);
-        var affected = await ExecAsync(
-            "UPDATE d SET d.QTY = ISNULL(d.QTY,0) - ISNULL(s.BASE_QTY,0), "
-            + "d.COST_PRICE = ROUND(CASE WHEN (d.QTY - s.BASE_QTY)=0 THEN d.COST_PRICE ELSE (d.COST_AMOUNT - s.AMOUNT)/(d.QTY - s.BASE_QTY) END, 8), "
-            + "d.COST_AMOUNT = ISNULL(d.COST_AMOUNT,0) - ISNULL(s.AMOUNT,0) "
-            + $"FROM (SELECT PRO_NO, DEPOT_ID, SUM(BASE_QTY) BASE_QTY, SUM(AMOUNT*CURR_RATE) AMOUNT FROM {Tmp} GROUP BY PRO_NO, DEPOT_ID) s "
-            + "JOIN dbo.INV_PRO_DEPOT d ON d.PRO_NO=s.PRO_NO AND d.DEPOT_ID=s.DEPOT_ID", token);
+        var affected = await SyncDepotLevelCostAsync(-1, token);
+        affected += await ApplyRowQuantitiesAsync(-1, token);
         affected += await ApplyBatchesAsync(effect: 'O', inSummary: false, token);
         return affected;
     }
@@ -447,12 +500,8 @@ public sealed class InventoryMoveSql
     private async Task<int> UndoInAsync(CancellationToken token)
     {
         await CheckStockAsync(token);
-        var affected = await ExecAsync(
-            "UPDATE d SET d.QTY = ISNULL(d.QTY,0) - ISNULL(s.BASE_QTY,0), "
-            + "d.COST_PRICE = ROUND(CASE WHEN (d.QTY - s.BASE_QTY)=0 THEN d.COST_PRICE ELSE (d.COST_AMOUNT - s.AMOUNT)/(d.QTY - s.BASE_QTY) END, 8), "
-            + "d.COST_AMOUNT = ISNULL(d.COST_AMOUNT,0) - ISNULL(s.AMOUNT,0) "
-            + $"FROM (SELECT PRO_NO, DEPOT_ID, SUM(BASE_QTY) BASE_QTY, SUM(AMOUNT*CURR_RATE) AMOUNT FROM {Tmp} GROUP BY PRO_NO, DEPOT_ID) s "
-            + "JOIN dbo.INV_PRO_DEPOT d ON d.PRO_NO=s.PRO_NO AND d.DEPOT_ID=s.DEPOT_ID", token);
+        var affected = await SyncDepotLevelCostAsync(-1, token);
+        affected += await ApplyRowQuantitiesAsync(-1, token);
         affected += await ExecAsync(
             "UPDATE b SET b.IN_SUM = ISNULL(b.IN_SUM,0) - ISNULL(t.BASE_QTY,0) "
             + $"FROM {Tmp} t JOIN dbo.INV_BATCH_M b ON b.PRO_NO=t.PRO_NO AND b.BATCH_NO=t.BATCH_NO", token);
@@ -462,12 +511,8 @@ public sealed class InventoryMoveSql
 
     private async Task<int> UndoOutAsync(CancellationToken token)
     {
-        var affected = await ExecAsync(
-            "UPDATE d SET d.QTY = ISNULL(d.QTY,0) + ISNULL(s.BASE_QTY,0), "
-            + "d.COST_PRICE = CASE WHEN (d.QTY + s.BASE_QTY)=0 THEN d.COST_PRICE ELSE (d.COST_AMOUNT + ISNULL(s.AMOUNT,0)) / (d.QTY + s.BASE_QTY) END, "
-            + "d.COST_AMOUNT = ISNULL(d.COST_AMOUNT,0) + ISNULL(s.AMOUNT,0) "
-            + $"FROM (SELECT PRO_NO, DEPOT_ID, SUM(BASE_QTY) BASE_QTY, SUM(AMOUNT*CURR_RATE) AMOUNT FROM {Tmp} GROUP BY PRO_NO, DEPOT_ID) s "
-            + "JOIN dbo.INV_PRO_DEPOT d ON d.PRO_NO=s.PRO_NO AND d.DEPOT_ID=s.DEPOT_ID", token);
+        var affected = await SyncDepotLevelCostAsync(1, token);
+        affected += await ApplyRowQuantitiesAsync(1, token);
         affected += await ExecAsync(
             "INSERT INTO dbo.INV_BATCH_M(BATCH_NO, PRO_NO, IN_SUM) "
             + $"SELECT t.BATCH_NO, t.PRO_NO, 0 FROM {Tmp} t WHERE ISNULL(t.BATCH_NO,'') != '' "
@@ -513,15 +558,31 @@ public sealed class InventoryMoveSql
     /// </summary>
     private string LedgerDateExpression() => IsApprove ? "t.BILL_DATE" : "SYSDATETIME()";
 
-    /// <summary>Inventory log rows; deapprove writes mirrored rows with flipped direction and negative quantities.</summary>
+    /// <summary>
+    /// Inventory log rows; deapprove writes mirrored rows with flipped direction and negative quantities.
+    /// 位置路径是**快照**：位置可以被移动、托盘号可以被复用，因此"当时货在哪"只能记在流水上，
+    /// 不能事后按当前位置回溯。解批优先沿用批核当时那一行的快照，取不到才回落到当前位置。
+    /// </summary>
     private async Task<int> WriteLogAsync(CancellationToken token) => await ExecAsync(
-        "INSERT INTO dbo.INV_DEPOT_LOG(PRO_NO, MUTUALITY_DATE, IN_OUT, MUTUALITY_TYPE, MUTUALITY_NO, MUTUALITY_SERIAL_NO, DEPOT_ID, QTY, PRICE, AMOUNT, BATCH_NO, MUTUALITY_QTY, MUTUALITY_UNIT_ID, MUTUALITY_PRICE, MUTUALITY_CURR_ID, MUTUALITY_CURR_RATE, MUTUALITY_AMOUNT) "
-        + $"SELECT t.PRO_NO, {LedgerDateExpression()}, @io, t.BILL_TYPE, t.BILL_NO, t.SERIAL_NO, t.DEPOT_ID, "
+        "INSERT INTO dbo.INV_DEPOT_LOG(PRO_NO, MUTUALITY_DATE, IN_OUT, MUTUALITY_TYPE, MUTUALITY_NO, MUTUALITY_SERIAL_NO, DEPOT_ID, LOCATION_NO, LOCATION_PATH, QTY, PRICE, AMOUNT, BATCH_NO, MUTUALITY_QTY, MUTUALITY_UNIT_ID, MUTUALITY_PRICE, MUTUALITY_CURR_ID, MUTUALITY_CURR_RATE, MUTUALITY_AMOUNT) "
+        + $"SELECT t.PRO_NO, {LedgerDateExpression()}, @io, t.BILL_TYPE, t.BILL_NO, t.SERIAL_NO, t.DEPOT_ID, t.LOCATION_NO, "
+        + "CASE WHEN @approve = 1 THEN LK.LOCATION_PATH ELSE ISNULL(SNAP.LOCATION_PATH, LK.LOCATION_PATH) END, "
         + "CASE WHEN @positive = 1 THEN t.BASE_QTY ELSE -t.BASE_QTY END, t.BASE_PRICE, "
         + "CASE WHEN @positive = 1 THEN t.AMOUNT*t.CURR_RATE ELSE -t.AMOUNT*t.CURR_RATE END, t.BATCH_NO, "
         + "CASE WHEN @positive = 1 THEN t.QTY ELSE -t.QTY END, t.UNIT_ID, t.PRICE, t.CURR_ID, t.CURR_RATE, "
         + "CASE WHEN @positive = 1 THEN t.AMOUNT ELSE -t.AMOUNT END "
-        + $"FROM {Tmp} t", token, ("@positive", IsApprove ? 1 : 0), ("@io", FlowDirectionChar(_plan.Direction, IsApprove)));
+        + $"FROM {Tmp} t "
+        + "LEFT JOIN dbo.DEPOT_LOCATION LK ON LK.DEPOT_ID=t.DEPOT_ID AND LK.LOCATION_NO=t.LOCATION_NO "
+        + "OUTER APPLY (SELECT TOP 1 L.LOCATION_PATH FROM dbo.INV_DEPOT_LOG L "
+        + "WHERE L.PRO_NO=t.PRO_NO AND L.DEPOT_ID=t.DEPOT_ID AND L.LOCATION_NO=t.LOCATION_NO "
+        + "AND L.MUTUALITY_TYPE=t.BILL_TYPE AND L.MUTUALITY_NO=t.BILL_NO "
+        + "AND L.MUTUALITY_SERIAL_NO=t.SERIAL_NO AND L.IN_OUT=@originIo "
+        + "ORDER BY L.MUTUALITY_DATE DESC) SNAP",
+        token,
+        ("@positive", IsApprove ? 1 : 0),
+        ("@approve", IsApprove ? 1 : 0),
+        ("@io", FlowDirectionChar(_plan.Direction, IsApprove)),
+        ("@originIo", FlowDirectionChar(_plan.Direction, true)));
 
     private async Task<int> UpdateProductAsync(CancellationToken token)
     {
@@ -573,19 +634,26 @@ public sealed class InventoryMoveSql
     }
 
     private async Task<int> CleanTrailingAsync(CancellationToken token) => await ExecAsync(
-        "UPDATE d SET d.COST_PRICE = CASE WHEN (d.COST_AMOUNT<=0 OR d.QTY<=0) THEN 0 ELSE d.COST_PRICE END, "
-        + "d.COST_AMOUNT = CASE WHEN d.QTY<=0 THEN 0 ELSE d.COST_AMOUNT END "
-        + $"FROM dbo.INV_PRO_DEPOT d WHERE EXISTS (SELECT 1 FROM {Tmp} t WHERE t.PRO_NO=d.PRO_NO AND t.DEPOT_ID=d.DEPOT_ID)", token);
+        // 成本是库别级字段：清零条件必须取该库别的合计数量，而不是单个库位行的数量，
+        // 否则某一个库位刚好出空就会把整个库别的成本抹掉。
+        "UPDATE d SET d.COST_PRICE = CASE WHEN (ISNULL(d.COST_AMOUNT,0)<=0 OR ISNULL(g.QTY,0)<=0) THEN 0 ELSE d.COST_PRICE END, "
+        + "d.COST_AMOUNT = CASE WHEN ISNULL(g.QTY,0)<=0 THEN 0 ELSE d.COST_AMOUNT END "
+        + "FROM dbo.INV_PRO_DEPOT d JOIN ("
+        + "SELECT PRO_NO, DEPOT_ID, SUM(ISNULL(QTY,0)) QTY FROM dbo.INV_PRO_DEPOT GROUP BY PRO_NO, DEPOT_ID) g "
+        + "ON g.PRO_NO=d.PRO_NO AND g.DEPOT_ID=d.DEPOT_ID "
+        + $"WHERE EXISTS (SELECT 1 FROM {Tmp} t WHERE t.PRO_NO=d.PRO_NO AND t.DEPOT_ID=d.DEPOT_ID)", token);
 
     private async Task CheckStockAsync(CancellationToken token)
     {
         var insufficient = await QueryListAsync(
-            "SELECT s.PRO_NO, s.DEPOT_ID, CAST(s.BASE_QTY - ISNULL(d.QTY,0) AS varchar(30)) "
-            + $"FROM (SELECT PRO_NO, DEPOT_ID, SUM(BASE_QTY) BASE_QTY FROM {Tmp} GROUP BY PRO_NO, DEPOT_ID) s "
+            "SELECT s.PRO_NO, LTRIM(RTRIM(s.DEPOT_ID)) + '/' + LTRIM(RTRIM(s.LOCATION_NO)), CAST(s.BASE_QTY - ISNULL(d.QTY,0) AS varchar(30)) "
+            + $"FROM (SELECT PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, SUM(BASE_QTY) BASE_QTY FROM {Tmp} "
+            + "GROUP BY PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO) s "
             + "JOIN dbo.INV_PRO_DEPOT d ON d.PRO_NO=s.PRO_NO AND d.DEPOT_ID=s.DEPOT_ID "
+            + "AND d.LOCATION_NO=s.LOCATION_NO AND d.BATCH_NO=s.BATCH_NO "
             + "WHERE s.BASE_QTY > ISNULL(d.QTY,0) + 0.001", token);
         if (insufficient.Count > 0)
-            throw new EffectValidationException("库存数量不足\n料  号---------------库别----不足数量\n" + FormatPairs(insufficient));
+            throw new EffectValidationException("库存数量不足\n料  号---------------库别/库位---------------不足数量\n" + FormatPairs(insufficient));
         var batchShort = await QueryListAsync(
             $"SELECT t.PRO_NO, t.BATCH_NO, CAST(t.BASE_QTY - (ISNULL(b.IN_SUM,0)-ISNULL(b.OUT_SUM,0)) AS varchar(30)) "
             + $"FROM {Tmp} t JOIN dbo.INV_BATCH_M b ON b.BATCH_NO=t.BATCH_NO AND b.PRO_NO=t.PRO_NO "
