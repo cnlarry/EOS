@@ -410,7 +410,10 @@ button, input, select { font: inherit; }
 .erp-kind-filter { width: 165px; flex: 0 0 165px; }
 /* 通用全高列表页（工作台同款电子表格体验）：列表卡铺满页面高度，
    表格区域内部滚动、表头吸顶；复用 ErpTable 的列宽拖拽/排序/复制/键盘导航 */
-.erp-full-list-page { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 320px; overflow: hidden; }
+.erp-full-list-page { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 320px; overflow: hidden; }
+/* JSX 上往往同时挂着 Bootstrap 工具类 gap-2（0.5rem !important），
+   用更具体的选择器把区块间距拉回设计口径 10px */
+.erp-full-list-page.d-flex { gap: 10px !important; }
 .erp-full-list-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .erp-full-list-page .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .erp-full-list-page .erp-list-card .table-responsive { overflow: visible; }
@@ -1143,8 +1146,12 @@ button, input, select { font: inherit; }
 /* 明细空行占位：行数不足 5 时补足，保持网格完整（不参与保存） */
 .erp-detail-filler td { height: 41px; }
 
-/* 统一表单：视口撑满（与工作台一致），主表单占剩余位置、明细固定高度，各自内部滚动 */
-.erp-form-page { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+/* 统一表单：视口撑满（与工作台一致），主表单占剩余位置、明细固定高度，各自内部滚动。
+   主表单卡与明细卡之间取 10px，与工作台、全站留白口径统一 */
+.erp-form-page { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+/* JSX 上挂着 Bootstrap 工具类 gap-2（0.5rem !important），
+   用更具体的选择器把主表单与明细网格之间的间距拉回设计口径 10px */
+.erp-form-page.d-flex { gap: 10px !important; }
 .erp-form-page > .erp-form-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .erp-form-page > .erp-form-card .card-body { display: flex; flex-direction: column; min-height: 0; }
 .erp-form-page > .erp-form-card .erp-form-toolbar { flex: 0 0 auto; }
