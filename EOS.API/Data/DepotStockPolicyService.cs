@@ -188,6 +188,11 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections)
         if (errors.Count > 0)
             return new SavePolicyResult(false, errors, warnings);
 
+        // 收紧混放限制时给出存量违规清单：按 §3.10.2 允许保存，但必须让人知道哪些库位要整改。
+        // 基准是**生效中的旧策略**（库别行存在则取它自己，否则取部署级默认），与"整行覆盖"同口径。
+        var previous = await ResolveAsync(candidate.DepotId, connection, transaction, token);
+        warnings.AddRange(await ListMixedLocationWarningsAsync(candidate, previous, connection, transaction, token));
+
         // 部署级行的月结维度由它自己定义；库别行一律写入部署级取值（求值也只读部署级）。
         var monthBatch = candidate.DepotId == DeploymentScope ? candidate.MonthCloseByBatch : deployment.MonthCloseByBatch;
         var monthLocation = candidate.DepotId == DeploymentScope ? candidate.MonthCloseByLocation : deployment.MonthCloseByLocation;
@@ -247,6 +252,62 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections)
         return await HasBatchManagedProductAsync(policy.DepotId, token)
             ? new[] { "该库别有批管料件，但批次档位为 0：产品级「需要批号」仍然生效，仓库侧不额外记录批号。" }
             : Array.Empty<string>();
+    }
+
+    /// <summary>
+    /// `MIX_*` 由「允许」收紧为「禁止」时的**当前违规位置清单**。
+    ///
+    /// §3.10.2 对这种变更的处置是"允许保存，但必须给出清单，由人工逐步整改"——收紧本身没错
+    /// （客户可以决定从此不再混放），但只写库不给清单，客户会以为**存量也已经合规了**。
+    ///
+    /// 受影响范围按「整行覆盖」求值：库别行只影响它自己；部署级默认行只影响**没有自己策略行**的
+    /// 库别——有库别行的按其自身取值，不受部署级改动影响。
+    /// </summary>
+    private async Task<IReadOnlyList<string>> ListMixedLocationWarningsAsync(
+        DepotStockPolicy candidate,
+        DepotStockPolicy previous,
+        SqlConnection connection,
+        SqlTransaction transaction,
+        CancellationToken token)
+    {
+        var tightenProduct = previous.MixProduct && !candidate.MixProduct;
+        var tightenBatch = previous.MixBatch && !candidate.MixBatch;
+        if (!tightenProduct && !tightenBatch)
+            return Array.Empty<string>();
+
+        await using var command = new SqlCommand(
+            "SELECT LTRIM(RTRIM(d.DEPOT_ID)) + N'/' + d.LOCATION_NO, "
+            + "CAST(COUNT(DISTINCT LTRIM(RTRIM(d.PRO_NO))) AS varchar(10)), "
+            + "CAST(COUNT(DISTINCT ISNULL(d.BATCH_NO, N'')) AS varchar(10)) "
+            + "FROM dbo.INV_PRO_DEPOT d "
+            // 刻意不加脏读提示：这是保存路径上的**存量合规判定**，读脏数据会把"当前是否混放"判错；
+            // 与求值/校验同处一个事务，读已提交数据才是应有口径。
+            // 哨兵库位是"未指定位置"的兜底行，存量本来就会堆在一起，不构成需要整改的混放。
+            + "WHERE ISNULL(d.QTY,0) <> 0 AND d.LOCATION_NO <> N'-' "
+            + "AND ((@scope = N'*' AND NOT EXISTS (SELECT 1 FROM dbo.DEPOT_STOCK_POLICY p WHERE p.DEPOT_ID = d.DEPOT_ID)) "
+            + "  OR (@scope <> N'*' AND d.DEPOT_ID = @scope)) "
+            + "GROUP BY d.DEPOT_ID, d.LOCATION_NO "
+            + "HAVING COUNT(DISTINCT LTRIM(RTRIM(d.PRO_NO))) > 1 OR COUNT(DISTINCT ISNULL(d.BATCH_NO, N'')) > 1 "
+            + "ORDER BY 1",
+            connection, transaction);
+        command.Parameters.AddWithValue("@scope", candidate.DepotId);
+
+        var rows = new List<string>();
+        await using (var reader = await command.ExecuteReaderAsync(token))
+            while (await reader.ReadAsync(token))
+                rows.Add($"{reader.GetString(0)}（{reader.GetString(1)} 个品号 / {reader.GetString(2)} 个批次）");
+
+        if (rows.Count == 0)
+            return Array.Empty<string>();
+
+        const int maxShown = 20;
+        var suffix = rows.Count > maxShown ? $"……以及另外 {rows.Count - maxShown} 处" : string.Empty;
+        var which = tightenProduct && tightenBatch ? "品号与批次" : tightenProduct ? "品号" : "批次";
+        return new[]
+        {
+            $"已收紧混放限制（禁止混{which}），但当前有 {rows.Count} 个库位处于混放状态，需人工逐步整改："
+            + string.Join("、", rows.Take(maxShown)) + suffix
+        };
     }
 
     private static DepotStockPolicy Read(SqlDataReader reader) => new(
