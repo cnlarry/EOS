@@ -268,6 +268,23 @@ public sealed class WorkbenchDefinitionValidator(
             checks.Add(new("business_config_valid", true, "模块无业务动作/校验配置。"));
         }
 
+        // 效果参数的**物理引用**校验（参数里点名的表和列是否真的存在、能否被各自的处理器解析）。
+        // 它此前只在管理端保存配置时执行 ⇒ 经迁移或直写落库的配置没人验、发布也放过，
+        // 运行期才在保存/批核那一刻炸。发布门补上同一道校验（与保存端同一个帮手、同一个解析器）。
+        if (businessConfig is not null && businessConfig.Actions.Count > 0)
+        {
+            var physicalIssues = await EffectParamPhysicalGate.RunAsync(
+                connection, moduleId, module.MasterTable, module.DetailTable, businessConfig.Actions, token);
+            checks.Add(physicalIssues.Count == 0
+                ? new("effect_params_physical", true, "效果参数引用的表/列均存在。")
+                : new("effect_params_physical", false,
+                    $"效果参数引用了不存在的表/列：{string.Join("；", physicalIssues.Take(5))}{(physicalIssues.Count > 5 ? " 等" : "")}。"));
+        }
+        else
+        {
+            checks.Add(new("effect_params_physical", true, "模块无效果动作配置。"));
+        }
+
         // 能力 → 列单向强制：具备批核能力的模块必须有 CONFIRM_TAG，
         // 缺列在发布期报错并引导补列，不再允许"无列却有能力"的配置进入运行时。
         if (definition is not null && masterOk)
