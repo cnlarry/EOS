@@ -121,8 +121,92 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections)
             ? "月结维度只在部署级生效，库别行不能覆盖（跨仓粒度不一致会让汇总重复计数或漏计）。"
             : null;
 
+    /// <summary>保存一条策略行的结果：硬性规则违例即拒存，软性规则作为告警返回。</summary>
+    public sealed record SavePolicyResult(
+        bool Saved,
+        IReadOnlyList<string> Errors,
+        IReadOnlyList<string> Warnings);
+
+    /// <summary>列出全部策略行（部署级默认 + 各库别覆盖）。</summary>
+    public async Task<IReadOnlyList<DepotStockPolicy>> ListAsync(CancellationToken token = default)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(
+            "SELECT DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH, "
+            + "MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION FROM dbo.DEPOT_STOCK_POLICY "
+            + "ORDER BY CASE WHEN DEPOT_ID = N'*' THEN 0 ELSE 1 END, DEPOT_ID",
+            connection);
+        var rows = new List<DepotStockPolicy>();
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+            rows.Add(Read(reader));
+        return rows;
+    }
+
     /// <summary>
-    /// R-S2 的判据：该库别下存在批管料件（有库存余额行）而批次档位为 0。
+    /// 保存一条策略行。硬性组合规则（R-C1/C2/C3/C4）与月结作用域违规一律**拒存**
+    /// （fail-closed：服务端拒绝，不依赖界面拦截）；软性规则作为告警随结果返回，配置照常保存。
+    /// </summary>
+    public async Task<SavePolicyResult> SaveAsync(
+        DepotStockPolicy candidate, string actor, CancellationToken token = default)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+
+        // 月结维度的基准是部署级行，必须在同一事务内读取。
+        var deployment = await ResolveAsync(DeploymentScope, connection, transaction, token);
+
+        var errors = new List<string>(Validate(candidate).Errors);
+        var warnings = new List<string>(Validate(candidate).Warnings);
+
+        var scopeError = ValidateMonthCloseScope(candidate, deployment);
+        if (scopeError is not null)
+            errors.Add(scopeError);
+
+        if (candidate.BatchMode == 0 && candidate.DepotId != DeploymentScope
+            && await HasBatchManagedProductAsync(candidate.DepotId, token))
+            warnings.Add("该库别有批管料件，但批次档位为 0：产品级「需要批号」仍然生效，仓库侧不额外记录批号。");
+
+        if (errors.Count > 0)
+            return new SavePolicyResult(false, errors, warnings);
+
+        // 部署级行的月结维度由它自己定义；库别行一律写入部署级取值（求值也只读部署级）。
+        var monthBatch = candidate.DepotId == DeploymentScope ? candidate.MonthCloseByBatch : deployment.MonthCloseByBatch;
+        var monthLocation = candidate.DepotId == DeploymentScope ? candidate.MonthCloseByLocation : deployment.MonthCloseByLocation;
+
+        await using (var upsert = new SqlCommand(
+            "MERGE dbo.DEPOT_STOCK_POLICY AS target "
+            + "USING (SELECT @depot AS DEPOT_ID) AS source ON target.DEPOT_ID = source.DEPOT_ID "
+            + "WHEN MATCHED THEN UPDATE SET LOCATION_MODE=@locationMode, STORAGE_MODE=@storageMode, "
+            + "  BATCH_MODE=@batchMode, CAPACITY_MODE=@capacityMode, MIX_PRODUCT=@mixProduct, MIX_BATCH=@mixBatch, "
+            + "  MONTH_CLOSE_BY_BATCH=@monthBatch, MONTH_CLOSE_BY_LOCATION=@monthLocation, "
+            + "  LAST_UPDATE_BY=@actor, LAST_UPDATE_DATE=GETDATE() "
+            + "WHEN NOT MATCHED THEN INSERT (DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, "
+            + "  MIX_PRODUCT, MIX_BATCH, MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION, LAST_UPDATE_BY, LAST_UPDATE_DATE) "
+            + "  VALUES (@depot, @locationMode, @storageMode, @batchMode, @capacityMode, @mixProduct, @mixBatch, "
+            + "          @monthBatch, @monthLocation, @actor, GETDATE());",
+            connection, transaction))
+        {
+            upsert.Parameters.AddWithValue("@depot", candidate.DepotId);
+            upsert.Parameters.AddWithValue("@locationMode", candidate.LocationMode);
+            upsert.Parameters.AddWithValue("@storageMode", candidate.StorageMode);
+            upsert.Parameters.AddWithValue("@batchMode", candidate.BatchMode);
+            upsert.Parameters.AddWithValue("@capacityMode", candidate.CapacityMode);
+            upsert.Parameters.AddWithValue("@mixProduct", candidate.MixProduct);
+            upsert.Parameters.AddWithValue("@mixBatch", candidate.MixBatch);
+            upsert.Parameters.AddWithValue("@monthBatch", monthBatch);
+            upsert.Parameters.AddWithValue("@monthLocation", monthLocation);
+            upsert.Parameters.AddWithValue("@actor", actor);
+            await upsert.ExecuteNonQueryAsync(token);
+        }
+
+        await transaction.CommitAsync(token);
+        return new SavePolicyResult(true, Array.Empty<string>(), warnings);
+    }
+
+    /// <summary>R-S2 的判据：该库别下存在批管料件（有库存余额行）而批次档位为 0。
     /// 「取严者胜」会兜住产品级要求，但仍应提示，避免客户以为批次在这里被管起来了。
     /// </summary>
     public async Task<bool> HasBatchManagedProductAsync(string depotId, CancellationToken token = default)
