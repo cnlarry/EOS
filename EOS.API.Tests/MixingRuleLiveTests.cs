@@ -122,7 +122,7 @@ public sealed class MixingRuleLiveTests
 
             var result = await Policies(connectionString).SaveAsync(
                 new DepotStockPolicy(Depot, 0, "FIXED", 0, 0, false, true, true, false),
-                "adr14-test", CancellationToken.None);
+                "adr14-test", confirmDestructive: false, CancellationToken.None);
 
             Assert.True(result.Saved, string.Join("；", result.Errors));
             var warning = Assert.Single(result.Warnings, message => message.Contains("混放"));
@@ -147,7 +147,7 @@ public sealed class MixingRuleLiveTests
             // 再次保存同样的禁令：没有"由允许改禁止"这件事，就不该反复提示存量违规
             var result = await Policies(connectionString).SaveAsync(
                 new DepotStockPolicy(Depot, 0, "FIXED", 0, 0, false, true, true, false),
-                "adr14-test", CancellationToken.None);
+                "adr14-test", confirmDestructive: false, CancellationToken.None);
 
             Assert.True(result.Saved, string.Join("；", result.Errors));
             Assert.DoesNotContain(result.Warnings, message => message.Contains("混放"));
@@ -192,12 +192,7 @@ public sealed class MixingRuleLiveTests
     }
 
     private static DepotStockPolicyService Policies(string connectionString) =>
-        new(new DbConnectionFactory(new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:ErpDatabase"] = connectionString,
-            })
-            .Build()));
+        PolicyServiceFactory.Create(connectionString);
 
     private static async Task<Observed> RunAsync(
         bool mixProduct, bool mixBatch, IReadOnlyList<Detail> balance, IReadOnlyList<Detail> details)

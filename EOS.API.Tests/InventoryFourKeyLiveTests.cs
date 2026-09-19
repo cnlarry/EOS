@@ -39,12 +39,7 @@ public sealed class InventoryFourKeyLiveTests
 
     /// <summary>策略求值服务：批次档位判据必须走它，本用例不自行拼默认值。</summary>
     private static DepotStockPolicyService Policies(string connectionString) =>
-        new(new DbConnectionFactory(new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:ErpDatabase"] = connectionString,
-            })
-            .Build()));
+        PolicyServiceFactory.Create(connectionString);
 
     [Fact]
     public async Task 出库与解批只作用于指定库位行()
