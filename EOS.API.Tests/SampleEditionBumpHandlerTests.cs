@@ -33,12 +33,18 @@ public class SampleEditionBumpHandlerTests
     [Fact]
     public void SampleEditionBump_Approve_GuardsFirstTimeWithoutProduct()
     {
-        var sql = SampleEditionBumpHandler.BuildApproveStatement(Spec());
         // First-time samples (empty edition) without a product row are refused
         // fail-closed: their creation chain (row copy + workflow) is unported.
-        Assert.Contains("NOT EXISTS (SELECT 1 FROM dbo.[PRODUCT] P WHERE P.[PRO_NO] = M.[PRO_NO])", sql);
-        Assert.Contains("THROW 50000", sql);
+        // The refusal is decided by a guard query in C# (a readable 400), not by a
+        // THROW inside the update statement (which surfaced as a 500).
+        var guard = SampleEditionBumpHandler.BuildFirstPromotionGuardQuery(Spec());
+        Assert.Contains("NOT EXISTS (SELECT 1 FROM dbo.[PRODUCT] P WHERE P.[PRO_NO] = M.[PRO_NO])", guard);
+        Assert.Contains("M.[PRO_NO] = @pn", guard);
+        Assert.Contains("COUNT(*)", guard);
+
+        var sql = SampleEditionBumpHandler.BuildApproveStatement(Spec());
         Assert.Contains("M.[PRO_NO] = @pn", sql);
+        Assert.DoesNotContain("THROW", sql);
     }
 
     [Fact]
