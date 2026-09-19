@@ -735,8 +735,10 @@ button, input, select { font: inherit; }
 .erp-detail-card .table th,
 .erp-detail-card .table td { font-size: 12px; }
 
-/* 工作台：视口撑满布局（无页面级滚动条；主表/子表高度固定，互不因内容挤压，各自内部滚动） */
-.erp-workbench-page { display: flex; flex-direction: column; gap: 8px; min-height: 320px; flex: 1 1 auto; overflow: hidden; }
+/* 工作台：视口撑满布局（无页面级滚动条；主表/子表高度固定，互不因内容挤压，各自内部滚动）。
+   主表卡与明细卡之间的间隙取 10px，与全站留白口径（--erp-workspace-gap、页面顶部留白、
+   标签面板 padding、工具栏下边距）一致，不再用 8px */
+.erp-workbench-page { display: flex; flex-direction: column; gap: 10px; min-height: 320px; flex: 1 1 auto; overflow: hidden; }
 .erp-workbench-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .erp-workbench-page > .erp-list-card .erp-master-table-region { flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto; margin-bottom: 6px; }
 .erp-workbench-page > .erp-list-card .erp-master-table-region .table-responsive { overflow: visible; }
