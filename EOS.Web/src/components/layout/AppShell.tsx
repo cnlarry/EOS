@@ -1,9 +1,12 @@
 import {
   IconChevronLeft,
   IconChevronRight,
+  IconChevronUp,
   IconFolder,
   IconMenu2,
+  IconMoon,
   IconSearch,
+  IconSun,
 } from '@tabler/icons-react'
 import { Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react'
 import { NavLink, UNSAFE_DataRouterContext, parsePath, useLocation, useNavigate, type RouteObject } from 'react-router-dom'
@@ -147,6 +150,12 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   const [menuQuery, setMenuQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const { bootstrap, logout } = useAuth()
+  // 侧栏底部用户卡：姓名/角色缺失时退回用户名，避免卡片出现空行
+  const displayName = bootstrap?.user.displayName ?? bootstrap?.user.username ?? '未登录'
+  const displayRole = bootstrap?.user.roleName ?? bootstrap?.user.username ?? ''
+  // 折叠态只放一个切换按钮，图标与提示均指向"切换后"的模式
+  const nextTheme: Theme = theme === 'light' ? 'dark' : 'light'
+  const themeToggleLabel = nextTheme === 'dark' ? '切换到深色模式' : '切换到浅色模式'
   // 数据路由下才支持导航拦截；其他路由形态（如单测的 MemoryRouter）退化为无拦截
   const dataRouter = useContext(UNSAFE_DataRouterContext)
   const navigate = useNavigate()
@@ -710,7 +719,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
       style={{ '--erp-sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
     >
       <aside
-        className={`navbar navbar-vertical navbar-expand-lg erp-sidebar ${sidebarOpen ? 'show' : ''}`}
+        className={`navbar navbar-vertical navbar-expand-lg erp-sidebar ${sidebarOpen ? 'show' : ''}${userMenuOpen ? ' erp-menu-open' : ''}`}
         aria-label="主导航"
         title={sidebarCollapsed ? '展开导航' : undefined}
       >
@@ -777,50 +786,57 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
             )}
           </div>
           <div className="erp-sidebar-footer">
-            <div className="dropdown dropup erp-user-menu">
-              <button
-                className="btn erp-user"
-                type="button"
-                aria-label="用户菜单"
-                aria-haspopup="menu"
-                aria-expanded={userMenuOpen}
-                onClick={() => setUserMenuOpen((open) => !open)}
-              >
-                {bootstrap?.user.avatarUrl ? (
-                  <span className="avatar avatar-sm"><img src={bootstrap.user.avatarUrl} alt="" /></span>
-                ) : (
-                  <span className="avatar avatar-sm" style={{ backgroundColor: avatarColor(bootstrap?.user.username ?? 'user') }}>{bootstrap?.user.avatarText}</span>
+            <div className="erp-user-row">
+              <div className={`dropdown dropup erp-user-menu${userMenuOpen ? ' is-open' : ''}`}>
+                <button
+                  className="btn erp-user"
+                  type="button"
+                  aria-label="用户菜单"
+                  aria-haspopup="menu"
+                  aria-expanded={userMenuOpen}
+                  title={sidebarCollapsed ? `${displayName}（${displayRole}）` : undefined}
+                  onClick={() => setUserMenuOpen((open) => !open)}
+                >
+                  <span className="erp-user-avatar">
+                    {bootstrap?.user.avatarUrl ? (
+                      <span className="avatar avatar-sm"><img src={bootstrap.user.avatarUrl} alt="" /></span>
+                    ) : (
+                      <span className="avatar avatar-sm" style={{ backgroundColor: avatarColor(bootstrap?.user.username ?? 'user') }}>{bootstrap?.user.avatarText}</span>
+                    )}
+                  </span>
+                  <span className="erp-user-meta">
+                    <span className="erp-user-name">{displayName}</span>
+                    <small className="erp-user-role">{displayRole}</small>
+                  </span>
+                  <IconChevronUp className="erp-user-chevron" size={14} aria-hidden="true" />
+                </button>
+                {userMenuOpen && (
+                  <div className="dropdown-menu show" role="menu">
+                    <button
+                      className="dropdown-item"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setUserMenuOpen(false)
+                        openTab('/settings/profile')
+                      }}
+                    >
+                      个人设置
+                    </button>
+                    <div className="dropdown-divider" />
+                    <button className="dropdown-item text-danger" type="button" role="menuitem" onClick={handleLogout}>退出登录</button>
+                  </div>
                 )}
-                <span className="erp-user-meta">
-                  <span className="erp-user-name">{bootstrap?.user.displayName}</span>
-                  <small className="erp-user-role">{bootstrap?.user.roleName ?? bootstrap?.user.username}</small>
-                </span>
+              </div>
+              <button
+                className="btn erp-theme-toggle"
+                type="button"
+                aria-label={themeToggleLabel}
+                title={themeToggleLabel}
+                onClick={() => setTheme(nextTheme)}
+              >
+                {nextTheme === 'dark' ? <IconMoon size={18} stroke={1.7} aria-hidden="true" /> : <IconSun size={18} stroke={1.7} aria-hidden="true" />}
               </button>
-              {userMenuOpen && (
-                <div className="dropdown-menu show" role="menu">
-                  <button
-                    className="dropdown-item"
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setUserMenuOpen(false)
-                      openTab('/settings/profile')
-                    }}
-                  >
-                    个人设置
-                  </button>
-                  <button
-                    className="dropdown-item"
-                    type="button"
-                    role="menuitem"
-                    onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-                  >
-                    {theme === 'light' ? '深色模式' : '浅色模式'}
-                  </button>
-                  <div className="dropdown-divider" />
-                  <button className="dropdown-item text-danger" type="button" role="menuitem" onClick={handleLogout}>退出登录</button>
-                </div>
-              )}
             </div>
             <button
               className="btn btn-icon btn-ghost-secondary erp-sidebar-toggle d-none d-lg-inline-flex"

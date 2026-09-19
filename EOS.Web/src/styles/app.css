@@ -127,7 +127,10 @@ button, input, select { font: inherit; }
 }
 
 .erp-sidebar-collapsed .erp-nav-search { display: none; }
-.erp-sidebar-toggle { position: fixed; left: calc(var(--erp-sidebar-width, 220px) - 1px); bottom: 67px; z-index: 1046; width: 29px; height: 42px; transform: translateX(-100%); border: 1px solid var(--tblr-border-color); border-right: 0; border-radius: 7px 0 0 7px; background: var(--tblr-bg-surface); box-shadow: -3px 2px 8px rgba(24, 36, 51, .08); transition: left .2s ease; }
+/* 折叠/展开开关：贴在侧栏右边缘的小把手。锚定在底部用户区之上而不是视口固定高度，
+   用户区高度变化（展开/折叠两种排布）时把手自动跟随，不会压住用户卡 */
+.erp-sidebar-toggle { position: absolute; top: -50px; right: 1px; z-index: 5; width: 29px; min-width: 29px; max-width: 29px; height: 42px; min-height: 42px; padding: 0; border: 1px solid var(--tblr-border-color); border-right: 0; border-radius: 7px 0 0 7px; background: var(--tblr-bg-surface); color: var(--tblr-secondary); box-shadow: -3px 2px 8px rgba(24, 36, 51, .08); }
+.erp-sidebar-toggle:hover { background: var(--tblr-bg-surface-secondary); color: var(--tblr-body-color); }
 .erp-sidebar-resizer { position: fixed; top: 0; bottom: 0; left: calc(var(--erp-sidebar-width, 220px) - 3px); width: 6px; z-index: 1047; cursor: col-resize; touch-action: none; }
 .erp-sidebar-resizer:hover, .erp-sidebar-resizer:active { background: color-mix(in srgb, var(--tblr-primary) 22%, transparent); }
 .erp-sidebar-resizing { user-select: none; }
@@ -494,19 +497,48 @@ button, input, select { font: inherit; }
   z-index: 1030;
   min-width: 10rem;
 }
-/* 侧栏底部用户区：头像 + 姓名/角色，点开向上弹出（个人设置 / 主题 / 退出登录）。
-   外边距沿用全站 10px 留白，按钮内边距取 8px 让头像左缘落在 18px——与导航项图标同一竖线。 */
-.erp-sidebar-footer { display: flex; flex: 0 0 auto; align-items: center; padding: 10px; border-top: 1px solid var(--tblr-border-color); }
-.erp-sidebar-footer .erp-user-menu { width: 100%; min-width: 0; }
-.erp-sidebar-footer .erp-user { display: flex; width: 100%; min-width: 0; align-items: center; gap: 10px; padding: 5px 8px; border: 0; border-radius: 7px; text-align: left; }
-.erp-sidebar-footer .erp-user-meta { min-width: 0; }
+/* 侧栏底部用户区：用户卡（头像 + 姓名/角色，点开向上弹出个人设置/退出登录）+ 显示模式切换。
+   外边距沿用全站 10px 留白，卡内边距取 8px 让头像左缘落在 18px——与导航项图标同一竖线。 */
+.erp-sidebar-footer { position: relative; display: flex; flex: 0 0 auto; flex-direction: column; gap: 8px; padding: 10px; border-top: 1px solid var(--tblr-border-color); }
+.erp-sidebar-footer .erp-user-row { display: flex; min-width: 0; align-items: center; gap: 4px; }
+.erp-sidebar-footer .erp-user-menu { flex: 1 1 auto; width: 100%; min-width: 0; }
+.erp-sidebar-footer .erp-user { display: flex; width: 100%; min-width: 0; align-items: center; gap: 10px; padding: 5px 8px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; text-align: left; }
+.erp-sidebar-footer .erp-user:hover,
+.erp-sidebar-footer .erp-user-menu.is-open .erp-user { background: var(--tblr-bg-surface-secondary); }
+/* 头像：定尺寸圆形容器 + 内层圆头像，外圈留 2px 背景色间隙作为描边。
+   两侧都写死宽高——Tabler 的 .btn/.avatar 默认会给头像加外边距、给按钮加最小尺寸，不写死必然不同心 */
+.erp-user-avatar { display: inline-flex; flex: 0 0 28px; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border-radius: 50%; background: var(--tblr-bg-surface); box-shadow: inset 0 0 0 1px var(--tblr-border-color); }
+.erp-user-avatar .avatar { width: 24px; height: 24px; margin: 0; border-radius: 50%; font-size: 10px; font-weight: 650; }
+.erp-sidebar-footer .erp-user-meta { flex: 1 1 auto; min-width: 0; }
 .erp-sidebar-footer .erp-user-name { display: block; overflow: hidden; color: var(--tblr-body-color); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .erp-sidebar-footer .erp-user-role { display: block; overflow: hidden; color: var(--tblr-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.erp-user-chevron { flex: 0 0 auto; color: var(--tblr-secondary); transition: transform .15s ease; }
+.erp-user-menu.is-open .erp-user-chevron { transform: rotate(180deg); }
 /* 菜单向上弹出：覆盖 .erp-user-menu .dropdown-menu 的向下定位 */
 .erp-sidebar-footer .erp-user-menu .dropdown-menu { top: auto; bottom: 100%; inset-inline-end: auto; inset-inline-start: 0; width: 100%; min-width: 9rem; margin: 0 0 .25rem; }
-.erp-sidebar-collapsed .erp-sidebar-footer { padding: 10px 0; }
-.erp-sidebar-collapsed .erp-sidebar-footer .erp-user { justify-content: center; gap: 0; padding: 5px 0; }
-.erp-sidebar-collapsed .erp-sidebar-footer .erp-user-meta { display: none; }
+/* 显示模式切换：单图标按钮，尺寸与悬停反馈对齐侧栏导航图标。
+   最小尺寸同样要写死，否则 Tabler .btn 的最小宽高（40px）会把圆撑成椭圆 */
+.erp-theme-toggle { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; box-shadow: none; color: var(--tblr-secondary); }
+.erp-theme-toggle:hover { background: var(--tblr-bg-surface-secondary); color: var(--tblr-primary); }
+/* 折叠态：头像与模式开关同尺寸、同一竖线居中排列 */
+.erp-sidebar-collapsed .erp-sidebar-footer { gap: 6px; }
+.erp-sidebar-collapsed .erp-sidebar-footer .erp-user-row { flex-direction: column; align-items: center; gap: 6px; }
+.erp-sidebar-collapsed .erp-sidebar-footer .erp-user-menu { flex: 0 0 auto; width: auto; }
+.erp-sidebar-collapsed .erp-sidebar-footer .erp-user { justify-content: center; gap: 0; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 50%; background: transparent; box-shadow: none; }
+.erp-sidebar-collapsed .erp-sidebar-footer .erp-user:hover,
+.erp-sidebar-collapsed .erp-sidebar-footer .erp-user-menu.is-open .erp-user { background: var(--tblr-bg-surface-secondary); }
+.erp-sidebar-collapsed .erp-sidebar-footer .erp-user-meta,
+.erp-sidebar-collapsed .erp-user-chevron { display: none; }
+/* 折叠态用户菜单改从右侧弹出气泡：72px 侧栏放不下常规下拉，只会被裁切。
+   基准改为整个用户区，气泡左缘落在侧栏右边缘外 8px，小三角对准头像 */
+.erp-sidebar-collapsed .erp-sidebar-footer .erp-user-menu { position: static; }
+.erp-sidebar-collapsed .erp-sidebar-footer .erp-user-menu .dropdown-menu { top: auto; bottom: 24px; inset-inline-start: calc(100% + 8px); inset-inline-end: auto; width: 11rem; min-width: 11rem; margin: 0; }
+.erp-sidebar-collapsed .erp-sidebar-footer .erp-user-menu .dropdown-menu::before { content: ''; position: absolute; inset-inline-start: -5px; bottom: 36px; width: 8px; height: 8px; background-color: inherit; border-bottom: 1px solid var(--tblr-border-color); border-left: 1px solid var(--tblr-border-color); transform: rotate(45deg); }
+/* 气泡要溢出侧栏显示，仅菜单打开期间放开侧栏裁剪；
+   同时抬高层级——侧栏与右侧工作区同为定位元素，同层按 DOM 顺序绘制会盖住气泡 */
+.erp-sidebar-collapsed .erp-sidebar.erp-menu-open,
+.erp-sidebar-collapsed .erp-sidebar.erp-menu-open > .container-fluid { overflow: visible !important; }
+.erp-sidebar-collapsed .erp-sidebar.erp-menu-open { z-index: 1044; }
 .erp-shell > .page-wrapper { display: flex; flex-direction: column; min-width: 0; width: 100%; max-width: none; min-height: 100vh; padding-top: 0; }
 .erp-page-toolbar { padding: 6px 10px; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); }
 .erp-page-toolbar > .container-fluid { display: flex; align-items: center; gap: 5px; padding: 0 !important; }
@@ -721,7 +753,6 @@ button, input, select { font: inherit; }
   .erp-shell > .page-wrapper { position: absolute; top: 0; right: 0; left: var(--erp-sidebar-width, 220px); width: auto !important; max-width: none !important; min-height: 100vh; margin: 0 !important; padding-left: 0 !important; transition: left .2s ease; }
   .erp-sidebar-collapsed .erp-sidebar { width: 72px !important; max-width: 72px; }
   .erp-sidebar-collapsed .erp-shell > .page-wrapper { left: 72px; width: auto !important; max-width: none !important; margin-left: 0 !important; }
-  .erp-sidebar-collapsed .erp-sidebar-toggle { left: 71px; }
   .erp-sidebar-collapsed .erp-sidebar .navbar-brand { justify-content: center !important; padding-inline: 6px !important; }
   .erp-sidebar-collapsed .erp-sidebar .navbar-brand > span:last-child,
   .erp-sidebar-collapsed .erp-sidebar .nav-link-title { display: none; }
