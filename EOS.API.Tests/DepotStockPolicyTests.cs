@@ -94,6 +94,26 @@ public sealed class DepotStockPolicyTests
         Assert.Empty(warnings);
     }
 
+    /// <summary>
+    /// 取值域越界必须在服务端拦下（400），而不是让数据库以"字符串将被截断"/"违反 CHECK"
+    /// 抛 SqlException 冒成 500——调用方看到"服务器内部错误"就无从知道是自己传错了参数。
+    /// </summary>
+    [Fact]
+    public void 取值域越界在保存期被拒而非由数据库抛异常()
+    {
+        var tooLong = Policy("ADR14POLTOOLONG", 0, "FIXED", 0, 0);
+        Assert.Contains(DepotStockPolicyService.Validate(tooLong).Errors, message => message.Contains("库别代号"));
+
+        foreach (var storage in new[] { "LIFO", "" })
+        {
+            var bad = Policy("CP", 0, storage, 0, 0);
+            Assert.Contains(DepotStockPolicyService.Validate(bad).Errors, message => message.Contains("存放方式"));
+        }
+
+        // 边界内不报错（10 字符正好等于列宽）
+        Assert.Empty(DepotStockPolicyService.Validate(Policy("0123456789", 0, "fixed", 0, 0)).Errors);
+    }
+
     [Fact]
     public void 月结维度不接受库别覆盖()
     {
@@ -138,6 +158,14 @@ public sealed class DepotStockPolicyTests
             var scopeOverride = await service.SaveAsync(Policy(depot, 0, "FIXED", 0, 0, true, true, false, true), "adr14-test");
             Assert.False(scopeOverride.Saved);
             Assert.Contains(scopeOverride.Errors, message => message.Contains("月结维度"));
+
+            // 取值域越界：走真实保存路径也必须是被拒（而不是抛 SqlException）
+            var tooLong = await service.SaveAsync(Policy("ADR14POLTOOLONG", 0, "FIXED", 0, 0), "adr14-test");
+            Assert.False(tooLong.Saved);
+            Assert.Contains(tooLong.Errors, message => message.Contains("库别代号"));
+            var badStorage = await service.SaveAsync(Policy(depot, 0, "LIFO", 0, 0), "adr14-test");
+            Assert.False(badStorage.Saved);
+            Assert.Contains(badStorage.Errors, message => message.Contains("存放方式"));
 
             // 合规配置：落库，且月结维度被写成部署级取值（库别行不得携带自己的粒度）
             var saved = await service.SaveAsync(Policy(depot, 3, "FIXED", 2, 0, false, false, true, false), "adr14-test");

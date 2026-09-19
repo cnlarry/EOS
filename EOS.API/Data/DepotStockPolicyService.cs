@@ -36,6 +36,15 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections)
     public const int MaxSupportedCapacityMode = 0;
 
     /// <summary>
+    /// 作用域键的最大长度，与 <c>DEPOT_STOCK_POLICY.DEPOT_ID</c> 的列宽一致。
+    /// 列宽与 CHECK 约束是最后一道防线：拿它当校验，越界值会以"字符串将被截断"/"违反 CHECK"
+    /// 的 SqlException 冒成 **500**，而调用方拿到的是"服务器内部错误"而不是"你传的参数不对"。
+    /// </summary>
+    public const int ScopeMaxLength = 10;
+
+    private static readonly string[] StorageModes = ["FIXED", "RANDOM", "MIXED"];
+
+    /// <summary>
     /// 两跳求值：库别行整行覆盖 → 部署级默认行。不做列级逐字段继承，避免"改了 A 仓的批号
     /// 策略却意外继承了 B 仓的位置策略"这类难查的问题。
     /// </summary>
@@ -83,6 +92,12 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections)
     {
         var errors = new List<string>();
         var warnings = new List<string>();
+
+        // 取值域：与列宽 / CHECK 约束逐条对齐，越界在此拦下（400），不留给数据库抛 500。
+        if (policy.DepotId.Length > ScopeMaxLength)
+            errors.Add($"库别代号最长 {ScopeMaxLength} 个字符（当前 {policy.DepotId.Length} 个）。");
+        if (!StorageModes.Contains(policy.StorageMode, StringComparer.OrdinalIgnoreCase))
+            errors.Add("存放方式只能取 FIXED / RANDOM / MIXED。");
 
         // R-C4：未实现档位不得被保存为生效配置
         if (policy.BatchMode == UnimplementedBatchMode)
@@ -158,8 +173,9 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections)
         // 月结维度的基准是部署级行，必须在同一事务内读取。
         var deployment = await ResolveAsync(DeploymentScope, connection, transaction, token);
 
-        var errors = new List<string>(Validate(candidate).Errors);
-        var warnings = new List<string>(Validate(candidate).Warnings);
+        var validation = Validate(candidate);
+        var errors = new List<string>(validation.Errors);
+        var warnings = new List<string>(validation.Warnings);
 
         var scopeError = ValidateMonthCloseScope(candidate, deployment);
         if (scopeError is not null)
