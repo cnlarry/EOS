@@ -32,6 +32,8 @@ import {
   TAB_BAR_HEIGHT,
   createWorkspaceState,
   fromModuleIdOf,
+  isHomeTab,
+  isHomeUrl,
   moduleIdOfUrl,
   neighborAfterClose,
   parsePersistedTabs,
@@ -217,10 +219,10 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     const url = tabUrlOf(location)
     if (!tabsEnabled || !bootstrap?.user?.id) return createWorkspaceState(url, 't1')
     const saved = parsePersistedTabs(localStorage.getItem(tabsStorageKey))
-    if (saved.length === 0) return createWorkspaceState(url, 't1')
+    if (saved.length === 0) return createWorkspaceState(url, 't1', '', true)
     // 恢复的标签 id 从上一会话继承，序号接着最大值往后发，避免新建标签撞 id
     tabSeq.current = saved.reduce((max, tab) => Math.max(max, Number(/^t(\d+)$/.exec(tab.id)?.[1] ?? 0)), 0)
-    return restoreWorkspaceState(saved, url, () => `t${++tabSeq.current}`)
+    return restoreWorkspaceState(saved, url, () => `t${++tabSeq.current}`, true)
   })
   const workspaceRef = useRef(workspace)
   workspaceRef.current = workspace
@@ -398,17 +400,24 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     if (next && tabUrlOf(locationRef.current) !== next.url) navigateRef.current(next.url)
   }, [dropDirty])
 
-  /** 关闭全部标签并落到首页 */
+  /** 关闭全部可关闭的标签：首页常驻，其余关掉并把地址切回首页 */
   const applyCloseAll = useCallback(() => {
+    const { tabs } = workspaceRef.current
+    const removed = tabs.filter((tab) => !isHomeTab(tab))
+    const home = tabs.find(isHomeTab)
+    if (removed.length === 0) return
     dispatch({ type: 'closeAll' })
-    setCrumbs({})
-    setDirtyFlags({})
-    dirtyHandlersRef.current = {}
-    if (tabUrlOf(locationRef.current) !== '/dashboard') {
-      pendingNavRef.current = '/dashboard'
-      navigateRef.current('/dashboard')
+    setCrumbs((prev) => {
+      const copy = { ...prev }
+      for (const tab of removed) delete copy[tab.id]
+      return copy
+    })
+    for (const tab of removed) dropDirty(tab.id)
+    if (home && tabUrlOf(locationRef.current) !== home.url) {
+      pendingNavRef.current = home.url
+      navigateRef.current(home.url)
     }
-  }, [])
+  }, [dropDirty])
 
   const logoutNow = useCallback(() => {
     pendingNavRef.current = '/login'
@@ -416,9 +425,9 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   }, [logout])
 
   const closeTab = useCallback((id: string) => {
-    const { tabs } = workspaceRef.current
-    // 最后一个标签不关闭（用「关闭全部」退出工作区）
-    if (tabs.length <= 1) return
+    const target = workspaceRef.current.tabs.find((tab) => tab.id === id)
+    // 首页标签常驻，任何关闭动作都不作用于它
+    if (!target || isHomeTab(target)) return
     if (dirtyFlagsRef.current[id]) {
       setPendingConfirm({ kind: 'close', tabId: id })
       return
@@ -426,11 +435,11 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     applyClose(id)
   }, [applyClose])
 
-  /** 关闭其他：保留被右键的标签（并激活它）与所有脏标签，其余直接关闭（不涉及丢弃，无需确认） */
+  /** 关闭其他：保留被右键的标签（并激活它）、首页与所有脏标签，其余直接关闭（不涉及丢弃，无需确认） */
   const closeOthers = useCallback((keepId: string) => {
     const { tabs, activeId } = workspaceRef.current
     if (tabs.length <= 1) return
-    const keep = tabs.filter((tab) => tab.id === keepId || dirtyFlagsRef.current[tab.id])
+    const keep = tabs.filter((tab) => tab.id === keepId || isHomeTab(tab) || dirtyFlagsRef.current[tab.id])
     const removed = tabs.filter((tab) => !keep.some((item) => item.id === tab.id)).map((tab) => tab.id)
     if (removed.length === 0) return
     dispatch({ type: 'closeOthers', keepIds: keep.map((tab) => tab.id), activeId: keepId })
@@ -443,9 +452,11 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     if (activeId !== keepId) activateTab(keepId)
   }, [dropDirty, activateTab])
 
-  /** 关闭全部：落到首页；涉及脏标签时先走确认 */
+  /** 关闭全部：只关可关闭的标签（首页常驻）；涉及脏标签时先走确认 */
   const closeAll = useCallback(() => {
-    if (Object.keys(dirtyFlagsRef.current).length > 0) {
+    const closable = workspaceRef.current.tabs.filter((tab) => !isHomeTab(tab))
+    if (closable.length === 0) return
+    if (closable.some((tab) => dirtyFlagsRef.current[tab.id])) {
       setPendingConfirm({ kind: 'all' })
       return
     }
@@ -476,6 +487,10 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   const dirtyTabIds = (pending: PendingConfirm): string[] => {
     if (!pending) return []
     if (pending.kind === 'close') return [pending.tabId]
+    // 关闭全部不涉及首页，首页上的改动不该被要求处置；退出登录则会丢掉全部标签
+    if (pending.kind === 'all') {
+      return workspaceRef.current.tabs.filter((tab) => !isHomeTab(tab) && dirtyFlagsRef.current[tab.id]).map((tab) => tab.id)
+    }
     return Object.keys(dirtyFlagsRef.current)
   }
   const confirmLabels = (pending: PendingConfirm): string[] => dirtyTabIds(pending)
@@ -514,8 +529,15 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   // 地址同步：命中其它标签的地址即激活该标签，否则改写活动标签地址（标签内导航）
   useLayoutEffect(() => {
     pendingNavRef.current = null
+    const { tabs, activeId } = workspaceRef.current
+    const active = tabs.find((tab) => tab.id === activeId)
+    // 首页标签常驻且地址固定：它内部若发生导航（如助手跳转），另开一个标签承载，不改写首页
+    if (active && isHomeTab(active) && !isHomeUrl(activeUrl)) {
+      dispatch({ type: 'open', id: nextTabId(), url: activeUrl, label: tabLabel, fromModuleId: fromParam ?? undefined })
+      return
+    }
     dispatch({ type: 'sync', url: activeUrl, label: tabLabel, fromModuleId: fromParam ?? undefined })
-  }, [activeUrl, tabLabel, fromParam])
+  }, [activeUrl, tabLabel, fromParam, nextTabId])
 
   // 标签列表清空后兜底重建（正常路径由关闭动作保证非空）
   useLayoutEffect(() => {

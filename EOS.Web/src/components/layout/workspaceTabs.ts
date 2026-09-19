@@ -69,6 +69,19 @@ export const TAB_BAR_HEIGHT = 34
 /** 标签数量上限，超出后拒绝新建并提示。 */
 export const MAX_TABS = 12
 
+/** 首页标签：常驻列表首位，且不参与任何关闭动作（关闭当前/其它/全部都绕开它）。 */
+export const HOME_URL = '/dashboard'
+export const HOME_LABEL = '首页'
+
+/** 地址是否为首页（只看路径，忽略查询串与 hash）。 */
+export function isHomeUrl(url: string): boolean {
+  return url.split(/[?#]/)[0] === HOME_URL
+}
+
+export function isHomeTab(tab: WorkspaceTab): boolean {
+  return isHomeUrl(tab.url)
+}
+
 export const HINT_TAB_LIMIT = `标签已达上限 ${MAX_TABS} 个，请先关闭一个标签`
 
 export const HINT_TAB_AT_LIMIT = `标签已达上限 ${MAX_TABS} 个，再打开新标签需先关闭一个`
@@ -108,9 +121,14 @@ function markMounted(tab: WorkspaceTab): WorkspaceTab {
   return tab.mounted ? tab : { ...tab, mounted: true }
 }
 
-/** 初始工作区：以当前地址开一个标签。 */
-export function createWorkspaceState(url: string, id: string, label = ''): WorkspaceState {
-  return { tabs: [newTab(id, url, label, undefined, true)], activeId: id, hint: null }
+/**
+ * 初始工作区：以当前地址开一个标签；多标签模式下先把首页标签放在首位（当前地址不是首页时）。
+ * 首页标签不挂载——它是背景板，等用户切过去再挂载。
+ */
+export function createWorkspaceState(url: string, id: string, label = '', withHome = false): WorkspaceState {
+  const current = newTab(id, url, label, undefined, true)
+  if (!withHome || isHomeUrl(url)) return { tabs: [current], activeId: id, hint: null }
+  return { tabs: [newTab('home', HOME_URL, HOME_LABEL, undefined, false), current], activeId: id, hint: null }
 }
 
 /** 多标签特性是否开启（默认开启；置为 `off` 回退单标签行为）。 */
@@ -159,20 +177,36 @@ export function serializeTabs(tabs: WorkspaceTab[]): PersistedTab[] {
 }
 
 /**
- * 由持久化列表重建工作区：恢复的标签一律未挂载，只有当前地址所在的那个挂载；
- * 当前地址不在列表里时补一个（列表已满则挤掉最后一个，保证当前页一定有标签）。
+ * 由持久化列表重建工作区：恢复的标签一律未挂载，只有当前地址所在的那个挂载。
+ * 多标签模式下首页标签一定存在且位于首位；当前地址不在列表里时补一个
+ * （列表已满则挤掉末位的普通标签，首页与当前页一定保留）。
  */
-export function restoreWorkspaceState(saved: PersistedTab[], currentUrl: string, nextId: () => string): WorkspaceState {
-  const tabs = saved.map((tab) => newTab(tab.id, tab.url, tab.label, tab.fromModuleId, false))
-  const matched = tabs.find((tab) => tab.url === currentUrl)
-  if (matched) {
-    matched.mounted = true
-    return { tabs, activeId: matched.id, hint: null }
+export function restoreWorkspaceState(saved: PersistedTab[], currentUrl: string, nextId: () => string, withHome = false): WorkspaceState {
+  const homeSaved = withHome ? saved.find((tab) => isHomeUrl(tab.url)) : undefined
+  const tabs: WorkspaceTab[] = []
+  if (withHome) {
+    tabs.push(homeSaved
+      ? newTab(homeSaved.id, homeSaved.url, homeSaved.label, homeSaved.fromModuleId, false)
+      : newTab('home', HOME_URL, HOME_LABEL, undefined, false))
   }
-  if (tabs.length >= MAX_TABS) tabs.pop()
-  const tab = newTab(nextId(), currentUrl, '', undefined, true)
-  tabs.push(tab)
-  return { tabs, activeId: tab.id, hint: null }
+  for (const tab of saved) {
+    if (homeSaved && tab === homeSaved) continue
+    if (tabs.length >= MAX_TABS) break
+    tabs.push(newTab(tab.id, tab.url, tab.label, tab.fromModuleId, false))
+  }
+  let active = tabs.find((tab) => tab.url === currentUrl)
+  if (active) {
+    active.mounted = true
+  } else {
+    if (tabs.length >= MAX_TABS) {
+      const removable = tabs.filter((tab) => !isHomeTab(tab))
+      const last = removable[removable.length - 1]
+      if (last) tabs.splice(tabs.indexOf(last), 1)
+    }
+    active = newTab(nextId(), currentUrl, '', undefined, true)
+    tabs.push(active)
+  }
+  return { tabs, activeId: active.id, hint: null }
 }
 
 /** 关闭某标签后应接管的标签：优先右邻，其次左邻；列表为空返回 null。 */
@@ -200,8 +234,9 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return { ...state, tabs, activeId: action.id }
     }
     case 'close': {
-      const index = state.tabs.findIndex((tab) => tab.id === action.id)
-      if (index < 0) return state
+      const target = state.tabs.find((tab) => tab.id === action.id)
+      // 首页标签常驻：任何关闭动作都不作用于它
+      if (!target || isHomeTab(target)) return state
       const tabs = state.tabs.filter((tab) => tab.id !== action.id)
       if (state.activeId !== action.id) return { ...state, tabs }
       const next = neighborAfterClose(state.tabs, action.id)
@@ -209,13 +244,20 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     }
     case 'closeOthers': {
       const keep = new Set(action.keepIds)
+      const home = state.tabs.find(isHomeTab)
+      if (home) keep.add(home.id)
       const tabs = state.tabs.filter((tab) => keep.has(tab.id))
       if (tabs.length === state.tabs.length) return state
-      const activeId = keep.has(action.activeId) ? action.activeId : (tabs[0]?.id ?? '')
+      const activeId = keep.has(action.activeId) ? action.activeId : (home?.id ?? tabs[0]?.id ?? '')
       return { tabs, activeId, hint: null }
     }
-    case 'closeAll':
-      return state.tabs.length === 0 ? state : { tabs: [], activeId: '', hint: null }
+    case 'closeAll': {
+      const home = state.tabs.find(isHomeTab)
+      // 没有首页（回退单标签模式）时按"清空"处理，由外壳兜底重建
+      if (!home) return state.tabs.length === 0 ? state : { tabs: [], activeId: '', hint: null }
+      if (state.tabs.length === 1 && state.activeId === home.id) return state
+      return { tabs: [home], activeId: home.id, hint: null }
+    }
     case 'sync': {
       const active = state.tabs.find((tab) => tab.id === state.activeId)
       if (!active) return state
