@@ -68,7 +68,7 @@ export function ImportPage() {
   if (tables.isError) return <ErrorState message="导入功能加载失败。" onRetry={() => void tables.refetch()} />
 
   return (
-    <div className="d-grid gap-2 erp-import-page">
+    <div className="d-grid erp-import-page">
       <ErpListCard
         ariaLabel="基本资料导入"
         search={null}

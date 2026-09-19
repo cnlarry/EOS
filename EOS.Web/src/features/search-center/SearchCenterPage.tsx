@@ -70,7 +70,7 @@ export function SearchCenterPage() {
   if (modules.isError) return <ErrorState message="查询中心加载失败。" onRetry={() => void modules.refetch()} />
 
   return (
-    <div className="d-grid gap-2 erp-search-center-page">
+    <div className="d-grid erp-search-center-page">
       <ErpListCard
         ariaLabel="通用查询"
         search={null}

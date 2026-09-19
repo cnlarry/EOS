@@ -191,7 +191,7 @@ export function ReportViewerPage() {
   const errorMessage = describeApiError(result.error, '查询失败，请重试。')
 
   return (
-    <div className="d-grid gap-2 erp-report-page">
+    <div className="d-grid erp-report-page">
       {hasPrintPermission && (
         <div className="card">
           <div className="card-header py-2 d-flex align-items-center gap-2">

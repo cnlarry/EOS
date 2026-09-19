@@ -432,7 +432,7 @@ export function FlowDesignPage() {
   const errorMessage = describeApiError(list.error, '加载失败，请稍后重试。')
 
   return (
-    <div className="d-flex flex-column gap-2 erp-full-list-page" style={{ height: 'calc(100dvh - 96px)' }}>
+    <div className="d-flex flex-column erp-full-list-page" style={{ height: 'calc(100dvh - 96px)' }}>
       <div className="d-flex gap-2 flex-grow-1" style={{ minHeight: 0 }}>
         <div className="card d-flex flex-column" style={{ width: 460 }}>
           <div className="card-header py-2 d-flex gap-2 align-items-center">

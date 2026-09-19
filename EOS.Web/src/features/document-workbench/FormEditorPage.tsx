@@ -1061,7 +1061,7 @@ export function FormEditorPage() {
   }
 
   return (
-    <div className="d-flex flex-column gap-2 erp-form-page">
+    <div className="d-flex flex-column erp-form-page">
       {saveError ? <div className="alert alert-danger mb-0">{saveError}</div> : null}
       {warnings && warnings.length > 0 ? (
         <div className="alert alert-warning mb-0 d-flex justify-content-between align-items-center" role="alert">
