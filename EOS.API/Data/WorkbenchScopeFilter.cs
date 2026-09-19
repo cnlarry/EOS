@@ -292,7 +292,10 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
         bool hasOwnerGroupColumn,
         ICollection<string> parts,
         List<object> values,
-        out string error)
+        out string error,
+        // 选择器可能带跨表 JOIN：两表都有 OWNER/OWNER_G 时不限定表名即"列名不明确"报 500。
+        // 列表/详情是单表查询，传 null 保持既有 SQL 形状不变。
+        string? columnQualifier = null)
     {
         error = string.Empty;
         var tag = (execTag ?? "Z").Trim().ToUpperInvariant();
@@ -301,6 +304,8 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
             return true;
         }
 
+        var owner = columnQualifier is null ? "[OWNER]" : $"[{columnQualifier}].[OWNER]";
+        var ownerGroup = columnQualifier is null ? "[OWNER_G]" : $"[{columnQualifier}].[OWNER_G]";
         var offset = values.Count;
         switch (tag)
         {
@@ -310,7 +315,7 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
                     metrics.IncrementScopeRejected("exec_tag_owner_missing");
                     return false;
                 }
-                parts.Add($"[OWNER]=@df{offset}");
+                parts.Add($"{owner}=@df{offset}");
                 values.Add(userId);
                 break;
             case "C":
@@ -319,7 +324,7 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
                     metrics.IncrementScopeRejected("exec_tag_owner_missing");
                     return false;
                 }
-                parts.Add($"([OWNER]=@df{offset} OR [OWNER] IN (SELECT USER_ID FROM dbo.f_get_underling(@df{offset})))");
+                parts.Add($"({owner}=@df{offset} OR {owner} IN (SELECT USER_ID FROM dbo.f_get_underling(@df{offset})))");
                 values.Add(userId);
                 break;
             case "D":
@@ -328,7 +333,7 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
                     metrics.IncrementScopeRejected("exec_tag_owner_group_missing");
                     return false;
                 }
-                parts.Add($"[OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID=@df{offset})");
+                parts.Add($"{ownerGroup} IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID=@df{offset})");
                 values.Add(userId);
                 break;
             case "E":
@@ -337,7 +342,7 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
                     metrics.IncrementScopeRejected("exec_tag_owner_group_missing");
                     return false;
                 }
-                parts.Add($"[OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID IN (SELECT @df{offset} UNION ALL SELECT USER_ID FROM dbo.f_get_underling(@df{offset})))");
+                parts.Add($"{ownerGroup} IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID IN (SELECT @df{offset} UNION ALL SELECT USER_ID FROM dbo.f_get_underling(@df{offset})))");
                 values.Add(userId);
                 break;
         }
@@ -364,10 +369,18 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
         var values = new List<object>();
         var parts = new List<string>();
 
+        // 选择器的 FROM 可能带跨表 JOIN（filterStruct 引用了白名单外键表），此时**源表列必须带
+        // 表名前缀**，否则两表同名列（OWNER / IS_SHOW 之类）会以"列名不明确"报 500。
+        // 解析器按 `ForeignTables is null ? 裸列 : 限定列` 区分两种形态：这里传一个**空但非 null**
+        // 的白名单（等于"不引入任何外键表"），即可拿到限定形态，且外键引用照旧被拒 —— 与列表/详情
+        // 的单表查询（仍走裸列）语义一致，只是加了前缀。
+        IReadOnlyDictionary<string, string> noForeignTables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         if (!string.IsNullOrWhiteSpace(moduleFilter)
             && string.Equals(moduleMasterTable, sourceTable, StringComparison.OrdinalIgnoreCase))
         {
-            if (!DataFilterParser.TryParse(moduleFilter, sourceTable, allowedFields, out var parsed, out var parsedParameters))
+            if (!DataFilterParser.TryParseWithJoins(moduleFilter, sourceTable, allowedFields, noForeignTables, null,
+                    out var parsed, out var parsedParameters, out _, out _))
             {
                 metrics.IncrementScopeRejected("chooser_module_filter");
                 predicate = string.Empty;
@@ -379,7 +392,8 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
 
         if (!string.IsNullOrWhiteSpace(dataFilter))
         {
-            if (!DataFilterParser.TryParse(dataFilter, sourceTable, allowedFields, out var parsed, out var parsedParameters))
+            if (!DataFilterParser.TryParseWithJoins(dataFilter, sourceTable, allowedFields, noForeignTables, null,
+                    out var parsed, out var parsedParameters, out _, out _))
             {
                 metrics.IncrementScopeRejected("chooser_data_filter");
                 predicate = string.Empty;
@@ -389,7 +403,8 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
             parts.Add(Renumber(parsed, values, parsedParameters));
         }
 
-        if (!TryAppendExecTagCore(execTag, userId, hasOwnerColumn, hasOwnerGroupColumn, parts, values, out _))
+        if (!TryAppendExecTagCore(execTag, userId, hasOwnerColumn, hasOwnerGroupColumn, parts, values, out _,
+                columnQualifier: sourceTable))
         {
             predicate = string.Empty;
             parameters = [];
