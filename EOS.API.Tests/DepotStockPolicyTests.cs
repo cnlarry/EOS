@@ -113,6 +113,51 @@ public sealed class DepotStockPolicyTests
             Policy("CP", 3, "RANDOM", 2, 0, false, false, true, true), deployment));
     }
 
+    /// <summary>
+    /// 保存期拒存：硬性规则与月结作用域违规一律 fail-closed（服务端拒绝，不靠界面拦截），
+    /// 合规配置正常落库。本用例会真实写入，故收尾显式清理。
+    /// </summary>
+    [Fact]
+    public async Task 保存期拒绝未实现档位与月结库别覆盖()
+    {
+        const string depot = "ADR14POLSV";
+        var service = CreateService();
+        try
+        {
+            // 未实现档位：直接提交（等价于绕过界面 POST）必须被拒
+            var unimplemented = await service.SaveAsync(Policy(depot, 3, "FIXED", 3, 0), "adr14-test");
+            Assert.False(unimplemented.Saved);
+            Assert.Contains(unimplemented.Errors, message => message.Contains("批次档位 3"));
+
+            var capacity = await service.SaveAsync(Policy(depot, 3, "FIXED", 0, 2), "adr14-test");
+            Assert.False(capacity.Saved);
+            Assert.Contains(capacity.Errors, message => message.Contains("容量档位"));
+
+            // 月结维度：库别行与部署级不一致即拒
+            var scopeOverride = await service.SaveAsync(Policy(depot, 0, "FIXED", 0, 0, true, true, false, true), "adr14-test");
+            Assert.False(scopeOverride.Saved);
+            Assert.Contains(scopeOverride.Errors, message => message.Contains("月结维度"));
+
+            // 合规配置：落库，且月结维度被写成部署级取值（库别行不得携带自己的粒度）
+            var saved = await service.SaveAsync(Policy(depot, 3, "FIXED", 2, 0, false, false, true, false), "adr14-test");
+            Assert.True(saved.Saved);
+            Assert.Empty(saved.Errors);
+
+            var stored = (await service.ListAsync()).Single(row => row.DepotId == depot);
+            Assert.Equal(3, stored.LocationMode);
+            Assert.Equal(2, stored.BatchMode);
+            Assert.False(stored.MixProduct);
+        }
+        finally
+        {
+            await using var connection = new SqlConnection(RequireConnection());
+            await connection.OpenAsync();
+            await using var cleanup = new SqlCommand("DELETE FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID=@d", connection);
+            cleanup.Parameters.AddWithValue("@d", depot);
+            await cleanup.ExecuteNonQueryAsync();
+        }
+    }
+
     // ---------- 两跳求值（真库） ----------
 
     [Fact]
