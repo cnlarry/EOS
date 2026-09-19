@@ -650,10 +650,12 @@ button, input, select { font: inherit; }
 .erp-data-table thead th {
   border-top: 0;
   border-bottom: 0;
-  /* 表头列间白色 1px 竖线：直观标出各列宽度边界（表头浅灰底上可见），不加上下边框 */
+  /* 表头列间 1px 竖线：直观标出各列宽度边界，只在表头底色上抬高一级、隐约可见，不加上下边框 */
   border-right: 1px solid #fff;
 }
 .erp-data-table thead th:last-child { border-right: 0; }
+/* 深色主题下纯白竖线会成为整表最亮的一道线，改为低透明度白，保持与浅色一致的分隔强度 */
+[data-bs-theme='dark'] .erp-data-table thead th { border-right-color: rgba(255, 255, 255, .04); }
 .erp-data-table td { font-size: 12px; }
 /* 单元格强制单行：超宽时由 .erp-cell-ellipsis 省略截断，title 悬停显示全文（复制仍取完整 textContent） */
 .erp-data-table td { white-space: nowrap; }
