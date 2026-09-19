@@ -68,6 +68,11 @@ public sealed class WorkbenchDefinitionSnapshotService(
     /// 与已发布快照的 <c>DEFINITION_JSON</c> 逐字比较。判据与发布时的"内容未变即复用版本"
     /// 完全同源，不另立一套标准。**只读**：不写快照、不动脏标记。
     ///
+    /// **重建必须用快照记录的发布者身份**（<c>PUBLISHED_BY</c>）：字段清单是**按用户**解析的
+    /// （`WorkbenchDefinitionBuilder.ReadFields` 读 `SYSQL_FIELDS` 里该用户保存的选择列），
+    /// 拿另一个身份去重建，字段集合与顺序必然不同 ⇒ 对每个有列偏好的用户都会误报"落后"。
+    /// 用发布者身份重建，检测器的结论才与"该用户现在点一次发布会不会产生新版本"一致。
+    ///
     /// 输出里同时带 <c>Dirty</c>：<c>Stale &amp;&amp; !Dirty</c> 才是静默落后（配置变了却没有任何
     /// 标记提示需要重发布，运行期仍按旧定义跑）。清一色的 <c>Stale &amp;&amp; Dirty</c> 属已知的
     /// 待发布积压，不算异常。
@@ -75,14 +80,15 @@ public sealed class WorkbenchDefinitionSnapshotService(
     public async Task<IReadOnlyList<WorkbenchSnapshotStaleness>> DetectStalenessAsync(CancellationToken token)
     {
         var snapshotSql = """
-            SELECT s.MODULE_ID, LTRIM(RTRIM(ISNULL(m.M_DESC,''))), ISNULL(d.DIRTY_TAG,0), s.VERSION, s.DEFINITION_JSON
+            SELECT s.MODULE_ID, LTRIM(RTRIM(ISNULL(m.M_DESC,''))), ISNULL(d.DIRTY_TAG,0), s.VERSION, s.DEFINITION_JSON,
+                   LTRIM(RTRIM(ISNULL(s.PUBLISHED_BY,'')))
             FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK)
             JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX = s.MODULE_ID
             LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.MODULE_ID = s.MODULE_ID
             WHERE s.IS_CURRENT = 1
             ORDER BY s.MODULE_ID;
             """;
-        var rows = new List<(int ModuleId, string Title, bool Dirty, int Version, string StoredJson)>();
+        var rows = new List<(int ModuleId, string Title, bool Dirty, int Version, string StoredJson, string PublishedBy)>();
         await using (var connection = connections.Create())
         {
             await connection.OpenAsync(token);
@@ -90,7 +96,8 @@ public sealed class WorkbenchDefinitionSnapshotService(
             await using var reader = await command.ExecuteReaderAsync(token);
             while (await reader.ReadAsync(token))
             {
-                rows.Add((reader.GetInt32(0), reader.GetString(1), reader.GetBoolean(2), reader.GetInt32(3), reader.GetString(4)));
+                rows.Add((reader.GetInt32(0), reader.GetString(1), reader.GetBoolean(2), reader.GetInt32(3),
+                    reader.GetString(4), reader.GetString(5)));
             }
         }
 
@@ -102,7 +109,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
             string? reason = null;
             try
             {
-                var report = await validator.ValidateAsync(row.ModuleId, "staleness-check", token);
+                var report = await validator.ValidateAsync(row.ModuleId, row.PublishedBy, token);
                 rebuilt = report.DefinitionJson;
                 if (rebuilt is null)
                 {
