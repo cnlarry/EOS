@@ -385,6 +385,9 @@ public sealed class InventoryMoveSql
         affected += await NormalizePriceAsync(token);
         await EnsureDepotRowsAsync(token);
         await RequireBatchesAsync(token);
+        // 加货的一侧才可能造成混放：批核入库 direct*approve=+1，解批出库同样为 +1（把货加回去）。
+        if (direct * approveTag == 1)
+            await CheckMixingAsync(token);
 
         if (IsApprove)
             affected += direct == 1 ? await ApplyInAsync(token) : await ApplyOutAsync(token);
@@ -409,7 +412,7 @@ public sealed class InventoryMoveSql
     }
 
     /// <summary>
-    /// 把本单涉及库别的批次档位读进临时表，供归一化与批号必填两处判据使用。
+    /// 把本单涉及库别的策略读进临时表，供归一化、批号必填与混放校验三处判据使用。
     ///
     /// 求值一律走 <see cref="DepotStockPolicyService"/>（两跳且整行覆盖）：本类不自行拼默认值，
     /// 否则"库别无行时取什么"就会在同一次单据处理里出现第二个口径。判据必须落在**档位**上
@@ -419,7 +422,8 @@ public sealed class InventoryMoveSql
     {
         await ExecAsync($"IF OBJECT_ID('tempdb..{PolicyTmp}') IS NOT NULL DROP TABLE {PolicyTmp}", token);
         await ExecAsync(
-            $"CREATE TABLE {PolicyTmp}(DEPOT_ID nchar(10) NOT NULL PRIMARY KEY, BATCH_MODE int NOT NULL)", token);
+            $"CREATE TABLE {PolicyTmp}(DEPOT_ID nchar(10) NOT NULL PRIMARY KEY, "
+            + "BATCH_MODE int NOT NULL, MIX_PRODUCT bit NOT NULL, MIX_BATCH bit NOT NULL)", token);
 
         var depots = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -439,16 +443,66 @@ public sealed class InventoryMoveSql
             return;
 
         await using var insert = new SqlCommand(
-            $"INSERT INTO {PolicyTmp}(DEPOT_ID, BATCH_MODE) VALUES (@depot, @mode)", _connection, _transaction);
+            $"INSERT INTO {PolicyTmp}(DEPOT_ID, BATCH_MODE, MIX_PRODUCT, MIX_BATCH) VALUES (@depot, @mode, @mixProduct, @mixBatch)",
+            _connection, _transaction);
         insert.Parameters.Add("@depot", SqlDbType.NChar, 10);
         insert.Parameters.Add("@mode", SqlDbType.Int);
+        insert.Parameters.Add("@mixProduct", SqlDbType.Bit);
+        insert.Parameters.Add("@mixBatch", SqlDbType.Bit);
         foreach (var depot in depots)
         {
             var policy = await _policies.ResolveAsync(depot, _connection, _transaction, token);
             insert.Parameters["@depot"].Value = depot;
             insert.Parameters["@mode"].Value = policy.BatchMode;
+            insert.Parameters["@mixProduct"].Value = policy.MixProduct;
+            insert.Parameters["@mixBatch"].Value = policy.MixBatch;
             await insert.ExecuteNonQueryAsync(token);
         }
+    }
+
+    /// <summary>
+    /// 运行期混放校验：库别策略禁止混品号 / 混批次时，往某个库位里加货之前先确认不会因此混放。
+    /// 只在**入库侧**执行——批核入库与解批出库都是"往库位里加货"，出库不会造成混放。
+    ///
+    /// **哨兵库位（`N'-'`）不参与校验**：它是"未指定位置"的兜底行，存量本来就堆在一起；
+    /// 若参与，任何未启用库位管理的库别都会在第二次入库时被判违规。
+    ///
+    /// 两个方向都要查：与**该库位已有库存**冲突，以及**本单自身**把多个品号 / 批次塞进同一库位。
+    /// 只查前者时，一张明细里放两个品号就能绕过去。
+    /// </summary>
+    private async Task CheckMixingAsync(CancellationToken token)
+    {
+        var conflicts = await QueryListAsync(
+            "SELECT DISTINCT LTRIM(RTRIM(s.DEPOT_ID)) + N' / ' + s.LOCATION_NO, "
+            + "CASE WHEN pol.MIX_PRODUCT = 0 AND d.PRO_NO <> s.PRO_NO THEN N'禁止混品号：' ELSE N'禁止混批次：' END "
+            + "+ N'该库位已有 ' + LTRIM(RTRIM(d.PRO_NO)) + N'（批次 ' + ISNULL(d.BATCH_NO, N'') + N'），本次入库 ' "
+            + "+ LTRIM(RTRIM(s.PRO_NO)) + N'（批次 ' + ISNULL(s.BATCH_NO, N'') + N'）' "
+            + $"FROM (SELECT DISTINCT DEPOT_ID, LOCATION_NO, PRO_NO, BATCH_NO FROM {Tmp}) s "
+            + $"JOIN {PolicyTmp} pol ON pol.DEPOT_ID = s.DEPOT_ID "
+            // 刻意不加脏读提示：这是**阻止写入**的校验，必须看见已提交的真实余额；
+            // 读脏数据可能把并发事务尚未提交的库存当成"已经在那里"或"还不存在"。
+            + "JOIN dbo.INV_PRO_DEPOT d ON d.DEPOT_ID = s.DEPOT_ID AND d.LOCATION_NO = s.LOCATION_NO "
+            + "AND ISNULL(d.QTY,0) <> 0 "
+            + "AND ((pol.MIX_PRODUCT = 0 AND d.PRO_NO <> s.PRO_NO) "
+            + "  OR (pol.MIX_BATCH = 0 AND ISNULL(d.BATCH_NO, N'') <> ISNULL(s.BATCH_NO, N''))) "
+            + "WHERE s.LOCATION_NO <> N'-' "
+            + "UNION ALL "
+            + "SELECT LTRIM(RTRIM(s.DEPOT_ID)) + N' / ' + s.LOCATION_NO, "
+            + "N'禁止混品号：本单把 ' + CAST(COUNT(DISTINCT LTRIM(RTRIM(s.PRO_NO))) AS varchar(10)) + N' 个品号入同一库位' "
+            + $"FROM (SELECT DISTINCT DEPOT_ID, LOCATION_NO, PRO_NO FROM {Tmp}) s "
+            + $"JOIN {PolicyTmp} pol ON pol.DEPOT_ID = s.DEPOT_ID AND pol.MIX_PRODUCT = 0 "
+            + "WHERE s.LOCATION_NO <> N'-' "
+            + "GROUP BY s.DEPOT_ID, s.LOCATION_NO HAVING COUNT(DISTINCT LTRIM(RTRIM(s.PRO_NO))) > 1 "
+            + "UNION ALL "
+            + "SELECT LTRIM(RTRIM(s.DEPOT_ID)) + N' / ' + s.LOCATION_NO, "
+            + "N'禁止混批次：本单把 ' + CAST(COUNT(DISTINCT ISNULL(s.BATCH_NO, N'')) AS varchar(10)) + N' 个批次入同一库位' "
+            + $"FROM (SELECT DISTINCT DEPOT_ID, LOCATION_NO, BATCH_NO FROM {Tmp}) s "
+            + $"JOIN {PolicyTmp} pol ON pol.DEPOT_ID = s.DEPOT_ID AND pol.MIX_BATCH = 0 "
+            + "WHERE s.LOCATION_NO <> N'-' "
+            + "GROUP BY s.DEPOT_ID, s.LOCATION_NO HAVING COUNT(DISTINCT ISNULL(s.BATCH_NO, N'')) > 1", token);
+
+        if (conflicts.Count > 0)
+            throw new EffectValidationException("以下库位不允许混放\n库别/库位---------------原因\n" + FormatPairs(conflicts));
     }
 
     private async Task<int> PrecheckAsync(CancellationToken token)
