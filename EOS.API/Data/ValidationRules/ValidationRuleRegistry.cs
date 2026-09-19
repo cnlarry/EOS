@@ -70,14 +70,9 @@ public static class ValidationRuleRegistry
         "custom-validation",
     };
 
-    private static readonly HashSet<string> KnownStages = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "SAVE",
-        "APPROVE",
-        "DEAPPROVE",
-        // 删除前守卫：删除不产生保存后行为，但主档里的受保护行要在删除前拦下。
-        "DELETE",
-    };
+    // 阶段闭集只保留一处真源（BusinessActionCatalog.ValidationStages）。
+    // 之前这里另存了一份同样的清单，新增阶段时两处不同步，运行期的计划加载器直接炸模块。
+    public static bool IsKnownStage(string stage) => BusinessActionCatalog.IsKnownValidationStage(stage);
 
     private static readonly HashSet<string> KnownScopes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -89,8 +84,6 @@ public static class ValidationRuleRegistry
     };
 
     public static bool IsKnownKey(string key) => KnownKeys.Contains(key);
-
-    public static bool IsKnownStage(string stage) => KnownStages.Contains(stage);
 
     public static void Validate(ValidationRuleConfig rule, List<string> issues)
     {

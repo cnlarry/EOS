@@ -252,8 +252,11 @@ public sealed class EffectPlanLoader
         if (element.ValueKind != JsonValueKind.Object)
             throw new EffectConfigException("校验规则配置项必须是对象。");
         var stage = RequiredString(element, "stage");
-        if (stage is not ("SAVE" or "APPROVE" or "DEAPPROVE"))
-            throw new EffectConfigException($"校验规则阶段 '{stage}' 不在 SAVE/APPROVE/DEAPPROVE 内。");
+        // 阶段闭集只认 BusinessActionCatalog 这一处：这里曾内联过一份同样的字面量清单，
+        // 新增阶段时漏改这里会在运行期以"阶段不在 … 内"炸掉整个模块的保存。
+        if (!BusinessActionCatalog.IsKnownValidationStage(stage))
+            throw new EffectConfigException(
+                $"校验规则阶段 '{stage}' 不在已登记的阶段内（{string.Join("/", BusinessActionCatalog.ValidationStages)}）。");
         var validationKey = RequiredString(element, "validationKey");
         if (!ValidationRuleRegistry.IsKnownKey(validationKey))
             throw new EffectConfigException($"校验规则键 '{validationKey}' 不在封闭校验模板目录内。");
