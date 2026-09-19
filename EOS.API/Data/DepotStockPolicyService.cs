@@ -203,7 +203,32 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         var existing = await ReadExistingAsync(candidate.DepotId, connection, transaction, token);
         var previous = existing ?? deployment;
 
-        if (IsDestructiveDowngrade(candidate, previous) && !confirmDestructive)
+        // 位置档位下调时，存量不能只靠"确认"了事：档位一降，系统就只看哨兵行，
+        // 还留在位置行上的数量会**看着凭空减少**。§3.10.2 要的是"拒绝直接降档、必须先归并"——
+        // 归并与写档位放在同一个事务里，要么都成、要么都不成。
+        // 这一条必须排在通用的"档位下调需确认"之前：否则通用那条先返回，用户永远看不到
+        // "会归并掉哪些存量"，确认也就成了盲签。
+        var pendingMerge = candidate.LocationMode < previous.LocationMode
+            ? await CountRowsToMergeAsync(candidate.DepotId, connection, transaction, token)
+            : 0;
+
+        if (pendingMerge > 0 && !confirmDestructive)
+        {
+            return new SavePolicyResult(
+                false,
+                new[]
+                {
+                    $"位置档位 {previous.LocationMode}→{candidate.LocationMode} 会让系统只看『未指定位置』行，"
+                    + $"而该库别还有 {pendingMerge} 组（料号/批次）的存量分散在具体库位上——直接降档会让这些数量看着凭空减少。"
+                    + "请二次确认后重发：确认时会先做归并（把它们并入『未指定位置』行、总量不变），再完成降档。",
+                },
+                warnings,
+                RequiresConfirmation: true);
+        }
+
+        // 批次档位下调：行保留不合并，但同属破坏性语义变更，一律要确认。
+        // 位置档位下调的确认由上面 pendingMerge 那条决定——该库别没有位置存量时它没有破坏性，不该拦。
+        if (candidate.BatchMode < previous.BatchMode && !confirmDestructive)
         {
             var detail = DescribeDowngrade(candidate, previous);
             return new SavePolicyResult(
@@ -211,6 +236,12 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
                 new[] { $"档位下调属于破坏性变更（{detail}），需二次确认后重发并带上确认标志。确认前不写入任何改动。" },
                 warnings,
                 RequiresConfirmation: true);
+        }
+
+        if (pendingMerge > 0)
+        {
+            await MergeLocationsIntoSentinelAsync(candidate.DepotId, connection, transaction, token);
+            warnings.Add($"已完成归并：{pendingMerge} 组（料号/批次）分散在库位上的存量已并入『未指定位置』行，库别总量不变。");
         }
 
         // 收紧混放限制时给出存量违规清单：按 §3.10.2 允许保存，但必须让人知道哪些库位要整改。
@@ -416,6 +447,68 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             $"已收紧混放限制（禁止混{which}），但当前有 {rows.Count} 个库位处于混放状态，需人工逐步整改："
             + string.Join("、", rows.Take(maxShown)) + suffix
         };
+    }
+
+    /// <summary>该库别有多少组（料号 / 批次）的存量还留在具体库位上——降档是否具有破坏性就看它。</summary>
+    private static async Task<int> CountRowsToMergeAsync(
+        string depotId, SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    {
+        await using var command = new SqlCommand(
+            "SELECT COUNT(*) FROM (SELECT PRO_NO, BATCH_NO FROM dbo.INV_PRO_DEPOT "
+            + "WHERE DEPOT_ID=@depot AND LOCATION_NO <> N'-' AND ISNULL(QTY,0) <> 0 "
+            + "GROUP BY PRO_NO, BATCH_NO) x", connection, transaction);
+        command.Parameters.AddWithValue("@depot", depotId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(token));
+    }
+
+    /// <summary>
+    /// 位置归并（§3.10.2）：把该库别所有非哨兵位置行的数量并入哨兵行，位置行数量清零但**行保留**。
+    ///
+    /// 目标行按 **(料号, 批次)** 分组——只丢"位置"这一维，批次粒度保留；连批次一起并掉
+    /// 会让一次降档顺带毁掉批次账的可追溯性。
+    ///
+    /// 库别级三字段（`INIT_QTY` / `COST_PRICE` / `COST_AMOUNT`）**一律不动**：归并只在同一库别内
+    /// 重分配数量，库别合计不变，它们本就仍然同键一致。新补的哨兵行按既有口径取 **MAX** 复制，
+    /// 绝不 SUM——这几列本来就是每行冗余同一个库别值（§3.19）。
+    /// </summary>
+    private static async Task MergeLocationsIntoSentinelAsync(
+        string depotId, SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    {
+        // 1) 先给缺哨兵行的 (料号, 批次) 补出来：没有目标行，下一步的加法无处可加，
+        //    而再下一步的清零会把数量直接抹掉——这正是"静默数据损失"的入口。
+        await using (var ensure = new SqlCommand(
+            "INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, INIT_QTY, COST_PRICE, COST_AMOUNT) "
+            + "SELECT s.PRO_NO, s.DEPOT_ID, N'-', s.BATCH_NO, 0, "
+            + "  (SELECT MAX(ISNULL(b.INIT_QTY,0)) FROM dbo.INV_PRO_DEPOT b WHERE b.PRO_NO=s.PRO_NO AND b.DEPOT_ID=s.DEPOT_ID), "
+            + "  (SELECT MAX(ISNULL(b.COST_PRICE,0)) FROM dbo.INV_PRO_DEPOT b WHERE b.PRO_NO=s.PRO_NO AND b.DEPOT_ID=s.DEPOT_ID), "
+            + "  (SELECT MAX(ISNULL(b.COST_AMOUNT,0)) FROM dbo.INV_PRO_DEPOT b WHERE b.PRO_NO=s.PRO_NO AND b.DEPOT_ID=s.DEPOT_ID) "
+            + "FROM (SELECT DISTINCT PRO_NO, DEPOT_ID, BATCH_NO FROM dbo.INV_PRO_DEPOT "
+            + "      WHERE DEPOT_ID=@depot AND LOCATION_NO <> N'-') s "
+            + "WHERE NOT EXISTS (SELECT 1 FROM dbo.INV_PRO_DEPOT d WHERE d.PRO_NO=s.PRO_NO AND d.DEPOT_ID=s.DEPOT_ID "
+            + "                  AND d.LOCATION_NO=N'-' AND d.BATCH_NO=s.BATCH_NO);", connection, transaction))
+        {
+            ensure.Parameters.AddWithValue("@depot", depotId);
+            await ensure.ExecuteNonQueryAsync(token);
+        }
+
+        // 2) 数量并入哨兵行（按 料号 + 批次 分组，只合并位置这一维）
+        await using (var move = new SqlCommand(
+            "UPDATE d SET d.QTY = ISNULL(d.QTY,0) + x.QTY "
+            + "FROM dbo.INV_PRO_DEPOT d JOIN (SELECT PRO_NO, BATCH_NO, SUM(ISNULL(QTY,0)) AS QTY "
+            + "  FROM dbo.INV_PRO_DEPOT WHERE DEPOT_ID=@depot AND LOCATION_NO <> N'-' GROUP BY PRO_NO, BATCH_NO) x "
+            + "  ON x.PRO_NO=d.PRO_NO AND x.BATCH_NO=d.BATCH_NO "
+            + "WHERE d.DEPOT_ID=@depot AND d.LOCATION_NO=N'-';", connection, transaction))
+        {
+            move.Parameters.AddWithValue("@depot", depotId);
+            await move.ExecuteNonQueryAsync(token);
+        }
+
+        // 3) 位置行清零（行保留：与 BATCH 降档"行保留不合并"同口径，也不破坏流水历史）
+        await using var clear = new SqlCommand(
+            "UPDATE dbo.INV_PRO_DEPOT SET QTY = 0 "
+            + "WHERE DEPOT_ID=@depot AND LOCATION_NO <> N'-' AND ISNULL(QTY,0) <> 0;", connection, transaction);
+        clear.Parameters.AddWithValue("@depot", depotId);
+        await clear.ExecuteNonQueryAsync(token);
     }
 
     private static DepotStockPolicy Read(SqlDataReader reader) => new(
