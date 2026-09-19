@@ -67,6 +67,36 @@ function filterNavRoute(items: NavigationItem[], route: string): NavigationItem[
 /** 待确认的关闭/离开动作 */
 type PendingConfirm = { kind: 'close'; tabId: string } | { kind: 'all' } | { kind: 'logout' } | null
 
+/** 折叠态菜单浮层的一层：第 0 层是根分组，之后每层挂在其父项的右侧（N 级菜单） */
+interface NavFlyoutLevel {
+  id: string
+  label: string
+  items: NavigationItem[]
+  top: number
+  left: number
+  maxHeight: number
+}
+
+/** 浮层宽度（11rem），用于判断是否该向左弹出 */
+const FLYOUT_WIDTH = 176
+/** 浮层单行高度、标题与内边距占位、以及最多直接显示的行数（超出改为内部滚动） */
+const FLYOUT_ITEM_HEIGHT = 30
+const FLYOUT_CHROME_HEIGHT = 46
+const FLYOUT_MAX_VISIBLE = 10
+const FLYOUT_MIN_HEIGHT = 120
+
+/** 按触发项位置与子项数量算出浮层的坐标与最大高度：整块始终落在可视区内，行数超过上限则内部滚动。 */
+function flyoutPlacement(rect: DOMRect, itemCount: number, offsetX: number) {
+  const wanted = FLYOUT_CHROME_HEIGHT + Math.min(itemCount, FLYOUT_MAX_VISIBLE) * FLYOUT_ITEM_HEIGHT
+  const maxHeight = Math.max(FLYOUT_MIN_HEIGHT, Math.min(wanted, window.innerHeight - 16))
+  // 默认与触发项顶部对齐；下方放不下就整体上移，仍放不下则由 maxHeight 截断并可滚动
+  const top = Math.max(8, Math.min(rect.top - 6, window.innerHeight - 8 - maxHeight))
+  const left = rect.right + offsetX + FLYOUT_WIDTH > window.innerWidth
+    ? Math.max(8, rect.left - FLYOUT_WIDTH - offsetX)
+    : rect.right + offsetX
+  return { top, left, maxHeight }
+}
+
 const RECENT_MODULES_MAX = 8
 
 const fallbackNavigation = [
@@ -132,6 +162,13 @@ function isSubtreeActive(item: NavigationItem, path: string): boolean {
   return item.children?.some((child) => isSubtreeActive(child, path)) ?? false
 }
 
+/** 子树里是否有展开中的分组：多级展开时让祖先也保持展开态高亮，看得出当前分支挂在谁下面。 */
+function hasExpandedDescendant(item: NavigationItem, expanded: Set<string>): boolean {
+  return (item.children ?? []).some((child) =>
+    child.children?.length ? expanded.has(child.id) || hasExpandedDescendant(child, expanded) : false,
+  )
+}
+
 interface AppShellProps {
   /** 工作区路由表；默认取应用工作区路由表，测试可注入夹具路由 */
   routes?: RouteObject[]
@@ -147,6 +184,8 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   })
   const [sidebarResizing, setSidebarResizing] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  // 折叠态下的多级菜单浮层：点一级图标只展开第一层，逐级悬停/点击再展开下一层
+  const [navFlyout, setNavFlyout] = useState<NavFlyoutLevel[]>([])
   const [menuQuery, setMenuQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const { bootstrap, logout } = useAuth()
@@ -622,6 +661,39 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     }
   }, [userMenuOpen])
 
+  // 菜单浮层：点击别处、按 Esc、滚动或调整窗口都收起（滚动会让按钮位置失效）
+  const navFlyoutOpen = navFlyout.length > 0
+  useEffect(() => {
+    if (!navFlyoutOpen) return
+    const close = () => setNavFlyout([])
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (target.closest('.erp-nav-flyout') || target.closest('.erp-nav-group-toggle')) return
+      close()
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+    // 只有侧栏导航列滚动才会让触发项位置失效（弹层是 fixed，跟随触发项）；
+    // 浮层自身滚动条滚动、页面内容滚动都不影响对齐，不收起
+    const navScroller = document.querySelector('.erp-sidebar .navbar-nav')
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    navScroller?.addEventListener('scroll', close)
+    window.addEventListener('resize', close)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+      navScroller?.removeEventListener('scroll', close)
+      window.removeEventListener('resize', close)
+    }
+  }, [navFlyoutOpen])
+
+  // 侧栏展开后回到常规树形展开，浮层不再需要
+  useEffect(() => {
+    if (!sidebarCollapsed) setNavFlyout([])
+  }, [sidebarCollapsed])
+
   const toggleExpanded = (id: string) => {
     setExpandedIds((current) => {
       const next = new Set(current)
@@ -659,18 +731,29 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
         const Icon = navigationIcons[item.icon] ?? IconFolder
         const isExpanded = expandedIds.has(item.id)
         const isGroupActive = item.children.some((child) => isSubtreeActive(child, basePath))
+        // 自己展开、或子树里还有展开中的分组，都算"当前展开分支"：标出展开菜单的归属
+        const isBranchOpen = !sidebarCollapsed && (isExpanded || hasExpandedDescendant(item, expandedIds))
         const groupStyle =
           depth > 1 ? ({ '--menu-gpad': `${groupPad(depth)}px` } as React.CSSProperties) : undefined
         return (
           <Fragment key={item.id}>
             <div className={`erp-nav-group erp-nav-group-depth-${depth}`} style={groupStyle}>
               <button
-                className={`nav-link erp-nav-group-toggle ${isGroupActive ? 'group-active' : ''}`}
+                className={`nav-link erp-nav-group-toggle ${isGroupActive ? 'group-active' : ''}${isBranchOpen ? ' group-open' : ''}`}
                 type="button"
-                aria-expanded={isExpanded}
+                aria-expanded={sidebarCollapsed ? navFlyout[0]?.id === item.id : isExpanded}
                 title={sidebarCollapsed ? item.label : undefined}
-                onClick={() => {
-                  if (sidebarCollapsed) setSidebarCollapsed(false)
+                onClick={(event) => {
+                  // 折叠态不展开侧栏，改为在按钮右侧弹出第一层菜单，更深的层级再逐级展开
+                  if (sidebarCollapsed) {
+                    const children = item.children
+                    if (!children) return
+                    const rect = event.currentTarget.getBoundingClientRect()
+                    setNavFlyout((current) => current[0]?.id === item.id
+                      ? []
+                      : [{ id: item.id, label: item.label, items: children, ...flyoutPlacement(rect, children.length, 8) }])
+                    return
+                  }
                   toggleExpanded(item.id)
                 }}
               >
@@ -712,6 +795,19 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
         </Fragment>
       )
     })
+
+  /** 展开某一级的下一层浮层：同级换目标会丢掉旧的下级，位置按触发项与视口实时计算 */
+  const openFlyoutLevel = useCallback((index: number, item: NavigationItem, rect: DOMRect) => {
+    const children = item.children
+    if (!children?.length) return
+    setNavFlyout((current) => {
+      if (current[index + 1]?.id === item.id) return current
+      return [
+        ...current.slice(0, index + 1),
+        { id: item.id, label: item.label, items: children, ...flyoutPlacement(rect, children.length, 4) },
+      ]
+    })
+  }, [])
 
   return (
     <div
@@ -785,6 +881,46 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
               renderChildren(navigation, 1)
             )}
           </div>
+          {navFlyout.map((level, index) => (
+            <div
+              key={level.id}
+              className="erp-nav-flyout"
+              role="menu"
+              aria-label={level.label}
+              style={{ top: level.top, left: level.left, maxHeight: level.maxHeight }}
+            >
+              <div className="erp-nav-flyout-title">{level.label}</div>
+              {level.items.map((item) => item.children?.length ? (
+                <button
+                  key={item.id}
+                  className={`erp-nav-flyout-item erp-nav-flyout-parent${navFlyout[index + 1]?.id === item.id ? ' active' : ''}`}
+                  type="button"
+                  role="menuitem"
+                  aria-haspopup="menu"
+                  aria-expanded={navFlyout[index + 1]?.id === item.id}
+                  onMouseEnter={(event) => openFlyoutLevel(index, item, event.currentTarget.getBoundingClientRect())}
+                  onClick={(event) => openFlyoutLevel(index, item, event.currentTarget.getBoundingClientRect())}
+                >
+                  <span className="erp-nav-flyout-label">{item.label}</span>
+                  <IconChevronRight size={13} aria-hidden="true" />
+                </button>
+              ) : (
+                <button
+                  key={item.id}
+                  className={`erp-nav-flyout-item${item.route === basePath ? ' active' : ''}`}
+                  type="button"
+                  role="menuitem"
+                  onMouseEnter={() => setNavFlyout((current) => (current.length > index + 1 ? current.slice(0, index + 1) : current))}
+                  onClick={() => {
+                    setNavFlyout([])
+                    openTab(item.route!)
+                  }}
+                >
+                  <span className="erp-nav-flyout-label">{item.label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
           <div className="erp-sidebar-footer">
             <div className="erp-user-row">
               <div className={`dropdown dropup erp-user-menu${userMenuOpen ? ' is-open' : ''}`}>
@@ -801,7 +937,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
                     {bootstrap?.user.avatarUrl ? (
                       <span className="avatar avatar-sm"><img src={bootstrap.user.avatarUrl} alt="" /></span>
                     ) : (
-                      <span className="avatar avatar-sm" style={{ backgroundColor: avatarColor(bootstrap?.user.username ?? 'user') }}>{bootstrap?.user.avatarText}</span>
+                      <span className="avatar avatar-sm" style={{ '--erp-avatar-color': avatarColor(bootstrap?.user.username ?? 'user') } as CSSProperties}>{bootstrap?.user.avatarText}</span>
                     )}
                   </span>
                   <span className="erp-user-meta">
@@ -837,16 +973,16 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
               >
                 {nextTheme === 'dark' ? <IconMoon size={18} stroke={1.7} aria-hidden="true" /> : <IconSun size={18} stroke={1.7} aria-hidden="true" />}
               </button>
+              <button
+                className="btn btn-icon btn-ghost-secondary erp-sidebar-toggle d-none d-lg-inline-flex"
+                type="button"
+                aria-label={sidebarCollapsed ? '展开导航' : '折叠导航'}
+                title={sidebarCollapsed ? '展开导航' : '折叠导航'}
+                onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+              >
+                {sidebarCollapsed ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
+              </button>
             </div>
-            <button
-              className="btn btn-icon btn-ghost-secondary erp-sidebar-toggle d-none d-lg-inline-flex"
-              type="button"
-              aria-label={sidebarCollapsed ? '展开导航' : '折叠导航'}
-              title={sidebarCollapsed ? '展开导航' : '折叠导航'}
-              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
-            >
-              {sidebarCollapsed ? <IconChevronRight size={18} /> : <IconChevronLeft size={18} />}
-            </button>
           </div>
         </div>
       </aside>

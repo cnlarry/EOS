@@ -65,6 +65,8 @@ button, input, select { font: inherit; }
 .erp-nav-group { flex: 0 0 38px; width: 100%; height: 38px; min-height: 38px; max-height: 38px; margin: 0; padding: 0; }
 .erp-nav-group-toggle { width: calc(100% - 14px) !important; height: 38px; min-height: 38px; max-height: 38px; margin-block: 0; padding-block: 0 !important; box-sizing: border-box; border: 0; background: transparent; color: inherit; font-size: 12px; }
 .erp-nav-group-toggle.group-active { color: var(--tblr-primary); }
+/* 展开中的分组（含其祖先）：用主色标出当前展开分支的归属 */
+.erp-nav-group-toggle.group-open { color: var(--tblr-primary); }
 .erp-nav-group-toggle .nav-link-title { flex: 1 1 auto; min-width: 0; }
 .erp-nav-group-toggle .erp-nav-chevron { margin-left: 0; }
 .erp-nav-chevron { flex: 0 0 auto; margin-left: auto; transition: transform .18s ease; }
@@ -131,6 +133,10 @@ button, input, select { font: inherit; }
    用户区高度变化（展开/折叠两种排布）时把手自动跟随，不会压住用户卡 */
 .erp-sidebar-toggle { position: absolute; top: -50px; right: 1px; z-index: 5; width: 29px; min-width: 29px; max-width: 29px; height: 42px; min-height: 42px; padding: 0; border: 1px solid var(--tblr-border-color); border-right: 0; border-radius: 7px 0 0 7px; background: var(--tblr-bg-surface); color: var(--tblr-secondary); box-shadow: -3px 2px 8px rgba(24, 36, 51, .08); }
 .erp-sidebar-toggle:hover { background: var(--tblr-bg-surface-secondary); color: var(--tblr-body-color); }
+/* 折叠态：72px 侧栏里贴边把手会压住菜单图标，改为用户区中、头像上方的同款圆形按钮
+   （order 提到最前，与头像/模式开关同一竖线） */
+.erp-sidebar-collapsed .erp-sidebar-toggle { position: static; order: -1; width: 32px; min-width: 32px; max-width: 32px; height: 32px; min-height: 32px; border: 0; border-radius: 50%; background: transparent; box-shadow: none; }
+.erp-sidebar-collapsed .erp-sidebar-toggle:hover { background: var(--tblr-bg-surface-secondary); color: var(--tblr-primary); }
 .erp-sidebar-resizer { position: fixed; top: 0; bottom: 0; left: calc(var(--erp-sidebar-width, 220px) - 3px); width: 6px; z-index: 1047; cursor: col-resize; touch-action: none; }
 .erp-sidebar-resizer:hover, .erp-sidebar-resizer:active { background: color-mix(in srgb, var(--tblr-primary) 22%, transparent); }
 .erp-sidebar-resizing { user-select: none; }
@@ -508,7 +514,10 @@ button, input, select { font: inherit; }
 /* 头像：定尺寸圆形容器 + 内层圆头像，外圈留 2px 背景色间隙作为描边。
    两侧都写死宽高——Tabler 的 .btn/.avatar 默认会给头像加外边距、给按钮加最小尺寸，不写死必然不同心 */
 .erp-user-avatar { display: inline-flex; flex: 0 0 28px; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border-radius: 50%; background: var(--tblr-bg-surface); box-shadow: inset 0 0 0 1px var(--tblr-border-color); }
-.erp-user-avatar .avatar { width: 24px; height: 24px; margin: 0; border-radius: 50%; font-size: 10px; font-weight: 650; }
+/* 头像底色取用户名哈希出的品牌色，文字固定白色；深色主题下把品牌色压暗一档，
+   既保证白字对比，也避免高饱和色在深色界面里发亮 */
+.erp-user-avatar .avatar { width: 24px; height: 24px; margin: 0; border-radius: 50%; background-color: var(--erp-avatar-color, var(--tblr-primary)); color: #fff; font-size: 10px; font-weight: 650; }
+[data-bs-theme='dark'] .erp-user-avatar .avatar { background-color: color-mix(in srgb, var(--erp-avatar-color, var(--tblr-primary)) 66%, #0b1220); }
 .erp-sidebar-footer .erp-user-meta { flex: 1 1 auto; min-width: 0; }
 .erp-sidebar-footer .erp-user-name { display: block; overflow: hidden; color: var(--tblr-body-color); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .erp-sidebar-footer .erp-user-role { display: block; overflow: hidden; color: var(--tblr-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
@@ -529,6 +538,15 @@ button, input, select { font: inherit; }
 .erp-sidebar-collapsed .erp-sidebar-footer .erp-user-menu.is-open .erp-user { background: var(--tblr-bg-surface-secondary); }
 .erp-sidebar-collapsed .erp-sidebar-footer .erp-user-meta,
 .erp-sidebar-collapsed .erp-user-chevron { display: none; }
+/* 折叠态菜单浮层：点一级图标弹出第一层，逐级再展开下一层，侧栏保持折叠。
+   用 fixed 定位（导航列本身是滚动容器，放流内会被裁切），坐标由触发项位置算出 */
+.erp-nav-flyout { position: fixed; z-index: 1050; width: 11rem; max-height: calc(100vh - 24px); overflow-y: auto; scrollbar-width: thin; padding: 6px; border: 1px solid var(--tblr-border-color); border-radius: 8px; background: var(--tblr-bg-surface); box-shadow: 0 16px 24px 2px rgba(0, 0, 0, .07), 0 6px 30px 5px rgba(0, 0, 0, .06); }
+.erp-nav-flyout-title { padding: 4px 10px 6px; color: var(--tblr-secondary); font-size: 11px; font-weight: 600; }
+.erp-nav-flyout-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--tblr-body-color); font-size: 12px; text-align: left; cursor: pointer; }
+.erp-nav-flyout-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erp-nav-flyout-item:hover { background: var(--tblr-bg-surface-secondary); }
+.erp-nav-flyout-item.active { color: var(--tblr-primary); font-weight: 650; }
+.erp-nav-flyout-parent > svg { flex: 0 0 auto; color: var(--tblr-secondary); }
 /* 折叠态用户菜单改从右侧弹出气泡：72px 侧栏放不下常规下拉，只会被裁切。
    基准改为整个用户区，气泡左缘落在侧栏右边缘外 8px，小三角对准头像 */
 .erp-sidebar-collapsed .erp-sidebar-footer .erp-user-menu { position: static; }
