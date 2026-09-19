@@ -155,7 +155,7 @@ export function FieldEditorRoute() {
   }), [tableId, fieldId, copyFrom, isNew])
 
   return (
-    <div className="erp-field-editor-page d-flex flex-column gap-2">
+    <div className="erp-field-editor-page d-flex flex-column">
       <section className="card erp-list-card">
         <section className="erp-list-command-bar" aria-label="字段设置工具栏">
           <span className="fw-semibold small">
