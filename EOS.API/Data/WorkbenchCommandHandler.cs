@@ -227,19 +227,35 @@ public sealed class WorkbenchCommandHandler(
         {
             identityValue = await InsertRowAsync(connection, transaction, definition.MasterTable, insertColumns, values, masterIdentity, token);
         }
-        // The default bill number from auto-numbering is only a preview; concurrent creation can hit a
-        // unique-key conflict. Map the conflict to BILL_NO_CONFLICT (400) only when the duplicate index
-        // involves the primary key / bill number column; other unique conflicts propagate as-is.
+        // 唯一键冲突（2601 唯一索引 / 2627 主键）不是异常状态，而是用户可预期的输入——编号撞车。
+        // 一律转成可读的 400，原始 SqlException 进日志，不再让它穿透成 500 并把库错误原文透出。
+        // 自动单号模块的单号冲突语义不同：单号是服务端预生成的预览值，重新保存即可拿到新号，
+        // 因此保留 BILL_NO_CONFLICT 的专门文案。
         catch (SqlException ex) when (ex.Number is 2601 or 2627)
         {
+            var parsed = TryParseDuplicateIndexName(ex.Message, out var duplicateIndexName);
+            var conflict = parsed
+                ? await ReadConflictIndexColumnsAsync(connection, transaction, definition.MasterTable, duplicateIndexName, token)
+                : new ConflictIndex(Array.Empty<string>(), false);
+
             if (businessRule is { AutoBillNo: true, BillNoField: not null }
-                && TryParseDuplicateIndexName(ex.Message, out var duplicateIndexName)
-                && await IsBillNoUniqueConflictAsync(connection, transaction, definition.MasterTable, duplicateIndexName, pkColumns, businessRule.BillNoField, token))
+                && IndexCoversBillNo(conflict, pkColumns, businessRule.BillNoField))
             {
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BILL_NO_CONFLICT",
                     "单号已被占用，请重新保存以获取新单号。");
             }
-            throw;
+
+            var duplicatedKeys = pkColumns
+                .Where(pk => conflict.Columns.Contains(pk, StringComparer.OrdinalIgnoreCase))
+                .ToArray();
+            logger.LogWarning(ex, "统一表单新增唯一键冲突 module={ModuleId} table={Table} index={Index} key={Key}",
+                definition.ModuleId, definition.MasterTable, duplicateIndexName, string.Join(',', keyValues));
+            return duplicatedKeys.Length > 0
+                ? RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "DUPLICATE_RECORD_KEY",
+                    $"该编号已存在：{string.Join('、', keyValues)}。请更换后重试。",
+                    duplicatedKeys.Select(pk => new FieldError(pk, "该值已存在，请更换后重试。", "DUPLICATE_RECORD_KEY")).ToArray())
+                : RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "DUPLICATE_RECORD_KEY",
+                    "该记录已存在（唯一键冲突），请检查编号等唯一字段后重试。");
         }
         if (identityValue is not null && masterIdentity.Count > 0)
         {
@@ -1210,29 +1226,39 @@ public sealed class WorkbenchCommandHandler(
         return string.IsNullOrWhiteSpace(normalized) || normalized.Length > 128 ? null : normalized;
     }
 
-    /// <summary>从唯一键冲突异常消息解析索引名。消息本地化导致解析失败时返回 false（保持原样上抛）。</summary>
+    /// <summary>从唯一键冲突异常消息解析索引名（英文与中文两种消息句式）。解析失败时返回 false。</summary>
     private static bool TryParseDuplicateIndexName(string message, out string indexName)
     {
         // 英文：Cannot insert duplicate key row in object 'dbo.X' with unique index 'IX_NAME'.
-        // 2627（主键冲突）与 2601（唯一索引冲突）消息结构一致。
+        //        Violation of PRIMARY KEY constraint 'PK_X'. Cannot insert duplicate key in object 'dbo.X'.
+        // 中文：违反了 PRIMARY KEY 约束“PK_X”。不能在对象“dbo.X”中插入重复键。
+        //        违反了 UNIQUE KEY 约束“UQ_X”。不能在对象“dbo.X”中插入重复键。
+        // 2627（主键冲突）与 2601（唯一索引冲突）消息结构一致。两种句式都要认：
+        // 只认英文时，中文实例上解析必然失败，"单号冲突"那条分支会静默退化成上抛。
         var match = System.Text.RegularExpressions.Regex.Match(
-            message, @"with\s+(unique\s+index|PRIMARY\s+KEY)\s+'(?<name>[^']+)'",
+            message,
+            @"(?:with\s+(?:unique\s+index|PRIMARY\s+KEY)|(?:PRIMARY|UNIQUE)\s+KEY\s*约束)\s*['\u201C\u201D](?<name>[^'\u201C\u201D]+)['\u201C\u201D]",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
         indexName = match.Success ? match.Groups["name"].Value : string.Empty;
         return match.Success;
     }
 
+    /// <summary>冲突索引的列清单与是否为主键。</summary>
+    internal sealed record ConflictIndex(IReadOnlyList<string> Columns, bool IsPrimaryKey);
+
+    /// <summary>冲突索引覆盖到了该列，或冲突索引就是主键且覆盖到某个主键列。</summary>
+    internal static bool IndexCoversBillNo(ConflictIndex conflict, IReadOnlyList<string> pkColumns, string billNoField) =>
+        conflict.Columns.Any(column => column.Equals(billNoField, StringComparison.OrdinalIgnoreCase))
+        || (conflict.IsPrimaryKey && pkColumns.Any(pk => conflict.Columns.Contains(pk, StringComparer.OrdinalIgnoreCase)));
+
     /// <summary>
-    /// 判定唯一键冲突是否为「单号冲突」：
-    /// 冲突索引的列命中单号列，或冲突索引即主键且主键含主键列（自动单号模块主键含 单别+单号）。
+    /// 读出冲突索引的列：判定"撞的是哪一列"用，从而决定把字段错误挂到哪个主键上。
     /// </summary>
-    private static async Task<bool> IsBillNoUniqueConflictAsync(
+    private static async Task<ConflictIndex> ReadConflictIndexColumnsAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         string table,
         string indexName,
-        IReadOnlyList<string> pkColumns,
-        string billNoField,
         CancellationToken token)
     {
         const string sql = """
@@ -1253,15 +1279,7 @@ public sealed class WorkbenchCommandHandler(
             columns.Add(reader.GetString(reader.GetOrdinal("COLUMN_NAME")));
             isPrimaryKey |= reader.GetBoolean(reader.GetOrdinal("IS_PK"));
         }
-        if (columns.Count == 0)
-        {
-            return false;
-        }
-        if (columns.Any(column => column.Equals(billNoField, StringComparison.OrdinalIgnoreCase)))
-        {
-            return true;
-        }
-        return isPrimaryKey && pkColumns.Any(pk => columns.Contains(pk, StringComparer.OrdinalIgnoreCase));
+        return new ConflictIndex(columns, isPrimaryKey);
     }
 
     private static string SerializeResultKey(IReadOnlyList<string> keyValues) => JsonSerializer.Serialize(keyValues);
