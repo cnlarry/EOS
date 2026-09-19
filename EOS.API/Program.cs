@@ -142,6 +142,7 @@ builder.Services.AddHealthChecks()
     .AddCheck<AttachmentStorageHealthCheck>("attachment_storage", tags: ["ready"])
     .AddCheck<ConfigurationHealthCheck>("configuration", tags: ["ready"]);
 builder.Services.AddScoped<AuthenticationRepository>();
+builder.Services.AddScoped<DepotStockPolicyService>();
 builder.Services.AddScoped<UserAdminRepository>();
 builder.Services.AddScoped<FieldAdminRepository>();
 builder.Services.AddScoped<RestrictedExpressionService>();
