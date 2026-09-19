@@ -18,8 +18,13 @@ public sealed class InventoryMoveHandler : IEffectServiceHandler
     public string EffectKey => "inventory-move";
 
     private readonly EffectPhysicalColumns _columns;
+    private readonly DepotStockPolicyService _policies;
 
-    public InventoryMoveHandler(EffectPhysicalColumns columns) => _columns = columns;
+    public InventoryMoveHandler(EffectPhysicalColumns columns, DepotStockPolicyService policies)
+    {
+        _columns = columns;
+        _policies = policies;
+    }
 
     public async Task<int> ExecuteAsync(ServiceEffectContext context, CancellationToken token)
     {
@@ -27,7 +32,7 @@ public sealed class InventoryMoveHandler : IEffectServiceHandler
         var columns = await _columns.LoadAsync(context.Connection, token, context.Transaction);
         var sql = plan.BuildRowSet(context.Plan, context.MasterKeyValues, columns);
         var executor = new InventoryMoveSql(
-            context.Connection, context.Transaction, plan, context.ExecutionEvent);
+            context.Connection, context.Transaction, plan, context.ExecutionEvent, _policies);
         return await executor.RunAsync(sql, token);
     }
 }
@@ -321,22 +326,26 @@ public sealed record InventoryMovePlan(
 public sealed class InventoryMoveSql
 {
     private const string Tmp = "#INV_MOVE_TMP";
+    private const string PolicyTmp = "#INV_MOVE_POLICY";
 
     private readonly SqlConnection _connection;
     private readonly SqlTransaction _transaction;
     private readonly InventoryMovePlan _plan;
     private readonly EffectEvent _event;
+    private readonly DepotStockPolicyService _policies;
 
     public InventoryMoveSql(
         SqlConnection connection,
         SqlTransaction transaction,
         InventoryMovePlan plan,
-        EffectEvent executionEvent)
+        EffectEvent executionEvent,
+        DepotStockPolicyService policies)
     {
         _connection = connection;
         _transaction = transaction;
         _plan = plan;
         _event = executionEvent;
+        _policies = policies;
     }
 
     private bool IsApprove => _event is EffectEvent.ApproveEffect or EffectEvent.Save;
@@ -363,6 +372,10 @@ public sealed class InventoryMoveSql
             fill.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
         await fill.ExecuteNonQueryAsync(token);
 
+        // 必须在行集落进 Tmp 之后：库别清单是从 Tmp 里读的，先读只会读到空表，
+        // 于是每个库别都拿不到策略行、一律按档 0 处理（表面正常，档位静默失效）。
+        await LoadPolicyAsync(token);
+
         var affected = 0;
         if (IsApprove)
             affected += await PrecheckAsync(token);
@@ -383,6 +396,7 @@ public sealed class InventoryMoveSql
         if (direct * approveTag == -1)
             affected += await CleanTrailingAsync(token);
         await ExecAsync($"DROP TABLE {Tmp}", token);
+        await ExecAsync($"DROP TABLE {PolicyTmp}", token);
         return affected;
     }
 
@@ -392,6 +406,49 @@ public sealed class InventoryMoveSql
             $"CREATE TABLE {Tmp}(BILL_TYPE nchar(10),BILL_NO nchar(30),BILL_DATE datetime,SERIAL_NO int,PRO_NO nchar(30),"
             + "DEPOT_ID nchar(10),LOCATION_NO nvarchar(30),QTY float,BASE_QTY float,UNIT_ID nchar(10),PRICE float,BASE_PRICE float,"
             + "CURR_ID nchar(10),CURR_RATE float,AMOUNT float,BATCH_NO nchar(30))", token);
+    }
+
+    /// <summary>
+    /// 把本单涉及库别的批次档位读进临时表，供归一化与批号必填两处判据使用。
+    ///
+    /// 求值一律走 <see cref="DepotStockPolicyService"/>（两跳且整行覆盖）：本类不自行拼默认值，
+    /// 否则"库别无行时取什么"就会在同一次单据处理里出现第二个口径。判据必须落在**档位**上
+    /// 而不是"该库别有没有策略行"——库别无行时回落到部署级默认，而默认档位未必是 0。
+    /// </summary>
+    private async Task LoadPolicyAsync(CancellationToken token)
+    {
+        await ExecAsync($"IF OBJECT_ID('tempdb..{PolicyTmp}') IS NOT NULL DROP TABLE {PolicyTmp}", token);
+        await ExecAsync(
+            $"CREATE TABLE {PolicyTmp}(DEPOT_ID nchar(10) NOT NULL PRIMARY KEY, BATCH_MODE int NOT NULL)", token);
+
+        var depots = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using (var command = new SqlCommand($"SELECT DISTINCT DEPOT_ID FROM {Tmp}", _connection, _transaction))
+        await using (var reader = await command.ExecuteReaderAsync(token))
+        {
+            while (await reader.ReadAsync(token))
+            {
+                // 库别未填时按部署级默认求值（与策略服务对空作用域的口径一致）。
+                var depot = reader.IsDBNull(0) ? string.Empty : reader.GetString(0).Trim();
+                if (seen.Add(depot))
+                    depots.Add(depot);
+            }
+        }
+
+        if (depots.Count == 0)
+            return;
+
+        await using var insert = new SqlCommand(
+            $"INSERT INTO {PolicyTmp}(DEPOT_ID, BATCH_MODE) VALUES (@depot, @mode)", _connection, _transaction);
+        insert.Parameters.Add("@depot", SqlDbType.NChar, 10);
+        insert.Parameters.Add("@mode", SqlDbType.Int);
+        foreach (var depot in depots)
+        {
+            var policy = await _policies.ResolveAsync(depot, _connection, _transaction, token);
+            insert.Parameters["@depot"].Value = depot;
+            insert.Parameters["@mode"].Value = policy.BatchMode;
+            await insert.ExecuteNonQueryAsync(token);
+        }
     }
 
     private async Task<int> PrecheckAsync(CancellationToken token)
@@ -423,14 +480,19 @@ public sealed class InventoryMoveSql
     }
 
     private async Task<int> NormalizeAsync(CancellationToken token) => await ExecAsync(
-        $"UPDATE t SET t.BATCH_NO = CASE ISNULL(p.MANAGE_BATCH,0) WHEN 0 THEN '' ELSE t.BATCH_NO END, "
+        // 批号是否归零取决于库别策略档位：档 0（不管）抹掉非批管料件的批号（历史行为），
+        // 档 1（记录）保留、档 2（必填）保留后由 RequireBatchesAsync 兜。产品级 MANAGE_BATCH=1
+        // 时无论档位如何都保留——策略只能更严，不能把产品级要求抹掉。
+        $"UPDATE t SET t.BATCH_NO = CASE WHEN ISNULL(p.MANAGE_BATCH,0)=0 AND ISNULL(pol.BATCH_MODE,0)=0 "
+        + "THEN '' ELSE ISNULL(LTRIM(RTRIM(t.BATCH_NO)), '') END, "
         // 未填位置一律归一到哨兵 N'-'：余额表的位置列是主键列，主键不接受 NULL，
         // 且唯一性比较把 NULL 视为相等，多行 NULL 会直接判为重复键冲突。
         + "t.LOCATION_NO = ISNULL(NULLIF(LTRIM(RTRIM(t.LOCATION_NO)), ''), N'-'), "
         + "t.BASE_QTY = t.QTY * CASE t.UNIT_ID WHEN p.UNIT_ID THEN 1 WHEN p.UNIT_ID_1 THEN p.UNIT_RATE_1 "
         + "WHEN p.UNIT_ID_2 THEN p.UNIT_RATE_2 WHEN p.UNIT_ID_3 THEN p.UNIT_RATE_3 WHEN p.UNIT_ID_4 THEN p.UNIT_RATE_4 ELSE 1 END, "
         + "t.CURR_RATE = CASE ISNULL(t.CURR_RATE,0) WHEN 0 THEN 1 ELSE t.CURR_RATE END "
-        + $"FROM {Tmp} t JOIN dbo.PRODUCT p ON t.PRO_NO=p.PRO_NO", token);
+        + $"FROM {Tmp} t JOIN dbo.PRODUCT p ON t.PRO_NO=p.PRO_NO "
+        + $"LEFT JOIN {PolicyTmp} pol ON pol.DEPOT_ID=t.DEPOT_ID", token);
 
     private async Task<int> NormalizePriceAsync(CancellationToken token) => await ExecAsync(
         "UPDATE t SET t.BASE_PRICE = ROUND(CASE ISNULL(t.PRICE,0) WHEN 0 THEN d.COST_PRICE "
@@ -445,11 +507,16 @@ public sealed class InventoryMoveSql
         + "WHERE NOT EXISTS (SELECT 1 FROM dbo.INV_PRO_DEPOT d WHERE d.PRO_NO=t.PRO_NO AND d.DEPOT_ID=t.DEPOT_ID "
         + "AND d.LOCATION_NO=t.LOCATION_NO AND d.BATCH_NO=t.BATCH_NO)", token);
 
+    /// <summary>
+    /// 批号必填：产品级 <c>MANAGE_BATCH</c> 与库别策略档 2（该库别所有料件必填）取或——
+    /// 「取严者胜」，策略不能比产品级更松，产品级也不因策略档 0 而失效。
+    /// </summary>
     private async Task RequireBatchesAsync(CancellationToken token)
     {
         var missing = await QueryListAsync(
             $"SELECT DISTINCT t.PRO_NO, '' FROM {Tmp} t JOIN dbo.PRODUCT p ON t.PRO_NO=p.PRO_NO "
-            + "WHERE ISNULL(t.BATCH_NO,'')='' AND ISNULL(p.MANAGE_BATCH,0)=1", token);
+            + $"LEFT JOIN {PolicyTmp} pol ON pol.DEPOT_ID=t.DEPOT_ID "
+            + "WHERE ISNULL(t.BATCH_NO,'')='' AND (ISNULL(p.MANAGE_BATCH,0)=1 OR ISNULL(pol.BATCH_MODE,0)>=2)", token);
         if (missing.Count > 0)
             throw new EffectValidationException("以下品号需要输入批号信息\n" + FormatPairs(missing));
     }

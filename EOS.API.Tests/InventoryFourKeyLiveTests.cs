@@ -1,7 +1,9 @@
 using System.Globalization;
+using EOS.API.Data;
 using EOS.API.Data.Effects;
 using EOS.API.Data.Effects.ServiceEffectHandlers;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace EOS.API.Tests;
@@ -17,6 +19,7 @@ namespace EOS.API.Tests;
 /// 真库用例，需 <c>EOS_ERP_TEST_CONNECTION</c>；全程在一个事务内建数、断言、回滚。
 /// </summary>
 [Trait("Category", "live-database")]
+[Collection("live-database")]
 public sealed class InventoryFourKeyLiveTests
 {
     private const string Product = "ADR14P2PRO";
@@ -33,6 +36,15 @@ public sealed class InventoryFourKeyLiveTests
             "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
         return value!;
     }
+
+    /// <summary>策略求值服务：批次档位判据必须走它，本用例不自行拼默认值。</summary>
+    private static DepotStockPolicyService Policies(string connectionString) =>
+        new(new DbConnectionFactory(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:ErpDatabase"] = connectionString,
+            })
+            .Build()));
 
     [Fact]
     public async Task 出库与解批只作用于指定库位行()
@@ -62,7 +74,7 @@ public sealed class InventoryFourKeyLiveTests
             var rowSet = plan.BuildRowSet(modulePlan, new[] { Type, No }, columns);
 
             // ---------- 批核出库：只扣指定库位 ----------
-            await new InventoryMoveSql(connection, transaction, plan, EffectEvent.ApproveEffect)
+            await new InventoryMoveSql(connection, transaction, plan, EffectEvent.ApproveEffect, Policies(connectionString))
                 .RunAsync(rowSet, CancellationToken.None);
 
             var afterOut = await ReadRowsAsync(connection, transaction);
@@ -86,7 +98,7 @@ public sealed class InventoryFourKeyLiveTests
 
             // ---------- 解批：只回退指定库位，且路径沿用批核当时的快照 ----------
             var undoSet = plan.BuildRowSet(modulePlan, new[] { Type, No }, columns);
-            await new InventoryMoveSql(connection, transaction, plan, EffectEvent.Deapprove)
+            await new InventoryMoveSql(connection, transaction, plan, EffectEvent.Deapprove, Policies(connectionString))
                 .RunAsync(undoSet, CancellationToken.None);
 
             var afterUndo = await ReadRowsAsync(connection, transaction);
