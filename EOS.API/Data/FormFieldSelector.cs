@@ -70,7 +70,11 @@ internal static class FormFieldSelector
         || WorkflowStates.LifecycleActorColumns.Contains(key, StringComparer.OrdinalIgnoreCase)
         || WorkflowStates.OwnershipColumns.Contains(key, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>解析 FIELDS.FORM_OPTIONS（KEY=VALUE;KEY=VALUE），非法项跳过（容错，不抛错）。</summary>
+    /// <summary>
+    /// 解析 FIELDS.FORM_OPTIONS（KEY=VALUE;KEY=VALUE），非法项跳过（容错，不抛错）。
+    /// 标签以 `!` 结尾表示"**可见但不可选**"（未实现的档位要让人看见，但不能被选中——
+    /// 灰显比隐藏诚实：隐藏会让人以为这个能力不存在，可选则会让配置进得去、运行期没人读）。
+    /// </summary>
     internal static IReadOnlyList<FormOptionItem> ParseOptions(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return [];
@@ -81,8 +85,10 @@ internal static class FormFieldSelector
             if (eq <= 0) continue;
             var value = part[..eq].Trim();
             var label = part[(eq + 1)..].Trim();
+            var disabled = label.EndsWith('!');
+            if (disabled) label = label[..^1].TrimEnd();
             if (value.Length == 0 || label.Length == 0) continue;
-            options.Add(new FormOptionItem(value, label));
+            options.Add(new FormOptionItem(value, label, disabled));
         }
         return options;
     }
