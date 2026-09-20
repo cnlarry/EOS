@@ -18,7 +18,6 @@ EOS.API/Data/BillNoGenerator.cs
 EOS.API/Data/ChooserJoinCatalog.cs
 EOS.API/Data/ChooserRepository.cs
 EOS.API/Data/DocumentWorkbenchRepository.cs
-EOS.API/Data/Effects/EffectConditionCompiler.cs
 EOS.API/Data/Effects/EffectValidationExecutor.cs
 EOS.API/Data/Effects/ServiceEffectHandlers/InventoryMoveHandler.cs
 EOS.API/Data/FieldAdminRepository.cs
@@ -40,7 +39,7 @@ EOS.API/Data/ReportRepository.cs
 EOS.API/Data/RestrictedExpressionService.cs
 EOS.API/Data/RightsAdminRepository.cs
 EOS.API/Data/SearchCenterRepository.cs
-EOS.API/Data/SettingsRepository.cs
+EOS.API/Data/SystemParameterService.cs
 EOS.API/Data/UserAdminRepository.cs
 EOS.API/Data/VirtualColumnResolver.cs
 EOS.API/Data/WorkbenchApprovalService.cs
