@@ -47,6 +47,47 @@ public sealed class DepotStockPolicyTests
     }
 
     [Fact]
+    public void 档位目录与保存规则同源_未实现的档位在目录里标为不可选()
+    {
+        // 目录是界面渲染的唯一来源，它标"能选"的档位必须真的存得进去，
+        // 标"不可选"的必须真的被拒 —— 否则就是"看得见存不进"或"选得到却不生效"。
+        var batch = DepotStockPolicyService.Tiers.Single(tier => tier.Key == "batchMode");
+        var batch3 = batch.Options.Single(option => option.Value == DepotStockPolicyService.UnimplementedBatchMode.ToString());
+        Assert.False(batch3.Implemented);
+        Assert.All(batch.Options.Where(option => option.Value != DepotStockPolicyService.UnimplementedBatchMode.ToString()),
+            option => Assert.True(option.Implemented));
+
+        var capacity = DepotStockPolicyService.Tiers.Single(tier => tier.Key == "capacityMode");
+        Assert.All(capacity.Options, option =>
+            Assert.Equal(
+                int.Parse(option.Value, System.Globalization.CultureInfo.InvariantCulture) <= DepotStockPolicyService.MaxSupportedCapacityMode,
+                option.Implemented));
+
+        // 自检：目录里所有"能选"的档位，单独放进一条合规策略里必须不被拒。
+        foreach (var tier in DepotStockPolicyService.Tiers)
+        {
+            foreach (var option in tier.Options.Where(item => item.Implemented))
+            {
+                var policy = tier.Key switch
+                {
+                    "locationMode" => Policy("CP", int.Parse(option.Value), "FIXED", 0, 0, true, true),
+                    "storageMode" => Policy("CP", 3, option.Value, 0, 0, true, true),
+                    "batchMode" => Policy("CP", 3, "FIXED", int.Parse(option.Value), 0, true, true),
+                    "capacityMode" => Policy("CP", 3, "FIXED", 0, int.Parse(option.Value), true, true),
+                    "mixProduct" => Policy("CP", 3, "FIXED", 0, 0, option.Value == "1", true),
+                    "mixBatch" => Policy("CP", 3, "FIXED", 0, 0, true, option.Value == "1"),
+                    "monthCloseByBatch" => Policy("CP", 3, "FIXED", 0, 0, true, true, option.Value == "1", false),
+                    "monthCloseByLocation" => Policy("CP", 3, "FIXED", 0, 0, true, true, true, option.Value == "1"),
+                    _ => throw new InvalidOperationException($"目录里出现了未登记的维度 {tier.Key}"),
+                };
+                var (errors, _) = DepotStockPolicyService.Validate(policy);
+                Assert.True(errors.Count == 0,
+                    $"目录标为可选的 {tier.Key}={option.Value}（{option.Label}）被保存规则拒绝：{string.Join("；", errors)}");
+            }
+        }
+    }
+
+    [Fact]
     public void 随机存放要求位置强制()
     {
         // R-C1：位置档位 0/1（不管 / 可填）配随机或混合存放 ⇒ 货必然丢失
