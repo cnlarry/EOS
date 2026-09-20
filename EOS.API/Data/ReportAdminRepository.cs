@@ -36,7 +36,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
     {
         const string sql = """
             SELECT LTRIM(RTRIM(REPORT_ID)),LTRIM(RTRIM(ISNULL(REPORT_NAME,''))),R_M_IDX,
-                   LTRIM(RTRIM(ISNULL(ISO_NO,''))),LTRIM(RTRIM(ISNULL(HEADER_ID,''))),LTRIM(RTRIM(ISNULL(TAIL_ID,''))),
+                   LTRIM(RTRIM(ISNULL(ISO_NO,''))),LTRIM(RTRIM(ISNULL(HEADER_ID,''))),LTRIM(RTRIM(ISNULL(TAIL_ID,''))),LTRIM(RTRIM(ISNULL(FORMAT_ID,''))),
                    LTRIM(RTRIM(ISNULL(FOOTER_TEXT,''))),ISNULL(IS_DEFAULT,0),
                    LTRIM(RTRIM(ISNULL(REPORT_FILTER,''))),LTRIM(RTRIM(ISNULL(REMARK,'')))
             FROM dbo.REPORT WITH (NOLOCK) WHERE R_M_IDX=@ModuleId ORDER BY IS_DEFAULT DESC,REPORT_ID;
@@ -53,7 +53,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
                 reader.GetString(0).Trim(), EmptyToNull(reader.GetString(1)), reader.GetInt32(2),
                 EmptyToNull(reader.GetString(3)), EmptyToNull(reader.GetString(4)), EmptyToNull(reader.GetString(5)),
                 EmptyToNull(reader.GetString(6)), reader.GetBoolean(7),
-                EmptyToNull(reader.GetString(8)), EmptyToNull(reader.GetString(9))));
+                EmptyToNull(reader.GetString(8)), EmptyToNull(reader.GetString(9)), EmptyToNull(reader.GetString(10))));
         }
         return result;
     }
@@ -63,7 +63,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
     {
         const string sql = """
             SELECT LTRIM(RTRIM(REPORT_ID)),LTRIM(RTRIM(ISNULL(REPORT_NAME,''))),R_M_IDX,
-                   LTRIM(RTRIM(ISNULL(ISO_NO,''))),LTRIM(RTRIM(ISNULL(HEADER_ID,''))),LTRIM(RTRIM(ISNULL(TAIL_ID,''))),
+                   LTRIM(RTRIM(ISNULL(ISO_NO,''))),LTRIM(RTRIM(ISNULL(HEADER_ID,''))),LTRIM(RTRIM(ISNULL(TAIL_ID,''))),LTRIM(RTRIM(ISNULL(FORMAT_ID,''))),
                    LTRIM(RTRIM(ISNULL(FOOTER_TEXT,''))),ISNULL(IS_DEFAULT,0),
                    LTRIM(RTRIM(ISNULL(REPORT_FILTER,''))),LTRIM(RTRIM(ISNULL(REMARK,'')))
             FROM dbo.REPORT WITH (NOLOCK) ORDER BY R_M_IDX,IS_DEFAULT DESC,REPORT_ID;
@@ -79,7 +79,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
                 reader.GetString(0).Trim(), EmptyToNull(reader.GetString(1)), reader.GetInt32(2),
                 EmptyToNull(reader.GetString(3)), EmptyToNull(reader.GetString(4)), EmptyToNull(reader.GetString(5)),
                 EmptyToNull(reader.GetString(6)), reader.GetBoolean(7),
-                EmptyToNull(reader.GetString(8)), EmptyToNull(reader.GetString(9))));
+                EmptyToNull(reader.GetString(8)), EmptyToNull(reader.GetString(9)), EmptyToNull(reader.GetString(10))));
         }
         return result;
     }
@@ -88,10 +88,10 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
     {
         const string sql = """
             INSERT INTO dbo.REPORT
-                (REPORT_ID,REPORT_NAME,R_M_IDX,Q_M_IDX,ISO_NO,HEADER_ID,FOOTER_TEXT,TAIL_ID,
+                (REPORT_ID,REPORT_NAME,R_M_IDX,Q_M_IDX,ISO_NO,HEADER_ID,FOOTER_TEXT,TAIL_ID,FORMAT_ID,
                  IS_DEFAULT,REMARK,REPORT_FILTER,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
             VALUES
-                (@ReportId,@ReportName,@ModuleId,@ModuleId,@IsoNo,@HeaderId,@FooterText,@TailId,
+                (@ReportId,@ReportName,@ModuleId,@ModuleId,@IsoNo,@HeaderId,@FooterText,@TailId,@FormatId,
                  @IsDefault,@Remark,@ReportFilter,@User,GETDATE(),@User,GETDATE());
             """;
         await using var connection = connections.Create();
@@ -105,7 +105,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
     {
         const string sql = """
             UPDATE dbo.REPORT
-            SET REPORT_NAME=@ReportName,ISO_NO=@IsoNo,HEADER_ID=@HeaderId,FOOTER_TEXT=@FooterText,TAIL_ID=@TailId,
+            SET REPORT_NAME=@ReportName,ISO_NO=@IsoNo,HEADER_ID=@HeaderId,FOOTER_TEXT=@FooterText,TAIL_ID=@TailId,FORMAT_ID=@FormatId,
                 IS_DEFAULT=@IsDefault,REMARK=@Remark,REPORT_FILTER=@ReportFilter,
                 LAST_UPDATE_BY=@User,LAST_UPDATE_DATE=GETDATE()
             WHERE REPORT_ID=@ReportId;
@@ -284,6 +284,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
         command.Parameters.AddWithNullable("HeaderId", SqlDbType.NChar, 20, draft.HeaderId);
         command.Parameters.AddWithNullable("FooterText", SqlDbType.NVarChar, 4000, draft.FooterText);
         command.Parameters.AddWithNullable("TailId", SqlDbType.NChar, 20, draft.TailId);
+        command.Parameters.AddWithNullable("FormatId", SqlDbType.NVarChar, 64, draft.FormatId);
         command.Parameters.Add("@IsDefault", SqlDbType.Bit).Value = draft.IsDefault;
         command.Parameters.AddWithNullable("Remark", SqlDbType.NVarChar, 1000, draft.Remark);
         command.Parameters.AddWithNullable("ReportFilter", SqlDbType.NVarChar, 1000, draft.ReportFilter);

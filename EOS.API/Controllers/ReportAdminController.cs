@@ -17,8 +17,24 @@ namespace EOS.API.Controllers;
 [Route("api/v1/report-admin")]
 public sealed class ReportAdminController(
     ReportAdminRepository repository,
+    ReportFormatRepository reportFormats,
     ModuleRightsRepository rightsRepository) : ControllerBase
 {
+    /// <summary>
+    /// 可绑定的打印版式（内置格式包）。版式自带数据契约（列清单），只能绑到同模块的报表上——
+    /// 跨模块绑定会让版式引用到报表没有的列。
+    /// </summary>
+    [HttpGet("formats")]
+    public async Task<IActionResult> Formats([FromQuery] int? moduleId, CancellationToken token)
+    {
+        if (!await CanBrowseAsync(token)) return Forbid();
+        var options = reportFormats.ListTemplates()
+            .Where(item => moduleId is null || item.ModuleId == moduleId.Value)
+            .Select(item => new ReportFormatOption(item.FormatId, item.Title, item.ModuleId))
+            .ToList();
+        return Ok(options);
+    }
+
     [HttpGet("modules")]
     public async Task<IActionResult> Modules(CancellationToken token)
     {
@@ -45,6 +61,7 @@ public sealed class ReportAdminController(
         if (!await CanSetupAsync(token)) return Forbid();
         ReportAdminValidator.ValidateReportId(draft.ReportId);
         ReportAdminValidator.ValidateModuleId(draft.ModuleId);
+        ValidateFormat(draft.FormatId, draft.ModuleId!.Value);
         var existing = await repository.ListReportsAsync(draft.ModuleId!.Value, token);
         if (existing.Any(item => item.ReportId == draft.ReportId.Trim())) return Conflict("报表编号已存在。");
         await repository.CreateReportAsync(draft, User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty, token);
@@ -58,6 +75,7 @@ public sealed class ReportAdminController(
         ReportAdminValidator.ValidateReportId(id);
         var moduleId = await repository.GetReportModuleAsync(id, token);
         if (moduleId is null) return NotFound();
+        ValidateFormat(draft.FormatId, moduleId.Value);
         var updated = await repository.UpdateReportAsync(id, draft, User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty, token);
         return updated ? NoContent() : NotFound();
     }
@@ -161,6 +179,20 @@ public sealed class ReportAdminController(
             if (!options.Contains((parts[0], parts[1])))
                 throw new ArgumentException($"{fieldName} 包含非白名单字段：{token}。", fieldName);
         }
+    }
+
+    /// <summary>
+    /// 版式绑定校验（fail-closed）：空 = 沿用模块默认版式；非空必须是**存在**的格式包，
+    /// 且归属于同一模块——绑一个不存在的编号会让打印静默回落到默认版式（看起来"配了不生效"），
+    /// 绑一个别的模块的版式会引用到本报表没有的列。
+    /// </summary>
+    private void ValidateFormat(string? formatId, int moduleId)
+    {
+        if (string.IsNullOrWhiteSpace(formatId)) return;
+        var package = reportFormats.GetPackage(formatId.Trim())
+            ?? throw new ArgumentException($"打印版式 '{formatId.Trim()}' 不存在，请从可选版式中选择。");
+        if (package.Format.ModuleId != moduleId)
+            throw new ArgumentException($"打印版式 '{formatId.Trim()}' 属于模块 {package.Format.ModuleId}，不能绑定到模块 {moduleId} 的报表。");
     }
 
     private async Task<bool> CanBrowseAsync(CancellationToken token)
