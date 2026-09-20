@@ -88,8 +88,7 @@ public sealed class ReportAggregateRegistryTests
     public void Definition_ExposesAggregateParametersAsClientMetadata()
     {
         var definition = new EOS.API.Models.ReportDefinition(
-            18029811, "考勤分析表", string.Empty, null, [], [], [], [],
-            null, [], null)
+            18029811, "考勤分析表", string.Empty, null, [], [], [], [])
         {
             Aggregate = ReportAggregateRegistry.Find("HR_Diary_1"),
         };
@@ -100,7 +99,7 @@ public sealed class ReportAggregateRegistryTests
         Assert.Equal([false, true], definition.Parameters.Select(item => item.IsTo));
 
         var tableDefinition = new EOS.API.Models.ReportDefinition(
-            1405, "库存报表", "COP_ORDER_M", null, [], [], [], [], null, [], null);
+            1405, "库存报表", "COP_ORDER_M", null, [], [], [], []);
         Assert.Equal("table", tableDefinition.DataSource);
         Assert.Empty(tableDefinition.Parameters);
     }

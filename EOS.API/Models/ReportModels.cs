@@ -32,27 +32,18 @@ public sealed record ReportDefinition(
     IReadOnlyList<ReportColumn> Columns,
     IReadOnlyList<string> MasterPkOrder,
     IReadOnlyList<string> SortFields,
-    string? SpName = null,
-    IReadOnlyList<ReportSpParameter> SpParameters = null!,
     string? ModuleFilter = null)
 {
     /// <summary>汇总报表受控数据源；为空表示按主表（+ 子表）列构建查询。不下发客户端。</summary>
     [JsonIgnore] public ReportAggregate? Aggregate { get; init; }
 
-    /// <summary>数据源类型：table 主表查询 / aggregate 服务端聚合 / sproc 遗留过程。</summary>
-    public string DataSource => Aggregate is not null ? "aggregate" : SpName is not null ? "sproc" : "table";
+    /// <summary>数据源类型：table 主表查询 / aggregate 服务端聚合。列与排序一律来自服务端元数据。</summary>
+    public string DataSource => Aggregate is not null ? "aggregate" : "table";
 
-    /// <summary>
-    /// 参数面板元数据：聚合报表来自服务端注册表（按查询条件序号取值），
-    /// 遗留过程报表来自 sys.parameters（按序号位置取值）。
-    /// </summary>
+    /// <summary>参数面板元数据：仅汇总报表有（来自服务端注册表，按查询条件序号取值）。</summary>
     public IReadOnlyList<ReportAggregateParameter> Parameters =>
-        Aggregate is not null
-            ? Aggregate.Parameters
-            : SpParameters.Select((item, index) => new ReportAggregateParameter(item.Name, item.DataType, item.MaxLength, index + 1)).ToList();
+        Aggregate?.Parameters ?? [];
 }
-
-public sealed record ReportSpParameter(string Name, string DataType, int MaxLength);
 
 /// <summary>
 /// 汇总报表受控数据源的参数绑定：按查询条件序号（<see cref="SerialNo"/>）取"起值"或"止值"

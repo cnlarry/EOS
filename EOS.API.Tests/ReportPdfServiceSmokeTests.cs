@@ -47,7 +47,7 @@ public class ReportPdfServiceSmokeTests
             129801, "产品资料明细", "PRODUCT", null,
             [],
             [new ReportColumn("PRO_NO", "产品编号", "nvarchar"), new ReportColumn("PRO_NAME", "品名", "nvarchar")],
-            ["PRO_NO"], [], null, []);
+            ["PRO_NO"], []);
         var data = new ReportQueryResult(
             [new Dictionary<string, object?> { ["PRO_NO"] = "A1", ["PRO_NAME"] = "测试产品" }],
             1, 1, 1);
@@ -71,7 +71,7 @@ public class ReportPdfServiceSmokeTests
             129801, "分组测试", "PRODUCT", null,
             [],
             [new ReportColumn("PRO_NO", "料号", "nvarchar"), new ReportColumn("QTY", "数量", "float")],
-            ["PRO_NO"], [], null, []);
+            ["PRO_NO"], []);
         var rows = new List<Dictionary<string, object?>>
         {
             new() { ["PRO_NO"] = "A", ["QTY"] = 1m },

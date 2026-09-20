@@ -15,8 +15,8 @@ interface ReportOption { label: string; value: string }
 interface ReportSelectSource { table: string; idColumn: string; valueColumn: string }
 interface ReportCondition { serialNo: number; field: string | null; desc: string; type: number; expression: string | null; defaultValue: string | null; parameterName: string | null; options: ReportOption[]; selectSource: ReportSelectSource | null; defaultValueTo: string | null }
 interface ReportColumn { key: string; label: string; dataType: string; displayFormat?: string | null }
-interface ReportDefinition { moduleId: number; title: string; masterTable: string; conditions: ReportCondition[]; columns: ReportColumn[]; masterPkOrder: string[]; dataSource: 'table' | 'aggregate' | 'sproc'; parameters: ReportSpParameter[] }
-interface ReportSpParameter { name: string; dataType: string; maxLength: number; serialNo: number; isTo: boolean; constant: string | null }
+interface ReportDefinition { moduleId: number; title: string; masterTable: string; conditions: ReportCondition[]; columns: ReportColumn[]; masterPkOrder: string[]; dataSource: 'table' | 'aggregate'; parameters: ReportParameter[] }
+interface ReportParameter { name: string; dataType: string; maxLength: number; serialNo: number; isTo: boolean; constant: string | null }
 interface ReportQueryResult { rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }
 interface ReportPrintOption { reportId: string; reportName: string; headerId: string | null; tailId: string | null; footerText: string | null; isoNo: string | null; isDefault: boolean }
 interface ReportHeaderOption { headerId: string; headerName: string; companyName: string; headerText: string | null; logoUrl: string | null }
@@ -278,25 +278,7 @@ export function ReportViewerPage() {
         </>}
         footer={<ErpPagination total={result.data?.total ?? 0} page={page} pageSize={pageSize} onPageChange={setPage} pageSizes={[50, 100, 200]} onPageSizeChange={(size) => { setPageSize(size); setPage(1) }} />}
       >
-        {def.dataSource === 'sproc' ? (
-          <div className="card mb-2">
-            <div className="card-body py-2">
-              <div className="row g-2">
-                {def.parameters.map((parameter) => (
-                  <div className="col-md-4 col-lg-3" key={parameter.name}>
-                    <label className="form-label mb-1 small">{parameter.name}（{parameter.dataType}）</label>
-                    <input
-                      className="form-control form-control-sm"
-                      type={parameter.dataType.includes('datetime') || parameter.dataType.includes('date') ? 'date' : 'text'}
-                      value={values[parameter.serialNo] ?? ''}
-                      onChange={(event) => setValues((current) => ({ ...current, [parameter.serialNo]: event.target.value }))}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : def.conditions.length > 0 && (
+        {def.conditions.length > 0 && (
           <div className="card mb-2">
             <div className="card-body py-2">
               <div className="row g-2">

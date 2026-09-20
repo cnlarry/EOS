@@ -20,7 +20,6 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
 {
     private static readonly Regex FieldRef = new(@"^\s*(\w+)\.(\w+)\s*$", RegexOptions.Compiled);
     private static readonly Regex SelectExpression = new(@"\{([^}]+)\}=(true|false|[+-]?\d+(?:\.\d+)?|'[^']*')\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex SpReference = new(@"\{([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)\}", RegexOptions.Compiled);
     private static readonly Regex SelectSourcePattern = new(@"^\s*select\s+(\w+)\s+C_ID\s*,\s*(\w+)\s+C_VALUE\s+from\s+(\w+)\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     public async Task<ReportDefinition?> GetDefinitionAsync(
@@ -50,28 +49,13 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         var moduleFilter=reader.GetString(4);
         await reader.DisposeAsync();
         var (effectiveReportId,sortFields)=await ReadReportSortContextAsync(connection,moduleId,reportId,token);
-        // 汇总报表（RptInteg）：数据源按报表编号取自服务端注册表，既不依赖主表也不依赖库内过程
+        // 汇总报表（RptInteg）：数据源按报表编号取自服务端注册表，既不依赖主表也不依赖库内过程。
         var aggregate=ReportAggregateRegistry.Find(effectiveReportId);
-        var spName=aggregate is null
-            ? sortFields.Select(field=>SpReference.Match(field))
-                .Where(match=>match.Success)
-                .Select(match=>match.Groups[1].Value.Split('.')[0])
-                .FirstOrDefault(name=>name.StartsWith("P_RPT_",StringComparison.OrdinalIgnoreCase))
-            : null;
-        IReadOnlyList<ReportSpParameter> spParameters=[];
-        if(spName is not null)
+        // 汇总报表没有 FIELDS 列定义（列由注册表声明），因此允许空 MASTER_TABLE；
+        // 其余报表仍要求主表为合法标识符。
+        if(!ModuleRouteValidator.IsReportUrl(url)||(!WorkbenchSql.Identifier.IsMatch(masterTable)&&aggregate is null))
         {
-            spParameters=await ReadSpParametersAsync(connection,spName,token);
-            if(await StoredProcedureExistsAsync(connection,spName,token)&&spParameters.Count==0)
-                spParameters=[]; // 无参 SP 也允许
-            if(!await StoredProcedureExistsAsync(connection,spName,token))spName=null;
-        }
-        // 汇总报表与 SP 报表都没有 FIELDS 列定义：前者列由注册表声明，后者列由结果集动态提供。
-        // 空 MASTER_TABLE 因此放行，非汇总/非 SP 报表仍要求主表为合法标识符。
-        var usesDynamicSource=spName is not null||aggregate is not null;
-        if(!ModuleRouteValidator.IsReportUrl(url)||(!WorkbenchSql.Identifier.IsMatch(masterTable)&&!usesDynamicSource))
-        {
-            logger.LogWarning("报表模块校验失败 module={ModuleId} url={Url} master={Master} sp={Sp}",moduleId,url,masterTable,spName);
+            logger.LogWarning("报表模块校验失败 module={ModuleId} url={Url} master={Master}",moduleId,url,masterTable);
             return null;
         }
 
@@ -107,7 +91,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         {
             (columns,pkOrder)=await ReadColumnsAsync(connection,masterTable,canViewCost,canViewSecrecy,deniedFields,token);
         }
-        return new ReportDefinition(moduleId,title,masterTable,detailTable.Length>0?detailTable:null,conditions,columns,pkOrder,sortFields,spName,spParameters,
+        return new ReportDefinition(moduleId,title,masterTable,detailTable.Length>0?detailTable:null,conditions,columns,pkOrder,sortFields,
             moduleFilter.Length==0?null:moduleFilter)
         {
             Aggregate=aggregate,
@@ -174,8 +158,6 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         using var timing = DbTimingCollector.Instance.Measure();
         if(definition.Aggregate is not null)
             return await RunAggregateAsync(definition,request.Values,request.ValuesTo,definition.SortFields,token);
-        if(definition.SpName is not null)
-            return await RunSpAsync(definition,request.Values,token);
         page=Math.Max(1,page);
         pageSize=Math.Clamp(pageSize,10,200);
         await using var connection=connections.Create();
@@ -241,8 +223,6 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         using var timing = DbTimingCollector.Instance.Measure();
         if(definition.Aggregate is not null)
             return await RunAggregateAsync(definition,request.Values,request.ValuesTo,sortFields,token,10000);
-        if(definition.SpName is not null)
-            return await RunSpAsync(definition,request.Values,token,10000);
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
         var physicalColumns=await GetPhysicalColumnsAsync(connection,definition.MasterTable,token);
@@ -292,87 +272,6 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             definition.ModuleId,definition.MasterTable,rows.Count);
         return new ReportQueryResult(rows,rows.Count,1,rows.Count);
     }
-
-    /// <summary>
-    /// 汇总报表 SP 受控执行（RptInteg，如库存日报 P_RPT_INV_PRO_DEPOT_1）：
-    /// SP 名来自 REPORT_SORT 花括号引用且必须以 P_RPT_ 开头并在 sys.objects 存在；
-    /// 参数名来自 sys.parameters 白名单，值按参数类型转换，执行读取首个结果集。
-    /// </summary>
-    private async Task<ReportQueryResult> RunSpAsync(
-        ReportDefinition definition,
-        IReadOnlyDictionary<int,string?> values,
-        CancellationToken token,
-        int maxRows = 1000)
-    {
-        await using var connection=connections.Create();
-        await connection.OpenAsync(token);
-        await using var command=new SqlCommand(definition.SpName!,connection)
-        {
-            CommandType=CommandType.StoredProcedure,
-        };
-        // 全部参数显式传入：缺失/空白按 DBNull，避免 SQL 报"未提供参数"。
-        for(var i=0;i<definition.SpParameters.Count;i++)
-        {
-            var spec=definition.SpParameters[i];
-            var raw=values.GetValueOrDefault(i+1);
-            if(string.IsNullOrWhiteSpace(raw))
-            {
-                command.Parameters.AddWithValue($"@{spec.Name}",DBNull.Value);
-                continue;
-            }
-            var value=ConvertParameter(spec,raw);
-            command.Parameters.AddWithValue($"@{spec.Name}",value??DBNull.Value);
-        }
-        await using var reader=await command.ExecuteReaderAsync(token);
-        // 过程返回什么列就下发什么列，会绕过字段级过滤（成本/保密/禁止字段三类判据的唯一载体是
-        // 报表的字段清单）⇒ 结果集列必须与已登记列取交集，未登记的一律剔除。
-        var allowedColumns=definition.Columns.Select(column=>column.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if(allowedColumns.Count==0)
-            throw new ReportColumnWhitelistException(
-                $"报表 {definition.ModuleId} 的过程数据源没有已登记的字段元数据，无法按字段级权限过滤，已拒绝返回数据。");
-        var resultColumns=new List<string>();
-        for(var i=0;i<reader.FieldCount;i++)resultColumns.Add(reader.GetName(i));
-        var (kept,dropped)=FilterSpResultColumns(resultColumns,allowedColumns);
-        if(dropped.Count>0)
-            logger.LogWarning("报表过程数据源返回未登记列，已剔除 module={ModuleId} columns={Columns}",
-                definition.ModuleId,string.Join(',',dropped));
-        if(kept.Count==0)
-            throw new ReportColumnWhitelistException(
-                $"报表 {definition.ModuleId} 的过程返回值与已登记字段无交集，已拒绝返回数据。");
-        var rows=new List<Dictionary<string,object?>>();
-        var count=0;
-        while(await reader.ReadAsync(token))
-        {
-            if(count>=maxRows)
-                throw new PdfDataTooLargeException("报表数据超过 10,000 行上限，请缩小查询条件后再打印。");
-            var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);
-            foreach(var i in kept)row[resultColumns[i]]=reader.IsDBNull(i)?null:reader.GetValue(i);
-            rows.Add(row);
-            count++;
-        }
-        return new ReportQueryResult(rows,count,1,count);
-    }
-
-    /// <summary>
-    /// 过程结果集列的字段白名单取交集（fail-closed）：返回保留下来的列下标与未登记的列名
-    /// （未登记列由调用方记日志，只有"全部未登记"才升级为拒绝执行）。
-    /// </summary>
-    internal static (List<int> Kept, List<string> Dropped) FilterSpResultColumns(
-        IReadOnlyList<string> resultColumns,
-        IReadOnlySet<string> allowedColumns)
-    {
-        var kept=new List<int>();
-        var dropped=new List<string>();
-        for(var i=0;i<resultColumns.Count;i++)
-        {
-            if(allowedColumns.Contains(resultColumns[i]))kept.Add(i);
-            else dropped.Add(resultColumns[i]);
-        }
-        return (kept,dropped);
-    }
-
-    private static object? ConvertParameter(ReportSpParameter parameter,string raw)
-        => ConvertReportValue(parameter.DataType,raw);
 
     /// <summary>
     /// 报表参数值转换：按注册表/参数表声明的类型解析，解析失败返回 null（调用方落 DBNull）。
@@ -450,32 +349,6 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         return $"{aggregate.Sql}\nORDER BY {order};";
     }
 
-    private static async Task<IReadOnlyList<ReportSpParameter>> ReadSpParametersAsync(
-        SqlConnection connection,
-        string spName,
-        CancellationToken token)
-    {
-        const string sql="""
-            SELECT p.name,TYPE_NAME(p.user_type_id),p.max_length
-            FROM sys.parameters p WHERE p.object_id=OBJECT_ID(@SpName) ORDER BY p.parameter_id;
-            """;
-        await using var command=new SqlCommand(sql,connection);
-        command.Parameters.Add("@SpName",SqlDbType.NVarChar,200).Value=spName;
-        await using var reader=await command.ExecuteReaderAsync(token);
-        var result=new List<ReportSpParameter>();
-        while(await reader.ReadAsync(token))
-            result.Add(new ReportSpParameter(reader.GetString(0).TrimStart('@'),reader.GetString(1),Convert.ToInt32(reader.GetValue(2))));
-        return result;
-    }
-
-    private static async Task<bool> StoredProcedureExistsAsync(SqlConnection connection,string spName,CancellationToken token)
-    {
-        const string sql="SELECT 1 FROM sys.objects WHERE object_id=OBJECT_ID(@Name) AND type='P';";
-        await using var command=new SqlCommand(sql,connection);
-        command.Parameters.Add("@Name",SqlDbType.NVarChar,200).Value=spName;
-        return await command.ExecuteScalarAsync(token) is not null;
-    }
-
     private static async Task<(string? ReportId,IReadOnlyList<string> SortFields)> ReadReportSortContextAsync(
         SqlConnection connection,
         int moduleId,
@@ -509,7 +382,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             var value=reader.GetString(1);
             if(string.IsNullOrWhiteSpace(value))continue;
             result.AddRange(value.Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries)
-                .Where(field=>FieldRef.IsMatch(field)||SpReference.IsMatch(field)||WorkbenchSql.Identifier.IsMatch(field)));
+                .Where(field=>FieldRef.IsMatch(field)||WorkbenchSql.Identifier.IsMatch(field)));
         }
         return (string.IsNullOrWhiteSpace(resolved)?null:resolved,result);
     }
