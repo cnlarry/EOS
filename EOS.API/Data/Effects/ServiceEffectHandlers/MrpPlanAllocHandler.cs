@@ -38,9 +38,9 @@ public sealed class MrpPlanAllocHandler : IEffectServiceHandler
 
     internal static async Task<bool> IsMrpEnabledAsync(ServiceEffectContext context, CancellationToken token)
     {
-        await using var command = new SqlCommand(
-            "SELECT COUNT(*) FROM dbo.SYSSS WHERE PRO_MRP=1", context.Connection, context.Transaction);
-        return Convert.ToInt32(await command.ExecuteScalarAsync(token)) > 0;
+        return await SystemParameterService.GetBoolAsync(
+            context.Connection, context.Transaction, SystemParameterService.SystemOwner, "PRO_MRP",
+            fallback: false, token);
     }
 
     internal static string BuildUpdate(

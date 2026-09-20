@@ -348,11 +348,11 @@ public sealed class AttendanceCalcService(
 
     private static async Task<SetupFlags> LoadSetupAsync(SqlConnection connection, CancellationToken token)
     {
-        await using var command = new SqlCommand(
-            "SELECT ISNULL(CAST(SAT_REST_DAY AS int),0), ISNULL(CAST(SUN_REST_DAY AS int),0) FROM dbo.HR_SETUP;", connection);
-        await using var reader = await command.ExecuteReaderAsync(token);
-        if (!await reader.ReadAsync(token)) return new SetupFlags(false, false);
-        return new SetupFlags(reader.GetInt32(0) == 1, reader.GetInt32(1) == 1);
+        var saturday = await SystemParameterService.GetBoolAsync(
+            connection, null, SystemParameterService.AttendanceOwner, "SAT_REST_DAY", fallback: false, token);
+        var sunday = await SystemParameterService.GetBoolAsync(
+            connection, null, SystemParameterService.AttendanceOwner, "SUN_REST_DAY", fallback: false, token);
+        return new SetupFlags(saturday, sunday);
     }
 
     private static async Task<List<(DateTime Start, DateTime End)>> LoadHolidaysAsync(

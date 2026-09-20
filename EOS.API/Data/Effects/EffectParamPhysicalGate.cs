@@ -34,9 +34,7 @@ internal static class EffectParamPhysicalGate
             return Array.Empty<string>();
         }
 
-        var columns = new HashSet<string>(
-            await new EffectPhysicalColumns().LoadAsync(connection, token),
-            StringComparer.OrdinalIgnoreCase);
+        var columns = await new EffectPhysicalColumns().LoadWithParametersAsync(connection, token);
         // 效果参数通过模块形态定位表，这里重建运行期计划所携带的同一份上下文。
         var masterPkOrder = masterTable is { Length: > 0 }
             ? (await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, null, masterTable, token)).ToArray()

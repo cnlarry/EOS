@@ -224,7 +224,7 @@ builder.Services.AddScoped<WorkbenchFieldMetaMapper>();
 builder.Services.AddScoped<DocumentWorkbenchRepository>();
 builder.Services.AddScoped<ReportRepository>();
 builder.Services.AddScoped<PrintSettingsRepository>();
-builder.Services.AddScoped<SettingsRepository>();
+builder.Services.AddScoped<SystemParameterService>();
 builder.Services.AddScoped<ReportAdminRepository>();
 builder.Services.AddScoped<ReportPdfService>();
 builder.Services.AddScoped<ReportInboxRepository>();
