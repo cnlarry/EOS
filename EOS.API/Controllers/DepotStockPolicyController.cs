@@ -33,6 +33,18 @@ public sealed class DepotStockPolicyController(
         return Ok(policies.Select(ToDto).ToList());
     }
 
+    /// <summary>
+    /// 档位目录（界面渲染用）：每个维度的候选值与"本版是否实现"。未实现的档位界面灰显，
+    /// 与服务端拒存规则同源（<see cref="DepotStockPolicyService.Tiers"/>）。
+    /// </summary>
+    [HttpGet("tiers")]
+    public async Task<IActionResult> Tiers(CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+
+        return Ok(DepotStockPolicyService.Tiers);
+    }
+
     /// <summary>保存一条策略行；<c>depotId</c> 传 <c>*</c> 即部署级默认行。</summary>
     [HttpPut("{depotId}")]
     public async Task<IActionResult> Save(

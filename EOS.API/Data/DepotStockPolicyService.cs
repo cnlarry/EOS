@@ -19,6 +19,18 @@ public sealed record DepotStockPolicy(
     bool MonthCloseByLocation);
 
 /// <summary>
+/// 库存策略的一个可配置维度：键、显示名、说明与候选档位（含"本版未实现"标记，界面据此灰显）。
+/// </summary>
+public sealed record DepotStockPolicyTier(
+    string Key,
+    string Label,
+    string Description,
+    IReadOnlyList<DepotStockPolicyTierOption> Options);
+
+/// <summary>档位候选值。<paramref name="Implemented"/> 为假表示本版未实现：可见但不可选。</summary>
+public sealed record DepotStockPolicyTierOption(string Value, string Label, bool Implemented);
+
+/// <summary>
 /// 库存策略的唯一求值入口。策略决定"管到多细"（位置 / 存放 / 批次 / 容量 / 混品号 / 混批次），
 /// 求值口径是**两跳且整行覆盖**：库别行存在则整行采用，否则回落到部署级默认行。
 ///
@@ -38,6 +50,62 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
 
     /// <summary>本版支持的容量档位上限（恒为 0，即不校验）。</summary>
     public const int MaxSupportedCapacityMode = 0;
+
+    /// <summary>
+    /// 档位目录（界面渲染用）。与服务端判定**共用上面的常量**：界面能选什么、服务端接受什么
+    /// 必须是同一份事实，否则又会出现"看得见却存不进去"或"存得进去却不生效"。
+    /// 未实现的档位仍然出现在目录里（<see cref="DepotStockPolicyTierOption.Implemented"/> 为假），
+    /// 界面按"可见但不可选"渲染——隐藏会让人以为这个能力不存在。
+    /// </summary>
+    public static IReadOnlyList<DepotStockPolicyTier> Tiers { get; } =
+    [
+        new("locationMode", "位置档位", "货在哪里记到多细",
+        [
+            new("0", "0 不管", true),
+            new("1", "1 可填", true),
+            new("2", "2 建议", true),
+            new("3", "3 强制", true),
+        ]),
+        new("storageMode", "存放方式", "固定储位还是随机存放",
+        [
+            new("FIXED", "FIXED 固定", true),
+            new("RANDOM", "RANDOM 随机", true),
+            new("MIXED", "MIXED 混合", true),
+        ]),
+        new("batchMode", "批次档位", "批号记不记、要不要必填",
+        [
+            new("0", "0 归零", true),
+            new("1", "1 保留", true),
+            new("2", "2 必填", true),
+            new("3", "3 必填 + 效期", false),
+        ]),
+        new("capacityMode", "容量档位", "要不要校验库位容量",
+        [
+            new("0", "0 不校验", true),
+            new("1", "1 告警", false),
+            new("2", "2 强制", false),
+        ]),
+        new("mixProduct", "混品号", "同一库位能否放不同料号",
+        [
+            new("1", "允许", true),
+            new("0", "禁止", true),
+        ]),
+        new("mixBatch", "混批次", "同一库位能否放不同批次",
+        [
+            new("1", "允许", true),
+            new("0", "禁止", true),
+        ]),
+        new("monthCloseByBatch", "月结按批次", "月结快照是否按批次细分",
+        [
+            new("1", "是", true),
+            new("0", "否", true),
+        ]),
+        new("monthCloseByLocation", "月结按库位", "月结快照是否按库位细分",
+        [
+            new("1", "是", true),
+            new("0", "否", true),
+        ]),
+    ];
 
     /// <summary>
     /// 作用域键的最大长度，与 <c>DEPOT_STOCK_POLICY.DEPOT_ID</c> 的列宽一致。

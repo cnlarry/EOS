@@ -3,6 +3,7 @@ import { RequirePermission } from '../features/auth/RouteGuards'
 import { moduleReadPermission } from '../features/auth/modulePermissions'
 import {
   DashboardPage,
+  DepotStockPolicyPage,
   DetailQueryPage,
   FieldAuditPage,
   FieldEditorRoute,
@@ -56,6 +57,7 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
     { path: 'admin/groups/:groupId/members', element: withSuspense(<GroupMembersPage />) },
   ] },
   { element: <RequirePermission permission={moduleReadPermission(2303)} />, children: [{ path: 'admin/field-audit', element: withSuspense(<FieldAuditPage />) }] },
+  { element: <RequirePermission permission={moduleReadPermission(110310)} />, children: [{ path: 'admin/depot-stock-policy', element: withSuspense(<DepotStockPolicyPage />) }] },
   { element: <RequirePermission permission={moduleReadPermission(2306)} />, children: [
     { path: 'admin/users', element: withSuspense(<UserAdminPage />) },
     { path: 'admin/users/:userId/rights', element: withSuspense(<UserRightsPage />) },
