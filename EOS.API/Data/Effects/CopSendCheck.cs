@@ -33,7 +33,7 @@ internal static class CopSendCheck
             throw new EffectConfigException("cop-send-check 缺少单据主键值。");
         if (string.IsNullOrWhiteSpace(context.Plan.MasterTable))
             throw new EffectConfigException("cop-send-check 需要主表形态。");
-        var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
+        var columns = await new EffectPhysicalColumns().LoadWithParametersAsync(context.Connection, token, context.Transaction);
         var config = Parse(root, context.Plan.MasterTable, columns);
         var type = context.MasterKeyValues[0] ?? string.Empty;
         var no = context.MasterKeyValues[1] ?? string.Empty;
@@ -200,10 +200,9 @@ internal static class CopSendCheck
 
     private static async Task<bool> SysssFlagAsync(CustomValidationContext context, string flag, CancellationToken token)
     {
-        await using var command = new SqlCommand(
-            "SELECT TOP 1 ISNULL(CAST(" + Q(flag) + " AS int),0) FROM dbo.SYSSS;", context.Connection, context.Transaction);
-        var value = await command.ExecuteScalarAsync(token);
-        return value is not null && Convert.ToInt32(value) == 1;
+        return await SystemParameterService.GetBoolAsync(
+            context.Connection, context.Transaction, SystemParameterService.SystemOwner, flag,
+            fallback: false, token);
     }
 
     private static async Task<string?> LinesAsync(CustomValidationContext context, string sql, string type, string no,

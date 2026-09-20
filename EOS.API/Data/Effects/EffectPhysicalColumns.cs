@@ -15,6 +15,22 @@ public sealed class EffectPhysicalColumns
     private static DateTime _cacheLoadedUtc;
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// Whitelist used by configuration validators: physical dbo tables/columns **plus** the
+    /// registered system parameter keys written as "&lt;scope&gt;.&lt;KEY&gt;" (SYSSS.SEND_TAG …).
+    /// Switches live in the parameter table rather than in a column, so folding them into the same
+    /// set keeps "the switch exists" and "the column exists" one judgement in one place.
+    /// </summary>
+    public async Task<ISet<string>> LoadWithParametersAsync(
+        SqlConnection connection, CancellationToken token, SqlTransaction? transaction = null)
+    {
+        var columns = new HashSet<string>(
+            await LoadAsync(connection, token, transaction),
+            StringComparer.OrdinalIgnoreCase);
+        columns.UnionWith(await SystemParameterService.LoadQualifiedKeysAsync(connection, transaction, token));
+        return columns;
+    }
+
     public async Task<ISet<string>> LoadAsync(SqlConnection connection, CancellationToken token, SqlTransaction? transaction = null)
     {
         lock (Gate)

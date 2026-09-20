@@ -162,8 +162,12 @@ public sealed class EffectValidationExecutor
         SqlCommand command;
         if (scope == "SYSSS")
         {
-            sql = $"SELECT COALESCE(MAX(CAST({column} AS int)), 0) FROM dbo.SYSSS WITH (NOLOCK)";
+            // System switches are looked up by parameter key against the parameter table
+            // (owner 110111). The key travels as a parameter; an unregistered or empty
+            // key reads as 0, which keeps the gate closed rather than failing open.
+            sql = $"SELECT {SystemParameterService.BoolSwitchSql(SystemParameterService.SystemOwner, "@Key")}";
             command = new SqlCommand(sql, connection, transaction);
+            command.Parameters.Add("@Key", SqlDbType.NVarChar, 64).Value = key;
         }
         else if (scope == "MODULE")
         {

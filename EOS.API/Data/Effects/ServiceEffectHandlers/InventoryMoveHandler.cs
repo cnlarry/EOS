@@ -762,8 +762,9 @@ public sealed class InventoryMoveSql
     /// </summary>
     private async Task UpdateMrpAsync(CancellationToken token)
     {
-        var gate = await ScalarAsync("SELECT COUNT(*) FROM dbo.SYSSS WITH (NOLOCK) WHERE PRO_MRP=1", token);
-        if (Convert.ToInt32(gate) == 0)
+        var enabled = await SystemParameterService.GetBoolAsync(
+            _connection, _transaction, SystemParameterService.SystemOwner, "PRO_MRP", fallback: false, token);
+        if (!enabled)
             return;
         await ExecAsync(
             "UPDATE p SET p.MRP_QTY = ISNULL(p.MRP_QTY,0) + ISNULL(d.BASE_QTY,0) * @approveTag * @direct "
@@ -810,12 +811,6 @@ public sealed class InventoryMoveSql
         foreach (var (name, value) in extra)
             command.Parameters.AddWithValue(name, value ?? DBNull.Value);
         return await command.ExecuteNonQueryAsync(token);
-    }
-
-    private async Task<object?> ScalarAsync(string sql, CancellationToken token)
-    {
-        await using var command = new SqlCommand(sql, _connection, _transaction);
-        return await command.ExecuteScalarAsync(token);
     }
 
     private async Task<List<(string, string)>> QueryListAsync(string sql, CancellationToken token)

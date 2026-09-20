@@ -1,4 +1,5 @@
 using System.Text.Json;
+using EOS.API.Security;
 
 namespace EOS.API.Data.Effects;
 
@@ -77,15 +78,15 @@ public sealed class EffectConditionCompiler
     /// </summary>
     public delegate string? ScopeAliasResolver(string scope, string? table);
 
-    /// <summary>Validates a SYSSS switch column against the physical column whitelist.</summary>
-    public delegate bool IsSysssColumn(string column);
+    /// <summary>Validates a switch key against the registered system parameter keys of the owning module.</summary>
+    public delegate bool IsSysssKey(string parameterKey);
 
     private int _paramIndex;
 
     public EffectSqlFragment Compile(
         JsonElement condition,
         ScopeAliasResolver resolveAlias,
-        IsSysssColumn isSysssColumn,
+        IsSysssKey isSysssKey,
         string outerAlias = "T")
     {
         if (condition.ValueKind != JsonValueKind.Object
@@ -103,7 +104,7 @@ public sealed class EffectConditionCompiler
         var parameters = new List<EffectSqlParameter>();
         foreach (var item in items.EnumerateArray())
         {
-            var fragment = CompileItem(item, resolveAlias, isSysssColumn, outerAlias);
+            var fragment = CompileItem(item, resolveAlias, isSysssKey, outerAlias);
             if (fragment.Sql.Length == 0)
                 continue;
             parts.Add("(" + fragment.Sql + ")");
@@ -117,7 +118,7 @@ public sealed class EffectConditionCompiler
     private EffectSqlFragment CompileItem(
         JsonElement item,
         ScopeAliasResolver resolveAlias,
-        IsSysssColumn isSysssColumn,
+        IsSysssKey isSysssKey,
         string outerAlias)
     {
         if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("type", out var type)
@@ -154,7 +155,7 @@ public sealed class EffectConditionCompiler
                     new[] { parameter });
             }
             case "NOT-EXISTS":
-                var notExists = CompileNotExists(item, resolveAlias, isSysssColumn, outerAlias);
+                var notExists = CompileNotExists(item, resolveAlias, isSysssKey, outerAlias);
                 // negate:true turns NOT EXISTS into EXISTS — used by master completion
                 // reset rows ("there is an unfinished line") that mirror the legacy
                 // deapprove branch of the finished-flag procedures.
@@ -165,7 +166,7 @@ public sealed class EffectConditionCompiler
                 }
                 return notExists;
             case "SWITCH":
-                return CompileSwitch(item, isSysssColumn);
+                return CompileSwitch(item, isSysssKey);
             case "BLANK":
             {
                 // 字符串列"去空格后为空"：对应旧实现的 string.IsNullOrWhiteSpace 判据。
@@ -225,7 +226,7 @@ public sealed class EffectConditionCompiler
     private EffectSqlFragment CompileNotExists(
         JsonElement item,
         ScopeAliasResolver resolveAlias,
-        IsSysssColumn isSysssColumn,
+        IsSysssKey isSysssKey,
         string outerAlias)
     {
         var targetTable = Required(item, "targetTable").GetString()!.Trim();
@@ -241,7 +242,7 @@ public sealed class EffectConditionCompiler
             var wrapped = JsonSerializer.SerializeToElement(new { logic = "AND", items = new[] { inner } });
             predicate = Compile(wrapped, (scope, table) => scope.Equals("TARGET", StringComparison.OrdinalIgnoreCase)
                 ? alias
-                : resolveAlias(scope, table), isSysssColumn, alias + "_INNER");
+                : resolveAlias(scope, table), isSysssKey, alias + "_INNER");
         }
         else
         {
@@ -279,15 +280,19 @@ public sealed class EffectConditionCompiler
             parameters);
     }
 
-    private EffectSqlFragment CompileSwitch(JsonElement item, IsSysssColumn isSysssColumn)
+    private EffectSqlFragment CompileSwitch(JsonElement item, IsSysssKey isSysssKey)
     {
         var key = Required(item, "key").GetString()!.Trim();
-        if (!WorkbenchSql.Identifier.IsMatch(key) || !isSysssColumn(key))
-            throw new EffectConfigException($"系统开关 '{key}' 不是 SYSSS 物理列。");
+        if (!WorkbenchSql.Identifier.IsMatch(key) || !isSysssKey(key))
+            throw new EffectConfigException($"系统开关 '{key}' 不是已登记的系统参数键。");
         var expected = item.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.True;
+        // The switch travels as a parameter: the key is looked up in the parameter table
+        // (owner 110111) rather than naming a column, and never reaches SQL as an identifier.
+        // A missing key reads as 0, so an absent switch keeps the "off" semantics.
+        var parameter = NextParameter(key);
         return new EffectSqlFragment(
-            $"COALESCE((SELECT MAX(CAST({key} AS int)) FROM dbo.SYSSS WITH (NOLOCK)), 0) {(expected ? "=" : "<>")} 1",
-            Array.Empty<EffectSqlParameter>());
+            $"{SystemParameterService.BoolSwitchSql(ModuleIds.SystemSettings, parameter.Name)} {(expected ? "=" : "<>")} 1",
+            new[] { parameter });
     }
 
     /// <summary>

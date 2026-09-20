@@ -61,7 +61,7 @@ internal static class CopOrderCheck
             throw new EffectConfigException("cop-order-check 缺少单据主键值。");
         if (string.IsNullOrWhiteSpace(context.Plan.MasterTable))
             throw new EffectConfigException("cop-order-check 需要主表形态。");
-        var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
+        var columns = await new EffectPhysicalColumns().LoadWithParametersAsync(context.Connection, token, context.Transaction);
         var config = Parse(root, context.Plan.MasterTable, columns);
         var type = context.MasterKeyValues[0] ?? string.Empty;
         var no = context.MasterKeyValues[1] ?? string.Empty;
@@ -73,23 +73,25 @@ internal static class CopOrderCheck
         var currency = Q(config.Currency.Table);
         var product = Q(config.Product.Table);
         var clientPrice = Q(config.ClientPrice.Table);
-        var settings = Q(config.Settings.Table);
 
         var keyScope = $"m.{Q(config.Master.TypeField)}=@Type AND m.{Q(config.Master.NoField)}=@No";
         var detailScope = $"o.{Q(config.Master.TypeField)}=@Type AND o.{Q(config.Master.NoField)}=@No";
         var detailScopeD = $"d.{Q(config.Master.TypeField)}=@Type AND d.{Q(config.Master.NoField)}=@No";
 
-        // ① 客户交易天数（系统设置的交易天数与客户最后交易日期都非空才判）
+        // ① 客户交易天数（系统设置的交易天数与客户最后交易日期都非空才判；
+        //    设置按参数键取值，取值缺失/为空即不判——保持旧实现的三值语义）
         var tradeDaysSql = $"""
             SELECT TOP 1 1 FROM dbo.{master} m
-            CROSS JOIN (SELECT TOP 1 {Q(config.Settings.ClientDaysField)} FROM dbo.{settings}) s
+            CROSS JOIN (SELECT TOP 1 TRY_CAST(ISNULL(PARAM_VALUE, DEFAULT_VALUE) AS int) AS V
+                        FROM dbo.SYSSS
+                        WHERE OWNER_MODULE = 110111 AND PARAM_KEY = @TradeDaysKey) s
             JOIN dbo.{client} c ON c.{Q(config.Client.KeyField)}=m.{Q(config.Master.ClientField)}
-            WHERE {keyScope} AND s.{Q(config.Settings.ClientDaysField)} IS NOT NULL
+            WHERE {keyScope} AND s.V IS NOT NULL
               AND c.{Q(config.Client.LastTradeDateField)} IS NOT NULL
-              AND s.{Q(config.Settings.ClientDaysField)}
-                  < DATEDIFF(day, c.{Q(config.Client.LastTradeDateField)}, m.{Q(config.Master.DateField)});
+              AND s.V < DATEDIFF(day, c.{Q(config.Client.LastTradeDateField)}, m.{Q(config.Master.DateField)});
             """;
-        if (await ExistsAsync(context, tradeDaysSql, type, no, token))
+        if (await ExistsAsync(context, tradeDaysSql, type, no,
+                ("@TradeDaysKey", config.Settings.ClientDaysField), token))
             return config.Messages.TradeDays;
 
         // ② 最低订单金额（客户维护了最低订单额才判）
@@ -129,13 +131,15 @@ internal static class CopOrderCheck
                                AND m.{Q(config.Master.NoField)}=o.{Q(config.Master.NoField)}
             JOIN dbo.{client} c ON c.{Q(config.Client.KeyField)}=m.{Q(config.Master.ClientField)}
             JOIN dbo.{product} p ON p.{Q(config.Product.KeyField)}=o.{Q(config.Detail.ProductField)}
-            CROSS JOIN (SELECT TOP 1 {Q(config.Settings.ProductDaysField)} FROM dbo.{settings}) s
-            WHERE {detailScope} AND s.{Q(config.Settings.ProductDaysField)} IS NOT NULL
+            CROSS JOIN (SELECT TOP 1 TRY_CAST(ISNULL(PARAM_VALUE, DEFAULT_VALUE) AS int) AS V
+                        FROM dbo.SYSSS
+                        WHERE OWNER_MODULE = 110111 AND PARAM_KEY = @ProductDaysKey) s
+            WHERE {detailScope} AND s.V IS NOT NULL
               AND c.{Q(config.Client.LastTradeDateField)} IS NOT NULL
-              AND s.{Q(config.Settings.ProductDaysField)}
-                  < DATEDIFF(day, p.{Q(config.Product.LastTradeDateField)}, m.{Q(config.Master.DateField)});
+              AND s.V < DATEDIFF(day, p.{Q(config.Product.LastTradeDateField)}, m.{Q(config.Master.DateField)});
             """;
-        var productDays = await LinesAsync(context, productDaysSql, type, no, token, reader => Str(reader, 0));
+        var productDays = await LinesAsync(context, productDaysSql, type, no,
+            ("@ProductDaysKey", config.Settings.ProductDaysField), token, reader => Str(reader, 0));
         if (productDays is not null)
             return config.Messages.ProductDays + productDays;
 
@@ -199,6 +203,18 @@ internal static class CopOrderCheck
         return await command.ExecuteScalarAsync(token) is not null;
     }
 
+    /// <summary>同上，另绑定一个来自闭合配置的参数（如系统参数键）。</summary>
+    private static async Task<bool> ExistsAsync(
+        CustomValidationContext context, string sql, string type, string no,
+        (string Name, object? Value) extra, CancellationToken token)
+    {
+        await using var command = new SqlCommand(sql, context.Connection, context.Transaction);
+        command.Parameters.AddWithValue("@Type", type);
+        command.Parameters.AddWithValue("@No", no);
+        command.Parameters.AddWithValue(extra.Name, extra.Value ?? DBNull.Value);
+        return await command.ExecuteScalarAsync(token) is not null;
+    }
+
     private static async Task<string?> LinesAsync(CustomValidationContext context, string sql, string type, string no,
         CancellationToken token, Func<SqlDataReader, string> format)
     {
@@ -206,6 +222,20 @@ internal static class CopOrderCheck
         await using var command = new SqlCommand(sql, context.Connection, context.Transaction);
         command.Parameters.AddWithValue("@Type", type);
         command.Parameters.AddWithValue("@No", no);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token)) lines.Add(format(reader));
+        return lines.Count == 0 ? null : string.Join("\r\n", lines);
+    }
+
+    /// <summary>同上，另绑定一个来自闭合配置的参数（如系统参数键）。</summary>
+    private static async Task<string?> LinesAsync(CustomValidationContext context, string sql, string type, string no,
+        (string Name, object? Value) extra, CancellationToken token, Func<SqlDataReader, string> format)
+    {
+        var lines = new List<string>();
+        await using var command = new SqlCommand(sql, context.Connection, context.Transaction);
+        command.Parameters.AddWithValue("@Type", type);
+        command.Parameters.AddWithValue("@No", no);
+        command.Parameters.AddWithValue(extra.Name, extra.Value ?? DBNull.Value);
         await using var reader = await command.ExecuteReaderAsync(token);
         while (await reader.ReadAsync(token)) lines.Add(format(reader));
         return lines.Count == 0 ? null : string.Join("\r\n", lines);

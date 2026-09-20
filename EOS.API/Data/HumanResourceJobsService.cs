@@ -186,19 +186,33 @@ public sealed class HumanResourceJobsService(DbConnectionFactory connections)
 
     private sealed record WageAdjustConfig(string Add, string Work, string Over, string Rest, string Holiday, string WorkTime, string OverTime, string RestTime, string HoliTime);
 
+    /// <summary>The nine attendance parameters naming the wage detail columns to adjust.</summary>
+    private static readonly string[] WageAdjustKeys =
+    [
+        "WAGE_ADD", "WAGE_WORK", "WAGE_OVER", "WAGE_REST", "WAGE_HOLIDAY",
+        "WAGE_WORKTIME", "WAGE_OVERTIME", "WAGE_RESTTIME", "WAGE_HOLITIME",
+    ];
+
+    /// <summary>
+    /// Reads the wage column mappings from the attendance parameters. Returns null when any mapping
+    /// is empty or does not name an existing HRM_WAGE_D column, which the caller reports as
+    /// "wage settings not configured".
+    /// </summary>
     private static async Task<WageAdjustConfig?> ReadWageAdjustConfigAsync(SqlConnection connection, CancellationToken token)
     {
-        const string sql = "SELECT LTRIM(RTRIM(ISNULL(WAGE_ADD,''))),LTRIM(RTRIM(ISNULL(WAGE_WORK,''))),LTRIM(RTRIM(ISNULL(WAGE_OVER,''))),LTRIM(RTRIM(ISNULL(WAGE_REST,''))),LTRIM(RTRIM(ISNULL(WAGE_HOLIDAY,''))),LTRIM(RTRIM(ISNULL(WAGE_WORKTIME,''))),LTRIM(RTRIM(ISNULL(WAGE_OVERTIME,''))),LTRIM(RTRIM(ISNULL(WAGE_RESTTIME,''))),LTRIM(RTRIM(ISNULL(WAGE_HOLITIME,''))) FROM dbo.HR_SETUP;";
-        await using var command = new SqlCommand(sql, connection);
-        await using var reader = await command.ExecuteReaderAsync(token);
-        if (!await reader.ReadAsync(token)) return null;
-        var config = new WageAdjustConfig(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetString(8));
-        await reader.CloseAsync();
-        var fields = new[] { config.Add, config.Work, config.Over, config.Rest, config.Holiday, config.WorkTime, config.OverTime, config.RestTime, config.HoliTime };
+        var fields = new string[WageAdjustKeys.Length];
+        for (var index = 0; index < WageAdjustKeys.Length; index++)
+        {
+            var raw = await SystemParameterService.GetStringAsync(
+                connection, null, SystemParameterService.AttendanceOwner, WageAdjustKeys[index], token);
+            fields[index] = (raw ?? string.Empty).Trim();
+        }
         if (fields.Any(string.IsNullOrWhiteSpace)) return null;
         if (fields.Any(field => !WorkbenchSql.Identifier.IsMatch(field))) return null;
         var valid = await GetWageDetailColumnsAsync(connection, token);
-        return fields.All(valid.Contains) ? config : null;
+        if (!fields.All(valid.Contains)) return null;
+        return new WageAdjustConfig(fields[0], fields[1], fields[2], fields[3], fields[4],
+            fields[5], fields[6], fields[7], fields[8]);
     }
 
     private static async Task<HashSet<string>> GetWageDetailColumnsAsync(SqlConnection connection, CancellationToken token)

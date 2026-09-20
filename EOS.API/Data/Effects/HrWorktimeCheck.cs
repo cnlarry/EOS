@@ -27,7 +27,7 @@ internal static class HrWorktimeCheck
     {
         if (context.MasterKeyValues.Count < 2)
             throw new EffectConfigException("hr-worktime-check 缺少单据主键值。");
-        var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
+        var columns = await new EffectPhysicalColumns().LoadWithParametersAsync(context.Connection, token, context.Transaction);
         var config = Parse(root, columns);
 
         if (!await GateOnAsync(context, config, token)) return null;
@@ -84,9 +84,11 @@ internal static class HrWorktimeCheck
     private static async Task<bool> GateOnAsync(
         CustomValidationContext context, HrWorktimeCheckConfig config, CancellationToken token)
     {
-        var sql = $"SELECT TOP 1 1 FROM dbo.{Q(config.Setup.Table)} WHERE {Q(config.Setup.FlagField)}=1;";
-        await using var command = new SqlCommand(sql, context.Connection, context.Transaction);
-        return await command.ExecuteScalarAsync(token) is not null;
+        var owner = SystemParameterService.ModuleForScope(config.Setup.Table)
+            ?? throw new EffectConfigException(
+                $"hr-worktime-check 门控来源 '{config.Setup.Table}.{config.Setup.FlagField}' 不是已登记的设置模块参数。");
+        return await SystemParameterService.GetBoolAsync(
+            context.Connection, context.Transaction, owner, config.Setup.FlagField, fallback: false, token);
     }
 
     private static async Task<string?> LinesAsync(
