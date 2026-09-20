@@ -360,12 +360,20 @@ public sealed class EffectValidationLiveDataTests
         try
         {
             string type, no;
+            // 取样必须**按谓词构造**：该规则判的是"厂商存在且未停止交易"（SUPPLIER.BUSINESS_TAG=0），
+            // 原先取"最近一张采购单"会随机踩到引用了已删测试厂商的测试单，用例随之变红。
             await using (var pick = new SqlCommand(
-                "SELECT TOP 1 PURCHASE_TYPE, PURCHASE_NO FROM dbo.PUR_PURCHASE_M ORDER BY PURCHASE_DATE DESC;",
+                """
+                SELECT TOP 1 M.PURCHASE_TYPE, M.PURCHASE_NO
+                FROM dbo.PUR_PURCHASE_M M
+                JOIN dbo.SUPPLIER S ON S.SUPPLIER_ID = M.SUPPLIER_ID
+                WHERE S.BUSINESS_TAG = 0
+                ORDER BY M.PURCHASE_DATE DESC;
+                """,
                 connection, transaction))
             {
                 await using var reader = await pick.ExecuteReaderAsync(token);
-                Assert.True(await reader.ReadAsync(token), "库内没有采购单样本");
+                Assert.True(await reader.ReadAsync(token), "库内没有引用了可用厂商的采购单样本");
                 type = reader.GetString(0).Trim();
                 no = reader.GetString(1).Trim();
             }

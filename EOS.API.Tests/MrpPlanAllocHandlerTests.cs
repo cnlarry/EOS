@@ -187,6 +187,10 @@ public class MrpPlanAllocHandlerTests
             var context = new ServiceEffectContext(connection, transaction, OrderPlan(), action,
                 EffectEvent.ApproveEffect, "DD,DD17110164", new[] { "DD", "DD17110164" }, "test");
 
+            // 断言依赖的可用库存由本用例在自己事务内写入：PRODUCT.MRP_QTY 是 MRP 重算的派生列，
+            // 读共享开发库的当前值会让用例随"上次谁跑过重算、清理过什么"变红。
+            await SeedOrderLineStockAsync(connection, transaction, [(1, 18.0), (2, 3499.0)]);
+
             var affected = await handler.ExecuteAsync(context, CancellationToken.None);
             Assert.Equal(2, affected);
 
@@ -283,6 +287,28 @@ public class MrpPlanAllocHandlerTests
     }
 
     private sealed record OrderLine(double? PlanQty, double? PlanSpareQty, double? DepotQty);
+
+    /// <summary>
+    /// 把被测订单各行所引用产品的可用库存显式写进本用例的事务（回滚）。
+    /// 前置写入而不是读库内现值，用例的期望值才不依赖"派生列上次何时被重算"。
+    /// </summary>
+    private static async Task SeedOrderLineStockAsync(
+        SqlConnection connection, SqlTransaction transaction, (int SerialNo, double MrpQty)[] stocks)
+    {
+        foreach (var (serialNo, mrpQty) in stocks)
+        {
+            await using var command = new SqlCommand("""
+                UPDATE P SET P.MRP_QTY = @qty
+                FROM dbo.PRODUCT P
+                JOIN dbo.COP_ORDER_D D ON D.PRO_NO = P.PRO_NO
+                WHERE D.ORDER_TYPE = 'DD' AND D.ORDER_NO = 'DD17110164' AND D.SERIAL_NO = @serial;
+                """, connection, transaction);
+            command.Parameters.Add("@qty", System.Data.SqlDbType.Float).Value = mrpQty;
+            command.Parameters.Add("@serial", System.Data.SqlDbType.SmallInt).Value = (short)serialNo;
+            Assert.True(await command.ExecuteNonQueryAsync() >= 1,
+                $"开发数据里订单 DD/DD17110164 第 {serialNo} 行没有可更新的产品，用例前置写入失败。");
+        }
+    }
 
     private static async Task<Dictionary<int, OrderLine>> ReadOrderLinesAsync(SqlConnection connection, SqlTransaction transaction)
     {
