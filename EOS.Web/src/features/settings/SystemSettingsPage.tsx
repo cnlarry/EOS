@@ -1,62 +1,50 @@
 import { useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpListCard } from '../../components/common/ErpListCard'
-import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
-import { SysSettingsLayout } from './SysSettingsLayout'
+import { SystemSettingsTabs } from './SystemSettingsTabs'
 import {
   initialSettingsForm,
+  normalizeScope,
   type SettingsForm,
-  type SysSettingsField,
-  type SysSettingsPayload,
+  type SystemParameterList,
 } from './settingsTypes'
 
-function normalizeTable(table: string): string {
-  const upper = table.toUpperCase()
-  if (upper === 'HR-SETUP') return 'HR_SETUP'
-  if (upper === 'HRM-SETUP') return 'HRM_SETUP'
-  return 'SYSSS'
-}
-
 /**
- * 单行参数表设置页。
- * - SYSSS（110111 系统参数设置）：完整 布局（七分区、标签、控件类型、保存副作用）；
- * - HR_SETUP / HRM_SETUP（180213 / 180662）：保留通用参数网格。
+ * 系统参数设置页 / 考勤数据设置页：路由段决定设置范围
+ * （system 110111 / hr-setup 180213 / hrm-setup 180662，菜单 URL 不变），
+ * 参数按分组以选项卡呈现，控件由参数类型决定。
  */
 export function SystemSettingsPage() {
-  const { table = 'SYSSS' } = useParams<{ table: string }>()
-  const apiTable = normalizeTable(table)
+  const { table } = useParams<{ table: string }>()
+  const scope = normalizeScope(table)
   const [form, setForm] = useState<SettingsForm>({})
+  const [activeGroupCode, setActiveGroupCode] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const settings = useQuery({
-    queryKey: ['settings', apiTable],
+    queryKey: ['settings', scope],
     queryFn: async () => {
-      const data = await apiClient.get<SysSettingsPayload>(`/settings/${apiTable}`)
-      setForm(initialSettingsForm(data.fields, data.values))
+      const data = await apiClient.get<SystemParameterList>(`/settings/${scope}`)
+      setForm(initialSettingsForm(data.groups))
       return data
     },
   })
-
-  const fields = useMemo(() => {
-    const map: Record<string, SysSettingsField> = {}
-    for (const field of settings.data?.fields ?? []) map[field.key] = field
-    return map
-  }, [settings.data])
 
   const save = async () => {
     if (!window.confirm('你确定要保存吗？')) return
     setSaving(true)
     setSaved(false)
+    setSaveError(null)
     try {
-      await apiClient.put(`/settings/${apiTable}`, form)
+      await apiClient.put(`/settings/${scope}`, form)
       setSaved(true)
     } catch (error) {
       const message = error instanceof Error ? error.message : ''
-      window.alert(`未知错误，设置失败！${message ? `（${message}）` : ''}`)
+      setSaveError(`设置失败！${message ? `（${message}）` : ''}`)
     } finally {
       setSaving(false)
     }
@@ -67,52 +55,18 @@ export function SystemSettingsPage() {
   if (settings.isPending) return <LoadingState label="正在加载系统参数…" />
   if (settings.isError) return <ErrorState message="系统参数加载失败。" onRetry={() => void settings.refetch()} />
 
-  if (apiTable === 'SYSSS') {
-    return (
-      <SysSettingsLayout
-        fields={fields}
-        form={form}
-        onChange={change}
-        onSave={() => void save()}
-        saving={saving}
-        saved={saved}
-      />
-    )
-  }
-
+  const groups = settings.data?.groups ?? []
   return (
-    <div className="d-grid gap-2">
-      <ErpListCard
-        ariaLabel="系统参数设置"
-        search={null}
-        actions={(
-          <Button size="sm" onClick={() => void save()} loading={saving}>保存</Button>
-        )}
-      >
-        {saved && <div role="alert" className="alert alert-success py-2 mb-2">设置成功！</div>}
-        <div className="table-responsive">
-          <table className="table table-sm table-vcenter card-table">
-            <thead>
-              <tr><th className="w-50">参数</th><th>值</th></tr>
-            </thead>
-            <tbody>
-              {Object.entries(form).map(([key, value]) => (
-                <tr key={key}>
-                  <td>{fields[key]?.label ?? key}</td>
-                  <td>
-                    <input
-                      aria-label={fields[key]?.label ?? key}
-                      className="form-control form-control-sm"
-                      value={value}
-                      onChange={(event) => change(key, event.target.value)}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </ErpListCard>
-    </div>
+    <SystemSettingsTabs
+      groups={groups}
+      form={form}
+      activeGroupCode={activeGroupCode || groups[0]?.groupCode || ''}
+      onSelectGroup={setActiveGroupCode}
+      onChange={change}
+      onSave={() => void save()}
+      saving={saving}
+      saved={saved}
+      saveError={saveError}
+    />
   )
 }
