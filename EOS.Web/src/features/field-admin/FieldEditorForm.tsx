@@ -706,7 +706,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                       </div>
                       <div className="col-12">
                         <label className="form-label">下拉选项（FORM_OPTIONS）</label>
-                        <input className="form-control" value={draft.options ?? ''} disabled={locked} placeholder="如 O=外含税;I=内含税;N=不含税；有值即渲染下拉框" onChange={event => setDraft({ ...draft, options: event.target.value || null })} />
+                        <input className="form-control" value={draft.options ?? ''} disabled={locked} placeholder="如 O=外含税;I=内含税;N=不含税；有值即渲染下拉框；标签末尾加 ! 表示可见但不可选（未实现的档位）" onChange={event => setDraft({ ...draft, options: event.target.value || null })} />
                       </div>
                     </>}
                     {section === 'advanced' && <>

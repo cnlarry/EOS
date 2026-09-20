@@ -205,6 +205,18 @@ describe('FormFieldRenderer', () => {
     expect(screen.queryByRole('button', { name: '选择' })).not.toBeInTheDocument()
   })
 
+  it('标签以 ! 结尾的选项渲染为"可见但不可选"', () => {
+    const { container } = render(<FormFieldRenderer
+      field={field({ options: [{ value: '2', label: '建议' }, { value: '3', label: '必填+效期', disabled: true }] })}
+      value="2"
+      onChange={() => undefined}
+    />)
+    const options = Array.from(container.querySelector('select')?.options ?? [])
+    expect(options.map(option => option.textContent)).toEqual(['建议', '必填+效期'])
+    expect(options[1].disabled).toBe(true)
+    expect(options[0].disabled).toBe(false)
+  })
+
   it('bare 模式不渲染标签与格线包装', () => {
     const { container } = render(<FormFieldRenderer field={field({})} value="" bare onChange={() => undefined} />)
     expect(container.querySelector('.erp-form-field')).toBeNull()

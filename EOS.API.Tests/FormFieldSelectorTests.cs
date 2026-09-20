@@ -167,6 +167,29 @@ public class FormFieldSelectorTests
         Assert.Empty(FormFieldSelector.ParseOptions(""));
     }
 
+    /// <summary>
+    /// 标签以 `!` 结尾 = 可见但不可选：未实现的档位要看得见、选不了（隐藏会让人以为能力不存在，
+    /// 可选则会让配置进得去、运行期没人读）。
+    /// </summary>
+    [Fact]
+    public void ParseOptions_TrailingBangMarksOptionDisabled()
+    {
+        var options = FormFieldSelector.ParseOptions("0=不管;1=可填;2=建议;3=必填+效期!");
+
+        Assert.Equal(4, options.Count);
+        Assert.False(options[0].Disabled);
+        Assert.True(options[3].Disabled);
+        Assert.Equal("必填+效期", options[3].Label);
+        Assert.Equal("3", options[3].Value);
+    }
+
+    [Fact]
+    public void ParseOptions_LoneBangIsSkipped()
+    {
+        // 只有标记没有标签 ⇒ 空标签，按既有容错口径跳过（不产生"看得见但没名字"的选项）
+        Assert.Empty(FormFieldSelector.ParseOptions("3=!"));
+    }
+
     [Fact]
     public void NormalizeChooserTarget_StripsControlPrefixes()
     {

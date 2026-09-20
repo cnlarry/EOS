@@ -14,10 +14,14 @@ export interface FormChooserSource {
   serialNo: number | null
 }
 
-/** 下拉选项（解析自 FIELDS.FORM_OPTIONS，如 'O=外含税;I=内含税'） */
+/**
+ * 下拉选项（解析自 FIELDS.FORM_OPTIONS，如 'O=外含税;I=内含税'）。
+ * 标签以 `!` 结尾的项为**可见但不可选**（未实现的档位要让人看得见、但选不了），服务端解析为 disabled。
+ */
 export interface FormOptionItem {
   value: string
   label: string
+  disabled?: boolean
 }
 
 /** 工作台/表单业务按钮（解析自 MODULES.FORM_BUTTONS，如 '1=copy;2=approve;3=print'） */

@@ -118,7 +118,9 @@ function SelectControl({ field, value, disabled, onChange, error }: ControlProps
       onChange={event => onChange(event.target.value)}
     >
       {value === '' ? <option value="">请选择</option> : null}
-      {field.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+      {field.options.map(option => (
+        <option key={option.value} value={option.value} disabled={option.disabled === true}>{option.label}</option>
+      ))}
     </select>
   )
 }

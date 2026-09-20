@@ -80,8 +80,11 @@ public sealed record WorkbenchDefinition(
 /// <summary>Form tab definition (parsed from MODULES.FORM_TABS).</summary>
 public sealed record FormTabDefinition(int No, string Title);
 
-/// <summary>Form dropdown option (parsed from FIELDS.FORM_OPTIONS).</summary>
-public sealed record FormOptionItem(string Value, string Label);
+/// <summary>
+/// Form dropdown option (parsed from FIELDS.FORM_OPTIONS). <paramref name="Disabled"/> means the
+/// option is shown but cannot be picked (a tier that is not implemented yet).
+/// </summary>
+public sealed record FormOptionItem(string Value, string Label, bool Disabled = false);
 public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify, IReadOnlyList<FormTabDefinition> Tabs = default!, int Columns = 2, IReadOnlyList<WorkbenchButton>? Buttons = null, IReadOnlyDictionary<string, string> DefaultValues = default!, bool HasWorkflow = false, bool IfCopy = false, bool SearchMaster = false, bool SearchDetail = false, bool CanDelete = false, bool CanApprove = false, bool CanDeapprove = false, bool CanEndCase = false, bool CanUnEndCase = false, bool CanFileView = false, bool CanFileUpda = false, bool CanFileEdit = false, bool CanFileDele = false, bool CanAddNew = false, bool CanEdit = false, string? HelpUrl = null, bool CanSetup = false, bool HasStatelessApprove = false, bool HasApproveCapability = false);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength, int TabNo = 1, int? FormOrder = null, int Span = 1, bool NewLine = false, string? CellGroup = null, int CellRole = 0, IReadOnlyList<FormOptionItem>? Options = null, bool DisplayOnly = false, bool CanCopy = true,
     int? Precision = null, int? Scale = null);
