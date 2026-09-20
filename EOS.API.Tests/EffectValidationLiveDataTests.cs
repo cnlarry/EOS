@@ -737,7 +737,8 @@ public sealed class EffectValidationLiveDataTests
 
             // 订单口径：数量量纲命中（已备货 80 + 本单 30 > 订单 100），七列诊断逐字一致
             await using (var gate = new SqlCommand(
-                "UPDATE dbo.MODULES SET ERROR_NO_SAVE = 1 WHERE M_IDX = 1411; UPDATE dbo.SYSSS SET FITOUT_ORDER_TAG = 1;",
+                "UPDATE dbo.MODULES SET ERROR_NO_SAVE = 1 WHERE M_IDX = 1411;"
+                + " UPDATE dbo.SYSSS SET PARAM_VALUE = N'1' WHERE OWNER_MODULE = 110111 AND PARAM_KEY = N'FITOUT_ORDER_TAG';",
                 connection, transaction))
             {
                 await gate.ExecuteNonQueryAsync(token);
@@ -763,7 +764,9 @@ public sealed class EffectValidationLiveDataTests
             // 切到工单口径（本单 15 备品 vs 工单已备货 40 + 15 > 完工备品 60？→ 55 ≤ 60 不超；数量 80+5 ≤ 200 不超）
             // 故此处先把工单完工备品降到 50 以命中工单口径
             await using (var produceGate = new SqlCommand("""
-                UPDATE dbo.SYSSS SET FITOUT_ORDER_TAG = 0, FITOUT_PRODUCE_TAG = 1;
+                UPDATE dbo.SYSSS
+                SET PARAM_VALUE = CASE PARAM_KEY WHEN N'FITOUT_ORDER_TAG' THEN N'0' ELSE N'1' END
+                WHERE OWNER_MODULE = 110111 AND PARAM_KEY IN (N'FITOUT_ORDER_TAG', N'FITOUT_PRODUCE_TAG');
                 UPDATE dbo.MOC_PRODUCE_M SET FINISHED_SPARE_QTY = 50
                     WHERE PRODUCE_TYPE = N'ADR12' AND PRODUCE_NO = N'ADR12PRO1';
                 """, connection, transaction))

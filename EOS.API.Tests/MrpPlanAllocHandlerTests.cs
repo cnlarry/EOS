@@ -264,7 +264,9 @@ public class MrpPlanAllocHandlerTests
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
         try
         {
-            await using (var gate = new SqlCommand("UPDATE dbo.SYSSS SET PRO_MRP=0", connection, transaction))
+            await using (var gate = new SqlCommand(
+                "UPDATE dbo.SYSSS SET PARAM_VALUE=N'0' WHERE OWNER_MODULE=110111 AND PARAM_KEY=N'PRO_MRP'",
+                connection, transaction))
             {
                 await gate.ExecuteNonQueryAsync();
             }

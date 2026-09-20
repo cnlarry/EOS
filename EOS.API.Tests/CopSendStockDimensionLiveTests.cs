@@ -189,7 +189,7 @@ public sealed class CopSendStockDimensionLiveTests
             DELETE FROM dbo.DEPOT_LOCATION WHERE DEPOT_ID=@Depot;
             DELETE FROM dbo.DEPOT WHERE DEPOT_ID=@Depot;
             DELETE FROM dbo.PRODUCT WHERE PRO_NO=@Pro;
-            UPDATE dbo.SYSSS SET SEND_TAG=1;
+            UPDATE dbo.SYSSS SET PARAM_VALUE=N'1' WHERE OWNER_MODULE=110111 AND PARAM_KEY=N'SEND_TAG';
 
             INSERT INTO dbo.PRODUCT (PRO_NO, MANAGE_BATCH, UNIT_ID) VALUES (@Pro, 0, @Unit);
             INSERT INTO dbo.DEPOT (DEPOT_ID, DEPOT_NAME) VALUES (@Depot, N'ADR25 维度仓');

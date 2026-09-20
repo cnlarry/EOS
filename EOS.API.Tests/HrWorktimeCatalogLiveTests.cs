@@ -125,7 +125,8 @@ public sealed class HrWorktimeCatalogLiveTests
             DELETE FROM dbo.HR_WORKTIME_M WHERE WORKTIME_TYPE=@WtType;
             DELETE FROM dbo.HR_APPLY_D WHERE APPLY_TYPE=@ApplyType;
             DELETE FROM dbo.HR_APPLY_M WHERE APPLY_TYPE=@ApplyType;
-            UPDATE dbo.HR_SETUP SET REQUIRE_ENACTMENT=@Gate;
+            UPDATE dbo.SYSSS SET PARAM_VALUE=CONVERT(nvarchar(4000), @Gate)
+                WHERE OWNER_MODULE=180213 AND PARAM_KEY=N'REQUIRE_ENACTMENT';
             """,
             ("@WtType", WtType), ("@ApplyType", ApplyType), ("@Gate", gateOn ? 1 : 0));
         await ExecuteAsync(connection, transaction, token, """

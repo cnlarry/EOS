@@ -184,7 +184,8 @@ public sealed class CopSendCatalogLiveTests
             DELETE FROM dbo.DEPOT_LOCATION WHERE DEPOT_ID=@Depot;
             DELETE FROM dbo.DEPOT WHERE DEPOT_ID=@Depot;
             DELETE FROM dbo.PRODUCT WHERE PRO_NO=@Pro;
-            UPDATE dbo.SYSSS SET SEND_TAG=@SendTag;
+            UPDATE dbo.SYSSS SET PARAM_VALUE=CONVERT(nvarchar(4000), @SendTag)
+                WHERE OWNER_MODULE=110111 AND PARAM_KEY=N'SEND_TAG';
             """, ("@Type", Type), ("@Pro", Pro), ("@Depot", Depot), ("@SendTag", sendTag));
         if (depotExists)
             await ExecuteAsync(connection, transaction, token, """
