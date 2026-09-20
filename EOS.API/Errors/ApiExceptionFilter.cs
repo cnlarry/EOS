@@ -26,6 +26,7 @@ public sealed class ApiExceptionFilter(
             DataFilterUnsupportedException exception => (StatusCodes.Status403Forbidden, "DATA_FILTER_UNSUPPORTED", exception.Message),
             GroupExpressionUnsupportedException exception => (StatusCodes.Status403Forbidden, "GROUP_EXP_UNSUPPORTED", exception.Message),
             PdfDataTooLargeException exception => (StatusCodes.Status422UnprocessableEntity, "PDF_DATA_TOO_LARGE", exception.Message),
+            ReportColumnWhitelistException exception => (StatusCodes.Status422UnprocessableEntity, "REPORT_COLUMNS_UNREGISTERED", exception.Message),
             _ => (0, string.Empty, string.Empty)
         };
 

@@ -276,7 +276,7 @@ public sealed class WorkbenchCommandHandler(
         var detailErrors = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, values, request.Details, employeeName, true, token);
         if (detailErrors is not null)
         {
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "VALIDATION_FAILED", "明细数据校验未通过。", detailErrors);
+            return DetailFailure(detailErrors);
         }
         await SavePrepayOffsetsAsync(connection, transaction, businessRule, pkColumns, keyValues, request.PrepayOffsets, token);
         // 目录校验（SAVE 阶段）是模块的声明式校验目录，独立于"谁负责保存后行为"：
@@ -477,7 +477,7 @@ public sealed class WorkbenchCommandHandler(
         var detailErrors = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, merged, request.Details, employeeName, false, token);
         if (detailErrors is not null)
         {
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "VALIDATION_FAILED", "明细数据校验未通过。", detailErrors);
+            return DetailFailure(detailErrors);
         }
         var businessRule = definition.BusinessRule;
         await SavePrepayOffsetsAsync(connection, transaction, businessRule, pkColumns, keyValues, request.PrepayOffsets, token);
@@ -673,6 +673,18 @@ public sealed class WorkbenchCommandHandler(
         : generatesDetailRows ? EmptyDetailPolicy.RejectAfterEffects
         : EmptyDetailPolicy.Reject;
 
+    /// <summary>
+    /// 明细侧失败的统一出口。"模块根本收不下明细"与"明细逐行校验没过"是两类问题：
+    /// 前者是结构不匹配（多半是模块改配或调用方用错端点），后者是数据本身不合法。
+    /// 用不同错误码区分，调用方不必解析明细列表就知道该找谁。
+    /// </summary>
+    private static RecordSaveResult DetailFailure(IReadOnlyList<FieldError> errors) =>
+        errors.Count == 1 && errors[0].Code == "DETAIL_NOT_SUPPORTED"
+            ? RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "DETAIL_NOT_SUPPORTED",
+                errors[0].Message, errors)
+            : RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "VALIDATION_FAILED",
+                "明细数据校验未通过。", errors);
+
     private async Task<IReadOnlyList<FieldError>?> SaveDetailsAsync(
         SqlConnection connection,
         SqlTransaction transaction,
@@ -694,9 +706,20 @@ public sealed class WorkbenchCommandHandler(
         {
             return null;
         }
-        if (definition.DetailTable is null || form.DetailFields.Count == 0)
+        // 模块收不下明细时，把提交上来的明细静默丢掉会返回一个"成功"的假象——调用方以为
+        // 明细已保存，实际什么都没写。纯主表模块允许省略明细（null 或空数组），但不允许
+        // 提交了明细还被无声丢弃。
+        if (definition.DetailTable is null)
         {
-            return null;
+            return details.Count == 0
+                ? null
+                : [new FieldError("", "该模块没有明细资料，不能提交明细。", "DETAIL_NOT_SUPPORTED")];
+        }
+        if (form.DetailFields.Count == 0)
+        {
+            return details.Count == 0
+                ? null
+                : [new FieldError("", "该模块的明细字段未开放，无法保存明细。", "DETAIL_NOT_SUPPORTED")];
         }
         if (details.Count == 0)
         {
