@@ -35,14 +35,9 @@ public sealed class ReportPdfService(IWebHostEnvironment environment, ILogger<Re
         var logo = header is null ? null : PdfLayout.TryLoadLogo(environment, header.LogoPath);
         // 与查询层一致：只渲染实际选中的列（主键优先 + 可见列，上限 40），
         // 避免 definition.Columns 全量列（可达 86 列）撑爆 A4 竖版宽度。
-        // 汇总报表（服务端聚合数据源）：列由注册表声明，全部渲染；
-        // SP 报表（空主表，如 18029811 考勤分析表）：无 FIELDS 列定义，列由结果集动态提供
+        // 汇总报表（服务端聚合数据源）：列由注册表声明，全部渲染。
         var columns = definition.Columns;
-        if(definition.Aggregate is null && columns.Count == 0 && definition.SpName is not null && input.Data.Rows.Count > 0)
-            columns = input.Data.Rows[0].Keys
-                .Select(key => new ReportColumn(key, key, "nvarchar", null))
-                .ToList();
-        else if(definition.Aggregate is null)
+        if(definition.Aggregate is null)
         {
             var selected = ReportRepository.BuildSelectedColumns(definition);
             columns = definition.Columns
