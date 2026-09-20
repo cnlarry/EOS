@@ -96,6 +96,52 @@ public class LayoutFormatPackagesTests
         }
     }
 
+    /// <summary>
+    /// 同一模块的多个报表可以各印各的版式：现场作业单据（拣货单 / 上架单）是派生包——
+    /// 版式结构沿用模块默认包，明细列换成库位/批号且**不印价格**（内部作业单据不出价）。
+    /// </summary>
+    [Theory]
+    [InlineData("1406-pick", "拣货单", 1406)]
+    [InlineData("1607-putaway", "上架单", 1607)]
+    public void VariantPackages_DeclareLocationColumnsAndRender(string formatId, string title, int moduleId)
+    {
+        var root = FindReportFormatsRoot();
+        Assert.NotNull(root);
+        var dir = Path.Combine(root, formatId);
+        Assert.True(Directory.Exists(dir), $"缺少格式包目录：{formatId}");
+
+        var format = JsonSerializer.Deserialize<ReportFormatDefinition>(
+            File.ReadAllText(Path.Combine(dir, "format.json")), JsonOptions)!;
+        Assert.Equal(formatId, format.FormatId);
+        Assert.Equal(title, format.Title);
+        Assert.Equal(moduleId, format.ModuleId);
+        Assert.Equal("document", format.Kind);
+
+        var detailKeys = format.DataContract.DetailColumns.Select(column => column.Key).ToHashSet(
+            StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("LOCATION_NO", detailKeys);
+        Assert.Contains("BATCH_NO", detailKeys);
+
+        var layout = JsonSerializer.Deserialize<LayoutDocument>(
+            File.ReadAllText(Path.Combine(dir, "layout.json")), JsonOptions)!;
+        var table = layout.Sections.Content.Elements.Single(element => element.Type == "table");
+        var fields = table.Columns!.Select(column => column.Field).ToList();
+        Assert.Contains("DETAILS.LOCATION_NO", fields);
+        Assert.Contains("DETAILS.BATCH_NO", fields);
+        Assert.DoesNotContain("DETAILS.PRICE", fields);
+        Assert.DoesNotContain("DETAILS.AMOUNT_TAX", fields);
+        // 明细列总宽不得超 A4 纵向版心（187.4mm），否则渲染时右侧列会被裁掉。
+        Assert.True(table.Columns!.Sum(column => column.Width ?? 0) <= 187.4,
+            $"{formatId} 明细列总宽超出版心：{table.Columns!.Sum(column => column.Width ?? 0)}");
+
+        var data = BuildPrintData(
+            moduleId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            File.ReadAllText(Path.Combine(dir, "sample.json")));
+        var pdf = Renderer.Render(data, File.ReadAllText(Path.Combine(dir, "layout.json")), new LayoutRenderContext("admin"));
+        Assert.True(pdf.Length > 1000, $"{formatId} PDF 字节过小：{pdf.Length}");
+        Assert.StartsWith("%PDF", Encoding.ASCII.GetString(pdf[..4]));
+    }
+
     [Fact]
     public void FallbackPackages_CardAndGeneric_Render()
     {

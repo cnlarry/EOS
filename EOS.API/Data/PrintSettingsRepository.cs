@@ -173,7 +173,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
             SELECT r.REPORT_ID,LTRIM(RTRIM(ISNULL(r.REPORT_NAME,r.REPORT_ID))),
                    LTRIM(RTRIM(ISNULL(r.HEADER_ID,''))),LTRIM(RTRIM(ISNULL(r.TAIL_ID,''))),
                    LTRIM(RTRIM(ISNULL(r.FOOTER_TEXT,''))),LTRIM(RTRIM(ISNULL(r.ISO_NO,''))),
-                   ISNULL(r.IS_DEFAULT,0)
+                   ISNULL(r.IS_DEFAULT,0),LTRIM(RTRIM(ISNULL(r.FORMAT_ID,'')))
             FROM dbo.REPORT r WITH (NOLOCK)
             WHERE r.R_M_IDX=@ModuleId
               -- 个人 override 收紧（PREVIEW_TAG=0 → 隐藏）
@@ -211,7 +211,8 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
                 EmptyToNull(reader.GetString(3)),
                 EmptyToNull(reader.GetString(4)),
                 EmptyToNull(reader.GetString(5)),
-                reader.GetBoolean(6)));
+                reader.GetBoolean(6),
+                EmptyToNull(reader.GetString(7))));
         }
         return result;
     }
