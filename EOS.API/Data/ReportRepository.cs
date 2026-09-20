@@ -324,8 +324,21 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             command.Parameters.AddWithValue($"@{spec.Name}",value??DBNull.Value);
         }
         await using var reader=await command.ExecuteReaderAsync(token);
-        var columns=new List<string>();
-        for(var i=0;i<reader.FieldCount;i++)columns.Add(reader.GetName(i));
+        // 过程返回什么列就下发什么列，会绕过字段级过滤（成本/保密/禁止字段三类判据的唯一载体是
+        // 报表的字段清单）⇒ 结果集列必须与已登记列取交集，未登记的一律剔除。
+        var allowedColumns=definition.Columns.Select(column=>column.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if(allowedColumns.Count==0)
+            throw new ReportColumnWhitelistException(
+                $"报表 {definition.ModuleId} 的过程数据源没有已登记的字段元数据，无法按字段级权限过滤，已拒绝返回数据。");
+        var resultColumns=new List<string>();
+        for(var i=0;i<reader.FieldCount;i++)resultColumns.Add(reader.GetName(i));
+        var (kept,dropped)=FilterSpResultColumns(resultColumns,allowedColumns);
+        if(dropped.Count>0)
+            logger.LogWarning("报表过程数据源返回未登记列，已剔除 module={ModuleId} columns={Columns}",
+                definition.ModuleId,string.Join(',',dropped));
+        if(kept.Count==0)
+            throw new ReportColumnWhitelistException(
+                $"报表 {definition.ModuleId} 的过程返回值与已登记字段无交集，已拒绝返回数据。");
         var rows=new List<Dictionary<string,object?>>();
         var count=0;
         while(await reader.ReadAsync(token))
@@ -333,11 +346,29 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             if(count>=maxRows)
                 throw new PdfDataTooLargeException("报表数据超过 10,000 行上限，请缩小查询条件后再打印。");
             var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);
-            for(var i=0;i<reader.FieldCount;i++)row[columns[i]]=reader.IsDBNull(i)?null:reader.GetValue(i);
+            foreach(var i in kept)row[resultColumns[i]]=reader.IsDBNull(i)?null:reader.GetValue(i);
             rows.Add(row);
             count++;
         }
         return new ReportQueryResult(rows,count,1,count);
+    }
+
+    /// <summary>
+    /// 过程结果集列的字段白名单取交集（fail-closed）：返回保留下来的列下标与未登记的列名
+    /// （未登记列由调用方记日志，只有"全部未登记"才升级为拒绝执行）。
+    /// </summary>
+    internal static (List<int> Kept, List<string> Dropped) FilterSpResultColumns(
+        IReadOnlyList<string> resultColumns,
+        IReadOnlySet<string> allowedColumns)
+    {
+        var kept=new List<int>();
+        var dropped=new List<string>();
+        for(var i=0;i<resultColumns.Count;i++)
+        {
+            if(allowedColumns.Contains(resultColumns[i]))kept.Add(i);
+            else dropped.Add(resultColumns[i]);
+        }
+        return (kept,dropped);
     }
 
     private static object? ConvertParameter(ReportSpParameter parameter,string raw)

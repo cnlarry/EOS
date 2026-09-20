@@ -73,6 +73,64 @@ public class ValidationRuleRegistryFailClosedTests
         Assert.Contains(issues, issue => issue.Contains("limit 缺失"));
     }
 
+    /// <summary>
+    /// 分组形态的诊断列只能落在分组投影里有的列上。不带 agg 的源列会编译成 `S1.[列]`，
+    /// 而分组子查询只投影分组键与求和别名——运行期一命中违规就是"列名无效"（500）。
+    /// </summary>
+    [Fact]
+    public void QuantityCheck_GroupedDiagnostic_NonGroupKeyWithoutAgg_IsRejected()
+    {
+        var issues = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"T","match":[{"target":"A","source":{"scope":"DETAIL","field":"A"}}],
+             "thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["X"]},
+             "limit":{"scope":"TARGET","fields":["Y"]},
+             "diagnosticFields":["OTHER_QTY"],"message":"超出{ROWS}"}]}
+            """));
+        Assert.Contains(issues, issue => issue.Contains("只能引用分组键"));
+    }
+
+    [Fact]
+    public void QuantityCheck_GroupedDiagnostic_GroupKeyWithoutAgg_IsAccepted()
+    {
+        var issues = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"T","match":[{"target":"A","source":{"scope":"DETAIL","field":"A"}}],
+             "thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["X"]},
+             "limit":{"scope":"TARGET","fields":["Y"]},
+             "diagnosticFields":["A"],"message":"超出{ROWS}"}]}
+            """));
+        Assert.DoesNotContain(issues, issue => issue.Contains("只能引用分组键"));
+    }
+
+    [Fact]
+    public void QuantityCheck_GroupedDiagnostic_SourceAggregate_IsAccepted()
+    {
+        var issues = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"T","match":[{"target":"A","source":{"scope":"DETAIL","field":"A"}}],
+             "thisQty":{"scope":"DETAIL","agg":"SUM","terms":[{"field":"QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["X"]},
+             "limit":{"scope":"TARGET","fields":["Y"]},
+             "diagnosticFields":[{"scope":"SOURCE","field":"QTY","agg":"SUM"}],"message":"超出{ROWS}"}]}
+            """));
+        Assert.DoesNotContain(issues, issue => issue.Contains("只能引用分组键"));
+        Assert.DoesNotContain(issues, issue => issue.Contains("agg"));
+    }
+
+    /// <summary>非分组形态没有 GROUP BY，源列原样可见，不受这条约束。</summary>
+    [Fact]
+    public void QuantityCheck_RowWiseDiagnostic_NonGroupKeyWithoutAgg_IsAccepted()
+    {
+        var issues = Validate("qty-not-exceed", Params("""
+            {"mode":"usage-not-exceed","checks":[{"targetTable":"T","match":[{"target":"A","source":{"scope":"DETAIL","field":"A"}}],
+             "thisQty":{"scope":"DETAIL","terms":[{"field":"QTY","coef":1}]},
+             "usage":{"scope":"TARGET","fields":["X"]},
+             "limit":{"scope":"TARGET","fields":["Y"]},
+             "diagnosticFields":["OTHER_QTY"],"message":"超出{ROWS}"}]}
+            """));
+        Assert.DoesNotContain(issues, issue => issue.Contains("只能引用分组键"));
+    }
+
     [Fact]
     public void ReferenceExists_RejectsInvalidAllowEmptyAndActiveTag()
     {

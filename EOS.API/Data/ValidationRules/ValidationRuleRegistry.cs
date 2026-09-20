@@ -404,6 +404,31 @@ public static class ValidationRuleRegistry
                 if (!dimensionAggregated)
                     issues.Add($"校验规则 {Label(rule)}：{where}.diagnosticRows=SOURCE 需要 thisQty.agg=SUM 的分组形态");
             }
+            // 分组形态判定：任一 thisQty.agg=SUM 即走"先按 match 键分组求和再比较"，
+            // 外层只看得见分组键、求和投影与源列聚合三类列。诊断列的合法性依赖这个形态。
+            var grouped = (check.TryGetProperty("thisQty", out var groupedThisQty)
+                    && groupedThisQty.ValueKind == JsonValueKind.Object
+                    && groupedThisQty.TryGetProperty("agg", out var groupedThisAgg)
+                    && groupedThisAgg.ValueKind == JsonValueKind.String
+                    && groupedThisAgg.GetString()!.Equals("SUM", StringComparison.OrdinalIgnoreCase))
+                || (GetArray(check, "dimensions") is { } groupedDimensions
+                    && groupedDimensions.EnumerateArray().Any(item =>
+                        GetObject(item, "thisQty") is { } itemThisQty
+                        && itemThisQty.TryGetProperty("agg", out var itemAgg)
+                        && itemAgg.ValueKind == JsonValueKind.String
+                        && itemAgg.GetString()!.Equals("SUM", StringComparison.OrdinalIgnoreCase)));
+            // 分组键就是分组子查询投影出来的源列；诊断列不带 agg 时只能落在这些列上。
+            var groupKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (GetArray(check, "match") is { } groupMatch)
+            {
+                foreach (var matchItem in groupMatch.EnumerateArray())
+                {
+                    if (GetObject(matchItem, "source") is { } groupSource
+                        && GetString(groupSource, "field") is { } groupField
+                        && !string.IsNullOrWhiteSpace(groupField))
+                        groupKeys.Add(groupField.Trim());
+                }
+            }
             if (diagnostics is { } diagnosticArray)
             {
                 var diagnosticIndex = 0;
@@ -414,6 +439,11 @@ public static class ValidationRuleRegistry
                     {
                         if (string.IsNullOrWhiteSpace(diagnostic.GetString()))
                             issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere} 不能为空");
+                        else if (grouped && !sourceRowDiagnostics
+                            && !groupKeys.Contains(diagnostic.GetString()!.Trim()))
+                            issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere} 在分组形态下只能引用分组键"
+                                + $"（{string.Join(" / ", groupKeys)}），或改用 {{\"scope\":\"SOURCE\",\"field\":…,\"agg\":\"MAX\"}} 聚合、"
+                                + "diagnosticRows=SOURCE 列源明细行");
                     }
                     else if (diagnostic.ValueKind == JsonValueKind.Object)
                     {
@@ -439,22 +469,19 @@ public static class ValidationRuleRegistry
                             else if (diagnosticScope is not null
                                 && !diagnosticScope.Equals("SOURCE", StringComparison.OrdinalIgnoreCase))
                                 issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.agg 仅在 scope=SOURCE 时可用");
-                            // 源列聚合要靠分组子查询承载，因此只在本 check 走分组形态（thisQty.agg=SUM
-                            // 或任一量纲 thisQty.agg=SUM）时成立。
-                            var grouped = (check.TryGetProperty("thisQty", out var diagnosticThisQty)
-                                    && diagnosticThisQty.ValueKind == JsonValueKind.Object
-                                    && diagnosticThisQty.TryGetProperty("agg", out var diagnosticThisAgg)
-                                    && diagnosticThisAgg.ValueKind == JsonValueKind.String
-                                    && diagnosticThisAgg.GetString()!.Equals("SUM", StringComparison.OrdinalIgnoreCase))
-                                || (GetArray(check, "dimensions") is { } diagnosticDimensions
-                                    && diagnosticDimensions.EnumerateArray().Any(item =>
-                                        GetObject(item, "thisQty") is { } itemThisQty
-                                        && itemThisQty.TryGetProperty("agg", out var itemAgg)
-                                        && itemAgg.ValueKind == JsonValueKind.String
-                                        && itemAgg.GetString()!.Equals("SUM", StringComparison.OrdinalIgnoreCase)));
+                            // 源列聚合要靠分组子查询承载，只在分组形态下成立。
                             if (!grouped)
                                 issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.agg 仅在 thisQty.agg=SUM 的分组形态下可用");
                         }
+                        // 分组形态下不带 agg 的 SOURCE 列必须是分组键：分组子查询只投影分组键、
+                        // 求和值与源列聚合，其它源列在外层取不到，编译出的 SQL 会因"列不存在"整条报错。
+                        else if (grouped && !sourceRowDiagnostics
+                            && (diagnosticScope is null || diagnosticScope.Equals("SOURCE", StringComparison.OrdinalIgnoreCase))
+                            && GetString(diagnostic, "field") is { } diagnosticField
+                            && !string.IsNullOrWhiteSpace(diagnosticField)
+                            && !groupKeys.Contains(diagnosticField.Trim()))
+                            issues.Add($"校验规则 {Label(rule)}：{diagnosticWhere}.field 在分组形态下只能引用分组键"
+                                + $"（{string.Join(" / ", groupKeys)}）；该列不是分组键，请加 agg 聚合或改用 diagnosticRows=SOURCE");
                         // "本单量"是求和投影列时用 dimension 指定第几组量纲（1 起，省略即第一组）。
                         if (diagnostic.TryGetProperty("dimension", out var diagnosticDimension)
                             && (diagnosticDimension.ValueKind != JsonValueKind.Number
