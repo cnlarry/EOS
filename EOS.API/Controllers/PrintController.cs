@@ -65,8 +65,11 @@ public sealed class PrintController(
         var effectiveHeaderId = !string.IsNullOrWhiteSpace(request.HeaderId)
             ? request.HeaderId.Trim()
             : data.ClientProfile?.HeaderId ?? report.HeaderId ?? string.Empty;
-        // 内置版式统一走 layout.json 解释层。GetDocumentFormat 按模块号 → _card/_generic 回退。
-        var package = reportFormats.GetDocumentFormat(moduleId);
+        // 内置版式统一走 layout.json 解释层。版式按"报表 → 模块"两级解析：
+        // 报表指定了专属版式（如同一张送货单的"拣货单"版式）就用它，否则回落到模块默认版式
+        // （模块号 → _card/_generic）。报表指定的编号取不到时静默回落，不让打印整条链失败。
+        var package = (string.IsNullOrWhiteSpace(report.FormatId) ? null : reportFormats.GetPackage(report.FormatId))
+            ?? reportFormats.GetDocumentFormat(moduleId);
         if (package is null) return NotFound();
         var pdf = layoutRenderer.Render(
             data, package.RawLayoutJson, new LayoutRenderContext(userId, request.ShowRemark));

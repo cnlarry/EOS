@@ -87,7 +87,10 @@ public sealed record ReportQueryResult(
     int Page,
     int PageSize);
 
-/// <summary>打印面板中的可选报表（REPORT，按预览权限过滤）。</summary>
+/// <summary>
+/// 打印面板中的可选报表（REPORT，按预览权限过滤）。<paramref name="FormatId"/> 为该报表专有的
+/// 版式包编号（留空即用模块默认版式）——同一模块的多个报表（如送货单 / 拣货单）据此各印各的版式。
+/// </summary>
 public sealed record ReportPrintOption(
     string ReportId,
     string ReportName,
@@ -95,7 +98,8 @@ public sealed record ReportPrintOption(
     string? TailId,
     string? FooterText,
     string? IsoNo,
-    bool IsDefault);
+    bool IsDefault,
+    string? FormatId = null);
 
 /// <summary>页头（REPORT_HEADER）。</summary>
 public sealed record ReportHeaderOption(
