@@ -34,11 +34,14 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
 
     public async Task<List<ReportAdminDraft>> ListReportsAsync(int moduleId, CancellationToken token)
     {
+        // 列序必须与 ReportAdminDraft 的形参顺序一致（FormatId 是末位可选参数）：
+        // 错位会让 GetBoolean 读到文本列，直接抛 InvalidCastException。
         const string sql = """
             SELECT LTRIM(RTRIM(REPORT_ID)),LTRIM(RTRIM(ISNULL(REPORT_NAME,''))),R_M_IDX,
-                   LTRIM(RTRIM(ISNULL(ISO_NO,''))),LTRIM(RTRIM(ISNULL(HEADER_ID,''))),LTRIM(RTRIM(ISNULL(TAIL_ID,''))),LTRIM(RTRIM(ISNULL(FORMAT_ID,''))),
+                   LTRIM(RTRIM(ISNULL(ISO_NO,''))),LTRIM(RTRIM(ISNULL(HEADER_ID,''))),LTRIM(RTRIM(ISNULL(TAIL_ID,''))),
                    LTRIM(RTRIM(ISNULL(FOOTER_TEXT,''))),ISNULL(IS_DEFAULT,0),
-                   LTRIM(RTRIM(ISNULL(REPORT_FILTER,''))),LTRIM(RTRIM(ISNULL(REMARK,'')))
+                   LTRIM(RTRIM(ISNULL(REPORT_FILTER,''))),LTRIM(RTRIM(ISNULL(REMARK,''))),
+                   LTRIM(RTRIM(ISNULL(FORMAT_ID,'')))
             FROM dbo.REPORT WITH (NOLOCK) WHERE R_M_IDX=@ModuleId ORDER BY IS_DEFAULT DESC,REPORT_ID;
             """;
         await using var connection = connections.Create();
@@ -61,11 +64,13 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
     /// <summary>全部报表定义（不分模块）：2201 定制页以单一列表呈现全部模块报表。</summary>
     public async Task<List<ReportAdminDraft>> ListAllReportsAsync(CancellationToken token)
     {
+        // 列序同 ListReportsAsync：与 ReportAdminDraft 的形参顺序一一对应。
         const string sql = """
             SELECT LTRIM(RTRIM(REPORT_ID)),LTRIM(RTRIM(ISNULL(REPORT_NAME,''))),R_M_IDX,
-                   LTRIM(RTRIM(ISNULL(ISO_NO,''))),LTRIM(RTRIM(ISNULL(HEADER_ID,''))),LTRIM(RTRIM(ISNULL(TAIL_ID,''))),LTRIM(RTRIM(ISNULL(FORMAT_ID,''))),
+                   LTRIM(RTRIM(ISNULL(ISO_NO,''))),LTRIM(RTRIM(ISNULL(HEADER_ID,''))),LTRIM(RTRIM(ISNULL(TAIL_ID,''))),
                    LTRIM(RTRIM(ISNULL(FOOTER_TEXT,''))),ISNULL(IS_DEFAULT,0),
-                   LTRIM(RTRIM(ISNULL(REPORT_FILTER,''))),LTRIM(RTRIM(ISNULL(REMARK,'')))
+                   LTRIM(RTRIM(ISNULL(REPORT_FILTER,''))),LTRIM(RTRIM(ISNULL(REMARK,''))),
+                   LTRIM(RTRIM(ISNULL(FORMAT_ID,'')))
             FROM dbo.REPORT WITH (NOLOCK) ORDER BY R_M_IDX,IS_DEFAULT DESC,REPORT_ID;
             """;
         await using var connection = connections.Create();
