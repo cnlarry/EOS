@@ -22,7 +22,7 @@ interface ReportRow {
   reportId: string; reportName: string | null; moduleId: number; isoNo: string | null;
   headerId: string | null; tailId: string | null; footerText: string | null;
   isDefault: boolean; reportFilter: string | null;
-  remark: string | null
+  remark: string | null; formatId: string | null
 }
 interface SortRow {
   serialNo: number; sortName: string | null; sortFields: string | null; sortDesc: string | null;
@@ -30,6 +30,7 @@ interface SortRow {
 }
 
 interface ReportAdminFieldOption { table: string; column: string; label: string }
+interface ReportFormatOption { formatId: string; title: string; moduleId: number }
 
 type ReportEditorState = { mode: 'new' } | { mode: 'edit'; row: ReportRow }
 type SortEditorState = { mode: 'new' } | { mode: 'edit'; row: SortRow }
@@ -92,7 +93,7 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
       reportId: row?.reportId ?? '', reportName: row?.reportName ?? '', isoNo: row?.isoNo ?? '',
       headerId: row?.headerId ?? '', tailId: row?.tailId ?? '', footerText: row?.footerText ?? '',
       isDefault: row?.isDefault ?? false,
-      reportFilter: row?.reportFilter ?? '', remark: row?.remark ?? '',
+      reportFilter: row?.reportFilter ?? '', remark: row?.remark ?? '', formatId: row?.formatId ?? '',
     })
     setModuleSelection(mode === 'edit' ? (row?.moduleId ?? '') : '')
     setModuleDesc('')
@@ -107,6 +108,12 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
     queryKey: ['report-admin', 'field-options', effectiveModule],
     queryFn: () => apiClient.get<ReportAdminFieldOption[]>(`/report-admin/field-options?moduleId=${effectiveModule}`),
     enabled: effectiveModule > 0,
+  })
+
+  const formatOptions = useQuery({
+    queryKey: ['report-admin', 'formats', effectiveModule],
+    queryFn: () => apiClient.get<ReportFormatOption[]>(`/report-admin/formats?moduleId=${effectiveModule}`),
+    enabled: open && effectiveModule > 0,
   })
 
   if (!open) return null
@@ -124,7 +131,7 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
         isoNo: String(draft.isoNo ?? ''), headerId: String(draft.headerId ?? ''), tailId: String(draft.tailId ?? ''),
         footerText: String(draft.footerText ?? ''),
         isDefault: Boolean(draft.isDefault), reportFilter: String(draft.reportFilter ?? ''),
-        remark: String(draft.remark ?? ''),
+        remark: String(draft.remark ?? ''), formatId: String(draft.formatId ?? ''),
       }
       if (mode === 'edit') await apiClient.put(`/report-admin/reports/${encodeURIComponent(editingId)}`, body)
       else await apiClient.post('/report-admin/reports', body)
@@ -182,6 +189,20 @@ function ReportEditorModal({ open, mode, row, moduleId, headers, tails, onClose,
                 <select id="report-tail" className="form-select" value={String(draft.tailId ?? '')} onChange={(event) => setDraft((state) => ({ ...state, tailId: event.target.value }))}>
                   <option value="">（无）</option>
                   {tails.map((item) => <option key={item.id} value={item.id}>{item.name}（{item.id}）</option>)}
+                </select>
+              </div>
+              <div className="col-md-4">
+                <label className="form-label" htmlFor="report-format">打印版式</label>
+                <select
+                  id="report-format"
+                  className="form-select"
+                  value={String(draft.formatId ?? '')}
+                  onChange={(event) => setDraft((state) => ({ ...state, formatId: event.target.value }))}
+                >
+                  <option value="">（模块默认版式）</option>
+                  {(formatOptions.data ?? []).map((item) => (
+                    <option key={item.formatId} value={item.formatId}>{item.title}（{item.formatId}）</option>
+                  ))}
                 </select>
               </div>
               <div className="col-md-4">
@@ -486,6 +507,12 @@ export function ReportAdminPage() {
     { accessorKey: 'headerId', header: '页头', cell: (info) => headers.data?.find((item) => item.id === info.getValue())?.name ?? (info.getValue() == null || info.getValue() === '' ? '—' : String(info.getValue())) },
     { accessorKey: 'tailId', header: '表尾', cell: (info) => tails.data?.find((item) => item.id === info.getValue())?.name ?? (info.getValue() == null || info.getValue() === '' ? '—' : String(info.getValue())) },
     { accessorKey: 'isDefault', header: '默认', cell: (info) => (info.getValue() ? '是' : '否') },
+    {
+      accessorKey: 'formatId', header: '打印版式',
+      cell: (info) => (info.getValue() == null || info.getValue() === ''
+        ? <span className="text-secondary">模块默认</span>
+        : <span className="font-monospace">{String(info.getValue())}</span>),
+    },
     {
       id: 'actions',
       header: '操作',

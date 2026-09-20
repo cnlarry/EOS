@@ -31,6 +31,11 @@ const fieldOptions = [
   { table: 'SYSQR_DA', column: 'REMARK', label: '备注' },
 ]
 
+const reportFormats = [
+  { formatId: '1406-pick', title: '拣货单', moduleId: 1209 },
+  { formatId: '1406', title: '送货单', moduleId: 1209 },
+]
+
 const chooserModules = {
   columns: [
     { key: 'M_IDX', label: '模块号', dataType: 'int' },
@@ -72,6 +77,7 @@ describe('ReportAdminPage', () => {
       if (path.includes('/sorts')) return sorts
       if (path.includes('/reports')) return reports
       if (path.includes('/field-options')) return fieldOptions
+      if (path.includes('/formats')) return reportFormats
       if (path.includes('/headers')) return headers
       if (path.includes('/tails')) return tails
       if (path.includes('/modules')) return modules
@@ -167,6 +173,24 @@ describe('ReportAdminPage', () => {
     expect(dialog.querySelector('#report-module')).toBeDisabled()
     expect(dialog.querySelector('#report-id')).toBeDisabled()
     expect((dialog.querySelector('#report-name') as HTMLInputElement).value).toBe('送货单')
+  })
+
+  it('行「编辑」打开报表编辑弹窗可绑定打印版式，保存时带 formatId', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.click(within(rowOf('RPT_A')).getByRole('button', { name: '编辑' }))
+    const dialog = screen.getByRole('dialog')
+    const select = dialog.querySelector('#report-format') as HTMLSelectElement
+    expect(select).not.toBeNull()
+    // 空选项 = 沿用模块默认版式；其余来自 /report-admin/formats（只列同模块的版式）
+    await waitFor(() => expect(Array.from(select.options).map((option) => option.value)).toContain('1406-pick'))
+    expect((select.options[0].textContent ?? '')).toContain('模块默认')
+    fireEvent.change(select, { target: { value: '1406-pick' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存修改' }))
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
+      '/report-admin/reports/RPT_A',
+      expect.objectContaining({ formatId: '1406-pick' }),
+    ))
   })
 
   it('新增排序方案走弹窗并 POST', async () => {

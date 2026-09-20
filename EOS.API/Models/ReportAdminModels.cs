@@ -1,6 +1,6 @@
 namespace EOS.API.Models;
 
-/// <summary>报表定义维护草稿（REPORT， ）。</summary>
+/// <summary>报表定义维护草稿（REPORT）。</summary>
 public sealed record ReportAdminDraft(
     string ReportId,
     string? ReportName,
@@ -11,7 +11,12 @@ public sealed record ReportAdminDraft(
     string? FooterText,
     bool IsDefault,
     string? ReportFilter,
-    string? Remark);
+    string? Remark,
+    /// <summary>该报表专有的打印版式包编号；空 = 沿用模块默认版式。</summary>
+    string? FormatId = null);
+
+/// <summary>可绑定的打印版式（内置格式包）：版式按模块归属，只能绑到同模块的报表上。</summary>
+public sealed record ReportFormatOption(string FormatId, string Title, int ModuleId);
 
 /// <summary>排序/分组方案维护草稿（REPORT_SORT）。</summary>
 public sealed record ReportSortDraft(
