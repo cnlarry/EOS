@@ -12,6 +12,8 @@ export interface SystemParameterItem {
   options: string | null
   effectiveValue: string | null
   usesDefault: boolean
+  /** 当前是否有读取方（已发布配置引用或代码直读）；false = 改了暂时没有作用 */
+  isReferenced: boolean
 }
 
 /** 一个参数分组（页面上的一个选项卡）。 */

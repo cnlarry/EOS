@@ -29,6 +29,7 @@ function parameter(
     options: null,
     effectiveValue: value ?? defaultValue,
     usesDefault: value === null,
+    isReferenced: true,
     ...overrides,
   }
 }
@@ -39,7 +40,7 @@ const groups: SystemParameterGroup[] = [
     groupLabel: '往来与账期',
     parameters: [
       parameter('CLIENT_DAYS', 'int', '客户未交易天数', '30', '1000000'),
-      parameter('SUPPLIER_DAYS', 'int', '厂商未交易天数', '100000', '1000000'),
+      parameter('SUPPLIER_DAYS', 'int', '厂商未交易天数', '100000', '1000000', { isReferenced: false }),
     ],
   },
   {
@@ -143,6 +144,15 @@ describe('SystemSettingsPage（系统参数分组选项卡）', () => {
     renderPage('/settings/hr-setup')
     fireEvent.click(await screen.findByRole('tab', { name: '工资字段映射' }))
     expect(screen.getByLabelText('工资超额字段')).toHaveValue('WAGE_TOTAL')
+  })
+
+  it('当前无引用方的参数带标记，有引用方的不带', async () => {
+    renderPage()
+    // 控件与标签同为 .erp-form-field 的子节点，故按字段容器取文本
+    const supplier = (await screen.findByLabelText('厂商未交易天数')).closest('.erp-form-field')
+    expect(supplier?.textContent).toContain('当前无引用方')
+    const client = screen.getByLabelText('客户未交易天数').closest('.erp-form-field')
+    expect(client?.textContent).not.toContain('当前无引用方')
   })
 
   it('需重启生效的参数带标注', async () => {
