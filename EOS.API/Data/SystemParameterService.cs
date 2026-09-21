@@ -18,7 +18,8 @@ public sealed record SystemParameterItem(
     string Description,
     string EffectScope,
     int SeqNo,
-    string? Options)
+    string? Options,
+    bool IsReferenced)
 {
     /// <summary>Value actually in force: the stored value, else the declared default.</summary>
     public string? EffectiveValue => Value ?? DefaultValue;
@@ -83,6 +84,26 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
 
     /// <summary>Owner modules registered as parameter owners.</summary>
     public static IReadOnlyCollection<int> OwnerModules { get; } = ScopeModules.Values.Distinct().ToArray();
+
+    /// <summary>
+    /// Parameter keys that C# code reads directly, written as "<c>&lt;owner module&gt;|&lt;key&gt;</c>"
+    /// because reads are always scoped to one owner: the two attendance tables share their key names
+    /// and only one of them is actually read. Listed here so the settings page can distinguish
+    /// "this parameter is read" from "this parameter has no reader at all" (the latter is still
+    /// editable, it just does nothing yet); `check-system-params.ps1` asserts that every key it finds
+    /// in code appears in this set, so a new direct read cannot leave the page mislabelling it.
+    /// </summary>
+    private static readonly HashSet<string> CodeReferencedKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "110111|PRO_MRP",                    // MrpPlanAllocHandler / InventoryMoveHandler
+        "180213|SAT_REST_DAY", "180213|SUN_REST_DAY",     // AttendanceCalcService
+        "180213|WAGE_ADD", "180213|WAGE_WORK", "180213|WAGE_OVER", "180213|WAGE_REST",
+        "180213|WAGE_HOLIDAY", "180213|WAGE_WORKTIME", "180213|WAGE_OVERTIME",
+        "180213|WAGE_RESTTIME", "180213|WAGE_HOLITIME",   // HumanResourceJobsService
+    };
+
+    private static bool IsCodeReferenced(int ownerModule, string key) =>
+        CodeReferencedKeys.Contains($"{ownerModule.ToString(CultureInfo.InvariantCulture)}|{key}");
 
     /// <summary>Owner module behind the stored-configuration scope token <c>SYSSS</c> (system switches).</summary>
     public static int SystemOwner => ModuleIds.SystemSettings;
@@ -152,7 +173,9 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
     /// <summary>
     /// Loads the parameters of an owner module grouped for the settings page. Group order comes from
     /// GROUP_SEQ and within-group order from SEQ_NO — both are data, so adding or reordering groups
-    /// needs no code change.
+    /// needs no code change. Each item carries whether anything reads it today (configuration or
+    /// code): a parameter without a reader is still editable, it just has no effect yet, and the page
+    /// says so instead of letting an operator assume the switch is live.
     /// </summary>
     public async Task<SystemParameterList> ListAsync(int ownerModule, CancellationToken token)
     {
@@ -165,6 +188,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
             """;
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
+        var referenced = await LoadConfigReferencedKeysAsync(connection, ownerModule, token);
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@Owner", SqlDbType.Int).Value = ownerModule;
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -183,8 +207,9 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
                 currentLabel = reader.GetString(5);
                 current = [];
             }
+            var key = reader.GetString(0);
             current.Add(new SystemParameterItem(
-                reader.GetString(0),
+                key,
                 reader.IsDBNull(1) ? null : reader.GetString(1),
                 reader.GetString(2),
                 reader.IsDBNull(3) ? null : reader.GetString(3),
@@ -193,11 +218,40 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
                 reader.GetString(6),
                 reader.GetString(7),
                 reader.GetInt32(8),
-                reader.IsDBNull(9) ? null : reader.GetString(9)));
+                reader.IsDBNull(9) ? null : reader.GetString(9),
+                referenced.Contains(key) || IsCodeReferenced(ownerModule, key)));
         }
         if (current is not null) groups.Add(new SystemParameterGroup(currentCode, currentLabel, current));
 
         return new SystemParameterList(ownerModule, ScopeToken(ownerModule), groups);
+    }
+
+    /// <summary>
+    /// Keys the live configuration references: validation rules and effect actions name switches and
+    /// settings as JSON string values, so a key counts as referenced when its quoted name appears in
+    /// one of those structures. Published snapshots are derived from these two tables, which is why
+    /// scanning them is enough for a page-level hint (the gate script scans snapshots as well, where
+    /// it needs to catch drift rather than describe the present).
+    /// </summary>
+    private static async Task<ISet<string>> LoadConfigReferencedKeysAsync(
+        SqlConnection connection, int ownerModule, CancellationToken token)
+    {
+        const string sql = """
+            SELECT k.PARAM_KEY
+            FROM (SELECT PARAM_KEY FROM dbo.SYSSS WITH (NOLOCK) WHERE OWNER_MODULE = @Owner) k
+            WHERE EXISTS (SELECT 1 FROM dbo.MODULE_VALIDATION_RULE r WITH (NOLOCK)
+                          WHERE CHARINDEX(N'"' + k.PARAM_KEY + N'"', CAST(r.PARAM_STRUCT AS nvarchar(max))) > 0)
+               OR EXISTS (SELECT 1 FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK)
+                          WHERE CHARINDEX(N'"' + k.PARAM_KEY + N'"', CAST(a.CONDITION_STRUCT AS nvarchar(max))) > 0
+                             OR CHARINDEX(N'"' + k.PARAM_KEY + N'"', CAST(a.PARAM_STRUCT AS nvarchar(max))) > 0
+                             OR CHARINDEX(N'"' + k.PARAM_KEY + N'"', CAST(a.REVERSE_STRUCT AS nvarchar(max))) > 0);
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Owner", SqlDbType.Int).Value = ownerModule;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (await reader.ReadAsync(token)) keys.Add(reader.GetString(0));
+        return keys;
     }
 
     /// <summary>

@@ -109,10 +109,18 @@ interface ParameterFieldProps {
 function ParameterField({ parameter, value, onChange }: ParameterFieldProps) {
   return (
     <div className="erp-form-field">
-      <label className="erp-form-label">
+      <label className={`erp-form-label${parameter.isReferenced ? '' : ' text-secondary'}`}>
         {parameter.description}
         <span className="text-secondary ms-1" style={{ fontSize: 11 }}>{parameter.key}</span>
         {parameter.effectScope === 'restart' && <span className="badge bg-warning-lt ms-1">需重启</span>}
+        {!parameter.isReferenced && (
+          <span
+            className="badge bg-secondary-lt ms-1"
+            title="当前没有任何读取方引用这个参数（已发布配置与代码都没有），修改它暂时不产生效果"
+          >
+            当前无引用方
+          </span>
+        )}
       </label>
       <div className="erp-form-control">
         <ParameterControl parameter={parameter} value={value} onChange={onChange} />
