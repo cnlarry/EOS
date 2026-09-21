@@ -25,6 +25,8 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["menu-admin.tables"] = ["T_DESC", "T_ID", "T_KIND", "T_TYPE"],
             ["field-admin.tables"] = ["T_DESC", "T_ID", "T_KIND", "T_TYPE"],
             ["field-admin.columns"] = ["COLUMN_NAME", "DATA_TYPE"],
+            ["menu-admin.columns"] = ["COLUMN_NAME", "DATA_TYPE"],
+            ["menu-admin.modules"] = ["M_IDX", "M_DESC"],
             ["field-admin.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
             ["menu-admin.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
             ["menu-admin.sprocs"] = ["SP_NAME"],
@@ -45,6 +47,8 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["menu-admin.tables"] = ["T_ID"],
             ["field-admin.tables"] = ["T_ID"],
             ["field-admin.columns"] = ["COLUMN_NAME"],
+            ["menu-admin.columns"] = ["COLUMN_NAME"],
+            ["menu-admin.modules"] = ["M_IDX"],
             ["field-admin.fields"] = ["F_ID"],
             ["menu-admin.fields"] = ["F_ID"],
             ["menu-admin.sprocs"] = ["SP_NAME"],
@@ -82,6 +86,15 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["field-admin.columns"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["COLUMN_NAME"] = "LTRIM(RTRIM(c.name)) LIKE @Keyword",
+            },
+            ["menu-admin.columns"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["COLUMN_NAME"] = "LTRIM(RTRIM(c.name)) LIKE @Keyword",
+            },
+            ["menu-admin.modules"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["M_IDX"] = "LTRIM(RTRIM(CAST(m.M_IDX AS nvarchar(20)))) LIKE @Keyword",
+                ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,''))) LIKE @Keyword",
             },
             ["field-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -152,6 +165,15 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             {
                 ["COLUMN_NAME"] = "LTRIM(RTRIM(c.name))",
             },
+            ["menu-admin.columns"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["COLUMN_NAME"] = "LTRIM(RTRIM(c.name))",
+            },
+            ["menu-admin.modules"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["M_IDX"] = "m.M_IDX",
+                ["M_DESC"] = "LTRIM(RTRIM(ISNULL(m.M_DESC,'')))",
+            },
             ["field-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["F_ID"] = "LTRIM(RTRIM(f.F_ID))",
@@ -198,7 +220,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     /// <summary>数据源权限门：返回需要校验的模块号（null 表示仅登录可读，按场景收紧）。</summary>
     public static int? PermissionModuleId(string? sourceKey) => sourceKey?.Trim().ToLowerInvariant() switch
     {
-        "menu-admin.tables" or "menu-admin.fields" or "menu-admin.sprocs" => MenuAdminModuleId,
+        "menu-admin.tables" or "menu-admin.fields" or "menu-admin.sprocs" or "menu-admin.columns" or "menu-admin.modules" => MenuAdminModuleId,
         "field-admin.tables" or "field-admin.columns" or "field-admin.fields" => FieldAdminModuleId,
         "report-admin.fields" or "report-admin.modules" => ReportAdminModuleId,
         "rights-admin.users" or "rights-admin.groups" => PermissionModules.SystemManagement,
@@ -245,7 +267,9 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         {
             "menu-admin.tables" => await QueryTablesAsync(request, token),
             "field-admin.tables" => await QueryTablesAsync(request, token),
-            "field-admin.columns" => await QueryColumnsAsync(request, token),
+            "field-admin.columns" => await QueryColumnsAsync(request, token, sourceKey!),
+            "menu-admin.columns" => await QueryColumnsAsync(request, token, sourceKey!),
+            "menu-admin.modules" => await QueryBusinessModulesAsync(request, token),
             "field-admin.fields" => await QueryFieldsAsync(request, token),
             "menu-admin.fields" => await QueryFieldsAsync(request, token),
             "menu-admin.sprocs" => await QuerySprocsAsync(request, token),
@@ -404,10 +428,12 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             total);
     }
 
-    /// <summary>field-admin.columns：按表返回物理列（sys.columns，仅 dbo 表/视图；权限门 2302）。</summary>
-    private async Task<UnifiedChooserResult?> QueryColumnsAsync(UnifiedChooserQueryRequest request, CancellationToken token)
+    /// <summary>field-admin.columns / menu-admin.columns：按表返回物理列（sys.columns，仅 dbo 表/视图；权限门 2302 / 2301）。</summary>
+    private async Task<UnifiedChooserResult?> QueryColumnsAsync(
+        UnifiedChooserQueryRequest request,
+        CancellationToken token,
+        string sourceKey)
     {
-        const string sourceKey = "field-admin.columns";
         var tableId = ResolveFieldsTableId(request.Args);
         if (tableId is null) return null;
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
@@ -495,6 +521,59 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             [
                 new UnifiedChooserColumn("M_IDX", "模块号", "int", null),
                 new UnifiedChooserColumn("M_DESC", "模块名", "nvarchar", null),
+            ],
+            rows,
+            total);
+    }
+
+    /// <summary>
+    /// menu-admin.modules：业务动作配置可克隆来源的模块——只列**已配过业务动作**的模块，
+    /// 附带主/副表与动作数，便于挑"相似的加工单"。权限门 2301。
+    /// </summary>
+    private async Task<UnifiedChooserResult> QueryBusinessModulesAsync(
+        UnifiedChooserQueryRequest request,
+        CancellationToken token)
+    {
+        const string sourceKey = "menu-admin.modules";
+        var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
+        var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand { Connection = connection };
+        AddCommonParameters(command, keyword, page, pageSize);
+        var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
+        var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        const string scope = "EXISTS (SELECT 1 FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) WHERE a.MODULE_ID=m.M_IDX)";
+        var sql = $"""
+            SELECT COUNT_BIG(1) FROM dbo.MODULES m WITH (NOLOCK)
+            WHERE {scope} AND (@Keyword = '' OR {keywordPredicate}){conditionSql};
+            SELECT m.M_IDX,LTRIM(RTRIM(ISNULL(m.M_DESC,''))) AS M_DESC,
+                   ISNULL(m.MASTER_TABLE,'') AS MASTER_TABLE,ISNULL(m.DETAIL_TABLE,'') AS DETAIL_TABLE,
+                   (SELECT COUNT(*) FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) WHERE a.MODULE_ID=m.M_IDX) AS ACTION_COUNT
+            FROM dbo.MODULES m WITH (NOLOCK)
+            WHERE {scope} AND (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+        command.CommandText = sql;
+        await connection.OpenAsync(token);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(reader, ["M_IDX", "M_DESC", "MASTER_TABLE", "DETAIL_TABLE", "ACTION_COUNT"]);
+        logger.LogInformation("统一选择器业务模块源查询 page={Page} size={PageSize} total={Total} rows={Rows}",
+            page, pageSize, total, rows.Count);
+        return new UnifiedChooserResult(
+            [
+                new UnifiedChooserColumn("M_IDX", "模块号", "int", null),
+                new UnifiedChooserColumn("M_DESC", "模块名", "nvarchar", null),
+                new UnifiedChooserColumn("MASTER_TABLE", "操作主表", "nvarchar", null),
+                new UnifiedChooserColumn("DETAIL_TABLE", "操作副表", "nvarchar", null),
+                new UnifiedChooserColumn("ACTION_COUNT", "动作数", "int", null),
             ],
             rows,
             total);

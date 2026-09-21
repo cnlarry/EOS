@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Data.ValidationRules;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -31,7 +32,16 @@ public sealed class ModuleBusinessConfigController(
             BusinessActionCatalog.SourceScopes.OrderBy(value => value).ToList(),
             BusinessActionCatalog.SourceAggregates.OrderBy(value => value).ToList(),
             BusinessActionCatalog.ValidationStages.OrderBy(value => value).ToList(),
-            BusinessActionCatalog.ValidationKeys.OrderBy(value => value).ToList());
+            BusinessActionCatalog.ValidationKeys.OrderBy(value => value).ToList(),
+            new BusinessConfigLabelsDto(
+                BusinessActionLabels.Events,
+                BusinessActionLabels.FailModes,
+                BusinessActionLabels.EffectKeys,
+                BusinessActionLabels.OpCodes,
+                BusinessActionLabels.SourceScopes,
+                BusinessActionLabels.SourceAggregates,
+                BusinessActionLabels.ValidationStages,
+                BusinessActionLabels.ValidationKeys));
         return Ok(catalog);
     }
 
@@ -47,7 +57,42 @@ public sealed class ModuleBusinessConfigController(
                 EffectStructSchemas.TryGetParamRootKeys(effectKey, out var keys) ? keys : []))
             .OrderBy(item => item.EffectKey, StringComparer.OrdinalIgnoreCase)
             .ToList();
-        return Ok(new BusinessConfigSchemasDto(effects, EffectStructSchemas.AllReverseKinds()));
+        return Ok(new BusinessConfigSchemasDto(
+            effects,
+            EffectStructSchemas.AllReverseKinds(),
+            BusinessActionLabels.ReverseKinds,
+            BusinessActionCatalog.ValidationKeys
+                .Select(validationKey => new ValidationParamSchemaDto(
+                    validationKey,
+                    ValidationRuleRegistry.ParamRootKeys(validationKey).ToList()))
+                .OrderBy(item => item.ValidationKey, StringComparer.OrdinalIgnoreCase)
+                .ToList()));
+    }
+
+    /// <summary>
+    /// 本模块涉及的表/字段中文名（渲染人话用）；缺元数据的键由前端回落显示列名本身。
+    /// </summary>
+    [HttpGet("{moduleId:int}/field-labels")]
+    public async Task<IActionResult> FieldLabels(int moduleId, CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        return Ok(await repository.GetFieldLabelsAsync(moduleId, token));
+    }
+
+    /// <summary>
+    /// 定位键候选：本模块在该目标表上已登记的效果关系边组列表。
+    /// 界面按边组一键生成 MATCH_STRUCT，选出来的键必然通过保存期定位键校验。
+    /// </summary>
+    [HttpGet("{moduleId:int}/relations")]
+    public async Task<IActionResult> Relations(
+        int moduleId,
+        [FromQuery] string targetTable,
+        [FromQuery] string? contextTable,
+        CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        var groups = await repository.GetMatchRelationsAsync(moduleId, targetTable ?? string.Empty, contextTable, token);
+        return Ok(groups);
     }
 
     [HttpGet("{moduleId:int}")]

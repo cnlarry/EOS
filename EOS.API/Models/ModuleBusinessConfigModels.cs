@@ -70,14 +70,61 @@ public sealed record BusinessConfigCatalogDto(
     [property: JsonPropertyName("sourceScopes")] IReadOnlyList<string> SourceScopes,
     [property: JsonPropertyName("sourceAggregates")] IReadOnlyList<string> SourceAggregates,
     [property: JsonPropertyName("validationStages")] IReadOnlyList<string> ValidationStages,
-    [property: JsonPropertyName("validationKeys")] IReadOnlyList<string> ValidationKeys);
+    [property: JsonPropertyName("validationKeys")] IReadOnlyList<string> ValidationKeys,
+    [property: JsonPropertyName("labels")] BusinessConfigLabelsDto? Labels = null);
+
+/// <summary>
+/// 目录值的中文显示名（与目录集合同源，缺标签即在界面上露出英文码）。
+/// 只影响展示，不参与保存校验。
+/// </summary>
+public sealed record BusinessConfigLabelsDto(
+    [property: JsonPropertyName("events")] IReadOnlyDictionary<string, string> Events,
+    [property: JsonPropertyName("failModes")] IReadOnlyDictionary<string, string> FailModes,
+    [property: JsonPropertyName("effectKeys")] IReadOnlyDictionary<string, string> EffectKeys,
+    [property: JsonPropertyName("opCodes")] IReadOnlyDictionary<string, string> OpCodes,
+    [property: JsonPropertyName("sourceScopes")] IReadOnlyDictionary<string, string> SourceScopes,
+    [property: JsonPropertyName("sourceAggregates")] IReadOnlyDictionary<string, string> SourceAggregates,
+    [property: JsonPropertyName("validationStages")] IReadOnlyDictionary<string, string> ValidationStages,
+    [property: JsonPropertyName("validationKeys")] IReadOnlyDictionary<string, string> ValidationKeys);
+
+/// <summary>
+/// 定位键候选：FIELD_RELATION 里一条已登记的效果关系边组（同一关系的主键列集合）。
+/// 2301 选一条边组即可生成整段 MATCH_STRUCT，替代手写 JSON。
+/// </summary>
+public sealed record BusinessRelationGroupDto(
+    [property: JsonPropertyName("relationId")] long RelationId,
+    [property: JsonPropertyName("relationName")] string? RelationName,
+    [property: JsonPropertyName("sourceScope")] string? SourceScope,
+    [property: JsonPropertyName("keys")] IReadOnlyList<BusinessRelationKeyDto> Keys);
+
+/// <summary>定位键候选的一段键映射：目标列 ← 来源表.来源列。</summary>
+public sealed record BusinessRelationKeyDto(
+    [property: JsonPropertyName("fromTable")] string FromTable,
+    [property: JsonPropertyName("fromColumn")] string FromColumn,
+    [property: JsonPropertyName("toTable")] string ToTable,
+    [property: JsonPropertyName("toColumn")] string ToColumn);
+
+/// <summary>
+/// 本模块涉及的表/字段中文名（表键 `T_ID`，字段键 `T_ID.F_ID`）。
+/// 供 2301 把配置渲染成人话（"收料数量（RECEIVE_QTY）"）；缺元数据的键回落显示列名本身。
+/// </summary>
+public sealed record BusinessFieldLabelsDto(
+    [property: JsonPropertyName("tables")] IReadOnlyDictionary<string, string> Tables,
+    [property: JsonPropertyName("fields")] IReadOnlyDictionary<string, string> Fields);
 
 /// <summary>效果参数 Schema 元数据（根键白名单；供 2301 按 Schema 渲染参数编辑器）。</summary>
 public sealed record EffectParamSchemaDto(
     [property: JsonPropertyName("effectKey")] string EffectKey,
     [property: JsonPropertyName("rootKeys")] IReadOnlyList<string> RootKeys);
 
-/// <summary>配置编辑 Schema 目录（效果参数根键 + 反向 kind 枚举）。</summary>
+/// <summary>校验模板参数 Schema 元数据（根键白名单；结构与效果参数同形，界面共用同一编辑器）。</summary>
+public sealed record ValidationParamSchemaDto(
+    [property: JsonPropertyName("validationKey")] string ValidationKey,
+    [property: JsonPropertyName("rootKeys")] IReadOnlyList<string> RootKeys);
+
+/// <summary>配置编辑 Schema 目录（效果参数根键 + 校验模板参数根键 + 反向 kind 枚举与中文名）。</summary>
 public sealed record BusinessConfigSchemasDto(
     [property: JsonPropertyName("effects")] IReadOnlyList<EffectParamSchemaDto> Effects,
-    [property: JsonPropertyName("reverseKinds")] IReadOnlyList<string> ReverseKinds);
+    [property: JsonPropertyName("reverseKinds")] IReadOnlyList<string> ReverseKinds,
+    [property: JsonPropertyName("reverseKindLabels")] IReadOnlyDictionary<string, string>? ReverseKindLabels = null,
+    [property: JsonPropertyName("validationParams")] IReadOnlyList<ValidationParamSchemaDto>? ValidationParams = null);
