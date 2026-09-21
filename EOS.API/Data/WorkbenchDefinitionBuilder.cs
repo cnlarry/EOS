@@ -765,6 +765,12 @@ public sealed class WorkbenchDefinitionBuilder(
         return (enabled, expressions);
     }
 
+    /// <summary>
+    /// 读取用户可见列（显示列）：列集合与顺序完全由「选择列」配置决定——有用户配置（SYSQL_FIELDS）
+    /// 时取其列与 F_IDX 顺序，否则取系统默认列（FIELDS.IS_DEFAULT_FIELDS）按 VERIFY_INDEX 排序。
+    /// 主键列不在此处补入：用户未勾选的主键列只用于行标识/子表关联，由查询层单独并入投影，
+    /// 不参与渲染（行键与显示列元数据分离）。
+    /// </summary>
     private static async Task<IReadOnlyList<WorkbenchField>> ReadFields(SqlConnection connection,string userId,string masterTable,string targetTable,bool canViewCost,bool canViewSecrecy,IReadOnlySet<string> deniedFields,CancellationToken token)
     {
         const string sql="""
@@ -780,8 +786,8 @@ public sealed class WorkbenchDefinitionBuilder(
                           JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
                           JOIN sys.schemas s ON o.schema_id=s.schema_id
                           WHERE s.name=N'dbo' AND o.name=@TargetTable AND c.name=f.F_ID))
-              AND (EXISTS(SELECT 1 FROM sys.indexes i2 JOIN sys.index_columns ic2 ON i2.object_id=ic2.object_id AND i2.index_id=ic2.index_id JOIN sys.columns c2 ON ic2.object_id=c2.object_id AND ic2.column_id=c2.column_id JOIN sys.tables t3 ON i2.object_id=t3.object_id JOIN sys.schemas s3 ON t3.schema_id=s3.schema_id WHERE s3.name=N'dbo' AND t3.name=@TargetTable AND i2.is_primary_key=1 AND c2.name=f.F_ID) OR (h.Value=1 AND u.F_ID IS NOT NULL) OR (h.Value=0 AND COALESCE(f.IS_DEFAULT_FIELDS,0)=1))
-            ORDER BY CASE WHEN EXISTS(SELECT 1 FROM sys.indexes i2 JOIN sys.index_columns ic2 ON i2.object_id=ic2.object_id AND i2.index_id=ic2.index_id JOIN sys.columns c2 ON ic2.object_id=c2.object_id AND ic2.column_id=c2.column_id JOIN sys.tables t3 ON i2.object_id=t3.object_id JOIN sys.schemas s3 ON t3.schema_id=s3.schema_id WHERE s3.name=N'dbo' AND t3.name=@TargetTable AND i2.is_primary_key=1 AND c2.name=f.F_ID) AND u.F_ID IS NULL THEN 0 ELSE 1 END,COALESCE(u.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID OPTION (OPTIMIZE FOR UNKNOWN);
+              AND ((h.Value=1 AND u.F_ID IS NOT NULL) OR (h.Value=0 AND COALESCE(f.IS_DEFAULT_FIELDS,0)=1))
+            ORDER BY CASE WHEN u.F_IDX IS NULL THEN 1 ELSE 0 END,COALESCE(u.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID OPTION (OPTIMIZE FOR UNKNOWN);
             """;
         await using var command=new SqlCommand(sql,connection);command.Parameters.Add("@UserId",SqlDbType.NChar,10).Value=userId.Trim();command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;command.Parameters.Add("@TargetTable",SqlDbType.VarChar,100).Value=targetTable;
         var fields=new List<WorkbenchField>();
