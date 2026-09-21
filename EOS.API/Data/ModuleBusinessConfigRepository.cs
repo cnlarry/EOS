@@ -329,6 +329,121 @@ public sealed class ModuleBusinessConfigRepository(
         return issues;
     }
 
+    /// <summary>
+    /// 本模块业务动作涉及的表/字段中文名：范围 = 操作主/副表 + 配置里出现的所有目标表与来源表。
+    /// 只读展示数据，取自既有元数据（TABLES.T_DESC / FIELDS.F_DESC），不回写任何配置。
+    /// </summary>
+    public async Task<BusinessFieldLabelsDto> GetFieldLabelsAsync(int moduleId, CancellationToken token)
+    {
+        // 表与字段取数合并成单个结果集（KIND 区分）：CTE 只作用于单条语句，
+        // 拆成两个结果集时第二条语句看不到它。
+        const string sql = """
+            ;WITH tabs AS (
+                SELECT MASTER_TABLE AS T_ID FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId
+                UNION SELECT DETAIL_TABLE FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId
+                UNION SELECT o.TARGET_TABLE FROM dbo.MODULE_BUSINESS_ACTION_OP o WITH (NOLOCK)
+                      JOIN dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) ON a.ACTION_ID=o.ACTION_ID
+                      WHERE a.MODULE_ID=@ModuleId
+                UNION SELECT o.SOURCE_TABLE FROM dbo.MODULE_BUSINESS_ACTION_OP o WITH (NOLOCK)
+                      JOIN dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) ON a.ACTION_ID=o.ACTION_ID
+                      WHERE a.MODULE_ID=@ModuleId
+            ), t AS (
+                SELECT DISTINCT LTRIM(RTRIM(T_ID)) AS T_ID
+                FROM tabs WHERE T_ID IS NOT NULL AND LTRIM(RTRIM(T_ID))<>''
+            )
+            SELECT N'T' AS KIND,t.T_ID,N'' AS F_ID,LTRIM(RTRIM(ISNULL(tb.T_DESC,N''))) AS LABEL
+            FROM t LEFT JOIN dbo.TABLES tb WITH (NOLOCK) ON tb.T_ID=t.T_ID
+            UNION ALL
+            SELECT N'F',LTRIM(RTRIM(f.T_ID)),LTRIM(RTRIM(f.F_ID)),LTRIM(RTRIM(f.F_DESC))
+            FROM dbo.FIELDS f WITH (NOLOCK)
+            WHERE f.F_DESC IS NOT NULL AND LTRIM(RTRIM(f.F_DESC))<>''
+              AND LTRIM(RTRIM(f.T_ID)) IN (SELECT T_ID FROM t);
+            """;
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+
+        var tables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            var kind = GetString(reader, 0);
+            var tableId = GetString(reader, 1);
+            if (string.IsNullOrWhiteSpace(tableId))
+                continue;
+            if (string.Equals(kind, "T", StringComparison.OrdinalIgnoreCase))
+            {
+                tables[tableId] = GetString(reader, 3) ?? string.Empty;
+                continue;
+            }
+            var fieldId = GetString(reader, 2);
+            if (string.IsNullOrWhiteSpace(fieldId))
+                continue;
+            fields[$"{tableId}.{fieldId}"] = GetString(reader, 3) ?? string.Empty;
+        }
+        return new BusinessFieldLabelsDto(tables, fields);
+    }
+
+    /// <summary>
+    /// 读取 2301 定位键编辑器可选的已登记效果关系边组：目标表等于 <paramref name="targetTable"/>，
+    /// 来源表是模块的操作主表/副表，或调用方显式给出的上下文表（TABLE 源）。
+    /// 与保存期校验同一事实源（FIELD_RELATION, RELATION_KIND=EFFECT），界面选出来的键必然可保存。
+    /// </summary>
+    public async Task<IReadOnlyList<BusinessRelationGroupDto>> GetMatchRelationsAsync(
+        int moduleId,
+        string targetTable,
+        string? contextTable,
+        CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(targetTable))
+            return [];
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+
+        const string sql = """
+            SELECT r.RELATION_ID,r.RELATION_NAME,r.SOURCE_SCOPE,r.KEY_ORDINAL,
+                   r.FROM_TABLE,r.FROM_COLUMN,r.TO_TABLE,r.TO_COLUMN
+            FROM dbo.FIELD_RELATION r WITH (NOLOCK)
+            JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX=@ModuleId
+            WHERE r.RELATION_KIND=N'EFFECT'
+              AND r.TO_TABLE=@TargetTable
+              AND r.FROM_TABLE IN (ISNULL(m.MASTER_TABLE,N''),ISNULL(m.DETAIL_TABLE,N''),ISNULL(@ContextTable,N''))
+            ORDER BY r.RELATION_ID,r.KEY_ORDINAL;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        command.Parameters.Add("@TargetTable", SqlDbType.NVarChar, 64).Value = targetTable.Trim();
+        command.Parameters.Add("@ContextTable", SqlDbType.NVarChar, 64).Value =
+            string.IsNullOrWhiteSpace(contextTable) ? DBNull.Value : contextTable.Trim();
+
+        var groups = new List<BusinessRelationGroupDto>();
+        var index = new Dictionary<long, int>();
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            var relationId = reader.GetInt64(0);
+            if (!index.TryGetValue(relationId, out var position))
+            {
+                position = groups.Count;
+                index[relationId] = position;
+                groups.Add(new BusinessRelationGroupDto(
+                    relationId,
+                    GetString(reader, 1),
+                    GetString(reader, 2),
+                    new List<BusinessRelationKeyDto>()));
+            }
+            ((List<BusinessRelationKeyDto>)groups[position].Keys).Add(new BusinessRelationKeyDto(
+                GetString(reader, 4) ?? string.Empty,
+                GetString(reader, 5) ?? string.Empty,
+                GetString(reader, 6) ?? string.Empty,
+                GetString(reader, 7) ?? string.Empty));
+        }
+        return groups;
+    }
+
     private static async Task<bool> HasFieldRelationEffectColumnsAsync(
         SqlConnection connection,
         CancellationToken token)

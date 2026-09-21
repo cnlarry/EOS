@@ -14,6 +14,15 @@ public static class ValidationRuleRegistry
     /// <summary>所有模板共用的可选键：params.when ＝ 规则级适用条件（不成立即跳过该校验）。</summary>
     private static readonly IReadOnlySet<string> SharedParamKeys = KeySet("when");
 
+    /// <summary>
+    /// 模板参数根键白名单（供 2301 渲染结构化参数编辑器）。
+    /// 未登记的模板返回空集——界面据此提示"该模板不允许配置参数"。
+    /// </summary>
+    public static IReadOnlyCollection<string> ParamRootKeys(string? validationKey) =>
+        validationKey is not null && ParamKeysByTemplate.TryGetValue(validationKey, out var keys)
+            ? keys
+            : Array.Empty<string>();
+
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> ParamKeysByTemplate =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
         {
