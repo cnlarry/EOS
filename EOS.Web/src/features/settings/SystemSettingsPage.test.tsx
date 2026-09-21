@@ -47,7 +47,6 @@ const groups: SystemParameterGroup[] = [
     groupLabel: '单据联动开关',
     parameters: [
       parameter('SEND_TAG', 'bit', '送货单扣库存', '1', null, { groupCode: 'DOC_LINK', groupLabel: '单据联动开关' }),
-      parameter('REMARK', 'string', '备注', '0', '', { groupCode: 'DOC_LINK', groupLabel: '单据联动开关' }),
     ],
   },
   {
@@ -65,6 +64,32 @@ const groups: SystemParameterGroup[] = [
 
 const payload: SystemParameterList = { ownerModule: 110111, scope: 'system', groups }
 
+// 考勤侧才有文本型参数（工资字段映射），文本控件单独用这个载荷验证
+const hrGroups: SystemParameterGroup[] = [
+  {
+    groupCode: 'ATT_CARD',
+    groupLabel: '考勤卡号解析',
+    parameters: [
+      parameter('MACHINE_START', 'int', '机号起始位', '1', '0', {
+        groupCode: 'ATT_CARD',
+        groupLabel: '考勤卡号解析',
+      }),
+    ],
+  },
+  {
+    groupCode: 'WAGE_MAP',
+    groupLabel: '工资字段映射',
+    parameters: [
+      parameter('WAGE_ADD', 'string', '工资超额字段', 'WAGE_TOTAL', null, {
+        groupCode: 'WAGE_MAP',
+        groupLabel: '工资字段映射',
+      }),
+    ],
+  },
+]
+
+const hrPayload: SystemParameterList = { ownerModule: 180213, scope: 'hr-setup', groups: hrGroups }
+
 function renderPage(path = '/settings/system') {
   return renderWithProviders(
     <MemoryRouter initialEntries={[path]}>
@@ -77,7 +102,9 @@ function renderPage(path = '/settings/system') {
 
 describe('SystemSettingsPage（系统参数分组选项卡）', () => {
   beforeEach(() => {
-    apiClientMock.get.mockResolvedValue(payload)
+    apiClientMock.get.mockImplementation(async (url: string) =>
+      url.includes('hr-setup') ? hrPayload : payload,
+    )
     apiClientMock.put.mockResolvedValue(undefined)
     vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
@@ -103,15 +130,19 @@ describe('SystemSettingsPage（系统参数分组选项卡）', () => {
     expect(screen.queryByLabelText('客户未交易天数')).not.toBeInTheDocument()
   })
 
-  it('按参数类型渲染控件：开关→复选框、整数→数字输入、文本→文本框', async () => {
+  it('按参数类型渲染控件：开关→复选框、整数→数字输入', async () => {
     renderPage()
     expect(await screen.findByLabelText('客户未交易天数')).toHaveAttribute('type', 'number')
 
     fireEvent.click(screen.getByRole('tab', { name: '单据联动开关' }))
     expect(screen.getByLabelText('送货单扣库存')).toHaveAttribute('type', 'checkbox')
     expect(screen.getByLabelText('送货单扣库存')).toBeChecked()
-    // 文本参数是普通文本框（未声明 type 即为 text），且按生效值回填
-    expect(screen.getByLabelText('备注')).toHaveValue('0')
+  })
+
+  it('文本参数渲染为文本框并按生效值回填', async () => {
+    renderPage('/settings/hr-setup')
+    fireEvent.click(await screen.findByRole('tab', { name: '工资字段映射' }))
+    expect(screen.getByLabelText('工资超额字段')).toHaveValue('WAGE_TOTAL')
   })
 
   it('需重启生效的参数带标注', async () => {
