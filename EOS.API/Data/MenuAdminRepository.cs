@@ -94,7 +94,7 @@ public sealed class MenuAdminRepository(
             throw new ArgumentException($"表名无效：{table}");
         const string sql = """
             SELECT LTRIM(RTRIM(f.F_ID)),
-                   COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),
+                   COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))),
                    COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar'),
                    CAST(COALESCE(f.IS_VISIBLE,1) AS bit),
                    CAST(COALESCE(f.IS_VIRTUAL,0) AS bit),
@@ -132,7 +132,7 @@ public sealed class MenuAdminRepository(
         var targetTable = ResolveTargetTable(masterTable, detailTable, tableKind)
             ?? throw new ArgumentException("该模块未配置" + (tableKind == "master" ? "操作主表" : "操作副表") + "。");
         const string sql = """
-            SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),
+            SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))),
                    CAST(CASE WHEN d.F_ID IS NULL THEN 0 ELSE 1 END AS bit),
                    COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999))
             FROM dbo.FIELDS f WITH (NOLOCK)

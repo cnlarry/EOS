@@ -14,6 +14,15 @@ public sealed class FieldAdminRepository(
     WorkbenchAuditWriter auditWriter,
     ILogger<FieldAdminRepository> logger)
 {
+    /// <summary>
+    /// 写入侧拒收的占位字段名。历史元数据补齐脚本把"无说明"写成了字符串 'NULL' 与 HTML 空实体
+    /// '&nbsp;'，它们非空，读取侧只判空串的兜底拦不住，会原样显示到表单/列表标签上。
+    /// </summary>
+    private static readonly HashSet<string> PlaceholderLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "NULL", "&nbsp;",
+    };
+
     private static readonly HashSet<string> AllowedTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "nvarchar", "varchar", "nchar", "char", "int", "bigint", "smallint", "tinyint", "decimal", "numeric",
@@ -417,7 +426,7 @@ public sealed class FieldAdminRepository(
         const string sqlTemplate = """
             ;WITH base AS (
                 SELECT LTRIM(RTRIM(F_ID)) F_ID,
-                       COALESCE(NULLIF(LTRIM(RTRIM(F_DESC)),''),LTRIM(RTRIM(F_ID))) F_DESC,
+                       COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(F_ID))) F_DESC,
                        COALESCE(F_TYPE,'') F_TYPE,
                        CAST(COALESCE(IS_VIRTUAL,0) AS bit) IS_VIRTUAL,
                        CAST(COALESCE(IS_VISIBLE,1) AS bit) IS_VISIBLE,
@@ -474,7 +483,7 @@ public sealed class FieldAdminRepository(
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         const string sql = """
-            SELECT LTRIM(RTRIM(F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(F_DESC)),''),LTRIM(RTRIM(F_ID))),COALESCE(F_TYPE,'nvarchar'),
+            SELECT LTRIM(RTRIM(F_ID)),COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(F_ID))),COALESCE(F_TYPE,'nvarchar'),
                    COALESCE(DISPLAY_LENGTH,100),COALESCE(NULLIF(ITEM_ALIGN,''),'left'),COALESCE(NULLIF(HEADER_ALIGN,''),'center'),
                    DISPLAY_FORMAT,CAST(COALESCE(IS_VISIBLE,1) AS bit),CAST(COALESCE(IS_DEFAULT_FIELDS,0) AS bit),
                    CAST(COALESCE(IS_QUERY,1) AS bit),CAST(COALESCE(IS_READONLY,0) AS bit),CAST(COALESCE(IS_VERIFY,0) AS bit),
@@ -840,7 +849,7 @@ public sealed class FieldAdminRepository(
         // the optimistic lock compares the client round-tripped snapshot against this read,
         // so any defaulting mismatch reports a phantom concurrent modification on every save.
         const string sql = """
-             SELECT COALESCE(NULLIF(LTRIM(RTRIM(F_DESC)),''),LTRIM(RTRIM(F_ID))),COALESCE(F_TYPE,'nvarchar'),COALESCE(DISPLAY_LENGTH,100),
+             SELECT COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(F_ID))),COALESCE(F_TYPE,'nvarchar'),COALESCE(DISPLAY_LENGTH,100),
                     COALESCE(NULLIF(LTRIM(RTRIM(ITEM_ALIGN)),''),'left'),COALESCE(NULLIF(HEADER_ALIGN,''),'center'),DISPLAY_FORMAT,
                    CAST(COALESCE(IS_VISIBLE,1) AS bit),CAST(COALESCE(IS_DEFAULT_FIELDS,0) AS bit),CAST(COALESCE(IS_QUERY,1) AS bit),
                    CAST(COALESCE(IS_READONLY,0) AS bit),CAST(COALESCE(IS_VERIFY,0) AS bit),CAST(COALESCE(IS_COST,0) AS bit),
@@ -1108,6 +1117,8 @@ public sealed class FieldAdminRepository(
     {
         if (string.IsNullOrWhiteSpace(input.Label) || input.Label.Trim().Length > 300)
             throw new ArgumentException("字段名称不能为空且不能超过 300 个字符。");
+        if (PlaceholderLabels.Contains(input.Label.Trim()))
+            throw new ArgumentException("字段名称不能是占位文本（NULL / &nbsp;），请填写真实的字段中文名。");
         if (!AllowedTypes.Contains(input.DataType)) throw new ArgumentException("字段类型无效。");
         if (input.Width is < 40 or > 300) throw new ArgumentException("显示宽度必须在 40-300 之间。");
         if (!AllowedAlign.Contains(input.Align ?? "")) throw new ArgumentException("对齐方式无效。");
