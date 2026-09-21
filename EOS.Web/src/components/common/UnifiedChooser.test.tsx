@@ -199,4 +199,18 @@ describe('UnifiedChooser', () => {
     await waitFor(() => expect(screen.queryByText('C0')).not.toBeInTheDocument())
     expect(screen.getByText('客户甲')).toBeInTheDocument()
   })
+
+  it('选择列：保存后按所选顺序渲染列，而不是服务端字段顺序', async () => {
+    renderChooser()
+    await waitFor(() => expect(screen.getByText('客户甲')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '选择列' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: '选择列' })).toBeInTheDocument())
+    const visibleSelect = screen.getByLabelText('选择器列已选字段') as HTMLSelectElement
+    fireEvent.change(visibleSelect, { target: { value: 'CLIENT_NAME' } })
+    fireEvent.click(screen.getByTitle('上移'))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: '选择列' })).not.toBeInTheDocument())
+    const headers = screen.getAllByRole('columnheader').map(cell => (cell.textContent ?? '').trim())
+    expect(headers).toEqual(['', '客户名称', '客户编号'])
+  })
 })

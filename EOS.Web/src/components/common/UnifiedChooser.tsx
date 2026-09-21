@@ -263,8 +263,15 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
     ),
   }
 
-  const dataColumns: ColumnDef<T, unknown>[] = fieldColumns
-    .filter(column => visibleColumnKeys === null || visibleColumnKeys.includes(column.key))
+  // 显示列以「选择列」保存的顺序为准：按 visibleColumnKeys 取序（未配置时用服务端字段顺序），
+  // 不能按服务端字段顺序过滤——否则用户在「选择列」里调整的顺序不会生效。
+  const visibleColumns: UnifiedChooserColumn[] = visibleColumnKeys === null
+    ? fieldColumns
+    : visibleColumnKeys
+      .map(key => fieldColumns.find(column => column.key === key))
+      .filter((column): column is UnifiedChooserColumn => Boolean(column))
+
+  const dataColumns: ColumnDef<T, unknown>[] = visibleColumns
     .map(column => ({
       id: column.key,
       accessorKey: column.key,
@@ -385,8 +392,9 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
           groups={columnGroups}
           onClose={() => setColumnsOpen(false)}
           onSave={async (selection) => {
-            const keys = selection['columns'] ?? []
-            setVisibleColumnKeys(keys.length === fieldColumns.length ? null : keys)
+            // 保存的列配置始终带顺序：即使选满全部列，也要保留用户排定的顺序
+            // （把"选满"折叠成 null 会让顺序回落到服务端字段顺序，用户的重排静默失效）
+            setVisibleColumnKeys(selection['columns'] ?? [])
             setColumnsOpen(false)
           }}
         />

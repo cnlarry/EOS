@@ -88,26 +88,27 @@ public sealed class WorkbenchQueryComposer(
         command.Connection = connection;
         if (detail)
         {
-            foreach (var key in definition.MasterPkOrder)
+            // 关联键与显示列解耦：键列只要求在子表物理存在，用户未勾选的键列仅用于关联，不渲染。
+            var detailKeyColumns = await ResolveDetailKeyColumnsAsync(connection, definition, table, token);
+            foreach (var key in detailKeyColumns)
             {
-                if (keys.TryGetValue(key, out var value) && definition.DetailFields.Any(field => field.Key.Equals(key, StringComparison.OrdinalIgnoreCase)))
+                if (!keys.TryGetValue(key, out var value))
                 {
-                    var name = $"@k{predicates.Count}";
-                    predicates.Add($"[{key}]={name}");
-                    command.Parameters.AddWithValue(name, value);
+                    continue;
                 }
+                var name = $"@k{predicates.Count}";
+                predicates.Add($"[{key}]={name}");
+                command.Parameters.AddWithValue(name, value);
             }
-        }
-        if (detail && predicates.Count == 0)
-        {
-            logger.LogDebug("子表查询缺少主表关联键，跳过 detail={Detail} table={Table}", detail, table);
-            return new([], 0, page, pageSize);
-        }
-        if (detail)
-        {
-            var detailKeyColumns = definition.MasterPkOrder
-                .Where(pk => definition.DetailFields.Any(field => field.Key.Equals(pk, StringComparison.OrdinalIgnoreCase)))
-                .ToList();
+            if (predicates.Count == 0)
+            {
+                logger.LogDebug("子表查询缺少主表关联键，跳过 detail={Detail} table={Table}", detail, table);
+                return new([], 0, page, pageSize);
+            }
+            foreach (var key in detailKeyColumns.Where(key => !selected.Any(field => field.Key.Equals(key, StringComparison.OrdinalIgnoreCase))))
+            {
+                selected.Add(new WorkbenchField(key, key, "nvarchar", 100, "left", true, false, false));
+            }
             scopeFilter.ApplyDetailScope(definition, dataFilter, table, detailKeyColumns, predicates, command);
         }
         if (!detail && query is not null)
@@ -211,14 +212,18 @@ public sealed class WorkbenchQueryComposer(
         {
             return [];
         }
-        var pks = definition.MasterPkOrder
-            .Select(key => fields.FirstOrDefault(field => field.Key.Equals(key, StringComparison.OrdinalIgnoreCase))?.Key)
-            .Where(key => key is not null).Cast<string>().ToList();
-        if (pks.Count == 0)
+        // 定位主键取自物理定义而非显示列：用户未勾选的主键列仍可用于定位（导出所选、助手取详情）
+        var pks = definition.MasterPkOrder.Where(key => WorkbenchSql.Identifier.IsMatch(key)).ToList();
+        if (pks.Count == 0 || pks.Count != definition.MasterPkOrder.Count)
         {
             return [];
         }
         var selected = exportFields is { Count: > 0 } ? exportFields.ToList() : fields.Take(30).ToList();
+        foreach (var pk in pks.Where(pk => !selected.Any(field => field.Key.Equals(pk, StringComparison.OrdinalIgnoreCase))))
+        {
+            selected.Add(fields.FirstOrDefault(field => field.Key.Equals(pk, StringComparison.OrdinalIgnoreCase))
+                ?? new WorkbenchField(pk, pk, "nvarchar", 100, "left", true, false, false));
+        }
         var filterPredicates = new List<string>();
         var stopwatch = Stopwatch.StartNew();
         await using var connection = CreateConnection();
@@ -272,6 +277,25 @@ public sealed class WorkbenchQueryComposer(
             }
         }
         return fields.Take(30).ToList();
+    }
+
+    /// <summary>
+    /// 子表关联键列：主表主键中在子表物理存在的列（保持主键顺序）。
+    /// 键列是否出现在用户列配置里不影响关联——列配置只决定渲染哪些列。
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> ResolveDetailKeyColumnsAsync(
+        SqlConnection connection,
+        WorkbenchDefinition definition,
+        string table,
+        CancellationToken token)
+    {
+        var candidates = definition.MasterPkOrder.Where(key => WorkbenchSql.Identifier.IsMatch(key)).ToList();
+        if (candidates.Count == 0)
+        {
+            return [];
+        }
+        var physical = await WorkbenchSql.GetPhysicalColumnsAsync(connection, null, table, token);
+        return candidates.Where(physical.Contains).ToList();
     }
 
     private async Task<ListSelection> BuildListSelectionAsync(
