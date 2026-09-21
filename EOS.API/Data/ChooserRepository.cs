@@ -99,13 +99,16 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["field-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["F_ID"] = "LTRIM(RTRIM(f.F_ID)) LIKE @Keyword",
-                ["F_DESC"] = "COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))) LIKE @Keyword",
+                // 字段名口径：空串与历史占位文本（'NULL' / '&nbsp;'，曾被一次性元数据补齐脚本
+                // 当成"无说明"写进 F_DESC）一律视为"没有名字"，回落字段代号——占位文本非空，
+                // 只判空串的兜底拦不住，会原样显示到列上、也搜不到。本文件所有 F_DESC 表达式同此口径。
+                ["F_DESC"] = "COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))) LIKE @Keyword",
                 ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar') LIKE @Keyword",
             },
             ["menu-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["F_ID"] = "LTRIM(RTRIM(f.F_ID)) LIKE @Keyword",
-                ["F_DESC"] = "COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))) LIKE @Keyword",
+                ["F_DESC"] = "COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))) LIKE @Keyword",
                 ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar') LIKE @Keyword",
             },
             ["menu-admin.sprocs"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -116,7 +119,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             {
                 ["T_ID"] = "LTRIM(RTRIM(t.T_ID)) LIKE @Keyword",
                 ["F_ID"] = "LTRIM(RTRIM(c.F_ID)) LIKE @Keyword",
-                ["F_DESC"] = "COALESCE(NULLIF(LTRIM(RTRIM(c.F_DESC)),''),LTRIM(RTRIM(c.F_ID))) LIKE @Keyword",
+                ["F_DESC"] = "COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(c.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(c.F_ID))) LIKE @Keyword",
             },
             ["report-admin.modules"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -177,13 +180,13 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["field-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["F_ID"] = "LTRIM(RTRIM(f.F_ID))",
-                ["F_DESC"] = "COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID)))",
+                ["F_DESC"] = "COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID)))",
                 ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar')",
             },
             ["menu-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["F_ID"] = "LTRIM(RTRIM(f.F_ID))",
-                ["F_DESC"] = "COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID)))",
+                ["F_DESC"] = "COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID)))",
                 ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar')",
             },
             ["menu-admin.sprocs"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -194,7 +197,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             {
                 ["T_ID"] = "LTRIM(RTRIM(t.T_ID))",
                 ["F_ID"] = "LTRIM(RTRIM(c.F_ID))",
-                ["F_DESC"] = "COALESCE(NULLIF(LTRIM(RTRIM(c.F_DESC)),''),LTRIM(RTRIM(c.F_ID)))",
+                ["F_DESC"] = "COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(c.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(c.F_ID)))",
                 ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(c.F_TYPE)),'nvarchar')",
             },
             ["report-admin.modules"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -701,7 +704,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                           WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID)
               AND (@Keyword = '' OR {keywordPredicate}){conditionSql};
             SELECT LTRIM(RTRIM(f.F_ID)) AS F_ID,
-                   COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))) AS F_DESC,
+                   COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))) AS F_DESC,
                    COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar') AS F_TYPE
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE LTRIM(RTRIM(f.T_ID))=@Table AND COALESCE(f.IS_VIRTUAL,0)=0
@@ -770,7 +773,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                           WHERE s.name=N'dbo' AND o.name=t.T_ID AND col.name=c.F_ID)
               AND (@Keyword = '' OR {keywordPredicate}){conditionSql};
             SELECT t.T_ID,c.F_ID,
-                   COALESCE(NULLIF(LTRIM(RTRIM(c.F_DESC)),''),LTRIM(RTRIM(c.F_ID))) AS F_DESC,
+                   COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(c.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(c.F_ID))) AS F_DESC,
                    COALESCE(LTRIM(RTRIM(c.F_TYPE)),'nvarchar') AS F_TYPE
             FROM (
                 SELECT LTRIM(RTRIM(MASTER_TABLE)) T_ID FROM dbo.MODULES WHERE M_IDX=@ModuleId
@@ -906,7 +909,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     {
         var columns = new List<SysdnColumn>();
         const string metaSql = """
-            SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),LTRIM(RTRIM(f.F_ID))),
+            SELECT LTRIM(RTRIM(f.F_ID)),COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))),
                    LTRIM(RTRIM(ISNULL(f.F_TYPE,''))),
                    CAST(CASE WHEN d.F_ID IS NULL THEN 0 ELSE 1 END AS bit),
                    COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),
