@@ -422,6 +422,20 @@ describe('FormEditorPage', () => {
     expect(screen.getByText('1')).toBeInTheDocument()
   })
 
+  it('浏览态明细只读：隐藏增删入口与选择/操作列，无输入控件', async () => {
+    const { container } = renderEditor('/workbench/1209/view/P1/A')
+    await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
+    await waitFor(() => expect(container.querySelector('.erp-detail-grid tbody tr')).not.toBeNull())
+    expect(screen.queryByRole('button', { name: '新增一行' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /删除所选/ })).not.toBeInTheDocument()
+    expect(screen.queryByText('操作')).not.toBeInTheDocument()
+    expect(container.querySelector('.erp-detail-grid input[type="checkbox"]')).toBeNull()
+    expect(container.querySelector('.erp-detail-grid input.form-control')).toBeNull()
+    // 电子表格纯文本展示：无表单控件外壳，内容与工作台子表一致
+    expect(container.querySelector('.erp-detail-grid .erp-form-control')).toBeNull()
+    expect(container.querySelector('.erp-detail-grid tbody')).toHaveTextContent('X1')
+  })
+
   it('明细网格不再渲染补空行', async () => {
     const { container } = renderEditor('/workbench/1209/edit/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
