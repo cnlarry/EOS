@@ -5,7 +5,16 @@ public sealed record SaveRecordRequest(
     IReadOnlyList<IReadOnlyDictionary<string, string?>>? Details = null,
     IReadOnlyDictionary<string, string?>? Original = null,
     IReadOnlyList<PrepayOffsetRequest>? PrepayOffsets = null,
-    string? IdempotencyKey = null);
+    string? IdempotencyKey = null,
+    // 本次提交里「用户在界面上亲手选过的来源」：主表按字段键、明细按行下标。
+    // 只携带本会话新选中的来源——未重选的字段不下发，服务端保留既有记忆；
+    // 服务端会校验字段与来源序号确属该表单定义，并拒绝记录单来源字段（取首个即唯一）。
+    IReadOnlyDictionary<string, int>? ChooserSources = null,
+    IReadOnlyList<IReadOnlyDictionary<string, int>?>? DetailChooserSources = null,
+    // 明细各行**原有的项次**（按行下标对齐 submitted details；新行给 null）。
+    // 项次是明细行的身份：下游单据按"单号 + 项次"引用明细，服务端每行重赋 1..n 会让
+    // 删掉中间行后的其余行静默改号、下游引用随之错位；回传既有项次即可保持身份不变。
+    IReadOnlyList<string?>? DetailSerials = null);
 
 /// <summary>
 /// 收款/付款单的预收/预付冲抵行（对应旧 COP_RECEIPT_PREPAY / PUR_PAY_PREPAY 关联表）。

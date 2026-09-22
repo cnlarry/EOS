@@ -104,10 +104,11 @@ internal static class WorkbenchSql
         return await command.ExecuteScalarAsync(token) is not null;
     }
 
-    internal static async Task<bool> ColumnsExistAsync(SqlConnection connection, string table, IReadOnlyList<string> columns, CancellationToken token)
+    /// <summary>列存在性检查；调用方处于数据库事务中时必须传入 transaction。</summary>
+    internal static async Task<bool> ColumnsExistAsync(SqlConnection connection, string table, IReadOnlyList<string> columns, CancellationToken token, SqlTransaction? transaction = null)
     {
         var placeholders = string.Join(",", columns.Select((_, i) => $"@C{i}"));
-        await using var command = new SqlCommand($"SELECT COUNT(*) FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name IN ({placeholders});", connection);
+        await using var command = new SqlCommand($"SELECT COUNT(*) FROM sys.columns c JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V') JOIN sys.schemas s ON o.schema_id=s.schema_id WHERE s.name=N'dbo' AND o.name=@Table AND c.name IN ({placeholders});", connection, transaction);
         command.Parameters.Add("@Table", SqlDbType.NVarChar, 128).Value = table;
         for (var i = 0; i < columns.Count; i++)
         {
