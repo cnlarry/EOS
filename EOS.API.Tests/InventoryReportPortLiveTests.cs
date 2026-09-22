@@ -180,7 +180,7 @@ public sealed class InventoryReportPortLiveTests
     }
 
     /// <summary>
-    /// 跑「原过程」侧：正文取自 SSDT 快照（`EOS.Database/dbo/Stored Procedures/`），
+    /// 跑「原过程」侧：正文取自测试夹具（`Fixtures/legacy-sprocs/`），
     /// 并以 `sp_executesql` 执行（动态批内的 `#temp` 随批结束释放＝过程作用域）。
     /// </summary>
     private static async Task<List<Dictionary<string, string?>>> RunLegacyAsync(
@@ -234,12 +234,12 @@ public sealed class InventoryReportPortLiveTests
     {
         var sproc = "P_RPT_" + ReportId.ToUpperInvariant();
         if (LegacyBodies.TryGetValue(sproc, out var cached)) return cached;
-        var path = Path.Combine(RepoRoot(), "EOS.Database", "dbo", "Stored Procedures", $"{sproc}.sql");
-        Assert.True(File.Exists(path), $"缺少 SSDT 快照：{path}");
+        var path = Path.Combine(RepoRoot(), "EOS.API.Tests", "Fixtures", "legacy-sprocs", $"{sproc}.sql");
+        Assert.True(File.Exists(path), $"缺少旧过程基准夹具：{path}");
         var text = File.ReadAllText(path);
         var match = System.Text.RegularExpressions.Regex.Match(text,
             @"(?is)^\s*(?:--[^\n]*\n\s*)*CREATE\s+PROCEDURE\s+[^\s(]+.*?\bAS\b");
-        Assert.True(match.Success, $"{sproc} 快照缺少 CREATE PROCEDURE ... AS 头");
+        Assert.True(match.Success, $"{sproc} 基准缺少 CREATE PROCEDURE ... AS 头");
         var body = text[match.Length..].TrimStart('\r', '\n');
         LegacyBodies[sproc] = body;
         return body;

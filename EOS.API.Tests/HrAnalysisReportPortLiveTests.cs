@@ -137,9 +137,9 @@ public sealed class HrAnalysisReportPortLiveTests
     }
 
     /// <summary>
-    /// 跑「原过程」侧：过程本体从 SSDT 快照（`EOS.Database/dbo/Stored Procedures/`）现场读取后
-    /// 作为批处理执行 —— 快照是旧行为的版本化存档，因此过程从库里下线后对拍证据依然成立，
-    /// 且不必把旧过程正文抄进代码（避免再造一份"翻译来的 C#"）。
+    /// 跑「原过程」侧：过程正文从测试夹具（`Fixtures/legacy-sprocs/`）现场读取后作为批处理执行
+    /// —— 夹具是旧行为的版本化存档，因此过程从库里下线、SSDT 快照不再包含它们之后，
+    /// 对拍证据依然成立，且不必把旧过程正文抄进代码（避免再造一份"翻译来的 C#"）。
     /// 文件名按报表编号推导（`P_RPT_<REPORT_ID>`），代码里不出现过程全名。
     /// </summary>
     private static async Task<List<Dictionary<string, string?>>> RunLegacyAsync(
@@ -161,13 +161,13 @@ public sealed class HrAnalysisReportPortLiveTests
         return await ReadAllAsync(command, token);
     }
 
-    /// <summary>读取 SSDT 快照中的过程正文（去掉 `CREATE PROCEDURE … AS` 头，保留过程体）。</summary>
+    /// <summary>读取测试夹具中的过程正文（去掉 `CREATE PROCEDURE … AS` 头，保留过程体）。</summary>
     private static string LoadLegacyBody(string reportId)
     {
         if (LegacyBodies.TryGetValue(reportId, out var cached)) return cached;
         var sproc = "P_RPT_" + reportId.ToUpperInvariant();
-        var path = Path.Combine(RepoRoot(), "EOS.Database", "dbo", "Stored Procedures", $"{sproc}.sql");
-        Assert.True(File.Exists(path), $"缺少 SSDT 快照：{path}");
+        var path = Path.Combine(RepoRoot(), "EOS.API.Tests", "Fixtures", "legacy-sprocs", $"{sproc}.sql");
+        Assert.True(File.Exists(path), $"缺少旧过程基准夹具：{path}");
         var text = File.ReadAllText(path);
         // 头部形态两种：参数与 `AS` 分行写，或 `CREATE PROCEDURE dbo.X AS <body>` 一行到底
         var match = System.Text.RegularExpressions.Regex.Match(text,
