@@ -28,8 +28,8 @@ import { AMOUNT_COLUMN_KEYS, AMOUNT_TRIGGER_KEYS, previewDetailAmount, previewMa
 import { describeApiError } from '../../lib/errors'
 import {
   buildKey, canonicalizeDecimalValue, chooserTitle, describeError, detailControlMinWidth, emptyValue, extractDocNo, newIdempotencyKey,
-  parseReturnItems,
-  summarizeFieldErrors, writableFields, type DetailGridRow, type RecordBundle, type RecordSaveResponse, type SaveRecordRequest,
+  parseReturnItems, readDetailChooserSources,
+  summarizeFieldErrors, withDetailChooserSource, writableFields, type DetailGridRow, type RecordBundle, type RecordSaveResponse, type SaveRecordRequest,
 } from './formEditorUtils'
 
 // 统一表单主表布局列数：全局固定一行四列，忽略各模块 FORM_COLUMNS 元数据
@@ -466,6 +466,9 @@ export function FormEditorPage() {
       { state: { navKeys, navIndex: next } satisfies ViewNavState })
   }
   const originalRef = useRef<Record<string, string>>({})
+  // 本会话在界面上选过的来源（字段键 → 来源序号）：随保存下发，服务端据此记住
+  // 「这张单的这个字段当初从哪个来源选入」；记录切换时清空，避免串到另一张单。
+  const masterChooserSourcesRef = useRef<Record<string, number>>({})
   // Idempotency key = one user save intent; rotate on success/cancel, reuse on validation failure
   const idempotencyRef = useRef(newIdempotencyKey())
   const [masterValues, setMasterValues] = useState<Record<string, string>>({})
@@ -571,6 +574,7 @@ export function FormEditorPage() {
       }
     }
     originalRef.current = {}
+    masterChooserSourcesRef.current = {}
     for (const field of writableFields(formQuery.data.masterFields)) originalRef.current[field.key] = master[field.key] ?? ''
     setMasterValues(master)
     setSortedIndices(null)
@@ -617,6 +621,17 @@ export function FormEditorPage() {
         return detail
       })
       const body: SaveRecordRequest = { values, details, idempotencyKey: idempotencyRef.current }
+      const chooserSources = Object.keys(masterChooserSourcesRef.current).length > 0
+        ? { ...masterChooserSourcesRef.current }
+        : null
+      const detailChooserSources = detailRows.map(row => readDetailChooserSources(row))
+      // 明细项次是行身份：把各行**原有的**项次回传（新行没有则给 null），
+      // 服务端据此保留既有号、只给新行分配未占用的号——删行不再让其余行静默改号。
+      const detailSerials = detailRows.map(row => (row.SERIAL_NO && String(row.SERIAL_NO).trim()) || null)
+      // 只在本会话确实选过来源时才下发，未重选的字段保持服务端既有记忆
+      if (chooserSources) body.chooserSources = chooserSources
+      if (detailChooserSources.some(item => item !== null)) body.detailChooserSources = detailChooserSources
+      if (detailSerials.some(item => item !== null)) body.detailSerials = detailSerials
       if (isEdit) {
         body.original = originalRef.current
         const key = buildKey(formQuery.data, masterValues)
@@ -828,6 +843,8 @@ export function FormEditorPage() {
   const applyChooser = (field: FormFieldDefinition, row: UnifiedChooserRow) => {
     const source = field.choosers.find(item => item.active && item.table && item.serialNo === chooserSerial)
       ?? field.choosers.find(item => item.active && item.table)
+    // 记住这次选的来源（多来源字段回显时按它解析同组伴生字段）
+    if (source?.serialNo != null) masterChooserSourcesRef.current[field.key] = source.serialNo
     const mapping = parseReturnItems(source?.returnMapping)
     if (mapping.length > 0) {
       setMasterValues(current => {
@@ -977,7 +994,7 @@ export function FormEditorPage() {
         }
         return mappedOf(empty, row)
       })
-      const mergedRows = [...currentRows, ...newRows]
+      const mergedRows = [...currentRows, ...newRows.map(row => withDetailChooserSource(row, field.key, source?.serialNo))]
       detailRowsRef.current = mergedRows
       setDetailRows(mergedRows)
       // 快照视图：批量追加的行按序追加到视图末尾
@@ -995,7 +1012,7 @@ export function FormEditorPage() {
         if (row[item.column] === undefined) continue
         patch[item.target] = String(row[item.column] ?? '')
       }
-      updateDetailRowValues(index, patch)
+      updateDetailRowValues(index, withDetailChooserSource(patch, field.key, source?.serialNo))
     }
     setDetailChooser(null)
   }

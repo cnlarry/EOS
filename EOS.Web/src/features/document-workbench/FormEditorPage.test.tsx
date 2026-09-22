@@ -521,8 +521,88 @@ describe('FormEditorPage', () => {
     expect(cell?.textContent).not.toContain('客户名称')
   })
 
-  it('客户端校验拦截必填为空并展示字段错误', async () => {
+  it('多来源字段选过来源后保存：把所选来源随载荷下发', async () => {
+    const multiSource: FormDefinition = {
+      ...formDefinition,
+      masterFields: [
+        field('CLIENT_ID', '客户', {
+          isRequired: true,
+          cellGroup: 'CLIENT',
+          cellRole: 1,
+          choosers: [
+            { active: true, table: 'CLIENT', description: '客户基本资料', moduleId: null, filter: null, returnMapping: '[{"target":"CLIENT_ID","column":"CLIENT_ID"}]', serialNo: 1 },
+            { active: true, table: 'SUPPLIER', description: '厂商基本资料', moduleId: null, filter: null, returnMapping: '[{"target":"CLIENT_ID","column":"SUPPLIER_ID"}]', serialNo: 2 },
+          ],
+        }),
+        field('CLIENT_NAME', '客户名称', { cellGroup: 'CLIENT', cellRole: 2, displayOnly: true, isReadonly: true }),
+      ],
+    }
+    const supplierChooser = {
+      columns: [{ key: 'SUPPLIER_ID', label: '厂商代号' }, { key: 'SUPPLIER_NAME', label: '厂商名称' }],
+      rows: [{ SUPPLIER_ID: 'S1', SUPPLIER_NAME: '双和' }],
+      total: 1,
+    }
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return multiSource
+      if (p.includes('/record')) return recordBundle
+      if (p.includes('/form-chooser/')) return supplierChooser
+      throw new Error(`unexpected GET ${p}`)
+    })
     renderEditor('/workbench/1209/new')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    // 多来源先弹来源菜单：选第 2 个来源（厂商），再在选择器里选一条记录
+    fireEvent.click(screen.getByRole('button', { name: '选择' }))
+    fireEvent.click(await screen.findByRole('button', { name: '厂商基本资料' }))
+    fireEvent.click(await screen.findByText('双和'))
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/document-workbench/1209/record',
+      expect.objectContaining({ chooserSources: { CLIENT_ID: 2 } }),
+    ))
+  })
+
+  it('未选过来源时不下发来源字段（保持服务端既有记忆）', async () => {
+    const { container } = renderEditor('/workbench/1209/new')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    fireEvent.change(masterInputs(container)[0], { target: { value: 'P9' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalled())
+    const body = apiClientMock.post.mock.calls.find(([path]) => path === '/document-workbench/1209/record')?.[1] as { chooserSources?: unknown, detailChooserSources?: unknown }
+    expect(body?.chooserSources).toBeUndefined()
+    expect(body?.detailChooserSources).toBeUndefined()
+  })
+
+  it('编辑保存时回传明细各行原有项次（行身份，服务端不再重编号）', async () => {
+    const withSerial: FormDefinition = {
+      ...formDefinition,
+      detailFields: [
+        field('SERIAL_NO', '项次', { isReadonly: true }),
+        field('ITEM', '明细项', { isRequired: true }),
+      ],
+    }
+    const bundle = {
+      master: { PRO_NO: 'P1', EDITION: 'A', QTY: '10', FLAG: true },
+      details: [{ SERIAL_NO: '1', ITEM: 'X1' }, { SERIAL_NO: '3', ITEM: 'X3' }],
+    }
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return withSerial
+      if (p.includes('/record')) return bundle
+      if (p.includes('/form-chooser/')) return chooserData
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/workbench/1209/edit/P1/A')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledWith(
+      expect.stringContaining('/document-workbench/1209/record'),
+      expect.objectContaining({ detailSerials: ['1', '3'] }),
+    ))
+  })
+
+  it('客户端校验拦截必填为空并展示字段错误', async () => {    renderEditor('/workbench/1209/new')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(screen.getByText(/数据校验未通过/)).toBeInTheDocument())

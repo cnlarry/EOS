@@ -26,7 +26,10 @@ public sealed class ChooserController(
         if (ChooserRepository.PermissionModuleId(sourceKey) is { } moduleId)
         {
             var rights = await rightsRepository.GetAsync(userContext.UserId, moduleId, token);
-            if (!rights.CanBrowse) return Forbid();
+            // 权限不足按 404 返回（与单据路径同一防探测口径）：403 会告诉调用方"该数据源存在、
+            // 只是你没权限"，等于把数据源清单当探测面。前端只依赖"拿不到数据"这一事实。
+            if (!rights.CanBrowse)
+                return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "SOURCE_NOT_FOUND", "选择器数据源不存在。"));
         }
         var result = await repository.QueryAsync(request, token);
         return result is null

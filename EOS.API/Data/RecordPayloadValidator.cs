@@ -85,6 +85,17 @@ internal static class RecordPayloadValidator
                 errors.Add(new FieldError(key, "该字段由服务端维护，不可提交。", "READONLY_FIELD"));
                 continue;
             }
+            // 只读字段只在「界面确实会带值」时才算可写：必填的联动字段，或带选择器的回填字段
+            // ——与前端 writableFields 同一口径。否则界面上根本打不开的格子仍可被构造请求改写；
+            // 模块判别字段（模块 FILTER 依赖它，如按保密/离职标志分表的工资表）尤其不能被改，
+            // 改后记录会落到另一个模块的可见范围。
+            if (field.IsReadonly
+                && !field.IsRequired
+                && !field.Choosers.Any(source => source.Active && !string.IsNullOrWhiteSpace(source.Table)))
+            {
+                errors.Add(new FieldError(key, "该字段为只读，不可提交。", "READONLY_FIELD"));
+                continue;
+            }
             // Trim whitespace before validation and storage
             var trimmed = raw?.Trim();
             if (trimmed is not null && IsTextType(field.DataType) && field.MaxLength is int maxLength && trimmed.Length > maxLength)
@@ -154,18 +165,54 @@ internal static class RecordPayloadValidator
     }
 
     /// <summary>
-    /// 明细行序号自动编号：
-    /// 明细存在 SERIAL_NO 字段且行内未提供时，按 1..n 顺序赋值。
+    /// 明细行序号：**既有行保留原号，新行取下一个未占用号**。
+    ///
+    /// 序号（SERIAL_NO）是明细行的身份而不是序号：下游单据按"单号 + 项次"引用明细行，
+    /// 若每次保存都按提交顺序重赋 1..n，删掉中间一行就会让其后各行整体前移，
+    /// 下游引用便静默指向另一行。因此调用方把各行原有的项次随请求回传（未回传=新行），
+    /// 这里接纳既有号、再给新行分配下一个未占用的号——行序变化不再改变其它行的身份。
     /// </summary>
-    public static void AssignSerialNumbers(IReadOnlyList<IDictionary<string, object?>> rows, IReadOnlyList<FormFieldDefinition> fields)
+    public static void AssignSerialNumbers(
+        IReadOnlyList<IDictionary<string, object?>> rows,
+        IReadOnlyList<FormFieldDefinition> fields,
+        IReadOnlyList<string?>? submittedSerials = null)
     {
         var serialField = fields.FirstOrDefault(field => field.Key.Equals("SERIAL_NO", StringComparison.OrdinalIgnoreCase));
         if (serialField is null) return;
+        var used = new HashSet<int>();
+        var assigned = new bool[rows.Count];
         for (var index = 0; index < rows.Count; index++)
         {
-            if (rows[index].ContainsKey(serialField.Key)) continue;
-            if (TryConvert(serialField.DataType, (index + 1).ToString(CultureInfo.InvariantCulture), out var value))
+            if (rows[index].ContainsKey(serialField.Key))
+            {
+                // 行内已有值（服务端带入或界面显式提交）：视为已占用，避免新行撞号
+                if (int.TryParse(Convert.ToString(rows[index][serialField.Key], CultureInfo.InvariantCulture), out var existing)
+                    && existing > 0)
+                {
+                    used.Add(existing);
+                }
+                assigned[index] = true;
+                continue;
+            }
+            if (submittedSerials is null || index >= submittedSerials.Count) continue;
+            if (!int.TryParse(submittedSerials[index]?.Trim(), out var remembered) || remembered <= 0) continue;
+            if (!used.Add(remembered)) continue;
+            if (TryConvert(serialField.DataType, remembered.ToString(CultureInfo.InvariantCulture), out var value))
+            {
                 rows[index][serialField.Key] = value;
+                assigned[index] = true;
+            }
+        }
+        // 新行取「已用最大号 +1」，**不复用空洞**：被删行留下的项次可能仍被下游单据引用，
+        // 复用那个号会让新行顶替它的身份。号只会向上增长，历史引用的去向保持稳定。
+        var next = used.Count == 0 ? 1 : used.Max() + 1;
+        for (var index = 0; index < rows.Count; index++)
+        {
+            if (assigned[index]) continue;
+            if (TryConvert(serialField.DataType, next.ToString(CultureInfo.InvariantCulture), out var value))
+                rows[index][serialField.Key] = value;
+            used.Add(next);
+            next++;
         }
     }
 

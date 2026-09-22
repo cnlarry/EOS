@@ -19,9 +19,10 @@ public class RecordPayloadValidatorTests
         int? maxLength = null,
         bool displayOnly = false,
         int? precision = null,
-        int? scale = null) =>
+        int? scale = null,
+        IReadOnlyList<FieldChooserSource>? choosers = null) =>
         new(key, $"label-{key}", dataType, 100, null, required, null, regex, defaultValue,
-            readOnly, true, false, false, null, [], isPrimaryKey, false, isVirtual, false, false, serverFilled, maxLength,
+            readOnly, true, false, false, null, choosers ?? [], isPrimaryKey, false, isVirtual, false, false, serverFilled, maxLength,
             DisplayOnly: displayOnly, Precision: precision, Scale: scale);
 
     [Fact]
@@ -34,17 +35,32 @@ public class RecordPayloadValidatorTests
     }
 
     [Fact]
-    public void ServerFilledAndVirtualFields_AreRejected()
+    public void ServerFilledVirtualAndPlainReadonlyFields_AreRejected()
     {
+        // 裸只读字段（界面上打不开、也没有选择器回填）同样不可提交：否则构造请求就能改写
+        // "界面上只读"的业务列，例如按保密/离职标志分模块的工资表判别字段——改后记录会落到
+        // 另一个模块的可见范围。
         var fields = new[] { Field("R", readOnly: true), Field("S", serverFilled: true), Field("V", isVirtual: true) };
         var result = RecordPayloadValidator.ValidateSubmitted(fields,
             new Dictionary<string, string?> { ["R"] = "1", ["S"] = "1", ["V"] = "1" });
-        Assert.Equal(2, result.Errors.Count);
+        Assert.Equal(3, result.Errors.Count);
         Assert.All(result.Errors, error => Assert.Equal("READONLY_FIELD", error.Code));
-        // 只读可见联动字段（如 CURR_RATE 汇率）允许提交并进入转换结果
-        Assert.True(result.Converted.ContainsKey("R"));
-        Assert.False(result.Converted.ContainsKey("S"));
-        Assert.False(result.Converted.ContainsKey("V"));
+        Assert.Empty(result.Converted);
+    }
+
+    [Fact]
+    public void ReadonlyButLinkedFields_AreAccepted()
+    {
+        // 只读的**联动**字段仍放行，与前端 writableFields 同一把尺子：
+        // 必填联动（如 CURR_RATE 汇率，由币别带出）与带选择器的回填字段（如 TAX_ID）。
+        var linked = Field("CURR_RATE", dataType: "decimal", required: true, readOnly: true);
+        var chosen = Field("TAX_ID", readOnly: true,
+            choosers: [new FieldChooserSource(true, "TAX", "税别", null, null, null, 1)]);
+        var result = RecordPayloadValidator.ValidateSubmitted([linked, chosen],
+            new Dictionary<string, string?> { ["CURR_RATE"] = "1.5", ["TAX_ID"] = "T1" });
+        Assert.Empty(result.Errors);
+        Assert.True(result.Converted.ContainsKey("CURR_RATE"));
+        Assert.True(result.Converted.ContainsKey("TAX_ID"));
     }
 
     [Fact]

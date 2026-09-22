@@ -64,12 +64,13 @@ public sealed class WorkbenchCommandHandler(
                 return new(RecordAccessStatus.OutOfScope, null);
             }
         }
-        await ResolveChooserDisplaysAsync(connection, form.MasterFields, current, token);
-        var detailRows = new List<IReadOnlyDictionary<string, object?>>();
+        await ResolveChooserDisplaysAsync(connection, null, definition.ModuleId, definition.MasterTable, form.MasterFields, current, keyValues, token);
+        var detailRows = new List<Dictionary<string, object?>>();
         if (definition.DetailTable is not null && form.DetailFields.Count > 0)
         {
             var detailFields = form.DetailFields.Where(field => !field.DisplayOnly && !field.IsVirtual).Select(field => field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             detailRows.AddRange(await WorkbenchSql.ReadRowsAsync(connection, null, definition.DetailTable, pkColumns, keyValues, detailFields, token));
+            await ResolveDetailChooserDisplaysAsync(connection, null, definition.ModuleId, definition.DetailTable, form.DetailFields, detailRows, keyValues, token);
         }
         var flowState = await ReadFlowStateAsync(connection, definition.ModuleId, WorkbenchKeyCondition.Build(pkColumns, keyValues), token);
         return new(RecordAccessStatus.Ok, new RecordBundle(current, detailRows), flowState);
@@ -257,6 +258,14 @@ public sealed class WorkbenchCommandHandler(
                 : RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "DUPLICATE_RECORD_KEY",
                     "该记录已存在（唯一键冲突），请检查编号等唯一字段后重试。");
         }
+        // 必填列为空、内容超长、外键不存在：同属用户可预期的输入问题，一律转成带字段的 400。
+        catch (SqlException ex) when (WriteFailureTranslator.IsExpectedWriteFailure(ex))
+        {
+            var masterFailure = WriteFailureTranslator.Translate(ex, definition.MasterTable);
+            logger.LogWarning(ex, "统一表单新增写入被拒 module={ModuleId} table={Table} code={Code}",
+                definition.ModuleId, definition.MasterTable, masterFailure.Code);
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, masterFailure.Code, masterFailure.Message, [masterFailure]);
+        }
         if (identityValue is not null && masterIdentity.Count > 0)
         {
             values[masterIdentity[0]] = identityValue;
@@ -273,11 +282,12 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
         }
 
-        var detailErrors = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, values, request.Details, employeeName, true, token);
-        if (detailErrors is not null)
+        var detailSave = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, values, request.Details, request.DetailSerials, employeeName, true, token);
+        if (detailSave.Errors is not null)
         {
-            return DetailFailure(detailErrors);
+            return DetailFailure(detailSave.Errors);
         }
+        await WriteChooserSourceMemoAsync(connection, transaction, definition, form, keyValues, detailSave.RowKeys, request, employeeName, token);
         await SavePrepayOffsetsAsync(connection, transaction, businessRule, pkColumns, keyValues, request.PrepayOffsets, token);
         // 目录校验（SAVE 阶段）是模块的声明式校验目录，独立于"谁负责保存后行为"：
         // 无论该模块走效果动作还是遗留钩子，都必须先过这道闸。
@@ -467,18 +477,31 @@ public sealed class WorkbenchCommandHandler(
                 command.Parameters.AddWithValue($"@s{i}", WorkbenchSql.NormalizeDbValue(sets[i].Value));
             }
             WorkbenchSql.AddKeyParameters(command, pkColumns, keyValues);
-            var affected = await command.ExecuteNonQueryAsync(token);
+            int affected;
+            try
+            {
+                affected = await command.ExecuteNonQueryAsync(token);
+            }
+            // 修改把必填列改空、或把值改超长：同属输入问题，转成字段级 400（与新增同口径）。
+            catch (SqlException ex) when (WriteFailureTranslator.IsExpectedWriteFailure(ex))
+            {
+                var updateFailure = WriteFailureTranslator.Translate(ex, definition.MasterTable);
+                logger.LogWarning(ex, "统一表单修改写入被拒 module={ModuleId} table={Table} code={Code}",
+                    definition.ModuleId, definition.MasterTable, updateFailure.Code);
+                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, updateFailure.Code, updateFailure.Message, [updateFailure]);
+            }
             if (affected == 0)
             {
                 return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
             }
         }
 
-        var detailErrors = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, merged, request.Details, employeeName, false, token);
-        if (detailErrors is not null)
+        var detailSave = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, merged, request.Details, request.DetailSerials, employeeName, false, token);
+        if (detailSave.Errors is not null)
         {
-            return DetailFailure(detailErrors);
+            return DetailFailure(detailSave.Errors);
         }
+        await WriteChooserSourceMemoAsync(connection, transaction, definition, form, keyValues, detailSave.RowKeys, request, employeeName, token);
         var businessRule = definition.BusinessRule;
         await SavePrepayOffsetsAsync(connection, transaction, businessRule, pkColumns, keyValues, request.PrepayOffsets, token);
         // 目录校验（SAVE 阶段）是模块的声明式校验目录，独立于"谁负责保存后行为"：
@@ -607,6 +630,8 @@ public sealed class WorkbenchCommandHandler(
         {
             await WorkbenchSql.DeleteDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token);
         }
+        // 单据删除时一并清掉来源记忆，避免留下指向已删单据的孤儿行。
+        await FormChooserSourceMemo.DeleteDocumentAsync(connection, transaction, definition.ModuleId, FormChooserSourceMemo.SerializeKey(keyValues), token);
         var where = string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@k{index}"));
         await using var command = new SqlCommand($"DELETE FROM dbo.[{definition.MasterTable}] WHERE {where};", connection, transaction);
         WorkbenchSql.AddKeyParameters(command, pkColumns, keyValues);
@@ -685,7 +710,14 @@ public sealed class WorkbenchCommandHandler(
             : RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "VALIDATION_FAILED",
                 "明细数据校验未通过。", errors);
 
-    private async Task<IReadOnlyList<FieldError>?> SaveDetailsAsync(
+    /// <summary>
+    /// 明细保存结果：Errors 非空即失败；RowKeys 与提交的明细行**按下标一一对应**
+    /// （未写入的行占位 null），来源记忆据此把来源记到正确的行上。
+    /// null 表示"本次未提交明细"（既有明细行未被触碰，相关记忆保持原样）。
+    /// </summary>
+    private sealed record DetailSaveOutcome(IReadOnlyList<FieldError>? Errors, IReadOnlyList<string?>? RowKeys);
+
+    private async Task<DetailSaveOutcome> SaveDetailsAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         WorkbenchDefinition definition,
@@ -694,6 +726,7 @@ public sealed class WorkbenchCommandHandler(
         IReadOnlyList<string> keyValues,
         IReadOnlyDictionary<string, object?> masterValues,
         IReadOnlyList<IReadOnlyDictionary<string, string?>>? details,
+        IReadOnlyList<string?>? submittedSerials,
         string employeeName,
         bool isNew,
         CancellationToken token)
@@ -704,7 +737,7 @@ public sealed class WorkbenchCommandHandler(
         // details, a rejected save). Collapsing the two would silently wipe details.
         if (details is null)
         {
-            return null;
+            return new(null, null);
         }
         // 模块收不下明细时，把提交上来的明细静默丢掉会返回一个"成功"的假象——调用方以为
         // 明细已保存，实际什么都没写。纯主表模块允许省略明细（null 或空数组），但不允许
@@ -712,14 +745,14 @@ public sealed class WorkbenchCommandHandler(
         if (definition.DetailTable is null)
         {
             return details.Count == 0
-                ? null
-                : [new FieldError("", "该模块没有明细资料，不能提交明细。", "DETAIL_NOT_SUPPORTED")];
+                ? new(null, [])
+                : new([new FieldError("", "该模块没有明细资料，不能提交明细。", "DETAIL_NOT_SUPPORTED")], null);
         }
         if (form.DetailFields.Count == 0)
         {
             return details.Count == 0
-                ? null
-                : [new FieldError("", "该模块的明细字段未开放，无法保存明细。", "DETAIL_NOT_SUPPORTED")];
+                ? new(null, [])
+                : new([new FieldError("", "该模块的明细字段未开放，无法保存明细。", "DETAIL_NOT_SUPPORTED")], null);
         }
         if (details.Count == 0)
         {
@@ -729,10 +762,10 @@ public sealed class WorkbenchCommandHandler(
             if (EmptyDetailPolicyFor(definition.DetailNoSave, effectEngine.GeneratesDetailRows(definition))
                 == EmptyDetailPolicy.Reject)
             {
-                return [new FieldError("", "该模块无明细资料不可保存。", "DETAIL_REQUIRED")];
+                return new([new FieldError("", "该模块无明细资料不可保存。", "DETAIL_REQUIRED")], null);
             }
             await WorkbenchSql.DeleteDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token);
-            return null;
+            return new(null, []);
         }
 
         if (!string.IsNullOrWhiteSpace(definition.DetailNoFields))
@@ -742,7 +775,7 @@ public sealed class WorkbenchCommandHandler(
                 .ToList();
             if (missing.Count > 0)
             {
-                return missing.Select(field => new FieldError(field, "新增明细前必须填写该主表字段。", "DETAIL_NO_FIELDS_MISSING")).ToList();
+                return new(missing.Select(field => new FieldError(field, "新增明细前必须填写该主表字段。", "DETAIL_NO_FIELDS_MISSING")).ToList(), null);
             }
         }
 
@@ -787,7 +820,23 @@ public sealed class WorkbenchCommandHandler(
             RecalculateDetailAmounts(form.DetailFields, row, masterValues);
             rows.Add(row);
         }
-        RecordPayloadValidator.AssignSerialNumbers(rows, form.DetailFields);
+        // 回传的既有项次必须互不相同：同一行身份被用两次会让第二行撞主键（库层拒绝外，先给可读的 400）
+        if (submittedSerials is not null)
+        {
+            var seenSerials = new HashSet<int>();
+            for (var index = 0; index < submittedSerials.Count && index < rows.Count; index++)
+            {
+                if (!int.TryParse(submittedSerials[index]?.Trim(), out var serial) || serial <= 0)
+                {
+                    continue;
+                }
+                if (!seenSerials.Add(serial))
+                {
+                    return new([new FieldError("SERIAL_NO", "明细项次重复，无法保存。", "DUPLICATE_DETAIL_SERIAL", index)], null);
+                }
+            }
+        }
+        RecordPayloadValidator.AssignSerialNumbers(rows, form.DetailFields, submittedSerials);
         // 应收货款单（170101）等引用单据的明细：金额/数量从送货（退货）单明细带出
         await FillReferencedAmountsAsync(connection, transaction, form.DetailFields, rows, token);
         for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
@@ -797,7 +846,7 @@ public sealed class WorkbenchCommandHandler(
         }
         if (errors.Count > 0)
         {
-            return errors;
+            return new(errors, null);
         }
 
         if (dfFields.Length > 0)
@@ -806,29 +855,49 @@ public sealed class WorkbenchCommandHandler(
             var duplicate = groups.FirstOrDefault(group => group.Count() > 1);
             if (duplicate is not null)
             {
-                return [new FieldError(string.Join(';', dfFields), $"明细表资料重复：{string.Join(';', dfFields)}。", "DF_VERIFY_DUPLICATE")];
+                return new([new FieldError(string.Join(';', dfFields), $"明细表资料重复：{string.Join(';', dfFields)}。", "DF_VERIFY_DUPLICATE")], null);
             }
         }
 
         await WorkbenchSql.DeleteDetailRowsAsync(connection, transaction, definition.DetailTable, pkColumns, keyValues, token);
         var detailPhysical = await WorkbenchSql.GetPhysicalColumnsAsync(connection, transaction, definition.DetailTable, token);
+        // 明细行键取自明细表主键列（含主表键与行号列）：来源记忆按它定位，行增删后不会串行。
+        // 行键**按提交下标对齐**（未写入的行占位 null），否则跳过的行会让后续行的记忆记到别人身上。
+        var detailPkColumns = await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, transaction, definition.DetailTable, token);
+        var rowKeys = new List<string?>(rows.Count);
         for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
             var row = rows[rowIndex];
             var fillErrors = await FillServerColumnsAsync(connection, transaction, definition.DetailTable, form.DetailFields, row, employeeName, isNew, token);
             if (fillErrors.Count > 0)
             {
-                return fillErrors.Select(error => error with { RowIndex = rowIndex }).ToList();
+                return new(fillErrors.Select(error => error with { RowIndex = rowIndex }).ToList(), null);
             }
             var detailFormKeys = form.DetailFields.Where(field => !field.IsVirtual && row.ContainsKey(field.Key) && !detailIdentity.Contains(field.Key)).Select(field => field.Key).ToList();
             var detailColumns = BuildInsertColumns(detailFormKeys, row, detailPhysical, detailIdentity);
             if (detailColumns.Count == 0)
             {
+                rowKeys.Add(null);
                 continue;
             }
-            await InsertRowAsync(connection, transaction, definition.DetailTable, detailColumns, row, detailIdentity, token);
+            try
+            {
+                await InsertRowAsync(connection, transaction, definition.DetailTable, detailColumns, row, detailIdentity, token);
+            }
+            // 明细行被库拒绝（必填列为空 / 编号重复 / 超长 / 外键不存在）属用户可预期的输入问题：
+            // 转成带行号的字段级 400，不再穿透成 500，也不把库错误原文透出。
+            catch (SqlException ex) when (WriteFailureTranslator.IsExpectedWriteFailure(ex))
+            {
+                var detailFailure = WriteFailureTranslator.Translate(ex, definition.DetailTable, rowIndex);
+                logger.LogWarning(ex, "明细写入被拒 module={ModuleId} table={Table} row={Row} code={Code}",
+                    definition.ModuleId, definition.DetailTable, rowIndex, detailFailure.Code);
+                return new([detailFailure], null);
+            }
+            rowKeys.Add(detailPkColumns.Count == 0
+                ? null
+                : FormChooserSourceMemo.SerializeKey(detailPkColumns.Select(column => ValueToString(row.GetValueOrDefault(column)))));
         }
-        return null;
+        return new(null, rowKeys);
     }
 
     /// <summary>引用单据金额带出：明细含 S_R_TYPE/S_R_NO/S_R_SERIAL_NO 时从 COP_SEND_D 读取金额填充。</summary>
@@ -1148,41 +1217,236 @@ public sealed class WorkbenchCommandHandler(
         }
     }
 
-    /// <summary>选择器同组展示字段回填（DisplayOnly CellRole=2 伴随主 CellRole=1）。</summary>
-    private static async Task ResolveChooserDisplaysAsync(
+    /// <summary>
+    /// 记录「本次提交里用户选过的来源」，供读取回显决定用哪个来源解析同组伴生字段。
+    /// 只写本次提交涉及的字段：主表逐字段替换；明细按行键增删（行已不存在的记忆一并清理）。
+    /// 未携带来源时不触碰既有记忆——其它调用方与未重选来源的编辑保存行为不变。
+    /// </summary>
+    private async Task WriteChooserSourceMemoAsync(
         SqlConnection connection,
-        IReadOnlyList<FormFieldDefinition> fields,
-        Dictionary<string, object?> row,
+        SqlTransaction transaction,
+        WorkbenchDefinition definition,
+        FormDefinition form,
+        IReadOnlyList<string> keyValues,
+        IReadOnlyList<string?>? detailRowKeys,
+        SaveRecordRequest request,
+        string employeeName,
         CancellationToken token)
     {
-        var companionsByGroup = fields
-            .Where(field => field.DisplayOnly && field.CellRole == 2 && !string.IsNullOrWhiteSpace(field.CellGroup))
-            .GroupBy(field => field.CellGroup!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
-        if (companionsByGroup.Count == 0)
+        if (request.ChooserSources is null && request.DetailChooserSources is null)
         {
             return;
         }
-
-        foreach (var main in fields.Where(field =>
-                     field.CellRole == 1 && !string.IsNullOrWhiteSpace(field.CellGroup)
-                     && field.Choosers.Any(source => source.Active && !string.IsNullOrWhiteSpace(source.Table))))
+        var masterKeyValues = FormChooserSourceMemo.SerializeKey(keyValues);
+        if (!FormChooserSourceMemo.KeyFits(masterKeyValues))
         {
-            if (!companionsByGroup.TryGetValue(main.CellGroup!, out var companions))
+            logger.LogWarning("来源记忆跳过：单据键超出列宽 module={ModuleId} key={Key}", definition.ModuleId, masterKeyValues);
+            return;
+        }
+        var masterEntries = new List<(string Field, string KeyValues, int Serial)>();
+        if (request.ChooserSources is not null)
+        {
+            foreach (var (fieldKey, serial) in request.ChooserSources)
             {
-                continue;
+                if (TryResolveRememberedSource(form.MasterFields, fieldKey, serial, out var field))
+                {
+                    masterEntries.Add((field!.Key, masterKeyValues, serial));
+                }
             }
+        }
+        var detailEntries = new List<(string Field, string KeyValues, int Serial)>();
+        if (request.DetailChooserSources is not null && detailRowKeys is not null)
+        {
+            for (var index = 0; index < request.DetailChooserSources.Count && index < detailRowKeys.Count; index++)
+            {
+                // 未写入的行（占位 null）没有行键可记，跳过；下标仍与提交行对齐
+                if (request.DetailChooserSources[index] is not { } rowSources || detailRowKeys[index] is not { } rowKey
+                    || !FormChooserSourceMemo.KeyFits(rowKey))
+                {
+                    continue;
+                }
+                foreach (var (fieldKey, serial) in rowSources)
+                {
+                    if (TryResolveRememberedSource(form.DetailFields, fieldKey, serial, out var field))
+                    {
+                        detailEntries.Add((field!.Key, rowKey, serial));
+                    }
+                }
+            }
+            // 明细行整体重写：清理已不存在行的记忆，避免记忆指向不存在的明细行。
+            if (definition.DetailTable is not null)
+            {
+                var live = detailRowKeys.Where(key => key is not null).Select(key => key!).ToHashSet(StringComparer.Ordinal);
+                var existing = await FormChooserSourceMemo.ReadAsync(connection, transaction, definition.ModuleId, definition.DetailTable, masterKeyValues, token);
+                var stale = existing.Keys
+                    .Select(FormChooserSourceMemo.ParseEntryKey)
+                    .Where(entry => !live.Contains(entry.KeyValues))
+                    .ToList();
+                if (stale.Count > 0)
+                {
+                    await FormChooserSourceMemo.DeleteEntriesAsync(connection, transaction, definition.ModuleId, definition.DetailTable, stale, token);
+                }
+            }
+        }
+
+        await ReplaceMemoEntriesAsync(connection, transaction, definition.ModuleId, definition.MasterTable, masterEntries, masterKeyValues, employeeName, token);
+        if (definition.DetailTable is not null)
+        {
+            await ReplaceMemoEntriesAsync(connection, transaction, definition.ModuleId, definition.DetailTable, detailEntries, masterKeyValues, employeeName, token);
+        }
+    }
+
+    /// <summary>先删同键旧值再写入：同一 (表, 字段, 行键) 只保留最近一次选择的来源。</summary>
+    private static async Task ReplaceMemoEntriesAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int moduleId,
+        string table,
+        IReadOnlyList<(string Field, string KeyValues, int Serial)> entries,
+        string masterKeyValues,
+        string employeeName,
+        CancellationToken token)
+    {
+        if (entries.Count == 0)
+        {
+            return;
+        }
+        await FormChooserSourceMemo.DeleteEntriesAsync(connection, transaction, moduleId, table,
+            entries.Select(entry => (entry.Field, entry.KeyValues)).ToList(), token);
+        foreach (var (field, entryKeyValues, serial) in entries)
+        {
+            await FormChooserSourceMemo.InsertAsync(connection, transaction, moduleId, table, field, entryKeyValues, masterKeyValues, serial, employeeName, token);
+        }
+    }
+
+    /// <summary>提交的来源必须确属该字段的启用来源，且该字段值得记忆（复合格主字段、多来源）。</summary>
+    private static bool TryResolveRememberedSource(
+        IReadOnlyList<FormFieldDefinition> fields,
+        string fieldKey,
+        int serial,
+        out FormFieldDefinition? field)
+    {
+        field = fields.FirstOrDefault(item => item.Key.Equals(fieldKey, StringComparison.OrdinalIgnoreCase));
+        if (field is null || !FormChooserSourceMemo.ShouldRemember(field))
+        {
+            field = null;
+            return false;
+        }
+        if (!field.Choosers.Any(source => source.SerialNo == serial && source.Active && !string.IsNullOrWhiteSpace(source.Table)))
+        {
+            field = null;
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>选择器同组展示字段回填（DisplayOnly CellRole=2 伴随主 CellRole=1）。</summary>
+    internal static async Task ResolveChooserDisplaysAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        int moduleId,
+        string masterTable,
+        IReadOnlyList<FormFieldDefinition> fields,
+        Dictionary<string, object?> row,
+        IReadOnlyList<string> keyValues,
+        CancellationToken token)
+    {
+        var companionsByGroup = GroupCompanions(fields);
+        var mains = MainFieldsWithChoosers(fields, companionsByGroup);
+        if (mains.Count == 0)
+        {
+            return;
+        }
+        // 来源按「这张单当初选的是哪个来源」解析；无记忆时回退首个启用来源。
+        var rowKey = FormChooserSourceMemo.SerializeKey(keyValues);
+        var memory = await FormChooserSourceMemo.ReadAsync(connection, transaction, moduleId, masterTable, rowKey, token);
+        foreach (var main in mains)
+        {
             if (!row.TryGetValue(main.Key, out var raw) || raw is null || string.IsNullOrWhiteSpace(raw.ToString()))
             {
                 continue;
             }
-            var source = main.Choosers.First(item => item.Active && !string.IsNullOrWhiteSpace(item.Table));
-            await ResolveChooserGroupAsync(connection, main, source, companions, row, raw.ToString()!, token);
+            var remembered = memory.TryGetValue(FormChooserSourceMemo.EntryKey(main.Key, rowKey), out var serial) ? serial : (int?)null;
+            var source = FormChooserSourceMemo.SelectSource(main, remembered);
+            if (source is null)
+            {
+                continue;
+            }
+            await ResolveChooserGroupAsync(connection, transaction, main, source, companionsByGroup[main.CellGroup!], row, raw.ToString()!, token);
         }
     }
 
+    /// <summary>
+    /// 明细行的同组展示字段回填：与主表同一口径，按「明细行主键」定位记忆。
+    /// 行键取自明细表主键列（含主表键与行号列），行增删后记忆自然失效，不会串到别行。
+    /// </summary>
+    internal static async Task ResolveDetailChooserDisplaysAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        int moduleId,
+        string detailTable,
+        IReadOnlyList<FormFieldDefinition> fields,
+        IReadOnlyList<Dictionary<string, object?>> rows,
+        IReadOnlyList<string> keyValues,
+        CancellationToken token)
+    {
+        if (rows.Count == 0)
+        {
+            return;
+        }
+        var companionsByGroup = GroupCompanions(fields);
+        var mains = MainFieldsWithChoosers(fields, companionsByGroup);
+        if (mains.Count == 0)
+        {
+            return;
+        }
+        var detailPkColumns = await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, transaction, detailTable, token);
+        if (detailPkColumns.Count == 0)
+        {
+            return;
+        }
+        var masterKey = FormChooserSourceMemo.SerializeKey(keyValues);
+        var memory = await FormChooserSourceMemo.ReadAsync(connection, transaction, moduleId, detailTable, masterKey, token);
+        foreach (var row in rows)
+        {
+            var rowKey = FormChooserSourceMemo.SerializeKey(detailPkColumns.Select(column => ValueToString(row.GetValueOrDefault(column))));
+            foreach (var main in mains)
+            {
+                if (!row.TryGetValue(main.Key, out var raw) || raw is null || string.IsNullOrWhiteSpace(raw.ToString()))
+                {
+                    continue;
+                }
+                var remembered = memory.TryGetValue(FormChooserSourceMemo.EntryKey(main.Key, rowKey), out var serial) ? serial : (int?)null;
+                var source = FormChooserSourceMemo.SelectSource(main, remembered);
+                if (source is null)
+                {
+                    continue;
+                }
+                await ResolveChooserGroupAsync(connection, transaction, main, source, companionsByGroup[main.CellGroup!], row, raw.ToString()!, token);
+            }
+        }
+    }
+
+    private static Dictionary<string, List<FormFieldDefinition>> GroupCompanions(IReadOnlyList<FormFieldDefinition> fields) =>
+        fields
+            .Where(field => field.DisplayOnly && field.CellRole == 2 && !string.IsNullOrWhiteSpace(field.CellGroup))
+            .GroupBy(field => field.CellGroup!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>有同组展示从字段、且存在可用来源的复合格主字段（无可用来源时无需解析）。</summary>
+    private static List<FormFieldDefinition> MainFieldsWithChoosers(
+        IReadOnlyList<FormFieldDefinition> fields,
+        Dictionary<string, List<FormFieldDefinition>> companionsByGroup) =>
+        fields
+            .Where(field => field.CellRole == 1
+                && !string.IsNullOrWhiteSpace(field.CellGroup)
+                && companionsByGroup.ContainsKey(field.CellGroup!)
+                && FormChooserSourceMemo.SelectSource(field, null) is not null)
+            .ToList();
+
     private static async Task ResolveChooserGroupAsync(
         SqlConnection connection,
+        SqlTransaction? transaction,
         FormFieldDefinition main,
         FieldChooserSource source,
         IReadOnlyList<FormFieldDefinition> companions,
@@ -1191,7 +1455,7 @@ public sealed class WorkbenchCommandHandler(
         CancellationToken token)
     {
         var table = source.Table!.Trim();
-        if (!WorkbenchSql.Identifier.IsMatch(table) || !await WorkbenchSql.TableExistsAsync(connection, table, token))
+        if (!WorkbenchSql.Identifier.IsMatch(table) || !await WorkbenchSql.TableExistsAsync(connection, table, token, transaction))
         {
             return;
         }
@@ -1224,13 +1488,13 @@ public sealed class WorkbenchCommandHandler(
         }
 
         var columns = selected.Select(item => item.Column).Append(keyColumn).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (!await WorkbenchSql.ColumnsExistAsync(connection, table, columns, token))
+        if (!await WorkbenchSql.ColumnsExistAsync(connection, table, columns, token, transaction))
         {
             return;
         }
 
         var select = string.Join(",", columns.Select(column => $"[{column}]"));
-        await using var command = new SqlCommand($"SELECT TOP 1 {select} FROM dbo.[{table}] WHERE [{keyColumn}]=@Value;", connection);
+        await using var command = new SqlCommand($"SELECT TOP 1 {select} FROM dbo.[{table}] WHERE [{keyColumn}]=@Value;", connection, transaction);
         command.Parameters.Add("@Value", SqlDbType.NVarChar, 256).Value = value;
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token))

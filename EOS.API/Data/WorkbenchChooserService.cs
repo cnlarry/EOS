@@ -54,7 +54,7 @@ public sealed class WorkbenchChooserService(
         if(all.Count==0)return null;
         var allowedFields=all.Select(row=>row.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var columnTypes=all.ToDictionary(row=>row.Key,row=>row.DataType,StringComparer.OrdinalIgnoreCase);
-        logger.LogInformation("选择器过滤 table={Table} filter={Filter}", table, filterStruct is null ? null : filterStruct.ToJson());
+        logger.LogDebug("选择器过滤 table={Table} filter={Filter}", table, filterStruct is null ? null : filterStruct.ToJson());
         // Data scope: module FILTER (only when source table matches module master table)
         // + DATA_FILTER + EXEC_TAG, combined with the chooser's own FILTER_STRUCT.
         // If any component cannot be safely compiled, returns empty (fail-closed).
@@ -202,7 +202,7 @@ public sealed class WorkbenchChooserService(
         var physicalColumns=resolvedVirtualKeys.Count>0
             ? columns.Where(column=>!resolvedVirtualKeys.Contains(column.Key)).ToList()
             : columns;
-        var (rows,total)=await ReadChooserRowsAsync(connection,table,physicalColumns,keyword,filterField,scopePredicate,scopeParameters,joins,conditions,allowedFields,sortField,sortDirection,page,pageSize,virtualSelect,virtualJoin,token);
+        var (rows,total)=await ReadChooserRowsAsync(connection,table,physicalColumns,keyword,filterField,scopePredicate,scopeParameters,joins,conditions,allowedFields,sortField,sortDirection,page,pageSize,virtualSelect,virtualJoin,resolvedVirtualKeys,token);
         return new FormChooserResult(columns,rows,total);
     }
 
@@ -408,26 +408,27 @@ public sealed class WorkbenchChooserService(
     }
 
     private static async Task<(IReadOnlyList<IReadOnlyDictionary<string,object?>> Rows,int Total)> ReadChooserRowsAsync(
-        SqlConnection connection,string table,IReadOnlyList<FormChooserColumn> columns,string? keyword,string? filterField,string? scopePredicate,IReadOnlyList<object> scopeParameters,IReadOnlyList<string> joins,IReadOnlyList<UnifiedChooserCondition>? conditions,IReadOnlySet<string> allowedFields,string? sortField,string? sortDirection,int page,int pageSize,string? virtualSelect,string? virtualJoin,CancellationToken token)
+        SqlConnection connection,string table,IReadOnlyList<FormChooserColumn> columns,string? keyword,string? filterField,string? scopePredicate,IReadOnlyList<object> scopeParameters,IReadOnlyList<string> joins,IReadOnlyList<UnifiedChooserCondition>? conditions,IReadOnlySet<string> allowedFields,string? sortField,string? sortDirection,int page,int pageSize,string? virtualSelect,string? virtualJoin,IReadOnlySet<string> virtualKeys,CancellationToken token)
     {
         var select=string.Join(',',columns.Select(column=>$"[{table}].[{column.Key}]"));
         if(!string.IsNullOrWhiteSpace(virtualSelect))select+=","+virtualSelect;
         var predicates=new List<string>();
         if(!string.IsNullOrWhiteSpace(keyword))
         {
+            // 关键字里的 % _ [ 是 LIKE 通配符：按 ESCAPE 规则转义，否则用户搜 "50%" 会命中一切
             // 指定字段 → 单列模糊；未指定（全部）→ 跨文本列 OR LIKE
             if(!string.IsNullOrWhiteSpace(filterField))
-                predicates.Add($"[{table}].[{filterField}] LIKE @kw");
+                predicates.Add($"[{table}].[{filterField}] LIKE @kw ESCAPE '\\'");
             else
             {
                 var textColumns=columns.Where(column=>IsTextLike(column.DataType)).ToList();
                 if(textColumns.Count>0)
-                    predicates.Add("("+string.Join(" OR ",textColumns.Select(column=>$"[{table}].[{column.Key}] LIKE @kw"))+")");
+                    predicates.Add("("+string.Join(" OR ",textColumns.Select(column=>$"[{table}].[{column.Key}] LIKE @kw ESCAPE '\\'"))+")");
             }
         }
         if(!string.IsNullOrWhiteSpace(scopePredicate))predicates.Add($"({scopePredicate})");
         await using var command=new SqlCommand{Connection=connection};
-        if(!string.IsNullOrWhiteSpace(keyword))command.Parameters.AddWithValue("@kw",$"%{keyword.Trim()}%");
+        if(!string.IsNullOrWhiteSpace(keyword))command.Parameters.AddWithValue("@kw",$"%{EscapeLikePattern(keyword.Trim())}%");
         for(var i=0;i<scopeParameters.Count;i++)command.Parameters.AddWithValue($"@df{i}",scopeParameters[i]??DBNull.Value);
         if(conditions is { Count: > 0 })
         {
@@ -441,15 +442,19 @@ public sealed class WorkbenchChooserService(
         if(!string.IsNullOrWhiteSpace(virtualJoin))from+=virtualJoin;
         var countFrom=$"FROM dbo.[{table}] WITH (NOLOCK)";
         if(joins.Count>0)countFrom+=" "+string.Join(" ",joins);
-        // 排序字段必须在显示列白名单内（服务端校验），否则回退首列；方向仅 asc/desc
-        var sortColumn = !string.IsNullOrWhiteSpace(sortField)
+        // 排序字段必须在显示列白名单内（服务端校验），否则回退首列；方向仅 asc/desc。
+        // 虚拟列（由 VirtualColumnResolver 解析出的显示列）不在物理列里，按 SELECT 别名排序
+        // （SQL Server 允许 ORDER BY 使用选择列表别名）——否则点它的表头会静默按首列排。
+        var requested = !string.IsNullOrWhiteSpace(sortField)
             ? columns.FirstOrDefault(column=>column.Key.Equals(sortField,StringComparison.OrdinalIgnoreCase))?.Key
+              ?? (virtualKeys.Contains(sortField) ? sortField : null)
             : null;
-        sortColumn ??= columns[0].Key;
+        var sortColumn = requested ?? columns[0].Key;
+        var sortExpression = virtualKeys.Contains(sortColumn) ? $"[{sortColumn}]" : $"[{table}].[{sortColumn}]";
         var dir = string.Equals(sortDirection,"desc",StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
         page=Math.Max(1,page);
         pageSize=Math.Clamp(pageSize,10,100);
-        var sql=$"SELECT COUNT_BIG(1) {countFrom}{where}; SELECT {select} {from}{where} ORDER BY [{table}].[{sortColumn}] {dir} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
+        var sql=$"SELECT COUNT_BIG(1) {countFrom}{where}; SELECT {select} {from}{where} ORDER BY {sortExpression} {dir} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
         command.CommandText=sql;
         command.Parameters.Add("@Offset",SqlDbType.Int).Value=(page-1)*pageSize;
         command.Parameters.Add("@PageSize",SqlDbType.Int).Value=pageSize;
@@ -481,4 +486,8 @@ public sealed class WorkbenchChooserService(
         return type.Contains("char") || type.Contains("text") || type.Contains("date") || type.Contains("time")
             || type is "idcard" or "url" or "email" or "phoneno" or "zipcode";
     }
+
+    /// <summary>LIKE 模式转义：把用户输入里的通配符按 ESCAPE '\' 规则转义（配合 LIKE ... ESCAPE '\'）。</summary>
+    internal static string EscapeLikePattern(string value) =>
+        value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_").Replace("[", "\\[");
 }

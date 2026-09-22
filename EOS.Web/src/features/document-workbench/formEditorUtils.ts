@@ -9,6 +9,48 @@ export interface SaveRecordRequest {
   details: Record<string, string>[]
   original?: Record<string, string>
   idempotencyKey?: string
+  /** 本次提交里用户在界面上选过的来源（字段键 → 来源序号）；未重选的字段不下发 */
+  chooserSources?: Record<string, number>
+  /** 明细行同上，按行下标对齐 submitted details；无来源的行给 null */
+  detailChooserSources?: (Record<string, number> | null)[]
+  /**
+   * 明细各行**原有的项次**（按行下标对齐 submitted details；新行给 null）。
+   * 项次是明细行的身份（下游单据按"单号 + 项次"引用明细），回传既有项次后，
+   * 删行/调序不会让其余行被服务端重编号。
+   */
+  detailSerials?: (string | null)[]
+}
+
+/**
+ * 明细行内携带「本行选过的来源」的隐藏键：只驻留前端行对象，保存时汇总成
+ * detailChooserSources 单独下发；提交载荷按字段定义逐键取值，因此不会进 details。
+ */
+export const DETAIL_CHOOSER_SOURCE_KEY = '__chooserSources'
+
+/** 读出明细行的「字段 → 来源序号」；无记录或非法时返回 null。 */
+export function readDetailChooserSources(row: Record<string, string>): Record<string, number> | null {
+  const raw = row[DETAIL_CHOOSER_SOURCE_KEY]
+  if (!raw) return null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    const entries = Object.entries(parsed as Record<string, unknown>)
+      .filter(([, value]) => typeof value === 'number' && Number.isFinite(value)) as [string, number][]
+    return entries.length > 0 ? Object.fromEntries(entries) : null
+  } catch {
+    return null
+  }
+}
+
+/** 记录明细行某字段选用的来源（同一行重复选择时后者覆盖）。 */
+export function withDetailChooserSource(
+  row: Record<string, string>,
+  fieldKey: string,
+  serialNo: number | null | undefined,
+): Record<string, string> {
+  if (serialNo == null) return row
+  const merged = { ...(readDetailChooserSources(row) ?? {}), [fieldKey]: serialNo }
+  return { ...row, [DETAIL_CHOOSER_SOURCE_KEY]: JSON.stringify(merged) }
 }
 
 /** 保存/批核/结案响应 */
