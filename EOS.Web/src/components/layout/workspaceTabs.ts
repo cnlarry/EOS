@@ -43,7 +43,7 @@ export interface WorkspaceState {
   tabs: WorkspaceTab[]
   /** 活动标签标识；标签列表非空时必有值 */
   activeId: string
-  /** 撞顶等一次性提示，短暂显示后清除 */
+  /** 一次性提示文案（撞顶、接近上限）；由外壳转成轻提示后清空 */
   hint: string | null
 }
 
@@ -73,18 +73,35 @@ export const MAX_TABS = 12
 export const HOME_URL = '/dashboard'
 export const HOME_LABEL = '首页'
 
-/** 地址是否为首页（只看路径，忽略查询串与 hash）。 */
+/** 站点根路径。它本身不是一个页面，只是首页的重定向入口。 */
+export const INDEX_URL = '/'
+
+/**
+ * 把地址归一到"能承载页面的标签地址"：根路径归一为首页地址。
+ *
+ * 根路径上没有页面（工作区路由表里只有一条重定向），若给它开标签，该标签只会渲染一个
+ * 空面板——重定向组件本身不产出内容；重定向发生后它还会被改写成首页地址，与常驻的
+ * 首页标签形成两个同地址标签（一个空白、一个正常），并且"去重键 = 地址"从此失效。
+ */
+export function canonicalTabUrl(url: string): string {
+  return url.split(/[?#]/)[0] === INDEX_URL ? HOME_URL : url
+}
+
+/** 地址是否为首页（只看路径，忽略查询串与 hash）；根路径按首页处理。 */
 export function isHomeUrl(url: string): boolean {
-  return url.split(/[?#]/)[0] === HOME_URL
+  const path = url.split(/[?#]/)[0]
+  return path === HOME_URL || path === INDEX_URL
 }
 
 export function isHomeTab(tab: WorkspaceTab): boolean {
   return isHomeUrl(tab.url)
 }
 
+/** 撞顶：满额后再打开被拒绝 */
 export const HINT_TAB_LIMIT = `标签已达上限 ${MAX_TABS} 个，请先关闭一个标签`
 
-export const HINT_TAB_AT_LIMIT = `标签已达上限 ${MAX_TABS} 个，再打开新标签需先关闭一个`
+/** 接近上限（只剩 1 个名额）：提前打招呼，而不是等用户撞顶才发现 */
+export const HINT_TAB_NEAR_LIMIT = `标签已开 ${MAX_TABS - 1} 个，只剩 1 个名额`
 
 /** 标签地址：路径 + 查询串（hash 一并保留）。 */
 export function tabUrlOf(location: { pathname: string; search: string; hash: string }): string {
@@ -137,8 +154,9 @@ function markMounted(tab: WorkspaceTab): WorkspaceTab {
  * 首页标签不挂载——它是背景板，等用户切过去再挂载。
  */
 export function createWorkspaceState(url: string, id: string, label = '', withHome = false): WorkspaceState {
-  const current = newTab(id, url, label, undefined, true)
-  if (!withHome || isHomeUrl(url)) return { tabs: [current], activeId: id, hint: null }
+  const target = canonicalTabUrl(url)
+  const current = newTab(id, target, label || (target === HOME_URL ? HOME_LABEL : ''), undefined, true)
+  if (!withHome || isHomeUrl(target)) return { tabs: [current], activeId: id, hint: null }
   return { tabs: [newTab('home', HOME_URL, HOME_LABEL, undefined, false), current], activeId: id, hint: null }
 }
 
@@ -164,14 +182,15 @@ export function parsePersistedTabs(raw: string | null): PersistedTab[] {
     const tabs: PersistedTab[] = []
     for (const item of parsed) {
       if (!item || typeof item !== 'object') continue
-      const { id, url, label, fromModuleId } = item as Record<string, unknown>
-      if (typeof id !== 'string' || !id || typeof url !== 'string' || !url.startsWith('/')) continue
+      const { id, url: rawUrl, label, fromModuleId } = item as Record<string, unknown>
+      if (typeof id !== 'string' || !id || typeof rawUrl !== 'string' || !rawUrl.startsWith('/')) continue
+      const url = canonicalTabUrl(rawUrl)
       if (seen.has(url)) continue
       seen.add(url)
       tabs.push({
         id,
         url,
-        label: typeof label === 'string' ? label : '',
+        label: typeof label === 'string' && label ? label : (url === HOME_URL ? HOME_LABEL : ''),
         fromModuleId: typeof fromModuleId === 'string' ? fromModuleId : undefined,
       })
       if (tabs.length >= MAX_TABS) break
@@ -193,19 +212,23 @@ export function serializeTabs(tabs: WorkspaceTab[]): PersistedTab[] {
  * （列表已满则挤掉末位的普通标签，首页与当前页一定保留）。
  */
 export function restoreWorkspaceState(saved: PersistedTab[], currentUrl: string, nextId: () => string, withHome = false): WorkspaceState {
+  const target = canonicalTabUrl(currentUrl)
   const homeSaved = withHome ? saved.find((tab) => isHomeUrl(tab.url)) : undefined
   const tabs: WorkspaceTab[] = []
   if (withHome) {
     tabs.push(homeSaved
-      ? newTab(homeSaved.id, homeSaved.url, homeSaved.label, homeSaved.fromModuleId, false)
+      ? newTab(homeSaved.id, HOME_URL, homeSaved.label || HOME_LABEL, homeSaved.fromModuleId, false)
       : newTab('home', HOME_URL, HOME_LABEL, undefined, false))
   }
   for (const tab of saved) {
     if (homeSaved && tab === homeSaved) continue
     if (tabs.length >= MAX_TABS) break
-    tabs.push(newTab(tab.id, tab.url, tab.label, tab.fromModuleId, false))
+    const url = canonicalTabUrl(tab.url)
+    // 归一后与首页同址的遗留条目（历史版本可能存下根路径标签）直接并进首页，不再单独成标签
+    if (withHome && url === HOME_URL) continue
+    tabs.push(newTab(tab.id, url, tab.label, tab.fromModuleId, false))
   }
-  let active = tabs.find((tab) => tab.url === currentUrl)
+  let active = tabs.find((tab) => tab.url === target)
   if (active) {
     active.mounted = true
   } else {
@@ -214,7 +237,7 @@ export function restoreWorkspaceState(saved: PersistedTab[], currentUrl: string,
       const last = removable[removable.length - 1]
       if (last) tabs.splice(tabs.indexOf(last), 1)
     }
-    active = newTab(nextId(), currentUrl, '', undefined, true)
+    active = newTab(nextId(), target, target === HOME_URL ? HOME_LABEL : '', undefined, true)
     tabs.push(active)
   }
   return { tabs, activeId: active.id, hint: null }
@@ -228,15 +251,33 @@ export function neighborAfterClose(tabs: WorkspaceTab[], id: string): WorkspaceT
   return rest[index] ?? rest[index - 1] ?? null
 }
 
+/**
+ * 活动标签必须已挂载：接管活动位的那个标签可能是"刷新恢复但从未激活过"的标签
+ * （关闭活动标签由右邻接管、关闭其它、关闭全部落到首页都会走到这里），
+ * 未挂载就没有面板，工作区只剩空白。
+ */
+function ensureActiveMounted(state: WorkspaceState): WorkspaceState {
+  const active = state.tabs.find((tab) => tab.id === state.activeId)
+  if (!active || active.mounted) return state
+  const tabs = state.tabs.map((tab) => (tab.id === active.id ? markMounted(tab) : tab))
+  return { ...state, tabs }
+}
+
 export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
+  return ensureActiveMounted(applyWorkspaceAction(state, action))
+}
+
+function applyWorkspaceAction(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
   switch (action.type) {
     case 'open': {
-      const existing = state.tabs.find((tab) => tab.url === action.url)
+      const url = canonicalTabUrl(action.url)
+      const existing = state.tabs.find((tab) => tab.url === url)
       if (existing) return state.activeId === existing.id ? state : { ...state, activeId: existing.id, hint: null }
       if (state.tabs.length >= MAX_TABS) return { ...state, hint: HINT_TAB_LIMIT }
-      const tab = newTab(action.id, action.url, action.label, action.fromModuleId, true)
+      const label = url === HOME_URL && url !== action.url ? HOME_LABEL : action.label
+      const tab = newTab(action.id, url, label, action.fromModuleId, true)
       const tabs = [...state.tabs, tab]
-      return { tabs, activeId: tab.id, hint: tabs.length >= MAX_TABS ? HINT_TAB_AT_LIMIT : null }
+      return { tabs, activeId: tab.id, hint: tabs.length === MAX_TABS - 1 ? HINT_TAB_NEAR_LIMIT : null }
     }
     case 'activate': {
       const target = state.tabs.find((tab) => tab.id === action.id)
@@ -270,10 +311,11 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return { tabs: [home], activeId: home.id, hint: null }
     }
     case 'sync': {
+      const url = canonicalTabUrl(action.url)
       const active = state.tabs.find((tab) => tab.id === state.activeId)
       if (!active) return state
       // 前进/后退落在其它标签的地址上即视为"回到那个标签"，而不是把当前标签改写成它的地址
-      const matched = state.tabs.find((tab) => tab.url === action.url && tab.id !== active.id)
+      const matched = state.tabs.find((tab) => tab.url === url && tab.id !== active.id)
       if (matched) {
         const tabs = state.tabs.map((tab) => (tab.id === matched.id ? markMounted(relabel(tab, action.label, action.fromModuleId)) : tab))
         return { ...state, tabs, activeId: matched.id }
@@ -281,17 +323,21 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       const tabs = state.tabs.map((tab) => {
         if (tab.id !== active.id) return tab
         const relabeled = relabel(tab, action.label, action.fromModuleId)
-        return relabeled.url === action.url ? relabeled : { ...relabeled, url: action.url }
+        return relabeled.url === url ? relabeled : { ...relabeled, url }
       })
       const changed = tabs.some((tab, i) => tab !== state.tabs[i])
       return changed ? { ...state, tabs } : state
     }
     case 'tabUrl': {
-      const tabs = state.tabs.map((tab) => (tab.id === action.id && tab.url !== action.url ? { ...tab, url: action.url } : tab))
+      const url = canonicalTabUrl(action.url)
+      // 去重键就是地址：另一标签已持有该地址时不再写入。隐藏标签内部的跳转（保存后回列表等）
+      // 可能落到已被打开的地址上，照写会造出两个同地址标签，"已开则聚焦"从此失效。
+      if (state.tabs.some((tab) => tab.id !== action.id && tab.url === url)) return state
+      const tabs = state.tabs.map((tab) => (tab.id === action.id && tab.url !== url ? { ...tab, url } : tab))
       return tabs.some((tab, i) => tab !== state.tabs[i]) ? { ...state, tabs } : state
     }
     case 'reset':
-      return { tabs: [newTab(action.id, action.url, action.label, action.fromModuleId, true)], activeId: action.id, hint: null }
+      return { tabs: [newTab(action.id, canonicalTabUrl(action.url), action.label, action.fromModuleId, true)], activeId: action.id, hint: null }
     case 'hint':
       return state.hint === action.hint ? state : { ...state, hint: action.hint }
     default:

@@ -1,5 +1,5 @@
 import { lazy } from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { ReportAdminPage } from '../features/admin/ReportAdminPage'
 import { ReportViewerPage } from '../features/reports/ReportViewerPage'
 import { useAuth } from '../features/auth/authContext'
@@ -11,6 +11,26 @@ const FieldAdminPage = lazy(() => import('../features/field-admin/FieldAdminPage
 
 export function ForbiddenPage() {
   return <main className="erp-error-page"><div className="text-center"><div className="display-5 fw-bold">403</div><h1>没有访问权限</h1><p className="text-secondary">当前账号无权访问此页面。</p></div></main>
+}
+
+/**
+ * 未定义地址的兜底页：标签地址匹配不到任何工作区路由时渲染它。
+ * 标签可能来自上一次会话的持久化列表（地址已下线或改名），也可能来自外部链接；
+ * 静默渲染空白面板会让用户以为页面坏了，给出地址才能自助处置（关掉该标签）。
+ */
+export function UnknownRoutePage() {
+  const location = useLocation()
+  return (
+    <main className="erp-error-page">
+      <div className="text-center">
+        <div className="display-5 fw-bold">404</div>
+        <h1>页面不存在</h1>
+        <p className="text-secondary">
+          当前标签没有对应的页面：<code>{`${location.pathname}${location.search}`}</code>
+        </p>
+      </div>
+    </main>
+  )
 }
 
 /**

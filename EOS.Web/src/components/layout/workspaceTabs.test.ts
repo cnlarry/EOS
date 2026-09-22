@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
-  HINT_TAB_AT_LIMIT,
   HINT_TAB_LIMIT,
+  HINT_TAB_NEAR_LIMIT,
   MAX_TABS,
+  canonicalTabUrl,
   createWorkspaceState,
   fromModuleIdOf,
+  isHomeUrl,
   moduleIdOfUrl,
   neighborAfterClose,
   parsePersistedTabs,
@@ -44,6 +46,65 @@ describe('workspaceTabs 工具', () => {
   })
 })
 
+describe('根路径归一为首页', () => {
+  it('地址归一：根路径（含查询串/hash）归一到首页地址，其余地址原样保留', () => {
+    expect(canonicalTabUrl('/')).toBe('/dashboard')
+    expect(canonicalTabUrl('/?x=1')).toBe('/dashboard')
+    expect(canonicalTabUrl('/#top')).toBe('/dashboard')
+    expect(canonicalTabUrl('/counter')).toBe('/counter')
+    expect(canonicalTabUrl('/workbench/1606?from=1615')).toBe('/workbench/1606?from=1615')
+    expect(isHomeUrl('/')).toBe(true)
+    expect(isHomeUrl('/dashboard')).toBe(true)
+    expect(isHomeUrl('/counter')).toBe(false)
+  })
+
+  it('入口落在根路径时只开首页一个标签，不留重定向标签', () => {
+    const state = createWorkspaceState('/', 't1', '', true)
+    expect(state.tabs).toHaveLength(1)
+    expect(state.tabs[0].url).toBe('/dashboard')
+    expect(state.tabs[0].label).toBe('首页')
+    expect(state.activeId).toBe('t1')
+  })
+
+  it('打开根路径时聚焦首页，而不是新建同址标签', () => {
+    const state = workspaceReducer(createWorkspaceState('/counter', 't1', '计数器', true), { type: 'open', id: 't9', url: '/', label: '' })
+    expect(state.tabs.map((tab) => tab.url)).toEqual(['/dashboard', '/counter'])
+    expect(state.activeId).toBe('home')
+  })
+
+  it('地址回到根路径时按首页匹配标签，不改写活动标签地址', () => {
+    const state: WorkspaceState = { tabs: [
+      { id: 'home', url: '/dashboard', label: '首页', mounted: true },
+      { id: 't1', url: '/counter', label: '计数器', mounted: true },
+    ], activeId: 't1', hint: null }
+    const next = workspaceReducer(state, { type: 'sync', url: '/', label: '首页' })
+    expect(next.activeId).toBe('home')
+    expect(next.tabs.map((tab) => tab.url)).toEqual(['/dashboard', '/counter'])
+  })
+
+  it('恢复时把历史遗留的根路径标签并进首页，不生成第二个同址标签', () => {
+    const state = restoreWorkspaceState([
+      { id: 't1', url: '/', label: '' },
+      { id: 't2', url: '/counter', label: '计数器' },
+    ], '/', () => 't9', true)
+    // 根路径条目按首页接管（id 沿用），不再单独成标签；当前地址同样归一到首页
+    expect(state.tabs.map((tab) => `${tab.url}|${tab.label}`)).toEqual(['/dashboard|首页', '/counter|计数器'])
+    expect(state.activeId).toBe('t1')
+    expect(state.tabs[0].mounted).toBe(true)
+  })
+
+  it('解析持久化数据时归一地址并按地址去重（首页优先）', () => {
+    expect(parsePersistedTabs(JSON.stringify([
+      { id: 'home', url: '/dashboard', label: '首页' },
+      { id: 't1', url: '/', label: '' },
+    ]))).toEqual([{ id: 'home', url: '/dashboard', label: '首页', fromModuleId: undefined }])
+    // 只有根路径条目时补成首页标签
+    expect(parsePersistedTabs(JSON.stringify([{ id: 't1', url: '/', label: '' }]))).toEqual([
+      { id: 't1', url: '/dashboard', label: '首页', fromModuleId: undefined },
+    ])
+  })
+})
+
 describe('workspaceReducer', () => {
   it('打开新地址新建标签并激活', () => {
     const state = workspaceReducer(createWorkspaceState('/dashboard', 't1'), { type: 'open', id: 't2', url: '/workbench/1606', label: '采购订单' })
@@ -58,14 +119,36 @@ describe('workspaceReducer', () => {
     expect(second.activeId).toBe('t1')
   })
 
-  it('撞顶只提示不新建（上限 12）', () => {
+  it('剩 1 个名额时提示接近上限；撞顶只提示不新建（上限 12）', () => {
+    const nearLimit = openAll(MAX_TABS - 1)
+    expect(nearLimit.tabs).toHaveLength(MAX_TABS - 1)
+    expect(nearLimit.hint).toBe(HINT_TAB_NEAR_LIMIT)
+
+    // 开满上限本身是成功动作，不再提示（提示在"剩 1 个"时已经给过）
     const full = openAll(MAX_TABS)
     expect(full.tabs).toHaveLength(MAX_TABS)
-    expect(full.hint).toBe(HINT_TAB_AT_LIMIT)
+    expect(full.hint).toBeNull()
+
     const rejected = workspaceReducer(full, { type: 'open', id: 't99', url: '/workbench/9999', label: '超限' })
     expect(rejected.tabs).toHaveLength(MAX_TABS)
     expect(rejected.activeId).toBe(full.activeId)
     expect(rejected.hint).toBe(HINT_TAB_LIMIT)
+  })
+
+  it('接管活动位的标签即使从未挂载过也会挂载（否则工作区只剩空白）', () => {
+    const home = { id: 'home', url: '/dashboard', label: '首页', mounted: false }
+    const counter = { id: 't1', url: '/counter', label: '计数器', mounted: true }
+    const closed = workspaceReducer({ tabs: [home, counter], activeId: 't1', hint: null }, { type: 'close', id: 't1' })
+    expect(closed.activeId).toBe('home')
+    expect(closed.tabs[0].mounted).toBe(true)
+
+    const all = workspaceReducer({ tabs: [home, counter], activeId: 't1', hint: null }, { type: 'closeAll' })
+    expect(all.activeId).toBe('home')
+    expect(all.tabs[0].mounted).toBe(true)
+
+    const others = workspaceReducer({ tabs: [counter, home], activeId: 't1', hint: null }, { type: 'closeOthers', keepIds: ['home'], activeId: 'home' })
+    expect(others.activeId).toBe('home')
+    expect(others.tabs[0].mounted).toBe(true)
   })
 
   it('关闭活动标签后由右邻接管；关闭非活动标签不动活动标签', () => {
@@ -128,6 +211,18 @@ describe('workspaceReducer', () => {
     const next = workspaceReducer(state, { type: 'tabUrl', id: 't2', url: '/workbench/1606/view/A' })
     expect(next.activeId).toBe('t1')
     expect(next.tabs[1].url).toBe('/workbench/1606/view/A')
+  })
+
+  it('隐藏标签的导航落到别的标签已开地址上时不写入（否则会出现两个同址标签）', () => {
+    const state: WorkspaceState = { tabs: [
+      { id: 'home', url: '/dashboard', label: '首页', mounted: true },
+      { id: 't2', url: '/workbench/1605', label: '请购单', mounted: true },
+    ], activeId: 'home', hint: null }
+    expect(workspaceReducer(state, { type: 'tabUrl', id: 't2', url: '/dashboard' })).toBe(state)
+    // 归一到首页地址同样受这条守卫约束（根路径不能把标签改成与首页同址）
+    expect(workspaceReducer(state, { type: 'tabUrl', id: 't2', url: '/' })).toBe(state)
+    // 未被占用的地址照常写入
+    expect(workspaceReducer(state, { type: 'tabUrl', id: 't2', url: '/workbench/1606' })?.tabs[1].url).toBe('/workbench/1606')
   })
 
   it('激活标签时才标记已挂载（懒挂载）', () => {

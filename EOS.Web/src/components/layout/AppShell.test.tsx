@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
-import { Link, MemoryRouter, Route, Routes, createMemoryRouter, RouterProvider, useLocation, type RouteObject } from 'react-router-dom'
+import { Link, MemoryRouter, Navigate, Route, Routes, createMemoryRouter, RouterProvider, useLocation, type RouteObject } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '../../features/auth/authContext'
 import type { AppBootstrap } from '../../features/auth/types'
 import { WORKSPACE_TABS_ENABLED_KEY, workspaceTabsKey } from '../../lib/storageKeys'
+import { ToastProvider } from '../ui/Toast'
 import { AppShell } from './AppShell'
 import { useTabDirty } from './workspaceDirty'
 
@@ -77,6 +78,8 @@ const bootstrap: AppBootstrap = {
 
 /** 工作区路由夹具：AppShell 自己按标签地址求值渲染，因此必须注入路由表而不是用子路由 */
 const fixtureRoutes: RouteObject[] = [
+  // 与生产一致：根路径只做重定向，没有自己的页面
+  { index: true, element: <Navigate to="/dashboard" replace /> },
   { path: 'dashboard', element: <div>DASH</div> },
   { path: 'settings/profile', element: <div>PROFILE</div> },
   { path: 'counter', element: <CounterPage /> },
@@ -98,13 +101,15 @@ function renderShell(initialEntry: string, auth: Partial<ReturnType<typeof useAu
     ...auth,
   })
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
-      <LocationProbe />
-      <Routes>
-        <Route path="/*" element={<AppShell routes={fixtureRoutes} />} />
-        <Route path="/login" element={<div>LOGIN_PAGE</div>} />
-      </Routes>
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <LocationProbe />
+        <Routes>
+          <Route path="/*" element={<AppShell routes={fixtureRoutes} />} />
+          <Route path="/login" element={<div>LOGIN_PAGE</div>} />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>,
   )
 }
 
@@ -674,16 +679,36 @@ describe('AppShell', () => {
     expect(screen.getByTestId('browser-location')).toHaveTextContent('/settings/profile')
   })
 
-  it('撞顶：已达上限 12 时拒绝新建并提示', () => {
+  it('撞顶：已达上限 12 时拒绝新建，提示走轻提示而不是标签栏内', () => {
     const saved = Array.from({ length: 12 }, (_, index) => ({ id: `t${index + 1}`, url: `/p${index + 1}`, label: `页${index + 1}` }))
     localStorage.setItem(workspaceTabsKey('u1'), JSON.stringify(saved))
     renderShell('/p1')
     expect(screen.getAllByRole('tab')).toHaveLength(12)
 
     openProfileTab()
-    expect(screen.getByText('标签已达上限 12 个，请先关闭一个标签')).toBeInTheDocument()
+    const toast = screen.getByRole('alert')
+    expect(toast).toHaveTextContent('标签已达上限 12 个，请先关闭一个标签')
+    expect(document.querySelector('.erp-toast-container')).toContainElement(toast)
+    // 标签栏本身不再承载提示文案
+    expect(screen.queryByText('标签已达上限 12 个，请先关闭一个标签', { selector: '.erp-tab-hint' })).toBeNull()
     expect(screen.getAllByRole('tab')).toHaveLength(12)
     expect(screen.getByTestId('browser-location')).toHaveTextContent('/p1')
+  })
+
+  it('剩 1 个名额时提前提示，且提示可手动关闭', async () => {
+    // 恢复时首页会补进来，故存 9 条 → 10 个标签，再开一个正好剩 1 个名额
+    const saved = Array.from({ length: 9 }, (_, index) => ({ id: `t${index + 1}`, url: `/p${index + 1}`, label: `页${index + 1}` }))
+    localStorage.setItem(workspaceTabsKey('u1'), JSON.stringify(saved))
+    renderShell('/p1')
+    expect(screen.getAllByRole('tab')).toHaveLength(10)
+
+    openProfileTab()
+    expect(screen.getAllByRole('tab')).toHaveLength(11)
+    expect(screen.getByRole('alert')).toHaveTextContent('标签已开 11 个，只剩 1 个名额')
+
+    // 关闭后先淡出，动画结束才从 DOM 摘掉
+    fireEvent.click(screen.getByRole('button', { name: '关闭提示' }))
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
   })
 
   it('刷新恢复标签列表，未激活的标签不挂载（懒挂载）', () => {
@@ -700,6 +725,68 @@ describe('AppShell', () => {
     fireEvent.click(screen.getByRole('tab', { name: /计数器/ }))
     expect(screen.getByRole('button', { name: '计数 0' })).toBeInTheDocument()
     expect(screen.getByTestId('browser-location')).toHaveTextContent('/counter')
+  })
+
+  it('入口落在站点根路径：归一为首页，不为重定向地址留空标签', async () => {
+    renderShell('/')
+    await waitFor(() => expect(screen.getByTestId('browser-location')).toHaveTextContent('/dashboard'))
+    const tabs = screen.getAllByRole('tab')
+    // 根路径没有页面，只为它开一个标签会渲染成空白面板并与首页形成两个同址标签
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0]).toHaveTextContent('首页')
+    expect(screen.queryByRole('tab', { name: /^页面$/ })).not.toBeInTheDocument()
+    expect(screen.getByText('DASH')).toBeInTheDocument()
+
+    const saved = JSON.parse(localStorage.getItem(workspaceTabsKey('u1')) ?? '[]') as { url: string }[]
+    expect(saved.map((tab) => tab.url)).toEqual(['/dashboard'])
+  })
+
+  it('恢复时把历史遗留的根路径标签并进首页，不遗留空白标签', () => {
+    localStorage.setItem(workspaceTabsKey('u1'), JSON.stringify([
+      { id: 'home', url: '/dashboard', label: '首页' },
+      { id: 't1', url: '/', label: '' },
+      { id: 't2', url: '/counter', label: '计数器' },
+    ]))
+    renderShell('/dashboard')
+    expect(screen.getAllByRole('tab')).toHaveLength(2)
+    expect(screen.getByRole('tab', { name: /首页/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /计数器/ }))
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/counter')
+    expect(screen.getByRole('button', { name: '计数 0' })).toBeInTheDocument()
+  })
+
+  it('关闭活动标签后接管的未挂载标签会渲染内容，不停在空白页', () => {
+    localStorage.setItem(workspaceTabsKey('u1'), JSON.stringify([
+      { id: 'home', url: '/dashboard', label: '首页' },
+      { id: 't2', url: '/counter', label: '计数器' },
+    ]))
+    renderShell('/counter')
+    // 首页是恢复出来的、尚未激活，此时关闭活动标签会由它接管
+    expect(screen.queryByText('DASH')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭标签 计数器' }))
+    expect(screen.getByTestId('browser-location')).toHaveTextContent('/dashboard')
+    expect(screen.getByText('DASH')).toBeInTheDocument()
+  })
+
+  it('多标签逐一切换：被切到的标签一定有内容（不出现空白工作区）', () => {
+    localStorage.setItem(workspaceTabsKey('u1'), JSON.stringify([
+      { id: 't1', url: '/dashboard', label: '首页' },
+      { id: 't2', url: '/counter', label: '计数器' },
+      { id: 't3', url: '/settings/profile', label: '个人设置' },
+      { id: 't4', url: '/workbench/1209', label: '分组模块' },
+    ]))
+    renderShell('/dashboard')
+
+    const visibleText = () =>
+      [...document.querySelectorAll('.erp-tab-panel')].find((panel) => !(panel as HTMLElement).hasAttribute('hidden'))?.textContent ?? ''
+
+    expect(visibleText()).toContain('DASH')
+    for (const [name, text] of [['计数器', '计数 0'], ['个人设置', 'PROFILE'], ['分组模块', 'WB'], ['首页', 'DASH']] as const) {
+      fireEvent.click(screen.getByRole('tab', { name: new RegExp(name) }))
+      expect(visibleText()).toContain(text)
+    }
   })
 
   it('标签列表按用户持久化（last-write-wins）', () => {
@@ -766,7 +853,7 @@ describe('AppShell 脏页导航拦截（数据路由）', () => {
       ],
       { initialEntries: [initialEntry] },
     )
-    return render(<RouterProvider router={router} />)
+    return render(<ToastProvider><RouterProvider router={router} /></ToastProvider>)
   }
 
   beforeEach(() => {
