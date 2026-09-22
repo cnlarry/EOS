@@ -13,6 +13,7 @@ import { NavLink, UNSAFE_DataRouterContext, parsePath, useLocation, useNavigate,
 import { useAuth } from '../../features/auth/authContext'
 import type { NavigationItem } from '../../features/auth/types'
 import { AssistantDock } from '../../features/assistant/AssistantDock'
+import { useToast } from '../ui/toastContext'
 import { navigationIcons } from './navigationIcons'
 import { childPad, dotLeft, groupPad, lineSidebar } from './menuDepth'
 import { workbenchAction, workbenchList, workbenchModuleId } from '../../features/document-workbench/workbenchPath'
@@ -28,8 +29,11 @@ import { WorkspaceDirtyContext, type TabDirtyHandlers } from './workspaceDirty'
 import {
   EMPTY_TAB_CRUMB,
   HINT_TAB_LIMIT,
+  HOME_URL,
+  INDEX_URL,
   MAX_TABS,
   TAB_BAR_HEIGHT,
+  canonicalTabUrl,
   createWorkspaceState,
   fromModuleIdOf,
   isHomeTab,
@@ -192,6 +196,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   const [menuQuery, setMenuQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const { bootstrap, logout } = useAuth()
+  const { notify } = useToast()
   // 侧栏底部用户卡：姓名/角色缺失时退回用户名，避免卡片出现空行
   const displayName = bootstrap?.user.displayName ?? bootstrap?.user.username ?? '未登录'
   const displayRole = bootstrap?.user.roleName ?? bootstrap?.user.username ?? ''
@@ -217,7 +222,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   const [tabsEnabled] = useState(workspaceTabsEnabled)
   const tabsStorageKey = workspaceTabsKey(bootstrap?.user?.id ?? '')
   const [workspace, dispatch] = useReducer(workspaceReducer, null, () => {
-    const url = tabUrlOf(location)
+    const url = canonicalTabUrl(tabUrlOf(location))
     if (!tabsEnabled || !bootstrap?.user?.id) return createWorkspaceState(url, 't1')
     const saved = parsePersistedTabs(localStorage.getItem(tabsStorageKey))
     if (saved.length === 0) return createWorkspaceState(url, 't1', '', true)
@@ -367,7 +372,8 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   }, [allLeaves])
 
   /** 打开标签：已开则聚焦，未开则新建；撞顶只提示，既不新建也不跳转 */
-  const openTab = useCallback((url: string) => {
+  const openTab = useCallback((rawUrl: string) => {
+    const url = canonicalTabUrl(rawUrl)
     if (!tabsEnabled) {
       // 回退模式：不做标签，直接原地导航
       if (tabUrlOf(locationRef.current) !== url) navigateRef.current(url)
@@ -534,7 +540,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     runPendingConfirm(pending)
   }
 
-  const activeUrl = tabUrlOf(location)
+  const activeUrl = canonicalTabUrl(tabUrlOf(location))
   const fromLabel = fromParam ? allLeaves.find((item) => item.route === workbenchList(fromParam))?.label : undefined
   /**
    * 标题尚未解析出来时下发空串，让标签保留原标题——页面标题依赖"页面自己上抛"或"导航树命中"，
@@ -558,6 +564,13 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     })
   }, [resolvedTitle, location.pathname, allLeaves.length])
 
+  // 根路径归一到首页：入口落在站点根路径时，标签已经按首页建好，这里把地址栏一并归位，
+  // 否则"地址栏 = 活动标签地址"不成立，且根路径会被后续地址同步当成新的打开目标。
+  // 必须用被动 effect：路由在挂载期的 layout effect 里才订阅 history，此时导航会被静默丢弃。
+  useEffect(() => {
+    if (location.pathname === INDEX_URL) navigateRef.current(HOME_URL, { replace: true })
+  }, [location.pathname])
+
   // 地址同步：命中其它标签的地址即激活该标签，否则改写活动标签地址（标签内导航）
   useLayoutEffect(() => {
     pendingNavRef.current = null
@@ -577,11 +590,20 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     dispatch({ type: 'reset', id: nextTabId(), url: activeUrl, label: tabLabel, fromModuleId: fromParam ?? undefined })
   }, [workspace.tabs.length, activeUrl, tabLabel, fromParam, nextTabId])
 
+  // 标签相关的一次性提示（撞顶、接近上限）走全局轻提示：标签栏是 34px 的横向滚动单行，
+  // 提示塞进去只会和标签抢同一条窄带，而这两种提示恰恰只在标签开满时出现
   useEffect(() => {
     if (!workspace.hint) return
-    const timer = window.setTimeout(() => dispatch({ type: 'hint', hint: null }), 4000)
-    return () => window.clearTimeout(timer)
-  }, [workspace.hint])
+    notify({ message: workspace.hint, variant: 'warning' })
+    dispatch({ type: 'hint', hint: null })
+  }, [notify, workspace.hint])
+
+  // 标签栏高度同步到根元素：轻提示浮层挂在外壳之外，拿不到 .page-body 上的内联变量
+  useEffect(() => {
+    const root = document.documentElement
+    root.style.setProperty('--erp-tabbar-height', tabsEnabled ? `${TAB_BAR_HEIGHT}px` : '0px')
+    return () => { root.style.removeProperty('--erp-tabbar-height') }
+  }, [tabsEnabled])
 
   // 标签列表按用户持久化：只存地址与标题，last-write-wins；不监听 storage 事件、不做跨窗口同步
   useEffect(() => {
@@ -1078,7 +1100,6 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
               tabs={workspace.tabs}
               activeId={workspace.activeId}
               dirtyIds={dirtyIds}
-              hint={workspace.hint}
               onActivate={activateTab}
               onClose={closeTab}
               onCloseOthers={closeOthers}

@@ -592,7 +592,10 @@ button, input, select { font: inherit; }
    这里只补工作区特有的几何：与标签栏等高、最小/最大宽度、关闭按钮与脏点。 */
 /* 底部分隔线用内阴影画在标签栏内侧最后 1px：标签栏要横向滚动所以带 overflow 裁剪，
    若用 border-bottom 画线，那 1px 落在裁剪区之外，激活标签的背景再高也盖不住它。 */
-.erp-tabbar { display: flex; flex: 0 0 auto; align-items: stretch; height: var(--erp-tabbar-height); padding: 0 10px; overflow-x: auto; overflow-y: hidden; background: var(--tblr-bg-surface); box-shadow: inset 0 -1px 0 var(--tblr-border-color); scrollbar-width: none; }
+/* 标签栏是单行容器：Tabler 的 .nav 带 flex-wrap: wrap，不显式关掉的话标签一多就折成两行，
+   而标签栏高度是固定的 34px，两行会被压成半高的小条。溢出统一交给横向滚动。
+   显式关掉折行，不依赖样式加载顺序。 */
+.erp-tabbar { display: flex; flex: 0 0 auto; flex-wrap: nowrap; align-items: stretch; height: var(--erp-tabbar-height); padding: 0 10px; overflow-x: auto; overflow-y: hidden; background: var(--tblr-bg-surface); box-shadow: inset 0 -1px 0 var(--tblr-border-color); scrollbar-width: none; }
 .erp-tabbar::-webkit-scrollbar { display: none; }
 .erp-workspace-tabs { padding-left: 10px; }
 .erp-workspace-tabs .nav-item { display: flex; min-width: 0; }
@@ -612,10 +615,52 @@ button, input, select { font: inherit; }
 .erp-tab-dirty { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--tblr-primary); }
 .erp-tab-close { display: grid; flex: 0 0 auto; place-items: center; width: 18px; height: 18px; margin-left: auto; padding: 0; color: inherit; background: transparent; border: 0; border-radius: 4px; opacity: .6; }
 .erp-tab-close:hover { opacity: 1; background: var(--tblr-border-color); }
-.erp-tabbar-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; margin-left: auto; }
-.erp-tab-hint { display: flex; align-items: center; padding: 0 10px; color: var(--tblr-primary); font-size: 12px; white-space: nowrap; }
 /* 窄屏：标签栏左端给移动端菜单按钮（固定定位在左上角）留位 */
 @media (max-width: 991.98px) { .erp-tabbar { padding-left: 46px; } }
+
+/* ===== 全局轻提示（Toast）=====
+   锚在右上角、标签栏之下。标签栏是 34px 的横向滚动单行，开满标签时自身已经溢出，
+   提示塞进标签栏只会和标签抢同一条窄带，所以移出标签栏做浮层（见 docs/架构.md 设计系统最低约束）。
+   垂直偏移用 --erp-tabbar-height：外壳会把它同步到根元素——浮层挂在外壳之外，
+   拿不到写在 .page-body 上的内联值；无标签栏时自然只剩顶部留白。
+   层级 1090：要压得住右侧的工作助手抽屉（1080），否则抽屉开着时提示看不见；
+   模态（1055）在它之下是刻意取舍——模态居中、提示在角上，互不遮挡。 */
+.erp-toast-container { position: fixed; top: calc(var(--erp-workspace-gap) + var(--erp-tabbar-height) + 8px); right: 12px; z-index: 1090; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; width: min(22rem, calc(100vw - 24px)); pointer-events: none; }
+/* Tabler 的 alert 底色是"10% 语义色 + 90% 透明"，外层再与表面色混合后仍有约 45% 透明：
+   浮层压在统一工作台的工具行上时，底下按钮文字会透出来，提示反而不明显。
+   这里直接给不透明底色（同样保留语义色的淡淡倾向，暗色主题随 --tblr-bg-surface 一起走），
+   并把边框按语义色加深、左侧加重一条，任何底图上都分得清是浮层还是页面内容。 */
+.erp-toast {
+  --tblr-alert-bg: color-mix(in srgb, var(--tblr-alert-color) 10%, var(--tblr-bg-surface));
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  background-color: var(--tblr-alert-bg);
+  border-color: color-mix(in srgb, var(--tblr-alert-color) 32%, var(--tblr-bg-surface));
+  border-left-width: 3px;
+  box-shadow: 0 8px 20px rgba(24, 36, 51, .18), 0 1px 2px rgba(24, 36, 51, .12);
+  pointer-events: auto;
+  animation: erp-toast-in 180ms ease-out;
+}
+.erp-toast-message { flex: 1 1 auto; min-width: 0; }
+.erp-toast-icon { flex: 0 0 auto; margin-top: 1px; }
+.erp-toast-close { flex: 0 0 auto; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; color: inherit; background: transparent; border: 0; border-radius: 4px; opacity: .6; }
+.erp-toast-close:hover { opacity: 1; background: rgba(0, 0, 0, .06); }
+/* 淡入：自上而下轻轻落下；淡出：向上收回并逐渐透明。位移只用几像素，够看出"来了/走了"即可。
+   退出动画期间节点仍留在 DOM 里（由组件在动画结束后摘除），否则会变成瞬间消失。 */
+@keyframes erp-toast-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes erp-toast-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px); } }
+.erp-toast.erp-toast-leaving { animation: erp-toast-out 220ms ease-in forwards; pointer-events: none; }
+/* 减少动效：只保留透明度变化，不做位移 */
+@keyframes erp-toast-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes erp-toast-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .erp-toast { animation: erp-toast-fade-in 180ms ease-out; }
+  .erp-toast.erp-toast-leaving { animation: erp-toast-fade-out 220ms ease-in forwards; }
+}
 /* 页面级禁止横向滚动：横向溢出一律交给表格等内部滚动容器（.table-responsive / erp-table-shell）。
    页面根（flex 列子项）与页面内 d-grid 直接子项默认 min-width:auto 会按内容撑开，导致
    行内内容过长时页面出现横向滚动条；改为 min-width:0 让其收缩到容器宽度，由表格容器内部滚动。 */

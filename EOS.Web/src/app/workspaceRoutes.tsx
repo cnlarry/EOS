@@ -32,7 +32,7 @@ import {
   ReportInboxPage,
   LayoutDesignerPage,
 } from './lazyRoutes'
-import { FieldAdminRoute, FormEditorRoute, ReportAdminRoute, ReportViewerRoute, WorkbenchRoute } from './routeElements'
+import { FieldAdminRoute, FormEditorRoute, ReportAdminRoute, ReportViewerRoute, UnknownRoutePage, WorkbenchRoute } from './routeElements'
 import { withSuspense } from './suspense'
 
 /**
@@ -85,4 +85,5 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   { path: 'jobs', element: withSuspense(<JobPage />) },
   { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
   { path: 'settings/:table', element: withSuspense(<SystemSettingsPage />) },
+  { path: '*', element: <UnknownRoutePage /> },
 ]

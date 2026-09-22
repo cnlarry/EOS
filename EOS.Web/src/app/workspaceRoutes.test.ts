@@ -37,7 +37,9 @@ describe('WORKSPACE_ROUTES', () => {
     }
   })
 
-  it('未定义地址不匹配（交由外壳 404 兜底）', () => {
-    expect(matchRoutes(WORKSPACE_ROUTES, '/不存在的页面')).toBeNull()
+  it('未定义地址落到末位兜底路由（渲染 404 面板，不是空白面板）', () => {
+    const matched = matchRoutes(WORKSPACE_ROUTES, '/不存在的页面')
+    expect(matched).not.toBeNull()
+    expect(matched?.at(-1)?.route.path).toBe('*')
   })
 })

@@ -1,5 +1,5 @@
 import { IconX } from '@tabler/icons-react'
-import { useEffect, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { isHomeTab, type WorkspaceTab } from './workspaceTabs'
 
 interface WorkspaceTabBarProps {
@@ -7,8 +7,6 @@ interface WorkspaceTabBarProps {
   activeId: string
   /** 存在未保存改动的标签 */
   dirtyIds: ReadonlySet<string>
-  /** 撞顶等一次性提示 */
-  hint?: string | null
   onActivate: (id: string) => void
   onClose: (id: string) => void
   /** 关闭除指定标签外的其它标签（脏标签不在此列） */
@@ -30,8 +28,14 @@ const MENU_HEIGHT = 116
  * ContextMenu 键（或 Shift+F10）打开标签操作菜单。
  * 标签操作走右键菜单而非常驻按钮，标签栏横向空间全部留给标签本身。
  */
-export function WorkspaceTabBar({ tabs, activeId, dirtyIds, hint, onActivate, onClose, onCloseOthers, onCloseAll }: WorkspaceTabBarProps) {
+export function WorkspaceTabBar({ tabs, activeId, dirtyIds, onActivate, onClose, onCloseOthers, onCloseAll }: WorkspaceTabBarProps) {
   const [menu, setMenu] = useState<TabMenu | null>(null)
+  const activeRef = useRef<HTMLDivElement | null>(null)
+
+  // 标签栏只横向滚动（不折行）：新开或切到的标签要滚进可视区，否则会被挤出视野
+  useEffect(() => {
+    activeRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [activeId, tabs.length])
 
   // 菜单打开期间：点击别处 / Esc / 滚动 / 尺寸变化都收起
   useEffect(() => {
@@ -87,12 +91,21 @@ export function WorkspaceTabBar({ tabs, activeId, dirtyIds, hint, onActivate, on
   }
 
   return (
-    <div className="erp-tabbar nav nav-tabs erp-tabbed-panel-tabs erp-workspace-tabs" role="tablist" aria-label="工作区标签">
+    <div
+      className="erp-tabbar nav nav-tabs erp-tabbed-panel-tabs erp-workspace-tabs"
+      role="tablist"
+      aria-label="工作区标签"
+      // 单行标签栏靠横向滚动承载溢出，而鼠标滚轮只产生纵向增量：转一层，鼠标用户才能摸到被挤出去的标签。
+      // 触控板横向滑动与 Shift+滚轮本来就走 deltaX，这里不介入（deltaY 为 0 直接返回）。
+      onWheel={(event) => {
+        if (event.deltaY !== 0) event.currentTarget.scrollLeft += event.deltaY
+      }}
+    >
       {tabs.map((tab, index) => {
         const active = tab.id === activeId
         const closable = !isHomeTab(tab)
         return (
-          <div className="nav-item" role="presentation" key={tab.id}>
+          <div className="nav-item" role="presentation" key={tab.id} ref={active ? activeRef : undefined}>
             <div
               className={`nav-link erp-workspace-tab${closable ? '' : ' erp-tab-home'}${active ? ' active' : ''}`}
               role="tab"
@@ -126,9 +139,6 @@ export function WorkspaceTabBar({ tabs, activeId, dirtyIds, hint, onActivate, on
           </div>
         )
       })}
-      <div className="erp-tabbar-actions">
-        {hint && <span className="erp-tab-hint" role="status">{hint}</span>}
-      </div>
       {menu && (() => {
         const menuTab = tabs.find((tab) => tab.id === menu.tabId)
         // 首页不可关闭，也不计入"可关闭的其它标签"
