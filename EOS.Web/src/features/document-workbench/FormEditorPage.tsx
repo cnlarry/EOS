@@ -19,6 +19,7 @@ import { ApiError } from '../../types/api'
 import { assistantPrefillKey } from '../../lib/storageKeys'
 import { FormFieldRenderer } from './FormFieldRenderer'
 import type { FormDefinition, FormFieldDefinition } from './formDefinition'
+import { alignClass, formatFieldValue } from './fieldFormat'
 import { buildFormCells, buildFormRows, buildFormSections, moveLifecycleToTail } from './formLayout'
 import { fieldVariant } from './formFieldKind'
 import { validateDetailRows, validateMasterFields, type FieldErrors } from './formValidation'
@@ -198,7 +199,7 @@ interface DetailFieldCellProps {
   onChoose: (index: number, field: FormFieldDefinition) => void
 }
 
-/** 明细格 memo 单元：输入一个格子时其余行/格不重渲染 */
+/** 明细格 memo 单元：输入一个格子时其余行/格不重渲染（仅编辑态使用） */
 const DetailFieldCell = memo(function DetailFieldCell({ field, value, error, index, onFieldChange, onChoose }: DetailFieldCellProps) {
   return (
     <FormFieldRenderer
@@ -231,11 +232,11 @@ interface DetailFormGridProps {
   onResize: (fieldKey: string, width: number) => void
 }
 
-/** 明细卡（memo）：主表字段输入等不涉及明细行的状态变化时不重渲染 */
+/** 明细卡（memo）：主表字段输入等不涉及明细行的状态变化时不重渲染；浏览态只读展示，不提供增删入口 */
 const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailErrors, sortedIndices, detailSort, selectedDetailRows, viewing, storageKey, onAddRow, onRemoveRow, onRemoveSelected, onFieldChange, onChoose, onSortChange, onSelectionChange, onResize }: DetailFormGridProps) {
-  /** 明细网格 Enter：同列下一行继续；末行则新增行后聚焦同列 */
+  /** 明细网格 Enter：同列下一行继续；末行则新增行后聚焦同列（浏览态无输入框，直接跳过） */
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Enter') return
+    if (viewing || event.key !== 'Enter') return
     const target = event.target as HTMLElement
     if (!(target instanceof HTMLInputElement)) return
     if (target.type === 'checkbox' || target.type === 'date' || target.type === 'datetime-local') return
@@ -263,12 +264,13 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
   const rowSelection = Object.fromEntries([...selectedDetailRows].map(index => [`r${index}`, true])) as RowSelectionState
   const gridRows: DetailGridRow[] = viewIndices.map(index => ({ __id: `r${index}`, __index: index, ...detailRows[index] }))
   const columns: ColumnDef<DetailGridRow, unknown>[] = [
-    {
+    // 浏览态不允许改明细：隐藏选择列与行操作列，只展示内容
+    ...(!viewing ? [{
       id: '__check',
       enableSorting: false,
       enableHiding: false,
       meta: { className: 'erp-detail-check text-center', resizable: false, truncate: false },
-      header: ({ table }) => (
+      header: ({ table }: { table: { getIsAllPageRowsSelected: () => boolean; getIsSomePageRowsSelected: () => boolean; getToggleAllPageRowsSelectedHandler: () => (event: unknown) => void } }) => (
         <input
           className="form-check-input"
           type="checkbox"
@@ -278,7 +280,7 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
           onChange={table.getToggleAllPageRowsSelectedHandler()}
         />
       ),
-      cell: ({ row }) => (
+      cell: ({ row }: { row: { getIsSelected: () => boolean; getToggleSelectedHandler: () => (event: unknown) => void; index: number } }) => (
         <input
           className="form-check-input"
           type="checkbox"
@@ -288,7 +290,7 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
           onClick={event => event.stopPropagation()}
         />
       ),
-    },
+    } as ColumnDef<DetailGridRow, unknown>] : []),
     {
       id: '__rowNo',
       header: '序号',
@@ -297,34 +299,66 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
       meta: { className: 'erp-detail-row-no text-center', resizable: false, truncate: false },
       cell: ({ row }) => <span className="text-secondary">{row.index + 1}</span>,
     },
-    ...visibleDetail.map((field): ColumnDef<DetailGridRow, unknown> => ({
-      id: field.key,
-      accessorKey: field.key,
-      header: field.label,
-      enableSorting: true,
-      meta: { minWidth: Math.max(field.displayLength, detailControlMinWidth(field)), dataType: field.dataType, minWidthFloor: true, truncate: false },
-      cell: ({ row }) => {
-        const index = row.original.__index
-        return (
-          <DetailFieldCell
-            key={`${row.original.__id}-${field.key}`}
-            field={field}
-            value={String(row.original[field.key] ?? '')}
-            error={detailErrors[index]?.[field.key]}
-            index={index}
-            onFieldChange={onFieldChange}
-            onChoose={onChoose}
-          />
-        )
-      },
-    })),
-    {
+    ...visibleDetail.map((field): ColumnDef<DetailGridRow, unknown> => {
+      const isBit = (field.dataType ?? '').toLowerCase() === 'bit'
+      // 浏览态与工作台子表同口径：纯文本展示（bit 用禁用复选框），保留电子表格能力
+      //（表头排序/列宽拖拽/复制/键盘导航/吸顶表头由 ErpTable 默认提供；title/copyText 取展示文本）
+      if (viewing) {
+        const formatted = (value: unknown) => formatFieldValue(value, field.dataType, field.displayFormat)
+        return {
+          id: field.key,
+          accessorKey: field.key,
+          header: field.label,
+          enableSorting: true,
+          meta: {
+            minWidth: field.displayLength,
+            dataType: field.dataType,
+            cellClassName: isBit ? 'text-center' : alignClass(undefined, field.dataType),
+            truncate: isBit ? false : undefined,
+            title: ({ value }) => formatted(value) || undefined,
+            copyText: ({ value }) => formatted(value) || '—',
+          },
+          cell: ({ row }) => {
+            const raw = row.original[field.key]
+            if (isBit) {
+              const checked = raw === true || raw === '1' || String(raw ?? '').toLowerCase() === 'true'
+              return <input type="checkbox" className="form-check-input" checked={checked} disabled aria-label={field.label} />
+            }
+            const text = formatted(raw)
+            if (!text) return '—'
+            return text
+          },
+        }
+      }
+      return {
+        id: field.key,
+        accessorKey: field.key,
+        header: field.label,
+        enableSorting: true,
+        meta: { minWidth: Math.max(field.displayLength, detailControlMinWidth(field)), dataType: field.dataType, minWidthFloor: true, truncate: false },
+        cell: ({ row }) => {
+          const index = row.original.__index
+          return (
+            <DetailFieldCell
+              key={`${row.original.__id}-${field.key}`}
+              field={field}
+              value={String(row.original[field.key] ?? '')}
+              error={detailErrors[index]?.[field.key]}
+              index={index}
+              onFieldChange={onFieldChange}
+              onChoose={onChoose}
+            />
+          )
+        },
+      }
+    }),
+    ...(!viewing ? [{
       id: '__actions',
       header: '操作',
       enableSorting: false,
       enableHiding: false,
       meta: { className: 'erp-detail-actions text-center', resizable: false, truncate: false },
-      cell: ({ row }) => (
+      cell: ({ row }: { row: { original: DetailGridRow; index: number } }) => (
         // Inline delete as icon button, aligned with command bar icon conventions
         <Button
           size="sm"
@@ -335,18 +369,25 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
           onClick={() => onRemoveRow(row.original.__index)}
         />
       ),
-    },
+    } as ColumnDef<DetailGridRow, unknown>] : []),
   ]
+  const showToolbar = !viewing || detailSort
   return (
     <section className="card erp-detail-card">
-      <div className="card-header erp-detail-toolbar">
-        <div className="d-flex gap-2">
-          <Button size="sm" onClick={onAddRow}>新增一行</Button>
-          <Button size="sm" variant="danger" disabled={selectedDetailRows.size === 0} onClick={onRemoveSelected}>删除所选{selectedDetailRows.size > 0 ? ` (${selectedDetailRows.size})` : ''}</Button>
-          {detailSort && <span className="small text-secondary align-self-center">视图排序（保存顺序以序号 SERIAL_NO 为准）</span>}
-          {/* 子表专用工具栏扩展位：生成请购单等后续加入 */}
+      {showToolbar ? (
+        <div className="card-header erp-detail-toolbar">
+          <div className="d-flex gap-2">
+            {!viewing ? (
+              <>
+                <Button size="sm" onClick={onAddRow}>新增一行</Button>
+                <Button size="sm" variant="danger" disabled={selectedDetailRows.size === 0} onClick={onRemoveSelected}>删除所选{selectedDetailRows.size > 0 ? ` (${selectedDetailRows.size})` : ''}</Button>
+              </>
+            ) : null}
+            {detailSort && <span className="small text-secondary align-self-center">视图排序（保存顺序以序号 SERIAL_NO 为准）</span>}
+            {/* 子表专用工具栏扩展位：生成请购单等后续加入 */}
+          </div>
         </div>
-      </div>
+      ) : null}
       <div className="table-responsive" onKeyDown={handleKeyDown}>
         <ErpTable
           columns={columns}
