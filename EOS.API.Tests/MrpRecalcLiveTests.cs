@@ -102,8 +102,7 @@ public sealed class MrpRecalcLiveTests
     [Fact]
     public void 移植语句与原过程本体的关键判据逐条对齐()
     {
-        var sql = MrpRecalcService.RecalcSql;
-        Assert.Contains("WHERE DEPOT_ID IN (SELECT DEPOT_ID FROM dbo.DEPOT WHERE MRP=1)", sql);
+        var sql = MrpRecalcService.ResetSql + "\n" + MrpRecalcService.RecalcSql;
         Assert.Contains("SET NOT_SEND_QTY=0, NOT_IN_QTY=0, NOT_GET_QTY=0, IN_BUY_QTY=0, MRP_QTY=0", sql);
         Assert.Contains("m.CONFIRM_TAG=1 AND d.FINISHED_TAG=0", sql);
         Assert.Contains("d.QTY+d.SPARE_QTY>d.FINISHED_SEND_QTY+d.FINISHED_SPARE_QTY", sql);
@@ -115,6 +114,9 @@ public sealed class MrpRecalcLiveTests
         // 有意差异：不再自开事务（统一走调用方事务，失败整链回滚）
         Assert.DoesNotContain("BEGIN TRANSACTION", sql, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("COMMIT TRANSACTION", sql, StringComparison.OrdinalIgnoreCase);
+        // 读取收口：余额表不再出现在重算的语句里，库存量只能经 InventoryQueryService 取
+        // （服务侧的判据，含 TABLOCKX，由 InventoryQueryServiceTests 钉住）。
+        Assert.DoesNotContain("INV_PRO_DEPOT", sql);
     }
 
     /// <summary>全表八字段校验和（覆盖"清零全部产品占用列"的全局语义）+ 夹具产品明细。</summary>
