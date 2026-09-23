@@ -2,6 +2,7 @@ using System.Data;
 using EOS.API.Data.Effects;
 // 复用效果处理器那套标识符引用助手（先按白名单校验再方括号包裹）：一次实现，不各写一份。
 using EOS.API.Data.Effects.ServiceEffectHandlers;
+using EOS.API.Data.Inventory;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -28,12 +29,11 @@ internal sealed class RecalcAccountHandler : IDocumentUserAction, IDocumentActio
 
     // 盘点明细的库存定位口径（库别 + 料号 + 库位 + 批号）——与 stocktake-scope-generate 生成明细时
     // 落进明细行的四列一一对应，重算才能按同一把尺子找回来。
-    private const string StockTable = "INV_PRO_DEPOT";
+    // 库存侧的同一把尺子在 InventoryQueryService 里（那里才是四键口径的唯一出口）。
     private const string DepotField = "DEPOT_ID";
     private const string ProductField = "PRO_NO";
     private const string LocationField = "LOCATION_NO";
     private const string BatchField = "BATCH_NO";
-    private const string StockQtyField = "QTY";
     private const string AccountQtyField = "ACCOUNT_QTY";
 
     public string Key => ActionKey;
@@ -59,13 +59,11 @@ internal sealed class RecalcAccountHandler : IDocumentUserAction, IDocumentActio
                      (definition.MasterTable, DepotField),
                      (detailTable, DepotField), (detailTable, ProductField),
                      (detailTable, LocationField), (detailTable, BatchField), (detailTable, AccountQtyField),
-                     (StockTable, DepotField), (StockTable, ProductField),
-                     (StockTable, LocationField), (StockTable, BatchField), (StockTable, StockQtyField),
                  })
         {
             if (!columns.Contains(table + "." + column))
             {
-                throw new InvalidOperationException($"重算账面数量需要 {table}.{column}，该模块或库存表没有这一列，请联系管理员调整。");
+                throw new InvalidOperationException($"重算账面数量需要 {table}.{column}，该模块没有这一列，请联系管理员调整。");
             }
         }
 
@@ -117,13 +115,11 @@ internal sealed class RecalcAccountHandler : IDocumentUserAction, IDocumentActio
     }
 
     /// <summary>
-    /// 逐行取出明细行的键值与当前库存量（LEFT JOIN：没有库存记录的行也要参与重算——账面数归零）。
-    /// 一次查询只读，不做任何整表写回。
+    /// 逐行取出明细行的键值与当前库存量（没有库存记录的行也要参与重算——账面数归零）。
+    /// 一次读取不做任何整表写回。
     ///
-    /// 定位按（库别, 料号, 库位, 批号）四列，与生成明细时写进明细行的四列同一把尺子；
-    /// 比较两侧都做 ISNULL/TRIM 归一——空串与 NULL 在这几列上语义相同（本库批次列即全为空串），
-    /// 不归一就会出现"明细明明有货、账面却被算成 0"的静默错账。该四列在库存表上唯一，
-    /// 因此这个 LEFT JOIN 不会把明细行放大。
+    /// 定位仍按（库别, 料号, 库位, 批号）四列，但**怎么读库存交给 <see cref="InventoryQueryService"/>**：
+    /// 哨兵位置的归一、四键的唯一性假设都在那里，这里只把两边按同一把尺子对齐后做内存 LEFT JOIN。
     /// </summary>
     private static async Task<IReadOnlyList<DetailRow>> ReadDetailRowsAsync(
         DocumentActionContext context,
@@ -137,37 +133,75 @@ internal sealed class RecalcAccountHandler : IDocumentUserAction, IDocumentActio
         var detailColumns = string.Join(", ", detailKeys.Select(column => $"d.{q(column)}"));
         await using var command = new SqlCommand(
             $"""
-            SELECT {detailColumns}, d.{q(AccountQtyField)}, s.{q(StockQtyField)}
+            SELECT {detailColumns}, d.{q(AccountQtyField)}, d.{q(DepotField)}, d.{q(ProductField)},
+                   d.{q(LocationField)}, d.{q(BatchField)}
             FROM dbo.{q(detailTable)} d WITH (UPDLOCK, HOLDLOCK)
-            LEFT JOIN dbo.{q(StockTable)} s
-                   ON LTRIM(RTRIM(s.{q(DepotField)}))=ISNULL(NULLIF(LTRIM(RTRIM(d.{q(DepotField)})), N''), @masterDepot)
-                  AND LTRIM(RTRIM(s.{q(ProductField)}))=LTRIM(RTRIM(d.{q(ProductField)}))
-                  AND ISNULL(LTRIM(RTRIM(s.{q(LocationField)})), N'')=ISNULL(LTRIM(RTRIM(d.{q(LocationField)})), N'')
-                  AND ISNULL(LTRIM(RTRIM(s.{q(BatchField)})), N'')=ISNULL(LTRIM(RTRIM(d.{q(BatchField)})), N'')
             WHERE {keyFilter};
             """, context.Connection, context.Transaction);
         AddKeyParameters(command, context.MasterPkOrder, context.KeyValues);
-        command.Parameters.Add("@masterDepot", SqlDbType.NVarChar, 20).Value = masterDepot;
 
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var rows = new List<DetailRow>();
-        while (await reader.ReadAsync(token))
+        var pending = new List<PendingRow>();
+        await using (var reader = await command.ExecuteReaderAsync(token))
         {
-            var keyValues = new string[detailKeys.Count];
-            for (var index = 0; index < detailKeys.Count; index++)
+            while (await reader.ReadAsync(token))
             {
-                keyValues[index] = reader.IsDBNull(index) ? string.Empty : reader.GetValue(index).ToString()!.Trim();
+                var keyValues = new string[detailKeys.Count];
+                for (var index = 0; index < detailKeys.Count; index++)
+                {
+                    keyValues[index] = reader.IsDBNull(index) ? string.Empty : reader.GetValue(index).ToString()!.Trim();
+                }
+                var offset = detailKeys.Count;
+                pending.Add(new PendingRow(
+                    keyValues,
+                    reader.IsDBNull(offset) ? null : Convert.ToDouble(reader.GetValue(offset)),
+                    reader.IsDBNull(offset + 1) ? string.Empty : reader.GetString(offset + 1).Trim(),
+                    reader.IsDBNull(offset + 2) ? string.Empty : reader.GetString(offset + 2).Trim(),
+                    reader.IsDBNull(offset + 3) ? string.Empty : reader.GetString(offset + 3).Trim(),
+                    reader.IsDBNull(offset + 4) ? string.Empty : reader.GetString(offset + 4).Trim()));
             }
-            // 投影顺序：主键列…，随后依次是明细行账面数与当前库存量。
-            // 两者在库内都是 float（旧的量额列口径），故内部按 double 处理，不做 decimal 往返。
-            var offset = detailKeys.Count;
-            rows.Add(new DetailRow(
-                keyValues,
-                reader.IsDBNull(offset) ? null : Convert.ToDouble(reader.GetValue(offset)),
-                reader.IsDBNull(offset + 1) ? null : Convert.ToDouble(reader.GetValue(offset + 1))));
         }
-        return rows;
+        if (pending.Count == 0) return [];
+
+        // 明细没填库别的行按单据库别定位库存（老单据的手工明细常留空），两者都要计入候选。
+        var depots = pending.Select(row => row.Depot)
+            .Concat([masterDepot])
+            .Where(depot => depot.Length > 0 || masterDepot.Length == 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var stock = await InventoryQueryService.GetRowsAsync(
+            context.Connection, context.Transaction,
+            new InventoryQueryService.RowScope { DepotIds = depots },
+            InventoryQueryService.ReadLock.None, token);
+        var quantities = stock.ToDictionary(
+            row => StockKey(row.DepotId, row.ProductNo, row.LocationNo, row.BatchNo),
+            row => row.Quantity);
+
+        return pending.Select(row => new DetailRow(
+                row.KeyValues,
+                row.AccountQty,
+                quantities.GetValueOrDefault(StockKey(
+                    row.Depot.Length > 0 ? row.Depot : masterDepot,
+                    row.Product,
+                    row.Location,
+                    row.Batch))))
+            .ToList();
     }
+
+    /// <summary>四键的对齐键：两侧都走同一套归一化（空值/哨兵不产生差异）。</summary>
+    private static string StockKey(string depot, string product, string location, string batch) =>
+        string.Join('|',
+            depot.Trim(),
+            product.Trim(),
+            location.Trim().Length == 0 ? InventoryQueryService.LocationSentinel : location.Trim(),
+            batch.Trim());
+
+    private sealed record PendingRow(
+        IReadOnlyList<string> KeyValues,
+        double? AccountQty,
+        string Depot,
+        string Product,
+        string Location,
+        string Batch);
 
     /// <summary>逐行写回账面数：每行一条语句，只碰 ACCOUNT_QTY 一列。</summary>
     private static async Task UpdateAccountQtyAsync(
