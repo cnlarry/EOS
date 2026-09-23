@@ -40,7 +40,11 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
             new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance),
             Microsoft.Extensions.Options.Options.Create(new EOS.API.Models.AuditSettings()));
         _repository = new MenuAdminRepository(connections,
-            new ModuleBusinessConfigRepository(connections, dirtyMarker, auditWriter, NullLogger<ModuleBusinessConfigRepository>.Instance),
+            new ModuleBusinessConfigRepository(connections, dirtyMarker, auditWriter,
+                new EOS.API.Data.DocumentActions.DocumentActionRegistry(
+                    [new EOS.API.Data.DocumentActions.Handlers.DocumentActionProbeHandler()],
+                    NullLogger<EOS.API.Data.DocumentActions.DocumentActionRegistry>.Instance),
+                NullLogger<ModuleBusinessConfigRepository>.Instance),
             dirtyMarker, auditWriter, NullLogger<MenuAdminRepository>.Instance);
         var baseId = 990000000 + Random.Shared.Next(0, 9999999);
         _parentId = baseId;

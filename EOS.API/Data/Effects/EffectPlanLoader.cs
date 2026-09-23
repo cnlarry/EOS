@@ -34,7 +34,8 @@ public sealed class EffectPlanLoader
         var actions = new List<EffectActionPlan>();
         if (definition.BusinessActions is { ValueKind: JsonValueKind.Array } actionsJson)
             foreach (var element in actionsJson.EnumerateArray())
-                actions.Add(ParseAction(element, definition));
+                if (ParseAction(element, definition) is { } action)
+                    actions.Add(action);
 
         var rules = new List<EffectValidationPlan>();
         if (definition.ValidationRules is { ValueKind: JsonValueKind.Array } rulesJson)
@@ -51,18 +52,25 @@ public sealed class EffectPlanLoader
             rules.OrderBy(item => item.Seq).ToList());
     }
 
-    private static EffectActionPlan ParseAction(JsonElement element, WorkbenchDefinition definition)
+    /// <summary>
+    /// Parses one configured action; MANUAL rows return null because they are not effect-chain steps —
+    /// their key lives in the document-action registry and their parameters are user input, so nothing
+    /// here (effect key catalog, parameter schema, formula rows) applies to them.
+    /// </summary>
+    private static EffectActionPlan? ParseAction(JsonElement element, WorkbenchDefinition definition)
     {
         if (element.ValueKind != JsonValueKind.Object)
             throw new EffectConfigException("动作配置项必须是对象。");
 
+        var eventCode = RequiredString(element, "eventCode");
+        if (BusinessActionCatalog.IsManualEvent(eventCode))
+            return null;
+        if (!BusinessActionCatalog.Events.Contains(eventCode))
+            throw new EffectConfigException($"动作触发事件 '{eventCode}' 不在封闭事件集内。");
+
         var effectKey = RequiredString(element, "effectKey");
         if (!BusinessActionCatalog.EffectKeys.Contains(effectKey))
             throw new EffectConfigException($"动作效果键 '{effectKey}' 不在效果目录 v0.2 内。");
-
-        var eventCode = RequiredString(element, "eventCode");
-        if (!BusinessActionCatalog.Events.Contains(eventCode))
-            throw new EffectConfigException($"动作触发事件 '{eventCode}' 不在封闭事件集内。");
 
         var failMode = OptionalString(element, "failMode") ?? "BLOCK";
         if (!BusinessActionCatalog.FailModes.Contains(failMode))

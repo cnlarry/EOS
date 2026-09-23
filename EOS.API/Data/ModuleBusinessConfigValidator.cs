@@ -1,4 +1,5 @@
 using System.Text.Json;
+using EOS.API.Data.DocumentActions;
 using EOS.API.Data.Effects;
 using EOS.API.Data.ValidationRules;
 using EOS.API.Models;
@@ -35,7 +36,13 @@ public static class ModuleBusinessConfigValidator
             ["inventory-move"] = Set("field-accumulate"),
         };
 
-    public static IReadOnlyList<string> Validate(SaveModuleBusinessConfigRequest request)
+    /// <param name="documentActionKeys">
+    /// 单据操作注册表的键集（用户点击类动作的封闭目录）。MANUAL 行的键必须在此集合内——
+    /// 它的实现来自注册的处理器，不在效果目录里，因此不能拿效果键集合去判它。
+    /// </param>
+    public static IReadOnlyList<string> Validate(
+        SaveModuleBusinessConfigRequest request,
+        IReadOnlySet<string>? documentActionKeys = null)
     {
         var issues = new List<string>();
         if (request.Actions.Count > 300)
@@ -50,7 +57,7 @@ public static class ModuleBusinessConfigValidator
             .ToDictionary(group => group.Key, group => group.OrderBy(item => item.Seq).ToList(), StringComparer.OrdinalIgnoreCase);
         foreach (var action in request.Actions.OrderBy(item => item.Seq))
         {
-            ValidateAction(action, actionKeys, issues);
+            ValidateAction(action, actionKeys, issues, documentActionKeys);
             ValidateChainPrerequisite(action, actionsByEvent, issues);
         }
 
@@ -100,7 +107,8 @@ public static class ModuleBusinessConfigValidator
     private static void ValidateAction(
         BusinessActionDto action,
         ISet<string> keys,
-        ICollection<string> issues)
+        ICollection<string> issues,
+        IReadOnlySet<string>? documentActionKeys)
     {
         if (action.Seq < 1)
         {
@@ -120,6 +128,23 @@ public static class ModuleBusinessConfigValidator
         }
         if (!keys.Add(trimmedEvent + "|" + action.Seq))
             issues.Add($"动作 SEQ={action.Seq}：事件 {trimmedEvent} 内顺序号重复。");
+        if (!BusinessActionCatalog.FailModes.Contains(action.FailMode))
+            issues.Add($"动作 SEQ={action.Seq}：失败模式仅支持 BLOCK / WARN。");
+        if (TooLong(action.EffectName, 200)) issues.Add($"动作 SEQ={action.Seq}：效果名称超过 200 字符。");
+        if (TooLong(action.Remark, 500)) issues.Add($"动作 SEQ={action.Seq}：说明超过 500 字符。");
+        if (TooLong(action.SourceRef, 100)) issues.Add($"动作 SEQ={action.Seq}：溯源超过 100 字符。");
+        ValidateJson(action.Condition, $"动作 SEQ={action.Seq} 条件", issues);
+        foreach (var conditionIssue in EffectStructSchemas.ValidateConditionJson(action.Condition, $"动作 SEQ={action.Seq} 条件"))
+            issues.Add(conditionIssue);
+
+        // 用户点击类动作到此为止：它的键来自操作注册表、参数是入参声明，
+        // 效果键目录 / 参数 Schema / 公式行 / 反向结构都不适用于它。
+        if (BusinessActionCatalog.IsManualEvent(trimmedEvent))
+        {
+            ValidateManualAction(action, documentActionKeys, issues);
+            return;
+        }
+
         if (!BusinessActionCatalog.IsKnownEffectKey(action.EffectKey))
         {
             issues.Add($"动作 SEQ={action.Seq}：未知效果键 '{action.EffectKey}'。");
@@ -134,14 +159,6 @@ public static class ModuleBusinessConfigValidator
             // pipeline would treat as a missing service handler.
             issues.Add($"动作 SEQ={action.Seq}：公式型效果 '{action.EffectKey}' 无公式行展开（占位行仅限服务型效果），引擎无法执行。");
         }
-        if (!BusinessActionCatalog.FailModes.Contains(action.FailMode))
-            issues.Add($"动作 SEQ={action.Seq}：失败模式仅支持 BLOCK / WARN。");
-        if (TooLong(action.EffectName, 200)) issues.Add($"动作 SEQ={action.Seq}：效果名称超过 200 字符。");
-        if (TooLong(action.Remark, 500)) issues.Add($"动作 SEQ={action.Seq}：说明超过 500 字符。");
-        if (TooLong(action.SourceRef, 100)) issues.Add($"动作 SEQ={action.Seq}：溯源超过 100 字符。");
-        ValidateJson(action.Condition, $"动作 SEQ={action.Seq} 条件", issues);
-        foreach (var conditionIssue in EffectStructSchemas.ValidateConditionJson(action.Condition, $"动作 SEQ={action.Seq} 条件"))
-            issues.Add(conditionIssue);
         ValidateJson(action.Params, $"动作 SEQ={action.Seq} 参数", issues);
         ValidateJson(action.Reverse, $"动作 SEQ={action.Seq} 反向", issues);
         foreach (var structIssue in EffectStructSchemas.ValidateActionStructs(action.EffectKey, action.Params, action.Reverse))
@@ -156,6 +173,36 @@ public static class ModuleBusinessConfigValidator
         var opSeqs = new HashSet<int>();
         foreach (var op in ops)
             ValidateOp(action.Seq, op, opSeqs, issues);
+    }
+
+    /// <summary>
+    /// 用户点击类动作（EVENT_CODE='MANUAL'）的专属校验：键取单据操作注册表；参数取操作入参声明的闭式结构；
+    /// 公式行与反向结构必须为空——它们配了也不会被执行，留着只会让配置人员以为会生效。
+    /// </summary>
+    private static void ValidateManualAction(
+        BusinessActionDto action,
+        IReadOnlySet<string>? documentActionKeys,
+        ICollection<string> issues)
+    {
+        if (string.IsNullOrWhiteSpace(action.EffectKey)
+            || documentActionKeys is null
+            || !documentActionKeys.Contains(action.EffectKey.Trim()))
+        {
+            issues.Add($"动作 SEQ={action.Seq}：未知自定义按钮键 '{action.EffectKey}'（须在单据操作注册表中登记实现）。");
+        }
+        foreach (var parameterIssue in DocumentActionParams.Validate(action.Params))
+        {
+            issues.Add($"动作 SEQ={action.Seq}：{parameterIssue}");
+        }
+        if (!string.IsNullOrWhiteSpace(action.Reverse))
+        {
+            issues.Add($"动作 SEQ={action.Seq}：用户点击类动作不支持反向结构（REVERSE_STRUCT）。");
+        }
+        if ((action.Ops ?? Array.Empty<BusinessActionOpDto>())
+            .Any(op => !IsPlaceholderOp(op.OpCode, op.TargetTable, op.TargetField)))
+        {
+            issues.Add($"动作 SEQ={action.Seq}：用户点击类动作不支持公式行（OPS）。");
+        }
     }
 
     private static void ValidateOp(

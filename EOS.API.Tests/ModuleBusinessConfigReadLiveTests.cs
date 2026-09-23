@@ -1,4 +1,6 @@
 using EOS.API.Data;
+using EOS.API.Data.DocumentActions;
+using EOS.API.Data.DocumentActions.Handlers;
 using EOS.API.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
@@ -37,6 +39,7 @@ public sealed class ModuleBusinessConfigReadLiveTests
             new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance),
             Options.Create(new AuditSettings()));
         return new ModuleBusinessConfigRepository(connections, dirtyMarker, auditWriter,
+            new DocumentActionRegistry([new DocumentActionProbeHandler()], NullLogger<DocumentActionRegistry>.Instance),
             NullLogger<ModuleBusinessConfigRepository>.Instance);
     }
 

@@ -12,6 +12,12 @@ public enum EffectEvent
     Unendcase,
     /// <summary>删除前校验：删除不产生"保存后行为"，但主档里的受保护行（如哨兵行）需要在删除前拦下。</summary>
     Delete,
+
+    /// <summary>
+    /// 用户主动触发：不由任何单据事件触发，只在用户点击按钮时运行。效果链不会执行这类动作
+    /// （<see cref="EffectPlanLoader"/> 加载时即跳过），映射在此只为让事件码是同一份闭集。
+    /// </summary>
+    Manual,
 }
 
 public static class EffectEventMapper
@@ -26,6 +32,7 @@ public static class EffectEventMapper
             case "ENDCASE": value = EffectEvent.Endcase; return true;
             case "UNENDCASE": value = EffectEvent.Unendcase; return true;
             case "DELETE": value = EffectEvent.Delete; return true;
+            case "MANUAL": value = EffectEvent.Manual; return true;
             default: value = default; return false;
         }
     }

@@ -7,7 +7,7 @@ namespace EOS.API.Data;
 /// </summary>
 public static class BusinessActionCatalog
 {
-    /// <summary>触发事件（ENDCASE/UNENDCASE 为占位事件，效果留空）。</summary>
+    /// <summary>触发事件（ENDCASE/UNENDCASE 为占位事件，效果留空；MANUAL 不由任何单据事件触发，见下）。</summary>
     public static readonly IReadOnlySet<string> Events = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "SAVE",
@@ -15,7 +15,13 @@ public static class BusinessActionCatalog
         "DEAPPROVE",
         "ENDCASE",
         "UNENDCASE",
+        "MANUAL",
     };
+
+    /// <summary>用户主动触发的事件码：该行不会被任何单据事件顺带执行，只在用户点击按钮时运行；
+    /// 因此它不参与效果链（加载、物理参数校验、明细派生判定、发布键校验一律跳过），
+    /// 其键由单据操作注册表单独把关。</summary>
+    public const string ManualEvent = "MANUAL";
 
     /// <summary>失败模式：BLOCK=失败整链回滚；WARN=仅警告继续。</summary>
     public static readonly IReadOnlySet<string> FailModes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -133,6 +139,10 @@ public static class BusinessActionCatalog
     };
 
     public static bool IsKnownEvent(string value) => Events.Contains(value);
+
+    /// <summary>Whether the event code marks a user-triggered document action rather than an effect-chain step.</summary>
+    public static bool IsManualEvent(string? value) =>
+        value is not null && value.Trim().Equals(ManualEvent, StringComparison.OrdinalIgnoreCase);
 
     public static bool IsKnownEffectKey(string value) => EffectKeys.Contains(value);
 
