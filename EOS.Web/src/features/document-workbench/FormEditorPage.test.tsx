@@ -3,6 +3,7 @@ import { apiClientMock } from '../../test/apiMock'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider, useParams } from 'react-router-dom'
 import { WorkspaceDirtyContext, WorkspaceTabContext, type TabDirtyHandlers } from '../../components/layout/workspaceDirty'
+import { ToastProvider } from '../../components/ui/Toast'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../types/api'
 import { FormEditorPage } from './FormEditorPage'
@@ -111,7 +112,10 @@ function renderEditor(initialEntry: string, dirty?: {
   return renderWithProviders(
     <WorkspaceTabContext.Provider value="t1">
       <WorkspaceDirtyContext.Provider value={dirty ? { register: dirty.register, setDirty: dirty.setDirty } : null}>
-        <RouterProvider router={router} />
+        {/* 单据操作的结果走全局轻提示，页面依赖 ToastProvider */}
+        <ToastProvider>
+          <RouterProvider router={router} />
+        </ToastProvider>
       </WorkspaceDirtyContext.Provider>
     </WorkspaceTabContext.Provider>,
   )
@@ -154,7 +158,7 @@ describe('FormEditorPage', () => {
       ],
       { initialEntries: ['/workbench/1209/view/P1/A?from=1405'] },
     )
-    renderWithProviders(<RouterProvider router={router} />)
+    renderWithProviders(<ToastProvider><RouterProvider router={router} /></ToastProvider>)
     await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '返回' }))
     await waitFor(() => expect(screen.getByText('BACK_LIST_1405')).toBeInTheDocument())
@@ -168,7 +172,7 @@ describe('FormEditorPage', () => {
       ],
       { initialEntries: ['/workbench/1209/view/P1/A'] },
     )
-    renderWithProviders(<RouterProvider router={router} />)
+    renderWithProviders(<ToastProvider><RouterProvider router={router} /></ToastProvider>)
     await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '返回' }))
     await waitFor(() => expect(screen.getByText('BACK_LIST_1209')).toBeInTheDocument())
@@ -868,6 +872,70 @@ describe('FormEditorPage', () => {
     const masterAmount = Array.from(container.querySelectorAll<HTMLInputElement>('.erp-form-grid input.form-control'))
       .find(input => input.value === '1000')
     expect(masterAmount).toBeTruthy()
+  })
+
+  // ===== 自定义按钮（单据操作）=====
+
+  /** 只在下发名单里出现的按钮才渲染：未授权的操作不是"禁用"，而是根本不存在。 */
+  it('浏览态按落点渲染自定义按钮：单据级在工具条尾部，明细级在子表标题栏', async () => {
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) {
+        return {
+          ...formDefinition,
+          userActions: [
+            { key: 'relocate-stock', label: '归位到库位', confirmTag: false, failMode: 'BLOCK', placement: 'master', params: null },
+            { key: 'generate-adjustment', label: '生成调整单', confirmTag: true, failMode: 'BLOCK', placement: 'detail', params: null },
+          ],
+        }
+      }
+      if (p.includes('/record')) return recordBundle
+      throw new Error(`unexpected GET ${p}`)
+    })
+    const { container } = renderEditor('/workbench/1209/view/P1/A')
+
+    const masterButton = await screen.findByRole('button', { name: '归位到库位' })
+    const detailButton = screen.getByRole('button', { name: '生成调整单' })
+    // 明细级落在子表标题栏；单据级落在主表工具条（帮助之后）
+    expect(container.querySelector('.erp-detail-toolbar')?.contains(detailButton)).toBe(true)
+    expect(container.querySelector('.erp-form-toolbar')?.contains(masterButton)).toBe(true)
+    expect(masterButton.compareDocumentPosition(detailButton)).toBeTruthy()
+  })
+
+  it('未下发自定义按钮时不渲染任何操作按钮', async () => {
+    renderEditor('/workbench/1209/view/P1/A')
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: '归位到库位' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '生成调整单' })).not.toBeInTheDocument()
+  })
+
+  it('单据级按钮点击发起操作请求并刷新单据（幂等键走请求头）', async () => {
+    const postMock = vi.fn().mockResolvedValue({ outcome: 'refreshed', message: '账面数量已重算' })
+    apiClientMock.post = postMock
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) {
+        return {
+          ...formDefinition,
+          userActions: [
+            { key: 'recalc-account', label: '重算账面数量', confirmTag: false, failMode: 'BLOCK', placement: 'master', params: null },
+          ],
+        }
+      }
+      if (p.includes('/record')) return recordBundle
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/workbench/1209/view/P1/A')
+
+    fireEvent.click(await screen.findByRole('button', { name: '重算账面数量' }))
+
+    await waitFor(() => expect(postMock).toHaveBeenCalled())
+    const [url, body, init] = postMock.mock.calls[0]
+    expect(url).toBe('/document-workbench/1209/action/recalc-account')
+    expect(body).toMatchObject({ key: ['P1', 'A'], confirm: true })
+    expect(String(init.headers['X-Idempotency-Key']).length).toBeGreaterThan(0)
+    expect(await screen.findByText('账面数量已重算')).toBeInTheDocument()
   })
 })
 

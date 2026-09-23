@@ -24,10 +24,15 @@ export interface FormOptionItem {
   disabled?: boolean
 }
 
+import type { DocumentActionMeta } from './documentActionRunner'
+
 /** 工作台/表单业务按钮（解析自 MODULES.FORM_BUTTONS，如 '1=copy;2=approve;3=print'） */
 export interface WorkbenchButton {
   action: string
 }
+
+/** 自定义按钮（单据操作）的元数据；类型与执行器共用一份定义（此处再导出，页面只依赖本文件）。 */
+export type { DocumentActionMeta }
 
 /** 表单页签（解析自 MODULES.FORM_TABS，如 '1=基本资料;2=其它'） */
 export interface FormTab {
@@ -124,6 +129,11 @@ export interface FormDefinition {
    helpUrl?: string | null
    /** 字段设置权限（2302 字段维护 CanSetup）：为 true 时表单标签右键可进入字段设置页 */
    canSetup: boolean
+   /**
+    * 自定义按钮（服务端随定义下发的、当前用户已获授权的单据操作）。
+    * 未授权的操作不会出现在这里——按钮是"不存在"，不是"禁用"；服务端对每次点击仍独立鉴权。
+    */
+   userActions?: DocumentActionMeta[] | null
    }
 
 /** 模块权限（与 EOS.API ModuleRights 对应，M0 扩展后） */
