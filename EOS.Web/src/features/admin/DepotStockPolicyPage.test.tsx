@@ -41,10 +41,15 @@ const depots = [
   { depotId: 'ZZ', depotName: '测试仓' },
 ]
 
+const locations = [
+  { locationNo: 'RACK-01', locationName: '货架一' },
+]
+
 describe('DepotStockPolicyPage', () => {
   beforeEach(() => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       if (path.includes('/tiers')) return tiers
+      if (path.includes('/locations')) return locations
       if (path.includes('/depots')) return depots
       return policies
     })
@@ -67,7 +72,7 @@ describe('DepotStockPolicyPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '编辑' }))
     const dialog = await screen.findByRole('dialog')
     const selects = within(dialog).getAllByRole('combobox')
-    expect(selects.length).toBe(2)
+    expect(selects.length).toBe(3)
     const batchOptions = within(selects[1] as HTMLElement).getAllByRole('option')
     expect(batchOptions.map((option) => option.textContent)).toEqual(['0 归零', '3 必填 + 效期（本版未实现）'])
     expect((batchOptions[1] as HTMLOptionElement).disabled).toBe(true)
@@ -146,10 +151,27 @@ describe('DepotStockPolicyPage', () => {
     expect(apiClientMock.delete.mock.calls[0][0]).toBe('/admin/depot-stock-policy/CP')
   })
 
+  it('双击行直接进入编辑：标题带仓名', async () => {
+    const { container } = renderWithProviders(<DepotStockPolicyPage />)
+    expect(await screen.findByText('CP')).toBeInTheDocument()
+    const rows = container.querySelectorAll('tbody tr')
+    fireEvent.doubleClick(rows[1])
+    expect(await screen.findByText('修改CP策略')).toBeInTheDocument()
+  })
+
+  it('所有仓库行编辑标题为修改所有仓库策略，且没有归位目标栏', async () => {
+    const { container } = renderWithProviders(<DepotStockPolicyPage />)
+    expect(await screen.findByText('所有仓库')).toBeInTheDocument()
+    const radios = container.querySelectorAll('input[type="radio"]')
+    fireEvent.click(radios[0])
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+    expect(await screen.findByText('修改所有仓库策略')).toBeInTheDocument()
+    expect(screen.queryByLabelText('升档归位目标库位')).not.toBeInTheDocument()
+  })
+
   it('归位是本页自管的独立动作：先预览，确认后才真执行', async () => {
     await selectCp()
     fireEvent.change(await screen.findByLabelText('目标库位'), { target: { value: 'RACK-01' } })
-
     apiClientMock.post.mockResolvedValueOnce({
       saved: false, requiresConfirmation: true, pendingGroups: 2, message: '将把 2 组改记到 RACK-01，库别总量不变。',
     })

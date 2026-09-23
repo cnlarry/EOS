@@ -57,6 +57,16 @@ interface Depot {
   depotName: string
 }
 
+interface DepotLocation {
+  locationNo: string
+  locationName: string
+}
+
+/** `*` 是部署级默认行，界面上一律叫"所有仓库"。 */
+function displayDepot(depotId: string): string {
+  return depotId === '*' ? '所有仓库' : depotId
+}
+
 /** 保存返回 400 时响应体仍是保存结果（不是标准 problem），故按形状宽容读取。 */
 function readSaveResult(error: unknown): SaveResult | null {
   if (!(error instanceof ApiError)) return null
@@ -130,7 +140,6 @@ export function DepotStockPolicyPage() {
     queryKey: ['depot-stock-policy-depots'],
     queryFn: () => apiClient.get<Depot[]>('/admin/depot-stock-policy/depots'),
   })
-
   const selectedId = Object.keys(rowSelection).find((key) => rowSelection[key])
   // 单选语义：首列是单选框，一次只留一行（表格底层是开关语义，不收拢会留下多行）。
   const handleRowSelectionChange = (updater: React.SetStateAction<RowSelectionState>) => {
@@ -152,6 +161,18 @@ export function DepotStockPolicyPage() {
     () => (policies.data ?? []).find((item) => item.depotId === '*') ?? null,
     [policies.data],
   )
+  // 归位目标库位下拉：只列该库别启用中的真实库位（哨兵行除外，服务端同样过滤）。
+  const blockLocations = useQuery({
+    queryKey: ['depot-stock-policy-locations', selectedId],
+    queryFn: () => apiClient.get<DepotLocation[]>(`/admin/depot-stock-policy/${encodeURIComponent(selectedId ?? '')}/locations`),
+    enabled: selected != null && selected.depotId !== '*',
+  })
+  const editorDepotId = editor?.depotId ?? ''
+  const editorLocations = useQuery({
+    queryKey: ['depot-stock-policy-locations', `editor:${editorDepotId}`],
+    queryFn: () => apiClient.get<DepotLocation[]>(`/admin/depot-stock-policy/${encodeURIComponent(editorDepotId)}/locations`),
+    enabled: editor != null && editorDepotId !== '' && editorDepotId !== '*',
+  })
 
   useEffect(() => {
     setRelocateTo('')
@@ -262,10 +283,12 @@ export function DepotStockPolicyPage() {
     })
   }
 
-  const openEdit = () => {
-    if (!selected) return
+  const openEdit = (row?: Policy) => {
+    const target = row ?? selected
+    if (!target) return
+    setRowSelection({ [target.depotId]: true })
     setEditor({
-      mode: 'edit', depotId: selected.depotId, draft: toDraft(selected),
+      mode: 'edit', depotId: target.depotId, draft: toDraft(target),
       relocateTo: '', confirmPanel: null, message: null,
     })
   }
@@ -317,7 +340,7 @@ export function DepotStockPolicyPage() {
       header: '库别',
       cell: (info) => (
         <span className="font-monospace fw-semibold">
-          {info.getValue() === '*' ? '*（部署级默认）' : String(info.getValue())}
+          {displayDepot(String(info.getValue()))}
         </span>
       ),
     },
@@ -341,13 +364,13 @@ export function DepotStockPolicyPage() {
         actions={(
           <>
             <Button size="sm" icon={<IconPlus size={16} />} onClick={openCreate}>新增</Button>
-            <Button size="sm" icon={<IconPencil size={16} />} disabled={!selected} onClick={openEdit}>编辑</Button>
+            <Button size="sm" icon={<IconPencil size={16} />} disabled={!selected} onClick={() => openEdit()}>编辑</Button>
             <Button
               size="sm"
               variant="danger"
               icon={<IconTrash size={16} />}
               disabled={!canModify}
-              title={selected?.depotId === '*' ? '部署级默认行不允许删除' : '删除所选库别的策略行'}
+              title={selected?.depotId === '*' ? '所有仓库行不允许删除' : '删除所选库别的策略行'}
               onClick={() => selected && setDeleteTarget(selected.depotId)}
             >
               删除
@@ -364,13 +387,14 @@ export function DepotStockPolicyPage() {
               columns={columns}
               data={policies.data ?? []}
               getRowId={(row: Policy) => row.depotId}
-              empty={<EmptyState title="没有策略行" description="库别无策略行时按部署级默认行使。" />}
+              empty={<EmptyState title="没有策略行" description="库别无策略行时按所有仓库行使。" />}
               resizable
               storageKey="depot-stock-policy"
               clientSideSorting
               rowClickSingleSelect
               rowSelection={rowSelection}
               onRowSelectionChange={handleRowSelectionChange}
+              onRowDoubleClick={(row) => openEdit(row)}
             />
             {selected && selected.depotId !== '*' ? (
               <div className="card">
@@ -380,14 +404,20 @@ export function DepotStockPolicyPage() {
                     把该库别记在『未指定位置』上的存量改记到目标库位（库别总量不变）。先预览，确认后才真写。
                   </div>
                   <div className="d-flex gap-2 align-items-center flex-wrap">
-                    <input
-                      className="form-control form-control-sm"
-                      style={{ maxWidth: 220 }}
+                    <select
+                      className="form-select form-select-sm"
+                      style={{ maxWidth: 260 }}
                       aria-label="目标库位"
                       value={relocateTo}
-                      placeholder="目标库位"
                       onChange={(event) => { setRelocateTo(event.target.value); setRelocatePreview(null) }}
-                    />
+                    >
+                      <option value="">请选择目标库位</option>
+                      {(blockLocations.data ?? []).map((item) => (
+                        <option key={item.locationNo} value={item.locationNo}>
+                          {item.locationNo}{item.locationName ? `（${item.locationName}）` : ''}
+                        </option>
+                      ))}
+                    </select>
                     <Button
                       size="sm"
                       icon={<IconArrowRight size={16} />}
@@ -426,7 +456,7 @@ export function DepotStockPolicyPage() {
 
       {editor ? (
         <Modal
-          title={editor.mode === 'create' ? '新增策略行' : `编辑：${editor.depotId === '*' ? '部署级默认' : editor.depotId}`}
+          title={editor.mode === 'create' ? '新增策略' : `修改${displayDepot(editor.depotId)}策略`}
           onClose={() => setEditor(null)}
           size="lg"
           footer={(
@@ -455,7 +485,7 @@ export function DepotStockPolicyPage() {
                     className="form-select form-select-sm"
                     aria-label="库别"
                     value={editor.depotId}
-                    onChange={(event) => setEditor({ ...editor, depotId: event.target.value })}
+                    onChange={(event) => setEditor({ ...editor, depotId: event.target.value, relocateTo: '' })}
                   >
                     {unconfiguredDepots.map((item) => (
                       <option key={item.depotId} value={item.depotId}>
@@ -466,7 +496,7 @@ export function DepotStockPolicyPage() {
                 )}
               </div>
             ) : null}
-            {(tiers.data ?? []).map((tier) => (
+            {(tiers.data ?? []).filter((tier) => tier.key !== 'monthCloseByLocation').map((tier) => (
               <div className="col-6" key={tier.key}>
                 <label className="form-label small mb-1" title={tier.description}>{tier.label}</label>
                 <select
@@ -482,16 +512,41 @@ export function DepotStockPolicyPage() {
                 </select>
               </div>
             ))}
-            <div className="col-12">
-              <label className="form-label small mb-1">升档归位目标库位（可选）</label>
-              <input
-                className="form-control form-control-sm"
-                value={editor.relocateTo}
-                placeholder="留空则不搬动存量"
-                onChange={(event) => setEditor({ ...editor, relocateTo: event.target.value })}
-              />
-              <div className="form-text">位置档位升高且确有“未指定位置”存量时填写。</div>
-            </div>
+            {editor.depotId !== '*' ? (
+              <div className="col-6">
+                <label className="form-label small mb-1">升档归位目标库位（可选）</label>
+                <select
+                  className="form-select form-select-sm"
+                  aria-label="升档归位目标库位"
+                  value={editor.relocateTo}
+                  onChange={(event) => setEditor({ ...editor, relocateTo: event.target.value })}
+                >
+                  <option value="">留空则不搬动存量</option>
+                  {(editorLocations.data ?? []).map((item) => (
+                    <option key={item.locationNo} value={item.locationNo}>
+                      {item.locationNo}{item.locationName ? `（${item.locationName}）` : ''}
+                    </option>
+                  ))}
+                </select>
+                <div className="form-text">位置档位升高且确有“未指定位置”存量时填写。</div>
+              </div>
+            ) : null}
+            {(tiers.data ?? []).filter((tier) => tier.key === 'monthCloseByLocation').map((tier) => (
+              <div className="col-6" key={tier.key}>
+                <label className="form-label small mb-1" title={tier.description}>{tier.label}</label>
+                <select
+                  className="form-select form-select-sm"
+                  value={editor.draft[tier.key] ?? ''}
+                  onChange={(event) => setEditor({ ...editor, draft: { ...editor.draft, [tier.key]: event.target.value } })}
+                >
+                  {tier.options.map((option) => (
+                    <option key={option.value} value={option.value} disabled={!option.implemented}>
+                      {option.implemented ? option.label : `${option.label}（本版未实现）`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
           </div>
 
           {editor.message ? (
