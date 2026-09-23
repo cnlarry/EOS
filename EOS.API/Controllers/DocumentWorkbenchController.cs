@@ -307,6 +307,21 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         return form is null?null:(definition,form,rights);
     }
 
+    /// <summary>
+    /// 该用户在本模块上有授权的单据动作名单——自定义承载页用它渲染按钮。
+    /// 没有统一表单、但仍有单据级动作的模块（如库存策略配置页）拿不到 FORM 定义，
+    /// 走这个只读端点即可；它是 FORM 里那份名单的同一个来源，不含未经授权的操作。
+    /// </summary>
+    [HttpGet("actions")]
+    public async Task<IActionResult> UserActions(int moduleId,CancellationToken token)
+    {
+        var definition=await AuthorizedDefinition(moduleId,token);
+        var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if(definition is null||userId is null)return NotFound();
+        if(!definition.HasAdd&&!definition.HasEdit)return NotFound();
+        return Ok(await repository.BuildUserActionsAsync(definition,userId,token));
+    }
+
     private IActionResult MapActionResult(int moduleId,string actionKey,DocumentActionExecution result)=>result.Status switch
     {
         DocumentActionStatus.Ok=>Ok(new{

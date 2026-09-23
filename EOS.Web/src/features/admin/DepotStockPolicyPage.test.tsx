@@ -3,6 +3,7 @@ import { apiClientMock } from '../../test/apiMock'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DepotStockPolicyPage } from './DepotStockPolicyPage'
+import { ToastProvider } from '../../components/ui/Toast'
 import { ApiError } from '../../types/api'
 
 vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
@@ -36,10 +37,20 @@ const tiers = [
   },
 ]
 
+/** 服务端按按钮级授权下发的名单；缺省为空（未授权时页面不认识任何操作）。 */
+let availableActions: Array<{
+  key: string; label: string; confirmTag: boolean; failMode: string; placement: string;
+  params: { fields: Array<{ key: string; label: string; type: string; required: boolean; maxLength: number }> } | null
+}> = []
+
 describe('DepotStockPolicyPage', () => {
   beforeEach(() => {
-    apiClientMock.get.mockImplementation(async (path: string) =>
-      path.includes('/tiers') ? tiers : policies)
+    availableActions = []
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      if (path.includes('/tiers')) return tiers
+      if (path.includes('/actions')) return availableActions
+      return policies
+    })
   })
 
   afterEach(() => {
@@ -47,7 +58,8 @@ describe('DepotStockPolicyPage', () => {
   })
 
   async function selectCp() {
-    const { container } = renderWithProviders(<DepotStockPolicyPage />)
+    // 页面上的单据操作按钮走全局轻提示反馈，缺 ToastProvider 会直接抛（不是一个静默失败）。
+    const { container } = renderWithProviders(<ToastProvider><DepotStockPolicyPage /></ToastProvider>)
     expect(await screen.findByText('CP')).toBeInTheDocument()
     const radios = container.querySelectorAll('input[type="radio"]')
     fireEvent.click(radios[1])
@@ -99,5 +111,38 @@ describe('DepotStockPolicyPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /保存/ }))
 
     expect(await screen.findByText(/本版未实现，不能保存为生效配置/)).toBeInTheDocument()
+  })
+
+  it('服务端没下发动作名单时不渲染任何操作按钮（页面不认识具体动作）', async () => {
+    await selectCp()
+    expect(screen.queryByRole('button', { name: '哨兵存量归位' })).not.toBeInTheDocument()
+  })
+
+  it('动作按名单渲染：填参数后先探路，确认才真执行', async () => {
+    availableActions = [
+      {
+        key: 'relocate-sentinel', label: '哨兵存量归位', confirmTag: true, failMode: 'BLOCK', placement: 'master',
+        params: { fields: [{ key: 'relocateTo', label: '目标库位', type: 'string', required: true, maxLength: 50 }] },
+      },
+    ]
+    await selectCp()
+
+    fireEvent.click(await screen.findByRole('button', { name: '哨兵存量归位' }))
+    fireEvent.change(await screen.findByLabelText(/目标库位/), { target: { value: 'RACK-01' } })
+
+    apiClientMock.post.mockResolvedValueOnce({ outcome: 'message', message: '将生成：…', requiresConfirmation: true })
+    fireEvent.click(screen.getByRole('button', { name: '确定' }))
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledTimes(1))
+    // 第一次是探路：confirm=false，带着参数与选中库别的主键
+    expect(apiClientMock.post.mock.calls[0][0]).toBe('/document-workbench/110310/action/relocate-sentinel')
+    expect(apiClientMock.post.mock.calls[0][1]).toMatchObject({
+      key: ['CP'], params: { relocateTo: 'RACK-01' }, confirm: false,
+    })
+
+    apiClientMock.post.mockResolvedValueOnce({ outcome: 'refreshed', message: '已完成归位：…' })
+    fireEvent.click(screen.getByRole('button', { name: '确定' }))
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledTimes(2))
+    expect(apiClientMock.post.mock.calls[1][1]).toMatchObject({ confirm: true, params: { relocateTo: 'RACK-01' } })
+    expect(await screen.findByText('已完成归位：…')).toBeInTheDocument()
   })
 })
