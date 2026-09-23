@@ -23,7 +23,7 @@ namespace EOS.API.Tests;
 /// 需要 EOS_ERP_TEST_CONNECTION。
 /// </summary>
 [Collection("live-database")]
-public sealed class DocumentActionExecutorLiveTests
+public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
 {
     private static readonly string ConnectionString =
         Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
@@ -41,6 +41,15 @@ public sealed class DocumentActionExecutorLiveTests
             .Build();
         return new DbConnectionFactory(configuration);
     }
+
+    /// <summary>用例经办人：按钮授权是 fail-closed 名单，整类的每个用例先给它授权、结束收回。
+    /// 授权表的目标列与 SYSDD/SYSDH 同宽（NCHAR(10)），故用例账号也取同宽。</summary>
+    private const string TestUserId = "ZZLIVE0001";
+
+    public Task InitializeAsync() =>
+        GrantAsync(TestUserId, DocumentActionProbeHandler.ActionKey, FailingActionKey);
+
+    public Task DisposeAsync() => RevokeAsync(TestUserId);
 
     private sealed class ThrowingAction : IDocumentUserAction
     {
@@ -62,6 +71,7 @@ public sealed class DocumentActionExecutorLiveTests
         return new DocumentActionExecutor(
             connections,
             new DocumentActionRegistry(actions, NullLogger<DocumentActionRegistry>.Instance),
+            new DocumentActionAuthorization(connections),
             new WorkbenchScopeFilter(new ApiMetrics()),
             new WorkbenchIdempotency(),
             EffectShadowRunner.BuildPipelineFor(ConnectionString),
@@ -69,11 +79,43 @@ public sealed class DocumentActionExecutorLiveTests
             NullLogger<DocumentActionExecutor>.Instance);
     }
 
+    /// <summary>
+    /// 按钮授权是 fail-closed 名单：用例先显式授权再用，结束后收回（不留名单行）。
+    /// 名单表按 (目标, 模块, 键) 存，键不必先有配置行，因此用例不碰任何模块的配置。
+    /// </summary>
+    private static async Task GrantAsync(string userId, params string[] keys)
+    {
+        await using var connection = await OpenAsync();
+        foreach (var key in keys)
+        {
+            await using var command = new SqlCommand(
+                """
+                DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@User AND M_IDX=@ModuleId AND BUTTON_KEY=@Key;
+                INSERT INTO dbo.SYSDD_BUTTON (USER_ID,M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                VALUES (@User,@ModuleId,@Key,1,N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
+                """, connection);
+            command.Parameters.Add("@User", SqlDbType.NVarChar, 20).Value = userId;
+            command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = ModuleId;
+            command.Parameters.Add("@Key", SqlDbType.NVarChar, 50).Value = key;
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
+    private static async Task RevokeAsync(string userId)
+    {
+        await using var connection = await OpenAsync();
+        await using var command = new SqlCommand(
+            "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@User AND M_IDX=@ModuleId;", connection);
+        command.Parameters.Add("@User", SqlDbType.NVarChar, 20).Value = userId;
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = ModuleId;
+        await command.ExecuteNonQueryAsync();
+    }
+
     private static WorkbenchDefinition Definition(JsonElement? actions, string execTag = "Z", bool hasOwnerColumn = true) =>
         new(ModuleId: ModuleId, Title: "仓库资料", MasterTable: MasterTable, DetailTable: null,
             MasterFields: [], DetailFields: [], DefaultSort: null, HasAdd: true, HasEdit: true, DetailNoSave: false,
             MasterPkOrder: ["DEPOT_ID"], DetailNoFields: "", HasWorkflow: false,
-            UserId: "codex-live-test",
+            UserId: TestUserId,
             ExecTag: execTag,
             HasOwnerColumn: hasOwnerColumn,
             FilterFieldKeys: new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "DEPOT_ID", "DEPOT_NAME" },
@@ -158,7 +200,7 @@ public sealed class DocumentActionExecutorLiveTests
         {
             var result = await Executor().ExecuteAsync(
                 Definition(Actions(ManualRow(action))), Form(), action,
-                new DocumentActionRequest([depotId]), "codex-live-test", "测试经办人", null, idempotencyKey, CancellationToken.None);
+                new DocumentActionRequest([depotId]), TestUserId, "测试经办人", null, idempotencyKey, CancellationToken.None);
 
             Assert.Equal(DocumentActionStatus.Ok, result.Status);
             Assert.Equal(DocumentActionOutcome.Message, result.Result!.Outcome);
@@ -185,9 +227,9 @@ public sealed class DocumentActionExecutorLiveTests
             var executor = Executor();
             var definition = Definition(Actions(ManualRow(action)));
             var first = await executor.ExecuteAsync(definition, Form(), action,
-                new DocumentActionRequest([depotId]), "codex-live-test", "测试经办人", null, idempotencyKey, CancellationToken.None);
+                new DocumentActionRequest([depotId]), TestUserId, "测试经办人", null, idempotencyKey, CancellationToken.None);
             var second = await executor.ExecuteAsync(definition, Form(), action,
-                new DocumentActionRequest([depotId]), "codex-live-test", "测试经办人", null, idempotencyKey, CancellationToken.None);
+                new DocumentActionRequest([depotId]), TestUserId, "测试经办人", null, idempotencyKey, CancellationToken.None);
 
             Assert.Equal(DocumentActionStatus.Ok, first.Status);
             Assert.Equal(DocumentActionStatus.Ok, second.Status);
@@ -211,7 +253,7 @@ public sealed class DocumentActionExecutorLiveTests
         {
             var result = await Executor().ExecuteAsync(
                 Definition(Actions(ManualRow(action, confirmTag: true))), Form(), action,
-                new DocumentActionRequest([depotId], Confirm: false), "codex-live-test", "测试经办人", null, idempotencyKey, CancellationToken.None);
+                new DocumentActionRequest([depotId], Confirm: false), TestUserId, "测试经办人", null, idempotencyKey, CancellationToken.None);
 
             Assert.Equal(DocumentActionStatus.Ok, result.Status);
             Assert.True(result.RequiresConfirmation);
@@ -221,7 +263,7 @@ public sealed class DocumentActionExecutorLiveTests
             // 探路不占键：紧接着带确认的真实执行必须能跑（否则用户第一次点永远失败）。
             var confirmed = await Executor().ExecuteAsync(
                 Definition(Actions(ManualRow(action, confirmTag: true))), Form(), action,
-                new DocumentActionRequest([depotId], Confirm: true), "codex-live-test", "测试经办人", null, idempotencyKey, CancellationToken.None);
+                new DocumentActionRequest([depotId], Confirm: true), TestUserId, "测试经办人", null, idempotencyKey, CancellationToken.None);
             Assert.Equal(DocumentActionStatus.Ok, confirmed.Status);
             Assert.False(confirmed.RequiresConfirmation);
             Assert.Equal(1, await AuditCountAsync(depotId, action));
@@ -240,12 +282,12 @@ public sealed class DocumentActionExecutorLiveTests
         var definition = Definition(Actions(ManualRow(DocumentActionProbeHandler.ActionKey)));
 
         var notConfigured = await Executor().ExecuteAsync(definition, Form(), "recalc-account",
-            new DocumentActionRequest([depotId]), "codex-live-test", "测试经办人", null, Guid.NewGuid().ToString("N"), CancellationToken.None);
+            new DocumentActionRequest([depotId]), TestUserId, "测试经办人", null, Guid.NewGuid().ToString("N"), CancellationToken.None);
         Assert.Equal(DocumentActionStatus.NotFound, notConfigured.Status);
 
         // 配置了但实现没注册：同样是"不可执行"，不得静默跑掉别的东西。
         var notRegistered = await Executor().ExecuteAsync(Definition(Actions(ManualRow(FailingActionKey))), Form(), FailingActionKey,
-            new DocumentActionRequest([depotId]), "codex-live-test", "测试经办人", null, Guid.NewGuid().ToString("N"), CancellationToken.None);
+            new DocumentActionRequest([depotId]), TestUserId, "测试经办人", null, Guid.NewGuid().ToString("N"), CancellationToken.None);
         Assert.Equal(DocumentActionStatus.NotFound, notRegistered.Status);
     }
 
@@ -258,7 +300,7 @@ public sealed class DocumentActionExecutorLiveTests
         {
             var result = await Executor(new ThrowingAction()).ExecuteAsync(
                 Definition(Actions(ManualRow(FailingActionKey))), Form(), FailingActionKey,
-                new DocumentActionRequest([depotId]), "codex-live-test", "测试经办人", null, idempotencyKey, CancellationToken.None);
+                new DocumentActionRequest([depotId]), TestUserId, "测试经办人", null, idempotencyKey, CancellationToken.None);
 
             Assert.Equal(DocumentActionStatus.Failed, result.Status);
             Assert.Equal(DocumentActionErrorCodes.Failed, result.ErrorCode);
@@ -283,7 +325,7 @@ public sealed class DocumentActionExecutorLiveTests
         {
             var result = await Executor(new ThrowingAction()).ExecuteAsync(
                 Definition(Actions(ManualRow(FailingActionKey, failMode: "WARN"))), Form(), FailingActionKey,
-                new DocumentActionRequest([depotId]), "codex-live-test", "测试经办人", null, idempotencyKey, CancellationToken.None);
+                new DocumentActionRequest([depotId]), TestUserId, "测试经办人", null, idempotencyKey, CancellationToken.None);
 
             Assert.Equal(DocumentActionStatus.Ok, result.Status);
             Assert.Equal(DocumentActionOutcome.Message, result.Result!.Outcome);
@@ -306,7 +348,7 @@ public sealed class DocumentActionExecutorLiveTests
         {
             var result = await Executor().ExecuteAsync(
                 Definition(Actions(ManualRow(action))), Form(), action,
-                new DocumentActionRequest([depotId]), "codex-live-test", "测试经办人",
+                new DocumentActionRequest([depotId]), TestUserId, "测试经办人",
                 $"{MasterTable}.DEPOT_ID='__NOT_IN_RANGE__'", Guid.NewGuid().ToString("N"), CancellationToken.None);
 
             Assert.Equal(DocumentActionStatus.OutOfScope, result.Status);
@@ -327,7 +369,7 @@ public sealed class DocumentActionExecutorLiveTests
         // EXEC_TAG=B 需要 OWNER 列；模块主表没有该列时不得退化为"全可见"。
         var result = await Executor().ExecuteAsync(
             Definition(Actions(ManualRow(action)), execTag: "B", hasOwnerColumn: false), Form(), action,
-            new DocumentActionRequest([depotId]), "codex-live-test", "测试经办人", null, Guid.NewGuid().ToString("N"), CancellationToken.None);
+            new DocumentActionRequest([depotId]), TestUserId, "测试经办人", null, Guid.NewGuid().ToString("N"), CancellationToken.None);
 
         Assert.Equal(DocumentActionStatus.FilterUnsupported, result.Status);
     }
@@ -339,7 +381,7 @@ public sealed class DocumentActionExecutorLiveTests
 
         var result = await Executor().ExecuteAsync(
             Definition(Actions(ManualRow(action))), Form(), action,
-            new DocumentActionRequest(["__NO_SUCH_DEPOT__"]), "codex-live-test", "测试经办人", null, Guid.NewGuid().ToString("N"), CancellationToken.None);
+            new DocumentActionRequest(["__NO_SUCH_DEPOT__"]), TestUserId, "测试经办人", null, Guid.NewGuid().ToString("N"), CancellationToken.None);
 
         Assert.Equal(DocumentActionStatus.NotFound, result.Status);
     }

@@ -646,7 +646,10 @@ public sealed class MenuAdminRepository(
                 await delete.ExecuteNonQueryAsync(token);
             }
             await using (var rights = new SqlCommand(
-                "DELETE FROM dbo.SYSDD WHERE M_IDX=@Id; DELETE FROM dbo.SYSDH WHERE M_IDX=@Id;", connection, transaction))
+                // 按钮授权行按模块清理：模块没了，它的按钮名单也不能留在库里（与模块/报表权限同处清理）。
+                "DELETE FROM dbo.SYSDD WHERE M_IDX=@Id; DELETE FROM dbo.SYSDH WHERE M_IDX=@Id;"
+                + " DELETE FROM dbo.SYSDD_BUTTON WHERE M_IDX=@Id; DELETE FROM dbo.SYSDH_BUTTON WHERE M_IDX=@Id;",
+                connection, transaction))
             {
                 rights.Parameters.Add("@Id", SqlDbType.Int).Value = id;
                 await rights.ExecuteNonQueryAsync(token);

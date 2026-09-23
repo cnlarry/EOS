@@ -1,4 +1,4 @@
-import { IconKey, IconPlus, IconRefresh, IconReport, IconShield, IconUserOff, IconUserPlus, IconUsers } from '@tabler/icons-react'
+import { IconClick, IconKey, IconPlus, IconRefresh, IconReport, IconShield, IconUserOff, IconUserPlus, IconUsers } from '@tabler/icons-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -257,6 +257,7 @@ export function UserAdminPage() {
             <Button size="sm" variant="ghost" icon={<IconKey size={14} />} onClick={() => setPasswordTarget(user)}>设置密码</Button>
             <Button size="sm" variant="ghost" icon={<IconShield size={14} />} onClick={() => navigate(`/admin/users/${encodeURIComponent(id)}/rights`)}>权限</Button>
             <Button size="sm" variant="ghost" icon={<IconReport size={14} />} onClick={() => navigate(`/admin/users/${encodeURIComponent(id)}/report-rights`)}>报表权限</Button>
+            <Button size="sm" variant="ghost" icon={<IconClick size={14} />} onClick={() => navigate(`/admin/users/${encodeURIComponent(id)}/button-rights`)}>按钮权限</Button>
             <Button size="sm" variant="ghost" icon={<IconUsers size={14} />} onClick={() => setGroupsTarget(user)}>所属组</Button>
             <Button
               size="sm"

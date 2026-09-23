@@ -319,6 +319,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
             warnings=result.Result.Warnings,
             requiresConfirmation=result.RequiresConfirmation}),
         DocumentActionStatus.NotFound=>NotFound(ApiProblem.Create(StatusCodes.Status404NotFound,result.ErrorCode??DocumentActionErrorCodes.NotFound,result.ErrorMessage??"操作不存在。")),
+        DocumentActionStatus.Forbidden=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,result.ErrorCode??DocumentActionErrorCodes.Forbidden,result.ErrorMessage??"没有该操作的授权。")),
         DocumentActionStatus.OutOfScope=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,result.ErrorCode??"RECORD_OUT_OF_SCOPE",result.ErrorMessage??"目标记录不在当前用户数据范围内。")),
         DocumentActionStatus.FilterUnsupported=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,result.ErrorCode??"DATA_FILTER_UNSUPPORTED",result.ErrorMessage??"当前数据过滤条件尚不支持，已拒绝执行。")),
         DocumentActionStatus.KeyMismatch=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,result.ErrorCode??"RECORD_KEY_MISMATCH",result.ErrorMessage??"主键数量与模块主键不匹配。")),

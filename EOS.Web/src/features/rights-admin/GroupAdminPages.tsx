@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { usePageBreadcrumb } from '../../components/layout/PageBreadcrumbContext'
 import { apiClient } from '../../services/api'
+import { ButtonRightsMatrix } from './ButtonRightsMatrix'
 import { ReportRightsMatrix } from './ReportRightsMatrix'
 import { RightsMatrix } from './RightsMatrix'
 import type { GroupMemberSummary, UserGroupSummary } from './types'
@@ -54,6 +55,23 @@ export function GroupRightsPage() {
       mode="group"
       targetId={id}
       title={`用户组模块权限：${id}`}
+      onClose={() => navigate('/admin/groups')}
+    />
+  )
+}
+
+/** 用户组自定义按钮权限完整页面（2305 定制页子页）：按钮是默认拒绝的名单，需显式授权。 */
+export function GroupButtonRightsPage() {
+  const id = useGroupId()
+  const navigate = useNavigate()
+  useGroupBreadcrumb(id, '按钮权限')
+  return (
+    <ButtonRightsMatrix
+      open
+      variant="page"
+      mode="group"
+      targetId={id}
+      title={`用户组按钮权限：${id}`}
       onClose={() => navigate('/admin/groups')}
     />
   )

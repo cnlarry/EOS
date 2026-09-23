@@ -37,7 +37,11 @@ public sealed record BusinessActionDto(
     [property: JsonPropertyName("reverse")] string? Reverse = null,
     [property: JsonPropertyName("remark")] string? Remark = null,
     [property: JsonPropertyName("sourceRef")] string? SourceRef = null,
-    [property: JsonPropertyName("ops")] IReadOnlyList<BusinessActionOpDto>? Ops = null);
+    [property: JsonPropertyName("ops")] IReadOnlyList<BusinessActionOpDto>? Ops = null,
+    // 按钮标题（仅 EVENT_CODE='MANUAL' 使用；EFFECT_NAME 是整类效果的命名，不足以当按钮文案）。
+    [property: JsonPropertyName("label")] string? Label = null,
+    // 点击前是否先返回"将会发生什么"让用户确认（仅 MANUAL 使用）。
+    [property: JsonPropertyName("confirmTag")] bool ConfirmTag = false);
 
 /// <summary>模块校验规则（MODULE_VALIDATION_RULE，与业务动作同一编辑区维护）。</summary>
 public sealed record ModuleValidationRuleDto(
@@ -71,7 +75,26 @@ public sealed record BusinessConfigCatalogDto(
     [property: JsonPropertyName("sourceAggregates")] IReadOnlyList<string> SourceAggregates,
     [property: JsonPropertyName("validationStages")] IReadOnlyList<string> ValidationStages,
     [property: JsonPropertyName("validationKeys")] IReadOnlyList<string> ValidationKeys,
-    [property: JsonPropertyName("labels")] BusinessConfigLabelsDto? Labels = null);
+    [property: JsonPropertyName("labels")] BusinessConfigLabelsDto? Labels = null,
+    // 可配置的自定义按钮键（EVENT_CODE='MANUAL' 行只能从这里挑；未登记实现即发布不出去）。
+    [property: JsonPropertyName("documentActions")] IReadOnlyList<DocumentActionCatalogEntryDto>? DocumentActions = null);
+
+/// <summary>一个可配置的自定义按钮（2301 下拉项）。</summary>
+public sealed record DocumentActionCatalogEntryDto(
+    [property: JsonPropertyName("key")] string Key,
+    [property: JsonPropertyName("label")] string Label,
+    [property: JsonPropertyName("placement")] string Placement);
+
+/// <summary>自定义按钮的授权镜子（每个按钮当前多少用户 / 多少组可用）。</summary>
+public sealed record DocumentActionAuthorizationMirrorDto(
+    [property: JsonPropertyName("buttons")] IReadOnlyList<DocumentActionAuthorizationEntryDto> Buttons);
+
+public sealed record DocumentActionAuthorizationEntryDto(
+    [property: JsonPropertyName("seq")] int Seq,
+    [property: JsonPropertyName("key")] string Key,
+    [property: JsonPropertyName("label")] string Label,
+    [property: JsonPropertyName("users")] int Users,
+    [property: JsonPropertyName("groups")] int Groups);
 
 /// <summary>
 /// 目录值的中文显示名（与目录集合同源，缺标签即在界面上露出英文码）。

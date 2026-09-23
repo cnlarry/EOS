@@ -91,29 +91,6 @@ public sealed record DocumentActionRequest(
     [property: System.Text.Json.Serialization.JsonPropertyName("confirm")] bool Confirm = false);
 
 /// <summary>
-/// Button metadata published with the definition snapshot (definition.userActions[]). The client
-/// renders buttons from this list only, so an action the user is not authorized for never appears;
-/// the server re-authorizes every request regardless.
-/// </summary>
-public sealed record DocumentActionMetadata(
-    [property: System.Text.Json.Serialization.JsonPropertyName("key")] string Key,
-    [property: System.Text.Json.Serialization.JsonPropertyName("label")] string Label,
-    [property: System.Text.Json.Serialization.JsonPropertyName("confirmTag")] bool ConfirmTag,
-    [property: System.Text.Json.Serialization.JsonPropertyName("failMode")] string FailMode,
-    [property: System.Text.Json.Serialization.JsonPropertyName("params")] JsonElement? Params = null,
-    [property: System.Text.Json.Serialization.JsonPropertyName("placement")] string Placement = DocumentActionPlacements.Master);
-
-/// <summary>Where a configured action is rendered. Detail-level actions sit in the detail grid header, master-level ones at the tail of the document toolbar.</summary>
-public static class DocumentActionPlacements
-{
-    /// <summary>Master level: acts on the document as a whole.</summary>
-    public const string Master = "master";
-
-    /// <summary>Detail level: acts on the detail grid (recalculate lines, generate downstream document from the differences).</summary>
-    public const string Detail = "detail";
-}
-
-/// <summary>
 /// Error codes added by this mechanism (RFC7807 problem.code). Everything else reuses the existing
 /// write-path codes: IDEMPOTENCY_KEY_REQUIRED, INVALID_RECORD_KEY, RECORD_OUT_OF_SCOPE,
 /// DATA_FILTER_UNSUPPORTED, CONCURRENT_MODIFIED.

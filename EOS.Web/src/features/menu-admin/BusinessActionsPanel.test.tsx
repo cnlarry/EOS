@@ -468,3 +468,99 @@ describe('BusinessActionsPanel', () => {
     expect(onDraftChange.mock.calls.at(-1)![0].actions).toHaveLength(2)
   })
 })
+
+/**
+ * 自定义按钮（EVENT_CODE='MANUAL'）：这类行的键来自操作注册表而非效果目录，
+ * 编辑时字段另一套（按钮标题/二次确认/入参声明），且不参与加工单；
+ * 配置面还要显示"当前授权：N 用户 / M 组"，因为配了没人能用是它的正常状态。
+ */
+describe('BusinessActionsPanel 自定义按钮行', () => {
+  const manualCatalog = {
+    ...catalog,
+    events: [...catalog.events, 'MANUAL'],
+    labels: { ...catalog.labels, events: { ...catalog.labels.events, MANUAL: '用户点击（自定义按钮）' } },
+    documentActions: [
+      { key: 'recalc-account', label: '重算账面数', placement: 'detail' },
+      { key: 'relocate-stock', label: '归位到库位', placement: 'master' },
+    ],
+  }
+  const manualConfig = {
+    moduleId: 1607,
+    actions: [
+      {
+        seq: 1,
+        eventCode: 'MANUAL',
+        effectKey: 'recalc-account',
+        label: '重算账面数量',
+        confirmTag: true,
+        enabled: true,
+        failMode: 'BLOCK',
+        params: JSON.stringify({ fields: [{ key: 'relocateTo', label: '目标库位', type: 'string', required: true }] }),
+        ops: [],
+      },
+    ],
+    validationRules: [],
+  }
+  const authorization = {
+    buttons: [{ seq: 1, key: 'recalc-account', label: '重算账面数量', users: 0, groups: 0 }],
+  }
+
+  beforeEach(() => {
+    apiClientMock.get.mockImplementation(async (url: string) => {
+      if (url.endsWith('/module-business-config/meta')) return manualCatalog
+      if (url.endsWith('/module-business-config/1607')) return manualConfig
+      if (url.endsWith('/module-business-config/1607/field-labels')) return fieldLabels
+      if (url.endsWith('/module-business-config/1607/action-authorization')) return authorization
+      if (url.endsWith('/module-business-config/schemas')) {
+        return { effects: [], reverseKinds: ['no-reverse'], reverseKindLabels: {}, validationParams: [] }
+      }
+      return {}
+    })
+  })
+
+  it('按按钮键渲染名称，并显示授权镜子（0 用户 / 0 组要显式说出来）', async () => {
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
+
+    await screen.findByText('业务动作（1）')
+    expect(await screen.findByText('重算账面数量')).toBeInTheDocument()
+    expect(screen.getByText(/尚无任何授权，发布后无人可点/)).toBeInTheDocument()
+  })
+
+  it('选中按钮行时显示自定义按钮说明，而不是加工单', async () => {
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
+    await screen.findByText('业务动作（1）')
+
+    fireEvent.click(screen.getByText('重算账面数量'))
+
+    expect(await screen.findByText('自定义按钮')).toBeInTheDocument()
+    expect(screen.queryByText(/^加工单（/)).not.toBeInTheDocument()
+  })
+
+  it('编辑按钮行：有标题与二次确认与入参声明，没有反向语义', async () => {
+    const onDraftChange = vi.fn()
+    renderWithProviders(
+      <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} onDraftChange={onDraftChange} />,
+    )
+    await screen.findByText('业务动作（1）')
+
+    fireEvent.click(screen.getByText('重算账面数量'))
+    // 动作区与校验规则区各有一个「编辑」，动作区在上。
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
+    const dialog = within(await screen.findByRole('dialog'))
+
+    expect(dialog.getByText('按钮标题（显示在单据上）')).toBeInTheDocument()
+    expect(dialog.getByLabelText('先返回"将会发生什么"')).toBeChecked()
+    expect(dialog.getByText('点击时让用户填的参数')).toBeInTheDocument()
+    expect(dialog.getByLabelText('参数 1 键')).toHaveValue('relocateTo')
+    expect(dialog.queryByText('反向（解批语义）')).not.toBeInTheDocument()
+
+    fireEvent.change(dialog.getByLabelText('参数 1 标签'), { target: { value: '目标库位（改）' } })
+    fireEvent.click(dialog.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(onDraftChange.mock.calls.at(-1)![0].dirty).toBe(true))
+    const saved = onDraftChange.mock.calls.at(-1)![0].actions[0]
+    expect(saved.label).toBe('重算账面数量')
+    expect(saved.confirmTag).toBe(true)
+    expect(JSON.parse(saved.params).fields[0].label).toBe('目标库位（改）')
+  })
+})

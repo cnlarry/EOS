@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { usePageBreadcrumb } from '../../components/layout/PageBreadcrumbContext'
+import { ButtonRightsMatrix } from '../rights-admin/ButtonRightsMatrix'
 import { ReportRightsMatrix } from '../rights-admin/ReportRightsMatrix'
 import { RightsMatrix } from '../rights-admin/RightsMatrix'
 
@@ -49,6 +50,23 @@ export function UserReportRightsPage() {
       mode="user"
       targetId={id}
       title={`用户报表权限：${id}`}
+      onClose={() => navigate('/admin/users')}
+    />
+  )
+}
+
+/** 用户自定义按钮权限完整页面（2306 定制页子页）：按钮是默认拒绝的名单，需显式授权。 */
+export function UserButtonRightsPage() {
+  const id = useUserId()
+  const navigate = useNavigate()
+  useUserBreadcrumb(id, '按钮权限')
+  return (
+    <ButtonRightsMatrix
+      open
+      variant="page"
+      mode="user"
+      targetId={id}
+      title={`用户按钮权限：${id}`}
       onClose={() => navigate('/admin/users')}
     />
   )

@@ -32,7 +32,8 @@ public sealed class ModuleBusinessConfigRepository(
         await using (var actionCommand = new SqlCommand(
             """
             SELECT ACTION_ID,EVENT_CODE,SEQ,EFFECT_KEY,EFFECT_NAME,ENABLED,FAIL_MODE,
-                   CONDITION_STRUCT,PARAM_STRUCT,REVERSE_STRUCT,REMARK,SOURCE_REF
+                   CONDITION_STRUCT,PARAM_STRUCT,REVERSE_STRUCT,REMARK,SOURCE_REF,
+                   LABEL,CONFIRM_TAG
             FROM dbo.MODULE_BUSINESS_ACTION WITH (NOLOCK)
             WHERE MODULE_ID=@ModuleId
             ORDER BY EVENT_CODE,SEQ;
@@ -55,7 +56,9 @@ public sealed class ModuleBusinessConfigRepository(
                     GetString(reader, 9),
                     GetString(reader, 10),
                     GetString(reader, 11),
-                    new List<BusinessActionOpDto>());
+                    new List<BusinessActionOpDto>(),
+                    GetString(reader, 12),
+                    reader.GetBoolean(13));
                 actionIndex.Add(actionId, actions.Count);
                 actions.Add(action);
             }
@@ -559,10 +562,12 @@ public sealed class ModuleBusinessConfigRepository(
             INSERT INTO dbo.MODULE_BUSINESS_ACTION
                 (MODULE_ID,EVENT_CODE,SEQ,EFFECT_KEY,EFFECT_NAME,ENABLED,FAIL_MODE,
                  CONDITION_STRUCT,PARAM_STRUCT,REVERSE_STRUCT,REMARK,SOURCE_REF,
+                 LABEL,CONFIRM_TAG,
                  CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
             VALUES
                 (@ModuleId,@Event,@Seq,@EffectKey,@EffectName,@Enabled,@FailMode,
                  @Condition,@Params,@Reverse,@Remark,@SourceRef,
+                 @Label,@ConfirmTag,
                  @UpdatedBy,SYSDATETIME(),@UpdatedBy,SYSDATETIME());
             SELECT SCOPE_IDENTITY();
             """;
@@ -579,6 +584,8 @@ public sealed class ModuleBusinessConfigRepository(
         AddNullable(command, "@Reverse", action.Reverse, null);
         AddNullable(command, "@Remark", action.Remark, 500);
         AddNullable(command, "@SourceRef", action.SourceRef, 100);
+        AddNullable(command, "@Label", action.Label, 200);
+        command.Parameters.Add("@ConfirmTag", SqlDbType.Bit).Value = action.ConfirmTag;
         command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 40).Value = updatedBy;
         return Convert.ToInt64(await command.ExecuteScalarAsync(token));
     }

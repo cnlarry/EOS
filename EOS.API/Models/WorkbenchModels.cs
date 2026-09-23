@@ -77,6 +77,28 @@ public sealed record WorkbenchDefinition(
         && enabled.ValueKind == JsonValueKind.True;
 }
 
+/// <summary>
+/// 按钮元数据：随表单/工作台定义下发给前端（`userActions[]`），前端只按它渲染按钮，
+/// 因此未获授权的操作根本不会出现在界面上；服务端对每次请求仍独立鉴权。
+/// </summary>
+public sealed record DocumentActionMetadata(
+    [property: JsonPropertyName("key")] string Key,
+    [property: JsonPropertyName("label")] string Label,
+    [property: JsonPropertyName("confirmTag")] bool ConfirmTag,
+    [property: JsonPropertyName("failMode")] string FailMode,
+    [property: JsonPropertyName("params")] JsonElement? Params = null,
+    [property: JsonPropertyName("placement")] string Placement = DocumentActionPlacements.Master);
+
+/// <summary>按钮的渲染落点：明细级占子表标题栏，单据级贴浏览态工具条尾部。</summary>
+public static class DocumentActionPlacements
+{
+    /// <summary>单据级：作用于整单。</summary>
+    public const string Master = "master";
+
+    /// <summary>明细级：作用于子表（重算明细、按差异生成下游单据等）。</summary>
+    public const string Detail = "detail";
+}
+
 /// <summary>Form tab definition (parsed from MODULES.FORM_TABS).</summary>
 public sealed record FormTabDefinition(int No, string Title);
 
@@ -85,7 +107,8 @@ public sealed record FormTabDefinition(int No, string Title);
 /// option is shown but cannot be picked (a tier that is not implemented yet).
 /// </summary>
 public sealed record FormOptionItem(string Value, string Label, bool Disabled = false);
-public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify, IReadOnlyList<FormTabDefinition> Tabs = default!, int Columns = 2, IReadOnlyList<WorkbenchButton>? Buttons = null, IReadOnlyDictionary<string, string> DefaultValues = default!, bool HasWorkflow = false, bool IfCopy = false, bool SearchMaster = false, bool SearchDetail = false, bool CanDelete = false, bool CanApprove = false, bool CanDeapprove = false, bool CanEndCase = false, bool CanUnEndCase = false, bool CanFileView = false, bool CanFileUpda = false, bool CanFileEdit = false, bool CanFileDele = false, bool CanAddNew = false, bool CanEdit = false, string? HelpUrl = null, bool CanSetup = false, bool HasStatelessApprove = false, bool HasApproveCapability = false);
+public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify, IReadOnlyList<FormTabDefinition> Tabs = default!, int Columns = 2, IReadOnlyList<WorkbenchButton>? Buttons = null, IReadOnlyDictionary<string, string> DefaultValues = default!, bool HasWorkflow = false, bool IfCopy = false, bool SearchMaster = false, bool SearchDetail = false, bool CanDelete = false, bool CanApprove = false, bool CanDeapprove = false, bool CanEndCase = false, bool CanUnEndCase = false, bool CanFileView = false, bool CanFileUpda = false, bool CanFileEdit = false, bool CanFileDele = false, bool CanAddNew = false, bool CanEdit = false, string? HelpUrl = null, bool CanSetup = false, bool HasStatelessApprove = false, bool HasApproveCapability = false,
+    [property: JsonPropertyName("userActions")] IReadOnlyList<DocumentActionMetadata>? UserActions = null);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength, int TabNo = 1, int? FormOrder = null, int Span = 1, bool NewLine = false, string? CellGroup = null, int CellRole = 0, IReadOnlyList<FormOptionItem>? Options = null, bool DisplayOnly = false, bool CanCopy = true,
     int? Precision = null, int? Scale = null);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
