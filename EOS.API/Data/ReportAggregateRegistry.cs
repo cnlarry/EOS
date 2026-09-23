@@ -1,3 +1,4 @@
+using EOS.API.Data.Inventory;
 using EOS.API.Models;
 
 namespace EOS.API.Data;
@@ -283,20 +284,11 @@ public static class ReportAggregateRegistry
     /// </remarks>
     private static readonly ReportAggregate InventoryDaily = new(
         "INV_Pro_Depot_1",
-        """
+        $"""
         WITH PAIR AS (
-            -- 同一 (库别, 料号) 在余额表中可能对应多行，先取出唯一组合，
-            -- 否则后续按这两列关联流水时会成倍放大期初与本期收发。
-            SELECT DISTINCT i.DEPOT_ID, i.PRO_NO
-            FROM dbo.INV_PRO_DEPOT i
-            JOIN dbo.PRODUCT pr ON pr.PRO_NO = i.PRO_NO
-            WHERE pr.PRO_TYPE = '3'
-              AND (@depot1 IS NULL OR @depot1 = '' OR i.DEPOT_ID >= @depot1)
-              AND (@depot2 IS NULL OR @depot2 = '' OR i.DEPOT_ID <= @depot2)
-              AND (@pro1 IS NULL OR @pro1 = '' OR i.PRO_NO >= @pro1)
-              AND (@pro2 IS NULL OR @pro2 = '' OR i.PRO_NO <= @pro2)
-              AND (@sort1 IS NULL OR @sort1 = '' OR pr.SORT_ID >= @sort1)
-              AND (@sort2 IS NULL OR @sort2 = '' OR pr.SORT_ID <= @sort2)
+            -- 库存余额行的读法（含四键去重）在 InventorySources.DistinctProductDepotPairs 里，
+            -- 这里只装配：@depot1/@depot2/@pro1/@pro2/@sort1/@sort2 由该片段定义并在此绑定。
+            {InventorySources.DistinctProductDepotPairs}
         ),
         MONTHROW AS (
             SELECT pa.DEPOT_ID, pa.PRO_NO, x.MONTH_DATE, x.QTY, x.PRICE
