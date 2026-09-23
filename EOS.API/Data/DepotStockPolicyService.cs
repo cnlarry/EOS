@@ -467,6 +467,109 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         return new SavePolicyResult(true, Array.Empty<string>(), warnings);
     }
 
+    /// <summary>删除一条库别策略行的结果：删除后该库别回落到部署级默认行。</summary>
+    public sealed record DeletePolicyResult(bool Deleted, IReadOnlyList<string> Errors, string Message);
+
+    /// <summary>
+    /// 删除一条库别策略行（部署级默认行不允许删除）。删除只去掉"覆盖"，
+    /// 该库别此后按部署级默认行求值；库存存量本身不动。
+    /// 删除与它的审计记在同一个事务里。
+    /// </summary>
+    public async Task<DeletePolicyResult> DeleteAsync(string depotId, string actor, CancellationToken token = default)
+    {
+        var depot = (depotId ?? string.Empty).Trim();
+        if (depot.Length == 0)
+            return new DeletePolicyResult(false, ["缺少库别，无法删除。"], string.Empty);
+        if (string.Equals(depot, DeploymentScope, StringComparison.Ordinal))
+            return new DeletePolicyResult(false, ["部署级默认行不允许删除（它是所有无覆盖库别的回落值）。"], string.Empty);
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+
+        var existing = await ReadExistingAsync(depot, connection, transaction, token);
+        if (existing is null)
+            return new DeletePolicyResult(false, [$"库别 {depot} 没有独立的策略行，无需删除（当前按部署级默认行使）。"], string.Empty);
+
+        await using (var command = new SqlCommand(
+            "DELETE FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID = @depot", connection, transaction))
+        {
+            command.Parameters.AddWithValue("@depot", depot);
+            await command.ExecuteNonQueryAsync(token);
+        }
+
+        var changes = new List<AuditFieldChange>
+        {
+            new("LOCATION_MODE", Format(existing.LocationMode), null, null),
+            new("STORAGE_MODE", Format(existing.StorageMode), null, null),
+            new("BATCH_MODE", Format(existing.BatchMode), null, null),
+            new("CAPACITY_MODE", Format(existing.CapacityMode), null, null),
+            new("MIX_PRODUCT", Format(existing.MixProduct), null, null),
+            new("MIX_BATCH", Format(existing.MixBatch), null, null),
+            new("MONTH_CLOSE_BY_BATCH", Format(existing.MonthCloseByBatch), null, null),
+            new("MONTH_CLOSE_BY_LOCATION", Format(existing.MonthCloseByLocation), null, null),
+        };
+        var message = $"库存策略删除（{depot}）："
+            + string.Join("、", changes.Select(c => $"{c.FieldName} {c.OldValue}→已删除"));
+        await auditWriter.WriteEventAsync(
+            connection, transaction, StockPolicyModuleId, depot,
+            "DELETE", message, actor, "DEPOT_STOCK_POLICY", result: 1, changes, token);
+
+        await transaction.CommitAsync(token);
+        return new DeletePolicyResult(true, Array.Empty<string>(), message + "；该库别此后按部署级默认行使。");
+    }
+
+    /// <summary>独立归位（不改策略配置）的预览：只读不写，返回将搬几组。</summary>
+    public sealed record RelocatePreviewResult(IReadOnlyList<string> Errors, int PendingGroups, string Message);
+
+    /// <summary>
+    /// 独立归位预览：校验目标库位并数出压在哨兵行上的组数，一行不写。
+    /// 界面先调它拿到"将会发生什么"，用户确认后再调 <see cref="RelocateStandaloneAsync"/>。
+    /// </summary>
+    public async Task<RelocatePreviewResult> PreviewRelocateAsync(
+        string depotId, string relocateTo, CancellationToken token = default)
+    {
+        var depot = (depotId ?? string.Empty).Trim();
+        var target = (relocateTo ?? string.Empty).Trim();
+        if (depot.Length == 0 || string.Equals(depot, DeploymentScope, StringComparison.Ordinal))
+            return new RelocatePreviewResult(["归位按库别执行：请选中具体库别的策略行（部署级默认不是库别）。"], 0, string.Empty);
+        if (target.Length == 0)
+            return new RelocatePreviewResult(["未指定目标库位：请填写要把这批货记到哪个库位。"], 0, string.Empty);
+        if (string.Equals(target, SentinelLocationNo, StringComparison.Ordinal))
+            return new RelocatePreviewResult(["目标库位不能是『未指定位置』本身。"], 0, string.Empty);
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        if (!await LocationExistsAsync(depot, target, connection, null, token))
+            return new RelocatePreviewResult([$"目标库位 {depot}/{target} 不存在或已停用，无法归位。"], 0, string.Empty);
+
+        var pending = await CountSentinelRowsToRelocateAsync(depot, connection, null, token);
+        if (pending == 0)
+            return new RelocatePreviewResult([], 0, "该库别没有记在『未指定位置』上的存量，无需归位。");
+        return new RelocatePreviewResult([], pending,
+            $"将把 {pending} 组（料号/批次）记在『未指定位置』上的存量改记到 {target}，库别总量不变。");
+    }
+
+    /// <summary>
+    /// 独立归位执行（不改策略配置）：自带连接与事务，归位与它的审计要么都落库、要么都不落。
+    /// </summary>
+    public async Task<RelocateSentinelResult> RelocateStandaloneAsync(
+        string depotId, string relocateTo, string actor, CancellationToken token = default)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        var result = await RelocateSentinelStockAsync(
+            depotId, relocateTo, actor, connection, transaction, token);
+        if (!result.Relocated)
+        {
+            await transaction.RollbackAsync(token);
+            return result;
+        }
+        await transaction.CommitAsync(token);
+        return result;
+    }
+
     /// <summary>策略配置所在的模块号（110310 库存策略）；审计的 <c>MODULE_ID</c> 用它。</summary>
     public const int StockPolicyModuleId = 110310;
 
@@ -688,7 +791,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
 
     /// <summary>该库别有多少组（料号 / 批次）的存量还压在哨兵行上——升档是否需要归位就看它。</summary>
     private static async Task<int> CountSentinelRowsToRelocateAsync(
-        string depotId, SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+        string depotId, SqlConnection connection, SqlTransaction? transaction, CancellationToken token)
     {
         await using var command = new SqlCommand(
             "SELECT COUNT(*) FROM (SELECT PRO_NO, BATCH_NO FROM dbo.INV_PRO_DEPOT "
@@ -700,7 +803,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     }
 
     private static async Task<bool> LocationExistsAsync(
-        string depotId, string locationNo, SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+        string depotId, string locationNo, SqlConnection connection, SqlTransaction? transaction, CancellationToken token)
     {
         await using var command = new SqlCommand(
             "SELECT COUNT(*) FROM dbo.DEPOT_LOCATION WHERE DEPOT_ID=@depot AND LOCATION_NO=@loc AND STATUS=N'A'",

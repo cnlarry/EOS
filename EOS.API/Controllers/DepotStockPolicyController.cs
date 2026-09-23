@@ -74,6 +74,55 @@ public sealed class DepotStockPolicyController(
         return result.Saved ? Ok(payload) : BadRequest(payload);
     }
 
+    /// <summary>删除一条库别策略行；部署级默认行不允许删除。</summary>
+    [HttpDelete("{depotId}")]
+    public async Task<IActionResult> Delete(string depotId, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+
+        var result = await service.DeleteAsync(depotId, userContext.EmployeeName, token);
+        return result.Deleted
+            ? Ok(new { saved = true, message = result.Message })
+            : result.Errors.Any(error => error.Contains("无需删除"))
+                ? NotFound(new { saved = false, message = result.Errors.First() })
+                : BadRequest(new { saved = false, message = string.Join('；', result.Errors) });
+    }
+
+    /// <summary>
+    /// 独立归位（不改策略配置）：把该库别记在『未指定位置』上的存量改记到目标库位。
+    /// confirm 非真时只预览（校验 + 数出几组，一行不写）；confirm 为真时执行。
+    /// </summary>
+    [HttpPost("{depotId}/relocate")]
+    public async Task<IActionResult> Relocate(
+        string depotId,
+        RelocateSentinelRequest request,
+        CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+
+        if (request is null || request.Confirm)
+        {
+            var result = await service.RelocateStandaloneAsync(
+                depotId, request?.RelocateTo ?? string.Empty, userContext.EmployeeName, token);
+            return result.Relocated
+                ? Ok(new { saved = true, message = result.Message })
+                : BadRequest(new { saved = false, message = result.Errors.Count > 0
+                    ? string.Join('；', result.Errors) : result.Message });
+        }
+
+        var preview = await service.PreviewRelocateAsync(
+            depotId, request.RelocateTo ?? string.Empty, token);
+        return preview.Errors.Count > 0
+            ? BadRequest(new { saved = false, message = string.Join('；', preview.Errors) })
+            : Ok(new
+            {
+                saved = false,
+                requiresConfirmation = true,
+                pendingGroups = preview.PendingGroups,
+                message = preview.Message,
+            });
+    }
+
     private async Task<bool> CanBrowse(CancellationToken token) =>
         (await rightsRepository.GetAsync(userContext.UserId, StockPolicyModuleId, token)).CanBrowse;
 
@@ -125,3 +174,8 @@ public sealed record DepotStockPolicySaveResultDto(
     IReadOnlyList<string> Errors,
     IReadOnlyList<string> Warnings,
     bool RequiresConfirmation);
+
+/// <summary>独立归位请求：目标库位 + 是否确认执行（非真即预览）。</summary>
+public sealed record RelocateSentinelRequest(
+    string? RelocateTo,
+    bool Confirm = false);
