@@ -61,10 +61,10 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     [
         new("locationMode", "位置档位", "货在哪里记到多细",
         [
-            new("0", "0 不管", true),
-            new("1", "1 可填", true),
-            new("2", "2 建议", true),
-            new("3", "3 强制", true),
+            new("0", "不管", true),
+            new("1", "可填", true),
+            new("2", "建议", true),
+            new("3", "强制", true),
         ]),
         new("storageMode", "存放方式", "固定储位还是随机存放",
         [
@@ -74,16 +74,16 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         ]),
         new("batchMode", "批次档位", "批号记不记、要不要必填",
         [
-            new("0", "0 归零", true),
-            new("1", "1 保留", true),
-            new("2", "2 必填", true),
-            new("3", "3 必填 + 效期", false),
+            new("0", "归零", true),
+            new("1", "保留", true),
+            new("2", "必填", true),
+            new("3", "必填 + 效期", false),
         ]),
         new("capacityMode", "容量档位", "要不要校验库位容量",
         [
-            new("0", "0 不校验", true),
-            new("1", "1 告警", false),
-            new("2", "2 强制", false),
+            new("0", "不校验", true),
+            new("1", "告警", false),
+            new("2", "强制", false),
         ]),
         new("mixProduct", "混品号", "同一库位能否放不同料号",
         [

@@ -23,15 +23,15 @@ const tiers = [
   {
     key: 'locationMode', label: '位置档位', description: '货在哪里记到多细',
     options: [
-      { value: '0', label: '0 不管', implemented: true },
-      { value: '3', label: '3 强制', implemented: true },
+      { value: '0', label: '不管', implemented: true },
+      { value: '3', label: '强制', implemented: true },
     ],
   },
   {
     key: 'batchMode', label: '批次档位', description: '批号记不记',
     options: [
-      { value: '0', label: '0 归零', implemented: true },
-      { value: '3', label: '3 必填 + 效期', implemented: false },
+      { value: '0', label: '归零', implemented: true },
+      { value: '3', label: '必填 + 效期', implemented: false },
     ],
   },
 ]
@@ -74,7 +74,7 @@ describe('DepotStockPolicyPage', () => {
     const selects = within(dialog).getAllByRole('combobox')
     expect(selects.length).toBe(3)
     const batchOptions = within(selects[1] as HTMLElement).getAllByRole('option')
-    expect(batchOptions.map((option) => option.textContent)).toEqual(['0 归零', '3 必填 + 效期（本版未实现）'])
+    expect(batchOptions.map((option) => option.textContent)).toEqual(['归零', '必填 + 效期（本版未实现）'])
     expect((batchOptions[1] as HTMLOptionElement).disabled).toBe(true)
     expect((batchOptions[0] as HTMLOptionElement).disabled).toBe(false)
   })
