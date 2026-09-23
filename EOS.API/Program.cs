@@ -206,6 +206,7 @@ builder.Services.AddScoped<EffectPipeline>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.DocumentActionProbeHandler>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.RecalcAccountHandler>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.GenerateAdjustmentHandler>();
+builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.RestockScopeHandler>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionRegistry>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionAuthorization>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionExecutor>();
