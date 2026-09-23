@@ -204,6 +204,7 @@ builder.Services.AddScoped<EffectEngineInvoker>();
 builder.Services.AddScoped<EffectPipeline>();
 // 单据操作（自定义按钮）：键集来自这里的处理器注册，发布校验与端点执行读的是同一份。
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.DocumentActionProbeHandler>();
+builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.RecalcAccountHandler>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionRegistry>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionAuthorization>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionExecutor>();
