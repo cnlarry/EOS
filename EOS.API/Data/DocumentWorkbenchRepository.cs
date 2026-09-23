@@ -65,8 +65,10 @@ public sealed class DocumentWorkbenchRepository(
     /// <summary>
     /// 按钮元数据随定义下发：只有该用户获授权的操作才出现在名单里（前端据此渲染，不硬编码操作）。
     /// 未授权即不下发——"配了没人能用"是正常状态，此时按钮对所有人都不显示。
+    /// 端点 GET document-workbench/{moduleId}/actions 单独取这份名单，
+    /// 供没有统一表单、但仍有单据级动作的模块承载页（自定义配置页）渲染按钮。
     /// </summary>
-    private async Task<IReadOnlyList<DocumentActionMetadata>> BuildUserActionsAsync(
+    public async Task<IReadOnlyList<DocumentActionMetadata>> BuildUserActionsAsync(
         WorkbenchDefinition definition, string userId, CancellationToken token)
     {
         var configured = DocumentActions.DocumentActionConfigs.Parse(definition.BusinessActions);

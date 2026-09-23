@@ -219,6 +219,65 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         IReadOnlyList<string> Warnings,
         bool RequiresConfirmation = false);
 
+    /// <summary>
+    /// 一次哨兵行归位的结果：<paramref name="Relocated"/> 为真表示这一笔已经改记到目标库位，
+    /// <paramref name="Relocated"/> 为假且 <paramref name="Errors"/> 为空，表示"没有存量需要归位"（无事发生，不是失败）。
+    /// </summary>
+    public sealed record RelocateSentinelResult(
+        bool Relocated,
+        IReadOnlyList<string> Errors,
+        string Message);
+
+    /// <summary>
+    /// 把某库别记在『未指定位置』上的存量整批改记到目标库位——与升档时的代搬是同一段实现，
+    /// 这里把它独立成入口：归位是一次**账面认定**（视为这批货就在目标库位），
+    /// 不必为了再归一次就去改策略配置。
+    ///
+    /// 调用方必须提供连接与事务：归位与它的审计记录必须在同一个事务里，不能各写一半。
+    /// 目标库位的合法性（存在、启用、不是哨兵本身）在这里复核，不依赖界面。
+    /// </summary>
+    public async Task<RelocateSentinelResult> RelocateSentinelStockAsync(
+        string depotId,
+        string relocateTo,
+        string actor,
+        SqlConnection connection,
+        SqlTransaction transaction,
+        CancellationToken token = default)
+    {
+        var depot = (depotId ?? string.Empty).Trim();
+        var target = (relocateTo ?? string.Empty).Trim();
+        if (depot.Length == 0)
+        {
+            return new RelocateSentinelResult(false, ["缺少库别，无法归位。"], string.Empty);
+        }
+        if (target.Length == 0)
+        {
+            return new RelocateSentinelResult(false, ["未指定目标库位。"], string.Empty);
+        }
+        if (string.Equals(target, SentinelLocationNo, StringComparison.Ordinal))
+        {
+            return new RelocateSentinelResult(false, ["目标库位不能是『未指定位置』本身。"], string.Empty);
+        }
+        if (!await LocationExistsAsync(depot, target, connection, transaction, token))
+        {
+            return new RelocateSentinelResult(false, [$"目标库位 {depot}/{target} 不存在或已停用，无法归位。"], string.Empty);
+        }
+
+        var pending = await CountSentinelRowsToRelocateAsync(depot, connection, transaction, token);
+        if (pending == 0)
+        {
+            return new RelocateSentinelResult(false, [],
+                "该库别没有记在『未指定位置』上的存量，无需归位。");
+        }
+
+        await RelocateSentinelAsync(depot, target, connection, transaction, token);
+        var message = $"已完成归位：{pending} 组（料号/批次）记在『未指定位置』上的存量已改记到 {target}，库别总量不变。";
+        await auditWriter.WriteEventAsync(
+            connection, transaction, StockPolicyModuleId, depot, "RELOCATE", message, actor,
+            "DEPOT_STOCK_POLICY", result: 1, fieldChanges: null, token);
+        return new RelocateSentinelResult(true, [], message);
+    }
+
     /// <summary>列出全部策略行（部署级默认 + 各库别覆盖）。</summary>
     public async Task<IReadOnlyList<DepotStockPolicy>> ListAsync(CancellationToken token = default)
     {

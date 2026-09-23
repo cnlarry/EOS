@@ -1,4 +1,4 @@
-import { IconRefresh, IconDeviceFloppy } from '@tabler/icons-react'
+import { IconRefresh, IconDeviceFloppy, IconArrowRight } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import { useEffect, useMemo, useState } from 'react'
@@ -9,6 +9,13 @@ import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 import { describeApiError } from '../../lib/errors'
+import {
+  useDocumentActionRunner,
+  type DocumentActionMeta,
+} from '../document-workbench/documentActionRunner'
+
+/** 本页所属模块（110310 库存策略）：单据动作按模块+主键寻址。 */
+const PolicyModuleId = 110310
 
 /** 档位候选值；implemented=false 表示本版未实现——可见但不可选（与服务端拒存规则同源）。 */
 interface TierOption {
@@ -76,6 +83,10 @@ function toDraft(policy: Policy): Record<string, string> {
  * 写入只走官方策略端点（`PUT /admin/depot-stock-policy/{depotId}`），组合规则、
  * 破坏性下调的二次确认与归并/归位、变更审计都在服务端；本页只负责把服务端的档位目录
  * 渲染出来（未实现的档位灰显）并把确认信号回传，不自行判断合法性。
+ *
+ * 单据级操作（如哨兵存量归位）同样不硬编码：按钮名单由
+ * `GET /document-workbench/110310/actions` 按当前用户的授权下发，
+ * 执行走同一套"先探路、后确认"的执行器（见 documentActionRunner）。
  */
 export function DepotStockPolicyPage() {
   const queryClient = useQueryClient()
@@ -93,6 +104,11 @@ export function DepotStockPolicyPage() {
     queryKey: ['depot-stock-policy-tiers'],
     queryFn: () => apiClient.get<Tier[]>('/admin/depot-stock-policy/tiers'),
   })
+  // 可用按钮由服务端按授权下发：本页不认识"哨兵存量归位"这类操作，只负责渲染名单。
+  const actionQuery = useQuery({
+    queryKey: ['depot-stock-policy-actions'],
+    queryFn: () => apiClient.get<DocumentActionMeta[]>(`/document-workbench/${PolicyModuleId}/actions`),
+  })
 
   const selectedId = Object.keys(rowSelection).find((key) => rowSelection[key])
   const selected = useMemo(
@@ -106,6 +122,24 @@ export function DepotStockPolicyPage() {
     setRelocateTo('')
     setMessage(null)
   }, [selected])
+
+  const dirty = Boolean(
+    selected
+    && draft
+    && Object.keys(toDraft(selected)).some((key) => (toDraft(selected)[key] ?? '') !== (draft[key] ?? '')),
+  )
+
+  // 单据动作（如哨兵存量归位）作用于**已落库的策略行**：界面上有未保存的档位改动时禁用，
+  // 免得"服务端看到的行"和用户以为的不一致。
+  const runner = useDocumentActionRunner({
+    moduleId: String(PolicyModuleId),
+    keyValues: selected ? [selected.depotId] : null,
+    dirty,
+    onRefreshed: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['depot-stock-policy'] })
+    },
+    onNavigate: () => undefined,
+  })
 
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -219,6 +253,23 @@ export function DepotStockPolicyPage() {
                   <div className="fw-semibold mb-2">
                     编辑：{selected.depotId === '*' ? '部署级默认' : selected.depotId}
                   </div>
+                  {(actionQuery.data ?? []).length > 0 && (
+                    <div className="d-flex flex-wrap gap-2 mb-3">
+                      {actionQuery.data?.map((action) => (
+                        <Button
+                          key={action.key}
+                          size="sm"
+                          icon={<IconArrowRight size={16} />}
+                          disabled={!runner.canRun}
+                          loading={runner.busyKey === action.key}
+                          title={dirty ? '界面有未保存的改动，请先保存后再执行操作。' : action.label}
+                          onClick={() => void runner.run(action)}
+                        >
+                          {action.label}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
                   {(tiers.data ?? []).map((tier) => (
                     <div className="mb-2" key={tier.key}>
                       <label className="form-label small mb-1" title={tier.description}>{tier.label}</label>
@@ -277,6 +328,7 @@ export function DepotStockPolicyPage() {
           </div>
         )}
       </ErpListCard>
+      {runner.dialog}
     </div>
   )
 }
