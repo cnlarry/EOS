@@ -227,4 +227,12 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
         Assert.NotEmpty(result.Errors);
         Assert.True(await PolicyRowExistsAsync("*"));
     }
+
+    [Fact]
+    public async Task ListDepots_ContainsRealDepot()
+    {
+        var depots = await Service().ListDepotsAsync();
+
+        Assert.Contains(depots, depot => depot.DepotId == _depot);
+    }
 }

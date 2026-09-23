@@ -36,10 +36,16 @@ const tiers = [
   },
 ]
 
+const depots = [
+  { depotId: 'CP', depotName: '成品仓' },
+  { depotId: 'ZZ', depotName: '测试仓' },
+]
+
 describe('DepotStockPolicyPage', () => {
   beforeEach(() => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       if (path.includes('/tiers')) return tiers
+      if (path.includes('/depots')) return depots
       return policies
     })
   })
@@ -108,12 +114,14 @@ describe('DepotStockPolicyPage', () => {
     expect(await screen.findByText(/本版未实现，不能保存为生效配置/)).toBeInTheDocument()
   })
 
-  it('新增走弹窗：填库别后按官方端点提交', async () => {
+  it('新增走弹窗：只列未配置的库别，选中后按官方端点提交', async () => {
     renderWithProviders(<DepotStockPolicyPage />)
     expect(await screen.findByText('CP')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '新增' }))
     const dialog = await screen.findByRole('dialog')
-    fireEvent.change(within(dialog).getByLabelText('库别代号'), { target: { value: 'ZZ' } })
+    // CP 已有策略行，下拉里只剩 ZZ；已配置的行不出现
+    const depotOptions = within(dialog).getByLabelText('库别') as HTMLSelectElement
+    expect(Array.from(depotOptions.querySelectorAll('option')).map((o) => o.value)).toEqual(['ZZ'])
     apiClientMock.put.mockResolvedValueOnce({ saved: true, errors: [], warnings: [], requiresConfirmation: false })
     fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledTimes(1))
