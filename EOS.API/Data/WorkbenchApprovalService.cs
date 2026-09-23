@@ -313,6 +313,22 @@ public sealed class WorkbenchApprovalService(
         return null;
     }
 
+    /// <summary>
+    /// 读取结案状态位；主表没有该列时返回 null（缺列不阻塞，与既有守卫同口径）。
+    /// </summary>
+    private static async Task<bool?> ReadFinishedTagAsync(
+        SqlConnection connection, string table, string keyCondition, CancellationToken token)
+    {
+        if (!await WorkbenchSql.ColumnExistsAsync(connection, null, table, "FINISHED_TAG", token))
+        {
+            return null;
+        }
+        await using var command = new SqlCommand(
+            $"SELECT FINISHED_TAG FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyCondition};", connection);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        return await reader.ReadAsync(token) && !reader.IsDBNull(0) ? reader.GetBoolean(0) : null;
+    }
+
     private async Task<RecordSaveResult> WorkflowCoreAsync(
         WorkbenchDefinition definition,
         IReadOnlyList<string> keyValues,
@@ -338,6 +354,15 @@ public sealed class WorkbenchApprovalService(
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "WORKFLOW_NOT_SUPPORTED", "该模块不支持批核操作。");
         }
         var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
+        // 结案锁死：已结案的单据不许解批，必须先取消结案。
+        // 删除与编辑路径早已拦这一条，解批此前没有拦——而结案常常意味着"本单已经转出下游单据/已经过账"，
+        // 直接调解批端点绕过守卫会让下游单据失去来源。放在这里是为了让无副作用解批与效果链解批共用一道闸。
+        if (!approve
+            && await ReadFinishedTagAsync(connection, definition.MasterTable, keyCondition, token) == true)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FINISHED_RECORD_NOT_DEAPPROVABLE",
+                "单据已结案，不能解批，请先取消结案。");
+        }
         // 无副作用批核/解批（自动批核且无批核过程/效果链/流程定义）：保存路径的自动批核
         // 本就是纯状态翻转，显式动作同口径。有流程定义的仍走送审，有过程/效果链的仍走原路径。
         // 判定与表单按钮显隐共用 WorkflowStates.IsStatelessApproveCapable，两边不得分叉。

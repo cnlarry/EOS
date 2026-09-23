@@ -177,7 +177,8 @@ public sealed class DocumentActionExecutor(
                 userId,
                 dataFilter,
                 idempotencyKey,
-                request.Confirm);
+                request.Confirm,
+                probe);
 
             var result = await action.ExecuteAsync(context, token);
             await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, recordKey,

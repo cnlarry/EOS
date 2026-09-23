@@ -116,7 +116,7 @@ public sealed class DocumentActionAuthorization(DbConnectionFactory connections)
         await using var command = new SqlCommand(
             $"""
             SELECT BUTTON_KEY, COUNT(DISTINCT {ownerColumn})
-            FROM dbo.{table} WITH (NOLOCK)
+            FROM dbo.{table}
             WHERE M_IDX=@ModuleId AND ALLOW_TAG=1
             GROUP BY BUTTON_KEY;
             """, connection);
@@ -142,7 +142,7 @@ public sealed class DocumentActionAuthorization(DbConnectionFactory connections)
     {
         await using var command = new SqlCommand(
             """
-            SELECT BUTTON_KEY, ALLOW_TAG FROM dbo.SYSDD_BUTTON WITH (NOLOCK)
+            SELECT BUTTON_KEY, ALLOW_TAG FROM dbo.SYSDD_BUTTON
             WHERE M_IDX=@ModuleId AND USER_ID=@Owner;
             """, connection);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -167,8 +167,8 @@ public sealed class DocumentActionAuthorization(DbConnectionFactory connections)
         CancellationToken token) =>
         await ReadKeysAsync(connection,
             """
-            SELECT b.BUTTON_KEY FROM dbo.SYSDH_BUTTON b WITH (NOLOCK)
-            INNER JOIN dbo.SYSDG_USER u WITH (NOLOCK) ON u.G_IDX=b.G_IDX
+            SELECT b.BUTTON_KEY FROM dbo.SYSDH_BUTTON b
+            INNER JOIN dbo.SYSDG_USER u ON u.G_IDX=b.G_IDX
             WHERE b.M_IDX=@ModuleId AND b.ALLOW_TAG=1 AND u.USER_ID=@Owner;
             """, userId, moduleId, token);
 
