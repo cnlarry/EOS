@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState, SortingState } from '@tanstack/react-table'
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { IconTrash } from '@tabler/icons-react'
+import { IconPlayerPlay, IconTrash } from '@tabler/icons-react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
@@ -24,6 +24,7 @@ import { buildFormCells, buildFormRows, buildFormSections, moveLifecycleToTail }
 import { fieldVariant } from './formFieldKind'
 import { validateDetailRows, validateMasterFields, type FieldErrors } from './formValidation'
 import { buildViewToolbarItems } from './formToolbar'
+import { useDocumentActionRunner } from './documentActionRunner'
 import { AMOUNT_COLUMN_KEYS, AMOUNT_TRIGGER_KEYS, previewDetailAmount, previewMasterAmounts } from './amountCalculator'
 import { describeApiError } from '../../lib/errors'
 import {
@@ -221,6 +222,8 @@ interface DetailFormGridProps {
   detailSort: { key: string; dir: 1 | -1 } | null
   selectedDetailRows: Set<number>
   viewing: boolean
+  /** 子表标题栏右侧的扩展位：浏览态放明细级自定义按钮，编辑态该位置是「新增一行/删除所选」。 */
+  actions?: ReactNode
   storageKey: string
   onAddRow: () => void
   onRemoveRow: (index: number) => void
@@ -233,7 +236,7 @@ interface DetailFormGridProps {
 }
 
 /** 明细卡（memo）：主表字段输入等不涉及明细行的状态变化时不重渲染；浏览态只读展示，不提供增删入口 */
-const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailErrors, sortedIndices, detailSort, selectedDetailRows, viewing, storageKey, onAddRow, onRemoveRow, onRemoveSelected, onFieldChange, onChoose, onSortChange, onSelectionChange, onResize }: DetailFormGridProps) {
+const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailErrors, sortedIndices, detailSort, selectedDetailRows, viewing, actions, storageKey, onAddRow, onRemoveRow, onRemoveSelected, onFieldChange, onChoose, onSortChange, onSelectionChange, onResize }: DetailFormGridProps) {
   /** 明细网格 Enter：同列下一行继续；末行则新增行后聚焦同列（浏览态无输入框，直接跳过） */
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (viewing || event.key !== 'Enter') return
@@ -371,12 +374,13 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
       ),
     } as ColumnDef<DetailGridRow, unknown>] : []),
   ]
-  const showToolbar = !viewing || detailSort
+  // 浏览态默认不显示这一排；有明细级自定义按钮（或视图排序提示）时它才是自定义按钮的落点。
+  const showToolbar = !viewing || Boolean(detailSort) || Boolean(actions)
   return (
     <section className="card erp-detail-card">
       {showToolbar ? (
         <div className="card-header erp-detail-toolbar">
-          <div className="d-flex gap-2">
+          <div className="d-flex gap-2 w-100 align-items-center">
             {!viewing ? (
               <>
                 <Button size="sm" onClick={onAddRow}>新增一行</Button>
@@ -384,7 +388,8 @@ const DetailFormGrid = memo(function DetailFormGrid({ form, detailRows, detailEr
               </>
             ) : null}
             {detailSort && <span className="small text-secondary align-self-center">视图排序（保存顺序以序号 SERIAL_NO 为准）</span>}
-            {/* 子表专用工具栏扩展位：生成请购单等后续加入 */}
+            {/* 子表标题栏右侧：编辑态是「新增一行/删除所选」，浏览态改为明细级自定义按钮 */}
+            {actions ? <div className="ms-auto d-flex gap-2">{actions}</div> : null}
           </div>
         </div>
       ) : null}
@@ -512,6 +517,14 @@ export function FormEditorPage() {
     queryKey: ['workbench', moduleId, 'record', keyParam ?? copyFrom],
     queryFn: () => apiClient.get<RecordBundle>(`/document-workbench/${moduleId}/record`, { query: { key: keyParam ?? copyFrom ?? '' } }),
     enabled: (isEdit || isView || isCopy) && Boolean(keyParam ?? copyFrom) && formQuery.isSuccess,
+  })
+  // 单据操作执行器（必须在任何 early return 之前调用）：只在浏览态可用，键取 URL 路径主键（同步权威）。
+  const documentAction = useDocumentActionRunner({
+    moduleId,
+    keyValues: isView ? parseWorkbenchKey(splat) : null,
+    dirty,
+    onRefreshed: async () => { await recordQuery.refetch() },
+    onNavigate: (targetModuleId, targetKey) => navigate(workbenchView(String(targetModuleId), targetKey)),
   })
 
   // 上抛单据面包屑给 AppShell：编辑/查看带单号，新增/复制不显示单号
@@ -1118,6 +1131,10 @@ export function FormEditorPage() {
     if (field.isVisible && fieldErrors[field.key]) tabErrorCounts.set(field.tabNo, (tabErrorCounts.get(field.tabNo) ?? 0) + 1)
   }
 
+  // 自定义按钮（单据操作）：只在浏览态出现，界面有未保存改动时禁用（操作作用于已落库的单据状态）。
+  const masterActionItems = (form.userActions ?? []).filter(action => action.placement !== 'detail')
+  const detailActionItems = (form.userActions ?? []).filter(action => action.placement === 'detail')
+
   return (
     <div className="d-flex flex-column erp-form-page">
       {saveError ? <div className="alert alert-danger mb-0">{saveError}</div> : null}
@@ -1196,6 +1213,17 @@ export function FormEditorPage() {
                   ...(form.canFileView && keyParam ? [{ action: 'attach', onClick: () => setAttachOpen(true) } satisfies ErpCommandItem] : []),
                   ...whitelistItems.filter(item => item.action === 'print'),
                   ...(form.helpUrl ? [{ action: 'help', onClick: () => window.open(form.helpUrl!, '_blank', 'noopener') } satisfies ErpCommandItem] : []),
+                  // 自定义按钮（单据级）固定排在标准动作之后，顺序由配置的 SEQ 决定
+                  //（配置只决定动作有无与相对顺序，不改变标准动作的固定位置）。
+                  ...masterActionItems.map(action => ({
+                    action: `doc-action:${action.key}`,
+                    icon: <IconPlayerPlay size={16} />,
+                    title: documentAction.canRun ? action.label : '界面有未保存改动，请先保存',
+                    label: action.label,
+                    disabled: !documentAction.canRun,
+                    loading: documentAction.busyKey === action.key,
+                    onClick: () => void documentAction.run(action),
+                  } satisfies ErpCommandItem)),
                 ]
               })()} />
             )}
@@ -1239,6 +1267,22 @@ export function FormEditorPage() {
           detailSort={detailSort}
           selectedDetailRows={selectedDetailRows}
           viewing={isView}
+          actions={isView && detailActionItems.length > 0 ? (
+            <div className="d-flex gap-1">
+              {detailActionItems.map(action => (
+                <Button
+                  key={action.key}
+                  size="sm"
+                  icon={<IconPlayerPlay size={14} />}
+                  disabled={!documentAction.canRun}
+                  title={documentAction.canRun ? action.label : '界面有未保存改动，请先保存'}
+                  onClick={() => void documentAction.run(action)}
+                >
+                  {action.label}
+                </Button>
+              ))}
+            </div>
+          ) : null}
           storageKey={`form-detail-${moduleId}`}
           onAddRow={addDetailRow}
           onRemoveRow={removeDetailRow}
@@ -1393,6 +1437,8 @@ export function FormEditorPage() {
           </div>
         </div>
       ) : null}
+      {/* 单据操作（自定义按钮）的参数表单与二次确认：探路返回的"将会发生什么"在这里给用户看 */}
+      {documentAction.dialog}
     </div>
   )
 }

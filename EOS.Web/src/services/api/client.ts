@@ -11,8 +11,8 @@ export class ApiClient {
     return this.transport.request<TResponse>({ method: 'GET', path, ...options })
   }
 
-  post<TResponse, TBody = unknown>(path: string, body?: TBody, signal?: AbortSignal) {
-    return this.transport.request<TResponse>({ method: 'POST', path, body, signal })
+  post<TResponse, TBody = unknown>(path: string, body?: TBody, options?: { headers?: Record<string, string>; signal?: AbortSignal }) {
+    return this.transport.request<TResponse>({ method: 'POST', path, body, headers: options?.headers, signal: options?.signal })
   }
 
   postFile<TBody = unknown>(path: string, body?: TBody, options?: { query?: Record<string, string | number | undefined>; signal?: AbortSignal }) {

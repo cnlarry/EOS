@@ -22,13 +22,23 @@ describe('ApiClient', () => {
     })
   })
 
-  it('post 传递 body 与 signal', async () => {
+  it('post 传递 body 与 signal，并按需附加请求头', async () => {
     const { client, request } = createClient()
     request.mockResolvedValue({ id: '1' })
     const signal = new AbortController().signal
     const body = { name: 'x' }
-    await client.post<{ id: string }, typeof body>('/records', body, signal)
+    await client.post<{ id: string }, typeof body>('/records', body, { signal })
     expect(request).toHaveBeenCalledWith({ method: 'POST', path: '/records', body, signal })
+
+    // 幂等键等写路径请求头（POST 与 DELETE 同一形状）
+    await client.post('/records', body, { headers: { 'X-Idempotency-Key': 'k1' } })
+    expect(request).toHaveBeenLastCalledWith({
+      method: 'POST',
+      path: '/records',
+      body,
+      signal: undefined,
+      headers: { 'X-Idempotency-Key': 'k1' },
+    })
   })
 
   it('postFile 使用 blob responseType 并透传 query', async () => {
