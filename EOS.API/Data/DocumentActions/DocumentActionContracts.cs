@@ -54,7 +54,13 @@ public sealed record DocumentActionContext(
     string ExecutorUserId,
     string? DataFilter,
     string IdempotencyKey,
-    bool Confirm);
+    bool Confirm,
+    /// <summary>
+    /// 探路请求（CONFIRM_TAG 的操作在 confirm=false 时）：处理器**不得写库**。
+    /// 框架的默认做法是在调用方事务里执行后整体回滚；若处理器的写入会落到自己的事务里
+    /// （例如走统一创建路径生成下游单据），回滚兜不住，必须显式判断这一位、只做预检。
+    /// </summary>
+    bool Preview);
 
 /// <summary>What the caller should do with the document after the action: reload, navigate, or just report.</summary>
 public enum DocumentActionOutcome
