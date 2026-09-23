@@ -49,7 +49,7 @@ public sealed record DocumentActionContext(
     string RecordKey,
     IReadOnlyList<string> KeyValues,
     IReadOnlyList<string> MasterPkOrder,
-    JsonElement? Params,
+    IReadOnlyDictionary<string, string?> Parameters,
     string Executor,
     string ExecutorUserId,
     string? DataFilter,

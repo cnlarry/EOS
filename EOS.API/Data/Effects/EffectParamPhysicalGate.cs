@@ -46,6 +46,12 @@ internal static class EffectParamPhysicalGate
         var issues = new List<string>();
         foreach (var action in actions)
         {
+            // 用户点击行的 PARAM_STRUCT 是操作入参声明（前端据此生成简单表单），不是效果参数，
+            // 里面没有表/列引用可校验；这些参数的取值由处理器自己的白名单负责。
+            if (BusinessActionCatalog.IsManualEvent(action.EventCode))
+            {
+                continue;
+            }
             foreach (var issue in EffectParamPhysicalValidator.Validate(action.EffectKey, action.Params, plan, columns))
             {
                 issues.Add($"动作 SEQ={action.Seq} {action.EffectKey}：{issue}");

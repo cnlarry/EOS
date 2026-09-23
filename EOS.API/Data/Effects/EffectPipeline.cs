@@ -202,8 +202,12 @@ public sealed class EffectPipeline(
     /// true whenever ANY document carries the value, wrongly firing the action for
     /// documents the legacy procedure skips); DETAIL predicates keep the historical
     /// unscoped EXISTS semantics; switches read SYSSS.
+    ///
+    /// Public because a user-triggered document action reads its CONDITION_STRUCT
+    /// through this same evaluator: one condition dialect, one evaluator, so a
+    /// precondition means the same thing whether the effect chain or a button asks.
     /// </summary>
-    private async Task<bool> ConditionHoldsAsync(
+    public async Task<bool> ConditionHoldsAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         ModuleEffectPlan plan,
@@ -252,6 +256,9 @@ public sealed class EffectPipeline(
         EffectEvent.ApproveEffect => "APPROVE",
         EffectEvent.Deapprove => "DEAPPROVE",
         EffectEvent.Delete => "DELETE",
+        // 用户点击不是一个校验阶段（校验阶段闭集为 SAVE/APPROVE/DEAPPROVE/DELETE），
+        // 因此不会有校验规则跟着一次点击顺带跑；映射到自身取值以免落到 SAVE 上。
+        EffectEvent.Manual => "MANUAL",
         _ => "SAVE",
     };
 

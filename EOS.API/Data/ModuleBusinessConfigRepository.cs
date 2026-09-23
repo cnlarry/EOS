@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.Json;
+using EOS.API.Data.DocumentActions;
 using EOS.API.Data.Effects;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
@@ -16,6 +17,7 @@ public sealed class ModuleBusinessConfigRepository(
     DbConnectionFactory connections,
     WorkbenchDirtyMarker dirtyMarker,
     WorkbenchAuditWriter auditWriter,
+    DocumentActionRegistry documentActions,
     ILogger<ModuleBusinessConfigRepository> logger)
 {
     public async Task<ModuleBusinessConfigDto?> GetAsync(int moduleId, CancellationToken token)
@@ -164,7 +166,7 @@ public sealed class ModuleBusinessConfigRepository(
         string updatedBy,
         CancellationToken token)
     {
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request, documentActions.KeySet);
         if (issues.Count > 0)
             throw new ArgumentException("业务动作配置校验未通过：\r\n" + string.Join("\r\n", issues));
 

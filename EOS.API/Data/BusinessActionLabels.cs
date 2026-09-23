@@ -17,6 +17,7 @@ public static class BusinessActionLabels
             ["DEAPPROVE"] = "解批",
             ["ENDCASE"] = "结案（占位）",
             ["UNENDCASE"] = "取消结案（占位）",
+            ["MANUAL"] = "用户点击（自定义按钮）",
         };
 
     /// <summary>失败模式。</summary>

@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Data.DocumentActions;
 using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
@@ -9,7 +10,7 @@ using Microsoft.Extensions.Options;
 namespace EOS.API.Controllers;
 
 [ApiController, Authorize, Route("api/v1/document-workbench/{moduleId:int}")]
-public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, WorkbenchChooserService chooser, IPermissionService permissions, WorkbenchAuditWriter auditWriter, EOS.API.Security.CurrentUserContext userContext, IOptions<UnifiedFormEditorSettings> formSettings, ILogger<DocumentWorkbenchController> logger) : ControllerBase
+public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, WorkbenchChooserService chooser, IPermissionService permissions, WorkbenchAuditWriter auditWriter, DocumentActionExecutor documentActions, EOS.API.Security.CurrentUserContext userContext, IOptions<UnifiedFormEditorSettings> formSettings, ILogger<DocumentWorkbenchController> logger) : ControllerBase
 {
     /// <summary>字段维护（数据表/字段设置）模块 ID：表单标签右键进入字段设置页的权限门。</summary>
     private const int FieldAdminModuleId = 2302;
@@ -121,6 +122,23 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
         var result=await repository.DeleteRecordAsync(access.Value.Definition,access.Value.Form,keyValues,userContext.UserId,access.Value.Rights.DataFilter,token,idempotencyKey!.Trim());
         LogValidationFailure(moduleId,result);
         return MapSaveResult(result);
+    }
+
+    /// <summary>
+    /// 单据操作（自定义按钮）：用户主动触发，服务端就这一张单据做一次动作。
+    /// 操作只作用于已落库的单据状态——它不接收界面上的未保存改动（前端在有待保存改动时禁用按钮）。
+    /// 权限、数据范围、幂等、审计与事务全部在服务端复核，前端按钮显隐只是体验。
+    /// </summary>
+    [HttpPost("action/{actionKey}")]
+    public async Task<IActionResult> RunAction(int moduleId,string actionKey,[FromBody]DocumentActionRequest? request,[FromHeader(Name="X-Idempotency-Key")]string? idempotencyKey=null,CancellationToken token=default)
+    {
+        var access=await ActionAccess(moduleId,token);
+        if(access is null)return NotFound();
+        if(request?.Key is null||request.Key.Count==0)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RECORD_KEY","请求体 key 必须是主键值数组。"));
+        if(IdempotencyProblem(idempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
+        var result=await documentActions.ExecuteAsync(access.Value.Definition,access.Value.Form,actionKey,request,
+            userContext.UserId,userContext.EmployeeName,access.Value.Rights.DataFilter,idempotencyKey!.Trim(),token);
+        return MapActionResult(moduleId,actionKey,result);
     }
 
     [HttpPost("approve")]
@@ -267,6 +285,45 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         var result=await chooser.GetChooserOptionsAsync(source.Table,keyword,filterField,returnItems,masterValues,detailValues,chooserConditions,chooserRights.CanViewCost,chooserRights.CanViewSecrecy,chooserRights.DeniedMasterFields,chooserRights.DataFilter,filterStruct,sortField,sortDirection,page,pageSize,chooserRights.ExecuteTag,source.ModuleId ?? moduleId,moduleId,chooserUserId,token);
         return result is null?NotFound():Ok(result);
     }
+
+    /// <summary>
+    /// 单据操作的入口闸门：权限口径与 <see cref="FormAccess"/> 相同，但不要求模块在统一表单白名单内——
+    /// 按钮同样出现在主表模块的自定义承载页上（这类模块没有统一表单，却仍有单据级动作）。
+    /// </summary>
+    private async Task<(WorkbenchDefinition Definition,FormDefinition Form,ModuleRights Rights)?> ActionAccess(int moduleId,CancellationToken token)
+    {
+        var definition=await AuthorizedDefinition(moduleId,token);
+        var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if(definition is null||userId is null)return null;
+        // 与批核/解批/结案同一道闸门：只读列表、由服务端服务托管的配置表不得经本端点改数据。
+        if(!definition.HasAdd&&!definition.HasEdit)return null;
+        var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
+        var form=await repository.GetFormDefinitionAsync(definition,userId,"view",rights.CanViewCost,rights.CanViewSecrecy,
+            rights.DeniedMasterFields,rights.DeniedDetailFields,
+            rights.DenyNewMasterFields,rights.DenyNewDetailFields,
+            rights.DenyModiMasterFields,rights.DenyModiDetailFields,token,
+            rights.CanAddNew,rights.CanEdit,rights.CanDelete,rights.CanApprove,rights.CanDeapprove,rights.CanEndCase,rights.CanUnEndCase,
+            rights.CanFileView,rights.CanFileUpda,rights.CanFileEdit,rights.CanFileDele);
+        return form is null?null:(definition,form,rights);
+    }
+
+    private IActionResult MapActionResult(int moduleId,string actionKey,DocumentActionExecution result)=>result.Status switch
+    {
+        DocumentActionStatus.Ok=>Ok(new{
+            moduleId,
+            actionKey,
+            outcome=result.Result!.Outcome.ToString().ToLowerInvariant(),
+            message=result.Result.Message,
+            targetModuleId=result.Result.TargetModuleId,
+            targetKey=result.Result.TargetKey,
+            warnings=result.Result.Warnings,
+            requiresConfirmation=result.RequiresConfirmation}),
+        DocumentActionStatus.NotFound=>NotFound(ApiProblem.Create(StatusCodes.Status404NotFound,result.ErrorCode??DocumentActionErrorCodes.NotFound,result.ErrorMessage??"操作不存在。")),
+        DocumentActionStatus.OutOfScope=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,result.ErrorCode??"RECORD_OUT_OF_SCOPE",result.ErrorMessage??"目标记录不在当前用户数据范围内。")),
+        DocumentActionStatus.FilterUnsupported=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,result.ErrorCode??"DATA_FILTER_UNSUPPORTED",result.ErrorMessage??"当前数据过滤条件尚不支持，已拒绝执行。")),
+        DocumentActionStatus.KeyMismatch=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,result.ErrorCode??"RECORD_KEY_MISMATCH",result.ErrorMessage??"主键数量与模块主键不匹配。")),
+        _=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,result.ErrorCode??DocumentActionErrorCodes.Failed,result.ErrorMessage??"操作未完成。").WithFieldErrors(result.FieldErrors??Array.Empty<FieldError>())),
+    };
 
     private async Task<(WorkbenchDefinition Definition,FormDefinition Form,ModuleRights Rights)?> FormAccess(int moduleId,string mode,CancellationToken token)
     {

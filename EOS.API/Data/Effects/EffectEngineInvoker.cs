@@ -48,6 +48,11 @@ public sealed class EffectEngineInvoker(
                 continue;
             if (action.TryGetProperty("enabled", out var enabled) && enabled.ValueKind == JsonValueKind.False)
                 continue;
+            // 用户点击行不是保存期行为：它不参与"保存自带明细生成"的判定，
+            // 否则"用户点的操作"会被当成"保存时自动产生的东西"参与空明细放行。
+            if (action.TryGetProperty("eventCode", out var declaredEvent) && declaredEvent.ValueKind == JsonValueKind.String
+                && BusinessActionCatalog.IsManualEvent(declaredEvent.GetString()))
+                continue;
             if (!action.TryGetProperty("effectKey", out var effectKey) || effectKey.ValueKind != JsonValueKind.String
                 || !BusinessActionCatalog.IsDetailGenerator(effectKey.GetString()!))
                 continue;

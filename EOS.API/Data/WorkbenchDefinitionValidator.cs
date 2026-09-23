@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using EOS.API.Data.DocumentActions;
 using EOS.API.Data.Effects;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
@@ -21,6 +22,7 @@ public sealed class WorkbenchDefinitionValidator(
     DocumentWorkbenchRepository workbench,
     WorkbenchDefinitionBuilder definitionBuilder,
     ModuleBusinessConfigRepository configRepository,
+    DocumentActionRegistry documentActions,
     IOptions<UnifiedFormEditorSettings> formSettings,
     ILogger<WorkbenchDefinitionValidator> logger)
 {
@@ -257,7 +259,8 @@ public sealed class WorkbenchDefinitionValidator(
         if (businessConfig is not null)
         {
             var configIssues = ModuleBusinessConfigValidator.Validate(
-                new SaveModuleBusinessConfigRequest(businessConfig.Actions, businessConfig.ValidationRules));
+                new SaveModuleBusinessConfigRequest(businessConfig.Actions, businessConfig.ValidationRules),
+                documentActions.KeySet);
             checks.Add(configIssues.Count == 0
                 ? new("business_config_valid", true, "业务动作/校验配置通过结构校验。")
                 : new("business_config_valid", false,
@@ -311,10 +314,35 @@ public sealed class WorkbenchDefinitionValidator(
             }
         }
 
+        // 用户点击类动作的键必须已在单据操作注册表中登记（未登记即拒发布）。
+        // 与 effect_engine_keys_implemented 同款 fail-closed，但判据不同：
+        // 效果键看效果注册表，按钮键看操作注册表——两者不能互相顶替。
+        if (businessConfig is not null)
+        {
+            var manualRows = businessConfig.Actions
+                .Where(action => action.Enabled && BusinessActionCatalog.IsManualEvent(action.EventCode))
+                .ToList();
+            var unknownActions = manualRows
+                .Where(action => !documentActions.IsRegistered(action.EffectKey))
+                .Select(action => $"SEQ={action.Seq} {action.EffectKey}")
+                .ToList();
+            checks.Add(unknownActions.Count == 0
+                ? new("document_action_keys_registered", true,
+                    manualRows.Count == 0 ? "模块无自定义按钮。" : $"自定义按钮键全部已登记（{manualRows.Count} 个）。")
+                : new("document_action_keys_registered", false,
+                    $"自定义按钮键未在操作注册表中登记，禁止发布：{string.Join("；", unknownActions)}。"));
+        }
+        else
+        {
+            checks.Add(new("document_action_keys_registered", true, "模块无业务动作配置。"));
+        }
+
         var engineEnabled = await ReadEffectEngineTagAsync(connection, moduleId, token);
         if (engineEnabled && businessConfig is not null)
         {
             var pendingKeys = businessConfig.Actions
+                // 用户点击行不是效果链步骤，其键由操作注册表把关，见上一项校验。
+                .Where(action => !BusinessActionCatalog.IsManualEvent(action.EventCode))
                 .Select(action => action.EffectKey)
                 .Where(effectKey => !EffectRegistry.IsImplemented(effectKey))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
