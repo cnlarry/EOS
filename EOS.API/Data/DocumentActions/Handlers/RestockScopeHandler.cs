@@ -1,6 +1,7 @@
 using System.Data;
 using EOS.API.Data.Effects;
 using EOS.API.Data.Effects.ServiceEffectHandlers;
+using EOS.API.Data.Inventory;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -47,12 +48,6 @@ internal sealed class RestockScopeHandler : IDocumentUserAction, IDocumentAction
     private const string LocationDepotField = "DEPOT_ID";
     private const string LocationField = "LOCATION_NO";
     private const string PathField = "LOCATION_PATH";
-    private const string StockTable = "INV_PRO_DEPOT";
-    private const string StockDepotField = "DEPOT_ID";
-    private const string StockProductField = "PRO_NO";
-    private const string StockLocationField = "LOCATION_NO";
-    private const string StockBatchField = "BATCH_NO";
-    private const string StockQtyField = "QTY";
     private const string SentinelLocationNo = "-";
 
     public string Key => ActionKey;
@@ -84,9 +79,6 @@ internal sealed class RestockScopeHandler : IDocumentUserAction, IDocumentAction
                      (DetailTable, DetailBatchField),
                      (LocationTable, LocationDepotField), (LocationTable, LocationField),
                      (LocationTable, PathField),
-                     (StockTable, StockDepotField), (StockTable, StockProductField),
-                     (StockTable, StockLocationField), (StockTable, StockBatchField),
-                     (StockTable, StockQtyField),
                  })
         {
             if (!columns.Contains(table + "." + column))
@@ -202,45 +194,41 @@ internal sealed class RestockScopeHandler : IDocumentUserAction, IDocumentAction
         return Convert.ToInt32(await command.ExecuteScalarAsync(token));
     }
 
-    /// <summary>范围内数量为负的库存行（料号/库位/批次）：有一行即整单拒绝。</summary>
+    /// <summary>
+    /// 范围内数量为负的库存行（料号/库位/批次）：有一行即整单拒绝。
+    /// 范围怎么展开（含位置主档的路径前缀）由 <see cref="InventoryQueryService"/> 决定，这里只做展示。
+    /// </summary>
     private static async Task<IReadOnlyList<string>> ListNegativeStockAsync(
         DocumentActionContext context, string depot, string rootPath, CancellationToken token)
     {
-        var q = ServiceEffectSql.Q;
-        await using var command = new SqlCommand(
-            $"SELECT TOP 6 LTRIM(RTRIM(s.{q(StockProductField)})) + '/' + LTRIM(RTRIM(s.{q(StockLocationField)})) + '/' + LTRIM(RTRIM(ISNULL(s.{q(StockBatchField)}, N''))) "
-            + $"FROM dbo.{q(StockTable)} s "
-            + $"JOIN dbo.{q(LocationTable)} l ON l.{q(LocationDepotField)}=s.{q(StockDepotField)} "
-            + $" AND l.{q(LocationField)}=s.{q(StockLocationField)} "
-            + $"WHERE s.{q(StockDepotField)}=@depot AND ISNULL(s.{q(StockQtyField)}, 0) < 0 "
-            + $"AND (l.{q(PathField)}=@rootPath OR SUBSTRING(l.{q(PathField)}, 1, LEN(@rootPath)+1) = @rootPath + '/');",
-            context.Connection, context.Transaction);
-        command.Parameters.Add("@depot", SqlDbType.NVarChar, 10).Value = depot;
-        command.Parameters.Add("@rootPath", SqlDbType.NVarChar, 300).Value = rootPath;
-        var rows = new List<string>();
-        await using var reader = await command.ExecuteReaderAsync(token);
-        while (await reader.ReadAsync(token))
-        {
-            rows.Add(reader.GetString(0));
-        }
-        return rows;
+        var rows = await InventoryQueryService.GetRowsAsync(
+            context.Connection, context.Transaction,
+            new InventoryQueryService.RowScope
+            {
+                DepotId = depot,
+                LocationPathPrefix = rootPath,
+                Quantity = InventoryQueryService.RowQuantity.Negative,
+            },
+            InventoryQueryService.ReadLock.None, token);
+        return rows.Take(6)
+            .Select(row => $"{row.ProductNo}/{row.LocationNo}/{row.BatchNo}")
+            .ToList();
     }
 
     /// <summary>新范围下能生成几行（有量的库存行数）：探路文案与空范围拒绝共用。</summary>
     private static async Task<int> CountIncomingAsync(
         DocumentActionContext context, string depot, string rootPath, CancellationToken token)
     {
-        var q = ServiceEffectSql.Q;
-        await using var command = new SqlCommand(
-            $"SELECT COUNT(*) FROM dbo.{q(StockTable)} s "
-            + $"JOIN dbo.{q(LocationTable)} l ON l.{q(LocationDepotField)}=s.{q(StockDepotField)} "
-            + $" AND l.{q(LocationField)}=s.{q(StockLocationField)} "
-            + $"WHERE s.{q(StockDepotField)}=@depot AND ISNULL(s.{q(StockQtyField)}, 0) <> 0 "
-            + $"AND (l.{q(PathField)}=@rootPath OR SUBSTRING(l.{q(PathField)}, 1, LEN(@rootPath)+1) = @rootPath + '/');",
-            context.Connection, context.Transaction);
-        command.Parameters.Add("@depot", SqlDbType.NVarChar, 10).Value = depot;
-        command.Parameters.Add("@rootPath", SqlDbType.NVarChar, 300).Value = rootPath;
-        return Convert.ToInt32(await command.ExecuteScalarAsync(token));
+        var rows = await InventoryQueryService.GetRowsAsync(
+            context.Connection, context.Transaction,
+            new InventoryQueryService.RowScope
+            {
+                DepotId = depot,
+                LocationPathPrefix = rootPath,
+                Quantity = InventoryQueryService.RowQuantity.NonZero,
+            },
+            InventoryQueryService.ReadLock.None, token);
+        return rows.Count;
     }
 
     private static async Task DeleteDetailsAsync(
@@ -262,30 +250,49 @@ internal sealed class RestockScopeHandler : IDocumentUserAction, IDocumentAction
     private static async Task InsertDetailsAsync(
         DocumentActionContext context, string type, string no, string depot, string rootPath, CancellationToken token)
     {
-        var q = ServiceEffectSql.Q;
-        var sql = "INSERT INTO dbo." + q(DetailTable)
-            + " (" + string.Join(", ", new[]
+        var rows = await InventoryQueryService.GetRowsAsync(
+            context.Connection, context.Transaction,
+            new InventoryQueryService.RowScope
             {
-                TypeField, NoField, SerialField, DetailProductField,
-                DetailDepotField, DetailAccountField, DetailCheckField,
-                DetailLocationField, DetailBatchField,
-            }.Select(q)) + ") "
-            + "SELECT @type, @no, ROW_NUMBER() OVER (ORDER BY s." + q(StockProductField)
-            + ", s." + q(StockLocationField) + ", s." + q(StockBatchField) + "), "
-            + "s." + q(StockProductField) + ", s." + q(StockDepotField)
-            + ", s." + q(StockQtyField) + ", s." + q(StockQtyField)
-            + ", s." + q(StockLocationField) + ", s." + q(StockBatchField)
-            + " FROM dbo." + q(StockTable) + " s "
-            + "JOIN dbo." + q(LocationTable) + " l ON l." + q(LocationDepotField) + "=s." + q(StockDepotField)
-            + " AND l." + q(LocationField) + "=s." + q(StockLocationField)
-            + " WHERE s." + q(StockDepotField) + "=@depot AND s." + q(StockQtyField) + "<>0 AND (l." + q(PathField)
-            + "=@rootPath OR SUBSTRING(l." + q(PathField) + ", 1, LEN(@rootPath)+1) = @rootPath + '/');";
+                DepotId = depot,
+                LocationPathPrefix = rootPath,
+                Quantity = InventoryQueryService.RowQuantity.NonZero,
+            },
+            InventoryQueryService.ReadLock.None, token);
+        if (rows.Count == 0) return;
 
-        await using var command = new SqlCommand(sql, context.Connection, context.Transaction);
-        command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;
-        command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = no;
-        command.Parameters.Add("@depot", SqlDbType.NVarChar, 10).Value = depot;
-        command.Parameters.Add("@rootPath", SqlDbType.NVarChar, 300).Value = rootPath;
-        await command.ExecuteNonQueryAsync(token);
+        var q = ServiceEffectSql.Q;
+        var columnList = string.Join(", ", new[]
+        {
+            TypeField, NoField, SerialField, DetailProductField,
+            DetailDepotField, DetailAccountField, DetailCheckField,
+            DetailLocationField, DetailBatchField,
+        }.Select(q));
+        // 分片写入：一次语句包一批库存行，避免"一行一条语句"的往返放大；
+        // 值全部作为参数（`ROW_NUMBER()` 失去意义，项次按服务返回的顺序在 C# 里编号，
+        // 顺序口径与改造前一致：料号 → 库位 → 批次）。
+        const int chunkSize = 200;
+        for (var offset = 0; offset < rows.Count; offset += chunkSize)
+        {
+            var chunk = rows.Skip(offset).Take(chunkSize).ToList();
+            var tuples = string.Join(", ", chunk.Select((_, index) =>
+                $"(@type, @no, @s{index}, @p{index}, @d{index}, @q{index}, @q{index}, @l{index}, @b{index})"));
+            await using var command = new SqlCommand(
+                $"INSERT INTO dbo.{q(DetailTable)} ({columnList}) VALUES {tuples};",
+                context.Connection, context.Transaction);
+            command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;
+            command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = no;
+            for (var index = 0; index < chunk.Count; index++)
+            {
+                var row = chunk[index];
+                command.Parameters.Add($"@s{index}", SqlDbType.Int).Value = offset + index + 1;
+                command.Parameters.Add($"@p{index}", SqlDbType.NVarChar, 60).Value = row.ProductNo;
+                command.Parameters.Add($"@d{index}", SqlDbType.NVarChar, 20).Value = row.DepotId;
+                command.Parameters.Add($"@q{index}", SqlDbType.Float).Value = (object?)row.Quantity ?? 0d;
+                command.Parameters.Add($"@l{index}", SqlDbType.NVarChar, 60).Value = row.LocationNo;
+                command.Parameters.Add($"@b{index}", SqlDbType.NVarChar, 60).Value = row.BatchNo;
+            }
+            await command.ExecuteNonQueryAsync(token);
+        }
     }
 }

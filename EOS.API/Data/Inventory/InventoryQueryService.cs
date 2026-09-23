@@ -203,6 +203,153 @@ public static class InventoryQueryService
     }
 
     internal sealed record BoundParameter(string Name, SqlDbType Type, int Size, object Value);
+
+    // ===== 行级读 =====
+
+    /// <summary>行筛选：数量口径（仓位/盘点的适用范围各不相同）。</summary>
+    public enum RowQuantity
+    {
+        Any = 0,
+        NonZero = 1,
+        Negative = 2,
+    }
+
+    /// <summary>
+    /// 行级请求：给了的条件做等值定位（库位一律按哨兵归一后比较），没给的不过滤。
+    /// 结果按 (料号, 库位, 批次) 排序——凡要把行摊成单据明细的地方，项次需要一个稳定的顺序。
+    /// </summary>
+    public sealed record RowScope
+    {
+        public string? DepotId { get; init; }
+        public IReadOnlyList<string>? DepotIds { get; init; }
+        public string? ProductNo { get; init; }
+        public IReadOnlyList<string>? ProductNos { get; init; }
+        public string? BatchNo { get; init; }
+
+        /// <summary>排除"未指定位置"的哨兵行（盘点/混放判定的常规口径）。</summary>
+        public bool ExcludeSentinelLocation { get; init; }
+
+        /// <summary>
+        /// 库位物化路径前缀（含该库区及其所有下级）；给了就按 `DEPOT_LOCATION` 的路径展开，
+        /// 调用方不必自己去 JOIN 位置主档。
+        /// </summary>
+        public string? LocationPathPrefix { get; init; }
+
+        public RowQuantity Quantity { get; init; } = RowQuantity.Any;
+    }
+
+    /// <summary>一行余额：位置与批次已按哨兵/空串归一，库别级字段按原值给出（比较请用 MAX 口径）。</summary>
+    public sealed record InventoryRow(
+        string ProductNo,
+        string DepotId,
+        string LocationNo,
+        string BatchNo,
+        double? Quantity,
+        double? InitQuantity,
+        double? CostPrice,
+        double? CostAmount,
+        DateTime? LastCheckDate);
+
+    /// <summary>读余额行（四键原样返回）。数量口径见 <see cref="RowScope.Quantity"/>。</summary>
+    public static async Task<IReadOnlyList<InventoryRow>> GetRowsAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        RowScope scope,
+        ReadLock readLock,
+        CancellationToken token)
+    {
+        var plan = BuildRows(scope, readLock);
+        await using var command = new SqlCommand(plan.Sql, connection, transaction);
+        foreach (var parameter in plan.Parameters)
+        {
+            command.Parameters.Add(parameter.Name, parameter.Type, parameter.Size).Value = parameter.Value;
+        }
+
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var rows = new List<InventoryRow>();
+        while (await reader.ReadAsync(token))
+        {
+            rows.Add(new InventoryRow(
+                reader.IsDBNull(0) ? string.Empty : reader.GetString(0).Trim(),
+                reader.IsDBNull(1) ? string.Empty : reader.GetString(1).Trim(),
+                reader.IsDBNull(2) || reader.GetString(2).Trim().Length == 0 ? LocationSentinel : reader.GetString(2).Trim(),
+                reader.IsDBNull(3) ? EmptyBatch : reader.GetString(3).Trim(),
+                reader.IsDBNull(4) ? null : (double?)Convert.ToDouble(reader.GetValue(4)),
+                reader.IsDBNull(5) ? null : (double?)Convert.ToDouble(reader.GetValue(5)),
+                reader.IsDBNull(6) ? null : (double?)Convert.ToDouble(reader.GetValue(6)),
+                reader.IsDBNull(7) ? null : (double?)Convert.ToDouble(reader.GetValue(7)),
+                reader.IsDBNull(8) ? null : (DateTime?)reader.GetDateTime(8)));
+        }
+        return rows;
+    }
+
+    /// <summary>
+    /// 生成行级语句与其参数。这里把"哪些行算在范围内"一次性定下来：
+    /// 哨兵位置、路径前缀展开、以及"有量/负量"的判定写法都属于本服务，调用方不再各写一遍。
+    /// </summary>
+    internal static (string Sql, IReadOnlyList<BoundParameter> Parameters) BuildRows(RowScope scope, ReadLock readLock)
+    {
+        var join = scope.LocationPathPrefix is { Length: > 0 }
+            ? " JOIN dbo.DEPOT_LOCATION l ON l.DEPOT_ID=s.DEPOT_ID AND l.LOCATION_NO=s.LOCATION_NO"
+            : string.Empty;
+        var predicates = new List<string>();
+        var parameters = new List<BoundParameter>();
+        if (scope.DepotId is { Length: > 0 } depot)
+        {
+            predicates.Add("s.DEPOT_ID=@depot");
+            parameters.Add(new BoundParameter("@depot", SqlDbType.NVarChar, 20, depot));
+        }
+        if (scope.DepotIds is { Count: > 0 } depots)
+        {
+            var names = new List<string>();
+            for (var index = 0; index < depots.Count; index++)
+            {
+                names.Add($"@depot{index}");
+                parameters.Add(new BoundParameter($"@depot{index}", SqlDbType.NVarChar, 20, depots[index]));
+            }
+            predicates.Add($"s.DEPOT_ID IN ({string.Join(", ", names)})");
+        }
+        if (scope.ProductNo is { Length: > 0 } product)
+        {
+            predicates.Add("s.PRO_NO=@pro");
+            parameters.Add(new BoundParameter("@pro", SqlDbType.NVarChar, 60, product));
+        }
+        if (scope.ProductNos is { Count: > 0 } products)
+        {
+            var names = new List<string>();
+            for (var index = 0; index < products.Count; index++)
+            {
+                names.Add($"@pro{index}");
+                parameters.Add(new BoundParameter($"@pro{index}", SqlDbType.NVarChar, 60, products[index]));
+            }
+            predicates.Add($"s.PRO_NO IN ({string.Join(", ", names)})");
+        }
+        if (scope.BatchNo is { Length: > 0 } batch)
+        {
+            predicates.Add($"{BatchKey("s")}=@batch");
+            parameters.Add(new BoundParameter("@batch", SqlDbType.NVarChar, 60, batch));
+        }
+        if (scope.ExcludeSentinelLocation)
+        {
+            predicates.Add($"s.LOCATION_NO <> N'{LocationSentinel}'");
+        }
+        if (scope.LocationPathPrefix is { Length: > 0 } path)
+        {
+            predicates.Add("(l.LOCATION_PATH=@path OR SUBSTRING(l.LOCATION_PATH, 1, LEN(@path)+1) = @path + '/')");
+            parameters.Add(new BoundParameter("@path", SqlDbType.NVarChar, 300, path));
+        }
+        predicates.Add(scope.Quantity switch
+        {
+            RowQuantity.NonZero => "ISNULL(s.QTY, 0) <> 0",
+            RowQuantity.Negative => "ISNULL(s.QTY, 0) < 0",
+            _ => "1=1",
+        });
+        var where = " WHERE " + string.Join(" AND ", predicates);
+        var sql = "SELECT s.PRO_NO, s.DEPOT_ID, s.LOCATION_NO, s.BATCH_NO, s.QTY, s.INIT_QTY, s.COST_PRICE, "
+            + $"s.COST_AMOUNT, s.LAST_CHECK_DATE FROM dbo.{BalanceTable} s{Hint(readLock)}{join}{where} "
+            + "ORDER BY s.PRO_NO, s.LOCATION_NO, s.BATCH_NO;";
+        return (sql, parameters);
+    }
 }
 
 /// <summary>

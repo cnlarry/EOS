@@ -1,6 +1,7 @@
 using System.Data;
 using EOS.API.Data.Effects;
 using EOS.API.Data.Effects.ServiceEffectHandlers;
+using EOS.API.Data.Inventory;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -24,7 +25,6 @@ internal sealed class MaterialIssueAllocateHandler : IDocumentUserAction, IDocum
     private const string MasterTable = "MOC_GET_M";
     private const string DetailTable = "MOC_GET_D";
     private const string MoreTable = "MOC_GET_MORE";
-    private const string StockTable = "INV_PRO_DEPOT";
     private const string TypeField = "GET_TYPE";
     private const string NoField = "GET_NO";
     private const string SerialField = "SERIAL_NO";
@@ -61,7 +61,6 @@ internal sealed class MaterialIssueAllocateHandler : IDocumentUserAction, IDocum
                      (MoreTable, TypeField), (MoreTable, NoField),
                      (MoreTable, SerialField), (MoreTable, ProField),
                      (MoreTable, RequireQtyField), (MoreTable, QtyField),
-                     (StockTable, ProField), (StockTable, DepotField), (StockTable, StockQtyField),
                  })
         {
             if (!columns.Contains(table + "." + column))
@@ -120,19 +119,44 @@ internal sealed class MaterialIssueAllocateHandler : IDocumentUserAction, IDocum
         zero.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = no;
         await zero.ExecuteNonQueryAsync(token);
 
-        await using var command = new SqlCommand(
-            $"UPDATE d SET d.{q(SendQtyField)}="
-            + $"CASE WHEN ISNULL(d.{q(QtyField)}, 0) > ISNULL(x.{q(StockQtyField)}, 0) "
-            + $"THEN ISNULL(x.{q(StockQtyField)}, 0) ELSE ISNULL(d.{q(QtyField)}, 0) END "
-            + $"FROM dbo.{q(DetailTable)} d JOIN (SELECT LTRIM(RTRIM({q(ProField)})) AS {q(ProField)}, "
-            + $"LTRIM(RTRIM({q(DepotField)})) AS {q(DepotField)}, SUM(ISNULL({q(StockQtyField)}, 0)) AS {q(StockQtyField)} "
-            + $"FROM dbo.{q(StockTable)} GROUP BY LTRIM(RTRIM({q(ProField)})), LTRIM(RTRIM({q(DepotField)}))) x "
-            + $"ON LTRIM(RTRIM(d.{q(ProField)}))=x.{q(ProField)} AND LTRIM(RTRIM(d.{q(DepotField)}))=x.{q(DepotField)} "
-            + $"WHERE d.{q(TypeField)}=@type AND d.{q(NoField)}=@no;",
-            context.Connection, context.Transaction);
-        command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;
-        command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = no;
-        return await command.ExecuteNonQueryAsync(token);
+        // 库存侧经 InventoryQueryService 按 (料号, 库别) 聚合：四键下发合计这件事只有那里知道
+        // （明细行没有库位列，`SEND_QTY` 的语义本就是"该库别可发多少"，聚合维度与语义一致）。
+        var quantities = await InventoryQueryService.GetQuantitiesAsync(
+            context.Connection, context.Transaction,
+            new InventoryQueryService.QuantityQuery { GroupByDepot = true },
+            InventoryQueryService.ReadLock.None, token);
+        if (quantities.Count == 0) return 0;
+
+        // 逐分片按 CASE 取 min(需求, 库别合计)：CASE 里的比较仍在库里做，
+        // 只是把"每个 (料号, 库别) 有多少"从派生表换成参数化的 VALUES 关联。
+        const int chunkSize = 200;
+        var affected = 0;
+        for (var offset = 0; offset < quantities.Count; offset += chunkSize)
+        {
+            var chunk = quantities.Skip(offset).Take(chunkSize).ToList();
+            var tuples = string.Join(", ", chunk.Select((_, index) => $"(@p{index}, @d{index}, @q{index})"));
+            await using var command = new SqlCommand(
+                $"UPDATE d SET d.{q(SendQtyField)}="
+                + $"CASE WHEN ISNULL(d.{q(QtyField)}, 0) > ISNULL(v.{q(StockQtyField)}, 0) "
+                + $"THEN ISNULL(v.{q(StockQtyField)}, 0) ELSE ISNULL(d.{q(QtyField)}, 0) END "
+                + $"FROM dbo.{q(DetailTable)} d "
+                + $"JOIN (VALUES {tuples}) v({q(ProField)}, {q(DepotField)}, {q(StockQtyField)}) "
+                + $"ON LTRIM(RTRIM(d.{q(ProField)}))=v.{q(ProField)} "
+                + $"AND LTRIM(RTRIM(d.{q(DepotField)}))=v.{q(DepotField)} "
+                + $"WHERE d.{q(TypeField)}=@type AND d.{q(NoField)}=@no;",
+                context.Connection, context.Transaction);
+            command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;
+            command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = no;
+            for (var index = 0; index < chunk.Count; index++)
+            {
+                command.Parameters.Add($"@p{index}", SqlDbType.NVarChar, 60).Value = chunk[index].ProductNo;
+                command.Parameters.Add($"@d{index}", SqlDbType.NVarChar, 20).Value = chunk[index].DepotId ?? string.Empty;
+                command.Parameters.Add($"@q{index}", SqlDbType.Float).Value =
+                    (object?)chunk[index].Quantity ?? 0d;
+            }
+            affected += await command.ExecuteNonQueryAsync(token);
+        }
+        return affected;
     }
 
     /// <summary>

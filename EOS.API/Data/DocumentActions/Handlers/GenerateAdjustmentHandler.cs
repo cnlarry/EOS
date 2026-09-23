@@ -1,6 +1,7 @@
 using System.Data;
 using EOS.API.Data.Effects;
 using EOS.API.Data.Effects.ServiceEffectHandlers;
+using EOS.API.Data.Inventory;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.Data.SqlClient;
@@ -38,15 +39,12 @@ internal sealed class GenerateAdjustmentHandler(
     /// <summary>库存调整单模块（旧系统按 MODULES.M_ALIAS='INV_OCCUR_ADJUST' 找默认单别）。</summary>
     private const int TargetModuleId = 130107;
 
-    private const string StockTable = "INV_PRO_DEPOT";
     private const string CurrencyTable = "CURR";
     private const string ProductTable = "PRODUCT";
     private const string DepotField = "DEPOT_ID";
     private const string ProductField = "PRO_NO";
     private const string LocationField = "LOCATION_NO";
     private const string BatchField = "BATCH_NO";
-    private const string StockQtyField = "QTY";
-    private const string StockCostField = "COST_PRICE";
     private const string AccountQtyField = "ACCOUNT_QTY";
     private const string CheckedQtyField = "CHECK_QTY";
     private const string AdjustTypeField = "ADJUST_TYPE";
@@ -235,6 +233,9 @@ internal sealed class GenerateAdjustmentHandler(
     /// <summary>
     /// 盈亏行＝盘点数≠账面数的行。逐行携带库位与批次（旧实现只带库别与料号），
     /// 单价取该库存行的成本价、币别取本位币（与旧系统同：无成本价按 0 起算）。
+    ///
+    /// 库存侧的读法交给 <see cref="InventoryQueryService"/>：四键怎么对齐在那里，
+    /// 这里只把明细行的四key 用同一把尺子去查回来。没有库存记录的行单价按 0，与改造前一致。
     /// </summary>
     private static async Task<IReadOnlyList<DifferenceRow>> ReadDifferenceRowsAsync(
         DocumentActionContext context, string masterDepot, CancellationToken token)
@@ -250,15 +251,9 @@ internal sealed class GenerateAdjustmentHandler(
                    ISNULL(LTRIM(RTRIM(d.{q(LocationField)})), N''),
                    ISNULL(LTRIM(RTRIM(d.{q(BatchField)})), N''),
                    ISNULL(d.{q(CheckedQtyField)}, 0) - ISNULL(d.{q(AccountQtyField)}, 0),
-                   ISNULL(NULLIF(LTRIM(RTRIM(p.UNIT_ID)), N''), N''),
-                   ISNULL(s.{q(StockCostField)}, 0)
+                   ISNULL(NULLIF(LTRIM(RTRIM(p.UNIT_ID)), N''), N'')
             FROM dbo.{q(detailTable)} d WITH (UPDLOCK, HOLDLOCK)
             LEFT JOIN dbo.{q(ProductTable)} p ON LTRIM(RTRIM(p.{q(ProductField)}))=LTRIM(RTRIM(d.{q(ProductField)}))
-            LEFT JOIN dbo.{q(StockTable)} s
-                   ON LTRIM(RTRIM(s.{q(DepotField)}))=ISNULL(NULLIF(LTRIM(RTRIM(d.{q(DepotField)})), N''), @masterDepot)
-                  AND LTRIM(RTRIM(s.{q(ProductField)}))=LTRIM(RTRIM(d.{q(ProductField)}))
-                  AND ISNULL(LTRIM(RTRIM(s.{q(LocationField)})), N'')=ISNULL(LTRIM(RTRIM(d.{q(LocationField)})), N'')
-                  AND ISNULL(LTRIM(RTRIM(s.{q(BatchField)})), N'')=ISNULL(LTRIM(RTRIM(d.{q(BatchField)})), N'')
             WHERE {keyFilter} AND ISNULL(d.{q(CheckedQtyField)}, 0) - ISNULL(d.{q(AccountQtyField)}, 0) <> 0
             ORDER BY d.{q("SERIAL_NO")};
             """, context.Connection, context.Transaction);
@@ -269,26 +264,72 @@ internal sealed class GenerateAdjustmentHandler(
         command.Parameters.AddWithValue("@masterDepot", masterDepot);
 
         var currency = await ReadBaseCurrencyAsync(context, token);
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var rows = new List<DifferenceRow>();
-        while (await reader.ReadAsync(token))
+        var pending = new List<PendingDifference>();
+        await using (var reader = await command.ExecuteReaderAsync(token))
         {
-            var diff = Convert.ToDouble(reader.GetValue(4));
-            rows.Add(new DifferenceRow(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+            while (await reader.ReadAsync(token))
             {
-                [ProductField] = reader.GetString(0),
-                [DepotField] = reader.GetString(1),
-                [LocationField] = reader.GetString(2),
-                [BatchField] = reader.GetString(3),
-                [TargetQtyField] = diff.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture),
-                [TargetUnitField] = reader.GetString(5),
-                [TargetPriceField] = Convert.ToDouble(reader.GetValue(6)).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture),
-                [TargetCurrencyField] = currency,
-                [TargetRateField] = "1",
-            }));
+                pending.Add(new PendingDifference(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    Convert.ToDouble(reader.GetValue(4)),
+                    reader.GetString(5)));
+            }
         }
-        return rows;
+        if (pending.Count == 0) return [];
+
+        var costPrices = await ReadCostPricesAsync(context, masterDepot, pending, token);
+        return pending.Select(row => new DifferenceRow(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [ProductField] = row.Product,
+            [DepotField] = row.Depot,
+            [LocationField] = row.Location,
+            [BatchField] = row.Batch,
+            [TargetQtyField] = row.Difference.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture),
+            [TargetUnitField] = row.Unit,
+            [TargetPriceField] = costPrices.GetValueOrDefault(StockKey(row.Depot, row.Product, row.Location, row.Batch), 0d)
+                .ToString("0.######", System.Globalization.CultureInfo.InvariantCulture),
+            [TargetCurrencyField] = currency,
+            [TargetRateField] = "1",
+        })).ToList();
     }
+
+    /// <summary>
+    /// 明细四键 → 成本价。成本价是库别级字段（同一 (料号, 库别) 各行同值），这里按行取出即可，
+    /// 读取范围限定在本单涉及的料号与库别，避免把整张余额表拉进内存。
+    /// 库存行怎么读、位置/批次怎么归一都由 <see cref="InventoryQueryService"/> 决定。
+    /// </summary>
+    private static async Task<IReadOnlyDictionary<string, double>> ReadCostPricesAsync(
+        DocumentActionContext context, string masterDepot, IReadOnlyList<PendingDifference> rows, CancellationToken token)
+    {
+        var products = rows.Select(row => row.Product).Where(value => value.Length > 0)
+            .Distinct(StringComparer.Ordinal).ToList();
+        var depots = rows.Select(row => row.Depot.Length > 0 ? row.Depot : masterDepot)
+            .Distinct(StringComparer.Ordinal).ToList();
+        var stock = await InventoryQueryService.GetRowsAsync(
+            context.Connection, context.Transaction,
+            new InventoryQueryService.RowScope { ProductNos = products, DepotIds = depots },
+            InventoryQueryService.ReadLock.None, token);
+        var prices = new Dictionary<string, double>(StringComparer.Ordinal);
+        foreach (var row in stock)
+        {
+            prices[StockKey(row.DepotId, row.ProductNo, row.LocationNo, row.BatchNo)] = row.CostPrice ?? 0d;
+        }
+        return prices;
+    }
+
+    private sealed record PendingDifference(
+        string Product, string Depot, string Location, string Batch, double Difference, string Unit);
+
+    /// <summary>四键的对齐键：两侧都按同一套归一化（空值/哨兵不产生差异）。</summary>
+    private static string StockKey(string depot, string product, string location, string batch) =>
+        string.Join('|',
+            depot.Trim(),
+            product.Trim(),
+            location.Trim().Length == 0 ? InventoryQueryService.LocationSentinel : location.Trim(),
+            batch.Trim());
 
     /// <summary>本位币（CURR.IS_BASE=1）：旧系统取 Application["BASE_CURR"]，新系统按同一事实读库。</summary>
     private static async Task<string> ReadBaseCurrencyAsync(DocumentActionContext context, CancellationToken token)
