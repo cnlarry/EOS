@@ -521,7 +521,7 @@ export function DepotStockPolicyPage() {
                   value={editor.relocateTo}
                   onChange={(event) => setEditor({ ...editor, relocateTo: event.target.value })}
                 >
-                  <option value="">留空则不搬动存量</option>
+                  <option value="">暂不归位</option>
                   {(editorLocations.data ?? []).map((item) => (
                     <option key={item.locationNo} value={item.locationNo}>
                       {item.locationNo}{item.locationName ? `（${item.locationName}）` : ''}
