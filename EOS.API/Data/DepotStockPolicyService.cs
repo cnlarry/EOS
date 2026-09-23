@@ -278,6 +278,23 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         return new RelocateSentinelResult(true, [], message);
     }
 
+    /// <summary>一个仓库的代号与名称（新增策略行时选库别用）。</summary>
+    public sealed record DepotRef(string DepotId, string DepotName);
+
+    /// <summary>列出全部仓库（代号 + 名称，按代号排序）。</summary>
+    public async Task<IReadOnlyList<DepotRef>> ListDepotsAsync(CancellationToken token = default)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(
+            "SELECT DEPOT_ID, DEPOT_NAME FROM dbo.DEPOT ORDER BY DEPOT_ID", connection);
+        var rows = new List<DepotRef>();
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+            rows.Add(new DepotRef(reader.GetString(0).Trim(), reader.GetString(1).Trim()));
+        return rows;
+    }
+
     /// <summary>列出全部策略行（部署级默认 + 各库别覆盖）。</summary>
     public async Task<IReadOnlyList<DepotStockPolicy>> ListAsync(CancellationToken token = default)
     {

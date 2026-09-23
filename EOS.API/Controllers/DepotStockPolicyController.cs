@@ -45,6 +45,15 @@ public sealed class DepotStockPolicyController(
         return Ok(DepotStockPolicyService.Tiers);
     }
 
+    /// <summary>仓库清单（新增策略行时选库别用；已配策略的过滤由界面按策略行清单做）。</summary>
+    [HttpGet("depots")]
+    public async Task<IActionResult> Depots(CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+
+        return Ok(await service.ListDepotsAsync(token));
+    }
+
     /// <summary>保存一条策略行；<c>depotId</c> 传 <c>*</c> 即部署级默认行。</summary>
     [HttpPut("{depotId}")]
     public async Task<IActionResult> Save(

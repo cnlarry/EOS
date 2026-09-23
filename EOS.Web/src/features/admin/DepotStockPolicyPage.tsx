@@ -52,6 +52,11 @@ interface RelocatePreview {
   message: string
 }
 
+interface Depot {
+  depotId: string
+  depotName: string
+}
+
 /** 保存返回 400 时响应体仍是保存结果（不是标准 problem），故按形状宽容读取。 */
 function readSaveResult(error: unknown): SaveResult | null {
   if (!(error instanceof ApiError)) return null
@@ -121,6 +126,10 @@ export function DepotStockPolicyPage() {
     queryKey: ['depot-stock-policy-tiers'],
     queryFn: () => apiClient.get<Tier[]>('/admin/depot-stock-policy/tiers'),
   })
+  const depots = useQuery({
+    queryKey: ['depot-stock-policy-depots'],
+    queryFn: () => apiClient.get<Depot[]>('/admin/depot-stock-policy/depots'),
+  })
 
   const selectedId = Object.keys(rowSelection).find((key) => rowSelection[key])
   // 单选语义：首列是单选框，一次只留一行（表格底层是开关语义，不收拢会留下多行）。
@@ -153,7 +162,14 @@ export function DepotStockPolicyPage() {
   const refreshAll = () => {
     void policies.refetch()
     void tiers.refetch()
+    void depots.refetch()
   }
+
+  // 新增只给尚未配置策略行的库别：已配的行走编辑，`*` 行改部署级默认。
+  const unconfiguredDepots = useMemo(() => {
+    const configured = new Set((policies.data ?? []).map((item) => item.depotId))
+    return (depots.data ?? []).filter((item) => !configured.has(item.depotId))
+  }, [depots.data, policies.data])
 
   const save = useMutation({
     mutationFn: ({ depotId, body }: { depotId: string; body: Record<string, unknown> }) =>
@@ -240,7 +256,10 @@ export function DepotStockPolicyPage() {
       locationMode: '0', storageMode: 'FIXED', batchMode: '0', capacityMode: '0',
       mixProduct: '1', mixBatch: '1', monthCloseByBatch: '1', monthCloseByLocation: '0',
     }
-    setEditor({ mode: 'create', depotId: '', draft: base, relocateTo: '', confirmPanel: null, message: null })
+    setEditor({
+      mode: 'create', depotId: unconfiguredDepots[0]?.depotId ?? '',
+      draft: base, relocateTo: '', confirmPanel: null, message: null,
+    })
   }
 
   const openEdit = () => {
@@ -409,13 +428,14 @@ export function DepotStockPolicyPage() {
         <Modal
           title={editor.mode === 'create' ? '新增策略行' : `编辑：${editor.depotId === '*' ? '部署级默认' : editor.depotId}`}
           onClose={() => setEditor(null)}
+          size="lg"
           footer={(
             <>
               <Button size="sm" variant="ghost" onClick={() => setEditor(null)}>取消</Button>
               <Button
                 size="sm"
                 icon={<IconDeviceFloppy size={16} />}
-                disabled={save.isPending}
+                disabled={save.isPending || (editor.mode === 'create' && editor.depotId === '')}
                 loading={save.isPending}
                 onClick={() => submitEditor(false)}
               >
@@ -424,43 +444,54 @@ export function DepotStockPolicyPage() {
             </>
           )}
         >
-          {editor.mode === 'create' ? (
-            <div className="mb-2">
-              <label className="form-label small mb-1">库别代号</label>
+          <div className="row g-2">
+            {editor.mode === 'create' ? (
+              <div className="col-6">
+                <label className="form-label small mb-1">库别</label>
+                {unconfiguredDepots.length === 0 ? (
+                  <div className="form-text">全部库别均已配置策略行，无可新增。</div>
+                ) : (
+                  <select
+                    className="form-select form-select-sm"
+                    aria-label="库别"
+                    value={editor.depotId}
+                    onChange={(event) => setEditor({ ...editor, depotId: event.target.value })}
+                  >
+                    {unconfiguredDepots.map((item) => (
+                      <option key={item.depotId} value={item.depotId}>
+                        {item.depotId}（{item.depotName}）
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            ) : null}
+            {(tiers.data ?? []).map((tier) => (
+              <div className="col-6" key={tier.key}>
+                <label className="form-label small mb-1" title={tier.description}>{tier.label}</label>
+                <select
+                  className="form-select form-select-sm"
+                  value={editor.draft[tier.key] ?? ''}
+                  onChange={(event) => setEditor({ ...editor, draft: { ...editor.draft, [tier.key]: event.target.value } })}
+                >
+                  {tier.options.map((option) => (
+                    <option key={option.value} value={option.value} disabled={!option.implemented}>
+                      {option.implemented ? option.label : `${option.label}（本版未实现）`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+            <div className="col-12">
+              <label className="form-label small mb-1">升档归位目标库位（可选）</label>
               <input
-                className="form-control form-control-sm font-monospace"
-                aria-label="库别代号"
-                value={editor.depotId}
-                placeholder="如 CP"
-                onChange={(event) => setEditor({ ...editor, depotId: event.target.value })}
+                className="form-control form-control-sm"
+                value={editor.relocateTo}
+                placeholder="留空则不搬动存量"
+                onChange={(event) => setEditor({ ...editor, relocateTo: event.target.value })}
               />
+              <div className="form-text">位置档位升高且确有“未指定位置”存量时填写。</div>
             </div>
-          ) : null}
-          {(tiers.data ?? []).map((tier) => (
-            <div className="mb-2" key={tier.key}>
-              <label className="form-label small mb-1" title={tier.description}>{tier.label}</label>
-              <select
-                className="form-select form-select-sm"
-                value={editor.draft[tier.key] ?? ''}
-                onChange={(event) => setEditor({ ...editor, draft: { ...editor.draft, [tier.key]: event.target.value } })}
-              >
-                {tier.options.map((option) => (
-                  <option key={option.value} value={option.value} disabled={!option.implemented}>
-                    {option.implemented ? option.label : `${option.label}（本版未实现）`}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
-          <div className="mb-2">
-            <label className="form-label small mb-1">升档归位目标库位（可选）</label>
-            <input
-              className="form-control form-control-sm"
-              value={editor.relocateTo}
-              placeholder="留空则不搬动存量"
-              onChange={(event) => setEditor({ ...editor, relocateTo: event.target.value })}
-            />
-            <div className="form-text">位置档位升高且确有“未指定位置”存量时填写。</div>
           </div>
 
           {editor.message ? (
