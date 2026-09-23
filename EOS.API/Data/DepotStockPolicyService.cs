@@ -280,7 +280,6 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
 
     /// <summary>一个仓库的代号与名称（新增策略行时选库别用）。</summary>
     public sealed record DepotRef(string DepotId, string DepotName);
-
     /// <summary>列出全部仓库（代号 + 名称，按代号排序）。</summary>
     public async Task<IReadOnlyList<DepotRef>> ListDepotsAsync(CancellationToken token = default)
     {
@@ -292,6 +291,28 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         await using var reader = await command.ExecuteReaderAsync(token);
         while (await reader.ReadAsync(token))
             rows.Add(new DepotRef(reader.GetString(0).Trim(), reader.GetString(1).Trim()));
+        return rows;
+    }
+
+    /// <summary>一个库位的位置编号与名称（归位选目标库位用，不含『未指定位置』本身）。</summary>
+    public sealed record DepotLocationRef(string LocationNo, string LocationName);
+
+    /// <summary>列出某库别下可用的目标库位（启用中，不含哨兵行，按排序号）。</summary>
+    public async Task<IReadOnlyList<DepotLocationRef>> ListLocationsAsync(string depotId, CancellationToken token = default)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(
+            "SELECT LOCATION_NO, LOCATION_NAME FROM dbo.DEPOT_LOCATION "
+            + "WHERE DEPOT_ID = @depot AND LOCATION_NO <> N'-' AND STATUS = N'A' "
+            + "ORDER BY SEQ_NO, LOCATION_NO", connection);
+        command.Parameters.AddWithValue("@depot", (depotId ?? string.Empty).Trim());
+        var rows = new List<DepotLocationRef>();
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+            rows.Add(new DepotLocationRef(
+                reader.GetString(0).Trim(),
+                reader.IsDBNull(1) ? string.Empty : reader.GetString(1).Trim()));
         return rows;
     }
 

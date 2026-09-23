@@ -54,6 +54,15 @@ public sealed class DepotStockPolicyController(
         return Ok(await service.ListDepotsAsync(token));
     }
 
+    /// <summary>某库别下可用的归位目标库位（启用中，不含哨兵行）。</summary>
+    [HttpGet("{depotId}/locations")]
+    public async Task<IActionResult> Locations(string depotId, CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+
+        return Ok(await service.ListLocationsAsync(depotId, token));
+    }
+
     /// <summary>保存一条策略行；<c>depotId</c> 传 <c>*</c> 即部署级默认行。</summary>
     [HttpPut("{depotId}")]
     public async Task<IActionResult> Save(

@@ -235,4 +235,13 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
 
         Assert.Contains(depots, depot => depot.DepotId == _depot);
     }
+
+    [Fact]
+    public async Task ListLocations_ContainsEnabledLocation_ExcludesSentinel()
+    {
+        var locations = await Service().ListLocationsAsync(_depot);
+
+        Assert.Contains(locations, location => location.LocationNo == TestLocation);
+        Assert.DoesNotContain(locations, location => location.LocationNo == "-");
+    }
 }
