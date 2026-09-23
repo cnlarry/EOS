@@ -21,6 +21,11 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 ///
 /// 范围为空时不做任何事而直接报错：盘点单没有明细就是一张空单，而"无明细不可保存"的
 /// 兜底判定在那时也会拦下它，这里给出一句更有指向性的说明。
+///
+/// 与用户点击的 `recalc-account`（重算账面数量）是一对紧挨着的口径，改任一处都要同时读另一处：
+///   · 本动作＝**首次生成**：明细还没有时按范围把库存行摊成明细，行数/位置/批次在这里定下来；
+///   · `recalc-account`＝**已有明细的重算**：只把每行账面数刷成当前库存量，不新增行、不删行、不动盘点数。
+/// 明细已存在时本动作直接返回（不覆盖人工录入），这正是"重算"要独立成按钮的原因。
 /// </summary>
 public sealed class StocktakeScopeGenerateHandler : IEffectServiceHandler
 {
