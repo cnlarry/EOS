@@ -250,6 +250,37 @@ public sealed class DocumentActionContractTests
         Assert.Contains(issues, issue => issue.Contains("不支持公式行"));
     }
 
+    // ===== 定义下发（userActions）=====
+
+    [Fact]
+    public void MetadataFactory_OnlyPublishesAuthorizedButtons_AndFallsBackToHandlerLabel()
+    {
+        var registry = Registry(
+            new StubAction(DocumentActionProbeHandler.ActionKey, "管线探针", DocumentActionPlacements.Detail),
+            new StubAction("recalc-account", "重算账面数"));
+        var actions = Actions(
+            new { seq = 1, eventCode = "MANUAL", effectKey = DocumentActionProbeHandler.ActionKey, enabled = true, confirmTag = true },
+            new { seq = 2, eventCode = "MANUAL", effectKey = "recalc-account", enabled = true, label = "重算账面数量" },
+            new { seq = 3, eventCode = "MANUAL", effectKey = "never-granted", enabled = true });
+        var configured = DocumentActionConfigs.Parse(actions);
+
+        var published = DocumentActionMetadataFactory.Build(
+            configured,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { DocumentActionProbeHandler.ActionKey, "recalc-account" },
+            registry);
+
+        Assert.Equal(2, published.Count);
+        // 未授权的按钮不下发：界面上根本不存在这个按钮，而不是渲染成禁用。
+        Assert.DoesNotContain(published, item => item.Key == "never-granted");
+        var probe = Assert.Single(published, item => item.Key == DocumentActionProbeHandler.ActionKey);
+        Assert.Equal("管线探针", probe.Label);
+        Assert.True(probe.ConfirmTag);
+        Assert.Equal(DocumentActionPlacements.Detail, probe.Placement);
+        var recalc = Assert.Single(published, item => item.Key == "recalc-account");
+        Assert.Equal("重算账面数量", recalc.Label);
+        Assert.Equal(DocumentActionPlacements.Master, recalc.Placement);
+    }
+
     [Fact]
     public void ConfigValidator_ValidatesParameterDeclaration_OnManualRows()
     {

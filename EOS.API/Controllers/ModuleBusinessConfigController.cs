@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Data.DocumentActions;
 using EOS.API.Data.ValidationRules;
 using EOS.API.Models;
 using EOS.API.Security;
@@ -16,6 +17,8 @@ public sealed class ModuleBusinessConfigController(
     ModuleBusinessConfigRepository repository,
     ModuleRightsRepository rightsRepository,
     WorkbenchDefinitionSnapshotService snapshotService,
+    DocumentActionRegistry documentActions,
+    DocumentActionAuthorization documentActionAuthorization,
     CurrentUserContext userContext) : ControllerBase
 {
     private const int MenuAdminModuleId = 2301;
@@ -41,8 +44,38 @@ public sealed class ModuleBusinessConfigController(
                 BusinessActionLabels.SourceScopes,
                 BusinessActionLabels.SourceAggregates,
                 BusinessActionLabels.ValidationStages,
-                BusinessActionLabels.ValidationKeys));
+                BusinessActionLabels.ValidationKeys),
+            documentActions.Keys
+                .OrderBy(key => key, StringComparer.OrdinalIgnoreCase)
+                .Select(key => new DocumentActionCatalogEntryDto(key, documentActions.LabelOf(key), documentActions.PlacementOf(key)))
+                .ToList());
         return Ok(catalog);
+    }
+
+    /// <summary>
+    /// 自定义按钮的授权镜子：每个按钮当前有几个用户 / 几个组可用。
+    /// "配了没人能用"是正常状态（fail-closed），所以它不能是无声的——N=M=0 时界面要显眼提示。
+    /// </summary>
+    [HttpGet("{moduleId:int}/action-authorization")]
+    public async Task<IActionResult> ActionAuthorization(int moduleId, CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        var config = await repository.GetAsync(moduleId, token);
+        if (config is null) return NotFound();
+        var buttons = config.Actions
+            .Where(action => action.Enabled && BusinessActionCatalog.IsManualEvent(action.EventCode))
+            .OrderBy(action => action.Seq)
+            .ToList();
+        var counts = await documentActionAuthorization.CountsAsync(
+            moduleId, buttons.Select(action => action.EffectKey.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList(), token);
+        return Ok(new DocumentActionAuthorizationMirrorDto(
+            buttons.Select(action => new DocumentActionAuthorizationEntryDto(
+                action.Seq,
+                action.EffectKey.Trim(),
+                string.IsNullOrWhiteSpace(action.Label) ? documentActions.LabelOf(action.EffectKey) : action.Label!,
+                counts.TryGetValue(action.EffectKey.Trim(), out var count) ? count.Users : 0,
+                counts.TryGetValue(action.EffectKey.Trim(), out var groupCount) ? groupCount.Groups : 0))
+                .ToList()));
     }
 
     /// <summary>效果参数根键与反向 kind 枚举（2301 Schema 化参数编辑器数据源）。</summary>

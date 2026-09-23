@@ -52,6 +52,40 @@ public sealed class RightsAdminController(
         return NoContent();
     }
 
+    /// <summary>
+    /// 个人自定义按钮授权矩阵（fail-closed 名单）：可见模块里配置好的按钮 × 该用户的名单行。
+    /// 与报表权限同一处维护、同一套聚合口径，但缺省相反——不授权即不可点。
+    /// </summary>
+    [HttpGet("users/{userId}/button-rights")]
+    public async Task<IActionResult> UserButtonRights(string userId, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        return Ok(await repository.GetUserButtonRightsAsync(userContext.UserId, userId, token));
+    }
+
+    [HttpPut("users/{userId}/button-rights")]
+    public async Task<IActionResult> SaveUserButtonRights(string userId, SaveDocumentActionRightsRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        await repository.SaveUserButtonRightsAsync(userId, request.Items, userContext.EmployeeName, token);
+        return NoContent();
+    }
+
+    [HttpGet("groups/{groupId}/button-rights")]
+    public async Task<IActionResult> GroupButtonRights(string groupId, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        return Ok(await repository.GetGroupButtonRightsAsync(userContext.UserId, groupId, token));
+    }
+
+    [HttpPut("groups/{groupId}/button-rights")]
+    public async Task<IActionResult> SaveGroupButtonRights(string groupId, SaveDocumentActionRightsRequest request, CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        await repository.SaveGroupButtonRightsAsync(groupId, request.Items, userContext.EmployeeName, token);
+        return NoContent();
+    }
+
     [HttpGet("users/{userId}/groups")]
     public async Task<IActionResult> UserGroups(string userId, CancellationToken token)
     {

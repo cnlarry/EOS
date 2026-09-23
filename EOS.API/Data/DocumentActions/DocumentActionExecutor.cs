@@ -11,6 +11,7 @@ public enum DocumentActionStatus
 {
     Ok,
     NotFound,
+    Forbidden,
     OutOfScope,
     FilterUnsupported,
     ValidationFailed,
@@ -44,6 +45,7 @@ public sealed record DocumentActionExecution(
 public sealed class DocumentActionExecutor(
     DbConnectionFactory connections,
     DocumentActionRegistry registry,
+    DocumentActionAuthorization authorization,
     WorkbenchScopeFilter scopeFilter,
     WorkbenchIdempotency idempotency,
     EffectPipeline effectPipeline,
@@ -74,6 +76,20 @@ public sealed class DocumentActionExecutor(
             return new(DocumentActionStatus.NotFound,
                 ErrorCode: DocumentActionErrorCodes.NotFound,
                 ErrorMessage: $"模块 {definition.ModuleId} 未提供该操作，或该操作尚未登记实现。");
+        }
+
+        // Button-level authorization, fail-closed: configured and published does not mean anybody may
+        // press it. The front end does not render unauthorized buttons; this is the boundary that counts.
+        if (!await authorization.IsAuthorizedAsync(userId, definition.ModuleId, config.Key, token))
+        {
+            // 拒绝也留痕：谁在什么时候想点哪个按钮。授权补上之后再回头看，"当时为什么点不了"只有这条线索。
+            await auditWriter.WriteBestEffortAsync(definition.ModuleId,
+                string.Join(',', request.Key.Select(value => value?.Trim() ?? string.Empty)),
+                config.Key, $"操作 {config.Key} 被拒：无按钮授权", employeeName, "WORKBENCH_RECORD",
+                result: 0, fieldChanges: null, token);
+            return new(DocumentActionStatus.Forbidden,
+                ErrorCode: DocumentActionErrorCodes.Forbidden,
+                ErrorMessage: $"没有操作“{Label(config)}”的授权，请联系管理员开通。");
         }
 
         var (parameters, parameterErrors) = DocumentActionParams.Read(request.Params, config.Params);

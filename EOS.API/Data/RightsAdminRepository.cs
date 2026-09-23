@@ -430,6 +430,233 @@ public sealed class RightsAdminRepository(
         }
     }
 
+    /// <summary>
+    /// 个人自定义按钮权限矩阵：管理员可见模块里配置好的按钮 × 该用户的名单行。
+    /// 授权是 fail-closed 名单：这里没有"未配即全开"的回退，取消勾选即回到"无名单行 = 拒绝"。
+    /// </summary>
+    public async Task<IReadOnlyList<DocumentActionRightsRow>> GetUserButtonRightsAsync(
+        string adminUserId, string targetUserId, CancellationToken token)
+    {
+        await EnsureUserExistsAsync(targetUserId, token);
+        var modules = await navigationRepository.GetForUserAsync(adminUserId, token);
+        var moduleTitles = modules.ToDictionary(module => module.Id, module => module.Label);
+        var personal = await ReadButtonRightKeysAsync("SYSDD_BUTTON", "USER_ID", targetUserId, token);
+        var groups = await ReadUserGroupButtonKeysAsync(targetUserId, token);
+        return (await ReadConfiguredButtonsAsync(moduleTitles.Keys, token))
+            .Select(button => new DocumentActionRightsRow(
+                button.ModuleId,
+                moduleTitles[button.ModuleId],
+                button.Key,
+                button.Label,
+                Granted: personal.GetValueOrDefault(button.ModuleId, EmptyKeys).Contains(button.Key),
+                HasOverrideRow: personal.ContainsKey(button.ModuleId),
+                GroupGranted: groups.GetValueOrDefault(button.ModuleId, EmptyKeys).Contains(button.Key)))
+            .ToList();
+    }
+
+    /// <summary>组自定义按钮权限矩阵：同一批按钮 × 该组的名单行。</summary>
+    public async Task<IReadOnlyList<DocumentActionRightsRow>> GetGroupButtonRightsAsync(
+        string adminUserId, string groupId, CancellationToken token)
+    {
+        await EnsureGroupExistsAsync(groupId, token);
+        var modules = await navigationRepository.GetForUserAsync(adminUserId, token);
+        var moduleTitles = modules.ToDictionary(module => module.Id, module => module.Label);
+        var personal = await ReadButtonRightKeysAsync("SYSDH_BUTTON", "G_IDX", groupId, token);
+        return (await ReadConfiguredButtonsAsync(moduleTitles.Keys, token))
+            .Select(button => new DocumentActionRightsRow(
+                button.ModuleId,
+                moduleTitles[button.ModuleId],
+                button.Key,
+                button.Label,
+                Granted: personal.GetValueOrDefault(button.ModuleId, EmptyKeys).Contains(button.Key),
+                HasOverrideRow: personal.ContainsKey(button.ModuleId),
+                GroupGranted: false))
+            .ToList();
+    }
+
+    /// <summary>保存个人按钮权限：按 (模块, 按钮) 重写该用户的名单行（取消勾选 = 删除行 = 回到拒绝）。</summary>
+    public async Task SaveUserButtonRightsAsync(
+        string targetUserId, IReadOnlyList<DocumentActionRightsInput> items, string adminName, CancellationToken token)
+    {
+        await EnsureUserExistsAsync(targetUserId, token);
+        await SaveButtonRightsAsync("SYSDD_BUTTON", "USER_ID", targetUserId, items, adminName, token);
+    }
+
+    /// <summary>保存组按钮权限：同一语义写给 SYSDH_BUTTON。</summary>
+    public async Task SaveGroupButtonRightsAsync(
+        string groupId, IReadOnlyList<DocumentActionRightsInput> items, string adminName, CancellationToken token)
+    {
+        await EnsureGroupExistsAsync(groupId, token);
+        await SaveButtonRightsAsync("SYSDH_BUTTON", "G_IDX", groupId, items, adminName, token);
+    }
+
+    private static readonly IReadOnlySet<string> EmptyKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    private async Task SaveButtonRightsAsync(
+        string table, string idColumn, string ownerId,
+        IReadOnlyList<DocumentActionRightsInput> items, string adminName, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            // 只接受"该模块确实配置了且启用中的按钮"：名单行的键必须来自配置，不能凭空授权。
+            var configured = (await ReadConfiguredButtonsAsync(null, token, connection, transaction))
+                .Select(button => (button.ModuleId, button.Key))
+                .ToHashSet();
+            var normalized = items
+                .Where(item => !string.IsNullOrWhiteSpace(item.Key))
+                .Select(item => (item.ModuleId, Key: item.Key.Trim(), item.Granted))
+                .GroupBy(item => (item.ModuleId, item.Key))
+                .Select(group => group.Last())
+                .ToList();
+            var unknown = normalized.Where(item => !configured.Contains((item.ModuleId, item.Key))).ToList();
+            if (unknown.Count > 0)
+            {
+                throw new ArgumentException(
+                    $"以下按钮未在该模块配置（键必须来自已配置的自定义按钮）：{string.Join("、", unknown.Select(item => $"{item.ModuleId}/{item.Key}"))}。");
+            }
+            foreach (var moduleId in normalized.Select(item => item.ModuleId).Distinct())
+            {
+                await using var delete = new SqlCommand(
+                    $"DELETE FROM dbo.{table} WHERE {idColumn}=@Owner AND M_IDX=@ModuleId;", connection, transaction);
+                delete.Parameters.Add("@Owner", SqlDbType.NVarChar, 20).Value = ownerId.Trim();
+                delete.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+                await delete.ExecuteNonQueryAsync(token);
+            }
+            foreach (var item in normalized.Where(item => item.Granted))
+            {
+                await using var insert = new SqlCommand(
+                    $"""
+                    INSERT INTO dbo.{table} ({idColumn},M_IDX,BUTTON_KEY,ALLOW_TAG,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                    VALUES (@Owner,@ModuleId,@Key,1,@By,SYSDATETIME(),@By,SYSDATETIME());
+                    """, connection, transaction);
+                insert.Parameters.Add("@Owner", SqlDbType.NVarChar, 20).Value = ownerId.Trim();
+                insert.Parameters.Add("@ModuleId", SqlDbType.Int).Value = item.ModuleId;
+                insert.Parameters.Add("@Key", SqlDbType.NVarChar, 50).Value = item.Key;
+                insert.Parameters.Add("@By", SqlDbType.NVarChar, 40).Value = adminName;
+                await insert.ExecuteNonQueryAsync(token);
+            }
+            await WriteAuditAsync(connection, transaction, ownerId,
+                $"保存 {ownerId} 的自定义按钮授权（{normalized.Count} 个按钮，其中授权 {normalized.Count(item => item.Granted)} 个）",
+                adminName, token, "BUTTON_RIGHTS_SAVE");
+            await transaction.CommitAsync(token);
+            permissionCache.InvalidateAll();
+            logger.LogInformation("保存自定义按钮授权 target={Target} table={Table} buttons={Count} by={By}",
+                ownerId, table, normalized.Count, adminName);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
+    }
+
+    /// <summary>模块里配置好（启用中）的自定义按钮；只读 admin 可见模块的调用方传 moduleIds 过滤。</summary>
+    private async Task<IReadOnlyList<ConfiguredButton>> ReadConfiguredButtonsAsync(
+        IEnumerable<int>? moduleIds,
+        CancellationToken token,
+        SqlConnection? connection = null,
+        SqlTransaction? transaction = null)
+    {
+        if (connection is null)
+        {
+            await using var owned = connections.Create();
+            await owned.OpenAsync(token);
+            return await ReadConfiguredButtonsCoreAsync(owned, null, moduleIds, token);
+        }
+        return await ReadConfiguredButtonsCoreAsync(connection, transaction, moduleIds, token);
+    }
+
+    private static async Task<IReadOnlyList<ConfiguredButton>> ReadConfiguredButtonsCoreAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        IEnumerable<int>? moduleIds,
+        CancellationToken token)
+    {
+        await using var command = new SqlCommand(
+            """
+            SELECT a.MODULE_ID, a.EFFECT_KEY, ISNULL(LTRIM(RTRIM(a.LABEL)), N'')
+            FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK)
+            WHERE a.EVENT_CODE = N'MANUAL' AND a.ENABLED = 1
+            ORDER BY a.MODULE_ID, a.SEQ;
+            """, connection, transaction);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var allowed = moduleIds?.ToHashSet();
+        var result = new List<ConfiguredButton>();
+        while (await reader.ReadAsync(token))
+        {
+            var moduleId = reader.GetInt32(0);
+            if (allowed is not null && !allowed.Contains(moduleId)) continue;
+            var key = reader.GetString(1).Trim();
+            result.Add(new ConfiguredButton(moduleId, key, reader.GetString(2) is { Length: > 0 } label ? label : key));
+        }
+        return result;
+    }
+
+    private sealed record ConfiguredButton(int ModuleId, string Key, string Label);
+
+    /// <summary>名单行（只取允许位为 1 的键），按模块分组。</summary>
+    private async Task<Dictionary<int, IReadOnlySet<string>>> ReadButtonRightKeysAsync(
+        string table, string idColumn, string ownerId, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(
+            $"""
+            SELECT M_IDX, BUTTON_KEY FROM dbo.{table} WITH (NOLOCK)
+            WHERE {idColumn}=@Owner AND ALLOW_TAG=1;
+            """, connection);
+        command.Parameters.Add("@Owner", SqlDbType.NVarChar, 20).Value = ownerId.Trim();
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var result = new Dictionary<int, IReadOnlySet<string>>();
+        var buffer = new Dictionary<int, HashSet<string>>();
+        while (await reader.ReadAsync(token))
+        {
+            var moduleId = reader.GetInt32(0);
+            if (!buffer.TryGetValue(moduleId, out var keys))
+            {
+                keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                buffer[moduleId] = keys;
+            }
+            keys.Add(reader.GetString(1).Trim());
+        }
+        foreach (var (moduleId, keys) in buffer)
+        {
+            result[moduleId] = keys;
+        }
+        return result;
+    }
+
+    /// <summary>该用户所在组已授权的键（用户矩阵里"组通道"那一列）。</summary>
+    private async Task<Dictionary<int, IReadOnlySet<string>>> ReadUserGroupButtonKeysAsync(
+        string userId, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(
+            """
+            SELECT b.M_IDX, b.BUTTON_KEY FROM dbo.SYSDH_BUTTON b WITH (NOLOCK)
+            INNER JOIN dbo.SYSDG_USER u WITH (NOLOCK) ON u.G_IDX=b.G_IDX
+            WHERE u.USER_ID=@UserId AND b.ALLOW_TAG=1;
+            """, connection);
+        command.Parameters.Add("@UserId", SqlDbType.NVarChar, 20).Value = userId.Trim();
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var buffer = new Dictionary<int, HashSet<string>>();
+        while (await reader.ReadAsync(token))
+        {
+            var moduleId = reader.GetInt32(0);
+            if (!buffer.TryGetValue(moduleId, out var keys))
+            {
+                keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                buffer[moduleId] = keys;
+            }
+            keys.Add(reader.GetString(1).Trim());
+        }
+        return buffer.ToDictionary(pair => pair.Key, pair => (IReadOnlySet<string>)pair.Value);
+    }
+
     /// <summary>组列表（§5.2）：G_IDX/G_DESC/成员数。</summary>
     public async Task<IReadOnlyList<UserGroupSummary>> GetGroupsAsync(CancellationToken token)
     {
@@ -692,6 +919,12 @@ public sealed class RightsAdminRepository(
                     throw new ArgumentException(
                         $"用户组 {id} 仍关联 {count} 名成员，无法删除；请先在「成员」中移除全部成员后再删除。",
                         nameof(groupId));
+            }
+            await using (var deleteButtons = new SqlCommand(
+                "DELETE FROM dbo.SYSDH_BUTTON WHERE G_IDX=@Id;", connection, transaction))
+            {
+                deleteButtons.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
+                await deleteButtons.ExecuteNonQueryAsync(token);
             }
             await using (var deleteReport = new SqlCommand(
                 "DELETE FROM dbo.SYSDH_REPORT WHERE G_IDX=@Id;", connection, transaction))

@@ -23,6 +23,7 @@ public sealed class WorkbenchDefinitionValidator(
     WorkbenchDefinitionBuilder definitionBuilder,
     ModuleBusinessConfigRepository configRepository,
     DocumentActionRegistry documentActions,
+    DocumentActionAuthorization documentActionAuthorization,
     IOptions<UnifiedFormEditorSettings> formSettings,
     ILogger<WorkbenchDefinitionValidator> logger)
 {
@@ -331,6 +332,27 @@ public sealed class WorkbenchDefinitionValidator(
                     manualRows.Count == 0 ? "模块无自定义按钮。" : $"自定义按钮键全部已登记（{manualRows.Count} 个）。")
                 : new("document_action_keys_registered", false,
                     $"自定义按钮键未在操作注册表中登记，禁止发布：{string.Join("；", unknownActions)}。"));
+
+            // 按钮授权镜子（WARN，不拒发布）：授权是 fail-closed 名单，"配了没人能用"是正常状态，
+            // 但不能是无声的——否则没人知道按钮为什么在界面上消失。
+            var registeredButtons = manualRows
+                .Where(action => documentActions.IsRegistered(action.EffectKey))
+                .Select(action => action.EffectKey.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (registeredButtons.Count > 0)
+            {
+                var counts = await documentActionAuthorization.CountsAsync(moduleId, registeredButtons, token);
+                var unassigned = counts
+                    .Where(pair => pair.Value.Users == 0 && pair.Value.Groups == 0)
+                    .Select(pair => pair.Key)
+                    .ToList();
+                checks.Add(new("button_authorization_registered", true,
+                    unassigned.Count == 0
+                        ? $"自定义按钮均已授权：{string.Join("、", counts.Select(pair => $"{pair.Key}({pair.Value.Users} 用户/{pair.Value.Groups} 组)"))}。"
+                        : $"以下自定义按钮尚无任何授权（发布后无人可点，属正常状态，授权后按钮才出现）：{string.Join("、", unassigned)}。",
+                    "warning"));
+            }
         }
         else
         {

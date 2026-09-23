@@ -18,6 +18,8 @@ public sealed class DocumentWorkbenchRepository(
     WorkbenchQueryComposer queryComposer,
     WorkbenchCommandHandler commandHandler,
     WorkbenchApprovalService approvalService,
+    DocumentActions.DocumentActionRegistry documentActions,
+    DocumentActions.DocumentActionAuthorization documentActionAuthorization,
     ILogger<DocumentWorkbenchRepository> logger) : Features.Assistant.Tools.IWorkbenchSearchGateway
 {
     private SqlConnection CreateConnection()=>connections.Create();
@@ -52,10 +54,30 @@ public sealed class DocumentWorkbenchRepository(
         bool canFileEdit = false,
         bool canFileDele = false,
         bool canSetup = false)
-        => await definitionBuilder.GetFormDefinitionAsync(definition, userId, mode, canViewCost, canViewSecrecy,
+    {
+        var form = await definitionBuilder.GetFormDefinitionAsync(definition, userId, mode, canViewCost, canViewSecrecy,
             deniedMasterFields, deniedDetailFields, deniedNewMasterFields, deniedNewDetailFields,
             deniedModiMasterFields, deniedModiDetailFields, token, canAddNew, canEdit, canDelete, canApprove,
             canDeapprove, canEndCase, canUnEndCase, canFileView, canFileUpda, canFileEdit, canFileDele, canSetup);
+        return form is null ? null : form with { UserActions = await BuildUserActionsAsync(definition, userId, token) };
+    }
+
+    /// <summary>
+    /// 按钮元数据随定义下发：只有该用户获授权的操作才出现在名单里（前端据此渲染，不硬编码操作）。
+    /// 未授权即不下发——"配了没人能用"是正常状态，此时按钮对所有人都不显示。
+    /// </summary>
+    private async Task<IReadOnlyList<DocumentActionMetadata>> BuildUserActionsAsync(
+        WorkbenchDefinition definition, string userId, CancellationToken token)
+    {
+        var configured = DocumentActions.DocumentActionConfigs.Parse(definition.BusinessActions);
+        if (configured.Count == 0)
+        {
+            return [];
+        }
+        var authorized = await documentActionAuthorization.AuthorizedKeysAsync(
+            userId, definition.ModuleId, configured.Select(config => config.Key).ToList(), token);
+        return DocumentActions.DocumentActionMetadataFactory.Build(configured, authorized, documentActions);
+    }
 
     public async Task<IReadOnlyList<FieldSetupLookup>> GetFieldSetupTablesAsync(CancellationToken token)
         => await fieldMetaMapper.GetFieldSetupTablesAsync(token);

@@ -324,7 +324,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
   const fieldAdminCrumb = fieldAdminFields
     ? { leads: ['系统管理', '数据表维护', '数据表维护', decodeURIComponent(fieldAdminFields[1])], title: '字段' }
     : null
-  const groupAdminPage = location.pathname.match(/^\/admin\/groups\/[^/]+\/(rights|report-rights|members)$/)
+  const groupAdminPage = location.pathname.match(/^\/admin\/groups\/[^/]+\/(rights|report-rights|button-rights|members)$/)
   const page: { section: string; title: string } = fieldAdminCrumb
     ? { section: '系统管理', title: fieldAdminCrumb.title }
     : pageCrumb
@@ -336,7 +336,9 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
             ? '用户组权限'
             : groupAdminPage[1] === 'report-rights'
               ? '用户组报表权限'
-              : '用户组成员',
+              : groupAdminPage[1] === 'button-rights'
+                ? '用户组按钮权限'
+                : '用户组成员',
         }
     : isFormEditor
       ? (() => {
@@ -689,7 +691,7 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
 
   // 离开定制页子页时清空页面级面包屑（防止串到其它页面）
   useEffect(() => {
-    if (!location.pathname.match(/^\/admin\/(groups\/[^/]+\/(rights|report-rights|members)|users\/[^/]+\/(rights|report-rights|groups)|fields\/[^/]+\/[^/]+)$/)) {
+    if (!location.pathname.match(/^\/admin\/(groups\/[^/]+\/(rights|report-rights|button-rights|members)|users\/[^/]+\/(rights|report-rights|button-rights|groups)|fields\/[^/]+\/[^/]+)$/)) {
       patchCrumb(workspaceRef.current.activeId, { page: null })
     }
   }, [location.pathname, patchCrumb])

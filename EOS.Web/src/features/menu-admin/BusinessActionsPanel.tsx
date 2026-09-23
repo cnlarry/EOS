@@ -22,6 +22,8 @@ import { BusinessActionSheet } from './BusinessActionSheet'
 import { BusinessActionImpact } from './BusinessActionImpactPanel'
 import { CloneActionsModal } from './CloneActionsModal'
 import { ConditionEditor } from './ConditionEditor'
+import { DocumentActionParamsEditor } from './DocumentActionParamsEditor'
+import { MANUAL_EVENT } from './documentActionConfig'
 import { StructuredParamsEditor } from './StructuredParamsEditor'
 import {
   formatCondition,
@@ -69,6 +71,26 @@ export interface BusinessAction {
   remark?: string | null
   sourceRef?: string | null
   ops?: BusinessActionOp[]
+  /** 按钮标题（仅 EVENT_CODE='MANUAL' 使用；空则回落处理器声明的默认文案）。 */
+  label?: string | null
+  /** 点击后先返回"将会发生什么"、用户确认才执行（仅 MANUAL 使用）。 */
+  confirmTag?: boolean
+}
+
+/** 一个可配置的自定义按钮（服务端操作注册表下发）。 */
+export interface DocumentActionCatalogEntry {
+  key: string
+  label: string
+  placement: string
+}
+
+/** 按钮授权镜子：配了没人能用是正常状态，所以界面必须显式说明。 */
+export interface DocumentActionAuthorizationEntry {
+  seq: number
+  key: string
+  label: string
+  users: number
+  groups: number
 }
 
 export interface ValidationRule {
@@ -108,6 +130,8 @@ interface BusinessConfigCatalog {
   validationKeys: string[]
   /** 目录值 → 中文显示名（服务端随目录同源下发；缺标签时界面回落到目录码）。 */
   labels?: CatalogLabels | null
+  /** 可配置的自定义按钮键（MANUAL 行只能从这里挑；未登记实现即发布不出去）。 */
+  documentActions?: DocumentActionCatalogEntry[] | null
 }
 
 interface CatalogLabels {
@@ -173,10 +197,11 @@ const cloneAction = (action: BusinessAction): BusinessAction => ({
 })
 const cloneRule = (rule: ValidationRule): ValidationRule => ({ ...rule })
 
-const emptyAction = (eventCode: string, seq: number): BusinessAction => ({
+/** 新建动作的初始值：按钮行从"第一个已登记的操作键"起步，其余事件仍从字段累加起步。 */
+const emptyAction = (eventCode: string, seq: number, documentActionKey?: string): BusinessAction => ({
   seq,
   eventCode,
-  effectKey: 'field-accumulate',
+  effectKey: eventCode === MANUAL_EVENT ? (documentActionKey ?? '') : 'field-accumulate',
   effectName: '',
   enabled: true,
   failMode: 'BLOCK',
@@ -186,6 +211,8 @@ const emptyAction = (eventCode: string, seq: number): BusinessAction => ({
   remark: null,
   sourceRef: null,
   ops: [],
+  label: null,
+  confirmTag: false,
 })
 
 const emptyOp = (): BusinessActionOp => ({
@@ -240,6 +267,15 @@ export function BusinessActionsPanel({ module, onDraftChange }: BusinessActionsP
     queryFn: () => apiClient.get<BusinessFieldLabels>(`/admin/module-business-config/${moduleId}/field-labels`),
     enabled: moduleId > 0 && hasTables,
   })
+  // 按钮授权镜子：授权是 fail-closed 名单，"配了没人能用"是正常状态，界面上必须说出来。
+  const authorizationQuery = useQuery({
+    queryKey: ['module-business-config-action-authorization', moduleId],
+    queryFn: () =>
+      apiClient.get<{ buttons: DocumentActionAuthorizationEntry[] }>(
+        `/admin/module-business-config/${moduleId}/action-authorization`,
+      ),
+    enabled: moduleId > 0 && hasTables,
+  })
 
   const [actions, setActions] = useState<BusinessAction[]>([])
   const [rules, setRules] = useState<ValidationRule[]>([])
@@ -286,6 +322,13 @@ export function BusinessActionsPanel({ module, onDraftChange }: BusinessActionsP
   const sortedRules = useMemo(
     () => [...rules].sort((a, b) => a.stage.localeCompare(b.stage) || a.seq - b.seq),
     [rules],
+  )
+  /** 用户点击类动作（自定义按钮）：它们不参与效果链，界面按另一套字段编辑。 */
+  const manualActions = useMemo(() => actions.filter((item) => item.eventCode === MANUAL_EVENT), [actions])
+  /** 按钮键 → 中文名（菜单/授权镜子等处渲染人话用）。 */
+  const documentActionLookup = useMemo(
+    () => makeLabelLookup(Object.fromEntries((catalogQuery.data?.documentActions ?? []).map((item) => [item.key, item.label]))),
+    [catalogQuery.data],
   )
   const labels = useMemo<LabelLookups>(() => {
     const source = catalogQuery.data?.labels
@@ -383,7 +426,7 @@ export function BusinessActionsPanel({ module, onDraftChange }: BusinessActionsP
   const openCreateAction = () => {
     const eventCode = catalogQuery.data?.events.includes('APPROVE_EFFECT') ? 'APPROVE_EFFECT' : (catalogQuery.data?.events[0] ?? 'SAVE')
     const seq = (actions.filter((item) => item.eventCode === eventCode).reduce((max, item) => Math.max(max, item.seq), 0)) + 1
-    setEditor({ kind: 'action', index: null, value: emptyAction(eventCode, seq) })
+    setEditor({ kind: 'action', index: null, value: emptyAction(eventCode, seq, catalogQuery.data?.documentActions?.[0]?.key) })
   }
   const openCreateRule = () => {
     const stage = catalogQuery.data?.validationStages.includes('SAVE') ? 'SAVE' : (catalogQuery.data?.validationStages[0] ?? 'SAVE')
@@ -549,6 +592,7 @@ export function BusinessActionsPanel({ module, onDraftChange }: BusinessActionsP
             labels={labels}
             names={names}
             actions={sortedActions}
+            documentActionLookup={documentActionLookup}
             selectedKey={selectedKey}
             onSelect={setSelectedKey}
             onCreate={openCreateAction}
@@ -562,7 +606,31 @@ export function BusinessActionsPanel({ module, onDraftChange }: BusinessActionsP
             onMoveDown={() => moveSelectedAction(1)}
             canEdit={selectedIndex >= 0}
           />
-          {selectedAction ? (
+          {manualActions.length > 0 ? (
+            <div className="alert alert-secondary py-2 px-3 mb-2" role="status">
+              <div className="small mb-1">
+                自定义按钮授权（<strong>fail-closed 名单</strong>）：未授权即不可点，按钮也不出现在单据上；
+                在「用户权限设定 / 用户组管理」的按钮权限页签里按人/按组授权。
+              </div>
+              <ul className="mb-0 small">
+                {(authorizationQuery.data?.buttons ?? []).map((button) => (
+                  <li key={button.key}>
+                    {button.label}（{button.key}）：授权 {button.users} 个用户 / {button.groups} 个组
+                    {button.users === 0 && button.groups === 0 ? ' —— 尚无任何授权，发布后无人可点' : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {selectedAction && selectedAction.eventCode === MANUAL_EVENT ? (
+            <section>
+              <h6 className="mb-1">自定义按钮</h6>
+              <div className="text-secondary small">
+                该行由用户点击触发，不由任何单据事件顺带执行：它没有加工单步骤，也不支持反向结构；
+                前置条件与入参声明都在上面「编辑」里配。
+              </div>
+            </section>
+          ) : selectedAction ? (
             <section>
               <div className="d-flex align-items-center justify-content-between mb-1 flex-wrap gap-2">
                 <h6 className="mb-0">加工单（{selectedOps.length} 步）</h6>
@@ -686,6 +754,7 @@ function ActionSection({
   labels,
   names,
   actions,
+  documentActionLookup,
   selectedKey,
   onSelect,
   onCreate,
@@ -701,6 +770,7 @@ function ActionSection({
   labels: LabelLookups
   names: BusinessNameLookup
   actions: BusinessAction[]
+  documentActionLookup: (code: string | null | undefined) => string
   selectedKey: string | null
   onSelect: (key: string | null) => void
   onCreate: () => void
@@ -717,10 +787,22 @@ function ActionSection({
     { accessorKey: 'seq', header: '顺序', meta: { minWidth: 64 } },
     {
       accessorKey: 'effectKey',
-      header: '效果',
-      cell: (info) => <span title={String(info.getValue())}>{labelWithCode(labels.effectKeys, String(info.getValue()))}</span>,
+      header: '效果／按钮',
+      // 按钮行的键来自操作注册表（不在效果目录里），渲染时走另一份名字表，否则会显示成"目录外"。
+      cell: (info) => (
+        <span title={String(info.getValue())}>
+          {labelWithCode(
+            info.row.original.eventCode === MANUAL_EVENT ? documentActionLookup : labels.effectKeys,
+            String(info.getValue()),
+          )}
+        </span>
+      ),
     },
-    { accessorKey: 'effectName', header: '名称', cell: (info) => emptyText(String(info.getValue() ?? '')) },
+    {
+      accessorKey: 'effectName',
+      header: '名称',
+      cell: (info) => emptyText(String(info.row.original.label ?? info.getValue() ?? '')),
+    },
     {
       accessorKey: 'enabled',
       header: '启用',
@@ -743,7 +825,7 @@ function ActionSection({
       },
     },
     { accessorKey: 'remark', header: '说明', cell: (info) => emptyText(String(info.getValue() ?? '')) },
-  ], [catalog, labels, names])
+  ], [catalog, labels, names, documentActionLookup])
 
   return (
     <section>
@@ -993,6 +1075,8 @@ function ActionForm({
   const set = <K extends keyof BusinessAction>(key: K, next: BusinessAction[K]) => onChange({ ...value, [key]: next })
   const effectSchema = (schemas.effects ?? []).find((item) => item.effectKey === value.effectKey)
   const reverseLookup = useMemo(() => makeLabelLookup(schemas.reverseKindLabels), [schemas.reverseKindLabels])
+  const isManual = value.eventCode === MANUAL_EVENT
+  const documentActions = catalog.documentActions ?? []
   return (
     <div>
       <div className="row g-2">
@@ -1005,10 +1089,23 @@ function ActionForm({
           <input type="number" min={1} className="form-control form-control-sm" value={value.seq}
             onChange={(e) => set('seq', Number(e.target.value))} />
         </Field>
-        <Field label="效果" className="col-6">
-          <select className="form-select form-select-sm" value={value.effectKey} onChange={(e) => set('effectKey', e.target.value)}>
-            {catalog.effectKeys.map((item) => <option key={item} value={item}>{labelWithCode(labels.effectKeys, item)}</option>)}
-          </select>
+        <Field label={isManual ? '按钮实现（代码闭集）' : '效果'} className="col-6">
+          {isManual ? (
+            <select className="form-select form-select-sm" value={value.effectKey} onChange={(e) => set('effectKey', e.target.value)}>
+              {value.effectKey !== '' && !documentActions.some((item) => item.key === value.effectKey)
+                ? <option value={value.effectKey}>{value.effectKey}（未登记实现）</option>
+                : null}
+              {documentActions.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.label}（{item.key}）· {item.placement === 'detail' ? '明细级' : '单据级'}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select className="form-select form-select-sm" value={value.effectKey} onChange={(e) => set('effectKey', e.target.value)}>
+              {catalog.effectKeys.map((item) => <option key={item} value={item}>{labelWithCode(labels.effectKeys, item)}</option>)}
+            </select>
+          )}
         </Field>
         <Field label="名称" className="col-8">
           <input className="form-control form-control-sm" value={value.effectName ?? ''}
@@ -1019,6 +1116,22 @@ function ActionForm({
             {catalog.failModes.map((item) => <option key={item} value={item}>{labelWithCode(labels.failModes, item)}</option>)}
           </select>
         </Field>
+        {isManual ? (
+          <>
+            <Field label="按钮标题（显示在单据上）" className="col-8">
+              <input className="form-control form-control-sm" value={value.label ?? ''}
+                placeholder="留空则用处理器声明的默认文案"
+                onChange={(e) => set('label', e.target.value || null)} />
+            </Field>
+            <Field label="点击前二次确认" className="col-4">
+              <div className="form-check">
+                <input id="action-confirm-tag" className="form-check-input" type="checkbox" checked={value.confirmTag === true}
+                  onChange={(e) => set('confirmTag', e.target.checked)} />
+                <label className="form-check-label" htmlFor="action-confirm-tag">先返回"将会发生什么"</label>
+              </div>
+            </Field>
+          </>
+        ) : null}
         <Field label="启用" className="col-12">
           <div className="form-check">
             <input id="action-enabled" className="form-check-input" type="checkbox" checked={value.enabled}
@@ -1043,23 +1156,31 @@ function ActionForm({
             onChange={(next) => set('condition', next)}
           />
         </Field>
-        <Field label="参数（按效果 Schema 编辑）" className="col-12">
-          <StructuredParamsEditor
-            hint={`效果键：${value.effectKey}${effectSchema ? `（根键 ${effectSchema.rootKeys.join(' / ')}）` : '（未登记 Schema，禁止携带参数）'}`}
-            rootKeys={effectSchema?.rootKeys ?? []}
-            json={value.params ?? null}
-            emptyHint="该效果不允许配置参数。"
-            onChange={(json) => set('params', json)}
-          />
-        </Field>
-        <Field label="反向（解批语义）" className="col-12">
-          <ReverseEditor
-            kinds={schemas.reverseKinds}
-            lookup={reverseLookup}
-            json={value.reverse ?? null}
-            onChange={(json) => set('reverse', json || null)}
-          />
-        </Field>
+        {isManual ? (
+          <Field label="点击时让用户填的参数" className="col-12">
+            <DocumentActionParamsEditor json={value.params ?? null} onChange={(json) => set('params', json)} />
+          </Field>
+        ) : (
+          <Field label="参数（按效果 Schema 编辑）" className="col-12">
+            <StructuredParamsEditor
+              hint={`效果键：${value.effectKey}${effectSchema ? `（根键 ${effectSchema.rootKeys.join(' / ')}）` : '（未登记 Schema，禁止携带参数）'}`}
+              rootKeys={effectSchema?.rootKeys ?? []}
+              json={value.params ?? null}
+              emptyHint="该效果不允许配置参数。"
+              onChange={(json) => set('params', json)}
+            />
+          </Field>
+        )}
+        {isManual ? null : (
+          <Field label="反向（解批语义）" className="col-12">
+            <ReverseEditor
+              kinds={schemas.reverseKinds}
+              lookup={reverseLookup}
+              json={value.reverse ?? null}
+              onChange={(json) => set('reverse', json || null)}
+            />
+          </Field>
+        )}
       </div>
     </div>
   )
