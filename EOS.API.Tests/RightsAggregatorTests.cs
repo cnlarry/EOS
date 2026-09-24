@@ -27,11 +27,12 @@ public class RightsAggregatorTests
         string denyNewDetail = "",
         string denyModiMaster = "",
         string denyModiDetail = "",
-        string dataFilter = "") =>
+        string dataFilter = "",
+        bool moduleConfig = false) =>
         new(execute, addNew, delete, edit, approve, deapprove, endCase, unEndCase, fileView, fileUpda, fileEdit, fileDele,
             cost, secrecy, setup,
             denyViewMaster, denyViewDetail, denyNewMaster, denyNewDetail,
-            denyModiMaster, denyModiDetail, dataFilter);
+            denyModiMaster, denyModiDetail, dataFilter, moduleConfig);
 
     [Fact]
     public void NoGroups_MeansNoRights()

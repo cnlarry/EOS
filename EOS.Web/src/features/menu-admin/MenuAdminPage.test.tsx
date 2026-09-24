@@ -41,6 +41,23 @@ const threeLeaves = [
 ]
 const withTables: MenuAdminModule = { ...moduleNode(110101, '公司基本资料', 1101), MASTER_TABLE: 'COMPANY', DETAIL_TABLE: 'COMPANY_D' }
 
+/**
+ * 页面首屏会读一次 2301 能力（决定是否渲染配置页签）。
+ * 统一包一层：能力查询固定返回全权，其余请求交给用例自己的实现，
+ * 这样各用例不必为它单独分支。
+ */
+const PAGE_CAPABILITIES = { canBrowse: true, canSetup: true, canModuleConfig: true }
+
+function mockPageGet(handler: (path: string, config?: unknown) => unknown) {
+  apiClientMock.get.mockImplementation(async (path: string, config?: unknown) =>
+    path === '/admin/menus/capabilities' ? PAGE_CAPABILITIES : handler(path, config))
+}
+
+/** 同上，但非能力请求一律返回同一个值。 */
+function mockPageGetValue(value: unknown) {
+  mockPageGet(async () => value)
+}
+
 const tableChooserData = {
   columns: [
     { key: 'T_ID', label: '表名', dataType: 'nvarchar', format: null },
@@ -77,7 +94,7 @@ async function waitForMenuTree() {
 
 describe('MenuAdminPage', () => {
   beforeEach(() => {
-    apiClientMock.get.mockResolvedValue({ total: modules.length, modules })
+    mockPageGetValue({ total: modules.length, modules })
     apiClientMock.post.mockResolvedValue({ id: 999 })
     apiClientMock.put.mockResolvedValue(undefined)
     apiClientMock.delete.mockResolvedValue(undefined)
@@ -121,7 +138,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('按服务端状态显示模块发布徽标并在改动后转为未保存', async () => {
-    apiClientMock.get.mockResolvedValue({
+    mockPageGetValue({
       total: 1,
       modules: [{
         ...moduleNode(11, '基本参数', null),
@@ -141,7 +158,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('未改动且未置脏时显示当前发布版本', async () => {
-    apiClientMock.get.mockResolvedValue({
+    mockPageGetValue({
       total: 1,
       modules: [{ ...moduleNode(11, '基本参数', null), DIRTY_TAG: false, PUBLISH_VERSION: 7 }],
     })
@@ -191,7 +208,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('版本历史弹窗展示该模块的历史发布版本', async () => {
-    apiClientMock.get.mockImplementation(async (path: string) => {
+    mockPageGet(async (path: string) => {
       if (path.endsWith('/versions')) {
         return [
           { version: 2, definitionVersion: 'module-11-v2', publishedBy: 'SYSTEM', publishedAt: '2026-09-11T09:00:00', validationStatus: 'PASS', isCurrent: true },
@@ -224,7 +241,7 @@ describe('MenuAdminPage', () => {
 
   it('新增根节点保存后选中服务端返回的新编号', async () => {
     let posted = false
-    apiClientMock.get.mockImplementation(async () => {
+    mockPageGet(async () => {
       if (!posted) return { total: 1, modules: [moduleNode(11, '基本参数', null)] }
       return { total: 2, modules: [moduleNode(11, '基本参数', null), moduleNode(999, '新菜单', null)] }
     })
@@ -245,7 +262,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('默认查询列弹窗加载并保存主表默认列', async () => {
-    apiClientMock.get.mockImplementation(async (path: string) => {
+    mockPageGet(async (path: string) => {
       if (path.includes('/default-columns')) {
         return {
           table: 'COMPANY', tableKind: 'master',
@@ -288,7 +305,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('渲染同级排序按钮：最前/前一步/后一步/最后', async () => {
-    apiClientMock.get.mockResolvedValue({ total: twoRoots.length, modules: twoRoots })
+    mockPageGetValue({ total: twoRoots.length, modules: twoRoots })
     renderPage()
     await waitForMenuTree()
     for (const name of ['最前', '前一步', '后一步', '最后']) {
@@ -357,7 +374,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('排序按钮在边界自动禁用：首节点不可上移，末节点不可下移', async () => {
-    apiClientMock.get.mockResolvedValue({ total: twoRoots.length, modules: twoRoots })
+    mockPageGetValue({ total: twoRoots.length, modules: twoRoots })
     renderPage()
     await waitForMenuTree()
 
@@ -383,7 +400,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('拖拽模块到同级节点前：调用 PUT /move 同级重排', async () => {
-    apiClientMock.get.mockResolvedValue({ total: twoRoots.length, modules: twoRoots.map((module) => ({ ...module })) })
+    mockPageGetValue({ total: twoRoots.length, modules: twoRoots.map((module) => ({ ...module })) })
     renderPage()
     await waitForMenuTree()
 
@@ -400,7 +417,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('拖拽模块放入其它节点内：调用 PUT /move 跨父级移动', async () => {
-    apiClientMock.get.mockResolvedValue({ total: nestedModules.length, modules: nestedModules.map((module) => ({ ...module })) })
+    mockPageGetValue({ total: nestedModules.length, modules: nestedModules.map((module) => ({ ...module })) })
     renderPage()
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
@@ -419,7 +436,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('拖到叶子行中间=插入到该行之前（不会误拖入叶子）', async () => {
-    apiClientMock.get.mockResolvedValue({ total: twoLeafRoots.length, modules: twoLeafRoots.map((module) => ({ ...module })) })
+    mockPageGetValue({ total: twoLeafRoots.length, modules: twoLeafRoots.map((module) => ({ ...module })) })
     renderPage()
     await waitForMenuTree()
 
@@ -437,7 +454,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('拖到上一行中间即可上移一位（回归：此前被解析成 after 自身而成为无操作）', async () => {
-    apiClientMock.get.mockResolvedValue({ total: threeLeaves.length, modules: threeLeaves.map((module) => ({ ...module })) })
+    mockPageGetValue({ total: threeLeaves.length, modules: threeLeaves.map((module) => ({ ...module })) })
     renderPage()
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
@@ -457,7 +474,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('拖到上一行下缘（after 自身）视为原位，不发起移动请求', async () => {
-    apiClientMock.get.mockResolvedValue({ total: threeLeaves.length, modules: threeLeaves.map((module) => ({ ...module })) })
+    mockPageGetValue({ total: threeLeaves.length, modules: threeLeaves.map((module) => ({ ...module })) })
     renderPage()
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
@@ -478,7 +495,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('不能拖拽到自身子孙节点（防止循环引用）', async () => {
-    apiClientMock.get.mockResolvedValue({ total: twoRoots.length, modules: twoRoots.map((module) => ({ ...module })) })
+    mockPageGetValue({ total: twoRoots.length, modules: twoRoots.map((module) => ({ ...module })) })
     renderPage()
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
@@ -523,7 +540,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('非一级菜单右键菜单不显示更换图标', async () => {
-    apiClientMock.get.mockResolvedValue({ total: nestedModules.length, modules: nestedModules.map((module) => ({ ...module })) })
+    mockPageGetValue({ total: nestedModules.length, modules: nestedModules.map((module) => ({ ...module })) })
     renderPage()
     await waitForMenuTree()
     fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
@@ -567,7 +584,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('停用节点在左侧树上有停用标记', async () => {
-    apiClientMock.get.mockResolvedValue({
+    mockPageGetValue({
       total: 1,
       modules: [{ ...moduleNode(11, '基本参数', null), M_TAG: false }],
     })
@@ -601,7 +618,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('表选择器选择操作主表并回填', async () => {
-    apiClientMock.get.mockResolvedValue({ total: modules.length, modules })
+    mockPageGetValue({ total: modules.length, modules })
     apiClientMock.post.mockImplementation(async (path: string) => {
       if (path === '/chooser/query') return tableChooserData
       throw new Error(`unexpected POST ${path}`)
@@ -623,7 +640,7 @@ describe('MenuAdminPage', () => {
       { F_ID: 'C_ID', F_DESC: '公司编号', F_TYPE: 'nvarchar', IS_VISIBLE: true, IS_VIRTUAL: false, IS_QUERY: true },
       { F_ID: 'C_NAME', F_DESC: '公司名称', F_TYPE: 'nvarchar', IS_VISIBLE: true, IS_VIRTUAL: false, IS_QUERY: true },
     ]
-    apiClientMock.get.mockImplementation(async (path: string) => {
+    mockPageGet(async (path: string) => {
       if (path.includes('/admin/menus/fields')) return fieldRows
       return { total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), withTables] }
     })
@@ -652,7 +669,7 @@ describe('MenuAdminPage', () => {
       { F_ID: 'C_ID', F_DESC: '公司编号', F_TYPE: 'nvarchar', IS_VISIBLE: true, IS_VIRTUAL: false, IS_QUERY: true },
       { F_ID: 'C_NAME', F_DESC: '公司名称', F_TYPE: 'nvarchar', IS_VISIBLE: true, IS_VIRTUAL: false, IS_QUERY: true },
     ]
-    apiClientMock.get.mockImplementation(async (path: string) => {
+    mockPageGet(async (path: string) => {
       if (path.includes('/admin/menus/fields')) return fieldRows
       return { total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), withTables] }
     })
@@ -680,7 +697,7 @@ describe('MenuAdminPage', () => {
     const fieldRows = [
       { F_ID: 'C_ID', F_DESC: '公司编号', F_TYPE: 'nvarchar', IS_VISIBLE: true, IS_VIRTUAL: false, IS_QUERY: true },
     ]
-    apiClientMock.get.mockImplementation(async (path: string) => {
+    mockPageGet(async (path: string) => {
       if (path.includes('/admin/menus/fields')) return fieldRows
       return { total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), withTables] }
     })
@@ -731,7 +748,7 @@ describe('MenuAdminPage', () => {
     const fieldRows = [
       { F_ID: 'C_ID', F_DESC: '公司编号', F_TYPE: 'nvarchar', IS_VISIBLE: true, IS_VIRTUAL: false, IS_QUERY: true },
     ]
-    apiClientMock.get.mockImplementation(async (path: string) => {
+    mockPageGet(async (path: string) => {
       if (path.includes('/admin/menus/fields')) return fieldRows
       return { total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), withTables] }
     })
@@ -756,7 +773,7 @@ describe('MenuAdminPage', () => {
     const fieldRows = [
       { F_ID: 'QTY', F_DESC: '数量', F_TYPE: 'decimal', IS_VISIBLE: true, IS_VIRTUAL: false, IS_QUERY: true },
     ]
-    apiClientMock.get.mockImplementation(async (path: string) => {
+    mockPageGet(async (path: string) => {
       if (path.includes('/admin/menus/fields')) return fieldRows
       return { total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), withTables] }
     })
@@ -780,7 +797,7 @@ describe('MenuAdminPage', () => {
 
   it('过滤条件构建器：保留无法解析的既有复杂条件，不静默清空', async () => {
     const complexModule = { ...withTables, FILTER: "ISNULL(C_ID,'')=''" }
-    apiClientMock.get.mockImplementation(async (path: string) => {
+    mockPageGet(async (path: string) => {
       if (path.includes('/admin/menus/fields')) {
         return [{ F_ID: 'C_ID', F_DESC: '公司编号', F_TYPE: 'nvarchar', IS_VISIBLE: true, IS_VIRTUAL: false, IS_QUERY: true }]
       }
@@ -820,7 +837,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('主表缺状态列且具备批核能力时提示发布将被拦截', async () => {
-    apiClientMock.get.mockImplementation(async (path: string) => {
+    mockPageGet(async (path: string) => {
       if (path.includes('/admin/tables/') && path.endsWith('/columns')) return [{ name: 'ORDER_NO' }]
       return { total: 2, modules: [moduleNode(11, '基本参数', null), { ...withTables, M_IDX: 1405, M_DESC: '客户订单', M_P_IDX: null, AUTO_APPROVE: true }] }
     })
@@ -832,7 +849,7 @@ describe('MenuAdminPage', () => {
   })
 
   it('主表具备状态列时不提示', async () => {
-    apiClientMock.get.mockImplementation(async (path: string) => {
+    mockPageGet(async (path: string) => {
       if (path.includes('/admin/tables/') && path.endsWith('/columns')) return [{ name: 'ORDER_NO' }, { name: 'CONFIRM_TAG' }]
       return { total: 2, modules: [moduleNode(11, '基本参数', null), { ...withTables, M_IDX: 1405, M_DESC: '客户订单', M_P_IDX: null, AUTO_APPROVE: true }] }
     })

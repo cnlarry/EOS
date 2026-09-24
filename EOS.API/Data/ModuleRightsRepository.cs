@@ -21,7 +21,7 @@ public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILog
         const string groupSql = """
             SELECT h.EXEC_TAG,h.ADDNEW_TAG,h.DELETE_TAG,h.EDIT_TAG,h.APPROVE_TAG,h.DEAPPROVE_TAG,h.ENDCASE_TAG,h.UNENDCASE_TAG,
                    h.FILE_VIEW_TAG,h.FILE_UPDA_TAG,h.FILE_EDIT_TAG,h.FILE_DELE_TAG,
-                   h.COST_TAG,h.SECRECY_TAG,h.SETUP_TAG,
+                   h.COST_TAG,h.SECRECY_TAG,h.SETUP_TAG,h.MODULE_CONFIG_TAG,
                    h.DENY_VIEW_FIELD_MASTER,h.DENY_VIEW_FIELD_DETAIL,h.DENY_NEW_FIELD_MASTER,h.DENY_NEW_FIELD_DETAIL,
                    h.DENY_MODI_FIELD_MASTER,h.DENY_MODI_FIELD_DETAIL,h.DATA_FILTER
             FROM dbo.SYSDH h WITH (NOLOCK)
@@ -117,7 +117,7 @@ public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILog
 
     private static async Task<List<RightRow>> ReadRowsAsync(SqlConnection connection, string table, string idColumn, string userId, int moduleId, CancellationToken token)
     {
-        var sql = $"SELECT EXEC_TAG,ADDNEW_TAG,DELETE_TAG,EDIT_TAG,APPROVE_TAG,DEAPPROVE_TAG,ENDCASE_TAG,UNENDCASE_TAG,FILE_VIEW_TAG,FILE_UPDA_TAG,FILE_EDIT_TAG,FILE_DELE_TAG,COST_TAG,SECRECY_TAG,SETUP_TAG,DENY_VIEW_FIELD_MASTER,DENY_VIEW_FIELD_DETAIL,DENY_NEW_FIELD_MASTER,DENY_NEW_FIELD_DETAIL,DENY_MODI_FIELD_MASTER,DENY_MODI_FIELD_DETAIL,DATA_FILTER FROM dbo.{table} WITH (NOLOCK) WHERE {idColumn}=@UserId AND M_IDX=@ModuleId";
+        var sql = $"SELECT EXEC_TAG,ADDNEW_TAG,DELETE_TAG,EDIT_TAG,APPROVE_TAG,DEAPPROVE_TAG,ENDCASE_TAG,UNENDCASE_TAG,FILE_VIEW_TAG,FILE_UPDA_TAG,FILE_EDIT_TAG,FILE_DELE_TAG,COST_TAG,SECRECY_TAG,SETUP_TAG,MODULE_CONFIG_TAG,DENY_VIEW_FIELD_MASTER,DENY_VIEW_FIELD_DETAIL,DENY_NEW_FIELD_MASTER,DENY_NEW_FIELD_DETAIL,DENY_MODI_FIELD_MASTER,DENY_MODI_FIELD_DETAIL,DATA_FILTER FROM dbo.{table} WITH (NOLOCK) WHERE {idColumn}=@UserId AND M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection);
         AddParameters(command, userId, moduleId);
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -148,7 +148,8 @@ public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILog
         reader.GetNullableString("DENY_NEW_FIELD_DETAIL") ?? string.Empty,
         reader.GetNullableString("DENY_MODI_FIELD_MASTER") ?? string.Empty,
         reader.GetNullableString("DENY_MODI_FIELD_DETAIL") ?? string.Empty,
-        reader.GetNullableString("DATA_FILTER") ?? string.Empty);
+        reader.GetNullableString("DATA_FILTER") ?? string.Empty,
+        reader.GetNullableBoolean("MODULE_CONFIG_TAG"));
 
     private static void AddParameters(SqlCommand command, string userId, int moduleId)
     {
@@ -221,7 +222,9 @@ internal sealed record RightRow(
     string DenyNewDetail,
     string DenyModiMaster,
     string DenyModiDetail,
-    string DataFilter);
+    string DataFilter,
+    /// <summary>模块配置权（行为动作/校验规则/自定义按钮）；默认关闭。</summary>
+    bool ModuleConfig = false);
 
 internal sealed record ReportRightRow(bool Preview, bool Print, bool Export, string DataFilter);
 
@@ -266,6 +269,7 @@ internal static class RightsAggregator
         CanViewCost: row.Cost,
         CanViewSecrecy: row.Secrecy,
         CanSetup: row.Setup,
+        CanModuleConfig: row.ModuleConfig,
         DeniedMasterFields: ParseDenied(row.DenyViewMaster),
         DeniedDetailFields: ParseDenied(row.DenyViewDetail),
         CanAddNew: row.AddNew,
@@ -327,7 +331,8 @@ internal static class RightsAggregator
             IntersectDenied(rows.Select(row => row.DenyModiMaster)),
             IntersectDenied(rows.Select(row => row.DenyModiDetail)),
             CombineDataFilters(rows),
-            execute);
+            execute,
+            rows.Any(row => row.ModuleConfig));
     }
 
     private static string CombineDataFilters(IReadOnlyList<RightRow> rows)
