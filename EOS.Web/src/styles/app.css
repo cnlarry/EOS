@@ -695,7 +695,6 @@ button, input, select { font: inherit; }
 .erp-list-search { width: min(23rem, 100%); }
 .erp-page-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
 .erp-page-actions { display: flex; align-items: center; gap: .5rem; }
-.erp-search-panel { display: flex; align-items: center; gap: .65rem; max-width: 56rem; }
 .erp-status-filter { width: 10rem; flex: 0 0 auto; }
 .erp-date-filter { width: 9.5rem; flex: 0 0 auto; }
 .erp-table-toolbar { min-height: 3.25rem; padding: .65rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--tblr-border-color); }
@@ -864,7 +863,6 @@ button, input, select { font: inherit; }
   .erp-card-toolbar > .btn-primary { width: 100%; margin-left: 0 !important; }
   .erp-page-heading { align-items: stretch; flex-direction: column; }
   .erp-page-actions > * { width: 100%; }
-  .erp-search-panel { align-items: stretch; flex-direction: column; }
   .erp-status-filter, .erp-date-filter { width: 100%; }
   .erp-table-toolbar, .erp-pagination-footer { align-items: stretch; flex-direction: column; }
   .erp-pagination-footer .text-secondary { margin-right: 0; }
