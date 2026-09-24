@@ -2,6 +2,7 @@ using System.Data;
 using Microsoft.Data.SqlClient;
 
 using EOS.API.Data.Effects;
+using EOS.API.Data.Inventory;
 using EOS.API.Models;
 
 namespace EOS.API.Data;
@@ -295,16 +296,9 @@ public sealed class WorkbenchApprovalService(
         // 兜底：CONFIRM=0 但库存日志仍引用本单（异常/部分回退态）→ 禁删
         if (definition.MasterPkOrder.Count >= 2 && keyValues.Count >= 2)
         {
-            var typeColumn = definition.MasterPkOrder[0];
-            var noColumn = definition.MasterPkOrder[1];
-            const string logSql = """
-                SELECT TOP 1 1 FROM dbo.INV_DEPOT_LOG WITH (NOLOCK)
-                WHERE LTRIM(RTRIM(MUTUALITY_TYPE))=@t AND LTRIM(RTRIM(MUTUALITY_NO))=@n;
-                """;
-            await using var logCommand = new SqlCommand(logSql, connection, transaction);
-            logCommand.Parameters.Add("@t", SqlDbType.NVarChar, 50).Value = keyValues[0];
-            logCommand.Parameters.Add("@n", SqlDbType.NVarChar, 50).Value = keyValues[1];
-            if (await logCommand.ExecuteScalarAsync(token) is not null)
+            // 库存流水的存在性判断经 InventoryQueryService：单别 / 单号的去空格比较口径在那里。
+            if (await InventoryQueryService.HasLedgerAsync(
+                    connection, transaction, keyValues[0], keyValues[1], token))
             {
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "INVENTORY_LOG_EXISTS",
                     "单据已产生库存记录（INV_DEPOT_LOG），禁止删除；请先解批回退库存。");

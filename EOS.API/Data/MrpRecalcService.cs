@@ -109,7 +109,8 @@ public static class MrpRecalcService
                 + $"ON p.{ProductKeyColumn}=v.{ProductKeyColumn};", connection, transaction);
             for (var index = 0; index < chunk.Count; index++)
             {
-                command.Parameters.Add($"@p{index}", SqlDbType.NChar, 30).Value = chunk[index].ProductNo;
+                // PRODUCT.PRO_NO 是 nchar(60)：按列宽度声明，避免超长料号被截断、也避免隐式转换。
+                command.Parameters.Add($"@p{index}", SqlDbType.NChar, 60).Value = chunk[index].ProductNo;
                 command.Parameters.Add($"@q{index}", SqlDbType.Float).Value =
                     (object?)chunk[index].Quantity ?? DBNull.Value;
             }
