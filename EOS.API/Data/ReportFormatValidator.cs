@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using EOS.API.Models;
+using EOS.API.Validation;
 
 namespace EOS.API.Data;
 
@@ -53,8 +54,8 @@ public sealed class ReportFormatValidator
         "details", "master",
     };
 
-    /// <summary>校验 layout.json 是否可安全保存/渲染；返回错误列表，空 = 通过。</summary>
-    public IReadOnlyList<string> Validate(
+    /// <summary>校验 layout.json 是否可安全保存/渲染；Ok = 通过。</summary>
+    public ValidationResult Validate(
         ReportFormatDefinition format,
         string layoutJson,
         int maxLayoutBytes = DefaultMaxLayoutBytes,
@@ -65,12 +66,12 @@ public sealed class ReportFormatValidator
         if (string.IsNullOrWhiteSpace(layoutJson))
         {
             errors.Add("layout.json 为空。");
-            return errors;
+            return ValidationResult.FromMessages(errors);
         }
         if (layoutJson.Length > maxLayoutBytes)
         {
             errors.Add($"layout.json 超过大小上限 {maxLayoutBytes} 字节（实际 {layoutJson.Length}）。");
-            return errors;
+            return ValidationResult.FromMessages(errors);
         }
 
         LayoutDocument layout;
@@ -81,7 +82,7 @@ public sealed class ReportFormatValidator
         catch (LayoutInvalidException ex)
         {
             errors.Add($"layout.json 解析失败：{ex.Message}");
-            return errors;
+            return ValidationResult.FromMessages(errors);
         }
 
         if (layout.SchemaVersion != 1)
@@ -95,7 +96,7 @@ public sealed class ReportFormatValidator
         if (pageSize is null)
         {
             errors.Add($"不支持的纸张：{layout.Page.Size}（A4/A5/LETTER）。");
-            return errors;
+            return ValidationResult.FromMessages(errors);
         }
 
         var contentWidth = pageSize.Value.Width - layout.Page.Margin.Left - layout.Page.Margin.Right;
@@ -103,7 +104,7 @@ public sealed class ReportFormatValidator
         if (contentWidth <= 0 || contentHeight <= 0)
         {
             errors.Add("页面边距超出纸张尺寸。");
-            return errors;
+            return ValidationResult.FromMessages(errors);
         }
 
         var masterKeys = format.DataContract.Columns
@@ -137,7 +138,7 @@ public sealed class ReportFormatValidator
             }
         }
 
-        return errors;
+        return ValidationResult.FromMessages(errors);
     }
 
     private static void ValidateElement(

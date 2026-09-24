@@ -259,13 +259,13 @@ public sealed class WorkbenchDefinitionValidator(
         var businessConfig = await configRepository.GetAsync(moduleId, token);
         if (businessConfig is not null)
         {
-            var configIssues = ModuleBusinessConfigValidator.Validate(
+            var configValidation = ModuleBusinessConfigValidator.Validate(
                 new SaveModuleBusinessConfigRequest(businessConfig.Actions, businessConfig.ValidationRules),
                 documentActions.KeySet);
-            checks.Add(configIssues.Count == 0
+            checks.Add(configValidation.Ok
                 ? new("business_config_valid", true, "业务动作/校验配置通过结构校验。")
                 : new("business_config_valid", false,
-                    $"业务动作/校验配置结构校验失败：{string.Join("；", configIssues.Take(5))}{(configIssues.Count > 5 ? " 等" : "")}。"));
+                    $"业务动作/校验配置结构校验失败：{string.Join("；", configValidation.Messages.Take(5))}{(configValidation.Messages.Count > 5 ? " 等" : "")}。"));
         }
         else
         {
@@ -645,11 +645,11 @@ public sealed class WorkbenchDefinitionValidator(
                     chooserErrors.Add($"{table}.{source.Field}#{source.SerialNo} FILTER_STRUCT 不是合法结构化 JSON");
                     continue;
                 }
-                var filterErrors = await ChooserFilterValidator.ValidateAsync(
+                var filterValidation = await ChooserFilterValidator.ValidateAsync(
                     connection, filterStruct, source.SourceTable, token);
-                if (filterErrors.Count > 0)
+                if (!filterValidation.Ok)
                 {
-                    chooserErrors.Add($"{table}.{source.Field}#{source.SerialNo} 过滤条件校验失败：{string.Join("；", filterErrors.Take(2))}");
+                    chooserErrors.Add($"{table}.{source.Field}#{source.SerialNo} 过滤条件校验失败：{string.Join("；", filterValidation.Messages.Take(2))}");
                 }
                 if (!string.IsNullOrWhiteSpace(source.ReturnItems))
                 {

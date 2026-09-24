@@ -222,7 +222,7 @@ public sealed class DocumentActionContractTests
     {
         var request = new SaveModuleBusinessConfigRequest([ManualRow()], []);
 
-        Assert.Empty(ModuleBusinessConfigValidator.Validate(request, RegisteredActions));
+        Assert.Empty(ModuleBusinessConfigValidator.Validate(request, RegisteredActions).Messages);
     }
 
     [Fact]
@@ -230,7 +230,7 @@ public sealed class DocumentActionContractTests
     {
         var request = new SaveModuleBusinessConfigRequest([ManualRow(effectKey: "set-state")], []);
 
-        var issues = ModuleBusinessConfigValidator.Validate(request, RegisteredActions);
+        var issues = ModuleBusinessConfigValidator.Validate(request, RegisteredActions).Messages;
 
         Assert.Contains(issues, issue => issue.Contains("未知自定义按钮键"));
     }
@@ -244,7 +244,7 @@ public sealed class DocumentActionContractTests
                     ops: [new BusinessActionOpDto(1, "DEPOT", "DEPOT_NAME", "ASSIGN", "CONSTANT", null, null, null, "x", null, null, null)]),
             ], []);
 
-        var issues = ModuleBusinessConfigValidator.Validate(request, RegisteredActions);
+        var issues = ModuleBusinessConfigValidator.Validate(request, RegisteredActions).Messages;
 
         Assert.Contains(issues, issue => issue.Contains("不支持反向结构"));
         Assert.Contains(issues, issue => issue.Contains("不支持公式行"));
@@ -286,7 +286,7 @@ public sealed class DocumentActionContractTests
     {
         var request = new SaveModuleBusinessConfigRequest([ManualRow(parameters: """{"fields":[{"key":"a","type":"string"}]}""")], []);
 
-        var issues = ModuleBusinessConfigValidator.Validate(request, RegisteredActions);
+        var issues = ModuleBusinessConfigValidator.Validate(request, RegisteredActions).Messages;
 
         Assert.Contains(issues, issue => issue.Contains("缺少 label"));
     }

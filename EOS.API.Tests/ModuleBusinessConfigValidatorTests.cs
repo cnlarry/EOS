@@ -42,7 +42,7 @@ public class ModuleBusinessConfigValidatorTests
                     """)
             ]);
 
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
 
         Assert.Empty(issues);
     }
@@ -76,7 +76,7 @@ public class ModuleBusinessConfigValidatorTests
             ],
             []);
 
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
 
         Assert.Empty(issues);
     }
@@ -94,7 +94,7 @@ public class ModuleBusinessConfigValidatorTests
             ],
             []);
 
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
 
         Assert.Contains(issues, issue => issue.Contains("未知效果键"));
         Assert.Contains(issues, issue => issue.Contains("未知运算"));
@@ -110,7 +110,7 @@ public class ModuleBusinessConfigValidatorTests
                 new BusinessActionDto(3, "APPROVE_EFFECT", "inventory-move", Ops: []),
             ],
             []);
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
         Assert.DoesNotContain(issues, issue => issue.Contains("顺序 lint"));
     }
 
@@ -124,7 +124,7 @@ public class ModuleBusinessConfigValidatorTests
                 new BusinessActionDto(1, "APPROVE_EFFECT", "inventory-move", Ops: []),
             ],
             []);
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
         Assert.DoesNotContain(issues, issue => issue.Contains("顺序 lint"));
     }
 
@@ -137,7 +137,7 @@ public class ModuleBusinessConfigValidatorTests
                 new BusinessActionDto(2, "APPROVE_EFFECT", "field-accumulate", Ops: []),
             ],
             []);
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
         Assert.Contains(issues, issue => issue.Contains("顺序 lint"));
     }
 
@@ -153,7 +153,7 @@ public class ModuleBusinessConfigValidatorTests
                     ]),
             ],
             []);
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
         Assert.DoesNotContain(issues, issue => issue.Contains("公式行"));
     }
 
@@ -172,7 +172,7 @@ public class ModuleBusinessConfigValidatorTests
                     Params: """{"checks":[{"refTable":"R","refKey":{"scope":"MASTER","field":"F"}}]}""")
             ]);
 
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
 
         Assert.Contains(issues, issue => issue.Contains("顺序号重复"));
         Assert.Equal(2, issues.Count(issue => issue.Contains("顺序号重复")));
@@ -196,7 +196,7 @@ public class ModuleBusinessConfigValidatorTests
 
         var request = new SaveModuleBusinessConfigRequest(
             [missingConstant, constantWithField, tableWithoutTable, detailWithoutField, badCoef], []);
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
 
         Assert.Contains(issues, issue => issue.Contains("必须提供 sourceConstant"));
         Assert.Contains(issues, issue => issue.Contains("不得再提供字段"));
@@ -218,7 +218,7 @@ public class ModuleBusinessConfigValidatorTests
                     Params: "{}")
             ]);
 
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
 
         Assert.Contains(issues, issue => issue.Contains("不是合法 JSON"));
         Assert.Contains(issues, issue => issue.Contains("未知校验模板键") || issue.Contains("no-such-template"));
@@ -245,7 +245,7 @@ public class ModuleBusinessConfigValidatorTests
             ],
             []);
 
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
 
         Assert.Contains(issues, issue => issue.Contains("completion-close") && issue.Contains("无公式行展开"));
     }
@@ -265,7 +265,7 @@ public class ModuleBusinessConfigValidatorTests
             ],
             []);
 
-        Assert.Empty(ModuleBusinessConfigValidator.Validate(request));
+        Assert.Empty(ModuleBusinessConfigValidator.Validate(request).Messages);
     }
 
     [Fact]
@@ -286,7 +286,7 @@ public class ModuleBusinessConfigValidatorTests
                     ])
             ],
             []);
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
         Assert.DoesNotContain(issues, issue => issue.Contains("无公式行展开"));
         Assert.DoesNotContain(issues, issue => issue.Contains("顺序 lint"));
     }
@@ -302,7 +302,7 @@ public class ModuleBusinessConfigValidatorTests
                     Params: """{"master":{"fields":["PAY_CONDITION"]},"detail":{"fields":["QTY"]},"projection":{"mode":"net-replace"}}""")
             ],
             []);
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
         Assert.Contains(issues, issue => issue.Contains("未登记根键 'projection'"));
     }
 
@@ -316,7 +316,7 @@ public class ModuleBusinessConfigValidatorTests
             ],
             []);
 
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
 
         Assert.DoesNotContain(issues, issue => issue.Contains("必须提供 sourceConstant"));
     }
@@ -331,7 +331,7 @@ public class ModuleBusinessConfigValidatorTests
             ],
             []);
 
-        var issues = ModuleBusinessConfigValidator.Validate(request);
+        var issues = ModuleBusinessConfigValidator.Validate(request).Messages;
 
         Assert.Contains(issues, issue => issue.Contains("必须提供 sourceConstant"));
     }

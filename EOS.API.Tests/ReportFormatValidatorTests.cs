@@ -39,7 +39,7 @@ public class ReportFormatValidatorTests
             var format = JsonSerializer.Deserialize<ReportFormatDefinition>(
                 File.ReadAllText(Path.Combine(dir, "format.json")), JsonOptions)!;
             var layoutJson = File.ReadAllText(Path.Combine(dir, "layout.json"));
-            var errors = Validator.Validate(format, layoutJson);
+            var errors = Validator.Validate(format, layoutJson).Messages;
             Assert.True(errors.Count == 0, $"{moduleId} 应通过校验：{string.Join("; ", errors)}");
         }
     }
@@ -49,7 +49,7 @@ public class ReportFormatValidatorTests
     {
         var layoutJson = LayoutJson.Value.Replace(
             "{{MASTER.ORDER_NO}}", "{{MASTER.SALARY}}", StringComparison.Ordinal);
-        var errors = Validator.Validate(Format.Value, layoutJson);
+        var errors = Validator.Validate(Format.Value, layoutJson).Messages;
         Assert.Contains(errors, error => error.Contains("MASTER.SALARY") && error.Contains("白名单"));
     }
 
@@ -58,7 +58,7 @@ public class ReportFormatValidatorTests
     {
         var layoutJson = LayoutJson.Value.Replace(
             "DETAILS.PRO_NO", "DETAILS.COST_PRICE", StringComparison.Ordinal);
-        var errors = Validator.Validate(Format.Value, layoutJson);
+        var errors = Validator.Validate(Format.Value, layoutJson).Messages;
         Assert.Contains(errors, error => error.Contains("DETAILS.COST_PRICE") && error.Contains("白名单"));
     }
 
@@ -67,7 +67,7 @@ public class ReportFormatValidatorTests
     {
         var layoutJson = LayoutJson.Value.Replace(
             "{{SYS.HEADER_COMPANY}}", "{{SYS.INTERNAL_SECRET}}", StringComparison.Ordinal);
-        var errors = Validator.Validate(Format.Value, layoutJson);
+        var errors = Validator.Validate(Format.Value, layoutJson).Messages;
         Assert.Contains(errors, error => error.Contains("SYS.INTERNAL_SECRET") && error.Contains("白名单"));
     }
 
@@ -76,7 +76,7 @@ public class ReportFormatValidatorTests
     {
         var layoutJson = LayoutJson.Value.Replace(
             "\"w\": 187.4", "\"w\": 190", StringComparison.Ordinal);
-        var errors = Validator.Validate(Format.Value, layoutJson);
+        var errors = Validator.Validate(Format.Value, layoutJson).Messages;
         Assert.Contains(errors, error => error.Contains("超出内容区宽度"));
     }
 
@@ -85,14 +85,14 @@ public class ReportFormatValidatorTests
     {
         var layoutJson = LayoutJson.Value.Replace(
             "\"type\": \"text\"", "\"type\": \"chart\"", StringComparison.Ordinal);
-        var errors = Validator.Validate(Format.Value, layoutJson);
+        var errors = Validator.Validate(Format.Value, layoutJson).Messages;
         Assert.Contains(errors, error => error.Contains("未知元素类型"));
     }
 
     [Fact]
     public void MalformedJson_IsRejected()
     {
-        var errors = Validator.Validate(Format.Value, "{ not json");
+        var errors = Validator.Validate(Format.Value, "{ not json").Messages;
         Assert.NotEmpty(errors);
         Assert.Contains(errors, error => error.Contains("解析失败"));
     }

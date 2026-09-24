@@ -169,9 +169,9 @@ public sealed class ModuleBusinessConfigRepository(
         string updatedBy,
         CancellationToken token)
     {
-        var issues = ModuleBusinessConfigValidator.Validate(request, documentActions.KeySet);
-        if (issues.Count > 0)
-            throw new ArgumentException("业务动作配置校验未通过：\r\n" + string.Join("\r\n", issues));
+        var validation = ModuleBusinessConfigValidator.Validate(request, documentActions.KeySet);
+        if (!validation.Ok)
+            throw new ArgumentException("业务动作配置校验未通过：\r\n" + string.Join("\r\n", validation.Messages));
 
         var (masterTable, detailTable) = await ReadModuleShapeAsync(connection, transaction, moduleId, token)
             ?? throw new KeyNotFoundException($"模块 {moduleId} 不存在。");

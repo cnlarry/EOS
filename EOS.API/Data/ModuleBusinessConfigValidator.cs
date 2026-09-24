@@ -3,6 +3,7 @@ using EOS.API.Data.DocumentActions;
 using EOS.API.Data.Effects;
 using EOS.API.Data.ValidationRules;
 using EOS.API.Models;
+using EOS.API.Validation;
 
 namespace EOS.API.Data;
 
@@ -40,7 +41,7 @@ public static class ModuleBusinessConfigValidator
     /// 单据操作注册表的键集（用户点击类动作的封闭目录）。MANUAL 行的键必须在此集合内——
     /// 它的实现来自注册的处理器，不在效果目录里，因此不能拿效果键集合去判它。
     /// </param>
-    public static IReadOnlyList<string> Validate(
+    public static ValidationResult Validate(
         SaveModuleBusinessConfigRequest request,
         IReadOnlySet<string>? documentActionKeys = null)
     {
@@ -65,7 +66,7 @@ public static class ModuleBusinessConfigValidator
         foreach (var rule in request.ValidationRules)
             ValidateValidationRule(rule, ruleKeys, issues);
 
-        return issues;
+        return ValidationResult.FromMessages(issues);
     }
 
     private static void ValidateChainPrerequisite(

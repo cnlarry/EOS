@@ -162,8 +162,8 @@ public class LayoutFormatPackagesTests
                 expectedModule.ToString(System.Globalization.CultureInfo.InvariantCulture), sampleJson);
             Assert.True(parsed.Master.Count > 0, $"{formatId} sample 主表数据缺失");
             var layoutJson = File.ReadAllText(Path.Combine(dir, "layout.json"));
-            var errors = new ReportFormatValidator().Validate(format, layoutJson);
-            Assert.True(errors.Count == 0, $"{formatId} 应通过校验：{string.Join("; ", errors)}");
+            var validation = new ReportFormatValidator().Validate(format, layoutJson);
+            Assert.True(validation.Ok, $"{formatId} 应通过校验：{string.Join("; ", validation.Messages)}");
 
             var pdf = Renderer.Render(data, layoutJson, new LayoutRenderContext("admin"));
             Assert.True(pdf.Length > 500, $"{formatId} PDF 字节过小");
