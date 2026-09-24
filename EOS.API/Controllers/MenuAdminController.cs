@@ -10,6 +10,8 @@ namespace EOS.API.Controllers;
 /// <summary>
 /// 菜单管理（模块 2301，
 /// 读要求 CanBrowse，写要求 CanSetup；编号变更自动级联子级与权限引用。
+/// 模块**基础属性**（菜单名称/承载页/默认查询列/启停/排序/移动/删除）由 SETUP_TAG 管；
+/// 同一保存入口载荷里的**配置面**（业务动作、校验规则、自定义按钮）另需模块配置权。
 /// </summary>
 [ApiController, Authorize, Route("api/v1/admin/menus")]
 public sealed class MenuAdminController(
@@ -62,6 +64,7 @@ public sealed class MenuAdminController(
     public async Task<IActionResult> Create(SaveMenuModuleRequest input, CancellationToken token)
     {
         if (!await CanSetup(token)) return Forbid();
+        if (!await CanWritePayload(input, token)) return Forbid();
         var id = await repository.SaveAllAsync(input, null, userContext.EmployeeName, token);
         return Created($"/api/admin/menus/{id}", new { id });
     }
@@ -71,8 +74,26 @@ public sealed class MenuAdminController(
     public async Task<IActionResult> Update(int id, SaveMenuModuleRequest input, CancellationToken token)
     {
         if (!await CanSetup(token)) return Forbid();
+        if (!await CanWritePayload(input, token)) return Forbid();
         await repository.SaveAllAsync(input, id, userContext.EmployeeName, token);
         return NoContent();
+    }
+
+    /// <summary>
+    /// 当前账号在 2301 上的能力：页面可见 / 基础属性可写 / 配置面可读写。
+    /// 供页面决定是否渲染配置页签——服务端各端点仍独立判权。
+    /// </summary>
+    [HttpGet("capabilities")]
+    public async Task<IActionResult> Capabilities(CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        var rights = await rightsRepository.GetAsync(userContext.UserId, MenuAdminModuleId, token);
+        return Ok(new
+        {
+            canBrowse = rights.CanBrowse,
+            canSetup = rights.CanSetup,
+            canModuleConfig = rights.CanModuleConfig,
+        });
     }
 
     /// <summary>模块定义快照的历史版本（只读；运行时始终按最新版本执行）。</summary>
@@ -160,6 +181,17 @@ public sealed class MenuAdminController(
 
     private async Task<bool> CanSetup(CancellationToken token) =>
         (await rightsRepository.GetAsync(userContext.UserId, MenuAdminModuleId, token)).CanSetup;
+
+    /// <summary>模块配置权：可改该模块的行为动作/校验规则/自定义按钮。</summary>
+    private async Task<bool> CanModuleConfig(CancellationToken token) =>
+        (await rightsRepository.GetAsync(userContext.UserId, MenuAdminModuleId, token)).CanModuleConfig;
+
+    /// <summary>
+    /// 同一保存入口按载荷分段判权：带业务配置的请求额外要求模块配置权。
+    /// 未携带（null）表示"保持不动"，只需基础属性那道门。
+    /// </summary>
+    private async Task<bool> CanWritePayload(SaveMenuModuleRequest input, CancellationToken token) =>
+        input.BusinessConfig is null || await CanModuleConfig(token);
 
     /// <summary>沿 M_P_IDX 链定位所在根菜单，解析其侧栏图标名（与 /api/app/bootstrap 一致）。</summary>
     private static string? ResolveIcon(

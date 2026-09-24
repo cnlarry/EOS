@@ -17,6 +17,7 @@ public class RightsAdminLogicTests
         bool report = false,
         bool cost = false,
         bool setup = false,
+        bool moduleConfig = false,
         bool secrecy = false,
         bool endCase = false,
         bool unEndCase = false,
@@ -35,7 +36,7 @@ public class RightsAdminLogicTests
         string? denyModiMaster = null,
         string? denyModiDetail = null,
         string? dataFilter = null) =>
-        new(moduleId, execTag, addNew, edit, delete, approve, deapprove, report, cost, setup, secrecy,
+        new(moduleId, execTag, addNew, edit, delete, approve, deapprove, report, cost, setup, moduleConfig, secrecy,
             endCase, unEndCase, other1, other2, other3, other4,
             fileView, fileUpda, fileEdit, fileDele,
             denyViewMaster, denyViewDetail, denyNewMaster, denyNewDetail,

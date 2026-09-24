@@ -291,6 +291,22 @@ export function MenuAdminPage() {
   const [fieldPicker, setFieldPicker] = useState<null | { target: 'sortFields' | 'detailNoFields' | 'notBackM' | 'notBack' }>(null)
   const [filterBuilderOpen, setFilterBuilderOpen] = useState(false)
   const [formTab, setFormTab] = useState<MenuFormTab>('basic')
+  // 当前账号在 2301 上的能力：无模块配置权时不渲染配置页签（服务端各端点独立判权，这里只决定是否展示）。
+  const capabilitiesQuery = useQuery({
+    queryKey: ['menu-admin', 'capabilities'],
+    queryFn: () =>
+      apiClient.get<{ canBrowse: boolean; canSetup: boolean; canModuleConfig: boolean }>(
+        '/admin/menus/capabilities',
+      ),
+  })
+  const canModuleConfig = capabilitiesQuery.data?.canModuleConfig === true
+  const formTabs = useMemo(
+    () => MENU_FORM_TABS.filter((tab) => tab.key !== 'actions' || canModuleConfig),
+    [canModuleConfig],
+  )
+  useEffect(() => {
+    if (!canModuleConfig && formTab === 'actions') setFormTab('basic')
+  }, [canModuleConfig, formTab])
   const [treeQuery, setTreeQuery] = useState('')
   const draggedIdRef = useRef<number | null>(null)
   // 行为动作/校验规则草稿：由行为动作页签上报（未打开该页签时为 null，保存时保持不动）
@@ -1053,7 +1069,7 @@ export function MenuAdminPage() {
             <div className="col-lg-7">
               {draft ? (
                 <div className="p-3 erp-menu-form">
-                  <TabbedPanel tabs={MENU_FORM_TABS} activeKey={formTab} onActiveKeyChange={setFormTab}>
+                  <TabbedPanel tabs={formTabs} activeKey={formTab} onActiveKeyChange={setFormTab}>
                     {formTab === 'basic' && (
                       <>
                         <div className="row g-2">
@@ -1220,7 +1236,7 @@ export function MenuAdminPage() {
                         </div>
                       </div>
                     )}
-                    {formTab === 'actions' && (
+                    {formTab === 'actions' && canModuleConfig && (
                       <BusinessActionsPanel module={draft} onDraftChange={handleActionsDraftChange} />
                     )}
                   </TabbedPanel>
@@ -1254,14 +1270,16 @@ export function MenuAdminPage() {
                     <ErpCommandBar
                       items={[
                         { action: 'save', label: '保存', variant: 'primary', loading: save.isPending, onClick: () => void save.mutate(draft) },
-                        {
-                          action: 'publish',
-                          label: '发布',
-                          icon: <IconRocket size={16} />,
-                          loading: publish.isPending,
-                          disabled: save.isPending,
-                          onClick: () => publish.mutate(),
-                        },
+                        ...(canModuleConfig
+                          ? [{
+                              action: 'publish',
+                              label: '发布',
+                              icon: <IconRocket size={16} />,
+                              loading: publish.isPending,
+                              disabled: save.isPending,
+                              onClick: () => publish.mutate(),
+                            }]
+                          : []),
                         { action: 'cancel', label: '取消', onClick: discardDraft },
                       ]}
                     />

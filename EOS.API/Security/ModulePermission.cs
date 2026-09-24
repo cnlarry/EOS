@@ -20,6 +20,7 @@ public sealed class ModulePermission(ModuleRights rights)
     public bool CanEndCase => Rights.CanEndCase;
     public bool CanUnEndCase => Rights.CanUnEndCase;
     public bool CanSetup => Rights.CanSetup;
+    public bool CanModuleConfig => Rights.CanModuleConfig;
     public bool CanFileView => Rights.CanFileView;
     public bool CanFileUpda => Rights.CanFileUpda;
     public bool CanFileEdit => Rights.CanFileEdit;

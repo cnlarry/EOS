@@ -23,7 +23,9 @@ public sealed record ModuleRights(
     IReadOnlySet<string> DenyModiMasterFields,
     IReadOnlySet<string> DenyModiDetailFields,
     string DataFilter,
-    string ExecuteTag);
+    string ExecuteTag,
+    /// <summary>模块配置权（行为动作/校验规则/自定义按钮）；默认关闭。</summary>
+    bool CanModuleConfig = false);
 
 /// <summary>
 /// 报表级权限（SYSDD_REPORT / SYSDH_REPORT）：

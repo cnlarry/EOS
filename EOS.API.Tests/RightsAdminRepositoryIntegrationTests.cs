@@ -225,7 +225,7 @@ public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
     private static ModuleRightsInput ModuleInput(
         int moduleId, string? execTag = null, bool addNew = false, bool edit = false, bool delete = false, bool cost = false,
         string? dataFilter = null) =>
-        new(moduleId, execTag, addNew, edit, delete, false, false, false, cost, false, false,
+        new(moduleId, execTag, addNew, edit, delete, false, false, false, cost, false, false, false,
             false, false, false, false, false, false, false, false, false, false,
             null, null, null, null, null, null, dataFilter);
 

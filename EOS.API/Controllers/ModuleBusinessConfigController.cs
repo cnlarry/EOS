@@ -10,7 +10,9 @@ namespace EOS.API.Controllers;
 
 /// <summary>
 /// 模块业务动作/校验配置工作区读写（2301 行为动作配置区）。
-/// 读要求 CanBrowse(2301)，写要求 CanSetup(2301)。
+/// 本控制器的端点全部属于**配置面**：读要求 CanBrowse(2301) + 模块配置权，
+/// 写要求 CanSetup(2301) + 模块配置权；
+/// 模块基础属性（菜单名称、承载页、默认查询列等）走另一道门（仅 SETUP_TAG）。
 /// </summary>
 [ApiController, Authorize, Route("api/v1/admin/module-business-config")]
 public sealed class ModuleBusinessConfigController(
@@ -159,9 +161,17 @@ public sealed class ModuleBusinessConfigController(
         return Ok(results);
     }
 
-    private async Task<bool> CanBrowse(CancellationToken token) =>
-        (await rightsRepository.GetAsync(userContext.UserId, MenuAdminModuleId, token)).CanBrowse;
+    /// <summary>配置面读门：页面可见 + 该模块的配置权。</summary>
+    private async Task<bool> CanBrowse(CancellationToken token)
+    {
+        var rights = await rightsRepository.GetAsync(userContext.UserId, MenuAdminModuleId, token);
+        return rights.CanBrowse && rights.CanModuleConfig;
+    }
 
-    private async Task<bool> CanSetup(CancellationToken token) =>
-        (await rightsRepository.GetAsync(userContext.UserId, MenuAdminModuleId, token)).CanSetup;
+    /// <summary>配置面写门：设置权 + 该模块的配置权。</summary>
+    private async Task<bool> CanSetup(CancellationToken token)
+    {
+        var rights = await rightsRepository.GetAsync(userContext.UserId, MenuAdminModuleId, token);
+        return rights.CanSetup && rights.CanModuleConfig;
+    }
 }

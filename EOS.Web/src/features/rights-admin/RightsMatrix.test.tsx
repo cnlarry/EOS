@@ -11,7 +11,7 @@ vi.mock('../../services/api', async () => ({ apiClient: (await import('../../tes
 const noneEffective: EffectiveModuleRights = {
   source: 'none', canBrowse: false, execTag: 'A',
   addNew: false, edit: false, delete: false, approve: false, deapprove: false, report: false,
-  cost: false, setup: false, secrecy: false, endCase: false, unEndCase: false,
+  cost: false, setup: false, moduleConfig: false, secrecy: false, endCase: false, unEndCase: false,
   other1: false, other2: false, other3: false, other4: false,
   fileView: false, fileUpda: false, fileEdit: false, fileDele: false,
   denyViewMaster: [], denyViewDetail: [], denyNewMaster: [], denyNewDetail: [], denyModiMaster: [], denyModiDetail: [],
@@ -22,7 +22,7 @@ function makeRow(moduleId: number, title: string, parentId = 0, overrides: Parti
   return {
     moduleId, title, groupPath: '', parentId, rootId: moduleId, sortIndex: 1,
     execTag: null, addNew: false, edit: false, delete: false, approve: false, deapprove: false, report: false,
-    cost: false, setup: false, secrecy: false, endCase: false, unEndCase: false,
+    cost: false, setup: false, moduleConfig: false, secrecy: false, endCase: false, unEndCase: false,
     other1: false, other2: false, other3: false, other4: false,
     fileView: false, fileUpda: false, fileEdit: false, fileDele: false,
     denyViewMaster: '', denyViewDetail: '', denyNewMaster: '', denyNewDetail: '', denyModiMaster: '', denyModiDetail: '',
