@@ -22,6 +22,7 @@ import {
   OpsView,
   RulesView,
 } from './BusinessActionsViews'
+import { cloneAction, cloneOp, mergeClonedActions } from './businessActionDraft'
 import {
   actionKey,
   eventLabel,
@@ -195,11 +196,6 @@ type EditorState =
   | { kind: 'op'; actionIndex: number; index: number | null; value: BusinessActionOp }
   | { kind: 'rule'; index: number | null; value: ValidationRule }
 
-const cloneOp = (op: BusinessActionOp): BusinessActionOp => ({ ...op })
-const cloneAction = (action: BusinessAction): BusinessAction => ({
-  ...action,
-  ops: (action.ops ?? []).map(cloneOp),
-})
 const cloneRule = (rule: ValidationRule): ValidationRule => ({ ...rule })
 
 /** 新建动作的初始值：按钮行从"第一个已登记的操作键"起步，其余事件仍从字段累加起步。 */
@@ -574,21 +570,9 @@ export function BusinessActionsPanel({
     )
     setSelectedOpSeq(opSeq)
   }
-  /** 从其它模块克隆来的动作：顺序号按当前模块同事件重新顺延，其余原样带入草稿。 */
+  /** 从其它模块克隆来的动作：并入草稿（过滤与序号顺延见 mergeClonedActions）。 */
   const appendClonedActions = (incoming: BusinessAction[]) => {
-    setActions((prev) => {
-      const next = [...prev]
-      for (const action of incoming) {
-        // 自定义按钮照样过滤一次：其授权是跨模块不迁移的 fail-closed 名单，
-        // 带过来只会得到一批没人能点的按钮。
-        if (action.eventCode === MANUAL_EVENT) continue
-        const seq = next
-          .filter((item) => item.eventCode === action.eventCode)
-          .reduce((max, item) => Math.max(max, item.seq), 0) + 1
-        next.push(cloneAction({ ...action, seq }))
-      }
-      return next
-    })
+    setActions((prev) => mergeClonedActions(prev, incoming))
   }
   /**
    * 把一套定位键写回本动作中目标表相同的其余步骤：定位键按"目标表 + 键列"定义，   * 同表步骤共用同一套是有意约束，逐行重配只会制造不一致。
