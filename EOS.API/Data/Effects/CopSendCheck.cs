@@ -2,6 +2,7 @@ using System.Data;
 using System.Globalization;
 using System.Text.Json;
 using EOS.API.Data.Effects.ServiceEffectHandlers;
+using EOS.API.Data.Inventory;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data.Effects;
@@ -42,7 +43,6 @@ internal static class CopSendCheck
         var detail = Q(config.Detail.Table);
         var product = Q(config.Product.Table);
         var depot = Q(config.Depot.Table);
-        var stock = Q(config.Stock.Table);
         var batchStock = Q(config.BatchStock.Table);
         var detailScope = $"d.{Q(config.Master.TypeField)}=@Type AND d.{Q(config.Master.NoField)}=@No";
 
@@ -90,47 +90,55 @@ internal static class CopSendCheck
             if (depotMissing is not null)
                 return config.Messages.DepotMissing + depotMissing;
 
-            // 库存侧先按维度键汇总再比较：余额表同一组合可能存在多行，
-            // 直接按两列关联会取到其中一行而非合计，从而误判库存不足。
-            //
-            // 维度键：库别始终在键内；**位置与批次是可选扩展**——描述符配了才叠加。
-            // 不配任何新键时，生成的 SQL 与"只按 (料号, 库别)"完全一致（向后兼容）。
+            // 库存侧经 InventoryQueryService 取：同一组合多行要 SUM、哨兵位置要归一，
+            // 这些口径只有那里知道。描述符配的库存表必须是余额表本身——
+            // 允许配置指向"另一张表"会让这里的收口变成静默读错，故 fail-closed 校验。
+            EnsureStockSourceIsBalanceTable(config);
+
+            // 维度键：库别始终在键内，**位置与批次是可选扩展**——描述符配了才叠加。
             var keyNames = new List<string> { "PRO_NO", "DEPOT_ID" };
             var detailKeys = new List<string>
             {
                 $"d.{Q(config.Detail.ProductField)}", $"d.{Q(config.Detail.DepotField)}",
             };
-            var stockKeys = new List<string>
+            var groupByLocation = config.Stock.LocationField is not null;
+            var groupByBatch = config.Stock.BatchField is not null;
+            if (groupByLocation)
             {
-                $"s.{Q(config.Stock.ProductField)}", $"s.{Q(config.Stock.DepotField)}",
-            };
-            if (config.Stock.LocationField is { } stockLocation)
-            {
-                detailKeys.Add($"ISNULL(d.{Q(config.Detail.LocationField!)}, N'{CopSendCheckConstants.LocationSentinel}')");
-                stockKeys.Add($"s.{Q(stockLocation)}");
+                detailKeys.Add($"ISNULL(d.{Q(config.Detail.LocationField!)}, N'{InventoryQueryService.LocationSentinel}')");
                 keyNames.Add("LOCATION_NO");
             }
-            if (config.Stock.BatchField is { } stockBatch)
+            if (groupByBatch)
             {
                 detailKeys.Add($"ISNULL(d.{Q(config.Detail.BatchField)}, '')");
-                stockKeys.Add($"s.{Q(stockBatch)}");
                 keyNames.Add("BATCH_NO");
             }
 
-            var stockSql = $"""
-                SELECT {string.Join(", ", keyNames.Select(key => "a." + key))}, a.QTY, ISNULL(b.QTY,0)
-                FROM (SELECT {string.Join(", ", detailKeys.Select((expr, index) => $"{expr} AS {keyNames[index]}"))}, SUM({sendQty}) AS QTY
-                        FROM dbo.{detail} d INNER JOIN dbo.{product} p ON p.{Q(config.Product.KeyField)}=d.{Q(config.Detail.ProductField)}
-                       WHERE {detailScope}
-                       GROUP BY {string.Join(", ", detailKeys)}) a
-                LEFT JOIN (SELECT {string.Join(", ", stockKeys.Select((expr, index) => $"{expr} AS {keyNames[index]}"))}, SUM(s.{Q(config.Stock.QtyField)}) AS QTY
-                             FROM dbo.{stock} s
-                            GROUP BY {string.Join(", ", stockKeys)}) b
-                       ON {string.Join(" AND ", keyNames.Select(key => $"b.{key}=a.{key}"))}
-                WHERE a.QTY > ISNULL(b.QTY,0);
+            var stock = await InventoryQueryService.GetQuantitiesAsync(
+                context.Connection, context.Transaction,
+                new InventoryQueryService.QuantityQuery
+                {
+                    GroupByDepot = true,
+                    GroupByLocation = groupByLocation,
+                    GroupByBatch = groupByBatch,
+                },
+                InventoryQueryService.ReadLock.None, token);
+            var available = new Dictionary<string, double>(StringComparer.Ordinal);
+            foreach (var row in stock)
+            {
+                available[StockKey(row.ProductNo, row.DepotId, row.LocationNo, row.BatchNo)] = row.Quantity ?? 0d;
+            }
+
+            // 明细侧仍是一条聚合语句（它自己的换算与分组与库存无关），
+            // 只是"够不够"的判断从 SQL 的 WHERE 挪到内存里与库存合计比较。
+            var demandSql = $"""
+                SELECT {string.Join(", ", detailKeys.Select((expr, index) => $"{expr} AS {keyNames[index]}"))}, SUM({sendQty}) AS QTY
+                FROM dbo.{detail} d INNER JOIN dbo.{product} p ON p.{Q(config.Product.KeyField)}=d.{Q(config.Detail.ProductField)}
+                WHERE {detailScope}
+                GROUP BY {string.Join(", ", detailKeys)};
                 """;
-            var stockLines = await LinesAsync(context, stockSql, type, no, token,
-                StockLineFormatter(keyNames));
+            var stockLines = await LinesWhereAsync(context, demandSql, type, no, token,
+                reader => StockLine(reader, keyNames, available));
             if (stockLines is not null)
                 return config.Messages.StockNotEnough + stockLines;
 
@@ -158,34 +166,69 @@ internal static class CopSendCheck
     /// <summary>
     /// 库存不足行的文案：第一列料号、第二列**维度标识**（库别，配了位置 / 批次则追加），随后出库 / 库存 / 不足数量。
     /// 未配置新维度键时键只有「品号 + 库别」，输出与改造前逐字相同。
+    /// 返回 null 表示这一行够用（不进文案）。
     /// </summary>
-    private static Func<SqlDataReader, string> StockLineFormatter(List<string> keyNames)
+    private static string? StockLine(
+        SqlDataReader reader, List<string> keyNames, IReadOnlyDictionary<string, double> available)
     {
         var depotIndex = keyNames.IndexOf("DEPOT_ID");
         var locationIndex = keyNames.IndexOf("LOCATION_NO");
         var batchIndex = keyNames.IndexOf("BATCH_NO");
         var qtyIndex = keyNames.Count;
-        var stockIndex = keyNames.Count + 1;
-        return reader =>
+
+        var product = Str(reader, 0);
+        var depot = Str(reader, depotIndex);
+        var location = locationIndex >= 0 ? Str(reader, locationIndex) : string.Empty;
+        var batch = batchIndex >= 0 ? Str(reader, batchIndex) : string.Empty;
+        var demand = reader.IsDBNull(qtyIndex) ? null : (double?)Convert.ToDouble(reader.GetValue(qtyIndex));
+        var have = available.GetValueOrDefault(
+            StockKey(product, depot,
+                location.Length == 0 ? InventoryQueryService.LocationSentinel : location,
+                batch), 0d);
+        // 与改造前的 `WHERE a.QTY > ISNULL(b.QTY,0)` 同口径：出库量为空不参与判定。
+        if (demand is null || demand <= have) return null;
+
+        var scope = depot;
+        // 哨兵位置不额外展示：它表示"该库别尚未启用位置管理"，写成 库别/- 只会让人困惑。
+        if (location.Length > 0 && !string.Equals(location, CopSendCheckConstants.LocationSentinel, StringComparison.Ordinal))
+            scope += "/" + location;
+        if (batch.Length > 0) scope += "/" + batch;
+        return product + "    " + scope + "    " + Num(demand.Value) + "    " + Num(have) + "    "
+            + (demand.Value - have).ToString("0.######", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// 四键的对齐键：明细侧与库存侧走同一套归一化——空值/哨兵不产生差异。
+    /// 维度没启用时（库存侧该列为 null、明细侧为空串）两侧都归一到哨兵，才能对上同一条合计。
+    /// </summary>
+    private static string StockKey(string product, string? depot, string? location, string? batch)
+    {
+        var locationKey = (location ?? string.Empty).Trim();
+        if (locationKey.Length == 0) locationKey = InventoryQueryService.LocationSentinel;
+        return string.Join('|', product.Trim(), (depot ?? string.Empty).Trim(),
+            locationKey, (batch ?? string.Empty).Trim());
+    }
+
+    /// <summary>配置的"库存来源"必须就是余额表本身，否则收口会变成指鹿为马（读的是别的表）。</summary>
+    private static void EnsureStockSourceIsBalanceTable(CopSendCheckConfig config)
+    {
+        var expected = new[]
         {
-            var scope = Str(reader, depotIndex);
-            if (locationIndex >= 0)
-            {
-                var location = Str(reader, locationIndex);
-                // 哨兵位置不额外展示：它表示"该库别尚未启用位置管理"，写成 库别/- 只会让人困惑。
-                if (location.Length > 0
-                    && !string.Equals(location, CopSendCheckConstants.LocationSentinel, StringComparison.Ordinal))
-                    scope += "/" + location;
-            }
-            if (batchIndex >= 0)
-            {
-                var batch = Str(reader, batchIndex);
-                if (batch.Length > 0)
-                    scope += "/" + batch;
-            }
-            return Str(reader, 0) + "    " + scope + "    " + Num(reader, qtyIndex) + "    "
-                + Num(reader, stockIndex) + "    " + NumDiff(reader, qtyIndex, stockIndex);
-        };
+            (config.Stock.Table, InventoryQueryService.BalanceTable),
+            (config.Stock.ProductField, InventoryQueryService.ProductColumn),
+            (config.Stock.DepotField, InventoryQueryService.DepotColumn),
+            (config.Stock.QtyField, InventoryQueryService.QuantityColumn),
+        }.ToList();
+        if (config.Stock.LocationField is { } location)
+            expected.Add((location, InventoryQueryService.LocationColumn));
+        if (config.Stock.BatchField is { } batch)
+            expected.Add((batch, InventoryQueryService.BatchColumn));
+        foreach (var (actual, want) in expected)
+        {
+            if (!string.Equals(actual?.Trim(), want, StringComparison.OrdinalIgnoreCase))
+                throw new EffectConfigException(
+                    $"cop-send-check 的库存来源必须是 {want}（{InventoryQueryService.BalanceTable} 的库存读取出口），实际配置为 {actual}。");
+        }
     }
 
     private static async Task<bool> ExistsAsync(
@@ -207,26 +250,33 @@ internal static class CopSendCheck
 
     private static async Task<string?> LinesAsync(CustomValidationContext context, string sql, string type, string no,
         CancellationToken token, Func<SqlDataReader, string> format)
+        => await LinesWhereAsync(context, sql, type, no, token, reader => format(reader));
+
+    /// <summary>
+    /// 与 <see cref="LinesAsync"/> 同形，但格式化函数可以返回 null 表示"这一行不进文案"——
+    /// 库存不足的判据从 SQL 的 WHERE 挪到内存比较之后，过滤发生在读的这一侧。
+    /// </summary>
+    private static async Task<string?> LinesWhereAsync(CustomValidationContext context, string sql, string type, string no,
+        CancellationToken token, Func<SqlDataReader, string?> format)
     {
         var lines = new List<string>();
         await using var command = new SqlCommand(sql, context.Connection, context.Transaction);
         command.Parameters.AddWithValue("@Type", type);
         command.Parameters.AddWithValue("@No", no);
         await using var reader = await command.ExecuteReaderAsync(token);
-        while (await reader.ReadAsync(token)) lines.Add(format(reader));
+        while (await reader.ReadAsync(token))
+        {
+            if (format(reader) is { } line) lines.Add(line);
+        }
         return lines.Count == 0 ? null : string.Join("\r\n", lines);
     }
 
     private static string Num(SqlDataReader reader, int index)
         => reader.IsDBNull(index)
             ? "0"
-            : Convert.ToDouble(reader.GetValue(index)).ToString("0.######", CultureInfo.InvariantCulture);
+            : Num(Convert.ToDouble(reader.GetValue(index)));
 
-    private static string NumDiff(SqlDataReader reader, int left, int right)
-        => reader.IsDBNull(left) || reader.IsDBNull(right)
-            ? "0"
-            : (Convert.ToDouble(reader.GetValue(left)) - Convert.ToDouble(reader.GetValue(right)))
-                .ToString("0.######", CultureInfo.InvariantCulture);
+    private static string Num(double value) => value.ToString("0.######", CultureInfo.InvariantCulture);
 
     private static string Str(SqlDataReader reader, int index)
         => reader.IsDBNull(index) ? string.Empty : reader.GetValue(index).ToString()?.Trim() ?? string.Empty;
