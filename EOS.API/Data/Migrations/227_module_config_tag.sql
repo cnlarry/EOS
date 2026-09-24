@@ -87,4 +87,9 @@ SELECT 'SYSDD_2301_GRANTED' AS OBJECT_NAME, COUNT(*) AS CNT FROM dbo.SYSDD WHERE
 SELECT 'SYSDH_2301_GRANTED' AS OBJECT_NAME, COUNT(*) AS CNT FROM dbo.SYSDH WHERE M_IDX = 2301 AND MODULE_CONFIG_TAG = 1;
 
 PRINT N'== SYSDD / SYSDH 已新增 MODULE_CONFIG_TAG，并已按 SETUP_TAG 回填模块 2301 ==';
+
+-- 本脚本自己开的那个事务必须自己关掉。DbUp 会为每个脚本再包一层事务，它发出的 COMMIT
+-- 只是把 @@TRANCOUNT 减一：只要这里少一个 COMMIT，改动与 DbUp 写的 journal 行都会留在
+-- 未提交状态，连接归还连接池时被 SQL Server 整体回滚——表现为"每次启动都成功、却永远不生效"。
+COMMIT TRANSACTION;
 GO
