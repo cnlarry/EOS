@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.Json;
 using EOS.API.Data.Effects;
+using EOS.API.Data.Effects.ValidationChecks;
 using Microsoft.Data.SqlClient;
 using Xunit;
 
@@ -28,7 +29,7 @@ public sealed class EffectValidationPeriodOverlapTests
     [Fact]
     public void 语句按闭区间相交并排除本单()
     {
-        var compiled = EffectValidationExecutor.BuildPeriodOverlapSql(Params(ContractParams), ["D", "P-1"]);
+        var compiled = PeriodOverlapCheck.BuildPeriodOverlapSql(Params(ContractParams), ["D", "P-1"]);
 
         Assert.Contains("FROM dbo.[HR_CONTRACT_D] d JOIN dbo.[HR_CONTRACT_D] x ON x.[EMP_ID] = d.[EMP_ID]", compiled.Sql);
         Assert.Contains("NOT (x.[CONT_TYPE] = @mk0 AND x.[CONT_NO] = @mk1)", compiled.Sql);
@@ -44,7 +45,7 @@ public sealed class EffectValidationPeriodOverlapTests
     [Fact]
     public void 无诊断列时按存在性判断()
     {
-        var compiled = EffectValidationExecutor.BuildPeriodOverlapSql(
+        var compiled = PeriodOverlapCheck.BuildPeriodOverlapSql(
             Params("""
                 {"detailTable":"HR_SAFE_D","rangeFields":{"begin":"BEGIN_DATE","end":"END_DATE"},
                  "scopeFields":["SAFE_TYPE","SAFE_NO"],"groupFields":["EMP_ID","SAFE_ID"]}
@@ -60,7 +61,7 @@ public sealed class EffectValidationPeriodOverlapTests
     public void 单据主键数量不一致时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildPeriodOverlapSql(Params(ContractParams), ["D"]));
+            PeriodOverlapCheck.BuildPeriodOverlapSql(Params(ContractParams), ["D"]));
         Assert.Contains("与单据主键数量", exception.Message);
     }
 
@@ -68,7 +69,7 @@ public sealed class EffectValidationPeriodOverlapTests
     public void 缺少单据主键上下文时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildPeriodOverlapSql(Params(ContractParams), Array.Empty<string>()));
+            PeriodOverlapCheck.BuildPeriodOverlapSql(Params(ContractParams), Array.Empty<string>()));
         Assert.Contains("缺少单据主键上下文", exception.Message);
     }
 
@@ -76,7 +77,7 @@ public sealed class EffectValidationPeriodOverlapTests
     public void 使用display诊断但缺displayLookup时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildPeriodOverlapSql(
+            PeriodOverlapCheck.BuildPeriodOverlapSql(
                 Params("""
                     {"detailTable":"HR_CERTIFY_D","rangeFields":{"begin":"BEGIN_DATE","end":"END_DATE"},
                      "scopeFields":["CERTIFY_TYPE","CERTIFY_NO"],"groupFields":["EMP_ID"],
@@ -93,7 +94,7 @@ public sealed class EffectValidationPeriodOverlapTests
             180106, "HR_CONTRACT_M", "HR_CONTRACT_D", "test", ["CONT_TYPE", "CONT_NO"],
             Array.Empty<EffectActionPlan>(), Array.Empty<EffectValidationPlan>());
 
-        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+        var compiled = DuplicateCheck.BuildDuplicateCheckSql(
             plan,
             Params("""
                 {"mode":"within-doc","keyFields":["EMP_ID"],

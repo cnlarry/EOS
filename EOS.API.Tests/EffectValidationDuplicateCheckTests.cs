@@ -1,5 +1,6 @@
 using System.Text.Json;
 using EOS.API.Data.Effects;
+using EOS.API.Data.Effects.ValidationChecks;
 using Xunit;
 
 namespace EOS.API.Tests;
@@ -23,7 +24,7 @@ public sealed class EffectValidationDuplicateCheckTests
     [Fact]
     public void Entity_被本单引用的候选行按excludeVia排除()
     {
-        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+        var compiled = DuplicateCheck.BuildDuplicateCheckSql(
             Plan("COP_ORDER_CHANGE_M", "COP_ORDER_CHANGE_D", "CHANGE_ORDER_TYPE", "CHANGE_ORDER_NO"),
             Params("""
                 {"mode":"entity","table":"COP_ORDER_M","keyFields":["CLIENT_ORDER_NO"],
@@ -48,7 +49,7 @@ public sealed class EffectValidationDuplicateCheckTests
     [Fact]
     public void Entity_候选行与主表别名都进入FROM_键值按参数绑定()
     {
-        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+        var compiled = DuplicateCheck.BuildDuplicateCheckSql(
             Plan(),
             Params("""
                 {"mode":"entity","table":"MOU_ASSESS_M","keyFields":["PRO_NO"],
@@ -69,7 +70,7 @@ public sealed class EffectValidationDuplicateCheckTests
     public void Entity_缺少单据主键上下文时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildDuplicateCheckSql(
+            DuplicateCheck.BuildDuplicateCheckSql(
                 Plan(),
                 Params("""
                     {"mode":"entity","table":"MOU_ASSESS_M","keyFields":["PRO_NO"],
@@ -84,7 +85,7 @@ public sealed class EffectValidationDuplicateCheckTests
     public void Entity_自排除列数与单据主键数不一致时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildDuplicateCheckSql(
+            DuplicateCheck.BuildDuplicateCheckSql(
                 Plan(),
                 Params("""
                     {"mode":"entity","table":"MOU_ASSESS_M","keyFields":["PRO_NO"],
@@ -98,7 +99,7 @@ public sealed class EffectValidationDuplicateCheckTests
     [Fact]
     public void Entity_明细来源域进入FROM并按明细表限定单据()
     {
-        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+        var compiled = DuplicateCheck.BuildDuplicateCheckSql(
             Plan("HR_PLAN_M", "HR_PLAN_D", "PLAN_TYPE", "PLAN_NO"),
             Params("""
                 {"mode":"entity","table":"HR_PLAN_M","keyFields":["EMP_ID"],
@@ -115,7 +116,7 @@ public sealed class EffectValidationDuplicateCheckTests
     public void Entity_来源域不是MASTER或DETAIL时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildDuplicateCheckSql(
+            DuplicateCheck.BuildDuplicateCheckSql(
                 Plan(),
                 Params("""
                     {"mode":"entity","table":"MOU_ASSESS_M","keyFields":["PRO_NO"],
@@ -129,7 +130,7 @@ public sealed class EffectValidationDuplicateCheckTests
     [Fact]
     public void Entity_filter编译成参数化谓词并作用于候选行()
     {
-        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+        var compiled = DuplicateCheck.BuildDuplicateCheckSql(
             Plan("HR_EMPLOYEE", null, "EMP_ID"),
             Params("""
                 {"mode":"entity","table":"HR_EMPLOYEE","keyFields":["EMP_NO"],
@@ -148,7 +149,7 @@ public sealed class EffectValidationDuplicateCheckTests
     public void Entity_filter来源域不可用时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildDuplicateCheckSql(
+            DuplicateCheck.BuildDuplicateCheckSql(
                 Plan(),
                 Params("""
                     {"mode":"entity","table":"MOU_ASSESS_M","keyFields":["PRO_NO"],
@@ -164,7 +165,7 @@ public sealed class EffectValidationDuplicateCheckTests
     [Fact]
     public void Entity_诊断列进入选择列表并按占位符回填消息()
     {
-        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+        var compiled = DuplicateCheck.BuildDuplicateCheckSql(
             Plan("HR_EMPLOYEE", null, "EMP_ID"),
             Params("""
                 {"mode":"entity","table":"HR_EMPLOYEE","keyFields":["EMP_NO"],
@@ -176,7 +177,7 @@ public sealed class EffectValidationDuplicateCheckTests
         Assert.StartsWith("SELECT TOP 1 X.[EMP_NO], X.[EMP_NAME] FROM dbo.[HR_EMPLOYEE] M", compiled.Sql);
         Assert.Equal(["EMP_NO", "EMP_NAME"], compiled.Diagnostics);
 
-        var message = EffectValidationExecutor.RenderDiagnosticMessage(
+        var message = DuplicateCheck.RenderDiagnosticMessage(
             "员工工号：{EMP_NO} 已分配给：{emp_name}", compiled.Diagnostics, ["A001", " 张三 "]);
         Assert.Equal("员工工号：A001 已分配给：张三", message);
     }
@@ -185,7 +186,7 @@ public sealed class EffectValidationDuplicateCheckTests
     public void Entity_目标表与主表同名却无自排除时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildDuplicateCheckSql(
+            DuplicateCheck.BuildDuplicateCheckSql(
                 Plan(),
                 Params("""{"mode":"entity","table":"MOU_ASSESS_M","keyFields":["PRO_NO"]}"""),
                 ["OPEN", "A-1"]));
@@ -196,7 +197,7 @@ public sealed class EffectValidationDuplicateCheckTests
     [Fact]
     public void Entity_目标表不是主表时无需自排除()
     {
-        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+        var compiled = DuplicateCheck.BuildDuplicateCheckSql(
             Plan("HR_WAGE_M", "HR_WAGE_D", "WAGE_TYPE", "WAGE_NO"),
             Params("""{"mode":"entity","table":"HR_EMPLOYEE","keyFields":["EMP_ID"]}"""),
             ["W", "W-1"]);
@@ -210,13 +211,13 @@ public sealed class EffectValidationDuplicateCheckTests
     {
         Assert.Equal(
             "数据重复。",
-            EffectValidationExecutor.RenderDiagnosticMessage("  ", ["EMP_NO"], ["A001"]));
+            DuplicateCheck.RenderDiagnosticMessage("  ", ["EMP_NO"], ["A001"]));
     }
 
     [Fact]
     public void WithinDoc_限定在当前单据的分组内()
     {
-        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+        var compiled = DuplicateCheck.BuildDuplicateCheckSql(
             Plan("HR_PLAN_M", "HR_PLAN_D", "PLAN_TYPE", "PLAN_NO"),
             Params("""{"mode":"within-doc","keyFields":["EMP_ID"]}"""),
             ["D", "P-1"]);
@@ -230,7 +231,7 @@ public sealed class EffectValidationDuplicateCheckTests
     public void WithinDoc_无明细表时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildDuplicateCheckSql(
+            DuplicateCheck.BuildDuplicateCheckSql(
                 Plan(),
                 Params("""{"mode":"within-doc","keyFields":["EMP_ID"]}"""),
                 ["OPEN", "A-1"]));
@@ -242,7 +243,7 @@ public sealed class EffectValidationDuplicateCheckTests
     public void 非法标识符fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildDuplicateCheckSql(
+            DuplicateCheck.BuildDuplicateCheckSql(
                 Plan("HR_EMPLOYEE", null, "EMP_ID"),
                 Params("""
                     {"mode":"entity","table":"HR_EMPLOYEE","keyFields":["EMP_NO; DROP TABLE dbo.X"],

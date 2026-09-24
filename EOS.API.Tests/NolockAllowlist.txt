@@ -18,8 +18,10 @@ EOS.API/Data/BillNoGenerator.cs
 EOS.API/Data/ChooserJoinCatalog.cs
 EOS.API/Data/ChooserRepository.cs
 EOS.API/Data/DocumentWorkbenchRepository.cs
-EOS.API/Data/Effects/EffectValidationExecutor.cs
 EOS.API/Data/Effects/ServiceEffectHandlers/InventoryMoveHandler.cs
+EOS.API/Data/Effects/ValidationChecks/CheckSupport.cs
+EOS.API/Data/Effects/ValidationChecks/DuplicateCheck.cs
+EOS.API/Data/Effects/ValidationChecks/ReferenceExistsCheck.cs
 EOS.API/Data/FieldAdminRepository.cs
 EOS.API/Data/FlowDefinitionService.cs
 EOS.API/Data/HumanResourceJobsService.cs

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using EOS.API.Data.Effects;
+using EOS.API.Data.Effects.ValidationChecks;
 using Xunit;
 
 namespace EOS.API.Tests;
@@ -24,7 +25,7 @@ public sealed class EffectValidationReferenceExistsTests
     [Fact]
     public void 主表引用断言限定在当前单据上且不牵入明细()
     {
-        var compiled = EffectValidationExecutor.BuildReferenceExistsCheckSql(
+        var compiled = ReferenceExistsCheck.BuildReferenceExistsCheckSql(
             Plan(),
             Check("""
                 {"refTable":"SUPPLIER","refKey":{"scope":"MASTER","field":"SUPPLIER_ID"},
@@ -44,7 +45,7 @@ public sealed class EffectValidationReferenceExistsTests
     [Fact]
     public void 明细引用断言按明细列关联且明细侧同样限定在当前单据内()
     {
-        var compiled = EffectValidationExecutor.BuildReferenceExistsCheckSql(
+        var compiled = ReferenceExistsCheck.BuildReferenceExistsCheckSql(
             Plan("PUR_PURCHASE_M", "PUR_PURCHASE_D", "PURCHASE_TYPE", "PURCHASE_NO"),
             Check("""
                 {"refTable":"SUPPLIER_PRICE_D","join":[{"target":"PRO_NO","source":{"scope":"DETAIL","field":"PRO_NO"}}],
@@ -62,7 +63,7 @@ public sealed class EffectValidationReferenceExistsTests
     [Fact]
     public void 允许空值的引用断言把空来源视为通过()
     {
-        var compiled = EffectValidationExecutor.BuildReferenceExistsCheckSql(
+        var compiled = ReferenceExistsCheck.BuildReferenceExistsCheckSql(
             Plan(),
             Check("""
                 {"refTable":"SUPPLIER","refKey":{"scope":"MASTER","field":"SUPPLIER_ID"},"allowEmpty":true}
@@ -79,7 +80,7 @@ public sealed class EffectValidationReferenceExistsTests
     [Fact]
     public void 复合键里任一可空列为空即整项放行()
     {
-        var compiled = EffectValidationExecutor.BuildReferenceExistsCheckSql(
+        var compiled = ReferenceExistsCheck.BuildReferenceExistsCheckSql(
             Plan("COP_RETURN_M", "COP_RETURN_D", "RETURN_TYPE", "RETURN_NO"),
             Check("""
                 {"refTable":"COP_ORDER_M",
@@ -98,7 +99,7 @@ public sealed class EffectValidationReferenceExistsTests
     [Fact]
     public void 被引用行条件断言_引用行存在且满足条件即命中()
     {
-        var compiled = EffectValidationExecutor.BuildReferenceExistsCheckSql(
+        var compiled = ReferenceExistsCheck.BuildReferenceExistsCheckSql(
             Plan("COP_CALLBACK_M", "COP_CALLBACK_D", "CALLBACK_TYPE", "CALLBACK_NO"),
             Check("""
                 {"refTable":"COP_SEND_D",
@@ -122,7 +123,7 @@ public sealed class EffectValidationReferenceExistsTests
     [Fact]
     public void 缺失行清单按明细行号升序取前maxRows行()
     {
-        var compiled = EffectValidationExecutor.BuildReferenceExistsCheckSql(
+        var compiled = ReferenceExistsCheck.BuildReferenceExistsCheckSql(
             Plan("INV_OCCUR_IN_M", "INV_OCCUR_IN_D", "OCCUR_TYPE", "OCCUR_NO"),
             Check("""
                 {"refTable":"PRODUCT","refKey":{"scope":"DETAIL","field":"PRO_NO"},
@@ -139,7 +140,7 @@ public sealed class EffectValidationReferenceExistsTests
     [Fact]
     public void 多引用目标表按任一存在即通过()
     {
-        var compiled = EffectValidationExecutor.BuildReferenceExistsCheckSql(
+        var compiled = ReferenceExistsCheck.BuildReferenceExistsCheckSql(
             Plan("COP_ACCOUNT_M", "COP_ACCOUNT_D", "ACCOUNT_TYPE", "ACCOUNT_NO"),
             Check("""
                 {"targets":[
@@ -162,7 +163,7 @@ public sealed class EffectValidationReferenceExistsTests
     [Fact]
     public void 反向一致性断言用存在且不等表达()
     {
-        var compiled = EffectValidationExecutor.BuildReferenceExistsCheckSql(
+        var compiled = ReferenceExistsCheck.BuildReferenceExistsCheckSql(
             Plan("COP_RETURN_M", "COP_RETURN_D", "RETURN_TYPE", "RETURN_NO"),
             Check("""
                 {"refTable":"COP_ORDER_M",
@@ -182,7 +183,7 @@ public sealed class EffectValidationReferenceExistsTests
     public void 明细级断言缺少明细表时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildReferenceExistsCheckSql(
+            ReferenceExistsCheck.BuildReferenceExistsCheckSql(
                 Plan("SUPPLIER", null, "SUPPLIER_ID"),
                 Check("""{"refTable":"PRODUCT","refKey":{"scope":"DETAIL","field":"PRO_NO"}}"""),
                 ["S-1"]));
@@ -194,7 +195,7 @@ public sealed class EffectValidationReferenceExistsTests
     public void 缺少单据主键上下文时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildReferenceExistsCheckSql(
+            ReferenceExistsCheck.BuildReferenceExistsCheckSql(
                 Plan(),
                 Check("""{"refTable":"SUPPLIER","refKey":{"scope":"MASTER","field":"SUPPLIER_ID"}}"""),
                 Array.Empty<string>()));
@@ -206,11 +207,11 @@ public sealed class EffectValidationReferenceExistsTests
     public void 缺少refTable或refKey时fail_closed()
     {
         Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildReferenceExistsCheckSql(
+            ReferenceExistsCheck.BuildReferenceExistsCheckSql(
                 Plan(), Check("""{"refKey":{"scope":"MASTER","field":"SUPPLIER_ID"}}"""), ["PUR", "P-1"]));
 
         Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildReferenceExistsCheckSql(
+            ReferenceExistsCheck.BuildReferenceExistsCheckSql(
                 Plan(), Check("""{"refTable":"SUPPLIER"}"""), ["PUR", "P-1"]));
     }
 
@@ -218,7 +219,7 @@ public sealed class EffectValidationReferenceExistsTests
     public void 空的targets数组fail_closed()
     {
         Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildReferenceExistsCheckSql(
+            ReferenceExistsCheck.BuildReferenceExistsCheckSql(
                 Plan(), Check("""{"targets":[]}"""), ["PUR", "P-1"]));
     }
 }
