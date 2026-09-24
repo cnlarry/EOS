@@ -87,8 +87,10 @@ public static class InventoryQueryService
         string billNo,
         CancellationToken token)
     {
+        // 刻意不加脏读提示：这是删除守卫的**强一致判据**——
+        // 读到别人未提交的流水而拦下删除是"多拦一次"，反过来漏读则可能删掉已有库存台账的单据。
         await using var command = new SqlCommand(
-            $"SELECT TOP 1 1 FROM dbo.{LedgerTable} WITH (NOLOCK) "
+            $"SELECT TOP 1 1 FROM dbo.{LedgerTable} "
             + $"WHERE LTRIM(RTRIM(MUTUALITY_TYPE))=@t AND LTRIM(RTRIM(MUTUALITY_NO))=@n;",
             connection, transaction);
         command.Parameters.Add("@t", SqlDbType.NVarChar, 20).Value = billType.Trim();
