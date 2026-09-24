@@ -1,6 +1,7 @@
 using System.Data;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using EOS.API.Data.Query;
 using EOS.API.Telemetry;
 using Microsoft.Data.SqlClient;
 
@@ -407,11 +408,15 @@ public sealed class WorkbenchQueryComposer(
         return string.Join(',', keys.Select(field => $"[{field.Key}]"));
     }
 
+    /// <summary>
+    /// 把高级查询条件渲染为谓词：字段白名单/虚拟字段/可查询性校验在此完成，
+    /// 算子表与连接词拼装交给 <see cref="QueryConditionRenderer"/>（与选择器同一份）。
+    /// </summary>
     private static void AddQueryPredicates(WorkbenchQuery query, IReadOnlyList<WorkbenchField> fields, List<string> predicates, SqlCommand command)
     {
-        if (query.Conditions.Count > 20)
+        if (query.Conditions.Count > QueryConditionRenderer.MaxConditions)
         {
-            throw new ArgumentException("查询条件不能超过 20 个。");
+            throw new ArgumentException($"查询条件不能超过 {QueryConditionRenderer.MaxConditions} 个。");
         }
         var queryPredicates = new List<string>();
         foreach (var condition in query.Conditions)
@@ -428,49 +433,13 @@ public sealed class WorkbenchQueryComposer(
                 throw new ArgumentException($"字段不可查询：{condition.Field}");
             }
             var name = $"@q{command.Parameters.Count}";
-            var column = $"[{field.Key}]";
-            var op = condition.Operator.ToLowerInvariant();
-            string expression;
-            switch (op)
-            {
-                case "eq":
-                case "ne":
-                case "gt":
-                case "gte":
-                case "lt":
-                case "lte":
-                    var sqlOperator = op switch { "eq" => "=", "ne" => "<>", "gt" => ">", "gte" => ">=", "lt" => "<", _ => "<=" };
-                    expression = $"{column} {sqlOperator} {name}";
-                    command.Parameters.AddWithValue(name, condition.Value ?? "");
-                    break;
-                case "contains":
-                case "notcontains":
-                case "startswith":
-                case "endswith":
-                    expression = $"{column} {(op == "notcontains" ? "NOT LIKE" : "LIKE")} {name}";
-                    var value = condition.Value ?? "";
-                    command.Parameters.AddWithValue(name, op is "contains" or "notcontains" ? $"%{value}%" : op == "startswith" ? $"{value}%" : $"%{value}");
-                    break;
-                case "empty":
-                    expression = $"({column} IS NULL OR {column}='')";
-                    break;
-                case "notempty":
-                    expression = $"({column} IS NOT NULL AND {column}<>'')";
-                    break;
-                case "between":
-                    expression = $"{column} BETWEEN {name} AND {name}b";
-                    command.Parameters.AddWithValue(name, condition.Value ?? "");
-                    command.Parameters.AddWithValue(name + "b", condition.ValueTo ?? "");
-                    break;
-                default:
-                    throw new ArgumentException($"无效查询运算符：{condition.Operator}");
-            }
-            queryPredicates.Add((queryPredicates.Count > 0 && condition.Logic.Equals("or", StringComparison.OrdinalIgnoreCase) ? "OR " : "AND ") + expression);
+            var expression = QueryConditionRenderer.Render(
+                $"[{field.Key}]", condition.Operator, condition.Value, condition.ValueTo, name, command);
+            queryPredicates.Add(QueryConditionRenderer.Prefix(queryPredicates.Count > 0, condition.Logic, expression));
         }
-        if (queryPredicates.Count > 0)
+        if (QueryConditionRenderer.Combine(queryPredicates) is { } combined)
         {
-            queryPredicates[0] = queryPredicates[0][4..];
-            predicates.Add("(" + string.Join(' ', queryPredicates) + ")");
+            predicates.Add(combined);
         }
     }
 
