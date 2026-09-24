@@ -24,6 +24,15 @@ public sealed class WorkbenchDefinitionBuilder(
     private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
     private readonly IReadOnlySet<int> formEnabledModules = formSettings.Value.EnabledModuleIds.ToHashSet();
 
+    /// <summary>
+    /// 过账引擎可能要求、因此必须出现在明细表单里的维度列（与"必填"同款处理）：
+    /// 位置档 3 的库别要求指明库位，管批次的料号（`MANAGE_BATCH=1` 或批次档 2）要求批号。
+    /// 判据在引擎侧，而这两列是否进表单取决于用户的「选择列」配置——不补进表单，
+    /// 用户就会遇到「引擎要求填、界面没有格子」的死结。
+    /// </summary>
+    private static readonly HashSet<string> RuntimeRequiredDetailColumns =
+        new(StringComparer.OrdinalIgnoreCase) { "LOCATION_NO", "BATCH_NO" };
+
     private SqlConnection CreateConnection()=>connections.Create();
     /// <summary>
     /// Parses MODULES.FORM_BUTTONS (e.g. '1=copy;2=approve;3=print') into a controlled button list.
@@ -315,11 +324,13 @@ public sealed class WorkbenchDefinitionBuilder(
             // Required fields (IS_VERIFY=1) must stay in the form: the workbench column config only
             // controls the list view, not which fields can be entered; a missing required column in
             // the user/default config would make document creation fail.
+            // 位置与批次同理（见 RuntimeRequiredDetailColumns）：引擎可能要求它们，而选择列未勾时
+            // 表单里就没有格子可填，单据必然过账失败。
             var includedKeys=new HashSet<string>(orderedRows.Select(row=>row.Key),StringComparer.OrdinalIgnoreCase);
             foreach(var row in detailRows)
             {
                 if(!includedKeys.Add(row.Key))continue;
-                if(!row.IsRequired)continue;
+                if(!row.IsRequired && !RuntimeRequiredDetailColumns.Contains(row.Key))continue;
                 orderedRows.Add(row);
             }
             detailFields=FormFieldSelector.Select(orderedRows,mode,canViewCost,canViewSecrecy,deniedDetailFields,deniedNewDetailFields,deniedModiDetailFields);
