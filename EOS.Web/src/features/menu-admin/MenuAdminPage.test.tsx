@@ -152,6 +152,44 @@ describe('MenuAdminPage', () => {
     expect(screen.getByText('已发布 module-11-v7')).toBeInTheDocument()
   })
 
+  it('发布返回"未写入"但无失败项时提示快照已是最新', async () => {
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
+    apiClientMock.put.mockResolvedValue(11)
+    apiClientMock.post.mockResolvedValue([
+      {
+        moduleId: 11, title: '基本参数', published: false, version: 5,
+        definitionVersion: 'module-11-v5', passed: true, checks: [], error: null,
+      },
+    ])
+    fireEvent.click(screen.getByRole('button', { name: '发布' }))
+
+    expect(await screen.findByText(/快照已是最新，无需重发布/)).toBeInTheDocument()
+    expect(screen.queryByText(/发布未通过校验/)).not.toBeInTheDocument()
+  })
+
+  it('发布返回未通过项时逐条列出校验失败原因', async () => {
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('基本参数'))
+    apiClientMock.put.mockResolvedValue(11)
+    apiClientMock.post.mockResolvedValue([
+      {
+        moduleId: 11, title: '基本参数', published: false, version: 4,
+        definitionVersion: 'module-11-v4', passed: false,
+        checks: [{ code: 'master_pk_exists', passed: false, message: '主表缺少主键。', severity: 'error' }],
+        error: null,
+      },
+    ])
+    fireEvent.click(screen.getByRole('button', { name: '发布' }))
+
+    expect(await screen.findByText(/发布未通过校验/)).toBeInTheDocument()
+    expect(screen.getByText('主表缺少主键。')).toBeInTheDocument()
+  })
+
   it('版本历史弹窗展示该模块的历史发布版本', async () => {
     apiClientMock.get.mockImplementation(async (path: string) => {
       if (path.endsWith('/versions')) {

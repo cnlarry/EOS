@@ -1233,16 +1233,22 @@ export function MenuAdminPage() {
                     </div>
                   )}
                   {publishResult && !publishResult.published && (
-                    <div className="alert alert-warning py-2 mb-0 mt-3" role="alert">
-                      发布未通过校验，未写入新快照：
-                      <ul className="mb-0 mt-1">
-                        {publishResult.checks
-                          .filter((check) => !check.passed)
-                          .map((check) => (
-                            <li key={check.code}>{check.message}</li>
-                          ))}
-                      </ul>
-                    </div>
+                    publishResult.checks.some((check) => !check.passed) ? (
+                      <div className="alert alert-warning py-2 mb-0 mt-3" role="alert">
+                        发布未通过校验，未写入新快照：
+                        <ul className="mb-0 mt-1">
+                          {publishResult.checks
+                            .filter((check) => !check.passed)
+                            .map((check) => (
+                              <li key={check.code}>{check.message}</li>
+                            ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <div className="alert alert-info py-2 mb-0 mt-3" role="alert">
+                        当前快照已是最新，无需重发布（v{publishResult.version ?? '—'}）。
+                      </div>
+                    )
                   )}
                   <div className="d-flex align-items-center gap-2 mt-3 flex-wrap">
                     <ErpCommandBar
