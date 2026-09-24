@@ -46,6 +46,24 @@ const sourceConfig = {
   validationRules: [],
 }
 
+/** 来源模块同时配了一个自定义按钮（MANUAL）行：克隆列表只应出现效果动作。 */
+const sourceConfigWithManual = {
+  moduleId: 1505,
+  actions: [
+    ...sourceConfig.actions,
+    {
+      seq: 1,
+      eventCode: 'MANUAL',
+      effectKey: 'recalc-account',
+      label: '重算账面数量',
+      enabled: true,
+      failMode: 'BLOCK',
+      ops: [],
+    },
+  ],
+  validationRules: [],
+}
+
 describe('CloneActionsModal', () => {
   beforeEach(() => {
     apiClientMock.get.mockImplementation(async (url: string) => {
@@ -87,6 +105,34 @@ describe('CloneActionsModal', () => {
     await waitFor(() => expect(onAppend).toHaveBeenCalledTimes(1))
     expect(onAppend.mock.calls[0][0]).toHaveLength(1)
     expect(onAppend.mock.calls[0][0][0].ops).toHaveLength(1)
+  })
+
+  it('自定义按钮（MANUAL）行不参与克隆：既不在列表里，也不交回调用方', async () => {
+    apiClientMock.get.mockImplementation(async (url: string) => {
+      if (url.endsWith('/module-business-config/1505')) return sourceConfigWithManual
+      return {}
+    })
+    const onAppend = vi.fn()
+    renderWithProviders(
+      <CloneActionsModal open currentModuleId={1607} onClose={() => {}} onAppend={onAppend} />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '选择模块' }))
+    await waitFor(() => expect(screen.getByText('选择来源模块')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('生产入库单'))
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
+
+    // 按钮行的授权不随配置跨模块迁移，克隆过去就是一批没人能点的按钮。
+    expect(await screen.findByText('制令已入库量累加')).toBeInTheDocument()
+    expect(screen.queryByText('recalc-account')).not.toBeInTheDocument()
+    expect(screen.getAllByLabelText('选择该动作')).toHaveLength(1)
+
+    fireEvent.click(screen.getAllByLabelText('选择该动作')[0])
+    await waitFor(() => expect(screen.getByText('已选 1 个动作')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '追加到本模块' }))
+    await waitFor(() => expect(onAppend).toHaveBeenCalledTimes(1))
+    expect(onAppend.mock.calls[0][0].map((action: { eventCode: string }) => action.eventCode))
+      .toEqual(['APPROVE_EFFECT'])
   })
 
   it('未选来源模块时不发起来源配置请求', () => {

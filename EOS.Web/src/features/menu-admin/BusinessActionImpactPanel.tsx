@@ -10,8 +10,9 @@ import { labelWithCode, type BusinessNameLookup } from './businessActionText'
 /**
  * 保存前的影响面与自检面板：
  * - 汇总这批配置会写入的表/列（带中文名）、事件与阶段分布、系统开关引用；
- * - 按服务端保存期口径列出会拦住保存的硬伤（跨表无定位键写入、定位键未登记、开关键未登记、顺序号重复、JSON 非法）；
- * - 定位键覆盖检查复用 `GET /{moduleId}/relations`（与保存期校验同一事实源），逐目标表按需取数。
+ * - 按服务端保存期口径列出会拦住保存的硬伤（跨表无定位键写入、定位键未登记、系统开关未登记、顺序号重复、JSON 非法）；
+ * - 定位键覆盖检查复用 `GET /{moduleId}/relations`（与保存期校验同一事实源），逐目标表按需取数，
+ *   且**只在用户展开明细时才查**——没展开就发一圈请求会白等，大模块的目标表还不少。
  *
  * 这是**静态影响面**：不连库试算、不改数据。
  */
@@ -46,6 +47,8 @@ export function BusinessActionImpact({
   rules: ImpactRule[]
 }) {
   const [open, setOpen] = useState(false)
+  // 是否展开过明细：定位键与系统开关的登记校验依赖远端数据，只在展开后才查、才下结论。
+  const [inspected, setInspected] = useState(false)
 
   // 目标表 → 已登记关系边组：只对草稿里真正写入的表取数（通常 1~3 张）。
   const targetTables = useMemo(() => {
@@ -69,12 +72,13 @@ export function BusinessActionImpact({
       }))
       return Object.fromEntries(pairs) as Record<string, ImpactMatchEdge[][]>
     },
-    enabled: moduleId > 0 && targetTables.length > 0,
+    enabled: open && moduleId > 0 && targetTables.length > 0,
   })
   const switchQuery = useQuery({
     queryKey: ['system-parameters-switch-keys'],
     queryFn: () => apiClient.get<{ groups?: { parameters?: { key?: string }[] }[] }>('/settings/system'),
     staleTime: 5 * 60 * 1000,
+    enabled: open,
   })
   const knownSwitchKeys = useMemo(() => {
     const groups = switchQuery.data?.groups
@@ -82,14 +86,19 @@ export function BusinessActionImpact({
     return groups.flatMap((group) => (group.parameters ?? []).map((item) => String(item.key ?? ''))).filter(Boolean)
   }, [switchQuery.data])
 
+  // 远端数据到齐才下结论：缺数据时 analyzeImpact 会跳过对应检查，不能拿它当"没问题"。
+  const definitive = inspected
+    && (targetTables.length === 0 || relationsQuery.data !== undefined)
+    && switchQuery.data !== undefined
+
   const report = useMemo(
     () => analyzeImpact(actions, rules, {
       masterTable,
       detailTable,
-      relationsByTable: relationsQuery.data,
-      knownSwitchKeys,
+      relationsByTable: definitive ? relationsQuery.data : undefined,
+      knownSwitchKeys: definitive ? knownSwitchKeys : null,
     }),
-    [actions, rules, masterTable, detailTable, relationsQuery.data, knownSwitchKeys],
+    [actions, rules, masterTable, detailTable, definitive, relationsQuery.data, knownSwitchKeys],
   )
 
   const blocks = report.issues.filter((issue) => issue.severity === 'block')
@@ -123,11 +132,22 @@ export function BusinessActionImpact({
       <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
         <h6 className="mb-0">影响面与保存前自检</h6>
         <div className="d-flex align-items-center gap-2">
-          <span className={`badge ${blocks.length > 0 ? 'text-bg-danger' : 'text-bg-success'}`}>
-            {blocks.length > 0 ? `${blocks.length} 项会拦住保存` : '无阻断项'}
-          </span>
-          {warns.length > 0 ? <span className="badge text-bg-warning">{warns.length} 项提示</span> : null}
-          <Button size="sm" variant="ghost" onClick={() => setOpen(!open)}>
+          {definitive ? (
+            <span className={`badge ${blocks.length > 0 ? 'text-bg-danger' : 'text-bg-success'}`}>
+              {blocks.length > 0 ? `${blocks.length} 项会拦住保存` : '无阻断项'}
+            </span>
+          ) : (
+            <span className="badge text-bg-secondary">{inspected ? '自检中…' : '展开后自检'}</span>
+          )}
+          {definitive && warns.length > 0 ? <span className="badge text-bg-warning">{warns.length} 项提示</span> : null}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setInspected(true)
+              setOpen(!open)
+            }}
+          >
             {open ? '收起明细' : '展开明细'}
           </Button>
         </div>
@@ -164,11 +184,16 @@ export function BusinessActionImpact({
                 </li>
               ))}
             </ul>
-          ) : (
+          ) : null}
+          {!definitive ? (
+            <div className="text-secondary small mt-2">
+              定位键与系统开关的登记校验{inspected ? '正在进行' : '在展开明细后补做'}。
+            </div>
+          ) : report.issues.length === 0 ? (
             <div className="text-secondary small mt-2">
               未发现阻断项（真正的落库结果仍以保存期服务端校验为准）。
             </div>
-          )}
+          ) : null}
 
           {open ? (
             <div className="mt-3">

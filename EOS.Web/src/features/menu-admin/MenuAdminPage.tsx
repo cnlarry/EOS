@@ -1236,8 +1236,14 @@ export function MenuAdminPage() {
                         </div>
                       </div>
                     )}
-                    {formTab === 'actions' && canModuleConfig && (
-                      <BusinessActionsPanel module={draft} onDraftChange={handleActionsDraftChange} />
+                    {canModuleConfig && (
+                      // 与上面的页签条件同层级、不被 formTab 包裹：切页签只换视图，
+                      // 组件不卸载，否则未保存的行为配置会被装载副作用重置掉。
+                      <BusinessActionsPanel
+                        module={draft}
+                        view={formTab === 'actions' ? 'actions' : null}
+                        onDraftChange={handleActionsDraftChange}
+                      />
                     )}
                   </TabbedPanel>
                   {publishError && (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import {
@@ -176,8 +176,17 @@ interface LabelLookups {
   validationKeys: (code: string | null | undefined) => string
 }
 
+/** 行为配置页签：容器按当前页签只渲染对应视图，切换页签不卸载容器。 */
+export type BusinessActionsView = 'actions' | 'rules' | 'manual'
+
 interface BusinessActionsPanelProps {
   module: MenuAdminModule
+  /**
+   * 当前显示的行为页签；null 表示不在任何行为页签上。
+   * 容器始终持有草稿与查询，页签切换只换视图，不重挂组件——否则未保存编辑会被
+   * 装载副作用按服务端缓存重置掉。
+   */
+  view?: BusinessActionsView | null
   /** 草稿上报：配置装载完成或编辑变化时回调；null 表示当前没有可提交的草稿（未装载/无表模块）。 */
   onDraftChange?: (draft: ModuleBusinessConfigDraft | null) => void
 }
@@ -242,30 +251,40 @@ const emptyRule = (stage: string): ValidationRule => ({
   sourceRef: null,
 })
 
-export function BusinessActionsPanel({ module, onDraftChange }: BusinessActionsPanelProps) {
+export function BusinessActionsPanel({ module, view = 'actions', onDraftChange }: BusinessActionsPanelProps) {
   const moduleId = module.M_IDX
   const hasTables = module.MASTER_TABLE != null || module.DETAIL_TABLE != null
+  const active = view != null
+
+  // 已进入过行为页签的模块编号：容器常驻不等于提前取数——没进过行为页签的模块
+  // 不该把配置拉下来。
+  const [enteredModuleId, setEnteredModuleId] = useState<number | null>(null)
+  useEffect(() => {
+    if (active) setEnteredModuleId(moduleId)
+  }, [active, moduleId])
+  const entered = enteredModuleId === moduleId
+  const enabled = entered && moduleId > 0 && hasTables
 
   const configQuery = useQuery({
     queryKey: ['module-business-config', moduleId],
     queryFn: () => apiClient.get<ModuleBusinessConfig>(`/admin/module-business-config/${moduleId}`),
-    enabled: moduleId > 0 && hasTables,
+    enabled,
   })
   const catalogQuery = useQuery({
     queryKey: ['module-business-config-meta'],
     queryFn: () => apiClient.get<BusinessConfigCatalog>(`/admin/module-business-config/meta`),
-    enabled: moduleId > 0 && hasTables,
+    enabled,
   })
   const schemasQuery = useQuery({
     queryKey: ['module-business-config-schemas'],
     queryFn: () => apiClient.get<BusinessConfigSchemas>(`/admin/module-business-config/schemas`),
-    enabled: moduleId > 0 && hasTables,
+    enabled,
   })
   // 表/字段中文名：只用于把配置渲染成人话，缺失时回落显示列名本身。
   const fieldLabelsQuery = useQuery({
     queryKey: ['module-business-config-field-labels', moduleId],
     queryFn: () => apiClient.get<BusinessFieldLabels>(`/admin/module-business-config/${moduleId}/field-labels`),
-    enabled: moduleId > 0 && hasTables,
+    enabled,
   })
   // 按钮授权镜子：授权是 fail-closed 名单，"配了没人能用"是正常状态，界面上必须说出来。
   const authorizationQuery = useQuery({
@@ -274,7 +293,7 @@ export function BusinessActionsPanel({ module, onDraftChange }: BusinessActionsP
       apiClient.get<{ buttons: DocumentActionAuthorizationEntry[] }>(
         `/admin/module-business-config/${moduleId}/action-authorization`,
       ),
-    enabled: moduleId > 0 && hasTables,
+    enabled,
   })
 
   const [actions, setActions] = useState<BusinessAction[]>([])
@@ -284,6 +303,9 @@ export function BusinessActionsPanel({ module, onDraftChange }: BusinessActionsP
   // 已从服务端装载完成的模块编号：只有装载完成才向上报草稿，避免切换模块的瞬间
   // 用空配置覆盖主页面持有的草稿。
   const [loadedModuleId, setLoadedModuleId] = useState<number | null>(null)
+  // 「重新加载」的显式装载点：只有它或切换模块才把服务端配置灌回草稿。
+  const [reloadToken, setReloadToken] = useState(0)
+  const loadedPointRef = useRef<string | null>(null)
 
   useEffect(() => {
     setActions([])
@@ -291,14 +313,21 @@ export function BusinessActionsPanel({ module, onDraftChange }: BusinessActionsP
     setSelectedKey(null)
     setEditor(null)
     setLoadedModuleId(null)
+    loadedPointRef.current = null
   }, [moduleId])
 
   useEffect(() => {
-    if (!configQuery.data) return
-    setActions((configQuery.data.actions ?? []).map(cloneAction))
-    setRules((configQuery.data.validationRules ?? []).map(cloneRule))
-    setLoadedModuleId(configQuery.data.moduleId)
-  }, [configQuery.data])
+    const data = configQuery.data
+    if (!data) return
+    // 装载点 = 模块 + 重新加载序号。查询后台重取（窗口聚焦等）返回同一装载点时
+    // 不再灌入，避免把未保存的编辑静默冲掉。
+    const point = `${moduleId}#${reloadToken}`
+    if (loadedPointRef.current === point) return
+    loadedPointRef.current = point
+    setActions((data.actions ?? []).map(cloneAction))
+    setRules((data.validationRules ?? []).map(cloneRule))
+    setLoadedModuleId(data.moduleId)
+  }, [configQuery.data, moduleId, reloadToken])
 
   const configDirty = useMemo(() => {
     if (!configQuery.data) return false
@@ -477,6 +506,9 @@ export function BusinessActionsPanel({ module, onDraftChange }: BusinessActionsP
     setActions((prev) => {
       const next = [...prev]
       for (const action of incoming) {
+        // 自定义按钮照样过滤一次：其授权是跨模块不迁移的 fail-closed 名单，
+        // 带过来只会得到一批没人能点的按钮。
+        if (action.eventCode === MANUAL_EVENT) continue
         const seq = next
           .filter((item) => item.eventCode === action.eventCode)
           .reduce((max, item) => Math.max(max, item.seq), 0) + 1
@@ -542,6 +574,9 @@ export function BusinessActionsPanel({ module, onDraftChange }: BusinessActionsP
     )
   }
 
+  // 不在行为页签上时不渲染内容，但上面的状态与查询继续保留（容器常驻）。
+  if (!active) return null
+
   if (!hasTables || moduleId <= 0) {
     return (
       <div className="p-3 text-secondary">
@@ -559,7 +594,14 @@ export function BusinessActionsPanel({ module, onDraftChange }: BusinessActionsP
           <strong>{tableTitle(module.MASTER_TABLE, module.MASTER_TABLE_DESC)} / {tableTitle(module.DETAIL_TABLE, module.DETAIL_TABLE_DESC)}</strong>
         </div>
         <div className="d-flex gap-2">
-          <Button size="sm" icon={<IconRefresh size={16} />} onClick={() => void configQuery.refetch()}>
+          <Button
+            size="sm"
+            icon={<IconRefresh size={16} />}
+            onClick={() => {
+              setReloadToken((token) => token + 1)
+              void configQuery.refetch()
+            }}
+          >
             重新加载
           </Button>
         </div>
