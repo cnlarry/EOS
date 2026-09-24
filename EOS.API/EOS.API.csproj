@@ -6,6 +6,10 @@
     <RootNamespace>EOS.API</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- 编译期护栏：本项目以"build 0 错 0 警"为口径，这里把它变成编译器强制。
+         警告会直接失败构建，不再依赖人/Agent 自觉（nullable 解引用、未用变量、
+         分析器规则等一律拦住）。确需豁免时用 NoWarn 并写明理由，不要整体关掉本项。 -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- EOS.API 仅部署 Windows（IIS / System.Drawing 字体与条码渲染）：抑制跨平台 CA1416 误报 -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
