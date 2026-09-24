@@ -41,6 +41,71 @@ const threeLeaves = [
 ]
 const withTables: MenuAdminModule = { ...moduleNode(110101, '公司基本资料', 1101), MASTER_TABLE: 'COMPANY', DETAIL_TABLE: 'COMPANY_D' }
 
+/** 行为配置的接口数据：一条效果动作 + 目录 + Schema（页签级用例共用）。 */
+const businessConfig = {
+  moduleId: 110101,
+  actions: [
+    {
+      seq: 1,
+      eventCode: 'APPROVE_EFFECT',
+      effectKey: 'field-accumulate',
+      effectName: '收料量回写采购单',
+      enabled: true,
+      failMode: 'BLOCK',
+      ops: [],
+    },
+  ],
+  validationRules: [],
+}
+
+const businessCatalog = {
+  events: ['SAVE', 'APPROVE_EFFECT', 'MANUAL'],
+  failModes: ['BLOCK', 'WARN'],
+  effectKeys: ['field-accumulate'],
+  opCodes: ['ACCUM'],
+  sourceScopes: ['MASTER', 'DETAIL'],
+  sourceAggregates: ['SUM'],
+  validationStages: ['SAVE'],
+  validationKeys: ['qty-not-exceed'],
+  labels: {
+    events: { SAVE: '保存后', APPROVE_EFFECT: '批核生效', MANUAL: '用户点击（自定义按钮）' },
+    failModes: { BLOCK: '失败整链回滚' },
+    effectKeys: { 'field-accumulate': '量额/日期累加回写' },
+    opCodes: { ACCUM: '累加' },
+    sourceScopes: { MASTER: '本单主表', DETAIL: '本单明细' },
+    validationStages: { SAVE: '保存前' },
+    validationKeys: { 'qty-not-exceed': '不超量' },
+  },
+  documentActions: [{ key: 'recalc-account', label: '重算账面数量', placement: 'detail' }],
+}
+
+/** 含表模块 + 行为配置的统一桩：extra 可先截获特定路径。 */
+function mockPageWithBusinessConfig(extra?: (path: string, config?: unknown) => unknown) {
+  mockPageGet(async (path: string, config?: unknown) => {
+    const handled = extra?.(path, config)
+    if (handled !== undefined) return handled
+    if (path === '/admin/module-business-config/meta') return businessCatalog
+    if (path === '/admin/module-business-config/110101') return businessConfig
+    if (path === '/admin/module-business-config/110101/field-labels') return {}
+    if (path === '/admin/module-business-config/schemas') {
+      return { effects: [], reverseKinds: ['no-reverse'], reverseKindLabels: {}, validationParams: [] }
+    }
+    if (path.endsWith('/relations')) return []
+    if (path === '/settings/system') return { groups: [] }
+    return { total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), withTables] }
+  })
+}
+
+/** 渲染页面并进入含表模块（默认打开「行为动作」页签）。 */
+async function openModuleTab(tab = '行为动作') {
+  renderPage()
+  await waitForMenuTree()
+  fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+  fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
+  fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+  fireEvent.click(screen.getByRole('tab', { name: tab }))
+}
+
 /**
  * 页面首屏会读一次 2301 能力（决定是否渲染配置页签）。
  * 统一包一层：能力查询固定返回全权，其余请求交给用例自己的实现，
@@ -859,6 +924,27 @@ describe('MenuAdminPage', () => {
     fireEvent.click(screen.getByRole('tab', { name: '主表' }))
     await waitFor(() => expect(screen.getByLabelText('操作主表名')).toHaveValue('COMPANY'))
     expect(screen.queryByText(/缺少 CONFIRM_TAG/)).not.toBeInTheDocument()
+  })
+
+  it('切页签保草稿：切走再切回，未保存的行为配置编辑仍在且脏标记不回退', async () => {
+    mockPageWithBusinessConfig()
+    await openModuleTab()
+    await screen.findByText('业务动作（1）')
+
+    fireEvent.click(screen.getByText('收料量回写采购单'))
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByDisplayValue('收料量回写采购单'), { target: { value: '改过的名称' } })
+    fireEvent.click(dialog.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.getByText('已修改未保存')).toBeInTheDocument())
+
+    // 切到别的页签再切回来：面板不得被卸载重挂，草稿与脏标记都要保持。
+    fireEvent.click(screen.getByRole('tab', { name: '基础' }))
+    fireEvent.click(screen.getByRole('tab', { name: '行为动作' }))
+
+    // 动作列表的名称列与影响面自检的问题文案都会出现该名称，故只断言"仍在"。
+    await waitFor(() => expect(screen.getAllByText('改过的名称').length).toBeGreaterThan(0))
+    expect(screen.getByText('已修改未保存')).toBeInTheDocument()
   })
 
 })

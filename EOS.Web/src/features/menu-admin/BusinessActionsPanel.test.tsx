@@ -1,8 +1,13 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiClientMock } from '../../test/apiMock'
 import { renderWithProviders } from '../../test/renderWithProviders'
-import { BusinessActionsPanel } from './BusinessActionsPanel'
+import {
+  BusinessActionsPanel,
+  type BusinessActionsView,
+  type ModuleBusinessConfigDraft,
+} from './BusinessActionsPanel'
 import type { MenuAdminModule } from './MenuAdminPage'
 
 vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
@@ -124,6 +129,8 @@ describe('BusinessActionsPanel', () => {
       if (url.endsWith('/module-business-config/meta')) return catalog
       if (url.endsWith('/module-business-config/1607')) return config
       if (url.endsWith('/module-business-config/1607/field-labels')) return fieldLabels
+      if (url.endsWith('/relations')) return []
+      if (url.endsWith('/settings/system')) return { groups: [] }
       if (url.endsWith('/module-business-config/schemas')) {
         return {
           effects: catalog.effectKeys.map((effectKey) => ({ effectKey, rootKeys: ['direction', 'fieldMap', 'mrp'] })),
@@ -352,12 +359,29 @@ describe('BusinessActionsPanel', () => {
     await screen.findByText('业务动作（1）')
 
     expect(await screen.findByText('影响面与保存前自检')).toBeInTheDocument()
-    expect(await screen.findByText('1 项会拦住保存')).toBeInTheDocument()
+    // 未展开时不给通过/失败结论（定位键与系统开关的登记校验还没做），本地能判的阻断项照旧列出。
+    expect(screen.getByText('展开后自检')).toBeInTheDocument()
     expect(screen.getByText(/既无定位键也无条件/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '展开明细' }))
+    expect(await screen.findByText('1 项会拦住保存')).toBeInTheDocument()
     expect((await screen.findAllByText(/采购单明细\(PUR_PURCHASE_D\)/)).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/已收数量\(RECEIVE_QTY\)/).length).toBeGreaterThan(0)
+  })
+
+  it('影响面自检未展开时不查关系边与系统开关，展开后才查', async () => {
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
+    await screen.findByText('业务动作（1）')
+
+    const paths = () => apiClientMock.get.mock.calls.map((call) => String(call[0]))
+    expect(paths().filter((path) => path.endsWith('/relations'))).toHaveLength(0)
+    expect(paths().filter((path) => path.endsWith('/settings/system'))).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: '展开明细' }))
+    await waitFor(() => {
+      expect(paths().filter((path) => path.endsWith('/relations')).length).toBeGreaterThan(0)
+      expect(paths().filter((path) => path.endsWith('/settings/system')).length).toBeGreaterThan(0)
+    })
   })
 
   it('校验规则参数按模板 Schema 结构化渲染（数组可增删项）', async () => {
@@ -467,7 +491,47 @@ describe('BusinessActionsPanel', () => {
     await waitFor(() => expect(onDraftChange.mock.calls.at(-1)![0].dirty).toBe(true))
     expect(onDraftChange.mock.calls.at(-1)![0].actions).toHaveLength(2)
   })
+
+  it('容器常驻：视图切走再切回，未保存编辑不丢、脏标记不回退', async () => {
+    const onDraftChange = vi.fn()
+    renderWithProviders(<ViewSwitchHarness onDraftChange={onDraftChange} />)
+    await screen.findByText('业务动作（1）')
+
+    fireEvent.click(screen.getByText('收料量回写采购单'))
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByDisplayValue('收料量回写采购单'), { target: { value: '改过的名称' } })
+    fireEvent.click(dialog.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(onDraftChange.mock.calls.at(-1)![0].dirty).toBe(true))
+
+    // 离开行为页签：容器仍在，只是不渲染内容。
+    fireEvent.click(screen.getByRole('button', { name: '切换视图' }))
+    expect(screen.queryByText('业务动作（1）')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '切换视图' }))
+
+    // 动作列表名称列与影响面自检文案都会出现该名称，故只断言"仍在"。
+    await waitFor(() => expect(screen.getAllByText('改过的名称').length).toBeGreaterThan(0))
+    expect(onDraftChange.mock.calls.at(-1)![0].actions[0].effectName).toBe('改过的名称')
+    expect(onDraftChange.mock.calls.at(-1)![0].dirty).toBe(true)
+  })
 })
+
+/** 页签归属在页面侧：这里用一个开关模拟"在行为页签"与"不在行为页签"。 */
+function ViewSwitchHarness({ onDraftChange }: { onDraftChange?: (draft: ModuleBusinessConfigDraft | null) => void }) {
+  const [view, setView] = useState<BusinessActionsView | null>('actions')
+  return (
+    <div>
+      <button type="button" onClick={() => setView((current) => (current == null ? 'actions' : null))}>
+        切换视图
+      </button>
+      <BusinessActionsPanel
+        module={moduleWithTables(1607, '收料单')}
+        view={view}
+        onDraftChange={onDraftChange}
+      />
+    </div>
+  )
+}
 
 /**
  * 自定义按钮（EVENT_CODE='MANUAL'）：这类行的键来自操作注册表而非效果目录，
@@ -504,6 +568,43 @@ describe('BusinessActionsPanel 自定义按钮行', () => {
   const authorization = {
     buttons: [{ seq: 1, key: 'recalc-account', label: '重算账面数量', users: 0, groups: 0 }],
   }
+  const emptyConfig = { moduleId: 1607, actions: [], validationRules: [] }
+  /** 来源模块：一条效果 + 一条自定义按钮。 */
+  const sourceConfig = {
+    moduleId: 1505,
+    actions: [
+      {
+        seq: 1,
+        eventCode: 'APPROVE_EFFECT',
+        effectKey: 'field-accumulate',
+        effectName: '制令已入库量累加',
+        enabled: true,
+        failMode: 'BLOCK',
+        ops: [],
+      },
+      {
+        seq: 1,
+        eventCode: 'MANUAL',
+        effectKey: 'recalc-account',
+        label: '重算账面数量',
+        enabled: true,
+        failMode: 'BLOCK',
+        ops: [],
+      },
+    ],
+    validationRules: [],
+  }
+  const moduleChooserData = {
+    columns: [
+      { key: 'M_IDX', label: '模块号', dataType: 'int', format: null },
+      { key: 'M_DESC', label: '模块名', dataType: 'nvarchar', format: null },
+      { key: 'MASTER_TABLE', label: '操作主表', dataType: 'nvarchar', format: null },
+      { key: 'DETAIL_TABLE', label: '操作副表', dataType: 'nvarchar', format: null },
+      { key: 'ACTION_COUNT', label: '动作数', dataType: 'int', format: null },
+    ],
+    rows: [{ M_IDX: 1505, M_DESC: '生产入库单', MASTER_TABLE: 'MOC_PRODUCT_M', DETAIL_TABLE: 'MOC_PRODUCT_D', ACTION_COUNT: 2 }],
+    total: 1,
+  }
 
   beforeEach(() => {
     apiClientMock.get.mockImplementation(async (url: string) => {
@@ -515,6 +616,45 @@ describe('BusinessActionsPanel 自定义按钮行', () => {
         return { effects: [], reverseKinds: ['no-reverse'], reverseKindLabels: {}, validationParams: [] }
       }
       return {}
+    })
+  })
+
+  it('克隆入口不带入自定义按钮行：追加后本模块按钮行数不变', async () => {
+    apiClientMock.get.mockImplementation(async (url: string) => {
+      if (url.endsWith('/module-business-config/meta')) return manualCatalog
+      if (url.endsWith('/module-business-config/1607')) return emptyConfig
+      if (url.endsWith('/module-business-config/1505')) return sourceConfig
+      if (url.endsWith('/module-business-config/1607/field-labels')) return fieldLabels
+      if (url.endsWith('/module-business-config/schemas')) {
+        return { effects: [], reverseKinds: ['no-reverse'], reverseKindLabels: {}, validationParams: [] }
+      }
+      return {}
+    })
+    apiClientMock.post.mockImplementation(async (path: string) => {
+      if (path === '/chooser/query') return moduleChooserData
+      throw new Error(`unexpected POST ${path}`)
+    })
+    const onDraftChange = vi.fn()
+    renderWithProviders(
+      <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} onDraftChange={onDraftChange} />,
+    )
+    await screen.findByText('业务动作（0）')
+
+    fireEvent.click(screen.getByRole('button', { name: '从其它模块复制' }))
+    fireEvent.click(screen.getByRole('button', { name: '选择模块' }))
+    fireEvent.click(await screen.findByText('生产入库单'))
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
+    // 来源模块的按钮行不出现在克隆列表里，只有效果动作可勾选。
+    await screen.findByText('制令已入库量累加')
+    expect(screen.queryByText('recalc-account')).not.toBeInTheDocument()
+    fireEvent.click(screen.getAllByLabelText('选择该动作')[0])
+    fireEvent.click(screen.getByRole('button', { name: '追加到本模块' }))
+
+    await waitFor(() => {
+      const actions = onDraftChange.mock.calls.at(-1)![0].actions
+      expect(actions).toHaveLength(1)
+      expect(actions.filter((action: { eventCode: string }) => action.eventCode === 'MANUAL')).toHaveLength(0)
+      expect(actions[0].effectName).toBe('制令已入库量累加')
     })
   })
 

@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 import { describeApiError } from '../../lib/errors'
+import { MANUAL_EVENT } from './documentActionConfig'
 import type { BusinessAction } from './BusinessActionsPanel'
 
 /**
@@ -47,8 +48,10 @@ export function CloneActionsModal({
     enabled: open && sourceModule != null && sourceModule.id > 0,
   })
 
+  // 自定义按钮（EVENT_CODE='MANUAL'）不参与克隆：按钮授权是 fail-closed 名单，
+  // 不随配置跨模块带走，克隆过去只会得到一批没人能点的按钮，且失败得很安静。
   const rows = useMemo(() => {
-    const list = [...(configQuery.data?.actions ?? [])]
+    const list = [...(configQuery.data?.actions ?? [])].filter((action) => action.eventCode !== MANUAL_EVENT)
     return list.sort((a, b) => a.eventCode.localeCompare(b.eventCode) || a.seq - b.seq)
   }, [configQuery.data])
 
@@ -155,7 +158,7 @@ export function CloneActionsModal({
           onRowSelectionChange={setSelection}
           clientSideSorting
           copyable={false}
-          empty={<div className="p-3 text-secondary">该模块尚未配置业务动作。</div>}
+          empty={<div className="p-3 text-secondary">该模块没有可复制的业务动作（自定义按钮不参与克隆）。</div>}
         />
       )}
 
