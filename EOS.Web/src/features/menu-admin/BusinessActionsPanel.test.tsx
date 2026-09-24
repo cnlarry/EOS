@@ -5,9 +5,11 @@ import { apiClientMock } from '../../test/apiMock'
 import { renderWithProviders } from '../../test/renderWithProviders'
 import {
   BusinessActionsPanel,
+  type BusinessAction,
   type BusinessActionsView,
   type ModuleBusinessConfigDraft,
 } from './BusinessActionsPanel'
+import { mergeClonedActions } from './businessActionDraft'
 import type { MenuAdminModule } from './MenuAdminPage'
 
 vi.mock('../../services/api', async () => ({ apiClient: (await import('../../test/apiMock')).apiClientMock }))
@@ -686,6 +688,28 @@ describe('BusinessActionsPanel 自定义按钮行', () => {
       expect(actions.filter((action: { eventCode: string }) => action.eventCode === 'MANUAL')).toHaveLength(0)
       expect(actions[0].effectName).toBe('制令已入库量累加')
     })
+  })
+
+  /*
+    上面那条走的是真实克隆弹窗（列表侧已过滤，MANUAL 行根本传不到追加侧），
+    因此它证明不了追加侧的兜底。这里直接对纯函数下手，把"调用方漏过滤"这一情形固定住。
+  */
+  it('克隆追加兜底过滤自定义按钮行，且顺序号按本模块同事件顺延', () => {
+    const action = (
+      seq: number, eventCode: string, effectName: string,
+    ): BusinessAction => ({ seq, eventCode, effectKey: 'field-accumulate', effectName, enabled: true, failMode: 'BLOCK', ops: [] })
+    const draft = [action(1, 'SAVE', '本模块已有')]
+    const incoming = [
+      action(9, 'MANUAL', '重算账面数'),
+      action(7, 'SAVE', '克隆来的保存动作'),
+    ]
+
+    const merged = mergeClonedActions(draft, incoming)
+
+    expect(merged.filter((item) => item.eventCode === 'MANUAL')).toHaveLength(0)
+    // 沿用来源模块的 7 会撞唯一键 (模块, 事件, 序号)，必须重排为 2。
+    expect(merged.filter((item) => item.eventCode === 'SAVE').map((item) => item.seq)).toEqual([1, 2])
+    expect(merged).toHaveLength(2)
   })
 
   /** 用同一份混合配置渲染面板：按钮的键/标题/落点/授权与效果链分属两个页签。 */
