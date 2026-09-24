@@ -114,8 +114,8 @@ public sealed class WorkbenchApprovalService(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
                 $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
         }
-        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
-        var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);
+        var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
+        var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token);
         if (originalState is null)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
@@ -124,10 +124,11 @@ public sealed class WorkbenchApprovalService(
         {
             return RecordSaveResult.Success(keyValues);
         }
-        var confirmSql = $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};";
+        var confirmSql = $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyWhere};";
         await using (var confirmCommand = new SqlCommand(confirmSql, connection))
         {
             confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = confirmPerson.Trim();
+            WorkbenchSql.AddKeyParameters(confirmCommand, definition.MasterPkOrder, keyValues);
             if (await confirmCommand.ExecuteNonQueryAsync(token) == 0)
             {
                 return RecordSaveResult.Success(keyValues);
@@ -167,8 +168,8 @@ public sealed class WorkbenchApprovalService(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
                 $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
         }
-        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
-        var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);
+        var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
+        var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token);
         if (originalState is null)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
@@ -205,11 +206,12 @@ public sealed class WorkbenchApprovalService(
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", blocked);
             }
             var confirmSql = approve
-                ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};"
-                : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyCondition};";
+                ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyWhere};"
+                : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyWhere};";
             await using (var confirmCommand = new SqlCommand(confirmSql, connection, transaction))
             {
                 confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = confirmPerson.Trim();
+                WorkbenchSql.AddKeyParameters(confirmCommand, definition.MasterPkOrder, keyValues);
                 if (await confirmCommand.ExecuteNonQueryAsync(token) == 0)
                 {
                     // 并发下已被另一方翻转：不重复执行效果链。
@@ -261,7 +263,7 @@ public sealed class WorkbenchApprovalService(
             return null;
         }
 
-        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
+        var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
         var stateColumns = new List<string>();
         if (hasConfirm)
         {
@@ -271,8 +273,9 @@ public sealed class WorkbenchApprovalService(
         {
             stateColumns.Add("FINISHED_TAG");
         }
-        var sql = $"SELECT {string.Join(',', stateColumns.Select(column => $"ISNULL([{column}],0)"))} FROM dbo.[{definition.MasterTable}] WITH (NOLOCK) WHERE {keyCondition};";
+        var sql = $"SELECT {string.Join(',', stateColumns.Select(column => $"ISNULL([{column}],0)"))} FROM dbo.[{definition.MasterTable}] WITH (NOLOCK) WHERE {keyWhere};";
         await using var command = new SqlCommand(sql, connection, transaction);
+        WorkbenchSql.AddKeyParameters(command, definition.MasterPkOrder, keyValues);
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token))
         {
@@ -311,14 +314,17 @@ public sealed class WorkbenchApprovalService(
     /// 读取结案状态位；主表没有该列时返回 null（缺列不阻塞，与既有守卫同口径）。
     /// </summary>
     private static async Task<bool?> ReadFinishedTagAsync(
-        SqlConnection connection, string table, string keyCondition, CancellationToken token)
+        SqlConnection connection, string table, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues,
+        CancellationToken token)
     {
         if (!await WorkbenchSql.ColumnExistsAsync(connection, null, table, "FINISHED_TAG", token))
         {
             return null;
         }
+        var keyWhere = WorkbenchSql.BuildKeyWhere(pkColumns, keyValues);
         await using var command = new SqlCommand(
-            $"SELECT FINISHED_TAG FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyCondition};", connection);
+            $"SELECT FINISHED_TAG FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyWhere};", connection);
+        WorkbenchSql.AddKeyParameters(command, pkColumns, keyValues);
         await using var reader = await command.ExecuteReaderAsync(token);
         return await reader.ReadAsync(token) && !reader.IsDBNull(0) ? reader.GetBoolean(0) : null;
     }
@@ -347,12 +353,11 @@ public sealed class WorkbenchApprovalService(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "WORKFLOW_NOT_SUPPORTED", "该模块不支持批核操作。");
         }
-        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
         // 结案锁死：已结案的单据不许解批，必须先取消结案。
         // 删除与编辑路径早已拦这一条，解批此前没有拦——而结案常常意味着"本单已经转出下游单据/已经过账"，
         // 直接调解批端点绕过守卫会让下游单据失去来源。放在这里是为了让无副作用解批与效果链解批共用一道闸。
         if (!approve
-            && await ReadFinishedTagAsync(connection, definition.MasterTable, keyCondition, token) == true)
+            && await ReadFinishedTagAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token) == true)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FINISHED_RECORD_NOT_DEAPPROVABLE",
                 "单据已结案，不能解批，请先取消结案。");
@@ -362,7 +367,7 @@ public sealed class WorkbenchApprovalService(
         // 判定与表单按钮显隐共用 WorkflowStates.IsStatelessApproveCapable，两边不得分叉。
         if (stateless)
         {
-            return await StatelessApproveAsync(connection, definition, keyValues, keyCondition, approve, employeeName, userId, token);
+            return await StatelessApproveAsync(connection, definition, keyValues, approve, employeeName, userId, token);
         }
         // 自动批核模块（MODULES.AUTO_APPROVE=1）：保存即已确认（经办人=保存人），
         // 显式批核幂等返回成功，且不进入流程送审（用户语义：自动批核模块不走新增、审核模式）。
@@ -375,7 +380,7 @@ public sealed class WorkbenchApprovalService(
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
                     $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
             }
-            var state = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);
+            var state = await ReadConfirmStateAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token);
             if (state is null)
             {
                 return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
@@ -411,7 +416,6 @@ public sealed class WorkbenchApprovalService(
         SqlConnection connection,
         WorkbenchDefinition definition,
         IReadOnlyList<string> keyValues,
-        string keyCondition,
         bool approve,
         string employeeName,
         string userId,
@@ -422,7 +426,7 @@ public sealed class WorkbenchApprovalService(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "LIFECYCLE_COLUMN_MISSING",
                 $"该模块启用自动批核，但主表 {definition.MasterTable} 缺少 CONFIRM_TAG 列：请补列后重发布，或关闭自动批核。");
         }
-        var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, keyCondition, token);
+        var originalState = await ReadConfirmStateAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token);
         if (originalState is null)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "RECORD_NOT_FOUND", "记录不存在。");
@@ -439,11 +443,13 @@ public sealed class WorkbenchApprovalService(
                 return noBack;
             }
         }
+        var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
         var confirmSql = approve
-            ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};"
-            : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyCondition};";
+            ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyWhere};"
+            : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyWhere};";
         await using var confirmCommand = new SqlCommand(confirmSql, connection);
         confirmCommand.Parameters.Add("@ConfirmPerson", SqlDbType.NVarChar, 50).Value = employeeName.Trim();
+        WorkbenchSql.AddKeyParameters(confirmCommand, definition.MasterPkOrder, keyValues);
         if (await confirmCommand.ExecuteNonQueryAsync(token) == 0)
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_STATE_CONFLICT",
@@ -465,7 +471,7 @@ public sealed class WorkbenchApprovalService(
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
-        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
+        var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
         var hasTag = await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "FINISHED_TAG", token);
         if (!hasTag)
         {
@@ -474,13 +480,14 @@ public sealed class WorkbenchApprovalService(
         var hasPerson = await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "FINISHED_PERSON", token);
         var hasDate = await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "FINISHED_DATE", token);
         var sql = finish
-            ? $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=1{(hasPerson ? ",FINISHED_PERSON=@Person" : string.Empty)}{(hasDate ? ",FINISHED_DATE=GETDATE()" : string.Empty)} WHERE ISNULL(FINISHED_TAG,0)=0 AND {keyCondition};"
-            : $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=0{(hasPerson ? ",FINISHED_PERSON=@Person" : string.Empty)}{(hasDate ? ",FINISHED_DATE=GETDATE()" : string.Empty)} WHERE FINISHED_TAG=1 AND {keyCondition};";
+            ? $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=1{(hasPerson ? ",FINISHED_PERSON=@Person" : string.Empty)}{(hasDate ? ",FINISHED_DATE=GETDATE()" : string.Empty)} WHERE ISNULL(FINISHED_TAG,0)=0 AND {keyWhere};"
+            : $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=0{(hasPerson ? ",FINISHED_PERSON=@Person" : string.Empty)}{(hasDate ? ",FINISHED_DATE=GETDATE()" : string.Empty)} WHERE FINISHED_TAG=1 AND {keyWhere};";
         await using var command = new SqlCommand(sql, connection);
         if (hasPerson)
         {
             command.Parameters.Add("@Person", SqlDbType.NVarChar, 50).Value = employeeName.Trim();
         }
+        WorkbenchSql.AddKeyParameters(command, definition.MasterPkOrder, keyValues);
         var affected = await command.ExecuteNonQueryAsync(token);
         if (affected == 0)
         {
@@ -521,14 +528,13 @@ public sealed class WorkbenchApprovalService(
         }
 
         var blocked = new List<string>();
-        var keyCondition = WorkbenchKeyCondition.Build(definition.MasterPkOrder, keyValues);
         if (!string.IsNullOrWhiteSpace(masterFields) && !string.IsNullOrWhiteSpace(definition.MasterTable))
         {
-            await CheckNotBackTableAsync(connection, definition.ModuleId, definition.MasterTable, masterFields, keyCondition, blocked, token);
+            await CheckNotBackTableAsync(connection, definition, definition.MasterTable, masterFields, keyValues, blocked, token);
         }
         if (!string.IsNullOrWhiteSpace(detailFields) && !string.IsNullOrWhiteSpace(definition.DetailTable))
         {
-            await CheckNotBackTableAsync(connection, definition.ModuleId, definition.DetailTable!, detailFields, keyCondition, blocked, token);
+            await CheckNotBackTableAsync(connection, definition, definition.DetailTable!, detailFields, keyValues, blocked, token);
         }
 
         if (blocked.Count == 0)
@@ -541,10 +547,10 @@ public sealed class WorkbenchApprovalService(
 
     private async Task CheckNotBackTableAsync(
         SqlConnection connection,
-        int moduleId,
+        WorkbenchDefinition definition,
         string table,
         string fieldsCsv,
-        string keyCondition,
+        IReadOnlyList<string> keyValues,
         List<string> blocked,
         CancellationToken token)
     {
@@ -570,7 +576,7 @@ public sealed class WorkbenchApprovalService(
         foreach (var missing in fields.Where(field => !existing.Contains(field)))
         {
             logger.LogWarning("解批前置校验字段物理不存在，已跳过 module={ModuleId} table={Table} field={Field}",
-                moduleId, table, missing);
+                definition.ModuleId, table, missing);
         }
         if (valid.Length == 0)
         {
@@ -596,8 +602,10 @@ public sealed class WorkbenchApprovalService(
         }
 
         var predicates = string.Join(" OR ", valid.Select(field => $"CAST([{field}] AS varchar(100))>'0'"));
+        var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
         await using var checkCommand = new SqlCommand(
-            $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyCondition} AND ({predicates});", connection);
+            $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyWhere} AND ({predicates});", connection);
+        WorkbenchSql.AddKeyParameters(checkCommand, definition.MasterPkOrder, keyValues);
         var count = Convert.ToInt64(await checkCommand.ExecuteScalarAsync(token));
         if (count > 0)
         {
@@ -606,10 +614,13 @@ public sealed class WorkbenchApprovalService(
     }
 
     private static async Task<(bool? Tag, string? Person, DateTime? Date)?> ReadConfirmStateAsync(
-        SqlConnection connection, string table, string keyCondition, CancellationToken token)
+        SqlConnection connection, string table, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues,
+        CancellationToken token)
     {
-        var sql = $"SELECT CONFIRM_TAG,CONFIRM_PERSON,CONFIRM_DATE FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyCondition};";
+        var keyWhere = WorkbenchSql.BuildKeyWhere(pkColumns, keyValues);
+        var sql = $"SELECT CONFIRM_TAG,CONFIRM_PERSON,CONFIRM_DATE FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyWhere};";
         await using var command = new SqlCommand(sql, connection);
+        WorkbenchSql.AddKeyParameters(command, pkColumns, keyValues);
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token))
         {
