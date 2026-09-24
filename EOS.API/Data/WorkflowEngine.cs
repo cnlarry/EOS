@@ -212,7 +212,7 @@ public sealed class WorkflowEngine(
         foreach (var step in steps)
         {
             // 步骤执行条件（EXEC_CONDITION）：为假则整步不生成任务
-            var execResult = await EvaluateConditionAsync(connection, transaction, definition, keyCondition,
+            var execResult = await EvaluateConditionAsync(connection, transaction, definition, keyValues,
                 masterColumns, step.ExecCondition, token);
             if (execResult is null)
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_CONDITION_UNSUPPORTED",
@@ -224,7 +224,7 @@ public sealed class WorkflowEngine(
             bool? stepAuto = null;
             if (step.IsAutoExec && !string.IsNullOrWhiteSpace(step.AutoExecCondition))
             {
-                stepAuto = await EvaluateConditionAsync(connection, transaction, definition, keyCondition,
+                stepAuto = await EvaluateConditionAsync(connection, transaction, definition, keyValues,
                     masterColumns, step.AutoExecCondition, token);
                 if (stepAuto is null)
                     return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_CONDITION_UNSUPPORTED",
@@ -235,7 +235,7 @@ public sealed class WorkflowEngine(
             {
                 // 审批人条件（PERSON_CONDITION）：与 EXEC_PERSON 一一对应；缺省视为无条件
                 var personCondition = index < step.PersonConditions.Length ? step.PersonConditions[index] : string.Empty;
-                var personResult = await EvaluateConditionAsync(connection, transaction, definition, keyCondition,
+                var personResult = await EvaluateConditionAsync(connection, transaction, definition, keyValues,
                     masterColumns, personCondition, token);
                 if (personResult is null)
                     return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_CONDITION_UNSUPPORTED",
@@ -547,6 +547,9 @@ public sealed class WorkflowEngine(
                 state.Parameters.Add("@WfId", SqlDbType.BigInt).Value = wfId;
                 await state.ExecuteNonQueryAsync(token);
             }
+            // keyCondition 是从 WF_MONITOR.KEY_VALUE 读回的主键定位串（列名 + 值），此处无主键列元数据，
+            // 故按身份串原样嵌入。其值由 WorkbenchKeyCondition 在写入时完成单引号转义，回读不加工，
+            // 嵌入安全依赖该转义不被移除——修改 Build 时必须同步此处。
             await using var confirm = new SqlCommand(
                 $"UPDATE dbo.[{masterTable}] SET CONFIRM_PERSON=@Person, CONFIRM_DATE=GETDATE(), CONFIRM_TAG=1 " +
                 $"WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyCondition};", connection, finalTransaction);
@@ -593,14 +596,16 @@ public sealed class WorkflowEngine(
     /// </summary>
     private static async Task<bool?> EvaluateConditionAsync(
         SqlConnection connection, SqlTransaction transaction, WorkbenchDefinition definition,
-        string keyCondition, IReadOnlySet<string> masterColumns, string condition, CancellationToken token)
+        IReadOnlyList<string> keyValues, IReadOnlySet<string> masterColumns, string condition, CancellationToken token)
     {
         if (string.IsNullOrWhiteSpace(condition)) return true;
         if (!DataFilterParser.TryParse(condition, definition.MasterTable, masterColumns, out var predicate, out var parameters))
             return null;
+        var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
         await using var command = new SqlCommand(
             $"SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.[{definition.MasterTable}] WITH (NOLOCK) " +
-            $"WHERE {keyCondition} AND ({predicate})) THEN 1 ELSE 0 END;", connection, transaction);
+            $"WHERE {keyWhere} AND ({predicate})) THEN 1 ELSE 0 END;", connection, transaction);
+        WorkbenchSql.AddKeyParameters(command, definition.MasterPkOrder, keyValues);
         for (var i = 0; i < parameters.Count; i++)
             command.Parameters.AddWithValue($"@df{i}", parameters[i] ?? DBNull.Value);
         var result = await command.ExecuteScalarAsync(token);
@@ -930,6 +935,8 @@ public sealed class WorkflowEngine(
         }
 
         var predicates = string.Join(" OR ", valid.Select(field => $"CAST([{field}] AS varchar(100))>'0'"));
+        // 同 CompleteFlowAsync：keyCondition 来自 WF_MONITOR.KEY_VALUE，此处只有模块 ID 与身份串，
+        // 无主键列元数据，按原样嵌入；安全性依赖 WorkbenchKeyCondition 写入时的转义。
         await using var checkCommand = new SqlCommand(
             $"SELECT COUNT_BIG(1) FROM dbo.[{table}] WITH (NOLOCK) WHERE {keyCondition} AND ({predicates});",
             connection, transaction);
@@ -1115,7 +1122,8 @@ public sealed class WorkflowEngine(
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
 
-        // 主表 + 主键列（服务端元数据，白名单），构建受控 keyCondition（参数化/转义，不信任前端条件串）
+        // 主表 + 主键列（服务端元数据，白名单）：keyCondition 作流程实例身份写入 KEY_VALUE，
+        // 单据侧 WHERE 片段一律参数化，不信任前端条件串
         string? masterTable;
         await using (var tableCommand = new SqlCommand(
             "SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))) FROM dbo.MODULES WHERE M_IDX=@ModuleId;",
@@ -1159,11 +1167,13 @@ public sealed class WorkflowEngine(
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "NOT_FLOW_INITIATOR",
                 "仅发起人可撤回该流程。");
 
-        // 单据未最终确认（CONFIRM_TAG=0）才能撤回；keyCondition 为服务端 BuildKeyCondition 生成，安全
+        // 单据未最终确认（CONFIRM_TAG=0）才能撤回
+        var keyWhere = WorkbenchSql.BuildKeyWhere(pkColumns, keyValues);
         await using (var confirm = new SqlCommand(
-            $"SELECT TOP 1 ISNULL(CONFIRM_TAG,0) FROM dbo.[{masterTable}] WITH (NOLOCK) WHERE {keyCondition};",
+            $"SELECT TOP 1 ISNULL(CONFIRM_TAG,0) FROM dbo.[{masterTable}] WITH (NOLOCK) WHERE {keyWhere};",
             connection, transaction))
         {
+            WorkbenchSql.AddKeyParameters(confirm, pkColumns, keyValues);
             var tag = await confirm.ExecuteScalarAsync(token);
             if (tag is not null && Convert.ToInt32(tag) == 1)
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_ALREADY_FINISHED",

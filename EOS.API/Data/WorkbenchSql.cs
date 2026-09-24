@@ -186,7 +186,7 @@ internal static class WorkbenchSql
         SqlConnection connection, SqlTransaction? transaction, string table, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, IReadOnlyList<string> fields, CancellationToken token)
     {
         var select = string.Join(',', fields.Select(field => $"[{field}]"));
-        var where = string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@k{index}"));
+        var where = BuildKeyWhere(pkColumns);
         await using var command = new SqlCommand($"SELECT {select} FROM dbo.[{table}] WHERE {where};", connection, transaction);
         AddKeyParameters(command, pkColumns, keyValues);
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -232,7 +232,7 @@ internal static class WorkbenchSql
 
     internal static async Task<bool> RowExistsAsync(SqlConnection connection, SqlTransaction transaction, string table, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var where = string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@k{index}"));
+        var where = BuildKeyWhere(pkColumns);
         await using var command = new SqlCommand($"SELECT 1 FROM dbo.[{table}] WHERE {where};", connection, transaction);
         AddKeyParameters(command, pkColumns, keyValues);
         return await command.ExecuteScalarAsync(token) is not null;
@@ -241,7 +241,7 @@ internal static class WorkbenchSql
     internal static async Task<bool> RecordInScopeAsync(
         SqlConnection connection, SqlTransaction? transaction, string table, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, string predicate, IReadOnlyList<object> parameters, CancellationToken token)
     {
-        var where = string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@k{index}"));
+        var where = BuildKeyWhere(pkColumns);
         await using var command = new SqlCommand($"SELECT 1 FROM dbo.[{table}] WHERE {where} AND ({predicate});", connection, transaction);
         AddKeyParameters(command, pkColumns, keyValues);
         for (var i = 0; i < parameters.Count; i++)
@@ -253,7 +253,7 @@ internal static class WorkbenchSql
 
     internal static async Task DeleteDetailRowsAsync(SqlConnection connection, SqlTransaction transaction, string detailTable, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var where = string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@k{index}"));
+        var where = BuildKeyWhere(pkColumns);
         await using var command = new SqlCommand($"DELETE FROM dbo.[{detailTable}] WHERE {where};", connection, transaction);
         AddKeyParameters(command, pkColumns, keyValues);
         await command.ExecuteNonQueryAsync(token);
@@ -263,10 +263,30 @@ internal static class WorkbenchSql
     /// 不能用调用方提交了什么来推断。</summary>
     internal static async Task<bool> HasDetailRowsAsync(SqlConnection connection, SqlTransaction transaction, string detailTable, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, CancellationToken token)
     {
-        var where = string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@k{index}"));
+        var where = BuildKeyWhere(pkColumns);
         await using var command = new SqlCommand($"SELECT TOP 1 1 FROM dbo.[{detailTable}] WHERE {where};", connection, transaction);
         AddKeyParameters(command, pkColumns, keyValues);
         return await command.ExecuteScalarAsync(token) is not null;
+    }
+
+    /// <summary>
+    /// 参数化主键 WHERE 片段：`[COL1]=@k0 AND [COL2]=@k1`，配合 <see cref="AddKeyParameters"/> 使用。
+    /// 列名来自服务端元数据，值一律走参数，不参与字符串拼接。
+    /// </summary>
+    internal static string BuildKeyWhere(IReadOnlyList<string> pkColumns) =>
+        string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@k{index}"));
+
+    /// <summary>
+    /// 校验主键列与值一一对应后返回参数化 WHERE 片段（值由 <see cref="AddKeyParameters"/> 登记）。
+    /// 数量不一致即抛 ArgumentException，不发出条件残缺的 SQL。
+    /// </summary>
+    internal static string BuildKeyWhere(IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues)
+    {
+        if (pkColumns.Count != keyValues.Count)
+        {
+            throw new ArgumentException("主键列与主键值数量不一致。");
+        }
+        return BuildKeyWhere(pkColumns);
     }
 
     internal static void AddKeyParameters(SqlCommand command, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues)
