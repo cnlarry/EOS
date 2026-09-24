@@ -5,6 +5,30 @@
  * 本模块只做展示，不改变任何落库结构。
  */
 
+/** 动作行键：事件 + 事件内顺序（与服务端唯一键同口径）。 */
+export const actionKey = (action: { eventCode: string; seq: number }) => `${action.eventCode}|${action.seq}`
+
+/** 校验规则行键：阶段 + 阶段内顺序。 */
+export const ruleKey = (rule: { stage: string; seq: number }) => `${rule.stage}|${rule.seq}`
+
+/** 事件显示：中文（目录码）；目录未下发该事件时显式标注"目录外"。 */
+export function eventLabel(
+  event: string,
+  catalog: { events: readonly string[] },
+  labels: { events: (code: string | null | undefined) => string },
+): string {
+  if (!catalog.events.includes(event)) return `${event}（目录外）`
+  const text = labels.events(event)
+  return text === event ? event : `${text}（${event}）`
+}
+
+/** 自定义按钮的落点：单据级作用于整单，明细级占子表标题栏。 */
+export function placementLabel(placement: string | null | undefined): string {
+  if (placement === 'detail') return '明细级'
+  if (placement === 'master') return '单据级'
+  return '—'
+}
+
 /** 运算符号（与 OP_CODE 闭式集一一对应）。 */
 export const OP_SYMBOLS: Record<string, string> = {
   ACCUM: '+=',

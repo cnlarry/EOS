@@ -947,6 +947,105 @@ describe('MenuAdminPage', () => {
     expect(screen.getByText('已修改未保存')).toBeInTheDocument()
   })
 
+  it('行为配置拆成三个页签，无操作主/副表的模块三个页签禁用并说明原因', async () => {
+    mockPageWithBusinessConfig()
+    renderPage()
+    await waitForMenuTree()
+
+    // 纯菜单节点（无主表也无副表）：三个行为页签都在，但点不动，且说明原因。
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    expect(screen.getAllByRole('tab')).toHaveLength(8)
+    for (const label of ['行为动作', '校验规则', '自定义按钮']) {
+      expect(screen.getByRole('tab', { name: label })).toBeDisabled()
+    }
+    expect(screen.getByRole('tab', { name: '校验规则' })).toHaveAttribute(
+      'title',
+      expect.stringContaining('未配置操作主表/副表'),
+    )
+
+    // 含表模块：三个页签可用。
+    fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
+    fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+    for (const label of ['行为动作', '校验规则', '自定义按钮']) {
+      expect(screen.getByRole('tab', { name: label })).toBeEnabled()
+    }
+  })
+
+  it('三个行为页签之间来回切换后草稿与脏标记都保持', async () => {
+    mockPageWithBusinessConfig()
+    await openModuleTab()
+    await screen.findByText('业务动作（1）')
+
+    fireEvent.click(screen.getByText('收料量回写采购单'))
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByDisplayValue('收料量回写采购单'), { target: { value: '改过的名称' } })
+    fireEvent.click(dialog.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.getByText('已修改未保存')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('tab', { name: '校验规则' }))
+    expect(await screen.findByText('校验规则（0）')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: '自定义按钮' }))
+    expect(await screen.findByText('自定义按钮（0）')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: '行为动作' }))
+
+    await waitFor(() => expect(screen.getAllByText('改过的名称').length).toBeGreaterThan(0))
+    expect(screen.getByText('已修改未保存')).toBeInTheDocument()
+  })
+
+  it('「取消」丢弃改动：行为配置回到服务端配置', async () => {
+    mockPageWithBusinessConfig()
+    await openModuleTab()
+    await screen.findByText('业务动作（1）')
+
+    fireEvent.click(screen.getByText('收料量回写采购单'))
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByDisplayValue('收料量回写采购单'), { target: { value: '改过的名称' } })
+    fireEvent.click(dialog.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.getByText('已修改未保存')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+
+    // 名称列与影响面自检文案都会出现动作名，故只断言"回到服务端配置"。
+    await waitFor(() => expect(screen.getAllByText('收料量回写采购单').length).toBeGreaterThan(0))
+    expect(screen.queryByText('改过的名称')).not.toBeInTheDocument()
+    expect(screen.getByText('未发布')).toBeInTheDocument()
+  })
+
+  it('切换模块前提示未保存改动：取消则留在原模块，确认后才切走', async () => {
+    mockPageWithBusinessConfig()
+    await openModuleTab()
+    await screen.findByText('业务动作（1）')
+
+    fireEvent.click(screen.getByText('收料量回写采购单'))
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByDisplayValue('收料量回写采购单'), { target: { value: '改过的名称' } })
+    fireEvent.click(dialog.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.getByText('已修改未保存')).toBeInTheDocument())
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
+    expect(confirm).toHaveBeenCalled()
+    expect(screen.getByText('已选择：公司基本资料（ID：110101）')).toBeInTheDocument()
+
+    confirm.mockReturnValue(true)
+    fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
+    await waitFor(() => expect(screen.getByLabelText('菜单名称')).toHaveValue('系统参数'))
+  })
+
+  it('统一表单页签把「内置动作」与「自定义按钮」分清楚并互相指引', async () => {
+    mockPageWithBusinessConfig()
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    fireEvent.click(screen.getByRole('tab', { name: '统一表单' }))
+
+    expect(screen.getByLabelText('内置动作（受控注册码）')).toBeInTheDocument()
+    expect(screen.getByText(/见「行为 › 自定义按钮」/)).toBeInTheDocument()
+  })
+
 })
 
 const rect = (height: number): DOMRect => ({

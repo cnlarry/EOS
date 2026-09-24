@@ -43,6 +43,36 @@ describe('TabbedPanel', () => {
     expect(screen.getByRole('tabpanel')).toHaveTextContent('主表内容')
   })
 
+  it('禁用页签不可选中并给出原因，键盘导航跳过它', () => {
+    const onChange = vi.fn()
+    render(
+      <TabbedPanel
+        tabs={[
+          { key: 'basic', label: '基础' },
+          { key: 'rules', label: '校验规则', disabled: true, disabledReason: '该模块没有操作主表/副表' },
+          { key: 'manual', label: '自定义按钮' },
+        ]}
+        activeKey="basic"
+        onActiveKeyChange={onChange}
+      >
+        <div>基础内容</div>
+      </TabbedPanel>,
+    )
+
+    const disabled = screen.getByRole('tab', { name: '校验规则' })
+    expect(disabled).toBeDisabled()
+    expect(disabled).toHaveAttribute('aria-disabled', 'true')
+    expect(disabled).toHaveAttribute('title', '该模块没有操作主表/副表')
+    fireEvent.click(disabled)
+    expect(onChange).not.toHaveBeenCalled()
+
+    const tablist = screen.getByRole('tablist')
+    fireEvent.keyDown(tablist, { key: 'ArrowRight' })
+    expect(onChange).toHaveBeenCalledWith('manual')
+    fireEvent.keyDown(tablist, { key: 'Home' })
+    expect(onChange).toHaveBeenLastCalledWith('basic')
+  })
+
   it('方向键与 Home/End 切换并聚焦目标标签', () => {
     const onChange = vi.fn()
     render(<Harness onChange={onChange} />)

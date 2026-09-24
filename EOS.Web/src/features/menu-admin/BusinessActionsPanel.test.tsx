@@ -419,7 +419,7 @@ describe('BusinessActionsPanel', () => {
     })
     const onDraftChange = vi.fn()
     renderWithProviders(
-      <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} onDraftChange={onDraftChange} />,
+      <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="rules" onDraftChange={onDraftChange} />,
     )
     await screen.findByText('校验规则（1）')
 
@@ -492,7 +492,7 @@ describe('BusinessActionsPanel', () => {
     expect(onDraftChange.mock.calls.at(-1)![0].actions).toHaveLength(2)
   })
 
-  it('容器常驻：视图切走再切回，未保存编辑不丢、脏标记不回退', async () => {
+  it('容器常驻：三个行为页签之间来回切换，未保存编辑不丢、脏标记不回退', async () => {
     const onDraftChange = vi.fn()
     renderWithProviders(<ViewSwitchHarness onDraftChange={onDraftChange} />)
     await screen.findByText('业务动作（1）')
@@ -504,10 +504,15 @@ describe('BusinessActionsPanel', () => {
     fireEvent.click(dialog.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(onDraftChange.mock.calls.at(-1)![0].dirty).toBe(true))
 
-    // 离开行为页签：容器仍在，只是不渲染内容。
-    fireEvent.click(screen.getByRole('button', { name: '切换视图' }))
+    const next = () => fireEvent.click(screen.getByRole('button', { name: '切换视图' }))
+    // 校验规则 → 自定义按钮 → 离开行为页签 → 回到行为动作：容器始终没被卸载。
+    next()
+    await screen.findByText('校验规则（0）')
+    next()
+    await screen.findByText('自定义按钮（0）')
+    next()
     expect(screen.queryByText('业务动作（1）')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '切换视图' }))
+    next()
 
     // 动作列表名称列与影响面自检文案都会出现该名称，故只断言"仍在"。
     await waitFor(() => expect(screen.getAllByText('改过的名称').length).toBeGreaterThan(0))
@@ -516,13 +521,15 @@ describe('BusinessActionsPanel', () => {
   })
 })
 
-/** 页签归属在页面侧：这里用一个开关模拟"在行为页签"与"不在行为页签"。 */
+/** 页签归属在页面侧：这里用一个按钮按 行为动作 → 校验规则 → 自定义按钮 → 无 循环，模拟页签切换。 */
 function ViewSwitchHarness({ onDraftChange }: { onDraftChange?: (draft: ModuleBusinessConfigDraft | null) => void }) {
-  const [view, setView] = useState<BusinessActionsView | null>('actions')
+  const cycle: (BusinessActionsView | null)[] = ['actions', 'rules', 'manual', null]
+  const [step, setStep] = useState(0)
+  const view = cycle[step % cycle.length]
   return (
     <div>
-      <button type="button" onClick={() => setView((current) => (current == null ? 'actions' : null))}>
-        切换视图
+      <button type="button" aria-label="切换视图" onClick={() => setStep((current) => current + 1)}>
+        切换视图（当前 {view ?? '无'}）
       </button>
       <BusinessActionsPanel
         module={moduleWithTables(1607, '收料单')}
@@ -569,6 +576,24 @@ describe('BusinessActionsPanel 自定义按钮行', () => {
     buttons: [{ seq: 1, key: 'recalc-account', label: '重算账面数量', users: 0, groups: 0 }],
   }
   const emptyConfig = { moduleId: 1607, actions: [], validationRules: [] }
+  /** 一条效果链 + 两条按钮行（按钮顺序号故意不连续，用于验新增时的顺延口径）。 */
+  const mixedConfig = {
+    moduleId: 1607,
+    actions: [
+      {
+        seq: 1,
+        eventCode: 'APPROVE_EFFECT',
+        effectKey: 'field-accumulate',
+        effectName: '收料量回写采购单',
+        enabled: true,
+        failMode: 'BLOCK',
+        ops: [],
+      },
+      { seq: 1, eventCode: 'MANUAL', effectKey: 'recalc-account', label: '重算账面数量', enabled: true, failMode: 'BLOCK', ops: [] },
+      { seq: 3, eventCode: 'MANUAL', effectKey: 'relocate-stock', label: '归位到库位', enabled: true, failMode: 'BLOCK', ops: [] },
+    ],
+    validationRules: [],
+  }
   /** 来源模块：一条效果 + 一条自定义按钮。 */
   const sourceConfig = {
     moduleId: 1505,
@@ -619,6 +644,11 @@ describe('BusinessActionsPanel 自定义按钮行', () => {
     })
   })
 
+  // 同一 describe 里多个用例共用 get 桩，调用史必须逐例清掉（懒加载断言依赖"本轮没查"）。
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('克隆入口不带入自定义按钮行：追加后本模块按钮行数不变', async () => {
     apiClientMock.get.mockImplementation(async (url: string) => {
       if (url.endsWith('/module-business-config/meta')) return manualCatalog
@@ -658,36 +688,90 @@ describe('BusinessActionsPanel 自定义按钮行', () => {
     })
   })
 
-  it('按按钮键渲染名称，并显示授权镜子（0 用户 / 0 组要显式说出来）', async () => {
-    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
+  /** 用同一份混合配置渲染面板：按钮的键/标题/落点/授权与效果链分属两个页签。 */
+  function mockMixedConfig() {
+    apiClientMock.get.mockImplementation(async (url: string) => {
+      if (url.endsWith('/module-business-config/meta')) return manualCatalog
+      if (url.endsWith('/module-business-config/1607')) return mixedConfig
+      if (url.endsWith('/module-business-config/1607/field-labels')) return fieldLabels
+      if (url.endsWith('/module-business-config/1607/action-authorization')) {
+        return { buttons: [{ seq: 1, key: 'recalc-account', label: '重算账面数量', users: 0, groups: 0 }] }
+      }
+      if (url.endsWith('/module-business-config/schemas')) {
+        return { effects: [], reverseKinds: ['no-reverse'], reverseKindLabels: {}, validationParams: [] }
+      }
+      return {}
+    })
+  }
 
-    await screen.findByText('业务动作（1）')
-    expect(await screen.findByText('重算账面数量')).toBeInTheDocument()
+  it('自定义按钮页签按按钮键渲染名称与落点，并显示授权镜子（0 用户 / 0 组要显式说出来）', async () => {
+    mockMixedConfig()
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="manual" />)
+
+    await screen.findByText('自定义按钮（2）')
+    expect(await screen.findByText('重算账面数（recalc-account）')).toBeInTheDocument()
+    expect(screen.getByText('明细级')).toBeInTheDocument()
+    expect(screen.getByText('0 用户 / 0 组')).toBeInTheDocument()
     expect(screen.getByText(/尚无任何授权，发布后无人可点/)).toBeInTheDocument()
   })
 
-  it('选中按钮行时显示自定义按钮说明，而不是加工单', async () => {
-    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} />)
-    await screen.findByText('业务动作（1）')
-
-    fireEvent.click(screen.getByText('重算账面数量'))
-
-    expect(await screen.findByText('自定义按钮')).toBeInTheDocument()
+  it('自定义按钮页签只列按钮行：不出现加工单，效果动作页签也不出现按钮行', async () => {
+    mockMixedConfig()
+    const { unmount } = renderWithProviders(
+      <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="manual" />,
+    )
+    await screen.findByText('自定义按钮（2）')
     expect(screen.queryByText(/^加工单（/)).not.toBeInTheDocument()
+    unmount()
+
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="actions" />)
+    await screen.findByText('业务动作（1）')
+    expect(screen.queryByText(/recalc-account/)).not.toBeInTheDocument()
+  })
+
+  it('授权镜子随自定义按钮页签懒加载：不打开该页签就不查', async () => {
+    mockMixedConfig()
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="actions" />)
+    await screen.findByText('业务动作（1）')
+    expect(apiClientMock.get.mock.calls.map((call) => String(call[0]))
+      .filter((path) => path.endsWith('/action-authorization'))).toHaveLength(0)
+  })
+
+  it('新增按钮的顺序号在 MANUAL 组内顺延，不影响效果链的序号', async () => {
+    mockMixedConfig()
+    const onDraftChange = vi.fn()
+    renderWithProviders(
+      <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="manual" onDraftChange={onDraftChange} />,
+    )
+    await screen.findByText('自定义按钮（2）')
+
+    fireEvent.click(screen.getByRole('button', { name: '新增' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByText('新增自定义按钮')).toBeInTheDocument()
+    // 既有按钮行顺序号为 1 与 3，新增应顺延到 4（而不是接着效果链的序号）。
+    expect(dialog.getByDisplayValue('4')).toBeInTheDocument()
+    fireEvent.click(dialog.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      const actions = onDraftChange.mock.calls.at(-1)![0].actions
+      const manual = actions.filter((action: { eventCode: string }) => action.eventCode === 'MANUAL')
+      expect(manual.map((action: { seq: number }) => action.seq).sort((a: number, b: number) => a - b)).toEqual([1, 3, 4])
+      expect(actions.filter((action: { eventCode: string }) => action.eventCode !== 'MANUAL')).toHaveLength(1)
+    })
   })
 
   it('编辑按钮行：有标题与二次确认与入参声明，没有反向语义', async () => {
     const onDraftChange = vi.fn()
     renderWithProviders(
-      <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} onDraftChange={onDraftChange} />,
+      <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="manual" onDraftChange={onDraftChange} />,
     )
-    await screen.findByText('业务动作（1）')
+    await screen.findByText('自定义按钮（1）')
 
-    fireEvent.click(screen.getByText('重算账面数量'))
-    // 动作区与校验规则区各有一个「编辑」，动作区在上。
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
+    fireEvent.click(screen.getByText('重算账面数（recalc-account）'))
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
     const dialog = within(await screen.findByRole('dialog'))
 
+    expect(dialog.getByText('编辑自定义按钮')).toBeInTheDocument()
     expect(dialog.getByText('按钮标题（显示在单据上）')).toBeInTheDocument()
     expect(dialog.getByLabelText('先返回"将会发生什么"')).toBeChecked()
     expect(dialog.getByText('点击时让用户填的参数')).toBeInTheDocument()
