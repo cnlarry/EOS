@@ -13,7 +13,7 @@ namespace EOS.API.Data;
 /// 补偿语义（落定）：
 /// - 结案单据（FINISHED_TAG=1）禁止删除，需先取消结案；
 /// - 任何已批核单据（CONFIRM_TAG=1，含自动批核模块）禁止删除，需先解批；
-/// - 已产生库存日志（INV_DEPOT_LOG）的单据禁止删除（解批回退库存后再删）。
+/// - 已产生库存流水的单据禁止删除（解批回退库存后再删）。
 /// 批核副作用 SP 自带事务（自动提交），状态守卫（CONFIRM_TAG/FINISHED_TAG）防重复副作用，
 /// 幂等键提供顺序重放保护；解批前置 NOBACK 校验原样保留。
 /// </summary>
@@ -244,7 +244,7 @@ public sealed class WorkbenchApprovalService(
     /// <summary>
     /// 删除补偿守卫：
     /// 结案单据禁止删除；任何已批核单据（含自动批核）禁止删除，需先解批；
-    /// 已产生库存日志（INV_DEPOT_LOG）的单据禁止删除（解批回退后再删）。
+    /// 已产生库存流水的单据禁止删除（解批回退后再删）。
     /// 返回 null 表示允许删除，否则返回阻止原因（RecordSaveResult）。
     /// </summary>
     public async Task<RecordSaveResult?> EnsureDeletionAllowedAsync(
@@ -301,7 +301,7 @@ public sealed class WorkbenchApprovalService(
                     connection, transaction, keyValues[0], keyValues[1], token))
             {
                 return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "INVENTORY_LOG_EXISTS",
-                    "单据已产生库存记录（INV_DEPOT_LOG），禁止删除；请先解批回退库存。");
+                    "单据已产生库存流水，禁止删除；请先解批回退库存。");
             }
         }
         return null;
