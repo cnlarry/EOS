@@ -68,12 +68,12 @@ public sealed class LayoutDesignerController(
         var package = formats.GetDocumentFormat(moduleId);
         if (package is null) return NotFound();
 
-        var errors = validator.Validate(package.Format, request.LayoutJson);
-        if (errors.Count > 0)
+        var validation = validator.Validate(package.Format, request.LayoutJson);
+        if (!validation.Ok)
         {
             logger.LogWarning("设计器保存被校验拦截 module={ModuleId} userId={UserId} errors={Errors}",
-                moduleId, userId, errors);
-            return BadRequest(new { errors });
+                moduleId, userId, validation.Messages);
+            return BadRequest(new { errors = validation.Messages });
         }
 
         // 微调模式（仅 CanAdjust）：元素 ID/类型集合与基线一致、table 列结构不变

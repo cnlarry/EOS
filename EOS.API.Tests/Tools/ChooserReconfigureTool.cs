@@ -44,8 +44,8 @@ public sealed class ChooserReconfigureTool
                 rows.Add($"{draft.TId},{draft.FId},{draft.Serial},{draft.Src},{draft.Active},PARSE_FAIL,{Escape(draft.StructJson)},{draft.Note}");
                 continue;
             }
-            var errors = await ChooserFilterValidator.ValidateAsync(connection, filter, draft.Src, CancellationToken.None);
-            rows.Add($"{draft.TId},{draft.FId},{draft.Serial},{draft.Src},{draft.Active},{(errors.Count == 0 ? "PASS" : "FAIL")},{Escape(string.Join(" | ", errors))},{draft.Note}");
+            var validation = await ChooserFilterValidator.ValidateAsync(connection, filter, draft.Src, CancellationToken.None);
+            rows.Add($"{draft.TId},{draft.FId},{draft.Serial},{draft.Src},{draft.Active},{(validation.Ok ? "PASS" : "FAIL")},{Escape(string.Join(" | ", validation.Messages))},{draft.Note}");
         }
 
         var root = FindRepoRoot();

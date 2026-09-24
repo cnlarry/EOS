@@ -1,4 +1,5 @@
 using System.Data;
+using EOS.API.Validation;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
@@ -38,19 +39,19 @@ public static class ChooserFilterValidator
     };
 
     /// <summary>纯静态校验（不查库）：结构/算子/列名格式/类型/编译 smoke；columnTypes 为「表.列 → 类型」。</summary>
-    public static IReadOnlyList<string> Validate(
+    public static ValidationResult Validate(
         ChooserFilterStruct? filter,
         string sourceTable,
         IReadOnlySet<string>? joinAliases,
         IReadOnlyDictionary<string, string>? columnTypes)
     {
         var errors = new List<string>();
-        if (filter is null) return errors;
+        if (filter is null) return ValidationResult.FromMessages(errors);
         var aliases = joinAliases ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var types = columnTypes ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (filter.Items.Count == 0)
         {
-            return errors;
+            return ValidationResult.FromMessages(errors);
         }
         foreach (var item in filter.Items)
         {
@@ -61,24 +62,24 @@ public static class ChooserFilterValidator
         {
             errors.Add("条件无法编译为参数化谓词。");
         }
-        return errors;
+        return ValidationResult.FromMessages(errors);
     }
 
     /// <summary>
     /// DB 校验：读取源表 QUERY_RELATION JOIN 目录（受控解析）+ 补齐被引用表物理列类型后做静态校验。
     /// </summary>
-    public static async Task<IReadOnlyList<string>> ValidateAsync(
+    public static async Task<ValidationResult> ValidateAsync(
         SqlConnection connection,
         ChooserFilterStruct? filter,
         string sourceTable,
         CancellationToken token,
         SqlTransaction? transaction = null)
     {
-        if (filter is null) return [];
+        if (filter is null) return ValidationResult.Success;
         var catalog = await ChooserJoinCatalog.GetAsync(connection, sourceTable, token, transaction);
         if (catalog.Error is not null)
         {
-            return [$"源表 {sourceTable} 的 QUERY_RELATION 解析失败（fail-closed）：{catalog.Error}"];
+            return ValidationResult.FromMessages([$"源表 {sourceTable} 的 QUERY_RELATION 解析失败（fail-closed）：{catalog.Error}"]);
         }
         var referencedTables = new List<string> { sourceTable };
         CollectReferencedTables(filter, catalog.Aliases, referencedTables);

@@ -1192,9 +1192,9 @@ public sealed class FieldAdminRepository(
             {
                 if (!ChooserFilterStruct.TryParse(source.Filter, out var filterStruct) || filterStruct is null)
                     throw new ArgumentException($"数据来源 {serial} 的过滤条件不是合法的  结构化 JSON。");
-                var errors = await ChooserFilterValidator.ValidateAsync(connection, filterStruct, sourceTable, token, transaction);
-                if (errors.Count > 0)
-                    throw new ArgumentException($"数据来源 {serial} 过滤条件校验失败：{string.Join("；", errors.Take(4))}");
+                var validation = await ChooserFilterValidator.ValidateAsync(connection, filterStruct, sourceTable, token, transaction);
+                if (!validation.Ok)
+                    throw new ArgumentException($"数据来源 {serial} 过滤条件校验失败：{string.Join("；", validation.Messages.Take(4))}");
                 filterStructJson = filterStruct.ToJson();
             }
 
