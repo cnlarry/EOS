@@ -32,13 +32,18 @@ import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { notifyMenuChanged } from '../../services/menuEvents'
 import { ApiError } from '../../types/api'
+import { MANUAL_EVENT } from './documentActionConfig'
 import { parseFilter } from './menuFilter'
 import { MenuFieldPicker, MenuFilterBuilder } from './MenuFieldPickers'
 import { describeApiError } from '../../lib/errors'
-import { BusinessActionsPanel, type ModuleBusinessConfigDraft } from './BusinessActionsPanel'
+import {
+  BusinessActionsPanel,
+  type BusinessActionsView,
+  type ModuleBusinessConfigDraft,
+} from './BusinessActionsPanel'
 
-/** 菜单编辑表单页签：基础 / 主表 / 子表 / 分组 / 统一表单 / 行为动作。 */
-type MenuFormTab = 'basic' | 'master' | 'detail' | 'group' | 'form' | 'actions'
+/** 菜单编辑表单页签：前五个是模块定义，后三个按"谁触发"划分的行为配置。 */
+type MenuFormTab = 'basic' | 'master' | 'detail' | 'group' | 'form' | 'actions' | 'rules' | 'manual'
 
 const MENU_FORM_TABS: { key: MenuFormTab; label: string }[] = [
   { key: 'basic', label: '基础' },
@@ -46,8 +51,14 @@ const MENU_FORM_TABS: { key: MenuFormTab; label: string }[] = [
   { key: 'detail', label: '子表' },
   { key: 'group', label: '分组' },
   { key: 'form', label: '统一表单' },
+  // 顺序按"常一起改的相邻"排：配了库存扣减通常紧接着配数量校验。
   { key: 'actions', label: '行为动作' },
+  { key: 'rules', label: '校验规则' },
+  { key: 'manual', label: '自定义按钮' },
 ]
+
+/** 行为配置页签：共用一份草稿与同一个常驻容器。 */
+const BEHAVIOR_TAB_KEYS: MenuFormTab[] = ['actions', 'rules', 'manual']
 
 export interface MenuAdminModule {
   M_IDX: number
@@ -300,17 +311,25 @@ export function MenuAdminPage() {
       ),
   })
   const canModuleConfig = capabilitiesQuery.data?.canModuleConfig === true
+  // 无主/副表的模块没有可挂载的行为配置：三个行为页签禁用并说明原因，而不是进得去却空转。
+  const hasTables = draft != null && (draft.MASTER_TABLE != null || draft.DETAIL_TABLE != null)
   const formTabs = useMemo(
-    () => MENU_FORM_TABS.filter((tab) => tab.key !== 'actions' || canModuleConfig),
-    [canModuleConfig],
+    () => MENU_FORM_TABS
+      .filter((tab) => canModuleConfig || !BEHAVIOR_TAB_KEYS.includes(tab.key))
+      .map((tab) => (BEHAVIOR_TAB_KEYS.includes(tab.key) && !hasTables
+        ? { ...tab, disabled: true, disabledReason: '该模块未配置操作主表/副表，没有可挂载的行为配置' }
+        : tab)),
+    [canModuleConfig, hasTables],
   )
   useEffect(() => {
-    if (!canModuleConfig && formTab === 'actions') setFormTab('basic')
+    if (!canModuleConfig && BEHAVIOR_TAB_KEYS.includes(formTab)) setFormTab('basic')
   }, [canModuleConfig, formTab])
   const [treeQuery, setTreeQuery] = useState('')
   const draggedIdRef = useRef<number | null>(null)
   // 行为动作/校验规则草稿：由行为动作页签上报（未打开该页签时为 null，保存时保持不动）
   const [actionsDraft, setActionsDraft] = useState<ModuleBusinessConfigDraft | null>(null)
+  // 要求行为配置面板重新装载草稿的信号（「取消」丢弃本地改动时用）。
+  const [configReloadSignal, setConfigReloadSignal] = useState(0)
   // 本次在界面上编辑过的默认查询列（未编辑的表不参与保存）
   const [defaultColumnDrafts, setDefaultColumnDrafts] = useState<Record<string, string[]> | null>(null)
   const [publishResult, setPublishResult] = useState<WorkbenchPublishResult | null>(null)
@@ -368,6 +387,10 @@ export function MenuAdminPage() {
   const tree = useMemo(() => buildTree(filteredModules), [filteredModules])
   const selected = selectedId != null ? byId.get(selectedId) ?? null : null
   const stateBadge = moduleStateBadge(draft, selected, defaultColumnDrafts != null || actionsDraft?.dirty === true)
+  // 已装载的自定义按钮数：统一表单页签用它交叉指引（未装载行为配置时为 0，不谎报数量）。
+  const manualActionCount = actionsDraft != null && actionsDraft.moduleId === draft?.M_IDX
+    ? actionsDraft.actions.filter((action) => action.eventCode === MANUAL_EVENT).length
+    : 0
 
   // 切换模块时丢弃上一模块的关联草稿与发布结果，避免误提交到新模块
   useEffect(() => {
@@ -731,6 +754,8 @@ export function MenuAdminPage() {
     setDefaultColumnDrafts(null)
     setPublishResult(null)
     setPublishError(null)
+    // 面板的装载点只在切换模块或显式重新加载时推进，故取消时也要推一次，让它回到服务端配置。
+    setConfigReloadSignal((signal) => signal + 1)
     if (selectedId != null) void queryClient.invalidateQueries({ queryKey: ['module-business-config', selectedId] })
   }
 
@@ -858,13 +883,29 @@ export function MenuAdminPage() {
     }
   }
 
+  /** 当前编辑对象是否有未保存改动：模块行、默认查询列、行为配置草稿任一脏即算。 */
+  const hasUnsavedChanges = () =>
+    draft != null && (
+      selected == null
+      || JSON.stringify(draft) !== JSON.stringify(selected)
+      || defaultColumnDrafts != null
+      || actionsDraft?.dirty === true
+    )
+
+  /** 离开当前编辑对象前的确认：草稿脏时先问一句，避免静默丢掉刚配的东西。 */
+  const confirmLeaveCurrent = () =>
+    !hasUnsavedChanges()
+    || window.confirm('当前模块有未保存的修改（含行为配置），继续将丢弃这些修改。是否继续？')
+
   const selectModule = (module: MenuAdminModule) => {
+    if (module.M_IDX !== selectedId && !confirmLeaveCurrent()) return
     setSelectedId(module.M_IDX)
     setDraft({ ...module })
     setFormTab('basic')
   }
 
   const startNewRoot = () => {
+    if (selectedId != null && !confirmLeaveCurrent()) return
     setSelectedId(null)
     setDraft(emptyDraft(null))
     setFormTab('basic')
@@ -875,6 +916,7 @@ export function MenuAdminPage() {
       window.alert('请先在左侧选择一父级菜单，然后再增加子节点。')
       return
     }
+    if (!confirmLeaveCurrent()) return
     setSelectedId(null)
     setDraft(emptyDraft(selectedId))
     setFormTab('basic')
@@ -1227,11 +1269,16 @@ export function MenuAdminPage() {
                           </div>
                           <div className="col-6">
                             <Input
-                              label="业务按钮（FORM_BUTTONS）"
+                              label="内置动作（受控注册码）"
                               value={draft.FORM_BUTTONS ?? ''}
                               placeholder="受控注册码，如 GEN_ORDER;FINISH_CASE"
                               onChange={(value) => patch((d) => ({ ...d, FORM_BUTTONS: value || null }))}
                             />
+                          </div>
+                          <div className="col-12 text-secondary small">
+                            这里配的是批核、结案等受控注册码（内置动作）。
+                            {manualActionCount > 0 ? `另有 ${manualActionCount} 个自定义按钮` : '另有自定义按钮'}
+                            ，见「行为 › 自定义按钮」——两者都会出现在单据工具栏上，但来源与授权模型不同。
                           </div>
                         </div>
                       </div>
@@ -1241,7 +1288,8 @@ export function MenuAdminPage() {
                       // 组件不卸载，否则未保存的行为配置会被装载副作用重置掉。
                       <BusinessActionsPanel
                         module={draft}
-                        view={formTab === 'actions' ? 'actions' : null}
+                        view={BEHAVIOR_TAB_KEYS.includes(formTab) ? formTab as BusinessActionsView : null}
+                        reloadSignal={configReloadSignal}
                         onDraftChange={handleActionsDraftChange}
                       />
                     )}

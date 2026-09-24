@@ -1,24 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { ColumnDef } from '@tanstack/react-table'
 import {
-  IconArrowDown,
-  IconArrowUp,
-  IconCopy,
   IconDeviceFloppy,
-  IconEdit,
-  IconPlus,
   IconRefresh,
-  IconTrash,
 } from '@tabler/icons-react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
-import { ErpTable } from '../../components/common/ErpTable'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 import { describeApiError } from '../../lib/errors'
 import { ColumnPickerInput, MatchEditor, TablePickerInput } from './BusinessActionPickers'
-import { BusinessActionSheet } from './BusinessActionSheet'
 import { BusinessActionImpact } from './BusinessActionImpactPanel'
 import { CloneActionsModal } from './CloneActionsModal'
 import { ConditionEditor } from './ConditionEditor'
@@ -26,7 +17,14 @@ import { DocumentActionParamsEditor } from './DocumentActionParamsEditor'
 import { MANUAL_EVENT } from './documentActionConfig'
 import { StructuredParamsEditor } from './StructuredParamsEditor'
 import {
-  formatCondition,
+  ActionsView,
+  ManualButtonsView,
+  OpsView,
+  RulesView,
+} from './BusinessActionsViews'
+import {
+  actionKey,
+  eventLabel,
   formatMatch,
   formatOpSentence,
   formatSourceTerms,
@@ -35,14 +33,13 @@ import {
   makeNameLookup,
   parseMatchItems,
   reverseTextOf,
-  summarizeAction,
-  withTargetTable,
+  ruleKey,
   type BusinessNameLookup,
   type MatchGroupPreset,
 } from './businessActionText'
 import type { MenuAdminModule } from './MenuAdminPage'
 
-interface BusinessActionOp {
+export interface BusinessActionOp {
   opSeq: number
   targetTable: string
   targetField: string
@@ -119,7 +116,7 @@ export interface ModuleBusinessConfigDraft {
   dirty: boolean
 }
 
-interface BusinessConfigCatalog {
+export interface BusinessConfigCatalog {
   events: string[]
   failModes: string[]
   effectKeys: string[]
@@ -165,7 +162,7 @@ interface BusinessFieldLabels {
 }
 
 /** 目录中文标签查询器集合（各枚举一套，大小写不敏感）。 */
-interface LabelLookups {
+export interface LabelLookups {
   events: (code: string | null | undefined) => string
   failModes: (code: string | null | undefined) => string
   effectKeys: (code: string | null | undefined) => string
@@ -187,6 +184,8 @@ interface BusinessActionsPanelProps {
    * 装载副作用按服务端缓存重置掉。
    */
   view?: BusinessActionsView | null
+  /** 外部要求重新装载草稿的信号（如页面「取消」丢弃改动）：每次自增都视为一个新的装载点。 */
+  reloadSignal?: number
   /** 草稿上报：配置装载完成或编辑变化时回调；null 表示当前没有可提交的草稿（未装载/无表模块）。 */
   onDraftChange?: (draft: ModuleBusinessConfigDraft | null) => void
 }
@@ -195,9 +194,6 @@ type EditorState =
   | { kind: 'action'; index: number | null; value: BusinessAction }
   | { kind: 'op'; actionIndex: number; index: number | null; value: BusinessActionOp }
   | { kind: 'rule'; index: number | null; value: ValidationRule }
-
-const actionKey = (action: BusinessAction) => `${action.eventCode}|${action.seq}`
-const ruleKey = (rule: ValidationRule) => `${rule.stage}|${rule.seq}`
 
 const cloneOp = (op: BusinessActionOp): BusinessActionOp => ({ ...op })
 const cloneAction = (action: BusinessAction): BusinessAction => ({
@@ -251,7 +247,12 @@ const emptyRule = (stage: string): ValidationRule => ({
   sourceRef: null,
 })
 
-export function BusinessActionsPanel({ module, view = 'actions', onDraftChange }: BusinessActionsPanelProps) {
+export function BusinessActionsPanel({
+  module,
+  view = 'actions',
+  reloadSignal = 0,
+  onDraftChange,
+}: BusinessActionsPanelProps) {
   const moduleId = module.M_IDX
   const hasTables = module.MASTER_TABLE != null || module.DETAIL_TABLE != null
   const active = view != null
@@ -287,18 +288,21 @@ export function BusinessActionsPanel({ module, view = 'actions', onDraftChange }
     enabled,
   })
   // 按钮授权镜子：授权是 fail-closed 名单，"配了没人能用"是正常状态，界面上必须说出来。
+  // 只在「自定义按钮」页签里用，故随该页签懒加载。
   const authorizationQuery = useQuery({
     queryKey: ['module-business-config-action-authorization', moduleId],
     queryFn: () =>
       apiClient.get<{ buttons: DocumentActionAuthorizationEntry[] }>(
         `/admin/module-business-config/${moduleId}/action-authorization`,
       ),
-    enabled,
+    enabled: enabled && view === 'manual',
   })
 
   const [actions, setActions] = useState<BusinessAction[]>([])
   const [rules, setRules] = useState<ValidationRule[]>([])
+  // 两个页签各记各的选中行：效果链与按钮行混用一个选中态会让加工单区显示错对象。
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [selectedManualKey, setSelectedManualKey] = useState<string | null>(null)
   const [editor, setEditor] = useState<EditorState | null>(null)
   // 已从服务端装载完成的模块编号：只有装载完成才向上报草稿，避免切换模块的瞬间
   // 用空配置覆盖主页面持有的草稿。
@@ -311,6 +315,7 @@ export function BusinessActionsPanel({ module, view = 'actions', onDraftChange }
     setActions([])
     setRules([])
     setSelectedKey(null)
+    setSelectedManualKey(null)
     setEditor(null)
     setLoadedModuleId(null)
     loadedPointRef.current = null
@@ -319,15 +324,15 @@ export function BusinessActionsPanel({ module, view = 'actions', onDraftChange }
   useEffect(() => {
     const data = configQuery.data
     if (!data) return
-    // 装载点 = 模块 + 重新加载序号。查询后台重取（窗口聚焦等）返回同一装载点时
+    // 装载点 = 模块 + 重新加载序号 + 外部装载信号。查询后台重取（窗口聚焦等）落在同一装载点时
     // 不再灌入，避免把未保存的编辑静默冲掉。
-    const point = `${moduleId}#${reloadToken}`
+    const point = `${moduleId}#${reloadSignal}#${reloadToken}`
     if (loadedPointRef.current === point) return
     loadedPointRef.current = point
     setActions((data.actions ?? []).map(cloneAction))
     setRules((data.validationRules ?? []).map(cloneRule))
     setLoadedModuleId(data.moduleId)
-  }, [configQuery.data, moduleId, reloadToken])
+  }, [configQuery.data, moduleId, reloadSignal, reloadToken])
 
   const configDirty = useMemo(() => {
     if (!configQuery.data) return false
@@ -353,7 +358,15 @@ export function BusinessActionsPanel({ module, view = 'actions', onDraftChange }
     [rules],
   )
   /** 用户点击类动作（自定义按钮）：它们不参与效果链，界面按另一套字段编辑。 */
-  const manualActions = useMemo(() => actions.filter((item) => item.eventCode === MANUAL_EVENT), [actions])
+  const manualActions = useMemo(
+    () => actions.filter((item) => item.eventCode === MANUAL_EVENT).sort((a, b) => a.seq - b.seq),
+    [actions],
+  )
+  /** 效果链行（非 MANUAL）：与按钮行分属两个页签。 */
+  const effectActions = useMemo(
+    () => sortedActions.filter((item) => item.eventCode !== MANUAL_EVENT),
+    [sortedActions],
+  )
   /** 按钮键 → 中文名（菜单/授权镜子等处渲染人话用）。 */
   const documentActionLookup = useMemo(
     () => makeLabelLookup(Object.fromEntries((catalogQuery.data?.documentActions ?? []).map((item) => [item.key, item.label]))),
@@ -412,6 +425,12 @@ export function BusinessActionsPanel({ module, view = 'actions', onDraftChange }
   )
   const selectedOp = selectedOps.find((op) => op.opSeq === selectedOpSeq)
   const selectedRule = sortedRules.find((rule) => ruleKey(rule) === selectedRuleId)
+  // 自定义按钮页签的选中行：按 MANUAL 行在草稿里的位置回查索引，工具栏操作按索引走。
+  const selectedManualIndex = manualActions.findIndex((action) => actionKey(action) === selectedManualKey)
+  const selectedManual = selectedManualIndex >= 0 ? manualActions[selectedManualIndex] : undefined
+  const manualDraftIndex = selectedManual != null
+    ? actions.findIndex((item) => actionKey(item) === actionKey(selectedManual))
+    : -1
 
   // 切换动作后原选中公式行不再属于当前动作，清空选中避免误删。
   useEffect(() => {
@@ -429,7 +448,9 @@ export function BusinessActionsPanel({ module, view = 'actions', onDraftChange }
       if (editor.index == null) {
         const value = cloneAction(editor.value)
         setActions((prev) => [...prev, value])
-        setSelectedKey(actionKey(value))
+        // 新增后选中它：按行类型落到对应页签的选中态上。
+        if (value.eventCode === MANUAL_EVENT) setSelectedManualKey(actionKey(value))
+        else setSelectedKey(actionKey(value))
       } else {
         replaceAction(editor.index, editor.value)
       }
@@ -472,23 +493,75 @@ export function BusinessActionsPanel({ module, view = 'actions', onDraftChange }
     if (selectedIndex < 0 || !selectedAction?.ops) return
     setEditor({ kind: 'op', actionIndex: selectedIndex, index, value: cloneOp(selectedAction.ops[index]) })
   }
+  /** 删除某个草稿位置的动作（两个页签共用）。 */
+  const removeActionAt = (index: number) => {
+    if (index < 0) return
+    setActions((prev) => prev.filter((_, i) => i !== index))
+  }
+  /** 复制某个草稿位置的动作（同事件内顺延顺序号），返回副本行键。 */
+  const duplicateActionAt = (index: number): string | null => {
+    const source = actions[index]
+    if (!source) return null
+    const seq = actions
+      .filter((item) => item.eventCode === source.eventCode)
+      .reduce((max, item) => Math.max(max, item.seq), 0) + 1
+    const copy = cloneAction({ ...source, seq })
+    setActions((prev) => [...prev, copy])
+    return actionKey(copy)
+  }
+  /** 上下移动某个草稿位置的动作：只在同事件组内换顺序号。 */
+  const moveActionAt = (index: number, delta: number) => {
+    const current = actions[index]
+    if (!current) return
+    const peers = actions
+      .map((item, position) => ({ item, index: position }))
+      .filter((entry) => entry.item.eventCode === current.eventCode)
+      .sort((a, b) => a.item.seq - b.item.seq)
+    const position = peers.findIndex((entry) => entry.index === index)
+    const target = peers[position + delta]
+    if (!target) return
+    setActions((prev) =>
+      prev.map((item, i) => {
+        if (i === index) return { ...item, seq: target.item.seq }
+        if (i === target.index) return { ...item, seq: current.seq }
+        return item
+      }),
+    )
+  }
   const deleteSelectedAction = () => {
     if (selectedIndex < 0) return
-    setActions((prev) => prev.filter((_, i) => i !== selectedIndex))
+    removeActionAt(selectedIndex)
     setSelectedKey(null)
   }
   /** 复制选中动作（同事件内顺延顺序号）：改行为时从"相近的一步"起步，比从空白新建快。 */
   const duplicateSelectedAction = () => {
     if (!selectedAction) return
-    const eventCode = selectedAction.eventCode
-    const seq = actions
-      .filter((item) => item.eventCode === eventCode)
-      .reduce((max, item) => Math.max(max, item.seq), 0) + 1
-    const copy = cloneAction({ ...selectedAction, seq })
-    setActions((prev) => [...prev, copy])
-    setSelectedKey(actionKey(copy))
+    const key = duplicateActionAt(selectedIndex)
+    if (!key) return
+    setSelectedKey(key)
     setSelectedOpSeq(null)
   }
+  /** 新增自定义按钮：顺序号在 MANUAL 组内顺延（唯一键按 (模块, 事件, 顺序号) 约束）。 */
+  const openCreateManualAction = () => {
+    const documentActions = catalogQuery.data?.documentActions ?? []
+    const seq = manualActions.reduce((max, item) => Math.max(max, item.seq), 0) + 1
+    setEditor({ kind: 'action', index: null, value: emptyAction(MANUAL_EVENT, seq, documentActions[0]?.key) })
+  }
+  const editSelectedManualAction = () => {
+    if (!selectedManual) return
+    setEditor({ kind: 'action', index: manualDraftIndex, value: cloneAction(selectedManual) })
+  }
+  const deleteSelectedManualAction = () => {
+    removeActionAt(manualDraftIndex)
+    setSelectedManualKey(null)
+  }
+  const duplicateSelectedManualAction = () => {
+    if (!selectedManual) return
+    const key = duplicateActionAt(manualDraftIndex)
+    if (!key) return
+    setSelectedManualKey(key)
+  }
+  const moveSelectedManualAction = (delta: number) => moveActionAt(manualDraftIndex, delta)
   /** 复制选中公式行（动作内顺延顺序号）。 */
   const duplicateSelectedOp = () => {
     if (selectedIndex < 0 || !selectedOp) return
@@ -555,24 +628,7 @@ export function BusinessActionsPanel({ module, view = 'actions', onDraftChange }
   const deleteRule = (rule: ValidationRule) =>
     setRules((prev) => prev.filter((item) => item !== rule))
 
-  const moveSelectedAction = (delta: number) => {
-    if (selectedIndex < 0) return
-    const current = actions[selectedIndex]
-    const peers = actions
-      .map((item, index) => ({ item, index }))
-      .filter((entry) => entry.item.eventCode === current.eventCode)
-      .sort((a, b) => a.item.seq - b.item.seq)
-    const position = peers.findIndex((entry) => entry.index === selectedIndex)
-    const target = peers[position + delta]
-    if (!target) return
-    setActions((prev) =>
-      prev.map((item, i) => {
-        if (i === selectedIndex) return { ...item, seq: target.item.seq }
-        if (i === target.index) return { ...item, seq: current.seq }
-        return item
-      }),
-    )
-  }
+  const moveSelectedAction = (delta: number) => moveActionAt(selectedIndex, delta)
 
   // 不在行为页签上时不渲染内容，但上面的状态与查询继续保留（容器常驻）。
   if (!active) return null
@@ -629,135 +685,103 @@ export function BusinessActionsPanel({ module, view = 'actions', onDraftChange }
 
       {ready ? (
         <>
-          <ActionSection
-            catalog={catalogQuery.data!}
-            labels={labels}
-            names={names}
-            actions={sortedActions}
-            documentActionLookup={documentActionLookup}
-            selectedKey={selectedKey}
-            onSelect={setSelectedKey}
-            onCreate={openCreateAction}
-            onEdit={() => {
-              if (selectedIndex >= 0) setEditor({ kind: 'action', index: selectedIndex, value: cloneAction(selectedAction!) })
-            }}
-            onDuplicate={duplicateSelectedAction}
-            onClone={() => setCloneOpen(true)}
-            onDelete={deleteSelectedAction}
-            onMoveUp={() => moveSelectedAction(-1)}
-            onMoveDown={() => moveSelectedAction(1)}
-            canEdit={selectedIndex >= 0}
-          />
-          {manualActions.length > 0 ? (
-            <div className="alert alert-secondary py-2 px-3 mb-2" role="status">
-              <div className="small mb-1">
-                自定义按钮授权（<strong>fail-closed 名单</strong>）：未授权即不可点，按钮也不出现在单据上；
-                在「用户权限设定 / 用户组管理」的按钮权限页签里按人/按组授权。
-              </div>
-              <ul className="mb-0 small">
-                {(authorizationQuery.data?.buttons ?? []).map((button) => (
-                  <li key={button.key}>
-                    {button.label}（{button.key}）：授权 {button.users} 个用户 / {button.groups} 个组
-                    {button.users === 0 && button.groups === 0 ? ' —— 尚无任何授权，发布后无人可点' : ''}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {selectedAction && selectedAction.eventCode === MANUAL_EVENT ? (
-            <section>
-              <h6 className="mb-1">自定义按钮</h6>
-              <div className="text-secondary small">
-                该行由用户点击触发，不由任何单据事件顺带执行：它没有加工单步骤，也不支持反向结构；
-                前置条件与入参声明都在上面「编辑」里配。
-              </div>
-            </section>
-          ) : selectedAction ? (
-            <section>
-              <div className="d-flex align-items-center justify-content-between mb-1 flex-wrap gap-2">
-                <h6 className="mb-0">加工单（{selectedOps.length} 步）</h6>
-                <div className="d-flex gap-1 align-items-center flex-wrap">
-                  <div className="btn-group btn-group-sm" role="group" aria-label="加工单视图切换">
-                    <button
-                      type="button"
-                      className={`btn ${opView === 'sheet' ? 'btn-secondary' : 'btn-outline-secondary'}`}
-                      onClick={() => setOpView('sheet')}
-                    >
-                      加工单
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn ${opView === 'grid' ? 'btn-secondary' : 'btn-outline-secondary'}`}
-                      onClick={() => setOpView('grid')}
-                    >
-                      字段表
-                    </button>
-                  </div>
-                  <Button size="sm" icon={<IconPlus size={16} />} onClick={openCreateOp}>新增步骤</Button>
-                  <Button size="sm" icon={<IconCopy size={16} />} onClick={duplicateSelectedOp} disabled={!selectedOp}>复制步骤</Button>
-                  <Button size="sm" icon={<IconEdit size={16} />} onClick={() => { if (selectedOp) editOp(selectedOp) }} disabled={!selectedOp}>编辑</Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    icon={<IconTrash size={16} />}
-                    onClick={() => { if (selectedOp) deleteOp(selectedOp) }}
-                    disabled={!selectedOp}
-                  >
-                    删除
-                  </Button>
-                </div>
-              </div>
-              {opView === 'sheet' ? (
-                <BusinessActionSheet
+          {view === 'actions' ? (
+            <>
+              <ActionsView
+                catalog={catalogQuery.data!}
+                labels={labels}
+                names={names}
+                actions={effectActions}
+                documentActionLookup={documentActionLookup}
+                selectedKey={selectedKey}
+                onSelect={setSelectedKey}
+                onCreate={openCreateAction}
+                onEdit={() => {
+                  if (selectedIndex >= 0) setEditor({ kind: 'action', index: selectedIndex, value: cloneAction(selectedAction!) })
+                }}
+                onDuplicate={duplicateSelectedAction}
+                onClone={() => setCloneOpen(true)}
+                onDelete={deleteSelectedAction}
+                onMoveUp={() => moveSelectedAction(-1)}
+                onMoveDown={() => moveSelectedAction(1)}
+                canEdit={selectedIndex >= 0}
+              />
+              {selectedAction ? (
+                <OpsView
                   action={selectedAction}
+                  ops={selectedOps}
+                  opView={opView}
+                  onOpViewChange={setOpView}
+                  selectedOpSeq={selectedOpSeq}
+                  onSelectOp={setSelectedOpSeq}
                   names={names}
+                  labels={labels}
                   eventText={eventLabel(selectedAction.eventCode, catalogQuery.data!, labels)}
                   effectText={labelWithCode(labels.effectKeys, selectedAction.effectKey)}
                   failModeText={labelWithCode(labels.failModes, selectedAction.failMode)}
                   reverseText={reverseTextOf(selectedAction.reverse, makeLabelLookup(schemasQuery.data?.reverseKindLabels))}
-                  selectedOpSeq={selectedOpSeq}
-                  onSelectOp={setSelectedOpSeq}
+                  onCreateOp={openCreateOp}
+                  onDuplicateOp={duplicateSelectedOp}
+                  onEditOp={() => {
+                    if (selectedOp) editOp(selectedOp)
+                  }}
+                  onDeleteOp={() => {
+                    if (selectedOp) deleteOp(selectedOp)
+                  }}
+                  canEditOp={selectedOp != null}
                 />
               ) : (
-                <OpSection
-                  labels={labels}
-                  names={names}
-                  ops={selectedOps}
-                  selectedOpSeq={selectedOpSeq}
-                  onSelect={setSelectedOpSeq}
-                />
+                <div className="text-secondary small">先在上方选择一个业务动作，这里显示它的加工单。</div>
               )}
-            </section>
-          ) : (
-            <div className="text-secondary small">先在上方选择一个业务动作，这里显示它的加工单。</div>
-          )}
-          <RuleSection
-            labels={labels}
-            rules={sortedRules}
-            selectedRuleId={selectedRuleId}
-            onSelect={setSelectedRuleId}
-            onCreate={openCreateRule}
-            onEdit={() => {
-              if (selectedRule) editRule(selectedRule)
-            }}
-            onDelete={() => {
-              if (selectedRule) deleteRule(selectedRule)
-            }}
-          />
-          <BusinessActionImpact
-            moduleId={moduleId}
-            masterTable={module.MASTER_TABLE}
-            detailTable={module.DETAIL_TABLE}
-            names={names}
-            labels={labels}
-            actions={actions}
-            rules={rules}
-          />
-          <div className="text-secondary small">
-            加工单视图按「目标表.字段 运算 本单来源 @定位键 ?条件」逐句展示（字段名带中文元数据），点句子即选中该步骤；
-            表名/列名经统一选择器选取，定位键可复用本模块已配好的同一套；条件与效果参数仍为结构化 JSON 文本。
-            保存即服务端校验（目录值/顺序/JSON/物理表列/定位键登记），校验失败不会落库。
-          </div>
+              <BusinessActionImpact
+                moduleId={moduleId}
+                masterTable={module.MASTER_TABLE}
+                detailTable={module.DETAIL_TABLE}
+                names={names}
+                labels={labels}
+                actions={actions}
+                rules={rules}
+              />
+              <div className="text-secondary small">
+                加工单视图按「目标表.字段 运算 本单来源 @定位键 ?条件」逐句展示（字段名带中文元数据），点句子即选中该步骤；
+                表名/列名经统一选择器选取，定位键可复用本模块已配好的同一套；条件与效果参数仍为结构化 JSON 文本。
+                保存即服务端校验（目录值/顺序/JSON/物理表列/定位键登记），校验失败不会落库。
+              </div>
+            </>
+          ) : null}
+
+          {view === 'rules' ? (
+            <RulesView
+              labels={labels}
+              rules={sortedRules}
+              selectedRuleId={selectedRuleId}
+              onSelect={setSelectedRuleId}
+              onCreate={openCreateRule}
+              onEdit={() => {
+                if (selectedRule) editRule(selectedRule)
+              }}
+              onDelete={() => {
+                if (selectedRule) deleteRule(selectedRule)
+              }}
+            />
+          ) : null}
+
+          {view === 'manual' ? (
+            <ManualButtonsView
+              actions={manualActions}
+              documentActions={catalogQuery.data?.documentActions ?? []}
+              authorization={authorizationQuery.data?.buttons}
+              selectedKey={selectedManualKey}
+              onSelect={setSelectedManualKey}
+              onCreate={openCreateManualAction}
+              onEdit={editSelectedManualAction}
+              onDuplicate={duplicateSelectedManualAction}
+              onDelete={deleteSelectedManualAction}
+              onMoveUp={() => moveSelectedManualAction(-1)}
+              onMoveDown={() => moveSelectedManualAction(1)}
+              canEdit={selectedManual != null}
+            />
+          ) : null}
         </>
       ) : null}
 
@@ -791,245 +815,6 @@ export function BusinessActionsPanel({ module, view = 'actions', onDraftChange }
   )
 }
 
-function ActionSection({
-  catalog,
-  labels,
-  names,
-  actions,
-  documentActionLookup,
-  selectedKey,
-  onSelect,
-  onCreate,
-  onEdit,
-  onDuplicate,
-  onClone,
-  onDelete,
-  onMoveUp,
-  onMoveDown,
-  canEdit,
-}: {
-  catalog: BusinessConfigCatalog
-  labels: LabelLookups
-  names: BusinessNameLookup
-  actions: BusinessAction[]
-  documentActionLookup: (code: string | null | undefined) => string
-  selectedKey: string | null
-  onSelect: (key: string | null) => void
-  onCreate: () => void
-  onEdit: () => void
-  onDuplicate: () => void
-  onClone: () => void
-  onDelete: () => void
-  onMoveUp: () => void
-  onMoveDown: () => void
-  canEdit: boolean
-}) {
-  const columns = useMemo<ColumnDef<BusinessAction, unknown>[]>(() => [
-    { accessorKey: 'eventCode', header: '事件', cell: (info) => eventLabel(String(info.getValue()), catalog, labels) },
-    { accessorKey: 'seq', header: '顺序', meta: { minWidth: 64 } },
-    {
-      accessorKey: 'effectKey',
-      header: '效果／按钮',
-      // 按钮行的键来自操作注册表（不在效果目录里），渲染时走另一份名字表，否则会显示成"目录外"。
-      cell: (info) => (
-        <span title={String(info.getValue())}>
-          {labelWithCode(
-            info.row.original.eventCode === MANUAL_EVENT ? documentActionLookup : labels.effectKeys,
-            String(info.getValue()),
-          )}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'effectName',
-      header: '名称',
-      cell: (info) => emptyText(String(info.row.original.label ?? info.getValue() ?? '')),
-    },
-    {
-      accessorKey: 'enabled',
-      header: '启用',
-      cell: (info) => (info.getValue() ? '是' : '否'),
-      meta: { minWidth: 60 },
-    },
-    {
-      accessorKey: 'failMode',
-      header: '失败模式',
-      cell: (info) => labelWithCode(labels.failModes, String(info.getValue())),
-      meta: { minWidth: 130 },
-    },
-    {
-      id: 'impact',
-      header: '影响（做什么）',
-      meta: { minWidth: 320 },
-      cell: ({ row }) => {
-        const text = summarizeAction(row.original, names)
-        return <span title={text}>{text}</span>
-      },
-    },
-    { accessorKey: 'remark', header: '说明', cell: (info) => emptyText(String(info.getValue() ?? '')) },
-  ], [catalog, labels, names, documentActionLookup])
-
-  return (
-    <section>
-      <div className="d-flex align-items-center justify-content-between mb-1">
-        <h6 className="mb-0">业务动作（{actions.length}）</h6>
-        <div className="d-flex gap-1">
-          <Button size="sm" icon={<IconPlus size={16} />} onClick={onCreate}>新增</Button>
-          <Button size="sm" icon={<IconCopy size={16} />} onClick={onClone}>从其它模块复制</Button>
-          <Button size="sm" icon={<IconArrowUp size={16} />} onClick={onMoveUp} disabled={!canEdit} aria-label="上移">上移</Button>
-          <Button size="sm" icon={<IconArrowDown size={16} />} onClick={onMoveDown} disabled={!canEdit} aria-label="下移">下移</Button>
-          <Button size="sm" icon={<IconCopy size={16} />} onClick={onDuplicate} disabled={!canEdit}>复制</Button>
-          <Button size="sm" icon={<IconEdit size={16} />} onClick={onEdit} disabled={!canEdit}>编辑</Button>
-          <Button size="sm" variant="danger" icon={<IconTrash size={16} />} onClick={onDelete} disabled={!canEdit}>删除</Button>
-        </div>
-      </div>
-      <ErpTable
-        columns={columns}
-        data={actions}
-        getRowId={(row) => actionKey(row)}
-        activeRowId={selectedKey ?? undefined}
-        onRowClick={(row) => onSelect(actionKey(row))}
-        rowClickSingleSelect
-        clientSideSorting
-        copyable={false}
-        empty={<div className="p-3 text-secondary">尚未配置业务动作，点「新增」开始。</div>}
-      />
-    </section>
-  )
-}
-
-function OpSection({
-  labels,
-  names,
-  ops,
-  selectedOpSeq,
-  onSelect,
-}: {
-  labels: LabelLookups
-  names: BusinessNameLookup
-  ops: BusinessActionOp[]
-  selectedOpSeq: number | null
-  onSelect: (opSeq: number | null) => void
-}) {
-  const columns = useMemo<ColumnDef<BusinessActionOp, unknown>[]>(() => [
-    { accessorKey: 'opSeq', header: '序', meta: { minWidth: 48 } },
-    {
-      accessorKey: 'targetTable',
-      header: '目标表',
-      cell: (info) => names.table(String(info.getValue())),
-    },
-    {
-      accessorKey: 'targetField',
-      header: '目标字段',
-      cell: ({ row }) => names.field(row.original.targetTable, row.original.targetField),
-    },
-    {
-      accessorKey: 'opCode',
-      header: '运算',
-      cell: (info) => labelWithCode(labels.opCodes, String(info.getValue())),
-    },
-    {
-      id: 'source',
-      header: '来源',
-      meta: { minWidth: 200 },
-      cell: ({ row }) => (
-        <span title={formatOpSentence(row.original, names)}>
-          {formatOpSentence(row.original, names).split(' ').slice(2).join(' ')}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'match',
-      header: '定位键',
-      meta: { minWidth: 220 },
-      cell: (info) => readableText(formatMatch(String(info.getValue() ?? ''), names), String(info.getValue() ?? '')),
-    },
-    {
-      accessorKey: 'condition',
-      header: '条件',
-      meta: { minWidth: 200 },
-      cell: ({ row }) => {
-        const raw = String(row.original.condition ?? '')
-        return readableText(formatCondition(raw, withTargetTable(names, row.original.targetTable)), raw)
-      },
-    },
-    { accessorKey: 'remark', header: '说明', cell: (info) => emptyText(String(info.getValue() ?? '')) },
-  ], [labels, names])
-
-  return (
-    <ErpTable
-      columns={columns}
-      data={ops}
-      getRowId={(row) => `${row.opSeq}`}
-      activeRowId={selectedOpSeq == null ? undefined : `${selectedOpSeq}`}
-      onRowClick={(row) => onSelect(row.opSeq)}
-      rowClickSingleSelect
-      clientSideSorting
-      copyable={false}
-      empty={<div className="p-3 text-secondary">该动作没有字段级步骤（参数型效果在动作的参数里）。</div>}
-    />
-  )
-}
-
-function RuleSection({
-  labels,
-  rules,
-  selectedRuleId,
-  onSelect,
-  onCreate,
-  onEdit,
-  onDelete,
-}: {
-  labels: LabelLookups
-  rules: ValidationRule[]
-  selectedRuleId: string | null
-  onSelect: (key: string | null) => void
-  onCreate: () => void
-  onEdit: () => void
-  onDelete: () => void
-}) {
-  const columns = useMemo<ColumnDef<ValidationRule, unknown>[]>(() => [
-    { accessorKey: 'stage', header: '阶段', cell: (info) => labelWithCode(labels.validationStages, String(info.getValue())) },
-    { accessorKey: 'seq', header: '顺序', meta: { minWidth: 64 } },
-    {
-      accessorKey: 'validationKey',
-      header: '校验模板',
-      cell: (info) => <span title={String(info.getValue())}>{labelWithCode(labels.validationKeys, String(info.getValue()))}</span>,
-    },
-    {
-      accessorKey: 'enabled',
-      header: '启用',
-      cell: (info) => (info.getValue() ? '是' : '否'),
-      meta: { minWidth: 60 },
-    },
-    { accessorKey: 'message', header: '失败文案', cell: (info) => emptyText(String(info.getValue() ?? '')) },
-    { accessorKey: 'sourceRef', header: '溯源', cell: (info) => emptyText(String(info.getValue() ?? '')) },
-  ], [labels])
-
-  return (
-    <section>
-      <div className="d-flex align-items-center justify-content-between mb-1">
-        <h6 className="mb-0">校验规则（{rules.length}）</h6>
-        <div className="d-flex gap-1">
-          <Button size="sm" icon={<IconPlus size={16} />} onClick={onCreate}>新增规则</Button>
-          <Button size="sm" icon={<IconEdit size={16} />} onClick={onEdit} disabled={!selectedRuleId}>编辑</Button>
-          <Button size="sm" variant="danger" icon={<IconTrash size={16} />} onClick={onDelete} disabled={!selectedRuleId}>删除</Button>
-        </div>
-      </div>
-      <ErpTable
-        columns={columns}
-        data={rules}
-        getRowId={(row) => ruleKey(row)}
-        activeRowId={selectedRuleId ?? undefined}
-        onRowClick={(row) => onSelect(ruleKey(row))}
-        rowClickSingleSelect
-        clientSideSorting
-        copyable={false}
-        empty={<div className="p-3 text-secondary">尚未配置模块校验规则（核心默认校验为代码内建，不在此表）。</div>}
-      />
-    </section>
-  )
-}
 
 function EditorModal({
   editor,
@@ -1060,7 +845,10 @@ function EditorModal({
   onCancel: () => void
   onConfirm: () => void
 }) {
-  const title = editor.kind === 'action' ? (editor.index == null ? '新增业务动作' : '编辑业务动作')
+  // 自定义按钮与效果链共用这套编辑器，标题按行类型区分，免得在按钮行上看到"业务动作"。
+  const isManualAction = editor.kind === 'action' && editor.value.eventCode === MANUAL_EVENT
+  const actionTitle = isManualAction ? '自定义按钮' : '业务动作'
+  const title = editor.kind === 'action' ? (editor.index == null ? `新增${actionTitle}` : `编辑${actionTitle}`)
     : editor.kind === 'op' ? (editor.index == null ? '新增公式行' : '编辑公式行')
     : (editor.index == null ? '新增校验规则' : '编辑校验规则')
 
@@ -1508,23 +1296,6 @@ function JsonArea({ value, onChange }: { value: string; onChange: (value: string
       placeholder="{}"
     />
   )
-}
-
-/** 事件显示：中文（目录码）；目录未下发该事件时显式标注"目录外"。 */
-function eventLabel(event: string, catalog: BusinessConfigCatalog, labels: LabelLookups): string {
-  if (!catalog.events.includes(event)) return `${event}（目录外）`
-  const text = labels.events(event)
-  return text === event ? event : `${text}（${event}）`
-}
-
-function emptyText(text: string): string {
-  return text.trim() === '' ? '—' : text
-}
-
-/** 结构化 JSON 列的人话渲染；解析不出内容时回落到原文（半成品文本不算错误）。 */
-function readableText(text: string | null | undefined, raw: string): ReactNode {
-  if (text == null || text === '') return '—'
-  return <span title={raw}>{text}</span>
 }
 
 /** 表标识：描述(表名)；缺描述时退化为表名，表名为空显示占位符。 */

@@ -3,13 +3,17 @@ import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react'
 export interface TabbedPanelTab<T extends string = string> {
   key: T
   label: string
+  /** 禁用页签：仍显示在标签行上但不可选中（用于"该模块没有可配置的对象"这类场景），原因写 disabledReason。 */
+  disabled?: boolean
+  /** 禁用原因，作为标签的 title 提示。 */
+  disabledReason?: string
 }
 
 /**
  * 系统级页签面板（设计语言）：
  * - 标签行 + 带边框圆角内容面板，激活标签与面板融为一体；
  * - 完整 ARIA tabs 模式（tablist/tab/tabpanel、roving tabindex）；
- * - 支持方向键切换（←/→、Home/End），与 Tabler 页签交互一致。
+ * - 支持方向键切换（←/→、Home/End），与 Tabler 页签交互一致，禁用的页签会被跳过。
  *
  * 内容面板由调用方根据 activeKey 自行渲染（children 即当前页签内容）。
  */
@@ -34,18 +38,25 @@ export function TabbedPanel<T extends string>({
   const tabRefs = useRef(new Map<string, HTMLButtonElement>())
   const resolved = tabs.find((tab) => tab.key === activeKey) ?? tabs[0]
   const activeIndex = resolved ? tabs.indexOf(resolved) : -1
+  // 键盘导航只在可选页签之间移动。
+  const enabledIndexes = tabs
+    .map((tab, index) => (tab.disabled ? -1 : index))
+    .filter((index) => index >= 0)
 
   const handleKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
-    if (tabs.length === 0) return
+    if (enabledIndexes.length === 0) return
+    const position = enabledIndexes.indexOf(activeIndex)
     let next: number
     if (event.key === 'Home') {
-      next = 0
+      next = enabledIndexes[0]
     } else if (event.key === 'End') {
-      next = tabs.length - 1
+      next = enabledIndexes[enabledIndexes.length - 1]
     } else if (event.key === 'ArrowRight') {
-      next = (activeIndex + 1) % tabs.length
+      next = position < 0 ? enabledIndexes[0] : enabledIndexes[(position + 1) % enabledIndexes.length]
     } else if (event.key === 'ArrowLeft') {
-      next = (activeIndex - 1 + tabs.length) % tabs.length
+      next = position < 0
+        ? enabledIndexes[enabledIndexes.length - 1]
+        : enabledIndexes[(position - 1 + enabledIndexes.length) % enabledIndexes.length]
     } else {
       return
     }
@@ -75,12 +86,18 @@ export function TabbedPanel<T extends string>({
                 className={`nav-link${selected ? ' active' : ''}`}
                 aria-selected={selected}
                 aria-controls={`${baseId}-panel`}
-                tabIndex={selected ? 0 : -1}
+                aria-disabled={tab.disabled === true}
+                disabled={tab.disabled === true}
+                title={tab.disabled ? tab.disabledReason : undefined}
+                tabIndex={selected && !tab.disabled ? 0 : -1}
                 ref={(node) => {
                   if (node) tabRefs.current.set(tab.key, node)
                   else tabRefs.current.delete(tab.key)
                 }}
-                onClick={() => onActiveKeyChange(tab.key)}
+                onClick={() => {
+                  if (tab.disabled) return
+                  onActiveKeyChange(tab.key)
+                }}
               >
                 {tab.label}
               </button>
