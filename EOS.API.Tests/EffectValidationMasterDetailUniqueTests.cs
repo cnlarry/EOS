@@ -1,5 +1,6 @@
 using System.Text.Json;
 using EOS.API.Data.Effects;
+using EOS.API.Data.Effects.ValidationChecks;
 using Xunit;
 
 namespace EOS.API.Tests;
@@ -23,7 +24,7 @@ public sealed class EffectValidationMasterDetailUniqueTests
     [Fact]
     public void 按主表维度与明细分组键跨单判重()
     {
-        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+        var compiled = DuplicateCheck.BuildDuplicateCheckSql(
             Plan(),
             Params("""
                 {"mode":"master-detail","masterTable":"HR_PLAN_M","detailTable":"HR_PLAN_D",
@@ -46,7 +47,7 @@ public sealed class EffectValidationMasterDetailUniqueTests
     [Fact]
     public void 整月扫描形态不追加本单限定()
     {
-        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+        var compiled = DuplicateCheck.BuildDuplicateCheckSql(
             Plan("HR_WAGE_M", "HR_WAGE_D", "WAGE_TYPE", "WAGE_NO"),
             Params("""
                 {"mode":"master-detail","masterTable":"HR_WAGE_M","detailTable":"HR_WAGE_D",
@@ -63,7 +64,7 @@ public sealed class EffectValidationMasterDetailUniqueTests
     [Fact]
     public void 无诊断列时按静态消息()
     {
-        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+        var compiled = DuplicateCheck.BuildDuplicateCheckSql(
             Plan("HR_ENACTMENT_M", "HR_ENACTMENT_D", "ENACTMENT_TYPE", "ENACTMENT_NO"),
             Params("""
                 {"mode":"master-detail","masterTable":"HR_ENACTMENT_M","detailTable":"HR_ENACTMENT_D",
@@ -79,7 +80,7 @@ public sealed class EffectValidationMasterDetailUniqueTests
     [Fact]
     public void maxRows越界被夹紧()
     {
-        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+        var compiled = DuplicateCheck.BuildDuplicateCheckSql(
             Plan(),
             Params("""
                 {"mode":"master-detail","masterTable":"HR_PLAN_M","detailTable":"HR_PLAN_D",
@@ -95,7 +96,7 @@ public sealed class EffectValidationMasterDetailUniqueTests
     public void 本单限定列数与单据主键不符时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildDuplicateCheckSql(
+            DuplicateCheck.BuildDuplicateCheckSql(
                 Plan(),
                 Params("""
                     {"mode":"master-detail","masterTable":"HR_PLAN_M","detailTable":"HR_PLAN_D",
@@ -112,7 +113,7 @@ public sealed class EffectValidationMasterDetailUniqueTests
     public void 缺少关联列时fail_closed()
     {
         var exception = Assert.Throws<EffectConfigException>(() =>
-            EffectValidationExecutor.BuildDuplicateCheckSql(
+            DuplicateCheck.BuildDuplicateCheckSql(
                 Plan(),
                 Params("""
                     {"mode":"master-detail","masterTable":"HR_PLAN_M","detailTable":"HR_PLAN_D",
@@ -126,7 +127,7 @@ public sealed class EffectValidationMasterDetailUniqueTests
     [Fact]
     public void 消息未配置时回落到默认文案并支持ROWS占位()
     {
-        var compiled = EffectValidationExecutor.BuildDuplicateCheckSql(
+        var compiled = DuplicateCheck.BuildDuplicateCheckSql(
             Plan(),
             Params("""
                 {"mode":"master-detail","masterTable":"HR_PLAN_M","detailTable":"HR_PLAN_D",
