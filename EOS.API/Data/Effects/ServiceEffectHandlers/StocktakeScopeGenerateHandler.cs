@@ -1,6 +1,6 @@
 using System.Data;
-using System.Text;
 using System.Text.Json;
+using EOS.API.Data.Inventory;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data.Effects.ServiceEffectHandlers;
@@ -139,40 +139,83 @@ public sealed class StocktakeScopeGenerateHandler : IEffectServiceHandler
     /// 插入范围内"当前有量"的库存行。区属判定用截断比较而不是 LIKE：库位号里可能含
     /// `%` 或 `_`，LIKE 会把它们当通配符，把范围外的库位也圈进来。
     /// </summary>
+    /// <summary>
+    /// 明细行 = 该库别下记在范围内库位（含库区自身）且数量不为零的库存行。
+    ///
+    /// 库存行怎么读交给 <see cref="InventoryQueryService"/>（范围按库位主档的物化路径展开、
+    /// 位置/批次怎么归一都在那里）；配置里声明的库存表必须就是余额表本身，
+    /// 否则"读的是哪张表"会与配置脱节。
+    /// 项次由 C# 按服务返回的顺序编号（料号 → 库位 → 批次），与改造前 `ROW_NUMBER()` 的排序一致。
+    /// </summary>
     private static async Task<int> InsertDetailsAsync(
         ServiceEffectContext context, StocktakeScopeConfig config, string type, string no, string depot,
         string rootPath, int serial, CancellationToken token)
     {
-        var q = ServiceEffectSql.Q;
-        var sql = new StringBuilder()
-            .Append("INSERT INTO dbo.").Append(q(config.DetailTable))
-            .Append(" (").Append(string.Join(", ", new[]
+        EnsureStockSourceIsBalanceTable(config);
+        var rows = await InventoryQueryService.GetRowsAsync(
+            context.Connection, context.Transaction,
+            new InventoryQueryService.RowScope
             {
-                config.TypeField, config.NoField, config.SerialField, config.DetailProductField,
-                config.DetailDepotField, config.DetailAccountField, config.DetailCheckField,
-                config.DetailLocationField, config.DetailBatchField,
-            }.Select(q))).Append(") ")
-            .Append("SELECT @type, @no, @serial + ROW_NUMBER() OVER (ORDER BY s.")
-            .Append(q(config.StockProductField)).Append(", s.").Append(q(config.StockLocationField))
-            .Append(", s.").Append(q(config.StockBatchField)).Append(") - 1, ")
-            .Append("s.").Append(q(config.StockProductField)).Append(", s.").Append(q(config.StockDepotField))
-            .Append(", s.").Append(q(config.StockQtyField)).Append(", s.").Append(q(config.StockQtyField))
-            .Append(", s.").Append(q(config.StockLocationField)).Append(", s.").Append(q(config.StockBatchField))
-            .Append(" FROM dbo.").Append(q(config.StockTable)).Append(" s ")
-            .Append("JOIN dbo.").Append(q(config.LocationTable)).Append(" l ON l.")
-            .Append(q(config.LocationDepotField)).Append("=s.").Append(q(config.StockDepotField))
-            .Append(" AND l.").Append(q(config.LocationField)).Append("=s.").Append(q(config.StockLocationField))
-            .Append(" WHERE s.").Append(q(config.StockDepotField)).Append("=@depot AND s.")
-            .Append(q(config.StockQtyField)).Append("<>0 AND (l.").Append(q(config.PathField)).Append("=@rootPath OR SUBSTRING(l.")
-            .Append(q(config.PathField)).Append(", 1, LEN(@rootPath)+1) = @rootPath + '/');");
+                DepotId = depot,
+                LocationPathPrefix = rootPath,
+                Quantity = InventoryQueryService.RowQuantity.NonZero,
+            },
+            InventoryQueryService.ReadLock.None, token);
+        if (rows.Count == 0) return 0;
 
-        await using var command = new SqlCommand(sql.ToString(), context.Connection, context.Transaction);
-        command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;
-        command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = no;
-        command.Parameters.Add("@serial", SqlDbType.SmallInt).Value = serial > short.MaxValue ? short.MaxValue : (short)serial;
-        command.Parameters.Add("@depot", SqlDbType.NVarChar, 10).Value = depot;
-        command.Parameters.Add("@rootPath", SqlDbType.NVarChar, 300).Value = rootPath;
-        return await command.ExecuteNonQueryAsync(token);
+        var q = ServiceEffectSql.Q;
+        var columnList = string.Join(", ", new[]
+        {
+            config.TypeField, config.NoField, config.SerialField, config.DetailProductField,
+            config.DetailDepotField, config.DetailAccountField, config.DetailCheckField,
+            config.DetailLocationField, config.DetailBatchField,
+        }.Select(q));
+        const int chunkSize = 200;
+        var inserted = 0;
+        for (var offset = 0; offset < rows.Count; offset += chunkSize)
+        {
+            var chunk = rows.Skip(offset).Take(chunkSize).ToList();
+            var tuples = string.Join(", ", chunk.Select((_, index) =>
+                $"(@type, @no, @s{index}, @p{index}, @d{index}, @q{index}, @q{index}, @l{index}, @b{index})"));
+            await using var command = new SqlCommand(
+                $"INSERT INTO dbo.{q(config.DetailTable)} ({columnList}) VALUES {tuples};",
+                context.Connection, context.Transaction);
+            command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = type;
+            command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = no;
+            for (var index = 0; index < chunk.Count; index++)
+            {
+                var row = chunk[index];
+                var nextSerial = serial + offset + index;
+                command.Parameters.Add($"@s{index}", SqlDbType.SmallInt).Value =
+                    nextSerial > short.MaxValue ? short.MaxValue : (short)nextSerial;
+                command.Parameters.Add($"@p{index}", SqlDbType.NVarChar, 60).Value = row.ProductNo;
+                command.Parameters.Add($"@d{index}", SqlDbType.NVarChar, 20).Value = row.DepotId;
+                command.Parameters.Add($"@q{index}", SqlDbType.Float).Value = (object?)row.Quantity ?? 0d;
+                command.Parameters.Add($"@l{index}", SqlDbType.NVarChar, 60).Value = row.LocationNo;
+                command.Parameters.Add($"@b{index}", SqlDbType.NVarChar, 60).Value = row.BatchNo;
+            }
+            inserted += await command.ExecuteNonQueryAsync(token);
+        }
+        return inserted;
+    }
+
+    /// <summary>配置的"库存来源"必须就是余额表本身：允许指向别的表会让收口变成静默读错。</summary>
+    private static void EnsureStockSourceIsBalanceTable(StocktakeScopeConfig config)
+    {
+        foreach (var (actual, expected) in new[]
+                 {
+                     (config.StockTable, InventoryQueryService.BalanceTable),
+                     (config.StockProductField, InventoryQueryService.ProductColumn),
+                     (config.StockDepotField, InventoryQueryService.DepotColumn),
+                     (config.StockLocationField, InventoryQueryService.LocationColumn),
+                     (config.StockQtyField, InventoryQueryService.QuantityColumn),
+                     (config.StockBatchField, InventoryQueryService.BatchColumn),
+                 })
+        {
+            if (!string.Equals(actual?.Trim(), expected, StringComparison.OrdinalIgnoreCase))
+                throw new EffectConfigException(
+                    $"stocktake-scope-generate 的库存来源必须是 {expected}（{InventoryQueryService.BalanceTable} 的库存读取出口），实际配置为 {actual}。");
+        }
     }
 }
 
