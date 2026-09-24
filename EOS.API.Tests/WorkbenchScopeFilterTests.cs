@@ -170,4 +170,93 @@ public sealed class WorkbenchScopeFilterTests
         Assert.Equal(string.Empty, predicate);
         Assert.Empty(parameters);
     }
+
+    [Theory]
+    [InlineData("Q")]
+    [InlineData("F")]
+    [InlineData("BB")]
+    public void RecordScope_UnknownExecTag_ReturnsFalseFailClosed(string execTag)
+    {
+        var filter = new WorkbenchScopeFilter(new ApiMetrics());
+
+        var ok = filter.TryBuildRecordScopePredicate(
+            Definition(execTag: execTag), null, out var predicate, out var parameters);
+
+        Assert.False(ok);
+        Assert.Equal(string.Empty, predicate);
+        Assert.Empty(parameters);
+    }
+
+    [Theory]
+    [InlineData("Q")]
+    [InlineData("F")]
+    public void ChooserScope_UnknownExecTag_ReturnsFalseFailClosed(string execTag)
+    {
+        var filter = new WorkbenchScopeFilter(new ApiMetrics());
+
+        var ok = filter.TryBuildChooserScopePredicate(
+            "CLIENT", null, null, null, execTag, "u1", true, true, FilterKeys,
+            out var predicate, out var parameters);
+
+        Assert.False(ok);
+        Assert.Equal(string.Empty, predicate);
+        Assert.Empty(parameters);
+    }
+
+    [Fact]
+    public void RecordScope_ExecTagD_WithoutOwnerGroupColumn_ReturnsFalseFailClosed()
+    {
+        var filter = new WorkbenchScopeFilter(new ApiMetrics());
+
+        var ok = filter.TryBuildRecordScopePredicate(
+            Definition(execTag: "D", hasOwnerGroup: false), null, out _, out _);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void ChooserScope_ExecTagB_QualifiesOwnerColumnWithSourceTable()
+    {
+        var filter = new WorkbenchScopeFilter(new ApiMetrics());
+
+        var ok = filter.TryBuildChooserScopePredicate(
+            "CLIENT", null, null, null, "B", "u1", true, true, FilterKeys,
+            out var predicate, out var parameters);
+
+        Assert.True(ok);
+        Assert.Equal("[CLIENT].[OWNER]=@df0", predicate);
+        Assert.Equal("u1", Assert.Single(parameters));
+    }
+
+    [Theory]
+    [InlineData("C", "[CLIENT].[OWNER]", "f_get_underling(@df0)")]
+    [InlineData("E", "[CLIENT].[OWNER_G]", "f_get_underling(@df0)")]
+    public void ChooserScope_UnderlingTags_UseSourceTableQualifierAndSingleParameter(
+        string execTag, string expectedColumn, string expectedCall)
+    {
+        var filter = new WorkbenchScopeFilter(new ApiMetrics());
+
+        var ok = filter.TryBuildChooserScopePredicate(
+            "CLIENT", null, null, null, execTag, "u1", true, true, FilterKeys,
+            out var predicate, out var parameters);
+
+        Assert.True(ok);
+        Assert.Contains(expectedColumn, predicate);
+        Assert.Contains(expectedCall, predicate);
+        Assert.Equal("u1", Assert.Single(parameters));
+    }
+
+    [Fact]
+    public void RecordScope_ExecTagE_EmitsSingleOwnerGroupParameter()
+    {
+        var filter = new WorkbenchScopeFilter(new ApiMetrics());
+
+        var ok = filter.TryBuildRecordScopePredicate(
+            Definition(execTag: "E"), null, out var predicate, out var parameters);
+
+        Assert.True(ok);
+        Assert.Contains("[OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER", predicate);
+        Assert.Contains("f_get_underling(@df0)", predicate);
+        Assert.Equal("u1", Assert.Single(parameters));
+    }
 }

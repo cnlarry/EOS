@@ -112,67 +112,27 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
     }
 
     /// <summary>
-    /// 执行范围（EXEC_TAG）行级过滤，
-    /// B 仅本人（OWNER=当前用户）、C 本人及下级（含 f_get_underling）、
-    /// D 本人所属组（OWNER_G）、E 本人及下级所属组；Z/A 无附加范围。
-    /// 表缺 OWNER/OWNER_G 列时拒绝查询（不返回越权数据）；值全部参数化。
+    /// 执行范围（EXEC_TAG）行级过滤：谓词口径与拒绝条件统一由 <see cref="TryResolveExecTag"/> 决定。
+    /// 取值不受支持或表缺 OWNER/OWNER_G 列时抛 403（不降级为全量查询）；值全部参数化。
     /// </summary>
     public void ApplyExecTagScope(
         WorkbenchDefinition definition,
         ICollection<string> predicates,
         SqlCommand command)
     {
-        var tag = (definition.ExecTag ?? "Z").Trim().ToUpperInvariant();
-        if (tag is "Z" or "A" or "")
+        const string ownerParameter = "@execOwner";
+        if (!TryResolveExecTag(definition.ExecTag, definition.HasOwnerColumn, definition.HasOwnerGroupColumn,
+                out var template, out var rejectMetric, out var rejectMessage))
+        {
+            metrics.IncrementScopeRejected(rejectMetric);
+            throw new DataFilterUnsupportedException(rejectMessage);
+        }
+        if (template.Length == 0)
         {
             return;
         }
-
-        const string ownerParameter = "@execOwner";
-        switch (tag)
-        {
-            case "B":
-                if (!definition.HasOwnerColumn)
-                {
-                    metrics.IncrementScopeRejected("exec_tag_owner_missing");
-                    throw new DataFilterUnsupportedException("该模块不支持按执行范围过滤。");
-                }
-                predicates.Add($"[OWNER]={ownerParameter}");
-                command.Parameters.AddWithValue(ownerParameter, definition.UserId);
-                break;
-            case "C":
-                if (!definition.HasOwnerColumn)
-                {
-                    metrics.IncrementScopeRejected("exec_tag_owner_missing");
-                    throw new DataFilterUnsupportedException("该模块不支持按执行范围过滤。");
-                }
-                predicates.Add($"([OWNER]={ownerParameter} OR [OWNER] IN (SELECT USER_ID FROM dbo.f_get_underling({ownerParameter})))");
-                command.Parameters.AddWithValue(ownerParameter, definition.UserId);
-                break;
-            case "D":
-                if (!definition.HasOwnerGroupColumn)
-                {
-                    metrics.IncrementScopeRejected("exec_tag_owner_group_missing");
-                    throw new DataFilterUnsupportedException("该模块不支持按执行范围过滤。");
-                }
-                predicates.Add($"[OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID={ownerParameter})");
-                command.Parameters.AddWithValue(ownerParameter, definition.UserId);
-                break;
-            case "E":
-                if (!definition.HasOwnerGroupColumn)
-                {
-                    metrics.IncrementScopeRejected("exec_tag_owner_group_missing");
-                    throw new DataFilterUnsupportedException("该模块不支持按执行范围过滤。");
-                }
-                predicates.Add($"[OWNER_G] IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID IN (SELECT {ownerParameter} UNION ALL SELECT USER_ID FROM dbo.f_get_underling({ownerParameter})))");
-                command.Parameters.AddWithValue(ownerParameter, definition.UserId);
-                break;
-            default:
-                // 旧系统 DxAuthentication 无 default 分支，EXEC_TAG 为空串或未知字母时静默全可见；
-                // 此处 fail-closed：未知取值直接拒绝，不返回越权数据。
-                metrics.IncrementScopeRejected("exec_tag_unknown");
-                throw new DataFilterUnsupportedException("不支持的执行范围。");
-        }
+        predicates.Add(RenderExecTagPredicate(template, ownerParameter, null));
+        command.Parameters.AddWithValue(ownerParameter, definition.UserId);
     }
 
     /// <summary>列表/导出统一入口：模块 FILTER + DATA_FILTER + 分组 + EXEC_TAG。</summary>
@@ -285,6 +245,10 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
         => TryAppendExecTagCore(definition.ExecTag, definition.UserId, definition.HasOwnerColumn,
             definition.HasOwnerGroupColumn, parts, values, out error);
 
+    /// <summary>
+    /// 把执行范围谓词追加到参数列表形态（@dfN 槽位，与 DataFilterParser 输出同族）。
+    /// 取值不受支持或表缺所需列时返回 false：调用方必须据此拒绝，不得降级为全量查询。
+    /// </summary>
     private bool TryAppendExecTagCore(
         string? execTag,
         string userId,
@@ -298,54 +262,20 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
         string? columnQualifier = null)
     {
         error = string.Empty;
-        var tag = (execTag ?? "Z").Trim().ToUpperInvariant();
-        if (tag is "Z" or "A" or "")
+        if (!TryResolveExecTag(execTag, hasOwnerColumn, hasOwnerGroupColumn,
+                out var template, out var rejectMetric, out var rejectMessage))
+        {
+            metrics.IncrementScopeRejected(rejectMetric);
+            error = rejectMessage;
+            return false;
+        }
+        if (template.Length == 0)
         {
             return true;
         }
-
-        var owner = columnQualifier is null ? "[OWNER]" : $"[{columnQualifier}].[OWNER]";
-        var ownerGroup = columnQualifier is null ? "[OWNER_G]" : $"[{columnQualifier}].[OWNER_G]";
-        var offset = values.Count;
-        switch (tag)
-        {
-            case "B":
-                if (!hasOwnerColumn)
-                {
-                    metrics.IncrementScopeRejected("exec_tag_owner_missing");
-                    return false;
-                }
-                parts.Add($"{owner}=@df{offset}");
-                values.Add(userId);
-                break;
-            case "C":
-                if (!hasOwnerColumn)
-                {
-                    metrics.IncrementScopeRejected("exec_tag_owner_missing");
-                    return false;
-                }
-                parts.Add($"({owner}=@df{offset} OR {owner} IN (SELECT USER_ID FROM dbo.f_get_underling(@df{offset})))");
-                values.Add(userId);
-                break;
-            case "D":
-                if (!hasOwnerGroupColumn)
-                {
-                    metrics.IncrementScopeRejected("exec_tag_owner_group_missing");
-                    return false;
-                }
-                parts.Add($"{ownerGroup} IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID=@df{offset})");
-                values.Add(userId);
-                break;
-            case "E":
-                if (!hasOwnerGroupColumn)
-                {
-                    metrics.IncrementScopeRejected("exec_tag_owner_group_missing");
-                    return false;
-                }
-                parts.Add($"{ownerGroup} IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID IN (SELECT @df{offset} UNION ALL SELECT USER_ID FROM dbo.f_get_underling(@df{offset})))");
-                values.Add(userId);
-                break;
-        }
+        var parameterName = $"@df{values.Count}";
+        parts.Add(RenderExecTagPredicate(template, parameterName, columnQualifier));
+        values.Add(userId);
         return true;
     }
 
@@ -414,6 +344,72 @@ public sealed class WorkbenchScopeFilter(ApiMetrics metrics)
         predicate = parts.Count == 0 ? string.Empty : string.Join(" AND ", parts);
         parameters = values;
         return true;
+    }
+
+    /// <summary>
+    /// 执行范围（EXEC_TAG）的唯一策略源：B 仅本人、C 本人及下级（含 f_get_underling）、
+    /// D 本人所属组、E 本人及下级所属组；Z/A/空 无附加范围。
+    /// 谓词模板以 {owner}/{group}/{p} 占位，由调用方按各自形态渲染（命令参数名或 @dfN 槽位），
+    /// 使列表/详情/打印/选择器多条查询路径共用同一口径。
+    /// 取值不受支持或缺少所需列时返回 false 并给出拒绝指标与提示；未知取值一律拒绝，
+    /// 不得静默放行，否则同一模块在不同入口的可见性会不一致。
+    /// </summary>
+    private static bool TryResolveExecTag(
+        string? execTag,
+        bool hasOwnerColumn,
+        bool hasOwnerGroupColumn,
+        out string template,
+        out string rejectMetric,
+        out string rejectMessage)
+    {
+        template = string.Empty;
+        rejectMetric = string.Empty;
+        rejectMessage = string.Empty;
+        var tag = (execTag ?? "Z").Trim().ToUpperInvariant();
+        switch (tag)
+        {
+            case "Z" or "A" or "":
+                return true;
+            case "B":
+            case "C":
+                if (!hasOwnerColumn)
+                {
+                    rejectMetric = "exec_tag_owner_missing";
+                    rejectMessage = "该模块不支持按执行范围过滤。";
+                    return false;
+                }
+                template = tag == "B"
+                    ? "{owner}={p}"
+                    : "({owner}={p} OR {owner} IN (SELECT USER_ID FROM dbo.f_get_underling({p})))";
+                return true;
+            case "D":
+            case "E":
+                if (!hasOwnerGroupColumn)
+                {
+                    rejectMetric = "exec_tag_owner_group_missing";
+                    rejectMessage = "该模块不支持按执行范围过滤。";
+                    return false;
+                }
+                template = tag == "D"
+                    ? "{group} IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID={p})"
+                    : "{group} IN (SELECT G_IDX FROM dbo.SYSDG_USER WITH (NOLOCK) WHERE USER_ID IN (SELECT {p} UNION ALL SELECT USER_ID FROM dbo.f_get_underling({p})))";
+                return true;
+            default:
+                rejectMetric = "exec_tag_unknown";
+                rejectMessage = "不支持的执行范围。";
+                return false;
+        }
+    }
+
+    /// <summary>渲染执行范围谓词：{owner}/{group} 按是否限定表名展开（跨表 JOIN 需限定），{p} 替换为参数名。</summary>
+    private static string RenderExecTagPredicate(string template, string parameterName, string? columnQualifier)
+    {
+        var owner = columnQualifier is null ? "[OWNER]" : $"[{columnQualifier}].[OWNER]";
+        var group = columnQualifier is null ? "[OWNER_G]" : $"[{columnQualifier}].[OWNER_G]";
+        return template
+            .Replace("{owner}", owner)
+            .Replace("{group}", group)
+            .Replace("{p}", parameterName);
     }
 
     /// <summary>把解析器输出的 @dfN 重编号为累计参数槽位，保证与 RecordInScopeAsync 的 @dfN 注入一致。</summary>
