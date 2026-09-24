@@ -1,3 +1,5 @@
+using System.Data;
+using EOS.API.Data.Inventory;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -689,12 +691,22 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
+        // 余额行经 InventoryQueryService 取：服务不认识 PRODUCT，因此"哪些料号批管"由调用方再查一次。
+        var rows = await InventoryQueryService.GetRowsAsync(
+            connection, null,
+            new InventoryQueryService.RowScope { DepotId = depotId.Trim() },
+            InventoryQueryService.ReadLock.None, token);
+        var products = rows.Select(row => row.ProductNo).Where(value => value.Length > 0)
+            .Distinct(StringComparer.Ordinal).ToList();
+        if (products.Count == 0) return false;
+        var names = string.Join(", ", products.Select((_, index) => $"@p{index}"));
         await using var command = new SqlCommand(
-            "SELECT TOP 1 1 FROM dbo.INV_PRO_DEPOT d "
-            + "JOIN dbo.PRODUCT p ON p.PRO_NO = d.PRO_NO "
-            + "WHERE d.DEPOT_ID = @depot AND ISNULL(p.MANAGE_BATCH, 0) = 1",
+            $"SELECT TOP 1 1 FROM dbo.PRODUCT WHERE ISNULL(MANAGE_BATCH, 0) = 1 AND PRO_NO IN ({names});",
             connection);
-        command.Parameters.AddWithValue("@depot", depotId.Trim());
+        for (var index = 0; index < products.Count; index++)
+        {
+            command.Parameters.Add($"@p{index}", SqlDbType.NChar, 60).Value = products[index];
+        }
         return await command.ExecuteScalarAsync(token) is not null;
     }
 
@@ -730,27 +742,34 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         if (!tightenProduct && !tightenBatch)
             return Array.Empty<string>();
 
-        await using var command = new SqlCommand(
-            "SELECT LTRIM(RTRIM(d.DEPOT_ID)) + N'/' + d.LOCATION_NO, "
-            + "CAST(COUNT(DISTINCT LTRIM(RTRIM(d.PRO_NO))) AS varchar(10)), "
-            + "CAST(COUNT(DISTINCT ISNULL(d.BATCH_NO, N'')) AS varchar(10)) "
-            + "FROM dbo.INV_PRO_DEPOT d "
+        // 受影响库别先由策略侧定下来（部署级 = 没有自己策略行的库别），
+        // 再把"这些库别里有哪些混放"交给 InventoryQueryService：哨兵库位排除、有量判定都在那里。
+        var depots = await ListAffectedDepotsAsync(candidate.DepotId, connection, transaction, token);
+        if (depots.Count == 0) return Array.Empty<string>();
+
+        var stock = await InventoryQueryService.GetRowsAsync(
+            connection, transaction,
+            new InventoryQueryService.RowScope
+            {
+                DepotIds = depots,
+                ExcludeSentinelLocation = true,
+                Quantity = InventoryQueryService.RowQuantity.NonZero,
+            },
             // 刻意不加脏读提示：这是保存路径上的**存量合规判定**，读脏数据会把"当前是否混放"判错；
             // 与求值/校验同处一个事务，读已提交数据才是应有口径。
-            // 哨兵库位是"未指定位置"的兜底行，存量本来就会堆在一起，不构成需要整改的混放。
-            + "WHERE ISNULL(d.QTY,0) <> 0 AND d.LOCATION_NO <> N'-' "
-            + "AND ((@scope = N'*' AND NOT EXISTS (SELECT 1 FROM dbo.DEPOT_STOCK_POLICY p WHERE p.DEPOT_ID = d.DEPOT_ID)) "
-            + "  OR (@scope <> N'*' AND d.DEPOT_ID = @scope)) "
-            + "GROUP BY d.DEPOT_ID, d.LOCATION_NO "
-            + "HAVING COUNT(DISTINCT LTRIM(RTRIM(d.PRO_NO))) > 1 OR COUNT(DISTINCT ISNULL(d.BATCH_NO, N'')) > 1 "
-            + "ORDER BY 1",
-            connection, transaction);
-        command.Parameters.AddWithValue("@scope", candidate.DepotId);
-
-        var rows = new List<string>();
-        await using (var reader = await command.ExecuteReaderAsync(token))
-            while (await reader.ReadAsync(token))
-                rows.Add($"{reader.GetString(0)}（{reader.GetString(1)} 个品号 / {reader.GetString(2)} 个批次）");
+            InventoryQueryService.ReadLock.None, token);
+        var rows = stock
+            .GroupBy(row => row.DepotId + "/" + row.LocationNo)
+            .Select(group => new
+            {
+                Location = group.Key,
+                Products = group.Select(row => row.ProductNo).Distinct(StringComparer.Ordinal).Count(),
+                Batches = group.Select(row => row.BatchNo).Distinct(StringComparer.Ordinal).Count(),
+            })
+            .Where(group => group.Products > 1 || group.Batches > 1)
+            .OrderBy(group => group.Location, StringComparer.Ordinal)
+            .Select(group => $"{group.Location}（{group.Products} 个品号 / {group.Batches} 个批次）")
+            .ToList();
 
         if (rows.Count == 0)
             return Array.Empty<string>();
@@ -765,16 +784,41 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         };
     }
 
+    /// <summary>
+    /// 策略作用域实际落在哪些库别：部署级只影响**没有自己策略行**的库别
+    /// （有库别行的按其自身取值，不受部署级改动影响）。
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> ListAffectedDepotsAsync(
+        string scope, SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    {
+        if (!string.Equals(scope, DeploymentScope, StringComparison.Ordinal))
+            return [scope.Trim()];
+        await using var command = new SqlCommand(
+            "SELECT LTRIM(RTRIM(d.DEPOT_ID)) FROM dbo.DEPOT d "
+            + "WHERE NOT EXISTS (SELECT 1 FROM dbo.DEPOT_STOCK_POLICY p WHERE p.DEPOT_ID = d.DEPOT_ID);",
+            connection, transaction);
+        var depots = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token)) depots.Add(reader.GetString(0));
+        return depots;
+    }
+
     /// <summary>该库别有多少组（料号 / 批次）的存量还留在具体库位上——降档是否具有破坏性就看它。</summary>
     private static async Task<int> CountRowsToMergeAsync(
         string depotId, SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
-        await using var command = new SqlCommand(
-            "SELECT COUNT(*) FROM (SELECT PRO_NO, BATCH_NO FROM dbo.INV_PRO_DEPOT "
-            + "WHERE DEPOT_ID=@depot AND LOCATION_NO <> N'-' AND ISNULL(QTY,0) <> 0 "
-            + "GROUP BY PRO_NO, BATCH_NO) x", connection, transaction);
-        command.Parameters.AddWithValue("@depot", depotId);
-        return Convert.ToInt32(await command.ExecuteScalarAsync(token));
+        var rows = await InventoryQueryService.GetRowsAsync(
+            connection, transaction,
+            new InventoryQueryService.RowScope
+            {
+                DepotId = depotId,
+                ExcludeSentinelLocation = true,
+                Quantity = InventoryQueryService.RowQuantity.NonZero,
+            },
+            InventoryQueryService.ReadLock.None, token);
+        return rows.Select(row => (row.ProductNo, row.BatchNo))
+            .Distinct()
+            .Count();
     }
 
     /// <summary>
@@ -831,13 +875,18 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     private static async Task<int> CountSentinelRowsToRelocateAsync(
         string depotId, SqlConnection connection, SqlTransaction? transaction, CancellationToken token)
     {
-        await using var command = new SqlCommand(
-            "SELECT COUNT(*) FROM (SELECT PRO_NO, BATCH_NO FROM dbo.INV_PRO_DEPOT "
-            + "WHERE DEPOT_ID=@depot AND LOCATION_NO = @sentinel AND ISNULL(QTY,0) <> 0 "
-            + "GROUP BY PRO_NO, BATCH_NO) x", connection, transaction);
-        command.Parameters.AddWithValue("@depot", depotId);
-        command.Parameters.AddWithValue("@sentinel", SentinelLocationNo);
-        return Convert.ToInt32(await command.ExecuteScalarAsync(token));
+        var rows = await InventoryQueryService.GetRowsAsync(
+            connection, transaction,
+            new InventoryQueryService.RowScope
+            {
+                DepotId = depotId,
+                LocationNo = InventoryQueryService.LocationSentinel,
+                Quantity = InventoryQueryService.RowQuantity.NonZero,
+            },
+            InventoryQueryService.ReadLock.None, token);
+        return rows.Select(row => (row.ProductNo, row.BatchNo))
+            .Distinct()
+            .Count();
     }
 
     private static async Task<bool> LocationExistsAsync(

@@ -311,14 +311,14 @@ public static class ReportAggregateRegistry
             SELECT DEPOT_ID, PRO_NO, MONTH_DATE AS APP_DATE, QTY, PRICE FROM MONTHROW
             UNION ALL
             SELECT l.DEPOT_ID, l.PRO_NO, l.MUTUALITY_DATE,
-                   CASE WHEN l.IN_OUT = 'I' THEN l.QTY ELSE -l.QTY END, l.PRICE
-            FROM dbo.INV_DEPOT_LOG l
+                   {InventorySources.LedgerSignedQuantity("l")}, l.PRICE
+            FROM {InventorySources.LedgerRef("l")}
             JOIN MONTHROW mr ON mr.DEPOT_ID = l.DEPOT_ID AND mr.PRO_NO = l.PRO_NO
             WHERE l.MUTUALITY_DATE > mr.MONTH_DATE AND l.MUTUALITY_DATE < @date1
             UNION ALL
             SELECT l.DEPOT_ID, l.PRO_NO, l.MUTUALITY_DATE,
-                   CASE WHEN l.IN_OUT = 'I' THEN l.QTY ELSE -l.QTY END, l.PRICE
-            FROM dbo.INV_DEPOT_LOG l
+                   {InventorySources.LedgerSignedQuantity("l")}, l.PRICE
+            FROM {InventorySources.LedgerRef("l")}
             JOIN PAIR pa ON pa.DEPOT_ID = l.DEPOT_ID AND pa.PRO_NO = l.PRO_NO
             WHERE l.MUTUALITY_DATE < @date1
               AND NOT EXISTS (SELECT 1 FROM MONTHROW mr WHERE mr.DEPOT_ID = l.DEPOT_ID AND mr.PRO_NO = l.PRO_NO)
@@ -337,12 +337,12 @@ public static class ReportAggregateRegistry
         ),
         PERIOD AS (
             SELECT l.DEPOT_ID, l.PRO_NO, l.MUTUALITY_DATE AS APP_DATE,
-                   CASE WHEN l.IN_OUT = 'I' THEN l.QTY ELSE 0 END AS QTY_J,
-                   CASE WHEN l.IN_OUT = 'I' THEN l.PRICE ELSE 0 END AS PRICE_J,
-                   CASE WHEN l.IN_OUT = 'O' THEN l.QTY ELSE 0 END AS QTY_X,
-                   CASE WHEN l.IN_OUT = 'O' THEN l.PRICE ELSE 0 END AS PRICE_X,
+                   {InventorySources.LedgerQuantityFor("l", "I")} AS QTY_J,
+                   {InventorySources.LedgerPriceFor("l", "I")} AS PRICE_J,
+                   {InventorySources.LedgerQuantityFor("l", "O")} AS QTY_X,
+                   {InventorySources.LedgerPriceFor("l", "O")} AS PRICE_X,
                    l.MUTUALITY_TYPE AS BILL_CODE, l.MUTUALITY_NO AS BILL_NO
-            FROM dbo.INV_DEPOT_LOG l
+            FROM {InventorySources.LedgerRef("l")}
             JOIN PAIR pa ON pa.DEPOT_ID = l.DEPOT_ID AND pa.PRO_NO = l.PRO_NO
             WHERE l.MUTUALITY_DATE BETWEEN @date1 AND @date2
         ),

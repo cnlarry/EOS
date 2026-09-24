@@ -74,6 +74,28 @@ public static class InventoryQueryService
             ? $"MAX(ISNULL({alias}.{column}, 0))"
             : throw new InvalidOperationException($"{column} 不是库别级字段，不能按库别级口径读取。");
 
+    // ===== 流水读 =====
+
+    /// <summary>
+    /// 该单据是否已经产生过库存流水（`INV_DEPOT_LOG` 上的存在性判断）。
+    /// 单据键两侧都做去空格比较：流水里的单别/单号是写入时落的字符串，与单据主键的填充宽度不一致。
+    /// </summary>
+    public static async Task<bool> HasLedgerAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        string billType,
+        string billNo,
+        CancellationToken token)
+    {
+        await using var command = new SqlCommand(
+            $"SELECT TOP 1 1 FROM dbo.{LedgerTable} WITH (NOLOCK) "
+            + $"WHERE LTRIM(RTRIM(MUTUALITY_TYPE))=@t AND LTRIM(RTRIM(MUTUALITY_NO))=@n;",
+            connection, transaction);
+        command.Parameters.Add("@t", SqlDbType.NVarChar, 20).Value = billType.Trim();
+        command.Parameters.Add("@n", SqlDbType.NVarChar, 40).Value = billNo.Trim();
+        return await command.ExecuteScalarAsync(token) is not null;
+    }
+
     // ===== 聚合读 =====
 
     /// <summary>
@@ -226,6 +248,9 @@ public static class InventoryQueryService
         public IReadOnlyList<string>? ProductNos { get; init; }
         public string? BatchNo { get; init; }
 
+        /// <summary>定位到某个库位（按哨兵归一后比较：传哨兵值即"未指定位置"那一行）。</summary>
+        public string? LocationNo { get; init; }
+
         /// <summary>排除"未指定位置"的哨兵行（盘点/混放判定的常规口径）。</summary>
         public bool ExcludeSentinelLocation { get; init; }
 
@@ -329,6 +354,11 @@ public static class InventoryQueryService
             predicates.Add($"{BatchKey("s")}=@batch");
             parameters.Add(new BoundParameter("@batch", SqlDbType.NVarChar, 60, batch));
         }
+        if (scope.LocationNo is { Length: > 0 } location)
+        {
+            predicates.Add($"{LocationKey("s")}=@loc");
+            parameters.Add(new BoundParameter("@loc", SqlDbType.NVarChar, 60, location));
+        }
         if (scope.ExcludeSentinelLocation)
         {
             predicates.Add($"s.LOCATION_NO <> N'{LocationSentinel}'");
@@ -380,4 +410,25 @@ public static class InventorySources
                       AND (@sort1 IS NULL OR @sort1 = '' OR pr.SORT_ID >= @sort1)
                       AND (@sort2 IS NULL OR @sort2 = '' OR pr.SORT_ID <= @sort2)
         """;
+
+    /// <summary>流水表的引用（表名属于服务，宿主只给别名）。</summary>
+    public static string LedgerRef(string alias) => $"dbo.{InventoryQueryService.LedgerTable} {alias}";
+
+    /// <summary>
+    /// 一笔流水在"收发存"里的带符号数量：入库为正、出库为负。
+    /// 期初与本期累计都按这个口径累加，宿主不再各写一遍 CASE。
+    /// </summary>
+    public static string LedgerSignedQuantity(string alias) =>
+        $"CASE WHEN {alias}.IN_OUT = 'I' THEN {alias}.QTY ELSE -{alias}.QTY END";
+
+    /// <summary>
+    /// 只取某一方向的量（`I` 入库 / `O` 出库），另一方向记 0：
+    /// 收发明细列（收 / 发分列）按这个口径展开，与带符号口径同源。
+    /// </summary>
+    public static string LedgerQuantityFor(string alias, string direction) =>
+        $"CASE WHEN {alias}.IN_OUT = '{direction}' THEN {alias}.QTY ELSE 0 END";
+
+    /// <summary>只取某一方向的单价（另一方向记 0，避免把出库行的单价算进加权）。</summary>
+    public static string LedgerPriceFor(string alias, string direction) =>
+        $"CASE WHEN {alias}.IN_OUT = '{direction}' THEN {alias}.PRICE ELSE 0 END";
 }
