@@ -792,17 +792,6 @@ public sealed class WorkbenchDefinitionValidator(
 
             var visiblePhysical = fields.Where(field => field.IsVisible && !field.IsVirtual).ToList();
 
-            // FORM_ORDER 缺失比例（警告）：>50% 时表单顺序回退 VERIFY_INDEX 可能混乱
-            if (visiblePhysical.Count >= 5)
-            {
-                var missingOrder = visiblePhysical.Count(field => !field.HasFormOrder);
-                if ((double)missingOrder / visiblePhysical.Count > 0.5)
-                {
-                    checks.Add(new("form_order_coverage", true,
-                        $"{table} 可见字段 FORM_ORDER 缺失 {missingOrder}/{visiblePhysical.Count}，表单顺序回退 VERIFY_INDEX 可能混乱。", "warning"));
-                }
-            }
-
             // F_DESC 超长（警告）
             var longLabels = visiblePhysical.Where(field => field.LabelLength > 20)
                 .Take(5).Select(field => $"{field.Key}:{field.LabelLength}字符").ToList();
@@ -841,7 +830,7 @@ public sealed class WorkbenchDefinitionValidator(
         const string sql = """
             SELECT LTRIM(RTRIM(f.F_ID)),LTRIM(RTRIM(f.F_DESC)),COALESCE(LTRIM(RTRIM(f.F_TYPE)),N'nvarchar'),
                    CAST(COALESCE(f.IS_VISIBLE,1) AS bit),CAST(COALESCE(f.IS_READONLY,0) AS bit),CAST(COALESCE(f.IS_VIRTUAL,0) AS bit),
-                   f.FORM_ORDER,f.FORM_OPTIONS,f.DFT_VALUE,
+                   CAST(NULL AS int) AS FORM_ORDER,f.FORM_OPTIONS,f.DFT_VALUE,
                    f.DISPLAY_FORMAT
             FROM dbo.FIELDS f WITH (NOLOCK) WHERE f.T_ID=@Table;
             """;
