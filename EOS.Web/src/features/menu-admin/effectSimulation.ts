@@ -2,10 +2,10 @@ import { apiClient } from '../../services/api'
 
 /**
  * 效果链预演（2301 配置面）：对一张真实单据在事务内跑一遍真实的生效链并回滚，
- * 把"按当前配置会发生什么"报告出来。报告形状与 ADR-021 §3.2 冻结的契约一致。
+ * 把"按当前配置会发生什么"报告出来。报告形状与后端 `EffectSimulationReportDto` 一一对应。
  */
 
-/** 本批次支持的事件闭集（保存后效果要预演就得先伪造一次完整保存，列入后续批次）。 */
+/** 可预演的事件闭集：保存后效果发生在主子表落库之后，预演它等于先伪造一次完整保存。 */
 export const SIMULATION_EVENTS = ['APPROVE_EFFECT', 'DEAPPROVE'] as const
 export type SimulationEvent = (typeof SIMULATION_EVENTS)[number]
 

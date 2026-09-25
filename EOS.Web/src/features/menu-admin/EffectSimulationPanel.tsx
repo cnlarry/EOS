@@ -6,9 +6,11 @@ import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { describeApiError } from '../../lib/errors'
 import type { BusinessAction } from './BusinessActionsPanel'
 import {
+  OP_SYMBOLS,
   formatCondition,
   formatOpSentence,
   makeLabelLookup,
+  reverseTextOf,
   withTargetTable,
   type BusinessNameLookup,
 } from './businessActionText'
@@ -139,7 +141,7 @@ export function EffectSimulationPanel({
 
       <div className="text-secondary small mb-3">
         保存后效果（SAVE）暂不支持预演：它发生在主子表落库之后，预演它等于先伪造一次完整保存。
-        本批次覆盖批核生效 / 解批。
+        目前只覆盖批核生效 / 解批。
       </div>
 
       {error ? (
@@ -227,7 +229,13 @@ function ReportView({
       ) : null}
 
       {report.effects.map((step) => (
-        <StepCard key={step.seq} step={step} action={actions.find((item) => item.seq === step.seq)} names={names} lookup={lookup} />
+        <StepCard
+          key={step.seq}
+          step={step}
+          action={actions.find((item) => item.seq === step.seq && appliesTo(item.eventCode, report.event))}
+          names={names}
+          lookup={lookup}
+        />
       ))}
     </div>
   )
@@ -270,7 +278,7 @@ function StepCard({
         ))}
         {action?.reverse ? (
           <div className="small text-secondary mt-1">
-            解批反向：{lookup(readKind(action.reverse)) || '未配置'}
+            解批反向：{reverseTextOf(action.reverse, lookup)}
           </div>
         ) : null}
       </div>
@@ -287,9 +295,10 @@ function OpRow({
   configured?: { opSeq: number; targetTable?: string | null; targetField?: string | null; opCode?: string | null; sourceScope?: string | null; sourceTable?: string | null; sourceField?: string | null; sourceAgg?: string | null; sourceConstant?: string | null; sourceTerms?: string | null }
   names: BusinessNameLookup
 }) {
+  // 无配置行可对齐时（例如配置在预演后被改过）仍用同一套算子符号，不另造一套说法。
   const sentence = configured
     ? formatOpSentence(configured, names)
-    : `${names.table(op.targetTable)}.${names.field(op.targetTable, op.targetField)} ${op.opCode}`
+    : `${names.table(op.targetTable)}.${names.field(op.targetTable, op.targetField)} ${OP_SYMBOLS[(op.opCode ?? '').trim().toUpperCase()] ?? op.opCode}`
   return (
     <div className="mt-2">
       <div className="small">{sentence} — 影响 {op.rowsAffected} 行</div>
@@ -321,11 +330,12 @@ function OpRow({
   )
 }
 
-function readKind(json: string): string {
-  try {
-    const value = JSON.parse(json) as { kind?: unknown }
-    return typeof value?.kind === 'string' ? value.kind : ''
-  } catch {
-    return ''
-  }
+/**
+ * 报告里的步骤按 (事件, 顺序号) 对齐配置行：解批跑的是「批核生效」行与「解批」行的并集
+ * （各跑反向语义），判据与服务端 EffectEventMapper.AppliesTo 同口径。
+ */
+function appliesTo(eventCode: string | null | undefined, simulationEvent: string): boolean {
+  const configured = (eventCode ?? '').trim().toUpperCase()
+  if (configured === simulationEvent.trim().toUpperCase()) return true
+  return simulationEvent.trim().toUpperCase() === 'DEAPPROVE' && configured === 'APPROVE_EFFECT'
 }

@@ -79,8 +79,11 @@ const businessCatalog = {
   documentActions: [{ key: 'recalc-account', label: '重算账面数量', placement: 'detail' }],
 }
 
-/** 含表模块 + 行为配置的统一桩：extra 可先截获特定路径。 */
-function mockPageWithBusinessConfig(extra?: (path: string, config?: unknown) => unknown) {
+/** 含表模块 + 行为配置的统一桩：extra 可先截获特定路径，capabilities 可换成本用例需要的能力。 */
+function mockPageWithBusinessConfig(
+  extra?: (path: string, config?: unknown) => unknown,
+  capabilities: unknown = PAGE_CAPABILITIES,
+) {
   mockPageGet(async (path: string, config?: unknown) => {
     const handled = extra?.(path, config)
     if (handled !== undefined) return handled
@@ -93,7 +96,7 @@ function mockPageWithBusinessConfig(extra?: (path: string, config?: unknown) => 
     if (path.endsWith('/relations')) return []
     if (path === '/settings/system') return { groups: [] }
     return { total: 3, modules: [moduleNode(11, '基本参数', null), moduleNode(1101, '系统参数', 11), withTables] }
-  })
+  }, capabilities)
 }
 
 /** 渲染页面并进入含表模块（默认打开「行为动作」页签）。 */
@@ -113,9 +116,9 @@ async function openModuleTab(tab = '行为动作') {
  */
 const PAGE_CAPABILITIES = { canBrowse: true, canSetup: true, canModuleConfig: true }
 
-function mockPageGet(handler: (path: string, config?: unknown) => unknown) {
+function mockPageGet(handler: (path: string, config?: unknown) => unknown, capabilities: unknown = PAGE_CAPABILITIES) {
   apiClientMock.get.mockImplementation(async (path: string, config?: unknown) =>
-    path === '/admin/menus/capabilities' ? PAGE_CAPABILITIES : handler(path, config))
+    path === '/admin/menus/capabilities' ? capabilities : handler(path, config))
 }
 
 /** 同上，但非能力请求一律返回同一个值。 */
@@ -1044,6 +1047,19 @@ describe('MenuAdminPage', () => {
 
     expect(screen.getByLabelText('内置动作（受控注册码）')).toBeInTheDocument()
     expect(screen.getByText(/见「行为 › 自定义按钮」/)).toBeInTheDocument()
+  })
+
+  it('无模块配置权的账号不渲染行为页签，预演与说明书入口随之不出现', async () => {
+    mockPageWithBusinessConfig(undefined, { canBrowse: true, canSetup: true, canModuleConfig: false })
+    renderPage()
+    await waitForMenuTree()
+    fireEvent.click(screen.getByRole('button', { name: /基本参数/ }))
+    fireEvent.click(screen.getByRole('button', { name: /系统参数/ }))
+    fireEvent.click(screen.getByRole('button', { name: /公司基本资料/ }))
+
+    expect(screen.queryByRole('tab', { name: '行为动作' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '行为说明书' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '预演（不改数据）' })).not.toBeInTheDocument()
   })
 
 })

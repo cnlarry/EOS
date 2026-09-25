@@ -1,10 +1,15 @@
 using System.Data;
+using System.Diagnostics;
+using System.Security.Claims;
 using System.Text.Json;
+using EOS.API.Controllers;
 using EOS.API.Data;
 using EOS.API.Data.Effects;
 using EOS.API.Models;
+using EOS.API.Security;
 using EOS.API.Tests.Tools;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -37,7 +42,7 @@ public sealed class EffectSimulationLiveTests
         return new DbConnectionFactory(configuration);
     }
 
-    private static EffectSimulationService CreateSimulation(DbConnectionFactory connections)
+    private static WorkbenchApprovalService CreateApprovals(DbConnectionFactory connections)
     {
         var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
         var auditWriter = new WorkbenchAuditWriter(
@@ -48,12 +53,14 @@ public sealed class EffectSimulationLiveTests
             EffectShadowRunner.BuildPipelineFor(ConnectionString),
             NullLogger<EffectEngineInvoker>.Instance);
         var workflow = new WorkflowEngine(connections, auditWriter, provider, engine, NullLogger<WorkflowEngine>.Instance);
-        var approvals = new WorkbenchApprovalService(
+        return new WorkbenchApprovalService(
             connections, auditWriter, workflow, engine, new WorkbenchIdempotency(),
             NullLogger<WorkbenchApprovalService>.Instance);
-        return new EffectSimulationService(connections, new EffectPlanLoader(), approvals,
-            NullLogger<EffectSimulationService>.Instance);
     }
+
+    private static EffectSimulationService CreateSimulation(DbConnectionFactory connections) =>
+        new(connections, new EffectPlanLoader(), CreateApprovals(connections),
+            NullLogger<EffectSimulationService>.Instance);
 
     private sealed record Candidate(int ModuleId, string MasterTable, IReadOnlyList<string> PkColumns, IReadOnlyList<string> KeyValues);
 
@@ -69,6 +76,9 @@ public sealed class EffectSimulationLiveTests
                           WHERE a.MODULE_ID=m.M_IDX AND LTRIM(RTRIM(a.EVENT_CODE))='APPROVE_EFFECT' AND ISNULL(a.ENABLED,1)=1)
               AND EXISTS (SELECT 1 FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK)
                           WHERE s.MODULE_ID=m.M_IDX AND s.IS_CURRENT=1)
+              -- 必须选一条真的会跑效果链的路径：配了审批流程的模块，批核这一步是送审，
+              -- 预演被显式拒绝（预演只覆盖引擎接管那条），拿它做样本会测到另一条分支上。
+              AND NOT EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=m.M_IDX)
             ORDER BY m.M_IDX;
             """, connection);
         var modules = new List<(int ModuleId, string Table)>();
@@ -271,6 +281,228 @@ public sealed class EffectSimulationLiveTests
         Assert.NotNull(noRows.Ops);
         Assert.All(noRows.Ops!, op => Assert.Empty(op.Changes));
     }
+
+    /// <summary>
+    /// 真实批核有三条不跑效果链的分支（无副作用批核 / 未启用引擎 / 送审），只有第四条会跑。
+    /// 预演若对这四条一视同仁，报告就与真点不一样——所以三条都必须被显式拒绝。
+    /// </summary>
+    [Fact]
+    public async Task 预演只放行会执行效果链的那一条分支()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        var candidate = await FindCandidateAsync(connection, token);
+        var flowModuleId = await FindFlowModuleAsync(connection, token);
+        var noFlowModuleId = await FindNoFlowModuleAsync(connection, token);
+        var approvals = CreateApprovals(Connections());
+
+        // 无副作用批核：自动批核 + 无引擎 + 无流程 —— 真实路径只翻转状态位。
+        var stateless = await approvals.CheckSimulationSupportedAsync(
+            connection, Definition(candidate.ModuleId, candidate.MasterTable, candidate.PkColumns,
+                autoApprove: true, effectEngine: false), approve: true, token);
+        Assert.NotNull(stateless);
+        Assert.Equal("SIMULATION_NOT_SUPPORTED", stateless!.ErrorCode);
+        Assert.Contains("无副作用批核", stateless.ErrorMessage);
+
+        // 引擎未接管：效果链根本不会被执行。
+        var noEngine = await approvals.CheckSimulationSupportedAsync(
+            connection, Definition(noFlowModuleId, candidate.MasterTable, candidate.PkColumns,
+                autoApprove: false, effectEngine: false), approve: true, token);
+        Assert.NotNull(noEngine);
+        Assert.Equal("SIMULATION_NOT_SUPPORTED", noEngine!.ErrorCode);
+        Assert.Contains("未启用效果引擎", noEngine.ErrorMessage);
+
+        // 有流程且非自动批核：真实批核这一步是送审，效果链要等流程通过后才跑。
+        var flow = await approvals.CheckSimulationSupportedAsync(
+            connection, Definition(flowModuleId, candidate.MasterTable, candidate.PkColumns,
+                autoApprove: false, effectEngine: true), approve: true, token);
+        Assert.NotNull(flow);
+        Assert.Equal("SIMULATION_NOT_SUPPORTED", flow!.ErrorCode);
+        Assert.Contains("审批流程", flow.ErrorMessage);
+
+        // 引擎接管且无流程：这条才是预演能如实报告的那条。
+        var supported = await approvals.CheckSimulationSupportedAsync(
+            connection, Definition(noFlowModuleId, candidate.MasterTable, candidate.PkColumns,
+                autoApprove: false, effectEngine: true), approve: true, token);
+        Assert.Null(supported);
+
+        // 判据之外还要有执法者：预演服务必须真的就此打住，而不是"算出来了但没人在意"。
+        var rejected = await Assert.ThrowsAsync<EffectSimulationService.UnsupportedModuleException>(() =>
+            CreateSimulation(Connections()).SimulateAsync(
+                Definition(noFlowModuleId, candidate.MasterTable, candidate.PkColumns,
+                    autoApprove: false, effectEngine: false),
+                "APPROVE_EFFECT", candidate.KeyValues, approve: true, executor: "simulation-test", token));
+        Assert.Equal("SIMULATION_NOT_SUPPORTED", rejected.Code);
+    }
+
+    /// <summary>
+    /// 预演端点的报告必须写明"这是哪一版配置跑出来的"：定义版本由基线缓存条目单独持有，
+    /// 快照 JSON 本身不带它——不接住这个版本号，报告就只能给出一个空字段。
+    /// </summary>
+    [Fact]
+    public async Task 预演端点_报告带上已发布定义的版本号()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        var candidate = await FindCandidateAsync(connection, token);
+        var account = await FindConfigAccountAsync(connection, token);
+        var published = await LoadPublishedDefinitionAsync(connection, candidate.ModuleId, token);
+
+        const string version = "module-live-v99";
+        var connections = Connections();
+        var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
+        // 明确把版本抹掉：这样"报告里有版本"只可能来自端点补写，不可能来自快照本身。
+        provider.SeedBaselineForTest(candidate.ModuleId, published with { DefinitionVersion = null }, version);
+
+        // 只接上这个动作真正用到的依赖（权限、定义缓存、预演服务、调用者上下文）：
+        // 其余参数属于同控制器的其它动作，置空是为了把这条用例的依赖面说清楚。
+        var controller = new ModuleBusinessConfigController(
+            repository: null!,
+            rightsRepository: new ModuleRightsRepository(connections, NullLogger<ModuleRightsRepository>.Instance),
+            snapshotService: null!,
+            documentActions: null!,
+            documentActionAuthorization: null!,
+            definitions: provider,
+            simulation: CreateSimulation(connections),
+            logger: NullLogger<ModuleBusinessConfigController>.Instance,
+            userContext: UserContext(account));
+
+        var result = await controller.Simulate(
+            candidate.ModuleId,
+            new EffectSimulationRequest("APPROVE_EFFECT", candidate.KeyValues.ToList()),
+            token);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var report = Assert.IsType<EffectSimulationReportDto>(ok.Value);
+        Assert.Equal(version, report.DefinitionVersion);
+        Assert.True(report.RolledBack);
+        Assert.NotEmpty(report.Effects);
+    }
+
+    /// <summary>
+    /// 锁等待超时（1222）与命令超时（-2）各有上限，可能远早于总预算；它们同样是"跑不完"，
+    /// 必须按超时上报。这里用另一条连接把单据行锁住，让预演在状态翻转那一步等锁。
+    /// </summary>
+    [Fact]
+    public async Task 锁等待超时按超时上报且回滚零残留()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        var candidate = await FindCandidateAsync(connection, token);
+        var definition = await LoadPublishedDefinitionAsync(connection, candidate.ModuleId, token);
+
+        await using var blocker = new SqlConnection(ConnectionString);
+        await blocker.OpenAsync(token);
+        await using var blocking = (SqlTransaction)await blocker.BeginTransactionAsync(token);
+        var where = string.Join(" AND ", candidate.PkColumns.Select((column, index) => $"[{column}]=@k{index}"));
+        await using (var hold = new SqlCommand(
+            $"UPDATE dbo.[{candidate.MasterTable}] SET CONFIRM_PERSON=CONFIRM_PERSON WHERE {where};", blocker, blocking))
+        {
+            for (var index = 0; index < candidate.KeyValues.Count; index++)
+            {
+                hold.Parameters.AddWithValue($"@k{index}", candidate.KeyValues[index]);
+            }
+            await hold.ExecuteNonQueryAsync(token);
+        }
+
+        try
+        {
+            var stopped = Stopwatch.StartNew();
+            await Assert.ThrowsAsync<EffectSimulationService.TimeoutException>(() =>
+                CreateSimulation(Connections()).SimulateAsync(
+                    definition, "APPROVE_EFFECT", candidate.KeyValues, approve: true, executor: "simulation-test", token));
+            stopped.Stop();
+            // 判据是"被锁等待上限掐断"，不是"等到总预算"：两者相差一个数量级。
+            Assert.True(stopped.Elapsed < TimeSpan.FromSeconds(25),
+                $"应由锁等待上限触发（约 5s），实得 {stopped.Elapsed.TotalSeconds:F1}s");
+        }
+        finally
+        {
+            await blocking.RollbackAsync(token);
+        }
+
+        Assert.False(await ReadConfirmTagAsync(connection, candidate, token));
+    }
+
+    /// <summary>
+    /// 链内 BLOCK 失败不是"前置守卫没过"：闸门都通了，失败发生在效果链内部。
+    /// 报告必须把它放进步骤里（并带上轨迹），否则配置者只知道失败、不知道停在哪一步。
+    /// </summary>
+    [Fact]
+    public async Task 链内失败报成失败步骤而不是前置守卫()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        var candidate = await FindCandidateAsync(connection, token);
+        // 未实现的服务效果键：走到它必然抛错，且按 BLOCK 语义中断链路。
+        var definition = new WorkbenchDefinition(
+            candidate.ModuleId, $"测试模块 {candidate.ModuleId}", candidate.MasterTable, null, [], [], null,
+            true, true, false, candidate.PkColumns, string.Empty, false,
+            EffectEngine: JsonSerializer.SerializeToElement(new { enabled = true }),
+            BusinessActions: JsonSerializer.SerializeToElement(new object[]
+            {
+                new { seq = 1, eventCode = "APPROVE_EFFECT", effectKey = "job-enqueue", enabled = true, failMode = "BLOCK" },
+            }));
+
+        var report = await CreateSimulation(Connections()).SimulateAsync(
+            definition, "APPROVE_EFFECT", candidate.KeyValues, approve: true, executor: "simulation-test", token);
+
+        Assert.True(report.RolledBack);
+        Assert.True(report.Precondition.Passed);
+        Assert.True(report.Validation.Passed);
+        var step = Assert.Single(report.Effects);
+        Assert.Equal("failed", step.Outcome);
+        Assert.False(string.IsNullOrWhiteSpace(step.Message));
+        Assert.Equal(1, report.Counts.Failed);
+        Assert.False(await ReadConfirmTagAsync(connection, candidate, token));
+    }
+
+    /// <summary>预演门按写面收口：库内必须有同时具备 2301 设置权与模块配置权的账号，否则本用例无意义。</summary>
+    private static async Task<string> FindConfigAccountAsync(SqlConnection connection, CancellationToken token)
+    {
+        await using var command = new SqlCommand(
+            """
+            SELECT TOP 1 LTRIM(RTRIM(USER_ID)) FROM dbo.SYSDD WITH (NOLOCK)
+            WHERE M_IDX=2301 AND ISNULL(SETUP_TAG,0)=1 AND ISNULL(MODULE_CONFIG_TAG,0)=1
+            ORDER BY USER_ID;
+            """, connection);
+        return await command.ExecuteScalarAsync(token) as string
+            ?? throw new InvalidOperationException("库内没有同时具备 2301 设置权与模块配置权的账号，无法验证预演端点的门。");
+    }
+
+    private static CurrentUserContext UserContext(string userId)
+    {
+        var httpContext = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+                [
+                    new Claim(ClaimTypes.NameIdentifier, userId),
+                    new Claim(ClaimTypes.Name, userId),
+                ], "test")),
+        };
+        return new CurrentUserContext(new HttpContextAccessor { HttpContext = httpContext });
+    }
+
+    private static WorkbenchDefinition Definition(
+        int moduleId, string masterTable, IReadOnlyList<string> pk, bool autoApprove, bool effectEngine) =>
+        new(moduleId, $"测试模块 {moduleId}", masterTable, null, [], [], null, true, true, false,
+            pk, string.Empty, false,
+            AutoApprove: autoApprove,
+            EffectEngine: effectEngine ? JsonSerializer.SerializeToElement(new { enabled = true }) : null);
+
+    private static async Task<int> FindFlowModuleAsync(SqlConnection connection, CancellationToken token) =>
+        Convert.ToInt32(await new SqlCommand(
+            "SELECT TOP 1 wf.WF_M_IDX FROM dbo.WFFORM wf WITH (NOLOCK) WHERE EXISTS (SELECT 1 FROM dbo.WFFORM_FLOW f WITH (NOLOCK) WHERE f.WF_M_IDX=wf.WF_M_IDX) ORDER BY wf.WF_M_IDX;",
+            connection).ExecuteScalarAsync(token));
+
+    private static async Task<int> FindNoFlowModuleAsync(SqlConnection connection, CancellationToken token) =>
+        Convert.ToInt32(await new SqlCommand(
+            "SELECT TOP 1 m.M_IDX FROM dbo.MODULES m WITH (NOLOCK) WHERE NOT EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=m.M_IDX) ORDER BY m.M_IDX;",
+            connection).ExecuteScalarAsync(token));
 
     private static async Task<WorkbenchDefinition> LoadPublishedDefinitionAsync(
         SqlConnection connection, int moduleId, CancellationToken token)
