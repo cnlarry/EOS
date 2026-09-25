@@ -20,7 +20,7 @@ import { assistantPrefillKey } from '../../lib/storageKeys'
 import { FormFieldRenderer } from './FormFieldRenderer'
 import type { FormDefinition, FormFieldDefinition } from './formDefinition'
 import { alignClass, formatFieldValue } from './fieldFormat'
-import { buildFormCells, buildFormRows, buildFormSections, moveLifecycleToTail } from './formLayout'
+import { DEFAULT_FORM_COLUMNS, isLifecycleTailField, packFormSections } from './formLayout'
 import { fieldVariant } from './formFieldKind'
 import { validateDetailRows, validateMasterFields, type FieldErrors } from './formValidation'
 import { buildViewToolbarItems } from './formToolbar'
@@ -32,10 +32,6 @@ import {
   parseReturnItems, readDetailChooserSources,
   summarizeFieldErrors, withDetailChooserSource, writableFields, type DetailGridRow, type RecordBundle, type RecordSaveResponse, type SaveRecordRequest,
 } from './formEditorUtils'
-
-// 统一表单主表布局列数：全局固定一行四列，忽略各模块 FORM_COLUMNS 元数据
-//（含显式配置 3 列的 113 个模块），
-const UNIFIED_FORM_COLUMNS = 4
 
 /** 明细视图排序（快照）：返回按字段排序的物理行序。仅在切换排序/增删行时重算，编辑中不随值漂移。 */
 function sortDetailIndices(rows: Record<string, string>[], key: string, dir: 1 | -1): number[] {
@@ -123,10 +119,16 @@ const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs
     const index = focusables.indexOf(target)
     ;(focusables[index + 1] ?? focusables[0])?.focus()
   }
+  // 统一表单固定一行四列（用户拍板：忽略各模块 FORM_COLUMNS 元数据，对齐旧系统密集表单）
+  const columns = DEFAULT_FORM_COLUMNS
   const visibleMaster = form.masterFields.filter(field => field.isVisible)
-  const cells = buildFormCells(visibleMaster).filter(cell => !hasTabs || cell[0].tabNo === activeTabNo)
-  // 浏览态：建立/修改/审核/结案的人·日期·状态排在其它内容之后
-  const sections = viewing ? moveLifecycleToTail(buildFormSections(cells)) : buildFormSections(cells)
+  const tabFields = visibleMaster.filter(field => !hasTabs || field.tabNo === activeTabNo)
+  // 整节单栅格 + 显式装箱：排布规则与设计态**共用同一份**（packFormSections），
+  // 否则"设计态看着是一行、运行态变成两行"。浏览态把生命周期列挤到表单尾部。
+  const sections = packFormSections(tabFields, columns, {
+    fillHoles: true,
+    tailCells: viewing ? field => isLifecycleTailField(field) : undefined,
+  })
   const renderCell = (cell: FormFieldDefinition[]) => {
     const [main, ...companions] = cell
     if (companions.length === 0) {
@@ -180,11 +182,20 @@ const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs
       {sections.map((section, sectionIndex) => (
         <section className="erp-form-group" key={section.title ?? `default-${sectionIndex}`}>
           {section.title ? <div className="erp-form-group-title">{section.title}</div> : null}
-          {buildFormRows(section.cells, UNIFIED_FORM_COLUMNS).map((row, rowIndex) => (
-            <div className="erp-form-row" key={rowIndex} style={{ '--erp-form-cols': UNIFIED_FORM_COLUMNS } as CSSProperties}>
-              {row.map(cell => renderCell(cell))}
-            </div>
-          ))}
+          <div
+            className="erp-form-row"
+            style={{ '--erp-form-cols': columns, gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } as CSSProperties}
+          >
+            {section.cells.map(({ cell, placement }) => (
+              <div
+                key={cell[0].key}
+                className="erp-form-slot"
+                style={{ gridColumn: `${placement.col} / span ${placement.span}`, gridRow: `${placement.row} / span ${placement.rowSpan}` }}
+              >
+                {renderCell(cell)}
+              </div>
+            ))}
+          </div>
         </section>
       ))}
     </div>

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using EOS.API.Data;
+using EOS.API.Data.Forms;
 using EOS.API.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -181,7 +182,8 @@ public sealed class FormLayoutParityLiveTests
         Assert.NotNull(definition);
         var layout = definition!.FormLayout;
         Assert.NotNull(layout);
-        Assert.Equal(definition.FormColumns is int columns and > 0 ? columns : 2, layout!.Columns);
+        // 统一表单固定四子列（忽略 MODULES.FORM_COLUMNS：用户拍板"全局固定一行四列"）
+        Assert.Equal(FormLayoutDerivation.DefaultColumns, layout!.Columns);
         Assert.NotEmpty(layout.Master);
         // 零配置模块：版式是推导出来的（未定制），字段视图因此保持不动
         Assert.False(layout.MasterCustomized);

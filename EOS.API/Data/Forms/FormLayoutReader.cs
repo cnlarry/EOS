@@ -22,7 +22,7 @@ internal static class FormLayoutReader
         int columns,
         CancellationToken token)
     {
-        var cols = columns > 0 ? columns : 2;
+        var cols = columns > 0 ? columns : FormLayoutDerivation.DefaultColumns;
         var tabs = await ReadTabsAsync(connection, moduleId, token);
         var rowsByTable = await ReadLayoutRowsAsync(connection, moduleId, token);
 

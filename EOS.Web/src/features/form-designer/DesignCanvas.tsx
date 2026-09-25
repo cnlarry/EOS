@@ -1,6 +1,8 @@
-import { useState, type CSSProperties } from 'react'
-import { packFormGrid } from '../document-workbench/formLayout'
+import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { packFormSections } from '../document-workbench/formLayout'
 import { RESIDENT_TAB_NO, tabTitle } from './formDesignerDraft'
+import { dragId, type DropTarget } from './formDesignerDrag'
 import type { DesignDraft, DesignRow } from './types'
 
 interface DesignCanvasProps {
@@ -12,6 +14,10 @@ interface DesignCanvasProps {
   /** 紧凑排列：开启时允许后续字段回填空洞（关闭则空洞保留）。 */
   compact: boolean
   preview: boolean
+  /** 正在拖的字段（画布内），用于淡化原位置 */
+  draggingKey: string | null
+  /** 当前落点，用于显示落点指示 */
+  dropTarget: DropTarget
   onMove: (key: string, delta: number) => void
   onHide: (key: string) => void
   onForceNewLine: (key: string) => void
@@ -21,9 +27,11 @@ interface DesignCanvasProps {
 }
 
 /**
- * 设计态画布：与运行态同一套栅格几何（同一份 packFormGrid 装箱规则），
+ * 设计态画布：与运行态**同一套装箱规则**（共用 `packFormSections`），
  * 但**不载入真实单据**——值用字段代号占位。版式（排布 / 占位 / 复合格 / 分节）是真实的，
  * 只有值是占位，这正是"所见即所得"要保证的部分，同时避开数据权限（设计者无需浏览权）。
+ *
+ * 拖拽不是唯一手段：每个字段悬停给出快捷按钮（纯拖拽对精细操作不友好，键盘用户更用不了）。
  */
 export default function DesignCanvas({
   draft,
@@ -33,6 +41,8 @@ export default function DesignCanvas({
   onSelect,
   compact,
   preview,
+  draggingKey,
+  dropTarget,
   onMove,
   onHide,
   onForceNewLine,
@@ -44,17 +54,15 @@ export default function DesignCanvas({
   const [renameValue, setRenameValue] = useState('')
 
   const tabRows = draft.master.filter(row => row.tabNo === activeTabNo)
-  const sections = new Map<string, DesignRow[]>()
-  for (const row of tabRows) {
-    const title = row.sectionId?.trim() ?? ''
-    sections.set(title, [...(sections.get(title) ?? []), row])
-  }
+  const sections = packFormSections(tabRows, draft.columns, { fillHoles: compact })
+  const dropKey = dropTarget?.kind === 'insert' || dropTarget?.kind === 'merge' ? dropTarget.key : null
+  const dropClass = dropTarget?.kind === 'merge' ? 'is-drop-merge' : ''
 
   return (
     <div className="erp-designer-canvas">
       <div className="erp-designer-tabs" role="tablist">
         {draft.tabs.map(tab => (
-          <span key={tab.no} className={tab.no === activeTabNo ? 'erp-designer-tab is-active' : 'erp-designer-tab'}>
+          <DroppableTab key={tab.no} tabNo={tab.no} active={dropTarget?.kind === 'tab' && dropTarget.tabNo === tab.no}>
             {renaming === tab.no ? (
               <input
                 className="erp-designer-tab-input"
@@ -85,7 +93,7 @@ export default function DesignCanvas({
                   setRenaming(tab.no)
                   setRenameValue(tab.title)
                 }}
-                title="单击切换，双击改名"
+                title="单击切换，双击改名；字段可拖到标签上移动到该页签"
               >
                 {tabTitle(tab)}
               </button>
@@ -100,7 +108,7 @@ export default function DesignCanvas({
                 ×
               </button>
             ) : null}
-          </span>
+          </DroppableTab>
         ))}
         {!preview ? (
           <button type="button" className="erp-designer-tab-add" title="新增页签" onClick={onAddTab}>
@@ -110,124 +118,129 @@ export default function DesignCanvas({
       </div>
 
       {tabRows.length === 0 ? (
-        <p className="erp-designer-empty">本页签还没有字段，从左侧字段池加入。</p>
+        <p className="erp-designer-empty">本页签还没有字段，从左侧字段池拖入或点击加入。</p>
       ) : null}
 
       <div className="erp-designer-sections">
-        {[...sections.entries()].map(([title, rows]) => (
-          <SectionGrid
-            key={title || 'default'}
-            title={title}
-            rows={rows}
-            columns={draft.columns}
-            compact={compact}
-            preview={preview}
-            selectedKey={selectedKey}
-            onSelect={onSelect}
-            onMove={onMove}
-            onHide={onHide}
-            onForceNewLine={onForceNewLine}
-          />
+        {sections.map((section, sectionIndex) => (
+          <section className="erp-form-group" key={section.title ?? `default-${sectionIndex}`}>
+            {section.title ? (
+              <DroppableSection
+                sectionId={section.title}
+                active={dropTarget?.kind === 'section' && dropTarget.sectionId === section.title}
+              >
+                {section.title}
+              </DroppableSection>
+            ) : null}
+            <div
+              className="erp-designer-grid"
+              style={
+                {
+                  '--erp-form-cols': draft.columns,
+                  gridTemplateColumns: `repeat(${draft.columns}, minmax(0, 1fr))`,
+                } as CSSProperties
+              }
+            >
+              {section.cells.map(({ cell, placement }) => (
+                <DesignerCell
+                  key={cell[0].key}
+                  cellKey={cell[0].key}
+                  multi={cell.length > 1}
+                  placement={placement}
+                  active={dropKey === cell[0].key && dropTarget?.kind === 'insert'}
+                  activeClass={dropTarget?.kind === 'insert' && dropTarget.key === cell[0].key
+                    ? (dropTarget.before ? 'is-drop-before' : 'is-drop-after')
+                    : dropKey === cell[0].key ? dropClass : ''}
+                >
+                  <label className="erp-form-label">
+                    {cell[0].label}
+                    {cell[0].required ? ' *' : ''}
+                    {cell[0].locked ? (
+                      <span className="erp-designer-lock" title={cell[0].lockReason ?? ''}>
+                        🔒
+                      </span>
+                    ) : null}
+                  </label>
+                  <div className="erp-form-cell-controls">
+                    {cell.map(field => (
+                      <DesignField
+                        key={field.key}
+                        field={field}
+                        selected={selectedKey === field.key}
+                        dragging={draggingKey === field.key}
+                        preview={preview}
+                        onSelect={onSelect}
+                        onMove={onMove}
+                        onHide={onHide}
+                        onForceNewLine={onForceNewLine}
+                      />
+                    ))}
+                  </div>
+                </DesignerCell>
+              ))}
+            </div>
+          </section>
         ))}
       </div>
     </div>
   )
 }
 
-interface SectionGridProps {
-  title: string
-  rows: DesignRow[]
-  columns: number
-  compact: boolean
-  preview: boolean
-  selectedKey: string | null
-  onSelect: (key: string | null) => void
-  onMove: (key: string, delta: number) => void
-  onHide: (key: string) => void
-  onForceNewLine: (key: string) => void
+function DroppableTab({ tabNo, active, children }: { tabNo: number; active: boolean; children: ReactNode }) {
+  const { setNodeRef } = useDroppable({ id: `tab-drop:${tabNo}`, data: { kind: 'tab', tabNo } })
+  return (
+    <span ref={setNodeRef} className={active ? 'erp-designer-tab is-drop-target' : 'erp-designer-tab'}>
+      {children}
+    </span>
+  )
 }
 
-/** 一节一张栅格（节内独立装箱，row 从 1 起算）；复合格占主字段那一个格。 */
-function SectionGrid({
-  title,
-  rows,
-  columns,
-  compact,
-  preview,
-  selectedKey,
-  onSelect,
-  onMove,
-  onHide,
-  onForceNewLine,
-}: SectionGridProps) {
-  const byGroup = new Map<string, DesignRow[]>()
-  const standalones: DesignRow[] = []
-  for (const row of rows) {
-    const group = row.cellRole === 2 ? row.cellGroup?.trim() : null
-    if (group) {
-      byGroup.set(group, [...(byGroup.get(group) ?? []), row])
-    } else {
-      standalones.push(row)
-    }
-  }
-  const cells = [...standalones, ...[...byGroup.values()].map(group => group[0])]
-    .sort((left, right) => left.orderNo - right.orderNo)
-    .map(row => ({ key: row.key, span: row.span, rowSpan: row.rowSpan, newLine: row.newLine }))
-  const placements = packFormGrid(cells, columns, compact)
-
-  const style = {
-    '--erp-form-cols': columns,
-    gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-  } as CSSProperties
-
+function DroppableSection({
+  sectionId,
+  active,
+  children,
+}: {
+  sectionId: string
+  active: boolean
+  children: ReactNode
+}) {
+  const { setNodeRef } = useDroppable({ id: `section-drop:${sectionId}`, data: { kind: 'section', sectionId } })
   return (
-    <section className="erp-form-group">
-      {title ? <div className="erp-form-group-title">{title}</div> : null}
-      <div className="erp-designer-grid" style={style}>
-        {placements.map(placement => {
-          const main = rows.find(row => row.key === placement.key)
-          if (!main) return null
-          const family = byGroup.get(main.cellGroup?.trim() ?? '') ?? [main]
-          const cellStyle: CSSProperties = {
-            gridColumn: `${placement.col} / span ${placement.span}`,
-            gridRow: `${placement.row} / span ${placement.rowSpan}`,
-          }
-          return (
-            <div
-              key={main.key}
-              className={family.length > 1 ? 'erp-form-cell erp-designer-cell' : 'erp-designer-cell'}
-              style={cellStyle}
-            >
-              <label className="erp-form-label">
-                {main.label}
-                {main.required ? ' *' : ''}
-                {main.locked ? <span className="erp-designer-lock" title={main.lockReason ?? ''}>🔒</span> : null}
-              </label>
-              <div className="erp-form-cell-controls">
-                {family.map(field => (
-                  <DesignField
-                    key={field.key}
-                    field={field}
-                    selected={selectedKey === field.key}
-                    preview={preview}
-                    onSelect={onSelect}
-                    onMove={onMove}
-                    onHide={onHide}
-                    onForceNewLine={onForceNewLine}
-                  />
-                ))}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </section>
+    <div ref={setNodeRef} className={active ? 'erp-form-group-title is-drop-target' : 'erp-form-group-title'}>
+      {children}
+    </div>
+  )
+}
+
+interface DesignerCellProps {
+  cellKey: string
+  multi: boolean
+  placement: { col: number; row: number; span: number; rowSpan: number }
+  active: boolean
+  activeClass: string
+  children: ReactNode
+}
+
+/** 一格的落点：左/右边缘插入、中心合并——数据交给 DndContext 判定（几何在页面里算）。 */
+function DesignerCell({ cellKey, multi, placement, activeClass, children }: DesignerCellProps) {
+  const { setNodeRef } = useDroppable({ id: `cell-drop:${cellKey}`, data: { kind: 'cell', key: cellKey } })
+  const classes = [multi ? 'erp-form-cell erp-designer-cell' : 'erp-designer-cell']
+  if (activeClass) classes.push(activeClass)
+  return (
+    <div
+      ref={setNodeRef}
+      className={classes.join(' ')}
+      style={{ gridColumn: `${placement.col} / span ${placement.span}`, gridRow: `${placement.row} / span ${placement.rowSpan}` }}
+    >
+      {children}
+    </div>
   )
 }
 
 interface DesignFieldProps {
   field: DesignRow
   selected: boolean
+  dragging: boolean
   preview: boolean
   onSelect: (key: string | null) => void
   onMove: (key: string, delta: number) => void
@@ -235,21 +248,30 @@ interface DesignFieldProps {
   onForceNewLine: (key: string) => void
 }
 
-/** 画布上的一个字段：值用字段代号占位；悬停给出快捷按钮（纯拖拽对精细操作不友好）。 */
-function DesignField({ field, selected, preview, onSelect, onMove, onHide, onForceNewLine }: DesignFieldProps) {
+/** 画布上的一个字段：值用字段代号占位；可拖拽排序/合并/移除，也可用悬停快捷按钮。 */
+function DesignField({ field, selected, dragging, preview, onSelect, onMove, onHide, onForceNewLine }: DesignFieldProps) {
+  const { attributes, listeners, setNodeRef } = useDraggable({
+    id: dragId({ from: 'canvas', table: 'master', key: field.key }),
+    data: { kind: 'field', key: field.key },
+    disabled: preview,
+  })
   const classes = ['erp-designer-field']
   if (selected) classes.push('is-selected')
   if (field.hidden) classes.push('is-hidden')
   if (!field.userVisible) classes.push('is-denied')
+  if (dragging) classes.push('is-dragging')
   return (
     <div
+      ref={setNodeRef}
       className={classes.join(' ')}
       onClick={event => {
         if (preview) return
         event.stopPropagation()
         onSelect(field.key)
       }}
-      title={field.userVisible ? field.key : `${field.key}（当前用户不可见）`}
+      title={field.userVisible ? `${field.key}（可拖动调整位置）` : `${field.key}（当前用户不可见）`}
+      {...attributes}
+      {...listeners}
     >
       <span className="erp-designer-value">{field.key}</span>
       <span className="erp-designer-badges">

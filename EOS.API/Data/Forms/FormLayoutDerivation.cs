@@ -35,6 +35,13 @@ public static class FormLayoutDerivation
     /// <summary>行跨度上限：三行 ≈ 78px，更高诉求改用多行文本控件高度。</summary>
     public const int MaxRowSpan = 3;
 
+    /// <summary>
+    /// 未声明列数（<c>MODULES.FORM_COLUMNS</c> 为 0/空）时的栅格列数。
+    /// 取 4 而非 2：既有统一表单历史上就固定按 4 列排布，而 279 个工作台模块里 140 个未声明列数——
+    /// 默认成 2 会让这些模块的表单从每行 4 个字段变成每行 2 个，属纯粹的观感回退。
+    /// </summary>
+    public const int DefaultColumns = 4;
+
     private static readonly Regex RemarkKey = new(@"REMARK$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>备注类/长文本字段：整行独占且占两行高（与前端同一判据）。</summary>
@@ -55,7 +62,7 @@ public static class FormLayoutDerivation
         IReadOnlyList<FormLayoutFieldInput> detail,
         int columns)
     {
-        var cols = columns > 0 ? columns : 2;
+        var cols = columns > 0 ? columns : DefaultColumns;
         return new FormLayoutDefinition(
             cols,
             [],
@@ -76,7 +83,9 @@ public static class FormLayoutDerivation
                 field.Key.Trim(),
                 field.TabNo > 0 ? field.TabNo : 1,
                 field.FormOrder ?? index + 1,
-                wide ? columns : Math.Clamp(field.Span, 1, columns),
+                // 字段级旧语义映射到子列：FORM_SPAN=1（半行）→ 2 子列、=2（整行独占）→ 4 子列；
+                // 备注类始终整行。统一表单固定 4 子列，故这里不再按模块列数缩放。
+                wide ? columns : Math.Clamp(field.Span, 1, 2) * (columns / 2),
                 wide ? 2 : 1,
                 field.NewLine,
                 SectionId: null,

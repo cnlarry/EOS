@@ -47,7 +47,7 @@ public sealed class FormLayoutRepository(
             return null;
         }
 
-        var columns = module.Columns > 0 ? module.Columns : 2;
+        var columns = FormLayoutDerivation.DefaultColumns;
         var layout = await FormLayoutReader.ReadAsync(
             connection, moduleId, module.MasterTable, module.DetailTable, columns, token);
         var masterFields = await WorkbenchDefinitionBuilder.ReadFormFieldRows(
@@ -131,7 +131,7 @@ public sealed class FormLayoutRepository(
             return new FormLayoutSaveOutcome(FormLayoutSaveStatus.ModuleNotFound, "模块不存在或未配置主表。");
         }
 
-        var columns = module.Columns > 0 ? module.Columns : 2;
+        var columns = FormLayoutDerivation.DefaultColumns;
         var layout = FormLayoutSubmission.Normalize(request, columns);
         var masterFacts = await FormLayoutFactsBuilder.BuildAsync(
             connection, module.MasterTable, module.MasterTable, token);

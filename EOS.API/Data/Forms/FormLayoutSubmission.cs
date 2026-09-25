@@ -14,7 +14,7 @@ internal static class FormLayoutSubmission
 {
     public static FormLayoutDefinition Normalize(FormLayoutSaveRequest request, int columns)
     {
-        var effectiveColumns = columns > 0 ? columns : 2;
+        var effectiveColumns = columns > 0 ? columns : FormLayoutDerivation.DefaultColumns;
 
         var tabs = (request.Tabs ?? [])
             .Where(tab => tab.No > 0)

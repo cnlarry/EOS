@@ -143,7 +143,7 @@ public sealed class WorkbenchDefinitionBuilder(
         // 版式段是模块级事实，随快照冻结；历史快照没有该段时按当前配置补读（含默认推导）
         var formLayout = baseline.FormLayout ?? await FormLayoutReader.ReadAsync(
             connection, moduleId, master, detail,
-            baseline.FormColumns is int columns and > 0 ? columns : 2, token);
+            FormLayoutDerivation.DefaultColumns, token);
         return baseline with
         {
             MasterFields = masterFields,
@@ -275,7 +275,7 @@ public sealed class WorkbenchDefinitionBuilder(
             moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
         // 版式：有版式行即定制（该表字段集完全由版式决定），无行则按字段级配置推导默认版式
         var formLayout = await FormLayoutReader.ReadAsync(
-            connection, moduleId, master, detail, formColumns is int columns and > 0 ? columns : 2, token);
+            connection, moduleId, master, detail, FormLayoutDerivation.DefaultColumns, token);
         return definition with { DefinitionVersion = version, FormLayout = formLayout };
     }
 

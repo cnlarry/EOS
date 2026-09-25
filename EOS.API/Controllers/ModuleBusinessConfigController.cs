@@ -187,7 +187,7 @@ public sealed class ModuleBusinessConfigController(
     /// <summary>
     /// 效果链预演：对一张真实单据在事务内跑一遍真实的生效链（含状态翻转），随后**无条件回滚**，
     /// 报告"按当前配置会发生什么"。门按写面收口：它执行的是真实 Handler，能触发它的账号越少越好。
-    /// 只接受批核生效 / 解批——保存后效果要预演就得先伪造一次完整保存，代价与风险都不在本批次内。
+    /// 只接受批核生效 / 解批——保存后效果要预演，就得先伪造一次完整保存（含单号生成与主子表落库）。
     /// </summary>
     [HttpPost("{moduleId:int}/simulate")]
     public async Task<IActionResult> Simulate(
@@ -202,11 +202,13 @@ public sealed class ModuleBusinessConfigController(
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "SIMULATION_EVENT_UNSUPPORTED",
                 "预演仅支持 APPROVE_EFFECT（批核生效）与 DEAPPROVE（解批）。"));
         }
-        if (!definitions.TryGetBaseline(moduleId, out var definition, out _))
+        if (!definitions.TryGetBaseline(moduleId, out var baseline, out var definitionVersion))
         {
             return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "MODULE_DEFINITION_NOT_PUBLISHED",
                 "该模块还没有已发布的定义快照，请先发布后再预演。"));
         }
+        // 报告要能对上"哪一版配置跑出来的"：基线缓存里的定义不带版本，版本由缓存条目单独持有。
+        var definition = baseline with { DefinitionVersion = definitionVersion };
         if (definition.MasterPkOrder.Count == 0)
         {
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "MODULE_NOT_SIMULATABLE",
@@ -227,6 +229,10 @@ public sealed class ModuleBusinessConfigController(
                 approve: string.Equals(eventCode, "APPROVE_EFFECT", StringComparison.Ordinal),
                 userContext.UserId, token);
             return Ok(report);
+        }
+        catch (EffectSimulationService.UnsupportedModuleException unsupported)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, unsupported.Code, unsupported.Message));
         }
         catch (EffectSimulationService.TimeoutException)
         {

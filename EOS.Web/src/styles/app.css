@@ -924,6 +924,9 @@ button, input, select { font: inherit; }
 
 .erp-form-row + .erp-form-row { margin-top: 1px; }
 
+/* 显式装箱的格容器：位置由 grid-column/grid-row 指定（整节单栅格），本身不画任何东西 */
+.erp-form-slot { min-width: 0; }
+
 .erp-form-field {
   display: grid;
   grid-template-columns: minmax(var(--erp-form-label-min), var(--erp-form-label-width)) minmax(0, 2.1fr);

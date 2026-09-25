@@ -15,9 +15,9 @@ namespace EOS.API.Data;
 public static class ModuleBusinessConfigValidator
 {
     /// <summary>
-    /// Translation-phase placeholder row on a service-style effect (empty op code and
-    /// target identifiers): the loader, the save lint and the physical column check all
-    /// skip such rows, keeping one shared predicate instead of three divergent copies.
+    /// 翻译期占位行（算子与目标表、目标列皆空）：服务型效果只靠参数表达语义，随行带出的
+    /// 空公式行不是公式行，三个读取点都跳过它——运行时加载、保存期结构校验、保存期物理列校验。
+    /// 判据只此一处：三处各写一遍，早晚有一处先漂，而漂了的表现是"同一份配置在两个阶段结论不同"。
     /// </summary>
     public static bool IsPlaceholderOp(string? opCode, string? targetTable, string? targetField) =>
         string.IsNullOrWhiteSpace(opCode)

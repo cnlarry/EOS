@@ -236,8 +236,7 @@ public sealed class WorkbenchApprovalService(
             if (await ReadFinishedTagAsync(
                     connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token, transaction) == true)
             {
-                return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FINISHED_RECORD_NOT_DEAPPROVABLE",
-                    "单据已结案，不能解批，请先取消结案。");
+                return FinishedRecordNotDeapprovable();
             }
             var noBack = await CheckNotBackFieldsAsync(connection, definition, keyValues, token, transaction);
             if (noBack is not null)
@@ -247,6 +246,46 @@ public sealed class WorkbenchApprovalService(
         }
         return null;
     }
+
+    /// <summary>
+    /// 预演前三道分流判据：真实批核先按「无副作用批核 / 送审 / 引擎接管」分流，
+    /// **只有引擎接管那条会跑效果链**。其余分支若也允许预演，报告就与真点不一样——
+    /// 一份与真实路径不符的报告比不给报告更糟，所以这里显式拒绝并说明原因。
+    /// 返回 null 表示这条路径确实会执行效果链。
+    /// </summary>
+    public async Task<RecordSaveResult?> CheckSimulationSupportedAsync(
+        SqlConnection connection,
+        WorkbenchDefinition definition,
+        bool approve,
+        CancellationToken token)
+    {
+        var effectsEnabled = effectEngine.IsEnabledFor(definition);
+        var hasFlow = await WorkflowEngine.HasFlowAsync(connection, definition.ModuleId, token);
+        if (WorkflowStates.IsStatelessApproveCapable(definition.AutoApprove, effectsEnabled, hasFlow))
+        {
+            return NotSimulatable(
+                "该模块是无副作用批核（自动批核且无流程、无效果链）：真实批核只翻转状态位，没有效果链可预演。");
+        }
+        if (!effectsEnabled)
+        {
+            return NotSimulatable(
+                "该模块未启用效果引擎：真实批核不会执行效果链，预演无法给出与真实路径一致的报告。");
+        }
+        if (approve && !definition.AutoApprove && hasFlow)
+        {
+            return NotSimulatable(
+                "该模块配置了审批流程：真实批核这一步是「送审」（启动流程），效果链要等流程通过后才跑；预演不覆盖流程。");
+        }
+        return null;
+    }
+
+    private static RecordSaveResult NotSimulatable(string message) =>
+        RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "SIMULATION_NOT_SUPPORTED", message);
+
+    /// <summary>已结案单据拒绝解批。删除、编辑与解批共用同一道闸，错误码与文案只在这里产出一处。</summary>
+    private static RecordSaveResult FinishedRecordNotDeapprovable() =>
+        RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FINISHED_RECORD_NOT_DEAPPROVABLE",
+            "单据已结案，不能解批，请先取消结案。");
 
     /// <summary>
     /// 批核/解批的**事务内核心**：校验闸 → 翻转确认状态 → 效果链 → 审计，**不提交**。
@@ -268,7 +307,7 @@ public sealed class WorkbenchApprovalService(
         bool simulate = false)
     {
         var eventKind = approve ? EffectEvent.ApproveEffect : EffectEvent.Deapprove;
-        // 校验闸先行（ADR §15.2 的批核生效顺序）：被拦时状态与效果都没有落库。
+        // 校验闸先行：被拦时状态与效果都没有落库（顺序即阻断语义，不能颠倒）。
         if (await effectEngine.ValidateStageAsync(connection, transaction, definition, eventKind, keyValues, token) is { } blocked)
         {
             return ApprovalCoreResult.BlockedBy(
@@ -439,8 +478,7 @@ public sealed class WorkbenchApprovalService(
         if (!approve
             && await ReadFinishedTagAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token) == true)
         {
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FINISHED_RECORD_NOT_DEAPPROVABLE",
-                "单据已结案，不能解批，请先取消结案。");
+            return FinishedRecordNotDeapprovable();
         }
         // 无副作用批核/解批（自动批核且无批核过程/效果链/流程定义）：保存路径的自动批核
         // 本就是纯状态翻转，显式动作同口径。有流程定义的仍走送审，有过程/效果链的仍走原路径。

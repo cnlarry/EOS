@@ -52,8 +52,9 @@ public sealed class FormLayoutDerivationTests
         Assert.Equal(4, layout.Columns);
         Assert.Empty(layout.Tabs);
         Assert.False(layout.MasterCustomized);
+        // 字段级旧语义映射到子列：span=2（整行独占）→ 4 子列；span=1（半行）→ 2 子列；备注类整行
         Assert.Equal(
-            [("A", 5, 2, 1), ("REMARK", 2, 4, 2), ("B", 3, 1, 1)],
+            [("A", 5, 4, 1), ("REMARK", 2, 4, 2), ("B", 3, 2, 1)],
             layout.Master.Select(row => (row.Key, row.OrderNo, row.Span, row.RowSpan)).ToArray());
     }
 
@@ -79,8 +80,9 @@ public sealed class FormLayoutDerivationTests
     public void DeriveDefault_ClampsSpanAndColumns()
     {
         var layout = FormLayoutDerivation.DeriveDefault([Input("A", span: 0), Input("B", span: 9)], [], columns: 0);
-        Assert.Equal(2, layout.Columns);
-        Assert.Equal([1, 2], layout.Master.Select(row => row.Span).ToArray());
+        Assert.Equal(FormLayoutDerivation.DefaultColumns, layout.Columns);
+        // span 先夹到旧语义 1..2，再映射到子列（0→半行、9→整行）
+        Assert.Equal([2, 4], layout.Master.Select(row => row.Span).ToArray());
     }
 
     [Fact]

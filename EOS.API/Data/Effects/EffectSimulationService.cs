@@ -32,6 +32,15 @@ public sealed class EffectSimulationService(
     {
     }
 
+    /// <summary>
+    /// 该模块的这条路径根本不执行效果链（无副作用批核 / 送审 / 未启用引擎）：
+    /// 预演会给出与真实路径不符的报告，故拒绝并说明原因。
+    /// </summary>
+    public sealed class UnsupportedModuleException(string code, string message) : Exception(message)
+    {
+        public string Code { get; } = code;
+    }
+
     public async Task<EffectSimulationReportDto> SimulateAsync(
         WorkbenchDefinition definition,
         string eventCode,
@@ -47,7 +56,7 @@ public sealed class EffectSimulationService(
         {
             return await RunAsync(definition, eventCode, keyValues, approve, executor, started, total.Token, token);
         }
-        catch (Exception exception) when (IsBudgetExceeded(exception, total, token))
+        catch (Exception exception) when (IsTimeout(exception, total, token))
         {
             throw new TimeoutException();
         }
@@ -64,8 +73,12 @@ public sealed class EffectSimulationService(
         CancellationToken token)
     {
         var plan = planLoader.Load(definition);
+        // Only rows that run on this event describe the steps: a report must not name a step
+        // after a configuration row that the chain skips (the same seq may exist for another
+        // event). 解批跑的是「批核生效」行与「解批」行的并集，判据与管线同源。
+        var executionEvent = approve ? EffectEvent.ApproveEffect : EffectEvent.Deapprove;
         var actions = new Dictionary<int, EffectActionPlan>();
-        foreach (var action in plan.Actions)
+        foreach (var action in plan.Actions.Where(action => EffectEventMapper.AppliesTo(action.EventCode, executionEvent)))
         {
             actions.TryAdd(action.Seq, action);
         }
@@ -77,6 +90,16 @@ public sealed class EffectSimulationService(
 
         await using var connection = connections.Create();
         await connection.OpenAsync(budget);
+
+        // 分流判据先于事务：这条路径本就不跑效果链时，连事务都不必开。
+        var unsupported = await approvals.CheckSimulationSupportedAsync(connection, definition, approve, budget);
+        if (unsupported is not null)
+        {
+            throw new UnsupportedModuleException(
+                unsupported.ErrorCode ?? "SIMULATION_NOT_SUPPORTED",
+                unsupported.ErrorMessage ?? "该模块的这条路径不执行效果链，无法预演。");
+        }
+
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(
             IsolationLevel.ReadCommitted, budget);
         try
@@ -103,12 +126,18 @@ public sealed class EffectSimulationService(
                 work.Token, simulate: true);
             if (outcome.Blocked is { } failure)
             {
-                // The validation gate is the only blocked outcome reached after the
-                // preconditions; a state flip that hit zero rows means someone else moved the
-                // document first and belongs to the precondition section.
+                // Three ways the chain can stop, and they belong in different sections of the
+                // report: the validation gate (nothing ran), a state guard (the document moved
+                // under us), or a failed step inside the chain — which is a report about the
+                // chain, so its trace must be carried even though the chain did not finish.
                 if (string.Equals(failure.ErrorCode, "BUSINESS_VALIDATION_FAILED", StringComparison.Ordinal))
                 {
                     validation = Gate(failure);
+                }
+                else if (string.Equals(failure.ErrorCode, "WORKFLOW_FAILED", StringComparison.Ordinal))
+                {
+                    steps = outcome.Steps;
+                    CollectWarnings(steps, warnings);
                 }
                 else
                 {
@@ -221,11 +250,19 @@ public sealed class EffectSimulationService(
     private static EffectSimulationGateDto Gate(RecordSaveResult failure) =>
         new(false, failure.ErrorCode, failure.ErrorMessage);
 
-    private static bool IsBudgetExceeded(
+    /// <summary>
+    /// 预演跑不完的几种形态：锁等待超时（1222）与命令超时（-2）各有上限，可能远早于总预算；
+    /// 取消令牌可能是被预算触发（预演超时），也可能是调用方主动断开（那是取消，不是超时）。
+    /// 前者必须按超时上报——否则用户看到的是 500，而真实原因是"这张单太大/被锁住"。
+    /// </summary>
+    private static bool IsTimeout(
         Exception exception,
         CancellationTokenSource total,
         CancellationToken token) =>
-        total.IsCancellationRequested
-        && !token.IsCancellationRequested
-        && exception is OperationCanceledException or TimeoutException or SqlException { Number: -2 };
+        exception switch
+        {
+            SqlException { Number: 1222 or -2 } => true,
+            _ => !token.IsCancellationRequested
+                && (total.IsCancellationRequested || exception is OperationCanceledException),
+        };
 }

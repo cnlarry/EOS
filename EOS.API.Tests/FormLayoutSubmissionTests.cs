@@ -101,11 +101,11 @@ public sealed class FormLayoutSubmissionTests
     }
 
     [Fact]
-    public void Normalize_FallsBackToTwoColumnsWhenModuleHasNoColumnSetting()
+    public void Normalize_FallsBackToDefaultColumnsWhenModuleHasNoColumnSetting()
     {
         var layout = FormLayoutSubmission.Normalize(
             Request(master: [new FormLayoutRowInput("A", Span: 2)]), columns: 0);
-        Assert.Equal(2, layout.Columns);
+        Assert.Equal(FormLayoutDerivation.DefaultColumns, layout.Columns);
         Assert.Equal(2, layout.Master[0].Span);
     }
 }
