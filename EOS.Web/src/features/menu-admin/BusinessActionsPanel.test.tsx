@@ -864,7 +864,7 @@ describe('BusinessActionsPanel 白箱化入口', () => {
     fireEvent.click(screen.getByRole('button', { name: '预演（不改数据）' }))
     const dialog = within(await screen.findByRole('dialog'))
     expect(dialog.getByText(/预演不改数据/)).toBeInTheDocument()
-    // 保存后效果不在本批次范围内，必须显式说明而不是灰掉不说为什么。
+    // 保存后效果暂不支持预演，必须显式说明而不是灰掉不说为什么。
     expect(dialog.getByText(/保存后效果（SAVE）暂不支持预演/)).toBeInTheDocument()
     unmount()
 
@@ -874,7 +874,7 @@ describe('BusinessActionsPanel 白箱化入口', () => {
     expect(screen.getByRole('button', { name: '行为说明书' })).toBeInTheDocument()
   })
 
-  it('反向 kind 下拉按所选效果键过滤，并给出该 kind 的说明', async () => {
+  it('反向 kind 下拉按所选效果键过滤：不支持的取值在下拉里根本不出现', async () => {
     renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="actions" />)
     await screen.findByText('业务动作（1）')
 
@@ -883,8 +883,18 @@ describe('BusinessActionsPanel 白箱化入口', () => {
     fireEvent.click(screen.getAllByRole('button', { name: '编辑' }).filter((button) => !(button as HTMLButtonElement).disabled)[0])
 
     const dialog = within(await screen.findByRole('dialog'))
-    // field-accumulate 在兼容矩阵里只允许 no-reverse / auto-reverse：选不到不支持的组合。
-    expect(dialog.queryByRole('option', { name: /写反向流水/ })).not.toBeInTheDocument()
-    expect(dialog.getByRole('option', { name: '解批不反向（no-reverse）' })).toBeInTheDocument()
+    // 反向 kind 那个下拉：按「选项里有没有 no-reverse」认出来，避免依赖某个标签文案。
+    const reverseSelect = dialog.getAllByRole('combobox')
+      .find((element) => Array.from((element as HTMLSelectElement).options).some((option) => option.value === 'no-reverse')) as HTMLSelectElement
+    expect(reverseSelect).toBeTruthy()
+    const values = Array.from(reverseSelect.options).map((option) => option.value)
+    // field-accumulate 在兼容矩阵里只允许 no-reverse / auto-reverse：
+    // 目录里另有 recompute / reverse-flow / snapshot，但它们必须一个都不出现。
+    expect(values).toEqual(['', 'auto-reverse', 'no-reverse'])
+    expect(values).not.toContain('recompute')
+    expect(values).not.toContain('reverse-flow')
+    expect(values).not.toContain('snapshot')
+    expect(Array.from(reverseSelect.options).map((option) => option.textContent))
+      .toContain('解批不反向（no-reverse）')
   })
 })

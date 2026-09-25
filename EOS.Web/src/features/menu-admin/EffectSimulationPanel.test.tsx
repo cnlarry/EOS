@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiClientMock } from '../../test/apiMock'
 import { renderWithProviders } from '../../test/renderWithProviders'
+import { ApiError } from '../../types/api'
 import type { BusinessAction } from './BusinessActionsPanel'
 import { EffectSimulationPanel } from './EffectSimulationPanel'
 import { makeNameLookup } from './businessActionText'
@@ -107,12 +108,12 @@ function report(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function renderPanel() {
+function renderPanel(panelActions: BusinessAction[] = actions) {
   return renderWithProviders(
     <EffectSimulationPanel
       moduleId={1607}
       moduleTitle="收料单"
-      actions={actions}
+      actions={panelActions}
       names={names}
       reverseKindLabels={{ 'auto-reverse': '按公式行自动反向' }}
       onClose={() => undefined}
@@ -184,6 +185,97 @@ describe('EffectSimulationPanel', () => {
     const alert = await screen.findByText(/校验闸拦截/)
     expect(alert).toBeInTheDocument()
     expect(within(alert.parentElement as HTMLElement).getByText(/收料数量超过采购量。/)).toBeInTheDocument()
+    expect(screen.queryByText('执行')).not.toBeInTheDocument()
+  })
+
+  it('步骤按事件对齐配置行：同序号的他事件配置不会被拿来渲染', async () => {
+    // 同一模块的「解批」与「批核生效」可以各有 seq=1：报告里的步骤必须按报告事件对齐，
+    // 否则加工单句式会取自另一条根本不会在本事件执行的行。
+    const colliding: BusinessAction[] = [
+      {
+        seq: 1,
+        eventCode: 'DEAPPROVE',
+        effectKey: 'set-state',
+        effectName: '解批用的行',
+        enabled: true,
+        failMode: 'BLOCK',
+        ops: [
+          {
+            opSeq: 1,
+            targetTable: 'PUR_PURCHASE_D',
+            targetField: 'DEAPPROVE_ONLY_FIELD',
+            opCode: 'ASSIGN',
+            sourceScope: 'CONSTANT',
+            sourceConstant: 'X',
+          },
+        ],
+      },
+      actions[0],
+    ]
+    renderPanel(colliding)
+    await pickRecord()
+    fireEvent.click(screen.getByRole('button', { name: /预演（不改数据）/ }))
+
+    expect((await screen.findAllByText(/已收数量\(RECEIVE_QTY\)/)).length).toBeGreaterThan(0)
+    expect(screen.queryAllByText(/DEAPPROVE_ONLY_FIELD/)).toHaveLength(0)
+  })
+
+  it('报告说没回滚时显眼提示：这是框架缺陷，不是"预演本来就该改数据"', async () => {
+    apiClientMock.post.mockImplementation(async (url: string) => {
+      if (url === '/chooser/query') return chooserResult
+      return report({ rolledBack: false })
+    })
+    renderPanel()
+    await pickRecord()
+    fireEvent.click(screen.getByRole('button', { name: /预演（不改数据）/ }))
+
+    expect(await screen.findByText(/未回滚（框架缺陷）/)).toBeInTheDocument()
+    expect(screen.queryByText('已回滚')).not.toBeInTheDocument()
+  })
+
+  it('失败的步骤渲染成失败并给出错误文案', async () => {
+    apiClientMock.post.mockImplementation(async (url: string) => {
+      if (url === '/chooser/query') return chooserResult
+      return report({
+        effects: [
+          {
+            seq: 1,
+            effectKey: 'job-enqueue',
+            effectName: '作业入队（保留）',
+            enabled: true,
+            failMode: 'BLOCK',
+            outcome: 'failed',
+            conditionMatched: true,
+            rowsAffected: 0,
+            condition: null,
+            skipReason: null,
+            message: '效果键 job-enqueue 尚未实现执行',
+            ops: [],
+          },
+        ],
+        counts: { total: 1, ran: 0, skipped: 0, failed: 1 },
+      })
+    })
+    renderPanel()
+    await pickRecord()
+    fireEvent.click(screen.getByRole('button', { name: /预演（不改数据）/ }))
+
+    expect(await screen.findByText('失败')).toBeInTheDocument()
+    expect(screen.getByText(/尚未实现执行/)).toBeInTheDocument()
+    expect(screen.getByText(/共 1 步（执行 0 \/ 跳过 0 \/ 失败 1）/)).toBeInTheDocument()
+  })
+
+  it('未授权（403）时只给出可读拒绝，不渲染任何结果', async () => {
+    apiClientMock.post.mockImplementation(async (url: string) => {
+      if (url === '/chooser/query') return chooserResult
+      throw new ApiError(403, { code: 'FORBIDDEN', message: '没有该模块的配置权。' })
+    })
+    renderPanel()
+    await pickRecord()
+    fireEvent.click(screen.getByRole('button', { name: /预演（不改数据）/ }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('没有该模块的配置权。')
+    expect(screen.queryByText('已回滚')).not.toBeInTheDocument()
     expect(screen.queryByText('执行')).not.toBeInTheDocument()
   })
 
