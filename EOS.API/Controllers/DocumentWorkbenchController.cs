@@ -49,9 +49,12 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
         var definition=await AuthorizedDefinition(moduleId,token);
         var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if(definition is null||userId is null)return NotFound();
-        if(!formSettings.Value.EnabledModuleIds.Contains(moduleId))return NotFound();
+        var formEnabled=FormWritable(moduleId);
+        if(!formEnabled&&!FormReadOnly(moduleId))return NotFound();
         var normalized=mode.Trim().ToLowerInvariant();
         if(normalized is not ("new" or "edit" or "view"))return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_FORM_MODE","mode 仅支持 new、edit 或 view。"));
+        // 只读名单只放行浏览：新增/修改仍以写名单为唯一入口
+        if(normalized!="view"&&!formEnabled)return NotFound();
         var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
         if(normalized=="new"&&!rights.CanAddNew)return Forbid();
         if(normalized=="edit"&&!rights.CanEdit)return Forbid();
@@ -66,7 +69,10 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
             rights.CanAddNew,rights.CanEdit,rights.CanDelete,rights.CanApprove,rights.CanDeapprove,rights.CanEndCase,rights.CanUnEndCase,
             rights.CanFileView,rights.CanFileUpda,rights.CanFileEdit,rights.CanFileDele,
             canSetup:(await permissions.GetAsync(userId,FieldAdminModuleId,token)).CanSetup);
-        return Ok(form);
+        if(form is null)return NotFound();
+        // 只读模块不下发写动作：浏览态工具栏据此不渲染编辑/复制/删除/批核/结案——
+        // 这些端点对该模块一律 404，按钮留着只会开出一次失败。
+        return Ok(formEnabled?form:WithoutWriteActions(form));
     }
 
     [HttpGet("record")]
@@ -346,22 +352,46 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         var definition=await AuthorizedDefinition(moduleId,token);
         var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if(definition is null||userId is null)return null;
-        if(!formSettings.Value.EnabledModuleIds.Contains(moduleId))return null;
+        // 浏览走写名单或只读名单；新增/修改/删除只认写名单（只读名单不开写路径）。
+        var formEnabled=FormWritable(moduleId);
+        if(mode=="view"?!(formEnabled||FormReadOnly(moduleId)):!formEnabled)return null;
         var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
         if(mode=="new"&&!rights.CanAddNew)return null;
         if(mode=="edit"&&!rights.CanEdit)return null;
         if(mode=="view"&&!rights.CanBrowse)return null;
         if(mode=="new"&&!definition.HasAdd)return null;
         if(mode=="edit"&&!definition.HasEdit)return null;
-        if(mode=="view"&&!definition.HasEdit)return null;
 var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.CanViewCost,rights.CanViewSecrecy,
             rights.DeniedMasterFields,rights.DeniedDetailFields,
             rights.DenyNewMasterFields,rights.DenyNewDetailFields,
             rights.DenyModiMasterFields,rights.DenyModiDetailFields,token,
             rights.CanAddNew,rights.CanEdit,rights.CanDelete,rights.CanApprove,rights.CanDeapprove,rights.CanEndCase,rights.CanUnEndCase,
             rights.CanFileView,rights.CanFileUpda,rights.CanFileEdit,rights.CanFileDele);
-        return form is null?null:(definition,form,rights);
+        if(form is null)return null;
+        return (definition,formEnabled?form:WithoutWriteActions(form),rights);
     }
+
+    /// <summary>模块在统一表单<b>写</b>名单内（可新增/修改/删除）。</summary>
+    private bool FormWritable(int moduleId)=>formSettings.Value.EnabledModuleIds.Contains(moduleId);
+
+    /// <summary>模块在统一表单<b>只读</b>名单内（可浏览，写路径仍封）。</summary>
+    private bool FormReadOnly(int moduleId)=>formSettings.Value.ReadOnlyModuleIds.Contains(moduleId);
+
+    /// <summary>
+    /// 只读模块下发的表单：保留浏览与自定义按钮，关掉全部写动作。
+    /// 只读模块的新增/修改/删除端点本就 404（写名单之外），写动作留着只会开出一次失败。
+    /// </summary>
+    private static FormDefinition WithoutWriteActions(FormDefinition form)=>form with
+    {
+        HasAdd=false,
+        HasEdit=false,
+        IfCopy=false,
+        CanDelete=false,
+        CanApprove=false,
+        CanDeapprove=false,
+        CanEndCase=false,
+        CanUnEndCase=false,
+    };
 
     private static IReadOnlyList<string>? ParseKey(string? key)
     {
@@ -434,13 +464,18 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.C
         if(!rights.CanBrowse)return null;
         var definition=await repository.GetDefinitionAsync(moduleId,userId,rights.ExecuteTag,rights.CanViewCost,rights.CanViewSecrecy,rights.DeniedMasterFields,rights.DeniedDetailFields,token);
         if(definition is null)return null;
-        // 路由契约：NEW_URL/MODI_URL 有值即自定义路由；无值时按统一表单白名单
-        // 回退（显示按钮走统一表单）或隐藏按钮。
-var formEnabled=formSettings.Value.EnabledModuleIds.Contains(moduleId);
+        // 路由契约：NEW_URL/MODI_URL 指向自定义页时按自定义路由走；指向统一表单动作路由时，
+        // 可达性仍由统一表单名单决定（写名单=可编辑，只读名单=只能浏览）。名单之外的模块把这类
+        // 路由当"无值"，界面就不会出现一个点进去必 404 的入口（按钮 / 双击都不会开出去）。
+        var formEnabled=FormWritable(moduleId);
+        var addRoute=definition.NewUrl is not null&&(!ModuleRouteValidator.IsUnifiedFormRoute(definition.NewUrl,moduleId)||formEnabled);
+        var editRoute=definition.ModiUrl is not null&&(!ModuleRouteValidator.IsUnifiedFormRoute(definition.ModiUrl,moduleId)||formEnabled);
         return definition with
         {
-            HasAdd=definition.NewUrl is not null||formEnabled,
-            HasEdit=definition.ModiUrl is not null||formEnabled,
+            HasAdd=addRoute||formEnabled,
+            // HasEdit 表达"本模块有可打开的表单界面"（写名单可编辑、只读名单只浏览、自定义页照旧）；
+            // 是否真能进编辑态由写名单与下发的表单定义分别把关。
+            HasEdit=editRoute||formEnabled||FormReadOnly(moduleId),
             CanDelete=rights.CanDelete,
         };
     }

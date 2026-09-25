@@ -21,6 +21,10 @@ public sealed class WorkbenchDefinitionSnapshotService(
     IOptions<UnifiedFormEditorSettings> formSettings,
     ILogger<WorkbenchDefinitionSnapshotService> logger)
 {
+    /// <summary>运行期有统一表单的模块（写名单 + 只读名单）：只读模块同样需要快照与发布管理。</summary>
+    private HashSet<int> EnabledOrReadOnly()
+        => formSettings.Value.EnabledModuleIds.Concat(formSettings.Value.ReadOnlyModuleIds).ToHashSet();
+
     public async Task<IReadOnlyList<WorkbenchModuleSnapshotStatus>> GetStatusAsync(CancellationToken token)
     {
         var whitelist = string.Join(",", formSettings.Value.EnabledModuleIds);
@@ -39,7 +43,8 @@ public sealed class WorkbenchDefinitionSnapshotService(
         await connection.OpenAsync(token);
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(token);
-        var enabled = formSettings.Value.EnabledModuleIds.ToHashSet();
+        // 「启用」= 运行期有统一表单（写名单可编辑，只读名单只能浏览）
+        var enabled = EnabledOrReadOnly();
         var result = new List<WorkbenchModuleSnapshotStatus>();
         while (await reader.ReadAsync(token))
         {
@@ -103,7 +108,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
             }
         }
 
-        var enabled = formSettings.Value.EnabledModuleIds.ToHashSet();
+        var enabled = EnabledOrReadOnly();
         var result = new List<WorkbenchSnapshotStaleness>(rows.Count);
         foreach (var row in rows)
         {

@@ -96,6 +96,21 @@ internal static class ModuleRouteValidator
     public static bool IsValidActionUrl(string? rawUrl)
         => string.IsNullOrWhiteSpace(rawUrl) || ResolveActionUrl(rawUrl, 0) is not null;
 
+    /// <summary>
+    /// 已解析的 NEW_URL/MODI_URL 是否就是统一表单动作路由（`/workbench/{moduleId}/new|edit|view`）。
+    /// 这类路由的可达性由统一表单名单决定：名单之外留着它，界面会给出一个点进去必 404 的入口。
+    /// </summary>
+    public static bool IsUnifiedFormRoute(string? resolvedUrl, int moduleId)
+    {
+        if (string.IsNullOrWhiteSpace(resolvedUrl)) return false;
+        var url = resolvedUrl.Trim();
+        var queryStart = url.IndexOf('?', StringComparison.Ordinal);
+        var path = queryStart >= 0 ? url[..queryStart] : url;
+        return path.Equals(Substitute(ActionTemplates[0], moduleId), StringComparison.OrdinalIgnoreCase)
+            || path.Equals(Substitute(ActionTemplates[1], moduleId), StringComparison.OrdinalIgnoreCase)
+            || path.Equals(Substitute(ActionTemplates[2], moduleId), StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>工作台承载判定（工作台定义、统一表单、单据打印共用）。</summary>
     public static bool IsWorkbenchUrl(string url)
     {

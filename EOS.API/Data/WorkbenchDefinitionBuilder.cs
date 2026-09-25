@@ -23,7 +23,9 @@ public sealed class WorkbenchDefinitionBuilder(
     ILogger<WorkbenchDefinitionBuilder> logger)
 {
     private static readonly Regex BrowseUrlPlaceholder = new(@"\{([^{}]*)\}", RegexOptions.Compiled);
-    private readonly IReadOnlySet<int> formEnabledModules = formSettings.Value.EnabledModuleIds.ToHashSet();
+    /// <summary>能打开统一表单的模块（写名单 + 只读名单）：跨模块浏览链接只指向这些目标。</summary>
+    private readonly IReadOnlySet<int> formOpenableModules =
+        formSettings.Value.EnabledModuleIds.Concat(formSettings.Value.ReadOnlyModuleIds).ToHashSet();
 
     /// <summary>
     /// 过账引擎可能要求、因此必须出现在明细表单里的维度列（与"必填"同款处理）：
@@ -133,12 +135,12 @@ public sealed class WorkbenchDefinitionBuilder(
         var detail = baseline.DetailTable;
         var masterFields = await WorkbenchBrowseResolver.ResolveAsync(connection,
             await ReadFields(connection, userId, master, master, canViewCost, canViewSecrecy, deniedMasterFields, token),
-            master, formEnabledModules, token);
+            master, formOpenableModules, token);
         var detailFields = detail is null
             ? []
             : await WorkbenchBrowseResolver.ResolveAsync(connection,
                 await ReadFields(connection, userId, master, detail, canViewCost, canViewSecrecy, deniedDetailFields, token),
-                detail, formEnabledModules, token);
+                detail, formOpenableModules, token);
         var (_, groupExpressions) = await ReadGroupExpressionsAsync(connection, moduleId, token);
         // 版式段是模块级事实，随快照冻结；历史快照没有该段时按当前配置补读（含默认推导）
         var formLayout = baseline.FormLayout ?? await FormLayoutReader.ReadAsync(
@@ -219,7 +221,7 @@ public sealed class WorkbenchDefinitionBuilder(
         var resolvedNewUrl = ModuleRouteValidator.ResolveActionUrl(newUrlRaw, moduleId);
         var resolvedModiUrl = ModuleRouteValidator.ResolveActionUrl(modiUrl, moduleId);
         var masterFields=await WorkbenchBrowseResolver.ResolveAsync(connection,
-            await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token),master,formEnabledModules,token);
+            await ReadFields(connection,userId,master,master,canViewCost,canViewSecrecy,deniedMasterFields,token),master,formOpenableModules,token);
         var masterPkOrder=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,master,token);
         // Business rule: a static mapping wins (it carries bill-number and offset-table config);
         // otherwise it is auto-registered from MODULES metadata.
@@ -251,7 +253,7 @@ public sealed class WorkbenchDefinitionBuilder(
         }
         WorkbenchDefinition definition=new(moduleId,title,master,detail,masterFields,
             detail is null?[]:await WorkbenchBrowseResolver.ResolveAsync(connection,
-                await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),detail,formEnabledModules,token),NormalizeSort(defaultSort,master,masterFields),
+                await ReadFields(connection,userId,master,detail,canViewCost,canViewSecrecy,deniedDetailFields,token),detail,formOpenableModules,token),NormalizeSort(defaultSort,master,masterFields),
             resolvedNewUrl is not null || resolvedModiUrl is not null,resolvedModiUrl is not null,detailNoSave,
             masterPkOrder,detailNoFields,
             await WorkflowEngine.HasFlowAsync(connection,moduleId,token),
