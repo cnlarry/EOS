@@ -70,9 +70,23 @@ public sealed class InboundLocationResolveLiveTests
     }
 
     /// <summary>
+    /// WS-14 的第二条验收：**主货位表里没有这个物料时，解析回落哨兵且批核不报错**。
+    /// 缺配置是配置缺口，不是调用方单据的失败——批核照样成功，只是位置落在"未指定位置"。
+    /// （判别性：把回落去掉、改成抛异常 ⇒ 本用例会以 `Blocked`／异常变红。）
+    /// </summary>
+    [Fact]
+    public async Task 主货位表里没有这个料号_回落哨兵且批核不报错()
+    {
+        var location = await ApproveInboundAsync(
+            locationMode: 2, storageMode: "FIXED", documentLocation: null, withPrimary: false);
+        Assert.Equal(Sentinel, location);
+    }
+
+    /// <summary>
     /// 建夹具 → 走真实批核链 → 读回「这一笔记账落在哪个位置」。批核在测试自己的事务里，结束回滚。
     /// </summary>
-    private static async Task<string> ApproveInboundAsync(int locationMode, string storageMode, string? documentLocation)
+    private static async Task<string> ApproveInboundAsync(
+        int locationMode, string storageMode, string? documentLocation, bool withPrimary = true)
     {
         var connections = Connections();
         var service = CreateService(connections);
@@ -83,7 +97,7 @@ public sealed class InboundLocationResolveLiveTests
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
         try
         {
-            await SeedAsync(connection, transaction, locationMode, storageMode, occurNo, documentLocation);
+            await SeedAsync(connection, transaction, locationMode, storageMode, occurNo, documentLocation, withPrimary);
 
             var definition = await LoadPublishedDefinitionAsync(connection, transaction, InboundModule);
             Assert.True(definition.EffectEngineEnabled, $"模块 {InboundModule} 的快照应已开启效果引擎（本用例前提）。");
@@ -110,7 +124,7 @@ public sealed class InboundLocationResolveLiveTests
 
     private static async Task SeedAsync(
         SqlConnection connection, SqlTransaction transaction, int locationMode, string storageMode,
-        string occurNo, string? documentLocation)
+        string occurNo, string? documentLocation, bool withPrimary = true)
     {
         await ExecuteAsync(connection, transaction, """
             DELETE FROM dbo.INV_DEPOT_LOG WHERE MUTUALITY_TYPE = @Lt;
@@ -134,10 +148,16 @@ public sealed class InboundLocationResolveLiveTests
                 VALUES (@Depot, N'-', NULL, N'/-', N'BIN', N'未指定位置（待归位）', NULL, 0, N'A'),
                        (@Depot, @Free, NULL, N'/' + @Free, N'BIN', N'ADR20I 空位', NULL, 1, N'A'),
                        (@Depot, @Primary, NULL, N'/' + @Primary, N'BIN', N'ADR20I 主货位', NULL, 2, N'A');
-            INSERT INTO dbo.DEPOT_PRODUCT_LOCATION (DEPOT_ID, PRO_NO, LOCATION_NO, IS_PRIMARY, SEQ_NO)
-                VALUES (@Depot, @Pro, @Primary, 1, 1);
             """, ("@Depot", TestDepot), ("@Pro", TestProduct),
             ("@Free", FreeLocation), ("@Primary", PrimaryLocation));
+
+        if (withPrimary)
+        {
+            await ExecuteAsync(connection, transaction, """
+                INSERT INTO dbo.DEPOT_PRODUCT_LOCATION (DEPOT_ID, PRO_NO, LOCATION_NO, IS_PRIMARY, SEQ_NO)
+                    VALUES (@Depot, @Pro, @Primary, 1, 1);
+                """, ("@Depot", TestDepot), ("@Pro", TestProduct), ("@Primary", PrimaryLocation));
+        }
 
         await ExecuteAsync(connection, transaction, """
             INSERT INTO dbo.DEPOT_STOCK_POLICY (DEPOT_ID, LOCATION_MODE, STORAGE_MODE)
