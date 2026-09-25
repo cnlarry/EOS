@@ -36,8 +36,9 @@ internal static class FormLayoutReader
         }
         else
         {
-            // 主表表单行不含虚拟列（与表单构建同口径），明细含（明细表单行查询带 includeVirtual）
-            masterRows = await DeriveRows(connection, masterTable, masterTable, includeVirtual: false, cols, token);
+            // 无版式行 = 未定制：返回空版式，字段按元数据顺序原样渲染（不再按字段级配置推导）。
+            // 模块级版式是唯一真源，字段级 FORM_* 配置已退休。
+            masterRows = [];
         }
 
         var detailRows = new List<FormDetailLayoutRow>();
@@ -52,8 +53,8 @@ internal static class FormLayoutReader
             }
             else
             {
-                var derived = await DeriveRows(connection, masterTable, detailTable, includeVirtual: true, cols, token);
-                detailRows = derived.Select(row => new FormDetailLayoutRow(row.Key, row.OrderNo, row.Hidden)).ToList();
+                // 同主表：无行 = 未定制，全部明细列按元数据顺序显示
+                detailRows = [];
             }
         }
 
@@ -118,15 +119,4 @@ internal static class FormLayoutReader
         return rows;
     }
 
-    private static async Task<IReadOnlyList<FormLayoutRow>> DeriveRows(
-        SqlConnection connection, string masterTable, string targetTable, bool includeVirtual, int columns, CancellationToken token)
-    {
-        var fields = await WorkbenchDefinitionBuilder.ReadFormFieldRows(connection, masterTable, targetTable, token, includeVirtual);
-        var inputs = fields
-            .Select(row => new FormLayoutFieldInput(
-                row.Key, row.DataType, row.IsVisible, row.IsRequired, row.TabNo, row.FormOrder,
-                row.Span, row.NewLine, row.CellGroup, row.CellRole))
-            .ToList();
-        return FormLayoutDerivation.DeriveDefault(inputs, [], columns).Master;
-    }
 }

@@ -402,10 +402,8 @@ public sealed class WorkbenchDefinitionBuilder(
             masterFields=masterFields.Select(field=>field with { IsReadonly=true }).ToList();
             detailFields=detailFields.Select(field=>field with { IsReadonly=true }).ToList();
         }
-        // 页签优先取版式表（无版式行时推导结果即既有 MODULES.FORM_TABS 的解析值，观感不变）
-        var tabs = definition.FormLayout is { Tabs.Count: > 0 } layoutTabs
-            ? layoutTabs.Tabs
-            : ParseFormTabs(definition.FormTabs);
+        // 页签只来自版式表（MODULE_FORM_TAB）；没有页签行时由前端兜底为常驻「默认」页签
+        var tabs = definition.FormLayout?.Tabs ?? [];
         var columns = definition.FormColumns is int formColumns and > 0 ? formColumns : 2;
         var defaultValues = await BuildNewDefaultsAsync(connection,definition,masterFields,mode,token);
         // 无副作用批核能力与服务端分支同口径（WorkflowStates.IsStatelessApproveCapable），
