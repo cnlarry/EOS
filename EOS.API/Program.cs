@@ -215,6 +215,9 @@ builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.MasterFieldWriteHandler>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.InventoryFreezeHandler>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.InventoryUnfreezeHandler>();
+builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.InventoryReserveHandler>();
+builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.InventoryReleaseHandler>();
+builder.Services.AddScoped<EOS.API.Data.Effects.IEffectServiceHandler, EOS.API.Data.Effects.ServiceEffectHandlers.InventoryReleaseBySourceHandler>();
 builder.Services.AddScoped<EOS.API.Features.Inventory.MonthCloseSnapshotService>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionRegistry>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionAuthorization>();

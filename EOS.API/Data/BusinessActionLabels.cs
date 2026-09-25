@@ -76,6 +76,7 @@ public static class BusinessActionLabels
             ["location-path-recalc"] = "库位路径重算",
             ["depot-sentinel-location"] = "库位哨兵行维护",
             ["stocktake-scope-generate"] = "盘点范围生成",
+        ["inventory-release-by-source"] = "来源结案释放预留",
             ["meta-link"] = "元数据联动（保留）",
             ["flow-trigger"] = "触发后续流程（保留）",
             ["job-enqueue"] = "作业入队（保留）",
@@ -212,6 +213,7 @@ public static class BusinessActionLabels
             ["location-path-recalc"] = "库位层级变动后重算整棵子树的物化路径。",
             ["depot-sentinel-location"] = "维护库别的『未指定位置』哨兵行。",
             ["stocktake-scope-generate"] = "按盘点范围（库别/库位路径）生成盘点单明细行。",
+        ["inventory-release-by-source"] = "来源单据结案/取消时，把该单据名下的有效预留整笔释放，并按可用量口径重算受影响格子的 USEABLE_QTY。",
 
             ["meta-link"] = "保留键：元数据联动，当前没有落库实例。",
             ["flow-trigger"] = "保留键：触发后续流程，当前没有落库实例。",

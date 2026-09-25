@@ -114,7 +114,8 @@ internal sealed class InventoryUnfreezeHandler : IDocumentUserAction
         var before = await InventoryFreezeAction.ReadUseableAsync(context, slot, token);
 
         // 可解的 = 这一格当前有效的冻结合计（已取消的不算）
-        var active = await InventoryFreezeAction.ReadActiveFreezeAsync(context, slot, token);
+        var active = await InventoryFreezeAction.ReadActiveRowsAsync(
+            context, "INV_FREEZE", "FREEZE_QTY", slot, token);
         var activeTotal = active.Sum(row => row.Quantity);
         if (context.Preview)
         {
@@ -129,40 +130,8 @@ internal sealed class InventoryUnfreezeHandler : IDocumentUserAction
                 + "没有那么多占用来释放。");
         }
 
-        var remaining = quantity;
-        foreach (var row in active)
-        {
-            if (remaining <= 0)
-            {
-                break;
-            }
-            var release = Math.Min(row.Quantity, remaining);
-            remaining -= release;
-            await using var command = row.Quantity - release <= InventoryFreezeAction.Epsilon
-                ? new SqlCommand("""
-                    UPDATE dbo.INV_FREEZE SET STATUS = N'C', LAST_UPDATE_BY = @actor, LAST_UPDATE_DATE = GETDATE()
-                     WHERE PRO_NO = @pro AND DEPOT_ID = @depot AND LOCATION_NO = @location AND BATCH_NO = @batch
-                       AND SOURCE_TYPE = @sourceType AND SOURCE_NO = @sourceNo;
-                    """, context.Connection, context.Transaction)
-                : new SqlCommand("""
-                    UPDATE dbo.INV_FREEZE
-                       SET FREEZE_QTY = FREEZE_QTY - @release, LAST_UPDATE_BY = @actor, LAST_UPDATE_DATE = GETDATE()
-                     WHERE PRO_NO = @pro AND DEPOT_ID = @depot AND LOCATION_NO = @location AND BATCH_NO = @batch
-                       AND SOURCE_TYPE = @sourceType AND SOURCE_NO = @sourceNo;
-                    """, context.Connection, context.Transaction);
-            command.Parameters.AddWithValue("@pro", slot.ProductNo);
-            command.Parameters.AddWithValue("@depot", slot.DepotId);
-            command.Parameters.AddWithValue("@location", slot.LocationNo);
-            command.Parameters.AddWithValue("@batch", slot.BatchNo);
-            command.Parameters.AddWithValue("@sourceType", row.SourceType);
-            command.Parameters.AddWithValue("@sourceNo", row.SourceNo);
-            command.Parameters.AddWithValue("@actor", context.Executor);
-            if (row.Quantity - release > InventoryFreezeAction.Epsilon)
-            {
-                command.Parameters.AddWithValue("@release", release);
-            }
-            await command.ExecuteNonQueryAsync(token);
-        }
+        await InventoryFreezeAction.ReleaseSlotAsync(
+            context, "INV_FREEZE", "FREEZE_QTY", slot, quantity, active, token);
 
         var after = await InventoryFreezeAction.SyncUseableAsync(context, slot, token);
         await InventoryFreezeAction.WriteAuditAsync(context, _audit, slot, "UNFREEZE",
@@ -194,6 +163,12 @@ internal static class InventoryFreezeAction
         }
         return quantity;
     }
+
+    /// <summary>读必填的文本参数（来源单别/单号这类"没有它这笔占用就没有归属"的输入）。</summary>
+    internal static string ReadRequired(DocumentActionContext context, string parameter, string label) =>
+        context.Parameters.GetValueOrDefault(parameter)?.Trim() is { Length: > 0 } value
+            ? value
+            : throw new EffectValidationException($"{label}必填。");
 
     internal static string? ReadReason(DocumentActionContext context) =>
         context.Parameters.GetValueOrDefault(InventoryFreezeHandler.ReasonParameter)?.Trim() is { Length: > 0 } reason
@@ -274,11 +249,13 @@ internal static class InventoryFreezeAction
         return available;
     }
 
-    internal static async Task<IReadOnlyList<(string SourceType, string SourceNo, double Quantity)>> ReadActiveFreezeAsync(
-        DocumentActionContext context, InventoryAvailabilityService.SlotKey slot, CancellationToken token)
+    /// <summary>读这一格当前**有效**的占用行（`STATUS='A'`），按"先建先解"的顺序给释放用。</summary>
+    internal static async Task<IReadOnlyList<(string SourceType, string SourceNo, double Quantity)>> ReadActiveRowsAsync(
+        DocumentActionContext context, string table, string quantityColumn,
+        InventoryAvailabilityService.SlotKey slot, CancellationToken token)
     {
         await using var command = new SqlCommand(
-            "SELECT LTRIM(RTRIM(SOURCE_TYPE)), LTRIM(RTRIM(SOURCE_NO)), ISNULL(FREEZE_QTY,0) FROM dbo.INV_FREEZE "
+            $"SELECT LTRIM(RTRIM(SOURCE_TYPE)), LTRIM(RTRIM(SOURCE_NO)), ISNULL({quantityColumn},0) FROM dbo.{table} "
             + $"WHERE {WhereClause} AND RTRIM(STATUS) = N'A' ORDER BY CREATE_DATE, SOURCE_NO;",
             context.Connection, context.Transaction);
         AddSlotParameters(command, slot);
@@ -290,6 +267,118 @@ internal static class InventoryFreezeAction
                 reader.IsDBNull(2) ? 0 : Convert.ToDouble(reader.GetValue(2))));
         }
         return rows;
+    }
+
+    /// <summary>
+    /// 从一张占用表里按**先建先解**释放指定数量：够一笔就整笔置 `STATUS='C'`，不够就减该笔数量（部分释放）。
+    /// 冻结的解冻与预留的释放共用这一处实现——"释放"只有一种语义，不该有两份算术。
+    /// </summary>
+    internal static async Task ReleaseSlotAsync(
+        DocumentActionContext context, string table, string quantityColumn,
+        InventoryAvailabilityService.SlotKey slot, double quantity,
+        IReadOnlyList<(string SourceType, string SourceNo, double Quantity)> active, CancellationToken token)
+    {
+        var remaining = quantity;
+        foreach (var row in active)
+        {
+            if (remaining <= Epsilon)
+            {
+                break;
+            }
+            var release = Math.Min(row.Quantity, remaining);
+            remaining -= release;
+            var whole = row.Quantity - release <= Epsilon;
+            await using var command = new SqlCommand(
+                whole
+                    ? $"UPDATE dbo.{table} SET STATUS = N'C', LAST_UPDATE_BY = @actor, LAST_UPDATE_DATE = GETDATE() "
+                      + $"WHERE {WhereClause} AND SOURCE_TYPE = @sourceType AND SOURCE_NO = @sourceNo;"
+                    : $"UPDATE dbo.{table} SET {quantityColumn} = {quantityColumn} - @release, "
+                      + "LAST_UPDATE_BY = @actor, LAST_UPDATE_DATE = GETDATE() "
+                      + $"WHERE {WhereClause} AND SOURCE_TYPE = @sourceType AND SOURCE_NO = @sourceNo;",
+                context.Connection, context.Transaction);
+            AddSlotParameters(command, slot);
+            command.Parameters.AddWithValue("@sourceType", row.SourceType);
+            command.Parameters.AddWithValue("@sourceNo", row.SourceNo);
+            command.Parameters.AddWithValue("@actor", context.Executor);
+            if (!whole)
+            {
+                command.Parameters.AddWithValue("@release", release);
+            }
+            await command.ExecuteNonQueryAsync(token);
+        }
+    }
+
+    /// <summary>
+    /// 按**来源单据**整笔释放（来源结案 / 取消时的钩子用它）：把该单据名下的有效占用全部置 `STATUS='C'`，
+    /// 返回被释放的格子清单供调用方逐个同步 `USEABLE_QTY`。
+    /// </summary>
+    internal static async Task<IReadOnlyList<(InventoryAvailabilityService.SlotKey Slot, double Quantity)>> ReleaseBySourceAsync(
+        SqlConnection connection, SqlTransaction? transaction, string table, string quantityColumn,
+        string sourceType, string sourceNo, string actor, CancellationToken token)
+    {
+        var released = new List<(InventoryAvailabilityService.SlotKey, double)>();
+        await using (var read = new SqlCommand(
+            $"SELECT LTRIM(RTRIM(PRO_NO)), LTRIM(RTRIM(DEPOT_ID)), ISNULL(LOCATION_NO, N'-'), ISNULL(BATCH_NO, N''), "
+            + $"ISNULL({quantityColumn},0) FROM dbo.{table} "
+            + "WHERE RTRIM(STATUS) = N'A' AND LTRIM(RTRIM(SOURCE_TYPE)) = @sourceType "
+            + "AND LTRIM(RTRIM(SOURCE_NO)) = @sourceNo;", connection, transaction))
+        {
+            read.Parameters.AddWithValue("@sourceType", sourceType);
+            read.Parameters.AddWithValue("@sourceNo", sourceNo);
+            await using var reader = await read.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                released.Add((new InventoryAvailabilityService.SlotKey(
+                    reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)).Trimmed(),
+                    reader.IsDBNull(4) ? 0 : Convert.ToDouble(reader.GetValue(4))));
+            }
+        }
+        if (released.Count == 0)
+        {
+            return released;
+        }
+
+        await using (var update = new SqlCommand(
+            $"UPDATE dbo.{table} SET STATUS = N'C', LAST_UPDATE_BY = @actor, LAST_UPDATE_DATE = GETDATE() "
+            + "WHERE RTRIM(STATUS) = N'A' AND LTRIM(RTRIM(SOURCE_TYPE)) = @sourceType "
+            + "AND LTRIM(RTRIM(SOURCE_NO)) = @sourceNo;", connection, transaction))
+        {
+            update.Parameters.AddWithValue("@sourceType", sourceType);
+            update.Parameters.AddWithValue("@sourceNo", sourceNo);
+            update.Parameters.AddWithValue("@actor", actor);
+            await update.ExecuteNonQueryAsync(token);
+        }
+        return released;
+    }
+
+    /// <summary>把若干格子的 `USEABLE_QTY` 逐个按口径重算并落列（钩子释放多个格子时用）。</summary>
+    internal static async Task SyncManyAsync(
+        SqlConnection connection, SqlTransaction? transaction, string actor, string reason,
+        IReadOnlyList<(InventoryAvailabilityService.SlotKey Slot, double Quantity)> slots,
+        WorkbenchAuditWriter audit, int moduleId, string recordKey, CancellationToken token)
+    {
+        foreach (var (slot, _) in slots.GroupBy(item => item.Slot).Select(group => group.First()))
+        {
+            var available = (await InventoryAvailabilityService.ForSlotsAsync(
+                connection, transaction, [slot], token))[slot].Available;
+            await using var command = new SqlCommand(
+                $"UPDATE dbo.{InventoryQueryService.BalanceTable} SET USEABLE_QTY = @available WHERE {WhereClause};",
+                connection, transaction);
+            command.Parameters.AddWithValue("@available", available);
+            AddSlotParameters(command, slot);
+            await command.ExecuteNonQueryAsync(token);
+        }
+
+        await audit.WriteEventAsync(connection, transaction, moduleId, recordKey, "UNFREEZE", reason, actor,
+            "INV_RESERVE", result: 1, fieldChanges: null, token,
+            detailJson: System.Text.Json.JsonSerializer.Serialize(slots.Select(item => new
+            {
+                product = item.Slot.ProductNo,
+                depot = item.Slot.DepotId,
+                location = item.Slot.LocationNo,
+                batch = item.Slot.BatchNo,
+                quantity = item.Quantity,
+            })));
     }
 
     /// <summary>审计：动作事件 + `USEABLE_QTY` 的前后值（本段的验收项之一）。</summary>

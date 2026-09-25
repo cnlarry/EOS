@@ -38,6 +38,20 @@ namespace EOS.API.Data.Inventory;
 /// </remarks>
 public static class InventoryAvailabilityService
 {
+    /// <summary>
+    /// 从主键列里认**来源单号列**：以 `_NO` 结尾、且不以 `_TYPE` 结尾的**唯一**那一列；
+    /// 不唯一（例如主键里有两个 `_NO` 的主档表）返回 null——调用方按"认不出就不动"处理
+    /// （不猜着释放、也不猜着判过期）。
+    /// </summary>
+    public static string? PickSourceNumberColumn(IReadOnlyList<string> pkColumns)
+    {
+        var candidates = pkColumns
+            .Where(column => column.EndsWith("_NO", StringComparison.OrdinalIgnoreCase)
+                             && !column.EndsWith("_TYPE", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return candidates.Count == 1 ? candidates[0] : null;
+    }
+
     /// <summary>库存行的一格（四键）。与冻结/预留表的维度**逐列同宽同义**。</summary>
     public sealed record SlotKey(string ProductNo, string DepotId, string LocationNo, string BatchNo)
     {
@@ -359,10 +373,7 @@ public static class InventoryAvailabilityService
             }
         }
 
-        var noColumns = pkColumns
-            .Where(column => column.EndsWith("_NO", StringComparison.OrdinalIgnoreCase)
-                             && !column.EndsWith("_TYPE", StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        var noColumn = PickSourceNumberColumn(pkColumns);
 
         var hasFinished = false;
         await using (var command = new SqlCommand(
@@ -373,7 +384,7 @@ public static class InventoryAvailabilityService
             hasFinished = Convert.ToInt32(await command.ExecuteScalarAsync(token)) == 1;
         }
 
-        return (noColumns.Count == 1 ? noColumns[0] : null, hasFinished);
+        return (noColumn, hasFinished);
     }
 
     private static string Placeholders(string prefix, int count) =>
