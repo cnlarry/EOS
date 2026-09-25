@@ -157,18 +157,18 @@ describe('FieldEditorForm', () => {
     expect(screen.getAllByRole('button', { name: '发布' }).every((button) => button.hasAttribute('disabled'))).toBe(true)
   })
 
-  it('表单布局分区改为只读并给出去设计态的入口，FORM_* 值仍随保存回传', async () => {
+  it('表单布局分区只留去设计态的入口，FORM_* 值仍随保存回传', async () => {
     const save = vi.fn().mockResolvedValue(undefined)
     const loaded = meta()
     const { container } = renderForm('edit', { load: vi.fn().mockResolvedValue(loaded), save }, vi.fn(), vi.fn(), undefined, 1405)
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('tab', { name: '表单布局' }))
-    expect(screen.getByText('页签序号（FORM_TAB_NO）')).toBeInTheDocument()
-    expect(screen.getByText('跨列宽度（FORM_SPAN）')).toBeInTheDocument()
+    // 字段级排布设置已退役：界面上不再出现这些入口（值仍原样随保存回传，删列批次再统一清理）
+    expect(screen.queryByText('页签序号（FORM_TAB_NO）')).toBeNull()
+    expect(screen.queryByText('跨列宽度（FORM_SPAN）')).toBeNull()
+    expect(screen.queryByText('复合格组（FORM_CELL_GROUP）')).toBeNull()
+    expect(screen.getByRole('button', { name: /打开表单设计/ })).toBeInTheDocument()
     expect(screen.getByText('下拉选项（FORM_OPTIONS）')).toBeInTheDocument()
-    // 字段级版式设置已归模块级：这些框只读，改版式走设计态（下拉选项是字段语义，仍可编辑）
-    const disabledFields = container.querySelectorAll<HTMLInputElement>('input[disabled][readonly]')
-    expect(disabledFields.length).toBeGreaterThanOrEqual(4)
     expect(screen.getByRole('button', { name: '打开表单设计' })).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(save).toHaveBeenCalled())

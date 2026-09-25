@@ -676,7 +676,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                         <div className="alert alert-info">
                           表单的排布（顺序 / 占位 / 复合格 / 分节 / 页签 / 表单内隐藏）已归**模块级版式**：
                           同一张表被多个模块共用时，各模块可以有自己的形态，不再互相牵动。
-                          下列字段级设置现在只作为<strong>未定制版式模块的默认推导依据</strong>，请到表单设计里调整。
+                          字段级的那套排布设置（顺序 / 占位 / 复合格 / 页签 / 强制换行）已<strong>退役</strong>——请到表单设计里调整。
                           <div className="mt-2">
                             <Button
                               size="sm"
@@ -691,37 +691,6 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                             </Button>
                           </div>
                         </div>
-                      </div>
-                      <div className="col-md-4">
-                        <label className="form-label">页签序号（FORM_TAB_NO）</label>
-                        <input className="form-control" value={draft.tabNo} readOnly disabled />
-                      </div>
-                      <div className="col-md-4">
-                        <label className="form-label">表单顺序（FORM_ORDER）</label>
-                        <input className="form-control" value={draft.formOrder ?? ''} placeholder="留空按默认列序" readOnly disabled />
-                      </div>
-                      <div className="col-md-4">
-                        <label className="form-label">跨列宽度（FORM_SPAN）</label>
-                        <input className="form-control" value={draft.span === 2 ? '整行独占' : '半行'} readOnly disabled />
-                      </div>
-                      <div className="col-md-4">
-                        <label className="form-label">复合格角色（FORM_CELL_ROLE）</label>
-                        <input
-                          className="form-control"
-                          value={draft.cellRole === 1 ? '主字段（带标签 + 选择器）' : draft.cellRole === 2 ? '从字段（同格联动显示）' : '普通字段'}
-                          readOnly
-                          disabled
-                        />
-                      </div>
-                      <div className="col-md-4">
-                        <label className="form-label">复合格组（FORM_CELL_GROUP）</label>
-                        <input className="form-control" value={draft.cellGroup ?? ''} readOnly disabled />
-                      </div>
-                      <div className="col-md-4 d-flex align-items-end pb-2">
-                        <label className="form-check">
-                          <input className="form-check-input" type="checkbox" checked={draft.newLine} readOnly disabled />
-                          <span className="form-check-label">强制换行（FORM_NEW_LINE）</span>
-                        </label>
                       </div>
                       <div className="col-12">
                         <label className="form-label">下拉选项（FORM_OPTIONS）</label>
