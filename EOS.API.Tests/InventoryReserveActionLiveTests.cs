@@ -91,7 +91,7 @@ public sealed class InventoryReserveActionLiveTests : IAsyncLifetime
             DELETE c FROM dbo.AUDIT_FIELD_CHANGE c JOIN dbo.AUDIT_EVENT e ON e.EVENT_ID = c.EVENT_ID
              WHERE e.RESOURCE_KEY IN (@key, @sourceKey);
             DELETE FROM dbo.AUDIT_EVENT WHERE RESOURCE_KEY IN (@key, @sourceKey);
-            DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX = @module AND ACTION = N'ACTION';
+            DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE MODULE_ID = @module AND ACTION = N'ACTION';
             DELETE FROM dbo.INV_RESERVE WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
             DELETE FROM dbo.INV_PRO_DEPOT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
             DELETE FROM dbo.MOC_PRODUCE_M WHERE PRODUCE_TYPE = N'ZZRSV';
@@ -153,7 +153,7 @@ public sealed class InventoryReserveActionLiveTests : IAsyncLifetime
         // 钩子留了痕（谁释放的、释放了哪些格子）
         Assert.Equal(1, await ScalarAsync<int>(connection, """
             SELECT COUNT(*) FROM dbo.AUDIT_EVENT
-             WHERE M_IDX = @module AND RESOURCE_KEY = @sourceKey AND RTRIM(ACTION) = N'UNFREEZE';
+             WHERE MODULE_ID = @module AND RESOURCE_KEY = @sourceKey AND RTRIM(ACTION) = N'UNFREEZE';
             """, ("@module", SourceModule), ("@sourceKey", SourceKey)));
     }
 
