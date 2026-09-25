@@ -50,6 +50,32 @@ public static class InventoryPeriodService
     }
 
     /// <summary>
+    /// **没有流水的账**（半成品账 `HALF_PRO_DEPOT`）的关账守卫：只判"这个业务日期落在不在已关账期"。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="EnsureLedgerWritableAsync"/> 的差别只有一处，但那一处是本质的：半成品账**不写流水**
+    /// （`HalfStockMoveHandler` 只动余额表那一行），所以没有"回看这张单已有流水"可言——那条反向记账的
+    /// 规矩在这里无从适用，也不该假装适用。判据仍走同一个 <see cref="FindAsync"/>：关账边界只有一处取值点。
+    ///
+    /// **本方法自己不判"该不该拦"**：半成品是否纳入月结由部署级参数
+    /// `MONTH_CLOSE_SCOPE_HALF_STOCK` 决定（ADR-020 §9.3），调用方先问参数、再调这里——
+    /// "开才拦、关就不拦"与快照范围同源。
+    /// </remarks>
+    public static async Task EnsureDateOpenAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        DateTime businessDate,
+        string what,
+        CancellationToken token)
+    {
+        var target = await FindAsync(connection, transaction, businessDate, token);
+        if (target is null) return;
+        throw new PeriodClosedException(target.MonthType, target.MonthNo, target.MonthDate,
+            $"{what}不能改动已关账期间的账（月结单 {target.MonthType}/{target.MonthNo}，期末 {target.MonthDate:yyyy-MM-dd}）："
+            + $"业务日期 {businessDate:yyyy-MM-dd} 落在该期之内。请先反结账，或把单据日期改到开账期。");
+    }
+
+    /// <summary>
     /// 记账前的关账守卫：把"将要写入的那条流水"的两件事一次问清。
     /// </summary>
     /// <param name="ledgerDate">

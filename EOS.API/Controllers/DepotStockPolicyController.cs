@@ -81,7 +81,8 @@ public sealed class DepotStockPolicyController(
             request.MixProduct,
             request.MixBatch,
             request.MonthCloseByBatch,
-            request.MonthCloseByLocation);
+            request.MonthCloseByLocation,
+            request.MonthCloseScopeHalfStock);
 
         var result = await service.SaveAsync(
             candidate, userContext.EmployeeName, request.ConfirmDowngrade, request.RelocateTo, token);
@@ -179,6 +180,9 @@ public sealed record SaveDepotStockPolicyRequest(
     bool MixBatch,
     bool MonthCloseByBatch,
     bool MonthCloseByLocation,
+    /// <summary>月结范围是否含半成品（按制程）账。本版只允许 false——见
+    /// <see cref="DepotStockPolicyService.ValidateMonthCloseScope"/> 的理由（快照侧未落地）。</summary>
+    bool MonthCloseScopeHalfStock = false,
     /// <summary>档位下调（位置 / 批次档位降低）的二次确认标志；不确认则拒存且不写入任何改动。</summary>
     bool ConfirmDowngrade = false,
     /// <summary>位置档位**升档**时的归位目标库位：给了就把「未指定位置」的存量改记到该库位。

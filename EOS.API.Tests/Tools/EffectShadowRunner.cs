@@ -1083,7 +1083,8 @@ public sealed class EffectShadowRunner
                 new HrUsageSyncHandler(),
                 new MouldBatchApplyHandler(),
                 new DimissionSyncHandler(),
-                new HalfStockMoveHandler(),
+                // 与服务端同一构造：半成品移动现在也要读月结范围参数（关账守卫的开关）
+                new HalfStockMoveHandler(new DepotStockPolicyService(connections, auditWriter)),
                 new CarFilloilSyncHandler(),
                 new DetailFieldSyncHandler(),
                 new SampleEditionBumpHandler(),

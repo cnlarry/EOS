@@ -78,6 +78,11 @@ public sealed class DepotStockPolicyTests
                     "mixBatch" => Policy("CP", 3, "FIXED", 0, 0, true, option.Value == "1"),
                     "monthCloseByBatch" => Policy("CP", 3, "FIXED", 0, 0, true, true, option.Value == "1", false),
                     "monthCloseByLocation" => Policy("CP", 3, "FIXED", 0, 0, true, true, true, option.Value == "1"),
+                    // 本维度**只标了"否"可选**（"是"要等快照侧 WS-18b），所以这里只会走到 "0" 这一支；
+                    // "是"被拒的断言在 MonthCloseHalfStockScopeLiveTests 里（那条规矩落在
+                    // ValidateMonthCloseScope 而不是 Validate）。
+                    "monthCloseScopeHalfStock" => Policy("CP", 3, "FIXED", 0, 0, true, true, true, true)
+                        with { MonthCloseScopeHalfStock = option.Value == "1" },
                     _ => throw new InvalidOperationException($"目录里出现了未登记的维度 {tier.Key}"),
                 };
                 var (errors, _) = DepotStockPolicyService.Validate(policy);

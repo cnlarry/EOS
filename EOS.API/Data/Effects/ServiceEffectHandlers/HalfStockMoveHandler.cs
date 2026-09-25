@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using EOS.API.Data.Inventory;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data.Effects.ServiceEffectHandlers;
@@ -21,6 +22,10 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 /// </summary>
 public sealed class HalfStockMoveHandler : IEffectServiceHandler
 {
+    private readonly DepotStockPolicyService _policy;
+
+    public HalfStockMoveHandler(DepotStockPolicyService policy) => _policy = policy;
+
     public string EffectKey => "half-stock-move";
 
     public async Task<int> ExecuteAsync(ServiceEffectContext context, CancellationToken token)
@@ -28,11 +33,66 @@ public sealed class HalfStockMoveHandler : IEffectServiceHandler
         var root = context.Action.Params ?? throw new EffectConfigException("half-stock-move 缺少参数。");
         var plan = HalfStockMovePlan.Parse(root);
         RequireReverseKind(context.Action.Reverse);
+
+        // 关账守卫排在读列 / 组行集之前：期间已关账就整单拒绝，不写一半再回滚。
+        await EnsurePeriodOpenAsync(context, plan, token);
+
         var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
         plan.ValidateColumns(context.Plan, columns);
         var rowSet = plan.BuildRowSet(context.Plan, context.MasterKeyValues, columns);
         var executor = new HalfStockMoveSql(context.Connection, context.Transaction, plan, context.ExecutionEvent);
         return await executor.RunAsync(rowSet, token);
+    }
+
+    /// <summary>
+    /// 半成品账的关账守卫（ADR-020 §9.3 D3）：**是否启用由部署级参数 `MONTH_CLOSE_SCOPE_HALF_STOCK` 决定**，
+    /// 与月结快照的范围同源——关 ⇒ 既不拦也不快照（默认；也就是这个参数落地之前的实际行为），开 ⇒ 拦。
+    /// </summary>
+    /// <remarks>
+    /// 日期与主账移动引擎**同一口径**：批核 / 保存方向取**源单的日期列**（参数 `fieldMap.masterDate`），
+    /// 其余（解批等）方向取当前时间——两个方向本来就要判不同的日期，不各写一份。
+    /// 半成品账**不写流水**（本处理器只动余额表那一行），所以只判"这次改动落在不在已关账期"，
+    /// 没有主账那条"回看这张单已有流水"的反向规矩可适用。
+    /// </remarks>
+    private async Task EnsurePeriodOpenAsync(ServiceEffectContext context, HalfStockMovePlan plan, CancellationToken token)
+    {
+        // 参数取值只经 DepotStockPolicyService（策略的唯一求值入口），且**一律取部署级行**：
+        // 月结范围是全库口径，按库别配粒度会让同一个月的快照口径分裂。
+        var policy = await _policy.ResolveAsync(null, context.Connection, context.Transaction, token);
+        if (!policy.MonthCloseScopeHalfStock)
+        {
+            return;
+        }
+
+        var approve = context.ExecutionEvent is EffectEvent.ApproveEffect or EffectEvent.Save;
+        var businessDate = approve ? await ReadMasterDateAsync(context, plan.MasterDateField, token) : DateTime.Now;
+        await InventoryPeriodService.EnsureDateOpenAsync(
+            context.Connection, context.Transaction, businessDate,
+            $"半成品账（{context.Plan.MasterTable}）的这笔变动", token);
+    }
+
+    /// <summary>取源单的业务日期；日期列没值就按"现在"处理（与主账非批核方向同口径）。</summary>
+    private static async Task<DateTime> ReadMasterDateAsync(
+        ServiceEffectContext context, string dateField, CancellationToken token)
+    {
+        var table = context.Plan.MasterTable
+            ?? throw new EffectConfigException("half-stock-move 关账守卫：源单主表未定义，取不到业务日期。");
+        var keyColumns = context.Plan.MasterPkOrder;
+        if (keyColumns.Count == 0 || keyColumns.Count != context.MasterKeyValues.Count)
+        {
+            throw new EffectConfigException("half-stock-move 关账守卫：源单主键列未定义，取不到业务日期。");
+        }
+
+        var where = string.Join(" AND ", keyColumns.Select((column, index) => $"[{column}]=@k{index}"));
+        await using var command = new SqlCommand(
+            $"SELECT [{dateField}] FROM dbo.[{table}] WHERE {where};", context.Connection, context.Transaction);
+        for (var index = 0; index < keyColumns.Count; index++)
+        {
+            command.Parameters.AddWithValue($"@k{index}", context.MasterKeyValues[index]);
+        }
+
+        var value = await command.ExecuteScalarAsync(token);
+        return value is null or DBNull ? DateTime.Now : Convert.ToDateTime(value);
     }
 
     /// <summary>Only the mirror reverse is supported; anything else is rejected fail-closed.</summary>
