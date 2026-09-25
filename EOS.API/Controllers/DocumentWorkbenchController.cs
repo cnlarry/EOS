@@ -167,10 +167,10 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
     {
         var definition=await AuthorizedDefinition(moduleId,token);
         if(definition is null)return NotFound();
-        // 批核/解批同属统一表单写路径，与新增/修改/删除共用同一道闸门：既不在统一表单白名单、
-        // 也没有自定义表单路由的模块（只读列表、由服务端服务托管的配置表）按钮本就不显示，
-        // 不得经本端点改数据。
-        if(!definition.HasAdd&&!definition.HasEdit)return NotFound();
+        // 批核/解批同属写路径，与新增/修改/删除共用同一道闸门：模块必须有**可写的页面入口**
+        // （统一表单写名单，或指向自定义页的 NEW_URL/MODI_URL）。只读名单的模块（库存余额 /
+        // 批次账）按钮本就不显示，也不得经本端点翻状态位。
+        if(!HasWritablePage(definition,moduleId))return NotFound();
         // API 是最终权限边界：批核/解批必须服务端复核，前端按钮显隐只改善体验。
         await permissions.RequireAsync(userContext.UserId,moduleId,approve?PermissionAction.Approve:PermissionAction.Deapprove,token);
         var keyValues=ParseKey(request.Key);
@@ -185,7 +185,7 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         var definition=await AuthorizedDefinition(moduleId,token);
         if(definition is null)return NotFound();
         // 结案/取消结案与批核同一道闸门，理由同 RunWorkflow。
-        if(!definition.HasAdd&&!definition.HasEdit)return NotFound();
+        if(!HasWritablePage(definition,moduleId))return NotFound();
         var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if(userId is null)return Unauthorized();
         await permissions.RequireAsync(userId,moduleId,finish?PermissionAction.EndCase:PermissionAction.UnEndCase,token);
@@ -376,6 +376,16 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.C
 
     /// <summary>模块在统一表单<b>只读</b>名单内（可浏览，写路径仍封）。</summary>
     private bool FormReadOnly(int moduleId)=>formSettings.Value.ReadOnlyModuleIds.Contains(moduleId);
+
+    /// <summary>
+    /// 模块是否有<b>可写</b>的页面入口：统一表单写名单，或 NEW_URL/MODI_URL 指向自定义页
+    /// （指向统一表单动作路由的模板只在写名单内成立）。批核/解批/结案/取消结案与
+    /// 新增/修改/删除共用这条判据——只读名单只放浏览，不放任何写动作；自定义承载页照旧。
+    /// </summary>
+    private bool HasWritablePage(WorkbenchDefinition definition,int moduleId)
+        => FormWritable(moduleId)
+        || (definition.NewUrl is not null&&!ModuleRouteValidator.IsUnifiedFormRoute(definition.NewUrl,moduleId))
+        || (definition.ModiUrl is not null&&!ModuleRouteValidator.IsUnifiedFormRoute(definition.ModiUrl,moduleId));
 
     /// <summary>
     /// 只读模块下发的表单：保留浏览与自定义按钮，关掉全部写动作。
