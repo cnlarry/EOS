@@ -78,8 +78,42 @@ public sealed class EffectEngineInvoker(
         string executor,
         CancellationToken token)
     {
+        var result = await RunCoreAsync(
+            connection, transaction, definition, executionEvent, keyValues, executor, token, simulate: false);
+        return (result.Ran, result.Error);
+    }
+
+    /// <summary>
+    /// Same chain as <see cref="TryRunAsync"/>, but returns the per-step trace so a simulation
+    /// can report what each step did. Steps are only collected in this mode.
+    /// </summary>
+    public Task<EffectRunResult> TryRunSimulatedAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        WorkbenchDefinition definition,
+        EffectEvent executionEvent,
+        IReadOnlyList<string> keyValues,
+        string executor,
+        CancellationToken token)
+        => RunCoreAsync(
+            connection, transaction, definition, executionEvent, keyValues, executor, token, simulate: true);
+
+    /// <summary>Outcome of one chain run: whether the engine handled it, the blocking message
+    /// and the per-step trace (empty unless a simulation asked for one).</summary>
+    public sealed record EffectRunResult(bool Ran, string? Error, IReadOnlyList<EffectStepResult> Steps);
+
+    private async Task<EffectRunResult> RunCoreAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        WorkbenchDefinition definition,
+        EffectEvent executionEvent,
+        IReadOnlyList<string> keyValues,
+        string executor,
+        CancellationToken token,
+        bool simulate)
+    {
         if (!IsEnabledFor(definition))
-            return (false, null);
+            return new EffectRunResult(false, null, []);
 
         var recordKey = string.Join(',', keyValues);
         try
@@ -88,32 +122,40 @@ public sealed class EffectEngineInvoker(
             var hasActions = plan.Actions.Any(action =>
                 EffectEventMapper.AppliesTo(action.EventCode, executionEvent));
             if (!hasActions)
-                return (false, null);
+                return new EffectRunResult(false, null, []);
+            IReadOnlyList<EffectStepResult> steps;
             if (transaction is not null)
             {
-                await pipeline.ExecuteWithinTransactionAsync(
-                    connection, transaction, plan, executionEvent, recordKey, executor, token, keyValues);
+                steps = await pipeline.ExecuteWithinTransactionAsync(
+                    connection, transaction, plan, executionEvent, recordKey, executor, token, keyValues, simulate);
             }
             else
             {
-                await pipeline.ExecuteAsync(definition, executionEvent, recordKey, executor, token, keyValues);
+                steps = await pipeline.ExecuteAsync(definition, executionEvent, recordKey, executor, token, keyValues);
             }
             logger.LogInformation(
                 "效果引擎接管事件 module={ModuleId} event={Event} version={Version}",
                 definition.ModuleId, executionEvent, definition.DefinitionVersion);
-            return (true, null);
+            return new EffectRunResult(true, null, steps);
+        }
+        catch (EffectStepFailedException exception)
+        {
+            return new EffectRunResult(true, FailureMessage(exception), exception.Steps);
         }
         catch (EffectValidationException exception)
         {
-            return (true, exception.Message);
+            return new EffectRunResult(true, exception.Message, []);
         }
         catch (EffectConfigException exception)
         {
             logger.LogError(exception,
                 "效果引擎配置错误 module={ModuleId} event={Event}", definition.ModuleId, executionEvent);
-            return (true, "效果配置错误：" + exception.Message);
+            return new EffectRunResult(true, "效果配置错误：" + exception.Message, []);
         }
     }
+
+    private static string FailureMessage(EffectStepFailedException exception) =>
+        exception.Steps.LastOrDefault(step => step.Warning is not null)?.Warning ?? exception.Message;
 
     /// <summary>
     /// Runs the validation chain of the given stage without executing any action, and

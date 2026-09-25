@@ -162,6 +162,89 @@ public static class BusinessActionLabels
         };
 
     /// <summary>
+    /// 效果键说明：一段人话讲清"这个键在单据上做什么"。
+    /// 标签只回答"叫什么"，说明回答"什么时候用、会发生什么"——界面上两个都要看得到。
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> EffectKeyDescriptions =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["field-accumulate"] = "把本单的数量/金额/日期按定位键累加回写到上游单据（如收料单批核后回写采购单已收量）。",
+            ["adjust-projection"] = "调整料件的在途量与预计量（如采购在途、订单预出）。",
+            ["stamp-last-activity"] = "把本单的最新价或最新交易日期戳记到主档；解批不回退戳记。",
+            ["completion-close"] = "按目标行的完成度判定是否达成，达成即自动写入结案标记。",
+            ["set-state"] = "把目标行的状态位/标志位置为指定值，或按来源写入日期（取最早/最晚）。",
+            ["link-stamp"] = "把本单的单别单号盖章到关联单据的引用列，建立单据间引用。",
+            ["inventory-move"] = "按明细行生成库存移动：扣减或增加库存余额并写流水，可选同步重算 MRP。",
+            ["balance-adjust"] = "调整客户/厂商往来余额或银行票据余额（含方向与金额列覆盖）。",
+            ["callback-reprice"] = "回执单生效后按回执价重算相关单据的价格。",
+            ["client-price-sync"] = "把报价/订单价格同步到客户计价档（可保留旧价、按时间覆盖）。",
+            ["supplier-price-sync"] = "把采购价格同步到厂商计价档（可保留旧价、按时间覆盖）。",
+            ["field-copy"] = "把本单字段按定位键回写到其它表（跨表字段复制）。",
+            ["hr-usage-sync"] = "把工时/请假/加班占用写回额度明细；解批按公式行自动反向。",
+            ["employee-contract-sync"] = "员工合同生效后同步人事档；解批重算时排除本单。",
+            ["employee-dimission-sync"] = "员工离职生效后同步人事状态；解批非对称还原为在职。",
+            ["mould-batch-apply"] = "量产申请生效后按批次处理模具与产品字段。",
+            ["mrp-plan-alloc"] = "按需求与可用库存分配 MRP 计划量。",
+            ["order-change-apply"] = "订单变更单生效后把变更写回原订单（净替换或累计）。",
+            ["produce-change-apply"] = "制令变更单生效后把变更写回原制令（含在途/预计量投影）。",
+            ["purchase-change-apply"] = "采购变更单生效后把变更写回原采购单。",
+            ["payment-date-calc"] = "按结帐月份与客户/厂商的付款天数推算预计收付款日期。",
+            ["quote-parameter-recalc"] = "重算报价参数表的费用与参数列（仅对已确认行）。",
+            ["half-stock-move"] = "半成品出入库移动（与库存移动同构，方向以 1/-1 表达）。",
+            ["car-filloil-sync"] = "车辆/油卡单据生效后回写里程与油卡余额；解批恢复更新前的值。",
+            ["detail-field-sync"] = "把明细上的旧字段同步到新字段；解批恢复更新前的值。",
+            ["sample-edition-bump"] = "样品首次晋升时递增版次；解批不回退版次。",
+            ["mould-ids-sync"] = "把制令在制的模具号汇总回写到主档。",
+            ["card-sibling-close"] = "员工卡换发时收口上一张卡的到期日。",
+            ["fields-metadata-sync"] = "同步字段元数据；属派生结果，解批不反向，重算即可。",
+            ["detail-flag-and-rollup"] = "按明细标志汇总金额与数量后回写主表。",
+            ["wage-month-doc-prune"] = "保证离职工资单据同月唯一（重复行清理）。",
+            ["doc-orphan-prune"] = "清理 BOM 里已无来源的孤儿行。",
+            ["sfc-plan-sync"] = "按工序与明细补全生产计划信息。",
+            ["cus-account-sync"] = "海关对帐单的金额与数量汇总。",
+            ["pur-apply-sync"] = "请购单生效后同步到采购单（回写已采购量等）。",
+            ["bom-size-backfill"] = "把来源表的长宽回填到 BOM 行。",
+            ["detail-rollup"] = "明细按列汇总后回写主表指定列。",
+            ["pur-pay-offset"] = "付款单与来源单据的预冲抵（含超额与到期的提示文案）。",
+            ["cop-receipt-offset"] = "收款单与来源单据的预冲抵（含超额与到期的提示文案）。",
+            ["cop-send-mo-flag"] = "送货单按类型标记制令包装字段。",
+            ["pur-purchase-sync"] = "采购单生效后同步厂商计价与关联字段。",
+            ["location-path-recalc"] = "库位层级变动后重算整棵子树的物化路径。",
+            ["depot-sentinel-location"] = "维护库别的『未指定位置』哨兵行。",
+            ["stocktake-scope-generate"] = "按盘点范围（库别/库位路径）生成盘点单明细行。",
+
+            ["meta-link"] = "保留键：元数据联动，当前没有落库实例。",
+            ["flow-trigger"] = "保留键：触发后续流程，当前没有落库实例。",
+            ["job-enqueue"] = "保留键：作业入队，当前没有落库实例。",
+        };
+
+    /// <summary>
+    /// 反向 kind 说明：每个取值"解批时到底怎么反悔"。
+    /// 名义闭集（16 个取值）不等于每个效果键的执行闭集；说明只解释语义，
+    /// 某个键到底认哪几个取值由 <see cref="Effects.EffectReverseCompatibility"/> 判定。
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> ReverseKindDescriptions =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["auto-reverse"] = "按公式行自身的语义自动反向（累加的反向就是减回）。",
+            ["clear-on-deapprove"] = "解批清空该列；原值需由别处记载，单条公式行无法表达。",
+            ["no-reverse"] = "解批不做任何反向（明确声明不回退）。",
+            ["clear-refs"] = "解批清空单据间引用列。",
+            ["net-replace"] = "净值替换：按当前净值重算目标列，而不是回退到旧值。",
+            ["none"] = "明确没有反向语义（与 no-reverse 同义，旧配置沿用）。",
+            ["recompute"] = "解批后按当前事实重算，而不是回退到旧值。",
+            ["recompute-excluding-self"] = "重算时排除本单自身的影响（本单不再计入）。",
+            ["restore-active"] = "非对称还原：解批后恢复为『在职 / 有效』这类正向状态。",
+            ["recalc-confirmed"] = "仅对已确认的行重算。",
+            ["restore-old-price"] = "还原更新前的单价并清理引用。",
+            ["reverse-flow"] = "写一笔反向流水（库存类常用）：原流水不删除。",
+            ["clear-finish"] = "解批清除结案标志。",
+            ["clear-refs-unfinish"] = "清空引用并同时取消结案。",
+            ["restore-previous"] = "恢复更新前的值（由处理器记录旧值后还原）。",
+            ["snapshot"] = "按快照补偿还原。",
+        };
+
+    /// <summary>
     /// 目录键 → 标签映射表清单（供单测做覆盖完整性校验）。
     /// </summary>
     public static IReadOnlyList<(string Name, IReadOnlySet<string> Keys, IReadOnlyDictionary<string, string> Labels)> CatalogPairs() =>
@@ -185,6 +268,30 @@ public static class BusinessActionLabels
             foreach (var key in keys)
                 if (!labels.ContainsKey(key))
                     missing.Add($"{name}:{key}");
+        return missing;
+    }
+
+    /// <summary>
+    /// 缺失说明的（映射表名, 目录键）清单；空表示每个效果键与每个反向 kind 都有人话说明。
+    /// 说明不是装饰：配置面靠它回答"这个键做什么""解批会怎么反悔"。
+    /// </summary>
+    public static IReadOnlyList<string> MissingDescriptionKeys()
+    {
+        var missing = new List<string>();
+        foreach (var key in BusinessActionCatalog.EffectKeys)
+        {
+            if (!EffectKeyDescriptions.ContainsKey(key))
+            {
+                missing.Add($"effectKeyDescriptions:{key}");
+            }
+        }
+        foreach (var kind in EffectStructSchemas.AllReverseKinds())
+        {
+            if (!ReverseKindDescriptions.ContainsKey(kind))
+            {
+                missing.Add($"reverseKindDescriptions:{kind}");
+            }
+        }
         return missing;
     }
 }

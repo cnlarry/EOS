@@ -102,10 +102,44 @@ public sealed record ModuleEffectPlan(
     IReadOnlyList<EffectActionPlan> Actions,
     IReadOnlyList<EffectValidationPlan> Rules);
 
+/// <summary>
+/// Whether an action step executed, was skipped or failed. Skipped is reported separately
+/// from "ran but matched no rows": a configuration that never fires and one that fires
+/// against an empty target set are different defects, and a report that conflates them
+/// cannot tell the configurator what to fix.
+/// </summary>
+public enum EffectStepOutcome
+{
+    Ran,
+    Skipped,
+    Failed,
+}
+
+/// <summary>One target column whose value changed (simulation trace only).</summary>
+public sealed record EffectColumnChange(string Name, string? Before, string? After);
+
+/// <summary>One target row located by a formula op (simulation trace only).</summary>
+public sealed record EffectRowChange(string Identity, IReadOnlyList<EffectColumnChange> Columns);
+
+/// <summary>Per-formula-row trace (simulation trace only; service effects report none).</summary>
+public sealed record EffectOpTrace(
+    int OpSeq,
+    string TargetTable,
+    string TargetField,
+    string OpCode,
+    int RowsAffected,
+    IReadOnlyList<EffectRowChange> Changes);
+
 /// <summary>Outcome of executing one action step inside the pipeline.</summary>
 public sealed record EffectStepResult(
     int Seq,
     string EffectKey,
     bool Success,
     string? Warning,
-    int RowsAffected);
+    int RowsAffected,
+    // The extra members default to the historical shape so existing call sites and their
+    // assertions keep compiling and keep passing unchanged.
+    EffectStepOutcome Outcome = EffectStepOutcome.Ran,
+    string? SkipReason = null,
+    bool ConditionMatched = true,
+    IReadOnlyList<EffectOpTrace>? Ops = null);

@@ -227,6 +227,7 @@ builder.Services.AddScoped<WorkbenchAuditWriter>();
 builder.Services.AddScoped<WorkbenchIdempotency>();
 builder.Services.AddScoped<WorkbenchVirtualColumnResolver>();
 builder.Services.AddScoped<WorkbenchApprovalService>();
+builder.Services.AddScoped<EOS.API.Data.Effects.EffectSimulationService>();
 builder.Services.AddScoped<WorkbenchQueryComposer>();
 builder.Services.AddScoped<WorkbenchCommandHandler>();
 builder.Services.AddScoped<AttendanceCalcService>();

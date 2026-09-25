@@ -380,6 +380,40 @@ public sealed class WorkbenchDefinitionValidator(
                 engineEnabled ? "效果引擎开启但模块暂无动作配置。" : "模块未开启效果引擎。"));
         }
 
+        // 反向 kind 兼容矩阵：名义闭集（16 个取值）不等于每个效果键的**执行**闭集——
+        // 例如 detail-field-sync 只认 restore-previous，配成 auto-reverse 会在真单据解批那一刻抛错。
+        // 发布期就按矩阵拦下，而不是让配置者拿真单据去试。
+        if (businessConfig is not null && businessConfig.Actions.Count > 0)
+        {
+            var unsupported = new List<string>();
+            foreach (var action in businessConfig.Actions)
+            {
+                // 用户点击行没有反向语义（不参与效果链），其参数由操作注册表把关。
+                if (BusinessActionCatalog.IsManualEvent(action.EventCode))
+                {
+                    continue;
+                }
+                var kind = ReadReverseKind(action.Reverse);
+                if (kind is null)
+                {
+                    continue;
+                }
+                // 带公式行的动作走公式解释器，其余走服务处理器——两者接受的 kind 不同。
+                if (!EffectReverseCompatibility.IsSupported(action.EffectKey, kind, action.Ops is { Count: > 0 }))
+                {
+                    unsupported.Add($"SEQ={action.Seq} {action.EffectKey} → {kind}（可用：{string.Join("/", EffectReverseCompatibility.AllowedKinds(action.EffectKey, action.Ops is { Count: > 0 }))}）");
+                }
+            }
+            checks.Add(unsupported.Count == 0
+                ? new("effect_reverse_kind_supported", true, "反向 kind 均落在各自效果键支持的取值内。")
+                : new("effect_reverse_kind_supported", false,
+                    $"反向 kind 不受该效果键支持（解批时会在真单据上抛错）：{string.Join("；", unsupported.Take(5))}{(unsupported.Count > 5 ? " 等" : "")}。"));
+        }
+        else
+        {
+            checks.Add(new("effect_reverse_kind_supported", true, "模块无效果动作配置。"));
+        }
+
         var passed = checks.Where(check => check.Severity != "warning").All(check => check.Passed);
         string? definitionJson = null;
         if (passed && definition is not null)
@@ -420,6 +454,30 @@ public sealed class WorkbenchDefinitionValidator(
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
         var value = await command.ExecuteScalarAsync(token);
         return value is not null && Convert.ToInt32(value) == 1;
+    }
+
+    /// <summary>读反向结构的 kind（未配反向结构或格式非法时返回 null——后者由保存期结构校验负责）。</summary>
+    private static string? ReadReverseKind(string? reverseJson)
+    {
+        if (string.IsNullOrWhiteSpace(reverseJson))
+        {
+            return null;
+        }
+        try
+        {
+            using var document = JsonDocument.Parse(reverseJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("kind", out var kind)
+                || kind.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+            return kind.GetString();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static async Task<ModuleRow?> ReadModuleAsync(SqlConnection connection, int moduleId, CancellationToken token)
