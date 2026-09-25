@@ -812,3 +812,79 @@ describe('BusinessActionsPanel 自定义按钮行', () => {
     expect(JSON.parse(saved.params).fields[0].label).toBe('目标库位（改）')
   })
 })
+
+/**
+ * 白箱化两个入口：「预演（不改数据）」与「行为说明书」。两者都是只读诊断，
+ * 都不能是"点了没反应"——预演属于行为动作页签（它跑的是效果链），说明书覆盖全部页签。
+ */
+describe('BusinessActionsPanel 白箱化入口', () => {
+  beforeEach(() => {
+    apiClientMock.get.mockImplementation(async (url: string) => {
+      if (url.endsWith('/module-business-config/meta')) return catalog
+      if (url.endsWith('/module-business-config/1607')) return config
+      if (url.endsWith('/module-business-config/1607/field-labels')) return fieldLabels
+      if (url.endsWith('/relations')) return []
+      if (url.endsWith('/settings/system')) return { groups: [] }
+      if (url.endsWith('/module-business-config/schemas')) {
+        return {
+          effects: [{ effectKey: 'field-accumulate', rootKeys: ['mode', 'targets'] }],
+          reverseKinds: ['auto-reverse', 'no-reverse', 'recompute', 'reverse-flow', 'snapshot'],
+          reverseKindLabels: { 'auto-reverse': '按公式行自动反向', 'no-reverse': '解批不反向' },
+          reverseKindsByEffect: { 'field-accumulate': ['no-reverse', 'auto-reverse'] },
+        }
+      }
+      return {}
+    })
+    apiClientMock.post.mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('行为动作页签工具栏提供预演与说明书入口，说明书按事件汇总且含反向人话', async () => {
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="actions" />)
+    await screen.findByText('业务动作（1）')
+
+    fireEvent.click(screen.getByRole('button', { name: '行为说明书' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByText('行为说明书 — 收料单')).toBeInTheDocument()
+    expect(dialog.getByText('批核生效（APPROVE_EFFECT）（1）')).toBeInTheDocument()
+    expect(dialog.getByText(/解批反向：按公式行自动反向/)).toBeInTheDocument()
+    // 加工单句式在摘要与逐行列表两处出现（同一句话，不是两种说法）。
+    expect(dialog.getAllByText(/采购单明细\(PUR_PURCHASE_D\)\.已收数量\(RECEIVE_QTY\) \+= 本单明细\.收料数量\(QTY\)（合计）/).length)
+      .toBeGreaterThan(0)
+  })
+
+  it('预演入口只出现在行为动作页签，且打开的是"不改数据"的诊断面板', async () => {
+    const { unmount } = renderWithProviders(
+      <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="actions" />,
+    )
+    await screen.findByText('业务动作（1）')
+    fireEvent.click(screen.getByRole('button', { name: '预演（不改数据）' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByText(/预演不改数据/)).toBeInTheDocument()
+    // 保存后效果不在本批次范围内，必须显式说明而不是灰掉不说为什么。
+    expect(dialog.getByText(/保存后效果（SAVE）暂不支持预演/)).toBeInTheDocument()
+    unmount()
+
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="rules" />)
+    await screen.findByText('校验规则（0）')
+    expect(screen.queryByRole('button', { name: '预演（不改数据）' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '行为说明书' })).toBeInTheDocument()
+  })
+
+  it('反向 kind 下拉按所选效果键过滤，并给出该 kind 的说明', async () => {
+    renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="actions" />)
+    await screen.findByText('业务动作（1）')
+
+    fireEvent.click(screen.getByText('收料量回写采购单'))
+    await screen.findByText('加工单（2 步）')
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' }).filter((button) => !(button as HTMLButtonElement).disabled)[0])
+
+    const dialog = within(await screen.findByRole('dialog'))
+    // field-accumulate 在兼容矩阵里只允许 no-reverse / auto-reverse：选不到不支持的组合。
+    expect(dialog.queryByRole('option', { name: /写反向流水/ })).not.toBeInTheDocument()
+    expect(dialog.getByRole('option', { name: '解批不反向（no-reverse）' })).toBeInTheDocument()
+  })
+})
