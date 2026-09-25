@@ -49,22 +49,22 @@ public sealed class DepotProductLocationModuleLiveTests
         }
 
         await using (var command = new SqlCommand("""
-            SELECT F_ID, IS_PK, IS_VISIBLE, BROWSE_M_IDX, FORM_ORDER
-              FROM dbo.FIELDS WHERE RTRIM(T_ID) = @Table ORDER BY FORM_ORDER, F_ID;
+            SELECT F_ID, IS_PK, IS_VISIBLE, BROWSE_M_IDX
+              FROM dbo.FIELDS WHERE RTRIM(T_ID) = @Table ORDER BY F_ID;
             """, connection))
         {
             command.Parameters.Add("@Table", SqlDbType.NVarChar, 50).Value = Table;
-            var fields = new List<(string Field, bool Pk, bool Visible, int? Chooser, int? Order)>();
+            var fields = new List<(string Field, bool Pk, bool Visible, int? Chooser)>();
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
                 fields.Add((reader.GetString(0).Trim(), reader.GetBoolean(1), reader.GetBoolean(2),
-                    reader.IsDBNull(3) ? null : reader.GetInt32(3),
-                    reader.IsDBNull(4) ? null : reader.GetInt32(4)));
+                    reader.IsDBNull(3) ? null : reader.GetInt32(3)));
             }
 
             Assert.Equal(5, fields.Count);
-            // 三列都标成主键（**不比顺序**）：`FORM_ORDER` 是版式编排顺序，人在表单设计里拖一下就会变；
+            // 三列都标成主键（**不比顺序**）：顺序是版式的事（人在表单设计里拖一下就会变，字段级
+            // `FORM_ORDER` 已退役）；
             // 键序由**物理主键**决定（另一条用例断言已发布定义的 MasterPkOrder 与它一致）。
             // 把这里写成有序断言会把"有人调了版式"误报成缺陷——2026-09-25 实测被这么绊过一次。
             Assert.Equal(

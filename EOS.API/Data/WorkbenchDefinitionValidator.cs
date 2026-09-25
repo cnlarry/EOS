@@ -635,7 +635,7 @@ public sealed class WorkbenchDefinitionValidator(
     /// <summary>
     /// 界面质量类校验：
     /// 阻断——FORM_OPTIONS 格式非法 / CHOOSE_RETURNVAL 映射目标不存在 / DFT_VALUE 按 F_TYPE 不可转换
-    /// （GETDATE() 类无参函数表达式跳过）；警告——FORM_ORDER 缺失比例过高、F_DESC 超长
+    /// （GETDATE() 类无参函数表达式跳过）；警告——F_DESC 超长
     /// （渲染层「换两行+title」为硬保障，此处仅质量提示）、datetime 缺 DISPLAY_FORMAT。
     /// CHOOSE_RETURNVAL 目标按「主表∪子表模块字段全集」判定——旧语义允许子表选择器跨表回填主表字段。
     /// </summary>
