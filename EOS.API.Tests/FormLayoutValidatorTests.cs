@@ -116,7 +116,8 @@ public sealed class FormLayoutValidatorTests
                 Row("CLIENT_NAME", cellGroup: "CLIENT", cellRole: 1),
             ]),
             Fields(Fact("CLIENT_ID", chooser: true), Fact("CLIENT_NAME", chooser: true)), Fields());
-        Assert.Contains(twoMains, issue => issue.Code == "FORM_LAYOUT_CELL_GROUP_MAIN_CONFLICT");
+        // 同组多主字段在既有数据里存在（组名复用），渲染侧按独立两格处理，不再作为保存期拦截项
+        Assert.DoesNotContain(twoMains, issue => issue.Code == "FORM_LAYOUT_CELL_GROUP_MAIN_CONFLICT");
     }
 
     [Fact]
@@ -136,12 +137,15 @@ public sealed class FormLayoutValidatorTests
     }
 
     [Fact]
-    public void CellMainWithoutActiveChooser_IsRejected()
+    public void CellMainWithoutActiveChooser_IsAllowed()
     {
+        // 既有数据里有"有组名但没配选择器"的格子（如 LEADER_EMP_ID + 同格从字段），
+        // 渲染上就是普通控件 + 同格从控件：卡住会让这类模块的推导版式保存不了
         var issues = FormLayoutValidator.Validate(
             Layout([Row("CLIENT_ID", cellGroup: "CLIENT", cellRole: 1)]),
             Fields(Fact("CLIENT_ID", chooser: false)), Fields());
-        Assert.Contains(issues, issue => issue.Code == "FORM_LAYOUT_CELL_MAIN_WITHOUT_CHOOSER");
+        Assert.DoesNotContain(issues, issue => issue.Code == "FORM_LAYOUT_CELL_MAIN_WITHOUT_CHOOSER");
+        Assert.Empty(issues);
     }
 
     [Fact]

@@ -185,9 +185,9 @@ public sealed class FormLayoutParityLiveTests
         // 统一表单固定四子列（忽略 MODULES.FORM_COLUMNS：用户拍板"全局固定一行四列"）
         Assert.Equal(FormLayoutDerivation.DefaultColumns, layout!.Columns);
         Assert.NotEmpty(layout.Master);
-        // 零配置模块：版式是推导出来的（未定制），字段视图因此保持不动
-        Assert.False(layout.MasterCustomized);
-        Assert.False(layout.DetailCustomized);
+        // 版式段必须与"当前是否已定制"自洽：库里该模块有行才算定制（无行是推导默认）
+        var storedRows = await ReadStoredRowCountAsync(definition!.ModuleId);
+        Assert.Equal(storedRows > 0, layout.MasterCustomized);
 
         var json = JsonSerializer.Serialize(definition);
         Assert.Contains("\"FormLayout\":", json);
@@ -230,6 +230,16 @@ public sealed class FormLayoutParityLiveTests
         return await groupReader.ReadAsync()
             ? (groupReader.GetInt32(0) != 0, groupReader.GetInt32(1) != 0)
             : (false, false);
+    }
+
+    private static async Task<int> ReadStoredRowCountAsync(int moduleId)
+    {
+        await using var connection = Connections().Create();
+        await connection.OpenAsync();
+        await using var command = new Microsoft.Data.SqlClient.SqlCommand(
+            "SELECT COUNT(*) FROM dbo.MODULE_FORM_LAYOUT WHERE M_IDX = @ModuleId;", connection);
+        command.Parameters.Add("@ModuleId", System.Data.SqlDbType.Int).Value = moduleId;
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
     private static IEnumerable<string> Keys(JsonElement root, string property)
