@@ -122,6 +122,8 @@ public static class EffectStructSchemas
             ["pur-pay-offset"] = Set("master", "offset", "due", "detail", "gateFlag", "negativeMessage", "exceedMessage", "dueMessage", "exceedOffset"),
             ["cop-receipt-offset"] = Set("master", "offset", "due", "detail", "gateFlag", "negativeMessage", "exceedMessage", "dueMessage", "exceedOffset"),
             ["cop-send-mo-flag"] = Set("detail", "typeField", "noField"),
+        // 无参数：来源模块与单号都从框架给的模块号与主键值里取，配置侧只需把它挂在来源模块的事件上。
+        ["inventory-release-by-source"] = Set(),
             ["pur-purchase-sync"] = Set("master", "detail", "more", "product", "supplierPrice"),
             ["location-path-recalc"] = Set("table", "depotField", "locationField", "parentField", "pathField"),
             ["depot-sentinel-location"] = Set("table", "depotField", "locationField", "parentField", "pathField",

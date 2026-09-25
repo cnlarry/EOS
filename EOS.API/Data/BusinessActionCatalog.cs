@@ -78,6 +78,7 @@ public static class BusinessActionCatalog
         "location-path-recalc",
         "depot-sentinel-location",
         "stocktake-scope-generate",
+        "inventory-release-by-source",
         // 保留键（暂无落库实例，登记保留）
         "meta-link",
         "flow-trigger",

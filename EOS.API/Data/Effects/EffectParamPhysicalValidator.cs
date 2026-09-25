@@ -24,6 +24,7 @@ public static class EffectParamPhysicalValidator
         "balance-adjust",
         "completion-close",
         "adjust-projection",
+        "inventory-release-by-source",
     };
 
     /// <summary>Effect keys this validator resolves table/column references for.</summary>

@@ -66,6 +66,7 @@ public static class EffectRegistry
         ["cop-send-mo-flag"] = Status.Service,
         ["pur-purchase-sync"] = Status.Service,
         ["location-path-recalc"] = Status.Service,
+        ["inventory-release-by-source"] = Status.Service,
         ["depot-sentinel-location"] = Status.Service,
         ["stocktake-scope-generate"] = Status.Service,
         // Placeholder-row + params shapes collected; service handlers registered
