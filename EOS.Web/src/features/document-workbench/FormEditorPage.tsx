@@ -1434,6 +1434,22 @@ export function FormEditorPage() {
             >
               字段设置
             </button>
+            {/* 版式设计入口：无设计权的用户不渲染该菜单项（服务端写端点仍独立鉴权） */}
+            {form.canFormDesign ? (
+              <button
+                type="button"
+                className="erp-field-setup-item"
+                role="menuitem"
+                onClick={() => {
+                  setFieldSetupMenu(null)
+                  const next = new URLSearchParams(searchParams)
+                  next.set('design', '1')
+                  navigate(`${location.pathname}?${next.toString()}`)
+                }}
+              >
+                表单设计
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}
