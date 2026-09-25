@@ -211,6 +211,8 @@ builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.MaterialIssueAllocateHandler>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.ProduceCalcMaterialsHandler>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.ProduceGenSubHandler>();
+builder.Services.AddScoped<EOS.API.Data.DocumentActions.IDocumentUserAction, EOS.API.Data.DocumentActions.Handlers.MonthCloseSnapshotHandler>();
+builder.Services.AddScoped<EOS.API.Features.Inventory.MonthCloseSnapshotService>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionRegistry>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionAuthorization>();
 builder.Services.AddScoped<EOS.API.Data.DocumentActions.DocumentActionExecutor>();

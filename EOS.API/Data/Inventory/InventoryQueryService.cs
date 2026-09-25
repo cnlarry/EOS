@@ -228,6 +228,124 @@ public static class InventoryQueryService
 
     internal sealed record BoundParameter(string Name, SqlDbType Type, int Size, object Value);
 
+    // ===== 区间净额读（按期反算用） =====
+
+    /// <summary>
+    /// 区间净动账请求：`(After, UpTo]`——**下界排他、上界含**。这是按期反算的语义要求：
+    /// 下界取"上一期快照的时点"，而快照时点当天的流水已经算进了快照，再算一次就是重复计。
+    /// </summary>
+    public sealed record LedgerNetQuery
+    {
+        /// <summary>排他下界；为空表示"从有账以来"。</summary>
+        public DateTime? After { get; init; }
+
+        /// <summary>含入上界（期末时点）；为空表示"到最新"。</summary>
+        public DateTime? UpTo { get; init; }
+
+        public bool GroupByLocation { get; init; }
+        public bool GroupByBatch { get; init; }
+
+        public string? DepotId { get; init; }
+        public string? ProductNo { get; init; }
+    }
+
+    /// <summary>
+    /// 区间净额。`NetQuantity` 带符号（入库为正、出库为负）；
+    /// `InQuantity` / `InAmount` **只统计入库方向**——移动加权成本只用入库侧，出库不改均价，
+    /// 混着算会把均价拉偏。
+    /// </summary>
+    public sealed record MovementQuantity(
+        string ProductNo, string DepotId, string LocationNo, string BatchNo,
+        double NetQuantity, double InQuantity, double InAmount);
+
+    /// <summary>
+    /// 按维度聚合区间净动账。缺数量的流水（`QTY IS NULL`）按 0 参与，
+    /// 与对账算式同一口径——"这类行不参与"由对账门禁的第一步先断掉，这里不再各写一遍。
+    /// </summary>
+    public static async Task<IReadOnlyList<MovementQuantity>> GetNetMovementsAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        LedgerNetQuery query,
+        ReadLock readLock,
+        CancellationToken token)
+    {
+        var plan = BuildNetMovements(query, readLock);
+        await using var command = new SqlCommand(plan.Sql, connection, transaction);
+        foreach (var parameter in plan.Parameters)
+        {
+            command.Parameters.Add(parameter.Name, parameter.Type, parameter.Size).Value = parameter.Value;
+        }
+
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var rows = new List<MovementQuantity>();
+        while (await reader.ReadAsync(token))
+        {
+            var index = 0;
+            var product = reader.IsDBNull(index) ? string.Empty : reader.GetString(index).Trim();
+            index++;
+            var depot = reader.IsDBNull(index) ? string.Empty : reader.GetString(index).Trim();
+            index++;
+            var location = LocationSentinel;
+            if (query.GroupByLocation)
+            {
+                location = reader.IsDBNull(index) || reader.GetString(index).Trim().Length == 0
+                    ? LocationSentinel
+                    : reader.GetString(index).Trim();
+                index++;
+            }
+            var batch = EmptyBatch;
+            if (query.GroupByBatch)
+            {
+                batch = reader.IsDBNull(index) ? EmptyBatch : reader.GetString(index).Trim();
+                index++;
+            }
+            double Read(int position) => reader.IsDBNull(position) ? 0 : Convert.ToDouble(reader.GetValue(position));
+            rows.Add(new MovementQuantity(product, depot, location, batch, Read(index), Read(index + 1), Read(index + 2)));
+        }
+        return rows;
+    }
+
+    /// <summary>生成区间净额的语句与其参数；维度未声明就投影掉，由读取侧补哨兵。</summary>
+    internal static (string Sql, IReadOnlyList<BoundParameter> Parameters) BuildNetMovements(
+        LedgerNetQuery query, ReadLock readLock)
+    {
+        var groupBy = new List<string> { ProductColumn, DepotColumn };
+        if (query.GroupByLocation) groupBy.Add(LocationKey("s"));
+        if (query.GroupByBatch) groupBy.Add(BatchKey("s"));
+
+        var predicates = new List<string>();
+        var parameters = new List<BoundParameter>();
+        if (query.After is { } after)
+        {
+            predicates.Add("s.MUTUALITY_DATE > @after");
+            parameters.Add(new BoundParameter("@after", SqlDbType.DateTime, 8, after));
+        }
+        if (query.UpTo is { } upTo)
+        {
+            predicates.Add("s.MUTUALITY_DATE <= @upTo");
+            parameters.Add(new BoundParameter("@upTo", SqlDbType.DateTime, 8, upTo));
+        }
+        if (query.DepotId is { Length: > 0 } depot)
+        {
+            predicates.Add($"{DepotColumn}=@depot");
+            parameters.Add(new BoundParameter("@depot", SqlDbType.NVarChar, 20, depot));
+        }
+        if (query.ProductNo is { Length: > 0 } product)
+        {
+            predicates.Add($"{ProductColumn}=@pro");
+            parameters.Add(new BoundParameter("@pro", SqlDbType.NVarChar, 60, product));
+        }
+
+        var projection = string.Join(", ", groupBy);
+        var where = predicates.Count > 0 ? " WHERE " + string.Join(" AND ", predicates) : string.Empty;
+        var sql = $"SELECT {projection}, "
+            + $"SUM(CASE WHEN s.IN_OUT = 'I' THEN ISNULL(s.{QuantityColumn},0) ELSE -ISNULL(s.{QuantityColumn},0) END) AS NET_QTY, "
+            + $"SUM(CASE WHEN s.IN_OUT = 'I' THEN ISNULL(s.{QuantityColumn},0) ELSE 0 END) AS IN_QTY, "
+            + $"SUM(CASE WHEN s.IN_OUT = 'I' THEN ISNULL(s.{QuantityColumn},0) * ISNULL(s.PRICE,0) ELSE 0 END) AS IN_AMOUNT "
+            + $"FROM dbo.{LedgerTable} s" + Hint(readLock) + where + $" GROUP BY {projection};";
+        return (sql, parameters);
+    }
+
     // ===== 行级读 =====
 
     /// <summary>行筛选：数量口径（仓位/盘点的适用范围各不相同）。</summary>
