@@ -64,10 +64,12 @@ public sealed class DepotProductLocationModuleLiveTests
             }
 
             Assert.Equal(5, fields.Count);
-            // 主键顺序与表上的 PK (DEPOT_ID, PRO_NO, LOCATION_NO) 一致：统一表单的 MasterPkOrder 按 FORM_ORDER 推
+            // 三列都标成主键（**不比顺序**）：`FORM_ORDER` 是版式编排顺序，人在表单设计里拖一下就会变；
+            // 键序由**物理主键**决定（另一条用例断言已发布定义的 MasterPkOrder 与它一致）。
+            // 把这里写成有序断言会把"有人调了版式"误报成缺陷——2026-09-25 实测被这么绊过一次。
             Assert.Equal(
-                new[] { "DEPOT_ID", "PRO_NO", "LOCATION_NO" },
-                fields.Where(f => f.Pk).OrderBy(f => f.Order).Select(f => f.Field).ToArray());
+                new[] { "DEPOT_ID", "LOCATION_NO", "PRO_NO" },
+                fields.Where(f => f.Pk).Select(f => f.Field).OrderBy(f => f, StringComparer.Ordinal).ToArray());
             // 三列都要能选（库别 / 品号 / 库位），否则维护的人得手抄主键
             Assert.All(fields.Where(f => f.Pk), f => Assert.NotNull(f.Chooser));
             Assert.All(fields, f => Assert.True(f.Visible, $"{f.Field} 应在表单里可见。"));
