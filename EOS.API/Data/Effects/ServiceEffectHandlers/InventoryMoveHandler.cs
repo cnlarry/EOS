@@ -2,6 +2,7 @@ using System.Data;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using EOS.API.Data.Inventory;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data.Effects.ServiceEffectHandlers;
@@ -372,6 +373,9 @@ public sealed class InventoryMoveSql
             fill.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
         await fill.ExecuteNonQueryAsync(token);
 
+        // 关账拦截排在所有写入之前：期间已关账就整单拒绝，不写一半再回滚。
+        await EnsurePeriodOpenAsync(token);
+
         // 必须在行集落进 Tmp 之后：库别清单是从 Tmp 里读的，先读只会读到空表，
         // 于是每个库别都拿不到策略行、一律按档 0 处理（表面正常，档位静默失效）。
         await LoadPolicyAsync(token);
@@ -402,6 +406,39 @@ public sealed class InventoryMoveSql
         await ExecAsync($"DROP TABLE {Tmp}", token);
         await ExecAsync($"DROP TABLE {PolicyTmp}", token);
         return affected;
+    }
+
+    /// <summary>
+    /// 关账拦截：写流水之前先问"这一笔记账落在哪一期"。
+    /// 判据与流水日期**同源**——用同一支 <see cref="LedgerDateExpression"/> 取值，批核是源单的单据日期、
+    /// 非批核是当前时间，所以两个方向要判的日期本来就不同，不能各写一份。
+    /// 解批另有第二条规矩：这张单**已有**的流水若落在已关账期，反向冲销一样拒绝
+    /// （否则可以先解批、把单据日期改到开账期、再批核，等于把已关账期的账洗一遍）。
+    /// **落点只在移动引擎写入口** ⇒ 非库存模块不受影响。
+    /// </summary>
+    private async Task EnsurePeriodOpenAsync(CancellationToken token)
+    {
+        var targets = new List<(string BillType, string BillNo, DateTime LedgerDate)>();
+        await using (var command = new SqlCommand(
+            $"SELECT t.BILL_TYPE, t.BILL_NO, MAX({LedgerDateExpression()}) AS LEDGER_DATE "
+            + $"FROM {Tmp} t GROUP BY t.BILL_TYPE, t.BILL_NO;", _connection, _transaction))
+        {
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                if (reader.IsDBNull(2)) continue;
+                targets.Add((
+                    reader.IsDBNull(0) ? string.Empty : reader.GetString(0).Trim(),
+                    reader.IsDBNull(1) ? string.Empty : reader.GetString(1).Trim(),
+                    reader.GetDateTime(2)));
+            }
+        }
+
+        foreach (var (billType, billNo, ledgerDate) in targets)
+        {
+            await InventoryPeriodService.EnsureLedgerWritableAsync(
+                _connection, _transaction, ledgerDate, billType, billNo, token);
+        }
     }
 
     private async Task CreateTempAsync(CancellationToken token)

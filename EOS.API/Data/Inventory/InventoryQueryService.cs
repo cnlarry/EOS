@@ -98,6 +98,28 @@ public static class InventoryQueryService
         return await command.ExecuteScalarAsync(token) is not null;
     }
 
+    /// <summary>
+    /// 该单据已有流水里**最晚的一条**记账日期；没有流水返回 null。
+    /// 用来回答"这张单当初记的账落在哪一期"——解批 / 反向冲销要判"原来的账有没有进已关账期"。
+    /// 单据键两侧都去空格比较（与 <see cref="HasLedgerAsync"/> 同口径）。
+    /// </summary>
+    public static async Task<DateTime?> GetLatestLedgerDateAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        string billType,
+        string billNo,
+        CancellationToken token)
+    {
+        await using var command = new SqlCommand(
+            $"SELECT MAX(MUTUALITY_DATE) FROM dbo.{LedgerTable} "
+            + "WHERE LTRIM(RTRIM(MUTUALITY_TYPE))=@t AND LTRIM(RTRIM(MUTUALITY_NO))=@n;",
+            connection, transaction);
+        command.Parameters.Add("@t", SqlDbType.NVarChar, 20).Value = billType.Trim();
+        command.Parameters.Add("@n", SqlDbType.NVarChar, 40).Value = billNo.Trim();
+        var value = await command.ExecuteScalarAsync(token);
+        return value is null or DBNull ? null : Convert.ToDateTime(value);
+    }
+
     // ===== 聚合读 =====
 
     /// <summary>
