@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.Json;
+using EOS.API.Data.Definitions;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
