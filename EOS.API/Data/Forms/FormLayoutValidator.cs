@@ -121,13 +121,9 @@ public static class FormLayoutValidator
             if (row.CellRole == 1)
             {
                 mainGroups.Add(group);
-                if (!fact.HasActiveChooser)
-                {
-                    issues.Add(new FormLayoutValidationIssue(
-                        "FORM_LAYOUT_CELL_MAIN_WITHOUT_CHOOSER",
-                        $"字段 {row.Key} 要作为复合格主字段，但没有启用中的选择器来源。",
-                        row.Key));
-                }
+                // 主字段**不强制**有启用中的选择器：既有数据里存在"有组名但没配选择器"的格子
+                // （如 LEADER_EMP_ID + 同格从字段），渲染上就是普通控件 + 同格从控件；
+                // 卡住会让这类模块的推导版式保存不了。设计态的"合并为一格"本就只开放给有选择器的主字段。
             }
             else if (row.CellRole == 2)
             {
@@ -135,15 +131,8 @@ public static class FormLayoutValidator
             }
         }
 
-        var duplicateGroups = mainGroups
-            .GroupBy(group => group, StringComparer.OrdinalIgnoreCase)
-            .Where(item => item.Count() > 1)
-            .Select(item => item.Key);
-        foreach (var group in duplicateGroups)
-        {
-            issues.Add(new FormLayoutValidationIssue(
-                "FORM_LAYOUT_CELL_GROUP_MAIN_CONFLICT", $"复合格 {group} 有多个主字段（一组只能一个主字段）。"));
-        }
+        // 同组多主字段在**既有数据**里存在（组名复用）；渲染侧把第二个主字段当成独立一格，
+        // 不会串格，故不作为保存期拦截项（设计态的"合并为一格"本身只产生一个主字段）。
 
         foreach (var (group, _) in companionByGroup)
         {
@@ -156,6 +145,7 @@ public static class FormLayoutValidator
                     "FORM_LAYOUT_COMPANION_WITHOUT_MAIN", $"从字段的分组 {group} 没有对应的主字段。"));
             }
         }
+
 
         // 已定制的表：未列出的字段即"未加入表单"，与隐藏同效，故不可移除类字段必须出现
         var customized = isMaster ? layout.MasterCustomized : layout.DetailCustomized;
