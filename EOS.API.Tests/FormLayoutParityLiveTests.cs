@@ -163,6 +163,36 @@ public sealed class FormLayoutParityLiveTests
     }
 
     /// <summary>
+    /// 重建出来的定义必须带上模块级版式段——它随快照下发，是运行期渲染与 P1 设计态的共同来源；
+    /// 同时钉住"改造只多这一段"的前提：段存在且页签/字段视图不变（字段视图由上一个用例逐模块比对）。
+    /// </summary>
+    [Fact]
+    public async Task RebuiltDefinition_CarriesModuleLevelFormLayoutSection()
+    {
+        var connections = Connections();
+        var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
+        var builder = new WorkbenchDefinitionBuilder(connections, provider,
+            Options.Create(new UnifiedFormEditorSettings()), NullLogger<WorkbenchDefinitionBuilder>.Instance);
+        var empty = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var definition = await builder.GetDefinitionAsync(1405, "admin", "Z", true, true,
+            empty, empty, CancellationToken.None, forPublish: true);
+
+        Assert.NotNull(definition);
+        var layout = definition!.FormLayout;
+        Assert.NotNull(layout);
+        Assert.Equal(definition.FormColumns is int columns and > 0 ? columns : 2, layout!.Columns);
+        Assert.NotEmpty(layout.Master);
+        // 零配置模块：版式是推导出来的（未定制），字段视图因此保持不动
+        Assert.False(layout.MasterCustomized);
+        Assert.False(layout.DetailCustomized);
+
+        var json = JsonSerializer.Serialize(definition);
+        Assert.Contains("\"FormLayout\":", json);
+        Assert.Contains("\"Master\":", json);
+    }
+
+    /// <summary>
     /// 该账号在某模块上的成本/保密可见性：个人权限行存在即完全采用个人行，否则取所属各组的布尔 OR
     /// （与权限引擎同一规则；组位不同取值时个人覆盖组，两者都不能省）。
     /// </summary>
