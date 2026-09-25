@@ -36,18 +36,18 @@ IF NOT EXISTS (SELECT 1 FROM dbo.FIELDS WHERE RTRIM(T_ID) = N'DEPOT_PRODUCT_LOCA
 BEGIN
     INSERT INTO dbo.FIELDS
         (T_ID, F_ID, F_DESC, F_TYPE, BROWSE_M_IDX, BROWSE_URL, ONLY_CHOOSE,
-         IS_PK, IS_READONLY, IS_VISIBLE, IS_QUERY, FORM_ORDER)
+         IS_PK, IS_READONLY, IS_VISIBLE, IS_QUERY, IS_DEFAULT_FIELDS, FORM_ORDER)
         VALUES
         (N'DEPOT_PRODUCT_LOCATION', N'DEPOT_ID', N'库别', N'nchar', 110306,
-         N'~/INV/Depot.aspx?IDX=DEPOT_ID={DEPOT_ID}', 1, 1, 0, 1, 1, 1),
+         N'~/INV/Depot.aspx?IDX=DEPOT_ID={DEPOT_ID}', 1, 1, 0, 1, 1, 1, 1),
         (N'DEPOT_PRODUCT_LOCATION', N'PRO_NO', N'品号', N'nchar', 1206,
-         N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1, 1, 0, 1, 1, 2),
+         N'~/BOM/Product.aspx?IDX=PRO_NO={PRO_NO}', 1, 1, 0, 1, 1, 1, 2),
         (N'DEPOT_PRODUCT_LOCATION', N'LOCATION_NO', N'库位编号', N'nvarchar', 110309,
-         NULL, 1, 1, 0, 1, 1, 3),
+         NULL, 1, 1, 0, 1, 1, 1, 3),
         (N'DEPOT_PRODUCT_LOCATION', N'IS_PRIMARY', N'主货位', N'bit', NULL,
-         NULL, 0, 0, 0, 1, 0, 4),
+         NULL, 0, 0, 0, 1, 0, 1, 4),
         (N'DEPOT_PRODUCT_LOCATION', N'SEQ_NO', N'排序', N'int', NULL,
-         NULL, 0, 0, 0, 1, 0, 5);
+         NULL, 0, 0, 0, 1, 0, 1, 5);
     PRINT N'== 新增 DEPOT_PRODUCT_LOCATION 的 5 个字段元数据 ==';
 END
 ELSE
