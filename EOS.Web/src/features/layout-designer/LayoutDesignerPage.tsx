@@ -772,7 +772,7 @@ export function LayoutDesignerPage() {
       <div className="p-4">
         <div className="alert alert-danger">
           {forbidden
-            ? '无版式设计权限：需要管理员在权限管理中为当前账号授予 FORM_DESIGN_TAG（完整设计）或 FORM_ADJUST_TAG（微调）权限位。'
+            ? '无版式设计权限：需要管理员在权限管理中为当前账号授予 FORM_DESIGN_TAG（版式设计）权限位。'
             : '加载失败：无权访问或模块无内置版式。'}
         </div>
         <Button variant="secondary" onClick={() => navigate(-1)}>返回</Button>
@@ -781,8 +781,7 @@ export function LayoutDesignerPage() {
   }
 
   const canDesign = definition.data?.mode.canDesign === true
-  const canEdit = definition.data != null && (definition.data.mode.canDesign || definition.data.mode.canAdjust)
-  const simpleMode = canEdit && !canDesign
+  const canEdit = canDesign
 
   const sectionSpecs = [
     { key: 'header', topMm: geometry.headerTopMm, hMm: geometry.headerHmm },
@@ -1110,7 +1109,7 @@ export function LayoutDesignerPage() {
               <LayerPanel
                 doc={doc}
                 selectedIds={selectedIds}
-                canAdjust={canDesign || simpleMode}
+                canEdit={canDesign}
                 onSelect={(id, additive) => setSelectedIds((prev) => {
                   if (additive) {
                     const next = new Set(prev)
@@ -1154,11 +1153,6 @@ export function LayoutDesignerPage() {
                     dataContract={definition.data.dataContract}
                     systemFields={definition.data.systemFields}
                     canDesign={canDesign}
-                    simpleMode={simpleMode}
-                    onMove={simpleMode ? (dxMm, dyMm) => commit(updateElement(doc, selected.id, {
-                      x: Math.max(0, Math.round((selected.x + dxMm) * 10) / 10),
-                      y: Math.max(0, Math.round((selected.y + dyMm) * 10) / 10),
-                    }), '微调') : undefined}
                     onChange={(patch) => {
                       if (patch.id && patch.id !== selected.id) {
                         // 重命名：唯一性校验，成功后同步选中态

@@ -94,15 +94,14 @@ public sealed class ReportFormLayoutRepositoryIntegrationTests : IDisposable
         // 无权限行 → 默认无权
         var none = await _repository.GetDesignerModeAsync("NO-SUCH-USER", TestModule, default);
         Assert.False(none.CanDesign);
-        Assert.False(none.CanAdjust);
 
         // 个人行 FORM_DESIGN_TAG=1 → CanDesign
         await using var connection = new SqlConnection(ConnectionString.Value);
         await connection.OpenAsync();
         await using (var insert = new SqlCommand(
             """
-            INSERT INTO dbo.SYSDD (USER_ID, M_IDX, FORM_DESIGN_TAG, FORM_ADJUST_TAG)
-            VALUES (@User, @Module, 1, 0);
+            INSERT INTO dbo.SYSDD (USER_ID, M_IDX, FORM_DESIGN_TAG)
+            VALUES (@User, @Module, 1);
             """, connection))
         {
             insert.Parameters.Add("@User", SqlDbType.NChar, 10).Value = TestUser;
@@ -113,7 +112,6 @@ public sealed class ReportFormLayoutRepositoryIntegrationTests : IDisposable
         {
             var personal = await _repository.GetDesignerModeAsync(TestUser, TestModule, default);
             Assert.True(personal.CanDesign);
-            Assert.False(personal.CanAdjust);
         }
         finally
         {

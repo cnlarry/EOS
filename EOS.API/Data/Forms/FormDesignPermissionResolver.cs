@@ -4,10 +4,11 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data.Forms;
 
 /// <summary>
-/// 版式设计权判定结果。微调档（<c>FORM_ADJUST_TAG</c>）目前只被报表版式设计器的"微调模式"消费，
-/// 表单版式只用完整设计档；两档由本记录一并返回，避免各自另写一份判定。
+/// 版式设计权判定结果。版式设计权只有一档：完整设计（<c>FORM_DESIGN_TAG</c>）。
+/// 微调档已退役——它服务的"客户维护人员"角色尚不存在，且它不是安全边界（禁止增删字段却允许
+/// 改顺序与占位，破坏性操作照样能做），多一档只多一套受限模式与一套保存期基线校验。
 /// </summary>
-public sealed record FormDesignMode(bool CanDesign, bool CanAdjust);
+public sealed record FormDesignMode(bool CanDesign);
 
 /// <summary>
 /// 版式设计权限的**唯一**判定入口：个人权限（SYSDD）覆盖组权限——某模块只要有个人权限记录，
@@ -22,7 +23,7 @@ public static class FormDesignPermissionResolver
         SqlConnection connection, string userId, int moduleId, CancellationToken token)
     {
         const string personalSql = """
-            SELECT ISNULL(FORM_DESIGN_TAG, 0) AS CAN_DESIGN, ISNULL(FORM_ADJUST_TAG, 0) AS CAN_ADJUST
+            SELECT ISNULL(FORM_DESIGN_TAG, 0) AS CAN_DESIGN
             FROM dbo.SYSDD WITH (NOLOCK)
             WHERE USER_ID = @UserId AND M_IDX = @ModuleId;
             """;
@@ -33,13 +34,12 @@ public static class FormDesignPermissionResolver
             await using var reader = await command.ExecuteReaderAsync(token);
             if (await reader.ReadAsync(token))
             {
-                return new FormDesignMode(reader.GetBoolean("CAN_DESIGN"), reader.GetBoolean("CAN_ADJUST"));
+                return new FormDesignMode(reader.GetBoolean("CAN_DESIGN"));
             }
         }
 
         const string groupSql = """
-            SELECT ISNULL(MAX(CAST(FORM_DESIGN_TAG AS INT)), 0) AS CAN_DESIGN,
-                   ISNULL(MAX(CAST(FORM_ADJUST_TAG AS INT)), 0) AS CAN_ADJUST
+            SELECT ISNULL(MAX(CAST(FORM_DESIGN_TAG AS INT)), 0) AS CAN_DESIGN
             FROM dbo.SYSDH h WITH (NOLOCK)
             INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
             WHERE gu.USER_ID = @UserId AND h.M_IDX = @ModuleId;
@@ -50,10 +50,9 @@ public static class FormDesignPermissionResolver
         await using var groupReader = await groupCommand.ExecuteReaderAsync(token);
         if (await groupReader.ReadAsync(token))
         {
-            return new FormDesignMode(
-                groupReader.GetInt32("CAN_DESIGN") != 0, groupReader.GetInt32("CAN_ADJUST") != 0);
+            return new FormDesignMode(groupReader.GetInt32("CAN_DESIGN") != 0);
         }
-        return new FormDesignMode(false, false);
+        return new FormDesignMode(false);
     }
 
     /// <summary>是否存在任一模块的完整设计权限（全局资产维护入口用）。</summary>

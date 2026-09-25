@@ -13,7 +13,7 @@ const definition = {
   title: '客户订单',
   isCustom: false,
   layoutId: null,
-  mode: { canDesign: true, canAdjust: true },
+  mode: { canDesign: true },
   layoutJson: JSON.stringify({
     schemaVersion: 1,
     kind: 'document',
@@ -152,17 +152,6 @@ describe('LayoutDesignerPage', () => {
     fireEvent.click(screen.getByTitle('页头字典引用'))
     await waitFor(() => expect(screen.getByText(/页头字典/)).toBeInTheDocument())
     await waitFor(() => expect(screen.getAllByText(/示例公司/).length).toBeGreaterThan(0))
-  })
-
-  it('微调模式隐藏元素库并显示简化属性面板', async () => {
-    const adjustDefinition = { ...definition, mode: { canDesign: false, canAdjust: true } }
-    apiClientMock.get.mockResolvedValue(adjustDefinition)
-    renderPage()
-    await waitFor(() => expect(screen.getByText('[MASTER.ORDER_NO]')).toBeInTheDocument())
-    expect(screen.queryByText('元素库（拖入画布）')).toBeNull()
-    fireEvent.click(screen.getByText('[MASTER.ORDER_NO]'))
-    await waitFor(() => expect(screen.getByText('位置微调（mm）')).toBeInTheDocument())
-    expect(screen.queryByText('字号')).toBeNull()
   })
 
   it('预览数据场景选择后预览请求携带对应参数', async () => {

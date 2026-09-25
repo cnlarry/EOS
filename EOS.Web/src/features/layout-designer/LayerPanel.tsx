@@ -4,7 +4,7 @@ import type { LayoutDocument } from './types'
 interface LayerPanelProps {
   doc: LayoutDocument
   selectedIds: Set<string>
-  canAdjust: boolean
+  canEdit: boolean
   onSelect: (id: string, additive: boolean) => void
   onToggleVisible: (id: string) => void
   onReorder: (id: string, direction: -1 | 1) => void
@@ -19,7 +19,7 @@ const TYPE_LABELS: Record<string, string> = {
 const SECTION_LABELS: Record<string, string> = { header: '页头', content: '正文', footer: '页脚' }
 
 export function LayerPanel({
-  doc, selectedIds, canAdjust, onSelect, onToggleVisible, onReorder, onRename, onRemove,
+  doc, selectedIds, canEdit, onSelect, onToggleVisible, onReorder, onRename, onRemove,
 }: LayerPanelProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -48,13 +48,13 @@ export function LayerPanel({
                     style={{ cursor: 'pointer' }}
                     onClick={(e) => onSelect(el.id, e.shiftKey)}
                     onDoubleClick={() => {
-                      if (!canAdjust) return
+                      if (!canEdit) return
                       setRenamingId(el.id)
                       setRenameValue(el.id)
                     }}
                     onContextMenu={(e) => {
                       e.preventDefault()
-                      if (!canAdjust) return
+                      if (!canEdit) return
                       setMenu({ id: el.id, x: e.clientX, y: e.clientY })
                     }}
                   >
@@ -86,11 +86,11 @@ export function LayerPanel({
                       className="form-check-input"
                       title="可见"
                       checked={el.visible !== false}
-                      disabled={!canAdjust}
+                      disabled={!canEdit}
                       onClick={(e) => e.stopPropagation()}
                       onChange={() => onToggleVisible(el.id)}
                     />
-                    {canAdjust && (
+                    {canEdit && (
                       <span className="d-inline-flex gap-1">
                         <button
                           type="button"

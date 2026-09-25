@@ -14,7 +14,7 @@ namespace EOS.API.Controllers;
 /// - save：保存校验链（ReportFormatValidator schema + 字段白名单）+ 微调模式约束 +
 /// copy-on-write（首次复制内置 → REPORT_FORM_LAYOUT + REPORT_FORM_BINDING）；
 /// - preview：以格式包 sample.json 样例数据渲染当前编辑布局。
-/// 权限门：CanDesign（角色② 完整设计）/ CanAdjust（角色③ 微调），见 /5。
+/// 权限门：CanDesign（版式设计权 FORM_DESIGN_TAG），见 /5。
 /// </summary>
 [ApiController]
 [Authorize]
@@ -46,7 +46,7 @@ public sealed class LayoutDesignerController(
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
         var mode = await layouts.GetDesignerModeAsync(userId, moduleId, token);
-        if (!mode.CanDesign && !mode.CanAdjust) return Forbid();
+        if (!mode.CanDesign) return Forbid();
         var package = formats.GetDocumentFormat(moduleId);
         if (package is null) return NotFound();
         var effective = await layouts.GetEffectiveLayoutAsync(moduleId, clientId, userId, token);
@@ -64,7 +64,7 @@ public sealed class LayoutDesignerController(
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
         var mode = await layouts.GetDesignerModeAsync(userId, moduleId, token);
-        if (!mode.CanDesign && !mode.CanAdjust) return Forbid();
+        if (!mode.CanDesign) return Forbid();
         var package = formats.GetDocumentFormat(moduleId);
         if (package is null) return NotFound();
 
@@ -74,15 +74,6 @@ public sealed class LayoutDesignerController(
             logger.LogWarning("设计器保存被校验拦截 module={ModuleId} userId={UserId} errors={Errors}",
                 moduleId, userId, validation.Messages);
             return BadRequest(new { errors = validation.Messages });
-        }
-
-        // 微调模式（仅 CanAdjust）：元素 ID/类型集合与基线一致、table 列结构不变
-        if (mode.CanAdjust && !mode.CanDesign)
-        {
-            var baseline = await layouts.GetEffectiveLayoutAsync(moduleId, request.ClientId, userId, token);
-            var adjustErrors = ValidateAdjustOnly(baseline.LayoutJson, request.LayoutJson);
-            if (adjustErrors.Count > 0)
-                return BadRequest(new { errors = adjustErrors });
         }
 
         var effective = await layouts.GetEffectiveLayoutAsync(moduleId, request.ClientId, userId, token);
@@ -100,7 +91,7 @@ public sealed class LayoutDesignerController(
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
         var mode = await layouts.GetDesignerModeAsync(userId, moduleId, token);
-        if (!mode.CanDesign && !mode.CanAdjust) return Forbid();
+        if (!mode.CanDesign) return Forbid();
         var package = formats.GetDocumentFormat(moduleId);
         if (package is null) return NotFound();
 
@@ -198,7 +189,7 @@ public sealed class LayoutDesignerController(
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
         var mode = await layouts.GetDesignerModeAsync(userId, moduleId, token);
-        if (!mode.CanDesign && !mode.CanAdjust) return Forbid();
+        if (!mode.CanDesign) return Forbid();
         await layouts.SaveBindingAsync(moduleId, userId, request, token);
         return Ok(new { saved = true });
     }
@@ -226,7 +217,7 @@ public sealed class LayoutDesignerController(
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null) return Unauthorized();
         var mode = await layouts.GetDesignerModeAsync(userId, moduleId, token);
-        if (!mode.CanDesign && !mode.CanAdjust) return Forbid();
+        if (!mode.CanDesign) return Forbid();
         var effective = await layouts.GetEffectiveLayoutAsync(moduleId, clientId, userId, token);
         if (effective.LayoutId is not { } layoutId) return Ok(Array.Empty<LayoutVersionInfo>());
         return Ok(await layouts.GetVersionsAsync(layoutId, token));
@@ -245,56 +236,5 @@ public sealed class LayoutDesignerController(
         if (effective.LayoutId is not { } layoutId) return NotFound();
         await layouts.RestoreVersionAsync(layoutId, version, userId, token);
         return Ok(new { restored = true });
-    }
-
-    /// <summary>微调模式约束：只允许位置/尺寸/文本/显隐/字段映射变化。</summary>
-    private static List<string> ValidateAdjustOnly(string baselineJson, string editedJson)
-    {
-        var errors = new List<string>();
-        LayoutDocument baseline;
-        LayoutDocument edited;
-        try
-        {
-            baseline = QuestPdfLayoutRenderer.Parse(baselineJson);
-            edited = QuestPdfLayoutRenderer.Parse(editedJson);
-        }
-        catch (LayoutInvalidException ex)
-        {
-            errors.Add($"布局解析失败：{ex.Message}");
-            return errors;
-        }
-
-        var baselineIds = AllElements(baseline).ToDictionary(e => e.Id, StringComparer.OrdinalIgnoreCase);
-        var editedIds = AllElements(edited).ToDictionary(e => e.Id, StringComparer.OrdinalIgnoreCase);
-        foreach (var (id, element) in editedIds)
-        {
-            if (!baselineIds.TryGetValue(id, out var baseElement))
-            {
-                errors.Add($"微调模式不可新增元素：{id}。");
-                continue;
-            }
-            if (!string.Equals(baseElement.Type, element.Type, StringComparison.OrdinalIgnoreCase))
-                errors.Add($"微调模式不可改变元素类型：{id}（{baseElement.Type} → {element.Type}）。");
-            if (baseElement.Type == "table")
-            {
-                var baseFields = (baseElement.Columns ?? []).Select(c => c.Field).ToList();
-                var editFields = (element.Columns ?? []).Select(c => c.Field).ToList();
-                if (!baseFields.SequenceEqual(editFields, StringComparer.OrdinalIgnoreCase))
-                    errors.Add($"微调模式不可改变 table 列结构：{id}。");
-            }
-        }
-        foreach (var id in baselineIds.Keys)
-        {
-            if (!editedIds.ContainsKey(id))
-                errors.Add($"微调模式不可删除元素：{id}。");
-        }
-        return errors;
-    }
-
-    private static IEnumerable<LayoutElement> AllElements(LayoutDocument layout)
-    {
-        return layout.Sections.Header.Elements
-            .Concat(layout.Sections.Content.Elements)
-            .Concat(layout.Sections.Footer.Elements);
     }
 }
