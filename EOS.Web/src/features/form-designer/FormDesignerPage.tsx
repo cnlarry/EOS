@@ -68,7 +68,6 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
   const [dropTarget, setDropTarget] = useState<DropTarget>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
-  const activeDesign = activeTable === 'master' ? state.master : state.detail
 
   const draggedLabel = useMemo(() => {
     if (!draft || !dragging) return ''
@@ -360,7 +359,9 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
 
       {status ? <div className={`erp-designer-status is-${status.tone}`}>{status.text}</div> : null}
       <div className="erp-designer-status is-info">
-        {activeDesign.customized ? '本表已有定制版式' : '本表当前是推导默认（保存后即为定制）'}
+        {activeTable === 'master'
+          ? state.master.customized ? '本表已有定制版式' : '本表当前是推导默认（保存后即为定制）'
+          : state.detail.customized ? '本表已有定制版式' : '本表当前是推导默认（保存后即为定制）'}
       </div>
       {issues.length > 0 && !preview ? (
         <div className="erp-designer-status is-warn">
