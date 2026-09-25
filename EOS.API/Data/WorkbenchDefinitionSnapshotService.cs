@@ -65,8 +65,9 @@ public sealed class WorkbenchDefinitionSnapshotService(
 
     /// <summary>
     /// 「快照 vs 重建定义」的落后检测：逐模块把定义按**当前代码 + 当前元数据**重建，
-    /// 与已发布快照的 <c>DEFINITION_JSON</c> 逐字比较。判据与发布时的"内容未变即复用版本"
-    /// 完全同源，不另立一套标准。**只读**：不写快照、不动脏标记。
+    /// 与已发布快照的 <c>DEFINITION_JSON</c> 比较。判据与发布时的"内容未变即复用版本"
+    /// 完全同源（同一个 <see cref="WorkbenchDefinitionContentComparer"/>），不另立一套标准——
+    /// 否则会出现"发布说复用、检测说落后"的自相矛盾。**只读**：不写快照、不动脏标记。
     ///
     /// **重建必须用快照记录的发布者身份**（<c>PUBLISHED_BY</c>）：字段清单是**按用户**解析的
     /// （`WorkbenchDefinitionBuilder.ReadFields` 读 `SYSQL_FIELDS` 里该用户保存的选择列），
@@ -121,7 +122,8 @@ public sealed class WorkbenchDefinitionSnapshotService(
                 reason = $"重建定义失败：{exception.Message}";
             }
 
-            var stale = reason is not null || !string.Equals(row.StoredJson, rebuilt, StringComparison.Ordinal);
+            var stale = reason is not null
+                || !WorkbenchDefinitionContentComparer.AreEquivalent(row.StoredJson, rebuilt);
             result.Add(new WorkbenchSnapshotStaleness(
                 row.ModuleId, row.Title, enabled.Contains(row.ModuleId), row.Version, row.Dirty, stale, reason,
                 row.StoredJson.Length, rebuilt?.Length ?? 0,
@@ -237,7 +239,10 @@ public sealed class WorkbenchDefinitionSnapshotService(
 
                 // 定义内容未变即复用当前版本：重发布不再制造新版本，否则每次"重发一遍"
                 // 都会把既有验收证据判成过期快照（对拍报告按定义版本判定新鲜度）。
-                if (currentVersion is not null && string.Equals(currentJson, definitionJson, StringComparison.Ordinal))
+                // 比较按**语义等价**（忽略运行期看不见的差异），故整理配置——清掉占位公式行、
+                // 把空串写成缺省——不会再顶掉版本、连带作废该模块的对拍证据。
+                if (currentVersion is not null
+                    && WorkbenchDefinitionContentComparer.AreEquivalent(currentJson, definitionJson))
                 {
                     version = currentVersion.Value;
                     reused = true;
@@ -288,7 +293,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
         // 放在事务 try/catch 之外，避免缓存刷新异常被误当作回滚失败。
         await definitionProvider.RefreshModuleAsync(moduleId, token);
         var summary = reused
-            ? $"复用模块定义快照 module-{moduleId}-v{version}（内容未变，不递增版本）"
+            ? $"复用模块定义快照 module-{moduleId}-v{version}（规范化后内容未变，不递增版本）"
             : $"发布模块定义快照 module-{moduleId}-v{version}";
         await auditWriter.WriteBestEffortAsync(
             moduleId, "WORKBENCH_DEFINITION_SNAPSHOT", "PUBLISH",
@@ -296,7 +301,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
             result: 1, fieldChanges: null, token);
         if (reused)
         {
-            logger.LogInformation("快照内容未变，复用 module={ModuleId} version={Version} by={PublishedBy}",
+            logger.LogInformation("快照规范化后内容未变，复用 module={ModuleId} version={Version} by={PublishedBy}",
                 moduleId, version, publishedBy);
         }
         else
