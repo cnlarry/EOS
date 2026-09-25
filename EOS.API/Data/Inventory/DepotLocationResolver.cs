@@ -31,7 +31,7 @@ public sealed record LocationResolution(string LocationNo, LocationResolutionSou
 /// up" from "what was found" keeps the resolution itself a pure function: no connection, no query, and the
 /// whole decision table can be enumerated in unit tests.
 /// </summary>
-/// <param name="StorageMode">DEPOT_STOCK_POLICY.STORAGE_MODE: FIXED / RANDOM / MIXED (case-insensitive).</param>
+/// <param name="StorageMode">Deployment-level stock policy `STORAGE_MODE`: FIXED / RANDOM / MIXED (case-insensitive).</param>
 /// <param name="Sentinel">Location sentinel of the calling context; defaults to <see cref="DepotLocationResolver.DefaultSentinel"/>.</param>
 /// <param name="PrimaryLocations">DEPOT_PRODUCT_LOCATION rows of this material/depot with IS_PRIMARY=1, in priority order.</param>
 /// <param name="OccupiedLocation">Level 1 candidate: a location this material already occupies in this depot.</param>
