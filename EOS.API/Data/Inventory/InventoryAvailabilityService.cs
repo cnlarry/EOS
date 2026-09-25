@@ -164,6 +164,48 @@ public static class InventoryAvailabilityService
         return totals;
     }
 
+    /// <summary>
+    /// **可用量的唯一维护出口**：把给定格子的 `USEABLE_QTY` 按口径重算并落列，返回写入的行数。
+    /// </summary>
+    /// <remarks>
+    /// 为什么要收在一处：这条列是**存列**（§9.7 D7-②），任何"数量动过或占用动过"的写入路径都得把它
+    /// 重算一遍——进出账（移动引擎）、冻结/解冻、预留/释放、来源结案钩子。若各自写一份减法，
+    /// 迟早有一处忘了判有效性（来源已结案的不计入），于是列与账悄悄分叉。
+    /// 于是：**口径与落列都在这里**，调用方只报"我动了哪些格子"。
+    ///
+    /// 只写请求到的格子（不做全表扫描）：写入路径自己知道它动过谁，越界去改别人只会制造并发面。
+    /// </remarks>
+    public static async Task<int> SyncSlotsAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        IReadOnlyCollection<SlotKey> slots,
+        CancellationToken token)
+    {
+        var wanted = slots.Select(slot => slot.Trimmed()).Distinct().ToList();
+        if (wanted.Count == 0)
+        {
+            return 0;
+        }
+
+        var available = await ForSlotsAsync(connection, transaction, wanted, token);
+        var written = 0;
+        foreach (var (slot, value) in available)
+        {
+            await using var command = new SqlCommand(
+                $"UPDATE dbo.{InventoryQueryService.BalanceTable} SET USEABLE_QTY = @available "
+                + $"WHERE {InventoryQueryService.ProductColumn} = @pro AND {InventoryQueryService.DepotColumn} = @depot "
+                + $"AND {InventoryQueryService.LocationColumn} = @location AND {InventoryQueryService.BatchColumn} = @batch;",
+                connection, transaction);
+            command.Parameters.AddWithValue("@available", value.Available);
+            command.Parameters.AddWithValue("@pro", slot.ProductNo);
+            command.Parameters.AddWithValue("@depot", slot.DepotId);
+            command.Parameters.AddWithValue("@location", slot.LocationNo);
+            command.Parameters.AddWithValue("@batch", slot.BatchNo);
+            written += await command.ExecuteNonQueryAsync(token);
+        }
+        return written;
+    }
+
     // ===== 库存数量 =====
 
     private sealed record BalanceRow(string ProductNo, string DepotId, string LocationNo, string BatchNo, double Quantity);

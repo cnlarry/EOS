@@ -236,15 +236,13 @@ internal static class InventoryFreezeAction
         DocumentActionContext context, InventoryAvailabilityService.SlotKey slot, CancellationToken token)
     {
         var available = await ReadAvailableAsync(context, slot, token);
-        await using var command = new SqlCommand(
-            $"UPDATE dbo.{InventoryQueryService.BalanceTable} SET USEABLE_QTY = @available WHERE {WhereClause};",
-            context.Connection, context.Transaction);
-        command.Parameters.AddWithValue("@available", available);
-        AddSlotParameters(command, slot);
-        var affected = await command.ExecuteNonQueryAsync(token);
-        if (affected == 0)
+        // 落列走服务的唯一维护出口（口径与写入都在那里，这里不自己拼减法）。
+        var written = await InventoryAvailabilityService.SyncSlotsAsync(
+            context.Connection, context.Transaction, [slot], token);
+        if (written == 0)
         {
-            throw new EffectValidationException($"库存格子 {slot.ProductNo}/{slot.DepotId}/{slot.LocationNo}/{slot.BatchNo} 不存在，无法冻结。");
+            throw new EffectValidationException(
+                $"库存格子 {slot.ProductNo}/{slot.DepotId}/{slot.LocationNo}/{slot.BatchNo} 不存在，无法冻结。");
         }
         return available;
     }
@@ -357,17 +355,9 @@ internal static class InventoryFreezeAction
         IReadOnlyList<(InventoryAvailabilityService.SlotKey Slot, double Quantity)> slots,
         WorkbenchAuditWriter audit, int moduleId, string recordKey, CancellationToken token)
     {
-        foreach (var (slot, _) in slots.GroupBy(item => item.Slot).Select(group => group.First()))
-        {
-            var available = (await InventoryAvailabilityService.ForSlotsAsync(
-                connection, transaction, [slot], token))[slot].Available;
-            await using var command = new SqlCommand(
-                $"UPDATE dbo.{InventoryQueryService.BalanceTable} SET USEABLE_QTY = @available WHERE {WhereClause};",
-                connection, transaction);
-            command.Parameters.AddWithValue("@available", available);
-            AddSlotParameters(command, slot);
-            await command.ExecuteNonQueryAsync(token);
-        }
+        // 落列走服务的唯一维护出口（多格一并重算）
+        await InventoryAvailabilityService.SyncSlotsAsync(
+            connection, transaction, slots.Select(item => item.Slot).ToList(), token);
 
         await audit.WriteEventAsync(connection, transaction, moduleId, recordKey, "UNFREEZE", reason, actor,
             "INV_RESERVE", result: 1, fieldChanges: null, token,
