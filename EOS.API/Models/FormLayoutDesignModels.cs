@@ -20,7 +20,9 @@ public sealed record FormLayoutDesignState(
 public sealed record FormLayoutTableDesign(
     string Table,
     IReadOnlyList<FormLayoutDesignRow> Layout,
-    IReadOnlyList<FormLayoutPoolField> Pool);
+    IReadOnlyList<FormLayoutPoolField> Pool,
+    /// <summary>该表是否已有定制行（false = 当前是推导默认）。界面据此区分"已定制/未定制"。</summary>
+    bool Customized = false);
 
 /// <summary>
 /// 版式行 + 该行的字段与锁定信息。锁定 = 该字段不允许"从表单移除"，

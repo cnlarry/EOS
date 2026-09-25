@@ -24,7 +24,7 @@ public sealed record FormLayoutValidationIssue(string Code, string Message, stri
 /// - **版式只做减法与排布**：引用不到的字段一律拒绝，不给"配错了也能存"的余地；
 /// - **不可移除类字段**（主键、单据生命周期系统列、用户可填的必填字段）既不能标隐藏，
 ///   也不能整行不写（"未列出的字段视为未加入表单"，效果与隐藏相同）；
-/// - 复合格必须主从成对、主字段唯一、主字段有启用来源，且一格最多一个从字段；
+/// - 复合格必须主从成对（从字段必须有同组主字段）、同格同组主字段唯一、主字段有启用来源；
 /// - 页签集合若提交，必须含常驻的 1 号页签。
 /// </summary>
 public static class FormLayoutValidator
@@ -145,13 +145,11 @@ public static class FormLayoutValidator
                 "FORM_LAYOUT_CELL_GROUP_MAIN_CONFLICT", $"复合格 {group} 有多个主字段（一组只能一个主字段）。"));
         }
 
-        foreach (var (group, count) in companionByGroup)
+        foreach (var (group, _) in companionByGroup)
         {
-            if (count > 1)
-            {
-                issues.Add(new FormLayoutValidationIssue(
-                    "FORM_LAYOUT_CELL_COMPANION_MULTIPLE", $"复合格 {group} 有 {count} 个从字段（一格最多一个）。"));
-            }
+            // 一个格里有多个从字段是**既有数据**的常态（如 BOM 的 PRO 组 = 料号 + 品名 + 颜色），
+            // 渲染侧本来就按同格多控件排布；这里只要求"从字段必须有同组主字段"，
+            // 否则推导默认的版式会被自己的校验拦住，那些模块的版式永远保存不了。
             if (!mainGroups.Contains(group, StringComparer.OrdinalIgnoreCase))
             {
                 issues.Add(new FormLayoutValidationIssue(
