@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.Json;
 using EOS.API.Data.Effects;
+using EOS.API.Data.Inventory;
 using EOS.API.Models;
 using EOS.API.Telemetry;
 using Microsoft.Data.SqlClient;
@@ -21,6 +22,7 @@ public sealed class WorkbenchCommandHandler(
     WorkbenchScopeFilter scopeFilter,
     EffectEngineInvoker effectEngine,
     WorkbenchIdempotency idempotency,
+    DepotStockPolicyService depotPolicies,
     ILogger<WorkbenchCommandHandler> logger)
 {
     public async Task<RecordReadResult> GetRecordAsync(
@@ -282,7 +284,11 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
         }
 
-        var detailSave = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, values, request.Details, request.DetailSerials, employeeName, true, token);
+        // ADR-020 §9.1 D1-d（WS-16）：档 2「建议」在**保存期**就给出并写入建议位置——草稿上看得见、改得动；
+        // 档 3「强制」不在这里处理（保存期拒绝会让草稿存不下来，刻意不做），档 0/1 位置由人定。
+        var suggestion = await DepotLocationSuggestionService.FillAsync(
+            connection, transaction, definition, request.Details, depotPolicies, token);
+        var detailSave = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, values, suggestion.Details, request.DetailSerials, employeeName, true, token);
         if (detailSave.Errors is not null)
         {
             return DetailFailure(detailSave.Errors);
@@ -322,7 +328,8 @@ public sealed class WorkbenchCommandHandler(
         }
         await transaction.CommitAsync(token);
         logger.LogInformation("统一表单新增 module={ModuleId} master={Master} key={Key}", definition.ModuleId, definition.MasterTable, string.Join(',', keyValues));
-        IReadOnlyList<SaveWarning>? warnings = null;
+        // 建议位置是"已保存但有说明"的一类结果：写在告警里回传前端，别让它悄悄发生
+        IReadOnlyList<SaveWarning>? warnings = suggestion.Warnings.Count > 0 ? suggestion.Warnings : null;
         if (definition.AutoApprove)
         {
             // 自动批核模块：保存成功后立即进入批核生效（保存事务提交后执行，生效链自带事务）；
@@ -333,7 +340,7 @@ public sealed class WorkbenchCommandHandler(
             {
                 logger.LogWarning("自动批核失败 module={ModuleId} key={Key} code={Code} message={Message}",
                     definition.ModuleId, string.Join(',', keyValues), autoResult.ErrorCode, autoResult.ErrorMessage);
-                warnings = [new SaveWarning("AUTO_APPROVE_FAILED",
+                warnings = [.. warnings ?? [], new SaveWarning("AUTO_APPROVE_FAILED",
                     $"已保存，但自动批核失败：{autoResult.ErrorMessage ?? autoResult.ErrorCode ?? "未知原因"}")];
             }
         }
@@ -496,7 +503,10 @@ public sealed class WorkbenchCommandHandler(
             }
         }
 
-        var detailSave = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, merged, request.Details, request.DetailSerials, employeeName, false, token);
+        // 与新增路径同一落点、同一口径：档 2 的建议位置在保存期写入（见 DepotLocationSuggestionService）
+        var suggestion = await DepotLocationSuggestionService.FillAsync(
+            connection, transaction, definition, request.Details, depotPolicies, token);
+        var detailSave = await SaveDetailsAsync(connection, transaction, definition, form, pkColumns, keyValues, merged, suggestion.Details, request.DetailSerials, employeeName, false, token);
         if (detailSave.Errors is not null)
         {
             return DetailFailure(detailSave.Errors);
@@ -548,7 +558,7 @@ public sealed class WorkbenchCommandHandler(
         }
         await transaction.CommitAsync(token);
         logger.LogInformation("统一表单修改 module={ModuleId} master={Master} key={Key}", definition.ModuleId, definition.MasterTable, string.Join(',', keyValues));
-        IReadOnlyList<SaveWarning>? updateWarnings = null;
+        IReadOnlyList<SaveWarning>? updateWarnings = suggestion.Warnings.Count > 0 ? suggestion.Warnings : null;
         if (definition.AutoApprove)
         {
             // 「保存即批核」对新增与修改同口径：未批核的单据（例如上次自动批核失败、
@@ -559,7 +569,7 @@ public sealed class WorkbenchCommandHandler(
             {
                 logger.LogWarning("自动批核失败（修改） module={ModuleId} key={Key} code={Code} message={Message}",
                     definition.ModuleId, string.Join(',', keyValues), autoResult.ErrorCode, autoResult.ErrorMessage);
-                updateWarnings = [new SaveWarning("AUTO_APPROVE_FAILED",
+                updateWarnings = [.. updateWarnings ?? [], new SaveWarning("AUTO_APPROVE_FAILED",
                     $"已保存，但自动批核失败：{autoResult.ErrorMessage ?? autoResult.ErrorCode ?? "未知原因"}")];
             }
         }

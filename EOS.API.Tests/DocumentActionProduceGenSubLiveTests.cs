@@ -209,7 +209,8 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
         var approval = new WorkbenchApprovalService(connections, auditWriter, workflow, engine, idempotency,
             NullLogger<WorkbenchApprovalService>.Instance);
         var commandHandler = new WorkbenchCommandHandler(connections, auditWriter, approval,
-            new WorkbenchScopeFilter(new ApiMetrics()), engine, idempotency, NullLogger<WorkbenchCommandHandler>.Instance);
+            new WorkbenchScopeFilter(new ApiMetrics()), engine, idempotency,
+            new DepotStockPolicyService(connections, auditWriter), NullLogger<WorkbenchCommandHandler>.Instance);
         var builder = new WorkbenchDefinitionBuilder(connections, provider,
             Options.Create(new UnifiedFormEditorSettings()), NullLogger<WorkbenchDefinitionBuilder>.Instance);
         return new ProduceGenSubHandler(permissions, builder, commandHandler, connections,
