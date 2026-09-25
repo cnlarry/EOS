@@ -102,7 +102,7 @@ public static class DocumentActionPlacements
     public const string Detail = "detail";
 }
 
-/// <summary>Form tab definition (parsed from MODULES.FORM_TABS).</summary>
+/// <summary>Form tab definition (页签只来自 MODULE_FORM_TAB；此处为统一模型)。</summary>
 public sealed record FormTabDefinition(int No, string Title);
 
 /// <summary>
