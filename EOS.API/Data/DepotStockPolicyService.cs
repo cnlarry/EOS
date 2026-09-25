@@ -18,7 +18,14 @@ public sealed record DepotStockPolicy(
     bool MixProduct,
     bool MixBatch,
     bool MonthCloseByBatch,
-    bool MonthCloseByLocation);
+    bool MonthCloseByLocation,
+    /// <summary>
+    /// 月结范围是否含**半成品（按制程）账**（ADR-020 §9.3 D3）。仅部署级行生效，默认关。
+    /// 关 ⇒ 半成品账既不进关账拦截、也不进快照；开 ⇒ 两侧一起生效（快照侧见 WS-18b）。
+    /// **带默认值**：这是本维度落地时新增的，默认值就是它的语义默认（关），
+    /// 也就让"新增一个维度"不必去改每一处构造点（改构造点只会把默认值抄一遍）。
+    /// </summary>
+    bool MonthCloseScopeHalfStock = false);
 
 /// <summary>
 /// 库存策略的一个可配置维度：键、显示名、说明与候选档位（含"本版未实现"标记，界面据此灰显）。
@@ -107,6 +114,15 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             new("1", "是", true),
             new("0", "否", true),
         ]),
+        // 本维度暂时**只能选"否"**：快照侧（按制程展开）未落地前打开会产生"拦了但快照没有"的不对称，
+        // 所以 "是" 标为未实现（界面灰显），保存路径也会拒——可见但不可选，理由写在说明里。
+        new("monthCloseScopeHalfStock", "月结含半成品账",
+            "半成品账（HALF_PRO_DEPOT，按制程分账）是否纳入月结：纳入即拦且快照，两侧同源。"
+            + "本版只有快照前的拦（快照侧属 WS-18b），故暂不可开。",
+        [
+            new("1", "是", false),
+            new("0", "否", true),
+        ]),
     ];
 
     /// <summary>
@@ -141,11 +157,11 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         await using var command = new SqlCommand(
             // 月结维度一律取部署级行的值：库别行即使被直连改库写入，运行时口径也不会分裂。
             "SELECT r.DEPOT_ID, r.LOCATION_MODE, r.STORAGE_MODE, r.BATCH_MODE, r.CAPACITY_MODE, r.MIX_PRODUCT, r.MIX_BATCH, "
-            + "d.MONTH_CLOSE_BY_BATCH, d.MONTH_CLOSE_BY_LOCATION "
+            + "d.MONTH_CLOSE_BY_BATCH, d.MONTH_CLOSE_BY_LOCATION, d.MONTH_CLOSE_SCOPE_HALF_STOCK "
             + "FROM (SELECT TOP 1 DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH "
             + "        FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID IN (@scope, @default) "
             + "       ORDER BY CASE WHEN DEPOT_ID = @scope THEN 0 ELSE 1 END) r "
-            + "CROSS JOIN (SELECT MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION "
+            + "CROSS JOIN (SELECT MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION, MONTH_CLOSE_SCOPE_HALF_STOCK "
             + "              FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID = @default) d",
             connection, transaction);
         command.Parameters.AddWithValue("@scope", scope);
@@ -203,12 +219,27 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     /// 粒度，同一个月的月结数据粒度就不一致，跨仓汇总会重复计数或漏计，且事后无法补救
     /// （月结是历史快照）。运行时求值也只取部署级值，所以这里拦的是"配上了却不生效"的配置。
     /// </summary>
-    public static string? ValidateMonthCloseScope(DepotStockPolicy candidate, DepotStockPolicy deployment) =>
-        candidate.DepotId != DeploymentScope
-        && (candidate.MonthCloseByBatch != deployment.MonthCloseByBatch
-            || candidate.MonthCloseByLocation != deployment.MonthCloseByLocation)
-            ? "月结维度只在部署级生效，库别行不能覆盖（跨仓粒度不一致会让汇总重复计数或漏计）。"
-            : null;
+    public static string? ValidateMonthCloseScope(DepotStockPolicy candidate, DepotStockPolicy deployment)
+    {
+        if (candidate.DepotId != DeploymentScope
+            && (candidate.MonthCloseByBatch != deployment.MonthCloseByBatch
+                || candidate.MonthCloseByLocation != deployment.MonthCloseByLocation
+                || candidate.MonthCloseScopeHalfStock != deployment.MonthCloseScopeHalfStock))
+        {
+            return "月结维度只在部署级生效，库别行不能覆盖（跨仓粒度不一致会让汇总重复计数或漏计）。";
+        }
+
+        // "含半成品账"这一维**暂时只允许关**：半成品账没有流水，快照侧（按制程展开、直取余额）
+        // 尚未落地（ADR-020 WS-18b）。先只放行"拦"那一半，就会出现"拦了但快照没有"的不对称——
+        // 而那正是 §9.3 要消除的东西，所以宁可不放行，也不给一个半生效的开关。
+        if (candidate.DepotId == DeploymentScope && candidate.MonthCloseScopeHalfStock)
+        {
+            return "半成品账的快照侧（按制程展开）尚未落地（ADR-020 WS-18b）：现在打开会变成"
+                + "“拦得住、却没有快照可对”，故本版只允许关。";
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// 保存一条策略行的结果：硬性规则违例即拒存，软性规则作为告警返回。
@@ -325,7 +356,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         await connection.OpenAsync(token);
         await using var command = new SqlCommand(
             "SELECT DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH, "
-            + "MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION FROM dbo.DEPOT_STOCK_POLICY "
+            + "MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION, MONTH_CLOSE_SCOPE_HALF_STOCK FROM dbo.DEPOT_STOCK_POLICY "
             + "ORDER BY CASE WHEN DEPOT_ID = N'*' THEN 0 ELSE 1 END, DEPOT_ID",
             connection);
         var rows = new List<DepotStockPolicy>();
@@ -465,6 +496,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         // 部署级行的月结维度由它自己定义；库别行一律写入部署级取值（求值也只读部署级）。
         var monthBatch = candidate.DepotId == DeploymentScope ? candidate.MonthCloseByBatch : deployment.MonthCloseByBatch;
         var monthLocation = candidate.DepotId == DeploymentScope ? candidate.MonthCloseByLocation : deployment.MonthCloseByLocation;
+        var monthHalf = candidate.DepotId == DeploymentScope ? candidate.MonthCloseScopeHalfStock : deployment.MonthCloseScopeHalfStock;
 
         await using (var upsert = new SqlCommand(
             "MERGE dbo.DEPOT_STOCK_POLICY AS target "
@@ -472,11 +504,13 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             + "WHEN MATCHED THEN UPDATE SET LOCATION_MODE=@locationMode, STORAGE_MODE=@storageMode, "
             + "  BATCH_MODE=@batchMode, CAPACITY_MODE=@capacityMode, MIX_PRODUCT=@mixProduct, MIX_BATCH=@mixBatch, "
             + "  MONTH_CLOSE_BY_BATCH=@monthBatch, MONTH_CLOSE_BY_LOCATION=@monthLocation, "
+            + "  MONTH_CLOSE_SCOPE_HALF_STOCK=@monthHalf, "
             + "  LAST_UPDATE_BY=@actor, LAST_UPDATE_DATE=GETDATE() "
             + "WHEN NOT MATCHED THEN INSERT (DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, "
-            + "  MIX_PRODUCT, MIX_BATCH, MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION, LAST_UPDATE_BY, LAST_UPDATE_DATE) "
+            + "  MIX_PRODUCT, MIX_BATCH, MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION, MONTH_CLOSE_SCOPE_HALF_STOCK, "
+            + "  LAST_UPDATE_BY, LAST_UPDATE_DATE) "
             + "  VALUES (@depot, @locationMode, @storageMode, @batchMode, @capacityMode, @mixProduct, @mixBatch, "
-            + "          @monthBatch, @monthLocation, @actor, GETDATE());",
+            + "          @monthBatch, @monthLocation, @monthHalf, @actor, GETDATE());",
             connection, transaction))
         {
             upsert.Parameters.AddWithValue("@depot", candidate.DepotId);
@@ -488,6 +522,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             upsert.Parameters.AddWithValue("@mixBatch", candidate.MixBatch);
             upsert.Parameters.AddWithValue("@monthBatch", monthBatch);
             upsert.Parameters.AddWithValue("@monthLocation", monthLocation);
+            upsert.Parameters.AddWithValue("@monthHalf", monthHalf);
             upsert.Parameters.AddWithValue("@actor", actor);
             await upsert.ExecuteNonQueryAsync(token);
         }
@@ -495,7 +530,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         // 落库的月结维度是上面算出来的实际写入值，审计必须记实际值而不是请求里的值。
         var stored = new DepotStockPolicy(
             candidate.DepotId, candidate.LocationMode, candidate.StorageMode, candidate.BatchMode, candidate.CapacityMode,
-            candidate.MixProduct, candidate.MixBatch, monthBatch, monthLocation);
+            candidate.MixProduct, candidate.MixBatch, monthBatch, monthLocation, monthHalf);
         await auditWriter.WriteEventAsync(
             connection, transaction, StockPolicyModuleId, candidate.DepotId,
             existing is null ? "CREATE" : "UPDATE",
@@ -548,6 +583,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             new("MIX_BATCH", Format(existing.MixBatch), null, null),
             new("MONTH_CLOSE_BY_BATCH", Format(existing.MonthCloseByBatch), null, null),
             new("MONTH_CLOSE_BY_LOCATION", Format(existing.MonthCloseByLocation), null, null),
+            new("MONTH_CLOSE_SCOPE_HALF_STOCK", Format(existing.MonthCloseScopeHalfStock), null, null),
         };
         var message = $"库存策略删除（{depot}）："
             + string.Join("、", changes.Select(c => $"{c.FieldName} {c.OldValue}→已删除"));
@@ -637,7 +673,8 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     {
         await using var command = new SqlCommand(
             "SELECT DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH, "
-            + "MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID = @depot",
+            + "MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION, MONTH_CLOSE_SCOPE_HALF_STOCK "
+            + "FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID = @depot",
             connection, transaction);
         command.Parameters.AddWithValue("@depot", depotId);
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -665,6 +702,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         Compare("MIX_BATCH", before?.MixBatch, after.MixBatch);
         Compare("MONTH_CLOSE_BY_BATCH", before?.MonthCloseByBatch, after.MonthCloseByBatch);
         Compare("MONTH_CLOSE_BY_LOCATION", before?.MonthCloseByLocation, after.MonthCloseByLocation);
+        Compare("MONTH_CLOSE_SCOPE_HALF_STOCK", before?.MonthCloseScopeHalfStock, after.MonthCloseScopeHalfStock);
         return changes;
     }
 
@@ -959,5 +997,6 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         reader.GetBoolean(5),
         reader.GetBoolean(6),
         reader.GetBoolean(7),
-        reader.GetBoolean(8));
+        reader.GetBoolean(8),
+        reader.GetBoolean(9));
 }
