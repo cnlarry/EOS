@@ -135,7 +135,11 @@ public sealed class WorkbenchApprovalService(
             }
         }
         await auditWriter.WriteEventAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
-            "APPROVE", "自动批核", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
+            "APPROVE", "自动批核", userId, "WORKBENCH_RECORD", result: 1,
+            fieldChanges: ConfirmStateChanges(
+                originalState,
+                await ReadConfirmStateAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token)),
+            token);
         logger.LogInformation("自动批核（无副作用） module={ModuleId} key={Key} executor={User}", definition.ModuleId, string.Join(',', keyValues), userId);
         return RecordSaveResult.Success(keyValues);
     }
@@ -314,6 +318,9 @@ public sealed class WorkbenchApprovalService(
                 RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "BUSINESS_VALIDATION_FAILED", blocked));
         }
         var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
+        // 前后值：批核 / 解批改的就是确认状态这三列，翻转之前先留一份。
+        var beforeConfirm = await ReadConfirmStateAsync(
+            connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token, transaction);
         var confirmSql = approve
             ? $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=1 WHERE ISNULL(CONFIRM_TAG,0)=0 AND {keyWhere};"
             : $"UPDATE dbo.[{definition.MasterTable}] SET CONFIRM_PERSON=@ConfirmPerson,CONFIRM_DATE=GETDATE(),CONFIRM_TAG=0 WHERE CONFIRM_TAG=1 AND {keyWhere};";
@@ -330,6 +337,12 @@ public sealed class WorkbenchApprovalService(
                         approve ? "记录不存在或已批核，无法重复批核。" : "记录不存在或未批核，无法解批。"));
             }
         }
+        // 解批会把 CONFIRM_PERSON / CONFIRM_DATE 一并覆盖（状态列只存"最后一位操作人"），
+        // 因此"当初是谁在何时结的账"**只**留在这条审计的旧值里——反结账留痕靠的就是它。
+        var confirmChanges = ConfirmStateChanges(
+            beforeConfirm,
+            await ReadConfirmStateAsync(
+                connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token, transaction));
         EffectEngineInvoker.EffectRunResult effectRun;
         if (simulate)
         {
@@ -349,7 +362,7 @@ public sealed class WorkbenchApprovalService(
                 effectRun.Steps);
         }
         await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues),
-            approve ? "APPROVE" : "DEAPPROVE", auditSummary ?? (approve ? "批核" : "解批"), userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
+            approve ? "APPROVE" : "DEAPPROVE", auditSummary ?? (approve ? "批核" : "解批"), userId, "WORKBENCH_RECORD", result: 1, fieldChanges: confirmChanges, token);
         return new ApprovalCoreResult(null, effectRun.Steps);
     }
 
@@ -575,7 +588,11 @@ public sealed class WorkbenchApprovalService(
         }
         logger.LogInformation("统一表单{Action}（无副作用） module={ModuleId} key={Key}", approve ? "批核" : "解批", definition.ModuleId, string.Join(',', keyValues));
         await auditWriter.WriteEventAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
-            approve ? "APPROVE" : "DEAPPROVE", approve ? "批核" : "解批", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
+            approve ? "APPROVE" : "DEAPPROVE", approve ? "批核" : "解批", userId, "WORKBENCH_RECORD", result: 1,
+            fieldChanges: ConfirmStateChanges(
+                originalState,
+                await ReadConfirmStateAsync(connection, definition.MasterTable, definition.MasterPkOrder, keyValues, token)),
+            token);
         return RecordSaveResult.Success(keyValues);
     }
 
@@ -732,6 +749,37 @@ public sealed class WorkbenchApprovalService(
             blocked.AddRange(valid.Select(field => labels.TryGetValue(field, out var label) && label.Length > 0 ? label : field));
         }
     }
+
+    /// <summary>
+    /// 批核 / 解批写进审计的**前后值**：这次动作改的就是确认状态那三列。
+    /// </summary>
+    /// <remarks>
+    /// 为什么非记不可（而不是"审计有事件就够了"）：解批会把 `CONFIRM_PERSON` / `CONFIRM_DATE`
+    /// **一并覆盖**（这三列只存"最后一位操作人"），于是"当初是谁在何时结的账"在状态列上**不留痕迹**，
+    /// 只留在这条审计的旧值里。ADR-020 §3.6 要求反结账必须留痕，靠的就是它。
+    /// 三次调用点（引擎路径 / 无副作用路径 / 自动批核）共用本方法，前后值形态一致。
+    /// </remarks>
+    private static IReadOnlyList<AuditFieldChange>? ConfirmStateChanges(
+        (bool? Tag, string? Person, DateTime? Date)? before,
+        (bool? Tag, string? Person, DateTime? Date)? after)
+    {
+        if (before is not { } old || after is not { } now)
+        {
+            return null;
+        }
+        return
+        [
+            new("CONFIRM_TAG", FlagText(old.Tag), FlagText(now.Tag), null),
+            // CONFIRM_PERSON 是定长 NCHAR：读出来带尾随空格；写入时本服务先 Trim()，
+            // 故新旧值都按去空格记，前后值口径与写入口径一致。
+            new("CONFIRM_PERSON", old.Person?.Trim(), now.Person?.Trim(), null),
+            new("CONFIRM_DATE", DateText(old.Date), DateText(now.Date), null)
+        ];
+    }
+
+    private static string? FlagText(bool? value) => value is null ? null : value.Value ? "1" : "0";
+
+    private static string? DateText(DateTime? value) => value?.ToString("yyyy-MM-dd HH:mm:ss");
 
     private static async Task<(bool? Tag, string? Person, DateTime? Date)?> ReadConfirmStateAsync(
         SqlConnection connection, string table, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues,
