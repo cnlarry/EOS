@@ -398,10 +398,14 @@ public sealed class WorkbenchDefinitionValidator(
                 {
                     continue;
                 }
-                // 带公式行的动作走公式解释器，其余走服务处理器——两者接受的 kind 不同。
-                if (!EffectReverseCompatibility.IsSupported(action.EffectKey, kind, action.Ops is { Count: > 0 }))
+                // 带**真**公式行的动作走公式解释器，其余走服务处理器——两者接受的 kind 不同。
+                // 占位公式行（算子 / 目标表 / 目标字段全空）由配置迁移写入、运行时会被跳过
+                // （见 EffectPlanLoader.ParseOp），因此不算公式行；把它当公式行会让服务型动作
+                // 被按公式规则拒掉，报出"解批时会抛错"这种与实际运行不符的结论。
+                var hasFormulaRows = ModuleBusinessConfigValidator.HasFormulaRows(action.Ops);
+                if (!EffectReverseCompatibility.IsSupported(action.EffectKey, kind, hasFormulaRows))
                 {
-                    unsupported.Add($"SEQ={action.Seq} {action.EffectKey} → {kind}（可用：{string.Join("/", EffectReverseCompatibility.AllowedKinds(action.EffectKey, action.Ops is { Count: > 0 }))}）");
+                    unsupported.Add($"SEQ={action.Seq} {action.EffectKey} → {kind}（可用：{string.Join("/", EffectReverseCompatibility.AllowedKinds(action.EffectKey, hasFormulaRows))}）");
                 }
             }
             checks.Add(unsupported.Count == 0
