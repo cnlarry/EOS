@@ -291,21 +291,31 @@ public static class ReportAggregateRegistry
             {InventorySources.DistinctProductDepotPairs}
         ),
         MONTHROW AS (
-            SELECT pa.DEPOT_ID, pa.PRO_NO, x.MONTH_DATE, x.QTY, x.PRICE
+            SELECT pa.DEPOT_ID, pa.PRO_NO, lm.MONTH_DATE, x.QTY, x.PRICE
             FROM PAIR pa
             CROSS APPLY (
-                SELECT TOP 1 m.MONTH_DATE, d.QTY, d.PRICE
+                -- 第一段：先定"哪一期"。取区间起点之前**最近一期已批核**的月结单——
+                -- 未批核的是草稿，不参与任何口径；批核位必须与"选期"在同一次判定里，
+                -- 否则一张草稿月结单就能把期初改掉（外层只校验"曾经有过已批核期"拦不住它）。
+                -- 粒度取单头身份 (MONTH_TYPE, MONTH_NO) 而不是日期：日期相同的两张单不应被合并成一期。
+                SELECT TOP 1 m.MONTH_TYPE, m.MONTH_NO, m.MONTH_DATE
                 FROM dbo.INV_PRO_MONTH_M m
-                JOIN dbo.INV_PRO_MONTH_D d ON d.MONTH_TYPE = m.MONTH_TYPE AND d.MONTH_NO = m.MONTH_NO
-                WHERE d.DEPOT_ID = pa.DEPOT_ID AND d.PRO_NO = pa.PRO_NO AND m.MONTH_DATE < @date1
-                ORDER BY m.MONTH_DATE DESC
-            ) x
-            WHERE EXISTS (
-                SELECT 1 FROM dbo.INV_PRO_MONTH_M m
                 JOIN dbo.INV_PRO_MONTH_D d ON d.MONTH_TYPE = m.MONTH_TYPE AND d.MONTH_NO = m.MONTH_NO
                 WHERE d.DEPOT_ID = pa.DEPOT_ID AND d.PRO_NO = pa.PRO_NO
                   AND m.MONTH_DATE < @date1 AND m.CONFIRM_TAG = 1
-            )
+                ORDER BY m.MONTH_DATE DESC, m.MONTH_NO DESC
+            ) lm
+            CROSS APPLY (
+                -- 第二段：再按该期明细聚合。数量必须求和——快照按批次 / 库位细分后同一
+                -- (料号, 库别) 有多个维度行，只取其中一行会**静默少算**；也不能把聚合范围
+                -- 放到"该键的全部历史月份"，那会从少算变成多算（期初变成开天辟地以来的净额）。
+                -- 单价是库别级移动加权，同一键各维度行同值；加权写法保留，供将来按批次计价使用。
+                SELECT SUM(d.QTY) AS QTY,
+                       CASE WHEN SUM(d.QTY) = 0 THEN 0 ELSE SUM(d.QTY * d.PRICE) / SUM(d.QTY) END AS PRICE
+                FROM dbo.INV_PRO_MONTH_D d
+                WHERE d.MONTH_TYPE = lm.MONTH_TYPE AND d.MONTH_NO = lm.MONTH_NO
+                  AND d.DEPOT_ID = pa.DEPOT_ID AND d.PRO_NO = pa.PRO_NO
+            ) x
         ),
         OPENROWS AS (
             SELECT DEPOT_ID, PRO_NO, MONTH_DATE AS APP_DATE, QTY, PRICE FROM MONTHROW
