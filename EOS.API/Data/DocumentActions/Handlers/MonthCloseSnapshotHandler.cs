@@ -49,16 +49,19 @@ internal sealed class MonthCloseSnapshotHandler : IDocumentUserAction
         var dimensions = new List<string> { "料号", "库别" };
         if (result.ByLocation) dimensions.Add("库位");
         if (result.ByBatch) dimensions.Add("批次");
+        // 半成品账纳进来时才说"制程"这一维：没说就等于"这一期不含半成品账"，不用人去猜。
+        if (result.HalfStockRowCount > 0) dimensions.Add("制程（半成品账）");
         var scope = string.Join('+', dimensions);
+        var half = result.HalfStockRowCount > 0 ? $"，其中半成品账（按制程）{result.HalfStockRowCount} 行" : string.Empty;
 
         if (context.Preview)
         {
             return new DocumentActionResult(DocumentActionOutcome.Message,
-                $"将按 {scope} 反算 {header.MonthDate:yyyy-MM-dd} 的期末结存，写出快照 {result.RowCount} 行，期末数量合计 {Trim(result.EndingQuantity)}。本次未改动任何数据。");
+                $"将按 {scope} 反算 {header.MonthDate:yyyy-MM-dd} 的期末结存，写出快照 {result.RowCount} 行{half}，期末数量合计 {Trim(result.EndingQuantity)}。本次未改动任何数据。");
         }
 
         return new DocumentActionResult(DocumentActionOutcome.Refreshed,
-            $"已按 {scope} 生成快照 {result.RowCount} 行，期末数量合计 {Trim(result.EndingQuantity)}。");
+            $"已按 {scope} 生成快照 {result.RowCount} 行{half}，期末数量合计 {Trim(result.EndingQuantity)}。");
     }
 
     /// <summary>读本单的表头：键列与键值都由框架给出（列名来自定义、键值来自主键），没有调用方拼进来的文本。</summary>

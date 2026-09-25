@@ -114,13 +114,13 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             new("1", "是", true),
             new("0", "否", true),
         ]),
-        // 本维度暂时**只能选"否"**：快照侧（按制程展开）未落地前打开会产生"拦了但快照没有"的不对称，
-        // 所以 "是" 标为未实现（界面灰显），保存路径也会拒——可见但不可选，理由写在说明里。
+        // 两侧（拦 + 快照）都已落地，可以选"是"：但有一条**运行时限制**要写在使用者看得见的地方——
+        // 半成品账没有流水，只能在期末当天生成快照（补结过去期间会被拒），见 MonthCloseSnapshotService。
         new("monthCloseScopeHalfStock", "月结含半成品账",
             "半成品账（HALF_PRO_DEPOT，按制程分账）是否纳入月结：纳入即拦且快照，两侧同源。"
-            + "本版只有快照前的拦（快照侧属 WS-18b），故暂不可开。",
+            + "注意：半成品账没有库存流水，其快照只能**在期末当天**生成（补结过去的期间会被拒绝）。",
         [
-            new("1", "是", false),
+            new("1", "是", true),
             new("0", "否", true),
         ]),
     ];
@@ -227,15 +227,6 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
                 || candidate.MonthCloseScopeHalfStock != deployment.MonthCloseScopeHalfStock))
         {
             return "月结维度只在部署级生效，库别行不能覆盖（跨仓粒度不一致会让汇总重复计数或漏计）。";
-        }
-
-        // "含半成品账"这一维**暂时只允许关**：半成品账没有流水，快照侧（按制程展开、直取余额）
-        // 尚未落地（ADR-020 WS-18b）。先只放行"拦"那一半，就会出现"拦了但快照没有"的不对称——
-        // 而那正是 §9.3 要消除的东西，所以宁可不放行，也不给一个半生效的开关。
-        if (candidate.DepotId == DeploymentScope && candidate.MonthCloseScopeHalfStock)
-        {
-            return "半成品账的快照侧（按制程展开）尚未落地（ADR-020 WS-18b）：现在打开会变成"
-                + "“拦得住、却没有快照可对”，故本版只允许关。";
         }
 
         return null;
