@@ -172,7 +172,9 @@ public sealed class WorkbenchDefinitionBuilder(
     {
         const string sql = "SELECT M_DESC,MASTER_TABLE,DETAIL_TABLE,M_URL,SORT_FIELDS,MODI_URL,DETAIL_NO_SAVE,DETAIL_NO_FIELDS,FILTER,AUTO_APPROVE," +
                            "GROUP1,GROUP_EXP1,GROUP2,GROUP_EXP2,GROUP3,GROUP_EXP3,GROUP4,GROUP_EXP4,GROUP5,GROUP_EXP5," +
-                           "FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,NEW_URL,IF_COPY,SEARCH_1,SEARCH_2,HELP_URL " +
+                           // FORM_TABS / FORM_COLUMNS 已退役：**在原位返回 NULL 占位**，下游按位置取值不改，
+                           // 等字段级配置彻底清理时再一并删掉这两段
+                           "NULL AS FORM_TABS,NULL AS FORM_COLUMNS,FORM_BUTTONS,NEW_URL,IF_COPY,SEARCH_1,SEARCH_2,HELP_URL " +
                            "FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId";
         await using var command = new SqlCommand(sql, connection); command.Parameters.Add("@ModuleId", SqlDbType.Int).Value=moduleId;
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -600,12 +602,12 @@ public sealed class WorkbenchDefinitionBuilder(
                          WHEN col.MAX_LENGTH = -1 THEN NULL
                          WHEN col.CHARACTER_LENGTH_FLAG = 2 THEN col.MAX_LENGTH / 2
                          ELSE col.MAX_LENGTH END AS MAX_LENGTH,
-                   CAST(COALESCE(f.FORM_TAB_NO,1) AS int) AS FORM_TAB_NO,
-                   f.FORM_ORDER AS FORM_ORDER,
-                   CAST(COALESCE(f.FORM_SPAN,1) AS int) AS FORM_SPAN,
-                   CAST(COALESCE(f.FORM_NEW_LINE,0) AS bit) AS FORM_NEW_LINE,
-                   LTRIM(RTRIM(COALESCE(f.FORM_CELL_GROUP,''))) AS FORM_CELL_GROUP,
-                   CAST(COALESCE(f.FORM_CELL_ROLE,0) AS int) AS FORM_CELL_ROLE,
+                   CAST(1 AS int) AS FORM_TAB_NO,
+                   CAST(NULL AS int) AS FORM_ORDER,
+                   CAST(1 AS int) AS FORM_SPAN,
+                   CAST(0 AS bit) AS FORM_NEW_LINE,
+                   CAST(N'' AS nvarchar(50)) AS FORM_CELL_GROUP,
+                   CAST(0 AS int) AS FORM_CELL_ROLE,
                    f.FORM_OPTIONS AS FORM_OPTIONS,
                    col.TYPE_PRECISION AS TYPE_PRECISION,col.TYPE_SCALE AS TYPE_SCALE,
                    CAST(CASE WHEN col.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PHYSICAL
@@ -633,8 +635,8 @@ public sealed class WorkbenchDefinitionBuilder(
                        WHERE s2.name=N'dbo' AND t2.name=@TargetTable AND i.is_primary_key=1) pk
               ON pk.COLUMN_NAME=f.F_ID
             WHERE f.T_ID=@TargetTable
-              AND (COALESCE(f.IS_VIRTUAL,0)=@IncludeVirtual OR col.COLUMN_NAME IS NOT NULL OR LTRIM(RTRIM(COALESCE(f.FORM_CELL_GROUP,'')))<>'')
-            ORDER BY CASE WHEN f.FORM_ORDER IS NULL THEN 1 ELSE 0 END,COALESCE(f.FORM_ORDER,d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
+              AND (COALESCE(f.IS_VIRTUAL,0)=@IncludeVirtual OR col.COLUMN_NAME IS NOT NULL)
+            ORDER BY COALESCE(d.F_IDX,COALESCE(f.VERIFY_INDEX,999)),f.F_ID;
             """;
         await using var command=new SqlCommand(sql,connection);
         command.Parameters.Add("@MasterTable",SqlDbType.VarChar,100).Value=masterTable;
