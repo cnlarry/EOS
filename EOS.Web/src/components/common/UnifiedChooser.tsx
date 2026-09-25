@@ -47,6 +47,11 @@ export interface UnifiedChooserProps<T extends UnifiedChooserRow = UnifiedChoose
   /** 受控勾选（用于保持选择顺序/附加状态的场景）；不传则由组件内部维护 */
   selectedKeys?: Record<string, boolean>
   onSelectedKeysChange?: (selection: Record<string, boolean>) => void
+  /**
+   * 服务端下发的列与建议默认列（如单据源的主键列）：调用方需要据此知道"哪一列是键"，
+   * 而不是靠猜列顺序。
+   */
+  onColumnsLoaded?: (columns: UnifiedChooserColumn[], defaultKeys: string[] | null) => void
 }
 
 const PAGE_SIZE = 50
@@ -83,6 +88,7 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
   columnRenderers,
   selectedKeys,
   onSelectedKeysChange,
+  onColumnsLoaded,
 }: UnifiedChooserProps<T>) {
   const controlledSelection = Boolean(onSelectedKeysChange)
   const [internalSelected, setInternalSelected] = useState<RowSelectionState>({})
@@ -152,6 +158,7 @@ export function UnifiedChooser<T extends UnifiedChooserRow = UnifiedChooserRow>(
         appliedDefaultsRef.current = true
         setVisibleColumnKeys(result.defaultKeys?.length ? result.defaultKeys : null)
       }
+      onColumnsLoaded?.(result.columns, result.defaultKeys ?? null)
       if (!controlledSelection) setInternalSelected({})
       setPage(targetPage)
     } catch (cause) {
