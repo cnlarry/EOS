@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
+  IconBook,
   IconDeviceFloppy,
+  IconPlayerPlay,
   IconRefresh,
 } from '@tabler/icons-react'
 import { ErrorState, LoadingState } from '../../components/common/AsyncState'
@@ -10,8 +12,10 @@ import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 import { describeApiError } from '../../lib/errors'
 import { ColumnPickerInput, MatchEditor, TablePickerInput } from './BusinessActionPickers'
+import { BehaviorHandbook } from './BehaviorHandbook'
 import { BusinessActionImpact } from './BusinessActionImpactPanel'
 import { CloneActionsModal } from './CloneActionsModal'
+import { EffectSimulationPanel } from './EffectSimulationPanel'
 import { ConditionEditor } from './ConditionEditor'
 import { DocumentActionParamsEditor } from './DocumentActionParamsEditor'
 import { MANUAL_EVENT } from './documentActionConfig'
@@ -141,11 +145,26 @@ interface CatalogLabels {
   sourceAggregates?: Record<string, string>
   validationStages?: Record<string, string>
   validationKeys?: Record<string, string>
+  /** 效果键说明（这个键在单据上做什么）。 */
+  effectKeyDescriptions?: Record<string, string> | null
+  /** 反向 kind 说明（解批到底怎么反悔）。 */
+  reverseKindDescriptions?: Record<string, string> | null
 }
 
 interface EffectParamSchema {
   effectKey: string
   rootKeys: string[]
+}
+
+/** 一个效果参数的深 Schema 描述（类型/是否必填/枚举/默认值/说明/示例）。 */
+interface EffectParamField {
+  name: string
+  type: string
+  required: boolean
+  enumValues?: string[] | null
+  default?: string | null
+  description?: string | null
+  example?: string | null
 }
 
 interface BusinessConfigSchemas {
@@ -154,6 +173,10 @@ interface BusinessConfigSchemas {
   reverseKindLabels?: Record<string, string> | null
   /** 校验模板参数根键白名单（与效果参数同形；界面共用结构化参数编辑器）。 */
   validationParams?: { validationKey: string; rootKeys: string[] }[] | null
+  /** 参数深 Schema（逐键描述；未登记的键仍走根键展开 + 专家模式）。 */
+  paramFields?: { effectKey: string; fields: EffectParamField[] }[] | null
+  /** 反向 kind 兼容矩阵：受约束的效果键 → 允许的 kind（界面据此过滤下拉）。 */
+  reverseKindsByEffect?: Record<string, string[]> | null
 }
 
 /** 本模块涉及的表/字段中文名（服务端按模块解析，用于把配置渲染成人话）。 */
@@ -385,6 +408,9 @@ export function BusinessActionsPanel({
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null)
   const [opView, setOpView] = useState<'sheet' | 'grid'>('sheet')
   const [cloneOpen, setCloneOpen] = useState(false)
+  // 预演与说明书都是只读诊断：不改配置，因此不参与草稿脏判断。
+  const [simulateOpen, setSimulateOpen] = useState(false)
+  const [handbookOpen, setHandbookOpen] = useState(false)
   const names = useMemo(
     () => makeNameLookup(fieldLabelsQuery.data, module.MASTER_TABLE, module.DETAIL_TABLE),
     [fieldLabelsQuery.data, module.MASTER_TABLE, module.DETAIL_TABLE],
@@ -634,6 +660,24 @@ export function BusinessActionsPanel({
           <strong>{tableTitle(module.MASTER_TABLE, module.MASTER_TABLE_DESC)} / {tableTitle(module.DETAIL_TABLE, module.DETAIL_TABLE_DESC)}</strong>
         </div>
         <div className="d-flex gap-2">
+          {view === 'actions' ? (
+            <Button
+              size="sm"
+              icon={<IconPlayerPlay size={16} />}
+              onClick={() => setSimulateOpen(true)}
+              title="在事务内跑一遍真实的批核/解批链路并回滚，报告“会发生什么”"
+            >
+              预演（不改数据）
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            icon={<IconBook size={16} />}
+            onClick={() => setHandbookOpen(true)}
+            title="按事件汇总这个模块会发生什么（只读，可复制为 Markdown）"
+          >
+            行为说明书
+          </Button>
           <Button
             size="sm"
             icon={<IconRefresh size={16} />}
@@ -778,6 +822,32 @@ export function BusinessActionsPanel({
         />
       ) : null}
 
+      {simulateOpen ? (
+        <EffectSimulationPanel
+          moduleId={moduleId}
+          moduleTitle={module.M_DESC ?? String(moduleId)}
+          actions={effectActions}
+          names={names}
+          reverseKindLabels={schemasQuery.data?.reverseKindLabels}
+          onClose={() => setSimulateOpen(false)}
+        />
+      ) : null}
+
+      {handbookOpen && ready ? (
+        <BehaviorHandbook
+          moduleTitle={module.M_DESC ?? String(moduleId)}
+          masterTable={module.MASTER_TABLE}
+          detailTable={module.DETAIL_TABLE}
+          actions={actions}
+          rules={rules}
+          catalog={catalogQuery.data!}
+          labels={labels}
+          names={names}
+          reverseKindLabels={schemasQuery.data?.reverseKindLabels}
+          onClose={() => setHandbookOpen(false)}
+        />
+      ) : null}
+
       {editor ? (
         <EditorModal
           editor={editor}
@@ -888,6 +958,15 @@ function ActionForm({
 }) {
   const set = <K extends keyof BusinessAction>(key: K, next: BusinessAction[K]) => onChange({ ...value, [key]: next })
   const effectSchema = (schemas.effects ?? []).find((item) => item.effectKey === value.effectKey)
+  const paramFields = (schemas.paramFields ?? []).find((item) => item.effectKey === value.effectKey)?.fields ?? []
+  const effectDescription = catalog.labels?.effectKeyDescriptions?.[value.effectKey] ?? null
+  // 反向 kind 按效果键过滤：选不到不支持的组合，比保存/发布时才拒绝更早一步。
+  const reverseKinds = useMemo(() => {
+    const allowed = schemas.reverseKindsByEffect?.[value.effectKey]
+    if (!allowed || allowed.length === 0) return schemas.reverseKinds
+    const order = new Map(schemas.reverseKinds.map((kind, index) => [kind.toLowerCase(), index]))
+    return [...allowed].sort((left, right) => (order.get(left.toLowerCase()) ?? 0) - (order.get(right.toLowerCase()) ?? 0))
+  }, [schemas.reverseKindsByEffect, schemas.reverseKinds, value.effectKey])
   const reverseLookup = useMemo(() => makeLabelLookup(schemas.reverseKindLabels), [schemas.reverseKindLabels])
   const isManual = value.eventCode === MANUAL_EVENT
   const documentActions = catalog.documentActions ?? []
@@ -916,11 +995,25 @@ function ActionForm({
               ))}
             </select>
           ) : (
-            <select className="form-select form-select-sm" value={value.effectKey} onChange={(e) => set('effectKey', e.target.value)}>
-              {catalog.effectKeys.map((item) => <option key={item} value={item}>{labelWithCode(labels.effectKeys, item)}</option>)}
+            <select
+              className="form-select form-select-sm"
+              value={value.effectKey}
+              onChange={(e) => set('effectKey', e.target.value)}
+              title={effectDescription ?? undefined}
+            >
+              {catalog.effectKeys.map((item) => (
+                <option key={item} value={item} title={catalog.labels?.effectKeyDescriptions?.[item] ?? undefined}>
+                  {labelWithCode(labels.effectKeys, item)}
+                </option>
+              ))}
             </select>
           )}
         </Field>
+        {!isManual && effectDescription ? (
+          <Field label="这个效果做什么" className="col-12">
+            <div className="small text-secondary">{effectDescription}</div>
+          </Field>
+        ) : null}
         <Field label="名称" className="col-8">
           <input className="form-control form-control-sm" value={value.effectName ?? ''}
             onChange={(e) => set('effectName', e.target.value || null)} />
@@ -979,6 +1072,7 @@ function ActionForm({
             <StructuredParamsEditor
               hint={`效果键：${value.effectKey}${effectSchema ? `（根键 ${effectSchema.rootKeys.join(' / ')}）` : '（未登记 Schema，禁止携带参数）'}`}
               rootKeys={effectSchema?.rootKeys ?? []}
+              descriptors={paramFields}
               json={value.params ?? null}
               emptyHint="该效果不允许配置参数。"
               onChange={(json) => set('params', json)}
@@ -988,8 +1082,9 @@ function ActionForm({
         {isManual ? null : (
           <Field label="反向（解批语义）" className="col-12">
             <ReverseEditor
-              kinds={schemas.reverseKinds}
+              kinds={reverseKinds}
               lookup={reverseLookup}
+              descriptions={catalog.labels?.reverseKindDescriptions}
               json={value.reverse ?? null}
               onChange={(json) => set('reverse', json || null)}
             />
@@ -1207,11 +1302,13 @@ function RuleForm({
 function ReverseEditor({
   kinds,
   lookup,
+  descriptions,
   json,
   onChange,
 }: {
   kinds: string[]
   lookup: (code: string | null | undefined) => string
+  descriptions?: Record<string, string> | null
   json: string | null
   onChange: (json: string | null) => void
 }) {
@@ -1241,13 +1338,20 @@ function ReverseEditor({
         <select className="form-select form-select-sm" value={parsed.kind}
           onChange={(event) => commit(event.target.value, parsed.note)}>
           <option value="">（无反向配置）</option>
-          {options.map((kind) => <option key={kind} value={kind}>{labelWithCode(lookup, kind)}</option>)}
+          {options.map((kind) => (
+            <option key={kind} value={kind} title={descriptions?.[kind] ?? undefined}>
+              {labelWithCode(lookup, kind)}
+            </option>
+          ))}
         </select>
       </div>
       <div className="col-8">
         <input className="form-control form-control-sm" value={parsed.note} placeholder="反向说明（可选）"
           onChange={(event) => commit(parsed.kind, event.target.value)} />
       </div>
+      {descriptions?.[parsed.kind] ? (
+        <div className="col-12 small text-secondary">{descriptions[parsed.kind]}</div>
+      ) : null}
     </div>
   )
 }

@@ -10,9 +10,21 @@ import { parseJsonObject } from './businessActionText'
  * - 键集合由效果/校验模板定义，**不让用户发明键**；Schema 外的键给出警告（保存会被拒绝）；
  * - 专家模式保留原始 JSON 文本，供批量粘贴或结构异常时收手。
  */
+/** 参数深 Schema 描述（服务端下发；没有描述的键回到"只显示根键"的老形态）。 */
+export interface ParamFieldDescriptor {
+  name: string
+  type: string
+  required: boolean
+  enumValues?: string[] | null
+  default?: string | null
+  description?: string | null
+  example?: string | null
+}
+
 export function StructuredParamsEditor({
   hint,
   rootKeys,
+  descriptors,
   json,
   emptyHint,
   onChange,
@@ -20,6 +32,8 @@ export function StructuredParamsEditor({
   /** 顶部说明（如"效果键：field-accumulate"）。 */
   hint: string
   rootKeys: string[]
+  /** 逐键描述（只登记了能确证语义的键，其余键不显示说明，也不假装知道）。 */
+  descriptors?: ParamFieldDescriptor[]
   json: string | null
   emptyHint: string
   onChange: (json: string | null) => void
@@ -48,6 +62,10 @@ export function StructuredParamsEditor({
   const keys = useMemo(
     () => [...rootKeys, ...Object.keys(parsed).filter((key) => !rootKeys.includes(key))],
     [rootKeys, parsed],
+  )
+  const descriptorByKey = useMemo(
+    () => new Map((descriptors ?? []).map((field) => [field.name, field])),
+    [descriptors],
   )
 
   return (
@@ -81,16 +99,41 @@ export function StructuredParamsEditor({
         <div className="text-secondary small">{emptyHint}</div>
       ) : (
         <div className="d-flex flex-column gap-2">
-          {keys.map((key) => (
-            <div key={key} className="row g-1 align-items-start">
-              <div className="col-3">
-                <label className="form-label small mb-0 text-nowrap font-monospace">{key}</label>
+          {keys.map((key) => {
+            const descriptor = descriptorByKey.get(key)
+            return (
+              <div key={key} className="row g-1 align-items-start">
+                <div className="col-3">
+                  <label className="form-label small mb-0 text-nowrap font-monospace">
+                    {key}
+                    {descriptor?.required ? <span className="text-danger"> *</span> : null}
+                  </label>
+                  {descriptor?.description ? (
+                    <div className="small text-secondary">{descriptor.description}</div>
+                  ) : null}
+                </div>
+                <div className="col-9">
+                  {descriptor?.enumValues && descriptor.enumValues.length > 0 ? (
+                    <select
+                      className="form-select form-select-sm"
+                      value={typeof parsed[key] === 'string' ? String(parsed[key]) : ''}
+                      onChange={(event) => updateRoot(key, event.target.value)}
+                    >
+                      <option value="">（未设置{descriptor.default ? `，默认 ${descriptor.default}` : ''}）</option>
+                      {descriptor.enumValues.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <ParamValueEditor value={parsed[key]} onChange={(next) => updateRoot(key, next)} />
+                  )}
+                  {descriptor?.example ? (
+                    <div className="small text-secondary mt-1">示例：{descriptor.example}</div>
+                  ) : null}
+                </div>
               </div>
-              <div className="col-9">
-                <ParamValueEditor value={parsed[key]} onChange={(next) => updateRoot(key, next)} />
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
