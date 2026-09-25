@@ -160,7 +160,7 @@ describe('FieldEditorForm', () => {
   it('表单布局分区只留去设计态的入口，FORM_* 值仍随保存回传', async () => {
     const save = vi.fn().mockResolvedValue(undefined)
     const loaded = meta()
-    const { container } = renderForm('edit', { load: vi.fn().mockResolvedValue(loaded), save }, vi.fn(), vi.fn(), undefined, 1405)
+    renderForm('edit', { load: vi.fn().mockResolvedValue(loaded), save }, vi.fn(), vi.fn(), undefined, 1405)
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('tab', { name: '表单布局' }))
     // 字段级排布设置已退役：界面上不再出现这些入口（值仍原样随保存回传，删列批次再统一清理）
