@@ -209,7 +209,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
             "DELETE FROM dbo.AUDIT_EVENT WHERE ACTION=@action AND RESOURCE_KEY=@key;",
             ("@action", GenerateAdjustmentHandler.ActionKey), ("@key", $"{TestType},{TestNo}"));
         await ExecAsync(connection,
-            "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE MODULE_ID IN (@a,@b) AND ACTION=N'ACTION';",
+            "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX IN (@a,@b) AND ACTION=N'ACTION';",
             ("@a", ModuleId), ("@b", TargetModuleId));
     }
 

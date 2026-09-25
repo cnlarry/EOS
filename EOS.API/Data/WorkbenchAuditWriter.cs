@@ -63,7 +63,7 @@ public sealed class WorkbenchAuditWriter(
         const string insertSql = """
             INSERT INTO dbo.AUDIT_EVENT
                 (OCCURRED_AT, CORRELATION_ID, TRACE_ID, ACTOR_USER_ID, ACTOR_DISPLAY_NAME, ACTOR_TYPE,
-                 CLIENT_TYPE, CLIENT_IP, USER_AGENT, REQUEST_METHOD, REQUEST_PATH, MODULE_ID,
+                 CLIENT_TYPE, CLIENT_IP, USER_AGENT, REQUEST_METHOD, REQUEST_PATH, M_IDX,
                  RESOURCE_TYPE, RESOURCE_KEY, ACTION, RESULT, ERROR_CODE, DEFINITION_VERSION, SUMMARY,
                  DETAIL_JSON, CREATED_DATE)
             VALUES (SYSDATETIME(), @CorrelationId, @TraceId, @Actor, @ActorDisplay, @ActorType,

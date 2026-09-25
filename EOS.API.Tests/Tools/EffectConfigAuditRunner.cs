@@ -194,7 +194,7 @@ public sealed class EffectConfigAuditRunner
             SELECT M_IDX, ISNULL(M_DESC, N''), NULLIF(LTRIM(RTRIM(ISNULL(MASTER_TABLE, N''))), N''),
                    NULLIF(LTRIM(RTRIM(ISNULL(DETAIL_TABLE, N''))), N''), ISNULL(EFFECT_ENGINE_TAG, 0)
             FROM dbo.MODULES WITH (NOLOCK)
-            WHERE M_IDX IN (SELECT DISTINCT MODULE_ID FROM dbo.MODULE_BUSINESS_ACTION WITH (NOLOCK))
+            WHERE M_IDX IN (SELECT DISTINCT M_IDX FROM dbo.MODULE_BUSINESS_ACTION WITH (NOLOCK))
             ORDER BY M_IDX;
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -215,9 +215,9 @@ public sealed class EffectConfigAuditRunner
     private static async Task<IReadOnlyList<ActionRow>> LoadActionsAsync(SqlConnection connection)
     {
         const string sql = """
-            SELECT ACTION_ID, MODULE_ID, SEQ, EVENT_CODE, EFFECT_KEY, PARAM_STRUCT, CONDITION_STRUCT
+            SELECT ACTION_ID, M_IDX, SEQ, EVENT_CODE, EFFECT_KEY, PARAM_STRUCT, CONDITION_STRUCT
             FROM dbo.MODULE_BUSINESS_ACTION WITH (NOLOCK)
-            ORDER BY MODULE_ID, SEQ;
+            ORDER BY M_IDX, SEQ;
             """;
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync();
@@ -239,11 +239,11 @@ public sealed class EffectConfigAuditRunner
     private static async Task<IReadOnlyList<OpRow>> LoadOpsAsync(SqlConnection connection)
     {
         const string sql = """
-            SELECT o.ACTION_ID, a.MODULE_ID, a.SEQ, o.OP_SEQ, o.TARGET_TABLE, o.TARGET_FIELD, o.OP_CODE,
+            SELECT o.ACTION_ID, a.M_IDX, a.SEQ, o.OP_SEQ, o.TARGET_TABLE, o.TARGET_FIELD, o.OP_CODE,
                    o.MATCH_STRUCT, o.CONDITION_STRUCT
             FROM dbo.MODULE_BUSINESS_ACTION_OP o WITH (NOLOCK)
             JOIN dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) ON a.ACTION_ID = o.ACTION_ID
-            ORDER BY a.MODULE_ID, a.SEQ, o.OP_SEQ;
+            ORDER BY a.M_IDX, a.SEQ, o.OP_SEQ;
             """;
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync();
@@ -266,7 +266,7 @@ public sealed class EffectConfigAuditRunner
 
     private static async Task<HashSet<int>> LoadDirtyModulesAsync(SqlConnection connection)
     {
-        const string sql = "SELECT MODULE_ID FROM dbo.WORKBENCH_MODULE_DIRTY WITH (NOLOCK);";
+        const string sql = "SELECT M_IDX FROM dbo.WORKBENCH_MODULE_DIRTY WITH (NOLOCK);";
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync();
         var result = new HashSet<int>();

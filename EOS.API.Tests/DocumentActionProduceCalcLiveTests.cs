@@ -146,7 +146,7 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
         await ExecAsync(connection,
             "DELETE FROM dbo.AUDIT_EVENT WHERE ACTION=@action;", ("@action", ProduceCalcMaterialsHandler.ActionKey));
         await ExecAsync(connection,
-            "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE MODULE_ID=@module AND ACTION=N'ACTION';", ("@module", ModuleId));
+            "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX=@module AND ACTION=N'ACTION';", ("@module", ModuleId));
     }
 
     // ===== 装配（与 Program.cs 同源：真实服务） =====

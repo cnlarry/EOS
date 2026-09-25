@@ -658,7 +658,7 @@ public sealed class EffectShadowRunner
     {
         await using var command = new SqlCommand(
             "SELECT TOP 1 VERSION, DEFINITION_JSON FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT " +
-            "WHERE MODULE_ID=@ModuleId AND IS_CURRENT=1 ORDER BY VERSION DESC;", connection);
+            "WHERE M_IDX=@ModuleId AND IS_CURRENT=1 ORDER BY VERSION DESC;", connection);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
@@ -5053,7 +5053,7 @@ public sealed class EffectShadowRunner
         const string sql = """
             SELECT ACTION, COUNT(*)
             FROM dbo.AUDIT_EVENT WITH (NOLOCK)
-            WHERE EVENT_ID > @Baseline AND MODULE_ID=@ModuleId AND RESOURCE_KEY=@ResourceKey
+            WHERE EVENT_ID > @Baseline AND M_IDX=@ModuleId AND RESOURCE_KEY=@ResourceKey
             GROUP BY ACTION ORDER BY ACTION;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);

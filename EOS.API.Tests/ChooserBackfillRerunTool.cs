@@ -688,12 +688,12 @@ public sealed class ChooserBackfillRerunTool
         builder.AppendLine();
         builder.AppendLine("-- 3) 受影响模块标脏");
         builder.AppendLine("""
-            INSERT INTO dbo.WORKBENCH_MODULE_DIRTY (MODULE_ID, DIRTY_TAG, LAST_MODIFIED_BY, LAST_MODIFIED_AT)
+            INSERT INTO dbo.WORKBENCH_MODULE_DIRTY (M_IDX, DIRTY_TAG, LAST_MODIFIED_BY, LAST_MODIFIED_AT)
             SELECT DISTINCT m.M_IDX, 1, N'EOS-MIG', GETDATE()
             FROM dbo.MODULES m
             WHERE (m.MASTER_TABLE IN (SELECT T_ID FROM #RERUN)
                    OR ISNULL(m.DETAIL_TABLE, '') IN (SELECT T_ID FROM #RERUN))
-              AND NOT EXISTS (SELECT 1 FROM dbo.WORKBENCH_MODULE_DIRTY d WHERE d.MODULE_ID = m.M_IDX);
+              AND NOT EXISTS (SELECT 1 FROM dbo.WORKBENCH_MODULE_DIRTY d WHERE d.M_IDX = m.M_IDX);
             """);
         builder.AppendLine();
         builder.AppendLine("DROP TABLE #RERUN;");

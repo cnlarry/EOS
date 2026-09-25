@@ -555,13 +555,13 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         AddCommonParameters(command, keyword, page, pageSize);
         var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
         var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
-        const string scope = "EXISTS (SELECT 1 FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) WHERE a.MODULE_ID=m.M_IDX)";
+        const string scope = "EXISTS (SELECT 1 FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) WHERE a.M_IDX=m.M_IDX)";
         var sql = $"""
             SELECT COUNT_BIG(1) FROM dbo.MODULES m WITH (NOLOCK)
             WHERE {scope} AND (@Keyword = '' OR {keywordPredicate}){conditionSql};
             SELECT m.M_IDX,LTRIM(RTRIM(ISNULL(m.M_DESC,''))) AS M_DESC,
                    ISNULL(m.MASTER_TABLE,'') AS MASTER_TABLE,ISNULL(m.DETAIL_TABLE,'') AS DETAIL_TABLE,
-                   (SELECT COUNT(*) FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) WHERE a.MODULE_ID=m.M_IDX) AS ACTION_COUNT
+                   (SELECT COUNT(*) FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) WHERE a.M_IDX=m.M_IDX) AS ACTION_COUNT
             FROM dbo.MODULES m WITH (NOLOCK)
             WHERE {scope} AND (@Keyword = '' OR {keywordPredicate}){conditionSql}
             {orderBy}

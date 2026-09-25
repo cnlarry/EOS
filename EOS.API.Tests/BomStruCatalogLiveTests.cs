@@ -157,7 +157,7 @@ public sealed class BomStruCatalogLiveTests
             SELECT SEQ, EVENT_CODE, EFFECT_KEY, EFFECT_NAME, ENABLED, FAIL_MODE,
                    CONDITION_STRUCT, PARAM_STRUCT, REVERSE_STRUCT
             FROM dbo.MODULE_BUSINESS_ACTION
-            WHERE MODULE_ID=@ModuleId AND EVENT_CODE=N'SAVE' AND SEQ=1;
+            WHERE M_IDX=@ModuleId AND EVENT_CODE=N'SAVE' AND SEQ=1;
             """, connection, transaction);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = ModuleId;
         await using var reader = await command.ExecuteReaderAsync(token);
@@ -178,7 +178,7 @@ public sealed class BomStruCatalogLiveTests
         await using (var command = new SqlCommand("""
             SELECT m.MASTER_TABLE, m.DETAIL_TABLE, s.DEFINITION_JSON
             FROM dbo.MODULES m
-            JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s ON s.MODULE_ID = m.M_IDX AND s.IS_CURRENT = 1
+            JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s ON s.M_IDX = m.M_IDX AND s.IS_CURRENT = 1
             WHERE m.M_IDX = @ModuleId;
             """, connection, transaction))
         {
@@ -194,7 +194,7 @@ public sealed class BomStruCatalogLiveTests
         var rules = new List<EffectValidationPlan>();
         await using (var command = new SqlCommand("""
             SELECT SEQ, VALIDATION_KEY, PARAM_STRUCT, MESSAGE FROM dbo.MODULE_VALIDATION_RULE
-            WHERE MODULE_ID=@ModuleId AND STAGE=N'SAVE' AND ENABLED=1
+            WHERE M_IDX=@ModuleId AND STAGE=N'SAVE' AND ENABLED=1
               AND VALIDATION_KEY IN (N'reference-exists', N'line-require') ORDER BY SEQ;
             """, connection, transaction))
         {

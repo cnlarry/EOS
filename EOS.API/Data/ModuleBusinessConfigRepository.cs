@@ -35,7 +35,7 @@ public sealed class ModuleBusinessConfigRepository(
                    CONDITION_STRUCT,PARAM_STRUCT,REVERSE_STRUCT,REMARK,SOURCE_REF,
                    LABEL,CONFIRM_TAG
             FROM dbo.MODULE_BUSINESS_ACTION WITH (NOLOCK)
-            WHERE MODULE_ID=@ModuleId
+            WHERE M_IDX=@ModuleId
             ORDER BY EVENT_CODE,SEQ;
             """, connection))
         {
@@ -71,7 +71,7 @@ public sealed class ModuleBusinessConfigRepository(
                    o.SOURCE_TERMS_STRUCT,o.MATCH_STRUCT,o.CONDITION_STRUCT,o.REMARK
             FROM dbo.MODULE_BUSINESS_ACTION_OP o WITH (NOLOCK)
             INNER JOIN dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) ON a.ACTION_ID=o.ACTION_ID
-            WHERE a.MODULE_ID=@ModuleId
+            WHERE a.M_IDX=@ModuleId
             ORDER BY a.EVENT_CODE,a.SEQ,o.OP_SEQ;
             """, connection))
         {
@@ -105,7 +105,7 @@ public sealed class ModuleBusinessConfigRepository(
             """
             SELECT SEQ,STAGE,VALIDATION_KEY,ENABLED,PARAM_STRUCT,MESSAGE,REMARK,SOURCE_REF
             FROM dbo.MODULE_VALIDATION_RULE WITH (NOLOCK)
-            WHERE MODULE_ID=@ModuleId
+            WHERE M_IDX=@ModuleId
             ORDER BY STAGE,SEQ;
             """, connection))
         {
@@ -185,14 +185,14 @@ public sealed class ModuleBusinessConfigRepository(
             throw new ArgumentException("业务动作配置物理校验未通过：\r\n" + string.Join("\r\n", physicalIssues));
 
         await using (var deleteRules = new SqlCommand(
-            "DELETE FROM dbo.MODULE_VALIDATION_RULE WHERE MODULE_ID=@ModuleId;",
+            "DELETE FROM dbo.MODULE_VALIDATION_RULE WHERE M_IDX=@ModuleId;",
             connection, transaction))
         {
             deleteRules.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
             await deleteRules.ExecuteNonQueryAsync(token);
         }
         await using (var deleteActions = new SqlCommand(
-            "DELETE FROM dbo.MODULE_BUSINESS_ACTION WHERE MODULE_ID=@ModuleId;",
+            "DELETE FROM dbo.MODULE_BUSINESS_ACTION WHERE M_IDX=@ModuleId;",
             connection, transaction))
         {
             deleteActions.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -348,10 +348,10 @@ public sealed class ModuleBusinessConfigRepository(
                 UNION SELECT DETAIL_TABLE FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId
                 UNION SELECT o.TARGET_TABLE FROM dbo.MODULE_BUSINESS_ACTION_OP o WITH (NOLOCK)
                       JOIN dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) ON a.ACTION_ID=o.ACTION_ID
-                      WHERE a.MODULE_ID=@ModuleId
+                      WHERE a.M_IDX=@ModuleId
                 UNION SELECT o.SOURCE_TABLE FROM dbo.MODULE_BUSINESS_ACTION_OP o WITH (NOLOCK)
                       JOIN dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK) ON a.ACTION_ID=o.ACTION_ID
-                      WHERE a.MODULE_ID=@ModuleId
+                      WHERE a.M_IDX=@ModuleId
             ), t AS (
                 SELECT DISTINCT LTRIM(RTRIM(T_ID)) AS T_ID
                 FROM tabs WHERE T_ID IS NOT NULL AND LTRIM(RTRIM(T_ID))<>''
@@ -560,7 +560,7 @@ public sealed class ModuleBusinessConfigRepository(
     {
         const string sql = """
             INSERT INTO dbo.MODULE_BUSINESS_ACTION
-                (MODULE_ID,EVENT_CODE,SEQ,EFFECT_KEY,EFFECT_NAME,ENABLED,FAIL_MODE,
+                (M_IDX,EVENT_CODE,SEQ,EFFECT_KEY,EFFECT_NAME,ENABLED,FAIL_MODE,
                  CONDITION_STRUCT,PARAM_STRUCT,REVERSE_STRUCT,REMARK,SOURCE_REF,
                  LABEL,CONFIRM_TAG,
                  CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
@@ -638,7 +638,7 @@ public sealed class ModuleBusinessConfigRepository(
     {
         const string sql = """
             INSERT INTO dbo.MODULE_VALIDATION_RULE
-                (MODULE_ID,STAGE,SEQ,VALIDATION_KEY,ENABLED,PARAM_STRUCT,MESSAGE,REMARK,SOURCE_REF,
+                (M_IDX,STAGE,SEQ,VALIDATION_KEY,ENABLED,PARAM_STRUCT,MESSAGE,REMARK,SOURCE_REF,
                  CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
             VALUES
                 (@ModuleId,@Stage,@Seq,@ValidationKey,@Enabled,@Params,@Message,@Remark,@SourceRef,

@@ -29,7 +29,7 @@ public sealed class ReportInboxRepository(
     public async Task<IReadOnlyList<SubscriptionRow>> ListSubscriptionsAsync(string userId, CancellationToken token)
     {
         const string sql = """
-            SELECT ID, LTRIM(RTRIM(USER_ID)), MODULE_ID, LTRIM(RTRIM(REPORT_ID)),
+            SELECT ID, LTRIM(RTRIM(USER_ID)), M_IDX, LTRIM(RTRIM(REPORT_ID)),
                    LTRIM(RTRIM(SCHEDULE_TYPE)), RUN_HOUR, RUN_MINUTE, WEEKDAY, MONTH_DAY,
                    ISNULL(ENABLED_TAG,0), LAST_RUN_AT, LTRIM(RTRIM(ISNULL(LAST_UPDATE_BY,''))), LAST_UPDATE_DATE
             FROM dbo.REPORT_SUBSCRIPTION WITH (NOLOCK)
@@ -63,7 +63,7 @@ public sealed class ReportInboxRepository(
     {
         const string sql = """
             INSERT INTO dbo.REPORT_SUBSCRIPTION
-                (USER_ID,MODULE_ID,REPORT_ID,SCHEDULE_TYPE,RUN_HOUR,RUN_MINUTE,WEEKDAY,MONTH_DAY,ENABLED_TAG,CREATE_PERSON,CREATE_DATE)
+                (USER_ID,M_IDX,REPORT_ID,SCHEDULE_TYPE,RUN_HOUR,RUN_MINUTE,WEEKDAY,MONTH_DAY,ENABLED_TAG,CREATE_PERSON,CREATE_DATE)
             OUTPUT INSERTED.ID
             VALUES (@UserId,@ModuleId,@ReportId,@ScheduleType,@RunHour,@RunMinute,@Weekday,@MonthDay,@Enabled,@User,SYSDATETIME());
             """;
@@ -110,7 +110,7 @@ public sealed class ReportInboxRepository(
     public async Task<IReadOnlyList<InboxRow>> ListInboxAsync(string userId, int limit, CancellationToken token)
     {
         const string sql = """
-            SELECT TOP (@Limit) ID, LTRIM(RTRIM(USER_ID)), MODULE_ID, LTRIM(RTRIM(REPORT_ID)), TITLE,
+            SELECT TOP (@Limit) ID, LTRIM(RTRIM(USER_ID)), M_IDX, LTRIM(RTRIM(REPORT_ID)), TITLE,
                    LTRIM(RTRIM(PDF_PATH)), GENERATED_AT, ISNULL(READ_TAG,0)
             FROM dbo.REPORT_INBOX WITH (NOLOCK)
             WHERE USER_ID=@UserId ORDER BY GENERATED_AT DESC;
@@ -146,7 +146,7 @@ public sealed class ReportInboxRepository(
     public async Task<IReadOnlyList<SubscriptionRow>> FindDueSubscriptionsAsync(DateTime now, CancellationToken token)
     {
         const string sql = """
-            SELECT ID, LTRIM(RTRIM(USER_ID)), MODULE_ID, LTRIM(RTRIM(REPORT_ID)),
+            SELECT ID, LTRIM(RTRIM(USER_ID)), M_IDX, LTRIM(RTRIM(REPORT_ID)),
                    LTRIM(RTRIM(SCHEDULE_TYPE)), RUN_HOUR, RUN_MINUTE, WEEKDAY, MONTH_DAY,
                    ISNULL(ENABLED_TAG,0), LAST_RUN_AT, LTRIM(RTRIM(ISNULL(LAST_UPDATE_BY,''))), LAST_UPDATE_DATE
             FROM dbo.REPORT_SUBSCRIPTION WITH (NOLOCK)
@@ -180,7 +180,7 @@ public sealed class ReportInboxRepository(
         CancellationToken token)
     {
         const string sql = """
-            INSERT INTO dbo.REPORT_INBOX (USER_ID,MODULE_ID,REPORT_ID,TITLE,PDF_PATH,GENERATED_AT,READ_TAG)
+            INSERT INTO dbo.REPORT_INBOX (USER_ID,M_IDX,REPORT_ID,TITLE,PDF_PATH,GENERATED_AT,READ_TAG)
             OUTPUT INSERTED.ID
             VALUES (@UserId,@ModuleId,@ReportId,@Title,@PdfPath,SYSDATETIME(),0);
             """;

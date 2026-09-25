@@ -68,7 +68,7 @@ public sealed class InventoryReadOnlyFormEntryLiveTests
 
         await using (var command = new SqlCommand("""
             SELECT COUNT(*) FROM dbo.MODULE_BUSINESS_ACTION
-             WHERE MODULE_ID = @Id AND RTRIM(EVENT_CODE) = N'MANUAL' AND ENABLED = 1;
+             WHERE M_IDX = @Id AND RTRIM(EVENT_CODE) = N'MANUAL' AND ENABLED = 1;
             """, connection))
         {
             command.Parameters.Add("@Id", SqlDbType.Int).Value = moduleId;

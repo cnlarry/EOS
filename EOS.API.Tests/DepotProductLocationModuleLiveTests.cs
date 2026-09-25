@@ -83,7 +83,7 @@ public sealed class DepotProductLocationModuleLiveTests
         await connection.OpenAsync();
 
         await using var command = new SqlCommand(
-            "SELECT TOP 1 DEFINITION_JSON FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WHERE MODULE_ID = @Id AND IS_CURRENT = 1;",
+            "SELECT TOP 1 DEFINITION_JSON FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WHERE M_IDX = @Id AND IS_CURRENT = 1;",
             connection);
         command.Parameters.Add("@Id", SqlDbType.Int).Value = ModuleId;
         var json = await command.ExecuteScalarAsync() as string;

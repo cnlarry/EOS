@@ -379,7 +379,7 @@ public sealed class FormLayoutRepository(
         }
 
         bool? dirty = null;
-        const string dirtySql = "SELECT DIRTY_TAG FROM dbo.WORKBENCH_MODULE_DIRTY WHERE MODULE_ID=@ModuleId;";
+        const string dirtySql = "SELECT DIRTY_TAG FROM dbo.WORKBENCH_MODULE_DIRTY WHERE M_IDX=@ModuleId;";
         await using (var command = new SqlCommand(dirtySql, connection))
         {
             command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -440,7 +440,7 @@ public sealed class FormLayoutRepository(
             // 脏标记也回到保存前：改动已撤销，不该留下"待发布"的假积压
             if (backup.Dirty is null)
             {
-                const string clearSql = "DELETE FROM dbo.WORKBENCH_MODULE_DIRTY WHERE MODULE_ID=@ModuleId;";
+                const string clearSql = "DELETE FROM dbo.WORKBENCH_MODULE_DIRTY WHERE M_IDX=@ModuleId;";
                 await using var clear = new SqlCommand(clearSql, connection, transaction);
                 clear.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
                 await clear.ExecuteNonQueryAsync(token);

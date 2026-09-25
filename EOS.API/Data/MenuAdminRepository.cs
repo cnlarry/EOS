@@ -49,8 +49,8 @@ public sealed class MenuAdminRepository(
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.DETAIL_TABLE))) AS DETAIL_TABLE_DESC,
                    ISNULL(d.DIRTY_TAG,0) AS DIRTY_TAG,s.VERSION AS PUBLISH_VERSION,s.PUBLISHED_AT
             FROM dbo.MODULES WITH (NOLOCK)
-            LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.MODULE_ID=MODULES.M_IDX
-            LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.MODULE_ID=MODULES.M_IDX AND s.IS_CURRENT=1
+            LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=MODULES.M_IDX
+            LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=MODULES.M_IDX AND s.IS_CURRENT=1
             WHERE (@Keyword = '' OR M_DESC LIKE @Keyword OR M_ALIAS LIKE @Keyword OR CONVERT(nvarchar(20),M_IDX) LIKE @Keyword)
             ORDER BY ISNULL(M_P_IDX,0),SORT_IDX,M_IDX;
             """;
@@ -247,8 +247,8 @@ public sealed class MenuAdminRepository(
                      WHERE LTRIM(RTRIM(t.T_ID))=LTRIM(RTRIM(MODULES.DETAIL_TABLE))) AS DETAIL_TABLE_DESC,
                    ISNULL(d.DIRTY_TAG,0) AS DIRTY_TAG,s.VERSION AS PUBLISH_VERSION,s.PUBLISHED_AT
             FROM dbo.MODULES WITH (NOLOCK)
-            LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.MODULE_ID=MODULES.M_IDX
-            LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.MODULE_ID=MODULES.M_IDX AND s.IS_CURRENT=1
+            LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=MODULES.M_IDX
+            LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=MODULES.M_IDX AND s.IS_CURRENT=1
             WHERE M_IDX=@Id;
             """;
         await using var connection = connections.Create();
@@ -548,7 +548,7 @@ public sealed class MenuAdminRepository(
         const string sql = """
             SELECT VERSION,PUBLISHED_BY,PUBLISHED_AT,VALIDATION_STATUS,IS_CURRENT
             FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WITH (NOLOCK)
-            WHERE MODULE_ID=@ModuleId
+            WHERE M_IDX=@ModuleId
             ORDER BY VERSION DESC;
             """;
         await using var connection = connections.Create();

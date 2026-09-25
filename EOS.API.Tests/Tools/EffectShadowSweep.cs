@@ -351,11 +351,11 @@ public sealed class EffectShadowSweep
     {
         // Same denominator as scripts/adr012-acceptance-ledger.ps1 -Denominator actions.
         const string sql = """
-            SELECT DISTINCT A.MODULE_ID
+            SELECT DISTINCT A.M_IDX
             FROM dbo.MODULE_BUSINESS_ACTION A
-            JOIN dbo.MODULES M ON M.M_IDX = A.MODULE_ID
+            JOIN dbo.MODULES M ON M.M_IDX = A.M_IDX
             WHERE ISNULL(M.EFFECT_ENGINE_TAG,0) = 1
-            ORDER BY A.MODULE_ID;
+            ORDER BY A.M_IDX;
             """;
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync();
@@ -372,7 +372,7 @@ public sealed class EffectShadowSweep
     {
         const string sql = """
             SELECT TOP 1 VERSION, DEFINITION_JSON FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT
-            WHERE MODULE_ID=@ModuleId AND IS_CURRENT=1 ORDER BY VERSION DESC;
+            WHERE M_IDX=@ModuleId AND IS_CURRENT=1 ORDER BY VERSION DESC;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;

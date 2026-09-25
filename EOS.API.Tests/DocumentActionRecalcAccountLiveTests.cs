@@ -150,7 +150,7 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
             "DELETE FROM dbo.AUDIT_EVENT WHERE RESOURCE_KEY=@key AND ACTION=@action;",
             ("@key", $"{TestType},{TestNo}"), ("@action", RecalcAccountHandler.ActionKey));
         await ExecAsync(connection,
-            "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE MODULE_ID=@module AND ACTION=N'ACTION';",
+            "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX=@module AND ACTION=N'ACTION';",
             ("@module", ModuleId));
     }
 
