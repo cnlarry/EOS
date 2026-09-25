@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { IconPencil, IconPlus, IconTrash } from '@tabler/icons-react'
 import { LoadingState } from '../../components/common/AsyncState'
 import { TabbedPanel, type TabbedPanelTab } from '../../components/common/TabbedPanel'
@@ -160,6 +161,8 @@ interface FieldEditorFormProps {
   onStateChange?: (state: { canSave: boolean; saving: boolean; dirty: boolean }) => void
   /** 底部操作区渲染（弹窗用）；页面模式由页面工具栏承担，不传。 */
   renderActions?: (action: { canSave: boolean; saving: boolean; onSave: () => void; onCancel: () => void }) => React.ReactNode
+  /** 进入时的模块上下文（?moduleId=）：用于从字段维护跳到该模块的表单设计。 */
+  contextModuleId?: number | null
 }
 
 function emptyChoosers(): ChooserSource[] {
@@ -225,7 +228,8 @@ function mergeChooserUi(
   }
 }
 
-export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, onSaved, historyTab = false, actionRef, onStateChange, renderActions }: FieldEditorFormProps) {
+export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, onSaved, historyTab = false, actionRef, onStateChange, renderActions, contextModuleId = null }: FieldEditorFormProps) {
+  const navigate = useNavigate()
   const [draft, setDraft] = useState<FieldMeta | null>(null)
   const [original, setOriginal] = useState<FieldMeta | null>(null)
   const [section, setSection] = useState<FieldSection>('basic')
@@ -669,38 +673,53 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                     </>}
                     {section === 'layout' && <>
                       <div className="col-12">
-                        <div className="alert alert-warning">表单布局仅作用于统一表单编辑页（新增/编辑/查看）。页签归属与顺序需配合模块级页签定义（菜单管理中的 FORM_TABS）。</div>
+                        <div className="alert alert-info">
+                          表单的排布（顺序 / 占位 / 复合格 / 分节 / 页签 / 表单内隐藏）已归**模块级版式**：
+                          同一张表被多个模块共用时，各模块可以有自己的形态，不再互相牵动。
+                          下列字段级设置现在只作为<strong>未定制版式模块的默认推导依据</strong>，请到表单设计里调整。
+                          <div className="mt-2">
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              disabled={contextModuleId == null}
+                              onClick={() => {
+                                if (contextModuleId == null) return
+                                navigate(`/workbench/${contextModuleId}/view?design=1`)
+                              }}
+                            >
+                              打开表单设计{contextModuleId == null ? '（需从工作台进入以带模块上下文）' : ''}
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                       <div className="col-md-4">
                         <label className="form-label">页签序号（FORM_TAB_NO）</label>
-                        <input type="number" min="1" className="form-control" value={draft.tabNo} onChange={event => setDraft({ ...draft, tabNo: Math.max(1, Number(event.target.value) || 1) })} />
+                        <input className="form-control" value={draft.tabNo} readOnly disabled />
                       </div>
                       <div className="col-md-4">
                         <label className="form-label">表单顺序（FORM_ORDER）</label>
-                        <input type="number" min="1" className="form-control" value={draft.formOrder ?? ''} placeholder="留空按默认列序" onChange={event => setDraft({ ...draft, formOrder: event.target.value === '' ? null : Math.max(1, Number(event.target.value) || 1) })} />
+                        <input className="form-control" value={draft.formOrder ?? ''} placeholder="留空按默认列序" readOnly disabled />
                       </div>
                       <div className="col-md-4">
                         <label className="form-label">跨列宽度（FORM_SPAN）</label>
-                        <select className="form-select" value={draft.span} onChange={event => setDraft({ ...draft, span: Number(event.target.value) })}>
-                          <option value={1}>半行</option>
-                          <option value={2}>整行独占</option>
-                        </select>
+                        <input className="form-control" value={draft.span === 2 ? '整行独占' : '半行'} readOnly disabled />
                       </div>
                       <div className="col-md-4">
                         <label className="form-label">复合格角色（FORM_CELL_ROLE）</label>
-                        <select className="form-select" value={draft.cellRole} disabled={locked} onChange={event => setDraft({ ...draft, cellRole: Number(event.target.value) })}>
-                          <option value={0}>普通字段</option>
-                          <option value={1}>主字段（带标签 + 选择器）</option>
-                          <option value={2}>从字段（同格联动显示）</option>
-                        </select>
+                        <input
+                          className="form-control"
+                          value={draft.cellRole === 1 ? '主字段（带标签 + 选择器）' : draft.cellRole === 2 ? '从字段（同格联动显示）' : '普通字段'}
+                          readOnly
+                          disabled
+                        />
                       </div>
                       <div className="col-md-4">
                         <label className="form-label">复合格组（FORM_CELL_GROUP）</label>
-                        <input className="form-control" value={draft.cellGroup ?? ''} disabled={locked} placeholder="如 CLIENT，同组字段同一格" onChange={event => setDraft({ ...draft, cellGroup: event.target.value || null })} />
+                        <input className="form-control" value={draft.cellGroup ?? ''} readOnly disabled />
                       </div>
                       <div className="col-md-4 d-flex align-items-end pb-2">
                         <label className="form-check">
-                          <input className="form-check-input" type="checkbox" checked={draft.newLine} onChange={() => setDraft({ ...draft, newLine: !draft.newLine })} />
+                          <input className="form-check-input" type="checkbox" checked={draft.newLine} readOnly disabled />
                           <span className="form-check-label">强制换行（FORM_NEW_LINE）</span>
                         </label>
                       </div>

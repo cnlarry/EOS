@@ -1,0 +1,484 @@
+/* 表单设计态：三栏骨架（字段池 / 画布 / 属性），画布复用运行态的表单栅格几何。 */
+
+.erp-designer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  height: 100%;
+  padding: 8px;
+}
+
+.erp-designer-loading,
+.erp-designer-error {
+  padding: 24px;
+  color: var(--tblr-secondary);
+}
+
+.erp-designer-error {
+  color: var(--tblr-danger);
+}
+
+.erp-designer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: var(--tblr-bg-surface);
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
+}
+
+.erp-designer-spacer {
+  flex: 1;
+}
+
+.erp-designer-muted {
+  font-size: 11px;
+  color: var(--tblr-secondary);
+}
+
+.erp-designer-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--tblr-body-color);
+}
+
+.erp-designer-status {
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--tblr-border-color);
+  background: var(--tblr-bg-surface);
+}
+
+.erp-designer-status.is-ok {
+  border-color: var(--tblr-success);
+  color: var(--tblr-success);
+}
+
+.erp-designer-status.is-warn {
+  border-color: var(--tblr-warning);
+  color: var(--tblr-warning);
+}
+
+.erp-designer-status.is-error {
+  border-color: var(--tblr-danger);
+  color: var(--tblr-danger);
+}
+
+.erp-designer-body {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  min-height: 0;
+  flex: 1;
+}
+
+.erp-designer-main {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* —— 字段池 —— */
+.erp-designer-pool,
+.erp-designer-props {
+  width: 220px;
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--tblr-bg-surface);
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.erp-designer-props {
+  width: 260px;
+  flex-basis: 260px;
+}
+
+.erp-designer-pool-title,
+.erp-designer-props-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--tblr-secondary);
+}
+
+.erp-designer-pool-tables,
+.erp-designer-pool-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.erp-designer-pool-filter {
+  justify-content: space-between;
+}
+
+.erp-designer-chip {
+  padding: 2px 8px;
+  font-size: 12px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 999px;
+  background: var(--tblr-bg-surface);
+  cursor: pointer;
+}
+
+.erp-designer-chip.is-active {
+  border-color: var(--tblr-primary);
+  color: var(--tblr-primary);
+  font-weight: 600;
+}
+
+.erp-designer-pool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+}
+
+.erp-designer-pool-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 4px 6px;
+  text-align: left;
+  font-size: 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--tblr-bg-surface-secondary);
+  cursor: pointer;
+}
+
+.erp-designer-pool-item:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.erp-designer-pool-key {
+  font-family: var(--tblr-font-monospace, monospace);
+  color: var(--tblr-primary);
+}
+
+.erp-designer-pool-label {
+  color: var(--tblr-body-color);
+}
+
+/* —— 画布 —— */
+.erp-designer-canvas {
+  padding: 10px;
+  background: var(--tblr-bg-surface);
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
+}
+
+.erp-designer-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+
+.erp-designer-tab {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px 6px 0 0;
+}
+
+.erp-designer-tab.is-active {
+  border-color: var(--tblr-border-color);
+  background: var(--tblr-bg-surface-secondary);
+}
+
+.erp-designer-tab-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.erp-designer-tab-input {
+  width: 90px;
+  font-size: 12px;
+}
+
+.erp-designer-tab-close,
+.erp-designer-tab-add {
+  padding: 0 6px;
+  font-size: 12px;
+  border: 0;
+  background: transparent;
+  color: var(--tblr-secondary);
+  cursor: pointer;
+}
+
+.erp-designer-sections {
+  margin-top: 8px;
+}
+
+.erp-designer-grid {
+  display: grid;
+  gap: 1px;
+  background: var(--tblr-border-color);
+}
+
+.erp-designer-cell {
+  display: grid;
+  grid-template-columns: minmax(var(--erp-form-label-min, 64px), var(--erp-form-label-width, 80px)) minmax(0, 2.1fr);
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  padding: 5px 8px;
+  background: var(--tblr-bg-surface);
+}
+
+.erp-designer-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.erp-designer-field.is-selected::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 2px solid var(--tblr-primary);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.erp-designer-field.is-hidden .erp-designer-value {
+  text-decoration: line-through;
+  color: var(--tblr-secondary);
+}
+
+.erp-designer-field.is-denied .erp-designer-value {
+  color: var(--tblr-danger);
+}
+
+.erp-designer-value {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  font-family: var(--tblr-font-monospace, monospace);
+  font-size: 11px;
+  color: var(--tblr-secondary);
+  background: var(--tblr-bg-surface-secondary);
+  border: 1px dashed var(--tblr-border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.erp-designer-badges {
+  display: inline-flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.erp-designer-badges em {
+  font-style: normal;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--tblr-secondary);
+  background: var(--tblr-bg-surface-secondary);
+}
+
+.erp-designer-badges em.is-hidden {
+  color: var(--tblr-warning);
+}
+
+.erp-designer-lock {
+  margin-left: 4px;
+  font-size: 10px;
+}
+
+.erp-designer-field-actions {
+  display: none;
+  gap: 2px;
+}
+
+.erp-designer-field:hover .erp-designer-field-actions {
+  display: inline-flex;
+}
+
+.erp-designer-field-actions button,
+.erp-designer-detail-actions button {
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 18px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 4px;
+  background: var(--tblr-bg-surface);
+  cursor: pointer;
+}
+
+.erp-designer-field-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.erp-designer-empty {
+  padding: 16px 0;
+  font-size: 12px;
+  color: var(--tblr-secondary);
+}
+
+/* —— 明细列 —— */
+.erp-designer-detail {
+  margin-top: 10px;
+  padding: 8px;
+  background: var(--tblr-bg-surface);
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
+}
+
+.erp-designer-detail-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--tblr-secondary);
+}
+
+.erp-designer-detail-list {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.erp-designer-detail-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+  background: var(--tblr-bg-surface-secondary);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.erp-designer-detail-row.is-selected {
+  outline: 2px solid var(--tblr-primary);
+}
+
+.erp-designer-detail-index {
+  color: var(--tblr-secondary);
+}
+
+.erp-designer-detail-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+
+/* —— 属性面板 —— */
+.erp-designer-props-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+
+.erp-designer-prop {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.erp-designer-prop > label {
+  color: var(--tblr-secondary);
+}
+
+.erp-designer-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.erp-designer-props-actions {
+  display: flex;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--tblr-border-color);
+}
+
+/* —— 占位矩阵 —— */
+.erp-designer-popover {
+  padding: 8px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
+  background: var(--tblr-bg-surface);
+  box-shadow: var(--tblr-shadow-dropdown, 0 2px 8px rgba(0, 0, 0, 0.12));
+}
+
+.erp-designer-popover-title {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.erp-designer-placement {
+  display: grid;
+  gap: 2px;
+  width: 180px;
+}
+
+.erp-designer-placement-cell {
+  height: 22px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 3px;
+  background: var(--tblr-bg-surface-secondary);
+  cursor: pointer;
+}
+
+.erp-designer-placement-cell.is-active {
+  border-color: var(--tblr-primary);
+  background: color-mix(in srgb, var(--tblr-primary) 20%, transparent);
+}
+
+.erp-designer-placement-caption {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--tblr-secondary);
+}
+
+.erp-designer-popover-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1100px) {
+  .erp-designer-body {
+    flex-direction: column;
+  }
+
+  .erp-designer-pool,
+  .erp-designer-props {
+    width: auto;
+    flex-basis: auto;
+    max-height: 220px;
+  }
+}

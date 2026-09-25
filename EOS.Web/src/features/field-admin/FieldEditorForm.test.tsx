@@ -1,5 +1,6 @@
 import { renderWithProviders } from '../../test/renderWithProviders'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FieldEditorForm, type FieldEditorEndpoints, type FieldMeta } from './FieldEditorForm'
 
@@ -31,9 +32,11 @@ function renderForm(
   onSaved = vi.fn(),
   onCancel = vi.fn(),
   onStateChange?: (state: { canSave: boolean; saving: boolean; dirty: boolean }) => void,
+  contextModuleId: number | null = null,
 ) {
   return {
     ...renderWithProviders(
+      <MemoryRouter>
         <FieldEditorForm
           mode={mode}
           tableId="T1"
@@ -42,6 +45,7 @@ function renderForm(
           onCancel={onCancel}
           onSaved={onSaved}
           onStateChange={onStateChange}
+          contextModuleId={contextModuleId}
           renderActions={({ canSave, onSave, onCancel: onFormCancel }) => (
             <div>
               <button disabled={!canSave} onClick={onSave}>保存</button>
@@ -49,7 +53,8 @@ function renderForm(
             </div>
           )}
         />
-),
+      </MemoryRouter>,
+    ),
     onSaved,
     onCancel,
   }
@@ -152,19 +157,22 @@ describe('FieldEditorForm', () => {
     expect(screen.getAllByRole('button', { name: '发布' }).every((button) => button.hasAttribute('disabled'))).toBe(true)
   })
 
-  it('表单布局分区展示并保存 FORM_* 值', async () => {
+  it('表单布局分区改为只读并给出去设计态的入口，FORM_* 值仍随保存回传', async () => {
     const save = vi.fn().mockResolvedValue(undefined)
-    const { container } = renderForm('edit', { load: vi.fn().mockResolvedValue(meta()), save })
+    const loaded = meta()
+    const { container } = renderForm('edit', { load: vi.fn().mockResolvedValue(loaded), save }, vi.fn(), vi.fn(), undefined, 1405)
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('tab', { name: '表单布局' }))
     expect(screen.getByText('页签序号（FORM_TAB_NO）')).toBeInTheDocument()
     expect(screen.getByText('跨列宽度（FORM_SPAN）')).toBeInTheDocument()
     expect(screen.getByText('下拉选项（FORM_OPTIONS）')).toBeInTheDocument()
-    const spanSelect = container.querySelector<HTMLSelectElement>('select.form-select')
-    fireEvent.change(spanSelect!, { target: { value: '2' } })
+    // 字段级版式设置已归模块级：这些框只读，改版式走设计态（下拉选项是字段语义，仍可编辑）
+    const disabledFields = container.querySelectorAll<HTMLInputElement>('input[disabled][readonly]')
+    expect(disabledFields.length).toBeGreaterThanOrEqual(4)
+    expect(screen.getByRole('button', { name: '打开表单设计' })).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(save).toHaveBeenCalled())
-    expect(save.mock.calls[0][0]).toEqual(expect.objectContaining({ span: 2 }))
+    expect(save.mock.calls[0][0]).toEqual(expect.objectContaining({ span: loaded.span, tabNo: loaded.tabNo }))
   })
 
   it('数据来源编辑与返回值映射', async () => {

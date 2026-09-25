@@ -737,7 +737,7 @@ public sealed class WorkbenchDefinitionBuilder(
     }
 
     /// <summary>Parses MODULES.FORM_TABS (e.g. '1=Basic;2=Other'); invalid items are skipped and tabs sort by number.</summary>
-    private static IReadOnlyList<FormTabDefinition> ParseFormTabs(string? raw)
+    internal static IReadOnlyList<FormTabDefinition> ParseFormTabs(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return [];
         var tabs = new List<FormTabDefinition>();

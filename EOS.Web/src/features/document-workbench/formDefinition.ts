@@ -77,7 +77,11 @@ export interface FormFieldDefinition {
    /** 数值精度/小数位（sys.types，仅 decimal/numeric； 超精度校验依据） */
    precision?: number | null
    scale?: number | null
-}
+   /** 行跨度（模块级版式：1..3） */
+   rowSpan?: number | null
+   /** 所属分节（模块级版式；与复合格解耦） */
+   sectionId?: string | null
+   }
 
 /** 统一表单定义（按当前用户权限过滤后的录入视图） */
 export interface FormDefinition {
@@ -129,6 +133,8 @@ export interface FormDefinition {
    helpUrl?: string | null
    /** 字段设置权限（2302 字段维护 CanSetup）：为 true 时表单标签右键可进入字段设置页 */
    canSetup: boolean
+   /** 版式设计权（FORM_DESIGN_TAG）：为 true 时表单标签右键出现【表单设计】；服务端写端点独立鉴权 */
+   canFormDesign: boolean
    /**
     * 自定义按钮（服务端随定义下发的、当前用户已获授权的单据操作）。
     * 未授权的操作不会出现在这里——按钮是"不存在"，不是"禁用"；服务端对每次点击仍独立鉴权。

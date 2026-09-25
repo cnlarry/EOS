@@ -1,12 +1,14 @@
 import { lazy } from 'react'
-import { useLocation, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ReportAdminPage } from '../features/admin/ReportAdminPage'
 import { ReportViewerPage } from '../features/reports/ReportViewerPage'
 import { useAuth } from '../features/auth/authContext'
 import { moduleReadPermission } from '../features/auth/modulePermissions'
+import { withSuspense } from './suspense'
 
 const DocumentWorkbenchPage = lazy(() => import('../features/document-workbench/DocumentWorkbenchPage').then((module) => ({ default: module.DocumentWorkbenchPage })))
 const FormEditorPage = lazy(() => import('../features/document-workbench/FormEditorPage').then((module) => ({ default: module.FormEditorPage })))
+const FormDesignerPage = lazy(() => import('../features/form-designer/FormDesignerPage'))
 const FieldAdminPage = lazy(() => import('../features/field-admin/FieldAdminPage').then((module) => ({ default: module.FieldAdminPage })))
 
 export function ForbiddenPage() {
@@ -51,6 +53,19 @@ export function FieldAdminRoute() {
 /** 表单编辑页（新增/编辑）跨模块打开时同样重置草稿/校验状态 */
 export function FormEditorRoute() {
   const { moduleId = '' } = useParams()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const location = useLocation()
+  // 设计态与表单页**同一个路由**（`?design=1`）：所见即所得的心智模型，不另开页面路由
+  if (searchParams.get('design') === '1' && /^\d+$/.test(moduleId)) {
+    const exit = () => {
+      const next = new URLSearchParams(location.search)
+      next.delete('design')
+      const query = next.toString()
+      navigate(`${location.pathname}${query.length > 0 ? `?${query}` : ''}`)
+    }
+    return withSuspense(<FormDesignerPage moduleId={Number(moduleId)} onExit={exit} />)
+  }
   return <FormEditorPage key={moduleId} />
 }
 

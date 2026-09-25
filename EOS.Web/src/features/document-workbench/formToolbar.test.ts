@@ -37,6 +37,7 @@ function form(overrides: Partial<FormDefinition> = {}): FormDefinition {
     canFileEdit: false,
     canFileDele: false,
     canSetup: false,
+  canFormDesign: false,
     ...overrides,
   }
 }
