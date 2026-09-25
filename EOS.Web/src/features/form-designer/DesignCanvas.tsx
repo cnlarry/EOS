@@ -24,6 +24,9 @@ interface DesignCanvasProps {
   onRenameTab: (no: number, title: string) => void
   onAddTab: () => void
   onDeleteTab: (no: number) => void
+  /** 右键精修菜单（位置用视口坐标，菜单自己定位） */
+  onRowContextMenu?: (key: string, x: number, y: number) => void
+  onSectionContextMenu?: (sectionId: string, x: number, y: number) => void
 }
 
 /**
@@ -49,6 +52,8 @@ export default function DesignCanvas({
   onRenameTab,
   onAddTab,
   onDeleteTab,
+  onRowContextMenu,
+  onSectionContextMenu,
 }: DesignCanvasProps) {
   const [renaming, setRenaming] = useState<number | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -128,6 +133,9 @@ export default function DesignCanvas({
               <DroppableSection
                 sectionId={section.title}
                 active={dropTarget?.kind === 'section' && dropTarget.sectionId === section.title}
+                onContextMenu={
+                  preview ? undefined : (x, y) => onSectionContextMenu?.(section.title as string, x, y)
+                }
               >
                 {section.title}
               </DroppableSection>
@@ -173,6 +181,9 @@ export default function DesignCanvas({
                         onMove={onMove}
                         onHide={onHide}
                         onForceNewLine={onForceNewLine}
+                        onContextMenu={
+                          preview ? undefined : (x, y) => onRowContextMenu?.(field.key, x, y)
+                        }
                       />
                     ))}
                   </div>
@@ -199,14 +210,25 @@ function DroppableSection({
   sectionId,
   active,
   children,
+  onContextMenu,
 }: {
   sectionId: string
   active: boolean
   children: ReactNode
+  onContextMenu?: (x: number, y: number) => void
 }) {
   const { setNodeRef } = useDroppable({ id: `section-drop:${sectionId}`, data: { kind: 'section', sectionId } })
   return (
-    <div ref={setNodeRef} className={active ? 'erp-form-group-title is-drop-target' : 'erp-form-group-title'}>
+    <div
+      ref={setNodeRef}
+      className={active ? 'erp-form-group-title is-drop-target' : 'erp-form-group-title'}
+      onContextMenu={event => {
+        if (!onContextMenu) return
+        event.preventDefault()
+        onContextMenu(event.clientX, event.clientY)
+      }}
+      title={onContextMenu ? '右键：分节改名 / 删除分节' : undefined}
+    >
       {children}
     </div>
   )
@@ -246,10 +268,11 @@ interface DesignFieldProps {
   onMove: (key: string, delta: number) => void
   onHide: (key: string) => void
   onForceNewLine: (key: string) => void
+  onContextMenu?: (x: number, y: number) => void
 }
 
-/** 画布上的一个字段：值用字段代号占位；可拖拽排序/合并/移除，也可用悬停快捷按钮。 */
-function DesignField({ field, selected, dragging, preview, onSelect, onMove, onHide, onForceNewLine }: DesignFieldProps) {
+/** 画布上的一个字段：值用字段代号占位；可拖拽排序/合并/移除，也可用悬停快捷按钮或右键精修。 */
+function DesignField({ field, selected, dragging, preview, onSelect, onMove, onHide, onForceNewLine, onContextMenu }: DesignFieldProps) {
   const { attributes, listeners, setNodeRef } = useDraggable({
     id: dragId({ from: 'canvas', table: 'master', key: field.key }),
     data: { kind: 'field', key: field.key },
@@ -269,7 +292,14 @@ function DesignField({ field, selected, dragging, preview, onSelect, onMove, onH
         event.stopPropagation()
         onSelect(field.key)
       }}
-      title={field.userVisible ? `${field.key}（可拖动调整位置）` : `${field.key}（当前用户不可见）`}
+      onContextMenu={event => {
+        if (!onContextMenu) return
+        event.preventDefault()
+        event.stopPropagation()
+        onSelect(field.key)
+        onContextMenu(event.clientX, event.clientY)
+      }}
+      title={field.userVisible ? `${field.key}（可拖动调整位置，右键精修）` : `${field.key}（当前用户不可见）`}
       {...attributes}
       {...listeners}
     >

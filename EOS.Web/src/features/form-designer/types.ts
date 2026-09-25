@@ -115,7 +115,19 @@ export interface TemplateOption {
 }
 
 /** 本地草稿：字段池与版式行在同一份结构里编辑，保存时整份提交（全量替换）。 */
+/** 可套用来源：只列共用同一主表的模块（跨主表套用会排出业务上不该出现的字段）。 */
+export interface FormLayoutTemplate {
+  moduleId: number
+  title: string
+  masterTable: string
+  columns: number
+  hasDetail: boolean
+}
+
 export interface DesignDraft {
+  /** 所属模块（导出/导入版式文件时要写进文件并核对，故草稿自带） */
+  moduleId: number
+  title: string
   columns: number
   masterTable: string
   detailTable: string | null

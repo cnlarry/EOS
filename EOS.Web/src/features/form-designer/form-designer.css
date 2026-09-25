@@ -340,6 +340,68 @@
 }
 
 /* —— 拖拽：跟手卡片 + 落点指示 —— */
+.erp-designer-tools,
+.erp-designer-templates {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* 右键精修菜单：定位在光标处，动作分组用窄标签分隔 */
+.erp-designer-menu {
+  position: fixed;
+  z-index: 1080;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 6px;
+  background: var(--tblr-bg-surface);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.erp-designer-menu > button {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 12px;
+  text-align: left;
+}
+
+.erp-designer-menu > button:hover {
+  background: var(--tblr-bg-surface-secondary);
+}
+
+.erp-designer-menu-label {
+  padding: 4px 8px 0;
+  font-size: 11px;
+  color: var(--tblr-secondary);
+}
+
+.erp-designer-menu-row {
+  display: flex;
+  gap: 2px;
+  padding: 0 4px 2px;
+}
+
+.erp-designer-menu-row > button {
+  flex: 1;
+  padding: 2px 4px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 4px;
+  background: var(--tblr-bg-surface);
+  font-size: 11px;
+}
+
+.erp-designer-menu-row > button.is-active {
+  border-color: var(--tblr-primary);
+  color: var(--tblr-primary);
+}
+
 .erp-designer-status.is-info {
   border-color: var(--tblr-border-color);
   background: var(--tblr-bg-surface-secondary);
