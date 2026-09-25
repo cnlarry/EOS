@@ -1,0 +1,218 @@
+-- ============================================================================
+-- EOS.ERP migration 235: 冻结 / 预留两表 + 可用量初始化
+-- ----------------------------------------------------------------------------
+-- 为什么先建表再谈入口：冻结与预留要落在**与库存行同一组维度键**上
+-- （料号 / 库别 / 库位 / 批次），否则"冻结了多少"与"这个键上还有多少"对不上，
+-- 将来做可用量口径时又会变成两套算法。维度键与 `INV_PRO_DEPOT` 保持同一套哨兵
+-- （库位 `-`、批次空串），唯一键不落 NULL——NULL 在唯一索引里彼此相等，表达不了"未启用该维度"。
+--
+-- 同时**初始化可用量**：`INV_PRO_DEPOT.USEABLE_QTY` 是库别级字段（同一 (料号, 库别) 的各维度行
+-- 冗余同一个值），而库里 1797 行的值全是 0——"数量不为 0、可用量却为 0"是必须消灭的形态。
+-- 本迁移把它按该键的数量合计重算一遍。数量为 0 的键同样落 0，两者一致即可。
+--
+-- 入口与消费（谁写冻结、谁减可用量、出库改按可用量校验）不在本迁移范围内。
+--
+-- 幂等：建表 / 索引 / 约束 / 默认值均按存在性判断；可用量重算只在确有偏差时执行。
+-- 回滚：DROP TABLE INV_RESERVE / INV_FREEZE；可用量不做反向恢复（它是派生值，
+--       反向恢复没有意义——重算一次即回到与数量一致的状态）。
+-- ============================================================================
+
+SET NOCOUNT ON;
+
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET ARITHABORT ON;
+
+DECLARE @GUARD_MESSAGE NVARCHAR(400) = N'本脚本只能在 EOS.ERP 数据库内执行，当前库为 ' + DB_NAME() + N'。';
+IF DB_NAME() <> N'EOS.ERP'
+    THROW 52400, @GUARD_MESSAGE, 1;
+
+IF OBJECT_ID(N'dbo.INV_PRO_DEPOT', N'U') IS NULL
+    THROW 52401, N'dbo.INV_PRO_DEPOT 不存在，迁移中止。', 1;
+
+/* ---------- ① 冻结表 ---------- */
+IF OBJECT_ID(N'dbo.INV_FREEZE', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.INV_FREEZE (
+        PRO_NO            NCHAR(30)    NOT NULL,
+        DEPOT_ID          NCHAR(10)    NOT NULL,
+        LOCATION_NO       NVARCHAR(30) NOT NULL CONSTRAINT DF_INV_FREEZE_LOCATION_NO DEFAULT (N'-'),
+        BATCH_NO          NCHAR(30)    NOT NULL CONSTRAINT DF_INV_FREEZE_BATCH_NO DEFAULT (N''),
+        SOURCE_TYPE       NCHAR(20)    NOT NULL CONSTRAINT DF_INV_FREEZE_SOURCE_TYPE DEFAULT (N''),
+        SOURCE_NO         NCHAR(40)    NOT NULL CONSTRAINT DF_INV_FREEZE_SOURCE_NO DEFAULT (N''),
+        FREEZE_QTY        FLOAT        NOT NULL CONSTRAINT DF_INV_FREEZE_QTY DEFAULT (0),
+        REASON            NVARCHAR(200) NULL,
+        STATUS            NCHAR(1)     NOT NULL CONSTRAINT DF_INV_FREEZE_STATUS DEFAULT (N'A'),
+        CREATE_PERSON     NCHAR(40)    NOT NULL CONSTRAINT DF_INV_FREEZE_CREATE_PERSON DEFAULT (N''),
+        CREATE_DATE       DATETIME     NOT NULL CONSTRAINT DF_INV_FREEZE_CREATE_DATE DEFAULT (GETDATE()),
+        LAST_UPDATE_BY    NCHAR(40)    NULL,
+        LAST_UPDATE_DATE  DATETIME     NULL,
+        CONFIRM_PERSON    NCHAR(40)    NULL,
+        CONFIRM_DATE      DATETIME     NULL,
+        CONFIRM_TAG       BIT          NOT NULL CONSTRAINT DF_INV_FREEZE_CONFIRM_TAG DEFAULT (0),
+        CI                NCHAR(20)    NOT NULL CONSTRAINT DF_INV_FREEZE_CI DEFAULT (N'DEFAULT'),
+        OWNER             NCHAR(20)    NULL,
+        OWNER_G           NCHAR(20)    NULL,
+        CONSTRAINT PK_INV_FREEZE PRIMARY KEY CLUSTERED
+            (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, SOURCE_TYPE, SOURCE_NO),
+        CONSTRAINT CK_INV_FREEZE_STATUS CHECK (STATUS IN (N'A', N'C')),
+        /* 哨兵不得带尾随空格：库位的等值比较忽略尾随空格，`- ` 会静默并进 `-` 那一行 */
+        CONSTRAINT CK_INV_FREEZE_LOCATION_NO_TRIMMED CHECK (NOT LOCATION_NO LIKE N'% ')
+    );
+    PRINT N'== 已建表 dbo.INV_FREEZE ==';
+END
+
+/* ---------- ② 预留表 ---------- */
+IF OBJECT_ID(N'dbo.INV_RESERVE', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.INV_RESERVE (
+        PRO_NO            NCHAR(30)    NOT NULL,
+        DEPOT_ID          NCHAR(10)    NOT NULL,
+        LOCATION_NO       NVARCHAR(30) NOT NULL CONSTRAINT DF_INV_RESERVE_LOCATION_NO DEFAULT (N'-'),
+        BATCH_NO          NCHAR(30)    NOT NULL CONSTRAINT DF_INV_RESERVE_BATCH_NO DEFAULT (N''),
+        SOURCE_TYPE       NCHAR(20)    NOT NULL CONSTRAINT DF_INV_RESERVE_SOURCE_TYPE DEFAULT (N''),
+        SOURCE_NO         NCHAR(40)    NOT NULL CONSTRAINT DF_INV_RESERVE_SOURCE_NO DEFAULT (N''),
+        RESERVE_QTY       FLOAT        NOT NULL CONSTRAINT DF_INV_RESERVE_QTY DEFAULT (0),
+        REASON            NVARCHAR(200) NULL,
+        STATUS            NCHAR(1)     NOT NULL CONSTRAINT DF_INV_RESERVE_STATUS DEFAULT (N'A'),
+        CREATE_PERSON     NCHAR(40)    NOT NULL CONSTRAINT DF_INV_RESERVE_CREATE_PERSON DEFAULT (N''),
+        CREATE_DATE       DATETIME     NOT NULL CONSTRAINT DF_INV_RESERVE_CREATE_DATE DEFAULT (GETDATE()),
+        LAST_UPDATE_BY    NCHAR(40)    NULL,
+        LAST_UPDATE_DATE  DATETIME     NULL,
+        CONFIRM_PERSON    NCHAR(40)    NULL,
+        CONFIRM_DATE      DATETIME     NULL,
+        CONFIRM_TAG       BIT          NOT NULL CONSTRAINT DF_INV_RESERVE_CONFIRM_TAG DEFAULT (0),
+        CI                NCHAR(20)    NOT NULL CONSTRAINT DF_INV_RESERVE_CI DEFAULT (N'DEFAULT'),
+        OWNER             NCHAR(20)    NULL,
+        OWNER_G           NCHAR(20)    NULL,
+        CONSTRAINT PK_INV_RESERVE PRIMARY KEY CLUSTERED
+            (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, SOURCE_TYPE, SOURCE_NO),
+        CONSTRAINT CK_INV_RESERVE_STATUS CHECK (STATUS IN (N'A', N'C')),
+        CONSTRAINT CK_INV_RESERVE_LOCATION_NO_TRIMMED CHECK (NOT LOCATION_NO LIKE N'% ')
+    );
+    PRINT N'== 已建表 dbo.INV_RESERVE ==';
+END
+
+/* ---------- ③ 四键与库存余额表逐列对齐 ---------- */
+/* 建表时若用了更宽的宽度，这里收敛回余额表的宽度：维度键要和库存行比相等、要能同键关联，
+   两边长度不一致时虽然比较仍能成立，但一进入索引/长度校验就各自为政。
+   目标宽度就是 `INV_PRO_DEPOT` 的当前宽度（nchar(30) / nchar(10) / nvarchar(30) / nchar(30)）。
+   改宽度前必须先卸掉主键与检查约束——它们都引用这些列，库会直接拒绝 ALTER。两表此刻为空，
+   卸-改-重建不涉及数据。 */
+IF COL_LENGTH(N'dbo.INV_FREEZE', N'PRO_NO') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'PRO_NO')
+    OR COL_LENGTH(N'dbo.INV_FREEZE', N'DEPOT_ID') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'DEPOT_ID')
+    OR COL_LENGTH(N'dbo.INV_FREEZE', N'LOCATION_NO') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'LOCATION_NO')
+    OR COL_LENGTH(N'dbo.INV_FREEZE', N'BATCH_NO') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'BATCH_NO')
+BEGIN
+    IF EXISTS (SELECT 1 FROM sys.key_constraints WHERE parent_object_id = OBJECT_ID(N'dbo.INV_FREEZE') AND name = N'PK_INV_FREEZE')
+        ALTER TABLE dbo.INV_FREEZE DROP CONSTRAINT PK_INV_FREEZE;
+    IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id = OBJECT_ID(N'dbo.INV_FREEZE') AND name = N'CK_INV_FREEZE_LOCATION_NO_TRIMMED')
+        ALTER TABLE dbo.INV_FREEZE DROP CONSTRAINT CK_INV_FREEZE_LOCATION_NO_TRIMMED;
+    ALTER TABLE dbo.INV_FREEZE ALTER COLUMN PRO_NO NCHAR(30) NOT NULL;
+    ALTER TABLE dbo.INV_FREEZE ALTER COLUMN DEPOT_ID NCHAR(10) NOT NULL;
+    ALTER TABLE dbo.INV_FREEZE ALTER COLUMN LOCATION_NO NVARCHAR(30) NOT NULL;
+    ALTER TABLE dbo.INV_FREEZE ALTER COLUMN BATCH_NO NCHAR(30) NOT NULL;
+    ALTER TABLE dbo.INV_FREEZE ADD CONSTRAINT PK_INV_FREEZE PRIMARY KEY CLUSTERED
+        (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, SOURCE_TYPE, SOURCE_NO);
+    ALTER TABLE dbo.INV_FREEZE ADD CONSTRAINT CK_INV_FREEZE_LOCATION_NO_TRIMMED CHECK (NOT LOCATION_NO LIKE N'% ');
+    PRINT N'== INV_FREEZE 四键宽度已对齐余额表 ==';
+END
+
+IF COL_LENGTH(N'dbo.INV_RESERVE', N'PRO_NO') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'PRO_NO')
+    OR COL_LENGTH(N'dbo.INV_RESERVE', N'DEPOT_ID') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'DEPOT_ID')
+    OR COL_LENGTH(N'dbo.INV_RESERVE', N'LOCATION_NO') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'LOCATION_NO')
+    OR COL_LENGTH(N'dbo.INV_RESERVE', N'BATCH_NO') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'BATCH_NO')
+BEGIN
+    IF EXISTS (SELECT 1 FROM sys.key_constraints WHERE parent_object_id = OBJECT_ID(N'dbo.INV_RESERVE') AND name = N'PK_INV_RESERVE')
+        ALTER TABLE dbo.INV_RESERVE DROP CONSTRAINT PK_INV_RESERVE;
+    IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id = OBJECT_ID(N'dbo.INV_RESERVE') AND name = N'CK_INV_RESERVE_LOCATION_NO_TRIMMED')
+        ALTER TABLE dbo.INV_RESERVE DROP CONSTRAINT CK_INV_RESERVE_LOCATION_NO_TRIMMED;
+    ALTER TABLE dbo.INV_RESERVE ALTER COLUMN PRO_NO NCHAR(30) NOT NULL;
+    ALTER TABLE dbo.INV_RESERVE ALTER COLUMN DEPOT_ID NCHAR(10) NOT NULL;
+    ALTER TABLE dbo.INV_RESERVE ALTER COLUMN LOCATION_NO NVARCHAR(30) NOT NULL;
+    ALTER TABLE dbo.INV_RESERVE ALTER COLUMN BATCH_NO NCHAR(30) NOT NULL;
+    ALTER TABLE dbo.INV_RESERVE ADD CONSTRAINT PK_INV_RESERVE PRIMARY KEY CLUSTERED
+        (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, SOURCE_TYPE, SOURCE_NO);
+    ALTER TABLE dbo.INV_RESERVE ADD CONSTRAINT CK_INV_RESERVE_LOCATION_NO_TRIMMED CHECK (NOT LOCATION_NO LIKE N'% ');
+    PRINT N'== INV_RESERVE 四键宽度已对齐余额表 ==';
+END
+
+/* 按来源单据查（取消冻结 / 释放预留在入口落地后要按单据定位） */
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_INV_FREEZE_SOURCE' AND object_id = OBJECT_ID(N'dbo.INV_FREEZE'))
+    CREATE NONCLUSTERED INDEX IX_INV_FREEZE_SOURCE ON dbo.INV_FREEZE (SOURCE_TYPE, SOURCE_NO);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_INV_RESERVE_SOURCE' AND object_id = OBJECT_ID(N'dbo.INV_RESERVE'))
+    CREATE NONCLUSTERED INDEX IX_INV_RESERVE_SOURCE ON dbo.INV_RESERVE (SOURCE_TYPE, SOURCE_NO);
+
+/* ---------- ③ 可用量初始化 ---------- */
+/* 库别级口径：同一 (料号, 库别) 的各维度行冗余同一个合计值。
+   今天每个键恰好一行，两种读法数值相同；按合计写是为了维度细分之后不必再改一次。 */
+DECLARE @FixedRows INT;
+;WITH KEY_TOTAL AS (
+    SELECT PRO_NO, DEPOT_ID, SUM(ISNULL(QTY, 0)) AS TOTAL_QTY
+      FROM dbo.INV_PRO_DEPOT
+     GROUP BY PRO_NO, DEPOT_ID
+)
+UPDATE d
+   SET d.USEABLE_QTY = k.TOTAL_QTY
+  FROM dbo.INV_PRO_DEPOT d
+  JOIN KEY_TOTAL k ON k.PRO_NO = d.PRO_NO AND k.DEPOT_ID = d.DEPOT_ID
+ WHERE ISNULL(d.USEABLE_QTY, 0) <> k.TOTAL_QTY;
+SET @FixedRows = @@ROWCOUNT;
+PRINT N'== 可用量已按数量合计重算，修正 ' + CONVERT(NVARCHAR(10), @FixedRows) + N' 行 ==';
+
+/* ---------- ④ 核对断言 ---------- */
+IF OBJECT_ID(N'dbo.INV_FREEZE', N'U') IS NULL OR OBJECT_ID(N'dbo.INV_RESERVE', N'U') IS NULL
+    THROW 52402, N'冻结 / 预留表未建成，迁移中止。', 1;
+
+/* 四键与余额表逐列同宽：宽度不一致要让迁移当场失败，而不是留给运行时去发现 */
+IF COL_LENGTH(N'dbo.INV_FREEZE', N'PRO_NO') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'PRO_NO')
+    OR COL_LENGTH(N'dbo.INV_FREEZE', N'DEPOT_ID') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'DEPOT_ID')
+    OR COL_LENGTH(N'dbo.INV_FREEZE', N'LOCATION_NO') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'LOCATION_NO')
+    OR COL_LENGTH(N'dbo.INV_FREEZE', N'BATCH_NO') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'BATCH_NO')
+    OR COL_LENGTH(N'dbo.INV_RESERVE', N'PRO_NO') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'PRO_NO')
+    OR COL_LENGTH(N'dbo.INV_RESERVE', N'DEPOT_ID') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'DEPOT_ID')
+    OR COL_LENGTH(N'dbo.INV_RESERVE', N'LOCATION_NO') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'LOCATION_NO')
+    OR COL_LENGTH(N'dbo.INV_RESERVE', N'BATCH_NO') <> COL_LENGTH(N'dbo.INV_PRO_DEPOT', N'BATCH_NO')
+    THROW 52408, N'冻结 / 预留表的维度键宽度与库存余额表不一致，迁移中止。', 1;
+
+/* 维度键必须与库存行同维：少一列就会与库存行对不上 */
+IF EXISTS (
+    SELECT 1 FROM (VALUES (N'PRO_NO'), (N'DEPOT_ID'), (N'LOCATION_NO'), (N'BATCH_NO')) AS expected(F_ID)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM sys.columns c
+        WHERE c.object_id = OBJECT_ID(N'dbo.INV_FREEZE') AND c.name = expected.F_ID))
+    THROW 52403, N'INV_FREEZE 缺少库存维度键列，迁移中止。', 1;
+
+IF EXISTS (
+    SELECT 1 FROM (VALUES (N'PRO_NO'), (N'DEPOT_ID'), (N'LOCATION_NO'), (N'BATCH_NO')) AS expected(F_ID)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM sys.columns c
+        WHERE c.object_id = OBJECT_ID(N'dbo.INV_RESERVE') AND c.name = expected.F_ID))
+    THROW 52404, N'INV_RESERVE 缺少库存维度键列，迁移中止。', 1;
+
+/* 状态位与建立组必须是 NOT NULL + 默认值（生命周期列的建表口径） */
+IF EXISTS (
+    SELECT 1 FROM sys.columns c
+    WHERE c.object_id IN (OBJECT_ID(N'dbo.INV_FREEZE'), OBJECT_ID(N'dbo.INV_RESERVE'))
+      AND c.name IN (N'STATUS', N'CREATE_PERSON', N'CREATE_DATE')
+      AND (c.is_nullable = 1 OR c.default_object_id = 0))
+    THROW 52405, N'冻结 / 预留表的状态位或建立组可空 / 无默认值，迁移中止。', 1;
+
+/* 可用量必须与数量一致：存在"数量不为 0 而可用量为 0"的键即是本迁移没做完 */
+IF EXISTS (
+    SELECT 1 FROM (
+        SELECT PRO_NO, DEPOT_ID, SUM(ISNULL(QTY, 0)) AS TOTAL_QTY, MAX(ISNULL(USEABLE_QTY, 0)) AS USEABLE
+          FROM dbo.INV_PRO_DEPOT
+         GROUP BY PRO_NO, DEPOT_ID) k
+     WHERE k.TOTAL_QTY <> k.USEABLE)
+    THROW 52406, N'可用量初始化未与数量对齐，迁移中止。', 1;
+
+IF EXISTS (SELECT 1 FROM dbo.INV_PRO_DEPOT WHERE ISNULL(QTY, 0) <> 0 AND ISNULL(USEABLE_QTY, 0) = 0)
+    THROW 52407, N'仍存在"有数量但可用量为 0"的行，迁移中止。', 1;
+
+PRINT N'== 冻结 / 预留表就位，可用量已与数量对齐（入口与消费另行落地）==';
+GO
