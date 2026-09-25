@@ -37,7 +37,7 @@ public sealed class AuditController(
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 10, 200);
         const string filter = """
-            WHERE (@ModuleId IS NULL OR MODULE_ID = @ModuleId)
+            WHERE (@ModuleId IS NULL OR M_IDX = @ModuleId)
               AND (@Action IS NULL OR ACTION = @Action)
               AND (@Actor IS NULL OR ACTOR_USER_ID = @Actor)
               AND (@Result IS NULL OR RESULT = @Result)
@@ -52,7 +52,7 @@ public sealed class AuditController(
             ;
             SELECT EVENT_ID, CONVERT(varchar(23), OCCURRED_AT, 121) AS OCCURRED_AT,
                    CORRELATION_ID, TRACE_ID, ACTOR_USER_ID, ACTOR_DISPLAY_NAME, ACTOR_TYPE,
-                   CLIENT_TYPE, CLIENT_IP, MODULE_ID, RESOURCE_TYPE, RESOURCE_KEY, ACTION,
+                   CLIENT_TYPE, CLIENT_IP, M_IDX AS MODULE_ID, RESOURCE_TYPE, RESOURCE_KEY, ACTION,
                    RESULT, ERROR_CODE, DEFINITION_VERSION, SUMMARY
             FROM dbo.AUDIT_EVENT WITH (NOLOCK)
             """ + filter + """

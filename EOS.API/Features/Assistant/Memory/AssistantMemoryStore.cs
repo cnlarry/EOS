@@ -327,11 +327,11 @@ public sealed class AssistantMemoryStore(
         var modules = new List<(int ModuleId, string Title)>();
         await using (var command = new SqlCommand(
             """
-            SELECT TOP 5 a.MODULE_ID,
-                   LTRIM(RTRIM(ISNULL((SELECT M_DESC FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX = a.MODULE_ID), '')))
+            SELECT TOP 5 a.M_IDX,
+                   LTRIM(RTRIM(ISNULL((SELECT M_DESC FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX = a.M_IDX), '')))
             FROM dbo.AUDIT_EVENT a WITH (NOLOCK)
-            WHERE a.ACTOR_USER_ID = @UserId AND a.MODULE_ID IS NOT NULL AND a.MODULE_ID <> 0
-            GROUP BY a.MODULE_ID
+            WHERE a.ACTOR_USER_ID = @UserId AND a.M_IDX IS NOT NULL AND a.M_IDX <> 0
+            GROUP BY a.M_IDX
             ORDER BY COUNT_BIG(1) DESC;
             """, connection))
         {

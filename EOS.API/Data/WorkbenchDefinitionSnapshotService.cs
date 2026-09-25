@@ -33,10 +33,10 @@ public sealed class WorkbenchDefinitionSnapshotService(
                    ISNULL(d.DIRTY_TAG,0), d.LAST_MODIFIED_BY, d.LAST_MODIFIED_AT,
                    s.VERSION, s.PUBLISHED_AT, s.PUBLISHED_BY, s.VALIDATION_STATUS
             FROM dbo.MODULES m WITH (NOLOCK)
-            LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.MODULE_ID=m.M_IDX
-            LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.MODULE_ID=m.M_IDX AND s.IS_CURRENT=1
+            LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=m.M_IDX
+            LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=m.M_IDX AND s.IS_CURRENT=1
             WHERE LTRIM(RTRIM(ISNULL(m.M_URL,''))) LIKE '/workbench%'
-               OR d.MODULE_ID IS NOT NULL
+               OR d.M_IDX IS NOT NULL
             ORDER BY m.M_IDX;
             """;
         await using var connection = connections.Create();
@@ -87,13 +87,13 @@ public sealed class WorkbenchDefinitionSnapshotService(
     public async Task<IReadOnlyList<WorkbenchSnapshotStaleness>> DetectStalenessAsync(CancellationToken token)
     {
         var snapshotSql = """
-            SELECT s.MODULE_ID, LTRIM(RTRIM(ISNULL(m.M_DESC,''))), ISNULL(d.DIRTY_TAG,0), s.VERSION, s.DEFINITION_JSON,
+            SELECT s.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC,''))), ISNULL(d.DIRTY_TAG,0), s.VERSION, s.DEFINITION_JSON,
                    LTRIM(RTRIM(ISNULL(s.PUBLISHED_BY,'')))
             FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK)
-            JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX = s.MODULE_ID
-            LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.MODULE_ID = s.MODULE_ID
+            JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX = s.M_IDX
+            LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX = s.M_IDX
             WHERE s.IS_CURRENT = 1
-            ORDER BY s.MODULE_ID;
+            ORDER BY s.M_IDX;
             """;
         var rows = new List<(int ModuleId, string Title, bool Dirty, int Version, string StoredJson, string PublishedBy)>();
         await using (var connection = connections.Create())
@@ -221,7 +221,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
                 // 当前快照内容（同一把锁下读，避免与并发发布交叉判断）
                 const string currentSql = """
                     SELECT TOP 1 VERSION, DEFINITION_JSON FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WITH (UPDLOCK, HOLDLOCK)
-                    WHERE MODULE_ID=@ModuleId AND IS_CURRENT=1 ORDER BY VERSION DESC;
+                    WHERE M_IDX=@ModuleId AND IS_CURRENT=1 ORDER BY VERSION DESC;
                     """;
                 int? currentVersion = null;
                 string? currentJson = null;
@@ -236,7 +236,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
                     }
                 }
 
-                const string clearDirtySql = "DELETE FROM dbo.WORKBENCH_MODULE_DIRTY WHERE MODULE_ID=@ModuleId;";
+                const string clearDirtySql = "DELETE FROM dbo.WORKBENCH_MODULE_DIRTY WHERE M_IDX=@ModuleId;";
                 await using (var clearDirty = new SqlCommand(clearDirtySql, connection, transaction))
                 {
                     clearDirty.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -257,13 +257,13 @@ public sealed class WorkbenchDefinitionSnapshotService(
                 {
                     const string nextVersionSql = """
                         SELECT ISNULL(MAX(VERSION),0)+1 FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WITH (UPDLOCK, HOLDLOCK)
-                        WHERE MODULE_ID=@ModuleId;
+                        WHERE M_IDX=@ModuleId;
                         """;
                     await using var versionCommand = new SqlCommand(nextVersionSql, connection, transaction);
                     versionCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
                     version = Convert.ToInt32(await versionCommand.ExecuteScalarAsync(token));
 
-                    const string retireSql = "UPDATE dbo.WORKBENCH_DEFINITION_SNAPSHOT SET IS_CURRENT=0 WHERE MODULE_ID=@ModuleId AND IS_CURRENT=1;";
+                    const string retireSql = "UPDATE dbo.WORKBENCH_DEFINITION_SNAPSHOT SET IS_CURRENT=0 WHERE M_IDX=@ModuleId AND IS_CURRENT=1;";
                     await using (var retire = new SqlCommand(retireSql, connection, transaction))
                     {
                         retire.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -272,7 +272,7 @@ public sealed class WorkbenchDefinitionSnapshotService(
 
                     const string insertSql = """
                         INSERT INTO dbo.WORKBENCH_DEFINITION_SNAPSHOT
-                            (MODULE_ID, VERSION, DEFINITION_JSON, SOURCE_METADATA_VERSION, VALIDATION_STATUS,
+                            (M_IDX, VERSION, DEFINITION_JSON, SOURCE_METADATA_VERSION, VALIDATION_STATUS,
                              VALIDATION_REPORT_JSON, PUBLISHED_BY, PUBLISHED_AT, IS_CURRENT)
                         VALUES (@ModuleId, @Version, @DefinitionJson, @SourceVersion, N'PASS', @ReportJson, @PublishedBy, SYSDATETIME(), 1);
                         """;

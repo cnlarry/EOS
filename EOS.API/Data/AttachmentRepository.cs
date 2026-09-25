@@ -10,7 +10,7 @@ namespace EOS.API.Data;
 /// 业务单据附件仓储（表 dbo.ATTACHMENT，位于 EOS.ERP —— 全新系统的唯一业务数据库）。
 /// 元数据 + SHA-256 入库，文件二进制存文件系统（Attachment:StorageRoot，默认 AppContext.BaseDirectory/attachments），
 /// 本仓储只负责元数据。定位：统一表单（DocumentWorkbench）单据级附件，
-/// 按 MODULE_ID + MASTER_TABLE + KEY_VALUES(JSON) + SERIAL_NO 定位。
+/// 按 M_IDX + MASTER_TABLE + KEY_VALUES(JSON) + SERIAL_NO 定位。
 /// 权限由控制器按 FILE_VIEW/UPDA/EDIT/DELE_TAG 服务端强制校验，本仓储不做权限判断。
 /// 表结构见 Data/Migrations/001_attachments.sql（对象名全大写，遵守 AGENTS.md 命名规范）。
 /// </summary>
@@ -19,12 +19,12 @@ public sealed class AttachmentRepository(
     IOptions<AttachmentSettings> settings)
 {
     private const string SelectList = """
-        ID, MODULE_ID, MASTER_TABLE, KEY_VALUES, SERIAL_NO, FILE_NAME, CLIENT_FILE_NAME, CONTENT_TYPE,
+        ID, M_IDX, MASTER_TABLE, KEY_VALUES, SERIAL_NO, FILE_NAME, CLIENT_FILE_NAME, CONTENT_TYPE,
         SIZE_BYTES, SHA256, REMARK, UPLOADED_BY, UPLOADED_BY_DISPLAY, UPLOADED_AT
         """;
 
     private const string OutputList = """
-        INSERTED.ID, INSERTED.MODULE_ID, INSERTED.MASTER_TABLE, INSERTED.KEY_VALUES, INSERTED.SERIAL_NO,
+        INSERTED.ID, INSERTED.M_IDX, INSERTED.MASTER_TABLE, INSERTED.KEY_VALUES, INSERTED.SERIAL_NO,
         INSERTED.FILE_NAME, INSERTED.CLIENT_FILE_NAME, INSERTED.CONTENT_TYPE, INSERTED.SIZE_BYTES,
         INSERTED.SHA256, INSERTED.REMARK, INSERTED.UPLOADED_BY, INSERTED.UPLOADED_BY_DISPLAY, INSERTED.UPLOADED_AT
         """;
@@ -37,7 +37,7 @@ public sealed class AttachmentRepository(
         await connection.OpenAsync(token);
         await using var command = new SqlCommand("""
             SELECT ISNULL(MAX(SERIAL_NO), 0) FROM dbo.ATTACHMENT
-            WHERE MODULE_ID = @ModuleId AND MASTER_TABLE = @MasterTable AND KEY_VALUES = @KeyValues;
+            WHERE M_IDX = @ModuleId AND MASTER_TABLE = @MasterTable AND KEY_VALUES = @KeyValues;
             """, connection);
         AddParameter(command, "@ModuleId", SqlDbType.Int, null, moduleId);
         AddParameter(command, "@MasterTable", SqlDbType.NVarChar, 128, masterTable);
@@ -65,7 +65,7 @@ public sealed class AttachmentRepository(
         await connection.OpenAsync(token);
         await using var command = new SqlCommand($"""
             INSERT INTO dbo.ATTACHMENT
-                (MODULE_ID, MASTER_TABLE, KEY_VALUES, SERIAL_NO, FILE_NAME, CLIENT_FILE_NAME, CONTENT_TYPE,
+                (M_IDX, MASTER_TABLE, KEY_VALUES, SERIAL_NO, FILE_NAME, CLIENT_FILE_NAME, CONTENT_TYPE,
                  SIZE_BYTES, SHA256, REMARK, UPLOADED_BY, UPLOADED_BY_DISPLAY, UPLOADED_AT)
             OUTPUT {OutputList}
             VALUES (@ModuleId, @MasterTable, @KeyValues, @SerialNo, @FileName, @ClientFileName, @ContentType,
@@ -95,7 +95,7 @@ public sealed class AttachmentRepository(
         await connection.OpenAsync(token);
         await using var command = new SqlCommand($"""
             SELECT {SelectList} FROM dbo.ATTACHMENT
-            WHERE MODULE_ID = @ModuleId AND MASTER_TABLE = @MasterTable AND KEY_VALUES = @KeyValues
+            WHERE M_IDX = @ModuleId AND MASTER_TABLE = @MasterTable AND KEY_VALUES = @KeyValues
             ORDER BY SERIAL_NO;
             """, connection);
         AddParameter(command, "@ModuleId", SqlDbType.Int, null, moduleId);
@@ -145,7 +145,7 @@ public sealed class AttachmentRepository(
         await connection.OpenAsync(token);
         await using var command = new SqlCommand($"""
             DELETE FROM dbo.ATTACHMENT
-            OUTPUT DELETED.ID, DELETED.MODULE_ID, DELETED.MASTER_TABLE, DELETED.KEY_VALUES, DELETED.SERIAL_NO,
+            OUTPUT DELETED.ID, DELETED.M_IDX, DELETED.MASTER_TABLE, DELETED.KEY_VALUES, DELETED.SERIAL_NO,
                    DELETED.FILE_NAME, DELETED.CLIENT_FILE_NAME, DELETED.CONTENT_TYPE, DELETED.SIZE_BYTES,
                    DELETED.SHA256, DELETED.REMARK, DELETED.UPLOADED_BY, DELETED.UPLOADED_BY_DISPLAY, DELETED.UPLOADED_AT
             WHERE ID = @Id;

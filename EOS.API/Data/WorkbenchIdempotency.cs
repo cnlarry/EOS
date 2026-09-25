@@ -39,7 +39,7 @@ public sealed class WorkbenchIdempotency
         }
 
         const string insertSql = """
-            INSERT INTO dbo.WORKBENCH_IDEMPOTENCY (IDEMPOTENCY_KEY, MODULE_ID, ACTION)
+            INSERT INTO dbo.WORKBENCH_IDEMPOTENCY (IDEMPOTENCY_KEY, M_IDX, ACTION)
             VALUES (@Key, @ModuleId, @Action);
             """;
         try

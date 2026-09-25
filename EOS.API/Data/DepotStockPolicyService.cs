@@ -637,7 +637,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         return result;
     }
 
-    /// <summary>策略配置所在的模块号（110310 库存策略）；审计的 <c>MODULE_ID</c> 用它。</summary>
+    /// <summary>策略配置所在的模块号（110310 库存策略）；审计的 <c>M_IDX</c> 用它。</summary>
     public const int StockPolicyModuleId = 110310;
 
     /// <summary>

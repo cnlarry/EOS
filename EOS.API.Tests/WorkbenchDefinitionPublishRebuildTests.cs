@@ -122,7 +122,7 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
             await connection.OpenAsync();
             await using var command = new SqlCommand("""
                 INSERT INTO dbo.WORKBENCH_DEFINITION_SNAPSHOT
-                    (MODULE_ID, VERSION, DEFINITION_JSON, SOURCE_METADATA_VERSION, VALIDATION_STATUS,
+                    (M_IDX, VERSION, DEFINITION_JSON, SOURCE_METADATA_VERSION, VALIDATION_STATUS,
                      VALIDATION_REPORT_JSON, PUBLISHED_BY, PUBLISHED_AT, IS_CURRENT)
                 VALUES (@Id, 1, @Json, NULL, N'PASS', N'[]', N'publish-rebuild-test', SYSDATETIME(), 1);
                 """, connection);
@@ -140,7 +140,7 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
             {
                 await connection.OpenAsync();
                 await using var command = new SqlCommand(
-                    "UPDATE dbo.WORKBENCH_DEFINITION_SNAPSHOT SET IS_CURRENT=0 WHERE MODULE_ID=@Id AND IS_CURRENT=1;",
+                    "UPDATE dbo.WORKBENCH_DEFINITION_SNAPSHOT SET IS_CURRENT=0 WHERE M_IDX=@Id AND IS_CURRENT=1;",
                     connection);
                 command.Parameters.Add("@Id", SqlDbType.Int).Value = moduleId;
                 await command.ExecuteNonQueryAsync();
@@ -154,7 +154,7 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
             await using var connection = new SqlConnection(ConnectionString.Value);
             await connection.OpenAsync();
             await using var command = new SqlCommand(
-                "DELETE FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WHERE MODULE_ID=@Id AND PUBLISHED_BY=N'publish-rebuild-test';",
+                "DELETE FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WHERE M_IDX=@Id AND PUBLISHED_BY=N'publish-rebuild-test';",
                 connection);
             command.Parameters.Add("@Id", SqlDbType.Int).Value = moduleId;
             await command.ExecuteNonQueryAsync();

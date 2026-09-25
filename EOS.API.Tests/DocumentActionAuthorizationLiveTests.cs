@@ -80,9 +80,9 @@ public sealed class DocumentActionAuthorizationLiveTests
         await using (var action = new SqlCommand(
             """
             IF NOT EXISTS (SELECT 1 FROM dbo.MODULE_BUSINESS_ACTION
-                           WHERE MODULE_ID=@ModuleId AND EVENT_CODE=N'MANUAL' AND EFFECT_KEY=@Key)
+                           WHERE M_IDX=@ModuleId AND EVENT_CODE=N'MANUAL' AND EFFECT_KEY=@Key)
                 INSERT INTO dbo.MODULE_BUSINESS_ACTION
-                    (MODULE_ID,EVENT_CODE,SEQ,EFFECT_KEY,EFFECT_NAME,ENABLED,FAIL_MODE,LABEL,CONFIRM_TAG,
+                    (M_IDX,EVENT_CODE,SEQ,EFFECT_KEY,EFFECT_NAME,ENABLED,FAIL_MODE,LABEL,CONFIRM_TAG,
                      CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
                 VALUES (@ModuleId,N'MANUAL',98,@Key,N'管线探针（用例）',1,N'BLOCK',N'管线探针（用例）',0,
                         N'DbUp',SYSDATETIME(),N'DbUp',SYSDATETIME());
@@ -103,7 +103,7 @@ public sealed class DocumentActionAuthorizationLiveTests
             "DELETE FROM dbo.SYSDH_BUTTON WHERE BUTTON_KEY=@Key AND G_IDX=@Group;",
             "DELETE FROM dbo.SYSDG_USER WHERE G_IDX=@Group;",
             "DELETE FROM dbo.SYSDG WHERE G_IDX=@Group;",
-            "DELETE FROM dbo.MODULE_BUSINESS_ACTION WHERE MODULE_ID=@ModuleId AND EVENT_CODE=N'MANUAL' AND EFFECT_KEY=@Key;",
+            "DELETE FROM dbo.MODULE_BUSINESS_ACTION WHERE M_IDX=@ModuleId AND EVENT_CODE=N'MANUAL' AND EFFECT_KEY=@Key;",
         })
         {
             await using var command = new SqlCommand(sql, connection);

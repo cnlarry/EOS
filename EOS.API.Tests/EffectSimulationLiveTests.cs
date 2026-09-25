@@ -73,9 +73,9 @@ public sealed class EffectSimulationLiveTests
             FROM dbo.MODULES m WITH (NOLOCK)
             WHERE ISNULL(m.EFFECT_ENGINE_TAG,0)=1 AND LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,'')))<>''
               AND EXISTS (SELECT 1 FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK)
-                          WHERE a.MODULE_ID=m.M_IDX AND LTRIM(RTRIM(a.EVENT_CODE))='APPROVE_EFFECT' AND ISNULL(a.ENABLED,1)=1)
+                          WHERE a.M_IDX=m.M_IDX AND LTRIM(RTRIM(a.EVENT_CODE))='APPROVE_EFFECT' AND ISNULL(a.ENABLED,1)=1)
               AND EXISTS (SELECT 1 FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK)
-                          WHERE s.MODULE_ID=m.M_IDX AND s.IS_CURRENT=1)
+                          WHERE s.M_IDX=m.M_IDX AND s.IS_CURRENT=1)
               -- 必须选一条真的会跑效果链的路径：配了审批流程的模块，批核这一步是送审，
               -- 预演被显式拒绝（预演只覆盖引擎接管那条），拿它做样本会测到另一条分支上。
               AND NOT EXISTS (SELECT 1 FROM dbo.WFFORM wf WITH (NOLOCK) WHERE wf.WF_M_IDX=m.M_IDX)
@@ -508,7 +508,7 @@ public sealed class EffectSimulationLiveTests
         SqlConnection connection, int moduleId, CancellationToken token)
     {
         await using var command = new SqlCommand(
-            "SELECT TOP 1 DEFINITION_JSON FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WITH (NOLOCK) WHERE MODULE_ID=@Id AND IS_CURRENT=1;",
+            "SELECT TOP 1 DEFINITION_JSON FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WITH (NOLOCK) WHERE M_IDX=@Id AND IS_CURRENT=1;",
             connection);
         command.Parameters.Add("@Id", SqlDbType.Int).Value = moduleId;
         var json = await command.ExecuteScalarAsync(token) as string

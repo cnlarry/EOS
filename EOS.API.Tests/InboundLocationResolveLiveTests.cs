@@ -207,7 +207,7 @@ public sealed class InboundLocationResolveLiveTests
         SqlConnection connection, SqlTransaction transaction, int moduleId)
     {
         await using var command = new SqlCommand(
-            "SELECT TOP 1 DEFINITION_JSON FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WHERE MODULE_ID=@Id AND IS_CURRENT=1;",
+            "SELECT TOP 1 DEFINITION_JSON FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WHERE M_IDX=@Id AND IS_CURRENT=1;",
             connection, transaction);
         command.Parameters.Add("@Id", SqlDbType.Int).Value = moduleId;
         var json = await command.ExecuteScalarAsync() as string

@@ -72,7 +72,7 @@ public sealed class AutoApproveEffectLiveTests
     private static async Task<WorkbenchDefinition> LoadPublishedDefinitionAsync(SqlConnection connection, int moduleId)
     {
         await using var command = new SqlCommand(
-            "SELECT TOP 1 DEFINITION_JSON FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WHERE MODULE_ID=@Id AND IS_CURRENT=1;",
+            "SELECT TOP 1 DEFINITION_JSON FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WHERE M_IDX=@Id AND IS_CURRENT=1;",
             connection);
         command.Parameters.Add("@Id", SqlDbType.Int).Value = moduleId;
         var json = await command.ExecuteScalarAsync() as string
@@ -129,14 +129,14 @@ public sealed class AutoApproveEffectLiveTests
                 ("@B", BatchNo), ("@P", BatchProNo))).Trim());
             // 审计摘要保留"自动批核"的区分（状态列已不再承担该信息）
             Assert.Equal(1, await ScalarAsync(connection,
-                "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE EVENT_ID > @Baseline AND MODULE_ID=1302 AND ACTION=N'APPROVE' AND SUMMARY=N'自动批核' AND RESOURCE_KEY LIKE @K;",
+                "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE EVENT_ID > @Baseline AND M_IDX=1302 AND ACTION=N'APPROVE' AND SUMMARY=N'自动批核' AND RESOURCE_KEY LIKE @K;",
                 ("@Baseline", auditBaseline), ("@K", $"%{BatchNo}%")));
 
             // 重复触发：仍是成功（幂等），且不产生第二条批核审计
             var second = await service.AutoApproveAsync(definition, [BatchNo, BatchProNo], ConfirmPerson, "tester", CancellationToken.None);
             Assert.Equal(RecordAccessStatus.Ok, second.Status);
             Assert.Equal(1, await ScalarAsync(connection,
-                "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE EVENT_ID > @Baseline AND MODULE_ID=1302 AND ACTION=N'APPROVE' AND RESOURCE_KEY LIKE @K;",
+                "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE EVENT_ID > @Baseline AND M_IDX=1302 AND ACTION=N'APPROVE' AND RESOURCE_KEY LIKE @K;",
                 ("@Baseline", auditBaseline), ("@K", $"%{BatchNo}%")));
         }
         finally

@@ -578,10 +578,10 @@ public sealed class RightsAdminRepository(
     {
         await using var command = new SqlCommand(
             """
-            SELECT a.MODULE_ID, a.EFFECT_KEY, ISNULL(LTRIM(RTRIM(a.LABEL)), N'')
+            SELECT a.M_IDX, a.EFFECT_KEY, ISNULL(LTRIM(RTRIM(a.LABEL)), N'')
             FROM dbo.MODULE_BUSINESS_ACTION a WITH (NOLOCK)
             WHERE a.EVENT_CODE = N'MANUAL' AND a.ENABLED = 1
-            ORDER BY a.MODULE_ID, a.SEQ;
+            ORDER BY a.M_IDX, a.SEQ;
             """, connection, transaction);
         await using var reader = await command.ExecuteReaderAsync(token);
         var allowed = moduleIds?.ToHashSet();

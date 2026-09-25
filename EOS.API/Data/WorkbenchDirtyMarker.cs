@@ -37,9 +37,9 @@ public sealed class WorkbenchDirtyMarker(DbConnectionFactory connections)
     {
         const string sql = """
             MERGE dbo.WORKBENCH_MODULE_DIRTY AS t
-            USING (SELECT @ModuleId AS MODULE_ID) AS s ON t.MODULE_ID = s.MODULE_ID
+            USING (SELECT @ModuleId AS M_IDX) AS s ON t.M_IDX = s.M_IDX
             WHEN MATCHED THEN UPDATE SET DIRTY_TAG=1, LAST_MODIFIED_BY=@UpdatedBy, LAST_MODIFIED_AT=SYSDATETIME()
-            WHEN NOT MATCHED THEN INSERT (MODULE_ID, DIRTY_TAG, LAST_MODIFIED_BY, LAST_MODIFIED_AT)
+            WHEN NOT MATCHED THEN INSERT (M_IDX, DIRTY_TAG, LAST_MODIFIED_BY, LAST_MODIFIED_AT)
                 VALUES (@ModuleId, 1, @UpdatedBy, SYSDATETIME());
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
@@ -57,9 +57,9 @@ public sealed class WorkbenchDirtyMarker(DbConnectionFactory connections)
                 SELECT m.M_IDX FROM dbo.MODULES m
                 WHERE LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))) = @Table
                    OR LTRIM(RTRIM(ISNULL(m.DETAIL_TABLE,''))) = @Table
-            ) AS s ON t.MODULE_ID = s.M_IDX
+            ) AS s ON t.M_IDX = s.M_IDX
             WHEN MATCHED THEN UPDATE SET DIRTY_TAG=1, LAST_MODIFIED_BY=@UpdatedBy, LAST_MODIFIED_AT=SYSDATETIME()
-            WHEN NOT MATCHED THEN INSERT (MODULE_ID, DIRTY_TAG, LAST_MODIFIED_BY, LAST_MODIFIED_AT)
+            WHEN NOT MATCHED THEN INSERT (M_IDX, DIRTY_TAG, LAST_MODIFIED_BY, LAST_MODIFIED_AT)
                 VALUES (s.M_IDX, 1, @UpdatedBy, SYSDATETIME());
             """;
         await using var command = new SqlCommand(sql, connection, transaction);

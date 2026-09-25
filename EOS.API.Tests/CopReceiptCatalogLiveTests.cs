@@ -193,7 +193,7 @@ public sealed class CopReceiptCatalogLiveTests
             SELECT SEQ, EVENT_CODE, EFFECT_KEY, EFFECT_NAME, ENABLED, FAIL_MODE,
                    CONDITION_STRUCT, PARAM_STRUCT, REVERSE_STRUCT
             FROM dbo.MODULE_BUSINESS_ACTION
-            WHERE MODULE_ID=@ModuleId AND EVENT_CODE=N'SAVE' AND SEQ=1;
+            WHERE M_IDX=@ModuleId AND EVENT_CODE=N'SAVE' AND SEQ=1;
             """, connection, transaction);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = ModuleId;
         await using var reader = await command.ExecuteReaderAsync(token);

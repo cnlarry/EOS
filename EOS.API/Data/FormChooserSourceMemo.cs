@@ -76,7 +76,7 @@ internal static class FormChooserSourceMemo
         const string sql = """
             SELECT F_ID, KEY_VALUES, SOURCE_SERIAL_NO
             FROM dbo.FORM_CHOOSER_SOURCE_MEMO
-            WHERE MODULE_ID = @ModuleId AND T_ID = @Table AND MASTER_KEY_VALUES = @MasterKey;
+            WHERE M_IDX = @ModuleId AND T_ID = @Table AND MASTER_KEY_VALUES = @MasterKey;
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -100,7 +100,7 @@ internal static class FormChooserSourceMemo
         string masterKeyValues,
         CancellationToken token)
     {
-        const string sql = "DELETE FROM dbo.FORM_CHOOSER_SOURCE_MEMO WHERE MODULE_ID = @ModuleId AND MASTER_KEY_VALUES = @MasterKey;";
+        const string sql = "DELETE FROM dbo.FORM_CHOOSER_SOURCE_MEMO WHERE M_IDX = @ModuleId AND MASTER_KEY_VALUES = @MasterKey;";
         await using var command = new SqlCommand(sql, connection, transaction);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
         command.Parameters.Add("@MasterKey", SqlDbType.NVarChar, 200).Value = masterKeyValues;
@@ -120,7 +120,7 @@ internal static class FormChooserSourceMemo
         {
             const string sql = """
                 DELETE FROM dbo.FORM_CHOOSER_SOURCE_MEMO
-                WHERE MODULE_ID = @ModuleId AND T_ID = @Table AND F_ID = @Field AND KEY_VALUES = @KeyValues;
+                WHERE M_IDX = @ModuleId AND T_ID = @Table AND F_ID = @Field AND KEY_VALUES = @KeyValues;
                 """;
             await using var command = new SqlCommand(sql, connection, transaction);
             command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -146,7 +146,7 @@ internal static class FormChooserSourceMemo
     {
         const string sql = """
             INSERT INTO dbo.FORM_CHOOSER_SOURCE_MEMO
-                (MODULE_ID, T_ID, F_ID, KEY_VALUES, MASTER_KEY_VALUES, SOURCE_SERIAL_NO, UPDATED_BY, UPDATED_AT)
+                (M_IDX, T_ID, F_ID, KEY_VALUES, MASTER_KEY_VALUES, SOURCE_SERIAL_NO, UPDATED_BY, UPDATED_AT)
             VALUES (@ModuleId, @Table, @Field, @KeyValues, @MasterKey, @Serial, @User, SYSUTCDATETIME());
             """;
         await using var command = new SqlCommand(sql, connection, transaction);

@@ -120,8 +120,8 @@ public sealed class EmployeeCardCatalogLiveTests
         await using (var command = new SqlCommand("""
             SELECT m.MASTER_TABLE, s.[DEFINITION_JSON], r.PARAM_STRUCT, ISNULL(r.MESSAGE, N'')
             FROM dbo.MODULES m
-            JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s ON s.MODULE_ID = m.M_IDX AND s.IS_CURRENT = 1
-            JOIN dbo.MODULE_VALIDATION_RULE r ON r.MODULE_ID = m.M_IDX AND r.STAGE = N'SAVE' AND r.VALIDATION_KEY = N'line-require'
+            JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s ON s.M_IDX = m.M_IDX AND s.IS_CURRENT = 1
+            JOIN dbo.MODULE_VALIDATION_RULE r ON r.M_IDX = m.M_IDX AND r.STAGE = N'SAVE' AND r.VALIDATION_KEY = N'line-require'
             WHERE m.M_IDX = @ModuleId;
             """, connection, transaction))
         {
@@ -149,7 +149,7 @@ public sealed class EmployeeCardCatalogLiveTests
             SELECT SEQ, EVENT_CODE, EFFECT_KEY, EFFECT_NAME, ENABLED, FAIL_MODE,
                    CONDITION_STRUCT, PARAM_STRUCT, REVERSE_STRUCT
             FROM dbo.MODULE_BUSINESS_ACTION
-            WHERE MODULE_ID=@ModuleId AND EVENT_CODE=N'SAVE' AND SEQ=1;
+            WHERE M_IDX=@ModuleId AND EVENT_CODE=N'SAVE' AND SEQ=1;
             """, connection, transaction);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = ModuleId;
         await using var reader = await command.ExecuteReaderAsync(token);

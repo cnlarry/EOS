@@ -38,7 +38,7 @@ public sealed class EffectValidationPeriodOverlapConfigLiveTests
         await using (var command = new SqlCommand("""
             SELECT SEQ, STAGE, VALIDATION_KEY, ENABLED, PARAM_STRUCT, MESSAGE
             FROM dbo.MODULE_VALIDATION_RULE
-            WHERE MODULE_ID = @ModuleId AND STAGE = N'SAVE' AND ENABLED = 1
+            WHERE M_IDX = @ModuleId AND STAGE = N'SAVE' AND ENABLED = 1
             ORDER BY SEQ;
             """, connection, transaction))
         {

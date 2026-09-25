@@ -32,12 +32,12 @@ public sealed class EffectParamPhysicalGateLiveTests
     private static async Task<List<ActionRow>> ReadActionsAsync(SqlConnection connection, CancellationToken token)
     {
         const string sql = """
-            SELECT a.MODULE_ID, LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))), LTRIM(RTRIM(ISNULL(m.DETAIL_TABLE,''))),
+            SELECT a.M_IDX, LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))), LTRIM(RTRIM(ISNULL(m.DETAIL_TABLE,''))),
                    a.SEQ, LTRIM(RTRIM(ISNULL(a.EVENT_CODE,''))), LTRIM(RTRIM(ISNULL(a.EFFECT_KEY,''))),
                    LTRIM(RTRIM(ISNULL(a.PARAM_STRUCT,'')))
             FROM dbo.MODULE_BUSINESS_ACTION a
-            JOIN dbo.MODULES m ON m.M_IDX = a.MODULE_ID
-            ORDER BY a.MODULE_ID, a.EVENT_CODE, a.SEQ;
+            JOIN dbo.MODULES m ON m.M_IDX = a.M_IDX
+            ORDER BY a.M_IDX, a.EVENT_CODE, a.SEQ;
             """;
         await using var command = new SqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(token);

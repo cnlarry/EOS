@@ -33,10 +33,10 @@ public sealed class SnapshotContentEquivalenceLiveTests
         await connection.OpenAsync(token);
         await using var command = new SqlCommand(
             $"""
-            SELECT TOP ({limit}) s.MODULE_ID, s.VERSION, s.DEFINITION_JSON
+            SELECT TOP ({limit}) s.M_IDX, s.VERSION, s.DEFINITION_JSON
             FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK)
             WHERE s.IS_CURRENT = 1 AND s.DEFINITION_JSON LIKE '%' + @pattern + '%'
-            ORDER BY s.MODULE_ID;
+            ORDER BY s.M_IDX;
             """, connection);
         command.Parameters.AddWithValue("@pattern", pattern);
         var samples = new List<Sample>();

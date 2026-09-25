@@ -32,7 +32,7 @@ public sealed class WorkbenchDefinitionProvider(
     public async Task RefreshAsync(CancellationToken token)
     {
         const string sql = """
-            SELECT MODULE_ID, DEFINITION_JSON, VERSION
+            SELECT M_IDX, DEFINITION_JSON, VERSION
             FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WITH (NOLOCK)
             WHERE IS_CURRENT=1;
             """;
@@ -77,7 +77,7 @@ public sealed class WorkbenchDefinitionProvider(
         const string sql = """
             SELECT DEFINITION_JSON, VERSION
             FROM dbo.WORKBENCH_DEFINITION_SNAPSHOT WITH (NOLOCK)
-            WHERE MODULE_ID=@ModuleId AND IS_CURRENT=1;
+            WHERE M_IDX=@ModuleId AND IS_CURRENT=1;
             """;
         await using var connection = connections.Create();
         await connection.OpenAsync(token);

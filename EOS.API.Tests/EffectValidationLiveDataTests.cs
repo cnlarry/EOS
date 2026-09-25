@@ -32,8 +32,8 @@ public sealed class EffectValidationLiveDataTests
         await using (var command = new SqlCommand("""
             SELECT m.MASTER_TABLE, m.DETAIL_TABLE, s.[DEFINITION_JSON], r.PARAM_STRUCT, r.MESSAGE, r.ENABLED
             FROM dbo.MODULES m
-            JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s ON s.MODULE_ID = m.M_IDX AND s.IS_CURRENT = 1
-            JOIN dbo.MODULE_VALIDATION_RULE r ON r.MODULE_ID = m.M_IDX AND r.STAGE = N'SAVE' AND r.VALIDATION_KEY = @Key
+            JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s ON s.M_IDX = m.M_IDX AND s.IS_CURRENT = 1
+            JOIN dbo.MODULE_VALIDATION_RULE r ON r.M_IDX = m.M_IDX AND r.STAGE = N'SAVE' AND r.VALIDATION_KEY = @Key
             WHERE m.M_IDX = @ModuleId;
             """, connection, transaction))
         {
