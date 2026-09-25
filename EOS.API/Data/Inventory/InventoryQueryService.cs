@@ -30,6 +30,14 @@ public static class InventoryQueryService
     public const string BatchColumn = "BATCH_NO";
     public const string QuantityColumn = "QTY";
 
+    /// <summary>
+    /// 可用量列（= 数量 − 有效冻结 − 有效预留）。它是**行级**列，与 <see cref="QuantityColumn"/> 同级，
+    /// 因此聚合时可以 `SUM`（见 <see cref="DepotLevelColumns"/> 的反例）。**本服务只下发这一列的值**，
+    /// 口径的唯一出口是 `InventoryAvailabilityService`——读取侧自己聚合占用表就是第二个口径（D7-⑧）。
+    /// 列与数量的恒等由 `scripts/check-inventory-availability.ps1` 常态断言（WS-25）。
+    /// </summary>
+    public const string UseableQuantityColumn = "USEABLE_QTY";
+
     /// <summary>库位的哨兵值「未指定位置」：物理行用它占位，比较前必须把空值归一到它。</summary>
     public const string LocationSentinel = "-";
 
@@ -238,7 +246,14 @@ public static class InventoryQueryService
     /// （明细全为 NULL 时 SUM 就是 NULL，与原口径一致，不用 0 顶替）。
     /// </summary>
     public sealed record InventoryQuantity(
-        string ProductNo, string? DepotId, string? LocationNo, string? BatchNo, double? Quantity);
+        string ProductNo, string? DepotId, string? LocationNo, string? BatchNo, double? Quantity)
+    {
+        /// <summary>
+        /// 可用量（同一维度上的 `SUM(USEABLE_QTY)`）。报表/选择器要"能出多少"就用它；
+        /// 要"账上有多少"仍用 <see cref="Quantity"/>——两个数各有各的语义，不给谁做替身。
+        /// </summary>
+        public double? UseableQuantity { get; init; }
+    }
 
     /// <summary>
     /// 按维度聚合数量：未出现在 groupBy 里的维度一律 `SUM(QTY)`。
@@ -284,7 +299,9 @@ public static class InventoryQueryService
                 index++;
             }
             var quantity = reader.IsDBNull(index) ? null : (double?)Convert.ToDouble(reader.GetValue(index));
-            rows.Add(new InventoryQuantity(product, depot, location, batch, quantity));
+            index++;
+            var useable = reader.IsDBNull(index) ? null : (double?)Convert.ToDouble(reader.GetValue(index));
+            rows.Add(new InventoryQuantity(product, depot, location, batch, quantity) { UseableQuantity = useable });
         }
         return rows;
     }
@@ -332,7 +349,10 @@ public static class InventoryQueryService
         // RequireNonZero 用 HAVING 而不是把 NULL 兜成 0 再比较：后者会把"谁也没填过量"的行算成零参与判定，
         // 与既有 NULL 语义不等价。
         var having = query.RequireNonZero ? $" HAVING SUM({QuantityColumn}) <> 0" : string.Empty;
-        var sql = $"SELECT {projection}, SUM({QuantityColumn}) AS {QuantityColumn} FROM dbo.{BalanceTable} s"
+        // 可用量是**行级**列，与数量同级 ⇒ 聚合时 `SUM` 是合法口径（库别级字段那种"每行冗余同一值"
+        // 才不能 SUM）。两列一起下发，调用方不必也不该自己去聚合占用表。
+        var sql = $"SELECT {projection}, SUM({QuantityColumn}) AS {QuantityColumn}, "
+            + $"SUM({UseableQuantityColumn}) AS {UseableQuantityColumn} FROM dbo.{BalanceTable} s"
             + Hint(readLock) + where + $" GROUP BY {projection}" + having + ";";
         return (sql, parameters);
     }
@@ -543,7 +563,15 @@ public static class InventoryQueryService
         double? InitQuantity,
         double? CostPrice,
         double? CostAmount,
-        DateTime? LastCheckDate);
+        DateTime? LastCheckDate)
+    {
+        /// <summary>
+        /// 可用量（= 数量 − 有效冻结 − 有效预留）：下发的是 `<see cref="UseableQuantityColumn"/>`
+        /// 那一列的值，也就是 `InventoryAvailabilityService` 物化出来的同一份口径。
+        /// **不给它做实时聚合的替身**——出库校验读的也是这一列，两处必须逐字同源（D7-⑧）。
+        /// </summary>
+        public double? UseableQuantity { get; init; }
+    }
 
     /// <summary>读余额行（四键原样返回）。数量口径见 <see cref="RowScope.Quantity"/>。</summary>
     public static async Task<IReadOnlyList<InventoryRow>> GetRowsAsync(
@@ -573,7 +601,10 @@ public static class InventoryQueryService
                 reader.IsDBNull(5) ? null : (double?)Convert.ToDouble(reader.GetValue(5)),
                 reader.IsDBNull(6) ? null : (double?)Convert.ToDouble(reader.GetValue(6)),
                 reader.IsDBNull(7) ? null : (double?)Convert.ToDouble(reader.GetValue(7)),
-                reader.IsDBNull(8) ? null : (DateTime?)reader.GetDateTime(8)));
+                reader.IsDBNull(8) ? null : (DateTime?)reader.GetDateTime(8))
+            {
+                UseableQuantity = reader.IsDBNull(9) ? null : (double?)Convert.ToDouble(reader.GetValue(9)),
+            });
         }
         return rows;
     }
@@ -646,7 +677,7 @@ public static class InventoryQueryService
         });
         var where = " WHERE " + string.Join(" AND ", predicates);
         var sql = "SELECT s.PRO_NO, s.DEPOT_ID, s.LOCATION_NO, s.BATCH_NO, s.QTY, s.INIT_QTY, s.COST_PRICE, "
-            + $"s.COST_AMOUNT, s.LAST_CHECK_DATE FROM dbo.{BalanceTable} s{Hint(readLock)}{join}{where} "
+            + $"s.COST_AMOUNT, s.LAST_CHECK_DATE, s.{UseableQuantityColumn} FROM dbo.{BalanceTable} s{Hint(readLock)}{join}{where} "
             + "ORDER BY s.PRO_NO, s.LOCATION_NO, s.BATCH_NO;";
         return (sql, parameters);
     }

@@ -82,9 +82,9 @@ public sealed class InventoryFreezeActionLiveTests : IAsyncLifetime
     {
         await ExecAsync(connection, """
             DELETE c FROM dbo.AUDIT_FIELD_CHANGE c JOIN dbo.AUDIT_EVENT e ON e.EVENT_ID = c.EVENT_ID
-             WHERE e.M_IDX = @module AND e.RESOURCE_KEY = @key;
-            DELETE FROM dbo.AUDIT_EVENT WHERE M_IDX = @module AND RESOURCE_KEY = @key;
-            DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX = @module AND ACTION = N'ACTION';
+             WHERE e.MODULE_ID = @module AND e.RESOURCE_KEY = @key;
+            DELETE FROM dbo.AUDIT_EVENT WHERE MODULE_ID = @module AND RESOURCE_KEY = @key;
+            DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE MODULE_ID = @module AND ACTION = N'ACTION';
             DELETE FROM dbo.INV_FREEZE WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
             DELETE FROM dbo.INV_PRO_DEPOT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
             DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID = @user;
@@ -123,7 +123,7 @@ public sealed class InventoryFreezeActionLiveTests : IAsyncLifetime
         await using (var command = new SqlCommand("""
             SELECT RTRIM(c.FIELD_NAME), c.OLD_VALUE, c.NEW_VALUE
               FROM dbo.AUDIT_FIELD_CHANGE c JOIN dbo.AUDIT_EVENT e ON e.EVENT_ID = c.EVENT_ID
-             WHERE e.M_IDX = @module AND e.RESOURCE_KEY = @key AND RTRIM(c.FIELD_NAME) = N'USEABLE_QTY';
+             WHERE e.MODULE_ID = @module AND e.RESOURCE_KEY = @key AND RTRIM(c.FIELD_NAME) = N'USEABLE_QTY';
             """, connection))
         {
             command.Parameters.AddWithValue("@module", ModuleId);
