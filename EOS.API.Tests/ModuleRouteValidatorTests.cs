@@ -147,4 +147,24 @@ public class ModuleRouteValidatorTests
     {
         Assert.Equal(expected, ModuleRouteValidator.IsReportUrl(url));
     }
+
+    /// <summary>
+    /// 统一表单动作路由的判定：只有本模块的 new/edit/view 命中。名单外的模块靠它把
+    /// "指向统一表单的 MODI_URL" 当无值处理（否则列表双击会开到一个必 404 的表单）。
+    /// </summary>
+    [Theory]
+    [InlineData("/workbench/1303/edit", 1303, true)]
+    [InlineData("/workbench/1303/view", 1303, true)]
+    [InlineData("/workbench/1303/new", 1303, true)]
+    [InlineData("/workbench/1303/edit?key=x", 1303, true)]
+    [InlineData("/workbench/1303/edit", 1302, false)]      // 别的模块的编号不算
+    [InlineData("/admin/depot-stock-policy", 110310, false)] // 自定义承载页不是统一表单路由
+    [InlineData("/workbench/1303", 1303, false)]            // 列表页本身不是表单动作
+    [InlineData("/workbench/{moduleId}/edit", 1303, false)] // 未解析的模板：判定发生在解析之后
+    [InlineData("", 1303, false)]
+    [InlineData(null, 1303, false)]
+    public void IsUnifiedFormRoute_Classification(string? url, int moduleId, bool expected)
+    {
+        Assert.Equal(expected, ModuleRouteValidator.IsUnifiedFormRoute(url, moduleId));
+    }
 }

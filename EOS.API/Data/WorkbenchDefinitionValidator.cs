@@ -45,17 +45,19 @@ public sealed class WorkbenchDefinitionValidator(
         }
         checks.Add(new("module_exists", true, $"模块 {moduleId} {module.Title} 存在。"));
 
-        var enabled = formSettings.Value.EnabledModuleIds.Contains(moduleId);
+        // 写名单与只读名单都表示"运行期有统一表单"，区别只在能不能写
+        var enabled = formSettings.Value.EnabledModuleIds.Contains(moduleId)
+            || formSettings.Value.ReadOnlyModuleIds.Contains(moduleId);
         var workbenchUrl = ModuleRouteValidator.IsWorkbenchUrl(module.MUrl);
         if (!workbenchUrl && !enabled)
         {
             checks.Add(new("runtime_whitelist", false,
-                "模块既不在统一表单白名单内，M_URL 也不是工作台承载页，无法进入运行时。"));
+                "模块既不在统一表单名单内，M_URL 也不是工作台承载页，无法进入运行时。"));
         }
         else
         {
             checks.Add(new("runtime_whitelist", true,
-                workbenchUrl ? "M_URL 为工作台承载页。" : "模块在统一表单白名单内。"));
+                workbenchUrl ? "M_URL 为工作台承载页。" : "模块在统一表单名单内。"));
         }
 
         var routeErrors = new List<string>();

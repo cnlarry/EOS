@@ -13,6 +13,7 @@ namespace EOS.API.Data;
 /// is mapped to the modern workbench:
 /// - Target is workbench-hosted (M_URL=/workbench) and keys resolve fully → record browse
 /// `/workbench/{m}/view/{key-values}`, key source columns mapped per target primary key order;
+///   「能看记录」的判据是目标模块**能打开统一表单**（写名单或只读名单，只读模块同样只看不改）；
 /// - Target is workbench-hosted but keys cannot resolve → degraded to target module list link;
 /// - Target is a special page (M_URL != /workbench) → no link (plain text).
 /// This resolver only produces link descriptors (static metadata, snapshotable); target browse
@@ -33,7 +34,7 @@ public static class WorkbenchBrowseResolver
         SqlConnection connection,
         IReadOnlyList<WorkbenchField> fields,
         string sourceTable,
-        IReadOnlySet<int> unifiedFormWhitelist,
+        IReadOnlySet<int> formOpenableModules,
         CancellationToken token)
     {
         if (fields.Count == 0)
@@ -48,7 +49,7 @@ public static class WorkbenchBrowseResolver
                 result.Add(field);
                 continue;
             }
-            result.Add(await ResolveFieldAsync(connection, field, moduleId, sourceTable, unifiedFormWhitelist, token));
+            result.Add(await ResolveFieldAsync(connection, field, moduleId, sourceTable, formOpenableModules, token));
         }
         return result;
     }
@@ -58,7 +59,7 @@ public static class WorkbenchBrowseResolver
         WorkbenchField field,
         int moduleId,
         string sourceTable,
-        IReadOnlySet<int> unifiedFormWhitelist,
+        IReadOnlySet<int> formOpenableModules,
         CancellationToken token)
     {
         var (isWorkbench, masterTable) = await GetModuleAsync(connection, moduleId, token);
@@ -99,7 +100,7 @@ public static class WorkbenchBrowseResolver
             sourceColumns.Add(source);
         }
 
-        if (!resolvable || sourceColumns.Count == 0 || !unifiedFormWhitelist.Contains(moduleId))
+        if (!resolvable || sourceColumns.Count == 0 || !formOpenableModules.Contains(moduleId))
         {
             // 目标是工作台模块但记录浏览不可用 → 降级为目标模块列表链接
             return field with { BrowseUrl = null, BrowseKeyFields = null };
