@@ -1,7 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using EOS.API.Data;
 
-namespace EOS.API.Data;
+namespace EOS.API.Data.Definitions;
 
 /// <summary>
 /// Decides whether two module definitions say the same thing. Publishing ("content unchanged,

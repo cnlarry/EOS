@@ -1,5 +1,5 @@
 using System.Text.Json.Nodes;
-using EOS.API.Data;
+using EOS.API.Data.Definitions;
 using Microsoft.Data.SqlClient;
 using Xunit;
 

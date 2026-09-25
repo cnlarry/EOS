@@ -1,5 +1,5 @@
 using System.Reflection;
-using EOS.API.Data;
+using EOS.API.Data.Definitions;
 using Xunit;
 
 namespace EOS.API.Tests;
