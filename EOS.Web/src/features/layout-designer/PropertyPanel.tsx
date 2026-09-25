@@ -6,8 +6,6 @@ interface PropertyPanelProps {
   dataContract: DataContract
   systemFields: string[]
   canDesign: boolean
-  simpleMode?: boolean
-  onMove?: (dxMm: number, dyMm: number) => void
   onChange: (patch: Partial<LayoutElement>) => void
   onRemove: () => void
 }
@@ -49,83 +47,9 @@ function NumberField({
 }
 
 export function PropertyPanel({
-  element, dataContract, systemFields, canDesign, simpleMode = false, onMove, onChange, onRemove,
+  element, dataContract, systemFields, canDesign, onChange, onRemove,
 }: PropertyPanelProps) {
   const options = FIELD_OPTIONS(dataContract, systemFields)
-  if (simpleMode) {
-    return (
-      <div className="p-3 d-flex flex-column gap-3">
-        <div>
-          <strong className="text-truncate">{element.id}</strong>
-          <span className="badge bg-secondary ms-2 text-nowrap">{element.type}</span>
-        </div>
-
-        {onMove && (
-          <div>
-            <div className="text-secondary small mb-1">位置微调（mm）</div>
-            <div className="d-flex align-items-center justify-content-center gap-1">
-              <button type="button" className="btn btn-outline-secondary btn-sm" title="左移"
-                onClick={() => onMove(-1, 0)}>←</button>
-              <div className="d-flex flex-column gap-1">
-                <button type="button" className="btn btn-outline-secondary btn-sm" title="上移"
-                  onClick={() => onMove(0, -1)}>↑</button>
-                <button type="button" className="btn btn-outline-secondary btn-sm" title="下移"
-                  onClick={() => onMove(0, 1)}>↓</button>
-              </div>
-              <button type="button" className="btn btn-outline-secondary btn-sm" title="右移"
-                onClick={() => onMove(1, 0)}>→</button>
-            </div>
-          </div>
-        )}
-
-        <div className="row g-2">
-          <div className="col-6"><NumberField label="X (mm)" value={element.x} onChange={(v) => onChange({ x: v })} /></div>
-          <div className="col-6"><NumberField label="Y (mm)" value={element.y} onChange={(v) => onChange({ y: v })} /></div>
-          <div className="col-6"><NumberField label="宽 (mm)" value={element.w} onChange={(v) => onChange({ w: v })} /></div>
-          <div className="col-6"><NumberField label="高 (mm)" value={element.h} onChange={(v) => onChange({ h: v })} /></div>
-        </div>
-
-        {element.type === 'text' && (
-          <label className="form-label mb-0">
-            内容
-            <FieldAutocomplete
-              value={element.content ?? ''}
-              suggestions={[
-                ...dataContract.columns.map((c) => `MASTER.${c.key}`),
-                ...systemFields,
-              ]}
-              onChange={(content) => onChange({ content })}
-              placeholder="静态文本，可用 {{MASTER.XXX}} / {{SYS.XXX}} 引用"
-            />
-          </label>
-        )}
-
-        {element.type === 'field' && (
-          <label className="form-label mb-0">
-            字段绑定
-            <select
-              className="form-select form-select-sm mt-1"
-              value={element.field ?? ''}
-              onChange={(e) => onChange({ field: e.target.value })}
-            >
-              <option value="">未绑定</option>
-              {MASTER_AND_SYSTEM_OPTIONS(dataContract, systemFields).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </label>
-        )}
-
-        <label className="form-check">
-          <input
-            type="checkbox"
-            className="form-check-input"
-            checked={element.visible !== false}
-            onChange={(e) => onChange({ visible: e.target.checked })}
-          />
-          <span className="form-check-label">可见</span>
-        </label>
-      </div>
-    )
-  }
   return (
     <div className="p-3 d-flex flex-column gap-3">
       <div>

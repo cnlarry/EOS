@@ -1,7 +1,7 @@
 namespace EOS.API.Models;
 
-/// <summary>设计器权限模式。</summary>
-public sealed record LayoutDesignerMode(bool CanDesign, bool CanAdjust);
+/// <summary>设计器权限模式：只有完整设计一档（微调档已退役）。</summary>
+public sealed record LayoutDesignerMode(bool CanDesign);
 
 /// <summary>生效版式（内置或客户定制），供设计器编辑与打印读取。</summary>
 public sealed record EffectiveLayout(

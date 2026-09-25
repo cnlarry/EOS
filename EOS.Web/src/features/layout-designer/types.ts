@@ -104,7 +104,6 @@ export interface DataContract {
 
 export interface DesignerMode {
   canDesign: boolean
-  canAdjust: boolean
 }
 
 export interface DesignerDefinition {
