@@ -56,7 +56,11 @@ public static class FormLayoutDerivation
         return RemarkKey.IsMatch(key ?? string.Empty);
     }
 
-    /// <summary>零配置模块的默认版式（纯函数）。</summary>
+    /// <summary>
+    /// 【已退休，运行时不调用】按字段级配置推导默认版式。
+    /// 模块级版式是唯一真源后，无版式行 = 未定制（字段按元数据顺序原样渲染），不再推导；
+    /// 本方法与 <see cref="FormLayoutFieldInput"/> 随字段级配置列一并删除（P4 删列批次）。
+    /// </summary>
     public static FormLayoutDefinition DeriveDefault(
         IReadOnlyList<FormLayoutFieldInput> master,
         IReadOnlyList<FormLayoutFieldInput> detail,

@@ -534,14 +534,12 @@ public sealed class FormLayoutRepository(
     }
 
     /// <summary>
-    /// 设计态看到的页签必须与运行态一致：版式表有页签则用它，否则回落到既有的
-    /// <c>MODULES.FORM_TABS</c>，再兜底为常驻的 1 号页签（该列退役后只剩后两者）。
+    /// 设计态看到的页签必须与运行态一致：页签只来自版式表（<c>MODULE_FORM_TAB</c>），
+    /// 没有页签行时兜底为常驻的 1 号页签。
     /// </summary>
     private static IReadOnlyList<FormTabDefinition> EffectiveTabs(ModuleInfo module, FormLayoutDefinition layout)
     {
-        var tabs = layout.Tabs.Count > 0
-            ? layout.Tabs.ToList()
-            : WorkbenchDefinitionBuilder.ParseFormTabs(module.FormTabs).ToList();
+        var tabs = layout.Tabs.ToList();
         if (tabs.All(tab => tab.No != 1))
         {
             tabs.Insert(0, new FormTabDefinition(1, string.Empty));
