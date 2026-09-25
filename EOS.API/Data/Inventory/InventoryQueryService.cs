@@ -120,6 +120,87 @@ public static class InventoryQueryService
         return value is null or DBNull ? null : Convert.ToDateTime(value);
     }
 
+    /// <summary>
+    /// 该 (料号, 库别) **已占用**的位置（余额非 0 且不是哨兵），量大的在前；没有则 null。
+    /// 「放哪」三级退化的第 1 级（同批次归集）。
+    /// </summary>
+    public static async Task<string?> GetOccupiedLocationAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        string proNo,
+        string depotId,
+        CancellationToken token)
+    {
+        await using var command = new SqlCommand(
+            $"SELECT TOP 1 LOCATION_NO FROM dbo.{BalanceTable} "
+            + "WHERE LTRIM(RTRIM(PRO_NO))=@p AND LTRIM(RTRIM(DEPOT_ID))=@d "
+            + $"AND ISNULL(QTY,0) <> 0 AND LTRIM(RTRIM(LOCATION_NO)) <> N'{LocationSentinel}' "
+            + "ORDER BY ABS(ISNULL(QTY,0)) DESC, LOCATION_NO ASC;",
+            connection, transaction);
+        command.Parameters.Add("@p", SqlDbType.NVarChar, 30).Value = proNo.Trim();
+        command.Parameters.Add("@d", SqlDbType.NVarChar, 10).Value = depotId.Trim();
+        var value = await command.ExecuteScalarAsync(token);
+        return value is null or DBNull ? null : Convert.ToString(value)?.Trim();
+    }
+
+    /// <summary>
+    /// 该 (料号, 库别) **最近一次记账**用过的位置（流水里最近一条非哨兵位置）；没有则 null。
+    /// 「放哪」三级退化的第 2 级。取最近一条**非哨兵**的位置，而不是最近一条流水的位置：
+    /// 最近那条若是哨兵（当时没记位置），拿它当"上次放置的位置"等于什么都没说。
+    /// </summary>
+    public static async Task<string?> GetLatestLedgerLocationAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        string proNo,
+        string depotId,
+        CancellationToken token)
+    {
+        await using var command = new SqlCommand(
+            $"SELECT TOP 1 LOCATION_NO FROM dbo.{LedgerTable} "
+            + "WHERE LTRIM(RTRIM(PRO_NO))=@p AND LTRIM(RTRIM(DEPOT_ID))=@d "
+            + $"AND LTRIM(RTRIM(ISNULL(LOCATION_NO, N''))) <> N'' AND LTRIM(RTRIM(LOCATION_NO)) <> N'{LocationSentinel}' "
+            + "ORDER BY MUTUALITY_DATE DESC, MUTUALITY_SERIAL_NO DESC;",
+            connection, transaction);
+        command.Parameters.Add("@p", SqlDbType.NVarChar, 30).Value = proNo.Trim();
+        command.Parameters.Add("@d", SqlDbType.NVarChar, 10).Value = depotId.Trim();
+        var value = await command.ExecuteScalarAsync(token);
+        return value is null or DBNull ? null : Convert.ToString(value)?.Trim();
+    }
+
+    /// <summary>
+    /// 该库别里**当前无库存**的启用位置，按 `SEQ_NO` 升序取前 <paramref name="limit"/> 个
+    /// （三级退化的第 3 级）。候选**先排好序**交给解析器，是解析器的既定分工。
+    /// 「区」暂取整个库别：单据没给位置时，没有任何锚点能确定"哪个区"；要收窄到区，得先有目标区。
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> GetEmptyLocationsAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        string depotId,
+        int limit,
+        CancellationToken token)
+    {
+        await using var command = new SqlCommand(
+            "SELECT TOP (@limit) l.LOCATION_NO FROM dbo.DEPOT_LOCATION l "
+            + $"WHERE LTRIM(RTRIM(l.DEPOT_ID))=@d AND ISNULL(l.STATUS, N'A') = N'A' "
+            // "未指定位置"本身是每个库别的一行真实数据，但它不是一个货位：候选里不留它
+            + $"AND LTRIM(RTRIM(l.LOCATION_NO)) <> N'{LocationSentinel}' "
+            + $"AND NOT EXISTS (SELECT 1 FROM dbo.{BalanceTable} b "
+            + "WHERE b.DEPOT_ID = l.DEPOT_ID AND b.LOCATION_NO = l.LOCATION_NO AND ISNULL(b.QTY, 0) <> 0) "
+            + "ORDER BY ISNULL(l.SEQ_NO, 2147483647), l.LOCATION_NO;",
+            connection, transaction);
+        command.Parameters.Add("@d", SqlDbType.NVarChar, 10).Value = depotId.Trim();
+        command.Parameters.Add("@limit", SqlDbType.Int).Value = Math.Max(1, limit);
+
+        var result = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            if (!reader.IsDBNull(0) && reader.GetString(0).Trim() is { Length: > 0 } value)
+                result.Add(value);
+        }
+        return result;
+    }
+
     // ===== 聚合读 =====
 
     /// <summary>

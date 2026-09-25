@@ -383,6 +383,10 @@ public sealed class InventoryMoveSql
         var affected = 0;
         if (IsApprove)
             affected += await PrecheckAsync(token);
+        // 存放方式解析（D1c）：入库且单据没给位置时，按库别策略解析「放哪」并写回临时表。
+        // 必须在**归一化之前**——归一化把「没填位置」抹成哨兵 N'-'，之后就没有这个信息了。
+        if (IsApprove && direct == 1)
+            await ResolveInboundLocationsAsync(token);
         affected += await NormalizeAsync(token);
         // 位置校验必须在归一化之后：未填位置此时已被归一为哨兵 N'-'。
         await PrecheckLocationsAsync(token);
@@ -438,6 +442,53 @@ public sealed class InventoryMoveSql
         {
             await InventoryPeriodService.EnsureLedgerWritableAsync(
                 _connection, _transaction, ledgerDate, billType, billNo, token);
+        }
+    }
+
+    /// <summary>
+    /// 入库行的「放哪」（ADR-014 §3.12 / ADR-020 D1c）：单据没给位置时按库别策略解析，写回临时表。
+    /// </summary>
+    /// <remarks>
+    /// 三道边界，都是刻意的：
+    /// <list type="bullet">
+    /// <item>只处理**批核方向的入库**。出库的位置是"从哪儿拿"，必须由单据指明——系统猜错就是把别人的货发了。</item>
+    /// <item>只处理位置为**空 / 哨兵**的行：单据给了位置就照单据走，解析器不改人填的东西。</item>
+    /// <item>解批的反向**不在这里重解析**：反向由流水镜像承担（见 <see cref="WriteLogAsync"/>）——
+    /// 重解析可能挑到另一个位置（"已占用 / 上次放置 / 空位"都会变），反向行就对不上批核行，同一个库存键被劈成两个。</item>
+    /// </list>
+    /// </remarks>
+    private async Task ResolveInboundLocationsAsync(CancellationToken token)
+    {
+        var candidates = new List<(string DepotId, string ProNo)>();
+        await using (var command = new SqlCommand(
+            $"SELECT DISTINCT LTRIM(RTRIM(t.DEPOT_ID)), LTRIM(RTRIM(t.PRO_NO)) FROM {Tmp} t "
+            + "WHERE ISNULL(NULLIF(LTRIM(RTRIM(t.LOCATION_NO)), N''), N'-') = N'-' "
+            + "AND LTRIM(RTRIM(t.DEPOT_ID)) <> N'' AND LTRIM(RTRIM(t.PRO_NO)) <> N'';",
+            _connection, _transaction))
+        {
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                candidates.Add((reader.GetString(0), reader.GetString(1)));
+            }
+        }
+
+        foreach (var (depotId, proNo) in candidates)
+        {
+            var policy = await _policies.ResolveAsync(depotId, _connection, _transaction, token);
+            var resolution = await DepotLocationService.ResolveInboundAsync(
+                _connection, _transaction, policy.LocationMode, policy.StorageMode, depotId, proNo,
+                DepotLocationResolver.DefaultSentinel, token);
+            if (resolution.IsSentinel)
+            {
+                continue;   // 解析不出就保持原样，随后归一化成哨兵（缺配置不是单据的失败）
+            }
+
+            await ExecAsync(
+                $"UPDATE {Tmp} SET LOCATION_NO = @loc "
+                + "WHERE LTRIM(RTRIM(DEPOT_ID)) = @d AND LTRIM(RTRIM(PRO_NO)) = @p "
+                + "AND ISNULL(NULLIF(LTRIM(RTRIM(LOCATION_NO)), N''), N'-') = N'-';",
+                token, ("@loc", resolution.LocationNo), ("@d", depotId), ("@p", proNo));
         }
     }
 
@@ -744,7 +795,11 @@ public sealed class InventoryMoveSql
     /// </summary>
     private async Task<int> WriteLogAsync(CancellationToken token) => await ExecAsync(
         "INSERT INTO dbo.INV_DEPOT_LOG(PRO_NO, MUTUALITY_DATE, IN_OUT, MUTUALITY_TYPE, MUTUALITY_NO, MUTUALITY_SERIAL_NO, DEPOT_ID, LOCATION_NO, LOCATION_PATH, QTY, PRICE, AMOUNT, BATCH_NO, MUTUALITY_QTY, MUTUALITY_UNIT_ID, MUTUALITY_PRICE, MUTUALITY_CURR_ID, MUTUALITY_CURR_RATE, MUTUALITY_AMOUNT) "
-        + $"SELECT t.PRO_NO, {LedgerDateExpression()}, @io, t.BILL_TYPE, t.BILL_NO, t.SERIAL_NO, t.DEPOT_ID, t.LOCATION_NO, "
+        + $"SELECT t.PRO_NO, {LedgerDateExpression()}, @io, t.BILL_TYPE, t.BILL_NO, t.SERIAL_NO, t.DEPOT_ID, "
+        // 位置：单据给了就照单据写；没给（空 / 哨兵）则**沿用这张单当初那一行的位置**——
+        // 批核时位置可能是引擎替它挑的（存放方式解析），反向行落到哨兵就把同一个库存键劈成了两个。
+        + "CASE WHEN ISNULL(NULLIF(LTRIM(RTRIM(t.LOCATION_NO)), N''), N'-') <> N'-' THEN t.LOCATION_NO "
+        + "ELSE ISNULL(ORIG.LOCATION_NO, t.LOCATION_NO) END, "
         + "CASE WHEN @approve = 1 THEN LK.LOCATION_PATH ELSE ISNULL(SNAP.LOCATION_PATH, LK.LOCATION_PATH) END, "
         + "CASE WHEN @positive = 1 THEN t.BASE_QTY ELSE -t.BASE_QTY END, t.BASE_PRICE, "
         + "CASE WHEN @positive = 1 THEN t.AMOUNT*t.CURR_RATE ELSE -t.AMOUNT*t.CURR_RATE END, t.BATCH_NO, "
@@ -756,7 +811,11 @@ public sealed class InventoryMoveSql
         + "WHERE L.PRO_NO=t.PRO_NO AND L.DEPOT_ID=t.DEPOT_ID AND L.LOCATION_NO=t.LOCATION_NO "
         + "AND L.MUTUALITY_TYPE=t.BILL_TYPE AND L.MUTUALITY_NO=t.BILL_NO "
         + "AND L.MUTUALITY_SERIAL_NO=t.SERIAL_NO AND L.IN_OUT=@originIo "
-        + "ORDER BY L.MUTUALITY_DATE DESC) SNAP",
+        + "ORDER BY L.MUTUALITY_DATE DESC) SNAP "
+        + "OUTER APPLY (SELECT MAX(L2.LOCATION_NO) AS LOCATION_NO FROM dbo.INV_DEPOT_LOG L2 "
+        + "WHERE L2.PRO_NO=t.PRO_NO AND L2.DEPOT_ID=t.DEPOT_ID AND L2.MUTUALITY_TYPE=t.BILL_TYPE "
+        + "AND L2.MUTUALITY_NO=t.BILL_NO AND L2.MUTUALITY_SERIAL_NO=t.SERIAL_NO "
+        + "AND LTRIM(RTRIM(ISNULL(L2.LOCATION_NO, N''))) <> N'' AND LTRIM(RTRIM(L2.LOCATION_NO)) <> N'-') ORIG",
         token,
         ("@positive", IsApprove ? 1 : 0),
         ("@approve", IsApprove ? 1 : 0),
