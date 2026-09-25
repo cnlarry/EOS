@@ -68,7 +68,10 @@ public sealed record WorkbenchDefinition(
     string? DefinitionVersion = null,
     [property: JsonPropertyName("businessActions")] JsonElement? BusinessActions = null,
     [property: JsonPropertyName("validationRules")] JsonElement? ValidationRules = null,
-    [property: JsonPropertyName("effectEngine")] JsonElement? EffectEngine = null)
+    [property: JsonPropertyName("effectEngine")] JsonElement? EffectEngine = null,
+    // 模块级表单版式段（随快照下发）。放在参数表末尾，让快照 JSON 的新增段落在尾部：
+    // 逐字比对时"首个差异位置"出现在末尾，历史快照一眼能看出只多了这一段。
+    FormLayoutDefinition? FormLayout = null)
 {
     /// <summary>Effect-engine gate read from the published snapshot (effectEngine.enabled).</summary>
     public bool EffectEngineEnabled =>
@@ -108,9 +111,11 @@ public sealed record FormTabDefinition(int No, string Title);
 /// </summary>
 public sealed record FormOptionItem(string Value, string Label, bool Disabled = false);
 public sealed record FormDefinition(int ModuleId, string Title, string MasterTable, string? DetailTable, bool HasAdd, bool HasEdit, string Mode, IReadOnlyList<FormFieldDefinition> MasterFields, IReadOnlyList<FormFieldDefinition> DetailFields, IReadOnlyList<string> MasterPkOrder, string DetailNoFields, string DetailDfVerify, IReadOnlyList<FormTabDefinition> Tabs = default!, int Columns = 2, IReadOnlyList<WorkbenchButton>? Buttons = null, IReadOnlyDictionary<string, string> DefaultValues = default!, bool HasWorkflow = false, bool IfCopy = false, bool SearchMaster = false, bool SearchDetail = false, bool CanDelete = false, bool CanApprove = false, bool CanDeapprove = false, bool CanEndCase = false, bool CanUnEndCase = false, bool CanFileView = false, bool CanFileUpda = false, bool CanFileEdit = false, bool CanFileDele = false, bool CanAddNew = false, bool CanEdit = false, string? HelpUrl = null, bool CanSetup = false, bool HasStatelessApprove = false, bool HasApproveCapability = false,
-    [property: JsonPropertyName("userActions")] IReadOnlyList<DocumentActionMetadata>? UserActions = null);
+    [property: JsonPropertyName("userActions")] IReadOnlyList<DocumentActionMetadata>? UserActions = null,
+    // 表单设计权（供前端决定是否渲染设计入口）。服务端写端点独立鉴权，此处只影响界面。
+    bool CanFormDesign = false);
 public sealed record FormFieldDefinition(string Key, string Label, string DataType, int DisplayLength, string? DisplayFormat, bool IsRequired, int? VerifyIndex, string? Regex, string? DefaultValue, bool IsReadonly, bool IsVisible, bool OnlyChoose, bool ChooseMultiple, string? ChoosePage, IReadOnlyList<FieldChooserSource> Choosers, bool IsPrimaryKey, bool IsAutoIncrement, bool IsVirtual, bool IsCost, bool IsSecrecy, bool ServerFilled, int? MaxLength, int TabNo = 1, int? FormOrder = null, int Span = 1, bool NewLine = false, string? CellGroup = null, int CellRole = 0, IReadOnlyList<FormOptionItem>? Options = null, bool DisplayOnly = false, bool CanCopy = true,
-    int? Precision = null, int? Scale = null);
+    int? Precision = null, int? Scale = null, int RowSpan = 1, string? SectionId = null);
 public sealed record WorkbenchData(IReadOnlyList<Dictionary<string, object?>> Rows, int Total, int Page, int PageSize);
 public sealed record WorkbenchQueryCondition(string Field, string Operator, string? Value, string? ValueTo, IReadOnlyList<string>? Values, string Logic = "and");
 public sealed record WorkbenchQuery(IReadOnlyList<WorkbenchQueryCondition> Conditions);

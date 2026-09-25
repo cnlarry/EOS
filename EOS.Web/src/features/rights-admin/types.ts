@@ -13,6 +13,7 @@ export interface EffectiveModuleRights {
   cost: boolean
   setup: boolean
   moduleConfig: boolean
+  formDesign: boolean
   secrecy: boolean
   endCase: boolean
   unEndCase: boolean
@@ -51,6 +52,7 @@ export interface ModuleRightsRow {
   cost: boolean
   setup: boolean
   moduleConfig: boolean
+  formDesign: boolean
   secrecy: boolean
   endCase: boolean
   unEndCase: boolean
@@ -85,6 +87,7 @@ export interface ModuleRightsInput {
   cost: boolean
   setup: boolean
   moduleConfig: boolean
+  formDesign: boolean
   secrecy: boolean
   endCase: boolean
   unEndCase: boolean
@@ -198,6 +201,7 @@ export const BASIC_RIGHTS: { key: keyof Omit<ModuleRightsInput, 'moduleId' | 'ex
   { key: 'cost', label: '成本' },
   { key: 'setup', label: '设置' },
   { key: 'moduleConfig', label: '模块配置' },
+  { key: 'formDesign', label: '表单设计' },
   { key: 'secrecy', label: '保密' },
   { key: 'endCase', label: '结案' },
   { key: 'unEndCase', label: '未结案' },
@@ -232,6 +236,7 @@ export function emptyModuleInput(moduleId: number): ModuleRightsInput {
     cost: false,
     setup: false,
     moduleConfig: false,
+    formDesign: false,
     secrecy: false,
     endCase: false,
     unEndCase: false,
@@ -266,6 +271,7 @@ export function rowToInput(row: ModuleRightsRow): ModuleRightsInput {
     cost: row.cost,
     setup: row.setup,
     moduleConfig: row.moduleConfig,
+    formDesign: row.formDesign,
     secrecy: row.secrecy,
     endCase: row.endCase,
     unEndCase: row.unEndCase,

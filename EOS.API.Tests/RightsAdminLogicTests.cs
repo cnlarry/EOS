@@ -211,7 +211,9 @@ public class RightsAdminLogicTests
         Assert.Contains("APPROVE_TAG", RightsColumnWhitelist.AllColumns);
         Assert.Contains("FILE_DELE_TAG", RightsColumnWhitelist.AllColumns);
         Assert.Contains("DENY_VIEW_FIELD_MASTER", RightsColumnWhitelist.AllColumns);
-        Assert.Equal(19, RightsColumnWhitelist.BitColumns.Length);
+        // 版式设计权也在写白名单内：否则权限管理界面勾不了这一位（只能靠脚本授予）
+        Assert.Contains("FORM_DESIGN_TAG", RightsColumnWhitelist.BitColumns);
+        Assert.Equal(21, RightsColumnWhitelist.BitColumns.Length);
         Assert.Equal(6, RightsColumnWhitelist.DenyColumns.Length);
     }
 }

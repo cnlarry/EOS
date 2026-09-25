@@ -17,7 +17,7 @@ public static class RightsColumnWhitelist
     public static readonly string[] BitColumns =
     [
         "ADDNEW_TAG", "EDIT_TAG", "DELETE_TAG", "APPROVE_TAG", "DEAPPROVE_TAG", "REPORT_TAG",
-        "COST_TAG", "SETUP_TAG", "MODULE_CONFIG_TAG", "SECRECY_TAG", "ENDCASE_TAG", "UNENDCASE_TAG",
+        "COST_TAG", "SETUP_TAG", "MODULE_CONFIG_TAG", "FORM_DESIGN_TAG", "SECRECY_TAG", "ENDCASE_TAG", "UNENDCASE_TAG",
         "OTHER1_TAG", "OTHER2_TAG", "OTHER3_TAG", "OTHER4_TAG",
         "FILE_VIEW_TAG", "FILE_UPDA_TAG", "FILE_EDIT_TAG", "FILE_DELE_TAG",
     ];
@@ -46,7 +46,7 @@ internal static class RightsAdminLogic
             || string.Equals(input.ExecTag.Trim(), "A", StringComparison.OrdinalIgnoreCase);
         return execTagEmpty
             && !input.AddNew && !input.Edit && !input.Delete && !input.Approve && !input.Deapprove && !input.Report
-            && !input.Cost && !input.Setup && !input.ModuleConfig && !input.Secrecy && !input.EndCase && !input.UnEndCase
+            && !input.Cost && !input.Setup && !input.ModuleConfig && !input.FormDesign && !input.Secrecy && !input.EndCase && !input.UnEndCase
             && !input.Other1 && !input.Other2 && !input.Other3 && !input.Other4
             && !input.FileView && !input.FileUpda && !input.FileEdit && !input.FileDele
             && string.IsNullOrWhiteSpace(input.DenyViewMaster) && string.IsNullOrWhiteSpace(input.DenyViewDetail)
@@ -121,7 +121,8 @@ internal static class RightsAdminLogic
             Intersect(groups, group => ParseDenyList(group.DenyNewDetail)),
             Intersect(groups, group => ParseDenyList(group.DenyModiMaster)),
             Intersect(groups, group => ParseDenyList(group.DenyModiDetail)),
-            CombineDataFilters(groups.Select(group => group.DataFilter), " AND "));
+            CombineDataFilters(groups.Select(group => group.DataFilter), " AND "),
+            Or(group => group.FormDesign));
     }
 
     /// <summary>
@@ -155,7 +156,7 @@ internal static class RightsAdminLogic
         ParseDenyList(input.DenyViewMaster), ParseDenyList(input.DenyViewDetail),
         ParseDenyList(input.DenyNewMaster), ParseDenyList(input.DenyNewDetail),
         ParseDenyList(input.DenyModiMaster), ParseDenyList(input.DenyModiDetail),
-        (input.DataFilter ?? string.Empty).Trim());
+        (input.DataFilter ?? string.Empty).Trim(), input.FormDesign);
 
     private static EffectiveModuleRights None() => new(
         Source: "none",
@@ -166,7 +167,7 @@ internal static class RightsAdminLogic
         Other1: false, Other2: false, Other3: false, Other4: false,
         FileView: false, FileUpda: false, FileEdit: false, FileDele: false,
         DenyViewMaster: [], DenyViewDetail: [], DenyNewMaster: [], DenyNewDetail: [],
-        DenyModiMaster: [], DenyModiDetail: [], DataFilter: string.Empty);
+        DenyModiMaster: [], DenyModiDetail: [], DataFilter: string.Empty, FormDesign: false);
 
     private static IReadOnlyList<string> Intersect(
         IReadOnlyList<ModuleRightsInput> groups,
@@ -211,7 +212,7 @@ public sealed class RightsAdminRepository(
         "M_IDX",
         "EXEC_TAG",
         "ADDNEW_TAG", "EDIT_TAG", "DELETE_TAG", "APPROVE_TAG", "DEAPPROVE_TAG", "REPORT_TAG",
-        "COST_TAG", "SETUP_TAG", "MODULE_CONFIG_TAG", "SECRECY_TAG", "ENDCASE_TAG", "UNENDCASE_TAG",
+        "COST_TAG", "SETUP_TAG", "MODULE_CONFIG_TAG", "FORM_DESIGN_TAG", "SECRECY_TAG", "ENDCASE_TAG", "UNENDCASE_TAG",
         "OTHER1_TAG", "OTHER2_TAG", "OTHER3_TAG", "OTHER4_TAG",
         "FILE_VIEW_TAG", "FILE_UPDA_TAG", "FILE_EDIT_TAG", "FILE_DELE_TAG",
         "DENY_VIEW_FIELD_MASTER", "DENY_VIEW_FIELD_DETAIL",
@@ -1093,7 +1094,7 @@ public sealed class RightsAdminRepository(
             value.DenyNewMaster ?? string.Empty, value.DenyNewDetail ?? string.Empty,
             value.DenyModiMaster ?? string.Empty, value.DenyModiDetail ?? string.Empty,
             value.DataFilter ?? string.Empty,
-            editable is not null, effective);
+            editable is not null, effective, value.FormDesign);
     }
 
     private static ReportRightsRow BuildReportRow(
@@ -1180,6 +1181,7 @@ public sealed class RightsAdminRepository(
                 reader.GetNullableBoolean("COST_TAG"),
                 reader.GetNullableBoolean("SETUP_TAG"),
                 reader.GetNullableBoolean("MODULE_CONFIG_TAG"),
+                reader.GetNullableBoolean("FORM_DESIGN_TAG"),
                 reader.GetNullableBoolean("SECRECY_TAG"),
                 reader.GetNullableBoolean("ENDCASE_TAG"),
                 reader.GetNullableBoolean("UNENDCASE_TAG"),
@@ -1433,6 +1435,7 @@ public sealed class RightsAdminRepository(
                 "COST_TAG" => item.Cost,
                 "SETUP_TAG" => item.Setup,
                 "MODULE_CONFIG_TAG" => item.ModuleConfig,
+                "FORM_DESIGN_TAG" => item.FormDesign,
                 "SECRECY_TAG" => item.Secrecy,
                 "ENDCASE_TAG" => item.EndCase,
                 "UNENDCASE_TAG" => item.UnEndCase,
@@ -1516,7 +1519,7 @@ public sealed class RightsAdminRepository(
         int ModuleId,
         string? ExecTag,
         bool AddNew, bool Edit, bool Delete, bool Approve, bool Deapprove, bool Report,
-        bool Cost, bool Setup, bool ModuleConfig, bool Secrecy, bool EndCase, bool UnEndCase,
+        bool Cost, bool Setup, bool ModuleConfig, bool FormDesign, bool Secrecy, bool EndCase, bool UnEndCase,
         bool Other1, bool Other2, bool Other3, bool Other4,
         bool FileView, bool FileUpda, bool FileEdit, bool FileDele,
         string DenyViewMaster, string DenyViewDetail, string DenyNewMaster, string DenyNewDetail,
@@ -1527,7 +1530,7 @@ public sealed class RightsAdminRepository(
             Cost, Setup, ModuleConfig, Secrecy, EndCase, UnEndCase, Other1, Other2, Other3, Other4,
             FileView, FileUpda, FileEdit, FileDele,
             DenyViewMaster, DenyViewDetail, DenyNewMaster, DenyNewDetail,
-            DenyModiMaster, DenyModiDetail, DataFilter);
+            DenyModiMaster, DenyModiDetail, DataFilter, FormDesign);
     }
 
     private sealed record ReportRowData(

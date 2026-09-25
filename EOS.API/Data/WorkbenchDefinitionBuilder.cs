@@ -1,3 +1,4 @@
+using EOS.API.Data.Forms;
 using EOS.API.Models;
 using EOS.API.Telemetry;
 using Microsoft.Data.SqlClient;
@@ -139,10 +140,15 @@ public sealed class WorkbenchDefinitionBuilder(
                 await ReadFields(connection, userId, master, detail, canViewCost, canViewSecrecy, deniedDetailFields, token),
                 detail, formEnabledModules, token);
         var (_, groupExpressions) = await ReadGroupExpressionsAsync(connection, moduleId, token);
+        // 版式段是模块级事实，随快照冻结；历史快照没有该段时按当前配置补读（含默认推导）
+        var formLayout = baseline.FormLayout ?? await FormLayoutReader.ReadAsync(
+            connection, moduleId, master, detail,
+            baseline.FormColumns is int columns and > 0 ? columns : 2, token);
         return baseline with
         {
             MasterFields = masterFields,
             DetailFields = detailFields,
+            FormLayout = formLayout,
             DefaultSort = NormalizeSort(baseline.DefaultSort, master, masterFields),
             FilterFieldKeys = await ReadFilterFieldKeys(connection, master, canViewCost, canViewSecrecy, deniedMasterFields, token),
             UserId = userId.Trim(),
@@ -267,7 +273,10 @@ public sealed class WorkbenchDefinitionBuilder(
             helpUrl);
         logger.LogDebug("工作台定义 module={ModuleId} title={Title} master={Master} detail={Detail} masterFields={MasterFieldCount} detailFields={DetailFieldCount}",
             moduleId,title,master,detail,definition.MasterFields.Count,definition.DetailFields.Count);
-        return definition with { DefinitionVersion = version };
+        // 版式：有版式行即定制（该表字段集完全由版式决定），无行则按字段级配置推导默认版式
+        var formLayout = await FormLayoutReader.ReadAsync(
+            connection, moduleId, master, detail, formColumns is int columns and > 0 ? columns : 2, token);
+        return definition with { DefinitionVersion = version, FormLayout = formLayout };
     }
 
 
@@ -309,6 +318,9 @@ public sealed class WorkbenchDefinitionBuilder(
         var pkColumns=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,definition.MasterTable,token);
         var masterRows=await ReadFormFieldRows(connection,definition.MasterTable,definition.MasterTable,token);
         var masterFields=FormFieldSelector.Select(masterRows,mode,canViewCost,canViewSecrecy,deniedMasterFields,deniedNewMasterFields,deniedModiMasterFields);
+        // 权限过滤（上一步）→ 版式裁剪字段集 → 版式排序与属性。未定制的表原样保留，
+        // 故零配置模块的字段集与顺序与改造前逐字一致。
+        masterFields=FormLayoutDerivation.ApplyMasterLayout(masterFields,definition.FormLayout);
         IReadOnlyList<FormFieldDefinition> detailFields=[];
         var detailDfVerify="";
         if(definition.DetailTable is not null)
@@ -321,6 +333,16 @@ public sealed class WorkbenchDefinitionBuilder(
                 .Where(field=>rowsByKey.ContainsKey(field.Key))
                 .Select(field=>rowsByKey[field.Key])
                 .ToList();
+            // 明细版式（已定制时）：按版式行重排列序、剔除隐藏列。随后仍会补回必填与
+            // 引擎必需的列（见下），故版式不可能把必填项挤出表单。
+            var orderedKeys=orderedRows.Select(row=>row.Key).ToList();
+            var layoutKeys=FormLayoutDerivation.ApplyDetailOrder(orderedKeys,definition.FormLayout);
+            if(!ReferenceEquals(layoutKeys,orderedKeys))
+            {
+                var byKey=new Dictionary<string,FormFieldRow>(StringComparer.OrdinalIgnoreCase);
+                foreach(var row in orderedRows) byKey.TryAdd(row.Key,row);
+                orderedRows=layoutKeys.Where(key=>byKey.ContainsKey(key)).Select(key=>byKey[key]).ToList();
+            }
             // Required fields (IS_VERIFY=1) must stay in the form: the workbench column config only
             // controls the list view, not which fields can be entered; a missing required column in
             // the user/default config would make document creation fail.
@@ -380,7 +402,10 @@ public sealed class WorkbenchDefinitionBuilder(
             masterFields=masterFields.Select(field=>field with { IsReadonly=true }).ToList();
             detailFields=detailFields.Select(field=>field with { IsReadonly=true }).ToList();
         }
-        var tabs = ParseFormTabs(definition.FormTabs);
+        // 页签优先取版式表（无版式行时推导结果即既有 MODULES.FORM_TABS 的解析值，观感不变）
+        var tabs = definition.FormLayout is { Tabs.Count: > 0 } layoutTabs
+            ? layoutTabs.Tabs
+            : ParseFormTabs(definition.FormTabs);
         var columns = definition.FormColumns is int formColumns and > 0 ? formColumns : 2;
         var defaultValues = await BuildNewDefaultsAsync(connection,definition,masterFields,mode,token);
         // 无副作用批核能力与服务端分支同口径（WorkflowStates.IsStatelessApproveCapable），
@@ -397,12 +422,16 @@ public sealed class WorkbenchDefinitionBuilder(
             definition.EffectEngineEnabled,
             definition.HasWorkflow,
             EnabledActionEventCodes(definition).ToList());
+        // 版式设计权：只影响前端是否渲染设计入口，服务端写端点仍独立鉴权
+        var canFormDesign = (await FormDesignPermissionResolver.ResolveAsync(
+            connection, userId, definition.ModuleId, token)).CanDesign;
         return new FormDefinition(definition.ModuleId,definition.Title,definition.MasterTable,definition.DetailTable,
             definition.HasAdd,definition.HasEdit,mode,masterFields,detailFields,pkColumns,definition.DetailNoFields,detailDfVerify,
             tabs,columns,definition.FormButtons,defaultValues,definition.HasWorkflow,
             definition.IfCopy,definition.SearchMaster,definition.SearchDetail,
             canDelete,canApprove,canDeapprove,canEndCase,canUnEndCase,canFileView,canFileUpda,canFileEdit,canFileDele,
-            canAddNew,canEdit,definition.HelpUrl,canSetup,hasStatelessApprove,hasApproveCapability);
+            canAddNew,canEdit,definition.HelpUrl,canSetup,hasStatelessApprove,hasApproveCapability,
+            CanFormDesign: canFormDesign);
     }
 
     /// <summary>已发布定义里启用的效果动作事件码（供批核能力判定；未启用/占位行不计）。</summary>
@@ -555,7 +584,7 @@ public sealed class WorkbenchDefinitionBuilder(
     /// 空串之外还有两类字符串占位（'NULL'、'&nbsp;'——历史元数据补齐脚本把"无说明"写成了它们），
     /// 它们非空，只判空串的兜底拦不住，会原样显示到表单标签上。
     /// </summary>
-    private static async Task<IReadOnlyList<FormFieldRow>> ReadFormFieldRows(SqlConnection connection,string masterTable,string targetTable,CancellationToken token,bool includeVirtual=false)
+    internal static async Task<IReadOnlyList<FormFieldRow>> ReadFormFieldRows(SqlConnection connection,string masterTable,string targetTable,CancellationToken token,bool includeVirtual=false)
     {
         const string sql="""
             SELECT LTRIM(RTRIM(f.F_ID)) AS F_ID,COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))) AS F_DESC,

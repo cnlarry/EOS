@@ -1,4 +1,5 @@
 using System.Data;
+using EOS.API.Data.Forms;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
@@ -18,42 +19,14 @@ public sealed class ReportFormLayoutRepository(
     ReportFormatRepository formatRepository,
     ILogger<ReportFormLayoutRepository> logger)
 {
-    /// <summary>设计器权限：个人 FORM_DESIGN/ADJUST_TAG 优先，否则组 OR。</summary>
+    /// <summary>设计器权限：个人 FORM_DESIGN/ADJUST_TAG 优先，否则组 OR（判定与表单版式共用同一解析器）。</summary>
     public async Task<LayoutDesignerMode> GetDesignerModeAsync(
         string userId, int moduleId, CancellationToken token)
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
-
-        const string personalSql = """
-            SELECT ISNULL(FORM_DESIGN_TAG, 0) AS CAN_DESIGN, ISNULL(FORM_ADJUST_TAG, 0) AS CAN_ADJUST
-            FROM dbo.SYSDD WITH (NOLOCK)
-            WHERE USER_ID = @UserId AND M_IDX = @ModuleId;
-            """;
-        await using (var command = new SqlCommand(personalSql, connection))
-        {
-            command.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
-            command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-            await using var reader = await command.ExecuteReaderAsync(token);
-            if (await reader.ReadAsync(token))
-                return new LayoutDesignerMode(reader.GetBoolean("CAN_DESIGN"), reader.GetBoolean("CAN_ADJUST"));
-        }
-
-        const string groupSql = """
-            SELECT ISNULL(MAX(CAST(FORM_DESIGN_TAG AS INT)), 0) AS CAN_DESIGN,
-                   ISNULL(MAX(CAST(FORM_ADJUST_TAG AS INT)), 0) AS CAN_ADJUST
-            FROM dbo.SYSDH h WITH (NOLOCK)
-            INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
-            WHERE gu.USER_ID = @UserId AND h.M_IDX = @ModuleId;
-            """;
-        await using var groupCommand = new SqlCommand(groupSql, connection);
-        groupCommand.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
-        groupCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
-        await using var groupReader = await groupCommand.ExecuteReaderAsync(token);
-        if (await groupReader.ReadAsync(token))
-            return new LayoutDesignerMode(
-                groupReader.GetInt32("CAN_DESIGN") != 0, groupReader.GetInt32("CAN_ADJUST") != 0);
-        return new LayoutDesignerMode(false, false);
+        var mode = await FormDesignPermissionResolver.ResolveAsync(connection, userId, moduleId, token);
+        return new LayoutDesignerMode(mode.CanDesign, mode.CanAdjust);
     }
 
     /// <summary>是否存在任一模块的完整设计权限（页头字典等全局资产维护用）。</summary>
@@ -61,24 +34,7 @@ public sealed class ReportFormLayoutRepository(
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
-        const string personalSql = """
-            SELECT TOP 1 1 FROM dbo.SYSDD WITH (NOLOCK)
-            WHERE USER_ID = @UserId AND ISNULL(FORM_DESIGN_TAG, 0) = 1;
-            """;
-        await using (var personalCommand = new SqlCommand(personalSql, connection))
-        {
-            personalCommand.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
-            if (await personalCommand.ExecuteScalarAsync(token) is not null) return true;
-        }
-        const string groupSql = """
-            SELECT TOP 1 1
-            FROM dbo.SYSDH h WITH (NOLOCK)
-            INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
-            WHERE gu.USER_ID = @UserId AND ISNULL(h.FORM_DESIGN_TAG, 0) = 1;
-            """;
-        await using var groupCommand = new SqlCommand(groupSql, connection);
-        groupCommand.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
-        return await groupCommand.ExecuteScalarAsync(token) is not null;
+        return await FormDesignPermissionResolver.HasAnyAsync(connection, userId, token);
     }
 
     /// <summary>生效版式：绑定 (FORM_TYPE, CLIENT_ID) → (FORM_TYPE, '') → 内置格式包。</summary>
