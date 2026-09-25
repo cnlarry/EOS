@@ -918,17 +918,33 @@ public sealed class InventoryMoveSql
         + "ON g.PRO_NO=d.PRO_NO AND g.DEPOT_ID=d.DEPOT_ID "
         + $"WHERE EXISTS (SELECT 1 FROM {Tmp} t WHERE t.PRO_NO=d.PRO_NO AND t.DEPOT_ID=d.DEPOT_ID)", token);
 
+    /// <summary>
+    /// 出库充足性：**够不够出按可用量判，不按在库数量判**（ADR-020 §9.7 D7-⑧ / §10 WS-23）。
+    /// </summary>
+    /// <remarks>
+    /// **这是一次行为变更，不是笔误**：口径由 `QTY` 改为 `USEABLE_QTY`（= 数量 − 有效冻结 − 有效预留）。
+    /// 冻结与预留的**全部价值**就在于拦得住出库——拦不住的冻结只是报表上的一个数字。
+    /// 代价如实写明：在库 100、其中 10 被冻结时，出 95 会**被拒**（旧口径放行），
+    /// 而 90 恰好放行；判别性用例就是钉这一对（口径改回 `QTY` ⇒ 用例红）。
+    ///
+    /// **前提是该列可信**：`USEABLE_QTY` 由 `InventoryAvailabilityService.SyncSlotsAsync` 这一个出口维护，
+    /// 移动引擎在所有余额写入之后会调它（见 `SyncAvailabilityAsync`），冻结/预留/释放与来源结案钩子同样走它。
+    ///
+    /// **批号账那一半刻意不动**：`INV_BATCH_M` 的进出累计是**批次账**的余量，不承载冻结/预留语义，
+    /// 所以它仍按余量判——两本账各按自己的语义判，不是"漏改一处"。
+    /// </remarks>
     private async Task CheckStockAsync(CancellationToken token)
     {
         var insufficient = await QueryListAsync(
-            "SELECT s.PRO_NO, LTRIM(RTRIM(s.DEPOT_ID)) + '/' + LTRIM(RTRIM(s.LOCATION_NO)), CAST(s.BASE_QTY - ISNULL(d.QTY,0) AS varchar(30)) "
+            "SELECT s.PRO_NO, LTRIM(RTRIM(s.DEPOT_ID)) + '/' + LTRIM(RTRIM(s.LOCATION_NO)), CAST(s.BASE_QTY - ISNULL(d.USEABLE_QTY,0) AS varchar(30)) "
             + $"FROM (SELECT PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, SUM(BASE_QTY) BASE_QTY FROM {Tmp} "
             + "GROUP BY PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO) s "
             + "JOIN dbo.INV_PRO_DEPOT d ON d.PRO_NO=s.PRO_NO AND d.DEPOT_ID=s.DEPOT_ID "
             + "AND d.LOCATION_NO=s.LOCATION_NO AND d.BATCH_NO=s.BATCH_NO "
-            + "WHERE s.BASE_QTY > ISNULL(d.QTY,0) + 0.001", token);
+            + "WHERE s.BASE_QTY > ISNULL(d.USEABLE_QTY,0) + 0.001", token);
         if (insufficient.Count > 0)
-            throw new EffectValidationException("库存数量不足\n料  号---------------库别/库位---------------不足数量\n" + FormatPairs(insufficient));
+            throw new EffectValidationException("库存数量不足（按可用量判：在库数量扣掉冻结与预留之后不够出）\n"
+                + "料  号---------------库别/库位---------------不足数量\n" + FormatPairs(insufficient));
         var batchShort = await QueryListAsync(
             $"SELECT t.PRO_NO, t.BATCH_NO, CAST(t.BASE_QTY - (ISNULL(b.IN_SUM,0)-ISNULL(b.OUT_SUM,0)) AS varchar(30)) "
             + $"FROM {Tmp} t JOIN dbo.INV_BATCH_M b ON b.BATCH_NO=t.BATCH_NO AND b.PRO_NO=t.PRO_NO "
