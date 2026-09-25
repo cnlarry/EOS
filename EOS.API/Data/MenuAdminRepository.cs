@@ -907,14 +907,14 @@ public sealed class MenuAdminRepository(
               MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
               GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
               GROUP4,GROUP_EXP4,GROUP_DESC4,GROUP5,GROUP_EXP5,GROUP_DESC5,LAST_UPDATE_BY,LAST_UPDATE_DATE,
-              FORM_TABS,FORM_COLUMNS,FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG)
-             VALUES
+              FORM_BUTTONS,M_ICON,EFFECT_ENGINE_TAG)
+            VALUES
               (@M_IDX,@M_ALIAS,@M_DESC,@M_URL,@NEW_URL,@MODI_URL,@HELP_URL,@DETAIL_NO_FIELDS,@DETAIL_NO_SAVE,@SEARCH_1,@SEARCH_2,
               @M_P_IDX,@SORT_IDX,@M_TAG,@M_ROOT_IDX,@AUTO_APPROVE,@IF_COPY,@ERROR_NO_SAVE,@SORT_FIELDS,
               @MASTER_TABLE,@FILTER,@DETAIL_TABLE,@NOT_BACK_FIELDS_M,@NOT_BACK_FIELDS,
               @GROUP1,@GROUP_EXP1,@GROUP_DESC1,@GROUP2,@GROUP_EXP2,@GROUP_DESC2,@GROUP3,@GROUP_EXP3,@GROUP_DESC3,
               @GROUP4,@GROUP_EXP4,@GROUP_DESC4,@GROUP5,@GROUP_EXP5,@GROUP_DESC5,@LAST_UPDATE_BY,GETDATE(),
-              @FORM_TABS,@FORM_COLUMNS,@FORM_BUTTONS,@M_ICON,@EFFECT_ENGINE_TAG);
+              @FORM_BUTTONS,@M_ICON,@EFFECT_ENGINE_TAG);
             """;
         await using var command = BuildCommand(connection, transaction, sql, m, rootIdx, updatedBy);
         await command.ExecuteNonQueryAsync(token);
@@ -936,7 +936,7 @@ public sealed class MenuAdminRepository(
               GROUP4=@GROUP4,GROUP_EXP4=@GROUP_EXP4,GROUP_DESC4=@GROUP_DESC4,
               GROUP5=@GROUP5,GROUP_EXP5=@GROUP_EXP5,GROUP_DESC5=@GROUP_DESC5,
               LAST_UPDATE_BY=@LAST_UPDATE_BY,LAST_UPDATE_DATE=GETDATE(),
-              FORM_TABS=@FORM_TABS,FORM_COLUMNS=@FORM_COLUMNS,FORM_BUTTONS=@FORM_BUTTONS,M_ICON=@M_ICON,
+              FORM_BUTTONS=@FORM_BUTTONS,M_ICON=@M_ICON,
               EFFECT_ENGINE_TAG=@EFFECT_ENGINE_TAG
             WHERE M_IDX=@OLD_IDX;
             """;
@@ -982,8 +982,6 @@ public sealed class MenuAdminRepository(
             command.Parameters.AddWithValue($"@GROUP_DESC{i + 1}", (object?)description ?? DBNull.Value);
         }
         command.Parameters.AddWithValue("@LAST_UPDATE_BY", updatedBy);
-        command.Parameters.AddWithValue("@FORM_TABS", (object?)m.FORM_TABS ?? DBNull.Value);
-        command.Parameters.Add("@FORM_COLUMNS", SqlDbType.TinyInt).Value = m.FORM_COLUMNS is { } columns ? (byte)Math.Clamp(columns, 1, 6) : (object)DBNull.Value;
         command.Parameters.AddWithValue("@FORM_BUTTONS", (object?)m.FORM_BUTTONS ?? DBNull.Value);
         command.Parameters.AddWithValue("@M_ICON", (object?)m.M_ICON ?? DBNull.Value);
         command.Parameters.Add("@EFFECT_ENGINE_TAG", SqlDbType.Bit).Value = m.EffectEngineTag;
