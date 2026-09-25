@@ -74,12 +74,13 @@ public sealed class FormLayoutRepository(
             string.IsNullOrWhiteSpace(module.DetailTable) ? null : module.DetailTable,
             columns,
             EffectiveTabs(module, layout),
-            BuildTableDesign(module.MasterTable, layout.Master, masterFields, masterFacts, rights, isDetail: false),
+            BuildTableDesign(module.MasterTable, layout.Master, masterFields, masterFacts, rights,
+                isDetail: false, customized: layout.MasterCustomized),
             BuildTableDesign(
                 module.DetailTable ?? string.Empty,
                 layout.Detail.Select(row => new FormLayoutRow(
                     row.Key, 1, row.OrderNo, 1, 1, false, null, null, 0, row.Hidden)).ToList(),
-                detailFields, detailFacts, rights, isDetail: true),
+                detailFields, detailFacts, rights, isDetail: true, customized: layout.DetailCustomized),
             stamp);
     }
 
@@ -554,7 +555,8 @@ public sealed class FormLayoutRepository(
         IReadOnlyList<FormFieldRow> fields,
         IReadOnlyDictionary<string, FormLayoutFieldFact> facts,
         ModuleRights rights,
-        bool isDetail)
+        bool isDetail,
+        bool customized = false)
     {
         var byKey = fields.ToDictionary(field => field.Key, StringComparer.OrdinalIgnoreCase);
         var layout = new List<FormLayoutDesignRow>();
@@ -603,7 +605,7 @@ public sealed class FormLayoutRepository(
                 reason));
         }
 
-        return new FormLayoutTableDesign(table, layout, pool);
+        return new FormLayoutTableDesign(table, layout, pool, customized);
     }
 
     /// <summary>不可移除：主键、单据系统列、用户可填的必填列（服务端自填字段仍可隐藏）。</summary>

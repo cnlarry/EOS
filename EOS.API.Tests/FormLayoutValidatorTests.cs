@@ -120,8 +120,10 @@ public sealed class FormLayoutValidatorTests
     }
 
     [Fact]
-    public void MultipleCompanionsInOneGroup_AreRejected()
+    public void MultipleCompanionsInOneGroup_AreAllowed()
     {
+        // 既有一格多从字段（如 BOM 的 PRO = 料号 + 品名 + 颜色）必须能保存：
+        // 推导默认的版式本身就长这样，卡住等于那些模块永远存不了版式
         var issues = FormLayoutValidator.Validate(
             Layout([
                 Row("CLIENT_ID", cellGroup: "CLIENT", cellRole: 1),
@@ -129,7 +131,8 @@ public sealed class FormLayoutValidatorTests
                 Row("CLIENT_SHORT", cellGroup: "CLIENT", cellRole: 2),
             ]),
             Fields(Fact("CLIENT_ID", chooser: true), Fact("CLIENT_NAME"), Fact("CLIENT_SHORT")), Fields());
-        Assert.Contains(issues, issue => issue.Code == "FORM_LAYOUT_CELL_COMPANION_MULTIPLE");
+        Assert.DoesNotContain(issues, issue => issue.Code == "FORM_LAYOUT_CELL_COMPANION_MULTIPLE");
+        Assert.Empty(issues);
     }
 
     [Fact]

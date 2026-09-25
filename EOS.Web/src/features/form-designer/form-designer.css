@@ -340,6 +340,12 @@
 }
 
 /* —— 拖拽：跟手卡片 + 落点指示 —— */
+.erp-designer-status.is-info {
+  border-color: var(--tblr-border-color);
+  background: var(--tblr-bg-surface-secondary);
+  color: var(--tblr-secondary);
+}
+
 .erp-designer-drag-card {
   padding: 4px 10px;
   font-size: 12px;

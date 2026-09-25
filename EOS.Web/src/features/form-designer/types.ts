@@ -53,6 +53,8 @@ export interface TableDesign {
   table: string
   layout: DesignRow[]
   pool: PoolField[]
+  /** 该表是否已有定制行（false/缺省 = 当前是推导默认，界面据此提示"未定制"） */
+  customized?: boolean
 }
 
 export interface DesignState {
