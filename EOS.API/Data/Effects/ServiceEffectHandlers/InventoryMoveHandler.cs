@@ -407,6 +407,9 @@ public sealed class InventoryMoveSql
         await UpdateMrpAsync(token);
         if (direct * approveTag == -1)
             affected += await CleanTrailingAsync(token);
+        // 可用量维护点（ADR-020 §9.7 D7 的前置）：数量刚动过，把本单动过的格子按可用量口径重算落列。
+        // 排在所有余额写入之后、临时表还在的时候（格子清单取自它）。
+        await SyncAvailabilityAsync(token);
         await ExecAsync($"DROP TABLE {Tmp}", token);
         await ExecAsync($"DROP TABLE {PolicyTmp}", token);
         return affected;
@@ -420,6 +423,39 @@ public sealed class InventoryMoveSql
     /// （否则可以先解批、把单据日期改到开账期、再批核，等于把已关账期的账洗一遍）。
     /// **落点只在移动引擎写入口** ⇒ 非库存模块不受影响。
     /// </summary>
+    /// <summary>
+    /// 把本单动过的格子按**可用量口径**重算 `USEABLE_QTY` 并落列（可用量服务的唯一维护出口）。
+    /// </summary>
+    /// <remarks>
+    /// 为什么必须在这里：出库校验读的是 `USEABLE_QTY` 这一列——**数量动过而列没跟上，拦的就是过期快照**
+    /// （WS-21 台账里登记的 WS-23 前置就是这条）。格子清单取自临时表，此时归一化已经跑过，
+    /// 四键已是规范列名（`PRO_NO` / `DEPOT_ID` / `LOCATION_NO` / `BATCH_NO`），
+    /// 与冻结 / 预留 / 释放三处同步走的是同一个出口，这里不自己拼减法。
+    /// </remarks>
+    private async Task SyncAvailabilityAsync(CancellationToken token)
+    {
+        var slots = new List<InventoryAvailabilityService.SlotKey>();
+        // reader 必须开在自己的作用域里：下一句要在这个连接上发写命令。
+        await using (var command = new SqlCommand(
+            $"SELECT DISTINCT t.PRO_NO, t.DEPOT_ID, ISNULL(t.LOCATION_NO, N'{InventoryQueryService.LocationSentinel}'), "
+            + $"ISNULL(t.BATCH_NO, N'') FROM {Tmp} t;", _connection, _transaction))
+        {
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                slots.Add(new InventoryAvailabilityService.SlotKey(
+                    reader.IsDBNull(0) ? string.Empty : reader.GetString(0),
+                    reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                    reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                    reader.IsDBNull(3) ? string.Empty : reader.GetString(3)).Trimmed());
+            }
+        }
+        if (slots.Count > 0)
+        {
+            await InventoryAvailabilityService.SyncSlotsAsync(_connection, _transaction, slots, token);
+        }
+    }
+
     private async Task EnsurePeriodOpenAsync(CancellationToken token)
     {
         var targets = new List<(string BillType, string BillNo, DateTime LedgerDate)>();
