@@ -360,6 +360,19 @@ describe('DocumentWorkbenchPage', () => {
     ))
   })
 
+  it('显示列超过 30 列时不截断（第 31 列起仍渲染表头）', async () => {
+    const wideFields = Array.from({ length: 35 }, (_, index) => ({
+      key: `F${String(index + 1).padStart(2, '0')}`, label: `列${index + 1}`, dataType: 'nvarchar',
+      width: 100, align: 'left', isPrimaryKey: false, isQueryable: true,
+      headerAlign: 'center', format: null, browseUrl: null, browseModuleId: null, browseKeyFields: null,
+    }))
+    installApiMocks({ definition: { ...definition, masterFields: wideFields } })
+    renderPage()
+    await loaded()
+    expect(screen.getByRole('button', { name: '表头操作列31' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '表头操作列35' })).toBeInTheDocument()
+  })
+
   it('表头菜单跳转全尺寸字段设置页（带模块返回上下文）', async () => {
     renderPage()
     await loaded()

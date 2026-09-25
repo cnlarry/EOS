@@ -65,8 +65,9 @@ export function DocumentWorkbenchPage() {
   const definition=useQuery({queryKey:['workbench',moduleId,'definition'],queryFn:()=>apiClient.get<Definition>(`/document-workbench/${moduleId}/definition`)})
   // 滚动加载模式下 pageSize 即每次抓取的块大小：50 ≈ 两屏缓冲，减少请求与“加载更多”闪烁
   const pageSize=50
-  const master=useMemo(()=>uniqueFields(definition.data?.masterFields??[]).slice(0,30),[definition.data])
-  const detail=useMemo(()=>uniqueFields(definition.data?.detailFields??[]).slice(0,30),[definition.data])
+  // 网格渲染全部显示列：服务端下发的集合即用户选择列，截断会让选择列与网格不一致
+  const master=useMemo(()=>uniqueFields(definition.data?.masterFields??[]),[definition.data])
+  const detail=useMemo(()=>uniqueFields(definition.data?.detailFields??[]),[definition.data])
   const allowedMasterKeys=useMemo(()=>new Set(master.map(field=>field.key.toLowerCase())),[master])
   const safeSort=useMemo(()=>sort.filter(item=>allowedMasterKeys.has(item.id.toLowerCase())),[sort,allowedMasterKeys])
   const safeConditions=useMemo(()=>appliedConditions.filter(item=>allowedMasterKeys.has(item.field.toLowerCase())),[appliedConditions,allowedMasterKeys])
