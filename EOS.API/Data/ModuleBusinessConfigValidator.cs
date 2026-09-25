@@ -25,6 +25,15 @@ public static class ModuleBusinessConfigValidator
         && string.IsNullOrWhiteSpace(targetField);
 
     /// <summary>
+    /// 该动作是否带**真**公式行：占位行不算。
+    /// 运行时按这个口径分流——有真公式行的动作走公式解释器，其余走服务处理器，而两者接受的
+    /// 反向 kind 不同（公式路径禁用的取值，服务路径可能恰恰是唯一正确的）。占用位行当公式行，
+    /// 会把服务型动作按公式规则拒掉：配置明明是对的，却报"解批时会抛错"。
+    /// </summary>
+    public static bool HasFormulaRows(IReadOnlyList<BusinessActionOpDto>? ops) =>
+        ops is { Count: > 0 } && ops.Any(op => !IsPlaceholderOp(op.OpCode, op.TargetTable, op.TargetField));
+
+    /// <summary>
     /// Same-event chain prerequisites: an effect may require another effect earlier in
     /// the same event chain because it consumes rows/amounts produced there (e.g. the
     /// completion decision must run after quantity write-back, inventory after
