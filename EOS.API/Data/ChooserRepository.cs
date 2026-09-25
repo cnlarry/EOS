@@ -37,6 +37,8 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["rights-admin.groups"] = ["G_IDX", "G_DESC"],
             // 员工源显示列/可排序列来自 110104（SYSDN）字段元数据，运行时动态解析，这里仅登记默认排序列
             ["user-admin.employees"] = ["EMP_ID"],
+            // 单据源：列与排序按模块主表的主键在运行时解析（每个模块的主表不同），故这里不登记列
+            ["menu-admin.records"] = [],
         };
 
     /// <summary>注册数据源 → 排序稳定次序列（与排序列去重后追加，保证分页顺序稳定）。</summary>
@@ -223,7 +225,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     /// <summary>数据源权限门：返回需要校验的模块号（null 表示仅登录可读，按场景收紧）。</summary>
     public static int? PermissionModuleId(string? sourceKey) => sourceKey?.Trim().ToLowerInvariant() switch
     {
-        "menu-admin.tables" or "menu-admin.fields" or "menu-admin.sprocs" or "menu-admin.columns" or "menu-admin.modules" => MenuAdminModuleId,
+        "menu-admin.tables" or "menu-admin.fields" or "menu-admin.sprocs" or "menu-admin.columns" or "menu-admin.modules" or "menu-admin.records" => MenuAdminModuleId,
         "field-admin.tables" or "field-admin.columns" or "field-admin.fields" => FieldAdminModuleId,
         "report-admin.fields" or "report-admin.modules" => ReportAdminModuleId,
         "rights-admin.users" or "rights-admin.groups" => PermissionModules.SystemManagement,
@@ -236,8 +238,11 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     /// <summary>排序列白名单解析：非法/缺失回退首列（默认排序）；方向仅 asc/desc。</summary>
     internal static (string Column, string Direction) ResolveSort(string sourceKey, string? sortField, string? sortDirection)
     {
+        // A source whose columns are resolved at runtime (its table depends on the arguments)
+        // registers no columns: it resolves ordering itself and never comes through here.
         var allowed = RegisteredSources.TryGetValue(sourceKey.Trim(), out var columns) ? columns : [];
-        var column = allowed.FirstOrDefault(item => item.Equals(sortField, StringComparison.OrdinalIgnoreCase)) ?? allowed[0];
+        var column = allowed.FirstOrDefault(item => item.Equals(sortField, StringComparison.OrdinalIgnoreCase))
+            ?? (allowed.Count > 0 ? allowed[0] : string.Empty);
         var direction = string.Equals(sortDirection, "desc", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
         return (column, direction);
     }
@@ -281,6 +286,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             "rights-admin.users" => await QueryUsersAsync(request, token),
             "rights-admin.groups" => await QueryGroupsAsync(request, token),
             "user-admin.employees" => await QueryEmployeesAsync(request, token),
+            "menu-admin.records" => await QueryModuleRecordsAsync(request, token),
             "depot-admin.locations" => await QueryDepotLocationsAsync(request, token),
             _ => null,
         };
@@ -891,6 +897,144 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             rows,
             total,
             defaultKeys);
+    }
+
+    /// <summary>
+    /// menu-admin.records：某模块主表的单据记录（效果链预演选单用）。
+    /// 列集合运行时解析——主表主键列（即单据键，同时作为默认列回传）在前，另附少量默认显示列；
+    /// 表名只来自 MODULES.MASTER_TABLE，列名只来自 FIELDS 元数据与物理主键，全部参数化。
+    /// 无主键的主表无法定位单据，直接拒绝提供服务。
+    /// </summary>
+    private async Task<UnifiedChooserResult?> QueryModuleRecordsAsync(UnifiedChooserQueryRequest request, CancellationToken token)
+    {
+        const string sourceKey = "menu-admin.records";
+        if (ResolveReportModuleId(request.Args) is not { } moduleId)
+        {
+            logger.LogWarning("统一选择器单据源缺少合法的 moduleId 参数");
+            return null;
+        }
+
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+
+        var table = await ResolveMasterTableAsync(connection, moduleId, token);
+        if (table is null)
+        {
+            logger.LogWarning("统一选择器单据源模块无主表 module={ModuleId}", moduleId);
+            return null;
+        }
+        var columns = await LoadRecordColumnsAsync(connection, table, token);
+        if (columns.Count == 0)
+        {
+            logger.LogWarning("统一选择器单据源主表无主键 module={ModuleId} table={Table}", moduleId, table);
+            return null;
+        }
+
+        var allKeys = columns.Select(column => column.Key).ToArray();
+        var allSet = new HashSet<string>(allKeys, StringComparer.OrdinalIgnoreCase);
+        var defaultKeys = columns.Where(column => column.IsKey).Select(column => column.Key).ToArray();
+        var byKey = columns.ToDictionary(column => column.Key, column => column, StringComparer.OrdinalIgnoreCase);
+        var expression = (string key) => $"LTRIM(RTRIM(CAST([t].[{byKey[key].Key}] AS nvarchar(200))))";
+
+        var filterKey = string.IsNullOrWhiteSpace(request.FilterField) ? null : request.FilterField.Trim();
+        if (filterKey is not null && !allSet.Contains(filterKey)) filterKey = null;
+        var sortKey = string.IsNullOrWhiteSpace(request.SortField) ? null : request.SortField.Trim();
+        if (sortKey is null || !allSet.Contains(sortKey)) sortKey = allKeys[0];
+
+        await using var command = new SqlCommand { Connection = connection };
+        AddCommonParameters(command, keyword, page, pageSize);
+        var keywordPredicate = filterKey is null
+            ? $"(@Keyword = '' OR {string.Join(" OR ", allKeys.Select(key => $"{expression(key)} LIKE @Keyword"))})"
+            : $"(@Keyword = '' OR {expression(filterKey)} LIKE @Keyword)";
+        var columnExpressions = allKeys.ToDictionary(key => key, expression, StringComparer.OrdinalIgnoreCase);
+        var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, columnExpressions, command);
+        var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        var direction = string.Equals(request.SortDirection?.Trim(), "desc", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
+        // 主键列恒作稳定次序：单据键相同时分页顺序不能漂。
+        var stable = string.Join(',', defaultKeys.Select(key => $"{expression(key)} ASC"));
+        var orderBy = $"ORDER BY {expression(sortKey)} {direction}{(stable.Length == 0 ? string.Empty : "," + stable)}";
+        var selectList = string.Join(',', allKeys.Select(key => $"{expression(key)} AS [{key}]"));
+        var fromSql = $"FROM dbo.[{table}] t WITH (NOLOCK) WHERE {keywordPredicate}{conditionSql}";
+        command.CommandText = $"""
+            SELECT COUNT_BIG(1)
+            {fromSql};
+            SELECT {selectList}
+            {fromSql}
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(reader, allKeys);
+        logger.LogInformation("统一选择器单据源查询 source={Source} module={ModuleId} page={Page} size={PageSize} total={Total} rows={Rows}",
+            sourceKey, moduleId, page, pageSize, total, rows.Count);
+        return new UnifiedChooserResult(
+            columns.Select(column => new UnifiedChooserColumn(column.Key, column.Label, "string", null)).ToArray(),
+            rows,
+            total,
+            defaultKeys);
+    }
+
+    private static async Task<string?> ResolveMasterTableAsync(SqlConnection connection, int moduleId, CancellationToken token)
+    {
+        await using var command = new SqlCommand(
+            "SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))) FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;", connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        var value = await command.ExecuteScalarAsync(token) as string;
+        return value is { Length: > 0 } && WorkbenchSql.Identifier.IsMatch(value) ? value : null;
+    }
+
+    private sealed record RecordSourceColumn(string Key, string Label, bool IsKey);
+
+    private static async Task<List<RecordSourceColumn>> LoadRecordColumnsAsync(
+        SqlConnection connection, string table, CancellationToken token)
+    {
+        var primaryKeys = await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, null, table, token);
+        var columns = new List<RecordSourceColumn>();
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in primaryKeys)
+        {
+            if (!WorkbenchSql.Identifier.IsMatch(key) || !taken.Add(key))
+            {
+                continue;
+            }
+            columns.Add(new RecordSourceColumn(key, key, IsKey: true));
+        }
+        if (columns.Count == 0)
+        {
+            return columns;
+        }
+
+        const int MaxDisplayColumns = 2;
+        const string metaSql = """
+            SELECT TOP (32) LTRIM(RTRIM(f.F_ID)),
+                   COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID)))
+            FROM dbo.FIELDS f WITH (NOLOCK)
+            WHERE LTRIM(RTRIM(f.T_ID))=@Table
+              AND COALESCE(f.IS_VISIBLE,1)=1 AND COALESCE(f.IS_VIRTUAL,0)=0 AND COALESCE(f.IS_DEFAULT_FIELDS,0)=1
+            ORDER BY COALESCE(f.VERIFY_INDEX,999),f.F_ID;
+            """;
+        await using var meta = new SqlCommand(metaSql, connection);
+        meta.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
+        await using var reader = await meta.ExecuteReaderAsync(token);
+        var display = 0;
+        while (display < MaxDisplayColumns && await reader.ReadAsync(token))
+        {
+            var key = reader.GetString(0);
+            if (!WorkbenchSql.Identifier.IsMatch(key) || !taken.Add(key))
+            {
+                continue;
+            }
+            columns.Add(new RecordSourceColumn(key, reader.GetString(1), IsKey: false));
+            display++;
+        }
+        return columns;
     }
 
     /// <summary>SYSDN 虚拟查找列白名单（F_ID → JOIN 与选择表达式），员工选择器受控呈现名称类列。</summary>

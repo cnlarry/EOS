@@ -16,6 +16,8 @@ namespace EOS.API.Data.Effects;
 /// </summary>
 public sealed class EffectFormulaExecutor
 {
+    private const string TargetAlias = "T";
+
     private readonly EffectConditionCompiler _conditions = new();
     private readonly EffectPhysicalColumns _columns = new();
 
@@ -27,16 +29,47 @@ public sealed class EffectFormulaExecutor
         EffectEvent executionEvent,
         JsonElement? reverseStruct,
         IReadOnlyList<string> masterKeyValues,
-        CancellationToken token)
+        CancellationToken token,
+        EffectSimulationProbe? probe = null)
     {
         var effective = ResolveOpForEvent(op, executionEvent, reverseStruct);
         if (effective is null)
+        {
+            probe?.Add(new EffectOpTrace(op.OpSeq, op.TargetTable, op.TargetField, op.OpCode, 0, []));
             return 0;
+        }
 
         var columns = await _columns.LoadAsync(connection, token, transaction);
         ValidateIdentifiers(effective, plan, columns);
 
         var (sql, parameters) = BuildUpdate(effective, plan, masterKeyValues);
+        if (probe is null)
+        {
+            return await RunUpdateAsync(connection, transaction, sql, parameters, op, token);
+        }
+
+        // Both reads happen inside the caller's transaction: the "after" snapshot sees the
+        // uncommitted write, which is exactly what a simulation needs to report.
+        var identity = await ResolveIdentityColumnsAsync(connection, transaction, op, token);
+        var (selectSql, selectParameters) = BuildRowSelect(
+            effective, plan, masterKeyValues, identity, EffectSimulationProbe.MaxRowsPerOp);
+        var before = await SnapshotRowsAsync(connection, transaction, selectSql, selectParameters, identity, token);
+        var rows = await RunUpdateAsync(connection, transaction, sql, parameters, op, token);
+        var after = await SnapshotRowsAsync(connection, transaction, selectSql, selectParameters, identity, token);
+        probe.Add(new EffectOpTrace(
+            op.OpSeq, op.TargetTable, op.TargetField, effective.OpCode, rows,
+            DiffRows(before, after, op.TargetField)));
+        return rows;
+    }
+
+    private static async Task<int> RunUpdateAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string sql,
+        IReadOnlyList<EffectSqlParameter> parameters,
+        EffectOpPlan op,
+        CancellationToken token)
+    {
         await using var command = new SqlCommand(sql, connection, transaction);
         foreach (var parameter in parameters)
             command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
@@ -51,6 +84,92 @@ public sealed class EffectFormulaExecutor
                 exception);
         }
     }
+
+    /// <summary>
+    /// Columns that identify a target row in the report: the target table's primary key when
+    /// it has one, otherwise the formula row's own locating keys. Without either, rows fall
+    /// back to a positional marker rather than pretending to be identifiable.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> ResolveIdentityColumnsAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        EffectOpPlan op,
+        CancellationToken token)
+    {
+        var primaryKeys = await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection, transaction, op.TargetTable, token);
+        if (primaryKeys.Count > 0)
+        {
+            return primaryKeys;
+        }
+        var locating = op.Match
+            ?.Select(item => item.TargetColumn)
+            .Where(column => !string.IsNullOrWhiteSpace(column))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return locating is { Count: > 0 } ? locating : [];
+    }
+
+    private static async Task<List<EffectSnapshotRow>> SnapshotRowsAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string sql,
+        IReadOnlyList<EffectSqlParameter> parameters,
+        IReadOnlyList<string> identityColumns,
+        CancellationToken token)
+    {
+        await using var command = new SqlCommand(sql, connection, transaction);
+        foreach (var parameter in parameters)
+            command.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
+        var rows = new List<EffectSnapshotRow>();
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            var parts = new List<string>();
+            for (var index = 0; index < identityColumns.Count; index++)
+            {
+                parts.Add($"{identityColumns[index]}={FormatValue(reader, index)}");
+            }
+            var value = FormatValue(reader, identityColumns.Count);
+            rows.Add(new EffectSnapshotRow(
+                parts.Count == 0 ? NoIdentity : string.Join(", ", parts), value));
+        }
+        return rows;
+    }
+
+    private static string? FormatValue(SqlDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal) ? null : reader.GetValue(ordinal).ToString();
+
+    /// <summary>
+    /// Pairs the two snapshots by position: both are read with the same predicate and the same
+    /// ordering, so row i before the write is row i after it. Only rows whose value actually
+    /// moved are reported — an unchanged row is noise in a report about "what will happen".
+    /// </summary>
+    private static IReadOnlyList<EffectRowChange> DiffRows(
+        List<EffectSnapshotRow> before,
+        List<EffectSnapshotRow> after,
+        string targetField)
+    {
+        var changes = new List<EffectRowChange>();
+        var count = Math.Max(before.Count, after.Count);
+        for (var index = 0; index < count; index++)
+        {
+            var beforeRow = index < before.Count ? before[index] : null;
+            var afterRow = index < after.Count ? after[index] : null;
+            if (beforeRow is not null && afterRow is not null
+                && string.Equals(beforeRow.Value, afterRow.Value, StringComparison.Ordinal))
+            {
+                continue;
+            }
+            changes.Add(new EffectRowChange(
+                beforeRow?.Identity ?? afterRow?.Identity ?? NoIdentity,
+                [new EffectColumnChange(targetField, beforeRow?.Value, afterRow?.Value)]));
+        }
+        return changes;
+    }
+
+    private sealed record EffectSnapshotRow(string Identity, string? Value);
+
+    private const string NoIdentity = "<无标识>";
 
     /// <summary>Returns the op adjusted for the running event, or null when the step is a no-op.</summary>
     internal static EffectOpPlan? ResolveOpForEvent(
@@ -146,11 +265,48 @@ public sealed class EffectFormulaExecutor
         ModuleEffectPlan plan,
         IReadOnlyList<string> masterKeyValues)
     {
+        var parts = BuildStatement(op, plan, masterKeyValues);
+        return ($"UPDATE {TargetAlias} SET {parts.Assignment} FROM {parts.From} WHERE {parts.Where}", parts.Parameters);
+    }
+
+    /// <summary>
+    /// The row scope of the update built by <see cref="BuildUpdate"/>, rendered as a SELECT of
+    /// the identity columns plus the target value. The snapshot and the write share one
+    /// statement builder on purpose: a second predicate written by hand would silently drift
+    /// from the rows the update actually touches.
+    /// </summary>
+    internal (string Sql, IReadOnlyList<EffectSqlParameter> Parameters) BuildRowSelect(
+        EffectOpPlan op,
+        ModuleEffectPlan plan,
+        IReadOnlyList<string> masterKeyValues,
+        IReadOnlyList<string> identityColumns,
+        int maxRows)
+    {
+        var parts = BuildStatement(op, plan, masterKeyValues);
+        var projections = identityColumns
+            .Select(column => $"CAST({TargetAlias}.{EffectConditionCompiler.Identifier(column)} AS nvarchar(200))")
+            .ToList();
+        projections.Add($"CAST({TargetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)} AS nvarchar(400))");
+        var orderBy = identityColumns.Count == 0
+            ? string.Empty
+            : " ORDER BY " + string.Join(',', Enumerable.Range(1, identityColumns.Count));
+        var sql = $"SELECT TOP (@__limit) {string.Join(',', projections)} FROM {parts.From} WHERE {parts.Where}{orderBy};";
+        var parameters = parts.Parameters.ToList();
+        parameters.Add(new EffectSqlParameter("@__limit", Math.Clamp(maxRows, 1, 200)));
+        return (sql, parameters);
+    }
+
+    /// <summary>The shared statement builder: assignment, FROM (with the optional master join)
+    /// and the locating WHERE. Both the update and the simulation snapshot come from here.</summary>
+    private EffectStatementParts BuildStatement(
+        EffectOpPlan op,
+        ModuleEffectPlan plan,
+        IReadOnlyList<string> masterKeyValues)
+    {
         _plan = plan;
         _masterKeyValues = masterKeyValues;
-        var targetAlias = "T";
+        var targetAlias = TargetAlias;
         var parameters = new List<EffectSqlParameter>();
-        var builder = new StringBuilder();
 
         var targetField = $"{targetAlias}.{EffectConditionCompiler.Identifier(op.TargetField)}";
         string assignment;
@@ -178,8 +334,8 @@ public sealed class EffectFormulaExecutor
                 break;
         }
 
-        builder.Append("UPDATE ").Append(targetAlias).Append(" SET ").Append(assignment)
-            .Append(" FROM dbo.").Append(EffectConditionCompiler.Identifier(op.TargetTable)).Append(' ').Append(targetAlias);
+        var from = new StringBuilder("dbo.").Append(EffectConditionCompiler.Identifier(op.TargetTable))
+            .Append(' ').Append(targetAlias);
 
         var where = BuildMatchWhere(op, targetAlias, parameters);
         if (op.Condition is { } condition)
@@ -196,7 +352,7 @@ public sealed class EffectFormulaExecutor
             // is a single row by its own primary key, so the JOIN never multiplies rows.
             if (ConditionReferencesScope(condition, "MASTER"))
             {
-                builder.Append(" JOIN dbo.").Append(EffectConditionCompiler.Identifier(_plan.MasterTable!))
+                from.Append(" JOIN dbo.").Append(EffectConditionCompiler.Identifier(_plan.MasterTable!))
                     .Append(" M ON ").Append(AddMasterKeyParameters(parameters));
             }
         }
@@ -211,10 +367,17 @@ public sealed class EffectFormulaExecutor
         if (where.Length == 0)
             throw new EffectConfigException(
                 $"公式行 OP_SEQ={op.OpSeq}：目标表 {op.TargetTable} 既无定位键也无条件，禁止无条件更新（拒绝全表更新）。");
-        builder.Append(" WHERE ").Append(where);
 
-        return (builder.ToString(), parameters);
+        return new EffectStatementParts(assignment, from.ToString(), where, parameters);
     }
+
+    /// <summary>The pieces an effect statement is assembled from; shared by the update and the
+    /// simulation snapshot so both address exactly the same rows.</summary>
+    private sealed record EffectStatementParts(
+        string Assignment,
+        string From,
+        string Where,
+        IReadOnlyList<EffectSqlParameter> Parameters);
 
     /// <summary>Builds the scalar value expression for the op source.</summary>
     private string BuildValue(

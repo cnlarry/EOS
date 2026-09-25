@@ -97,10 +97,14 @@ public sealed class EffectPipeline(
         string recordKey,
         string executor,
         CancellationToken token,
-        IReadOnlyList<string>? masterKeyValues = null)
+        IReadOnlyList<string>? masterKeyValues = null,
+        // Simulation only: collect the per-formula-row trace (before → after values) and
+        // report steps that did not run. Off by default, so the live path does no extra work.
+        bool simulate = false)
     {
+        var keys = masterKeyValues ?? Array.Empty<string>();
         await validationExecutor.ValidateAsync(
-            connection, transaction, plan, StageFor(executionEvent), token, masterKeyValues ?? Array.Empty<string>());
+            connection, transaction, plan, StageFor(executionEvent), token, keys);
 
         var results = new List<EffectStepResult>();
         foreach (var action in plan.Actions)
@@ -108,20 +112,55 @@ public sealed class EffectPipeline(
             if (!EffectEventMapper.AppliesTo(action.EventCode, executionEvent))
                 continue;
             if (!action.Enabled)
+            {
+                if (simulate)
+                {
+                    results.Add(new EffectStepResult(
+                        action.Seq, action.EffectKey, Success: true, Warning: null, RowsAffected: 0,
+                        EffectStepOutcome.Skipped, "该动作已停用，不参与本次执行。"));
+                }
                 continue;
+            }
 
             try
             {
-                var rows = await ExecuteActionAsync(
+                var run = await ExecuteActionAsync(
                     connection, transaction, plan, action, executionEvent, recordKey, executor,
-                    masterKeyValues ?? Array.Empty<string>(), token);
-                results.Add(new EffectStepResult(action.Seq, action.EffectKey, Success: true, Warning: null, rows));
+                    keys, token, simulate);
+                results.Add(new EffectStepResult(
+                    action.Seq, action.EffectKey, Success: true, Warning: null, run.Rows,
+                    run.Outcome, run.SkipReason, run.ConditionMatched, run.Ops));
                 await auditWriter.WriteEventAsync(
                     connection, transaction, plan.ModuleId, recordKey,
                     $"EFFECT:{action.EffectKey}",
-                    $"效果 {action.EffectName ?? action.EffectKey} 执行完成（影响 {rows} 行）",
+                    $"效果 {action.EffectName ?? action.EffectKey} 执行完成（影响 {run.Rows} 行）",
                     executor, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token,
                     detailJson: BuildActionSnapshot(action));
+            }
+            catch (Exception exception) when (simulate)
+            {
+                // A simulation is a report, not a failure: the step is recorded as failed with
+                // its message, then the chain stops (BLOCK) or carries on (WARN) exactly as the
+                // live path would. The caller rolls back either way.
+                var failed = new EffectStepResult(
+                    action.Seq, action.EffectKey, Success: false, Warning: exception.Message, RowsAffected: 0,
+                    EffectStepOutcome.Failed);
+                if (action.FailMode.Equals("WARN", StringComparison.OrdinalIgnoreCase))
+                {
+                    logger.LogWarning(exception,
+                        "效果步骤失败但按 WARN 继续 module={ModuleId} seq={Seq} key={Key}",
+                        plan.ModuleId, action.Seq, action.EffectKey);
+                    results.Add(failed);
+                    await auditWriter.WriteEventAsync(
+                        connection, transaction, plan.ModuleId, recordKey,
+                        $"EFFECT:{action.EffectKey}",
+                        $"效果 {action.EffectName ?? action.EffectKey} 失败（WARN 继续）：{exception.Message}",
+                        executor, "WORKBENCH_RECORD", result: 0, fieldChanges: null, token,
+                        detailJson: BuildActionSnapshot(action));
+                    continue;
+                }
+                results.Add(failed);
+                throw new EffectStepFailedException(results);
             }
             catch (EffectValidationException)
             {
@@ -161,7 +200,7 @@ public sealed class EffectPipeline(
         validationExecutor.ValidateAsync(
             connection, transaction, plan, StageFor(executionEvent), token, masterKeyValues ?? Array.Empty<string>());
 
-    private async Task<int> ExecuteActionAsync(
+    private async Task<ActionRun> ExecuteActionAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         ModuleEffectPlan plan,
@@ -170,19 +209,26 @@ public sealed class EffectPipeline(
         string recordKey,
         string executor,
         IReadOnlyList<string> masterKeyValues,
-        CancellationToken token)
+        CancellationToken token,
+        bool simulate)
     {
+        var probe = simulate ? new EffectSimulationProbe() : null;
         if (action.Condition is { } condition && !await ConditionHoldsAsync(
                 connection, transaction, plan, condition, masterKeyValues, token))
-            return 0;
+        {
+            // A condition that does not hold is not the same thing as a formula row that
+            // matched zero rows: the first is a rule about this document, the second is a
+            // locating-key problem. Keeping them apart is what makes the report actionable.
+            return new ActionRun(0, EffectStepOutcome.Skipped, ConditionSkipReason, ConditionMatched: false, probe?.Take());
+        }
 
         if (action.Ops.Count > 0)
         {
-            var rows = 0;
+            var total = 0;
             foreach (var op in action.Ops)
-                rows += await formulaExecutor.ExecuteAsync(
-                    connection, transaction, plan, op, executionEvent, action.Reverse, masterKeyValues, token);
-            return rows;
+                total += await formulaExecutor.ExecuteAsync(
+                    connection, transaction, plan, op, executionEvent, action.Reverse, masterKeyValues, token, probe);
+            return new ActionRun(total, EffectStepOutcome.Ran, null, ConditionMatched: true, probe?.Take());
         }
 
         if (!EffectRegistry.IsImplemented(action.EffectKey))
@@ -191,10 +237,23 @@ public sealed class EffectPipeline(
         if (!_handlers.TryGetValue(action.EffectKey, out var handler))
             throw new EffectConfigException(
                 $"效果键 '{action.EffectKey}' 未注册服务 Handler（模块 {plan.ModuleId} SEQ={action.Seq}）。");
-        return await handler.ExecuteAsync(
+        var rows = await handler.ExecuteAsync(
             new ServiceEffectContext(connection, transaction, plan, action, executionEvent, recordKey, masterKeyValues, executor),
             token);
+        // Service effects report no field-level diff on purpose: what a handler writes is its
+        // own business, and pretending otherwise would be a guess dressed up as a fact.
+        return new ActionRun(rows, EffectStepOutcome.Ran, null, ConditionMatched: true, probe?.Take());
     }
+
+    /// <summary>Result of one action step, carrying the simulation trace when one was asked for.</summary>
+    private sealed record ActionRun(
+        int Rows,
+        EffectStepOutcome Outcome,
+        string? SkipReason,
+        bool ConditionMatched,
+        IReadOnlyList<EffectOpTrace>? Ops);
+
+    private const string ConditionSkipReason = "条件未命中（该动作的条件对本单不成立）。";
 
     /// <summary>
     /// Evaluates an action-level condition against the current document: MASTER

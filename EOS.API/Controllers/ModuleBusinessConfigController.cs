@@ -1,6 +1,8 @@
 using EOS.API.Data;
 using EOS.API.Data.DocumentActions;
+using EOS.API.Data.Effects;
 using EOS.API.Data.ValidationRules;
+using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -21,6 +23,9 @@ public sealed class ModuleBusinessConfigController(
     WorkbenchDefinitionSnapshotService snapshotService,
     DocumentActionRegistry documentActions,
     DocumentActionAuthorization documentActionAuthorization,
+    WorkbenchDefinitionProvider definitions,
+    EffectSimulationService simulation,
+    ILogger<ModuleBusinessConfigController> logger,
     CurrentUserContext userContext) : ControllerBase
 {
     private const int MenuAdminModuleId = 2301;
@@ -46,7 +51,9 @@ public sealed class ModuleBusinessConfigController(
                 BusinessActionLabels.SourceScopes,
                 BusinessActionLabels.SourceAggregates,
                 BusinessActionLabels.ValidationStages,
-                BusinessActionLabels.ValidationKeys),
+                BusinessActionLabels.ValidationKeys,
+                BusinessActionLabels.EffectKeyDescriptions,
+                BusinessActionLabels.ReverseKindDescriptions),
             documentActions.Keys
                 .OrderBy(key => key, StringComparer.OrdinalIgnoreCase)
                 .Select(key => new DocumentActionCatalogEntryDto(key, documentActions.LabelOf(key), documentActions.PlacementOf(key)))
@@ -101,7 +108,23 @@ public sealed class ModuleBusinessConfigController(
                     validationKey,
                     ValidationRuleRegistry.ParamRootKeys(validationKey).ToList()))
                 .OrderBy(item => item.ValidationKey, StringComparer.OrdinalIgnoreCase)
-                .ToList()));
+                .ToList(),
+            // 参数深 Schema：只下发已确证语义的键，其余仍走根键展开 + 专家模式 JSON。
+            EffectParamDescriptors.DescribedKeys()
+                .Select(effectKey => new EffectParamFieldsDto(
+                    effectKey,
+                    EffectParamDescriptors.For(effectKey)
+                        .Select(field => new EffectParamFieldDto(
+                            field.Name, field.Type, field.Required,
+                            field.EnumValues, field.Default, field.Description, field.Example))
+                        .ToList()))
+                .ToList(),
+            // 反向兼容矩阵：每个受约束的效果键允许哪些 kind（界面据此过滤下拉）。
+            EffectReverseCompatibility.ConstrainedKeys()
+                .ToDictionary(
+                    effectKey => effectKey,
+                    effectKey => EffectReverseCompatibility.AllowedKinds(effectKey, hasFormulaRows: false),
+                    StringComparer.OrdinalIgnoreCase)));
     }
 
     /// <summary>
@@ -159,6 +182,58 @@ public sealed class ModuleBusinessConfigController(
         if (!await CanSetup(token)) return Forbid();
         var results = await snapshotService.PublishAsync(new[] { moduleId }, userContext.EmployeeName, token);
         return Ok(results);
+    }
+
+    /// <summary>
+    /// 效果链预演：对一张真实单据在事务内跑一遍真实的生效链（含状态翻转），随后**无条件回滚**，
+    /// 报告"按当前配置会发生什么"。门按写面收口：它执行的是真实 Handler，能触发它的账号越少越好。
+    /// 只接受批核生效 / 解批——保存后效果要预演就得先伪造一次完整保存，代价与风险都不在本批次内。
+    /// </summary>
+    [HttpPost("{moduleId:int}/simulate")]
+    public async Task<IActionResult> Simulate(
+        int moduleId,
+        EffectSimulationRequest request,
+        CancellationToken token)
+    {
+        if (!await CanSetup(token)) return Forbid();
+        var eventCode = request.Event?.Trim().ToUpperInvariant();
+        if (eventCode is not ("APPROVE_EFFECT" or "DEAPPROVE"))
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "SIMULATION_EVENT_UNSUPPORTED",
+                "预演仅支持 APPROVE_EFFECT（批核生效）与 DEAPPROVE（解批）。"));
+        }
+        if (!definitions.TryGetBaseline(moduleId, out var definition, out _))
+        {
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "MODULE_DEFINITION_NOT_PUBLISHED",
+                "该模块还没有已发布的定义快照，请先发布后再预演。"));
+        }
+        if (definition.MasterPkOrder.Count == 0)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "MODULE_NOT_SIMULATABLE",
+                "该模块没有主表，无法定位单据，不支持预演。"));
+        }
+        if (request.Key is null || request.Key.Count != definition.MasterPkOrder.Count)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_RECORD_KEY",
+                $"单据主键数量与模块主键不一致（需要 {definition.MasterPkOrder.Count} 个）。"));
+        }
+
+        logger.LogInformation("效果链预演 module={ModuleId} event={Event} key={Key} operator={User}",
+            moduleId, eventCode, string.Join(',', request.Key), userContext.UserId);
+        try
+        {
+            var report = await simulation.SimulateAsync(
+                definition, eventCode!, request.Key,
+                approve: string.Equals(eventCode, "APPROVE_EFFECT", StringComparison.Ordinal),
+                userContext.UserId, token);
+            return Ok(report);
+        }
+        catch (EffectSimulationService.TimeoutException)
+        {
+            return StatusCode(StatusCodes.Status504GatewayTimeout,
+                ApiProblem.Create(StatusCodes.Status504GatewayTimeout, "SIMULATION_TIMEOUT",
+                    "预演超时，请缩小单据范围后重试（事务已回滚，库内数据无变化）。"));
+        }
     }
 
     /// <summary>配置面读门：页面可见 + 该模块的配置权。</summary>

@@ -108,7 +108,9 @@ public sealed record BusinessConfigLabelsDto(
     [property: JsonPropertyName("sourceScopes")] IReadOnlyDictionary<string, string> SourceScopes,
     [property: JsonPropertyName("sourceAggregates")] IReadOnlyDictionary<string, string> SourceAggregates,
     [property: JsonPropertyName("validationStages")] IReadOnlyDictionary<string, string> ValidationStages,
-    [property: JsonPropertyName("validationKeys")] IReadOnlyDictionary<string, string> ValidationKeys);
+    [property: JsonPropertyName("validationKeys")] IReadOnlyDictionary<string, string> ValidationKeys,
+    [property: JsonPropertyName("effectKeyDescriptions")] IReadOnlyDictionary<string, string>? EffectKeyDescriptions = null,
+    [property: JsonPropertyName("reverseKindDescriptions")] IReadOnlyDictionary<string, string>? ReverseKindDescriptions = null);
 
 /// <summary>
 /// 定位键候选：FIELD_RELATION 里一条已登记的效果关系边组（同一关系的主键列集合）。
@@ -150,4 +152,90 @@ public sealed record BusinessConfigSchemasDto(
     [property: JsonPropertyName("effects")] IReadOnlyList<EffectParamSchemaDto> Effects,
     [property: JsonPropertyName("reverseKinds")] IReadOnlyList<string> ReverseKinds,
     [property: JsonPropertyName("reverseKindLabels")] IReadOnlyDictionary<string, string>? ReverseKindLabels = null,
-    [property: JsonPropertyName("validationParams")] IReadOnlyList<ValidationParamSchemaDto>? ValidationParams = null);
+    [property: JsonPropertyName("validationParams")] IReadOnlyList<ValidationParamSchemaDto>? ValidationParams = null,
+    [property: JsonPropertyName("paramFields")] IReadOnlyList<EffectParamFieldsDto>? ParamFields = null,
+    [property: JsonPropertyName("reverseKindsByEffect")] IReadOnlyDictionary<string, IReadOnlyList<string>>? ReverseKindsByEffect = null);
+
+/// <summary>一个效果参数的深 Schema 描述（名称/类型/是否必填/枚举/默认值/说明/示例）。</summary>
+public sealed record EffectParamFieldDto(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("required")] bool Required,
+    [property: JsonPropertyName("enumValues")] IReadOnlyList<string>? EnumValues = null,
+    [property: JsonPropertyName("default")] string? Default = null,
+    [property: JsonPropertyName("description")] string? Description = null,
+    [property: JsonPropertyName("example")] string? Example = null);
+
+/// <summary>一个效果键的参数描述集合。</summary>
+public sealed record EffectParamFieldsDto(
+    [property: JsonPropertyName("effectKey")] string EffectKey,
+    [property: JsonPropertyName("fields")] IReadOnlyList<EffectParamFieldDto> Fields);
+
+/// <summary>预演请求：事件（闭集）+ 单据主键。</summary>
+public sealed record EffectSimulationRequest(
+    [property: JsonPropertyName("event")] string Event,
+    [property: JsonPropertyName("key")] IReadOnlyList<string> Key);
+
+/// <summary>预演报告里的一道闸（前置守卫 / 校验闸）。</summary>
+public sealed record EffectSimulationGateDto(
+    [property: JsonPropertyName("passed")] bool Passed,
+    [property: JsonPropertyName("code")] string? Code = null,
+    [property: JsonPropertyName("message")] string? Message = null);
+
+/// <summary>预演报告里一列值的变化。</summary>
+public sealed record EffectSimulationColumnChangeDto(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("before")] string? Before,
+    [property: JsonPropertyName("after")] string? After);
+
+/// <summary>预演报告里一行目标记录的标识与变化列。</summary>
+public sealed record EffectSimulationRowChangeDto(
+    [property: JsonPropertyName("identity")] string Identity,
+    [property: JsonPropertyName("columns")] IReadOnlyList<EffectSimulationColumnChangeDto> Columns);
+
+/// <summary>预演报告里一条公式行的执行轨迹。</summary>
+public sealed record EffectSimulationOpDto(
+    [property: JsonPropertyName("opSeq")] int OpSeq,
+    [property: JsonPropertyName("targetTable")] string TargetTable,
+    [property: JsonPropertyName("targetField")] string TargetField,
+    [property: JsonPropertyName("opCode")] string OpCode,
+    [property: JsonPropertyName("rowsAffected")] int RowsAffected,
+    [property: JsonPropertyName("changes")] IReadOnlyList<EffectSimulationRowChangeDto> Changes);
+
+/// <summary>预演报告里的一个效果步骤。</summary>
+public sealed record EffectSimulationStepDto(
+    [property: JsonPropertyName("seq")] int Seq,
+    [property: JsonPropertyName("effectKey")] string EffectKey,
+    [property: JsonPropertyName("effectName")] string? EffectName,
+    [property: JsonPropertyName("enabled")] bool Enabled,
+    [property: JsonPropertyName("failMode")] string FailMode,
+    [property: JsonPropertyName("outcome")] string Outcome,
+    [property: JsonPropertyName("conditionMatched")] bool ConditionMatched,
+    [property: JsonPropertyName("rowsAffected")] int RowsAffected,
+    [property: JsonPropertyName("ops")] IReadOnlyList<EffectSimulationOpDto> Ops,
+    [property: JsonPropertyName("condition")] string? Condition = null,
+    [property: JsonPropertyName("skipReason")] string? SkipReason = null,
+    [property: JsonPropertyName("message")] string? Message = null);
+
+/// <summary>预演报告的步骤计数。</summary>
+public sealed record EffectSimulationCountsDto(
+    [property: JsonPropertyName("total")] int Total,
+    [property: JsonPropertyName("ran")] int Ran,
+    [property: JsonPropertyName("skipped")] int Skipped,
+    [property: JsonPropertyName("failed")] int Failed);
+
+/// <summary>
+/// 效果链预演报告：对一张真实单据在同一事务内跑完整条生效链（含状态翻转），随后无条件回滚。
+/// </summary>
+public sealed record EffectSimulationReportDto(
+    [property: JsonPropertyName("moduleId")] int ModuleId,
+    [property: JsonPropertyName("event")] string Event,
+    [property: JsonPropertyName("definitionVersion")] string? DefinitionVersion,
+    [property: JsonPropertyName("recordKey")] IReadOnlyList<string> RecordKey,
+    [property: JsonPropertyName("durationMs")] int DurationMs,
+    [property: JsonPropertyName("rolledBack")] bool RolledBack,
+    [property: JsonPropertyName("precondition")] EffectSimulationGateDto Precondition,
+    [property: JsonPropertyName("validation")] EffectSimulationGateDto Validation,
+    [property: JsonPropertyName("effects")] IReadOnlyList<EffectSimulationStepDto> Effects,
+    [property: JsonPropertyName("counts")] EffectSimulationCountsDto Counts,
+    [property: JsonPropertyName("warnings")] IReadOnlyList<string> Warnings);
