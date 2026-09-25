@@ -809,7 +809,10 @@ describe('MenuAdminPage', () => {
     expect(screen.getByLabelText('表达式1（如 TABLE.COL、CASE 或日期函数）')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('tab', { name: '统一表单' }))
-    expect(screen.getByLabelText('页签定义（FORM_TABS）')).toBeInTheDocument()
+    // 页签定义 / 每行对数已退役：改到单据页的「表单设计」里配置，此处只留说明
+    expect(screen.getByLabelText('内置动作（受控注册码）')).toBeInTheDocument()
+    expect(screen.queryByLabelText('页签定义（FORM_TABS）')).toBeNull()
+    expect(screen.queryByLabelText('每行对数（FORM_COLUMNS）')).toBeNull()
   })
 
   it('过滤条件构建器：未选择字段时给出错误并禁止保存', async () => {

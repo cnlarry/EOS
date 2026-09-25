@@ -1251,21 +1251,9 @@ export function MenuAdminPage() {
                       <div className="card mb-2 erp-menu-form-card">
                         <div className="card-header py-2 px-3"><strong className="fs-6">统一表单设置</strong></div>
                         <div className="card-body py-2 px-3 row g-2">
-                          <div className="col-12">
-                            <Input
-                              label="页签定义（FORM_TABS）"
-                              value={draft.FORM_TABS ?? ''}
-                              placeholder="如 1=客户订单--1;2=客户订单--2；留空为单页签"
-                              onChange={(value) => patch((d) => ({ ...d, FORM_TABS: value || null }))}
-                            />
-                          </div>
-                          <div className="col-6">
-                            <Input
-                              label="每行对数（FORM_COLUMNS）"
-                              value={draft.FORM_COLUMNS == null ? '' : String(draft.FORM_COLUMNS)}
-                              placeholder="留空默认 2"
-                              onChange={(value) => patch((d) => ({ ...d, FORM_COLUMNS: value === '' ? null : Math.max(1, Math.min(6, Number(value) || 2)) }))}
-                            />
+                          <div className="col-12 text-secondary small">
+                            表单的<strong>页签</strong>与<strong>字段排布</strong>归模块级版式：在单据页右键进「表单设计」增改删页签、拖拽排布。
+                            统一表单固定一行四列（不随模块列数变化），此处不再配置页签定义与每行对数。
                           </div>
                           <div className="col-6">
                             <Input
