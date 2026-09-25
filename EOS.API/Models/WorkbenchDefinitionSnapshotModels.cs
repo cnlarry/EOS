@@ -2,7 +2,7 @@ namespace EOS.API.Models;
 
 /// <summary>
 /// 发布校验单项：
-/// error=阻断发布；warning=质量提示不拦闸（界面质量类：F_DESC 超长、FORM_ORDER 缺失、
+/// error=阻断发布；warning=质量提示不拦闸（界面质量类：F_DESC 超长、
 /// datetime 建议格式等），由批量报告与豁免清单承接。
 /// </summary>
 public sealed record WorkbenchDefinitionValidationCheck(string Code, bool Passed, string Message, string Severity = "error");

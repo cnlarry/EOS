@@ -36,9 +36,10 @@ public static class FormLayoutDerivation
     public const int MaxRowSpan = 3;
 
     /// <summary>
-    /// 未声明列数（<c>MODULES.FORM_COLUMNS</c> 为 0/空）时的栅格列数。
+    /// 统一表单的栅格列数（固定四子列）。
     /// 取 4 而非 2：既有统一表单历史上就固定按 4 列排布，而 279 个工作台模块里 140 个未声明列数——
     /// 默认成 2 会让这些模块的表单从每行 4 个字段变成每行 2 个，属纯粹的观感回退。
+    /// `MODULES.FORM_COLUMNS` 已退役（用户 2026-08-31 拍板"全局固定一行四列"），列数不再随模块变。
     /// </summary>
     public const int DefaultColumns = 4;
 

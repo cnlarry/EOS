@@ -73,7 +73,7 @@ public sealed class FormLayoutRepository(
             module.MasterTable,
             string.IsNullOrWhiteSpace(module.DetailTable) ? null : module.DetailTable,
             columns,
-            EffectiveTabs(module, layout),
+            EffectiveTabs(layout),
             BuildTableDesign(module.MasterTable, layout.Master, masterFields, masterFacts, rights,
                 isDetail: false, customized: layout.MasterCustomized),
             BuildTableDesign(
@@ -96,7 +96,8 @@ public sealed class FormLayoutRepository(
         }
         const string sql = """
             SELECT m.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC,''))),
-                   CAST(ISNULL(m.FORM_COLUMNS,0) AS int),
+                   -- 列数统一为四子列（FORM_COLUMNS 已退役），模板只用于"同主表套用版式"的模块清单
+                   CAST(0 AS int),
                    CASE WHEN LTRIM(RTRIM(ISNULL(m.DETAIL_TABLE,''))) = '' THEN 0 ELSE 1 END
             FROM dbo.MODULES m WITH (NOLOCK)
             WHERE LTRIM(RTRIM(ISNULL(m.MASTER_TABLE,''))) = @MasterTable AND m.M_IDX <> @ModuleId
@@ -510,10 +511,10 @@ public sealed class FormLayoutRepository(
     private static async Task<ModuleInfo?> ReadModuleAsync(
         SqlConnection connection, int moduleId, CancellationToken token)
     {
+        // 列数固定为统一表单的四子列、页签只来自 MODULE_FORM_TAB：`MODULES.FORM_COLUMNS/FORM_TABS` 已退役
         const string sql = """
             SELECT LTRIM(RTRIM(ISNULL(M_DESC,''))), LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),
-                   LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))), CAST(ISNULL(FORM_COLUMNS,0) AS int),
-                   ISNULL(FORM_TABS, N'')
+                   LTRIM(RTRIM(ISNULL(DETAIL_TABLE,'')))
             FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -530,14 +531,14 @@ public sealed class FormLayoutRepository(
         }
         var detailTable = reader.GetString(2);
         return new ModuleInfo(moduleId, reader.GetString(0), masterTable,
-            detailTable.Length == 0 ? null : detailTable, reader.GetInt32(3), reader.GetString(4));
+            detailTable.Length == 0 ? null : detailTable);
     }
 
     /// <summary>
     /// 设计态看到的页签必须与运行态一致：页签只来自版式表（<c>MODULE_FORM_TAB</c>），
     /// 没有页签行时兜底为常驻的 1 号页签。
     /// </summary>
-    private static IReadOnlyList<FormTabDefinition> EffectiveTabs(ModuleInfo module, FormLayoutDefinition layout)
+    private static IReadOnlyList<FormTabDefinition> EffectiveTabs(FormLayoutDefinition layout)
     {
         var tabs = layout.Tabs.ToList();
         if (tabs.All(tab => tab.No != 1))
@@ -639,7 +640,7 @@ public sealed class FormLayoutRepository(
     }
 
     private sealed record ModuleInfo(
-        int ModuleId, string Title, string MasterTable, string? DetailTable, int Columns, string FormTabs);
+        int ModuleId, string Title, string MasterTable, string? DetailTable);
 
     private sealed record LayoutBackup(
         IReadOnlyList<FormTabDefinition> Tabs,
