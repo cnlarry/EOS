@@ -775,8 +775,7 @@ public sealed class FieldAdminRepository(
                 IS_READONLY=@Readonly,IS_VERIFY=@Required,IS_COST=@Cost,IS_SECRECY=@Secrecy,DFT_VALUE=@DefaultValue,
                 VERIFY_INDEX=@VerifyIndex,REGEX=@Regex,F_REMARK=@Remark,BROWSE_URL=@BrowseUrl,BROWSE_M_IDX=@BrowseModuleId,
                 ONLY_CHOOSE=@OnlyChoose,CHOOSE_MULTI=@ChooseMultiple,CHOOSE_PAGE=@ChoosePage,CAN_COPY=@CanCopy,
-                FORM_TAB_NO=@FormTabNo,FORM_ORDER=@FormOrder,FORM_SPAN=@FormSpan,FORM_NEW_LINE=@FormNewLine,
-                FORM_CELL_GROUP=@FormCellGroup,FORM_CELL_ROLE=@FormCellRole,FORM_OPTIONS=@FormOptions,
+                FORM_OPTIONS=@FormOptions,
                 LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE()
             WHERE T_ID=@TableId AND F_ID=@FieldId;
             """;
@@ -856,9 +855,11 @@ public sealed class FieldAdminRepository(
                    CAST(COALESCE(IS_SECRECY,0) AS bit),DFT_VALUE,VERIFY_INDEX,REGEX,F_REMARK,BROWSE_URL,BROWSE_M_IDX,
                    CAST(COALESCE(ONLY_CHOOSE,0) AS bit),CAST(COALESCE(CHOOSE_MULTI,0) AS bit),CHOOSE_PAGE,
                    CAST(COALESCE(CAN_COPY,1) AS bit),
-                   CAST(COALESCE(FORM_TAB_NO,1) AS int) AS FORM_TAB_NO,FORM_ORDER,
-                   CAST(COALESCE(FORM_SPAN,1) AS int) AS FORM_SPAN,CAST(COALESCE(FORM_NEW_LINE,0) AS bit) AS FORM_NEW_LINE,
-                   FORM_CELL_GROUP,CAST(COALESCE(FORM_CELL_ROLE,0) AS int) AS FORM_CELL_ROLE,FORM_OPTIONS
+                   -- 字段级排布配置（页签/顺序/跨度/换行/复合格）已退役：原位返回固定占位值，
+                   -- 读取侧按列名取值不受影响；值一律取「未配置」语义（半行、无组）
+                   CAST(1 AS int) AS FORM_TAB_NO,CAST(NULL AS int) AS FORM_ORDER,
+                   CAST(1 AS int) AS FORM_SPAN,CAST(0 AS bit) AS FORM_NEW_LINE,
+                   CAST(N'' AS nvarchar(50)) AS FORM_CELL_GROUP,CAST(0 AS int) AS FORM_CELL_ROLE,FORM_OPTIONS
             FROM dbo.FIELDS WITH (NOLOCK)
             WHERE T_ID=@TableId AND LTRIM(RTRIM(F_ID))=@FieldId;
             """;
@@ -958,12 +959,8 @@ public sealed class FieldAdminRepository(
         command.Parameters.Add("@ChooseMultiple", SqlDbType.Bit).Value = input.ChooseMultiple;
         command.Parameters.Add("@ChoosePage", SqlDbType.NVarChar, 500).Value = DbValue(input.ChoosePage);
         command.Parameters.Add("@CanCopy", SqlDbType.Bit).Value = input.CanCopy;
-        command.Parameters.Add("@FormTabNo", SqlDbType.Int).Value = input.TabNo;
-        command.Parameters.Add("@FormOrder", SqlDbType.Int).Value = input.FormOrder ?? (object)DBNull.Value;
-        command.Parameters.Add("@FormSpan", SqlDbType.TinyInt).Value = (byte)Math.Clamp(input.Span, 1, 2);
-        command.Parameters.Add("@FormNewLine", SqlDbType.Bit).Value = input.NewLine;
-        command.Parameters.Add("@FormCellGroup", SqlDbType.NVarChar, 50).Value = DbValue(input.CellGroup);
-        command.Parameters.Add("@FormCellRole", SqlDbType.TinyInt).Value = (byte)Math.Clamp(input.CellRole, 0, 2);
+        // 字段级排布配置（@FormTabNo/@FormOrder/@FormSpan/@FormNewLine/@FormCellGroup/@FormCellRole）
+        // 已退役：不写库也不绑参，排布改在模块级版式（MODULE_FORM_LAYOUT）里配
         command.Parameters.Add("@FormOptions", SqlDbType.NVarChar, 500).Value = DbValue(input.Options);
         command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
     }
