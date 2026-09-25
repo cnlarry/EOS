@@ -35,7 +35,8 @@ public sealed record ModuleRightsInput(
     string? DenyNewDetail,
     string? DenyModiMaster,
     string? DenyModiDetail,
-    string? DataFilter);
+    string? DataFilter,
+    bool FormDesign = false);
 
 /// <summary>
 /// 模块权限矩阵行：moduleId/title/groupPath 定位，权限位为「可编辑值」
@@ -79,7 +80,8 @@ public sealed record ModuleRightsRow(
     string DenyModiDetail,
     string DataFilter,
     bool HasPersonal,
-    EffectiveModuleRights Effective);
+    EffectiveModuleRights Effective,
+    bool FormDesign = false);
 
 /// <summary>
 /// 生效模块权限（引擎规则：个人覆盖组；组布尔位 OR、EXEC_TAG 取最大、
@@ -115,7 +117,8 @@ public sealed record EffectiveModuleRights(
     IReadOnlyList<string> DenyNewDetail,
     IReadOnlyList<string> DenyModiMaster,
     IReadOnlyList<string> DenyModiDetail,
-    string DataFilter);
+    string DataFilter,
+    bool FormDesign = false);
 
 /// <summary>报表权限输入（SYSDD_REPORT / SYSDH_REPORT）。</summary>
 public sealed record ReportRightsInput(
