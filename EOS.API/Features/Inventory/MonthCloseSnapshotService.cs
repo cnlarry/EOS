@@ -8,8 +8,12 @@ namespace EOS.API.Features.Inventory;
 /// <summary>生成输入的来源：单据身份、期末时点、是否只探路。</summary>
 public sealed record MonthCloseSnapshotRequest(string MonthType, string MonthNo, DateTime MonthDate, bool Preview);
 
-/// <summary>生成结果：写了多少行、按哪些维度展开、期末数量合计（探路时是"将会写多少"）。</summary>
-public sealed record MonthCloseSnapshotResult(int RowCount, bool ByLocation, bool ByBatch, double EndingQuantity);
+/// <summary>生成结果：写了多少行、按哪些维度展开、期末数量合计、其中半成品账多少行
+/// （探路时是"将会写多少"）。</summary>
+public sealed record MonthCloseSnapshotResult(
+    int RowCount, bool ByLocation, bool ByBatch, double EndingQuantity,
+    /// <summary>其中半成品账（按制程）的行数：0 表示这一期没把半成品账纳进来。</summary>
+    int HalfStockRowCount = 0);
 
 /// <summary>
 /// 月结快照生成：把某张月结单的期末结存写成快照明细行。
@@ -28,8 +32,15 @@ public sealed record MonthCloseSnapshotResult(int RowCount, bool ByLocation, boo
 ///
 /// **本服务不碰余额表与流水表的写入**，流水只经 <see cref="InventoryQueryService"/> 读；
 /// 写出的行也只落 `INV_PRO_MONTH_D`（快照明细），不产生任何库存台账流水。
-/// 半成品账（按制程分账）不在本服务的范围内：制程维度在本版一律落哨兵空串，
-/// 由半成品账治理另行接入。
+///
+/// **半成品账（按制程分账）纳不纳入，由部署级参数 `MONTH_CLOSE_SCOPE_HALF_STOCK` 决定，
+/// 且与关账拦截同源**（ADR-020 §9.3）：同一个参数决定两侧，关时既不拦也不快照。
+/// 它**不写流水**，所以算法与主账不同——主账是"上一期快照 + 区间流水净额"，半成品只能
+/// **直取余额**（经 <see cref="InventoryQueryService.GetHalfStockBalancesAsync"/>），
+/// 于是只有"期末 == 生成当天"时那份余额才是那一期的期末；有结存而要补结过去的期间，
+/// 本服务**拒绝**而不是写一个看着像真的的数（口径与理由见 <c>GenerateAsync</c> 内注释）。
+/// 制程维度对主账行落哨兵空串——它区分的是"哪本账"，不是"细分到多细"。
+/// </remarks>
 /// </remarks>
 public sealed class MonthCloseSnapshotService
 {
@@ -84,11 +95,19 @@ public sealed class MonthCloseSnapshotService
         var cells = new Dictionary<string, SnapshotCell>(StringComparer.Ordinal);
         foreach (var row in baseCells)
         {
+            // 上一期里**制程非哨兵**的行属于半成品账：它没有流水可累加，本期结存只能"直取余额"
+            // （参数开）或不进快照（参数关），两种情形都不该把它当主账格子接着滚。
+            if (row.ProcedureTypeId.Length > 0)
+            {
+                continue;
+            }
             cells[row.Key] = new SnapshotCell(row.ProductNo, row.DepotId, row.LocationNo, row.BatchNo, row.Quantity, row.Amount);
         }
         foreach (var movement in movements)
         {
-            var key = SnapshotCell.BuildKey(movement.ProductNo, movement.DepotId, movement.LocationNo, movement.BatchNo);
+            // 流水是**主账**的流水 ⇒ 制程落哨兵；半成品账不写流水，不可能出现在这里。
+            var key = SnapshotCell.BuildKey(
+                movement.ProductNo, movement.DepotId, movement.LocationNo, movement.BatchNo);
             var cell = cells.TryGetValue(key, out var existing)
                 ? existing
                 : new SnapshotCell(movement.ProductNo, movement.DepotId, movement.LocationNo, movement.BatchNo, 0, 0);
@@ -98,6 +117,30 @@ public sealed class MonthCloseSnapshotService
             cells[key] = cell;
         }
 
+        // 半成品账（按制程分账）：**与关账拦截同源**——同一个部署级参数决定两侧（ADR-020 §9.3）。
+        if (policy.MonthCloseScopeHalfStock)
+        {
+            var halfStock = await InventoryQueryService.GetHalfStockBalancesAsync(connection, transaction, token);
+            var holding = halfStock.Where(row => row.Quantity != 0).ToList();
+            // 半成品账不写流水 ⇒ 这份余额只代表"现在"。期末不是生成当天的期间，**补不出来**：
+            // 写下去就是拿今天的余额冒充那一期的期末（比"没有快照"更糟，因为它看着像真的）。
+            if (holding.Count > 0 && request.MonthDate.Date != DateTime.Today)
+            {
+                throw new InvalidOperationException(
+                    $"半成品账有 {holding.Count} 个键的结存，但它没有库存流水、无法回溯："
+                    + $"本次期末是 {request.MonthDate:yyyy-MM-dd}，而生成发生在 {DateTime.Today:yyyy-MM-dd}。"
+                    + "半成品账的快照只能在期末当天生成；要么当天生成，要么把月结范围参数关掉（关掉即半成品账不进月结）。");
+            }
+            foreach (var row in holding)
+            {
+                // 位置/批次对半成品账没有意义 ⇒ 落哨兵；金额按成本价折算，使单价正好等于成本价
+                // （期初量 = 结存、本期入库 0 ⇒ 移动加权分母就是它自己）。
+                var cell = new SnapshotCell(row.ProductNo, row.DepotId, InventoryQueryService.LocationSentinel,
+                    InventoryQueryService.EmptyBatch, row.Quantity, row.Quantity * row.CostPrice, row.ProcedureTypeId);
+                cells[cell.Key] = cell;
+            }
+        }
+
         // 零数量的键不落行：它对任何口径都贡献 0，落下去只会把快照撑大。
         var rows = cells.Values
             .Where(cell => cell.Quantity != 0)
@@ -105,10 +148,12 @@ public sealed class MonthCloseSnapshotService
             .ThenBy(cell => cell.DepotId, StringComparer.Ordinal)
             .ThenBy(cell => cell.LocationNo, StringComparer.Ordinal)
             .ThenBy(cell => cell.BatchNo, StringComparer.Ordinal)
+            .ThenBy(cell => cell.ProcedureTypeId, StringComparer.Ordinal)
             .ToList();
 
         var result = new MonthCloseSnapshotResult(
-            rows.Count, byLocation, byBatch, rows.Sum(row => row.Quantity));
+            rows.Count, byLocation, byBatch, rows.Sum(row => row.Quantity),
+            rows.Count(row => row.ProcedureTypeId.Length > 0));
 
         if (request.Preview)
         {
@@ -142,8 +187,8 @@ public sealed class MonthCloseSnapshotService
                 // 表达不了"该维度不细分"。
                 insert.Parameters.Add($"@loc{index}", SqlDbType.NVarChar, 60).Value = row.LocationNo;
                 insert.Parameters.Add($"@batch{index}", SqlDbType.NVarChar, 60).Value = row.BatchNo;
-                // 制程维度本版一律落哨兵空串（半成品账按制程分账属另一项工作，见 §3.2 注）。
-                insert.Parameters.Add($"@proc{index}", SqlDbType.NVarChar, 20).Value = string.Empty;
+                // 制程：主账行落哨兵空串，半成品行落真制程（靠它区分"两本账"）。
+                insert.Parameters.Add($"@proc{index}", SqlDbType.NVarChar, 20).Value = row.ProcedureTypeId;
                 insert.Parameters.Add($"@qty{index}", SqlDbType.Float).Value = row.Quantity;
                 insert.Parameters.Add($"@price{index}", SqlDbType.Float).Value = row.UnitPrice;
             }
@@ -197,11 +242,17 @@ public sealed class MonthCloseSnapshotService
         var groupBy = new List<string> { "d.PRO_NO", "d.DEPOT_ID" };
         if (byLocation) groupBy.Add($"ISNULL(LTRIM(RTRIM(d.{InventoryQueryService.LocationColumn})), N'{InventoryQueryService.LocationSentinel}')");
         if (byBatch) groupBy.Add($"ISNULL(LTRIM(RTRIM(d.{InventoryQueryService.BatchColumn})), N'')");
-        var projection = string.Join(", ", groupBy);
+        // 制程**永远**参与分组（不受粒度参数影响）：它区分"一本账"而不是"一层细分"——
+        // 主账行落哨兵空串、半成品行落真制程。混在一格里，半成品的量就会被当主账的量接着滚。
+        groupBy.Add($"ISNULL(LTRIM(RTRIM(d.{InventoryQueryService.ProcedureColumn})), N'')");
+        var grouping = string.Join(", ", groupBy);
+        // 列序 = 维度（含制程）在前、量与金额在末两位：制程是**维度**，跟着维度走，
+        // 读的人按"先吃维度、再吃末尾两列"的顺序取，不必为每种维度组合各算一次下标。
+        var projection = grouping + ", SUM(ISNULL(d.QTY,0)) AS QTY, SUM(ISNULL(d.QTY,0) * ISNULL(d.PRICE,0)) AS AMOUNT";
 
         await using var command = new SqlCommand(
-            $"SELECT {projection}, SUM(ISNULL(d.QTY,0)) AS QTY, SUM(ISNULL(d.QTY,0) * ISNULL(d.PRICE,0)) AS AMOUNT "
-            + $"FROM dbo.{DetailTable} d WHERE d.MONTH_TYPE=@type AND d.MONTH_NO=@no GROUP BY {projection};",
+            $"SELECT {projection} FROM dbo.{DetailTable} d "
+            + $"WHERE d.MONTH_TYPE=@type AND d.MONTH_NO=@no GROUP BY {grouping};",
             connection, transaction);
         command.Parameters.Add("@type", SqlDbType.NVarChar, 20).Value = previous.MonthType;
         command.Parameters.Add("@no", SqlDbType.NVarChar, 40).Value = previous.MonthNo;
@@ -229,9 +280,11 @@ public sealed class MonthCloseSnapshotService
                 batch = reader.IsDBNull(index) ? InventoryQueryService.EmptyBatch : reader.GetString(index).Trim();
                 index++;
             }
-            var quantity = reader.IsDBNull(index) ? 0 : Convert.ToDouble(reader.GetValue(index));
-            var amount = reader.IsDBNull(index + 1) ? 0 : Convert.ToDouble(reader.GetValue(index + 1));
-            rows.Add(new SnapshotCell(product, depot, location, batch, quantity, amount));
+            // 制程紧跟在最后一位维度之后（它本身就是维度），量与金额固定是末两位。
+            var procedure = reader.IsDBNull(index) ? string.Empty : reader.GetString(index).Trim();
+            var quantity = reader.IsDBNull(index + 1) ? 0 : Convert.ToDouble(reader.GetValue(index + 1));
+            var amount = reader.IsDBNull(index + 2) ? 0 : Convert.ToDouble(reader.GetValue(index + 2));
+            rows.Add(new SnapshotCell(product, depot, location, batch, quantity, amount, procedure));
         }
         return rows;
     }
@@ -240,7 +293,8 @@ public sealed class MonthCloseSnapshotService
 
     /// <summary>快照里的一个格子（一条明细行）：期末量与移动加权单价由累计量与累计入库金额推出。</summary>
     private sealed class SnapshotCell(
-        string productNo, string depotId, string locationNo, string batchNo, double quantity, double amount)
+        string productNo, string depotId, string locationNo, string batchNo, double quantity, double amount,
+        string procedureTypeId = "")
     {
         /// <summary>字段分隔符：料号/库别/库位/批次都可能含逗号与短横，拼键必须用一个不会出现的字符。</summary>
         private const char KeySeparator = '\u001f';
@@ -249,6 +303,12 @@ public sealed class MonthCloseSnapshotService
         public string DepotId { get; } = depotId;
         public string LocationNo { get; } = locationNo;
         public string BatchNo { get; } = batchNo;
+
+        /// <summary>
+        /// 制程（半成品账按制程分账）。**主账行落哨兵空串**：那表示"该维度不细分"，
+        /// 与库位/批次两维的哨兵是同一个道理——唯一键把 NULL 视为彼此相等，表达不了"不细分"。
+        /// </summary>
+        public string ProcedureTypeId { get; } = procedureTypeId;
 
         /// <summary>期初数量（上一期已批核快照）。</summary>
         public double OpeningQuantity { get; } = quantity;
@@ -275,9 +335,10 @@ public sealed class MonthCloseSnapshotService
             }
         }
 
-        public string Key => string.Join(KeySeparator, ProductNo, DepotId, LocationNo, BatchNo);
+        public string Key => string.Join(KeySeparator, ProductNo, DepotId, LocationNo, BatchNo, ProcedureTypeId);
 
-        public static string BuildKey(string productNo, string depotId, string locationNo, string batchNo)
-            => string.Join(KeySeparator, productNo, depotId, locationNo, batchNo);
+        public static string BuildKey(string productNo, string depotId, string locationNo, string batchNo,
+            string procedureTypeId = "")
+            => string.Join(KeySeparator, productNo, depotId, locationNo, batchNo, procedureTypeId);
     }
 }

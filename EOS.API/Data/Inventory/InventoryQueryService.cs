@@ -37,6 +37,14 @@ public static class InventoryQueryService
     public const string EmptyBatch = "";
 
     /// <summary>
+    /// 半成品账（按制程分账，键 = 料号 + 制程 + 库别）。**它不写流水**——本服务对它是纯读，
+    /// 且读法也收在这里：快照要对它取余额，就得到这里来取，不在别处直读库存表。
+    /// </summary>
+    public const string HalfStockTable = "HALF_PRO_DEPOT";
+
+    public const string ProcedureColumn = "PROCEDURE_TYPE_ID";
+
+    /// <summary>
     /// 库别级字段：同一 `(PRO_NO, DEPOT_ID)` 的所有行冗余存同一个值，
     /// 因此取值只能任取其一或 `MAX`；`SUM` 会按行数放大成 N 倍。
     /// </summary>
@@ -365,6 +373,45 @@ public static class InventoryQueryService
     /// 按维度聚合区间净动账。缺数量的流水（`QTY IS NULL`）按 0 参与，
     /// 与对账算式同一口径——"这类行不参与"由对账门禁的第一步先断掉，这里不再各写一遍。
     /// </summary>
+    /// <summary>半成品账的一个键（料号 + 制程 + 库别）的结存与成本价。</summary>
+    public sealed record HalfStockQuantity(
+        string ProductNo, string ProcedureTypeId, string DepotId, double Quantity, double CostPrice);
+
+    /// <summary>
+    /// 读半成品账的**当前**结存（按 (料号, 制程, 库别) 三键）。
+    /// </summary>
+    /// <remarks>
+    /// **这个方法有个必须被记住的性质：它只能回答"现在"**。半成品账不写流水（`HalfStockMoveHandler`
+    /// 只动余额表那一行），所以没有任何历史可回溯——月结快照要把它换算成某一期的期末时，
+    /// 只有"期末正好是生成当天"时才是准的；调用方（月结快照）据此设置了拒绝条件，
+    /// 见 <c>MonthCloseSnapshotService</c>。
+    /// </remarks>
+    public static async Task<IReadOnlyList<HalfStockQuantity>> GetHalfStockBalancesAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        CancellationToken token)
+    {
+        // 纯读、不加锁提示：月结快照生成在调用方的事务里跑，加锁提示只会把并发收窄
+        // （余额表上的写者本人也要拿锁，这里重复要一次没有额外收益）。
+        await using var command = new SqlCommand(
+            $"SELECT {ProductColumn}, {ProcedureColumn}, {DepotColumn}, ISNULL({QuantityColumn},0), ISNULL(COST_PRICE,0) "
+            + $"FROM dbo.{HalfStockTable};",
+            connection, transaction);
+
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var rows = new List<HalfStockQuantity>();
+        while (await reader.ReadAsync(token))
+        {
+            rows.Add(new HalfStockQuantity(
+                reader.IsDBNull(0) ? string.Empty : reader.GetString(0).Trim(),
+                reader.IsDBNull(1) ? string.Empty : reader.GetString(1).Trim(),
+                reader.IsDBNull(2) ? string.Empty : reader.GetString(2).Trim(),
+                reader.IsDBNull(3) ? 0 : Convert.ToDouble(reader.GetValue(3)),
+                reader.IsDBNull(4) ? 0 : Convert.ToDouble(reader.GetValue(4))));
+        }
+        return rows;
+    }
+
     public static async Task<IReadOnlyList<MovementQuantity>> GetNetMovementsAsync(
         SqlConnection connection,
         SqlTransaction? transaction,

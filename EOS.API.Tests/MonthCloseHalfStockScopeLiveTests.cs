@@ -105,10 +105,10 @@ public sealed class MonthCloseHalfStockScopeLiveTests : IAsyncLifetime
         Assert.Contains(ClosedOn, error.Message);
     }
 
-    // ===== ③ 口径：默认关，且保存路径拒"开"（快照侧未落地） =====
+    // ===== ③ 口径：默认关；两侧都落地后允许打开，但库别行不许覆盖 =====
 
     [Fact]
-    public async Task 参数默认关_且保存路径拒绝打开()
+    public async Task 参数默认关_可以打开_但库别行不得覆盖()
     {
         await using var connection = new SqlConnection(ConnectionString);
         await connection.OpenAsync();
@@ -123,14 +123,13 @@ public sealed class MonthCloseHalfStockScopeLiveTests : IAsyncLifetime
         var flipped = await service.ResolveAsync(null, connection, transaction, CancellationToken.None);
         Assert.True(flipped.MonthCloseScopeHalfStock);
 
-        // 但保存路径拒绝把它打开，并把理由说清楚（不让"半生效的开关"存在）
-        var refusal = DepotStockPolicyService.ValidateMonthCloseScope(flipped, deployment);
-        Assert.NotNull(refusal);
-        Assert.Contains("WS-18b", refusal);
+        // 两侧（拦 + 快照）都已落地 ⇒ 保存路径不再拒它（WS-18b 之前这里拒"开"，是为了不造出半生效的开关）
+        Assert.Null(DepotStockPolicyService.ValidateMonthCloseScope(flipped, deployment));
 
-        // 库别行也不许覆盖它
-        Assert.NotNull(DepotStockPolicyService.ValidateMonthCloseScope(
-            flipped with { DepotId = "ZZHS" }, deployment));
+        // 库别行仍不许覆盖它：月结范围是全库口径，按库别配会让同一个月的口径分裂
+        var refusal = DepotStockPolicyService.ValidateMonthCloseScope(flipped with { DepotId = "ZZHS" }, deployment);
+        Assert.NotNull(refusal);
+        Assert.Contains("部署级", refusal);
 
         await transaction.RollbackAsync();
     }
