@@ -121,6 +121,13 @@ internal sealed class MasterFieldWriteHandler : IDocumentUserAction
             throw new EffectValidationException($"目标记录 {context.RecordKey} 不存在或已被删除，修改未生效。");
         }
 
+        // 写完**回读**再记审计：新值必须是"库里真存成了什么"，而不是用户提交的串。
+        // 否则同一列两侧格式不一致（旧值来自库：`2026/1/1 0:00:00`；新值来自提交：`2026-12-31`），
+        // 对账时最容易看花眼的正是这种"看着不同、其实同一时刻"的差异。
+        var after = await ReadCurrentAsync(context, changes.Keys.ToArray(), token);
+        var applied = string.Join("；", changes.Keys.Select(column =>
+            $"{column}：{Show(before.GetValueOrDefault(column))} → {Show(after.GetValueOrDefault(column))}"));
+
         // 前后值进审计：这条入口改的是属性列，状态列不留痕，审计就是唯一的痕迹。
         await _audit.WriteEventAsync(
             context.Connection,
@@ -132,14 +139,14 @@ internal sealed class MasterFieldWriteHandler : IDocumentUserAction
             context.Executor,
             "WORKBENCH_RECORD",
             result: 1,
-            fieldChanges: changes
-                .Select(change => new AuditFieldChange(
-                    change.Key, before.GetValueOrDefault(change.Key), change.Value, null))
+            fieldChanges: changes.Keys
+                .Select(column => new AuditFieldChange(
+                    column, before.GetValueOrDefault(column), after.GetValueOrDefault(column), null))
                 .ToList(),
             token);
 
         return new DocumentActionResult(DocumentActionOutcome.Refreshed,
-            $"已修改 {changes.Count} 个人工字段（{summary}）。库存账未受影响。");
+            $"已修改 {changes.Count} 个人工字段（{applied}）。库存账未受影响。");
     }
 
     /// <summary>
