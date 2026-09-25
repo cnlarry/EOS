@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { FormFieldDefinition } from './formDefinition'
 import {
-  buildFormCells,
-  buildFormRows,
-  buildFormSections,
+  buildPackedCells,
   deriveDefaultLayout,
-  moveLifecycleToTail,
+  isLifecycleTailField,
   packFormGrid,
+  packFormSections,
   toDetailRows,
 } from './formLayout'
+
+type Field = FormFieldDefinition
 
 function field(key: string, overrides: Partial<FormFieldDefinition> = {}): FormFieldDefinition {
   return {
@@ -80,9 +81,10 @@ describe('deriveDefaultLayout', () => {
     expect(doc.columns).toBe(4)
     expect(doc.tabs).toEqual([])
     expect(doc.rows).toEqual([
-      expect.objectContaining({ key: 'CLIENT_ID', orderNo: 3, span: 2, rowSpan: 1, hidden: false }),
+      // 字段级 span=2（整行独占）映射到 4 子列；span=1（半行）映射到 2 子列
+      expect.objectContaining({ key: 'CLIENT_ID', orderNo: 3, span: 4, rowSpan: 1, hidden: false }),
       expect.objectContaining({ key: 'REMARK', span: 4, rowSpan: 2 }),
-      expect.objectContaining({ key: 'QTY', orderNo: 7 }),
+      expect.objectContaining({ key: 'QTY', orderNo: 7, span: 2 }),
     ])
   })
 
@@ -111,10 +113,10 @@ describe('deriveDefaultLayout', () => {
       .toEqual([['CLIENT', 1, null], ['CLIENT', 2, null]])
   })
 
-  it('列数非法时回落 2，列跨度按下限截断', () => {
+  it('列数非法时回落 4（统一表单固定四子列），跨度按下限映射', () => {
     const doc = deriveDefaultLayout([field('A', { span: 0 })], 0)
-    expect(doc.columns).toBe(2)
-    expect(doc.rows[0].span).toBe(1)
+    expect(doc.columns).toBe(4)
+    expect(doc.rows[0].span).toBe(2)
   })
 
   it('明细版式行只保留列顺序与列显隐', () => {
@@ -126,143 +128,144 @@ describe('deriveDefaultLayout', () => {
   })
 })
 
-describe('buildFormCells', () => {
+describe('buildPackedCells', () => {
   it('普通字段各自成格', () => {
-    const cells = buildFormCells([field('A'), field('B')])
-    expect(cells).toEqual([[expect.objectContaining({ key: 'A' })], [expect.objectContaining({ key: 'B' })]])
+    const cells = buildPackedCells([field('A'), field('B')])
+    expect(cells.map(cell => cell.map(item => item.key))).toEqual([['A'], ['B']])
   })
 
   it('同组从字段跟随主字段进入同一格', () => {
-    const main = field('CLIENT_ID', { cellGroup: 'CLIENT', cellRole: 1, choosers: [{ active: true, table: 'CLIENT', description: null, moduleId: null, filter: null, returnMapping: null, serialNo: 1 }] })
-    const companion = field('CLIENT_NAME', { cellGroup: 'CLIENT', cellRole: 2, displayOnly: true })
-    const cells = buildFormCells([companion, main])
+    const main = field('CLIENT_ID', { cellGroup: 'CLIENT', cellRole: 1 })
+    const companion = field('CLIENT_NAME', { cellGroup: 'CLIENT', cellRole: 2 })
+    const cells = buildPackedCells([companion, main])
     expect(cells).toHaveLength(1)
     expect(cells[0].map(item => item.key)).toEqual(['CLIENT_ID', 'CLIENT_NAME'])
   })
 })
 
-describe('buildFormRows', () => {
-  it('按每行对数切分', () => {
-    const cells = [[field('A')], [field('B')], [field('C')], [field('D')], [field('E')]]
-    const rows = buildFormRows(cells, 2)
-    expect(rows.map(row => row.map(cell => cell[0].key))).toEqual([['A', 'B'], ['C', 'D'], ['E']])
+describe('packFormSections 装箱（运行态与设计态共用）', () => {
+  const keys = (sections: ReturnType<typeof packFormSections<Field>>) =>
+    sections.map(section => section.cells.map(item => item.cell[0].key))
+
+  it('半行字段每行两个（4 子列 × span2），满行换行', () => {
+    const sections = packFormSections(
+      [field('A', { span: 2 }), field('B', { span: 2 }), field('C', { span: 2 }), field('D', { span: 2 }), field('E', { span: 2 })],
+      4,
+    )
+    expect(keys(sections)).toEqual([['A', 'B', 'C', 'D', 'E']])
+    const placements = sections[0].cells.map(item => item.placement)
+    expect(placements.map(item => [item.col, item.row, item.span])).toEqual([
+      [1, 1, 2], [3, 1, 2], [1, 2, 2], [3, 2, 2], [1, 3, 2],
+    ])
   })
 
-  it('整行独占字段单独成行', () => {
-    const cells = [[field('A')], [field('REMARK', { span: 2 })], [field('B')]]
-    const rows = buildFormRows(cells, 2)
-    expect(rows.map(row => row.map(cell => cell[0].key))).toEqual([['A'], ['REMARK'], ['B']])
-  })
+  it('整行字段独占一行；紧凑排列把后续半行字段回填到空位（视觉顺序由装箱决定）', () => {
+    const sections = packFormSections([field('A', { span: 2 }), field('REMARK', { span: 4 }), field('B', { span: 2 })], 4)
+    // A 占 1-2 列；REMARK 整行落到第 2 行；B 回填第 1 行剩下的 3-4 列
+    expect(sections[0].cells.map(item => [item.cell[0].key, item.placement.row, item.placement.col, item.placement.span])).toEqual([
+      ['A', 1, 1, 2], ['B', 1, 3, 2], ['REMARK', 2, 1, 4],
+    ])
 
-  it('REMARK 类字段（无 span 配置）回退整行', () => {
-    const rows = buildFormRows([[field('A')], [field('REMARK')], [field('B')]], 2)
-    expect(rows.map(row => row.map(cell => cell[0].key))).toEqual([['A'], ['REMARK'], ['B']])
+    const sparse = packFormSections([field('A', { span: 2 }), field('REMARK', { span: 4 }), field('B', { span: 2 })], 4, { fillHoles: false })
+    expect(sparse[0].cells.map(item => [item.cell[0].key, item.placement.row])).toEqual([
+      ['A', 1], ['REMARK', 2], ['B', 3],
+    ])
   })
 
   it('强制换行字段另起一行', () => {
-    const cells = [[field('A')], [field('C', { newLine: true })], [field('B')]]
-    const rows = buildFormRows(cells, 2)
-    expect(rows.map(row => row.map(cell => cell[0].key))).toEqual([['A'], ['C', 'B']])
-  })
-})
-
-describe('buildFormSections', () => {
-  it('无分组字段全部归入默认节（无标题、排最前）', () => {
-    const sections = buildFormSections([[field('A')], [field('B')]])
-    expect(sections).toEqual([{ title: null, cells: [[expect.objectContaining({ key: 'A' })], [expect.objectContaining({ key: 'B' })]] }])
-  })
-
-  it('组名下 ≥2 个主字段格成节，标题取组名原文', () => {
-    const sections = buildFormSections([
-      [field('A')],
-      [field('S1', { cellGroup: '发货信息' })],
-      [field('S2', { cellGroup: '发货信息' })],
+    const sections = packFormSections([field('A', { span: 2 }), field('C', { span: 2, newLine: true }), field('B', { span: 2 })], 4)
+    expect(sections[0].cells.map(item => [item.cell[0].key, item.placement.row, item.placement.col])).toEqual([
+      ['A', 1, 1], ['C', 2, 1], ['B', 2, 3],
     ])
-    expect(sections).toHaveLength(2)
-    expect(sections[0].title).toBeNull()
-    expect(sections[0].cells.map(cell => cell[0].key)).toEqual(['A'])
-    expect(sections[1].title).toBe('发货信息')
-    expect(sections[1].cells.map(cell => cell[0].key)).toEqual(['S1', 'S2'])
   })
 
-  it('复合三件套（ID+名称同格）不立节——单格组归默认节', () => {
-    const main = field('CLIENT_ID', { cellGroup: 'CLIENT', cellRole: 1 })
-    const companion = field('CLIENT_NAME', { cellGroup: 'CLIENT', cellRole: 2 })
-    const cells = buildFormCells([main, companion])
-    expect(cells).toHaveLength(1)
-    const sections = buildFormSections(cells)
-    expect(sections).toHaveLength(1)
-    expect(sections[0].title).toBeNull()
-  })
+  it('紧凑排列关闭时空洞保留（不提前回填）', () => {
+    const filled = packFormSections([field('A', { span: 4 }), field('B', { span: 2 }), field('C', { span: 2 })], 4, { fillHoles: true })
+    expect(filled[0].cells.map(item => [item.cell[0].key, item.placement.row])).toEqual([['A', 1], ['B', 2], ['C', 2]])
 
-  it('分节内保持字段出现顺序，节按首现顺序排列', () => {
-    const sections = buildFormSections([
-      [field('G2A', { cellGroup: 'G2' })],
-      [field('M1')],
-      [field('G1B', { cellGroup: 'G1' })],
-      [field('G2B', { cellGroup: 'G2' })],
-      [field('G1A', { cellGroup: 'G1' })],
-    ])
-    expect(sections.map(section => section.title)).toEqual([null, 'G2', 'G1'])
-    expect(sections[1].cells.map(cell => cell[0].key)).toEqual(['G2A', 'G2B'])
-    expect(sections[2].cells.map(cell => cell[0].key)).toEqual(['G1B', 'G1A'])
-  })
-
-  it('空输入返回单个默认节', () => {
-    expect(buildFormSections([])).toEqual([])
-  })
-})
-
-describe('moveLifecycleToTail', () => {
-  it('生命周期列从各节摘出，追加为末尾一节', () => {
-    const sections = buildFormSections([
-      [field('NAME')],
-      [field('CREATE_PERSON')],
-      [field('REMARK')],
-      [field('CONFIRM_TAG')],
-    ])
-    const result = moveLifecycleToTail(sections)
-    expect(result.map(section => section.title)).toEqual([null, null])
-    expect(result[0].cells.map(cell => cell[0].key)).toEqual(['NAME', 'REMARK'])
-    expect(result[1].cells.map(cell => cell[0].key)).toEqual(['CREATE_PERSON', 'CONFIRM_TAG'])
-  })
-
-  it('尾部按固定次序排列，不受元数据顺序影响', () => {
-    const sections = buildFormSections([[field('CONFIRM_TAG')], [field('CREATE_DATE')], [field('CREATE_PERSON')]])
-    const result = moveLifecycleToTail(sections)
-    expect(result[result.length - 1].cells.map(cell => cell[0].key))
-      .toEqual(['CREATE_PERSON', 'CREATE_DATE', 'CONFIRM_TAG'])
-  })
-
-  it('分组内的生命周期列同样摘出，尾部块排在最后一节之后', () => {
-    const sections = buildFormSections([
-      [field('A')],
-      [field('G1', { cellGroup: '发货信息' })],
-      [field('G2', { cellGroup: '发货信息' })],
-      [field('FINISHED_TAG')],
-    ])
-    const result = moveLifecycleToTail(sections)
-    expect(result.map(section => section.title)).toEqual([null, '发货信息', null])
-    expect(result[2].cells.map(cell => cell[0].key)).toEqual(['FINISHED_TAG'])
-  })
-
-  it('字段名大小写不敏感', () => {
-    const sections = buildFormSections([[field('create_person')], [field('A')]])
-    const result = moveLifecycleToTail(sections)
-    expect(result[0].cells.map(cell => cell[0].key)).toEqual(['A'])
-    expect(result[1].cells.map(cell => cell[0].key)).toEqual(['create_person'])
-  })
-
-  it('无生命周期列时保持原分节不变', () => {
-    const sections = buildFormSections([
-      [field('S1', { cellGroup: '发货信息' })],
-      [field('S2', { cellGroup: '发货信息' })],
-      [field('A')],
-    ])
-    expect(moveLifecycleToTail(sections)).toEqual(sections)
+    const sparse = packFormSections(
+      [field('A', { span: 4 }), field('B', { span: 4, newLine: true }), field('C', { span: 2 })],
+      4,
+      { fillHoles: false },
+    )
+    expect(sparse[0].cells.map(item => [item.cell[0].key, item.placement.row])).toEqual([['A', 1], ['B', 2], ['C', 3]])
   })
 
   it('空输入返回空', () => {
-    expect(moveLifecycleToTail([])).toEqual([])
+    expect(packFormSections([], 4)).toEqual([])
+  })
+})
+
+describe('packFormSections 分节', () => {
+  const titles = (sections: ReturnType<typeof packFormSections<Field>>) => sections.map(section => section.title)
+  const keys = (sections: ReturnType<typeof packFormSections<Field>>) =>
+    sections.map(section => section.cells.map(item => item.cell[0].key))
+
+  it('显式 sectionId 分节：无题节排最前，其余按首现顺序', () => {
+    const sections = packFormSections(
+      [
+        field('B', { sectionId: '基本信息' }),
+        field('A'),
+        field('C', { sectionId: '基本信息' }),
+        field('D', { sectionId: '金额' }),
+      ],
+      4,
+    )
+    expect(titles(sections)).toEqual([null, '基本信息', '金额'])
+    expect(keys(sections)).toEqual([['A'], ['B', 'C'], ['D']])
+  })
+
+  it('有 sectionId 时不再用复合格组名当分节', () => {
+    const sections = packFormSections(
+      [
+        field('S1', { cellGroup: '发货信息', sectionId: '明细' }),
+        field('S2', { cellGroup: '发货信息', sectionId: '明细' }),
+      ],
+      4,
+    )
+    expect(titles(sections)).toEqual(['明细'])
+  })
+
+  it('完全没有 sectionId 时回落到组名启发式（≥2 个主字段成节，单格组归默认节）', () => {
+    const sections = packFormSections(
+      [
+        field('A'),
+        field('S1', { cellGroup: '发货信息' }),
+        field('S2', { cellGroup: '发货信息' }),
+        field('CLIENT_ID', { cellGroup: 'CLIENT', cellRole: 1 }),
+        field('CLIENT_NAME', { cellGroup: 'CLIENT', cellRole: 2 }),
+      ],
+      4,
+    )
+    expect(titles(sections)).toEqual([null, '发货信息'])
+    expect(keys(sections)).toEqual([['A', 'CLIENT_ID'], ['S1', 'S2']])
+  })
+
+  it('尾部格自成末尾一节，按固定次序排列且大小写不敏感', () => {
+    const sections = packFormSections(
+      [field('NAME'), field('CONFIRM_TAG'), field('REMARK'), field('create_person')],
+      4,
+      { tailCells: item => item.key.toUpperCase().startsWith('CONFIRM') || item.key.toUpperCase().startsWith('CREATE') },
+    )
+    expect(titles(sections)).toEqual([null, null])
+    expect(keys(sections)).toEqual([['NAME', 'REMARK'], ['create_person', 'CONFIRM_TAG']])
+  })
+
+  it('无尾部格时保持原分节不变', () => {
+    const items = [field('S1', { cellGroup: '发货信息' }), field('S2', { cellGroup: '发货信息' }), field('A')]
+    const withoutTail = packFormSections(items, 4)
+    const withTail = packFormSections(items, 4, { tailCells: () => false })
+    expect(titles(withTail)).toEqual(titles(withoutTail))
+    expect(keys(withTail)).toEqual(keys(withoutTail))
+  })
+})
+
+describe('isLifecycleTailField', () => {
+  it('识别建立/修改/审核/结案的人·日期·状态，且大小写不敏感', () => {
+    expect(isLifecycleTailField({ key: 'CREATE_PERSON' })).toBe(true)
+    expect(isLifecycleTailField({ key: 'create_date' })).toBe(true)
+    expect(isLifecycleTailField({ key: 'CONFIRM_TAG' })).toBe(true)
+    expect(isLifecycleTailField({ key: 'FINISHED_DATE' })).toBe(true)
+    expect(isLifecycleTailField({ key: 'REMARK' })).toBe(false)
   })
 })

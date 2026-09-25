@@ -1,7 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragMoveEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core'
 import { ApiError } from '../../types/api'
 import { apiClient } from '../../services/api'
 import { createId } from '../../lib/uuid'
+import { applyDrop, parseDragId, zoneOf, type DragSource, type DropTarget } from './formDesignerDrag'
 import DesignCanvas from './DesignCanvas'
 import DetailColumnPanel from './DetailColumnPanel'
 import FieldPool, { type PoolEntry } from './FieldPool'
@@ -52,6 +64,62 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
   const [busy, setBusy] = useState(false)
   const [issues, setIssues] = useState<string[]>([])
   const [status, setStatus] = useState<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(null)
+  const [dragging, setDragging] = useState<DragSource | null>(null)
+  const [dropTarget, setDropTarget] = useState<DropTarget>(null)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+
+  const draggedLabel = useMemo(() => {
+    if (!draft || !dragging) return ''
+    const rows = dragging.table === 'master' ? draft.master : draft.detail
+    const row = rows.find(item => item.key === dragging.key)
+    if (row) return row.label
+    const pool = dragging.table === 'master' ? draft.masterPool : draft.detailPool
+    return pool.find(field => field.key === dragging.key)?.label ?? dragging.key
+  }, [draft, dragging])
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setDragging(parseDragId(String(event.active.id)))
+  }
+
+  /** 落点判定放在这里：只有"鼠标落在格的哪一段"这类几何问题需要实时算，语义都在 applyDrop。 */
+  const handleDragMove = (event: DragMoveEvent) => {
+    const over = event.over
+    if (!over) {
+      setDropTarget(null)
+      return
+    }
+    const data = over.data.current as { kind?: string; key?: string; tabNo?: number; sectionId?: string | null } | undefined
+    if (data?.kind === 'cell' && data.key) {
+      const pointerX = (event.activatorEvent as PointerEvent).clientX + event.delta.x
+      const zone = zoneOf(pointerX - over.rect.left, over.rect.width)
+      setDropTarget(zone === 'merge' ? { kind: 'merge', key: data.key } : { kind: 'insert', key: data.key, before: zone === 'before' })
+      return
+    }
+    if (data?.kind === 'tab' && typeof data.tabNo === 'number') {
+      setDropTarget({ kind: 'tab', tabNo: data.tabNo })
+      return
+    }
+    if (data?.kind === 'section') {
+      setDropTarget({ kind: 'section', sectionId: data.sectionId ?? null })
+      return
+    }
+    setDropTarget(data?.kind === 'pool' ? { kind: 'remove' } : null)
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const source = parseDragId(String(event.active.id))
+    const target = dropTarget
+    setDragging(null)
+    setDropTarget(null)
+    if (!source || !target || !draft) return
+    const result = applyDrop(draft, source, target)
+    if ('rejected' in result) {
+      setStatus({ tone: 'warn', text: result.rejected })
+      return
+    }
+    apply(result.draft)
+    setSelectedKey(source.key)
+  }
 
   const load = useCallback(async () => {
     setLoadError(null)
@@ -296,60 +364,75 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
         </div>
       ) : null}
 
-      <div className="erp-designer-body">
-        {!preview ? (
-          <FieldPool
-            entries={poolEntries}
-            activeTable={activeTable}
-            hasDetail={state.detailTable !== null}
-            onTableChange={table => {
-              setActiveTable(table)
-              setSelectedKey(null)
-            }}
-            onAdd={addField}
-            disabled={busy}
-          />
-        ) : null}
-
-        <div className="erp-designer-main">
-          <DesignCanvas
-            draft={draft}
-            activeTabNo={activeTabNo}
-            onActiveTabChange={setActiveTabNo}
-            selectedKey={activeTable === 'master' ? selectedKey : null}
-            onSelect={key => {
-              setActiveTable('master')
-              setSelectedKey(key)
-            }}
-            compact={compact}
-            preview={preview}
-            onMove={handleMove}
-            onHide={handleHide}
-            onForceNewLine={handleForceNewLine}
-            onRenameTab={(no, title) => apply(renameTab(draft, no, title))}
-            onAddTab={() => apply(addTab(draft, `页签 ${draft.tabs.length + 1}`))}
-            onDeleteTab={no => {
-              if (!window.confirm(`删除页签「${tabTitle(draft.tabs.find(tab => tab.no === no) ?? { no, title: '' })}」？其中的字段会回到默认页签。`)) return
-              apply(deleteTab(draft, no))
-              if (activeTabNo === no) setActiveTabNo(1)
-            }}
-          />
-
-          {state.detailTable ? (
-            <DetailColumnPanel
-              table={state.detailTable}
-              rows={draft.detail}
-              selectedKey={activeTable === 'detail' ? selectedKey : null}
-              preview={preview}
-              onSelect={key => {
-                setActiveTable('detail')
-                setSelectedKey(key)
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragMove={handleDragMove}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => {
+          setDragging(null)
+          setDropTarget(null)
+        }}
+      >
+        <div className="erp-designer-body">
+          {!preview ? (
+            <FieldPool
+              entries={poolEntries}
+              activeTable={activeTable}
+              hasDetail={state.detailTable !== null}
+              onTableChange={table => {
+                setActiveTable(table)
+                setSelectedKey(null)
               }}
-              onMove={(key, delta) => apply(moveRow(draft, 'detail', key, delta))}
-              onHidden={(key, hidden) => apply(setHidden(draft, 'detail', key, hidden))}
+              onAdd={addField}
+              disabled={busy}
             />
           ) : null}
-        </div>
+
+          <div className="erp-designer-main">
+            <DesignCanvas
+              draft={draft}
+              activeTabNo={activeTabNo}
+              onActiveTabChange={setActiveTabNo}
+              selectedKey={activeTable === 'master' ? selectedKey : null}
+              onSelect={key => {
+                setActiveTable('master')
+                setSelectedKey(key)
+              }}
+              compact={compact}
+              preview={preview}
+              draggingKey={dragging?.key ?? null}
+              dropTarget={dropTarget}
+              onMove={handleMove}
+              onHide={handleHide}
+              onForceNewLine={handleForceNewLine}
+              onRenameTab={(no, title) => apply(renameTab(draft, no, title))}
+              onAddTab={() => apply(addTab(draft, `页签 ${draft.tabs.length + 1}`))}
+              onDeleteTab={no => {
+                if (!window.confirm(`删除页签「${tabTitle(draft.tabs.find(tab => tab.no === no) ?? { no, title: '' })}」？其中的字段会回到默认页签。`)) return
+                apply(deleteTab(draft, no))
+                if (activeTabNo === no) setActiveTabNo(1)
+              }}
+            />
+
+            {state.detailTable ? (
+              <DetailColumnPanel
+                table={state.detailTable}
+                rows={draft.detail}
+                selectedKey={activeTable === 'detail' ? selectedKey : null}
+                preview={preview}
+                draggingKey={dragging?.table === 'detail' ? dragging.key : null}
+                dropTarget={dropTarget}
+                onSelect={key => {
+                  setActiveTable('detail')
+                  setSelectedKey(key)
+                }}
+                onMove={(key, delta) => apply(moveRow(draft, 'detail', key, delta))}
+                onHidden={(key, hidden) => apply(setHidden(draft, 'detail', key, hidden))}
+              />
+            ) : null}
+          </div>
 
         {!preview ? (
           <PropertyPanel
@@ -384,7 +467,12 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
             }}
           />
         ) : null}
-      </div>
+        </div>
+        {/* 拖拽时跟手的半透明卡片：不改变画布尺寸，只说明"正在拖谁" */}
+        <DragOverlay dropAnimation={null}>
+          {dragging ? <div className="erp-designer-drag-card">{draggedLabel}</div> : null}
+        </DragOverlay>
+      </DndContext>
     </div>
   )
 }

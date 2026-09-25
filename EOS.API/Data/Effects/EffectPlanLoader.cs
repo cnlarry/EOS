@@ -126,10 +126,9 @@ public sealed class EffectPlanLoader
             throw new EffectConfigException("公式行配置项必须是对象。");
 
         var opCode = OptionalString(element, "opCode");
-        if (string.IsNullOrWhiteSpace(opCode)
-            && string.IsNullOrWhiteSpace(OptionalString(element, "targetTable"))
-            && string.IsNullOrWhiteSpace(OptionalString(element, "targetField")))
-            return null; // translation-phase placeholder row; service key params carry the semantics
+        if (ModuleBusinessConfigValidator.IsPlaceholderOp(
+                opCode, OptionalString(element, "targetTable"), OptionalString(element, "targetField")))
+            return null; // 翻译期占位行；服务型效果的语义在参数里
 
         opCode = RequiredString(element, "opCode");
         if (!OpCodes.Contains(opCode))

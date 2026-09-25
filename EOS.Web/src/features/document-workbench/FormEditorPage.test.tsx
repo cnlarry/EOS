@@ -938,5 +938,42 @@ describe('FormEditorPage', () => {
     expect(String(init.headers['X-Idempotency-Key']).length).toBeGreaterThan(0)
     expect(await screen.findByText('账面数量已重算')).toBeInTheDocument()
   })
+
+  it('整节单栅格：字段按显式装箱落位（半行两个一行、整行独占、备注整行两行高）', async () => {
+    const gridForm = {
+      ...formDefinition,
+      masterFields: [
+        field('A', '甲', { span: 2 }),
+        field('B', '乙', { span: 2 }),
+        field('C', '丙', { span: 2 }),
+        field('REMARK', '备注', { span: 4, rowSpan: 2 }),
+        field('D', '丁', { span: 2 }),
+      ],
+    }
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return gridForm
+      if (p.includes('/record')) return { master: { A: '1', B: '2', C: '3', D: '4', REMARK: '备注内容' }, details: [] }
+      if (p.includes('/form-chooser/')) return chooserData
+      throw new Error(`unexpected GET ${p}`)
+    })
+
+    const { container } = renderEditor('/workbench/1209/new')
+    await waitFor(() => expect(screen.getByText('甲')).toBeInTheDocument())
+    await waitFor(() => expect(container.querySelectorAll('.erp-form-slot')).toHaveLength(5))
+
+    const slots = Array.from(container.querySelectorAll<HTMLElement>('.erp-form-slot'))
+    // A/B 占第 1 行；C 另起第 2 行，D 回填第 2 行右侧（紧凑排列）；备注整行独占且两行高
+    expect(slots.map(slot => [slot.style.gridColumn, slot.style.gridRow])).toEqual([
+      ['1 / span 2', '1 / span 1'],
+      ['3 / span 2', '1 / span 1'],
+      ['1 / span 2', '2 / span 1'],
+      ['3 / span 2', '2 / span 1'],
+      ['1 / span 4', '3 / span 2'],
+    ])
+    // 栅格列数固定四子列
+    const grid = container.querySelector<HTMLElement>('.erp-form-row')
+    expect(grid?.style.gridTemplateColumns).toBe('repeat(4, minmax(0, 1fr))')
+  })
 })
 

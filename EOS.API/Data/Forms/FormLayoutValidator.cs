@@ -38,7 +38,7 @@ public static class FormLayoutValidator
         IReadOnlyDictionary<string, FormLayoutFieldFact> detailFields)
     {
         var issues = new List<FormLayoutValidationIssue>();
-        var columns = layout.Columns > 0 ? layout.Columns : 2;
+        var columns = layout.Columns > 0 ? layout.Columns : FormLayoutDerivation.DefaultColumns;
 
         ValidateTabs(layout, issues);
         ValidateRows(layout.Master, masterFields, layout, columns, isMaster: true, issues);
