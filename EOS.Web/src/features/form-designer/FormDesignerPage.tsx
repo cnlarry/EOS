@@ -22,10 +22,15 @@ import { useDesignerHistory } from './useDesignerHistory'
 import {
   addFromPool,
   addTab,
+  applyTemplateDraft,
   deleteTab,
+  exportDraftFile,
+  importDraftFile,
   mergeCompanion,
   moveRow,
   moveRowToTab,
+  removeSection,
+  renameSection,
   renameTab,
   resetRow,
   setHidden,
@@ -36,6 +41,7 @@ import {
   toSavePayload,
   validateDraft,
 } from './formDesignerDraft'
+import type { FormLayoutTemplate } from './types'
 import type { DesignDraft, DesignState, DesignTable, SaveResponse } from './types'
 import './form-designer.css'
 
@@ -64,6 +70,12 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
   const [busy, setBusy] = useState(false)
   const [issues, setIssues] = useState<string[]>([])
   const [status, setStatus] = useState<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(null)
+  const [menu, setMenu] = useState<
+    | { kind: 'row'; key: string; x: number; y: number }
+    | { kind: 'section'; sectionId: string; x: number; y: number }
+    | null
+  >(null)
+  const [templates, setTemplates] = useState<FormLayoutTemplate[] | null>(null)
   const [dragging, setDragging] = useState<DragSource | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
@@ -77,6 +89,52 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
     const pool = dragging.table === 'master' ? draft.masterPool : draft.detailPool
     return pool.find(field => field.key === dragging.key)?.label ?? dragging.key
   }, [draft, dragging])
+
+  const closeMenu = () => setMenu(null)
+  const runMenu = (action: () => void) => {
+    action()
+    closeMenu()
+  }
+  const menuRow = menu?.kind === 'row' ? draft?.master.find(row => row.key === menu.key) ?? null : null
+  const menuPrev = menuRow
+    ? draft?.master.filter(row => row.cellRole !== 2).at(draft.master.filter(row => row.cellRole !== 2).findIndex(row => row.key === menuRow.key) - 1) ?? null
+    : null
+
+  /** 套用来源：只列共用同一主表的模块（跨主表套用会排出业务上不该出现的字段）。 */
+  const loadTemplates = async () => {
+    if (!draft) return
+    try {
+      const result = await apiClient.get<FormLayoutTemplate[]>(`/admin/form-layout/${draft.moduleId}/templates`)
+      setTemplates(result ?? [])
+      if ((result ?? []).length === 0) {
+        setStatus({ tone: 'warn', text: '没有其它模块与本模块共用同一主表，暂无可套用来源。' })
+      }
+    } catch (error) {
+      setStatus({ tone: 'error', text: String(error) })
+    }
+  }
+
+  const exportFile = () => {
+    if (!draft) return
+    const blob = new Blob([exportDraftFile(draft)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `form-layout-${draft.moduleId}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const importFile = async (file: File) => {
+    if (!draft) return
+    const result = importDraftFile(draft, await file.text())
+    if ('error' in result) {
+      setStatus({ tone: 'error', text: result.error })
+      return
+    }
+    apply(result.draft)
+    setStatus({ tone: 'ok', text: '版式文件已载入画布，确认后再点保存。' })
+  }
 
   const handleDragStart = (event: DragStartEvent) => {
     setDragging(parseDragId(String(event.active.id)))
@@ -363,6 +421,62 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
           ? state.master.customized ? '本表已有定制版式' : '本表当前是推导默认（保存后即为定制）'
           : state.detail.customized ? '本表已有定制版式' : '本表当前是推导默认（保存后即为定制）'}
       </div>
+      {!preview ? (
+        <div className="erp-designer-tools">
+          <button type="button" className="erp-designer-chip" onClick={() => void loadTemplates()}>
+            套用来源…
+          </button>
+          <button type="button" className="erp-designer-chip" onClick={exportFile}>
+            导出版式
+          </button>
+          <label className="erp-designer-chip">
+            导入版式
+            <input
+              type="file"
+              accept="application/json"
+              hidden
+              onChange={event => {
+                const file = event.target.files?.[0]
+                if (file) void importFile(file)
+                event.target.value = ''
+              }}
+            />
+          </label>
+        </div>
+      ) : null}
+      {templates && !preview ? (
+        <div className="erp-designer-templates">
+          {templates.length === 0 ? (
+            <span className="erp-designer-muted">没有共用同一主表的其它模块。</span>
+          ) : (
+            templates.map(item => (
+              <button
+                key={item.moduleId}
+                type="button"
+                className="erp-designer-chip"
+                title={`把模块 ${item.moduleId} 的版式套到本模块（字段按本模块裁剪）`}
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      const source = await apiClient.get<DesignState>(`/admin/form-layout/${item.moduleId}`)
+                      apply(applyTemplateDraft(draft, source))
+                      setStatus({ tone: 'ok', text: `已套用模块 ${item.moduleId} 的版式，确认后再点保存。` })
+                    } catch (error) {
+                      setStatus({ tone: 'error', text: String(error) })
+                    }
+                    setTemplates(null)
+                  })()
+                }}
+              >
+                {item.moduleId} {item.title}
+              </button>
+            ))
+          )}
+          <button type="button" className="erp-designer-chip" onClick={() => setTemplates(null)}>
+            取消
+          </button>
+        </div>
+      ) : null}
       {issues.length > 0 && !preview ? (
         <div className="erp-designer-status is-warn">
           保存前请先处理：{issues.slice(0, 3).join(' ')}
@@ -410,6 +524,8 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
               preview={preview}
               draggingKey={dragging?.key ?? null}
               dropTarget={dropTarget}
+              onRowContextMenu={(key, x, y) => setMenu({ kind: 'row', key, x, y })}
+              onSectionContextMenu={(sectionId, x, y) => setMenu({ kind: 'section', sectionId, x, y })}
               onMove={handleMove}
               onHide={handleHide}
               onForceNewLine={handleForceNewLine}
@@ -474,6 +590,109 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
           />
         ) : null}
         </div>
+        {/* 右键精修：纯拖拽对精细操作不友好，右键给全量动作（与属性面板、悬停按钮同一批草稿操作） */}
+        {menu ? (
+          <div className="erp-designer-menu" style={{ left: menu.x, top: menu.y }} onMouseLeave={closeMenu}>
+            {menu.kind === 'row' && menuRow ? (
+              <>
+                <button type="button" onClick={() => runMenu(() => apply(setPlacement(draft, menuRow.key, { newLine: true })))}>
+                  另起一行
+                </button>
+                <div className="erp-designer-menu-label">宽度</div>
+                <div className="erp-designer-menu-row">
+                  {[1, 2, 3, 4].map(span => (
+                    <button
+                      key={span}
+                      type="button"
+                      className={menuRow.span === span ? 'is-active' : ''}
+                      onClick={() => runMenu(() => apply(setPlacement(draft, menuRow.key, { span })))}
+                    >
+                      {span} 段
+                    </button>
+                  ))}
+                </div>
+                <div className="erp-designer-menu-label">行高</div>
+                <div className="erp-designer-menu-row">
+                  {[1, 2, 3].map(rowSpan => (
+                    <button
+                      key={rowSpan}
+                      type="button"
+                      className={menuRow.rowSpan === rowSpan ? 'is-active' : ''}
+                      onClick={() => runMenu(() => apply(setPlacement(draft, menuRow.key, { rowSpan })))}
+                    >
+                      {rowSpan} 行
+                    </button>
+                  ))}
+                </div>
+                {menuRow.cellRole === 0 && menuPrev?.hasChooser ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      runMenu(() => {
+                        const result = mergeCompanion(draft, menuPrev.key, menuRow.key)
+                        if (result.rejected) setStatus({ tone: 'warn', text: result.rejected })
+                        else apply(result.draft)
+                      })
+                    }
+                  >
+                    与「{menuPrev.label}」合并为一格
+                  </button>
+                ) : null}
+                {menuRow.cellRole !== 0 ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      runMenu(() =>
+                        apply({
+                          ...draft,
+                          master: draft.master.map(row =>
+                            row.key === menuRow.key ? { ...row, cellGroup: null, cellRole: 0 } : row,
+                          ),
+                        }),
+                      )
+                    }
+                  >
+                    移出复合格
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const name = window.prompt('分节名称（留空 = 无分节）', menuRow.sectionId ?? '')
+                    if (name !== null) runMenu(() => apply(setSection(draft, menuRow.key, name.trim() || null)))
+                  }}
+                >
+                  归入分节…
+                </button>
+                <button
+                  type="button"
+                  onClick={() => runMenu(() => apply(setHidden(draft, 'master', menuRow.key, !menuRow.hidden)))}
+                >
+                  {menuRow.hidden ? '恢复显示' : '从表单移除'}
+                </button>
+                <button type="button" onClick={() => runMenu(() => apply(resetRow(draft, 'master', menuRow.key)))}>
+                  重置本行
+                </button>
+              </>
+            ) : null}
+            {menu.kind === 'section' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const name = window.prompt('分节名称', menu.sectionId)
+                    if (name && name.trim()) runMenu(() => apply(renameSection(draft, menu.sectionId, name)))
+                  }}
+                >
+                  分节改名…
+                </button>
+                <button type="button" onClick={() => runMenu(() => apply(removeSection(draft, menu.sectionId)))}>
+                  删除分节（字段回到无分节）
+                </button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
         {/* 拖拽时跟手的半透明卡片：不改变画布尺寸，只说明"正在拖谁" */}
         <DragOverlay dropAnimation={null}>
           {dragging ? <div className="erp-designer-drag-card">{draggedLabel}</div> : null}

@@ -17,6 +17,14 @@ import {
   validateDraft,
 } from './formDesignerDraft'
 import type { DesignRow, DesignState, PoolField } from './types'
+import {
+  applyTemplateDraft,
+  exportDraftFile,
+  importDraftFile,
+  removeSection,
+  renameSection,
+  sectionIds,
+} from './formDesignerDraft'
 
 function row(key: string, overrides: Partial<DesignRow> = {}): DesignRow {
   return {
@@ -289,5 +297,100 @@ describe('validateDraft', () => {
       },
     })
     expect(validateDraft(toDraft(missing)).some(issue => issue.includes('必须加入表单'))).toBe(true)
+  })
+
+  it('一格多个从字段不算问题（既有一格多从字段是常态）', () => {
+    const withCompanions = state({
+      master: {
+        table: 'M',
+        layout: [
+          row('PRO_NO', { tabNo: 1, orderNo: 1, cellGroup: 'PRO', cellRole: 1, hasChooser: true, locked: true }),
+          row('PRO_NAME', { tabNo: 1, orderNo: 2, cellGroup: 'PRO', cellRole: 2 }),
+          row('COLOR_NAME', { tabNo: 1, orderNo: 3, cellGroup: 'PRO', cellRole: 2 }),
+        ],
+        pool: [],
+        customized: false,
+      },
+    })
+    expect(validateDraft(toDraft(withCompanions))).toEqual([])
+  })
+})
+
+describe('分节与套用来源', () => {
+  const twoSections = state({
+    tabs: [{ no: 1, title: '' }],
+    master: {
+      table: 'M',
+      layout: [
+        row('A', { tabNo: 1, orderNo: 1, sectionId: '基本信息' }),
+        row('B', { tabNo: 1, orderNo: 2, sectionId: '基本信息' }),
+        row('C', { tabNo: 1, orderNo: 3, sectionId: '金额' }),
+      ],
+      pool: [],
+      customized: false,
+    },
+  })
+
+  it('分节改名整节一起改，删除分节把字段回到无分节', () => {
+    const draft = toDraft(twoSections)
+    expect(sectionIds(draft)).toEqual(['基本信息', '金额'])
+
+    const renamed = renameSection(draft, '基本信息', '客户信息')
+    expect(renamed.master.map(item => item.sectionId)).toEqual(['客户信息', '客户信息', '金额'])
+    expect(sectionIds(renamed)).toEqual(['客户信息', '金额'])
+
+    const removed = removeSection(renamed, '客户信息')
+    expect(removed.master.map(item => item.sectionId)).toEqual([null, null, '金额'])
+    expect(sectionIds(removed)).toEqual(['金额'])
+  })
+
+  it('套用来源：来源专属字段被丢弃，本模块多出的字段回到字段池', () => {
+    const target = toDraft(state({
+      master: {
+        table: 'M',
+        layout: [row('A', { tabNo: 1, orderNo: 1, span: 2 }), row('ONLY_MINE', { tabNo: 1, orderNo: 2 })],
+        pool: [pool('POOLED', { label: '池里的' })],
+        customized: false,
+      },
+    }))
+    const source: DesignState = state({
+      moduleId: 9999,
+      title: '来源模块',
+      tabs: [{ no: 1, title: '' }, { no: 2, title: '附带' }],
+      master: {
+        table: 'M',
+        layout: [
+          row('A', { tabNo: 2, orderNo: 1, span: 4, sectionId: '来源分节' }),
+          row('NOT_IN_TARGET', { tabNo: 1, orderNo: 2 }),
+        ],
+        pool: [],
+        customized: true,
+      },
+    })
+
+    const applied = applyTemplateDraft(target, source)
+    expect(applied.master.map(item => item.key)).toEqual(['A'])
+    expect(applied.master[0].span).toBe(4)
+    expect(applied.master[0].sectionId).toBe('来源分节')
+    expect(applied.tabs.map(tab => tab.no)).toEqual([1, 2])
+    // 本模块有、来源没有的字段回池，不凭空消失
+    expect([...applied.masterPool.map(item => item.key)].sort()).toEqual(['ONLY_MINE', 'POOLED'])
+  })
+
+  it('导出后导入同模块可往返一致，导入别模块的文件被拒', () => {
+    const draft = toDraft(twoSections)
+    const text = exportDraftFile(draft)
+    const reimported = importDraftFile(toDraft(twoSections), text)
+    expect('draft' in reimported).toBe(true)
+    if ('draft' in reimported) {
+      expect(reimported.draft.master.map(item => [item.key, item.sectionId]))
+        .toEqual(draft.master.map(item => [item.key, item.sectionId]))
+    }
+
+    const other = JSON.parse(text) as { moduleId: number }
+    other.moduleId = 8888
+    const rejected = importDraftFile(draft, JSON.stringify(other))
+    expect('error' in rejected && rejected.error).toContain('模块 8888')
+    expect('error' in importDraftFile(draft, '{ not json')).toBe(true)
   })
 })

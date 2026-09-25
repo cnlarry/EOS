@@ -26,6 +26,8 @@ export function toDraft(state: DesignState): DesignDraft {
   const master = [...state.master.layout].sort(byPlacement)
   const detail = [...state.detail.layout].sort(byPlacement)
   return {
+    moduleId: state.moduleId,
+    title: state.title,
     columns: state.columns,
     masterTable: state.masterTable,
     detailTable: state.detailTable,
@@ -405,14 +407,215 @@ export function validateDraft(draft: DesignDraft): string[] {
     if (mains.length !== 1) {
       issues.push(`复合格 ${group} 必须有且仅有 1 个主字段。`)
     }
-    if (companions.length > 1) {
-      issues.push(`复合格 ${group} 最多 1 个从字段。`)
-    }
     if (companions.length > 0 && mains.length === 0) {
       issues.push(`复合格 ${group} 的从字段没有配主字段。`)
     }
   }
   return issues
+}
+
+/** 草稿里出现的分节（按首次出现顺序；一格的从字段个数不设上限，与服务端同口径）。 */
+export function sectionIds(draft: DesignDraft): string[] {
+  const ids: string[] = []
+  for (const row of draft.master) {
+    const id = row.sectionId?.trim()
+    if (id && !ids.includes(id)) ids.push(id)
+  }
+  return ids
+}
+
+/** 分节改名：整节一起改（分节是靠同名聚合的，只改一行会把它拆成两节）。 */
+export function renameSection(draft: DesignDraft, from: string, to: string): DesignDraft {
+  const next = to.trim().slice(0, MAX_SECTION_LENGTH)
+  if (!next) return removeSection(draft, from)
+  return {
+    ...draft,
+    master: draft.master.map((row) =>
+      row.sectionId === from ? { ...row, sectionId: next } : row,
+    ),
+  }
+}
+
+/** 删除分节：该节字段回到无分节（不是删字段）。 */
+export function removeSection(draft: DesignDraft, sectionId: string): DesignDraft {
+  return {
+    ...draft,
+    master: draft.master.map((row) =>
+      row.sectionId === sectionId ? { ...row, sectionId: null } : row,
+    ),
+  }
+}
+
+export interface DraftFile {
+  kind: 'eos-form-layout'
+  version: 1
+  moduleId: number
+  title: string
+  columns: number
+  tabs: { no: number; title: string }[]
+  master: RowInput[]
+  detail: { key: string; hidden: boolean }[]
+}
+
+/** 导出当前草稿为可存档/可交接的文件（只含版式，不含单据数据）。 */
+export function exportDraftFile(draft: DesignDraft): string {
+  const file: DraftFile = {
+    kind: 'eos-form-layout',
+    version: 1,
+    moduleId: draft.moduleId,
+    title: draft.title,
+    columns: draft.columns,
+    tabs: normalizeTabs(draft.tabs).map((tab) => ({ no: tab.no, title: tab.title })),
+    master: [...draft.master].sort(byPlacement).map((row) => ({
+      key: row.key,
+      tabNo: row.tabNo,
+      span: row.span,
+      rowSpan: row.rowSpan,
+      newLine: row.newLine,
+      sectionId: row.sectionId,
+      cellGroup: row.cellGroup,
+      cellRole: row.cellRole,
+      hidden: row.hidden,
+    })),
+    detail: [...draft.detail].sort(byPlacement).map((row) => ({ key: row.key, hidden: row.hidden })),
+  }
+  return JSON.stringify(file, null, 2)
+}
+
+/**
+ * 导入版式文件：**只认本模块的字段**——文件里当前模块没有的字段直接丢弃（不报错，
+ * 因为模块间字段集本来就会不同），当前模块有而文件里没有的字段回到字段池（不凭空消失）。
+ * 结构不对或不是本模块的文件则整体拒绝并说明原因。
+ */
+export function importDraftFile(draft: DesignDraft, text: string): { draft: DesignDraft } | { error: string } {
+  let parsed: DraftFile
+  try {
+    parsed = JSON.parse(text) as DraftFile
+  } catch {
+    return { error: '不是有效的 JSON 文件。' }
+  }
+  if (parsed?.kind !== 'eos-form-layout' || parsed.version !== 1) {
+    return { error: '不是表单版式文件（kind/version 不符）。' }
+  }
+  if (parsed.moduleId !== draft.moduleId) {
+    return { error: `该文件属于模块 ${parsed.moduleId}（${parsed.title ?? ''}），不能套用到当前模块。` }
+  }
+  if (!Array.isArray(parsed.master)) {
+    return { error: '文件缺少 master 段。' }
+  }
+  return { draft: applyRows(draft, parsed) }
+}
+
+/** 用来源的行集合重建草稿（导入与"套用来源"共用这一处裁剪逻辑）。 */
+function applyRows(draft: DesignDraft, source: Pick<DraftFile, 'tabs' | 'master' | 'detail'>): DesignDraft {
+  const knownMaster = new Map(
+    [...draft.master, ...draft.masterPool].map((row) => [row.key.toUpperCase(), materialize(row)]),
+  )
+  const knownDetail = new Map(
+    [...draft.detail, ...draft.detailPool].map((row) => [row.key.toUpperCase(), materialize(row)]),
+  )
+  const rows: DesignRow[] = []
+  for (const input of source.master) {
+    const mine = knownMaster.get(String(input.key ?? '').toUpperCase())
+    if (!mine) continue
+    rows.push({
+      ...mine,
+      tabNo: input.tabNo && input.tabNo > 0 ? input.tabNo : RESIDENT_TAB_NO,
+      span: clamp(input.span ?? mine.span, 1, 4),
+      rowSpan: clamp(input.rowSpan ?? mine.rowSpan, 1, MAX_ROW_SPAN),
+      newLine: input.newLine === true,
+      sectionId: (input.sectionId ?? '').trim().slice(0, MAX_SECTION_LENGTH) || null,
+      cellGroup: input.cellGroup ? String(input.cellGroup).slice(0, MAX_GROUP_LENGTH) : null,
+      cellRole: input.cellRole === 1 || input.cellRole === 2 ? input.cellRole : mine.cellRole === 1 ? 1 : 0,
+      hidden: input.hidden === true && !mine.locked,
+      orderNo: rows.length + 1,
+    })
+  }
+  const placedMaster = new Set(rows.map((row) => row.key.toUpperCase()))
+  const details: DesignRow[] = []
+  for (const input of source.detail ?? []) {
+    const mine = knownDetail.get(String(input.key ?? '').toUpperCase())
+    if (!mine) continue
+    details.push({ ...mine, hidden: input.hidden === true && !mine.locked, orderNo: details.length + 1 })
+  }
+  const placedDetail = new Set(details.map((row) => row.key.toUpperCase()))
+  return {
+    ...draft,
+    tabs: normalizeTabs(source.tabs?.length ? source.tabs : [{ no: RESIDENT_TAB_NO, title: '' }]),
+    master: rows,
+    detail: details,
+    // 当前模块有、来源没有的字段**必须回到字段池**（不能就地消失——那等于替换版式时静默删字段）
+    masterPool: poolAfter(draft.masterPool, draft.master, placedMaster),
+    detailPool: poolAfter(draft.detailPool, draft.detail, placedDetail),
+  }
+}
+
+function poolAfter(pool: PoolField[], current: DesignRow[], placed: Set<string>): PoolField[] {
+  const kept = pool.filter((row) => !placed.has(row.key.toUpperCase()))
+  const known = new Set(kept.map((row) => row.key.toUpperCase()))
+  for (const row of current) {
+    const key = row.key.toUpperCase()
+    if (placed.has(key) || known.has(key)) continue
+    kept.push({
+      key: row.key,
+      label: row.label,
+      dataType: row.dataType,
+      userVisible: row.userVisible,
+      required: row.required,
+      isPrimaryKey: row.isPrimaryKey,
+      hasChooser: row.hasChooser,
+      isVirtual: row.isVirtual,
+      locked: row.locked,
+      lockReason: row.lockReason,
+    })
+    known.add(key)
+  }
+  return kept
+}
+
+/** 字段池条目还没有排布属性：按缺省值补成可排布的草稿行（半行、无分节、无复合格）。 */
+function materialize(entry: DesignRow | PoolField): DesignRow {
+  if ('tabNo' in entry) return entry
+  return {
+    key: entry.key,
+    label: entry.label,
+    dataType: entry.dataType,
+    tabNo: RESIDENT_TAB_NO,
+    orderNo: 0,
+    span: 2,
+    rowSpan: 1,
+    newLine: false,
+    sectionId: null,
+    cellGroup: null,
+    cellRole: 0,
+    hidden: false,
+    locked: entry.locked,
+    lockReason: entry.lockReason,
+    userVisible: entry.userVisible,
+    required: entry.required,
+    isPrimaryKey: entry.isPrimaryKey,
+    hasChooser: entry.hasChooser,
+    isVirtual: entry.isVirtual,
+  }
+}
+
+/** 同主表套用来源：把来源模块的版式搬到当前模块（字段按当前模块裁剪，见 applyRows）。 */
+export function applyTemplateDraft(draft: DesignDraft, source: DesignState): DesignDraft {
+  return applyRows(draft, {
+    tabs: source.tabs,
+    master: source.master.layout.map((row) => ({
+      key: row.key,
+      tabNo: row.tabNo,
+      span: row.span,
+      rowSpan: row.rowSpan,
+      newLine: row.newLine,
+      sectionId: row.sectionId,
+      cellGroup: row.cellGroup,
+      cellRole: row.cellRole,
+      hidden: row.hidden,
+    })),
+    detail: source.detail.layout.map((row) => ({ key: row.key, hidden: row.hidden })),
+  })
 }
 
 function clamp(value: number, min: number, max: number): number {
