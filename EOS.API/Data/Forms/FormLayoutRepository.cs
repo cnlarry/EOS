@@ -511,7 +511,7 @@ public sealed class FormLayoutRepository(
     private static async Task<ModuleInfo?> ReadModuleAsync(
         SqlConnection connection, int moduleId, CancellationToken token)
     {
-        // 列数固定为统一表单的四子列、页签只来自 MODULE_FORM_TAB：`MODULES.FORM_COLUMNS/FORM_TABS` 已退役
+        // 列数固定为统一表单的四子列、页签只来自 MODULE_FORM_TAB：模块表的列数/页签列已退役
         const string sql = """
             SELECT LTRIM(RTRIM(ISNULL(M_DESC,''))), LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))),
                    LTRIM(RTRIM(ISNULL(DETAIL_TABLE,'')))

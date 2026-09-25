@@ -182,7 +182,7 @@ public sealed class FormLayoutParityLiveTests
         Assert.NotNull(definition);
         var layout = definition!.FormLayout;
         Assert.NotNull(layout);
-        // 统一表单固定四子列（忽略 MODULES.FORM_COLUMNS：用户拍板"全局固定一行四列"）
+        // 统一表单固定四子列（忽略模块列数元数据：用户拍板"全局固定一行四列"，该元数据已退役）
         Assert.Equal(FormLayoutDerivation.DefaultColumns, layout!.Columns);
         Assert.NotEmpty(layout.Master);
         // 版式段必须与"当前是否已定制"自洽：库里该模块有行才算定制（无行是推导默认）
