@@ -95,9 +95,10 @@ public sealed class DepotProductLocationModuleLiveTests
         // （`WorkbenchDefinitionBuilder`：`HasAdd = NEW_URL 或 MODI_URL 存在`，表单启用时回落成表单路由），
         // 也就是说 **先有清单、再发布快照**，快照里才带得上这两项。今天这份快照是在清单加入之前发布的，
         // 所以它是 false——重启 API（`IOptions` 是启动快照，改 appsettings 不生效）后重发布即可为 true。
-        // 把这条顺序写进断言会在"配好了但还没重启"时红，红得没有信息量；改用例外的白名单断言守着配置本身。
-        // （同一原因：这份快照的 `MasterFields` 也是空的——字段可见性同样按表单启用清单过滤。
-        //   清单生效 + 重发布之后，它应当有 5 个字段；那一步由 `logs/e2e-ws14.ps1` 端到端验。）
+        // 已发布快照必须带 5 个字段（迁移 238 + 订正 239）：`ReadFields` 在"用户还没个人字段配置"时
+        // 只放 `IS_DEFAULT_FIELDS = 1` 的列——全新模块没有任何个人配置行，所以**默认位是新表唯一的入口**，
+        // 漏了它就发布出一份字段数 0 的定义（这是本段实测踩到的坑，见迁移 239 头注）。
+        Assert.Equal(5, definition.MasterFields.Count);
 
         // 统一表单的启用清单：没有它，任何模块的 /form-definition 都直接 404
         var appsettings = FindRepositoryFile(Path.Combine("EOS.API", "appsettings.json"));
