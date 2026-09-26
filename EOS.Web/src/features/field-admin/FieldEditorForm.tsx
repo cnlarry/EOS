@@ -1,6 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { IconPencil, IconPlus, IconTrash } from '@tabler/icons-react'
 import { LoadingState } from '../../components/common/AsyncState'
 import { TabbedPanel, type TabbedPanelTab } from '../../components/common/TabbedPanel'
@@ -155,8 +154,6 @@ interface FieldEditorFormProps {
   onStateChange?: (state: { canSave: boolean; saving: boolean; dirty: boolean }) => void
   /** 底部操作区渲染（弹窗用）；页面模式由页面工具栏承担，不传。 */
   renderActions?: (action: { canSave: boolean; saving: boolean; onSave: () => void; onCancel: () => void }) => React.ReactNode
-  /** 进入时的模块上下文（?moduleId=）：用于从字段维护跳到该模块的表单设计。 */
-  contextModuleId?: number | null
 }
 
 function emptyChoosers(): ChooserSource[] {
@@ -222,8 +219,7 @@ function mergeChooserUi(
   }
 }
 
-export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, onSaved, historyTab = false, actionRef, onStateChange, renderActions, contextModuleId = null }: FieldEditorFormProps) {
-  const navigate = useNavigate()
+export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, onSaved, historyTab = false, actionRef, onStateChange, renderActions }: FieldEditorFormProps) {
   const [draft, setDraft] = useState<FieldMeta | null>(null)
   const [original, setOriginal] = useState<FieldMeta | null>(null)
   const [section, setSection] = useState<FieldSection>('basic')
@@ -487,23 +483,6 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                       系统列（单据生命周期列由管线持有）：类型、校验、数据源、权限与分组结构锁定，仅名称、显示与备注类可改；不可删除。
                     </div>
                   )}
-                  <div className="d-flex justify-content-end align-items-center gap-2 mb-2">
-                    <span className="text-secondary small">
-                      表单排布（顺序 / 占位 / 复合格 / 页签 / 表单内隐藏）已归模块级版式，字段级设置已退役
-                      {contextModuleId == null ? '；需从工作台进入以带模块上下文' : ''}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={contextModuleId == null}
-                      onClick={() => {
-                        if (contextModuleId == null) return
-                        navigate(`/workbench/${contextModuleId}/view?design=1`)
-                      }}
-                    >
-                      打开表单设计
-                    </Button>
-                  </div>
                   <TabbedPanel tabs={tabs} activeKey={section} onActiveKeyChange={setSection} label="字段设置分区">
                     <div className="row g-3">
                     {section === 'basic' && <>
