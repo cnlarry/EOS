@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -10,14 +10,28 @@ import {
   type DragMoveEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
+import {
+  IconArrowBackUp,
+  IconArrowForwardUp,
+  IconArrowLeft,
+  IconCopyPlus,
+  IconEye,
+  IconFileExport,
+  IconFileUpload,
+  IconLayoutRows,
+  IconRefresh,
+  IconRestore,
+} from '@tabler/icons-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../../types/api'
 import { apiClient } from '../../services/api'
 import { createId } from '../../lib/uuid'
+import { Button } from '../../components/ui/Button'
+import { ErpCommandBar, type ErpCommandItem } from '../../components/common/ErpCommandBar'
+import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
 import { applyDrop, parseDragId, zoneOf, type DragSource, type DropTarget } from './formDesignerDrag'
 import DesignCanvas from './DesignCanvas'
 import DetailColumnPanel from './DetailColumnPanel'
-import FieldPool, { type PoolEntry } from './FieldPool'
-import PropertyPanel from './PropertyPanel'
 import { useDesignerHistory } from './useDesignerHistory'
 import {
   addFromPool,
@@ -51,35 +65,62 @@ interface FormDesignerPageProps {
   onExit: () => void
 }
 
+/** 拖拽几何：move 与 end 事件都带这三个字段，落点判定只依赖它们。 */
+type DragGeometry = Pick<DragMoveEvent, 'over' | 'activatorEvent' | 'delta'>
+
+/** 拖拽开始时的一格几何（视口坐标）：落点判定的静态参照。 */
+interface CellGeometry {
+  key: string
+  left: number
+  right: number
+  top: number
+  bottom: number
+}
+
+/** 右键精修菜单：作用对象是一格（主表画布或明细表头）或一个分节标题。 */
+type DesignerMenu =
+  | { kind: 'cell'; table: DesignTable; key: string; x: number; y: number }
+  | { kind: 'section'; sectionId: string; x: number; y: number }
+
+/** 选择器返回的字段行（服务端列键 F_ID / F_DESC / F_TYPE）。 */
+type PickedFieldRow = UnifiedChooserRow & { F_ID?: unknown }
+
 /**
  * 表单设计态：右键【表单设计】进入，与运行态**同一套渲染**，但输入控件不可填、
  * 值用字段代号占位。保存即生效（服务端同请求内重发布该模块快照），无需另行发布。
  *
  * 只改版式：顺序、占位、复合格、分节、页签、表单内隐藏；字段自身的属性在字段维护里改。
+ *
+ * 页面只有一条工具条与一整块画布：没有左侧字段池、也没有右侧属性面板——
+ * 加字段走画布末尾的「+」（统一选择器），改版式走右键精修，画布得以横向铺满。
  */
 export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageProps) {
+  const queryClient = useQueryClient()
   const [state, setState] = useState<DesignState | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const history = useDesignerHistory<DesignDraft | null>(null)
   const draft = history.value
-  const [activeTable, setActiveTable] = useState<DesignTable>('master')
   const [activeTabNo, setActiveTabNo] = useState(1)
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [selected, setSelected] = useState<{ table: DesignTable; key: string } | null>(null)
+  /** 正在用统一选择器补字段的表；null = 选择器关闭。 */
+  const [picker, setPicker] = useState<DesignTable | null>(null)
   const [compact, setCompact] = useState(true)
   const [preview, setPreview] = useState(false)
   const [busy, setBusy] = useState(false)
   const [issues, setIssues] = useState<string[]>([])
   const [status, setStatus] = useState<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(null)
-  const [menu, setMenu] = useState<
-    | { kind: 'row'; key: string; x: number; y: number }
-    | { kind: 'section'; sectionId: string; x: number; y: number }
-    | null
-  >(null)
+  const [menu, setMenu] = useState<DesignerMenu | null>(null)
   const [templates, setTemplates] = useState<FormLayoutTemplate[] | null>(null)
   const [dragging, setDragging] = useState<DragSource | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget>(null)
+  /** 拖拽预览：把字段先按落点重排一份草稿渲染，后方字段随之让位，松手前就能看出结果。 */
+  const [previewDraft, setPreviewDraft] = useState<DesignDraft | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
-
+  /** 拖拽源：算预览时每帧都要读，用 ref 避免闭包读到过期的 state。 */
+  const dragRef = useRef<DragSource | null>(null)
+  /** 拖拽开始时的格几何快照与滚动位（落点判定的静态参照）。 */
+  const cellsRef = useRef<CellGeometry[]>([])
+  const scrollRef = useRef<{ top: number; left: number; el: HTMLElement | null }>({ top: 0, left: 0, el: null })
 
   const draggedLabel = useMemo(() => {
     if (!draft || !dragging) return ''
@@ -95,9 +136,15 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
     action()
     closeMenu()
   }
-  const menuRow = menu?.kind === 'row' ? draft?.master.find(row => row.key === menu.key) ?? null : null
-  const menuPrev = menuRow
-    ? draft?.master.filter(row => row.cellRole !== 2).at(draft.master.filter(row => row.cellRole !== 2).findIndex(row => row.key === menuRow.key) - 1) ?? null
+  const menuRow = menu?.kind === 'cell'
+    ? (menu.table === 'master' ? draft?.master : draft?.detail)?.find(row => row.key === menu.key) ?? null
+    : null
+  /** 复合格只由主表承担：同桌的"上一个可合并字段"（与当前字段合成 [主][选择][从] 三件套）。 */
+  const menuPrev = menu?.kind === 'cell' && menu.table === 'master' && menuRow
+    ? (() => {
+        const mergeable = draft?.master.filter(row => row.cellRole !== 2) ?? []
+        return mergeable.at(mergeable.findIndex(row => row.key === menuRow.key) - 1) ?? null
+      })()
     : null
 
   /** 套用来源：只列共用同一主表的模块（跨主表套用会排出业务上不该出现的字段）。 */
@@ -136,40 +183,90 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
     setStatus({ tone: 'ok', text: '版式文件已载入画布，确认后再点保存。' })
   }
 
-  const handleDragStart = (event: DragStartEvent) => {
-    setDragging(parseDragId(String(event.active.id)))
+  /** 记录画布格的静态几何：拖拽期间的落点按它判定，预览造成的位移不参与（否则落点会在两格间来回跳）。 */
+  const snapshotCells = () => {
+    cellsRef.current = [...document.querySelectorAll<HTMLElement>('[data-designer-cell]')]
+      .map(node => {
+        const rect = node.getBoundingClientRect()
+        return {
+          key: node.dataset.designerCell ?? '',
+          left: rect.left,
+          right: rect.right,
+          top: rect.top,
+          bottom: rect.bottom,
+        }
+      })
+      .filter(cell => cell.key.length > 0)
+    const scroller = document.querySelector<HTMLElement>('.erp-designer-main')
+    scrollRef.current = { top: scroller?.scrollTop ?? 0, left: scroller?.scrollLeft ?? 0, el: scroller }
   }
 
-  /** 落点判定放在这里：只有"鼠标落在格的哪一段"这类几何问题需要实时算，语义都在 applyDrop。 */
-  const handleDragMove = (event: DragMoveEvent) => {
+  /** 拖拽期间的滚动补偿：快照记的是按下那一刻的视口坐标。 */
+  const scrollOffset = () => {
+    const scroller = scrollRef.current.el
+    if (!scroller) return { left: 0, top: 0 }
+    return { left: scroller.scrollLeft - scrollRef.current.left, top: scroller.scrollTop - scrollRef.current.top }
+  }
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const source = parseDragId(String(event.active.id))
+    dragRef.current = source
+    snapshotCells()
+    setDragging(source)
+  }
+
+  /** 一格内的落点分区：明细是网格不是格版式，中心区不判合并（否则会给出终将被拒绝的落点提示）。 */
+  const zoneOfCell = (offsetX: number, width: number) =>
+    dragRef.current?.table === 'detail'
+      ? (width > 0 && offsetX / width >= 0.5 ? 'after' : 'before')
+      : zoneOf(offsetX, width)
+
+  /** 指针落在格的哪一段 → 落点：只算几何，语义全部交给 applyDrop。 */
+  const resolveTarget = (event: DragGeometry): DropTarget => {
     const over = event.over
-    if (!over) {
-      setDropTarget(null)
+    const data = over?.data.current as { kind?: string; key?: string; tabNo?: number; sectionId?: string | null } | undefined
+    const pointerX = (event.activatorEvent as PointerEvent).clientX + event.delta.x
+    const pointerY = (event.activatorEvent as PointerEvent).clientY + event.delta.y
+    const offset = scrollOffset()
+    const px = pointerX - offset.left
+    const py = pointerY - offset.top
+    if (cellsRef.current.length > 0) {
+      const hit = cellsRef.current.find(cell => px >= cell.left && px <= cell.right && py >= cell.top && py <= cell.bottom)
+      if (hit) {
+        const zone = zoneOfCell(px - hit.left, hit.right - hit.left)
+        return zone === 'merge' ? { kind: 'merge', key: hit.key } : { kind: 'insert', key: hit.key, before: zone === 'before' }
+      }
+    } else if (over && data?.kind === 'cell' && data.key) {
+      // 快照缺失时的兜底：退回按 over 的实时矩形判定
+      const zone = zoneOfCell(pointerX - over.rect.left, over.rect.width)
+      return zone === 'merge' ? { kind: 'merge', key: data.key } : { kind: 'insert', key: data.key, before: zone === 'before' }
+    }
+    if (!over) return null
+    if (data?.kind === 'tab' && typeof data.tabNo === 'number') return { kind: 'tab', tabNo: data.tabNo }
+    if (data?.kind === 'section') return { kind: 'section', sectionId: data.sectionId ?? null }
+    return null
+  }
+
+  const handleDragMove = (event: DragMoveEvent) => {
+    const target = resolveTarget(event)
+    setDropTarget(target)
+    const source = dragRef.current
+    if (!source || !draft || target?.kind !== 'insert') {
+      setPreviewDraft(null)
       return
     }
-    const data = over.data.current as { kind?: string; key?: string; tabNo?: number; sectionId?: string | null } | undefined
-    if (data?.kind === 'cell' && data.key) {
-      const pointerX = (event.activatorEvent as PointerEvent).clientX + event.delta.x
-      const zone = zoneOf(pointerX - over.rect.left, over.rect.width)
-      setDropTarget(zone === 'merge' ? { kind: 'merge', key: data.key } : { kind: 'insert', key: data.key, before: zone === 'before' })
-      return
-    }
-    if (data?.kind === 'tab' && typeof data.tabNo === 'number') {
-      setDropTarget({ kind: 'tab', tabNo: data.tabNo })
-      return
-    }
-    if (data?.kind === 'section') {
-      setDropTarget({ kind: 'section', sectionId: data.sectionId ?? null })
-      return
-    }
-    setDropTarget(data?.kind === 'pool' ? { kind: 'remove' } : null)
+    const result = applyDrop(draft, source, target)
+    setPreviewDraft('rejected' in result ? null : result.draft)
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
     const source = parseDragId(String(event.active.id))
-    const target = dropTarget
+    // 松手时的 over 才是最终落点；拖到空白处（over 为空）视为没有落点，不生效
+    const target = event.over ? resolveTarget(event) : null
+    dragRef.current = null
     setDragging(null)
     setDropTarget(null)
+    setPreviewDraft(null)
     if (!source || !target || !draft) return
     const result = applyDrop(draft, source, target)
     if ('rejected' in result) {
@@ -177,7 +274,7 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
       return
     }
     apply(result.draft)
-    setSelectedKey(source.key)
+    setSelected({ table: source.table, key: source.key })
   }
 
   const load = useCallback(async () => {
@@ -187,7 +284,7 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
       setState(next)
       history.rebase(toDraft(next))
       setActiveTabNo(1)
-      setSelectedKey(null)
+      setSelected(null)
       setIssues([])
     } catch (error) {
       setLoadError(error instanceof ApiError ? error.message : '加载版式失败。')
@@ -236,40 +333,6 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
     [draft, history],
   )
 
-  const poolEntries = useMemo<PoolEntry[]>(() => {
-    if (!draft) return []
-    const rows = activeTable === 'master' ? draft.master : draft.detail
-    const pool = activeTable === 'master' ? draft.masterPool : draft.detailPool
-    return [
-      ...rows.map(row => ({
-        key: row.key,
-        label: row.label,
-        dataType: row.dataType,
-        placed: true,
-        userVisible: row.userVisible,
-        required: row.required,
-        isPrimaryKey: row.isPrimaryKey,
-        isVirtual: row.isVirtual,
-      })),
-      ...pool.map(field => ({
-        key: field.key,
-        label: field.label,
-        dataType: field.dataType,
-        placed: false,
-        userVisible: field.userVisible,
-        required: field.required,
-        isPrimaryKey: field.isPrimaryKey,
-        isVirtual: field.isVirtual,
-      })),
-    ]
-  }, [draft, activeTable])
-
-  const selectedRow = useMemo(() => {
-    if (!draft || !selectedKey) return null
-    const rows = activeTable === 'master' ? draft.master : draft.detail
-    return rows.find(row => row.key === selectedKey) ?? null
-  }, [draft, activeTable, selectedKey])
-
   const save = useCallback(async () => {
     if (!draft || !state) return
     setBusy(true)
@@ -282,6 +345,8 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
         history.rebase(toDraft(response.state))
         setIssues([])
       }
+      // 保存即生效：工作区标签常驻不卸载，不主动失效缓存的话，切回统一表单看到的仍是旧版式
+      await queryClient.invalidateQueries({ queryKey: ['workbench', String(moduleId)] })
       setStatus({
         tone: 'ok',
         text: `${response.message ?? '已保存'}${response.definitionVersion ? `（${response.definitionVersion}）` : ''}`,
@@ -295,7 +360,7 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
     } finally {
       setBusy(false)
     }
-  }, [draft, state, moduleId, history])
+  }, [draft, state, moduleId, history, queryClient])
 
   const reset = useCallback(async () => {
     if (!draft || !state) return
@@ -312,13 +377,14 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
         history.rebase(toDraft(response.state))
         setIssues([])
       }
+      await queryClient.invalidateQueries({ queryKey: ['workbench', String(moduleId)] })
       setStatus({ tone: 'ok', text: response.message ?? '已重置为默认版式。' })
     } catch (error) {
       setStatus({ tone: 'error', text: error instanceof ApiError ? error.message : '重置失败。' })
     } finally {
       setBusy(false)
     }
-  }, [draft, state, moduleId, history])
+  }, [draft, state, moduleId, history, queryClient])
 
   /** 离开设计态：有未保存改动时二次确认（与浏览器关闭/刷新的保护一致）。 */
   const exit = useCallback(() => {
@@ -334,24 +400,58 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
     setStatus(null)
   }, [state, history])
 
-  const addField = (key: string) => {
-    apply(addFromPool(draft!, activeTable, key))
-    setSelectedKey(key)
+  /**
+   * 选择器确认：把选中的字段追加到该表末尾。
+   * 已经在表单里的（含本次草稿刚加的）跳过并说明，避免重复点击后静默无反应。
+   */
+  const addPickedFields = (table: DesignTable, rows: PickedFieldRow[]) => {
+    if (!draft) return
+    const pool = table === 'master' ? draft.masterPool : draft.detailPool
+    const placed = new Set((table === 'master' ? draft.master : draft.detail).map(row => row.key))
+    let next = draft
+    let added = 0
+    const skipped: string[] = []
+    for (const row of rows) {
+      const key = String(row.F_ID ?? '').trim()
+      if (key.length === 0) continue
+      if (placed.has(key) || !pool.some(field => field.key === key)) {
+        skipped.push(key)
+        continue
+      }
+      placed.add(key)
+      next = addFromPool(next, table, key)
+      added += 1
+    }
+    if (added > 0) {
+      apply(next)
+      // 新字段落在常驻的 1 号页签上，切过去才能看见刚加的东西
+      if (table === 'master') setActiveTabNo(1)
+    }
+    setStatus(
+      added === 0
+        ? { tone: 'warn', text: '所选字段都已经在表单里了。' }
+        : skipped.length > 0
+          ? { tone: 'warn', text: `已加入 ${added} 个字段；${skipped.join('、')} 已在表单里，未重复加入。` }
+          : { tone: 'ok', text: `已加入 ${added} 个字段，保存后生效。` },
+    )
+    setPicker(null)
   }
 
-  const handleMove = (key: string, delta: number) => apply(moveRow(draft!, activeTable, key, delta))
+  const moveBy = (table: DesignTable, key: string, delta: number) => apply(moveRow(draft!, table, key, delta))
 
-  const handleHide = (key: string) => apply(setHidden(draft!, activeTable, key, true))
+  const setRowHidden = (table: DesignTable, key: string, hidden: boolean) => apply(setHidden(draft!, table, key, hidden))
 
-  const handleForceNewLine = (key: string) => {
+  const toggleNewLine = (key: string) => {
     const row = draft?.master.find(item => item.key === key)
     if (!row) return
     apply(setPlacement(draft!, key, { newLine: !row.newLine }))
   }
 
-  const handleMerge = (companionKey: string | null) => {
-    if (!draft || !selectedKey) return
-    const result = mergeCompanion(draft, selectedKey, companionKey)
+  const moveToTab = (key: string, tabNo: number) => apply(moveRowToTab(draft!, key, tabNo))
+
+  const mergeWith = (mainKey: string, companionKey: string | null) => {
+    if (!draft) return
+    const result = mergeCompanion(draft, mainKey, companionKey)
     if (result.rejected) {
       setStatus({ tone: 'warn', text: result.rejected })
       return
@@ -359,17 +459,31 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
     apply(result.draft)
   }
 
+  /** 移出复合格：整组一起拆——只拆当前字段会让同组另一半失去主字段（从表单上消失）。 */
+  const detachFromCell = (key: string) => {
+    if (!draft) return
+    const group = draft.master.find(row => row.key === key)?.cellGroup ?? null
+    apply({
+      ...draft,
+      master: draft.master.map(row =>
+        row.key === key || (group !== null && row.cellGroup === group)
+          ? { ...row, cellGroup: null, cellRole: 0 }
+          : row,
+      ),
+    })
+  }
+
   if (loadError) {
     return (
       <div className="erp-designer">
         <div className="erp-designer-error">{loadError}</div>
         <div className="erp-designer-toolbar">
-          <button type="button" className="erp-command-btn" onClick={() => void load()}>
+          <Button size="sm" className="erp-command-btn" icon={<IconRefresh size={16} />} onClick={() => void load()}>
             重试
-          </button>
-          <button type="button" className="erp-command-btn" onClick={exit}>
+          </Button>
+          <Button size="sm" className="erp-command-btn" icon={<IconArrowLeft size={16} />} onClick={exit}>
             返回表单
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -379,69 +493,69 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
     return <div className="erp-designer erp-designer-loading">正在加载版式…</div>
   }
 
+  // 拖拽预览版式：插入落点先按结果重排渲染，后方字段随之让位（松手前就能看出落点结果）
+  const canvasDraft = previewDraft ?? draft
+
   return (
     <div className="erp-designer">
       <div className="erp-designer-toolbar">
-        <button type="button" className="erp-command-btn is-primary" disabled={busy || !history.dirty} onClick={() => void save()}>
-          保存
-        </button>
-        <button type="button" className="erp-command-btn" disabled={busy || !history.dirty} onClick={discard}>
-          放弃
-        </button>
-        <button type="button" className="erp-command-btn" disabled={busy} onClick={() => void reset()}>
-          重置为默认版式
-        </button>
-        <button type="button" className="erp-command-btn" disabled={!history.canUndo} onClick={history.undo} title="Ctrl+Z">
-          撤销
-        </button>
-        <button type="button" className="erp-command-btn" disabled={!history.canRedo} onClick={history.redo} title="Ctrl+Y">
-          重做
-        </button>
-        <label className="erp-designer-check">
-          <input type="checkbox" checked={compact} onChange={event => setCompact(event.target.checked)} />
-          紧凑排列
-        </label>
-        <label className="erp-designer-check">
-          <input type="checkbox" checked={preview} onChange={event => setPreview(event.target.checked)} />
-          预览
-        </label>
+        {/* 返回是工具条首位（浏览类页面的统一位置）：更靠前于破坏性动作，避免误触保存/重置 */}
+        <ErpCommandBar
+          className="erp-designer-commands"
+          ariaLabel="表单设计命令栏"
+          items={[
+            { action: 'back', label: '返回表单', icon: <IconArrowLeft size={16} />, variant: 'ghost', onClick: exit },
+            { action: 'save', label: '保存', variant: 'primary', disabled: busy || !history.dirty, loading: busy, onClick: () => void save() },
+            { action: 'cancel', label: '放弃', disabled: busy || !history.dirty, onClick: discard },
+            { action: 'reset-layout', label: '重置', icon: <IconRestore size={16} />, title: '重置为默认版式（清除本模块的版式定制）', disabled: busy, onClick: () => void reset() },
+            { action: 'undo', label: '撤销', icon: <IconArrowBackUp size={16} />, title: '撤销（Ctrl+Z）', disabled: !history.canUndo, onClick: history.undo },
+            { action: 'redo', label: '重做', icon: <IconArrowForwardUp size={16} />, title: '重做（Ctrl+Y）', disabled: !history.canRedo, onClick: history.redo },
+            { action: 'compact', label: '紧凑排列', icon: <IconLayoutRows size={16} />, title: '紧凑排列：允许后续字段回填空洞', variant: compact ? 'primary' : 'secondary', onClick: () => setCompact(value => !value) },
+            { action: 'preview', label: '预览', icon: <IconEye size={16} />, title: '预览：隐去设计工具，只看排布', variant: preview ? 'primary' : 'secondary', onClick: () => setPreview(value => !value) },
+          ] satisfies ErpCommandItem[]}
+        />
+        <span className="erp-designer-toolbar-divider" />
+        <ErpCommandBar
+          className="erp-designer-commands"
+          ariaLabel="版式文件命令栏"
+          items={[
+            { action: 'apply-template', label: '套用来源…', icon: <IconCopyPlus size={16} />, title: '套用共用同一主表的其它模块的版式', disabled: busy, onClick: () => void loadTemplates() },
+            {
+              action: 'import-layout',
+              render: () => (
+                <label className="btn btn-outline-secondary btn-sm erp-command-btn" title="把导出的版式文件载入画布">
+                  <IconFileUpload size={16} />
+                  导入版式
+                  <input
+                    type="file"
+                    accept="application/json"
+                    hidden
+                    onChange={event => {
+                      const file = event.target.files?.[0]
+                      if (file) void importFile(file)
+                      event.target.value = ''
+                    }}
+                  />
+                </label>
+              ),
+            },
+            { action: 'export-layout', label: '导出版式', icon: <IconFileExport size={16} />, title: '把当前版式导出为文件', disabled: busy, onClick: exportFile },
+          ] satisfies ErpCommandItem[]}
+        />
         <span className="erp-designer-spacer" />
         <span className="erp-designer-muted">
           {state.title} · {state.masterTable}
-          {state.detailTable ? ` / ${state.detailTable}` : ''} · {state.columns} 列
+          {state.detailTable ? ` / ${state.detailTable}` : ''}
         </span>
-        <button type="button" className="erp-command-btn" onClick={exit}>
-          返回表单
-        </button>
       </div>
 
       {status ? <div className={`erp-designer-status is-${status.tone}`}>{status.text}</div> : null}
-      <div className="erp-designer-status is-info">
-        {activeTable === 'master'
-          ? state.master.customized ? '本表已有定制版式' : '本表当前是推导默认（保存后即为定制）'
-          : state.detail.customized ? '本表已有定制版式' : '本表当前是推导默认（保存后即为定制）'}
-      </div>
       {!preview ? (
-        <div className="erp-designer-tools">
-          <button type="button" className="erp-designer-chip" onClick={() => void loadTemplates()}>
-            套用来源…
-          </button>
-          <button type="button" className="erp-designer-chip" onClick={exportFile}>
-            导出版式
-          </button>
-          <label className="erp-designer-chip">
-            导入版式
-            <input
-              type="file"
-              accept="application/json"
-              hidden
-              onChange={event => {
-                const file = event.target.files?.[0]
-                if (file) void importFile(file)
-                event.target.value = ''
-              }}
-            />
-          </label>
+        <div className="erp-designer-status is-info">
+          {state.master.customized ? '主表已有定制版式' : '主表未定制（保存后才成为定制）'}
+          {state.detailTable
+            ? ` · ${state.detail.customized ? '明细已有定制版式' : '明细未定制（保存后才成为定制）'}`
+            : ''}
         </div>
       ) : null}
       {templates && !preview ? (
@@ -450,10 +564,10 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
             <span className="erp-designer-muted">没有共用同一主表的其它模块。</span>
           ) : (
             templates.map(item => (
-              <button
+              <Button
                 key={item.moduleId}
-                type="button"
-                className="erp-designer-chip"
+                size="sm"
+                className="erp-command-btn"
                 title={`把模块 ${item.moduleId} 的版式套到本模块（字段按本模块裁剪）`}
                 onClick={() => {
                   void (async () => {
@@ -469,12 +583,12 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
                 }}
               >
                 {item.moduleId} {item.title}
-              </button>
+              </Button>
             ))
           )}
-          <button type="button" className="erp-designer-chip" onClick={() => setTemplates(null)}>
+          <Button size="sm" className="erp-command-btn" onClick={() => setTemplates(null)}>
             取消
-          </button>
+          </Button>
         </div>
       ) : null}
       {issues.length > 0 && !preview ? (
@@ -491,44 +605,28 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
         onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
         onDragCancel={() => {
+          dragRef.current = null
           setDragging(null)
           setDropTarget(null)
+          setPreviewDraft(null)
         }}
       >
         <div className="erp-designer-body">
-          {!preview ? (
-            <FieldPool
-              entries={poolEntries}
-              activeTable={activeTable}
-              hasDetail={state.detailTable !== null}
-              onTableChange={table => {
-                setActiveTable(table)
-                setSelectedKey(null)
-              }}
-              onAdd={addField}
-              disabled={busy}
-            />
-          ) : null}
-
           <div className="erp-designer-main">
             <DesignCanvas
-              draft={draft}
+              draft={canvasDraft}
               activeTabNo={activeTabNo}
               onActiveTabChange={setActiveTabNo}
-              selectedKey={activeTable === 'master' ? selectedKey : null}
-              onSelect={key => {
-                setActiveTable('master')
-                setSelectedKey(key)
-              }}
+              selectedKey={selected?.table === 'master' ? selected.key : null}
+              onSelect={key => setSelected(key ? { table: 'master', key } : null)}
               compact={compact}
               preview={preview}
               draggingKey={dragging?.key ?? null}
+              ghostKey={previewDraft && dragging?.table === 'master' ? dragging.key : null}
               dropTarget={dropTarget}
-              onRowContextMenu={(key, x, y) => setMenu({ kind: 'row', key, x, y })}
+              onAddField={() => setPicker('master')}
+              onRowContextMenu={(key, x, y) => setMenu({ kind: 'cell', table: 'master', key, x, y })}
               onSectionContextMenu={(sectionId, x, y) => setMenu({ kind: 'section', sectionId, x, y })}
-              onMove={handleMove}
-              onHide={handleHide}
-              onForceNewLine={handleForceNewLine}
               onRenameTab={(no, title) => apply(renameTab(draft, no, title))}
               onAddTab={() => apply(addTab(draft, `页签 ${draft.tabs.length + 1}`))}
               onDeleteTab={no => {
@@ -541,137 +639,115 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
             {state.detailTable ? (
               <DetailColumnPanel
                 table={state.detailTable}
-                rows={draft.detail}
-                selectedKey={activeTable === 'detail' ? selectedKey : null}
+                rows={canvasDraft.detail}
+                selectedKey={selected?.table === 'detail' ? selected.key : null}
                 preview={preview}
                 draggingKey={dragging?.table === 'detail' ? dragging.key : null}
                 dropTarget={dropTarget}
-                onSelect={key => {
-                  setActiveTable('detail')
-                  setSelectedKey(key)
-                }}
-                onMove={(key, delta) => apply(moveRow(draft, 'detail', key, delta))}
-                onHidden={(key, hidden) => apply(setHidden(draft, 'detail', key, hidden))}
+                onSelect={key => setSelected({ table: 'detail', key })}
+                onAddField={() => setPicker('detail')}
+                onRowContextMenu={(key, x, y) => setMenu({ kind: 'cell', table: 'detail', key, x, y })}
               />
             ) : null}
           </div>
-
-        {!preview ? (
-          <PropertyPanel
-            draft={draft}
-            table={activeTable}
-            row={selectedRow}
-            disabled={busy}
-            onPlacement={(span, rowSpan) => {
-              if (!selectedRow) return
-              apply(setPlacement(draft, selectedRow.key, { span, rowSpan }))
-            }}
-            onNewLine={value => {
-              if (!selectedRow) return
-              apply(setPlacement(draft, selectedRow.key, { newLine: value }))
-            }}
-            onSection={sectionId => {
-              if (!selectedRow) return
-              apply(setSection(draft, selectedRow.key, sectionId))
-            }}
-            onTab={tabNo => {
-              if (!selectedRow || activeTable !== 'master') return
-              apply(moveRowToTab(draft, selectedRow.key, tabNo))
-            }}
-            onHidden={hidden => {
-              if (!selectedRow) return
-              apply(setHidden(draft, activeTable, selectedRow.key, hidden))
-            }}
-            onMergeCompanion={handleMerge}
-            onResetRow={() => {
-              if (!selectedRow) return
-              apply(resetRow(draft, activeTable, selectedRow.key))
-            }}
-          />
-        ) : null}
         </div>
-        {/* 右键精修：纯拖拽对精细操作不友好，右键给全量动作（与属性面板、悬停按钮同一批草稿操作） */}
+        {/* 右键精修：纯拖拽对精细操作不友好，右键给全量动作（与「+」选择器同一批草稿操作） */}
         {menu ? (
-          <div className="erp-designer-menu" style={{ left: menu.x, top: menu.y }} onMouseLeave={closeMenu}>
-            {menu.kind === 'row' && menuRow ? (
+          <div
+            className="erp-designer-menu"
+            style={{ left: menu.x, top: menu.y }}
+            onMouseLeave={closeMenu}
+            onClick={event => event.stopPropagation()}
+          >
+            {menu.kind === 'cell' && menuRow ? (
               <>
-                <button type="button" onClick={() => runMenu(() => apply(setPlacement(draft, menuRow.key, { newLine: true })))}>
-                  另起一行
+                <button type="button" disabled={menuRow.orderNo <= 1} onClick={() => runMenu(() => moveBy(menu.table, menuRow.key, -1))}>
+                  前移
                 </button>
-                <div className="erp-designer-menu-label">宽度</div>
-                <div className="erp-designer-menu-row">
-                  {[1, 2, 3, 4].map(span => (
-                    <button
-                      key={span}
-                      type="button"
-                      className={menuRow.span === span ? 'is-active' : ''}
-                      onClick={() => runMenu(() => apply(setPlacement(draft, menuRow.key, { span })))}
-                    >
-                      {span} 段
+                <button type="button" onClick={() => runMenu(() => moveBy(menu.table, menuRow.key, 1))}>
+                  后移
+                </button>
+                {menu.table === 'master' ? (
+                  <>
+                    <button type="button" onClick={() => runMenu(() => toggleNewLine(menuRow.key))}>
+                      {menuRow.newLine ? '取消另起一行' : '另起一行'}
                     </button>
-                  ))}
-                </div>
-                <div className="erp-designer-menu-label">行高</div>
-                <div className="erp-designer-menu-row">
-                  {[1, 2, 3].map(rowSpan => (
+                    <div className="erp-designer-menu-label">宽度</div>
+                    <div className="erp-designer-menu-row">
+                      {[1, 2, 3, 4].map(span => (
+                        <button
+                          key={span}
+                          type="button"
+                          className={menuRow.span === span ? 'is-active' : ''}
+                          onClick={() => runMenu(() => apply(setPlacement(draft, menuRow.key, { span })))}
+                        >
+                          {span} 段
+                        </button>
+                      ))}
+                    </div>
+                    <div className="erp-designer-menu-label">行高</div>
+                    <div className="erp-designer-menu-row">
+                      {[1, 2, 3].map(rowSpan => (
+                        <button
+                          key={rowSpan}
+                          type="button"
+                          className={menuRow.rowSpan === rowSpan ? 'is-active' : ''}
+                          onClick={() => runMenu(() => apply(setPlacement(draft, menuRow.key, { rowSpan })))}
+                        >
+                          {rowSpan} 行
+                        </button>
+                      ))}
+                    </div>
+                    {draft.tabs.length > 1 ? (
+                      <>
+                        <div className="erp-designer-menu-label">移动到页签</div>
+                        <div className="erp-designer-menu-row is-wrap">
+                          {draft.tabs.map(tab => (
+                            <button
+                              key={tab.no}
+                              type="button"
+                              className={menuRow.tabNo === tab.no ? 'is-active' : ''}
+                              onClick={() => runMenu(() => moveToTab(menuRow.key, tab.no))}
+                            >
+                              {tabTitle(tab)}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : null}
+                    {menuRow.cellRole === 0 && menuPrev?.hasChooser ? (
+                      <button type="button" onClick={() => runMenu(() => mergeWith(menuPrev.key, menuRow.key))}>
+                        与「{menuPrev.label}」合并为一格
+                      </button>
+                    ) : null}
+                    {menuRow.cellRole !== 0 ? (
+                      <button type="button" onClick={() => runMenu(() => detachFromCell(menuRow.key))}>
+                        移出复合格
+                      </button>
+                    ) : null}
                     <button
-                      key={rowSpan}
                       type="button"
-                      className={menuRow.rowSpan === rowSpan ? 'is-active' : ''}
-                      onClick={() => runMenu(() => apply(setPlacement(draft, menuRow.key, { rowSpan })))}
+                      onClick={() => {
+                        const name = window.prompt('分节名称（留空 = 无分节）', menuRow.sectionId ?? '')
+                        if (name !== null) runMenu(() => apply(setSection(draft, menuRow.key, name.trim() || null)))
+                      }}
                     >
-                      {rowSpan} 行
+                      归入分节…
                     </button>
-                  ))}
-                </div>
-                {menuRow.cellRole === 0 && menuPrev?.hasChooser ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      runMenu(() => {
-                        const result = mergeCompanion(draft, menuPrev.key, menuRow.key)
-                        if (result.rejected) setStatus({ tone: 'warn', text: result.rejected })
-                        else apply(result.draft)
-                      })
-                    }
-                  >
-                    与「{menuPrev.label}」合并为一格
-                  </button>
-                ) : null}
-                {menuRow.cellRole !== 0 ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      runMenu(() =>
-                        apply({
-                          ...draft,
-                          master: draft.master.map(row =>
-                            row.key === menuRow.key ? { ...row, cellGroup: null, cellRole: 0 } : row,
-                          ),
-                        }),
-                      )
-                    }
-                  >
-                    移出复合格
-                  </button>
+                  </>
                 ) : null}
                 <button
                   type="button"
-                  onClick={() => {
-                    const name = window.prompt('分节名称（留空 = 无分节）', menuRow.sectionId ?? '')
-                    if (name !== null) runMenu(() => apply(setSection(draft, menuRow.key, name.trim() || null)))
-                  }}
+                  disabled={menuRow.locked}
+                  title={menuRow.locked ? (menuRow.lockReason ?? '不允许从表单移除') : undefined}
+                  onClick={() => runMenu(() => setRowHidden(menu.table, menuRow.key, !menuRow.hidden))}
                 >
-                  归入分节…
+                  {menu.table === 'detail'
+                    ? menuRow.hidden ? '恢复该列' : '隐藏该列'
+                    : menuRow.hidden ? '恢复显示' : '从表单移除'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => runMenu(() => apply(setHidden(draft, 'master', menuRow.key, !menuRow.hidden)))}
-                >
-                  {menuRow.hidden ? '恢复显示' : '从表单移除'}
-                </button>
-                <button type="button" onClick={() => runMenu(() => apply(resetRow(draft, 'master', menuRow.key)))}>
-                  重置本行
+                <button type="button" onClick={() => runMenu(() => apply(resetRow(draft, menu.table, menuRow.key)))}>
+                  {menu.table === 'detail' ? '恢复该列默认' : '恢复该字段默认'}
                 </button>
               </>
             ) : null}
@@ -698,6 +774,23 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
           {dragging ? <div className="erp-designer-drag-card">{draggedLabel}</div> : null}
         </DragOverlay>
       </DndContext>
+
+      {/* 加字段走系统统一选择器：候选是本模块该表还没排进表单的字段（服务端字段池口径） */}
+      <UnifiedChooser<PickedFieldRow>
+        open={picker !== null}
+        mode="multi"
+        title={picker === 'detail' ? `添加明细列（${state.detailTable ?? ''}）` : `添加字段（${state.masterTable}）`}
+        searchPlaceholder="搜索字段名/描述/类型"
+        source={{
+          kind: 'sourceKey',
+          key: 'form-designer.fields',
+          args: { moduleId: String(moduleId), table: picker ?? 'master' },
+        }}
+        emptyText="该表字段都已在表单里。被移除的字段仍在画布上（带删除线），右键它选「恢复显示」即可。"
+        getRowId={row => String(row.F_ID ?? '')}
+        onPick={rows => addPickedFields(picker ?? 'master', rows)}
+        onClose={() => setPicker(null)}
+      />
     </div>
   )
 }

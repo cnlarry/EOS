@@ -1,5 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { IconPlus } from '@tabler/icons-react'
 import { packFormSections } from '../document-workbench/formLayout'
 import { RESIDENT_TAB_NO, tabTitle } from './formDesignerDraft'
 import { dragId, type DropTarget } from './formDesignerDrag'
@@ -16,11 +17,12 @@ interface DesignCanvasProps {
   preview: boolean
   /** 正在拖的字段（画布内），用于淡化原位置 */
   draggingKey: string | null
+  /** 拖拽预览中已被搬动的字段：在落点处画"待放置"占位，让后方字段让位的关系一眼可见 */
+  ghostKey: string | null
   /** 当前落点，用于显示落点指示 */
   dropTarget: DropTarget
-  onMove: (key: string, delta: number) => void
-  onHide: (key: string) => void
-  onForceNewLine: (key: string) => void
+  /** 末尾「+」：打开统一选择器补字段 */
+  onAddField: () => void
   onRenameTab: (no: number, title: string) => void
   onAddTab: () => void
   onDeleteTab: (no: number) => void
@@ -34,7 +36,11 @@ interface DesignCanvasProps {
  * 但**不载入真实单据**——值用字段代号占位。版式（排布 / 占位 / 复合格 / 分节）是真实的，
  * 只有值是占位，这正是"所见即所得"要保证的部分，同时避开数据权限（设计者无需浏览权）。
  *
- * 拖拽不是唯一手段：每个字段悬停给出快捷按钮（纯拖拽对精细操作不友好，键盘用户更用不了）。
+ * 页签沿用运行态统一表单的页签样式（同一套 `erp-form-tabs`），
+ * 让"设计出来的表单长什么样"与运行态观感一致。
+ *
+ * 一格的取舍：**标签与控件同属一个可拖拽、可右键、可点选的单元**，格内不再挂动作按钮——
+ * 前移/后移/占位/复合格/分节/隐藏全部走右键精修，画布因此干净到只剩排布本身。
  */
 export default function DesignCanvas({
   draft,
@@ -45,10 +51,9 @@ export default function DesignCanvas({
   compact,
   preview,
   draggingKey,
+  ghostKey,
   dropTarget,
-  onMove,
-  onHide,
-  onForceNewLine,
+  onAddField,
   onRenameTab,
   onAddTab,
   onDeleteTab,
@@ -65,9 +70,15 @@ export default function DesignCanvas({
 
   return (
     <div className="erp-designer-canvas">
-      <div className="erp-designer-tabs" role="tablist">
+      <ul className="nav nav-tabs erp-form-tabs erp-designer-tabs" role="tablist">
         {draft.tabs.map(tab => (
-          <DroppableTab key={tab.no} tabNo={tab.no} active={dropTarget?.kind === 'tab' && dropTarget.tabNo === tab.no}>
+          <DroppableTab
+            key={tab.no}
+            tabNo={tab.no}
+            active={dropTarget?.kind === 'tab' && dropTarget.tabNo === tab.no}
+            closable={!preview && tab.no !== RESIDENT_TAB_NO}
+            onDelete={() => onDeleteTab(tab.no)}
+          >
             {renaming === tab.no ? (
               <input
                 className="erp-designer-tab-input"
@@ -91,7 +102,7 @@ export default function DesignCanvas({
                 type="button"
                 role="tab"
                 aria-selected={tab.no === activeTabNo}
-                className="erp-designer-tab-btn"
+                className={tab.no === activeTabNo ? 'nav-link active' : 'nav-link'}
                 onClick={() => onActiveTabChange(tab.no)}
                 onDoubleClick={() => {
                   if (preview) return
@@ -103,30 +114,24 @@ export default function DesignCanvas({
                 {tabTitle(tab)}
               </button>
             )}
-            {!preview && tab.no !== RESIDENT_TAB_NO ? (
-              <button
-                type="button"
-                className="erp-designer-tab-close"
-                title="删除页签（其中的字段回到默认页签）"
-                onClick={() => onDeleteTab(tab.no)}
-              >
-                ×
-              </button>
-            ) : null}
           </DroppableTab>
         ))}
         {!preview ? (
-          <button type="button" className="erp-designer-tab-add" title="新增页签" onClick={onAddTab}>
-            +
-          </button>
+          <li className="nav-item">
+            <button type="button" className="nav-link erp-designer-tab-add" title="新增页签" onClick={onAddTab}>
+              +
+            </button>
+          </li>
         ) : null}
-      </div>
+      </ul>
 
-      {tabRows.length === 0 ? (
-        <p className="erp-designer-empty">本页签还没有字段，从左侧字段池拖入或点击加入。</p>
-      ) : null}
-
-      <div className="erp-designer-sections">
+      <div
+        className="erp-form-grid erp-designer-sections"
+        style={{ '--erp-form-cols': draft.columns } as CSSProperties}
+      >
+        {tabRows.length === 0 && !preview ? (
+          <p className="erp-designer-empty">本页签还没有字段，点下方的「+」从字段池选择。</p>
+        ) : null}
         {sections.map((section, sectionIndex) => (
           <section className="erp-form-group" key={section.title ?? `default-${sectionIndex}`}>
             {section.title ? (
@@ -142,23 +147,22 @@ export default function DesignCanvas({
             ) : null}
             <div
               className="erp-designer-grid"
-              style={
-                {
-                  '--erp-form-cols': draft.columns,
-                  gridTemplateColumns: `repeat(${draft.columns}, minmax(0, 1fr))`,
-                } as CSSProperties
-              }
+              style={{ gridTemplateColumns: `repeat(${draft.columns}, minmax(0, 1fr))` } as CSSProperties}
             >
               {section.cells.map(({ cell, placement }) => (
                 <DesignerCell
                   key={cell[0].key}
                   cellKey={cell[0].key}
                   multi={cell.length > 1}
+                  selected={cell.some(field => field.key === selectedKey)}
                   placement={placement}
-                  active={dropKey === cell[0].key && dropTarget?.kind === 'insert'}
+                  ghost={ghostKey !== null && cell.some(field => field.key === ghostKey)}
+                  preview={preview}
                   activeClass={dropTarget?.kind === 'insert' && dropTarget.key === cell[0].key
                     ? (dropTarget.before ? 'is-drop-before' : 'is-drop-after')
                     : dropKey === cell[0].key ? dropClass : ''}
+                  onSelect={onSelect}
+                  onContextMenu={preview ? undefined : (x, y) => onRowContextMenu?.(cell[0].key, x, y)}
                 >
                   <label className="erp-form-label">
                     {cell[0].label}
@@ -174,16 +178,9 @@ export default function DesignCanvas({
                       <DesignField
                         key={field.key}
                         field={field}
-                        selected={selectedKey === field.key}
                         dragging={draggingKey === field.key}
                         preview={preview}
                         onSelect={onSelect}
-                        onMove={onMove}
-                        onHide={onHide}
-                        onForceNewLine={onForceNewLine}
-                        onContextMenu={
-                          preview ? undefined : (x, y) => onRowContextMenu?.(field.key, x, y)
-                        }
                       />
                     ))}
                   </div>
@@ -192,17 +189,55 @@ export default function DesignCanvas({
             </div>
           </section>
         ))}
+        {!preview ? (
+          <div className="erp-designer-add-row">
+            <button
+              type="button"
+              className="erp-designer-add-cell"
+              title="添加字段（打开统一选择器）"
+              onClick={onAddField}
+            >
+              <IconPlus size={16} />
+              添加字段
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   )
 }
 
-function DroppableTab({ tabNo, active, children }: { tabNo: number; active: boolean; children: ReactNode }) {
+function DroppableTab({
+  tabNo,
+  active,
+  closable,
+  onDelete,
+  children,
+}: {
+  tabNo: number
+  active: boolean
+  closable: boolean
+  onDelete: () => void
+  children: ReactNode
+}) {
   const { setNodeRef } = useDroppable({ id: `tab-drop:${tabNo}`, data: { kind: 'tab', tabNo } })
+  const classes = ['nav-item', 'erp-designer-tab']
+  if (active) classes.push('is-drop-target')
+  if (closable) classes.push('is-closable')
   return (
-    <span ref={setNodeRef} className={active ? 'erp-designer-tab is-drop-target' : 'erp-designer-tab'}>
+    <li ref={setNodeRef} className={classes.join(' ')}>
       {children}
-    </span>
+      {closable ? (
+        <button
+          type="button"
+          className="erp-designer-tab-close"
+          title="删除页签（其中的字段回到默认页签）"
+          onClick={onDelete}
+        >
+          ×
+        </button>
+      ) : null}
+    </li>
   )
 }
 
@@ -237,22 +272,71 @@ function DroppableSection({
 interface DesignerCellProps {
   cellKey: string
   multi: boolean
+  selected: boolean
   placement: { col: number; row: number; span: number; rowSpan: number }
-  active: boolean
   activeClass: string
+  /** 拖拽预览中字段搬到了这一格：画待放置占位 */
+  ghost: boolean
+  preview: boolean
   children: ReactNode
+  onSelect: (key: string) => void
+  onContextMenu?: (x: number, y: number) => void
 }
 
-/** 一格的落点：左/右边缘插入、中心合并——数据交给 DndContext 判定（几何在页面里算）。 */
-function DesignerCell({ cellKey, multi, placement, activeClass, children }: DesignerCellProps) {
-  const { setNodeRef } = useDroppable({ id: `cell-drop:${cellKey}`, data: { kind: 'cell', key: cellKey } })
+/**
+ * 一格 = 一个整体单元：标签与控件同属一个可拖拽、可右键、可点选的载体。
+ * 标签本身也是拖动/右键的把手——它只是字段的另一半，不是只能看的装饰。
+ * 落点判定仍由 DndContext 负责（几何在页面里算）：左/右边缘插入、中心合并。
+ */
+function DesignerCell({
+  cellKey,
+  multi,
+  selected,
+  placement,
+  activeClass,
+  ghost,
+  preview,
+  children,
+  onSelect,
+  onContextMenu,
+}: DesignerCellProps) {
+  const { setNodeRef: setDropRef } = useDroppable({ id: `cell-drop:${cellKey}`, data: { kind: 'cell', key: cellKey } })
+  const { setNodeRef: setDragRef, attributes, listeners } = useDraggable({
+    id: dragId({ from: 'canvas', table: 'master', key: cellKey }),
+    data: { kind: 'field', key: cellKey },
+    disabled: preview,
+  })
   const classes = [multi ? 'erp-form-cell erp-designer-cell' : 'erp-designer-cell']
+  if (selected) classes.push('is-selected')
+  if (ghost) classes.push('is-drop-ghost')
+  if (preview) classes.push('is-preview')
   if (activeClass) classes.push(activeClass)
   return (
     <div
-      ref={setNodeRef}
+      ref={node => {
+        setDragRef(node)
+        setDropRef(node)
+      }}
       className={classes.join(' ')}
+      data-designer-cell={cellKey}
       style={{ gridColumn: `${placement.col} / span ${placement.span}`, gridRow: `${placement.row} / span ${placement.rowSpan}` }}
+      onClick={event => {
+        if (preview) return
+        event.stopPropagation()
+        onSelect(cellKey)
+      }}
+      onContextMenu={event => {
+        if (!onContextMenu) return
+        event.preventDefault()
+        event.stopPropagation()
+        // 右键落在哪个字段上就选哪个：复合格里对从字段的操作（如移出复合格）不能误作用到主字段
+        const node = (event.target as HTMLElement).closest('[data-designer-field]')
+        onSelect(node?.getAttribute('data-designer-field') ?? cellKey)
+        onContextMenu(event.clientX, event.clientY)
+      }}
+      title={onContextMenu ? '拖动调整位置；右键精修（前移后移/占位/复合格/分节/隐藏）' : undefined}
+      {...attributes}
+      {...listeners}
     >
       {children}
     </div>
@@ -261,101 +345,38 @@ function DesignerCell({ cellKey, multi, placement, activeClass, children }: Desi
 
 interface DesignFieldProps {
   field: DesignRow
-  selected: boolean
   dragging: boolean
   preview: boolean
   onSelect: (key: string | null) => void
-  onMove: (key: string, delta: number) => void
-  onHide: (key: string) => void
-  onForceNewLine: (key: string) => void
-  onContextMenu?: (x: number, y: number) => void
 }
 
-/** 画布上的一个字段：值用字段代号占位；可拖拽排序/合并/移除，也可用悬停快捷按钮或右键精修。 */
-function DesignField({ field, selected, dragging, preview, onSelect, onMove, onHide, onForceNewLine, onContextMenu }: DesignFieldProps) {
-  const { attributes, listeners, setNodeRef } = useDraggable({
-    id: dragId({ from: 'canvas', table: 'master', key: field.key }),
-    data: { kind: 'field', key: field.key },
-    disabled: preview,
-  })
+/** 格内的一个字段：值用字段代号占位。整格的拖动/右键由所在格承接，这里只做显示与单选。 */
+function DesignField({ field, dragging, preview, onSelect }: DesignFieldProps) {
   const classes = ['erp-designer-field']
-  if (selected) classes.push('is-selected')
   if (field.hidden) classes.push('is-hidden')
   if (!field.userVisible) classes.push('is-denied')
   if (dragging) classes.push('is-dragging')
   return (
     <div
-      ref={setNodeRef}
       className={classes.join(' ')}
+      data-designer-field={field.key}
       onClick={event => {
         if (preview) return
         event.stopPropagation()
         onSelect(field.key)
       }}
-      onContextMenu={event => {
-        if (!onContextMenu) return
-        event.preventDefault()
-        event.stopPropagation()
-        onSelect(field.key)
-        onContextMenu(event.clientX, event.clientY)
-      }}
-      title={field.userVisible ? `${field.key}（可拖动调整位置，右键精修）` : `${field.key}（当前用户不可见）`}
-      {...attributes}
-      {...listeners}
+      title={field.userVisible ? field.key : `${field.key}（当前用户不可见）`}
     >
       <span className="erp-designer-value">{field.key}</span>
       <span className="erp-designer-badges">
         {field.span > 1 || field.rowSpan > 1 ? <em>{`▦ ${field.span}×${field.rowSpan}`}</em> : null}
+        {/* 排了也不会出现的字段（虚拟查找列、当前用户不可见）先说清楚，免得排布白调 */}
+        {!field.userVisible ? <em className="is-denied">运行态不显示</em> : null}
         {field.hidden ? <em className="is-hidden">已隐藏</em> : null}
         {field.cellRole === 1 ? <em>复合格主</em> : null}
         {field.cellRole === 2 ? <em>复合格从</em> : null}
         {field.isVirtual ? <em>虚拟</em> : null}
       </span>
-      {!preview ? (
-        <span className="erp-designer-field-actions">
-          <button
-            type="button"
-            title="前移"
-            onClick={event => {
-              event.stopPropagation()
-              onMove(field.key, -1)
-            }}
-          >
-            ←
-          </button>
-          <button
-            type="button"
-            title="后移"
-            onClick={event => {
-              event.stopPropagation()
-              onMove(field.key, 1)
-            }}
-          >
-            →
-          </button>
-          <button
-            type="button"
-            title="另起一行"
-            onClick={event => {
-              event.stopPropagation()
-              onForceNewLine(field.key)
-            }}
-          >
-            ⤒
-          </button>
-          <button
-            type="button"
-            title={field.locked ? (field.lockReason ?? '不允许从表单移除') : '从表单移除（可再恢复）'}
-            disabled={field.locked}
-            onClick={event => {
-              event.stopPropagation()
-              onHide(field.key)
-            }}
-          >
-            ✕
-          </button>
-        </span>
-      ) : null}
     </div>
   )
 }

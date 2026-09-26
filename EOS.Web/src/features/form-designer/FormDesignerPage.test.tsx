@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiClientMock } from '../../test/apiMock'
 import FormDesignerPage from './FormDesignerPage'
@@ -78,7 +79,19 @@ const designState: DesignState = {
 }
 
 function renderPage() {
-  return render(<FormDesignerPage moduleId={1405} onExit={() => undefined} />)
+  // 保存/重置成功后会失效运行态缓存（['workbench', moduleId]），必须给一个真实 QueryClient
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <FormDesignerPage moduleId={1405} onExit={() => undefined} />
+    </QueryClientProvider>,
+  )
+}
+
+/** 右键某一格并点菜单项：格上不再挂动作按钮，全部版式动作走右键精修。 */
+function rightClickCell(value: string) {
+  const cell = screen.getByText(value).closest('.erp-designer-cell') as HTMLElement
+  fireEvent.contextMenu(cell, { clientX: 10, clientY: 10 })
 }
 
 describe('FormDesignerPage', () => {
@@ -103,20 +116,46 @@ describe('FormDesignerPage', () => {
     vi.unstubAllGlobals()
   })
 
-  it('加载后渲染画布、字段池与明细列', async () => {
+  it('加载后渲染画布与明细表头，并给出添加字段/添加列入口', async () => {
     renderPage()
-    expect(await screen.findByText('客户订单 · COP_ORDER_M / COP_ORDER_D · 2 列')).toBeInTheDocument()
+    expect(await screen.findByText('客户订单 · COP_ORDER_M / COP_ORDER_D')).toBeInTheDocument()
     expect(screen.getByText('ORDER_NO')).toBeInTheDocument()
-    expect(screen.getByText('客户名称')).toBeInTheDocument()
+    // 明细列以真实表头横铺（而不是竖排列表）
     expect(screen.getByText(/明细列（COP_ORDER_D）/)).toBeInTheDocument()
+    // 表头显示字段名（与运行态明细网格一致），而不是字段代号
+    expect(screen.getByText('产品编号')).toBeInTheDocument()
+    // 加字段/加列走统一选择器入口
+    expect(screen.getByRole('button', { name: /添加字段/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /添加列/ })).toBeInTheDocument()
+  })
+
+  it('点「添加字段」打开统一选择器（数据源为设计态字段池）', async () => {
+    apiClientMock.post.mockResolvedValue({
+      columns: [
+        { key: 'F_ID', label: '字段名', dataType: 'nvarchar' },
+        { key: 'F_DESC', label: '描述', dataType: 'nvarchar' },
+      ],
+      defaultKeys: ['F_ID', 'F_DESC'],
+      rows: [{ F_ID: 'CLIENT_NAME', F_DESC: '客户名称' }],
+      total: 1,
+    })
+    renderPage()
+    await screen.findByText('ORDER_NO')
+    fireEvent.click(screen.getByRole('button', { name: /添加字段/ }))
+    expect(await screen.findByText(/添加字段（COP_ORDER_M）/)).toBeInTheDocument()
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalled())
+    const [path, body] = apiClientMock.post.mock.calls.at(-1) as [string, { sourceKey?: string; args?: Record<string, string> }]
+    expect(path).toBe('/chooser/query')
+    expect(body.sourceKey).toBe('form-designer.fields')
+    expect(body.args).toEqual({ moduleId: '1405', table: 'master' })
   })
 
   it('隐藏字段后保存，提交的是整份版式且带幂等键', async () => {
     renderPage()
     await screen.findByText('ORDER_NO')
     // REMARK 未锁定 → 允许从表单移除
-    const remarkCell = screen.getByText('REMARK').closest('.erp-designer-field') as HTMLElement
-    fireEvent.click(remarkCell.querySelector('button[title="从表单移除（可再恢复）"]') as HTMLElement)
+    rightClickCell('REMARK')
+    fireEvent.click(screen.getByRole('button', { name: '从表单移除' }))
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledTimes(1))
@@ -136,13 +175,13 @@ describe('FormDesignerPage', () => {
     expect(payload.detail.map(item => item.key)).toEqual(['PRO_NO', 'QTY'])
   })
 
-  it('锁定字段没有移除按钮', async () => {
+  it('锁定字段的移除动作禁用并说明原因', async () => {
     renderPage()
     await screen.findByText('ORDER_NO')
-    const lockedCell = screen.getByText('ORDER_NO').closest('.erp-designer-field') as HTMLElement
-    const removeButton = lockedCell.querySelector('button[title="主键列，始终显示"]') as HTMLButtonElement
-    expect(removeButton).toBeTruthy()
+    rightClickCell('ORDER_NO')
+    const removeButton = screen.getByRole('button', { name: '从表单移除' }) as HTMLButtonElement
     expect(removeButton.disabled).toBe(true)
+    expect(removeButton.title).toBe('主键列，始终显示')
   })
 
   it('新增页签后保存请求包含新页签', async () => {
@@ -158,8 +197,8 @@ describe('FormDesignerPage', () => {
   it('撤销回到改动前（Ctrl+Z）', async () => {
     renderPage()
     await screen.findByText('ORDER_NO')
-    const remarkCell = screen.getByText('REMARK').closest('.erp-designer-field') as HTMLElement
-    fireEvent.click(remarkCell.querySelector('button[title="从表单移除（可再恢复）"]') as HTMLElement)
+    rightClickCell('REMARK')
+    fireEvent.click(screen.getByRole('button', { name: '从表单移除' }))
     expect(screen.getByText('已隐藏')).toBeInTheDocument()
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     await waitFor(() => expect(screen.queryByText('已隐藏')).toBeNull())
