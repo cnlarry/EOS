@@ -232,6 +232,111 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
             () => _repository.CreateTableAsync(new("COMPANY", new("公司资料", "P", "TABLE", null)), "IT", CancellationToken.None));
     }
 
+    /// <summary>
+    /// 表列清单的物理列分支：返回的行数与库里真实列一致，且物理列一律 IsVirtual=false。
+    /// 该断言同时覆盖 IS_VIRTUAL 列的读取类型——若 SQL 里该列不是可被 GetBoolean 读取的类型，
+    /// 这里会先抛 InvalidCastException（而不是静默返回错误的标志位）。
+    /// </summary>
+    [Fact]
+    public async Task GetTableColumns_PhysicalColumnsReportNotVirtual()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return;
+        }
+
+        var physical = await PhysicalColumnsAsync("COMPANY");
+        Assert.NotEmpty(physical);
+
+        var columns = await _repository.GetTableColumnsAsync("COMPANY", CancellationToken.None);
+
+        Assert.NotEmpty(columns);
+        var physicalRows = columns.Where(item => physical.Contains(item.Name)).ToList();
+        Assert.Equal(physical.Count, physicalRows.Count);
+        Assert.All(physicalRows, item => Assert.False(item.IsVirtual));
+        Assert.All(columns, item =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(item.Name));
+            Assert.False(string.IsNullOrWhiteSpace(item.DataType));
+        });
+    }
+
+    /// <summary>
+    /// 表列清单的虚拟列分支：来源表内配了 VIRTUAL_EXP 且无同名物理列的字段应带 IsVirtual=true 返回。
+    /// 开发库若没有这种字段则跳过（不构造数据，避免测试污染元数据）。
+    /// </summary>
+    [Fact]
+    public async Task GetTableColumns_IncludesVirtualColumnsWithFlag()
+    {
+        if (ConnectionString.Value is null)
+        {
+            return;
+        }
+
+        var candidate = await FindVirtualColumnTableAsync();
+        if (candidate is null)
+        {
+            return;
+        }
+
+        var physical = await PhysicalColumnsAsync(candidate.Value.Table);
+        var columns = await _repository.GetTableColumnsAsync(candidate.Value.Table, CancellationToken.None);
+        var virtualColumns = columns.Where(item => item.IsVirtual).ToList();
+
+        Assert.Contains(virtualColumns, item => item.Name.Equals(candidate.Value.Field, StringComparison.OrdinalIgnoreCase));
+        Assert.All(virtualColumns, item => Assert.DoesNotContain(item.Name, physical));
+    }
+
+    private static async Task<HashSet<string>> PhysicalColumnsAsync(string table)
+    {
+        await using var connection = new SqlConnection(ConnectionString.Value);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(
+            """
+            SELECT c.name
+            FROM sys.columns c
+            JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+            JOIN sys.schemas s ON o.schema_id=s.schema_id
+            WHERE s.name=N'dbo' AND o.name=@Table;
+            """, connection);
+        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            names.Add(reader.GetString(0));
+        }
+        return names;
+    }
+
+    private static async Task<(string Table, string Field)?> FindVirtualColumnTableAsync()
+    {
+        await using var connection = new SqlConnection(ConnectionString.Value);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(
+            """
+            SELECT TOP 1 LTRIM(RTRIM(f.T_ID)), LTRIM(RTRIM(f.F_ID))
+            FROM dbo.FIELDS f WITH (NOLOCK)
+            WHERE COALESCE(f.IS_VIRTUAL,0)=1
+              AND LTRIM(RTRIM(ISNULL(f.VIRTUAL_EXP,'')))<>''
+              AND NOT EXISTS (SELECT 1 FROM sys.columns c
+                              JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                              JOIN sys.schemas s ON o.schema_id=s.schema_id
+                              WHERE s.name=N'dbo' AND o.name=LTRIM(RTRIM(f.T_ID))
+                                AND c.name=LTRIM(RTRIM(f.F_ID)))
+              AND EXISTS (SELECT 1 FROM sys.objects o
+                          JOIN sys.schemas s ON o.schema_id=s.schema_id
+                          WHERE s.name=N'dbo' AND o.name=LTRIM(RTRIM(f.T_ID)) AND o.type IN ('U','V'))
+            ORDER BY f.T_ID, f.F_ID;
+            """, connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return null;
+        }
+        return (reader.GetString(0), reader.GetString(1));
+    }
+
     public void Dispose()
     {
         if (ConnectionString.Value is null)
