@@ -441,6 +441,17 @@ describe('FormEditorPage', () => {
     expect(container.querySelector('.erp-detail-grid tbody')).toHaveTextContent('X1')
   })
 
+  it('浏览态点「新增」：原地切换后不残留上一张单据的明细行', async () => {
+    const { container } = renderEditor('/workbench/1209/view/P1/A')
+    const newButton = await screen.findByRole('button', { name: '新增' })
+    await waitFor(() => expect(container.querySelector('.erp-detail-grid tbody')).toHaveTextContent('X1'))
+    fireEvent.click(newButton)
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    // 新增态应是空明细：残留会把上一张单据的行按可编辑输入框渲染出来
+    expect(container.querySelectorAll('.erp-detail-grid tbody tr')).toHaveLength(0)
+    expect(screen.queryByDisplayValue('X1')).not.toBeInTheDocument()
+  })
+
   it('明细网格不再渲染补空行', async () => {
     const { container } = renderEditor('/workbench/1209/edit/P1/A')
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
