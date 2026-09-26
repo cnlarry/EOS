@@ -140,3 +140,16 @@ public sealed record FieldHistoryEvent(
 /// 字段设置数据来源/回填构建器下拉选项。虚拟来源列合法，过滤条件仍只用物理列。
 /// </summary>
 public sealed record FieldAdminColumn(string Name, string DataType, string Description, bool IsVirtual = false);
+
+/// <summary>QUERY_RELATION 白名单中的一条关联（别名可不同于物理表名，如 PRODUCT_J）。</summary>
+public sealed record FieldAdminRelation(string Table, string Alias, IReadOnlyList<string> Conditions);
+
+/// <summary>
+/// 表关联白名单（TABLES.QUERY_RELATION 解析结果）：虚拟表达式构建器的跨表引用候选。
+/// Ok=false 时 Error 给出不可解析原因（关系不可用时跨表引用一律拒绝，前端只放本表）。
+/// </summary>
+public sealed record FieldAdminRelations(
+    string TableId,
+    bool Ok,
+    string? Error,
+    IReadOnlyList<FieldAdminRelation> Items);

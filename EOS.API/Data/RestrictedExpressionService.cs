@@ -38,6 +38,54 @@ public sealed record ExpressionOverview(
     int Stale,
     IReadOnlyList<ExpressionStaleEntry> StaleItems);
 
+/// <summary>转换函数注册表条目（构建器下拉）：Name = 注册表函数名，Description = 取值语义说明。</summary>
+public sealed record ExpressionRegistryItem(string Name, string Description);
+
+/// <summary>受控表达式注册表（白名单版本 + 转换函数名）：构建器下拉的唯一来源，前端不得硬编码。</summary>
+public sealed record ExpressionRegistry(int WhiteListVersion, IReadOnlyList<ExpressionRegistryItem> ConvertFunctions);
+
+/// <summary>
+/// 受限单表 SELECT 的结构回读（构建器初始化）：字符串常量已去引号，
+/// WhereValueIsString 决定生成文本时是否重新加引号。
+/// </summary>
+public sealed record ExpressionDataSourceStructure(
+    string Table,
+    IReadOnlyList<string> Columns,
+    string? WhereColumn,
+    string? WhereValue,
+    bool WhereValueIsString,
+    string? OrderColumn,
+    string? OrderDirection);
+
+/// <summary>表达式结构回读的形态取值（前端构建器据此决定控件是否可编辑）。</summary>
+public static class ExpressionStructureModes
+{
+    /// <summary>虚拟表达式「表.列」单引用：构建器可编辑。</summary>
+    public const string Reference = "reference";
+    /// <summary>虚拟表达式受控算术/常量子集：构建器不覆盖，只能原始文本编辑。</summary>
+    public const string Arithmetic = "arithmetic";
+    /// <summary>转换函数命中注册表。</summary>
+    public const string Registry = "registry";
+    /// <summary>受限单表 SELECT：构建器可编辑。</summary>
+    public const string TableSql = "tableSql";
+    /// <summary>纯字面量 UNION（无表访问）：构建器不覆盖。</summary>
+    public const string LiteralUnion = "literalUnion";
+    /// <summary>语法非法或构建器不覆盖的形态。</summary>
+    public const string Raw = "raw";
+}
+
+/// <summary>
+/// 表达式结构回读结果（构建器初始化）。Mode 取值见 <see cref="ExpressionStructureModes"/>；
+/// 只用受控解析器，不触库、不执行表达式。
+/// </summary>
+public sealed record ExpressionStructure(
+    string Kind,
+    string Mode,
+    string? Table = null,
+    string? Column = null,
+    string? Function = null,
+    ExpressionDataSourceStructure? DataSource = null);
+
 /// <summary>
 /// 受控表达式解析工作流（P1/P2，，设计见）：
 /// VIRTUAL_EXP / CONVERT_FUNCTION / DATASOURCE_SQL 三套受限语言的服务端校验、只读预览与发布审计。
@@ -327,6 +375,64 @@ public sealed class RestrictedExpressionService(
         {
             return WhiteListVersion;
         }
+    }
+
+    /// <summary>构建器注册表（白名单版本 + 转换函数名）：字段设置构建器下拉只认这里，前端不硬编码。</summary>
+    public async Task<ExpressionRegistry> GetRegistryAsync(CancellationToken token) =>
+        new(
+            await ReadWhiteListVersionAsync(token),
+            ConvertFunctionRegistry.Select(item => new ExpressionRegistryItem(item.Key, item.Value)).ToList());
+
+    /// <summary>
+    /// 表达式结构回读（字段设置构建器初始化）：把已存文本还原为构建器模型。
+    /// 与 ValidateAsync 同源解析器，前端不另立一套语法；不触库、不执行。
+    /// </summary>
+    public static ExpressionStructure ParseStructure(RestrictedExpressionKind kind, string? expression)
+    {
+        var text = expression?.Trim() ?? "";
+        return kind switch
+        {
+            RestrictedExpressionKind.VirtualExp => ParseVirtualStructure(text),
+            RestrictedExpressionKind.ConvertFunction => ParseConvertStructure(text),
+            _ => ParseDataSourceStructure(text),
+        };
+    }
+
+    private static ExpressionStructure ParseVirtualStructure(string expression)
+    {
+        if (expression.Length == 0) return new("virtual_exp", ExpressionStructureModes.Raw);
+        if (VirtualExpressionParser.TryParseExpression(expression, out var table, out var column))
+            return new("virtual_exp", ExpressionStructureModes.Reference, table, column);
+        return new("virtual_exp", VirtualArithmeticParser.TryParse(expression, out _, out _)
+            ? ExpressionStructureModes.Arithmetic
+            : ExpressionStructureModes.Raw);
+    }
+
+    private static ExpressionStructure ParseConvertStructure(string expression)
+    {
+        if (ValidateConvertFunction(expression) is not null) return new("convert_function", ExpressionStructureModes.Raw);
+        // 注册表大小写不敏感，回读统一给出注册表内的规范名，避免同一函数出现多种写法
+        var name = ConvertFunctionRegistry.Keys.First(key => key.Equals(expression, StringComparison.OrdinalIgnoreCase));
+        return new("convert_function", ExpressionStructureModes.Registry, Function: name);
+    }
+
+    private static ExpressionStructure ParseDataSourceStructure(string expression)
+    {
+        if (!TryParseDataSourceSql(expression, out var parsed, out _))
+            return new("datasource_sql", ExpressionStructureModes.Raw);
+        if (parsed.Table is null) return new("datasource_sql", ExpressionStructureModes.LiteralUnion);
+        var (value, isString) = SplitLiteral(parsed.WhereValue);
+        return new("datasource_sql", ExpressionStructureModes.TableSql, DataSource: new ExpressionDataSourceStructure(
+            parsed.Table, parsed.Columns, parsed.WhereColumn, value, isString, parsed.OrderColumn, parsed.OrderDirection));
+    }
+
+    /// <summary>拆解 WHERE 常量：字符串常量去引号并还原转义，数值常量原样返回。</summary>
+    private static (string? Value, bool IsString) SplitLiteral(string? literal)
+    {
+        if (literal is null) return (null, false);
+        return literal.StartsWith('\'')
+            ? (literal[1..^1].Replace("''", "'"), true)
+            : (literal, false);
     }
 
     private async Task ValidateVirtualExpAsync(string table, string expression, List<string> errors, List<string> hints, CancellationToken token)

@@ -387,15 +387,128 @@ describe('FieldEditorForm', () => {
     expect(screen.getByText('物理列：不存在')).toBeInTheDocument()
   })
 
-  it('系统列编辑态锁定结构控件并提示', async () => {
+  it('系统列编辑态锁定结构控件', async () => {
     const { container } = renderForm('edit', {
       load: vi.fn().mockResolvedValue(meta({ key: 'CONFIRM_TAG', label: '批核状态', isSystemColumn: true })),
       save: vi.fn(),
     })
     await waitFor(() => expect(screen.getByDisplayValue('批核状态')).toBeInTheDocument())
-    expect(screen.getByText(/结构锁定/)).toBeInTheDocument()
     // 数据库类型下拉被锁定，标题仍可编辑
     expect(container.querySelectorAll<HTMLSelectElement>('select.form-select')[0]).toBeDisabled()
     expect(screen.getByDisplayValue('批核状态')).not.toBeDisabled()
+  })
+
+  it('高级设置：转换函数构建器按服务端注册表写入表达式', async () => {
+    renderForm('edit', {
+      load: vi.fn().mockResolvedValue(meta()),
+      save: vi.fn(),
+      parseExpression: vi.fn().mockResolvedValue({ kind: 'convert_function', mode: 'raw' }),
+      expressionRegistry: vi.fn().mockResolvedValue({
+        whiteListVersion: 1,
+        convertFunctions: [{ name: 'f_get_emp_name_by_id', description: '员工编号 → 姓名' }],
+      }),
+    })
+    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
+    // 文本为空 → 构建器以空模型起步，可直接选
+    fireEvent.click(await screen.findByRole('button', { name: '转换函数（受控注册表）' }))
+    fireEvent.click(await screen.findByRole('option', { name: /f_get_emp_name_by_id/ }))
+    await waitFor(() => expect(screen.getByLabelText('转换函数文本')).toHaveValue('f_get_emp_name_by_id'))
+  })
+
+  it('高级设置：虚拟表达式构建器按本表列与关联白名单生成引用', async () => {
+    const tableColumns = vi.fn().mockResolvedValue([
+      { name: 'AMOUNT', dataType: 'decimal', description: '金额' },
+      { name: 'VIRT_AMOUNT', dataType: 'decimal', description: '虚拟金额', isVirtual: true },
+    ])
+    renderForm('edit', {
+      load: vi.fn().mockResolvedValue(meta()),
+      save: vi.fn(),
+      parseExpression: vi.fn().mockResolvedValue({ kind: 'virtual_exp', mode: 'raw' }),
+      tableRelations: vi.fn().mockResolvedValue({
+        tableId: 'T1',
+        ok: true,
+        error: null,
+        items: [{ table: 'CLIENT', alias: 'CLIENT_J', conditions: ['CLIENT_J.CLIENT_ID=T1.CLIENT_ID'] }],
+      }),
+      tableColumns,
+    })
+    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
+    fireEvent.click(await screen.findByRole('button', { name: '虚拟表达式引用来源' }))
+    expect(await screen.findByRole('option', { name: /CLIENT_J（CLIENT）/ })).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('option', { name: /T1（本表）/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '虚拟表达式引用列' }))
+    // 受控虚拟列不进候选：引用列按物理存在性校验
+    expect(screen.queryByRole('option', { name: /虚拟金额/ })).toBeNull()
+    fireEvent.click(await screen.findByRole('option', { name: /金额\(AMOUNT\)/ }))
+    await waitFor(() => expect(screen.getByLabelText('虚拟表达式文本')).toHaveValue('T1.AMOUNT'))
+  })
+
+  it('高级设置：数据源 SQL 构建器生成受限 SELECT 文本', async () => {
+    renderForm('edit', {
+      load: vi.fn().mockResolvedValue(meta({ dataSourceSql: 'SELECT G_IDX FROM SYSDG' })),
+      save: vi.fn(),
+      parseExpression: vi.fn().mockResolvedValue({
+        kind: 'datasource_sql',
+        mode: 'tableSql',
+        dataSource: {
+          table: 'SYSDG',
+          columns: ['G_IDX'],
+          whereColumn: null,
+          whereValue: null,
+          whereValueIsString: true,
+          orderColumn: null,
+          orderDirection: null,
+        },
+      }),
+      tableColumns: vi.fn().mockResolvedValue([
+        { name: 'G_IDX', dataType: 'nvarchar', description: '代码' },
+        { name: 'G_DESC', dataType: 'nvarchar', description: '名称' },
+        { name: 'SORT_NO', dataType: 'int', description: '序号' },
+      ]),
+    })
+    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
+    await waitFor(() => expect(screen.getByLabelText('数据源 SQL 文本')).toHaveValue('SELECT G_IDX FROM SYSDG'))
+    fireEvent.click(await screen.findByRole('checkbox', { name: /名称\(G_DESC\)/ }))
+    await waitFor(() => expect(screen.getByLabelText('数据源 SQL 文本')).toHaveValue('SELECT G_IDX,G_DESC FROM SYSDG'))
+    fireEvent.change(screen.getByLabelText('数据源 SQL 过滤列'), { target: { value: 'G_IDX' } })
+    fireEvent.change(screen.getByLabelText('数据源 SQL 过滤值'), { target: { value: 'A1' } })
+    fireEvent.change(screen.getByLabelText('数据源 SQL 排序列'), { target: { value: 'SORT_NO' } })
+    fireEvent.change(screen.getByLabelText('数据源 SQL 排序方向'), { target: { value: 'DESC' } })
+    await waitFor(() => expect(screen.getByLabelText('数据源 SQL 文本'))
+      .toHaveValue("SELECT G_IDX,G_DESC FROM SYSDG WHERE G_IDX = 'A1' ORDER BY SORT_NO DESC"))
+  })
+
+  it('高级设置：构建器不覆盖的形态提示后仍可编辑原始文本', async () => {
+    renderForm('edit', {
+      load: vi.fn().mockResolvedValue(meta({ virtualExpression: 'A.QTY+B.QTY' })),
+      save: vi.fn(),
+      parseExpression: vi.fn().mockResolvedValue({ kind: 'virtual_exp', mode: 'arithmetic' }),
+      tableRelations: vi.fn().mockResolvedValue({ tableId: 'T1', ok: true, error: null, items: [] }),
+      tableColumns: vi.fn().mockResolvedValue([]),
+    })
+    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
+    await waitFor(() => expect(screen.getByText(/请用下方原始文本编辑/)).toBeInTheDocument())
+    expect(screen.getByLabelText('虚拟表达式文本')).toHaveValue('A.QTY+B.QTY')
+    expect(screen.getByRole('button', { name: '虚拟表达式引用列' })).toBeDisabled()
+  })
+
+  it('高级设置：手工编辑原始文本后构建器等待显式载入', async () => {
+    const parseExpression = vi.fn().mockResolvedValue({ kind: 'convert_function', mode: 'raw' })
+    renderForm('edit', {
+      load: vi.fn().mockResolvedValue(meta()),
+      save: vi.fn(),
+      parseExpression,
+      expressionRegistry: vi.fn().mockResolvedValue({ whiteListVersion: 1, convertFunctions: [] }),
+    })
+    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
+    fireEvent.change(screen.getByLabelText('转换函数文本'), { target: { value: 'f_get_emp_name_by_id' } })
+    await waitFor(() => expect(screen.getByText('表达式已手工编辑，构建器待同步。')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '载入构建器' }))
+    await waitFor(() => expect(parseExpression).toHaveBeenCalledWith('convert_function', 'f_get_emp_name_by_id'))
   })
 })
