@@ -223,7 +223,7 @@ public sealed class FieldAdminRepositoryTests
     }
 
     [Fact]
-    public void SystemColumnUpdate_RejectsPermissionAndGroupingChange()
+    public void SystemColumnUpdate_RejectsPermissionAndOptionEnumerationChange()
     {
         var current = FieldInput();
         Assert.NotNull(FieldAdminRepository.BuildSystemColumnUpdateError(
@@ -231,6 +231,6 @@ public sealed class FieldAdminRepositoryTests
         Assert.NotNull(FieldAdminRepository.BuildSystemColumnUpdateError(
             current, current with { IsCost = true }));
         Assert.NotNull(FieldAdminRepository.BuildSystemColumnUpdateError(
-            current, current with { CellGroup = "G", CellRole = 2 }));
+            current, current with { Options = "O=外含税" }));
     }
 }

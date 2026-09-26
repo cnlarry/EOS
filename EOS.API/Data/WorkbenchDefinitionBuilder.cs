@@ -393,9 +393,7 @@ public sealed class WorkbenchDefinitionBuilder(
                     IsReadonly: true, IsVisible: pkRow.IsVisible, OnlyChoose: false, ChooseMultiple: false, ChoosePage: null,
                     Choosers: [], IsPrimaryKey: true, IsAutoIncrement: pkRow.IsAutoIncrement, IsVirtual: pkRow.IsVirtual,
                     IsCost: pkRow.IsCost, IsSecrecy: pkRow.IsSecrecy, ServerFilled: true, pkRow.MaxLength,
-                    pkRow.TabNo, pkRow.FormOrder, pkRow.Span, pkRow.NewLine,
-                    string.IsNullOrWhiteSpace(pkRow.CellGroup) ? null : pkRow.CellGroup, pkRow.CellRole,
-                    FormFieldSelector.ParseOptions(pkRow.Options), DisplayOnly: false,
+                    Options: FormFieldSelector.ParseOptions(pkRow.Options), DisplayOnly: false,
                     Precision: pkRow.TypePrecision, Scale: pkRow.TypeScale));
             }
             if (missingPk.Count > 0) detailFields = detailFields.Concat(missingPk).ToList();
@@ -624,12 +622,6 @@ public sealed class WorkbenchDefinitionBuilder(
                          WHEN col.MAX_LENGTH = -1 THEN NULL
                          WHEN col.CHARACTER_LENGTH_FLAG = 2 THEN col.MAX_LENGTH / 2
                          ELSE col.MAX_LENGTH END AS MAX_LENGTH,
-                   CAST(1 AS int) AS FORM_TAB_NO,
-                   CAST(NULL AS int) AS FORM_ORDER,
-                   CAST(1 AS int) AS FORM_SPAN,
-                   CAST(0 AS bit) AS FORM_NEW_LINE,
-                   CAST(N'' AS nvarchar(50)) AS FORM_CELL_GROUP,
-                   CAST(0 AS int) AS FORM_CELL_ROLE,
                    f.FORM_OPTIONS AS FORM_OPTIONS,
                    col.TYPE_PRECISION AS TYPE_PRECISION,col.TYPE_SCALE AS TYPE_SCALE,
                    CAST(CASE WHEN col.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS bit) AS IS_PHYSICAL
@@ -702,12 +694,6 @@ public sealed class WorkbenchDefinitionBuilder(
             reader.GetBoolean(reader.GetOrdinal("CAN_COPY")),
             reader.GetBoolean(reader.GetOrdinal("IS_PK")),
             reader.GetNullableInt32("MAX_LENGTH"),
-            reader.GetInt32(reader.GetOrdinal("FORM_TAB_NO")),
-            reader.GetNullableInt32("FORM_ORDER"),
-            reader.GetInt32(reader.GetOrdinal("FORM_SPAN")),
-            reader.GetBoolean(reader.GetOrdinal("FORM_NEW_LINE")),
-            reader.GetNullableString("FORM_CELL_GROUP"),
-            reader.GetInt32(reader.GetOrdinal("FORM_CELL_ROLE")),
             reader.GetNullableString("FORM_OPTIONS"),
             reader.GetBoolean(reader.GetOrdinal("IS_PHYSICAL")),
             reader.GetNullableInt32("TYPE_PRECISION"),

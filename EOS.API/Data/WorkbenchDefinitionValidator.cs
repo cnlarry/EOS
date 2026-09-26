@@ -819,7 +819,7 @@ public sealed class WorkbenchDefinitionValidator(
 
     private sealed record FormQualityField(
         string Key, string Label, string FType, bool IsVisible, bool IsReadonly, bool IsVirtual,
-        bool HasFormOrder, string? Options, string? DefaultValue, IReadOnlyList<ChooserReturnItem> ReturnItems, string? DisplayFormat)
+        string? Options, string? DefaultValue, IReadOnlyList<ChooserReturnItem> ReturnItems, string? DisplayFormat)
     {
         public int LabelLength => Label.Length;
     }
@@ -832,7 +832,7 @@ public sealed class WorkbenchDefinitionValidator(
         const string sql = """
             SELECT LTRIM(RTRIM(f.F_ID)),LTRIM(RTRIM(f.F_DESC)),COALESCE(LTRIM(RTRIM(f.F_TYPE)),N'nvarchar'),
                    CAST(COALESCE(f.IS_VISIBLE,1) AS bit),CAST(COALESCE(f.IS_READONLY,0) AS bit),CAST(COALESCE(f.IS_VIRTUAL,0) AS bit),
-                   CAST(NULL AS int) AS FORM_ORDER,f.FORM_OPTIONS,f.DFT_VALUE,
+                   f.FORM_OPTIONS,f.DFT_VALUE,
                    f.DISPLAY_FORMAT
             FROM dbo.FIELDS f WITH (NOLOCK) WHERE f.T_ID=@Table;
             """;
@@ -846,10 +846,10 @@ public sealed class WorkbenchDefinitionValidator(
             result.Add(new FormQualityField(
                 reader.GetString(0), reader.GetString(1), reader.GetString(2),
                 reader.GetBoolean(3), reader.GetBoolean(4), reader.GetBoolean(5),
-                !reader.IsDBNull(6), reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
-                reader.IsDBNull(8) ? null : reader.GetString(8).Trim(),
+                reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
+                reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
                 returnItemsByField.TryGetValue(reader.GetString(0).Trim(), out var items) ? items : [],
-                reader.IsDBNull(9) ? null : reader.GetString(9)));
+                reader.IsDBNull(8) ? null : reader.GetString(8).Trim()));
         }
         return result;
     }

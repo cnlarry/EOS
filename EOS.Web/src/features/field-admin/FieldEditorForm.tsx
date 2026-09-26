@@ -51,12 +51,7 @@ export interface FieldInput {
   choosePage: string | null
   choosers: ChooserSource[]
   canCopy: boolean
-  tabNo: number
-  formOrder: number | null
-  span: number
-  newLine: boolean
-  cellGroup: string | null
-  cellRole: number
+  /** 下拉选项枚举（FORM_OPTIONS）：有值即渲染下拉框；字段取值语义，与表单版式无关。 */
   options: string | null
 }
 
@@ -94,13 +89,12 @@ const ALLOWED_TYPES = [
   'IDCard', 'URL', 'Email', 'PhoneNo', 'ZipCode', 'String', 'Integer',
 ]
 
-export type FieldSection = 'basic' | 'sources' | 'permissions' | 'layout' | 'advanced' | 'history'
+export type FieldSection = 'basic' | 'sources' | 'permissions' | 'advanced' | 'history'
 
 const SECTION_TABS: TabbedPanelTab<FieldSection>[] = [
   { key: 'basic', label: '基本信息' },
   { key: 'sources', label: '数据来源' },
   { key: 'permissions', label: '权限与行为' },
-  { key: 'layout', label: '表单布局' },
   { key: 'advanced', label: '高级设置' },
 ]
 
@@ -177,7 +171,7 @@ function emptyDraft(tableId: string): FieldMeta {
     isCost: false, isSecrecy: false, defaultValue: null, verifyIndex: null, regex: null, remark: null,
     browseUrl: null, browseModuleId: null, onlyChoose: false, chooseMultiple: false, choosePage: null,
     choosers: emptyChoosers(),
-    tabNo: 1, formOrder: null, span: 1, newLine: false, cellGroup: null, cellRole: 0, options: null,
+    options: null,
     isVirtual: false, virtualExpression: null, canCopy: true, isAutoIncrement: false, convertFunction: null,
     dataSourceSql: null, lastUpdatedBy: null, lastUpdatedAt: null,
   }
@@ -493,6 +487,23 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                       系统列（单据生命周期列由管线持有）：类型、校验、数据源、权限与分组结构锁定，仅名称、显示与备注类可改；不可删除。
                     </div>
                   )}
+                  <div className="d-flex justify-content-end align-items-center gap-2 mb-2">
+                    <span className="text-secondary small">
+                      表单排布（顺序 / 占位 / 复合格 / 页签 / 表单内隐藏）已归模块级版式，字段级设置已退役
+                      {contextModuleId == null ? '；需从工作台进入以带模块上下文' : ''}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={contextModuleId == null}
+                      onClick={() => {
+                        if (contextModuleId == null) return
+                        navigate(`/workbench/${contextModuleId}/view?design=1`)
+                      }}
+                    >
+                      打开表单设计
+                    </Button>
+                  </div>
                   <TabbedPanel tabs={tabs} activeKey={section} onActiveKeyChange={setSection} label="字段设置分区">
                     <div className="row g-3">
                     {section === 'basic' && <>
@@ -600,6 +611,10 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                         <input className={`form-control${regexIssue(draft.regex) ? ' is-invalid' : ''}`} value={draft.regex ?? ''} disabled={locked} placeholder="如 ^[A-Z0-9]{8}$" onChange={event => setDraft({ ...draft, regex: event.target.value })} />
                         {regexIssue(draft.regex) && <div className="invalid-feedback">{regexIssue(draft.regex)}</div>}
                       </div>
+                      <div className="col-12">
+                        <label className="form-label">下拉选项（FORM_OPTIONS）</label>
+                        <input className="form-control" value={draft.options ?? ''} disabled={locked} placeholder="如 O=外含税;I=内含税;N=不含税；有值即渲染下拉框；标签末尾加 ! 表示可见但不可选（未实现的档位）" onChange={event => setDraft({ ...draft, options: event.target.value || null })} />
+                      </div>
                       <div className="col-12 d-flex gap-4">
                         <label className="form-check">
                           <input className="form-check-input" type="checkbox" checked={draft.isRequired} disabled={locked} onChange={() => setDraft({ ...draft, isRequired: !draft.isRequired })} />
@@ -670,32 +685,6 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                           </div>
                         </div>
                       ))}
-                    </>}
-                    {section === 'layout' && <>
-                      <div className="col-12">
-                        <div className="alert alert-info">
-                          表单的排布（顺序 / 占位 / 复合格 / 分节 / 页签 / 表单内隐藏）已归**模块级版式**：
-                          同一张表被多个模块共用时，各模块可以有自己的形态，不再互相牵动。
-                          字段级的那套排布设置（顺序 / 占位 / 复合格 / 页签 / 强制换行）已<strong>退役</strong>——请到表单设计里调整。
-                          <div className="mt-2">
-                            <Button
-                              size="sm"
-                              variant="primary"
-                              disabled={contextModuleId == null}
-                              onClick={() => {
-                                if (contextModuleId == null) return
-                                navigate(`/workbench/${contextModuleId}/view?design=1`)
-                              }}
-                            >
-                              打开表单设计{contextModuleId == null ? '（需从工作台进入以带模块上下文）' : ''}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="col-12">
-                        <label className="form-label">下拉选项（FORM_OPTIONS）</label>
-                        <input className="form-control" value={draft.options ?? ''} disabled={locked} placeholder="如 O=外含税;I=内含税;N=不含税；有值即渲染下拉框；标签末尾加 ! 表示可见但不可选（未实现的档位）" onChange={event => setDraft({ ...draft, options: event.target.value || null })} />
-                      </div>
                     </>}
                     {section === 'advanced' && <>
                       <div className="col-12">

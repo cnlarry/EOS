@@ -29,12 +29,6 @@ internal sealed record FormFieldRow(
     bool CanCopy,
     bool IsPrimaryKey,
     int? MaxLength,
-    int TabNo = 1,
-    int? FormOrder = null,
-    int Span = 1,
-    bool NewLine = false,
-    string? CellGroup = null,
-    int CellRole = 0,
     string? Options = null,
     bool IsPhysical = true,
     int? TypePrecision = null,
@@ -125,8 +119,6 @@ internal static class FormFieldSelector
             // 在新增/编辑态隐藏，仅浏览态只读显示。
             if (mode != "view" && (WorkflowStates.LifecycleActorColumns.Contains(row.Key, StringComparer.OrdinalIgnoreCase)
                 || WorkflowStates.OwnershipColumns.Contains(row.Key, StringComparer.OrdinalIgnoreCase))) continue;
-            // 复合单元格从字段（FORM_CELL_ROLE=2 且配置了组）即使隐藏/幽灵也保留，用于同格联动显示
-            var isCellCompanion = row.CellRole == 2 && !string.IsNullOrWhiteSpace(row.CellGroup);
             if (row.IsCost && !canViewCost) continue;
             if (row.IsSecrecy && !canViewSecrecy) continue;
             if (deniedView.Contains(row.Key)) continue;
@@ -139,10 +131,11 @@ internal static class FormFieldSelector
             // 注意：必填但只读可见的字段（如 CURR_RATE 汇率，由前端选择币别后联动带出）
             // 不属于服务端填充，保留为客户端可提交字段，避免 SERVER_FILL_MISSING 误拦。
             var serverOwned = RecordPayloadValidator.IsAuditColumn(row.Key);
-            // 幽灵从字段（无物理列）只显示不保存：DisplayOnly=true、强制只读、绝不服务端填充
-            var displayOnly = isCellCompanion && !row.IsPhysical;
-            var serverFilled = !displayOnly && (serverOwned || row.IsAutoIncrement || row.IsRequired && !row.IsVisible);
-            if (!row.IsVisible && !serverFilled && !isCellCompanion) continue;
+            // 隐藏且非必填的字段不进表单；必填但隐藏的字段标服务端填充（值由管线给）。
+            // 注：字段级 FORM_CELL_ROLE 退役后，本阶段已无法判出"复合格从字段"（版式在 Select
+            // 之后才施加），故不再据它保留隐藏字段——版式侧从字段的可见性由版式自身决定。
+            var serverFilled = serverOwned || row.IsAutoIncrement || row.IsRequired && !row.IsVisible;
+            if (!row.IsVisible && !serverFilled) continue;
 
             var choosers = row.Choosers
                 .Where(source => source.Active && !string.IsNullOrWhiteSpace(source.Table))
@@ -167,8 +160,8 @@ internal static class FormFieldSelector
                 row.VerifyIndex,
                 row.Regex,
                 row.DefaultValue,
-                IsReadonly: row.IsReadonly || row.IsVirtual || serverOwned || displayOnly || IsLifecycleSystemColumn(row.Key),
-                row.IsVisible || isCellCompanion,
+                IsReadonly: row.IsReadonly || row.IsVirtual || serverOwned || IsLifecycleSystemColumn(row.Key),
+                row.IsVisible,
                 row.OnlyChoose,
                 row.ChooseMultiple,
                 row.ChoosePage,
@@ -180,17 +173,13 @@ internal static class FormFieldSelector
                 row.IsSecrecy,
                 serverFilled,
                 row.MaxLength,
-                row.TabNo,
-                row.FormOrder,
-                row.Span,
-                row.NewLine,
-                string.IsNullOrWhiteSpace(row.CellGroup) ? null : row.CellGroup,
-                row.CellRole,
-                ParseOptions(row.Options),
-                displayOnly,
-                row.CanCopy,
-                row.TypePrecision,
-                row.TypeScale));
+                // 版面占位（页签/顺序/跨度/换行/复合格角色）由模块级版式在 Select 之后施加；
+                // 幽灵从字段标记（DisplayOnly）随字段级 FORM_CELL_ROLE 退役，此处恒为 false
+                Options: ParseOptions(row.Options),
+                DisplayOnly: false,
+                CanCopy: row.CanCopy,
+                Precision: row.TypePrecision,
+                Scale: row.TypeScale));
         }
         return result;
     }

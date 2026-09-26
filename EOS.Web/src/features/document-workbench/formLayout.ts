@@ -56,39 +56,6 @@ export function isWideTextField(field: Pick<FormFieldDefinition, 'key' | 'dataTy
   return /REMARK$/i.test(field.key)
 }
 
-/**
- * 零配置模块的默认版式推导（纯函数，与服务端同一套规则；前端画布预览、后端种子生成共用）。
- *
- * - 页签不推导（空列表 = 未配置，渲染侧兜底单页签「默认」）；
- * - 顺序取字段级排序位，缺省按传入次序；
- * - 列跨度取字段级配置，备注类整行；行跨度备注类 2、其余 1；
- * - 分节不推导——分节是独立于复合格格的显式配置（复合格靠 cellGroup/cellRole）；
- * - 隐藏只针对"本来就进不了表单"的字段：不可见、非必填、且不是复合格从字段。
- */
-export function deriveDefaultLayout(fields: FormFieldDefinition[], columns: number): FormLayoutDoc {
-  const cols = columns > 0 ? columns : DEFAULT_FORM_COLUMNS
-  const rows = fields.map((field, index): FormLayoutRow => {
-    const wide = isWideTextField(field)
-    const group = field.cellGroup?.trim() ? field.cellGroup.trim() : null
-    const cellRole = field.cellRole ?? 0
-    const tabNo = (field.tabNo ?? 0) > 0 ? field.tabNo : 1
-    return {
-      key: field.key,
-      tabNo,
-      orderNo: field.formOrder ?? index + 1,
-      // 字段级旧语义映射到子列：FORM_SPAN=1（半行）→ 2 子列、=2（整行独占）→ 4 子列
-      span: wide ? cols : Math.min(Math.max(field.span ?? 1, 1), 2) * Math.floor(cols / 2),
-      rowSpan: wide ? 2 : 1,
-      newLine: field.newLine === true,
-      sectionId: null,
-      cellGroup: group,
-      cellRole,
-      hidden: !field.isVisible && !field.isRequired && !(cellRole === 2 && group != null),
-    }
-  })
-  return { columns: cols, tabs: [], rows }
-}
-
 /** 版式行 → 明细版式行（明细只保留列顺序与列显隐）。 */
 export function toDetailRows(rows: FormLayoutRow[]): FormDetailLayoutRow[] {
   return rows.map(row => ({ key: row.key, orderNo: row.orderNo, hidden: row.hidden }))

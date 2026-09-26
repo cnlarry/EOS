@@ -854,12 +854,7 @@ public sealed class FieldAdminRepository(
                    CAST(COALESCE(IS_READONLY,0) AS bit),CAST(COALESCE(IS_VERIFY,0) AS bit),CAST(COALESCE(IS_COST,0) AS bit),
                    CAST(COALESCE(IS_SECRECY,0) AS bit),DFT_VALUE,VERIFY_INDEX,REGEX,F_REMARK,BROWSE_URL,BROWSE_M_IDX,
                    CAST(COALESCE(ONLY_CHOOSE,0) AS bit),CAST(COALESCE(CHOOSE_MULTI,0) AS bit),CHOOSE_PAGE,
-                   CAST(COALESCE(CAN_COPY,1) AS bit),
-                   -- 字段级排布配置（页签/顺序/跨度/换行/复合格）已退役：原位返回固定占位值，
-                   -- 读取侧按列名取值不受影响；值一律取「未配置」语义（半行、无组）
-                   CAST(1 AS int) AS FORM_TAB_NO,CAST(NULL AS int) AS FORM_ORDER,
-                   CAST(1 AS int) AS FORM_SPAN,CAST(0 AS bit) AS FORM_NEW_LINE,
-                   CAST(N'' AS nvarchar(50)) AS FORM_CELL_GROUP,CAST(0 AS int) AS FORM_CELL_ROLE,FORM_OPTIONS
+                   CAST(COALESCE(CAN_COPY,1) AS bit),FORM_OPTIONS
             FROM dbo.FIELDS WITH (NOLOCK)
             WHERE T_ID=@TableId AND LTRIM(RTRIM(F_ID))=@FieldId;
             """;
@@ -879,12 +874,6 @@ public sealed class FieldAdminRepository(
             reader.IsDBNull(21) ? null : reader.GetString(21),
             [],
             reader.GetBoolean(22),
-            reader.GetInt32(reader.GetOrdinal("FORM_TAB_NO")),
-            reader.IsDBNull(reader.GetOrdinal("FORM_ORDER")) ? null : reader.GetInt32(reader.GetOrdinal("FORM_ORDER")),
-            reader.GetInt32(reader.GetOrdinal("FORM_SPAN")),
-            reader.GetBoolean(reader.GetOrdinal("FORM_NEW_LINE")),
-            reader.IsDBNull(reader.GetOrdinal("FORM_CELL_GROUP")) ? null : reader.GetString(reader.GetOrdinal("FORM_CELL_GROUP")),
-            reader.GetInt32(reader.GetOrdinal("FORM_CELL_ROLE")),
             reader.IsDBNull(reader.GetOrdinal("FORM_OPTIONS")) ? null : reader.GetString(reader.GetOrdinal("FORM_OPTIONS")));
         await reader.CloseAsync();
         return result with { Choosers = await ReadFieldChoosersAsync(connection, transaction, tableId, fieldId, token) };
@@ -959,8 +948,6 @@ public sealed class FieldAdminRepository(
         command.Parameters.Add("@ChooseMultiple", SqlDbType.Bit).Value = input.ChooseMultiple;
         command.Parameters.Add("@ChoosePage", SqlDbType.NVarChar, 500).Value = DbValue(input.ChoosePage);
         command.Parameters.Add("@CanCopy", SqlDbType.Bit).Value = input.CanCopy;
-        // 字段级排布配置（@FormTabNo/@FormOrder/@FormSpan/@FormNewLine/@FormCellGroup/@FormCellRole）
-        // 已退役：不写库也不绑参，排布改在模块级版式（MODULE_FORM_LAYOUT）里配
         command.Parameters.Add("@FormOptions", SqlDbType.NVarChar, 500).Value = DbValue(input.Options);
         command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
     }
@@ -993,12 +980,6 @@ public sealed class FieldAdminRepository(
             ["CHOOSE_MULTI"] = Bit(input.ChooseMultiple),
             ["CHOOSE_PAGE"] = DbText(input.ChoosePage),
             ["CAN_COPY"] = Bit(input.CanCopy),
-            ["FORM_TAB_NO"] = input.TabNo.ToString(CultureInfo.InvariantCulture),
-            ["FORM_ORDER"] = input.FormOrder?.ToString(CultureInfo.InvariantCulture),
-            ["FORM_SPAN"] = Math.Clamp(input.Span, 1, 2).ToString(CultureInfo.InvariantCulture),
-            ["FORM_NEW_LINE"] = Bit(input.NewLine),
-            ["FORM_CELL_GROUP"] = DbText(input.CellGroup),
-            ["FORM_CELL_ROLE"] = Math.Clamp(input.CellRole, 0, 2).ToString(CultureInfo.InvariantCulture),
             ["FORM_OPTIONS"] = DbText(input.Options),
         };
         for (var i = 0; i < input.Choosers.Count; i++)
@@ -1075,7 +1056,7 @@ public sealed class FieldAdminRepository(
 
     /// <summary>
     /// 系统列更新结构锁：仅名称、显示与备注类（标签/列宽/对齐/格式/
-    /// 可见/默认/查询/备注/校验顺序/表单位置）可改；类型/校验/数据源/权限与分组结构
+    /// 可见/默认/查询/备注/校验顺序）可改；类型/校验/数据源/权限与分组结构
     /// 锁定。返回 null 表示仅动了可改项，否则返回拒绝原因（不触库，便于单测）。
     /// </summary>
     internal static string? BuildSystemColumnUpdateError(FieldAdminInput current, FieldAdminInput next)
@@ -1092,15 +1073,8 @@ public sealed class FieldAdminRepository(
             IsQueryable = current.IsQueryable,
             Remark = current.Remark,
             VerifyIndex = current.VerifyIndex,
-            TabNo = current.TabNo,
-            FormOrder = current.FormOrder,
-            Span = current.Span,
-            NewLine = current.NewLine,
         };
-        if (!SameInput(editableOnly, current)
-            || !NullableEquals(current.CellGroup, next.CellGroup)
-            || current.CellRole != next.CellRole
-            || !NullableEquals(current.Options, next.Options))
+        if (!SameInput(editableOnly, current) || !NullableEquals(current.Options, next.Options))
         {
             return "系统列只允许修改名称、显示与备注类属性，类型、校验、数据源、权限与分组结构锁定。";
         }
