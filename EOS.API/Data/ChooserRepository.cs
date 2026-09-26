@@ -329,6 +329,9 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     ///
     /// 与设计态读到的字段池同一口径：模块/表**未定制**时版式表没有行，整表字段都是候选；
     /// 已定制则排除已排进版式的字段。主表不含虚拟列、明细表含虚拟列（各自沿用运行时取字段的口径）。
+    /// 明细例外：`IS_HIDDEN=1` 的明细列**仍算候选**——设计态的明细表头不显示隐藏列，
+    /// 它只能在字段池里被选回来（主表隐藏列留在画布上带删除线，由右键「恢复显示」处理）。
+    /// `IS_VISIBLE=0` 的字段一律不是候选：运行态根本不渲染它们，排进版式也不会有任何效果。
     /// </summary>
     private async Task<UnifiedChooserResult?> QueryFormDesignerFieldsAsync(
         UnifiedChooserQueryRequest request, CancellationToken token)
@@ -342,7 +345,11 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 string.Join(',', request.Args?.Keys ?? []));
             return null;
         }
-        var includeVirtual = string.Equals(table, "detail", StringComparison.Ordinal);
+        var isDetail = string.Equals(table, "detail", StringComparison.Ordinal);
+        var includeVirtual = isDetail;
+        // 主表的隐藏字段仍画在画布上（带删除线），隐藏行因此仍算"已排进版式"，不再作为候选；
+        // 明细的隐藏列不在表头上显示，只有字段池这一个入口能把它选回来，故隐藏行不算"已排进版式"
+        var hiddenCountsAsPlaced = !isDetail;
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
         var page = NormalizePage(request.Page);
         var pageSize = NormalizePageSize(request.PageSize);
@@ -362,9 +369,12 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         command.Parameters.Add("@Table", SqlDbType.VarChar, 100).Value = targetTable;
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId.Value;
         command.Parameters.Add("@IncludeVirtual", SqlDbType.Bit).Value = includeVirtual;
+        command.Parameters.Add("@HiddenCountsAsPlaced", SqlDbType.Bit).Value = hiddenCountsAsPlaced;
         var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
         var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
-        // 物理列存在性 + 版式排除两处 EXISTS 与设计态读字段池同口径（口径漂移会让选择器给出排不上的字段）
+        // 物理列存在性 + 可见性 + 版式排除三处与设计态读字段池同口径（口径漂移会让选择器给出排不上的字段）：
+        // 管理员标记为不显示的字段（IS_VISIBLE=0）运行态一律不渲染（FormFieldSelector 剔除），
+        // 排进版式也不会有任何效果，因此不进候选
         const string scope = """
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE LTRIM(RTRIM(f.T_ID))=@Table
@@ -373,9 +383,11 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                               JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
                               JOIN sys.schemas s ON o.schema_id=s.schema_id
                               WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID))
+              AND COALESCE(f.IS_VISIBLE,1)=1
               AND NOT EXISTS (SELECT 1 FROM dbo.MODULE_FORM_LAYOUT l WITH (NOLOCK)
                               WHERE l.M_IDX=@ModuleId AND LTRIM(RTRIM(l.T_ID))=@Table
-                                AND LTRIM(RTRIM(l.F_ID))=LTRIM(RTRIM(f.F_ID)))
+                                AND LTRIM(RTRIM(l.F_ID))=LTRIM(RTRIM(f.F_ID))
+                                AND (COALESCE(l.IS_HIDDEN,0)=0 OR @HiddenCountsAsPlaced=1))
             """;
         command.CommandText = $"""
             SELECT COUNT_BIG(1) {scope}

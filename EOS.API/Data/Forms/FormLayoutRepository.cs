@@ -563,7 +563,12 @@ public sealed class FormLayoutRepository(
         var placed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in rows.OrderBy(item => item.TabNo).ThenBy(item => item.OrderNo))
         {
-            placed.Add(row.Key);
+            // 设计态的明细表头只画显示中的列（隐藏列不在画布上），已隐藏的明细列因此在语义上
+            // 与"没排进表单"等价：必须留在字段池里，否则隐藏之后没有任何入口能把它选回来。
+            if (!(isDetail && row.Hidden))
+            {
+                placed.Add(row.Key);
+            }
             byKey.TryGetValue(row.Key, out var field);
             var fact = facts.TryGetValue(row.Key, out var known) ? known : null;
             var (locked, reason) = LockState(fact);
@@ -590,7 +595,9 @@ public sealed class FormLayoutRepository(
         }
 
         var pool = new List<FormLayoutPoolField>();
-        foreach (var field in fields.Where(field => !placed.Contains(field.Key)))
+        // 池 = 已登记但未排进表单的字段；管理员标记为不显示的字段（IS_VISIBLE=0）不进池——
+        // 运行态一律不渲染它们（FormFieldSelector 剔除），排进版式也不会有任何效果
+        foreach (var field in fields.Where(field => !placed.Contains(field.Key) && field.IsVisible))
         {
             var fact = facts.TryGetValue(field.Key, out var known) ? known : null;
             var (locked, reason) = LockState(fact);
