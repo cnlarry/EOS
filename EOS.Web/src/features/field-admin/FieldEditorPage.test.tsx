@@ -3,6 +3,7 @@ import { apiClientMock } from '../../test/apiMock'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PageBreadcrumbContext } from '../../components/layout/PageBreadcrumbContext'
 import { WorkspaceDirtyContext, WorkspaceTabContext, type TabDirtyHandlers } from '../../components/layout/workspaceDirty'
 import { FieldEditorRoute } from './FieldEditorPage'
 import type { FieldInput } from './FieldEditorForm'
@@ -101,7 +102,7 @@ describe('FieldEditorRoute', () => {
 
   it('渲染全页两栏与选项卡，加载字段元数据与变更历史', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText('字段设置：PRO_NO')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('PRODUCT_EDITION.PRO_NO')).toBeInTheDocument())
     // 左栏字段导航
     await waitFor(() => expect(screen.getAllByText('PRO_NO').length).toBeGreaterThan(0))
     expect(screen.getAllByText('QTY').length).toBeGreaterThan(0)
@@ -120,6 +121,23 @@ describe('FieldEditorRoute', () => {
     expect(screen.getByText('原标题')).toBeInTheDocument()
     // 操作人显示姓名（SYSDN 解析）
     expect(screen.getByText(/管理员/)).toBeInTheDocument()
+  })
+
+  it('标签名固定为「字段设置」，页内标题为「表.字段」跟随选中字段', async () => {
+    const setBreadcrumb = vi.fn()
+    const router = createMemoryRouter(
+      [{ path: '/admin/fields/:tableId/:fieldId', element: <FieldEditorRoute /> }],
+      { initialEntries: ['/admin/fields/PRODUCT_EDITION/PRO_NO'] },
+    )
+    renderWithProviders(
+      <PageBreadcrumbContext.Provider value={{ breadcrumb: null, setBreadcrumb }}>
+        <WorkspaceTabContext.Provider value="t1">
+          <RouterProvider router={router} />
+        </WorkspaceTabContext.Provider>
+      </PageBreadcrumbContext.Provider>,
+    )
+    await waitFor(() => expect(setBreadcrumb).toHaveBeenCalledWith(expect.objectContaining({ title: '字段设置' })))
+    await waitFor(() => expect(screen.getByText('PRODUCT_EDITION.PRO_NO')).toBeInTheDocument())
   })
 
   it('有未保存修改时把脏位登记给外壳（离开确认与保存由外壳统一处理）', async () => {

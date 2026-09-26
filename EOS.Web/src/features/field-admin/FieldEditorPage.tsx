@@ -106,9 +106,10 @@ export function FieldEditorRoute() {
         { label: '数据表维护', to: '/admin/tables' },
         { label: tableDescription || tableId, to: `/admin/tables/${encodeURIComponent(tableId)}/fields` },
       ],
-      title: isNew ? (copyFrom ? `复制字段：${copyFrom}` : '新增字段') : `字段设置：${fieldId}`,
+      // 标签名固定为页面名：表与字段由页内工具栏标题承担（同一字段在多标签页打开时靠地址区分）
+      title: '字段设置',
     })
-  }, [setBreadcrumb, tableId, fieldId, isNew, copyFrom, tableDescription])
+  }, [setBreadcrumb, tableId, tableDescription])
 
   const backTo = moduleId ? `/workbench/${moduleId}` : `/admin/tables/${encodeURIComponent(tableId)}/fields`
   const gotoField = (key: string) => {
@@ -166,8 +167,8 @@ export function FieldEditorRoute() {
     <div className="erp-field-editor-page d-flex flex-column">
       <section className="card erp-list-card">
         <section className="erp-list-command-bar" aria-label="字段设置工具栏">
-          <span className="fw-semibold small">
-            {isNew ? (copyFrom ? `复制字段：${copyFrom}` : `新增字段（${tableDescription || tableId}）`) : `字段设置：${fieldId}`}
+          <span className="fw-semibold small font-monospace">
+            {isNew ? (copyFrom ? `复制字段：${copyFrom}` : `新增字段（${tableDescription || tableId}）`) : `${tableId}.${fieldId}`}
           </span>
           <div className="erp-list-actions d-flex gap-2 align-items-center">
             <Button size="sm" variant="ghost" icon={<IconArrowLeft size={16} />} onClick={() => navigate(backTo)}>返回</Button>
