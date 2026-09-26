@@ -10,7 +10,10 @@ namespace EOS.API.Tests;
 /// 口径：归位是带预览的两步（先看"将搬几组"，确认后才真写），只改位置不改总量；
 /// 删除只是去掉库别的覆盖行，该库别此后按部署级默认行使，存量不动。
 ///
-/// 夹具自造 ZZ 前缀料号的哨兵行，用完即删：不碰真实库存。
+/// 夹具**自带库别与料号**（`ZZRELDP01` 仓 / `ZZRELPRO01` 料号），用完即删。
+/// 不能用"借一个真实库别"的写法：归位是**库别级**动作——它把该库别**全部**哨兵行的数量
+/// 搬到目标库位并把整库别的可用量重算一遍，与"该库别上有哪些料号"无关；
+/// 借真实库别来跑，等于对那个库别的真实库存做一次账面认定，收尾再按库位删就等于销毁数量。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
 [Collection("live-database")]
@@ -21,12 +24,11 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
         ?? throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private const string StockTable = "INV_PRO_DEPOT";
+    private const string Depot = "ZZRELDP01";
     private const string TestProduct = "ZZRELPRO01";
     private const string TestLocation = "ZZ-REL-LOC";
     private const string DeleteDepot = "ZZDEL0001";
     private const double StartQty = 100d;
-
-    private string _depot = string.Empty;
 
     private static async Task<SqlConnection> OpenAsync()
     {
@@ -56,62 +58,60 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
         return scalar is null or DBNull ? default : (T)Convert.ChangeType(scalar, typeof(T));
     }
 
-    /// <summary>借一个真实库别（库位主档里挂过的），其余主档全部自造。</summary>
-    private static async Task<string> PickDepotAsync()
-    {
-        await using var connection = await OpenAsync();
-        var depot = await ScalarAsync<string>(connection,
-            "SELECT TOP 1 LTRIM(RTRIM(DEPOT_ID)) FROM dbo.DEPOT_LOCATION ORDER BY DEPOT_ID;");
-        return depot ?? throw new InvalidOperationException("库位主档里没有库别，无法验证归位。");
-    }
-
     private static DepotStockPolicyService Service() => PolicyServiceFactory.Create(ConnectionString);
 
     public async Task InitializeAsync()
     {
-        _depot = await PickDepotAsync();
-
         await using var connection = await OpenAsync();
-        // 归位的目标必须是启用中的库位：本库只有哨兵位，故自造一个 ZZ 库位，用完删除。
+        // 上一轮被中断时可能留下残留：先按同一批键清干净，重复运行结果才可比。
+        await DeleteFixtureAsync(connection);
+
         await ExecAsync(connection,
-            $"""
-            IF NOT EXISTS (SELECT 1 FROM dbo.DEPOT_LOCATION WHERE DEPOT_ID=@depot AND LOCATION_NO=@loc)
-                INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID,LOCATION_NO,LOCATION_TYPE,STORAGE_TYPE,STATUS,CONFIRM_TAG)
-                VALUES (@depot,@loc,N'STAGE',N'BULK',N'A',1);
+            """
+            INSERT INTO dbo.DEPOT (DEPOT_ID, DEPOT_NAME) VALUES (@depot, N'ZZ 归位测试仓');
+            INSERT INTO dbo.PRODUCT (PRO_NO, PRO_NAME, MANAGE_BATCH, UNIT_ID)
+                VALUES (@pro, N'ZZ 归位用例料号', 0, N'ZZRELUN');
+            -- 归位的目标必须是启用中的库位：本库只有哨兵位，故自造一个 ZZ 库位，用完删除。
+            INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID,LOCATION_NO,LOCATION_TYPE,STORAGE_TYPE,STATUS,CONFIRM_TAG)
+                VALUES (@depot,N'-',N'STAGE',N'BULK',N'A',1),
+                       (@depot,@loc,N'STAGE',N'BULK',N'A',1);
             """,
-            ("@depot", _depot), ("@loc", TestLocation));
-        // 自造哨兵行：一批 ZZ 料号的货记在『未指定位置』上（库存表里 '-' 就是"没记位置"）。
+            ("@depot", Depot), ("@pro", TestProduct), ("@loc", TestLocation));
+
+        // 自造哨兵行：货记在『未指定位置』上（库存表里 '-' 就是"没记位置"）。
         await ExecAsync(connection,
             $"""
-            DELETE FROM dbo.{StockTable} WHERE LTRIM(RTRIM(PRO_NO))=@pro AND DEPOT_ID=@depot;
             INSERT INTO dbo.{StockTable} (PRO_NO,DEPOT_ID,LOCATION_NO,BATCH_NO,QTY,CREATE_PERSON,CREATE_DATE,CONFIRM_TAG,CI)
             VALUES (@pro,@depot,N'-',N'',@qty,N'DbUp',SYSDATETIME(),0,N'');
             """,
-            ("@pro", TestProduct), ("@depot", _depot), ("@qty", StartQty));
+            ("@pro", TestProduct), ("@depot", Depot), ("@qty", StartQty));
     }
 
     public async Task DisposeAsync()
     {
         await using var connection = await OpenAsync();
-        // 归位按**整个库别**的哨兵行算：本库别的其它料号也可能被补出目标库位的零量行，先按目标库位清干净，
-        // 再删本用例自造的那条哨兵行。
+        await DeleteFixtureAsync(connection);
+        // 审计（AUDIT_EVENT / AUDIT_FIELD_CHANGE）按设计保留：删它等于抹掉痕迹。
+    }
+
+    /// <summary>
+    /// 只清**本用例自造的键**：库别虽然是自己建的，余额表仍按料号限定——
+    /// "整个库别"这种口径一旦碰上库别被复用或借用，就是销毁别人的行。
+    /// </summary>
+    private static async Task DeleteFixtureAsync(SqlConnection connection)
+    {
         await ExecAsync(connection,
-            $"DELETE FROM dbo.{StockTable} WHERE DEPOT_ID=@depot AND LTRIM(RTRIM(LOCATION_NO))=@loc;",
-            ("@depot", _depot), ("@loc", TestLocation));
+            $"DELETE FROM dbo.{StockTable} WHERE DEPOT_ID=@depot AND LTRIM(RTRIM(PRO_NO))=@pro;",
+            ("@depot", Depot), ("@pro", TestProduct));
         await ExecAsync(connection,
-            $"DELETE FROM dbo.{StockTable} WHERE LTRIM(RTRIM(PRO_NO))=@pro AND DEPOT_ID=@depot;",
-            ("@pro", TestProduct), ("@depot", _depot));
+            "DELETE FROM dbo.DEPOT_LOCATION WHERE DEPOT_ID=@depot;", ("@depot", Depot));
         await ExecAsync(connection,
-            "DELETE FROM dbo.DEPOT_LOCATION WHERE DEPOT_ID=@depot AND LOCATION_NO=@loc;",
-            ("@depot", _depot), ("@loc", TestLocation));
+            "DELETE FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID IN (@depot, @del);",
+            ("@depot", Depot), ("@del", DeleteDepot));
         await ExecAsync(connection,
-            "DELETE FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID=@depot;", ("@depot", DeleteDepot));
+            "DELETE FROM dbo.PRODUCT WHERE LTRIM(RTRIM(PRO_NO))=@pro;", ("@pro", TestProduct));
         await ExecAsync(connection,
-            "DELETE FROM dbo.AUDIT_FIELD_CHANGE WHERE EVENT_ID IN (SELECT EVENT_ID FROM dbo.AUDIT_EVENT WHERE ACTION IN (N'RELOCATE', N'DELETE') AND RESOURCE_KEY IN (@key, @del));",
-            ("@key", _depot), ("@del", DeleteDepot));
-        await ExecAsync(connection,
-            "DELETE FROM dbo.AUDIT_EVENT WHERE ACTION IN (N'RELOCATE', N'DELETE') AND RESOURCE_KEY IN (@key, @del);",
-            ("@key", _depot), ("@del", DeleteDepot));
+            "DELETE FROM dbo.DEPOT WHERE DEPOT_ID=@depot;", ("@depot", Depot));
     }
 
     private async Task<double> DepotTotalAsync()
@@ -119,7 +119,7 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
         await using var connection = await OpenAsync();
         return await ScalarAsync<double>(connection,
             $"SELECT ISNULL(SUM(ISNULL(QTY,0)),0) FROM dbo.{StockTable} WHERE DEPOT_ID=@depot AND LTRIM(RTRIM(PRO_NO))=@pro;",
-            ("@depot", _depot), ("@pro", TestProduct));
+            ("@depot", Depot), ("@pro", TestProduct));
     }
 
     private async Task<double> QtyAtAsync(string location)
@@ -130,7 +130,7 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
             SELECT ISNULL(SUM(ISNULL(QTY,0)),0) FROM dbo.{StockTable}
             WHERE DEPOT_ID=@depot AND LTRIM(RTRIM(PRO_NO))=@pro AND LTRIM(RTRIM(LOCATION_NO))=@loc;
             """,
-            ("@depot", _depot), ("@pro", TestProduct), ("@loc", location));
+            ("@depot", Depot), ("@pro", TestProduct), ("@loc", location));
     }
 
     private async Task<double> AvailableAtAsync(string location)
@@ -141,7 +141,7 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
             SELECT ISNULL(SUM(CAST(ISNULL(USEABLE_QTY,0) AS float)),0) FROM dbo.{StockTable}
             WHERE DEPOT_ID=@depot AND LTRIM(RTRIM(PRO_NO))=@pro AND LTRIM(RTRIM(LOCATION_NO))=@loc;
             """,
-            ("@depot", _depot), ("@pro", TestProduct), ("@loc", location));
+            ("@depot", Depot), ("@pro", TestProduct), ("@loc", location));
     }
 
     private async Task<bool> PolicyRowExistsAsync(string depot)
@@ -160,7 +160,7 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
         var beforeTotal = await DepotTotalAsync();
         Assert.Equal(StartQty, await QtyAtAsync("-"), 6);
 
-        var result = await Service().RelocateStandaloneAsync(_depot, TestLocation, "测试经办人");
+        var result = await Service().RelocateStandaloneAsync(Depot, TestLocation, "测试经办人");
 
         Assert.True(result.Relocated, string.Join('；', result.Errors));
         Assert.Contains("已完成归位", result.Message);
@@ -181,7 +181,7 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
     [Fact]
     public async Task StandaloneRelocate_SyncsUseableQuantity()
     {
-        var result = await Service().RelocateStandaloneAsync(_depot, TestLocation, "测试经办人");
+        var result = await Service().RelocateStandaloneAsync(Depot, TestLocation, "测试经办人");
 
         Assert.True(result.Relocated, string.Join('；', result.Errors));
         Assert.Equal(StartQty, await QtyAtAsync(TestLocation), 6);
@@ -194,7 +194,7 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
     {
         var beforeTotal = await DepotTotalAsync();
 
-        var preview = await Service().PreviewRelocateAsync(_depot, TestLocation);
+        var preview = await Service().PreviewRelocateAsync(Depot, TestLocation);
 
         Assert.Empty(preview.Errors);
         Assert.Equal(1, preview.PendingGroups);
@@ -207,7 +207,7 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
     [Fact]
     public async Task StandaloneRelocate_WithoutTarget_IsRefused()
     {
-        var result = await Service().RelocateStandaloneAsync(_depot, "", "测试经办人");
+        var result = await Service().RelocateStandaloneAsync(Depot, "", "测试经办人");
 
         Assert.False(result.Relocated);
         Assert.NotEmpty(result.Errors);
@@ -219,7 +219,7 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
     {
         var beforeTotal = await DepotTotalAsync();
 
-        var result = await Service().RelocateStandaloneAsync(_depot, "ZZNOWHERE01", "测试经办人");
+        var result = await Service().RelocateStandaloneAsync(Depot, "ZZNOWHERE01", "测试经办人");
 
         Assert.False(result.Relocated);
         Assert.Contains(result.Errors, error => error.Contains("不存在或已停用"));
@@ -259,17 +259,17 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ListDepots_ContainsRealDepot()
+    public async Task ListDepots_ContainsFixtureDepot()
     {
         var depots = await Service().ListDepotsAsync();
 
-        Assert.Contains(depots, depot => depot.DepotId == _depot);
+        Assert.Contains(depots, depot => depot.DepotId == Depot);
     }
 
     [Fact]
     public async Task ListLocations_ContainsEnabledLocation_ExcludesSentinel()
     {
-        var locations = await Service().ListLocationsAsync(_depot);
+        var locations = await Service().ListLocationsAsync(Depot);
 
         Assert.Contains(locations, location => location.LocationNo == TestLocation);
         Assert.DoesNotContain(locations, location => location.LocationNo == "-");
