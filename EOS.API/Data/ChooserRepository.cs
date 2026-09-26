@@ -39,6 +39,8 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["user-admin.employees"] = ["EMP_ID"],
             // 单据源：列与排序按模块主表的主键在运行时解析（每个模块的主表不同），故这里不登记列
             ["menu-admin.records"] = [],
+            // 表单设计态字段池：候选 =（该表已登记字段）−（已排进该模块版式的字段），表由 args.table 决定
+            ["form-designer.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
         };
 
     /// <summary>注册数据源 → 排序稳定次序列（与排序列去重后追加，保证分页顺序稳定）。</summary>
@@ -59,6 +61,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["rights-admin.users"] = ["USER_ID"],
             ["rights-admin.groups"] = ["G_IDX"],
             ["user-admin.employees"] = ["EMP_ID"],
+            ["form-designer.fields"] = ["F_ID"],
         };
 
     /// <summary>注册数据源 → 列键 → 关键字 LIKE 表达式（编译期常量，安全拼接）。</summary>
@@ -108,6 +111,12 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar') LIKE @Keyword",
             },
             ["menu-admin.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["F_ID"] = "LTRIM(RTRIM(f.F_ID)) LIKE @Keyword",
+                ["F_DESC"] = "COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))) LIKE @Keyword",
+                ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar') LIKE @Keyword",
+            },
+            ["form-designer.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["F_ID"] = "LTRIM(RTRIM(f.F_ID)) LIKE @Keyword",
                 ["F_DESC"] = "COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))) LIKE @Keyword",
@@ -191,6 +200,12 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 ["F_DESC"] = "COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID)))",
                 ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar')",
             },
+            ["form-designer.fields"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["F_ID"] = "LTRIM(RTRIM(f.F_ID))",
+                ["F_DESC"] = "COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID)))",
+                ["F_TYPE"] = "COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar')",
+            },
             ["menu-admin.sprocs"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["SP_NAME"] = "LTRIM(RTRIM(p.name))",
@@ -267,6 +282,22 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         return moduleId;
     }
 
+    /// <summary>
+    /// 表单设计态字段池数据源。它的权限门是"版式设计权"而不是固定模块号，
+    /// 故不登记在 <see cref="PermissionModuleId"/> 里——由调用方用 args.moduleId 动态校验。
+    /// </summary>
+    internal static bool IsFormDesignerFieldPool(string? sourceKey) =>
+        string.Equals(sourceKey?.Trim(), "form-designer.fields", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>form-designer.fields 的 args 校验：table 只接受 master / detail。</summary>
+    internal static string? ResolveDesignerTable(IReadOnlyDictionary<string, string>? args)
+    {
+        if (args is null || !args.TryGetValue("table", out var table) || string.IsNullOrWhiteSpace(table))
+            return null;
+        var normalized = table.Trim().ToLowerInvariant();
+        return normalized is "master" or "detail" ? normalized : null;
+    }
+
     public async Task<UnifiedChooserResult?> QueryAsync(UnifiedChooserQueryRequest request, CancellationToken token)
     {
         var sourceKey = request.SourceKey?.Trim();
@@ -288,8 +319,110 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             "user-admin.employees" => await QueryEmployeesAsync(request, token),
             "menu-admin.records" => await QueryModuleRecordsAsync(request, token),
             "depot-admin.locations" => await QueryDepotLocationsAsync(request, token),
+            "form-designer.fields" => await QueryFormDesignerFieldsAsync(request, token),
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// form-designer.fields：表单设计态的**字段池**（候选 = 该表已登记字段 − 已排进本模块版式的字段）。
+    ///
+    /// 与设计态读到的字段池同一口径：模块/表**未定制**时版式表没有行，整表字段都是候选；
+    /// 已定制则排除已排进版式的字段。主表不含虚拟列、明细表含虚拟列（各自沿用运行时取字段的口径）。
+    /// </summary>
+    private async Task<UnifiedChooserResult?> QueryFormDesignerFieldsAsync(
+        UnifiedChooserQueryRequest request, CancellationToken token)
+    {
+        const string sourceKey = "form-designer.fields";
+        var moduleId = ResolveReportModuleId(request.Args);
+        var table = ResolveDesignerTable(request.Args);
+        if (moduleId is null || table is null)
+        {
+            logger.LogWarning("统一选择器表单字段池缺少合法 args（需要 moduleId 与 table=master|detail）args={Args}",
+                string.Join(',', request.Args?.Keys ?? []));
+            return null;
+        }
+        var includeVirtual = string.Equals(table, "detail", StringComparison.Ordinal);
+        var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
+        var orderBy = BuildOrderBy(sourceKey, sortColumn, direction);
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        var targetTable = await ReadModuleTableAsync(connection, moduleId.Value, table, token);
+        if (targetTable is null)
+        {
+            logger.LogWarning("统一选择器表单字段池找不到模块表 module={ModuleId} table={Table}", moduleId.Value, table);
+            return null;
+        }
+        await using var command = new SqlCommand { Connection = connection };
+        AddCommonParameters(command, keyword, page, pageSize);
+        command.Parameters.Add("@Table", SqlDbType.VarChar, 100).Value = targetTable;
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId.Value;
+        command.Parameters.Add("@IncludeVirtual", SqlDbType.Bit).Value = includeVirtual;
+        var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
+        var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        // 物理列存在性 + 版式排除两处 EXISTS 与设计态读字段池同口径（口径漂移会让选择器给出排不上的字段）
+        const string scope = """
+            FROM dbo.FIELDS f WITH (NOLOCK)
+            WHERE LTRIM(RTRIM(f.T_ID))=@Table
+              AND (COALESCE(f.IS_VIRTUAL,0)=@IncludeVirtual
+                   OR EXISTS (SELECT 1 FROM sys.columns c
+                              JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
+                              JOIN sys.schemas s ON o.schema_id=s.schema_id
+                              WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID))
+              AND NOT EXISTS (SELECT 1 FROM dbo.MODULE_FORM_LAYOUT l WITH (NOLOCK)
+                              WHERE l.M_IDX=@ModuleId AND LTRIM(RTRIM(l.T_ID))=@Table
+                                AND LTRIM(RTRIM(l.F_ID))=LTRIM(RTRIM(f.F_ID)))
+            """;
+        command.CommandText = $"""
+            SELECT COUNT_BIG(1) {scope}
+              AND (@Keyword = '' OR {keywordPredicate}){conditionSql};
+            SELECT LTRIM(RTRIM(f.F_ID)) AS F_ID,
+                   COALESCE(NULLIF(NULLIF(NULLIF(LTRIM(RTRIM(f.F_DESC)),''),'NULL'),'&nbsp;'),LTRIM(RTRIM(f.F_ID))) AS F_DESC,
+                   COALESCE(LTRIM(RTRIM(f.F_TYPE)),'nvarchar') AS F_TYPE
+            {scope}
+              AND (@Keyword = '' OR {keywordPredicate}){conditionSql}
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(reader, ["F_ID", "F_DESC", "F_TYPE"]);
+        logger.LogInformation(
+            "统一选择器表单字段池 module={ModuleId} table={Table} page={Page} size={PageSize} total={Total} rows={Rows}",
+            moduleId.Value, targetTable, page, pageSize, total, rows.Count);
+        return new UnifiedChooserResult(
+            [
+                new UnifiedChooserColumn("F_ID", "字段名", "nvarchar", null),
+                new UnifiedChooserColumn("F_DESC", "描述", "nvarchar", null),
+                new UnifiedChooserColumn("F_TYPE", "类型", "nvarchar", null),
+            ],
+            rows,
+            total);
+    }
+
+    /// <summary>模块的主表/明细表名（主表为空视为未配置表单，返回 null）。</summary>
+    private static async Task<string?> ReadModuleTableAsync(
+        SqlConnection connection, int moduleId, string table, CancellationToken token)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(ISNULL(MASTER_TABLE,''))), LTRIM(RTRIM(ISNULL(DETAIL_TABLE,'')))
+            FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token))
+        {
+            return null;
+        }
+        var name = table == "detail" ? reader.GetString(1) : reader.GetString(0);
+        return name.Length == 0 ? null : name;
     }
 
     /// <summary>

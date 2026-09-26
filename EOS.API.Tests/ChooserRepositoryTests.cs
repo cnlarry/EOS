@@ -18,6 +18,7 @@ public sealed class ChooserRepositoryTests
     [InlineData("report-admin.fields", true)]
     [InlineData("report-admin.modules", true)]
     [InlineData("user-admin.employees", true)]
+    [InlineData("form-designer.fields", true)]
     [InlineData("MENU-ADMIN.TABLES", true)]
     [InlineData("unknown.source", false)]
     [InlineData("", false)]
@@ -127,5 +128,34 @@ public sealed class ChooserRepositoryTests
     public void ResolveReportModuleId_RejectsMissingKey()
     {
         Assert.Null(ChooserRepository.ResolveReportModuleId(new Dictionary<string, string> { ["tableId"] = "COMPANY" }));
+    }
+
+    [Theory]
+    [InlineData("master", "master")]
+    [InlineData("detail", "detail")]
+    [InlineData("DETAIL", "detail")]
+    [InlineData("  master  ", "master")]
+    [InlineData("other", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void ResolveDesignerTable_OnlyAcceptsMasterOrDetail(string? table, string? expected)
+    {
+        var args = table is null ? null : new Dictionary<string, string> { ["table"] = table };
+        Assert.Equal(expected, ChooserRepository.ResolveDesignerTable(args));
+    }
+
+    [Fact]
+    public void ResolveDesignerTable_RejectsMissingKey()
+    {
+        Assert.Null(ChooserRepository.ResolveDesignerTable(new Dictionary<string, string> { ["moduleId"] = "1405" }));
+    }
+
+    [Theory]
+    [InlineData("form-designer.fields", true)]
+    [InlineData("FORM-DESIGNER.FIELDS", true)]
+    [InlineData("menu-admin.fields", false)]
+    public void IsFormDesignerFieldPool_OnlyMatchesDesignerPoolSource(string sourceKey, bool expected)
+    {
+        Assert.Equal(expected, ChooserRepository.IsFormDesignerFieldPool(sourceKey));
     }
 }

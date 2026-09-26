@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Data.Forms;
 using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
@@ -15,6 +16,7 @@ namespace EOS.API.Controllers;
 public sealed class ChooserController(
     ChooserRepository repository,
     ModuleRightsRepository rightsRepository,
+    FormLayoutRepository formLayouts,
     CurrentUserContext userContext) : ControllerBase
 {
     [HttpPost("query")]
@@ -23,7 +25,19 @@ public sealed class ChooserController(
         var sourceKey = request.SourceKey?.Trim();
         if (!ChooserRepository.IsRegistered(sourceKey))
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "UNKNOWN_SOURCE", "未知的选择器数据源。"));
-        if (ChooserRepository.PermissionModuleId(sourceKey) is { } moduleId)
+        if (ChooserRepository.IsFormDesignerFieldPool(sourceKey))
+        {
+            // 表单设计态字段池：权限门是**版式设计权**（与设计态读取端点同一把门），模块号来自 args，
+            // 不能登记成固定 moduleId。同样用 404 隐藏"数据源是否存在"这一信息。
+            var designModuleId = ChooserRepository.ResolveReportModuleId(request.Args);
+            if (designModuleId is null
+                || ChooserRepository.ResolveDesignerTable(request.Args) is null
+                || !await formLayouts.CanDesignAsync(userContext.UserId, designModuleId.Value, token))
+            {
+                return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "SOURCE_NOT_FOUND", "选择器数据源不存在。"));
+            }
+        }
+        else if (ChooserRepository.PermissionModuleId(sourceKey) is { } moduleId)
         {
             var rights = await rightsRepository.GetAsync(userContext.UserId, moduleId, token);
             // 权限不足按 404 返回（与单据路径同一防探测口径）：403 会告诉调用方"该数据源存在、
