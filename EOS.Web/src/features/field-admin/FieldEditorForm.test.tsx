@@ -417,14 +417,20 @@ describe('FieldEditorForm', () => {
   })
 
   it('高级设置：虚拟表达式构建器按本表列与关联白名单生成引用', async () => {
-    const tableColumns = vi.fn().mockResolvedValue([
-      { name: 'AMOUNT', dataType: 'decimal', description: '金额' },
-      { name: 'VIRT_AMOUNT', dataType: 'decimal', description: '虚拟金额', isVirtual: true },
-    ])
+    const tableColumns = vi.fn().mockImplementation(async (table: string) => table === 'CLIENT'
+      ? [{ name: 'CLIENT_NAME', dataType: 'nvarchar', description: '客户名称' }]
+      : [
+        { name: 'AMOUNT', dataType: 'decimal', description: '金额' },
+        { name: 'VIRT_AMOUNT', dataType: 'decimal', description: '虚拟金额', isVirtual: true },
+      ])
     renderForm('edit', {
       load: vi.fn().mockResolvedValue(meta()),
       save: vi.fn(),
       parseExpression: vi.fn().mockResolvedValue({ kind: 'virtual_exp', mode: 'raw' }),
+      tables: vi.fn().mockResolvedValue([
+        { value: 'T1', label: '订单主档 (T1)' },
+        { value: 'CLIENT', label: '客户资料 (CLIENT)' },
+      ]),
       tableRelations: vi.fn().mockResolvedValue({
         tableId: 'T1',
         ok: true,
@@ -436,11 +442,25 @@ describe('FieldEditorForm', () => {
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
     fireEvent.click(await screen.findByRole('button', { name: '虚拟表达式引用来源' }))
-    expect(await screen.findByRole('option', { name: /CLIENT_J（CLIENT）/ })).toBeInTheDocument()
-    fireEvent.click(await screen.findByRole('option', { name: /T1（本表）/ }))
-    fireEvent.click(await screen.findByRole('button', { name: '虚拟表达式引用列' }))
+    // 来源按「表」展示：本表 + 关联表（带别名时注明 AS 别名）
+    expect(await screen.findByRole('option', { name: /订单主档（T1）/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /客户资料（CLIENT） AS CLIENT_J/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('option', { name: /客户资料（CLIENT） AS CLIENT_J/ }))
+    // 关联条件来自 QUERY_RELATION，随所选段展示（不随字段保存）
+    expect(await screen.findByText('关联条件：CLIENT_J.CLIENT_ID=T1.CLIENT_ID')).toBeInTheDocument()
+    expect(screen.getByText(/该段在 QUERY_RELATION 里带别名/)).toBeInTheDocument()
+    // 列清单按该段背后的物理表取
+    await waitFor(() => expect(tableColumns).toHaveBeenCalledWith('CLIENT'))
+    fireEvent.click(screen.getByRole('button', { name: '虚拟表达式引用列' }))
     // 受控虚拟列不进候选：引用列按物理存在性校验
     expect(screen.queryByRole('option', { name: /虚拟金额/ })).toBeNull()
+    fireEvent.click(await screen.findByRole('option', { name: /客户名称\(CLIENT_NAME\)/ }))
+    // 写入的仍是该段在 QUERY_RELATION 里的名字（别名），不是物理表名
+    await waitFor(() => expect(screen.getByLabelText('虚拟表达式文本')).toHaveValue('CLIENT_J.CLIENT_NAME'))
+    fireEvent.click(screen.getByRole('button', { name: '虚拟表达式引用来源' }))
+    fireEvent.click(await screen.findByRole('option', { name: /订单主档（T1）/ }))
+    expect(await screen.findByText('引用本表列，不需要关联条件。')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '虚拟表达式引用列' }))
     fireEvent.click(await screen.findByRole('option', { name: /金额\(AMOUNT\)/ }))
     await waitFor(() => expect(screen.getByLabelText('虚拟表达式文本')).toHaveValue('T1.AMOUNT'))
   })

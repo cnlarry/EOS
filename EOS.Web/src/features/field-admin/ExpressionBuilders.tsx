@@ -14,7 +14,7 @@ import {
   type TableRelations,
 } from './expressionBuilder'
 import { FieldPickerSelect, type FieldPickerOption } from './FieldPickerSelect'
-import type { FieldEditorEndpoints } from './FieldEditorForm'
+import type { FieldEditorEndpoints, SetupLookup } from './FieldEditorForm'
 
 interface BuilderProps {
   model: ExpressionModel
@@ -86,7 +86,19 @@ interface VirtualExpressionBuilderProps extends BuilderProps {
   currentTable: string
 }
 
-/** 虚拟表达式构建器：本表列 + QUERY_RELATION 白名单别名列，拼成「表.列」。 */
+/** 表显示名：`/admin/tables` 的 label 形如「客户资料 (CLIENT)」，取描述部分；取不到或与表名相同则回退表名。 */
+function tableLabel(tables: SetupLookup[] | undefined, tableId: string): string {
+  const entry = tables?.find(item => item.value.toLowerCase() === tableId.toLowerCase())
+  const suffix = entry ? ` (${entry.value})` : ''
+  const description = entry && suffix && entry.label.endsWith(suffix) ? entry.label.slice(0, -suffix.length) : entry?.label
+  return description && description.toLowerCase() !== tableId.toLowerCase() ? `${description}（${tableId}）` : tableId
+}
+
+/**
+ * 虚拟表达式构建器：来源按「表」展示，写入的仍是该段在 QUERY_RELATION 里的名字
+ * （无别名时等于表名；有别名时写别名——运行期 SQL 用的是别名，写表名不可达）。
+ * 关联条件来自 TABLES.QUERY_RELATION，随所选段只读展示，不随字段保存。
+ */
 export function VirtualExpressionBuilder({ model, onChange, endpoints, disabled, currentTable }: VirtualExpressionBuilderProps) {
   const relationsQuery = useQuery({
     queryKey: ['field-admin', 'table-relations', currentTable],
@@ -95,15 +107,23 @@ export function VirtualExpressionBuilder({ model, onChange, endpoints, disabled,
       : { tableId: currentTable, ok: true, error: null, items: [] },
     enabled: Boolean(currentTable),
   })
+  const tablesQuery = useQuery({
+    queryKey: ['field-editor', 'tables'],
+    queryFn: endpoints.tables ?? (async () => [] as SetupLookup[]),
+    enabled: Boolean(endpoints.tables),
+  })
   const relations = relationsQuery.data?.items ?? []
   const physicalTable = resolvePhysicalTable(currentTable, relations, model.table)
   const columnsQuery = useTableColumns(physicalTable, endpoints)
+  const selectedJoin = relations.find(join => join.alias.toLowerCase() === model.table.trim().toLowerCase())
   const sourceOptions: FieldPickerOption[] = [
-    { value: currentTable, label: `${currentTable}（本表）` },
+    { value: currentTable, label: tableLabel(tablesQuery.data, currentTable), meta: '本表' },
     ...relations.map(join => ({
       value: join.alias,
-      label: join.alias.toLowerCase() === join.table.toLowerCase() ? join.table : `${join.alias}（${join.table}）`,
-      meta: join.conditions[0] ?? '',
+      label: join.alias.toLowerCase() === join.table.toLowerCase()
+        ? tableLabel(tablesQuery.data, join.table)
+        : `${tableLabel(tablesQuery.data, join.table)} AS ${join.alias}`,
+      meta: join.alias.toLowerCase() === join.table.toLowerCase() ? '' : '别名',
     })),
   ]
   const relationBroken = relationsQuery.data != null && relationsQuery.data.ok === false
@@ -134,6 +154,16 @@ export function VirtualExpressionBuilder({ model, onChange, endpoints, disabled,
           生成：{model.table.trim() && model.column.trim() ? `${model.table.trim()}.${model.column.trim()}` : '—'}
         </span>
       </div>
+      <div className="text-secondary small">
+        {selectedJoin
+          ? `关联条件：${selectedJoin.conditions.length > 0 ? selectedJoin.conditions.join(' AND ') : '（该段只有常量条件）'}`
+          : '引用本表列，不需要关联条件。'}
+      </div>
+      {selectedJoin && selectedJoin.alias.toLowerCase() !== selectedJoin.table.toLowerCase() && (
+        <div className="text-secondary small">
+          该段在 QUERY_RELATION 里带别名：物理表 {selectedJoin.table}，表达式写入 {selectedJoin.alias}（运行期 SQL 用的是别名）。
+        </div>
+      )}
       {relationsQuery.isError && <div className="text-danger small">关联白名单加载失败，当前仅可选择本表列。</div>}
       {relationBroken && <div className="text-danger small">本表 QUERY_RELATION 不可解析（{relationsQuery.data?.error}），跨表引用一律被拒绝，仅可选择本表列。</div>}
       {relationsQuery.data?.ok !== false && relations.length === 0 && !relationsQuery.isPending && (
