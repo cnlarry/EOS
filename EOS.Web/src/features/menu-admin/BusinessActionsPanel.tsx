@@ -20,6 +20,12 @@ import { ConditionEditor } from './ConditionEditor'
 import { DocumentActionParamsEditor } from './DocumentActionParamsEditor'
 import { MANUAL_EVENT } from './documentActionConfig'
 import { StructuredParamsEditor } from './StructuredParamsEditor'
+import { RecipeView } from './RecipeView'
+import {
+  eventAvailability,
+  recipeToActionShape,
+  type EffectRecipe,
+} from './effectRecipes'
 import {
   ActionsView,
   ManualButtonsView,
@@ -134,6 +140,10 @@ export interface BusinessConfigCatalog {
   labels?: CatalogLabels | null
   /** 可配置的自定义按钮键（MANUAL 行只能从这里挑；未登记实现即发布不出去）。 */
   documentActions?: DocumentActionCatalogEntry[] | null
+  /** 接不到效果链的事件（可配置但配了不会跑）：界面如实标注，不隐藏。 */
+  inertEvents?: string[] | null
+  /** 事件在库内的使用次数（全库）：与 inertEvents 合起来决定"库内 0 行才不可选"。 */
+  eventUsage?: Record<string, number> | null
 }
 
 interface CatalogLabels {
@@ -177,6 +187,8 @@ interface BusinessConfigSchemas {
   paramFields?: { effectKey: string; fields: EffectParamField[] }[] | null
   /** 反向 kind 兼容矩阵：受约束的效果键 → 允许的 kind（界面据此过滤下拉）。 */
   reverseKindsByEffect?: Record<string, string[]> | null
+  /** 效果配方目录（默认视图；配方只做预填，专家模式仍可逐字段编辑）。 */
+  recipes?: EffectRecipe[] | null
 }
 
 /** 本模块涉及的表/字段中文名（服务端按模块解析，用于把配置渲染成人话）。 */
@@ -323,6 +335,12 @@ export function BusinessActionsPanel({
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [selectedManualKey, setSelectedManualKey] = useState<string | null>(null)
   const [editor, setEditor] = useState<EditorState | null>(null)
+  /**
+   * 效果链页签的两态视图（配方 / 专家·键级）。它只是"看哪一面"的偏好，
+   * **不改数据**——两态共用同一份 `actions` 草稿，切换不丢改动。
+   * null = 还没有显式选择，按下面的规则取默认。
+   */
+  const [viewChoice, setViewChoice] = useState<'recipes' | 'expert' | null>(null)
   // 已从服务端装载完成的模块编号：只有装载完成才向上报草稿，避免切换模块的瞬间
   // 用空配置覆盖主页面持有的草稿。
   const [loadedModuleId, setLoadedModuleId] = useState<number | null>(null)
@@ -386,11 +404,29 @@ export function BusinessActionsPanel({
     () => sortedActions.filter((item) => item.eventCode !== MANUAL_EVENT),
     [sortedActions],
   )
+  /**
+   * 两态视图的默认：**还没有效果链行的模块**默认给配方（入门路径）；
+   * 已有配置的模块默认为专家（键级）——既有配置不该因为"默认换了个视图"而先被藏起来。
+   * 显式切换过就以选择为准。
+   */
+  const recipeFirst = viewChoice != null ? viewChoice === 'recipes' : effectActions.length === 0
   /** 按钮键 → 中文名（菜单/授权镜子等处渲染人话用）。 */
   const documentActionLookup = useMemo(
     () => makeLabelLookup(Object.fromEntries((catalogQuery.data?.documentActions ?? []).map((item) => [item.key, item.label]))),
     [catalogQuery.data],
   )
+  /** 效果配方（服务端下发；旧版 API 没有这个字段时为空数组，视图会给出回落入口）。 */
+  const recipes = useMemo<EffectRecipe[]>(() => schemasQuery.data?.recipes ?? [], [schemasQuery.data])
+  /**
+   * 事件可用性：库内 0 行**且**接不到效果链的事件不可选（暂未启用）；
+   * 接得到效果链的事件照常；接不到但库里已有行的事件**保持可选并标注**——
+   * 隐藏它们会让既有配置再也改不动。
+   */
+  const eventAvailabilityOf = useMemo(() => {
+    const inert = catalogQuery.data?.inertEvents ?? []
+    const usage = catalogQuery.data?.eventUsage ?? null
+    return (code: string) => eventAvailability(code, inert, usage)
+  }, [catalogQuery.data])
   const labels = useMemo<LabelLookups>(() => {
     const source = catalogQuery.data?.labels
     return {
@@ -499,6 +535,23 @@ export function BusinessActionsPanel({
     const eventCode = catalogQuery.data?.events.includes('APPROVE_EFFECT') ? 'APPROVE_EFFECT' : (catalogQuery.data?.events[0] ?? 'SAVE')
     const seq = (actions.filter((item) => item.eventCode === eventCode).reduce((max, item) => Math.max(max, item.seq), 0)) + 1
     setEditor({ kind: 'action', index: null, value: emptyAction(eventCode, seq, catalogQuery.data?.documentActions?.[0]?.key) })
+  }
+  /**
+   * 从配方起草一行：事件/效果键/反向照配方预填（`recipeToActionShape`），其余走新建动作的默认值。
+   * 打开的是**同一个编辑器**——配方只改"起步值"，不改变"能配什么"。
+   */
+  const openCreateFromRecipe = (recipe: EffectRecipe) => {
+    const eventCode = recipe.eventCodes[0] ?? 'APPROVE_EFFECT'
+    const seq = actions
+      .filter((item) => item.eventCode === eventCode)
+      .reduce((max, item) => Math.max(max, item.seq), 0) + 1
+    const shape = recipeToActionShape(recipe, seq)
+    const base = emptyAction(shape.eventCode, shape.seq)
+    setEditor({
+      kind: 'action',
+      index: null,
+      value: { ...base, effectKey: shape.effectKey, reverse: shape.reverse },
+    })
   }
   const openCreateRule = () => {
     const stage = catalogQuery.data?.validationStages.includes('SAVE') ? 'SAVE' : (catalogQuery.data?.validationStages[0] ?? 'SAVE')
@@ -661,6 +714,26 @@ export function BusinessActionsPanel({
         </div>
         <div className="d-flex gap-2">
           {view === 'actions' ? (
+            <div className="btn-group" role="group" aria-label="效果链视图">
+              <Button
+                size="sm"
+                variant={recipeFirst ? 'primary' : 'secondary'}
+                onClick={() => setViewChoice('recipes')}
+                title="按业务配方配置：先选“要发生什么”，再由配方预填落到实现键"
+              >
+                配方
+              </Button>
+              <Button
+                size="sm"
+                variant={recipeFirst ? 'secondary' : 'primary'}
+                onClick={() => setViewChoice('expert')}
+                title="键级编辑（专家模式）：逐字段编辑同一份配置，与配方视图共用草稿"
+              >
+                专家（键级）
+              </Button>
+            </div>
+          ) : null}
+          {view === 'actions' ? (
             <Button
               size="sm"
               icon={<IconPlayerPlay size={16} />}
@@ -713,7 +786,18 @@ export function BusinessActionsPanel({
 
       {ready ? (
         <>
-          {view === 'actions' ? (
+          {view === 'actions' && recipeFirst ? (
+            <RecipeView
+              recipes={recipes}
+              actions={effectActions}
+              labels={labels}
+              onCreateFromRecipe={openCreateFromRecipe}
+              onClone={() => setCloneOpen(true)}
+              onExpert={() => setViewChoice('expert')}
+            />
+          ) : null}
+
+          {view === 'actions' && !recipeFirst ? (
             <>
               <ActionsView
                 catalog={catalogQuery.data!}
@@ -827,6 +911,7 @@ export function BusinessActionsPanel({
           moduleId={moduleId}
           moduleTitle={module.M_DESC ?? String(moduleId)}
           actions={effectActions}
+          rules={rules}
           names={names}
           reverseKindLabels={schemasQuery.data?.reverseKindLabels}
           onClose={() => setSimulateOpen(false)}
@@ -857,6 +942,7 @@ export function BusinessActionsPanel({
           labels={labels}
           names={names}
           matchPresets={matchPresets}
+          eventAvailabilityOf={eventAvailabilityOf}
           onApplyMatchToSiblings={applyMatchToSiblings}
           onCancel={() => setEditor(null)}
           onConfirm={confirmEditor}
@@ -878,6 +964,7 @@ function EditorModal({
   labels,
   names,
   matchPresets,
+  eventAvailabilityOf,
   onApplyMatchToSiblings,
   onActionChange,
   onOpChange,
@@ -892,6 +979,7 @@ function EditorModal({
   labels: LabelLookups
   names: BusinessNameLookup
   matchPresets: MatchGroupPreset[]
+  eventAvailabilityOf?: (eventCode: string) => { selectable: boolean; note: string | null }
   onApplyMatchToSiblings: (json: string) => void
   onActionChange: (value: BusinessAction) => void
   onOpChange: (value: BusinessActionOp) => void
@@ -920,7 +1008,7 @@ function EditorModal({
       }
     >
       {editor.kind === 'action' ? (
-        <ActionForm value={editor.value} catalog={catalog} schemas={schemas} labels={labels} names={names} module={module} onChange={onActionChange} />
+        <ActionForm value={editor.value} catalog={catalog} schemas={schemas} labels={labels} names={names} module={module} eventAvailabilityOf={eventAvailabilityOf} onChange={onActionChange} />
       ) : editor.kind === 'op' ? (
         <OpForm
           value={editor.value}
@@ -946,6 +1034,7 @@ function ActionForm({
   labels,
   names,
   module,
+  eventAvailabilityOf,
   onChange,
 }: {
   value: BusinessAction
@@ -954,6 +1043,8 @@ function ActionForm({
   labels: LabelLookups
   names: BusinessNameLookup
   module: MenuAdminModule
+  /** 事件可用性（库内 0 行 + 接不到效果链 ⇒ 不可选；接不到但有行 ⇒ 可选 + 标注）。 */
+  eventAvailabilityOf?: (eventCode: string) => { selectable: boolean; note: string | null }
   onChange: (value: BusinessAction) => void
 }) {
   const set = <K extends keyof BusinessAction>(key: K, next: BusinessAction[K]) => onChange({ ...value, [key]: next })
@@ -970,13 +1061,23 @@ function ActionForm({
   const reverseLookup = useMemo(() => makeLabelLookup(schemas.reverseKindLabels), [schemas.reverseKindLabels])
   const isManual = value.eventCode === MANUAL_EVENT
   const documentActions = catalog.documentActions ?? []
+  /** 当前所选事件必须让配置者看见的说明（"配了不会跑""暂未启用"这类事实）。 */
+  const selectedEventNote = eventAvailabilityOf?.(value.eventCode)?.note ?? null
   return (
     <div>
       <div className="row g-2">
         <Field label="事件" className="col-4">
           <select className="form-select form-select-sm" value={value.eventCode} onChange={(e) => set('eventCode', e.target.value)}>
-            {catalog.events.map((item) => <option key={item} value={item}>{eventLabel(item, catalog, labels)}</option>)}
+            {catalog.events.map((item) => {
+              const availability = eventAvailabilityOf?.(item) ?? { selectable: true, note: null }
+              return (
+                <option key={item} value={item} disabled={!availability.selectable}>
+                  {eventLabel(item, catalog, labels)}{availability.note ? `（${availability.note}）` : ''}
+                </option>
+              )
+            })}
           </select>
+          {selectedEventNote ? <div className="small text-warning-emphasis mt-1">{selectedEventNote}</div> : null}
         </Field>
         <Field label="顺序（事件内）" className="col-2">
           <input type="number" min={1} className="form-control form-control-sm" value={value.seq}

@@ -14,6 +14,16 @@ export const SIMULATION_EVENT_LABELS: Record<string, string> = {
   DEAPPROVE: '解批',
 }
 
+/**
+ * 为什么"保存后"效果暂不支持预演（界面必须一直说清楚，不能只留一句"暂不支持"）：
+ * 保存后效果跑在**主子表已经落库之后**，预演它就得先伪造一次完整保存——单据载荷、
+ * 明细行、必填与明细必填校验、自动单号、以及自动批核模块的后续批核链。伪造出来的
+ * "单据不合法"会混进"配置有问题"，报告就成了误导。
+ * 现状替代：这些行可以在工作台真实保存一次后用**批核预演**观察后续，或直接看审计。
+ */
+export const SAVE_SIMULATION_NOTE =
+  '保存后效果暂不支持预演：它跑在主子表落库之后，预演等于先伪造一次完整保存（单号与必填校验都会掺进来）。改完 SAVE 期配置请在真实单据上保存一次后观察，或用批核预演看后续链。'
+
 export interface EffectSimulationGate {
   passed: boolean
   code?: string | null
@@ -74,15 +84,29 @@ export interface EffectSimulationReport {
   effects: EffectSimulationStep[]
   counts: EffectSimulationCounts
   warnings: string[]
+  /** 这次预演跑的配置来自哪一处：published（已发布快照）/ draft（未保存草稿）。 */
+  configSource?: 'published' | 'draft' | string | null
+}
+
+/**
+ * 预演请求：带 `draft` 时按**未保存草稿**跑（其余部分仍取已发布基线）——
+ * 配置者据此回答"我这次改完会发生什么"；不带则按已发布配置跑。
+ */
+export interface SimulationDraft {
+  actions: unknown[]
+  validationRules: unknown[]
 }
 
 export function simulateEffectChain(
   moduleId: number,
   event: SimulationEvent,
   key: string[],
+  draft?: SimulationDraft | null,
 ): Promise<EffectSimulationReport> {
+  const body: Record<string, unknown> = { event, key }
+  if (draft) body.draft = draft
   return apiClient.post<EffectSimulationReport>(
     `/admin/module-business-config/${moduleId}/simulate`,
-    { event, key },
+    body,
   )
 }

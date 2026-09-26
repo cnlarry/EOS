@@ -4,7 +4,7 @@ import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { describeApiError } from '../../lib/errors'
-import type { BusinessAction } from './BusinessActionsPanel'
+import type { BusinessAction, ValidationRule } from './BusinessActionsPanel'
 import {
   OP_SYMBOLS,
   formatCondition,
@@ -15,6 +15,7 @@ import {
   type BusinessNameLookup,
 } from './businessActionText'
 import {
+  SAVE_SIMULATION_NOTE,
   SIMULATION_EVENTS,
   SIMULATION_EVENT_LABELS,
   simulateEffectChain,
@@ -34,6 +35,7 @@ export function EffectSimulationPanel({
   moduleId,
   moduleTitle,
   actions,
+  rules,
   names,
   reverseKindLabels,
   onClose,
@@ -41,6 +43,8 @@ export function EffectSimulationPanel({
   moduleId: number
   moduleTitle: string
   actions: BusinessAction[]
+  /** 当前草稿里的校验规则：草稿预演要把校验闸一起按草稿跑。 */
+  rules?: ValidationRule[]
   names: BusinessNameLookup
   reverseKindLabels?: Record<string, string> | null
   onClose: () => void
@@ -53,6 +57,11 @@ export function EffectSimulationPanel({
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<EffectSimulationReport | null>(null)
+  /**
+   * 按**未保存草稿**预演（默认开）：配置者问的是"我这次改完会发生什么"，
+   * 而不是"已经发布的那版会怎样"。取消勾选即可对照已发布配置。
+   */
+  const [useDraft, setUseDraft] = useState(true)
 
   const lookup = makeLabelLookup(reverseKindLabels)
 
@@ -62,7 +71,8 @@ export function EffectSimulationPanel({
     setError(null)
     setReport(null)
     try {
-      setReport(await simulateEffectChain(moduleId, event, recordKey))
+      const draft = useDraft ? { actions, validationRules: rules ?? [] } : null
+      setReport(await simulateEffectChain(moduleId, event, recordKey, draft))
     } catch (cause) {
       setError(describeApiError(cause, '预演失败。'))
     } finally {
@@ -139,10 +149,23 @@ export function EffectSimulationPanel({
         </div>
       </div>
 
-      <div className="text-secondary small mb-3">
-        保存后效果（SAVE）暂不支持预演：它发生在主子表落库之后，预演它等于先伪造一次完整保存。
-        目前只覆盖批核生效 / 解批。
+      <div className="form-check mb-2">
+        <input
+          id="effect-simulation-use-draft"
+          className="form-check-input"
+          type="checkbox"
+          checked={useDraft}
+          onChange={(next) => {
+            setUseDraft(next.target.checked)
+            reset()
+          }}
+        />
+        <label className="form-check-label small" htmlFor="effect-simulation-use-draft">
+          按当前草稿（未保存）预演 —— 不勾选则按**已发布**配置跑，两者可对照
+        </label>
       </div>
+
+      <div className="text-secondary small mb-3">{SAVE_SIMULATION_NOTE}</div>
 
       {error ? (
         <div className="alert alert-danger py-2 px-3" role="alert">{error}</div>
@@ -197,6 +220,10 @@ function ReportView({
           {report.rolledBack ? '已回滚' : '未回滚（框架缺陷）'}
         </span>
         <span className="badge bg-azure">{SIMULATION_EVENT_LABELS[report.event] ?? report.event}</span>
+        {/* 报告必须自证"按哪一份配置跑的"：同一张单据在两份配置下结果可能不同。 */}
+        <span className={`badge ${report.configSource === 'draft' ? 'bg-orange' : 'bg-secondary'}`}>
+          {report.configSource === 'draft' ? '未保存草稿' : '已发布配置'}
+        </span>
         <span className="text-secondary small">
           单据 {report.recordKey.join(' / ')}
           {report.definitionVersion ? ` · 定义 ${report.definitionVersion}` : ''}
