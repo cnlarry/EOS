@@ -28,7 +28,7 @@ function fieldInput(overrides: Partial<FieldInput> = {}): FieldInput {
     format: null, isVisible: true, isDefault: true, isQueryable: true, isReadonly: false, isRequired: true,
     isCost: false, isSecrecy: false, defaultValue: null, verifyIndex: null, regex: null, remark: null,
     browseUrl: null, browseModuleId: null, onlyChoose: false, chooseMultiple: false, choosePage: null,
-    choosers: [], canCopy: true, tabNo: 1, formOrder: null, span: 1, newLine: false, cellGroup: null, cellRole: 0,
+    choosers: [], canCopy: true,
     options: null, ...overrides,
   }
 }
@@ -107,13 +107,13 @@ describe('FieldEditorRoute', () => {
     expect(screen.getAllByText('QTY').length).toBeGreaterThan(0)
     // 字段元数据加载
     await waitFor(() => expect(screen.getByDisplayValue('产品编号')).toBeInTheDocument())
-    // 5 个分组 + 变更历史选项卡
+    // 4 个分组 + 变更历史选项卡（表单排布归模块级版式，字段维护不再有「表单布局」页签）
     expect(screen.getByRole('tab', { name: '基本信息' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '数据来源' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '权限与行为' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: '表单布局' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '高级设置' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '变更历史' })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: '表单布局' })).toBeNull()
     // 变更历史内容
     fireEvent.click(screen.getByRole('tab', { name: '变更历史' }))
     await waitFor(() => expect(screen.getByText('修改')).toBeInTheDocument())

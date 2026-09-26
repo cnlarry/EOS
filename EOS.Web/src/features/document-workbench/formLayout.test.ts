@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { FormFieldDefinition } from './formDefinition'
 import {
   buildPackedCells,
-  deriveDefaultLayout,
   packFormGrid,
   packFormSections,
   toDetailRows,
+  type FormLayoutRow,
 } from './formLayout'
 
 type Field = FormFieldDefinition
@@ -70,57 +70,14 @@ describe('packFormGrid', () => {
   })
 })
 
-describe('deriveDefaultLayout', () => {
-  it('顺序与占位取字段级配置，备注类整行两行高', () => {
-    const doc = deriveDefaultLayout([
-      field('CLIENT_ID', { formOrder: 3, span: 2 }),
-      field('REMARK'),
-      field('QTY', { formOrder: 7 }),
-    ], 4)
-    expect(doc.columns).toBe(4)
-    expect(doc.tabs).toEqual([])
-    expect(doc.rows).toEqual([
-      // 字段级 span=2（整行独占）映射到 4 子列；span=1（半行）映射到 2 子列
-      expect.objectContaining({ key: 'CLIENT_ID', orderNo: 3, span: 4, rowSpan: 1, hidden: false }),
-      expect.objectContaining({ key: 'REMARK', span: 4, rowSpan: 2 }),
-      expect.objectContaining({ key: 'QTY', orderNo: 7, span: 2 }),
-    ])
-  })
-
-  it('顺序缺省按传入次序，页签缺省为 1', () => {
-    const doc = deriveDefaultLayout([field('A', { tabNo: 0, formOrder: null }), field('B')], 3)
-    expect(doc.rows.map(row => [row.key, row.orderNo, row.tabNo]))
-      .toEqual([['A', 1, 1], ['B', 2, 1]])
-  })
-
-  it('隐藏只针对本来进不了表单的字段：必填与复合格从字段不隐藏', () => {
-    const doc = deriveDefaultLayout([
-      field('HIDDEN_PLAIN', { isVisible: false }),
-      field('HIDDEN_REQUIRED', { isVisible: false, isRequired: true }),
-      field('HIDDEN_COMPANION', { isVisible: false, cellGroup: 'CLIENT', cellRole: 2 }),
-    ], 2)
-    expect(doc.rows.map(row => [row.key, row.hidden]))
-      .toEqual([['HIDDEN_PLAIN', true], ['HIDDEN_REQUIRED', false], ['HIDDEN_COMPANION', false]])
-  })
-
-  it('复合格主从与分节：主从透传，分节不推导', () => {
-    const doc = deriveDefaultLayout([
-      field('CLIENT_ID', { cellGroup: 'CLIENT', cellRole: 1 }),
-      field('CLIENT_NAME', { cellGroup: 'CLIENT', cellRole: 2 }),
-    ], 2)
-    expect(doc.rows.map(row => [row.cellGroup, row.cellRole, row.sectionId]))
-      .toEqual([['CLIENT', 1, null], ['CLIENT', 2, null]])
-  })
-
-  it('列数非法时回落 4（统一表单固定四子列），跨度按下限映射', () => {
-    const doc = deriveDefaultLayout([field('A', { span: 0 })], 0)
-    expect(doc.columns).toBe(4)
-    expect(doc.rows[0].span).toBe(2)
+describe('toDetailRows', () => {
+  const row = (key: string, overrides: Partial<FormLayoutRow> = {}): FormLayoutRow => ({
+    key, tabNo: 1, orderNo: 1, span: 2, rowSpan: 1, newLine: false,
+    sectionId: null, cellGroup: null, cellRole: 0, hidden: false, ...overrides,
   })
 
   it('明细版式行只保留列顺序与列显隐', () => {
-    const doc = deriveDefaultLayout([field('A', { formOrder: 2 }), field('B', { isVisible: false })], 2)
-    expect(toDetailRows(doc.rows)).toEqual([
+    expect(toDetailRows([row('A', { orderNo: 2 }), row('B', { orderNo: 2, hidden: true })])).toEqual([
       { key: 'A', orderNo: 2, hidden: false },
       { key: 'B', orderNo: 2, hidden: true },
     ])

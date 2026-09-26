@@ -17,17 +17,11 @@ public class FormFieldSelectorTests
         bool canCopy = true,
         bool isPrimaryKey = false,
         IReadOnlyList<FormChooserRow>? choosers = null,
-        int tabNo = 1,
-        int? formOrder = null,
-        int span = 1,
-        bool newLine = false,
-        string? cellGroup = null,
-        int cellRole = 0,
         string? options = null,
         bool isPhysical = true) =>
         new(key, $"label-{key}", "nvarchar", 100, null, required, null, null, null,
             readOnly, visible, false, false, null, choosers ?? [], isVirtual, cost, secrecy, false, canCopy, isPrimaryKey, null,
-            tabNo, formOrder, span, newLine, cellGroup, cellRole, options, isPhysical);
+            options, isPhysical);
 
     private static IReadOnlySet<string> Set(params string[] values) =>
         values.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -200,36 +194,36 @@ public class FormFieldSelectorTests
     }
 
     [Fact]
-    public void PhantomCompanion_KeptDisplayOnly_ReadonlyVisible_NotServerFilled()
+    public void HiddenNonRequiredCompanion_IsDroppedFromForm()
     {
-        var field = Select([Row("CLIENT_NAME", visible: false, cellGroup: "CLIENT", cellRole: 2, isPhysical: false)]).Single();
-        Assert.True(field.DisplayOnly);
-        Assert.True(field.IsReadonly);
-        Assert.True(field.IsVisible);
-        Assert.False(field.ServerFilled);
-        Assert.Equal("CLIENT", field.CellGroup);
-        Assert.Equal(2, field.CellRole);
+        // 隐藏的非必填字段（含无物理列的幽灵从字段）一律不进表单：字段级 FORM_CELL_ROLE 退役后，
+        // 本阶段已判不出"复合格从字段"，版式只能对已在字段集里的列做排布（只做减法）。
+        Assert.Empty(Select([Row("CLIENT_NAME", visible: false, isPhysical: false)]));
     }
 
     [Fact]
-    public void PhysicalCompanion_NotDisplayOnly_KeepsEditableState()
+    public void VisibleCompanion_IsReadonlyVisibleAndNotServerFilled()
     {
-        var field = Select([Row("CURR_RATE", cellGroup: "CURR", cellRole: 2, isPhysical: true)]).Single();
+        var field = Select([Row("CURR_RATE")]).Single();
         Assert.False(field.DisplayOnly);
         Assert.False(field.IsReadonly);
         Assert.True(field.IsVisible);
+        Assert.False(field.ServerFilled);
     }
 
     [Fact]
-    public void LayoutAttributes_PassThrough()
+    public void Select_LeavesLayoutAttributesAtDefaults_AndParsesOptions()
     {
-        var field = Select([Row("A", tabNo: 2, formOrder: 5, span: 2, newLine: true, options: "X=甲;Y=乙")]).Single();
-        Assert.Equal(2, field.TabNo);
-        Assert.Equal(5, field.FormOrder);
-        Assert.Equal(2, field.Span);
-        Assert.True(field.NewLine);
+        var field = Select([Row("A", options: "X=甲;Y=乙")]).Single();
         Assert.Equal(2, field.Options?.Count);
         Assert.Equal("Y", field.Options?[1].Value);
+        // 版面占位（页签 / 顺序 / 跨度 / 换行 / 复合格角色）由模块级版式在 Select 之后施加
+        Assert.Equal(1, field.TabNo);
+        Assert.Null(field.FormOrder);
+        Assert.Equal(1, field.Span);
+        Assert.False(field.NewLine);
+        Assert.Null(field.CellGroup);
+        Assert.Equal(0, field.CellRole);
     }
 
     [Fact]

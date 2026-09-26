@@ -57,7 +57,7 @@ public sealed class WorkbenchFieldMetaMapper(
             input.BrowseUrl,input.BrowseModuleId,input.OnlyChoose,input.ChooseMultiple,input.ChoosePage,
             input.Choosers.Select(MapChooser).ToArray(),metadata.IsVirtual,metadata.VirtualExpression,input.CanCopy,
             metadata.IsAutoIncrement,metadata.ConvertFunction,metadata.DataSourceSql,metadata.LastUpdatedBy,metadata.LastUpdatedAt,
-            input.TabNo,input.FormOrder,input.Span,input.NewLine,input.CellGroup,input.CellRole,input.Options);
+            input.Options);
     }
 
     private static FieldChooserSource MapChooser(FieldAdminChooser source)=>
@@ -139,7 +139,7 @@ public sealed class WorkbenchFieldMetaMapper(
         update.DefaultValue,update.VerifyIndex,update.Regex,update.Remark,update.BrowseUrl,update.BrowseModuleId,
         update.OnlyChoose,update.ChooseMultiple,update.ChoosePage,
         update.Choosers.Select(MapInputChooser).ToArray(),update.CanCopy,
-        update.TabNo,update.FormOrder,update.Span,update.NewLine,update.CellGroup,update.CellRole,update.FormOptions);
+        update.FormOptions);
 
     private static FieldAdminInput MapInput(WorkbenchFieldMetadata metadata)=>new(
         metadata.Label,metadata.DataType,metadata.Width,metadata.Align,metadata.HeaderAlign,metadata.Format,
@@ -147,7 +147,7 @@ public sealed class WorkbenchFieldMetaMapper(
         metadata.DefaultValue,metadata.VerifyIndex,metadata.Regex,metadata.Remark,metadata.BrowseUrl,metadata.BrowseModuleId,
         metadata.OnlyChoose,metadata.ChooseMultiple,metadata.ChoosePage,
         metadata.Choosers.Select(MapInputChooser).ToArray(),metadata.CanCopy,
-        metadata.TabNo,metadata.FormOrder,metadata.Span,metadata.NewLine,metadata.CellGroup,metadata.CellRole,metadata.FormOptions);
+        metadata.FormOptions);
 
     private static FieldAdminChooser MapInputChooser(FieldChooserSource source)=>
         new(source.Active,source.Table,source.Description,source.ModuleId,source.Filter,source.ReturnMapping,source.SerialNo);
