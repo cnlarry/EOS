@@ -503,13 +503,17 @@ public sealed class WorkbenchDefinitionBuilder(
                 && string.IsNullOrEmpty(field.DefaultValue))
                 defaults[field.Key] = today;
         }
-        // When a defaulted code field (bill type + number) has a companion name field in the same
-        // cell group, backfill the name from the chooser's return mapping so the form shows the
-        // name immediately without a manual re-selection.
+        // 复合格主字段带默认值时，同格的从字段（名称类）必须一起出现，否则新增态只有一个代号。
+        // 主字段的生效默认值有两条来源：本方法上面生成的值（单别/单号/日期），以及字段元数据的
+        // DFT_VALUE（新增态由客户端本地套用，服务端不感知）。两条都要参与解析，否则带元数据
+        // 默认值的主字段（如库别 CP）不会带出同格伴生名称。
         foreach (var field in masterFields)
         {
             if (field.CellRole != 1 || string.IsNullOrWhiteSpace(field.CellGroup)) continue;
-            if (!defaults.TryGetValue(field.Key, out var defaultValue) || string.IsNullOrWhiteSpace(defaultValue)) continue;
+            var defaultValue = defaults.TryGetValue(field.Key, out var generated)
+                ? generated
+                : MetadataDefaultValue(field);
+            if (string.IsNullOrWhiteSpace(defaultValue)) continue;
             var source = field.Choosers.FirstOrDefault(item => item.Active && !string.IsNullOrWhiteSpace(item.Table));
             if (source is null) continue;
             var companions = masterFields
@@ -519,6 +523,19 @@ public sealed class WorkbenchDefinitionBuilder(
             await FillChooserNameDefaultsAsync(connection, field, source, companions, defaultValue, defaults, token);
         }
         return defaults;
+    }
+
+    /// <summary>
+    /// 字段元数据里的新增默认值（FIELDS.DFT_VALUE），按字段类型转换后返回。
+    /// 不可转换的值（无参函数表达式、日期哨兵 'D'、页面代码规则 token）一律视为"没有默认值"：
+    /// 这类值新增态由客户端原样套用，服务端不解析、也不拿它去查伴生显示值。
+    /// </summary>
+    private static string? MetadataDefaultValue(FormFieldDefinition field)
+    {
+        if (string.IsNullOrWhiteSpace(field.DefaultValue)) return null;
+        return RecordPayloadValidator.TryConvert(field.DataType, field.DefaultValue, out var value)
+            ? Convert.ToString(value, CultureInfo.InvariantCulture)
+            : null;
     }
 
     /// <summary>
