@@ -670,6 +670,8 @@ describe('BusinessActionsPanel 自定义按钮行', () => {
     renderWithProviders(
       <BusinessActionsPanel module={moduleWithTables(1607, '收料单')} onDraftChange={onDraftChange} />,
     )
+    // 空模块默认给配方视图（入门路径）；这条用例测的是键级表格的克隆入口，先切到专家。
+    fireEvent.click(await screen.findByRole('button', { name: '专家（键级）' }))
     await screen.findByText('业务动作（0）')
 
     fireEvent.click(screen.getByRole('button', { name: '从其它模块复制' }))
@@ -864,8 +866,8 @@ describe('BusinessActionsPanel 白箱化入口', () => {
     fireEvent.click(screen.getByRole('button', { name: '预演（不改数据）' }))
     const dialog = within(await screen.findByRole('dialog'))
     expect(dialog.getByText(/预演不改数据/)).toBeInTheDocument()
-    // 保存后效果暂不支持预演，必须显式说明而不是灰掉不说为什么。
-    expect(dialog.getByText(/保存后效果（SAVE）暂不支持预演/)).toBeInTheDocument()
+    // 保存后效果暂不支持预演，必须显式说明**为什么**（而不是灰掉不说原因）。
+    expect(dialog.getByText(/保存后效果暂不支持预演：/)).toBeInTheDocument()
     unmount()
 
     renderWithProviders(<BusinessActionsPanel module={moduleWithTables(1607, '收料单')} view="rules" />)
