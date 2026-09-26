@@ -1,7 +1,9 @@
+using System.Data;
 using System.Text.RegularExpressions;
 using EOS.API.Data;
 using EOS.API.Data.Forms;
 using EOS.API.Models;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -58,6 +60,44 @@ public sealed class FormLayoutDesignLiveTests
         return new DbConnectionFactory(config);
     }
 
+    /// <summary>
+    /// 该表在 FIELDS 里被标记为"不显示"（IS_VISIBLE=0）的字段：运行态一律不渲染
+    /// （FormFieldSelector 剔除，版式也变不出来），因此不该进字段池。
+    /// </summary>
+    private static async Task<HashSet<string>> ReadInvisibleFieldKeysAsync(
+        DbConnectionFactory connections, string table, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(
+            "SELECT LTRIM(RTRIM(F_ID)) FROM dbo.FIELDS WITH (NOLOCK) WHERE LTRIM(RTRIM(T_ID))=@Table AND COALESCE(IS_VISIBLE,1)=0;",
+            connection);
+        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (await reader.ReadAsync(token))
+        {
+            keys.Add(reader.GetString(0));
+        }
+        return keys;
+    }
+
+    /// <summary>取一次选择器侧的设计态字段池候选；候选必须能在一页取全，否则分页会让断言失真。</summary>
+    private static async Task<HashSet<string>> QueryDesignerPoolAsync(
+        ChooserRepository repository, string table, CancellationToken token)
+    {
+        var result = await repository.QueryAsync(
+            new UnifiedChooserQueryRequest(
+                "form-designer.fields",
+                new Dictionary<string, string> { ["moduleId"] = ModuleId.ToString(), ["table"] = table },
+                PageSize: 100),
+            token);
+        Assert.NotNull(result);
+        Assert.Equal(result!.Total, result.Rows.Count);
+        return result.Rows.Select(row => row["F_ID"] as string ?? string.Empty)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
     /// <summary>读态用例只碰读路径，快照服务不参与（保存路径由端到端脚本覆盖）。</summary>
     private static FormLayoutRepository Repository(DbConnectionFactory connections)
         => new(connections, new WorkbenchDirtyMarker(connections), null!, new WorkbenchIdempotency(), null!,
@@ -97,6 +137,63 @@ public sealed class FormLayoutDesignLiveTests
         Assert.All(state.Master.Layout, row => Assert.InRange(row.RowSpan, 1, FormLayoutDerivation.MaxRowSpan));
         // 版式行不允许重复字段（主键约束），这里再钉一次读取侧不重不漏
         Assert.Equal(layoutKeys.Count, state.Master.Layout.Count);
+    }
+
+    /// <summary>
+    /// 字段池的三条口径（设计态池）：
+    /// ① 明细已隐藏的列里，**可显示**（IS_VISIBLE=1）的仍留在池里——设计态明细表头不显示隐藏列，
+    ///    字段池是把它选回来的唯一入口；
+    /// ② 标记为"不显示"（IS_VISIBLE=0）的字段两侧都不进池：运行态一律不渲染它们，排进版式也无效；
+    /// ③ 主表隐藏字段仍画在画布上（带删除线），算"已排进表单"，不进池。
+    /// </summary>
+    [Fact]
+    public async Task HiddenRows_BelongToDetailPoolOnly()
+    {
+        var connections = Connections();
+        var token = CancellationToken.None;
+        var state = await Repository(connections).ReadDesignStateAsync(ModuleId, AllVisibleRights(), token);
+
+        Assert.NotNull(state);
+        var invisibleDetail = await ReadInvisibleFieldKeysAsync(connections, state!.DetailTable!, token);
+        var invisibleMaster = await ReadInvisibleFieldKeysAsync(connections, state.MasterTable, token);
+        // 前提：本模块明细确有不可见字段（数据变了就该换模块，而不是让本用例悄悄空转）
+        Assert.NotEmpty(invisibleDetail);
+
+        var detailPool = state.Detail.Pool.Select(field => field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var masterPool = state.Master.Pool.Select(field => field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        Assert.All(state.Detail.Layout.Where(row => row.Hidden && !invisibleDetail.Contains(row.Key)),
+            row => Assert.Contains(row.Key, detailPool));
+        Assert.All(invisibleDetail, key => Assert.DoesNotContain(key, detailPool));
+        Assert.All(invisibleMaster, key => Assert.DoesNotContain(key, masterPool));
+        Assert.All(state.Master.Layout.Where(row => row.Hidden), row => Assert.DoesNotContain(row.Key, masterPool));
+    }
+
+    /// <summary>
+    /// 选择器侧的设计态字段池（form-designer.fields）与设计态读到的池同一口径：候选里不得出现
+    /// ① 标记为"不显示"的字段（IS_VISIBLE=0，运行态一律不渲染）；② 已在版式里显示中的列（否则会重复加入）。
+    /// 判定写反时的两种界面症状：候选里冒出"排了也没用"的字段，或该能选回来的隐藏列消失。
+    /// </summary>
+    [Fact]
+    public async Task DesignerFieldPool_ExcludesInvisibleAndPlacedFields()
+    {
+        var connections = Connections();
+        var token = CancellationToken.None;
+        var state = await Repository(connections).ReadDesignStateAsync(ModuleId, AllVisibleRights(), token);
+        Assert.NotNull(state);
+
+        var repository = new ChooserRepository(connections, NullLogger<ChooserRepository>.Instance);
+        var detailCandidates = await QueryDesignerPoolAsync(repository, "detail", token);
+        var masterCandidates = await QueryDesignerPoolAsync(repository, "master", token);
+
+        var invisibleDetail = await ReadInvisibleFieldKeysAsync(connections, state!.DetailTable!, token);
+        var invisibleMaster = await ReadInvisibleFieldKeysAsync(connections, state.MasterTable, token);
+        Assert.NotEmpty(invisibleDetail);
+
+        Assert.All(invisibleDetail, key => Assert.DoesNotContain(key, detailCandidates));
+        Assert.All(invisibleMaster, key => Assert.DoesNotContain(key, masterCandidates));
+        Assert.All(state.Detail.Layout.Where(row => !row.Hidden), row => Assert.DoesNotContain(row.Key, detailCandidates));
+        Assert.All(state.Master.Layout.Where(row => !row.Hidden), row => Assert.DoesNotContain(row.Key, masterCandidates));
     }
 
     [Fact]
