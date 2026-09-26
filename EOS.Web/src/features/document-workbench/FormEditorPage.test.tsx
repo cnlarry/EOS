@@ -811,6 +811,37 @@ describe('FormEditorPage', () => {
     await waitFor(() => expect(setDirty).toHaveBeenCalledWith('t1', true))
   })
 
+  it('回填映射键名写成 PascalCase 的存量行同样回填（选客户不再"没有任何反应"）', async () => {
+    const legacyCasing: FormDefinition = {
+      ...formDefinition,
+      masterFields: [
+        field('CLIENT_ID', '客户', {
+          isRequired: true,
+          cellGroup: 'CLIENT',
+          cellRole: 1,
+          choosers: [{ active: true, table: 'CLIENT', description: '客户基本资料', moduleId: null, filter: null, returnMapping: '[{"Target":"CLIENT_ID","Column":"CLIENT_ID"},{"Target":"CLIENT_NAME","Column":"CLIENT_NAME"}]', serialNo: 1 }],
+        }),
+        field('CLIENT_NAME', '客户名称', { cellGroup: 'CLIENT', cellRole: 2, isReadonly: true }),
+      ],
+    }
+    apiClientMock.get.mockImplementation(async (path: string) => {
+      const p = String(path)
+      if (p.includes('/form-definition')) return legacyCasing
+      if (p.includes('/record')) return recordBundle
+      if (p.includes('/form-chooser/')) return { columns: [{ key: 'CLIENT_ID', label: '客户代号' }, { key: 'CLIENT_NAME', label: '客户名称' }], rows: [{ CLIENT_ID: 'C1', CLIENT_NAME: '张氏' }], total: 1 }
+      throw new Error(`unexpected GET ${p}`)
+    })
+    renderEditor('/workbench/1405/new')
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '选择' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: '客户（客户基本资料）' })).toBeInTheDocument())
+    fireEvent.click((await screen.findByText('张氏')).closest('tr')! as HTMLElement)
+    fireEvent.click(screen.getByRole('button', { name: '确认' }))
+    // 主字段与同格从字段都要回填：只填主字段说明映射只读到了一半
+    await waitFor(() => expect(screen.getByDisplayValue('C1')).toBeInTheDocument())
+    expect(screen.getByDisplayValue('张氏')).toBeInTheDocument()
+  })
+
   it('修改字段后把脏位上报告外壳（离开确认由外壳统一处理）', async () => {
     const setDirty = vi.fn()
     const { container } = renderEditor('/workbench/1209/new', { setDirty, register: vi.fn() })

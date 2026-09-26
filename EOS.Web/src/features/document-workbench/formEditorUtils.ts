@@ -159,15 +159,29 @@ export interface ChooserReturnItem {
   column: string
 }
 
-/** 解析 RETURN_ITEMS JSON；空/非法返回空数组（不抛错）。 */
+/**
+ * 解析 RETURN_ITEMS JSON；空/非法返回空数组（不抛错）。
+ * 键名大小写不敏感：契约是 `target`/`column`，但库内存在历史写成 `Target`/`Column` 的存量行，
+ * 只认小写会把整条映射静默读成空——选择器照常弹出、选完却什么都不回填，且不报任何错。
+ */
 export function parseReturnItems(raw: string | null | undefined): ChooserReturnItem[] {
   if (!raw) return []
   try {
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((item): item is ChooserReturnItem =>
-      Boolean(item) && typeof (item as ChooserReturnItem).target === 'string'
-      && typeof (item as ChooserReturnItem).column === 'string')
+    const items: ChooserReturnItem[] = []
+    for (const entry of parsed) {
+      if (!entry || typeof entry !== 'object') continue
+      const byLowerKey = new Map<string, unknown>()
+      for (const [key, value] of Object.entries(entry as Record<string, unknown>)) {
+        byLowerKey.set(key.toLowerCase(), value)
+      }
+      const target = byLowerKey.get('target')
+      const column = byLowerKey.get('column')
+      if (typeof target !== 'string' || typeof column !== 'string') continue
+      items.push({ target, column })
+    }
+    return items
   } catch {
     return []
   }

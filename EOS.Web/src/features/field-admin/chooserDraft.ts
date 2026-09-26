@@ -1,5 +1,7 @@
 /** 数据源过滤/回填构建器草稿类型与序列化（FieldEditorForm / DataSourceEditorModal 共用）。 */
 
+import { parseReturnItems } from '../document-workbench/formEditorUtils'
+
 /** 过滤条件构建器行：简单比较行可编辑；复杂 item（表达式/子查询/嵌套组）以 raw JSON 只读兜底。 */
 export interface FilterRowDraft {
   key: string
@@ -76,18 +78,9 @@ export function serializeFilterRows(rows: FilterRowDraft[]): string {
   return JSON.stringify({ logic, items })
 }
 
+/** 解析回填映射 JSON 为构建器行；解析口径与运行态（parseReturnItems）共用一份，避免两处漂移。 */
 export function parseReturnRows(json: string | null): ReturnRowDraft[] {
-  if (!json) return []
-  try {
-    const parsed: unknown = JSON.parse(json)
-    if (!Array.isArray(parsed)) return []
-    return parsed.map((item: unknown, index: number) => {
-      const record = (item ?? {}) as { column?: unknown; target?: unknown }
-      return { key: `m${index}`, column: String(record.column ?? ''), target: String(record.target ?? '') }
-    })
-  } catch {
-    return []
-  }
+  return parseReturnItems(json).map((item, index) => ({ key: `m${index}`, column: item.column, target: item.target }))
 }
 
 export function serializeReturnRows(rows: ReturnRowDraft[]): string {
