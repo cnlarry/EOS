@@ -551,6 +551,21 @@ export function FormEditorPage() {
     return () => setBreadcrumb(null)
   }, [formQuery.data, recordQuery.data, isEdit, isView, isCopy, setBreadcrumb])
 
+  // 记录上下文（模块 / 动作 / 主键）变化时清空上一张单据的界面状态：工作台标签在同一组件实例内
+  // 原地导航（浏览→新增、复制→新增），组件不重挂载，不显式清理就会把上一张单据的明细行、校验
+  // 错误与选入来源留在新单上。依赖只取上下文的原始值（不取表单定义对象），避免定义后台重取时
+  // 清掉用户正在填的内容。
+  useEffect(() => {
+    setDetailRows([])
+    setDetailErrors([])
+    setSelectedDetailRows(new Set())
+    setSortedIndices(null)
+    setDetailSort(null)
+    setFieldErrors({})
+    setSaveError(null)
+    masterChooserSourcesRef.current = {}
+  }, [moduleId, wbAction, keyParam, copyFrom])
+
   useEffect(() => {
     if (!formQuery.data || isEdit || isView || isCopy) return
     const initial: Record<string, string> = {}
