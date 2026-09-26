@@ -25,14 +25,14 @@ namespace EOS.API.Tests;
 /// 数据指纹逐表对拍才能证明——纯内存断言证明不了回滚是否真的兜住了。
 /// 指纹用 BINARY_CHECKSUM(*) 聚合，覆盖表里每一列，而不是抽查几个字段。
 ///
-/// 需要 EOS_ERP_TEST_CONNECTION。
+/// 需要 MSSQL_ERP_CONN。
 /// </summary>
 [Collection("live-database")]
 public sealed class EffectSimulationLiveTests
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
-        ?? throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
+        ?? throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private static DbConnectionFactory Connections()
     {

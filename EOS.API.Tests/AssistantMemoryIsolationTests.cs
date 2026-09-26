@@ -24,7 +24,7 @@ public sealed class AssistantMemoryIsolationTests
     }
 
     private static string? TestConnection() =>
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
 
     private static async Task<bool> TablesReadyAsync(string connectionString)
     {
@@ -40,7 +40,7 @@ public sealed class AssistantMemoryIsolationTests
     {
         var connectionString = TestConnection()
             ?? throw new InvalidOperationException(
-                "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+                "真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         if (!await TablesReadyAsync(connectionString))
             throw new InvalidOperationException(
                 "dbo.ASSISTANT_MEMORY / dbo.ASSISTANT_PROFILE 不存在（迁移 043 未执行）；未就绪即失败（跳过≠已验证）。");

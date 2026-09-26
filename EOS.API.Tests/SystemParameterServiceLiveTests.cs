@@ -19,7 +19,7 @@ namespace EOS.API.Tests;
 public sealed class SystemParameterServiceLiveTests
 {
     private static readonly string? ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
 
     private static SystemParameterService CreateService(string connectionString)
     {

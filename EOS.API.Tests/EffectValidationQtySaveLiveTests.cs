@@ -16,8 +16,8 @@ namespace EOS.API.Tests;
 public sealed class EffectValidationQtySaveLiveTests
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
-        ?? throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
+        ?? throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN");
 
     private static readonly EffectValidationExecutor Executor = new();
 

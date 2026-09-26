@@ -11,7 +11,7 @@ namespace EOS.API.Tests;
 
 /// <summary>
 /// 统一选择器数据源集成测试：直连 EOS.ERP 开发库验证 menu-admin.tables / menu-admin.fields
-/// 的关键字过滤、排序列白名单与分页。连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 本机配置文件；
+/// 的关键字过滤、排序列白名单与分页。连接串来自 env MSSQL_ERP_CONN 或本机 本机配置文件；
 /// 拿不到连接串时跳过。只读查询，不产生测试数据。
 /// </summary>
 [Trait("Category", "Integration")]
@@ -348,7 +348,7 @@ public sealed class ChooserRepositoryIntegrationTests
 
     private static string? ResolveConnectionString()
     {
-        var env = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var env = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         if (!string.IsNullOrWhiteSpace(env))
         {
             return env;
@@ -359,7 +359,7 @@ public sealed class ChooserRepositoryIntegrationTests
             var path = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "config.toml");
             var text = File.ReadAllText(path);
-            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_CONNECTION_STRING\\s*=\\s*\"([^\"]+)\"");
+            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_ERP_CONN\\s*=\\s*\"([^\"]+)\"");
             return match.Success && match.Groups[1].Value.Contains("Database=EOS.ERP")
                 ? match.Groups[1].Value
                 : null;

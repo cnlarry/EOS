@@ -19,14 +19,14 @@ namespace EOS.API.Tests;
 /// 按钮级授权的真库验收（fail-closed 名单）：无名单行即拒绝、个人行接管组通道、组通道经
 /// SYSDG_USER 落到人、授权镜子给出 N 用户 / M 组，以及端点在无授权时 403 且留痕。
 /// 用例只写自己造的合成用户/组（ZZ 前缀），按钮配置行也临时插入并在 finally 清理。
-/// 需要 EOS_ERP_TEST_CONNECTION。
+/// 需要 MSSQL_ERP_CONN。
 /// </summary>
 [Collection("live-database")]
 public sealed class DocumentActionAuthorizationLiveTests
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
-        ?? throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
+        ?? throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private const int ModuleId = 110306;
     private const string MasterTable = "DEPOT";

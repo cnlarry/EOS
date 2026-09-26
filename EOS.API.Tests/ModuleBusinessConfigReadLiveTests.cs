@@ -22,7 +22,7 @@ namespace EOS.API.Tests;
 public sealed class ModuleBusinessConfigReadLiveTests
 {
     private static readonly string? ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
 
     private const int ReceiveModuleId = 1607;
 

@@ -23,14 +23,14 @@ namespace EOS.API.Tests;
 /// 未批核不允许重算（前置条件 CONFIRM_TAG=1）在服务端每次点击都复核。
 ///
 /// 单据与明细在本用例内造（键以 ZZ 前缀隔离），结束即删除；库存表只读不改。
-/// 需要 EOS_ERP_TEST_CONNECTION。
+/// 需要 MSSQL_ERP_CONN。
 /// </summary>
 [Collection("live-database")]
 public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
-        ?? throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
+        ?? throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private const int ModuleId = 130101;
     private const string MasterTable = "INV_CHECK_STOCK_M";

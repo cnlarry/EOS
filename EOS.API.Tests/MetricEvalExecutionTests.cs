@@ -19,12 +19,12 @@ namespace EOS.API.Tests;
 public sealed class MetricEvalExecutionTests
 {
     private static string? TestConnection() =>
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
 
     private static string RequireConnection() =>
         TestConnection()
         ?? throw new InvalidOperationException(
-            "评估集真实执行校验需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            "评估集真实执行校验需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private static string EvalSeedPath()
     {
@@ -149,14 +149,14 @@ public sealed class MetricEvalExecutionTests
 public sealed class AssistantLatencyMetricsTests
 {
     private static string? TestConnection() =>
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
 
     [Fact]
     public async Task Latency_Summary_Computes_Avg_And_P95()
     {
         var connectionString = TestConnection()
             ?? throw new InvalidOperationException(
-                "真库延迟聚合测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+                "真库延迟聚合测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         var repository = new AssistantUsageRepository(new DbConnectionFactory(
             new Microsoft.Extensions.Configuration.ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>

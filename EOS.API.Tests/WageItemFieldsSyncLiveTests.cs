@@ -18,9 +18,9 @@ namespace EOS.API.Tests;
 public sealed class WageItemFieldsSyncLiveTests
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
         ?? throw new InvalidOperationException(
-            "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            "真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private const int ModuleId = 180301;
     private const string TargetId = "HR_WAGE_D";

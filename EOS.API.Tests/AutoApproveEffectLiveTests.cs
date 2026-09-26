@@ -18,14 +18,14 @@ namespace EOS.API.Tests;
 /// 正常自动批核（状态翻转 + 审计）、重复触发幂等（不重复累计）、
 /// 引擎拦截时状态还原且零残留（ADR §4：阻断 + 效果零写入 + CONFIRM_TAG 还原）。
 /// 合成单据一律用 ADR12 专用键，用例结束即删除。
-/// 需要 EOS_ERP_TEST_CONNECTION。
+/// 需要 MSSQL_ERP_CONN。
 /// </summary>
 [Collection("live-database")]
 public sealed class AutoApproveEffectLiveTests
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
-        ?? throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
+        ?? throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private const string BatchNo = "ADR12AUTOBATCH01";
     private const string BatchProNo = "ADR12AUTOBATCHPRO";

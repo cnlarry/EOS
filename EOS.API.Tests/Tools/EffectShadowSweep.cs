@@ -21,7 +21,7 @@ namespace EOS.API.Tests.Tools;
 /// land in logs/shadow/ exactly like the single-module runner. DB-only tool: it never writes
 /// workspace configuration, never sends HTTP and never starts services.
 ///
-/// Run (from the repository root, with EOS_ERP_TEST_CONNECTION set):
+/// Run (from the repository root, with MSSQL_ERP_CONN set):
 ///   $env:EOS_SHADOW_SWEEP='1'
 ///   dotnet vstest &lt;output&gt;/EOS.API.Tests.dll --TestCaseFilter:"FullyQualifiedName~EffectShadowSweep"
 /// Optional: EOS_SHADOW_EVENTS (default APPROVE_EFFECT,DEAPPROVE) and EOS_SHADOW_MODULES
@@ -55,7 +55,7 @@ public sealed class EffectShadowSweep
             return;
         }
         Assert.False(ConnectionString.Value is null,
-            "拿不到开发库连接串（EOS_ERP_TEST_CONNECTION 或 EOS.API/appsettings.Development.json）");
+            "拿不到开发库连接串（MSSQL_ERP_CONN 或 EOS.API/appsettings.Development.json）");
 
         var events = (Environment.GetEnvironmentVariable("EOS_SHADOW_EVENTS") ?? "APPROVE_EFFECT,DEAPPROVE")
             .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
@@ -408,7 +408,7 @@ public sealed class EffectShadowSweep
 
     private static string? ResolveConnectionString()
     {
-        var env = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var env = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         if (!string.IsNullOrWhiteSpace(env))
         {
             return env;

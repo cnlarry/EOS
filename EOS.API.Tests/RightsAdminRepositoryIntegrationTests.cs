@@ -12,7 +12,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 权限管理仓储集成测试：真实 EOS.ERP 开发库验证矩阵读取、upsert/删除语义、
 /// 组聚合、成员关系与非法输入拒绝。临时用户/组以 ZR*/ZG* 前缀创建并自清理。
-/// 连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 本机配置文件；拿不到时跳过。
+/// 连接串来自 env MSSQL_ERP_CONN 或本机 本机配置文件；拿不到时跳过。
 /// </summary>
 [Trait("Category", "Integration")]
 public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
@@ -244,14 +244,14 @@ public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
 
     private static string? ResolveConnectionString()
     {
-        var env = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var env = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         if (!string.IsNullOrWhiteSpace(env)) return env;
         try
         {
             var path = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "config.toml");
             var text = File.ReadAllText(path);
-            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_CONNECTION_STRING\\s*=\\s*\"([^\"]+)\"");
+            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_ERP_CONN\\s*=\\s*\"([^\"]+)\"");
             return match.Success && match.Groups[1].Value.Contains("Database=EOS.ERP")
                 ? match.Groups[1].Value
                 : null;

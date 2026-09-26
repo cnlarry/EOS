@@ -16,7 +16,7 @@ namespace EOS.API.Tests;
 public sealed class ReportAdminRepositoryLiveTests
 {
     private static readonly string? ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
 
     private static ReportAdminRepository CreateRepository(string connectionString) =>
         new(new DbConnectionFactory(new ConfigurationBuilder()

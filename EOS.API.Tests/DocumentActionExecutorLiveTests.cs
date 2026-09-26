@@ -20,14 +20,14 @@ namespace EOS.API.Tests;
 /// 范围外拒绝、失败整体回滚（磁盘上不留半成品）、WARN 只报告不阻断。
 /// 用例只用只读的既有主数据（仓库资料）作为单据载体，断言结束后清理自己写入的
 /// AUDIT_EVENT / WORKBENCH_IDEMPOTENCY 行，业务表一行不改。
-/// 需要 EOS_ERP_TEST_CONNECTION。
+/// 需要 MSSQL_ERP_CONN。
 /// </summary>
 [Collection("live-database")]
 public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
-        ?? throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
+        ?? throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     /// <summary>仓库资料：主表 DEPOT 有存量行，探针不碰业务表，故不需要构造单据。</summary>
     private const int ModuleId = 110306;

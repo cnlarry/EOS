@@ -18,9 +18,9 @@ namespace EOS.API.Tests;
 public sealed class MrpRecalcLiveTests
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
         ?? throw new InvalidOperationException(
-            "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            "真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private const string FixtureSelect =
         "SELECT PRO_NO, QTY, SAFETY_QTY, NOT_SEND_QTY, NOT_IN_QTY, NOT_GET_QTY, IN_BUY_QTY, MRP_QTY FROM dbo.PRODUCT WHERE PRO_NO LIKE N'ADRMRP%' ORDER BY PRO_NO";

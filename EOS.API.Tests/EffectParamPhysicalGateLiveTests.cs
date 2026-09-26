@@ -13,7 +13,7 @@ namespace EOS.API.Tests;
 ///    说明库内确实存在"发布放过、运行期才炸"的配置（2708 就是这样躺了很久）。
 /// ② **判别力自检**：人为构造一条引用不存在目标表的动作，校验必须报出来；否则①的通过没有意义。
 ///
-/// 真库用例，需 <c>EOS_ERP_TEST_CONNECTION</c>；只读，不改任何数据。
+/// 真库用例，需 <c>MSSQL_ERP_CONN</c>；只读，不改任何数据。
 /// </summary>
 [Trait("Category", "live-database")]
 [Collection("live-database")]
@@ -21,9 +21,9 @@ public sealed class EffectParamPhysicalGateLiveTests
 {
     private static string RequireConnection()
     {
-        var value = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var value = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         Assert.False(string.IsNullOrWhiteSpace(value),
-            "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            "真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         return value!;
     }
 

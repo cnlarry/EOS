@@ -16,7 +16,7 @@ namespace EOS.API.Tests;
 /// ② 位置与批次原样带进明细：按库位盘出的差异若在库别层面被平均掉，盘点等于白盘。
 /// ③ 已经有人工明细时不生成——生成不得覆盖人工录入。
 ///
-/// 真库用例，需 <c>EOS_ERP_TEST_CONNECTION</c>；全程在一个事务内建数、断言、回滚。
+/// 真库用例，需 <c>MSSQL_ERP_CONN</c>；全程在一个事务内建数、断言、回滚。
 /// </summary>
 [Trait("Category", "live-database")]
 [Collection("live-database")]
@@ -35,9 +35,9 @@ public sealed class StocktakeScopeGenerateLiveTests
 
     private static string RequireConnection()
     {
-        var value = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var value = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         Assert.False(string.IsNullOrWhiteSpace(value),
-            "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            "真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         return value!;
     }
 

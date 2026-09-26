@@ -14,14 +14,14 @@ namespace EOS.API.Tests;
 /// 而 CONSTANT 来源的空串是**真实取值**（清空该列，实测 25 行）——不拿真数据测，
 /// 最容易被漏掉的恰恰是这条例外。
 ///
-/// 需要 EOS_ERP_TEST_CONNECTION。
+/// 需要 MSSQL_ERP_CONN。
 /// </summary>
 [Collection("live-database")]
 public sealed class SnapshotContentEquivalenceLiveTests
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
-        ?? throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
+        ?? throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private sealed record Sample(int ModuleId, int Version, string DefinitionJson);
 
