@@ -114,6 +114,7 @@ function renderPanel(panelActions: BusinessAction[] = actions) {
       moduleId={1607}
       moduleTitle="收料单"
       actions={panelActions}
+      rules={[{ seq: 1, stage: 'SAVE', validationKey: 'qty-not-exceed', enabled: true, params: '{}', message: null, remark: null, sourceRef: null }]}
       names={names}
       reverseKindLabels={{ 'auto-reverse': '按公式行自动反向' }}
       onClose={() => undefined}
@@ -145,14 +146,19 @@ describe('EffectSimulationPanel', () => {
     expect(screen.getByRole('button', { name: /预演（不改数据）/ })).toBeDisabled()
   })
 
-  it('选中单据后按主键列构造请求，并把步骤、旧值→新值与人话渲染出来', async () => {
+  it('选中单据后按主键列构造请求（默认带草稿），并把步骤、旧值→新值与人话渲染出来', async () => {
     renderPanel()
     await pickRecord()
     fireEvent.click(screen.getByRole('button', { name: /预演（不改数据）/ }))
 
+    // 默认按**未保存草稿**预演：配置者问的是"我这次改完会发生什么"。
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/admin/module-business-config/1607/simulate',
-      { event: 'APPROVE_EFFECT', key: ['PO', 'PO2026001'] },
+      {
+        event: 'APPROVE_EFFECT',
+        key: ['PO', 'PO2026001'],
+        draft: { actions: expect.any(Array), validationRules: expect.any(Array) },
+      },
     ))
 
     expect(await screen.findByText('已回滚')).toBeInTheDocument()
@@ -167,6 +173,35 @@ describe('EffectSimulationPanel', () => {
     expect(screen.getByText('150')).toBeInTheDocument()
     // 报告里的告警如实透出
     expect(screen.getByText(/服务型效果只报告影响行数/)).toBeInTheDocument()
+  })
+
+  it('取消勾选「按当前草稿预演」后按已发布配置跑，且报告自证来源', async () => {
+    renderPanel()
+    await pickRecord()
+    fireEvent.click(screen.getByLabelText(/按当前草稿（未保存）预演/))
+    fireEvent.click(screen.getByRole('button', { name: /预演（不改数据）/ }))
+
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/admin/module-business-config/1607/simulate',
+      { event: 'APPROVE_EFFECT', key: ['PO', 'PO2026001'] },
+    ))
+    // 报告必须写清"按哪一份配置跑的"：草稿与已发布在同一张单据上可能给出不同结果。
+    expect(await screen.findByText('已发布配置')).toBeInTheDocument()
+  })
+
+  it('按草稿预演时报告标注「未保存草稿」，并常驻说明保存后效果为何不能预演', async () => {
+    apiClientMock.post.mockImplementation(async (url: string) => {
+      if (url === '/chooser/query') return chooserResult
+      if (url.endsWith('/simulate')) return report({ configSource: 'draft' })
+      return {}
+    })
+    renderPanel()
+
+    expect(screen.getByText(/保存后效果暂不支持预演/)).toBeInTheDocument()
+    await pickRecord()
+    fireEvent.click(screen.getByRole('button', { name: /预演（不改数据）/ }))
+
+    expect(await screen.findByText('未保存草稿')).toBeInTheDocument()
   })
 
   it('校验闸拦截时只给理由、不渲染任何步骤', async () => {
