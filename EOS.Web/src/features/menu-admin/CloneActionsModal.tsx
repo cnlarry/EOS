@@ -54,6 +54,11 @@ export function CloneActionsModal({
     const list = [...(configQuery.data?.actions ?? [])].filter((action) => action.eventCode !== MANUAL_EVENT)
     return list.sort((a, b) => a.eventCode.localeCompare(b.eventCode) || a.seq - b.seq)
   }, [configQuery.data])
+  /** 源模块里被跳过的自定义按钮数：必须显式告知（静默丢按钮才是真坑）。 */
+  const skippedManualCount = useMemo(
+    () => (configQuery.data?.actions ?? []).filter((action) => action.eventCode === MANUAL_EVENT).length,
+    [configQuery.data],
+  )
 
   const columns = useMemo<ColumnDef<ClonedAction, unknown>[]>(() => [
     {
@@ -150,16 +155,25 @@ export function CloneActionsModal({
           onRetry={() => void configQuery.refetch()}
         />
       ) : (
-        <ErpTable
-          columns={columns}
-          data={rows}
-          getRowId={(row) => `${row.eventCode}|${row.seq}`}
-          rowSelection={selection}
-          onRowSelectionChange={setSelection}
-          clientSideSorting
-          copyable={false}
-          empty={<div className="p-3 text-secondary">该模块没有可复制的业务动作（自定义按钮不参与克隆）。</div>}
-        />
+        <>
+          {skippedManualCount > 0 ? (
+            <div className="alert alert-warning py-2 px-3 small" role="status">
+              源模块有 <strong>{skippedManualCount}</strong> 个自定义按钮**不会**随之复制：按钮级授权是
+              fail-closed 名单，克隆只带效果链与校验规则；要在本模块用这些按钮，需单独新增并在
+              「自定义按钮」页签里给具体用户/组发放授权。
+            </div>
+          ) : null}
+          <ErpTable
+            columns={columns}
+            data={rows}
+            getRowId={(row) => `${row.eventCode}|${row.seq}`}
+            rowSelection={selection}
+            onRowSelectionChange={setSelection}
+            clientSideSorting
+            copyable={false}
+            empty={<div className="p-3 text-secondary">该模块没有可复制的业务动作（自定义按钮不参与克隆）。</div>}
+          />
+        </>
       )}
 
       <UnifiedChooser
