@@ -611,7 +611,7 @@ public sealed class FieldAdminRepository(
         CancellationToken token)
     {
         const string sql = """
-            SELECT c.name, TYPE_NAME(c.user_type_id), LTRIM(RTRIM(COALESCE(f.F_DESC,''))) AS F_DESC, 0 AS IS_VIRTUAL
+            SELECT c.name, TYPE_NAME(c.user_type_id), LTRIM(RTRIM(COALESCE(f.F_DESC,''))) AS F_DESC, CAST(0 AS bit) AS IS_VIRTUAL
             FROM sys.columns c
             JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
             JOIN sys.schemas s ON o.schema_id=s.schema_id
@@ -622,7 +622,7 @@ public sealed class FieldAdminRepository(
             """;
         const string virtualSql = """
             SELECT LTRIM(RTRIM(f.F_ID)), COALESCE(NULLIF(LTRIM(RTRIM(f.F_TYPE)),''),'nvarchar'),
-                   LTRIM(RTRIM(COALESCE(f.F_DESC,''))), 1 AS IS_VIRTUAL
+                   LTRIM(RTRIM(COALESCE(f.F_DESC,''))), CAST(1 AS bit) AS IS_VIRTUAL
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE f.T_ID=@TableId AND COALESCE(f.IS_VIRTUAL,0)=1
               AND LTRIM(RTRIM(ISNULL(f.VIRTUAL_EXP,'')))<>''
