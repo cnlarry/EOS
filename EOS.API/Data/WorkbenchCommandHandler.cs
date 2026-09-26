@@ -1,5 +1,7 @@
 using System.Data;
 using System.Text.Json;
+
+using EOS.API.Data.Workbench;
 using EOS.API.Data.Effects;
 using EOS.API.Data.Inventory;
 using EOS.API.Models;
