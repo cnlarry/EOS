@@ -15,6 +15,8 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     private const int MenuAdminModuleId = 2301;
     private const int ReportAdminModuleId = 2201;
     private const int FieldAdminModuleId = 2302;
+    /// <summary>form-designer.fields 的排除列表条数上限（防止超长参数；超出部分只是多给候选，不影响正确性）。</summary>
+    private const int MaxExcludeKeys = 500;
 
     /// <summary>注册数据源 → 可排序列白名单（首列为默认排序列，稳定次序列固定追加）。</summary>
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> RegisteredSources =
@@ -298,6 +300,28 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         return normalized is "master" or "detail" ? normalized : null;
     }
 
+    /// <summary>
+    /// form-designer.fields 的 args.exclude（逗号分隔的"草稿里显示中的字段键"，即要排除的候选）。
+    /// 只作排除用，故解析一律 fail-closed 到"少排除"：非标识符形态、超长、超量的片段直接丢弃并去重，
+    /// 最终只回一份规范化后的逗号串交给参数化 SQL（不参与任何标识符拼接）。
+    /// </summary>
+    internal static string ResolveExcludeKeys(IReadOnlyDictionary<string, string>? args)
+    {
+        if (args is null || !args.TryGetValue("exclude", out var raw) || string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var kept = new List<string>();
+        foreach (var part in raw.Split(',', StringSplitOptions.TrimEntries))
+        {
+            if (kept.Count >= MaxExcludeKeys || part.Length == 0 || part.Length > 100) continue;
+            if (!WorkbenchSql.Identifier.IsMatch(part)) continue;
+            if (seen.Add(part)) kept.Add(part);
+        }
+        return string.Join(',', kept);
+    }
+
     public async Task<UnifiedChooserResult?> QueryAsync(UnifiedChooserQueryRequest request, CancellationToken token)
     {
         var sourceKey = request.SourceKey?.Trim();
@@ -325,13 +349,20 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     }
 
     /// <summary>
-    /// form-designer.fields：表单设计态的**字段池**（候选 = 该表已登记字段 − 已排进本模块版式的字段）。
+    /// form-designer.fields：表单设计态的**字段池**（候选 = 该表可排进版式的字段 − 草稿里显示中的字段）。
     ///
-    /// 与设计态读到的字段池同一口径：模块/表**未定制**时版式表没有行，整表字段都是候选；
-    /// 已定制则排除已排进版式的字段。主表不含虚拟列、明细表含虚拟列（各自沿用运行时取字段的口径）。
-    /// 明细例外：`IS_HIDDEN=1` 的明细列**仍算候选**——设计态的明细表头不显示隐藏列，
-    /// 它只能在字段池里被选回来（主表隐藏列留在画布上带删除线，由右键「恢复显示」处理）。
-    /// `IS_VISIBLE=0` 的字段一律不是候选：运行态根本不渲染它们，排进版式也不会有任何效果。
+    /// 排除项必须按**设计器草稿**算，不能按库里的版式行算：设计器编辑的是草稿，移出/加入在保存前
+    /// 只存在于前端，按库算就会把"刚移出表单"的字段当成仍在表单里而排除掉——恰好是用户最想选回来的
+    /// 那一个；该表其余字段又都已排进版式时（零配置模块的推导默认即是"全部已排"），选择器便整屏
+    /// 空无一物、放不回去。故排除项由调用方经 `args.exclude`（逗号分隔的字段键 = 草稿里显示中的行）传入，
+    /// 已移出的行不在其中，因而重新成为候选，选中即原位放回；草稿里刚加入、尚未保存的字段同时也被排除，
+    /// 不会再被重复列出。
+    ///
+    /// 排除列表只作**排除**用：解析期按标识符白名单+长度上限收敛，即使传入无关或越权的键，
+    /// 最坏也只是少给候选，不会多给（返回集仍限定在本模块该表的字段元数据之内）。
+    ///
+    /// 字段集口径与设计态读到的字段池一致：同一条虚拟列存在性判据（主表的虚拟列是选择器回写的伴生
+    /// 显示列，能排进版式），并一律排除 `IS_VISIBLE=0` 的字段——运行态根本不渲染它们，排进版式也不会有任何效果。
     /// </summary>
     private async Task<UnifiedChooserResult?> QueryFormDesignerFieldsAsync(
         UnifiedChooserQueryRequest request, CancellationToken token)
@@ -345,11 +376,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 string.Join(',', request.Args?.Keys ?? []));
             return null;
         }
-        var isDetail = string.Equals(table, "detail", StringComparison.Ordinal);
-        var includeVirtual = isDetail;
-        // 主表的隐藏字段仍画在画布上（带删除线），隐藏行因此仍算"已排进版式"，不再作为候选；
-        // 明细的隐藏列不在表头上显示，只有字段池这一个入口能把它选回来，故隐藏行不算"已排进版式"
-        var hiddenCountsAsPlaced = !isDetail;
+        var exclude = ResolveExcludeKeys(request.Args);
         var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
         var page = NormalizePage(request.Page);
         var pageSize = NormalizePageSize(request.PageSize);
@@ -367,27 +394,25 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         await using var command = new SqlCommand { Connection = connection };
         AddCommonParameters(command, keyword, page, pageSize);
         command.Parameters.Add("@Table", SqlDbType.VarChar, 100).Value = targetTable;
-        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId.Value;
-        command.Parameters.Add("@IncludeVirtual", SqlDbType.Bit).Value = includeVirtual;
-        command.Parameters.Add("@HiddenCountsAsPlaced", SqlDbType.Bit).Value = hiddenCountsAsPlaced;
+        command.Parameters.Add("@Exclude", SqlDbType.VarChar, -1).Value = exclude;
         var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
         var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
-        // 物理列存在性 + 可见性 + 版式排除三处与设计态读字段池同口径（口径漂移会让选择器给出排不上的字段）：
+        // 字段集两处与设计态读字段池同口径（口径漂移会让选择器给出排不上的字段）：
+        // 虚拟列存在性判据（主表的虚拟列是选择器回写的伴生显示列，能排进版式）；
         // 管理员标记为不显示的字段（IS_VISIBLE=0）运行态一律不渲染（FormFieldSelector 剔除），
-        // 排进版式也不会有任何效果，因此不进候选
+        // 排进版式也不会有任何效果，因此不进候选。
+        // 排除项是调用方草稿里显示中的字段（参数化，只是"再减掉一批"，不参与标识符拼接）
         const string scope = """
             FROM dbo.FIELDS f WITH (NOLOCK)
             WHERE LTRIM(RTRIM(f.T_ID))=@Table
-              AND (COALESCE(f.IS_VIRTUAL,0)=@IncludeVirtual
+              AND (COALESCE(f.IS_VIRTUAL,0)=1
                    OR EXISTS (SELECT 1 FROM sys.columns c
                               JOIN sys.objects o ON c.object_id=o.object_id AND o.type IN ('U','V')
                               JOIN sys.schemas s ON o.schema_id=s.schema_id
                               WHERE s.name=N'dbo' AND o.name=@Table AND c.name=f.F_ID))
               AND COALESCE(f.IS_VISIBLE,1)=1
-              AND NOT EXISTS (SELECT 1 FROM dbo.MODULE_FORM_LAYOUT l WITH (NOLOCK)
-                              WHERE l.M_IDX=@ModuleId AND LTRIM(RTRIM(l.T_ID))=@Table
-                                AND LTRIM(RTRIM(l.F_ID))=LTRIM(RTRIM(f.F_ID))
-                                AND (COALESCE(l.IS_HIDDEN,0)=0 OR @HiddenCountsAsPlaced=1))
+              AND (@Exclude='' OR LTRIM(RTRIM(f.F_ID)) NOT IN
+                   (SELECT LTRIM(RTRIM(value)) FROM STRING_SPLIT(@Exclude, ',')))
             """;
         command.CommandText = $"""
             SELECT COUNT_BIG(1) {scope}

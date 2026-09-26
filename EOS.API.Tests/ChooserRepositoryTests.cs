@@ -151,6 +151,35 @@ public sealed class ChooserRepositoryTests
     }
 
     [Theory]
+    [InlineData(null, "")]
+    [InlineData("", "")]
+    [InlineData("   ", "")]
+    [InlineData("ORDER_NO", "ORDER_NO")]
+    [InlineData("ORDER_NO,CLIENT_ID", "ORDER_NO,CLIENT_ID")]
+    [InlineData(" ORDER_NO , CLIENT_ID ", "ORDER_NO,CLIENT_ID")]
+    [InlineData("ORDER_NO,,CLIENT_ID,", "ORDER_NO,CLIENT_ID")]
+    [InlineData("ORDER_NO,order_no", "ORDER_NO")]
+    [InlineData("ORDER_NO,BAD KEY,CLIENT_ID", "ORDER_NO,CLIENT_ID")]
+    [InlineData("ORDER_NO;DROP TABLE dbo.FIELDS--", "")]
+    public void ResolveExcludeKeys_KeepsOnlyIdentifierShapedKeys(string? raw, string expected)
+    {
+        var args = raw is null ? null : new Dictionary<string, string> { ["exclude"] = raw };
+        Assert.Equal(expected, ChooserRepository.ResolveExcludeKeys(args));
+    }
+
+    [Fact]
+    public void ResolveExcludeKeys_RejectsMissingKeyAndCapsTheList()
+    {
+        Assert.Equal(string.Empty, ChooserRepository.ResolveExcludeKeys(new Dictionary<string, string> { ["table"] = "master" }));
+
+        var many = string.Join(',', Enumerable.Range(0, 600).Select(index => $"COL_{index}"));
+        var kept = ChooserRepository.ResolveExcludeKeys(new Dictionary<string, string> { ["exclude"] = many }).Split(',');
+        Assert.Equal(500, kept.Length);
+        Assert.Equal("COL_0", kept[0]);
+        Assert.Equal("COL_499", kept[^1]);
+    }
+
+    [Theory]
     [InlineData("form-designer.fields", true)]
     [InlineData("FORM-DESIGNER.FIELDS", true)]
     [InlineData("menu-admin.fields", false)]
