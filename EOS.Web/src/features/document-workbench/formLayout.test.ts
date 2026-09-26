@@ -3,7 +3,6 @@ import type { FormFieldDefinition } from './formDefinition'
 import {
   buildPackedCells,
   deriveDefaultLayout,
-  isLifecycleTailField,
   packFormGrid,
   packFormSections,
   toDetailRows,
@@ -249,31 +248,25 @@ describe('packFormSections 分节', () => {
     expect(keys(sections)).toEqual([['A', 'CLIENT_ID'], ['S1', 'S2']])
   })
 
-  it('尾部格自成末尾一节，按固定次序排列且大小写不敏感', () => {
+  it('生命周期列不特判：位置与次序完全按传入次序（版式）', () => {
     const sections = packFormSections(
-      [field('NAME'), field('CONFIRM_TAG'), field('REMARK'), field('create_person')],
+      [field('CONFIRM_TAG'), field('REMARK'), field('CREATE_PERSON'), field('BILL_NO')],
       4,
-      { tailCells: item => item.key.toUpperCase().startsWith('CONFIRM') || item.key.toUpperCase().startsWith('CREATE') },
     )
-    expect(titles(sections)).toEqual([null, null])
-    expect(keys(sections)).toEqual([['NAME', 'REMARK'], ['create_person', 'CONFIRM_TAG']])
+    expect(titles(sections)).toEqual([null])
+    expect(keys(sections)).toEqual([['CONFIRM_TAG', 'REMARK', 'CREATE_PERSON', 'BILL_NO']])
   })
 
-  it('无尾部格时保持原分节不变', () => {
-    const items = [field('S1', { cellGroup: '发货信息' }), field('S2', { cellGroup: '发货信息' }), field('A')]
-    const withoutTail = packFormSections(items, 4)
-    const withTail = packFormSections(items, 4, { tailCells: () => false })
-    expect(titles(withTail)).toEqual(titles(withoutTail))
-    expect(keys(withTail)).toEqual(keys(withoutTail))
-  })
-})
-
-describe('isLifecycleTailField', () => {
-  it('识别建立/修改/审核/结案的人·日期·状态，且大小写不敏感', () => {
-    expect(isLifecycleTailField({ key: 'CREATE_PERSON' })).toBe(true)
-    expect(isLifecycleTailField({ key: 'create_date' })).toBe(true)
-    expect(isLifecycleTailField({ key: 'CONFIRM_TAG' })).toBe(true)
-    expect(isLifecycleTailField({ key: 'FINISHED_DATE' })).toBe(true)
-    expect(isLifecycleTailField({ key: 'REMARK' })).toBe(false)
+  it('生命周期列落在分节里时随分节走，不被抽到末尾', () => {
+    const sections = packFormSections(
+      [
+        field('A', { sectionId: '基本信息' }),
+        field('CONFIRM_PERSON', { sectionId: '基本信息' }),
+        field('CREATE_DATE', { sectionId: '审核信息' }),
+      ],
+      2,
+    )
+    expect(titles(sections)).toEqual(['基本信息', '审核信息'])
+    expect(keys(sections)).toEqual([['A', 'CONFIRM_PERSON'], ['CREATE_DATE']])
   })
 })

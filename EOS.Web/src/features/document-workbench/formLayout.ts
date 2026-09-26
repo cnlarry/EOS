@@ -195,29 +195,6 @@ export function packFormGrid(cells: FormGridCell[], columns: number, fillHoles =
  * 从字段跟随主字段渲染进同一格（对应 [ID][选择][名称] 三件套）。
  * 行 = 按 FORM_COLUMNS 每行对数 + FORM_NEW_LINE 强制换行 + 整行独占（span=2 / REMARK 类）切分。
  */
-/**
- * 浏览态尾部字段：单据生命周期系统列（建立/修改/审核/结案的人·日期·状态）。
- * 服务端独占写入并在新增/编辑态隐藏，浏览态只读；这里只决定它们的排布次序。
- */
-const LIFECYCLE_TAIL_KEYS = [
-  'CREATE_PERSON', 'CREATE_DATE',
-  'LAST_UPDATE_BY', 'LAST_UPDATE_DATE',
-  'CONFIRM_PERSON', 'CONFIRM_DATE', 'CONFIRM_TAG',
-  'FINISHED_PERSON', 'FINISHED_DATE', 'FINISHED_TAG',
-] as const
-
-const LIFECYCLE_TAIL_RANK = new Map<string, number>(LIFECYCLE_TAIL_KEYS.map((key, index) => [key, index]))
-
-/** 字段在尾部块中的次序；非生命周期列返回 -1。 */
-function lifecycleRank(key: string): number {
-  return LIFECYCLE_TAIL_RANK.get(key.toUpperCase()) ?? -1
-}
-
-/** 浏览态需要排到表单尾部的列（建立/修改/审核/结案的人·日期·状态）。 */
-export function isLifecycleTailField(field: Pick<FormFieldDefinition, 'key'>): boolean {
-  return lifecycleRank(field.key) >= 0
-}
-
 /** 装箱输入的最小形状：运行态字段与设计态版式行都能映射到它（可空项按缺省处理）。 */
 export interface PackableCell {
   key: string
@@ -288,27 +265,24 @@ export function buildPackedCells<T extends PackableCell>(items: T[]): T[][] {
  * "同组名下有 ≥2 个主字段即视为分节"启发式——该启发式是 `FIELDS.FORM_CELL_GROUP` 一列两义
  * 的历史产物，退役前保持观感不变。
  *
- * `tailCells` 给出"必须排到表单尾部"的格（浏览态的生命周期列），它们自成末尾一节。
+ * **不按字段代号做任何特判**：生命周期系统列（建立/修改/审核/结案的人·日期·状态）与普通
+ * 字段同等，位置完全由传入次序（即版式）决定——它们在浏览态只读显示，但排在哪一页签、
+ * 哪一段由设计态画板说了算，否则画板上的拖动在运行态不生效。
  */
 export function packFormSections<T extends PackableCell>(
   items: T[],
   columns: number,
-  options: { fillHoles?: boolean; tailCells?: (main: T) => boolean } = {},
+  options: { fillHoles?: boolean } = {},
 ): PackedFormSection<T>[] {
   const cols = Math.max(1, columns)
   const fillHoles = options.fillHoles ?? true
   const cells = buildPackedCells(items)
 
   const hasSections = cells.some(cell => (cell[0].sectionId ?? '').trim().length > 0)
-  const tails: T[][] = []
   const grouped: { title: string | null; cells: T[][] }[] = []
   if (hasSections) {
     const byTitle = new Map<string, T[][]>()
     for (const cell of cells) {
-      if (options.tailCells?.(cell[0])) {
-        tails.push(cell)
-        continue
-      }
       const title = (cell[0].sectionId ?? '').trim()
       byTitle.set(title, [...(byTitle.get(title) ?? []), cell])
     }
@@ -326,10 +300,6 @@ export function packFormSections<T extends PackableCell>(
     const defaultCells: T[][] = []
     const indexByGroup = new Map<string, number>()
     for (const cell of cells) {
-      if (options.tailCells?.(cell[0])) {
-        tails.push(cell)
-        continue
-      }
       const group = cell[0].cellGroup?.trim()
       if (group && (countsByGroup.get(group) ?? 0) >= 2) {
         const existing = indexByGroup.get(group)
@@ -346,11 +316,6 @@ export function packFormSections<T extends PackableCell>(
     if (defaultCells.length > 0) {
       grouped.unshift({ title: null, cells: defaultCells })
     }
-  }
-
-  if (tails.length > 0) {
-    tails.sort((left, right) => lifecycleRank(left[0].key) - lifecycleRank(right[0].key))
-    grouped.push({ title: null, cells: tails })
   }
 
   return grouped
