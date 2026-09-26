@@ -3,7 +3,7 @@ using System.Data;
 using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
-namespace EOS.API.Data;
+namespace EOS.API.Data.Workbench;
 
 /// <summary>
 /// 主表派生列补齐：界面由「来源列」带出的只读联动列（如币别带出汇率），在保存主表**之前**
