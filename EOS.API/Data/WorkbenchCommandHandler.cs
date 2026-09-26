@@ -240,6 +240,13 @@ public sealed class WorkbenchCommandHandler(
         {
             return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "SERVER_FILL_MISSING", "存在服务端必填字段未登记填充规则。", fillErrors);
         }
+        // 只读联动列（汇率等）前端不会提交：在落库前补齐，INSERT 与明细判据读的是同一份值
+        var derived = await MasterDerivedColumnFiller.FillAsync(
+            connection, transaction, definition, form.MasterFields, values, request.Details, token);
+        if (derived.Error is { } derivedError)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, derivedError.Code, derivedError.Message, [derivedError]);
+        }
 
         foreach (var pk in pkColumns)
         {
@@ -490,6 +497,13 @@ public sealed class WorkbenchCommandHandler(
         {
             merged[key] = value;
         }
+        // 与新增路径同一落点、同一口径：只读联动列在写主表前补齐（记录里既有的非空值不覆盖）
+        var derivedUpdate = await MasterDerivedColumnFiller.FillAsync(
+            connection, transaction, definition, form.MasterFields, merged, request.Details, token);
+        if (derivedUpdate.Error is { } derivedUpdateError)
+        {
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, derivedUpdateError.Code, derivedUpdateError.Message, [derivedUpdateError]);
+        }
         var finalErrors = RecordPayloadValidator.CheckRequiredAndRegex(form.MasterFields, merged);
         if (finalErrors.Count > 0)
         {
@@ -504,6 +518,13 @@ public sealed class WorkbenchCommandHandler(
                 continue;
             }
             sets.Add((key, value));
+        }
+        // 补齐出来的派生列（原值为空）随本次提交一并落库
+        foreach (var (column, value) in derivedUpdate.Filled)
+        {
+            if (pkColumns.Contains(column, StringComparer.OrdinalIgnoreCase)) continue;
+            if (sets.Any(item => item.Column.Equals(column, StringComparison.OrdinalIgnoreCase))) continue;
+            sets.Add((column, value));
         }
         if (await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "LAST_UPDATE_BY", token))
         {
@@ -817,6 +838,8 @@ public sealed class WorkbenchCommandHandler(
             return new(null, []);
         }
 
+        // 判据读的是**补齐后的主表值**（调用方在此之前已按 MasterDerivedColumnFiller 补齐只读联动列）：
+        // 这些列前端不会提交，但"有明细就必须有值"的语义不变，确实没有值的仍在这里拒绝。
         if (!string.IsNullOrWhiteSpace(definition.DetailNoFields))
         {
             var missing = definition.DetailNoFields.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)

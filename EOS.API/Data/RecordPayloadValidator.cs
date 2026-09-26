@@ -77,9 +77,7 @@ internal static class RecordPayloadValidator
                 errors.Add(new FieldError(key, "字段不在表单定义中。", "UNKNOWN_FIELD"));
                 continue;
             }
-            // 服务端持有（serverFilled）与虚拟字段拒绝客户端提交；
-            // 只读但可见的联动字段（如 CURR_RATE/CURR_ID/TAX_ID）由前端联动带值随保存提交，
-            // 因此允许提交并继续做类型/长度校验（用户无法直接修改，值仍受服务端校验约束）。
+            // 服务端持有（serverFilled）与虚拟字段拒绝客户端提交。
             if (field.IsVirtual || field.ServerFilled || field.DisplayOnly)
             {
                 errors.Add(new FieldError(key, "该字段由服务端维护，不可提交。", "READONLY_FIELD"));
@@ -89,6 +87,8 @@ internal static class RecordPayloadValidator
             // ——与前端 writableFields 同一口径。否则界面上根本打不开的格子仍可被构造请求改写；
             // 模块判别字段（模块 FILTER 依赖它，如按保密/离职标志分表的工资表）尤其不能被改，
             // 改后记录会落到另一个模块的可见范围。
+            // 无选择器的只读联动列（如由币别带出的汇率）不靠提交：服务端在保存主表前补齐
+            // （MasterDerivedColumnFiller），两者不冲突。
             if (field.IsReadonly
                 && !field.IsRequired
                 && !field.Choosers.Any(source => source.Active && !string.IsNullOrWhiteSpace(source.Table)))
