@@ -911,6 +911,19 @@ public sealed class WorkbenchCommandHandler(
             }
         }
         RecordPayloadValidator.AssignSerialNumbers(rows, form.DetailFields, submittedSerials);
+        // 引用来源带出的**成本/输入列**（如应付明细的对账单价）必须先于金额复算补齐：
+        // 复算按 QTY×PRICE 算金额，先算后补会让金额丢掉刚带出来的单价。补齐是服务端的事——
+        // 这些列在界面上仍是只读，客户端构造请求也提交不进来。
+        var referenceError = await DetailReferenceColumnFiller.FillAsync(
+            connection, transaction, definition.DetailTable, form.DetailFields, rows, token);
+        if (referenceError is not null)
+        {
+            return new([referenceError], null);
+        }
+        foreach (var row in rows)
+        {
+            RecalculateDetailAmounts(form.DetailFields, row, masterValues);
+        }
         // 应收货款单（170101）等引用单据的明细：金额/数量从送货（退货）单明细带出
         await FillReferencedAmountsAsync(connection, transaction, form.DetailFields, rows, token);
         for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
