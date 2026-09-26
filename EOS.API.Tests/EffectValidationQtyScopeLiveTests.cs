@@ -9,13 +9,13 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 逐行（thisQty 无 agg=SUM）形态的数量校验必须把来源行限定在当前单据内：同一被引用行的
 /// "他单超量"不得拦下本单。用例在同一事务内造"违规单 + 合规单"并回滚，零残留。
-/// 需要 EOS_ERP_TEST_CONNECTION（与本仓库其它真库测试一致的约定）。
+/// 需要 MSSQL_ERP_CONN（与本仓库其它真库测试一致的约定）。
 /// </summary>
 public sealed class EffectValidationQtyScopeLiveTests
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
-        ?? throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
+        ?? throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private static readonly EffectValidationExecutor Executor = new();
 

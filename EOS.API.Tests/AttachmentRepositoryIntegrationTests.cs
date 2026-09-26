@@ -11,7 +11,7 @@ namespace EOS.API.Tests;
 
 /// <summary>
 /// ATTACHMENT 附件仓储集成测试：直连 EOS.ERP 开发库验证真实 SQL（创建/列表/改备注/删除/项次自增）。
-/// 连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 本机配置文件；拿不到连接串时测试空跑跳过。
+/// 连接串来自 env MSSQL_ERP_CONN 或本机 本机配置文件；拿不到连接串时测试空跑跳过。
 /// 测试前置用与生产一致的 DbUp 迁移创建/升级 ATTACHMENT 表；测试数据在 Dispose 中清理。
 /// </summary>
 [Trait("Category", "Integration")]
@@ -165,7 +165,7 @@ public sealed class AttachmentRepositoryIntegrationTests : IDisposable
 
     private static string? ResolveConnectionString()
     {
-        var env = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var env = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         if (!string.IsNullOrWhiteSpace(env))
         {
             return env;
@@ -176,7 +176,7 @@ public sealed class AttachmentRepositoryIntegrationTests : IDisposable
             var path = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "config.toml");
             var text = File.ReadAllText(path);
-            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_CONNECTION_STRING\\s*=\\s*\"([^\"]+)\"");
+            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_ERP_CONN\\s*=\\s*\"([^\"]+)\"");
             return match.Success ? match.Groups[1].Value : null;
         }
         catch

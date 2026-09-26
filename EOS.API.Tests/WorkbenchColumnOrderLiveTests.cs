@@ -14,7 +14,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 「选择列」配置 → 工作台列表列：列集合与顺序必须完全等于用户保存的列配置。
 /// 主键列不因行标识需要被插回显示列（键列由查询层单独并入返回行，不参与渲染）。
-/// 需要 EOS_ERP_TEST_CONNECTION（与本仓库其它真库测试一致）。
+/// 需要 MSSQL_ERP_CONN（与本仓库其它真库测试一致）。
 /// </summary>
 [Collection("live-database")]
 public sealed class WorkbenchColumnOrderLiveTests
@@ -27,13 +27,13 @@ public sealed class WorkbenchColumnOrderLiveTests
 
     private static string? ResolveConnectionString()
     {
-        var env = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var env = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         if (!string.IsNullOrWhiteSpace(env)) return env;
         try
         {
             var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "config.toml");
             var text = File.ReadAllText(path);
-            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_CONNECTION_STRING\\s*=\\s*\"([^\"]+)\"");
+            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_ERP_CONN\\s*=\\s*\"([^\"]+)\"");
             return match.Success && match.Groups[1].Value.Contains("Database=EOS.ERP")
                 ? match.Groups[1].Value
                 : null;
@@ -48,7 +48,7 @@ public sealed class WorkbenchColumnOrderLiveTests
     {
         if (ConnectionString.Value is null)
         {
-            throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         }
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>

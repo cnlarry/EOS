@@ -12,7 +12,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 菜单同级排序集成测试：直连 EOS.ERP 开发库验证 ReorderAsync 的 SQL 事务
 /// （top/up/down/bottom、边界无操作、非法动作、SORT_IDX 重写与审计字段）。
-/// 连接串来自 env EOS_ERP_TEST_CONNECTION 或本机 本机配置文件；拿不到连接串时跳过。
+/// 连接串来自 env MSSQL_ERP_CONN 或本机 本机配置文件；拿不到连接串时跳过。
 /// 测试使用独立临时 M_IDX 区段（99xxxxxxx），不触碰真实菜单，Dispose 清理。
 /// </summary>
 [Trait("Category", "Integration")]
@@ -656,7 +656,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
 
     private static string? ResolveConnectionString()
     {
-        var env = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var env = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         if (!string.IsNullOrWhiteSpace(env))
         {
             return env;
@@ -667,7 +667,7 @@ public sealed class MenuAdminRepositoryIntegrationTests : IDisposable
             var path = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "config.toml");
             var text = File.ReadAllText(path);
-            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_CONNECTION_STRING\\s*=\\s*\"([^\"]+)\"");
+            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_ERP_CONN\\s*=\\s*\"([^\"]+)\"");
             return match.Success && match.Groups[1].Value.Contains("Database=EOS.ERP")
                 ? match.Groups[1].Value
                 : null;

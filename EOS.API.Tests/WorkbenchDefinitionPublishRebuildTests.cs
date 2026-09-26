@@ -19,7 +19,7 @@ namespace EOS.API.Tests;
 ///  1. 发布路径（forPublish=true）忽略 provider 基线，按代码 + 元数据重建业务规则；
 ///  2. provider 单模块刷新在「库里已无当前快照」时把该模块基线从缓存移除。
 ///
-/// 需要 EOS_ERP_TEST_CONNECTION（与本仓库其它真库测试一致的约定）。
+/// 需要 MSSQL_ERP_CONN（与本仓库其它真库测试一致的约定）。
 /// </summary>
 [Collection("live-database")]
 public sealed class WorkbenchDefinitionPublishRebuildTests
@@ -28,13 +28,13 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
 
     private static string? ResolveConnectionString()
     {
-        var env = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var env = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         if (!string.IsNullOrWhiteSpace(env)) return env;
         try
         {
             var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "config.toml");
             var text = File.ReadAllText(path);
-            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_CONNECTION_STRING\\s*=\\s*\"([^\"]+)\"");
+            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_ERP_CONN\\s*=\\s*\"([^\"]+)\"");
             return match.Success && match.Groups[1].Value.Contains("Database=EOS.ERP")
                 ? match.Groups[1].Value
                 : null;
@@ -49,7 +49,7 @@ public sealed class WorkbenchDefinitionPublishRebuildTests
     {
         if (ConnectionString.Value is null)
         {
-            throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         }
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>

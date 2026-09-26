@@ -14,7 +14,7 @@ namespace EOS.API.Tests;
 /// 判别点在于"库存分散在两个库位行"：合计够、单库位不够。同一份数据只换配置就能区分两种语义，
 /// 这是"维度真的生效了"最直接的证据——否则两种配置都会给出同一个答案。
 ///
-/// 真库用例，需 <c>EOS_ERP_TEST_CONNECTION</c>；全程在一个事务内建数、断言、回滚。
+/// 真库用例，需 <c>MSSQL_ERP_CONN</c>；全程在一个事务内建数、断言、回滚。
 /// </summary>
 [Trait("Category", "live-database")]
 [Collection("live-database")]
@@ -30,9 +30,9 @@ public sealed class CopSendStockDimensionLiveTests
 
     private static string RequireConnection()
     {
-        var value = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var value = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         Assert.False(string.IsNullOrWhiteSpace(value),
-            "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            "真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         return value!;
     }
 

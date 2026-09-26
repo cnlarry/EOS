@@ -14,7 +14,7 @@ namespace EOS.API.Tests;
 /// 引擎可能要求的位置 / 批次列必须进明细表单：单据明细的位置与批次是否出现，原先完全取决于用户的
 /// 「选择列」配置；而"位置档 3 必须指明库位""管批次的料号必须给批号"是**过账引擎的判据**——
 /// 用户没勾这两列时表单里就没有格子，单据必然过账失败。本用例把"配置里没勾也要出现在表单里"钉住。
-/// 需要 EOS_ERP_TEST_CONNECTION（与本仓库其它真库测试一致）。
+/// 需要 MSSQL_ERP_CONN（与本仓库其它真库测试一致）。
 /// </summary>
 [Collection("live-database")]
 public sealed class RuntimeRequiredDetailColumnsLiveTests
@@ -28,13 +28,13 @@ public sealed class RuntimeRequiredDetailColumnsLiveTests
 
     private static string? ResolveConnectionString()
     {
-        var env = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var env = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         if (!string.IsNullOrWhiteSpace(env)) return env;
         try
         {
             var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "config.toml");
             var text = File.ReadAllText(path);
-            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_CONNECTION_STRING\\s*=\\s*\"([^\"]+)\"");
+            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_ERP_CONN\\s*=\\s*\"([^\"]+)\"");
             return match.Success && match.Groups[1].Value.Contains("Database=EOS.ERP")
                 ? match.Groups[1].Value
                 : null;
@@ -49,7 +49,7 @@ public sealed class RuntimeRequiredDetailColumnsLiveTests
     {
         if (ConnectionString.Value is null)
         {
-            throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         }
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>

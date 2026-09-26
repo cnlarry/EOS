@@ -8,14 +8,14 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 跨模块关联字段浏览链接解析器测试（BROWSE_URL → 现代记录浏览描述符）。
 /// 解析为纯函数测试；解析落库（目标模块/主键/来源列）为直连 EOS.ERP 集成测试，
-/// 连接串来源与跳过策略同 AssistantRepositoryIntegrationTests（EOS_ERP_TEST_CONNECTION）。
+/// 连接串来源与跳过策略同 AssistantRepositoryIntegrationTests（MSSQL_ERP_CONN）。
 /// </summary>
 public sealed class WorkbenchBrowseResolverTests
 {
     private static readonly Lazy<string?> ConnectionString = new(ResolveConnectionString);
 
     private static string? ResolveConnectionString()
-        => Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        => Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
 
     // ---------- 纯解析 ----------
 

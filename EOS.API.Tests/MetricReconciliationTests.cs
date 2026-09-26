@@ -19,7 +19,7 @@ namespace EOS.API.Tests;
 [Collection("live-database")]
 public sealed class MetricReconciliationTests
 {
-    private const string ConnectionStringEnvironmentVariable = "EOS_ERP_TEST_CONNECTION";
+    private const string ConnectionStringEnvironmentVariable = "MSSQL_ERP_CONN";
     private const string MetricId = "sales_amount";
 
     private static string? TestConnection() =>
@@ -29,7 +29,7 @@ public sealed class MetricReconciliationTests
     {
         var connectionString = TestConnection()
             ?? throw new InvalidOperationException(
-                "对账测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+                "对账测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         using var connection = new SqlConnection(connectionString);
         connection.Open();
         using var command = new SqlCommand(

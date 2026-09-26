@@ -10,7 +10,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 单据自动编号集成测试（直连 EOS.ERP）：独立发号器的并发唯一性、与旧"最大号 +1"算法的
 /// 等价性，以及迁移 098 的幂等性。
-/// 连接串来自 env EOS_ERP_TEST_CONNECTION；拿不到连接串时整类测试空跑跳过。
+/// 连接串来自 env MSSQL_ERP_CONN；拿不到连接串时整类测试空跑跳过。
 /// 前置：执行迁移 098（BILL_NO_SEQUENCE）建表并回填计数器——只跑这一条迁移，
 /// 不触发其它待落地迁移（它们的落地时机由各自负责人决定）。
 /// </summary>
@@ -25,7 +25,7 @@ public sealed class BillNoGeneratorIntegrationTests
     private const string SyntheticExpression = "ZZSEQ{YYMMDD}0000";
 
     private static readonly Lazy<string?> ConnectionString = new(() =>
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION"));
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN"));
 
     private readonly ITestOutputHelper _output;
 

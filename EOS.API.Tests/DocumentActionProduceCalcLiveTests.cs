@@ -24,14 +24,14 @@ namespace EOS.API.Tests;
 /// 底数为 0 的 BOM 行拒绝；探路零写入（含审计）。
 ///
 /// 夹具全自造（ZZPC 前缀），用完即删。
-/// 需要 EOS_ERP_TEST_CONNECTION。
+/// 需要 MSSQL_ERP_CONN。
 /// </summary>
 [Collection("live-database")]
 public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
-        ?? throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
+        ?? throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private const int ModuleId = 1502;
     private const string MasterTable = "MOC_PRODUCE_M";

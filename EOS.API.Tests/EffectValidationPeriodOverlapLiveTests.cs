@@ -9,15 +9,15 @@ namespace EOS.API.Tests;
 /// <summary>
 /// period-overlap 的真库行为：闭区间相交（端点相接算重叠）、包含关系、空结束日视为无限期、
 /// 只比同维度键、编辑自身不算冲突。事务内造数并回滚，零残留。
-/// 需要 EOS_ERP_TEST_CONNECTION（与本仓库其它真库测试一致的约定）。
+/// 需要 MSSQL_ERP_CONN（与本仓库其它真库测试一致的约定）。
 /// </summary>
 [Collection("live-database")]
 public sealed class EffectValidationPeriodOverlapLiveTests
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
         ?? throw new InvalidOperationException(
-            "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            "真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private static readonly EffectValidationExecutor Executor = new();
 

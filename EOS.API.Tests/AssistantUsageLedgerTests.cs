@@ -12,7 +12,7 @@ namespace EOS.API.Tests;
 public sealed class AssistantUsageLedgerTests
 {
     private static string? TestConnection() =>
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
 
     private static async Task<bool> LedgerReadyAsync(string connectionString)
     {
@@ -58,7 +58,7 @@ public sealed class AssistantUsageLedgerTests
     {
         var connectionString = TestConnection()
             ?? throw new InvalidOperationException(
-                "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+                "真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         if (!await LedgerReadyAsync(connectionString))
             throw new InvalidOperationException(
                 "dbo.ASSISTANT_USAGE_DAY 不存在（迁移 045 未执行）；未就绪即失败（跳过≠已验证）。");

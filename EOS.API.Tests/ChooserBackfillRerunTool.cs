@@ -208,7 +208,7 @@ public sealed class ChooserBackfillRerunTool
 
     private static async Task<(List<ConvertedRow> Converted, List<KeepExistingRow> KeepExisting, List<StillManualRow> StillManual)> ConvertManualRowsAsync()
     {
-        Assert.False(ConnectionString.Value is null, "拿不到开发库连接串（EOS_ERP_TEST_CONNECTION 或 ~/.codex/config.toml）");
+        Assert.False(ConnectionString.Value is null, "拿不到开发库连接串（MSSQL_ERP_CONN 或 ~/.codex/config.toml）");
 
         var rows = new List<ManualRow>();
         var converted = new List<ConvertedRow>();
@@ -759,7 +759,7 @@ public sealed class ChooserBackfillRerunTool
 
     private static string? ResolveConnectionString()
     {
-        var env = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var env = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         if (!string.IsNullOrWhiteSpace(env))
         {
             return env;
@@ -770,7 +770,7 @@ public sealed class ChooserBackfillRerunTool
             var path = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "config.toml");
             var text = File.ReadAllText(path);
-            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_CONNECTION_STRING\\s*=\\s*\"([^\"]+)\"");
+            var match = Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_ERP_CONN\\s*=\\s*\"([^\"]+)\"");
             return match.Success && match.Groups[1].Value.Contains("Database=EOS.ERP")
                 ? match.Groups[1].Value
                 : null;

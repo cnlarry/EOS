@@ -22,9 +22,9 @@ namespace EOS.API.Tests;
 public sealed class InventoryReadOnlyFormEntryLiveTests
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
         ?? throw new InvalidOperationException(
-            "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            "真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     /// <summary>只读表单模块 → 主表：余额表 1303、批次账 1302。</summary>
     public static TheoryData<int, string> ReadOnlyFormModules => new()

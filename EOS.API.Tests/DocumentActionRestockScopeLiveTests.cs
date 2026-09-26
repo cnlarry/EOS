@@ -24,14 +24,14 @@ namespace EOS.API.Tests;
 /// 负库存整单拒绝；探路零写入（含审计）。
 ///
 /// 夹具全自造（ZZRS 仓 + 两库区 + 库存 + 盘点单），用完即删：不碰真实库存与单据。
-/// 需要 EOS_ERP_TEST_CONNECTION。
+/// 需要 MSSQL_ERP_CONN。
 /// </summary>
 [Collection("live-database")]
 public sealed class DocumentActionRestockScopeLiveTests : IAsyncLifetime
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
-        ?? throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
+        ?? throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private const int ModuleId = 130101;
     private const string MasterTable = "INV_CHECK_STOCK_M";

@@ -16,9 +16,9 @@ public sealed class DepotStockPolicyTests
 {
     private static string RequireConnection()
     {
-        var value = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var value = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         Assert.False(string.IsNullOrWhiteSpace(value),
-            "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            "真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         return value!;
     }
 

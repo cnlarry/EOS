@@ -19,7 +19,7 @@ namespace EOS.API.Tests;
 /// 漂移守卫：LEGACY 原文一致且 FILTER_TEMPLATE 仍为 NULL 才落）；失败行入人工清单
 /// （logs/report-condition-migration/manual-list.csv，FILTER_TEMPLATE 保持 NULL 运行期 fail-closed）。
 ///
-/// 运行（显式指 csproj，从仓库根，须已设 EOS_ERP_TEST_CONNECTION）：
+/// 运行（显式指 csproj，从仓库根，须已设 MSSQL_ERP_CONN）：
 ///   dotnet test EOS.API.Tests\EOS.API.Tests.csproj --filter ReportConditionTemplateBackfillTool
 ///   并设环境变量 EOS_TOOL_REPORT_CONDITION_RERUN=1
 /// </summary>
@@ -156,7 +156,7 @@ public sealed class ReportConditionTemplateBackfillTool
 
     private static string? ResolveConnectionString()
     {
-        var env = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var env = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         if (!string.IsNullOrWhiteSpace(env))
         {
             return env;

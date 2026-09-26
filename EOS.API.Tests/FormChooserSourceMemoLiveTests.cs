@@ -14,15 +14,15 @@ namespace EOS.API.Tests;
 /// （`ColumnsExistAsync` 不通过，解析直接放弃）——于是"记忆是否被采用"是可以从结果看出来的，
 /// 而不是只断言"没报错"。
 ///
-/// 需要 EOS_ERP_TEST_CONNECTION。
+/// 需要 MSSQL_ERP_CONN。
 /// </summary>
 [Collection("live-database")]
 public sealed class FormChooserSourceMemoLiveTests
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
         ?? throw new InvalidOperationException(
-            "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            "真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private const string MasterKey = "[\"MEMO-LIVE-TEST\"]";
 

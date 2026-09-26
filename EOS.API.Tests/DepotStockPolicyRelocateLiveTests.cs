@@ -11,14 +11,14 @@ namespace EOS.API.Tests;
 /// 删除只是去掉库别的覆盖行，该库别此后按部署级默认行使，存量不动。
 ///
 /// 夹具自造 ZZ 前缀料号的哨兵行，用完即删：不碰真实库存。
-/// 需要 EOS_ERP_TEST_CONNECTION。
+/// 需要 MSSQL_ERP_CONN。
 /// </summary>
 [Collection("live-database")]
 public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
-        ?? throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
+        ?? throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private const string StockTable = "INV_PRO_DEPOT";
     private const string TestProduct = "ZZRELPRO01";

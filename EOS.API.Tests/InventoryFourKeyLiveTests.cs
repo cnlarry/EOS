@@ -16,7 +16,7 @@ namespace EOS.API.Tests;
 /// "按四键定位"结果完全一致，任何两键写法都能通过。只有造出同一 (料号, 库别) 下的两个
 /// 真实库位行，才能区分两者 —— 两键写法会把扣减同时施加到两行上。
 ///
-/// 真库用例，需 <c>EOS_ERP_TEST_CONNECTION</c>；全程在一个事务内建数、断言、回滚。
+/// 真库用例，需 <c>MSSQL_ERP_CONN</c>；全程在一个事务内建数、断言、回滚。
 /// </summary>
 [Trait("Category", "live-database")]
 [Collection("live-database")]
@@ -31,9 +31,9 @@ public sealed class InventoryFourKeyLiveTests
 
     private static string RequireConnection()
     {
-        var value = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var value = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         Assert.False(string.IsNullOrWhiteSpace(value),
-            "真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+            "真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         return value!;
     }
 

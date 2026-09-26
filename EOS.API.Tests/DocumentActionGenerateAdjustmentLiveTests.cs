@@ -24,14 +24,14 @@ namespace EOS.API.Tests;
 /// 差异为 0 的行不生成；生成结果可追溯（来源回写 + 操作审计）；`once`＝转后结案锁死。
 ///
 /// 夹具自己造库存行（ZZ 前缀料号）与盘点单，结束即清理：不碰任何真实库存与单据。
-/// 需要 EOS_ERP_TEST_CONNECTION。
+/// 需要 MSSQL_ERP_CONN。
 /// </summary>
 [Collection("live-database")]
 public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
 {
     private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION")
-        ?? throw new InvalidOperationException("真库集成测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN")
+        ?? throw new InvalidOperationException("真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
 
     private const int ModuleId = 130101;
     private const int TargetModuleId = 130107;

@@ -33,7 +33,7 @@ public sealed class AssistantRepositoryIntegrationTests : IDisposable
     }
 
     private static string? ResolveConnectionString()
-        => Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        => Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
 
     private static void EnsureSchema()
     {

@@ -151,14 +151,14 @@ public sealed class GetFieldRelationsToolTests
 public sealed class FieldRelationRegistryTests
 {
     private static string? TestConnection() =>
-        Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
 
     [Fact]
     public async Task Every_Registered_Relation_References_Existing_Tables_And_Columns()
     {
         var connectionString = TestConnection()
             ?? throw new InvalidOperationException(
-                "真库完整性测试需要 EOS_ERP_TEST_CONNECTION；未配置即失败（无连接跳过≠已验证）。");
+                "真库完整性测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         await using var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
         await connection.OpenAsync();
         const string sql = """

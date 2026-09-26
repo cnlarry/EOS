@@ -11,7 +11,7 @@ namespace EOS.API.Tests.Tools;
 /// 读内置草案（每组一条/同构多行），逐条跑 ChooserFilterValidator.ValidateAsync
 /// （QUERY_RELATION 目录 + 物理列类型 + 编译 smoke），输出 PASS/FAIL 到
 /// logs/fields-chooser-reconfigure/validation.csv。
-/// 运行（仓库根，须已设 EOS_ERP_TEST_CONNECTION）：
+/// 运行（仓库根，须已设 MSSQL_ERP_CONN）：
 ///   dotnet test EOS.API.Tests\EOS.API.Tests.csproj --filter ChooserReconfigureTool
 ///   并设环境变量 EOS_TOOL_RECONFIGURE=1；EOS_TOOL_RECONFIGURE_GEN=1 时生成迁移 040。
 /// 迁移通道已关闭（CHOOSER_FILTER_MIGRATION_LOG 已于迁移 041 删除）；本工具仅配置校验/审计参考。
@@ -31,7 +31,7 @@ public sealed class ChooserReconfigureTool
         {
             return;
         }
-        Assert.False(ConnectionString.Value is null, "拿不到开发库连接串（EOS_ERP_TEST_CONNECTION 或 ~/.codex/config.toml）");
+        Assert.False(ConnectionString.Value is null, "拿不到开发库连接串（MSSQL_ERP_CONN 或 ~/.codex/config.toml）");
 
         var drafts = BuildDrafts();
         var rows = new List<string> { "T_ID,F_ID,SERIAL_NO,SRC,ACTIVE,STATUS,ERRORS,NOTE" };
@@ -236,7 +236,7 @@ public sealed class ChooserReconfigureTool
 
     private static string? ResolveConnectionString()
     {
-        var env = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var env = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         if (!string.IsNullOrWhiteSpace(env))
         {
             return env;
@@ -245,7 +245,7 @@ public sealed class ChooserReconfigureTool
         {
             var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "config.toml");
             var text = File.ReadAllText(path);
-            var match = System.Text.RegularExpressions.Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_CONNECTION_STRING\\s*=\\s*\"([^\"]+)\"");
+            var match = System.Text.RegularExpressions.Regex.Match(text, "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_ERP_CONN\\s*=\\s*\"([^\"]+)\"");
             return match.Success && match.Groups[1].Value.Contains("Database=EOS.ERP") ? match.Groups[1].Value : null;
         }
         catch

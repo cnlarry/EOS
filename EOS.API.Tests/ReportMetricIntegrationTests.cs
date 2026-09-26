@@ -10,7 +10,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// P7 最小语义层集成测试：REPORT_METRIC 表 + EnumMetricsTool 实库枚举口径清单。
 /// 验证迁移 027 建表/种子口径、API 可枚举（Agent 消费路径）。
-/// 需要测试连接串（EOS_ERP_TEST_CONNECTION 或 codex config），否则跳过。
+/// 需要测试连接串（MSSQL_ERP_CONN 或 codex config），否则跳过。
 /// </summary>
 public class ReportMetricIntegrationTests
 {
@@ -51,7 +51,7 @@ public class ReportMetricIntegrationTests
 
     private static string? ResolveConnectionString()
     {
-        var env = Environment.GetEnvironmentVariable("EOS_ERP_TEST_CONNECTION");
+        var env = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
         if (!string.IsNullOrWhiteSpace(env)) return env;
         try
         {
@@ -59,7 +59,7 @@ public class ReportMetricIntegrationTests
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "config.toml");
             var text = File.ReadAllText(path);
             var match = System.Text.RegularExpressions.Regex.Match(text,
-                "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_CONNECTION_STRING\\s*=\\s*\"([^\"]+)\"");
+                "\\[mcp_servers\\.mssql\\.env\\][\\s\\S]*?MSSQL_ERP_CONN\\s*=\\s*\"([^\"]+)\"");
             return match.Success && match.Groups[1].Value.Contains("Database=EOS.ERP")
                 ? match.Groups[1].Value
                 : null;
