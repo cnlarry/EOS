@@ -70,7 +70,7 @@ function insertRelative(draft: DesignDraft, table: DesignTable, key: string, anc
 }
 
 /**
- * 施加一次拖拽。非法组合返回 <c>rejected</c> 供界面提示（例如"必填字段不能从表单移除"）。
+ * 施加一次拖拽。非法组合返回 <c>rejected</c> 供界面提示（例如"必填字段不能移出表单"）。
  */
 export function applyDrop(draft: DesignDraft, source: DragSource, target: DropTarget): DropResult {
   if (!target) return { rejected: '没有落在可放置的位置上。' }
@@ -118,7 +118,7 @@ export function applyDrop(draft: DesignDraft, source: DragSource, target: DropTa
   }
 }
 
-/** 移除 = 表单内隐藏（保留排版属性，恢复时原位回填）；不可移除字段直接拒绝并说明原因。 */
+/** 移出表单 = 置 IS_HIDDEN 位（保留排版属性，放回时原位回填）；不可移出字段直接拒绝并说明原因。 */
 function removeField(
   draft: DesignDraft,
   source: DragSource,
@@ -127,7 +127,7 @@ function removeField(
   const rows = source.table === 'master' ? draft.master : draft.detail
   const row = rows.find(item => item.key === source.key)
   if (!row) return { rejected: '找不到要移除的字段。' }
-  if (row.locked) return { rejected: `${row.label} ${row.lockReason ?? '不允许从表单移除'}。` }
+  if (row.locked) return { rejected: `${row.label} ${row.lockReason ?? '不允许移出表单'}。` }
   return { draft: setHidden(draft, source.table, source.key, true) }
 }
 

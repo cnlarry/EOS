@@ -23,8 +23,10 @@ export interface DesignRow {
   sectionId: string | null
   cellGroup: string | null
   cellRole: number
+  /** 已移出表单（写 `MODULE_FORM_LAYOUT.IS_HIDDEN`）：主表仍在画布上以删除线标注，
+   *  明细不再出现在表头上——放回入口是字段池「添加列」。 */
   hidden: boolean
-  /** 不可移除：主键、单据系统列、用户可填的必填列（服务端保存期同样拒绝）。 */
+  /** 不可移出：主键、单据系统列、用户可填的必填列（服务端保存期同样拒绝）。 */
   locked: boolean
   lockReason: string | null
   /** 当前用户在该字段上是否可见（成本/保密/禁止字段在池中仍列出，但带锁图标）。 */
@@ -136,7 +138,7 @@ export interface DesignDraft {
   masterPool: PoolField[]
   detail: DesignRow[]
   detailPool: PoolField[]
-  /** 加载时的原始版式，供"恢复该字段默认"与"放弃修改"使用。 */
+  /** 加载时的原始版式，供"恢复该字段默认排版"与"放弃修改"使用。 */
   baseline: {
     tabs: DesignTab[]
     master: DesignRow[]

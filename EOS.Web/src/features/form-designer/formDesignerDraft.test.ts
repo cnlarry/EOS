@@ -126,7 +126,7 @@ describe('moveRow', () => {
 })
 
 describe('setHidden', () => {
-  it('移除即隐藏（保留排版属性，不删行）', () => {
+  it('移出表单即置 IS_HIDDEN 位（保留排版属性，不删行）', () => {
     const draft = toDraft(state())
     const next = setHidden(draft, 'master', 'B', true)
     expect(next.master.find(item => item.key === 'B')?.hidden).toBe(true)
@@ -134,7 +134,7 @@ describe('setHidden', () => {
     expect(setHidden(next, 'master', 'B', false).master.find(item => item.key === 'B')?.hidden).toBe(false)
   })
 
-  it('不可移除字段拒绝隐藏', () => {
+  it('不可移出字段被拒绝', () => {
     const locked = state({
       master: {
         table: 'COP_ORDER_M',
@@ -255,7 +255,7 @@ describe('resetRow', () => {
 })
 
 describe('toSavePayload', () => {
-  it('提交顺序即排序（服务端会再重排 1..n），明细只带 key 与隐藏位', () => {
+  it('提交顺序即排序（服务端会再重排 1..n），明细只带 key 与移出位', () => {
     const draft = toDraft(state())
     const payload = toSavePayload(moveRow(draft, 'master', 'C', -1), 'stamp', 'key-1')
     expect(payload.baseUpdatedAt).toBe('stamp')
@@ -270,7 +270,7 @@ describe('toSavePayload', () => {
 })
 
 describe('validateDraft', () => {
-  it('本地口径与后端一致：必填不得隐藏、跨度不得越界、复合格须成对', () => {
+  it('本地口径与后端一致：必填不得移出表单、跨度不得越界、复合格须成对', () => {
     const draft = toDraft(state())
     expect(validateDraft(draft)).toEqual([])
 

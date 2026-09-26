@@ -141,7 +141,7 @@ export function moveRowToTab(draft: DesignDraft, key: string, tabNo: number): De
   }
 }
 
-/** 移除字段 = 表单内隐藏（保留该字段的排版属性，恢复时原位回填），不物理删行。 */
+/** 移出表单 = 置 IS_HIDDEN 位（保留该字段的排版属性，放回时原位回填），不物理删行。 */
 export function setHidden(draft: DesignDraft, table: DesignTable, key: string, hidden: boolean): DesignDraft {
   const rows = rowsOf(draft, table)
   const row = rows.find((item) => item.key === key)
@@ -295,7 +295,7 @@ export function deleteTab(draft: DesignDraft, no: number): DesignDraft {
 }
 
 /**
- * 恢复该字段默认：位置与占位都回到加载时的样子。
+ * 恢复该字段默认排版：位置与占位都回到加载时的样子。
  * 位置按"默认版式里它前面的那个字段之后"落位——直接插到末尾会让恢复出来的版式与原默认不同。
  */
 export function resetRow(draft: DesignDraft, table: DesignTable, key: string): DesignDraft {
@@ -380,7 +380,7 @@ export function validateDraft(draft: DesignDraft): string[] {
       issues.push(`${row.label} 所属页签已不存在。`)
     }
     if (row.hidden && row.locked) {
-      issues.push(`${row.label} ${row.lockReason ?? '不允许从表单移除'}。`)
+      issues.push(`${row.label} ${row.lockReason ?? '不允许移出表单'}。`)
     }
     if (row.span < 1 || row.span > draft.columns) {
       issues.push(`${row.label} 的列跨度超出 1..${draft.columns}。`)
