@@ -1,11 +1,12 @@
 import { IconPlus, IconX } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { UnifiedChooser } from '../../components/common/UnifiedChooser'
 import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { apiClient } from '../../services/api'
 import { FILTER_OPERATORS, isTypeCompatible, type FilterRowDraft, type ReturnRowDraft } from './chooserDraft'
+import { FieldPickerSelect, type FieldPickerOption } from './FieldPickerSelect'
 import type { ChooserSource, FieldEditorEndpoints } from './FieldEditorForm'
 
 export interface DataSourceDraft {
@@ -45,106 +46,6 @@ interface DataSourceEditorModalProps {
 
 function emptySource(): ChooserSource {
   return { active: true, table: null, description: null, moduleId: null, filter: null, returnMapping: null, serialNo: null }
-}
-
-interface FieldPickerOption {
-  value: string
-  label: string
-  dataType?: string
-}
-
-/** 轻量字段下拉：主文本（中文(字段名)）+ 类型小号灰色，原生 select 不支持富文本故自定义。 */
-function FieldPickerSelect({ options, value, onChange, placeholder, ariaLabel }: {
-  options: FieldPickerOption[]
-  value: string
-  onChange: (value: string) => void
-  placeholder: string
-  ariaLabel: string
-}) {
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const selected = options.find(option => option.value === value)
-  const close = () => setOpen(false)
-
-  // 打开时聚焦当前选中项（无选中聚焦第一项），支持方向键在选项间移动
-  useEffect(() => {
-    if (!open) return
-    const options = containerRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]')
-    if (!options || options.length === 0) return
-    const currentIndex = Array.from(options).findIndex(option => option.classList.contains('bg-primary-lt'))
-    options[Math.max(currentIndex, 0)]?.focus()
-  }, [open])
-
-  const moveOptionFocus = (event: React.KeyboardEvent) => {
-    const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'))
-    const current = options.indexOf(document.activeElement as HTMLButtonElement)
-    const next = event.key === 'ArrowDown' ? Math.min(current + 1, options.length - 1) : Math.max(current - 1, 0)
-    options[next]?.focus()
-  }
-
-  return (
-    <div
-      className="position-relative flex-grow-1"
-      ref={containerRef}
-      onBlur={event => {
-        const next = event.relatedTarget as Node | null
-        if (!next || !event.currentTarget.contains(next)) close()
-      }}
-    >
-      <button
-        type="button"
-        className="form-select form-select-sm text-start"
-        aria-label={ariaLabel}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        onClick={() => setOpen(current => !current)}
-        onKeyDown={event => {
-          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault()
-            setOpen(true)
-          } else if (event.key === 'Escape') {
-            close()
-          }
-        }}
-      >
-        {selected
-          ? <><span className="text-truncate d-inline-block align-middle" style={{ maxWidth: 'calc(100% - 70px)' }}>{selected.label}</span><span className="text-secondary small ms-1">{selected.dataType}</span></>
-          : <span className="text-secondary">{placeholder}</span>}
-      </button>
-      {open && (
-        <div
-          className="position-absolute top-100 start-0 w-100 border rounded bg-white shadow-sm z-3"
-          role="listbox"
-          aria-label={ariaLabel}
-          style={{ maxHeight: 240, overflowY: 'auto' }}
-          onKeyDown={event => {
-            if (event.key === 'Escape') {
-              event.stopPropagation()
-              close()
-              containerRef.current?.querySelector<HTMLButtonElement>('button.form-select')?.focus()
-            } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-              event.preventDefault()
-              moveOptionFocus(event)
-            }
-          }}
-        >
-          <button type="button" role="option" className="d-block w-100 text-start px-2 py-1 border-0 bg-transparent text-secondary" onClick={() => { onChange(''); close() }}>{placeholder}</button>
-          {options.map(option => (
-            <button
-              key={option.value}
-              type="button"
-              role="option"
-              className={`erp-picker-option d-flex w-100 align-items-center justify-content-between px-2 py-1 border-0 bg-transparent ${option.value === value ? 'bg-primary-lt' : ''}`}
-              onClick={() => { onChange(option.value); close() }}
-            >
-              <span className="text-truncate">{option.label}</span>
-              {option.dataType && <span className="text-secondary small ms-2">{option.dataType}</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
 }
 
 /** 来源表列（物理列 + 来源表内受控虚拟列，下拉选项）。 */
@@ -214,12 +115,12 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
     label: column.isVirtual
       ? `${column.description || column.name}(${column.name})·虚拟`
       : `${column.description || column.name}(${column.name})`,
-    dataType: column.dataType,
+    meta: column.dataType,
   }))
   const physicalSourceColumnOptions: FieldPickerOption[] = physicalSourceColumns.map(column => ({
     value: column.name,
     label: `${column.description || column.name}(${column.name})`,
-    dataType: column.dataType,
+    meta: column.dataType,
   }))
 
   const updateFilterRows = (rows: FilterRowDraft[]) => setFilterRows(rows)
@@ -393,7 +294,7 @@ export function DataSourceEditorModal({ open, initial, currentTable, endpoints, 
                           options={compatibleTargets.map(field => ({
                             value: field.fieldId,
                             label: `${field.description || field.fieldId}(${field.fieldId})`,
-                            dataType: field.dataType,
+                            meta: field.dataType,
                           }))}
                           value={row.target}
                           onChange={target => updateReturnRows(returnRows.map(r => r.key === row.key ? { ...r, target } : r))}

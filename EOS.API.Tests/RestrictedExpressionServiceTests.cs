@@ -141,4 +141,88 @@ public class RestrictedExpressionServiceTests
         Assert.False(VirtualArithmeticParser.TryParse(expression, out _, out var error));
         Assert.Contains(expectedErrorPart, error);
     }
+
+    [Fact]
+    public void ParseStructure_VirtualReference_RoundTrips()
+    {
+        var structure = RestrictedExpressionService.ParseStructure(RestrictedExpressionKind.VirtualExp, " CLIENT.CLIENT_NAME ");
+        Assert.Equal("virtual_exp", structure.Kind);
+        Assert.Equal(ExpressionStructureModes.Reference, structure.Mode);
+        Assert.Equal("CLIENT", structure.Table);
+        Assert.Equal("CLIENT_NAME", structure.Column);
+    }
+
+    [Fact]
+    public void ParseStructure_VirtualArithmetic_NotBuildable()
+    {
+        var structure = RestrictedExpressionService.ParseStructure(RestrictedExpressionKind.VirtualExp, "A.QTY+B.QTY");
+        Assert.Equal(ExpressionStructureModes.Arithmetic, structure.Mode);
+        Assert.Null(structure.Table);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("1; DROP TABLE X")]
+    public void ParseStructure_VirtualInvalid_FallsBackToRaw(string expression)
+    {
+        Assert.Equal(ExpressionStructureModes.Raw,
+            RestrictedExpressionService.ParseStructure(RestrictedExpressionKind.VirtualExp, expression).Mode);
+    }
+
+    [Fact]
+    public void ParseStructure_ConvertFunction_NormalizesRegistryName()
+    {
+        var structure = RestrictedExpressionService.ParseStructure(RestrictedExpressionKind.ConvertFunction, "F_GET_EMP_NAME_BY_ID");
+        Assert.Equal(ExpressionStructureModes.Registry, structure.Mode);
+        Assert.Equal("f_get_emp_name_by_id", structure.Function);
+    }
+
+    [Theory]
+    [InlineData("CONVERT(X)")]
+    [InlineData("f_get_unknown_fn")]
+    public void ParseStructure_ConvertFunctionOutsideRegistry_Raw(string expression)
+    {
+        Assert.Equal(ExpressionStructureModes.Raw,
+            RestrictedExpressionService.ParseStructure(RestrictedExpressionKind.ConvertFunction, expression).Mode);
+    }
+
+    [Fact]
+    public void ParseStructure_DataSourceSql_UnquotesWhereLiteral()
+    {
+        var structure = RestrictedExpressionService.ParseStructure(
+            RestrictedExpressionKind.DataSourceSql,
+            "SELECT PRO_NO,PRO_NAME FROM PRODUCT WHERE PRO_TYPE = 'O''K' ORDER BY PRO_NO DESC");
+        Assert.Equal(ExpressionStructureModes.TableSql, structure.Mode);
+        var dataSource = structure.DataSource;
+        Assert.NotNull(dataSource);
+        Assert.Equal("PRODUCT", dataSource.Table);
+        Assert.Equal(new[] { "PRO_NO", "PRO_NAME" }, dataSource.Columns);
+        Assert.Equal("PRO_TYPE", dataSource.WhereColumn);
+        Assert.Equal("O'K", dataSource.WhereValue);
+        Assert.True(dataSource.WhereValueIsString);
+        Assert.Equal("PRO_NO", dataSource.OrderColumn);
+        Assert.Equal("DESC", dataSource.OrderDirection);
+    }
+
+    [Fact]
+    public void ParseStructure_DataSourceSql_NumericLiteralHasNoQuotes()
+    {
+        var structure = RestrictedExpressionService.ParseStructure(
+            RestrictedExpressionKind.DataSourceSql,
+            "SELECT G_IDX FROM SYSDG WHERE G_KIND = 2");
+        Assert.NotNull(structure.DataSource);
+        Assert.Equal("2", structure.DataSource.WhereValue);
+        Assert.False(structure.DataSource.WhereValueIsString);
+    }
+
+    [Theory]
+    [InlineData("SELECT 'P' AS T_KIND UNION SELECT 'S'", ExpressionStructureModes.LiteralUnion)]
+    [InlineData("SELECT 1", ExpressionStructureModes.Raw)]
+    [InlineData("DELETE FROM SYSDG", ExpressionStructureModes.Raw)]
+    public void ParseStructure_DataSourceSql_NonBuildableForms(string expression, string expectedMode)
+    {
+        var structure = RestrictedExpressionService.ParseStructure(RestrictedExpressionKind.DataSourceSql, expression);
+        Assert.Equal(expectedMode, structure.Mode);
+        Assert.Null(structure.DataSource);
+    }
 }

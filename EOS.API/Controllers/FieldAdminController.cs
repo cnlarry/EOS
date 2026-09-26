@@ -9,6 +9,7 @@ namespace EOS.API.Controllers;
 public sealed record ValidateExpressionRequest(string Kind, string Table, string Field, string? Expression);
 public sealed record PreviewExpressionRequest(string Kind, string Table, string Field, string? Expression);
 public sealed record PublishExpressionRequest(string Kind, string Table, string Field, string? Expression, string? Original);
+public sealed record ParseExpressionRequest(string Kind, string? Expression);
 
 [ApiController]
 [Route("api/v1/admin")]
@@ -173,6 +174,32 @@ public sealed class FieldAdminController(
             PublishExpressionStatus.NotFound => NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "FIELD_NOT_FOUND", "字段元数据不存在。")),
             _ => Conflict(ApiProblem.Create(StatusCodes.Status409Conflict, "CONCURRENT_MODIFIED", "字段内容已被他人修改，请刷新后重试。")),
         };
+    }
+
+    /// <summary>受控表达式结构回读：字段设置构建器初始化（与校验同源解析器；不触库、不执行表达式）。</summary>
+    [HttpPost("fields/expressions/parse")]
+    public async Task<IActionResult> ParseExpression(ParseExpressionRequest request, CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        if (!TryParseKind(request.Kind, out var kind))
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_EXPRESSION_KIND", "kind 仅支持 virtual_exp / convert_function / datasource_sql。"));
+        return Ok(RestrictedExpressionService.ParseStructure(kind, request.Expression));
+    }
+
+    /// <summary>受控表达式注册表（白名单版本 + 转换函数名）：构建器下拉的唯一来源。</summary>
+    [HttpGet("fields/expressions/registry")]
+    public async Task<IActionResult> ExpressionRegistry(CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        return Ok(await expressionService.GetRegistryAsync(token));
+    }
+
+    /// <summary>表关联白名单（TABLES.QUERY_RELATION）：虚拟表达式构建器的跨表引用候选（只读元数据）。</summary>
+    [HttpGet("tables/{table}/relations")]
+    public async Task<IActionResult> TableRelations(string table, CancellationToken token)
+    {
+        if (!await CanBrowse(token)) return Forbid();
+        return Ok(await repository.GetTableRelationsAsync(table, token));
     }
 
     /// <summary>对全部已发布表达式按当前白名单版本重校验（P3：版本升级后标记需复核项）。</summary>

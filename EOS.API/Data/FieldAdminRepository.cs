@@ -656,6 +656,37 @@ public sealed class FieldAdminRepository(
         return result;
     }
 
+    /// <summary>
+    /// 表关联白名单（TABLES.QUERY_RELATION）：虚拟表达式构建器的跨表引用候选（别名 + 关联条件）。
+    /// 关系为空或不可解析时不抛错，以 Ok/Error 表达（解析器与运行时共用一份，避免两处口径）。
+    /// </summary>
+    public async Task<FieldAdminRelations> GetTableRelationsAsync(string tableId, CancellationToken token)
+    {
+        EnsureIdentifier(tableId, null);
+        var table = tableId.Trim();
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(token);
+        string relation;
+        await using (var command = new SqlCommand(
+            "SELECT LTRIM(RTRIM(ISNULL(QUERY_RELATION,''))) FROM dbo.TABLES WITH (NOLOCK) WHERE LTRIM(RTRIM(T_ID))=@TableId;",
+            connection))
+        {
+            command.Parameters.Add("@TableId", SqlDbType.NVarChar, 100).Value = table;
+            relation = await command.ExecuteScalarAsync(token) as string ?? "";
+        }
+        if (string.IsNullOrWhiteSpace(relation)) return new(table, true, null, []);
+        if (!VirtualExpressionParser.TryParseRelation(relation, table, out var joins, out var error))
+            return new(table, false, error, []);
+        var items = joins.Select(join => new FieldAdminRelation(
+            join.Table,
+            join.Alias,
+            join.Conditions.Select(condition => $"{condition.LeftTable}.{condition.LeftColumn}={condition.RightTable}.{condition.RightColumn}")
+                .Concat((join.Constants ?? []).Select(constant =>
+                    $"{constant.Table}.{constant.Column}={(constant.IsString ? $"'{constant.Literal}'" : constant.Literal)}"))
+                .ToList())).ToList();
+        return new(table, true, null, items);
+    }
+
     private static async Task<string?> GetPhysicalTypeAsync(
         SqlConnection connection,
         string tableId,

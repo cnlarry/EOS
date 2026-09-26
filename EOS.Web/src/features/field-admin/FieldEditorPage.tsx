@@ -17,6 +17,7 @@ import {
   type FieldMeta,
   type SetupLookup,
 } from './FieldEditorForm'
+import type { ExpressionRegistry, ExpressionStructure, TableColumn, TableRelations } from './expressionBuilder'
 
 interface FieldAdminMetadata {
   tableId: string
@@ -152,6 +153,13 @@ export function FieldEditorRoute() {
     publishExpression: async (kind: ExpressionKind, targetTable: string, targetFieldId: string, expression: string | null, original: string | null) => {
       await apiClient.post('/admin/fields/expressions/publish', { kind, table: targetTable, field: targetFieldId, expression, original })
     },
+    expressionRegistry: async () => apiClient.get<ExpressionRegistry>('/admin/fields/expressions/registry'),
+    parseExpression: async (kind: ExpressionKind, expression: string | null) =>
+      (await apiClient.post('/admin/fields/expressions/parse', { kind, expression })) as ExpressionStructure,
+    tableRelations: async (targetTable: string) =>
+      apiClient.get<TableRelations>(`/admin/tables/${encodeURIComponent(targetTable)}/relations`),
+    tableColumns: async (targetTable: string) =>
+      apiClient.get<TableColumn[]>(`/admin/tables/${encodeURIComponent(targetTable)}/columns`),
   }), [tableId, fieldId, copyFrom, isNew])
 
   return (
