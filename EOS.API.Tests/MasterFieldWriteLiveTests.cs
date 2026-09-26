@@ -82,11 +82,11 @@ public sealed class MasterFieldWriteLiveTests : IAsyncLifetime
         // 先删子表：AUDIT_FIELD_CHANGE 对 AUDIT_EVENT 有外键（先后值就落在子表里）
         await ExecAsync(connection, """
             DELETE c FROM dbo.AUDIT_FIELD_CHANGE c JOIN dbo.AUDIT_EVENT e ON e.EVENT_ID = c.EVENT_ID
-             WHERE e.MODULE_ID = @module AND e.RESOURCE_KEY = @key;
+             WHERE e.M_IDX = @module AND e.RESOURCE_KEY = @key;
             """, ("@module", ModuleId), ("@key", $"{BatchNo},{TestProduct}"));
-        await ExecAsync(connection, "DELETE FROM dbo.AUDIT_EVENT WHERE MODULE_ID = @module AND RESOURCE_KEY = @key;",
+        await ExecAsync(connection, "DELETE FROM dbo.AUDIT_EVENT WHERE M_IDX = @module AND RESOURCE_KEY = @key;",
             ("@module", ModuleId), ("@key", $"{BatchNo},{TestProduct}"));
-        await ExecAsync(connection, "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE MODULE_ID = @module AND ACTION = N'ACTION';",
+        await ExecAsync(connection, "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX = @module AND ACTION = N'ACTION';",
             ("@module", ModuleId));
         await ExecAsync(connection, "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID = @user;", ("@user", TestUser));
         await ExecAsync(connection, "DELETE FROM dbo.INV_BATCH_M WHERE BATCH_NO = @batch AND PRO_NO = @pro;",
@@ -115,7 +115,7 @@ public sealed class MasterFieldWriteLiveTests : IAsyncLifetime
         await using (var command = new SqlCommand("""
             SELECT c.FIELD_NAME, c.OLD_VALUE, c.NEW_VALUE
               FROM dbo.AUDIT_EVENT e JOIN dbo.AUDIT_FIELD_CHANGE c ON c.EVENT_ID = e.EVENT_ID
-             WHERE e.MODULE_ID = @module AND e.RESOURCE_KEY = @key AND e.ACTION = N'UPDATE';
+             WHERE e.M_IDX = @module AND e.RESOURCE_KEY = @key AND e.ACTION = N'UPDATE';
             """, connection))
         {
             command.Parameters.AddWithValue("@module", ModuleId);
@@ -178,7 +178,7 @@ public sealed class MasterFieldWriteLiveTests : IAsyncLifetime
             "SELECT CONVERT(varchar(10), EFFECT_DATE, 120) FROM dbo.INV_BATCH_M WHERE BATCH_NO = @batch AND PRO_NO = @pro;",
             ("@batch", BatchNo), ("@pro", TestProduct)));
         Assert.Equal(0, await ScalarAsync<int>(connection,
-            "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE MODULE_ID = @module AND RESOURCE_KEY = @key AND ACTION = N'UPDATE';",
+            "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE M_IDX = @module AND RESOURCE_KEY = @key AND ACTION = N'UPDATE';",
             ("@module", ModuleId), ("@key", $"{BatchNo},{TestProduct}")));
     }
 

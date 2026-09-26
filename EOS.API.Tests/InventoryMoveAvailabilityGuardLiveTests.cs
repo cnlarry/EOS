@@ -91,8 +91,9 @@ public sealed class InventoryMoveAvailabilityGuardLiveTests : IAsyncLifetime
     private static async Task CleanupAsync(SqlConnection connection)
     {
         // 这里**不清理幂等表**：本用例直接驱动移动处理器，不走工作台执行器，因此根本不会写幂等行
-        // （写幂等是执行器的事）。顺带也避开了那张表上正在进行的列改名（MODULE_ID → M_IDX 在途、
-        // 库侧尚未执行），用例只清理它自己真的写出来的东西。
+        // （写幂等是执行器的事）。用例只清理它自己真的写出来的东西——不清理不存在的痕迹，
+        // 也就不必去引用那张表的模块列（它刚随全仓改名从 `MODULE_ID` 变成 `M_IDX`，
+        // 少一个引用点就少一处会被改名的连带损伤）。
         await ExecAsync(connection, """
             DELETE FROM dbo.INV_DEPOT_LOG WHERE MUTUALITY_TYPE = @type AND LTRIM(RTRIM(MUTUALITY_NO)) = @no;
             DELETE FROM dbo.INV_LOAN_D WHERE LOAN_TYPE = @type;
