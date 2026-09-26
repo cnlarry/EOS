@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using EOS.API.Controllers;
 using EOS.API.Data;
+using EOS.API.Data.DocumentActions;
 using EOS.API.Data.Effects;
 using EOS.API.Models;
 using EOS.API.Security;
@@ -459,6 +460,149 @@ public sealed class EffectSimulationLiveTests
         Assert.False(string.IsNullOrWhiteSpace(step.Message));
         Assert.Equal(1, report.Counts.Failed);
         Assert.False(await ReadConfirmTagAsync(connection, candidate, token));
+    }
+
+    /// <summary>
+    /// 草稿预演：让配置者先回答"**我这次改完会发生什么**"——预演跑的配置来自未保存的草稿，
+    /// 而不是已发布快照；其余部分（字段、表、主键、引擎开关）仍取已发布基线。
+    ///
+    /// 三条判据缺一不可，少一条这个功能就是装饰：
+    /// ① 报告自证来源（`configSource=draft`）——同一张单据两份报告必须能分辨；
+    /// ② 跑的确实是草稿：草稿把**已发布配置里的批核生效行全部停用**（只改 enabled 一个字段），
+    ///    于是同一条单据在已发布配置下"至少跑一步"、在草稿下"一步都不跑"——对照即证据；
+    /// ③ 仍然无条件回滚（库内逐表指纹零变化、单据批核状态未翻转）。
+    /// </summary>
+    [Fact]
+    public async Task 草稿预演_按未保存草稿跑且报告自证来源()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        var candidate = await FindCandidateAsync(connection, token);
+        var userContext = UserContext(await FindConfigAccountAsync(connection, token));
+        var controller = await CreateConfigControllerAsync(connection, candidate, userContext, token);
+        var published = await LoadPublishedDefinitionAsync(connection, candidate.ModuleId, token);
+
+        var before = await SnapshotAsync(connection, token);
+        var publishedReport = await SimulateThroughControllerAsync(controller, candidate, draft: null, token);
+        Assert.Equal("published", publishedReport.ConfigSource);
+
+        // 草稿：沿用已发布配置，只把批核生效行停用（用户点击行照旧——它本就不在效果链里）。
+        var publishedActions = (published.BusinessActions?.Deserialize<List<BusinessActionDto>>(
+            WorkbenchDefinitionProvider.JsonOptions)) ?? [];
+        Assert.NotEmpty(publishedActions);
+        var publishedRules = (published.ValidationRules?.Deserialize<List<ModuleValidationRuleDto>>(
+            WorkbenchDefinitionProvider.JsonOptions)) ?? [];
+        var draft = new SaveModuleBusinessConfigRequest(
+            publishedActions
+                .Select(action => action.EventCode.Equals("APPROVE_EFFECT", StringComparison.OrdinalIgnoreCase)
+                    ? action with { Enabled = false }
+                    : action)
+                .ToList(),
+            publishedRules);
+
+        var draftReport = await SimulateThroughControllerAsync(controller, candidate, draft, token);
+
+        Assert.Equal("draft", draftReport.ConfigSource);
+        Assert.True(draftReport.RolledBack);
+        Assert.True(publishedReport.Counts.Ran >= 1,
+            "样本模块的已发布配置本身一步都不跑，这条用例就没有对照意义。");
+        // 草稿把批核生效行全停用 ⇒ 一步都不该真跑，且报告里每一步都自证"这条是停用的"。
+        Assert.Equal(0, draftReport.Counts.Ran);
+        Assert.NotEmpty(draftReport.Effects);
+        Assert.All(draftReport.Effects, step => Assert.False(step.Enabled));
+
+        // 回滚仍然兜住一切：草稿那条链没有留下任何痕迹。
+        Assert.Equal(before, await SnapshotAsync(connection, token));
+        Assert.False(await ReadConfirmTagAsync(connection, candidate, token));
+    }
+
+    /// <summary>
+    /// 草稿本身不合法时**拒绝预演**：跑一份结构非法的配置只会产出误导性报告
+    /// （失败原因会变成"配置坏了"，而配置者以为在问"改完会怎样"）。
+    /// </summary>
+    [Fact]
+    public async Task 草稿预演_草稿结构非法时拒绝且不跑链()
+    {
+        var token = CancellationToken.None;
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync(token);
+        var candidate = await FindCandidateAsync(connection, token);
+        var userContext = UserContext(await FindConfigAccountAsync(connection, token));
+        var controller = await CreateConfigControllerAsync(connection, candidate, userContext, token);
+        var before = await SnapshotAsync(connection, token);
+
+        var badDraft = new SaveModuleBusinessConfigRequest(
+            [new BusinessActionDto(Seq: 1, EventCode: "NOT_AN_EVENT", EffectKey: "field-accumulate")],
+            []);
+
+        var result = await controller.Simulate(
+            candidate.ModuleId,
+            new EffectSimulationRequest("APPROVE_EFFECT", candidate.KeyValues.ToList(), badDraft),
+            token);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(result);
+        var problem = Assert.IsType<ProblemDetails>(bad.Value);
+        Assert.Equal("DRAFT_CONFIG_INVALID", Convert.ToString(problem.Extensions["code"]));
+        Assert.Equal(before, await SnapshotAsync(connection, token));
+    }
+
+    /// <summary>
+    /// 装配一个只带"草稿预演"这条路径所需依赖的配置端点（其余参数置空，把依赖面说清楚）。
+    /// 调用者上下文必须由**用例方法自己构造**：`HttpContextAccessor` 的赋值走 `AsyncLocal`，
+    /// 在异步辅助方法里构造只会写进那份拷贝，回到用例时读到的仍是"未登录"。
+    /// 单据操作注册表按该模块已发布的用户点击行**如实登记**：草稿里的 MANUAL 行要能通过
+    /// "键已实现"这道校验（空注册表会把合法草稿判成非法，那是测试自己在制造假象）。
+    /// </summary>
+    private static async Task<ModuleBusinessConfigController> CreateConfigControllerAsync(
+        SqlConnection connection, Candidate candidate, CurrentUserContext userContext, CancellationToken token)
+    {
+        var connections = Connections();
+        var provider = new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
+        var published = await LoadPublishedDefinitionAsync(connection, candidate.ModuleId, token);
+        provider.SeedBaselineForTest(candidate.ModuleId, published, "module-draft-test");
+        var manualKeys = ((published.BusinessActions?.Deserialize<List<BusinessActionDto>>(
+                WorkbenchDefinitionProvider.JsonOptions)) ?? [])
+            .Where(action => BusinessActionCatalog.IsManualEvent(action.EventCode))
+            .Select(action => action.EffectKey.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        return new ModuleBusinessConfigController(
+            repository: null!,
+            rightsRepository: new ModuleRightsRepository(connections, NullLogger<ModuleRightsRepository>.Instance),
+            snapshotService: null!,
+            documentActions: new DocumentActionRegistry(
+                manualKeys.Select(key => (IDocumentUserAction)new StubDocumentAction(key)),
+                NullLogger<DocumentActionRegistry>.Instance),
+            documentActionAuthorization: null!,
+            definitions: provider,
+            simulation: CreateSimulation(connections),
+            logger: NullLogger<ModuleBusinessConfigController>.Instance,
+            userContext: userContext);
+    }
+
+    /// <summary>草稿预演只用到注册表的**键集**（校验用户点击行的键是否已实现），故桩只需给键与名字。</summary>
+    private sealed class StubDocumentAction(string key) : IDocumentUserAction
+    {
+        public string Key { get; } = key;
+
+        public string Label => Key;
+
+        public Task<DocumentActionResult> ExecuteAsync(DocumentActionContext context, CancellationToken token) =>
+            throw new NotSupportedException("草稿预演不会执行用户点击动作，桩只用于键集校验。");
+    }
+
+    private static async Task<EffectSimulationReportDto> SimulateThroughControllerAsync(
+        ModuleBusinessConfigController controller,
+        Candidate candidate,
+        SaveModuleBusinessConfigRequest? draft,
+        CancellationToken token)
+    {
+        var result = await controller.Simulate(
+            candidate.ModuleId,
+            new EffectSimulationRequest("APPROVE_EFFECT", candidate.KeyValues.ToList(), draft),
+            token);
+        var ok = Assert.IsType<OkObjectResult>(result);
+        return Assert.IsType<EffectSimulationReportDto>(ok.Value);
     }
 
     /// <summary>预演门按写面收口：库内必须有同时具备 2301 设置权与模块配置权的账号，否则本用例无意义。</summary>
