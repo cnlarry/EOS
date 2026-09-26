@@ -1062,10 +1062,11 @@ button, input, select { font: inherit; }
   background: var(--tblr-danger);
   border-radius: 8px;
 }
-/* 相邻标签始终只保留一条分隔线，且激活标签边框完整：
-   非激活的后续标签去掉左边框；激活标签的前一个邻居去掉右边框（:has） */
-.erp-form-tabs .nav-item + .nav-item .nav-link:not(.active) { border-left: 0 !important; }
-.erp-form-tabs .nav-item:has(+ .nav-item .nav-link.active) .nav-link { border-right: 0 !important; }
+/* 相邻标签重叠 1px：相邻的右/左边框共享同一像素列（与系统级页签 .erp-tabbed-panel-tabs 同一套几何）。
+   Tabler 的非激活标签边框本来就是 1px 透明占位，hover/激活只切换颜色、不改宽度，
+   所以重叠后悬停时四条边框始终完整，相邻处视觉恒为 1px 线，切换零抖动。
+   不要用 border-left: 0 去抹边框——那会把悬停态的那条边一起抹掉，观感上"缺一点"。 */
+.erp-form-tabs .nav-item + .nav-item .nav-link { margin-left: -1px; }
 
 /* 主表单卡：视觉交给 erp-form-grid（边框/圆角/背景），卡本身透明、无内边距；
    border-radius 归零避免 card 圆角 + overflow:hidden 裁切工具栏第一个按钮左上角 */
