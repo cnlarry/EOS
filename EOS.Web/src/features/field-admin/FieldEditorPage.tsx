@@ -201,7 +201,6 @@ export function FieldEditorRoute() {
                     historyTab={!isNew}
                     actionRef={actionRef}
                     onStateChange={setSaveState}
-                    contextModuleId={moduleId && /^\d+$/.test(moduleId) ? Number(moduleId) : null}
                   />
                 </div>
               </div>

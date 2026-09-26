@@ -32,7 +32,6 @@ function renderForm(
   onSaved = vi.fn(),
   onCancel = vi.fn(),
   onStateChange?: (state: { canSave: boolean; saving: boolean; dirty: boolean }) => void,
-  contextModuleId: number | null = null,
 ) {
   return {
     ...renderWithProviders(
@@ -45,7 +44,6 @@ function renderForm(
           onCancel={onCancel}
           onSaved={onSaved}
           onStateChange={onStateChange}
-          contextModuleId={contextModuleId}
           renderActions={({ canSave, onSave, onCancel: onFormCancel }) => (
             <div>
               <button disabled={!canSave} onClick={onSave}>保存</button>
@@ -157,17 +155,19 @@ describe('FieldEditorForm', () => {
     expect(screen.getAllByRole('button', { name: '发布' }).every((button) => button.hasAttribute('disabled'))).toBe(true)
   })
 
-  it('表单排布入口在页头（跳转设计态），下拉选项归基本信息', async () => {
+  it('字段维护页不含任何表单设计入口，下拉选项归基本信息', async () => {
     const save = vi.fn().mockResolvedValue(undefined)
     const loaded = meta({ options: 'O=外含税;I=内含税' })
-    renderForm('edit', { load: vi.fn().mockResolvedValue(loaded), save }, vi.fn(), vi.fn(), undefined, 1405)
+    renderForm('edit', { load: vi.fn().mockResolvedValue(loaded), save })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    // 字段级排布设置已退役：不再有「表单布局」页签，形态类入口在界面上彻底消失
+    // 形态（排布 / 占位 / 复合格 / 页签）不在字段维护页编辑：既无「表单布局」页签，也无跳转设计态的入口
     expect(screen.queryByRole('tab', { name: '表单布局' })).toBeNull()
+    expect(screen.queryByText(/已归模块级版式/)).toBeNull()
     expect(screen.queryByText('页签序号（FORM_TAB_NO）')).toBeNull()
     expect(screen.queryByText('跨列宽度（FORM_SPAN）')).toBeNull()
     expect(screen.queryByText('复合格组（FORM_CELL_GROUP）')).toBeNull()
-    expect(screen.getByRole('button', { name: '打开表单设计' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: '打开表单设计' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '打开表单设计' })).toBeNull()
     // 下拉选项是字段取值语义，随「基本信息」一起编辑
     expect(screen.getByText('下拉选项（FORM_OPTIONS）')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
