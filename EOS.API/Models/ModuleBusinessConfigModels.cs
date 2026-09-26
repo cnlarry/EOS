@@ -77,7 +77,12 @@ public sealed record BusinessConfigCatalogDto(
     [property: JsonPropertyName("validationKeys")] IReadOnlyList<string> ValidationKeys,
     [property: JsonPropertyName("labels")] BusinessConfigLabelsDto? Labels = null,
     // 可配置的自定义按钮键（EVENT_CODE='MANUAL' 行只能从这里挑；未登记实现即发布不出去）。
-    [property: JsonPropertyName("documentActions")] IReadOnlyList<DocumentActionCatalogEntryDto>? DocumentActions = null);
+    [property: JsonPropertyName("documentActions")] IReadOnlyList<DocumentActionCatalogEntryDto>? DocumentActions = null,
+    // 当前接不到效果链的事件（可配置、但配了不会跑）：界面必须如实标注。
+    [property: JsonPropertyName("inertEvents")] IReadOnlyList<string>? InertEvents = null,
+    // 事件在库内的使用次数（全库）：界面据此决定"库内 0 行且接不到效果链"的事件不可选（暂未启用），
+    // 而"已有行"的事件保持可选但必须标注——隐藏会让既有配置无法编辑。
+    [property: JsonPropertyName("eventUsage")] IReadOnlyDictionary<string, int>? EventUsage = null);
 
 /// <summary>一个可配置的自定义按钮（2301 下拉项）。</summary>
 public sealed record DocumentActionCatalogEntryDto(
@@ -154,7 +159,25 @@ public sealed record BusinessConfigSchemasDto(
     [property: JsonPropertyName("reverseKindLabels")] IReadOnlyDictionary<string, string>? ReverseKindLabels = null,
     [property: JsonPropertyName("validationParams")] IReadOnlyList<ValidationParamSchemaDto>? ValidationParams = null,
     [property: JsonPropertyName("paramFields")] IReadOnlyList<EffectParamFieldsDto>? ParamFields = null,
-    [property: JsonPropertyName("reverseKindsByEffect")] IReadOnlyDictionary<string, IReadOnlyList<string>>? ReverseKindsByEffect = null);
+    [property: JsonPropertyName("reverseKindsByEffect")] IReadOnlyDictionary<string, IReadOnlyList<string>>? ReverseKindsByEffect = null,
+    // 效果配方目录（配置面的默认视图；配方只做预填与收敛，专家模式仍可逐字段编辑）。
+    [property: JsonPropertyName("recipes")] IReadOnlyList<EffectRecipeDto>? Recipes = null);
+
+/// <summary>
+/// 一个效果配方（业务概念 → 实现键的映射）。字段刻意少：凡界面能从 `paramFields` /
+/// `reverseKindsByEffect` 读出来的都不在这里重复下发。
+/// </summary>
+public sealed record EffectRecipeDto(
+    [property: JsonPropertyName("key")] string Key,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("summary")] string Summary,
+    [property: JsonPropertyName("eventCodes")] IReadOnlyList<string> EventCodes,
+    [property: JsonPropertyName("effectKeys")] IReadOnlyList<string> EffectKeys,
+    [property: JsonPropertyName("formulaMode")] bool FormulaMode,
+    [property: JsonPropertyName("requiresRelation")] bool RequiresRelation,
+    [property: JsonPropertyName("reversePreset")] string ReversePreset,
+    [property: JsonPropertyName("paramsHint")] string ParamsHint,
+    [property: JsonPropertyName("note")] string? Note = null);
 
 /// <summary>一个效果参数的深 Schema 描述（名称/类型/是否必填/枚举/默认值/说明/示例）。</summary>
 public sealed record EffectParamFieldDto(
@@ -171,10 +194,16 @@ public sealed record EffectParamFieldsDto(
     [property: JsonPropertyName("effectKey")] string EffectKey,
     [property: JsonPropertyName("fields")] IReadOnlyList<EffectParamFieldDto> Fields);
 
-/// <summary>预演请求：事件（闭集）+ 单据主键。</summary>
+/// <summary>
+/// 预演请求：事件（闭集）+ 单据主键 + 可选的**未保存草稿**。
+///
+/// 带 `Draft` 时，预演按草稿里的动作链/校验规则跑（其余部分仍取已发布快照）——
+/// 配置者据此回答"我这次改完会发生什么"；不带则按已发布配置跑。
+/// </summary>
 public sealed record EffectSimulationRequest(
     [property: JsonPropertyName("event")] string Event,
-    [property: JsonPropertyName("key")] IReadOnlyList<string> Key);
+    [property: JsonPropertyName("key")] IReadOnlyList<string> Key,
+    [property: JsonPropertyName("draft")] SaveModuleBusinessConfigRequest? Draft = null);
 
 /// <summary>预演报告里的一道闸（前置守卫 / 校验闸）。</summary>
 public sealed record EffectSimulationGateDto(
@@ -238,4 +267,7 @@ public sealed record EffectSimulationReportDto(
     [property: JsonPropertyName("validation")] EffectSimulationGateDto Validation,
     [property: JsonPropertyName("effects")] IReadOnlyList<EffectSimulationStepDto> Effects,
     [property: JsonPropertyName("counts")] EffectSimulationCountsDto Counts,
-    [property: JsonPropertyName("warnings")] IReadOnlyList<string> Warnings);
+    [property: JsonPropertyName("warnings")] IReadOnlyList<string> Warnings,
+    // 这次预演跑的配置来自哪一处：published（已发布快照）/ draft（本次未保存草稿）。
+    // 报告必须自证来源——同一份单据在两种配置下结果可能不同。
+    [property: JsonPropertyName("configSource")] string ConfigSource = "published");

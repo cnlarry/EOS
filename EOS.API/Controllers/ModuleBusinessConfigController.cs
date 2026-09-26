@@ -1,3 +1,4 @@
+using System.Text.Json;
 using EOS.API.Data;
 using EOS.API.Data.DocumentActions;
 using EOS.API.Data.Effects;
@@ -57,7 +58,12 @@ public sealed class ModuleBusinessConfigController(
             documentActions.Keys
                 .OrderBy(key => key, StringComparer.OrdinalIgnoreCase)
                 .Select(key => new DocumentActionCatalogEntryDto(key, documentActions.LabelOf(key), documentActions.PlacementOf(key)))
-                .ToList());
+                .ToList(),
+            // 接不到效果链的事件：可配置、可发布，但配了不会跑。界面必须如实标注（不隐藏）。
+            BusinessActionCatalog.InertEvents.OrderBy(value => value).ToList(),
+            // 事件在库内的使用次数：与 inertEvents 一起决定"库内 0 行 ⇒ 不可选（暂未启用）"，
+            // "已有行 ⇒ 可选但标注"。这两个事实任一单独都不足以做对界面。
+            await repository.CountEventUsageAsync(token));
         return Ok(catalog);
     }
 
@@ -124,7 +130,13 @@ public sealed class ModuleBusinessConfigController(
                 .ToDictionary(
                     effectKey => effectKey,
                     effectKey => EffectReverseCompatibility.AllowedKinds(effectKey, hasFormulaRows: false),
-                    StringComparer.OrdinalIgnoreCase)));
+                    StringComparer.OrdinalIgnoreCase),
+            // 效果配方目录：配置面的**默认视图**（业务概念 → 实现键）。专家模式仍可逐字段编辑。
+            EffectRecipeCatalog.All
+                .Select(recipe => new EffectRecipeDto(
+                    recipe.Key, recipe.Name, recipe.Summary, recipe.EventCodes, recipe.EffectKeys,
+                    recipe.FormulaMode, recipe.RequiresRelation, recipe.ReversePreset, recipe.ParamsHint, recipe.Note))
+                .ToList()));
     }
 
     /// <summary>
@@ -209,6 +221,25 @@ public sealed class ModuleBusinessConfigController(
         }
         // 报告要能对上"哪一版配置跑出来的"：基线缓存里的定义不带版本，版本由缓存条目单独持有。
         var definition = baseline with { DefinitionVersion = definitionVersion };
+        // 草稿预演：只替换"配置段"（动作链 + 校验规则），其余（字段、表、主键、引擎开关）仍取已发布快照。
+        // 先过一遍配置结构校验——草稿本身就不合法时，跑出来的报告只会误导人。
+        var configSource = "published";
+        if (request.Draft is not null)
+        {
+            var draftValidation = ModuleBusinessConfigValidator.Validate(request.Draft, documentActions.KeySet);
+            if (!draftValidation.Ok)
+            {
+                return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "DRAFT_CONFIG_INVALID",
+                    $"草稿配置未通过结构校验，无法预演：{string.Join("；", draftValidation.Messages.Take(5))}"
+                    + (draftValidation.Messages.Count > 5 ? " 等。" : string.Empty)));
+            }
+            definition = definition with
+            {
+                BusinessActions = JsonSerializer.SerializeToElement(request.Draft.Actions),
+                ValidationRules = JsonSerializer.SerializeToElement(request.Draft.ValidationRules),
+            };
+            configSource = "draft";
+        }
         if (definition.MasterPkOrder.Count == 0)
         {
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "MODULE_NOT_SIMULATABLE",
@@ -220,14 +251,14 @@ public sealed class ModuleBusinessConfigController(
                 $"单据主键数量与模块主键不一致（需要 {definition.MasterPkOrder.Count} 个）。"));
         }
 
-        logger.LogInformation("效果链预演 module={ModuleId} event={Event} key={Key} operator={User}",
-            moduleId, eventCode, string.Join(',', request.Key), userContext.UserId);
+        logger.LogInformation("效果链预演 module={ModuleId} event={Event} key={Key} source={Source} operator={User}",
+            moduleId, eventCode, string.Join(',', request.Key), configSource, userContext.UserId);
         try
         {
             var report = await simulation.SimulateAsync(
                 definition, eventCode!, request.Key,
                 approve: string.Equals(eventCode, "APPROVE_EFFECT", StringComparison.Ordinal),
-                userContext.UserId, token);
+                userContext.UserId, token, configSource);
             return Ok(report);
         }
         catch (EffectSimulationService.UnsupportedModuleException unsupported)

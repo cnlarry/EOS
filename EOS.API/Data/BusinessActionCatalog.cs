@@ -23,6 +23,21 @@ public static class BusinessActionCatalog
     /// 其键由单据操作注册表单独把关。</summary>
     public const string ManualEvent = "MANUAL";
 
+    /// <summary>
+    /// 当前**接不到效果链**的事件：配置能存、发布能过，但没有任何调用点把它交给效果引擎。
+    ///
+    /// 事实依据：`EffectEventMapper.TryParse` 认得这两个事件码，`EffectEvent` 枚举也有对应值，
+    /// 但全仓没有调用点以 `EffectEvent.Endcase`/`Unendcase` 触发引擎——结案/取消结案走
+    /// `WorkbenchApprovalService.FinishCoreAsync`，它只翻 `FINISHED_TAG` 并写审计，不跑效果链。
+    ///
+    /// 界面据此**如实标注**（不是隐藏）：隐藏会让既有配置无法编辑，而"配了不跑"必须让配置者看见。
+    /// </summary>
+    public static readonly IReadOnlySet<string> InertEvents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "ENDCASE",
+        "UNENDCASE",
+    };
+
     /// <summary>失败模式：BLOCK=失败整链回滚；WARN=仅警告继续。</summary>
     public static readonly IReadOnlySet<string> FailModes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
