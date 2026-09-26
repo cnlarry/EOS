@@ -223,8 +223,8 @@ public sealed class BatchModeTierLiveTests
             INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID, LOCATION_NO, PARENT_NO, LOCATION_PATH, LOCATION_TYPE, LOCATION_NAME, SEQ_NO, STATUS)
                 VALUES (@Depot, N'-', NULL, N'/-', N'BIN', N'未指定位置（待归位）', 0, N'A');
 
-            INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, INIT_QTY, COST_PRICE, COST_AMOUNT)
-                VALUES (@Pro, @Depot, N'-', @BalBatch, 10, 10, 5, 50);
+            INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, USEABLE_QTY, INIT_QTY, COST_PRICE, COST_AMOUNT)
+                VALUES (@Pro, @Depot, N'-', @BalBatch, 10, 10, 10, 5, 50);
 
             INSERT INTO dbo.INV_OCCUR_OUT_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, CREATE_PERSON, CREATE_DATE)
                 VALUES (@Type, @No, '2026-09-01', N'ADR14BM', '2026-09-01');

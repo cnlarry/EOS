@@ -196,8 +196,8 @@ public sealed class LocationModeTierLiveTests
             -- 期初存量必须落在**单据指定的那个库位**上：出库侧的库存充足性校验是按
             -- (料号, 库别, 库位, 批次) 判定的（P2-04），存量放在别处会被判"库存不足"。
             -- 未填位置时归一为哨兵行，所以这里跟着归一。
-            INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, INIT_QTY, COST_PRICE, COST_AMOUNT)
-                VALUES (@Pro, @Depot, @BalLoc, N'', 10, 10, 5, 50);
+            INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, USEABLE_QTY, INIT_QTY, COST_PRICE, COST_AMOUNT)
+                VALUES (@Pro, @Depot, @BalLoc, N'', 10, 10, 10, 5, 50);
 
             INSERT INTO dbo.INV_OCCUR_OUT_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, CREATE_PERSON, CREATE_DATE)
                 VALUES (@Type, @No, '2026-09-01', N'ADR14LM', '2026-09-01');
