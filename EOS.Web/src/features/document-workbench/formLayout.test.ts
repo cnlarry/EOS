@@ -141,6 +141,14 @@ describe('buildPackedCells', () => {
     expect(cells).toHaveLength(1)
     expect(cells[0].map(item => item.key)).toEqual(['CLIENT_ID', 'CLIENT_NAME'])
   })
+
+  it('孤立的从字段降级成独立格，保持原有次序且不丢字段', () => {
+    // 复合格被拆了一半（同组只剩从字段）：跳过它会让字段从表单上凭空消失，
+    // 而它还占着版式行、也不在字段池里——用户再也找不回来
+    const orphan = field('CLIENT_NAME', { cellGroup: 'CLIENT', cellRole: 2 })
+    const cells = buildPackedCells([field('A'), orphan, field('B')])
+    expect(cells.map(cell => cell.map(item => item.key))).toEqual([['A'], ['CLIENT_NAME'], ['B']])
+  })
 })
 
 describe('packFormSections 装箱（运行态与设计态共用）', () => {

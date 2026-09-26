@@ -241,7 +241,13 @@ export interface PackedFormSection<T> {
   cells: PackedFormCell<T>[]
 }
 
-/** 复合格归拢：主字段（CELL_ROLE=1）带走同组的从字段；孤立的从字段不成格。 */
+/**
+ * 复合格归拢：主字段（CELL_ROLE=1）带走同组的从字段。
+ *
+ * **孤立的从字段降级成独立格渲染，绝不丢弃**：同组没有主字段时（版式只留下从字段，
+ * 例如复合格被拆了一半），若直接跳过，这个字段就从表单上凭空消失——它既不在表单上、
+ * 也不在字段池里（版式里还有它），用户无从找回。宁可排布不理想，也不能丢字段。
+ */
 export function buildPackedCells<T extends PackableCell>(items: T[]): T[][] {
   const companions = new Map<string, T[]>()
   for (const item of items) {
@@ -251,9 +257,20 @@ export function buildPackedCells<T extends PackableCell>(items: T[]): T[][] {
       companions.set(item.cellGroup, list)
     }
   }
+  const orphanGroups = new Set<string>()
+  for (const group of companions.keys()) {
+    if (!items.some(item => item.cellRole === 1 && item.cellGroup === group)) {
+      orphanGroups.add(group)
+    }
+  }
   const cells: T[][] = []
   for (const item of items) {
-    if (item.cellRole === 2) continue
+    if (item.cellRole === 2) {
+      // 有主字段的从字段随主字段进格；孤儿从字段按独立格渲染（保持原有次序）
+      if (!item.cellGroup || !orphanGroups.has(item.cellGroup)) continue
+      cells.push([item])
+      continue
+    }
     const group = item.cellGroup?.trim()
     if (item.cellRole === 1 && group && companions.has(item.cellGroup as string)) {
       cells.push([item, ...(companions.get(item.cellGroup as string) ?? [])])
