@@ -133,6 +133,17 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
             ("@depot", _depot), ("@pro", TestProduct), ("@loc", location));
     }
 
+    private async Task<double> AvailableAtAsync(string location)
+    {
+        await using var connection = await OpenAsync();
+        return await ScalarAsync<double>(connection,
+            $"""
+            SELECT ISNULL(SUM(CAST(ISNULL(USEABLE_QTY,0) AS float)),0) FROM dbo.{StockTable}
+            WHERE DEPOT_ID=@depot AND LTRIM(RTRIM(PRO_NO))=@pro AND LTRIM(RTRIM(LOCATION_NO))=@loc;
+            """,
+            ("@depot", _depot), ("@pro", TestProduct), ("@loc", location));
+    }
+
     private async Task<bool> PolicyRowExistsAsync(string depot)
     {
         await using var connection = await OpenAsync();
@@ -157,6 +168,25 @@ public sealed class DepotStockPolicyRelocateLiveTests : IAsyncLifetime
         Assert.Equal(0d, await QtyAtAsync("-"), 6);
         Assert.Equal(StartQty, await QtyAtAsync(TestLocation), 6);
         Assert.Equal(beforeTotal, await DepotTotalAsync(), 6);
+    }
+
+    /// <summary>
+    /// 归位必须**同步可用量**。`USEABLE_QTY` 是存列（可用量 = 数量 − 冻结 − 预留），而新建的目标行
+    /// 取的是列默认 `0`：数量搬过去而这一列不重算，它就一直停在 0。出库充足性按可用量判，
+    /// 于是**归位之后的货出不去**——判别形态就是出库报「库存数量不足」。
+    ///
+    /// 这条守的是"数量动过就必须重算"这条纪律：把 <c>SyncAvailabilityForDepotAsync</c> 的调用摘掉，
+    /// 本用例即变红。
+    /// </summary>
+    [Fact]
+    public async Task StandaloneRelocate_SyncsUseableQuantity()
+    {
+        var result = await Service().RelocateStandaloneAsync(_depot, TestLocation, "测试经办人");
+
+        Assert.True(result.Relocated, string.Join('；', result.Errors));
+        Assert.Equal(StartQty, await QtyAtAsync(TestLocation), 6);
+        Assert.Equal(StartQty, await AvailableAtAsync(TestLocation), 6);
+        Assert.Equal(0d, await AvailableAtAsync("-"), 6);
     }
 
     [Fact]

@@ -127,9 +127,11 @@ public sealed class InventoryFourKeyLiveTests
                        (@Depot, @Bin, NULL, N'/ADR14P2-BIN', N'BIN', N'四键测试货位', 1, N'A');
 
             -- 同一 (料号, 库别) 下的两个库位行；库别级三字段两行取同一值。
-            INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, INIT_QTY, COST_PRICE, COST_AMOUNT)
-                VALUES (@Pro, @Depot, N'-', N'', 10, 10, 5, 75),
-                       (@Pro, @Depot, @Bin, N'', 5, 5, 5, 75);
+            -- 可用量是同一次写入的一部分：出库充足性按可用量判（可用量 = 数量 − 冻结 − 预留），
+            -- 直接造余额行而漏了它，这里就会造出"有货但不可用"的格子。
+            INSERT INTO dbo.INV_PRO_DEPOT (PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO, QTY, USEABLE_QTY, INIT_QTY, COST_PRICE, COST_AMOUNT)
+                VALUES (@Pro, @Depot, N'-', N'', 10, 10, 10, 5, 75),
+                       (@Pro, @Depot, @Bin, N'', 5, 5, 5, 5, 75);
 
             INSERT INTO dbo.INV_OCCUR_OUT_M (OCCUR_TYPE, OCCUR_NO, OCCUR_DATE, CREATE_PERSON, CREATE_DATE)
                 VALUES (@Type, @No, '2026-09-01', N'ADR14P2', '2026-09-01');

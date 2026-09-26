@@ -898,6 +898,9 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             + "WHERE DEPOT_ID=@depot AND LOCATION_NO <> N'-' AND ISNULL(QTY,0) <> 0;", connection, transaction);
         clear.Parameters.AddWithValue("@depot", depotId);
         await clear.ExecuteNonQueryAsync(token);
+
+        // 同归位：数量重排后重算可用量，哨兵行与刚清零的位置行都要落到新值。
+        await SyncAvailabilityForDepotAsync(depotId, connection, transaction, token);
     }
 
     /// <summary>该库别有多少组（料号 / 批次）的存量还压在哨兵行上——升档是否需要归位就看它。</summary>
@@ -927,6 +930,33 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         command.Parameters.AddWithValue("@depot", depotId);
         command.Parameters.AddWithValue("@loc", locationNo);
         return Convert.ToInt32(await command.ExecuteScalarAsync(token)) > 0;
+    }
+
+    /// <summary>
+    /// 把该库别**动过的格子**交给可用量的唯一维护出口重算。
+    ///
+    /// 归位与归并只改 `QTY`、不改占用，而 `USEABLE_QTY` 是**存列**（可用量 = 数量 − 冻结 − 预留）：
+    /// 数量一动它就必须跟着重算，否则被搬过的行会停在旧值上。出库充足性按可用量判，
+    /// 而新建的目标行取的是列默认 `0`——停在 0 就意味着**货出不去**。
+    ///
+    /// 按库别整取而不是逐个跟踪"动过谁"：这两处本就是库别级的整体重排（一次账面认定），
+    /// 取全量比维护一份易漏的清单更可靠；读取仍走收口服务，不在这里拼 SQL。
+    /// </summary>
+    private static async Task SyncAvailabilityForDepotAsync(
+        string depotId, SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    {
+        var rows = await InventoryQueryService.GetRowsAsync(
+            connection, transaction,
+            new InventoryQueryService.RowScope { DepotId = depotId },
+            InventoryQueryService.ReadLock.None, token);
+        var slots = rows
+            .Select(row => new InventoryAvailabilityService.SlotKey(
+                row.ProductNo, row.DepotId, row.LocationNo, row.BatchNo).Trimmed())
+            .ToList();
+        if (slots.Count > 0)
+        {
+            await InventoryAvailabilityService.SyncSlotsAsync(connection, transaction, slots, token);
+        }
     }
 
     /// <summary>
@@ -977,6 +1007,9 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         clear.Parameters.AddWithValue("@depot", depotId);
         clear.Parameters.AddWithValue("@sentinel", SentinelLocationNo);
         await clear.ExecuteNonQueryAsync(token);
+
+        // 数量已重排，可用量必须跟着重算——否则被搬过的行停在旧值，出库会判"不足"。
+        await SyncAvailabilityForDepotAsync(depotId, connection, transaction, token);
     }
 
     private static DepotStockPolicy Read(SqlDataReader reader) => new(
