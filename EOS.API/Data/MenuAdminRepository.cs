@@ -37,7 +37,7 @@ public sealed class MenuAdminRepository(
     {
         using var timing = DbTimingCollector.Instance.Measure();
         var sql = """
-            SELECT M_IDX,M_ALIAS,M_DESC,M_URL,NEW_URL,MODI_URL,HELP_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
+            SELECT MODULES.M_IDX,M_ALIAS,M_DESC,M_URL,NEW_URL,MODI_URL,HELP_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
                    MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
                    GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
@@ -51,8 +51,8 @@ public sealed class MenuAdminRepository(
             FROM dbo.MODULES WITH (NOLOCK)
             LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=MODULES.M_IDX
             LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=MODULES.M_IDX AND s.IS_CURRENT=1
-            WHERE (@Keyword = '' OR M_DESC LIKE @Keyword OR M_ALIAS LIKE @Keyword OR CONVERT(nvarchar(20),M_IDX) LIKE @Keyword)
-            ORDER BY ISNULL(M_P_IDX,0),SORT_IDX,M_IDX;
+            WHERE (@Keyword = '' OR M_DESC LIKE @Keyword OR M_ALIAS LIKE @Keyword OR CONVERT(nvarchar(20),MODULES.M_IDX) LIKE @Keyword)
+            ORDER BY ISNULL(M_P_IDX,0),SORT_IDX,MODULES.M_IDX;
             """;
         await using var connection = connections.Create();
         await using var command = new SqlCommand(sql, connection);
@@ -235,7 +235,7 @@ public sealed class MenuAdminRepository(
     public async Task<MenuAdminModule?> GetModuleAsync(int id, CancellationToken token)
     {
         var sql = """
-            SELECT M_IDX,M_ALIAS,M_DESC,M_URL,NEW_URL,MODI_URL,HELP_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
+            SELECT MODULES.M_IDX,M_ALIAS,M_DESC,M_URL,NEW_URL,MODI_URL,HELP_URL,DETAIL_NO_FIELDS,DETAIL_NO_SAVE,
                    SEARCH_1,SEARCH_2,M_P_IDX,SORT_IDX,M_TAG,AUTO_APPROVE,IF_COPY,ERROR_NO_SAVE,SORT_FIELDS,
                    MASTER_TABLE,FILTER,DETAIL_TABLE,NOT_BACK_FIELDS_M,NOT_BACK_FIELDS,
                    GROUP1,GROUP_EXP1,GROUP_DESC1,GROUP2,GROUP_EXP2,GROUP_DESC2,GROUP3,GROUP_EXP3,GROUP_DESC3,
@@ -249,7 +249,7 @@ public sealed class MenuAdminRepository(
             FROM dbo.MODULES WITH (NOLOCK)
             LEFT JOIN dbo.WORKBENCH_MODULE_DIRTY d WITH (NOLOCK) ON d.M_IDX=MODULES.M_IDX
             LEFT JOIN dbo.WORKBENCH_DEFINITION_SNAPSHOT s WITH (NOLOCK) ON s.M_IDX=MODULES.M_IDX AND s.IS_CURRENT=1
-            WHERE M_IDX=@Id;
+            WHERE MODULES.M_IDX=@Id;
             """;
         await using var connection = connections.Create();
         await using var command = new SqlCommand(sql, connection);
