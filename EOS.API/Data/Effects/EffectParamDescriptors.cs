@@ -48,7 +48,8 @@ public static class EffectParamDescriptors
             ],
             ["set-state"] =
             [
-                new("targetTable", "tableRef", true, "要置位的目标表（通常是上游单据表）。"),
+                new("targetTable", "tableRef", false,
+                    "要置位的目标表（通常是上游单据表）。两种形态二选一：单表用 targetTable + stateField/stateValue，多表用 targets[] + state（存量配置以 targets[] 为主）。"),
                 new("stateField", "fieldRef", false, "单一形态下要写入的状态列名。"),
                 new("stateValue", "string", false, "要写入状态列的值（日期模式可为 now）。"),
                 new("targets", "array", false,
@@ -105,7 +106,8 @@ public static class EffectParamDescriptors
             ],
             ["link-stamp"] =
             [
-                new("targetTable", "tableRef", true, "要盖章（写引用）的目标表。"),
+                new("targetTable", "tableRef", false,
+                    "要盖章（写引用）的目标表。两种形态二选一：单表用 targetTable + field/fields，多表用 targets[] + fields（存量配置以 targets[] 为主）。"),
                 new("field", "fieldRef", false, "单一形态下要写入的引用列。"),
                 new("fields", "array", false, "要写入的引用列集合。"),
                 new("targets", "array", false, "多目标形态：每张表的引用列与来源（refs / sourceRefs）。"),
