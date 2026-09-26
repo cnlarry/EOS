@@ -96,8 +96,14 @@ public sealed record ChooserReturnItem(string Target, string Column);
 /// <summary>RETURN_ITEMS JSON 数组解析（有序回填映射）。</summary>
 public static class ChooserReturnItems
 {
+    /// <summary>
+    /// 键名统一走小驼峰（与 FILTER_STRUCT 同一口径）：读取侧大小写不敏感，
+    /// 但写入侧必须只产出一种写法——若写出 PascalCase，前端按小写键读取会静默读成空映射，
+    /// 选择器选完不回填且不报错。
+    /// </summary>
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
     };
 

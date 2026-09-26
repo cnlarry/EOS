@@ -159,3 +159,45 @@ public sealed class ChooserRepositoryTests
         Assert.Equal(expected, ChooserRepository.IsFormDesignerFieldPool(sourceKey));
     }
 }
+
+/// <summary>
+/// 选择器回填映射（RETURN_ITEMS）的读写口径：读取大小写不敏感，写入固定小驼峰。
+/// 写入若产出 PascalCase，按小写键读取的一方会静默得到空映射（选择器选完不回填、不报错）。
+/// </summary>
+public sealed class ChooserReturnItemsTests
+{
+    [Fact]
+    public void ToJson_WritesCamelCaseKeys()
+    {
+        var json = ChooserReturnItems.ToJson([new ChooserReturnItem("CLIENT_ID", "CLIENT_ID")]);
+
+        Assert.Equal("[{\"target\":\"CLIENT_ID\",\"column\":\"CLIENT_ID\"}]", json);
+    }
+
+    [Fact]
+    public void ToJson_RoundTripsThroughParse()
+    {
+        var items = new[] { new ChooserReturnItem("CLIENT_ID", "CLIENT_ID"), new ChooserReturnItem("CLIENT_NAME", "CLIENT_NAME") };
+
+        Assert.Equal(items, ChooserReturnItems.Parse(ChooserReturnItems.ToJson(items)));
+    }
+
+    [Theory]
+    [InlineData("[{\"target\":\"CLIENT_ID\",\"column\":\"CLIENT_ID\"}]")]
+    [InlineData("[{\"Target\":\"CLIENT_ID\",\"Column\":\"CLIENT_ID\"}]")]
+    [InlineData("[{\"TARGET\":\"CLIENT_ID\",\"COLUMN\":\"CLIENT_ID\"}]")]
+    public void Parse_AcceptsAnyKeyCasing(string json)
+    {
+        var expected = new[] { new ChooserReturnItem("CLIENT_ID", "CLIENT_ID") };
+
+        Assert.Equal(expected, ChooserReturnItems.Parse(json));
+    }
+
+    [Fact]
+    public void Parse_TreatsBlankAsEmptyAndInvalidAsNull()
+    {
+        Assert.Empty(ChooserReturnItems.Parse(null)!);
+        Assert.Empty(ChooserReturnItems.Parse("   ")!);
+        Assert.Null(ChooserReturnItems.Parse("{oops"));
+    }
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DETAIL_CHOOSER_SOURCE_KEY, readDetailChooserSources, withDetailChooserSource } from './formEditorUtils'
+import { DETAIL_CHOOSER_SOURCE_KEY, parseReturnItems, readDetailChooserSources, withDetailChooserSource } from './formEditorUtils'
 
 /**
  * 明细行「选过的来源」随行携带：行对象是明细编辑的唯一载体，来源跟着行走，
@@ -36,5 +36,41 @@ describe('明细行来源记忆', () => {
     expect(readDetailChooserSources({ [DETAIL_CHOOSER_SOURCE_KEY]: '{oops' })).toBeNull()
     expect(readDetailChooserSources({ [DETAIL_CHOOSER_SOURCE_KEY]: '[1,2]' })).toBeNull()
     expect(readDetailChooserSources({ [DETAIL_CHOOSER_SOURCE_KEY]: '{"PRO_NO":"x"}' })).toBeNull()
+  })
+})
+
+/**
+ * 回填映射解析：键名大小写不敏感。库内存在写成 `Target`/`Column` 的存量行，
+ * 只认小写会把整条映射读成空——选择器选完不回填，且不报任何错，属于静默失败。
+ */
+describe('选择器回填映射解析', () => {
+  it('契约写法（小驼峰）原样读出', () => {
+    expect(parseReturnItems('[{"target":"CLIENT_ID","column":"CLIENT_ID"},{"target":"CLIENT_NAME","column":"CLIENT_NAME"}]'))
+      .toEqual([
+        { target: 'CLIENT_ID', column: 'CLIENT_ID' },
+        { target: 'CLIENT_NAME', column: 'CLIENT_NAME' },
+      ])
+  })
+
+  it('PascalCase 存量行同样读出（不因大小写读成空映射）', () => {
+    expect(parseReturnItems('[{"Target":"CLIENT_ID","Column":"CLIENT_ID"}]'))
+      .toEqual([{ target: 'CLIENT_ID', column: 'CLIENT_ID' }])
+  })
+
+  it('同一数组内大小写混用逐条读出', () => {
+    expect(parseReturnItems('[{"target":"CI","Column":"COMPANY_ID"},{"Target":"COMPANY_NAME","column":"NAME_CN"}]'))
+      .toEqual([
+        { target: 'CI', column: 'COMPANY_ID' },
+        { target: 'COMPANY_NAME', column: 'NAME_CN' },
+      ])
+  })
+
+  it('缺键、非对象项、非数组与非法 JSON 一并跳过（不抛错）', () => {
+    expect(parseReturnItems('[{"target":"A"},{"column":"B"},{"target":"C","column":"D"},7,null]'))
+      .toEqual([{ target: 'C', column: 'D' }])
+    expect(parseReturnItems('{"target":"A","column":"B"}')).toEqual([])
+    expect(parseReturnItems('{oops')).toEqual([])
+    expect(parseReturnItems('')).toEqual([])
+    expect(parseReturnItems(null)).toEqual([])
   })
 })
