@@ -242,7 +242,8 @@ public sealed class MasterFieldWriteLiveTests : IAsyncLifetime
             NullLogger<WorkbenchApprovalService>.Instance);
         return new WorkbenchCommandHandler(_connections, auditWriter, approval,
             new WorkbenchScopeFilter(new ApiMetrics()), engine, idempotency,
-            new DepotStockPolicyService(_connections, auditWriter), NullLogger<WorkbenchCommandHandler>.Instance);
+            new DepotStockPolicyService(_connections, auditWriter), new WorkbenchVirtualColumnResolver(),
+            NullLogger<WorkbenchCommandHandler>.Instance);
     }
 
     private DocumentActionExecutor Executor() =>

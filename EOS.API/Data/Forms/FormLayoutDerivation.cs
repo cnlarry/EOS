@@ -111,7 +111,13 @@ public static class FormLayoutDerivation
         IReadOnlyList<FormFieldDefinition> fields,
         FormLayoutDefinition? layout)
     {
-        if (layout is not { MasterCustomized: true } || layout.Master.Count == 0) return fields;
+        if (layout is not { MasterCustomized: true } || layout.Master.Count == 0)
+        {
+            // 未定制：字段集与顺序原样保留（零配置模块的观感不变），只摘掉虚拟列——
+            // 虚拟列是"选择器回写的伴生显示列"，只有版式显式排入时才作为只读字段出现在表单上，
+            // 否则每个模块都会凭空多出一批没有输入控件语义的列。
+            return fields.Where(field => !field.IsVirtual).ToList();
+        }
 
         var byKey = new Dictionary<string, FormFieldDefinition>(StringComparer.OrdinalIgnoreCase);
         foreach (var field in fields) byKey.TryAdd(field.Key, field);
