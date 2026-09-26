@@ -212,7 +212,33 @@ describe('FormDesignerPage', () => {
     const [path, body] = apiClientMock.post.mock.calls.at(-1) as [string, { sourceKey?: string; args?: Record<string, string> }]
     expect(path).toBe('/chooser/query')
     expect(body.sourceKey).toBe('form-designer.fields')
-    expect(body.args).toEqual({ moduleId: '1405', table: 'master' })
+    // 排除项来自当前草稿（显示中的行），而不是库里的版式行
+    expect(body.args).toEqual({
+      moduleId: '1405',
+      table: 'master',
+      exclude: 'ORDER_NO,CLIENT_ID,REMARK,OLD_TAB_FIELD',
+    })
+  })
+
+  it('移出表单的字段不再进排除列表（否则选择器里选不回来）', async () => {
+    apiClientMock.post.mockResolvedValue({
+      columns: [
+        { key: 'F_ID', label: '字段名', dataType: 'nvarchar' },
+        { key: 'F_DESC', label: '描述', dataType: 'nvarchar' },
+      ],
+      defaultKeys: ['F_ID', 'F_DESC'],
+      rows: [{ F_ID: 'REMARK', F_DESC: '备注' }],
+      total: 1,
+    })
+    renderPage()
+    await screen.findByText('ORDER_NO')
+    rightClickCell('REMARK')
+    fireEvent.click(screen.getByRole('button', { name: '移出表单' }))
+    fireEvent.click(screen.getByRole('button', { name: /添加字段/ }))
+
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalled())
+    const [, body] = apiClientMock.post.mock.calls.at(-1) as [string, { args?: Record<string, string> }]
+    expect(body.args?.exclude?.split(',')).toEqual(['ORDER_NO', 'CLIENT_ID', 'OLD_TAB_FIELD'])
   })
 
   it('移出表单后保存，提交的是整份版式且带幂等键', async () => {

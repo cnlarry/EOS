@@ -82,14 +82,22 @@ public sealed class FormLayoutDesignLiveTests
         return keys;
     }
 
-    /// <summary>取一次选择器侧的设计态字段池候选；候选必须能在一页取全，否则分页会让断言失真。</summary>
+    /// <summary>
+    /// 取一次选择器侧的设计态字段池候选（模拟前端传参：`exclude` = 草稿里显示中的字段键）；
+    /// 候选必须能在一页取全，否则分页会让断言失真。
+    /// </summary>
     private static async Task<HashSet<string>> QueryDesignerPoolAsync(
-        ChooserRepository repository, string table, CancellationToken token)
+        ChooserRepository repository, string table, IReadOnlyList<string> exclude, CancellationToken token)
     {
         var result = await repository.QueryAsync(
             new UnifiedChooserQueryRequest(
                 "form-designer.fields",
-                new Dictionary<string, string> { ["moduleId"] = ModuleId.ToString(), ["table"] = table },
+                new Dictionary<string, string>
+                {
+                    ["moduleId"] = ModuleId.ToString(),
+                    ["table"] = table,
+                    ["exclude"] = string.Join(',', exclude),
+                },
                 PageSize: 100),
             token);
         Assert.NotNull(result);
@@ -170,12 +178,14 @@ public sealed class FormLayoutDesignLiveTests
     }
 
     /// <summary>
-    /// 选择器侧的设计态字段池（form-designer.fields）与设计态读到的池同一口径：候选里不得出现
-    /// ① 标记为"不显示"的字段（IS_VISIBLE=0，运行态一律不渲染）；② 已在版式里显示中的列（否则会重复加入）。
-    /// 判定写反时的两种界面症状：候选里冒出"排了也没用"的字段，或该能选回来的隐藏列消失。
+    /// 选择器侧的设计态字段池（form-designer.fields）：候选 = 该表可排字段 − `args.exclude`（草稿里显示中的字段），
+    /// 并恒不含标记为"不显示"的字段（IS_VISIBLE=0，运行态一律不渲染，排进版式也没用）。
+    ///
+    /// 判据必须落在**调用方给的草稿口径**上，库里的版式行不参与：否则刚移出表单的字段会被当成仍在表单里
+    /// 而排除掉（该表其余字段都已排进版式时选择器整屏空、字段放不回去），而草稿里刚加入的字段又会被重复列出。
     /// </summary>
     [Fact]
-    public async Task DesignerFieldPool_ExcludesInvisibleAndPlacedFields()
+    public async Task DesignerFieldPool_FollowsTheDraftExcludeList()
     {
         var connections = Connections();
         var token = CancellationToken.None;
@@ -183,17 +193,31 @@ public sealed class FormLayoutDesignLiveTests
         Assert.NotNull(state);
 
         var repository = new ChooserRepository(connections, NullLogger<ChooserRepository>.Instance);
-        var detailCandidates = await QueryDesignerPoolAsync(repository, "detail", token);
-        var masterCandidates = await QueryDesignerPoolAsync(repository, "master", token);
+        var placedMaster = state!.Master.Layout.Where(row => !row.Hidden).Select(row => row.Key).ToList();
+        Assert.NotEmpty(placedMaster);
 
-        var invisibleDetail = await ReadInvisibleFieldKeysAsync(connections, state!.DetailTable!, token);
+        // 草稿里这些字段都显示中 → 全排除：本模块主表字段已全部排进版式，候选因此为空（界面只能提示"都已在表单里"）
+        Assert.Empty(await QueryDesignerPoolAsync(repository, "master", placedMaster, token));
+
+        // 其中一个刚被移出表单（不再排除它）：它必须回到候选里，否则界面上放不回去
+        var removed = placedMaster[0];
+        var afterRemoval = await QueryDesignerPoolAsync(
+            repository, "master", placedMaster.Where(key => key != removed).ToList(), token);
+        Assert.Contains(removed, afterRemoval);
+        Assert.DoesNotContain(placedMaster[1], afterRemoval);
+
+        // 不排除任何字段时，版式里显示中的列照常出现在候选里——排除项只由调用方的草稿决定
+        var masterCandidates = await QueryDesignerPoolAsync(repository, "master", [], token);
+        var detailCandidates = await QueryDesignerPoolAsync(repository, "detail", [], token);
+        Assert.All(state.Master.Layout.Where(row => !row.Hidden), row => Assert.Contains(row.Key, masterCandidates));
+        Assert.All(state.Detail.Layout.Where(row => !row.Hidden), row => Assert.Contains(row.Key, detailCandidates));
+
+        // 不显示字段两侧都不进候选（与是否排除无关）
         var invisibleMaster = await ReadInvisibleFieldKeysAsync(connections, state.MasterTable, token);
+        var invisibleDetail = await ReadInvisibleFieldKeysAsync(connections, state.DetailTable!, token);
         Assert.NotEmpty(invisibleDetail);
-
-        Assert.All(invisibleDetail, key => Assert.DoesNotContain(key, detailCandidates));
         Assert.All(invisibleMaster, key => Assert.DoesNotContain(key, masterCandidates));
-        Assert.All(state.Detail.Layout.Where(row => !row.Hidden), row => Assert.DoesNotContain(row.Key, detailCandidates));
-        Assert.All(state.Master.Layout.Where(row => !row.Hidden), row => Assert.DoesNotContain(row.Key, masterCandidates));
+        Assert.All(invisibleDetail, key => Assert.DoesNotContain(key, detailCandidates));
     }
 
     [Fact]

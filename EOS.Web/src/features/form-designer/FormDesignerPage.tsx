@@ -129,6 +129,17 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
     return pool.find(field => field.key === dragging.key)?.label ?? dragging.key
   }, [draft, dragging])
 
+  /**
+   * 选择器候选按**当前草稿**算：草稿里显示中的行就是"已在表单里"，把它交给服务端排除。
+   * 不能按库里的版式行算——草稿里的移出/加入在保存前只存在于前端，按库算会把刚移出表单的字段
+   * 当成仍在表单里而排除掉（恰好是用户想选回来的那一个），于是选择器里空无一物、放不回去。
+   */
+  const placedKeysForPicker = useMemo(() => {
+    if (picker === null || !draft) return ''
+    const rows = picker === 'master' ? draft.master : draft.detail
+    return rows.filter(row => !row.hidden).map(row => row.key).join(',')
+  }, [picker, draft])
+
   const closeMenu = () => setMenu(null)
   const runMenu = (action: () => void) => {
     action()
@@ -401,7 +412,7 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
   /**
    * 选择器确认：把选中的字段追加到该表末尾。
    * 已经在表单里的（含本次草稿刚加的）跳过并说明，避免重复点击后静默无反应；
-   * 已移出表单的列仍留在字段池里（明细表头不再画它们），选中它 = 原位放回表单。
+   * 已移出表单的字段仍留在字段池里（供选择器列出），选中它 = 原位放回表单。
    */
   const addPickedFields = (table: DesignTable, rows: PickedFieldRow[]) => {
     if (!draft) return
@@ -767,7 +778,8 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
         </DragOverlay>
       </DndContext>
 
-      {/* 加字段走系统统一选择器：候选是本模块该表还没排进表单的字段（服务端字段池口径） */}
+      {/* 加字段走系统统一选择器：候选 = 本模块该表的可排字段 − 当前草稿里显示中的字段
+          （排除项由 placedKeysForPicker 按草稿给出，已移出表单的字段因此回到候选里） */}
       <UnifiedChooser<PickedFieldRow>
         open={picker !== null}
         mode="multi"
@@ -776,11 +788,11 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
         source={{
           kind: 'sourceKey',
           key: 'form-designer.fields',
-          args: { moduleId: String(moduleId), table: picker ?? 'master' },
+          args: { moduleId: String(moduleId), table: picker ?? 'master', exclude: placedKeysForPicker },
         }}
         emptyText={picker === 'detail'
-          ? '该表明细列都已在表单里（运行态不显示的字段不进这里）。'
-          : '该表字段都已在表单里。已移出表单的字段仍在画布上（带删除线），右键它选「放回表单」即可；运行态不显示的字段不进这里。'}
+          ? '该表明细列都已在表单里；刚移出表单的列会回到这里。运行态不显示的字段不进这里。'
+          : '该表字段都已在表单里；刚移出表单的字段会回到这里（在画布上也可以右键它选「放回表单」）。运行态不显示的字段不进这里。'}
         getRowId={row => String(row.F_ID ?? '')}
         onPick={rows => addPickedFields(picker ?? 'master', rows)}
         onClose={() => setPicker(null)}
