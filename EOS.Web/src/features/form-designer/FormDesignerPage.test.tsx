@@ -118,15 +118,80 @@ describe('FormDesignerPage', () => {
 
   it('加载后渲染画布与明细表头，并给出添加字段/添加列入口', async () => {
     renderPage()
-    expect(await screen.findByText('客户订单 · COP_ORDER_M / COP_ORDER_D')).toBeInTheDocument()
-    expect(screen.getByText('ORDER_NO')).toBeInTheDocument()
+    expect(await screen.findByText('ORDER_NO')).toBeInTheDocument()
     // 明细列以真实表头横铺（而不是竖排列表）
     expect(screen.getByText(/明细列（COP_ORDER_D）/)).toBeInTheDocument()
     // 表头显示字段名（与运行态明细网格一致），而不是字段代号
     expect(screen.getByText('产品编号')).toBeInTheDocument()
-    // 加字段/加列走统一选择器入口
+    // 主表加字段走画布末尾；明细加列走明细面板标题栏右上角
     expect(screen.getByRole('button', { name: /添加字段/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /添加列/ })).toBeInTheDocument()
+  })
+
+  it('虚拟列不挂「虚」角标，改用 is-virtual 样式区分实体列', async () => {
+    apiClientMock.get.mockResolvedValue({
+      ...designState,
+      master: {
+        ...designState.master,
+        layout: [
+          row('PRO_NAME', { label: '产品名称', orderNo: 1, isVirtual: true }),
+          row('UNIT', { label: '单位', orderNo: 2 }),
+        ],
+      },
+    })
+    renderPage()
+    const virtual = await screen.findByText('PRO_NAME')
+    expect(virtual.closest('.erp-designer-field')?.className).toContain('is-virtual')
+    expect(screen.getByText('UNIT').closest('.erp-designer-field')?.className).not.toContain('is-virtual')
+    expect(screen.queryByText('虚')).toBeNull()
+  })
+
+  it('明细在表头下渲染占位体：列名在表头、字段代号在格里', async () => {
+    apiClientMock.get.mockResolvedValue({
+      ...designState,
+      detail: {
+        ...designState.detail,
+        layout: [
+          row('PRO_NO', { label: '产品编号', orderNo: 1 }),
+          row('PRO_NAME', { label: '产品名称', orderNo: 2, isVirtual: true }),
+        ],
+      },
+    })
+    renderPage()
+    // 表头 = 列名（与运行态一致），占位体 = 字段代号
+    expect((await screen.findByText('产品编号')).closest('th')).not.toBeNull()
+    expect(screen.getByText('PRO_NO').closest('td.erp-designer-detail-cell')).not.toBeNull()
+    // 虚拟列的样式落点在占位框上，表头不再需要角标
+    expect(screen.getByText('PRO_NAME').closest('.erp-designer-field')?.className).toContain('is-virtual')
+  })
+
+  it('选中一列时表头与占位格一起高亮（点表头或点占位格都选中该列）', async () => {
+    renderPage()
+    fireEvent.click((await screen.findByText('产品编号')).closest('th') as HTMLElement)
+    expect(document.querySelectorAll('.erp-designer-detail-head.is-selected').length).toBe(1)
+    expect(document.querySelectorAll('.erp-designer-detail-cell.is-selected').length).toBe(1)
+
+    // 点占位格同样选中该列，且只有这一列处于选中态
+    fireEvent.click(screen.getByText('QTY').closest('td') as HTMLElement)
+    expect(screen.getByText('产品编号').closest('th')?.className).not.toContain('is-selected')
+    expect(screen.getByText('数量').closest('th')?.className).toContain('is-selected')
+    expect(screen.getByText('QTY').closest('td')?.className).toContain('is-selected')
+  })
+
+  it('已移出表单的明细列不出现在表头上', async () => {
+    apiClientMock.get.mockResolvedValue({
+      ...designState,
+      detail: {
+        ...designState.detail,
+        layout: [
+          row('PRO_NO', { label: '产品编号', orderNo: 1 }),
+          row('OLD_COL', { label: '旧列', orderNo: 2, hidden: true }),
+        ],
+      },
+    })
+    renderPage()
+    expect(await screen.findByText('产品编号')).toBeInTheDocument()
+    expect(screen.queryByText('旧列')).toBeNull()
   })
 
   it('点「添加字段」打开统一选择器（数据源为设计态字段池）', async () => {
@@ -150,12 +215,12 @@ describe('FormDesignerPage', () => {
     expect(body.args).toEqual({ moduleId: '1405', table: 'master' })
   })
 
-  it('隐藏字段后保存，提交的是整份版式且带幂等键', async () => {
+  it('移出表单后保存，提交的是整份版式且带幂等键', async () => {
     renderPage()
     await screen.findByText('ORDER_NO')
-    // REMARK 未锁定 → 允许从表单移除
+    // REMARK 未锁定 → 允许移出表单
     rightClickCell('REMARK')
-    fireEvent.click(screen.getByRole('button', { name: '从表单移除' }))
+    fireEvent.click(screen.getByRole('button', { name: '移出表单' }))
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => expect(apiClientMock.put).toHaveBeenCalledTimes(1))
@@ -179,7 +244,7 @@ describe('FormDesignerPage', () => {
     renderPage()
     await screen.findByText('ORDER_NO')
     rightClickCell('ORDER_NO')
-    const removeButton = screen.getByRole('button', { name: '从表单移除' }) as HTMLButtonElement
+    const removeButton = screen.getByRole('button', { name: '移出表单' }) as HTMLButtonElement
     expect(removeButton.disabled).toBe(true)
     expect(removeButton.title).toBe('主键列，始终显示')
   })
@@ -198,9 +263,9 @@ describe('FormDesignerPage', () => {
     renderPage()
     await screen.findByText('ORDER_NO')
     rightClickCell('REMARK')
-    fireEvent.click(screen.getByRole('button', { name: '从表单移除' }))
-    expect(screen.getByText('已隐藏')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '移出表单' }))
+    expect(screen.getByText('已移出表单')).toBeInTheDocument()
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
-    await waitFor(() => expect(screen.queryByText('已隐藏')).toBeNull())
+    await waitFor(() => expect(screen.queryByText('已移出表单')).toBeNull())
   })
 })

@@ -15,7 +15,6 @@ import {
   IconArrowForwardUp,
   IconArrowLeft,
   IconCopyPlus,
-  IconEye,
   IconFileExport,
   IconFileUpload,
   IconLayoutRows,
@@ -89,7 +88,7 @@ type PickedFieldRow = UnifiedChooserRow & { F_ID?: unknown }
  * 表单设计态：右键【表单设计】进入，与运行态**同一套渲染**，但输入控件不可填、
  * 值用字段代号占位。保存即生效（服务端同请求内重发布该模块快照），无需另行发布。
  *
- * 只改版式：顺序、占位、复合格、分节、页签、表单内隐藏；字段自身的属性在字段维护里改。
+ * 只改版式：顺序、占位、复合格、分节、页签、移出表单；字段自身的属性在字段维护里改。
  *
  * 页面只有一条工具条与一整块画布：没有左侧字段池、也没有右侧属性面板——
  * 加字段走画布末尾的「+」（统一选择器），改版式走右键精修，画布得以横向铺满。
@@ -105,7 +104,6 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
   /** 正在用统一选择器补字段的表；null = 选择器关闭。 */
   const [picker, setPicker] = useState<DesignTable | null>(null)
   const [compact, setCompact] = useState(true)
-  const [preview, setPreview] = useState(false)
   const [busy, setBusy] = useState(false)
   const [issues, setIssues] = useState<string[]>([])
   const [status, setStatus] = useState<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(null)
@@ -402,23 +400,32 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
 
   /**
    * 选择器确认：把选中的字段追加到该表末尾。
-   * 已经在表单里的（含本次草稿刚加的）跳过并说明，避免重复点击后静默无反应。
+   * 已经在表单里的（含本次草稿刚加的）跳过并说明，避免重复点击后静默无反应；
+   * 已移出表单的列仍留在字段池里（明细表头不再画它们），选中它 = 原位放回表单。
    */
   const addPickedFields = (table: DesignTable, rows: PickedFieldRow[]) => {
     if (!draft) return
     const pool = table === 'master' ? draft.masterPool : draft.detailPool
-    const placed = new Set((table === 'master' ? draft.master : draft.detail).map(row => row.key))
     let next = draft
     let added = 0
     const skipped: string[] = []
     for (const row of rows) {
       const key = String(row.F_ID ?? '').trim()
       if (key.length === 0) continue
-      if (placed.has(key) || !pool.some(field => field.key === key)) {
+      const placed = (table === 'master' ? next.master : next.detail).find(item => item.key === key)
+      if (placed) {
+        if (!placed.hidden) {
+          skipped.push(key)
+          continue
+        }
+        next = setHidden(next, table, key, false)
+        added += 1
+        continue
+      }
+      if (!pool.some(field => field.key === key)) {
         skipped.push(key)
         continue
       }
-      placed.add(key)
       next = addFromPool(next, table, key)
       added += 1
     }
@@ -510,8 +517,7 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
             { action: 'reset-layout', label: '重置', icon: <IconRestore size={16} />, title: '重置为默认版式（清除本模块的版式定制）', disabled: busy, onClick: () => void reset() },
             { action: 'undo', label: '撤销', icon: <IconArrowBackUp size={16} />, title: '撤销（Ctrl+Z）', disabled: !history.canUndo, onClick: history.undo },
             { action: 'redo', label: '重做', icon: <IconArrowForwardUp size={16} />, title: '重做（Ctrl+Y）', disabled: !history.canRedo, onClick: history.redo },
-            { action: 'compact', label: '紧凑排列', icon: <IconLayoutRows size={16} />, title: '紧凑排列：允许后续字段回填空洞', variant: compact ? 'primary' : 'secondary', onClick: () => setCompact(value => !value) },
-            { action: 'preview', label: '预览', icon: <IconEye size={16} />, title: '预览：隐去设计工具，只看排布', variant: preview ? 'primary' : 'secondary', onClick: () => setPreview(value => !value) },
+            { action: 'compact', label: '紧凑', icon: <IconLayoutRows size={16} />, title: '紧凑：允许后续字段回填空洞', variant: compact ? 'primary' : 'secondary', onClick: () => setCompact(value => !value) },
           ] satisfies ErpCommandItem[]}
         />
         <span className="erp-designer-toolbar-divider" />
@@ -525,7 +531,7 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
               render: () => (
                 <label className="btn btn-outline-secondary btn-sm erp-command-btn" title="把导出的版式文件载入画布">
                   <IconFileUpload size={16} />
-                  导入版式
+                  导入
                   <input
                     type="file"
                     accept="application/json"
@@ -539,26 +545,13 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
                 </label>
               ),
             },
-            { action: 'export-layout', label: '导出版式', icon: <IconFileExport size={16} />, title: '把当前版式导出为文件', disabled: busy, onClick: exportFile },
+            { action: 'export-layout', label: '导出', icon: <IconFileExport size={16} />, title: '把当前版式导出为文件', disabled: busy, onClick: exportFile },
           ] satisfies ErpCommandItem[]}
         />
-        <span className="erp-designer-spacer" />
-        <span className="erp-designer-muted">
-          {state.title} · {state.masterTable}
-          {state.detailTable ? ` / ${state.detailTable}` : ''}
-        </span>
       </div>
 
       {status ? <div className={`erp-designer-status is-${status.tone}`}>{status.text}</div> : null}
-      {!preview ? (
-        <div className="erp-designer-status is-info">
-          {state.master.customized ? '主表已有定制版式' : '主表未定制（保存后才成为定制）'}
-          {state.detailTable
-            ? ` · ${state.detail.customized ? '明细已有定制版式' : '明细未定制（保存后才成为定制）'}`
-            : ''}
-        </div>
-      ) : null}
-      {templates && !preview ? (
+      {templates ? (
         <div className="erp-designer-templates">
           {templates.length === 0 ? (
             <span className="erp-designer-muted">没有共用同一主表的其它模块。</span>
@@ -591,7 +584,7 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
           </Button>
         </div>
       ) : null}
-      {issues.length > 0 && !preview ? (
+      {issues.length > 0 ? (
         <div className="erp-designer-status is-warn">
           保存前请先处理：{issues.slice(0, 3).join(' ')}
           {issues.length > 3 ? ` 等 ${issues.length} 处` : ''}
@@ -620,7 +613,6 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
               selectedKey={selected?.table === 'master' ? selected.key : null}
               onSelect={key => setSelected(key ? { table: 'master', key } : null)}
               compact={compact}
-              preview={preview}
               draggingKey={dragging?.key ?? null}
               ghostKey={previewDraft && dragging?.table === 'master' ? dragging.key : null}
               dropTarget={dropTarget}
@@ -641,7 +633,6 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
                 table={state.detailTable}
                 rows={canvasDraft.detail}
                 selectedKey={selected?.table === 'detail' ? selected.key : null}
-                preview={preview}
                 draggingKey={dragging?.table === 'detail' ? dragging.key : null}
                 dropTarget={dropTarget}
                 onSelect={key => setSelected({ table: 'detail', key })}
@@ -739,15 +730,16 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
                 <button
                   type="button"
                   disabled={menuRow.locked}
-                  title={menuRow.locked ? (menuRow.lockReason ?? '不允许从表单移除') : undefined}
+                  title={menuRow.locked ? (menuRow.lockReason ?? '不允许移出表单') : undefined}
                   onClick={() => runMenu(() => setRowHidden(menu.table, menuRow.key, !menuRow.hidden))}
                 >
+                  {/* 明细里已移出的列不在表头上（没有可右键的对象），故明细只有"移出"这一态 */}
                   {menu.table === 'detail'
-                    ? menuRow.hidden ? '恢复该列' : '隐藏该列'
-                    : menuRow.hidden ? '恢复显示' : '从表单移除'}
+                    ? '移出表单'
+                    : menuRow.hidden ? '放回表单' : '移出表单'}
                 </button>
                 <button type="button" onClick={() => runMenu(() => apply(resetRow(draft, menu.table, menuRow.key)))}>
-                  {menu.table === 'detail' ? '恢复该列默认' : '恢复该字段默认'}
+                  {menu.table === 'detail' ? '恢复该列默认排版' : '恢复该字段默认排版'}
                 </button>
               </>
             ) : null}
@@ -786,7 +778,9 @@ export default function FormDesignerPage({ moduleId, onExit }: FormDesignerPageP
           key: 'form-designer.fields',
           args: { moduleId: String(moduleId), table: picker ?? 'master' },
         }}
-        emptyText="该表字段都已在表单里。被移除的字段仍在画布上（带删除线），右键它选「恢复显示」即可。"
+        emptyText={picker === 'detail'
+          ? '该表明细列都已在表单里（运行态不显示的字段不进这里）。'
+          : '该表字段都已在表单里。已移出表单的字段仍在画布上（带删除线），右键它选「放回表单」即可；运行态不显示的字段不进这里。'}
         getRowId={row => String(row.F_ID ?? '')}
         onPick={rows => addPickedFields(picker ?? 'master', rows)}
         onClose={() => setPicker(null)}

@@ -42,10 +42,6 @@
   background: var(--tblr-border-color);
 }
 
-.erp-designer-spacer {
-  flex: 1;
-}
-
 .erp-designer-muted {
   font-size: 11px;
   color: var(--tblr-secondary);
@@ -186,10 +182,6 @@
   cursor: grab;
 }
 
-.erp-designer-cell.is-preview {
-  cursor: default;
-}
-
 .erp-designer-cell.is-selected::after {
   content: '';
   position: absolute;
@@ -217,6 +209,17 @@
   min-width: 0;
 }
 
+/* 占位框的宽度 = 编辑态控件的宽度：单字段格铺满控件列，复合格内末位字段（从字段）占满剩余，
+   主字段按内容——而不是"字段代号多长就显示多长" */
+.erp-form-cell-controls > .erp-designer-field {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.erp-form-cell-controls > .erp-designer-field:last-child {
+  flex: 1 1 auto;
+}
+
 .erp-designer-field.is-hidden .erp-designer-value {
   text-decoration: line-through;
   color: var(--tblr-secondary);
@@ -226,6 +229,8 @@
   color: var(--tblr-danger);
 }
 
+/* 占位框靠样式区分实体列与虚拟列（虚拟列=选择器回写的伴生显示列，没有物理列）：
+   实体 = 灰底 + 实线边框；虚拟 = 淡红底 + 虚线边框。挂在框上的文字角标因此一律省掉。 */
 .erp-designer-value {
   flex: 1;
   min-width: 0;
@@ -234,11 +239,16 @@
   font-size: 11px;
   color: var(--tblr-secondary);
   background: var(--tblr-bg-surface-secondary);
-  border: 1px dashed var(--tblr-border-color);
+  border: 1px solid var(--tblr-border-color);
   border-radius: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.erp-designer-field.is-virtual .erp-designer-value {
+  background: color-mix(in srgb, var(--tblr-danger) 8%, var(--tblr-bg-surface));
+  border: 1px dashed color-mix(in srgb, var(--tblr-danger) 45%, var(--tblr-border-color));
 }
 
 .erp-designer-badges {
@@ -317,21 +327,32 @@
 
 .erp-designer-detail-table > thead > tr > th.erp-designer-detail-head {
   min-width: 110px;
-  padding: 6px 10px;
   font-size: 12px;
   white-space: nowrap;
   cursor: grab;
   user-select: none;
 }
 
-.erp-designer-detail-head.is-selected {
-  outline: 2px solid var(--tblr-primary);
-  outline-offset: -2px;
+/* 选中一列：表头画 上/左/右，占位格画 左/下/右——两格拼成一整圈框，中间的格线处不重复画线。
+   用 inset 阴影而不是真 border：border-collapse 下加 2px 边框会让整列回排（选中时抖动），
+   inset 阴影不参与布局，且与落点指示线同一套机制 */
+.erp-designer-detail-table > thead > tr > th.erp-designer-detail-head.is-selected {
+  box-shadow:
+    inset 0 2px 0 0 var(--tblr-primary),
+    inset 2px 0 0 0 var(--tblr-primary),
+    inset -2px 0 0 0 var(--tblr-primary);
 }
 
-.erp-designer-detail-head.is-hidden .erp-designer-detail-label {
-  text-decoration: line-through;
-  color: var(--tblr-secondary);
+.erp-designer-detail-table > tbody > tr > td.erp-designer-detail-cell.is-selected {
+  box-shadow:
+    inset 2px 0 0 0 var(--tblr-primary),
+    inset -2px 0 0 0 var(--tblr-primary),
+    inset 0 -2px 0 0 var(--tblr-primary);
+}
+
+/* 占位格与表头同属一列：可点选、可右键精修；拖动仍只在表头上（表头是列的把手） */
+.erp-designer-detail-table > tbody > tr > td.erp-designer-detail-cell {
+  cursor: pointer;
 }
 
 .erp-designer-detail-head.is-drop-before { box-shadow: inset 3px 0 0 0 var(--tblr-primary); }
@@ -342,12 +363,38 @@
   margin-right: 6px;
 }
 
-.erp-designer-add-th {
-  width: 1%;
-  white-space: nowrap;
+/* 明细设计表的单元格内边距由 .erp-data-table 统一给出（且带 !important），此处把左右内边距统一为 10px：
+   列名与占位框左右留白一致，表头与占位行仍然对齐（选择器权重高于 .erp-data-table，免受文件顺序影响） */
+.erp-designer-detail-table > thead > tr > th,
+.erp-designer-detail-table > tbody > tr > td {
+  padding-left: 10px !important;
+  padding-right: 10px !important;
 }
 
-.erp-designer-add-th > button {
+/* 表头与占位行同底（都用表头色），且占位行不参与行悬停换底：
+   两行看成一整块「表头 + 占位体」，而不是"表头 + 一条会变色的行"。
+   悬停那条多挂一层 .erp-designer 前缀，权重高于 .erp-data-table 的行悬停底色，不依赖加载顺序 */
+.erp-designer-detail-table > thead > tr > th.erp-designer-detail-head,
+.erp-designer-detail-table > tbody > tr > td.erp-designer-detail-cell,
+.erp-designer .erp-designer-detail-table > tbody > tr:hover > td.erp-designer-detail-cell {
+  background: var(--tblr-bg-surface-secondary);
+}
+
+/* .erp-data-table 给表头的 1px 白色列分隔线会让表头的 padding box 比占位格窄 1px，
+   而拼框的竖线画在 padding box 内侧——于是右竖线在表头/占位格交界处错开 1px，看着像断点。
+   列边界在本表由占位框与留白表达，这里不要这条线 */
+.erp-designer-detail-table > thead > tr > th {
+  border-right: 0;
+}
+
+/* 占位框沿用主表画布那一套（实体灰底实线 / 虚拟淡红虚线），
+   但代号不参与列宽竞争（超长时由占位框自己省略），否则长代号会把列撑宽 */
+.erp-designer-detail-cell > .erp-designer-field {
+  max-width: 160px;
+}
+
+/* 「添加列」放在明细面板标题栏右上角：表头只留列本身，末尾不再挂一个不好点的尾列 */
+.erp-designer-add-col {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -364,7 +411,7 @@
   cursor: pointer;
 }
 
-.erp-designer-add-th > button:hover {
+.erp-designer-add-col:hover {
   color: var(--tblr-primary);
   border-color: var(--tblr-primary);
 }

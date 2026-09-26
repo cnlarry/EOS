@@ -14,7 +14,6 @@ interface DesignCanvasProps {
   onSelect: (key: string | null) => void
   /** 紧凑排列：开启时允许后续字段回填空洞（关闭则空洞保留）。 */
   compact: boolean
-  preview: boolean
   /** 正在拖的字段（画布内），用于淡化原位置 */
   draggingKey: string | null
   /** 拖拽预览中已被搬动的字段：在落点处画"待放置"占位，让后方字段让位的关系一眼可见 */
@@ -40,7 +39,7 @@ interface DesignCanvasProps {
  * 让"设计出来的表单长什么样"与运行态观感一致。
  *
  * 一格的取舍：**标签与控件同属一个可拖拽、可右键、可点选的单元**，格内不再挂动作按钮——
- * 前移/后移/占位/复合格/分节/隐藏全部走右键精修，画布因此干净到只剩排布本身。
+ * 前移/后移/占位/复合格/分节/移出表单全部走右键精修，画布因此干净到只剩排布本身。
  */
 export default function DesignCanvas({
   draft,
@@ -49,7 +48,6 @@ export default function DesignCanvas({
   selectedKey,
   onSelect,
   compact,
-  preview,
   draggingKey,
   ghostKey,
   dropTarget,
@@ -76,7 +74,7 @@ export default function DesignCanvas({
             key={tab.no}
             tabNo={tab.no}
             active={dropTarget?.kind === 'tab' && dropTarget.tabNo === tab.no}
-            closable={!preview && tab.no !== RESIDENT_TAB_NO}
+            closable={tab.no !== RESIDENT_TAB_NO}
             onDelete={() => onDeleteTab(tab.no)}
           >
             {renaming === tab.no ? (
@@ -105,7 +103,6 @@ export default function DesignCanvas({
                 className={tab.no === activeTabNo ? 'nav-link active' : 'nav-link'}
                 onClick={() => onActiveTabChange(tab.no)}
                 onDoubleClick={() => {
-                  if (preview) return
                   setRenaming(tab.no)
                   setRenameValue(tab.title)
                 }}
@@ -116,20 +113,18 @@ export default function DesignCanvas({
             )}
           </DroppableTab>
         ))}
-        {!preview ? (
-          <li className="nav-item">
-            <button type="button" className="nav-link erp-designer-tab-add" title="新增页签" onClick={onAddTab}>
-              +
-            </button>
-          </li>
-        ) : null}
+        <li className="nav-item">
+          <button type="button" className="nav-link erp-designer-tab-add" title="新增页签" onClick={onAddTab}>
+            +
+          </button>
+        </li>
       </ul>
 
       <div
         className="erp-form-grid erp-designer-sections"
         style={{ '--erp-form-cols': draft.columns } as CSSProperties}
       >
-        {tabRows.length === 0 && !preview ? (
+        {tabRows.length === 0 ? (
           <p className="erp-designer-empty">本页签还没有字段，点下方的「+」从字段池选择。</p>
         ) : null}
         {sections.map((section, sectionIndex) => (
@@ -138,9 +133,7 @@ export default function DesignCanvas({
               <DroppableSection
                 sectionId={section.title}
                 active={dropTarget?.kind === 'section' && dropTarget.sectionId === section.title}
-                onContextMenu={
-                  preview ? undefined : (x, y) => onSectionContextMenu?.(section.title as string, x, y)
-                }
+                onContextMenu={(x, y) => onSectionContextMenu?.(section.title as string, x, y)}
               >
                 {section.title}
               </DroppableSection>
@@ -157,12 +150,11 @@ export default function DesignCanvas({
                   selected={cell.some(field => field.key === selectedKey)}
                   placement={placement}
                   ghost={ghostKey !== null && cell.some(field => field.key === ghostKey)}
-                  preview={preview}
                   activeClass={dropTarget?.kind === 'insert' && dropTarget.key === cell[0].key
                     ? (dropTarget.before ? 'is-drop-before' : 'is-drop-after')
                     : dropKey === cell[0].key ? dropClass : ''}
                   onSelect={onSelect}
-                  onContextMenu={preview ? undefined : (x, y) => onRowContextMenu?.(cell[0].key, x, y)}
+                  onContextMenu={(x, y) => onRowContextMenu?.(cell[0].key, x, y)}
                 >
                   <label className="erp-form-label">
                     {cell[0].label}
@@ -178,8 +170,8 @@ export default function DesignCanvas({
                       <DesignField
                         key={field.key}
                         field={field}
+                        table={draft.masterTable}
                         dragging={draggingKey === field.key}
-                        preview={preview}
                         onSelect={onSelect}
                       />
                     ))}
@@ -189,19 +181,17 @@ export default function DesignCanvas({
             </div>
           </section>
         ))}
-        {!preview ? (
-          <div className="erp-designer-add-row">
-            <button
-              type="button"
-              className="erp-designer-add-cell"
-              title="添加字段（打开统一选择器）"
-              onClick={onAddField}
-            >
-              <IconPlus size={16} />
-              添加字段
-            </button>
-          </div>
-        ) : null}
+        <div className="erp-designer-add-row">
+          <button
+            type="button"
+            className="erp-designer-add-cell"
+            title="添加字段（打开统一选择器）"
+            onClick={onAddField}
+          >
+            <IconPlus size={16} />
+            添加字段
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -277,7 +267,6 @@ interface DesignerCellProps {
   activeClass: string
   /** 拖拽预览中字段搬到了这一格：画待放置占位 */
   ghost: boolean
-  preview: boolean
   children: ReactNode
   onSelect: (key: string) => void
   onContextMenu?: (x: number, y: number) => void
@@ -295,7 +284,6 @@ function DesignerCell({
   placement,
   activeClass,
   ghost,
-  preview,
   children,
   onSelect,
   onContextMenu,
@@ -304,12 +292,10 @@ function DesignerCell({
   const { setNodeRef: setDragRef, attributes, listeners } = useDraggable({
     id: dragId({ from: 'canvas', table: 'master', key: cellKey }),
     data: { kind: 'field', key: cellKey },
-    disabled: preview,
   })
   const classes = [multi ? 'erp-form-cell erp-designer-cell' : 'erp-designer-cell']
   if (selected) classes.push('is-selected')
   if (ghost) classes.push('is-drop-ghost')
-  if (preview) classes.push('is-preview')
   if (activeClass) classes.push(activeClass)
   return (
     <div
@@ -321,7 +307,6 @@ function DesignerCell({
       data-designer-cell={cellKey}
       style={{ gridColumn: `${placement.col} / span ${placement.span}`, gridRow: `${placement.row} / span ${placement.rowSpan}` }}
       onClick={event => {
-        if (preview) return
         event.stopPropagation()
         onSelect(cellKey)
       }}
@@ -334,7 +319,7 @@ function DesignerCell({
         onSelect(node?.getAttribute('data-designer-field') ?? cellKey)
         onContextMenu(event.clientX, event.clientY)
       }}
-      title={onContextMenu ? '拖动调整位置；右键精修（前移后移/占位/复合格/分节/隐藏）' : undefined}
+      title={onContextMenu ? '拖动调整位置；右键精修（前移后移/占位/复合格/分节/移出表单）' : undefined}
       {...attributes}
       {...listeners}
     >
@@ -345,37 +330,37 @@ function DesignerCell({
 
 interface DesignFieldProps {
   field: DesignRow
+  /** 字段所属表名：悬停提示按 表名.字段名 给出完整定位 */
+  table: string
   dragging: boolean
-  preview: boolean
   onSelect: (key: string | null) => void
 }
 
 /** 格内的一个字段：值用字段代号占位。整格的拖动/右键由所在格承接，这里只做显示与单选。 */
-function DesignField({ field, dragging, preview, onSelect }: DesignFieldProps) {
+function DesignField({ field, table, dragging, onSelect }: DesignFieldProps) {
   const classes = ['erp-designer-field']
   if (field.hidden) classes.push('is-hidden')
   if (!field.userVisible) classes.push('is-denied')
+  // 虚拟列没有物理列（选择器回写的伴生显示列）：靠占位框样式区分，不再挂文字角标
+  if (field.isVirtual) classes.push('is-virtual')
   if (dragging) classes.push('is-dragging')
+  const name = `${table}.${field.key}${field.isVirtual ? '（虚拟列）' : ''}`
   return (
     <div
       className={classes.join(' ')}
       data-designer-field={field.key}
       onClick={event => {
-        if (preview) return
         event.stopPropagation()
         onSelect(field.key)
       }}
-      title={field.userVisible ? field.key : `${field.key}（当前用户不可见）`}
+      title={field.userVisible ? name : `${name}（当前用户不可见）`}
     >
       <span className="erp-designer-value">{field.key}</span>
       <span className="erp-designer-badges">
         {field.span > 1 || field.rowSpan > 1 ? <em>{`▦ ${field.span}×${field.rowSpan}`}</em> : null}
-        {/* 排了也不会出现的字段（虚拟查找列、当前用户不可见）先说清楚，免得排布白调 */}
+        {/* 排了也不会出现的字段先说清楚，免得排布白调 */}
         {!field.userVisible ? <em className="is-denied">运行态不显示</em> : null}
-        {field.hidden ? <em className="is-hidden">已隐藏</em> : null}
-        {field.cellRole === 1 ? <em>复合格主</em> : null}
-        {field.cellRole === 2 ? <em>复合格从</em> : null}
-        {field.isVirtual ? <em>虚拟</em> : null}
+        {field.hidden ? <em className="is-hidden">已移出表单</em> : null}
       </span>
     </div>
   )
