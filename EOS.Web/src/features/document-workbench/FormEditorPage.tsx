@@ -20,7 +20,7 @@ import { assistantPrefillKey } from '../../lib/storageKeys'
 import { FormFieldRenderer } from './FormFieldRenderer'
 import type { FormDefinition, FormFieldDefinition } from './formDefinition'
 import { alignClass, formatFieldValue } from './fieldFormat'
-import { DEFAULT_FORM_COLUMNS, isLifecycleTailField, packFormSections } from './formLayout'
+import { DEFAULT_FORM_COLUMNS, packFormSections } from './formLayout'
 import { fieldVariant } from './formFieldKind'
 import { validateDetailRows, validateMasterFields, type FieldErrors } from './formValidation'
 import { buildViewToolbarItems } from './formToolbar'
@@ -124,11 +124,8 @@ const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs
   const visibleMaster = form.masterFields.filter(field => field.isVisible)
   const tabFields = visibleMaster.filter(field => !hasTabs || field.tabNo === activeTabNo)
   // 整节单栅格 + 显式装箱：排布规则与设计态**共用同一份**（packFormSections），
-  // 否则"设计态看着是一行、运行态变成两行"。浏览态把生命周期列挤到表单尾部。
-  const sections = packFormSections(tabFields, columns, {
-    fillHoles: true,
-    tailCells: viewing ? field => isLifecycleTailField(field) : undefined,
-  })
+  // 否则"设计态看着是一行、运行态变成两行"。生命周期列不特判：位置由版式（设计态画板）决定。
+  const sections = packFormSections(tabFields, columns, { fillHoles: true })
   const renderCell = (cell: FormFieldDefinition[]) => {
     const [main, ...companions] = cell
     if (companions.length === 0) {
