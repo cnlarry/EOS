@@ -50,8 +50,9 @@ public sealed class FormLayoutRepository(
         var columns = FormLayoutDerivation.DefaultColumns;
         var layout = await FormLayoutReader.ReadAsync(
             connection, moduleId, module.MasterTable, module.DetailTable, columns, token);
+        // 主表字段池含虚拟列：它们是选择器回写的伴生显示列，能排进版式（运行态按只读字段渲染）
         var masterFields = await WorkbenchDefinitionBuilder.ReadFormFieldRows(
-            connection, module.MasterTable, module.MasterTable, token, includeVirtual: false);
+            connection, module.MasterTable, module.MasterTable, token, includeVirtual: true);
         var masterFacts = await FormLayoutFactsBuilder.BuildAsync(
             connection, module.MasterTable, module.MasterTable, token);
 

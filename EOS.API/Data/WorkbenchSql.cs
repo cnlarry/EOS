@@ -182,6 +182,18 @@ internal static class WorkbenchSql
         return rows.Count == 0 ? null : rows[0];
     }
 
+    /// <summary>
+    /// 按主键读一行（可带虚拟列）：物理列 + 虚拟列表达式 + 所需 LEFT JOIN。
+    /// 表达式与 JOIN 片段由 VirtualColumnResolver 产出（表/列白名单 + 物理存在性校验），此处只做拼接。
+    /// </summary>
+    internal static async Task<Dictionary<string, object?>?> ReadRowAsync(
+        SqlConnection connection, SqlTransaction? transaction, string table, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues,
+        IReadOnlyList<string> fields, IReadOnlyList<string> virtualFragments, string joinFragment, CancellationToken token)
+    {
+        var rows = await ReadRowsAsync(connection, transaction, table, pkColumns, keyValues, fields, virtualFragments, joinFragment, token);
+        return rows.Count == 0 ? null : rows[0];
+    }
+
     internal static async Task<IReadOnlyList<Dictionary<string, object?>>> ReadRowsAsync(
         SqlConnection connection, SqlTransaction? transaction, string table, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues, IReadOnlyList<string> fields, CancellationToken token)
     {
@@ -202,6 +214,24 @@ internal static class WorkbenchSql
             result.Add(row);
         }
         return result;
+    }
+
+    /// <summary>
+    /// 按主键读行（可带虚拟列）：基表起别名 <c>[__base]</c>，<paramref name="joinFragment"/> 由调用方
+    /// 从 VirtualColumnResolver 取得；没有虚拟列时它为空串，SQL 等价于不带 JOIN 的形态。
+    /// </summary>
+    internal static async Task<IReadOnlyList<Dictionary<string, object?>>> ReadRowsAsync(
+        SqlConnection connection, SqlTransaction? transaction, string table, IReadOnlyList<string> pkColumns, IReadOnlyList<string> keyValues,
+        IReadOnlyList<string> fields, IReadOnlyList<string> virtualFragments, string joinFragment, CancellationToken token)
+    {
+        const string baseAlias = "__base";
+        var projection = fields.Select(field => $"[{baseAlias}].[{field}]").Concat(virtualFragments);
+        var where = BuildAliasedKeyWhere(pkColumns, baseAlias);
+        await using var command = new SqlCommand(
+            $"SELECT {string.Join(',', projection)} FROM dbo.[{table}] AS [{baseAlias}]{joinFragment} WHERE {where};",
+            connection, transaction);
+        AddKeyParameters(command, pkColumns, keyValues);
+        return await ReadRowsAsync(command, token);
     }
 
     /// <summary>执行命令并读取全部行 → 字典（通用 Reader→Dictionary 收敛，C4；字符串值 Trim）。</summary>
@@ -275,6 +305,13 @@ internal static class WorkbenchSql
     /// </summary>
     internal static string BuildKeyWhere(IReadOnlyList<string> pkColumns) =>
         string.Join(" AND ", pkColumns.Select((column, index) => $"[{column}]=@k{index}"));
+
+    /// <summary>
+    /// 参数化主键 WHERE 片段（基表带别名限定）：`[__base].[COL1]=@k0 AND ...`，
+    /// 供带 JOIN 的读取复用——JOIN 之后列名会有歧义，必须限定到基表别名。
+    /// </summary>
+    internal static string BuildAliasedKeyWhere(IReadOnlyList<string> pkColumns, string tableAlias) =>
+        string.Join(" AND ", pkColumns.Select((column, index) => $"[{tableAlias}].[{column}]=@k{index}"));
 
     /// <summary>
     /// 校验主键列与值一一对应后返回参数化 WHERE 片段（值由 <see cref="AddKeyParameters"/> 登记）。

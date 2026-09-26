@@ -23,6 +23,7 @@ public sealed class WorkbenchCommandHandler(
     EffectEngineInvoker effectEngine,
     WorkbenchIdempotency idempotency,
     DepotStockPolicyService depotPolicies,
+    WorkbenchVirtualColumnResolver virtualColumns,
     ILogger<WorkbenchCommandHandler> logger)
 {
     public async Task<RecordReadResult> GetRecordAsync(
@@ -50,7 +51,13 @@ public sealed class WorkbenchCommandHandler(
                 masterFields.Add(statusColumn);
             }
         }
-        var current = await WorkbenchSql.ReadRowAsync(connection, null, definition.MasterTable, pkColumns, keyValues, masterFields, token);
+        // 虚拟列（客户名称/业务员/仓库名…）本表没有物理列，靠 VIRTUAL_EXP 连表取值；
+        // 表达式从定义侧取——ReadFields 已按 QUERY_RELATION 白名单筛过一遍，这里只取表单用到的那些。
+        var masterVirtual = await ResolveVirtualColumnsAsync(
+            connection, definition.MasterTable, VirtualFieldsFor(definition.MasterFields, form.MasterFields), token);
+        var current = await WorkbenchSql.ReadRowAsync(
+            connection, null, definition.MasterTable, pkColumns, keyValues,
+            masterFields, masterVirtual.SelectFragments, masterVirtual.JoinFragment, token);
         if (current is null)
         {
             return new(RecordAccessStatus.NotFound, null);
@@ -71,12 +78,44 @@ public sealed class WorkbenchCommandHandler(
         if (definition.DetailTable is not null && form.DetailFields.Count > 0)
         {
             var detailFields = form.DetailFields.Where(field => !field.DisplayOnly && !field.IsVirtual).Select(field => field.Key).Concat(pkColumns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            detailRows.AddRange(await WorkbenchSql.ReadRowsAsync(connection, null, definition.DetailTable, pkColumns, keyValues, detailFields, token));
+            var detailVirtual = await ResolveVirtualColumnsAsync(
+                connection, definition.DetailTable, VirtualFieldsFor(definition.DetailFields, form.DetailFields), token);
+            detailRows.AddRange(await WorkbenchSql.ReadRowsAsync(
+                connection, null, definition.DetailTable, pkColumns, keyValues,
+                detailFields, detailVirtual.SelectFragments, detailVirtual.JoinFragment, token));
             await ResolveDetailChooserDisplaysAsync(connection, null, definition.ModuleId, definition.DetailTable, form.DetailFields, detailRows, keyValues, token);
         }
         var flowState = await ReadFlowStateAsync(connection, definition.ModuleId, WorkbenchKeyCondition.Build(pkColumns, keyValues), token);
         return new(RecordAccessStatus.Ok, new RecordBundle(current, detailRows), flowState);
     }
+
+    /// <summary>
+    /// 表单里出现、且定义侧带表达式的虚拟列。
+    /// 取定义侧（而非直接查 FIELDS）是因为它已经在 ReadFields 里按 QUERY_RELATION 白名单解析过一遍，
+    /// 解析不了的虚拟列压根不在定义里——这里再筛一次，避免把不可能取到值的字段带上。
+    /// </summary>
+    internal static List<WorkbenchField> VirtualFieldsFor(
+        IReadOnlyList<WorkbenchField> definitionFields, IReadOnlyList<FormFieldDefinition> formFields)
+    {
+        var wanted = formFields
+            .Where(field => field.IsVirtual)
+            .Select(field => field.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return wanted.Count == 0
+            ? []
+            : definitionFields.Where(field => field.IsVirtual && wanted.Contains(field.Key)).ToList();
+    }
+
+    /// <summary>
+    /// 虚拟列受控解析：返回的 <c>SelectFragments</c> 直接拼进 SELECT、<c>JoinFragment</c> 直接拼进 FROM。
+    /// 表名/列名只来自 QUERY_RELATION 白名单与物理存在性校验；解析不了的字段进 UnresolvedKeys
+    /// （读取时该字段值为空），不影响同一次读取里的其它字段。
+    /// </summary>
+    private async Task<VirtualColumnResolution> ResolveVirtualColumnsAsync(
+        SqlConnection connection, string table, IReadOnlyList<WorkbenchField> virtualFields, CancellationToken token)
+        => virtualFields.Count == 0
+            ? new VirtualColumnResolution([], string.Empty, [], [], [])
+            : await virtualColumns.ResolveDefinitionAsync(connection, table, virtualFields, token, baseAlias: "__base");
 
     /// <summary>读取单据在途流程状态（WF_MONITOR.WF_STATE → FlowState 投影；无实例=None）。</summary>
     private static async Task<FlowState> ReadFlowStateAsync(
@@ -1437,9 +1476,16 @@ public sealed class WorkbenchCommandHandler(
         }
     }
 
+    /// <summary>
+    /// 复合格从字段（同组展示列）：只认版式给出的 CellRole/CellGroup。
+    ///
+    /// 这里不再要求 DisplayOnly：该标记源自字段级的 FORM_CELL_ROLE（那一列已退役、读取时恒为 0），
+    /// 而版式的 CellRole 是在它之后才施加的，卡 DisplayOnly 会让所有从字段都进不来，
+    /// 于是"选择器回写出来的名称列"在重新打开单据时永远回填不上。
+    /// </summary>
     private static Dictionary<string, List<FormFieldDefinition>> GroupCompanions(IReadOnlyList<FormFieldDefinition> fields) =>
         fields
-            .Where(field => field.DisplayOnly && field.CellRole == 2 && !string.IsNullOrWhiteSpace(field.CellGroup))
+            .Where(field => field.CellRole == 2 && !string.IsNullOrWhiteSpace(field.CellGroup))
             .GroupBy(field => field.CellGroup!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
 

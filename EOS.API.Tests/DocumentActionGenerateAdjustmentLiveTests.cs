@@ -231,7 +231,8 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
             NullLogger<WorkbenchApprovalService>.Instance);
         var commandHandler = new WorkbenchCommandHandler(connections, auditWriter, approval,
             new WorkbenchScopeFilter(new ApiMetrics()), engine, idempotency,
-            new DepotStockPolicyService(connections, auditWriter), NullLogger<WorkbenchCommandHandler>.Instance);
+            new DepotStockPolicyService(connections, auditWriter), new WorkbenchVirtualColumnResolver(),
+            NullLogger<WorkbenchCommandHandler>.Instance);
         var builder = new WorkbenchDefinitionBuilder(connections, provider,
             Options.Create(new UnifiedFormEditorSettings()), NullLogger<WorkbenchDefinitionBuilder>.Instance);
         var rights = new ModuleRightsRepository(connections, NullLogger<ModuleRightsRepository>.Instance);

@@ -40,6 +40,15 @@ public sealed class WorkbenchSqlKeyWhereTests
     }
 
     [Fact]
+    public void BuildAliasedKeyWhere_QualifiesColumnsWithBaseAlias()
+    {
+        // 带 JOIN 的读取里列名会歧义，主键条件必须限定到基表别名
+        var where = WorkbenchSql.BuildAliasedKeyWhere(["QUOTE_TYPE", "QUOTE_NO"], "__base");
+
+        Assert.Equal("[__base].[QUOTE_TYPE]=@k0 AND [__base].[QUOTE_NO]=@k1", where);
+    }
+
+    [Fact]
     public void AddKeyParameters_RegistersValuesInColumnOrder()
     {
         using var command = new SqlCommand();

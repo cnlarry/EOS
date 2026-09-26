@@ -25,10 +25,10 @@ public sealed class FormLayoutDerivationTests
         int cellRole = 0)
         => new(key, dataType, visible, required, tabNo, formOrder, span, newLine, cellGroup, cellRole);
 
-    private static FormFieldDefinition Field(string key, string dataType = "nvarchar")
+    private static FormFieldDefinition Field(string key, string dataType = "nvarchar", bool isVirtual = false)
         => new(key, key, dataType, 100, null, IsRequired: false, VerifyIndex: null, Regex: null, DefaultValue: null,
             IsReadonly: false, IsVisible: true, OnlyChoose: false, ChooseMultiple: false, ChoosePage: null,
-            Choosers: [], IsPrimaryKey: false, IsAutoIncrement: false, IsVirtual: false, IsCost: false,
+            Choosers: [], IsPrimaryKey: false, IsAutoIncrement: false, IsVirtual: isVirtual, IsCost: false,
             IsSecrecy: false, ServerFilled: false, MaxLength: null);
 
     [Theory]
@@ -86,16 +86,41 @@ public sealed class FormLayoutDerivationTests
     }
 
     [Fact]
-    public void ApplyMasterLayout_WithoutCustomization_ReturnsInputUntouched()
+    public void ApplyMasterLayout_WithoutCustomization_KeepsFieldSetAndOrder()
     {
         var fields = new List<FormFieldDefinition> { Field("A"), Field("B") };
         var derived = FormLayoutDerivation.DeriveDefault([Input("A"), Input("B")], [], 2);
         var customized = new FormLayoutDefinition(2, [], [new FormLayoutRow("B", 1, 1, 2, 1, false, null, null, 0, false)],
             [], MasterCustomized: true);
 
-        Assert.Same(fields, FormLayoutDerivation.ApplyMasterLayout(fields, null));
-        Assert.Same(fields, FormLayoutDerivation.ApplyMasterLayout(fields, derived));
+        Assert.Equal(["A", "B"], FormLayoutDerivation.ApplyMasterLayout(fields, null).Select(field => field.Key).ToArray());
+        Assert.Equal(["A", "B"], FormLayoutDerivation.ApplyMasterLayout(fields, derived).Select(field => field.Key).ToArray());
         Assert.NotSame(fields, FormLayoutDerivation.ApplyMasterLayout(fields, customized));
+    }
+
+    [Fact]
+    public void ApplyMasterLayout_WithoutCustomization_DropsVirtualCompanionColumns()
+    {
+        // 虚拟列是选择器回写出来的伴生显示列：未定制的模块不该凭空多出这些没有输入控件语义的列
+        var fields = new List<FormFieldDefinition> { Field("A"), Field("CLIENT_NAME", isVirtual: true) };
+
+        var result = FormLayoutDerivation.ApplyMasterLayout(fields, null);
+
+        Assert.Equal(["A"], result.Select(field => field.Key).ToArray());
+    }
+
+    [Fact]
+    public void ApplyMasterLayout_WithCustomization_KeepsVirtualColumnsThatLayoutLists()
+    {
+        // 版式显式排入的虚拟列要保留（回写目标得在表单上存在，否则值只活在内存里）
+        var fields = new List<FormFieldDefinition> { Field("A"), Field("CLIENT_NAME", isVirtual: true) };
+        var layout = new FormLayoutDefinition(2, [],
+            [new FormLayoutRow("CLIENT_NAME", 1, 1, 1, 1, false, null, "CLIENT", 2, false)],
+            [], MasterCustomized: true);
+
+        var result = FormLayoutDerivation.ApplyMasterLayout(fields, layout);
+
+        Assert.Equal(["CLIENT_NAME"], result.Select(field => field.Key).ToArray());
     }
 
     [Fact]
