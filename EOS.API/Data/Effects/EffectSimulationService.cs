@@ -47,14 +47,15 @@ public sealed class EffectSimulationService(
         IReadOnlyList<string> keyValues,
         bool approve,
         string executor,
-        CancellationToken token)
+        CancellationToken token,
+        string configSource = "published")
     {
         var started = Stopwatch.StartNew();
         using var total = CancellationTokenSource.CreateLinkedTokenSource(token);
         total.CancelAfter(TotalBudget);
         try
         {
-            return await RunAsync(definition, eventCode, keyValues, approve, executor, started, total.Token, token);
+            return await RunAsync(definition, eventCode, keyValues, approve, executor, started, total.Token, token, configSource);
         }
         catch (Exception exception) when (IsTimeout(exception, total, token))
         {
@@ -70,7 +71,8 @@ public sealed class EffectSimulationService(
         string executor,
         Stopwatch started,
         CancellationToken budget,
-        CancellationToken token)
+        CancellationToken token,
+        string configSource)
     {
         var plan = planLoader.Load(definition);
         // Only rows that run on this event describe the steps: a report must not name a step
@@ -118,7 +120,7 @@ public sealed class EffectSimulationService(
             {
                 precondition = Gate(blocked);
                 return BuildReport(definition, eventCode, keyValues, started, actions,
-                    precondition, validation, steps, warnings);
+                    precondition, validation, steps, warnings, configSource);
             }
 
             var outcome = await approvals.RunApprovalCoreAsync(
@@ -144,7 +146,7 @@ public sealed class EffectSimulationService(
                     precondition = Gate(failure);
                 }
                 return BuildReport(definition, eventCode, keyValues, started, actions,
-                    precondition, validation, steps, warnings);
+                    precondition, validation, steps, warnings, configSource);
             }
 
             steps = outcome.Steps;
@@ -153,7 +155,7 @@ public sealed class EffectSimulationService(
                 "效果链预演完成 module={ModuleId} event={Event} key={Key} steps={Steps} executor={User}",
                 definition.ModuleId, eventCode, string.Join(',', keyValues), steps.Count, executor);
             return BuildReport(definition, eventCode, keyValues, started, actions,
-                precondition, validation, steps, warnings);
+                precondition, validation, steps, warnings, configSource);
         }
         finally
         {
@@ -171,7 +173,8 @@ public sealed class EffectSimulationService(
         EffectSimulationGateDto precondition,
         EffectSimulationGateDto validation,
         IReadOnlyList<EffectStepResult> steps,
-        IReadOnlyList<string> warnings)
+        IReadOnlyList<string> warnings,
+        string configSource)
     {
         var ran = steps.Count(step => step.Outcome == EffectStepOutcome.Ran);
         var skipped = steps.Count(step => step.Outcome == EffectStepOutcome.Skipped);
@@ -188,7 +191,8 @@ public sealed class EffectSimulationService(
             validation,
             steps.Select(step => ToDto(step, actions)).ToList(),
             new EffectSimulationCountsDto(steps.Count, ran, skipped, failed),
-            warnings.ToList());
+            warnings.ToList(),
+            ConfigSource: configSource);
     }
 
     private static EffectSimulationStepDto ToDto(

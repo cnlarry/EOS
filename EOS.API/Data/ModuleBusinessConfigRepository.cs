@@ -20,6 +20,31 @@ public sealed class ModuleBusinessConfigRepository(
     DocumentActionRegistry documentActions,
     ILogger<ModuleBusinessConfigRepository> logger)
 {
+    /// <summary>
+    /// 事件在库内的使用次数（全库，不分模块）。界面据此区分两种"配了不会跑"：
+    /// 库内 0 行且事件本身接不到效果链 ⇒ 不可选（暂未启用）；库内已有行 ⇒ 保持可选，
+    /// 但必须如实标注"该事件当前不会触发效果链"（隐藏会让既有配置无法编辑）。
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, int>> CountEventUsageAsync(CancellationToken token)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(EVENT_CODE)) AS EVENT_CODE, COUNT(*) AS ROWS
+            FROM dbo.MODULE_BUSINESS_ACTION WITH (NOLOCK)
+            WHERE EVENT_CODE IS NOT NULL AND LTRIM(RTRIM(EVENT_CODE)) <> ''
+            GROUP BY LTRIM(RTRIM(EVENT_CODE));
+            """;
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        var usage = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            usage[reader.GetString(0)] = reader.GetInt32(1);
+        }
+        return usage;
+    }
+
     public async Task<ModuleBusinessConfigDto?> GetAsync(int moduleId, CancellationToken token)
     {
         await using var connection = connections.Create();
