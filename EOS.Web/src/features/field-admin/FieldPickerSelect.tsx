@@ -51,7 +51,7 @@ export function FieldPickerSelect({ options, value, onChange, placeholder, ariaL
     >
       <button
         type="button"
-        className="form-select form-select-sm text-start"
+        className="form-select form-select-sm text-start d-flex align-items-center gap-2"
         aria-label={ariaLabel}
         aria-expanded={open}
         aria-haspopup="listbox"
@@ -67,15 +67,15 @@ export function FieldPickerSelect({ options, value, onChange, placeholder, ariaL
         }}
       >
         {selected
-          ? <><span className="text-truncate d-inline-block align-middle" style={{ maxWidth: 'calc(100% - 70px)' }}>{selected.label}</span><span className="text-secondary small ms-1">{selected.meta}</span></>
+          ? <><span className="text-truncate flex-grow-1">{selected.label}</span>{selected.meta && <span className="text-secondary small text-nowrap">{selected.meta}</span>}</>
           : <span className="text-secondary">{placeholder}</span>}
       </button>
       {open && (
         <div
-          className="position-absolute top-100 start-0 w-100 border rounded bg-white shadow-sm z-3"
+          className="position-absolute top-100 start-0 border rounded bg-white shadow-sm z-3"
           role="listbox"
           aria-label={ariaLabel}
-          style={{ maxHeight: 240, overflowY: 'auto' }}
+          style={{ minWidth: '100%', width: 'max-content', maxWidth: 'min(760px, 92vw)', maxHeight: 280, overflowY: 'auto' }}
           onKeyDown={event => {
             if (event.key === 'Escape') {
               event.stopPropagation()
@@ -96,8 +96,8 @@ export function FieldPickerSelect({ options, value, onChange, placeholder, ariaL
               className={`erp-picker-option d-flex w-100 align-items-center justify-content-between px-2 py-1 border-0 bg-transparent ${option.value === value ? 'bg-primary-lt' : ''}`}
               onClick={() => { onChange(option.value); close() }}
             >
-              <span className="text-truncate">{option.label}</span>
-              {option.meta && <span className="text-secondary small ms-2">{option.meta}</span>}
+              <span className="text-break">{option.label}</span>
+              {option.meta && <span className="text-secondary small ms-2 text-nowrap">{option.meta}</span>}
             </button>
           ))}
         </div>

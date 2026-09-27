@@ -65,7 +65,7 @@ export function ConvertFunctionBuilder({ model, onChange, endpoints, disabled }:
   ]
   return (
     <div className="d-flex align-items-center gap-2">
-      <div style={{ minWidth: 260 }}>
+      <div className="flex-grow-1" style={{ flexBasis: 320, minWidth: 240 }}>
         <FieldPickerSelect
           options={options}
           value={model.function}
@@ -86,12 +86,21 @@ interface VirtualExpressionBuilderProps extends BuilderProps {
   currentTable: string
 }
 
-/** 表显示名：`/admin/tables` 的 label 形如「客户资料 (CLIENT)」，取描述部分；取不到或与表名相同则回退表名。 */
-function tableLabel(tables: SetupLookup[] | undefined, tableId: string): string {
+/** 表描述：`/admin/tables` 的 label 形如「客户资料 (CLIENT)」，取描述部分；取不到或与名字相同则回退该名字。 */
+function tableDescription(tables: SetupLookup[] | undefined, tableId: string): string {
   const entry = tables?.find(item => item.value.toLowerCase() === tableId.toLowerCase())
   const suffix = entry ? ` (${entry.value})` : ''
   const description = entry && suffix && entry.label.endsWith(suffix) ? entry.label.slice(0, -suffix.length) : entry?.label
-  return description && description.toLowerCase() !== tableId.toLowerCase() ? `${description}（${tableId}）` : tableId
+  return description && description.trim() ? description : tableId
+}
+
+/**
+ * 来源选项文案：`中文名(名字)`，名字是**写进表达式的名字**——有别名时即别名，无别名时即表名。
+ * 描述取不到（或与名字相同）时只显示名字，不写成「名字(名字)」。
+ */
+function sourceLabel(tables: SetupLookup[] | undefined, tableId: string, name: string): string {
+  const description = tableDescription(tables, tableId)
+  return description.toLowerCase() === name.toLowerCase() ? name : `${description}(${name})`
 }
 
 /**
@@ -117,13 +126,10 @@ export function VirtualExpressionBuilder({ model, onChange, endpoints, disabled,
   const columnsQuery = useTableColumns(physicalTable, endpoints)
   const selectedJoin = relations.find(join => join.alias.toLowerCase() === model.table.trim().toLowerCase())
   const sourceOptions: FieldPickerOption[] = [
-    { value: currentTable, label: tableLabel(tablesQuery.data, currentTable), meta: '本表' },
+    { value: currentTable, label: sourceLabel(tablesQuery.data, currentTable, currentTable), meta: '本表' },
     ...relations.map(join => ({
       value: join.alias,
-      label: join.alias.toLowerCase() === join.table.toLowerCase()
-        ? tableLabel(tablesQuery.data, join.table)
-        : `${tableLabel(tablesQuery.data, join.table)} AS ${join.alias}`,
-      meta: join.alias.toLowerCase() === join.table.toLowerCase() ? '' : '别名',
+      label: sourceLabel(tablesQuery.data, join.table, join.alias),
     })),
   ]
   const sourceValue = model.table.trim()
@@ -135,7 +141,7 @@ export function VirtualExpressionBuilder({ model, onChange, endpoints, disabled,
   return (
     <div className="d-flex flex-column gap-1">
       <div className="d-flex flex-wrap align-items-center gap-2">
-        <div style={{ minWidth: 220 }}>
+        <div className="flex-grow-1" style={{ flexBasis: 360, minWidth: 260 }}>
           <FieldPickerSelect
             options={sourceOptions}
             value={model.table}
@@ -145,7 +151,7 @@ export function VirtualExpressionBuilder({ model, onChange, endpoints, disabled,
             disabled={disabled}
           />
         </div>
-        <div style={{ minWidth: 220 }}>
+        <div className="flex-grow-1" style={{ flexBasis: 320, minWidth: 240 }}>
           <FieldPickerSelect
             options={columnOptions(columnsQuery.columns)}
             value={model.column}
@@ -155,7 +161,7 @@ export function VirtualExpressionBuilder({ model, onChange, endpoints, disabled,
             disabled={disabled || !physicalTable || columnsQuery.columns.length === 0}
           />
         </div>
-        <span className="text-secondary small">
+        <span className="text-secondary small text-nowrap">
           生成：{model.table.trim() && model.column.trim() ? `${model.table.trim()}.${model.column.trim()}` : '—'}
         </span>
       </div>
