@@ -9,7 +9,7 @@
 {"question": "销售额在系统里的口径是什么？", "expected": "sales_amount = SUM(AMOUNT_TAX)，来源表 COP_ORDER_D。", "sources": ["027_report_metric.sql", "enum_metrics"]}
 {"question": "库存数量的口径定义？", "expected": "inventory_qty = SUM(QTY)，来源表 INV_PRO_DEPOT。", "sources": ["027_report_metric.sql", "enum_metrics"]}
 {"question": "员工人数指标怎么算？", "expected": "employee_count = COUNT(DISTINCT EMP_ID)，来源表 HR_EMPLOYEE。", "sources": ["027_report_metric.sql", "enum_metrics"]}
-{"question": "流程定义存在哪两张表？主键是什么？", "expected": "WFFORM（流程主）+ WFFORM_FLOW（步骤），主键 WF_M_IDX。", "sources": ["WF_Design.aspx.cs", "FlowDefinitionService"]}
+{"question": "流程定义存在哪两张表？主键是什么？", "expected": "WFFORM（流程主）+ WFFORM_FLOW（步骤），主键 WF_M_IDX。", "sources": ["FlowDefinitionService"]}
 {"question": "在途流程实例存在哪里？如何判定？", "expected": "WF_MONITOR，WF_STATE='0' 为在途。", "sources": ["WorkflowEngine.HasActiveFlowAsync", "WorkflowStates"]}
 {"question": "个人权限和组权限冲突时听谁的？", "expected": "某模块只要有 SYSDD 个人权限记录，就完全采用个人权限，不合并组权限。", "sources": ["Admin.GetUserRightDetail", "ERP_REFACTOR_HANDOFF.md"]}
 {"question": "多组的布尔权限和禁止字段如何聚合？", "expected": "布尔位取 OR，EXEC_TAG 取最大值，禁止字段取各组交集。", "sources": ["Admin.GetUserRightDetail", "Admin.GetRepeat"]}
