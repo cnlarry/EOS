@@ -23,7 +23,7 @@ public sealed class AssistantSettings
     /// <summary>会话结束自动提炼（M9）：done 事件后异步提炼候选记忆，失败静默。运维可关闭。</summary>
     public bool EnableAutoDistill { get; set; } = true;
 
-    /// <summary>成本限额与熔断（M7，决策 8）。</summary>
+    /// <summary>成本限额与熔断（M7）。</summary>
     public Governance.AssistantCostOptions Cost { get; set; } = new();
 
     /// <summary>注入给每轮对话的系统提示词。</summary>

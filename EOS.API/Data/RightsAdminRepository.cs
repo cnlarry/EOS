@@ -7,7 +7,7 @@ using EOS.API.Telemetry;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 权限管理写白名单（§6 服务端固定列集合）。
+/// 权限管理写白名单（服务端固定列集合）。
 /// SYSDD / SYSDH 共用同一组列；所有写入列必须来自本集合，不接受任意列名。
 /// </summary>
 public static class RightsColumnWhitelist
@@ -196,7 +196,7 @@ internal static class RightsAdminLogic
 }
 
 /// <summary>
-/// 权限管理仓储（T1）：个人/组模块权限与报表权限矩阵读取、按 §4 语义 upsert/删除、
+/// 权限管理仓储（T1）：个人/组模块权限与报表权限矩阵读取、按 语义 upsert/删除、
 /// 生效值聚合预览、用户组与成员关系、字段级拒绝元数据、写审计。
 /// 所有写入走服务端固定列白名单 + 参数化 SQL + 事务包裹。
 /// </summary>
@@ -224,7 +224,7 @@ public sealed class RightsAdminRepository(
     private static readonly string[] ReportRowColumns =
         ["M_IDX", "REPORT_ID", "PREVIEW_TAG", "PRINT_TAG", "EXPORT_TAG", "DATA_FILTER"];
 
-    /// <summary>用户模块权限矩阵（§5.1）：当前管理员可见模块树 + 个人/组权限 + 生效值。</summary>
+    /// <summary>用户模块权限矩阵：当前管理员可见模块树 + 个人/组权限 + 生效值。</summary>
     public async Task<IReadOnlyList<ModuleRightsRow>> GetUserModuleMatrixAsync(
         string adminUserId, string targetUserId, CancellationToken token)
     {
@@ -242,7 +242,7 @@ public sealed class RightsAdminRepository(
             .ToList();
     }
 
-    /// <summary>组模块权限矩阵（§5.2）：该组 SYSDH 行（无个人概念，生效值 = 本组行）。</summary>
+    /// <summary>组模块权限矩阵：该组 SYSDH 行（无个人概念，生效值 = 本组行）。</summary>
     public async Task<IReadOnlyList<ModuleRightsRow>> GetGroupModuleMatrixAsync(
         string adminUserId, string groupId, CancellationToken token)
     {
@@ -260,7 +260,7 @@ public sealed class RightsAdminRepository(
             .ToList();
     }
 
-    /// <summary>批量保存个人模块权限（§4）：按 (USER_ID, M_IDX) upsert；全默认空 → 删除行（回退组权限）。</summary>
+    /// <summary>批量保存个人模块权限：按 (USER_ID, M_IDX) upsert；全默认空 → 删除行（回退组权限）。</summary>
     public async Task SaveUserModuleRightsAsync(
         string targetUserId, IReadOnlyList<ModuleRightsInput> items,
         string adminUserId, string adminName, CancellationToken token)
@@ -291,7 +291,7 @@ public sealed class RightsAdminRepository(
         }
     }
 
-    /// <summary>批量保存组模块权限（§4 同语义，SYSDH）。</summary>
+    /// <summary>批量保存组模块权限（同语义，SYSDH）。</summary>
     public async Task SaveGroupModuleRightsAsync(
         string groupId, IReadOnlyList<ModuleRightsInput> items,
         string adminUserId, string adminName, CancellationToken token)
@@ -322,7 +322,7 @@ public sealed class RightsAdminRepository(
         }
     }
 
-    /// <summary>用户报表权限矩阵（§5.1）：可见模块 × REPORT，个人/组生效值。</summary>
+    /// <summary>用户报表权限矩阵：可见模块 × REPORT，个人/组生效值。</summary>
     public async Task<IReadOnlyList<ReportRightsRow>> GetUserReportMatrixAsync(
         string adminUserId, string targetUserId, CancellationToken token)
     {
@@ -347,7 +347,7 @@ public sealed class RightsAdminRepository(
             .ToList();
     }
 
-    /// <summary>组报表权限矩阵（§5.2）。</summary>
+    /// <summary>组报表权限矩阵。</summary>
     public async Task<IReadOnlyList<ReportRightsRow>> GetGroupReportMatrixAsync(
         string adminUserId, string groupId, CancellationToken token)
     {
@@ -369,7 +369,7 @@ public sealed class RightsAdminRepository(
             .ToList();
     }
 
-    /// <summary>批量保存个人报表权限（§4）：全 0 且 DATA_FILTER 空 → 删除行。</summary>
+    /// <summary>批量保存个人报表权限：全 0 且 DATA_FILTER 空 → 删除行。</summary>
     public async Task SaveUserReportRightsAsync(
         string targetUserId, IReadOnlyList<ReportRightsInput> items,
         string adminUserId, string adminName, CancellationToken token)
@@ -658,7 +658,7 @@ public sealed class RightsAdminRepository(
         return buffer.ToDictionary(pair => pair.Key, pair => (IReadOnlySet<string>)pair.Value);
     }
 
-    /// <summary>组列表（§5.2）：G_IDX/G_DESC/成员数。</summary>
+    /// <summary>组列表：G_IDX/G_DESC/成员数。</summary>
     public async Task<IReadOnlyList<UserGroupSummary>> GetGroupsAsync(CancellationToken token)
     {
         await using var connection = connections.Create();
@@ -682,7 +682,7 @@ public sealed class RightsAdminRepository(
         return result;
     }
 
-    /// <summary>用户所属组（§5.1 GET users/{id}/groups）。</summary>
+    /// <summary>用户所属组（GET users/{id}/groups）。</summary>
     public async Task<IReadOnlyList<UserGroupItem>> GetUserGroupsAsync(string userId, CancellationToken token)
     {
         await EnsureUserExistsAsync(userId, token);
@@ -704,7 +704,7 @@ public sealed class RightsAdminRepository(
         return result;
     }
 
-    /// <summary>设置用户所属组（§5.1 PUT，SYSDG_USER 按用户全量替换，事务内）。</summary>
+    /// <summary>设置用户所属组（PUT，SYSDG_USER 按用户全量替换，事务内）。</summary>
     public async Task SaveUserGroupsAsync(
         string userId, IReadOnlyList<string> groupIds,
         string adminName, CancellationToken token)
@@ -745,7 +745,7 @@ public sealed class RightsAdminRepository(
         }
     }
 
-    /// <summary>组成员（§5.2 GET groups/{id}/members）。</summary>
+    /// <summary>组成员（GET groups/{id}/members）。</summary>
     public async Task<IReadOnlyList<GroupMemberSummary>> GetGroupMembersAsync(string groupId, CancellationToken token)
     {
         await EnsureGroupExistsAsync(groupId, token);
@@ -770,7 +770,7 @@ public sealed class RightsAdminRepository(
         return result;
     }
 
-    /// <summary>设置组成员（§5.2 PUT，SYSDG_USER 按组全量替换，事务内）。</summary>
+    /// <summary>设置组成员（PUT，SYSDG_USER 按组全量替换，事务内）。</summary>
     public async Task SaveGroupMembersAsync(
         string groupId, IReadOnlyList<string> userIds,
         string adminName, CancellationToken token)
@@ -988,7 +988,7 @@ public sealed class RightsAdminRepository(
         return remark;
     }
 
-    /// <summary>模块主/明细物理字段（§5.3，供字段级拒绝选择器；成本/保密字段按管理员权限过滤）。</summary>
+    /// <summary>模块主/明细物理字段（供字段级拒绝选择器；成本/保密字段按管理员权限过滤）。</summary>
     public async Task<RightsModuleFields?> GetModuleFieldsAsync(
         int moduleId, bool includeCost, bool includeSecrecy, CancellationToken token)
     {

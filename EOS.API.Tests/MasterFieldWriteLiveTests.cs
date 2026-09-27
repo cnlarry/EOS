@@ -19,7 +19,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 批次 / 库存主档**受控写入口**的真库验收（ADR-020 §9.2 D2 / §10 WS-17）。
+/// 批次 / 库存主档**受控写入口**的真库验收（D2 / WS-17）。
 ///
 /// 走生产路径：`DocumentActionExecutor`（按钮授权 = fail-closed 的 `SYSDD_BUTTON`/`SYSDH_BUTTON`）
 /// → `MasterFieldWriteHandler` → **统一保存路径** `WorkbenchCommandHandler.UpdateRecordAsync`

@@ -5082,7 +5082,7 @@ public sealed class EffectShadowRunner
     }
 
     /// <summary>
-    /// 解批方向只记录行数、不逐行比较的流水表（ADR §7-6 拍板口径：库存余额一致 + 流水语义改良，
+    /// 解批方向只记录行数、不逐行比较的流水表（拍板口径：库存余额一致 + 流水语义改良，
     /// 明确不逐行对拍 INV_DEPOT_LOG；批次明细同属反向流水）。
     /// </summary>
     private static readonly IReadOnlySet<string> ReverseFlowInformationalTables =
@@ -5123,7 +5123,7 @@ public sealed class EffectShadowRunner
             }
             if (deapprove && ReverseFlowInformationalTables.Contains(table))
             {
-                // ADR §7-6 拍板：解批流水由 DELETE 改为写反向记录（流水语义改良），验收口径是
+                //  拍板：解批流水由 DELETE 改为写反向记录（流水语义改良），验收口径是
                 // 「库存余额一致 + 流水语义改良」，**明确不逐行对拍 INV_DEPOT_LOG**；批次流水同理。
                 // 故解批方向这两张表只记录行数（报告里仍可见），不参与逐行比较；
                 // 库存余额（INV_PRO_DEPOT）等其余表照常严格比较。
@@ -5245,7 +5245,7 @@ public sealed class EffectShadowRunner
                     key, "*dupkey*",
                     $"旧路径 {old.Count} 行", $"新路径 {current.Count} 行",
                     Normalized: false, Verdict: "diff",
-                    Decision: "比对键不唯一（同键多行）——按出现顺序配对不可信，请把该维度加进 TableSpec 键列（ADR-014 §4.8.4）"));
+                    Decision: "比对键不唯一（同键多行）——按出现顺序配对不可信，请把该维度加进 TableSpec 键列（）"));
                 continue;
             }
 
@@ -5296,7 +5296,7 @@ public sealed class EffectShadowRunner
     }
 
     /// <summary>
-    /// 已拍板的口径差异：新旧实现**有意不同**，不算回归——ADR-012 §16 业务语义拍板与各模块
+    /// 已拍板的口径差异：新旧实现**有意不同**，不算回归—— 业务语义拍板与各模块
     /// 翻译台账的 intended 语义（旧码方向相反、游标退化、净替换倍数、按员工汇总等）。
     /// 命中即标记 normalized 并在报告里附 decision 出处，差异本身仍然保留可见。
     /// 纪律：只登记有出处的项（设计基线 / 待定项清单 / 翻译台账），
@@ -5304,88 +5304,88 @@ public sealed class EffectShadowRunner
     /// </summary>
     private static readonly IReadOnlyList<AcceptedDivergence> AcceptedDivergences =
     [
-        new("ADR §16.6 + 决策 #64",
+        new("  + ",
             "信用字段统一为「可用额度」：批核=占用（减）、解批=释放（加）；旧码方向相反或未跟",
             0, "*", "*", "CREDIT_LIMIT_NUM"),
-        new("决策 #62",
+        new("",
             "1405 计划量/在途量按 intended 分段语义（旧游标 @pro_no 未初始化导致退化）",
             1405, "*", "*", "PLAN_QTY"),
-        new("决策 #62",
+        new("",
             "1405 计划量/在途量按 intended 分段语义（旧游标退化）",
             1405, "*", "*", "DEPOT_QTY"),
-        new("决策 #62",
+        new("",
             "1405 PRODUCT 净替换按 intended 语义（旧码退化）",
             1405, "*", "*", "MRP_QTY"),
-        new("决策 #62",
+        new("",
             "1405 PRODUCT 净替换按 intended 语义（旧码退化）",
             1405, "*", "*", "NOT_SEND_QTY"),
-        new("决策 #63",
+        new("",
             "1418 订单变更 PRODUCT 净替换按 1×DELTA（旧码 2×DELTA 缺陷）",
             1418, "*", "*", "MRP_QTY"),
-        new("决策 #63",
+        new("",
             "1418 订单变更 PRODUCT 净替换按 1×DELTA（旧码 2×DELTA 缺陷）",
             1418, "*", "*", "NOT_SEND_QTY"),
-        new("决策 #63 + §16.1",
+        new(" + ",
             "1418 结案标志按当前量重算（旧 SP 批核无条件置结案）",
             1418, "*", "COP_ORDER_D", "FINISHED_TAG"),
-        new("决策 #63 + §16.1",
+        new(" + ",
             "1418 结案标志按当前量重算（旧 SP 批核无条件置结案）",
             1418, "*", "COP_ORDER_M", "FINISHED_TAG"),
-        new("决策 #63 + §16.1",
+        new(" + ",
             "1418 结案标志按当前量重算（旧 SP 批核无条件置结案）",
             1418, "*", "COP_ORDER_M", "FINISHED_PERSON"),
-        new("决策 #63 + §16.1",
+        new(" + ",
             "1418 结案标志按当前量重算（旧 SP 批核无条件置结案）",
             1418, "*", "COP_ORDER_M", "FINISHED_DATE"),
-        new("ADR §17 P0/P1 + 翻译台账 1608/1612",
+        new("  P0/P1 + 翻译台账 1608/1612",
             "采购退料/扣款退料批核减少在途采购量、解批加回（旧 SP 未实现该步）",
             1608, "*", "*", "IN_BUY_QTY"),
-        new("ADR §17 P0/P1 + 翻译台账 1608/1612",
+        new("  P0/P1 + 翻译台账 1608/1612",
             "采购退料/扣款退料批核减少在途采购量、解批加回（旧 SP 未实现该步）",
             1612, "*", "*", "IN_BUY_QTY"),
-        new("决策 #66 H1",
+        new(" H1",
             "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
             180206, "*", "*", "USED_WORKTIME"),
-        new("决策 #66 H1",
+        new(" H1",
             "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
             180206, "*", "*", "USED_OVERTIME"),
-        new("决策 #66 H1",
+        new(" H1",
             "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
             180206, "*", "*", "USED_HOLIDAY_OVERTIME"),
-        new("决策 #66 H1",
+        new(" H1",
             "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
             180207, "*", "*", "USED_WORKTIME"),
-        new("决策 #66 H1",
+        new(" H1",
             "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
             180207, "*", "*", "USED_REST_OVERTIME"),
-        new("决策 #69",
+        new("",
             "解批按 clear-finish 清完工戳（完成标记解除）；旧实现保留",
             2913, "*", "*", "FINISHED_TAG"),
-        new("决策 #69",
+        new("",
             "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
             2913, "*", "*", "FINISHED_PERSON"),
-        new("决策 #69",
+        new("",
             "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
             2913, "*", "*", "FINISHED_DATE"),
-        new("决策 #69",
+        new("",
             "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
             2917, "*", "*", "FINISHED_PERSON"),
-        new("决策 #69",
+        new("",
             "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
             2917, "*", "*", "FINISHED_DATE"),
-        new("决策 #69",
+        new("",
             "解批按 clear-finish 清完工戳（完成标记解除）；旧实现保留",
             2917, "*", "*", "FINISHED_TAG"),
-        new("决策 #110",
+        new("",
             "打样入库解批按量减扣：旧 P_WF_SAM_IN 解批分支误写 +d.QTY（批核/解批同向），采纳引擎",
             2403, "*", "SAMPLE_PRO", "QTY"),
-        new("决策 #110 + ADR §11.3",
+        new(" +  ",
             "返还单解批反向减扣：旧实现 NULL+(-qty) 恒为 NULL（NULL 累加失效，按业务意图修正为 coalesce 后再反向）",
             130109, "*", "INV_LOAN_D", "RETURN_QTY"),
-        new("决策 #110 + ADR §11.3",
+        new(" +  ",
             "采购单回写请购行已采购量：旧实现 NULL+qty 恒为 NULL（NULL 累加失效），按业务意图修正为 coalesce 后再累加",
             1606, "*", "PUR_APPLY_D", "PURCHASE_QTY"),
-        new("决策 #110 + ADR §11.3",
+        new(" +  ",
             "请购行结案判定随已采购量：旧实现在已采购量为 NULL 时比较退化为假，按 coalesce 后的数量重算",
             1606, "*", "PUR_APPLY_D", "FINISHED_TAG"),
     ];

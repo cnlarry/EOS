@@ -16,7 +16,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 自动批核（MODULES.AUTO_APPROVE=1）接入效果引擎后的真库验收：
 /// 正常自动批核（状态翻转 + 审计）、重复触发幂等（不重复累计）、
-/// 引擎拦截时状态还原且零残留（ADR §4：阻断 + 效果零写入 + CONFIRM_TAG 还原）。
+/// 引擎拦截时状态还原且零残留（：阻断 + 效果零写入 + CONFIRM_TAG 还原）。
 /// 合成单据一律用 ADR12 专用键，用例结束即删除。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>

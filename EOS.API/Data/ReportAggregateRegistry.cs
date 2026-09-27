@@ -272,7 +272,7 @@ public static class ReportAggregateRegistry
     /// **范围条件的空值语义**：旧实现把空上界替换为 `char(255)` 哨兵，而该哨兵在
     /// `Chinese_PRC_CI_AS` 下排序位置并不在末尾（`N'Z9' &lt;= NCHAR(255)` 实测为假），
     /// 会**静默截断上界**；此处改为"空值即无界"的显式谓词（语义即旧实现的本意，且可走索引）。
-    /// **有意差异（决策 #118，两处旧实现公式缺陷）**：① 旧期初单价的累加写成
+    /// **有意差异（两处旧实现公式缺陷）**：① 旧期初单价的累加写成
     /// `@price_sum=(@price_sum*@qty_sum+@price*@qty)/(@qty_sum+@qty)`，而 SQL Server 在同一条 SELECT 内
     /// 变量赋值"左到右立即生效"（实测 `SELECT @a=@a+1,@b=@a` ⇒ `@b=2`），实际分母是 `Q_old+2q`，
     /// 使每笔进价权重失真（首笔尤为明显）；此处按**加权平均** `SUM(QTY*PRICE)/SUM(QTY)` 实现。

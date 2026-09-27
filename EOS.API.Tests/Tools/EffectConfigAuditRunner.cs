@@ -126,7 +126,7 @@ public sealed class EffectConfigAuditRunner
         }
 
         var report = new StringBuilder();
-        report.AppendLine("# ADR-012 效果配置物理审计");
+        report.AppendLine("# 效果配置物理审计");
         report.AppendLine();
         report.AppendLine($"- 运行时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         report.AppendLine($"- 模块数：{modules.Count}（有业务动作配置）；动作行：{actions.Count}；公式行：{ops.Count}");

@@ -1,5 +1,5 @@
 -- 059: qty-not-exceed 校验参数补 targetTable（fail-closed）。
--- 校验执行器按 ADR-012 §14 fail-closed 语义要求检查项显式声明目标表，
+-- 校验执行器按 fail-closed 语义要求检查项显式声明目标表，
 -- 禁止从 usage/limit 的 TARGET 域隐式推导；存量样例规则随本迁移收口。
 IF OBJECT_ID(N'dbo.MODULE_VALIDATION_RULE', N'U') IS NULL
 BEGIN

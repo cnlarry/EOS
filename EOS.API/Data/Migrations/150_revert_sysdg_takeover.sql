@@ -7,7 +7,7 @@
 -- 保存时按定义派发），效果管线同理只服务工作台模块 ⇒ **`DomainRuleMap[2305]="sysdg"` 与其 C#
 -- 从未被调用过**（死登记），迁移 150 播下的 SAVE 动作与引擎开关同样不可能生效。
 -- 处置：本迁移回退 150 的库内改动（`EFFECT_ENGINE_TAG` 1 → 0、删除该 SAVE 动作），把"孤儿权限行
--- 清理"的落点问题移交决策 #120（建议落在权限保存路径 `RightsAdminRepository.SaveAsync`，
+-- 清理"的落点问题移交（建议落在权限保存路径 `RightsAdminRepository.SaveAsync`，
 -- 而不是效果目录）。C# 侧的 `SysDomainRules.SysdgAfterSaveAsync` 与 `DomainRuleMap` 登记已随代码
 -- 删除（删的是**死代码**，不改变运行期行为）。
 -- 幂等：仅在"确实是我们播下的那条动作 + 开关为 1"时回退；重复执行无副作用。

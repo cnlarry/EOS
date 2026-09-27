@@ -53,13 +53,13 @@ CREATE UNIQUE INDEX UX_WORKBENCH_DEFINITION_SNAPSHOT_CURRENT
 CREATE INDEX IX_WORKBENCH_DEFINITION_SNAPSHOT_MODULE
     ON dbo.WORKBENCH_DEFINITION_SNAPSHOT (MODULE_ID, VERSION);
 
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Workbench 模块元数据脏标记表（ADR-005 §3）：元数据写路径保存后仅标记脏，由发布动作批量校验并生成快照；「已编辑但未发布」= DIRTY_TAG=1 或快照早于最后修改。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_MODULE_DIRTY';
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Workbench 模块元数据脏标记表（）：元数据写路径保存后仅标记脏，由发布动作批量校验并生成快照；「已编辑但未发布」= DIRTY_TAG=1 或快照早于最后修改。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_MODULE_DIRTY';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'模块号（MODULES.M_IDX）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_MODULE_DIRTY', @level2type=N'COLUMN', @level2name=N'MODULE_ID';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'脏标记（1=已编辑未发布）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_MODULE_DIRTY', @level2type=N'COLUMN', @level2name=N'DIRTY_TAG';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'最后修改人。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_MODULE_DIRTY', @level2type=N'COLUMN', @level2name=N'LAST_MODIFIED_BY';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'最后修改时间。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_MODULE_DIRTY', @level2type=N'COLUMN', @level2name=N'LAST_MODIFIED_AT';
 
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Workbench Definition 发布快照表（ADR-005 §3）：保存定义 JSON、来源元数据版本、校验结果、发布人、发布时间与当前状态；每模块唯一当前快照（IS_CURRENT 过滤唯一索引）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_DEFINITION_SNAPSHOT';
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Workbench Definition 发布快照表（）：保存定义 JSON、来源元数据版本、校验结果、发布人、发布时间与当前状态；每模块唯一当前快照（IS_CURRENT 过滤唯一索引）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_DEFINITION_SNAPSHOT';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'快照 ID，自增主键。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_DEFINITION_SNAPSHOT', @level2type=N'COLUMN', @level2name=N'SNAPSHOT_ID';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'模块号（MODULES.M_IDX）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_DEFINITION_SNAPSHOT', @level2type=N'COLUMN', @level2name=N'MODULE_ID';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'版本号（按模块递增，1 起）；definitionVersion=module-{id}-v{version}。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_DEFINITION_SNAPSHOT', @level2type=N'COLUMN', @level2name=N'VERSION';

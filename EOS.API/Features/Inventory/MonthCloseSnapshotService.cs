@@ -34,7 +34,7 @@ public sealed record MonthCloseSnapshotResult(
 /// 写出的行也只落 `INV_PRO_MONTH_D`（快照明细），不产生任何库存台账流水。
 ///
 /// **半成品账（按制程分账）纳不纳入，由部署级参数 `MONTH_CLOSE_SCOPE_HALF_STOCK` 决定，
-/// 且与关账拦截同源**（ADR-020 §9.3）：同一个参数决定两侧，关时既不拦也不快照。
+/// 且与关账拦截同源**：同一个参数决定两侧，关时既不拦也不快照。
 /// 它**不写流水**，所以算法与主账不同——主账是"上一期快照 + 区间流水净额"，半成品只能
 /// **直取余额**（经 <see cref="InventoryQueryService.GetHalfStockBalancesAsync"/>），
 /// 于是只有"期末 == 生成当天"时那份余额才是那一期的期末；有结存而要补结过去的期间，
@@ -117,7 +117,7 @@ public sealed class MonthCloseSnapshotService
             cells[key] = cell;
         }
 
-        // 半成品账（按制程分账）：**与关账拦截同源**——同一个部署级参数决定两侧（ADR-020 §9.3）。
+        // 半成品账（按制程分账）：**与关账拦截同源**——同一个部署级参数决定两侧。
         if (policy.MonthCloseScopeHalfStock)
         {
             var halfStock = await InventoryQueryService.GetHalfStockBalancesAsync(connection, transaction, token);

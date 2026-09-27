@@ -146,14 +146,14 @@ ELSE
     PRINT N'[037] SYSDL QUERY_RELATION 已存在（跳过）。';
 
 -- ============================================================================
--- 8. SYSQR_DEFAULT.F_ID（源表 FIELDS）：治理文档 §4 判定"不适合补 JOIN，建议转 C"
+-- 8. SYSQR_DEFAULT.F_ID（源表 FIELDS）：治理文档 判定"不适合补 JOIN，建议转 C"
 --    不补 QUERY_RELATION，保持 MANUAL 状态，由顾问人工重建。
 -- ============================================================================
 PRINT N'[037] SYSQR_DEFAULT.F_ID（FIELDS）转 C 处理，不入 B。';
 
 -- ============================================================================
 -- 9. COP_CHAFFER_D（源表 COP_CHAFFER_D，引 COP_QUOTE_D）：
---    治理文档 §4 建议补。但 ACTIVE_TAG=false（来源未启用），且 triage 建议
+--    治理文档 建议补。但 ACTIVE_TAG=false（来源未启用），且 triage 建议
 --    EXTEND_QUERY_RELATION。暂不补（来源未启用，重跑工具后仍 fail-closed）；
 --    顾问启用来源后按需补。
 -- ============================================================================
@@ -169,5 +169,5 @@ WHERE (m.MASTER_TABLE IN (N'MOC_PRODUCE_M', N'MOU_SCRAP_D', N'QC_COMPLAIN_M', N'
        OR ISNULL(m.DETAIL_TABLE, N'') IN (N'MOC_PRODUCE_M', N'MOU_SCRAP_D', N'QC_COMPLAIN_M', N'QC_EXCEPTION_M', N'QC_ANALYSIS_D', N'QC_REWORK_M', N'SYSDL'))
   AND NOT EXISTS (SELECT 1 FROM dbo.WORKBENCH_MODULE_DIRTY d WHERE d.MODULE_ID = m.M_IDX);
 
-PRINT N'[037] ADR-008 B 类 QUERY_RELATION 补丁完成。';
+PRINT N'[037] B 类 QUERY_RELATION 补丁完成。';
 GO

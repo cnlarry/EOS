@@ -14,7 +14,7 @@
 -- 反向保持原 kind：`clear-refs`（清引用、SERIAL 列归 0）与 `clear-refs-unfinish`
 --   （清引用 + FINISHED_TAG=0、FINISHED_PERSON='SYSTEM'、FINISHED_DATE=now），
 --   已由公式解释器 `EffectFormulaExecutor.ClearOp` 承载。
--- 未下沉（另行处置，见 `docs/plans/ADR-012次口径下沉方案A清单.md` §3）：
+-- 未下沉（另行处置，见 `docs/plans/次口径下沉方案A清单.md`）：
 --   1404/1418/1606/1615/1616 —— 取值来自**明细行**，公式路径的明细标量取值会把字符/日期列的
 --   NULL 包成 `ISNULL(...,0)`（漂移），且 DETAIL 定位键存在性判断未绑定本单（越界风险），
 --   需先决定引擎口径再下沉。

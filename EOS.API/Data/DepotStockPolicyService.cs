@@ -20,7 +20,7 @@ public sealed record DepotStockPolicy(
     bool MonthCloseByBatch,
     bool MonthCloseByLocation,
     /// <summary>
-    /// 月结范围是否含**半成品（按制程）账**（ADR-020 §9.3 D3）。仅部署级行生效，默认关。
+    /// 月结范围是否含**半成品（按制程）账**（D3）。仅部署级行生效，默认关。
     /// 关 ⇒ 半成品账既不进关账拦截、也不进快照；开 ⇒ 两侧一起生效（快照侧见 WS-18b）。
     /// **带默认值**：这是本维度落地时新增的，默认值就是它的语义默认（关），
     /// 也就让"新增一个维度"不必去改每一处构造点（改构造点只会把默认值抄一遍）。
@@ -388,7 +388,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     ///
     /// 两处**服务端**（而非界面）强制的门槛：① 档位下调属破坏性变更，必须显式二次确认；
     /// ② 全部变更写 `AUDIT_EVENT` + `AUDIT_FIELD_CHANGE`（含变更前后值），且**与策略写在同一个事务里**——
-    /// §3.10.3 要求的是"必须留痕"，best-effort 写在配置变更失败时不会有人发现。
+    ///  要求的是"必须留痕"，best-effort 写在配置变更失败时不会有人发现。
     /// </summary>
     public async Task<SavePolicyResult> SaveAsync(
         DepotStockPolicy candidate, string actor, bool confirmDestructive = false, string? relocateTo = null,
@@ -422,7 +422,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         var previous = existing ?? deployment;
 
         // 位置档位下调时，存量不能只靠"确认"了事：档位一降，系统就只看哨兵行，
-        // 还留在位置行上的数量会**看着凭空减少**。§3.10.2 要的是"拒绝直接降档、必须先归并"——
+        // 还留在位置行上的数量会**看着凭空减少**。 要的是"拒绝直接降档、必须先归并"——
         // 归并与写档位放在同一个事务里，要么都成、要么都不成。
         // 这一条必须排在通用的"档位下调需确认"之前：否则通用那条先返回，用户永远看不到
         // "会归并掉哪些存量"，确认也就成了盲签。
@@ -462,7 +462,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             warnings.Add($"已完成归并：{pendingMerge} 组（料号/批次）分散在库位上的存量已并入『未指定位置』行，库别总量不变。");
         }
 
-        // 升档归位（§3.10.2 的另一半）：档位一升，系统就按库位出入库，而还记在『未指定位置』上的货
+        // 升档归位（的另一半）：档位一升，系统就按库位出入库，而还记在『未指定位置』上的货
         // **按库位取不出来**（那个库位账上是 0）。调用方给了目标库位就代搬；没给就要求明确表态，
         // 不能静默放过——否则仓库会在"已经开了位置管理"的错觉下卡住出库。
         if (candidate.LocationMode > previous.LocationMode)
@@ -506,7 +506,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             }
         }
 
-        // 收紧混放限制时给出存量违规清单：按 §3.10.2 允许保存，但必须让人知道哪些库位要整改。
+        // 收紧混放限制时给出存量违规清单：按 允许保存，但必须让人知道哪些库位要整改。
         warnings.AddRange(await ListMixedLocationWarningsAsync(candidate, previous, connection, transaction, token));
 
         // 部署级行的月结维度由它自己定义；库别行一律写入部署级取值（求值也只读部署级）。
@@ -669,7 +669,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
 
     /// <summary>
     /// 破坏性下调的判据：位置档位或批次档位**降低**。
-    /// 按 §3.10.2 这两种下调都会让已有库存"看着还在、实际按新档位用不了"，所以要先确认——
+    /// 按 这两种下调都会让已有库存"看着还在、实际按新档位用不了"，所以要先确认——
     /// 注意这里是"要确认"而不是"拒绝"：档位下调本身是合法操作。
     /// </summary>
     public static bool IsDestructiveDowngrade(DepotStockPolicy candidate, DepotStockPolicy previous) =>
@@ -781,7 +781,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     /// <summary>
     /// `MIX_*` 由「允许」收紧为「禁止」时的**当前违规位置清单**。
     ///
-    /// §3.10.2 对这种变更的处置是"允许保存，但必须给出清单，由人工逐步整改"——收紧本身没错
+    ///  对这种变更的处置是"允许保存，但必须给出清单，由人工逐步整改"——收紧本身没错
     /// （客户可以决定从此不再混放），但只写库不给清单，客户会以为**存量也已经合规了**。
     ///
     /// 受影响范围按「整行覆盖」求值：库别行只影响它自己；部署级默认行只影响**没有自己策略行**的
@@ -879,14 +879,14 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     }
 
     /// <summary>
-    /// 位置归并（§3.10.2）：把该库别所有非哨兵位置行的数量并入哨兵行，位置行数量清零但**行保留**。
+    /// 位置归并：把该库别所有非哨兵位置行的数量并入哨兵行，位置行数量清零但**行保留**。
     ///
     /// 目标行按 **(料号, 批次)** 分组——只丢"位置"这一维，批次粒度保留；连批次一起并掉
     /// 会让一次降档顺带毁掉批次账的可追溯性。
     ///
     /// 库别级三字段（`INIT_QTY` / `COST_PRICE` / `COST_AMOUNT`）**一律不动**：归并只在同一库别内
     /// 重分配数量，库别合计不变，它们本就仍然同键一致。新补的哨兵行按既有口径取 **MAX** 复制，
-    /// 绝不 SUM——这几列本来就是每行冗余同一个库别值（§3.19）。
+    /// 绝不 SUM——这几列本来就是每行冗余同一个库别值。
     /// </summary>
     private static async Task MergeLocationsIntoSentinelAsync(
         string depotId, SqlConnection connection, SqlTransaction transaction, CancellationToken token)
@@ -988,7 +988,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     }
 
     /// <summary>
-    /// 升档归位（§3.10.2）：把哨兵行的数量改记到**目标库位**上，哨兵行数量清零但**行保留**。
+    /// 升档归位：把哨兵行的数量改记到**目标库位**上，哨兵行数量清零但**行保留**。
     ///
     /// 与降档归并（<see cref="MergeLocationsIntoSentinelAsync"/>）严格对称：同样按 **(料号, 批次)**
     /// 分组、同样先补目标行、同样按 **MAX** 复制库别级三字段（绝不 SUM），因此 `SUM(QTY)` 逐库别守恒。

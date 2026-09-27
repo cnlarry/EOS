@@ -9,7 +9,7 @@ namespace EOS.API.Controllers;
 /// <summary>
 /// 最小语义层口径清单：度量口径定义一次、机器可读、多处消费。
 /// 供报表与 Agent 共同消费；不自建查询引擎、不引入外部语义层产品。
-/// 度量定义本身属开发态（§1），随 DbUp 迁移版本化落地。
+/// 度量定义本身属开发态，随 DbUp 迁移版本化落地。
 /// </summary>
 [ApiController]
 [Authorize]

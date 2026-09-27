@@ -61,7 +61,7 @@ public sealed class EffectRecipeCatalogTests
             Assert.NotEmpty(recipe.EventCodes);
             Assert.All(recipe.EffectKeys, key => Assert.Contains(key, BusinessActionCatalog.EffectKeys));
             Assert.All(recipe.EventCodes, code => Assert.Contains(code, BusinessActionCatalog.Events));
-            // 自定义按钮不是效果键：配方不得把它们收进来（那是另一条轴，见目录文档 §4-1）。
+            // 自定义按钮不是效果键：配方不得把它们收进来（那是另一条轴，见目录文档）。
             Assert.All(recipe.EventCodes, code => Assert.NotEqual(BusinessActionCatalog.ManualEvent, code));
         });
     }

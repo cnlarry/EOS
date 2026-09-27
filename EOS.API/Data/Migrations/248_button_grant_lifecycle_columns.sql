@@ -2,7 +2,7 @@
 -- EOS.ERP migration 247: 按钮授权表的生命周期列收紧（清掉 check-lifecycle-columns 的历史红）
 -- ----------------------------------------------------------------------------
 -- 现象：`check-lifecycle-columns` 断言"`CREATE_PERSON` / `CREATE_DATE` 必须 NOT NULL 且有 DEFAULT"，
--- 而 `SYSDD_BUTTON` / `SYSDH_BUTTON`（建表迁移 `218`，ADR-018 的按钮级授权面）这两列是
+-- 而 `SYSDD_BUTTON` / `SYSDH_BUTTON`（建表迁移 `218`，的按钮级授权面）这两列是
 -- `NULL` 且无默认 ⇒ 这条门禁自那以后一直是红的（SSDT 快照 `EOS.Database/dbo/Tables/*.sql`
 -- 声明的也是 `NULL`，与真库一致 ⇒ 不是漂移，是当初就这么建的）。
 --

@@ -1,5 +1,5 @@
 -- ============================================================================
--- EOS.ERP migration 242: 月结范围是否含半成品（按制程）账（ADR-020 §9.3 D3 / WS-18）
+-- EOS.ERP migration 242: 月结范围是否含半成品（按制程）账（D3 / WS-18）
 -- ----------------------------------------------------------------------------
 -- 参数 `MONTH_CLOSE_SCOPE_HALF_STOCK`：**部署级**参数（与 MONTH_CLOSE_BY_* 同款，只取 DEPOT_ID = '*' 那行），
 -- 语义 = "月结范围是否含半成品（按制程）账"，**默认 0（关）**。
@@ -11,7 +11,7 @@
 --   · 该工作（快照侧按制程展开）是 WS-18b；**在其落地前本参数只允许关**（保存路径会拒"开"，
 --     见 DepotStockPolicyService.ValidateMonthCloseScope），免得出现"拦了但快照没有"的不对称。
 --   · 参数为关时：半成品账**既不拦、也不快照**——与"这个参数没打开"是同一句话，
---     也就是今天代码的真实行为（注意：ADR §9.3 原文写"今天是无条件拦 2603/2604 但不快照"，
+--     也就是今天代码的真实行为（注意： 原文写"今天是无条件拦 2603/2604 但不快照"，
 --     那是**定性描述与代码不符**：拦截代码只挂在主账移动引擎上，半成品路径今天根本没被拦）。
 --
 -- 幂等：列存在即跳过；默认行不存在则报错（策略求值与月结口径都依赖它）。
@@ -34,7 +34,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.extended_properties
                   AND name = N'MS_Description')
     EXEC sys.sp_addextendedproperty
         @name = N'MS_Description',
-        @value = N'月结范围是否含半成品（按制程）账：1=含（拦与快照一起生效，快照侧见 ADR-020 WS-18b）；0=不含（既不拦也不快照）。仅部署级行有效。',
+        @value = N'月结范围是否含半成品（按制程）账：1=含（拦与快照一起生效，快照侧见 WS-18b）；0=不含（既不拦也不快照）。仅部署级行有效。',
         @level0type = N'SCHEMA', @level0name = N'dbo',
         @level1type = N'TABLE', @level1name = N'DEPOT_STOCK_POLICY',
         @level2type = N'COLUMN', @level2name = N'MONTH_CLOSE_SCOPE_HALF_STOCK';

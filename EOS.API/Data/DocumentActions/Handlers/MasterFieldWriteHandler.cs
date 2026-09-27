@@ -6,7 +6,7 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data.DocumentActions.Handlers;
 
 /// <summary>
-/// 批次 / 库存主档的**受控写入口**（ADR-020 §9.2 D2 / WS-17）：只改"人工语义列"，
+/// 批次 / 库存主档的**受控写入口**（D2 / WS-17）：只改"人工语义列"，
 /// 引擎维护列一律拒，且**绝不碰库存账**（不触发 `inventory-move`、不写 `INV_DEPOT_LOG`）。
 /// </summary>
 /// <remarks>

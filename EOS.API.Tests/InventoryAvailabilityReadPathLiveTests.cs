@@ -6,7 +6,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 可用量的**读取收口**验收（ADR-020 §9.7 D7-⑧ / §10 WS-24）。
+/// 可用量的**读取收口**验收（D7-⑧ / WS-24）。
 ///
 /// 钉的是"三处同源、单一服务"这句话：
 ///   · 口径出口 —— <see cref="InventoryAvailabilityService.ForSlotsAsync"/>（实时算）

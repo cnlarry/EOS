@@ -58,7 +58,7 @@ public static class InventoryPeriodService
     /// 规矩在这里无从适用，也不该假装适用。判据仍走同一个 <see cref="FindAsync"/>：关账边界只有一处取值点。
     ///
     /// **本方法自己不判"该不该拦"**：半成品是否纳入月结由部署级参数
-    /// `MONTH_CLOSE_SCOPE_HALF_STOCK` 决定（ADR-020 §9.3），调用方先问参数、再调这里——
+    /// `MONTH_CLOSE_SCOPE_HALF_STOCK` 决定，调用方先问参数、再调这里——
     /// "开才拦、关就不拦"与快照范围同源。
     /// </remarks>
     public static async Task EnsureDateOpenAsync(

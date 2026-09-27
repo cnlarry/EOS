@@ -5,7 +5,7 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 
 /// <summary>
-/// 来源单据**结案即释放预留、取消结案即收回**（ADR-020 §9.7 D7-⑥ / §10 WS-22，挂 ADR-013 生命周期）。
+/// 来源单据**结案即释放预留、取消结案即收回**（D7-⑥ / WS-22，挂 生命周期）。
 /// </summary>
 /// <remarks>
 /// **为什么惰性判定（WS-20）之外还需要这个钩子**：可用量服务在读取时已经会按"来源是否结案"

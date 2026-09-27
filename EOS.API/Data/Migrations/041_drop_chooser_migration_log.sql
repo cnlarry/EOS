@@ -1,5 +1,5 @@
 -- Drop the one-off migration audit queue CHOOSER_FILTER_MIGRATION_LOG.
--- Background: it was the audit/pending-rebuild queue for the ADR-008 CHOOSE_FILTER → FILTER_STRUCT
+-- Background: it was the audit/pending-rebuild queue for the CHOOSE_FILTER → FILTER_STRUCT
 -- conversion. All rows are now converged (CONVERTED / EXEMPTED / CLEANED, no PENDING_P3 / MANUAL / DRIFT)
 -- and the conversion channel is formally closed, so the queue no longer serves any runtime purpose.
 -- The write-side guard that read it (FieldAdminRepository.HasPendingMigrationFilterAsync) is removed

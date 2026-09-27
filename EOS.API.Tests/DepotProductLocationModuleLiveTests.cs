@@ -8,7 +8,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 物料主货位维护入口的真库验收（ADR-020 §10 WS-14 / 迁移 238）。
+/// 物料主货位维护入口的真库验收（WS-14 / 迁移 238）。
 ///
 /// 本段交付的是**入口**：`DEPOT_PRODUCT_LOCATION` 建表在迁移 180，但在此之前 0 行 / 0 元数据 / 0 模块
 /// —— 没有任何人能往里写一行主货位，于是 `STORAGE_MODE = FIXED` 的库别在引擎里认不到主货位。

@@ -20,7 +20,7 @@ public sealed record ReportFormatDefinition(
     IReadOnlyList<ReportFormatGrouping> Grouping,
     IReadOnlyList<ReportFormatBinding> Bindings);
 
-/// <summary>dataContract：服务端字段白名单来源（保存时校验 layout 字段引用，§9.6 约束 2/3）。</summary>
+/// <summary>dataContract：服务端字段白名单来源（保存时校验 layout 字段引用， 约束 2/3）。</summary>
 public sealed record ReportFormatDataContract(
     string? MasterTable,
     IReadOnlyList<ReportContractColumn> Columns,

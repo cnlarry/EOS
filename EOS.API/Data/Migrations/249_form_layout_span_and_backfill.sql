@@ -33,7 +33,7 @@ BEGIN TRANSACTION;
 -- ① 主表普通字段：SPAN 由 2 子列归一到 1 子列（4 列栅格下即每行 4 个字段）
 UPDATE l
 SET SPAN = 1,
-    UPDATED_BY = N'ADR-022-SPAN-FIX',
+    UPDATED_BY = N'-SPAN-FIX',
     UPDATED_AT = SYSUTCDATETIME()
 FROM dbo.MODULE_FORM_LAYOUT l
 JOIN dbo.MODULES m ON m.M_IDX = l.M_IDX
@@ -75,7 +75,7 @@ BEGIN
            CASE WHEN LTRIM(RTRIM(f.F_TYPE)) IN (N'text', N'ntext') OR r.[Key] LIKE N'%REMARK' THEN 4 ELSE 1 END,
            CASE WHEN LTRIM(RTRIM(f.F_TYPE)) IN (N'text', N'ntext') OR r.[Key] LIKE N'%REMARK' THEN 2 ELSE 1 END,
            r.[NewLine], r.[SectionId], r.[CellGroup], r.[CellRole], r.[Hidden],
-           N'ADR-022-BACKFILL', SYSUTCDATETIME()
+           N'-BACKFILL', SYSUTCDATETIME()
     FROM @source src
     JOIN dbo.MODULES m ON m.M_IDX = src.MODULE_ID
     CROSS APPLY OPENJSON(src.DEFINITION_JSON, N'$.FormLayout.Master')
@@ -94,7 +94,7 @@ BEGIN
         (M_IDX, T_ID, F_ID, TAB_NO, ORDER_NO, SPAN, ROW_SPAN, NEW_LINE,
          SECTION_ID, CELL_GROUP, CELL_ROLE, IS_HIDDEN, UPDATED_BY, UPDATED_AT)
     SELECT src.MODULE_ID, m.DETAIL_TABLE, r.[Key], 1, r.[OrderNo], 1, 1, 0,
-           NULL, NULL, 0, r.[Hidden], N'ADR-022-BACKFILL', SYSUTCDATETIME()
+           NULL, NULL, 0, r.[Hidden], N'-BACKFILL', SYSUTCDATETIME()
     FROM @source src
     JOIN dbo.MODULES m ON m.M_IDX = src.MODULE_ID
     CROSS APPLY OPENJSON(src.DEFINITION_JSON, N'$.FormLayout.Detail')

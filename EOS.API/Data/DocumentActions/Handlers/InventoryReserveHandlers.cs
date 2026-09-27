@@ -4,7 +4,7 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data.DocumentActions.Handlers;
 
 /// <summary>
-/// 按来源单据占料（ADR-020 §9.7 D7-⑥ / §10 WS-22）。
+/// 按来源单据占料（D7-⑥ / WS-22）。
 /// </summary>
 /// <remarks>
 /// 与冻结（WS-21）共用同一套格子身份与同步原语，差别只有一处、也是本质的一处：

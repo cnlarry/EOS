@@ -88,7 +88,7 @@ IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.REPORT') A
 
 -- 7. 2202/2203/2204 菜单节点隐藏（M_TAG 已为 0 则跳过 REMARK 追加）
 UPDATE dbo.MODULES SET M_TAG = 0,
-    REMARK = LTRIM(RTRIM(ISNULL(REMARK,''))) + N'；ADR-009 P3 下线（2026-08-30）：打印版式设置页随表物理删除，页眉/表尾由 REPORT_LAYOUT 统一承载'
+    REMARK = LTRIM(RTRIM(ISNULL(REMARK,''))) + N'；P3 下线（2026-08-30）：打印版式设置页随表物理删除，页眉/表尾由 REPORT_LAYOUT 统一承载'
 WHERE M_IDX IN (2202, 2203, 2204) AND ISNULL(M_TAG,1) = 1;
 
 -- 8. WORKBENCH 快照防御清理

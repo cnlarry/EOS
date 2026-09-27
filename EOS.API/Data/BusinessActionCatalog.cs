@@ -97,7 +97,7 @@ public static class BusinessActionCatalog
         "job-enqueue",
     };
 
-    /// <summary>公式行运算（§9.2 封闭集 + APPEND 已转正；与 MODULE_BUSINESS_ACTION_OP.OP_CODE 对应）。</summary>
+    /// <summary>公式行运算（封闭集 + APPEND 已转正；与 MODULE_BUSINESS_ACTION_OP.OP_CODE 对应）。</summary>
     public static readonly IReadOnlySet<string> OpCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "ACCUM",
@@ -129,7 +129,7 @@ public static class BusinessActionCatalog
         "PICK",
     };
 
-    /// <summary>校验规则阶段（§15 统一管线：SAVE/APPROVE/DEAPPROVE/DELETE）。
+    /// <summary>校验规则阶段（统一管线：SAVE/APPROVE/DEAPPROVE/DELETE）。
     /// DELETE 用于"删除前"的守卫：删除不产生保存后行为，但主档里的受保护行要在删除前拦下。</summary>
     public static readonly IReadOnlySet<string> ValidationStages = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {

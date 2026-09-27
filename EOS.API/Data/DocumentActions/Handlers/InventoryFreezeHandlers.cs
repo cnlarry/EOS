@@ -8,14 +8,14 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data.DocumentActions.Handlers;
 
 /// <summary>
-/// 库存冻结与解冻（ADR-020 §9.7 D7-⑦ / §10 WS-21）。
+/// 库存冻结与解冻（D7-⑦ / WS-21）。
 /// </summary>
 /// <remarks>
 /// **宿主与身份**：动作挂在模块 `1303 料件库存资料` 上，其主表 `INV_PRO_DEPOT` 的物理主键
 /// 正好是 `(PRO_NO, DEPOT_ID, LOCATION_NO, BATCH_NO)` —— **库存格子就是这一行**，
 /// 所以"对哪一格冻结"由框架给的主键值决定，不需要另造一套格子身份。
 ///
-/// **授权**：走 ADR-018 的**按钮级授权**（fail-closed 名单），**不挂配置权**（D7-⑦：
+/// **授权**：走 的**按钮级授权**（fail-closed 名单），**不挂配置权**（D7-⑦：
 /// 冻结是品检/客服发起的业务动作，不该要求 `CanSetup`）。未授权者连按钮都拿不到，
 /// 直调也会在框架层被 403（<c>DocumentActionExecutor</c> 的鉴权排在读单据之前）。
 ///
@@ -88,7 +88,7 @@ internal sealed class InventoryFreezeHandler : IDocumentUserAction
 }
 
 /// <summary>
-/// 库存解冻（ADR-020 §9.7 D7-⑥ 的"手工释放兜底"，WS-21）。
+/// 库存解冻（D7-⑥ 的"手工释放兜底"，WS-21）。
 /// </summary>
 /// <remarks>
 /// 按**先建先解**（`CREATE_DATE, SOURCE_NO`）把这一格的占用逐笔释放：够一笔就整笔置 `STATUS='C'`，

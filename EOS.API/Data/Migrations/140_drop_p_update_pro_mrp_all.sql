@@ -7,7 +7,7 @@
 -- **复核澄清（2026-09-18 实测）**：该过程**不写** `INV_PRO_DEPOT.USEABLE_QTY`（该列全库无写入方），
 -- 它写的是 `PRODUCT` 的 `QTY/NOT_SEND_QTY/NOT_IN_QTY/NOT_GET_QTY/IN_BUY_QTY/MRP_QTY`；
 -- 对库存表只有一次只读 `SUM(QTY) ... WHERE DEPOT_ID IN (SELECT … DEPOT.MRP=1) GROUP BY PRO_NO`，
--- 该聚合计法在四键扩键后仍然正确（多行相加），故 ADR-014 的 P0-03 依此重述。
+-- 该聚合计法在四键扩键后仍然正确（多行相加），故 的 P0-03 依此重述。
 -- 非钩子对象下线四判据（用户拍板方案 B）：三方核查零引用（库内依赖 / MODULES / REPORT_SORT /
 -- 当前快照 / 代码与脚本文面量，调用点已随移植移除）、SSDT 快照可还原、本迁移内置守卫、已登记。
 -- 幂等：不存在则跳过；末尾断言 dbo 过程总数为 92。

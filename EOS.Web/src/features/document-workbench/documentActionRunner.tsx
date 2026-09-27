@@ -9,7 +9,7 @@ import { newIdempotencyKey } from './formEditorUtils'
 /**
  * 单据操作（自定义按钮）的前端执行器。
  *
- * 契约（ADR-018 §3.3）：`POST /document-workbench/{moduleId}/action/{actionKey}`，
+ * 契约：`POST /document-workbench/{moduleId}/action/{actionKey}`，
  * 幂等键走 `X-Idempotency-Key` 请求头；CONFIRM_TAG 的操作先用 `confirm=false` 探路，
  * 服务端在同一事务里试跑后回滚、把"将会发生什么"回传（探路不占幂等键），用户确认后再 `confirm=true` 真执行。
  *

@@ -45,7 +45,7 @@ public sealed class HalfStockMoveHandler : IEffectServiceHandler
     }
 
     /// <summary>
-    /// 半成品账的关账守卫（ADR-020 §9.3 D3）：**是否启用由部署级参数 `MONTH_CLOSE_SCOPE_HALF_STOCK` 决定**，
+    /// 半成品账的关账守卫（D3）：**是否启用由部署级参数 `MONTH_CLOSE_SCOPE_HALF_STOCK` 决定**，
     /// 与月结快照的范围同源——关 ⇒ 既不拦也不快照（默认；也就是这个参数落地之前的实际行为），开 ⇒ 拦。
     /// </summary>
     /// <remarks>
