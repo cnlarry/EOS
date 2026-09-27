@@ -1,4 +1,4 @@
-# NOLOCK allowlist (ADR-005 section 9): files currently using WITH (NOLOCK).
+# NOLOCK allowlist (section 9): files currently using WITH (NOLOCK).
 # New code defaults to no NOLOCK. Strong-consistency paths (save validation,
 # master/detail reads, approval, inventory, amounts, bill numbers) must not
 # add NOLOCK. Adding NOLOCK to a file outside this list fails

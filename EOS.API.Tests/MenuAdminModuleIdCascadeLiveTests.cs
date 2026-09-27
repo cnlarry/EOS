@@ -9,7 +9,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 模块编号变更的引用级联（原 `P_Change_M_IDX`）已移植为受控 SQL 常量的真库验证：
 /// ① 结构对照——移植语句与原过程本体逐条一致，**只允许一处已证实的差异**：原过程写的
-///    `FIELDS_CHOOSER` 已被 ADR-008 取代（库内不存在），移植改用现表 `FIELD_DATASOURCE.SOURCE_M_IDX`；
+///    `FIELDS_CHOOSER` 已被 取代（库内不存在），移植改用现表 `FIELD_DATASOURCE.SOURCE_M_IDX`；
 ///    用例直接断言"旧表不存在 / 新表存在"，把这条差异钉在证据上；
 /// ② 行为验证——同一批数据走移植实现后，17 个引用列全部落到新编号、旧编号一处不留。
 /// 整段在事务内进行，结束回滚，不留残留。

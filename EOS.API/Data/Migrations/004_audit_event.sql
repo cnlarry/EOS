@@ -60,7 +60,7 @@ ALTER TABLE dbo.AUDIT_FIELD_CHANGE ADD CONSTRAINT FK_AUDIT_FIELD_CHANGE_EVENT
     FOREIGN KEY (EVENT_ID) REFERENCES dbo.AUDIT_EVENT (EVENT_ID);
 CREATE INDEX IX_AUDIT_FIELD_CHANGE_EVENT ON dbo.AUDIT_FIELD_CHANGE (EVENT_ID);
 
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'统一业务审计事件表（ADR-005 §8）：新系统审计事实源，与业务事务同生共死；逐步替代旧 SYSDF 核心证据源，SYSDF 继续作兼容查询来源。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_EVENT';
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'统一业务审计事件表（）：新系统审计事实源，与业务事务同生共死；逐步替代旧 SYSDF 核心证据源，SYSDF 继续作兼容查询来源。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_EVENT';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'审计事件 ID，自增主键。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_EVENT', @level2type=N'COLUMN', @level2name=N'EVENT_ID';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'发生时间（本地时间，与业务事务一致）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_EVENT', @level2type=N'COLUMN', @level2name=N'OCCURRED_AT';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'关联 ID（X-Correlation-Id，服务端生成或透传），与日志/错误响应关联。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_EVENT', @level2type=N'COLUMN', @level2name=N'CORRELATION_ID';
@@ -77,7 +77,7 @@ EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'摘要（SYSDF
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'明细 JSON（字段变更、导出条件等；按留存策略 30 天后截断）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_EVENT', @level2type=N'COLUMN', @level2name=N'DETAIL_JSON';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'创建时间（入库时间）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_EVENT', @level2type=N'COLUMN', @level2name=N'CREATED_DATE';
 
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'审计字段变更明细（ADR-005 §8）：按事件滚动归档；大字段/敏感字段只存 hash/掩码/摘要。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_FIELD_CHANGE';
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'审计字段变更明细（）：按事件滚动归档；大字段/敏感字段只存 hash/掩码/摘要。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_FIELD_CHANGE';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'所属审计事件 ID（FK AUDIT_EVENT）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_FIELD_CHANGE', @level2type=N'COLUMN', @level2name=N'EVENT_ID';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'字段名（大写）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_FIELD_CHANGE', @level2type=N'COLUMN', @level2name=N'FIELD_NAME';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'旧值（敏感字段可掩码）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_FIELD_CHANGE', @level2type=N'COLUMN', @level2name=N'OLD_VALUE';

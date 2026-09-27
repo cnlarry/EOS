@@ -332,7 +332,7 @@ public sealed class WorkbenchCommandHandler(
             return RecordSaveResult.Failed(RecordAccessStatus.FilterUnsupported, "DATA_FILTER_UNSUPPORTED", "当前数据过滤条件尚不支持，已拒绝执行。");
         }
 
-        // ADR-020 §9.1 D1-d（WS-16）：档 2「建议」在**保存期**就给出并写入建议位置——草稿上看得见、改得动；
+        //  D1-d（WS-16）：档 2「建议」在**保存期**就给出并写入建议位置——草稿上看得见、改得动；
         // 档 3「强制」不在这里处理（保存期拒绝会让草稿存不下来，刻意不做），档 0/1 位置由人定。
         var suggestion = await DepotLocationSuggestionService.FillAsync(
             connection, transaction, definition, request.Details, depotPolicies, token);

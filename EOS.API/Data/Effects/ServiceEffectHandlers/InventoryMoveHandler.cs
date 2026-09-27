@@ -441,7 +441,7 @@ public sealed class InventoryMoveSql
         await UpdateMrpAsync(token);
         if (direct * approveTag == -1)
             affected += await CleanTrailingAsync(token);
-        // 可用量维护点（ADR-020 §9.7 D7 的前置）：数量刚动过，把本单动过的格子按可用量口径重算落列。
+        // 可用量维护点（D7 的前置）：数量刚动过，把本单动过的格子按可用量口径重算落列。
         // 排在所有余额写入之后、临时表还在的时候（格子清单取自它）。
         await SyncAvailabilityAsync(token);
         await ExecAsync($"DROP TABLE {Tmp}", token);
@@ -516,7 +516,7 @@ public sealed class InventoryMoveSql
     }
 
     /// <summary>
-    /// 入库行的「放哪」（ADR-014 §3.12 / ADR-020 D1c）：单据没给位置时按库别策略解析，写回临时表。
+    /// 入库行的「放哪」（/ D1c）：单据没给位置时按库别策略解析，写回临时表。
     /// </summary>
     /// <remarks>
     /// 三道边界，都是刻意的：
@@ -1145,7 +1145,7 @@ public sealed class InventoryMoveSql
         + $"WHERE EXISTS (SELECT 1 FROM {Tmp} t WHERE t.PRO_NO=d.PRO_NO AND t.DEPOT_ID=d.DEPOT_ID)", token);
 
     /// <summary>
-    /// 出库充足性：**够不够出按可用量判，不按在库数量判**（ADR-020 §9.7 D7-⑧ / §10 WS-23）。
+    /// 出库充足性：**够不够出按可用量判，不按在库数量判**（D7-⑧ / WS-23）。
     /// </summary>
     /// <remarks>
     /// **这是一次行为变更，不是笔误**：口径由 `QTY` 改为 `USEABLE_QTY`（= 数量 − 有效冻结 − 有效预留）。

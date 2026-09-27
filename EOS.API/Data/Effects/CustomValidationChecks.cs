@@ -18,7 +18,7 @@ internal sealed record CustomValidationContext(
 /// <summary>
 /// `custom-validation` 模板的注册表：**闭集**——校验键由代码注册，配置只能引用已注册的实现
 /// （未注册即 fail-closed 报配置错）。用于"现有模板表达不了的表达式级跨表判据"，
-/// 见 ADR-012 §14.2 的 `custom-validation` 行。
+/// 见 的 `custom-validation` 行。
 /// </summary>
 internal static class CustomValidationChecks
 {
@@ -46,7 +46,7 @@ internal static class CustomValidationChecks
 /// `P_COP_ORDER_After_Save` 调用的 `P_COP_ORDER_CHECK`）。这些判据都是**表达式级跨表比较**
 /// （如"客户最低订单额 × 客户币别汇率 &gt; 订单价税合计 × 订单币别汇率"、"日期差超过客户/产品交易天数"、
 /// "订单量低于产品最小生产量"、"产品计价已过有效期"、"客户订单号重复"、"预交日期早于订单日期"），
-/// 现有六个校验模板都表达不了 ⇒ 按 ADR-012 §14.2 的 **`custom-validation`（注册代码）** 承载：
+/// 现有六个校验模板都表达不了 ⇒ 按 的 **`custom-validation`（注册代码）** 承载：
 /// 整族判据按旧顺序逐条执行，命中即以 `EffectValidationException` 阻断保存（文案与旧实现逐字一致）。
 /// 参数闭合：八张表与各列名分组声明，全部校验为物理列；单据键值只作参数传入。
 /// </summary>

@@ -43,7 +43,7 @@ public static class EffectRecipeCatalog
         string? Note = null);
 
     /// <summary>
-    /// 配方清单。顺序 = 界面默认顺序（按覆盖行数降序，见目录文档 §2）。
+    /// 配方清单。顺序 = 界面默认顺序（按覆盖行数降序，见目录文档）。
     /// </summary>
     public static readonly IReadOnlyList<Recipe> All =
     [

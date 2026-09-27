@@ -1,5 +1,5 @@
 -- ============================================================================
--- EOS.ERP migration 244: 月结快照按钮的授权（ADR-020 WS-8 的可用性缺口）
+-- EOS.ERP migration 244: 月结快照按钮的授权（WS-8 的可用性缺口）
 -- ----------------------------------------------------------------------------
 -- **这条迁移是端到端复核逼出来的**：WS-18b 的 HTTP 验收要经生产路径点一次
 -- 模块 1304 的「生成快照」，结果拿到的不是快照而是 **403 `ACTION_FORBIDDEN`**——
@@ -21,7 +21,7 @@ DECLARE @button NVARCHAR(200) = N'month-close-snapshot';
 
 INSERT INTO dbo.SYSDH_BUTTON (G_IDX, M_IDX, BUTTON_KEY, ALLOW_TAG, REMARK, CREATE_PERSON, CREATE_DATE)
 SELECT DISTINCT h.G_IDX, @module, @button, 1,
-       N'ADR-020 WS-8：能浏览料件每月统计单的组可生成月结快照', N'ADR020', GETDATE()
+       N'WS-8：能浏览料件每月统计单的组可生成月结快照', N'ADR020', GETDATE()
   FROM dbo.SYSDH h
  WHERE h.M_IDX = @module
    AND NOT EXISTS (SELECT 1 FROM dbo.SYSDH_BUTTON b
@@ -33,7 +33,7 @@ IF NOT EXISTS (SELECT 1 FROM dbo.SYSDH_BUTTON
 BEGIN
     INSERT INTO dbo.SYSDH_BUTTON (G_IDX, M_IDX, BUTTON_KEY, ALLOW_TAG, REMARK, CREATE_PERSON, CREATE_DATE)
         VALUES (N'1', @module, @button, 1,
-                N'ADR-020 WS-8：兜底授权（库内没有能浏览 1304 的组记录）', N'ADR020', GETDATE());
+                N'WS-8：兜底授权（库内没有能浏览 1304 的组记录）', N'ADR020', GETDATE());
     PRINT N'== 按钮授权：库内无能浏览 1304 的组记录，已兜底授权给组 1 ==';
 END
 ELSE

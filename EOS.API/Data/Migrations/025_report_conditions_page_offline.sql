@@ -32,7 +32,7 @@ SET M_TAG = 0,
     M_URL = NULL,
     NEW_URL = NULL,
     MODI_URL = NULL,
-    REMARK = LTRIM(RTRIM(ISNULL(REMARK,''))) + N'；ADR-009 §11 下线（2026-08-30）：报表过滤条件设置管理页退役，条件定义转开发态资产（FILTER_TEMPLATE，迁移 024），SYSQR_DA/SYSQR_DEFAULT 保留供运行时读取'
+    REMARK = LTRIM(RTRIM(ISNULL(REMARK,''))) + N'； 下线（2026-08-30）：报表过滤条件设置管理页退役，条件定义转开发态资产（FILTER_TEMPLATE，迁移 024），SYSQR_DA/SYSQR_DEFAULT 保留供运行时读取'
 WHERE M_IDX = 2205;
 
 -- 2. WORKBENCH 快照/脏标记防御性清理（2205 已无工作台承载）

@@ -5,7 +5,7 @@
  *     INVOICE_IN_M / INVOICE_IN_D / INVOICE_OUT_M / INVOICE_OUT_D —— 0 行数据，
  *     全库无模块以它们为主表/明细表，仅剩 FIELDS/TABLES/FIELD_DATASOURCE 登记。
  *   第 2 组 1 张库存留底表：
- *     INV_PRO_DEPOT_ORPHAN_DEPOT_BACKUP —— 68 行，全部 DEPOT_ID='YL'（ADR-014 清理
+ *     INV_PRO_DEPOT_ORPHAN_DEPOT_BACKUP —— 68 行，全部 DEPOT_ID='YL'（清理
  *     "孤立库别"时的留底，均为 0 数量的历史行）；无 FIELDS/数据源/依赖登记。
  *
  * 退役前已做三方引用核查（证据在 logs/c5-retire/）：

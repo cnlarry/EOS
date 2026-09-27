@@ -3,7 +3,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// NOLOCK registry enforcement (ADR-005 section 9): new code defaults to no
+/// NOLOCK registry enforcement (section 9): new code defaults to no
 /// NOLOCK. Files using WITH (NOLOCK) must be registered in NolockAllowlist.txt
 /// after review; stale entries must be removed.
 /// </summary>

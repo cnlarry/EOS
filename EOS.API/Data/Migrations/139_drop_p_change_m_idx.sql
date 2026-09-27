@@ -3,7 +3,7 @@
 -- ----------------------------------------------------------------------------
 -- 背景：模块编号变更的引用级联已由 `MenuAdminRepository.ChangeModuleIndexSql` 承接
 -- （原 `EXEC dbo.P_Change_M_IDX` 调用已删除），且原过程本体**今天是跑不通的**——它第 12 条
--- 语句写的是已被 ADR-008 取代、库内已不存在的 `FIELDS_CHOOSER`（现表为 `FIELD_DATASOURCE`
+-- 语句写的是已被 取代、库内已不存在的 `FIELDS_CHOOSER`（现表为 `FIELD_DATASOURCE`
 -- 的同名列 `SOURCE_M_IDX`），移植实现据此改用现表。
 -- 三方核查（2026-09-18 实测）：
 --   · `xp_menu_manage`（旧菜单保存过程，4099 字符）：库内无调用方、MODULES 无引用、

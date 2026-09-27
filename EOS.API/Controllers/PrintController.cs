@@ -77,7 +77,7 @@ public sealed class PrintController(
         return File(pdf, "application/pdf", $"{data.Title}.pdf");
     }
 
-    /// <summary>合并多个 DATA_FILTER 表达式（交集收紧，§13.3 作用顺序：AND 组合）。</summary>
+    /// <summary>合并多个 DATA_FILTER 表达式（交集收紧， 作用顺序：AND 组合）。</summary>
     private static string CombineDataFilters(params string?[] filters)
     {
         var parts = filters

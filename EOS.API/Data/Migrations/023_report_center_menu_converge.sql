@@ -16,7 +16,7 @@ BEGIN TRANSACTION;
 -- 1. 隐藏 XX98 目录节点（M_TAG=0）
 UPDATE dbo.MODULES
 SET M_TAG = 0,
-    REMARK = LTRIM(RTRIM(ISNULL(REMARK,''))) + N'；ADR-009 P2 撤节点（2026-08-30）：报表查询目录收敛至「报表中心」，本节点仅保留权限单元'
+    REMARK = LTRIM(RTRIM(ISNULL(REMARK,''))) + N'；P2 撤节点（2026-08-30）：报表查询目录收敛至「报表中心」，本节点仅保留权限单元'
 WHERE LTRIM(RTRIM(ISNULL(M_URL,''))) = ''
   AND RIGHT(CAST(M_IDX AS VARCHAR(20)), 2) = '98'
   AND EXISTS (SELECT 1 FROM dbo.MODULES c WHERE c.M_P_IDX = MODULES.M_IDX AND LTRIM(RTRIM(ISNULL(c.M_URL,''))) = '/reports')
@@ -25,7 +25,7 @@ WHERE LTRIM(RTRIM(ISNULL(M_URL,''))) = ''
 -- 2. 隐藏其下 /reports 报表叶子（避免孤立叶子出现在菜单树）
 UPDATE dbo.MODULES
 SET M_TAG = 0,
-    REMARK = LTRIM(RTRIM(ISNULL(REMARK,''))) + N'；ADR-009 P2 撤节点（2026-08-30）：报表查询叶子收敛至「报表中心」，本节点仅保留权限单元'
+    REMARK = LTRIM(RTRIM(ISNULL(REMARK,''))) + N'；P2 撤节点（2026-08-30）：报表查询叶子收敛至「报表中心」，本节点仅保留权限单元'
 WHERE LTRIM(RTRIM(ISNULL(M_URL,''))) = '/reports'
   AND M_P_IDX IN (
     SELECT M_IDX FROM dbo.MODULES

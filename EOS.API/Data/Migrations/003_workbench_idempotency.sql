@@ -29,7 +29,7 @@ CREATE TABLE dbo.WORKBENCH_IDEMPOTENCY
 ALTER TABLE dbo.WORKBENCH_IDEMPOTENCY ADD CONSTRAINT PK_WORKBENCH_IDEMPOTENCY PRIMARY KEY CLUSTERED (IDEMPOTENCY_KEY);
 CREATE INDEX IX_WORKBENCH_IDEMPOTENCY_SCOPE ON dbo.WORKBENCH_IDEMPOTENCY (MODULE_ID, ACTION, CREATED_AT);
 
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Workbench 写路径幂等键表（ADR-005 阶段 3）：调用方传 IdempotencyKey，重复提交返回缓存结果；事务内 claim/complete，失败回滚即释放。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_IDEMPOTENCY';
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'Workbench 写路径幂等键表（阶段 3）：调用方传 IdempotencyKey，重复提交返回缓存结果；事务内 claim/complete，失败回滚即释放。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_IDEMPOTENCY';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'幂等键（调用方提供，≤128 字符）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_IDEMPOTENCY', @level2type=N'COLUMN', @level2name=N'IDEMPOTENCY_KEY';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'模块号（MODULES.M_IDX）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_IDEMPOTENCY', @level2type=N'COLUMN', @level2name=N'MODULE_ID';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'动作（INSERT/UPDATE/DELETE/APPROVE/DEAPPROVE/ENDCASE/UNENDCASE）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'WORKBENCH_IDEMPOTENCY', @level2type=N'COLUMN', @level2name=N'ACTION';

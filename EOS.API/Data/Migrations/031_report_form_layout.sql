@@ -86,36 +86,36 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SYSDH'
 IF NOT EXISTS (SELECT 1 FROM sys.extended_properties
                WHERE major_id = OBJECT_ID('dbo.REPORT_FORM_LAYOUT') AND minor_id = 0)
     EXEC sp_addextendedproperty @name = N'MS_Description',
-        @value = N'客户定制版式本体（copy-on-write，ADR-010 决策 3）：复制内置格式后编辑，LAYOUT_VERSION 追踪版本',
+        @value = N'客户定制版式本体（copy-on-write，）：复制内置格式后编辑，LAYOUT_VERSION 追踪版本',
         @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'REPORT_FORM_LAYOUT';
 
 IF NOT EXISTS (SELECT 1 FROM sys.extended_properties
                WHERE major_id = OBJECT_ID('dbo.REPORT_FORM_BINDING') AND minor_id = 0)
     EXEC sp_addextendedproperty @name = N'MS_Description',
-        @value = N'单据版式绑定（ADR-009 §9.5.3 / ADR-010 决策 3）：FORM_TYPE × CLIENT_ID，空 CLIENT_ID = 单据类型默认，收货方不作键',
+        @value = N'单据版式绑定（ / ）：FORM_TYPE × CLIENT_ID，空 CLIENT_ID = 单据类型默认，收货方不作键',
         @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'REPORT_FORM_BINDING';
 
 IF NOT EXISTS (SELECT 1 FROM sys.extended_properties WHERE major_id = OBJECT_ID('dbo.SYSDD')
                AND minor_id = (SELECT column_id FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SYSDD') AND name = 'FORM_DESIGN_TAG'))
-    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'版式完整设计权限（角色② 实施顾问，ADR-010 决策 4）',
+    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'版式完整设计权限（角色② 实施顾问，）',
         @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'SYSDD',
         @level2type = N'COLUMN', @level2name = N'FORM_DESIGN_TAG';
 
 IF NOT EXISTS (SELECT 1 FROM sys.extended_properties WHERE major_id = OBJECT_ID('dbo.SYSDD')
                AND minor_id = (SELECT column_id FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SYSDD') AND name = 'FORM_ADJUST_TAG'))
-    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'版式微调权限（角色③ 客户维护人员，ADR-010 决策 4）',
+    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'版式微调权限（角色③ 客户维护人员，）',
         @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'SYSDD',
         @level2type = N'COLUMN', @level2name = N'FORM_ADJUST_TAG';
 
 IF NOT EXISTS (SELECT 1 FROM sys.extended_properties WHERE major_id = OBJECT_ID('dbo.SYSDH')
                AND minor_id = (SELECT column_id FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SYSDH') AND name = 'FORM_DESIGN_TAG'))
-    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'版式完整设计权限（角色② 实施顾问，ADR-010 决策 4）',
+    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'版式完整设计权限（角色② 实施顾问，）',
         @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'SYSDH',
         @level2type = N'COLUMN', @level2name = N'FORM_DESIGN_TAG';
 
 IF NOT EXISTS (SELECT 1 FROM sys.extended_properties WHERE major_id = OBJECT_ID('dbo.SYSDH')
                AND minor_id = (SELECT column_id FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SYSDH') AND name = 'FORM_ADJUST_TAG'))
-    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'版式微调权限（角色③ 客户维护人员，ADR-010 决策 4）',
+    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'版式微调权限（角色③ 客户维护人员，）',
         @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'SYSDH',
         @level2type = N'COLUMN', @level2name = N'FORM_ADJUST_TAG';
 

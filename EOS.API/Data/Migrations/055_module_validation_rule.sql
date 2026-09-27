@@ -52,7 +52,7 @@ INSERT INTO @COL_DESC (COL_NAME, COL_DESC) VALUES
     (N'MODULE_ID', N'模块号（MODULES.M_IDX）；两表皆空模块禁止有行。'),
     (N'STAGE', N'触发阶段：SAVE / APPROVE / DEAPPROVE。'),
     (N'SEQ', N'同阶段内执行顺序（1 起，决定先报哪个错）。'),
-    (N'VALIDATION_KEY', N'§14 校验模板 Key（qty-not-exceed / reference-exists / duplicate-check / …，服务端注册表校验）。'),
+    (N'VALIDATION_KEY', N' 校验模板 Key（qty-not-exceed / reference-exists / duplicate-check / …，服务端注册表校验）。'),
     (N'ENABLED', N'是否启用。'),
     (N'PARAM_STRUCT', N'模板参数（闭式 JSON，按 VALIDATION_KEY 的 Schema 保存即校验）。'),
     (N'MESSAGE', N'失败文案覆盖（缺省取模板默认）。'),

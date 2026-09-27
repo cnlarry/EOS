@@ -9,7 +9,7 @@ public sealed class EffectValidationException(string message) : Exception(messag
 
 /// <summary>
 /// Runs the configured validation rule chain for one stage. Every failed validation
-/// blocks (ADR: validation has no WARN mode). Implementations compile the closed
+/// blocks (: validation has no WARN mode). Implementations compile the closed
 /// PARAM_STRUCT shapes of each template key into parameterized SQL; no user values are
 /// ever concatenated into SQL.
 ///

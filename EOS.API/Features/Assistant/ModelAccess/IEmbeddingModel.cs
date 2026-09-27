@@ -3,7 +3,7 @@ using System.Globalization;
 namespace EOS.API.Features.Assistant.ModelAccess;
 
 /// <summary>
-/// Text embedding abstraction (RAG-选型 §3): implementations stay behind this
+/// Text embedding abstraction (RAG-选型): implementations stay behind this
 /// interface; index rows always record the model id, and changing models means
 /// a new collection + rebuild, never mixed vector spaces.
 /// </summary>

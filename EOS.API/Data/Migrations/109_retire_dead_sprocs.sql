@@ -6,7 +6,7 @@
 --     - 系统过程 `xp_*`（SQL Server 自带，永不处理）；
 --     - 报表族 `P_RPT_*`（`ReportRepository` 按前缀查找后执行）；
 --     - 代码/脚本/验收夹具**按名调用**的过程（下方清单：C# 的 EXEC/CommandText、
---       `scripts/`、`EOS.API.Tests/`、以及 `logs/` 下的 ADR-012 夹具）；
+--       `scripts/`、`EOS.API.Tests/`、以及 `logs/` 下的 夹具）；
 --     - `MODULES.UPDATE_SP`/`AFTERSAVE_SP` 引用的过程（当前为 0）；
 --     - 上述集合在库内的**传递闭包**（保留对象引用的过程必须一并保留）。
 --  ② 下线集：其余全部 dbo 过程。

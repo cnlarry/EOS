@@ -4,7 +4,7 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data.Inventory;
 
 /// <summary>
-/// 「放哪」的**取值侧**（ADR-014 §3.12 / ADR-020 D1c）：把解析器需要的候选从库里查出来，
+/// 「放哪」的**取值侧**（/ D1c）：把解析器需要的候选从库里查出来，
 /// 交给 <see cref="DepotLocationResolver"/> 这个纯函数做决策。
 /// </summary>
 /// <remarks>
@@ -24,7 +24,7 @@ public static class DepotLocationService
     /// </summary>
     /// <remarks>
     /// **`LOCATION_MODE` 0/1 一律不解析**（返回哨兵）：档 0 是"不管位置"、档 1 是"可填"，
-    /// 两者都是"位置由人定"；系统替人挑会凭空改变库存键，破坏 ADR-014 §0 的 R1 等价性。
+    /// 两者都是"位置由人定"；系统替人挑会凭空改变库存键，破坏 的 R1 等价性。
     /// 档 2/3 才按 <paramref name="storageMode"/> 走：`FIXED` 认主货位（**查不到回落哨兵、不抛异常**——
     /// 缺配置是配置缺口，不是调用方单据的失败）；`RANDOM` / `MIXED` 走三级退化。
     /// </remarks>

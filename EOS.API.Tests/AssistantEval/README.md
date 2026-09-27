@@ -6,7 +6,7 @@
 
 ## 行格式
 
-每行一个 JSON：`{question, expected, sources[]}`，与 ADR-011 附录 C 一致。
+每行一个 JSON：`{question, expected, sources[]}`，与 一致。
 `inference/` 另带 `required_sources[]`（必要数据源清单，用于依据链完整性断言）；
 `authz/` 行格式为 `{tool, args, expect, note}`（`expect` ∈ deny/empty/all_only/ok）。
 
@@ -19,7 +19,7 @@
 
 ## 行格式
 
-每行一个 JSON：`{question, expected, sources[]}`，与 ADR-011 附录 C 一致。
+每行一个 JSON：`{question, expected, sources[]}`，与 一致。
 
 ## 种子说明（诚实标注）
 

@@ -4,7 +4,7 @@
 -- 背景：批核生效链已全部由效果引擎接管（`EFFECT_ENGINE_TAG=1`），静态白名单
 -- （`ModuleBusinessMap.WorkflowSproc`）在迁移 105/106 后已为空，但 50 个模块的
 -- `MODULES.UPDATE_SP` 仍指向 40 个在册 `P_WF_*` 过程：运行期不可达（引擎分支先于遗留桥），
--- 属"白名单只减不增"的配置面未清项（见 docs/plans/ADR-012两级覆盖率报告.md §八）。
+-- 属"白名单只减不增"的配置面未清项（见 docs/plans/两级覆盖率报告.md 八）。
 -- 处理（与 105/106 同形）：① 清空这批模块的 `MODULES.UPDATE_SP`；
 -- ② 就地修正已发布快照：`WorkflowSproc` 置空，且对**没有流程定义**的模块把 `HasWorkflow` 置 false
 --    （有 WFFORM 流程的模块保留 true，其批核入口走送审）；

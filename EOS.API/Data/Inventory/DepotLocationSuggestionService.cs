@@ -8,14 +8,14 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data.Inventory;
 
 /// <summary>
-/// 保存期的「建议位置」（ADR-020 §9.1 D1-d / §10 WS-16）：`LOCATION_MODE = 2`「建议」档下，
+/// 保存期的「建议位置」（D1-d / WS-16）：`LOCATION_MODE = 2`「建议」档下，
 /// 明细行没填位置时，**保存时**就把系统建议的位置写进去——用户在草稿上看得见，也改得动。
 /// </summary>
 /// <remarks>
 /// 三条边界，都是刻意的：
 /// <list type="bullet">
 /// <item>**只做档 2**。档 0/1 是"位置由人定"，系统替人填会凭空改变库存键（R1 等价性）；
-/// 档 3「强制」也不做——保存期拒绝会让草稿存不下来（ADR-020 D1-a 刻意如此），
+/// 档 3「强制」也不做——保存期拒绝会让草稿存不下来（D1-a 刻意如此），
 /// 而替它填上等于把"强制"悄悄降级成"建议"，两条都不可以。</item>
 /// <item>只填**空 / 哨兵**的位置：单据里已经写了位置的照单据走——与人填的东西冲突时，人赢。</item>
 /// <item>口径与批核期**同一处**：候选来自 <see cref="DepotLocationService"/>、决策来自
@@ -26,7 +26,7 @@ namespace EOS.API.Data.Inventory;
 /// </remarks>
 public static class DepotLocationSuggestionService
 {
-    /// <summary>库存明细表的料号列名在 ADR-014 覆盖的 24 张表里统一是 `PRO_NO`；取不到就跳过该行。</summary>
+    /// <summary>库存明细表的料号列名在 覆盖的 24 张表里统一是 `PRO_NO`；取不到就跳过该行。</summary>
     private const string ProductField = "PRO_NO";
 
     /// <summary>本次保存实际写入明细的集合 + 给用户看的说明（每个"库别→位置"一条，不按行刷屏）。</summary>

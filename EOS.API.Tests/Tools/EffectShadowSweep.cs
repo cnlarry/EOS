@@ -11,7 +11,7 @@ namespace EOS.API.Tests.Tools;
 /// <summary>
 /// Batch driver for <see cref="EffectShadowRunner"/>: replays the shadow comparison for every
 /// module that carries business actions with the effect engine enabled, for the approve and
-/// deapprove events, in a single test host. The ADR-012 acceptance ledger only counts a report
+/// deapprove events, in a single test host. The acceptance ledger only counts a report
 /// whose <c>definitionVersion</c> is at least the currently published snapshot version, so a
 /// republish sweep turns every existing report into "stale" evidence; this tool rebuilds that
 /// evidence without spawning one test host per module.

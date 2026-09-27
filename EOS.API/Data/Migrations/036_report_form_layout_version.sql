@@ -39,7 +39,7 @@ END
 IF NOT EXISTS (SELECT 1 FROM sys.extended_properties
                WHERE major_id = OBJECT_ID('dbo.REPORT_FORM_LAYOUT_VERSION') AND minor_id = 0)
     EXEC sp_addextendedproperty @name = N'MS_Description',
-        @value = N'客户定制版式历史快照（ADR-010 P0 版本历史/对比/回滚）：保存与回滚时写入，LAYOUT_VERSION 对应主表版本',
+        @value = N'客户定制版式历史快照（P0 版本历史/对比/回滚）：保存与回滚时写入，LAYOUT_VERSION 对应主表版本',
         @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'REPORT_FORM_LAYOUT_VERSION';
 
 SELECT 'REPORT_FORM_LAYOUT_VERSION' AS OBJECT_NAME, COUNT(*) AS CNT FROM sys.tables WHERE name = 'REPORT_FORM_LAYOUT_VERSION';

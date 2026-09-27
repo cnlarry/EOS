@@ -1,5 +1,5 @@
 -- ============================================================================
--- EOS.ERP migration 266: 结案钩子成对（ADR-020 §9.7 D7-⑥ / §10 WS-22）
+-- EOS.ERP migration 266: 结案钩子成对（D7-⑥ / WS-22）
 -- ----------------------------------------------------------------------------
 -- 迁移 246 给模块 `1502 制令单` 挂了 `ENDCASE` ⇒ `inventory-release-by-source`：
 -- 结案释放该单名下的有效预留。**只挂了单向**——结案释放了，取消结案收不回来，
@@ -52,8 +52,8 @@ BEGIN
          CREATE_PERSON, CREATE_DATE, LABEL, CONFIRM_TAG)
         VALUES (@sourceModule, N'UNENDCASE', 7, @effectKey, N'取消结案收回预留', 1, N'BLOCK',
                 NULL, NULL, NULL,
-                N'ADR-020 §9.7 D7-⑥（WS-22）：制令单取消结案时，把当初由结案释放的那批预留收回并重算 USEABLE_QTY；无参数（身份来自框架）',
-                N'ADR-020 §9.7', N'ADR020', GETDATE(), N'取消结案收回预留', 0);
+                N' D7-⑥（WS-22）：制令单取消结案时，把当初由结案释放的那批预留收回并重算 USEABLE_QTY；无参数（身份来自框架）',
+                N'', N'ADR020', GETDATE(), N'取消结案收回预留', 0);
     PRINT N'== 新增效果行：1502 UNENDCASE inventory-release-by-source ==';
 END
 ELSE

@@ -6,7 +6,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// **可用量列的唯一维护出口**真库验收（`InventoryAvailabilityService.SyncSlotsAsync`，ADR-020 §9.7 D7-②，
+/// **可用量列的唯一维护出口**真库验收（`InventoryAvailabilityService.SyncSlotsAsync`， D7-②，
 /// WS-23 的前置）。
 ///
 /// 这一列是**存列**：任何"数量动过或占用动过"的写入路径都得按口径重算它。本段把"重算 + 落列"

@@ -1,5 +1,5 @@
 -- ============================================================================
--- EOS.ERP migration 241: 批次 / 库存主档的受控写入口（ADR-020 §9.2 D2 / WS-17）
+-- EOS.ERP migration 241: 批次 / 库存主档的受控写入口（D2 / WS-17）
 -- ----------------------------------------------------------------------------
 -- 背景：模块 `1302 料件批号资料`（主表 `INV_BATCH_M`）与 `1303 料件库存资料`（主表 `INV_PRO_DEPOT`）
 -- **不在统一表单白名单内，这是故意的**——`check-inventory-read-hosts.ps1` 的写路径断言要求
@@ -35,8 +35,8 @@ BEGIN
                 + N'{"key":"batchDate","label":"批号启用日期","type":"date"},'
                 + N'{"key":"againCheckDate","label":"复检日期","type":"date"}]}',
                 NULL,
-                N'ADR-020 §9.2 D2（WS-17）：批次主档的受控写入口——只允许改人工语义列，引擎维护列服务端拒，不产生库存流水',
-                N'ADR-020 §9.2', N'ADR020', GETDATE(), N'修改人工字段', 1);
+                N' D2（WS-17）：批次主档的受控写入口——只允许改人工语义列，引擎维护列服务端拒，不产生库存流水',
+                N'', N'ADR020', GETDATE(), N'修改人工字段', 1);
     PRINT N'== 新增动作行：1302 master-field-write（MANUAL / 二次确认）==';
 END
 ELSE
@@ -48,7 +48,7 @@ DECLARE @granted INT = 0;
 
 INSERT INTO dbo.SYSDH_BUTTON (G_IDX, M_IDX, BUTTON_KEY, ALLOW_TAG, REMARK, CREATE_PERSON, CREATE_DATE)
 SELECT DISTINCT h.G_IDX, 1302, N'master-field-write', 1,
-       N'ADR-020 WS-17：能浏览料件批号资料的组可修改其人工字段', N'ADR020', GETDATE()
+       N'WS-17：能浏览料件批号资料的组可修改其人工字段', N'ADR020', GETDATE()
   FROM dbo.SYSDH h
  WHERE h.M_IDX = 1302
    AND NOT EXISTS (SELECT 1 FROM dbo.SYSDH_BUTTON b
@@ -61,7 +61,7 @@ IF @granted = 0
 BEGIN
     INSERT INTO dbo.SYSDH_BUTTON (G_IDX, M_IDX, BUTTON_KEY, ALLOW_TAG, REMARK, CREATE_PERSON, CREATE_DATE)
         VALUES (N'1', 1302, N'master-field-write', 1,
-                N'ADR-020 WS-17：兜底授权（库内没有能浏览 1302 的组记录）', N'ADR020', GETDATE());
+                N'WS-17：兜底授权（库内没有能浏览 1302 的组记录）', N'ADR020', GETDATE());
     PRINT N'== 按钮授权：库内无能浏览 1302 的组记录，已兜底授权给组 1 ==';
 END
 ELSE

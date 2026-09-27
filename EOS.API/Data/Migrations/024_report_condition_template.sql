@@ -593,6 +593,6 @@ DROP TABLE #TEMPLATE;
 
 -- 3. 扩展属性
 IF NOT EXISTS (SELECT 1 FROM sys.extended_properties WHERE major_id = OBJECT_ID('dbo.SYSQR_DEFAULT') AND minor_id = (SELECT column_id FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SYSQR_DEFAULT') AND name = 'FILTER_TEMPLATE'))
-    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'结构化参数定义（ADR-009 §6，FILTER_TEMPLATE JSON，复用 ADR-008 契约 + {p.X} 参数占位符）', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'SYSQR_DEFAULT', @level2type = N'COLUMN', @level2name = N'FILTER_TEMPLATE';
+    EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'结构化参数定义（，FILTER_TEMPLATE JSON，复用 契约 + {p.X} 参数占位符）', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'SYSQR_DEFAULT', @level2type = N'COLUMN', @level2name = N'FILTER_TEMPLATE';
 
 COMMIT TRANSACTION;

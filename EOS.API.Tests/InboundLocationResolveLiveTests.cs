@@ -12,7 +12,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// 「存放方式」接入移动引擎的真库验收（ADR-014 §3.12 / ADR-020 §10 WS-15），全程在事务内、结束回滚。
+/// 「存放方式」接入移动引擎的真库验收（/ WS-15），全程在事务内、结束回滚。
 ///
 /// 走的是**真实批核链**：`WorkbenchApprovalService.RunApprovalCoreAsync` + 模块 130103（入库单）的
 /// **已发布定义**（含真实的 inventory-move 动作与你库里那套校验），因此验的是接线本身，

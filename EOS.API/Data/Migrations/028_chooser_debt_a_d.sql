@@ -19,7 +19,7 @@ SET NOCOUNT ON;
 -- ---- A 类：豁免登记（仅命中 STATUS=MANUAL 才落，幂等） ----
 UPDATE dbo.CHOOSER_FILTER_MIGRATION_LOG
 SET STATUS = N'EXEMPTED',
-    ERROR  = N'[028 ADR-008治理] A类豁免：子查询引用表不在来源表QUERY_RELATION，旧系统同败，保持fail-closed空选项'
+    ERROR  = N'[028 治理] A类豁免：子查询引用表不在来源表QUERY_RELATION，旧系统同败，保持fail-closed空选项'
 WHERE STATUS = N'MANUAL'
   AND ((T_ID = N'SFC_PLAN_D'     AND F_ID = N'PRO_NO'      AND SERIAL_NO = 2)
     OR (T_ID = N'CUS_PURCHASE_D' AND F_ID = N'IMPORT_NO'   AND SERIAL_NO = 1)
@@ -42,7 +42,7 @@ WHERE ACTIVE_TAG = 1
 
 UPDATE dbo.CHOOSER_FILTER_MIGRATION_LOG
 SET STATUS = N'CLEANED',
-    ERROR  = N'[028 ADR-008治理] D类脏数据清空为显式空过滤（原条件：恒等/乱码/表名截断），业务语义若需恢复由顾问重建'
+    ERROR  = N'[028 治理] D类脏数据清空为显式空过滤（原条件：恒等/乱码/表名截断），业务语义若需恢复由顾问重建'
 WHERE STATUS = N'MANUAL'
   AND ((T_ID = N'SAM_APPLY_M'   AND F_ID = N'CURR_ID'   AND SERIAL_NO = 1)
     OR (T_ID = N'HR_ENACTMENT_D' AND F_ID = N'EMP_ID'    AND SERIAL_NO = 1)
@@ -56,5 +56,5 @@ WHERE (m.MASTER_TABLE IN (N'SAM_APPLY_M', N'HR_ENACTMENT_D', N'COP_ACCOUNT_D')
        OR ISNULL(m.DETAIL_TABLE, N'') IN (N'SAM_APPLY_M', N'HR_ENACTMENT_D', N'COP_ACCOUNT_D'))
   AND NOT EXISTS (SELECT 1 FROM dbo.WORKBENCH_MODULE_DIRTY d WHERE d.MODULE_ID = m.M_IDX);
 
-PRINT N'[028] ADR-008 治理 A/D 类处理完成（A 豁免 10 行、D 清空 3 行 + 标脏）。';
+PRINT N'[028] 治理 A/D 类处理完成（A 豁免 10 行、D 清空 3 行 + 标脏）。';
 GO
