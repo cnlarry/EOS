@@ -604,7 +604,7 @@ public sealed class FieldAdminRepository(
 
     /// <summary>
     /// 表列（物理列 sys.columns + 来源表内受控虚拟列 FIELDS.IS_VIRTUAL 且 VIRTUAL_EXP 非空）：
-    /// 字段设置回填来源列可选虚拟（对齐旧语义）；过滤条件字段仅取物理列（IsVirtual=false 过滤）。
+    /// 字段设置回填来源列可选虚拟（对齐既有实现语义）；过滤条件字段仅取物理列（IsVirtual=false 过滤）。
     /// </summary>
     public async Task<IReadOnlyList<FieldAdminColumn>> GetTableColumnsAsync(
         string tableId,

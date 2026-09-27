@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace EOS.API.Features.Assistant.Kb;
 
 /// <summary>
-/// M5 red-line scanner: sensitive-data blocking + business-reference extraction.
+/// red-line scanner: sensitive-data blocking + business-reference extraction.
 /// Pure and unit-tested; the only place that decides what a "sensitive kind" or a
 /// "module + _keys reference" is (rule doc: docs/plans/KB-入库扫描规则.md).
 /// </summary>

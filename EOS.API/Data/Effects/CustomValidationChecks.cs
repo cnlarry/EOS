@@ -47,7 +47,7 @@ internal static class CustomValidationChecks
 /// （如"客户最低订单额 × 客户币别汇率 &gt; 订单价税合计 × 订单币别汇率"、"日期差超过客户/产品交易天数"、
 /// "订单量低于产品最小生产量"、"产品计价已过有效期"、"客户订单号重复"、"预交日期早于订单日期"），
 /// 现有六个校验模板都表达不了 ⇒ 按 的 **`custom-validation`（注册代码）** 承载：
-/// 整族判据按旧顺序逐条执行，命中即以 `EffectValidationException` 阻断保存（文案与旧实现逐字一致）。
+/// 整族判据按旧顺序逐条执行，命中即以 `EffectValidationException` 阻断保存（文案与既有实现逐字一致）。
 /// 参数闭合：八张表与各列名分组声明，全部校验为物理列；单据键值只作参数传入。
 /// </summary>
 internal static class CopOrderCheck
@@ -79,7 +79,7 @@ internal static class CopOrderCheck
         var detailScopeD = $"d.{Q(config.Master.TypeField)}=@Type AND d.{Q(config.Master.NoField)}=@No";
 
         // ① 客户交易天数（系统设置的交易天数与客户最后交易日期都非空才判；
-        //    设置按参数键取值，取值缺失/为空即不判——保持旧实现的三值语义）
+        //    设置按参数键取值，取值缺失/为空即不判——保持既有实现的三值语义）
         var tradeDaysSql = $"""
             SELECT TOP 1 1 FROM dbo.{master} m
             CROSS JOIN (SELECT TOP 1 TRY_CAST(ISNULL(PARAM_VALUE, DEFAULT_VALUE) AS int) AS V
@@ -108,7 +108,7 @@ internal static class CopOrderCheck
         if (minOrder is not null)
             return config.Messages.MinOrder + minOrder;
 
-        // ③ 客户信用余额（信用额度为空时不启用——与旧实现的三值语义一致）
+        // ③ 客户信用余额（信用额度为空时不启用——与既有实现的三值语义一致）
         var creditSql = $"""
             SELECT c.{Q(config.Client.CreditLimitField)} * ISNULL(r.{Q(config.Currency.RateField)},1)
                        - ISNULL(m.{Q(config.Master.AmountTaxField)},0) * ISNULL(m.{Q(config.Master.CurrencyRateField)},1),

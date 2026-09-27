@@ -63,7 +63,7 @@ BEGIN
     CREATE INDEX [IX_KB_CHUNK_DOC] ON dbo.KB_CHUNK ([DOC_ID], [SERIAL_NO]);
 END
 
--- Seed the first collection (general org knowledge, BGE-M3 space).
+-- Seed the first collection (general org knowledge, BGE- space).
 IF NOT EXISTS (SELECT 1 FROM dbo.KB_COLLECTION WHERE COLLECTION_ID = N'kb_general')
 BEGIN
     INSERT INTO dbo.KB_COLLECTION (COLLECTION_ID, TITLE, EMBEDDING_MODEL, DIMENSION, DEFAULT_VISIBILITY)

@@ -147,7 +147,7 @@ export interface FormDefinition {
    userActions?: DocumentActionMeta[] | null
    }
 
-/** 模块权限（与 EOS.API ModuleRights 对应，M0 扩展后） */
+/** 模块权限（与 EOS.API ModuleRights 对应， 扩展后） */
 export interface ModuleRights {
   canBrowse: boolean
   canViewCost: boolean

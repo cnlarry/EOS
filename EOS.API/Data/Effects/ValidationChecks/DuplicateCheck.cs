@@ -55,7 +55,7 @@ internal static class DuplicateCheck
         if (compiled.MultiRow)
         {
             // master-detail 形态命中多行（每组一行），按 {ROWS} 占位符整块回填：
-            // 每行把诊断列以制表符相连并保留行尾制表符，与旧实现逐行拼接一致。
+            // 每行把诊断列以制表符相连并保留行尾制表符，与既有实现逐行拼接一致。
             var lines = new List<string>();
             do
             {
@@ -78,7 +78,7 @@ internal static class DuplicateCheck
     /// master-detail 形态：跨单据的"主表维度 × 明细分组键"唯一。以当前单据行 cur 为锚，
     /// 在与其主表维度相同的其它单据（m）中按明细分组键分组，命中组数大于 1 即重复。
     /// 可选 documentDetailFields 追加"本单员工"限定（只统计本单出现过的分组键），
-    /// 未提供时与旧实现的整月扫描一致。诊断列按组聚合（MAX）成多行，供消息 {ROWS} 回填。
+    /// 未提供时与既有实现的整月扫描一致。诊断列按组聚合（MAX）成多行，供消息 {ROWS} 回填。
     /// </summary>
     internal static DuplicateCheckSql BuildMasterDetailUniqueSql(
         ModuleEffectPlan plan,

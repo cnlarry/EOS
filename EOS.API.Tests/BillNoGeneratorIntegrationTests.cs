@@ -128,18 +128,18 @@ public sealed class BillNoGeneratorIntegrationTests
         var template = BillNoGenerator.Parse(expression!, DateTime.Now);
         var expected = await LegacyNextNoAsync(connection, masterTable, billNoField, billTypeField, billCode!, template);
         var actual = await BillNoGenerator.PeekAsync(connection, null, moduleId, CancellationToken.None);
-        _output.WriteLine("模块 {0}（{1}，单别 {2}）：旧算法 {3} / 新发号器 {4}",
+        _output.WriteLine("模块 {0}（{1}，单别 {2}）：既有算法 {3} / 新发号器 {4}",
             moduleId, masterTable, billCode, expected, actual);
 
         Assert.Equal(template.Title, actual[..template.Title.Length]);
-        Assert.True(actual.Length == expected.Length, $"号长应与旧算法一致：旧 {expected} / 新 {actual}");
+        Assert.True(actual.Length == expected.Length, $"号长应与既有算法一致：旧 {expected} / 新 {actual}");
         // 迁移期这里曾要求与"旧最大号算法"逐字一致——该等式只在 098 回填刚完成时成立：
-        // 发号器允许跳号（取号后单据被删、事务回滚，号码作废不回收），所以真实号只会 ≥ 旧算法结果。
-        // 断言不变式：同字头与日期段、同宽度，且不小于旧算法（绝不回头撞已用号）。
+        // 发号器允许跳号（取号后单据被删、事务回滚，号码作废不回收），所以真实号只会 ≥ 既有算法结果。
+        // 断言不变式：同字头与日期段、同宽度，且不小于既有算法（绝不回头撞已用号）。
         var expectedSerial = long.Parse(expected[template.Title.Length..], CultureInfo.InvariantCulture);
         var actualSerial = long.Parse(actual[template.Title.Length..], CultureInfo.InvariantCulture);
         Assert.True(actualSerial >= expectedSerial,
-            $"发号器不得落后于旧算法（旧 {expected} / 新 {actual}）；大于属允许的跳号");
+            $"发号器不得落后于既有算法（旧 {expected} / 新 {actual}）；大于属允许的跳号");
     }
 
     [Fact]
@@ -171,7 +171,7 @@ public sealed class BillNoGeneratorIntegrationTests
         return await command.ExecuteScalarAsync() as string;
     }
 
-    /// <summary>旧算法：主表内同单别 + 同字头下的最大单号 + 1（切换前的取号口径）。</summary>
+    /// <summary>既有算法：主表内同单别 + 同字头下的最大单号 + 1（切换前的取号口径）。</summary>
     private static async Task<string> LegacyNextNoAsync(
         SqlConnection connection, string masterTable, string billNoField, string billTypeField,
         string billCode, BillNoGenerator.Template template)

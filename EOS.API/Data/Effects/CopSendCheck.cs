@@ -46,7 +46,7 @@ internal static class CopSendCheck
         var batchStock = Q(config.BatchStock.Table);
         var detailScope = $"d.{Q(config.Master.TypeField)}=@Type AND d.{Q(config.Master.NoField)}=@No";
 
-        // 单位折算：出库单位与产品单位一致取 1，否则按产品单位对应的换算率取值（与旧实现同形的 CASE）
+        // 单位折算：出库单位与产品单位一致取 1，否则按产品单位对应的换算率取值（与既有实现同形的 CASE）
         var unitFactor =
             $"(CASE p.{Q(config.Product.UnitField)} WHEN d.{Q(config.Detail.UnitField)} THEN 1 "
             + $"WHEN p.{Q(config.Product.Unit1Field)} THEN ISNULL(p.{Q(config.Product.UnitRate1Field)},0) "

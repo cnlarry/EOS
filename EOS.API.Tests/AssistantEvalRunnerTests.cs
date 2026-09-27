@@ -11,7 +11,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// M7 确定性回归：authz 越权集（泄露=0 硬门槛）+ inference 推断集格式与必要来源门。
+/// 确定性回归：authz 越权集（泄露=0 硬门槛）+ inference 推断集格式与必要来源门。
 /// 正确率/拒答率需 LLM-as-judge，现阶段人工抽样，不进自动断言（见 AssistantEval/README）。
 /// </summary>
 public sealed class AssistantEvalRunnerTests

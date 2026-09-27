@@ -19,7 +19,7 @@ public static class ReportAggregateRegistry
 
     public static IReadOnlyCollection<string> RegisteredReportIds => Map.Keys;
 
-    /// <summary>人力状况分析表：在职人数与本月入职/离职（本月请假列旧实现从未填充，保持恒 0）。</summary>
+    /// <summary>人力状况分析表：在职人数与本月入职/离职（本月请假列既有实现从未填充，保持恒 0）。</summary>
     private static readonly ReportAggregate HrEmployeeStatus = new(
         "HR_Employee_1",
         """
@@ -212,7 +212,7 @@ public static class ReportAggregateRegistry
     /// <summary>
     /// 考勤分析表：应到（期初在职）/ 实到（区间内有出勤或加班）/ 请假与迟到人员名单。
     /// 日期区间由考勤日期条件（序号 1）的起止值绑定；人员名单按工号排序拼接
-    /// （旧实现用游标拼接、顺序不确定且带尾空格，此处为确定性的等价表述）。
+    /// （既有实现用游标拼接、顺序不确定且带尾空格，此处为确定性的等价表述）。
     /// </summary>
     private static readonly ReportAggregate HrDiary = new(
         "HR_Diary_1",
@@ -269,18 +269,18 @@ public static class ReportAggregateRegistry
     /// </summary>
     /// <remarks>
     /// 参数按查询条件绑定：仓库/类别/料号/日期四个范围条件取起止值，成本计法（`@cb1`）取单值。
-    /// **范围条件的空值语义**：旧实现把空上界替换为 `char(255)` 哨兵，而该哨兵在
+    /// **范围条件的空值语义**：既有实现把空上界替换为 `char(255)` 哨兵，而该哨兵在
     /// `Chinese_PRC_CI_AS` 下排序位置并不在末尾（`N'Z9' &lt;= NCHAR(255)` 实测为假），
-    /// 会**静默截断上界**；此处改为"空值即无界"的显式谓词（语义即旧实现的本意，且可走索引）。
-    /// **有意差异（两处旧实现公式缺陷）**：① 旧期初单价的累加写成
+    /// 会**静默截断上界**；此处改为"空值即无界"的显式谓词（语义即既有实现的本意，且可走索引）。
+    /// **有意差异（两处既有实现公式缺陷）**：① 旧期初单价的累加写成
     /// `@price_sum=(@price_sum*@qty_sum+@price*@qty)/(@qty_sum+@qty)`，而 SQL Server 在同一条 SELECT 内
     /// 变量赋值"左到右立即生效"（实测 `SELECT @a=@a+1,@b=@a` ⇒ `@b=2`），实际分母是 `Q_old+2q`，
     /// 使每笔进价权重失真（首笔尤为明显）；此处按**加权平均** `SUM(QTY*PRICE)/SUM(QTY)` 实现。
     /// ② 旧"每日发出成本"的游标首行（排序第一对的期初行）被首次取值消费掉、未进入累计，
     /// 且算出均价后把当日发出量从累计里再扣一次；此处按当日累计加权平均实现
     /// （与余额表 `COST_PRICE` 的维护口径一致）。
-    /// **保留的旧行为**：`@jc1`（全部/有结存/无结存）在旧实现里整段被注释 ⇒ 参数无效，此处同样不参与；
-    /// 料件类别硬编码 `PRO_TYPE='3'`（原料），与旧实现一致。
+    /// **保留的既有行为**：`@jc1`（全部/有结存/无结存）在既有实现里整段被注释 ⇒ 参数无效，此处同样不参与；
+    /// 料件类别硬编码 `PRO_TYPE='3'`（原料），与既有实现一致。
     /// </remarks>
     private static readonly ReportAggregate InventoryDaily = new(
         "INV_Pro_Depot_1",
@@ -504,7 +504,7 @@ public static class ReportAggregateRegistry
             [HrEmployeeAge.ReportId] = HrEmployeeAge,
             [HrEmployeeSeniority.ReportId] = HrEmployeeSeniority,
             [HrDiary.ReportId] = HrDiary,
-            // 库存日报三个变体（正表 / 横表 / 汇总）在旧实现里共用同一个过程、同参数、同输出列，
+            // 库存日报三个变体（正表 / 横表 / 汇总）在既有实现里共用同一个过程、同参数、同输出列，
             // 差异只存在于旧打印模板 ⇒ 现代引擎下三者数据相同
             [InventoryDaily.ReportId] = InventoryDaily,
             ["INV_Pro_Depot_1_H"] = InventoryDaily with { ReportId = "INV_Pro_Depot_1_H" },

@@ -11,7 +11,7 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 ///   ② 结算额为负 ⇒ 拒绝（无门控）；
 ///   ③ 受模块开关门控：结算额 &gt; 价款税合计-现金折扣-冲抵合计（+容差）⇒ 拒绝；
 ///   ④ 受同一门控：对帐单"已结算 + 本单本次结算"不得超出应结算额，命中回报
-///      对帐单号/应结算额/已结算/本次结算四列（列间 7/10/10 空格，与旧实现逐字一致）。
+///      对帐单号/应结算额/已结算/本次结算四列（列间 7/10/10 空格，与既有实现逐字一致）。
 /// **不拆成"目录校验 + 写动作"**：SAVE 期目录校验跑在效果之前，而②③依赖①刚写入的两列，
 /// 拆开会让校验读到旧值；故整链在一个处理器内按旧顺序执行，命中即抛 `EffectValidationException` 阻断保存。
 /// 参数闭合：四张表 + 各列名 + 门控开关列 + 三条文案 + 容差，全部校验为物理列/非空文案；单据键值只作参数传入。
@@ -32,7 +32,7 @@ internal static class PrepayOffsetRunner
         var no = context.MasterKeyValues[1] ?? string.Empty;
         var scope = "m." + Q(config.Master.TypeField) + "=@type AND m." + Q(config.Master.NoField) + "=@no";
 
-        // ① 冲抵汇总（旧实现先写后校验，顺序保持一致）
+        // ① 冲抵汇总（既有实现先写后校验，顺序保持一致）
         var offset = "UPDATE m SET m." + Q(config.Master.OffsetSumField) + "=(SELECT SUM(o."
             + Q(config.Offset.AmountField) + ") FROM dbo." + Q(config.Offset.Table) + " o WHERE o."
             + Q(config.Offset.TypeField) + "=@type AND o." + Q(config.Offset.NoField) + "=@no), m."
@@ -63,7 +63,7 @@ internal static class PrepayOffsetRunner
             type, no, token))
             throw new EffectValidationException(config.ExceedMessage);
 
-        // ④ 对帐单已结算 + 本次结算不得超出应结算额（旧实现用 7/10/10 空格分隔的四列诊断）
+        // ④ 对帐单已结算 + 本次结算不得超出应结算额（既有实现用 7/10/10 空格分隔的四列诊断）
         var lines = new List<string>();
         await using (var command = new SqlCommand(
             "SELECT d." + Q(config.Due.NoField) + ", d." + Q(config.Due.SumAmountField) + ", d."

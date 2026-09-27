@@ -49,9 +49,9 @@ internal static class QuantityNotExceedCheck
             var match = ParseMatchPairs(check);
             if (match.Count == 0)
                 throw new EffectConfigException("qty-not-exceed.check 缺少 match 定位键。");
-            // 量纲：单量纲直接写在 check 上；多量纲写在 dimensions 数组里。旧实现常把"数量"与
+            // 量纲：单量纲直接写在 check 上；多量纲写在 dimensions 数组里。既有实现常把"数量"与
             // "备品"两类判据合成一句 `WHERE a OR b`——多量纲正是这个形态，按 OR 合并成一个
-            // 违规判据，命中时诊断行只输出一次（与旧实现的单条 SELECT 一致）。
+            // 违规判据，命中时诊断行只输出一次（与既有实现的单条 SELECT 一致）。
             // usageOnly：判据两侧都取自被引用侧（本单侧贡献为 0），如"退料合计（跨单累计）> 收料合计"。
             // 此时比较式退化为 `usage(T) > limit(T)`，本单项取常量 0。
             var usageOnly = check.TryGetProperty("usageOnly", out var usageOnlyElement)
@@ -85,13 +85,13 @@ internal static class QuantityNotExceedCheck
                 : dimensions.Select(dimension => BuildTermSql(dimension.Terms, "S")).ToList();
             var (documentScope, parameters) = BuildDocumentScope(plan, masterKeyValues);
 
-            // 聚合形态：旧实现多按单据分组求和后再比较（如"同一采购行的收料合计"）。
+            // 聚合形态：既有实现多按单据分组求和后再比较（如"同一采购行的收料合计"）。
             // 逐行比较在"同一单据里同一引用键有多行"时会弱于旧判据（单行没超、合计已超），
             // 等于悄悄放宽约束，故 thisQty.agg=SUM 时先按 match 键分组求和再比。
             var grouped = dimensions.Any(dimension => dimension.Aggregate);
             var diagnosticAggregates = ParseDiagnosticAggregates(check, grouped);
             var sourceRowDiagnostics = ParseSourceRowDiagnostics(check, grouped);
-            // 被引用行聚合：旧实现按定位键 `MAX(列)` 取值（如同一制令工序有多条制程行时取允许量的最大值），
+            // 被引用行聚合：既有实现按定位键 `MAX(列)` 取值（如同一制令工序有多条制程行时取允许量的最大值），
             // 直接取"任意一行"会比旧判据更严，故需要时把被引用表先按定位键聚合成一行。
             var targetAggregate = ParseTargetAggregate(check);
             string fromSql;
@@ -136,7 +136,7 @@ internal static class QuantityNotExceedCheck
                     $"COALESCE(T.{EffectConditionCompiler.Identifier(field)}, 0)"));
                 var limitSql = string.Join(" + ", dimension.LimitFields.Select(field =>
                     $"COALESCE(T.{EffectConditionCompiler.Identifier(field)}, 0)"));
-                // 容差：旧实现常带 0.1 之类的余量（如收料不超采购 +0.1），注册表已允许 offset，此处落实。
+                // 容差：既有实现常带 0.1 之类的余量（如收料不超采购 +0.1），注册表已允许 offset，此处落实。
                 var limitWithOffset = dimension.Offset == 0m
                     ? limitSql
                     : $"({limitSql} + {dimension.Offset.ToString(CultureInfo.InvariantCulture)})";
@@ -198,7 +198,7 @@ internal static class QuantityNotExceedCheck
                     var row = new List<string>(cells.Count);
                     for (var index = 0; index < cells.Count; index++)
                         row.Add(reader.IsDBNull(index) ? string.Empty : CheckSupport.FormatCell(reader, index));
-                    // 旧实现的诊断行多为"列间 4 空格、行间 CRLF"（少数为单列内联），逐字保持。
+                    // 既有实现的诊断行多为"列间 4 空格、行间 CRLF"（少数为单列内联），逐字保持。
                     lines.Add(string.Join(cellSeparator, row));
                 }
                 if (lines.Count == 0)
@@ -315,7 +315,7 @@ internal static class QuantityNotExceedCheck
 
     /// <summary>
     /// 逐源明细行的诊断查询：把违规分组（按 match 键定位）与源明细表重新连接，
-    /// 列出每个违规分组下的明细行，按第一个诊断列排序（与旧实现 `ORDER BY SERIAL_NO` 一致）。
+    /// 列出每个违规分组下的明细行，按第一个诊断列排序（与既有实现 `ORDER BY SERIAL_NO` 一致）。
     /// </summary>
     private static string BuildSourceRowDiagnosticSql(
         JsonElement check,

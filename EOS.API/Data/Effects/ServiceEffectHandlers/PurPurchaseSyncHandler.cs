@@ -15,7 +15,7 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 ///   ⑥ 主表 金额/价税合计/税额 = 明细按汇率折算后求和 ÷ 主表汇率（ROUND 2）；
 ///   ⑦ 数量分配：待购表 QTY 清零后按 `(产品, 序号)` 顺序把明细 QTY 逐行分给待购行；
 ///   ⑧ 主表 采购订单号/生产单号 = 待购表去重非空值按序串联（全空不回写）。
-/// 无待购行时只做 ⑧（与旧实现一致）。①与⑦需逐行处理，故在事务内读取后循环执行。
+/// 无待购行时只做 ⑧（与既有实现一致）。①与⑦需逐行处理，故在事务内读取后循环执行。
 /// 参数闭合：五张表（主表/明细/待购/产品/厂商计价）与各列名分组声明，全部校验为物理列。
 /// </summary>
 public sealed class PurPurchaseSyncHandler : IEffectServiceHandler
@@ -135,7 +135,7 @@ public sealed class PurPurchaseSyncHandler : IEffectServiceHandler
                 + "=s." + Q(m.NoField) + " AND d." + Q(d.ProductField) + "=s." + Q(d.ProductField) + " WHERE "
                 + detailScope + ";", parameters, token);
 
-            // ⑤ 明细金额按税种公式重算（I/O/N 与旧实现同形）
+            // ⑤ 明细金额按税种公式重算（I/O/N 与既有实现同形）
             var qty = "QTY_ALIAS";
             var taxType = "d." + Q(d.TaxTypeField);
             var qtySql = "d." + Q(d.QtyField);

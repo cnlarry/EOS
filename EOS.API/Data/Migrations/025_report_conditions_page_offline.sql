@@ -3,7 +3,7 @@
 -- ----------------------------------------------------------------------------
 -- Database: EOS.ERP (the single business database of the new system)
 --
--- Context: 2205 (formerly RPT/SysqrDft.aspx) maintained default condition definitions
+-- Context: 2205 (formerly ) maintained default condition definitions
 -- for the report viewer's condition panel. The five report management pages (2201-2205)
 -- are all taken offline: report definitions, layouts and conditions move to developer
 -- assets (under Git). Starting from P4, condition storage uses structured FILTER_TEMPLATE

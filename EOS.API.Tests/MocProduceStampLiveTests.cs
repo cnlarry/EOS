@@ -30,7 +30,7 @@ public sealed class MocProduceStampLiveTests
     private const int OrderSerial = 7;
 
     [Fact]
-    public async Task 制令单保存_目录效果与旧实现语句回填结果逐列一致()
+    public async Task 制令单保存_目录效果与既有实现语句回填结果逐列一致()
     {
         var token = CancellationToken.None;
         await using var connection = new SqlConnection(ConnectionString);

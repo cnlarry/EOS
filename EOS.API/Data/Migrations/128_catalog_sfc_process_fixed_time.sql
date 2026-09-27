@@ -7,8 +7,8 @@
 --   命中即拒绝，文案 N'产品编号使用固定时间时，固定时间不能为0 \r\n'（**无逐行诊断**）。
 -- 目录承接：SAVE 期 `line-require` —— 触发条件用**结构化 condition**（本行 `STANDARD_TIME_TAG=1`，
 --   DETAIL 域即本行别名 S），要求字段 `STANDARD_TIME` 已填；判据 `S.STANDARD_TIME IS NULL OR = ''`
---   对 float 列恰好等价旧 `ISNULL(t.STANDARD_TIME,0)=0`（ SQL 把 '' 转成 0 比较）。
---   文案与旧实现逐字一致（含尾部 ` \r\n`），且不配置 diagnosticFields（旧实现也不回报行）。
+--   对 float 列恰好等价既有实现 `ISNULL(t.STANDARD_TIME,0)=0`（SQL 把 '' 转成 0 比较）。
+--   文案与既有实现逐字一致（含尾部 ` \r\n`），且不配置 diagnosticFields（既有实现也不回报行）。
 -- 说明：本迁移只播种 SAVE 期规则（2703 既有 SAVE 期 `reference-exists` 不受影响）；C# 侧退役同步在代码里完成。
 -- ============================================================================
 

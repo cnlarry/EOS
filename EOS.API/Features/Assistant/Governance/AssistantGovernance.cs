@@ -1,6 +1,6 @@
 namespace EOS.API.Features.Assistant.Governance;
 
-/// <summary>M7 成本与熔断配置（默认值，可按真实数据校准，校准走评估集回归）。</summary>
+/// <summary> 成本与熔断配置（默认值，可按真实数据校准，校准走评估集回归）。</summary>
 public sealed class AssistantCostOptions
 {
     public double GlobalDailyCapYuan { get; set; } = 50;

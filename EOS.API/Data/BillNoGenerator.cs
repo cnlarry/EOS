@@ -174,7 +174,7 @@ public static class BillNoGenerator
 
     /// <summary>
     /// 原子取号：单条 UPDATE ... OUTPUT 自增并返回新值；计数器不存在时先建行再从 1 开始。
-    /// 字头变化（单号规则被改）时按旧系统语义重置为 1。
+    /// 字头变化（单号规则被改）时按既有实现语义重置为 1。
     /// 并发建行会撞主键，捕获后重试；重试耗尽仍取不到号即抛异常，绝不静默返回重复号。
     /// </summary>
     private static async Task<long> TakeSerialAsync(

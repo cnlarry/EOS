@@ -9,15 +9,15 @@ namespace EOS.API.Data.DocumentActions.Handlers;
 // `produce-calc-materials`（计算用料）：用户在制令单上点一下，按工单 BOM 把本单的用料明细、
 // 订单待办汇总与申购应购量重算一遍。
 //
-// 与旧系统同一件事（`MOC/Produce.aspx.cs` 的 `btnCalc` → `P_PRODUCE_CALC`），四处有意不同：
+// 与既有实现同一件事（`btnCalc` → `P_PRODUCE_CALC`），四处有意不同：
 //   ① BOM 爆炸不调已退役的 `P_BOM_LIST`：它当时是"单层叶子汇总"（`@step=1, @mode=3` 落到
 //      直接子件按料号分组），现代实现是同一语义的直查；版次取最新（与 BOM 展开页同口径），
 //      `BASE_QTY = 0` 的 BOM 行直接拒绝而不是除零炸事务；
-//   ② 新增用料行的序号取"已用最大号 + 1"：旧实现从 0 起排，可能撞上既有行的序号（主键冲突），
+//   ② 新增用料行的序号取"已用最大号 + 1"：既有实现从 0 起排，可能撞上既有行的序号（主键冲突），
 //      且与"项次是行身份、不复用空洞"的口径冲突；
-//   ③ 订单为空时跳过待办与申购段：旧实现拿空单别/单号去清零 `COP_ORDER_MORE`，会误伤别的单据
+//   ③ 订单为空时跳过待办与申购段：既有实现拿空单别/单号去清零 `COP_ORDER_MORE`，会误伤别的单据
 //      留下的空键行——空键本就不该参与汇总；
-//   ④ 已完工结案（`FINISHED_TAG = 1`）的制令单拒绝：结案后的用料是追溯凭据，旧实现没有这道门。
+//   ④ 已完工结案（`FINISHED_TAG = 1`）的制令单拒绝：结案后的用料是追溯凭据，既有实现没有这道门。
 // 不要求已批核：算料的正常时机在批核之前（先算清用料再送审）。
 internal sealed class ProduceCalcMaterialsHandler : IDocumentUserAction, IDocumentActionPlacement
 {
@@ -163,7 +163,7 @@ internal sealed class ProduceCalcMaterialsHandler : IDocumentUserAction, IDocume
     /// <summary>
     /// 单层叶子汇总（旧 `P_BOM_LIST @pro,1,3` 的同语义直查）：直接子件按料号分组，
     /// 用量按 `ELEMENT_QTY/BASE_QTY`、损耗按 `MAX(LOST_RATE)`。版次取最新（与 BOM 展开页同口径）。
-    /// `BASE_QTY = 0` 的 BOM 行直接拒绝——旧实现在这里除零炸事务，同样 fail-closed，但要给出料号。
+    /// `BASE_QTY = 0` 的 BOM 行直接拒绝——既有实现在这里除零炸事务，同样 fail-closed，但要给出料号。
     /// </summary>
     private static async Task<IReadOnlyList<BomElement>> ExplodeBomAsync(
         DocumentActionContext context, string productNo, CancellationToken token)
@@ -215,7 +215,7 @@ internal sealed class ProduceCalcMaterialsHandler : IDocumentUserAction, IDocume
         await command.ExecuteNonQueryAsync(token);
     }
 
-    /// <summary>订单明细回写本单制令号（旧实现与 link-stamp 同形：按订单三键定位目标行）。</summary>
+    /// <summary>订单明细回写本单制令号（既有实现与 link-stamp 同形：按订单三键定位目标行）。</summary>
     private static async Task StampOrderAsync(
         DocumentActionContext context, string type, string no, ProduceMaster master, CancellationToken token)
     {
@@ -238,7 +238,7 @@ internal sealed class ProduceCalcMaterialsHandler : IDocumentUserAction, IDocume
 
     /// <summary>
     /// 明细同步：需求/产量清零 → 缺的料号按"已用最大号 + 1"补行 → 逐料重算需求/产量/单位用量/损耗率 →
-    /// 删"需求/已用/申购/采购全零"的行（旧实现逐字如此；序号不复用空洞，与行身份口径一致）。
+    /// 删"需求/已用/申购/采购全零"的行（既有实现逐字如此；序号不复用空洞，与行身份口径一致）。
     /// </summary>
     private static async Task<(int Inserted, int Updated)> SyncDetailsAsync(
         DocumentActionContext context, string type, string no, ProduceMaster master,
@@ -338,7 +338,7 @@ internal sealed class ProduceCalcMaterialsHandler : IDocumentUserAction, IDocume
 
     /// <summary>
     /// 订单待办同步：本单引用订单的三列汇总清零 → 缺的料号补行 → 按汇总重算 →
-    /// 删全零行（旧实现逐字如此；注意汇总范围是该订单的**全部**制令单，不止本单）。
+    /// 删全零行（既有实现逐字如此；注意汇总范围是该订单的**全部**制令单，不止本单）。
     /// </summary>
     private static async Task<(int Inserted, int Updated)> SyncOrderMoreAsync(
         DocumentActionContext context, ProduceMaster master, CancellationToken token)
@@ -367,7 +367,7 @@ internal sealed class ProduceCalcMaterialsHandler : IDocumentUserAction, IDocume
             + $"WHERE m.{q(OrderTypeField)}=@orderType AND m.{q(OrderNoField)}=@orderNo "
             + $"AND LTRIM(RTRIM(m.{q(ProField)}))=LTRIM(RTRIM({q(ProField)})));",
             context.Connection, context.Transaction);
-        // 旧实现按明细的 ORDER_* 归集（与主表引用一致时即本单范围），分组键取明细列。
+        // 既有实现按明细的 ORDER_* 归集（与主表引用一致时即本单范围），分组键取明细列。
         insert.Parameters.Add("@orderType", SqlDbType.NVarChar, 20).Value = master.OrderType;
         insert.Parameters.Add("@orderNo", SqlDbType.NVarChar, 40).Value = master.OrderNo;
         var inserted = await insert.ExecuteNonQueryAsync(token);
@@ -398,7 +398,7 @@ internal sealed class ProduceCalcMaterialsHandler : IDocumentUserAction, IDocume
         return (inserted, updated);
     }
 
-    /// <summary>申购应购量＝待办需求量（按订单三键对齐；旧实现逐字如此）。</summary>
+    /// <summary>申购应购量＝待办需求量（按订单三键对齐；既有实现逐字如此）。</summary>
     private static async Task SyncApplyAsync(
         DocumentActionContext context, ProduceMaster master, CancellationToken token)
     {

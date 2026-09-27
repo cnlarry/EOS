@@ -103,7 +103,7 @@ internal static class LineRequireCheck
                 parameters.AddRange(compiled.Parameters);
             }
             // 断言形态二选一：默认"字段已填"；给出 assert 时改为数值比较（未命中即违规），
-            // 此时触发器/条件可省略（无条件生效）。旧实现里的 `ISNULL(x,0)` 语义由 COALESCE 复刻。
+            // 此时触发器/条件可省略（无条件生效）。既有实现里的 `ISNULL(x,0)` 语义由 COALESCE 复刻。
             string? assertSql = null;
             if (check.TryGetProperty("assert", out var assertElement) && assertElement.ValueKind == JsonValueKind.Object)
             {
@@ -127,7 +127,7 @@ internal static class LineRequireCheck
                         : null;
                 if (!string.IsNullOrWhiteSpace(assertCompareField))
                 {
-                    // 与同行另一列比较：任一为空都不算违规（复刻旧实现"可空日期比较为 false"），
+                    // 与同行另一列比较：任一为空都不算违规（复刻既有实现"可空日期比较为 false"），
                     // 因此断言形态写成"空 或 关系成立"，违规谓词取其反。
                     var compareIdentifier = EffectConditionCompiler.Identifier(assertCompareField);
                     assertSql = "(" + rowAlias + "." + EffectConditionCompiler.Identifier(field) + " IS NULL"
@@ -139,8 +139,8 @@ internal static class LineRequireCheck
                 {
                     if (!assertElement.TryGetProperty("value", out var assertValue) || assertValue.ValueKind != JsonValueKind.Number)
                         throw new EffectConfigException("line-require.assert 缺少数值 value 或字符串 compareField。");
-                    // 默认把空值当 0（复刻旧实现的 ISNULL(x,0)）；`nullSkips=true` 改为按原值比较，
-                    // 于是空值行为 UNKNOWN ⇒ 不算违规——用于旧实现写成 `col <= 0` 这类"空值放行"的判据
+                    // 默认把空值当 0（复刻既有实现的 ISNULL(x,0)）；`nullSkips=true` 改为按原值比较，
+                    // 于是空值行为 UNKNOWN ⇒ 不算违规——用于既有实现写成 `col <= 0` 这类"空值放行"的判据
                     // （把空值当 0 会把它误判成违规）。
                     var assertNullSkips = assertElement.TryGetProperty("nullSkips", out var nullSkipsElement)
                         && nullSkipsElement.ValueKind == JsonValueKind.True;

@@ -18,7 +18,7 @@ public interface IEmbeddingModel
 }
 
 /// <summary>
-/// Placeholder until ops wires the production local model (BGE-M3 ONNX weights).
+/// Placeholder until ops wires the production local model (BGE- ONNX weights).
 /// Fails closed with a readable code instead of silently returning junk vectors.
 /// </summary>
 public sealed class PendingEmbeddingModel : IEmbeddingModel

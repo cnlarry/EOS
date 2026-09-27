@@ -8,7 +8,7 @@ using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Features.Assistant.Admin;
 
-/// <summary>M8 admin-write v1: metadata-only changeset (register tables in TABLES,
+/// <summary> admin-write v1: metadata-only changeset (register tables in TABLES,
 /// batch-generate field metadata for existing physical columns). No DDL, no MODULES
 /// rows, no physical column creation. Trial never writes; execute re-validates first.</summary>
 public sealed record ChangeSetTableResult(
@@ -118,7 +118,7 @@ public sealed class ChangeSetService(
             index++;
         }
 
-        // M8:执行后自动触发受影响模块的发布前校验（dry-run，不自动发布——发布仍走管理端评审；
+        // :执行后自动触发受影响模块的发布前校验（dry-run，不自动发布——发布仍走管理端评审；
         // 脏模块运行时走实时元数据构建，无过期快照风险）。校验结果随响应返回。
         var affectedTables = changeset.GetProperty("tables").EnumerateArray()
             .Where(element => element.ValueKind == JsonValueKind.Object

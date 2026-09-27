@@ -12,11 +12,11 @@
 --   命中即拒绝，文案 = N'以下出库超出工序工单入库数量\r\n工序工单单别   单号   数量   已入库数量   单据数量\r\n' + 各行（五列四空格分隔、行间 CRLF）。
 -- 目录承接：SAVE 期 `qty-not-exceed`（mode=usage-not-exceed）——
 --   targetTable=MOC_WORK_D、match 按**明细行**定位（WORK_TYPE/WORK_NO/SERIAL_NO ← MOC_WORK_OUT_D 的
---   WORK_TYPE/WORK_NO/WORK_SERIAL_NO，与旧 JOIN 逐字一致）、thisQty=本行 QTY（**逐行**，与旧实现一致，不做分组求和）、
+--   WORK_TYPE/WORK_NO/WORK_SERIAL_NO，与旧 JOIN 逐字一致）、thisQty=本行 QTY（**逐行**，与既有实现一致，不做分组求和）、
 --   usage=FINISHED_OUT_QTY、limit=FINISHED_IN_QTY，比较式 `usage + thisQty > limit` ⇔ 旧判据；
 --   门控 `switch.gates=[{scope:"MODULE",key:"ERROR_NO_SAVE",expect:1}]`（**开关语义保持**）；
 --   诊断五列（TARGET.WORK_TYPE/WORK_NO/PROCESS_QTY/FINISHED_OUT_QTY + SOURCE.QTY，列间四空格、行间 CRLF）
---   与文案头部逐字复刻（`maxRows` 取上限 100；旧实现不限行数，超过 100 行的极端单据只截断列表尾部）。
+--   与文案头部逐字复刻（`maxRows` 取上限 100；既有实现不限行数，超过 100 行的极端单据只截断列表尾部）。
 -- ============================================================================
 
 SET NOCOUNT ON;

@@ -7,7 +7,7 @@
 --   ② **门控段**（`MODULES.ERROR_NO_SAVE=1` 时）"已预付金额不得超出采购行金额"：
 --        `SUM(本单明细 AMOUNT) > PUR_PURCHASE_D.AMOUNT - PUR_PURCHASE_D.FINISHED_AMOUNT`
 --        （本单明细按 `(PURCHASE_TYPE, PURCHASE_NO, PURCHASE_SERIAL_NO)` 分组求和后与采购行对齐）；
---        诊断四列 = 该组明细的**最大序号** + 采购金额 + 已收金额 + 单据金额（旧实现取 `max(SERIAL_NO)`），
+--        诊断四列 = 该组明细的**最大序号** + 采购金额 + 已收金额 + 单据金额（既有实现取 `max(SERIAL_NO)`），
 --        列间四空格、行间 CRLF，表头一行。
 --   ③ C# 新增的"引用三件套完整性"校验（旧过程没有）：明细填了采购单号，就必须同时填采购单别与采购序号
 --      （否则存成半截引用），回报明细序号。本迁移把它一并落地（保持当前线上行为），文案与 C# 逐字一致。

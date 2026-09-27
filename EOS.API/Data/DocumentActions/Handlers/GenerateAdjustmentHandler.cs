@@ -11,8 +11,8 @@ namespace EOS.API.Data.DocumentActions.Handlers;
 /// <summary>
 /// `generate-adjustment`（生成调整单）：用户在盘点单上点一下，把**盈亏行**转成一张库存调整单（130107）并过账。
 ///
-/// 与旧系统同一件事（`INV/Check_Stock.aspx.cs` 的 `btnAdjust`）：有差异才转、差异为 0 的行不转、
-/// 转完把调整单号写回盘点单。两处**有意不同于旧实现**：
+/// 与既有实现同一件事（`btnAdjust`）：有差异才转、差异为 0 的行不转、
+/// 转完把调整单号写回盘点单。两处**有意不同于既有实现**：
 ///   ① 逐行携带**库位与批次**（旧 SQL 只带库别与料号，库位维度落地后会转丢位置——见 P2-12）；
 ///   ② 下游单据走统一记录创建路径（`WorkbenchCommandHandler.CreateRecordAsync`）：单号、归属、校验、
 ///      审计与效果链一律照常生效，处理器不自己拼 INSERT。
@@ -36,7 +36,7 @@ internal sealed class GenerateAdjustmentHandler(
 {
     public const string ActionKey = "generate-adjustment";
 
-    /// <summary>库存调整单模块（旧系统按 MODULES.M_ALIAS='INV_OCCUR_ADJUST' 找默认单别）。</summary>
+    /// <summary>库存调整单模块（既有实现按 MODULES.M_ALIAS='INV_OCCUR_ADJUST' 找默认单别）。</summary>
     private const int TargetModuleId = 130107;
 
     private const string CurrencyTable = "CURR";
@@ -174,7 +174,7 @@ internal sealed class GenerateAdjustmentHandler(
         var adjustType = targetKey[0];
         var adjustNo = targetKey[1];
 
-        // 过账：库存调整单的批核链里挂着 inventory-move（写库存流水）。旧系统在没有流程时同样自动批核。
+        // 过账：库存调整单的批核链里挂着 inventory-move（写库存流水）。既有实现在没有流程时同样自动批核。
         var approved = await approvalService.WorkflowAsync(
             targetDefinition, targetKey, approve: true, context.Executor, context.ExecutorUserId,
             idempotencyKey: null, token, message: $"由盘点单 {state.Type}/{state.No} 的盈亏生成");
@@ -231,8 +231,8 @@ internal sealed class GenerateAdjustmentHandler(
     private sealed record DifferenceRow(IReadOnlyDictionary<string, string?> Values);
 
     /// <summary>
-    /// 盈亏行＝盘点数≠账面数的行。逐行携带库位与批次（旧实现只带库别与料号），
-    /// 单价取该库存行的成本价、币别取本位币（与旧系统同：无成本价按 0 起算）。
+    /// 盈亏行＝盘点数≠账面数的行。逐行携带库位与批次（既有实现只带库别与料号），
+    /// 单价取该库存行的成本价、币别取本位币（与既有实现同：无成本价按 0 起算）。
     ///
     /// 库存侧的读法交给 <see cref="InventoryQueryService"/>：四键怎么对齐在那里，
     /// 这里只把明细行的四key 用同一把尺子去查回来。没有库存记录的行单价按 0，与改造前一致。
@@ -331,7 +331,7 @@ internal sealed class GenerateAdjustmentHandler(
             location.Trim().Length == 0 ? InventoryQueryService.LocationSentinel : location.Trim(),
             batch.Trim());
 
-    /// <summary>本位币（CURR.IS_BASE=1）：旧系统取 Application["BASE_CURR"]，新系统按同一事实读库。</summary>
+    /// <summary>本位币（CURR.IS_BASE=1）：既有实现取 Application["BASE_CURR"]，本系统按同一事实读库。</summary>
     private static async Task<string> ReadBaseCurrencyAsync(DocumentActionContext context, CancellationToken token)
     {
         var q = ServiceEffectSql.Q;

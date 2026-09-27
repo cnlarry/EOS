@@ -87,7 +87,7 @@ public sealed class EmployeeCardCatalogLiveTests
             var blocked = await ValidateAsync(connection, transaction, token);
             Assert.Equal("失于日期应在生效日期后", blocked);
 
-            // ④ 空值不违规（旧实现的可空比较为 false），生效日在后也不违规
+            // ④ 空值不违规（既有实现的可空比较为 false），生效日在后也不违规
             await SetCardAsync(connection, transaction, token, EmpA, Card1, Begin, null);
             Assert.Null(await ValidateAsync(connection, transaction, token));
             await SetCardAsync(connection, transaction, token, EmpA, Card1, Begin, Begin.AddDays(30));

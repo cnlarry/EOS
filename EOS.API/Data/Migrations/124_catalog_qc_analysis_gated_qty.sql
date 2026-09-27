@@ -18,7 +18,7 @@
 --     usage=承认行 FINISHED_ANALYSIS_QTY、limit=生产单 QTY，比较式 `usage + thisQty > limit`（与旧判据等价）；
 --     门控用 `switch.gates=[{scope:"MODULE",key:"ERROR_NO_SAVE",expect:1}]` —— **开关语义保持**
 --     （门=1 才生效，与旧 C# 的 `HasErrorNoSaveAsync` 分支一致；门=0 时同样跳过）。
---   诊断行：`diagnosticFields=[TARGET.PRODUCE_NO]` + 行分隔两空格 + 文案尾部两空格（复刻旧实现逐行 `PRODUCE_NO + "  "`）。
+--   诊断行：`diagnosticFields=[TARGET.PRODUCE_NO]` + 行分隔两空格 + 文案尾部两空格（复刻既有实现逐行 `PRODUCE_NO + " "`）。
 -- ============================================================================
 
 SET NOCOUNT ON;

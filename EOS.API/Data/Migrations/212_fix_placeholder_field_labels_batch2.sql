@@ -7,21 +7,20 @@
        HTML 空实体，读取侧的「空则回落字段代号」兜底同样拦不住（非空），标签会显示字面量。
 
   命名依据（逐条可考，不用猜测）：
-    · LISTREPORT.T_SQL                 同表 T_CONDITION=条件 / T_CONDITION_DESC=条件描述；
-                                       旧页面 RptList.aspx.cs 注释「保存SQL语句及条件语句」
+    · LISTREPORT.T_SQL                 同表 T_CONDITION=条件 / T_CONDITION_DESC=条件描述，
+                                       与该页「保存SQL语句及条件语句」的注释一致
     · MOC_GET_SHOWSUM.*                MOC_GET_SHOWSUM 是 V_MOC_GET_SHOWSUM 的同形视图
-                                       （ERP/MOC/Get_ShowSum.aspx.cs 明细键 GET_TYPE,GET_NO,PRO_NO），
+                                       （明细键 GET_TYPE,GET_NO,PRO_NO），
                                        列名与 MOC_GET_D 一一对应，直接取 MOC_GET_D 的既有中文名
-    · MODULES.FILTER                   旧菜单维护页 ERP/Admin/MenuBuilder.aspx「主表过滤条件」
+    · MODULES.FILTER                   菜单维护页的「主表过滤条件」
     · PRODUCT.WORK_ALL                 同域 MOC_PRODUCE_M.WORK_ALL=生产工序（虚拟列取自 PRODUCT）
     · SYSQL_DEFAULT.{T_ID,T_ID_R,F_ID,F_IDX}
                                        姊妹表 SYSQL_FIELDS 同名列：表名 / 字段所属表 / 字段 / 顺序
     · SYSQR.R_M_IDX                    F_REMARK 自带「模块ID」；同族 SYSQR_DA/SYSQR_DEFAULT.M_IDX=模块ID
-    · SYSQR_USER.F_TAG                 ERP/RPT/RptList2.aspx.cs 该位即条件行的复选框勾选态
-    · TASK.*                           TASK 是「工作任务记录」SYS_WORK_TASK 的前身（ERP/Admin/
-                                       MagWorkTask.aspx 同一套控件语义），逐列对齐该表既有中文名
-    · WF_FUNCTION_INFO.*               ERP/WorkFlow/WF_Flow_Choose_Sql.aspx.cs 用 function_key 作
-                                       取值、function_expression 作显示、remark 作说明
+    · SYSQR_USER.F_TAG                 该位即条件行的复选框勾选态
+    · TASK.*                           TASK 是「工作任务记录」SYS_WORK_TASK 的前身（同一套控件语义），
+                                       逐列对齐该表既有中文名
+    · WF_FUNCTION_INFO.*               用 function_key 作取值、function_expression 作显示、remark 作说明
     · WF_MYTASK.CAN_SIR_AGENCY         同表 APPROVE_POWER=可审批 / FORWARD_POWER=可解批 的命名口径
     · COP_PACK_D.BOX_CUBAGE_PCS        同表装箱列全是印唛英文表头，本列无可考出处
                                        ⇒ 按既有兜底口径回落字段代号

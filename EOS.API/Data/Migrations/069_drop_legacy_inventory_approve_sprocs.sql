@@ -42,7 +42,7 @@ IF EXISTS (
         OR m.definition LIKE N'%exec dbo.P_WF_INV_OCCUR_OUT%' OR m.definition LIKE N'%exec dbo.P_WF_INV_CHECK_STOCK%'
         OR m.definition LIKE N'%exec dbo.P_WF_INV_OCCUR_TRANSFER%')
 )
-    THROW 50001, N'仍有本批名单外对象引用本批旧库存/领料批核过程，迁移中止（先核实引用方）。', 1;
+    THROW 50001, N'仍有本批名单外对象引用本批既有库存/领料批核过程，迁移中止（先核实引用方）。', 1;
 
 IF OBJECT_ID(N'dbo.P_WF_MOC_GET', N'P') IS NOT NULL DROP PROCEDURE dbo.P_WF_MOC_GET;
 IF OBJECT_ID(N'dbo.P_WF_INV_OCCUR_IN', N'P') IS NOT NULL DROP PROCEDURE dbo.P_WF_INV_OCCUR_IN;

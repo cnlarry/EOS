@@ -62,7 +62,7 @@ public sealed class WorkflowEngine(
     /// <summary>
     /// 单据是否存在在途流程实例（WF_MONITOR WF_STATE='0'）。
     /// keyCondition 必须来自服务端 BuildKeyCondition（服务端权威，非用户输入）。
-    /// 供编辑/删除守卫使用：在途流程的单据禁止编辑（改了审批人批的是旧数据）与删除（留孤儿流程实例）。
+    /// 供编辑/删除守卫使用：在途流程的单据禁止编辑（改了审批人批的是既有数据）与删除（留孤儿流程实例）。
     /// </summary>
     public static async Task<bool> HasActiveFlowAsync(
         SqlConnection connection, SqlTransaction? transaction,

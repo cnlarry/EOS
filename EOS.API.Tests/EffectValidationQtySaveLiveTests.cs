@@ -190,7 +190,7 @@ public sealed class EffectValidationQtySaveLiveTests
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
         try
         {
-            // 正好等于"上限 - 已收 + 0.1"：旧实现用 +0.1 容差放行，目录侧 offset 必须同口径
+            // 正好等于"上限 - 已收 + 0.1"：既有实现用 +0.1 容差放行，目录侧 offset 必须同口径
             var (type, no, _, _) = await SeedAsync(connection, transaction, 0.1, token);
             var plan = await LoadPlanAsync(connection, transaction, 1607, "qty-not-exceed", token);
             await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [type, no]);

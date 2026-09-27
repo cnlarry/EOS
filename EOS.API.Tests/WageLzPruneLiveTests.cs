@@ -28,7 +28,7 @@ public sealed class WageLzPruneLiveTests
     private const string Month = "202601";
 
     [Fact]
-    public async Task 离职工资表_先删同月旧档再判重_与旧实现一致()
+    public async Task 离职工资表_先删同月旧档再判重_与既有实现一致()
     {
         var token = CancellationToken.None;
         await using var connection = new SqlConnection(ConnectionString);

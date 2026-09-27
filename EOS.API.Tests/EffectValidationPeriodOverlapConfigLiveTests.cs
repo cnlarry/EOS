@@ -104,7 +104,7 @@ public sealed class EffectValidationPeriodOverlapConfigLiveTests
     }
 
     [Fact]
-    public async Task 合同_同单重复按库内配置拒绝且文案与旧实现一致()
+    public async Task 合同_同单重复按库内配置拒绝且文案与既有实现一致()
     {
         var token = CancellationToken.None;
         await using var connection = new SqlConnection(ConnectionString);
@@ -168,7 +168,7 @@ public sealed class EffectValidationPeriodOverlapConfigLiveTests
     }
 
     [Fact]
-    public async Task 保险_同单同险种重复按库内配置拒绝且文案与旧实现一致()
+    public async Task 保险_同单同险种重复按库内配置拒绝且文案与既有实现一致()
     {
         var token = CancellationToken.None;
         await using var connection = new SqlConnection(ConnectionString);
@@ -228,7 +228,7 @@ public sealed class EffectValidationPeriodOverlapConfigLiveTests
     }
 
     [Fact]
-    public async Task 证件_同单同证件重复按库内配置拒绝且文案与旧实现一致()
+    public async Task 证件_同单同证件重复按库内配置拒绝且文案与既有实现一致()
     {
         var token = CancellationToken.None;
         await using var connection = new SqlConnection(ConnectionString);

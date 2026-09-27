@@ -1,6 +1,6 @@
 -- Assistant cross-session memory L1/L2 (user-scoped, explicit only).
 -- ASSISTANT_PROFILE: per-user preferences JSON. ASSISTANT_MEMORY: user-saved
--- memories (manual source only in M3; auto distillation stays conditional).
+-- memories (manual source only in ; auto distillation stays conditional).
 -- All rows are isolated by USER_ID; business data is stored as references
 -- (module + keys), never snapshots. Idempotent: create only if absent.
 

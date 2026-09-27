@@ -346,7 +346,7 @@ public static class ValidationRuleRegistry
                 if (GetObject(check, "thisQty") is not null)
                     issues.Add($"校验规则 {Label(rule)}：{where}.usageOnly 与 thisQty 互斥");
             }
-            // 量纲：单量纲直接写在 check 上；多量纲写在 dimensions（旧实现把"数量"与"备品"
+            // 量纲：单量纲直接写在 check 上；多量纲写在 dimensions（既有实现把"数量"与"备品"
             // 合成 `WHERE a OR b` 的形态），两者互斥，各量纲的 agg 用法必须一致。
             var dimensionCount = 1;
             if (GetArray(check, "dimensions") is { } dimensionItems)
@@ -632,7 +632,7 @@ public static class ValidationRuleRegistry
                 if (assertOp is null || !LineRequireOps.Contains(assertOp))
                     issues.Add($"校验规则 {Label(rule)}：{where}.assert.op 仅允许 GT/GE/LT/LE/EQ/NEQ");
                 // 断言右值二选一：数值 value，或与**同行的另一列**比较（compareField，
-                // 空值视为不违规——复刻旧实现"可空日期比较为 false"的语义）。
+                // 空值视为不违规——复刻既有实现"可空日期比较为 false"的语义）。
                 var assertCompareField = GetString(assert.Value, "compareField");
                 var hasAssertValue = assert.Value.TryGetProperty("value", out var assertValue) && assertValue.ValueKind == JsonValueKind.Number;
                 if (assertCompareField is not null)

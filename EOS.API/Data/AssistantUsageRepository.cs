@@ -32,7 +32,7 @@ public interface IAssistantUsageRepository
         bool completed, CancellationToken token);
 }
 
-/// <summary>M7 用量聚合：复用 ASSISTANT_MESSAGE 已记录的 token/耗时，按 UTC 自然日聚合。</summary>
+/// <summary> 用量聚合：复用 ASSISTANT_MESSAGE 已记录的 token/耗时，按 UTC 自然日聚合。</summary>
 public sealed class AssistantUsageRepository(DbConnectionFactory connections) : IAssistantUsageRepository
 {
     public Task<DailyUsage> GetUserDailyUsageAsync(string userId, DateTimeOffset dayStartUtc, CancellationToken token) =>

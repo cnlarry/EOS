@@ -2213,7 +2213,7 @@ public sealed class EffectShadowRunner
         if (deapprove || failure)
         {
             throw new NotSupportedException(
-                "170101 影子规格仅支持 APPROVE（解批含新语义清空预计收款日，与旧 SP 不回滚不同；失败分支未规格化）。");
+                "170101 影子规格仅支持 APPROVE（解批含新语义清空预计收款日，与既有存储过程 不回滚不同；失败分支未规格化）。");
         }
         const string sql = """
             SELECT TOP 1 M.ACCOUNT_TYPE, M.ACCOUNT_NO
@@ -2250,7 +2250,7 @@ public sealed class EffectShadowRunner
         if (deapprove || failure)
         {
             throw new NotSupportedException(
-                "170201 影子规格仅支持 APPROVE（解批含新语义清空预计付款日，与旧 SP 不回滚不同；失败分支未规格化）。");
+                "170201 影子规格仅支持 APPROVE（解批含新语义清空预计付款日，与既有存储过程 不回滚不同；失败分支未规格化）。");
         }
         const string sql = """
             SELECT TOP 1 M.DUE_TYPE, M.DUE_NO
@@ -5296,7 +5296,7 @@ public sealed class EffectShadowRunner
     }
 
     /// <summary>
-    /// 已拍板的口径差异：新旧实现**有意不同**，不算回归—— 业务语义拍板与各模块
+    /// 已拍板的口径差异：新既有实现**有意不同**，不算回归—— 业务语义拍板与各模块
     /// 翻译台账的 intended 语义（旧码方向相反、游标退化、净替换倍数、按员工汇总等）。
     /// 命中即标记 normalized 并在报告里附 decision 出处，差异本身仍然保留可见。
     /// 纪律：只登记有出处的项（设计基线 / 待定项清单 / 翻译台账），
@@ -5326,40 +5326,40 @@ public sealed class EffectShadowRunner
             "1418 订单变更 PRODUCT 净替换按 1×DELTA（旧码 2×DELTA 缺陷）",
             1418, "*", "*", "NOT_SEND_QTY"),
         new(" + ",
-            "1418 结案标志按当前量重算（旧 SP 批核无条件置结案）",
+            "1418 结案标志按当前量重算（既有存储过程 批核无条件置结案）",
             1418, "*", "COP_ORDER_D", "FINISHED_TAG"),
         new(" + ",
-            "1418 结案标志按当前量重算（旧 SP 批核无条件置结案）",
+            "1418 结案标志按当前量重算（既有存储过程 批核无条件置结案）",
             1418, "*", "COP_ORDER_M", "FINISHED_TAG"),
         new(" + ",
-            "1418 结案标志按当前量重算（旧 SP 批核无条件置结案）",
+            "1418 结案标志按当前量重算（既有存储过程 批核无条件置结案）",
             1418, "*", "COP_ORDER_M", "FINISHED_PERSON"),
         new(" + ",
-            "1418 结案标志按当前量重算（旧 SP 批核无条件置结案）",
+            "1418 结案标志按当前量重算（既有存储过程 批核无条件置结案）",
             1418, "*", "COP_ORDER_M", "FINISHED_DATE"),
         new("  P0/P1 + 翻译台账 1608/1612",
-            "采购退料/扣款退料批核减少在途采购量、解批加回（旧 SP 未实现该步）",
+            "采购退料/扣款退料批核减少在途采购量、解批加回（既有存储过程 未实现该步）",
             1608, "*", "*", "IN_BUY_QTY"),
         new("  P0/P1 + 翻译台账 1608/1612",
-            "采购退料/扣款退料批核减少在途采购量、解批加回（旧 SP 未实现该步）",
+            "采购退料/扣款退料批核减少在途采购量、解批加回（既有存储过程 未实现该步）",
             1612, "*", "*", "IN_BUY_QTY"),
         new(" H1",
-            "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
+            "hr-usage 按员工汇总（SUM）；既有实现 join 后逐行覆盖属缺陷，不复刻",
             180206, "*", "*", "USED_WORKTIME"),
         new(" H1",
-            "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
+            "hr-usage 按员工汇总（SUM）；既有实现 join 后逐行覆盖属缺陷，不复刻",
             180206, "*", "*", "USED_OVERTIME"),
         new(" H1",
-            "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
+            "hr-usage 按员工汇总（SUM）；既有实现 join 后逐行覆盖属缺陷，不复刻",
             180206, "*", "*", "USED_HOLIDAY_OVERTIME"),
         new(" H1",
-            "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
+            "hr-usage 按员工汇总（SUM）；既有实现 join 后逐行覆盖属缺陷，不复刻",
             180207, "*", "*", "USED_WORKTIME"),
         new(" H1",
-            "hr-usage 按员工汇总（SUM）；旧实现 join 后逐行覆盖属缺陷，不复刻",
+            "hr-usage 按员工汇总（SUM）；既有实现 join 后逐行覆盖属缺陷，不复刻",
             180207, "*", "*", "USED_REST_OVERTIME"),
         new("",
-            "解批按 clear-finish 清完工戳（完成标记解除）；旧实现保留",
+            "解批按 clear-finish 清完工戳（完成标记解除）；既有实现保留",
             2913, "*", "*", "FINISHED_TAG"),
         new("",
             "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
@@ -5374,19 +5374,19 @@ public sealed class EffectShadowRunner
             "解批按 clear-finish 清完工戳（完成人/完成日期一并清空）",
             2917, "*", "*", "FINISHED_DATE"),
         new("",
-            "解批按 clear-finish 清完工戳（完成标记解除）；旧实现保留",
+            "解批按 clear-finish 清完工戳（完成标记解除）；既有实现保留",
             2917, "*", "*", "FINISHED_TAG"),
         new("",
             "打样入库解批按量减扣：旧 P_WF_SAM_IN 解批分支误写 +d.QTY（批核/解批同向），采纳引擎",
             2403, "*", "SAMPLE_PRO", "QTY"),
         new(" +  ",
-            "返还单解批反向减扣：旧实现 NULL+(-qty) 恒为 NULL（NULL 累加失效，按业务意图修正为 coalesce 后再反向）",
+            "返还单解批反向减扣：既有实现 NULL+(-qty) 恒为 NULL（NULL 累加失效，按业务意图修正为 coalesce 后再反向）",
             130109, "*", "INV_LOAN_D", "RETURN_QTY"),
         new(" +  ",
-            "采购单回写请购行已采购量：旧实现 NULL+qty 恒为 NULL（NULL 累加失效），按业务意图修正为 coalesce 后再累加",
+            "采购单回写请购行已采购量：既有实现 NULL+qty 恒为 NULL（NULL 累加失效），按业务意图修正为 coalesce 后再累加",
             1606, "*", "PUR_APPLY_D", "PURCHASE_QTY"),
         new(" +  ",
-            "请购行结案判定随已采购量：旧实现在已采购量为 NULL 时比较退化为假，按 coalesce 后的数量重算",
+            "请购行结案判定随已采购量：既有实现在已采购量为 NULL 时比较退化为假，按 coalesce 后的数量重算",
             1606, "*", "PUR_APPLY_D", "FINISHED_TAG"),
     ];
 

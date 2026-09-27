@@ -79,7 +79,7 @@ public sealed class BillNoGeneratorTests
     [Fact]
     public void Parse_只有月份令牌时跨年同段()
     {
-        // {MM} 不含年份，跨年同月落在同一日期段（与旧系统"按字头取最大号"的语义一致）
+        // {MM} 不含年份，跨年同月落在同一日期段（与既有实现"按字头取最大号"的语义一致）
         var thisYear = BillNoGenerator.Parse("BG{MM}0000", new DateTime(2026, 8, 8));
         var nextYear = BillNoGenerator.Parse("BG{MM}0000", new DateTime(2027, 8, 8));
         Assert.Equal(thisYear.Period, nextYear.Period);

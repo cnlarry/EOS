@@ -6,7 +6,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// M7 原子扣减并发测试（需真库 + 迁移 045）。
+/// 原子扣减并发测试（需真库 + 迁移 045）。
 /// 无连接或台账表未就绪时测试失败而非跳过——静默跳过会让 CI 把"未验证"误读为"已验证"。
 /// </summary>
 public sealed class AssistantUsageLedgerTests

@@ -35,7 +35,7 @@ DECLARE @NOW DATETIME = GETDATE();
 UPDATE dbo.MODULES
 SET NEW_URL = NULL,
     MODI_URL = NULL,
-    REMARK = N'已归入纯定制页（EOS-23/2026-08-27 用户拍板）：用户组管理由 /admin/groups 承载，组主档新增/编辑弹窗化、删除带成员守卫（旧系统不清理成员，新系统拒绝删有关联成员的组），组权限/报表权限/成员为完整页面；已从统一表单白名单剔除并清空 NEW_URL/MODI_URL，不再引导主档工作台',
+    REMARK = N'已归入纯定制页（EOS-23/2026-08-27 用户拍板）：用户组管理由 /admin/groups 承载，组主档新增/编辑弹窗化、删除带成员守卫（既有实现不清理成员，本系统拒绝删有关联成员的组），组权限/报表权限/成员为完整页面；已从统一表单白名单剔除并清空 NEW_URL/MODI_URL，不再引导主档工作台',
     LAST_UPDATE_BY = @MIG,
     LAST_UPDATE_DATE = @NOW
 WHERE M_IDX = 2305;

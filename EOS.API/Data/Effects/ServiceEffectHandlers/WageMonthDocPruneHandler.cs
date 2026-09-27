@@ -12,7 +12,7 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 /// 语义与原 `HrDomainRules.HrWageAfterSaveAsync` 逐字一致：
 ///   ① 取本单 `COUNT_MONTH`，为空则不动作；
 ///   ② 删除同月其它单据中、与本单员工重叠的明细行；
-///   ③ 再按"同月每员工一份"判重，命中即抛 `EffectValidationException`（消息与旧实现逐字一致）。
+///   ③ 再按"同月每员工一份"判重，命中即抛 `EffectValidationException`（消息与既有实现逐字一致）。
 /// 参数闭合：两表 + 四个列名 + 重复文案，全部来自配置；主键值只作参数传入。
 /// </summary>
 public sealed class WageMonthDocPruneHandler : IEffectServiceHandler

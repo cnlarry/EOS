@@ -12,7 +12,7 @@
 -- 这个字段在表单上是**只读**的（前端渲染 disabled ⇒ 不会提交），而效果目录里**没有任何
 -- 动作写它** ⇒ 新建记录取列默认值（多为 0），随即被模块**自己的过滤器**拒掉
 -- （RECORD_OUT_OF_MODULE_FILTER）—— **用户从工作台建不出这些单**。
--- 旧系统是靠页面代码直接写死的（`ERP/MOC/Produce.aspx.cs` 里就有
+-- 既有实现是靠页面代码直接写死的（里就有
 -- `chk_OUTSIDE_TAG.Checked = true` / `chk_REWORK_TAG.Checked = true`），移植时漏了这一步。
 --
 -- 本迁移按模块在 **SAVE 期**用 `set-state` 写入该常量。**前提**：创建路径的

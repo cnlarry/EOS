@@ -1,7 +1,7 @@
 -- ============================================================================
 -- EOS.ERP migration 220: 库存盘点单（130101）的自定义按钮「生成调整单」
 -- ----------------------------------------------------------------------------
--- 旧系统这一步同样是明细工具条上的按钮（`INV/Check_Stock.aspx.cs` 的 `btnAdjust`）：
+-- 既有实现这一步同样是明细工具条上的按钮（`btnAdjust`）：
 -- 有盈亏才转单、无盈亏直接提示"不需要调整"。本迁移把同一动作接到 MANUAL 配置行上：
 --     EFFECT_KEY = 'generate-adjustment'（处理器见 DocumentActions/Handlers/GenerateAdjustmentHandler.cs）
 --     CONFIRM_TAG = 1（点击前先返回"将会发生什么"）
@@ -41,7 +41,7 @@ IF NOT EXISTS (SELECT 1 FROM dbo.MODULES WHERE M_IDX = @Module
                  AND LTRIM(RTRIM(ISNULL(DETAIL_TABLE, ''))) = N'INV_CHECK_STOCK_D')
     THROW 52201, N'模块 130101 形态不符（应为 INV_CHECK_STOCK_M / INV_CHECK_STOCK_D），迁移中止。', 1;
 
--- 追溯落点：盘点单上的 ADJUST_TYPE/ADJUST_NO（旧系统即写这两列）+ FINISHED_TAG 结案锁死。
+-- 追溯落点：盘点单上的 ADJUST_TYPE/ADJUST_NO（既有实现即写这两列）+ FINISHED_TAG 结案锁死。
 IF COL_LENGTH(N'dbo.INV_CHECK_STOCK_M', N'ADJUST_TYPE') IS NULL
     OR COL_LENGTH(N'dbo.INV_CHECK_STOCK_M', N'ADJUST_NO') IS NULL
     OR COL_LENGTH(N'dbo.INV_CHECK_STOCK_M', N'FINISHED_TAG') IS NULL
