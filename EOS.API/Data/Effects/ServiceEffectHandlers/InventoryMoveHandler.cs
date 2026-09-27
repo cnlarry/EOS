@@ -334,6 +334,13 @@ public sealed class InventoryMoveSql
     private const string Tmp = "#INV_MOVE_TMP";
     private const string PolicyTmp = "#INV_MOVE_POLICY";
 
+    /// <summary>
+    /// 「该批次从未有过任何进出量」的判据：两个累计字段**各自为零**，不是"净额为 0"——
+    /// 进过又出光的批次是实打实用过的，它的效期是既成事实，不该被后来的单据覆盖。
+    /// 冲突拦截（排除这类行）与效期补写（只认这类行）必须同源：各写一份，只改一处就会静默分叉。
+    /// </summary>
+    private const string NoBatchActivityPredicate = "ISNULL(b.IN_SUM,0)=0 AND ISNULL(b.OUT_SUM,0)=0";
+
     private readonly SqlConnection _connection;
     private readonly SqlTransaction _transaction;
     private readonly InventoryMovePlan _plan;
@@ -590,7 +597,7 @@ public sealed class InventoryMoveSql
             + $"FROM {Tmp} t JOIN dbo.INV_BATCH_M b ON b.PRO_NO=t.PRO_NO AND b.BATCH_NO=t.BATCH_NO "
             + "WHERE ISNULL(t.BATCH_NO,'') <> '' AND t.EFFECT_DATE IS NOT NULL AND b.EFFECT_DATE IS NOT NULL "
             + "AND b.EFFECT_DATE <> t.EFFECT_DATE "
-            + "AND NOT (ISNULL(b.IN_SUM,0)=0 AND ISNULL(b.OUT_SUM,0)=0) "
+            + $"AND NOT ({NoBatchActivityPredicate}) "
             + "UNION ALL "
             // 单内冲突：同一批号在本单里被填了两个不同的效期
             + "SELECT x.BATCH_NO, "
@@ -988,7 +995,7 @@ public sealed class InventoryMoveSql
     private async Task<int> FillPendingBatchExpiryAsync(CancellationToken token)
     {
         const string pendingFilter =
-            "ISNULL(b.IN_SUM,0)=0 AND ISNULL(b.OUT_SUM,0)=0 "
+            $"{NoBatchActivityPredicate} "
             + "AND (b.EFFECT_DATE IS NULL OR b.EFFECT_DATE <> t.EFFECT_DATE)";
 
         var pending = new List<(string ProductNo, string BatchNo, string OldValue, string NewValue)>();
