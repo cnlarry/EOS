@@ -137,7 +137,9 @@ public sealed class BatchModeTierLiveTests
             }
 
             var rowSet = plan.BuildRowSet(modulePlan, new[] { Type, No }, columns);
-            await new InventoryMoveSql(connection, transaction, plan, EffectEvent.ApproveEffect, Policies(connectionString))
+            await new InventoryMoveSql(
+                    connection, transaction, plan, EffectEvent.ApproveEffect, Policies(connectionString),
+                    PolicyServiceFactory.AuditWriter(connectionString), 130104, Type + "," + No, "ADR14BM")
                 .RunAsync(rowSet, CancellationToken.None);
 
             return await ReadAsync(connection, transaction);

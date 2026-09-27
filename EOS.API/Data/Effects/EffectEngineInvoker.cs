@@ -84,6 +84,22 @@ public sealed class EffectEngineInvoker(
     }
 
     /// <summary>
+    /// 与 <see cref="TryRunAsync"/> **同一条链**（非预演），但把逐步结果一并返回：
+    /// 批核路径要把处理器写下的**非阻断告警**回传给用户（例如某档位配成"只告警不拦截"）。
+    /// 与预演的区别只在 <c>simulate</c>——预演会额外收集公式行轨迹并回滚。
+    /// </summary>
+    public Task<EffectRunResult> TryRunWithStepsAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        WorkbenchDefinition definition,
+        EffectEvent executionEvent,
+        IReadOnlyList<string> keyValues,
+        string executor,
+        CancellationToken token)
+        => RunCoreAsync(
+            connection, transaction, definition, executionEvent, keyValues, executor, token, simulate: false);
+
+    /// <summary>
     /// Same chain as <see cref="TryRunAsync"/>, but returns the per-step trace so a simulation
     /// can report what each step did. Steps are only collected in this mode.
     /// </summary>

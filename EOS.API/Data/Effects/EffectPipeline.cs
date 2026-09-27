@@ -7,6 +7,12 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data.Effects;
 
 /// <summary>Execution context handed to a service effect handler.</summary>
+/// <remarks>
+/// <paramref name="Warnings"/> 是**非阻断**的回报通道：处理器放行了、但有话要对用户说时写在这里，
+/// 由管线汇入该步骤的 <see cref="EffectStepResult.Warning"/> 并随审批结果回传前端。
+/// 与"抛异常"的分工是明确的：异常=这件事没做成（按动作的 FAIL_MODE 决定阻断还是继续），
+/// 告警=做成了、但需要人知道（例如某档位配置成"只告警不拦截"）。
+/// </remarks>
 public sealed record ServiceEffectContext(
     SqlConnection Connection,
     SqlTransaction Transaction,
@@ -15,7 +21,8 @@ public sealed record ServiceEffectContext(
     EffectEvent ExecutionEvent,
     string? RecordKey,
     IReadOnlyList<string> MasterKeyValues,
-    string Executor);
+    string Executor,
+    IList<string>? Warnings = null);
 
 /// <summary>A C# implementation backing one service-style effect key (parameter-mode).</summary>
 public interface IEffectServiceHandler
@@ -124,11 +131,14 @@ public sealed class EffectPipeline(
 
             try
             {
+                // 本步骤的告警收集器：处理器放行但有话要说时写它（见 ServiceEffectContext.Warnings）
+                var stepWarnings = new List<string>();
                 var run = await ExecuteActionAsync(
                     connection, transaction, plan, action, executionEvent, recordKey, executor,
-                    keys, token, simulate);
+                    keys, token, simulate, stepWarnings);
                 results.Add(new EffectStepResult(
-                    action.Seq, action.EffectKey, Success: true, Warning: null, run.Rows,
+                    action.Seq, action.EffectKey, Success: true,
+                    Warning: stepWarnings.Count > 0 ? string.Join("\n", stepWarnings) : null, run.Rows,
                     run.Outcome, run.SkipReason, run.ConditionMatched, run.Ops));
                 await auditWriter.WriteEventAsync(
                     connection, transaction, plan.ModuleId, recordKey,
@@ -210,7 +220,8 @@ public sealed class EffectPipeline(
         string executor,
         IReadOnlyList<string> masterKeyValues,
         CancellationToken token,
-        bool simulate)
+        bool simulate,
+        IList<string> warnings)
     {
         var probe = simulate ? new EffectSimulationProbe() : null;
         if (action.Condition is { } condition && !await ConditionHoldsAsync(
@@ -238,7 +249,8 @@ public sealed class EffectPipeline(
             throw new EffectConfigException(
                 $"效果键 '{action.EffectKey}' 未注册服务 Handler（模块 {plan.ModuleId} SEQ={action.Seq}）。");
         var rows = await handler.ExecuteAsync(
-            new ServiceEffectContext(connection, transaction, plan, action, executionEvent, recordKey, masterKeyValues, executor),
+            new ServiceEffectContext(
+                connection, transaction, plan, action, executionEvent, recordKey, masterKeyValues, executor, warnings),
             token);
         // Service effects report no field-level diff on purpose: what a handler writes is its
         // own business, and pretending otherwise would be a guess dressed up as a fact.

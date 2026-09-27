@@ -14,6 +14,7 @@ public sealed class ReportAggregateRegistryTests
         "HR_Employee_1", "HR_Employee_3", "HR_Employee_4", "HR_Employee_5",
         "HR_Employee_6", "HR_Employee_7", "HR_Diary_1",
         "INV_Pro_Depot_1", "INV_Pro_Depot_1_H", "INV_Pro_Depot_1_sum",
+        "INV_Batch_Expiry_1",
     ];
 
     [Fact]
@@ -59,7 +60,13 @@ public sealed class ReportAggregateRegistryTests
             foreach (var parameter in aggregate.Parameters)
             {
                 Assert.True(WorkbenchSql.Identifier.IsMatch(parameter.Name), $"{reportId} 参数名非法：{parameter.Name}");
-                Assert.True(parameter.Constant is not null || parameter.SerialNo >= 1, $"{reportId} 参数 {parameter.Name} 缺少取数来源");
+                // 取数来源三选一：条件序号（前端） / 注册表常量 / 系统参数键
+                Assert.True(
+                    parameter.Constant is not null || parameter.SerialNo >= 1 || parameter.SystemParameterKey is { Length: > 0 },
+                    $"{reportId} 参数 {parameter.Name} 缺少取数来源");
+                // 系统参数键必须是"归属模块|键"的形态（读取侧按它查 SYSSS）
+                if (parameter.SystemParameterKey is { Length: > 0 } systemKey)
+                    Assert.Matches(@"^\d{6}\|[A-Za-z_][A-Za-z0-9_]*$", systemKey);
                 Assert.True(parameter.MaxLength > 0);
             }
             // SQL 引用的参数必须都在声明内（防止漏传导致运行时"未提供参数"）

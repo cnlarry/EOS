@@ -214,7 +214,9 @@ public sealed class MixingRuleLiveTests
 
             try
             {
-                await new InventoryMoveSql(connection, transaction, plan, EffectEvent.ApproveEffect, Policies(connectionString))
+                await new InventoryMoveSql(
+                        connection, transaction, plan, EffectEvent.ApproveEffect, Policies(connectionString),
+                        PolicyServiceFactory.AuditWriter(connectionString), 130103, Type + "," + No, "ADR14MX")
                     .RunAsync(rowSet, CancellationToken.None);
             }
             catch (EffectValidationException failure)

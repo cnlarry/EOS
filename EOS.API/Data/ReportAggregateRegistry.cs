@@ -436,9 +436,65 @@ public static class ReportAggregateRegistry
             new ReportColumn("COLOR_NAME", "颜色", "nvarchar"),
         ]);
 
+    /// <summary>
+    /// 批次效期与临期清单（模块 1303 料件库存资料）。
+    ///
+    /// **临期库存是现算的**：效期只挂在批次账上，余额表保持四键，所以这里按 (料号, 批次) 把两张表
+    /// 关联起来算剩余天数与状态——不在余额表上缓存效期（缓存就会与主档漂移）。
+    ///
+    /// 阈值取**系统参数**（<c>110111|EXPIRY_ALERT_DAYS</c>）而不是让用户每次手填：
+    /// 报表与预警必须读同一个数，否则"报表里填 60、预警按 30 判"这种口径分裂查起来极难。
+    /// 筛选项三个：是否含过期、是否只看不受管控（后者是开档 3 之前补齐效期的作业清单）。
+    ///
+    /// 空效期**单列**（`EXPIRY_STATE = 不受管控`），不参与"是否过期"的判定——
+    /// NULL 是"不受管控"，不是"过期"，也不是"今天到期"。
+    /// </summary>
+    private static readonly ReportAggregate BatchExpiry = new(
+        "INV_Batch_Expiry_1",
+        $"""
+        SELECT LTRIM(RTRIM(b.PRO_NO)) AS PRO_NO,
+               LTRIM(RTRIM(b.DEPOT_ID)) AS DEPOT_ID,
+               LTRIM(RTRIM(b.BATCH_NO)) AS BATCH_NO,
+               m.EFFECT_DATE AS EFFECT_DATE,
+               {InventorySources.RemainingDays("m", BatchExpiryAsOf)} AS REMAINING_DAYS,
+               ISNULL(b.QTY, 0) AS QTY,
+               {InventorySources.ExpiryState("m", BatchExpiryAsOf)} AS EXPIRY_STATE
+        FROM {InventorySources.BalanceRef("b")}
+        JOIN {InventorySources.BatchRef("m")} ON {InventorySources.BalanceToBatchJoin("b", "m")}
+        WHERE ISNULL(b.QTY, 0) <> 0
+          AND (
+            (ISNULL(@unmanaged_only, N'0') = N'1' AND m.EFFECT_DATE IS NULL)
+            OR (ISNULL(@unmanaged_only, N'0') <> N'1' AND m.EFFECT_DATE IS NOT NULL
+                AND {InventorySources.RemainingDays("m", BatchExpiryAsOf)} <= @alert_days
+                AND (ISNULL(@include_expired, N'0') = N'1'
+                     OR {InventorySources.RemainingDays("m", BatchExpiryAsOf)} >= 0))
+          )
+        """,
+        "REMAINING_DAYS, PRO_NO, BATCH_NO",
+        [
+            // 阈值来自系统参数（键形态「归属模块|参数键」，与源码引用登记同格式）；
+            // 缺失时按 30 天兜底，见 ReportRepository.DefaultSystemParameterValue
+            new ReportAggregateParameter("alert_days", "int", 10, SystemParameterKey: "110111|EXPIRY_ALERT_DAYS"),
+            new ReportAggregateParameter("include_expired", "string", 1, SerialNo: 1),
+            new ReportAggregateParameter("unmanaged_only", "string", 1, SerialNo: 2),
+        ],
+        [
+            new ReportColumn("PRO_NO", "料号", "nvarchar"),
+            new ReportColumn("DEPOT_ID", "库别", "nvarchar"),
+            new ReportColumn("BATCH_NO", "批号", "nvarchar"),
+            new ReportColumn("EFFECT_DATE", "有效日期", "datetime"),
+            new ReportColumn("REMAINING_DAYS", "剩余天数", "int"),
+            new ReportColumn("QTY", "在库数量", "float"),
+            new ReportColumn("EXPIRY_STATE", "效期状态", "nvarchar"),
+        ]);
+
+    /// <summary>临期判定的基准日：日期粒度，不带时间（带时间会让"今天到期"在当天下午算成已过期）。</summary>
+    private const string BatchExpiryAsOf = "CAST(GETDATE() AS date)";
+
     private static readonly Dictionary<string, ReportAggregate> Map =
         new(StringComparer.OrdinalIgnoreCase)
         {
+            [BatchExpiry.ReportId] = BatchExpiry,
             [HrEmployeeStatus.ReportId] = HrEmployeeStatus,
             [HrEmployeeProvince.ReportId] = HrEmployeeProvince,
             [HrEmployeeNation.ReportId] = HrEmployeeNation,

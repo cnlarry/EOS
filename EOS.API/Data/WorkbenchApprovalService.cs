@@ -173,6 +173,7 @@ public sealed class WorkbenchApprovalService(
         }
 
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        IReadOnlyList<SaveWarning>? warnings = null;
         try
         {
             var outcome = await RunApprovalCoreAsync(
@@ -183,6 +184,7 @@ public sealed class WorkbenchApprovalService(
                 await transaction.RollbackAsync(token);
                 return failure;
             }
+            warnings = outcome.Warnings;
             await transaction.CommitAsync(token);
         }
         catch
@@ -192,7 +194,7 @@ public sealed class WorkbenchApprovalService(
         }
         logger.LogInformation("统一表单{Action} module={ModuleId} key={Key} executor={User} confirmPerson={Person}",
             approve ? "批核" : "解批", definition.ModuleId, string.Join(',', keyValues), userId, confirmPerson);
-        return RecordSaveResult.Success(keyValues);
+        return RecordSaveResult.Success(keyValues, warnings);
     }
 
     /// <summary>
@@ -351,9 +353,10 @@ public sealed class WorkbenchApprovalService(
         }
         else
         {
-            var live = await effectEngine.TryRunAsync(
+            // 走**带步骤**的那条：处理器放行但写下告警时（档位配成"只告警"），
+            // 步骤里的 Warning 就是回传给用户的唯一载体，丢掉它等于让"只告警"什么也不说。
+            effectRun = await effectEngine.TryRunWithStepsAsync(
                 connection, transaction, definition, eventKind, keyValues, userId, token);
-            effectRun = new EffectEngineInvoker.EffectRunResult(live.Ran, live.Error, []);
         }
         if (effectRun.Error is not null)
         {
@@ -363,16 +366,35 @@ public sealed class WorkbenchApprovalService(
         }
         await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues),
             approve ? "APPROVE" : "DEAPPROVE", auditSummary ?? (approve ? "批核" : "解批"), userId, "WORKBENCH_RECORD", result: 1, fieldChanges: confirmChanges, token);
-        return new ApprovalCoreResult(null, effectRun.Steps);
+        return new ApprovalCoreResult(null, effectRun.Steps, StepWarnings(effectRun.Steps));
     }
 
     /// <summary>
     /// 事务内核心的结果：Blocked 非空表示链路没有走完（校验闸拦下或状态守卫命中 0 行），
-    /// Steps 是效果链逐步结果（预演才有内容）。
+    /// Steps 是效果链逐步结果（预演与真实路径都收），Warnings 是处理器写下的**非阻断告警**。
     /// </summary>
-    public sealed record ApprovalCoreResult(RecordSaveResult? Blocked, IReadOnlyList<EffectStepResult> Steps)
+    public sealed record ApprovalCoreResult(
+        RecordSaveResult? Blocked,
+        IReadOnlyList<EffectStepResult> Steps,
+        IReadOnlyList<SaveWarning>? Warnings = null)
     {
         public static ApprovalCoreResult BlockedBy(RecordSaveResult failure) => new(failure, []);
+    }
+
+    /// <summary>
+    /// 效果步骤里带出来的非阻断告警 → 保存告警通道（与"失败"分开：失败走 Blocked，
+    /// 告警是"做成了但请留意"）。按文案去重，免得同一句在多个步骤里重复刷屏。
+    /// </summary>
+    private static IReadOnlyList<SaveWarning>? StepWarnings(IReadOnlyList<EffectStepResult> steps)
+    {
+        var messages = steps
+            .Where(step => step.Success && !string.IsNullOrWhiteSpace(step.Warning))
+            .SelectMany(step => step.Warning!.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        return messages.Count == 0
+            ? null
+            : messages.Select(text => new SaveWarning("EFFECT_WARNING", text)).ToList();
     }
 
     /// <summary>

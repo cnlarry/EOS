@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using EOS.API.Data.Inventory;
+using EOS.API.Models;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data.Effects.ServiceEffectHandlers;
@@ -20,11 +21,14 @@ public sealed class InventoryMoveHandler : IEffectServiceHandler
 
     private readonly EffectPhysicalColumns _columns;
     private readonly DepotStockPolicyService _policies;
+    private readonly WorkbenchAuditWriter _auditWriter;
 
-    public InventoryMoveHandler(EffectPhysicalColumns columns, DepotStockPolicyService policies)
+    public InventoryMoveHandler(
+        EffectPhysicalColumns columns, DepotStockPolicyService policies, WorkbenchAuditWriter auditWriter)
     {
         _columns = columns;
         _policies = policies;
+        _auditWriter = auditWriter;
     }
 
     public async Task<int> ExecuteAsync(ServiceEffectContext context, CancellationToken token)
@@ -33,7 +37,8 @@ public sealed class InventoryMoveHandler : IEffectServiceHandler
         var columns = await _columns.LoadAsync(context.Connection, token, context.Transaction);
         var sql = plan.BuildRowSet(context.Plan, context.MasterKeyValues, columns);
         var executor = new InventoryMoveSql(
-            context.Connection, context.Transaction, plan, context.ExecutionEvent, _policies);
+            context.Connection, context.Transaction, plan, context.ExecutionEvent, _policies,
+            _auditWriter, context.Plan.ModuleId, context.RecordKey, context.Executor, context.Warnings);
         return await executor.RunAsync(sql, token);
     }
 }
@@ -334,19 +339,35 @@ public sealed class InventoryMoveSql
     private readonly InventoryMovePlan _plan;
     private readonly EffectEvent _event;
     private readonly DepotStockPolicyService _policies;
+    private readonly WorkbenchAuditWriter _auditWriter;
+    private readonly int _moduleId;
+    private readonly string _recordKey;
+    private readonly string _executor;
+    private readonly IList<string>? _warnings;
 
     public InventoryMoveSql(
         SqlConnection connection,
         SqlTransaction transaction,
         InventoryMovePlan plan,
         EffectEvent executionEvent,
-        DepotStockPolicyService policies)
+        DepotStockPolicyService policies,
+        WorkbenchAuditWriter auditWriter,
+        int moduleId,
+        string? recordKey,
+        string executor,
+        // 非阻断告警（目前只有"过期批次档位=告警"用）：由管线回传前端，不留在此处。
+        IList<string>? warnings = null)
     {
         _connection = connection;
         _transaction = transaction;
         _plan = plan;
         _event = executionEvent;
         _policies = policies;
+        _auditWriter = auditWriter;
+        _moduleId = moduleId;
+        _recordKey = recordKey ?? string.Empty;
+        _executor = executor;
+        _warnings = warnings;
     }
 
     private bool IsApprove => _event is EffectEvent.ApproveEffect or EffectEvent.Save;
@@ -388,6 +409,12 @@ public sealed class InventoryMoveSql
         if (IsApprove && direct == 1)
             await ResolveInboundLocationsAsync(token);
         affected += await NormalizeAsync(token);
+        // 批次效期冲突（同批号两个效期）必须在**任何写入之前**判掉：归一化之后批号才算定稿，
+        // 而 EnsureDepotRowsAsync 一落笔就已经动账，那时再拒绝就成了"写了一半再回滚"。
+        if (IsApprove && direct == 1)
+            await CheckBatchExpiryAsync(token);
+        // 档 3（必填 + 效期）的另一半：该批次最终必须能确定一个有效期。同样是"写之前"的判据。
+        await RequireExpiryAsync(token);
         // 位置校验必须在归一化之后：未填位置此时已被归一为哨兵 N'-'。
         await PrecheckLocationsAsync(token);
         affected += await NormalizePriceAsync(token);
@@ -530,10 +557,55 @@ public sealed class InventoryMoveSql
 
     private async Task CreateTempAsync(CancellationToken token)
     {
+        // EFFECT_DATE 只有在明细表真有这一列、且动作参数把它登记进 fieldMap.detail 时才会被填上；
+        // 其余入库单据（回流入库类）这一格恒为 NULL —— 正是"不受效期管控"的语义。
         await ExecAsync(
             $"CREATE TABLE {Tmp}(BILL_TYPE nchar(10),BILL_NO nchar(30),BILL_DATE datetime,SERIAL_NO int,PRO_NO nchar(30),"
             + "DEPOT_ID nchar(10),LOCATION_NO nvarchar(30),QTY float,BASE_QTY float,UNIT_ID nchar(10),PRICE float,BASE_PRICE float,"
-            + "CURR_ID nchar(10),CURR_RATE float,AMOUNT float,BATCH_NO nchar(30))", token);
+            + "CURR_ID nchar(10),CURR_RATE float,AMOUNT float,BATCH_NO nchar(30),EFFECT_DATE datetime)", token);
+    }
+
+    /// <summary>
+    /// 批次效期冲突拦截（同一批号只能有一个效期）：该批号已是非空效期、而本单给了**不同**的值 ⇒ 拒绝整单。
+    /// </summary>
+    /// <remarks>
+    /// 为什么拒绝而不是"取最早/取最新"：批号存在的意义就是唯一标识一批货，同一批号两个效期本身就说明
+    /// 批号编错了；默默改值会把先前的效期悄悄抹掉，而效期错了错的是**实物**（先到期先出、过期拦截都跟着错）。
+    ///
+    /// 两种情形都判：**跨单**（主档已有 vs 本单）与**单内**（本单同一批号填了两个不同值）。
+    /// 单内那一种不判的话，两行之间谁覆盖谁就取决于执行顺序——等于静默取一个。
+    ///
+    /// **例外（"尚无实际效期"）**：主档行从未有过任何进出量（`IN_SUM` 与 `OUT_SUM` **都是 0**）时不算
+    /// "已有有效期"——这种行还没参与过任何一次库存事实，把它当成"已有值"只会让手滑改错的人被迫绕道。
+    /// 判据刻意写成两个字段各自为零，**不是"净额为 0"**：进过又出光（净额 0）的批次是实打实用过的，
+    /// 它的效期是既成事实，不该被后来的单据覆盖。
+    /// </remarks>
+    private async Task CheckBatchExpiryAsync(CancellationToken token)
+    {
+        var conflicts = await QueryListAsync(
+            // 跨单冲突：主档已有非空效期且与本单不同（"尚无实际效期"的行已在 WHERE 里排除）
+            "SELECT t.BATCH_NO, "
+            + "N'该批号已有有效期 ' + CONVERT(nvarchar(10), b.EFFECT_DATE, 120) + N'，本单填的是 ' "
+            + "+ CONVERT(nvarchar(10), t.EFFECT_DATE, 120) "
+            + $"FROM {Tmp} t JOIN dbo.INV_BATCH_M b ON b.PRO_NO=t.PRO_NO AND b.BATCH_NO=t.BATCH_NO "
+            + "WHERE ISNULL(t.BATCH_NO,'') <> '' AND t.EFFECT_DATE IS NOT NULL AND b.EFFECT_DATE IS NOT NULL "
+            + "AND b.EFFECT_DATE <> t.EFFECT_DATE "
+            + "AND NOT (ISNULL(b.IN_SUM,0)=0 AND ISNULL(b.OUT_SUM,0)=0) "
+            + "UNION ALL "
+            // 单内冲突：同一批号在本单里被填了两个不同的效期
+            + "SELECT x.BATCH_NO, "
+            + "N'本单同一批号填了两个有效期（' + CONVERT(nvarchar(10), x.FIRST_DATE, 120) + N' 与 ' "
+            + "+ CONVERT(nvarchar(10), x.LAST_DATE, 120) + N'）' "
+            + $"FROM (SELECT LTRIM(RTRIM(PRO_NO)) AS PRO_NO, LTRIM(RTRIM(BATCH_NO)) AS BATCH_NO, "
+            + "MIN(EFFECT_DATE) AS FIRST_DATE, MAX(EFFECT_DATE) AS LAST_DATE "
+            + $"FROM {Tmp} WHERE ISNULL(BATCH_NO,'') <> '' AND EFFECT_DATE IS NOT NULL "
+            + "GROUP BY LTRIM(RTRIM(PRO_NO)), LTRIM(RTRIM(BATCH_NO)) "
+            + "HAVING COUNT(DISTINCT CONVERT(date, EFFECT_DATE)) > 1) x", token);
+
+        if (conflicts.Count > 0)
+            throw new EffectValidationException(
+                "批号有效日期不一致（同一批号只能有一个有效期，请改用新批号，或到「料件批号资料」修改）\n"
+                + "批号---------------原因\n" + FormatPairs(conflicts));
     }
 
     /// <summary>
@@ -548,7 +620,8 @@ public sealed class InventoryMoveSql
         await ExecAsync($"IF OBJECT_ID('tempdb..{PolicyTmp}') IS NOT NULL DROP TABLE {PolicyTmp}", token);
         await ExecAsync(
             $"CREATE TABLE {PolicyTmp}(DEPOT_ID nchar(10) NOT NULL PRIMARY KEY, "
-            + "LOCATION_MODE int NOT NULL, BATCH_MODE int NOT NULL, MIX_PRODUCT bit NOT NULL, MIX_BATCH bit NOT NULL)", token);
+            + "LOCATION_MODE int NOT NULL, BATCH_MODE int NOT NULL, EXPIRY_MODE int NOT NULL, "
+            + "MIX_PRODUCT bit NOT NULL, MIX_BATCH bit NOT NULL)", token);
 
         var depots = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -568,11 +641,13 @@ public sealed class InventoryMoveSql
             return;
 
         await using var insert = new SqlCommand(
-            $"INSERT INTO {PolicyTmp}(DEPOT_ID, LOCATION_MODE, BATCH_MODE, MIX_PRODUCT, MIX_BATCH) VALUES (@depot, @locationMode, @mode, @mixProduct, @mixBatch)",
+            $"INSERT INTO {PolicyTmp}(DEPOT_ID, LOCATION_MODE, BATCH_MODE, EXPIRY_MODE, MIX_PRODUCT, MIX_BATCH) "
+            + "VALUES (@depot, @locationMode, @mode, @expiryMode, @mixProduct, @mixBatch)",
             _connection, _transaction);
         insert.Parameters.Add("@depot", SqlDbType.NChar, 10);
         insert.Parameters.Add("@locationMode", SqlDbType.Int);
         insert.Parameters.Add("@mode", SqlDbType.Int);
+        insert.Parameters.Add("@expiryMode", SqlDbType.Int);
         insert.Parameters.Add("@mixProduct", SqlDbType.Bit);
         insert.Parameters.Add("@mixBatch", SqlDbType.Bit);
         foreach (var depot in depots)
@@ -581,6 +656,7 @@ public sealed class InventoryMoveSql
             insert.Parameters["@depot"].Value = depot;
             insert.Parameters["@locationMode"].Value = policy.LocationMode;
             insert.Parameters["@mode"].Value = policy.BatchMode;
+            insert.Parameters["@expiryMode"].Value = policy.ExpiryMode;
             insert.Parameters["@mixProduct"].Value = policy.MixProduct;
             insert.Parameters["@mixBatch"].Value = policy.MixBatch;
             await insert.ExecuteNonQueryAsync(token);
@@ -756,6 +832,7 @@ public sealed class InventoryMoveSql
 
     private async Task<int> ApplyOutAsync(CancellationToken token)
     {
+        await CheckExpiredBatchesAsync(token);
         await CheckStockAsync(token);
         var affected = await SyncDepotLevelCostAsync(-1, token);
         affected += await ApplyRowQuantitiesAsync(-1, token);
@@ -765,6 +842,8 @@ public sealed class InventoryMoveSql
 
     private async Task<int> UndoInAsync(CancellationToken token)
     {
+        // 解批一张入库单同样是"把货拿走"，过期拦截一视同仁（否则解批就成了绕过过期管控的后门）。
+        await CheckExpiredBatchesAsync(token);
         await CheckStockAsync(token);
         var affected = await SyncDepotLevelCostAsync(-1, token);
         affected += await ApplyRowQuantitiesAsync(-1, token);
@@ -790,13 +869,91 @@ public sealed class InventoryMoveSql
         return affected;
     }
 
-    /// <summary>Batch ledgers: insert missing masters, then the movement detail rows.</summary>
+    /// <summary>
+    /// 过期批次拦截：出库行所涉及的批次**按受益库别的档位**判——档 2 拒绝、档 1 放行但告警、档 0 不查。
+    /// </summary>
+    /// <remarks>
+    /// 参照日期取的是**本笔账的记账日期**（与流水同源的 <see cref="LedgerDateExpression"/>）：
+    /// "过期"是相对某一时点的事实，用批核日与用当前时间在跨天补账时会给出不同答案，
+    /// 而账上真正记的是记账日期——两处各取一套口径，就会出"账里写着 3 号出的货用了 5 号才过期的批次"。
+    ///
+    /// **空效期不参与判定**：`EFFECT_DATE IS NULL` 是"该批次不受效期管控"，不是"过期"。
+    /// </remarks>
+    private async Task CheckExpiredBatchesAsync(CancellationToken token)
+    {
+        var expired = new List<(int Mode, string BatchNo, string Context, string EffectDate)>();
+        await using (var command = new SqlCommand(
+            "SELECT DISTINCT pol.EXPIRY_MODE, LTRIM(RTRIM(t.BATCH_NO)), "
+            + "LTRIM(RTRIM(t.DEPOT_ID)) + N' / ' + LTRIM(RTRIM(t.PRO_NO)), CONVERT(nvarchar(10), b.EFFECT_DATE, 120) "
+            + $"FROM {Tmp} t "
+            + "JOIN dbo.INV_BATCH_M b ON b.PRO_NO=t.PRO_NO AND b.BATCH_NO=t.BATCH_NO "
+            + $"JOIN {PolicyTmp} pol ON pol.DEPOT_ID = t.DEPOT_ID "
+            + "WHERE pol.EXPIRY_MODE >= 1 AND ISNULL(t.BATCH_NO,'') <> '' AND b.EFFECT_DATE IS NOT NULL "
+            + $"AND b.EFFECT_DATE < {LedgerDateExpression()};", _connection, _transaction))
+        await using (var reader = await command.ExecuteReaderAsync(token))
+        {
+            while (await reader.ReadAsync(token))
+            {
+                expired.Add((reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+            }
+        }
+
+        var rejected = expired.Where(row => row.Mode >= 2).ToList();
+        if (rejected.Count > 0)
+            throw new EffectValidationException(
+                "以下批次已过期，本库别不允许出库（过期批次仍在账上，可用库存调整单另行处理）\n"
+                + "批号---------------库别 / 料号---------------有效期\n"
+                + string.Join("\n", rejected.Select(row => $"{row.BatchNo}    {row.Context}    {row.EffectDate}")));
+
+        foreach (var row in expired.Where(row => row.Mode == 1))
+        {
+            _warnings?.Add($"批次 {row.BatchNo}（{row.Context}）有效期 {row.EffectDate} 已过：本库别设为「只告警」，本次出库已放行。");
+        }
+    }
+
+    /// <summary>
+    /// 批次档位 3（必填 + 效期）的另一半：该批次**最终必须能确定一个有效期**。
+    /// </summary>
+    /// <remarks>
+    /// 判据按 **(料号, 批号)** 而不是按单据行：效期是批次的属性，同一批次在单内出现多行只该有一个答案。
+    /// 满足任一即通过——① 本单这一行填了有效期；② 批次主档已有非空有效期。
+    ///
+    /// 为什么不是"单据行必须填"：档 3 是**库别**属性，而这个库里只有"首次入库"那几类单据带效期列
+    /// （退货、调拨、报废、领料、借出返还等一律不带）。按"行必须填"实现，客户一旦把档位开到 3，
+    /// 那些单据就会**整类拒单**——档位成了打不开的开关。而"批次已有有效期"本就是事实的复述，不是放宽。
+    /// </remarks>
+    private async Task RequireExpiryAsync(CancellationToken token)
+    {
+        var missing = await QueryListAsync(
+            "SELECT x.PRO_NO, x.BATCH_NO FROM ("
+            + "  SELECT LTRIM(RTRIM(t.PRO_NO)) AS PRO_NO, LTRIM(RTRIM(t.BATCH_NO)) AS BATCH_NO, "
+            + "         MAX(CASE WHEN t.EFFECT_DATE IS NOT NULL THEN 1 ELSE 0 END) AS HAS_DOC_DATE "
+            + $"  FROM {Tmp} t JOIN {PolicyTmp} pol ON pol.DEPOT_ID = t.DEPOT_ID "
+            + "  WHERE ISNULL(pol.BATCH_MODE,0) >= 3 AND ISNULL(t.BATCH_NO,'') <> '' "
+            + "  GROUP BY LTRIM(RTRIM(t.PRO_NO)), LTRIM(RTRIM(t.BATCH_NO))) x "
+            + "WHERE x.HAS_DOC_DATE = 0 AND NOT EXISTS (SELECT 1 FROM dbo.INV_BATCH_M b "
+            + "  WHERE b.PRO_NO = x.PRO_NO AND b.BATCH_NO = x.BATCH_NO AND b.EFFECT_DATE IS NOT NULL)", token);
+        if (missing.Count > 0)
+            throw new EffectValidationException(
+                "以下批号在批次档位 3（必填 + 效期）下没有有效期：本单未填，批次账上也没有\n"
+                + "料  号---------------批  号\n" + FormatPairs(missing)
+                + "\n请在本单填写有效期；若该批次早已入库，可先到「料件批号资料」补齐它的有效期。");
+    }
+
+    /// <summary>
+    /// 批次账：先补主档行（**首次见到该 (料号, 批号) 时把有效期一并写进去**），
+    /// 再处理"行已在、但从未有过进出量"的效期补写，然后累加收发累计，最后写批次流水明细。
+    /// </summary>
     private async Task<int> ApplyBatchesAsync(char effect, bool inSummary, CancellationToken token)
     {
         var affected = await ExecAsync(
-            "INSERT INTO dbo.INV_BATCH_M(BATCH_NO, PRO_NO, IN_SUM) "
-            + $"SELECT t.BATCH_NO, t.PRO_NO, 0 FROM {Tmp} t WHERE ISNULL(t.BATCH_NO,'') != '' "
+            "INSERT INTO dbo.INV_BATCH_M(BATCH_NO, PRO_NO, IN_SUM, EFFECT_DATE) "
+            + $"SELECT t.BATCH_NO, t.PRO_NO, 0, t.EFFECT_DATE FROM {Tmp} t WHERE ISNULL(t.BATCH_NO,'') != '' "
             + "AND NOT EXISTS (SELECT 1 FROM dbo.INV_BATCH_M b WHERE b.BATCH_NO=t.BATCH_NO AND b.PRO_NO=t.PRO_NO)", token);
+        // 效期补写必须排在累加之前：IN_SUM 一旦动过，"从未有过进出量"这个前提就不再成立。
+        // 只走入库腿——出库单据没有效期可写（行集里那一格恒为 NULL），跑一遍只是空转。
+        if (inSummary)
+            affected += await FillPendingBatchExpiryAsync(token);
         affected += inSummary
             ? await ExecAsync(
                 "UPDATE b SET b.IN_SUM = ISNULL(b.IN_SUM,0) + ISNULL(t.BASE_QTY,0), b.LATELY_IN_DATE = t.BILL_DATE "
@@ -808,6 +965,68 @@ public sealed class InventoryMoveSql
             "INSERT INTO dbo.INV_BATCH_D(BATCH_NO, PRO_NO, BATCH_DATE, BATCH_ORDER_TYPE, BATCH_ORDER_NO, BATCH_SERIAL_NO, DEPOT_ID, EFFECT_DEPOT, QTY, MUTUALITY_QTY, MUTUALITY_UNIT_ID, MUTUALITY_PRICE, MUTUALITY_CURR_ID, MUTUALITY_CURR_RATE, MUTUALITY_AMOUNT) "
             + $"SELECT t.BATCH_NO, t.PRO_NO, t.BILL_DATE, t.BILL_TYPE, t.BILL_NO, t.SERIAL_NO, t.DEPOT_ID, '{effect}', t.BASE_QTY, t.QTY, t.UNIT_ID, t.PRICE, t.CURR_ID, t.CURR_RATE, t.AMOUNT "
             + $"FROM {Tmp} t WHERE ISNULL(t.BATCH_NO,'') != ''", token);
+        return affected;
+    }
+
+    /// <summary>
+    /// 「尚无实际效期」的写入：主档行已在、但 `IN_SUM` 与 `OUT_SUM` **都是 0**（从未有过任何进出量）时，
+    /// 把本单的有效期写进去（含**改写**此前写下的值）。
+    /// </summary>
+    /// <remarks>
+    /// 为什么要这一条：批核 → 解批（主档行保留、累计归零）→ 改正效期 → 再批核，是改正填错值的常见路径。
+    /// 没有它，第二次批核就会撞上"同批号两个效期"而被拒，把人逼去另一个模块改一行数据。
+    ///
+    /// 判据刻意写成**两个累计字段各自为零**，不是"净额为 0"：进过又出光的批次是实打实用过的，
+    /// 它的效期是既成事实，不该被后来的单据覆盖。
+    ///
+    /// 覆盖动作**显式独立成 UPDATE**，不塞进上面那条 `INSERT ... WHERE NOT EXISTS`——那条语句的语义是
+    /// "建新行"，把改写混进去之后"新建"与"改旧"就再也分不开了（也就无从审计）。改写逐行写审计：
+    /// 改的是批次账的属性，不写审计等于悄悄改口径。
+    ///
+    /// 与"首次建行"那条 INSERT 的分工：值相同时这里不动作（避免重复写与重复审计）。
+    /// </remarks>
+    private async Task<int> FillPendingBatchExpiryAsync(CancellationToken token)
+    {
+        const string pendingFilter =
+            "ISNULL(b.IN_SUM,0)=0 AND ISNULL(b.OUT_SUM,0)=0 "
+            + "AND (b.EFFECT_DATE IS NULL OR b.EFFECT_DATE <> t.EFFECT_DATE)";
+
+        var pending = new List<(string ProductNo, string BatchNo, string OldValue, string NewValue)>();
+        await using (var command = new SqlCommand(
+            "SELECT t.PRO_NO, t.BATCH_NO, ISNULL(CONVERT(nvarchar(10), b.EFFECT_DATE, 120), N'(空)'), "
+            + "CONVERT(nvarchar(10), t.EFFECT_DATE, 120) "
+            + $"FROM (SELECT LTRIM(RTRIM(PRO_NO)) AS PRO_NO, LTRIM(RTRIM(BATCH_NO)) AS BATCH_NO, "
+            + $"MAX(EFFECT_DATE) AS EFFECT_DATE FROM {Tmp} WHERE ISNULL(BATCH_NO,'') <> '' AND EFFECT_DATE IS NOT NULL "
+            + "GROUP BY LTRIM(RTRIM(PRO_NO)), LTRIM(RTRIM(BATCH_NO))) t "
+            + "JOIN dbo.INV_BATCH_M b ON b.PRO_NO=t.PRO_NO AND b.BATCH_NO=t.BATCH_NO "
+            + $"WHERE {pendingFilter};", _connection, _transaction))
+        await using (var reader = await command.ExecuteReaderAsync(token))
+        {
+            while (await reader.ReadAsync(token))
+            {
+                pending.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+            }
+        }
+        if (pending.Count == 0)
+            return 0;
+
+        var affected = await ExecAsync(
+            "UPDATE b SET b.EFFECT_DATE = t.EFFECT_DATE, b.LAST_UPDATE_BY = @actor, b.LAST_UPDATE_DATE = SYSDATETIME() "
+            + $"FROM (SELECT PRO_NO, BATCH_NO, MAX(EFFECT_DATE) AS EFFECT_DATE FROM {Tmp} "
+            + "WHERE ISNULL(BATCH_NO,'') <> '' AND EFFECT_DATE IS NOT NULL GROUP BY PRO_NO, BATCH_NO) t "
+            + "JOIN dbo.INV_BATCH_M b ON b.PRO_NO=t.PRO_NO AND b.BATCH_NO=t.BATCH_NO "
+            + $"WHERE {pendingFilter}",
+            token, ("@actor", _executor));
+
+        foreach (var (productNo, batchNo, oldValue, newValue) in pending)
+        {
+            await _auditWriter.WriteEventAsync(
+                _connection, _transaction, _moduleId, _recordKey,
+                "BATCH_EXPIRY",
+                $"批号 {batchNo}（料号 {productNo}）有效日期 {oldValue}→{newValue}：该批号此前没有任何进出量，效期由本单确定。",
+                _executor, "INV_BATCH_M", result: 1,
+                [new AuditFieldChange("EFFECT_DATE", oldValue, newValue, null)], token);
+        }
         return affected;
     }
 

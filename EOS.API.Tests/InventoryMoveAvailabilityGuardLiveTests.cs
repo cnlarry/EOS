@@ -157,7 +157,7 @@ public sealed class InventoryMoveAvailabilityGuardLiveTests : IAsyncLifetime
         try
         {
             var handler = new InventoryMoveHandler(
-                new EffectPhysicalColumns(), new DepotStockPolicyService(_connections, _audit));
+                new EffectPhysicalColumns(), new DepotStockPolicyService(_connections, _audit), _audit);
             var moved = await handler.ExecuteAsync(Context(connection, transaction), CancellationToken.None);
             Assert.True(moved > 0, $"移动引擎报告影响 {moved} 行");
             await transaction.CommitAsync();

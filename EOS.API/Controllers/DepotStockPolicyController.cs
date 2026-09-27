@@ -82,7 +82,8 @@ public sealed class DepotStockPolicyController(
             request.MixBatch,
             request.MonthCloseByBatch,
             request.MonthCloseByLocation,
-            request.MonthCloseScopeHalfStock);
+            request.MonthCloseScopeHalfStock,
+            request.ExpiryMode);
 
         var result = await service.SaveAsync(
             candidate, userContext.EmployeeName, request.ConfirmDowngrade, request.RelocateTo, token);
@@ -157,7 +158,8 @@ public sealed class DepotStockPolicyController(
         policy.MixProduct,
         policy.MixBatch,
         policy.MonthCloseByBatch,
-        policy.MonthCloseByLocation);
+        policy.MonthCloseByLocation,
+        policy.ExpiryMode);
 }
 
 public sealed record DepotStockPolicyDto(
@@ -169,7 +171,9 @@ public sealed record DepotStockPolicyDto(
     bool MixProduct,
     bool MixBatch,
     bool MonthCloseByBatch,
-    bool MonthCloseByLocation);
+    bool MonthCloseByLocation,
+    /// <summary>过期批次档位：0 不管 / 1 告警 / 2 拒绝。</summary>
+    int ExpiryMode = 2);
 
 public sealed record SaveDepotStockPolicyRequest(
     int LocationMode,
@@ -187,7 +191,10 @@ public sealed record SaveDepotStockPolicyRequest(
     bool ConfirmDowngrade = false,
     /// <summary>位置档位**升档**时的归位目标库位：给了就把「未指定位置」的存量改记到该库位。
     /// 不给且确有存量时会要求明确表态（见 <see cref="DepotStockPolicyService.SaveAsync"/> 的说明）。</summary>
-    string? RelocateTo = null);
+    string? RelocateTo = null,
+    /// <summary>过期批次档位：0 不管 / 1 告警 / 2 拒绝。缺省取 2（与库内默认一致）——
+    /// 老客户端不带这个字段时不能被静默降级成"不管过期"。取值域由服务端组合规则兜。</summary>
+    int ExpiryMode = 2);
 
 /// <summary>保存结果：<c>Saved=false</c> 时 <c>Errors</c> 说明被拒原因；<c>Warnings</c> 为软性提示（可保存）。
 /// <c>RequiresConfirmation=true</c> 表示这是一次尚未确认的破坏性档位下调。</summary>

@@ -8,7 +8,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 库存策略的求值口径与组合规则。求值必须收口在 <see cref="DepotStockPolicyService"/>：
 /// 库别行**整行覆盖**部署级默认行，不做列级逐字段继承。
-/// 组合校验里未实现档位（批次 3 / 容量）的拒绝放在服务端——界面灰显只是体验，
+/// 组合校验里未实现档位（现只剩容量）的拒绝放在服务端——界面灰显只是体验，
 /// 直连 API 仍可复现"保存成功却不生效"。
 /// </summary>
 [Collection("live-database")]
@@ -24,22 +24,23 @@ public sealed class DepotStockPolicyTests
 
     private static DepotStockPolicyService CreateService() => PolicyServiceFactory.Create(RequireConnection());
 
-    /// <summary>测试用构造：六个维度 + 月结两维（默认取部署级口径）。</summary>
+    /// <summary>测试用构造：六个维度 + 月结两维 + 过期批次档位（默认取部署级口径 2）。</summary>
     private static DepotStockPolicy Policy(
         string depot, int locationMode, string storageMode, int batchMode, int capacityMode,
         bool mixProduct = true, bool mixBatch = true,
-        bool monthCloseByBatch = true, bool monthCloseByLocation = false)
+        bool monthCloseByBatch = true, bool monthCloseByLocation = false, int expiryMode = 2)
         => new(depot, locationMode, storageMode, batchMode, capacityMode, mixProduct, mixBatch,
-            monthCloseByBatch, monthCloseByLocation);
+            monthCloseByBatch, monthCloseByLocation, false, expiryMode);
 
     // ---------- 组合规则（纯逻辑，不需要数据库） ----------
 
     [Fact]
     public void 未实现档位在保存期被拒()
     {
+        // 批次档位 3 已经实现，不再被拒；仍被拒的只剩容量档位。
         var batch3 = Policy("CP", 3, "FIXED", 3, 0, true, true);
-        var (errors, _) = DepotStockPolicyService.Validate(batch3);
-        Assert.Contains(errors, message => message.Contains("批次档位 3"));
+        var (batchErrors, _) = DepotStockPolicyService.Validate(batch3);
+        Assert.DoesNotContain(batchErrors, message => message.Contains("批次档位"));
 
         var capacity = Policy("CP", 3, "FIXED", 0, 2, true, true);
         var (errors2, _) = DepotStockPolicyService.Validate(capacity);
@@ -47,15 +48,39 @@ public sealed class DepotStockPolicyTests
     }
 
     [Fact]
+    public void 过期批次档位取值域被拦()
+    {
+        var (tooHigh, _) = DepotStockPolicyService.Validate(Policy("CP", 3, "FIXED", 0, 0, true, true, true, false, 3));
+        Assert.Contains(tooHigh, message => message.Contains("过期批次档位"));
+
+        var (negative, _) = DepotStockPolicyService.Validate(Policy("CP", 3, "FIXED", 0, 0, true, true, true, false, -1));
+        Assert.Contains(negative, message => message.Contains("过期批次档位"));
+    }
+
+    /// <summary>
+    /// 档位组合说不通时**只提示不拒存**：客户可以先配好效期管控、再逐步把批次档位开起来。
+    /// 但"配了却不会生效"必须说出来——不说，客户会以为已经管起来了。
+    /// </summary>
+    [Fact]
+    public void 过期批次开启但批次档位为零时给出告警()
+    {
+        var (errors, warnings) = DepotStockPolicyService.Validate(
+            Policy("CP", 3, "FIXED", 0, 0, true, true, true, false, 1));
+
+        Assert.Empty(errors);
+        Assert.Contains(warnings, message => message.Contains("批次档位为 0"));
+    }
+
+    [Fact]
     public void 档位目录与保存规则同源_未实现的档位在目录里标为不可选()
     {
         // 目录是界面渲染的唯一来源，它标"能选"的档位必须真的存得进去，
         // 标"不可选"的必须真的被拒 —— 否则就是"看得见存不进"或"选得到却不生效"。
+        // 批次档位 3（必填 + 效期）已解锁，目录里必须同步标成"能选"。
         var batch = DepotStockPolicyService.Tiers.Single(tier => tier.Key == "batchMode");
-        var batch3 = batch.Options.Single(option => option.Value == DepotStockPolicyService.UnimplementedBatchMode.ToString());
-        Assert.False(batch3.Implemented);
-        Assert.All(batch.Options.Where(option => option.Value != DepotStockPolicyService.UnimplementedBatchMode.ToString()),
-            option => Assert.True(option.Implemented));
+        var batch3 = batch.Options.Single(option => option.Value == DepotStockPolicyService.ExpiryBatchMode.ToString());
+        Assert.True(batch3.Implemented);
+        Assert.All(batch.Options, option => Assert.True(option.Implemented));
 
         var capacity = DepotStockPolicyService.Tiers.Single(tier => tier.Key == "capacityMode");
         Assert.All(capacity.Options, option =>
@@ -76,6 +101,8 @@ public sealed class DepotStockPolicyTests
                     "capacityMode" => Policy("CP", 3, "FIXED", 0, int.Parse(option.Value), true, true),
                     "mixProduct" => Policy("CP", 3, "FIXED", 0, 0, option.Value == "1", true),
                     "mixBatch" => Policy("CP", 3, "FIXED", 0, 0, true, option.Value == "1"),
+                    // 过期批次档位：位置 3 + 批次 3 是它的推荐组合，两者都满足时才不产生告警。
+                    "expiryMode" => Policy("CP", 3, "FIXED", 3, 0, true, true, true, false, int.Parse(option.Value)),
                     "monthCloseByBatch" => Policy("CP", 3, "FIXED", 0, 0, true, true, option.Value == "1", false),
                     "monthCloseByLocation" => Policy("CP", 3, "FIXED", 0, 0, true, true, true, option.Value == "1"),
                     // 本维度**只标了"否"可选**（"是"要等快照侧 WS-18b），所以这里只会走到 "0" 这一支；
@@ -102,8 +129,10 @@ public sealed class DepotStockPolicyTests
             Assert.Contains(errors, message => message.Contains("随机存放"));
         }
 
-        // 档位 2/3 不触发硬性拒绝；档位 2 只出软性告警
-        var (okErrors, okWarnings) = DepotStockPolicyService.Validate(Policy("CP", 3, "RANDOM", 0, 0, true, true));
+        // 档位 2/3 不触发硬性拒绝；档位 2 只出软性告警。
+        // 过期批次档位取 0（最松）——默认值 2 与批次档位 0 是"配了不生效"的组合，会另出一条告警。
+        var (okErrors, okWarnings) = DepotStockPolicyService.Validate(
+            Policy("CP", 3, "RANDOM", 0, 0, true, true, true, false, 0));
         Assert.Empty(okErrors);
         Assert.Empty(okWarnings);
 
@@ -126,7 +155,10 @@ public sealed class DepotStockPolicyTests
     [Fact]
     public void 最松配置不产生任何错误或告警()
     {
-        var (errors, warnings) = DepotStockPolicyService.Validate(Policy("*", 0, "FIXED", 0, 0, true, true));
+        // "最松"必须把过期批次档位也显式关掉（0）：默认的 2 与批次档位 0 组合起来是"配了不生效"，
+        // 那条告警是对的，不该被当成噪声抹掉。
+        var (errors, warnings) = DepotStockPolicyService.Validate(
+            Policy("*", 0, "FIXED", 0, 0, true, true, true, false, 0));
         Assert.Empty(errors);
         Assert.Empty(warnings);
     }
@@ -182,11 +214,12 @@ public sealed class DepotStockPolicyTests
         var service = CreateService();
         try
         {
-            // 未实现档位：直接提交（等价于绕过界面 POST）必须被拒
-            var unimplemented = await service.SaveAsync(Policy(depot, 3, "FIXED", 3, 0), "adr14-test");
-            Assert.False(unimplemented.Saved);
-            Assert.Contains(unimplemented.Errors, message => message.Contains("批次档位 3"));
+            // 批次档位 3（必填 + 效期）已实现：保存期不再拒绝（保留本条是为了钉住"解锁"这件事本身，
+            // 组合规则 R-C3 由 Validate 用例覆盖）。这里只走 Validate，避免为断言写库。
+            var expiryTier = DepotStockPolicyService.Validate(Policy(depot, 3, "FIXED", 3, 0));
+            Assert.DoesNotContain(expiryTier.Errors, message => message.Contains("批次档位"));
 
+            // 未实现档位：直接提交（等价于绕过界面 POST）必须被拒
             var capacity = await service.SaveAsync(Policy(depot, 3, "FIXED", 0, 2), "adr14-test");
             Assert.False(capacity.Saved);
             Assert.Contains(capacity.Errors, message => message.Contains("容量档位"));

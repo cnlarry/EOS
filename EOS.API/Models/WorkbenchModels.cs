@@ -23,7 +23,12 @@ public sealed record FieldChooserSource(
     int? ModuleId,
     string? Filter,
     string? ReturnMapping,
-    int? SerialNo = null);
+    int? SerialNo = null,
+    /// <summary>
+    /// 服务端注册数据源的键（如 <c>inventory.batches</c>）：非空时前端走统一选择器的 sourceKey 分支，
+    /// 列与排序由服务端注册表给出（比"按表名查"更精确）。为空则走 formField 分支。
+    /// </summary>
+    string? SourceKey = null);
 
 /// <summary>Workbench/form action button (parsed from MODULES.FORM_BUTTONS).</summary>
 public sealed record WorkbenchButton(string Action);
