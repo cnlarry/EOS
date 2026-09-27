@@ -20,13 +20,13 @@ IF NOT EXISTS (SELECT 1 FROM dbo.COMPANY WHERE LTRIM(RTRIM(COMPANY_ID)) = 'EOS')
 GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.DEPT WHERE LTRIM(RTRIM(DEPT_ID)) = 'ADM')
-    INSERT dbo.DEPT (DEPT_ID, DEPT_NAME, COMPANY_ID, CONFIRM_TAG)
-    VALUES ('ADM', N'系统管理', 'EOS', 1);
+    INSERT dbo.DEPT (DEPT_ID, DEPT_NAME, CONFIRM_TAG)
+    VALUES ('ADM', N'系统管理', 1);
 GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.SYSDN WHERE LTRIM(RTRIM(EMP_ID)) = 'admin')
-    INSERT dbo.SYSDN (EMP_ID, EMP_NAME, DEPT_ID, COMPANY_ID, CONFIRM_TAG)
-    VALUES ('admin', N'系统管理员', 'ADM', 'EOS', 1);
+    INSERT dbo.SYSDN (EMP_ID, EMP_NAME, DEPT_ID, CONFIRM_TAG)
+    VALUES ('admin', N'系统管理员', 'ADM', 1);
 GO
 
 -- ---------------------------------------------------------------- 账号
@@ -83,11 +83,8 @@ BEGIN
 END
 GO
 
--- ---------------------------------------------------------------- 系统参数
--- 系统参数表为单行配置表，缺行会导致部分模块读取参数失败。
-IF NOT EXISTS (SELECT 1 FROM dbo.SYSSS)
-    INSERT dbo.SYSSS (SUPPLIER_DAYS) VALUES (1000000);
-GO
+-- 系统参数（SYSSS）已改为按模块 + 参数键的纵向表，参数行随元数据种子发布
+-- （见 db/bootstrap/20_metadata.sql），此处不再单独写入。
 
 PRINT '初始管理员已就绪：用户 admin / 口令 admin（请立即修改）';
 GO
