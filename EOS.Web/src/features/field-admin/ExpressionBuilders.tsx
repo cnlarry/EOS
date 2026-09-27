@@ -126,6 +126,11 @@ export function VirtualExpressionBuilder({ model, onChange, endpoints, disabled,
       meta: join.alias.toLowerCase() === join.table.toLowerCase() ? '' : '别名',
     })),
   ]
+  const sourceValue = model.table.trim()
+  // 已存值不在候选里（关系里没有该段）时原样列出，不把实际引用显示成「未选择」
+  if (sourceValue && !sourceOptions.some(option => option.value.toLowerCase() === sourceValue.toLowerCase())) {
+    sourceOptions.push({ value: sourceValue, label: sourceValue, meta: '不在 QUERY_RELATION 内' })
+  }
   const relationBroken = relationsQuery.data != null && relationsQuery.data.ok === false
   return (
     <div className="d-flex flex-column gap-1">
@@ -161,7 +166,8 @@ export function VirtualExpressionBuilder({ model, onChange, endpoints, disabled,
       </div>
       {selectedJoin && selectedJoin.alias.toLowerCase() !== selectedJoin.table.toLowerCase() && (
         <div className="text-secondary small">
-          该段在 QUERY_RELATION 里带别名：物理表 {selectedJoin.table}，表达式写入 {selectedJoin.alias}（运行期 SQL 用的是别名）。
+          该段在 QUERY_RELATION 里带别名：物理表 {selectedJoin.table}，表达式写入 {selectedJoin.alias}（运行期 SQL 用的是别名）；
+          手写物理表名 {selectedJoin.table} 仅在该表在关系里唯一出现时可解析。
         </div>
       )}
       {relationsQuery.isError && <div className="text-danger small">关联白名单加载失败，当前仅可选择本表列。</div>}

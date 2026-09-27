@@ -495,11 +495,10 @@ public sealed class RestrictedExpressionService(
             }
             else
             {
-                var join = joins.FirstOrDefault(candidate => candidate.Table.Equals(refTableName, StringComparison.OrdinalIgnoreCase)
-                    || candidate.Alias.Equals(refTableName, StringComparison.OrdinalIgnoreCase));
-                if (join is null)
+                // 与运行时共用同一份引用名口径（别名优先、物理表名须唯一命中），保证"校验通过即可渲染"
+                if (!VirtualExpressionParser.TryResolveJoin(joins, refTableName, out var join))
                 {
-                    errors.Add($"表 {refTableName} 不在 {table} 的 QUERY_RELATION 白名单内。");
+                    errors.Add($"表 {refTableName} 不在 {table} 的 QUERY_RELATION 白名单内，或该表名在关系里重复而无法确定关联段。");
                     continue;
                 }
                 targetTable = join.Table;

@@ -160,4 +160,44 @@ public class VirtualExpressionParserTests
         Assert.False(VirtualExpressionParser.TryParseRelation(null, "T", out _, out _));
         Assert.False(VirtualExpressionParser.TryParseRelation("", "T", out _, out _));
     }
+
+    private static VirtualJoin Join(string table, string alias) => new(table, alias, [], []);
+
+    [Fact]
+    public void ResolveJoin_AliasWinsOverTableName()
+    {
+        // 同一物理表两段：一段无别名、一段带别名 ⇒ 引用名优先按别名命中，不吃歧义
+        VirtualJoin[] joins = [Join("PRODUCT", "PRODUCT"), Join("PRODUCT", "PRODUCT_J")];
+        Assert.True(VirtualExpressionParser.TryResolveJoin(joins, "PRODUCT_J", out var aliased));
+        Assert.Equal("PRODUCT_J", aliased.Alias);
+        Assert.True(VirtualExpressionParser.TryResolveJoin(joins, "product", out var plain));
+        Assert.Equal("PRODUCT", plain.Alias);
+    }
+
+    [Fact]
+    public void ResolveJoin_PhysicalTableNameResolvesWhenUnique()
+    {
+        // 该表在关系里只出现一次且带别名 ⇒ 写物理表名也能确定关联段（与校验同一口径）
+        VirtualJoin[] joins = [Join("PRODUCT", "PRODUCT_J"), Join("COLOR", "COLOR_M")];
+        Assert.True(VirtualExpressionParser.TryResolveJoin(joins, "PRODUCT", out var join));
+        Assert.Equal("PRODUCT_J", join.Alias);
+        Assert.Equal("PRODUCT", join.Table);
+    }
+
+    [Fact]
+    public void ResolveJoin_AmbiguousTableName_IsRejected()
+    {
+        // 同表两段且都带别名 ⇒ 写物理表名无法确定指向哪一段，一律判不可用（fail-closed）
+        VirtualJoin[] joins = [Join("PRODUCT", "PRODUCT_J"), Join("PRODUCT", "PRODUCT_M")];
+        Assert.False(VirtualExpressionParser.TryResolveJoin(joins, "PRODUCT", out _));
+    }
+
+    [Theory]
+    [InlineData("OTHER")]
+    [InlineData("")]
+    public void ResolveJoin_UnknownReference_IsRejected(string reference)
+    {
+        VirtualJoin[] joins = [Join("PRODUCT", "PRODUCT_J")];
+        Assert.False(VirtualExpressionParser.TryResolveJoin(joins, reference, out _));
+    }
 }
