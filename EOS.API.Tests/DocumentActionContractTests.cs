@@ -173,7 +173,8 @@ public sealed class DocumentActionContractTests
         Assert.Equal(EffectEvent.Manual, parsed);
         Assert.False(EffectEventMapper.AppliesTo("MANUAL", EffectEvent.Save));
         Assert.False(EffectEventMapper.AppliesTo("MANUAL", EffectEvent.ApproveEffect));
-        Assert.NotEqual("SAVE", EffectPipeline.StageFor(EffectEvent.Manual));
+        // 用户点击不是校验阶段：不带校验闸（null），而不是"默认按保存期校验"。
+        Assert.Null(EffectPipeline.StageFor(EffectEvent.Manual));
     }
 
     private static WorkbenchDefinition Definition(JsonElement? actions) =>

@@ -327,23 +327,35 @@ public sealed class EffectPipeline(
     }
 
     /// <summary>
-    /// 该事件对应的校验阶段；返回 null 表示这条事件**不带校验闸**。
-    /// 校验阶段是闭集（SAVE / APPROVE / DEAPPROVE / DELETE），事件闭集比它大——
-    /// 落不进阶段的那些事件（用户点击、结案、取消结案）必须显式返回 null：
-    /// 走默认分支会被当成 SAVE，于是"点结案"会顺带跑一遍保存期规则，把保存的行为套到结案上。
+    /// 事件 → 校验阶段的显式映射，**逐成员覆盖** <see cref="EffectEvent"/> 的每一个成员。
+    /// 校验阶段是闭集（SAVE / APPROVE / DEAPPROVE / DELETE），事件闭集比它大，
+    /// 故落不进阶段的事件显式映射为 null（不带校验闸）。
     /// </summary>
-    internal static string? StageFor(EffectEvent executionEvent) => executionEvent switch
-    {
-        EffectEvent.Save => "SAVE",
-        EffectEvent.ApproveEffect => "APPROVE",
-        EffectEvent.Deapprove => "DEAPPROVE",
-        EffectEvent.Delete => "DELETE",
-        // 用户点击不是一个校验阶段，因此不会有校验规则跟着一次点击顺带跑。
-        EffectEvent.Manual => "MANUAL",
-        // 结案 / 取消结案同样不是校验阶段：它们只跑动作链。
-        EffectEvent.Endcase or EffectEvent.Unendcase => null,
-        _ => "SAVE",
-    };
+    /// <remarks>
+    /// 不给"未登记"留默认值：新增事件成员而忘记在这里登记时，覆盖率测试（集合相等）会红，
+    /// 而不是让新事件静默继承某个阶段的规则。
+    /// </remarks>
+    internal static readonly IReadOnlyDictionary<EffectEvent, string?> ValidationStagesByEvent =
+        new Dictionary<EffectEvent, string?>
+        {
+            [EffectEvent.Save] = "SAVE",
+            [EffectEvent.ApproveEffect] = "APPROVE",
+            [EffectEvent.Deapprove] = "DEAPPROVE",
+            [EffectEvent.Delete] = "DELETE",
+            // 用户点击不是校验阶段的成员（配置侧也登记不进来），映射成 null 才与语义一致。
+            [EffectEvent.Manual] = null,
+            // 结案 / 取消结案同样不是校验阶段：它们只跑动作链。
+            [EffectEvent.Endcase] = null,
+            [EffectEvent.Unendcase] = null,
+        };
+
+    /// <summary>
+    /// 该事件对应的校验阶段；返回 null 表示这条事件**不带校验闸**（不跑任何阶段的校验规则）。
+    /// 映射表查不到（未登记的成员、越界取值）同样返回 null 且不抛：兜底是"不校验"，
+    /// 不能是"默认按保存期校验"——后者会让"点结案"顺带跑一遍保存期规则，把保存的行为套到结案上。
+    /// </summary>
+    internal static string? StageFor(EffectEvent executionEvent) =>
+        ValidationStagesByEvent.TryGetValue(executionEvent, out var stage) ? stage : null;
 
     /// <summary>
     /// Snapshots the configured action (parameters and expanded formula rows) into the
