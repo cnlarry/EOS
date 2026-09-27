@@ -1115,6 +1115,23 @@ public sealed class FieldAdminRepository(
     private static bool NullableEquals(string? a, string? b) =>
         string.IsNullOrWhiteSpace(a) ? string.IsNullOrWhiteSpace(b) : string.Equals(a.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 正则语法校验，选项与超时同运行期校验（RecordPayloadValidator 的字段正则）。
+    /// 只判长度不判语法时，坏模式能存进元数据，直到保存单据时才暴露。
+    /// </summary>
+    private static bool IsCompilableRegex(string pattern)
+    {
+        try
+        {
+            _ = new Regex(pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
     private static void Validate(FieldAdminInput input)
     {
         if (string.IsNullOrWhiteSpace(input.Label) || input.Label.Trim().Length > 300)
@@ -1128,6 +1145,8 @@ public sealed class FieldAdminRepository(
         if ((input.Format?.Length ?? 0) > 50) throw new ArgumentException("显示格式过长。");
         if ((input.DefaultValue?.Length ?? 0) > 200) throw new ArgumentException("默认值过长。");
         if ((input.Regex?.Length ?? 0) > 300) throw new ArgumentException("正则表达式过长。");
+        if (!string.IsNullOrWhiteSpace(input.Regex) && !IsCompilableRegex(input.Regex))
+            throw new ArgumentException("正则表达式无法编译，请检查语法。");
         if ((input.Remark?.Length ?? 0) > 500) throw new ArgumentException("备注过长。");
         if (input.VerifyIndex is < 0 or > 9999) throw new ArgumentException("校验顺序无效。");
         if ((input.BrowseUrl?.Length ?? 0) > 1000) throw new ArgumentException("查看详情 URL 过长。");

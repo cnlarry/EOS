@@ -94,6 +94,15 @@ public sealed class FieldAdminRepositoryTests
     }
 
     [Fact]
+    public async Task CreateField_RejectsUncompilableRegexBeforeOpeningConnection()
+    {
+        var repository = CreateRepository();
+        var request = new CreateFieldAdminRequest("COMPANY", "COMPANY_ID", FieldInput() with { Regex = "[" });
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => repository.CreateAsync(request, "IT", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task CreateUnmanagedFields_RejectsEmptySelection()
     {
         var repository = CreateRepository();
