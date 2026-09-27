@@ -152,7 +152,7 @@ BEGIN
     DECLARE @ScanSql NVARCHAR(MAX) = N'
 SELECT P.PREFIX, MAX(P.SERIAL) AS MAX_SERIAL
 FROM (
-    -- 尾号长度固定为流水宽度（字头 = 单号去掉尾部 width 位），与旧系统"按字头长度截取"一致
+    -- 尾号长度固定为流水宽度（字头 = 单号去掉尾部 width 位），与既有实现"按字头长度截取"一致
     SELECT
         PREFIX = LEFT(N.NO_VALUE, LEN(N.NO_VALUE) - @Width),
         SERIAL = TRY_CAST(RIGHT(N.NO_VALUE, @Width) AS BIGINT)

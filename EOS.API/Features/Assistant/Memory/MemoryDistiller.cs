@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace EOS.API.Features.Assistant.Memory;
 
 /// <summary>
-/// M9 auto-distillation parsing: model output → pending candidates.
+/// auto-distillation parsing: model output → pending candidates.
 /// Thresholds: &lt;40 discard; 40-79 pending; &gt;=80 pending marked suggested.
 /// Nothing becomes active without explicit user confirmation.
 /// </summary>

@@ -94,7 +94,7 @@ public sealed class ChatService(
             yield break;
         }
 
-        // M7 治理门：熔断优先于限额；只计技术失败（模型异常/空回复），权限拒绝与用户取消不计入。
+        // 治理门：熔断优先于限额；只计技术失败（模型异常/空回复），权限拒绝与用户取消不计入。
         if (breaker?.IsBlocked(userId) == true)
         {
             yield return new ChatStreamEvent.Failed("RATE_LIMITED", "连续失败次数过多，请稍后再试。");
@@ -139,7 +139,7 @@ public sealed class ChatService(
             : await memoryStore.BuildMemoryPrefixAsync(userId, content, token);
         var messages = BuildModelMessages(history, pageContext, memoryPrefix);
 
-        // M7 原子预留：同一事务内建行 + 按上限条件扣减（用户行与全局行同时满足），
+        // 原子预留：同一事务内建行 + 按上限条件扣减（用户行与全局行同时满足），
         // 并发请求在此串行化；超限直接拒绝，不再"先读后放"。
         // 预留放在全部校验与上下文组装之后、首次模型调用之前：空内容/超长/越权会话等
         // 无效请求不触碰额度，避免预留后早退路径泄漏可被反复刷取。
@@ -332,7 +332,7 @@ public sealed class ChatService(
                 saved,
                 toolLog.Count > 0 ? [.. toolLog] : null,
                 drafts.Count > 0 ? [.. drafts] : null);
-            // M9: done 之后异步提炼候选记忆（pending，待用户确认；失败静默，不阻塞对话流）。
+            // : done 之后异步提炼候选记忆（pending，待用户确认；失败静默，不阻塞对话流）。
             await DistillSessionBestEffortAsync(userId, saved.Id, history, text, dayStart, token);
             yield break;
         }

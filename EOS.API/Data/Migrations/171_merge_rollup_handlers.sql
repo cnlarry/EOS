@@ -9,7 +9,7 @@
 --   {"detailTable":"<明细表>","roundDigits":<0..6>,"assignments":[
 --       {"target":"<主表列>","sum":"<明细列>"[,"plusMaster":"<主表列>"]}, …]}
 --   语义：主表 <target> ＝ ROUND(SUM(明细 <sum>), roundDigits)［＋主表 <plusMaster>］；
---   同一明细列只聚合一次、多目标共用别名（与旧实现复用 AMOUNT_TAX_SUM 一致）。
+--   同一明细列只聚合一次、多目标共用别名（与既有实现复用 AMOUNT_TAX_SUM 一致）。
 -- 单据键列由处理器取自**单据计划**（快照里的 MasterPkOrder），故本迁移同时断言其与旧配置声明的
 -- (typeField,noField) 一致——否则合并后过滤条件会变。
 --

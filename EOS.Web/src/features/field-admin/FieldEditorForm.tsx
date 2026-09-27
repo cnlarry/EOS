@@ -92,7 +92,7 @@ export interface SetupLookup {
   label: string
 }
 
-/** 与服务端 FieldAdminRepository.AllowedTypes 保持一致；伪类型保留兼容旧数据。 */
+/** 与服务端 FieldAdminRepository.AllowedTypes 保持一致；伪类型保留兼容既有数据。 */
 const ALLOWED_TYPES = [
   'nvarchar', 'varchar', 'nchar', 'char',
   'int', 'bigint', 'smallint', 'tinyint',

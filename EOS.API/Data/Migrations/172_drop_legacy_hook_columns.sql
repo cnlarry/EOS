@@ -1,7 +1,7 @@
 -- EOS.ERP migration 173: 物理删除 MODULES.UPDATE_SP / MODULES.AFTERSAVE_SP 两个遗留钩子列
 -- ----------------------------------------------------------------------------
--- 背景：这两列是旧系统的钩子字段（`UPDATE_SP`＝批核生效过程，`AFTERSAVE_SP`＝保存后过程）。
--- 新系统的保存/批核行为已全部由**校验目录**（MODULE_VALIDATION_RULE）与**效果目录**
+-- 背景：这两列是既有实现的钩子字段（`UPDATE_SP`＝批核生效过程，`AFTERSAVE_SP`＝保存后过程）。
+-- 本系统的保存/批核行为已全部由**校验目录**（MODULE_VALIDATION_RULE）与**效果目录**
 -- （MODULE_BUSINESS_ACTION）承载：批核侧与保存侧的遗留过程引用均已清零（各 0 个模块），
 -- 定义里的 `BusinessRule.DomainRule` 与领域规则过渡桥也已拆除。用户指示：把这两列**物理删除**。
 --

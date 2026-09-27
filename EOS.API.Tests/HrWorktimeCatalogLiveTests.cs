@@ -11,7 +11,7 @@ namespace EOS.API.Tests;
 /// 保存期规则 `custom-validation` → 注册实现 `hr-worktime-check`
 /// （本单工时明细按员工聚合 vs 本单出勤日所属月的加班申请明细按员工聚合；受业务设置表门控）。
 /// 用例覆盖：门控关闭即放行 / 门控打开且超申请即命中（文案逐字）/ 恰好等于申请量放行 /
-/// 申请侧无该员工时按 0 呈现（**移植按意图修正的旧缺陷**，旧实现该分支必抛"列名无效"）。
+/// 申请侧无该员工时按 0 呈现（**移植按意图修正的旧缺陷**，既有实现该分支必抛"列名无效"）。
 /// 造数用 `ADR12WT` 前缀，事务结束回滚。
 /// </summary>
 [Collection("live-database")]
@@ -45,7 +45,7 @@ public sealed class HrWorktimeCatalogLiveTests
         {
             var plan = await LoadPlanAsync(connection, transaction, token);
 
-            // ① 门控关闭（默认）：即使工时远超申请也不判（与旧实现一致——旧实现在此分支前就返回）
+            // ① 门控关闭（默认）：即使工时远超申请也不判（与既有实现一致——既有实现在此分支前就返回）
             await SeedAsync(connection, transaction, token, gateOn: false, appliedOverTime: 4, overTime: 100);
             await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [WtType, WtNo]);
 
@@ -59,14 +59,14 @@ public sealed class HrWorktimeCatalogLiveTests
             await SeedAsync(connection, transaction, token, gateOn: true, appliedOverTime: 10, overTime: 10);
             await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [WtType, WtNo]);
 
-            // ④ 申请侧没有该员工的行 ⇒ 申请量按 0 呈现并命中（移植按意图修正：旧实现此处抛"列名无效"）
+            // ④ 申请侧没有该员工的行 ⇒ 申请量按 0 呈现并命中（移植按意图修正：既有实现此处抛"列名无效"）
             await SeedAsync(connection, transaction, token, gateOn: true, appliedOverTime: 0, overTime: 7,
                 appliedEmployee: Emp2);
             var noApplyRow = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [WtType, WtNo]));
             Assert.Equal(Header + $"{Emp1}  0  0  0  已录入   7  0  0", noApplyRow.Message);
 
-            // ⑤ 旧实现的缺陷事实（移植依据）：员工与加班列在**明细**表上，不在工时主表上
+            // ⑤ 既有实现的缺陷事实（移植依据）：员工与加班列在**明细**表上，不在工时主表上
             Assert.True(await HasColumnAsync(connection, transaction, "HR_WORKTIME_D", "EMP_ID", token));
             Assert.False(await HasColumnAsync(connection, transaction, "HR_WORKTIME_M", "EMP_ID", token));
         }

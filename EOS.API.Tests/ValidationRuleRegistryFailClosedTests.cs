@@ -423,7 +423,7 @@ public class ValidationRuleRegistryFailClosedTests
     [Fact]
     public void QuantityCheck_AcceptsOrMergedDimensionsAndRejectsBadOnes()
     {
-        // 多量纲：旧实现把"数量"与"备品"合成 `WHERE a OR b`，用 dimensions 表达（诊断行只输出一次）
+        // 多量纲：既有实现把"数量"与"备品"合成 `WHERE a OR b`，用 dimensions 表达（诊断行只输出一次）
         var ok = Validate("qty-not-exceed", Params("""
             {"mode":"usage-not-exceed","checks":[{"targetTable":"COP_ORDER_D",
              "match":[{"target":"ORDER_NO","source":{"scope":"DETAIL","field":"ORDER_NO"}}],

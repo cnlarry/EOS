@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 namespace EOS.API.Data;
 
 /// <summary>
-/// 业务单据附件仓储（表 dbo.ATTACHMENT，位于 EOS.ERP —— 全新系统的唯一业务数据库）。
+/// 业务单据附件仓储（表 dbo.ATTACHMENT，位于 EOS.ERP —— 全本系统的唯一业务数据库）。
 /// 元数据 + SHA-256 入库，文件二进制存文件系统（Attachment:StorageRoot，默认 AppContext.BaseDirectory/attachments），
 /// 本仓储只负责元数据。定位：统一表单（DocumentWorkbench）单据级附件，
 /// 按 M_IDX + MASTER_TABLE + KEY_VALUES(JSON) + SERIAL_NO 定位。

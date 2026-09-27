@@ -8,10 +8,10 @@ namespace EOS.API.Data.DocumentActions.Handlers;
 
 // `purchase-reprice`（重新取价）：用户在采购单上点一下，按厂商计价重算本单明细的单价与金额。
 //
-// 与旧系统同一件事（`PUR/Purchase.aspx.cs` 的 `btnCalc` → `P_PUR_PURCHASE_GETPRICE`），三处有意不同：
-//   ① 已注释掉的"依材质取价"分支不复活——旧实现注释掉它是有原因的（按 STUFF_ID 配对会把
+// 与既有实现同一件事（`btnCalc` → `P_PUR_PURCHASE_GETPRICE`），三处有意不同：
+//   ① 已注释掉的"依材质取价"分支不复活——既有实现注释掉它是有原因的（按 STUFF_ID 配对会把
 //      不同料号的计价串到一起），只保留"依品号"分支；
-//   ② 主表本位币汇率为 0 或空时拒绝而不是除零——旧实现直接 `AMOUNT/CURR_RATE`，汇率坏掉时
+//   ② 主表本位币汇率为 0 或空时拒绝而不是除零——既有实现直接 `AMOUNT/CURR_RATE`，汇率坏掉时
 //      整单金额会被算成 NULL 或报错，fail-closed 拦在前面；
 //   ③ 逐行回写而不是整表 UPDATE：没有厂商计价的行保留原价（只重算金额），有计价的行才改价。
 //      整表回写会把"无计价行的手工价"一并推平，这正是重算类操作最容易被做坏的地方。

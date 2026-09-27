@@ -72,7 +72,7 @@ internal static class VirtualExpressionParser
         error = null;
         if (string.IsNullOrWhiteSpace(relation)) { error = "QUERY_RELATION 为空"; return false; }
         var normalized = Regex.Replace(relation.Trim(), @"\s+", " ");
-        // 旧数据存在 WITH(NOLOCK)ON 无空格变体，规整为 ") ON" 后再解析。
+        // 既有数据存在 WITH(NOLOCK)ON 无空格变体，规整为 ") ON" 后再解析。
         normalized = Regex.Replace(normalized, @"\)\s*ON", ") ON", RegexOptions.IgnoreCase);
         var segments = Regex.Split(normalized, @"\s+LEFT\s+JOIN\s+", RegexOptions.IgnoreCase);
         var baseMatch = BaseSegment.Match(segments[0].Trim());

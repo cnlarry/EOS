@@ -13,11 +13,11 @@
 --   命中即拒绝，文案 N'以下序号项量产模入库不能大于模具完工未入数量\r\n' + 各行（`MAX(SERIAL_NO)` 后跟四空格、行间 CRLF）。
 -- 目录承接：SAVE 期 `qty-not-exceed`（mode=usage-not-exceed）——
 --   targetTable=MOU_BATCH_M、match 按明细 MOU_BATCHIN_D 的 BATCH_TYPE/BATCH_NO 定位、
---   thisQty=SUM(本单 QTY)（**分组形态**，与旧实现按 BATCH 分组求和一致）、
+--   thisQty=SUM(本单 QTY)（**分组形态**，与既有实现按 BATCH 分组求和一致）、
 --   usage=模具行 FINISHED_QTY、limit=模具行 QTY，比较式 `usage + thisQty > limit` ⇔ 旧 `ISNULL(m.QTY,0) < ISNULL(m.FINISHED_QTY,0) + d.QTY`；
 --   门控 `switch.gates=[{scope:"MODULE",key:"ERROR_NO_SAVE",expect:1}]`（**开关语义保持**）；
 --   诊断 `[{scope:"SOURCE",field:"SERIAL_NO",agg:"MAX"}]` + 行分隔 CRLF + 文案尾部四空格
---   —— 复刻旧实现逐行 `MAX(SERIAL_NO) + "    "`（`maxRows` 取上限 100；超过 100 行的极端单据只截断列表尾部）。
+--   —— 复刻既有实现逐行 `MAX(SERIAL_NO) + " "`（`maxRows` 取上限 100；超过 100 行的极端单据只截断列表尾部）。
 -- 说明：本迁移只补 SAVE 期规则（2912 既有 SAVE 期 `reference-exists` 不受影响）；C# 侧退役同步在代码里完成。
 -- ============================================================================
 

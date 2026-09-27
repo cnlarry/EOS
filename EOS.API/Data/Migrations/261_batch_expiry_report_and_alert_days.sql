@@ -32,7 +32,7 @@ BEGIN
         110111, N'EXPIRY_ALERT_DAYS', N'30', N'int', N'30',
         N'INVENTORY', N'库存与批次', 90, 10, N'近效期预警提前天数', N'immediate',
         N'临期清单与预警共用：剩余天数小于等于该值即列为临期。',
-        -- CREATE_PERSON 是短列（与旧库的建单人列同宽），写全的迁移名会被截断报错
+        -- CREATE_PERSON 是短列（与既有库的建单人列同宽），写全的迁移名会被截断报错
         N'mig-259', SYSDATETIME());
     PRINT N'== 新增系统参数 110111|EXPIRY_ALERT_DAYS（近效期提前天数，默认 30）==';
 END

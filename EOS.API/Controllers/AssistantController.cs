@@ -242,7 +242,7 @@ public sealed class AssistantController(
     public sealed record ApplyChangeSetRequest(JsonElement Changeset, bool Confirmed);
 
     /// <summary>
-    /// 变更集确认执行（M8 admin-write）：仅结构化确认卡可调用。自然语言确认无效
+    /// 变更集确认执行（admin-write）：仅结构化确认卡可调用。自然语言确认无效
     /// （confirmed 必须为 true）；执行前重跑试算，拦截即拒绝，零部分写入由仓储事务保证。
     /// </summary>
     [HttpPost("apply-changeset")]

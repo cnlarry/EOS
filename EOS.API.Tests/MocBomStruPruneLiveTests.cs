@@ -31,7 +31,7 @@ public sealed class MocBomStruPruneLiveTests
     private const string Orphan = "ADR12MBORPH"; // 无明细引用（应删）
 
     [Fact]
-    public async Task 工单BOM_孤儿行清理循环与旧实现一致()
+    public async Task 工单BOM_孤儿行清理循环与既有实现一致()
     {
         var token = CancellationToken.None;
         await using var connection = new SqlConnection(ConnectionString);

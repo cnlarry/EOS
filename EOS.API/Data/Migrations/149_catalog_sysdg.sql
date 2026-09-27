@@ -7,7 +7,7 @@
 --                                     OR REPORT_ID NOT IN (SELECT REPORT_ID FROM dbo.REPORT);
 -- 该形态与具体单据无关、可复用，故新增**通用服务处理器** `orphan-cleanup`（效果目录新键）：
 --   params.targets = [{table, column, refTable, refColumn}, …]，逐条执行
---   `DELETE FROM 目标表 WHERE 目标列 NOT IN (SELECT 参照列 FROM 参照表)`——与旧实现逐字同口径
+--   `DELETE FROM 目标表 WHERE 目标列 NOT IN (SELECT 参照列 FROM 参照表)`——与既有实现逐字同口径
 --   （含 NULL 时不误删）；四个标识符必须都是物理列（fail-closed）。删除不可逆，反向 kind=none。
 -- **本迁移把 2305 接进效果引擎**（`EFFECT_ENGINE_TAG` 0 → 1）：该模块此前未接管、且目录里
 -- 既无校验规则也无业务动作，接管后保存链＝零校验（空规则集）+ 一条清理动作，行为等价。

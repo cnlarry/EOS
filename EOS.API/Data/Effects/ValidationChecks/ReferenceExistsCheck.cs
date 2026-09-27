@@ -69,7 +69,7 @@ internal static class ReferenceExistsCheck
             throw new EffectConfigException("reference-exists.targets 不能为空数组。");
 
         // 每个目标表一条断言、彼此取 AND：整行只要在任一目标表里存在即视为通过
-        // （对应旧实现把多张表 UNION ALL 后做一次存在性判断）。
+        // （对应既有实现把多张表 UNION ALL 后做一次存在性判断）。
         var missingParts = new List<string>();
         var usesDetail = false;
         var conditionParameters = new List<EffectSqlParameter>();
@@ -82,7 +82,7 @@ internal static class ReferenceExistsCheck
             usesDetail |= matchUsesDetail || mismatchUsesDetail || refConditionUsesDetail;
             conditionParameters.AddRange(refConditionParameters);
             // 无 mismatch ＝ 断言"引用必须存在"；带 mismatch ＝ 断言"引用存在时该列必须与来源一致"
-            // （旧实现的反向一致性断言，命中条件是存在一行且两列不等）；
+            // （既有实现的反向一致性断言，命中条件是存在一行且两列不等）；
             // refCondition ＝ 断言"引用行存在且满足该条件即命中"（同样是 EXISTS 形态）。
             var body = match + BuildActiveTag(target);
             var extra = mismatch is null ? refCondition : mismatch;
@@ -214,7 +214,7 @@ internal static class ReferenceExistsCheck
     }
 
     /// <summary>
-    /// allowEmpty：来源侧键为空即放行本项（旧实现 "ISNULL(类型,'')&lt;&gt;''" 的语义）。
+    /// allowEmpty：来源侧键为空即放行本项（既有实现 "ISNULL(类型,'')&lt;&gt;''" 的语义）。
     /// true 表示 refKey 的来源列；数组形式逐列声明，用于复合键里允许为空的列
     /// （如"订单别 + 订单号"中订单别为空即整行不校验）。
     /// </summary>

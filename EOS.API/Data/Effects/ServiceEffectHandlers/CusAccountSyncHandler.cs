@@ -12,7 +12,7 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 ///   ③ 主表 金额/税额/价税合计/数量合计/对帐数量/毛重数量 按明细求和（按配置位数 ROUND），
 ///      含税总额 ＝ 价税合计 + 其它费用，加工金额 ＝ 对帐数量 × 加工单价。
 /// 与旧过程逐字一致：求和结果与"其它费用/加工单价"的运算**不做空值兜底**（任一侧为空则整体为空），
-/// 与旧实现同为单条 UPDATE、右值取更新前的行值。
+/// 与既有实现同为单条 UPDATE、右值取更新前的行值。
 /// 参数闭合：三张表与各列名分组声明，全部校验为物理列；单据键值只作参数传入。
 /// </summary>
 public sealed class CusAccountSyncHandler : IEffectServiceHandler

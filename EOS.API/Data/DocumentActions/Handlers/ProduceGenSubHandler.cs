@@ -9,17 +9,17 @@ namespace EOS.API.Data.DocumentActions.Handlers;
 
 // `produce-gen-sub`（展开子制令）：用户在制令单上点一下，按工单 BOM 把有下阶料的子件逐个建成子制令。
 //
-// 与旧系统同一件事（`MOC/Produce.aspx.cs` 的 `btnGenSubProduce`，文案"展开制令"），五处有意不同：
+// 与既有实现同一件事（`btnGenSubProduce`，文案"展开制令"），五处有意不同：
 //   ① 子单走统一记录创建路径（`WorkbenchCommandHandler.CreateRecordAsync`）：单号由发号器原子取号
 //      （旧 `GetNewID` 是 MAX+1，并发连点会重号），归属/校验/审计照常生效；
-//   ② 已有子单的行跳过而不是重复创建：旧实现点一次生一批，再点一次再生一批；现代实现按
+//   ② 已有子单的行跳过而不是重复创建：既有实现点一次生一批，再点一次再生一批；现代实现按
 //      （父单别, 父单号, 子件料号）判重，已有即跳过并计数——重复点击只补漏，不复制；
-//   ③ 成环直接拒绝：旧实现遇到 BOM 成环会无限递归直到爆栈，现代实现按路径判环（最多 20 层），
+//   ③ 成环直接拒绝：既有实现遇到 BOM 成环会无限递归直到爆栈，现代实现按路径判环（最多 20 层），
 //      把"挂死"换成可解释的拒绝（与 `no-cycle` 校验同一口径）；
-//   ④ 不重写本单明细：旧实现点按钮时会把本单明细也按订单 BOM 追加一遍（无去重）；
+//   ④ 不重写本单明细：既有实现点按钮时会把本单明细也按订单 BOM 追加一遍（无去重）；
 //      本单明细的权威口径已由"计算用料"（产品 BOM）承担，两边同时写明细只会打架，
 //      故本操作只建子单（含子单自己的明细），不动本单；
-//   ⑤ 子单不自动批核：旧实现只建单不批核，保持一致（何时开工由计划决定，不由按钮决定）。
+//   ⑤ 子单不自动批核：既有实现只建单不批核，保持一致（何时开工由计划决定，不由按钮决定）。
 // 只配在 1502（默认制令模块）：子单的单别恒取默认制令单别，家就在 1502；
 // 配到其它制令模块会让人误以为子单会落在那里。
 // 不要求本单已批核：展开的正常时机在批核之前（先展开再逐单送审）。
@@ -445,7 +445,7 @@ internal sealed class ProduceGenSubHandler(
         Put(EditionField, master.Edition);
         Put(LineField, item.LineId);
         Put(UnitField, item.UnitId);
-        // 子单自己的单据日期取父单日期（旧实现同：建子单时沿用触发单的日期）。
+        // 子单自己的单据日期取父单日期（既有实现同：建子单时沿用触发单的日期）。
         Put(ProduceDateField, NormalizeDate(master.ProduceDate));
         Put(PlanStartField, NormalizeDate(master.ProduceDate));
         Put(PlanEndField, NormalizeDate(master.PreSendDate));

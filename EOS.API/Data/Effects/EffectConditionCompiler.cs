@@ -169,7 +169,7 @@ public sealed class EffectConditionCompiler
                 return CompileSwitch(item, isSysssKey);
             case "BLANK":
             {
-                // 字符串列"去空格后为空"：对应旧实现的 string.IsNullOrWhiteSpace 判据。
+                // 字符串列"去空格后为空"：对应既有实现的 string.IsNullOrWhiteSpace 判据。
                 // negate:true 取反（非空），供"键为空则不校验"这类适用条件使用。
                 var field = Required(item, "field");
                 var alias = AliasFor(field, resolveAlias)

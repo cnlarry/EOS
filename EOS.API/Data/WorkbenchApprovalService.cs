@@ -666,7 +666,7 @@ public sealed class WorkbenchApprovalService(
     /// </summary>
     /// <remarks>
     /// 明细腿的口径是**全部结案**：单据级结案同时把该单明细行的 `FINISHED_TAG` 置为同一方向。
-    /// 现代界面只有一个单据级结案入口，映射的是旧系统 `doFinish(type=3)`（明细全置位 + 主表置位）；
+    /// 现代界面只有一个单据级结案入口，映射的是既有实现 `doFinish(type=3)`（明细全置位 + 主表置位）；
     /// 明细表没有该列（含单表模块）就跳过这一步。
     /// </remarks>
     public async Task<ApprovalCoreResult> RunFinishCoreAsync(

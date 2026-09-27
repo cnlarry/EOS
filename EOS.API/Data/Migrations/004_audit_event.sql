@@ -60,7 +60,7 @@ ALTER TABLE dbo.AUDIT_FIELD_CHANGE ADD CONSTRAINT FK_AUDIT_FIELD_CHANGE_EVENT
     FOREIGN KEY (EVENT_ID) REFERENCES dbo.AUDIT_EVENT (EVENT_ID);
 CREATE INDEX IX_AUDIT_FIELD_CHANGE_EVENT ON dbo.AUDIT_FIELD_CHANGE (EVENT_ID);
 
-EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'统一业务审计事件表（）：新系统审计事实源，与业务事务同生共死；逐步替代旧 SYSDF 核心证据源，SYSDF 继续作兼容查询来源。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_EVENT';
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'统一业务审计事件表（）：本系统审计事实源，与业务事务同生共死；逐步替代旧 SYSDF 核心证据源，SYSDF 继续作兼容查询来源。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_EVENT';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'审计事件 ID，自增主键。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_EVENT', @level2type=N'COLUMN', @level2name=N'EVENT_ID';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'发生时间（本地时间，与业务事务一致）。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_EVENT', @level2type=N'COLUMN', @level2name=N'OCCURRED_AT';
 EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'关联 ID（X-Correlation-Id，服务端生成或透传），与日志/错误响应关联。', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'AUDIT_EVENT', @level2type=N'COLUMN', @level2name=N'CORRELATION_ID';

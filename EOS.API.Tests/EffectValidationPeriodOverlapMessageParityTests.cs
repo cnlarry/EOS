@@ -9,7 +9,7 @@ namespace EOS.API.Tests;
 
 /// <summary>
 /// 期重叠族「同单重复」的目录文案与旧存储过程逐字一致性。
-/// 对拍脚本（CompareAfterSave）会对这三族断言"API 消息 = 旧 SP 消息"，
+/// 对拍脚本（CompareAfterSave）会对这三族断言"API 消息 = 既有存储过程 消息"，
 /// 而 API 侧即将由 C# 改为目录配置——本用例在改之前先把两边的文案对齐，
 /// 避免把消息差异留到切换之后才发现。
 /// </summary>

@@ -56,7 +56,7 @@ DECLARE @PROCESS_LINE NVARCHAR(MAX) =
     + N'{"target":"PRODUCE_NO","source":{"scope":"DETAIL","field":"PRODUCE_NO"}},'
     + N'{"target":"PROCEDURE_ID","source":{"scope":"DETAIL","field":"PROCEDURE_ID"}}],'
     + N'"lineField":"SERIAL_NO","message":"以下序号项制令制程不存在 ' + @NLJ + N'{ROWS}"}';
--- 主表级：订单别为空的行视为未引用订单（旧实现的 ISNULL(ORDER_NO,'')<>'' 语义）。
+-- 主表级：订单别为空的行视为未引用订单（既有实现的 ISNULL(ORDER_NO,'')<>'' 语义）。
 DECLARE @ORDER_MASTER NVARCHAR(MAX) =
     N'{"refTable":"COP_ORDER_D","join":['
     + N'{"target":"ORDER_TYPE","source":{"scope":"MASTER","field":"ORDER_TYPE"}},'
@@ -72,7 +72,7 @@ DECLARE @PRODUCE_MASTER NVARCHAR(MAX) =
 DECLARE @SFC_PRODUCT NVARCHAR(MAX) =
     N'{"refTable":"PRODUCT","refKey":{"scope":"MASTER","field":"PRO_NO"},'
     + N'"message":"产品编号不存在 ' + @NLJ + N'"}';
--- 盘点单旧实现不设条数上限，取模板上限 100 以尽量贴近日志式清单。
+-- 盘点单既有实现不设条数上限，取模板上限 100 以尽量贴近日志式清单。
 DECLARE @DEPOT_WIDE NVARCHAR(MAX) =
     N'{"refTable":"DEPOT","refKey":{"scope":"DETAIL","field":"DEPOT_ID"},'
     + N'"lineField":"SERIAL_NO","maxRows":100,"message":"以下序号项库别编号不存在 ' + @NLJ + N'{ROWS}"}';
@@ -103,7 +103,7 @@ INSERT INTO @RULES (MODULE_ID, SEQ, VALIDATION_KEY, PARAM_STRUCT, MESSAGE, REMAR
 (130105, 1, N'reference-exists', N'{"checks":[' + @DEPOT_IN + N',' + @DEPOT + N',' + @PRODUCT + N']}', N'以下序号项入库别编号不存在 ' + @NL + N'{ROWS}', N'调拨单入/出库别与产品引用校验', N'inv-transfer'),
 (130106, 1, N'reference-exists', N'{"checks":[' + @DEPOT_IN + N',' + @DEPOT + N',' + @PRODUCT + N']}', N'以下序号项入库别编号不存在 ' + @NL + N'{ROWS}', N'报废单入/出库别与产品引用校验', N'inv-scrap');
 
--- 盘点单：库别 + 产品（旧实现清单无上限）
+-- 盘点单：库别 + 产品（既有实现清单无上限）
 INSERT INTO @RULES (MODULE_ID, SEQ, VALIDATION_KEY, PARAM_STRUCT, MESSAGE, REMARK, SOURCE_REF) VALUES
 (130101, 1, N'reference-exists', N'{"checks":[' + @DEPOT_WIDE + N',' + @PRODUCT_WIDE + N']}', N'以下序号项库别编号不存在 ' + @NL + N'{ROWS}', N'盘点单库别/产品引用校验', N'inv-check-stock');
 

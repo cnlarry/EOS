@@ -321,7 +321,7 @@ public sealed class WorkbenchDefinitionBuilder(
         await using var connection=CreateConnection(); await connection.OpenAsync(token);
         var pkColumns=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,definition.MasterTable,token);
         // 主表也含虚拟列：它们是选择器回写出来的伴生显示列（客户名称/业务员/送货地址…），
-        // 旧系统里就是表单上的独立只读控件；把它们排除掉，回写目标在表单上根本不存在，
+        // 既有实现里就是表单上的独立只读控件；把它们排除掉，回写目标在表单上根本不存在，
         // 前端写进内存的值既不回显、又不提交，等于白选。
         var masterRows=await ReadFormFieldRows(connection,definition.MasterTable,definition.MasterTable,token,includeVirtual:true);
         var masterFields=FormFieldSelector.Select(masterRows,mode,canViewCost,canViewSecrecy,deniedMasterFields,deniedNewMasterFields,deniedModiMasterFields);

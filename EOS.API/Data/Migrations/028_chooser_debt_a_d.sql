@@ -19,7 +19,7 @@ SET NOCOUNT ON;
 -- ---- A 类：豁免登记（仅命中 STATUS=MANUAL 才落，幂等） ----
 UPDATE dbo.CHOOSER_FILTER_MIGRATION_LOG
 SET STATUS = N'EXEMPTED',
-    ERROR  = N'[028 治理] A类豁免：子查询引用表不在来源表QUERY_RELATION，旧系统同败，保持fail-closed空选项'
+    ERROR  = N'[028 治理] A类豁免：子查询引用表不在来源表QUERY_RELATION，既有实现同败，保持fail-closed空选项'
 WHERE STATUS = N'MANUAL'
   AND ((T_ID = N'SFC_PLAN_D'     AND F_ID = N'PRO_NO'      AND SERIAL_NO = 2)
     OR (T_ID = N'CUS_PURCHASE_D' AND F_ID = N'IMPORT_NO'   AND SERIAL_NO = 1)

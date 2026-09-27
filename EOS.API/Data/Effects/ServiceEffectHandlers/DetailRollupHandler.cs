@@ -7,7 +7,7 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 /// detail-rollup: 保存/批核后把**明细按单据键聚合**回写主表——即"主表 ← 明细汇总"这一形的**通用键**。
 /// 由配置声明：明细表、舍入位数，以及若干条「主表列 ← ROUND(SUM(明细列), 位数) [＋主表列]」赋值。
 /// 合并了原先四个同形键（`cop-account-rollup` / `purchase-due-rollup` / `cop-prepay-rollup` / `pur-prepay-rollup`）。
-/// 与旧实现逐字一致的两处口径：⒜ 明细为空时**不回写**（走内连接而非标量子查询）；
+/// 与既有实现逐字一致的两处口径：⒜ 明细为空时**不回写**（走内连接而非标量子查询）；
 /// ⒝ 求和一律 `ROUND(SUM(...), @digits)`，"＋主表列"的那一项不再额外舍入。
 /// 参数闭合：明细表名与全部列名都校验为物理列；单据键列取自单据计划（不额外配置），键值只作参数传入。
 /// </summary>
@@ -39,7 +39,7 @@ public sealed class DetailRollupHandler : IEffectServiceHandler
     }
 
     /// <summary>
-    /// 同一个明细列只聚合一次，多个目标列共用该别名（与旧实现复用 `AMOUNT_TAX_SUM` 的做法一致）。
+    /// 同一个明细列只聚合一次，多个目标列共用该别名（与既有实现复用 `AMOUNT_TAX_SUM` 的做法一致）。
     /// 外层条件整体带别名限定：汇总子查询与主表存在同名单据键列，未限定的列名会报"列名不明确"。
     /// </summary>
     internal static string BuildUpdateStatement(string masterTable, string typeColumn, string noColumn,

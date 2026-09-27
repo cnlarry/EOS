@@ -325,7 +325,7 @@ public sealed class WorkbenchCommandHandler(
         // After insert, the record must stay within the module contract (module FILTER + DATA_FILTER + EXEC_TAG).
         // 谓词在这里先构建（配置不支持即早失败、与记录内容无关），但**判定后移到 SAVE 效果链之后**：
         // 有些模块的过滤条件依赖"判别字段"（如托外/补料标志、模具性质、报关方式），而这些字段是
-        // 模块身份、由服务端在保存期写入（旧系统亦然）。早期判定会把这类新建一律拒掉——效果再写也来不及。
+        // 模块身份、由服务端在保存期写入（既有实现亦然）。早期判定会把这类新建一律拒掉——效果再写也来不及。
         // 修改路径本来就是"改完 + 跑完效果再判"，这里与它对齐。
         if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))
         {

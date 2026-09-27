@@ -10,8 +10,8 @@ namespace EOS.API.Data.DocumentActions.Handlers;
 // `material-issue-allocate`（按库别取料）：用户在领料单上点一下，按各行库别的当前库存重算
 // 可发料数量，并把待办表的待领量按行分配一遍。
 //
-// 与旧系统同一件事（`MOC/Get.aspx.cs` 的 `btnDepotGet` → `P_MOC_GET_DEPOT`），两处有意不同：
-//   ① 库存侧按（料号, 库别）汇总后取数：旧实现是两键时代的 `JOIN … ON PRO_NO AND DEPOT_ID`，
+// 与既有实现同一件事（`btnDepotGet` → `P_MOC_GET_DEPOT`），两处有意不同：
+//   ① 库存侧按（料号, 库别）汇总后取数：既有实现是两键时代的 `JOIN … ON PRO_NO AND DEPOT_ID`，
 //      四键扩键后同一（料号, 库别）可能有多行（不同库位/批次），逐行 JOIN 会把其中一行当成
 //      全部——改成 `SUM(QTY)` 按库别汇总。`SEND_QTY` 的语义本就是"该库别可发多少"
 //      （领料明细行没有库位列），不是"指定库位有多少"，故汇总口径与语义一致；

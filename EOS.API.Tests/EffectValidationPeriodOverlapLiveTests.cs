@@ -89,7 +89,7 @@ public sealed class EffectValidationPeriodOverlapLiveTests
     [Fact]
     public async Task 旧区间被新区间包含同样被拒()
     {
-        // 旧实现只判"新单端点落在旧区间内"，这种包含关系会漏判；本用例即该缺陷的守卫。
+        // 既有实现只判"新单端点落在旧区间内"，这种包含关系会漏判；本用例即该缺陷的守卫。
         var message = await RunAsync("""
             INSERT INTO dbo.HR_CONTRACT_D (CONT_TYPE, CONT_NO, SERIAL_NO, EMP_ID, CONTRACT_NO, BEGIN_DATE, END_DATE)
             VALUES (N'ADR12', N'P1', 1, N'E1', N'C1', '2026-03-01', '2026-03-31');

@@ -119,7 +119,7 @@ const MasterFormGrid = memo(function MasterFormGrid({ form, activeTabNo, hasTabs
     const index = focusables.indexOf(target)
     ;(focusables[index + 1] ?? focusables[0])?.focus()
   }
-  // 统一表单固定一行四列（用户拍板：忽略各模块 FORM_COLUMNS 元数据，对齐旧系统密集表单）
+  // 统一表单固定一行四列（用户拍板：忽略各模块 FORM_COLUMNS 元数据，对齐既有实现密集表单）
   const columns = DEFAULT_FORM_COLUMNS
   const visibleMaster = form.masterFields.filter(field => field.isVisible)
   const tabFields = visibleMaster.filter(field => !hasTabs || field.tabNo === activeTabNo)

@@ -25,7 +25,7 @@ export interface AssistantMemoryList {
   memories: AssistantMemory[]
 }
 
-/** 元数据变更集确认卡（M8 admin-write）：试算 diff + 结构化确认执行。 */
+/** 元数据变更集确认卡（admin-write）：试算 diff + 结构化确认执行。 */
 export interface AssistantAdminDraftTable {
   table: string
   action: string

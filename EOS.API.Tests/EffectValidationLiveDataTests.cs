@@ -701,7 +701,7 @@ public sealed class EffectValidationLiveDataTests
 
     /// <summary>
     /// 备货单（1411）"已备货不超订单/工单完工"已由保存期 qty-not-exceed 承担，且**数量与备品
-    /// 两个量纲合成同一判据**（旧实现是一句 `WHERE a OR b`，靠 dimensions + OR 合并复刻）：
+    /// 两个量纲合成同一判据**（既有实现是一句 `WHERE a OR b`，靠 dimensions + OR 合并复刻）：
     /// 门关跳过；订单口径命中回报七列；只违反备品量纲时同样命中（证明 OR 合并与第二个量纲的
     /// 诊断投影都生效）；切到工单口径走另一张被引用表；最后无门控的批号必填仍拦。
     /// </summary>
@@ -810,9 +810,9 @@ public sealed class EffectValidationLiveDataTests
 
     /// <summary>
     /// 生产记录单（180401）"完工数量不超制令制程允许生产最大数量"已由保存期 qty-not-exceed 承担：
-    /// 来源按（制令别/制令号/工序）分组求和，被引用行按同一键取 `MAX`（旧实现即 `MAX(允许量)`／
+    /// 来源按（制令别/制令号/工序）分组求和，被引用行按同一键取 `MAX`（既有实现即 `MAX(允许量)`／
     /// `MAX(计划量)`，同一工序有多条制程行时不能按"任意一行"取数），命中回报本单**逐条明细序号**。
-    /// 用例把旧实现的那条 SQL 内联为基准，逐字比对引擎输出。
+    /// 用例把既有实现的那条 SQL 内联为基准，逐字比对引擎输出。
     /// </summary>
     [Fact]
     public async Task 生产记录单_不超制令制程允许最大数量_被引用行聚合与逐明细序号诊断()
@@ -843,7 +843,7 @@ public sealed class EffectValidationLiveDataTests
             await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, keys);
             Assert.Null(await LegacyDailyMessageAsync(connection, transaction, token));
 
-            // 计划量的最大值抬到 200 → 200 < 200 + 70 命中，逐明细回报序号，文案与旧实现逐字一致
+            // 计划量的最大值抬到 200 → 200 < 200 + 70 命中，逐明细回报序号，文案与既有实现逐字一致
             await using (var raise = new SqlCommand("""
                 UPDATE dbo.MOC_PRODUCE_PROCESS_D SET FINISHED_PLAN_QTY = 200
                     WHERE PRODUCE_TYPE = N'ADR12' AND PRODUCE_NO = N'ADR12PRO1' AND SERIAL_NO = 2;
@@ -1166,7 +1166,7 @@ public sealed class EffectValidationLiveDataTests
             // 被引用的送货行尚未回执 → 放行
             await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609CB01"]);
 
-            // 该送货行已有回执号 → 拒绝，回报**本单明细**序号（与旧实现取 c.SERIAL_NO 一致）
+            // 该送货行已有回执号 → 拒绝，回报**本单明细**序号（与既有实现取 c.SERIAL_NO 一致）
             await using (var receipt = new SqlCommand(
                 "UPDATE dbo.COP_SEND_D SET CALLBACK_NO = N'RC001' WHERE SEND_TYPE = N'ZZ' AND SEND_NO = N'ZZT2609SND01' AND SERIAL_NO = 1;",
                 connection, transaction))
@@ -1219,7 +1219,7 @@ public sealed class EffectValidationLiveDataTests
 
             var plan = await LoadPlanAsync(connection, transaction, 2703, token, "line-require");
 
-            // 固定时间标记=1 且时间为 0 → 拒绝，文案与旧实现逐字一致（含尾部 " \r\n"）
+            // 固定时间标记=1 且时间为 0 → 拒绝，文案与既有实现逐字一致（含尾部 " \r\n"）
             var exception = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZT2609SP01"]));
             Assert.Contains("产品编号使用固定时间时，固定时间不能为0", exception.Message);
@@ -1380,7 +1380,7 @@ public sealed class EffectValidationLiveDataTests
             Assert.Equal(0, flag);
             await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, ["ZZ", "ZZT2609QA01"]);
 
-            // 门控打开（事务内临时置 1）→ 命中并回报生产单号，文案与旧实现逐字一致
+            // 门控打开（事务内临时置 1）→ 命中并回报生产单号，文案与既有实现逐字一致
             await using (var open = new SqlCommand(
                 "UPDATE dbo.MODULES SET ERROR_NO_SAVE=1 WHERE M_IDX=3303;", connection, transaction))
             {

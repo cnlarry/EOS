@@ -1,4 +1,4 @@
--- M7 cost-cap atomicity: per-user/per-day usage ledger (micro-yuan integers,
+-- cost-cap atomicity: per-user/per-day usage ledger (micro-yuan integers,
 -- reserve-then-settle so concurrent chats cannot breach caps) + estimated-usage
 -- flag on assistant messages (supplier usage missing => conservative estimate).
 -- USER_ID = N'*' is the global sentinel row. All amounts in micro-yuan.

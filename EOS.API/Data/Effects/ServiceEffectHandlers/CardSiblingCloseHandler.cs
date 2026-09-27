@@ -10,7 +10,7 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 /// 语义与原 `HrDomainRules.CloseConflictingCardsAsync` 逐字一致，且**该实现是唯一实现**：
 /// 单卡维护（180208）走本处理器，批量发卡（/jobs/card-batch）直接调用同一静态核心。
 /// 参数闭合：目标表 + 四个列名（生效日/到期日/卡号列/员工列），后两者必须是模块主键列；
-/// 偏移天数与比较口径固定在服务端。生效日为空时不动作（与旧实现一致）。
+/// 偏移天数与比较口径固定在服务端。生效日为空时不动作（与既有实现一致）。
 /// </summary>
 public sealed class CardSiblingCloseHandler : IEffectServiceHandler
 {
@@ -34,13 +34,13 @@ public sealed class CardSiblingCloseHandler : IEffectServiceHandler
             throw new EffectConfigException("card-sibling-close 缺少单据主键值。");
 
         var begin = await ReadBeginAsync(context, config, token);
-        if (begin is null) return 0; // 未填生效日：与旧实现一致，不动作
+        if (begin is null) return 0; // 未填生效日：与既有实现一致，不动作
         return await CloseAsync(context.Connection, context.Transaction, config,
             context.MasterKeyValues[keyIndex], context.MasterKeyValues[ownerIndex], begin.Value, token);
     }
 
     /// <summary>
-    /// 作废冲突旧卡的核心（单卡维护与批量发卡共用）：两段 UPDATE，条件与旧实现逐字一致。
+    /// 作废冲突旧卡的核心（单卡维护与批量发卡共用）：两段 UPDATE，条件与既有实现逐字一致。
     /// </summary>
     internal static async Task<int> CloseAsync(
         SqlConnection connection,

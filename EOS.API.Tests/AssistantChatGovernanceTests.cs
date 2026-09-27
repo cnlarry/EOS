@@ -10,7 +10,7 @@ using Xunit;
 
 namespace EOS.API.Tests;
 
-/// <summary>M7 失败口径：模型异常/空回复计入熔断；权限拒绝（工具 Deny）与限额熔断本身不计入。</summary>
+/// <summary> 失败口径：模型异常/空回复计入熔断；权限拒绝（工具 Deny）与限额熔断本身不计入。</summary>
 public sealed class AssistantChatGovernanceTests
 {
     private sealed class FakeRepo : IAssistantRepository

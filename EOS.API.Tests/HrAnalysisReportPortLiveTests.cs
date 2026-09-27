@@ -11,7 +11,7 @@ namespace EOS.API.Tests;
 /// HR 分析报表族（`P_RPT_HR_*`，7 个过程）移植为受控聚合数据源的真库对拍：
 /// 在同一批（隔离造数的）数据上分别执行「原过程」与「注册表 SQL」，逐行逐列比较结论。
 /// 原过程侧的本体取自 SSDT 快照（按报表编号推导文件名），因此过程下线后证据依然成立。
-/// 差异只在两处、且属有意：① 考勤分析表的请假/迟到名单旧实现用游标拼接（顺序不确定、带尾空格），
+/// 差异只在两处、且属有意：① 考勤分析表的请假/迟到名单既有实现用游标拼接（顺序不确定、带尾空格），
 /// 移植按工号排序、去尾空格 ⇒ 按名字集合比较；② 输出行序不参与比较（集合语义）。
 /// 整段在事务内进行，结束回滚。
 /// </summary>
@@ -138,7 +138,7 @@ public sealed class HrAnalysisReportPortLiveTests
 
     /// <summary>
     /// 跑「原过程」侧：过程正文从测试夹具（`Fixtures/legacy-sprocs/`）现场读取后作为批处理执行
-    /// —— 夹具是旧行为的版本化存档，因此过程从库里下线、SSDT 快照不再包含它们之后，
+    /// —— 夹具是既有行为的版本化存档，因此过程从库里下线、SSDT 快照不再包含它们之后，
     /// 对拍证据依然成立，且不必把旧过程正文抄进代码（避免再造一份"翻译来的 C#"）。
     /// 文件名按报表编号推导（`P_RPT_<REPORT_ID>`），代码里不出现过程全名。
     /// </summary>
@@ -261,7 +261,7 @@ public sealed class HrAnalysisReportPortLiveTests
         foreach (var (key, legacyRow) in legacyRows)
         {
             var portedRow = portedRows[key];
-            // 已登记的有意差异：旧实现用游标 `update #temp ... where DEPT_ID=@dept` 回填占比，
+            // 已登记的有意差异：既有实现用游标 `update #temp ... where DEPT_ID=@dept` 回填占比，
             // @dept 为 NULL 时永不命中 ⇒ 无部门分组（脏数据）的占比恒为 NULL；
             // 移植按窗口函数统一计算，同一分组得到真实占比。此处把差异钉住而不是放过。
             var emptyDept = string.IsNullOrWhiteSpace(legacyRow.GetValueOrDefault("DEPT_ID"));
@@ -275,7 +275,7 @@ public sealed class HrAnalysisReportPortLiveTests
                 }
                 if (listColumns.Contains(column, StringComparer.OrdinalIgnoreCase))
                 {
-                    // 名单列：旧实现用游标拼接（顺序不确定、带尾空格）⇒ 按名字集合比较
+                    // 名单列：既有实现用游标拼接（顺序不确定、带尾空格）⇒ 按名字集合比较
                     Assert.Equal(Names(legacyRow[column]), Names(portedRow[column]));
                     continue;
                 }

@@ -125,7 +125,7 @@ public sealed class WageItemFieldsSyncLiveTests
             DELETE FROM dbo.HR_WAGE WHERE WAGE_FIELD IN (@F1, @F2);
             DELETE FROM dbo.FIELDS WHERE T_ID=@TId AND F_ID IN (@F1, @F2);
             INSERT INTO dbo.FIELDS (T_ID, F_ID, F_DESC, IS_VISIBLE, DISPLAY_FORMAT, F_REMARK)
-            VALUES (@TId, @F1, N'旧名', 1, N'旧格式', N'旧备注'), (@TId, @F2, N'旧名', 1, N'旧格式', N'旧备注');
+            VALUES (@TId, @F1, N'旧名', 1, N'既有格式', N'旧备注'), (@TId, @F2, N'旧名', 1, N'既有格式', N'旧备注');
             INSERT INTO dbo.HR_WAGE (WAGE_ID, WAGE_FIELD, IS_USED, WAGE_NAME, DISPLAY_FORMAT, SQL_REMARK)
             VALUES (N'ADR12WFID', @F1, 1, N'ADR12 项目名', N'ADR12 格式', N'ADR12 备注');
             """, token,

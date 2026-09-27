@@ -275,7 +275,7 @@ public sealed class EndcaseEffectLiveTests : IAsyncLifetime
                  WHERE PRODUCE_TYPE = N'ZZENDC' AND PRODUCE_NO = N'ZZENDC-MO1' AND ISNULL(FINISHED_TAG,0) = 1;
                 """));
         }
-        // 明细已结案 ⇒ 该单的"生产未领"需求不再计入（这正是旧系统结案在读侧的行为）
+        // 明细已结案 ⇒ 该单的"生产未领"需求不再计入（这正是既有实现结案在读侧的行为）
         Assert.Equal(0d, await MrpNotGetAsync());
 
         Assert.True((await FinishAsync(finish: false, EndcaseAction())).Status == RecordAccessStatus.Ok);

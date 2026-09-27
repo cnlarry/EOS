@@ -90,7 +90,7 @@ public sealed record ChooserFilterStruct(string Logic, IReadOnlyList<ChooserFilt
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);
 }
 
-/// <summary>回填映射条目：target=表单目标字段（去前缀统一），column=来源表列（物理列或受控虚拟列，对齐旧语义）。</summary>
+/// <summary>回填映射条目：target=表单目标字段（去前缀统一），column=来源表列（物理列或受控虚拟列，对齐既有实现语义）。</summary>
 public sealed record ChooserReturnItem(string Target, string Column);
 
 /// <summary>RETURN_ITEMS JSON 数组解析（有序回填映射）。</summary>

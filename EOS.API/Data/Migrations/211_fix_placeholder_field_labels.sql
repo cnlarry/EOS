@@ -7,10 +7,10 @@
   兜底拦不住，于是统一表单/列表上出现字面量 "NULL" 的标签。
 
   还原来源按可靠性分三档：
-    1. F_REMARK：同一批脚本写入的旧系统列说明（真名被误放进备注列），210 行；
+    1. F_REMARK：同一批脚本写入的既有实现列说明（真名被误放进备注列），210 行；
     2. 备份表镜像源表：MODULES_Backup_ADR004 / SYSDL_Backup_ADR004 是 MODULES / SYSDL 的
        迁移前备份，列名一一对应，取源表 F_DESC；源表已退役或无对应列的三列
-       （UPDATE_SP / AFTERSAVE_SP / G_IDX）按旧系统表单标签补齐，69 行；
+       （UPDATE_SP / AFTERSAVE_SP / G_IDX）按既有实现表单标签补齐，69 行；
     3. 单列按语义补：SAM_OUT_D.IN_SERIAL_NO 与 IN_TYPE/IN_NO 同组，取「入库项次」，1 行。
 
   同时修正 PRODUCT.CONFIRM_TAG 的复合格角色：它是批核状态位，被配成「批核人」的从字段
@@ -29,7 +29,7 @@ DECLARE @Now DATETIME = SYSDATETIME();
 DECLARE @By NVARCHAR(20) = N'EOS-FIELD-LABEL';
 DECLARE @Remarks INT = 0, @ModuleBackup INT = 0, @SysdlBackup INT = 0, @Single INT = 0;
 
-/* ---------- 1. 有 F_REMARK 的：用旧系统列说明还原 ---------- */
+/* ---------- 1. 有 F_REMARK 的：用既有实现列说明还原 ---------- */
 UPDATE dbo.FIELDS
    SET F_DESC = LTRIM(RTRIM(F_REMARK)),
        LAST_UPDATE_BY = @By,
@@ -54,7 +54,7 @@ UPDATE b
    AND LTRIM(RTRIM(b.F_ID)) <> N'FILTER';
 SET @ModuleBackup = @@ROWCOUNT;
 
-/* 源表已无此三列，或源表无对应列：按旧系统表单标签补齐 */
+/* 源表已无此三列，或源表无对应列：按既有实现表单标签补齐 */
 UPDATE dbo.FIELDS
    SET F_DESC = v.Label, LAST_UPDATE_BY = @By, LAST_UPDATE_DATE = @Now
   FROM dbo.FIELDS f

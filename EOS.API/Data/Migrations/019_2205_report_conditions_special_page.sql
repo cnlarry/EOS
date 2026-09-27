@@ -3,7 +3,7 @@
 -- ----------------------------------------------------------------------------
 -- Database: EOS.ERP (the single business database of the new system)
 --
--- Context: 2205 (formerly RPT/SysqrDft.aspx) maintains default condition definitions
+-- Context: 2205 (formerly ) maintains default condition definitions
 -- for the report viewer's condition panel (SYSQR_DA master + SYSQR_DEFAULT condition rows).
 -- Conditions use a domain-specific DSL (F_TYPE 1-5) that the unified form cannot handle
 -- with typed editing and server-side validation. It is reclassified as a custom page

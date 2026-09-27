@@ -41,7 +41,7 @@ INSERT INTO @targets (T_ID, F_ID, REASON) VALUES
     (N'PRODUCT', N'NOT_IN_QTY',    N'预计入库＝制令未完工量（重算回写）'),
     (N'PRODUCT', N'NOT_GET_QTY',   N'预计领料＝制令未领量（重算回写）'),
     (N'PRODUCT', N'IN_BUY_QTY',    N'采购在途＝请购未采购＋采购未收货（重算回写）'),
-    -- 派生列：旧系统遗留的库存类计算结果，当前无写入者，同样不接受手工填写
+    -- 派生列：既有实现遗留的库存类计算结果，当前无写入者，同样不接受手工填写
     (N'PRODUCT', N'MRP_QTY_ABS',   N'需采购数量（派生，无写入者）'),
     (N'PRODUCT', N'SAFETY_MRP_QTY',N'欠安全库存（派生，无写入者）'),
     (N'PRODUCT', N'AMOUNT',        N'库存金额（派生，无写入者）'),

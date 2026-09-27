@@ -14,7 +14,7 @@
 --     也避开引擎对空限额的处理差异）；
 --   · 规则用 `qty-not-exceed` 的新能力 **`usageOnly`**（本单侧贡献为 0，比较式退化为
 --     `usage(T) > limit(T)`），数量与备品两量纲写在 `dimensions` 里（命中只输出一次诊断，
---     与旧实现那句 `WHERE a OR b` 同形）。
+--     与既有实现那句 `WHERE a OR b` 同形）。
 -- 新增能力见；诊断列 = 本单明细行序号 + 被引用侧 6 个聚合值（与旧文案逐字一致）。
 -- 幂等：视图 CREATE OR ALTER；规则按 模块+SAVE+VALIDATION_KEY+SEQ 合并；快照仅当仍含族名时改写。
 -- 注意：PARAM_STRUCT 里的换行必须是转义的 `\r\n`（JSON 不允许裸控制字符），MESSAGE 列才用真实 CRLF。

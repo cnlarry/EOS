@@ -21,7 +21,7 @@
 {"question": "流程条件写了系统解析不了的表达式会怎样？", "expected": "拒绝启动流程（FLOW_CONDITION_UNSUPPORTED），绝不拼接执行。", "sources": ["WorkflowEngine", "DataFilterParser"]}
 {"question": "有单据在途时能删除流程定义吗？", "expected": "不能；有在途实例时禁止删除定义，防孤儿实例。", "sources": ["FlowDefinitionService"]}
 {"question": "流程设计里能写不存在的审批人吗？", "expected": "不能；审批人按 SYSDL 真实用户校验。", "sources": ["FlowDefinitionService.SaveFlowAsync"]}
-{"question": "旧系统的用户存 SQL 表还能新增吗？", "expected": "不能；SYSQD/SYSQL/LISTREPORT 已物理删除，不再新增用户运行时存 SQL。", "sources": ["030_tsql_tables_drop.sql"]}
+{"question": "既有实现的用户存 SQL 表还能新增吗？", "expected": "不能；SYSQD/SYSQL/LISTREPORT 已物理删除，不再新增用户运行时存 SQL。", "sources": ["030_tsql_tables_drop.sql"]}
 {"question": "2205 报表过滤条件设置页还能用吗？", "expected": "已下线；条件走 SYSQR_DEFAULT.FILTER_TEMPLATE 结构化维护。", "sources": ["025_report_conditions_page_offline.sql"]}
 {"question": "保存单据时必须带什么防重复？", "expected": "幂等键；缺失返回 IDEMPOTENCY_KEY_REQUIRED。", "sources": ["WorkbenchCommandHandler"]}
 {"question": "单号冲突时系统怎么提示？", "expected": "返回 BILL_NO_CONFLICT 友好提示，而不是静默覆盖或报错 500。", "sources": ["BillNoGenerator"]}

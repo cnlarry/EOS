@@ -5,10 +5,10 @@
 -- 其客户/厂商是否与本单一致"入 MODULE_VALIDATION_RULE（key = reference-exists，STAGE = SAVE）。
 --
 -- 判据与文案逐条对照 C#（CopDomainRules / PurDomainRules / CusDomainRules / MouDomainRules）：
---   · 反向一致性断言用 mismatch（EXISTS + <>）：旧实现是"存在一行且两列不等"，
+--   · 反向一致性断言用 mismatch（EXISTS + <>）：既有实现是"存在一行且两列不等"，
 --     若写成"NOT EXISTS 两列相等"，引用本身缺失时会被误报成"客户不符"。
 --   · 明细级断言的来源行由明细表携带的主表主键列限定在当前单据内。
---   · 缺失行按 lineField 回填 {ROWS}；pur-apply 旧实现无条数上限，取模板上限 100。
+--   · 缺失行按 lineField 回填 {ROWS}；pur-apply 既有实现无条数上限，取模板上限 100。
 --
 -- 1606 采购单在原目录里只有厂商一条（迁移 083），现按 C# 判据补回"申购单/产品"两条为
 -- 独立规则（SEQ=2），带 ISNULL(类型)<>'' 的空值放行与单据范围限定——这正是 083 当时
@@ -254,7 +254,7 @@ INSERT INTO @RULES (MODULE_ID, SEQ, VALIDATION_KEY, PARAM_STRUCT, MESSAGE, REMAR
  + N'"lineField":"SERIAL_NO","message":"以下序号项询价单序号与产品编号不相符 ' + @NLJ + N'{ROWS}"}]}',
  NULL, N'厂商报价单厂商/询价单/询价行引用校验', N'pur-quote');
 
--- 申购单：仅产品（旧实现无条数上限）
+-- 申购单：仅产品（既有实现无条数上限）
 INSERT INTO @RULES (MODULE_ID, SEQ, VALIDATION_KEY, PARAM_STRUCT, MESSAGE, REMARK, SOURCE_REF) VALUES
 (1615, 1, N'reference-exists', N'{"checks":[' + @PRODUCT_WIDE + N']}', N'以下序号项产品编号不存在 ' + @NLJ + N'{ROWS}', N'成品请购单产品引用校验', N'pur-apply'),
 (1616, 1, N'reference-exists', N'{"checks":[' + @PRODUCT_WIDE + N']}', N'以下序号项产品编号不存在 ' + @NLJ + N'{ROWS}', N'备料单产品引用校验', N'pur-apply');

@@ -2,7 +2,7 @@
 -- EOS.ERP migration 162: 预收帐款单入效果目录并退役 C#（cop-prepay：170103）
 -- ----------------------------------------------------------------------------
 -- 旧过程 `P_COP_PREPAY_After_Save` / C# `CopDomainRules.CopPrepayAfterSaveAsync` 只有一段写：
---   主表 `AMOUNT` ＝ `ROUND(SUM(明细 AMOUNT), 3)`；明细为空时不回写（旧实现为内连接形态）。
+--   主表 `AMOUNT` ＝ `ROUND(SUM(明细 AMOUNT), 3)`；明细为空时不回写（既有实现为内连接形态）。
 --   旧的"客户存在且未停用"前置校验早已在目录里（SAVE 期 `reference-exists`），本迁移不动它。
 -- 承载方式：新增服务处理器 **`cop-prepay-rollup`**（两张表 + 各列名 + 舍入位数，全部校验为物理列）。
 -- 幂等：动作按 模块+SAVE+SEQ 合并；快照族名仅当仍含 `cop-prepay` 时改写。

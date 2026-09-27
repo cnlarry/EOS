@@ -7,7 +7,7 @@
 --   X  = 候选表行（待检出的重复行）。
 -- 参数分工：keyFields/keySource 描述候选行的唯一键来源；excludeSelf.keyFields 描述候选行
 -- 主键列，按当前单据主键排除自身；filter 为作用于候选行的闭式条件；diagnostics 为回填
--- 消息占位符的候选行列。既有 mou-assess 行沿用旧形态（excludeSelf.source 兼作键来源与
+-- 消息占位符的候选行列。既有 mou-assess 行沿用既有做法形态（excludeSelf.source 兼作键来源与
 -- 自排除来源），其 keyFields 与 source.fields 数量本就不一致，一并改写为新形态。
 --
 -- 仅落配置工作区表；配置随模块重新发布后进入 Definition 快照并对保存生效。

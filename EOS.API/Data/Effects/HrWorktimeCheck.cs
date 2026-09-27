@@ -11,11 +11,11 @@ namespace EOS.API.Data.Effects;
 /// （本单工时明细按员工汇总 vs 同一出勤日所属月的加班申请明细按员工汇总），
 /// 现有校验模板的聚合都在"本单/被引用行"范围内，表达不了跨单据的同键聚合 ⇒ 走 `custom-validation`。
 ///
-/// 门控：业务设置表 `HR_SETUP.REQUIRE_ENACTMENT=1` 时才判（设置关闭即放行，与旧实现一致）。
-/// **移植时按意图修正的一处缺陷（已登记）**：旧实现的左侧聚合写成 `HR_WORKTIME_M.EMP_ID/OVERTIME/...`，
-/// 而这两列都不在工时主表上（在明细 `HR_WORKTIME_D` 上）⇒ 门控一旦打开，旧实现必抛
+/// 门控：业务设置表 `HR_SETUP.REQUIRE_ENACTMENT=1` 时才判（设置关闭即放行，与既有实现一致）。
+/// **移植时按意图修正的一处缺陷（已登记）**：既有实现的左侧聚合写成 `HR_WORKTIME_M.EMP_ID/OVERTIME/...`，
+/// 而这两列都不在工时主表上（在明细 `HR_WORKTIME_D` 上）⇒ 门控一旦打开，既有实现必抛
 /// "列名无效"（500）而不是给出校验结论；本移植改为按**明细** `EMP_ID` 分组（即原意），
-/// 并把"申请侧"缺失员工的显示值按 0 呈现（旧实现在该分支同样会抛异常）。
+/// 并把"申请侧"缺失员工的显示值按 0 呈现（既有实现在该分支同样会抛异常）。
 /// 表名与列名全部来自闭合参数并逐项校验为物理列；单据键值只作参数传入。
 /// </summary>
 internal static class HrWorktimeCheck
@@ -51,7 +51,7 @@ internal static class HrWorktimeCheck
         var applyJoin = $"d.{Q(c.Apply.TypeField)}=m.{Q(c.Apply.TypeField)}"
                       + $" AND d.{Q(c.Apply.NoField)}=m.{Q(c.Apply.NoField)}";
 
-        // 本单工时：按明细员工分组求和（旧实现误用主表列，见类注释）
+        // 本单工时：按明细员工分组求和（既有实现误用主表列，见类注释）
         var own = $"""
             SELECT d.{Q(c.Worktime.EmpField)} AS EMP_ID, SUM(d.{Q(c.Worktime.OverTimeField)}) AS OT,
                    SUM(d.{Q(c.Worktime.RestOverTimeField)}) AS ROT,

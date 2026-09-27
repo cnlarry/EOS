@@ -5,13 +5,13 @@
 --   本单工时明细按员工汇总 vs 本单出勤日所属月的加班申请明细按员工汇总。
 --   聚合跨单据（申请侧是当月全部加班申请单），现有模板的聚合都在"本单/被引用行"范围内
 --   ⇒ 走校验目录的 `custom-validation`（注册实现 **hr-worktime-check**）。
---   门控：业务设置表 `HR_SETUP.REQUIRE_ENACTMENT=1` 时才判（设置关闭即放行，与旧实现一致）。
+--   门控：业务设置表 `HR_SETUP.REQUIRE_ENACTMENT=1` 时才判（设置关闭即放行，与既有实现一致）。
 --
 -- **移植时按意图修正的一处缺陷（同批登记到覆盖率报告 §八"有意差异"）**：
---   旧实现的左侧聚合写成 `HR_WORKTIME_M.EMP_ID / OVERTIME / REST_OVERTIME / HOLIDAY_OVERTIME`，
---   而这四列都在**明细** `HR_WORKTIME_D` 上、主表并没有——门控一旦打开，旧实现必抛
+--   既有实现的左侧聚合写成 `HR_WORKTIME_M.EMP_ID / OVERTIME / REST_OVERTIME / HOLIDAY_OVERTIME`，
+--   而这四列都在**明细** `HR_WORKTIME_D` 上、主表并没有——门控一旦打开，既有实现必抛
 --   "列名 'EMP_ID' 无效"（保存 500），而不是给出校验结论；本移植改为按明细 `EMP_ID` 分组
---   （即原意），并把申请侧缺失员工的显示值按 0 呈现（旧实现在该分支同样抛异常）。
+--   （即原意），并把申请侧缺失员工的显示值按 0 呈现（既有实现在该分支同样抛异常）。
 --   当前库内 `HR_SETUP.REQUIRE_ENACTMENT=0`，门控关闭，故本次退役**运行期行为不变**。
 --
 -- 幂等：规则按 模块+SAVE+VALIDATION_KEY+SEQ 合并；快照族名仅当仍含族名时改写。
