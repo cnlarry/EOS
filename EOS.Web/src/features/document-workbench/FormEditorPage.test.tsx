@@ -823,7 +823,7 @@ describe('FormEditorPage', () => {
   })
 
   it('回填映射键名写成 PascalCase 的存量行同样回填（选客户不再"没有任何反应"）', async () => {
-    const legacyCasing: FormDefinition = {
+    const baselineCasing: FormDefinition = {
       ...formDefinition,
       masterFields: [
         field('CLIENT_ID', '客户', {
@@ -837,7 +837,7 @@ describe('FormEditorPage', () => {
     }
     apiClientMock.get.mockImplementation(async (path: string) => {
       const p = String(path)
-      if (p.includes('/form-definition')) return legacyCasing
+      if (p.includes('/form-definition')) return baselineCasing
       if (p.includes('/record')) return recordBundle
       if (p.includes('/form-chooser/')) return { columns: [{ key: 'CLIENT_ID', label: '客户代号' }, { key: 'CLIENT_NAME', label: '客户名称' }], rows: [{ CLIENT_ID: 'C1', CLIENT_NAME: '张氏' }], total: 1 }
       throw new Error(`unexpected GET ${p}`)

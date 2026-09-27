@@ -44,7 +44,7 @@ public class ModuleRouteValidatorTests
     [InlineData(null, 129801)]
     public void InvalidOrPlaceholderRoutes_FallBackToPlaceholder(string? url, int moduleId)
     {
-        Assert.Equal($"/legacy/modules/{moduleId}", ModuleRouteValidator.Resolve(url, moduleId));
+        Assert.Equal($"/fallback/modules/{moduleId}", ModuleRouteValidator.Resolve(url, moduleId));
     }
 
     [Theory]
@@ -99,7 +99,7 @@ public class ModuleRouteValidatorTests
     [InlineData("/admin/tables", true)]
     [InlineData("/settings/system", true)]
     [InlineData("/workbench/{moduleId}/new", true)]
-    [InlineData("/legacy/modules/2307", true)]
+    [InlineData("/fallback/modules/2307", true)]
     [InlineData("/workbench/1406", false)]
     [InlineData("/reports/129801", false)]
     [InlineData("~/BOM/Product", false)]

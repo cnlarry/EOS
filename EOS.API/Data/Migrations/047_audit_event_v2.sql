@@ -1,8 +1,7 @@
 -- ============================================================================
 -- EOS.ERP migration 047: AUDIT_EVENT v2 (SYSDF-compatible dual write removed)
 -- ----------------------------------------------------------------------------
--- The new-system operation log no longer mirrors the legacy SYSDF table.
--- Compared with SYSDF (LOG_IDX/M_IDX/RECORD_IDX/CONTENT/TYPE/EXEC_BY/EXEC_DATE/
+-- The new-system operation log no longer mirrors the historic SYSDF table.-- Compared with SYSDF (LOG_IDX/M_IDX/RECORD_IDX/CONTENT/TYPE/EXEC_BY/EXEC_DATE/
 -- CI/OPERFLAG), AUDIT_EVENT v2 keeps every SYSDF capability and adds:
 --   TRACE_ID           : W3C trace id, joins log/MCP/error responses
 --   ACTOR_DISPLAY_NAME : employee display name (SYSDF EXEC_BY mixed id/name)

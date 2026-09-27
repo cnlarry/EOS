@@ -145,7 +145,7 @@ public sealed class EffectConditionCompiler
                     return new EffectSqlFragment($"{qualified} = {parameter.Name}", new[] { parameter });
                 }
                 // value-neq defaults to SQL <> (NULL rows excluded). nullAsMatch:true mirrors
-                // legacy IF/ELSE branches where a NULL value takes the "not equal" path.
+                // baseline IF/ELSE branches where a NULL value takes the "not equal" path.
                 var nullAsMatch = item.TryGetProperty("nullAsMatch", out var nullFlag)
                     && nullFlag.ValueKind == JsonValueKind.True;
                 return new EffectSqlFragment(
@@ -157,7 +157,7 @@ public sealed class EffectConditionCompiler
             case "NOT-EXISTS":
                 var notExists = CompileNotExists(item, resolveAlias, isSysssKey, outerAlias);
                 // negate:true turns NOT EXISTS into EXISTS — used by master completion
-                // reset rows ("there is an unfinished line") that mirror the legacy
+                // reset rows ("there is an unfinished line") that mirror the baseline
                 // deapprove branch of the finished-flag procedures.
                 if (item.TryGetProperty("negate", out var negate)
                     && negate.ValueKind == JsonValueKind.True)

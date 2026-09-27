@@ -175,7 +175,7 @@ internal sealed record LinkStampTarget(
 
 /// <summary>
 /// One locating key for a link-stamp target: the target column and the master /
-/// source column feeding it. The source is omitted for the legacy positional form
+/// source column feeding it. The source is omitted for the baseline positional form
 /// (paired with the module primary key order) and explicit for {target, source}
 /// entries that locate rows through non-key columns.
 /// </summary>
@@ -318,7 +318,7 @@ internal sealed record LinkStampSpec(IReadOnlyList<LinkStampTarget> Targets)
     }
 
     /// <summary>
-    /// Reads locating keys: a plain name keeps the legacy positional pairing with
+    /// Reads locating keys: a plain name keeps the baseline positional pairing with
     /// the module primary key order, while an object {target, source} locates the
     /// target row through an explicit master column (non-key correlations).
     /// </summary>
@@ -420,7 +420,7 @@ public sealed class FieldCopyHandler : IEffectServiceHandler
             var headerFields = ServiceEffectFields.Read(root, "headerFields");
             foreach (var target in targets.EnumerateArray())
             {
-                // Shape B/C: a plain table name keeps the legacy same-name key join;
+                // Shape B/C: a plain table name keeps the baseline same-name key join;
                 // an object adds explicit refs [{target, source}] locating the target
                 // row from the master columns (e.g. the referenced original document
                 // keys on a change master) and may narrow the copied fields per target.
@@ -543,7 +543,7 @@ public sealed class FieldCopyHandler : IEffectServiceHandler
 }
 
 /// <summary>One resolved field-copy target: the table, its copied field pairs, and the
-/// locating column pairs (empty when the legacy same-name master key join applies).</summary>
+/// locating column pairs (empty when the baseline same-name master key join applies).</summary>
 internal sealed record FieldCopyTarget(
     string Table,
     IReadOnlyList<(string Target, string Source)> Pairs,

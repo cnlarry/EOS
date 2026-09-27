@@ -5,7 +5,7 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 
 /// <summary>
 /// balance-adjust: client/supplier usable-credit and prepay adjustments plus bank
-/// balance movements, with per-side currency rate conversion (ported from the legacy
+/// balance movements, with per-side currency rate conversion (ported from the baseline
 /// workflow procedures). Amount source = the module master's AMOUNT_TAX, falling back
 /// to AMOUNT, or the column named by the branch (creditField/prepayField/amountField)
 /// when the source document carries its own received/paid amounts; a master without
@@ -26,7 +26,7 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
         var columns = await new EffectPhysicalColumns().LoadAsync(context.Connection, token, context.Transaction);
         // The reverse structure states the deapprove semantics explicitly: the
         // net-replace change documents leave the credit untouched on deapprove
-        // (legacy no-op), so a none/no-reverse kind short-circuits the whole step.
+        // (baseline no-op), so a none/no-reverse kind short-circuits the whole step.
         if (context.ExecutionEvent is not (EffectEvent.ApproveEffect or EffectEvent.Save)
             && ReverseKind(context) is "none" or "no-reverse")
         {
@@ -37,7 +37,7 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
         // branches; the net-replace branch reads the referenced original document
         // instead and would fail on change masters without amount columns. Branches may
         // name their own amount column (receipts use RECEIVE_SUM, payments PAYOUT_SUM)
-        // because the legacy procedures pick different columns per document type.
+        // because the baseline procedures pick different columns per document type.
         var amountCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         string AmountFor(string? amountField)
         {
@@ -151,7 +151,7 @@ public sealed class BalanceAdjustHandler : IEffectServiceHandler
         return $"ROUND(M.{ServiceEffectSql.Q(amountColumn)} * {rate}, 2)";
     }
 
-    /// <summary>Side balance must not go below zero after a deduction (legacy behavior).</summary>
+    /// <summary>Side balance must not go below zero after a deduction (baseline behavior).</summary>
     private static async Task CheckBankBalanceAsync(
         ServiceEffectContext context,
         string amountExpression,

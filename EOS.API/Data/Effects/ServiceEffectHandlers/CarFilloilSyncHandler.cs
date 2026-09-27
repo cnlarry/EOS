@@ -53,7 +53,7 @@ public sealed class CarFilloilSyncHandler : IEffectServiceHandler
 
     /// <summary>
     /// Approve: push the document NOW readings onto the vehicle and deduct the
-    /// filled amount from the oil card (inner joins, legacy semantics).
+    /// filled amount from the oil card (inner joins, baseline semantics).
     /// </summary>
     internal static IReadOnlyList<string> BuildApproveStatement(CarFilloilSyncSpec spec)
     {

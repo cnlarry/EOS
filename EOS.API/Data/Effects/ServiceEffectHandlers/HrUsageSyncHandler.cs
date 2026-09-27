@@ -10,11 +10,11 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 ///   - 180206: HR_ENACTMENT_D.USED_* for the document month
 ///     (COUNT_MONTH = convert(varchar(6), COUNT_DATE, 112));
 ///   - 180207: HR_APPLY_D.USED_* for the exact document date.
-/// Per-employee SUM aggregation applies (decision H1: the legacy emp-only join
+/// Per-employee SUM aggregation applies (decision H1: the baseline emp-only join
 /// let later lines overwrite earlier ones for the same employee; summing is the
 /// intended accumulate semantics). Deapprove subtracts the same sums
 /// (reverse kind "auto-reverse"). Missing target rows mean zero rows, never an
-/// error — matching the legacy temp-table join. All identifiers come from
+/// error — matching the baseline temp-table join. All identifiers come from
 /// closed configuration checked against physical columns.
 /// </summary>
 public sealed class HrUsageSyncHandler : IEffectServiceHandler
@@ -75,7 +75,7 @@ public sealed class HrUsageSyncHandler : IEffectServiceHandler
 
     /// <summary>
     /// One UPDATE joining target lines to the target master (month or exact date)
-    /// and to this document's per-employee summed quantities. The legacy temp-table
+    /// and to this document's per-employee summed quantities. The baseline temp-table
     /// pair collapses into a single set statement with identical row effects.
     /// </summary>
     internal static string BuildUpdate(

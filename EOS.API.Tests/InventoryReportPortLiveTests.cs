@@ -33,7 +33,7 @@ public sealed class InventoryReportPortLiveTests
     /// <summary>单价列：按已登记的有意差异比较，不参与"逐字一致"断言。</summary>
     private static readonly string[] PriceColumns = ["PRICE_Q", "PRICE_J", "PRICE_X"];
 
-    private static readonly Dictionary<string, string> LegacyBodies = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, string> BaselineBodies = new(StringComparer.OrdinalIgnoreCase);
 
     [Fact]
     public async Task 库存日报_移植实现与原过程结构一致且单价差异符合登记口径()
@@ -49,55 +49,55 @@ public sealed class InventoryReportPortLiveTests
             Assert.NotNull(aggregate);
 
             string[] parameters = [DepotId, DepotId, "", "", "ADR12INV1", "ADR12INV9", "2024-01-01", "2024-01-31"];
-            var legacy = await RunLegacyAsync(connection, transaction, token, parameters);
+            var baseline = await RunBaselineAsync(connection, transaction, token, parameters);
             var ported = await RunPortedAsync(connection, transaction, aggregate!, token, parameters);
 
             // 行集合一致（同一对 (仓库, 料号) 的期初行 + 本期行）
             Assert.Equal(
-                legacy.Select(RowKey).OrderBy(item => item, StringComparer.Ordinal),
+                baseline.Select(RowKey).OrderBy(item => item, StringComparer.Ordinal),
                 ported.Select(RowKey).OrderBy(item => item, StringComparer.Ordinal));
 
-            var legacyRows = legacy.ToDictionary(RowKey, row => row, StringComparer.Ordinal);
+            var baselineRows = baseline.ToDictionary(RowKey, row => row, StringComparer.Ordinal);
             var portedRows = ported.ToDictionary(RowKey, row => row, StringComparer.Ordinal);
-            foreach (var (key, legacyRow) in legacyRows)
+            foreach (var (key, baselineRow) in baselineRows)
             {
                 var portedRow = portedRows[key];
-                foreach (var column in legacyRow.Keys)
+                foreach (var column in baselineRow.Keys)
                 {
                     if (PriceColumns.Contains(column, StringComparer.OrdinalIgnoreCase)) continue;
-                    Assert.True(legacyRow[column] == portedRow[column],
-                        $"行 {key} 列 {column}：旧=[{legacyRow[column]}] 新=[{portedRow[column]}]");
+                    Assert.True(baselineRow[column] == portedRow[column],
+                        $"行 {key} 列 {column}：旧=[{baselineRow[column]}] 新=[{portedRow[column]}]");
                 }
             }
 
             // 期初（APP_DATE=1900-01-01）：旧公式 vs 加权平均
-            var legacyOpen1 = legacyRows[RowKey(ProWithHistory, "1900-01-01")];
+            var baselineOpen1 = baselineRows[RowKey(ProWithHistory, "1900-01-01")];
             var portedOpen1 = portedRows[RowKey(ProWithHistory, "1900-01-01")];
-            Assert.Equal("16", legacyOpen1["QTY_Q"]);
+            Assert.Equal("16", baselineOpen1["QTY_Q"]);
             Assert.Equal("16", portedOpen1["QTY_Q"]);
             // 旧：10@5 → 2.5（分母 Q_old+2q=20），再 10@9 → (2.5*20+90)/30，再 -4 不改均价
-            Assert.Equal(4.6667, ToNumber(legacyOpen1["PRICE_Q"]), 4);
+            Assert.Equal(4.6667, ToNumber(baselineOpen1["PRICE_Q"]), 4);
             // 新：加权平均 (10*5 + 10*9 + (-4)*0) / 16
             Assert.Equal(8.75, ToNumber(portedOpen1["PRICE_Q"]), 4);
 
-            var legacyOpen2 = legacyRows[RowKey(ProSingleReceipt, "1900-01-01")];
+            var baselineOpen2 = baselineRows[RowKey(ProSingleReceipt, "1900-01-01")];
             var portedOpen2 = portedRows[RowKey(ProSingleReceipt, "1900-01-01")];
             // 旧：单笔 5@3 → (0*5+15)/(5+5)=1.5；新：加权平均 3
-            Assert.Equal(1.5, ToNumber(legacyOpen2["PRICE_Q"]), 4);
+            Assert.Equal(1.5, ToNumber(baselineOpen2["PRICE_Q"]), 4);
             Assert.Equal(3.0, ToNumber(portedOpen2["PRICE_Q"]), 4);
 
             // 本期发出成本：既有实现两处问题叠加——游标首行（排序第一对的期初行）被首次取值消费掉、
             // 未进入累计，且把当日发出再从累计里扣一次 ⇒ 首对的价格只反映本期收入（42/6=7）；
             // 新实现按当日累计加权平均：(16*8.75 + 42) / 22 = 8.272727
-            var legacyIssue = legacyRows[RowKey(ProWithHistory, "2024-01-15")];
+            var baselineIssue = baselineRows[RowKey(ProWithHistory, "2024-01-15")];
             var portedIssue = portedRows[RowKey(ProWithHistory, "2024-01-15")];
-            Assert.Equal("5", legacyIssue["QTY_X"]);
+            Assert.Equal("5", baselineIssue["QTY_X"]);
             Assert.Equal("5", portedIssue["QTY_X"]);
-            Assert.Equal(7.0, ToNumber(legacyIssue["PRICE_X"]), 4);
+            Assert.Equal(7.0, ToNumber(baselineIssue["PRICE_X"]), 4);
             Assert.Equal(8.272727, ToNumber(portedIssue["PRICE_X"]), 4);
 
             // 本期收入行的收入单价 = 流水单价（两侧一致，属结构口径）
-            Assert.Equal("7", legacyRows[RowKey(ProWithHistory, "2024-01-10")]["PRICE_J"]);
+            Assert.Equal("7", baselineRows[RowKey(ProWithHistory, "2024-01-10")]["PRICE_J"]);
             Assert.Equal("7", portedRows[RowKey(ProWithHistory, "2024-01-10")]["PRICE_J"]);
 
             // 区间外的料号不得出现（范围条件生效）
@@ -123,11 +123,11 @@ public sealed class InventoryReportPortLiveTests
 
             // 条件 6 = 成本计法（F_TYPE 2 固定单选）：1 表示"最近进价 × 汇率"
             string[] parameters = [DepotId, DepotId, "", "", "ADR12INV1", "ADR12INV9", "2024-01-01", "2024-01-31"];
-            var legacy = await RunLegacyAsync(connection, transaction, token, parameters, cb1: 1);
+            var baseline = await RunBaselineAsync(connection, transaction, token, parameters, cb1: 1);
             var ported = await RunPortedAsync(connection, transaction, aggregate, token, parameters, cb1: 1);
 
             // 造数：LAST_PURCHASE_PRICE=12，CURR_ID='ADR12CUR'（CURR_RATE=2）⇒ 两侧都应为 24
-            foreach (var row in legacy.Concat(ported))
+            foreach (var row in baseline.Concat(ported))
             {
                 Assert.Equal(24.0, ToNumber(row["PRICE_Q"]), 4);
                 Assert.Equal(24.0, ToNumber(row["PRICE_X"]), 4);
@@ -180,10 +180,10 @@ public sealed class InventoryReportPortLiveTests
     }
 
     /// <summary>
-    /// 跑「原过程」侧：正文取自测试夹具（`Fixtures/legacy-sprocs/`），
+    /// 跑「原过程」侧：正文取自测试夹具（`Fixtures/baseline-sprocs/`），
     /// 并以 `sp_executesql` 执行（动态批内的 `#temp` 随批结束释放＝过程作用域）。
     /// </summary>
-    private static async Task<List<Dictionary<string, string?>>> RunLegacyAsync(
+    private static async Task<List<Dictionary<string, string?>>> RunBaselineAsync(
         SqlConnection connection, SqlTransaction transaction, CancellationToken token,
         IReadOnlyList<string> parameters, int cb1 = 0)
     {
@@ -198,7 +198,7 @@ public sealed class InventoryReportPortLiveTests
                  @pro_no1, @pro_no2, @date1, @date2, @jc1, @cb1;
             """;
         await using var command = new SqlCommand(batch, connection, transaction);
-        command.Parameters.Add("@body", SqlDbType.NVarChar, -1).Value = LoadLegacyBody();
+        command.Parameters.Add("@body", SqlDbType.NVarChar, -1).Value = LoadBaselineBody();
         command.Parameters.AddWithValue("@p_depot1", parameters[0]);
         command.Parameters.AddWithValue("@p_depot2", parameters[1]);
         command.Parameters.AddWithValue("@p_sort1", parameters[2]);
@@ -230,18 +230,18 @@ public sealed class InventoryReportPortLiveTests
         return await ReadAllAsync(sqlCommand, token);
     }
 
-    private static string LoadLegacyBody()
+    private static string LoadBaselineBody()
     {
         var sproc = "P_RPT_" + ReportId.ToUpperInvariant();
-        if (LegacyBodies.TryGetValue(sproc, out var cached)) return cached;
-        var path = Path.Combine(RepoRoot(), "EOS.API.Tests", "Fixtures", "legacy-sprocs", $"{sproc}.sql");
+        if (BaselineBodies.TryGetValue(sproc, out var cached)) return cached;
+        var path = Path.Combine(RepoRoot(), "EOS.API.Tests", "Fixtures", "baseline-sprocs", $"{sproc}.sql");
         Assert.True(File.Exists(path), $"缺少旧过程基准夹具：{path}");
         var text = File.ReadAllText(path);
         var match = System.Text.RegularExpressions.Regex.Match(text,
             @"(?is)^\s*(?:--[^\n]*\n\s*)*CREATE\s+PROCEDURE\s+[^\s(]+.*?\bAS\b");
         Assert.True(match.Success, $"{sproc} 基准缺少 CREATE PROCEDURE ... AS 头");
         var body = text[match.Length..].TrimStart('\r', '\n');
-        LegacyBodies[sproc] = body;
+        BaselineBodies[sproc] = body;
         return body;
     }
 

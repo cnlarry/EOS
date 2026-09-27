@@ -28,34 +28,34 @@ public sealed class HrAnalysisReportPortLiveTests
     private const string AttendanceReportId = "HR_Diary_1";
 
     /// <summary>过程正文缓存（同一测试类内多次取用）。</summary>
-    private static readonly Dictionary<string, string> LegacyBodies = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, string> BaselineBodies = new(StringComparer.OrdinalIgnoreCase);
 
     [Fact]
     public async Task 人力状况分析表_移植实现与原过程逐行一致()
-        => await AssertReportMatchesLegacyAsync("HR_Employee_1", ["DEPT_ID"], []);
+        => await AssertReportMatchesBaselineAsync("HR_Employee_1", ["DEPT_ID"], []);
 
     [Theory]
     [InlineData("HR_Employee_3", "PROVINCE_ID")]
     [InlineData("HR_Employee_4", "NATION_ID")]
     [InlineData("HR_Employee_5", "DIPLOMA_ID")]
     public async Task 人力状况维度分析表_移植实现与原过程逐行一致(string reportId, string dimension)
-        => await AssertReportMatchesLegacyAsync(reportId, ["DEPT_ID", dimension], []);
+        => await AssertReportMatchesBaselineAsync(reportId, ["DEPT_ID", dimension], []);
 
     [Theory]
     [InlineData("HR_Employee_6")]
     [InlineData("HR_Employee_7")]
     public async Task 人力状况年龄段分析表_移植实现与原过程逐行一致(string reportId)
-        => await AssertReportMatchesLegacyAsync(reportId, ["DEPT_ID", "AGE_ID"], []);
+        => await AssertReportMatchesBaselineAsync(reportId, ["DEPT_ID", "AGE_ID"], []);
 
     [Fact]
     public async Task 考勤分析表_移植实现与原过程逐行一致()
-        => await AssertReportMatchesLegacyAsync(AttendanceReportId, ["DEPT_ID"], ["QINGJIA", "CHIDAO"]);
+        => await AssertReportMatchesBaselineAsync(AttendanceReportId, ["DEPT_ID"], ["QINGJIA", "CHIDAO"]);
 
     /// <summary>
     /// 在事务内造一批隔离数据（两个部门 + 覆盖各年龄段/工龄段/在职状态的员工 + 考勤记录），
     /// 两侧读出后比较。造数使用固定前缀，回滚后不留痕迹。
     /// </summary>
-    private static async Task AssertReportMatchesLegacyAsync(
+    private static async Task AssertReportMatchesBaselineAsync(
         string reportId,
         IReadOnlyList<string> keyColumns,
         IReadOnlyList<string> listColumns)
@@ -74,15 +74,15 @@ public sealed class HrAnalysisReportPortLiveTests
             // 全区间：考勤分析表的过程要求日期参数（COUNT_DATE 为 smalldatetime，上限 2079-06-06），
             // 其余报表忽略多余取值
             string[] wide = ["19000101", "20781231"];
-            var legacy = await RunLegacyAsync(connection, transaction, reportId, token, wide);
+            var baseline = await RunBaselineAsync(connection, transaction, reportId, token, wide);
             var ported = await RunPortedAsync(connection, transaction, aggregate!, token, wide);
-            AssertSameRows(reportId, legacy, ported, keyColumns, listColumns);
+            AssertSameRows(reportId, baseline, ported, keyColumns, listColumns);
 
             // 收窄到只覆盖部分考勤记录的区间再比一次
             string[] narrow = ["20240101", "20240131"];
-            var legacyRange = await RunLegacyAsync(connection, transaction, reportId, token, narrow);
+            var baselineRange = await RunBaselineAsync(connection, transaction, reportId, token, narrow);
             var portedRange = await RunPortedAsync(connection, transaction, aggregate!, token, narrow);
-            AssertSameRows($"{reportId}(日期区间)", legacyRange, portedRange, keyColumns, listColumns);
+            AssertSameRows($"{reportId}(日期区间)", baselineRange, portedRange, keyColumns, listColumns);
         }
         finally
         {
@@ -137,12 +137,12 @@ public sealed class HrAnalysisReportPortLiveTests
     }
 
     /// <summary>
-    /// 跑「原过程」侧：过程正文从测试夹具（`Fixtures/legacy-sprocs/`）现场读取后作为批处理执行
+    /// 跑「原过程」侧：过程正文从测试夹具（`Fixtures/baseline-sprocs/`）现场读取后作为批处理执行
     /// —— 夹具是既有行为的版本化存档，因此过程从库里下线、SSDT 快照不再包含它们之后，
     /// 对拍证据依然成立，且不必把旧过程正文抄进代码（避免再造一份"翻译来的 C#"）。
     /// 文件名按报表编号推导（`P_RPT_<REPORT_ID>`），代码里不出现过程全名。
     /// </summary>
-    private static async Task<List<Dictionary<string, string?>>> RunLegacyAsync(
+    private static async Task<List<Dictionary<string, string?>>> RunBaselineAsync(
         SqlConnection connection, SqlTransaction transaction, string reportId, CancellationToken token, IReadOnlyList<string> parameters)
     {
         // 过程体里的临时表按"过程作用域"在建它的批结束时释放；改用 sp_executesql 执行即等价
@@ -152,7 +152,7 @@ public sealed class HrAnalysisReportPortLiveTests
             ? "DECLARE @date1 nvarchar(20)=@p1, @date2 nvarchar(20)=@p2;\nEXEC sp_executesql @body, N'@date1 nvarchar(20), @date2 nvarchar(20)', @date1, @date2;"
             : "EXEC sp_executesql @body;";
         await using var command = new SqlCommand(batch, connection, transaction);
-        command.Parameters.Add("@body", SqlDbType.NVarChar, -1).Value = LoadLegacyBody(reportId);
+        command.Parameters.Add("@body", SqlDbType.NVarChar, -1).Value = LoadBaselineBody(reportId);
         if (diary)
         {
             command.Parameters.AddWithValue("@p1", parameters.Count > 0 ? parameters[0] : DBNull.Value);
@@ -162,11 +162,11 @@ public sealed class HrAnalysisReportPortLiveTests
     }
 
     /// <summary>读取测试夹具中的过程正文（去掉 `CREATE PROCEDURE … AS` 头，保留过程体）。</summary>
-    private static string LoadLegacyBody(string reportId)
+    private static string LoadBaselineBody(string reportId)
     {
-        if (LegacyBodies.TryGetValue(reportId, out var cached)) return cached;
+        if (BaselineBodies.TryGetValue(reportId, out var cached)) return cached;
         var sproc = "P_RPT_" + reportId.ToUpperInvariant();
-        var path = Path.Combine(RepoRoot(), "EOS.API.Tests", "Fixtures", "legacy-sprocs", $"{sproc}.sql");
+        var path = Path.Combine(RepoRoot(), "EOS.API.Tests", "Fixtures", "baseline-sprocs", $"{sproc}.sql");
         Assert.True(File.Exists(path), $"缺少旧过程基准夹具：{path}");
         var text = File.ReadAllText(path);
         // 头部形态两种：参数与 `AS` 分行写，或 `CREATE PROCEDURE dbo.X AS <body>` 一行到底
@@ -174,7 +174,7 @@ public sealed class HrAnalysisReportPortLiveTests
             @"(?is)^\s*(?:--[^\n]*\n\s*)*CREATE\s+PROCEDURE\s+[^\s(]+.*?\bAS\b");
         Assert.True(match.Success, $"{sproc} 快照缺少 CREATE PROCEDURE ... AS 头");
         var body = text[match.Length..].TrimStart('\r', '\n');
-        LegacyBodies[reportId] = body;
+        BaselineBodies[reportId] = body;
         return body;
     }
 
@@ -242,45 +242,45 @@ public sealed class HrAnalysisReportPortLiveTests
 
     private static void AssertSameRows(
         string label,
-        List<Dictionary<string, string?>> legacy,
+        List<Dictionary<string, string?>> baseline,
         List<Dictionary<string, string?>> ported,
         IReadOnlyList<string> keyColumns,
         IReadOnlyList<string> listColumns)
     {
         // 两侧列集合一致（列名与顺序都来自各自实现，顺序差异不算差异，但列集合必须相同）
-        Assert.Equal(legacy.FirstOrDefault()?.Keys.OrderBy(item => item, StringComparer.OrdinalIgnoreCase),
+        Assert.Equal(baseline.FirstOrDefault()?.Keys.OrderBy(item => item, StringComparer.OrdinalIgnoreCase),
             ported.FirstOrDefault()?.Keys.OrderBy(item => item, StringComparer.OrdinalIgnoreCase));
 
         string KeyOf(Dictionary<string, string?> row) => string.Join('|', keyColumns.Select(column => row.GetValueOrDefault(column) ?? string.Empty));
 
-        var legacyRows = legacy.ToDictionary(KeyOf, row => row, StringComparer.OrdinalIgnoreCase);
+        var baselineRows = baseline.ToDictionary(KeyOf, row => row, StringComparer.OrdinalIgnoreCase);
         var portedRows = ported.ToDictionary(KeyOf, row => row, StringComparer.OrdinalIgnoreCase);
-        Assert.Equal(legacyRows.Count, portedRows.Count);
-        Assert.Equal(legacyRows.Keys.OrderBy(item => item), portedRows.Keys.OrderBy(item => item));
+        Assert.Equal(baselineRows.Count, portedRows.Count);
+        Assert.Equal(baselineRows.Keys.OrderBy(item => item), portedRows.Keys.OrderBy(item => item));
 
-        foreach (var (key, legacyRow) in legacyRows)
+        foreach (var (key, baselineRow) in baselineRows)
         {
             var portedRow = portedRows[key];
             // 已登记的有意差异：既有实现用游标 `update #temp ... where DEPT_ID=@dept` 回填占比，
             // @dept 为 NULL 时永不命中 ⇒ 无部门分组（脏数据）的占比恒为 NULL；
             // 移植按窗口函数统一计算，同一分组得到真实占比。此处把差异钉住而不是放过。
-            var emptyDept = string.IsNullOrWhiteSpace(legacyRow.GetValueOrDefault("DEPT_ID"));
-            foreach (var column in legacyRow.Keys)
+            var emptyDept = string.IsNullOrWhiteSpace(baselineRow.GetValueOrDefault("DEPT_ID"));
+            foreach (var column in baselineRow.Keys)
             {
                 if (emptyDept && column.Equals("MAN_PERCENT", StringComparison.OrdinalIgnoreCase))
                 {
-                    Assert.Null(legacyRow[column]);
+                    Assert.Null(baselineRow[column]);
                     Assert.NotNull(portedRow[column]);
                     continue;
                 }
                 if (listColumns.Contains(column, StringComparer.OrdinalIgnoreCase))
                 {
                     // 名单列：既有实现用游标拼接（顺序不确定、带尾空格）⇒ 按名字集合比较
-                    Assert.Equal(Names(legacyRow[column]), Names(portedRow[column]));
+                    Assert.Equal(Names(baselineRow[column]), Names(portedRow[column]));
                     continue;
                 }
-                Assert.True(legacyRow[column] == portedRow[column],
-                    $"{label} 行 {key} 列 {column}：旧=[{legacyRow[column]}] 新=[{portedRow[column]}]");
+                Assert.True(baselineRow[column] == portedRow[column],
+                    $"{label} 行 {key} 列 {column}：旧=[{baselineRow[column]}] 新=[{portedRow[column]}]");
             }
         }
     }

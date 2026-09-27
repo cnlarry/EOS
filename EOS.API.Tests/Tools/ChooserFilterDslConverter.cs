@@ -76,13 +76,13 @@ internal static class ChooserFilterDslConverter
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>转换入口。sourceTable 用于裸字段限定与错误提示；跨表有效性由 options.JoinAliases 提供。</summary>
-    public static ConvertResult Convert(string? legacy, string sourceTable, ConvertOptions? options = null)
+    public static ConvertResult Convert(string? baseline, string sourceTable, ConvertOptions? options = null)
     {
-        if (string.IsNullOrWhiteSpace(legacy))
+        if (string.IsNullOrWhiteSpace(baseline))
         {
             return new ConvertResult(null, 1, null);
         }
-        var text = Normalize(legacy.Trim());
+        var text = Normalize(baseline.Trim());
         if (IsGarbage(text))
         {
             return new ConvertResult(null, 3, "脏数据（乱码/截断/未闭合引号/悬空运算符）");

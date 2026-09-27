@@ -7,8 +7,7 @@
 -- whose parent node 3098 does not exist in MODULES any more, so the menu tree
 -- can never render them (309804 even points at itself as root). None of them
 -- carries business-action / validation-rule wiring, and their report
--- definitions are legacy print layouts of the retired /reports pages. They are
--- dead configuration left behind by an earlier menu revision and are therefore
+-- definitions are historic print layouts of the retired /reports pages. They are-- dead configuration left behind by an earlier menu revision and are therefore
 -- removed physically instead of being hidden.
 --
 -- Scope:
@@ -258,8 +257,7 @@ PRINT N'[202] TABLES.T_REMARK 模块号残留清理完成。';
 IF EXISTS (SELECT 1 FROM dbo.TABLES WHERE T_REMARK LIKE N'%309801%' OR T_REMARK LIKE N'%309802%' OR T_REMARK LIKE N'%309803%' OR T_REMARK LIKE N'%309804%')
     PRINT N'[202] 警告：TABLES.T_REMARK 仍有 3098xx 残留，请检查上方 REPLACE 片段。';
 
--- Table-level extended properties (legacy class=1 / minor_id=0 convention).
-IF EXISTS (SELECT 1 FROM sys.extended_properties WHERE class = 1 AND minor_id = 0 AND major_id = OBJECT_ID(N'dbo.HRM_DIARY') AND name = N'MS_Description')
+-- Table-level extended properties (historic class=1 / minor_id=0 convention).IF EXISTS (SELECT 1 FROM sys.extended_properties WHERE class = 1 AND minor_id = 0 AND major_id = OBJECT_ID(N'dbo.HRM_DIARY') AND name = N'MS_Description')
     EXEC sys.sp_updateextendedproperty @name = N'MS_Description',
         @value = N'出勤日报表（人事薪资考勤；180652:考勤日报；180654:考勤模拟生成；180659:考勤真实抽取生成）',
         @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'HRM_DIARY';

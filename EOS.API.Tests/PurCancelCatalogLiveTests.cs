@@ -46,7 +46,7 @@ public sealed class PurCancelCatalogLiveTests
             // 合规：退料 8 ≤ 收料 10，备品 1 ≤ 2
             await SetCancelAsync(connection, transaction, token, qty: 8, spare: 1);
             Assert.Null(await ValidateAsync(connection, transaction, plan, token));
-            Assert.Empty(await LegacyViolationsAsync(connection, transaction, token));
+            Assert.Empty(await BaselineViolationsAsync(connection, transaction, token));
 
             // 数量越界：退料 12 > 收料 10（备品仍在额度内）——两量纲 OR 合并，命中即回报 7 列诊断
             await SetCancelAsync(connection, transaction, token, qty: 12, spare: 1);
@@ -54,7 +54,7 @@ public sealed class PurCancelCatalogLiveTests
             Assert.NotNull(exceeded);
             Assert.Contains("以下序号项退料数量大于收料", exceeded);
             Assert.Contains("1    10    10    12    5    2    1", exceeded);
-            Assert.Equal(["1"], await LegacyViolationsAsync(connection, transaction, token));
+            Assert.Equal(["1"], await BaselineViolationsAsync(connection, transaction, token));
             Assert.Equal(["1"], SerialsOf(exceeded));
 
             // 仅备品越界：退料 8 ≤ 10，备品 3 > 2 ⇒ 第二量纲独立生效
@@ -62,7 +62,7 @@ public sealed class PurCancelCatalogLiveTests
             var spareExceeded = await ValidateAsync(connection, transaction, plan, token);
             Assert.NotNull(spareExceeded);
             Assert.Contains("以下序号项退料数量大于收料", spareExceeded);
-            Assert.Equal(["1"], await LegacyViolationsAsync(connection, transaction, token));
+            Assert.Equal(["1"], await BaselineViolationsAsync(connection, transaction, token));
             Assert.Equal(["1"], SerialsOf(spareExceeded));
 
             // 批管品必填批号：批号为空且产品 MANAGE_BATCH=1 ⇒ 拒绝（与旧 C# 的文案逐字一致）
@@ -108,7 +108,7 @@ public sealed class PurCancelCatalogLiveTests
     /// 旧 C# 判据内联基准：按本单明细行的 (采购类型,采购单号,采购行) 关联三表并集，
     /// 回报"退料合计 > 收料合计（数量或备品）"的明细序号集合。
     /// </summary>
-    private static async Task<List<string>> LegacyViolationsAsync(
+    private static async Task<List<string>> BaselineViolationsAsync(
         SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
         const string sql = """

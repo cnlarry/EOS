@@ -135,7 +135,7 @@ public class MrpPlanAllocHandlerTests
         var sql = MrpPlanAllocHandler.BuildUpdate(
             OrderPlan(), ParseOrder(), new[] { "DD", "DD17110164" }, parameters);
 
-        // Segmented plan/spare/depot expressions ported from the legacy cursor.
+        // Segmented plan/spare/depot expressions ported from the baseline cursor.
         Assert.Contains("D.[PLAN_QTY] = CASE WHEN P.MRP_QTY > 0", sql);
         Assert.Contains("D.[PLAN_SPARE_QTY] = CASE WHEN P.MRP_QTY - D.QTY > 0", sql);
         Assert.Contains("D.[DEPOT_QTY] = CASE WHEN P.MRP_QTY > 0", sql);
@@ -145,7 +145,7 @@ public class MrpPlanAllocHandlerTests
         // This-document scope only; keys travel as parameters.
         Assert.Contains("WHERE M.[ORDER_TYPE] = @mk0 AND M.[ORDER_NO] = @mk1", sql);
         Assert.Equal(new object?[] { "DD", "DD17110164" }, parameters.Select(parameter => parameter.Value));
-        // Legacy NULL propagation: no COALESCE anywhere in the statement.
+        // Baseline NULL propagation: no COALESCE anywhere in the statement.
         Assert.DoesNotContain("COALESCE", sql, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ISNULL", sql, StringComparison.OrdinalIgnoreCase);
     }
@@ -162,7 +162,7 @@ public class MrpPlanAllocHandlerTests
         Assert.Contains("D.[DEPOT_QTY] = CASE WHEN P.MRP_QTY > 0", sql);
         Assert.Contains("WHEN P.MRP_QTY >= D.NEED_QTY THEN D.NEED_QTY ELSE P.MRP_QTY", sql);
         Assert.Contains("FROM dbo.[MOC_PRODUCE_D] D", sql);
-        // The legacy global update is corrected to this-document scope.
+        // The baseline global update is corrected to this-document scope.
         Assert.Contains("WHERE M.[PRODUCE_TYPE] = @mk0 AND M.[PRODUCE_NO] = @mk1", sql);
         Assert.Equal(new object?[] { "ZCML", "ZLD2608081" }, parameters.Select(parameter => parameter.Value));
         Assert.DoesNotContain("COALESCE", sql, StringComparison.OrdinalIgnoreCase);
@@ -242,7 +242,7 @@ public class MrpPlanAllocHandlerTests
             Assert.Equal(1, affected);
             Assert.Equal(0, await ReadDepotQtyAsync(connection, transaction, "ZCML", "ZLD2608081"));
 
-            // The legacy global update is gone: sibling documents are untouched.
+            // The baseline global update is gone: sibling documents are untouched.
             Assert.Equal(siblingBefore, await ReadDepotQtyAsync(connection, transaction, "ZCML", "ZLD2608080"));
         }
         finally

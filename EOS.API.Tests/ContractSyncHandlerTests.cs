@@ -68,7 +68,7 @@ public class ContractSyncHandlerTests
             """{"targetTable":"HR_EMPLOYEE","fields":["CONTRACT_DATE","CONTRACT_BEGIN_DATE"],"source":"HR_CONTRACT_D/M","includeSelfOnApprove":true}""").RootElement, plan, columns));
         Assert.Throws<EffectConfigException>(() => ContractSyncSpec.Parse(JsonDocument.Parse(
             """{"targetTable":"HR_EMPLOYEE","fields":["CONTRACT_DATE","CONTRACT_BEGIN_DATE","CONTRACT_NO"],"source":"HR_CONTRACT_M","includeSelfOnApprove":true}""").RootElement, plan, columns));
-        // Approve must include self (legacy semantics).
+        // Approve must include self (baseline semantics).
         Assert.Throws<EffectConfigException>(() => ContractSyncSpec.Parse(JsonDocument.Parse(
             """{"targetTable":"HR_EMPLOYEE","fields":["CONTRACT_DATE","CONTRACT_BEGIN_DATE","CONTRACT_NO"],"source":"HR_CONTRACT_D/M","includeSelfOnApprove":false}""").RootElement, plan, columns));
         // Missing physical objects fail closed.

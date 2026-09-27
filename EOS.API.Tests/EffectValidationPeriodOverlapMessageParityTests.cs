@@ -129,7 +129,7 @@ public sealed class EffectValidationPeriodOverlapMessageParityTests
                 pickName.Parameters.Add("@Emp", SqlDbType.NChar, 10).Value = empId;
                 name = (string?)await pickName.ExecuteScalarAsync(token);
             }
-            var (legacyHead, legacyTail) = detailTable switch
+            var (baselineHead, baselineTail) = detailTable switch
             {
                 "HR_SAFE_D" => ("以下人员重复投保 \r\n", name + "\t" + "ADR12S1"),
                 "HR_CERTIFY_D" => ("以下人员证件重复 \r\n", name + "\t" + "ADR12C1"),
@@ -137,7 +137,7 @@ public sealed class EffectValidationPeriodOverlapMessageParityTests
             };
 
             Assert.NotNull(catalog);
-            Assert.Equal(Normalize(legacyHead + legacyTail), Normalize(catalog));
+            Assert.Equal(Normalize(baselineHead + baselineTail), Normalize(catalog));
         }
         finally
         {

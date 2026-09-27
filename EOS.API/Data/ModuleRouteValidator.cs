@@ -44,7 +44,7 @@ internal static class ModuleRouteValidator
     ];
 
     private static readonly System.Text.RegularExpressions.Regex PlaceholderRoutePattern =
-        new(@"^/legacy/modules/\d+$", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        new(@"^/fallback/modules/\d+$", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     public static string Resolve(string? rawUrl, int moduleId)
     {
@@ -138,5 +138,5 @@ internal static class ModuleRouteValidator
     private static string Substitute(string template, int moduleId) =>
         template.Replace("{moduleId}", moduleId.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-    private static string Placeholder(int moduleId) => $"/legacy/modules/{moduleId}";
+    private static string Placeholder(int moduleId) => $"/fallback/modules/{moduleId}";
 }

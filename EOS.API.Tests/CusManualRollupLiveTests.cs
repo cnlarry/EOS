@@ -70,11 +70,11 @@ public sealed class CusManualRollupLiveTests
                                                     FROM dbo.CUS_MANUAL_PRO WHERE MANUAL_NO=@No GROUP BY MANUAL_NO) d
                   ON d.MANUAL_NO=m.MANUAL_NO WHERE m.MANUAL_NO=@No;
                 """, ("@No", ManualNo));
-            var byLegacy = await ReadAsync(connection, transaction, token);
+            var byBaseline = await ReadAsync(connection, transaction, token);
 
             // ③ 两表状态逐项一致
-            Assert.Equal(byLegacy.Master, byEffect.Master);
-            Assert.Equal(byLegacy.Details, byEffect.Details);
+            Assert.Equal(byBaseline.Master, byEffect.Master);
+            Assert.Equal(byBaseline.Details, byEffect.Details);
         }
         finally
         {

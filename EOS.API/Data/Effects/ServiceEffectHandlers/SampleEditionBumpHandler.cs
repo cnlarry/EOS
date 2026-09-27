@@ -6,12 +6,12 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 /// <summary>
 /// sample-edition-bump: on approval a sample document stamps its edition —
 /// empty becomes '01', otherwise the numeric edition increments by one, padded to
-/// two digits (ported from P_WF_SAMPLE_PRO). The legacy first-time branch also
+/// two digits (ported from P_WF_SAMPLE_PRO). The baseline first-time branch also
 /// copied the sample row into PRODUCT and launched the product approval workflow;
 /// that chain is intentionally not ported: its launcher (P_WF_RUN) was retired with
-/// the legacy workflow framework and no product flow definition exists, so a
+/// the baseline workflow framework and no product flow definition exists, so a
 /// first-time sample without a product row is rejected fail-closed instead of
-/// silently skipping the creation. Deapproval is a no-op (the legacy procedure has
+/// silently skipping the creation. Deapproval is a no-op (the baseline procedure has
 /// no deapprove branch), gated by reverse kind "none". Only document key values
 /// travel as parameters; all table/column names come from closed configuration
 /// checked against physical columns.
@@ -63,7 +63,7 @@ public sealed class SampleEditionBumpHandler : IEffectServiceHandler
     /// <summary>
     /// First-promotion guard: counts the document when it is a first-time sample
     /// (empty edition) with no matching product row. Non-zero means the approval must
-    /// be refused — the legacy creation chain (row copy + P_WF_RUN) is unported.
+    /// be refused — the baseline creation chain (row copy + P_WF_RUN) is unported.
     /// </summary>
     internal static string BuildFirstPromotionGuardQuery(SampleEditionBumpSpec spec)
     {

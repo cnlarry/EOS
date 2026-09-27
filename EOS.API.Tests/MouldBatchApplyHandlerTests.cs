@@ -9,7 +9,7 @@ namespace EOS.API.Tests;
 /// Unit (no DB) tests for the mould-batch-apply service handler: fail-closed
 /// parameter validation, the BATCH_SORT approve branches with the over-apply
 /// guard, and the asymmetric deapprove state machine (decision H2: the else
-/// branch drops the legacy FINISHED_QTY decrement; H3: sort '2' keeps no
+/// branch drops the baseline FINISHED_QTY decrement; H3: sort '2' keeps no
 /// PRODUCT writeback).
 /// </summary>
 public class MouldBatchApplyHandlerTests
@@ -96,7 +96,7 @@ public class MouldBatchApplyHandlerTests
     }
 
     [Fact]
-    public void BuildOverApplyGuard_MatchesLegacyPredicate()
+    public void BuildOverApplyGuard_MatchesBaselinePredicate()
     {
         var sql = MouldBatchApplyHandler.BuildOverApplyGuard();
         Assert.Contains("FROM dbo.[MOU_ACCEPT_M]", sql);
@@ -116,7 +116,7 @@ public class MouldBatchApplyHandlerTests
     [Fact]
     public void BuildDeapprove_Sort2_KeepsNoProductWriteback()
     {
-        // H3: replicate the legacy asymmetry (approve wrote PRODUCT, deapprove does not).
+        // H3: replicate the baseline asymmetry (approve wrote PRODUCT, deapprove does not).
         var statements = MouldBatchApplyHandler.BuildDeapproveStatements(ParseLanded(), "2", new List<EffectSqlParameter>());
         Assert.Single(statements);
         Assert.Contains("[FINISHED_QTY] = ISNULL([FINISHED_QTY], 0) - @qty", statements[0]);
@@ -127,7 +127,7 @@ public class MouldBatchApplyHandlerTests
     public void BuildDeapprove_ElseBranch_DoesNotDecrementFinished()
     {
         // H2: approve never added FINISHED_QTY on the scrap branch, so deapprove
-        // must not subtract it (legacy drift corrected).
+        // must not subtract it (baseline drift corrected).
         var statements = MouldBatchApplyHandler.BuildDeapproveStatements(ParseLanded(), "3", new List<EffectSqlParameter>());
         Assert.Single(statements);
         Assert.Contains("[BATCH_STATE] = 0", statements[0]);

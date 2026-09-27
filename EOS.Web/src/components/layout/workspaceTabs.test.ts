@@ -199,7 +199,7 @@ describe('workspaceReducer', () => {
     expect(moduleIdOfUrl('/detail-query/1606?x=1')).toBe('1606')
     expect(moduleIdOfUrl('/print/1606')).toBe('1606')
     expect(moduleIdOfUrl('/layout-designer/1606')).toBe('1606')
-    expect(moduleIdOfUrl('/legacy/modules/1606')).toBe('1606')
+    expect(moduleIdOfUrl('/fallback/modules/1606')).toBe('1606')
     expect(moduleIdOfUrl('/dashboard')).toBeNull()
   })
 

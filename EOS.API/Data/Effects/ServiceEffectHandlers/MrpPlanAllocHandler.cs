@@ -7,9 +7,9 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 /// mrp-plan-alloc: allocates available MRP stock to plan/provide quantities.
 /// order-open (customer order): writes PLAN_QTY / PLAN_SPARE_QTY / DEPOT_QTY on the
 /// order detail with the segmented available-stock semantics (intended behaviour;
-/// the legacy cursor never arms its per-product cache, see the design record).
+/// the baseline cursor never arms its per-product cache, see the design record).
 /// material-provide (produce order): recomputes DEPOT_QTY on this document's
-/// material lines as min(MRP_QTY, NEED_QTY), correcting the legacy global update.
+/// material lines as min(MRP_QTY, NEED_QTY), correcting the baseline global update.
 /// Approve and deapprove share the same recompute statement (reverse kind
 /// recompute reads current stock). Gated by SYSSS.PRO_MRP; off means zero rows.
 /// All identifiers come from closed configuration checked against physical

@@ -24,6 +24,9 @@ EOS.API/Data/Effects/ValidationChecks/DuplicateCheck.cs
 EOS.API/Data/Effects/ValidationChecks/ReferenceExistsCheck.cs
 EOS.API/Data/FieldAdminRepository.cs
 EOS.API/Data/FlowDefinitionService.cs
+EOS.API/Data/Forms/FormDesignPermissionResolver.cs
+EOS.API/Data/Forms/FormLayoutReader.cs
+EOS.API/Data/Forms/FormLayoutRepository.cs
 EOS.API/Data/HumanResourceJobsService.cs
 EOS.API/Data/ImportService.cs
 EOS.API/Data/KnowledgeRepository.cs

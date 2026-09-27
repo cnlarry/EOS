@@ -1196,7 +1196,7 @@ public sealed class WorkbenchCommandHandler(
     /// <summary>
     /// INSERT 列清单 = 表单字段（维持有序）∪ 服务端持有值的物理列。
     /// 表单隐藏的审计/归属列（FillServerColumns/回填已写入 values）按物理存在补回，
-    /// 否则 legacy-NOT NULL 列保存即 500；非表单、非物理的键（幽灵/串表）一律排除；
+    /// 否则 baseline-NOT NULL 列保存即 500；非表单、非物理的键（幽灵/串表）一律排除；
     /// 自增列排除；附加列按名排序保证语句稳定可测。
     /// </summary>
     internal static IReadOnlyList<string> BuildInsertColumns(

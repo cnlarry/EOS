@@ -17,14 +17,14 @@ namespace EOS.API.Tests.Tools;
 
 /// <summary>
 /// Shadow comparison runner for module effect configs: executes the
-/// legacy workflow stored procedure and the effect engine against the same record in
+/// baseline workflow stored procedure and the effect engine against the same record in
 /// two independent rolled-back transactions, snapshots the affected tables inside each
 /// transaction, then writes a normalized diff report to logs/shadow/. DB-only tool: it
 /// never writes workspace configuration, never sends HTTP and never starts services.
 /// Run with EOS_SHADOW_RUN=1 and optional EOS_SHADOW_MODULE / EOS_SHADOW_KEYS
 /// ("KEY1|KEY2"). The published snapshot must already carry the
 /// businessActions section and effectEngine.enabled=true (publish via the admin API
-/// before the first run). With EOS_SHADOW_ENGINE_ONLY=1 the legacy path is skipped
+/// before the first run). With EOS_SHADOW_ENGINE_ONLY=1 the baseline path is skipped
 /// (its stored procedures were retired) and only the engine path runs; the verdict
 /// is PASS when the engine executes cleanly with zero residue.
 /// Supported modules: 1607 (purchase receipt), 1406 (customer delivery),
@@ -407,7 +407,7 @@ public sealed class EffectShadowRunner
     };
 
     [Fact]
-    public async Task Approve_ShadowCompare_LegacySprocVsEffectEngine()
+    public async Task Approve_ShadowCompare_BaselineSprocVsEffectEngine()
     {
         if (Environment.GetEnvironmentVariable("EOS_SHADOW_RUN") != "1")
         {
@@ -455,11 +455,11 @@ public sealed class EffectShadowRunner
         Assert.NotEmpty(report.NewPath.Error ?? string.Empty);
         Assert.Empty(report.Tables);
 
-        // The legacy path decides whether this is equivalence evidence or an engine-only smoke
+        // The baseline path decides whether this is equivalence evidence or an engine-only smoke
         // test: a retired procedure can no longer block on its own, so it is skipped.
         if (report.OldPath.Status == "skipped")
         {
-            Console.WriteLine($"failure-case ENGINE_ONLY module={moduleId} event={shadowEvent} (legacy procedure retired)");
+            Console.WriteLine($"failure-case ENGINE_ONLY module={moduleId} event={shadowEvent} (baseline procedure retired)");
         }
         else
         {
@@ -558,32 +558,32 @@ public sealed class EffectShadowRunner
         await log.WriteLineAsync($"shadow run={runId} module={options.ModuleId} event={options.Event} version={version} keys={string.Join("|", keys)} sproc=(none)");
 
         var definitionVersion = $"module-{options.ModuleId}-v{version}";
-        var legacy = new LegacyPathResult("skipped", "旧路径已退役（遗留过程钩子从库内物理删除）。", null, 0, Array.Empty<string>());
+        var baseline = new BaselinePathResult("skipped", "旧路径已退役（遗留过程钩子从库内物理删除）。", null, 0, Array.Empty<string>());
         var engineResult = await RunEnginePathAsync(definition, spec, keys, deapprove, log);
         var engine = engineResult.Status;
         List<ShadowTableDiff> tables;
         ShadowAudit audit;
-        if (legacy.Status == "ok" && engine.Status == "ok")
+        if (baseline.Status == "ok" && engine.Status == "ok")
         {
-            (tables, audit) = CompareSnapshots(options.ModuleId, options.Event, legacy.Snapshot!, engineResult.Snapshot!, deapprove);
+            (tables, audit) = CompareSnapshots(options.ModuleId, options.Event, baseline.Snapshot!, engineResult.Snapshot!, deapprove);
         }
         else
         {
             tables = new List<ShadowTableDiff>();
-            audit = new ShadowAudit(legacy.AuditCount, engineResult.AuditCount,
-                legacy.AuditActions, engineResult.AuditActions);
+            audit = new ShadowAudit(baseline.AuditCount, engineResult.AuditCount,
+                baseline.AuditActions, engineResult.AuditActions);
         }
 
         var verdict = "PASS";
         var unnormalized = tables.Sum(table => table.Diffs.Count(diff => diff.Verdict == "diff" && !diff.Normalized));
         var diffCount = tables.Sum(table => table.Diffs.Count(diff => diff.Verdict == "diff"));
         var accepted = tables.Sum(table => table.Diffs.Count(diff => diff.Decision is not null));
-        if (legacy.Status == "ok" && engine.Status == "ok" && unnormalized == 0)
+        if (baseline.Status == "ok" && engine.Status == "ok" && unnormalized == 0)
         {
             verdict = "PASS";
         }
-        else if (legacy.Status == "blocked" && engine.Status == "blocked"
-                 && (options.Failure || LegacySameBlock(legacy, engine)))
+        else if (baseline.Status == "blocked" && engine.Status == "blocked"
+                 && (options.Failure || BaselineSameBlock(baseline, engine)))
         {
             verdict = "PASS";
         }
@@ -591,9 +591,9 @@ public sealed class EffectShadowRunner
         {
             verdict = "PASS";
         }
-        else if (options.Failure && legacy.Status == "skipped" && engine.Status == "blocked")
+        else if (options.Failure && baseline.Status == "skipped" && engine.Status == "blocked")
         {
-            // Legacy procedure retired: the failure gate that still matters is the engine
+            // Baseline procedure retired: the failure gate that still matters is the engine
             // refusing the document before writing anything.
             verdict = "PASS";
         }
@@ -608,7 +608,7 @@ public sealed class EffectShadowRunner
             definitionVersion,
             options.Event,
             keys,
-            new ShadowPathStatus(legacy.Status, legacy.Error),
+            new ShadowPathStatus(baseline.Status, baseline.Error),
             engine,
             tables,
             audit,
@@ -650,9 +650,9 @@ public sealed class EffectShadowRunner
         }
     }
 
-    private static bool LegacySameBlock(LegacyPathResult legacy, ShadowPathStatus engine) =>
-        legacy.Error is not null && engine.Error is not null
-        && legacy.Error.Equals(engine.Error, StringComparison.Ordinal);
+    private static bool BaselineSameBlock(BaselinePathResult baseline, ShadowPathStatus engine) =>
+        baseline.Error is not null && engine.Error is not null
+        && baseline.Error.Equals(engine.Error, StringComparison.Ordinal);
 
     private async Task<(int Version, string Json)> LoadCurrentSnapshotAsync(SqlConnection connection, int moduleId)
     {
@@ -801,7 +801,7 @@ public sealed class EffectShadowRunner
         if (deapprove)
         {
             // Most recently confirmed receivable that produced inventory-log history and
-            // whose lines can still be reversed against current stock (legacy deapprove
+            // whose lines can still be reversed against current stock (baseline deapprove
             // checks depot/batch sufficiency before rolling quantities back).
             const string deapproveSql = """
                 SELECT TOP 1 M.RECEIVE_TYPE, M.RECEIVE_NO
@@ -2125,10 +2125,10 @@ public sealed class EffectShadowRunner
     /// 1610 (收料核价单) sample selection. A callback is comparable when its detail rows
     /// point at existing receive or cancel lines — otherwise both paths would update
     /// nothing and the comparison would be meaningless. Deapprove is a no-op on both
-    /// sides (the action is configured with deapprove=none and the legacy procedure only
+    /// sides (the action is configured with deapprove=none and the baseline procedure only
     /// resets the confirm flag), so it proves zero residue rather than equality of an
     /// effect. The failure branch does not exist: the module carries no validation rule
-    /// and the legacy procedure has no failure exit.
+    /// and the baseline procedure has no failure exit.
     /// </summary>
     private static async Task<IReadOnlyList<string>> ResolveRecordKeys1610Async(
         SqlConnection connection, bool deapprove, bool failure)
@@ -2173,7 +2173,7 @@ public sealed class EffectShadowRunner
 
     /// <summary>
     /// 1610 snapshot scope: the callback document itself plus every receive and cancel
-    /// line it references (S_R_*) and their masters. The legacy procedure reprices the
+    /// line it references (S_R_*) and their masters. The baseline procedure reprices the
     /// receive lines and — only when no receive master was touched (its @@ROWCOUNT gate)
     /// — the cancel lines, while the engine reprices both target families.
     /// </summary>
@@ -2289,7 +2289,7 @@ public sealed class EffectShadowRunner
             // Deapprove restores the stored old price behind a latest-quote guard and
             // leaves the chaffer link stamps in place, while the engine reverse kinds
             // (restore-old-price / clear-refs) have not been compared against that
-            // legacy behaviour yet; no APPROVE validation rule is configured either,
+            // baseline behaviour yet; no APPROVE validation rule is configured either,
             // so only the approve path is specified (same trade-off as 170101/170201).
             throw new NotSupportedException(
                 "1404 影子规格仅支持 APPROVE（解批/失败分支的等价性尚未分析）。");
@@ -2318,7 +2318,7 @@ public sealed class EffectShadowRunner
         {
             // Deapprove shares the recalc-confirmed cost-parameter semantics with
             // approve and restores the stored old price; that equivalence has not
-            // been compared against the legacy procedure yet, and no APPROVE
+            // been compared against the baseline procedure yet, and no APPROVE
             // validation rule is configured, so only approve is specified.
             throw new NotSupportedException(
                 "1604 影子规格仅支持 APPROVE（解批/失败分支的等价性尚未分析）。");
@@ -2351,7 +2351,7 @@ public sealed class EffectShadowRunner
         };
         // The whole party price book is snapshotted: the sync updates matched lines
         // by key and inserts missing ones, so scoping to the quoted products only
-        // would miss pre-existing rows the legacy procedure also rewrites.
+        // would miss pre-existing rows the baseline procedure also rewrites.
         if (master.SupplierId is not null)
         {
             specs.Add(new("CLIENT_PRICE_M", new[] { "CLIENT_ID" }, "CLIENT_ID=@cid", new[] { new SqlParameter("@cid", master.SupplierId) }));
@@ -2745,7 +2745,7 @@ public sealed class EffectShadowRunner
         }
         var confirm = deapprove ? "1" : "0";
         // Prefer orders whose lines have a positive MRP footprint so the intended
-        // segmentation is exercised (the legacy cursor degenerates to PLAN=QTY/DEPOT=0;
+        // segmentation is exercised (the baseline cursor degenerates to PLAN=QTY/DEPOT=0;
         // see mrp-plan-alloc-design.md).
         const string sql = """
             SELECT TOP 1 M.ORDER_TYPE, M.ORDER_NO
@@ -3015,7 +3015,7 @@ public sealed class EffectShadowRunner
     /// <summary>
     /// Sample master (2401, P_WF_SAMPLE_PRO): approval bumps the edition stamp;
     /// the unported first-time creation chain is out of scope. The snapshot covers
-    /// the sample row plus the same-number product row (the legacy first-time path
+    /// the sample row plus the same-number product row (the baseline first-time path
     /// inserts it when missing).
     /// </summary>
     private static IReadOnlyList<TableSpec> BuildTableSpecsSamplePro(MasterContext master)
@@ -3342,7 +3342,7 @@ public sealed class EffectShadowRunner
     }
 
     /// <summary>
-    /// Material issue family (1503/1514/1517/2805/2806, legacy P_WF_MOC_GET): the document
+    /// Material issue family (1503/1514/1517/2805/2806, baseline P_WF_MOC_GET): the document
     /// consumes the produce (used quantity on the produce line), the customer order MORE
     /// row, the product's expected-get projection and the outbound stock move. Replaces the
     /// master+detail-only spec whose PASS could not see any of those tables.
@@ -3789,7 +3789,7 @@ public sealed class EffectShadowRunner
     /// Half-finished stock documents (2603 inbound / 2604 outbound, P_WF_HALF_IN /
     /// P_WF_HALF_OUT): approval moves the detail quantity into/out of the three-key
     /// half-stock slot, deapproval mirrors it. The compared footprint is the document
-    /// plus the touched half-stock rows (the legacy helper writes no depot log).
+    /// plus the touched half-stock rows (the baseline helper writes no depot log).
     /// </summary>
     private static IReadOnlyList<TableSpec> BuildTableSpecsHalfStock(int moduleId, MasterContext master)
     {
@@ -5091,14 +5091,14 @@ public sealed class EffectShadowRunner
     private static (List<ShadowTableDiff> Tables, ShadowAudit Audit) CompareSnapshots(
         int moduleId,
         string shadowEvent,
-        ShadowSnapshot legacy,
+        ShadowSnapshot baseline,
         ShadowSnapshot engine,
         bool deapprove)
     {
         var tables = new List<ShadowTableDiff>();
-        foreach (var table in legacy.Rows.Keys.Union(engine.Rows.Keys, StringComparer.Ordinal).OrderBy(name => name, StringComparer.Ordinal))
+        foreach (var table in baseline.Rows.Keys.Union(engine.Rows.Keys, StringComparer.Ordinal).OrderBy(name => name, StringComparer.Ordinal))
         {
-            var oldRows = legacy.Rows.TryGetValue(table, out var oldList)
+            var oldRows = baseline.Rows.TryGetValue(table, out var oldList)
                 ? oldList.ToList()
                 : new List<ShadowRow>();
             var newRows = engine.Rows.TryGetValue(table, out var newList)
@@ -5110,7 +5110,7 @@ public sealed class EffectShadowRunner
                 // (direction flipped, quantity negated) instead of deleting history; that row is
                 // dated at the reversal moment, so the pairing must not require equal dates.
                 // Cancel each paired original/reverse row so the remaining set can be
-                // compared with the legacy post-delete set.
+                // compared with the baseline post-delete set.
                 newRows = CancelReverseRows(newRows, "IN_OUT", "QTY",
                     new[] { "PRO_NO", "MUTUALITY_TYPE", "MUTUALITY_NO",
                         "MUTUALITY_SERIAL_NO", "DEPOT_ID", "BATCH_NO" });
@@ -5132,7 +5132,7 @@ public sealed class EffectShadowRunner
             }
             tables.Add(CompareTable(moduleId, shadowEvent, table, oldRows, newRows));
         }
-        var audit = new ShadowAudit(legacy.AuditCount, engine.AuditCount, legacy.AuditActions, engine.AuditActions);
+        var audit = new ShadowAudit(baseline.AuditCount, engine.AuditCount, baseline.AuditActions, engine.AuditActions);
         return (tables, audit);
     }
 
@@ -5630,7 +5630,7 @@ public sealed class EffectShadowRunner
         int AuditCount,
         IReadOnlyList<string> AuditActions);
 
-    private sealed record LegacyPathResult(
+    private sealed record BaselinePathResult(
         string Status,
         string? Error,
         ShadowSnapshot? Snapshot,

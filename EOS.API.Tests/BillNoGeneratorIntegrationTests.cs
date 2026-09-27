@@ -126,7 +126,7 @@ public sealed class BillNoGeneratorIntegrationTests
         Assert.False(string.IsNullOrWhiteSpace(expression));
 
         var template = BillNoGenerator.Parse(expression!, DateTime.Now);
-        var expected = await LegacyNextNoAsync(connection, masterTable, billNoField, billTypeField, billCode!, template);
+        var expected = await BaselineNextNoAsync(connection, masterTable, billNoField, billTypeField, billCode!, template);
         var actual = await BillNoGenerator.PeekAsync(connection, null, moduleId, CancellationToken.None);
         _output.WriteLine("模块 {0}（{1}，单别 {2}）：既有算法 {3} / 新发号器 {4}",
             moduleId, masterTable, billCode, expected, actual);
@@ -172,7 +172,7 @@ public sealed class BillNoGeneratorIntegrationTests
     }
 
     /// <summary>既有算法：主表内同单别 + 同字头下的最大单号 + 1（切换前的取号口径）。</summary>
-    private static async Task<string> LegacyNextNoAsync(
+    private static async Task<string> BaselineNextNoAsync(
         SqlConnection connection, string masterTable, string billNoField, string billTypeField,
         string billCode, BillNoGenerator.Template template)
     {

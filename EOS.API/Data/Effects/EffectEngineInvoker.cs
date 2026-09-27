@@ -10,7 +10,7 @@ public sealed class EffectEngineSettings
 }
 
 /// <summary>
-/// Entry point the legacy-bridge call sites consult before invoking a workflow
+/// Entry point the baseline-bridge call sites consult before invoking a workflow
 /// stored procedure. Gated by the global switch (appsettings EffectEngine:Enabled)
 /// AND the module flag inside the published definition (effectEngine.enabled). When
 /// either is off the caller falls back to the stored procedure unchanged; when on,
@@ -66,7 +66,7 @@ public sealed class EffectEngineInvoker(
 
     /// <summary>
     /// Runs the effect chain for the event. Returns (ran=false) when the engine is off
-    /// for this module, so the caller keeps its legacy path. With an ambient transaction
+    /// for this module, so the caller keeps its baseline path. With an ambient transaction
     /// it executes inside it; otherwise it manages its own transaction.
     /// </summary>
     public async Task<(bool Ran, string? Error)> TryRunAsync(

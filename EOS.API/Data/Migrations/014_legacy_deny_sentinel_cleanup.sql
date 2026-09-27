@@ -1,10 +1,8 @@
 -- ============================================================================
--- EOS.ERP migration 014: clean up legacy deny-list sentinel value '0'
--- ----------------------------------------------------------------------------
+-- EOS.ERP migration 014: clean up historic deny-list sentinel value '0'-- ----------------------------------------------------------------------------
 -- Database: EOS.ERP (the single business database of the new system)
 --
--- Context: legacy data stored "no denied fields" as '0' (the old grid split by ';'
--- and hid columns by name — '0' was never a valid column name, so it had no effect).
+-- Context: historic data stored "no denied fields" as '0' (the old grid split by ';'-- and hid columns by name — '0' was never a valid column name, so it had no effect).
 -- The new permission matrix validates against the field whitelist on save, so '0'
 -- causes a 400 error ("deny-view field 0 is not a field of module X"). This migration
 -- sets those '0' values to NULL in SYSDH/SYSDD six deny-list columns. The code side

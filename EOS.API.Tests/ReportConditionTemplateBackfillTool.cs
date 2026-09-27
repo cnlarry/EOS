@@ -9,7 +9,7 @@ using Xunit;
 namespace EOS.API.Tests;
 
 /// <summary>
-/// One-off tool (no-op by default): deterministically converts legacy SYSQR_DEFAULT
+/// One-off tool (no-op by default): deterministically converts baseline SYSQR_DEFAULT
 /// F_TYPE/F_EXPR condition DSL rows into FILTER_TEMPLATE JSON
 /// (reusing the same conversion pipeline used for structured chooser conditions).
 ///
@@ -72,10 +72,10 @@ public sealed class ReportConditionTemplateBackfillTool
             var row = new SourceRow(
                 reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2),
                 reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6));
-            var legacy = $"{row.Type}|{row.Expr}";
+            var baseline = $"{row.Type}|{row.Expr}";
             var result = ConditionTemplateDslConverter.Convert(row.Type, row.Expr, row.DefaultValue, row.Field, row.ParaName);
             if (result.Template is not null && result.Error is null)
-                converted.Add(new ConvertedRow(row, result.Template, legacy));
+                converted.Add(new ConvertedRow(row, result.Template, baseline));
             else
                 manual.Add(row);
         }

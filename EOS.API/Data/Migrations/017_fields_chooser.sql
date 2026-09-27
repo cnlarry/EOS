@@ -4,7 +4,7 @@
 -- → FILTER_STRUCT three-tier rule-based conversion (offline generated static conversion with drift guard:
 --   only writes when CHOOSE_FILTERn original text matches; otherwise NULL (fail-closed) with DRIFT logged)
 -- → DROP FIELDS four groups (24 columns) → rewrite P_Change_M_IDX → mark affected modules dirty.
--- Validation: tier-1 conversion is compile-tested via LegacyChooserFilterConverter + ChooserFilterValidator.
+-- Validation: tier-1 conversion is compile-tested via ChooserFilterDslConverter + ChooserFilterValidator.
 -- Note: CHOOSER_FILTER_MIGRATION_LOG is the audit/pending-rebuild queue, not a runtime channel.
 -- FILTER_STRUCT=NULL on active sources is fail-closed (empty options) at runtime.
 

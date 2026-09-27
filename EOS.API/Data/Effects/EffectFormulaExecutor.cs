@@ -450,7 +450,7 @@ public sealed class EffectFormulaExecutor
         // The appended value must be a scalar bound to this document: a bare D.column
         // has no source table in the UPDATE scope, so DETAIL/TABLE/MASTER sources go
         // through the same scalar-subquery builder as ordinary values (DISTINCT folds
-        // to MAX, matching the legacy per-group max() append).
+        // to MAX, matching the baseline per-group max() append).
         var value = op.Source.Scope.Equals("CONSTANT", StringComparison.OrdinalIgnoreCase)
             ? BuildConstantParameter(op, parameters)
             : BuildValue(op, targetAlias, parameters, aggregateOverride: "MAX");

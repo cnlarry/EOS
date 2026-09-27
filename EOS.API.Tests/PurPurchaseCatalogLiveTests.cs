@@ -72,12 +72,12 @@ public sealed class PurPurchaseCatalogLiveTests
             var byEffect = await ReadAsync(connection, transaction, token);
 
             await SeedAsync(connection, transaction, token, priceInEffectDaysAgo: -1);
-            await RunLegacyAsync(connection, transaction, token);
-            var byLegacy = await ReadAsync(connection, transaction, token);
+            await RunBaselineAsync(connection, transaction, token);
+            var byBaseline = await ReadAsync(connection, transaction, token);
 
-            Assert.Equal(byLegacy.Names, byEffect.Names);
-            Assert.Equal(byLegacy.Details, byEffect.Details);
-            Assert.Equal(byLegacy.MoreQty, byEffect.MoreQty);
+            Assert.Equal(byBaseline.Names, byEffect.Names);
+            Assert.Equal(byBaseline.Details, byEffect.Details);
+            Assert.Equal(byBaseline.MoreQty, byEffect.MoreQty);
 
             // 关键结论：补行（P2 待购行 → 明细序号 3、数量取待购合计）、单价回填、应购回填、数量分配、单号串联
             // 补行：待购表里尚未成行的 P2 追加为明细序号 2（数量取待购合计 2、单价取厂商计价 30）
@@ -92,7 +92,7 @@ public sealed class PurPurchaseCatalogLiveTests
     }
 
     /// <summary>旧 C# `PurPurchaseAfterSaveAsync` 的写段语句链（补行 → 带出 → 回填 → 清零回填 → 重算 → 汇总 → 分配 → 单号）。</summary>
-    private static Task RunLegacyAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    private static Task RunBaselineAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
         const string batch = """
             DECLARE @Type NVARCHAR(20) = N'ADR12PU', @No NVARCHAR(40) = N'ADR12PU001';

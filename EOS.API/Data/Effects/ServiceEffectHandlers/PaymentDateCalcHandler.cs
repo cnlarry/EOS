@@ -6,7 +6,7 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 /// <summary>
 /// payment-date-calc: on approval the expected receive/payout date of the module master
 /// is derived from the settlement month plus the party's payment days, ported from the
-/// legacy workflow procedures:
+/// baseline workflow procedures:
 ///   - the month base is the settlement month (TABLE.COLUMN monthField, YYYYMM) when
 ///     present, otherwise the document date (dateField) month;
 ///   - the due date = first day of the following month + party payment days, where the
@@ -14,7 +14,7 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 ///     "_ID", the cross-table convention across this ERP);
 ///   - ISNULL(PAYMENT_DAY, 0) keeps a party without payment days on the month's first day.
 /// Deapprove mirrors the approve chain: reverse kind "clear-on-deapprove" empties the
-/// target date (the settled semantics; legacy procedures left the date in place),
+/// target date (the settled semantics; baseline procedures left the date in place),
 /// "no-reverse" is a no-op, anything else is a configuration error.
 /// All identifiers come from closed configuration checked against physical columns.
 /// </summary>
@@ -50,7 +50,7 @@ public sealed class PaymentDateCalcHandler : IEffectServiceHandler
     /// UPDATE M SET M.[target] = DATEADD(DAY, ISNULL(P.[days], 0), DATEADD(MONTH, 1,
     /// CAST(monthBase + '01' AS DATETIME))) FROM master M JOIN party P ON the party key,
     /// restricted to the master key values. monthBase is a CHAR(8) "YYYY-MM-" built from
-    /// the settlement month or the document date, mirroring the legacy procedures
+    /// the settlement month or the document date, mirroring the baseline procedures
     /// (CONVERT(CHAR(8), date, 20) truncates to "YYYY-MM-").
     /// </summary>
     private static async Task<int> CalculateAsync(

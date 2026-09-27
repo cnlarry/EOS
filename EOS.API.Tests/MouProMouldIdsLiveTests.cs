@@ -49,17 +49,17 @@ public sealed class MouProMouldIdsLiveTests
 
             // ② 复位后跑旧 C# 语句
             await ResetAsync(connection, transaction, token);
-            await using (var legacy = new SqlCommand(
+            await using (var baseline = new SqlCommand(
                 "UPDATE dbo.MOU_PRO_M SET MOULD_IDS=dbo.f_get_pro_moulds(PRO_NO) WHERE PRO_NO=@ProNo;",
                 connection, transaction))
             {
-                legacy.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = ProNo;
-                Assert.Equal(1, await legacy.ExecuteNonQueryAsync(token));
+                baseline.Parameters.Add("@ProNo", SqlDbType.NVarChar, 30).Value = ProNo;
+                Assert.Equal(1, await baseline.ExecuteNonQueryAsync(token));
             }
-            var byLegacy = await ReadAsync(connection, transaction, token);
+            var byBaseline = await ReadAsync(connection, transaction, token);
 
             // ③ 两侧一致，且等于函数本身的输出
-            Assert.Equal(byLegacy, byEffect);
+            Assert.Equal(byBaseline, byEffect);
             Assert.Equal(await ScalarAsync(connection, transaction, token), byEffect);
 
             // ④ fail-closed：keyField 必须是本模块主键首列（禁止回写他表）

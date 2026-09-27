@@ -88,7 +88,7 @@ public sealed class SetStateHandler : IEffectServiceHandler
 
         // Deapprove semantics come from the reverse structure: none/no-reverse is a
         // no-op (plan traces are not rolled back), clear-finish rebuilds the state
-        // mapping as the cleared inverse, and legacy shapes without a kind keep the
+        // mapping as the cleared inverse, and baseline shapes without a kind keep the
         // forward placement for now.
         var isDeapprove = context.ExecutionEvent == EffectEvent.Deapprove;
         var reverseKind = isDeapprove ? ReverseKind(context) : null;

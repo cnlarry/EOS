@@ -276,7 +276,7 @@ public sealed class EffectPipeline(
     /// Evaluates an action-level condition against the current document: MASTER
     /// predicates are scoped by the document master keys (a bare EXISTS would be
     /// true whenever ANY document carries the value, wrongly firing the action for
-    /// documents the legacy procedure skips); DETAIL predicates keep the historical
+    /// documents the baseline procedure skips); DETAIL predicates keep the historical
     /// unscoped EXISTS semantics; switches read SYSSS.
     ///
     /// Public because a user-triggered document action reads its CONDITION_STRUCT

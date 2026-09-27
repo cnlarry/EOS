@@ -6,8 +6,7 @@
 -- and C (manual rebuild) follow per the governance plan.
 --
 -- A class (10 rows): filter conditions contain NOT IN/EXISTS subqueries referencing other
--- document tables not in the source table's QUERY_RELATION join whitelist — the legacy
--- runtime also failed to bind them (empty chooser options). Action: keep FILTER_STRUCT=NULL
+-- document tables not in the source table's QUERY_RELATION join whitelist — the historic-- runtime also failed to bind them (empty chooser options). Action: keep FILTER_STRUCT=NULL
 -- (fail-closed, no scope expansion), set CHOOSER_FILTER_MIGRATION_LOG.STATUS to EXEMPTED
 -- to unblock field-settings saving for these sources.
 -- D class (3 rows): dirty/identity/truncated-table-name conditions. Action: clear

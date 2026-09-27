@@ -8,7 +8,7 @@ namespace EOS.API.Controllers;
 
 /// <summary>
 /// System parameter settings. The scope segment is the page scope (<c>system</c> / <c>hr-setup</c> /
-/// <c>hrm-setup</c>) and resolves to the module that owns the parameters; the legacy table names
+/// <c>hrm-setup</c>) and resolves to the module that owns the parameters; the baseline table names
 /// still resolve to the same modules so stored configuration needs no change.
 /// Permission gates follow the module configuration: browse requires EXEC_TAG&lt;&gt;A and save
 /// requires EDIT_TAG (resolved through the rights repository). Reading, type conversion,

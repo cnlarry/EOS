@@ -16,11 +16,11 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 /// "auto-reverse" per the landed configuration):
 ///   - sort '1': accept STATE '0', FINISHED_QTY -= qty, PRODUCT overwritten back;
 ///   - sort '2': accept STATE '1', FINISHED_QTY -= qty, PRODUCT untouched (H3);
-///   - else: scrap STATE 0 only — the legacy extra FINISHED_QTY decrement is
+///   - else: scrap STATE 0 only — the baseline extra FINISHED_QTY decrement is
 ///     dropped (H2: approve never added it, decrementing drifts negative).
 /// All identifiers come from closed configuration checked against physical
 /// columns; only key values travel as parameters. A NULL batch quantity
-/// propagates NULL exactly like the legacy ISNULL arithmetic.
+/// propagates NULL exactly like the baseline ISNULL arithmetic.
 /// </summary>
 public sealed class MouldBatchApplyHandler : IEffectServiceHandler
 {
@@ -99,7 +99,7 @@ public sealed class MouldBatchApplyHandler : IEffectServiceHandler
         return doc;
     }
 
-    /// <summary>Legacy over-apply guard, verbatim predicate: fails when the accept
+    /// <summary>Baseline over-apply guard, verbatim predicate: fails when the accept
     /// quantity is already below the finished quantity (NULL-safe three-valued
     /// logic identical to the procedure).</summary>
     internal static string BuildOverApplyGuard() =>

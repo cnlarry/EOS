@@ -25,7 +25,7 @@ public sealed class BomCycleCheckLiveTests
     private static readonly EffectValidationExecutor Executor = new();
 
     /// <summary>原 `P_BOM_CHECK` 过程本体（逐字保留，作为目录规则的对照基准）。</summary>
-    private const string LegacySql = """
+    private const string BaselineSql = """
         DECLARE @ok INT, @errCode NVARCHAR(50), @step INT
         SELECT @ok = 1, @step = 1
         SELECT @step StepNo, PRO_NO, ELEMENT_PRO_NO INTO #temp FROM BOM_STRU_D WHERE PRO_NO=@ProNo
@@ -59,15 +59,15 @@ public sealed class BomCycleCheckLiveTests
             await SeedAsync(connection, transaction, token);
 
             // 自环：A→A（第 1 层即命中）
-            await AssertSameAsLegacyAsync(connection, transaction, plan, "ADR12BOMA", "ADR12BOMA", token);
+            await AssertSameAsBaselineAsync(connection, transaction, plan, "ADR12BOMA", "ADR12BOMA", token);
             // 两级环：C→D→C（第 2 层命中，回报 D）
-            await AssertSameAsLegacyAsync(connection, transaction, plan, "ADR12BOMC", "ADR12BOMD", token);
+            await AssertSameAsBaselineAsync(connection, transaction, plan, "ADR12BOMC", "ADR12BOMD", token);
             // 三级环：E→F→G→E（第 3 层命中，回报 G）
-            await AssertSameAsLegacyAsync(connection, transaction, plan, "ADR12BOME", "ADR12BOMG", token);
+            await AssertSameAsBaselineAsync(connection, transaction, plan, "ADR12BOME", "ADR12BOMG", token);
             // 无环（末级没有元件）→ 两侧都放行
-            await AssertSameAsLegacyAsync(connection, transaction, plan, "ADR12BOMH", null, token);
+            await AssertSameAsBaselineAsync(connection, transaction, plan, "ADR12BOMH", null, token);
             // 深链无环（12 层）→ 两侧都放行
-            await AssertSameAsLegacyAsync(connection, transaction, plan, "ADR12BOML1", null, token);
+            await AssertSameAsBaselineAsync(connection, transaction, plan, "ADR12BOML1", null, token);
         }
         finally
         {
@@ -104,12 +104,12 @@ public sealed class BomCycleCheckLiveTests
     }
 
     /// <summary>同批数据下比对原过程本体与目录规则；命中的用例同时钉住文案。</summary>
-    private static async Task AssertSameAsLegacyAsync(
+    private static async Task AssertSameAsBaselineAsync(
         SqlConnection connection, SqlTransaction transaction, ModuleEffectPlan plan,
         string proNo, string? expectedErrCode, CancellationToken token)
     {
-        var legacy = await LegacyAsync(connection, transaction, proNo, token);
-        if (legacy is null)
+        var baseline = await BaselineAsync(connection, transaction, proNo, token);
+        if (baseline is null)
         {
             await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [proNo]);
             Assert.Null(expectedErrCode);
@@ -118,17 +118,17 @@ public sealed class BomCycleCheckLiveTests
         var error = await Assert.ThrowsAsync<EffectValidationException>(() =>
             Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [proNo]));
         // 旧过程文案 = 表头 + char(13) + 变量值（定长补空格）；目录返回表头 + 命中值（已去空格）
-        Assert.Equal(Normalize("以下元件在BOM结构中循环使用 \r" + legacy), Normalize(error.Message));
+        Assert.Equal(Normalize("以下元件在BOM结构中循环使用 \r" + baseline), Normalize(error.Message));
         Assert.NotNull(expectedErrCode);
         Assert.Contains(expectedErrCode!, error.Message);
     }
 
     private static string Normalize(string value) => Regex.Replace(value, @"\s+", " ").Trim();
 
-    private static async Task<string?> LegacyAsync(
+    private static async Task<string?> BaselineAsync(
         SqlConnection connection, SqlTransaction transaction, string proNo, CancellationToken token)
     {
-        await using var command = new SqlCommand(LegacySql, connection, transaction);
+        await using var command = new SqlCommand(BaselineSql, connection, transaction);
         command.Parameters.Add("@ProNo", SqlDbType.NVarChar, 50).Value = proNo;
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token)) return null;

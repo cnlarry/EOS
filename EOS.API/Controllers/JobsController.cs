@@ -33,7 +33,7 @@ public sealed class JobsController(
 
     /// <summary>
     /// Recalculates available stock (230901) with the in-process product-level MRP recompute
-    /// (the legacy <c>P_UPDATE_PRO_MRP_ALL</c> procedure was retired).
+    /// (the baseline <c>P_UPDATE_PRO_MRP_ALL</c> procedure was retired).
     /// </summary>
     [HttpPost("mrp-recalc")]
     public async Task<IActionResult> MrpRecalc(CancellationToken token)

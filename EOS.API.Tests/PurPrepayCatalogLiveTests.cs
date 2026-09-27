@@ -63,8 +63,8 @@ public sealed class PurPrepayCatalogLiveTests
                   ON s.PREPAY_TYPE=m.PREPAY_TYPE AND s.PREPAY_NO=m.PREPAY_NO
                 WHERE m.PREPAY_TYPE=@Type AND m.PREPAY_NO=@No;
                 """, ("@Type", Type), ("@No", No));
-            var byLegacy = await ReadAmountAsync(connection, transaction, token);
-            Assert.Equal(byLegacy, byEffect);
+            var byBaseline = await ReadAmountAsync(connection, transaction, token);
+            Assert.Equal(byBaseline, byEffect);
         }
         finally
         {
@@ -100,9 +100,9 @@ public sealed class PurPrepayCatalogLiveTests
             await SeedAsync(connection, transaction, token, detail: DetailExceeding);
             var exceed = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [Type, No]));
-            var legacyExceed = await RunLegacyCheckAsync(connection, transaction, token);
-            Assert.False(legacyExceed.Success);
-            Assert.Equal(Normalize(legacyExceed.Message), Normalize(exceed.Message));
+            var baselineExceed = await RunBaselineCheckAsync(connection, transaction, token);
+            Assert.False(baselineExceed.Success);
+            Assert.Equal(Normalize(baselineExceed.Message), Normalize(exceed.Message));
             Assert.Contains("以下项预付金额超出采购金额", Normalize(exceed.Message));
 
             // ④ 门关：同一份超额数据不再被拦
@@ -122,7 +122,7 @@ public sealed class PurPrepayCatalogLiveTests
     }
 
     /// <summary>旧过程 `P_PUR_PREPAY_CHECK` 的语句链（游标逐行拼文案）。</summary>
-    private static async Task<(bool Success, string Message)> RunLegacyCheckAsync(
+    private static async Task<(bool Success, string Message)> RunBaselineCheckAsync(
         SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
         const string batch = """

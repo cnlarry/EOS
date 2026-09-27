@@ -62,12 +62,12 @@ public sealed class SfcPlanSyncLiveTests
 
             // ② 回到同一初始态跑旧过程语句链
             await SeedAsync(connection, transaction, token);
-            await RunLegacyAsync(connection, transaction, token);
-            var byLegacy = await ReadAsync(connection, transaction, token);
+            await RunBaselineAsync(connection, transaction, token);
+            var byBaseline = await ReadAsync(connection, transaction, token);
 
             // ③ 明细最终行集合逐字一致（序号按集合比对：两侧的补行顺序都不保证）
-            Assert.Equal(byLegacy.Count, byEffect.Count);
-            Assert.Equal(byLegacy, byEffect);
+            Assert.Equal(byBaseline.Count, byEffect.Count);
+            Assert.Equal(byBaseline, byEffect);
             Assert.Equal([1, 2, 3, 4], byEffect.Select(row => row.Serial).OrderBy(value => value));
 
             // ④ 逐行钉住业务结论
@@ -92,11 +92,11 @@ public sealed class SfcPlanSyncLiveTests
             var twiceByEffect = await ReadAsync(connection, transaction, token);
 
             await SeedAsync(connection, transaction, token);
-            await RunLegacyAsync(connection, transaction, token);
-            await RunLegacyAsync(connection, transaction, token);
-            var twiceByLegacy = await ReadAsync(connection, transaction, token);
+            await RunBaselineAsync(connection, transaction, token);
+            await RunBaselineAsync(connection, transaction, token);
+            var twiceByBaseline = await ReadAsync(connection, transaction, token);
 
-            Assert.Equal(twiceByLegacy, twiceByEffect);
+            Assert.Equal(twiceByBaseline, twiceByEffect);
             Assert.Contains("|BASE00010001|", string.Join("\n", twiceByEffect.Select(row => row.Signature)));
         }
         finally
@@ -106,7 +106,7 @@ public sealed class SfcPlanSyncLiveTests
     }
 
     /// <summary>旧过程 `P_SFC_PLAN_After_Save` 的语句链（嵌套作用域内建 #临时表，结束即释放）。</summary>
-    private static Task RunLegacyAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    private static Task RunBaselineAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
         const string batch = """
             declare @plan_type nchar(10) = @Type, @plan_no nchar(20) = @No;

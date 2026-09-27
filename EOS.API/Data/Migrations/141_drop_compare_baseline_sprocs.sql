@@ -4,8 +4,7 @@
 -- 背景：`EOS.API.Tests/CompareAfterSave.ps1` 原以这 30 个"旧保存后过程"做活体对照；
 -- 自本轮起该脚本**默认走冻结模式**（`-Frozen`，不再执行旧过程，旧侧结论由
 -- `EOS.API.Tests/Fixtures/compare-after-save-golden.json` 的 50 条期望供给），活体对照降级为
--- 显式 `-Live`（考古用，需先用 `scripts/restore-legacy-groundtruth-sprocs.ps1` 还原）。
--- 因此这批"只作测试基准"的过程可以下线：
+-- 显式 `-Live`（考古用，需先用 `scripts/restore-historic-groundtruth-sprocs.ps1` 还原）。-- 因此这批"只作测试基准"的过程可以下线：
 --   · 30 个基准：`P_BOM_STRU_After_Save` / `P_COP_BACK_After_Save` / `P_COP_FITIN_After_Save` /
 --     `P_COP_FITOUT_After_Save` / `P_COP_QUOTE_After_Save` / `P_COP_RETURN_After_Save` /
 --     `P_CURR_After_Save` / `P_Employee_Card_After_Save` / `P_HR_CERTIFY_After_Save` /
