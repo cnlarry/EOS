@@ -7,7 +7,7 @@
 - Windows / Linux / macOS；
 - .NET 10 SDK；
 - Node.js 20+ 与 npm；
-- SQL Server 2019+（或 Azure SQL Database、SQL Edge；以下按本机 Windows 身份验证示例）。
+- SQL Server 2025+（知识库表使用原生 `vector` 类型；兼容级别 170）。以下按本机 Windows 身份验证示例。
 
 ## 1. 初始化数据库
 

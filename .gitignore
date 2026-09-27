@@ -65,11 +65,9 @@ UploadFile/
 ui-reference/
 开发文档/
 
-# 内部发布/导出工具与本地示例数据
+# 内部发布/导出工具、运维脚本与本地示例数据
 publish/
-scripts/publish-oss.ps1
-scripts/export-oss-seed.ps1
-scripts/seed-dev-data.ps1
+scripts/
 
 # 真库验收脚本与夹具（依赖本地数据库与真实业务数据）
 EOS.API.Tests/*.ps1
