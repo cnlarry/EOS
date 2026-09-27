@@ -43,6 +43,8 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
     /// <summary>盘点数（人为录入，重算不得改动）与一条错误的账面数起点。量额列在库内是 float，故用例按 double 比对。</summary>
     private const double CheckedQty = 12.5d;
     private const double WrongAccountQty = 999999d;
+    /// <summary>本单的审计资源键（与执行器写入口径一致：主键值以逗号相连）。</summary>
+    private const string RecordKey = TestType + "," + TestNo;
 
     private static DbConnectionFactory Connections()
     {
@@ -67,6 +69,17 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
             command.Parameters.AddWithValue(name, value ?? DBNull.Value);
         }
         await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<T?> ScalarAsync<T>(SqlConnection connection, string sql, params (string Name, object? Value)[] parameters)
+    {
+        await using var command = new SqlCommand(sql, connection);
+        foreach (var (name, value) in parameters)
+        {
+            command.Parameters.AddWithValue(name, value ?? DBNull.Value);
+        }
+        var scalar = await command.ExecuteScalarAsync();
+        return scalar is null or DBNull ? default : (T)Convert.ChangeType(scalar, typeof(T));
     }
 
     private sealed record StockRow(string Depot, string Product, string Location, string Batch, double Qty);
@@ -209,6 +222,26 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
             new DocumentActionRequest([TestType, TestNo], Confirm: confirm),
             TestUser, "测试经办人", null, idempotencyKey, CancellationToken.None);
 
+    /// <summary>审计是追加型的：取当前最大事件号作基线，之后只看基线之上的增量。</summary>
+    private static async Task<long> AuditBaselineAsync()
+    {
+        await using var connection = await OpenAsync();
+        return await ScalarAsync<long>(connection, "SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;");
+    }
+
+    /// <summary>基线之上、本单（模块 + 动作 + 资源键）的审计条数。</summary>
+    private static async Task<int> AuditCountAsync(long baseline)
+    {
+        await using var connection = await OpenAsync();
+        return await ScalarAsync<int>(connection,
+            """
+            SELECT COUNT(*) FROM dbo.AUDIT_EVENT
+             WHERE EVENT_ID > @baseline AND M_IDX=@module AND ACTION=@action AND RESOURCE_KEY=@key;
+            """,
+            ("@baseline", baseline), ("@module", ModuleId),
+            ("@action", RecalcAccountHandler.ActionKey), ("@key", RecordKey));
+    }
+
     private static async Task SetConfirmedAsync(bool confirmed)
     {
         await using var connection = await OpenAsync();
@@ -264,6 +297,7 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
     [Fact]
     public async Task Recalc_RefreshesAccountQty_KeepsCheckedQtyRowsAndPositions()
     {
+        var auditBaseline = await AuditBaselineAsync();
         var stock = await AnyStockRowAsync();
         await FixtureUpAsync(stock);
         await SetConfirmedAsync(true);
@@ -295,6 +329,8 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
             Assert.Equal(expected ?? 0d, after[index].Account!.Value, 6);
         }
         Assert.Contains(after, row => row.Product == "ZZNOSUCHPRO" && row.Account is 0d);
+        // 动作留痕：基线之上恰好一条自己的审计
+        Assert.Equal(1, await AuditCountAsync(auditBaseline));
     }
 
     [Fact]
@@ -303,6 +339,7 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
         var stock = await AnyStockRowAsync();
         await FixtureUpAsync(stock);
         await SetConfirmedAsync(true);
+        var auditBaseline = await AuditBaselineAsync();
         var key = Guid.NewGuid().ToString("N");
 
         var first = await RunAsync(key, confirm: true);
@@ -312,6 +349,8 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
         Assert.Equal(DocumentActionStatus.Ok, second.Status);
         var after = await ReadDetailsAsync();
         Assert.All(after, row => Assert.Equal(CheckedQty, row.Checked!.Value, 6));
+        // 幂等重放不重复留痕：第二次同键调用不再执行动作，审计仍只有一条
+        Assert.Equal(1, await AuditCountAsync(auditBaseline));
     }
 
     [Fact]
@@ -339,6 +378,7 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
         await SetConfirmedAsync(true);
         var key = Guid.NewGuid().ToString("N");
         var before = await ReadDetailsAsync();
+        var auditBaseline = await AuditBaselineAsync();
 
         var probe = await RunAsync(key, confirm: false);
 
@@ -347,11 +387,15 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
         var after = await ReadDetailsAsync();
         Assert.All(after, row => Assert.Equal(WrongAccountQty, row.Account!.Value, 6));
         Assert.Equal(before.Count, after.Count);
+        // 探路整体回滚：连审计也不留（"什么都没写"才成立）
+        Assert.Equal(0, await AuditCountAsync(auditBaseline));
 
         // 探路不占幂等键：紧接着的真实执行必须能跑
         var confirmed = await RunAsync(key, confirm: true);
         Assert.Equal(DocumentActionStatus.Ok, confirmed.Status);
         Assert.False(confirmed.RequiresConfirmation);
+        // 真实执行留下恰好一条审计（探路那条没有落库，所以总数就是 1）
+        Assert.Equal(1, await AuditCountAsync(auditBaseline));
     }
 
     [Fact]
