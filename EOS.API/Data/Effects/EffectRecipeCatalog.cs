@@ -12,7 +12,7 @@ namespace EOS.API.Data.Effects;
 /// **配方层是默认视图，不是能力阉割**：专家模式仍可逐字段编辑同一份数据，
 /// 两态共用同一份草稿，切换不丢改动。
 ///
-/// 依据与全量映射见 `docs/plans/效果配方目录.md`（配方清单、未归类与理由、参数与反向的实测分布）。
+/// 依据与全量映射见本文件的配方表（配方清单、未归类项与理由、参数与反向的实测分布）。
 /// </summary>
 public static class EffectRecipeCatalog
 {
