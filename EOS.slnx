@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="EOS.API.Tests/EOS.API.Tests.csproj" />
+  <Project Path="EOS.API/EOS.API.csproj" />
+</Solution>
