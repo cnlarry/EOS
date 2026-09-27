@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     host: true,
     port: 80,
-    allowedHosts: ['localhost', 'erp.com'],
+    allowedHosts: ['localhost', '127.0.0.1'],
     proxy: {
       '/api': {
         target: 'http://localhost:5261',
