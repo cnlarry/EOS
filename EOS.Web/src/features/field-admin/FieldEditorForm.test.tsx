@@ -20,7 +20,7 @@ function meta(overrides: Partial<FieldMeta> = {}): FieldMeta {
       { active: false, table: null, description: null, moduleId: null, filter: null, returnMapping: null, serialNo: 4 },
     ],
     isVirtual: false, virtualExpression: null, canCopy: true, isAutoIncrement: false,
-    convertFunction: null, dataSourceSql: null, lastUpdatedBy: 'admin', lastUpdatedAt: '2026-08-01T00:00:00Z',
+    convertFunction: null, lastUpdatedBy: 'admin', lastUpdatedAt: '2026-08-01T00:00:00Z',
     options: null,
     ...overrides,
   }
@@ -135,24 +135,43 @@ describe('FieldEditorForm', () => {
     expect(screen.getByDisplayValue('admin')).toBeInTheDocument()
   })
 
-  it('高级表达式受控编辑（校验/预览/发布）', async () => {
+  it('高级表达式随字段一起保存（无校验/预览/发布按钮）', async () => {
+    const save = vi.fn().mockResolvedValue(undefined)
     renderForm('edit', {
-      load: vi.fn().mockResolvedValue(meta({ virtualExpression: '1+1', convertFunction: 'CONVERT(X)', dataSourceSql: 'SELECT 1' })),
-      save: vi.fn(),
-      validateExpression: vi.fn().mockResolvedValue({ ok: true, errors: [], hints: ['白名单 v1'], whiteListVersion: 1 }),
-      previewExpression: vi.fn().mockResolvedValue({ ok: true, errors: [], rows: [{ COL: 'v1' }] }),
-      publishExpression: vi.fn().mockResolvedValue(undefined),
+      load: vi.fn().mockResolvedValue(meta({ isVirtual: true, virtualExpression: '1+1', convertFunction: 'CONVERT(X)' })),
+      save,
+      parseExpression: vi.fn().mockResolvedValue({ kind: 'virtual_exp', mode: 'arithmetic' }),
     })
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
     expect(screen.getByDisplayValue('1+1')).not.toBeDisabled()
     expect(screen.getByDisplayValue('CONVERT(X)')).not.toBeDisabled()
-    expect(screen.getByDisplayValue('SELECT 1')).not.toBeDisabled()
-    const validateButtons = screen.getAllByRole('button', { name: '校验' })
-    expect(validateButtons).toHaveLength(3)
-    const previewButtons = screen.getAllByRole('button', { name: '预览' })
-    expect(previewButtons).toHaveLength(3)
-    expect(screen.getAllByRole('button', { name: '发布' }).every((button) => button.hasAttribute('disabled'))).toBe(true)
+    expect(screen.queryByRole('button', { name: '校验' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '预览' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '发布' })).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('虚拟表达式文本'), { target: { value: 'CLIENT_J.CLIENT_NAME' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(save).toHaveBeenCalled())
+    expect(save.mock.calls[0][0]).toEqual(expect.objectContaining({
+      virtualExpression: 'CLIENT_J.CLIENT_NAME',
+      convertFunction: 'CONVERT(X)',
+    }))
+  })
+
+  it('非虚拟字段不改动虚拟表达式（提交为空值=不改）', async () => {
+    const save = vi.fn().mockResolvedValue(undefined)
+    renderForm('edit', {
+      load: vi.fn().mockResolvedValue(meta({ convertFunction: 'CONVERT(X)' })),
+      save,
+    })
+    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(save).toHaveBeenCalled())
+    expect(save.mock.calls[0][0]).toEqual(expect.objectContaining({
+      virtualExpression: null,
+      convertFunction: 'CONVERT(X)',
+    }))
   })
 
   it('字段维护页不含任何表单设计入口，下拉选项归基本信息', async () => {
@@ -345,7 +364,7 @@ describe('FieldEditorForm', () => {
     fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
     fireEvent.click(screen.getByLabelText('数据可复制'))
     const advancedTextareas = body.querySelectorAll('textarea')
-    fireEvent.change(advancedTextareas[2], { target: { value: '备注内容' } })
+    fireEvent.change(advancedTextareas[0], { target: { value: '备注内容' } })
 
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(save).toHaveBeenCalled())
@@ -416,6 +435,21 @@ describe('FieldEditorForm', () => {
     await waitFor(() => expect(screen.getByLabelText('转换函数文本')).toHaveValue('f_get_emp_name_by_id'))
   })
 
+  it('高级设置：非虚拟字段不提供虚拟表达式入口，转换函数保留', async () => {
+    renderForm('edit', {
+      load: vi.fn().mockResolvedValue(meta()),
+      save: vi.fn(),
+      parseExpression: vi.fn().mockResolvedValue({ kind: 'convert_function', mode: 'raw' }),
+      expressionRegistry: vi.fn().mockResolvedValue({ whiteListVersion: 1, convertFunctions: [] }),
+    })
+    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
+    expect(screen.queryByLabelText('虚拟表达式文本')).toBeNull()
+    expect(screen.queryByRole('button', { name: '虚拟表达式引用来源' })).toBeNull()
+    expect(screen.getByLabelText('转换函数文本')).toBeInTheDocument()
+    expect(screen.queryByLabelText('数据源 SQL 文本')).toBeNull()
+  })
+
   it('高级设置：虚拟表达式构建器按本表列与关联白名单生成引用', async () => {
     const tableColumns = vi.fn().mockImplementation(async (table: string) => table === 'CLIENT'
       ? [{ name: 'CLIENT_NAME', dataType: 'nvarchar', description: '客户名称' }]
@@ -424,7 +458,7 @@ describe('FieldEditorForm', () => {
         { name: 'VIRT_AMOUNT', dataType: 'decimal', description: '虚拟金额', isVirtual: true },
       ])
     renderForm('edit', {
-      load: vi.fn().mockResolvedValue(meta()),
+      load: vi.fn().mockResolvedValue(meta({ isVirtual: true })),
       save: vi.fn(),
       parseExpression: vi.fn().mockResolvedValue({ kind: 'virtual_exp', mode: 'raw' }),
       tables: vi.fn().mockResolvedValue([
@@ -467,7 +501,7 @@ describe('FieldEditorForm', () => {
 
   it('高级设置：来源不在 QUERY_RELATION 内时原样列出，不显示成未选择', async () => {
     renderForm('edit', {
-      load: vi.fn().mockResolvedValue(meta({ virtualExpression: 'SYSDG.G_DESC' })),
+      load: vi.fn().mockResolvedValue(meta({ isVirtual: true, virtualExpression: 'SYSDG.G_DESC' })),
       save: vi.fn(),
       parseExpression: vi.fn().mockResolvedValue({ kind: 'virtual_exp', mode: 'reference', table: 'SYSDG', column: 'G_DESC' }),
       tableRelations: vi.fn().mockResolvedValue({ tableId: 'T1', ok: true, error: null, items: [] }),
@@ -480,45 +514,9 @@ describe('FieldEditorForm', () => {
     expect(await screen.findByRole('option', { name: /不在 QUERY_RELATION 内/ })).toBeInTheDocument()
   })
 
-  it('高级设置：数据源 SQL 构建器生成受限 SELECT 文本', async () => {
-    renderForm('edit', {
-      load: vi.fn().mockResolvedValue(meta({ dataSourceSql: 'SELECT G_IDX FROM SYSDG' })),
-      save: vi.fn(),
-      parseExpression: vi.fn().mockResolvedValue({
-        kind: 'datasource_sql',
-        mode: 'tableSql',
-        dataSource: {
-          table: 'SYSDG',
-          columns: ['G_IDX'],
-          whereColumn: null,
-          whereValue: null,
-          whereValueIsString: true,
-          orderColumn: null,
-          orderDirection: null,
-        },
-      }),
-      tableColumns: vi.fn().mockResolvedValue([
-        { name: 'G_IDX', dataType: 'nvarchar', description: '代码' },
-        { name: 'G_DESC', dataType: 'nvarchar', description: '名称' },
-        { name: 'SORT_NO', dataType: 'int', description: '序号' },
-      ]),
-    })
-    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
-    await waitFor(() => expect(screen.getByLabelText('数据源 SQL 文本')).toHaveValue('SELECT G_IDX FROM SYSDG'))
-    fireEvent.click(await screen.findByRole('checkbox', { name: /名称\(G_DESC\)/ }))
-    await waitFor(() => expect(screen.getByLabelText('数据源 SQL 文本')).toHaveValue('SELECT G_IDX,G_DESC FROM SYSDG'))
-    fireEvent.change(screen.getByLabelText('数据源 SQL 过滤列'), { target: { value: 'G_IDX' } })
-    fireEvent.change(screen.getByLabelText('数据源 SQL 过滤值'), { target: { value: 'A1' } })
-    fireEvent.change(screen.getByLabelText('数据源 SQL 排序列'), { target: { value: 'SORT_NO' } })
-    fireEvent.change(screen.getByLabelText('数据源 SQL 排序方向'), { target: { value: 'DESC' } })
-    await waitFor(() => expect(screen.getByLabelText('数据源 SQL 文本'))
-      .toHaveValue("SELECT G_IDX,G_DESC FROM SYSDG WHERE G_IDX = 'A1' ORDER BY SORT_NO DESC"))
-  })
-
   it('高级设置：构建器不覆盖的形态提示后仍可编辑原始文本', async () => {
     renderForm('edit', {
-      load: vi.fn().mockResolvedValue(meta({ virtualExpression: 'A.QTY+B.QTY' })),
+      load: vi.fn().mockResolvedValue(meta({ isVirtual: true, virtualExpression: 'A.QTY+B.QTY' })),
       save: vi.fn(),
       parseExpression: vi.fn().mockResolvedValue({ kind: 'virtual_exp', mode: 'arithmetic' }),
       tableRelations: vi.fn().mockResolvedValue({ tableId: 'T1', ok: true, error: null, items: [] }),

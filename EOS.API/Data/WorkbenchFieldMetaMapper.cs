@@ -56,7 +56,7 @@ public sealed class WorkbenchFieldMetaMapper(
             input.IsCost,input.IsSecrecy,input.DefaultValue,input.VerifyIndex,input.Regex,input.Remark,
             input.BrowseUrl,input.BrowseModuleId,input.OnlyChoose,input.ChooseMultiple,input.ChoosePage,
             input.Choosers.Select(MapChooser).ToArray(),metadata.IsVirtual,metadata.VirtualExpression,input.CanCopy,
-            metadata.IsAutoIncrement,metadata.ConvertFunction,metadata.DataSourceSql,metadata.LastUpdatedBy,metadata.LastUpdatedAt,
+            metadata.IsAutoIncrement,metadata.ConvertFunction,metadata.LastUpdatedBy,metadata.LastUpdatedAt,
             input.Options);
     }
 

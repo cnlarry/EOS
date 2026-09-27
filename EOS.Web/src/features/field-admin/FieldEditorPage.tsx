@@ -10,8 +10,6 @@ import { apiClient } from '../../services/api'
 import {
   FieldEditorForm,
   type ExpressionKind,
-  type ExpressionPreview,
-  type ExpressionValidation,
   type FieldEditorEndpoints,
   type FieldInput,
   type FieldMeta,
@@ -27,7 +25,6 @@ interface FieldAdminMetadata {
   virtualExpression: string | null
   isAutoIncrement: boolean
   convertFunction: string | null
-  dataSourceSql: string | null
   lastUpdatedBy: string | null
   lastUpdatedAt: string | null
   isSystemColumn?: boolean
@@ -62,7 +59,6 @@ function adminMetaToFieldMeta(meta: FieldAdminMetadata): FieldMeta {
     virtualExpression: meta.virtualExpression,
     isAutoIncrement: meta.isAutoIncrement,
     convertFunction: meta.convertFunction,
-    dataSourceSql: meta.dataSourceSql,
     lastUpdatedBy: meta.lastUpdatedBy,
     lastUpdatedAt: meta.lastUpdatedAt,
     isSystemColumn: meta.isSystemColumn,
@@ -147,13 +143,6 @@ export function FieldEditorRoute() {
       .map(item => ({ value: item.tableId, label: `${item.description} (${item.tableId})` }) as SetupLookup),
     modules: async () => (await apiClient.get<{ id: number; label: string }[]>('/admin/lookups/modules'))
       .map(item => ({ value: String(item.id), label: item.label }) as SetupLookup),
-    validateExpression: async (kind: ExpressionKind, targetTable: string, targetFieldId: string, expression: string | null) =>
-      (await apiClient.post('/admin/fields/expressions/validate', { kind, table: targetTable, field: targetFieldId, expression })) as ExpressionValidation,
-    previewExpression: async (kind: ExpressionKind, targetTable: string, targetFieldId: string, expression: string | null) =>
-      (await apiClient.post('/admin/fields/expressions/preview', { kind, table: targetTable, field: targetFieldId, expression })) as ExpressionPreview,
-    publishExpression: async (kind: ExpressionKind, targetTable: string, targetFieldId: string, expression: string | null, original: string | null) => {
-      await apiClient.post('/admin/fields/expressions/publish', { kind, table: targetTable, field: targetFieldId, expression, original })
-    },
     expressionRegistry: async () => apiClient.get<ExpressionRegistry>('/admin/fields/expressions/registry'),
     parseExpression: async (kind: ExpressionKind, expression: string | null) =>
       (await apiClient.post('/admin/fields/expressions/parse', { kind, expression })) as ExpressionStructure,

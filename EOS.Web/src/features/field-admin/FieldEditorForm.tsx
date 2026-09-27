@@ -14,7 +14,7 @@ import {
   type FilterRowDraft,
   type ReturnRowDraft,
 } from './chooserDraft'
-import { ConvertFunctionBuilder, DataSourceSqlBuilder, VirtualExpressionBuilder } from './ExpressionBuilders'
+import { ConvertFunctionBuilder, VirtualExpressionBuilder } from './ExpressionBuilders'
 import {
   buildExpression,
   emptyModel,
@@ -64,6 +64,10 @@ export interface FieldInput {
   canCopy: boolean
   /** 下拉选项枚举（FORM_OPTIONS）：有值即渲染下拉框；字段取值语义，与表单版式无关。 */
   options: string | null
+  /** 虚拟表达式（仅虚拟字段提交）：空串 = 清空，null/缺省 = 本次不改。 */
+  virtualExpression?: string | null
+  /** 受控转换函数名：空串 = 清空，null/缺省 = 本次不改。 */
+  convertFunction?: string | null
 }
 
 export interface FieldMeta extends FieldInput {
@@ -73,7 +77,6 @@ export interface FieldMeta extends FieldInput {
   virtualExpression: string | null
   isAutoIncrement: boolean
   convertFunction: string | null
-  dataSourceSql: string | null
   lastUpdatedBy: string | null
   lastUpdatedAt: string | null
   isPrimaryKey?: boolean
@@ -113,7 +116,6 @@ const SECTION_TABS: TabbedPanelTab<FieldSection>[] = [
 const EXPRESSION_TEXT_LABELS: Record<ExpressionKind, string> = {
   virtual_exp: '虚拟表达式文本',
   convert_function: '转换函数文本',
-  datasource_sql: '数据源 SQL 文本',
 }
 
 /** 字段变更历史事件（AUDIT_EVENT，RESOURCE_TYPE=FIELD_ADMIN）。 */
@@ -133,29 +135,13 @@ export interface FieldHistoryEvent {
   changes: FieldHistoryChange[]
 }
 
-export type ExpressionKind = 'virtual_exp' | 'convert_function' | 'datasource_sql'
-
-export interface ExpressionValidation {
-  ok: boolean
-  errors: string[]
-  hints: string[]
-  whiteListVersion: number
-}
-
-export interface ExpressionPreview {
-  ok: boolean
-  errors: string[]
-  rows: Record<string, unknown>[]
-}
+export type ExpressionKind = 'virtual_exp' | 'convert_function'
 
 export interface FieldEditorEndpoints {
   load: () => Promise<FieldMeta | null>
   save: (input: FieldInput, tableId: string, fieldId: string, original: FieldInput | null) => Promise<void>
   tables?: () => Promise<SetupLookup[]>
   modules?: () => Promise<SetupLookup[]>
-  validateExpression?: (kind: ExpressionKind, tableId: string, fieldId: string, expression: string | null) => Promise<ExpressionValidation>
-  previewExpression?: (kind: ExpressionKind, tableId: string, fieldId: string, expression: string | null) => Promise<ExpressionPreview>
-  publishExpression?: (kind: ExpressionKind, tableId: string, fieldId: string, expression: string | null, original: string | null) => Promise<void>
   /** 受控表达式注册表（转换函数名 + 白名单版本）：构建器下拉的唯一来源。 */
   expressionRegistry?: () => Promise<ExpressionRegistry>
   /** 表达式结构回读：构建器初始化（服务端解析器，前端不另立语法）。 */
@@ -179,13 +165,12 @@ type StructureState =
   | { status: 'unsupported' }
   | { status: 'error'; message: string }
 
-const EXPRESSION_KINDS: ExpressionKind[] = ['virtual_exp', 'convert_function', 'datasource_sql']
+const EXPRESSION_KINDS: ExpressionKind[] = ['virtual_exp', 'convert_function']
 
 function initialStructure(): Record<ExpressionKind, StructureState> {
   return {
     virtual_exp: { status: 'pending' },
     convert_function: { status: 'pending' },
-    datasource_sql: { status: 'pending' },
   }
 }
 
@@ -220,20 +205,26 @@ function emptyDraft(tableId: string): FieldMeta {
     choosers: emptyChoosers(),
     options: null,
     isVirtual: false, virtualExpression: null, canCopy: true, isAutoIncrement: false, convertFunction: null,
-    dataSourceSql: null, lastUpdatedBy: null, lastUpdatedAt: null,
+    lastUpdatedBy: null, lastUpdatedAt: null,
   }
 }
 
+/**
+ * 草稿 → 提交载荷：表达式随字段一起保存，故这两种值留在 input 里一起提交。
+ * 空串 = 清空；虚拟表达式只对虚拟字段提交（非虚拟字段上它不生效，也不该被动过）。
+ */
 function extractInput(meta: FieldMeta): FieldInput {
-  const { key: _key, tableId: _tableId, isVirtual: _virtual, virtualExpression: _exp, isAutoIncrement: _auto, convertFunction: _convert, dataSourceSql: _sql, lastUpdatedBy: _by, lastUpdatedAt: _at, ...input } = meta
-  return input
+  const { key: _key, tableId: _tableId, isVirtual, isAutoIncrement: _auto, virtualExpression, convertFunction, lastUpdatedBy: _by, lastUpdatedAt: _at, ...input } = meta
+  return {
+    ...input,
+    virtualExpression: isVirtual ? virtualExpression ?? '' : null,
+    convertFunction: convertFunction ?? '',
+  }
 }
 
 /** 表达式文本读取（草稿按 kind 取对应列）；写入统一走 setExpressionValue。 */
 function currentExpression(meta: FieldMeta, kind: ExpressionKind): string | null {
-  return kind === 'virtual_exp' ? meta.virtualExpression
-    : kind === 'convert_function' ? meta.convertFunction
-      : meta.dataSourceSql
+  return kind === 'virtual_exp' ? meta.virtualExpression : meta.convertFunction
 }
 
 function regexIssue(regex: string | null): string | null {
@@ -280,16 +271,9 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
   const [draft, setDraft] = useState<FieldMeta | null>(null)
   const [original, setOriginal] = useState<FieldMeta | null>(null)
   const [section, setSection] = useState<FieldSection>('basic')
-  const [exprStatus, setExprStatus] = useState<Record<ExpressionKind, { message: string; tone: 'ok' | 'error' | 'info'; rows?: Record<string, unknown>[] }>>({
-    virtual_exp: { message: '', tone: 'info' },
-    convert_function: { message: '', tone: 'info' },
-    datasource_sql: { message: '', tone: 'info' },
-  })
-  const [exprBusy, setExprBusy] = useState<Record<ExpressionKind, boolean>>({ virtual_exp: false, convert_function: false, datasource_sql: false })
-  const [exprOriginal, setExprOriginal] = useState<Record<ExpressionKind, string | null>>({ virtual_exp: null, convert_function: null, datasource_sql: null })
   // 高级设置构建器：结构回读状态 + 已解析键（字段标识 + 文本），同一文本只解析一次
   const [exprStructure, setExprStructure] = useState<Record<ExpressionKind, StructureState>>(initialStructure)
-  const parsedRef = useRef<Record<ExpressionKind, string>>({ virtual_exp: '', convert_function: '', datasource_sql: '' })
+  const parsedRef = useRef<Record<ExpressionKind, string>>({ virtual_exp: '', convert_function: '' })
   // P2/P4 构建器状态：过滤行/回填行（按列表位置 i{index} 键）、来源表选择、列/目标字段选择
   const [chooserUi, setChooserUi] = useState<Record<string, { filterRows: FilterRowDraft[]; returnRows: ReturnRowDraft[] }>>({})
   const [dataSourceEditor, setDataSourceEditor] = useState<{ index: number } | null>(null)
@@ -337,12 +321,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
     )
     setDraft(nextDraft)
     setOriginal(mode === 'edit' ? data : null)
-    setExprOriginal({
-      virtual_exp: data.virtualExpression ?? null,
-      convert_function: data.convertFunction ?? null,
-      datasource_sql: data.dataSourceSql ?? null,
-    })
-    parsedRef.current = { virtual_exp: '', convert_function: '', datasource_sql: '' }
+    parsedRef.current = { virtual_exp: '', convert_function: '' }
     setExprStructure(initialStructure())
     setChooserUi(ui)
     baselineRef.current = JSON.stringify(mergeChooserUi(nextDraft, ui))
@@ -414,9 +393,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
   const setExpressionValue = (kind: ExpressionKind, value: string | null) => {
     if (!draft) return
     if (kind === 'virtual_exp') setDraft({ ...draft, virtualExpression: value || null })
-    else if (kind === 'convert_function') setDraft({ ...draft, convertFunction: value || null })
-    else setDraft({ ...draft, dataSourceSql: value || null })
-    setExprStatus((prev) => ({ ...prev, [kind]: { message: '', tone: 'info' } }))
+    else setDraft({ ...draft, convertFunction: value || null })
   }
   /** 结构回读键：字段标识 + 文本，同一文本只解析一次。 */
   const structureKey = (value: string) => `${fieldKey ?? ''}|${value}`
@@ -455,7 +432,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
     }
     // 本效果即由表达式文本本身驱动，parseStructure 读的是同一批值
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [section, draft?.tableId, draft?.virtualExpression, draft?.convertFunction, draft?.dataSourceSql, endpoints])
+  }, [section, draft?.tableId, draft?.virtualExpression, draft?.convertFunction, endpoints])
 
   /** 构建器改动：写回表达式文本；模型缺项时保留既有文本，只由构建器提示缺什么。 */
   const applyExpressionModel = (kind: ExpressionKind, model: ExpressionModel) => {
@@ -471,58 +448,6 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
     parsedRef.current[kind] = structureKey(value)
     setExprStructure(prev => ({ ...prev, [kind]: { status: 'idle' } }))
     setExpressionValue(kind, value)
-  }
-
-  const runValidate = async (kind: ExpressionKind) => {
-    if (!draft || !endpoints.validateExpression) return
-    setExprBusy((prev) => ({ ...prev, [kind]: true }))
-    try {
-      const result = await endpoints.validateExpression(kind, draft.tableId, draft.key, expressionValue(kind))
-      setExprStatus((prev) => ({ ...prev, [kind]: {
-        message: result.ok
-          ? `校验通过（白名单 v${result.whiteListVersion}）${result.hints.length ? '：' + result.hints.join('；') : ''}`
-          : result.errors.join('；'),
-        tone: result.ok ? 'ok' : 'error',
-      } }))
-    } catch (error) {
-      setExprStatus((prev) => ({ ...prev, [kind]: { message: `校验失败：${error instanceof Error ? error.message : String(error)}`, tone: 'error' } }))
-    } finally {
-      setExprBusy((prev) => ({ ...prev, [kind]: false }))
-    }
-  }
-  const runPreview = async (kind: ExpressionKind) => {
-    if (!draft || !endpoints.previewExpression) return
-    setExprBusy((prev) => ({ ...prev, [kind]: true }))
-    try {
-      const result = await endpoints.previewExpression(kind, draft.tableId, draft.key, expressionValue(kind))
-      setExprStatus((prev) => ({ ...prev, [kind]: {
-        message: result.ok ? `预览成功（最多 20 行）` : result.errors.join('；'),
-        tone: result.ok ? 'ok' : 'error',
-        rows: result.ok ? result.rows : undefined,
-      } }))
-    } catch (error) {
-      setExprStatus((prev) => ({ ...prev, [kind]: { message: `预览失败：${error instanceof Error ? error.message : String(error)}`, tone: 'error' } }))
-    } finally {
-      setExprBusy((prev) => ({ ...prev, [kind]: false }))
-    }
-  }
-  const runPublish = async (kind: ExpressionKind) => {
-    if (!draft || !endpoints.publishExpression) return
-    const value = expressionValue(kind)
-    if (value === exprOriginal[kind]) {
-      setExprStatus((prev) => ({ ...prev, [kind]: { message: '值与当前一致，无需发布。', tone: 'info' } }))
-      return
-    }
-    setExprBusy((prev) => ({ ...prev, [kind]: true }))
-    try {
-      await endpoints.publishExpression(kind, draft.tableId, draft.key, value, exprOriginal[kind])
-      setExprOriginal((prev) => ({ ...prev, [kind]: value }))
-      setExprStatus((prev) => ({ ...prev, [kind]: { message: '已发布（SYSDF 审计已留痕）。', tone: 'ok' } }))
-    } catch (error) {
-      setExprStatus((prev) => ({ ...prev, [kind]: { message: `发布失败：${error instanceof Error ? error.message : String(error)}`, tone: 'error' } }))
-    } finally {
-      setExprBusy((prev) => ({ ...prev, [kind]: false }))
-    }
   }
 
   const isNew = mode === 'new'
@@ -567,7 +492,6 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
         </div>
         {kind === 'virtual_exp' && <VirtualExpressionBuilder currentTable={currentTable} model={model} onChange={change} endpoints={endpoints} disabled={builderDisabled} />}
         {kind === 'convert_function' && <ConvertFunctionBuilder model={model} onChange={change} endpoints={endpoints} disabled={builderDisabled} />}
-        {kind === 'datasource_sql' && <DataSourceSqlBuilder model={model} onChange={change} endpoints={endpoints} disabled={builderDisabled} />}
         {issue && <div className="small mt-1 text-warning-emphasis">构建器尚未拼出可用表达式：{issue}（下方文本保持原值）</div>}
         {state.status === 'idle' && (
           <div className="d-flex align-items-center gap-2 mt-1">
@@ -576,7 +500,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
           </div>
         )}
         {state.status === 'unsupported' && (
-          <div className="text-secondary small mt-1">当前表达式为构建器不覆盖的形态（算术/字面量 UNION 或未通过受控语法），请用下方原始文本编辑；清空文本后可用构建器新建。</div>
+          <div className="text-secondary small mt-1">当前表达式为构建器不覆盖的形态（受控算术或未通过受控语法），请用下方原始文本编辑；清空文本后可用构建器新建。</div>
         )}
         {state.status === 'error' && (
           <div className="d-flex align-items-center gap-2 mt-1">
@@ -589,31 +513,15 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
   }
 
   const renderExpressionRow = (kind: ExpressionKind, label: string, multiline: boolean, placeholder: string) => {
-    const status = exprStatus[kind]
     const value = expressionValue(kind) ?? ''
-    const previewColumns = status.rows && status.rows.length > 0 ? Object.keys(status.rows[0]).slice(0, 4) : []
     return (
       <div className="col-12">
         <label className="form-label">{label}</label>
         {renderBuilder(kind)}
-        <div className="text-secondary small mb-1">原始表达式（构建器写入这里；构建器不覆盖的形态可直接编辑）</div>
+        <div className="text-secondary small mb-1">原始表达式（构建器写入这里；构建器不覆盖的形态可直接编辑；保存字段即生效）</div>
         {multiline
           ? <textarea className="form-control font-monospace" rows={3} aria-label={EXPRESSION_TEXT_LABELS[kind]} value={value} placeholder={placeholder} onChange={(event) => editExpressionText(kind, event.target.value)} />
           : <input className="form-control" aria-label={EXPRESSION_TEXT_LABELS[kind]} value={value} placeholder={placeholder} onChange={(event) => editExpressionText(kind, event.target.value)} />}
-        <div className="d-flex gap-2 mt-1 mb-1">
-          <Button size="sm" loading={exprBusy[kind]} onClick={() => void runValidate(kind)} disabled={!endpoints.validateExpression}>校验</Button>
-          <Button size="sm" loading={exprBusy[kind]} onClick={() => void runPreview(kind)} disabled={!endpoints.previewExpression}>预览</Button>
-          <Button size="sm" variant="danger" loading={exprBusy[kind]} onClick={() => void runPublish(kind)} disabled={!endpoints.publishExpression || value.trim() === (exprOriginal[kind] ?? '')}>发布</Button>
-        </div>
-        {status.message && <div className={`small mb-1 ${status.tone === 'ok' ? 'text-success' : status.tone === 'error' ? 'text-danger' : 'text-secondary'}`}>{status.message}</div>}
-        {status.rows && status.rows.length > 0 && (
-          <table className="table table-sm table-bordered mt-1">
-            <thead><tr>{previewColumns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
-            <tbody>{status.rows.slice(0, 5).map((row, index) => (
-              <tr key={index}>{previewColumns.map((column) => <td key={column}>{String(row[column] ?? '')}</td>)}</tr>
-            ))}</tbody>
-          </table>
-        )}
       </div>
     )
   }
@@ -812,7 +720,7 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                     </>}
                     {section === 'advanced' && <>
                       <div className="col-12">
-                        <div className="alert alert-warning">高级表达式会影响数据读取和单据处理，请按「校验 → 预览 → 发布」顺序操作；发布走受控解析 + SYSDF 审计，未通过校验的表达式不会进入运行时。转换函数与数据源 SQL 为注册表/受限语法白名单。</div>
+                        <div className="alert alert-warning">高级表达式会影响数据读取和单据处理：表达式随本字段一起保存即生效（无需发布），保存时由服务端做受控解析校验，未通过校验的表达式不会落库。虚拟表达式只对虚拟字段生效；转换函数必须取自受控注册表。</div>
                       </div>
                       <div className="col-12 d-flex gap-4">
                         <label className="form-check">
@@ -832,9 +740,10 @@ export function FieldEditorForm({ mode, tableId, fieldKey, endpoints, onCancel, 
                           <span className="form-check-label">主键标记（IS_PK）</span>
                         </label>
                       </div>
-                      {renderExpressionRow('virtual_exp', '虚拟表达式（表.列）', true, '如 CLIENT.CLIENT_NAME（须在 QUERY_RELATION 白名单内）')}
+                      {/* 虚拟表达式只对虚拟字段生效：读取侧按 IS_VIRTUAL=1 决定是否解析 VIRTUAL_EXP，
+                          非虚拟字段上的表达式不会进入运行时，故不给编辑入口 */}
+                      {draft.isVirtual && renderExpressionRow('virtual_exp', '虚拟表达式（表.列）', true, '如 CLIENT.CLIENT_NAME（须在 QUERY_RELATION 白名单内）')}
                       {renderExpressionRow('convert_function', '转换函数', false, '如 f_get_emp_name_by_id（受控注册表）')}
-                      {renderExpressionRow('datasource_sql', '数据源 SQL（受限 SELECT）', true, '如 SELECT G_IDX,G_DESC FROM SYSDG')}
                       <div className="col-md-6">
                         <label className="form-label">最后修改人</label>
                         <input className="form-control" value={draft.lastUpdatedBy ?? ''} disabled />
