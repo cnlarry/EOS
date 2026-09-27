@@ -396,6 +396,8 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         // 按报表（REPORT_ID）解析排序/分组字段；未指定时用模块默认报表
         // （一模块多报表场景，如 18019807 人事分析表下 6 张报表各自独立数据源与列）。
         // 同时回带解析出的报表编号：汇总报表的数据源按报表编号取自服务端注册表。
+        // 排序方案行是**可选**的，所以这里用锚行 + LEFT JOIN 保证"至少返回一行"——
+        // 没有排序方案的报表（尤其新的汇总报表）否则回带不出编号，汇总数据源会解析不出来。
         var sql = """
             DECLARE @Rid nchar(100) = (
                 SELECT TOP 1 REPORT_ID FROM dbo.REPORT WITH (NOLOCK)
@@ -404,8 +406,9 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
                 ORDER BY REPORT_ID);
             SELECT LTRIM(RTRIM(ISNULL(@Rid,''))),
                    LTRIM(RTRIM(ISNULL(s.SORT_FIELDS,'')))
-            FROM dbo.REPORT_SORT s WITH (NOLOCK)
-            WHERE s.REPORT_ID=@Rid AND LTRIM(RTRIM(ISNULL(s.SORT_FIELDS,'')))<>''
+            FROM (SELECT 1 AS ANCHOR) anchor
+            LEFT JOIN dbo.REPORT_SORT s WITH (NOLOCK)
+              ON s.REPORT_ID=@Rid AND LTRIM(RTRIM(ISNULL(s.SORT_FIELDS,'')))<>''
             ORDER BY s.SERIAL_NO;
             """;
         await using var command=new SqlCommand(sql,connection);
