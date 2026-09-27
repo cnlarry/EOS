@@ -193,18 +193,6 @@ public sealed class WorkbenchDefinitionValidator(
             ? new("convert_functions_controlled", true, "CONVERT_FUNCTION 全部在受控函数白名单内。")
             : new("convert_functions_controlled", false, $"CONVERT_FUNCTION 不在白名单：{string.Join(",", convertErrors)}。"));
 
-        var datasourceErrors = new List<string>();
-        foreach (var table in tables)
-        {
-            foreach (var field in await ReadDataSourceSqlFieldsAsync(connection, table, token))
-            {
-                datasourceErrors.Add($"{table}.{field}");
-            }
-        }
-        checks.Add(datasourceErrors.Count == 0
-            ? new("datasource_sql_controlled", true, "无 DATASOURCE_SQL 或全部受控。")
-            : new("datasource_sql_controlled", false, $"DATASOURCE_SQL 尚无受控解析器，禁止发布：{string.Join(",", datasourceErrors)}。"));
-
         WorkbenchDefinition? definition = null;
         if (workbenchUrl || enabled)
         {
@@ -612,24 +600,6 @@ public sealed class WorkbenchDefinitionValidator(
         while (await reader.ReadAsync(token))
         {
             result.Add((reader.GetString(0).Trim(), reader.GetString(1).Trim()));
-        }
-        return result;
-    }
-
-    private static async Task<IReadOnlyList<string>> ReadDataSourceSqlFieldsAsync(SqlConnection connection, string table, CancellationToken token)
-    {
-        const string sql = """
-            SELECT LTRIM(RTRIM(f.F_ID))
-            FROM dbo.FIELDS f WITH (NOLOCK)
-            WHERE f.T_ID=@Table AND LTRIM(RTRIM(ISNULL(f.DATASOURCE_SQL,'')))<>'';
-            """;
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table;
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var result = new List<string>();
-        while (await reader.ReadAsync(token))
-        {
-            result.Add(reader.GetString(0).Trim());
         }
         return result;
     }

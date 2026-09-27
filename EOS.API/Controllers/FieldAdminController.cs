@@ -6,9 +6,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace EOS.API.Controllers;
 
-public sealed record ValidateExpressionRequest(string Kind, string Table, string Field, string? Expression);
-public sealed record PreviewExpressionRequest(string Kind, string Table, string Field, string? Expression);
-public sealed record PublishExpressionRequest(string Kind, string Table, string Field, string? Expression, string? Original);
 public sealed record ParseExpressionRequest(string Kind, string? Expression);
 
 [ApiController]
@@ -136,53 +133,13 @@ public sealed class FieldAdminController(
         return NoContent();
     }
 
-    /// <summary>受控表达式校验（P1）：语法 + 白名单 + 物理存在性，失败返回精确错误。</summary>
-    [HttpPost("fields/expressions/validate")]
-    public async Task<IActionResult> ValidateExpression(ValidateExpressionRequest request, CancellationToken token)
-    {
-        if (!await CanSetup(token)) return Forbid();
-        if (!TryParseKind(request.Kind, out var kind))
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_EXPRESSION_KIND", "kind 仅支持 virtual_exp / convert_function / datasource_sql。"));
-        return Ok(await expressionService.ValidateAsync(kind, request.Table, request.Field, request.Expression, token));
-    }
-
-    /// <summary>受控表达式只读预览（P2）：绑定模块/主表，TOP 20 抽样。</summary>
-    [HttpPost("fields/expressions/preview")]
-    public async Task<IActionResult> PreviewExpression(PreviewExpressionRequest request, CancellationToken token)
-    {
-        if (!await CanSetup(token)) return Forbid();
-        if (!TryParseKind(request.Kind, out var kind))
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_EXPRESSION_KIND", "kind 仅支持 virtual_exp / convert_function / datasource_sql。"));
-        return Ok(await expressionService.PreviewAsync(kind, request.Table, request.Field, request.Expression, token));
-    }
-
-    /// <summary>受控表达式发布（P2）：事务写 FIELDS + AUDIT_EVENT 审计，乐观锁 + 幂等。</summary>
-    [HttpPost("fields/expressions/publish")]
-    public async Task<IActionResult> PublishExpression(PublishExpressionRequest request, CancellationToken token)
-    {
-        if (!await CanSetup(token)) return Forbid();
-        if (!TryParseKind(request.Kind, out var kind))
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_EXPRESSION_KIND", "kind 仅支持 virtual_exp / convert_function / datasource_sql。"));
-        var outcome = await expressionService.PublishAsync(
-            kind, request.Table, request.Field, request.Expression, request.Original,
-            userContext.EmployeeName, userContext.UserId, token);
-        return outcome.Status switch
-        {
-            PublishExpressionStatus.Published => Ok(new { status = "published" }),
-            PublishExpressionStatus.NoChange => NoContent(),
-            PublishExpressionStatus.Invalid => BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "EXPRESSION_INVALID", string.Join("；", outcome.Errors))),
-            PublishExpressionStatus.NotFound => NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "FIELD_NOT_FOUND", "字段元数据不存在。")),
-            _ => Conflict(ApiProblem.Create(StatusCodes.Status409Conflict, "CONCURRENT_MODIFIED", "字段内容已被他人修改，请刷新后重试。")),
-        };
-    }
-
     /// <summary>受控表达式结构回读：字段设置构建器初始化（与校验同源解析器；不触库、不执行表达式）。</summary>
     [HttpPost("fields/expressions/parse")]
     public async Task<IActionResult> ParseExpression(ParseExpressionRequest request, CancellationToken token)
     {
         if (!await CanBrowse(token)) return Forbid();
         if (!TryParseKind(request.Kind, out var kind))
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_EXPRESSION_KIND", "kind 仅支持 virtual_exp / convert_function / datasource_sql。"));
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_EXPRESSION_KIND", "kind 仅支持 virtual_exp / convert_function。"));
         return Ok(RestrictedExpressionService.ParseStructure(kind, request.Expression));
     }
 
@@ -224,7 +181,6 @@ public sealed class FieldAdminController(
         {
             "virtual_exp" => RestrictedExpressionKind.VirtualExp,
             "convert_function" => RestrictedExpressionKind.ConvertFunction,
-            "datasource_sql" => RestrictedExpressionKind.DataSourceSql,
             _ => (RestrictedExpressionKind)(-1),
         };
         return parsed != (RestrictedExpressionKind)(-1);

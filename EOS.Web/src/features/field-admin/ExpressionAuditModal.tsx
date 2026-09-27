@@ -17,7 +17,6 @@ export interface ExpressionOverview {
   hidden: number
   virtualExp: number
   convertFunction: number
-  dataSourceSql: number
   stale: number
   staleItems: ExpressionStaleEntry[]
 }
@@ -45,7 +44,6 @@ export function ExpressionAuditModal({ open, onClose }: { open: boolean; onClose
                   <span>隐藏幽灵 {data.hidden}</span>
                   <span>VIRTUAL_EXP {data.virtualExp}</span>
                   <span>CONVERT_FUNCTION {data.convertFunction}</span>
-                  <span>DATASOURCE_SQL {data.dataSourceSql}</span>
                   <span className={data.stale > 0 ? 'text-danger fw-semibold' : 'text-success'}>待复核 {data.stale}</span>
                 </div>
                 <div className="d-flex justify-content-end mb-2">

@@ -97,7 +97,11 @@ public sealed record FieldAdminInput(
     string? ChoosePage,
     IReadOnlyList<FieldAdminChooser> Choosers,
     bool CanCopy,
-    string? Options = null);
+    string? Options = null,
+    /// <summary>虚拟表达式：null = 本次不改，空串 = 清空，非空 = 设为该值（须字段为虚拟字段）。</summary>
+    string? VirtualExpression = null,
+    /// <summary>受控转换函数名：null = 本次不改，空串 = 清空，非空 = 须在注册表内。</summary>
+    string? ConvertFunction = null);
 
 public sealed record FieldAdminMetadata(
     string TableId,
@@ -107,7 +111,6 @@ public sealed record FieldAdminMetadata(
     string? VirtualExpression,
     bool IsAutoIncrement,
     string? ConvertFunction,
-    string? DataSourceSql,
     string? LastUpdatedBy,
     DateTime? LastUpdatedAt,
     bool IsPrimaryKey,

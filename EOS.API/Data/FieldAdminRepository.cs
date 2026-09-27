@@ -12,6 +12,7 @@ public sealed class FieldAdminRepository(
     DbConnectionFactory connections,
     WorkbenchDirtyMarker dirtyMarker,
     WorkbenchAuditWriter auditWriter,
+    RestrictedExpressionService expressionService,
     ILogger<FieldAdminRepository> logger)
 {
     /// <summary>
@@ -490,7 +491,7 @@ public sealed class FieldAdminRepository(
                    CAST(COALESCE(IS_COST,0) AS bit),CAST(COALESCE(IS_SECRECY,0) AS bit),DFT_VALUE,VERIFY_INDEX,REGEX,F_REMARK,
                    BROWSE_URL,BROWSE_M_IDX,CAST(COALESCE(ONLY_CHOOSE,0) AS bit),CAST(COALESCE(CHOOSE_MULTI,0) AS bit),CHOOSE_PAGE,
                    CAST(COALESCE(IS_VIRTUAL,0) AS bit),VIRTUAL_EXP,CAST(COALESCE(CAN_COPY,1) AS bit),CAST(COALESCE(IS_AUTOINC,0) AS bit),
-                   CONVERT_FUNCTION,DATASOURCE_SQL,LAST_UPDATE_BY,LAST_UPDATE_DATE,CAST(COALESCE(IS_PK,0) AS bit)
+                   CONVERT_FUNCTION,LAST_UPDATE_BY,LAST_UPDATE_DATE,CAST(COALESCE(IS_PK,0) AS bit)
             FROM dbo.FIELDS WITH (NOLOCK)
             WHERE T_ID=@TableId AND LTRIM(RTRIM(F_ID))=@FieldId;
             """;
@@ -516,15 +517,14 @@ public sealed class FieldAdminRepository(
         var virtualExpression = reader.IsDBNull(24) ? null : reader.GetString(24);
         var isAutoIncrement = reader.GetBoolean(26);
         var convertFunction = reader.IsDBNull(27) ? null : reader.GetString(27);
-        var dataSourceSql = reader.IsDBNull(28) ? null : reader.GetString(28);
-        var lastUpdatedBy = reader.IsDBNull(29) ? null : reader.GetString(29);
-        DateTime? lastUpdatedAt = reader.IsDBNull(30) ? null : reader.GetDateTime(30);
-        var isPrimaryKey = reader.GetBoolean(31);
+        var lastUpdatedBy = reader.IsDBNull(28) ? null : reader.GetString(28);
+        DateTime? lastUpdatedAt = reader.IsDBNull(29) ? null : reader.GetDateTime(29);
+        var isPrimaryKey = reader.GetBoolean(30);
         await reader.CloseAsync();
         input = input with { Choosers = await ReadFieldChoosersAsync(connection, null, tableId, field, token) };
         var physicalType = await GetPhysicalTypeAsync(connection, tableId, field, token);
         return new(tableId, field, input,
-            isVirtual, virtualExpression, isAutoIncrement, convertFunction, dataSourceSql,
+            isVirtual, virtualExpression, isAutoIncrement, convertFunction,
             lastUpdatedBy, lastUpdatedAt, isPrimaryKey,
             physicalType is not null,
             physicalType,
@@ -743,18 +743,27 @@ public sealed class FieldAdminRepository(
                     $"物理列 {request.TableId}.{request.FieldId.Trim()} 不存在，新增字段元数据仅允许指向真实物理列；虚拟/派生字段需经受控表达式机制另行处理。",
                     nameof(request));
         }
+        // 新增出来的字段是物理列（IS_VIRTUAL=0）：虚拟表达式一律拒绝，转换函数可随新增一起配置
+        if (!string.IsNullOrWhiteSpace(request.Field.VirtualExpression))
+            throw new ArgumentException("新增字段是物理列，不接受虚拟表达式；虚拟字段需另行登记。", nameof(request));
+        if (!string.IsNullOrWhiteSpace(request.Field.ConvertFunction))
+        {
+            var validation = await expressionService.ValidateAsync(
+                RestrictedExpressionKind.ConvertFunction, request.TableId, request.FieldId, request.Field.ConvertFunction, token);
+            if (!validation.Ok) throw new ArgumentException(string.Join("；", validation.Errors), nameof(request));
+        }
 
         const string sql = """
             INSERT INTO dbo.FIELDS
                 (T_ID,F_ID,F_DESC,F_TYPE,BROWSE_URL,BROWSE_M_IDX,ONLY_CHOOSE,CHOOSE_PAGE,CHOOSE_MULTI,
                  REGEX,DISPLAY_LENGTH,DISPLAY_FORMAT,HEADER_ALIGN,ITEM_ALIGN,IS_VERIFY,VERIFY_INDEX,
                  IS_READONLY,IS_VISIBLE,IS_VIRTUAL,IS_AUTOINC,IS_QUERY,IS_COST,IS_SECRECY,DFT_VALUE,
-                 CAN_COPY,IS_DEFAULT_FIELDS,F_REMARK,LAST_UPDATE_BY,LAST_UPDATE_DATE)
+                 CAN_COPY,IS_DEFAULT_FIELDS,CONVERT_FUNCTION,F_REMARK,LAST_UPDATE_BY,LAST_UPDATE_DATE)
             VALUES
                 (@TableId,@FieldId,@Label,@DataType,NULL,@BrowseModuleId,@OnlyChoose,@ChoosePage,@ChooseMultiple,
                  @Regex,@Width,@Format,@HeaderAlign,@Align,@Required,@VerifyIndex,
                  @Readonly,@Visible,0,0,@Queryable,@Cost,@Secrecy,@DefaultValue,
-                 @CanCopy,@Default,@Remark,@UpdatedBy,GETDATE());
+                 @CanCopy,@Default,@ConvertFunction,@Remark,@UpdatedBy,GETDATE());
             """;
         await using var command = new SqlCommand(sql, connection, transaction);
         AddIdentity(command, request.TableId, request.FieldId);
@@ -782,6 +791,8 @@ public sealed class FieldAdminRepository(
     {
         EnsureIdentifier(tableId, fieldId);
         Validate(field);
+        // 表达式随字段一起保存：先过受控校验（空值表示清空，不解析），不通过则整单拒绝
+        await ValidateExpressionsAsync(tableId, fieldId, field, token);
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
@@ -807,6 +818,8 @@ public sealed class FieldAdminRepository(
                 VERIFY_INDEX=@VerifyIndex,REGEX=@Regex,F_REMARK=@Remark,BROWSE_URL=@BrowseUrl,BROWSE_M_IDX=@BrowseModuleId,
                 ONLY_CHOOSE=@OnlyChoose,CHOOSE_MULTI=@ChooseMultiple,CHOOSE_PAGE=@ChoosePage,CAN_COPY=@CanCopy,
                 FORM_OPTIONS=@FormOptions,
+                VIRTUAL_EXP=CASE WHEN @WriteVirtualExp=1 THEN @VirtualExp ELSE VIRTUAL_EXP END,
+                CONVERT_FUNCTION=CASE WHEN @WriteConvertFunction=1 THEN @ConvertFunction ELSE CONVERT_FUNCTION END,
                 LAST_UPDATE_BY=@UpdatedBy,LAST_UPDATE_DATE=GETDATE()
             WHERE T_ID=@TableId AND F_ID=@FieldId;
             """;
@@ -819,8 +832,11 @@ public sealed class FieldAdminRepository(
         await ReplaceChoosersAsync(connection, transaction, tableId, fieldId.Trim(), field.Choosers, updatedBy, token);
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
         await transaction.CommitAsync(token);
+        var changes = DiffInputs(current, field).ToList();
+        AddExpressionChange(changes, "VIRTUAL_EXP", current.VirtualExpression, field.VirtualExpression);
+        AddExpressionChange(changes, "CONVERT_FUNCTION", current.ConvertFunction, field.ConvertFunction);
         await auditWriter.WriteBestEffortAsync(null, $"{tableId}.{fieldId}", "UPDATE", "字段维护更新", updatedBy, "FIELD_ADMIN",
-            result: 1, DiffInputs(current, field), token);
+            result: 1, changes, token);
         logger.LogInformation("更新字段 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
     }
 
@@ -885,7 +901,8 @@ public sealed class FieldAdminRepository(
                    CAST(COALESCE(IS_READONLY,0) AS bit),CAST(COALESCE(IS_VERIFY,0) AS bit),CAST(COALESCE(IS_COST,0) AS bit),
                    CAST(COALESCE(IS_SECRECY,0) AS bit),DFT_VALUE,VERIFY_INDEX,REGEX,F_REMARK,BROWSE_URL,BROWSE_M_IDX,
                    CAST(COALESCE(ONLY_CHOOSE,0) AS bit),CAST(COALESCE(CHOOSE_MULTI,0) AS bit),CHOOSE_PAGE,
-                   CAST(COALESCE(CAN_COPY,1) AS bit),FORM_OPTIONS
+                   CAST(COALESCE(CAN_COPY,1) AS bit),FORM_OPTIONS,
+                   LTRIM(RTRIM(ISNULL(VIRTUAL_EXP,''))),LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,'')))
             FROM dbo.FIELDS WITH (NOLOCK)
             WHERE T_ID=@TableId AND LTRIM(RTRIM(F_ID))=@FieldId;
             """;
@@ -905,7 +922,10 @@ public sealed class FieldAdminRepository(
             reader.IsDBNull(21) ? null : reader.GetString(21),
             [],
             reader.GetBoolean(22),
-            reader.IsDBNull(reader.GetOrdinal("FORM_OPTIONS")) ? null : reader.GetString(reader.GetOrdinal("FORM_OPTIONS")));
+            reader.IsDBNull(reader.GetOrdinal("FORM_OPTIONS")) ? null : reader.GetString(reader.GetOrdinal("FORM_OPTIONS")),
+            // 表达式列补在 FORM_OPTIONS 之后（按序号取，前面每加一列都要跟着挪）
+            reader.GetString(24),
+            reader.GetString(25));
         await reader.CloseAsync();
         return result with { Choosers = await ReadFieldChoosersAsync(connection, transaction, tableId, fieldId, token) };
     }
@@ -980,6 +1000,11 @@ public sealed class FieldAdminRepository(
         command.Parameters.Add("@ChoosePage", SqlDbType.NVarChar, 500).Value = DbValue(input.ChoosePage);
         command.Parameters.Add("@CanCopy", SqlDbType.Bit).Value = input.CanCopy;
         command.Parameters.Add("@FormOptions", SqlDbType.NVarChar, 500).Value = DbValue(input.Options);
+        // 表达式三态：null = 本次不改（UPDATE 里写回原值），空串 = 清空，非空 = 设为该值
+        command.Parameters.Add("@WriteVirtualExp", SqlDbType.Bit).Value = input.VirtualExpression is not null;
+        command.Parameters.Add("@VirtualExp", SqlDbType.NVarChar, 2000).Value = DbValue(input.VirtualExpression);
+        command.Parameters.Add("@WriteConvertFunction", SqlDbType.Bit).Value = input.ConvertFunction is not null;
+        command.Parameters.Add("@ConvertFunction", SqlDbType.NVarChar, 200).Value = DbValue(input.ConvertFunction);
         command.Parameters.Add("@UpdatedBy", SqlDbType.NVarChar, 50).Value = updatedBy;
     }
 
@@ -1078,7 +1103,10 @@ public sealed class FieldAdminRepository(
         && a.OnlyChoose == b.OnlyChoose && a.ChooseMultiple == b.ChooseMultiple && NullableEquals(a.ChoosePage, b.ChoosePage)
         && a.CanCopy == b.CanCopy
         && a.Choosers.Count == b.Choosers.Count
-        && a.Choosers.Zip(b.Choosers).All(pair => SameChooser(pair.First, pair.Second));
+        && a.Choosers.Zip(b.Choosers).All(pair => SameChooser(pair.First, pair.Second))
+        // 表达式：null = 调用方本次不改（如工作台列宽保存路径），不参与冲突判定
+        && (a.VirtualExpression is null || b.VirtualExpression is null || NullableEquals(a.VirtualExpression, b.VirtualExpression))
+        && (a.ConvertFunction is null || b.ConvertFunction is null || NullableEquals(a.ConvertFunction, b.ConvertFunction));
 
     private static bool SameChooser(FieldAdminChooser a, FieldAdminChooser b) =>
         a.Active == b.Active && NullableEquals(a.Table, b.Table) && NullableEquals(a.Description, b.Description)
@@ -1130,6 +1158,38 @@ public sealed class FieldAdminRepository(
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// 表达式随字段保存：把本次要写的表达式过一遍受控校验（null = 本次不改，空串 = 清空不解析）。
+    /// 任何一项不通过就整体拒绝，避免落半截配置。
+    /// </summary>
+    private async Task ValidateExpressionsAsync(string tableId, string fieldId, FieldAdminInput field, CancellationToken token)
+    {
+        var errors = new List<string>();
+        if (field.VirtualExpression is not null)
+        {
+            var virtualResult = await expressionService.ValidateAsync(
+                RestrictedExpressionKind.VirtualExp, tableId, fieldId, field.VirtualExpression, token);
+            errors.AddRange(virtualResult.Errors);
+        }
+        if (field.ConvertFunction is not null)
+        {
+            var convertResult = await expressionService.ValidateAsync(
+                RestrictedExpressionKind.ConvertFunction, tableId, fieldId, field.ConvertFunction, token);
+            errors.AddRange(convertResult.Errors);
+        }
+        if (errors.Count > 0) throw new ArgumentException(string.Join("；", errors), nameof(field));
+    }
+
+    /// <summary>表达式变更进审计明细：null = 本次不改（不记），同值不记。</summary>
+    private static void AddExpressionChange(List<AuditFieldChange> changes, string column, string? before, string? after)
+    {
+        if (after is null) return;
+        var oldValue = string.IsNullOrWhiteSpace(before) ? null : before.Trim();
+        var newValue = string.IsNullOrWhiteSpace(after) ? null : after.Trim();
+        if (string.Equals(oldValue, newValue, StringComparison.Ordinal)) return;
+        changes.Add(new AuditFieldChange(column, oldValue, newValue, null));
     }
 
     private static void Validate(FieldAdminInput input)

@@ -81,7 +81,6 @@ function installMocks() {
         virtualExpression: null,
         isAutoIncrement: false,
         convertFunction: null,
-        dataSourceSql: null,
         lastUpdatedBy: 'admin',
         lastUpdatedAt: '2026-08-01T00:00:00Z',
       })

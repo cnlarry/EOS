@@ -23,6 +23,7 @@ public sealed class FieldAdminRepositoryTests
         return new FieldAdminRepository(new DbConnectionFactory(config), new WorkbenchDirtyMarker(new DbConnectionFactory(config)),
             new WorkbenchAuditWriter(new DbConnectionFactory(config), new Microsoft.AspNetCore.Http.HttpContextAccessor(), Provider(config),
                 Microsoft.Extensions.Options.Options.Create(new EOS.API.Models.AuditSettings())),
+            new RestrictedExpressionService(new DbConnectionFactory(config)),
             NullLogger<FieldAdminRepository>.Instance);
     }
 

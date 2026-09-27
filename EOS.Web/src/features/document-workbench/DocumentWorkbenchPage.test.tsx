@@ -80,7 +80,7 @@ const fieldMeta = {
   format: null, isVisible: true, isDefault: true, isQueryable: true, isReadonly: false, isRequired: true, isCost: false,
   isSecrecy: false, defaultValue: null, verifyIndex: null, regex: null, remark: null, browseUrl: null, browseModuleId: null,
   onlyChoose: false, chooseMultiple: false, choosePage: null, choosers: [], canCopy: true, isVirtual: false,
-  virtualExpression: null, isAutoIncrement: false, convertFunction: null, dataSourceSql: null,
+  virtualExpression: null, isAutoIncrement: false, convertFunction: null,
   lastUpdatedBy: 'admin', lastUpdatedAt: '2026-08-01T00:00:00Z',
 }
 

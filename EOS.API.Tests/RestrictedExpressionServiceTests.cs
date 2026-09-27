@@ -24,55 +24,6 @@ public class RestrictedExpressionServiceTests
     }
 
     [Fact]
-    public void DataSourceSql_SingleTableSelect_Valid()
-    {
-        Assert.True(RestrictedExpressionService.TryParseDataSourceSql(
-            "SELECT G_IDX,G_DESC FROM SYSDG", out var parsed, out var error));
-        Assert.Equal("SYSDG", parsed.Table);
-        Assert.Equal(new[] { "G_IDX", "G_DESC" }, parsed.Columns);
-        Assert.Null(parsed.WhereColumn);
-        Assert.Null(parsed.OrderColumn);
-        Assert.Equal("", error);
-    }
-
-    [Fact]
-    public void DataSourceSql_WhereAndOrder_Valid()
-    {
-        Assert.True(RestrictedExpressionService.TryParseDataSourceSql(
-            "SELECT PRO_NO,PRO_NAME FROM PRODUCT WHERE PRO_TYPE = '1' ORDER BY PRO_NO DESC",
-            out var parsed, out _));
-        Assert.Equal("PRODUCT", parsed.Table);
-        Assert.Equal("PRO_TYPE", parsed.WhereColumn);
-        Assert.Equal("'1'", parsed.WhereValue);
-        Assert.Equal("PRO_NO", parsed.OrderColumn);
-        Assert.Equal("DESC", parsed.OrderDirection);
-    }
-
-    [Theory]
-    [InlineData("DELETE FROM SYSDG", "必须以 SELECT 开头")]
-    [InlineData("SELECT * FROM SYSDG", "SELECT 列清单无效")]
-    [InlineData("SELECT G_IDX FROM SYSDG; DROP TABLE X", "不允许分号")]
-    [InlineData("SELECT G_IDX FROM SYSDG -- comment", "不允许分号或注释")]
-    [InlineData("SELECT G_IDX", "缺少 FROM")]
-    [InlineData("SELECT G_IDX FROM SYSDG WHERE G_IDX = (SELECT 1)", "仅支持")]
-    [InlineData("SELECT G_IDX FROM SYSDG WHERE G_IDX = CONCAT('a','b')", "仅支持")]
-    [InlineData("SELECT G_IDX FROM SYSDG UNION SELECT * FROM OTHER", "仅允许纯字面量 UNION")]
-    [InlineData("SELECT G_IDX FROM SYSDG JOIN OTHER ON 1=1", "FROM 表名无效")]
-    public void DataSourceSql_InvalidForms_Rejected(string sql, string expectedErrorPart)
-    {
-        Assert.False(RestrictedExpressionService.TryParseDataSourceSql(sql, out _, out var error));
-        Assert.Contains(expectedErrorPart, error);
-    }
-
-    [Fact]
-    public void DataSourceSql_LiteralUnion_Valid()
-    {
-        var sql = "SELECT 'P' AS T_KIND, '主表' AS T_KIND_DESC UNION SELECT 'S', '副表' UNION SELECT 'O', '其它' UNION SELECT 'V', '视图'";
-        Assert.True(RestrictedExpressionService.TryParseDataSourceSql(sql, out var parsed, out _));
-        Assert.Null(parsed.Table);
-    }
-
-    [Fact]
     public void VirtualExp_SyntaxRouting_InvalidReferenceRejectedBeforeDb()
     {
         // 语法层校验不依赖数据库：非「表.列」形态直接拒绝
@@ -185,44 +136,5 @@ public class RestrictedExpressionServiceTests
         Assert.Equal(ExpressionStructureModes.Raw,
             RestrictedExpressionService.ParseStructure(RestrictedExpressionKind.ConvertFunction, expression).Mode);
     }
-
-    [Fact]
-    public void ParseStructure_DataSourceSql_UnquotesWhereLiteral()
-    {
-        var structure = RestrictedExpressionService.ParseStructure(
-            RestrictedExpressionKind.DataSourceSql,
-            "SELECT PRO_NO,PRO_NAME FROM PRODUCT WHERE PRO_TYPE = 'O''K' ORDER BY PRO_NO DESC");
-        Assert.Equal(ExpressionStructureModes.TableSql, structure.Mode);
-        var dataSource = structure.DataSource;
-        Assert.NotNull(dataSource);
-        Assert.Equal("PRODUCT", dataSource.Table);
-        Assert.Equal(new[] { "PRO_NO", "PRO_NAME" }, dataSource.Columns);
-        Assert.Equal("PRO_TYPE", dataSource.WhereColumn);
-        Assert.Equal("O'K", dataSource.WhereValue);
-        Assert.True(dataSource.WhereValueIsString);
-        Assert.Equal("PRO_NO", dataSource.OrderColumn);
-        Assert.Equal("DESC", dataSource.OrderDirection);
-    }
-
-    [Fact]
-    public void ParseStructure_DataSourceSql_NumericLiteralHasNoQuotes()
-    {
-        var structure = RestrictedExpressionService.ParseStructure(
-            RestrictedExpressionKind.DataSourceSql,
-            "SELECT G_IDX FROM SYSDG WHERE G_KIND = 2");
-        Assert.NotNull(structure.DataSource);
-        Assert.Equal("2", structure.DataSource.WhereValue);
-        Assert.False(structure.DataSource.WhereValueIsString);
-    }
-
-    [Theory]
-    [InlineData("SELECT 'P' AS T_KIND UNION SELECT 'S'", ExpressionStructureModes.LiteralUnion)]
-    [InlineData("SELECT 1", ExpressionStructureModes.Raw)]
-    [InlineData("DELETE FROM SYSDG", ExpressionStructureModes.Raw)]
-    public void ParseStructure_DataSourceSql_NonBuildableForms(string expression, string expectedMode)
-    {
-        var structure = RestrictedExpressionService.ParseStructure(RestrictedExpressionKind.DataSourceSql, expression);
-        Assert.Equal(expectedMode, structure.Mode);
-        Assert.Null(structure.DataSource);
-    }
 }
+

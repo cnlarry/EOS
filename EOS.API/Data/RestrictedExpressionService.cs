@@ -1,5 +1,4 @@
 using System.Data;
-using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
@@ -9,7 +8,6 @@ public enum RestrictedExpressionKind
 {
     VirtualExp,
     ConvertFunction,
-    DataSourceSql,
 }
 
 public sealed record ExpressionValidationResult(
@@ -17,13 +15,6 @@ public sealed record ExpressionValidationResult(
     IReadOnlyList<string> Errors,
     IReadOnlyList<string> Hints,
     int WhiteListVersion);
-
-public sealed record ExpressionPreviewResult(
-    bool Ok,
-    IReadOnlyList<string> Errors,
-    IReadOnlyList<Dictionary<string, object?>> Rows,
-    string? Sql,
-    long ElapsedMs);
 
 public sealed record ExpressionStaleEntry(string Kind, string Table, string Field, string Expression, IReadOnlyList<string> Errors);
 public sealed record ExpressionRescanResult(int WhiteListVersion, int Total, IReadOnlyList<ExpressionStaleEntry> Stale);
@@ -34,7 +25,6 @@ public sealed record ExpressionOverview(
     int Hidden,
     int VirtualExp,
     int ConvertFunction,
-    int DataSourceSql,
     int Stale,
     IReadOnlyList<ExpressionStaleEntry> StaleItems);
 
@@ -43,19 +33,6 @@ public sealed record ExpressionRegistryItem(string Name, string Description);
 
 /// <summary>受控表达式注册表（白名单版本 + 转换函数名）：构建器下拉的唯一来源，前端不得硬编码。</summary>
 public sealed record ExpressionRegistry(int WhiteListVersion, IReadOnlyList<ExpressionRegistryItem> ConvertFunctions);
-
-/// <summary>
-/// 受限单表 SELECT 的结构回读（构建器初始化）：字符串常量已去引号，
-/// WhereValueIsString 决定生成文本时是否重新加引号。
-/// </summary>
-public sealed record ExpressionDataSourceStructure(
-    string Table,
-    IReadOnlyList<string> Columns,
-    string? WhereColumn,
-    string? WhereValue,
-    bool WhereValueIsString,
-    string? OrderColumn,
-    string? OrderDirection);
 
 /// <summary>表达式结构回读的形态取值（前端构建器据此决定控件是否可编辑）。</summary>
 public static class ExpressionStructureModes
@@ -66,10 +43,6 @@ public static class ExpressionStructureModes
     public const string Arithmetic = "arithmetic";
     /// <summary>转换函数命中注册表。</summary>
     public const string Registry = "registry";
-    /// <summary>受限单表 SELECT：构建器可编辑。</summary>
-    public const string TableSql = "tableSql";
-    /// <summary>纯字面量 UNION（无表访问）：构建器不覆盖。</summary>
-    public const string LiteralUnion = "literalUnion";
     /// <summary>语法非法或构建器不覆盖的形态。</summary>
     public const string Raw = "raw";
 }
@@ -83,27 +56,16 @@ public sealed record ExpressionStructure(
     string Mode,
     string? Table = null,
     string? Column = null,
-    string? Function = null,
-    ExpressionDataSourceStructure? DataSource = null);
+    string? Function = null);
 
 /// <summary>
-/// 受控表达式解析工作流（P1/P2，，设计见）：
-/// VIRTUAL_EXP / CONVERT_FUNCTION / DATASOURCE_SQL 三套受限语言的服务端校验、只读预览与发布审计。
-/// - 校验：语法解析 → 表/列物理存在 → 白名单命中，任何失败不进入运行时；
-/// - 发布：事务内写 FIELDS + AUDIT_EVENT 审计（TYPE=EXPR_PUBLISH），幂等，乐观锁；
-/// - 白名单版本：常量版本号，随解析器/注册表变更递增（P3 将版本化入库）。
+/// 受控表达式校验（VIRTUAL_EXP / CONVERT_FUNCTION 两套受限语言）：
+/// 语法解析 → 表/列物理存在 → 白名单命中，任何失败都不进入运行时。
+/// 表达式随字段一起保存，保存路径在写库前调用本服务；表达式为空表示清空。
+/// 白名单版本为常量，随解析器/注册表变更递增。
 /// </summary>
-public sealed class RestrictedExpressionService(
-    DbConnectionFactory connections,
-    ILogger<RestrictedExpressionService> logger,
-    WorkbenchAuditWriter auditWriter)
+public sealed class RestrictedExpressionService(DbConnectionFactory connections)
 {
-    private static readonly Regex QuotedString = new("^'(?:[^']|'')*'$", RegexOptions.Compiled);
-    private static readonly Regex NumericLiteral = new("^[+-]?\\d+(\\.\\d+)?$", RegexOptions.Compiled);
-
-    /// <summary>受控表达式只读预览的行数上限（Build*PreviewSql 共用）。</summary>
-    private const int PreviewRowLimit = 20;
-
     /// <summary>白名单版本：解析器语法或注册表变更时递增（P3 将入库版本化）。</summary>
     public const int WhiteListVersion = 1;
 
@@ -132,8 +94,9 @@ public sealed class RestrictedExpressionService(
         var value = (expression ?? string.Empty).Trim();
         if (string.IsNullOrEmpty(value))
         {
-            errors.Add("表达式不能为空（清空请使用发布空值语义，或直接保留原值）。");
-            return new(false, errors, hints, version);
+            // 空值 = 清空：保存路径据此把表达式列写回 NULL，无需再解析
+            hints.Add("表达式为空，保存后清空该字段的表达式。");
+            return new(true, errors, hints, version);
         }
         if (value.Length > 2000)
         {
@@ -144,142 +107,19 @@ public sealed class RestrictedExpressionService(
         switch (kind)
         {
             case RestrictedExpressionKind.VirtualExp:
-                await ValidateVirtualExpAsync(table, value, errors, hints, token);
+                if (await EnsureVirtualFieldAsync(table, field, errors, hints, token))
+                {
+                    await ValidateVirtualExpAsync(table, value, errors, hints, token);
+                }
                 break;
             case RestrictedExpressionKind.ConvertFunction:
                 if (ValidateConvertFunction(value) is { } convertError) errors.Add(convertError);
-                break;
-            case RestrictedExpressionKind.DataSourceSql:
-                await ValidateDataSourceSqlAsync(table, value, errors, hints, token);
                 break;
             default:
                 errors.Add("未知表达式类型。");
                 break;
         }
         return new(errors.Count == 0, errors, hints, version);
-    }
-
-    public async Task<ExpressionPreviewResult> PreviewAsync(
-        RestrictedExpressionKind kind,
-        string table,
-        string field,
-        string? expression,
-        CancellationToken token)
-    {
-        var validation = await ValidateAsync(kind, table, field, expression, token);
-        if (!validation.Ok)
-            return new(false, validation.Errors, [], null, 0);
-        var value = (expression ?? string.Empty).Trim();
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        string? generatedSql = null;
-        try
-        {
-            (string Sql, List<(string Name, object? Value)> Parameters) built;
-            switch (kind)
-            {
-                case RestrictedExpressionKind.VirtualExp:
-                    built = await BuildVirtualPreviewSql(connection, table, field, value, token);
-                    break;
-                case RestrictedExpressionKind.ConvertFunction:
-                    built = BuildConvertPreviewSql(table, field, value);
-                    break;
-                case RestrictedExpressionKind.DataSourceSql:
-                    built = BuildDataSourcePreviewSql(value);
-                    break;
-                default:
-                    throw new InvalidOperationException("未知表达式类型。");
-            }
-            var (sql, parameters) = built;
-            generatedSql = sql;
-            await using var command = new SqlCommand(sql, connection);
-            foreach (var (name, paramValue) in parameters)
-                command.Parameters.AddWithValue(name, paramValue);
-            var rows = await WorkbenchSql.ReadRowsAsync(command, token);
-            stopwatch.Stop();
-            return new(true, [], rows, sql, stopwatch.ElapsedMilliseconds);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "受控表达式预览失败 kind={Kind} table={Table} field={Field}", kind, table, field);
-            return new(false, [$"预览执行失败：{ex.Message}（SQL：{generatedSql}）"], [], null, stopwatch.ElapsedMilliseconds);
-        }
-    }
-
-    /// <summary>
-    /// 发布受控表达式：事务内更新 FIELDS + AUDIT_EVENT 审计；乐观锁（original 不匹配返回 false）。
-    /// 幂等：同值重复发布为 no-op（不产生冗余审计）。
-    /// </summary>
-    public async Task<PublishExpressionOutcome> PublishAsync(
-        RestrictedExpressionKind kind,
-        string table,
-        string field,
-        string? expression,
-        string? original,
-        string employeeName,
-        string userId,
-        CancellationToken token)
-    {
-        var value = (expression ?? string.Empty).Trim();
-        var version = await ReadWhiteListVersionAsync(token);
-        var validation = await ValidateAsync(kind, table, field, value, token);
-        if (!validation.Ok)
-            return new(PublishExpressionStatus.Invalid, validation.Errors);
-        var column = kind switch
-        {
-            RestrictedExpressionKind.VirtualExp => "VIRTUAL_EXP",
-            RestrictedExpressionKind.ConvertFunction => "CONVERT_FUNCTION",
-            RestrictedExpressionKind.DataSourceSql => "DATASOURCE_SQL",
-            _ => throw new InvalidOperationException("未知表达式类型。"),
-        };
-        if (!WorkbenchSql.Identifier.IsMatch(table) || !WorkbenchSql.Identifier.IsMatch(field))
-            return new(PublishExpressionStatus.Invalid, ["表名或字段名无效。"]);
-
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
-        try
-        {
-            string? current;
-            await using (var read = new SqlCommand(
-                $"SELECT LTRIM(RTRIM(ISNULL({column},''))) FROM dbo.FIELDS WITH (NOLOCK) WHERE LTRIM(RTRIM(T_ID))=@Table AND LTRIM(RTRIM(F_ID))=@Field;",
-                connection, transaction))
-            {
-                read.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table.Trim();
-                read.Parameters.Add("@Field", SqlDbType.NVarChar, 100).Value = field.Trim();
-                current = (await read.ExecuteScalarAsync(token) as string)?.Trim();
-            }
-            if (current is null)
-                return new(PublishExpressionStatus.NotFound, ["字段元数据不存在。"]);
-            if (!string.Equals(current, (original ?? string.Empty).Trim(), StringComparison.Ordinal))
-                return new(PublishExpressionStatus.ConcurrentModified, ["字段内容已被他人修改，请刷新后重试。"]);
-            if (string.Equals(current, value, StringComparison.Ordinal))
-                return new(PublishExpressionStatus.NoChange, []);
-
-            await using (var update = new SqlCommand(
-                $"UPDATE dbo.FIELDS SET {column}=@Value,LAST_UPDATE_BY=@By,LAST_UPDATE_DATE=GETDATE() WHERE LTRIM(RTRIM(T_ID))=@Table AND LTRIM(RTRIM(F_ID))=@Field;",
-                connection, transaction))
-            {
-                update.Parameters.AddWithValue("@Value", string.IsNullOrEmpty(value) ? DBNull.Value : value);
-                update.Parameters.AddWithValue("@By", employeeName);
-                update.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table.Trim();
-                update.Parameters.Add("@Field", SqlDbType.NVarChar, 100).Value = field.Trim();
-                await update.ExecuteNonQueryAsync(token);
-            }
-            var record = $"{table.Trim()}.{field.Trim()}";
-            var content =
-                $"[{kind}] {column} {record}：{(string.IsNullOrEmpty(current) ? "(空)" : current)} → {(string.IsNullOrEmpty(value) ? "(空)" : value)}（白名单 v{version}，发布人 {employeeName}）";
-            await auditWriter.WriteAsync(connection, transaction, 2302, record, "EXPR_PUBLISH", content, userId, token);
-            await transaction.CommitAsync(token);
-            logger.LogInformation("受控表达式发布 kind={Kind} table={Table} field={Field} by={User}", kind, table, field, userId);
-            return new(PublishExpressionStatus.Published, []);
-        }
-        catch
-        {
-            await transaction.RollbackAsync(token);
-            throw;
-        }
     }
 
     /// <summary>对全部已发布表达式按当前白名单版本重校验（P3：版本升级后标记需复核项）。</summary>
@@ -290,11 +130,10 @@ public sealed class RestrictedExpressionService(
         var version = await ReadWhiteListVersionAsync(token);
         const string sql = """
             SELECT LTRIM(RTRIM(T_ID)),LTRIM(RTRIM(F_ID)),
-                   LTRIM(RTRIM(ISNULL(VIRTUAL_EXP,''))),LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,''))),LTRIM(RTRIM(ISNULL(DATASOURCE_SQL,'')))
+                   LTRIM(RTRIM(ISNULL(VIRTUAL_EXP,''))),LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,'')))
             FROM dbo.FIELDS WITH (NOLOCK)
             WHERE (LTRIM(RTRIM(ISNULL(VIRTUAL_EXP,'')))<>''
-                OR LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,'')))<>''
-                OR LTRIM(RTRIM(ISNULL(DATASOURCE_SQL,'')))<>'')
+                OR LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,'')))<>'')
               AND COALESCE(IS_VISIBLE,1)=1;
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -307,12 +146,10 @@ public sealed class RestrictedExpressionService(
             var field = reader.GetString(1);
             var virtualExp = reader.GetString(2);
             var convertFunction = reader.GetString(3);
-            var dataSourceSql = reader.GetString(4);
             foreach (var (kind, value) in new[]
             {
                 (RestrictedExpressionKind.VirtualExp, virtualExp),
                 (RestrictedExpressionKind.ConvertFunction, convertFunction),
-                (RestrictedExpressionKind.DataSourceSql, dataSourceSql),
             })
             {
                 if (string.IsNullOrEmpty(value)) continue;
@@ -333,14 +170,12 @@ public sealed class RestrictedExpressionService(
         var version = await ReadWhiteListVersionAsync(token);
         var virtualExp = 0;
         var convertFunction = 0;
-        var dataSourceSql = 0;
         var visible = 0;
         var hidden = 0;
         const string sql = """
             SELECT CAST(COALESCE(IS_VISIBLE,1) AS bit),
                    CAST(CASE WHEN LTRIM(RTRIM(ISNULL(VIRTUAL_EXP,'')))<>'' THEN 1 ELSE 0 END AS bit),
-                   CAST(CASE WHEN LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,'')))<>'' THEN 1 ELSE 0 END AS bit),
-                   CAST(CASE WHEN LTRIM(RTRIM(ISNULL(DATASOURCE_SQL,'')))<>'' THEN 1 ELSE 0 END AS bit)
+                   CAST(CASE WHEN LTRIM(RTRIM(ISNULL(CONVERT_FUNCTION,'')))<>'' THEN 1 ELSE 0 END AS bit)
             FROM dbo.FIELDS WITH (NOLOCK);
             """;
         await using var command = new SqlCommand(sql, connection);
@@ -350,15 +185,13 @@ public sealed class RestrictedExpressionService(
             var isVisible = reader.GetBoolean(0);
             var hasVirtual = reader.GetBoolean(1);
             var hasConvert = reader.GetBoolean(2);
-            var hasDataSource = reader.GetBoolean(3);
             if (hasVirtual) virtualExp++;
             if (hasConvert) convertFunction++;
-            if (hasDataSource) dataSourceSql++;
             if (isVisible) visible++;
             else hidden++;
         }
         var rescan = await RescanAsync(token);
-        return new ExpressionOverview(version, visible, hidden, virtualExp, convertFunction, dataSourceSql, rescan.Stale.Count, rescan.Stale);
+        return new ExpressionOverview(version, visible, hidden, virtualExp, convertFunction, rescan.Stale.Count, rescan.Stale);
     }
 
     private async Task<int> ReadWhiteListVersionAsync(CancellationToken token)
@@ -394,7 +227,7 @@ public sealed class RestrictedExpressionService(
         {
             RestrictedExpressionKind.VirtualExp => ParseVirtualStructure(text),
             RestrictedExpressionKind.ConvertFunction => ParseConvertStructure(text),
-            _ => ParseDataSourceStructure(text),
+            _ => throw new InvalidOperationException("未知表达式类型。"),
         };
     }
 
@@ -416,23 +249,38 @@ public sealed class RestrictedExpressionService(
         return new("convert_function", ExpressionStructureModes.Registry, Function: name);
     }
 
-    private static ExpressionStructure ParseDataSourceStructure(string expression)
+    /// <summary>
+    /// 虚拟表达式只在虚拟字段（FIELDS.IS_VIRTUAL = 1）上生效：读取侧一律按该位决定是否解析
+    /// VIRTUAL_EXP，非虚拟字段上的表达式既不报错也不取值。校验/预览/发布都先过这道门，
+    /// 拦下"看着配了、实际不工作"的配置；字段本身不存在时同样拒绝。
+    /// </summary>
+    private async Task<bool> EnsureVirtualFieldAsync(string table, string field, List<string> errors, List<string> hints, CancellationToken token)
     {
-        if (!TryParseDataSourceSql(expression, out var parsed, out _))
-            return new("datasource_sql", ExpressionStructureModes.Raw);
-        if (parsed.Table is null) return new("datasource_sql", ExpressionStructureModes.LiteralUnion);
-        var (value, isString) = SplitLiteral(parsed.WhereValue);
-        return new("datasource_sql", ExpressionStructureModes.TableSql, DataSource: new ExpressionDataSourceStructure(
-            parsed.Table, parsed.Columns, parsed.WhereColumn, value, isString, parsed.OrderColumn, parsed.OrderDirection));
-    }
-
-    /// <summary>拆解 WHERE 常量：字符串常量去引号并还原转义，数值常量原样返回。</summary>
-    private static (string? Value, bool IsString) SplitLiteral(string? literal)
-    {
-        if (literal is null) return (null, false);
-        return literal.StartsWith('\'')
-            ? (literal[1..^1].Replace("''", "'"), true)
-            : (literal, false);
+        if (!WorkbenchSql.Identifier.IsMatch(table) || !WorkbenchSql.Identifier.IsMatch(field))
+        {
+            errors.Add("表名或字段名无效。");
+            return false;
+        }
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(
+            "SELECT CAST(COALESCE(IS_VIRTUAL,0) AS bit) FROM dbo.FIELDS WITH (NOLOCK) WHERE LTRIM(RTRIM(T_ID))=@Table AND LTRIM(RTRIM(F_ID))=@Field;",
+            connection);
+        command.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table.Trim();
+        command.Parameters.Add("@Field", SqlDbType.NVarChar, 100).Value = field.Trim();
+        var declared = await command.ExecuteScalarAsync(token);
+        if (declared is null || declared is DBNull)
+        {
+            errors.Add($"字段 {table.Trim()}.{field.Trim()} 的元数据不存在。");
+            return false;
+        }
+        if (declared is true)
+        {
+            return true;
+        }
+        errors.Add($"字段 {table.Trim()}.{field.Trim()} 不是虚拟字段（IS_VIRTUAL=0），虚拟表达式只在虚拟字段上生效，本字段的表达式不会进入运行时。");
+        hints.Add("如需按表达式取值，先把该字段登记为虚拟字段；物理列字段直接取列值即可。");
+        return false;
     }
 
     private async Task ValidateVirtualExpAsync(string table, string expression, List<string> errors, List<string> hints, CancellationToken token)
@@ -520,281 +368,4 @@ public sealed class RestrictedExpressionService(
         return null;
     }
 
-    private async Task ValidateDataSourceSqlAsync(string table, string expression, List<string> errors, List<string> hints, CancellationToken token)
-    {
-        if (!TryParseDataSourceSql(expression, out var parsed, out var parseError))
-        {
-            errors.Add(parseError);
-            return;
-        }
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        if (parsed.Table is not null)
-        {
-            if (!await WorkbenchSql.TableExistsAsync(connection, parsed.Table, token))
-            {
-                errors.Add($"表 {parsed.Table} 不存在。");
-                return;
-            }
-            foreach (var column in parsed.Columns)
-            {
-                if (!await WorkbenchSql.ColumnExistsAsync(connection, null, parsed.Table, column, token))
-                    errors.Add($"列 {parsed.Table}.{column} 在物理表中不存在。");
-            }
-            if (parsed.WhereColumn is not null && !await WorkbenchSql.ColumnExistsAsync(connection, null, parsed.Table, parsed.WhereColumn, token))
-                errors.Add($"WHERE 列 {parsed.Table}.{parsed.WhereColumn} 在物理表中不存在。");
-            if (parsed.OrderColumn is not null && !await WorkbenchSql.ColumnExistsAsync(connection, null, parsed.Table, parsed.OrderColumn, token))
-                errors.Add($"ORDER BY 列 {parsed.Table}.{parsed.OrderColumn} 在物理表中不存在。");
-        }
-        if (errors.Count == 0 && parsed.Table is not null)
-            hints.Add($"数据源：{parsed.Table}（{string.Join(',', parsed.Columns)}）");
-    }
-
-    private (string Sql, List<(string Name, object? Value)> Parameters) BuildConvertPreviewSql(string table, string field, string function)
-    {
-        // 函数白名单 + 物理列（已校验），参数 = 字段当前值；只读 TOP PreviewRowLimit
-        return ($"SELECT TOP {PreviewRowLimit} dbo.[{function}]([{field}]) AS [{field}] FROM dbo.[{table}] WITH (NOLOCK);", []);
-    }
-
-    private (string Sql, List<(string Name, object? Value)> Parameters) BuildDataSourcePreviewSql(string expression)
-    {
-        // 受限 SELECT（解析器已校验），套只读预览行数上限执行
-        return ($"SELECT TOP {PreviewRowLimit} * FROM ({expression}) AS [__preview];", []);
-    }
-
-    private async Task<(string Sql, List<(string Name, object? Value)> Parameters)> BuildVirtualPreviewSql(
-        SqlConnection connection, string table, string field, string expression, CancellationToken token)
-    {
-        IReadOnlyList<VirtualArithmeticToken>? arithmeticTokens = null;
-        string? fragment;
-        bool hasCrossTable;
-        bool hasBaseRef;
-        if (VirtualExpressionParser.TryParseExpression(expression, out var refTable, out var refColumn))
-        {
-            fragment = $"[{refTable}].[{refColumn}]";
-            hasCrossTable = !refTable.Equals(table, StringComparison.OrdinalIgnoreCase);
-            hasBaseRef = refTable.Equals(table, StringComparison.OrdinalIgnoreCase);
-        }
-        else if (VirtualArithmeticParser.TryParse(expression, out arithmeticTokens, out _))
-        {
-            fragment = RenderArithmeticFragment(arithmeticTokens, table);
-            hasCrossTable = arithmeticTokens.Any(item => item.Kind == "Ref" && item.Table is not null && !item.Table.Equals(table, StringComparison.OrdinalIgnoreCase));
-            hasBaseRef = arithmeticTokens.Any(item => item.Kind == "Ref" && (item.Table is null || item.Table.Equals(table, StringComparison.OrdinalIgnoreCase)));
-        }
-        else
-        {
-            fragment = null;
-            hasCrossTable = false;
-            hasBaseRef = false;
-        }
-        if (fragment is null)
-            return ("SELECT TOP 0 NULL;", []);
-        string fromClause;
-        if (hasCrossTable)
-        {
-            string? relation;
-            await using (var relationCommand = new SqlCommand(
-                "SELECT LTRIM(RTRIM(ISNULL(QUERY_RELATION,''))) FROM dbo.TABLES WITH (NOLOCK) WHERE LTRIM(RTRIM(T_ID))=@Table;",
-                connection))
-            {
-                relationCommand.Parameters.Add("@Table", SqlDbType.NVarChar, 100).Value = table.Trim();
-                relation = await relationCommand.ExecuteScalarAsync(token) as string;
-            }
-            fromClause = string.IsNullOrWhiteSpace(relation) ? $"dbo.[{table}] WITH (NOLOCK)" : relation;
-        }
-        else
-        {
-            // 常量（无引用）不需要 FROM；基表引用用基表
-            fromClause = hasBaseRef ? $"dbo.[{table}] WITH (NOLOCK)" : string.Empty;
-        }
-        // QUERY_RELATION 本身即受控 LEFT JOIN（解析器已校验），直接作为预览 FROM；
-        // 引用列按 别名.列 限定，避免 JOIN 同名歧义
-        return ($"SELECT TOP {PreviewRowLimit} {fragment} AS [{field}] {(fromClause.Length == 0 ? string.Empty : $"FROM {fromClause}")};", []);
-    }
-
-    private static string RenderArithmeticFragment(IReadOnlyList<VirtualArithmeticToken> tokens, string baseTable)
-    {
-        var parts = new List<string>();
-        foreach (var token in tokens)
-        {
-            if (token.Kind == "Ref")
-                parts.Add($"[{token.Table ?? baseTable}].[{token.Column}]");
-            else if (token.Kind == "String")
-                parts.Add($"N'{token.Text.Replace("'", "''")}'");
-            else
-                parts.Add(token.Text);
-        }
-        return string.Join(' ', parts);
-    }
-
-    internal static bool TryParseDataSourceSql(
-        string expression,
-        out DataSourceSql parsed,
-        out string error)
-    {
-        parsed = null!;
-        error = "";
-        var trimmed = expression.Trim();
-        if (!trimmed.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
-        {
-            error = "数据源 SQL 必须以 SELECT 开头。";
-            return false;
-        }
-        if (trimmed.IndexOf(';') >= 0 || trimmed.IndexOf("--", StringComparison.Ordinal) >= 0
-            || trimmed.IndexOf("/*", StringComparison.Ordinal) >= 0)
-        {
-            error = "数据源 SQL 不允许分号或注释。";
-            return false;
-        }
-        // 纯字面量 UNION 例外（如 T_KIND：SELECT 'P' AS col,'主表' AS col2 UNION …，无表访问）
-        if (trimmed.IndexOf("UNION", StringComparison.OrdinalIgnoreCase) >= 0)
-        {
-            if (IsLiteralUnionOnly(trimmed))
-            {
-                parsed = new DataSourceSql(null, [], null, null, trimmed);
-                return true;
-            }
-            error = "仅允许纯字面量 UNION（SELECT 常量 AS 列 …），不允许 UNION 访问表。";
-            return false;
-        }
-        var fromIndex = IndexOfKeyword(trimmed, "FROM");
-        if (fromIndex < 0)
-        {
-            error = "数据源 SQL 缺少 FROM 子句。";
-            return false;
-        }
-        var selectPart = trimmed[..fromIndex].Trim();
-        var rest = trimmed[(fromIndex + 4)..].Trim();
-        var columns = selectPart["SELECT".Length..]
-            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Select(column => column.Trim('[', ']', ' '))
-            .ToList();
-        if (columns.Count == 0 || columns.Count > 20 || columns.Any(column => !WorkbenchSql.Identifier.IsMatch(column)))
-        {
-            error = "SELECT 列清单无效（每列须为简单标识符，最多 20 列）。";
-            return false;
-        }
-        string? whereColumn = null;
-        string? whereValue = null;
-        string? orderColumn = null;
-        string? orderDirection = null;
-        var whereIndex = IndexOfKeyword(rest, "WHERE");
-        var orderIndex = IndexOfKeyword(rest, "ORDER BY");
-        if (whereIndex >= 0 && orderIndex >= 0 && orderIndex < whereIndex)
-        {
-            error = "ORDER BY 必须位于 WHERE 之后。";
-            return false;
-        }
-        var tableEnd = rest.Length;
-        if (whereIndex >= 0) tableEnd = Math.Min(tableEnd, whereIndex);
-        if (orderIndex >= 0) tableEnd = Math.Min(tableEnd, orderIndex);
-        var tableClause = rest[..tableEnd].Trim();
-        if (whereIndex >= 0)
-        {
-            var whereEnd = orderIndex > whereIndex ? orderIndex : rest.Length;
-            var wherePart = rest[(whereIndex + 5)..whereEnd].Trim();
-            var match = Regex.Match(wherePart, @"^([A-Za-z_][A-Za-z0-9_]{0,127})\s*=\s*(.+)$");
-            if (!match.Success)
-            {
-                error = "WHERE 仅支持「列 = 常量」，常量须为带引号字符串或数值字面量。";
-                return false;
-            }
-            whereColumn = match.Groups[1].Value;
-            var literal = match.Groups[2].Value.Trim();
-            if (!QuotedString.IsMatch(literal) && !NumericLiteral.IsMatch(literal))
-            {
-                error = "WHERE 仅支持「列 = 常量」，常量须为带引号字符串或数值字面量。";
-                return false;
-            }
-            whereValue = literal;
-        }
-        if (orderIndex >= 0)
-        {
-            var orderPart = rest[(orderIndex + 9)..].Trim();
-            var orderTokens = orderPart.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (orderTokens.Length is < 1 or > 2)
-            {
-                error = "ORDER BY 仅支持单列 [ASC|DESC]。";
-                return false;
-            }
-            orderColumn = orderTokens[0].Trim('[', ']');
-            if (!WorkbenchSql.Identifier.IsMatch(orderColumn))
-            {
-                error = "ORDER BY 列名无效。";
-                return false;
-            }
-            orderDirection = orderTokens.Length == 2 ? orderTokens[1].ToUpperInvariant() : "ASC";
-            if (orderDirection is not ("ASC" or "DESC"))
-            {
-                error = "ORDER BY 方向仅支持 ASC/DESC。";
-                return false;
-            }
-        }
-        var tableName = tableClause.Trim('[', ']', ' ');
-        if (!WorkbenchSql.Identifier.IsMatch(tableName))
-        {
-            error = "FROM 表名无效。";
-            return false;
-        }
-        parsed = new DataSourceSql(tableName, columns, whereColumn, whereValue, null, orderColumn, orderDirection);
-        return true;
-    }
-
-    private static bool IsLiteralUnionOnly(string sql)
-    {
-        // 每一段必须是 SELECT '字面量' [AS 列][, ...]，无 FROM/表访问；
-        // 首段必须声明列名，后续段可省略（列继承自首段，对齐 T_KIND 存量）
-        var first = true;
-        foreach (var segment in sql.Split("UNION", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (!segment.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase)) return false;
-            if (IndexOfKeyword(segment, "FROM") >= 0) return false;
-            var rest = segment["SELECT".Length..].Trim();
-            if (rest.Length == 0) return false;
-            var parts = rest.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            foreach (var part in parts)
-            {
-                var match = Regex.Match(part, @"^'((?:[^']|'')*)'(?:\s+AS\s+([A-Za-z_][A-Za-z0-9_]{0,127}))?$");
-                if (!match.Success) return false;
-                if (first && !match.Groups[2].Success) return false;
-            }
-            first = false;
-        }
-        return true;
-    }
-
-    private static int IndexOfKeyword(string text, string keyword)
-    {
-        var index = 0;
-        while ((index = text.IndexOf(keyword, index, StringComparison.OrdinalIgnoreCase)) >= 0)
-        {
-            var leftOk = index == 0 || char.IsWhiteSpace(text[index - 1]);
-            var end = index + keyword.Length;
-            var rightOk = end >= text.Length || char.IsWhiteSpace(text[end]);
-            if (leftOk && rightOk) return index;
-            index += keyword.Length;
-        }
-        return -1;
-    }
-
 }
-
-public enum PublishExpressionStatus
-{
-    Published,
-    NoChange,
-    Invalid,
-    NotFound,
-    ConcurrentModified,
-}
-
-public sealed record PublishExpressionOutcome(PublishExpressionStatus Status, IReadOnlyList<string> Errors);
-
-internal sealed record DataSourceSql(
-    string? Table,
-    IReadOnlyList<string> Columns,
-    string? WhereColumn,
-    string? WhereValue,
-    string? Raw = null,
-    string? OrderColumn = null,
-    string? OrderDirection = null);
