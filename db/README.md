@@ -5,7 +5,7 @@
 
 ## 1. 前提
 
-- SQL Server 2019+（或 Azure SQL Database、SQL Edge）。
+- SQL Server 2025+（结构含原生 `vector` 列，兼容级别 170）。
 - 具备创建数据库的权限（dbcreator / sysadmin），或由 DBA 代为执行。
 
 ## 2. 执行顺序
