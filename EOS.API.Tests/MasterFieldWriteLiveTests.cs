@@ -46,6 +46,8 @@ public sealed class MasterFieldWriteLiveTests : IAsyncLifetime
     private const string OriginalEffectDate = "2026-01-01";
     private const string NewEffectDate = "2026-12-31";
     private const double OriginalInSum = 5d;
+    /// <summary>本行的审计资源键（与保存路径写入口径一致：主键值以逗号相连）。</summary>
+    private const string RecordKey = BatchNo + "," + TestProduct;
 
     private DbConnectionFactory _connections = null!;
     private WorkbenchDefinitionProvider _provider = null!;
@@ -79,13 +81,6 @@ public sealed class MasterFieldWriteLiveTests : IAsyncLifetime
 
     private static async Task CleanupAsync(SqlConnection connection)
     {
-        // 先删子表：AUDIT_FIELD_CHANGE 对 AUDIT_EVENT 有外键（先后值就落在子表里）
-        await ExecAsync(connection, """
-            DELETE c FROM dbo.AUDIT_FIELD_CHANGE c JOIN dbo.AUDIT_EVENT e ON e.EVENT_ID = c.EVENT_ID
-             WHERE e.M_IDX = @module AND e.RESOURCE_KEY = @key;
-            """, ("@module", ModuleId), ("@key", $"{BatchNo},{TestProduct}"));
-        await ExecAsync(connection, "DELETE FROM dbo.AUDIT_EVENT WHERE M_IDX = @module AND RESOURCE_KEY = @key;",
-            ("@module", ModuleId), ("@key", $"{BatchNo},{TestProduct}"));
         await ExecAsync(connection, "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX = @module AND ACTION = N'ACTION';",
             ("@module", ModuleId));
         await ExecAsync(connection, "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID = @user;", ("@user", TestUser));
@@ -99,13 +94,16 @@ public sealed class MasterFieldWriteLiveTests : IAsyncLifetime
     [Fact]
     public async Task 改效期_落审计前后值_且不产生库存流水()
     {
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        // 审计是追加型的：先取基线，历史行一律不看
+        var auditBaseline = await ScalarAsync<long>(connection, "SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;");
+
         var result = await RunAsync(new Dictionary<string, string> { ["effectDate"] = NewEffectDate });
 
         Assert.True(result.Status == DocumentActionStatus.Ok, result.ErrorMessage);
         Assert.Equal(DocumentActionOutcome.Refreshed, result.Result!.Outcome);
 
-        await using var connection = new SqlConnection(ConnectionString);
-        await connection.OpenAsync();
         Assert.Equal(NewEffectDate, await ScalarAsync<string>(connection,
             "SELECT CONVERT(varchar(10), EFFECT_DATE, 120) FROM dbo.INV_BATCH_M WHERE BATCH_NO = @batch AND PRO_NO = @pro;",
             ("@batch", BatchNo), ("@pro", TestProduct)));
@@ -115,11 +113,13 @@ public sealed class MasterFieldWriteLiveTests : IAsyncLifetime
         await using (var command = new SqlCommand("""
             SELECT c.FIELD_NAME, c.OLD_VALUE, c.NEW_VALUE
               FROM dbo.AUDIT_EVENT e JOIN dbo.AUDIT_FIELD_CHANGE c ON c.EVENT_ID = e.EVENT_ID
-             WHERE e.M_IDX = @module AND e.RESOURCE_KEY = @key AND e.ACTION = N'UPDATE';
+             WHERE e.EVENT_ID > @baseline
+               AND e.M_IDX = @module AND e.RESOURCE_KEY = @key AND e.ACTION = N'UPDATE';
             """, connection))
         {
+            command.Parameters.AddWithValue("@baseline", auditBaseline);
             command.Parameters.AddWithValue("@module", ModuleId);
-            command.Parameters.AddWithValue("@key", $"{BatchNo},{TestProduct}");
+            command.Parameters.AddWithValue("@key", RecordKey);
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -166,20 +166,25 @@ public sealed class MasterFieldWriteLiveTests : IAsyncLifetime
     [Fact]
     public async Task 探路_只说会改成什么_一个字都不写()
     {
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        var auditBaseline = await ScalarAsync<long>(connection, "SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;");
+
         var result = await RunAsync(new Dictionary<string, string> { ["effectDate"] = NewEffectDate }, confirm: false);
 
         Assert.Equal(DocumentActionStatus.Ok, result.Status);
         Assert.True(result.RequiresConfirmation);
         Assert.Contains("未改动", result.Result!.Message);
-        await using var connection = new SqlConnection(ConnectionString);
-        await connection.OpenAsync();
-        // 值没动、审计里也没有一次 UPDATE（探路整体回滚）
+        // 值没动、审计里也没有一次 UPDATE（探路整体回滚）：基线之上零条
         Assert.Equal(OriginalEffectDate, await ScalarAsync<string>(connection,
             "SELECT CONVERT(varchar(10), EFFECT_DATE, 120) FROM dbo.INV_BATCH_M WHERE BATCH_NO = @batch AND PRO_NO = @pro;",
             ("@batch", BatchNo), ("@pro", TestProduct)));
         Assert.Equal(0, await ScalarAsync<int>(connection,
-            "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE M_IDX = @module AND RESOURCE_KEY = @key AND ACTION = N'UPDATE';",
-            ("@module", ModuleId), ("@key", $"{BatchNo},{TestProduct}")));
+            """
+            SELECT COUNT(*) FROM dbo.AUDIT_EVENT
+             WHERE EVENT_ID > @baseline AND M_IDX = @module AND RESOURCE_KEY = @key AND ACTION = N'UPDATE';
+            """,
+            ("@baseline", auditBaseline), ("@module", ModuleId), ("@key", RecordKey)));
     }
 
     // ===== ④ 只读位（元数据事实）与统一保存路径的第二道闸 =====

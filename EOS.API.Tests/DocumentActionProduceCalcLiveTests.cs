@@ -42,6 +42,8 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
     private const string TestType = "ZZPC";
     private const string TestNo = "ZZPC00001";
     private const string TestUser = "ZZPC00001";
+    /// <summary>本单的审计资源键（与执行器写入口径一致：主键值以逗号相连）。</summary>
+    private const string RecordKey = TestType + "," + TestNo;
     private const string FinishedProduct = "ZZPCFIN01";
     private const string ElementA = "ZZPCEL01";
     private const string ElementB = "ZZPCEL02";
@@ -141,11 +143,6 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
             ("@fin", FinishedProduct), ("@a", ElementA), ("@b", ElementB));
         await ExecAsync(connection, "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user;", ("@user", TestUser));
         await ExecAsync(connection,
-            "DELETE FROM dbo.AUDIT_FIELD_CHANGE WHERE EVENT_ID IN (SELECT EVENT_ID FROM dbo.AUDIT_EVENT WHERE ACTION=@action);",
-            ("@action", ProduceCalcMaterialsHandler.ActionKey));
-        await ExecAsync(connection,
-            "DELETE FROM dbo.AUDIT_EVENT WHERE ACTION=@action;", ("@action", ProduceCalcMaterialsHandler.ActionKey));
-        await ExecAsync(connection,
             "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX=@module AND ACTION=N'ACTION';", ("@module", ModuleId));
     }
 
@@ -221,12 +218,24 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
         return rows;
     }
 
-    private async Task<int> AuditCountAsync()
+    /// <summary>审计是追加型的：取当前最大事件号作基线，之后只看基线之上的增量。</summary>
+    private static async Task<long> AuditBaselineAsync()
+    {
+        await using var connection = await OpenAsync();
+        return await ScalarAsync<long>(connection, "SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;");
+    }
+
+    /// <summary>基线之上、本单（模块 + 动作 + 资源键）的审计条数。</summary>
+    private async Task<int> AuditCountAsync(long baseline)
     {
         await using var connection = await OpenAsync();
         return await ScalarAsync<int>(connection,
-            "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE ACTION=@action;",
-            ("@action", ProduceCalcMaterialsHandler.ActionKey));
+            """
+            SELECT COUNT(*) FROM dbo.AUDIT_EVENT
+             WHERE EVENT_ID > @baseline AND M_IDX=@module AND ACTION=@action AND RESOURCE_KEY=@key;
+            """,
+            ("@baseline", baseline), ("@module", ModuleId),
+            ("@action", ProduceCalcMaterialsHandler.ActionKey), ("@key", RecordKey));
     }
 
     // ===== 用例 =====
@@ -234,6 +243,7 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
     [Fact]
     public async Task Calc_RebuildsDetails_SyncsMoreAndApply()
     {
+        var auditBaseline = await AuditBaselineAsync();
         var result = await RunAsync();
 
         Assert.True(result.Status == DocumentActionStatus.Ok, result.ErrorMessage);
@@ -255,18 +265,20 @@ public sealed class DocumentActionProduceCalcLiveTests : IAsyncLifetime
         var require = await ScalarAsync<double>(connection,
             $"SELECT ISNULL(REQUIRE_QTY,0) FROM dbo.{ApplyDetailTable} WHERE APPLY_TYPE=N'ZZAP' AND APPLY_NO=N'ZZAP00001';");
         Assert.Equal(22d, require, 6);
-        Assert.Equal(1, await AuditCountAsync());
+        // 本次计算用料只留一条自己的审计（按本单资源键限定）
+        Assert.Equal(1, await AuditCountAsync(auditBaseline));
     }
 
     [Fact]
     public async Task ProbeOnly_ReportsAndWritesNothing()
     {
+        var auditBaseline = await AuditBaselineAsync();
         var probe = await RunAsync(confirm: false);
 
         Assert.Equal(DocumentActionStatus.Ok, probe.Status);
         Assert.True(probe.RequiresConfirmation);
         Assert.Single(await DetailsAsync());
-        Assert.Equal(0, await AuditCountAsync());
+        Assert.Equal(0, await AuditCountAsync(auditBaseline));
     }
 
     [Fact]

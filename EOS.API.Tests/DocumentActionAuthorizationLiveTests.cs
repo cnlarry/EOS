@@ -278,21 +278,12 @@ public sealed class DocumentActionAuthorizationLiveTests
             ?? throw new InvalidOperationException("dbo.DEPOT 无存量行，无法验证单据操作管线。");
     }
 
-    private static async Task CleanupAuditAsync(string recordKey)
-    {
-        await using var connection = await OpenAsync();
-        await using var command = new SqlCommand(
-            "DELETE FROM dbo.AUDIT_EVENT WHERE RESOURCE_KEY=@Key AND ACTION=@Action;", connection);
-        command.Parameters.Add("@Key", SqlDbType.NVarChar, 200).Value = recordKey;
-        command.Parameters.Add("@Action", SqlDbType.NVarChar, 60).Value = ButtonKey;
-        await command.ExecuteNonQueryAsync();
-    }
-
     [Fact]
     public async Task Endpoint_RefusesUnauthorizedButton_403_AndLeavesAnAuditTrail()
     {
         await FixtureUpAsync();
         var depotId = await AnyDepotIdAsync();
+        var auditBaseline = await AuditBaselineAsync();
         try
         {
             var result = await Executor().ExecuteAsync(Definition(), Form(), ButtonKey,
@@ -300,11 +291,10 @@ public sealed class DocumentActionAuthorizationLiveTests
 
             Assert.Equal(DocumentActionStatus.Forbidden, result.Status);
             Assert.Equal(DocumentActionErrorCodes.Forbidden, result.ErrorCode);
-            Assert.Equal(1, await AuditCountAsync(depotId));
+            Assert.Equal(1, await AuditCountAsync(depotId, auditBaseline));
         }
         finally
         {
-            await CleanupAuditAsync(depotId);
             await FixtureDownAsync();
         }
     }
@@ -314,6 +304,7 @@ public sealed class DocumentActionAuthorizationLiveTests
     {
         await FixtureUpAsync();
         var depotId = await AnyDepotIdAsync();
+        var auditBaseline = await AuditBaselineAsync();
         try
         {
             await GrantUserAsync(UserWithPersonal, allow: true);
@@ -322,20 +313,31 @@ public sealed class DocumentActionAuthorizationLiveTests
 
             Assert.Equal(DocumentActionStatus.Ok, result.Status);
             Assert.Equal(DocumentActionOutcome.Message, result.Result!.Outcome);
-            Assert.Equal(1, await AuditCountAsync(depotId));
+            Assert.Equal(1, await AuditCountAsync(depotId, auditBaseline));
         }
         finally
         {
-            await CleanupAuditAsync(depotId);
             await FixtureDownAsync();
         }
     }
 
-    private static async Task<int> AuditCountAsync(string recordKey)
+    /// <summary>审计是追加型的：取当前最大事件号作基线，之后只看基线之上的增量。</summary>
+    private static async Task<long> AuditBaselineAsync()
     {
         await using var connection = await OpenAsync();
-        await using var command = new SqlCommand(
-            "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE RESOURCE_KEY=@Key AND ACTION=@Action;", connection);
+        await using var command = new SqlCommand("SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;", connection);
+        return Convert.ToInt64(await command.ExecuteScalarAsync());
+    }
+
+    /// <summary>基线之上、指定（资源键 + 按钮键）的审计条数。</summary>
+    private static async Task<int> AuditCountAsync(string recordKey, long baseline)
+    {
+        await using var connection = await OpenAsync();
+        await using var command = new SqlCommand("""
+            SELECT COUNT(*) FROM dbo.AUDIT_EVENT
+             WHERE EVENT_ID > @Baseline AND RESOURCE_KEY=@Key AND ACTION=@Action;
+            """, connection);
+        command.Parameters.Add("@Baseline", SqlDbType.BigInt).Value = baseline;
         command.Parameters.Add("@Key", SqlDbType.NVarChar, 200).Value = recordKey;
         command.Parameters.Add("@Action", SqlDbType.NVarChar, 60).Value = ButtonKey;
         return Convert.ToInt32(await command.ExecuteScalarAsync());

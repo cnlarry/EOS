@@ -18,8 +18,8 @@ namespace EOS.API.Tests;
 /// <summary>
 /// 单据操作端到端管线（真库）：审计一条、幂等键挡重复点击、探路不落库且不占键、
 /// 范围外拒绝、失败整体回滚（磁盘上不留半成品）、WARN 只报告不阻断。
-/// 用例只用只读的既有主数据（仓库资料）作为单据载体，断言结束后清理自己写入的
-/// AUDIT_EVENT / WORKBENCH_IDEMPOTENCY 行，业务表一行不改。
+/// 用例只用只读的既有主数据（仓库资料）作为单据载体，审计断言按 MAX(EVENT_ID) 基线只认本次新增的
+/// 增量（审计按设计保留、不清），结束时只回收自己占的 WORKBENCH_IDEMPOTENCY 行，业务表一行不改。
 /// 需要 MSSQL_ERP_CONN。
 /// </summary>
 [Collection("live-database")]
@@ -146,11 +146,23 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
             : throw new InvalidOperationException("dbo.DEPOT 无存量行，无法验证单据操作管线。");
     }
 
-    private static async Task<int> AuditCountAsync(string recordKey, string action)
+    /// <summary>审计是追加型的：取当前最大事件号作基线，之后只看基线之上的增量。</summary>
+    private static async Task<long> AuditBaselineAsync()
     {
         await using var connection = await OpenAsync();
-        await using var command = new SqlCommand(
-            "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE RESOURCE_KEY=@Key AND ACTION=@Action;", connection);
+        await using var command = new SqlCommand("SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;", connection);
+        return Convert.ToInt64(await command.ExecuteScalarAsync());
+    }
+
+    /// <summary>基线之上、指定（资源键 + 动作）的审计条数。</summary>
+    private static async Task<int> AuditCountAsync(string recordKey, string action, long baseline)
+    {
+        await using var connection = await OpenAsync();
+        await using var command = new SqlCommand("""
+            SELECT COUNT(*) FROM dbo.AUDIT_EVENT
+             WHERE EVENT_ID > @Baseline AND RESOURCE_KEY=@Key AND ACTION=@Action;
+            """, connection);
+        command.Parameters.Add("@Baseline", SqlDbType.BigInt).Value = baseline;
         command.Parameters.Add("@Key", SqlDbType.NVarChar, 200).Value = recordKey;
         command.Parameters.Add("@Action", SqlDbType.NVarChar, 60).Value = action;
         return Convert.ToInt32(await command.ExecuteScalarAsync());
@@ -163,19 +175,6 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
             "SELECT COUNT(*) FROM dbo.WORKBENCH_IDEMPOTENCY WHERE IDEMPOTENCY_KEY=@Key;", connection);
         command.Parameters.Add("@Key", SqlDbType.NVarChar, 128).Value = key;
         return Convert.ToInt32(await command.ExecuteScalarAsync()) > 0;
-    }
-
-    private static async Task CleanupAsync(string recordKey, params string[] actionKeys)
-    {
-        foreach (var actionKey in actionKeys)
-        {
-            await using var connection = await OpenAsync();
-            await using var command = new SqlCommand(
-                "DELETE FROM dbo.AUDIT_EVENT WHERE RESOURCE_KEY=@Key AND ACTION=@Action;", connection);
-            command.Parameters.Add("@Key", SqlDbType.NVarChar, 200).Value = recordKey;
-            command.Parameters.Add("@Action", SqlDbType.NVarChar, 60).Value = actionKey;
-            await command.ExecuteNonQueryAsync();
-        }
     }
 
     private static async Task CleanupIdempotencyAsync(params string[] keys)
@@ -196,6 +195,7 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
         var depotId = await AnyDepotIdAsync();
         var idempotencyKey = Guid.NewGuid().ToString("N");
         var action = DocumentActionProbeHandler.ActionKey;
+        var auditBaseline = await AuditBaselineAsync();
         try
         {
             var result = await Executor().ExecuteAsync(
@@ -206,12 +206,11 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
             Assert.Equal(DocumentActionOutcome.Message, result.Result!.Outcome);
             Assert.Contains(depotId, result.Result.Message!);
             Assert.False(result.RequiresConfirmation);
-            Assert.Equal(1, await AuditCountAsync(depotId, action));
+            Assert.Equal(1, await AuditCountAsync(depotId, action, auditBaseline));
             Assert.True(await IdempotencyRecordExistsAsync(idempotencyKey));
         }
         finally
         {
-            await CleanupAsync(depotId, action);
             await CleanupIdempotencyAsync(idempotencyKey);
         }
     }
@@ -222,6 +221,7 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
         var depotId = await AnyDepotIdAsync();
         var idempotencyKey = Guid.NewGuid().ToString("N");
         var action = DocumentActionProbeHandler.ActionKey;
+        var auditBaseline = await AuditBaselineAsync();
         try
         {
             var executor = Executor();
@@ -234,11 +234,10 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
             Assert.Equal(DocumentActionStatus.Ok, first.Status);
             Assert.Equal(DocumentActionStatus.Ok, second.Status);
             Assert.Equal(first.Result!.Message, second.Result!.Message);
-            Assert.Equal(1, await AuditCountAsync(depotId, action));
+            Assert.Equal(1, await AuditCountAsync(depotId, action, auditBaseline));
         }
         finally
         {
-            await CleanupAsync(depotId, action);
             await CleanupIdempotencyAsync(idempotencyKey);
         }
     }
@@ -249,6 +248,8 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
         var depotId = await AnyDepotIdAsync();
         var idempotencyKey = Guid.NewGuid().ToString("N");
         var action = DocumentActionProbeHandler.ActionKey;
+        // 基线取在探路之前：探路应零条，随后的真实执行应恰好一条
+        var auditBaseline = await AuditBaselineAsync();
         try
         {
             var result = await Executor().ExecuteAsync(
@@ -257,7 +258,7 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
 
             Assert.Equal(DocumentActionStatus.Ok, result.Status);
             Assert.True(result.RequiresConfirmation);
-            Assert.Equal(0, await AuditCountAsync(depotId, action));
+            Assert.Equal(0, await AuditCountAsync(depotId, action, auditBaseline));
             Assert.False(await IdempotencyRecordExistsAsync(idempotencyKey));
 
             // 探路不占键：紧接着带确认的真实执行必须能跑（否则用户第一次点永远失败）。
@@ -266,11 +267,10 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
                 new DocumentActionRequest([depotId], Confirm: true), TestUserId, "测试经办人", null, idempotencyKey, CancellationToken.None);
             Assert.Equal(DocumentActionStatus.Ok, confirmed.Status);
             Assert.False(confirmed.RequiresConfirmation);
-            Assert.Equal(1, await AuditCountAsync(depotId, action));
+            Assert.Equal(1, await AuditCountAsync(depotId, action, auditBaseline));
         }
         finally
         {
-            await CleanupAsync(depotId, action);
             await CleanupIdempotencyAsync(idempotencyKey);
         }
     }
@@ -296,6 +296,7 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
     {
         var depotId = await AnyDepotIdAsync();
         var idempotencyKey = Guid.NewGuid().ToString("N");
+        var auditBaseline = await AuditBaselineAsync();
         try
         {
             var result = await Executor(new ThrowingAction()).ExecuteAsync(
@@ -305,13 +306,12 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
             Assert.Equal(DocumentActionStatus.Failed, result.Status);
             Assert.Equal(DocumentActionErrorCodes.Failed, result.ErrorCode);
             // 失败审计必须落在回滚之外，否则"谁点了、为什么失败"随事务一起消失。
-            Assert.Equal(1, await AuditCountAsync(depotId, FailingActionKey));
+            Assert.Equal(1, await AuditCountAsync(depotId, FailingActionKey, auditBaseline));
             // BLOCK 失败不占幂等键：修好状态/换个人再点不该被上一次失败挡住。
             Assert.False(await IdempotencyRecordExistsAsync(idempotencyKey));
         }
         finally
         {
-            await CleanupAsync(depotId, FailingActionKey);
             await CleanupIdempotencyAsync(idempotencyKey);
         }
     }
@@ -321,6 +321,7 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
     {
         var depotId = await AnyDepotIdAsync();
         var idempotencyKey = Guid.NewGuid().ToString("N");
+        var auditBaseline = await AuditBaselineAsync();
         try
         {
             var result = await Executor(new ThrowingAction()).ExecuteAsync(
@@ -330,11 +331,10 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
             Assert.Equal(DocumentActionStatus.Ok, result.Status);
             Assert.Equal(DocumentActionOutcome.Message, result.Result!.Outcome);
             Assert.Contains(result.Result.Warnings!, warning => warning.Code == "ACTION_WARNING");
-            Assert.Equal(1, await AuditCountAsync(depotId, FailingActionKey));
+            Assert.Equal(1, await AuditCountAsync(depotId, FailingActionKey, auditBaseline));
         }
         finally
         {
-            await CleanupAsync(depotId, FailingActionKey);
             await CleanupIdempotencyAsync(idempotencyKey);
         }
     }
@@ -344,20 +344,15 @@ public sealed class DocumentActionExecutorLiveTests : IAsyncLifetime
     {
         var depotId = await AnyDepotIdAsync();
         var action = DocumentActionProbeHandler.ActionKey;
-        try
-        {
-            var result = await Executor().ExecuteAsync(
-                Definition(Actions(ManualRow(action))), Form(), action,
-                new DocumentActionRequest([depotId]), TestUserId, "测试经办人",
-                $"{MasterTable}.DEPOT_ID='__NOT_IN_RANGE__'", Guid.NewGuid().ToString("N"), CancellationToken.None);
+        var auditBaseline = await AuditBaselineAsync();
 
-            Assert.Equal(DocumentActionStatus.OutOfScope, result.Status);
-            Assert.Equal(0, await AuditCountAsync(depotId, action));
-        }
-        finally
-        {
-            await CleanupAsync(depotId, action);
-        }
+        var result = await Executor().ExecuteAsync(
+            Definition(Actions(ManualRow(action))), Form(), action,
+            new DocumentActionRequest([depotId]), TestUserId, "测试经办人",
+            $"{MasterTable}.DEPOT_ID='__NOT_IN_RANGE__'", Guid.NewGuid().ToString("N"), CancellationToken.None);
+
+        Assert.Equal(DocumentActionStatus.OutOfScope, result.Status);
+        Assert.Equal(0, await AuditCountAsync(depotId, action, auditBaseline));
     }
 
     [Fact]
