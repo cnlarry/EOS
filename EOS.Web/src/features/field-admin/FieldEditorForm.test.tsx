@@ -442,10 +442,10 @@ describe('FieldEditorForm', () => {
     await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
     fireEvent.click(await screen.findByRole('button', { name: '虚拟表达式引用来源' }))
-    // 来源按「表」展示：本表 + 关联表（带别名时注明 AS 别名）
-    expect(await screen.findByRole('option', { name: /订单主档（T1）/ })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /客户资料（CLIENT） AS CLIENT_J/ })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('option', { name: /客户资料（CLIENT） AS CLIENT_J/ }))
+    // 来源按「表」展示：中文名(名字)，名字是写进表达式的那个——有别名即别名，无别名即表名
+    expect(await screen.findByRole('option', { name: /订单主档\(T1\)/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /客户资料\(CLIENT_J\)/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('option', { name: /客户资料\(CLIENT_J\)/ }))
     // 关联条件来自 QUERY_RELATION，随所选段展示（不随字段保存）
     expect(await screen.findByText('关联条件：CLIENT_J.CLIENT_ID=T1.CLIENT_ID')).toBeInTheDocument()
     expect(screen.getByText(/该段在 QUERY_RELATION 里带别名/)).toBeInTheDocument()
@@ -458,7 +458,7 @@ describe('FieldEditorForm', () => {
     // 写入的仍是该段在 QUERY_RELATION 里的名字（别名），不是物理表名
     await waitFor(() => expect(screen.getByLabelText('虚拟表达式文本')).toHaveValue('CLIENT_J.CLIENT_NAME'))
     fireEvent.click(screen.getByRole('button', { name: '虚拟表达式引用来源' }))
-    fireEvent.click(await screen.findByRole('option', { name: /订单主档（T1）/ }))
+    fireEvent.click(await screen.findByRole('option', { name: /订单主档\(T1\)/ }))
     expect(await screen.findByText('引用本表列，不需要关联条件。')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '虚拟表达式引用列' }))
     fireEvent.click(await screen.findByRole('option', { name: /金额\(AMOUNT\)/ }))
