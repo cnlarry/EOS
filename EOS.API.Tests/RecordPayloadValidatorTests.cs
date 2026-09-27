@@ -167,6 +167,26 @@ public class RecordPayloadValidatorTests
     }
 
     [Fact]
+    public void RegexTimeout_IsRejectedInsteadOfHanging()
+    {
+        // 回溯失控的模式不得挂住保存请求：带 match timeout 后按不匹配处理
+        var fields = new[] { Field("A", regex: "^(a+)+$") };
+        var errors = RecordPayloadValidator.CheckRequiredAndRegex(fields,
+            new Dictionary<string, object?> { ["A"] = new string('a', 32) + "b" });
+        Assert.Equal("REGEX_MISMATCH", Assert.Single(errors).Code);
+    }
+
+    [Fact]
+    public void UncompilableRegexPattern_DoesNotFailSave()
+    {
+        // 历史元数据里的坏模式既不抛异常、也不阻断写入；语法由字段维护侧保存校验拦截
+        var fields = new[] { Field("A", regex: "[") };
+        var errors = RecordPayloadValidator.CheckRequiredAndRegex(fields,
+            new Dictionary<string, object?> { ["A"] = "任意值" });
+        Assert.Empty(errors);
+    }
+
+    [Fact]
     public void Defaults_AreAppliedServerSideOnlyForMissingWritableFields()
     {
         var fields = new[] { Field("A", dataType: "float", defaultValue: "100"), Field("B", dataType: "float", defaultValue: "100") };
