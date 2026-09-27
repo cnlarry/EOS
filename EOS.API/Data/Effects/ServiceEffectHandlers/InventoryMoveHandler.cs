@@ -10,10 +10,9 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 
 /// <summary>
 /// Inventory move effect (service-level): the C# port of the baseline inventory update
-/// procedure semantics, driven by closed fieldMap parameters. See
-/// docs/plans/库存移动效果移植清单.md for the semantic checklist and the two intentional
-/// deviations (row set built from whitelisted identifiers instead of dynamic SQL;
-/// deapprove writes reverse log records instead of deleting them).
+/// procedure semantics, driven by closed fieldMap parameters. Two intentional deviations
+/// are documented in the effect schema: the row set is built from whitelisted identifiers
+/// instead of dynamic SQL, and deapprove writes reverse log records instead of deleting them.
 /// </summary>
 public sealed class InventoryMoveHandler : IEffectServiceHandler
 {

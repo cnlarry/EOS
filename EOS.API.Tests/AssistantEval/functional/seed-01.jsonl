@@ -11,7 +11,7 @@
 {"question": "员工人数指标怎么算？", "expected": "employee_count = COUNT(DISTINCT EMP_ID)，来源表 HR_EMPLOYEE。", "sources": ["027_report_metric.sql", "enum_metrics"]}
 {"question": "流程定义存在哪两张表？主键是什么？", "expected": "WFFORM（流程主）+ WFFORM_FLOW（步骤），主键 WF_M_IDX。", "sources": ["FlowDefinitionService"]}
 {"question": "在途流程实例存在哪里？如何判定？", "expected": "WF_MONITOR，WF_STATE='0' 为在途。", "sources": ["WorkflowEngine.HasActiveFlowAsync", "WorkflowStates"]}
-{"question": "个人权限和组权限冲突时听谁的？", "expected": "某模块只要有 SYSDD 个人权限记录，就完全采用个人权限，不合并组权限。", "sources": ["Admin.GetUserRightDetail", "ERP_REFACTOR_HANDOFF.md"]}
+{"question": "个人权限和组权限冲突时听谁的？", "expected": "某模块只要有 SYSDD 个人权限记录，就完全采用个人权限，不合并组权限。", "sources": ["Admin.GetUserRightDetail", "ModuleRightsRepository"]}
 {"question": "多组的布尔权限和禁止字段如何聚合？", "expected": "布尔位取 OR，EXEC_TAG 取最大值，禁止字段取各组交集。", "sources": ["Admin.GetUserRightDetail", "Admin.GetRepeat"]}
 {"question": "search_records 一次最多返回几行？", "expected": "最多 5 行，行附主键值数组 _keys。", "sources": ["SearchRecordsTool"]}
 {"question": "get_record_detail 查不到记录时说什么？", "expected": "返回“记录不存在或不在你的数据范围内”，不泄露范围外记录的存在性。", "sources": ["GetRecordDetailTool"]}
