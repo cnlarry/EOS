@@ -437,7 +437,7 @@ public static class ReportAggregateRegistry
         ]);
 
     /// <summary>
-    /// 批次效期与临期清单（模块 1303 料件库存资料）。
+    /// 批次效期与临期清单（宿主模块 139808 料件批号资料明细，报表承载页）。
     ///
     /// **临期库存是现算的**：效期只挂在批次账上，余额表保持四键，所以这里按 (料号, 批次) 把两张表
     /// 关联起来算剩余天数与状态——不在余额表上缓存效期（缓存就会与主档漂移）。
@@ -475,8 +475,10 @@ public static class ReportAggregateRegistry
             // 阈值来自系统参数（键形态「归属模块|参数键」，与源码引用登记同格式）；
             // 缺失时按 30 天兜底，见 ReportRepository.DefaultSystemParameterValue
             new ReportAggregateParameter("alert_days", "int", 10, SystemParameterKey: "110111|EXPIRY_ALERT_DAYS"),
-            new ReportAggregateParameter("include_expired", "string", 1, SerialNo: 1),
-            new ReportAggregateParameter("unmanaged_only", "string", 1, SerialNo: 2),
+            // 序号与服务端的查询条件行（SYSQR_DEFAULT 的 5/6 号）一一对应：条件行按模块读，
+            // 错位就等于"筛选项和查询参数对不上"，改这里必须同步改条件行
+            new ReportAggregateParameter("include_expired", "string", 1, SerialNo: 5),
+            new ReportAggregateParameter("unmanaged_only", "string", 1, SerialNo: 6),
         ],
         [
             new ReportColumn("PRO_NO", "料号", "nvarchar"),
