@@ -41,7 +41,13 @@ internal sealed record FormChooserRow(
     int? ModuleId,
     string? ReturnMapping,
     string? Filter,
-    int? SerialNo = null);
+    int? SerialNo = null,
+    /// <summary>
+    /// 服务端注册数据源的键（非空即"这个字段用统一选择器的 sourceKey 分支取数"）。
+    /// 由 <see cref="ChooserRepository.PreferredSourceKey"/> 按来源表映射得出：
+    /// 表名只能告诉你"查哪张表"，而注册数据源还带着**排序与列白名单**，是更精确的一份事实。
+    /// </summary>
+    string? SourceKey = null);
 
 /// <summary>
 /// 纯字段选择逻辑（与数据库解耦，便于单元测试）。
@@ -147,7 +153,8 @@ internal static class FormFieldSelector
                     // FILTER_STRUCT 仅字段设置 CanSetup 可见，普通用户表单定义不下发
                     Filter: null,
                     source.ReturnMapping,
-                    source.SerialNo))
+                    source.SerialNo,
+                    source.SourceKey))
                 .ToArray();
 
             result.Add(new FormFieldDefinition(

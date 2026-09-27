@@ -18,7 +18,7 @@ import { apiClient } from '../../services/api'
 import { ApiError } from '../../types/api'
 import { assistantPrefillKey } from '../../lib/storageKeys'
 import { FormFieldRenderer } from './FormFieldRenderer'
-import type { FormDefinition, FormFieldDefinition } from './formDefinition'
+import type { FormChooserSource, FormDefinition, FormFieldDefinition } from './formDefinition'
 import { alignClass, formatFieldValue } from './fieldFormat'
 import { DEFAULT_FORM_COLUMNS, packFormSections } from './formLayout'
 import { fieldVariant } from './formFieldKind'
@@ -488,12 +488,15 @@ export function FormEditorPage() {
   const [detailRows, setDetailRows] = useState<Record<string, string>[]>([])
   const [chooserField, setChooserField] = useState<FormFieldDefinition | null>(null)
   const [chooserSerial, setChooserSerial] = useState<number | null>(null)
+  // 本次打开的是哪一个来源：`sourceKey` 非空即走服务端注册数据源（列与排序由服务端给）。
+  const [chooserSource, setChooserSource] = useState<FormChooserSource | null>(null)
   const [dirty, setDirty] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [detailErrors, setDetailErrors] = useState<FieldErrors[]>([])
   const [detailChooser, setDetailChooser] = useState<{ index: number; field: FormFieldDefinition } | null>(null)
   const [detailChooserSerial, setDetailChooserSerial] = useState<number | null>(null)
+  const [detailChooserSource, setDetailChooserSource] = useState<FormChooserSource | null>(null)
   /** 多来源「各是各的入口」：先弹来源菜单。 */
   const [sourceMenu, setSourceMenu] = useState<
     | { kind: 'master'; field: FormFieldDefinition }
@@ -1090,9 +1093,11 @@ export function FormEditorPage() {
       if (kind === 'master') {
         setChooserField(field)
         setChooserSerial(sources[0].serialNo)
+        setChooserSource(sources[0])
       } else {
         setDetailChooser({ index: detailIndex!, field })
         setDetailChooserSerial(sources[0].serialNo)
+        setDetailChooserSource(sources[0])
       }
       return
     }
@@ -1101,6 +1106,24 @@ export function FormEditorPage() {
   const openMasterChooser = useCallback((field: FormFieldDefinition) => openChooser(field, 'master'), [openChooser])
   const openDetailChooser = useCallback((index: number, field: FormFieldDefinition) => openChooser(field, 'detail', index), [openChooser])
   const openFieldSetup = useCallback((field: FormFieldDefinition, x: number, y: number) => setFieldSetupMenu({ field, x, y }), [])
+
+  /**
+   * 选择器取数来源：服务端下发 `sourceKey` 时走**注册数据源**（列、排序与默认次序都由服务端白名单给出
+   * ——例如批次按"最早到期在前、空效期最后"排），否则沿用 formField 元数据通道。
+   * 传进去的行值只作**过滤值**（如料号），不参与表名/列名——那些一律来自服务端。
+   */
+  const chooserSourceOf = useCallback(
+    (field: FormFieldDefinition, source: FormChooserSource | null, serial: number | null, row?: Record<string, string>) => {
+      if (source?.sourceKey) {
+        const productNo = (row?.PRO_NO ?? '').trim()
+        const args: Record<string, string> = {}
+        if (productNo) args.proNo = productNo
+        return { kind: 'sourceKey' as const, key: source.sourceKey, args }
+      }
+      return { kind: 'formField' as const, moduleId, fieldKey: field.key, serialNo: serial }
+    },
+    [moduleId],
+  )
 
   /** 明细视图排序：切换排序/清空时重算一次快照，编辑中保持行位置稳定（避免打字跳行）。 */
   const handleDetailSortingChange = useCallback((next: SortingState) => {
@@ -1321,7 +1344,7 @@ export function FormEditorPage() {
         <UnifiedChooser
           open
           title={chooserTitle(chooserField)}
-          source={{ kind: 'formField', moduleId, fieldKey: chooserField.key, serialNo: chooserSerial }}
+          source={chooserSourceOf(chooserField, chooserSource, chooserSerial, masterValues)}
           mode={chooserField.chooseMultiple ? 'multi' : 'single'}
           masterValues={masterValues}
           onPick={rows => applyChooser(chooserField, rows[0])}
@@ -1335,7 +1358,9 @@ export function FormEditorPage() {
         <UnifiedChooser
           open
           title={chooserTitle(detailChooser.field)}
-          source={{ kind: 'formField', moduleId, fieldKey: detailChooser.field.key, serialNo: detailChooserSerial }}
+          source={chooserSourceOf(
+            detailChooser.field, detailChooserSource, detailChooserSerial, detailRows[detailChooser.index],
+          )}
           mode={detailChooser.field.chooseMultiple ? 'multi' : 'single'}
           masterValues={masterValues}
           detailValues={detailRows[detailChooser.index] ?? undefined}
@@ -1364,9 +1389,11 @@ export function FormEditorPage() {
                       if (sourceMenu.kind === 'master') {
                         setChooserField(sourceMenu.field)
                         setChooserSerial(source.serialNo)
+                        setChooserSource(source)
                       } else {
                         setDetailChooser({ index: sourceMenu.index, field: sourceMenu.field })
                         setDetailChooserSerial(source.serialNo)
+                        setDetailChooserSource(source)
                       }
                       setSourceMenu(null)
                     }}

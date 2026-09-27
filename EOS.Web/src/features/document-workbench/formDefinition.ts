@@ -12,6 +12,11 @@ export interface FormChooserSource {
   filter: string | null
   returnMapping: string | null
   serialNo: number | null
+  /**
+   * 服务端注册数据源的键（非空时该来源用统一选择器的 sourceKey 分支取数）：
+   * 列与排序由服务端注册表给出，前端只传过滤值。
+   */
+  sourceKey?: string | null
 }
 
 /**

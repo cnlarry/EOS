@@ -69,7 +69,9 @@ public sealed class InventoryFourKeyLiveTests
             var rowSet = plan.BuildRowSet(modulePlan, new[] { Type, No }, columns);
 
             // ---------- 批核出库：只扣指定库位 ----------
-            await new InventoryMoveSql(connection, transaction, plan, EffectEvent.ApproveEffect, Policies(connectionString))
+            await new InventoryMoveSql(
+                    connection, transaction, plan, EffectEvent.ApproveEffect, Policies(connectionString),
+                    PolicyServiceFactory.AuditWriter(connectionString), 130104, Type + "," + No, "ADR14P2")
                 .RunAsync(rowSet, CancellationToken.None);
 
             var afterOut = await ReadRowsAsync(connection, transaction);
@@ -93,7 +95,9 @@ public sealed class InventoryFourKeyLiveTests
 
             // ---------- 解批：只回退指定库位，且路径沿用批核当时的快照 ----------
             var undoSet = plan.BuildRowSet(modulePlan, new[] { Type, No }, columns);
-            await new InventoryMoveSql(connection, transaction, plan, EffectEvent.Deapprove, Policies(connectionString))
+            await new InventoryMoveSql(
+                    connection, transaction, plan, EffectEvent.Deapprove, Policies(connectionString),
+                    PolicyServiceFactory.AuditWriter(connectionString), 130104, Type + "," + No, "ADR14P2")
                 .RunAsync(undoSet, CancellationToken.None);
 
             var afterUndo = await ReadRowsAsync(connection, transaction);

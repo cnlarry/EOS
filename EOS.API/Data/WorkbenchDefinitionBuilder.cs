@@ -733,7 +733,8 @@ public sealed class WorkbenchDefinitionBuilder(
                 reader.IsDBNull(reader.GetOrdinal("SOURCE_M_IDX")) ? null : reader.GetInt32(reader.GetOrdinal("SOURCE_M_IDX")),
                 reader.IsDBNull(reader.GetOrdinal("RETURN_ITEMS")) ? null : reader.GetString(reader.GetOrdinal("RETURN_ITEMS")),
                 reader.IsDBNull(reader.GetOrdinal("FILTER_STRUCT")) ? null : reader.GetString(reader.GetOrdinal("FILTER_STRUCT")),
-                reader.GetInt32(reader.GetOrdinal("SERIAL_NO")));
+                reader.GetInt32(reader.GetOrdinal("SERIAL_NO")),
+                ChooserRepository.PreferredSourceKey(table));
             if (!result.TryGetValue(field, out var list))
             {
                 list = new List<FormChooserRow>();

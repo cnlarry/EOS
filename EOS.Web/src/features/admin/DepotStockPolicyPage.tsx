@@ -18,7 +18,7 @@ interface TierOption {
   implemented: boolean
 }
 
-/** 一个可配置维度（位置 / 存放 / 批次 / 容量 / 混品号 / 混批次 / 月结两列）。 */
+/** 一个可配置维度（位置 / 存放 / 批次 / 过期批次 / 容量 / 混品号 / 混批次 / 月结两列）。 */
 interface Tier {
   key: string
   label: string
@@ -36,6 +36,8 @@ interface Policy {
   mixBatch: boolean
   monthCloseByBatch: boolean
   monthCloseByLocation: boolean
+  /** 过期批次档位：0 不管 / 1 告警 / 2 拒绝。 */
+  expiryMode: number
 }
 
 interface SaveResult {
@@ -98,6 +100,7 @@ function toDraft(policy: Policy): Record<string, string> {
     mixBatch: policy.mixBatch ? '1' : '0',
     monthCloseByBatch: policy.monthCloseByBatch ? '1' : '0',
     monthCloseByLocation: policy.monthCloseByLocation ? '1' : '0',
+    expiryMode: String(policy.expiryMode),
   }
 }
 
@@ -276,6 +279,7 @@ export function DepotStockPolicyPage() {
     const base = deployment ? toDraft(deployment) : {
       locationMode: '0', storageMode: 'FIXED', batchMode: '0', capacityMode: '0',
       mixProduct: '1', mixBatch: '1', monthCloseByBatch: '1', monthCloseByLocation: '0',
+      expiryMode: '2',
     }
     setEditor({
       mode: 'create', depotId: unconfiguredDepots[0]?.depotId ?? '',
@@ -311,6 +315,7 @@ export function DepotStockPolicyPage() {
         mixBatch: editor.draft.mixBatch === '1',
         monthCloseByBatch: editor.draft.monthCloseByBatch === '1',
         monthCloseByLocation: editor.draft.monthCloseByLocation === '1',
+        expiryMode: Number(editor.draft.expiryMode),
         confirmDowngrade,
         relocateTo: editor.relocateTo.trim() === '' ? null : editor.relocateTo.trim(),
       },
@@ -347,6 +352,7 @@ export function DepotStockPolicyPage() {
     { accessorKey: 'locationMode', header: '位置档位' },
     { accessorKey: 'storageMode', header: '存放方式' },
     { accessorKey: 'batchMode', header: '批次档位' },
+    { accessorKey: 'expiryMode', header: '过期批次' },
     { accessorKey: 'capacityMode', header: '容量档位' },
     { accessorKey: 'mixProduct', header: '混品号', cell: (info) => (info.getValue() ? '允许' : '禁止') },
     { accessorKey: 'mixBatch', header: '混批次', cell: (info) => (info.getValue() ? '允许' : '禁止') },

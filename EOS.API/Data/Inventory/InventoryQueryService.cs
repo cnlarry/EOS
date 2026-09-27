@@ -24,6 +24,17 @@ public static class InventoryQueryService
     public const string BalanceTable = "INV_PRO_DEPOT";
     public const string LedgerTable = "INV_DEPOT_LOG";
 
+    /// <summary>
+    /// 批次账（`INV_BATCH_M`）：**效期的唯一真源**。效期是批次的属性而不是余额键，
+    /// 因此它只挂在这张表上；要按效期排序或筛临期，只能从余额表按 (料号, 批次) 关联过来现算，
+    /// 不把效期复制进余额表（复制就会与主档漂移）。
+    /// </summary>
+    public const string BatchTable = "INV_BATCH_M";
+    public const string EffectDateColumn = "EFFECT_DATE";
+    public const string BatchDateColumn = "BATCH_DATE";
+    public const string InSummaryColumn = "IN_SUM";
+    public const string OutSummaryColumn = "OUT_SUM";
+
     public const string ProductColumn = "PRO_NO";
     public const string DepotColumn = "DEPOT_ID";
     public const string LocationColumn = "LOCATION_NO";
@@ -714,6 +725,51 @@ public static class InventorySources
 
     /// <summary>流水表的引用（表名属于服务，宿主只给别名）。</summary>
     public static string LedgerRef(string alias) => $"dbo.{InventoryQueryService.LedgerTable} {alias}";
+
+    /// <summary>余额表的引用（表名属于服务，宿主只给别名）。</summary>
+    public static string BalanceRef(string alias) => $"dbo.{InventoryQueryService.BalanceTable} {alias}";
+
+    /// <summary>批次账的引用（表名属于服务，宿主只给别名）。</summary>
+    public static string BatchRef(string alias) => $"dbo.{InventoryQueryService.BatchTable} {alias}";
+
+    /// <summary>
+    /// 余额行 → 批次账行的关联条件：**同键 (料号, 批次)**，两侧都按归一化后的批次键比较
+    /// （NULL 与空串同义，否则空批次的余额行永远关联不上它的批次账行）。
+    /// 关联键写在这里而不是各宿主自己拼：写错一处不会报错，只会静默少给行。
+    /// </summary>
+    public static string BalanceToBatchJoin(string balanceAlias, string batchAlias) =>
+        $"{batchAlias}.{InventoryQueryService.ProductColumn} = {balanceAlias}.{InventoryQueryService.ProductColumn} "
+        + $"AND LTRIM(RTRIM(ISNULL({batchAlias}.{InventoryQueryService.BatchColumn}, N''))) = "
+        + $"{InventoryQueryService.BatchKey(balanceAlias)}";
+
+    /// <summary>
+    /// 剩余天数（截至 <paramref name="asOf"/>）：空效期一律为 NULL —— "不受管控"不是一个天数，
+    /// 拿 0 或 -1 顶替会让"没录效期"看起来像"今天到期"。
+    /// </summary>
+    public static string RemainingDays(string alias, string asOf) =>
+        $"CASE WHEN {alias}.{InventoryQueryService.EffectDateColumn} IS NULL THEN NULL "
+        + $"ELSE DATEDIFF(day, {asOf}, {alias}.{InventoryQueryService.EffectDateColumn}) END";
+
+    /// <summary>效期状态的三个取值（读取侧与展示侧共用同一份文案）。</summary>
+    public const string ExpiryStateNotManaged = "不受管控";
+    public const string ExpiryStateExpired = "已过期";
+    public const string ExpiryStateNormal = "正常";
+
+    /// <summary>效期状态表达式：空=不受管控 / 已过 =过期 / 其余=正常。</summary>
+    public static string ExpiryState(string alias, string asOf) =>
+        $"CASE WHEN {alias}.{InventoryQueryService.EffectDateColumn} IS NULL THEN N'{ExpiryStateNotManaged}' "
+        + $"WHEN {alias}.{InventoryQueryService.EffectDateColumn} < {asOf} THEN N'{ExpiryStateExpired}' "
+        + $"ELSE N'{ExpiryStateNormal}' END";
+
+    /// <summary>
+    /// 按效期排序的默认次序：**最早到期在前，空效期永远排最后**。
+    /// 空效期排最后这一条在升序降序下都成立（先按"有没有效期"分组，再按日期），
+    /// 否则降序时"不受管控"会跑到最前面，等于把没录效期的批次伪装成最该先出的。
+    /// </summary>
+    public static string ExpiryOrderBy(string batchAlias, string direction) =>
+        $"ORDER BY CASE WHEN {batchAlias}.{InventoryQueryService.EffectDateColumn} IS NULL THEN 1 ELSE 0 END ASC, "
+        + $"{batchAlias}.{InventoryQueryService.EffectDateColumn} {direction}, "
+        + $"{batchAlias}.{InventoryQueryService.BatchColumn} ASC";
 
     /// <summary>
     /// 一笔流水在"收发存"里的带符号数量：入库为正、出库为负。

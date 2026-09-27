@@ -1,4 +1,5 @@
 using System.Data;
+using EOS.API.Data.Inventory;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.Data.SqlClient;
@@ -43,6 +44,9 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["menu-admin.records"] = [],
             // 表单设计态字段池：候选 =（该表已登记字段）−（已排进该模块版式的字段），表由 args.table 决定
             ["form-designer.fields"] = ["F_ID", "F_DESC", "F_TYPE"],
+            // 批次账（权限门 1303 料件库存资料）：首列是**默认排序列**——按"最早到期在前、空效期最后"
+            // 排（排序表达式由 InventorySources.ExpiryOrderBy 给出，见 QueryInventoryBatchesAsync）。
+            ["inventory.batches"] = ["REMAINING_DAYS", "EFFECT_DATE", "BATCH_NO", "PRO_NO", "IN_SUM", "OUT_SUM", "BATCH_DATE"],
         };
 
     /// <summary>注册数据源 → 排序稳定次序列（与排序列去重后追加，保证分页顺序稳定）。</summary>
@@ -64,6 +68,7 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             ["rights-admin.groups"] = ["G_IDX"],
             ["user-admin.employees"] = ["EMP_ID"],
             ["form-designer.fields"] = ["F_ID"],
+            ["inventory.batches"] = ["BATCH_NO", "PRO_NO"],
         };
 
     /// <summary>注册数据源 → 列键 → 关键字 LIKE 表达式（编译期常量，安全拼接）。</summary>
@@ -148,6 +153,11 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             {
                 ["G_IDX"] = "LTRIM(RTRIM(G_IDX)) LIKE @Keyword",
                 ["G_DESC"] = "LTRIM(RTRIM(ISNULL(G_DESC,''))) LIKE @Keyword",
+            },
+            ["inventory.batches"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["BATCH_NO"] = "LTRIM(RTRIM(m.BATCH_NO)) LIKE @Keyword",
+                ["PRO_NO"] = "LTRIM(RTRIM(m.PRO_NO)) LIKE @Keyword",
             },
         };
 
@@ -234,6 +244,15 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
                 ["G_IDX"] = "LTRIM(RTRIM(G_IDX))",
                 ["G_DESC"] = "LTRIM(RTRIM(ISNULL(G_DESC,'')))",
             },
+            // 批次账：表名/列名只来自 InventoryQueryService 的片段，本文件不出现库存表字面量。
+            ["inventory.batches"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["BATCH_NO"] = $"LTRIM(RTRIM(m.{InventoryQueryService.BatchColumn}))",
+                ["PRO_NO"] = $"LTRIM(RTRIM(m.{InventoryQueryService.ProductColumn}))",
+                ["EFFECT_DATE"] = $"m.{InventoryQueryService.EffectDateColumn}",
+                ["REMAINING_DAYS"] = InventorySources.RemainingDays("m", ChooserAsOf),
+                ["EXPIRY_STATE"] = InventorySources.ExpiryState("m", ChooserAsOf),
+            },
         };
 
     public static bool IsRegistered(string? sourceKey) =>
@@ -249,8 +268,27 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         "user-admin.employees" => PermissionModules.SystemManagement,
         // 库位主档：权限门挂 110309（库位主档模块）
         "depot-admin.locations" => 110309,
+        // 批次账：权限门挂 1303（料件库存资料，只读查询模块）——批次账与库存余额同属"能看不能改"
+        "inventory.batches" => 1303,
         _ => null,
     };
+
+    /// <summary>
+    /// 效期类列（剩余天数 / 效期状态 / 已到期在前）的比较基准。
+    /// 统一取**当天**（不是当前时刻）：效期是日期粒度，带时间会让"今天到期"在当天下午变成已过期。
+    /// </summary>
+    private const string ChooserAsOf = "CAST(GETDATE() AS date)";
+
+    /// <summary>
+    /// 来源表 → **优选数据源键**。某些字段的来源表已经有服务端注册数据源，而注册数据源比"表名"
+    /// 多带了**排序语义与列白名单**（例如批次要按"最早到期在前、空效期最后"排）：这种字段下发
+    /// sourceKey，前端走统一选择器的 sourceKey 分支。映射是服务端常量——让前端按表名硬编码，
+    /// 就等于把"哪个来源算首选"这条判断散到界面里。
+    /// </summary>
+    public static string? PreferredSourceKey(string? sourceTable) =>
+        string.Equals(sourceTable?.Trim(), InventoryQueryService.BatchTable, StringComparison.OrdinalIgnoreCase)
+            ? "inventory.batches"
+            : null;
 
     /// <summary>排序列白名单解析：非法/缺失回退首列（默认排序）；方向仅 asc/desc。</summary>
     internal static (string Column, string Direction) ResolveSort(string sourceKey, string? sortField, string? sortDirection)
@@ -344,8 +382,96 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
             "menu-admin.records" => await QueryModuleRecordsAsync(request, token),
             "depot-admin.locations" => await QueryDepotLocationsAsync(request, token),
             "form-designer.fields" => await QueryFormDesignerFieldsAsync(request, token),
+            "inventory.batches" => await QueryInventoryBatchesAsync(request, token),
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// inventory.batches：批次账数据源（权限门 1303）。
+    ///
+    /// **默认次序就是它的全部意义**：最早到期在前、空效期排最后。用户是自己在选择器里挑批号的
+    /// （服务端不替他决定出哪几批），所以"哪几批快到期"必须在列表的第一屏就能看见。
+    ///
+    /// 效期列不落余额表：本数据源只读批次账这一张表（效期是批次的属性，不是余额键的一部分）。
+    /// `args.proNo` 只是**过滤值**（参数化），不是列名——列名一律来自注册表。
+    /// </summary>
+    private async Task<UnifiedChooserResult?> QueryInventoryBatchesAsync(
+        UnifiedChooserQueryRequest request, CancellationToken token)
+    {
+        const string sourceKey = "inventory.batches";
+        var (sortColumn, direction) = ResolveSort(sourceKey, request.SortField, request.SortDirection);
+        var page = NormalizePage(request.Page);
+        var pageSize = NormalizePageSize(request.PageSize);
+        var keyword = request.Keyword?.Trim() ?? string.Empty;
+        var keywordPredicate = BuildKeywordPredicate(sourceKey, request.FilterField);
+        // 效期两列走同一套次序：点"剩余天数"或"有效期"表头都应当是"最早到期在前、空效期最后"，
+        // 否则用户点一下表头，"不受管控"的批次就会插到最前面。
+        var orderBy = sortColumn.Equals("REMAINING_DAYS", StringComparison.OrdinalIgnoreCase)
+            || sortColumn.Equals("EFFECT_DATE", StringComparison.OrdinalIgnoreCase)
+            ? InventorySources.ExpiryOrderBy("m", direction)
+            : BuildOrderBy(sourceKey, sortColumn, direction);
+        var productNo = ResolveBatchProductFilter(request.Args);
+
+        await using var connection = connections.Create();
+        await using var command = new SqlCommand { Connection = connection };
+        AddCommonParameters(command, keyword, page, pageSize);
+        command.Parameters.Add("@ProNo", SqlDbType.NVarChar, 60).Value = productNo;
+        var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
+        var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
+        // 默认只给**还有余量**的批次：没量的批次出不了库，列进来只是噪声（与既有批次选择器来源的
+        // FILTER_STRUCT 同一口径：IN_SUM > OUT_SUM）。
+        var filter = "(@ProNo = '' OR LTRIM(RTRIM(m.PRO_NO)) = @ProNo) "
+            + $"AND ISNULL(m.{InventoryQueryService.InSummaryColumn},0) - ISNULL(m.{InventoryQueryService.OutSummaryColumn},0) > 0 "
+            + "AND (@Keyword = '' OR " + keywordPredicate + ")"
+            + conditionSql;
+        var sql = $"""
+            SELECT COUNT_BIG(1) FROM {InventorySources.BatchRef("m")} WITH (NOLOCK) WHERE {filter};
+            SELECT LTRIM(RTRIM(m.BATCH_NO)) AS BATCH_NO, LTRIM(RTRIM(m.PRO_NO)) AS PRO_NO,
+                   m.EFFECT_DATE AS EFFECT_DATE,
+                   {InventorySources.RemainingDays("m", ChooserAsOf)} AS REMAINING_DAYS,
+                   {InventorySources.ExpiryState("m", ChooserAsOf)} AS EXPIRY_STATE,
+                   ISNULL(m.IN_SUM,0) AS IN_SUM, ISNULL(m.OUT_SUM,0) AS OUT_SUM, m.BATCH_DATE AS BATCH_DATE
+            FROM {InventorySources.BatchRef("m")} WITH (NOLOCK)
+            WHERE {filter}
+            {orderBy}
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+        command.CommandText = sql;
+        await connection.OpenAsync(token);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        var total = Convert.ToInt32(reader.GetInt64(0));
+        await reader.NextResultAsync(token);
+        var rows = ReadRows(
+            reader, ["BATCH_NO", "PRO_NO", "EFFECT_DATE", "REMAINING_DAYS", "EXPIRY_STATE", "IN_SUM", "OUT_SUM", "BATCH_DATE"]);
+        logger.LogInformation("统一选择器查询 source={Source} page={Page} size={PageSize} total={Total} rows={Rows}",
+            sourceKey, page, pageSize, total, rows.Count);
+        return new UnifiedChooserResult(
+            [
+                new UnifiedChooserColumn("BATCH_NO", "批号", "nvarchar", null),
+                new UnifiedChooserColumn("PRO_NO", "料号", "nvarchar", null),
+                new UnifiedChooserColumn("EFFECT_DATE", "有效日期", "date", "yyyy-MM-dd"),
+                new UnifiedChooserColumn("REMAINING_DAYS", "剩余天数", "number", null),
+                new UnifiedChooserColumn("EXPIRY_STATE", "效期状态", "nvarchar", null),
+                new UnifiedChooserColumn("IN_SUM", "入库累计", "number", null),
+                new UnifiedChooserColumn("OUT_SUM", "出库累计", "number", null),
+                new UnifiedChooserColumn("BATCH_DATE", "批号启用日期", "date", "yyyy-MM-dd"),
+            ],
+            rows,
+            total);
+    }
+
+    /// <summary>
+    /// 批次数据源的料号过滤值：**只作参数值**，不参与任何标识符拼接；
+    /// 非法形态（过长）一律当作"不过滤"，最坏只是多给候选，不会给出不该看的行。
+    /// </summary>
+    internal static string ResolveBatchProductFilter(IReadOnlyDictionary<string, string>? args)
+    {
+        if (args is null || !args.TryGetValue("proNo", out var raw) || string.IsNullOrWhiteSpace(raw))
+            return string.Empty;
+        var value = raw.Trim();
+        return value.Length <= 60 ? value : string.Empty;
     }
 
     /// <summary>

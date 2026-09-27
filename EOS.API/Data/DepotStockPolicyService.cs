@@ -25,7 +25,13 @@ public sealed record DepotStockPolicy(
     /// **带默认值**：这是本维度落地时新增的，默认值就是它的语义默认（关），
     /// 也就让"新增一个维度"不必去改每一处构造点（改构造点只会把默认值抄一遍）。
     /// </summary>
-    bool MonthCloseScopeHalfStock = false);
+    bool MonthCloseScopeHalfStock = false,
+    /// <summary>
+    /// 过期批次档位：0 不管 / 1 告警 / 2 拒绝（出库含已过期批次时的行为）。
+    /// 与其它维度一样**整行覆盖**：库别行存在即整行采用，否则回落部署级默认。
+    /// 默认值取 2（拒绝）：效期一旦录进来，"过期还能照常出库"是最不该出现的默认。
+    /// </summary>
+    int ExpiryMode = 2);
 
 /// <summary>
 /// 库存策略的一个可配置维度：键、显示名、说明与候选档位（含"本版未实现"标记，界面据此灰显）。
@@ -54,8 +60,13 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     /// <summary>余额表里"未指定位置"的哨兵值。</summary>
     public const string SentinelLocationNo = "-";
 
-    /// <summary>本版未实现的批次档位（必填 + 效期）：保存期一律拒绝。</summary>
-    public const int UnimplementedBatchMode = 3;
+    /// <summary>批次档位 3（必填 + 效期）：要求批号必填，且该批次最终必须有一个有效期。</summary>
+    public const int ExpiryBatchMode = 3;
+
+    /// <summary>过期批次档位的候选值。</summary>
+    public const int ExpiryModeOff = 0;
+    public const int ExpiryModeWarn = 1;
+    public const int ExpiryModeReject = 2;
 
     /// <summary>本版支持的容量档位上限（恒为 0，即不校验）。</summary>
     public const int MaxSupportedCapacityMode = 0;
@@ -86,7 +97,13 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             new("0", "归零", true),
             new("1", "保留", true),
             new("2", "必填", true),
-            new("3", "必填 + 效期", false),
+            new("3", "必填 + 效期", true),
+        ]),
+        new("expiryMode", "过期批次", "出库碰到已过期批次怎么办",
+        [
+            new("0", "不管", true),
+            new("1", "告警", true),
+            new("2", "拒绝", true),
         ]),
         new("capacityMode", "容量档位", "要不要校验库位容量",
         [
@@ -157,8 +174,8 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         await using var command = new SqlCommand(
             // 月结维度一律取部署级行的值：库别行即使被直连改库写入，运行时口径也不会分裂。
             "SELECT r.DEPOT_ID, r.LOCATION_MODE, r.STORAGE_MODE, r.BATCH_MODE, r.CAPACITY_MODE, r.MIX_PRODUCT, r.MIX_BATCH, "
-            + "d.MONTH_CLOSE_BY_BATCH, d.MONTH_CLOSE_BY_LOCATION, d.MONTH_CLOSE_SCOPE_HALF_STOCK "
-            + "FROM (SELECT TOP 1 DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH "
+            + "d.MONTH_CLOSE_BY_BATCH, d.MONTH_CLOSE_BY_LOCATION, d.MONTH_CLOSE_SCOPE_HALF_STOCK, r.EXPIRY_MODE "
+            + "FROM (SELECT TOP 1 DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH, EXPIRY_MODE "
             + "        FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID IN (@scope, @default) "
             + "       ORDER BY CASE WHEN DEPOT_ID = @scope THEN 0 ELSE 1 END) r "
             + "CROSS JOIN (SELECT MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION, MONTH_CLOSE_SCOPE_HALF_STOCK "
@@ -189,11 +206,11 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         if (!StorageModes.Contains(policy.StorageMode, StringComparer.OrdinalIgnoreCase))
             errors.Add("存放方式只能取 FIXED / RANDOM / MIXED。");
 
-        // R-C4：未实现档位不得被保存为生效配置
-        if (policy.BatchMode == UnimplementedBatchMode)
-            errors.Add("批次档位 3（必填 + 效期）本版未实现，不能保存为生效配置。");
+        // R-C4：未实现档位不得被保存为生效配置（批次档位 3 已实现，只剩容量档位）
         if (policy.CapacityMode > MaxSupportedCapacityMode)
             errors.Add("容量档位本版未实现，不能保存为生效配置。");
+        if (policy.ExpiryMode is < ExpiryModeOff or > ExpiryModeReject)
+            errors.Add("过期批次档位只能取 0 / 1 / 2。");
 
         // R-C1：不强制记位置却随机存放，货必然丢失
         if (policy.LocationMode <= 1 && policy.StorageMode is "RANDOM" or "MIXED")
@@ -204,8 +221,16 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             errors.Add("位置档位为 0 时不能启用容量校验。");
 
         // R-C3：效期追溯的前提是先能定位
-        if (policy.LocationMode < 3 && policy.BatchMode == UnimplementedBatchMode)
+        if (policy.LocationMode < 3 && policy.BatchMode == ExpiryBatchMode)
             errors.Add("效期追溯要求位置档位为 3（强制）。");
+
+        // R-S3：档位组合说不通时**只提示不拒存**——客户可以先配好效期管控、再逐步把批次档位开起来，
+        // 拒存会把这个过程卡死；而"配了却不会生效"必须说出来，不能让人以为已经管起来了。
+        if (policy.ExpiryMode >= ExpiryModeWarn && policy.BatchMode == 0)
+            warnings.Add("过期批次管控已开启，但批次档位为 0：非批管料件的批号会被归零、其效期因此无人校验"
+                + "（产品级「需要批号」的料件仍受管控）。要按批管效期，请把批次档位开到 1 以上。");
+        if (policy.ExpiryMode >= ExpiryModeReject && policy.LocationMode < 3)
+            warnings.Add("过期批次管控为「拒绝」时，建议把位置档位设为 3（强制）：出过期品往往伴随换批换位，位置记不清就说不清出的是哪一批。");
 
         // R-S1：随机存放缺少扫码写入手段时，位置数据当天即失真
         if (policy.StorageMode is "RANDOM" or "MIXED" && policy.LocationMode == 2)
@@ -347,7 +372,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         await connection.OpenAsync(token);
         await using var command = new SqlCommand(
             "SELECT DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH, "
-            + "MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION, MONTH_CLOSE_SCOPE_HALF_STOCK FROM dbo.DEPOT_STOCK_POLICY "
+            + "MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION, MONTH_CLOSE_SCOPE_HALF_STOCK, EXPIRY_MODE FROM dbo.DEPOT_STOCK_POLICY "
             + "ORDER BY CASE WHEN DEPOT_ID = N'*' THEN 0 ELSE 1 END, DEPOT_ID",
             connection);
         var rows = new List<DepotStockPolicy>();
@@ -495,13 +520,13 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             + "WHEN MATCHED THEN UPDATE SET LOCATION_MODE=@locationMode, STORAGE_MODE=@storageMode, "
             + "  BATCH_MODE=@batchMode, CAPACITY_MODE=@capacityMode, MIX_PRODUCT=@mixProduct, MIX_BATCH=@mixBatch, "
             + "  MONTH_CLOSE_BY_BATCH=@monthBatch, MONTH_CLOSE_BY_LOCATION=@monthLocation, "
-            + "  MONTH_CLOSE_SCOPE_HALF_STOCK=@monthHalf, "
+            + "  MONTH_CLOSE_SCOPE_HALF_STOCK=@monthHalf, EXPIRY_MODE=@expiryMode, "
             + "  LAST_UPDATE_BY=@actor, LAST_UPDATE_DATE=GETDATE() "
             + "WHEN NOT MATCHED THEN INSERT (DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, "
             + "  MIX_PRODUCT, MIX_BATCH, MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION, MONTH_CLOSE_SCOPE_HALF_STOCK, "
-            + "  LAST_UPDATE_BY, LAST_UPDATE_DATE) "
+            + "  EXPIRY_MODE, LAST_UPDATE_BY, LAST_UPDATE_DATE) "
             + "  VALUES (@depot, @locationMode, @storageMode, @batchMode, @capacityMode, @mixProduct, @mixBatch, "
-            + "          @monthBatch, @monthLocation, @monthHalf, @actor, GETDATE());",
+            + "          @monthBatch, @monthLocation, @monthHalf, @expiryMode, @actor, GETDATE());",
             connection, transaction))
         {
             upsert.Parameters.AddWithValue("@depot", candidate.DepotId);
@@ -514,6 +539,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             upsert.Parameters.AddWithValue("@monthBatch", monthBatch);
             upsert.Parameters.AddWithValue("@monthLocation", monthLocation);
             upsert.Parameters.AddWithValue("@monthHalf", monthHalf);
+            upsert.Parameters.AddWithValue("@expiryMode", candidate.ExpiryMode);
             upsert.Parameters.AddWithValue("@actor", actor);
             await upsert.ExecuteNonQueryAsync(token);
         }
@@ -521,7 +547,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         // 落库的月结维度是上面算出来的实际写入值，审计必须记实际值而不是请求里的值。
         var stored = new DepotStockPolicy(
             candidate.DepotId, candidate.LocationMode, candidate.StorageMode, candidate.BatchMode, candidate.CapacityMode,
-            candidate.MixProduct, candidate.MixBatch, monthBatch, monthLocation, monthHalf);
+            candidate.MixProduct, candidate.MixBatch, monthBatch, monthLocation, monthHalf, candidate.ExpiryMode);
         await auditWriter.WriteEventAsync(
             connection, transaction, StockPolicyModuleId, candidate.DepotId,
             existing is null ? "CREATE" : "UPDATE",
@@ -575,6 +601,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
             new("MONTH_CLOSE_BY_BATCH", Format(existing.MonthCloseByBatch), null, null),
             new("MONTH_CLOSE_BY_LOCATION", Format(existing.MonthCloseByLocation), null, null),
             new("MONTH_CLOSE_SCOPE_HALF_STOCK", Format(existing.MonthCloseScopeHalfStock), null, null),
+            new("EXPIRY_MODE", Format(existing.ExpiryMode), null, null),
         };
         var message = $"库存策略删除（{depot}）："
             + string.Join("、", changes.Select(c => $"{c.FieldName} {c.OldValue}→已删除"));
@@ -664,7 +691,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
     {
         await using var command = new SqlCommand(
             "SELECT DEPOT_ID, LOCATION_MODE, STORAGE_MODE, BATCH_MODE, CAPACITY_MODE, MIX_PRODUCT, MIX_BATCH, "
-            + "MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION, MONTH_CLOSE_SCOPE_HALF_STOCK "
+            + "MONTH_CLOSE_BY_BATCH, MONTH_CLOSE_BY_LOCATION, MONTH_CLOSE_SCOPE_HALF_STOCK, EXPIRY_MODE "
             + "FROM dbo.DEPOT_STOCK_POLICY WHERE DEPOT_ID = @depot",
             connection, transaction);
         command.Parameters.AddWithValue("@depot", depotId);
@@ -694,6 +721,7 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         Compare("MONTH_CLOSE_BY_BATCH", before?.MonthCloseByBatch, after.MonthCloseByBatch);
         Compare("MONTH_CLOSE_BY_LOCATION", before?.MonthCloseByLocation, after.MonthCloseByLocation);
         Compare("MONTH_CLOSE_SCOPE_HALF_STOCK", before?.MonthCloseScopeHalfStock, after.MonthCloseScopeHalfStock);
+        Compare("EXPIRY_MODE", before?.ExpiryMode, after.ExpiryMode);
         return changes;
     }
 
@@ -1022,5 +1050,6 @@ public sealed class DepotStockPolicyService(DbConnectionFactory connections, Wor
         reader.GetBoolean(6),
         reader.GetBoolean(7),
         reader.GetBoolean(8),
-        reader.GetBoolean(9));
+        reader.GetBoolean(9),
+        reader.GetInt32(10));
 }

@@ -96,6 +96,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
     private static readonly HashSet<string> CodeReferencedKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "110111|PRO_MRP",                    // MrpPlanAllocHandler / InventoryMoveHandler
+        "110111|EXPIRY_ALERT_DAYS",          // ReportAggregateRegistry（临期清单的阈值参数）
         "180213|SAT_REST_DAY", "180213|SUN_REST_DAY",     // AttendanceCalcService
         "180213|WAGE_ADD", "180213|WAGE_WORK", "180213|WAGE_OVER", "180213|WAGE_REST",
         "180213|WAGE_HOLIDAY", "180213|WAGE_WORKTIME", "180213|WAGE_OVERTIME",

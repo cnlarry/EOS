@@ -22,14 +22,19 @@ internal static class PolicyServiceFactory
             })
             .Build());
 
-    public static DepotStockPolicyService Create(string connectionString)
+    public static DepotStockPolicyService Create(string connectionString) =>
+        new(Connections(connectionString), AuditWriter(connectionString));
+
+    /// <summary>
+    /// 审计写入器：库存移动引擎在"改写既有批次主档行"时要留痕，真库用例里的构造方式与服务端一致。
+    /// </summary>
+    public static WorkbenchAuditWriter AuditWriter(string connectionString)
     {
         var connections = Connections(connectionString);
-        var auditWriter = new WorkbenchAuditWriter(
+        return new WorkbenchAuditWriter(
             connections,
             new HttpContextAccessor(),
             new WorkbenchDefinitionProvider(connections, NullLogger<WorkbenchDefinitionProvider>.Instance),
             Options.Create(new AuditSettings()));
-        return new DepotStockPolicyService(connections, auditWriter);
     }
 }

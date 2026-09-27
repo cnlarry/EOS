@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using EOS.API.Errors;
@@ -296,6 +297,34 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
     }
 
     /// <summary>
+    /// 系统参数型参数的兜底值：参数行缺失或值不可解析时用它。
+    /// 兜底而不是留 NULL —— 比较里出现 NULL 会让整段谓词求值为 UNKNOWN，"一行都没有"
+    /// 表面上与"条件就是这么严"无法区分（近效期清单最容易踩这个：阈值取不到时应当退回默认天数，
+    /// 而不是安静地报空）。
+    /// </summary>
+    private const int DefaultSystemParameterValue = 30;
+
+    /// <summary>
+    /// 读系统参数型参数的取值。键的形态是 `<c>&lt;归属模块&gt;|&lt;参数键&gt;</c>`
+    /// （与 <see cref="SystemParameterService"/> 的源码引用登记同一格式）：归属模块是取值作用域的一部分，
+    /// 少了它就会在"两张表同名键"的情形下读错行（考勤的两张参数表就是这么撞的）。
+    /// 形态不合法时按系统参数作用域兜底，最后再退到默认值——**绝不留 NULL**。
+    /// </summary>
+    private static async Task<string> ReadSystemParameterAsync(
+        SqlConnection connection,
+        string systemParameterKey,
+        CancellationToken token)
+    {
+        var parts=systemParameterKey.Split('|',2);
+        var owner=parts.Length==2&&int.TryParse(parts[0],NumberStyles.Integer,CultureInfo.InvariantCulture,out var parsed)
+            ? parsed
+            : SystemParameterService.SystemOwner;
+        var key=parts[^1].Trim();
+        var value=await SystemParameterService.GetIntAsync(connection,null,owner,key,token);
+        return (value??DefaultSystemParameterValue).ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
     /// 汇总报表（RptInteg）受控执行：SQL 与输出列来自服务端注册表，参数按查询条件序号绑定并
     /// 参数化传入（值不进入 SQL 文本）；排序字段必须是注册表声明过的输出列，否则回落默认排序。
     /// </summary>
@@ -313,8 +342,17 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         await using var command=new SqlCommand(BuildAggregateSql(aggregate,sortFields),connection);
         foreach(var parameter in aggregate.Parameters)
         {
-            var raw=parameter.Constant
-                ?? (parameter.IsTo?valuesTo.GetValueOrDefault(parameter.SerialNo):values.GetValueOrDefault(parameter.SerialNo));
+            // 取值优先级：注册表常量 > 系统参数 > 前端条件值。
+            // 系统参数那一档是"报表与预警读同一个阈值"的落点——它必须能吃 SYSSS 的运行期改动，
+            // 否则"改了参数报表不动"就成了一张写着参数控制、实际硬编码的报表。
+            var raw=parameter.Constant;
+            if(raw is null && parameter.SystemParameterKey is { Length: > 0 } systemKey)
+            {
+                raw=await ReadSystemParameterAsync(connection,systemKey,token);
+            }
+            raw ??= parameter.IsTo
+                ? valuesTo.GetValueOrDefault(parameter.SerialNo)
+                : values.GetValueOrDefault(parameter.SerialNo);
             var value=string.IsNullOrWhiteSpace(raw)?null:ConvertReportValue(parameter.DataType,raw!);
             command.Parameters.AddWithValue($"@{parameter.Name}",value??DBNull.Value);
         }

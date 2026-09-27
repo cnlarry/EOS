@@ -55,7 +55,13 @@ public sealed record ReportAggregateParameter(
     int MaxLength,
     int SerialNo = 0,
     bool IsTo = false,
-    string? Constant = null);
+    string? Constant = null,
+    /// <summary>
+    /// 取值来自**系统参数**（`SYSSS`，见 <see cref="SystemParameterService"/>）而不是前端。
+    /// 用于"报表与预警必须读同一个阈值"这类参数：写死在注册表里的常量做不到"改了参数报表跟着变"，
+    /// 而让用户每次手填，两处口径迟早分叉。
+    /// </summary>
+    string? SystemParameterKey = null);
 
 /// <summary>
 /// 汇总报表（RptInteg）受控数据源：聚合 SQL、默认排序与输出列全部来自服务端注册表；
