@@ -81,15 +81,12 @@ public sealed class InventoryFreezeActionLiveTests : IAsyncLifetime
     private static async Task CleanupAsync(SqlConnection connection)
     {
         await ExecAsync(connection, """
-            DELETE c FROM dbo.AUDIT_FIELD_CHANGE c JOIN dbo.AUDIT_EVENT e ON e.EVENT_ID = c.EVENT_ID
-             WHERE e.M_IDX = @module AND e.RESOURCE_KEY = @key;
-            DELETE FROM dbo.AUDIT_EVENT WHERE M_IDX = @module AND RESOURCE_KEY = @key;
             DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX = @module AND ACTION = N'ACTION';
             DELETE FROM dbo.INV_FREEZE WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
             DELETE FROM dbo.INV_PRO_DEPOT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
             DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID = @user;
             DELETE FROM dbo.PRODUCT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
-            """, ("@module", ModuleId), ("@key", RecordKey), ("@pro", Product), ("@user", TestUser));
+            """, ("@module", ModuleId), ("@pro", Product), ("@user", TestUser));
     }
 
     // ===== ① 冻结：可用量下降、在库不变、列按口径同步（顺带治愈未初始化） =====
@@ -97,14 +94,17 @@ public sealed class InventoryFreezeActionLiveTests : IAsyncLifetime
     [Fact]
     public async Task 冻结_可用量下降而在库数量不变()
     {
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        // 审计是追加型的：先取基线，只认本次冻结新增的那条前后值
+        var auditBaseline = await ScalarAsync<long>(connection, "SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;");
+
         var result = await RunAsync(InventoryFreezeHandler.ActionKey, "30", "质量扣货");
 
         Assert.True(result.Status == DocumentActionStatus.Ok, result.ErrorMessage);
         Assert.Equal(DocumentActionOutcome.Refreshed, result.Result!.Outcome);
         Assert.Contains("可用量 0 → 70", result.Result.Message);
 
-        await using var connection = new SqlConnection(ConnectionString);
-        await connection.OpenAsync();
         // 在库数量没动，可用量列被同步（夹具故意把它写成 0：这次写入把它治回正确值）
         Assert.Equal(StockQty, await ScalarAsync<double>(connection,
             "SELECT QTY FROM dbo.INV_PRO_DEPOT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;", ("@pro", Product)));
@@ -123,9 +123,11 @@ public sealed class InventoryFreezeActionLiveTests : IAsyncLifetime
         await using (var command = new SqlCommand("""
             SELECT RTRIM(c.FIELD_NAME), c.OLD_VALUE, c.NEW_VALUE
               FROM dbo.AUDIT_FIELD_CHANGE c JOIN dbo.AUDIT_EVENT e ON e.EVENT_ID = c.EVENT_ID
-             WHERE e.M_IDX = @module AND e.RESOURCE_KEY = @key AND RTRIM(c.FIELD_NAME) = N'USEABLE_QTY';
+             WHERE e.EVENT_ID > @baseline
+               AND e.M_IDX = @module AND e.RESOURCE_KEY = @key AND RTRIM(c.FIELD_NAME) = N'USEABLE_QTY';
             """, connection))
         {
+            command.Parameters.AddWithValue("@baseline", auditBaseline);
             command.Parameters.AddWithValue("@module", ModuleId);
             command.Parameters.AddWithValue("@key", RecordKey);
             await using var reader = await command.ExecuteReaderAsync();

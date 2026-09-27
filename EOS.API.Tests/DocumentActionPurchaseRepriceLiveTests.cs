@@ -40,6 +40,8 @@ public sealed class DocumentActionPurchaseRepriceLiveTests : IAsyncLifetime
     private const string TestType = "ZZRP";
     private const string TestNo = "ZZRP00001";
     private const string TestUser = "ZZRP00001";
+    /// <summary>本单的审计资源键（与执行器写入口径一致：主键值以逗号相连）。</summary>
+    private const string RecordKey = TestType + "," + TestNo;
     private const string TestSupplier = "ZZSUP001";
     private const string PricedProduct = "ZZRPPRO01";
     private const string UnpricedProduct = "ZZRPPRO02";
@@ -120,11 +122,6 @@ public sealed class DocumentActionPurchaseRepriceLiveTests : IAsyncLifetime
             $"DELETE FROM dbo.{PriceTable} WHERE SUPPLIER_ID=@sup;",
             ("@sup", TestSupplier));
         await ExecAsync(connection, "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user;", ("@user", TestUser));
-        await ExecAsync(connection,
-            "DELETE FROM dbo.AUDIT_FIELD_CHANGE WHERE EVENT_ID IN (SELECT EVENT_ID FROM dbo.AUDIT_EVENT WHERE ACTION=@action);",
-            ("@action", PurchaseRepriceHandler.ActionKey));
-        await ExecAsync(connection,
-            "DELETE FROM dbo.AUDIT_EVENT WHERE ACTION=@action;", ("@action", PurchaseRepriceHandler.ActionKey));
         await ExecAsync(connection,
             "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX=@module AND ACTION=N'ACTION';", ("@module", ModuleId));
     }
@@ -214,12 +211,24 @@ public sealed class DocumentActionPurchaseRepriceLiveTests : IAsyncLifetime
             Convert.ToDouble(reader.GetValue(2)));
     }
 
-    private async Task<int> AuditCountAsync()
+    /// <summary>审计是追加型的：取当前最大事件号作基线，之后只看基线之上的增量。</summary>
+    private static async Task<long> AuditBaselineAsync()
+    {
+        await using var connection = await OpenAsync();
+        return await ScalarAsync<long>(connection, "SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;");
+    }
+
+    /// <summary>基线之上、本单（模块 + 动作 + 资源键）的审计条数。</summary>
+    private async Task<int> AuditCountAsync(long baseline)
     {
         await using var connection = await OpenAsync();
         return await ScalarAsync<int>(connection,
-            "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE ACTION=@action;",
-            ("@action", PurchaseRepriceHandler.ActionKey));
+            """
+            SELECT COUNT(*) FROM dbo.AUDIT_EVENT
+             WHERE EVENT_ID > @baseline AND M_IDX=@module AND ACTION=@action AND RESOURCE_KEY=@key;
+            """,
+            ("@baseline", baseline), ("@module", ModuleId),
+            ("@action", PurchaseRepriceHandler.ActionKey), ("@key", RecordKey));
     }
 
     // ===== 用例 =====
@@ -227,6 +236,7 @@ public sealed class DocumentActionPurchaseRepriceLiveTests : IAsyncLifetime
     [Fact]
     public async Task Reprice_UpdatesPricedRow_KeepsUnpricedRow_AndRollsUp()
     {
+        var auditBaseline = await AuditBaselineAsync();
         var result = await RunAsync();
 
         Assert.True(result.Status == DocumentActionStatus.Ok, result.ErrorMessage);
@@ -249,20 +259,22 @@ public sealed class DocumentActionPurchaseRepriceLiveTests : IAsyncLifetime
         Assert.Equal(27d, master.Amount, 6);
         Assert.Equal(30.51d, master.AmountTax, 6);
         Assert.Equal(3.51d, master.TaxSum, 6);
-        Assert.Equal(1, await AuditCountAsync());
+        // 本次取价只留一条自己的审计（按本单资源键限定，别的采购单不算）
+        Assert.Equal(1, await AuditCountAsync(auditBaseline));
     }
 
     [Fact]
     public async Task ProbeOnly_ReportsAndWritesNothing()
     {
         var before = await DetailAmountsAsync(1);
+        var auditBaseline = await AuditBaselineAsync();
 
         var probe = await RunAsync(confirm: false);
 
         Assert.Equal(DocumentActionStatus.Ok, probe.Status);
         Assert.True(probe.RequiresConfirmation);
         Assert.Equal(before, await DetailAmountsAsync(1));
-        Assert.Equal(0, await AuditCountAsync());
+        Assert.Equal(0, await AuditCountAsync(auditBaseline));
     }
 
     [Fact]

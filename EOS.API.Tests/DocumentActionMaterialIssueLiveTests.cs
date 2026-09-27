@@ -40,6 +40,8 @@ public sealed class DocumentActionMaterialIssueLiveTests : IAsyncLifetime
     private const string TestType = "ZZMI";
     private const string TestNo = "ZZMI00001";
     private const string TestUser = "ZZMI00001";
+    /// <summary>本单的审计资源键（与执行器写入口径一致：主键值以逗号相连）。</summary>
+    private const string RecordKey = TestType + "," + TestNo;
     private const string TestDepot = "ZZMI0001";
     private const string BinA = "ZZMI-A1";
     private const string BinB = "ZZMI-A2";
@@ -145,11 +147,6 @@ public sealed class DocumentActionMaterialIssueLiveTests : IAsyncLifetime
             "DELETE FROM dbo.DEPOT WHERE DEPOT_ID=@d;", ("@d", TestDepot));
         await ExecAsync(connection, "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user;", ("@user", TestUser));
         await ExecAsync(connection,
-            "DELETE FROM dbo.AUDIT_FIELD_CHANGE WHERE EVENT_ID IN (SELECT EVENT_ID FROM dbo.AUDIT_EVENT WHERE ACTION=@action);",
-            ("@action", MaterialIssueAllocateHandler.ActionKey));
-        await ExecAsync(connection,
-            "DELETE FROM dbo.AUDIT_EVENT WHERE ACTION=@action;", ("@action", MaterialIssueAllocateHandler.ActionKey));
-        await ExecAsync(connection,
             "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX=@module AND ACTION=N'ACTION';", ("@module", ModuleId));
     }
 
@@ -242,12 +239,24 @@ public sealed class DocumentActionMaterialIssueLiveTests : IAsyncLifetime
         return rows;
     }
 
-    private async Task<int> AuditCountAsync()
+    /// <summary>审计是追加型的：取当前最大事件号作基线，之后只看基线之上的增量。</summary>
+    private static async Task<long> AuditBaselineAsync()
+    {
+        await using var connection = await OpenAsync();
+        return await ScalarAsync<long>(connection, "SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;");
+    }
+
+    /// <summary>基线之上、本单（模块 + 动作 + 资源键）的审计条数。</summary>
+    private async Task<int> AuditCountAsync(long baseline)
     {
         await using var connection = await OpenAsync();
         return await ScalarAsync<int>(connection,
-            "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE ACTION=@action;",
-            ("@action", MaterialIssueAllocateHandler.ActionKey));
+            """
+            SELECT COUNT(*) FROM dbo.AUDIT_EVENT
+             WHERE EVENT_ID > @baseline AND M_IDX=@module AND ACTION=@action AND RESOURCE_KEY=@key;
+            """,
+            ("@baseline", baseline), ("@module", ModuleId),
+            ("@action", MaterialIssueAllocateHandler.ActionKey), ("@key", RecordKey));
     }
 
     // ===== 用例 =====
@@ -255,6 +264,7 @@ public sealed class DocumentActionMaterialIssueLiveTests : IAsyncLifetime
     [Fact]
     public async Task Allocate_CapsByDepotStock_AndDistributesMore()
     {
+        var auditBaseline = await AuditBaselineAsync();
         var result = await RunAsync();
 
         Assert.True(result.Status == DocumentActionStatus.Ok, result.ErrorMessage);
@@ -268,18 +278,20 @@ public sealed class DocumentActionMaterialIssueLiveTests : IAsyncLifetime
         // 待办：A 行 6+6 按可用 10 分（6, 4），B 行按可用 2 分（2）
         var more = await MoreQuantitiesAsync();
         Assert.Equal(new[] { 6d, 4d, 2d }, more.Select(value => Math.Round(value, 6)));
-        Assert.Equal(1, await AuditCountAsync());
+        // 本次取料只留一条自己的审计（按本单资源键限定）
+        Assert.Equal(1, await AuditCountAsync(auditBaseline));
     }
 
     [Fact]
     public async Task ProbeOnly_ReportsAndWritesNothing()
     {
+        var auditBaseline = await AuditBaselineAsync();
         var probe = await RunAsync(confirm: false);
 
         Assert.Equal(DocumentActionStatus.Ok, probe.Status);
         Assert.True(probe.RequiresConfirmation);
         var send = await SendQuantitiesAsync();
         Assert.All(send.Values, value => Assert.Equal(0d, value, 6));
-        Assert.Equal(0, await AuditCountAsync());
+        Assert.Equal(0, await AuditCountAsync(auditBaseline));
     }
 }

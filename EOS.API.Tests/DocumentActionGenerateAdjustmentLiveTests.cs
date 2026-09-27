@@ -206,9 +206,6 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
         await ExecAsync(connection, "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user;", ("@user", TestUser));
         await ExecAsync(connection, "DELETE FROM dbo.SYSDD WHERE USER_ID=@user;", ("@user", TestUser));
         await ExecAsync(connection,
-            "DELETE FROM dbo.AUDIT_EVENT WHERE ACTION=@action AND RESOURCE_KEY=@key;",
-            ("@action", GenerateAdjustmentHandler.ActionKey), ("@key", $"{TestType},{TestNo}"));
-        await ExecAsync(connection,
             "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX IN (@a,@b) AND ACTION=N'ACTION';",
             ("@a", ModuleId), ("@b", TargetModuleId));
     }

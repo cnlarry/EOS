@@ -42,6 +42,8 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
     private const string TestType = "ZZPG";
     private const string TestNo = "ZZPG00001";
     private const string TestUser = "ZZPG00001";
+    /// <summary>本单的审计资源键（与执行器写入口径一致：主键值以逗号相连）。</summary>
+    private const string RecordKey = TestType + "," + TestNo;
     private const string FinishedProduct = "ZZPGFIN01";
     private const string ElementWithChild = "ZZPGEL01";
     private const string ElementLeaf = "ZZPGEL02";
@@ -156,11 +158,6 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
             "DELETE FROM dbo.SYSDD WHERE USER_ID=@user;", ("@user", TestUser));
         await ExecAsync(connection, "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user;", ("@user", TestUser));
         await ExecAsync(connection,
-            "DELETE FROM dbo.AUDIT_FIELD_CHANGE WHERE EVENT_ID IN (SELECT EVENT_ID FROM dbo.AUDIT_EVENT WHERE ACTION=@action);",
-            ("@action", ProduceGenSubHandler.ActionKey));
-        await ExecAsync(connection,
-            "DELETE FROM dbo.AUDIT_EVENT WHERE ACTION=@action;", ("@action", ProduceGenSubHandler.ActionKey));
-        await ExecAsync(connection,
             "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX=@module AND ACTION=N'ACTION';", ("@module", ModuleId));
     }
 
@@ -265,12 +262,24 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
         return rows;
     }
 
-    private async Task<int> AuditCountAsync()
+    /// <summary>审计是追加型的：取当前最大事件号作基线，之后只看基线之上的增量。</summary>
+    private static async Task<long> AuditBaselineAsync()
+    {
+        await using var connection = await OpenAsync();
+        return await ScalarAsync<long>(connection, "SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;");
+    }
+
+    /// <summary>基线之上、本单（模块 + 动作 + 资源键）的审计条数。子单是另外的单据，不落在这里。</summary>
+    private async Task<int> AuditCountAsync(long baseline)
     {
         await using var connection = await OpenAsync();
         return await ScalarAsync<int>(connection,
-            "SELECT COUNT(*) FROM dbo.AUDIT_EVENT WHERE ACTION=@action;",
-            ("@action", ProduceGenSubHandler.ActionKey));
+            """
+            SELECT COUNT(*) FROM dbo.AUDIT_EVENT
+             WHERE EVENT_ID > @baseline AND M_IDX=@module AND ACTION=@action AND RESOURCE_KEY=@key;
+            """,
+            ("@baseline", baseline), ("@module", ModuleId),
+            ("@action", ProduceGenSubHandler.ActionKey), ("@key", RecordKey));
     }
 
     // ===== 用例 =====
@@ -278,6 +287,7 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
     [Fact]
     public async Task Expand_CreatesChildrenRecursively_SkipsExisting()
     {
+        var auditBaseline = await AuditBaselineAsync();
         var result = await RunAsync();
 
         Assert.True(result.Status == DocumentActionStatus.Ok, result.ErrorMessage);
@@ -316,18 +326,20 @@ public sealed class DocumentActionProduceGenSubLiveTests : IAsyncLifetime
         Assert.Equal(DocumentActionStatus.Ok, again.Status);
         Assert.Contains("不需要生成", again.Result!.Message!);
         Assert.Equal([ElementWithChild], await ChildProductsAsync());
-        Assert.Equal(2, await AuditCountAsync());
+        // 两次点击各留一条本单审计；基线上只有这两条
+        Assert.Equal(2, await AuditCountAsync(auditBaseline));
     }
 
     [Fact]
     public async Task ProbeOnly_ReportsAndWritesNothing()
     {
+        var auditBaseline = await AuditBaselineAsync();
         var probe = await RunAsync(confirm: false);
 
         Assert.Equal(DocumentActionStatus.Ok, probe.Status);
         Assert.True(probe.RequiresConfirmation);
         Assert.Empty(await ChildProductsAsync());
-        Assert.Equal(0, await AuditCountAsync());
+        Assert.Equal(0, await AuditCountAsync(auditBaseline));
     }
 
     [Fact]

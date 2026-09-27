@@ -88,17 +88,13 @@ public sealed class InventoryReserveActionLiveTests : IAsyncLifetime
     private static async Task CleanupAsync(SqlConnection connection)
     {
         await ExecAsync(connection, """
-            DELETE c FROM dbo.AUDIT_FIELD_CHANGE c JOIN dbo.AUDIT_EVENT e ON e.EVENT_ID = c.EVENT_ID
-             WHERE e.RESOURCE_KEY IN (@key, @sourceKey);
-            DELETE FROM dbo.AUDIT_EVENT WHERE RESOURCE_KEY IN (@key, @sourceKey);
             DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX = @module AND ACTION = N'ACTION';
             DELETE FROM dbo.INV_RESERVE WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
             DELETE FROM dbo.INV_PRO_DEPOT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
             DELETE FROM dbo.MOC_PRODUCE_M WHERE PRODUCE_TYPE = N'ZZRSV';
             DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID = @user;
             DELETE FROM dbo.PRODUCT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;
-            """, ("@key", RecordKey), ("@sourceKey", SourceKey), ("@module", StockModule),
-            ("@pro", Product), ("@user", TestUser));
+            """, ("@module", StockModule), ("@pro", Product), ("@user", TestUser));
     }
 
     // ===== ① 占料 ⇒ 可用量下降 =====
@@ -106,13 +102,14 @@ public sealed class InventoryReserveActionLiveTests : IAsyncLifetime
     [Fact]
     public async Task 占料后可用量下降()
     {
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        var auditBaseline = await ScalarAsync<long>(connection, "SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;");
+
         var result = await RunReserveAsync("20");
 
         Assert.True(result.Status == DocumentActionStatus.Ok, result.ErrorMessage);
         Assert.Contains("可用量 100 → 80", result.Result!.Message);
-
-        await using var connection = new SqlConnection(ConnectionString);
-        await connection.OpenAsync();
         Assert.Equal(80d, await ScalarAsync<double>(connection,
             "SELECT USEABLE_QTY FROM dbo.INV_PRO_DEPOT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;", ("@pro", Product)));
         Assert.Equal(StockQty, await ScalarAsync<double>(connection,
@@ -121,6 +118,8 @@ public sealed class InventoryReserveActionLiveTests : IAsyncLifetime
             "SELECT RTRIM(SOURCE_TYPE) FROM dbo.INV_RESERVE WHERE LTRIM(RTRIM(PRO_NO)) = @pro;", ("@pro", Product)));
         Assert.Equal(20d, await ScalarAsync<double>(connection,
             "SELECT RESERVE_QTY FROM dbo.INV_RESERVE WHERE LTRIM(RTRIM(PRO_NO)) = @pro;", ("@pro", Product)));
+        // 占料留痕：基线之上本格子恰好一条（按本格资源键限定，别的格子不算）
+        Assert.Equal(1, await AuditCountAsync(auditBaseline, StockModule, RecordKey, InventoryReserveHandler.ActionKey));
     }
 
     // ===== ② 来源结案：惰性判据救"算"，钩子救"存" =====
@@ -131,6 +130,9 @@ public sealed class InventoryReserveActionLiveTests : IAsyncLifetime
         await RunReserveAsync("20");
         await ExecOnceAsync(
             "UPDATE dbo.MOC_PRODUCE_M SET FINISHED_TAG = 1 WHERE PRODUCE_TYPE = N'ZZRSV' AND PRODUCE_NO = N'ZZRSV-MO1';");
+
+        // 钩子的审计就写在紧接着这一步：基线取在此处，正好只圈住它
+        var auditBaseline = await AuditBaselineAsync();
 
         await using var connection = new SqlConnection(ConnectionString);
         await connection.OpenAsync();
@@ -150,11 +152,8 @@ public sealed class InventoryReserveActionLiveTests : IAsyncLifetime
         Assert.Equal(StockQty, await ScalarAsync<double>(connection,
             "SELECT USEABLE_QTY FROM dbo.INV_PRO_DEPOT WHERE LTRIM(RTRIM(PRO_NO)) = @pro;", ("@pro", Product)));
 
-        // 钩子留了痕（谁释放的、释放了哪些格子）
-        Assert.Equal(1, await ScalarAsync<int>(connection, """
-            SELECT COUNT(*) FROM dbo.AUDIT_EVENT
-             WHERE M_IDX = @module AND RESOURCE_KEY = @sourceKey AND RTRIM(ACTION) = N'UNFREEZE';
-            """, ("@module", SourceModule), ("@sourceKey", SourceKey)));
+        // 钩子留了痕（谁释放的、释放了哪些格子）：基线之上、来源单这一条
+        Assert.Equal(1, await AuditCountAsync(auditBaseline, SourceModule, SourceKey, "UNFREEZE"));
     }
 
     // ===== ③ 手工释放兜底 =====
@@ -310,6 +309,24 @@ public sealed class InventoryReserveActionLiveTests : IAsyncLifetime
         new(new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:ErpDatabase"] = ConnectionString })
             .Build());
+
+    /// <summary>审计是追加型的：取当前最大事件号作基线，之后只看基线之上的增量。</summary>
+    private static async Task<long> AuditBaselineAsync()
+    {
+        await using var connection = await OpenAsync();
+        return await ScalarAsync<long>(connection, "SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;");
+    }
+
+    /// <summary>基线之上、指定（模块 + 资源键 + 动作）的审计条数。</summary>
+    private static async Task<int> AuditCountAsync(long baseline, int module, string recordKey, string action)
+    {
+        await using var connection = await OpenAsync();
+        return await ScalarAsync<int>(connection, """
+            SELECT COUNT(*) FROM dbo.AUDIT_EVENT
+             WHERE EVENT_ID > @baseline AND M_IDX=@module AND RESOURCE_KEY=@key AND RTRIM(ACTION)=@action;
+            """,
+            ("@baseline", baseline), ("@module", module), ("@key", recordKey), ("@action", action));
+    }
 
     private static async Task<SqlConnection> OpenAsync()
     {

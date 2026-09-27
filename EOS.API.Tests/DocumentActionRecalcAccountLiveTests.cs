@@ -147,9 +147,6 @@ public sealed class DocumentActionRecalcAccountLiveTests : IAsyncLifetime
             "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user AND M_IDX=@module;",
             ("@user", TestUser), ("@module", ModuleId));
         await ExecAsync(connection,
-            "DELETE FROM dbo.AUDIT_EVENT WHERE RESOURCE_KEY=@key AND ACTION=@action;",
-            ("@key", $"{TestType},{TestNo}"), ("@action", RecalcAccountHandler.ActionKey));
-        await ExecAsync(connection,
             "DELETE FROM dbo.WORKBENCH_IDEMPOTENCY WHERE M_IDX=@module AND ACTION=N'ACTION';",
             ("@module", ModuleId));
     }
