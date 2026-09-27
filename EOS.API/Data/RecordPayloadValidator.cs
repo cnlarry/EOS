@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
@@ -137,6 +138,51 @@ internal static class RecordPayloadValidator
         }
     }
 
+    /// <summary>
+    /// 字段正则来自元数据（管理员可配置），必须带 match timeout：无超时的回溯失控模式会把整个
+    /// 保存请求拖住。编译结果按模式文本缓存，避免每次保存重复解析同一条模式。
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, Regex> FieldRegexes =
+        new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 取字段正则的编译结果；无法编译的模式（历史元数据）返回 null。保存侧不因一条坏配置
+    /// 让整个模块写不进——语法在字段维护侧拦（<see cref="FieldAdminRepository"/> 的保存校验）。
+    /// </summary>
+    private static Regex? TryCompileFieldRegex(string pattern)
+    {
+        if (FieldRegexes.TryGetValue(pattern, out var cached)) return cached;
+        // 模式数受字段元数据规模约束（数百条）；超出即视为异常输入，整体重建
+        if (FieldRegexes.Count > 1024) FieldRegexes.Clear();
+        try
+        {
+            var compiled = new Regex(pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+            FieldRegexes[pattern] = compiled;
+            return compiled;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 字段值是否符合正则。匹配超时（回溯失控）按"不匹配"处理：宁可拒绝这一次输入，
+    /// 也不让请求挂住。超时与不匹配共用 REGEX_MISMATCH，前端提示口径一致。
+    /// </summary>
+    private static bool MatchesFieldRegex(string textValue, string pattern)
+    {
+        if (TryCompileFieldRegex(pattern) is not { } regex) return true;
+        try
+        {
+            return regex.IsMatch(textValue);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
+    }
+
     public static IReadOnlyList<FieldError> CheckRequiredAndRegex(
         IReadOnlyList<FormFieldDefinition> fields,
         IReadOnlyDictionary<string, object?> values)
@@ -158,7 +204,7 @@ internal static class RecordPayloadValidator
             }
             if (string.IsNullOrWhiteSpace(field.Regex) || !present || value is null) continue;
             var textValue = Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
-            if (!Regex.IsMatch(textValue, field.Regex))
+            if (!MatchesFieldRegex(textValue, field.Regex))
                 errors.Add(new FieldError(field.Key, "内容不符合格式要求。", "REGEX_MISMATCH"));
         }
         return errors;
