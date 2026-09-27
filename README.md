@@ -23,6 +23,22 @@
 - **流程审批**：单据批核/解批、流程定义、待办与审批历史；
 - **领域模块**：采购、销售、生产、库存、财务、人事等领域单据与业务规则。
 
+## 界面预览
+
+| 单据列表（通用工作台） | 统一表单编辑 |
+| --- | --- |
+| ![单据列表](screenshots/workbench-sales-order-list.png) | ![统一表单](screenshots/unified-form-editor.png) |
+
+| 报价单 | 版式设计器 |
+| --- | --- |
+| ![报价单](screenshots/workbench-quote-list.png) | ![版式设计器](screenshots/layout-designer.png) |
+
+| 菜单与模块管理 | 深色主题 |
+| --- | --- |
+| ![模块管理](screenshots/module-admin.png) | ![深色主题](screenshots/dark-theme.png) |
+
+> 截图为合成测试数据（示例公司、测试客户），用于功能预览。
+
 ## 架构概览
 
 ```text
@@ -70,4 +86,4 @@ EOS.Web ──HTTP──> EOS.API ──SQL──> SQL Server (EOS.ERP)
 
 ## 许可证
 
-[Apache-2.0](LICENSE)
+[MIT](LICENSE)
