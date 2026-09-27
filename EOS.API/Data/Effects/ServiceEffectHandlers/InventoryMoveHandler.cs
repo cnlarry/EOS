@@ -9,7 +9,7 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 
 /// <summary>
-/// Inventory move effect (service-level): the C# port of the legacy inventory update
+/// Inventory move effect (service-level): the C# port of the baseline inventory update
 /// procedure semantics, driven by closed fieldMap parameters. See
 /// docs/plans/库存移动效果移植清单.md for the semantic checklist and the two intentional
 /// deviations (row set built from whitelisted identifiers instead of dynamic SQL;
@@ -46,7 +46,7 @@ public sealed class InventoryMoveHandler : IEffectServiceHandler
 /// <summary>
 /// One column of the generated row set: the document detail column of that name, or — when
 /// <see cref="Constant"/> is set — a configured literal written into the slot instead (the
-/// legacy procedures filled slots a document does not carry, such as the amount of a
+/// baseline procedures filled slots a document does not carry, such as the amount of a
 /// document without amount columns, with inline literals).
 /// </summary>
 public sealed record InventoryRowColumn(string Column, string? Constant = null);
@@ -133,7 +133,7 @@ public sealed record InventoryMovePlan(
             }
 
         // Optional row gate: only rows with any of these detail fields positive take
-        // part in the move (mirrors legacy per-call row filters such as "bad quantity
+        // part in the move (mirrors baseline per-call row filters such as "bad quantity
         // present"); absent means all document rows participate (existing behavior).
         var rowPositiveFields = new List<string>();
         if (root.TryGetProperty("rowFilter", out var rowFilter) && rowFilter.ValueKind == JsonValueKind.Object)
@@ -163,7 +163,7 @@ public sealed record InventoryMovePlan(
 
     /// <summary>
     /// Reads a constant row-set entry: {column, constant} writes the configured value into
-    /// that row-set column instead of reading a document column. The legacy procedures used
+    /// that row-set column instead of reading a document column. The baseline procedures used
     /// inline literals for slots a document does not carry (for example the amount slot of a
     /// document without amount columns); the closed form keeps the same semantics while the
     /// value travels as a bound parameter rather than as statement text.
@@ -249,7 +249,7 @@ public sealed record InventoryMovePlan(
         }
 
         var parameters = new List<EffectSqlParameter>();
-        // Row columns mirror the legacy procedure temp table; the SELECT column order and
+        // Row columns mirror the baseline procedure temp table; the SELECT column order and
         // the INSERT column list are generated from the same sequence so they always align.
         var rowColumns = new List<(string Column, string Source)>
         {
@@ -1101,7 +1101,7 @@ public sealed class InventoryMoveSql
         affected += await WriteLogAsync(token);
         if (IsApprove)
         {
-            // Legacy procedure only refreshes the last purchase price on approve;
+            // Baseline procedure only refreshes the last purchase price on approve;
             // deapprove rolls back stock without touching that stamp.
             affected += await ExecAsync(
                 "UPDATE p SET p.LAST_PURCHASE_PRICE = t.PRICE, p.LAST_PURCHASE_UNIT_ID = t.UNIT_ID, p.LAST_PURCHASE_CURR_ID = t.CURR_ID "
@@ -1112,10 +1112,10 @@ public sealed class InventoryMoveSql
 
     /// <summary>
     /// Available-quantity refresh: the per-depot delta first, then the full
-    /// product-level MRP recompute (in-process since the legacy procedure was retired).
+    /// product-level MRP recompute (in-process since the baseline procedure was retired).
     /// The gate is the <c>SYSSS.PRO_MRP</c> switch
     /// only — the configured <c>mrp</c> parameter is intentionally not read, matching the
-    /// legacy <c>P_UPDATE_PRO_DEPOT</c> where the <c>@mrp</c> branch is commented out; it is
+    /// baseline <c>P_UPDATE_PRO_DEPOT</c> where the <c>@mrp</c> branch is commented out; it is
     /// kept in the stored parameters as a documented no-op rather than a behaviour switch.
     /// </summary>
     private async Task UpdateMrpAsync(CancellationToken token)

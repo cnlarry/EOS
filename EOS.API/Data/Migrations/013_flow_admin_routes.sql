@@ -4,8 +4,7 @@
 -- Database: EOS.ERP (the single business database of the new system)
 --
 -- Context: 2101 (flow designer) and 2103 (flow monitor) had old Web Forms paths
--- that fell back to /legacy/modules/* placeholder pages. This migration adds
--- modern pages /workflow/design and /workflow/monitor, and points M_URL to them.
+-- that fell back to /historic/modules/* placeholder pages. This migration adds-- modern pages /workflow/design and /workflow/monitor, and points M_URL to them.
 -- 2102 was already updated to /my-tasks in a previous migration.
 --
 -- Idempotent: only updates when M_URL is empty or not a modern path (does not start with '/').

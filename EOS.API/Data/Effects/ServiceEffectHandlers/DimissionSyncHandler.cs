@@ -52,7 +52,7 @@ public sealed class DimissionSyncHandler : IEffectServiceHandler
     /// <summary>
     /// Approve: mark the document employees dimitted, reading the effective
     /// date through the detail dimission reference. Employees without a
-    /// matching dimission row are untouched (inner join, legacy semantics).
+    /// matching dimission row are untouched (inner join, baseline semantics).
     /// </summary>
     internal static string BuildApproveStatement(DimissionSyncSpec spec)
     {

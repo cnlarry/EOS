@@ -11,7 +11,7 @@ import {
   CarSummaryPage,
   ImportPage,
   JobPage,
-  LegacyModulePage,
+  FallbackModulePage,
   MyTasksPage,
   FlowDesignPage,
   FlowMonitorPage,
@@ -45,7 +45,7 @@ import { withSuspense } from './suspense'
 export const WORKSPACE_ROUTES: RouteObject[] = [
   { index: true, element: <Navigate to="/dashboard" replace /> },
   { path: 'dashboard', element: withSuspense(<DashboardPage />) },
-  { path: 'legacy/modules/:moduleId', element: withSuspense(<LegacyModulePage />) },
+  { path: 'fallback/modules/:moduleId', element: withSuspense(<FallbackModulePage />) },
   { element: <RequirePermission permission={moduleReadPermission(2302)} />, children: [
     { path: 'admin/tables', element: withSuspense(<TableAdminPage />) },
     { path: 'admin/tables/:tableId/fields', element: withSuspense(<FieldAdminRoute />) },

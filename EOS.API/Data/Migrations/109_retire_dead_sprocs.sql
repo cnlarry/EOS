@@ -18,8 +18,7 @@
 --    （`P_INV_OCCUR_*_After_Save`、`P_COP_RETURN/FITIN/FITOUT/BACK_After_Save`、`P_PUR_CANCEL/APPLY_After_Save`、
 --    `P_HR_CONTRACT/SAFE/CERTIFY_After_Save`），它们被一并删除、验收脚本随即 EXIT=1；扫描器已改为大小写不敏感，
 --    清单亦已补齐（含夹具引用的 `*_CHECK` 与依赖项），本库中这 15 个已由
---    `scripts/restore-legacy-groundtruth-sprocs.ps1` 自 SSDT 快照还原（当前 112 个过程，故本迁移在此库上是空转）。
---    **重放纪律**：若在含旧过程的其它库上执行，先跑修正后的报告脚本核对保留/下线清单，再按本文件的守卫判定。
+--    `scripts/restore-historic-groundtruth-sprocs.ps1` 自 SSDT 快照还原（当前 112 个过程，故本迁移在此库上是空转）。--    **重放纪律**：若在含旧过程的其它库上执行，先跑修正后的报告脚本核对保留/下线清单，再按本文件的守卫判定。
 -- 注意：`sys.sql_expression_dependencies` 对**未限定 schema** 的引用 `referenced_schema_name` 为 NULL，
 --    必须按 `ISNULL(...,'dbo')` 判定，否则会把过程间引用整批漏掉（本库实测 56 处）。
 -- 源码保留在 `EOS.Database` SSDT 快照（`dbo/Stored Procedures/*.sql`）供考古。

@@ -50,9 +50,9 @@ public sealed class PurPayCatalogLiveTests
             Assert.Equal((20, 75), byEffect);
 
             await SeedAsync(connection, transaction, token, amountTax: 100, rebate: 5, prepay: 20, payout: null);
-            await RunLegacyWriteAsync(connection, transaction, token);
-            var byLegacy = await ReadAsync(connection, transaction, token);
-            Assert.Equal(byLegacy, byEffect);
+            await RunBaselineWriteAsync(connection, transaction, token);
+            var byBaseline = await ReadAsync(connection, transaction, token);
+            Assert.Equal(byBaseline, byEffect);
 
             // ② 实付为负 ⇒ 拒绝且文案逐字（无门控）
             await SeedAsync(connection, transaction, token, amountTax: 10, rebate: 0, prepay: 20, payout: null);
@@ -66,9 +66,9 @@ public sealed class PurPayCatalogLiveTests
             await SetGateAsync(connection, transaction, token, 1);
             var dueError = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 HandlerAsync(connection, transaction, plan, action, token));
-            var legacyDue = await RunLegacyCheckAsync(connection, transaction, token);
-            Assert.False(legacyDue.Success);
-            Assert.Equal(Normalize(legacyDue.Message), Normalize(dueError.Message));
+            var baselineDue = await RunBaselineCheckAsync(connection, transaction, token);
+            Assert.False(baselineDue.Success);
+            Assert.Equal(Normalize(baselineDue.Message), Normalize(dueError.Message));
             Assert.Contains("以下会出现对帐单已付款大于应付款", Normalize(dueError.Message));
 
             // ④ 门关：同一份超额数据不再被拦（写仍然生效）
@@ -91,7 +91,7 @@ public sealed class PurPayCatalogLiveTests
                 No, [Type, No], "live-test"), token);
 
     /// <summary>旧过程 `P_PUR_PAY_After_Save` 的写段（汇总预付 + 实付 + 刷新日期）。</summary>
-    private static Task RunLegacyWriteAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    private static Task RunBaselineWriteAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
         => ExecuteAsync(connection, transaction, token, """
             DECLARE @sum_prepay DECIMAL(18,2) =
                 (SELECT SUM(PREPAY_AMOUNT) FROM dbo.PUR_PAY_PREPAY WHERE PAY_TYPE=@Type AND PAY_NO=@No);
@@ -101,7 +101,7 @@ public sealed class PurPayCatalogLiveTests
             """, ("@Type", Type), ("@No", No));
 
     /// <summary>旧过程 `P_PUR_PAY_CHECK` 的语句链（游标逐行拼文案）。</summary>
-    private static async Task<(bool Success, string Message)> RunLegacyCheckAsync(
+    private static async Task<(bool Success, string Message)> RunBaselineCheckAsync(
         SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
         const string batch = """

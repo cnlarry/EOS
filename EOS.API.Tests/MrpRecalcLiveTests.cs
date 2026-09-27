@@ -26,7 +26,7 @@ public sealed class MrpRecalcLiveTests
         "SELECT PRO_NO, QTY, SAFETY_QTY, NOT_SEND_QTY, NOT_IN_QTY, NOT_GET_QTY, IN_BUY_QTY, MRP_QTY FROM dbo.PRODUCT WHERE PRO_NO LIKE N'ADRMRP%' ORDER BY PRO_NO";
 
     /// <summary>原 `P_UPDATE_PRO_MRP_ALL` 过程本体（逐字保留，作为移植的对照基准；仅测试使用）。</summary>
-    private const string LegacySql = """
+    private const string BaselineSql = """
         create table #tmp (PRO_NO nchar(30), MRP_QTY float)
         begin transaction
         update PRODUCT set NOT_SEND_QTY=0, NOT_IN_QTY=0, NOT_GET_QTY=0, IN_BUY_QTY=0, MRP_QTY=0
@@ -67,16 +67,16 @@ public sealed class MrpRecalcLiveTests
             Assert.Equal(SeededRows(), seeded.Fixture);
 
             // 原过程本体（逐字内联；其内部 BEGIN/COMMIT 在外层事务内只做嵌套计数，不真正提交）
-            await using (var savepoint = new SqlCommand("SAVE TRANSACTION beforeLegacy;", connection, transaction))
+            await using (var savepoint = new SqlCommand("SAVE TRANSACTION beforeBaseline;", connection, transaction))
             {
                 await savepoint.ExecuteNonQueryAsync(token);
             }
-            await using (var legacy = new SqlCommand(LegacySql, connection, transaction))
+            await using (var baseline = new SqlCommand(BaselineSql, connection, transaction))
             {
-                await legacy.ExecuteNonQueryAsync(token);
+                await baseline.ExecuteNonQueryAsync(token);
             }
-            var legacySnapshot = await SnapshotAsync(connection, transaction, token);
-            await using (var rollback = new SqlCommand("ROLLBACK TRANSACTION beforeLegacy;", connection, transaction))
+            var baselineSnapshot = await SnapshotAsync(connection, transaction, token);
+            await using (var rollback = new SqlCommand("ROLLBACK TRANSACTION beforeBaseline;", connection, transaction))
             {
                 await rollback.ExecuteNonQueryAsync(token);
             }
@@ -89,8 +89,8 @@ public sealed class MrpRecalcLiveTests
             await MrpRecalcService.RecalcAsync(connection, transaction, token);
             var portedSnapshot = await SnapshotAsync(connection, transaction, token);
 
-            Assert.Equal(legacySnapshot.Checksum, portedSnapshot.Checksum);
-            Assert.Equal(legacySnapshot.Fixture, portedSnapshot.Fixture);
+            Assert.Equal(baselineSnapshot.Checksum, portedSnapshot.Checksum);
+            Assert.Equal(baselineSnapshot.Fixture, portedSnapshot.Fixture);
             Assert.Equal(ExpectedRows(), portedSnapshot.Fixture);
         }
         finally

@@ -89,10 +89,10 @@ internal static class CheckSupport
     /// <summary>
     /// Optional per-check gate (closed operator, same semantics as the condition compiler
     /// switch): the check only applies while every declared gate matches. Two shapes are
-    /// accepted — the legacy single gate <c>{"key":"&lt;SYSSS column&gt;","expect":1}</c> and
+    /// accepted — the baseline single gate <c>{"key":"&lt;SYSSS column&gt;","expect":1}</c> and
     /// the list form <c>{"gates":[{"scope":"SYSSS|MODULE","key":"...","expect":1}, …]}</c>
     /// (all gates must hold). The MODULE scope reads the current module's own column
-    /// (e.g. ERROR_NO_SAVE), which is how the legacy per-module validation switch is
+    /// (e.g. ERROR_NO_SAVE), which is how the baseline per-module validation switch is
     /// carried over without making the switch inert: flag on = rule applies, flag off =
     /// rule skipped, exactly as the retired C# branch behaved. Unknown scopes and unknown
     /// columns fail closed.

@@ -65,8 +65,8 @@ public sealed class PurchaseDueCatalogLiveTests
                   ON s.DUE_TYPE=m.DUE_TYPE AND s.DUE_NO=m.DUE_NO
                 WHERE m.DUE_TYPE=@Type AND m.DUE_NO=@No;
                 """, ("@Type", Type), ("@No", No));
-            var byLegacy = await ReadMasterAsync(connection, transaction, token);
-            Assert.Equal(byLegacy, byEffect);
+            var byBaseline = await ReadMasterAsync(connection, transaction, token);
+            Assert.Equal(byBaseline, byEffect);
         }
         finally
         {
@@ -89,9 +89,9 @@ public sealed class PurchaseDueCatalogLiveTests
             await SeedCheckAsync(connection, transaction, token, "receive", over: true);
             var receiveError = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [Type, No]));
-            var legacyReceive = await RunLegacyCheckAsync(connection, transaction, token);
-            Assert.False(legacyReceive.Success);
-            Assert.Equal(Normalize(legacyReceive.Message), Normalize(receiveError.Message));
+            var baselineReceive = await RunBaselineCheckAsync(connection, transaction, token);
+            Assert.False(baselineReceive.Success);
+            Assert.Equal(Normalize(baselineReceive.Message), Normalize(receiveError.Message));
             Assert.Contains($"{ReceiveNo} 10 4 7", Normalize(receiveError.Message));
 
             // ② 门关：同一份超量数据不再被拦
@@ -103,10 +103,10 @@ public sealed class PurchaseDueCatalogLiveTests
             await SetGateAsync(connection, transaction, token, 1);
             var cancelError = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [Type, No]));
-            var legacyCancel = await RunLegacyCheckAsync(connection, transaction, token);
-            Assert.False(legacyCancel.Success);
+            var baselineCancel = await RunBaselineCheckAsync(connection, transaction, token);
+            Assert.False(baselineCancel.Success);
             Assert.StartsWith("以下对帐已超出退料单数量", Normalize(cancelError.Message));
-            Assert.Equal(Normalize(legacyCancel.Message), Normalize(cancelError.Message));
+            Assert.Equal(Normalize(baselineCancel.Message), Normalize(cancelError.Message));
 
             // ④ 额度内放行（合计 6 ≤ 10）
             await SeedCheckAsync(connection, transaction, token, "receive", over: false);
@@ -119,7 +119,7 @@ public sealed class PurchaseDueCatalogLiveTests
     }
 
     /// <summary>旧过程 `P_PUR_DUE_CHECK` 的语句链（游标逐行拼文案）。</summary>
-    private static async Task<(bool Success, string Message)> RunLegacyCheckAsync(
+    private static async Task<(bool Success, string Message)> RunBaselineCheckAsync(
         SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
         const string batch = """

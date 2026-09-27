@@ -1,14 +1,14 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
-import { LegacyModulePage } from './LegacyModulePage'
+import { FallbackModulePage } from './FallbackModulePage'
 
-describe('LegacyModulePage', () => {
+describe('FallbackModulePage', () => {
   it('渲染模块编号与迁移提示', () => {
     render(
-      <MemoryRouter initialEntries={['/legacy/modules/1209']}>
+      <MemoryRouter initialEntries={['/fallback/modules/1209']}>
         <Routes>
-          <Route path="/legacy/modules/:moduleId" element={<LegacyModulePage />} />
+          <Route path="/fallback/modules/:moduleId" element={<FallbackModulePage />} />
         </Routes>
       </MemoryRouter>,
     )

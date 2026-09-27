@@ -8,7 +8,7 @@ namespace EOS.API.Tests;
 /// <summary>
 /// Unit (no DB) tests for the hr-usage-sync service handler (180206 month scope
 /// and 180207 date scope sharing one key): fail-closed parameter validation,
-/// the per-employee SUM aggregation (decision H1, not the legacy emp-only join
+/// the per-employee SUM aggregation (decision H1, not the baseline emp-only join
 /// overwrite), and the month/date target location shapes.
 /// </summary>
 public class HrUsageSyncHandlerTests
@@ -108,7 +108,7 @@ public class HrUsageSyncHandlerTests
         var parameters = new List<EffectSqlParameter>();
         var sql = HrUsageSyncHandler.BuildUpdate(spec, plan, new[] { "JBSQ", "JBSQ202608001" }, parameters);
 
-        // H1: per-employee SUM (not the legacy emp-only join overwrite).
+        // H1: per-employee SUM (not the baseline emp-only join overwrite).
         Assert.Contains("SUM(ISNULL(D.[WORKTIME], 0))", sql);
         Assert.Contains("GROUP BY D.[EMP_ID]", sql);
         // Month location via the target master month string.

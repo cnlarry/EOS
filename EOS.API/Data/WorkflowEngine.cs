@@ -489,7 +489,7 @@ public sealed class WorkflowEngine(
 
     /// <summary>
     /// 流程完成（末步/跳转结束）：主表确认 + 效果链副作用 + WF_APPROVE 历史。
-    /// 任务锁已释放；legacy SP 仍走独立连接（既有行为），效果引擎开启时
+    /// 任务锁已释放；baseline SP 仍走独立连接（既有行为），效果引擎开启时
     /// 动作链与状态更新在同一事务内执行。
     /// </summary>
     private async Task<(bool Success, string? ErrorCode, string? ErrorMessage, bool FlowFinished, string? Message)> CompleteFlowAsync(

@@ -9,7 +9,7 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 /// detail lines copied from the change detail (quantities, prices, plan dates, finished
 /// counters) with the tax-split amounts recomputed, then master totals re-aggregated.
 /// Ported from P_WF_COP_ORDER_CHANGE / P_WF_PUR_PURCHASE_CHANGE / P_WF_MOC_PRODUCE_CHANGE.
-/// Deapprove is a no-op (reverse kind "none"), matching the legacy procedures.
+/// Deapprove is a no-op (reverse kind "none"), matching the baseline procedures.
 /// All identifiers come from closed configuration checked against physical columns.
 /// </summary>
 public sealed class OrderChangeApplyHandler : IEffectServiceHandler
@@ -53,7 +53,7 @@ internal static class ChangeApplyExecutor
         {
             return await ApproveAsync(context, cfg, columns, token);
         }
-        // reverse kind "none": the legacy change procedures leave the target untouched
+        // reverse kind "none": the baseline change procedures leave the target untouched
         // on deapprove.
         var kind = ReverseKind(context);
         if (kind is "none" or "no-reverse")

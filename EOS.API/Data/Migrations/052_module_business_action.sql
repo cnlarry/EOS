@@ -8,8 +8,7 @@
 -- 设计约定：
 --   - 公式型效果（field-accumulate / completion-close / stamp-last-activity /
 --     adjust-projection / set-state）以公式行为主存储；服务型效果
---     （inventory-move / meta-link / flow-trigger / legacy-sproc）无公式行，
---     参数存 MODULE_BUSINESS_ACTION.PARAM_STRUCT。
+--     （inventory-move / meta-link / flow-trigger / historic-sproc）无公式行，--     参数存 MODULE_BUSINESS_ACTION.PARAM_STRUCT。
 --   - 两表为模块的“工作区配置”：2301 保存后标记 WORKBENCH_MODULE_DIRTY，
 --     发布时随 WORKBENCH_DEFINITION_SNAPSHOT.DEFINITION_JSON 版本化。
 --   - EVENT_CODE / EFFECT_KEY / OP_CODE / SOURCE_SCOPE / SOURCE_AGG 为封闭枚举，

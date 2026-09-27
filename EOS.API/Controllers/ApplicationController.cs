@@ -41,7 +41,7 @@ public sealed class ApplicationController(NavigationRepository navigationReposit
             navigation.Add(new { id = $"module-{root.Id}", label = root.Label, route = (string?)null, icon = IconFor(root.Id, root.Label, iconOverrides), children = (object?)children });
         }
         navigation.Add(new { id = "settings", label = "个人设置", route = "/settings/profile", icon = "settings", children = (object?)null });
-        var permissions = modules.Where(module => module.Enabled).Select(module => $"legacy-module.{module.Id}.read").ToList();
+        var permissions = modules.Where(module => module.Enabled).Select(module => $"fallback-module.{module.Id}.read").ToList();
         return Ok(new { user, permissions, navigation });
     }
 

@@ -89,7 +89,7 @@ public class EffectStructSchemasTests
     }
 
     [Fact]
-    public void ValidateParams_LinkStamp_LegacyShapesStillAccepted()
+    public void ValidateParams_LinkStamp_BaselineShapesStillAccepted()
     {
         Assert.Empty(EffectStructSchemas.ValidateParams("link-stamp",
             """{"targetTable":"MOU_ASSESS_M","field":"APPLY_NO","mode":"assign"}"""));

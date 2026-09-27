@@ -70,9 +70,9 @@ public sealed class CopAccountCatalogLiveTests
                   ON s.ACCOUNT_TYPE=m.ACCOUNT_TYPE AND s.ACCOUNT_NO=m.ACCOUNT_NO
                 WHERE m.ACCOUNT_TYPE=@Type AND m.ACCOUNT_NO=@No;
                 """, ("@Type", Type), ("@No", No));
-            var byLegacy = await ReadAccountAsync(connection, transaction, token);
+            var byBaseline = await ReadAccountAsync(connection, transaction, token);
 
-            Assert.Equal(byLegacy, byEffect);
+            Assert.Equal(byBaseline, byEffect);
         }
         finally
         {
@@ -95,9 +95,9 @@ public sealed class CopAccountCatalogLiveTests
             await SeedAccountCheckAsync(connection, transaction, token, "send", over: true);
             var sendError = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [Type, No]));
-            var legacySend = await RunLegacyCheckAsync(connection, transaction, token);
-            Assert.False(legacySend.Success);
-            Assert.Equal(Normalize(legacySend.Message), Normalize(sendError.Message));
+            var baselineSend = await RunBaselineCheckAsync(connection, transaction, token);
+            Assert.False(baselineSend.Success);
+            Assert.Equal(Normalize(baselineSend.Message), Normalize(sendError.Message));
             Assert.Contains($"{SendNo} 10 4 7", Normalize(sendError.Message));
 
             // ② 门关：同一份超量数据不再被拦
@@ -109,9 +109,9 @@ public sealed class CopAccountCatalogLiveTests
             await SetGateAsync(connection, transaction, token, 1);
             var returnError = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [Type, No]));
-            var legacyReturn = await RunLegacyCheckAsync(connection, transaction, token);
-            Assert.False(legacyReturn.Success);
-            Assert.Equal(Normalize(legacyReturn.Message), Normalize(returnError.Message));
+            var baselineReturn = await RunBaselineCheckAsync(connection, transaction, token);
+            Assert.False(baselineReturn.Success);
+            Assert.Equal(Normalize(baselineReturn.Message), Normalize(returnError.Message));
 
             // ④ 额度内放行（合计 6 ≤ 10）
             await SeedAccountCheckAsync(connection, transaction, token, "send", over: false);
@@ -153,8 +153,8 @@ public sealed class CopAccountCatalogLiveTests
                   ON s.PREPAY_TYPE=m.PREPAY_TYPE AND s.PREPAY_NO=m.PREPAY_NO
                 WHERE m.PREPAY_TYPE=@Type AND m.PREPAY_NO=@No;
                 """, ("@Type", PrepayType), ("@No", PrepayNo));
-            var byLegacy = await ReadPrepayAsync(connection, transaction, token);
-            Assert.Equal(byLegacy, byEffect);
+            var byBaseline = await ReadPrepayAsync(connection, transaction, token);
+            Assert.Equal(byBaseline, byEffect);
         }
         finally
         {
@@ -163,7 +163,7 @@ public sealed class CopAccountCatalogLiveTests
     }
 
     /// <summary>旧过程 `P_COP_ACCOUNT_CHECK` 的语句链（游标逐行拼文案）。</summary>
-    private static async Task<(bool Success, string Message)> RunLegacyCheckAsync(
+    private static async Task<(bool Success, string Message)> RunBaselineCheckAsync(
         SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
         const string batch = """

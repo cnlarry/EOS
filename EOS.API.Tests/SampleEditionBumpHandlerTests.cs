@@ -52,7 +52,7 @@ public class SampleEditionBumpHandlerTests
     {
         var sql = SampleEditionBumpHandler.BuildApproveStatement(Spec());
         // Empty edition starts at '01'; otherwise numeric increment, mirroring the
-        // legacy two-digit padding exactly (only a one-char result gets a '0').
+        // baseline two-digit padding exactly (only a one-char result gets a '0').
         Assert.Contains("THEN '01'", sql);
         Assert.Contains("CAST(LTRIM(RTRIM(M.[EDITION])) AS int) + 1", sql);
         Assert.Contains("THEN '0' +", sql);

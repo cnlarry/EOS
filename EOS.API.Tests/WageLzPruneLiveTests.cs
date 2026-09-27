@@ -64,10 +64,10 @@ public sealed class WageLzPruneLiveTests
                   AND NOT (d.WAGE_TYPE=@Type AND d.WAGE_NO=@No)
                   AND d.EMP_ID IN (SELECT EMP_ID FROM dbo.HR_WAGE_D WHERE WAGE_TYPE=@Type AND WAGE_NO=@No);
                 """, ("@Month", Month), ("@Type", Type), ("@No", DocA));
-            var byLegacy = await ReadAsync(connection, transaction, token);
+            var byBaseline = await ReadAsync(connection, transaction, token);
 
             // ③ 剩余行集合一致：B 单的 EMP1 被删、B 单 EMP9 保留；A 单两行都在
-            Assert.Equal(byLegacy, byEffect);
+            Assert.Equal(byBaseline, byEffect);
             Assert.DoesNotContain(byEffect, row => row.No == DocB && row.Emp == "ADR12WL1");
             Assert.Contains(byEffect, row => row.No == DocB && row.Emp == "ADR12WL9");
 

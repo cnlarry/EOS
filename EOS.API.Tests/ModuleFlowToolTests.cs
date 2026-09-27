@@ -203,7 +203,7 @@ public sealed class ModuleFlowToolTests
     public async Task InProgress_NotMyTask_DeniesApprove_ButStarterCanWithdraw()
     {
         var tool = CreateTool(flow: Flow(),
-            instance: new(7, "0", "admin", "002", "二级审批", ["admin"], 3));
+            instance: new(7, "0", "admin", "002", "二级审批", ["approver01"], 3));
 
         var result = await tool.ExecuteAsync("admin",
             JsonSerializer.SerializeToElement(new { module_id = 1405, _keys = new[] { "DD", "26080001" } }),

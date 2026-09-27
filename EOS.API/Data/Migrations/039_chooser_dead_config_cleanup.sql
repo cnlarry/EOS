@@ -1,8 +1,7 @@
 -- Field data source dead-config cleanup:
 -- 1) HR_EMPLOYEE.POLITY_ID source table typo: HR_PLOITY does not exist; HR_POLITY does
 --    (drift guard: only when SOURCE_T_ID still reads HR_PLOITY and HR_POLITY exists).
--- 2) FIELDS orphan metadata rows for the 24 legacy CHOOSE_* columns that were dropped
---    from the physical table . Their FIELDS rows, FIELD_DATASOURCE rows
+-- 2) FIELDS orphan metadata rows for the 24 historic CHOOSE_* columns that were dropped--    from the physical table . Their FIELDS rows, FIELD_DATASOURCE rows
 --    (cascade via FK) and dangling SYSQL_FIELDS/migration-log references are removed.
 --    Drift guard: rows are only removed when the physical column does NOT exist,
 --    so a future column recreation is never touched. CHOOSE_MULTI / CHOOSE_PAGE survive.

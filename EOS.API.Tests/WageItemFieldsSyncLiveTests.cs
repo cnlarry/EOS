@@ -66,11 +66,11 @@ public sealed class WageItemFieldsSyncLiveTests
                 sync.Parameters.Add("@TId", SqlDbType.NVarChar, 50).Value = TargetId;
                 await sync.ExecuteNonQueryAsync(token);
             }
-            var byLegacy = await ReadAsync(connection, transaction, token);
+            var byBaseline = await ReadAsync(connection, transaction, token);
 
             // ③ 两侧 FIELDS 状态一致
-            Assert.Equal(byLegacy[FieldId], byEffect[FieldId]);
-            Assert.Equal(byLegacy[StaleFieldId], byEffect[StaleFieldId]);
+            Assert.Equal(byBaseline[FieldId], byEffect[FieldId]);
+            Assert.Equal(byBaseline[StaleFieldId], byEffect[StaleFieldId]);
         }
         finally
         {

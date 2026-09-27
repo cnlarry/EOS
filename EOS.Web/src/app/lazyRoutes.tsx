@@ -2,7 +2,7 @@ import { lazy } from 'react'
 
 export const LoginPage = lazy(() => import('../features/auth/LoginPage').then((module) => ({ default: module.LoginPage })))
 export const DashboardPage = lazy(() => import('../features/dashboard/DashboardPage').then((module) => ({ default: module.DashboardPage })))
-export const LegacyModulePage = lazy(() => import('../features/legacy/LegacyModulePage').then((module) => ({ default: module.LegacyModulePage })))
+export const FallbackModulePage = lazy(() => import('../features/fallback/FallbackModulePage').then((module) => ({ default: module.FallbackModulePage })))
 export const TableAdminPage = lazy(() => import('../features/field-admin/TableAdminPage').then((module) => ({ default: module.TableAdminPage })))
 export const FieldEditorRoute = lazy(() => import('../features/field-admin/FieldEditorPage').then((module) => ({ default: module.FieldEditorRoute })))
 export const FieldAuditPage = lazy(() => import('../features/admin/FieldAuditPage').then((module) => ({ default: module.FieldAuditPage })))

@@ -30,7 +30,7 @@ describe('WORKSPACE_ROUTES', () => {
       '/workflow/monitor',
       '/settings/profile',
       '/settings/PRODUCT',
-      '/legacy/modules/1606',
+      '/fallback/modules/1606',
     ]
     for (const path of paths) {
       expect(matchRoutes(WORKSPACE_ROUTES, path), `${path} 未匹配到路由`).not.toBeNull()

@@ -100,9 +100,9 @@ public sealed class BomStruCatalogLiveTests
                 FROM dbo.BOM_STRU_M m INNER JOIN dbo.PRODUCT p ON p.PRO_NO=m.PRO_NO
                 WHERE m.PRO_NO=@ProNo;
                 """, ("@ProNo", Root));
-            var byLegacy = await ReadSizeAsync(connection, transaction, token);
+            var byBaseline = await ReadSizeAsync(connection, transaction, token);
 
-            Assert.Equal(byLegacy, byEffect);
+            Assert.Equal(byBaseline, byEffect);
             Assert.Equal((12.5, 3.25), byEffect);
         }
         finally

@@ -4,8 +4,7 @@
 -- Context: three isomorphic "user-stored SQL" tables — SYSQD / SYSQL / LISTREPORT
 -- (PKs all include USER_ID+T_ID, columns T_SQL/T_CONDITION) — plus LISTREPORT's
 -- WHERE-syntax child table LISTREPORT_CONDITION are dropped. An audit confirmed the
--- modern system (EOS.API/EOS.Web) consumes none of them, and their legacy consumer
--- pages were not ported. Direction: no longer allow user runtime-stored SQL, so drop.
+-- modern system (EOS.API/EOS.Web) consumes none of them, and their historic consumer-- pages were not ported. Direction: no longer allow user runtime-stored SQL, so drop.
 --
 -- Dropped: SYSQD / SYSQL / LISTREPORT / LISTREPORT_CONDITION
 --
@@ -13,8 +12,7 @@
 --   SYSQD_CONDITION / SYSQL_FIELDS / SYSQL_CONDITION / SYSQL_COND_DFT / SYSQL_DEFAULT
 --   (FieldAdminRepository field-delete cleanup / reference counting depends on these)
 --
--- Note: the legacy stored procedure xp_user_listrpt_fields references LISTREPORT_CONDITION
--- and becomes a dangling reference after the drop; the modern system never calls it.
+-- Note: the historic stored procedure xp_user_listrpt_fields references LISTREPORT_CONDITION-- and becomes a dangling reference after the drop; the modern system never calls it.
 --
 -- Idempotent: IF OBJECT_ID guards — skips when table already gone, safe to re-run.
 -- ============================================================================

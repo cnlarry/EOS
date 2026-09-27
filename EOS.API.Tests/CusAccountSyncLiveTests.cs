@@ -86,10 +86,10 @@ public sealed class CusAccountSyncLiveTests
                   ON s.ACCOUNT_TYPE=m.ACCOUNT_TYPE AND s.ACCOUNT_NO=m.ACCOUNT_NO
                 WHERE m.ACCOUNT_TYPE=@Type AND m.ACCOUNT_NO=@No;
                 """, ("@Type", Type), ("@No", No));
-            var byLegacy = await ReadWriteAsync(connection, transaction, token);
+            var byBaseline = await ReadWriteAsync(connection, transaction, token);
 
-            Assert.Equal(byLegacy.Master, byEffect.Master);
-            Assert.Equal(byLegacy.Details, byEffect.Details);
+            Assert.Equal(byBaseline.Master, byEffect.Master);
+            Assert.Equal(byBaseline.Details, byEffect.Details);
         }
         finally
         {
@@ -113,10 +113,10 @@ public sealed class CusAccountSyncLiveTests
             await SetGateAsync(connection, transaction, token, 1);
             var sendError = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [Type, No]));
-            var legacySend = await RunLegacyCheckAsync(connection, transaction, token);
+            var baselineSend = await RunBaselineCheckAsync(connection, transaction, token);
 
-            Assert.False(legacySend.Success);
-            Assert.Equal(Normalize(legacySend.Message), Normalize(sendError.Message));
+            Assert.False(baselineSend.Success);
+            Assert.Equal(Normalize(baselineSend.Message), Normalize(sendError.Message));
             Assert.StartsWith("以下对帐已超出送货单数量 送货单号 送货数量 已对帐数量 单据数量", Normalize(sendError.Message));
             Assert.Contains($"{SendNo} 10 4 7", Normalize(sendError.Message));
 
@@ -125,10 +125,10 @@ public sealed class CusAccountSyncLiveTests
             await SetGateAsync(connection, transaction, token, 1);
             var returnError = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, [Type, No]));
-            var legacyReturn = await RunLegacyCheckAsync(connection, transaction, token);
+            var baselineReturn = await RunBaselineCheckAsync(connection, transaction, token);
 
-            Assert.False(legacyReturn.Success);
-            Assert.Equal(Normalize(legacyReturn.Message), Normalize(returnError.Message));
+            Assert.False(baselineReturn.Success);
+            Assert.Equal(Normalize(baselineReturn.Message), Normalize(returnError.Message));
             Assert.Contains("以下对帐已超出退货单数量", Normalize(returnError.Message));
 
             // ③ 门关：门控关掉后同一份超量数据不再被拦
@@ -148,7 +148,7 @@ public sealed class CusAccountSyncLiveTests
     }
 
     /// <summary>旧过程 `P_CUS_ACCOUNT_CHECK` 的语句链（游标逐行拼文案），返回"是否通过 + 文案"。</summary>
-    private static async Task<(bool Success, string Message)> RunLegacyCheckAsync(
+    private static async Task<(bool Success, string Message)> RunBaselineCheckAsync(
         SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
         const string batch = """

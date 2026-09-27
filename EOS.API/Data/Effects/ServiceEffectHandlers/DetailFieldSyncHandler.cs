@@ -9,7 +9,7 @@ namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 /// values except where the detail row itself marks the field unchanged (new equals
 /// old, keeping the current target value); on deapproval the same rows take the
 /// "old" values instead (ported from P_WF_HR_REDEPLOY, whose 28调动 columns follow
-/// exactly this CASE WHEN shape). The NULL-unsafe equality is intentional legacy
+/// exactly this CASE WHEN shape). The NULL-unsafe equality is intentional baseline
 /// parity: NULL=new/old comparisons fall into the ELSE branch on both paths.
 /// The mirror direction is gated by reverse kind "restore-previous". Only document
 /// key values travel as parameters; all table/column names come from closed

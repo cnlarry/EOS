@@ -126,7 +126,7 @@ internal static class RecordPayloadValidator
         {
             if (field.IsReadonly || field.IsVirtual || field.ServerFilled || field.DisplayOnly || values.ContainsKey(field.Key)) continue;
             if (string.IsNullOrWhiteSpace(field.DefaultValue)) continue;
-            // Date macro: DFT_VALUE='D' means "today" for datetime fields (legacy convention).
+            // Date macro: DFT_VALUE='D' means "today" for datetime fields (baseline convention).
             // Previously this was silently skipped on conversion failure, breaking defaults like HR in-service dates.
             if (field.DataType.Contains("date", StringComparison.OrdinalIgnoreCase)
                 && field.DefaultValue.Trim().Equals("D", StringComparison.OrdinalIgnoreCase))

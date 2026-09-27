@@ -67,12 +67,12 @@ public sealed class PurApplySyncLiveTests
 
             // ② 回到同一初始态跑旧过程语句链
             await SeedAsync(connection, transaction, token, withMore: true, extraNullMore: false);
-            await RunLegacyAsync(connection, transaction, token);
-            var byLegacy = await ReadAsync(connection, transaction, token);
+            await RunBaselineAsync(connection, transaction, token);
+            var byBaseline = await ReadAsync(connection, transaction, token);
 
-            Assert.Equal(byLegacy.Details, byEffect.Details);
-            Assert.Equal(byLegacy.MoreQty, byEffect.MoreQty);
-            Assert.Equal(byLegacy.Master, byEffect.Master);
+            Assert.Equal(byBaseline.Details, byEffect.Details);
+            Assert.Equal(byBaseline.MoreQty, byEffect.MoreQty);
+            Assert.Equal(byBaseline.Master, byEffect.Master);
 
             // ③ 无待购行：只清零应购数量，订单字段与单号串联不动
             await SeedAsync(connection, transaction, token, withMore: false, extraNullMore: false);
@@ -84,10 +84,10 @@ public sealed class PurApplySyncLiveTests
             Assert.Equal(("OLD-ORDER", "OLD-PRODUCE"), noMore.Master);
 
             await SeedAsync(connection, transaction, token, withMore: false, extraNullMore: false);
-            await RunLegacyAsync(connection, transaction, token);
-            var noMoreLegacy = await ReadAsync(connection, transaction, token);
-            Assert.Equal(noMoreLegacy.Details, noMore.Details);
-            Assert.Equal(noMoreLegacy.Master, noMore.Master);
+            await RunBaselineAsync(connection, transaction, token);
+            var noMoreBaseline = await ReadAsync(connection, transaction, token);
+            Assert.Equal(noMoreBaseline.Details, noMore.Details);
+            Assert.Equal(noMoreBaseline.Master, noMore.Master);
 
             // ④ 有意差异（登记在覆盖率报告）：待购行里存在"没有关联订单"的行时，
             //    旧过程把整个串联结果算成 NULL ⇒ 主表单号**完全不回写**（保持旧值）；
@@ -100,12 +100,12 @@ public sealed class PurApplySyncLiveTests
             Assert.Equal(("PO-1,PO-2", "PR1,PR2"), withNullByEffect.Master);
 
             await SeedAsync(connection, transaction, token, withMore: true, extraNullMore: true);
-            await RunLegacyAsync(connection, transaction, token);
-            var withNullByLegacy = await ReadAsync(connection, transaction, token);
-            Assert.Equal(("OLD-ORDER", "OLD-PRODUCE"), withNullByLegacy.Master);
+            await RunBaselineAsync(connection, transaction, token);
+            var withNullByBaseline = await ReadAsync(connection, transaction, token);
+            Assert.Equal(("OLD-ORDER", "OLD-PRODUCE"), withNullByBaseline.Master);
             // 除主表单号外，其余状态两侧仍逐项一致
-            Assert.Equal(withNullByLegacy.Details, withNullByEffect.Details);
-            Assert.Equal(withNullByLegacy.MoreQty, withNullByEffect.MoreQty);
+            Assert.Equal(withNullByBaseline.Details, withNullByEffect.Details);
+            Assert.Equal(withNullByBaseline.MoreQty, withNullByEffect.MoreQty);
         }
         finally
         {
@@ -114,7 +114,7 @@ public sealed class PurApplySyncLiveTests
     }
 
     /// <summary>旧过程 `P_PUR_APPLY_After_Save` 的写段语句链（补行 → 清零 → 回填 → 订单字段 → 分配 → 单号串联）。</summary>
-    private static Task RunLegacyAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
+    private static Task RunBaselineAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
         const string batch = """
             exec sp_executesql N'

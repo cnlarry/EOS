@@ -841,7 +841,7 @@ public sealed class EffectValidationLiveDataTests
             // 被引用行取 MAX：允许量 200 vs 计划量 0 + 本单 70 → 不超，放行；
             // 若按"任意一行"（允许量 100 / 计划量 50）取数会误判为超量——这一步正是聚合口径的守卫。
             await Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, keys);
-            Assert.Null(await LegacyDailyMessageAsync(connection, transaction, token));
+            Assert.Null(await BaselineDailyMessageAsync(connection, transaction, token));
 
             // 计划量的最大值抬到 200 → 200 < 200 + 70 命中，逐明细回报序号，文案与既有实现逐字一致
             await using (var raise = new SqlCommand("""
@@ -851,11 +851,11 @@ public sealed class EffectValidationLiveDataTests
             {
                 await raise.ExecuteNonQueryAsync(token);
             }
-            var legacy = await LegacyDailyMessageAsync(connection, transaction, token);
+            var baseline = await BaselineDailyMessageAsync(connection, transaction, token);
             var failure = await Assert.ThrowsAsync<EffectValidationException>(() =>
                 Executor.ValidateAsync(connection, transaction, plan, "SAVE", token, keys));
             Assert.Equal("以下序号项数量超过制令制程允许生产最大数量 \r\n1\r\n2", failure.Message);
-            Assert.Equal(legacy, failure.Message);
+            Assert.Equal(baseline, failure.Message);
         }
         finally
         {
@@ -864,7 +864,7 @@ public sealed class EffectValidationLiveDataTests
     }
 
     /// <summary>已退役的 C# 判据原样内联，作为本用例的基准文案（不在生产代码里保留）。</summary>
-    private static async Task<string?> LegacyDailyMessageAsync(
+    private static async Task<string?> BaselineDailyMessageAsync(
         SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
         await using var qty = new SqlCommand("""

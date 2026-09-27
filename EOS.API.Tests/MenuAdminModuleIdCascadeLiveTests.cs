@@ -37,7 +37,7 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
     ];
 
     /// <summary>原过程本体的语句（逐字保留，含已失效的选择器表），作为对照基准。</summary>
-    private static readonly string[] LegacyStatements =
+    private static readonly string[] BaselineStatements =
     [
         "update MODULES set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
         "update MODULES set M_P_IDX=@NEW_IDX WHERE M_P_IDX=@OLD_IDX",
@@ -69,17 +69,17 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
             .Select(Normalize)
             .Where(statement => statement.Length > 0)
             .ToArray();
-        var legacy = LegacyStatements.Select(Normalize).ToArray();
-        Assert.Equal(legacy.Length, ported.Length);
-        for (var index = 0; index < legacy.Length; index++)
+        var baseline = BaselineStatements.Select(Normalize).ToArray();
+        Assert.Equal(baseline.Length, ported.Length);
+        for (var index = 0; index < baseline.Length; index++)
         {
-            if (legacy[index].Contains("FIELDS_CHOOSER", StringComparison.Ordinal))
+            if (baseline[index].Contains("FIELDS_CHOOSER", StringComparison.Ordinal))
             {
                 // 唯一允许的差异：表格名换成现表，列名与比较方式保持不变。
                 Assert.Contains("FIELD_DATASOURCE SET SOURCE_M_IDX=@NEW_IDX WHERE SOURCE_M_IDX=@OLD_IDX", ported[index]);
                 continue;
             }
-            Assert.Equal(legacy[index], ported[index]);
+            Assert.Equal(baseline[index], ported[index]);
         }
         // 17 个（表.列）目标都被覆盖
         Assert.Equal(17, Targets.Length);
@@ -107,9 +107,9 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
                 Assert.Equal("-1|" + (await ScalarAsync(exists, token)!).Split('|')[1], await ScalarAsync(exists, token));
             }
             // 原过程本体的第 12 条语句（FIELDS_CHOOSER）在今天必然报"对象名无效"
-            await using var legacy = new SqlCommand(
+            await using var baseline = new SqlCommand(
                 "UPDATE dbo.FIELDS_CHOOSER SET SOURCE_M_IDX=1 WHERE SOURCE_M_IDX=1", connection, transaction);
-            var failure = await Assert.ThrowsAsync<SqlException>(() => legacy.ExecuteNonQueryAsync(token));
+            var failure = await Assert.ThrowsAsync<SqlException>(() => baseline.ExecuteNonQueryAsync(token));
             Assert.Contains("FIELDS_CHOOSER", failure.Message);
         }
         finally

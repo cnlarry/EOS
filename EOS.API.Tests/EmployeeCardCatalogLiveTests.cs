@@ -69,18 +69,18 @@ public sealed class EmployeeCardCatalogLiveTests
                          ("EMP_ID", EmpA, "CARD_ID", Card1),
                      })
             {
-                await using var legacy = new SqlCommand($"""
+                await using var baseline = new SqlCommand($"""
                     UPDATE dbo.HR_EMPLOYEE_CARD SET END_DATE=@Expires
                     WHERE {column}=@Value AND {otherColumn}<>@Other AND (END_DATE IS NULL OR END_DATE>=@Begin);
                     """, connection, transaction);
-                legacy.Parameters.Add("@Expires", SqlDbType.DateTime).Value = Expires;
-                legacy.Parameters.Add("@Value", SqlDbType.NChar, 20).Value = value;
-                legacy.Parameters.Add("@Other", SqlDbType.NChar, 20).Value = otherValue;
-                legacy.Parameters.Add("@Begin", SqlDbType.DateTime).Value = Begin;
-                Assert.Equal(1, await legacy.ExecuteNonQueryAsync(token));
+                baseline.Parameters.Add("@Expires", SqlDbType.DateTime).Value = Expires;
+                baseline.Parameters.Add("@Value", SqlDbType.NChar, 20).Value = value;
+                baseline.Parameters.Add("@Other", SqlDbType.NChar, 20).Value = otherValue;
+                baseline.Parameters.Add("@Begin", SqlDbType.DateTime).Value = Begin;
+                Assert.Equal(1, await baseline.ExecuteNonQueryAsync(token));
             }
-            var byLegacy = await ReadAsync(connection, transaction, token);
-            Assert.Equal(byLegacy, byEffect);
+            var byBaseline = await ReadAsync(connection, transaction, token);
+            Assert.Equal(byBaseline, byEffect);
 
             // ③ 行断言：失效日期早于生效日期即拒绝（旧文案逐字）
             await SetCardAsync(connection, transaction, token, EmpA, Card1, Begin, Begin.AddDays(-1));

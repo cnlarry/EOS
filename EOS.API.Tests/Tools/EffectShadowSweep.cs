@@ -17,7 +17,7 @@ namespace EOS.API.Tests.Tools;
 /// evidence without spawning one test host per module.
 ///
 /// Modules whose workflow stored procedure no longer exists are replayed engine-only, which is
-/// what the ledger reads as class B ("engine ran cleanly, the legacy side is retired"). Reports
+/// what the ledger reads as class B ("engine ran cleanly, the baseline side is retired"). Reports
 /// land in logs/shadow/ exactly like the single-module runner. DB-only tool: it never writes
 /// workspace configuration, never sends HTTP and never starts services.
 ///
@@ -155,9 +155,9 @@ public sealed class EffectShadowSweep
         string? executedKeys = null;
         var executedSource = "auto";
         SweepResult? refused = null;
-        SweepResult? legacyOnly = null;
-        string? legacyOnlyKeys = null;
-        var legacyOnlySource = "auto";
+        SweepResult? baselineOnly = null;
+        string? baselineOnlyKeys = null;
+        var baselineOnlySource = "auto";
         foreach (var (keys, source) in candidates)
         {
             var probe = await TryRunAsync(runner, moduleId, shadowEvent, keys, engineOnly, writeReport: false);
@@ -184,11 +184,11 @@ public sealed class EffectShadowSweep
             }
             else if (probe.Old == "ok")
             {
-                // The legacy implementation accepted the document and the engine refused it:
+                // The baseline implementation accepted the document and the engine refused it:
                 // a real divergence, worth keeping when no cleaner sample exists.
-                legacyOnly ??= probe;
-                legacyOnlyKeys ??= keys;
-                legacyOnlySource = source;
+                baselineOnly ??= probe;
+                baselineOnlyKeys ??= keys;
+                baselineOnlySource = source;
             }
             else if (refused is null || refused.Error?.Contains("单据不存在") == true)
             {
@@ -200,9 +200,9 @@ public sealed class EffectShadowSweep
 
         // A null key means "let the runner pick"; the chosen candidate therefore cannot be
         // identified by its key being non-null, only by which probe produced it.
-        var chosen = executed ?? legacyOnly;
-        var chosenKeys = executed is not null ? executedKeys : legacyOnlyKeys;
-        var chosenSource = executed is not null ? executedSource : legacyOnlySource;
+        var chosen = executed ?? baselineOnly;
+        var chosenKeys = executed is not null ? executedKeys : baselineOnlyKeys;
+        var chosenSource = executed is not null ? executedSource : baselineOnlySource;
         if (chosen is null)
         {
             // Nothing in the pool could be processed: leave the previous evidence in place

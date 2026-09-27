@@ -1,6 +1,5 @@
 -- Drop the one-off ghost-cleaning backup tables FIELDS_SysGhostBackup / SYSQL_FIELDS_GhostBackup.
--- Background: both were created by a legacy metadata cleaning step (2026-08-18,
--- docs/migrations/update.sql CLEAN section) as rollback insurance while removing FIELDS
+-- Background: both were created by a historic metadata cleaning step (2026-08-18,-- docs/migrations/update.sql CLEAN section) as rollback insurance while removing FIELDS
 -- sysconstraints/syssegments metadata leftovers and SYSQL_FIELDS ghost column references.
 -- Both tables are empty today and have no runtime consumers; the cleanup is long finished,
 -- so the rollback insurance is no longer of any use. Idempotent: drop only if present.

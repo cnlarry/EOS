@@ -61,7 +61,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
     };
 
     /// <summary>
-    /// Legacy table names still used as scope tokens inside stored configuration
+    /// Baseline table names still used as scope tokens inside stored configuration
     /// (<c>{"scope":"SYSSS","key":…}</c>, <c>{"table":"HR_SETUP","flagField":…}</c>): the names are
     /// kept so runtime configuration needs no change, but they resolve to the same owner modules.
     /// </summary>

@@ -746,7 +746,7 @@ public sealed class WorkbenchDefinitionBuilder(
     }
 
     /// <summary>
-    /// Parses the legacy tab definition string (e.g. '1=Basic;2=Other'); invalid items are skipped and
+    /// Parses the baseline tab definition string (e.g. '1=Basic;2=Other'); invalid items are skipped and
     /// tabs sort by number. 该列已退役（页签归 MODULE_FORM_TAB），此处保留以解析原位占位值（恒空）。
     /// </summary>
     internal static IReadOnlyList<FormTabDefinition> ParseFormTabs(string? raw)

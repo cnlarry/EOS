@@ -425,20 +425,20 @@ public sealed class ChooserBackfillRerunTool
         IReadOnlyList<ChooserFilterParameter> parameters, IReadOnlyList<string> joins)
     {
         var source = row.SourceTable!;
-        var legacy = Normalize(row.SourceDsl);
+        var baseline = Normalize(row.SourceDsl);
 
-        if (legacy.Contains(';') || legacy.Contains("--") || legacy.Contains("/*"))
+        if (baseline.Contains(';') || baseline.Contains("--") || baseline.Contains("/*"))
         {
             return new ParityVerdict("UNTESTABLE", 0, 0, "", "", "", "", "原文含多语句/注释片段，拒绝执行");
         }
-        if (Regex.IsMatch(legacy, @"\b(INSERT|UPDATE|DELETE|DROP|ALTER|EXEC|TRUNCATE|MERGE|CREATE)\b", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(baseline, @"\b(INSERT|UPDATE|DELETE|DROP|ALTER|EXEC|TRUNCATE|MERGE|CREATE)\b", RegexOptions.IgnoreCase))
         {
             return new ParityVerdict("UNTESTABLE", 0, 0, "", "", "", "", "原文含写操作关键字，拒绝执行");
         }
 
         // 同一绑定语义：模板列从源表取样（m./d. 共用一份样例），{module} 取 SOURCE_M_IDX，{X} 裸模板保持字面量
         var moduleId = row.SourceModuleId ?? 0;
-        var templateColumns = TemplateToken.Matches(legacy)
+        var templateColumns = TemplateToken.Matches(baseline)
             .Concat(parameters.Select(parameter => TemplateToken.Match(parameter.RawValue ?? "")))
             .Where(match => match.Success)
             .Select(match => match.Groups["col"].Success ? match.Groups["col"].Value : match.Groups["bare"].Value)
@@ -452,7 +452,7 @@ public sealed class ChooserBackfillRerunTool
         }
         var bindingText = string.Join(";", samples.Select(pair => $"{pair.Key}={pair.Value}"));
 
-        var boundDsl = BindDslText(legacy, samples, moduleId);
+        var boundDsl = BindDslText(baseline, samples, moduleId);
 
         var catalog = await ChooserJoinCatalog.GetAsync(connection, source, CancellationToken.None);
         var joinClause = joins.Count == 0 ? string.Empty : ChooserJoinCatalog.BuildJoinClause(catalog, joins)
@@ -501,13 +501,13 @@ public sealed class ChooserBackfillRerunTool
     }
 
     /// <summary>旧原文模板绑定：引号内注入原始值，引号外注入 SQL 字面量（数字裸写 / 字符串 N'…'）。</summary>
-    private static string BindDslText(string legacy, Dictionary<string, string> samples, int moduleId)
+    private static string BindDslText(string baseline, Dictionary<string, string> samples, int moduleId)
     {
-        var builder = new StringBuilder(legacy.Length + 64);
+        var builder = new StringBuilder(baseline.Length + 64);
         var inQuote = false;
-        for (var i = 0; i < legacy.Length; i++)
+        for (var i = 0; i < baseline.Length; i++)
         {
-            var c = legacy[i];
+            var c = baseline[i];
             if (c == '\'')
             {
                 inQuote = !inQuote;
@@ -516,7 +516,7 @@ public sealed class ChooserBackfillRerunTool
             }
             if (c == '{')
             {
-                var match = TemplateToken.Match(legacy, i);
+                var match = TemplateToken.Match(baseline, i);
                 if (match.Success && match.Index == i)
                 {
                     if (match.Groups["mod"].Success)

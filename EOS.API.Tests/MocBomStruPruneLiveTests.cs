@@ -68,12 +68,12 @@ public sealed class MocBomStruPruneLiveTests
                     """, ("@Type", Type), ("@No", No));
                 if (master == 0 && detail == 0) break;
             }
-            var byLegacy = await ReadAsync(connection, transaction, token);
+            var byBaseline = await ReadAsync(connection, transaction, token);
 
             // ③ 两表剩余行集合一致：主表保留"制令根产品 / 本行产品 / 被明细引用者"，
             //    明细只保留主行仍在的那条（另一条的主行已在上一步被删 ⇒ 需要第二轮才清掉）
-            Assert.Equal(byLegacy.Master, byEffect.Master);
-            Assert.Equal(byLegacy.Detail, byEffect.Detail);
+            Assert.Equal(byBaseline.Master, byEffect.Master);
+            Assert.Equal(byBaseline.Detail, byEffect.Detail);
             Assert.Equal(["ADR12MBLEAF", "ADR12MBROOT", "ADR12MBROW"],
                 byEffect.Master.OrderBy(item => item, StringComparer.Ordinal));
             Assert.Equal(["ADR12MBLEAF"], byEffect.Detail.OrderBy(item => item, StringComparer.Ordinal));

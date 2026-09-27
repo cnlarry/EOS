@@ -1,5 +1,5 @@
 -- Report right model: SYSDD_REPORT / SYSDH_REPORT demoted to override tables, with
--- favorite and last-run columns added. Semantic change (code side, see LegacyRightsRepository.GetReportAsync):
+-- favorite and last-run columns added. Semantic change (code side, see ModuleRightsRepository.GetReportAsync):
 --   SYSDD.REPORT_TAG is the single source of truth for module-level report visibility;
 --   SYSDD_REPORT / SYSDH_REPORT become override tables:
 --   no row = follow module REPORT_TAG (preview/print/export all open);

@@ -6,17 +6,17 @@ using Microsoft.Data.SqlClient;
 namespace EOS.API.Data.Effects.ServiceEffectHandlers;
 
 /// <summary>
-/// Half-finished stock move effect (service-level): the C# port of the legacy
+/// Half-finished stock move effect (service-level): the C# port of the baseline
 /// half-stock update procedure semantics (P_UPDATE_HALF_PRO_DEPOT), driven by closed
 /// fieldMap parameters. Per document line the three-key stock slot
 /// (PRO_NO + PROCEDURE_TYPE_ID + DEPOT_ID) is ensured and then moved:
 /// the IN leg adds unconditionally while the OUT leg first passes a sufficiency
-/// gate, exactly like the legacy helper (approve-IN / deapprove-OUT add;
+/// gate, exactly like the baseline helper (approve-IN / deapprove-OUT add;
 /// approve-OUT / deapprove-IN gate then subtract). Unlike the finished-goods
 /// inventory move there is no depot log, no batch ledger and no product derived
 /// columns to maintain — the stock table is the only footprint.
-/// Two intentional deviations from the legacy text: the gate aggregates rows
-/// sharing one stock slot (the legacy cursor checks line by line, so two lines
+/// Two intentional deviations from the baseline text: the gate aggregates rows
+/// sharing one stock slot (the baseline cursor checks line by line, so two lines
 /// for the same slot can jointly overdraw), and the shortage report carries a
 /// header line for readability (row text is unchanged).
 /// </summary>
@@ -249,7 +249,7 @@ public sealed class HalfStockMoveSql
             fill.Parameters.AddWithValue(parameter.Name, parameter.Value ?? DBNull.Value);
         await fill.ExecuteNonQueryAsync(token);
 
-        // Missing stock slots are ensured first (the legacy helper inserts them at
+        // Missing stock slots are ensured first (the baseline helper inserts them at
         // zero before either leg runs, so the gate below always finds its rows).
         var affected = await ExecAsync(
             "INSERT INTO dbo.HALF_PRO_DEPOT(PRO_NO, PROCEDURE_TYPE_ID, DEPOT_ID, QTY, INIT_QTY) "
@@ -287,7 +287,7 @@ public sealed class HalfStockMoveSql
     /// <summary>
     /// Sufficiency gate for the subtracting leg: every touched slot must cover the
     /// document quantity (rows sharing one slot are aggregated first, unlike the
-    /// legacy cursor which checks line by line and can jointly overdraw).
+    /// baseline cursor which checks line by line and can jointly overdraw).
     /// </summary>
     private async Task CheckStockAsync(CancellationToken token)
     {

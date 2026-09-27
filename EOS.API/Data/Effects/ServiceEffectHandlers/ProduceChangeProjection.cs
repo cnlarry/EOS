@@ -54,7 +54,7 @@ internal static class ProduceChangeProjection
     /// <summary>
     /// Reads the referenced produce keys from the change master. Null means the change
     /// carries no usable produce reference, in which case the projection is skipped and
-    /// the overwrite alone proceeds (consistent with the legacy no-op for missing links).
+    /// the overwrite alone proceeds (consistent with the baseline no-op for missing links).
     /// </summary>
     public static async Task<ProduceReference?> ReadReferenceAsync(
         ServiceEffectContext context,

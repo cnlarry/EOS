@@ -54,21 +54,21 @@ public sealed class MocProduceStampLiveTests
 
             // ② 复位成同一初始态后跑旧 C# 语句，比较最终值
             await ResetStaleAsync(connection, transaction, token);
-            await using (var legacy = new SqlCommand("""
+            await using (var baseline = new SqlCommand("""
                 UPDATE d SET d.ORDER_TYPE=m.ORDER_TYPE, d.ORDER_NO=m.ORDER_NO, d.ORDER_SERIAL_NO=m.ORDER_SERIAL_NO
                 FROM dbo.MOC_PRODUCE_D d INNER JOIN dbo.MOC_PRODUCE_M m
                   ON m.PRODUCE_TYPE=d.PRODUCE_TYPE AND m.PRODUCE_NO=d.PRODUCE_NO
                 WHERE d.PRODUCE_TYPE=@Type AND d.PRODUCE_NO=@No;
                 """, connection, transaction))
             {
-                legacy.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = ProduceType;
-                legacy.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = ProduceNo;
-                Assert.Equal(4, await legacy.ExecuteNonQueryAsync(token));
+                baseline.Parameters.Add("@Type", SqlDbType.NVarChar, 10).Value = ProduceType;
+                baseline.Parameters.Add("@No", SqlDbType.NVarChar, 20).Value = ProduceNo;
+                Assert.Equal(4, await baseline.ExecuteNonQueryAsync(token));
             }
-            var byLegacy = await ReadAsync(connection, transaction, token);
+            var byBaseline = await ReadAsync(connection, transaction, token);
 
             // ③ 两侧结果逐列一致，且等于主表值（覆盖了原来的垃圾值）
-            Assert.Equal(byLegacy, byEffect);
+            Assert.Equal(byBaseline, byEffect);
             Assert.Equal(4, byEffect.Count);
             foreach (var row in byEffect)
             {
