@@ -45,11 +45,15 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
     private const string TestUser = "ZZADJ0001";
     private const string TestProduct = "ZZADJPRO01";
     private const string ZeroProduct = "ZZADJPRO00";
-    /// <summary>库位借用真实主档（库存表对 DEPOT_LOCATION 有外键），在 InitializeAsync 里取。</summary>
-    private string TestLocation = string.Empty;
+    /// <summary>自造库别（用例自建、用完删除）：转单动作按库别过账，借真实库别会把风险引到真账上。</summary>
+    private const string TestDepot = "ZZADJDP01";
+    /// <summary>自造库位：库存表对库位主档有外键，库位必须真实存在。</summary>
+    private const string TestLocation = "ZZ-ADJ-LOC";
     private const double StartQty = 100d;
     private const double DiffQty = 5d;
     private const double CostPrice = 3d;
+    /// <summary>本单的审计资源键（与执行器写入口径一致：主键值以逗号相连）。</summary>
+    private const string RecordKey = TestType + "," + TestNo;
 
     private static DbConnectionFactory Connections()
     {
@@ -92,39 +96,29 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
         return scalar is null or DBNull ? default : (T)Convert.ChangeType(scalar, typeof(T));
     }
 
-    /// <summary>
-    /// 借一个真实（库别, 库位）组合：库存表对库位主档有外键，库位不能凭空造；
-    /// 料号与数量全部自造（ZZ 前缀），过账只动本用例自己那行库存。
-    /// </summary>
-    private static async Task<(string Depot, string Location)> AnyDepotLocationAsync()
-    {
-        await using var connection = await OpenAsync();
-        await using var command = new SqlCommand(
-            $"""
-            SELECT TOP 1 LTRIM(RTRIM(DEPOT_ID)), LTRIM(RTRIM(ISNULL(LOCATION_NO,N'')))
-            FROM dbo.{StockTable} WITH (NOLOCK) WHERE LOCATION_NO IS NOT NULL ORDER BY DEPOT_ID;
-            """, connection);
-        await using var reader = await command.ExecuteReaderAsync();
-        if (!await reader.ReadAsync())
-        {
-            throw new InvalidOperationException($"{StockTable} 没有可用的（库别, 库位），无法验证转单链路。");
-        }
-        return (reader.GetString(0), reader.GetString(1));
-    }
-
     private string _depot = string.Empty;
     private DbConnectionFactory _connections = null!;
     private WorkbenchDefinitionProvider _provider = null!;
 
     public async Task InitializeAsync()
     {
-        (_depot, TestLocation) = await AnyDepotLocationAsync();
+        _depot = TestDepot;
         _connections = Connections();
         // 运行时定义只有已发布快照一个来源：不刷新基线就会拿不到效果引擎段，
         // 130107 的批核链（inventory-move＝过账）也不会生效。
         _provider = new WorkbenchDefinitionProvider(_connections, NullLogger<WorkbenchDefinitionProvider>.Instance);
         await _provider.RefreshAsync(CancellationToken.None);
         await using var connection = await OpenAsync();
+        // 自造库别与库位：先清上一轮残留（中断时可能留下），重复运行结果才可比。
+        await ExecAsync(connection,
+            """
+            DELETE FROM dbo.DEPOT_LOCATION WHERE DEPOT_ID=@depot;
+            DELETE FROM dbo.DEPOT WHERE DEPOT_ID=@depot;
+            INSERT INTO dbo.DEPOT (DEPOT_ID, DEPOT_NAME) VALUES (@depot, N'ZZ 转单用例仓');
+            INSERT INTO dbo.DEPOT_LOCATION (DEPOT_ID,LOCATION_NO,LOCATION_TYPE,STORAGE_TYPE,STATUS,CONFIRM_TAG)
+                VALUES (@depot,@loc,N'STAGE',N'BULK',N'A',1);
+            """,
+            ("@depot", TestDepot), ("@loc", TestLocation));
         // 自造库存行：100 件在 Z 库位，成本价 3 —— 盘点数 105 时差异 +5。
         await ExecAsync(connection,
             $"""
@@ -203,6 +197,12 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
             ("@pro", TestProduct), ("@zeroPro", ZeroProduct), ("@depot", _depot));
         await ExecAsync(connection,
             "DELETE FROM dbo.PRODUCT WHERE LTRIM(RTRIM(PRO_NO))=@pro;", ("@pro", TestProduct));
+        await ExecAsync(connection,
+            """
+            DELETE FROM dbo.DEPOT_LOCATION WHERE DEPOT_ID=@depot;
+            DELETE FROM dbo.DEPOT WHERE DEPOT_ID=@depot;
+            """,
+            ("@depot", TestDepot));
         await ExecAsync(connection, "DELETE FROM dbo.SYSDD_BUTTON WHERE USER_ID=@user;", ("@user", TestUser));
         await ExecAsync(connection, "DELETE FROM dbo.SYSDD WHERE USER_ID=@user;", ("@user", TestUser));
         await ExecAsync(connection,
@@ -278,11 +278,32 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
             new DocumentActionRequest([TestType, TestNo], Confirm: confirm),
             TestUser, "测试经办人", null, Guid.NewGuid().ToString("N"), CancellationToken.None);
 
+    /// <summary>审计是追加型的：取当前最大事件号作基线，之后只看基线之上的增量。</summary>
+    private static async Task<long> AuditBaselineAsync()
+    {
+        await using var connection = await OpenAsync();
+        return await ScalarAsync<long>(connection, "SELECT ISNULL(MAX(EVENT_ID),0) FROM dbo.AUDIT_EVENT;");
+    }
+
+    /// <summary>基线之上、本单（模块 + 动作 + 资源键）的审计条数。</summary>
+    private static async Task<int> AuditCountAsync(long baseline)
+    {
+        await using var connection = await OpenAsync();
+        return await ScalarAsync<int>(connection,
+            """
+            SELECT COUNT(*) FROM dbo.AUDIT_EVENT
+             WHERE EVENT_ID > @baseline AND M_IDX=@module AND ACTION=@action AND RESOURCE_KEY=@key;
+            """,
+            ("@baseline", baseline), ("@module", ModuleId),
+            ("@action", GenerateAdjustmentHandler.ActionKey), ("@key", RecordKey));
+    }
+
     // ===== 用例 =====
 
     [Fact]
     public async Task GeneratesAdjustmentWithLocationAndBatch_PostsIt_AndLocksTheStocktake()
     {
+        var auditBaseline = await AuditBaselineAsync();
         var result = await RunAsync();
 
         // 断言带上服务端文案：转单链路的失败原因必须一眼可见（不然只剩一个 Failed）。
@@ -323,6 +344,8 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
             $"SELECT LTRIM(RTRIM(ISNULL(ADJUST_TYPE,N''))) + '|' + LTRIM(RTRIM(ISNULL(ADJUST_NO,N''))) + '|' + CAST(ISNULL(FINISHED_TAG,0) AS varchar(2)) FROM dbo.{MasterTable} WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no;",
             ("@type", TestType), ("@no", TestNo));
         Assert.Equal($"{adjustType}|{adjustNo}|1", source);
+        // 动作留痕：基线之上恰好一条自己的审计（别的模块、别的动作、别的单据都不算）
+        Assert.Equal(1, await AuditCountAsync(auditBaseline));
     }
 
     [Fact]
@@ -342,6 +365,7 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
     [Fact]
     public async Task ProbeOnly_ReportsWhatWouldHappen_AndWritesNothing()
     {
+        var auditBaseline = await AuditBaselineAsync();
         var probe = await RunAsync(confirm: false);
 
         Assert.Equal(DocumentActionStatus.Ok, probe.Status);
@@ -354,6 +378,8 @@ public sealed class DocumentActionGenerateAdjustmentLiveTests : IAsyncLifetime
             $"SELECT ISNULL(FINISHED_TAG,0) FROM dbo.{MasterTable} WHERE CHECK_STOCK_TYPE=@type AND CHECK_STOCK_NO=@no;",
             ("@type", TestType), ("@no", TestNo));
         Assert.False(finished);
+        // 探路整体回滚：连审计也不留（否则"什么都没写"这句话不成立）
+        Assert.Equal(0, await AuditCountAsync(auditBaseline));
     }
 
     [Fact]
