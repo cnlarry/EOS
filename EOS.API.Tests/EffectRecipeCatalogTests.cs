@@ -83,7 +83,7 @@ public sealed class EffectRecipeCatalogTests
     }
 
     /// <summary>
-    /// 覆盖口径锁定：目录文档 `docs/plans/效果配方目录.md` §3 里映射到配方的 17 个在用效果键。
+    /// 覆盖口径锁定：配方目录里映射到配方的 17 个在用效果键。
     /// 少一个都说明有人回退了配方层（把键踢回"未归类"），必须显式改文档再改本表。
     /// </summary>
     [Fact]

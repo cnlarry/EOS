@@ -19,7 +19,7 @@
 {"question": "get_form_schema 返回哪些字段？", "expected": "只返回可写字段：可见、非只读、非主键/自增/服务端维护/虚拟。", "sources": ["GetFormSchemaTool"]}
 {"question": "报表中心替代了什么？", "expected": "替代了 22 个 XX98 报表查询目录节点，统一入口 /report-center。", "sources": ["ADR-009 P2", "ReportCenterController"]}
 {"question": "报表可见性的唯一真源是什么？", "expected": "SYSDD.REPORT_TAG；SYSDD_REPORT 只做收紧型 override。", "sources": ["ADR-009 P1", "ReportMetricController"]}
-{"question": "通用工作台的前端路由是什么？", "expected": "/workbench/:moduleId；查看/编辑记录主键放在路径段。", "sources": ["docs/架构.md", "workbenchPath.ts"]}
+{"question": "通用工作台的前端路由是什么？", "expected": "/workbench/:moduleId；查看/编辑记录主键放在路径段。", "sources": ["ARCHITECTURE.md", "workbenchPath.ts"]}
 {"question": "1906 油卡充值单的审批链是什么？", "expected": "二级审批：一级 admin，二级 admin。", "sources": ["010_pilot_workflow_1906.sql"]}
 {"question": "单据附件有哪些权限位？", "expected": "FILE_VIEW_TAG 查看、FILE_UPDA_TAG 上传、FILE_EDIT_TAG 改备注、FILE_DELE_TAG 删除。", "sources": ["AttachmentController"]}
 {"question": "跨会话记忆最多存几条？注入几条？", "expected": "每用户上限 200 条，会话注入 Top-5。", "sources": ["043_assistant_memory.sql", "AssistantMemoryStore"]}

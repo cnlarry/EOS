@@ -5299,7 +5299,7 @@ public sealed class EffectShadowRunner
     /// 已拍板的口径差异：新旧实现**有意不同**，不算回归——ADR-012 §16 业务语义拍板与各模块
     /// 翻译台账的 intended 语义（旧码方向相反、游标退化、净替换倍数、按员工汇总等）。
     /// 命中即标记 normalized 并在报告里附 decision 出处，差异本身仍然保留可见。
-    /// 纪律：只登记有出处的项（ADR §16 / `docs/plans/业务待定项决策清单.md` / 翻译台账），
+    /// 纪律：只登记有出处的项（设计基线 / 待定项清单 / 翻译台账），
     /// 且必须写明具体列，禁止"某表整表放过"这类粗放规则。
     /// </summary>
     private static readonly IReadOnlyList<AcceptedDivergence> AcceptedDivergences =
