@@ -1089,6 +1089,9 @@ public sealed class EffectShadowRunner
                 new CarFilloilSyncHandler(),
                 new DetailFieldSyncHandler(),
                 new SampleEditionBumpHandler(),
+                // 与服务端同一批注册：结案/取消结案钩子（挂 ENDCASE / UNENDCASE 事件），
+                // 漏注册会让真库测试拿到的管线与运行期不一致（管线对未注册的键直接判配置错误）。
+                new InventoryReleaseBySourceHandler(auditWriter),
             },
             new EffectValidationExecutor(),
             auditWriter,

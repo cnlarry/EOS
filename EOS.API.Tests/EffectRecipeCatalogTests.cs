@@ -147,16 +147,20 @@ public sealed class EffectRecipeCatalogTests
     }
 
     /// <summary>
-    /// 界面上"哪些事件配了不会跑"的口径：`ENDCASE`/`UNENDCASE` 当前接不到效果链，
-    /// 界面据此**标注而不隐藏**。这条口径由闭集与惰性事件的交集约束住。
+    /// 界面上"哪些事件配了不会跑"的口径：`InertEvents` 是**空集**——事件闭集里每个事件都已有派发点，
+    /// 因此界面不该再对任何事件标注"该事件当前不会触发效果链"。
+    ///
+    /// 空集本身要有守卫：谁把某个事件重新变成"接不到效果链"（删派发点、加事件却忘了接），
+    /// 就得在这里显式登记，否则界面会把能跑的事件说成"配了不跑"。
     /// </summary>
     [Fact]
-    public void 惰性事件是事件闭集的子集且含结案与取消结案()
+    public void 惰性事件为空集且是事件闭集的子集()
     {
+        Assert.Empty(BusinessActionCatalog.InertEvents);
         Assert.All(BusinessActionCatalog.InertEvents, code => Assert.Contains(code, BusinessActionCatalog.Events));
-        Assert.Contains("ENDCASE", BusinessActionCatalog.InertEvents);
-        Assert.Contains("UNENDCASE", BusinessActionCatalog.InertEvents);
-        // 反过来：会跑的事件不得被误标成惰性（否则界面会把能用的配置说成"配了不跑"）。
+        // 会跑的事件不得被误标成惰性（否则界面会把能用的配置说成"配了不跑"）。
+        Assert.DoesNotContain("ENDCASE", BusinessActionCatalog.InertEvents);
+        Assert.DoesNotContain("UNENDCASE", BusinessActionCatalog.InertEvents);
         Assert.DoesNotContain("SAVE", BusinessActionCatalog.InertEvents);
         Assert.DoesNotContain("APPROVE_EFFECT", BusinessActionCatalog.InertEvents);
         Assert.DoesNotContain("DEAPPROVE", BusinessActionCatalog.InertEvents);

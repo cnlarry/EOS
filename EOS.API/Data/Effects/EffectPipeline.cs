@@ -110,8 +110,10 @@ public sealed class EffectPipeline(
         bool simulate = false)
     {
         var keys = masterKeyValues ?? Array.Empty<string>();
-        await validationExecutor.ValidateAsync(
-            connection, transaction, plan, StageFor(executionEvent), token, keys);
+        if (StageFor(executionEvent) is { } actionStage)
+        {
+            await validationExecutor.ValidateAsync(connection, transaction, plan, actionStage, token, keys);
+        }
 
         var results = new List<EffectStepResult>();
         foreach (var action in plan.Actions)
@@ -207,8 +209,11 @@ public sealed class EffectPipeline(
         EffectEvent executionEvent,
         CancellationToken token,
         IReadOnlyList<string>? masterKeyValues = null) =>
-        validationExecutor.ValidateAsync(
-            connection, transaction, plan, StageFor(executionEvent), token, masterKeyValues ?? Array.Empty<string>());
+        // 该事件没有校验阶段时直接放行（无阶段即无规则，见 StageFor）。
+        StageFor(executionEvent) is { } stage
+            ? validationExecutor.ValidateAsync(
+                connection, transaction, plan, stage, token, masterKeyValues ?? Array.Empty<string>())
+            : Task.CompletedTask;
 
     private async Task<ActionRun> ExecuteActionAsync(
         SqlConnection connection,
@@ -321,15 +326,22 @@ public sealed class EffectPipeline(
         return Convert.ToInt32(await command.ExecuteScalarAsync(token)) == 1;
     }
 
-    internal static string StageFor(EffectEvent executionEvent) => executionEvent switch
+    /// <summary>
+    /// 该事件对应的校验阶段；返回 null 表示这条事件**不带校验闸**。
+    /// 校验阶段是闭集（SAVE / APPROVE / DEAPPROVE / DELETE），事件闭集比它大——
+    /// 落不进阶段的那些事件（用户点击、结案、取消结案）必须显式返回 null：
+    /// 走默认分支会被当成 SAVE，于是"点结案"会顺带跑一遍保存期规则，把保存的行为套到结案上。
+    /// </summary>
+    internal static string? StageFor(EffectEvent executionEvent) => executionEvent switch
     {
         EffectEvent.Save => "SAVE",
         EffectEvent.ApproveEffect => "APPROVE",
         EffectEvent.Deapprove => "DEAPPROVE",
         EffectEvent.Delete => "DELETE",
-        // 用户点击不是一个校验阶段（校验阶段闭集为 SAVE/APPROVE/DEAPPROVE/DELETE），
-        // 因此不会有校验规则跟着一次点击顺带跑；映射到自身取值以免落到 SAVE 上。
+        // 用户点击不是一个校验阶段，因此不会有校验规则跟着一次点击顺带跑。
         EffectEvent.Manual => "MANUAL",
+        // 结案 / 取消结案同样不是校验阶段：它们只跑动作链。
+        EffectEvent.Endcase or EffectEvent.Unendcase => null,
         _ => "SAVE",
     };
 
