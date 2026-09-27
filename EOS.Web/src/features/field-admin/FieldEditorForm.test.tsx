@@ -465,6 +465,21 @@ describe('FieldEditorForm', () => {
     await waitFor(() => expect(screen.getByLabelText('虚拟表达式文本')).toHaveValue('T1.AMOUNT'))
   })
 
+  it('高级设置：来源不在 QUERY_RELATION 内时原样列出，不显示成未选择', async () => {
+    renderForm('edit', {
+      load: vi.fn().mockResolvedValue(meta({ virtualExpression: 'SYSDG.G_DESC' })),
+      save: vi.fn(),
+      parseExpression: vi.fn().mockResolvedValue({ kind: 'virtual_exp', mode: 'reference', table: 'SYSDG', column: 'G_DESC' }),
+      tableRelations: vi.fn().mockResolvedValue({ tableId: 'T1', ok: true, error: null, items: [] }),
+      tableColumns: vi.fn().mockResolvedValue([]),
+    })
+    await waitFor(() => expect(screen.getByDisplayValue('编号')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('tab', { name: '高级设置' }))
+    await waitFor(() => expect(screen.getByLabelText('虚拟表达式文本')).toHaveValue('SYSDG.G_DESC'))
+    fireEvent.click(await screen.findByRole('button', { name: '虚拟表达式引用来源' }))
+    expect(await screen.findByRole('option', { name: /不在 QUERY_RELATION 内/ })).toBeInTheDocument()
+  })
+
   it('高级设置：数据源 SQL 构建器生成受限 SELECT 文本', async () => {
     renderForm('edit', {
       load: vi.fn().mockResolvedValue(meta({ dataSourceSql: 'SELECT G_IDX FROM SYSDG' })),

@@ -130,6 +130,25 @@ internal static class VirtualExpressionParser
         joins = result;
         return true;
     }
+
+    /// <summary>
+    /// 引用名 → JOIN 段。先按别名精确匹配（关系里显式写的名字就是 SQL 里的引用名）；
+    /// 别名匹配不到时，允许按物理表名匹配，但要求该表名在关系里**只命中一段**——
+    /// 同表多段（自连接/同一表按不同条件各 JOIN 一次）无法判断指向哪一段，一律判不可用。
+    /// 校验与运行时共用本方法，保证「校验通过即可渲染」。
+    /// </summary>
+    public static bool TryResolveJoin(IReadOnlyList<VirtualJoin> joins, string reference, out VirtualJoin join)
+    {
+        join = null!;
+        if (string.IsNullOrWhiteSpace(reference)) return false;
+        var byAlias = joins.Where(candidate => candidate.Alias.Equals(reference, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (byAlias.Count == 1) { join = byAlias[0]; return true; }
+        if (byAlias.Count > 1) return false;
+        var byTable = joins.Where(candidate => candidate.Table.Equals(reference, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (byTable.Count != 1) return false;
+        join = byTable[0];
+        return true;
+    }
 }
 
 /// <summary>
@@ -196,7 +215,7 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
                     alias = baseAlias;
                     targetTable = table;
                 }
-                else if (byAlias.TryGetValue(functionTable, out var functionJoin))
+                else if (VirtualExpressionParser.TryResolveJoin(joins, functionTable, out var functionJoin))
                 {
                     alias = functionJoin.Alias;
                     targetTable = functionJoin.Table;
@@ -248,7 +267,7 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
                             alias = baseAlias;
                             targetTable = table;
                         }
-                        else if (byAlias.TryGetValue(exprToken.Table!, out var arithJoin))
+                        else if (VirtualExpressionParser.TryResolveJoin(joins, exprToken.Table!, out var arithJoin))
                         {
                             alias = arithJoin.Alias;
                             targetTable = arithJoin.Table;
@@ -285,7 +304,7 @@ public sealed class VirtualColumnResolver(SqlConnection connection)
                 else unresolved.Add(field.Key);
                 continue;
             }
-            if (!byAlias.TryGetValue(reference, out var join))
+            if (!VirtualExpressionParser.TryResolveJoin(joins, reference, out var join))
             {
                 unresolved.Add(field.Key);
                 continue;
