@@ -131,15 +131,14 @@ public sealed class ModuleBusinessConfigReadLiveTests
     }
 
     /// <summary>
-    /// 事件使用次数是"入门路径怎么对待占位事件"判据的一半，另一半是事件本身接不接得到效果链
+    /// 事件使用次数是"入门路径怎么对待各事件"判据的一半，另一半是事件本身接不接得到效果链
     /// （<see cref="BusinessActionCatalog.InertEvents"/>）。两者合起来才做对界面：
-    /// `ENDCASE` 库内**有行** ⇒ 必须保持可选并标注"该事件当前不会触发效果链"（隐藏会让既有配置无法编辑）；
-    /// `UNENDCASE` 库内**0 行** ⇒ 可以不可选 + 标"暂未启用"。
+    /// 结案与取消结案都已有派发点且库内**都有行** ⇒ 都保持可选、都不再标"配了不跑"。
     ///
-    /// 这条事实会随配置漂移（谁往库里加一行就变了），所以让它有守卫，而不是靠人记得。
+    /// 这条事实会随配置漂移（谁删掉一行就变了），所以让它有守卫，而不是靠人记得。
     /// </summary>
     [Fact]
-    public async Task 事件使用次数_结案有行而取消结案为零()
+    public async Task 事件使用次数_结案与取消结案都有行()
     {
         if (string.IsNullOrWhiteSpace(ConnectionString)) return;
         var repository = CreateRepository(ConnectionString);
@@ -147,9 +146,9 @@ public sealed class ModuleBusinessConfigReadLiveTests
         var usage = await repository.CountEventUsageAsync(CancellationToken.None);
 
         Assert.True(usage.TryGetValue("ENDCASE", out var endcase) && endcase >= 1,
-            "库内 ENDCASE 行数为 0：R10 的『不隐藏、如实标注』口径要重判，先看 docs/plans/效果配方目录.md §1.2-3。");
-        Assert.False(usage.TryGetValue("UNENDCASE", out var unendcase) && unendcase > 0,
-            $"库内 UNENDCASE 出现 {unendcase} 行：它已不是『暂未启用』，界面口径要跟着改。");
+            "库内 ENDCASE 行数为 0：结案钩子（来源结案释放预留）就没有承载行，先看 Migrations/246 是否落库。");
+        Assert.True(usage.TryGetValue("UNENDCASE", out var unendcase) && unendcase >= 1,
+            "库内 UNENDCASE 行数为 0：取消结案收不回结案释放的预留，先看 Migrations/266 是否落库。");
         // 会跑的事件必须有行，否则"事件下拉里出现过、库里却没人用"这件事说明别处也有洞。
         Assert.True(usage.TryGetValue("APPROVE_EFFECT", out var approve) && approve > 0);
         Assert.True(usage.TryGetValue("SAVE", out var save) && save > 0);

@@ -190,7 +190,9 @@ public sealed class EffectEngineInvoker(
         CancellationToken token)
     {
         var plan = planLoader.Load(definition);
-        var stage = EffectPipeline.StageFor(executionEvent);
+        // 该事件没有校验阶段（如结案/取消结案）时不可能有规则适用，直接放行。
+        if (EffectPipeline.StageFor(executionEvent) is not { } stage)
+            return null;
         var applicable = plan.Rules.Any(rule =>
             rule.Enabled && rule.Stage.Equals(stage, StringComparison.OrdinalIgnoreCase));
         if (!applicable)

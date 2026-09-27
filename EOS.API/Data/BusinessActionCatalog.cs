@@ -7,7 +7,7 @@ namespace EOS.API.Data;
 /// </summary>
 public static class BusinessActionCatalog
 {
-    /// <summary>触发事件（ENDCASE/UNENDCASE 为占位事件，效果留空；MANUAL 不由任何单据事件触发，见下）。</summary>
+    /// <summary>触发事件（各事件均已有运行期派发点；MANUAL 不由任何单据事件触发，见下）。</summary>
     public static readonly IReadOnlySet<string> Events = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "SAVE",
@@ -26,17 +26,14 @@ public static class BusinessActionCatalog
     /// <summary>
     /// 当前**接不到效果链**的事件：配置能存、发布能过，但没有任何调用点把它交给效果引擎。
     ///
-    /// 事实依据：`EffectEventMapper.TryParse` 认得这两个事件码，`EffectEvent` 枚举也有对应值，
-    /// 但全仓没有调用点以 `EffectEvent.Endcase`/`Unendcase` 触发引擎——结案/取消结案走
-    /// `WorkbenchApprovalService.FinishCoreAsync`，它只翻 `FINISHED_TAG` 并写审计，不跑效果链。
-    ///
     /// 界面据此**如实标注**（不是隐藏）：隐藏会让既有配置无法编辑，而"配了不跑"必须让配置者看见。
+    ///
+    /// 空集是**实测结论**而非默认值：事件闭集里的每个事件都已有派发点——
+    /// SAVE / DELETE 走保存与删除路径，APPROVE_EFFECT / DEAPPROVE 走批核路径（`RunApprovalCoreAsync`），
+    /// ENDCASE / UNENDCASE 走结案路径（`FinishCoreAsync`），MANUAL 走单据操作注册表。
+    /// 事件闭集新增成员时必须重新核对这一条。
     /// </summary>
-    public static readonly IReadOnlySet<string> InertEvents = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "ENDCASE",
-        "UNENDCASE",
-    };
+    public static readonly IReadOnlySet<string> InertEvents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>失败模式：BLOCK=失败整链回滚；WARN=仅警告继续。</summary>
     public static readonly IReadOnlySet<string> FailModes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

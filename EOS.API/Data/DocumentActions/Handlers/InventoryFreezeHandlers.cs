@@ -307,12 +307,17 @@ internal static class InventoryFreezeAction
     }
 
     /// <summary>
-    /// 按**来源单据**整笔释放（来源结案 / 取消时的钩子用它）：把该单据名下的有效占用全部置 `STATUS='C'`，
+    /// 按**来源单据**整笔释放（来源结案钩子用它）：把该单据名下的有效占用全部置 `STATUS='C'`，
     /// 返回被释放的格子清单供调用方逐个同步 `USEABLE_QTY`。
     /// </summary>
+    /// <param name="releaseKind">
+    /// 本次释放的**归因**，写进该行的 `RELEASE_KIND`；`null` 表示这次释放不归任何可逆动作管，
+    /// 该行日后不会被反向动作复活。归因列是预留表独有的（`INV_RESERVE.RELEASE_KIND`），
+    /// 因此本方法只服务预留表。
+    /// </param>
     internal static async Task<IReadOnlyList<(InventoryAvailabilityService.SlotKey Slot, double Quantity)>> ReleaseBySourceAsync(
         SqlConnection connection, SqlTransaction? transaction, string table, string quantityColumn,
-        string sourceType, string sourceNo, string actor, CancellationToken token)
+        string sourceType, string sourceNo, string? releaseKind, string actor, CancellationToken token)
     {
         var released = new List<(InventoryAvailabilityService.SlotKey, double)>();
         await using (var read = new SqlCommand(
@@ -337,21 +342,77 @@ internal static class InventoryFreezeAction
         }
 
         await using (var update = new SqlCommand(
-            $"UPDATE dbo.{table} SET STATUS = N'C', LAST_UPDATE_BY = @actor, LAST_UPDATE_DATE = GETDATE() "
+            $"UPDATE dbo.{table} SET STATUS = N'C', RELEASE_KIND = @releaseKind, "
+            + "LAST_UPDATE_BY = @actor, LAST_UPDATE_DATE = GETDATE() "
             + "WHERE RTRIM(STATUS) = N'A' AND LTRIM(RTRIM(SOURCE_TYPE)) = @sourceType "
             + "AND LTRIM(RTRIM(SOURCE_NO)) = @sourceNo;", connection, transaction))
         {
             update.Parameters.AddWithValue("@sourceType", sourceType);
             update.Parameters.AddWithValue("@sourceNo", sourceNo);
+            update.Parameters.AddWithValue("@releaseKind", (object?)releaseKind ?? DBNull.Value);
             update.Parameters.AddWithValue("@actor", actor);
             await update.ExecuteNonQueryAsync(token);
         }
         return released;
     }
 
-    /// <summary>把若干格子的 `USEABLE_QTY` 逐个按口径重算并落列（钩子释放多个格子时用）。</summary>
+    /// <summary>
+    /// 按**来源单据**整笔收回（取消结案钩子用它）：只复活"当初就是被这个归因释放掉"的行，
+    /// 置回 `STATUS='A'` 并清空归因，返回受影响的格子清单供调用方重算 `USEABLE_QTY`。
+    /// </summary>
+    /// <remarks>
+    /// **判据为什么是归因列、而不是"该来源所有 `C` 行"**：`STATUS='C'` 只说明"不再占用"，
+    /// 不回答"谁让它不再占用"。人工释放的预留、别的原因取消的行同样停在 `C`：按来源整体复活，
+    /// 取消结案就会把这些行一起算回占用——一次没有依据的扣减。有归因列，收回的范围与
+    /// 当初释放的范围**逐行对应**。
+    /// </remarks>
+    internal static async Task<IReadOnlyList<(InventoryAvailabilityService.SlotKey Slot, double Quantity)>> ReviveBySourceAsync(
+        SqlConnection connection, SqlTransaction? transaction, string table, string quantityColumn,
+        string sourceType, string sourceNo, string releaseKind, string actor, CancellationToken token)
+    {
+        var revived = new List<(InventoryAvailabilityService.SlotKey, double)>();
+        await using (var read = new SqlCommand(
+            $"SELECT LTRIM(RTRIM(PRO_NO)), LTRIM(RTRIM(DEPOT_ID)), ISNULL(LOCATION_NO, N'-'), ISNULL(BATCH_NO, N''), "
+            + $"ISNULL({quantityColumn},0) FROM dbo.{table} "
+            + "WHERE RTRIM(STATUS) = N'C' AND RTRIM(ISNULL(RELEASE_KIND, N'')) = @releaseKind "
+            + "AND LTRIM(RTRIM(SOURCE_TYPE)) = @sourceType AND LTRIM(RTRIM(SOURCE_NO)) = @sourceNo;",
+            connection, transaction))
+        {
+            read.Parameters.AddWithValue("@releaseKind", releaseKind);
+            read.Parameters.AddWithValue("@sourceType", sourceType);
+            read.Parameters.AddWithValue("@sourceNo", sourceNo);
+            await using var reader = await read.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                revived.Add((new InventoryAvailabilityService.SlotKey(
+                    reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)).Trimmed(),
+                    reader.IsDBNull(4) ? 0 : Convert.ToDouble(reader.GetValue(4))));
+            }
+        }
+        if (revived.Count == 0)
+        {
+            return revived;
+        }
+
+        await using (var update = new SqlCommand(
+            $"UPDATE dbo.{table} SET STATUS = N'A', RELEASE_KIND = NULL, "
+            + "LAST_UPDATE_BY = @actor, LAST_UPDATE_DATE = GETDATE() "
+            + "WHERE RTRIM(STATUS) = N'C' AND RTRIM(ISNULL(RELEASE_KIND, N'')) = @releaseKind "
+            + "AND LTRIM(RTRIM(SOURCE_TYPE)) = @sourceType AND LTRIM(RTRIM(SOURCE_NO)) = @sourceNo;",
+            connection, transaction))
+        {
+            update.Parameters.AddWithValue("@releaseKind", releaseKind);
+            update.Parameters.AddWithValue("@sourceType", sourceType);
+            update.Parameters.AddWithValue("@sourceNo", sourceNo);
+            update.Parameters.AddWithValue("@actor", actor);
+            await update.ExecuteNonQueryAsync(token);
+        }
+        return revived;
+    }
+
+    /// <summary>把若干格子的 `USEABLE_QTY` 逐个按口径重算并落列（钩子释放/收回多个格子时用）。</summary>
     internal static async Task SyncManyAsync(
-        SqlConnection connection, SqlTransaction? transaction, string actor, string reason,
+        SqlConnection connection, SqlTransaction? transaction, string actor, string auditAction, string reason,
         IReadOnlyList<(InventoryAvailabilityService.SlotKey Slot, double Quantity)> slots,
         WorkbenchAuditWriter audit, int moduleId, string recordKey, CancellationToken token)
     {
@@ -359,7 +420,7 @@ internal static class InventoryFreezeAction
         await InventoryAvailabilityService.SyncSlotsAsync(
             connection, transaction, slots.Select(item => item.Slot).ToList(), token);
 
-        await audit.WriteEventAsync(connection, transaction, moduleId, recordKey, "UNFREEZE", reason, actor,
+        await audit.WriteEventAsync(connection, transaction, moduleId, recordKey, auditAction, reason, actor,
             "INV_RESERVE", result: 1, fieldChanges: null, token,
             detailJson: System.Text.Json.JsonSerializer.Serialize(slots.Select(item => new
             {

@@ -56,7 +56,8 @@ public sealed class WorkbenchApprovalService(
 
     /// <summary>
     /// 结案/取消结案。
-    /// 语义：更新主表 FINISHED_TAG/FINISHED_PERSON/FINISHED_DATE；
+    /// 语义：更新主表 FINISHED_TAG/FINISHED_PERSON/FINISHED_DATE，并同步该单明细表的 FINISHED_TAG
+    /// （单据级结案即"全部结案"），随后跑 ENDCASE / UNENDCASE 效果链——三者同一事务。
     /// 结案仅允许 FINISHED_TAG=0，取消结案仅允许 FINISHED_TAG=1（守卫防重复/冲突）。
     /// </summary>
     public async Task<RecordSaveResult> FinishAsync(
@@ -383,12 +384,14 @@ public sealed class WorkbenchApprovalService(
 
     /// <summary>
     /// 效果步骤里带出来的非阻断告警 → 保存告警通道（与"失败"分开：失败走 Blocked，
-    /// 告警是"做成了但请留意"）。按文案去重，免得同一句在多个步骤里重复刷屏。
+    /// 告警是"做成了但请留意"）。**含"失败但按 WARN 档放行"的步骤**——链确实往下走了，
+    /// 那一步的失败原因正是用户最该看见的一句话；只收成功步骤，会让 WARN 档什么也不说。
+    /// 按文案去重，免得同一句在多个步骤里重复刷屏。
     /// </summary>
     private static IReadOnlyList<SaveWarning>? StepWarnings(IReadOnlyList<EffectStepResult> steps)
     {
         var messages = steps
-            .Where(step => step.Success && !string.IsNullOrWhiteSpace(step.Warning))
+            .Where(step => !string.IsNullOrWhiteSpace(step.Warning))
             .SelectMany(step => step.Warning!.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             .Distinct(StringComparer.Ordinal)
             .ToList();
@@ -618,6 +621,10 @@ public sealed class WorkbenchApprovalService(
         return RecordSaveResult.Success(keyValues);
     }
 
+    /// <summary>
+    /// 结案/取消结案：开事务跑 <see cref="RunFinishCoreAsync"/>，成功提交、失败整笔回滚。
+    /// 与批核路径同形（<see cref="RunEngineApprovalAsync"/> / <see cref="RunApprovalCoreAsync"/>）。
+    /// </summary>
     private async Task<RecordSaveResult> FinishCoreAsync(
         WorkbenchDefinition definition,
         IReadOnlyList<string> keyValues,
@@ -628,33 +635,106 @@ public sealed class WorkbenchApprovalService(
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
-        var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
-        var hasTag = await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "FINISHED_TAG", token);
-        if (!hasTag)
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        IReadOnlyList<SaveWarning>? warnings = null;
+        try
         {
-            return RecordSaveResult.Failed(RecordAccessStatus.NotFound, "ENDCASE_NOT_SUPPORTED", "该模块不支持结案操作。");
+            var outcome = await RunFinishCoreAsync(
+                connection, transaction, definition, keyValues, finish, employeeName, userId, token);
+            if (outcome.Blocked is { } failure)
+            {
+                await transaction.RollbackAsync(token);
+                return failure;
+            }
+            warnings = outcome.Warnings;
+            await transaction.CommitAsync(token);
         }
-        var hasPerson = await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "FINISHED_PERSON", token);
-        var hasDate = await WorkbenchSql.ColumnExistsAsync(connection, null, definition.MasterTable, "FINISHED_DATE", token);
-        var sql = finish
-            ? $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=1{(hasPerson ? ",FINISHED_PERSON=@Person" : string.Empty)}{(hasDate ? ",FINISHED_DATE=GETDATE()" : string.Empty)} WHERE ISNULL(FINISHED_TAG,0)=0 AND {keyWhere};"
-            : $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=0{(hasPerson ? ",FINISHED_PERSON=@Person" : string.Empty)}{(hasDate ? ",FINISHED_DATE=GETDATE()" : string.Empty)} WHERE FINISHED_TAG=1 AND {keyWhere};";
-        await using var command = new SqlCommand(sql, connection);
-        if (hasPerson)
+        catch
         {
-            command.Parameters.Add("@Person", SqlDbType.NVarChar, 50).Value = employeeName.Trim();
-        }
-        WorkbenchSql.AddKeyParameters(command, definition.MasterPkOrder, keyValues);
-        var affected = await command.ExecuteNonQueryAsync(token);
-        if (affected == 0)
-        {
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "ENDCASE_STATE_CONFLICT",
-                finish ? "记录不存在或已结案，无法重复结案。" : "记录不存在或未结案，无法取消结案。");
+            await transaction.RollbackAsync(token);
+            throw;
         }
         logger.LogInformation("统一表单{Action} module={ModuleId} key={Key}", finish ? "结案" : "取消结案", definition.ModuleId, string.Join(',', keyValues));
-        await auditWriter.WriteEventAsync(connection, null, definition.ModuleId, string.Join(',', keyValues),
+        return RecordSaveResult.Success(keyValues, warnings);
+    }
+
+    /// <summary>
+    /// 结案/取消结案的**事务内核心**：主表标记 → 明细标记 → 效果链 → 审计，**不提交**（提交由调用方决定）。
+    /// 四步同一事务，任一步失败整笔回滚——不许出现"标记翻了但预留没释放"这类半截状态。
+    /// 重复点击在第一步就被守卫挡下（`ISNULL(FINISHED_TAG,0)` 判据 + 影响 0 行），
+    /// 此时尚未写入任何东西，也不会跑效果链：重复结案不会变成"再释放一次"。
+    /// </summary>
+    /// <remarks>
+    /// 明细腿的口径是**全部结案**：单据级结案同时把该单明细行的 `FINISHED_TAG` 置为同一方向。
+    /// 现代界面只有一个单据级结案入口，映射的是旧系统 `doFinish(type=3)`（明细全置位 + 主表置位）；
+    /// 明细表没有该列（含单表模块）就跳过这一步。
+    /// </remarks>
+    public async Task<ApprovalCoreResult> RunFinishCoreAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        WorkbenchDefinition definition,
+        IReadOnlyList<string> keyValues,
+        bool finish,
+        string employeeName,
+        string userId,
+        CancellationToken token)
+    {
+        var keyWhere = WorkbenchSql.BuildKeyWhere(definition.MasterPkOrder, keyValues);
+        var hasTag = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "FINISHED_TAG", token);
+        if (!hasTag)
+        {
+            return ApprovalCoreResult.BlockedBy(
+                RecordSaveResult.Failed(RecordAccessStatus.NotFound, "ENDCASE_NOT_SUPPORTED", "该模块不支持结案操作。"));
+        }
+        var hasPerson = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "FINISHED_PERSON", token);
+        var hasDate = await WorkbenchSql.ColumnExistsAsync(connection, transaction, definition.MasterTable, "FINISHED_DATE", token);
+        var detailTable = string.IsNullOrWhiteSpace(definition.DetailTable) ? null : definition.DetailTable;
+        var hasDetailTag = detailTable is not null
+            && await WorkbenchSql.ColumnExistsAsync(connection, transaction, detailTable, "FINISHED_TAG", token);
+        var masterSql = finish
+            ? $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=1{(hasPerson ? ",FINISHED_PERSON=@Person" : string.Empty)}{(hasDate ? ",FINISHED_DATE=GETDATE()" : string.Empty)} WHERE ISNULL(FINISHED_TAG,0)=0 AND {keyWhere};"
+            : $"UPDATE dbo.[{definition.MasterTable}] SET FINISHED_TAG=0{(hasPerson ? ",FINISHED_PERSON=@Person" : string.Empty)}{(hasDate ? ",FINISHED_DATE=GETDATE()" : string.Empty)} WHERE FINISHED_TAG=1 AND {keyWhere};";
+        var detailSql = detailTable is null || !hasDetailTag
+            ? null
+            : $"UPDATE dbo.[{detailTable}] SET FINISHED_TAG={(finish ? 1 : 0)} WHERE {keyWhere};";
+
+        await using (var command = new SqlCommand(masterSql, connection, transaction))
+        {
+            if (hasPerson)
+            {
+                command.Parameters.Add("@Person", SqlDbType.NVarChar, 50).Value = employeeName.Trim();
+            }
+            WorkbenchSql.AddKeyParameters(command, definition.MasterPkOrder, keyValues);
+            if (await command.ExecuteNonQueryAsync(token) == 0)
+            {
+                return ApprovalCoreResult.BlockedBy(RecordSaveResult.Failed(
+                    RecordAccessStatus.ValidationFailed, "ENDCASE_STATE_CONFLICT",
+                    finish ? "记录不存在或已结案，无法重复结案。" : "记录不存在或未结案，无法取消结案。"));
+            }
+        }
+
+        if (detailSql is not null)
+        {
+            await using var detailCommand = new SqlCommand(detailSql, connection, transaction);
+            WorkbenchSql.AddKeyParameters(detailCommand, definition.MasterPkOrder, keyValues);
+            await detailCommand.ExecuteNonQueryAsync(token);
+        }
+
+        // 效果链只有在"该事件配了动作"时才执行：模块没启用效果引擎、或没配该事件的动作时，
+        // 引擎返回"没接管"，既不报错也不算空链异常（与批核路径同一口径）。
+        var effectRun = await effectEngine.TryRunWithStepsAsync(
+            connection, transaction, definition,
+            finish ? EffectEvent.Endcase : EffectEvent.Unendcase, keyValues, userId, token);
+        if (effectRun.Error is not null)
+        {
+            return new ApprovalCoreResult(
+                RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "WORKFLOW_FAILED", effectRun.Error),
+                effectRun.Steps);
+        }
+
+        await auditWriter.WriteEventAsync(connection, transaction, definition.ModuleId, string.Join(',', keyValues),
             finish ? "ENDCASE" : "UNENDCASE", finish ? "结案" : "取消结案", userId, "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
-        return RecordSaveResult.Success(keyValues);
+        return new ApprovalCoreResult(null, effectRun.Steps, StepWarnings(effectRun.Steps));
     }
 
     /// <summary>解批前置校验。</summary>
