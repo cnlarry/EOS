@@ -119,14 +119,6 @@ internal static class ModuleRouteValidator
             || value.StartsWith("/workbench/", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>报表承载判定（报表查看器/打印体系共用）。</summary>
-    public static bool IsReportUrl(string url)
-    {
-        var value = url.Trim().Replace('\\', '/');
-        return value.Equals("/reports", StringComparison.OrdinalIgnoreCase)
-            || value.StartsWith("/reports/", StringComparison.OrdinalIgnoreCase);
-    }
-
     private static bool IsForbiddenUrl(string url) =>
         !url.StartsWith('/')
         || url.StartsWith("//", StringComparison.Ordinal)

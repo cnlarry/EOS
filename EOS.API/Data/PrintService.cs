@@ -175,8 +175,10 @@ public sealed class PrintService(
         const string sql="""
             SELECT TOP 1 r.HEADER_ID,r.TAIL_ID
             FROM dbo.REPORT r WITH (NOLOCK)
-            WHERE r.R_M_IDX=@ModuleId AND r.IS_DEFAULT=1
-            ORDER BY r.REPORT_ID;
+            WHERE r.M_IDX=@ModuleId AND r.IS_DEFAULT=1
+            -- 多张默认报表时优先"本来就挂在本模块上"的那张：归位会把原挂承载页的报表并进来，
+            -- 直接按编号排序会让单据打印的默认页头页脚换人——那是与归位无关的行为变化。
+            ORDER BY CASE WHEN r.R_M_IDX=r.M_IDX THEN 0 ELSE 1 END, r.REPORT_ID;
             """;
         await using var command=new SqlCommand(sql,connection);
         command.Parameters.Add("@ModuleId",SqlDbType.Int).Value=moduleId;

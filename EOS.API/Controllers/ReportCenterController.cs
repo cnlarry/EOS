@@ -33,8 +33,10 @@ public sealed class ReportCenterController(
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
 
+        // 报表按**归属模块**（业务模块）分组与鉴权：r.M_IDX 指向业务模块，不再是承载页。
         // 模块级报表可见性真源：个人 SYSDD.REPORT_TAG 优先，否则组 SYSDH.REPORT_TAG OR
         // （与 ModuleRightsRepository.GetModuleReportTagAsync 同口径）。
+        // 业务域取归属模块的上级菜单分组（历史实现取的是承载页的 XX98 目录，归位后那层已不存在）。
         const string catalogSql = """
             SELECT m.M_IDX, LTRIM(RTRIM(ISNULL(m.M_DESC, ''))) AS M_DESC,
                    LTRIM(RTRIM(ISNULL(dom.M_DESC, ISNULL(m.M_DESC, '')))) AS DOMAIN_DESC,
@@ -45,24 +47,22 @@ public sealed class ReportCenterController(
                    ISNULL(p.SORT_IDX, 0) AS SORT_IDX,
                    p.LAST_RUN_AT
             FROM dbo.REPORT r WITH (NOLOCK)
-            INNER JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX = r.R_M_IDX
+            INNER JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX = r.M_IDX
             LEFT JOIN dbo.MODULES dom WITH (NOLOCK) ON dom.M_IDX = m.M_P_IDX
-                AND RIGHT(CAST(dom.M_IDX AS VARCHAR(20)), 2) = '98'
-            LEFT JOIN dbo.SYSDD_REPORT p WITH (NOLOCK) ON p.USER_ID = @UserId AND p.M_IDX = r.R_M_IDX AND p.REPORT_ID = r.REPORT_ID
-            WHERE r.R_M_IDX IS NOT NULL
-              AND (
+            LEFT JOIN dbo.SYSDD_REPORT p WITH (NOLOCK) ON p.USER_ID = @UserId AND p.M_IDX = r.M_IDX AND p.REPORT_ID = r.REPORT_ID
+            WHERE (
                 EXISTS (SELECT 1 FROM dbo.SYSDD d WITH (NOLOCK)
-                        WHERE d.USER_ID = @UserId AND d.M_IDX = r.R_M_IDX AND ISNULL(d.REPORT_TAG, 0) = 1)
+                        WHERE d.USER_ID = @UserId AND d.M_IDX = r.M_IDX AND ISNULL(d.REPORT_TAG, 0) = 1)
                 OR (
-                  NOT EXISTS (SELECT 1 FROM dbo.SYSDD d WITH (NOLOCK) WHERE d.USER_ID = @UserId AND d.M_IDX = r.R_M_IDX)
+                  NOT EXISTS (SELECT 1 FROM dbo.SYSDD d WITH (NOLOCK) WHERE d.USER_ID = @UserId AND d.M_IDX = r.M_IDX)
                   AND EXISTS (SELECT 1 FROM dbo.SYSDH h WITH (NOLOCK)
                               INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX = h.G_IDX
-                              WHERE gu.USER_ID = @UserId AND h.M_IDX = r.R_M_IDX AND ISNULL(h.REPORT_TAG, 0) = 1)
+                              WHERE gu.USER_ID = @UserId AND h.M_IDX = r.M_IDX AND ISNULL(h.REPORT_TAG, 0) = 1)
                 )
               )
               AND NOT EXISTS (
                 SELECT 1 FROM dbo.SYSDD_REPORT o WITH (NOLOCK)
-                WHERE o.USER_ID = @UserId AND o.M_IDX = r.R_M_IDX AND o.REPORT_ID = r.REPORT_ID
+                WHERE o.USER_ID = @UserId AND o.M_IDX = r.M_IDX AND o.REPORT_ID = r.REPORT_ID
                   AND ISNULL(o.PREVIEW_TAG, 0) = 0
               )
             ORDER BY DOMAIN_DESC, ISNULL(p.FAVORITE_TAG, 0) DESC, ISNULL(p.SORT_IDX, 0), ISNULL(r.IS_DEFAULT, 0) DESC, r.REPORT_ID;

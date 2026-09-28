@@ -19,7 +19,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
             WHERE ISNULL(m.M_TAG,1)=1
               AND (LTRIM(RTRIM(ISNULL(m.M_URL,''))) LIKE 'RPT/%'
                    OR LTRIM(RTRIM(ISNULL(m.M_URL,''))) LIKE '~/RPT/%'
-                   OR EXISTS (SELECT 1 FROM dbo.REPORT r WITH (NOLOCK) WHERE r.R_M_IDX=m.M_IDX))
+                   OR EXISTS (SELECT 1 FROM dbo.REPORT r WITH (NOLOCK) WHERE r.M_IDX=m.M_IDX))
             ORDER BY m.M_IDX;
             """;
         await using var connection = connections.Create();
@@ -37,12 +37,12 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
         // 列序必须与 ReportAdminDraft 的形参顺序一致（FormatId 是末位可选参数）：
         // 错位会让 GetBoolean 读到文本列，直接抛 InvalidCastException。
         const string sql = """
-            SELECT LTRIM(RTRIM(REPORT_ID)),LTRIM(RTRIM(ISNULL(REPORT_NAME,''))),R_M_IDX,
+            SELECT LTRIM(RTRIM(REPORT_ID)),LTRIM(RTRIM(ISNULL(REPORT_NAME,''))),M_IDX,
                    LTRIM(RTRIM(ISNULL(ISO_NO,''))),LTRIM(RTRIM(ISNULL(HEADER_ID,''))),LTRIM(RTRIM(ISNULL(TAIL_ID,''))),
                    LTRIM(RTRIM(ISNULL(FOOTER_TEXT,''))),ISNULL(IS_DEFAULT,0),
                    LTRIM(RTRIM(ISNULL(REPORT_FILTER,''))),LTRIM(RTRIM(ISNULL(REMARK,''))),
                    LTRIM(RTRIM(ISNULL(FORMAT_ID,'')))
-            FROM dbo.REPORT WITH (NOLOCK) WHERE R_M_IDX=@ModuleId ORDER BY IS_DEFAULT DESC,REPORT_ID;
+            FROM dbo.REPORT WITH (NOLOCK) WHERE M_IDX=@ModuleId ORDER BY IS_DEFAULT DESC,REPORT_ID;
             """;
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
@@ -66,7 +66,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
     {
         // 列序同 ListReportsAsync：与 ReportAdminDraft 的形参顺序一一对应。
         const string sql = """
-            SELECT LTRIM(RTRIM(REPORT_ID)),LTRIM(RTRIM(ISNULL(REPORT_NAME,''))),R_M_IDX,
+            SELECT LTRIM(RTRIM(REPORT_ID)),LTRIM(RTRIM(ISNULL(REPORT_NAME,''))),M_IDX,
                    LTRIM(RTRIM(ISNULL(ISO_NO,''))),LTRIM(RTRIM(ISNULL(HEADER_ID,''))),LTRIM(RTRIM(ISNULL(TAIL_ID,''))),
                    LTRIM(RTRIM(ISNULL(FOOTER_TEXT,''))),ISNULL(IS_DEFAULT,0),
                    LTRIM(RTRIM(ISNULL(REPORT_FILTER,''))),LTRIM(RTRIM(ISNULL(REMARK,''))),
@@ -139,7 +139,8 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
 
     public async Task<int?> GetReportModuleAsync(string reportId, CancellationToken token)
     {
-        const string sql = "SELECT R_M_IDX FROM dbo.REPORT WITH (NOLOCK) WHERE REPORT_ID=@ReportId;";
+        // 返回的是报表的**归属模块**（REPORT.M_IDX）：权限、条件、数据集都以它为锚点
+        const string sql = "SELECT M_IDX FROM dbo.REPORT WITH (NOLOCK) WHERE REPORT_ID=@ReportId;";
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         await using var command = new SqlCommand(sql, connection);

@@ -19,8 +19,8 @@ namespace EOS.API.Tests;
 [Collection("live-database")]
 public sealed class ReportAggregateFieldPrivilegeLiveTests
 {
-    /// <summary>库存日报的宿主模块（报表承载页）与报表编号。</summary>
-    private const int Module = 139901;
+    /// <summary>库存日报的归属模块（库存日志）与报表编号。</summary>
+    private const int Module = 1305;
     private const string ReportId = "INV_Pro_Depot_1";
 
     private static readonly string[] PriceColumns = ["PRICE_Q", "PRICE_J", "PRICE_X"];

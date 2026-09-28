@@ -80,7 +80,7 @@ public sealed class ReportAdminRepositoryLiveTests
         await connection.OpenAsync(token);
         var moduleId = 0;
         await using (var command = new SqlCommand(
-            "SELECT TOP 1 R_M_IDX FROM dbo.REPORT WITH (NOLOCK) ORDER BY R_M_IDX;", connection))
+            "SELECT TOP 1 M_IDX FROM dbo.REPORT WITH (NOLOCK) ORDER BY M_IDX;", connection))
         {
             var value = await command.ExecuteScalarAsync(token);
             Assert.False(value is null or DBNull);

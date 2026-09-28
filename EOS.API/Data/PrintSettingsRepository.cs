@@ -36,6 +36,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
             throw new ArgumentException("未选择报表。", nameof(request.ReportId));
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
+        // R_M_IDX 列名沿用历史命名，取值是**报表归属模块**（与 REPORT.M_IDX 同口径）
         const string sql = """
             UPDATE dbo.SYSQR SET IS_LAST=0 WHERE USER_ID=@UserId AND R_M_IDX=@ModuleId;
             IF EXISTS (SELECT 1 FROM dbo.SYSQR WHERE USER_ID=@UserId AND R_M_IDX=@ModuleId AND REPORT_ID=@ReportId)
@@ -98,7 +99,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
                    LTRIM(RTRIM(ISNULL(r.FOOTER_TEXT,''))),LTRIM(RTRIM(ISNULL(r.ISO_NO,''))),
                    LTRIM(RTRIM(ISNULL(r.REPORT_FILTER,'')))
             FROM dbo.REPORT r WITH (NOLOCK)
-            WHERE r.R_M_IDX=@ModuleId AND r.REPORT_ID=@ReportId;
+            WHERE r.M_IDX=@ModuleId AND r.REPORT_ID=@ReportId;
             """;
         await using var reportCommand = new SqlCommand(reportSql, connection);
         reportCommand.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -175,7 +176,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
                    LTRIM(RTRIM(ISNULL(r.FOOTER_TEXT,''))),LTRIM(RTRIM(ISNULL(r.ISO_NO,''))),
                    ISNULL(r.IS_DEFAULT,0),LTRIM(RTRIM(ISNULL(r.FORMAT_ID,'')))
             FROM dbo.REPORT r WITH (NOLOCK)
-            WHERE r.R_M_IDX=@ModuleId
+            WHERE r.M_IDX=@ModuleId
               -- 个人 override 收紧（PREVIEW_TAG=0 → 隐藏）
               AND NOT EXISTS (
                 SELECT 1 FROM dbo.SYSDD_REPORT p WITH (NOLOCK)
@@ -194,7 +195,11 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
                            WHERE gu.USER_ID=@UserId AND g.M_IDX=@ModuleId AND g.REPORT_ID=r.REPORT_ID
                              AND ISNULL(g.PREVIEW_TAG,0)=1)
               )
-            ORDER BY ISNULL(r.IS_DEFAULT,0) DESC,r.REPORT_ID;
+            ORDER BY ISNULL(r.IS_DEFAULT,0) DESC,
+                     -- 多张默认报表时优先"本来就挂在本模块上"的那张：归位会把原挂承载页的报表并进来，
+                     -- 直接按编号排序会让打印面板的预选报表换人——那是与归位无关的行为变化。
+                     CASE WHEN r.R_M_IDX=r.M_IDX THEN 0 ELSE 1 END,
+                     r.REPORT_ID;
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = moduleId;
@@ -362,6 +367,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
         const string sql = """
             SELECT TOP 1 REPORT_ID,HEADER_ID,TAIL_ID,LAST_SORT,ISNULL(SORT_ASC,1),ISNULL(SHOW_GROUP,1),ISNULL(SHOW_DETAIL,1)
             FROM dbo.SYSQR WITH (NOLOCK)
+            -- 列名沿用历史命名，取值是**报表归属模块**（与 REPORT.M_IDX 同口径）
             WHERE USER_ID=@UserId AND R_M_IDX=@ModuleId AND IS_LAST=1;
             """;
         await using var command = new SqlCommand(sql, connection);
