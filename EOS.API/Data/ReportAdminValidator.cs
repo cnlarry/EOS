@@ -8,14 +8,23 @@ namespace EOS.API.Data;
 /// </summary>
 internal static class ReportAdminValidator
 {
-    /// <summary>报表编号：真实编号可含点号（如 INV_Occur_In_List.），仅作 SQL 参数非动态标识符，故放行点号。</summary>
-    private static readonly Regex ReportIdPattern = new("^[A-Za-z0-9_.\\-]{1,100}$", RegexOptions.Compiled);
+    /// <summary>
+    /// 报表编号：字母/数字/下划线/连字符，3–40 位。
+    ///
+    /// <para>
+    /// 原先放行点号且允许 1–100 位，理由是"存量编号里有点号"——那 4 个带点号/空格的编号已按规范清理
+    /// （见 275_report_id_normalization.sql），放行理由随之消失。宽度也一并收到 40：列宽是 `nchar(50)`，
+    /// 放行 100 位意味着超长编号会被静默截断成**另一个**编号，而编号是报表的身份（7 张表按它引用），
+    /// 截断即孤儿行。
+    /// </para>
+    /// </summary>
+    private static readonly Regex ReportIdPattern = new("^[A-Za-z0-9_-]{3,40}$", RegexOptions.Compiled);
     private static readonly Regex FieldToken = new("^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
 
     public static void ValidateReportId(string? id)
     {
         if (string.IsNullOrWhiteSpace(id) || !ReportIdPattern.IsMatch(id.Trim()))
-            throw new ArgumentException("报表编号格式无效（1-100 位字母/数字/下划线/点/连字符）。", nameof(id));
+            throw new ArgumentException("报表编号格式无效（3-40 位字母/数字/下划线/连字符）。", nameof(id));
     }
 
     public static void ValidateModuleId(int? moduleId)
