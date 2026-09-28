@@ -137,11 +137,13 @@ public sealed class ReportFormatValidator
         var detailKeys = format.DataContract.DetailColumns
             .Select(column => column.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // 流动模式（flow）的分区：`Y` 是**分行键**而不是坐标、段高由内容决定，
+        // 故不参与"元素是否超出段高"的判定——拿固定段高去卡流动版式，报出来的全是假错。
         var sectionBounds = new (string Name, double Width, double? Height)[]
         {
-            ("header", contentWidth, layout.Sections.Header.Height),
-            ("content", contentWidth, contentHeight),
-            ("footer", contentWidth, layout.Sections.Footer.Height),
+            ("header", contentWidth, layout.Sections.Header.Flow ? null : layout.Sections.Header.Height),
+            ("content", contentWidth, layout.Sections.Content.Flow ? null : contentHeight),
+            ("footer", contentWidth, layout.Sections.Footer.Flow ? null : layout.Sections.Footer.Height),
         };
         var sectionElements = new[]
         {
@@ -149,6 +151,29 @@ public sealed class ReportFormatValidator
             layout.Sections.Content.Elements,
             layout.Sections.Footer.Elements,
         };
+
+        // 多页模板走**动态部件**，而动态部件要求内容单页装得下；流动分区的高度由内容决定，
+        // 两者并存会在渲染时抛"Dynamic component generated content that does not fit on a single page"。
+        // 拦在保存校验，别让它等到有人点打印才炸。
+        if (layout.PageTemplates is not null)
+        {
+            var flowSections = new List<string>();
+            if (layout.Sections.Header.Flow) flowSections.Add("sections.header");
+            if (layout.Sections.Footer.Flow) flowSections.Add("sections.footer");
+            foreach (var (label, template) in new[]
+                     {
+                         ("pageTemplates.first", layout.PageTemplates.First),
+                         ("pageTemplates.continuation", layout.PageTemplates.Continuation),
+                         ("pageTemplates.last", layout.PageTemplates.Last),
+                     })
+            {
+                if (template?.Header?.Flow == true) flowSections.Add(label + ".header");
+                if (template?.Footer?.Flow == true) flowSections.Add(label + ".footer");
+            }
+            if (flowSections.Count > 0)
+                errors.Add("流动分区（flow=true）不能与多页模板并存：" + string.Join('、', flowSections)
+                           + "。多页模板经动态部件渲染、要求内容单页装得下，而流动分区的高度由内容决定。");
+        }
 
         var totalElements = sectionElements.Sum(elements => elements.Count);
         if (totalElements > maxElements)
