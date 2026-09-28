@@ -46,12 +46,38 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
         if (!string.Equals(layout.Kind, "document", StringComparison.OrdinalIgnoreCase))
             throw new LayoutInvalidException($"一期只支持 document 版式，收到 kind={layout.Kind}。");
 
-        var effective = context ?? new LayoutRenderContext();
+        return RenderLayout(layout, data, context ?? new LayoutRenderContext());
+    }
+
+    /// <summary>
+    /// 报表清单渲染（列表型版式）：与单据渲染**共用同一套页面/分节/元素管道**，
+    /// 差别只在"值从哪来"（报表数据经 <see cref="LayoutRenderContext.Report"/> 传入）。
+    /// 另起一条渲染旁路会让两边的定位、样式、分页慢慢长歪，所以这里只做入口分派。
+    /// </summary>
+    public byte[] RenderReportList(PrintData data, string layoutJson, LayoutRenderContext context)
+    {
+        if (context.Report is null)
+            throw new LayoutInvalidException("报表清单渲染缺少报表数据（LayoutRenderContext.Report）。");
+        var layout = Parse(layoutJson);
+        if (layout.SchemaVersion != 1)
+            throw new LayoutInvalidException($"不支持的 schemaVersion：{layout.SchemaVersion}。");
+        if (!string.Equals(layout.Kind, "list", StringComparison.OrdinalIgnoreCase))
+            throw new LayoutInvalidException($"报表清单只能用列表型版式（kind=list），收到 kind={layout.Kind}。");
+        return RenderLayout(layout, data, context);
+    }
+
+    private byte[] RenderLayout(LayoutDocument layout, PrintData data, LayoutRenderContext effective)
+    {
+        // orientation=auto：按列数决定横竖版（沿用报表清单打印的既有口径——列多了竖版挤成一团）。
+        // 声明式版式里"纸张朝向"仍是一个属性；只有 auto 这一档需要看运行时列数。
+        var landscape = IsLandscape(layout.Page.Orientation)
+            || (string.Equals(layout.Page.Orientation, "auto", StringComparison.OrdinalIgnoreCase)
+                && (effective.Report?.Columns.Count ?? 0) > 12);
         var document = Document.Create(container =>
         {
             container.Page(page =>
             {
-                var pageSize = PdfLayout.PageSizeFor(layout.Page.Size, IsLandscape(layout.Page.Orientation));
+                var pageSize = PdfLayout.PageSizeFor(layout.Page.Size, landscape);
                 page.Size(pageSize);
                 page.MarginTop(Mm(layout.Page.Margin.Top));
                 page.MarginRight(Mm(layout.Page.Margin.Right));
@@ -264,7 +290,7 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
                 });
                 break;
             case "image":
-                RenderImage(container, element, data);
+                RenderImage(container, element, data, context);
                 break;
             case "barcode":
                 RenderBarcode(container, element, data, context);
@@ -315,9 +341,14 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
         });
     }
 
-    private static void RenderImage(IContainer container, LayoutElement element, PrintData data)
+    private static void RenderImage(
+        IContainer container, LayoutElement element, PrintData data, LayoutRenderContext context)
     {
-        var bytes = ResolveImageBytes(element.ResourceId, data);
+        // resourceId=REPORT.LOGO：列表型版式里的公司 LOGO（来自报表页头设置）。
+        // 与单据 LOGO 走同一张图片元素、同一条绘制路径，只是"从哪拿到字节"不同。
+        var bytes = string.Equals(element.ResourceId, "REPORT.LOGO", StringComparison.OrdinalIgnoreCase)
+            ? context.Report?.Logo
+            : ResolveImageBytes(element.ResourceId, data);
         if (bytes is null || bytes.Length == 0) return;
         var image = container.Image(bytes);
         if (element.W > 0) image.FitWidth();
@@ -481,6 +512,131 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
     // table 渲染（明细自动分页 + 表头重复 + 合计；master 数据源名值对表）
     // ============================================================================
 
+    /// <summary>
+    /// 报表清单表（`dataSource=report`）：列来自 <see cref="ReportListPayload.Columns"/>，
+    /// 支持分组表头行与小计行（分组/小计口径由打印面板决定，聚合走 <see cref="ReportListGrouping"/>）。
+    ///
+    /// <para>
+    /// 表头**跨页重复**是清单类打印的基本要求（第二页没有表头，读的人得回去翻第一页）。
+    /// 这里恒开：报表清单不像单据那样有"表头只在第一页"的场景。
+    /// </para>
+    /// </summary>
+    private static void RenderReportTable(IContainer container, LayoutElement table, LayoutRenderContext context)
+    {
+        var payload = context.Report;
+        if (payload is null || payload.Columns.Count == 0) return;
+
+        var columns = payload.Columns;
+        var offsetColumns = columns.Count > 0 && string.Equals(columns[0].Key, "ROW_INDEX", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        var body = offsetColumns == 1 ? columns.Skip(1).ToList() : columns;
+        if (body.Count == 0) return;
+
+        var summaries = ReportListGrouping.BuildGroupSummaries(
+            payload.Rows, payload.GroupFields, payload.ShowGroup, payload.ShowDetail, payload.SubtotalKeys);
+        var useGrouping = payload.ShowGroup && payload.GroupFields.Count > 0 && summaries.Count > 0;
+
+        container.Table(t =>
+        {
+            t.ColumnsDefinition(definition =>
+            {
+                foreach (var _ in body) definition.RelativeColumn();
+            });
+
+            if (table.ShowHeader ?? true)
+            {
+                t.Header(header =>
+                {
+                    foreach (var column in body)
+                        header.Cell().Background(Colors.Grey.Lighten3).Padding(3)
+                            .Text(column.Label).FontSize(8).SemiBold();
+                });
+            }
+
+            if (useGrouping)
+            {
+                var rowIndex = 0;
+                foreach (var summary in summaries)
+                {
+                    t.Cell().ColumnSpan((uint)body.Count).Background(Colors.Blue.Lighten5).Padding(3)
+                        .Text(summary.Key).FontSize(8).SemiBold();
+                    while (rowIndex < payload.Rows.Count
+                           && ReportListGrouping.GroupKeyOf(payload.Rows[rowIndex], payload.GroupFields) == summary.Key)
+                    {
+                        if (payload.ShowDetail) EmitReportRow(t, body, payload.Rows[rowIndex]);
+                        rowIndex++;
+                    }
+                    EmitReportSubtotal(t, body, summary, table.TotalsLabel ?? "小计");
+                }
+                for (; rowIndex < payload.Rows.Count; rowIndex++)
+                    if (payload.ShowDetail) EmitReportRow(t, body, payload.Rows[rowIndex]);
+                return;
+            }
+
+            foreach (var row in payload.Rows)
+                if (payload.ShowDetail) EmitReportRow(t, body, row);
+
+            if ((table.ShowTotals ?? false) && payload.Rows.Count > 0)
+            {
+                var overall = new ReportListGrouping.GroupSummary(string.Empty,
+                    payload.SubtotalKeys.Select(key => (key, SumColumn(payload.Rows, key))).ToList());
+                EmitReportSubtotal(t, body, overall, table.TotalsLabel ?? "合计");
+            }
+        });
+    }
+
+    private static decimal SumColumn(IReadOnlyList<Dictionary<string, object?>> rows, string key)
+    {
+        var total = 0m;
+        foreach (var row in rows)
+        {
+            var raw = row.GetValueOrDefault(key);
+            if (raw is null || raw is DBNull) continue;
+            if (decimal.TryParse(Convert.ToString(raw, CultureInfo.InvariantCulture),
+                    NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+                total += parsed;
+        }
+        return total;
+    }
+
+    private static void EmitReportRow(TableDescriptor table, IReadOnlyList<ReportColumn> columns, Dictionary<string, object?> row)
+    {
+        foreach (var column in columns)
+        {
+            var value = PdfLayout.FormatValue(row.GetValueOrDefault(column.Key), column.DisplayFormat);
+            var cell = table.Cell().Padding(2);
+            if (IsNumeric(column.DataType)) cell = cell.AlignRight();
+            cell.Text(value).FontSize(8);
+        }
+    }
+
+    private static void EmitReportSubtotal(
+        TableDescriptor table, IReadOnlyList<ReportColumn> columns,
+        ReportListGrouping.GroupSummary summary, string label)
+    {
+        var totals = summary.Totals.ToDictionary(pair => pair.Column, pair => pair.Total, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < columns.Count; i++)
+        {
+            var cell = table.Cell().Background(Colors.Grey.Lighten2).Padding(2);
+            if (i == 0)
+            {
+                cell.Text(label).FontSize(8).SemiBold();
+                continue;
+            }
+            if (!totals.TryGetValue(columns[i].Key, out var total))
+            {
+                cell.Text(string.Empty).FontSize(8);
+                continue;
+            }
+            cell.AlignRight().Text(PdfLayout.FormatValue(total, columns[i].DisplayFormat)).FontSize(8).SemiBold();
+        }
+    }
+
+    private static bool IsNumeric(string dataType) =>
+        dataType.Contains("float", StringComparison.OrdinalIgnoreCase)
+        || dataType.Contains("int", StringComparison.OrdinalIgnoreCase)
+        || dataType.Contains("decimal", StringComparison.OrdinalIgnoreCase)
+        || dataType.Contains("money", StringComparison.OrdinalIgnoreCase);
+
     private static void RenderTable(
         IContainer container, LayoutElement table, PrintData data, LayoutRenderContext context,
         float availableWidth)
@@ -488,6 +644,13 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
         if (string.Equals(table.DataSource, "master", StringComparison.OrdinalIgnoreCase))
         {
             RenderMasterTable(container, table, data);
+            return;
+        }
+        // 报表清单表：列由报表数据决定（动态列），分组/小计来自打印面板的选择。
+        // 与 details/master 并列，是同一张 table 元素的第三种数据来源，而不是另一条渲染旁路。
+        if (string.Equals(table.DataSource, "report", StringComparison.OrdinalIgnoreCase))
+        {
+            RenderReportTable(container, table, context);
             return;
         }
 
@@ -686,7 +849,33 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
         }
         if (reference.StartsWith("SYS.", StringComparison.OrdinalIgnoreCase))
             return ResolveSystemValue(reference["SYS.".Length..], data, context);
+        if (reference.StartsWith("REPORT.", StringComparison.OrdinalIgnoreCase))
+            return ResolveReportValue(reference["REPORT.".Length..], context);
         return null;
+    }
+
+    /// <summary>
+    /// 报表页占位符取值（列表型版式专用）：值来自 <see cref="LayoutRenderContext.Report"/>。
+    /// 未设报表数据时一律返回 null——单据渲染里写 `{{REPORT.X}}` 得到空串而不是抛异常，
+    /// 与其它未知引用的 fail-closed 口径一致（宁可少画，不可画错）。
+    /// </summary>
+    private static string? ResolveReportValue(string name, LayoutRenderContext context)
+    {
+        var report = context.Report;
+        if (report is null) return null;
+        return name.ToUpperInvariant() switch
+        {
+            "TITLE" => report.Title,
+            "ISO" => report.IsoNo,
+            "CONDITIONS" => report.Conditions,
+            "TAIL" => report.TailText,
+            "PRINT_PERSON" => context.PrintPerson ?? Environment.UserName,
+            "HEADER_COMPANY" => report.CompanyName,
+            "HEADER_COMPANY_EN" => report.CompanyNameEn,
+            "HEADER_TEXT" => report.HeaderText,
+            "FOOTER_TEXT" => report.FooterText,
+            _ => null,
+        };
     }
 
     private static object? ResolveMasterValue(string reference, PrintData? data)

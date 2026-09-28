@@ -54,7 +54,29 @@ public sealed class ReportFormatRepository(
 
             var samplePath = Path.Combine(directory, "sample.json");
             var sample = File.Exists(samplePath) ? File.ReadAllText(samplePath) : null;
-            return new ReportFormatPackage(format, layout, File.ReadAllText(layoutPath), sample);
+
+            // 列表型版式是**可选**的附加资产：只有需要"报表清单"打印的包才带它。
+            // 解析失败时按"没有列表版式"处理并记警告——不能把整包判成不可用，
+            // 否则一份坏掉的报表版式会连单据打印一起拖下水。
+            LayoutDocument? listLayout = null;
+            string? rawListLayout = null;
+            var listPath = Path.Combine(directory, "layout.list.json");
+            if (File.Exists(listPath))
+            {
+                rawListLayout = File.ReadAllText(listPath);
+                try
+                {
+                    listLayout = JsonSerializer.Deserialize<LayoutDocument>(rawListLayout, JsonOptions);
+                }
+                catch (JsonException ex)
+                {
+                    logger.LogWarning(ex, "列表型版式解析失败，按无列表版式处理 formatId={FormatId}", formatId);
+                    listLayout = null;
+                    rawListLayout = null;
+                }
+            }
+
+            return new ReportFormatPackage(format, layout, File.ReadAllText(layoutPath), sample, listLayout, rawListLayout);
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
@@ -73,6 +95,26 @@ public sealed class ReportFormatRepository(
         if (direct is not null) return direct;
         if (moduleId is 1401 or 1601) return GetPackage("_card");
         return GetPackage("_generic");
+    }
+
+    /// <summary>
+    /// 报表打印用的**列表型版式**解析：报表自带格式（`REPORT.FORMAT_ID`）→ 该报表所属模块的格式 → `_generic`，
+    /// 取其中第一份带列表版式的包。都取不到返回 null，由调用方决定怎么办（不在这里悄悄退回旧实现）。
+    /// </summary>
+    public string? GetReportListLayout(string? formatId, int moduleId)
+    {
+        var candidates = new List<string?>();
+        if (!string.IsNullOrWhiteSpace(formatId)) candidates.Add(formatId!.Trim());
+        candidates.Add(moduleId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        candidates.Add("_generic");
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate)) continue;
+            var package = GetPackage(candidate!);
+            if (package?.ListLayout is not null) return package.RawListLayoutJson;
+        }
+        logger.LogWarning("报表没有可用的列表型版式 formatId={FormatId} module={ModuleId}", formatId, moduleId);
+        return null;
     }
 
     /// <summary>内置格式包模板清单（模板库：报告全部内置包，跳过 _card/_generic 回退包）。</summary>

@@ -15,7 +15,7 @@ public class ReportPdfGroupTests
         {
             Row("A", 1m), Row("A", 2m), Row("B", 5m),
         };
-        var summaries = ReportPdfService.BuildGroupSummaries(rows, ["PRODUCT.PRO_NO"], true, true, ["QTY"]);
+        var summaries = ReportListGrouping.BuildGroupSummaries(rows, ["PRODUCT.PRO_NO"], true, true, ["QTY"]);
 
         Assert.Equal(2, summaries.Count);
         Assert.Equal("A", summaries[0].Key);
@@ -28,7 +28,7 @@ public class ReportPdfGroupTests
     public void GroupSummaries_HideDetail_ProducesZeroTotals()
     {
         var rows = new List<Dictionary<string, object?>> { Row("A", 9m) };
-        var summaries = ReportPdfService.BuildGroupSummaries(rows, ["PRODUCT.PRO_NO"], true, false, ["QTY"]);
+        var summaries = ReportListGrouping.BuildGroupSummaries(rows, ["PRODUCT.PRO_NO"], true, false, ["QTY"]);
         Assert.Single(summaries);
         Assert.Equal(0m, summaries[0].Totals.Single(pair => pair.Column == "QTY").Total);
     }
@@ -37,6 +37,6 @@ public class ReportPdfGroupTests
     public void GroupSummaries_NoGrouping_ReturnsEmpty()
     {
         var rows = new List<Dictionary<string, object?>> { Row("A", 9m) };
-        Assert.Empty(ReportPdfService.BuildGroupSummaries(rows, [], true, true, ["QTY"]));
+        Assert.Empty(ReportListGrouping.BuildGroupSummaries(rows, [], true, true, ["QTY"]));
     }
 }

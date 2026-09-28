@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "kind": "list",
+  "page": {
+    "size": "A4",
+    "orientation": "auto",
+    "margin": {
+      "top": 11.29,
+      "right": 11.29,
+      "bottom": 11.29,
+      "left": 11.29
+    }
+  },
+  "sections": {
+    "header": {
+      "height": 28,
+      "elements": [
+        {
+          "id": "logo",
+          "type": "image",
+          "x": 0,
+          "y": 0.71,
+          "w": 24.7,
+          "h": 12,
+          "resourceId": "REPORT.LOGO"
+        },
+        {
+          "id": "h1",
+          "type": "text",
+          "x": 0,
+          "y": 0.71,
+          "w": 187.4,
+          "h": 7.2,
+          "content": "{{REPORT.HEADER_COMPANY}}",
+          "style": {
+            "fontSize": 14,
+            "bold": true,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h2",
+          "type": "text",
+          "x": 0,
+          "y": 7.4,
+          "w": 187.4,
+          "h": 4.5,
+          "content": "{{REPORT.HEADER_COMPANY_EN}}",
+          "style": {
+            "fontSize": 9,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h3",
+          "type": "text",
+          "x": 0,
+          "y": 11.7,
+          "w": 187.4,
+          "h": 5.5,
+          "content": "{{REPORT.TITLE}}",
+          "style": {
+            "fontSize": 12,
+            "semiBold": true,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h4",
+          "type": "text",
+          "x": 0,
+          "y": 17,
+          "w": 187.4,
+          "h": 4.2,
+          "content": "{{REPORT.HEADER_TEXT}}",
+          "style": {
+            "fontSize": 8,
+            "align": "center"
+          }
+        },
+        {
+          "id": "h5",
+          "type": "text",
+          "x": 0,
+          "y": 20.5,
+          "w": 187.4,
+          "h": 4.2,
+          "content": "ISO：{{REPORT.ISO}}",
+          "style": {
+            "fontSize": 8,
+            "align": "right"
+          }
+        },
+        {
+          "id": "h6",
+          "type": "line",
+          "x": 0,
+          "y": 25.4,
+          "w": 187.4,
+          "h": 0.2,
+          "style": {
+            "lineWidth": 0.5
+          }
+        }
+      ]
+    },
+    "content": {
+      "elements": [
+        {
+          "id": "cond",
+          "type": "text",
+          "x": 0,
+          "y": 0,
+          "w": 187.4,
+          "h": 4.2,
+          "content": "{{REPORT.CONDITIONS}}",
+          "style": {
+            "fontSize": 8
+          }
+        },
+        {
+          "id": "rows",
+          "type": "table",
+          "x": 0,
+          "y": 6,
+          "w": 0,
+          "h": 0,
+          "dataSource": "report",
+          "showHeader": true,
+          "repeatHeaderOnPageBreak": true,
+          "showTotals": false,
+          "totalsLabel": "合计"
+        }
+      ]
+    },
+    "footer": {
+      "height": 6,
+      "elements": [
+        {
+          "id": "f1",
+          "type": "text",
+          "x": 0,
+          "y": 1.5,
+          "w": 100,
+          "h": 4,
+          "content": "{{REPORT.FOOTER_TEXT}}",
+          "style": {
+            "fontSize": 8
+          }
+        },
+        {
+          "id": "f2",
+          "type": "text",
+          "x": 100,
+          "y": 1.5,
+          "w": 87.4,
+          "h": 4,
+          "content": "列印人：{{REPORT.PRINT_PERSON}}　第 {{SYS.PAGE_NUMBER}} / {{SYS.TOTAL_PAGES}} 页",
+          "style": {
+            "fontSize": 8,
+            "align": "right"
+          }
+        }
+      ]
+    }
+  }
+}
