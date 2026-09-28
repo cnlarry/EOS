@@ -23,7 +23,9 @@
 - 金额、数量、日期精度以服务端为准；ID 在前端一律按字符串处理；
 - 仓库代码读取元数据使用 `sys.*` 目录视图，不使用 `INFORMATION_SCHEMA`；
 - 注释描述「为什么这样写」，不记录任务编号或开发过程；
-- 不提交任何连接串口令、Cookie 密钥或其它凭据。
+- 不提交任何连接串口令、Cookie 密钥或其它凭据；
+- 新增第三方依赖时，同步在 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) 登记组件、版本与许可；
+  非 MIT / Apache-2.0 的许可要先确认约束可接受（如 QuestPDF 的 Community License 有营收门槛）。
 
 ## 数据库元数据的修改
 
