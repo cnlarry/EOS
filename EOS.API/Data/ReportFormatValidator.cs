@@ -152,6 +152,13 @@ public sealed class ReportFormatValidator
             layout.Sections.Footer.Elements,
         };
 
+        // content 段的 flow 会被渲染器**静默忽略**——正文段是"表上方的静态带 + 流动表格"，
+        // 静态元素的坐标即语义（谁在表上方、谁在表下方）；页头页脚才需要按内容流动。
+        // 静默忽略比报错更坏：作者以为写了流动、实际拿到绝对定位，且没有任何提示。
+        if (layout.Sections.Content.Flow)
+            errors.Add("content 段不支持 flow=true：正文段的元素坐标决定它落在表格上方还是下方，"
+                       + "而表格本身已经按内容分页。需要按内容流动的是 header / footer。");
+
         // 多页模板走**动态部件**，而动态部件要求内容单页装得下；流动分区的高度由内容决定，
         // 两者并存会在渲染时抛"Dynamic component generated content that does not fit on a single page"。
         // 拦在保存校验，别让它等到有人点打印才炸。
