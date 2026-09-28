@@ -23,7 +23,13 @@ public sealed record ReportPdfRenderInput(
 /// 通用报表 PDF 模板（覆盖 RptList/RptList2/RptDirect/RptInteg）：
 /// 页头带（公司名/LOGO/报表名/ISO）→ 条件描述 → 明细表（表头跨页重复、
 /// 分组表头行、升降序由查询层完成）→ 表尾 → 页脚（页脚文字/列印人/页码）。
-/// v1 分组只输出分组表头，不生成小计（技术债）。
+///
+/// <para>
+/// **已退役出生产路径**：报表打印改走版式解释层（<see cref="QuestPdfLayoutRenderer.RenderReportList"/>
+/// + <see cref="ReportListPdfComposer"/>）。本类保留作**对拍基线**——列表型版式资产改的是页面结构，
+/// 而"同样的数据排成几页"只有跟一个既有的、不再演进的实现比才有意义
+/// （见 <c>ReportListPdfLiveParityTests</c>）。**不要把它接回控制器或调度器**。
+/// </para>
 /// </summary>
 public sealed class ReportPdfService(IWebHostEnvironment environment, ILogger<ReportPdfService> logger)
 {

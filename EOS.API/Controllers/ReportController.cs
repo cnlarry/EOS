@@ -16,7 +16,9 @@ public sealed class ReportController(
     ModuleRightsRepository rightsRepository,
     IPermissionService permissions,
     WorkbenchAuditWriter auditWriter,
-    ReportPdfService reportPdfService) : ControllerBase
+    ReportFormatRepository reportFormats,
+    ILayoutRenderer layoutRenderer,
+    IWebHostEnvironment environment) : ControllerBase
 {
     [HttpGet("definition")]
     public async Task<IActionResult> Definition(int moduleId, [FromQuery] string? reportId, CancellationToken token)
@@ -132,14 +134,20 @@ public sealed class ReportController(
             groupFields,
             token);
 
-        // 报表打印仍走命令式实现。版式解释层的前置件（ReportListPdfComposer、
-        // QuestPdfLayoutRenderer.RenderReportList、ReportFormatRepository.GetReportListLayout
-        // 与 ReportFormats/_generic/layout.list.json）均已就位，但解释层的页头固定留白大于旧流式
-        // 页头，相同数据页数多约 18%，逐张对拍未通过，故暂不切换——宁可两套并存，也不让同样的
-        // 数据多出 18% 的纸。切换时必须与 ReportInboxScheduler 同进同退。
-        var pdf = reportPdfService.Generate(new ReportPdfRenderInput(
-            meta, definition, query, BuildConditionDescription(definition, request), userId,
-            groupFields, request.ShowGroup, request.ShowDetail, header, tailText));
+        // 报表打印走**版式解释层**，与单据打印同一套：页面结构在版式资产里
+        // （ReportFormats/_generic/layout.list.json），列/行/分组由编排层投影
+        // （ReportListPdfComposer），这里只管"取到版式 → 交给解释层"。
+        // 取不到列表型版式是**部署缺失**（`_generic` 是兜底包，正常一定能取到）：宁可 500 说清，
+        // 也不悄悄退回命令式渲染——那样"两套渲染"会以另一种方式复活。
+        var layoutJson = reportFormats.GetReportListLayout(report.FormatId, moduleId)
+            ?? throw new InvalidOperationException(
+                $"报表没有可用的列表型版式 formatId={report.FormatId} module={moduleId}（检查 ReportFormats/_generic/layout.list.json）。");
+        var composed = ReportListPdfComposer.Compose(
+            new ReportPdfRenderInput(
+                meta, definition, query, BuildConditionDescription(definition, request), userId,
+                groupFields, request.ShowGroup, request.ShowDetail, header, tailText),
+            environment);
+        var pdf = layoutRenderer.RenderReportList(composed.Data, layoutJson, composed.Context);
         await auditWriter.WriteBestEffortAsync(moduleId, report.ReportId, "PRINT", $"报表打印 {definition.Title}", userId, "REPORT_PRINT", result: 1, null, token);
         return File(pdf, "application/pdf", $"{definition.Title}.pdf");
     }

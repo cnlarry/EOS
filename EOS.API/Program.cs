@@ -248,7 +248,6 @@ builder.Services.AddScoped<ReportRepository>();
 builder.Services.AddScoped<PrintSettingsRepository>();
 builder.Services.AddScoped<SystemParameterService>();
 builder.Services.AddScoped<ReportAdminRepository>();
-builder.Services.AddScoped<ReportPdfService>();
 builder.Services.AddScoped<ReportInboxRepository>();
 builder.Services.AddScoped<SearchCenterRepository>();
 builder.Services.AddScoped<ImportService>();
