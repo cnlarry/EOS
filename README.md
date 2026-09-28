@@ -87,3 +87,12 @@ EOS.Web ──HTTP──> EOS.API ──SQL──> SQL Server (EOS.ERP)
 ## 许可证
 
 [MIT](LICENSE)
+
+## 第三方组件
+
+本项目使用若干开源组件（PDF 生成、中文字体、UI 与状态管理库等）。
+各组件的许可与约束登记在 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+
+其中 **QuestPDF** 采用 Community License（双许可模式，非标准开源许可），
+对年营收超过 100 万美元的组织、公共部门与上市公司不适用——
+**下游使用者需自行确认是否落在适用范围内**。
