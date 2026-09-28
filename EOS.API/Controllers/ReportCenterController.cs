@@ -60,11 +60,6 @@ public sealed class ReportCenterController(
                               WHERE gu.USER_ID = @UserId AND h.M_IDX = r.M_IDX AND ISNULL(h.REPORT_TAG, 0) = 1)
                 )
               )
-              AND NOT EXISTS (
-                SELECT 1 FROM dbo.SYSDD_REPORT o WITH (NOLOCK)
-                WHERE o.USER_ID = @UserId AND o.M_IDX = r.M_IDX AND o.REPORT_ID = r.REPORT_ID
-                  AND ISNULL(o.PREVIEW_TAG, 0) = 0
-              )
             ORDER BY DOMAIN_DESC, ISNULL(p.FAVORITE_TAG, 0) DESC, ISNULL(p.SORT_IDX, 0), ISNULL(r.IS_DEFAULT, 0) DESC, r.REPORT_ID;
             """;
 
