@@ -9,7 +9,10 @@
 - 确保 `EOS.API` 通过 `dotnet build`，新增行为尽量带测试；
 - 涉及数据库结构的改动必须走 DbUp 迁移：
   在 `EOS.API/Data/Migrations/` 新增 `NNN_描述.sql`（`NNN` 取现有最大编号 + 1），
-  对象命名全大写，并在本地启动时确认迁移自动执行成功。
+  对象命名全大写，并在本地启动时确认迁移自动执行成功；
+- 改动到接口、路由、错误码、配置项、权限键、公共组件 props 或数据库对象结构时，
+  同步更新 `docs/guide/` 下对应篇目（篇目与源码的对应关系见该目录 `_map.md`），
+  并运行 `pwsh docs/guide/_tools/check-freshness.ps1` 确认没有遗留的落后篇目。
 
 ## 代码约定
 
