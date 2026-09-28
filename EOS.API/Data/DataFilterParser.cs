@@ -61,6 +61,9 @@ internal static class DataFilterParser
             ["SFC_PLAN_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PLAN_NO", "PLAN_TYPE", "SORT_IDX" },
             ["SFC_PLAN_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PLAN_NO", "PLAN_TYPE", "SHIPMENT_NO", "SHIPMENT_SERIAL_NO" },
             ["SFC_PROCESS_M"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRO_NO" },
+            // SAMPLE_PRO 是 PRODUCT 的整表副本（样品产品主档），按 PRO_NO 关联；
+            // 受控子查询只读该列，用于"未建样品的成品资料"这类反向清单。
+            ["SAMPLE_PRO"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRO_NO" },
             ["SUPPLIER_PRICE_D"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRO_NO", "SUPPLIER_ID" },
             ["SYSDD"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "M_IDX", "USER_ID" },
             ["SYSDG_USER"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "G_IDX", "USER_ID" },
