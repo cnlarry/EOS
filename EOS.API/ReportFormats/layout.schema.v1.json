@@ -8,14 +8,14 @@
   "required": ["schemaVersion", "kind", "page", "sections"],
   "properties": {
     "schemaVersion": { "const": 1 },
-    "kind": { "enum": ["document"] },
+    "kind": { "enum": ["document", "list"], "description": "document=单据型版式（固定字段与明细）；list=列表型版式（列由报表数据决定，用于报表清单打印）" },
     "page": {
       "type": "object",
       "additionalProperties": false,
       "required": ["size", "orientation", "margin"],
       "properties": {
         "size": { "enum": ["A3", "A4", "A5", "LETTER", "LEGAL"] },
-        "orientation": { "enum": ["portrait", "landscape"] },
+        "orientation": { "enum": ["portrait", "landscape", "auto"], "description": "auto=按内容列数决定（列表型版式：列多于 12 列自动横版）" },
         "margin": {
           "type": "object",
           "additionalProperties": false,
@@ -93,7 +93,7 @@
         "barcodeColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "description": "barcode：前景色（hex）" },
         "barcodeBackground": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "description": "barcode：背景色（hex）" },
         "barcodeLogo": { "type": "string", "description": "barcode：中心 Logo 资源 ID（服务端白名单，如 SYS.LOGO）" },
-        "dataSource": { "enum": ["details", "master"], "description": "table：details=明细行；master=主档字段名值对" },
+        "dataSource": { "enum": ["details", "master", "report"], "description": "table：details=明细行；master=主档字段名值对；report=报表清单行（列由报表数据决定，列表型版式专用）" },
         "columns": {
           "type": "array",
           "maxItems": 60,

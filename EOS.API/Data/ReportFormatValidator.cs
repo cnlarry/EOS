@@ -52,6 +52,26 @@ public sealed class ReportFormatValidator
     private static readonly HashSet<string> DataSources = new(StringComparer.OrdinalIgnoreCase)
     {
         "details", "master",
+        // report：列表型版式的表格——列不写死在版式里，由报表数据本身决定（列是动态的，最多可达 86 列）。
+        "report",
+    };
+
+    /// <summary>
+    /// 列表型版式可引用的报表级占位符 `{{REPORT.*}}`（对应 QuestPdfLayoutRenderer 的报表渲染分支）。
+    /// 与 `{{SYS.*}}` 分开命名而不是复用：`SYS.*` 是单据上下文的语义（客户、明细数…），
+    /// 报表页里那些名字要么无意义、要么含义不同（报表的"标题"是报表名，不是单据类型名）。
+    /// </summary>
+    private static readonly HashSet<string> ReportReferences = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // 页码不走这里：它由渲染器直接画成"当前页/总页"，用 {{SYS.PAGE_NUMBER}} / {{SYS.TOTAL_PAGES}}，
+        // 与单据版式同一套写法——同一种东西两种写法，迟早会有人写错那一种。
+        "TITLE", "ISO", "CONDITIONS", "TAIL", "PRINT_PERSON",
+        "HEADER_COMPANY", "HEADER_COMPANY_EN", "HEADER_TEXT", "FOOTER_TEXT",
+    };
+
+    private static readonly HashSet<string> LayoutKinds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "document", "list",
     };
 
     /// <summary>校验 layout.json 是否可安全保存/渲染；Ok = 通过。</summary>
@@ -87,10 +107,15 @@ public sealed class ReportFormatValidator
 
         if (layout.SchemaVersion != 1)
             errors.Add($"不支持的 schemaVersion：{layout.SchemaVersion}，一期只支持 1。");
-        if (!string.Equals(layout.Kind, "document", StringComparison.OrdinalIgnoreCase))
-            errors.Add($"一期只支持 document 版式，收到 kind={layout.Kind}。");
-        if (!string.Equals(format.Kind, "document", StringComparison.OrdinalIgnoreCase))
-            errors.Add($"format.json kind={format.Kind} 与 layout kind=document 不匹配。");
+        if (!LayoutKinds.Contains(layout.Kind))
+            errors.Add($"不支持的版式类型 kind={layout.Kind}（document / list）。");
+        // format.json 的 kind 描述的是**格式包的主用途**（单据或清单），列表型版式是包里的附加资产，
+        // 因此这里只要求两者都是受支持的类型，不要求相等——否则 _generic 这种"一包两版式"就永远配不平。
+        if (!LayoutKinds.Contains(format.Kind))
+            errors.Add($"format.json kind={format.Kind} 不是受支持的版式类型（document / list）。");
+        if (string.Equals(layout.Kind, "list", StringComparison.OrdinalIgnoreCase)
+            && !HasReportDataSource(layout))
+            errors.Add("列表型版式的 content 里必须有 dataSource=report 的表格，否则这张报表打印出来是空页。");
 
         var pageSize = PageSizeMm(layout.Page.Size);
         if (pageSize is null)
@@ -183,9 +208,13 @@ public sealed class ReportFormatValidator
             }
             else if (!DataSources.Contains(element.DataSource))
             {
-                errors.Add($"{section}[{id}] table dataSource 非法：{element.DataSource}（details/master）。");
+                errors.Add($"{section}[{id}] table dataSource 非法：{element.DataSource}（details/master/report）。");
             }
-            if (element.Columns is not null)
+            // dataSource=report：列由报表数据决定，版式里的 Columns 只是**列宽/对齐/顺序的覆盖**，
+            // 引用的列键不在 dataContract 里（dataContract 描述的是单据字段，不是报表列），
+            // 因此这里不做白名单校验——它不构成取数入口，数据本身已在取数阶段过了权限与列过滤。
+            var reportTable = string.Equals(element.DataSource, "report", StringComparison.OrdinalIgnoreCase);
+            if (element.Columns is not null && !reportTable)
             {
                 foreach (var column in element.Columns)
                 {
@@ -237,10 +266,32 @@ public sealed class ReportFormatValidator
             if (!SystemReferences.Contains(reference["SYS.".Length..]))
                 errors.Add($"[{elementId}] 引用 SYS.{reference["SYS.".Length..]} 不在系统值白名单。");
         }
+        else if (reference.StartsWith("REPORT.", StringComparison.OrdinalIgnoreCase))
+        {
+            // 列型版式的报表页占位符：白名单与 SYS.* 同款——引用写错必须当场报错，
+            // 不能等到打印时渲染成空串（那会表现为"某天开始页眉少了一截"，没人会当成配置错误）。
+            if (!ReportReferences.Contains(reference["REPORT.".Length..]))
+                errors.Add($"[{elementId}] 引用 REPORT.{reference["REPORT.".Length..]} 不在报表页白名单。");
+        }
         else
         {
-            errors.Add($"[{elementId}] 字段引用命名空间非法：{reference}（MASTER.* / DETAILS.* / SYS.*）。");
+            errors.Add($"[{elementId}] 字段引用命名空间非法：{reference}（MASTER.* / DETAILS.* / SYS.* / REPORT.*）。");
         }
+    }
+
+    /// <summary>列表型版式必须有一个 dataSource=report 的表格元素（三节任一处），否则打出来是空页。</summary>
+    private static bool HasReportDataSource(LayoutDocument layout)
+    {
+        foreach (var section in new[] { layout.Sections.Header, layout.Sections.Content, layout.Sections.Footer })
+        {
+            foreach (var element in section.Elements)
+            {
+                if (string.Equals(element.Type, "table", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(element.DataSource, "report", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        return false;
     }
 
     private static (double Width, double Height)? PageSizeMm(string size)

@@ -121,7 +121,7 @@ public sealed class ReportPdfService(IWebHostEnvironment environment, ILogger<Re
         var subtotalColumns = columns
             .Where(column => PdfLayout.IsSubtotalColumn(column, input.Definition.MasterPkOrder))
             .ToList();
-        var summaries = BuildGroupSummaries(
+        var summaries = ReportListGrouping.BuildGroupSummaries(
             input.Data.Rows, input.GroupFields, input.ShowGroup, input.ShowDetail,
             subtotalColumns.Select(column => column.Key).ToList());
         logger.LogDebug("报表 PDF 分组 module={ModuleId} rows={Rows} groupFields={GroupFields} subtotalColumns={SubtotalColumns} summaries={Summaries} firstKey={FirstKey}",
@@ -134,7 +134,8 @@ public sealed class ReportPdfService(IWebHostEnvironment environment, ILogger<Re
             {
                 table.Cell().ColumnSpan((uint)columns.Count).Background(Colors.Blue.Lighten5).Padding(3)
                     .Text(summary.Key).FontSize(8).SemiBold();
-                while (rowIndex < input.Data.Rows.Count && GroupKeyOf(input.Data.Rows[rowIndex], input.GroupFields) == summary.Key)
+                while (rowIndex < input.Data.Rows.Count
+                       && ReportListGrouping.GroupKeyOf(input.Data.Rows[rowIndex], input.GroupFields) == summary.Key)
                 {
                     if (input.ShowDetail) EmitDetailRow(table, columns, input.Data.Rows[rowIndex]);
                     rowIndex++;
@@ -165,17 +166,12 @@ public sealed class ReportPdfService(IWebHostEnvironment environment, ILogger<Re
         }
     }
 
-    private static string? GroupKeyOf(Dictionary<string, object?> row, IReadOnlyList<string> groupFields)
-    {
-        if (groupFields.Count == 0) return null;
-        return string.Join(" / ", groupFields.Select(field =>
-            PdfLayout.FormatValue(row.GetValueOrDefault(FieldName(field)))));
-    }
+
 
     private static void EmitGroupFooter(
         TableDescriptor table,
         IReadOnlyList<ReportColumn> columns,
-        GroupSummary summary)
+        ReportListGrouping.GroupSummary summary)
     {
         var subtotal = summary.Totals.ToDictionary(pair => pair.Column, pair => pair.Total, StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < columns.Count; i++)
@@ -196,56 +192,6 @@ public sealed class ReportPdfService(IWebHostEnvironment environment, ILogger<Re
         }
     }
 
-    internal sealed record GroupSummary(string Key, IReadOnlyList<(string Column, decimal Total)> Totals);
-
-    /// <summary>
-    /// 分组小计聚合（纯逻辑，便于单元测试）：按分组字段顺序聚合同组行，
-    /// 对 subtotalKeys 数值列求和；隐藏明细时不参与小计。
-    /// </summary>
-    internal static List<GroupSummary> BuildGroupSummaries(
-        IReadOnlyList<Dictionary<string, object?>> rows,
-        IReadOnlyList<string> groupFields,
-        bool showGroup,
-        bool showDetail,
-        IReadOnlyList<string> subtotalKeys)
-    {
-        var summaries = new List<GroupSummary>();
-        string? current = null;
-        var totals = new decimal[subtotalKeys.Count];
-        foreach (var row in rows)
-        {
-            var key = showGroup && groupFields.Count > 0
-                ? string.Join(" / ", groupFields.Select(field =>
-                    PdfLayout.FormatValue(row.GetValueOrDefault(FieldName(field)))))
-                : null;
-            if (key is not null && key != current)
-            {
-                if (current is not null) summaries.Add(BuildSummary(current, subtotalKeys, totals));
-                totals = new decimal[subtotalKeys.Count];
-                current = key;
-            }
-            if (key is not null && !showDetail) continue;
-            for (var i = 0; i < subtotalKeys.Count; i++)
-            {
-                var raw = row.GetValueOrDefault(subtotalKeys[i]);
-                if (raw is null || raw is DBNull) continue;
-                if (decimal.TryParse(Convert.ToString(raw, CultureInfo.InvariantCulture),
-                        NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
-                    totals[i] += parsed;
-            }
-        }
-        if (current is not null) summaries.Add(BuildSummary(current, subtotalKeys, totals));
-        return summaries;
-    }
-
-    private static GroupSummary BuildSummary(string key, IReadOnlyList<string> subtotalKeys, decimal[] totals)
-    {
-        var items = new List<(string Column, decimal Total)>(subtotalKeys.Count);
-        for (var i = 0; i < subtotalKeys.Count; i++) items.Add((subtotalKeys[i], totals[i]));
-        return new GroupSummary(key, items);
-    }
-
-    private static string FieldName(string qualified) => qualified.Contains('.')
-        ? qualified.Split('.')[^1]
-        : qualified;
+    // 分组小计的聚合口径只有一份：ReportListGrouping（纯逻辑、可单测）。
+    // 同一个口径在两处各写一遍，就是"改了一处、另一处还是老样子"的开端。
 }

@@ -36,12 +36,24 @@ public sealed record ReportFormatGrouping(string Field, string Sort, string Aggr
 /// <summary>bindings：单据打印型绑定 (docType=模块, clientId)；clientId 为空 = 单据类型默认。</summary>
 public sealed record ReportFormatBinding(string DocType, string? ClientId);
 
-/// <summary>格式包 = format.json + layout.json（+ sample.json 回归护栏）。</summary>
+/// <summary>
+/// 格式包 = format.json + layout.json（+ sample.json 回归护栏）。
+///
+/// <para>
+/// 还可以带一份**列表型版式** <c>layout.list.json</c>（<c>kind: list</c>）：单据打印用 layout.json，
+/// 报表打印用列表版式。两者共用同一套 schema、字段白名单、解释层与设计器资产链路，
+/// 区别只在"页面里画什么"——单据是固定字段与明细，报表是**列由数据决定**的清单。
+/// 一份格式包同时带两种版式，是为了让"同一个业务对象，单据怎么打、清单怎么打"落在同一个包里，
+/// 而不是让报表打印再去开一条只认 PDF 的旁路。
+/// </para>
+/// </summary>
 public sealed record ReportFormatPackage(
     ReportFormatDefinition Format,
     LayoutDocument Layout,
     string RawLayoutJson,
-    string? RawSampleJson = null);
+    string? RawSampleJson = null,
+    LayoutDocument? ListLayout = null,
+    string? RawListLayoutJson = null);
 
 // ============================================================================
 // layout.json schema v1（见 ReportFormats/layout.schema.v1.json）
@@ -127,5 +139,43 @@ public sealed record LayoutElementStyle(
     double? LineWidth = null,
     bool? Striped = null);
 
-/// <summary>渲染上下文（解释层扩展参数，接口默认调用可省略）。</summary>
-public sealed record LayoutRenderContext(string? PrintPerson = null, bool ShowRemark = true);
+/// <summary>
+/// 渲染上下文（解释层扩展参数，接口默认调用可省略）。
+///
+/// <para>
+/// <see cref="Report"/> 是**列表型版式**的数据来源：设了它就说明这次渲染的是"报表清单"，
+/// 页面里 `{{REPORT.*}}` 与 `dataSource=report` 的表格都从这里取值。
+/// 单据渲染不设它——两条路径共用同一套页面/分节/元素管道，只在"值从哪来"上分岔。
+/// </para>
+/// </summary>
+public sealed record LayoutRenderContext(
+    string? PrintPerson = null,
+    bool ShowRemark = true,
+    ReportListPayload? Report = null);
+
+/// <summary>
+/// 报表清单渲染数据（`{{REPORT.*}}` 与 `dataSource=report` 的取值来源）。
+///
+/// <para>
+/// <see cref="Columns"/> 是**已经过字段级权限过滤与列选择**的列清单，由调用方给：
+/// 解释层不查库、不认识权限，它只负责把"该画什么"画出来。这样权限判断只有一处，
+/// 也不会出现"表格里过滤了、页头统计里没过滤"这种一半的口径。
+/// </para>
+/// </summary>
+public sealed record ReportListPayload(
+    string Title,
+    string? IsoNo,
+    string Conditions,
+    string? TailText,
+    string FooterText,
+    string? CompanyName,
+    string? CompanyNameEn,
+    string? HeaderText,
+    byte[]? Logo,
+    IReadOnlyList<ReportColumn> Columns,
+    IReadOnlyList<Dictionary<string, object?>> Rows,
+    /// <summary>参与分组小计求和的列键（由调用方按"数值列且非主键"判定后传入）。</summary>
+    IReadOnlyList<string> SubtotalKeys,
+    IReadOnlyList<string> GroupFields,
+    bool ShowGroup,
+    bool ShowDetail);

@@ -9,6 +9,12 @@ namespace EOS.API.Data;
 /// </summary>
 public interface ILayoutRenderer
 {
-    /// <summary>按 layout.json 布局描述渲染为 PDF 字节流。</summary>
+    /// <summary>按 layout.json 布局描述渲染为 PDF 字节流（单据型版式 kind=document）。</summary>
     byte[] Render(PrintData data, string layoutJson, LayoutRenderContext? context = null);
+
+    /// <summary>
+    /// 报表清单渲染（列表型版式 kind=list）：数据经 <see cref="LayoutRenderContext.Report"/> 传入。
+    /// 与单据渲染共用同一套元素管道——报表打印从此也走格式资产，而不是一条只认 PDF 的旁路。
+    /// </summary>
+    byte[] RenderReportList(PrintData data, string layoutJson, LayoutRenderContext context);
 }
