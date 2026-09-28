@@ -93,10 +93,10 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
     {
         const string sql = """
             INSERT INTO dbo.REPORT
-                (REPORT_ID,REPORT_NAME,M_IDX,R_M_IDX,Q_M_IDX,ISO_NO,HEADER_ID,FOOTER_TEXT,TAIL_ID,FORMAT_ID,
+                (REPORT_ID,REPORT_NAME,M_IDX,ISO_NO,HEADER_ID,FOOTER_TEXT,TAIL_ID,FORMAT_ID,
                  IS_DEFAULT,REMARK,REPORT_FILTER,CREATE_PERSON,CREATE_DATE,LAST_UPDATE_BY,LAST_UPDATE_DATE)
             VALUES
-                (@ReportId,@ReportName,@ModuleId,@ModuleId,@ModuleId,@IsoNo,@HeaderId,@FooterText,@TailId,@FormatId,
+                (@ReportId,@ReportName,@ModuleId,@IsoNo,@HeaderId,@FooterText,@TailId,@FormatId,
                  @IsDefault,@Remark,@ReportFilter,@User,GETDATE(),@User,GETDATE());
             """;
         await using var connection = connections.Create();

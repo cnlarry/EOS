@@ -463,7 +463,9 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
                 SELECT TOP 1 REPORT_ID FROM dbo.REPORT WITH (NOLOCK)
                 WHERE M_IDX=@ModuleId AND (@ReportId IS NULL OR LTRIM(RTRIM(REPORT_ID))=@ReportId)
                   AND (@ReportId IS NOT NULL OR IS_DEFAULT=1)
-                ORDER BY CASE WHEN R_M_IDX=M_IDX THEN 0 ELSE 1 END, REPORT_ID);
+                -- 归属归位过渡期的并列规则（优先"本来就挂在本模块上"的那张）已落成数据：
+                -- 每个模块至多一张 IS_DEFAULT=1，所以这里按编号取即可，不再依赖承载页列。
+                ORDER BY REPORT_ID);
             SELECT LTRIM(RTRIM(ISNULL(@Rid,''))),
                    LTRIM(RTRIM(ISNULL(s.SORT_FIELDS,'')))
             FROM (SELECT 1 AS ANCHOR) anchor
