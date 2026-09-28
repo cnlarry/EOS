@@ -43,6 +43,21 @@ EOS.Web ──HTTP──> EOS.API ──SQL──> SQL Server (EOS.ERP)
 - 元数据查询使用 `sys.*` 目录视图，不使用 `INFORMATION_SCHEMA`；
 - 动态 SQL 只允许来自服务端白名单/元数据的标识符，值一律参数化。
 
+## 迁移脚本约定
+
+`Data/Migrations/` 下的脚本按文件名登记执行，规则如下：
+
+- **编号是排序键，不是身份**：DbUp 按文件名字典序依次执行，编号只决定先后，
+  不要求连续；`001..282` 覆盖当前全部脚本。
+- **文件名是判重身份**：嵌入资源名 `EOS.API.Data.Migrations.<文件名>` 记录在
+  `dbo.ERP_SCHEMA_JOURNAL`，DbUp 只据此判断脚本是否已执行。
+- **新增一律取当前最大编号 +1**，不回收历史空号、不插入中间。
+- **编号冲突时改内容，不改文件名**：改名会让已建库在下一次启动时把该脚本
+  当作新脚本重跑一次；确需改名时，必须同时更新 `ERP_SCHEMA_JOURNAL` 里的
+  资源名，并把建库基线 `db/bootstrap/40_journal_baseline.sql` 一并同步。
+- 一致性由 `scripts/check-migration-journal.ps1` 检查：台账里出现磁盘上
+  已不存在的脚本名，或同一脚本名有多行记录，即判失败。
+
 ## 本地开发
 
 配置连接串（见 `appsettings.Development.example.json`）：
