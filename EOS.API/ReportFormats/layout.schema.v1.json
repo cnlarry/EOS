@@ -64,7 +64,12 @@
       "additionalProperties": false,
       "required": ["elements"],
       "properties": {
-        "height": { "type": "number", "minimum": 0, "description": "header/footer 固定区域高度（mm）；content 可省略" },
+        "height": { "type": "number", "minimum": 0, "description": "绝对定位模式下 header/footer 的固定区域高度（mm）；content 可省略；flow=true 时忽略" },
+        "flow": {
+          "type": "boolean",
+          "default": false,
+          "description": "按内容流动：同 y 的元素并成一行，行按 y 升序堆叠，无内容的整行略过，分区高度由内容决定。列表型报表的页头页脚用这个——固定高度会让空字段照样占位，页头一空就白留一块，同样的数据要多印纸。false（缺省）= 绝对定位，单据版式用"
+        },
         "elements": {
           "type": "array",
           "maxItems": 500,
@@ -83,6 +88,8 @@
         "y": { "type": "number", "description": "相对所属 section 顶部的纵坐标（mm）" },
         "w": { "type": "number", "minimum": 0, "description": "宽度（mm）；0 = 自适应" },
         "h": { "type": "number", "minimum": 0, "description": "高度（mm）；0 = 自适应" },
+        "gap": { "type": "number", "minimum": 0, "description": "flow 模式下本行之前的间距（mm）；绝对定位模式忽略" },
+        "hideWhenEmpty": { "type": "boolean", "description": "flow 模式下，content 里引用的任一 {{...}} 取值为空就整行略过。用于「标签：{{值}}」这类元素——标签是常量，光看渲染结果永远非空" },
         "visible": { "type": "boolean", "default": true },
         "content": { "type": "string", "description": "text：静态文本，支持 {{MASTER.X}} / {{SYS.X}} 占位符" },
         "field": { "type": "string", "description": "field：MASTER.* / SYS.*（表内列用 table.columns.field 引用 DETAILS.*）" },

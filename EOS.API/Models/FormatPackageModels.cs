@@ -80,7 +80,22 @@ public sealed record LayoutMargin(double Top, double Right, double Bottom, doubl
 
 public sealed record LayoutSections(LayoutSection Header, LayoutSection Content, LayoutSection Footer);
 
-public sealed record LayoutSection(double? Height, IReadOnlyList<LayoutElement> Elements);
+/// <summary>
+/// 版式分区。<see cref="Flow"/> 为真时元素**按内容流动**（同 <c>Y</c> 的元素并成一行，
+/// 行按 <c>Y</c> 升序堆叠，无内容的元素整行略过），分区高度由内容决定；
+/// 为假（缺省）时沿用绝对定位：<c>Y</c> 是相对分区顶部的 mm 坐标，分区高度取
+/// <see cref="Height"/>（未声明时按元素自然高度）。
+///
+/// <para>
+/// 两种模式并存是因为用途不同：单据版式要的是像素级定位（要素压在表格线、印章位上），
+/// 而**列表型报表的页头页脚要的是"有什么印什么"**——固定高度会让空字段照样占位，
+/// 页头一空就白留一大块，同样的数据要多印纸。
+/// </para>
+/// </summary>
+public sealed record LayoutSection(
+    double? Height,
+    IReadOnlyList<LayoutElement> Elements,
+    bool Flow = false);
 
 /// <summary>
 /// 元素最小集：text / field / image / line / rect / table。
@@ -113,7 +128,15 @@ public sealed record LayoutElement(
     int? MaxRows = null,
     string? Title = null,
     double? RowHeight = null,
-    LayoutElementStyle? Style = null);
+    LayoutElementStyle? Style = null,
+    /// <summary>流动模式下本行之前的间距（mm）；绝对定位模式忽略。</summary>
+    double? Gap = null,
+    /// <summary>
+    /// 流动模式下，<see cref="Content"/> 里引用的任一 <c>{{...}}</c> 取值为空就整行略过。
+    /// 用于"标签 + 值"这类元素（如「ISO：{{REPORT.ISO}}」）——标签是常量，光看渲染结果永远非空，
+    /// 只有值空才算这一行没内容。
+    /// </summary>
+    bool? HideWhenEmpty = null);
 
 public sealed record LayoutColumn(
     string Field,

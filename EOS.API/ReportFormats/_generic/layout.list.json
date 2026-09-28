@@ -13,13 +13,13 @@
   },
   "sections": {
     "header": {
-      "height": 26.8,
+      "flow": true,
       "elements": [
         {
           "id": "logo",
           "type": "image",
           "x": 0,
-          "y": 0.71,
+          "y": 0,
           "w": 24.7,
           "h": 12,
           "resourceId": "REPORT.LOGO"
@@ -27,9 +27,9 @@
         {
           "id": "h1",
           "type": "text",
-          "x": 0,
-          "y": 0.71,
-          "w": 187.4,
+          "x": 24.7,
+          "y": 0,
+          "w": 162.7,
           "h": 7.2,
           "content": "{{REPORT.HEADER_COMPANY}}",
           "style": {
@@ -42,7 +42,7 @@
           "id": "h2",
           "type": "text",
           "x": 0,
-          "y": 7.4,
+          "y": 1,
           "w": 187.4,
           "h": 4.5,
           "content": "{{REPORT.HEADER_COMPANY_EN}}",
@@ -55,9 +55,10 @@
           "id": "h3",
           "type": "text",
           "x": 0,
-          "y": 11.7,
+          "y": 2,
           "w": 187.4,
           "h": 5.5,
+          "gap": 1.5,
           "content": "{{REPORT.TITLE}}",
           "style": {
             "fontSize": 12,
@@ -69,7 +70,7 @@
           "id": "h4",
           "type": "text",
           "x": 0,
-          "y": 17,
+          "y": 3,
           "w": 187.4,
           "h": 4.2,
           "content": "{{REPORT.HEADER_TEXT}}",
@@ -82,9 +83,11 @@
           "id": "h5",
           "type": "text",
           "x": 0,
-          "y": 20.5,
+          "y": 4,
           "w": 187.4,
           "h": 4.2,
+          "gap": 0.5,
+          "hideWhenEmpty": true,
           "content": "ISO：{{REPORT.ISO}}",
           "style": {
             "fontSize": 8,
@@ -95,9 +98,10 @@
           "id": "h6",
           "type": "line",
           "x": 0,
-          "y": 25.4,
+          "y": 5,
           "w": 187.4,
           "h": 0.2,
+          "gap": 1,
           "style": {
             "lineWidth": 0.5
           }
@@ -134,15 +138,15 @@
       ]
     },
     "footer": {
-      "height": 4,
+      "flow": true,
       "elements": [
         {
           "id": "f1",
           "type": "text",
           "x": 0,
-          "y": 0.2,
+          "y": 0,
           "w": 100,
-          "h": 3.5,
+          "h": 4,
           "content": "{{REPORT.FOOTER_TEXT}}",
           "style": {
             "fontSize": 8
@@ -152,9 +156,9 @@
           "id": "f2",
           "type": "text",
           "x": 100,
-          "y": 0.2,
+          "y": 0,
           "w": 87.4,
-          "h": 3.5,
+          "h": 4,
           "content": "列印人：{{REPORT.PRINT_PERSON}}　第 {{SYS.PAGE_NUMBER}} / {{SYS.TOTAL_PAGES}} 页",
           "style": {
             "fontSize": 8,
