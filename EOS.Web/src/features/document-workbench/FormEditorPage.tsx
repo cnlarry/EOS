@@ -450,6 +450,17 @@ export function FormEditorPage() {
     const pathKey = parseWorkbenchKey(splat)
     return pathKey ? JSON.stringify(pathKey) : null
   })()
+  // 本模块的报表清单：浏览态工具条「报表」动作的数据源（模块级语义）。
+  // 只在浏览态取，且结果当"有没有可见报表"的判据——没有就不渲染这个按钮（不是渲染后点了没反应）。
+  const moduleReports = useQuery({
+    queryKey: ['report', 'module-list', moduleId],
+    queryFn: () => apiClient.get<{ reports: { reportId: string; reportName: string; isDefault: boolean }[] }>(
+      `/report?moduleId=${moduleId}`,
+    ),
+    enabled: isView && moduleId !== '',
+    staleTime: 60_000,
+  })
+  const [reportListOpen, setReportListOpen] = useState(false)
   const copyFrom = searchParams.get('copyFrom')
   // 跨模块关联字段浏览（FieldBrowseLink 带入 from）：来源工作台模块。返回与面包屑按来源呈现
   //（URL 参数携带，刷新不丢；仅当为合法模块 ID 且不同于当前模块时生效）。
@@ -1179,6 +1190,8 @@ export function FormEditorPage() {
 
   // 自定义按钮（单据操作）：只在浏览态出现，界面有未保存改动时禁用（操作作用于已落库的单据状态）。
   const masterActionItems = (form.userActions ?? []).filter(action => action.placement !== 'detail')
+  /** 本模块的可见报表（服务端已按模块 REPORT_TAG + 例外行收紧过滤，前端不再自己判权限）。 */
+  const reportOptions = moduleReports.data?.reports ?? []
   const detailActionItems = (form.userActions ?? []).filter(action => action.placement === 'detail')
 
   return (
@@ -1258,6 +1271,12 @@ export function FormEditorPage() {
                   ...whitelistItems.filter(item => item.action === 'endcase' || item.action === 'unendcase'),
                   ...(form.canFileView && keyParam ? [{ action: 'attach', onClick: () => setAttachOpen(true) } satisfies ErpCommandItem] : []),
                   ...whitelistItems.filter(item => item.action === 'print'),
+                  // 报表：模块级动作，定序在**打印之后、帮助之前**（与 ADR-018 的按钮定序一致）。
+                  // 它是"看这个模块的报表"，不作用于当前这张单据，因此不受 FORM_BUTTONS 白名单控制；
+                  // 模块下没有可见报表时整项不渲染。
+                  ...(reportOptions.length > 0
+                    ? [{ action: 'report', onClick: () => setReportListOpen(true) } satisfies ErpCommandItem]
+                    : []),
                   ...(form.helpUrl ? [{ action: 'help', onClick: () => window.open(form.helpUrl!, '_blank', 'noopener') } satisfies ErpCommandItem] : []),
                   // 自定义按钮（单据级）固定排在标准动作之后，顺序由配置的 SEQ 决定
                   //（配置只决定动作有无与相对顺序，不改变标准动作的固定位置）。
@@ -1441,6 +1460,38 @@ export function FormEditorPage() {
             placeholder="送审说明…"
             aria-label="送审说明"
           />
+        </Modal>
+      )}
+      {reportListOpen && (
+        <Modal
+          title="本模块报表"
+          onClose={() => setReportListOpen(false)}
+          ariaLabel="本模块报表"
+          dialogClassName="erp-dialog-sm"
+          footer={<Button variant="secondary" onClick={() => setReportListOpen(false)}>关闭</Button>}
+        >
+          {/* 只列当前账号可见的报表：清单来自服务端，前端不猜权限 */}
+          {reportOptions.length === 0 ? (
+            <div className="text-center text-secondary py-4">没有可见的报表</div>
+          ) : (
+            <ul className="list-group list-group-flush">
+              {reportOptions.map(option => (
+                <li key={option.reportId} className="list-group-item d-flex justify-content-between align-items-center">
+                  <button
+                    type="button"
+                    className="btn btn-link p-0 text-start"
+                    onClick={() => {
+                      setReportListOpen(false)
+                      navigate(`/report/${encodeURIComponent(option.reportId)}`)
+                    }}
+                  >
+                    {option.reportName}
+                  </button>
+                  {option.isDefault && <span className="badge text-bg-light">默认</span>}
+                </li>
+              ))}
+            </ul>
+          )}
         </Modal>
       )}
       {historyOpen && keyParam && (

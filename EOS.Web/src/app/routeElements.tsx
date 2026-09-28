@@ -115,6 +115,11 @@ export function ReportViewerRoute() {
 
   if (!moduleId) return <ForbiddenPage />
   if (settings.isError) return <EmptyState title="报表打不开" description="无法读取该模块的报表清单。" />
+  // 模块下没有可见报表（归属搬走后就空了，如原来的报表承载页）：给一句话，不要一直转圈——
+  // 一直转圈会被当成"系统卡住"，而真相是"这个模块已经没有报表了，报表在报表中心"。
+  if (settings.isSuccess && (settings.data.reports?.length ?? 0) === 0) {
+    return <EmptyState title="本模块没有报表" description="报表已按业务模块归位，请从报表中心或表单工具条的「报表」动作打开。" />
+  }
   return <LoadingState />
 }
 
