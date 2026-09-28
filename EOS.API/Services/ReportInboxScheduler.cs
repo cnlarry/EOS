@@ -41,7 +41,9 @@ public sealed class ReportInboxScheduler(
         var reportRepository = scope.ServiceProvider.GetRequiredService<ReportRepository>();
         var printSettingsRepository = scope.ServiceProvider.GetRequiredService<PrintSettingsRepository>();
         var rightsRepository = scope.ServiceProvider.GetRequiredService<ModuleRightsRepository>();
-        var reportPdfService = scope.ServiceProvider.GetRequiredService<ReportPdfService>();
+        var reportFormats = scope.ServiceProvider.GetRequiredService<ReportFormatRepository>();
+        var layoutRenderer = scope.ServiceProvider.GetRequiredService<ILayoutRenderer>();
+        var environment = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
 
         var now = DateTime.Now;
         var due = await repository.FindDueSubscriptionsAsync(now, token);
@@ -79,13 +81,19 @@ public sealed class ReportInboxScheduler(
                     new List<string>(),
                     token);
 
-                // 5. 生成 PDF：与手动打印共用同一个命令式实现。
-                // 若日后改用版式解释层，此处必须同步切换——两处同进同退，否则
-                // "订阅收到的 PDF"与"手点打印的 PDF"会是两张不同的报表。
+                // 5. 生成 PDF：与手动打印共用**同一条链路**（版式解释层 + 同一份编排）。
+                // 各写一份的话，"订阅收到的 PDF"与"手点打印的 PDF"迟早会变成两张不同的报表。
+                // 订阅记录里没有版式编号，按"模块 → _generic"解析（缺报表专属列表版式时的已知落差）。
                 var header = meta.Header;
-                var pdf = reportPdfService.Generate(new ReportPdfRenderInput(
-                    meta, definition, query, string.Empty, "EOS-BATCH",
-                    new List<string>(), false, false, header, meta.TailText));
+                var layoutJson = reportFormats.GetReportListLayout(null, sub.ModuleId)
+                    ?? throw new InvalidOperationException(
+                        $"报表没有可用的列表型版式 module={sub.ModuleId}（检查 ReportFormats/_generic/layout.list.json）。");
+                var composed = ReportListPdfComposer.Compose(
+                    new ReportPdfRenderInput(
+                        meta, definition, query, string.Empty, "EOS-BATCH",
+                        new List<string>(), false, false, header, meta.TailText),
+                    environment);
+                var pdf = layoutRenderer.RenderReportList(composed.Data, layoutJson, composed.Context);
 
                 // 6. 落盘
                 var relativeDir = $"{sub.UserId}";
