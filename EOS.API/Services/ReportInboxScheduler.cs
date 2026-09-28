@@ -79,7 +79,9 @@ public sealed class ReportInboxScheduler(
                     new List<string>(),
                     token);
 
-                // 5. 生成 PDF
+                // 5. 生成 PDF：与手动打印共用同一个命令式实现。
+                // 若日后改用版式解释层，此处必须同步切换——两处同进同退，否则
+                // "订阅收到的 PDF"与"手点打印的 PDF"会是两张不同的报表。
                 var header = meta.Header;
                 var pdf = reportPdfService.Generate(new ReportPdfRenderInput(
                     meta, definition, query, string.Empty, "EOS-BATCH",

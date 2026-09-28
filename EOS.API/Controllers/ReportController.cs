@@ -132,6 +132,11 @@ public sealed class ReportController(
             groupFields,
             token);
 
+        // 报表打印仍走命令式实现。版式解释层的前置件（ReportListPdfComposer、
+        // QuestPdfLayoutRenderer.RenderReportList、ReportFormatRepository.GetReportListLayout
+        // 与 ReportFormats/_generic/layout.list.json）均已就位，但解释层的页头固定留白大于旧流式
+        // 页头，相同数据页数多约 18%，逐张对拍未通过，故暂不切换——宁可两套并存，也不让同样的
+        // 数据多出 18% 的纸。切换时必须与 ReportInboxScheduler 同进同退。
         var pdf = reportPdfService.Generate(new ReportPdfRenderInput(
             meta, definition, query, BuildConditionDescription(definition, request), userId,
             groupFields, request.ShowGroup, request.ShowDetail, header, tailText));
