@@ -76,6 +76,81 @@ public sealed class ReportAggregateRegistryTests
     }
 
     [Fact]
+    public void Registry_EveryAggregateColumnDeclaresFieldPrivilege()
+    {
+        foreach (var reportId in ExpectedReportIds)
+        {
+            var aggregate = ReportAggregateRegistry.Find(reportId)!;
+            foreach (var column in aggregate.Columns)
+            {
+                // 聚合列没有物理表可供反查 FIELDS，成本位/保密位只能在注册表里逐列声明；
+                // 留空等于"漏标"，运行期按 fail-closed 丢列（静默少列），故在构建期就用用例钉死。
+                Assert.True(column.IsCost is not null,
+                    $"{reportId} 列 {column.Key} 未声明 IsCost（漏标不得等于公开）");
+                Assert.True(column.IsSecrecy is not null,
+                    $"{reportId} 列 {column.Key} 未声明 IsSecrecy（漏标不得等于公开）");
+            }
+        }
+    }
+
+    [Fact]
+    public void FilterAggregateColumns_AppliesSameFieldPrivilegesAsMasterTableBranch()
+    {
+        var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRO_NO" };
+        var declared = new List<EOS.API.Models.ReportColumn>
+        {
+            new("QTY", "数量", "float", null, IsCost: false, IsSecrecy: false),
+            new("PRICE", "单价", "float", null, IsCost: true, IsSecrecy: false),
+            new("ID_CARD", "身份证", "nvarchar", null, IsCost: false, IsSecrecy: true),
+            new("PRO_NO", "料号", "nvarchar", null, IsCost: false, IsSecrecy: false),
+        };
+
+        // 无成本权、无保密权：成本列与保密列被过滤；拒绝名单命中的列也被过滤
+        var limited = ReportRepository.FilterAggregateColumns(declared, canViewCost: false, canViewSecrecy: false, denied);
+        Assert.Equal(["QTY"], limited.Select(item => item.Key));
+
+        // 有成本权、无保密权：成本列放行，保密列仍被过滤
+        var costOnly = ReportRepository.FilterAggregateColumns(declared, canViewCost: true, canViewSecrecy: false, denied);
+        Assert.Equal(["QTY", "PRICE"], costOnly.Select(item => item.Key));
+
+        // 两者都有、拒绝名单为空：全列放行
+        var full = ReportRepository.FilterAggregateColumns(declared, canViewCost: true, canViewSecrecy: true,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        Assert.Equal(declared.Count, full.Count);
+    }
+
+    [Fact]
+    public void FilterAggregateColumns_TreatsUndeclaredPrivilegeAsDenied()
+    {
+        var declared = new List<EOS.API.Models.ReportColumn>
+        {
+            // 未声明任何权限位（既有写法或漏标）：必须被丢弃，不得默认放行
+            new("PRICE_Q", "期初单价", "float"),
+            new("PRICE_J", "收入单价", "float", null, IsCost: true),
+            new("DEPT_NAME", "部门", "nvarchar", null, IsCost: false),
+            new("QTY", "数量", "float", null, IsCost: false, IsSecrecy: false),
+        };
+
+        var result = ReportRepository.FilterAggregateColumns(declared, canViewCost: true, canViewSecrecy: true,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+        Assert.Equal(["QTY"], result.Select(item => item.Key));
+    }
+
+    [Fact]
+    public void FilterAggregateColumns_UsesDenyKeyWhenDeclared()
+    {
+        var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PRICE" };
+        var declared = new List<EOS.API.Models.ReportColumn>
+        {
+            // 派生列可以声明它对应的物理字段名作为拒绝名单匹配键（此列键名与 F_ID 不同）
+            new("PRICE_Q", "期初单价", "float", null, IsCost: true, IsSecrecy: false, DenyKey: "PRICE"),
+        };
+
+        Assert.Empty(ReportRepository.FilterAggregateColumns(declared, canViewCost: true, canViewSecrecy: true, denied));
+    }
+
+    [Fact]
     public void BuildAggregateSql_OnlyAcceptsDeclaredColumnsAsSortFields()
     {
         var aggregate = ReportAggregateRegistry.Find("HR_Employee_3")!;

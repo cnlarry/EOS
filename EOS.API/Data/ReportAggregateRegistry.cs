@@ -48,12 +48,12 @@ public static class ReportAggregateRegistry
         "DEPT_ID",
         [],
         [
-            new ReportColumn("DEPT_ID", "部门编号", "nchar"),
-            new ReportColumn("RENSHU", "人数", "int"),
-            new ReportColumn("BENYUE_RU", "本月入职", "int"),
-            new ReportColumn("BENYUE_LI", "本月离职", "int"),
-            new ReportColumn("BENYUE_QJ", "本月请假", "int"),
-            new ReportColumn("DEPT_NAME", "部门", "nvarchar"),
+            new ReportColumn("DEPT_ID", "部门编号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("RENSHU", "人数", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("BENYUE_RU", "本月入职", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("BENYUE_LI", "本月离职", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("BENYUE_QJ", "本月请假", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("DEPT_NAME", "部门", "nvarchar", null, IsCost: false, IsSecrecy: false),
         ]);
 
     /// <summary>部门籍贯分析表：按部门 + 籍贯统计人数与占部门比例。</summary>
@@ -75,12 +75,12 @@ public static class ReportAggregateRegistry
         "DEPT_ID, PROVINCE_ID",
         [],
         [
-            new ReportColumn("DEPT_ID", "部门编号", "nchar"),
-            new ReportColumn("PROVINCE_ID", "籍贯编号", "nchar"),
-            new ReportColumn("MAN_COUNT", "人数", "int"),
-            new ReportColumn("MAN_PERCENT", "占比(%)", "decimal"),
-            new ReportColumn("DEPT_NAME", "部门", "nvarchar"),
-            new ReportColumn("PROVINCE_NAME", "籍贯", "nvarchar"),
+            new ReportColumn("DEPT_ID", "部门编号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("PROVINCE_ID", "籍贯编号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("MAN_COUNT", "人数", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("MAN_PERCENT", "占比(%)", "decimal", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("DEPT_NAME", "部门", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("PROVINCE_NAME", "籍贯", "nvarchar", null, IsCost: false, IsSecrecy: false),
         ]);
 
     /// <summary>部门民族分析表：按部门 + 民族统计人数与占部门比例。</summary>
@@ -102,12 +102,12 @@ public static class ReportAggregateRegistry
         "DEPT_ID, NATION_ID",
         [],
         [
-            new ReportColumn("DEPT_ID", "部门编号", "nchar"),
-            new ReportColumn("NATION_ID", "民族编号", "nchar"),
-            new ReportColumn("MAN_COUNT", "人数", "int"),
-            new ReportColumn("MAN_PERCENT", "占比(%)", "decimal"),
-            new ReportColumn("DEPT_NAME", "部门", "nvarchar"),
-            new ReportColumn("NATION_NAME", "民族", "nvarchar"),
+            new ReportColumn("DEPT_ID", "部门编号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("NATION_ID", "民族编号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("MAN_COUNT", "人数", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("MAN_PERCENT", "占比(%)", "decimal", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("DEPT_NAME", "部门", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("NATION_NAME", "民族", "nvarchar", null, IsCost: false, IsSecrecy: false),
         ]);
 
     /// <summary>部门学历分析表：按部门 + 学历统计人数与占部门比例。</summary>
@@ -129,12 +129,12 @@ public static class ReportAggregateRegistry
         "DEPT_ID, DIPLOMA_ID",
         [],
         [
-            new ReportColumn("DEPT_ID", "部门编号", "nchar"),
-            new ReportColumn("DIPLOMA_ID", "学历编号", "nchar"),
-            new ReportColumn("MAN_COUNT", "人数", "int"),
-            new ReportColumn("MAN_PERCENT", "占比(%)", "decimal"),
-            new ReportColumn("DEPT_NAME", "部门", "nvarchar"),
-            new ReportColumn("DIPLOMA_NAME", "学历", "nvarchar"),
+            new ReportColumn("DEPT_ID", "部门编号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("DIPLOMA_ID", "学历编号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("MAN_COUNT", "人数", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("MAN_PERCENT", "占比(%)", "decimal", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("DEPT_NAME", "部门", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("DIPLOMA_NAME", "学历", "nvarchar", null, IsCost: false, IsSecrecy: false),
         ]);
 
     /// <summary>部门年龄分析表：按部门统计各年龄段人数（按整月龄计算，生日为空计入 16 以下）。</summary>
@@ -165,10 +165,10 @@ public static class ReportAggregateRegistry
         "AGE_ID, DEPT_ID",
         [],
         [
-            new ReportColumn("DEPT_ID", "部门编号", "nchar"),
-            new ReportColumn("AGE_ID", "年龄段", "nvarchar"),
-            new ReportColumn("MAN_COUNT", "人数", "int"),
-            new ReportColumn("DEPT_NAME", "部门", "nvarchar"),
+            new ReportColumn("DEPT_ID", "部门编号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("AGE_ID", "年龄段", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("MAN_COUNT", "人数", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("DEPT_NAME", "部门", "nvarchar", null, IsCost: false, IsSecrecy: false),
         ]);
 
     /// <summary>部门工龄分析表：按部门统计各工龄段人数（按整月龄计算，入职日期为空计入 3 月以下）。</summary>
@@ -203,10 +203,10 @@ public static class ReportAggregateRegistry
         "AGE_ID, DEPT_ID",
         [],
         [
-            new ReportColumn("DEPT_ID", "部门编号", "nchar"),
-            new ReportColumn("AGE_ID", "工龄段", "nvarchar"),
-            new ReportColumn("MAN_COUNT", "人数", "int"),
-            new ReportColumn("DEPT_NAME", "部门", "nvarchar"),
+            new ReportColumn("DEPT_ID", "部门编号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("AGE_ID", "工龄段", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("MAN_COUNT", "人数", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("DEPT_NAME", "部门", "nvarchar", null, IsCost: false, IsSecrecy: false),
         ]);
 
     /// <summary>
@@ -255,12 +255,12 @@ public static class ReportAggregateRegistry
             new ReportAggregateParameter("date2", "nvarchar", 20, SerialNo: 1, IsTo: true),
         ],
         [
-            new ReportColumn("DEPT_ID", "部门编号", "nchar"),
-            new ReportColumn("YINGDAO", "应到人数", "int"),
-            new ReportColumn("SHIDAO", "实到人数", "int"),
-            new ReportColumn("QINGJIA", "请假人员", "nvarchar"),
-            new ReportColumn("CHIDAO", "迟到人员", "nvarchar"),
-            new ReportColumn("DEPT_NAME", "部门", "nvarchar"),
+            new ReportColumn("DEPT_ID", "部门编号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("YINGDAO", "应到人数", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("SHIDAO", "实到人数", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("QINGJIA", "请假人员", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("CHIDAO", "迟到人员", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("DEPT_NAME", "部门", "nvarchar", null, IsCost: false, IsSecrecy: false),
         ]);
 
     /// <summary>
@@ -416,24 +416,26 @@ public static class ReportAggregateRegistry
             new ReportAggregateParameter("cb1", "int", 4, SerialNo: 6),
         ],
         [
-            new ReportColumn("DEPOT_ID", "仓库编号", "nchar"),
-            new ReportColumn("PRO_NO", "料号", "nchar"),
-            new ReportColumn("APP_DATE", "日期", "datetime"),
-            new ReportColumn("QTY_Q", "期初数量", "float"),
-            new ReportColumn("QTY_J", "本期收入", "float"),
-            new ReportColumn("QTY_X", "本期发出", "float"),
-            new ReportColumn("PRICE_Q", "期初单价", "float"),
-            new ReportColumn("PRICE_J", "收入单价", "float"),
-            new ReportColumn("PRICE_X", "发出单价", "float"),
-            new ReportColumn("BILL_CODE", "单据类别", "nchar"),
-            new ReportColumn("BILL_NO", "单据号码", "nchar"),
-            new ReportColumn("PRO_NAME", "品名", "nvarchar"),
-            new ReportColumn("PRO_SPEC", "规格", "nvarchar"),
-            new ReportColumn("BILL_NAME", "单据名称", "nvarchar"),
-            new ReportColumn("SORT_ID", "类别编号", "nchar"),
-            new ReportColumn("COLOR_ID", "颜色编号", "nchar"),
-            new ReportColumn("SORT_NAME", "类别", "nvarchar"),
-            new ReportColumn("COLOR_NAME", "颜色", "nvarchar"),
+            new ReportColumn("DEPOT_ID", "仓库编号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("PRO_NO", "料号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("APP_DATE", "日期", "datetime", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("QTY_Q", "期初数量", "float", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("QTY_J", "本期收入", "float", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("QTY_X", "本期发出", "float", null, IsCost: false, IsSecrecy: false),
+            // 三个单价列取自余额表 PRICE（FIELDS 中 IS_COST=1）或产品最近采购价 × 汇率，
+            // 属成本语义；成本查看权缺席时整列（含值）都不下发。
+            new ReportColumn("PRICE_Q", "期初单价", "float", null, IsCost: true, IsSecrecy: false),
+            new ReportColumn("PRICE_J", "收入单价", "float", null, IsCost: true, IsSecrecy: false),
+            new ReportColumn("PRICE_X", "发出单价", "float", null, IsCost: true, IsSecrecy: false),
+            new ReportColumn("BILL_CODE", "单据类别", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("BILL_NO", "单据号码", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("PRO_NAME", "品名", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("PRO_SPEC", "规格", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("BILL_NAME", "单据名称", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("SORT_ID", "类别编号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("COLOR_ID", "颜色编号", "nchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("SORT_NAME", "类别", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("COLOR_NAME", "颜色", "nvarchar", null, IsCost: false, IsSecrecy: false),
         ]);
 
     /// <summary>
@@ -481,13 +483,13 @@ public static class ReportAggregateRegistry
             new ReportAggregateParameter("unmanaged_only", "string", 1, SerialNo: 6),
         ],
         [
-            new ReportColumn("PRO_NO", "料号", "nvarchar"),
-            new ReportColumn("DEPOT_ID", "库别", "nvarchar"),
-            new ReportColumn("BATCH_NO", "批号", "nvarchar"),
-            new ReportColumn("EFFECT_DATE", "有效日期", "datetime"),
-            new ReportColumn("REMAINING_DAYS", "剩余天数", "int"),
-            new ReportColumn("QTY", "在库数量", "float"),
-            new ReportColumn("EXPIRY_STATE", "效期状态", "nvarchar"),
+            new ReportColumn("PRO_NO", "料号", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("DEPOT_ID", "库别", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("BATCH_NO", "批号", "nvarchar", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("EFFECT_DATE", "有效日期", "datetime", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("REMAINING_DAYS", "剩余天数", "int", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("QTY", "在库数量", "float", null, IsCost: false, IsSecrecy: false),
+            new ReportColumn("EXPIRY_STATE", "效期状态", "nvarchar", null, IsCost: false, IsSecrecy: false),
         ]);
 
     /// <summary>临期判定的基准日：日期粒度，不带时间（带时间会让"今天到期"在当天下午算成已过期）。</summary>
