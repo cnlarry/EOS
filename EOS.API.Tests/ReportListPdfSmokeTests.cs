@@ -105,6 +105,24 @@ public class ReportListPdfSmokeTests
     }
 
     [Fact]
+    public void 正文段不支持流动模式()
+    {
+        // 正文段的元素坐标决定它落在表格上方还是下方；写 flow 会被渲染器静默忽略，
+        // 静默忽略比报错更坏——作者以为写了流动、实际拿到绝对定位，且没有任何提示。
+        var format = JsonSerializer.Deserialize<ReportFormatDefinition>(
+            File.ReadAllText(Path.Combine(GenericAssetDirectory(), "format.json")), AssetJsonOptions);
+        Assert.NotNull(format);
+
+        var node = System.Text.Json.Nodes.JsonNode.Parse(GenericListLayoutJson())!;
+        node["sections"]!["content"]!["flow"] = true;
+
+        var result = new ReportFormatValidator().Validate(format!, node.ToJsonString(), maxElements: 400);
+
+        Assert.False(result.Ok, "content 段的 flow=true 必须被拒绝。");
+        Assert.Contains(result.Messages, message => message.Contains("content 段不支持"));
+    }
+
+    [Fact]
     public void 报表清单渲染_产出合法PDF字节()
     {
         var meta = new ReportPdfMeta(
