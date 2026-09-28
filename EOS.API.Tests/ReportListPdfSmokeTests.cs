@@ -85,6 +85,26 @@ public class ReportListPdfSmokeTests
     }
 
     [Fact]
+    public void 流动分区与多页模板并存时被校验拒绝()
+    {
+        // 多页模板走动态部件，动态部件要求内容单页装得下；流动分区的高度由内容决定。
+        // 两者并存会在渲染时抛 DocumentLayoutException——拦在保存校验，别等人点打印才炸。
+        var formatPath = Path.Combine(GenericAssetDirectory(), "format.json");
+        var format = JsonSerializer.Deserialize<ReportFormatDefinition>(
+            File.ReadAllText(formatPath), AssetJsonOptions);
+        Assert.NotNull(format);
+
+        var node = System.Text.Json.Nodes.JsonNode.Parse(GenericListLayoutJson())!;
+        node["pageTemplates"] = System.Text.Json.Nodes.JsonNode.Parse(
+            """{"first":{"header":{"flow":true,"elements":[{"id":"t","type":"text","x":0,"y":0,"w":50,"h":5,"content":"{{REPORT.TITLE}}"}]}}}""");
+
+        var result = new ReportFormatValidator().Validate(format!, node.ToJsonString(), maxElements: 400);
+
+        Assert.False(result.Ok, "流动分区与多页模板并存必须被拒绝。");
+        Assert.Contains(result.Messages, message => message.Contains("流动分区"));
+    }
+
+    [Fact]
     public void 报表清单渲染_产出合法PDF字节()
     {
         var meta = new ReportPdfMeta(
