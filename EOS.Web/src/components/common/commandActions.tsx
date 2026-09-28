@@ -21,6 +21,7 @@ import {
   IconPlus,
   IconPrinter,
   IconRefresh,
+  IconReportAnalytics,
   IconRotateClockwise,
   IconSearch,
   IconTrash,
@@ -47,6 +48,9 @@ export const COMMAND_ACTIONS: Record<string, { icon: ReactNode; title: string }>
   endcase: { icon: <IconLock size={16} />, title: '结案' },
   unendcase: { icon: <IconLockOpen size={16} />, title: '取消结案' },
   print: { icon: <IconPrinter size={16} />, title: '打印' },
+  // 报表：**模块级**动作（打开本模块的报表清单），不是单据级动作，
+  // 因此不进 FORM_BUTTONS 白名单（不进=管理员配置不了它，它按"有没有可见报表"自己决定出不出现）。
+  report: { icon: <IconReportAnalytics size={16} />, title: '报表' },
   export: { icon: <IconFileExport size={16} />, title: '导出' },
   search: { icon: <IconSearch size={16} />, title: '通用查询' },
   attach: { icon: <IconPaperclip size={16} />, title: '附件' },

@@ -62,11 +62,12 @@ describe('ReportViewerRoute（老模块地址的跳转段）', () => {
     await waitFor(() => expect(screen.getByTestId('landed')).toHaveTextContent('RPT_A|?f1=W1'))
   })
 
-  it('模块下一张报表都没有时停在跳转段，不落到别的模块', async () => {
+  it('模块下一张报表都没有时给出说明，既不落到别的模块也不一直转圈', async () => {
     apiClientMock.get.mockImplementation(async () => ({ reports: [], userSettings: null }))
 
     renderLegacyModuleRoute('/reports/1405')
 
-    await waitFor(() => expect(screen.queryByTestId('landed')).not.toBeInTheDocument())
+    expect(await screen.findByText('本模块没有报表')).toBeInTheDocument()
+    expect(screen.queryByTestId('landed')).not.toBeInTheDocument()
   })
 })
