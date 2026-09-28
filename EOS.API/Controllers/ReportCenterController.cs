@@ -90,7 +90,10 @@ public sealed class ReportCenterController(
         return Ok(reports);
     }
 
-    /// <summary>收藏/最近使用：写 SYSDD_REPORT（upsert，保持 override 收紧语义）。</summary>
+    /// <summary>
+    /// 收藏开关与收藏排序：写 SYSDD_REPORT（upsert，保持 override 收紧语义）。
+    /// 只覆盖本次提交的字段——未提交的（SORT_IDX）保持原值，避免一次收藏开关顺带清空收藏顺序。
+    /// </summary>
     [HttpPost("favorite")]
     public async Task<IActionResult> SaveFavorite(
         [FromBody] ReportFavoriteRequest request, CancellationToken token)
@@ -109,11 +112,11 @@ public sealed class ReportCenterController(
         const string sql = """
             IF EXISTS (SELECT 1 FROM dbo.SYSDD_REPORT WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId)
                 UPDATE dbo.SYSDD_REPORT
-                SET FAVORITE_TAG=@FavoriteTag, SORT_IDX=@SortIdx, LAST_RUN_AT=@LastRunAt
+                SET FAVORITE_TAG=@FavoriteTag, SORT_IDX=ISNULL(@SortIdx, SORT_IDX)
                 WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId;
-            ELSE IF @FavoriteTag = 1 OR @LastRunAt IS NOT NULL
-                INSERT INTO dbo.SYSDD_REPORT (USER_ID,M_IDX,REPORT_ID,FAVORITE_TAG,SORT_IDX,LAST_RUN_AT)
-                VALUES (@UserId,@ModuleId,@ReportId,@FavoriteTag,@SortIdx,@LastRunAt);
+            ELSE IF @FavoriteTag = 1
+                INSERT INTO dbo.SYSDD_REPORT (USER_ID,M_IDX,REPORT_ID,FAVORITE_TAG,SORT_IDX)
+                VALUES (@UserId,@ModuleId,@ReportId,@FavoriteTag,@SortIdx);
             """;
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
@@ -121,7 +124,42 @@ public sealed class ReportCenterController(
         command.Parameters.Add("@ReportId", SqlDbType.NChar, 50).Value = request.ReportId.Trim();
         command.Parameters.Add("@FavoriteTag", SqlDbType.Bit).Value = request.Favorite;
         command.Parameters.Add("@SortIdx", SqlDbType.Int).Value = request.SortIndex ?? (object)DBNull.Value;
-        command.Parameters.Add("@LastRunAt", SqlDbType.DateTime2).Value = request.LastRunAt ?? (object)DBNull.Value;
+        await command.ExecuteNonQueryAsync(token);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// 记录「最近使用」：只写 LAST_RUN_AT，不触碰收藏开关与收藏顺序。
+    /// 时间戳以服务端时钟为准（不受调用方时区/时钟影响）。
+    /// </summary>
+    [HttpPost("touch")]
+    public async Task<IActionResult> Touch(
+        [FromBody] ReportTouchRequest request, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(request.ReportId))
+            throw new ArgumentException("报表编号不能为空。", nameof(request));
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId is null) return Unauthorized();
+
+        // 权限门：目标模块报表可见性（REPORT_TAG）——与目录查询同口径
+        var permission = await permissions.GetAsync(userId, request.ModuleId, token);
+        if (!permission.Rights.CanBrowse) return Forbid();
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        const string sql = """
+            IF EXISTS (SELECT 1 FROM dbo.SYSDD_REPORT WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId)
+                UPDATE dbo.SYSDD_REPORT SET LAST_RUN_AT=@LastRunAt
+                WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId;
+            ELSE
+                INSERT INTO dbo.SYSDD_REPORT (USER_ID,M_IDX,REPORT_ID,FAVORITE_TAG,LAST_RUN_AT)
+                VALUES (@UserId,@ModuleId,@ReportId,0,@LastRunAt);
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@UserId", SqlDbType.NChar, 10).Value = userId.Trim();
+        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = request.ModuleId;
+        command.Parameters.Add("@ReportId", SqlDbType.NChar, 50).Value = request.ReportId.Trim();
+        command.Parameters.Add("@LastRunAt", SqlDbType.DateTime2).Value = DateTime.UtcNow;
         await command.ExecuteNonQueryAsync(token);
         return NoContent();
     }
@@ -193,10 +231,14 @@ public sealed record ReportCatalogItem(
     int SortIndex,
     DateTime? LastRunAt);
 
-/// <summary>收藏/最近使用请求。</summary>
+/// <summary>收藏开关/排序请求。SortIndex 缺省表示本次不改收藏顺序。</summary>
 public sealed record ReportFavoriteRequest(
     int ModuleId,
     string? ReportId,
     bool Favorite = false,
-    int? SortIndex = null,
-    DateTime? LastRunAt = null);
+    int? SortIndex = null);
+
+/// <summary>最近使用登记请求（时间戳由服务端生成）。</summary>
+public sealed record ReportTouchRequest(
+    int ModuleId,
+    string? ReportId);
