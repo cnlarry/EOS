@@ -927,12 +927,6 @@ public sealed class RightsAdminRepository(
                 deleteButtons.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
                 await deleteButtons.ExecuteNonQueryAsync(token);
             }
-            await using (var deleteReport = new SqlCommand(
-                "DELETE FROM dbo.SYSDH_REPORT WHERE G_IDX=@Id;", connection, transaction))
-            {
-                deleteReport.Parameters.Add("@Id", SqlDbType.NChar, 20).Value = id;
-                await deleteReport.ExecuteNonQueryAsync(token);
-            }
             await using (var deleteRights = new SqlCommand(
                 "DELETE FROM dbo.SYSDH WHERE G_IDX=@Id;", connection, transaction))
             {

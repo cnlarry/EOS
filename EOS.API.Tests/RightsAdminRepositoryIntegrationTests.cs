@@ -94,40 +94,8 @@ public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
         }
     }
 
-    [Fact]
-    public async Task ReportRights_SaveAndClearRoundtrip()
-    {
-        if (ConnectionString.Value is null) return;
-        await SeedAsync();
-        try
-        {
-            var matrixBefore = await _repository.GetUserReportMatrixAsync("admin", _userId, CancellationToken.None);
-            if (matrixBefore.Count == 0) return;
-            var report = matrixBefore[0];
-
-            await _repository.SaveUserReportRightsAsync(
-                _userId,
-                [new ReportRightsInput(report.ModuleId, report.ReportId, true, true, false, null)],
-                "admin", "IT", CancellationToken.None);
-            var matrix = await _repository.GetUserReportMatrixAsync("admin", _userId, CancellationToken.None);
-            var row = matrix.Single(item => item.ReportId.Equals(report.ReportId, StringComparison.OrdinalIgnoreCase));
-            Assert.True(row.HasPersonal);
-            Assert.True(row.Preview);
-            Assert.True(row.Print);
-            Assert.False(row.Export);
-            Assert.Equal("personal", row.Effective.Source);
-
-            await _repository.SaveUserReportRightsAsync(
-                _userId, [new ReportRightsInput(report.ModuleId, report.ReportId, false, false, false, null)],
-                "admin", "IT", CancellationToken.None);
-            matrix = await _repository.GetUserReportMatrixAsync("admin", _userId, CancellationToken.None);
-            Assert.False(matrix.Single(item => item.ReportId.Equals(report.ReportId, StringComparison.OrdinalIgnoreCase)).HasPersonal);
-        }
-        finally
-        {
-            await CleanupAsync();
-        }
-    }
+    // 报表权限的"保存后立即生效"用例已随例外层退场（唯一真源改为归属模块 REPORT_TAG）：
+    // 逐报表的例外行不再参与任何判定，这条往返语义已无处可测。
 
     [Fact]
     public async Task Members_ReplaceSemantics()
@@ -206,7 +174,6 @@ public sealed class RightsAdminRepositoryIntegrationTests : IDisposable
             DELETE FROM dbo.SYSDD WHERE USER_ID=N'{_userId}';
             DELETE FROM dbo.SYSDH WHERE G_IDX=N'{_groupId}';
             DELETE FROM dbo.SYSDD_REPORT WHERE USER_ID=N'{_userId}';
-            DELETE FROM dbo.SYSDH_REPORT WHERE G_IDX=N'{_groupId}';
             DELETE FROM dbo.SYSDG_USER WHERE USER_ID=N'{_userId}' OR G_IDX=N'{_groupId}';
             DELETE FROM dbo.SYSDG WHERE G_IDX=N'{_groupId}';
             DELETE FROM dbo.SYSDL WHERE USER_ID=N'{_userId}';

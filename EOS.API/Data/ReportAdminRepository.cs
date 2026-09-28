@@ -138,7 +138,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
         // 表名来自下面的常量数组，不含任何外部输入（不做动态标识符拼接）。
         string[] cascadeTables =
         [
-            "REPORT_SORT", "REPORT_INBOX", "REPORT_SUBSCRIPTION", "SYSDD_REPORT", "SYSDH_REPORT", "SYSQR",
+            "REPORT_SORT", "REPORT_INBOX", "REPORT_SUBSCRIPTION", "SYSDD_REPORT", "SYSQR",
         ];
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
