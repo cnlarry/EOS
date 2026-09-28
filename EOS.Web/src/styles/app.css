@@ -414,10 +414,10 @@ button, input, select { font: inherit; }
 /* JSX 上曾挂着 Bootstrap 工具类 gap-2（0.5rem !important）压掉本规则的 10px，
    已改为不在 JSX 上写间距类：区块间距只由本规则一处定义 */
 /* 同类页面级容器的区块间距同样收口到 10px。这几个类此前在 CSS 里没有定义，
-   间距全靠 JSX 上的 gap-2（8px），与设计口径不一致 */
+   间距全靠 JSX 上的 gap-2（8px），与设计口径不一致。
+   报表查看器页（.erp-report-page）已在下方「报表中心」区块完整定义，不在此列 */
 .erp-import-page,
 .erp-search-center-page,
-.erp-report-page,
 .erp-field-editor-page { gap: 10px; }
 .erp-full-list-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .erp-full-list-page .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
@@ -426,6 +426,230 @@ button, input, select { font: inherit; }
 /* 报表权限矩阵页：表格区作为内部滚动容器（吸顶表头随表内滚动） */
 .erp-full-list-page .erp-report-matrix-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .erp-full-list-page .erp-report-matrix-body .erp-table-shell { flex: 1 1 auto; min-height: 0; }
+/* ==========================================================================
+   报表中心（目录页 / 查看器页 / 收件箱页）
+
+   目录页是「导航目录」不是数据列表：自带页面容器与三区（收藏 / 最近使用 /
+   全部报表）语义类，不复用 .erp-full-list-page 的列表页外壳。
+   查看器页是「参数 + 结果」的取数页：标题栏与条件区固定，结果区铺满剩余高度
+   并内部滚动（与列表页同一滚动契约：表头吸顶、表格区滚动）。
+   ========================================================================== */
+.erp-catalog-page {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 320px;
+  overflow: hidden;
+}
+.erp-catalog-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.erp-catalog-head {
+  flex: 0 0 auto;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+.erp-catalog-head .erp-search { flex: 1 1 240px; min-width: 180px; max-width: 420px; }
+.erp-catalog-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.erp-catalog-title strong { font-size: 14px; line-height: 1.2; }
+.erp-catalog-title span { font-size: 12px; color: var(--tblr-secondary); white-space: nowrap; }
+.erp-catalog-actions { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+.erp-catalog-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 16px; }
+.erp-catalog-section { display: flex; flex-direction: column; gap: 8px; }
+.erp-catalog-section-head { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.erp-catalog-section-head h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.erp-catalog-section-head .erp-catalog-count { font-size: 12px; color: var(--tblr-secondary); }
+.erp-catalog-section-head .erp-catalog-section-actions { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+/* 收藏/最近使用的空态提示：只是一行说明，不占整块空白 */
+.erp-catalog-hint {
+  padding: 10px 12px;
+  border: 1px dashed var(--tblr-border-color);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--tblr-secondary);
+}
+.erp-catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+/* 磁贴：外层是容器（避免按钮嵌套），整块可点的是内部 .erp-catalog-tile-open */
+.erp-catalog-tile {
+  position: relative;
+  display: flex;
+  min-height: 64px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 8px;
+  background: var(--tblr-bg-surface);
+}
+.erp-catalog-tile:hover { border-color: var(--tblr-primary); background: var(--tblr-primary-lt); }
+.erp-catalog-tile-open {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.erp-catalog-tile-open:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; border-radius: 8px; }
+.erp-catalog-tile-name { font-size: 13px; font-weight: 600; padding-right: 52px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erp-catalog-tile-meta { font-size: 11px; color: var(--tblr-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erp-catalog-tile-actions { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+.erp-catalog-tile:hover .erp-catalog-tile-actions,
+.erp-catalog-tile:focus-within .erp-catalog-tile-actions,
+.erp-catalog-tile-actions[data-pinned='true'] { opacity: 1; }
+/* 触屏没有 hover：次级动作常显，否则收藏/版式入口在触摸设备上不可达 */
+@media (hover: none) {
+  .erp-catalog-tile-actions { opacity: 1; }
+}
+.erp-catalog-tile-btn {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--tblr-bg-surface);
+  color: var(--tblr-secondary);
+  cursor: pointer;
+}
+.erp-catalog-tile-btn:hover { color: var(--tblr-primary); background: var(--tblr-bg-surface-secondary); }
+.erp-catalog-tile-btn:disabled { opacity: .4; cursor: default; }
+.erp-catalog-tile-btn.is-favorite { color: var(--tblr-yellow); }
+/* 紧凑行（最近使用 / 分组内的报表条目）：整行一个按钮，右侧放时间或操作 */
+.erp-catalog-rows { display: flex; flex-direction: column; border: 1px solid var(--tblr-border-color); border-radius: 8px; overflow: hidden; }
+.erp-catalog-row { display: flex; align-items: center; gap: 8px; min-width: 0; border-bottom: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); }
+.erp-catalog-row:last-child { border-bottom: 0; }
+.erp-catalog-row:hover { background: var(--tblr-primary-lt); }
+.erp-catalog-row-open {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.erp-catalog-row-open:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }
+.erp-catalog-row-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.erp-catalog-row-meta { font-size: 11px; color: var(--tblr-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.erp-catalog-row-tail { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; padding-right: 8px; font-size: 11px; color: var(--tblr-secondary); white-space: nowrap; }
+.erp-catalog-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--tblr-primary);
+  background: var(--tblr-primary-lt);
+}
+/* 业务域分组：默认折叠为「域 + 计数」索引，展开后显示域内报表 */
+.erp-catalog-group { border: 1px solid var(--tblr-border-color); border-radius: 8px; overflow: hidden; }
+.erp-catalog-group + .erp-catalog-group { margin-top: 8px; }
+.erp-catalog-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  background: var(--tblr-bg-surface-secondary);
+  text-align: left;
+}
+button.erp-catalog-group-title { cursor: pointer; }
+button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
+.erp-catalog-group-title strong { font-size: 13px; font-weight: 600; }
+.erp-catalog-group-title .erp-catalog-count { font-size: 12px; color: var(--tblr-secondary); margin-left: auto; }
+.erp-catalog-group-title svg { flex: 0 0 auto; color: var(--tblr-secondary); }
+.erp-catalog-group-body { border-top: 1px solid var(--tblr-border-color); }
+.erp-catalog-empty .erp-state { min-height: 0; padding: 20px 12px; gap: .35rem; }
+.erp-catalog-empty .erp-state-icon { width: 2.25rem; height: 2.25rem; border-radius: .5rem; }
+.erp-catalog-empty .erp-state-icon svg { width: 20px; height: 20px; }
+
+/* 查看器页：标题栏 + 条件区固定，结果区内部滚动 */
+.erp-report-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: var(--tblr-border-radius);
+  background: var(--tblr-bg-surface);
+}
+.erp-report-head-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.erp-report-head-title h1 { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.2; }
+.erp-report-head-title span { font-size: 12px; color: var(--tblr-secondary); }
+.erp-report-head-actions { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+/* 条件区：标签列定宽右对齐 + 控件列自适应，字段名长短不一时标签与控件仍对齐。
+   auto-fit 让宽屏一行多列、窄屏自动回流，不使用固定 col-md-* 栅格 */
+.erp-report-print-panel { flex: 0 0 auto; max-height: 55vh; overflow: auto; }
+.erp-report-conditions { flex: 0 0 auto; max-height: 45vh; overflow: auto; }
+.erp-report-conditions .card-header { padding: 6px 10px; }
+.erp-report-conditions .card-body { padding: 10px; }
+.erp-query-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 14px; }
+.erp-query-field { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; }
+.erp-query-label { font-size: 12px; color: var(--tblr-secondary); text-align: right; white-space: nowrap; }
+.erp-query-control { min-width: 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.erp-query-control .form-control-sm,
+.erp-query-control .form-select-sm { height: 28px; }
+.erp-query-control .erp-query-range { flex: 1 1 0; min-width: 0; }
+.erp-report-page > .card { flex: 0 0 auto; }
+.erp-report-page { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 320px; overflow: hidden; }
+.erp-report-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.erp-report-page > .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.erp-report-page > .erp-list-card .table-responsive { overflow: visible; }
+.erp-report-page .erp-data-table thead th { position: sticky; top: 0; z-index: 3; }
+/* 页级错误条（导出/打印/下载失败）：内联提示，替代浏览器原生 alert */
+.erp-report-alert {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--tblr-danger);
+  border-radius: 8px;
+  background: var(--tblr-danger-lt);
+  color: var(--tblr-danger);
+  font-size: 12px;
+}
+.erp-report-alert button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+/* 报表订阅表单里的时刻/日期输入：固定窄宽（原先是内联 style 写死宽度） */
+.erp-narrow-input { width: 72px; }
+
+/* 收件箱页：页级工具栏 + 页签面板（订阅 / 收件箱两态，不再上下堆叠两张表） */
+.erp-report-inbox-page { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0; }
+.erp-inbox-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.erp-report-inbox-page .erp-tabbed-panel-body > .erp-inbox-toolbar:first-child { margin-top: -2px; }
+@media (max-width: 991.98px) {
+  /* 窄屏改为整页滚动：固定高度 + 裁剪会把条件区/结果区压得只剩一条 */
+  .erp-catalog-page,
+  .erp-report-page { overflow: visible; min-height: 0; }
+  .erp-catalog-body { overflow: visible; }
+  .erp-report-conditions { max-height: none; }
+  .erp-report-page > .erp-list-card { overflow: visible; }
+  .erp-report-page > .erp-list-card .erp-table-shell { overflow: visible; }
+  .erp-report-page .erp-data-table thead th { position: static; }
+}
 /* 字段设置全页：整页随视口高度自适应，左栏字段导航与右栏编辑区各自内部滚动。
    卡片体直接作为 grid 承载两栏（row/col 的 flex 行对内部行高度不是确定尺寸，栏会按内容
    高度撑开而不滚动）；行轨道 minmax(0,1fr) 给出确定高度，两栏 min-height:0 + 滚动条生效 */

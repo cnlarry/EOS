@@ -57,10 +57,10 @@ function installApiMocks() {
   })
 }
 
-function renderViewer() {
+function renderViewer(initialEntry = '/reports/1405') {
   const router = createMemoryRouter(
     [{ path: '/reports/:moduleId', element: <ReportViewerPage /> }],
-    { initialEntries: ['/reports/1405'] },
+    { initialEntries: [initialEntry] },
   )
   return renderWithProviders(<RouterProvider router={router} />)
 }
@@ -78,8 +78,8 @@ describe('ReportViewerPage F_TYPE 5（数据源多选条件）', () => {
     renderViewer()
     expect(await screen.findByText('一号仓')).toBeInTheDocument()
     expect(screen.getByText('二号仓')).toBeInTheDocument()
-    // 仅统计条件区的复选框（打印设置卡另有显示分组/显示明细复选框）
-    const conditionArea = screen.getByText('仓库').closest<HTMLElement>('.col-md-4')!
+    // 仅统计条件区该字段内的复选框（打印设置默认折叠，其显示分组/显示明细复选框不在 DOM 中）
+    const conditionArea = screen.getByText('仓库').closest<HTMLElement>('.erp-query-field')!
     expect(within(conditionArea).getAllByRole('checkbox')).toHaveLength(2)
     expect(within(conditionArea).getAllByRole('checkbox')[0]).not.toBeChecked()
     // 不应渲染 type 3 的「全部」下拉选项
@@ -113,6 +113,45 @@ describe('ReportViewerPage F_TYPE 5（数据源多选条件）', () => {
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/reports/1405/query?page=1&pageSize=50&reportId=RPT_A',
       expect.objectContaining({ values: { 1: 'W2' } }),
+    ))
+  })
+})
+
+describe('ReportViewerPage 页面结构', () => {
+  beforeEach(() => {
+    installApiMocks()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('标题栏显示当前报表名并回链报表中心', async () => {
+    renderViewer()
+    expect(await screen.findByRole('heading', { name: '库存报表' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '报表中心' })).toBeInTheDocument()
+  })
+
+  it('打印设置默认折叠，点「打印」才展开', async () => {
+    renderViewer()
+    await screen.findByRole('heading', { name: '库存报表' })
+    expect(screen.queryByText('打印设置')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '打印' }))
+    expect(screen.getByText('打印设置')).toBeInTheDocument()
+  })
+
+  it('未查询时提示尚未查询，查询后 0 行提示放宽条件', async () => {
+    renderViewer()
+    expect(await screen.findByText('尚未查询')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '查询' }))
+    expect(await screen.findByText('没有符合条件的数据')).toBeInTheDocument()
+  })
+
+  it('条件初值从 URL 带入并直接出结果（深链）', async () => {
+    renderViewer('/reports/1405?f1=W1&page=2&pageSize=100')
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/reports/1405/query?page=2&pageSize=100&reportId=RPT_A',
+      expect.objectContaining({ values: { 1: 'W1' } }),
     ))
   })
 })
