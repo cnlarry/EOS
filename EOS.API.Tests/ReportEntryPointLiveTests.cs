@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Data.SqlClient;
 using Xunit;
 
@@ -20,6 +21,16 @@ public sealed class ReportEntryPointLiveTests
         Assert.False(string.IsNullOrWhiteSpace(value),
             "真库集成测试需要 MSSQL_ERP_CONN；未配置即失败（无连接跳过≠已验证）。");
         return value!;
+    }
+
+    /// <summary>仓库根（以 EOS.slnx 为标记）；夹具在仓内相对路径下，不能用输出目录拼。</summary>
+    private static string RepoRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "EOS.slnx")))
+            directory = directory.Parent;
+        Assert.NotNull(directory);
+        return directory!.FullName;
     }
 
     private static string[] Collect(string sql)
@@ -45,6 +56,30 @@ public sealed class ReportEntryPointLiveTests
 
         Assert.True(nodes.Length == 0,
             $"菜单里仍有可见的报表承载页节点，点进去是空页（报表已按业务模块归位）：{string.Join(", ", nodes)}");
+    }
+
+    [Fact]
+    public void 已删除的历史报表模块号不得重现()
+    {
+        // 这些编号是报表承载页时代的产物（XX98 目录 + /reports 承载页 + 其下非 /reports 子节点）。
+        // 它们一旦重现，意味着有人又按"一张报表一个模块"的老路子建模块——
+        // 表现形式是一张报表悄悄长出一个模块节点，不会报错，只会让归属表再长出第二套锚点。
+        var fixture = Path.Combine(RepoRoot(), "EOS.API.Tests", "Fixtures", "report-legacy-module-ids.json");
+        Assert.True(File.Exists(fixture), $"缺少历史模块号清单夹具：{fixture}");
+        using var document = JsonDocument.Parse(File.ReadAllText(fixture));
+        var legacy = document.RootElement.GetProperty("moduleIds").EnumerateArray().Select(item => item.GetInt32()).ToArray();
+        var kept = document.RootElement.GetProperty("keepKept").GetInt32();
+
+        var alive = Collect("""
+            SELECT CAST(M_IDX AS varchar(20)) FROM dbo.MODULES WITH (NOLOCK);
+            """).Select(int.Parse).ToHashSet();
+
+        var reappeared = legacy.Where(id => id != kept && alive.Contains(id)).OrderBy(id => id).ToArray();
+        Assert.True(reappeared.Length == 0,
+            $"已删除的历史报表模块号重现了：{string.Join(", ", reappeared)}");
+
+        // 唯一保留项也必须还在（它是 /bom-expand 的唯一承载页）
+        Assert.Contains(kept, alive);
     }
 
     [Fact]
