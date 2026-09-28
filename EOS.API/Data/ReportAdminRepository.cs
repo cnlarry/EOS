@@ -123,18 +123,48 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
         return await command.ExecuteNonQueryAsync(token) > 0;
     }
 
+    /// <summary>
+    /// 删除报表：按编号**级联清掉引用表**，再删本体，整体一个事务。
+    ///
+    /// <para>
+    /// 这些表之间没有外键（纯逻辑引用），级联只能在这里显式做。原先只清 `REPORT_SORT` + `REPORT`，
+    /// 其余五张表会留下永远取不到的孤儿行：打印偏好、个人/组例外行、订阅、收件箱各自指向一个
+    /// 不存在的报表——既不报错也不生效，是"删了但没删干净"里最难被发现的一种。
+    /// 放进事务是因为删到一半失败会留下"报表还在、偏好没了"，比不删更糟。
+    /// </para>
+    /// </summary>
     public async Task DeleteReportAsync(string reportId, CancellationToken token)
     {
+        // 表名来自下面的常量数组，不含任何外部输入（不做动态标识符拼接）。
+        string[] cascadeTables =
+        [
+            "REPORT_SORT", "REPORT_INBOX", "REPORT_SUBSCRIPTION", "SYSDD_REPORT", "SYSDH_REPORT", "SYSQR",
+        ];
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
-        await using (var sortCommand = new SqlCommand("DELETE FROM dbo.REPORT_SORT WHERE REPORT_ID=@ReportId;", connection))
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
         {
-            sortCommand.Parameters.Add("@ReportId", SqlDbType.NChar, 100).Value = reportId.Trim();
-            await sortCommand.ExecuteNonQueryAsync(token);
+            foreach (var table in cascadeTables)
+            {
+                await using var cascade = new SqlCommand(
+                    $"DELETE FROM dbo.{table} WHERE REPORT_ID=@ReportId;", connection, transaction);
+                cascade.Parameters.Add("@ReportId", SqlDbType.NChar, 50).Value = reportId.Trim();
+                await cascade.ExecuteNonQueryAsync(token);
+            }
+            await using (var command = new SqlCommand(
+                "DELETE FROM dbo.REPORT WHERE REPORT_ID=@ReportId;", connection, transaction))
+            {
+                command.Parameters.Add("@ReportId", SqlDbType.NChar, 50).Value = reportId.Trim();
+                await command.ExecuteNonQueryAsync(token);
+            }
+            await transaction.CommitAsync(token);
         }
-        await using var command = new SqlCommand("DELETE FROM dbo.REPORT WHERE REPORT_ID=@ReportId;", connection);
-        command.Parameters.Add("@ReportId", SqlDbType.NChar, 100).Value = reportId.Trim();
-        await command.ExecuteNonQueryAsync(token);
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
     }
 
     public async Task<int?> GetReportModuleAsync(string reportId, CancellationToken token)
