@@ -112,6 +112,45 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
     /// <summary>
     /// F_TYPE 3 数据单选 / 5 数据源多选选项：按白名单表/列执行静态 SELECT（无用户输入拼接）。
     /// </summary>
+    /// <summary>
+    /// 按报表身份解析归属模块（报表编号 → <c>REPORT.M_IDX</c>），并带回模块名与报表名。
+    /// </summary>
+    /// <remarks>
+    /// 这是"按报表身份打开"这条路的第一步：报表编号是全局唯一的，但**它属于哪个模块**必须由
+    /// 服务端查出来。让调用方（URL 里的模块号、请求体里的模块号）说了算，就等于把权限锚点交给
+    /// 调用方挑——任何人都能把一张报表挂到别的模块号下、用那个模块的权限打开它。
+    /// 编号不存在返回 <c>null</c>（调用方回 404）；存在则按解析出的模块号再判权限（无权回 403）。
+    /// </remarks>
+    public async Task<ReportIdentity?> FindIdentityAsync(string reportId, CancellationToken token)
+    {
+        if(string.IsNullOrWhiteSpace(reportId))return null;
+        await using var connection=connections.Create();
+        await connection.OpenAsync(token);
+        const string sql="""
+            SELECT r.M_IDX,LTRIM(RTRIM(ISNULL(r.REPORT_NAME,r.REPORT_ID))),LTRIM(RTRIM(ISNULL(m.M_DESC,'')))
+            FROM dbo.REPORT r WITH (NOLOCK)
+            INNER JOIN dbo.MODULES m WITH (NOLOCK) ON m.M_IDX=r.M_IDX
+            WHERE LTRIM(RTRIM(r.REPORT_ID))=@ReportId;
+            """;
+        await using var command=new SqlCommand(sql,connection);
+        command.Parameters.Add("@ReportId",SqlDbType.NVarChar,100).Value=reportId.Trim();
+        await using var reader=await command.ExecuteReaderAsync(token);
+        if(!await reader.ReadAsync(token))return null;
+        return new ReportIdentity(reader.GetInt32(0),reportId.Trim(),reader.GetString(1),reader.GetString(2));
+    }
+
+    /// <summary>模块名（报表清单载荷用；模块下可能一张报表都没有，故不绕报表解析）。</summary>
+    public async Task<string?> FindModuleNameAsync(int moduleId, CancellationToken token)
+    {
+        await using var connection=connections.Create();
+        await connection.OpenAsync(token);
+        const string sql="SELECT LTRIM(RTRIM(ISNULL(M_DESC,''))) FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;";
+        await using var command=new SqlCommand(sql,connection);
+        command.Parameters.Add("@ModuleId",SqlDbType.Int).Value=moduleId;
+        var value=await command.ExecuteScalarAsync(token);
+        return value is null or DBNull ? null : Convert.ToString(value);
+    }
+
     public async Task<IReadOnlyList<ReportOption>> GetConditionOptionsAsync(
         ReportDefinition definition,
         int serialNo,

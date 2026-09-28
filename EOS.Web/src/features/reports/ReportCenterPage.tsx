@@ -148,7 +148,8 @@ export function ReportCenterPage() {
       moduleId: item.moduleId,
       reportId: item.reportId,
     }).catch(() => undefined)
-    navigate(`/reports/${item.moduleId}`)
+    // 打开的是**这张报表**，不是"这个模块的默认报表"：地址带身份，才能深链、分享、收藏到具体一张
+    navigate(`/report/${encodeURIComponent(item.reportId)}`)
   }
 
   const moveFavorite = (item: ReportCatalogItem, direction: -1 | 1) => {

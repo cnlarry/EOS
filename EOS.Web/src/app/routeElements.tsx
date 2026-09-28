@@ -1,9 +1,13 @@
-import { lazy } from 'react'
+import { lazy, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { LoadingState, EmptyState } from '../components/common/AsyncState'
 import { ReportAdminPage } from '../features/admin/ReportAdminPage'
 import { ReportViewerPage } from '../features/reports/ReportViewerPage'
 import { useAuth } from '../features/auth/authContext'
 import { moduleReadPermission } from '../features/auth/modulePermissions'
+import { apiClient } from '../services/api'
+import { ApiError } from '../types/api'
 import { withSuspense } from './suspense'
 
 const DocumentWorkbenchPage = lazy(() => import('../features/document-workbench/DocumentWorkbenchPage').then((module) => ({ default: module.DocumentWorkbenchPage })))
@@ -79,8 +83,83 @@ export function ReportAdminRoute() {
 /** 报表过滤条件设置（2205）已随  下线：参数定义并入报表定义资产，
  *  用户填值 SYSQR_USER 保留为运行态，管理写侧退役。 */
 
-/** 报表查看器：跨模块打开时重置条件/分页/打印面板状态。 */
+/**
+ * 老模块地址 `/reports/:moduleId`：**跳转段**，不再直接渲染查看器。
+ *
+ * 报表身份进 URL 之后，"按模块打开"就只剩一个问题要回答——这个模块该打开哪一张？
+ * 规则与查看器内部一致（最近用过 → 模块默认 → 清单第一张），答完立刻把地址换成报表身份地址。
+ * 把这一步放在**查看器之前**而不是查看器里，是为了不出现"先渲染一次、再换地址重挂一次"：
+ * 重挂会把刚取的数、刚填的条件全丢掉。
+ */
 export function ReportViewerRoute() {
   const { moduleId = '' } = useParams()
-  return <ReportViewerPage key={moduleId} />
+  const location = useLocation()
+  const navigate = useNavigate()
+  const settings = useQuery({
+    queryKey: ['report', moduleId, 'print-settings'],
+    queryFn: () => apiClient.get<{ reports: { reportId: string; isDefault: boolean }[]; userSettings: { reportId?: string } | null }>(
+      `/reports/${moduleId}/print-settings`,
+    ),
+    enabled: moduleId !== '',
+  })
+
+  useEffect(() => {
+    if (!moduleId || !settings.data) return
+    const user = settings.data.userSettings
+    const report = (user?.reportId ? settings.data.reports.find((item) => item.reportId === user.reportId) : undefined)
+      ?? settings.data.reports.find((item) => item.isDefault)
+      ?? settings.data.reports[0]
+    if (!report) return
+    navigate(`/report/${encodeURIComponent(report.reportId)}${location.search}`, { replace: true })
+  }, [moduleId, settings.data, navigate, location.search])
+
+  if (!moduleId) return <ForbiddenPage />
+  if (settings.isError) return <EmptyState title="报表打不开" description="无法读取该模块的报表清单。" />
+  return <LoadingState />
+}
+
+/**
+ * 报表身份入口 `/report/:reportId`：报表编号就是这条地址的身份。
+ *
+ * 模块号不在这条 URL 里（也**不该**由调用方塞进来）：必须由服务端按报表编号解析出归属模块，
+ * 再拿这个模块号去渲染查看器——否则地址栏里改一个模块号就能换一套权限看同一张报表。
+ * 解析失败（无此报表 404 / 无权限 403）时给出具名错误态，不静默落回默认报表。
+ */
+export function ReportIdentityRoute() {
+  const { reportId = '' } = useParams()
+  const identity = useQuery({
+    queryKey: ['report-identity', reportId],
+    queryFn: () => apiClient.get<ReportIdentityData>(`/report/${encodeURIComponent(reportId)}`),
+    enabled: reportId !== '',
+  })
+
+  if (!reportId) return <ForbiddenPage />
+  if (identity.isLoading) return <LoadingState />
+  if (identity.isError || !identity.data) {
+    return <EmptyState title="报表打不开" description={describeReportOpenError(identity.error)} />
+  }
+  return (
+    <ReportViewerPage
+      key={`${identity.data.moduleId}:${reportId}`}
+      moduleIdOverride={String(identity.data.moduleId)}
+      reportIdOverride={identity.data.reportId}
+    />
+  )
+}
+
+interface ReportIdentityData {
+  moduleId: number
+  reportId: string
+  reportName: string
+  moduleName: string
+  siblings: { reportId: string; reportName: string; isDefault: boolean }[]
+}
+
+/** 打不开时的具名说明：无此报表（404）与无权限（403）是两回事，不能都写成"打开失败"。 */
+function describeReportOpenError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 404) return '没有这张报表（报表编号不存在，或已被删除）。'
+    if (error.status === 403) return '当前账号对这张报表所属的模块没有浏览权限。'
+  }
+  return '报表打开失败，请稍后重试或联系管理员。'
 }

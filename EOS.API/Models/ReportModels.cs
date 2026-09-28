@@ -107,6 +107,26 @@ public sealed record ReportQueryResult(
     int PageSize);
 
 /// <summary>
+/// 报表身份：报表编号是**全局唯一**的，归属模块由服务端解析出来。
+/// </summary>
+/// <remarks>
+/// 归属模块必须由服务端查，不能由调用方（URL 参数、请求体）说了算——否则任何人都能把一个
+/// 报表编号挂到别的模块号上用那个模块的权限打开它。解析结果同时充当权限判定的锚点：
+/// 编号不存在 → 404；存在但当前用户对该模块没有浏览权 → 403。
+/// </remarks>
+public sealed record ReportIdentity(int ModuleId, string ReportId, string ReportName, string ModuleName)
+{
+    /// <summary>同一归属模块下**当前用户可见**的其他报表（含默认报表优先序）。</summary>
+    public IReadOnlyList<ReportSibling> Siblings { get; init; } = [];
+}
+
+/// <summary>归属模块下的报表清单（"按归属模块列报表"的载荷）。</summary>
+public sealed record ReportModuleReports(int ModuleId, string ModuleName, IReadOnlyList<ReportSibling> Reports);
+
+/// <summary>同一归属模块下的另一张报表（用于查看器内的报表切换与工具条清单）。</summary>
+public sealed record ReportSibling(string ReportId, string ReportName, bool IsDefault);
+
+/// <summary>
 /// 打印面板中的可选报表（REPORT，按预览权限过滤）。<paramref name="FormatId"/> 为该报表专有的
 /// 版式包编号（留空即用模块默认版式）——同一模块的多个报表（如送货单 / 拣货单）据此各印各的版式。
 /// </summary>
