@@ -7,7 +7,7 @@ namespace EOS.API.Data;
 
 /// <summary>
 /// 报表打印设置：
-/// - 报表清单按报表级预览权限过滤（SYSDD_REPORT 个人覆盖 SYSDH_REPORT 组，组标签取 OR）；
+/// - 报表清单只过模块闸门（归属模块 REPORT_TAG）：报表级例外层已退场，清单/目录/打印同一条判据；
 /// - 页头/表尾来自 REPORT_LAYOUT；
 /// - 排序/分组方案来自 REPORT_SORT（字段串仅服务端消费，白名单校验后进入查询）；
 /// - 用户最近设置读写 SYSQR（IS_LAST=1），字段值全部参数化。
