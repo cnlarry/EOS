@@ -89,19 +89,31 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
 
                 page.Content().Element(content => RenderContent(
                     content, layout.Sections.Content, contentWidth, contentHeight, data, effective));
-                // 多页模板：页头/页脚按页码选择（第 1 页 / 续页 / 末页，缺省回退默认 sections）
-                page.Header().Dynamic(new PageTemplateDynamic((header, pageNumber, totalPages) =>
+                // 多页模板（第 1 页 / 续页 / 末页各一套）才需要动态部件——它按页码选分区。
+                // 没有模板时用静态页头/页脚：动态部件的内容必须单页装得下，而流动模式的
+                // 分区高度由内容决定，套进动态部件会直接抛"does not fit on a single page"。
+                if (layout.PageTemplates is null)
                 {
-                    var section = SelectPageTemplate(layout.PageTemplates, pageNumber, totalPages, isHeader: true)
-                        ?? layout.Sections.Header;
-                    RenderFixedSection(header, section, contentWidth, contentHeight, data, effective);
-                }));
-                page.Footer().Dynamic(new PageTemplateDynamic((footer, pageNumber, totalPages) =>
+                    page.Header().Element(header => RenderFixedSection(
+                        header, layout.Sections.Header, contentWidth, contentHeight, data, effective));
+                    page.Footer().Element(footer => RenderFixedSection(
+                        footer, layout.Sections.Footer, contentWidth, contentHeight, data, effective));
+                }
+                else
                 {
-                    var section = SelectPageTemplate(layout.PageTemplates, pageNumber, totalPages, isHeader: false)
-                        ?? layout.Sections.Footer;
-                    RenderFixedSection(footer, section, contentWidth, contentHeight, data, effective);
-                }));
+                    page.Header().Dynamic(new PageTemplateDynamic((header, pageNumber, totalPages) =>
+                    {
+                        var section = SelectPageTemplate(layout.PageTemplates, pageNumber, totalPages, isHeader: true)
+                            ?? layout.Sections.Header;
+                        RenderFixedSection(header, section, contentWidth, contentHeight, data, effective);
+                    }));
+                    page.Footer().Dynamic(new PageTemplateDynamic((footer, pageNumber, totalPages) =>
+                    {
+                        var section = SelectPageTemplate(layout.PageTemplates, pageNumber, totalPages, isHeader: false)
+                            ?? layout.Sections.Footer;
+                        RenderFixedSection(footer, section, contentWidth, contentHeight, data, effective);
+                    }));
+                }
             });
         });
         logger.LogDebug("layout.json 渲染 module={ModuleId} rows={RowCount}", data.ModuleId, data.Details.Count);
@@ -160,6 +172,38 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
     {
         var elements = section.Elements.Where(element => element.Visible).ToList();
         if (elements.Count == 0) return;
+
+        // 流动模式：同 Y 的元素并成一行，行按 Y 升序堆叠，无内容的整行略过，高度由内容决定。
+        // 列表型报表的页头页脚走这条——页头字段大多为空，固定高度会让空字段照样占位，
+        // 同样的数据每页白留一大块，累积成多印的纸。
+        if (section.Flow)
+        {
+            var rows = BuildFlowRows(elements, data, context);
+            if (rows.Count == 0) return;
+            container.Column(column =>
+            {
+                foreach (var row in rows)
+                {
+                    if (row.Gap > 0) column.Item().PaddingTop(Mm((float)row.Gap));
+                    // 显式宽度合计可能顶到甚至超出可用宽度（mm→pt 的零点几 pt 舍入就够触发
+                    // "conflicting size constraints"），按可用宽度等比收缩，别让版式资产
+                    // 的一个小数位把整张报表打成 500。
+                    var declared = row.Elements.Where(element => element.W > 0).Sum(element => Mm((float)element.W));
+                    var scale = declared > contentWidth && declared > 0 ? contentWidth / declared : 1;
+                    column.Item().Row(line =>
+                    {
+                        foreach (var element in row.Elements)
+                        {
+                            var width = element.W > 0 ? Mm((float)element.W) * scale : 0;
+                            var slot = width > 0 ? line.ConstantItem(width) : line.RelativeItem();
+                            slot.Element(target => RenderElement(target, element, data, context, null));
+                        }
+                    });
+                }
+            });
+            return;
+        }
+
         var height = Mm((float)(section.Height ?? 10));
         container.Height(height).Layers(layers =>
         {
@@ -167,6 +211,63 @@ public sealed class QuestPdfLayoutRenderer(ILogger<QuestPdfLayoutRenderer> logge
             foreach (var element in elements)
                 AddElementLayer(layers, element, 0, contentWidth, height, data, context);
         });
+    }
+
+    private sealed record FlowRow(double Y, double Gap, IReadOnlyList<LayoutElement> Elements);
+
+    /// <summary>
+    /// 流动分行：按 <c>Y</c> 分组（容差 0.5mm，允许同一行元素写略有差异的 Y）。
+    /// 整行元素都无内容则略过——空行不占高度，这正是流动模式存在的理由。
+    /// </summary>
+    private static List<FlowRow> BuildFlowRows(
+        IReadOnlyList<LayoutElement> elements, PrintData data, LayoutRenderContext context)
+    {
+        var rows = new List<FlowRow>();
+        foreach (var group in elements.GroupBy(element => Math.Round(element.Y * 2, MidpointRounding.AwayFromZero) / 2)
+                     .OrderBy(group => group.Key))
+        {
+            var visible = group.Where(element => HasVisibleContent(element, data, context)).ToList();
+            if (visible.Count == 0) continue;
+            var gap = visible.Select(element => element.Gap ?? 0).DefaultIfEmpty(0).Max();
+            rows.Add(new FlowRow(group.Key, gap, visible));
+        }
+        return rows;
+    }
+
+    /// <summary>元素是否有内容可印。无内容的元素在流动模式里整行略过。</summary>
+    private static bool HasVisibleContent(LayoutElement element, PrintData data, LayoutRenderContext context)
+    {
+        switch (element.Type)
+        {
+            case "text":
+                if (element.HideWhenEmpty == true && HasEmptyReference(element.Content, data, context)) return false;
+                return !string.IsNullOrWhiteSpace(ResolveTemplateText(element.Content ?? string.Empty, data, context));
+            case "field":
+                return !string.IsNullOrWhiteSpace(ResolveField(element.Field, data, context, null));
+            case "image":
+                var bytes = string.Equals(element.ResourceId, "REPORT.LOGO", StringComparison.OrdinalIgnoreCase)
+                    ? context.Report?.Logo
+                    : ResolveImageBytes(element.ResourceId, data);
+                return bytes is { Length: > 0 };
+            case "barcode":
+                return !string.IsNullOrWhiteSpace(ResolveTemplateText(element.Content ?? string.Empty, data, context));
+            default:
+                // line / rect / table / 未知类型：保留，不参与"空则略过"的判断
+                return true;
+        }
+    }
+
+    /// <summary><c>Content</c> 里是否引用了取值为空的字段（<c>{{SYS.*}}</c> 恒非空）。</summary>
+    private static bool HasEmptyReference(string? content, PrintData data, LayoutRenderContext context)
+    {
+        if (string.IsNullOrEmpty(content)) return false;
+        foreach (Match match in TemplatePattern.Matches(content))
+        {
+            var reference = match.Groups[1].Value;
+            if (reference.StartsWith("SYS.", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.IsNullOrWhiteSpace(ResolveField(reference, data, context, null))) return true;
+        }
+        return false;
     }
 
     /// <summary>
