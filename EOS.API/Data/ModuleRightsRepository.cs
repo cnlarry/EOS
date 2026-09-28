@@ -42,7 +42,7 @@ public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILog
     /// 报表级权限：**只看归属模块的 `REPORT_TAG`**（个人 `SYSDD` 优先，否则组 `SYSDH` 取或）。
     ///
     /// <para>
-    /// 原先这里还有第二层：模块闸门通过后再查 `SYSDD_REPORT` / `SYSDH_REPORT` 的逐报表例外行，
+    /// 原先这里还有第二层：模块闸门通过后再查逐报表的例外行（两张例外表已随迁移 277 退役），
     /// 命中就按例外值覆盖（通常收紧）。两层都能配、按不同优先级生效，结果是
     /// "这张报表为什么看不见"必须查两处才知道——而两处的可配面还各自有独立的管理界面。
     /// 现在只剩模块这一层：**能进这个模块，就能看、能打、能导出它名下的报表**；
@@ -151,12 +151,6 @@ public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILog
         return await groupCommand.ExecuteScalarAsync(token) is not null;
     }
 
-    private static ReportRightRow ReadReportRow(SqlDataReader reader) => new(
-        reader.GetNullableBoolean("PREVIEW_TAG"),
-        reader.GetNullableBoolean("PRINT_TAG"),
-        reader.GetNullableBoolean("EXPORT_TAG"),
-        reader.GetNullableString("DATA_FILTER") ?? string.Empty);
-
     private SqlConnection CreateConnection() => connections.Create();
 }
 
@@ -185,34 +179,6 @@ internal sealed record RightRow(
     string DataFilter,
     /// <summary>模块配置权（行为动作/校验规则/自定义按钮）；默认关闭。</summary>
     bool ModuleConfig = false);
-
-internal sealed record ReportRightRow(bool Preview, bool Print, bool Export, string DataFilter);
-
-/// <summary>
-/// 报表权限聚合（纯逻辑，与数据库解耦，便于单元测试）。
-/// OR；
-/// DATA_FILTER 非空项以 OR 拼接；无记录全禁。
-/// </summary>
-internal static class ReportRightsAggregator
-{
-    public static ReportRights FromPersonal(ReportRightRow row) =>
-        new(row.Preview, row.Print, row.Export, row.DataFilter.Trim());
-
-    public static ReportRights FromGroups(IReadOnlyList<ReportRightRow> rows)
-    {
-        if (rows.Count == 0) return new ReportRights(false, false, false, string.Empty);
-        var filters = rows
-            .Select(row => row.DataFilter.Trim())
-            .Where(filter => filter.Length > 0)
-            .Select(filter => $"({filter})")
-            .ToList();
-        return new ReportRights(
-            rows.Any(row => row.Preview),
-            rows.Any(row => row.Print),
-            rows.Any(row => row.Export),
-            string.Join(" OR ", filters));
-    }
-}
 
 /// <summary>
 /// 纯权限聚合逻辑（与数据库解耦，便于单元测试）。

@@ -55,10 +55,6 @@ internal static class RightsAdminLogic
             && string.IsNullOrWhiteSpace(input.DataFilter);
     }
 
-    /// <summary>报表权限全默认空（PREVIEW/PRINT/EXPORT 全 0 且 DATA_FILTER 空）→ 删除行。</summary>
-    public static bool IsDefaultEmpty(ReportRightsInput input) =>
-        !input.Preview && !input.Print && !input.Export && string.IsNullOrWhiteSpace(input.DataFilter);
-
     /// <summary>EXEC_TAG 规范化：A~Z 单字符（空 → 'A'），非法抛 ArgumentException。</summary>
     public static string NormalizeExecTag(string? value)
     {
@@ -123,27 +119,6 @@ internal static class RightsAdminLogic
             Intersect(groups, group => ParseDenyList(group.DenyModiDetail)),
             CombineDataFilters(groups.Select(group => group.DataFilter), " AND "),
             Or(group => group.FormDesign));
-    }
-
-    /// <summary>
-    /// 用户/组报表权限生效值：个人 override 行存在 → 完全采用；
-    /// 否则组 override OR（DATA_FILTER 按 OR 拼接）；无任何 override 行 → 默认开放
-    /// （跟随模块 REPORT_TAG 全开，source="default_open"）。
-    /// </summary>
-    public static EffectiveReportRights AggregateReportEffective(
-        ReportRightsInput? personal,
-        IReadOnlyList<ReportRightsInput> groups)
-    {
-        if (personal is not null)
-            return new("personal", personal.Preview, personal.Print, personal.Export, (personal.DataFilter ?? string.Empty).Trim());
-        if (groups.Count == 0)
-            return new("default_open", true, true, true, string.Empty);
-        return new(
-            "group",
-            groups.Any(group => group.Preview),
-            groups.Any(group => group.Print),
-            groups.Any(group => group.Export),
-            CombineDataFilters(groups.Select(group => group.DataFilter), " OR "));
     }
 
     private static EffectiveModuleRights FromValues(
@@ -220,9 +195,6 @@ public sealed class RightsAdminRepository(
         "DENY_MODI_FIELD_MASTER", "DENY_MODI_FIELD_DETAIL",
         "DATA_FILTER",
     ];
-
-    private static readonly string[] ReportRowColumns =
-        ["M_IDX", "REPORT_ID", "PREVIEW_TAG", "PRINT_TAG", "EXPORT_TAG", "DATA_FILTER"];
 
     /// <summary>用户模块权限矩阵：当前管理员可见模块树 + 个人/组权限 + 生效值。</summary>
     public async Task<IReadOnlyList<ModuleRightsRow>> GetUserModuleMatrixAsync(
@@ -313,115 +285,6 @@ public sealed class RightsAdminRepository(
             await transaction.CommitAsync(token);
             permissionCache.InvalidateAll();
             logger.LogInformation("保存组模块权限 groupId={Target} rows={Count} by={By}",
-                groupId, items.Count, adminName);
-        }
-        catch
-        {
-            await transaction.RollbackAsync(token);
-            throw;
-        }
-    }
-
-    /// <summary>用户报表权限矩阵：可见模块 × REPORT，个人/组生效值。</summary>
-    public async Task<IReadOnlyList<ReportRightsRow>> GetUserReportMatrixAsync(
-        string adminUserId, string targetUserId, CancellationToken token)
-    {
-        await EnsureUserExistsAsync(targetUserId, token);
-        var modules = await navigationRepository.GetForUserAsync(adminUserId, token);
-        var moduleTitles = modules.ToDictionary(module => module.Id, module => module.Label);
-        var reports = (await ReadAllReportsAsync(token))
-            .Where(report => moduleTitles.ContainsKey(report.ModuleId))
-            .ToList();
-        var personal = (await ReadUserReportRowsAsync(targetUserId, token))
-            .ToDictionary(row => (row.ModuleId, row.ReportId));
-        var groups = (await ReadUserGroupReportRowsAsync(targetUserId, token))
-            .GroupBy(row => (row.ModuleId, row.ReportId))
-            .ToDictionary(group => group.Key, group => group.Select(row => row.ToInput()).ToList());
-        return reports
-            .Select(report =>
-            {
-                var personalInput = personal.GetValueOrDefault((report.ModuleId, report.ReportId))?.ToInput();
-                var groupInputs = groups.GetValueOrDefault((report.ModuleId, report.ReportId)) ?? [];
-                return BuildReportRow(report, moduleTitles[report.ModuleId], personalInput, groupInputs);
-            })
-            .ToList();
-    }
-
-    /// <summary>组报表权限矩阵。</summary>
-    public async Task<IReadOnlyList<ReportRightsRow>> GetGroupReportMatrixAsync(
-        string adminUserId, string groupId, CancellationToken token)
-    {
-        await EnsureGroupExistsAsync(groupId, token);
-        var modules = await navigationRepository.GetForUserAsync(adminUserId, token);
-        var moduleTitles = modules.ToDictionary(module => module.Id, module => module.Label);
-        var reports = (await ReadAllReportsAsync(token))
-            .Where(report => moduleTitles.ContainsKey(report.ModuleId))
-            .ToList();
-        var rows = (await ReadGroupReportRowsAsync(groupId, token))
-            .ToDictionary(row => (row.ModuleId, row.ReportId));
-        return reports
-            .Select(report =>
-            {
-                var input = rows.GetValueOrDefault((report.ModuleId, report.ReportId))?.ToInput();
-                var effective = RightsAdminLogic.AggregateReportEffective(null, input is null ? [] : [input]);
-                return BuildReportRow(report, moduleTitles[report.ModuleId], input, [], effective);
-            })
-            .ToList();
-    }
-
-    /// <summary>批量保存个人报表权限：全 0 且 DATA_FILTER 空 → 删除行。</summary>
-    public async Task SaveUserReportRightsAsync(
-        string targetUserId, IReadOnlyList<ReportRightsInput> items,
-        string adminUserId, string adminName, CancellationToken token)
-    {
-        await EnsureUserExistsAsync(targetUserId, token);
-        var validation = await BuildReportValidationAsync(adminUserId, items, token);
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
-        try
-        {
-            foreach (var item in items)
-            {
-                validation.Validate(item);
-                await SaveReportRowAsync(connection, transaction, "SYSDD_REPORT", "USER_ID", targetUserId, item, token);
-            }
-            await WriteAuditAsync(connection, transaction, targetUserId,
-                $"保存用户 {targetUserId} 个人报表权限（{items.Count} 行）", adminName, token);
-            await transaction.CommitAsync(token);
-            permissionCache.InvalidateAll();
-            logger.LogInformation("保存用户报表权限 userId={Target} rows={Count} by={By}",
-                targetUserId, items.Count, adminName);
-        }
-        catch
-        {
-            await transaction.RollbackAsync(token);
-            throw;
-        }
-    }
-
-    /// <summary>批量保存组报表权限（SYSDH_REPORT）。</summary>
-    public async Task SaveGroupReportRightsAsync(
-        string groupId, IReadOnlyList<ReportRightsInput> items,
-        string adminUserId, string adminName, CancellationToken token)
-    {
-        await EnsureGroupExistsAsync(groupId, token);
-        var validation = await BuildReportValidationAsync(adminUserId, items, token);
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
-        try
-        {
-            foreach (var item in items)
-            {
-                validation.Validate(item);
-                await SaveReportRowAsync(connection, transaction, "SYSDH_REPORT", "G_IDX", groupId, item, token);
-            }
-            await WriteAuditAsync(connection, transaction, groupId,
-                $"保存用户组 {groupId} 报表权限（{items.Count} 行）", adminName, token);
-            await transaction.CommitAsync(token);
-            permissionCache.InvalidateAll();
-            logger.LogInformation("保存组报表权限 groupId={Target} rows={Count} by={By}",
                 groupId, items.Count, adminName);
         }
         catch
@@ -897,9 +760,10 @@ public sealed class RightsAdminRepository(
     }
 
 /// <summary>
-    /// Deletes a user group. Unlike the original toolbar (which deleted SYSDG + SYSDH + SYSDH_REPORT
-    /// but left SYSDG_USER orphan rows intact), the new system refuses deletion if the group still
-    /// has members. Permissions and report permissions cascade on delete (same transaction).
+    /// Deletes a user group. Unlike the original toolbar (which deleted SYSDG + SYSDH but left
+    /// SYSDG_USER orphan rows intact), the new system refuses deletion if the group still
+    /// has members. Module permissions cascade on delete (same transaction); the retired
+    /// per-report exception layer is gone with migration 277, so there is nothing else to clean.
     /// </summary>
     public async Task DeleteGroupAsync(string groupId, string adminName, CancellationToken token)
     {
@@ -1049,22 +913,6 @@ public sealed class RightsAdminRepository(
         return new ValidationContext(meta, fields);
     }
 
-    private async Task<ReportValidationContext> BuildReportValidationAsync(
-        string adminUserId, IReadOnlyList<ReportRightsInput> items, CancellationToken token)
-    {
-        var visible = (await navigationRepository.GetForUserAsync(adminUserId, token)).Select(module => module.Id).ToHashSet();
-        var unknown = items.Select(item => item.ModuleId).Distinct().FirstOrDefault(moduleId => !visible.Contains(moduleId));
-        if (unknown != 0)
-            throw new ArgumentException($"模块 {unknown} 不在当前管理员可见模块范围内。", nameof(items));
-        var ids = items.Select(item => item.ModuleId).Distinct().ToList();
-        var meta = await ReadModuleMetaAsync(ids, token);
-        var reports = await ReadAllReportsAsync(token);
-        var tables = meta.Values.Select(entry => entry.Master).Where(table => table.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var fields = await ReadFieldsByTableAsync(tables, token);
-        return new ReportValidationContext(meta, reports, fields);
-    }
-
     private static ModuleRightsRow BuildModuleRow(
         NavigationModule module,
         IReadOnlyDictionary<int, NavigationModule> modulesById,
@@ -1089,18 +937,6 @@ public sealed class RightsAdminRepository(
             value.DenyModiMaster ?? string.Empty, value.DenyModiDetail ?? string.Empty,
             value.DataFilter ?? string.Empty,
             editable is not null, effective, value.FormDesign);
-    }
-
-    private static ReportRightsRow BuildReportRow(
-        ReportRow report, string moduleTitle, ReportRightsInput? editable,
-        IReadOnlyList<ReportRightsInput> groups, EffectiveReportRights? effectiveOverride = null)
-    {
-        var effective = effectiveOverride ?? RightsAdminLogic.AggregateReportEffective(editable, groups);
-        var value = editable ?? new ReportRightsInput(report.ModuleId, report.ReportId, false, false, false, null);
-        return new ReportRightsRow(
-            report.ModuleId, moduleTitle, report.ReportId, report.ReportName,
-            value.Preview, value.Print, value.Export, value.DataFilter ?? string.Empty,
-            editable is not null, effective);
     }
 
     private static string BuildGroupPath(
@@ -1194,80 +1030,6 @@ public sealed class RightsAdminRepository(
                 reader.GetNullableString("DENY_MODI_FIELD_MASTER") ?? string.Empty,
                 reader.GetNullableString("DENY_MODI_FIELD_DETAIL") ?? string.Empty,
                 reader.GetNullableString("DATA_FILTER") ?? string.Empty));
-        }
-        return rows;
-    }
-
-    private async Task<IReadOnlyList<ReportRowData>> ReadUserReportRowsAsync(string userId, CancellationToken token)
-    {
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        var sql = $"SELECT {string.Join(',', ReportRowColumns)} FROM dbo.SYSDD_REPORT WITH (NOLOCK) WHERE USER_ID=@Id;";
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@Id", SqlDbType.NChar, 10).Value = userId.Trim();
-        return await ReadReportRowsAsync(command, token);
-    }
-
-    private async Task<IReadOnlyList<ReportRowData>> ReadUserGroupReportRowsAsync(string userId, CancellationToken token)
-    {
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        var sql = $"""
-            SELECT g.{string.Join(",g.", ReportRowColumns)}
-            FROM dbo.SYSDH_REPORT g WITH (NOLOCK)
-            INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX=g.G_IDX
-            WHERE gu.USER_ID=@Id;
-            """;
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@Id", SqlDbType.NChar, 10).Value = userId.Trim();
-        return await ReadReportRowsAsync(command, token);
-    }
-
-    private async Task<IReadOnlyList<ReportRowData>> ReadGroupReportRowsAsync(string groupId, CancellationToken token)
-    {
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        var sql = $"SELECT {string.Join(',', ReportRowColumns)} FROM dbo.SYSDH_REPORT WITH (NOLOCK) WHERE G_IDX=@Id;";
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@Id", SqlDbType.NChar, 10).Value = groupId.Trim();
-        return await ReadReportRowsAsync(command, token);
-    }
-
-    private static async Task<IReadOnlyList<ReportRowData>> ReadReportRowsAsync(SqlCommand command, CancellationToken token)
-    {
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var rows = new List<ReportRowData>();
-        while (await reader.ReadAsync(token))
-        {
-            rows.Add(new(
-                reader.GetInt32(0),
-                reader.GetString(1).Trim(),
-                reader.GetNullableBoolean("PREVIEW_TAG"),
-                reader.GetNullableBoolean("PRINT_TAG"),
-                reader.GetNullableBoolean("EXPORT_TAG"),
-                reader.GetNullableString("DATA_FILTER") ?? string.Empty));
-        }
-        return rows;
-    }
-
-    private async Task<IReadOnlyList<ReportRow>> ReadAllReportsAsync(CancellationToken token)
-    {
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        // 归属模块用 REPORT.M_IDX（运行时按它读整份清单与例外行）；用承载页列会把管理端的选择
-        // 存到 (用户, 承载页, 报表) 这个运行时永远不查的键上——存了等于没存。
-        const string sql = """
-            SELECT LTRIM(RTRIM(REPORT_ID)),LTRIM(RTRIM(ISNULL(REPORT_NAME,''))),M_IDX
-            FROM dbo.REPORT WITH (NOLOCK);
-            """;
-        await using var command = new SqlCommand(sql, connection);
-        await using var reader = await command.ExecuteReaderAsync(token);
-        var rows = new List<ReportRow>();
-        while (await reader.ReadAsync(token))
-        {
-            var moduleId = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
-            if (moduleId == 0) continue;
-            rows.Add(new(reader.GetString(0), reader.GetString(1), moduleId));
         }
         return rows;
     }
@@ -1376,43 +1138,6 @@ public sealed class RightsAdminRepository(
         command.Parameters.Add("@EXEC_TAG", SqlDbType.Char, 1).Value = execTag;
         AddBitParameters(command, item);
         AddTextParameters(command, item);
-        await command.ExecuteNonQueryAsync(token);
-    }
-
-    private async Task SaveReportRowAsync(
-        SqlConnection connection, SqlTransaction transaction, string table, string idColumn,
-        string ownerId, ReportRightsInput item, CancellationToken token)
-    {
-        if (RightsAdminLogic.IsDefaultEmpty(item))
-        {
-            await using var delete = new SqlCommand(
-                $"DELETE FROM dbo.{table} WHERE {idColumn}=@OwnerId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId;",
-                connection, transaction);
-            delete.Parameters.Add("@OwnerId", SqlDbType.NChar, 10).Value = ownerId.Trim();
-            delete.Parameters.Add("@ModuleId", SqlDbType.Int).Value = item.ModuleId;
-            delete.Parameters.Add("@ReportId", SqlDbType.NChar, 50).Value = item.ReportId.Trim();
-            await delete.ExecuteNonQueryAsync(token);
-            return;
-        }
-
-        var sql = $"""
-            IF EXISTS (SELECT 1 FROM dbo.{table} WHERE {idColumn}=@OwnerId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId)
-                UPDATE dbo.{table}
-                SET PREVIEW_TAG=@PREVIEW_TAG,PRINT_TAG=@PRINT_TAG,EXPORT_TAG=@EXPORT_TAG,DATA_FILTER=@DATA_FILTER
-                WHERE {idColumn}=@OwnerId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId;
-            ELSE
-                INSERT INTO dbo.{table} ({idColumn},M_IDX,REPORT_ID,PREVIEW_TAG,PRINT_TAG,EXPORT_TAG,DATA_FILTER)
-                VALUES (@OwnerId,@ModuleId,@ReportId,@PREVIEW_TAG,@PRINT_TAG,@EXPORT_TAG,@DATA_FILTER);
-            """;
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@OwnerId", SqlDbType.NChar, 10).Value = ownerId.Trim();
-        command.Parameters.Add("@ModuleId", SqlDbType.Int).Value = item.ModuleId;
-        command.Parameters.Add("@ReportId", SqlDbType.NChar, 50).Value = item.ReportId.Trim();
-        command.Parameters.Add("@PREVIEW_TAG", SqlDbType.Bit).Value = item.Preview;
-        command.Parameters.Add("@PRINT_TAG", SqlDbType.Bit).Value = item.Print;
-        command.Parameters.Add("@EXPORT_TAG", SqlDbType.Bit).Value = item.Export;
-        command.Parameters.Add("@DATA_FILTER", SqlDbType.NVarChar, 2000).Value =
-            string.IsNullOrWhiteSpace(item.DataFilter) ? DBNull.Value : item.DataFilter.Trim();
         await command.ExecuteNonQueryAsync(token);
     }
 
@@ -1529,18 +1254,6 @@ public sealed class RightsAdminRepository(
             DenyModiMaster, DenyModiDetail, DataFilter, FormDesign);
     }
 
-    private sealed record ReportRowData(
-        int ModuleId,
-        string ReportId,
-        bool Preview,
-        bool Print,
-        bool Export,
-        string DataFilter)
-    {
-        public ReportRightsInput ToInput() => new(ModuleId, ReportId, Preview, Print, Export, DataFilter);
-    }
-
-    private sealed record ReportRow(string ReportId, string ReportName, int ModuleId);
     private sealed record ModuleMeta(string Master, string Detail);
 
     private sealed class ValidationContext(
@@ -1583,26 +1296,4 @@ public sealed class RightsAdminRepository(
         }
     }
 
-    private sealed class ReportValidationContext(
-        IReadOnlyDictionary<int, ModuleMeta> meta,
-        IReadOnlyList<ReportRow> reports,
-        IReadOnlyDictionary<string, HashSet<string>> fields)
-    {
-        public void Validate(ReportRightsInput item)
-        {
-            if (!meta.TryGetValue(item.ModuleId, out var moduleMeta))
-                throw new KeyNotFoundException($"模块 {item.ModuleId} 不存在。");
-            if (!reports.Any(report => report.ModuleId == item.ModuleId
-                    && string.Equals(report.ReportId, item.ReportId.Trim(), StringComparison.OrdinalIgnoreCase)))
-                throw new ArgumentException($"报表 {item.ReportId} 不属于模块 {item.ModuleId}。");
-            var filter = (item.DataFilter ?? string.Empty).Trim();
-            if (filter.Length == 0) return;
-            if (moduleMeta.Master.Length == 0)
-                throw new ArgumentException($"模块 {item.ModuleId} 未配置主表，无法校验 DATA_FILTER。");
-            var allowed = fields.GetValueOrDefault(moduleMeta.Master)
-                ?? throw new ArgumentException($"模块 {item.ModuleId} 主表 {moduleMeta.Master} 无字段元数据，无法校验 DATA_FILTER。");
-            if (!DataFilterParser.TryParse(filter, moduleMeta.Master, allowed, out _, out _))
-                throw new ArgumentException($"DATA_FILTER 无法通过受控解析（模块 {item.ModuleId}）：{filter}");
-        }
-    }
 }

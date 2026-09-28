@@ -73,7 +73,6 @@ public sealed class ReportIdStandardLiveTests
         ["REPORT_SORT"] = 119,
         ["SYSQR"] = 70,
         ["SYSDD_REPORT"] = 0,
-        ["SYSDH_REPORT"] = 0,
         ["REPORT_INBOX"] = 0,
         ["REPORT_SUBSCRIPTION"] = 0,
     };

@@ -28,7 +28,7 @@ public sealed record ModuleRights(
     bool CanModuleConfig = false);
 
 /// <summary>
-/// 报表级权限（SYSDD_REPORT / SYSDH_REPORT）：
+/// 报表权（唯一真源 = 归属模块的 `REPORT_TAG`；逐报表例外层已随迁移 277 退役）：
 /// 预览决定报表是否出现在打印面板，打印决定 PDF 生成，导出决定 CSV 导出。
 /// </summary>
 public sealed record ReportRights(
