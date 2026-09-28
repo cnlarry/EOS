@@ -20,8 +20,30 @@ public sealed record ReportSelectSource(string Table, string IdColumn, string Va
 
 public sealed record ReportOption(string Label, string Value);
 
-/// <summary>报表字段列（FIELDS + 物理列 + 权限过滤后，含显示格式）。</summary>
-public sealed record ReportColumn(string Key, string Label, string DataType, string? DisplayFormat = null);
+/// <summary>
+/// 报表字段列（FIELDS + 物理列 + 权限过滤后，含显示格式）。
+///
+/// <para>
+/// <see cref="IsCost"/> / <see cref="IsSecrecy"/> / <see cref="DenyKey"/> 是**汇总报表聚合列**的
+/// 字段级权限声明：聚合列是 SQL 算出来的派生列，不属于任何物理表，因此没有 <c>FIELDS</c> 行可供
+/// 反查成本位、保密位与用户级拒绝名单——只能在数据源注册表里逐列显式声明。
+/// </para>
+/// <para>
+/// 主表分支（<c>FIELDS</c> 派生列）在构造本类型之前就已完成同口径过滤，故保持默认 <c>null</c>。
+/// 默认 <c>null</c> 的语义是「**未声明**」，不是「非成本/非保密」——聚合分支按 fail-closed 处理：
+/// 任一权限位未声明即丢弃该列（漏标不得等于公开），并由构建期门禁强制注册表逐列显式声明，
+/// 避免"运行期静默少列"变成无人发现的退化。
+/// </para>
+/// </summary>
+/// <param name="DenyKey">用户级拒绝名单的匹配键，语义等同 <c>FIELDS.F_ID</c>；留空即用 <see cref="Key"/>。</param>
+public sealed record ReportColumn(
+    string Key,
+    string Label,
+    string DataType,
+    string? DisplayFormat = null,
+    [property: JsonIgnore] bool? IsCost = null,
+    [property: JsonIgnore] bool? IsSecrecy = null,
+    [property: JsonIgnore] string? DenyKey = null);
 
 public sealed record ReportDefinition(
     int ModuleId,

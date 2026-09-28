@@ -80,7 +80,9 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         IReadOnlyList<string> pkOrder;
         if(aggregate is not null)
         {
-            columns=aggregate.Columns;
+            // 聚合列同样过字段级权限：注册表声明的列与主表分支应用同一套成本位/保密位/拒绝名单过滤，
+            // 否则"跨表汇总"会变成一条绕过字段权限的通道（成本、单价这类列最容易被漏掉）。
+            columns=FilterAggregateColumns(aggregate.Columns,canViewCost,canViewSecrecy,deniedFields);
             pkOrder=[];
         }
         else if(string.IsNullOrWhiteSpace(masterTable))
@@ -357,6 +359,10 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             command.Parameters.AddWithValue($"@{parameter.Name}",value??DBNull.Value);
         }
         await using var reader=await command.ExecuteReaderAsync(token);
+        // 列清单以**过滤后**的 definition.Columns 为准：聚合 SQL 是服务端常量，永远返回全部声明列，
+        // 所以无权查看的列必须在读行时丢弃——表格、CSV、PDF 共用同一份列清单，
+        // 让值出现在行集里等于同一处权限缺口又漏了一遍。
+        var visible=new HashSet<string>(definition.Columns.Select(column=>column.Key),StringComparer.OrdinalIgnoreCase);
         var columns=new List<string>();
         for(var i=0;i<reader.FieldCount;i++)columns.Add(reader.GetName(i));
         var rows=new List<Dictionary<string,object?>>();
@@ -365,7 +371,11 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             if(rows.Count>=maxRows)
                 throw new PdfDataTooLargeException("报表数据超过 10,000 行上限，请缩小查询条件后再打印。");
             var row=new Dictionary<string,object?>(StringComparer.OrdinalIgnoreCase);
-            for(var i=0;i<reader.FieldCount;i++)row[columns[i]]=reader.IsDBNull(i)?null:reader.GetValue(i);
+            for(var i=0;i<reader.FieldCount;i++)
+            {
+                if(!visible.Contains(columns[i]))continue;
+                row[columns[i]]=reader.IsDBNull(i)?null:reader.GetValue(i);
+            }
             rows.Add(row);
         }
         logger.LogDebug("汇总报表查询 module={ModuleId} report={ReportId} rows={RowCount}",
@@ -740,6 +750,35 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         await reader.DisposeAsync();
         var pkOrder=await WorkbenchSql.GetPrimaryKeyColumnsAsync(connection,null,masterTable,token);
         return (columns,pkOrder);
+    }
+
+    /// <summary>
+    /// 聚合列（注册表声明的派生列）的字段级权限过滤，口径与主表分支的
+    /// <see cref="ReadColumnsAsync"/> 一致：成本位、保密位、用户级拒绝名单三者都过。
+    /// 区别在于权限位来自注册表声明而非 <c>FIELDS</c>：派生列没有物理表，反查不到元数据。
+    /// </summary>
+    /// <remarks>
+    /// **未声明即拒绝**：<c>IsCost</c> / <c>IsSecrecy</c> 为空表示注册表漏标，此时丢弃该列——
+    /// 「漏标」若默认放行，就等于把"忘了标"变成"对所有人公开"，而报表列一旦下发到客户端
+    /// （表格、CSV、PDF 共用同一份列清单）就无法追溯。漏标由构建期门禁在编译前拦下。
+    /// </remarks>
+    internal static IReadOnlyList<ReportColumn> FilterAggregateColumns(
+        IReadOnlyList<ReportColumn> declared,
+        bool canViewCost,
+        bool canViewSecrecy,
+        IReadOnlySet<string> deniedFields)
+    {
+        var result=new List<ReportColumn>(declared.Count);
+        foreach(var column in declared)
+        {
+            if(column.IsCost is null||column.IsSecrecy is null)continue;
+            if(column.IsCost.Value&&!canViewCost)continue;
+            if(column.IsSecrecy.Value&&!canViewSecrecy)continue;
+            var denyKey=string.IsNullOrWhiteSpace(column.DenyKey)?column.Key:column.DenyKey!;
+            if(deniedFields.Contains(denyKey))continue;
+            result.Add(column);
+        }
+        return result;
     }
 
     private static async Task<IReadOnlyList<string>> GetPhysicalColumnsAsync(SqlConnection connection,string table,CancellationToken token)
