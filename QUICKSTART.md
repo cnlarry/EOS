@@ -46,7 +46,8 @@ npm install
 npm run dev
 ```
 
-前端开发服务器把 `/api` 代理到 `EOS.API`。打开 Vite 输出的地址（通常 `http://localhost:5173`）。
+前端开发服务器默认监听 **80** 端口（被占用时 Vite 会自动换端口，以它输出的地址为准），
+并把 `/api` 代理到 `EOS.API`。打开该地址即可。
 
 ## 4. 登录
 
