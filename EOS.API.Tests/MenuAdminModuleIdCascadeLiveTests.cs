@@ -25,15 +25,26 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
     private const int OldId = 99901;
     private const int NewId = 99902;
 
-    /// <summary>级联覆盖的 17 个（表.列）目标。</summary>
+    /// <summary>
+    /// 级联覆盖的 15 个（表.列）目标。
+    /// 原过程里的 `REPORT.R_M_IDX` / `REPORT.Q_M_IDX` 已随承载页列退役（见迁移 274），
+    /// 归属列 `REPORT.M_IDX` 由外键 `FK_REPORT_MODULE` 的 ON UPDATE CASCADE 自动跟随，不需要显式语句。
+    /// </summary>
     private static readonly string[] Targets =
     [
         "MODULES.M_IDX", "MODULES.M_P_IDX", "MODULES.M_ROOT_IDX",
         "SYSDD.M_IDX", "SYSDD_REPORT.M_IDX", "SYSDH.M_IDX", "SYSDH_REPORT.M_IDX",
-        "REPORT.R_M_IDX", "REPORT.Q_M_IDX", "SYSQR.R_M_IDX",
+        "SYSQR.R_M_IDX",
         "FIELDS.BROWSE_M_IDX", "FIELD_DATASOURCE.SOURCE_M_IDX",
         "WFFORM.WF_M_IDX", "WFFORM_FLOW.WF_M_IDX", "WF_MONITOR.WF_M_IDX",
         "BILLKIND.B_M_IDX", "TASK.M_IDX",
+    ];
+
+    /// <summary>原过程里与现状的**已知且有意**的差异（逐条具名，不许默默多出第三条）。</summary>
+    private static readonly string[] RetiredStatements =
+    [
+        "UPDATE REPORT SET R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX",
+        "UPDATE REPORT SET Q_M_IDX=@NEW_IDX WHERE Q_M_IDX=@OLD_IDX",
     ];
 
     /// <summary>原过程本体的语句（逐字保留，含已失效的选择器表），作为对照基准。</summary>
@@ -63,26 +74,34 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
             .ToUpperInvariant();
 
     [Fact]
-    public void 移植实现与原过程本体只差一处已证实失效的选择器表()
+    public void 移植实现与原过程本体只差两处已具名的差异()
     {
         var ported = Regex.Split(MenuAdminRepository.ChangeModuleIndexSql, ";")
             .Select(Normalize)
             .Where(statement => statement.Length > 0)
             .ToArray();
-        var baseline = BaselineStatements.Select(Normalize).ToArray();
+        var retired = RetiredStatements.Select(Normalize).ToArray();
+        var baseline = BaselineStatements.Select(Normalize)
+            .Where(statement => !retired.Contains(statement))
+            .ToArray();
         Assert.Equal(baseline.Length, ported.Length);
         for (var index = 0; index < baseline.Length; index++)
         {
             if (baseline[index].Contains("FIELDS_CHOOSER", StringComparison.Ordinal))
             {
-                // 唯一允许的差异：表格名换成现表，列名与比较方式保持不变。
+                // 差异一：表格名换成现表，列名与比较方式保持不变。
                 Assert.Contains("FIELD_DATASOURCE SET SOURCE_M_IDX=@NEW_IDX WHERE SOURCE_M_IDX=@OLD_IDX", ported[index]);
                 continue;
             }
             Assert.Equal(baseline[index], ported[index]);
         }
-        // 17 个（表.列）目标都被覆盖
-        Assert.Equal(17, Targets.Length);
+        // 差异二：承载页列退役后，原过程里那两条 UPDATE 不得再出现——差异必须**恰好**是这两条，
+        // 多删一条（悄悄改了别的级联）或多留一条（列已删、语句必炸）都要在这里被点名。
+        foreach (var statement in retired)
+            Assert.DoesNotContain(statement, ported);
+
+        // 15 个（表.列）目标都被覆盖
+        Assert.Equal(15, Targets.Length);
         foreach (var target in Targets)
         {
             var parts = target.Split('.');
@@ -119,7 +138,7 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
     }
 
     [Fact]
-    public async Task 模块编号级联_移植实现把十七个引用列全部改指新编号()
+    public async Task 模块编号级联_移植实现把十五个引用列全部改指新编号()
     {
         var token = CancellationToken.None;
         await using var connection = new SqlConnection(ConnectionString);
@@ -128,13 +147,13 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
         try
         {
             await SeedAsync(connection, transaction, token);
-            // 旧编号被引用的行：MODULES 三列 4 行次（M_IDX/M_ROOT_IDX 同一行 + 子节点 + 根引用各一）＋其余 14 列各一行
-            Assert.Equal(18, await OldReferenceCountAsync(connection, transaction, token));
+            // 旧编号被引用的行：MODULES 三列 4 行次（M_IDX/M_ROOT_IDX 同一行 + 子节点 + 根引用各一）＋其余 12 列各一行
+            Assert.Equal(16, await OldReferenceCountAsync(connection, transaction, token));
 
             await MenuAdminRepository.ChangeModuleIdAsync(connection, transaction, OldId, NewId, token);
 
-            // MODULES 三列归并为首位（本节点 / 子节点 / 根引用各一行），其余 14 张表各一行
-            Assert.Equal("3|" + string.Join('|', Enumerable.Repeat(1, 14)),
+            // MODULES 三列归并为首位（本节点 / 子节点 / 根引用各一行），其余 12 张表各一行
+            Assert.Equal("3|" + string.Join('|', Enumerable.Repeat(1, 12)),
                 await SnapshotAsync(connection, transaction, token));
             Assert.Equal(0, await OldReferenceCountAsync(connection, transaction, token));
         }
@@ -192,8 +211,8 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
             INSERT INTO dbo.SYSDD_REPORT (USER_ID, M_IDX, REPORT_ID) VALUES (N'ADR12CAST', @Old, N'ADR12REPORT');
             INSERT INTO dbo.SYSDH (G_IDX, M_IDX) VALUES (99901, @Old);
             INSERT INTO dbo.SYSDH_REPORT (G_IDX, M_IDX, REPORT_ID) VALUES (99901, @Old, N'ADR12REPORT');
-            INSERT INTO dbo.REPORT (REPORT_ID, M_IDX, R_M_IDX) VALUES (N'ADR12REPORT', @Old, @Old);
-            INSERT INTO dbo.REPORT (REPORT_ID, M_IDX, Q_M_IDX) VALUES (N'ADR12REPORTQ', @Old, @Old);
+            INSERT INTO dbo.REPORT (REPORT_ID, M_IDX) VALUES (N'ADR12REPORT', @Old);
+            INSERT INTO dbo.REPORT (REPORT_ID, M_IDX) VALUES (N'ADR12REPORTQ', @Old);
             INSERT INTO dbo.SYSQR (USER_ID, R_M_IDX, REPORT_ID) VALUES (N'ADR12CAST', @Old, N'ADR12REPORT');
             INSERT INTO dbo.FIELDS (T_ID, F_ID, BROWSE_M_IDX) VALUES (N'ADR12CAST', N'F_CAST', @Old);
             INSERT INTO dbo.FIELD_DATASOURCE (T_ID, F_ID, SERIAL_NO, ACTIVE_TAG, SOURCE_T_ID, SOURCE_M_IDX, CREATE_DATE)

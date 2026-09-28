@@ -83,21 +83,37 @@ public sealed class ReportVisibilityAnchorLiveTests
         Assert.True(total > 0, "SYSDD_REPORT 为空：锚点断言在空表上会恒真，无法证明归位正确。");
     }
 
+    /// <summary>
+    /// 存量悬空条件行（与本次归属改造无关的历史数据，格式 `模块号|行号`）。
+    /// 登记而不是清零：清零会让"不得新增悬空"这条断言变成一次性检查。
+    /// </summary>
+    private static readonly Dictionary<string, string[]> KnownOrphans = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["SYSQR_DEFAULT"] = ["99000001|1"],
+        ["SYSQR_USER"] = [],
+    };
+
     [Fact]
     public void 承载模块上不得再留筛选条件行()
     {
-        // 条件按模块读：留在承载模块上等于那些已归位的报表没有筛选条件（取数范围变大且无人察觉）。
+        // 条件按模块读：行留在哪个模块上，就只在那个模块生效。
+        // 承载页列与承载页行都已退役，"留在承载页"已无从表达；这里钉一条更耐久的等价不变量——
+        // 条件行的模块号必须指向存在的模块。悬空条件与"留在承载页"后果一样：
+        // 取数范围变大（或变小）而无人察觉。
         foreach (var (table, label) in new[] { ("SYSQR_DEFAULT", "条件行"), ("SYSQR_USER", "用户填值") })
         {
             var offenders = Collect($"""
-                SELECT TOP 10 CONCAT(CAST(r.R_M_IDX AS varchar(20)), '|', LTRIM(RTRIM(r.REPORT_ID)))
-                FROM dbo.REPORT r WITH (NOLOCK)
-                WHERE r.R_M_IDX <> r.M_IDX
-                  AND EXISTS (SELECT 1 FROM dbo.{table} x WITH (NOLOCK) WHERE x.M_IDX = r.R_M_IDX)
-                ORDER BY r.REPORT_ID;
+                SELECT TOP 10 CONCAT(CAST(x.M_IDX AS varchar(20)), '|', CAST(x.SERIAL_NO AS varchar(10)))
+                FROM dbo.{table} x WITH (NOLOCK)
+                WHERE NOT EXISTS (SELECT 1 FROM dbo.MODULES m WITH (NOLOCK) WHERE m.M_IDX = x.M_IDX)
+                ORDER BY x.M_IDX, x.SERIAL_NO;
                 """);
-            Assert.True(offenders.Length == 0,
-                $"承载模块上仍留着{label}，而它承载的报表已归位到别处：{string.Join(", ", offenders)}");
+            // 棘轮：存量悬空已登记（历史数据，与本次归属改造无关），只断言"没有新增"。
+            // 顺手清掉它们会让这条断言从此失去判别力——清完就再也不会失败，等于没有断言。
+            var known = KnownOrphans.GetValueOrDefault(table, []);
+            var added = offenders.Where(item => !known.Contains(item)).ToArray();
+            Assert.True(added.Length == 0,
+                $"{label}新增了指向不存在模块的悬空行：{string.Join(", ", added)}");
         }
     }
 

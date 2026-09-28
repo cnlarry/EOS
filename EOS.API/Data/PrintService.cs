@@ -176,9 +176,9 @@ public sealed class PrintService(
             SELECT TOP 1 r.HEADER_ID,r.TAIL_ID
             FROM dbo.REPORT r WITH (NOLOCK)
             WHERE r.M_IDX=@ModuleId AND r.IS_DEFAULT=1
-            -- 多张默认报表时优先"本来就挂在本模块上"的那张：归位会把原挂承载页的报表并进来，
-            -- 直接按编号排序会让单据打印的默认页头页脚换人——那是与归位无关的行为变化。
-            ORDER BY CASE WHEN r.R_M_IDX=r.M_IDX THEN 0 ELSE 1 END, r.REPORT_ID;
+            -- 并列规则已落成数据（每模块至多一张 IS_DEFAULT=1，见迁移 273）：
+            -- 归位过渡期靠承载页列破并列的做法随之退场。
+            ORDER BY r.REPORT_ID;
             """;
         await using var command=new SqlCommand(sql,connection);
         command.Parameters.Add("@ModuleId",SqlDbType.Int).Value=moduleId;

@@ -196,9 +196,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
                              AND ISNULL(g.PREVIEW_TAG,0)=1)
               )
             ORDER BY ISNULL(r.IS_DEFAULT,0) DESC,
-                     -- 多张默认报表时优先"本来就挂在本模块上"的那张：归位会把原挂承载页的报表并进来，
-                     -- 直接按编号排序会让打印面板的预选报表换人——那是与归位无关的行为变化。
-                     CASE WHEN r.R_M_IDX=r.M_IDX THEN 0 ELSE 1 END,
+                     -- 并列规则已落成数据（每模块至多一张 IS_DEFAULT=1，见迁移 273）。
                      r.REPORT_ID;
             """;
         await using var command = new SqlCommand(sql, connection);
