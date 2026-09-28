@@ -52,9 +52,23 @@ interface ResultColumn {
 const DEFAULT_PAGE_SIZE = 50
 const PAGE_SIZES = [50, 100, 200]
 
-export function ReportViewerPage() {
+/**
+ * 报表查看器。
+ *
+ * 两种打开方式共用这一个组件：
+ *   · 老的模块地址 `/reports/:moduleId`——模块号来自路由，报表身份随后解析出来，
+ *     解析完即把地址**换成报表身份地址**（`/report/:reportId`，见下方 effect）；
+ *   · 报表身份地址 `/report/:reportId`——模块号与报表编号由外层解析后经 props 传入。
+ * 这么分是因为两者拿参数的来源不同，但取数、条件、打印面板这些状态必须完全一致，
+ * 拆成两个组件就会出现"一个改了一个没改"的漂移。
+ */
+export function ReportViewerPage({
+  moduleIdOverride,
+  reportIdOverride,
+}: { moduleIdOverride?: string; reportIdOverride?: string } = {}) {
   const navigate = useNavigate()
-  const { moduleId = '' } = useParams()
+  const routeParams = useParams()
+  const moduleId = moduleIdOverride ?? routeParams.moduleId ?? ''
   const baseId = useId()
   const [searchParams, setSearchParams] = useSearchParams()
   /** 首次渲染时的 URL 参数：条件初值来源，只读一次（后续变化由页面回写 URL） */
@@ -102,17 +116,26 @@ export function ReportViewerPage() {
     if (settingsApplied.current || !printSettings.data) return
     settingsApplied.current = true
     const user = printSettings.data.userSettings
-    const report = user?.reportId
-      ? printSettings.data.reports.find((item) => item.reportId === user.reportId)
-      : printSettings.data.reports.find((item) => item.isDefault) ?? printSettings.data.reports[0]
+    // 地址里点名了报表就认地址（深链/分享/收藏必须打开同一张）；
+    // 没点名才轮到"最近用过"与"默认报表"——这是页内切换与老地址的兜底。
+    const pointed = reportIdOverride
+      ? printSettings.data.reports.find((item) => item.reportId === reportIdOverride)
+      : undefined
+    const report = pointed
+      ?? (user?.reportId
+        ? printSettings.data.reports.find((item) => item.reportId === user.reportId)
+        : printSettings.data.reports.find((item) => item.isDefault) ?? printSettings.data.reports[0])
     setReportId(report?.reportId ?? '')
+    // 地址点名的那张若不在这张模块的可见清单里（改过归属、或被例外行隐藏），
+    // 不要静默换成默认报表——那是"点了 A 看到 B"。交给外层报错，这里只标记。
+    if (reportIdOverride && !pointed) setActionError(`报表 ${reportIdOverride} 在当前账号下不可见。`)
     setHeaderId(user?.headerId ?? report?.headerId ?? '')
     setTailId(user?.tailId ?? report?.tailId ?? '')
     setSortSerialNo(user?.sortSerialNo ?? null)
     setSortDirect(user ? (user.sortAsc ? 'asc' : 'desc') : 'asc')
     setShowGroup(user?.showGroup ?? true)
     setShowDetail(user?.showDetail ?? true)
-  }, [printSettings.data])
+  }, [printSettings.data, reportIdOverride])
 
   // 条件初值：URL 参数优先（支持带条件深链），缺失时回落报表定义默认值；
   // 由 URL 带入条件的深链直接出结果，避免落在一张空白报表上
@@ -513,6 +536,7 @@ export function ReportViewerPage() {
                       {condition.type === 3 && (
                         <DataSelectCondition
                           moduleId={moduleId}
+                          reportId={reportId}
                           condition={condition}
                           labelId={labelId}
                           value={values[condition.serialNo] ?? ''}
@@ -602,10 +626,11 @@ export function ReportViewerPage() {
   )
 }
 
-function DataSelectCondition({ moduleId, condition, labelId, value, onChange }: { moduleId: string; condition: ReportCondition; labelId: string; value: string; onChange: (value: string) => void }) {
+function DataSelectCondition({ moduleId, reportId, condition, labelId, value, onChange }: { moduleId: string; reportId: string; condition: ReportCondition; labelId: string; value: string; onChange: (value: string) => void }) {
   const options = useQuery({
-    queryKey: ['report', moduleId, 'condition-options', condition.serialNo],
-    queryFn: () => apiClient.get<ReportOption[]>(`/reports/${moduleId}/condition-options/${condition.serialNo}`),
+    queryKey: ['report', moduleId, 'condition-options', condition.serialNo, reportId],
+    // 带上报表身份：一模块多报表时，选项可能随报表的数据源不同（丢掉它就等于按默认报表回答）
+    queryFn: () => apiClient.get<ReportOption[]>(`/reports/${moduleId}/condition-options/${condition.serialNo}${reportId ? `?reportId=${encodeURIComponent(reportId)}` : ''}`),
     enabled: condition.selectSource != null,
   })
   return (

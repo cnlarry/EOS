@@ -314,6 +314,9 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
    * 但它们的模块 ID 指向的模块通常有；据此兜底出可读标题，避免退化成占位文案。
    */
   const moduleLabelOfPath = useCallback((pathname: string): string | null => {
+    // 报表身份地址（/report/{reportId}）路径里只有报表编号、没有模块号，解析不出模块名；
+    // 给一个稳定的兜底标题，免得标签退化成占位文案（页面自身展示报表名与模块名）。
+    if (/^\/report\/[^/]+$/.test(pathname)) return '报表'
     const moduleId = moduleIdOfUrl(pathname)
     if (!moduleId) return null
     return allLeaves.find((item) => item.route === workbenchList(moduleId))?.label ?? null

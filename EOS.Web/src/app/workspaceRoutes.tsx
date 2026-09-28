@@ -34,7 +34,7 @@ import {
   ReportInboxPage,
   LayoutDesignerPage,
 } from './lazyRoutes'
-import { FieldAdminRoute, FormEditorRoute, ReportAdminRoute, ReportViewerRoute, UnknownRoutePage, WorkbenchRoute } from './routeElements'
+import { FieldAdminRoute, FormEditorRoute, ReportAdminRoute, ReportIdentityRoute, ReportViewerRoute, UnknownRoutePage, WorkbenchRoute } from './routeElements'
 import { withSuspense } from './suspense'
 
 /**
@@ -74,6 +74,8 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   { path: 'workbench/:moduleId/view/*', element: withSuspense(<FormEditorRoute />) },
   { path: 'workbench/:moduleId/copy', element: withSuspense(<FormEditorRoute />) },
   { path: 'reports/:moduleId', element: withSuspense(<ReportViewerRoute />) },
+  // 报表身份地址：编号进 URL，模块号由服务端解析（深链/分享/收藏都以它为准）
+  { path: 'report/:reportId', element: withSuspense(<ReportIdentityRoute />) },
   { path: 'report-center', element: withSuspense(<ReportCenterPage />) },
   { path: 'report-center/inbox', element: withSuspense(<ReportInboxPage />) },
   { path: 'layout-designer/:moduleId', element: withSuspense(<LayoutDesignerPage />) },

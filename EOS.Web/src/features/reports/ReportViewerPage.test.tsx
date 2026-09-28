@@ -1,6 +1,6 @@
 import { renderWithProviders } from '../../test/renderWithProviders'
 import { apiClientMock } from '../../test/apiMock'
-import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider, useParams } from 'react-router-dom'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReportViewerPage } from './ReportViewerPage'
@@ -57,9 +57,19 @@ function installApiMocks() {
   })
 }
 
-function renderViewer(initialEntry = '/reports/1405') {
+/**
+ * 报表身份路由的替身：模块号在测试里是已知的（由入口地址决定），不额外打身份接口，
+ * 只把编号喂给查看器——与真实外壳（ReportIdentityRoute）的分工一致。
+ */
+function IdentityRouteStub({ moduleId }: { moduleId: string }) {
+  const { reportId = '' } = useParams()
+  return <ReportViewerPage moduleIdOverride={moduleId} reportIdOverride={reportId} />
+}
+
+function renderViewer(initialEntry = '/report/RPT_A') {
   const router = createMemoryRouter(
-    [{ path: '/reports/:moduleId', element: <ReportViewerPage /> }],
+    // 查看器就是报表身份地址的组件（老模块地址由 ReportViewerRoute 负责先跳转再渲染）
+    [{ path: '/report/:reportId', element: <IdentityRouteStub moduleId="1405" /> }],
     { initialEntries: [initialEntry] },
   )
   return renderWithProviders(<RouterProvider router={router} />)
@@ -148,7 +158,7 @@ describe('ReportViewerPage 页面结构', () => {
   })
 
   it('条件初值从 URL 带入并直接出结果（深链）', async () => {
-    renderViewer('/reports/1405?f1=W1&page=2&pageSize=100')
+    renderViewer('/report/RPT_A?f1=W1&page=2&pageSize=100')
     await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledWith(
       '/reports/1405/query?page=2&pageSize=100&reportId=RPT_A',
       expect.objectContaining({ values: { 1: 'W1' } }),

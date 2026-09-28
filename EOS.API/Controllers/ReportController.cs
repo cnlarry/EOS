@@ -46,9 +46,11 @@ public sealed class ReportController(
     }
 
     [HttpGet("condition-options/{serialNo:int}")]
-    public async Task<IActionResult> ConditionOptions(int moduleId, int serialNo, CancellationToken token)
+    public async Task<IActionResult> ConditionOptions(int moduleId, int serialNo, [FromQuery] string? reportId, CancellationToken token)
     {
-        var definition = await AuthorizedDefinition(moduleId, null, token);
+        // reportId 必须原样带进去：一模块多报表时，"按哪张报表解析"决定了取到哪套排序/数据源，
+        // 丢掉它就会拿默认报表的定义去回答另一张报表的条件选项（选项可能不是同一套）。
+        var definition = await AuthorizedDefinition(moduleId, reportId, token);
         if (definition is null) return NotFound();
         return Ok(await repository.GetConditionOptionsAsync(definition, serialNo, token));
     }
@@ -150,7 +152,11 @@ public sealed class ReportController(
             rights.DeniedMasterFields, reportId, token);
         if (definition is null) return NotFound();
         var settings = await printSettingsRepository.GetAsync(moduleId, userId, token);
-        var report = settings.Reports.FirstOrDefault(item => item.IsDefault) ?? settings.Reports.FirstOrDefault();
+        // 先认报表身份，再回落默认报表：导出的 EXPORT_TAG 是**报表级**权限，
+        // 用默认报表的权限去回答另一张报表的导出请求，等于把两者的权限混在一起判。
+        var report = settings.Reports.FirstOrDefault(item => !string.IsNullOrWhiteSpace(reportId) && item.ReportId == reportId.Trim())
+            ?? settings.Reports.FirstOrDefault(item => item.IsDefault)
+            ?? settings.Reports.FirstOrDefault();
         if (report is null) return Forbid();
         var reportRights = await rightsRepository.GetReportAsync(userId, moduleId, report.ReportId, token);
         if (!reportRights.CanExport) return Forbid();
