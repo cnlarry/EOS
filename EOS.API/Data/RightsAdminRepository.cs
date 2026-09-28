@@ -1260,8 +1260,10 @@ public sealed class RightsAdminRepository(
     {
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
+        // 归属模块用 REPORT.M_IDX（运行时按它读整份清单与例外行）；用承载页列会把管理端的选择
+        // 存到 (用户, 承载页, 报表) 这个运行时永远不查的键上——存了等于没存。
         const string sql = """
-            SELECT LTRIM(RTRIM(REPORT_ID)),LTRIM(RTRIM(ISNULL(REPORT_NAME,''))),R_M_IDX
+            SELECT LTRIM(RTRIM(REPORT_ID)),LTRIM(RTRIM(ISNULL(REPORT_NAME,''))),M_IDX
             FROM dbo.REPORT WITH (NOLOCK);
             """;
         await using var command = new SqlCommand(sql, connection);

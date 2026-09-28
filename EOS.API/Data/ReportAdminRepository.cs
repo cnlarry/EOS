@@ -71,7 +71,7 @@ public sealed class ReportAdminRepository(DbConnectionFactory connections)
                    LTRIM(RTRIM(ISNULL(FOOTER_TEXT,''))),ISNULL(IS_DEFAULT,0),
                    LTRIM(RTRIM(ISNULL(REPORT_FILTER,''))),LTRIM(RTRIM(ISNULL(REMARK,''))),
                    LTRIM(RTRIM(ISNULL(FORMAT_ID,'')))
-            FROM dbo.REPORT WITH (NOLOCK) ORDER BY R_M_IDX,IS_DEFAULT DESC,REPORT_ID;
+            FROM dbo.REPORT WITH (NOLOCK) ORDER BY M_IDX,IS_DEFAULT DESC,REPORT_ID;
             """;
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
