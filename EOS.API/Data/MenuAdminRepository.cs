@@ -995,6 +995,10 @@ public sealed class MenuAdminRepository(
     /// 原过程写的是已被 取代的 `FIELDS_CHOOSER`（该表在库内已不存在，原过程本体因此
     /// 整条跑不通），这里改用现表 `FIELD_DATASOURCE` 的同名列 `SOURCE_M_IDX`。
     /// 全部参数化、无动态标识符。
+    ///
+    /// 报表归属列 `REPORT.M_IDX` **不在这里列**：它由外键 `FK_REPORT_MODULE` 的
+    /// `ON UPDATE CASCADE` 随本语句首行（改 `MODULES.M_IDX`）自动改指——外键若不带来级联，
+    /// 首行本身就会被引用完整性拦下。
     /// </summary>
     internal const string ChangeModuleIndexSql = """
         UPDATE dbo.MODULES SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX;
