@@ -13,7 +13,7 @@
   },
   "sections": {
     "header": {
-      "height": 28,
+      "height": 26.8,
       "elements": [
         {
           "id": "logo",
@@ -134,15 +134,15 @@
       ]
     },
     "footer": {
-      "height": 6,
+      "height": 4,
       "elements": [
         {
           "id": "f1",
           "type": "text",
           "x": 0,
-          "y": 1.5,
+          "y": 0.2,
           "w": 100,
-          "h": 4,
+          "h": 3.5,
           "content": "{{REPORT.FOOTER_TEXT}}",
           "style": {
             "fontSize": 8
@@ -152,9 +152,9 @@
           "id": "f2",
           "type": "text",
           "x": 100,
-          "y": 1.5,
+          "y": 0.2,
           "w": 87.4,
-          "h": 4,
+          "h": 3.5,
           "content": "列印人：{{REPORT.PRINT_PERSON}}　第 {{SYS.PAGE_NUMBER}} / {{SYS.TOTAL_PAGES}} 页",
           "style": {
             "fontSize": 8,
