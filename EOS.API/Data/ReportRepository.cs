@@ -34,8 +34,10 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
     {
         await using var connection=connections.Create();
         await connection.OpenAsync(token);
+        // moduleId 是报表的**归属模块**（业务模块），不是承载页：数据集（主表/子表/过滤）、
+        // 查询条件、字段级与行级权限都按它判定。
         const string moduleSql="""
-            SELECT LTRIM(RTRIM(M_DESC)),LTRIM(RTRIM(MASTER_TABLE)),LTRIM(RTRIM(ISNULL(M_URL,''))),
+            SELECT LTRIM(RTRIM(M_DESC)),LTRIM(RTRIM(MASTER_TABLE)),
                    LTRIM(RTRIM(ISNULL(DETAIL_TABLE,''))),LTRIM(RTRIM(ISNULL(FILTER,'')))
             FROM dbo.MODULES WITH (NOLOCK) WHERE M_IDX=@ModuleId;
             """;
@@ -45,18 +47,24 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         if(!await reader.ReadAsync(token))return null;
         var title=reader.GetString(0);
         var masterTable=reader.GetString(1);
-        var url=reader.GetString(2);
-        var detailTable=reader.GetString(3);
-        var moduleFilter=reader.GetString(4);
+        var detailTable=reader.GetString(2);
+        var moduleFilter=reader.GetString(3);
         await reader.DisposeAsync();
+        // 归属模块下没有这张报表（或没指定报表时该模块没有默认报表）即视为不存在：
+        // 这条判据同时挡掉"拿别人的报表编号来这里试"，与"随便一个模块号都能当报表打开"。
         var (effectiveReportId,sortFields)=await ReadReportSortContextAsync(connection,moduleId,reportId,token);
+        if(effectiveReportId is null)
+        {
+            logger.LogWarning("报表解析失败 module={ModuleId} report={ReportId}",moduleId,reportId);
+            return null;
+        }
         // 汇总报表（RptInteg）：数据源按报表编号取自服务端注册表，既不依赖主表也不依赖库内过程。
         var aggregate=ReportAggregateRegistry.Find(effectiveReportId);
-        // 汇总报表没有 FIELDS 列定义（列由注册表声明），因此允许空 MASTER_TABLE；
-        // 其余报表仍要求主表为合法标识符。
-        if(!ModuleRouteValidator.IsReportUrl(url)||(!WorkbenchSql.Identifier.IsMatch(masterTable)&&aggregate is null))
+        // 可达性判据（fail-closed）：归属模块的主表是合法标识符，或该报表已注册汇总数据源。
+        // 汇总报表没有 FIELDS 列定义（列由注册表声明），因此允许空 MASTER_TABLE。
+        if(!WorkbenchSql.Identifier.IsMatch(masterTable)&&aggregate is null)
         {
-            logger.LogWarning("报表模块校验失败 module={ModuleId} url={Url} master={Master}",moduleId,url,masterTable);
+            logger.LogWarning("报表模块校验失败 module={ModuleId} master={Master}",moduleId,masterTable);
             return null;
         }
 
@@ -403,17 +411,20 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
         string? reportId,
         CancellationToken token)
     {
-        // 按报表（REPORT_ID）解析排序/分组字段；未指定时用模块默认报表
-        // （一模块多报表场景，如 18019807 人事分析表下 6 张报表各自独立数据源与列）。
+        // 按报表（REPORT_ID）解析排序/分组字段；未指定时取归属模块的默认报表
+        // （一模块多报表场景，如人事分析下的 6 张汇总报表各自独立数据源与列）。
+        // 模块同时存在多张默认报表时，优先取"本来就挂在本模块上"的那张：归位会把原本挂在
+        // 承载页上的报表并进业务模块，若直接按编号排序，默认报表可能被换成另一张，
+        // 单据打印默认页头页脚跟着变——那是与本次归位无关的行为变化。
         // 同时回带解析出的报表编号：汇总报表的数据源按报表编号取自服务端注册表。
         // 排序方案行是**可选**的，所以这里用锚行 + LEFT JOIN 保证"至少返回一行"——
         // 没有排序方案的报表（尤其新的汇总报表）否则回带不出编号，汇总数据源会解析不出来。
         var sql = """
             DECLARE @Rid nchar(100) = (
                 SELECT TOP 1 REPORT_ID FROM dbo.REPORT WITH (NOLOCK)
-                WHERE R_M_IDX=@ModuleId AND (@ReportId IS NULL OR LTRIM(RTRIM(REPORT_ID))=@ReportId)
+                WHERE M_IDX=@ModuleId AND (@ReportId IS NULL OR LTRIM(RTRIM(REPORT_ID))=@ReportId)
                   AND (@ReportId IS NOT NULL OR IS_DEFAULT=1)
-                ORDER BY REPORT_ID);
+                ORDER BY CASE WHEN R_M_IDX=M_IDX THEN 0 ELSE 1 END, REPORT_ID);
             SELECT LTRIM(RTRIM(ISNULL(@Rid,''))),
                    LTRIM(RTRIM(ISNULL(s.SORT_FIELDS,'')))
             FROM (SELECT 1 AS ANCHOR) anchor
@@ -603,7 +614,7 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             : string.Join(',',orders);
     }
 
-    private static string ResolveOrderBy(
+    private string ResolveOrderBy(
         ReportDefinition definition,
         IReadOnlyList<string> masterPhysical,
         IReadOnlyList<string> detailPhysical,
@@ -616,8 +627,19 @@ public sealed class ReportRepository(DbConnectionFactory connections, ILogger<Re
             if(needsDetail&&!hasJoin)continue;
             orders.Add(expression);
         }
+        // 排序方案与主键都取不到时**不能返回空串**：宿主 SQL 把 ORDER BY 与
+        // OFFSET … FETCH NEXT 写在一起，空 ORDER BY 会变成语法错误（查询整个 500）。
+        // 这类报表此前多因判据把它挡在 404 而没被跑到，判据放开后就暴露出来了。
+        // `(SELECT NULL)` 是 OFFSET/FETCH 的合法占位：它如实表达"没有顺序主张"，
+        // 不假装按某列排过序；真正的修法是给这张报表补排序方案或确认主键。
         if(orders.Count==0)
-            return string.Join(',',definition.MasterPkOrder.Select(pk=>$"[{pk}]"));
+        {
+            var pkOrder=string.Join(',',definition.MasterPkOrder.Select(pk=>$"[{pk}]"));
+            if(pkOrder.Length>0)return pkOrder;
+            logger.LogWarning("报表无排序方案且主键未知，分页顺序未定义 module={ModuleId} title={Title}",
+                definition.ModuleId,definition.Title);
+            return "(SELECT NULL)";
+        }
         return string.Join(',',orders);
     }
 

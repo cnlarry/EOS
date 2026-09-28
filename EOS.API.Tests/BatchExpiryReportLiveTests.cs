@@ -19,8 +19,8 @@ namespace EOS.API.Tests;
 public sealed class BatchExpiryReportLiveTests
 {
     private const string ReportId = "INV_Batch_Expiry_1";
-    /// <summary>宿主模块（料件批号资料明细）：报表承载页，报表按它的定义与条件面板渲染。</summary>
-    private const int Module = 139808;
+    /// <summary>归属模块（料件库存资料）：报表的数据集、条件与权限都按它判定。</summary>
+    private const int Module = 1303;
     private const string Product = "ADR25RPPRO";
     private const string Depot = "ADR25RPDP";
     private const string ExpiryDaysKey = "EXPIRY_ALERT_DAYS";
@@ -79,12 +79,12 @@ public sealed class BatchExpiryReportLiveTests
     }
 
     /// <summary>
-    /// 报表必须挂在**报表承载页**上，且两条筛选项的序号与服务端注册表一致：
-    /// 宿主模块的 `M_URL` 不是 `/reports`，查看器按 `R_M_IDX` 取定义会 404（界面上点不开）；
+    /// 报表归属模块与两条筛选项的序号必须与服务端注册表一致：
+    /// 归属错了（比如仍按承载页寻址）取定义会 404，界面上根本点不开；
     /// 序号错位则面板上的筛选项与查询参数对不上（选了不生效）。
     /// </summary>
     [Fact]
-    public async Task 报表挂在报表承载页且筛选项序号与注册表一致()
+    public async Task 报表归属模块与筛选项序号与注册表一致()
     {
         var aggregate = ReportAggregateRegistry.Find(ReportId);
         Assert.NotNull(aggregate);
@@ -92,16 +92,17 @@ public sealed class BatchExpiryReportLiveTests
         await using var connection = new SqlConnection(RequireConnection());
         await connection.OpenAsync();
         await using (var command = new SqlCommand("""
-            SELECT LTRIM(RTRIM(ISNULL(m.M_URL, N''))), LTRIM(RTRIM(ISNULL(m.MASTER_TABLE, N'')))
-            FROM dbo.REPORT r JOIN dbo.MODULES m ON m.M_IDX = r.R_M_IDX
+            SELECT r.M_IDX, LTRIM(RTRIM(ISNULL(m.MASTER_TABLE, N'')))
+            FROM dbo.REPORT r JOIN dbo.MODULES m ON m.M_IDX = r.M_IDX
             WHERE r.REPORT_ID = @ReportId;
             """, connection))
         {
             command.Parameters.AddWithValue("@ReportId", ReportId);
             await using var reader = await command.ExecuteReaderAsync();
-            Assert.True(await reader.ReadAsync(), $"报表 {ReportId} 没有挂在任何模块上。");
-            Assert.Equal("/reports", reader.GetString(0));
-            Assert.Equal("INV_BATCH_M", reader.GetString(1));
+            Assert.True(await reader.ReadAsync(), $"报表 {ReportId} 没有归属模块。");
+            // 归属的是业务模块（料件库存资料），不是承载页
+            Assert.Equal(Module, reader.GetInt32(0));
+            Assert.Equal("INV_PRO_DEPOT", reader.GetString(1));
         }
 
         // 带条件序号（非 0）的参数必须有对应的条件行，且参数名对得上
@@ -117,7 +118,7 @@ public sealed class BatchExpiryReportLiveTests
             Assert.Equal(1, Convert.ToInt32(await condition.ExecuteScalarAsync()));
         }
 
-        // 定义解析要真的走到汇总数据源：宿主模块 + 报表编号解析不出"有效报表编号"时，
+        // 定义解析要真的走到汇总数据源：归属模块 + 报表编号解析不出"有效报表编号"时，
         // 查看器会回落主表查询（列变成主表字段、数据变成整表），界面上就不是临期清单了。
         // 这里用报表仓储取定义（不是手搓定义），把"解析 → 汇总数据源"这条链钉住。
         var repository = new ReportRepository(
@@ -130,6 +131,24 @@ public sealed class BatchExpiryReportLiveTests
         Assert.Equal(
             aggregate.Columns.Select(column => column.Key),
             definition.Columns.Select(column => column.Key));
+    }
+
+    /// <summary>
+    /// 归属之外的模块号不该能打开这张报表：拿别的模块号来试必须解析不出定义（fail-closed）。
+    /// 承载页号尤其要挡——它曾经是这张报表的入口，现在只是一个普通模块号。
+    /// </summary>
+    [Fact]
+    public async Task 承载页模块号与非归属模块号都打不开这张报表()
+    {
+        var repository = new ReportRepository(
+            PolicyServiceFactory.Connections(RequireConnection()), NullLogger<ReportRepository>.Instance);
+        foreach (var moduleId in new[] { 139808, 1302 })
+        {
+            var definition = await repository.GetDefinitionAsync(
+                moduleId, "admin", canViewCost: true, canViewSecrecy: true,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase), ReportId, CancellationToken.None);
+            Assert.Null(definition);
+        }
     }
 
     /// <summary>报表口径与**独立写的库内直查**逐行一致（不是把注册表的 SQL 抄一遍来自证）。</summary>
@@ -192,15 +211,14 @@ public sealed class BatchExpiryReportLiveTests
     private static async Task<IReadOnlyList<Dictionary<string, object?>>> RunReportAsync(
         ReportRepository repository, string includeExpired, string unmanagedOnly)
     {
-        var aggregate = ReportAggregateRegistry.Find(ReportId);
-        Assert.NotNull(aggregate);
-        var definition = new ReportDefinition(
-            ModuleId: Module, Title: "批次效期与临期清单", MasterTable: "INV_BATCH_M",
-            DetailTable: null, Conditions: [], Columns: [], MasterPkOrder: [], SortFields: [])
-        {
-            Aggregate = aggregate,
-        };
-        // 条件序号取自宿主模块上的条件行（SYSQR_DEFAULT 的 5/6 号），与注册表登记一致
+        // 走真实的定义解析（而不是手搓定义）：列清单由归属模块的字段元数据过滤产出，
+        // 手搓时列清单为空会让结果行被整体投影掉（权限过滤按该列清单投影）。
+        var definition = await repository.GetDefinitionAsync(
+            Module, "admin", canViewCost: true, canViewSecrecy: true,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase), ReportId, CancellationToken.None);
+        Assert.NotNull(definition);
+        Assert.Equal("aggregate", definition!.DataSource);
+        // 条件序号取自归属模块上的条件行（SYSQR_DEFAULT 的 5/6 号），与注册表登记一致
         var request = new ReportQueryRequest(
             new Dictionary<int, string?> { [5] = includeExpired, [6] = unmanagedOnly },
             new Dictionary<int, string?>());

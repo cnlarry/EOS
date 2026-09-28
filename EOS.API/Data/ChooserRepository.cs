@@ -797,12 +797,10 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
         AddCommonParameters(command, keyword, page, pageSize);
         var conditionPredicate = ChooserConditionBuilder.Build(request.Conditions, ColumnExpressions[sourceKey], command);
         var conditionSql = conditionPredicate is null ? string.Empty : $" AND {conditionPredicate}";
-        // 报表所属模块候选：启用且具备报表承载能力（RPT/ URL）或已挂报表的模块
+        // 报表归属模块候选：启用且名下确有报表的模块（报表归属 = REPORT.M_IDX，指向业务模块）
         const string scope = """
             ISNULL(m.M_TAG,1)=1
-            AND (LTRIM(RTRIM(ISNULL(m.M_URL,''))) LIKE 'RPT/%'
-                 OR LTRIM(RTRIM(ISNULL(m.M_URL,''))) LIKE '~/RPT/%'
-                 OR EXISTS (SELECT 1 FROM dbo.REPORT r WITH (NOLOCK) WHERE r.R_M_IDX=m.M_IDX))
+            AND EXISTS (SELECT 1 FROM dbo.REPORT r WITH (NOLOCK) WHERE r.M_IDX=m.M_IDX)
             """;
         var sql = $"""
             SELECT COUNT_BIG(1) FROM dbo.MODULES m WITH (NOLOCK)

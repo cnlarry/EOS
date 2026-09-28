@@ -138,16 +138,6 @@ public class ModuleRouteValidatorTests
         Assert.Equal(expected, ModuleRouteValidator.IsWorkbenchUrl(url));
     }
 
-    [Theory]
-    [InlineData("/reports", true)]
-    [InlineData("/reports/129801", true)]
-    [InlineData("/workbench", false)]
-    [InlineData("/search-center", false)]
-    public void IsReportUrl_Classification(string url, bool expected)
-    {
-        Assert.Equal(expected, ModuleRouteValidator.IsReportUrl(url));
-    }
-
     /// <summary>
     /// 统一表单动作路由的判定：只有本模块的 new/edit/view 命中。名单外的模块靠它把
     /// "指向统一表单的 MODI_URL" 当无值处理（否则列表双击会开到一个必 404 的表单）。
