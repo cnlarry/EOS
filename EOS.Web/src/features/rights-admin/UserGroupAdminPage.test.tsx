@@ -19,7 +19,7 @@ function renderPage() {
         <Routes>
           <Route path="/admin/groups" element={<UserGroupAdminPage />} />
           <Route path="/admin/groups/:groupId/rights" element={<div>GROUP_RIGHTS_PAGE</div>} />
-          <Route path="/admin/groups/:groupId/report-rights" element={<div>GROUP_REPORT_RIGHTS_PAGE</div>} />
+
           <Route path="/admin/groups/:groupId/members" element={<div>GROUP_MEMBERS_PAGE</div>} />
         </Routes>
       </MemoryRouter>
@@ -58,9 +58,9 @@ describe('UserGroupAdminPage', () => {
     expect(screen.getAllByLabelText('选择此行')).toHaveLength(2)
     expect(screen.getByLabelText('表头操作组ID')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新增' })).toBeInTheDocument()
-    // 操作列：组权限/报表权限/成员/编辑/删除
+    // 操作列：组权限/成员/编辑/删除（报表权限矩阵已退场）
     const actions = within(rowOf('CG'))
-    for (const name of ['组权限', '报表权限', '成员', '编辑', '删除']) {
+    for (const name of ['组权限', '成员', '编辑', '删除']) {
       expect(actions.getByRole('button', { name })).toBeInTheDocument()
     }
   })
@@ -144,12 +144,7 @@ describe('UserGroupAdminPage', () => {
     expect(await screen.findByText('GROUP_RIGHTS_PAGE')).toBeInTheDocument()
   })
 
-  it('操作列导航到报表权限完整子页面', async () => {
-    renderPage()
-    await loaded()
-    fireEvent.click(within(rowOf('CG')).getByRole('button', { name: '报表权限' }))
-    expect(await screen.findByText('GROUP_REPORT_RIGHTS_PAGE')).toBeInTheDocument()
-  })
+  // 报表权限的逐报表矩阵已退场（唯一真源改为归属模块的 REPORT_TAG），这里不再有对应入口。
 
   it('操作列导航到成员完整子页面', async () => {
     renderPage()

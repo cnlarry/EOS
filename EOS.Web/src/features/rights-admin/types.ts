@@ -108,35 +108,9 @@ export interface ModuleRightsInput {
   dataFilter: string | null
 }
 
-export interface EffectiveReportRights {
-  source: RightsSource
-  preview: boolean
-  print: boolean
-  export: boolean
-  dataFilter: string
-}
-
-export interface ReportRightsRow {
-  moduleId: number
-  moduleTitle: string
-  reportId: string
-  reportName: string
-  preview: boolean
-  print: boolean
-  export: boolean
-  dataFilter: string
-  hasPersonal: boolean
-  effective: EffectiveReportRights
-}
-
-export interface ReportRightsInput {
-  moduleId: number
-  reportId: string
-  preview: boolean
-  print: boolean
-  export: boolean
-  dataFilter: string | null
-}
+// 报表权限不再有"逐报表的例外矩阵"：唯一真源是归属模块的 REPORT_TAG
+// （个人 SYSDD 优先，否则组 SYSDH 取或）。原先的 EffectiveReportRights / ReportRightsRow /
+// ReportRightsInput 三型随管理面一起退场——留着它们只会让人以为还有第二处可以配报表权限。
 
 export interface UserGroupSummary {
   groupId: string

@@ -22,11 +22,9 @@ import {
   TableAdminPage,
   UserAdminPage,
   UserRightsPage,
-  UserReportRightsPage,
   UserButtonRightsPage,
   UserGroupAdminPage,
   GroupRightsPage,
-  GroupReportRightsPage,
   GroupButtonRightsPage,
   GroupMembersPage,
   MenuAdminPage,
@@ -55,7 +53,7 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   { element: <RequirePermission permission={moduleReadPermission(2305)} />, children: [
     { path: 'admin/groups', element: withSuspense(<UserGroupAdminPage />) },
     { path: 'admin/groups/:groupId/rights', element: withSuspense(<GroupRightsPage />) },
-    { path: 'admin/groups/:groupId/report-rights', element: withSuspense(<GroupReportRightsPage />) },
+
     { path: 'admin/groups/:groupId/button-rights', element: withSuspense(<GroupButtonRightsPage />) },
     { path: 'admin/groups/:groupId/members', element: withSuspense(<GroupMembersPage />) },
   ] },
@@ -64,7 +62,7 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   { element: <RequirePermission permission={moduleReadPermission(2306)} />, children: [
     { path: 'admin/users', element: withSuspense(<UserAdminPage />) },
     { path: 'admin/users/:userId/rights', element: withSuspense(<UserRightsPage />) },
-    { path: 'admin/users/:userId/report-rights', element: withSuspense(<UserReportRightsPage />) },
+
     { path: 'admin/users/:userId/button-rights', element: withSuspense(<UserButtonRightsPage />) },
   ] },
   { path: 'admin/report-setup', element: withSuspense(<ReportAdminRoute />) },
