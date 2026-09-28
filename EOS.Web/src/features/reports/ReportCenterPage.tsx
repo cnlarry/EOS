@@ -1,8 +1,20 @@
-import { IconArrowDown, IconArrowUp, IconInbox, IconSearch, IconStar, IconStarFilled, IconX, IconPencil } from '@tabler/icons-react'
+import {
+  IconArrowDown,
+  IconArrowUp,
+  IconArrowsSort,
+  IconCheck,
+  IconChevronDown,
+  IconChevronRight,
+  IconInbox,
+  IconPencil,
+  IconStar,
+  IconStarFilled,
+} from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useCallback, useId, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { EmptyState, LoadingState } from '../../components/common/AsyncState'
+import { EmptyState, ErrorState, LoadingState } from '../../components/common/AsyncState'
+import { ErpSearchBox } from '../../components/common/ErpSearchBox'
 import { Button } from '../../components/ui/Button'
 import { apiClient } from '../../services/api'
 import { describeApiError } from '../../lib/errors'
@@ -19,56 +31,89 @@ interface ReportCatalogItem {
   lastRunAt: string | null
 }
 
+/** 目录项在页面内的唯一键（模块 + 报表编号）。 */
+function itemKey(item: ReportCatalogItem): string {
+  return `${item.moduleId}:${item.reportId}`
+}
+
+/** 收藏顺序未显式设置过的项排在显式排序项之后。 */
+function sortRank(item: ReportCatalogItem): number {
+  return item.sortIndex > 0 ? item.sortIndex : Number.MAX_SAFE_INTEGER
+}
+
+/** 最近使用的展示条数。 */
+const RECENT_LIMIT = 6
+
+/**
+ * 报表中心目录页。
+ *
+ * 形态是「导航目录」而非数据列表，因此分区组织：
+ * 收藏（磁贴，独立于业务域的排序）→ 最近使用（紧凑行）→ 全部报表（按业务域折叠的索引）。
+ * 搜索或「仅显示收藏」生效时只呈现过滤结果，分组自动展开为平铺结果。
+ */
 export function ReportCenterPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const baseId = useId()
   const [search, setSearch] = useState('')
   const [onlyFavorites, setOnlyFavorites] = useState(false)
+  const [sortMode, setSortMode] = useState(false)
+  const [expandedDomains, setExpandedDomains] = useState<Record<string, boolean>>({})
 
   const catalog = useQuery({
     queryKey: ['report-center', 'catalog'],
     queryFn: () => apiClient.get<ReportCatalogItem[]>('/report-center/catalog'),
   })
 
+  const items = useMemo(() => catalog.data ?? [], [catalog.data])
+
+  // 收藏按 SORT_IDX 单独排序：目录接口的返回顺序是「业务域优先」，
+  // 直接沿用会让跨业务域的收藏顺序不可见，上移/下移也就成了空操作。
+  const favorites = useMemo(() => items
+    .filter((item) => item.favorite)
+    .sort((a, b) => sortRank(a) - sortRank(b) || a.reportName.localeCompare(b.reportName, 'zh-CN')),
+  [items])
+
+  const refreshCatalog = useCallback(
+    () => void queryClient.invalidateQueries({ queryKey: ['report-center', 'catalog'] }),
+    [queryClient],
+  )
+
   const favoriteMutation = useMutation({
     mutationFn: (item: ReportCatalogItem) => apiClient.post('/report-center/favorite', {
       moduleId: item.moduleId,
       reportId: item.reportId,
       favorite: !item.favorite,
-      sortIndex: item.favorite ? null : (catalog.data?.length ?? 0) + 1,
+      // 加入收藏时追加到末尾；取消收藏不提交该字段，服务端保持既有顺序
+      sortIndex: item.favorite ? undefined : favorites.length + 1,
     }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['report-center', 'catalog'] }),
+    onSuccess: refreshCatalog,
   })
 
   const reorderMutation = useMutation({
-    mutationFn: (items: { moduleId: number; reportId: string }[]) =>
-      apiClient.post('/report-center/reorder', { items }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['report-center', 'catalog'] }),
+    mutationFn: (ordered: { moduleId: number; reportId: string }[]) =>
+      apiClient.post('/report-center/reorder', { items: ordered }),
+    onSuccess: refreshCatalog,
   })
 
-  const moveFavorite = (item: ReportCatalogItem, direction: -1 | 1) => {
-    const favorites = (catalog.data ?? []).filter((it) => it.favorite)
-    const index = favorites.findIndex((it) => it.moduleId === item.moduleId && it.reportId === item.reportId)
-    const target = favorites[index + direction]
-    if (!target) return
-    const next = [...favorites]
-    next[index] = target
-    next[index + direction] = item
-    reorderMutation.mutate(next.map((it) => ({ moduleId: it.moduleId, reportId: it.reportId })))
-  }
+  const favoriteIndex = useMemo(() => {
+    const map = new Map<string, number>()
+    favorites.forEach((item, index) => map.set(itemKey(item), index))
+    return map
+  }, [favorites])
 
-  const recentReports = useMemo(() => {
-    const withRun = (catalog.data ?? []).filter((it) => it.lastRunAt != null)
-    return withRun
+  const recentReports = useMemo(
+    () => items
+      .filter((item) => item.lastRunAt != null)
       .sort((a, b) => new Date(b.lastRunAt!).getTime() - new Date(a.lastRunAt!).getTime())
-      .slice(0, 5)
-  }, [catalog.data])
+      .slice(0, RECENT_LIMIT),
+    [items],
+  )
 
   const groups = useMemo(() => {
-    const items = catalog.data ?? []
+    const text = search.trim().toLowerCase()
     const filtered = items.filter((item) => {
       if (onlyFavorites && !item.favorite) return false
-      const text = search.trim().toLowerCase()
       if (!text) return true
       return item.reportName.toLowerCase().includes(text)
         || item.reportId.toLowerCase().includes(text)
@@ -85,126 +130,279 @@ export function ReportCenterPage() {
     return [...map.entries()]
       .sort(([a], [b]) => a.localeCompare(b, 'zh-CN'))
       .map(([domain, reports]) => ({ domain, reports }))
-  }, [catalog.data, search, onlyFavorites])
+  }, [items, search, onlyFavorites])
+
+  const domainCount = useMemo(
+    () => new Set(items.map((item) => item.domainDesc || item.moduleDesc || '其它')).size,
+    [items],
+  )
+
+  // 搜索/仅收藏时结果应当直接可见，此时分组不再折叠
+  const filtering = search.trim() !== '' || onlyFavorites
+  // 只有一个业务域时没有可浏览的索引，直接展开
+  const singleDomain = groups.length === 1
+  const allExpanded = groups.length > 0 && groups.every((group) => expandedDomains[group.domain] === true)
 
   const openReport = (item: ReportCatalogItem) => {
-    void apiClient.post('/report-center/favorite', {
+    void apiClient.post('/report-center/touch', {
       moduleId: item.moduleId,
       reportId: item.reportId,
-      favorite: item.favorite,
-      lastRunAt: new Date().toISOString(),
     }).catch(() => undefined)
     navigate(`/reports/${item.moduleId}`)
   }
 
+  const moveFavorite = (item: ReportCatalogItem, direction: -1 | 1) => {
+    const index = favoriteIndex.get(itemKey(item)) ?? -1
+    const target = index < 0 ? undefined : favorites[index + direction]
+    if (index < 0 || !target) return
+    const next = [...favorites]
+    next[index] = target
+    next[index + direction] = item
+    reorderMutation.mutate(next.map((it) => ({ moduleId: it.moduleId, reportId: it.reportId })))
+  }
+
+  /** 报表条目上的次级动作（自定义版式 / 收藏开关），磁贴与紧凑行共用。 */
+  const renderItemActions = (item: ReportCatalogItem) => (
+    <>
+      <button
+        type="button"
+        className="erp-catalog-tile-btn"
+        aria-label={`自定义版式 ${item.reportName}`}
+        title="自定义打印版式"
+        onClick={() => navigate(`/layout-designer/${item.moduleId}`)}
+      >
+        <IconPencil size={14} />
+      </button>
+      <button
+        type="button"
+        className={`erp-catalog-tile-btn${item.favorite ? ' is-favorite' : ''}`}
+        aria-label={item.favorite ? `取消收藏 ${item.reportName}` : `收藏 ${item.reportName}`}
+        title={item.favorite ? '取消收藏' : '收藏'}
+        disabled={favoriteMutation.isPending}
+        onClick={() => favoriteMutation.mutate(item)}
+      >
+        {item.favorite ? <IconStarFilled size={14} /> : <IconStar size={14} />}
+      </button>
+    </>
+  )
+
   return (
-    <div className="erp-full-list-page">
-      <section className="card erp-list-card">
-        <section className="erp-list-command-bar" aria-label="报表中心工具栏">
-          <div className="erp-nav-search erp-menu-search">
-            <IconSearch size={16} aria-hidden="true" />
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="搜索报表名称/编号/业务域"
-              aria-label="搜索报表"
-            />
-            {search && (
-              <button type="button" className="erp-nav-search-clear" aria-label="清除搜索" onClick={() => setSearch('')}>×</button>
-            )}
+    <div className="erp-catalog-page">
+      <section className="card erp-catalog-card">
+        <header className="erp-catalog-head">
+          <div className="erp-catalog-title">
+            <strong>报表中心</strong>
+            <span>共 {items.length} 张报表 · {domainCount} 个业务域</span>
           </div>
-          <div className="erp-list-actions d-flex gap-2 align-items-center">
+          <ErpSearchBox
+            value={search}
+            onChange={setSearch}
+            placeholder="搜索报表名称 / 编号 / 业务域"
+            ariaLabel="搜索报表"
+          />
+          <div className="erp-catalog-actions">
             <Button variant="ghost" size="sm" icon={<IconInbox size={16} />} onClick={() => navigate('/report-center/inbox')}>
               收件箱
             </Button>
-            <label className="form-check form-check-inline mb-0 text-nowrap">
-              <input type="checkbox" className="form-check-input" checked={onlyFavorites}
-                onChange={(event) => setOnlyFavorites(event.target.checked)} />
-              <span className="form-check-label">仅显示收藏</span>
-            </label>
+            <Button
+              variant={onlyFavorites ? 'primary' : 'ghost'}
+              size="sm"
+              icon={onlyFavorites ? <IconStarFilled size={16} /> : <IconStar size={16} />}
+              aria-pressed={onlyFavorites}
+              aria-label="仅显示收藏"
+              title="仅显示收藏"
+              onClick={() => setOnlyFavorites((current) => !current)}
+            >
+              仅显示收藏
+            </Button>
           </div>
-        </section>
-        <div className="erp-report-center-body p-3" style={{ overflow: 'auto' }}>
-          {catalog.isPending ? <LoadingState label="正在加载报表目录…" /> : catalog.isError ? (
-            <div className="alert alert-danger d-flex align-items-center justify-content-between">
-              <span>{describeApiError(catalog.error, '报表目录加载失败。')}</span>
-              <button type="button" className="btn btn-danger btn-sm" onClick={() => void catalog.refetch()}>重试</button>
-            </div>
+        </header>
+
+        <div className="erp-catalog-body">
+          {catalog.isPending ? (
+            <LoadingState label="正在加载报表目录…" />
+          ) : catalog.isError ? (
+            <ErrorState
+              message={describeApiError(catalog.error, '报表目录加载失败。')}
+              onRetry={() => void catalog.refetch()}
+            />
           ) : (
             <>
-              {!onlyFavorites && !search.trim() && recentReports.length > 0 && (
-                <section className="mb-4">
-                  <h2 className="fs-6 fw-semibold text-secondary mb-2">最近使用</h2>
-                  <div className="list-group list-group-flush">
+              {!filtering && (
+                <section className="erp-catalog-section" aria-label="我的收藏">
+                  <div className="erp-catalog-section-head">
+                    <h2>我的收藏</h2>
+                    <span className="erp-catalog-count">{favorites.length}</span>
+                    {favorites.length > 1 && (
+                      <div className="erp-catalog-section-actions">
+                        <Button
+                          variant={sortMode ? 'primary' : 'ghost'}
+                          size="sm"
+                          icon={sortMode ? <IconCheck size={16} /> : <IconArrowsSort size={16} />}
+                          aria-pressed={sortMode}
+                          onClick={() => setSortMode((current) => !current)}
+                        >
+                          {sortMode ? '完成排序' : '编辑排序'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  {favorites.length === 0 ? (
+                    <div className="erp-catalog-hint">还没有收藏。在任意报表上点击星标，即可固定到这里。</div>
+                  ) : (
+                    <div className="erp-catalog-grid">
+                      {favorites.map((item) => {
+                        const index = favoriteIndex.get(itemKey(item)) ?? -1
+                        return (
+                          <div className="erp-catalog-tile" key={`favorite:${itemKey(item)}`}>
+                            <button
+                              type="button"
+                              className="erp-catalog-tile-open"
+                              title={`打开 ${item.reportName}`}
+                              onClick={() => openReport(item)}
+                            >
+                              <span className="erp-catalog-tile-name">{item.reportName}</span>
+                              <span className="erp-catalog-tile-meta">
+                                {item.domainDesc || item.moduleDesc}
+                                {item.isDefault ? ' · 默认' : ''}
+                              </span>
+                            </button>
+                            <span className="erp-catalog-tile-actions" data-pinned={sortMode ? 'true' : undefined}>
+                              {sortMode && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="erp-catalog-tile-btn"
+                                    aria-label={`上移 ${item.reportName}`}
+                                    title="上移"
+                                    disabled={index <= 0 || reorderMutation.isPending}
+                                    onClick={() => moveFavorite(item, -1)}
+                                  >
+                                    <IconArrowUp size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="erp-catalog-tile-btn"
+                                    aria-label={`下移 ${item.reportName}`}
+                                    title="下移"
+                                    disabled={index < 0 || index >= favorites.length - 1 || reorderMutation.isPending}
+                                    onClick={() => moveFavorite(item, 1)}
+                                  >
+                                    <IconArrowDown size={14} />
+                                  </button>
+                                </>
+                              )}
+                              {renderItemActions(item)}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {!filtering && recentReports.length > 0 && (
+                <section className="erp-catalog-section" aria-label="最近使用">
+                  <div className="erp-catalog-section-head">
+                    <h2>最近使用</h2>
+                    <span className="erp-catalog-count">{recentReports.length}</span>
+                  </div>
+                  <div className="erp-catalog-rows">
                     {recentReports.map((item) => (
-                      <div key={`recent:${item.moduleId}:${item.reportId}`} className="list-group-item list-group-item-action px-2 d-flex align-items-center gap-2 report-center-row">
-                        <button type="button" className="btn btn-link p-0 text-decoration-none text-start flex-grow-1 report-center-link"
-                          onClick={() => openReport(item)}>
-                          <span className="fw-medium">{item.reportName}</span>
-                          <span className="text-muted ms-2 small">{item.domainDesc || item.moduleDesc}</span>
-                          <span className="text-muted ms-2 small font-monospace">{item.reportId}</span>
+                      <div className="erp-catalog-row" key={`recent:${itemKey(item)}`}>
+                        <button
+                          type="button"
+                          className="erp-catalog-row-open"
+                          title={`打开 ${item.reportName}`}
+                          onClick={() => openReport(item)}
+                        >
+                          <span className="erp-catalog-row-name">{item.reportName}</span>
+                          <span className="erp-catalog-row-meta">{item.domainDesc || item.moduleDesc}</span>
                         </button>
-                        {item.favorite && <IconStarFilled size={16} className="text-warning" />}
+                        <span className="erp-catalog-row-tail">{formatRunTime(item.lastRunAt)}</span>
                       </div>
                     ))}
                   </div>
                 </section>
               )}
-              {groups.length === 0 ? (
-                <EmptyState title={onlyFavorites ? '暂无收藏报表' : '没有匹配的报表'} description={onlyFavorites ? '点击报表右侧的星标即可收藏。' : '请调整搜索关键字后重试。'} />
-              ) : (
-                groups.map(({ domain, reports }) => (
-                  <section key={domain} className="mb-4">
-                    <h2 className="fs-6 fw-semibold text-secondary mb-2">{domain}<span className="text-muted ms-2 small">（{reports.length}）</span></h2>
-                    <div className="list-group list-group-flush">
-                      {reports.map((item) => {
-                        const favorites = (catalog.data ?? []).filter((it) => it.favorite)
-                        const favIndex = favorites.findIndex((it) => it.moduleId === item.moduleId && it.reportId === item.reportId)
-                        const canMoveUp = item.favorite && favIndex > 0
-                        const canMoveDown = item.favorite && favIndex < favorites.length - 1
-                        return (
-                          <div key={`${item.moduleId}:${item.reportId}`} className="list-group-item list-group-item-action px-2 d-flex align-items-center gap-2 report-center-row">
-                            <button type="button" className="btn btn-link p-0 text-decoration-none text-start flex-grow-1 report-center-link"
-                              onClick={() => openReport(item)}>
-                              <span className="fw-medium">{item.reportName}</span>
-                              {item.isDefault && <span className="badge bg-primary-subtle text-primary ms-2 small">默认</span>}
-                              <span className="text-muted ms-2 small font-monospace">{item.reportId}</span>
-                            </button>
-                            {item.favorite && (
-                              <span className="d-inline-flex gap-1" aria-label="收藏排序">
-                                <button type="button" className="btn btn-sm report-center-star" aria-label={`上移 ${item.reportName}`} title="上移" disabled={!canMoveUp || reorderMutation.isPending}
-                                  onClick={() => moveFavorite(item, -1)}>
-                                  <IconArrowUp size={14} />
-                                </button>
-                                <button type="button" className="btn btn-sm report-center-star" aria-label={`下移 ${item.reportName}`} title="下移" disabled={!canMoveDown || reorderMutation.isPending}
-                                  onClick={() => moveFavorite(item, 1)}>
-                                  <IconArrowDown size={14} />
-                                </button>
-                              </span>
-                            )}
-                            <button type="button"
-                              className="btn btn-sm report-center-star"
-                              aria-label={`自定义版式 ${item.reportName}`}
-                              title="自定义版式"
-                              onClick={() => navigate(`/layout-designer/${item.moduleId}`)}>
-                              <IconPencil size={16} />
-                            </button>
-                            <button type="button"
-                              className="btn btn-sm report-center-star"
-                              aria-label={item.favorite ? `取消收藏 ${item.reportName}` : `收藏 ${item.reportName}`}
-                              title={item.favorite ? '取消收藏' : '收藏'}
-                              disabled={favoriteMutation.isPending}
-                              onClick={() => favoriteMutation.mutate(item)}>
-                              {item.favorite ? <IconStarFilled size={16} className="text-warning" /> : <IconStar size={16} />}
-                            </button>
-                          </div>
-                        )
-                      })}
+
+              <section className="erp-catalog-section" aria-label="全部报表">
+                <div className="erp-catalog-section-head">
+                  <h2>全部报表</h2>
+                  <span className="erp-catalog-count">{groups.length} 个业务域</span>
+                  {!filtering && !singleDomain && (
+                    <div className="erp-catalog-section-actions">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={allExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
+                        onClick={() => setExpandedDomains(
+                          allExpanded ? {} : Object.fromEntries(groups.map((group) => [group.domain, true])),
+                        )}
+                      >
+                        {allExpanded ? '折叠全部' : '展开全部'}
+                      </Button>
                     </div>
-                  </section>
-                ))
-              )}
+                  )}
+                </div>
+
+                {groups.length === 0 ? (
+                  <div className="erp-catalog-empty">
+                    <EmptyState
+                      title={onlyFavorites ? '暂无收藏报表' : '没有匹配的报表'}
+                      description={onlyFavorites ? '点击报表右侧的星标即可收藏。' : '请调整搜索关键字后重试。'}
+                    />
+                  </div>
+                ) : (
+                  groups.map(({ domain, reports }, groupIndex) => {
+                    const expanded = filtering || singleDomain || expandedDomains[domain] === true
+                    const bodyId = `${baseId}-domain-${groupIndex}`
+                    return (
+                      <section className="erp-catalog-group" key={domain}>
+                        {filtering || singleDomain ? (
+                          <div className="erp-catalog-group-title">
+                            <strong>{domain}</strong>
+                            <span className="erp-catalog-count">{reports.length}</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="erp-catalog-group-title"
+                            aria-expanded={expanded}
+                            aria-controls={bodyId}
+                            title={expanded ? `折叠 ${domain}` : `展开 ${domain}`}
+                            onClick={() => setExpandedDomains((current) => ({ ...current, [domain]: !expanded }))}
+                          >
+                            {expanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
+                            <strong>{domain}</strong>
+                            <span className="erp-catalog-count">{reports.length}</span>
+                          </button>
+                        )}
+                        {expanded && (
+                          <div className="erp-catalog-group-body" id={bodyId}>
+                            {reports.map((item) => (
+                              <div className="erp-catalog-row" key={itemKey(item)}>
+                                <button
+                                  type="button"
+                                  className="erp-catalog-row-open"
+                                  title={`打开 ${item.reportName}`}
+                                  onClick={() => openReport(item)}
+                                >
+                                  <span className="erp-catalog-row-name">{item.reportName}</span>
+                                  {item.isDefault && <span className="erp-catalog-badge">默认</span>}
+                                  <span className="erp-catalog-row-meta">{item.reportId}</span>
+                                </button>
+                                <span className="erp-catalog-row-tail">{renderItemActions(item)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    )
+                  })
+                )}
+              </section>
             </>
           )}
         </div>
@@ -213,6 +411,10 @@ export function ReportCenterPage() {
   )
 }
 
-export function ReportCenterErrorIcon() {
-  return <IconX size={16} aria-hidden="true" />
+/** 最近使用的时间：只到分钟，避免紧凑行被完整 Locale 串撑开。 */
+function formatRunTime(value: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }

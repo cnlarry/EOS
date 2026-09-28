@@ -12,4 +12,5 @@ export const apiClientMock = {
   put: vi.fn(),
   delete: vi.fn(),
   postFile: vi.fn(),
+  getFile: vi.fn(),
 }
