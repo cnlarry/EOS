@@ -139,7 +139,7 @@ public sealed class ReportController(
         return File(pdf, "application/pdf", $"{definition.Title}.pdf");
     }
 
-    /// <summary>CSV 导出：除模块浏览权外，报表级 EXPORT_TAG 必须为真。</summary>
+    /// <summary>CSV 导出：模块浏览权 + 归属模块的报表权（REPORT_TAG）为真即可导出。</summary>
     [HttpPost("export")]
     public async Task<IActionResult> Export(int moduleId, [FromQuery] string? reportId,
         [FromBody] ReportQueryRequest request, CancellationToken token)
@@ -152,8 +152,9 @@ public sealed class ReportController(
             rights.DeniedMasterFields, reportId, token);
         if (definition is null) return NotFound();
         var settings = await printSettingsRepository.GetAsync(moduleId, userId, token);
-        // 先认报表身份，再回落默认报表：导出的 EXPORT_TAG 是**报表级**权限，
-        // 用默认报表的权限去回答另一张报表的导出请求，等于把两者的权限混在一起判。
+        // 先认报表身份，再回落默认报表：报表权如今按归属模块判（同模块内各报表一致），
+        // 但导出的是"报表身份"本身——用默认报表的身份去回答另一张报表的导出请求，
+        // 交出去的会是另一张报表的数据（历史缺陷，见 S5 对 condition-options/export 的订正）。
         var report = settings.Reports.FirstOrDefault(item => !string.IsNullOrWhiteSpace(reportId) && item.ReportId == reportId.Trim())
             ?? settings.Reports.FirstOrDefault(item => item.IsDefault)
             ?? settings.Reports.FirstOrDefault();

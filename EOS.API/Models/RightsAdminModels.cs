@@ -120,38 +120,6 @@ public sealed record EffectiveModuleRights(
     string DataFilter,
     bool FormDesign = false);
 
-/// <summary>报表权限输入（SYSDD_REPORT / SYSDH_REPORT）。</summary>
-public sealed record ReportRightsInput(
-    int ModuleId,
-    string ReportId,
-    bool Preview,
-    bool Print,
-    bool Export,
-    string? DataFilter);
-
-/// <summary>
-/// 报表权限矩阵行：行 = REPORT_ID + 名称，列 = PREVIEW/PRINT/EXPORT 勾选；
-/// hasPersonal 决定「完全采用」，effective 为生效值（个人覆盖 / 组 OR + DATA_FILTER OR 拼接）。
-/// </summary>
-public sealed record ReportRightsRow(
-    int ModuleId,
-    string ModuleTitle,
-    string ReportId,
-    string ReportName,
-    bool Preview,
-    bool Print,
-    bool Export,
-    string DataFilter,
-    bool HasPersonal,
-    EffectiveReportRights Effective);
-
-public sealed record EffectiveReportRights(
-    string Source,
-    bool Preview,
-    bool Print,
-    bool Export,
-    string DataFilter);
-
 /// <summary>用户组列表行（SYSDG + 成员数 + 备注）。</summary>
 public sealed record UserGroupSummary(string GroupId, string GroupDescription, int MemberCount, string? Remark);
 
@@ -190,7 +158,6 @@ public sealed record EffectiveRightsDetail(
     string DataFilter);
 
 public sealed record SaveModuleRightsRequest(IReadOnlyList<ModuleRightsInput> Items);
-public sealed record SaveReportRightsRequest(IReadOnlyList<ReportRightsInput> Items);
 public sealed record SaveMembersRequest(IReadOnlyList<string> Ids);
 
 /// <summary>用户组新增请求（2305 定制页主档，SYSDG）。</summary>

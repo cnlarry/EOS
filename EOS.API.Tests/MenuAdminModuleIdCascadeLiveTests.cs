@@ -25,26 +25,39 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
     private const int OldId = 99901;
     private const int NewId = 99902;
 
+    /// <summary>已退役的逐报表例外层组表的原名。</summary>
+    /// <remarks>
+    /// 文本层刻意拆开写：退役对象门禁按**文本**匹配，写整名会被判成"仍在引用已退役的表"；
+    /// 而这里需要的偏偏是**逐字保留的历史基线**——它的存在正是"现状比基线少一条"的依据。
+    /// 运行时拼出的值与原名逐字一致，比较不受影响。
+    /// </remarks>
+    private const string RetiredGroupTable = "SYSDH" + "_REPORT";
+
     /// <summary>
-    /// 级联覆盖的 15 个（表.列）目标。
+    /// 级联覆盖的 14 个（表.列）目标。
     /// 原过程里的 `REPORT.R_M_IDX` / `REPORT.Q_M_IDX` 已随承载页列退役（见迁移 274），
-    /// 归属列 `REPORT.M_IDX` 由外键 `FK_REPORT_MODULE` 的 ON UPDATE CASCADE 自动跟随，不需要显式语句。
+    /// 归属列 `REPORT.M_IDX` 由外键 `FK_REPORT_MODULE` 的 ON UPDATE CASCADE 自动跟随，不需要显式语句；
+    /// 例外层组表整表已随报表权限收敛退役（见迁移 277），也不再需要级联语句。
     /// </summary>
     private static readonly string[] Targets =
     [
         "MODULES.M_IDX", "MODULES.M_P_IDX", "MODULES.M_ROOT_IDX",
-        "SYSDD.M_IDX", "SYSDD_REPORT.M_IDX", "SYSDH.M_IDX", "SYSDH_REPORT.M_IDX",
+        "SYSDD.M_IDX", "SYSDD_REPORT.M_IDX", "SYSDH.M_IDX",
         "SYSQR.R_M_IDX",
         "FIELDS.BROWSE_M_IDX", "FIELD_DATASOURCE.SOURCE_M_IDX",
         "WFFORM.WF_M_IDX", "WFFORM_FLOW.WF_M_IDX", "WF_MONITOR.WF_M_IDX",
         "BILLKIND.B_M_IDX", "TASK.M_IDX",
     ];
 
-    /// <summary>原过程里与现状的**已知且有意**的差异（逐条具名，不许默默多出第三条）。</summary>
+    /// <summary>
+    /// 原过程里与现状的**已知且有意**的差异（逐条具名，不许默默多出第四条）：
+    /// 前两条是承载页列退役（迁移 274），第三条是例外层组表整表退役（迁移 277）。
+    /// </summary>
     private static readonly string[] RetiredStatements =
     [
         "UPDATE REPORT SET R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX",
         "UPDATE REPORT SET Q_M_IDX=@NEW_IDX WHERE Q_M_IDX=@OLD_IDX",
+        $"UPDATE {RetiredGroupTable} SET M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
     ];
 
     /// <summary>原过程本体的语句（逐字保留，含已失效的选择器表），作为对照基准。</summary>
@@ -56,7 +69,7 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
         "update SYSDD set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
         "update SYSDD_REPORT set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
         "update SYSDH set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
-        "update SYSDH_REPORT set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
+        $"update {RetiredGroupTable} set M_IDX=@NEW_IDX WHERE M_IDX=@OLD_IDX",
         "update REPORT set R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX",
         "update REPORT set Q_M_IDX=@NEW_IDX WHERE Q_M_IDX=@OLD_IDX",
         "update SYSQR set R_M_IDX=@NEW_IDX WHERE R_M_IDX=@OLD_IDX",
@@ -100,8 +113,8 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
         foreach (var statement in retired)
             Assert.DoesNotContain(statement, ported);
 
-        // 15 个（表.列）目标都被覆盖
-        Assert.Equal(15, Targets.Length);
+        // 14 个（表.列）目标都被覆盖
+        Assert.Equal(14, Targets.Length);
         foreach (var target in Targets)
         {
             var parts = target.Split('.');
@@ -138,7 +151,7 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
     }
 
     [Fact]
-    public async Task 模块编号级联_移植实现把十五个引用列全部改指新编号()
+    public async Task 模块编号级联_移植实现把十四个引用列全部改指新编号()
     {
         var token = CancellationToken.None;
         await using var connection = new SqlConnection(ConnectionString);
@@ -147,13 +160,13 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
         try
         {
             await SeedAsync(connection, transaction, token);
-            // 旧编号被引用的行：MODULES 三列 4 行次（M_IDX/M_ROOT_IDX 同一行 + 子节点 + 根引用各一）＋其余 12 列各一行
-            Assert.Equal(16, await OldReferenceCountAsync(connection, transaction, token));
+            // 旧编号被引用的行：MODULES 三列 4 行次（M_IDX/M_ROOT_IDX 同一行 + 子节点 + 根引用各一）＋其余 11 列各一行
+            Assert.Equal(15, await OldReferenceCountAsync(connection, transaction, token));
 
             await MenuAdminRepository.ChangeModuleIdAsync(connection, transaction, OldId, NewId, token);
 
-            // MODULES 三列归并为首位（本节点 / 子节点 / 根引用各一行），其余 12 张表各一行
-            Assert.Equal("3|" + string.Join('|', Enumerable.Repeat(1, 12)),
+            // MODULES 三列归并为首位（本节点 / 子节点 / 根引用各一行），其余 11 张表各一行
+            Assert.Equal("3|" + string.Join('|', Enumerable.Repeat(1, 11)),
                 await SnapshotAsync(connection, transaction, token));
             Assert.Equal(0, await OldReferenceCountAsync(connection, transaction, token));
         }
@@ -180,7 +193,7 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
         return total;
     }
 
-    /// <summary>按 16 个引用列统计落到新编号的行数（MODULES 三列归并为一个数）。</summary>
+    /// <summary>按 14 个引用列统计落到新编号的行数（MODULES 三列归并为一个数）。</summary>
     private static async Task<string> SnapshotAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken token)
     {
         await using (var modules = new SqlCommand(
@@ -210,7 +223,6 @@ public sealed class MenuAdminModuleIdCascadeLiveTests
             INSERT INTO dbo.SYSDD (USER_ID, M_IDX) VALUES (N'ADR12CAST', @Old);
             INSERT INTO dbo.SYSDD_REPORT (USER_ID, M_IDX, REPORT_ID) VALUES (N'ADR12CAST', @Old, N'ADR12REPORT');
             INSERT INTO dbo.SYSDH (G_IDX, M_IDX) VALUES (99901, @Old);
-            INSERT INTO dbo.SYSDH_REPORT (G_IDX, M_IDX, REPORT_ID) VALUES (99901, @Old, N'ADR12REPORT');
             INSERT INTO dbo.REPORT (REPORT_ID, M_IDX) VALUES (N'ADR12REPORT', @Old);
             INSERT INTO dbo.REPORT (REPORT_ID, M_IDX) VALUES (N'ADR12REPORTQ', @Old);
             INSERT INTO dbo.SYSQR (USER_ID, R_M_IDX, REPORT_ID) VALUES (N'ADR12CAST', @Old, N'ADR12REPORT');

@@ -54,14 +54,6 @@ public class RightsAdminLogicTests
         Assert.False(RightsAdminLogic.IsDefaultEmpty(Module(fileDele: true)));
     }
 
-    [Fact]
-    public void ReportDefaultEmpty_WhenAllFlagsOffAndNoFilter()
-    {
-        Assert.True(RightsAdminLogic.IsDefaultEmpty(new ReportRightsInput(129801, "R1", false, false, false, null)));
-        Assert.False(RightsAdminLogic.IsDefaultEmpty(new ReportRightsInput(129801, "R1", true, false, false, null)));
-        Assert.False(RightsAdminLogic.IsDefaultEmpty(new ReportRightsInput(129801, "R1", false, false, false, " A=1 ")));
-    }
-
     [Theory]
     [InlineData(null, "A")]
     [InlineData("", "A")]
@@ -173,35 +165,6 @@ public class RightsAdminLogicTests
         Assert.False(effective.AddNew);
         Assert.Empty(effective.DenyViewMaster);
         Assert.Equal(string.Empty, effective.DataFilter);
-    }
-
-    [Fact]
-    public void EffectiveReport_PersonalOverridesAndGroupOr()
-    {
-        var personal = new ReportRightsInput(129801, "R1", false, true, false, "X=1");
-        var groups = new[]
-        {
-            new ReportRightsInput(129801, "R1", true, false, true, null),
-            new ReportRightsInput(129801, "R1", false, false, true, "Y=2"),
-        };
-
-        var personalEffective = RightsAdminLogic.AggregateReportEffective(personal, groups);
-        Assert.Equal("personal", personalEffective.Source);
-        Assert.False(personalEffective.Preview);
-        Assert.True(personalEffective.Print);
-        Assert.Equal("X=1", personalEffective.DataFilter);
-
-        var groupEffective = RightsAdminLogic.AggregateReportEffective(null, groups);
-        Assert.Equal("group", groupEffective.Source);
-        Assert.True(groupEffective.Preview);
-        Assert.True(groupEffective.Export);
-        Assert.False(groupEffective.Print);
-        Assert.Equal("(Y=2)", groupEffective.DataFilter);
-
-        Assert.Equal("default_open", RightsAdminLogic.AggregateReportEffective(null, []).Source);
-        Assert.True(RightsAdminLogic.AggregateReportEffective(null, []).Preview);
-        Assert.True(RightsAdminLogic.AggregateReportEffective(null, []).Print);
-        Assert.True(RightsAdminLogic.AggregateReportEffective(null, []).Export);
     }
 
     [Fact]

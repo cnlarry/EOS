@@ -165,7 +165,7 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
     /// 报表清单：**模块闸门通过即全部可见**（唯一真源 = 归属模块 `REPORT_TAG`）。
     ///
     /// <para>
-    /// 原先这里还要再叠一层逐报表例外（个人 `SYSDD_REPORT` 覆盖组 `SYSDH_REPORT` 的 `PREVIEW_TAG`），
+    /// 原先这里还要再叠一层逐报表例外（个人覆盖组的那三列勾选，例外表已随迁移 277 退役），
     /// 那四列已随管理面一起退场：清单与目录、打印、导出用的是同一条判据，
     /// 不会再出现"目录里看得见、打印面板里没有"这种两处口径不一致。
     /// </para>
