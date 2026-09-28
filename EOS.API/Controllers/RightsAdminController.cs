@@ -36,25 +36,10 @@ public sealed class RightsAdminController(
         return NoContent();
     }
 
-    [HttpGet("users/{userId}/report-rights")]
-    public async Task<IActionResult> UserReportRights(string userId, CancellationToken token)
-    {
-        if (!await CanSetup(token)) return Forbid();
-        return Ok(await repository.GetUserReportMatrixAsync(userContext.UserId, userId, token));
-    }
-
-    [HttpPut("users/{userId}/report-rights")]
-    public async Task<IActionResult> SaveUserReportRights(string userId, SaveReportRightsRequest request, CancellationToken token)
-    {
-        if (!await CanSetup(token)) return Forbid();
-        await repository.SaveUserReportRightsAsync(
-            userId, request.Items, userContext.UserId, userContext.EmployeeName, token);
-        return NoContent();
-    }
-
     /// <summary>
     /// 个人自定义按钮授权矩阵（fail-closed 名单）：可见模块里配置好的按钮 × 该用户的名单行。
-    /// 与报表权限同一处维护、同一套聚合口径，但缺省相反——不授权即不可点。
+    /// 缺省相反——不授权即不可点。这里**没有**报表权限：报表的可见性只有一个真源，
+    /// 就是归属模块上的 `REPORT_TAG`（个人 `SYSDD` 优先、否则组 `SYSDH` 取或）。
     /// </summary>
     [HttpGet("users/{userId}/button-rights")]
     public async Task<IActionResult> UserButtonRights(string userId, CancellationToken token)
@@ -146,22 +131,6 @@ public sealed class RightsAdminController(
     {
         if (!await CanSetup(token)) return Forbid();
         await repository.SaveGroupModuleRightsAsync(
-            groupId, request.Items, userContext.UserId, userContext.EmployeeName, token);
-        return NoContent();
-    }
-
-    [HttpGet("groups/{groupId}/report-rights")]
-    public async Task<IActionResult> GroupReportRights(string groupId, CancellationToken token)
-    {
-        if (!await CanSetup(token)) return Forbid();
-        return Ok(await repository.GetGroupReportMatrixAsync(userContext.UserId, groupId, token));
-    }
-
-    [HttpPut("groups/{groupId}/report-rights")]
-    public async Task<IActionResult> SaveGroupReportRights(string groupId, SaveReportRightsRequest request, CancellationToken token)
-    {
-        if (!await CanSetup(token)) return Forbid();
-        await repository.SaveGroupReportRightsAsync(
             groupId, request.Items, userContext.UserId, userContext.EmployeeName, token);
         return NoContent();
     }
