@@ -1,4 +1,4 @@
-import { IconClick, IconEdit, IconPlus, IconRefresh, IconReport, IconShield, IconTrash, IconUsers } from '@tabler/icons-react'
+import { IconClick, IconEdit, IconPlus, IconRefresh, IconShield, IconTrash, IconUsers } from '@tabler/icons-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import { useCallback, useMemo, useState } from 'react'
@@ -108,7 +108,7 @@ export function UserGroupAdminPage() {
         return (
           <div className="d-inline-flex gap-1">
             <Button size="sm" variant="ghost" icon={<IconShield size={14} />} title="组权限" aria-label="组权限" onClick={() => navigate(`/admin/groups/${encodeURIComponent(id)}/rights`)}>组权限</Button>
-            <Button size="sm" variant="ghost" icon={<IconReport size={14} />} title="报表权限" aria-label="报表权限" onClick={() => navigate(`/admin/groups/${encodeURIComponent(id)}/report-rights`)}>报表权限</Button>
+
             <Button size="sm" variant="ghost" icon={<IconClick size={14} />} title="按钮权限" aria-label="按钮权限" onClick={() => navigate(`/admin/groups/${encodeURIComponent(id)}/button-rights`)}>按钮权限</Button>
             <Button size="sm" variant="ghost" icon={<IconUsers size={14} />} title="成员" aria-label="成员" onClick={() => navigate(`/admin/groups/${encodeURIComponent(id)}/members`)}>成员</Button>
             <Button size="sm" variant="ghost" icon={<IconEdit size={14} />} title="编辑" aria-label="编辑" onClick={() => setEditor({ mode: 'edit', group })}>编辑</Button>

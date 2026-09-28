@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { usePageBreadcrumb } from '../../components/layout/PageBreadcrumbContext'
 import { ButtonRightsMatrix } from '../rights-admin/ButtonRightsMatrix'
-import { ReportRightsMatrix } from '../rights-admin/ReportRightsMatrix'
 import { RightsMatrix } from '../rights-admin/RightsMatrix'
 
 function useUserId() {
@@ -33,23 +32,6 @@ export function UserRightsPage() {
       mode="user"
       targetId={id}
       title={`用户模块权限：${id}`}
-      onClose={() => navigate('/admin/users')}
-    />
-  )
-}
-
-/** 用户报表权限完整页面（2306 定制页子页）。 */
-export function UserReportRightsPage() {
-  const id = useUserId()
-  const navigate = useNavigate()
-  useUserBreadcrumb(id, '报表权限')
-  return (
-    <ReportRightsMatrix
-      open
-      variant="page"
-      mode="user"
-      targetId={id}
-      title={`用户报表权限：${id}`}
       onClose={() => navigate('/admin/users')}
     />
   )

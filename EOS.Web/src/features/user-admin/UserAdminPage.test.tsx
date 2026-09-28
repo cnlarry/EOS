@@ -65,7 +65,7 @@ function renderPage() {
         <Routes>
           <Route path="/admin/users" element={<UserAdminPage />} />
           <Route path="/admin/users/:userId/rights" element={<div>USER_RIGHTS_PAGE</div>} />
-          <Route path="/admin/users/:userId/report-rights" element={<div>USER_REPORT_RIGHTS_PAGE</div>} />
+
         </Routes>
       </MemoryRouter>
 )
@@ -124,7 +124,7 @@ describe('UserAdminPage', () => {
     expect(within(rowOf('viewer')).getByText('采购')).toBeInTheDocument()
     expect(within(rowOf('viewer')).getByText('财务')).toBeInTheDocument()
     const actions = within(rowOf('viewer'))
-    for (const name of ['设置密码', '权限', '报表权限', '所属组', '启用']) {
+    for (const name of ['设置密码', '权限', '所属组', '启用']) {
       expect(actions.getByRole('button', { name })).toBeInTheDocument()
     }
   })
@@ -186,12 +186,7 @@ describe('UserAdminPage', () => {
     expect(await screen.findByText('USER_RIGHTS_PAGE')).toBeInTheDocument()
   })
 
-  it('操作列导航到报表权限完整子页面', async () => {
-    renderPage()
-    await loaded()
-    fireEvent.click(within(rowOf('viewer')).getByRole('button', { name: '报表权限' }))
-    expect(await screen.findByText('USER_REPORT_RIGHTS_PAGE')).toBeInTheDocument()
-  })
+  // 报表权限的逐报表矩阵已退场（唯一真源改为归属模块的 REPORT_TAG），这里不再有对应入口。
 
   it('所属组弹窗选择并全量保存', async () => {
     renderPage()

@@ -9,11 +9,11 @@ export const FieldAuditPage = lazy(() => import('../features/admin/FieldAuditPag
 export const DepotStockPolicyPage = lazy(() => import('../features/admin/DepotStockPolicyPage').then((module) => ({ default: module.DepotStockPolicyPage })))
 export const UserAdminPage = lazy(() => import('../features/user-admin/UserAdminPage').then((module) => ({ default: module.UserAdminPage })))
 export const UserRightsPage = lazy(() => import('../features/user-admin/UserAdminPages').then((module) => ({ default: module.UserRightsPage })))
-export const UserReportRightsPage = lazy(() => import('../features/user-admin/UserAdminPages').then((module) => ({ default: module.UserReportRightsPage })))
+
 export const UserButtonRightsPage = lazy(() => import('../features/user-admin/UserAdminPages').then((module) => ({ default: module.UserButtonRightsPage })))
 export const UserGroupAdminPage = lazy(() => import('../features/rights-admin/UserGroupAdminPage').then((module) => ({ default: module.UserGroupAdminPage })))
 export const GroupRightsPage = lazy(() => import('../features/rights-admin/GroupAdminPages').then((module) => ({ default: module.GroupRightsPage })))
-export const GroupReportRightsPage = lazy(() => import('../features/rights-admin/GroupAdminPages').then((module) => ({ default: module.GroupReportRightsPage })))
+
 export const GroupButtonRightsPage = lazy(() => import('../features/rights-admin/GroupAdminPages').then((module) => ({ default: module.GroupButtonRightsPage })))
 export const GroupMembersPage = lazy(() => import('../features/rights-admin/GroupAdminPages').then((module) => ({ default: module.GroupMembersPage })))
 export const MenuAdminPage = lazy(() => import('../features/menu-admin/MenuAdminPage').then((module) => ({ default: module.MenuAdminPage })))

@@ -11,7 +11,7 @@ import { Modal } from '../../components/ui/Modal'
 import { usePageBreadcrumb } from '../../components/layout/PageBreadcrumbContext'
 import { apiClient } from '../../services/api'
 import { ButtonRightsMatrix } from './ButtonRightsMatrix'
-import { ReportRightsMatrix } from './ReportRightsMatrix'
+
 import { RightsMatrix } from './RightsMatrix'
 import type { GroupMemberSummary, UserGroupSummary } from './types'
 import { describeApiError } from '../../lib/errors'
@@ -72,23 +72,6 @@ export function GroupButtonRightsPage() {
       mode="group"
       targetId={id}
       title={`用户组按钮权限：${id}`}
-      onClose={() => navigate('/admin/groups')}
-    />
-  )
-}
-
-/** 用户组报表权限完整页面（2305 定制页子页）。 */
-export function GroupReportRightsPage() {
-  const id = useGroupId()
-  const navigate = useNavigate()
-  useGroupBreadcrumb(id, '报表权限')
-  return (
-    <ReportRightsMatrix
-      open
-      variant="page"
-      mode="group"
-      targetId={id}
-      title={`用户组报表权限：${id}`}
       onClose={() => navigate('/admin/groups')}
     />
   )
