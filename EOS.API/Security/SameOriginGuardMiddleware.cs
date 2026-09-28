@@ -48,8 +48,14 @@ public sealed class SameOriginGuardMiddleware(RequestDelegate next, IConfigurati
     {
         if (_allowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase))
             return true;
-        return Uri.TryCreate(origin, UriKind.Absolute, out var uri)
-            && string.Equals(uri.Host, context.Request.Host.Host, StringComparison.OrdinalIgnoreCase)
-            && uri.Port == context.Request.Host.Port;
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+            return false;
+        var host = context.Request.Host;
+        if (!string.Equals(uri.Host, host.Host, StringComparison.OrdinalIgnoreCase))
+            return false;
+        // The Host header omits the port when it is the scheme default (80/443), while
+        // Uri.Port always resolves it; normalize the absent port before comparing.
+        var requestPort = host.Port ?? (context.Request.IsHttps ? 443 : 80);
+        return uri.Port == requestPort;
     }
 }
