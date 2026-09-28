@@ -162,9 +162,13 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
     }
 
     /// <summary>
-    /// 报表清单。
-    /// 模块级 REPORT_TAG=1 → 默认全部可见，除非存在 override 收紧（个人 SYSDD_REPORT 或组 SYSDH_REPORT 的 PREVIEW_TAG=0）。
-    /// 个人 override 覆盖组 override（有个人行即按个人收紧，不再看组）。
+    /// 报表清单：**模块闸门通过即全部可见**（唯一真源 = 归属模块 `REPORT_TAG`）。
+    ///
+    /// <para>
+    /// 原先这里还要再叠一层逐报表例外（个人 `SYSDD_REPORT` 覆盖组 `SYSDH_REPORT` 的 `PREVIEW_TAG`），
+    /// 那四列已随管理面一起退场：清单与目录、打印、导出用的是同一条判据，
+    /// 不会再出现"目录里看得见、打印面板里没有"这种两处口径不一致。
+    /// </para>
     /// </summary>
     private static async Task<List<ReportPrintOption>> ReadReportsAsync(
         SqlConnection connection, int moduleId, string userId, CancellationToken token)
@@ -177,24 +181,6 @@ public sealed class PrintSettingsRepository(DbConnectionFactory connections, ILo
                    ISNULL(r.IS_DEFAULT,0),LTRIM(RTRIM(ISNULL(r.FORMAT_ID,'')))
             FROM dbo.REPORT r WITH (NOLOCK)
             WHERE r.M_IDX=@ModuleId
-              -- 个人 override 收紧（PREVIEW_TAG=0 → 隐藏）
-              AND NOT EXISTS (
-                SELECT 1 FROM dbo.SYSDD_REPORT p WITH (NOLOCK)
-                WHERE p.USER_ID=@UserId AND p.M_IDX=@ModuleId AND p.REPORT_ID=r.REPORT_ID
-                  AND ISNULL(p.PREVIEW_TAG,0)=0)
-              -- 无个人 override 时：组 OR（任一组 PREVIEW=1 → 可见）；
-              -- 无任何 override 行 → 默认可见（跟随模块 REPORT_TAG）
-              AND (
-                EXISTS (SELECT 1 FROM dbo.SYSDD_REPORT p WITH (NOLOCK)
-                        WHERE p.USER_ID=@UserId AND p.M_IDX=@ModuleId AND p.REPORT_ID=r.REPORT_ID)
-                OR NOT EXISTS (SELECT 1 FROM dbo.SYSDH_REPORT g WITH (NOLOCK)
-                               INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX=g.G_IDX
-                               WHERE gu.USER_ID=@UserId AND g.M_IDX=@ModuleId AND g.REPORT_ID=r.REPORT_ID)
-                OR EXISTS (SELECT 1 FROM dbo.SYSDH_REPORT g WITH (NOLOCK)
-                           INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX=g.G_IDX
-                           WHERE gu.USER_ID=@UserId AND g.M_IDX=@ModuleId AND g.REPORT_ID=r.REPORT_ID
-                             AND ISNULL(g.PREVIEW_TAG,0)=1)
-              )
             ORDER BY ISNULL(r.IS_DEFAULT,0) DESC,
                      -- 并列规则已落成数据（每模块至多一张 IS_DEFAULT=1，见迁移 273）。
                      r.REPORT_ID;

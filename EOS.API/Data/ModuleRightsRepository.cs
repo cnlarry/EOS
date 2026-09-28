@@ -39,72 +39,32 @@ public sealed class ModuleRightsRepository(DbConnectionFactory connections, ILog
     }
 
     /// <summary>
-    /// 报表级权限：
-    /// 1. 先判断模块级报表可见性（SYSDD.REPORT_TAG 个人优先，否则 SYSDH.REPORT_TAG 组 OR）；
-    /// 2. 若模块 REPORT_TAG 未授予 → 全禁（CanPreview/CanPrint/CanExport all false）；
-    /// 3. 若模块 REPORT_TAG 已授予 → 查询 override 行（SYSDD_REPORT 个人优先，否则 SYSDH_REPORT 组 OR）；
-    /// 4. 无 override 行 → 默认全开（PREVIEW/PRINT/EXPORT = true, DATA_FILTER = ''）；
-    /// 5. 有 override 行 → 按 override 值覆盖（通常收紧）。
+    /// 报表级权限：**只看归属模块的 `REPORT_TAG`**（个人 `SYSDD` 优先，否则组 `SYSDH` 取或）。
+    ///
+    /// <para>
+    /// 原先这里还有第二层：模块闸门通过后再查 `SYSDD_REPORT` / `SYSDH_REPORT` 的逐报表例外行，
+    /// 命中就按例外值覆盖（通常收紧）。两层都能配、按不同优先级生效，结果是
+    /// "这张报表为什么看不见"必须查两处才知道——而两处的可配面还各自有独立的管理界面。
+    /// 现在只剩模块这一层：**能进这个模块，就能看、能打、能导出它名下的报表**；
+    /// 需要按人区分粒度时，用模块权限本身（个人/组 `REPORT_TAG`）表达。
+    /// </para>
+    /// <para>
+    /// 因此这里不再有"报表级行级过滤"：原来挂在例外行上的 `DATA_FILTER` 随四列一起退场，
+    /// 行级可见范围由模块的 `DATA_FILTER`（`ModuleRights.DataFilter`）单点决定，
+    /// 报表链路对它做 AND 合并（见 `ReportController`／`PrintController`）。
+    /// </para>
     /// </summary>
     public async Task<ReportRights> GetReportAsync(string userId, int moduleId, string reportId, CancellationToken token)
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
 
-        // 1. 判断模块级 REPORT_TAG（个人覆盖组）
         var moduleReportTag = await GetModuleReportTagAsync(connection, userId, moduleId, token);
-        if (!moduleReportTag)
-        {
-            logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source=module_no_report_tag",
-                userId, moduleId, reportId);
-            return new ReportRights(false, false, false, string.Empty);
-        }
-
-        // 2. 查询 override 行（个人 SYSDD_REPORT 优先，否则组 SYSDH_REPORT OR）
-        const string personalOverrideSql = """
-            SELECT ISNULL(PREVIEW_TAG,0) AS PREVIEW_TAG,ISNULL(PRINT_TAG,0) AS PRINT_TAG,
-                   ISNULL(EXPORT_TAG,0) AS EXPORT_TAG,ISNULL(DATA_FILTER,'') AS DATA_FILTER
-            FROM dbo.SYSDD_REPORT WITH (NOLOCK)
-            WHERE USER_ID=@UserId AND M_IDX=@ModuleId AND REPORT_ID=@ReportId;
-            """;
-        await using (var personalCommand = new SqlCommand(personalOverrideSql, connection))
-        {
-            AddReportParameters(personalCommand, userId, moduleId, reportId);
-            await using var reader = await personalCommand.ExecuteReaderAsync(token);
-            if (await reader.ReadAsync(token))
-            {
-                var row = ReadReportRow(reader);
-                var rights = new ReportRights(row.Preview, row.Print, row.Export, row.DataFilter.Trim());
-                logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source=personal_override",
-                    userId, moduleId, reportId);
-                return rights;
-            }
-        }
-
-        const string groupOverrideSql = """
-            SELECT ISNULL(g.PREVIEW_TAG,0) AS PREVIEW_TAG,ISNULL(g.PRINT_TAG,0) AS PRINT_TAG,
-                   ISNULL(g.EXPORT_TAG,0) AS EXPORT_TAG,ISNULL(g.DATA_FILTER,'') AS DATA_FILTER
-            FROM dbo.SYSDH_REPORT g WITH (NOLOCK)
-            INNER JOIN dbo.SYSDG_USER gu WITH (NOLOCK) ON gu.G_IDX=g.G_IDX
-            WHERE gu.USER_ID=@UserId AND g.M_IDX=@ModuleId AND g.REPORT_ID=@ReportId;
-            """;
-        await using var groupCommand = new SqlCommand(groupOverrideSql, connection);
-        AddReportParameters(groupCommand, userId, moduleId, reportId);
-        await using var groupReader = await groupCommand.ExecuteReaderAsync(token);
-        var rows = new List<ReportRightRow>();
-        while (await groupReader.ReadAsync(token)) rows.Add(ReadReportRow(groupReader));
-        if (rows.Count > 0)
-        {
-            var result = ReportRightsAggregator.FromGroups(rows);
-            logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source=group_override({Count})",
-                userId, moduleId, reportId, rows.Count);
-            return result;
-        }
-
-        // 3. 无 override 行 → 默认全开（跟随模块 REPORT_TAG）
-        logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source=default_open",
-            userId, moduleId, reportId);
-        return new ReportRights(true, true, true, string.Empty);
+        logger.LogDebug("报表权限 userId={UserId} module={ModuleId} report={ReportId} source=module_report_tag granted={Granted}",
+            userId, moduleId, reportId, moduleReportTag);
+        return moduleReportTag
+            ? new ReportRights(true, true, true, string.Empty)
+            : new ReportRights(false, false, false, string.Empty);
     }
 
     private void LogRights(string userId, int moduleId, string source, ModuleRights rights) =>
