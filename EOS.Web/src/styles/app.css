@@ -871,6 +871,9 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 }
 .erp-toast-message { flex: 1 1 auto; min-width: 0; }
 .erp-toast-icon { flex: 0 0 auto; margin-top: 1px; }
+/* 提示条内动作（如「复制报障编号」）：跟正文同行的次要按钮，不抢视觉但要好点 */
+.erp-toast-action { display: inline-block; margin-top: 4px; padding: 0; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; background: transparent; border: 0; }
+.erp-toast-action:hover { opacity: .8; }
 .erp-toast-close { flex: 0 0 auto; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; color: inherit; background: transparent; border: 0; border-radius: 4px; opacity: .6; }
 .erp-toast-close:hover { opacity: 1; background: rgba(0, 0, 0, .06); }
 /* 淡入：自上而下轻轻落下；淡出：向上收回并逐渐透明。位移只用几像素，够看出"来了/走了"即可。
@@ -1043,6 +1046,8 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-login-test-accounts summary { width: fit-content; cursor: pointer; }
 .erp-login-test-accounts div { margin-top: 4px; padding-left: 16px; }
 .erp-error-page { min-height: 100vh; display: grid; place-items: center; padding: 2rem; }
+/* 错误页/错误提示里的诊断信息：等宽字体、可横向滚动，便于整体复制给维护者 */
+.erp-error-diagnostics { max-width: 32rem; margin: 1rem auto 0; padding: .75rem 1rem; font-size: .8125rem; line-height: 1.5; white-space: pre-wrap; word-break: break-all; background: var(--tblr-bg-surface-secondary, #f6f8fb); border: 1px solid var(--tblr-border-color, #e6e7e9); border-radius: .5rem; }
 .erp-error-icon { display: inline-grid; place-items: center; width: 5rem; height: 5rem; border-radius: 1.25rem; color: var(--tblr-warning); background: var(--tblr-warning-lt); }
 .erp-sidebar-backdrop { display: none; }
 
@@ -1559,6 +1564,37 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   font-size: 13px;
   padding: 0 16px;
 }
+
+/* 打开即见的结构化处境区：服务端规则引擎产出、前端渲染为卡片（不经模型） */
+.erp-assistant-situation {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-radius: 8px;
+  background: var(--tblr-bg-surface-secondary, #f6f8fb);
+  font-size: 13px;
+}
+.erp-assistant-situation-head { font-weight: 600; }
+.erp-assistant-situation-line { line-height: 1.5; }
+.erp-assistant-situation-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.erp-assistant-situation-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-radius: 6px;
+  background: var(--tblr-bg-surface, #fff);
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+.erp-assistant-situation-item:hover { border-color: var(--tblr-primary, #206bc4); }
+.erp-assistant-situation-caveat { font-size: 11px; color: var(--tblr-secondary, #6c757d); line-height: 1.45; }
 
 .erp-assistant-bubble {
   max-width: 88%;

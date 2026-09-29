@@ -280,9 +280,18 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ListTablesTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.DescribeTableTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ListViewsTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ListProceduresTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ListMyCapabilitiesTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Memory.IAssistantMemoryStore,
     EOS.API.Features.Assistant.Memory.AssistantMemoryStore>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetMyDigestTool>();
+builder.Services.Configure<EOS.API.Features.Assistant.Situation.AssistantSituationBudgetOptions>(
+    builder.Configuration.GetSection(EOS.API.Features.Assistant.Situation.AssistantSituationBudgetOptions.SectionName));
+builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.AssistantSituationBudget>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.ISituationFactsReader,
+    EOS.API.Features.Assistant.Situation.SituationFactsReader>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.AssistantSituationService>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.SituationContextSanitizer>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.SituationDigestService>();
 builder.Services.AddScoped<EOS.API.Data.IKnowledgeRepository, EOS.API.Data.KnowledgeRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IEmbeddingModel,
     EOS.API.Features.Assistant.ModelAccess.PendingEmbeddingModel>();
@@ -330,6 +339,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DescribeTableTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListViewsTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListProceduresTool>(),
+         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ListMyCapabilitiesTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetMyDigestTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.KbSearchTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetModuleFlowTool>(),

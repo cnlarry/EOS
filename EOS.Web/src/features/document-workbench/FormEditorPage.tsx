@@ -11,6 +11,12 @@ import { ErpTable } from '../../components/common/ErpTable'
 import { UnifiedChooser, type UnifiedChooserRow } from '../../components/common/UnifiedChooser'
 import { useFormBreadcrumb } from '../../components/layout/FormBreadcrumbContext'
 import { useTabDirty } from '../../components/layout/workspaceDirty'
+import {
+  clearServerNotice,
+  reportDirtyFields,
+  reportServerNotice,
+  type SituationDirtyField,
+} from '../assistant/situationSource'
 import { AttachmentDialog } from './AttachmentDialog'
 import { WorkflowTimeline, type WorkflowTimelineRow } from '../workflow/WorkflowTimeline'
 import { parseWorkbenchKey, workbenchAction, workbenchCopy, workbenchEdit, workbenchList, workbenchNew, workbenchView } from './workbenchPath'
@@ -652,6 +658,29 @@ export function FormEditorPage() {
     discard: () => setDirty(false),
   })
 
+  // 助手处境上报：已改未保存的字段（字段名 + 旧值 + 新值）。
+  // 只报可写字段；成本位/保密位/禁止字段的剔除由服务端按模块权限二次执行。
+  useEffect(() => {
+    const definition = formQuery.data
+    if (!definition) {
+      reportDirtyFields([])
+      return
+    }
+    const changed: SituationDirtyField[] = []
+    for (const field of writableFields(definition.masterFields)) {
+      const current = masterValues[field.key] ?? ''
+      const original = originalRef.current[field.key] ?? ''
+      if (current !== original) changed.push({ field: field.key, old: original, new: current })
+    }
+    reportDirtyFields(changed)
+  }, [masterValues, formQuery.data, recordQuery.data])
+
+  // 离开表单即撤回上报，避免把上一张单的脏值/拒绝带到别的页面
+  useEffect(() => () => {
+    reportDirtyFields([])
+    clearServerNotice()
+  }, [])
+
   const save = useMutation({
     mutationFn: async () => {
       if (!formQuery.data) throw new Error('表单定义未加载。')
@@ -691,6 +720,7 @@ export function FormEditorPage() {
     },
     onSuccess: async response => {
       setDirty(false)
+      clearServerNotice()
       idempotencyRef.current = newIdempotencyKey()
       await queryClient.invalidateQueries({ queryKey: ['workbench', moduleId] })
       // After save, enter browse mode. Key comes from the server (authoritative); the preview bill
@@ -711,10 +741,14 @@ export function FormEditorPage() {
         }
         setFieldErrors(master)
         setDetailErrors(Object.keys(detail).length > 0 ? [detail] : [])
-        setSaveError(`数据校验未通过：${summarizeFieldErrors(master, [detail])}`)
+        const summary = `数据校验未通过：${summarizeFieldErrors(master, [detail])}`
+        setSaveError(summary)
+        reportSaveRejection(cause, summary)
         return
       }
-      setSaveError(cause instanceof Error ? cause.message : '保存失败。')
+      const message = cause instanceof Error ? cause.message : '保存失败。'
+      setSaveError(message)
+      reportSaveRejection(cause, message)
     },
   })
 
@@ -736,6 +770,7 @@ export function FormEditorPage() {
     },
     onError: cause => {
       const message = describeApiError(cause, '操作失败，请稍后重试。')
+      reportSaveRejection(cause, message)
       window.alert(message)
     },
   })
@@ -763,6 +798,7 @@ export function FormEditorPage() {
     },
     onError: cause => {
       const message = describeApiError(cause, '操作失败，请稍后重试。')
+      reportSaveRejection(cause, message)
       window.alert(message)
     },
   })
@@ -1558,4 +1594,14 @@ export function FormEditorPage() {
       {documentAction.dialog}
     </div>
   )
+}
+
+/**
+ * 上报一次"服务端拒绝"，让助手能回答"刚才为什么没保存上"。
+ * 只上报服务端给出的错误码——客户端自造的错误没有服务端码，服务端白名单也会丢弃。
+ */
+function reportSaveRejection(cause: unknown, message: string): void {
+  if (cause instanceof ApiError && cause.body?.code) {
+    reportServerNotice(cause.body.code, message)
+  }
 }

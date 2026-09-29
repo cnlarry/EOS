@@ -11,15 +11,16 @@ import {
 } from '@tabler/icons-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { createSession, deleteSession, listMessages, listSessions, saveMemory } from './api'
+import { createSession, deleteSession, getSituation, listMessages, listSessions, saveMemory } from './api'
 import { AssistantMemoryPanel } from './AssistantMemoryPanel'
 import { KbDocDialog, KbSourceText } from './KbSource'
 import { extractPageContext } from './pageContext'
+import { buildChatSituation } from './situationSource'
 import { useChatStream, type AssistantDraft, type AssistantFormDraft } from './useChatStream'
 import { AdminChangesetCard } from './AdminChangesetCard'
 import { assistantPrefillKey } from '../../lib/storageKeys'
 import { workbenchNew } from '../document-workbench/workbenchPath'
-import type { AssistantMessage, AssistantSession } from './types'
+import type { AssistantMessage, AssistantSession, SituationDigestItem, SituationSnapshot } from './types'
 
 const OPEN_KEY = 'erp-assistant-open'
 const WIDTH_KEY = 'erp-assistant-width'
@@ -68,6 +69,7 @@ export function AssistantDock() {
   const [memoryOpen, setMemoryOpen] = useState(false)
   const [openDocId, setOpenDocId] = useState<string | null>(null)
   const [remembered, setRemembered] = useState<ReadonlySet<string>>(new Set())
+  const [situation, setSituation] = useState<SituationSnapshot | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fabDragRef = useRef<{ startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
@@ -140,6 +142,17 @@ export function AssistantDock() {
     }).catch(() => undefined)
   }, [open])
 
+  // 打开即见：拉取结构化处境（服务端规则引擎产出，零模型调用），随路由变化刷新
+  useEffect(() => {
+    if (!open) return
+    const route = extractPageContext(location.pathname)
+    void getSituation({
+      moduleId: route?.moduleId,
+      pageType: route?.pageType,
+      docNo: route?.docNo,
+    }).then(data => setSituation(isSituationSnapshot(data) ? data : null)).catch(() => setSituation(null))
+  }, [open, location.pathname])
+
   // 切换会话时拉取历史（历史恢复）
   useEffect(() => {
     if (!open || !sessionId) {
@@ -181,8 +194,8 @@ export function AssistantDock() {
     }
   }, [refreshSessions])
 
-  const handleSend = useCallback(async () => {
-    const content = input.trim()
+  const sendMessage = useCallback(async (raw: string) => {
+    const content = raw.trim()
     if (!content || streaming) return
     let target = sessionId
     if (!target) {
@@ -209,7 +222,8 @@ export function AssistantDock() {
     const outcome = await send({
       sessionId: target,
       content,
-      pageContext: extractPageContext(location.pathname),
+      // 处境在发送瞬间从状态总线读取：路由 + 筛选 + 选中 + 脏值 + 最近拒绝（服务端再截断与校验）
+      pageContext: buildChatSituation(location.pathname),
       onDelta: (text) => {
         setBubbles(prev => prev.map(b => b.key === draftKey ? { ...b, text: b.text + text } : b))
       },
@@ -236,7 +250,20 @@ export function AssistantDock() {
     } else {
       setBubbles(prev => prev.map(b => b.key === draftKey ? { ...b, streaming: false } : b))
     }
-  }, [input, sessionId, streaming, send, refreshSessions, location.pathname])
+  }, [sessionId, streaming, send, refreshSessions, location.pathname])
+
+  const handleSend = useCallback(() => {
+    void sendMessage(input)
+  }, [input, sendMessage])
+
+  /** 摘要条目可点：就地追问（模型按需调用，不发一言不烧额度）。 */
+  const handleAskAbout = useCallback((item: SituationDigestItem) => {
+    const question = item.kind === 'overdue'
+      ? `为什么 ${item.moduleTitle || `模块 ${item.moduleId}`} 的 ${item.key} 一直没批核？我该怎么办？`
+      : `${item.moduleTitle ? `${item.moduleTitle}的` : ''}这条操作为什么被拒绝了？${item.reason}`
+    setInput(question)
+    void sendMessage(question)
+  }, [sendMessage])
 
   // After a draft is confirmed, "open in form" pre-fills through a one-shot sessionStorage channel.
   // Execution reuses the existing unified form save pipeline; the assistant adds no new write path.
@@ -366,11 +393,49 @@ export function AssistantDock() {
 
           <div className="erp-assistant-messages" ref={scrollRef}>
             {bubbles.length === 0 && (
-              <div className="erp-assistant-empty">
-                我是 EOS 工作助手，有什么可以帮你？
-                <span className="text-secondary d-block mt-1">当前为对话骨架版，业务数据感知将在后续版本接入。</span>
+              <div className="erp-assistant-situation">
+                <div className="erp-assistant-situation-head">我是 EOS 工作助手，先说你此刻的处境：</div>
+                {situation ? (
+                  <>
+                    <div className="erp-assistant-situation-line">{describeWhere(situation)}</div>
+                    <div className="erp-assistant-situation-line">{describePending(situation)}</div>
+                    {situation.digest.items.length > 0 ? (
+                      <ul className="erp-assistant-situation-list">
+                        {situation.digest.items.map((item, index) => (
+                          <li key={`${item.kind}-${item.moduleId}-${item.key}-${index}`}>
+                            <button className="erp-assistant-situation-item" type="button"
+                              title="点一下问助手这条为什么卡住"
+                              onClick={() => handleAskAbout(item)}>
+                              <span className="erp-assistant-chip">
+                                {item.kind === 'overdue' ? '滞留未批核' : '最近被拒'}
+                              </span>
+                              <span>{item.reason}</span>
+                              {item.moduleTitle && (
+                                <span className="text-secondary">
+                                  （{item.moduleTitle}{item.key ? ` ${item.key}` : ''}）
+                                </span>
+                              )}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="erp-assistant-situation-line text-secondary">摘要里没有需要你处理的滞留单据。</div>
+                    )}
+                    {situation.digest.caveats.map((caveat, index) => (
+                      <div key={index} className="erp-assistant-situation-caveat">{caveat}</div>
+                    ))}
+                    {situation.where.dropped.length > 0 && (
+                      <div className="erp-assistant-situation-caveat">
+                        已按服务端白名单剔除 {situation.where.dropped.length} 项无法采纳的上报。
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="erp-assistant-situation-line text-secondary">正在读取你的处境…</div>
+                )}
                 <button className="btn btn-sm btn-ghost-secondary mt-2" type="button" onClick={handleAskDigest}>
-                  查看今日摘要
+                  查看我的偏好与记忆
                 </button>
               </div>
             )}
@@ -450,6 +515,60 @@ export function AssistantDock() {
 
 function toBubble(message: AssistantMessage): Bubble {
   return { key: `m-${message.id}`, role: message.role as 1 | 2, text: message.content }
+}
+
+const PAGE_TYPE_LABELS: Record<string, string> = {
+  list: '列表',
+  view: '查看',
+  edit: '编辑',
+  new: '新建',
+  copy: '复制',
+  'config-fields': '字段配置页',
+  'config-datasource': '数据源配置页',
+  'config-buttons': '按钮配置页',
+  'config-effect': '效果配置页',
+}
+
+function pageTypeLabel(pageType: string | null): string {
+  if (!pageType) return ''
+  return PAGE_TYPE_LABELS[pageType] ?? pageType
+}
+
+/** 处境快照结构校验：响应意外（非快照）时按"读不到处境"处理，不让抽屉崩掉。 */
+function isSituationSnapshot(value: unknown): value is SituationSnapshot {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as Partial<SituationSnapshot>
+  return typeof candidate.where === 'object' && candidate.where !== null
+    && typeof candidate.digest === 'object' && candidate.digest !== null
+    && Array.isArray(candidate.digest?.items)
+    && typeof candidate.identity === 'object' && candidate.identity !== null
+    && typeof candidate.pending === 'object' && candidate.pending !== null
+}
+
+/** 「你在哪」：由服务端校验后的处境给出模块与页面，路由信息不含业务事实。 */
+function describeWhere(snapshot: SituationSnapshot): string {
+  const where = snapshot.where
+  const label = pageTypeLabel(where.pageType)
+  if (where.moduleTitle) {
+    return `你在「${where.moduleTitle}」的${label || '页面'}${where.docNo ? `，当前单据 ${where.docNo}` : ''}。`
+  }
+
+  if (label) return `你在${label}。`
+  return '你当前不在具体的业务页面上。'
+}
+
+/** 「压着什么 / 哪件不对」：只报非零事实，避免打开就看到一片 0。 */
+function describePending(snapshot: SituationSnapshot): string {
+  const overdue = snapshot.digest.items.filter(item => item.kind === 'overdue').length
+  const rejected = snapshot.digest.items.filter(item => item.kind === 'rejected').length
+  const parts: string[] = []
+  if (overdue > 0) parts.push(`有 ${overdue} 条单据滞留未批核`)
+  if (rejected > 0) parts.push(`最近有 ${rejected} 次操作被拒绝`)
+  if (snapshot.pending.myApproval > 0 || snapshot.pending.startedInFlight > 0) {
+    parts.push(`待我审批 ${snapshot.pending.myApproval} 条、我发起在途 ${snapshot.pending.startedInFlight} 条`)
+  }
+
+  return parts.length > 0 ? `${parts.join('；')}。` : '审批待办与滞留单据当前都是空的。'
 }
 
 /** 结构化确认卡片：字段级预览 + 缺失/警告提示 + 带入表单。 */
