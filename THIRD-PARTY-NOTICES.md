@@ -54,6 +54,17 @@
 | 资产 | 许可 | 用途 |
 |---|---|---|
 | `EOS.API/Fonts/NotoSansCJKsc-Regular.otf` | **SIL Open Font License 1.1** | 报表 PDF 的中文字体 |
+| `.agents/skills/` 下的 `tdd` / `diagnosing-bugs` / `code-review` / `grill-me` / `grilling` / `handoff` | **MIT** | Agent 技能（见下） |
+
+**关于 `.agents/skills/`**：该目录下 12 个技能分两类——
+
+- **自建**（`eos-verify` / `eos-commit` / `eos-db-objects` / `eos-security-check` / `eos-publish` / `erp-ui`）：
+  本项目原创，属本项目 MIT 许可范围，**不是**第三方资产；
+- **第三方**（上表列出的 6 个）：取自 **[mattpocock/skills](https://github.com/mattpocock/skills)**（MIT），
+  **pin 到 commit `6654f6b`（2026-08-24）**，逐文件审读后收录的精选子集。各技能保留其原始许可与版权，
+  不受本项目 MIT 许可覆盖。其中 `diagnosing-bugs/scripts/hitl-loop.template.sh` 为只读提示模板（见其文件头）。
+
+升级或替换这 6 个技能时，请同步更新本行的 pin commit，并重跑 `scripts/sync-agent-skills.ps1`。
 
 `EOS.Web/src/assets/react.svg`、`vite.svg` 是前端脚手架生成的示例资产（React 与 Vite 的品牌标识），
 当前未被业务代码引用——如确认不需要，删除它们即可减少一处第三方标识的携带。
