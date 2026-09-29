@@ -392,6 +392,9 @@ ORDER BY r.STAGE, r.M_IDX, r.SEQ;
     $md = @()
     $md += '# 诊断黄金集候选（待审阅）'
     $md += ''
+    # 生成日期进头部：docs/plans/ 下的文件受 check-docs 的"活跃计划"规则管（前 40 行需有日期）。
+    $md += ('> 状态：候选清单（{0} 生成，待用户审阅）。本文件由 scripts/export-diagnosis-golden-candidates.ps1 生成，重新生成会覆盖本行。' -f (Get-Date -Format 'yyyy-MM-dd'))
+    $md += ''
     $md += '本清单是机器从配置事实枚举的候选，不是黄金集。审阅时每条只需回答一句话：'
     $md += '“这条规则在该模块下是否真的会拦人”。会拦就保留，不会拦就标掉。'
     $md += '不需要从零写答案，不需要解释业务背景。'
