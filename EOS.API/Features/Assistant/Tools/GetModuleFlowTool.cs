@@ -86,7 +86,7 @@ public sealed class GetModuleFlowTool(
             definition.MasterTable, definition.MasterPkOrder, keys, token);
         if (!record.Found)
         {
-            return ToolExecutionResult.Deny("记录不存在或不在你的数据范围内。");
+            return this.DenyNotFound();
         }
 
         var confirm = await flows.GetApprovalConfirmAsync(moduleId, keyCondition, token);

@@ -301,6 +301,18 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.ISituationFactsR
 builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.AssistantSituationService>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.SituationContextSanitizer>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.SituationDigestService>();
+builder.Services.Configure<EOS.API.Features.Assistant.Diagnosis.AssistantDiagnosisOptions>(
+    builder.Configuration.GetSection(EOS.API.Features.Assistant.Diagnosis.AssistantDiagnosisOptions.SectionName));
+builder.Services.AddScoped<EOS.API.Features.Assistant.Diagnosis.RecordDiagnosisReader>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Diagnosis.IRecordDiagnosisReader>(sp =>
+    sp.GetRequiredService<EOS.API.Features.Assistant.Diagnosis.RecordDiagnosisReader>());
+builder.Services.AddScoped<EOS.API.Features.Assistant.Diagnosis.IBlockedRecordProbe>(sp =>
+    sp.GetRequiredService<EOS.API.Features.Assistant.Diagnosis.RecordDiagnosisReader>());
+builder.Services.AddScoped<EOS.API.Features.Assistant.Diagnosis.RecordDiagnosisService>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.DiagnoseRecordTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Config.IConfigDiagnosisReader,
+    EOS.API.Features.Assistant.Config.ConfigDiagnosisReader>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Config.ConfigDiagnosisService>();
 builder.Services.AddScoped<EOS.API.Data.IKnowledgeRepository, EOS.API.Data.KnowledgeRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IEmbeddingModel,
     EOS.API.Features.Assistant.ModelAccess.PendingEmbeddingModel>();
@@ -354,6 +366,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.GetModuleFlowTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DiagnoseModuleTool>(),
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ApplyChangeSetTool>(),
+         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DiagnoseRecordTool>(),
      ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));

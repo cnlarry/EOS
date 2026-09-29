@@ -260,7 +260,9 @@ export function AssistantDock() {
   const handleAskAbout = useCallback((item: SituationDigestItem) => {
     const question = item.kind === 'overdue'
       ? `为什么 ${item.moduleTitle || `模块 ${item.moduleId}`} 的 ${item.key} 一直没批核？我该怎么办？`
-      : `${item.moduleTitle ? `${item.moduleTitle}的` : ''}这条操作为什么被拒绝了？${item.reason}`
+      : item.kind === 'blocked-now'
+        ? `${item.moduleTitle ? `${item.moduleTitle}的` : ''}${item.key} 现在为什么办不下去？${item.reason}`
+        : `${item.moduleTitle ? `${item.moduleTitle}的` : ''}这条操作为什么被拒绝了？${item.reason}`
     setInput(question)
     void sendMessage(question)
   }, [sendMessage])
@@ -407,7 +409,7 @@ export function AssistantDock() {
                               title="点一下问助手这条为什么卡住"
                               onClick={() => handleAskAbout(item)}>
                               <span className="erp-assistant-chip">
-                                {item.kind === 'overdue' ? '滞留未批核' : '最近被拒'}
+                                {digestKindLabel(item.kind)}
                               </span>
                               <span>{item.reason}</span>
                               {item.moduleTitle && (
@@ -420,7 +422,7 @@ export function AssistantDock() {
                         ))}
                       </ul>
                     ) : (
-                      <div className="erp-assistant-situation-line text-secondary">摘要里没有需要你处理的滞留单据。</div>
+                      <div className="erp-assistant-situation-line text-secondary">摘要里没有需要你处理的单据。</div>
                     )}
                     {situation.digest.caveats.map((caveat, index) => (
                       <div key={index} className="erp-assistant-situation-caveat">{caveat}</div>
@@ -557,12 +559,23 @@ function describeWhere(snapshot: SituationSnapshot): string {
   return '你当前不在具体的业务页面上。'
 }
 
+/** 摘要条目类别的中文标签（类别由服务端给出，前端不猜语义）。 */
+function digestKindLabel(kind: string): string {
+  switch (kind) {
+    case 'overdue': return '滞留未批核'
+    case 'blocked-now': return '此刻办不下去'
+    default: return '最近被拒'
+  }
+}
+
 /** 「压着什么 / 哪件不对」：只报非零事实，避免打开就看到一片 0。 */
 function describePending(snapshot: SituationSnapshot): string {
   const overdue = snapshot.digest.items.filter(item => item.kind === 'overdue').length
+  const blocked = snapshot.digest.items.filter(item => item.kind === 'blocked-now').length
   const rejected = snapshot.digest.items.filter(item => item.kind === 'rejected').length
   const parts: string[] = []
   if (overdue > 0) parts.push(`有 ${overdue} 条单据滞留未批核`)
+  if (blocked > 0) parts.push(`有 ${blocked} 条单据此刻办不下去`)
   if (rejected > 0) parts.push(`最近有 ${rejected} 次操作被拒绝`)
   if (snapshot.pending.myApproval > 0 || snapshot.pending.startedInFlight > 0) {
     parts.push(`待我审批 ${snapshot.pending.myApproval} 条、我发起在途 ${snapshot.pending.startedInFlight} 条`)

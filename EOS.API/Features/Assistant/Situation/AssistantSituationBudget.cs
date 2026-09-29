@@ -37,8 +37,27 @@ public sealed class AssistantSituationBudgetOptions
     /// <summary>单据滞留判定天数（建立日期早于该天数仍未批核即视为滞留）。</summary>
     public int OverdueDays { get; set; } = 7;
 
+    /// <summary>
+    /// 滞留取数的**年龄上界**（天）：超过该年龄的历史单据不进摘要。
+    /// 没有上界时，按模块默认排序取到的会是多年前的遗留单（实测取到 3120 天前、同类 43 条），
+    /// 那类条目对"我手上压着什么"没有帮助。
+    /// </summary>
+    public int OverdueMaxAgeDays { get; set; } = 365;
+
     /// <summary>打开即见摘要的最大条目数。</summary>
     public int DigestMaxItems { get; set; } = 5;
+
+    /// <summary>
+    /// "此刻办不下去"逐单扫描的**每模块记录数上限**（按建立日期倒序取最近的）。
+    /// 与 <see cref="BlockedNowMaxAgeDays"/> 一起把这条链路的总代价限住。
+    /// </summary>
+    public int BlockedNowScanRecords { get; set; } = 10;
+
+    /// <summary>"此刻办不下去"扫描的年龄上界（天）：只看近期单据——既是"此刻"的语义，也把代价限住。</summary>
+    public int BlockedNowMaxAgeDays { get; set; } = 30;
+
+    /// <summary>"此刻办不下去"每模块最多判定的校验判据条数（逐单求值的成本上界）。</summary>
+    public int BlockedNowProbeRules { get; set; } = 4;
 
     /// <summary>摘要扫描的候选模块数上限（按本人最近活动取候选）。</summary>
     public int DigestModuleScanLimit { get; set; } = 8;

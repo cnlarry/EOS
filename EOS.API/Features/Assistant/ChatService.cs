@@ -346,7 +346,7 @@ public sealed class ChatService(
                 {
                     foreach (var call in calls)
                     {
-                        var result = await ExecuteToolSafelyAsync(userId, call, sessionId, toolLog, token);
+                        var result = await ExecuteToolSafelyAsync(userId, call, pageContext, sessionId, toolLog, token);
                         if (result.Draft is not null)
                         {
                             drafts.Add(result.Draft); // DRAFT 级工具产出的结构化变更集，随 done 事件下发确认卡片
@@ -409,7 +409,8 @@ public sealed class ChatService(
     }
 
     private async Task<ToolExecutionResult> ExecuteToolSafelyAsync(
-        string userId, CompletedToolCall call, long sessionId, List<ToolCallSummary> toolLog, CancellationToken token)
+        string userId, CompletedToolCall call, PageContext? pageContext,
+        long sessionId, List<ToolCallSummary> toolLog, CancellationToken token)
     {
         try
         {
@@ -421,6 +422,13 @@ public sealed class ChatService(
             {
                 toolLog.Add(new ToolCallSummary(call.Name, call.ArgumentsJson, "rejected:unknown_tool"));
                 return ToolExecutionResult.Deny($"未知工具 {call.Name}，请只使用函数列表中的工具。");
+            }
+
+            // 页面处境由服务端注入（不经模型转述）：用户不必把"当前这张单"再报一遍主键。
+            // 它只作定位，不作权限依据——工具内部仍按当前用户重新授权与取数。
+            if (tool is IPageContextTool aware && pageContext is not null && !pageContext.IsEmpty)
+            {
+                aware.UsePageContext(pageContext);
             }
 
             var result = await tool.ExecuteAsync(userId, args, token);

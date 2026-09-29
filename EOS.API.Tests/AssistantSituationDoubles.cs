@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using EOS.API.Features.Assistant.Diagnosis;
 using EOS.API.Features.Assistant.Situation;
 using EOS.API.Features.Assistant.Tools;
 using EOS.API.Models;
@@ -42,24 +43,47 @@ internal static class AssistantSituationDoubles
             => Task.FromResult(Probe);
     }
 
+    /// <summary>
+    /// 扮演"逐单求值此刻办不下去"（判据实现与实现细节在 Diagnosis 侧）：摘要链路只消费它的产出。
+    /// </summary>
+    internal sealed class FakeBlockedProbe : IBlockedRecordProbe
+    {
+        public Dictionary<int, List<DiagnosisBlockedRecord>> Blocked { get; } = [];
+
+        public List<int> Probed { get; } = [];
+
+        public Task<IReadOnlyList<DiagnosisBlockedRecord>> ProbeBlockedAsync(
+            string userId, WorkbenchDefinition definition, ModulePermission permission, CancellationToken token)
+        {
+            Probed.Add(definition.ModuleId);
+            return Task.FromResult<IReadOnlyList<DiagnosisBlockedRecord>>(
+                Blocked.TryGetValue(definition.ModuleId, out var items) ? items : []);
+        }
+    }
+
     internal sealed class FakePermissions : IPermissionService
     {
         /// <summary>允许浏览的模块（其余模块按"无权浏览"拒绝，与 fail-closed 同向）。</summary>
         public HashSet<int> Browsable { get; } = [];
         public HashSet<int> SetupModules { get; } = [];
 
+        /// <summary>允许做模块配置（行为动作/校验规则/自定义按钮）的模块。</summary>
+        public HashSet<int> ModuleConfigModules { get; } = [];
+
         public Task<ModulePermission> GetAsync(string userId, int moduleId, CancellationToken cancellationToken)
-            => Task.FromResult(new ModulePermission(RightsFor(Browsable.Contains(moduleId), SetupModules.Contains(moduleId))));
+            => Task.FromResult(new ModulePermission(RightsFor(
+                Browsable.Contains(moduleId), SetupModules.Contains(moduleId), ModuleConfigModules.Contains(moduleId))));
 
         public Task<ModulePermission> RequireAsync(
             string userId, int moduleId, PermissionAction action, CancellationToken cancellationToken)
         {
-            var permission = new ModulePermission(RightsFor(Browsable.Contains(moduleId), SetupModules.Contains(moduleId)));
+            var permission = new ModulePermission(RightsFor(
+                Browsable.Contains(moduleId), SetupModules.Contains(moduleId), ModuleConfigModules.Contains(moduleId)));
             if (!permission.Can(action)) throw new PermissionDeniedException(userId, moduleId, action);
             return Task.FromResult(permission);
         }
 
-        public static ModuleRights RightsFor(bool canBrowse, bool canSetup = false) => new(
+        public static ModuleRights RightsFor(bool canBrowse, bool canSetup = false, bool canModuleConfig = false) => new(
             CanBrowse: canBrowse,
             CanViewCost: true,
             CanViewSecrecy: true,
@@ -82,7 +106,8 @@ internal static class AssistantSituationDoubles
             DenyModiMasterFields: new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             DenyModiDetailFields: new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             DataFilter: string.Empty,
-            ExecuteTag: "A");
+            ExecuteTag: "A",
+            CanModuleConfig: canModuleConfig);
     }
 
     internal sealed class FakeGateway : IWorkbenchSearchGateway
@@ -91,7 +116,8 @@ internal static class AssistantSituationDoubles
         public List<SystemKnowledgeModule> Modules { get; } = [];
         /// <summary>按模块编号登记的列表查询结果（滞留扫描用）。</summary>
         public Dictionary<int, WorkbenchData> Rows { get; } = [];
-        public List<(int ModuleId, WorkbenchQuery? Query, string? DataFilter, int PageSize)> RowQueries { get; } = [];
+        public List<(int ModuleId, WorkbenchQuery? Query, string? DataFilter, int PageSize,
+            string? SortField, string? SortDirection)> RowQueries { get; } = [];
 
         public Task<IReadOnlyList<SystemKnowledgeModule>> ListAssistantModulesAsync(string? keyword, CancellationToken token)
             => Task.FromResult<IReadOnlyList<SystemKnowledgeModule>>(Modules);
@@ -111,7 +137,7 @@ internal static class AssistantSituationDoubles
             string? keyword = null, string? sortField = null, string? sortDirection = null,
             int? groupIndex = null, string? groupValue = null, string? dataFilter = null)
         {
-            RowQueries.Add((definition.ModuleId, query, dataFilter, pageSize));
+            RowQueries.Add((definition.ModuleId, query, dataFilter, pageSize, sortField, sortDirection));
             return Task.FromResult(Rows.TryGetValue(definition.ModuleId, out var data)
                 ? data
                 : new WorkbenchData([], 0, page, pageSize));

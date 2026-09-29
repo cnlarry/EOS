@@ -80,7 +80,7 @@ export interface SituationIdentity {
   workGroups: string[]
 }
 
-/** 摘要条目：kind = overdue（超期滞留）/ rejected（最近被拒）。 */
+/** 摘要条目：kind = overdue（滞留未批核，此刻状态）/ blocked-now（此刻办不下去）/ rejected（最近被拒，历史事件）。 */
 export interface SituationDigestItem {
   kind: string
   moduleId: number

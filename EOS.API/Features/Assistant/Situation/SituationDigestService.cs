@@ -1,13 +1,21 @@
+using EOS.API.Features.Assistant.Diagnosis;
 using EOS.API.Features.Assistant.Tools;
 using EOS.API.Models;
 using EOS.API.Security;
 
 namespace EOS.API.Features.Assistant.Situation;
 
-/// <summary>摘要条目类别：<c>overdue</c> 超期滞留、<c>rejected</c> 最近被拒。</summary>
+/// <summary>
+/// 摘要条目类别：<c>overdue</c> 超期滞留（此刻状态）、<c>blocked-now</c> 此刻办不下去（此刻状态）、
+/// <c>rejected</c> 最近被拒（**历史事件**，与"这张单此刻过不了"不可互相替代）。
+/// </summary>
 public static class SituationDigestKinds
 {
     public const string Overdue = "overdue";
+
+    /// <summary>此刻过不了保存校验 / 状态不允许改动。命名带 <c>now</c>，与"最近被拒"这种历史事件区分。</summary>
+    public const string BlockedNow = "blocked-now";
+
     public const string Rejected = "rejected";
 }
 
@@ -48,6 +56,7 @@ public sealed class SituationDigestService(
     IPermissionService permissions,
     ISituationFactsReader facts,
     AssistantSituationService situation,
+    IBlockedRecordProbe blockedProbe,
     AssistantSituationBudget budget,
     ILogger<SituationDigestService> logger)
 {
@@ -66,6 +75,9 @@ public sealed class SituationDigestService(
 
         var scanned = await LoadOverdueAsync(userId, candidates, items, token);
         if (scanned > 0) sources.Add($"overdue:扫描 {scanned} 个模块");
+
+        var blocked = await LoadBlockedNowAsync(userId, candidates, items, token);
+        if (blocked > 0) sources.Add($"blocked-now:逐单求值 {blocked} 个模块");
 
         var rejected = 0;
         foreach (var failure in failures)
@@ -93,6 +105,9 @@ public sealed class SituationDigestService(
             caveats.Add($"滞留扫描仅覆盖本人最近活动过的模块（上限 {limits.DigestModuleScanLimit} 个），并非全库全量。");
         }
 
+        caveats.Add($"「此刻办不下去」只判可只读定论的判据（关联存在性与结案状态）；"
+            + $"其余校验类别只能在保存时由引擎判定，摘要不逐条求值（每模块最多看最近 {limits.BlockedNowScanRecords} 单、{limits.BlockedNowMaxAgeDays} 天内）。");
+
         return new SituationDigest(items, sources, caveats);
     }
 
@@ -101,6 +116,7 @@ public sealed class SituationDigestService(
     {
         var limits = budget.Limits;
         var cutoff = DateTime.UtcNow.Date.AddDays(-limits.OverdueDays).ToString("yyyy-MM-dd");
+        var oldest = DateTime.UtcNow.Date.AddDays(-limits.OverdueMaxAgeDays).ToString("yyyy-MM-dd");
         var scanned = 0;
         foreach (var moduleId in moduleIds)
         {
@@ -117,15 +133,21 @@ public sealed class SituationDigestService(
             scanned++;
             try
             {
+                // 取数口径：**按建立日期倒序**（新→旧）并加年龄上界。
+                // 按模块默认排序取前 N 条会在遗留数据上取到多年前的未批核单（实测 3120 天前），
+                // 那类条目既不是"我手上压着什么"，也会把摘要位挤满。
                 var query = new WorkbenchQuery(
                 [
                     new WorkbenchQueryCondition("CREATE_DATE", "lte", cutoff, null, null),
+                    new WorkbenchQueryCondition("CREATE_DATE", "gte", oldest, null, null),
                     new WorkbenchQueryCondition("CONFIRM_TAG", "eq", "0", null, null),
                 ]);
                 var remaining = Math.Max(1, limits.DigestMaxItems - items.Count);
                 var data = await gateway.GetRowsAsync(
                     definition, detail: false, new Dictionary<string, string>(), page: 1,
-                    pageSize: remaining, token, query: query, dataFilter: permission.Rights.DataFilter);
+                    pageSize: remaining, token, query: query,
+                    sortField: "CREATE_DATE", sortDirection: "desc",
+                    dataFilter: permission.Rights.DataFilter);
                 foreach (var row in data.Rows)
                 {
                     // 上限由本服务兜住：不假设查询实现一定会遵守 pageSize
@@ -152,6 +174,60 @@ public sealed class SituationDigestService(
 
         return scanned;
     }
+
+    /// <summary>
+    /// 第三条主来源（**此刻状态**）：逐单求值"当前过不了保存校验 / 状态不允许改动"。
+    /// 判据与对象级诊断**同一套**（<see cref="IBlockedRecordProbe"/>），不另写一份口径；
+    /// 扫描有界（每模块最近若干单 + 年龄上界），判不了一律不报（宁可少报）。
+    /// </summary>
+    private async Task<int> LoadBlockedNowAsync(
+        string userId, IReadOnlyList<int> moduleIds, List<SituationDigestItem> items, CancellationToken token)
+    {
+        var limits = budget.Limits;
+        var scanned = 0;
+        foreach (var moduleId in moduleIds)
+        {
+            if (items.Count >= limits.DigestMaxItems) break;
+            var permission = await permissions.GetAsync(userId, moduleId, token);
+            if (!permission.CanBrowse) continue;
+            var (execTag, canViewCost, canViewSecrecy, deniedMaster, deniedDetail) = permission.Scope();
+            var definition = await gateway.GetDefinitionAsync(
+                moduleId, userId, execTag, canViewCost, canViewSecrecy, deniedMaster, deniedDetail, token);
+            if (definition is null) continue;
+            var keys = definition.MasterFields.Select(field => field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (!keys.Contains("CREATE_DATE") || !keys.Contains("CONFIRM_TAG")) continue;
+
+            scanned++;
+            IReadOnlyList<DiagnosisBlockedRecord> blocked = [];
+            try
+            {
+                blocked = await blockedProbe.ProbeBlockedAsync(userId, definition, permission, token);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // 单模块判不了不影响其余模块；如实记录，不假装全量。
+                logger.LogWarning(ex, "助手摘要跳过模块的「此刻办不下去」扫描 module={ModuleId}", moduleId);
+            }
+
+            foreach (var record in blocked)
+            {
+                if (items.Count >= limits.DigestMaxItems) break;
+                items.Add(new SituationDigestItem(
+                    SituationDigestKinds.BlockedNow,
+                    definition.ModuleId,
+                    definition.Title,
+                    budget.Clip(record.Key, limits.MaxValueLength),
+                    budget.Clip($"此刻：{Clean(record.Reason)}", limits.DigestTextLength),
+                    null,
+                    0));
+            }
+        }
+
+        return scanned;
+    }
+
+    /// <summary>摘要文案去掉诊断占位符：<c>{ROWS}</c> 对应的明细行由 diagnose_record 逐单展开。</summary>
+    private static string Clean(string text) => text.Replace("{ROWS}", string.Empty).Trim();
 
     private static int AgeDays(IReadOnlyDictionary<string, object?> row)
     {

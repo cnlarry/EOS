@@ -45,6 +45,31 @@ public sealed class ModuleBusinessConfigRepository(
         return usage;
     }
 
+    /// <summary>
+    /// 效果键在全库的使用次数（分布口径与效果说明门禁一致：用户点击行不参与效果链，故不计入）。
+    /// 配置诊断据此发现"全库只用过一次"的单例键——同一件事配出多个只用一次的键是最难维护的一类配置。
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, int>> CountEffectKeyUsageAsync(CancellationToken token)
+    {
+        const string sql = """
+            SELECT LTRIM(RTRIM(EFFECT_KEY)) AS EFFECT_KEY, COUNT(*) AS ROWS
+            FROM dbo.MODULE_BUSINESS_ACTION WITH (NOLOCK)
+            WHERE EVENT_CODE <> 'MANUAL'
+              AND EFFECT_KEY IS NOT NULL AND LTRIM(RTRIM(EFFECT_KEY)) <> ''
+            GROUP BY LTRIM(RTRIM(EFFECT_KEY));
+            """;
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var command = new SqlCommand(sql, connection);
+        var usage = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            usage[reader.GetString(0)] = reader.GetInt32(1);
+        }
+        return usage;
+    }
+
     public async Task<ModuleBusinessConfigDto?> GetAsync(int moduleId, CancellationToken token)
     {
         await using var connection = connections.Create();

@@ -442,18 +442,20 @@ public sealed class WorkbenchCommandHandler(
         // 状态校验：已结案 / 已批核的单据禁止编辑
         if (IsStatusTrue(current, "FINISHED_TAG"))
         {
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FINISHED_EDIT_FORBIDDEN", "记录已结案，禁止编辑（请先取消结案）。");
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,
+                Workbench.LifecycleEditGuards.FinishedCode, Workbench.LifecycleEditGuards.FinishedMessage);
         }
         if (IsStatusTrue(current, "CONFIRM_TAG"))
         {
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "CONFIRMED_EDIT_FORBIDDEN", "记录已批核，禁止编辑（请先解批）。");
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,
+                Workbench.LifecycleEditGuards.ConfirmedCode, Workbench.LifecycleEditGuards.ConfirmedMessage);
         }
         // 在途流程守卫：流程审批中的单据禁止编辑（审批人批的是送审时快照，改后需先撤回再重提）
         var editKeyCondition = WorkbenchKeyCondition.Build(pkColumns, keyValues);
         if (await WorkflowEngine.HasActiveFlowAsync(connection, transaction, definition.ModuleId, editKeyCondition, token))
         {
-            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed, "FLOW_IN_PROGRESS_EDIT_FORBIDDEN",
-                "记录流程正在审批中，禁止编辑（请先撤回流程）。");
+            return RecordSaveResult.Failed(RecordAccessStatus.ValidationFailed,
+                Workbench.LifecycleEditGuards.FlowInProgressCode, Workbench.LifecycleEditGuards.FlowInProgressMessage);
         }
         // Target record must be within the module contract before editing
         if (!scopeFilter.TryBuildRecordScopePredicate(definition, dataFilter, out var scopePredicate, out var scopeParameters))

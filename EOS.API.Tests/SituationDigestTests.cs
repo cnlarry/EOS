@@ -1,3 +1,4 @@
+using EOS.API.Features.Assistant.Diagnosis;
 using EOS.API.Features.Assistant.Situation;
 using EOS.API.Models;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -15,13 +16,16 @@ public sealed class SituationDigestTests
         AssistantSituationDoubles.FakeGateway gateway,
         AssistantSituationDoubles.FakePermissions permissions,
         AssistantSituationDoubles.FakeFacts facts,
-        Action<AssistantSituationBudgetOptions>? configure = null)
+        Action<AssistantSituationBudgetOptions>? configure = null,
+        AssistantSituationDoubles.FakeBlockedProbe? blockedProbe = null)
     {
         var budget = AssistantSituationDoubles.Budget(configure);
         var situation = new AssistantSituationService(
             AssistantSituationDoubles.UserContext(), facts, budget, NullLogger<AssistantSituationService>.Instance);
         return new SituationDigestService(
-            gateway, permissions, facts, situation, budget, NullLogger<SituationDigestService>.Instance);
+            gateway, permissions, facts, situation,
+            blockedProbe ?? new AssistantSituationDoubles.FakeBlockedProbe(),
+            budget, NullLogger<SituationDigestService>.Instance);
     }
 
     private static Dictionary<string, object?> OverdueRow(string key, DateTime created) => new()
@@ -144,6 +148,87 @@ public sealed class SituationDigestTests
     }
 
     [Fact]
+    public async Task 滞留取数按建立日期倒序并带年龄上界()
+    {
+        var gateway = new AssistantSituationDoubles.FakeGateway();
+        gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
+            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+        gateway.Rows[1606] = new WorkbenchData(
+            [OverdueRow("DD2608001", DateTime.UtcNow.Date.AddDays(-20))], 1, 1, 5);
+        var permissions = new AssistantSituationDoubles.FakePermissions();
+        permissions.Browsable.Add(1606);
+        var facts = new AssistantSituationDoubles.FakeFacts();
+        facts.ActivityModules.Add(1606);
+        var service = CreateService(gateway, permissions, facts, options => options.OverdueMaxAgeDays = 90);
+
+        await service.BuildAsync("u1", SituationContext.Empty, CancellationToken.None);
+
+        var query = Assert.Single(gateway.RowQueries);
+        // 取数口径：新→旧（否则按模块默认排序会取到多年前的遗留单，实测 3120 天前）
+        Assert.Equal("CREATE_DATE", query.SortField);
+        Assert.Equal("desc", query.SortDirection);
+        // 年龄上界生效：早于上界的单据不进摘要
+        var lowerBound = Assert.Single(query.Query!.Conditions,
+            condition => condition.Field == "CREATE_DATE" && condition.Operator == "gte");
+        Assert.Equal(DateTime.UtcNow.Date.AddDays(-90).ToString("yyyy-MM-dd"), lowerBound.Value);
+    }
+
+    [Fact]
+    public async Task 第三条主来源_此刻办不下去进入摘要且计入来源()
+    {
+        var gateway = new AssistantSituationDoubles.FakeGateway();
+        gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
+            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+        gateway.Rows[1606] = new WorkbenchData([], 0, 1, 5);
+        var permissions = new AssistantSituationDoubles.FakePermissions();
+        permissions.Browsable.Add(1606);
+        var facts = new AssistantSituationDoubles.FakeFacts();
+        facts.ActivityModules.Add(1606);
+        var probe = new AssistantSituationDoubles.FakeBlockedProbe();
+        probe.Blocked[1606] = [new DiagnosisBlockedRecord(
+            ["DD2608009"], "DD2608009", "以下序号项产品编号不存在 {ROWS}", "validation:SAVE/reference-exists#1")];
+        var service = CreateService(gateway, permissions, facts, blockedProbe: probe);
+
+        var digest = await service.BuildAsync("u1", SituationContext.Empty, CancellationToken.None);
+
+        var item = Assert.Single(digest.Items);
+        Assert.Equal(SituationDigestKinds.BlockedNow, item.Kind);
+        Assert.Equal("DD2608009", item.Key);
+        Assert.StartsWith("此刻：", item.Reason);
+        // {ROWS} 的明细行由 diagnose_record 逐单展开，摘要不显示占位符
+        Assert.DoesNotContain("{ROWS}", item.Reason);
+        Assert.Contains(digest.Sources, source => source.StartsWith("blocked-now:"));
+        // 实际问了哪些模块（代价可度量：逐单求值只发生在候选模块上）
+        Assert.Equal([1606], probe.Probed);
+        Assert.Contains(digest.Caveats, caveat => caveat.Contains("只判可只读定论的判据"));
+    }
+
+    [Fact]
+    public async Task 摘要条目上限对第三条主来源同样生效()
+    {
+        var gateway = new AssistantSituationDoubles.FakeGateway();
+        gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
+            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+        gateway.Rows[1606] = new WorkbenchData([OverdueRow("DD1", DateTime.UtcNow.Date.AddDays(-20))], 1, 1, 5);
+        var permissions = new AssistantSituationDoubles.FakePermissions();
+        permissions.Browsable.Add(1606);
+        var facts = new AssistantSituationDoubles.FakeFacts();
+        facts.ActivityModules.Add(1606);
+        var probe = new AssistantSituationDoubles.FakeBlockedProbe();
+        probe.Blocked[1606] =
+        [
+            new DiagnosisBlockedRecord(["DD2"], "DD2", "此刻过不了校验", "validation"),
+            new DiagnosisBlockedRecord(["DD3"], "DD3", "此刻过不了校验", "validation"),
+        ];
+        var service = CreateService(gateway, permissions, facts,
+            options => options.DigestMaxItems = 1, probe);
+
+        var digest = await service.BuildAsync("u1", SituationContext.Empty, CancellationToken.None);
+
+        Assert.Single(digest.Items);
+    }
+
+    [Fact]
     public void 摘要链路的构造参数里不存在模型依赖()
     {
         // "打开即见不烧额度"是结构性保证：这条链路上根本没有 IChatModel，
@@ -154,6 +239,8 @@ public sealed class SituationDigestTests
             typeof(SituationDigestService),
             typeof(AssistantSituationService),
             typeof(SituationFactsReader),
+            typeof(EOS.API.Features.Assistant.Diagnosis.RecordDiagnosisService),
+            typeof(EOS.API.Features.Assistant.Diagnosis.RecordDiagnosisReader),
         ];
 
         foreach (var service in services)
