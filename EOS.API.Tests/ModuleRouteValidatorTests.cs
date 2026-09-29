@@ -19,6 +19,7 @@ public class ModuleRouteValidatorTests
     [InlineData("/admin/menus", 2301)]
     [InlineData("/admin/report-setup", 2201)]
     [InlineData("/admin/groups", 2305)]
+    [InlineData("/admin/logs", 110112)]
     [InlineData("/settings/system", 110111)]
     [InlineData("/my-tasks", 2102)]
     [InlineData("/workflow/design", 2101)]
@@ -27,6 +28,46 @@ public class ModuleRouteValidatorTests
     public void ExactRoutes_ReturnAsIs(string url, int moduleId)
     {
         Assert.Equal(url, ModuleRouteValidator.Resolve(url, moduleId));
+    }
+
+    /// <summary>
+    /// 定制页的路由必须同时满足两件事：① 后端把它当"精确路径"原样下发（否则菜单会退化成
+    /// `/fallback/modules/{id}` 兜底页——这是实测踩到的：新增定制页只登记了模块与前端路由、
+    /// 漏登记后端的 `ExactRoutes`，菜单点进去是回落页）；② 前端的 `workspaceRoutes.tsx`
+    /// 里确有同名路由。两边任一缺失都会表现为"菜单点不开"，而编译与单测都不会报。
+    /// </summary>
+    [Theory]
+    [InlineData("/admin/logs", 110112)]
+    [InlineData("/admin/field-audit", 2303)]
+    [InlineData("/admin/depot-stock-policy", 110310)]
+    public void 定制页路由_后端精确路径与前端路由表一致(string url, int moduleId)
+    {
+        Assert.Equal(url, ModuleRouteValidator.Resolve(url, moduleId));
+        var frontendRoute = Path.Combine(FindRepoRoot(), "EOS.Web", "src", "app", "workspaceRoutes.tsx");
+        Assert.True(File.Exists(frontendRoute), $"找不到前端路由表：{frontendRoute}");
+        Assert.Contains($"path: '{url.TrimStart('/')}'", File.ReadAllText(frontendRoute), StringComparison.Ordinal);
+    }
+
+    /// <summary>仓库根优先取构建期注入的 <c>RepoRoot</c> 元数据（与运行输出目录无关），失败再向上找。</summary>
+    private static string FindRepoRoot()
+    {
+        var declared = typeof(ModuleRouteValidatorTests).Assembly
+            .GetCustomAttributes(inherit: false)
+            .OfType<System.Reflection.AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => attribute.Key == "RepoRoot")?.Value;
+        if (!string.IsNullOrWhiteSpace(declared))
+        {
+            var resolved = Path.GetFullPath(declared);
+            if (Directory.Exists(Path.Combine(resolved, "EOS.Web"))) return resolved;
+        }
+
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "EOS.API", "EOS.API.csproj"))) return dir.FullName;
+            dir = dir.Parent;
+        }
+        throw new InvalidOperationException("Repository root not found.");
     }
 
     [Theory]
