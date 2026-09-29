@@ -204,7 +204,7 @@ dotnet build
 ```
 
 `scripts/` 下还有一组静态与连库门禁（DI 注册、迁移台账、样式类、生命周期列、版式结构、
-快照落后等）。按改动范围挑着跑，至少跑 `scripts/check-di-registrations.ps1`——
+快照落后、Agent 技能引用等）。按改动范围挑着跑，至少跑 `scripts/check-di-registrations.ps1`——
 它拦的是"编译 0 错、单测全绿，但端点全挂"那类问题。完整清单见
 [`docs/guide/06-测试与质量门禁.md`](docs/guide/06-测试与质量门禁.md)。
 
