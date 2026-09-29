@@ -1,0 +1,104 @@
+-- ============================================================================
+-- EOS.ERP migration 283: 日志管理定制页（模块 110112 + 授权镜像）
+-- ----------------------------------------------------------------------------
+--  来源：ADR-029（用户反馈入口与一键日志打包）§2.1.1 / §9-1、§9-2
+--        「形式为独立定制页『日志管理』」；读日志者 = 模块 11 的 CanBrowse，
+--        打包下载 = CanSetup。
+--
+--  为什么不是工作台模块：工作台由库内元数据驱动、面向业务单据；日志不是业务数据，
+--  页面也不该出现在统一表单白名单里（本模块 MASTER_TABLE 为空，天然进不去）。
+--
+--  为什么权限镜像 110111（系统参数设置）：它是「基础设置」下最贴近的运维类定制页，
+--  已有一套"谁能看系统设置"的授权行；镜像它而不是新造一套口径，
+--  与迁移 186（库存新模块镜像 110306）的既有做法一致。
+--  **注意**：镜像只保证"与参照模块同权"，授不授予由管理员在权限界面决定——
+--  这正是"拥有权限的系统用户也能读日志"的落地方式。
+--
+--  幂等：模块按"不存在才插"；授权行按 (G_IDX/USER_ID, M_IDX) 不存在才插；可重复执行。
+-- ============================================================================
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET ARITHABORT ON;
+
+DECLARE @GuardMessage NVARCHAR(400) = N'本脚本只能在 EOS.ERP 数据库内执行，当前库为 ' + DB_NAME() + N'。';
+IF DB_NAME() <> N'EOS.ERP'
+    THROW 51700, @GuardMessage, 1;
+
+IF NOT EXISTS (SELECT 1 FROM dbo.MODULES WHERE M_IDX = 110111)
+    THROW 51701, N'参照模块 110111 系统参数设置不存在，迁移中止（日志管理页的权限镜像以它为准）。', 1;
+
+BEGIN TRANSACTION;
+
+/* ---------- 1. 模块登记（父/根沿用参照模块，不硬编码层级）---------- */
+IF NOT EXISTS (SELECT 1 FROM dbo.MODULES WHERE M_IDX = 110112)
+BEGIN
+    INSERT INTO dbo.MODULES (M_IDX, M_DESC, M_URL, M_P_IDX, M_ROOT_IDX, SORT_IDX, M_TAG, MASTER_TABLE)
+    SELECT 110112, N'日志管理', N'/admin/logs', r.M_P_IDX, r.M_ROOT_IDX,
+           ISNULL(r.SORT_IDX, 0) + 10, 1, NULL
+    FROM dbo.MODULES r
+    WHERE r.M_IDX = 110111;
+    PRINT N'== 新增模块 110112 日志管理（/admin/logs）==';
+END
+ELSE
+    PRINT N'== 模块 110112 已存在，跳过 ==';
+
+/* ---------- 2. 组权限镜像 ---------- */
+INSERT INTO dbo.SYSDH
+    (G_IDX, M_IDX, EXEC_TAG, ADDNEW_TAG, DELETE_TAG, EDIT_TAG, REPORT_TAG, COST_TAG, SETUP_TAG, SECRECY_TAG,
+     ENDCASE_TAG, UNENDCASE_TAG, OTHER1_TAG, OTHER2_TAG, OTHER3_TAG, OTHER4_TAG,
+     DENY_VIEW_FIELD_MASTER, DENY_VIEW_FIELD_DETAIL, DENY_NEW_FIELD_MASTER, DENY_NEW_FIELD_DETAIL,
+     DENY_MODI_FIELD_MASTER, DENY_MODI_FIELD_DETAIL, DATA_FILTER, CI, OPERFLAG,
+     APPROVE_TAG, DEAPPROVE_TAG, FILE_VIEW_TAG, FILE_UPDA_TAG, FILE_EDIT_TAG, FILE_DELE_TAG,
+     FORM_DESIGN_TAG, MODULE_CONFIG_TAG)
+SELECT h.G_IDX, 110112, h.EXEC_TAG, h.ADDNEW_TAG, h.DELETE_TAG, h.EDIT_TAG, h.REPORT_TAG, h.COST_TAG,
+       h.SETUP_TAG, h.SECRECY_TAG, h.ENDCASE_TAG, h.UNENDCASE_TAG, h.OTHER1_TAG, h.OTHER2_TAG,
+       h.OTHER3_TAG, h.OTHER4_TAG, h.DENY_VIEW_FIELD_MASTER, h.DENY_VIEW_FIELD_DETAIL,
+       h.DENY_NEW_FIELD_MASTER, h.DENY_NEW_FIELD_DETAIL, h.DENY_MODI_FIELD_MASTER, h.DENY_MODI_FIELD_DETAIL,
+       h.DATA_FILTER, h.CI, h.OPERFLAG, h.APPROVE_TAG, h.DEAPPROVE_TAG, h.FILE_VIEW_TAG, h.FILE_UPDA_TAG,
+       h.FILE_EDIT_TAG, h.FILE_DELE_TAG, h.FORM_DESIGN_TAG, h.MODULE_CONFIG_TAG
+FROM dbo.SYSDH h
+WHERE h.M_IDX = 110111
+  AND NOT EXISTS (SELECT 1 FROM dbo.SYSDH x WHERE x.G_IDX = h.G_IDX AND x.M_IDX = 110112);
+
+PRINT N'== 已镜像组权限 ' + CONVERT(NVARCHAR(10), @@ROWCOUNT) + N' 行 ==';
+
+/* ---------- 3. 个人权限镜像 ---------- */
+INSERT INTO dbo.SYSDD
+    (USER_ID, M_IDX, EXEC_TAG, ADDNEW_TAG, DELETE_TAG, EDIT_TAG, REPORT_TAG, COST_TAG, SETUP_TAG, SECRECY_TAG,
+     ENDCASE_TAG, UNENDCASE_TAG, OTHER1_TAG, OTHER2_TAG, OTHER3_TAG, OTHER4_TAG,
+     DENY_VIEW_FIELD_MASTER, DENY_VIEW_FIELD_DETAIL, DENY_NEW_FIELD_MASTER, DENY_NEW_FIELD_DETAIL,
+     DENY_MODI_FIELD_MASTER, DENY_MODI_FIELD_DETAIL, DATA_FILTER, CI, OPERFLAG,
+     APPROVE_TAG, DEAPPROVE_TAG, FILE_VIEW_TAG, FILE_UPDA_TAG, FILE_EDIT_TAG, FILE_DELE_TAG,
+     FORM_DESIGN_TAG, MODULE_CONFIG_TAG)
+SELECT d.USER_ID, 110112, d.EXEC_TAG, d.ADDNEW_TAG, d.DELETE_TAG, d.EDIT_TAG, d.REPORT_TAG, d.COST_TAG,
+       d.SETUP_TAG, d.SECRECY_TAG, d.ENDCASE_TAG, d.UNENDCASE_TAG, d.OTHER1_TAG, d.OTHER2_TAG,
+       d.OTHER3_TAG, d.OTHER4_TAG, d.DENY_VIEW_FIELD_MASTER, d.DENY_VIEW_FIELD_DETAIL,
+       d.DENY_NEW_FIELD_MASTER, d.DENY_NEW_FIELD_DETAIL, d.DENY_MODI_FIELD_MASTER, d.DENY_MODI_FIELD_DETAIL,
+       d.DATA_FILTER, d.CI, d.OPERFLAG, d.APPROVE_TAG, d.DEAPPROVE_TAG, d.FILE_VIEW_TAG, d.FILE_UPDA_TAG,
+       d.FILE_EDIT_TAG, d.FILE_DELE_TAG, d.FORM_DESIGN_TAG, d.MODULE_CONFIG_TAG
+FROM dbo.SYSDD d
+WHERE d.M_IDX = 110111
+  AND NOT EXISTS (SELECT 1 FROM dbo.SYSDD x WHERE x.USER_ID = d.USER_ID AND x.M_IDX = 110112);
+
+PRINT N'== 已镜像个人权限 ' + CONVERT(NVARCHAR(10), @@ROWCOUNT) + N' 行 ==';
+
+/* ---------- 4. 收口断言 ---------- */
+IF NOT EXISTS (SELECT 1 FROM dbo.MODULES WHERE M_IDX = 110112 AND M_URL = N'/admin/logs')
+    THROW 51702, N'模块 110112 未就位或 URL 不是 /admin/logs，迁移中止。', 1;
+
+DECLARE @RefGroups INT = (SELECT COUNT(*) FROM dbo.SYSDH WHERE M_IDX = 110111);
+DECLARE @NewGroups INT = (SELECT COUNT(*) FROM dbo.SYSDH WHERE M_IDX = 110112);
+IF @NewGroups < @RefGroups
+    THROW 51703, N'模块 110112 的组权限行数少于参照模块 110111，迁移中止。', 1;
+
+DECLARE @RefUsers INT = (SELECT COUNT(*) FROM dbo.SYSDD WHERE M_IDX = 110111);
+DECLARE @NewUsers INT = (SELECT COUNT(*) FROM dbo.SYSDD WHERE M_IDX = 110112);
+IF @NewUsers < @RefUsers
+    THROW 51704, N'模块 110112 的个人权限行数少于参照模块 110111，迁移中止。', 1;
+
+COMMIT TRANSACTION;
+
+PRINT N'== 收口：日志管理（110112）模块与授权已按 110111 的口径就位 ==';
