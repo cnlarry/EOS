@@ -3,6 +3,7 @@ using EOS.API.Data;
 using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
+using EOS.API.Telemetry;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -33,7 +34,7 @@ public sealed class AuthenticationController(
             var minutes = Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes));
             logger.LogWarning(
                 "登录被限流 userId={UserId} ip={ClientIp} remainingMinutes={RemainingMinutes} correlation={CorrelationId}",
-                request.UserId.Trim(), HttpContext.Connection.RemoteIpAddress, minutes, HttpContext.TraceIdentifier);
+                request.UserId.Trim(), HttpContext.Connection.RemoteIpAddress, minutes, RequestContext.GetCorrelationId(HttpContext));
             var problem = ApiProblem.Create(
                 StatusCodes.Status429TooManyRequests,
                 ApiErrorCodes.LoginLocked,
@@ -48,7 +49,7 @@ public sealed class AuthenticationController(
             {
                 logger.LogWarning(
                     "登录失败次数达阈值，账号临时锁定 userId={UserId} ip={ClientIp} correlation={CorrelationId}",
-                    request.UserId.Trim(), HttpContext.Connection.RemoteIpAddress, HttpContext.TraceIdentifier);
+                    request.UserId.Trim(), HttpContext.Connection.RemoteIpAddress, RequestContext.GetCorrelationId(HttpContext));
             }
             var (code, message) = result.Failure switch
             {
@@ -100,7 +101,7 @@ public sealed class AuthenticationController(
             var minutes = Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes));
             logger.LogWarning(
                 "修改密码被限流 userId={UserId} ip={ClientIp} remainingMinutes={RemainingMinutes} correlation={CorrelationId}",
-                userId.Trim(), HttpContext.Connection.RemoteIpAddress, minutes, HttpContext.TraceIdentifier);
+                userId.Trim(), HttpContext.Connection.RemoteIpAddress, minutes, RequestContext.GetCorrelationId(HttpContext));
             var problem = ApiProblem.Create(
                 StatusCodes.Status429TooManyRequests,
                 ApiErrorCodes.LoginLocked,
@@ -117,7 +118,7 @@ public sealed class AuthenticationController(
                 throttle.Reset(throttleKey);
                 logger.LogInformation(
                     "用户修改密码成功 userId={UserId} ip={ClientIp} correlation={CorrelationId}",
-                    userId.Trim(), HttpContext.Connection.RemoteIpAddress, HttpContext.TraceIdentifier);
+                    userId.Trim(), HttpContext.Connection.RemoteIpAddress, RequestContext.GetCorrelationId(HttpContext));
                 return NoContent();
             case PasswordChangeFailure.UserNotFound:
                 return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, ApiErrorCodes.NotFound, "用户不存在。"));
@@ -131,7 +132,7 @@ public sealed class AuthenticationController(
                 {
                     logger.LogWarning(
                         "修改密码失败次数达阈值，账号临时锁定 userId={UserId} ip={ClientIp} correlation={CorrelationId}",
-                        userId.Trim(), HttpContext.Connection.RemoteIpAddress, HttpContext.TraceIdentifier);
+                        userId.Trim(), HttpContext.Connection.RemoteIpAddress, RequestContext.GetCorrelationId(HttpContext));
                 }
                 return BadRequest(ApiProblem.Create(
                     StatusCodes.Status400BadRequest,
