@@ -36,6 +36,10 @@ EOS 是元数据驱动的 ERP 重构项目。任何改动落地前必须跑对�
 
 ## 3. 回归
 
+> **关于本机工作资产**：本节与下一节提到的 `docs/status.md`、`docs/plans/`（含 `archive/`）
+> **不随仓库分发**——它们只存在于采用这套工作流的工作副本里。在别处克隆时找不到它们属预期，
+> 不是缺文件；相应地，"刷新 status.md""把完成计划移入 archive"这两条纪律**只在该工作副本内适用**。
+
 - 一键回归：`scripts/regression.ps1`（单测 + 前端 lint/build/test + E2E 四链 + UI 冒烟），统一报告到 `logs/goal/regression/`。
 - 任何阶段验收前必须回归全绿（基线数字见 `docs/status.md` §2）。
 - 开工前运行 `pwsh scripts/check-docs.ps1`，确认 `docs/status.md` 与 HEAD 对齐、活跃计划未陈旧。
