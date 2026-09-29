@@ -45,12 +45,14 @@ public abstract class AssistantToolBase : IAssistantTool
 public static class AssistantToolExtensions
 {
     public static int GetIntArg(this JsonElement arguments, string name) =>
-        arguments.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.Number
+        arguments.ValueKind == JsonValueKind.Object
+        && arguments.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.Number
             ? el.GetInt32()
             : 0;
 
     public static string GetStringArg(this JsonElement arguments, string name) =>
-        arguments.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String
+        arguments.ValueKind == JsonValueKind.Object
+        && arguments.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String
             ? el.GetString() ?? string.Empty
             : string.Empty;
 

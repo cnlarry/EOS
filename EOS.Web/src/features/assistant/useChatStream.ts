@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import type { ChatSituation } from './situationSource'
 import type { AssistantAdminDraft } from './types'
 
 /** SSE 事件：delta=文本增量；done=回复已落库（含工具摘要与表单草稿）；error=流中失败。 */
@@ -21,11 +22,8 @@ export interface AssistantFormDraft {
   warnings: string[]
 }
 
-export interface ChatPageContext {
-  moduleId?: number
-  pageType?: string
-  docNo?: string
-}
+/** 随 chat 请求上报的处境（路由 + 界面状态总线采集）。 */
+export type ChatPageContext = ChatSituation
 
 interface SendOptions {
   sessionId: string

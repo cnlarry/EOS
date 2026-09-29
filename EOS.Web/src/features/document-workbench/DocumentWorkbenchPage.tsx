@@ -21,6 +21,7 @@ import { alignClass, formatFieldValue } from './fieldFormat'
 import { FieldBrowseLink } from './FieldBrowseLink'
 import { workbenchNew, workbenchView } from './workbenchPath'
 import { readListState, writeListState } from './listStateUrl'
+import { reportListFilters, reportSelection } from '../assistant/situationSource'
 
 interface Field { key:string; label:string; dataType:string; width:number; align:string|null; isPrimaryKey:boolean; isQueryable:boolean; headerAlign:string; format:string|null; browseUrl:string|null; browseModuleId:number|null; browseKeyFields:string[]|null; isVirtual?:boolean }
 interface Definition { moduleId:number; title:string; masterTable:string; detailTable?:string; masterFields:Field[]; detailFields:Field[]; hasAdd:boolean; hasEdit:boolean; masterPkOrder:string[]; hasWorkflow:boolean; ifCopy:boolean; searchMaster:boolean; searchDetail:boolean; buttons:{action:string}[]|null; newUrl?:string|null; modiUrl?:string|null; canDelete?:boolean }
@@ -206,6 +207,23 @@ export function DocumentWorkbenchPage() {
     },
   })),[detail,hasPermission,moduleId,navigate,definition.data?.detailTable])
   const rowSelection=useMemo<RowSelectionState>(()=>Object.fromEntries(Object.keys(selected).map(key=>[key,true])),[selected])
+
+  // 助手处境上报：列表筛选条件与选中行主键（服务端会再截断并按字段白名单校验）
+  useEffect(()=>{
+    reportListFilters([...safeConditions,...Object.values(safeColumnFilters)].map(condition=>({
+      field:condition.field,
+      operator:condition.operator,
+      value:condition.value??'',
+    })))
+  },[safeConditions,safeColumnFilters])
+  useEffect(()=>{
+    reportSelection(Object.keys(selected))
+  },[selected])
+  // 离开列表页即撤回上报，避免把上一页的筛选/选中带到别处
+  useEffect(()=>()=>{
+    reportListFilters([])
+    reportSelection([])
+  },[])
 
   const rowKey=(row:Record<string,unknown>)=>{const keys=(definition.data?.masterPkOrder??[]).map(column=>String(row[column]??''));return keys.some(key=>key!=='')?keys.join('|'):JSON.stringify(row)}
   const active=activeKey?selected[activeKey]??rows.find(row=>rowKey(row)===activeKey)??null:null

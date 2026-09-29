@@ -1,5 +1,12 @@
 import { apiClient } from '../../services/api'
-import type { AssistantApplyResult, AssistantMemoryList, AssistantMessage, AssistantSession, KbDocument } from './types'
+import type {
+  AssistantApplyResult,
+  AssistantMemoryList,
+  AssistantMessage,
+  AssistantSession,
+  KbDocument,
+  SituationSnapshot,
+} from './types'
 
 export function listSessions(limit = 50) {
   return apiClient.get<AssistantSession[]>('/assistant/sessions', { query: { limit } })
@@ -15,6 +22,11 @@ export function listMessages(sessionId: string) {
 
 export function deleteSession(sessionId: string) {
   return apiClient.delete<void>(`/assistant/sessions/${sessionId}`)
+}
+
+/** 打开即见的处境快照（零模型调用）：身份 / 在哪 / 待办 / 最近被拒 / 结构化摘要。 */
+export function getSituation(params: { moduleId?: number; pageType?: string; docNo?: string } = {}) {
+  return apiClient.get<SituationSnapshot>('/assistant/situation', { query: params })
 }
 
 export function listMemory() {

@@ -66,6 +66,62 @@ export interface KbDocument {
   chunks: KbDocChunk[]
 }
 
+/** 处境快照：打开抽屉即见的结构化内容（服务端规则引擎产出，零模型调用）。 */
+export interface SituationIdentity {
+  userId: string
+  employeeName: string
+  employeeId: string
+  departmentId: string
+  departmentName: string
+  companyId: string
+  defaultGroupId: string
+  directLeader: string | null
+  departmentLeader: string | null
+  workGroups: string[]
+}
+
+/** 摘要条目：kind = overdue（超期滞留）/ rejected（最近被拒）。 */
+export interface SituationDigestItem {
+  kind: string
+  moduleId: number
+  moduleTitle: string
+  key: string
+  reason: string
+  occurredAt: string | null
+  ageDays: number
+}
+
+export interface SituationDigest {
+  items: SituationDigestItem[]
+  sources: string[]
+  caveats: string[]
+}
+
+export interface SituationWhere {
+  moduleId: number | null
+  moduleTitle: string | null
+  pageType: string | null
+  docNo: string | null
+  dropped: string[]
+}
+
+export interface SituationRecentFailure {
+  occurredAt: string
+  action: string
+  moduleId: number | null
+  summary: string
+  errorCode: string | null
+}
+
+export interface SituationSnapshot {
+  identity: SituationIdentity
+  where: SituationWhere
+  pending: { myApproval: number; startedInFlight: number }
+  recent: SituationRecentFailure[]
+  digest: SituationDigest
+  budget: { residentTokens: number; residentTokenLimit: number }
+}
+
 export interface AssistantMessage {
   id: string
   sessionId: string

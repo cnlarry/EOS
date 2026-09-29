@@ -6,7 +6,9 @@ using EOS.API.Features.Assistant;
 using EOS.API.Features.Assistant.Admin;
 using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.Memory;
+using EOS.API.Features.Assistant.Situation;
 using EOS.API.Security;
+using EOS.API.Telemetry;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -29,11 +31,32 @@ public sealed class AssistantController(
     ModuleRightsRepository rightsRepository,
     ChangeSetService changeSets,
     IAssistantUsageRepository usageRepository,
+    SituationContextSanitizer situationSanitizer,
+    AssistantSituationService situationService,
+    SituationDigestService situationDigest,
     IOptions<Features.Assistant.ModelAccess.AssistantSettings> assistantOptions) : ControllerBase
 {
     private static readonly JsonSerializerOptions SseJson = new(JsonSerializerDefaults.Web);
 
-    public sealed record ChatContext(int? ModuleId, string? ModuleTitle, string? PageType, string? DocNo);
+    /// <summary>
+    /// 处境上报契约：模块/页面/单据 + 列表筛选 + 选中行 + 表单脏字段 + 最近一次服务端拒绝 + 配置页目标。
+    /// 上限与白名单一律由服务端强制（见 <see cref="SituationContextSanitizer"/>）。
+    /// </summary>
+    public sealed record ChatContext(
+        int? ModuleId,
+        string? ModuleTitle,
+        string? PageType,
+        string? DocNo,
+        IReadOnlyList<SituationFilter>? Filters = null,
+        IReadOnlyList<string>? Selection = null,
+        IReadOnlyList<SituationDirtyField>? FormDirty = null,
+        SituationNotice? LastNotice = null,
+        SituationConfigTarget? ConfigTarget = null)
+    {
+        public SituationReport ToReport() => new(
+            ModuleId, ModuleTitle, PageType, DocNo, Filters, Selection, FormDirty, LastNotice, ConfigTarget);
+    }
+
     public sealed record ChatRequest(string Content, ChatContext? Context);
 
     [HttpGet("sessions")]
@@ -71,18 +94,20 @@ public sealed class AssistantController(
             return;
         }
 
-        var correlationId = HttpContext.TraceIdentifier;
+        // 与请求日志/审计同一关联键：会话消息与排障记录要能按同一个值串起来。
+        var correlationId = RequestContext.GetCorrelationId(HttpContext);
         Response.StatusCode = StatusCodes.Status200OK;
         Response.ContentType = "text/event-stream; charset=utf-8";
         Response.Headers.CacheControl = "no-cache";
         Response.Headers["X-Accel-Buffering"] = "no";
 
+        var situation = await situationSanitizer.SanitizeAsync(
+            userContext.UserId, request.Context?.ToReport(), token);
+        var pageContext = Features.Assistant.PageContext.FromSituation(situation);
         await using var writer = new StreamWriter(Response.Body, new UTF8Encoding(false), leaveOpen: true);
         await foreach (var evt in chat.StreamReplyAsync(
             userContext.UserId, sessionId, request.Content ?? string.Empty,
-            request.Context is null ? null : new Features.Assistant.PageContext(
-                request.Context.ModuleId, request.Context.ModuleTitle,
-                request.Context.PageType, request.Context.DocNo),
+            pageContext.IsEmpty ? null : pageContext,
             correlationId, token))
         {
             switch (evt)
@@ -103,6 +128,22 @@ public sealed class AssistantController(
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// 打开即见：结构化处境快照（身份 / 在哪 / 待办 / 最近被拒 / 摘要）。
+    /// **零模型调用**——摘要由服务端规则引擎产出，前端渲染为卡片；追问才走对话。
+    /// </summary>
+    [HttpGet("situation")]
+    public async Task<IActionResult> GetSituation(
+        [FromQuery] int? moduleId, [FromQuery] string? pageType, [FromQuery] string? docNo,
+        CancellationToken token)
+    {
+        var userId = userContext.UserId;
+        var situation = await situationSanitizer.SanitizeAsync(
+            userId, new SituationReport(moduleId, null, pageType, docNo, null, null, null, null, null), token);
+        var digest = await situationDigest.BuildAsync(userId, situation, token);
+        return Ok(await situationService.BuildSnapshotAsync(userId, situation, digest, token));
     }
 
     public sealed record SaveMemoryRequest(

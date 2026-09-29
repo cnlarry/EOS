@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { setConfigTarget } from '../assistant/situationSource'
 import {
   IconBook,
   IconDeviceFloppy,
@@ -344,6 +345,18 @@ export function BusinessActionsPanel({
   // 已从服务端装载完成的模块编号：只有装载完成才向上报草稿，避免切换模块的瞬间
   // 用空配置覆盖主页面持有的草稿。
   const [loadedModuleId, setLoadedModuleId] = useState<number | null>(null)
+
+  // 助手处境上报：正在配哪个按钮/效果对象（只报标识，不报配置内容）。
+  const editingEffectKey = editor?.kind === 'action' && editor.value.effectKey ? editor.value.effectKey : undefined
+  useEffect(() => {
+    if (!enabled) {
+      setConfigTarget(null)
+      return
+    }
+
+    setConfigTarget(editingEffectKey ? { surface: 'effect', effectKey: editingEffectKey } : { surface: 'buttons' })
+  }, [enabled, editingEffectKey])
+  useEffect(() => () => setConfigTarget(null), [])
   // 「重新加载」的显式装载点：只有它或切换模块才把服务端配置灌回草稿。
   const [reloadToken, setReloadToken] = useState(0)
   const loadedPointRef = useRef<string | null>(null)

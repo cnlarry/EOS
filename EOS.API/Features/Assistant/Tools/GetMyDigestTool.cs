@@ -1,19 +1,18 @@
-using System.Data;
 using System.Text;
 using System.Text.Json;
-using EOS.API.Data;
 using EOS.API.Features.Assistant.Memory;
-using Microsoft.Data.SqlClient;
+using EOS.API.Features.Assistant.Situation;
 
 namespace EOS.API.Features.Assistant.Tools;
 
 /// <summary>
 /// get_my_digest：会话内主动摘要（本人画像 + 显式记忆 + 待办/在途流程计数）。
-/// 全部走既有权限门：待办只含分派给本人的未处理任务，在途只含本人发起。
+/// 计数与"打开即见"同一口径（见 <see cref="AssistantSituationService.LoadPendingAsync"/>）：
+/// 待办只含分派给本人的未处理任务，在途只含本人发起。
 /// </summary>
 public sealed class GetMyDigestTool(
     IAssistantMemoryStore memory,
-    DbConnectionFactory? connections = null) : AssistantToolBase
+    AssistantSituationService? situation = null) : AssistantToolBase
 {
     public const string ToolName = "get_my_digest";
 
@@ -44,39 +43,13 @@ public sealed class GetMyDigestTool(
             }
         }
 
-        if (connections is not null)
+        if (situation is not null)
         {
-            var (pending, started) = await LoadFlowCountsAsync(userId, token);
-            sb.AppendLine().Append($"- 待我审批（{pending} 条）：流程待办中分派给你的未处理任务");
-            sb.AppendLine().Append($"- 我发起在途（{started} 条）：你送审且仍在审批中的流程");
+            var pending = await situation.LoadPendingAsync(userId, token);
+            sb.AppendLine().Append($"- 待我审批（{pending.MyApproval} 条）：流程待办中分派给你的未处理任务");
+            sb.AppendLine().Append($"- 我发起在途（{pending.StartedInFlight} 条）：你送审且仍在审批中的流程");
         }
 
         return ToolExecutionResult.Success(sb.ToString());
-    }
-
-    private async Task<(long Pending, long Started)> LoadFlowCountsAsync(string userId, CancellationToken token)
-    {
-        await using var connection = connections!.Create();
-        await connection.OpenAsync(token);
-        var pending = await CountAsync(connection, null,
-            """
-            SELECT COUNT_BIG(1) FROM dbo.WF_MYTASK T WITH (NOLOCK)
-            WHERE LTRIM(RTRIM(T.APPROVER)) = @UserId AND ISNULL(T.APPROVE_STATE, '') = ''
-              AND ISNULL(T.APPROVE_TAG, 0) = 0;
-            """, userId, token);
-        var started = await CountAsync(connection, null,
-            """
-            SELECT COUNT_BIG(1) FROM dbo.WF_MONITOR M WITH (NOLOCK)
-            WHERE LTRIM(RTRIM(ISNULL(M.START_USER, ''))) = @UserId AND M.WF_STATE = '0';
-            """, userId, token);
-        return (pending, started);
-    }
-
-    private static async Task<long> CountAsync(
-        SqlConnection connection, SqlTransaction? transaction, string sql, string userId, CancellationToken token)
-    {
-        await using var command = new SqlCommand(sql, connection, transaction);
-        command.Parameters.Add("@UserId", SqlDbType.VarChar, 20).Value = userId;
-        return Convert.ToInt64(await command.ExecuteScalarAsync(token));
     }
 }
