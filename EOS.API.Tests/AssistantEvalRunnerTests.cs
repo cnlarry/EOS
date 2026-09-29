@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using EOS.API.Data;
 using EOS.API.Features.Assistant.Admin;
@@ -18,6 +19,16 @@ public sealed class AssistantEvalRunnerTests
 {
     private static string EvalPath(string name)
     {
+        // 输出目录可能是仓库外的临时路径（--artifacts-path），故先看编译期注入的仓库根。
+        var root = typeof(AssistantEvalRunnerTests).Assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(item => item.Key == "RepoRoot")?.Value;
+        if (!string.IsNullOrWhiteSpace(root))
+        {
+            var injected = Path.Combine(root, "EOS.API.Tests", "AssistantEval", name);
+            if (File.Exists(injected)) return injected;
+        }
+
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {

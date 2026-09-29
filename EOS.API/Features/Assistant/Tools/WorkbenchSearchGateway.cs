@@ -84,3 +84,13 @@ public interface IAssistantTool
     /// </summary>
     Task<ToolExecutionResult> ExecuteAsync(string userId, System.Text.Json.JsonElement arguments, CancellationToken token);
 }
+
+/// <summary>
+/// 工具可选实现：接收服务端注入的**页面处境**（当前单据号 / 未保存字段），
+/// 用于"用户不必报主键"。上报值只作定位，**不作权限依据**（每次读取仍按当前用户重新授权）。
+/// 工具实例是 Scoped，注入发生在同一请求内、紧邻执行，不会跨请求残留。
+/// </summary>
+public interface IPageContextTool
+{
+    void UsePageContext(PageContext page);
+}

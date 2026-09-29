@@ -82,7 +82,7 @@ public sealed class GetRecordDetailTool(
         if (row is null)
         {
             // DATA_FILTER/EXEC_TAG 范围外的记录在此表现为“不存在”——不泄露其存在性。
-            return ToolExecutionResult.Deny("记录不存在或不在你的数据范围内。");
+            return this.DenyNotFound();
         }
 
         return ToolExecutionResult.Success(Compress(definition, row));

@@ -46,12 +46,19 @@ internal sealed class MasterFieldWriteHandler : IDocumentUserAction
     /// 引擎维护列：移动引擎 / 月结 / 盘点在写，人工不得改。这是**第二道闸**——
     /// 与 `FIELDS.IS_READONLY` 各管一层：只读位管"表单能不能提交"，本表管"服务端认不认"。
     /// </summary>
-    private static readonly IReadOnlySet<string> EngineMaintainedColumns =
+    internal static readonly IReadOnlySet<string> EngineMaintainedColumns =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "IN_SUM", "OUT_SUM", "LATELY_IN_DATE",
             "QTY", "COST_PRICE", "COST_AMOUNT", "INIT_QTY", "USEABLE_QTY", "LAST_CHECK_DATE",
         };
+
+    /// <summary>
+    /// 维护列被人工修改时的拒绝文案。**只此一处**：诊断侧要说同一句话，
+    /// 各写一份必然漂移（用户看到两种说法，且不会有测试拦）。
+    /// </summary>
+    internal static string EngineMaintainedMessage(string column) =>
+        $"字段“{column}”由引擎维护，不允许人工修改。";
 
     private readonly WorkbenchAuditWriter _audit;
 
@@ -173,7 +180,7 @@ internal sealed class MasterFieldWriteHandler : IDocumentUserAction
             var column = ToColumnName(parameter);
             if (EngineMaintainedColumns.Contains(column))
             {
-                throw new EffectValidationException($"字段“{column}”由引擎维护，不允许人工修改。");
+                throw new EffectValidationException(EngineMaintainedMessage(column));
             }
             if (!WritableByParameter.TryGetValue(parameter, out var allowed))
             {

@@ -59,6 +59,15 @@ public static class AssistantToolExtensions
     public static ToolExecutionResult DenyBrowse(this IAssistantTool _, string moduleLabel) =>
         ToolExecutionResult.Deny($"用户没有模块「{moduleLabel}」的浏览权限，无法查询该模块数据。");
 
+    /// <summary>
+    /// 防探测口径：记录不可见时**不区分**"不存在"与"不在你的数据范围内"
+    /// （沿用统一表单 FormAccess 返回 null → NotFound 的既有设计，助手侧不得改口为"无权限"）。
+    /// </summary>
+    public const string NotFoundMessage = "记录不存在或不在你的数据范围内。";
+
+    public static ToolExecutionResult DenyNotFound(this IAssistantTool _) =>
+        ToolExecutionResult.Deny(NotFoundMessage);
+
     /// <summary>把权限结果展开为工作台定义/查询所需的数据范围参数（EXEC_TAG/DATA_FILTER/禁止字段）。</summary>
     public static (string ExecTag, bool CanViewCost, bool CanViewSecrecy,
         IReadOnlySet<string> DeniedMaster, IReadOnlySet<string> DeniedDetail) Scope(
