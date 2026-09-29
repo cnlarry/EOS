@@ -67,17 +67,30 @@ public sealed class SituationDigestService(
         var sources = new List<string>();
         var caveats = new List<string>();
 
+        // 主动巡检**可停**：任一相关阈值配 ≤ 0，对应来源即停。
+        // 0 与负数是"关闭"语义，不是"最勤"——否则一个手滑的配置会把扫描放大到全库。
+        var overdueEnabled = limits.DigestMaxItems > 0 && limits.DigestModuleScanLimit > 0
+            && limits.OverdueDays > 0 && limits.OverdueMaxAgeDays > 0;
+        var blockedEnabled = overdueEnabled && limits.BlockedNowScanRecords > 0
+            && limits.BlockedNowMaxAgeDays > 0 && limits.BlockedNowProbeRules > 0;
+        var rejectedEnabled = limits.DigestMaxItems > 0
+            && limits.RecentFailureDays > 0 && limits.RecentFailureLimit > 0;
+
         var candidates = await LoadCandidatesAsync(userId, where, token);
-        var failures = await situation.LoadRecentFailuresAsync(userId, token);
+        IReadOnlyList<SituationRecentFailure> failures = rejectedEnabled
+            ? await situation.LoadRecentFailuresAsync(userId, token)
+            : [];
         var titles = failures.Count == 0
             ? new Dictionary<int, string>()
             : await LoadModuleTitlesAsync(token);
 
-        var scanned = await LoadOverdueAsync(userId, candidates, items, token);
+        var scanned = overdueEnabled ? await LoadOverdueAsync(userId, candidates, items, token) : 0;
         if (scanned > 0) sources.Add($"overdue:扫描 {scanned} 个模块");
+        if (!overdueEnabled) caveats.Add("超期滞留来源已按阈值关闭（任一相关阈值配成 0 或负数即停）。");
 
-        var blocked = await LoadBlockedNowAsync(userId, candidates, items, token);
+        var blocked = blockedEnabled ? await LoadBlockedNowAsync(userId, candidates, items, token) : 0;
         if (blocked > 0) sources.Add($"blocked-now:逐单求值 {blocked} 个模块");
+        if (!blockedEnabled) caveats.Add("「此刻办不下去」来源已按阈值关闭（任一相关阈值配成 0 或负数即停）。");
 
         var rejected = 0;
         foreach (var failure in failures)
@@ -95,6 +108,7 @@ public sealed class SituationDigestService(
         }
 
         if (rejected > 0) sources.Add($"rejected:最近 {limits.RecentFailureDays} 天");
+        if (!rejectedEnabled) caveats.Add("最近被拒来源已按阈值关闭（任一相关阈值配成 0 或负数即停）。");
 
         var pending = await situation.LoadPendingAsync(userId, token);
         caveats.Add(pending.MyApproval + pending.StartedInFlight == 0
@@ -105,8 +119,11 @@ public sealed class SituationDigestService(
             caveats.Add($"滞留扫描仅覆盖本人最近活动过的模块（上限 {limits.DigestModuleScanLimit} 个），并非全库全量。");
         }
 
-        caveats.Add($"「此刻办不下去」只判可只读定论的判据（关联存在性与结案状态）；"
-            + $"其余校验类别只能在保存时由引擎判定，摘要不逐条求值（每模块最多看最近 {limits.BlockedNowScanRecords} 单、{limits.BlockedNowMaxAgeDays} 天内）。");
+        if (blockedEnabled)
+        {
+            caveats.Add($"「此刻办不下去」只判可只读定论的判据（关联存在性与结案状态）；"
+                + $"其余校验类别只能在保存时由引擎判定，摘要不逐条求值（每模块最多看最近 {limits.BlockedNowScanRecords} 单、{limits.BlockedNowMaxAgeDays} 天内）。");
+        }
 
         return new SituationDigest(items, sources, caveats);
     }

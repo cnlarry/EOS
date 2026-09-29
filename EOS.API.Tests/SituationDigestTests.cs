@@ -229,6 +229,73 @@ public sealed class SituationDigestTests
     }
 
     [Fact]
+    public async Task 主动巡检可停_相关阈值配零即停该来源()
+    {
+        var gateway = new AssistantSituationDoubles.FakeGateway();
+        gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
+            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+        gateway.Rows[1606] = new WorkbenchData(
+            [OverdueRow("DD2608001", DateTime.UtcNow.Date.AddDays(-20))], 1, 1, 5);
+        var permissions = new AssistantSituationDoubles.FakePermissions();
+        permissions.Browsable.Add(1606);
+        var facts = new AssistantSituationDoubles.FakeFacts();
+        facts.ActivityModules.Add(1606);
+        var probe = new AssistantSituationDoubles.FakeBlockedProbe();
+        probe.Blocked[1606] = [new DiagnosisBlockedRecord(["DD2"], "DD2", "此刻过不了校验", "validation")];
+        var service = CreateService(gateway, permissions, facts, options => options.OverdueDays = 0, probe);
+
+        var digest = await service.BuildAsync("u1", SituationContext.Empty, CancellationToken.None);
+
+        Assert.Empty(digest.Items);
+        Assert.Empty(gateway.RowQueries);
+        Assert.Empty(probe.Probed);
+        Assert.Contains(digest.Caveats, caveat => caveat.Contains("已按阈值关闭", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task 主动巡检可停_只停被关掉的那一条来源()
+    {
+        var gateway = new AssistantSituationDoubles.FakeGateway();
+        gateway.Definitions[1606] = AssistantSituationDoubles.Definition(
+            1606, "客户订单", ["DD_NO", "CREATE_DATE", "CONFIRM_TAG"], ["DD_NO"]);
+        gateway.Rows[1606] = new WorkbenchData(
+            [OverdueRow("DD2608001", DateTime.UtcNow.Date.AddDays(-20))], 1, 1, 5);
+        var permissions = new AssistantSituationDoubles.FakePermissions();
+        permissions.Browsable.Add(1606);
+        var facts = new AssistantSituationDoubles.FakeFacts();
+        facts.ActivityModules.Add(1606);
+        facts.Failures.Add(new SituationFailureFact(
+            DateTime.UtcNow.AddHours(-1), "master-field-write", 1606, "字段 IN_SUM 由引擎维护。", "BUSINESS_VALIDATION_FAILED"));
+        var probe = new AssistantSituationDoubles.FakeBlockedProbe();
+        probe.Blocked[1606] = [new DiagnosisBlockedRecord(["DD2"], "DD2", "此刻过不了校验", "validation")];
+        var service = CreateService(gateway, permissions, facts, options => options.BlockedNowProbeRules = 0, probe);
+
+        var digest = await service.BuildAsync("u1", SituationContext.Empty, CancellationToken.None);
+
+        // 关掉的是"逐单求值"这一条来源：滞留与被拒照旧，逐单探针一次都不跑
+        Assert.Empty(probe.Probed);
+        Assert.NotEmpty(gateway.RowQueries);
+        Assert.Contains(digest.Items, item => item.Kind == SituationDigestKinds.Overdue);
+        Assert.Contains(digest.Items, item => item.Kind == SituationDigestKinds.Rejected);
+    }
+
+    [Fact]
+    public async Task 主动巡检可停_最近被拒的阈值配零即停该来源()
+    {
+        var gateway = new AssistantSituationDoubles.FakeGateway();
+        var permissions = new AssistantSituationDoubles.FakePermissions();
+        var facts = new AssistantSituationDoubles.FakeFacts();
+        facts.Failures.Add(new SituationFailureFact(
+            DateTime.UtcNow.AddHours(-1), "DELETEv", 1606, "无按钮授权", "PERMISSION|DENY"));
+        var service = CreateService(gateway, permissions, facts, options => options.RecentFailureDays = 0);
+
+        var digest = await service.BuildAsync("u1", SituationContext.Empty, CancellationToken.None);
+
+        Assert.DoesNotContain(digest.Items, item => item.Kind == SituationDigestKinds.Rejected);
+        Assert.Contains(digest.Caveats, caveat => caveat.Contains("已按阈值关闭", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void 摘要链路的构造参数里不存在模型依赖()
     {
         // "打开即见不烧额度"是结构性保证：这条链路上根本没有 IChatModel，

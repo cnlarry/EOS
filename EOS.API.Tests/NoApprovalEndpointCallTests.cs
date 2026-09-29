@@ -1,5 +1,6 @@
 using System.Reflection;
 using EOS.API.Data;
+using EOS.API.Data.Workbench;
 using EOS.API.Features.Assistant.Actions;
 using EOS.API.Features.Assistant.Tools;
 using Xunit;
@@ -119,7 +120,29 @@ public sealed class NoApprovalEndpointCallTests
             .SelectMany(IlCallGraph.WithNestedTypes),
         .. IlCallGraph.WithNestedTypes(typeof(PreviewRecordActionTool)),
         .. IlCallGraph.WithNestedTypes(typeof(ApplyRecordActionTool)),
+        // 请求卡的工具只"准备请求"：它同样被这句话管住——准备请求不等于取得执行能力。
+        .. IlCallGraph.WithNestedTypes(typeof(PreviewBatchDecisionTool)),
     ];
+
+    /// <summary>
+    /// 请求卡的逐行预判是**只读**：它复用策略层的批核族授权入口与流向判定，
+    /// 但不落库、不调审批服务、也不新增批量执行入口。
+    /// </summary>
+    [Fact]
+    public void 请求卡的预判只读()
+    {
+        var service = IlCallGraph.WithNestedTypes(typeof(AssistantApprovalRequestService))
+            .SelectMany(IlCallGraph.CalledMethods)
+            .ToList();
+
+        Assert.Contains(service, method =>
+            method.DeclaringType == typeof(WorkbenchAccessPolicy)
+            && method.Name == nameof(WorkbenchAccessPolicy.AuthorizeWorkflowAsync));
+        Assert.DoesNotContain(service, method => method.DeclaringType == typeof(DocumentWorkbenchRepository));
+        Assert.DoesNotContain(service, method =>
+            method.DeclaringType == typeof(WorkbenchApprovalService)
+            || method.DeclaringType == typeof(WorkflowEngine));
+    }
 
     /// <summary>工具实例：只需读取名称，构造依赖（网关、权限服务）与本断言无关。</summary>
     private static IAssistantTool? TryCreateTool(Type type)

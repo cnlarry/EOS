@@ -1,0 +1,7 @@
+{"id":"A-01","moduleId":1403,"action":"insert","rows":[{"values":{"REMARK":"照抄上一单"}}],"expect":{"moduleCode":null},"note":"录入是操作劳动，可代劳：预演通过即可执行"}
+{"id":"A-02","moduleId":1403,"action":"update","rows":[{"keys":["XJ/A1"],"values":{"REMARK":"改备注"}}],"expect":{"moduleCode":null},"note":"修改走统一表单同一条写管线，权限与数据范围在服务端重新判定"}
+{"id":"A-03","moduleId":1403,"action":"delete","rows":[{"keys":["XJ/A1"]},{"keys":["XJ/A2"]}],"expect":{"moduleCode":null},"note":"删除逐行摊开主键并列出级联影响面，不给「删除 N 行」的单一按钮"}
+{"id":"A-04","moduleId":1403,"action":"insert","rows":[{"values":{"REMARK":"无新增权限"}}],"expect":{"moduleCode":"ADD_CAPABILITY_MISSING"},"note":"模块级动作位不足：模块级拒绝，逐行结论为空"}
+{"id":"A-05","moduleId":1403,"action":"update","rows":[{"keys":["XJ/A1"]}],"expect":{"moduleCode":"FORM_NOT_ENABLED"},"note":"模块不在统一表单写名单：助手不能代为录入"}
+{"id":"A-06","moduleId":1403,"action":"delete","rows":[{"keys":["XJ/A1"]}],"expect":{"moduleCode":"DELETE_NOT_PERMITTED"},"note":"删除动作位不足由策略层原样抛出，助手侧折成稳定原因码"}
+{"id":"A-07","moduleId":1403,"action":"update","rows":[{"keys":["XJ/A1"]}],"expect":{"moduleCode":"NOT_BROWSABLE"},"note":"无权浏览的模块：沿用防探测口径，不区分「不存在」与「无权限」"}

@@ -110,6 +110,41 @@ export interface AssistantRecordActionResult {
   rows: AssistantActionRowOutcome[]
 }
 
+/**
+ * 批核族处置动作：助手只准备请求卡，用户在卡片上确认后由界面**直接**调既有端点。
+ * 这四个动作不在助手动作面内（助手侧没有它们的注册项与调用能力）。
+ */
+export type ApprovalRequestAction = 'approve' | 'deapprove' | 'endcase' | 'unendcase'
+
+/** 请求卡里的一行：主键 + 当前状态 + 此刻可否执行及原因（原因来自服务端策略层）。 */
+export interface ApprovalRequestRowPreview {
+  keys: string[]
+  status: string
+  allowed: boolean
+  denialCode: string | null
+  denialMessage: string | null
+}
+
+/** 操作请求卡（模型经工具、界面经端点，拿到的是同一份形状）。 */
+export interface AssistantApprovalRequestPreview {
+  kind: 'approval-request-preview'
+  moduleId: number
+  moduleTitle: string
+  action: ApprovalRequestAction
+  blocked: boolean
+  moduleDenialCode: string | null
+  moduleDenialMessage: string | null
+  rows: ApprovalRequestRowPreview[]
+  notes: string[]
+}
+
+/** 请求卡载荷：只带"要处置哪些单据"，处置动作与模块由卡片自己给出。 */
+export interface ApprovalRequestPayload {
+  module_id: number
+  action: ApprovalRequestAction
+  rows: Array<{ keys: string[] }>
+}
+
 /** 配置改动对照卡里的一处值变更：旧值 → 新值。 */
 export interface ConfigValueChange {
   field: string

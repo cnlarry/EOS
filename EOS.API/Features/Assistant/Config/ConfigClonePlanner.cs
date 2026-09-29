@@ -24,8 +24,8 @@ public sealed class ConfigClonePlanner(
     ModuleBusinessConfigRepository moduleConfig,
     ILogger<ConfigClonePlanner> logger)
 {
-    /// <summary>一次规划覆盖的对象上限：克隆是目标化的操作，不提供"整表重排"。</summary>
-    public const int MaxObjects = 100;
+    /// <summary>一次规划覆盖的对象上限：克隆是目标化的操作，不提供"整表重排"。取值来自阈值单一事实源。</summary>
+    public const int MaxObjects = Governance.AssistantActionLimits.MaxConfigCloneObjects;
 
     /// <summary>字段面搬运的属性（列名 → 人话标签 → 取值）。类型、表达式与数据来源不在其中。</summary>
     private static readonly (string Column, string Label, Func<FieldAdminInput, string?> Read)[] FieldMetaColumns =

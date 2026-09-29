@@ -19,6 +19,7 @@ import { buildChatSituation } from './situationSource'
 import { useChatStream, type AssistantDraft, type AssistantFormDraft } from './useChatStream'
 import { ActionCard, ActionResultCard } from './ActionCard'
 import { AdminChangesetCard } from './AdminChangesetCard'
+import { ApprovalRequestCard } from './ApprovalRequestCard'
 import { ConfigApplyCard, ConfigDiffCard } from './ConfigDiffCard'
 import { assistantPrefillKey } from '../../lib/storageKeys'
 import { workbenchNew } from '../document-workbench/workbenchPath'
@@ -528,6 +529,7 @@ function renderDraft(draft: AssistantDraft, index: number, onOpenForm: (draft: A
     if (draft.kind === 'record-action-result') return <ActionResultCard key={index} result={draft} />
     if (draft.kind === 'config-diff') return <ConfigDiffCard key={index} draft={draft} />
     if (draft.kind === 'config-apply-result') return <ConfigApplyCard key={index} result={draft} />
+    if (draft.kind === 'approval-request-preview') return <ApprovalRequestCard key={index} draft={draft} />
   }
   return <DraftCard key={index} draft={draft as AssistantFormDraft} onOpenForm={onOpenForm} />
 }

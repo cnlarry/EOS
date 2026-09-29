@@ -2,6 +2,7 @@ using EOS.API.Data;
 using EOS.API.Data.Effects;
 using EOS.API.Data.Workbench;
 using EOS.API.Features.Assistant.Actions;
+using EOS.API.Features.Assistant.Governance;
 using EOS.API.Models;
 using EOS.API.Security;
 using EOS.API.Telemetry;
@@ -64,11 +65,14 @@ internal static class AssistantActionTestHarness
         WorkbenchCommandHandler handler,
         DbConnectionFactory connections,
         AgentWriteContext agentContext,
-        WorkbenchAuditWriter auditWriter)
+        WorkbenchAuditWriter auditWriter,
+        AssistantActionLimitsOptions? limits = null)
         => new(gate, new DocumentWorkbenchRepository(
                 connections, null!, null!, null!, handler, null!, null!, null!,
                 NullLogger<DocumentWorkbenchRepository>.Instance),
-            new EffectPlanLoader(), agentContext, auditWriter, NullLogger<AssistantRecordActionService>.Instance);
+            new EffectPlanLoader(), agentContext, auditWriter,
+            Options.Create(limits ?? new AssistantActionLimitsOptions()),
+            NullLogger<AssistantRecordActionService>.Instance);
 
     public static WorkbenchAccessPolicy Policy(
         IWorkbenchDefinitionSource definitions, IPermissionService permissions, params int[] writableModules)
@@ -127,13 +131,14 @@ internal static class AssistantActionTestHarness
 
     /// <summary>权限档位：默认"能浏览 + 能增改删"，用例按需取子集。</summary>
     public static ModuleRights Rights(
-        bool browse = true, bool add = true, bool edit = true, bool delete = true, string dataFilter = "")
+        bool browse = true, bool add = true, bool edit = true, bool delete = true, string dataFilter = "",
+        bool approve = false, bool deapprove = false, bool endCase = false, bool unEndCase = false)
         => new(
             CanBrowse: browse, CanViewCost: true, CanViewSecrecy: true, CanSetup: false,
             DeniedMasterFields: new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             DeniedDetailFields: new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             CanAddNew: add, CanEdit: edit, CanDelete: delete,
-            CanApprove: false, CanDeapprove: false, CanEndCase: false, CanUnEndCase: false,
+            CanApprove: approve, CanDeapprove: deapprove, CanEndCase: endCase, CanUnEndCase: unEndCase,
             CanFileView: true, CanFileUpda: true, CanFileEdit: true, CanFileDele: true,
             DenyNewMasterFields: new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             DenyNewDetailFields: new HashSet<string>(StringComparer.OrdinalIgnoreCase),
