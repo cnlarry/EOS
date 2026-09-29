@@ -4,6 +4,7 @@ import { Modal } from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/toastContext'
 import { apiClient } from '../../services/api'
 import { describeApiError } from '../../lib/errors'
+import { newCorrelationId } from '../../lib/diagnostics'
 import { newIdempotencyKey } from './formEditorUtils'
 
 /**
@@ -59,8 +60,8 @@ interface RunnerOptions {
 
 type Stage =
   | { kind: 'closed' }
-  | { kind: 'params'; action: DocumentActionMeta; values: Record<string, string> }
-  | { kind: 'confirm'; action: DocumentActionMeta; values: Record<string, string>; preview: string | null }
+  | { kind: 'params'; action: DocumentActionMeta; values: Record<string, string>; correlationId: string }
+  | { kind: 'confirm'; action: DocumentActionMeta; values: Record<string, string>; preview: string | null; correlationId: string }
 
 export function declaredParams(action: DocumentActionMeta): DocumentActionParamField[] {
   const fields = action.params?.fields
@@ -74,11 +75,13 @@ export function useDocumentActionRunner({ moduleId, keyValues, dirty, onRefreshe
   const canRun = Boolean(keyValues && keyValues.length > 0) && !dirty && busyKey === null
 
   const post = useCallback(
-    async (action: DocumentActionMeta, values: Record<string, string>, confirm: boolean) =>
+    async (action: DocumentActionMeta, values: Record<string, string>, confirm: boolean, correlationId: string) =>
       apiClient.post<DocumentActionResponse>(
         `/document-workbench/${moduleId}/action/${encodeURIComponent(action.key)}`,
         { key: keyValues, params: Object.keys(values).length > 0 ? values : null, confirm },
-        { headers: { 'X-Idempotency-Key': newIdempotencyKey() } },
+        // 一次用户操作一个关联键：CONFIRM_TAG 的操作会先探路再真执行（两次 POST），
+        // 两次共用同一个值，排障时按用户给的报障编号能把"这一次点击"完整串起来。
+        { headers: { 'X-Idempotency-Key': newIdempotencyKey(), 'X-Correlation-Id': correlationId } },
       ),
     [moduleId, keyValues],
   )
@@ -105,11 +108,11 @@ export function useDocumentActionRunner({ moduleId, keyValues, dirty, onRefreshe
   )
 
   const execute = useCallback(
-    async (action: DocumentActionMeta, values: Record<string, string>) => {
+    async (action: DocumentActionMeta, values: Record<string, string>, correlationId: string) => {
       setStage({ kind: 'closed' })
       setBusyKey(action.key)
       try {
-        await apply(action, await post(action, values, true))
+        await apply(action, await post(action, values, true, correlationId))
       } catch (cause) {
         notify({ message: describeApiError(cause, `${action.label}失败。`), variant: 'danger' })
       } finally {
@@ -130,22 +133,24 @@ export function useDocumentActionRunner({ moduleId, keyValues, dirty, onRefreshe
         return
       }
       if (busyKey !== null) return
+      // 一次点击一个关联键：从这里生成，往下贯穿该次操作的全部请求
+      const correlationId = newCorrelationId()
       const fields = declaredParams(action)
       if (fields.length > 0) {
         const initial: Record<string, string> = {}
         for (const field of fields) initial[field.key] = ''
-        setStage({ kind: 'params', action, values: initial })
+        setStage({ kind: 'params', action, values: initial, correlationId })
         return
       }
       if (!action.confirmTag) {
-        void execute(action, {})
+        void execute(action, {}, correlationId)
         return
       }
       // 探路口径：不写库、不占幂等键，只把"将会发生什么"取回来给用户看。
       setBusyKey(action.key)
       try {
-        const preview = await post(action, {}, false)
-        setStage({ kind: 'confirm', action, values: {}, preview: preview.message ?? null })
+        const preview = await post(action, {}, false, correlationId)
+        setStage({ kind: 'confirm', action, values: {}, preview: preview.message ?? null, correlationId })
       } catch (cause) {
         notify({ message: describeApiError(cause, `${action.label}预检失败。`), variant: 'danger' })
       } finally {
@@ -157,20 +162,20 @@ export function useDocumentActionRunner({ moduleId, keyValues, dirty, onRefreshe
 
   const confirmWithParams = useCallback(async () => {
     if (stage.kind !== 'params') return
-    const { action, values } = stage
+    const { action, values, correlationId } = stage
     const missing = declaredParams(action).filter((field) => field.required && (values[field.key] ?? '').trim() === '')
     if (missing.length > 0) {
       notify({ message: `请填写：${missing.map((field) => field.label).join('、')}`, variant: 'warning' })
       return
     }
     if (!action.confirmTag) {
-      void execute(action, values)
+      void execute(action, values, correlationId)
       return
     }
     setBusyKey(action.key)
     try {
-      const preview = await post(action, values, false)
-      setStage({ kind: 'confirm', action, values, preview: preview.message ?? null })
+      const preview = await post(action, values, false, correlationId)
+      setStage({ kind: 'confirm', action, values, preview: preview.message ?? null, correlationId })
     } catch (cause) {
       notify({ message: describeApiError(cause, `${action.label}预检失败。`), variant: 'danger' })
     } finally {
@@ -193,7 +198,7 @@ export function useDocumentActionRunner({ moduleId, keyValues, dirty, onRefreshe
             <Button
               variant="primary"
               loading={busyKey === action.key}
-              onClick={() => void (stage.kind === 'params' ? confirmWithParams() : execute(action, stage.values))}
+              onClick={() => void (stage.kind === 'params' ? confirmWithParams() : execute(action, stage.values, stage.correlationId))}
             >
               确定
             </Button>

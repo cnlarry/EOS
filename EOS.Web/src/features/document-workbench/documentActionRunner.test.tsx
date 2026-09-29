@@ -84,6 +84,44 @@ describe('useDocumentActionRunner', () => {
     expect(onRefreshed).toHaveBeenCalled()
   })
 
+  /**
+   * ADR-028 §2.2 的"一次用户操作一个关联键"：探路与真执行是同一次点击引发的两个请求，
+   * 必须共用同一个 `X-Correlation-Id`——否则用户报障给的那个编号只能对上两次请求里的一次，
+   * 排障时看不到"先算了什么、再执行了什么"的完整链路。
+   */
+  it('同一次点击的探路与执行共用同一个关联键（幂等键仍各自独立）', async () => {
+    apiClientMock.post.mockImplementation(async (_url: string, body: { confirm?: boolean }) =>
+      body?.confirm
+        ? { outcome: 'refreshed', message: '已重算' }
+        : { outcome: 'message', message: '将重算 3 行账面数量', requiresConfirmation: true },
+    )
+    const { handle } = setup()
+
+    await act(async () => { await handle.run(action({ confirmTag: true })) })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '确定' }))
+    })
+    await waitFor(() => expect(apiClientMock.post).toHaveBeenCalledTimes(2))
+
+    const probeCorrelation = apiClientMock.post.mock.calls[0][2].headers['X-Correlation-Id']
+    const runCorrelation = apiClientMock.post.mock.calls[1][2].headers['X-Correlation-Id']
+    expect(String(probeCorrelation).length).toBeGreaterThan(0)
+    expect(runCorrelation).toBe(probeCorrelation)
+  })
+
+  /** 两次不同的点击应当是两个不同的键，否则"这一次点击"会被上一次的记录混进来。 */
+  it('两次独立的点击用不同的关联键', async () => {
+    const { handle } = setup()
+
+    await act(async () => { await handle.run(action()) })
+    await act(async () => { await handle.run(action()) })
+
+    expect(apiClientMock.post).toHaveBeenCalledTimes(2)
+    const first = apiClientMock.post.mock.calls[0][2].headers['X-Correlation-Id']
+    const second = apiClientMock.post.mock.calls[1][2].headers['X-Correlation-Id']
+    expect(second).not.toBe(first)
+  })
+
   it('界面有未保存改动时不发起请求，并提示先保存', async () => {
     const { handle } = setup({ dirty: true })
 
