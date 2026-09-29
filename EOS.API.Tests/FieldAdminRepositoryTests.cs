@@ -24,6 +24,7 @@ public sealed class FieldAdminRepositoryTests
             new WorkbenchAuditWriter(new DbConnectionFactory(config), new Microsoft.AspNetCore.Http.HttpContextAccessor(), Provider(config),
                 Microsoft.Extensions.Options.Options.Create(new EOS.API.Models.AuditSettings())),
             new RestrictedExpressionService(new DbConnectionFactory(config)),
+            new WorkbenchIdempotency(),
             NullLogger<FieldAdminRepository>.Instance);
     }
 

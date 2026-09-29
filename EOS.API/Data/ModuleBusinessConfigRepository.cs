@@ -18,6 +18,7 @@ public sealed class ModuleBusinessConfigRepository(
     WorkbenchDirtyMarker dirtyMarker,
     WorkbenchAuditWriter auditWriter,
     DocumentActionRegistry documentActions,
+    WorkbenchIdempotency idempotency,
     ILogger<ModuleBusinessConfigRepository> logger)
 {
     /// <summary>
@@ -178,19 +179,46 @@ public sealed class ModuleBusinessConfigRepository(
         return new ModuleBusinessConfigDto(moduleId, actions, rules);
     }
 
-    public async Task SaveAsync(
+    /// <summary>
+    /// 保存模块的业务动作/校验配置（整模块替换），返回本次的结果键。
+    ///
+    /// <para>
+    /// <paramref name="idempotencyKey"/> 非空时启用写入幂等：同一键重放直接返回上次的结果键、不再落库。
+    /// 抢占、整模块替换、标脏与审计在同一个事务内——审计写不进去即整单回滚，不留"改了但没有痕迹"的状态。
+    /// </para>
+    /// </summary>
+    public async Task<string> SaveAsync(
         int moduleId,
         SaveModuleBusinessConfigRequest request,
         string updatedBy,
-        CancellationToken token)
+        CancellationToken token,
+        string? idempotencyKey = null)
     {
+        var resultKey = $"MODULE_BUSINESS_ACTION:{moduleId}";
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
         try
         {
+            if (idempotencyKey is not null)
+            {
+                var existing = await idempotency.TryClaimAsync(
+                    connection, transaction, idempotencyKey, moduleId, "CFG_ACTION", token);
+                if (existing is { ResultKey: not null })
+                {
+                    await transaction.CommitAsync(token);
+                    return existing.ResultKey;
+                }
+            }
             await SaveScopedAsync(connection, transaction, moduleId, request, updatedBy, token);
             await dirtyMarker.MarkDirtyAsync(connection, transaction, moduleId, updatedBy, token);
+            await auditWriter.WriteEventAsync(connection, transaction, moduleId, "MODULE_BUSINESS_ACTION",
+                "SAVE", "保存业务动作/校验配置", updatedBy, "MENU", result: 1, fieldChanges: null, token);
+            if (idempotencyKey is not null)
+            {
+                await idempotency.CompleteAsync(
+                    connection, transaction, idempotencyKey, resultKey, flowStarted: false, token);
+            }
             await transaction.CommitAsync(token);
         }
         catch
@@ -199,12 +227,10 @@ public sealed class ModuleBusinessConfigRepository(
             throw;
         }
 
-        await auditWriter.WriteBestEffortAsync(
-            moduleId, "MODULE_BUSINESS_ACTION", "SAVE", "保存业务动作/校验配置", updatedBy,
-            "MENU", result: 1, null, token);
         logger.LogInformation(
             "保存业务动作配置 module={ModuleId} actions={Actions} rules={Rules}",
             moduleId, request.Actions.Count, request.ValidationRules.Count);
+        return resultKey;
     }
 
     /// <summary>

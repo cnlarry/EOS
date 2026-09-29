@@ -35,6 +35,7 @@ public sealed class FieldAdminRepositoryIntegrationTests : IDisposable
                 new WorkbenchDefinitionProvider(new DbConnectionFactory(config), NullLogger<WorkbenchDefinitionProvider>.Instance),
                 Microsoft.Extensions.Options.Options.Create(new EOS.API.Models.AuditSettings())),
             new RestrictedExpressionService(new DbConnectionFactory(config)),
+            new WorkbenchIdempotency(),
             NullLogger<FieldAdminRepository>.Instance);
     }
 

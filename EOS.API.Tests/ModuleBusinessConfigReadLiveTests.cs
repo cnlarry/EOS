@@ -40,6 +40,7 @@ public sealed class ModuleBusinessConfigReadLiveTests
             Options.Create(new AuditSettings()));
         return new ModuleBusinessConfigRepository(connections, dirtyMarker, auditWriter,
             new DocumentActionRegistry([new DocumentActionProbeHandler()], NullLogger<DocumentActionRegistry>.Instance),
+            new WorkbenchIdempotency(),
             NullLogger<ModuleBusinessConfigRepository>.Instance);
     }
 

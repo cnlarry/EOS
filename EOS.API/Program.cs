@@ -317,6 +317,14 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.PreviewRecordActionT
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ApplyRecordActionTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Config.IConfigDiagnosisReader,
     EOS.API.Features.Assistant.Config.ConfigDiagnosisReader>();
+builder.Services.Configure<EOS.API.Features.Assistant.Config.AssistantConfigWriteOptions>(
+    builder.Configuration.GetSection(EOS.API.Features.Assistant.Config.AssistantConfigWriteOptions.SectionName));
+builder.Services.AddScoped<EOS.API.Features.Assistant.Config.ConfigClonePlanner>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Config.ConfigDryRunner>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Config.ConfigWriteService>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.CloneModuleConfigTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.PreviewConfigChangeTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ApplyConfigChangeTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Config.ConfigDiagnosisService>();
 builder.Services.AddScoped<EOS.API.Data.IKnowledgeRepository, EOS.API.Data.KnowledgeRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IEmbeddingModel,
@@ -374,6 +382,9 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
          sp.GetRequiredService<EOS.API.Features.Assistant.Tools.DiagnoseRecordTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.PreviewRecordActionTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ApplyRecordActionTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.CloneModuleConfigTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.PreviewConfigChangeTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ApplyConfigChangeTool>(),
      ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));

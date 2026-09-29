@@ -98,4 +98,60 @@ public sealed class WorkbenchIdempotency
         command.Parameters.Add("@Key", SqlDbType.NVarChar, 128).Value = key;
         await command.ExecuteNonQueryAsync(token);
     }
+
+    /// <summary>
+    /// 只读查一次既有结果（自开连接）：用于**没有共享事务**的一批操作在开始前判"这一批做过没有"。
+    /// 它不作写入依据——真正防重的仍是写入路径内的事务内抢占。
+    /// </summary>
+    public static async Task<WorkbenchIdempotencyRecord?> TryReadAsync(
+        DbConnectionFactory connections, string key, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        const string sql = """
+            SELECT RESULT_KEY, FLOW_STARTED
+            FROM dbo.WORKBENCH_IDEMPOTENCY WITH (NOLOCK)
+            WHERE IDEMPOTENCY_KEY=@Key;
+            """;
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.Add("@Key", SqlDbType.NVarChar, 128).Value = key;
+        await using var reader = await command.ExecuteReaderAsync(token);
+        if (!await reader.ReadAsync(token))
+        {
+            return null;
+        }
+        return new WorkbenchIdempotencyRecord(
+            reader.IsDBNull(0) ? null : reader.GetString(0),
+            reader.GetBoolean(1));
+    }
+
+    /// <summary>
+    /// 一步记录（自开连接 + 事务，抢占后立即写结果）：供"一次调用含多段独立事务"的写入在成功后留痕，
+    /// 使同一批的重复提交能在开始前就被识别。已有记录不改写。
+    /// </summary>
+    public async Task RecordAsync(
+        DbConnectionFactory connections,
+        string key,
+        int moduleId,
+        string action,
+        string? resultKey,
+        CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        try
+        {
+            if (await TryClaimAsync(connection, transaction, key, moduleId, action, token) is null)
+            {
+                await CompleteAsync(connection, transaction, key, resultKey, flowStarted: false, token);
+            }
+            await transaction.CommitAsync(token);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(token);
+            throw;
+        }
+    }
 }

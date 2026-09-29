@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Reflection.Emit;
 using EOS.API.Data;
 using EOS.API.Features.Assistant.Actions;
 using EOS.API.Features.Assistant.Tools;
@@ -86,7 +85,7 @@ public sealed class NoApprovalEndpointCallTests
     public void 助手动作层调不到审批与结案入口()
     {
         var reachable = ActionLayerTypes()
-            .SelectMany(CalledMethods)
+            .SelectMany(IlCallGraph.CalledMethods)
             .ToList();
 
         Assert.Contains(reachable, method =>
@@ -117,26 +116,10 @@ public sealed class NoApprovalEndpointCallTests
     [
         .. typeof(AssistantActionGate).Assembly.GetTypes()
             .Where(type => type.Namespace == typeof(AssistantActionGate).Namespace)
-            .SelectMany(WithNestedTypes),
-        .. WithNestedTypes(typeof(PreviewRecordActionTool)),
-        .. WithNestedTypes(typeof(ApplyRecordActionTool)),
+            .SelectMany(IlCallGraph.WithNestedTypes),
+        .. IlCallGraph.WithNestedTypes(typeof(PreviewRecordActionTool)),
+        .. IlCallGraph.WithNestedTypes(typeof(ApplyRecordActionTool)),
     ];
-
-    /// <summary>
-    /// 连同嵌套类型一起取——async 方法的调用点落在编译器生成的状态机里，
-    /// 只看声明类型会一个调用点都读不到（断言就会"永远绿"）。
-    /// </summary>
-    private static IEnumerable<Type> WithNestedTypes(Type type)
-    {
-        yield return type;
-        foreach (var nested in type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
-        {
-            foreach (var inner in WithNestedTypes(nested))
-            {
-                yield return inner;
-            }
-        }
-    }
 
     /// <summary>工具实例：只需读取名称，构造依赖（网关、权限服务）与本断言无关。</summary>
     private static IAssistantTool? TryCreateTool(Type type)
@@ -161,86 +144,4 @@ public sealed class NoApprovalEndpointCallTests
             return null;
         }
     }
-
-    /// <summary>一个类型里所有方法体的**调用点**（含构造器），按元数据解析出被调方法。</summary>
-    private static IEnumerable<MethodBase> CalledMethods(Type type)
-    {
-        const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic
-            | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
-        var methods = type.GetMethods(flags).Cast<MethodBase>().Concat(type.GetConstructors(flags));
-        foreach (var method in methods)
-        {
-            var body = method.GetMethodBody();
-            var il = body?.GetILAsByteArray();
-            if (il is null)
-            {
-                continue;
-            }
-            foreach (var token in CallTokens(il))
-            {
-                MethodBase? called = null;
-                try
-                {
-                    called = method.Module.ResolveMethod(token) as MethodBase;
-                }
-                catch (Exception)
-                {
-                    // 非方法成员的元数据 token（字段/字符串/签名）：不是调用点，忽略
-                }
-                if (called is not null)
-                {
-                    yield return called;
-                }
-            }
-        }
-    }
-
-    private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes)
-        .GetFields(BindingFlags.Public | BindingFlags.Static)
-        .Where(field => field.FieldType == typeof(OpCode))
-        .Select(field => (OpCode)field.GetValue(null)!)
-        .ToDictionary(op => op.Value);
-
-    /// <summary>按 opcode 表走完整段 IL，取出所有 InlineMethod 操作数（call / callvirt / newobj / ldftn）。</summary>
-    private static IEnumerable<int> CallTokens(byte[] il)
-    {
-        var tokens = new List<int>();
-        var index = 0;
-        while (index < il.Length)
-        {
-            OpCode op;
-            if (il[index] == 0xFE)
-            {
-                if (index + 1 >= il.Length) break;
-                if (!OpCodesByValue.TryGetValue((short)(0xFE00 | il[index + 1]), out op)) break;
-                index += 2;
-            }
-            else
-            {
-                if (!OpCodesByValue.TryGetValue(il[index], out op)) break;
-                index += 1;
-            }
-
-            var size = OperandSize(op, il, index);
-            if (op.OperandType == OperandType.InlineMethod && index + 4 <= il.Length)
-            {
-                tokens.Add(BitConverter.ToInt32(il, index));
-            }
-            index += size;
-        }
-        return tokens;
-    }
-
-    private static int OperandSize(OpCode op, byte[] il, int index) => op.OperandType switch
-    {
-        OperandType.InlineNone => 0,
-        OperandType.ShortInlineI or OperandType.ShortInlineVar or OperandType.ShortInlineBrTarget => 1,
-        OperandType.InlineVar or OperandType.InlineI or OperandType.InlineBrTarget
-            or OperandType.InlineField or OperandType.InlineMethod or OperandType.InlineSig
-            or OperandType.InlineString or OperandType.InlineTok or OperandType.InlineType
-            or OperandType.ShortInlineR => 4,
-        OperandType.InlineI8 or OperandType.InlineR => 8,
-        OperandType.InlineSwitch => index + 4 <= il.Length ? 4 + (4 * BitConverter.ToInt32(il, index)) : 0,
-        _ => 0,
-    };
 }

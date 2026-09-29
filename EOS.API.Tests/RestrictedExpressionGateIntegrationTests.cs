@@ -46,6 +46,7 @@ public sealed class RestrictedExpressionGateIntegrationTests
                 new WorkbenchDefinitionProvider(_connections, NullLogger<WorkbenchDefinitionProvider>.Instance),
                 Microsoft.Extensions.Options.Options.Create(new AuditSettings())),
             _service,
+            new WorkbenchIdempotency(),
             NullLogger<FieldAdminRepository>.Instance);
     }
 

@@ -1681,3 +1681,21 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-assistant-action-field { display: flex; flex-direction: column; gap: 2px; }
 .erp-assistant-action-impact { margin-top: 4px; }
 .erp-assistant-action-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+
+/* 配置改动对照卡：逐项旧值/新值/影响面 + 不可预演项的单独标注 + 逐项可取消勾选。 */
+.erp-assistant-config-item {
+  border-top: 1px solid var(--tblr-border-color, #e6e7e9);
+  padding: 6px 0;
+}
+.erp-assistant-config-item.is-unpreviewable { background: var(--tblr-warning-lt, #fff3cd); }
+.erp-assistant-config-note { font-size: 11px; color: var(--tblr-secondary, #6c757d); line-height: 1.5; margin-top: 2px; }
+.erp-assistant-config-note.is-warning { color: var(--tblr-yellow, #997404); font-weight: 600; }
+.erp-assistant-config-note.is-previewed { color: var(--tblr-green, #2fb344); }
+.erp-assistant-config-summary {
+  margin-top: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--tblr-bg-surface-secondary, #f6f8fb);
+}
+.erp-assistant-config-result { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--tblr-border-color, #e6e7e9); }
