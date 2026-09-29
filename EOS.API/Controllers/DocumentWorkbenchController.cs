@@ -1,43 +1,56 @@
 using EOS.API.Data;
 using EOS.API.Data.DocumentActions;
+using EOS.API.Data.Workbench;
 using EOS.API.Errors;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
 namespace EOS.API.Controllers;
 
 [ApiController, Authorize, Route("api/v1/document-workbench/{moduleId:int}")]
-public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, WorkbenchChooserService chooser, IPermissionService permissions, WorkbenchAuditWriter auditWriter, DocumentActionExecutor documentActions, EOS.API.Security.CurrentUserContext userContext, IOptions<UnifiedFormEditorSettings> formSettings, ILogger<DocumentWorkbenchController> logger) : ControllerBase
+public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repository, WorkbenchChooserService chooser, WorkbenchAccessPolicy policy, WorkbenchAuditWriter auditWriter, DocumentActionExecutor documentActions, EOS.API.Security.CurrentUserContext userContext, ILogger<DocumentWorkbenchController> logger) : ControllerBase
 {
-    /// <summary>字段维护（数据表/字段设置）模块 ID：表单标签右键进入字段设置页的权限门。</summary>
-    private const int FieldAdminModuleId = 2302;
+    /// <summary>当前请求的用户号（授权判定与数据装配的主体）。</summary>
+    private string? UserId => User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+    /// <summary>把策略层的拒绝结果映射为响应形态（404 / 403 / 400），口径由策略层给出。</summary>
+    private IActionResult Denied(WorkbenchDenial denial) => denial.Kind switch
+    {
+        WorkbenchDenialKind.Forbidden=>Forbid(),
+        WorkbenchDenialKind.InvalidRequest=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,denial.Code,denial.Message??denial.Code)),
+        _=>NotFound(),
+    };
 
     [HttpGet("definition")]
-    public async Task<IActionResult> Definition(int moduleId,CancellationToken token)=>await AuthorizedDefinition(moduleId,token) is { } definition?Ok(definition):NotFound();
+    public async Task<IActionResult> Definition(int moduleId,CancellationToken token)
+    {
+        var decision=await policy.AuthorizeDefinitionAsync(UserId,moduleId,token);
+        return decision.Allowed?Ok(decision.Value!.Definition):Denied(decision.Denial!);
+    }
 
     [HttpGet("records")]
-    public async Task<IActionResult> Records(int moduleId,[FromQuery]int page=1,[FromQuery]int pageSize=20,[FromQuery]string? keyword=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]string? sortFields=null,[FromQuery]string? sortDirections=null,[FromQuery]int? groupIndex=null,[FromQuery]string? groupValue=null,CancellationToken token=default){var definition=await AuthorizedDefinition(moduleId,token);if(definition is null)return NotFound();var dataFilter=await EffectiveDataFilter(moduleId,token);return Ok(await repository.GetRowsAsync(definition,false,new Dictionary<string,string>(),page,pageSize,token,null,keyword,sortFields??sortField,sortDirections??sortDirection,groupIndex,groupValue,dataFilter));}
+    public async Task<IActionResult> Records(int moduleId,[FromQuery]int page=1,[FromQuery]int pageSize=20,[FromQuery]string? keyword=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]string? sortFields=null,[FromQuery]string? sortDirections=null,[FromQuery]int? groupIndex=null,[FromQuery]string? groupValue=null,CancellationToken token=default){var decision=await policy.AuthorizeDefinitionAsync(UserId,moduleId,token);if(!decision.Allowed)return Denied(decision.Denial!);var dataFilter=await policy.GetDataFilterAsync(UserId,moduleId,token);return Ok(await repository.GetRowsAsync(decision.Value!.Definition,false,new Dictionary<string,string>(),page,pageSize,token,null,keyword,sortFields??sortField,sortDirections??sortDirection,groupIndex,groupValue,dataFilter));}
 
     [HttpPost("query")]
-    public async Task<IActionResult> Query(int moduleId,[FromBody]WorkbenchQuery query,[FromQuery]int page=1,[FromQuery]int pageSize=20,[FromQuery]string? keyword=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]string? sortFields=null,[FromQuery]string? sortDirections=null,[FromQuery]int? groupIndex=null,[FromQuery]string? groupValue=null,CancellationToken token=default){var definition=await AuthorizedDefinition(moduleId,token);if(definition is null)return NotFound();var dataFilter=await EffectiveDataFilter(moduleId,token);return Ok(await repository.GetRowsAsync(definition,false,new Dictionary<string,string>(),page,pageSize,token,query,keyword,sortFields??sortField,sortDirections??sortDirection,groupIndex,groupValue,dataFilter));}
+    public async Task<IActionResult> Query(int moduleId,[FromBody]WorkbenchQuery query,[FromQuery]int page=1,[FromQuery]int pageSize=20,[FromQuery]string? keyword=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]string? sortFields=null,[FromQuery]string? sortDirections=null,[FromQuery]int? groupIndex=null,[FromQuery]string? groupValue=null,CancellationToken token=default){var decision=await policy.AuthorizeDefinitionAsync(UserId,moduleId,token);if(!decision.Allowed)return Denied(decision.Denial!);var dataFilter=await policy.GetDataFilterAsync(UserId,moduleId,token);return Ok(await repository.GetRowsAsync(decision.Value!.Definition,false,new Dictionary<string,string>(),page,pageSize,token,query,keyword,sortFields??sortField,sortDirections??sortDirection,groupIndex,groupValue,dataFilter));}
 
     [HttpGet("details")]
-    public async Task<IActionResult> Details(int moduleId,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,CancellationToken token=default){var definition=await AuthorizedDefinition(moduleId,token);if(definition is null)return NotFound();var keys=Request.Query.ToDictionary(item=>item.Key,item=>item.Value.ToString(),StringComparer.OrdinalIgnoreCase);var dataFilter=await EffectiveDataFilter(moduleId,token);return Ok(await repository.GetRowsAsync(definition,true,keys,1,100,token,null,null,sortField,sortDirection,dataFilter:dataFilter));}
+    public async Task<IActionResult> Details(int moduleId,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,CancellationToken token=default){var decision=await policy.AuthorizeDefinitionAsync(UserId,moduleId,token);if(!decision.Allowed)return Denied(decision.Denial!);var keys=Request.Query.ToDictionary(item=>item.Key,item=>item.Value.ToString(),StringComparer.OrdinalIgnoreCase);var dataFilter=await policy.GetDataFilterAsync(UserId,moduleId,token);return Ok(await repository.GetRowsAsync(decision.Value!.Definition,true,keys,1,100,token,null,null,sortField,sortDirection,dataFilter:dataFilter));}
     [HttpPost("export")]
-    public async Task<IActionResult> Export(int moduleId,[FromBody]WorkbenchQuery? query,[FromQuery]string? keyword=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]string? sortFields=null,[FromQuery]string? sortDirections=null,[FromQuery]int? groupIndex=null,[FromQuery]string? groupValue=null,[FromQuery]string? format=null,[FromQuery]string? columns=null,CancellationToken token=default){var definition=await AuthorizedDefinition(moduleId,token);if(definition is null)return NotFound();var dataFilter=await EffectiveDataFilter(moduleId,token);var exportFields=DocumentWorkbenchRepository.ResolveExportFields(definition.MasterFields,ParseColumnKeys(columns));var rows=await repository.GetExportRowsAsync(definition,query,keyword,token,sortFields??sortField,sortDirections??sortDirection,groupIndex,groupValue,exportFields,dataFilter);await auditWriter.WriteBestEffortAsync(moduleId,$"export {format} rows={rows.Count}","EXPORT",$"导出 {definition.Title}",userContext.UserId,"EXPORT",1,null,token);return ExportFile(exportFields,rows,format,definition.Title);}
+    public async Task<IActionResult> Export(int moduleId,[FromBody]WorkbenchQuery? query,[FromQuery]string? keyword=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]string? sortFields=null,[FromQuery]string? sortDirections=null,[FromQuery]int? groupIndex=null,[FromQuery]string? groupValue=null,[FromQuery]string? format=null,[FromQuery]string? columns=null,CancellationToken token=default){var decision=await policy.AuthorizeDefinitionAsync(UserId,moduleId,token);if(!decision.Allowed)return Denied(decision.Denial!);var definition=decision.Value!.Definition;var dataFilter=await policy.GetDataFilterAsync(UserId,moduleId,token);var exportFields=DocumentWorkbenchRepository.ResolveExportFields(definition.MasterFields,ParseColumnKeys(columns));var rows=await repository.GetExportRowsAsync(definition,query,keyword,token,sortFields??sortField,sortDirections??sortDirection,groupIndex,groupValue,exportFields,dataFilter);await auditWriter.WriteBestEffortAsync(moduleId,$"export {format} rows={rows.Count}","EXPORT",$"导出 {definition.Title}",userContext.UserId,"EXPORT",1,null,token);return ExportFile(exportFields,rows,format,definition.Title);}
 
     [HttpPost("export-selected")]
     public async Task<IActionResult> ExportSelected(int moduleId,[FromBody]ExportSelectedRequest request,[FromQuery]int? groupIndex=null,[FromQuery]string? groupValue=null,[FromQuery]string? format=null,[FromQuery]string? columns=null,CancellationToken token=default)
     {
-        var definition=await AuthorizedDefinition(moduleId,token);
-        if(definition is null)return NotFound();
+        var decision=await policy.AuthorizeDefinitionAsync(UserId,moduleId,token);
+        if(!decision.Allowed)return Denied(decision.Denial!);
+        var definition=decision.Value!.Definition;
         if(request.Keys.Count==0||request.Keys.Count>500)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_EXPORT_KEYS","导出行数需在 1~500 之间。"));
         if(request.Keys.Any(row=>row.Count!=definition.MasterPkOrder.Count))return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_EXPORT_KEYS","导出主键数量与模块定义不一致。"));
         var exportFields=DocumentWorkbenchRepository.ResolveExportFields(definition.MasterFields,ParseColumnKeys(columns));
-        var dataFilter=await EffectiveDataFilter(moduleId,token);
+        var dataFilter=await policy.GetDataFilterAsync(UserId,moduleId,token);
         var rows=await repository.GetExportRowsByKeysAsync(definition,request.Keys,token,groupIndex,groupValue,exportFields,dataFilter);
         await auditWriter.WriteBestEffortAsync(moduleId,$"export-selected rows={rows.Count}","EXPORT",$"导出所选 {definition.Title}",userContext.UserId,"EXPORT",1,null,token);
         return ExportFile(exportFields,rows,format,definition.Title);
@@ -46,57 +59,35 @@ public sealed class DocumentWorkbenchController(DocumentWorkbenchRepository repo
     [HttpGet("form-definition")]
     public async Task<IActionResult> FormDefinition(int moduleId,[FromQuery]string mode="new",CancellationToken token=default)
     {
-        var definition=await AuthorizedDefinition(moduleId,token);
-        var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if(definition is null||userId is null)return NotFound();
-        var formEnabled=FormWritable(moduleId);
-        if(!formEnabled&&!FormReadOnly(moduleId))return NotFound();
-        var normalized=mode.Trim().ToLowerInvariant();
-        if(normalized is not ("new" or "edit" or "view"))return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_FORM_MODE","mode 仅支持 new、edit 或 view。"));
-        // 只读名单只放行浏览：新增/修改仍以写名单为唯一入口
-        if(normalized!="view"&&!formEnabled)return NotFound();
-        var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
-        if(normalized=="new"&&!rights.CanAddNew)return Forbid();
-        if(normalized=="edit"&&!rights.CanEdit)return Forbid();
-        // view 模式仅需浏览权限
-        if(normalized=="view"&&!rights.CanBrowse)return Forbid();
-        if(normalized=="new"&&!definition.HasAdd)return NotFound();
-        if(normalized=="edit"&&!definition.HasEdit)return NotFound();
-var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,rights.CanViewCost,rights.CanViewSecrecy,
-            rights.DeniedMasterFields,rights.DeniedDetailFields,
-            rights.DenyNewMasterFields,rights.DenyNewDetailFields,
-            rights.DenyModiMasterFields,rights.DenyModiDetailFields,token,
-            rights.CanAddNew,rights.CanEdit,rights.CanDelete,rights.CanApprove,rights.CanDeapprove,rights.CanEndCase,rights.CanUnEndCase,
-            rights.CanFileView,rights.CanFileUpda,rights.CanFileEdit,rights.CanFileDele,
-            canSetup:(await permissions.GetAsync(userId,FieldAdminModuleId,token)).CanSetup);
-        if(form is null)return NotFound();
-        // 只读模块不下发写动作：浏览态工具栏据此不渲染编辑/复制/删除/批核/结案——
-        // 这些端点对该模块一律 404，按钮留着只会开出一次失败。
-        return Ok(formEnabled?form:WithoutWriteActions(form));
+        var decision=await policy.AuthorizeFormDefinitionAsync(UserId,moduleId,mode,token);
+        return decision.Allowed?Ok(decision.Value!.Form):Denied(decision.Denial!);
     }
 
     [HttpGet("record")]
     public async Task<IActionResult> Record(int moduleId,[FromQuery]string key,CancellationToken token=default)
     {
         // 查看优先（浏览权限即可），编辑为回退（编辑权限可看可改）
-        var access=await FormAccess(moduleId,"view",token) ?? await FormAccess(moduleId,"edit",token);
-        if(access is null)return NotFound();
+        var access=await policy.AuthorizeFormAsync(UserId,moduleId,"view",token);
+        if(!access.Allowed)access=await policy.AuthorizeFormAsync(UserId,moduleId,"edit",token);
+        if(!access.Allowed)return NotFound();
         var keyValues=ParseKey(key);
         if(keyValues is null)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RECORD_KEY","key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
-        var result=await repository.GetRecordAsync(access.Value.Definition,access.Value.Form,keyValues,access.Value.Rights.DataFilter,token);
+        var granted=access.Value!;
+        var result=await repository.GetRecordAsync(granted.Definition,granted.Form,keyValues,granted.Rights.DataFilter,token);
         return MapReadResult(result);
     }
 
     [HttpPost("record")]
     public async Task<IActionResult> CreateRecord(int moduleId,[FromBody]SaveRecordRequest request,[FromHeader(Name="X-Idempotency-Key")]string? headerIdempotencyKey=null,CancellationToken token=default)
     {
-        var access=await FormAccess(moduleId,"new",token);
-        if(access is null)return NotFound();
+        var access=await policy.AuthorizeFormAsync(UserId,moduleId,"new",token);
+        if(!access.Allowed)return NotFound();
         // Form write path requires an idempotency key (request body or X-Idempotency-Key header)
-        if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
+        if(WorkbenchAccessPolicy.CheckIdempotencyKey(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return Denied(idempotencyProblem);
         request=request with{IdempotencyKey=request.IdempotencyKey??headerIdempotencyKey};
         logger.LogDebug("统一表单保存请求 module={ModuleId} mode=new fields={Fields} details={DetailCount}",moduleId,string.Join(',',request.Values.Keys),request.Details?.Count??0);
-        var result=await repository.CreateRecordAsync(access.Value.Definition,access.Value.Form,request,userContext.EmployeeName,userContext.UserId,access.Value.Rights.DataFilter,token);
+        var granted=access.Value!;
+        var result=await repository.CreateRecordAsync(granted.Definition,granted.Form,request,userContext.EmployeeName,userContext.UserId,granted.Rights.DataFilter,token);
         LogValidationFailure(moduleId,result);
         return MapSaveResult(result);
     }
@@ -104,14 +95,15 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
     [HttpPut("record")]
     public async Task<IActionResult> UpdateRecord(int moduleId,[FromQuery]string key,[FromBody]SaveRecordRequest request,[FromHeader(Name="X-Idempotency-Key")]string? headerIdempotencyKey=null,CancellationToken token=default)
     {
-        var access=await FormAccess(moduleId,"edit",token);
-        if(access is null)return NotFound();
+        var access=await policy.AuthorizeFormAsync(UserId,moduleId,"edit",token);
+        if(!access.Allowed)return NotFound();
         var keyValues=ParseKey(key);
         if(keyValues is null)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RECORD_KEY","key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
-        if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
+        if(WorkbenchAccessPolicy.CheckIdempotencyKey(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return Denied(idempotencyProblem);
         request=request with{IdempotencyKey=request.IdempotencyKey??headerIdempotencyKey};
         logger.LogDebug("统一表单保存请求 module={ModuleId} mode=edit key={Key} fields={Fields} details={DetailCount}",moduleId,string.Join(',',keyValues),string.Join(',',request.Values.Keys),request.Details?.Count??0);
-        var result=await repository.UpdateRecordAsync(access.Value.Definition,access.Value.Form,keyValues,request,userContext.EmployeeName,userContext.UserId,access.Value.Rights.DataFilter,token);
+        var granted=access.Value!;
+        var result=await repository.UpdateRecordAsync(granted.Definition,granted.Form,keyValues,request,userContext.EmployeeName,userContext.UserId,granted.Rights.DataFilter,token);
         LogValidationFailure(moduleId,result);
         return MapSaveResult(result);
     }
@@ -119,13 +111,13 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
     [HttpDelete("record")]
     public async Task<IActionResult> DeleteRecord(int moduleId,[FromQuery]string key,[FromHeader(Name="X-Idempotency-Key")]string? idempotencyKey=null,CancellationToken token=default)
     {
-        var access=await FormAccess(moduleId,"edit",token);
-        if(access is null)return NotFound();
-        await permissions.RequireAsync(userContext.UserId,moduleId,PermissionAction.Delete,token);
+        var access=await policy.AuthorizeDeleteAsync(UserId,moduleId,token);
+        if(!access.Allowed)return NotFound();
         var keyValues=ParseKey(key);
         if(keyValues is null)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RECORD_KEY","key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
-        if(IdempotencyProblem(idempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
-        var result=await repository.DeleteRecordAsync(access.Value.Definition,access.Value.Form,keyValues,userContext.UserId,access.Value.Rights.DataFilter,token,idempotencyKey!.Trim());
+        if(WorkbenchAccessPolicy.CheckIdempotencyKey(idempotencyKey) is { } idempotencyProblem)return Denied(idempotencyProblem);
+        var granted=access.Value!;
+        var result=await repository.DeleteRecordAsync(granted.Definition,granted.Form,keyValues,userContext.UserId,granted.Rights.DataFilter,token,idempotencyKey!.Trim());
         LogValidationFailure(moduleId,result);
         return MapSaveResult(result);
     }
@@ -138,12 +130,13 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
     [HttpPost("action/{actionKey}")]
     public async Task<IActionResult> RunAction(int moduleId,string actionKey,[FromBody]DocumentActionRequest? request,[FromHeader(Name="X-Idempotency-Key")]string? idempotencyKey=null,CancellationToken token=default)
     {
-        var access=await ActionAccess(moduleId,token);
-        if(access is null)return NotFound();
+        var access=await policy.AuthorizeActionAsync(UserId,moduleId,token);
+        if(!access.Allowed)return NotFound();
         if(request?.Key is null||request.Key.Count==0)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RECORD_KEY","请求体 key 必须是主键值数组。"));
-        if(IdempotencyProblem(idempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
-        var result=await documentActions.ExecuteAsync(access.Value.Definition,access.Value.Form,actionKey,request,
-            userContext.UserId,userContext.EmployeeName,access.Value.Rights.DataFilter,idempotencyKey!.Trim(),token);
+        if(WorkbenchAccessPolicy.CheckIdempotencyKey(idempotencyKey) is { } idempotencyProblem)return Denied(idempotencyProblem);
+        var granted=access.Value!;
+        var result=await documentActions.ExecuteAsync(granted.Definition,granted.Form,actionKey,request,
+            userContext.UserId,userContext.EmployeeName,granted.Rights.DataFilter,idempotencyKey!.Trim(),token);
         return MapActionResult(moduleId,actionKey,result);
     }
 
@@ -165,42 +158,29 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,normalized,ri
 
 private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveWorkflowRequest request,string? headerIdempotencyKey,CancellationToken token)
     {
-        var definition=await AuthorizedDefinition(moduleId,token);
-        if(definition is null)return NotFound();
         // 批核/解批同属写路径，与新增/修改/删除共用同一道闸门：模块必须有**可写的页面入口**
-        // （统一表单写名单，或指向自定义页的 NEW_URL/MODI_URL）。只读名单的模块（库存余额 /
-        // 批次账）按钮本就不显示，也不得经本端点翻状态位。
-        if(!HasWritablePage(definition,moduleId))return NotFound();
-        // API 是最终权限边界：批核/解批必须服务端复核，前端按钮显隐只改善体验。
-        await permissions.RequireAsync(userContext.UserId,moduleId,approve?PermissionAction.Approve:PermissionAction.Deapprove,token);
+        // （统一表单写名单，或指向自定义页的 NEW_URL/MODI_URL），且当前用户具备该动作位——
+        // 两条判据都在策略层，API 是最终权限边界，前端按钮显隐只改善体验。
+        var decision=await policy.AuthorizeWorkflowAsync(UserId,moduleId,approve?PermissionAction.Approve:PermissionAction.Deapprove,token);
+        if(!decision.Allowed)return Denied(decision.Denial!);
         var keyValues=ParseKey(request.Key);
         if(keyValues is null)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RECORD_KEY","key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
-        if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
-        var result=await repository.WorkflowAsync(definition,keyValues,approve,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey??headerIdempotencyKey,request.Message);
+        if(WorkbenchAccessPolicy.CheckIdempotencyKey(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return Denied(idempotencyProblem);
+        var result=await repository.WorkflowAsync(decision.Value!.Definition,keyValues,approve,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey??headerIdempotencyKey,request.Message);
         return MapSaveResult(result);
     }
 
     private async Task<IActionResult> RunFinish(int moduleId,bool finish,ApproveWorkflowRequest request,string? headerIdempotencyKey,CancellationToken token)
     {
-        var definition=await AuthorizedDefinition(moduleId,token);
-        if(definition is null)return NotFound();
         // 结案/取消结案与批核同一道闸门，理由同 RunWorkflow。
-        if(!HasWritablePage(definition,moduleId))return NotFound();
-        var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if(userId is null)return Unauthorized();
-        await permissions.RequireAsync(userId,moduleId,finish?PermissionAction.EndCase:PermissionAction.UnEndCase,token);
+        var decision=await policy.AuthorizeWorkflowAsync(UserId,moduleId,finish?PermissionAction.EndCase:PermissionAction.UnEndCase,token);
+        if(!decision.Allowed)return Denied(decision.Denial!);
         var keyValues=ParseKey(request.Key);
         if(keyValues is null)return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"INVALID_RECORD_KEY","key 必须是主键值数组的 JSON 编码（如 [\"A\",\"B\"]）。"));
-        if(IdempotencyProblem(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return idempotencyProblem;
-        var result=await repository.FinishAsync(definition,keyValues,finish,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey??headerIdempotencyKey);
+        if(WorkbenchAccessPolicy.CheckIdempotencyKey(request.IdempotencyKey??headerIdempotencyKey) is { } idempotencyProblem)return Denied(idempotencyProblem);
+        var result=await repository.FinishAsync(decision.Value!.Definition,keyValues,finish,userContext.EmployeeName,userContext.UserId,token,request.IdempotencyKey??headerIdempotencyKey);
         return MapSaveResult(result);
     }
-
-    /// <summary>：统一表单写路径幂等键强制（缺失或超 128 字符返回 400）。</summary>
-    private IActionResult? IdempotencyProblem(string? idempotencyKey)
-        => string.IsNullOrWhiteSpace(idempotencyKey)||idempotencyKey.Trim().Length>128
-            ? BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,"IDEMPOTENCY_KEY_REQUIRED","写操作缺少有效幂等键（请求体 idempotencyKey 或 X-Idempotency-Key 请求头，≤128 字符）。"))
-            :null;
 
     private void LogValidationFailure(int moduleId,RecordSaveResult result)
     {
@@ -211,9 +191,10 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
     [HttpGet("form-chooser/{fieldKey}")]
     public async Task<IActionResult> FormChooser(int moduleId,string fieldKey,[FromQuery]int? serialNo=null,[FromQuery]string? keyword=null,[FromQuery]string? filterField=null,[FromQuery]string? master=null,[FromQuery]string? detail=null,[FromQuery]string? conditions=null,[FromQuery]string? sortField=null,[FromQuery]string? sortDirection=null,[FromQuery]int page=1,[FromQuery]int pageSize=50,CancellationToken token=default)
     {
-        var access=await FormAccess(moduleId,"new",token) ?? await FormAccess(moduleId,"edit",token);
-        if(access is null)return NotFound();
-        var (definition,form,rights)=access.Value;
+        var access=await policy.AuthorizeFormAsync(UserId,moduleId,"new",token);
+        if(!access.Allowed)access=await policy.AuthorizeFormAsync(UserId,moduleId,"edit",token);
+        if(!access.Allowed)return NotFound();
+        var (definition,form,rights)=(access.Value!.Definition,access.Value.Form,access.Value.Rights);
         var field=form.MasterFields.Concat(form.DetailFields).FirstOrDefault(item=>item.Key.Equals(fieldKey,StringComparison.OrdinalIgnoreCase));
         if(field is null)return NotFound();
         // When a field has multiple chooser sources, the front end picks by serialNo; default to the first active source
@@ -223,8 +204,8 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         var chooserRights=rights;
         if(source.ModuleId is int moduleIndex&&moduleIndex>0)
         {
-            var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if(userId is not null)chooserRights=(await permissions.GetAsync(userId,moduleIndex,token)).Rights;
+            var moduleRights=await policy.GetRightsAsync(UserId,moduleIndex,token);
+            if(moduleRights is not null)chooserRights=moduleRights;
         }
         // FILTER_STRUCT 结构化条件：编译期把 {module} 等模板转为参数占位符，运行期绑定
         // NULL = 存量条件待重建（迁移清单内），fail-closed 返回空选项，绝不退化为「无过滤」放大数据范围
@@ -293,27 +274,6 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
     }
 
     /// <summary>
-    /// 单据操作的入口闸门：权限口径与 <see cref="FormAccess"/> 相同，但不要求模块在统一表单白名单内——
-    /// 按钮同样出现在主表模块的自定义承载页上（这类模块没有统一表单，却仍有单据级动作）。
-    /// </summary>
-    private async Task<(WorkbenchDefinition Definition,FormDefinition Form,ModuleRights Rights)?> ActionAccess(int moduleId,CancellationToken token)
-    {
-        var definition=await AuthorizedDefinition(moduleId,token);
-        var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if(definition is null||userId is null)return null;
-        // 与批核/解批/结案同一道闸门：只读列表、由服务端服务托管的配置表不得经本端点改数据。
-        if(!definition.HasAdd&&!definition.HasEdit)return null;
-        var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
-        var form=await repository.GetFormDefinitionAsync(definition,userId,"view",rights.CanViewCost,rights.CanViewSecrecy,
-            rights.DeniedMasterFields,rights.DeniedDetailFields,
-            rights.DenyNewMasterFields,rights.DenyNewDetailFields,
-            rights.DenyModiMasterFields,rights.DenyModiDetailFields,token,
-            rights.CanAddNew,rights.CanEdit,rights.CanDelete,rights.CanApprove,rights.CanDeapprove,rights.CanEndCase,rights.CanUnEndCase,
-            rights.CanFileView,rights.CanFileUpda,rights.CanFileEdit,rights.CanFileDele);
-        return form is null?null:(definition,form,rights);
-    }
-
-    /// <summary>
     /// 该用户在本模块上有授权的单据动作名单——自定义承载页用它渲染按钮。
     /// 没有统一表单、但仍有单据级动作的模块（如库存策略配置页）拿不到 FORM 定义，
     /// 走这个只读端点即可；它是 FORM 里那份名单的同一个来源，不含未经授权的操作。
@@ -321,11 +281,9 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
     [HttpGet("actions")]
     public async Task<IActionResult> UserActions(int moduleId,CancellationToken token)
     {
-        var definition=await AuthorizedDefinition(moduleId,token);
-        var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if(definition is null||userId is null)return NotFound();
-        if(!definition.HasAdd&&!definition.HasEdit)return NotFound();
-        return Ok(await repository.BuildUserActionsAsync(definition,userId,token));
+        var decision=await policy.AuthorizeUserActionsAsync(UserId,moduleId,token);
+        if(!decision.Allowed)return NotFound();
+        return Ok(await repository.BuildUserActionsAsync(decision.Value!.Definition,UserId!,token));
     }
 
     private IActionResult MapActionResult(int moduleId,string actionKey,DocumentActionExecution result)=>result.Status switch
@@ -345,62 +303,6 @@ private async Task<IActionResult> RunWorkflow(int moduleId,bool approve,ApproveW
         DocumentActionStatus.FilterUnsupported=>StatusCode(StatusCodes.Status403Forbidden,ApiProblem.Create(StatusCodes.Status403Forbidden,result.ErrorCode??"DATA_FILTER_UNSUPPORTED",result.ErrorMessage??"当前数据过滤条件尚不支持，已拒绝执行。")),
         DocumentActionStatus.KeyMismatch=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,result.ErrorCode??"RECORD_KEY_MISMATCH",result.ErrorMessage??"主键数量与模块主键不匹配。")),
         _=>BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest,result.ErrorCode??DocumentActionErrorCodes.Failed,result.ErrorMessage??"操作未完成。").WithFieldErrors(result.FieldErrors??Array.Empty<FieldError>())),
-    };
-
-    private async Task<(WorkbenchDefinition Definition,FormDefinition Form,ModuleRights Rights)?> FormAccess(int moduleId,string mode,CancellationToken token)
-    {
-        var definition=await AuthorizedDefinition(moduleId,token);
-        var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if(definition is null||userId is null)return null;
-        // 浏览走写名单或只读名单；新增/修改/删除只认写名单（只读名单不开写路径）。
-        var formEnabled=FormWritable(moduleId);
-        if(mode=="view"?!(formEnabled||FormReadOnly(moduleId)):!formEnabled)return null;
-        var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
-        if(mode=="new"&&!rights.CanAddNew)return null;
-        if(mode=="edit"&&!rights.CanEdit)return null;
-        if(mode=="view"&&!rights.CanBrowse)return null;
-        if(mode=="new"&&!definition.HasAdd)return null;
-        if(mode=="edit"&&!definition.HasEdit)return null;
-var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.CanViewCost,rights.CanViewSecrecy,
-            rights.DeniedMasterFields,rights.DeniedDetailFields,
-            rights.DenyNewMasterFields,rights.DenyNewDetailFields,
-            rights.DenyModiMasterFields,rights.DenyModiDetailFields,token,
-            rights.CanAddNew,rights.CanEdit,rights.CanDelete,rights.CanApprove,rights.CanDeapprove,rights.CanEndCase,rights.CanUnEndCase,
-            rights.CanFileView,rights.CanFileUpda,rights.CanFileEdit,rights.CanFileDele);
-        if(form is null)return null;
-        return (definition,formEnabled?form:WithoutWriteActions(form),rights);
-    }
-
-    /// <summary>模块在统一表单<b>写</b>名单内（可新增/修改/删除）。</summary>
-    private bool FormWritable(int moduleId)=>formSettings.Value.EnabledModuleIds.Contains(moduleId);
-
-    /// <summary>模块在统一表单<b>只读</b>名单内（可浏览，写路径仍封）。</summary>
-    private bool FormReadOnly(int moduleId)=>formSettings.Value.ReadOnlyModuleIds.Contains(moduleId);
-
-    /// <summary>
-    /// 模块是否有<b>可写</b>的页面入口：统一表单写名单，或 NEW_URL/MODI_URL 指向自定义页
-    /// （指向统一表单动作路由的模板只在写名单内成立）。批核/解批/结案/取消结案与
-    /// 新增/修改/删除共用这条判据——只读名单只放浏览，不放任何写动作；自定义承载页照旧。
-    /// </summary>
-    private bool HasWritablePage(WorkbenchDefinition definition,int moduleId)
-        => FormWritable(moduleId)
-        || (definition.NewUrl is not null&&!ModuleRouteValidator.IsUnifiedFormRoute(definition.NewUrl,moduleId))
-        || (definition.ModiUrl is not null&&!ModuleRouteValidator.IsUnifiedFormRoute(definition.ModiUrl,moduleId));
-
-    /// <summary>
-    /// 只读模块下发的表单：保留浏览与自定义按钮，关掉全部写动作。
-    /// 只读模块的新增/修改/删除端点本就 404（写名单之外），写动作留着只会开出一次失败。
-    /// </summary>
-    private static FormDefinition WithoutWriteActions(FormDefinition form)=>form with
-    {
-        HasAdd=false,
-        HasEdit=false,
-        IfCopy=false,
-        CanDelete=false,
-        CanApprove=false,
-        CanDeapprove=false,
-        CanEndCase=false,
-        CanUnEndCase=false,
     };
 
     private static IReadOnlyList<string>? ParseKey(string? key)
@@ -438,66 +340,31 @@ var form=await repository.GetFormDefinitionAsync(definition,userId,mode,rights.C
     };
 
     [HttpGet("columns")]
-    public async Task<IActionResult> Columns(int moduleId,CancellationToken token){var definition=await AuthorizedDefinition(moduleId,token);var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;if(definition is null||userId is null)return NotFound();return Ok(await repository.GetColumnSettingsAsync(definition,userId,token));}
+    public async Task<IActionResult> Columns(int moduleId,CancellationToken token){var decision=await policy.AuthorizeDefinitionAsync(UserId,moduleId,token);if(!decision.Allowed)return NotFound();return Ok(await repository.GetColumnSettingsAsync(decision.Value!.Definition,UserId!,token));}
 
     [HttpGet("column-editor")]
-    public async Task<IActionResult> ColumnEditor(int moduleId,CancellationToken token){var definition=await AuthorizedDefinition(moduleId,token);var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;if(definition is null||userId is null)return NotFound();var settings=await repository.GetColumnEditorSettingsAsync(definition,userId,token);return Ok(new {current=settings.Current,defaults=settings.Defaults});}
+    public async Task<IActionResult> ColumnEditor(int moduleId,CancellationToken token){var decision=await policy.AuthorizeDefinitionAsync(UserId,moduleId,token);if(!decision.Allowed)return NotFound();var settings=await repository.GetColumnEditorSettingsAsync(decision.Value!.Definition,UserId!,token);return Ok(new {current=settings.Current,defaults=settings.Defaults});}
 
     [HttpPut("columns")]
-    public async Task<IActionResult> SaveColumns(int moduleId,[FromBody]SaveWorkbenchColumns settings,CancellationToken token){var definition=await AuthorizedDefinition(moduleId,token);var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;if(definition is null||userId is null)return NotFound();await repository.SaveColumnSettingsAsync(definition,userId,settings,token);return NoContent();}
+    public async Task<IActionResult> SaveColumns(int moduleId,[FromBody]SaveWorkbenchColumns settings,CancellationToken token){var decision=await policy.AuthorizeDefinitionAsync(UserId,moduleId,token);if(!decision.Allowed)return NotFound();await repository.SaveColumnSettingsAsync(decision.Value!.Definition,UserId!,settings,token);return NoContent();}
 
     [HttpDelete("columns")]
-    public async Task<IActionResult> ResetColumns(int moduleId,CancellationToken token){var definition=await AuthorizedDefinition(moduleId,token);var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;if(definition is null||userId is null)return NotFound();await repository.ResetColumnSettingsAsync(definition,userId,token);return NoContent();}
+    public async Task<IActionResult> ResetColumns(int moduleId,CancellationToken token){var decision=await policy.AuthorizeDefinitionAsync(UserId,moduleId,token);if(!decision.Allowed)return NotFound();await repository.ResetColumnSettingsAsync(decision.Value!.Definition,UserId!,token);return NoContent();}
 
     [HttpGet("field-settings/lookups/{kind}")]
-    public async Task<IActionResult> FieldSettingsLookups(int moduleId,string kind,CancellationToken token){if(await SetupDefinition(moduleId,token) is null)return Forbid();return kind.ToLowerInvariant() switch{"tables"=>Ok(await repository.GetFieldSetupTablesAsync(token)),"modules"=>Ok(await repository.GetFieldSetupModulesAsync(token)),_=>NotFound()};}
+    public async Task<IActionResult> FieldSettingsLookups(int moduleId,string kind,CancellationToken token){if(!(await policy.AuthorizeSetupAsync(UserId,moduleId,token)).Allowed)return Forbid();return kind.ToLowerInvariant() switch{"tables"=>Ok(await repository.GetFieldSetupTablesAsync(token)),"modules"=>Ok(await repository.GetFieldSetupModulesAsync(token)),_=>NotFound()};}
 
     [HttpGet("field-settings")]
-    public async Task<IActionResult> FieldSettingsList(int moduleId,[FromQuery]bool detail=false,CancellationToken token=default){var access=await SetupDefinition(moduleId,token);return access is null?Forbid():Ok(await repository.GetFieldSummariesAsync(access,detail,token));}
+    public async Task<IActionResult> FieldSettingsList(int moduleId,[FromQuery]bool detail=false,CancellationToken token=default){var decision=await policy.AuthorizeSetupAsync(UserId,moduleId,token);return decision.Allowed?Ok(await repository.GetFieldSummariesAsync(decision.Value!.Definition,detail,token)):Forbid();}
 
     [HttpGet("field-settings/{fieldKey}")]
-    public async Task<IActionResult> FieldSettings(int moduleId,string fieldKey,[FromQuery]bool detail=false,CancellationToken token=default){var access=await SetupDefinition(moduleId,token);if(access is null)return Forbid();var field=await repository.GetFieldMetadataAsync(access,detail,fieldKey,token);return field is null?NotFound():Ok(field);}
+    public async Task<IActionResult> FieldSettings(int moduleId,string fieldKey,[FromQuery]bool detail=false,CancellationToken token=default){var decision=await policy.AuthorizeSetupAsync(UserId,moduleId,token);if(!decision.Allowed)return Forbid();var field=await repository.GetFieldMetadataAsync(decision.Value!.Definition,detail,fieldKey,token);return field is null?NotFound():Ok(field);}
 
     [HttpPut("field-settings/{fieldKey}")]
-    public async Task<IActionResult> UpdateFieldSettings(int moduleId,string fieldKey,[FromBody]UpdateWorkbenchFieldMetadata update,[FromQuery]bool detail=false,CancellationToken token=default){var access=await SetupDefinition(moduleId,token);if(access is null)return Forbid();await repository.UpdateFieldMetadataAsync(access,detail,fieldKey,update,userContext.EmployeeName,token);return NoContent();}
+    public async Task<IActionResult> UpdateFieldSettings(int moduleId,string fieldKey,[FromBody]UpdateWorkbenchFieldMetadata update,[FromQuery]bool detail=false,CancellationToken token=default){var decision=await policy.AuthorizeSetupAsync(UserId,moduleId,token);if(!decision.Allowed)return Forbid();await repository.UpdateFieldMetadataAsync(decision.Value!.Definition,detail,fieldKey,update,userContext.EmployeeName,token);return NoContent();}
 
     [HttpPut("column-widths")]
-    public async Task<IActionResult> UpdateColumnWidths(int moduleId,[FromBody]UpdateColumnWidthsRequest request,CancellationToken token=default){var access=await SetupDefinition(moduleId,token);if(access is null)return Forbid();await repository.UpdateColumnWidthsAsync(access,request,userContext.EmployeeName,token);return NoContent();}
-
-    private async Task<WorkbenchDefinition?> SetupDefinition(int moduleId,CancellationToken token){var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;if(userId is null)return null;var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;return rights.CanBrowse&&rights.CanSetup?await repository.GetDefinitionAsync(moduleId,userId,rights.ExecuteTag,rights.CanViewCost,rights.CanViewSecrecy,rights.DeniedMasterFields,rights.DeniedDetailFields,token):null;}
-
-    private async Task<WorkbenchDefinition?> AuthorizedDefinition(int moduleId,CancellationToken token)
-    {
-        var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if(userId is null)return null;
-        var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
-        if(!rights.CanBrowse)return null;
-        var definition=await repository.GetDefinitionAsync(moduleId,userId,rights.ExecuteTag,rights.CanViewCost,rights.CanViewSecrecy,rights.DeniedMasterFields,rights.DeniedDetailFields,token);
-        if(definition is null)return null;
-        // 路由契约：NEW_URL/MODI_URL 指向自定义页时按自定义路由走；指向统一表单动作路由时，
-        // 可达性仍由统一表单名单决定（写名单=可编辑，只读名单=只能浏览）。名单之外的模块把这类
-        // 路由当"无值"，界面就不会出现一个点进去必 404 的入口（按钮 / 双击都不会开出去）。
-        var formEnabled=FormWritable(moduleId);
-        var addRoute=definition.NewUrl is not null&&(!ModuleRouteValidator.IsUnifiedFormRoute(definition.NewUrl,moduleId)||formEnabled);
-        var editRoute=definition.ModiUrl is not null&&(!ModuleRouteValidator.IsUnifiedFormRoute(definition.ModiUrl,moduleId)||formEnabled);
-        return definition with
-        {
-            HasAdd=addRoute||formEnabled,
-            // HasEdit 表达"本模块有可打开的表单界面"（写名单可编辑、只读名单只浏览、自定义页照旧）；
-            // 是否真能进编辑态由写名单与下发的表单定义分别把关。
-            HasEdit=editRoute||formEnabled||FormReadOnly(moduleId),
-            CanDelete=rights.CanDelete,
-        };
-    }
-
-    /// <summary>当前用户对该模块生效的数据范围（SYSDD/SYSDH DATA_FILTER，个人覆盖组、组 OR 已组合）。</summary>
-    private async Task<string?> EffectiveDataFilter(int moduleId,CancellationToken token)
-    {
-        var userId=User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if(userId is null)return null;
-        var rights=(await permissions.GetAsync(userId,moduleId,token)).Rights;
-        return rights.DataFilter;
-    }
+    public async Task<IActionResult> UpdateColumnWidths(int moduleId,[FromBody]UpdateColumnWidthsRequest request,CancellationToken token=default){var decision=await policy.AuthorizeSetupAsync(UserId,moduleId,token);if(!decision.Allowed)return Forbid();await repository.UpdateColumnWidthsAsync(decision.Value!.Definition,request,userContext.EmployeeName,token);return NoContent();}
 
     private static byte[] BuildCsv(IReadOnlyList<WorkbenchField> fields,IReadOnlyList<Dictionary<string,object?>> rows)
     {
