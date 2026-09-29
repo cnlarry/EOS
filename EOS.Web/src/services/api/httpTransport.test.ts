@@ -56,6 +56,27 @@ describe('HttpTransport', () => {
     expect(error.body).toEqual({ code: 'HTTP_500', message: '请求失败。', requestId: undefined })
   })
 
+  it('调用方传入的关联键优先于默认生成（同一用户操作的多个请求可用同一个键串起来）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) })
+    vi.stubGlobal('fetch', fetchMock)
+    const transport = new HttpTransport()
+    await transport.request({ method: 'POST', path: '/records', body: {}, headers: { 'X-Correlation-Id': 'click-42' } })
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.headers['X-Correlation-Id']).toBe('click-42')
+  })
+
+  it('错误响应体携带 correlationId 时透传给调用方（报障编号）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ code: 'INTERNAL_ERROR', message: '服务器内部错误', traceId: 't-9', correlationId: 'c-9' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const transport = new HttpTransport()
+    const error = await transport.request({ method: 'GET', path: '/bad' }).catch((reason) => reason) as ApiError
+    expect(error.body.correlationId).toBe('c-9')
+  })
+
   it('blob responseType 返回 Blob', async () => {
     const blob = new Blob(['a'])
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, blob: async () => blob })

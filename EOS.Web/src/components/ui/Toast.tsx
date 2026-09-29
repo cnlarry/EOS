@@ -1,9 +1,11 @@
 import { IconAlertCircle, IconAlertTriangle, IconCircleCheck, IconInfoCircle, IconX } from '@tabler/icons-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ToastContext, type ToastOptions, type ToastVariant } from './toastContext'
+import { ToastContext, type ToastAction, type ToastOptions, type ToastVariant } from './toastContext'
 
 /** 默认停留时长（毫秒） */
 const DEFAULT_DURATION = 4000
+/** 带动作按钮的提示停留更久：用户要看清文字再决定点不点 */
+const ACTION_DURATION = 10_000
 /** 同屏最多几条：撞顶这类可能被连点的提示不该把屏幕铺满 */
 const MAX_VISIBLE = 3
 /** 淡出动画时长，与 app.css 的 .erp-toast-leaving 保持一致：动画走完再摘节点，否则"逐渐淡化"会被瞬间卸载吃掉 */
@@ -14,6 +16,8 @@ interface ToastItem {
   message: ReactNode
   variant: ToastVariant
   duration: number
+  /** 可选动作（复制报障编号一类） */
+  action?: ToastAction
   /** 同一条文案被重复触发时自增，用来重启倒计时，而不是再堆一条出来 */
   serial: number
   /** 正在淡出：节点留到动画结束，且不再参与去重 */
@@ -48,15 +52,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }, EXIT_DURATION)
   }, [])
 
-  const notify = useCallback(({ message, variant = 'info', duration = DEFAULT_DURATION }: ToastOptions) => {
+  const notify = useCallback(({ message, variant = 'info', duration, action }: ToastOptions) => {
+    const effectiveDuration = duration ?? (action ? ACTION_DURATION : DEFAULT_DURATION)
     setToasts((current) => {
       // 正在淡出的那条不参与去重：它马上要消失，重新触发应当开一条新的
       const same = current.find((toast) => !toast.leaving && toast.message === message && toast.variant === variant)
       if (same) {
-        return current.map((toast) => (toast.id === same.id ? { ...toast, duration, serial: toast.serial + 1 } : toast))
+        return current.map((toast) => (toast.id === same.id ? { ...toast, duration: effectiveDuration, action, serial: toast.serial + 1 } : toast))
       }
       seq.current += 1
-      const next: ToastItem[] = [...current, { id: `toast-${seq.current}`, message, variant, duration, serial: 0, leaving: false }]
+      const next: ToastItem[] = [...current, { id: `toast-${seq.current}`, message, variant, duration: effectiveDuration, action, serial: 0, leaving: false }]
       return next.length > MAX_VISIBLE ? next.slice(next.length - MAX_VISIBLE) : next
     })
   }, [])
@@ -76,7 +81,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: string) => void }) {
-  const { id, duration, serial, variant } = toast
+  const { id, duration, serial, variant, action } = toast
 
   useEffect(() => {
     if (duration <= 0) return undefined
@@ -91,7 +96,12 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: str
       role={variant === 'warning' || variant === 'danger' ? 'alert' : 'status'}
     >
       <span className="erp-toast-icon" aria-hidden="true">{VARIANT_ICONS[variant]}</span>
-      <span className="erp-toast-message">{toast.message}</span>
+      <span className="erp-toast-message">
+        {toast.message}
+        {action && (
+          <button type="button" className="erp-toast-action" onClick={action.onClick}>{action.label}</button>
+        )}
+      </span>
       <button type="button" className="erp-toast-close" aria-label="关闭提示" onClick={() => onDismiss(id)}>
         <IconX size={14} />
       </button>
