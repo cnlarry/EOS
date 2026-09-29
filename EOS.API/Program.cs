@@ -30,11 +30,15 @@ builder.Logging.AddJsonConsole(options =>
     options.UseUtcTimestamp = false;
     options.JsonWriterOptions = new System.Text.Json.JsonWriterOptions { Indented = false };
 });
-builder.Logging.AddProvider(new JsonFileLoggerProvider(
-    builder.Configuration["Logging:File:Path"] ?? Path.Combine(Directory.GetCurrentDirectory(), "logs", "api-json.log"),
-    maxBytes: 50L * 1024 * 1024,
-    maxFiles: 3,
-    minimumLevel: LogLevel.Warning));
+var logFilePath = ResolveLogFilePath(builder.Configuration);
+var logFileProvider = new JsonFileLoggerProvider(
+    logFilePath,
+    maxBytes: builder.Configuration.GetValue<long?>("Logging:File:MaxBytes") ?? 50L * 1024 * 1024,
+    maxFiles: builder.Configuration.GetValue<int?>("Logging:File:MaxFiles") ?? 3,
+    minimumLevel: LogLevel.Warning,
+    retentionDays: builder.Configuration.GetValue<int?>("Logging:File:RetentionDays")
+        ?? JsonFileLoggerProvider.DefaultRetentionDays);
+builder.Logging.AddProvider(logFileProvider);
 if (builder.Environment.IsDevelopment())
 {
     builder.Logging.AddDebug();
@@ -97,6 +101,8 @@ builder.Services.AddOpenApi(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddSingleton<ApiMetrics>();
+builder.Services.AddSingleton(logFileProvider);
+builder.Services.AddSingleton<EOS.API.Features.Diagnostics.LogFileReader>();
 builder.Services.AddSingleton<DbTimingCollector>();
 builder.Services.AddSingleton<WorkbenchDefinitionProvider>();
 builder.Services.AddScoped<ApiExceptionFilter>();
@@ -140,6 +146,7 @@ builder.Services.AddHealthChecks()
     .AddCheck<ErpDatabaseHealthCheck>("erp_database", tags: ["ready"])
     .AddCheck<MigrationsHealthCheck>("erp_migrations", tags: ["ready", "startup"])
     .AddCheck<AttachmentStorageHealthCheck>("attachment_storage", tags: ["ready"])
+    .AddCheck<LogFileHealthCheck>("log_file", tags: ["ready"])
     .AddCheck<ConfigurationHealthCheck>("configuration", tags: ["ready"]);
 builder.Services.AddScoped<AuthenticationRepository>();
 builder.Services.AddScoped<DepotStockPolicyService>();
@@ -362,6 +369,17 @@ if (!app.Configuration.GetValue("Audit:FieldChangesEnabled", true))
 {
     app.Logger.LogWarning("字段级审计已关闭（Audit:FieldChangesEnabled=false）：仅写摘要级审计，AUDIT_FIELD_CHANGE 停写。");
 }
+if (logFileProvider.IsDisabled)
+{
+    app.Logger.LogError(
+        "文件日志不可用（{LogPath}）：目录不可创建或不可写，本次运行只向控制台输出。排障请改读控制台或修复目录权限。",
+        logFilePath);
+}
+else
+{
+    app.Logger.LogInformation("文件日志已启用：{LogPath}（Warning+，按大小与 {RetentionDays} 天双门保留）。",
+        logFilePath, app.Configuration.GetValue<int?>("Logging:File:RetentionDays") ?? JsonFileLoggerProvider.DefaultRetentionDays);
+}
 
 app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseMiddleware<SameOriginGuardMiddleware>();
@@ -407,23 +425,21 @@ if (app.Environment.IsDevelopment())
 var versionEndpoint = app.MapGet("/health/version", () =>
 {
     var assembly = typeof(Program).Assembly;
-    var builtUtc = GetAssemblyMetadata(assembly, "BuildTimeUtc");
+    var builtUtc = BuildInfo.BuildTimeUtc(assembly);
     var process = System.Diagnostics.Process.GetCurrentProcess();
     var binaryUtc = File.Exists(assembly.Location)
         ? File.GetLastWriteTimeUtc(assembly.Location).ToString("yyyy-MM-ddTHH:mm:ssZ")
         : null;
     return Results.Json(new
     {
-        commit = GetAssemblyMetadata(assembly, "GitCommit") ?? "unknown",
-        buildTimeUtc = builtUtc ?? "unknown",
+        commit = BuildInfo.Commit(assembly),
+        buildTimeUtc = builtUtc,
         binaryWriteTimeUtc = binaryUtc ?? "unknown",
         processStartTimeUtc = process.StartTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"),
         informationalVersion = assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion,
         assemblyVersion = assembly.GetName().Version?.ToString(),
         environment = app.Environment.EnvironmentName,
-        stale = builtUtc is not null
-            && DateTime.TryParse(builtUtc, null, System.Globalization.DateTimeStyles.AdjustToUniversal, out var built)
-            && process.StartTime.ToUniversalTime() < built,
+        stale = BuildInfo.IsStale(builtUtc, process.StartTime.ToUniversalTime()),
     });
 });
 if (app.Environment.IsDevelopment())
@@ -447,9 +463,21 @@ static void RegisterPdfFont()
     QuestPDF.Drawing.FontManager.RegisterFontWithCustomName("Noto Sans CJK SC", File.OpenRead(fontPath));
 }
 
-static string? GetAssemblyMetadata(System.Reflection.Assembly assembly, string key) =>
-    assembly.GetCustomAttributes<System.Reflection.AssemblyMetadataAttribute>()
-        .FirstOrDefault(attribute => string.Equals(attribute.Key, key, StringComparison.Ordinal))?.Value;
+/// <summary>
+/// 日志文件路径：默认落在程序自身目录下的 logs（与附件、字体、版式的取址一致），
+/// 不再依赖宿主工作目录——IIS/服务宿主的当前目录不受本仓库控制。
+/// 配置值可为相对路径（相对程序目录）、绝对路径或含环境变量的路径。
+/// </summary>
+static string ResolveLogFilePath(IConfiguration configuration)
+{
+    var configured = configuration["Logging:File:Path"];
+    if (string.IsNullOrWhiteSpace(configured))
+    {
+        return Path.Combine(AppContext.BaseDirectory, "logs", "api-json.log");
+    }
+    var expanded = Environment.ExpandEnvironmentVariables(configured.Trim());
+    return Path.GetFullPath(expanded, AppContext.BaseDirectory);
+}
 
 static DirectoryInfo GetDataProtectionKeysDirectory(IConfiguration configuration)
 {
