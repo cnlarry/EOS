@@ -431,6 +431,13 @@ public sealed class ChatService(
                 aware.UsePageContext(pageContext);
             }
 
+            // 本次工具调用的服务端身份由 ChatService 注入（不经模型转述）：
+            // 写入类动作据此推导幂等键——模型既不生成键，也无从伪造键。
+            if (tool is IToolCallContextTool callAware)
+            {
+                callAware.UseToolCallContext(sessionId, call.Id);
+            }
+
             var result = await tool.ExecuteAsync(userId, args, token);
             logger.LogInformation("助手工具执行 session={SessionId} tool={Tool} ok={Ok}", sessionId, call.Name, result.Ok);
             toolLog.Add(new ToolCallSummary(call.Name, call.ArgumentsJson, Truncate(result.ContentForModel, 160)));

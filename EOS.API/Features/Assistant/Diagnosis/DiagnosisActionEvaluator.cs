@@ -30,12 +30,15 @@ public sealed record DiagnosisBlockerFact(string Code, string Action, string Mes
 /// </summary>
 public static class DiagnosisActionEvaluator
 {
+    /// <summary>「没有删除权限」：删除门禁最常给出的原因码，助手侧动作门禁复用同一句文案。</summary>
+    public const string NoDeleteRightCode = "NO_DELETE_RIGHT";
+
     /// <summary>动作原因 → 稳定原因码。只登记"阻塞类"原因。</summary>
     private static readonly IReadOnlyDictionary<string, string> ReasonCodes = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["无批核权限"] = "NO_APPROVE_RIGHT",
         ["无编辑权限"] = "NO_EDIT_RIGHT",
-        ["无删除权限"] = "NO_DELETE_RIGHT",
+        ["无删除权限"] = NoDeleteRightCode,
         ["无结案权限"] = "NO_ENDCASE_RIGHT",
         ["无取消结案权限"] = "NO_UNENDCASE_RIGHT",
         ["当前待办人不是你"] = "NOT_CURRENT_APPROVER",

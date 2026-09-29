@@ -140,6 +140,12 @@ public sealed class WorkbenchCommandHandler(
         };
     }
 
+    /// <summary>
+    /// 新增记录。
+    /// <paramref name="dryRun"/> 为真时跑完整条路径（校验、单号、效果链、状态翻转）后**无条件回滚**，
+    /// 用于"预演与执行天然一致"的预演：同一段代码、同一个事务，只把提交换成回滚
+    /// （并跳过提交之后才发生的自动批核）。
+    /// </summary>
     public async Task<RecordSaveResult> CreateRecordAsync(
         WorkbenchDefinition definition,
         FormDefinition form,
@@ -147,13 +153,14 @@ public sealed class WorkbenchCommandHandler(
         string employeeName,
         string userId,
         string? dataFilter,
-        CancellationToken token)
+        CancellationToken token,
+        bool dryRun = false)
     {
         var idempotencyKey = NormalizeIdempotencyKey(request.IdempotencyKey);
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
-        if (idempotencyKey is not null)
+        if (idempotencyKey is not null && !dryRun)
         {
             var existing = await idempotency.TryClaimAsync(connection, transaction, idempotencyKey, definition.ModuleId, "INSERT", token);
             if (existing is { ResultKey: not null })
@@ -374,10 +381,16 @@ public sealed class WorkbenchCommandHandler(
         {
             await idempotency.CompleteAsync(connection, transaction, idempotencyKey, SerializeResultKey(keyValues), false, token);
         }
-        await transaction.CommitAsync(token);
-        logger.LogInformation("统一表单新增 module={ModuleId} master={Master} key={Key}", definition.ModuleId, definition.MasterTable, string.Join(',', keyValues));
+        await FinishAsync(transaction, dryRun, token);
+        logger.LogInformation("统一表单新增 module={ModuleId} master={Master} key={Key} dryRun={DryRun}",
+            definition.ModuleId, definition.MasterTable, string.Join(',', keyValues), dryRun);
         // 建议位置是"已保存但有说明"的一类结果：写在告警里回传前端，别让它悄悄发生
         IReadOnlyList<SaveWarning>? warnings = suggestion.Warnings.Count > 0 ? suggestion.Warnings : null;
+        // 预演到此为止：自动批核发生在提交之后（自带事务），回滚后执行它就会真的生效。
+        if (dryRun)
+        {
+            return RecordSaveResult.Success(keyValues, warnings);
+        }
         if (definition.AutoApprove)
         {
             // 自动批核模块：保存成功后立即进入批核生效（保存事务提交后执行，生效链自带事务）；
@@ -395,6 +408,7 @@ public sealed class WorkbenchCommandHandler(
         return RecordSaveResult.Success(keyValues, warnings);
     }
 
+    /// <summary>修改记录；<paramref name="dryRun"/> 语义与 <see cref="CreateRecordAsync"/> 一致（跑完即回滚）。</summary>
     public async Task<RecordSaveResult> UpdateRecordAsync(
         WorkbenchDefinition definition,
         FormDefinition form,
@@ -403,13 +417,14 @@ public sealed class WorkbenchCommandHandler(
         string employeeName,
         string userId,
         string? dataFilter,
-        CancellationToken token)
+        CancellationToken token,
+        bool dryRun = false)
     {
         var idempotencyKey = NormalizeIdempotencyKey(request.IdempotencyKey);
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
-        if (idempotencyKey is not null)
+        if (idempotencyKey is not null && !dryRun)
         {
             var existing = await idempotency.TryClaimAsync(connection, transaction, idempotencyKey, definition.ModuleId, "UPDATE", token);
             if (existing is { ResultKey: not null })
@@ -620,9 +635,15 @@ public sealed class WorkbenchCommandHandler(
         {
             await idempotency.CompleteAsync(connection, transaction, idempotencyKey, SerializeResultKey(keyValues), false, token);
         }
-        await transaction.CommitAsync(token);
-        logger.LogInformation("统一表单修改 module={ModuleId} master={Master} key={Key}", definition.ModuleId, definition.MasterTable, string.Join(',', keyValues));
+        await FinishAsync(transaction, dryRun, token);
+        logger.LogInformation("统一表单修改 module={ModuleId} master={Master} key={Key} dryRun={DryRun}",
+            definition.ModuleId, definition.MasterTable, string.Join(',', keyValues), dryRun);
         IReadOnlyList<SaveWarning>? updateWarnings = suggestion.Warnings.Count > 0 ? suggestion.Warnings : null;
+        // 预演到此为止：自动批核在提交之后执行（自带事务），回滚后执行它就会真的生效。
+        if (dryRun)
+        {
+            return RecordSaveResult.Success(keyValues, updateWarnings);
+        }
         if (definition.AutoApprove)
         {
             // 「保存即批核」对新增与修改同口径：未批核的单据（例如上次自动批核失败、
@@ -640,6 +661,7 @@ public sealed class WorkbenchCommandHandler(
         return RecordSaveResult.Success(keyValues, updateWarnings);
     }
 
+    /// <summary>删除记录；<paramref name="dryRun"/> 语义与 <see cref="CreateRecordAsync"/> 一致（跑完即回滚）。</summary>
     public async Task<RecordSaveResult> DeleteRecordAsync(
         WorkbenchDefinition definition,
         FormDefinition form,
@@ -647,13 +669,14 @@ public sealed class WorkbenchCommandHandler(
         string userId,
         string? dataFilter,
         string? idempotencyKey,
-        CancellationToken token)
+        CancellationToken token,
+        bool dryRun = false)
     {
         idempotencyKey = NormalizeIdempotencyKey(idempotencyKey);
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
-        if (idempotencyKey is not null)
+        if (idempotencyKey is not null && !dryRun)
         {
             var existing = await idempotency.TryClaimAsync(connection, transaction, idempotencyKey, definition.ModuleId, "DELETE", token);
             if (existing is { ResultKey: not null })
@@ -720,9 +743,24 @@ public sealed class WorkbenchCommandHandler(
         {
             await idempotency.CompleteAsync(connection, transaction, idempotencyKey, SerializeResultKey(keyValues), false, token);
         }
-        await transaction.CommitAsync(token);
-        logger.LogInformation("统一表单删除 module={ModuleId} master={Master} key={Key}", definition.ModuleId, definition.MasterTable, string.Join(',', keyValues));
+        await FinishAsync(transaction, dryRun, token);
+        logger.LogInformation("统一表单删除 module={ModuleId} master={Master} key={Key} dryRun={DryRun}",
+            definition.ModuleId, definition.MasterTable, string.Join(',', keyValues), dryRun);
         return RecordSaveResult.Success(keyValues);
+    }
+
+    /// <summary>
+    /// 写路径的统一收尾：常规提交；预演则**无条件回滚**——预演跑的是同一条路径、
+    /// 同一个事务，因此单号序列、效果链与状态翻转的结果与真实执行一致，只是不留下任何痕迹。
+    /// </summary>
+    private static async Task FinishAsync(SqlTransaction transaction, bool dryRun, CancellationToken token)
+    {
+        if (dryRun)
+        {
+            await transaction.RollbackAsync(token);
+            return;
+        }
+        await transaction.CommitAsync(token);
     }
 
     /// <summary>

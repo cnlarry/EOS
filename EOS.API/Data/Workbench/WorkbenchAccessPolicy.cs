@@ -55,6 +55,10 @@ public static class WorkbenchDenialCodes
     public const string SetupNotAllowed = "SETUP_NOT_ALLOWED";
     public const string InvalidFormMode = "INVALID_FORM_MODE";
     public const string IdempotencyKeyRequired = "IDEMPOTENCY_KEY_REQUIRED";
+
+    /// <summary>删除动作位不足：<see cref="WorkbenchAccessPolicy.AuthorizeDeleteAsync"/> 会原样抛出，
+    /// 故该码由消费方在捕获后补记，而不是判定结果自带。</summary>
+    public const string DeleteNotPermitted = "DELETE_NOT_PERMITTED";
 }
 
 /// <summary>
