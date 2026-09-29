@@ -30,6 +30,9 @@ logs/
 .vscode/
 .idea/
 
+# 多 Agent 共享文件锁（本地协调状态，无提交价值）
+.agents/reservations/
+
 # 操作系统文件
 .DS_Store
 Thumbs.db
