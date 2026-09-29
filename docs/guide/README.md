@@ -74,8 +74,9 @@ pwsh docs/guide/_tools/check-freshness.ps1 -Strict    # 有 STALE 即退出码 1
 
 ## 四、目录边界
 
-- 本目录是 `docs/` 下**唯一纳入版本控制**的子树（`.git/info/exclude` 中 `docs/*` 排除全部，仅 `!docs/guide/` 放行）。
-  新文档必须放在本目录内，放在 `docs/` 其他位置不会进仓库。
+- `docs/` 下**纳入版本控制**的只有两棵子树：本目录（开发手册）与 `docs/decisions/`（ADR 决策记录）。
+  `.git/info/exclude` 中写 `docs/*` 排除全部，再以 `!docs/guide/`、`!docs/decisions/` 放行这两处。
+  **新文档必须放在这两棵子树内**，放在 `docs/` 其他位置（`plans/`、`blueprint/`、`business/` 等）不会进仓库。
 - 本目录面向开发工程师。面向使用者的说明仍在根目录 `README.md`、`ARCHITECTURE.md`、`QUICKSTART.md`、`CONTRIBUTING.md`。
 - 本地忽略规则的恢复副本在仓库根 `.local-exclude.txt`（自身不跟踪），
   改动 `.git/info/exclude` 时需同步该文件，否则换机恢复后规则丢失。
