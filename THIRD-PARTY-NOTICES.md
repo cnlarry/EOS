@@ -56,10 +56,11 @@
 | `EOS.API/Fonts/NotoSansCJKsc-Regular.otf` | **SIL Open Font License 1.1** | 报表 PDF 的中文字体 |
 | `.agents/skills/` 下的 `tdd` / `diagnosing-bugs` / `code-review` / `grill-me` / `grilling` / `handoff` | **MIT** | Agent 技能（见下） |
 
-**关于 `.agents/skills/`**：该目录下 12 个技能分两类——
+**关于 `.agents/skills/`**：该目录下 11 个技能分两类——
 
-- **自建**（`eos-verify` / `eos-commit` / `eos-db-objects` / `eos-security-check` / `eos-publish` / `erp-ui`）：
-  本项目原创，属本项目 MIT 许可范围，**不是**第三方资产；
+- **自建**（`eos-verify` / `eos-commit` / `eos-db-objects` / `eos-security-check` / `eos-publish`）：
+  本项目原创，属本项目 MIT 许可范围，**不是**第三方资产。
+  原 `erp-ui` 已于 2026-09-29 下线（其唯一事实源 `ui-reference/` 一并删除），不再随仓库分发；
 - **第三方**（上表列出的 6 个）：取自 **[mattpocock/skills](https://github.com/mattpocock/skills)**（MIT），
   **pin 到 commit `6654f6b`（2026-08-24）**，逐文件审读后收录的精选子集。各技能保留其原始许可与版权，
   不受本项目 MIT 许可覆盖。其中 `diagnosing-bugs/scripts/hitl-loop.template.sh` 为只读提示模板（见其文件头）。
