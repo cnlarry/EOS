@@ -13,6 +13,7 @@ public sealed class FieldAdminRepository(
     WorkbenchDirtyMarker dirtyMarker,
     WorkbenchAuditWriter auditWriter,
     RestrictedExpressionService expressionService,
+    WorkbenchIdempotency idempotency,
     ILogger<FieldAdminRepository> logger)
 {
     /// <summary>
@@ -193,8 +194,10 @@ public sealed class FieldAdminRepository(
         if (await command.ExecuteNonQueryAsync(token) != 1)
             throw new InvalidOperationException("新增数据表元数据失败。");
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
+        // 审计与业务同事务：写不进去就整单回滚，不留"改了但没有痕迹"的状态。
+        await auditWriter.WriteEventAsync(connection, transaction, null, request.TableId, "CREATE", "数据表维护新增",
+            updatedBy, "FIELD_ADMIN", result: 1, fieldChanges: null, token);
         await transaction.CommitAsync(token);
-        await auditWriter.WriteBestEffortAsync(null, request.TableId, "CREATE", "数据表维护新增", updatedBy, "FIELD_ADMIN", result: 1, null, token);
         logger.LogInformation("新增数据表元数据 table={Table} by={UpdatedBy}", request.TableId, updatedBy);
     }
 
@@ -230,9 +233,9 @@ public sealed class FieldAdminRepository(
         if (await command.ExecuteNonQueryAsync(token) != 1)
             throw new KeyNotFoundException("数据表不存在。");
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
+        await auditWriter.WriteEventAsync(connection, transaction, null, tableId, "UPDATE", "数据表维护更新",
+            updatedBy, "FIELD_ADMIN", result: 1, DiffTables(currentTable, input), token);
         await transaction.CommitAsync(token);
-        await auditWriter.WriteBestEffortAsync(null, tableId, "UPDATE", "数据表维护更新", updatedBy, "FIELD_ADMIN",
-            result: 1, DiffTables(currentTable, input), token);
         logger.LogInformation("更新数据表元数据 table={Table} by={UpdatedBy}", tableId, updatedBy);
     }
 
@@ -291,11 +294,11 @@ public sealed class FieldAdminRepository(
         if (await delete.ExecuteNonQueryAsync(token) != 1)
             throw new KeyNotFoundException("数据表不存在。");
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
-        await transaction.CommitAsync(token);
-        await auditWriter.WriteBestEffortAsync(null, tableId, "DELETE", "数据表维护删除", updatedBy, "FIELD_ADMIN",
-            result: 1,
+        await auditWriter.WriteEventAsync(connection, transaction, null, tableId, "DELETE", "数据表维护删除",
+            updatedBy, "FIELD_ADMIN", result: 1,
             [new AuditFieldChange("(table)", JsonSerializer.Serialize(DescribeTable(snapshot)), null, null)],
             token);
+        await transaction.CommitAsync(token);
         logger.LogInformation("删除数据表元数据 table={Table} by={UpdatedBy}", tableId, updatedBy);
     }
 
@@ -398,9 +401,10 @@ public sealed class FieldAdminRepository(
             createdChanges.Add(new AuditFieldChange(fieldId, null, $"{column.Value.Type} ({column.Value.Description})", null));
         }
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
+        await auditWriter.WriteEventAsync(connection, transaction, null, request.TableId, "CREATE",
+            $"批量生成字段元数据 created={created} skipped={skipped}", updatedBy, "FIELD_ADMIN",
+            result: 1, createdChanges, token);
         await transaction.CommitAsync(token);
-        await auditWriter.WriteBestEffortAsync(null, request.TableId, "CREATE",
-            $"批量生成字段元数据 created={created} skipped={skipped}", updatedBy, "FIELD_ADMIN", result: 1, createdChanges, token);
         logger.LogInformation("批量生成字段元数据 table={Table} created={Created} skipped={Skipped} by={UpdatedBy}",
             request.TableId, created, skipped, updatedBy);
         return new(created, skipped, reasons);
@@ -773,20 +777,52 @@ public sealed class FieldAdminRepository(
         // Write chooser data sources in the same transaction (ordered by SERIAL_NO)
         await ReplaceChoosersAsync(connection, transaction, request.TableId, request.FieldId.Trim(), request.Field.Choosers, updatedBy, token);
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, request.TableId, updatedBy, token);
-        await transaction.CommitAsync(token);
-        await auditWriter.WriteBestEffortAsync(null, $"{request.TableId}.{request.FieldId}", "CREATE", "字段维护新增", updatedBy, "FIELD_ADMIN",
-            result: 1,
+        await auditWriter.WriteEventAsync(connection, transaction, null, $"{request.TableId}.{request.FieldId}",
+            "CREATE", "字段维护新增", updatedBy, "FIELD_ADMIN", result: 1,
             [new AuditFieldChange("(field)", null, JsonSerializer.Serialize(DescribeInput(request.Field)), null)],
             token);
+        await transaction.CommitAsync(token);
         logger.LogInformation("新增字段 table={Table} field={Field} by={UpdatedBy}", request.TableId, request.FieldId, updatedBy);
     }
 
-    public async Task UpdateAsync(
+    public Task UpdateAsync(
         string tableId,
         string fieldId,
         FieldAdminInput field,
         FieldAdminInput? original,
         string updatedBy,
+        CancellationToken token)
+        => UpdateCoreAsync(tableId, fieldId, field, original, updatedBy, idempotencyKey: null, token);
+
+    /// <summary>
+    /// 带幂等键的字段更新：同一键重放直接返回上次的结果键，**不再落库**。
+    ///
+    /// <para>
+    /// 幂等判定必须发生在乐观锁之前——重放时提交的快照是上一轮的旧值，库中已是新值，
+    /// 先比快照会把"重放"误报成"内容已被他人修改"。
+    /// </para>
+    /// <para>
+    /// 抢占、业务写入与审计在同一个事务内：业务失败或审计写不进去都整单回滚，占位随之释放，
+    /// 不会留下"占了键却没有结果"的空档。
+    /// </para>
+    /// </summary>
+    public async Task<string> UpdateIdempotentAsync(
+        string tableId,
+        string fieldId,
+        FieldAdminInput field,
+        FieldAdminInput? original,
+        string updatedBy,
+        string idempotencyKey,
+        CancellationToken token)
+        => await UpdateCoreAsync(tableId, fieldId, field, original, updatedBy, idempotencyKey, token);
+
+    private async Task<string> UpdateCoreAsync(
+        string tableId,
+        string fieldId,
+        FieldAdminInput field,
+        FieldAdminInput? original,
+        string updatedBy,
+        string? idempotencyKey,
         CancellationToken token)
     {
         EnsureIdentifier(tableId, fieldId);
@@ -796,6 +832,17 @@ public sealed class FieldAdminRepository(
         await using var connection = CreateConnection();
         await connection.OpenAsync(token);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        var resultKey = $"{tableId}.{fieldId}".Trim();
+        if (idempotencyKey is not null)
+        {
+            var existing = await idempotency.TryClaimAsync(
+                connection, transaction, idempotencyKey, moduleId: 0, action: "CFG_FIELD", token);
+            if (existing is { ResultKey: not null })
+            {
+                await transaction.CommitAsync(token);
+                return existing.ResultKey;
+            }
+        }
 
         var current = await ReadCurrentInputAsync(connection, transaction, tableId, fieldId, token)
             ?? throw new KeyNotFoundException("字段不存在。");
@@ -831,13 +878,19 @@ public sealed class FieldAdminRepository(
         // Replace chooser data sources in the same transaction (DELETE + INSERT, SERIAL_NO 1..n)
         await ReplaceChoosersAsync(connection, transaction, tableId, fieldId.Trim(), field.Choosers, updatedBy, token);
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
-        await transaction.CommitAsync(token);
         var changes = DiffInputs(current, field).ToList();
         AddExpressionChange(changes, "VIRTUAL_EXP", current.VirtualExpression, field.VirtualExpression);
         AddExpressionChange(changes, "CONVERT_FUNCTION", current.ConvertFunction, field.ConvertFunction);
-        await auditWriter.WriteBestEffortAsync(null, $"{tableId}.{fieldId}", "UPDATE", "字段维护更新", updatedBy, "FIELD_ADMIN",
-            result: 1, changes, token);
+        await auditWriter.WriteEventAsync(connection, transaction, null, $"{tableId}.{fieldId}",
+            "UPDATE", "字段维护更新", updatedBy, "FIELD_ADMIN", result: 1, changes, token);
+        if (idempotencyKey is not null)
+        {
+            await idempotency.CompleteAsync(
+                connection, transaction, idempotencyKey, resultKey, flowStarted: false, token);
+        }
+        await transaction.CommitAsync(token);
         logger.LogInformation("更新字段 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
+        return resultKey;
     }
 
     public async Task DeleteAsync(string tableId, string fieldId, string updatedBy, CancellationToken token)
@@ -876,11 +929,11 @@ public sealed class FieldAdminRepository(
         clean.Parameters.Add("@TableDotField", SqlDbType.NVarChar, 220).Value = $"{tableId}.{fieldId.Trim()}";
         await clean.ExecuteNonQueryAsync(token);
         await dirtyMarker.MarkDirtyForTableAsync(connection, transaction, tableId, updatedBy, token);
-        await transaction.CommitAsync(token);
-        await auditWriter.WriteBestEffortAsync(null, $"{tableId}.{fieldId}", "DELETE", "字段维护删除", updatedBy, "FIELD_ADMIN",
-            result: 1,
+        await auditWriter.WriteEventAsync(connection, transaction, null, $"{tableId}.{fieldId}",
+            "DELETE", "字段维护删除", updatedBy, "FIELD_ADMIN", result: 1,
             [new AuditFieldChange("(field)", JsonSerializer.Serialize(DescribeInput(snapshot)), null, null)],
             token);
+        await transaction.CommitAsync(token);
         logger.LogInformation("删除字段 table={Table} field={Field} by={UpdatedBy}", tableId, fieldId, updatedBy);
     }
 

@@ -110,6 +110,65 @@ export interface AssistantRecordActionResult {
   rows: AssistantActionRowOutcome[]
 }
 
+/** 配置改动对照卡里的一处值变更：旧值 → 新值。 */
+export interface ConfigValueChange {
+  field: string
+  label: string
+  oldValue: string | null
+  newValue: string | null
+}
+
+/**
+ * 对照卡里的一项。`previewable=false` 时 `previewNote` 必非空——
+ * 不可预演的改动必须被单独标注，不能被混进"已校验"。
+ */
+export interface ConfigDiffItem {
+  id: string
+  surface: string
+  target: string
+  label: string
+  changes: ConfigValueChange[]
+  impacts: string[]
+  previewable: boolean
+  previewNote: string | null
+  previewSummary: string | null
+}
+
+/** 配置改动对照卡（模型经工具、界面经端点，拿到的是同一份形状）。 */
+export interface AssistantConfigDiff {
+  kind: 'config-diff'
+  surface: string
+  sourceLabel: string
+  targetLabel: string
+  blocked: boolean
+  blockedCode: string | null
+  blockedMessage: string | null
+  items: ConfigDiffItem[]
+  notes: string[]
+  /** 本次计划的意图参数（源/目标/点名对象），应用时原样回传；服务端据此重新规划。 */
+  request: unknown
+}
+
+/** 应用结果里的一项。 */
+export interface ConfigApplyItem {
+  id: string
+  target: string
+  applied: boolean
+  code: string | null
+  message: string | null
+}
+
+/** 配置改动的应用结果。 */
+export interface AssistantConfigApplyResult {
+  kind: 'config-apply-result'
+  surface: string
+  targetLabel: string
+  blockedCode: string | null
+  blockedMessage: string | null
+  items: ConfigApplyItem[]
+  notes: string[]
+}
+
 /** 请求载荷：与模型工具的参数契约同形（新增只需 values，修改/删除需要 keys）。 */
 export interface AssistantRecordActionPayload {
   module_id: number

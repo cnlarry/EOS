@@ -2,6 +2,8 @@ import { apiClient } from '../../services/api'
 import type { FormDefinition } from '../document-workbench/formDefinition'
 import type {
   AssistantApplyResult,
+  AssistantConfigApplyResult,
+  AssistantConfigDiff,
   AssistantMemoryList,
   AssistantMessage,
   AssistantRecordActionPayload,
@@ -90,6 +92,29 @@ export function applyRecordAction(payload: AssistantRecordActionPayload, confirm
   return apiClient.post<AssistantRecordActionResult>('/assistant/record-actions/apply', payload, {
     headers: { 'X-Idempotency-Key': confirmKey },
   })
+}
+
+/**
+ * 配置改动对照卡：重算计划（并跑一次预演/自检）。与模型调用是同一段服务端代码、同一份参数契约，
+ * 因此卡上"重新检查"出来的结论与助手先前说的是同一个东西。
+ */
+export function previewConfigChange(request: unknown, items: string[]) {
+  return apiClient.post<AssistantConfigDiff>('/assistant/config-changes/preview', {
+    ...(request as Record<string, unknown>),
+    items,
+  })
+}
+
+/**
+ * 配置改动对照卡：应用被勾选的项。执行主体是这次点击，幂等键随本次确认给出——
+ * 同一张卡重复点不会写两次（服务端按确认键识别重放）。
+ */
+export function applyConfigChange(request: unknown, items: string[], confirmKey: string) {
+  return apiClient.post<AssistantConfigApplyResult>(
+    '/assistant/config-changes/apply',
+    { ...(request as Record<string, unknown>), items },
+    { headers: { 'X-Idempotency-Key': confirmKey } },
+  )
 }
 
 /** 可编辑字段元数据：就地编辑面由它驱动（列/字段清单不写死在前端）。 */
