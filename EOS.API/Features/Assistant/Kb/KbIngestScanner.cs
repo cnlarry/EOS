@@ -5,8 +5,8 @@ namespace EOS.API.Features.Assistant.Kb;
 
 /// <summary>
 /// red-line scanner: sensitive-data blocking + business-reference extraction.
-/// Pure and unit-tested; the only place that decides what a "sensitive kind" or a
-/// "module + _keys reference" is (rule doc: docs/plans/KB-入库扫描规则.md).
+/// Pure and unit-tested; the single source of truth for what counts as a "sensitive kind"
+/// or a "module + _keys reference" — the pattern table and extraction logic below are the rule.
 /// </summary>
 public sealed record BusinessReference(int ModuleId, IReadOnlyList<string> Keys);
 
