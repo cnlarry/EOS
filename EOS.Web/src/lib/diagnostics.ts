@@ -1,4 +1,5 @@
 import { writeClipboard } from '../components/common/tableClipboard'
+import { createId } from './uuid'
 import { ApiError } from '../types/api'
 
 /**
@@ -27,11 +28,22 @@ export function currentAppInfo(now: Date = new Date()): AppInfo {
 
 /**
  * 从错误里取报障编号：接口错误的响应体带 correlationId；
- * 渲染期错误的编号由调用方（错误边界）从上报链路取。
+ * 渲染期错误没有请求可言，编号由调用方（错误边界）本地生成后再上报，
+ * 服务端 `client-errors` 会原样采用它——这样"用户复制的编号"与"服务端日志里的编号"是同一个。
  */
 export function reportIdOf(error: unknown): string | undefined {
   if (error instanceof ApiError) return error.body.correlationId || undefined
   return undefined
+}
+
+/** 为一个不经过请求的错误现场生成报障编号。 */
+export function newReportId(): string {
+  return createId()
+}
+
+/** 已有编号则沿用，否则新生成——避免同一个错误现场出现两个编号。 */
+export function ensureReportId(existing?: string | null): string {
+  return existing && existing.trim().length > 0 ? existing : newReportId()
 }
 
 /** 一行式报障编号，供提示条展示（编号是排障关联键，必须完整给出、可复制）。 */
