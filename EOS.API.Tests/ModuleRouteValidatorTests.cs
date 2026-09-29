@@ -19,7 +19,7 @@ public class ModuleRouteValidatorTests
     [InlineData("/admin/menus", 2301)]
     [InlineData("/admin/report-setup", 2201)]
     [InlineData("/admin/groups", 2305)]
-    [InlineData("/admin/logs", 110112)]
+    [InlineData("/admin/logs", 2313)]
     [InlineData("/settings/system", 110111)]
     [InlineData("/my-tasks", 2102)]
     [InlineData("/workflow/design", 2101)]
@@ -37,7 +37,7 @@ public class ModuleRouteValidatorTests
     /// 里确有同名路由。两边任一缺失都会表现为"菜单点不开"，而编译与单测都不会报。
     /// </summary>
     [Theory]
-    [InlineData("/admin/logs", 110112)]
+    [InlineData("/admin/logs", 2313)]
     [InlineData("/admin/field-audit", 2303)]
     [InlineData("/admin/depot-stock-policy", 110310)]
     public void 定制页路由_后端精确路径与前端路由表一致(string url, int moduleId)
