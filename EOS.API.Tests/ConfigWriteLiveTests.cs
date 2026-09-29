@@ -499,6 +499,7 @@ public sealed class ConfigWriteLiveTests : IDisposable
                 """
                 DELETE FROM dbo.MODULE_BUSINESS_ACTION WHERE M_IDX=@ModuleId;
                 DELETE FROM dbo.MODULE_VALIDATION_RULE WHERE M_IDX=@ModuleId;
+                DELETE FROM dbo.WORKBENCH_MODULE_DIRTY WHERE M_IDX=@ModuleId;
                 DELETE FROM dbo.MODULES WHERE M_IDX=@ModuleId;
                 """, connection);
             delete.Parameters.AddWithValue("@ModuleId", moduleId);
