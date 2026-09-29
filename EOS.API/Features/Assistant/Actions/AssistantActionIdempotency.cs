@@ -5,11 +5,30 @@ using System.Text.Json;
 namespace EOS.API.Features.Assistant.Actions;
 
 /// <summary>
+/// 幂等身份的来源：同一份参数由谁发起，决定它落在哪个键上。
+///
+/// <para>
+/// 两条来源各自带前缀，因此**永不交叉**：模型驱动的那次由"会话 + 工具调用"标识，
+/// 界面点击驱动的那次由用户本次确认的键标识（人不会自动重试，沿用客户端键即可）。
+/// </para>
+/// </summary>
+public readonly record struct AssistantActionKeySeed(long ConversationId, string CallId)
+{
+    /// <summary>模型驱动：同一次工具调用重放 ⇒ 同一个键。</summary>
+    public static AssistantActionKeySeed FromToolCall(long conversationId, string toolCallId)
+        => new(conversationId, "tool:" + toolCallId);
+
+    /// <summary>界面点击驱动：同一张操作卡上重复点确认 ⇒ 同一个键（不会重复写入）。</summary>
+    public static AssistantActionKeySeed FromUserConfirm(string confirmKey)
+        => new(0, "ui:" + confirmKey);
+}
+
+/// <summary>
 /// 助手执行类动作的幂等键**由服务端生成**。
 ///
 /// 为什么不能交给模型：模型在工具失败、网络抖动或重复确认时会自行重试，而它每次生成的键
-/// 都可能不同——幂等保护随即形同虚设。因此键从"这次工具调用"本身推导：
-/// <c>SHA256(会话 + 工具调用 + 动作名 + 规范化参数)</c> 取前 32 位，同一轮工具调用重放即同一个键。
+/// 都可能不同——幂等保护随即形同虚设。因此键从"这次调用"本身推导：
+/// <c>SHA256(会话 + 调用标识 + 动作名 + 规范化参数)</c> 取前 32 位，同一次调用重放即同一个键。
 ///
 /// <para>键**不出现在模型可见的工具参数 schema 里**：模型无需、也不应知道它。</para>
 /// </summary>

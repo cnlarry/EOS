@@ -1,8 +1,12 @@
 import { apiClient } from '../../services/api'
+import type { FormDefinition } from '../document-workbench/formDefinition'
 import type {
   AssistantApplyResult,
   AssistantMemoryList,
   AssistantMessage,
+  AssistantRecordActionPayload,
+  AssistantRecordActionPreview,
+  AssistantRecordActionResult,
   AssistantSession,
   KbDocument,
   SituationSnapshot,
@@ -68,4 +72,27 @@ export function getKbDocument(docId: string) {
 /** 变更集确认执行：只接受结构化确认卡调用，自然语言确认无效。 */
 export function applyChangeset(changeset: unknown) {
   return apiClient.post<AssistantApplyResult>('/assistant/apply-changeset', { changeset, confirmed: true })
+}
+
+/**
+ * 操作卡：重算预演。与模型调用 `preview_record_action` 是同一段服务端代码、同一份参数契约，
+ * 因此卡上"重算"出来的结论与助手先前说的是同一个东西。
+ */
+export function previewRecordAction(payload: AssistantRecordActionPayload) {
+  return apiClient.post<AssistantRecordActionPreview>('/assistant/record-actions/preview', payload)
+}
+
+/**
+ * 操作卡：用户点了确认执行。执行主体是这次点击，幂等键随本次确认给出——
+ * 同一张卡重复点不会写两次（服务端按确认键去重），而两次点击各留一条确认审计。
+ */
+export function applyRecordAction(payload: AssistantRecordActionPayload, confirmKey: string) {
+  return apiClient.post<AssistantRecordActionResult>('/assistant/record-actions/apply', payload, {
+    headers: { 'X-Idempotency-Key': confirmKey },
+  })
+}
+
+/** 可编辑字段元数据：就地编辑面由它驱动（列/字段清单不写死在前端）。 */
+export function getFormDefinition(moduleId: number, mode: 'new' | 'edit') {
+  return apiClient.get<FormDefinition>(`/document-workbench/${moduleId}/form-definition`, { query: { mode } })
 }

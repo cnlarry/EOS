@@ -31,6 +31,10 @@ public sealed class ActionDryRunTests : IAsyncLifetime
     private const string TestUser = "ZZDRY0001";
     private const string TestEmployee = "ZZDRY 测试员";
 
+    /// <summary>工具调用身份：会话 + 工具调用 ID，服务端据此推导幂等键。</summary>
+    private const long ConversationId = 4242;
+    private const string ToolCallId = "call_zzdry_1";
+
     private DbConnectionFactory _connections = null!;
 
     public async Task InitializeAsync()
@@ -67,7 +71,8 @@ public sealed class ActionDryRunTests : IAsyncLifetime
     private static string ServerKeyForInsert()
     {
         var request = AssistantInsertRequest();
-        return AssistantActionIdempotency.Create(4242, "call_zzdry_1",
+        var seed = AssistantActionKeySeed.FromToolCall(ConversationId, ToolCallId);
+        return AssistantActionIdempotency.Create(seed.ConversationId, seed.CallId,
             AssistantRecordActionNames.For(request.Kind),
             AssistantActionIdempotency.Canonicalize(request, request.Rows[0]));
     }
@@ -204,7 +209,7 @@ public sealed class ActionDryRunTests : IAsyncLifetime
 
         var execution = await service.ExecuteAsync(
             TestUser, TestEmployee, AssistantInsertRequest(),
-            conversationId: 4242, toolCallId: "call_zzdry_1", CancellationToken.None);
+            AssistantActionKeySeed.FromToolCall(4242, ToolCallId), CancellationToken.None);
 
         var row = Assert.Single(execution.Rows);
         Assert.True(row.Succeeded, row.Message);

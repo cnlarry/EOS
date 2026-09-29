@@ -17,6 +17,7 @@ import { KbDocDialog, KbSourceText } from './KbSource'
 import { extractPageContext } from './pageContext'
 import { buildChatSituation } from './situationSource'
 import { useChatStream, type AssistantDraft, type AssistantFormDraft } from './useChatStream'
+import { ActionCard, ActionResultCard } from './ActionCard'
 import { AdminChangesetCard } from './AdminChangesetCard'
 import { assistantPrefillKey } from '../../lib/storageKeys'
 import { workbenchNew } from '../document-workbench/workbenchPath'
@@ -467,11 +468,7 @@ export function AssistantDock() {
                 )}
                 {!bubble.streaming && bubble.drafts && bubble.drafts.length > 0 && (
                   <div className="erp-assistant-drafts">
-                    {bubble.drafts.map((draft, index) => 'kind' in draft && draft.kind === 'admin-changeset' ? (
-                      <AdminChangesetCard key={index} draft={draft} />
-                    ) : (
-                      <DraftCard key={index} draft={draft as AssistantFormDraft} onOpenForm={handleOpenInForm} />
-                    ))}
+                    {bubble.drafts.map((draft, index) => renderDraft(draft, index, handleOpenInForm))}
                   </div>
                 )}
               </div>
@@ -517,6 +514,19 @@ export function AssistantDock() {
 
 function toBubble(message: AssistantMessage): Bubble {
   return { key: `m-${message.id}`, role: message.role as 1 | 2, text: message.content }
+}
+
+/**
+ * 确认卡按 kind 分派。操作卡与结果卡都在**助手内**渲染：
+ * 用户改值、重算预演、确认执行全程不离开抽屉，所以这里不出现任何路由跳转。
+ */
+function renderDraft(draft: AssistantDraft, index: number, onOpenForm: (draft: AssistantFormDraft) => void) {
+  if ('kind' in draft) {
+    if (draft.kind === 'admin-changeset') return <AdminChangesetCard key={index} draft={draft} />
+    if (draft.kind === 'record-action-preview') return <ActionCard key={index} draft={draft} />
+    if (draft.kind === 'record-action-result') return <ActionResultCard key={index} result={draft} />
+  }
+  return <DraftCard key={index} draft={draft as AssistantFormDraft} onOpenForm={onOpenForm} />
 }
 
 const PAGE_TYPE_LABELS: Record<string, string> = {

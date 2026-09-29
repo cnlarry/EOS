@@ -45,10 +45,40 @@ public sealed class AssistantActionGate(WorkbenchAccessPolicy policy)
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "未知的记录动作。"),
         };
 
-        return decision.Allowed
-            ? AssistantActionGateDecision.Allow(decision.Value!)
-            : AssistantActionGateDecision.Deny(decision.Denial!.Code, decision.Denial.Message);
+        if (decision.Allowed)
+        {
+            return AssistantActionGateDecision.Allow(decision.Value!);
+        }
+
+        // 策略层对"进不去"这类拒绝只给稳定原因码（HTTP 口径是防探测的 404，不带文案）。
+        // 这里补一句用户能照着办的话：门禁 2 的产出就是"不可执行原因"，只给码等于没说。
+        var denial = decision.Denial!;
+        return AssistantActionGateDecision.Deny(denial.Code, denial.Message ?? MessageFor(denial.Code));
     }
+
+    /// <summary>
+    /// 拒绝原因码 → 用户可见文案。**权限问题必须明说**：这里的读者是"问自己这单为什么做不了"的本人，
+    /// 不是防探测口径下的陌生人，含糊成"操作失败"只会把人推向绕过系统。
+    /// </summary>
+    private static string MessageFor(string code) => code switch
+    {
+        WorkbenchDenialCodes.NotAuthenticated => "当前请求未登录。",
+        WorkbenchDenialCodes.NotBrowsable => "你没有这个模块的浏览权限。",
+        WorkbenchDenialCodes.DefinitionUnavailable => "这个模块没有可用的定义（未纳入统一表单或尚未发布）。",
+        WorkbenchDenialCodes.FormNotEnabled => "这个模块未启用统一表单，助手无法代为录入。",
+        WorkbenchDenialCodes.ModeNotPermitted => "当前用户在这个模块上没有该动作的权限。",
+        WorkbenchDenialCodes.AddCapabilityMissing => "你没有这个模块的新增权限。",
+        WorkbenchDenialCodes.EditCapabilityMissing => "你没有这个模块的修改权限。",
+        WorkbenchDenialCodes.FormUnavailable => "这个模块的表单当前不可用。",
+        WorkbenchDenialCodes.NoWritableSurface or WorkbenchDenialCodes.NoWritablePage
+            => "这个模块当前没有可写的页面。",
+        WorkbenchDenialCodes.DeleteNotPermitted
+            => DiagnosisActionEvaluator.MessageFor(DiagnosisActionEvaluator.NoDeleteRightCode),
+        WorkbenchDenialCodes.SetupNotAllowed => "你没有字段维护权限。",
+        WorkbenchDenialCodes.InvalidFormMode => "表单模式不合法。",
+        WorkbenchDenialCodes.IdempotencyKeyRequired => "缺少幂等键。",
+        _ => $"该操作被拒绝（原因码 {code}）。",
+    };
 
     /// <summary>
     /// 删除路径的动作位不足由策略层原样抛出（控制器不捕获 → 403），助手侧把它折成稳定原因码，

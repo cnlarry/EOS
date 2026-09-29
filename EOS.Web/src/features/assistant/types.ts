@@ -53,6 +53,73 @@ export interface AssistantApplyResult {
   notes: string[]
 }
 
+/** 助手可代理的记录动作：新增 / 修改 / 删除（批核族不在动作面内）。 */
+export type AssistantRecordActionKind = 'insert' | 'update' | 'delete'
+
+/** 删除的级联影响面：本模块声明的效果链会碰到的目标表.字段.算子。 */
+export interface AssistantActionImpact {
+  effectKey: string
+  eventCode: string
+  effectName: string | null
+  targetTable: string
+  targetField: string
+  opCode: string
+}
+
+/** 预演里的一行：带上提交的值（界面据此可就地改），被拒时带原因码与文案。 */
+export interface AssistantActionRowPreview {
+  keys: string[]
+  values: Record<string, string | null> | null
+  allowed: boolean
+  denialCode: string | null
+  denialMessage: string | null
+  impacts: AssistantActionImpact[] | null
+}
+
+/** 预演报告（模型经工具、界面经端点，拿到的是同一份形状）。 */
+export interface AssistantRecordActionPreview {
+  kind: 'record-action-preview'
+  moduleId: number
+  moduleTitle: string
+  action: AssistantRecordActionKind
+  blocked: boolean
+  moduleDenialCode: string | null
+  moduleDenialMessage: string | null
+  rows: AssistantActionRowPreview[]
+  notes: string[]
+}
+
+/** 执行结果里的一行：成功带业务生成的主键，失败带原因。 */
+export interface AssistantActionRowOutcome {
+  keys: string[]
+  succeeded: boolean
+  code: string | null
+  message: string | null
+  resultKeys: string[] | null
+  idempotencyKey: string
+}
+
+/** 执行结果。 */
+export interface AssistantRecordActionResult {
+  kind: 'record-action-result'
+  moduleId: number
+  moduleTitle: string
+  action: AssistantRecordActionKind
+  moduleDenialCode: string | null
+  moduleDenialMessage: string | null
+  rows: AssistantActionRowOutcome[]
+}
+
+/** 请求载荷：与模型工具的参数契约同形（新增只需 values，修改/删除需要 keys）。 */
+export interface AssistantRecordActionPayload {
+  module_id: number
+  action: AssistantRecordActionKind
+  rows: Array<{
+    keys: string[]
+    values: Record<string, string>
+  }>
+}
+
 /** 知识库来源文档（引用链接落点；不可见文档服务端统一 404）。 */
 export interface KbDocChunk {
   serialNo: number
