@@ -44,6 +44,27 @@
     <InternalsVisibleTo Include="EOS.API.Tests" />
   </ItemGroup>
 
+  <!-- 产品版本唯一真源：仓库根 version.json（前端 vite 配置、发布标签、CHANGELOG 同源）。
+       在读取程序集属性前写入 Version/VersionPrefix，使 InformationalVersion 成为产品版本
+       （SDK 仍会追加 +<sha>）。无 version.json 时保持 SDK 默认值，端点如实报告默认版本。
+       解析方式：MSBuild 属性函数不能执行 System.Text.Json，故按行取出 "version" 那一行再剥离
+       引号/冒号/逗号——version.json 只是「一个键」的极简文件，不需要完整 JSON 解析。 -->
+  <Target Name="SetProductVersionFromVersionJson" BeforeTargets="GetAssemblyVersion;GetAssemblyAttributes"
+          Condition="Exists('$(MSBuildProjectDirectory)\..\version.json')">
+    <ReadLinesFromFile File="$(MSBuildProjectDirectory)\..\version.json">
+      <Output TaskParameter="Lines" ItemName="ProductVersionJsonLines" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <ProductVersionLine Include="@(ProductVersionJsonLines)"
+                          Condition="$([System.String]::Copy('%(Identity)').Contains('version'))" />
+    </ItemGroup>
+    <PropertyGroup>
+      <ProductVersionRaw>@(ProductVersionLine)</ProductVersionRaw>
+      <Version>$([System.String]::Copy('$(ProductVersionRaw)').Replace('"version"','').Replace(':','').Replace('"','').Replace(',','').Trim())</Version>
+      <VersionPrefix>$(Version)</VersionPrefix>
+    </PropertyGroup>
+  </Target>
+
   <!-- 构建元数据：把 Git 提交与构建时间写进程序集，供 /health/version 报告。
        用途：区分「运行中的进程」与「磁盘上的二进制」是否同一份构建（排障/部署漂移）。
        无 .git（发布快照解包等）时跳过，端点会如实报告 unknown。 -->
