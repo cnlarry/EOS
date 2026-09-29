@@ -225,10 +225,15 @@ foreach ($target in $scanTargets) {
                                     "（若它属本机/已退役/外部/相对，请登记进 .agents/skills/_map.md 第二节）")
                     } else {
                         $checkedRefs++
-                        $assetAt = Get-LastCommitSeconds $ref
-                        $skillAt = Get-LastCommitSeconds $target.GitPath
-                        if ($skillAt -gt 0 -and $assetAt -gt $skillAt) {
-                            $stales.Add("$($target.Label) 引用的 $ref 比技能本身更新——请复核技能正文是否已陈旧")
+                        # 自指豁免：引用的资产就是技能自己的容器目录（如 skills README 引用 .agents/skills），
+                        # 它必然不早于技能本身，报陈旧是误报。
+                        $selfContainer = ($target.GitPath -eq $ref) -or $target.GitPath.StartsWith("$ref/")
+                        if (-not $selfContainer) {
+                            $assetAt = Get-LastCommitSeconds $ref
+                            $skillAt = Get-LastCommitSeconds $target.GitPath
+                            if ($skillAt -gt 0 -and $assetAt -gt $skillAt) {
+                                $stales.Add("$($target.Label) 引用的 $ref 比技能本身更新——请复核技能正文是否已陈旧")
+                            }
                         }
                     }
                 }
