@@ -9,8 +9,9 @@ export class HttpTransport implements ApiTransport {
   async request<TResponse>(request: ApiRequest): Promise<TResponse> {
     const url = new URL(`${this.baseUrl}${request.path}`, window.location.origin)
     Object.entries(request.query ?? {}).forEach(([key, value]) => { if (value !== undefined) url.searchParams.set(key, String(value)) })
-    // Pass X-Correlation-Id through when provided (the server generates one otherwise);
-    // X-Client-Id identifies the caller and is propagated to logs, audit and error responses.
+    // X-Correlation-Id: 每次请求默认新生成一个；同一用户操作触发多个请求时，
+    // 调用方应显式传入同一个值（request.headers 展开在最后，可覆盖默认值），
+    // 这样服务端日志里能把"这一次点击"的全部请求串起来。
     const headers: Record<string, string> = {
       'X-Client-Id': 'eos.web',
       'X-Correlation-Id': newCorrelationId(),

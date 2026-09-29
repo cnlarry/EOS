@@ -1,7 +1,31 @@
-// Global frontend error reporting: window error / unhandledrejection /
-// failed API responses are posted best-effort to POST /api/v1/client-errors,
-// where the API logs them at Warning (event client_error) into the JSONL
-// pipeline for log MCP correlation. Never throws, never blocks UI.
+// Global frontend error reporting: window error / unhandledrejection / React render
+// failures are posted best-effort to POST /api/v1/client-errors, where the API logs
+// them at Warning (event client_error) into the same JSONL file pipeline as the
+// request logs, so a report id correlates both sides. Never throws, never blocks UI.
+
+import { appVersion } from './diagnostics'
+
+/** 前端上报载荷：与服务端 ClientErrorReport 的字段一一对应。 */
+export interface ClientErrorPayload {
+  kind: string
+  message: string
+  stack?: string
+  url?: string
+  correlationId?: string
+  appVersion?: string
+}
+
+export function reportClientError(payload: ClientErrorPayload): void {
+  postError({
+    kind: payload.kind,
+    message: payload.message,
+    stack: payload.stack,
+    url: payload.url,
+    correlationId: payload.correlationId,
+    // 版本号仍按字符串上报（服务端按长度校验）；缺省由 appVersion() 兜底为 unknown
+    appVersion: payload.appVersion ?? appVersion(),
+  })
+}
 
 function postError(payload: Record<string, string | undefined>): void {
   try {
@@ -24,7 +48,7 @@ function postError(payload: Record<string, string | undefined>): void {
 
 export function installGlobalErrorHandlers(): void {
   window.addEventListener('error', (event) => {
-    postError({
+    reportClientError({
       kind: 'error',
       message: String(event.message ?? 'unknown error').slice(0, 1000),
       stack:
@@ -42,7 +66,7 @@ export function installGlobalErrorHandlers(): void {
         : reason instanceof Error
           ? `${reason.name}: ${reason.message}`
           : 'unhandled rejection';
-    postError({
+    reportClientError({
       kind: 'unhandledrejection',
       message: String(message).slice(0, 1000),
       stack: reason instanceof Error ? String(reason.stack).slice(0, 4000) : undefined,
