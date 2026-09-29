@@ -10,7 +10,8 @@ namespace EOS.API.Controllers;
 /// <summary>
 /// Operation audit query over AUDIT_EVENT (v2, the only operation log store).
 /// SYSDF is history-only and no longer queried here.
-/// Permission gate: module 11 (base settings, where the log lives) CanBrowse.
+/// Permission gate: module 2313 (system management → table maintenance → log management,
+/// the module that presents the log) CanBrowse.
 /// </summary>
 [ApiController, Authorize, Route("api/v1/audit")]
 public sealed class AuditController(
@@ -18,7 +19,7 @@ public sealed class AuditController(
     ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext) : ControllerBase
 {
-    private const int LogModuleId = 11;
+    private const int LogModuleId = 2313;
 
     [HttpGet]
     public async Task<IActionResult> Query(

@@ -56,7 +56,7 @@ interface Diagnostics {
 /**
  * 日志管理（定制页 /admin/logs）：
  * 看系统诊断信息（版本/构建/健康检查/迁移台账）、按条件读运行日志、下载诊断包。
- * 权限由路由（模块 110112 的读权限）与服务端（模块 11 的 CanBrowse / CanSetup）双重把关；
+ * 权限由路由（模块 2313 的读权限）与服务端（同一模块 2313 的 CanBrowse / CanSetup）双重把关；
  * 打包下载额外要求设置权限，未授权时后端返回 403，页面提示原因而不是静默失败。
  */
 export function LogAdminPage() {

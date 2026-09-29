@@ -15,9 +15,10 @@ namespace EOS.API.Features.Diagnostics;
 /// 日志管理（定制页 `/admin/logs` 的后端）：
 /// 读运行日志、看系统诊断信息、下载诊断包（zip）。
 ///
-/// 权限（ADR-029 §2.1，2026-09-29 用户拍板）：模块 <b>11</b>（基础设置，日志所在模块）
-/// 的 `CanBrowse` 可读日志与诊断信息——与 `AuditController` 同一锚点；
-/// `CanSetup` 才可**打包下载**（打包会把日志带出服务器，权限更高一档）。
+/// 权限（ADR-029 §2.1）：模块 <b>2313</b>（系统管理 → 数据表维护 → 日志管理，即本页自身）
+/// 的 `CanBrowse` 可读日志与诊断信息；`CanSetup` 才可**打包下载**
+/// （打包会把日志带出服务器，权限更高一档）。页面、菜单与接口锚点同为 2313，
+/// 避免"菜单看一个模块、接口看另一个模块"的双真源。
 ///
 /// 打包内容为白名单 6 项（日志 + diagnostics/health/migrations-summary/config-digest/manifest），
 /// **不含**配置文件原文、审计明细原文、业务数据；日志在写入时已过 `LogRedactor`。
@@ -33,7 +34,7 @@ public sealed class LogsController(
     WorkbenchAuditWriter auditWriter,
     ILogger<LogsController> logger) : ControllerBase
 {
-    private const int LogModuleId = 11;
+    private const int LogModuleId = 2313;
     private const long MaxBundleBytes = 100L * 1024 * 1024;
 
     [HttpGet("files")]

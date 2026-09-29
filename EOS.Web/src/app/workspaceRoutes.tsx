@@ -59,8 +59,9 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
     { path: 'admin/groups/:groupId/members', element: withSuspense(<GroupMembersPage />) },
   ] },
   { element: <RequirePermission permission={moduleReadPermission(2303)} />, children: [{ path: 'admin/field-audit', element: withSuspense(<FieldAuditPage />) }] },
-  // 日志管理（模块 110112）：读日志与诊断信息；打包下载由服务端另行要求设置权限
-  { element: <RequirePermission permission={moduleReadPermission(110112)} />, children: [{ path: 'admin/logs', element: withSuspense(<LogAdminPage />) }] },
+  // 日志管理（模块 2313，根 23 系统管理 / 父 2311 数据表维护）：读日志与诊断信息；
+  // 打包下载由服务端另行要求设置权限
+  { element: <RequirePermission permission={moduleReadPermission(2313)} />, children: [{ path: 'admin/logs', element: withSuspense(<LogAdminPage />) }] },
   { element: <RequirePermission permission={moduleReadPermission(110310)} />, children: [{ path: 'admin/depot-stock-policy', element: withSuspense(<DepotStockPolicyPage />) }] },
   { element: <RequirePermission permission={moduleReadPermission(2306)} />, children: [
     { path: 'admin/users', element: withSuspense(<UserAdminPage />) },
