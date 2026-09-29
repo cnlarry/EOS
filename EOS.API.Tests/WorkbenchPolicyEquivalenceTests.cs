@@ -1,5 +1,6 @@
 using EOS.API.Data;
 using EOS.API.Data.Workbench;
+using EOS.API.Features.Assistant.Actions;
 using EOS.API.Models;
 using EOS.API.Security;
 using Microsoft.Extensions.Options;
@@ -272,6 +273,54 @@ public class WorkbenchPolicyEquivalenceTests
         Assert.False((await policy.AuthorizeActionAsync("u1", ModuleId, default)).Allowed);
         Assert.Empty(source.FormModes);
     }
+
+    // ── 双重门禁：助手侧门禁与服务端判定逐格一致 ──
+
+    /// <summary>
+    /// 门禁 2（助手侧预防）必须是策略层的**消费方**：它给出的"能做 / 不能做"必须与服务端端点
+    /// 用的判据**逐格一致**，不一致率恒为 0。
+    ///
+    /// <para>
+    /// 基准取本文件里内联的退役判据（重构前控制器的那一套），因此本断言**不是**"同一行代码前后相等"
+    /// 的同义反复：助手侧只要自己抄一份口径、或把判定放宽成"直接放行"，矩阵立刻会出现不一致格。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Assistant_action_gate_matches_server_side_predicates()
+    {
+        var mismatches = new List<string>();
+        var outcomes = new HashSet<string>();
+
+        foreach (var cell in Cells())
+        {
+            var gate = new AssistantActionGate(BuildPolicy(cell));
+
+            foreach (var (kind, server) in new (AssistantRecordActionKind Kind, Decision Decision)[]
+            {
+                (AssistantRecordActionKind.Insert,
+                    Retired.FormAccess("u1", cell.Rights, cell.Definition, cell.FormEnabled, cell.FormReadOnly, ModuleId, "new", cell.Form, cell.FormAvailable)),
+                (AssistantRecordActionKind.Update,
+                    Retired.FormAccess("u1", cell.Rights, cell.Definition, cell.FormEnabled, cell.FormReadOnly, ModuleId, "edit", cell.Form, cell.FormAvailable)),
+                (AssistantRecordActionKind.Delete,
+                    Retired.DeleteAccess("u1", cell.Rights, cell.Definition, cell.FormEnabled, cell.FormReadOnly, ModuleId, cell.Form, cell.FormAvailable)),
+            })
+            {
+                var actual = OutcomeOf(await gate.EvaluateAsync("u1", ModuleId, kind, default));
+                if (actual != server.Outcome)
+                {
+                    mismatches.Add($"  [助手侧动作 {kind}] {cell}\n    服务端基准: {server.Outcome}\n    助手侧门禁: {actual}");
+                }
+                outcomes.Add(actual);
+            }
+        }
+
+        AssertMatrixSound(mismatches, outcomes, "ALLOW", "NOT_FOUND", "FORBIDDEN");
+    }
+
+    /// <summary>把助手侧门禁的判定折回与服务端同一套结果词表（404 口径 / 403 口径）。</summary>
+    private static string OutcomeOf(AssistantActionGateDecision decision) => decision.Allowed
+        ? "ALLOW"
+        : decision.Code == WorkbenchDenialCodes.DeleteNotPermitted ? "FORBIDDEN" : "NOT_FOUND";
 
     private static void AssertMatrixSound(List<string> mismatches, HashSet<string> outcomes, params string[] requiredOutcomes)
     {

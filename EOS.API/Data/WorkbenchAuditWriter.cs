@@ -22,7 +22,8 @@ public sealed class WorkbenchAuditWriter(
     DbConnectionFactory connections,
     IHttpContextAccessor httpContextAccessor,
     WorkbenchDefinitionProvider definitionProvider,
-    IOptions<AuditSettings> auditSettings)
+    IOptions<AuditSettings> auditSettings,
+    Workbench.AgentWriteContext? agentWriteContext = null)
 {
     /// <summary>Record audit event (business transaction scope, no field details).</summary>
     public async Task WriteAsync(
@@ -164,8 +165,16 @@ public sealed class WorkbenchAuditWriter(
     private static string? ResolveActorDisplayName(HttpContext? context) =>
         context?.User.FindFirstValue(ClaimTypes.Name);
 
+    /// <summary>
+    /// 调用方类型：助手代表的写入一律记为 Agent（进程内动作不经过外部客户端，
+    /// 请求头里的 clientId 描述的是**发起对话的人**，不是这次写入的真正执行者）。
+    /// </summary>
     private byte ResolveClientType()
     {
+        if (agentWriteContext is { IsActive: true })
+        {
+            return (byte)AuditClientType.Agent;
+        }
         if (httpContextAccessor.HttpContext is not { } context)
         {
             return (byte)AuditClientType.Api;
@@ -179,10 +188,16 @@ public sealed class WorkbenchAuditWriter(
         };
     }
 
-    private static byte ResolveActorType(string? executor) =>
-        string.Equals(executor?.Trim(), "SYSTEM", StringComparison.OrdinalIgnoreCase)
+    private byte ResolveActorType(string? executor)
+    {
+        if (agentWriteContext is { IsActive: true })
+        {
+            return (byte)AuditActorType.Agent;
+        }
+        return string.Equals(executor?.Trim(), "SYSTEM", StringComparison.OrdinalIgnoreCase)
             ? (byte)AuditActorType.SystemTask
             : (byte)AuditActorType.User;
+    }
 
     private static byte[]? ChangeHash(string? value)
     {

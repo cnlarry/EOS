@@ -138,16 +138,16 @@ public sealed class DocumentWorkbenchRepository(
         => await commandHandler.GetRecordAsync(definition,form,keyValues,dataFilter,token);
 
     public async Task<RecordSaveResult> CreateRecordAsync(
-        WorkbenchDefinition definition,FormDefinition form,SaveRecordRequest request,string employeeName,string userId,string? dataFilter,CancellationToken token)
-        => await commandHandler.CreateRecordAsync(definition,form,request,employeeName,userId,dataFilter,token);
+        WorkbenchDefinition definition,FormDefinition form,SaveRecordRequest request,string employeeName,string userId,string? dataFilter,CancellationToken token,bool dryRun=false)
+        => await commandHandler.CreateRecordAsync(definition,form,request,employeeName,userId,dataFilter,token,dryRun);
 
     public async Task<RecordSaveResult> UpdateRecordAsync(
-        WorkbenchDefinition definition,FormDefinition form,IReadOnlyList<string> keyValues,SaveRecordRequest request,string employeeName,string userId,string? dataFilter,CancellationToken token)
-        => await commandHandler.UpdateRecordAsync(definition,form,keyValues,request,employeeName,userId,dataFilter,token);
+        WorkbenchDefinition definition,FormDefinition form,IReadOnlyList<string> keyValues,SaveRecordRequest request,string employeeName,string userId,string? dataFilter,CancellationToken token,bool dryRun=false)
+        => await commandHandler.UpdateRecordAsync(definition,form,keyValues,request,employeeName,userId,dataFilter,token,dryRun);
 
     public async Task<RecordSaveResult> DeleteRecordAsync(
-        WorkbenchDefinition definition,FormDefinition form,IReadOnlyList<string> keyValues,string userId,string? dataFilter,CancellationToken token,string? idempotencyKey=null)
-        => await commandHandler.DeleteRecordAsync(definition,form,keyValues,userId,dataFilter,idempotencyKey,token);
+        WorkbenchDefinition definition,FormDefinition form,IReadOnlyList<string> keyValues,string userId,string? dataFilter,CancellationToken token,string? idempotencyKey=null,bool dryRun=false)
+        => await commandHandler.DeleteRecordAsync(definition,form,keyValues,userId,dataFilter,idempotencyKey,token,dryRun);
 
     public async Task<RecordSaveResult> WorkflowAsync(
         WorkbenchDefinition definition,IReadOnlyList<string> keyValues,bool approve,string employeeName,string userId,CancellationToken token,string? idempotencyKey=null,string? message=null)
