@@ -18,8 +18,10 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $errors = [System.Collections.Generic.List[string]]::new()
 $warnings = [System.Collections.Generic.List[string]]::new()
-# git 无输出时命令结果是 null，直接 .Trim() 会把门禁脚本自己打崩；先转字符串再裁剪。
-$head = ([string](git -C $root rev-parse --short HEAD)).Trim()
+# git 无输出时命令结果是 $null，而 `([string]$null).Trim()` 仍会抛"不能对值为 Null 的表达式调用方法"
+# ——[string] 在"内联转换再调方法"的写法下挡不住 null，门禁会自己崩掉。统一走 Out-String：
+# 它永远产出字符串（无输入时为空串），是这里唯一可靠的取值方式。
+$head = (git -C $root rev-parse --short HEAD | Out-String).Trim()
 
 # ---- 1. status.md 与 HEAD 对齐（错误） ----
 $statusPath = Join-Path $root 'docs\status.md'
@@ -29,12 +31,12 @@ if (-not (Test-Path $statusPath)) {
     # 先问"这个文件有没有纳入版本控制"：本工作副本用 .git/info/exclude 把 docs/ 整目录排除了，
     # 此时 `git log -- docs/status.md` 取到空值，直接 .Trim() 会崩在门禁脚本里——
     # 崩掉的门禁等于没有门禁：后面的规则一条都跑不到，而人只会看到一个空指针报错。
-    $statusTracked = ([string](git -C $root ls-files -- docs/status.md)).Trim()
+    $statusTracked = (git -C $root ls-files -- docs/status.md | Out-String).Trim()
     if ([string]::IsNullOrWhiteSpace($statusTracked)) {
         $warnings.Add("docs/ 在本工作副本未纳入版本控制（被 .git/info/exclude 排除），" +
                       "'status.md 随最新提交更新'这条规则无法判定，已跳过；在纳入版本控制的副本里它会照常校验。")
     } else {
-        $statusLast = ([string](git -C $root log -1 --format=%h -- docs/status.md)).Trim()
+        $statusLast = (git -C $root log -1 --format=%h -- docs/status.md | Out-String).Trim()
         if ($statusLast -ne $head) {
             $errors.Add("docs/status.md 未随最新提交更新（上次更新提交 $statusLast，HEAD $head）——任务收尾必须刷新现状文档")
         }
