@@ -12,7 +12,7 @@
 |---|---|---|
 | 00-术语表.md | 已完成 | - |
 | 01-代码地图与仓库结构.md | 已完成 | - |
-| 02-本地环境与运行.md | 已完成 | EOS.API/Program.cs, EOS.API/appsettings.json, EOS.Web/package.json, EOS.Web/vite.config.ts, db |
+| 02-本地环境与运行.md | 已完成 | EOS.API/appsettings.json, EOS.Web/package.json, EOS.Web/vite.config.ts, db |
 | 03-工程规范与硬约束.md | 已完成 | - |
 | 04-API契约与前后端协作.md | 已完成 | EOS.API/Errors, EOS.API/Middleware, EOS.API/Models, EOS.Web/src/services |
 | 05-数据库迁移与建库.md | 已完成 | EOS.API/Data/Migrations, EOS.API/Data/ErpDatabaseInitializer.cs, db |
@@ -37,7 +37,8 @@
 | 50-统一报表.md | 已完成 | EOS.API/Controllers/ReportController.cs, EOS.API/Controllers/ReportCenterController.cs, EOS.API/Data/ReportRepository.cs, EOS.API/Data/ReportAggregateRegistry.cs, EOS.API/Data/ReportListGrouping.cs, EOS.Web/src/features/reports |
 | 51-报表可视化设计器.md | 已完成 | EOS.API/Controllers/ReportAdminController.cs, EOS.API/Controllers/ReportResourceController.cs, EOS.API/Data/ReportAdminRepository.cs, EOS.API/Data/ReportFormLayoutRepository.cs, EOS.API/Data/ReportFormatRepository.cs |
 | 52-报表打印版式.md | 已完成 | EOS.API/ReportFormats, EOS.API/Data/ILayoutRenderer.cs, EOS.API/Data/QuestPdfLayoutRenderer.cs, EOS.API/Data/PdfLayout.cs, EOS.API/Data/ReportPdfService.cs, EOS.API/Controllers/PrintController.cs, EOS.Web/src/features/print |
-| 60-AI工作助手.md | 已完成 | EOS.API/Features/Assistant, EOS.API/Controllers/AssistantController.cs, EOS.API/Data/AssistantRepository.cs, EOS.API/Data/AssistantQueryBuilder.cs, EOS.API/Controllers/KbController.cs, EOS.Web/src/features/assistant |
+| 60-AI工作助手.md | 已完成 | EOS.API/Features/Assistant/ModelAccess, EOS.API/Features/Assistant/Memory, EOS.API/Features/Assistant/Kb, EOS.API/Features/Assistant/Metrics, EOS.API/Features/Assistant/Governance, EOS.API/Features/Assistant/Admin, EOS.API/Features/Assistant/ChatService.cs, EOS.API/Controllers/AssistantController.cs, EOS.API/Data/AssistantRepository.cs, EOS.API/Data/AssistantQueryBuilder.cs, EOS.API/Controllers/KbController.cs, EOS.Web/src/features/assistant/api.ts, EOS.Web/src/features/assistant/types.ts, EOS.Web/src/features/assistant/AssistantMemoryPanel.tsx |
+| 61-工作助手的处境与诊断.md | 进行中 | EOS.API/Features/Assistant/Situation, EOS.API/Features/Assistant/Tools/ListMyCapabilitiesTool.cs, EOS.API/Features/Assistant/Tools/GetMyDigestTool.cs, EOS.API/Features/Assistant/Tools/DiagnoseModuleTool.cs, EOS.API/Features/Assistant/Tools/GetModuleFlowTool.cs, EOS.Web/src/features/assistant/AssistantDock.tsx, EOS.Web/src/features/assistant/situationSource.ts, EOS.Web/src/features/assistant/pageContext.ts, EOS.Web/src/features/assistant/useChatStream.ts |
 | 70-后台配置面总览.md | 已完成 | EOS.API/Controllers/MenuAdminController.cs, EOS.API/Controllers/NavigationGroupsController.cs, EOS.API/Controllers/SettingsController.cs, EOS.API/Data/SystemParameterService.cs, EOS.Web/src/features/menu-admin, EOS.Web/src/features/admin, EOS.Web/src/features/settings |
 | 71-附件.md | 已完成 | EOS.API/Controllers/AttachmentController.cs, EOS.API/Data/AttachmentRepository.cs |
 | 72-导入与导出.md | 已完成 | EOS.API/Controllers/ImportController.cs, EOS.API/Data/ImportService.cs, EOS.API/Data/RecordPayloadValidator.cs, EOS.Web/src/features/import |
