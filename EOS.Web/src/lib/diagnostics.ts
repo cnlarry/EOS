@@ -41,6 +41,14 @@ export function newReportId(): string {
   return createId()
 }
 
+/**
+ * 为**一次用户操作**生成关联键，供该操作触发的多个请求共用（如"预检 + 确认"两次 POST）。
+ * 与错误现场编号同源（都是本地随机 ID），区别只在用途：一个用于把请求串起来，一个用于报障。
+ */
+export function newCorrelationId(): string {
+  return createId()
+}
+
 /** 已有编号则沿用，否则新生成——避免同一个错误现场出现两个编号。 */
 export function ensureReportId(existing?: string | null): string {
   return existing && existing.trim().length > 0 ? existing : newReportId()
