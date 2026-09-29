@@ -244,6 +244,8 @@ builder.Services.AddScoped<HumanResourceJobsService>();
 builder.Services.AddScoped<WorkbenchDefinitionBuilder>();
 builder.Services.AddScoped<WorkbenchFieldMetaMapper>();
 builder.Services.AddScoped<DocumentWorkbenchRepository>();
+builder.Services.AddScoped<EOS.API.Data.Workbench.IWorkbenchDefinitionSource>(serviceProvider => serviceProvider.GetRequiredService<DocumentWorkbenchRepository>());
+builder.Services.AddScoped<EOS.API.Data.Workbench.WorkbenchAccessPolicy>();
 builder.Services.AddScoped<ReportRepository>();
 builder.Services.AddScoped<PrintSettingsRepository>();
 builder.Services.AddScoped<SystemParameterService>();

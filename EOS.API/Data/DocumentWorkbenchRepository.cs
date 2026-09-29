@@ -20,7 +20,7 @@ public sealed class DocumentWorkbenchRepository(
     WorkbenchApprovalService approvalService,
     DocumentActions.DocumentActionRegistry documentActions,
     DocumentActions.DocumentActionAuthorization documentActionAuthorization,
-    ILogger<DocumentWorkbenchRepository> logger) : Features.Assistant.Tools.IWorkbenchSearchGateway
+    ILogger<DocumentWorkbenchRepository> logger) : Features.Assistant.Tools.IWorkbenchSearchGateway, Workbench.IWorkbenchDefinitionSource
 {
     private SqlConnection CreateConnection()=>connections.Create();
 
