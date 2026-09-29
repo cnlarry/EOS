@@ -59,8 +59,9 @@ public sealed class AssistantActionGate(WorkbenchAccessPolicy policy)
     /// <summary>
     /// 拒绝原因码 → 用户可见文案。**权限问题必须明说**：这里的读者是"问自己这单为什么做不了"的本人，
     /// 不是防探测口径下的陌生人，含糊成"操作失败"只会把人推向绕过系统。
+    /// 请求卡的模块级拒绝复用同一份文案，不另写一句。
     /// </summary>
-    private static string MessageFor(string code) => code switch
+    internal static string MessageFor(string code) => code switch
     {
         WorkbenchDenialCodes.NotAuthenticated => "当前请求未登录。",
         WorkbenchDenialCodes.NotBrowsable => "你没有这个模块的浏览权限。",

@@ -1,7 +1,9 @@
 using EOS.API.Data;
 using EOS.API.Data.Effects;
 using EOS.API.Data.Workbench;
+using EOS.API.Features.Assistant.Governance;
 using EOS.API.Models;
+using Microsoft.Extensions.Options;
 
 namespace EOS.API.Features.Assistant.Actions;
 
@@ -27,6 +29,7 @@ public sealed class AssistantRecordActionService(
     EffectPlanLoader effectPlans,
     AgentWriteContext agentWrites,
     WorkbenchAuditWriter auditWriter,
+    IOptions<AssistantActionLimitsOptions> limits,
     ILogger<AssistantRecordActionService> logger)
 {
     /// <summary>预演审计的动作码：预演本身不留业务痕迹，只在审计里留一条 best-effort 记录。</summary>
@@ -250,7 +253,8 @@ public sealed class AssistantRecordActionService(
         AssistantActionRequest request, string userId, CancellationToken token)
     {
         var actionName = AssistantRecordActionNames.For(request.Kind);
-        var keys = string.Join(',', request.Rows.SelectMany(row => row.Keys).Where(key => key.Length > 0).Take(20));
+        var keys = string.Join(',', request.Rows.SelectMany(row => row.Keys)
+            .Where(key => key.Length > 0).Take(Governance.AssistantActionLimits.MaxAuditResourceKeys));
         var summary = $"用户确认执行{actionName}：{request.Rows.Count} 行。";
         try
         {
@@ -271,8 +275,11 @@ public sealed class AssistantRecordActionService(
     {
         var allowed = rows.Count(row => row.Allowed);
         var denied = rows.Count - allowed;
-        var keys = string.Join(',', rows.SelectMany(row => row.Keys).Where(key => key.Length > 0).Take(20));
-        var summary = $"预演{AssistantRecordActionNames.For(request.Kind)}：可执行 {allowed} 行、不可执行 {denied} 行。";
+        var keys = string.Join(',', rows.SelectMany(row => row.Keys)
+            .Where(key => key.Length > 0).Take(Governance.AssistantActionLimits.MaxAuditResourceKeys));
+        // 生效阈值快照随预演留痕：事后回查"当时用的是哪个阈值"，不必去猜当时的配置。
+        var summary = $"预演{AssistantRecordActionNames.For(request.Kind)}：可执行 {allowed} 行、不可执行 {denied} 行。"
+            + limits.Value.Snapshot();
         try
         {
             using var agentScope = agentWrites.Begin();

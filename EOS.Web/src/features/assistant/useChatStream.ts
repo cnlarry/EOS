@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import type { ChatSituation } from './situationSource'
 import type {
   AssistantAdminDraft,
+  AssistantApprovalRequestPreview,
   AssistantConfigApplyResult,
   AssistantConfigDiff,
   AssistantRecordActionPreview,
@@ -15,9 +16,10 @@ export type ChatStreamEvent =
   | { event: 'error'; code: string; message: string }
 
 /**
- * 确认卡载荷六种：表单草稿（带入表单）、元数据变更集（确认执行）、
+ * 确认卡载荷七种：表单草稿（带入表单）、元数据变更集（确认执行）、
  * 记录动作的预演（就地操作卡）、记录动作的执行结果（回读结果）、
- * 配置改动对照卡（逐项勾选后应用）、配置改动的应用结果。
+ * 配置改动对照卡（逐项勾选后应用）、配置改动的应用结果、
+ * 批核族的操作请求卡（逐行勾选确认后由界面直调既有端点）。
  */
 export type AssistantDraft =
   | AssistantFormDraft
@@ -26,6 +28,7 @@ export type AssistantDraft =
   | AssistantRecordActionResult
   | AssistantConfigDiff
   | AssistantConfigApplyResult
+  | AssistantApprovalRequestPreview
 
 /** 表单草稿：前端确认后经现有保存管线执行，助手不新增写路径。 */
 export interface AssistantFormDraft {

@@ -313,8 +313,15 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Diagnosis.RecordDiagnosisS
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.DiagnoseRecordTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Actions.AssistantActionGate>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Actions.AssistantRecordActionService>();
+builder.Services.AddOptions<EOS.API.Features.Assistant.Governance.AssistantActionLimitsOptions>()
+    .Bind(builder.Configuration.GetSection(EOS.API.Features.Assistant.Governance.AssistantActionLimitsOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<EOS.API.Features.Assistant.Governance.AssistantActionLimitsOptions>,
+    EOS.API.Features.Assistant.Governance.AssistantActionLimitsValidator>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Actions.AssistantApprovalRequestService>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.PreviewRecordActionTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ApplyRecordActionTool>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.PreviewBatchDecisionTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Config.IConfigDiagnosisReader,
     EOS.API.Features.Assistant.Config.ConfigDiagnosisReader>();
 builder.Services.Configure<EOS.API.Features.Assistant.Config.AssistantConfigWriteOptions>(
@@ -385,6 +392,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.CloneModuleConfigTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.PreviewConfigChangeTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ApplyConfigChangeTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Tools.PreviewBatchDecisionTool>(),
      ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));

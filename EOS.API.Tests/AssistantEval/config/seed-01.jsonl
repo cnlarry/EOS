@@ -1,0 +1,6 @@
+{"id":"C-01","surface":"effect","effectKey":"field-accumulate","observed":{"reverseStruct":"{\"kind\":\"restore-previous\",\"note\":\"这里写的说明引擎不读\"}"},"expectCode":"reverse-note-not-read","note":"反向说明写在 note 里：字段能保存，但没有任何代码读它"}
+{"id":"C-02","surface":"effect","effectKey":"car-filloil-sync","observed":{"reverseKind":"change-apply"},"expectCode":"reverse-kind-unsupported","note":"反向 kind 不在该效果键的执行闭集内：配完只在真单据上抛错"}
+{"id":"C-03","surface":"effect","effectKey":"inventory-move","observed":{"effectKeyUseCount":1},"expectCode":"effect-key-singleton","note":"本模块用到的效果键全库只用过一次：与同类键相比更像重复造键"}
+{"id":"C-04","surface":"datasource","effectKey":null,"observed":{"filterStruct":"{\"logic\":\"and\",\"conditions\":[]}"},"expectCode":null,"note":"干净样本：没有任何可自动检出的不一致，如实返回空检出"}
+{"id":"C-05","surface":"buttons","effectKey":"manual-print","observed":{"reverseStruct":"{\"kind\":\"none\"}"},"expectCode":null,"note":"用户点击行不参与反向闭集判定：它本来就没有反向"}
+{"id":"C-06","surface":"fields","effectKey":null,"observed":{"virtualExp":"","isVirtual":false},"expectCode":null,"note":"非虚拟字段上的空表达式合法，不构成不一致"}

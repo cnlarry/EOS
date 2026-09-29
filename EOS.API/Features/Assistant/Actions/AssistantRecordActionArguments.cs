@@ -1,5 +1,6 @@
 using System.Text.Json;
 
+using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.Tools;
 
 namespace EOS.API.Features.Assistant.Actions;
@@ -14,8 +15,8 @@ namespace EOS.API.Features.Assistant.Actions;
 /// </summary>
 public static class AssistantRecordActionArguments
 {
-    /// <summary>一次调用最多处理的行数：不设上限等于允许一句"全删了"。</summary>
-    public const int MaxRows = 50;
+    /// <summary>一次调用最多处理的行数：不设上限等于允许一句"全删了"。取值来自阈值单一事实源。</summary>
+    public const int MaxRows = AssistantActionLimits.MaxRowsPerAction;
 
     /// <summary>两个动作工具共用的 JSON Schema。</summary>
     public const string ParametersJson = """

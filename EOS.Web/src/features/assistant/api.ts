@@ -1,7 +1,10 @@
 import { apiClient } from '../../services/api'
 import type { FormDefinition } from '../document-workbench/formDefinition'
 import type {
+  ApprovalRequestAction,
+  ApprovalRequestPayload,
   AssistantApplyResult,
+  AssistantApprovalRequestPreview,
   AssistantConfigApplyResult,
   AssistantConfigDiff,
   AssistantMemoryList,
@@ -82,6 +85,38 @@ export function applyChangeset(changeset: unknown) {
  */
 export function previewRecordAction(payload: AssistantRecordActionPayload) {
   return apiClient.post<AssistantRecordActionPreview>('/assistant/record-actions/preview', payload)
+}
+
+/**
+ * 操作请求卡：重算逐行判定（只读）。与模型调用是同一段服务端代码、同一份参数契约，
+ * 因此卡上"重算"出来的结论与助手先前说的是同一个东西。
+ */
+export function previewApprovalRequest(payload: ApprovalRequestPayload) {
+  return apiClient.post<AssistantApprovalRequestPreview>('/assistant/approval-requests/preview', payload)
+}
+
+/**
+ * 操作请求卡：记录"用户点了确认"这一件事（best-effort 审计）。
+ * 它不执行任何处置——执行由下面的既有端点完成。
+ */
+export function confirmApprovalRequest(payload: ApprovalRequestPayload) {
+  return apiClient.post<{ confirmed: number }>('/assistant/approval-requests/confirm', payload)
+}
+
+/**
+ * 既有批核族端点：**由界面直接调用**，助手侧不持有这条通路。
+ * 幂等键走请求体的 idempotencyKey（与统一工作台其余写端点同一约定）。
+ */
+export function executeApprovalAction(
+  moduleId: number,
+  action: ApprovalRequestAction,
+  keys: string[],
+  idempotencyKey: string,
+) {
+  return apiClient.post<unknown>(`/document-workbench/${moduleId}/${action}`, {
+    key: JSON.stringify(keys),
+    idempotencyKey,
+  })
 }
 
 /**
