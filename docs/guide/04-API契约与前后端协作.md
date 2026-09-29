@@ -63,7 +63,7 @@
   因此**用户给的号一定能在服务端日志里搜到**。口径见
   [`docs/decisions/ADR-025`](../decisions/ADR-025-关联键单一真源与日志脱敏接入.md)。
 - **诊断包是另一个入口**：`GET /api/v1/logs/bundle` 返回 zip（日志 + 环境元数据），
-  需要模块 11 的 `CanSetup` 权限；读日志与诊断信息只需 `CanBrowse`。
+  需要模块 `2313`（日志管理）的 `CanSetup` 权限；读日志与诊断信息只需同一模块的 `CanBrowse`。
 
 稳定错误码（`EOS.API/Errors/ApiErrorCodes.cs`）：
 
