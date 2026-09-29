@@ -30,6 +30,7 @@ public sealed class LogsController(
     IConfiguration configuration,
     HealthCheckService healthChecks,
     DbConnectionFactory connections,
+    WorkbenchAuditWriter auditWriter,
     ILogger<LogsController> logger) : ControllerBase
 {
     private const int LogModuleId = 11;
@@ -109,9 +110,22 @@ public sealed class LogsController(
         buffer.Position = 0;
         // 用 RequestContext 的报障编号（不是 TraceIdentifier）：用户从响应/界面拿到的编号
         // 必须能在文件日志里检索到这条"谁取走了诊断包"。
+        var correlationId = RequestContext.GetCorrelationId(HttpContext);
         logger.LogWarning(
             "诊断包已生成 size={SizeBytes} files={FileCount} user={User} correlation={CorrelationId}",
-            buffer.Length, files.Count, userContext.UserId, RequestContext.GetCorrelationId(HttpContext));
+            buffer.Length, files.Count, userContext.UserId, correlationId);
+        // 落审计表（best-effort）：文件日志只留 Warning+ 且可被清理，而"谁在何时取走了诊断包"
+        // 属运维审计面，要能在 AUDIT_EVENT 里按执行者与时间检索到（打包失败不应因此失败）。
+        await auditWriter.WriteBestEffortAsync(
+            moduleId: LogModuleId,
+            resourceKey: bundleName,
+            action: "DIAGNOSTICS_BUNDLE",
+            summary: $"下载诊断包 {bundleName}（{files.Count} 个日志文件，{buffer.Length / 1024} KB，含日志与环境元数据）",
+            executor: userContext.UserId,
+            resourceType: "DIAGNOSTICS",
+            result: 1,
+            fieldChanges: null,
+            token);
         return File(buffer, "application/zip", bundleName);
     }
 
