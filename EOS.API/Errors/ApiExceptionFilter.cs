@@ -38,7 +38,8 @@ public sealed class ApiExceptionFilter(
 
         logger.LogDebug(
             "请求被拒绝 status={Status} code={Code} message={Message} path={Path} correlation={CorrelationId}",
-            status, code, message, context.HttpContext.Request.Path, context.HttpContext.TraceIdentifier);
+            status, code, message, context.HttpContext.Request.Path,
+            RequestContext.GetCorrelationId(context.HttpContext));
 
         RequestContext.SetErrorCode(context.HttpContext, code);
         var problem = ApiProblem.Create(status, code, message);
