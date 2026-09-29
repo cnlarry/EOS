@@ -11,7 +11,10 @@
          见 _map.md 第二节，**按最长前缀继承**（登记 `docs/plans/` 即覆盖其下所有路径）；
       3. **未识别的顶层片段**：抽取到的路径其顶层目录既不在仓库根、也未登记任何口径 ⇒ FAIL。
          这道关专防「目录被删掉了，技能还在引用」——正是本门禁要解决的问题；
-      4. 引用资产未比技能更新（资产更新而技能没动 ⇒ STALE）。
+      4. 引用资产未比技能更新（资产更新而技能没动 ⇒ STALE）——**仅提示，不阻断**。
+
+    为什么第 4 项不阻断：它是 git 时间戳代理，资产一改就命中（改本脚本自己也会让技能 README 命中），
+    拿来阻断只会逼出"为过门禁而空改文档"的动作。确定性的是前三项，它们也是真正抓到过漂移的那三项。
 
     为什么需要它：该目录曾出现引用「已被删除的发布脚本」与「已退役目录」的漂移，
     而没有门禁的「不双写」纪律守不住（见 .agents/skills/README.md）。
@@ -20,7 +23,7 @@
 
 .EXAMPLE
     pwsh scripts/check-agent-skills.ps1
-    pwsh scripts/check-agent-skills.ps1 -Strict    # 警告/陈旧也计入退出码 1
+    pwsh scripts/check-agent-skills.ps1 -Strict    # 警告也计入退出码 1（陈旧始终仅提示）
 #>
 param(
     [switch]$Strict
@@ -243,18 +246,21 @@ foreach ($target in $scanTargets) {
 }
 
 # ---- 3. 汇总 ----
+# 陈旧（STALE）只提示、不阻断：它是 git 时间戳代理，资产一改就命中（改门禁脚本本身也会让 README 命中），
+# 若拿来阻断，只会逼出"为了过门禁而空改文档"的动作。可阻断的是确定性的三项：
+# 名实一致、引用存在、无未识别顶层片段（-Strict 下再加警告）。
 Write-Host "== Agent 技能检查（扫描 $($scanTargets.Count) 个技能单元，存在性已校验 $checkedRefs 条）==" -ForegroundColor Cyan
-foreach ($s in $stales) { Write-Host "  [STALE] $s" -ForegroundColor Yellow }
+foreach ($s in $stales) { Write-Host "  [STALE] $s" -ForegroundColor DarkYellow }
 foreach ($w in $warnings) { Write-Host "  [WARN]  $w" -ForegroundColor Yellow }
 foreach ($e in $errors) { Write-Host "  [ERROR] $e" -ForegroundColor Red }
 
-$blocking = $errors.Count + $(if ($Strict) { $stales.Count + $warnings.Count } else { 0 })
+$blocking = $errors.Count + $(if ($Strict) { $warnings.Count } else { 0 })
 if ($blocking -gt 0) {
-    Write-Host "技能门禁不通过：$($errors.Count) 个错误、$($warnings.Count) 条警告、$($stales.Count) 条陈旧。" -ForegroundColor Red
+    Write-Host "技能门禁不通过：$($errors.Count) 个错误、$($warnings.Count) 条警告（另有 $($stales.Count) 条陈旧，仅提示）。" -ForegroundColor Red
     exit 1
 }
 if ($warnings.Count -gt 0 -or $stales.Count -gt 0) {
-    Write-Host "技能门禁通过（$($warnings.Count) 条警告、$($stales.Count) 条陈旧）。" -ForegroundColor Yellow
+    Write-Host "技能门禁通过：$($warnings.Count) 条警告（另 $($stales.Count) 条陈旧，仅提示、请自行复核）。" -ForegroundColor Yellow
 } else {
     Write-Host '技能门禁通过：引用全部存在、无未识别顶层片段、无陈旧。' -ForegroundColor Green
 }
