@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { IconAlertTriangle, IconCopy, IconHome, IconRefresh } from '@tabler/icons-react'
 import { Button } from '../components/ui/Button'
-import { copyDiagnostics, currentAppInfo, formatDiagnostics, type AppInfo } from '../lib/diagnostics'
+import { copyDiagnostics, currentAppInfo, ensureReportId, formatDiagnostics, type AppInfo } from '../lib/diagnostics'
 import { reportClientError } from '../lib/errorReporting'
 
 interface Props {
@@ -11,6 +11,11 @@ interface Props {
 interface State {
   error: Error | null
   info: AppInfo | null
+  /**
+   * 本次崩溃现场的报障编号：渲染期错误没有请求，编号由这里本地生成，
+   * 同时用于「复制诊断信息」与上报——两者必须是同一个值，否则用户给的号在服务端日志里搜不到。
+   */
+  reportId: string | null
 }
 
 /**
@@ -19,10 +24,10 @@ interface State {
  * window 兜底负责"连根都没挂上"的情形。两者都上报到同一入口（client-errors）。
  */
 export class AppErrorBoundary extends Component<Props, State> {
-  state: State = { error: null, info: null }
+  state: State = { error: null, info: null, reportId: null }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    return { error, info: currentAppInfo() }
+    return { error, info: currentAppInfo(), reportId: ensureReportId() }
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
@@ -32,6 +37,7 @@ export class AppErrorBoundary extends Component<Props, State> {
       message: `${error.name}: ${error.message}`.slice(0, 1000),
       stack: (errorInfo.componentStack ?? error.stack ?? '').slice(0, 4000),
       url: `${window.location.pathname}${window.location.search}`.slice(0, 500),
+      correlationId: this.state.reportId ?? undefined,
       appVersion: currentAppInfo().version,
     })
   }
@@ -43,12 +49,12 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   private readonly copy = () => {
-    const { error, info } = this.state
-    copyDiagnostics(info ?? currentAppInfo(), undefined, error?.message)
+    const { error, info, reportId } = this.state
+    copyDiagnostics(info ?? currentAppInfo(), reportId ?? ensureReportId(), error?.message)
   }
 
   render(): ReactNode {
-    const { error, info } = this.state
+    const { error, info, reportId } = this.state
     if (!error) return this.props.children
 
     return (
@@ -59,7 +65,7 @@ export class AppErrorBoundary extends Component<Props, State> {
           <p className="text-secondary">
             可以重试一次；若反复出现，请把下面的诊断信息复制给维护者。
           </p>
-          <pre className="erp-error-diagnostics text-start">{formatDiagnostics(info ?? currentAppInfo(), undefined, error.message)}</pre>
+          <pre className="erp-error-diagnostics text-start">{formatDiagnostics(info ?? currentAppInfo(), reportId ?? undefined, error.message)}</pre>
           <div className="d-flex gap-2 justify-content-center mt-3">
             <Button onClick={this.reload}>
               <IconRefresh size={16} /> 重试
