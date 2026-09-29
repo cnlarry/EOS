@@ -138,6 +138,16 @@ public sealed class ChatService(
         + "再用 resolve_metric 按口径计算，并在回答中标注所用口径名与数值；"
         + "若系统内没有对应口径，如实说明「该指标在系统内尚无定义」，禁止自行拼公式估算或心算。";
 
+    /// <summary>
+    /// "这张单为什么存不下去 / 改不了"必须落到证据上：走 diagnose_record 按模块与单号逐条取证，
+    /// 权限类原因直说，证据不足时如实说明缺什么——不猜、不编下一步。
+    /// </summary>
+    private const string DiagnosisUsageRule =
+        "当用户问「这张单为什么存不下去 / 改不了 / 办不下去」时，用 diagnose_record 按当前模块与单据号取证，"
+        + "再按返回的证据顺序解释原因并给出下一步；"
+        + "属于权限或状态的原因必须直接说明（例如「你没有批核权限」「单据已结案，先取消结案」），不得含糊成「操作失败」；"
+        + "证据不足时如实说明缺哪些证据，不要猜测根因。";
+
     public async IAsyncEnumerable<ChatStreamEvent> StreamReplyAsync(
         string userId,
         long sessionId,
@@ -466,6 +476,8 @@ public sealed class ChatService(
         // 涉及量化指标必须走系统口径：先查 enum_metrics 再用 resolve_metric 取数，
         // 无口径时如实说明，禁止模型自行拼表达式或心算。
         systemPrompt.Append(MetricUsageRule);
+        systemPrompt.AppendLine();
+        systemPrompt.Append(DiagnosisUsageRule);
         if (pageContext is not null && !pageContext.IsEmpty)
         {
             pageContext.AppendTo(systemPrompt); // 页面元数据作为「内容」注入并声明非指令（提示注入隔离）

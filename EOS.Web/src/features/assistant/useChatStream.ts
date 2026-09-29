@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import type { ChatSituation } from './situationSource'
-import type { AssistantAdminDraft } from './types'
+import type { AssistantAdminDraft, AssistantRecordActionPreview, AssistantRecordActionResult } from './types'
 
 /** SSE 事件：delta=文本增量；done=回复已落库（含工具摘要与表单草稿）；error=流中失败。 */
 export type ChatStreamEvent =
@@ -8,8 +8,15 @@ export type ChatStreamEvent =
   | { event: 'done'; message: unknown; toolCalls?: Array<{ name: string; digest: string }>; drafts?: AssistantDraft[] }
   | { event: 'error'; code: string; message: string }
 
-/** 确认卡载荷：表单草稿（带入表单）或元数据变更集（确认执行）。 */
-export type AssistantDraft = AssistantFormDraft | AssistantAdminDraft
+/**
+ * 确认卡载荷四种：表单草稿（带入表单）、元数据变更集（确认执行）、
+ * 记录动作的预演（就地操作卡）、记录动作的执行结果（回读结果）。
+ */
+export type AssistantDraft =
+  | AssistantFormDraft
+  | AssistantAdminDraft
+  | AssistantRecordActionPreview
+  | AssistantRecordActionResult
 
 /** 表单草稿：前端确认后经现有保存管线执行，助手不新增写路径。 */
 export interface AssistantFormDraft {

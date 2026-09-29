@@ -1664,3 +1664,20 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 }
 .erp-assistant-draft-table { margin: 4px 0; }
 .erp-assistant-draft-table td { padding: 2px 6px; font-size: 12px; word-break: break-all; }
+
+/* 就地操作卡：逐行摊开（主键 + 结论 + 可就地改的字段 + 影响面），行间可辨、失败行可辨。 */
+.erp-assistant-action-row {
+  border-top: 1px solid var(--tblr-border-color, #e6e7e9);
+  padding: 6px 0;
+}
+.erp-assistant-action-row.is-denied { opacity: 0.75; }
+.erp-assistant-action-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.erp-assistant-action-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px 8px;
+  margin-top: 4px;
+}
+.erp-assistant-action-field { display: flex; flex-direction: column; gap: 2px; }
+.erp-assistant-action-impact { margin-top: 4px; }
+.erp-assistant-action-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }

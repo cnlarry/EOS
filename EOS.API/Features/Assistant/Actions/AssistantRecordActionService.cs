@@ -32,6 +32,9 @@ public sealed class AssistantRecordActionService(
     /// <summary>预演审计的动作码：预演本身不留业务痕迹，只在审计里留一条 best-effort 记录。</summary>
     public const string DryRunAuditAction = "DRYRUN";
 
+    /// <summary>用户确认执行的动作码：AI 发起与用户确认各留一条，确认可独立检索。</summary>
+    public const string ConfirmAuditAction = "ACTION_CONFIRM";
+
     /// <summary>
     /// 预演：逐行给出"能不能做 / 为什么不能"，删除另附配置面的级联影响面。
     /// 预演期间**不提交任何事务**（写管线在 <c>dryRun</c> 下跑完整条路径后无条件回滚）。
@@ -69,12 +72,28 @@ public sealed class AssistantRecordActionService(
     }
 
     /// <summary>
+    /// 用户在操作卡上点了"确认执行"：**先留一条确认审计**，再照常执行。
+    ///
+    /// <para>
+    /// 确认与执行各留一条审计（AI 发起一条、用户确认一条），"谁在什么时候点了确认"因此可独立检索。
+    /// 确认审计是 best-effort 的：它写不进去不该拦住用户已经点下的那一次执行。
+    /// </para>
+    /// </summary>
+    public async Task<AssistantActionExecution> ConfirmAndExecuteAsync(
+        string userId, string employeeName, AssistantActionRequest request, string confirmKey, CancellationToken token)
+    {
+        using var agentScope = agentWrites.Begin();
+        await WriteConfirmAuditAsync(request, userId, token);
+        return await ExecuteAsync(userId, employeeName, request, AssistantActionKeySeed.FromUserConfirm(confirmKey), token);
+    }
+
+    /// <summary>
     /// 执行：先按门禁 1 重新授权，再逐行预演（预演判不下来的行不写），最后经既有写管线落库。
-    /// 幂等键按行由服务端生成（会话 + 工具调用 + 动作名 + 规范化参数），重放同一键不重复写。
+    /// 幂等键按行由服务端生成（调用身份 + 动作名 + 规范化参数），重放同一键不重复写。
     /// </summary>
     public async Task<AssistantActionExecution> ExecuteAsync(
         string userId, string employeeName, AssistantActionRequest request,
-        long conversationId, string toolCallId, CancellationToken token)
+        AssistantActionKeySeed seed, CancellationToken token)
     {
         var decision = await gate.EvaluateAsync(userId, request.ModuleId, request.Kind, token);
         if (!decision.Allowed)
@@ -91,7 +110,7 @@ public sealed class AssistantRecordActionService(
         foreach (var row in request.Rows)
         {
             var idempotencyKey = AssistantActionIdempotency.Create(
-                conversationId, toolCallId, actionName, AssistantActionIdempotency.Canonicalize(request, row));
+                seed.ConversationId, seed.CallId, actionName, AssistantActionIdempotency.Canonicalize(request, row));
 
             var preview = await DryRunAsync(access, request.Kind, row, userId, employeeName, token);
             if (preview.Status != RecordAccessStatus.Ok)
@@ -220,6 +239,28 @@ public sealed class AssistantRecordActionService(
             logger.LogWarning(ex, "删除影响面读取失败 module={ModuleId}", definition.ModuleId);
             notes.Add($"影响面读取失败（配置未通过校验）：{ex.Message}");
             return [];
+        }
+    }
+
+    /// <summary>
+    /// 确认留痕：用户在操作卡上点了"确认执行"。执行主体是这次点击，不是模型自己的决定，
+    /// 因此它单独成条、与随后的业务写入审计分得开。
+    /// </summary>
+    private async Task WriteConfirmAuditAsync(
+        AssistantActionRequest request, string userId, CancellationToken token)
+    {
+        var actionName = AssistantRecordActionNames.For(request.Kind);
+        var keys = string.Join(',', request.Rows.SelectMany(row => row.Keys).Where(key => key.Length > 0).Take(20));
+        var summary = $"用户确认执行{actionName}：{request.Rows.Count} 行。";
+        try
+        {
+            await auditWriter.WriteBestEffortAsync(
+                request.ModuleId > 0 ? request.ModuleId : null, keys, ConfirmAuditAction, summary, userId,
+                "WORKBENCH_RECORD", result: 1, fieldChanges: null, token);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "确认审计写入失败 module={ModuleId}", request.ModuleId);
         }
     }
 

@@ -141,33 +141,8 @@ public sealed class PreviewRecordActionTool(
 
         request = WithPageKeys(request with { ModuleId = moduleId });
         var preview = await actions.PreviewAsync(userId, EmployeeName, request, token);
-        var draft = new
-        {
-            kind = "record-action-preview",
-            moduleId = preview.ModuleId,
-            moduleTitle = preview.ModuleTitle,
-            action = AssistantRecordActionNames.For(preview.Kind),
-            blocked = preview.ModuleDenialCode is not null,
-            moduleDenialCode = preview.ModuleDenialCode,
-            moduleDenialMessage = preview.ModuleDenialMessage,
-            rows = preview.Rows.Select(row => new
-            {
-                keys = row.Keys,
-                allowed = row.Allowed,
-                denialCode = row.DenialCode,
-                denialMessage = row.DenialMessage,
-                impacts = row.Impacts?.Select(impact => new
-                {
-                    effectKey = impact.EffectKey,
-                    eventCode = impact.EventCode,
-                    effectName = impact.EffectName,
-                    targetTable = impact.TargetTable,
-                    targetField = impact.TargetField,
-                    opCode = impact.OpCode,
-                }),
-            }),
-            notes = preview.Notes,
-        };
+        // 预演草稿与界面"重算预演"端点是同一份形状：模型与用户看到的是同一个东西。
+        var draft = AssistantActionDtos.ToPreview(request, preview);
         return new ToolExecutionResult(
             preview.ModuleDenialCode is null, Serialize(preview) + "\n" + RenderPreview(preview), draft);
     }
@@ -231,7 +206,8 @@ public sealed class ApplyRecordActionTool(
 
         request = WithPageKeys(request with { ModuleId = moduleId });
         var execution = await actions.ExecuteAsync(
-            userId, EmployeeName, request, _conversationId, _toolCallId, token);
+            userId, EmployeeName, request,
+            AssistantActionKeySeed.FromToolCall(_conversationId, _toolCallId!), token);
         var succeeded = execution.Rows.Count(row => row.Succeeded);
         var text = new StringBuilder(execution.ModuleDenialCode is not null
             ? $"无法对{DescribeModule(execution.ModuleId, execution.ModuleTitle)}执行"
@@ -245,22 +221,8 @@ public sealed class ApplyRecordActionTool(
                 .Append(row.Succeeded ? "：已保存。" : $"：未保存（{row.Code}）{row.Message}");
         }
 
-        var draft = new
-        {
-            kind = "record-action-result",
-            moduleId = execution.ModuleId,
-            moduleTitle = execution.ModuleTitle,
-            action = AssistantRecordActionNames.For(execution.Kind),
-            rows = execution.Rows.Select(row => new
-            {
-                keys = row.Keys,
-                succeeded = row.Succeeded,
-                code = row.Code,
-                message = row.Message,
-                resultKeys = row.ResultKeys,
-                idempotencyKey = row.IdempotencyKey,
-            }),
-        };
+        // 执行结果与界面上"确认执行"拿到的形状一致：两条入口回读的是同一种东西。
+        var draft = AssistantActionDtos.ToResult(execution);
         return new ToolExecutionResult(succeeded > 0, text.ToString().TrimEnd(), draft);
     }
 }

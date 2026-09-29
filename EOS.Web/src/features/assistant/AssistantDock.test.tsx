@@ -1,12 +1,19 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { AssistantDock } from './AssistantDock'
 import { resetSituationSource } from './situationSource'
+
+/** 路由探针：闭环判据 P3 是"全程不离开助手"，路径变了这里就看得见。 */
+function LocationProbe() {
+  const location = useLocation()
+  return <div data-testid="path">{location.pathname}</div>
+}
 
 function renderDock(path = '/dashboard') {
   return render(
     <MemoryRouter initialEntries={[path]}>
+      <LocationProbe />
       <AssistantDock />
     </MemoryRouter>,
   )
@@ -87,11 +94,77 @@ const OVERDUE_SITUATION = situationSnapshot({
   },
 })
 
+/** 操作卡会拉一次表单定义：这里给一份最小可用的，字段渲染由 ActionCard 自己的用例细究。 */
+function minimalFormDefinition() {
+  return {
+    moduleId: 1403,
+    title: '客户询价单',
+    masterTable: 'COP_CHAFFER_M',
+    detailTable: null,
+    hasAdd: true,
+    hasEdit: true,
+    mode: 'new',
+    ifCopy: true,
+    searchMaster: false,
+    searchDetail: false,
+    masterFields: [
+      {
+        key: 'REMARK', label: '备注', dataType: 'nvarchar', displayLength: 100, displayFormat: null,
+        isRequired: false, verifyIndex: null, regex: null, defaultValue: '', isReadonly: false, isVisible: true,
+        onlyChoose: false, chooseMultiple: false, choosePage: null, choosers: [],
+        isPrimaryKey: false, isAutoIncrement: false, isVirtual: false, isCost: false, isSecrecy: false,
+        serverFilled: false, maxLength: null, tabNo: 1, formOrder: null, span: 1, newLine: false,
+        cellGroup: null, cellRole: 0, options: [], displayOnly: false, canCopy: true,
+      },
+    ],
+    detailFields: [],
+    masterPkOrder: ['CHAFFER_TYPE', 'CHAFFER_NO'],
+    detailNoFields: '',
+    detailDfVerify: '',
+    tabs: [],
+    columns: 4,
+    buttons: null,
+    hasWorkflow: false,
+    hasStatelessApprove: false,
+    defaultValues: {},
+    canDelete: true,
+    canApprove: false,
+    canDeapprove: false,
+    canEndCase: false,
+    canUnEndCase: false,
+    canAddNew: true,
+    canEdit: true,
+    canFileView: false,
+    canFileUpda: false,
+    canFileEdit: false,
+    canFileDele: false,
+    canSetup: false,
+    canFormDesign: false,
+  }
+}
+
+/** 动作预演草稿：模型调 preview_record_action 后随 done 事件下发。 */
+const ACTION_PREVIEW_DRAFT = {
+  kind: 'record-action-preview',
+  moduleId: 1403,
+  moduleTitle: '客户询价单',
+  action: 'insert',
+  blocked: false,
+  moduleDenialCode: null,
+  moduleDenialMessage: null,
+  rows: [
+    { keys: [], values: { REMARK: '照抄上一单' }, allowed: true, denialCode: null, denialMessage: null, impacts: null },
+    { keys: [], values: { REMARK: '第二行' }, allowed: false, denialCode: 'ADD_CAPABILITY_MISSING', denialMessage: '你没有这个模块的新增权限。', impacts: null },
+  ],
+  notes: [],
+}
+
 function installFetchMock(options: {
   sessions?: unknown[]
   messages?: unknown[]
   situation?: unknown
   chatFrames?: string[]
+  formDefinition?: unknown
 } = {}): FetchHarness {
   const calls: FetchCall[] = []
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -100,6 +173,7 @@ function installFetchMock(options: {
     calls.push({ url, method, body: typeof init?.body === 'string' ? init.body : null })
     if (url.includes('/assistant/situation')) return jsonResponse(options.situation ?? situationSnapshot())
     if (url.includes('/chat')) return sseResponse(options.chatFrames ?? ['event: delta\ndata: {"text":"好的"}\n\n'])
+    if (url.includes('/form-definition')) return jsonResponse(options.formDefinition ?? minimalFormDefinition())
     if (url.includes('/messages')) return jsonResponse(options.messages ?? [])
     if (url.includes('/assistant/sessions')) {
       return method === 'POST'
@@ -233,6 +307,34 @@ describe('AssistantDock', () => {
     fireEvent.click(screen.getByRole('button', { name: '发送' }))
 
     await waitFor(() => expect(screen.getByText(/你好/)).toBeInTheDocument())
+  })
+
+  it('动作预演在助手内就地成卡：逐行可见，且全程不改路由（P3 闭环）', async () => {
+    localStorage.setItem('erp-assistant-open', 'true')
+    installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+      chatFrames: [
+        `event: done\ndata: ${JSON.stringify({
+          message: { id: 'm2', sessionId: '11', role: 2, content: '预演如下', modelName: null, promptTokens: null, completionTokens: null, elapsedMs: null, correlationId: null, createdAt: '' },
+          drafts: [ACTION_PREVIEW_DRAFT],
+        })}\n\n`,
+      ],
+    })
+
+    renderDock('/workbench/1403')
+    await waitFor(() => expect(screen.getByText('会话A')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByPlaceholderText(/输入问题/), { target: { value: '照抄上一单再下一单' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+
+    // 卡片在抽屉里就地渲染：逐行的结论与可就地改的字段都在
+    await waitFor(() => expect(screen.getByText(/新增：客户询价单（2 行）/)).toBeInTheDocument())
+    expect(screen.getByText(/不可执行：你没有这个模块的新增权限。/)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText('备注（第 1 行）')).toBeInTheDocument())
+
+    // 闭环判据：全程不离开助手，路由没有被跳走
+    expect(screen.getByTestId('path').textContent).toBe('/workbench/1403')
+    expect(screen.getByRole('complementary')).not.toBeNull()
   })
 
   it('用户气泡可一键记住', async () => {

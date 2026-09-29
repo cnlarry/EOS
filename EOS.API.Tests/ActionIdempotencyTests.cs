@@ -68,7 +68,7 @@ public sealed class ActionIdempotencyTests : IAsyncLifetime
         var request = new AssistantActionRequest(ModuleId, AssistantRecordActionKind.Insert,
             [new AssistantActionRow([],
                 new Dictionary<string, string?> { ["CHAFFER_TYPE"] = TestType, ["CHAFFER_DATE"] = "2026-09-29" })]);
-        return AssistantActionIdempotency.Create(7, "call-replay", AssistantRecordActionNames.For(request.Kind),
+        return AssistantActionIdempotency.Create(7, "tool:call-replay", AssistantRecordActionNames.For(request.Kind),
             AssistantActionIdempotency.Canonicalize(request, request.Rows[0]));
     }
 
@@ -143,8 +143,9 @@ public sealed class ActionIdempotencyTests : IAsyncLifetime
                 new Dictionary<string, string?> { ["CHAFFER_TYPE"] = TestType, ["CHAFFER_DATE"] = "2026-09-29" })]);
 
         // 同一次工具调用重放：会话与工具调用 ID 相同 ⇒ 服务端算出同一个键
-        var first = await service.ExecuteAsync(TestUser, TestUser, request, 7, "call-replay", CancellationToken.None);
-        var replay = await service.ExecuteAsync(TestUser, TestUser, request, 7, "call-replay", CancellationToken.None);
+        var seed = AssistantActionKeySeed.FromToolCall(7, "call-replay");
+        var first = await service.ExecuteAsync(TestUser, TestUser, request, seed, CancellationToken.None);
+        var replay = await service.ExecuteAsync(TestUser, TestUser, request, seed, CancellationToken.None);
 
         var firstRow = Assert.Single(first.Rows);
         var replayRow = Assert.Single(replay.Rows);
@@ -172,7 +173,7 @@ public sealed class ActionIdempotencyTests : IAsyncLifetime
     });
 
     private static string Key(AssistantActionRequest request, string toolCallId) =>
-        AssistantActionIdempotency.Create(7, toolCallId, AssistantRecordActionNames.For(request.Kind),
+        AssistantActionIdempotency.Create(7, "tool:" + toolCallId, AssistantRecordActionNames.For(request.Kind),
             AssistantActionIdempotency.Canonicalize(request, request.Rows[0]));
 
     private static WorkbenchDefinition Definition() => new(
