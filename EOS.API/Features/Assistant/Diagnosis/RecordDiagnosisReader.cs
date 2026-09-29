@@ -39,6 +39,9 @@ public sealed class RecordDiagnosisReader(
 {
     private const string RecordResourceType = "WORKBENCH_RECORD";
 
+    /// <summary>同一请求内共享的白名单检查缓存（Scoped 实例，摘要逐模块扫描时复用）。</summary>
+    private readonly ProbeCache cache = new();
+
     public async Task<RecordDiagnosisFacts?> LoadAsync(
         string userId, DiagnosisContext context, CancellationToken token)
     {
@@ -64,7 +67,8 @@ public sealed class RecordDiagnosisReader(
 
         var missing = new List<string>();
         var rules = DiagnosisRuleParser.Parse(definition.ValidationRules);
-        var signals = await ProbeRulesAsync(definition, rules, row, missing, token);
+        var hits = await ProbeRulesAsync(rules, [row], cache, missing, token);
+        var signals = hits.TryGetValue(0, out var signal) ? new List<DiagnosisRuleSignal> { signal } : [];
         var form = await gateway.GetFormDefinitionAsync(
             definition, userId, "edit", scope.CanViewCost, scope.CanViewSecrecy,
             scope.DeniedMaster, scope.DeniedDetail, scope.DeniedMaster, scope.DeniedDetail,
@@ -103,6 +107,12 @@ public sealed class RecordDiagnosisReader(
         string userId, WorkbenchDefinition definition, ModulePermission permission, CancellationToken token)
     {
         var limits = situationLimits.Value;
+        // 显式停机开关（参数化）：任一项 ≤ 0 即整条来源不启用，摘要退化为"滞留 + 最近被拒"。
+        if (limits.BlockedNowScanRecords <= 0 || limits.BlockedNowMaxAgeDays <= 0 || limits.BlockedNowProbeRules <= 0)
+        {
+            return [];
+        }
+
         var fields = definition.MasterFields.Select(field => field.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (!fields.Contains("CREATE_DATE") || !fields.Contains("CONFIRM_TAG")) return [];
 
@@ -130,9 +140,14 @@ public sealed class RecordDiagnosisReader(
             .Where(rule => rule.Enabled && rule.ValidationKey.Equals("reference-exists", StringComparison.OrdinalIgnoreCase))
             .Take(limits.BlockedNowProbeRules)
             .ToList();
+        var missing = new List<string>();
+        // 判据按"规则 × 目标"批量判一次（IN 查询），不按记录逐条往返。
+        var hits = await ProbeRulesAsync(rules, rows, cache, missing, token);
+
         var blocked = new List<DiagnosisBlockedRecord>();
-        foreach (var row in rows)
+        for (var index = 0; index < rows.Count; index++)
         {
+            var row = rows[index];
             var keyValues = ReadKeyValues(definition, row);
             if (keyValues is null) continue;
             var key = string.Join("/", keyValues);
@@ -143,16 +158,11 @@ public sealed class RecordDiagnosisReader(
                 continue;
             }
 
-            var missing = new List<string>();
-            var signals = await ProbeRulesAsync(definition, rules, row, missing, token);
-            foreach (var signal in signals)
-            {
-                var rule = FindRule(rules, signal);
-                if (rule is null || !rule.Enabled || string.IsNullOrWhiteSpace(rule.Message)) continue;
-                blocked.Add(new DiagnosisBlockedRecord(
-                    keyValues, key, rule.Message, $"validation:{signal.Stage}/{signal.ValidationKey}#{signal.Seq}"));
-                break;
-            }
+            if (!hits.TryGetValue(index, out var signal)) continue;
+            var rule = FindRule(rules, signal);
+            if (rule is null || !rule.Enabled || string.IsNullOrWhiteSpace(rule.Message)) continue;
+            blocked.Add(new DiagnosisBlockedRecord(
+                keyValues, key, rule.Message, $"validation:{signal.Stage}/{signal.ValidationKey}#{signal.Seq}"));
         }
 
         return blocked;
@@ -160,17 +170,23 @@ public sealed class RecordDiagnosisReader(
 
     /// <summary>
     /// 只读可判定的校验判据：当前只覆盖 <c>reference-exists</c> 的单键形态
-    /// （被引用表 + refKey + 无 join/targets）——这是"这张单存不下去"最常见的一类，
+    /// （被引用表 + refKey + 无 join/targets/mismatch）——这是"这张单存不下去"最常见的一类，
     /// 且一次存在性查询即可判定。其余类别只能在保存时由引擎判定，一律不猜。
+    ///
+    /// <para>
+    /// 代价口径：每个"规则 × 目标"只发**一次 IN 查询**（值来自本批记录），
+    /// 表/列的白名单与存在性检查按 (表, 列) 缓存，跨模块复用——往返次数与记录数**无关**，
+    /// 只与模块数、规则数、涉及的表/列数有关。
+    /// </para>
     /// </summary>
-    private async Task<IReadOnlyList<DiagnosisRuleSignal>> ProbeRulesAsync(
-        WorkbenchDefinition definition,
+    private async Task<Dictionary<int, DiagnosisRuleSignal>> ProbeRulesAsync(
         IReadOnlyList<DiagnosisRule> rules,
-        IReadOnlyDictionary<string, object?> row,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> rows,
+        ProbeCache cache,
         List<string> missing,
         CancellationToken token)
     {
-        var signals = new List<DiagnosisRuleSignal>();
+        var hits = new Dictionary<int, DiagnosisRuleSignal>();
         foreach (var rule in rules)
         {
             if (!rule.Enabled || !rule.ValidationKey.Equals("reference-exists", StringComparison.OrdinalIgnoreCase))
@@ -187,34 +203,118 @@ public sealed class RecordDiagnosisReader(
 
             foreach (var target in targets)
             {
-                if (!await IsReadableObjectAsync(target.Table, token))
+                if (!await IsReadableObjectAsync(target.Table, cache, token))
                 {
                     missing.Add($"被引用表 {target.Table} 不在可读白名单（dbo 下的表/视图）");
                     continue;
                 }
 
-                var value = ReadValue(row, target.KeyField);
-                if (string.IsNullOrWhiteSpace(value))
+                var deleted = await ProbeTargetAsync(rule, target, rows, cache, missing, token);
+                foreach (var (index, signal) in deleted)
                 {
-                    if (!target.AllowEmpty)
-                    {
-                        signals.Add(new DiagnosisRuleSignal(
-                            rule.Stage, rule.ValidationKey, rule.Seq, $"关联键 {target.KeyField} 为空值"));
-                    }
+                    hits.TryAdd(index, signal);
+                }
+            }
+        }
 
-                    continue;
+        return hits;
+    }
+
+    /// <summary>一个引用目标的一次批量判定：返回"命中"的记录下标与判据身份。</summary>
+    private async Task<IReadOnlyList<(int Index, DiagnosisRuleSignal Signal)>> ProbeTargetAsync(
+        DiagnosisRule rule,
+        DiagnosisRuleParser.ReferenceTarget target,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> rows,
+        ProbeCache cache,
+        List<string> missing,
+        CancellationToken token)
+    {
+        var signals = new List<(int, DiagnosisRuleSignal)>();
+        var values = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var value = ReadValue(rows[index], target.KeyField);
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                if (!target.AllowEmpty)
+                {
+                    signals.Add((index, new DiagnosisRuleSignal(
+                        rule.Stage, rule.ValidationKey, rule.Seq, $"关联键 {target.KeyField} 为空值")));
                 }
 
-                var exists = await ExistsAsync(target, value, token);
-                if (exists is null)
-                {
-                    missing.Add($"规则 {rule.Stage}/{rule.ValidationKey}#{rule.Seq}：被引用表 {target.Table} 上没有可比对的列 {target.KeyField}");
-                }
-                else if (exists == false)
-                {
-                    signals.Add(new DiagnosisRuleSignal(
-                        rule.Stage, rule.ValidationKey, rule.Seq, $"被引用表 {target.Table} 找不到匹配行（{target.KeyField}={value}）"));
-                }
+                continue;
+            }
+
+            if (!values.TryGetValue(value, out var owners))
+            {
+                owners = [];
+                values[value] = owners;
+            }
+
+            owners.Add(index);
+        }
+
+        if (values.Count == 0) return signals;
+
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        if (!await ColumnExistsAsync(connection, target.Table, target.KeyField, cache, token))
+        {
+            missing.Add($"规则 {rule.Stage}/{rule.ValidationKey}#{rule.Seq}：被引用表 {target.Table} 上没有可比对的列 {target.KeyField}");
+            return signals;
+        }
+
+        var useTag = false;
+        if (target.ActiveTagField is { Length: > 0 } tagField && DiagnosisRuleParser.IsSafeIdentifier(tagField))
+        {
+            if (!await ColumnExistsAsync(connection, target.Table, tagField, cache, token))
+            {
+                missing.Add($"规则 {rule.Stage}/{rule.ValidationKey}#{rule.Seq}：被引用表 {target.Table} 上没有闸门列 {tagField}");
+                return signals;
+            }
+
+            useTag = true;
+        }
+
+        var names = values.Keys.Select((_, position) => $"@v{position}").ToArray();
+        var sql = $"SELECT [{target.KeyField}] FROM dbo.[{target.Table}] WITH (NOLOCK) "
+            + $"WHERE [{target.KeyField}] IN ({string.Join(",", names)})";
+        if (useTag)
+        {
+            sql += $" AND [{target.ActiveTagField}] = @TagExpect";
+        }
+
+        sql += ";";
+        var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using (var command = new SqlCommand(sql, connection))
+        {
+            var position = 0;
+            foreach (var value in values.Keys)
+            {
+                command.Parameters.Add($"@v{position}", SqlDbType.NVarChar, 200).Value = value;
+                position++;
+            }
+
+            if (useTag)
+            {
+                command.Parameters.Add("@TagExpect", SqlDbType.Int).Value = target.ActiveTagExpect;
+            }
+
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                if (!reader.IsDBNull(0)) found.Add(reader.GetString(0));
+            }
+        }
+
+        foreach (var (value, owners) in values)
+        {
+            if (found.Contains(value)) continue;
+            foreach (var index in owners)
+            {
+                signals.Add((index, new DiagnosisRuleSignal(
+                    rule.Stage, rule.ValidationKey, rule.Seq,
+                    $"被引用表 {target.Table} 找不到匹配行（{target.KeyField}={value}）")));
             }
         }
 
@@ -426,9 +526,10 @@ public sealed class RecordDiagnosisReader(
     }
 
     /// <summary>被引用表必须**真实存在**且是 <c>dbo</c> 下的表/视图，否则不拼进 SQL。</summary>
-    private async Task<bool> IsReadableObjectAsync(string table, CancellationToken token)
+    private async Task<bool> IsReadableObjectAsync(string table, ProbeCache cache, CancellationToken token)
     {
         if (!DiagnosisRuleParser.IsSafeIdentifier(table)) return false;
+        if (cache.Objects.TryGetValue(table, out var cached)) return cached;
         await using var connection = connections.Create();
         await connection.OpenAsync(token);
         await using var command = new SqlCommand("""
@@ -438,49 +539,17 @@ public sealed class RecordDiagnosisReader(
             WHERE s.name = N'dbo' AND o.name = @Name AND o.type IN ('U', 'V');
             """, connection);
         command.Parameters.Add("@Name", SqlDbType.NVarChar, 128).Value = table;
-        return await command.ExecuteScalarAsync(token) is not null;
+        var exists = await command.ExecuteScalarAsync(token) is not null;
+        cache.Objects[table] = exists;
+        return exists;
     }
 
-    /// <summary>
-    /// 存在性判定：一次按主键列的点查。表名与列名在拼进 SQL 前已过白名单（表在 <c>dbo</c> 下、
-    /// 列在该表上真实存在），值一律参数化。
-    /// **判不了返回 null**（调用方记为"无法判定"）——判不了绝不当作"命中"，也绝不当作"没问题"。
-    /// </summary>
-    private async Task<bool?> ExistsAsync(
-        DiagnosisRuleParser.ReferenceTarget target, string value, CancellationToken token)
-    {
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        if (!await ColumnExistsAsync(connection, target.Table, target.KeyField, token))
-        {
-            logger.LogWarning("助手诊断无法判定被引用行（列不存在）table={Table} column={Column}",
-                target.Table, target.KeyField);
-            return null;
-        }
-
-        var sql = $"SELECT TOP 1 1 FROM dbo.[{target.Table}] WITH (NOLOCK) WHERE [{target.KeyField}] = @Value";
-        var useTag = false;
-        if (target.ActiveTagField is { Length: > 0 } tagField && DiagnosisRuleParser.IsSafeIdentifier(tagField))
-        {
-            if (!await ColumnExistsAsync(connection, target.Table, tagField, token)) return null;
-            sql += $" AND [{tagField}] = @TagExpect";
-            useTag = true;
-        }
-
-        sql += ";";
-        await using var command = new SqlCommand(sql, connection);
-        command.Parameters.Add("@Value", SqlDbType.NVarChar, 200).Value = value;
-        if (useTag)
-        {
-            command.Parameters.Add("@TagExpect", SqlDbType.Int).Value = target.ActiveTagExpect;
-        }
-
-        return await command.ExecuteScalarAsync(token) is not null;
-    }
-
+    /// <summary>列是否在该表上真实存在（按 (表, 列) 缓存，一次请求内不重复问库）。</summary>
     private static async Task<bool> ColumnExistsAsync(
-        SqlConnection connection, string table, string column, CancellationToken token)
+        SqlConnection connection, string table, string column, ProbeCache cache, CancellationToken token)
     {
+        var key = $"{table}\u0001{column}";
+        if (cache.Columns.TryGetValue(key, out var cached)) return cached;
         await using var command = new SqlCommand("""
             SELECT TOP 1 1
             FROM sys.columns c WITH (NOLOCK)
@@ -490,6 +559,19 @@ public sealed class RecordDiagnosisReader(
             """, connection);
         command.Parameters.Add("@Table", SqlDbType.NVarChar, 128).Value = table;
         command.Parameters.Add("@Column", SqlDbType.NVarChar, 128).Value = column;
-        return await command.ExecuteScalarAsync(token) is not null;
+        var exists = await command.ExecuteScalarAsync(token) is not null;
+        cache.Columns[key] = exists;
+        return exists;
+    }
+
+    /// <summary>
+    /// 同一次请求内的白名单检查缓存（同一张表在多个模块里被反复引用）。
+    /// 只在串行调用路径上使用（助手工具与摘要都是顺序执行），故不加锁。
+    /// </summary>
+    internal sealed class ProbeCache
+    {
+        public Dictionary<string, bool> Objects { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public Dictionary<string, bool> Columns { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }
