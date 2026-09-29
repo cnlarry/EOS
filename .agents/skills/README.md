@@ -6,9 +6,13 @@
 
 AGENTS.md 是常驻规范，技能是**按需加载的可执行流程**，二者不重复：技能触发时正文只注入一次。
 
-> ⚠️ **技能没有新鲜度门禁**：`docs/guide/_tools/check-freshness.ps1` 只守 `docs/guide/`，
-> 技能既不在 `docs/guide/_map.md` 里也没有脚本守着。**引用脚本、目录、命令前请先确认它还在**
-> （曾经出现过引用已删除的发布脚本、已退役的 `EOS.Database/` 的情况）。
+> **新鲜度门禁**：`pwsh scripts/check-agent-skills.ps1` 校验本目录三件事——
+> ① frontmatter `name` 与目录名一致；② `_map.md` 登记的引用资产**全部存在**；
+> ③ 引用资产未比技能更新（陈旧即 STALE）。
+> 本脚本只读文件系统、不连库、不发网络请求。改动技能或其所引用的资产后请运行它。
+>
+> 为什么需要它：本目录曾出现引用**已被删除的发布脚本**与**已退役目录**的漂移，
+> 而没有门禁的"不双写"纪律守不住。
 
 ## 来源与纪律
 
@@ -16,13 +20,17 @@ AGENTS.md 是常驻规范，技能是**按需加载的可执行流程**，二者
 |---|---|---|
 | `eos-verify` / `eos-commit` / `eos-db-objects` / `eos-security-check` | 自建（本仓库） | EOS 验证、提交、库对象/迁移、安全边界四大可执行流程 |
 | `eos-publish` | 自建（本仓库） | ⚠️ **已退役**：原双仓发布机制的墓碑说明，只解释发生了什么、不执行任何动作（脚本已删除，见该技能正文） |
-| `erp-ui` | 自建（本仓库） | ⚠️ **依赖本机排除目录** `ui-reference/`（不入版本控制），因此对本机之外的开发者不可用 |
 | `tdd` / `diagnosing-bugs` / `code-review` / `grill-me` / `grilling` / `handoff` | [mattpocock/skills](https://github.com/mattpocock/skills)，MIT | 精选子集，pin 到 commit `6654f6b`（2026-08-24）；已在 `THIRD-PARTY-NOTICES.md` 登记 |
 
-- 外部技能只选子集、逐文件审读后入仓；安装新技能前先跑本目录校验（name 与目录名一致、无恶意脚本）。
+- 外部技能只选子集、逐文件审读后入仓；新增或改动技能后跑 `scripts/check-agent-skills.ps1` 校验
+  （`name` 与目录名一致、`_map.md` 登记的引用存在、无恶意脚本靠人工审读）。
 - 社区技能含可执行脚本，启用前必须审读 `scripts/`；本仓库 `diagnosing-bugs` 的脚本为只读提示模板（见其文件头）。
 - 工具专属扩展保留在各技能子目录（如 `agents/openai.yaml` 供 Codex 消费），不污染共享正文。
-- 移除或替换技能后重跑 `scripts/sync-agent-skills.ps1` 同步 Cursor 镜像。
+- **引用的资产在 `_map.md` 里登记**：技能引用的脚本、目录、文件必须登记，否则门禁报漏登记。
+- 移除或替换技能后：更新 `_map.md`，并重跑 `scripts/sync-agent-skills.ps1` 同步 Cursor 镜像
+  （**未使用 Cursor 时可跳过**——该镜像目录本就不存在，不存在遗留胖 junction 的问题）。
+- **`erp-ui` 已于 2026-09-29 下线**：技能本身几乎未被使用，其唯一事实源 `ui-reference/` 已一并删除。
+  如需重建，请从 git 历史取回技能正文；`ui-reference/` 不在 git 内，需另行收集。
 
 ## 各工具发现路径（2026-08 核实）
 
