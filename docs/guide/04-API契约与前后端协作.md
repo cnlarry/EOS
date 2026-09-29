@@ -57,6 +57,13 @@
 - `fieldErrors` 用于表单字段级错误提示，键是字段名。
 - `traceId` / `correlationId` / `clientId` / `moduleId` 是排障关联键，报障时带上它们能直接串起
   前后端日志与审计记录（见 [31-运行日志与诊断](./31-运行日志与诊断.md)）。
+- **四个键现在是同一个值**：响应体、响应头 `X-Correlation-Id`、运行日志的 `correlation=` 与
+  审计的 `CORRELATION_ID` 都取自 `RequestContext`（异常出口此前取 `TraceIdentifier`，已统一）。
+  界面侧有"复制报障编号"入口；渲染期错误没有请求，编号由前端本地生成后随上报回传，
+  因此**用户给的号一定能在服务端日志里搜到**。口径见
+  [`docs/decisions/ADR-025`](../decisions/ADR-025-关联键单一真源与日志脱敏接入.md)。
+- **诊断包是另一个入口**：`GET /api/v1/logs/bundle` 返回 zip（日志 + 环境元数据），
+  需要模块 11 的 `CanSetup` 权限；读日志与诊断信息只需 `CanBrowse`。
 
 稳定错误码（`EOS.API/Errors/ApiErrorCodes.cs`）：
 
