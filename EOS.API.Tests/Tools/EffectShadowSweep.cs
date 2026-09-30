@@ -55,7 +55,7 @@ public sealed class EffectShadowSweep
             return;
         }
         Assert.False(ConnectionString.Value is null,
-            "拿不到开发库连接串（MSSQL_ERP_CONN 或 EOS.API/appsettings.Development.json）");
+            "拿不到开发库连接串（请设置 MSSQL_ERP_CONN）");
 
         var events = (Environment.GetEnvironmentVariable("EOS_SHADOW_EVENTS") ?? "APPROVE_EFFECT,DEAPPROVE")
             .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
@@ -406,24 +406,8 @@ public sealed class EffectShadowSweep
         return path;
     }
 
-    private static string? ResolveConnectionString()
-    {
-        var env = Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
-        if (!string.IsNullOrWhiteSpace(env))
-        {
-            return env;
-        }
-        var settingsPath = Path.Combine(RepoRoot.Value, "EOS.API", "appsettings.Development.json");
-        if (!File.Exists(settingsPath))
-        {
-            return null;
-        }
-        using var document = JsonDocument.Parse(File.ReadAllText(settingsPath));
-        return document.RootElement.TryGetProperty("ConnectionStrings", out var section)
-            && section.TryGetProperty("ErpDatabase", out var value)
-            ? value.GetString()
-            : null;
-    }
+    private static string? ResolveConnectionString() =>
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
 
     private static string FindRepoRoot()
     {

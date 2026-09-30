@@ -55,8 +55,9 @@ EOS.Web ──HTTP──> EOS.API ──SQL──> SQL Server (EOS.ERP)
 环境要求：SQL Server 2025+、.NET 10 SDK、Node.js 20+。
 
 1. 初始化数据库（5 个脚本按序执行），见 [db/README.md](db/README.md)；
-2. 配置后端连接串并启动 `EOS.API`（复制 `EOS.API/appsettings.Development.example.json` 为
-   `appsettings.Development.json` 后按需编辑）；
+2. 设置环境变量后启动 `EOS.API`——`MSSQL_ERP_CONN`（业务库连接串，必填）、
+   `EOS_ASSISTANT_API_KEY`（工作助手模型密钥，可选）。配置里只写 `${VAR}` 引用，真值只存在于
+   环境变量，**密钥与连接串不落文件**；
 3. 启动前端开发服务器。
 
 完整步骤见 [QUICKSTART.md](QUICKSTART.md)。

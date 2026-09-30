@@ -12,6 +12,8 @@ packages/
 node_modules/
 
 # 本地配置与密钥（不入库）
+# 配置只在 appsettings.json 里写 ${VAR} 引用，真值放环境变量（见 docs/guide/02 第八节）。
+# 下面两条是**防御性**规则：万一有人再建同名文件，也不会被提交。
 .env
 *.local
 EOS.API/appsettings.Development.json

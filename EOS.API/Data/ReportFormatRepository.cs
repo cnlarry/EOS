@@ -31,7 +31,7 @@ public sealed class ReportFormatRepository(
     {
         var configured = settings.Value.StorageRoot;
         if (!string.IsNullOrWhiteSpace(configured))
-            return Path.GetFullPath(Environment.ExpandEnvironmentVariables(configured));
+            return Path.GetFullPath(configured);
         return Path.Combine(environment.ContentRootPath, "ReportFormats");
     }
 

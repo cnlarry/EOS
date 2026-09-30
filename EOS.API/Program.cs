@@ -6,6 +6,7 @@ using EOS.API.Health;
 using EOS.API.Middleware;
 using EOS.API.Models;
 using EOS.API.Security;
+using EOS.API.Configuration;
 using EOS.API.Telemetry;
 using System.Reflection;
 using Microsoft.AspNetCore.DataProtection;
@@ -22,6 +23,12 @@ using QuestPDF.Infrastructure;
 QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 配置值里的环境变量引用（${VAR}）在此统一解析：配置文件只写引用名（可入库），真值只存在于环境变量。
+// 未定义的引用按空值处理并记入 referenceIssues，由启动后的 Warning 点名——不把 ${VAR} 字面量当值使用。
+var referenceIssues = new List<string>();
+builder.Configuration.AddInMemoryCollection(
+    EnvironmentReferenceResolver.Resolve(builder.Configuration, referenceIssues));
 
 builder.Logging.ClearProviders();
 builder.Logging.AddJsonConsole(options =>
@@ -407,6 +414,11 @@ builder.Services.Configure<EOS.API.Models.AuditSettings>(builder.Configuration.G
 
 var app = builder.Build();
 
+foreach (var issue in referenceIssues)
+{
+    app.Logger.LogWarning("配置引用未解析：{Issue}", issue);
+}
+
 if (!app.Configuration.GetValue("Audit:FieldChangesEnabled", true))
 {
     app.Logger.LogWarning("字段级审计已关闭（Audit:FieldChangesEnabled=false）：仅写摘要级审计，AUDIT_FIELD_CHANGE 停写。");
@@ -517,8 +529,7 @@ static string ResolveLogFilePath(IConfiguration configuration)
     {
         return Path.Combine(AppContext.BaseDirectory, "logs", "api-json.log");
     }
-    var expanded = Environment.ExpandEnvironmentVariables(configured.Trim());
-    return Path.GetFullPath(expanded, AppContext.BaseDirectory);
+    return Path.GetFullPath(configured.Trim(), AppContext.BaseDirectory);
 }
 
 static DirectoryInfo GetDataProtectionKeysDirectory(IConfiguration configuration)
@@ -526,7 +537,7 @@ static DirectoryInfo GetDataProtectionKeysDirectory(IConfiguration configuration
     var configured = configuration["DataProtection:KeysDirectory"];
     var path = string.IsNullOrWhiteSpace(configured)
         ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "EOS", "DataProtection-Keys")
-        : Environment.ExpandEnvironmentVariables(configured);
+        : configured;
     return new DirectoryInfo(path);
 }
 
