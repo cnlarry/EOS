@@ -25,6 +25,9 @@ public sealed class NoPrivilegeConfigCallTests
     private static readonly string[] PrivilegeTypes =
     [
         "RightsAdminController", "RightsAdminRepository",
+        // 权限写入的列白名单与两个权限仓储同源，配置写面引用它即把权限写路径牵了进来。
+        // 它当前只有常量与静态字段成员，而本断言看的是 IL 调用点，故这条实际拦的是它以后新增的方法。
+        "RightsColumnWhitelist",
         "UserAdminController", "UserAdminRepository",
         // 菜单树不属本批的四类配置面；点错路径最容易从这里溜进来。
         "MenuAdminController", "MenuAdminRepository",

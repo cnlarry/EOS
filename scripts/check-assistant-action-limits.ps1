@@ -5,8 +5,11 @@
 .DESCRIPTION
   三件事各断一处：
 
-    1. **阈值单一事实源**：阈值只在 AssistantActionLimits.cs 里声明；
-       动作层与配置写的实现文件里出现同值的数字字面量即 FAIL（那意味着某一处又埋了一个可调参数）；
+    1. **阈值单一事实源**：阈值只在 AssistantActionLimits.cs 里声明；两道各断一处——
+       ① **限流/截断上下文**（`limit =` / `Count >` / `Take(...)` / `Skip(...)` / `pageSize:` 等）
+          里出现整数字面量即 FAIL：只按已知阈值取值比对，抓不到"新写一个任意上限"；
+       ② 动作层与配置写的实现文件里出现与已知阈值**同值**的数字字面量即 FAIL
+          （有人把常量复制到别处，等于又多了一个可调参数）；
     2. **红线恒为开**：预演 / 幂等 / 越权上限 / 批核族条目四条红线必须是固定取值，
        且可绑定选项类型上不得出现它们的可写属性（否则配置层就能把它们关掉）；
     3. **fail-fast 已接线**：Program.cs 必须注册阈值校验器并开启启动期校验——
@@ -59,15 +62,25 @@ $scanExclusions = @(
     'EOS.API/Features/Assistant/Governance/AssistantGovernance.cs'
 )
 
+# 限流上下文里出现、但确与"一次最多处理多少"无关的字面量：逐项具名，且**只减不增**。
+# 每项都必须写清它为什么不是上限——写不出理由的豁免等于门禁失效。
+$limitContextAllowList = [ordered]@{
+    0 = '空集判定（如 Count > 0）：0 在这里表示"没有"，不是"最多几条"。'
+}
+
 function Remove-CodeNoise {
     param([Parameter(Mandatory)][string] $Text)
 
+    # 命中的片段整段换成**等长空白**（保留其中的换行）：直接删掉会把后续内容前移，
+    # 报出来的行号就对不上原文；遮成空白既去掉噪音，又保住行号与匹配位置。
+    $blank = { param($match) [regex]::Replace($match.Value, '[^\r\n]', ' ') }
+
     # 先去掉字符串与字符字面量，再去注释：顺序反了会把注释里的引号当成字符串开头
-    $clean = [regex]::Replace($Text, '@"([^"]|"")*"', '""')
-    $clean = [regex]::Replace($clean, '"[^"\\\r\n]*(?:\\.[^"\\\r\n]*)*"', '""')
-    $clean = [regex]::Replace($clean, "'(?:\\.[^'\r\n]|[^'\\\r\n])'", "''")
-    $clean = [regex]::Replace($clean, '(?s)/\*.*?\*/', ' ')
-    $clean = [regex]::Replace($clean, '//[^\r\n]*', ' ')
+    $clean = [regex]::Replace($Text, '@"([^"]|"")*"', $blank)
+    $clean = [regex]::Replace($clean, '"[^"\\\r\n]*(?:\\.[^"\\\r\n]*)*"', $blank)
+    $clean = [regex]::Replace($clean, "'(?:\\.[^'\r\n]|[^'\\\r\n])'", $blank)
+    $clean = [regex]::Replace($clean, '(?s)/\*.*?\*/', $blank)
+    $clean = [regex]::Replace($clean, '//[^\r\n]*', $blank)
     return $clean
 }
 
@@ -131,9 +144,38 @@ function Get-MagicNumberFindings {
     return $problems.ToArray()
 }
 
+function Get-LimitContextFindings {
+    param(
+        [Parameter(Mandatory)][string] $Text,
+        [Parameter(Mandatory)][string] $FileName,
+        [Parameter(Mandatory)][System.Collections.IDictionary] $AllowList
+    )
+
+    $problems = New-Object System.Collections.Generic.List[string]
+    $code = Remove-CodeNoise -Text $Text
+    # 数值本身没有意义，出现在"上限"的语法位置上才有意义：因此这里按**上下文**取数字，
+    # 不去比对它是否等于某个已知阈值——只比对取值，抓不到新写的一个任意上限。
+    $patterns = @(
+        '(?<![\w.])(?:limit|max\w*|top\w*|pageSize|size|take|skip|count|rows)\s*[:=]\s*(-?\d+)(?![\w.])',
+        '\bCount\s*[<>]=?\s*(-?\d+)(?![\w.])',
+        '(?:\.|\b)(?:Take|TakeLast|Skip)\s*\(\s*(-?\d+)(?![\w.])'
+    )
+    foreach ($pattern in $patterns) {
+        $options = [Text.RegularExpressions.RegexOptions]::IgnoreCase
+        foreach ($match in [regex]::Matches($code, $pattern, $options)) {
+            $value = [int]$match.Groups[1].Value
+            if ($AllowList.Contains($value)) { continue }
+            $line = ($code.Substring(0, $match.Index) -split "`n").Count
+            $problems.Add("$FileName 第 $line 行在限流上下文里写死了 $value：阈值只能来自 AssistantActionLimits。")
+        }
+    }
+    return $problems.ToArray()
+}
+
 if ($SelfTest) {
     $limitsSample = @'
         public const int MaxRowsPerAction = 50;
+        public const int MaxApprovalRequestRecords = 25;
         public const int MaxAuditResourceKeys = 20;
         public const bool DryRunRequired = true;
         public const bool IdempotencyRequired = true;
@@ -165,11 +207,39 @@ if ($SelfTest) {
         }
 '@
 
+    # 限流上下文扫描的正反样本：同一个数字，站在"上限"的位置上才有意义。
+    $hardcodedLimitSample = 'var limit = 200;'
+    $hardcodedCountSample = 'if (keys.Count > 200) { return; }'
+    $hardcodedKnownSample = 'var rows = request.Rows.Take(50);'
+    $hardcodedKeptSample = 'var x = 25;'
+    $unrelatedLiteralSample = 'var x = 200;'
+    $limitNoiseSample = @'
+        // limit = 200 只是说明文字，不是代码
+        var note = "Count > 200 在字符串里";
+'@
+    $emptyCheckSample = 'if (keys.Count > 0) { return; }'
+
+    foreach ($key in $limitContextAllowList.Keys) {
+        if ([string]::IsNullOrWhiteSpace([string]$limitContextAllowList[$key])) {
+            Write-Output "FAIL 自检：限流上下文白名单 $key 没写理由，这种豁免等于门禁失效。"
+            exit 1
+        }
+    }
+
     $cases = @(
         [pscustomobject]@{ Name = '阈值声明齐全'; Expect = 0; Actual = @(Get-RedLineFindings -Text $limitsSample -RedLines $redLines).Count },
         [pscustomobject]@{ Name = '红线被改成关'; Expect = 1; Actual = @(Get-RedLineFindings -Text $brokenRedLine -RedLines $redLines).Count },
         [pscustomobject]@{ Name = '业务代码写死阈值'; Expect = 1; Actual = @(Get-MagicNumberFindings -Text $magicSample -Values $values -FileName 'sample.cs').Count },
         [pscustomobject]@{ Name = '业务代码引用常量'; Expect = 0; Actual = @(Get-MagicNumberFindings -Text $cleanSample -Values $values -FileName 'sample.cs').Count },
+        [pscustomobject]@{ Name = '写死已知阈值 25 仍被取值比对抓住'; Expect = 1; Actual = @(Get-MagicNumberFindings -Text $hardcodedKeptSample -Values $values -FileName 'sample.cs').Count },
+        [pscustomobject]@{ Name = '写死已知阈值仍被取值比对抓住'; Expect = 1; Actual = @(Get-MagicNumberFindings -Text $hardcodedKnownSample -Values $values -FileName 'sample.cs').Count },
+        [pscustomobject]@{ Name = '限流上下文写死任意上限（赋值）'; Expect = 1; Actual = @(Get-LimitContextFindings -Text $hardcodedLimitSample -FileName 'sample.cs' -AllowList $limitContextAllowList).Count },
+        [pscustomobject]@{ Name = '限流上下文写死任意上限（比较）'; Expect = 1; Actual = @(Get-LimitContextFindings -Text $hardcodedCountSample -FileName 'sample.cs' -AllowList $limitContextAllowList).Count },
+        [pscustomobject]@{ Name = '限流上下文写死已知阈值'; Expect = 1; Actual = @(Get-LimitContextFindings -Text $hardcodedKnownSample -FileName 'sample.cs' -AllowList $limitContextAllowList).Count },
+        [pscustomobject]@{ Name = '非限流上下文同一数字'; Expect = 0; Actual = @(Get-LimitContextFindings -Text $unrelatedLiteralSample -FileName 'sample.cs' -AllowList $limitContextAllowList).Count },
+        [pscustomobject]@{ Name = '限流上下文引用阈值常量'; Expect = 0; Actual = @(Get-LimitContextFindings -Text $cleanSample -FileName 'sample.cs' -AllowList $limitContextAllowList).Count },
+        [pscustomobject]@{ Name = '注释与字符串里的数字'; Expect = 0; Actual = @(Get-LimitContextFindings -Text $limitNoiseSample -FileName 'sample.cs' -AllowList $limitContextAllowList).Count },
+        [pscustomobject]@{ Name = '空集判定不算上限（白名单）'; Expect = 0; Actual = @(Get-LimitContextFindings -Text $emptyCheckSample -FileName 'sample.cs' -AllowList $limitContextAllowList).Count },
         [pscustomobject]@{ Name = '选项类型带可写红线'; Expect = 1; Actual = @(Get-OptionsOverrideFindings -Text $optionsDirty).Count },
         [pscustomobject]@{ Name = '选项类型只放阈值'; Expect = 0; Actual = @(Get-OptionsOverrideFindings -Text $optionsClean).Count }
     )
@@ -228,6 +298,7 @@ foreach ($relative in $scanRelativePaths) {
         $scanned++
         $code = Get-Content -LiteralPath $file.FullName -Raw -Encoding utf8
         $relativeName = $file.FullName.Substring($Root.Length).TrimStart('\', '/')
+        foreach ($line in @(Get-LimitContextFindings -Text $code -FileName $relativeName -AllowList $limitContextAllowList)) { $problems.Add($line) }
         foreach ($line in @(Get-MagicNumberFindings -Text $code -Values $values -FileName $relativeName)) { $problems.Add($line) }
     }
 }
