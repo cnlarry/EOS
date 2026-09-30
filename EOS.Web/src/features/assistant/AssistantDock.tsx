@@ -9,7 +9,7 @@ import {
   IconTrash,
   IconX,
 } from '@tabler/icons-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { createSession, deleteSession, getSituation, listMessages, listSessions, saveMemory } from './api'
 import { AssistantMemoryPanel } from './AssistantMemoryPanel'
@@ -75,6 +75,11 @@ export function AssistantDock() {
   const [situation, setSituation] = useState<SituationSnapshot | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  // 新建会话的 id：那一刻服务端历史确定为空，回读只会把刚送出去的本地气泡盖掉，故记一次"跳过"。
+  const skipHistoryRef = useRef<string | null>(null)
+  // 历史加载代次：本地一开始新一轮（发送）就 +1，让在途的旧回读结果作废。
+  // 否则"打开抽屉后立刻发问"会被迟到的空历史清空气泡——用户消息与正在流出的回答一起消失。
+  const historyLoadRef = useRef(0)
   const fabDragRef = useRef<{ startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
   // 拖拽移动标记独立于指针会话：onPointerUp 清空会话，但移动事实保留到 onClick 消费，
   // 避免「拖拽后误触发打开」。
@@ -156,14 +161,22 @@ export function AssistantDock() {
     }).then(data => setSituation(isSituationSnapshot(data) ? data : null)).catch(() => setSituation(null))
   }, [open, location.pathname])
 
-  // 切换会话时拉取历史（历史恢复）
+  // 切换会话时拉取历史（历史恢复）。新建会话走"跳过"分支：此时回读是空的，
+  // 而它落地比 sendMessage 里刚 append 的气泡更晚，会把用户消息与正在流式的回答一起抹掉。
   useEffect(() => {
     if (!open || !sessionId) {
       setBubbles([])
       return
     }
     setErrorText(null)
+    if (skipHistoryRef.current === sessionId) {
+      skipHistoryRef.current = null
+      return
+    }
+    const token = ++historyLoadRef.current
     void listMessages(sessionId).then((messages) => {
+      // 期间用户已经开了新一轮：这次回读不再是"当前真相"，套上去会把本地气泡抹掉
+      if (historyLoadRef.current !== token) return
       setBubbles(messages.filter(m => m.role === 1 || m.role === 2).map(toBubble))
     }).catch(() => setErrorText('会话历史加载失败，请重试。'))
   }, [open, sessionId])
@@ -187,6 +200,7 @@ export function AssistantDock() {
     setErrorText(null)
     try {
       const session = await createSession()
+      skipHistoryRef.current = session.id
       setSessionId(session.id)
       setBubbles([])
       setInput('')
@@ -205,6 +219,7 @@ export function AssistantDock() {
       try {
         const session = await createSession()
         target = session.id
+        skipHistoryRef.current = target
         setSessionId(target)
         await refreshSessions()
       } catch {
@@ -216,6 +231,7 @@ export function AssistantDock() {
     setErrorText(null)
     setInput('')
     const draftKey = `draft-${Date.now()}`
+    historyLoadRef.current += 1 // 在途的历史回读就此作废（见该 ref 的说明）
     setBubbles(prev => [
       ...prev,
       { key: `u-${Date.now()}`, role: 1, text: content },
@@ -459,14 +475,9 @@ export function AssistantDock() {
                   </button>
                 )}
                 {bubble.streaming && <span className="erp-assistant-cursor" aria-hidden="true">▍</span>}
+                {bubble.role === 2 && bubble.text && !bubble.streaming && <CopyButton text={bubble.text} />}
                 {!bubble.streaming && bubble.tools && bubble.tools.length > 0 && (
-                  <div className="erp-assistant-tool-chips">
-                    {bubble.tools.map((tool, index) => (
-                      <span key={index} className="erp-assistant-chip" title={tool.digest}>
-                        🔍 {tool.name === 'search_records' ? '已查询业务数据' : `已调用 ${tool.name}`}
-                      </span>
-                    ))}
-                  </div>
+                  <ToolCalls tools={bubble.tools} />
                 )}
                 {!bubble.streaming && bubble.drafts && bubble.drafts.length > 0 && (
                   <div className="erp-assistant-drafts">
@@ -515,7 +526,12 @@ export function AssistantDock() {
 }
 
 function toBubble(message: AssistantMessage): Bubble {
-  return { key: `m-${message.id}`, role: message.role as 1 | 2, text: message.content }
+  return {
+    key: `m-${message.id}`,
+    role: message.role as 1 | 2,
+    text: message.content,
+    tools: message.toolCalls && message.toolCalls.length > 0 ? message.toolCalls : undefined,
+  }
 }
 
 /**
@@ -532,6 +548,86 @@ function renderDraft(draft: AssistantDraft, index: number, onOpenForm: (draft: A
     if (draft.kind === 'approval-request-preview') return <ApprovalRequestCard key={index} draft={draft} />
   }
   return <DraftCard key={index} draft={draft as AssistantFormDraft} onOpenForm={onOpenForm} />
+}
+
+/** 工具名 → 人话；未登记的工具回落到原名，避免新工具上线时芯片变空白。 */
+const TOOL_LABELS: Record<string, string> = {
+  search_records: '查询业务数据',
+  get_record_detail: '读取单据详情',
+  get_form_schema: '读取表单结构',
+  draft_record: '起草单据',
+  list_modules: '列出可用模块',
+  describe_module: '查看模块说明',
+  list_tables: '列出数据表',
+  describe_table: '查看表结构',
+  list_views: '列出视图',
+  list_procedures: '列出存储过程',
+  get_module_flow: '查看流程定义',
+  kb_search: '检索知识库',
+  diagnose_module: '诊断模块卡点',
+  apply_changeset: '应用元数据变更',
+  get_my_digest: '读取我的摘要',
+  enum_metrics: '枚举指标口径',
+  resolve_metric: '按口径取数',
+  preview_batch_decision: '预演批量审批',
+}
+
+/**
+ * 工具调用：默认收起成芯片（一眼看出助手查了什么），点开看**这次调用拿回了什么**。
+ * digest 是服务端截断的工具返回（前 160 字）；以 `rejected:` / `error:` 开头表示这次调用没成，
+ * 单独用警示色标出——"查不到"和"查到了"在界面上的区别必须是看得见的。
+ */
+function ToolCalls({ tools }: { tools: NonNullable<Bubble['tools']> }) {
+  const [openIndex, setOpenIndex] = useState<number | null>(null)
+
+  return (
+    <div className="erp-assistant-tool-chips">
+      {tools.map((tool, index) => {
+        const digest = tool.digest ?? ''
+        const failed = digest.startsWith('rejected:') || digest.startsWith('error:')
+        const open = openIndex === index
+        return (
+          <Fragment key={`${tool.name}-${index}`}>
+            <button
+              type="button"
+              className={`erp-assistant-chip erp-assistant-tool-chip${failed ? ' is-failed' : ''}${open ? ' is-open' : ''}`}
+              aria-expanded={open}
+              title={open ? '收起这次调用的返回' : '展开这次调用拿回的内容'}
+              onClick={() => setOpenIndex(open ? null : index)}
+            >
+              <span aria-hidden="true">{failed ? '⚠' : '🔍'}</span>
+              {failed
+                ? `未能完成：${TOOL_LABELS[tool.name] ?? tool.name}`
+                : TOOL_LABELS[tool.name] ?? `已调用 ${tool.name}`}
+              <span className="erp-assistant-tool-caret" aria-hidden="true">▾</span>
+            </button>
+            {open && <pre className="erp-assistant-tool-detail">{digest || '（这次调用没有返回内容）'}</pre>}
+          </Fragment>
+        )
+      })}
+    </div>
+  )
+}
+
+/** 复制这条回答的 Markdown 原文：粘到别处仍是结构化文本（表格/列表不塌成一行）。 */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const copy = () => {
+    if (!navigator.clipboard?.writeText) return
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    }).catch(() => undefined)
+  }
+
+  return (
+    <button className="btn btn-sm btn-ghost-secondary mt-1" type="button"
+      title="复制这条回答（Markdown 原文）" aria-label="复制这条回答"
+      onClick={copy}>
+      {copied ? '已复制 ✓' : '复制'}
+    </button>
+  )
 }
 
 const PAGE_TYPE_LABELS: Record<string, string> = {
