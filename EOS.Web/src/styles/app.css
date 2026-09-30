@@ -1604,7 +1604,6 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   border-radius: 10px;
   font-size: 13px;
   line-height: 1.55;
-  white-space: pre-wrap;
   word-break: break-word;
 }
 .erp-assistant-bubble.is-user {
@@ -1612,6 +1611,8 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   background: var(--tblr-primary, #206bc4);
   color: #fff;
   border-bottom-right-radius: 3px;
+  /* 用户输入按原样保留换行；助手侧改走 Markdown 渲染，不再整体 pre-wrap */
+  white-space: pre-wrap;
 }
 .erp-assistant-bubble.is-assistant {
   align-self: flex-start;
@@ -1644,6 +1645,101 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-assistant-send { flex: 0 0 auto; }
 
 .erp-assistant-tool-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+
+/* ---- 助手消息的 Markdown 呈现（渲染器见 features/assistant/markdown.tsx） ---- */
+.erp-assistant-md > *:first-child { margin-top: 0; }
+.erp-assistant-md > *:last-child { margin-bottom: 0; }
+
+.erp-assistant-md-p { margin: 0 0 8px; line-height: 1.6; }
+
+.erp-assistant-md-heading { margin: 12px 0 6px; line-height: 1.4; font-weight: 600; }
+.erp-assistant-md-heading.is-h1 { font-size: 16px; }
+.erp-assistant-md-heading.is-h2 { font-size: 15px; }
+.erp-assistant-md-heading.is-h3 { font-size: 14px; }
+.erp-assistant-md-heading.is-h4,
+.erp-assistant-md-heading.is-h5,
+.erp-assistant-md-heading.is-h6 { font-size: 13px; }
+
+.erp-assistant-md-list { margin: 0 0 8px; padding-left: 20px; }
+.erp-assistant-md-list .erp-assistant-md-list { margin: 2px 0 0; }
+.erp-assistant-md-li { margin-bottom: 2px; line-height: 1.6; }
+.erp-assistant-md-li::marker { color: var(--tblr-secondary, #6c757d); }
+
+.erp-assistant-md-inline-code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.erp-assistant-md-code {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #1f2937;
+  color: #e5e7eb;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-x: auto;
+  white-space: pre;
+}
+.erp-assistant-md-code-lang {
+  display: block;
+  margin-bottom: 4px;
+  color: #9ca3af;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* 表格横向可滚：列多时把抽屉撑破之前先滚动 */
+.erp-assistant-md-table-wrap {
+  margin: 0 0 8px;
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-radius: 8px;
+  overflow-x: auto;
+  background: var(--tblr-bg-surface, #fff);
+}
+.erp-assistant-md-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.erp-assistant-md-table th,
+.erp-assistant-md-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--tblr-border-color, #e6e7e9);
+  white-space: nowrap;
+}
+.erp-assistant-md-table th {
+  background: var(--tblr-bg-surface-secondary, #f6f8fb);
+  font-weight: 600;
+}
+.erp-assistant-md-table tbody tr:last-child td { border-bottom: 0; }
+.erp-assistant-md-table tbody tr:nth-child(even) td { background: rgba(0, 0, 0, 0.015); }
+
+.erp-assistant-md-quote {
+  margin: 0 0 8px;
+  padding: 4px 0 4px 10px;
+  border-left: 3px solid var(--tblr-primary, #206bc4);
+  color: var(--tblr-secondary, #6c757d);
+}
+
+.erp-assistant-md-hr {
+  margin: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--tblr-border-color, #e6e7e9);
+}
+
+.erp-assistant-md-link { color: var(--tblr-primary, #206bc4); text-decoration: none; }
+.erp-assistant-md-link:hover { text-decoration: underline; }
+
+.erp-assistant-kb-link {
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--tblr-primary, #206bc4);
+  font-size: 12px;
+  vertical-align: baseline;
+}
+.erp-assistant-kb-link:hover { text-decoration: underline; }
 .erp-assistant-chip {
   display: inline-flex;
   align-items: center;

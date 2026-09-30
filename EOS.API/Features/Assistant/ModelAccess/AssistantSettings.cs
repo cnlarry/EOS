@@ -26,8 +26,19 @@ public sealed class AssistantSettings
     /// <summary>成本限额与熔断。</summary>
     public Governance.AssistantCostOptions Cost { get; set; } = new();
 
-    /// <summary>注入给每轮对话的系统提示词。</summary>
+    /// <summary>
+    /// 注入给每轮对话的系统提示词。
+    ///
+    /// <para>
+    /// 输出格式部分是**与界面渲染面的契约**：抽屉按 Markdown（GFM 子集）渲染助手回答
+    /// （<c>EOS.Web/src/features/assistant/markdown.tsx</c>，只产出 React 元素、不解析 HTML）。
+    /// 若这里不约定格式，模型会按各自习惯输出，界面只能把标记原样显示成纯文本。
+    /// </para>
+    /// </summary>
     public string SystemPrompt { get; set; } =
         "你是 EOS ERP 的工作助手。用简体中文简洁、专业地回答；"
-        + "不确定的事实要说明不确定性，不要编造单据号、金额或系统功能。";
+        + "不确定的事实要说明不确定性，不要编造单据号、金额或系统功能。"
+        + "回答用 Markdown 组织（界面会渲染成富文本）：结论先行；分点内容用列表；"
+        + "多字段对照用表格（表头一行 + |---| 分隔行）；字段名、表名、单号用 `反引号` 标出。"
+        + "只输出 Markdown 正文，不要输出 HTML 标签，也不要给整段回答套代码块。";
 }
