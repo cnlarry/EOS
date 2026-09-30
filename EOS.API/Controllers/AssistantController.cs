@@ -79,7 +79,45 @@ public sealed class AssistantController(
     {
         var session = await repository.GetSessionAsync(userContext.UserId, sessionId, token);
         if (session is null) return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "会话不存在或不属于当前用户。"));
-        return Ok(await repository.ListMessagesAsync(userContext.UserId, sessionId, token));
+        var messages = await repository.ListMessagesAsync(userContext.UserId, sessionId, token);
+        // 历史消息按与 done 事件**同形**下发工具摘要（{name, digest}）：切会话/刷新后工具卡不该消失，
+        // 同时不把库内 JSON 的形状（含工具参数）暴露给前端——形状只有一处定义。
+        return Ok(messages.Select(message => new
+        {
+            message.Id,
+            message.SessionId,
+            message.Role,
+            message.Content,
+            message.ModelName,
+            message.PromptTokens,
+            message.CompletionTokens,
+            message.ElapsedMs,
+            message.CorrelationId,
+            message.CreatedAt,
+            ToolCalls = ParseToolCallDigests(message.ToolCallsJson),
+        }));
+    }
+
+    /// <summary>读库内工具摘要 JSON 时的选项：命名大小写不敏感——"库里当初怎么写"不该决定"现在还读不读得出来"。</summary>
+    private static readonly JsonSerializerOptions DigestJson = new() { PropertyNameCaseInsensitive = true };
+
+    /// <summary>
+    /// 库内工具摘要 JSON → 前端要的 <c>{name, digest}</c> 数组；解析不了就当作没有（历史照常显示，
+    /// 一条坏数据不该让整个会话打不开）。没有工具调用时返回 null，与 SSE 的 done 事件一致。
+    /// </summary>
+    internal static IReadOnlyList<object>? ParseToolCallDigests(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            var summaries = JsonSerializer.Deserialize<List<ToolCallSummary>>(json, DigestJson);
+            if (summaries is null || summaries.Count == 0) return null;
+            return [.. summaries.Select(item => (object)new { name = item.Name, digest = item.ResultDigest })];
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>发送一条用户消息并流式返回助手回复。响应恒为 text/event-stream。</summary>

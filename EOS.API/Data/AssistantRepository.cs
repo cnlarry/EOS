@@ -21,7 +21,9 @@ public sealed record AssistantMessageDto(
     int? CompletionTokens,
     int? ElapsedMs,
     string? CorrelationId,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    /// <summary>本次回复用过的工具摘要（库内 JSON）；只有历史查询会带出，插入回显时为 null。</summary>
+    string? ToolCallsJson = null);
 
 /// <summary>
 /// 工作助手会话/消息持久化契约。所有读写按 USER_ID 强制隔离；
@@ -134,7 +136,8 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
     {
         const string sql = """
             SELECT m.ID, m.SESSION_ID, m.ROLE, m.CONTENT, m.MODEL_NAME,
-                   m.PROMPT_TOKENS, m.COMPLETION_TOKENS, m.ELAPSED_MS, m.CORRELATION_ID, m.CREATED_AT
+                   m.PROMPT_TOKENS, m.COMPLETION_TOKENS, m.ELAPSED_MS, m.CORRELATION_ID, m.CREATED_AT,
+                   m.TOOL_CALLS_JSON
             FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK)
             INNER JOIN dbo.ASSISTANT_SESSION s WITH (NOLOCK) ON s.ID = m.SESSION_ID
             WHERE s.ID = @SessionId AND s.USER_ID = @UserId
@@ -309,5 +312,7 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
         reader.IsDBNull(6) ? null : reader.GetInt32(6),
         reader.IsDBNull(7) ? null : reader.GetInt32(7),
         reader.IsDBNull(8) ? null : reader.GetString(8),
-        ToUtc(reader.GetDateTime(9)));
+        ToUtc(reader.GetDateTime(9)),
+        // 工具摘要列只有历史查询会 SELECT（插入/回填走的 OUTPUT 不带它），故按列数存在与否取值。
+        reader.FieldCount > 10 && !reader.IsDBNull(10) ? reader.GetString(10) : null);
 }
