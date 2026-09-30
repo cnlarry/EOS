@@ -1,8 +1,8 @@
 {"question": "单据送审后又点了一次送审，会发生什么？", "expected": "拒绝重复送审（FLOW_IN_PROGRESS），需先撤回再重新提交。", "sources": ["WorkflowEngine.StartFlowAsync"]}
 {"question": "流程在途的单据能编辑或删除吗？", "expected": "不能；在途禁止编辑与删除，避免审批人与数据不一致及孤儿流程实例。", "sources": ["WorkflowEngine.HasActiveFlowAsync"]}
 {"question": "撤回流程后单据是什么状态？", "expected": "回到可编辑状态，修改后重新送审即重新提交。", "sources": ["WorkflowController.Withdraw", "WorkflowStates"]}
-{"question": "已结案的单据能删除吗？", "expected": "不能；必须先取消结案。", "sources": ["WorkbenchApprovalService", "删除补偿守卫"]}
-{"question": "已批核的单据想删除要先做什么？", "expected": "先解批；已产生库存日志（INV_DEPOT_LOG）的单据禁止删除。", "sources": ["WorkbenchApprovalService", "删除补偿守卫"]}
+{"question": "已结案的单据能删除吗？", "expected": "不能；必须先取消结案。", "sources": ["WorkbenchApprovalService", "WorkbenchApprovalService.EnsureDeletionAllowedAsync"]}
+{"question": "已批核的单据想删除要先做什么？", "expected": "先解批；已产生库存日志（INV_DEPOT_LOG）的单据禁止删除。", "sources": ["WorkbenchApprovalService", "WorkbenchApprovalService.EnsureDeletionAllowedAsync"]}
 {"question": "重复提交同一张单据会产生两条记录吗？", "expected": "不会；写路径幂等键保证重复提交不重复产生副作用。", "sources": ["WORKBENCH_IDEMPOTENCY", "WorkbenchCommandHandler"]}
 {"question": "模块 FILTER 只在列表生效吗？", "expected": "不是；列表/详情/子表/导出/打印/建单/改单/删单全范围一致生效。", "sources": ["WorkbenchScopeFilter"]}
 {"question": "统一表单的选择器和列表的数据范围一致吗？", "expected": "一致：模块 FILTER + DATA_FILTER + EXEC_TAG，无法受控时返回空列表。", "sources": ["TryBuildChooserScopePredicate", "GetChooserOptionsAsync"]}
