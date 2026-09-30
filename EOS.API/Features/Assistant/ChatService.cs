@@ -403,8 +403,19 @@ public sealed class ChatService(
                 completed: true);
             if (toolLog.Count > 0)
             {
-                await repository.UpdateToolCallsJsonAsync(
-                    userId, saved.Id, JsonSerializer.Serialize(toolLog), token);
+                // 工具摘要是**展示性**数据：回填失败只降级（前端工具芯片不显示），
+                // 不能把整轮回答与 done 事件一起带走——曾因该列缺迁移而在 done 之前断流。
+                try
+                {
+                    await repository.UpdateToolCallsJsonAsync(
+                        userId, saved.Id, JsonSerializer.Serialize(toolLog), token);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogWarning(ex,
+                        "工具摘要回填失败（仅影响前端工具芯片）session={SessionId} message={MessageId}",
+                        sessionId, saved.Id);
+                }
             }
 
             breaker?.RecordSuccess(userId);
