@@ -11,8 +11,8 @@
 {"question": "员工人数指标怎么算？", "expected": "employee_count = COUNT(DISTINCT EMP_ID)，来源表 HR_EMPLOYEE。", "sources": ["027_report_metric.sql", "enum_metrics"]}
 {"question": "流程定义存在哪两张表？主键是什么？", "expected": "WFFORM（流程主）+ WFFORM_FLOW（步骤），主键 WF_M_IDX。", "sources": ["FlowDefinitionService"]}
 {"question": "在途流程实例存在哪里？如何判定？", "expected": "WF_MONITOR，WF_STATE='0' 为在途。", "sources": ["WorkflowEngine.HasActiveFlowAsync", "WorkflowStates"]}
-{"question": "个人权限和组权限冲突时听谁的？", "expected": "某模块只要有 SYSDD 个人权限记录，就完全采用个人权限，不合并组权限。", "sources": ["Admin.GetUserRightDetail", "ModuleRightsRepository"]}
-{"question": "多组的布尔权限和禁止字段如何聚合？", "expected": "布尔位取 OR，EXEC_TAG 取最大值，禁止字段取各组交集。", "sources": ["Admin.GetUserRightDetail", "Admin.GetRepeat"]}
+{"question": "个人权限和组权限冲突时听谁的？", "expected": "某模块只要有 SYSDD 个人权限记录，就完全采用个人权限，不合并组权限。", "sources": ["ModuleRightsRepository", "RightsAdminRepository"]}
+{"question": "多组的布尔权限和禁止字段如何聚合？", "expected": "布尔位取 OR，EXEC_TAG 取最大值，禁止字段取各组交集。", "sources": ["ModuleRightsRepository", "RightsAdminRepository"]}
 {"question": "search_records 一次最多返回几行？", "expected": "最多 5 行，行附主键值数组 _keys。", "sources": ["SearchRecordsTool"]}
 {"question": "get_record_detail 查不到记录时说什么？", "expected": "返回“记录不存在或不在你的数据范围内”，不泄露范围外记录的存在性。", "sources": ["GetRecordDetailTool"]}
 {"question": "draft_record 会直接写库吗？", "expected": "不会；只产出草稿由人工带入表单，执行走现有保存管线。", "sources": ["DraftRecordTool"]}
@@ -24,7 +24,7 @@
 {"question": "单据附件有哪些权限位？", "expected": "FILE_VIEW_TAG 查看、FILE_UPDA_TAG 上传、FILE_EDIT_TAG 改备注、FILE_DELE_TAG 删除。", "sources": ["AttachmentController"]}
 {"question": "跨会话记忆最多存几条？注入几条？", "expected": "每用户上限 200 条，会话注入 Top-5。", "sources": ["043_assistant_memory.sql", "AssistantMemoryStore"]}
 {"question": "get_my_digest 返回谁的数据？", "expected": "只返回当前本人的偏好与显式记忆，不触碰业务模块。", "sources": ["GetMyDigestTool"]}
-{"question": "无权限用户问越权数据时助手应该怎么做？", "expected": "拒绝：返回 Deny/无浏览权，或把范围外记录表现为不存在。", "sources": [""]}
+{"question": "无权限用户问越权数据时助手应该怎么做？", "expected": "拒绝：返回 Deny/无浏览权，或把范围外记录表现为不存在。", "sources": ["AssistantToolExtensions", "GetRecordDetailTool"]}
 {"question": "模型没配置时助手怎么响应？", "expected": "快速失败 AI_MODEL_NOT_CONFIGURED，不影响其他 API。", "sources": ["ChatService"]}
 {"question": "助手一轮对话最多调几轮工具？", "expected": "最多 4 轮；达到上限时强制纯文本收尾。", "sources": ["AssistantToolRegistry.MaxToolRounds", "ChatService"]}
 {"question": "未知工具名出现时怎么处理？", "expected": "拒绝并回喂模型纠偏，不抛业务异常。", "sources": ["ChatService.ExecuteToolSafelyAsync"]}

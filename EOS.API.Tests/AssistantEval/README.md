@@ -21,8 +21,8 @@ dotnet test EOS.API.Tests/EOS.API.Tests.csproj --filter FullyQualifiedName~Assis
 | `config/` | `seed-01.jsonl` | 配置面在四个之内；不一致原因码取自 `ConfigConsistencyRules` 的三个码 | `AssistantEvalLayersTests.配置层的原因码来自不一致规则闭集` |
 | `authz/` | `seed-01.jsonl` | 越权必须被拒（泄露 = 0 硬门槛） | `AssistantEvalRunnerTests` |
 | `inference/` | `seed-01.jsonl` | 格式与必要来源声明（跨 ≥3 源） | `AssistantEvalRunnerTests` |
-| `functional/` | `seed-01.jsonl` | 检索类种子（人工抽样） | — |
-| `business/` | `seed-01.jsonl` | 回答类种子（人工抽样） | — |
+| `functional/` | `seed-01.jsonl` | **来源锚定**（`sources[]` 必须在仓库里真实存在）＋ 检索类种子（答案对错：人工抽样） | `AssistantEvalLayersTests.检索与回答层的样本来源锚定到代码或仓库` |
+| `business/` | `seed-01.jsonl` | **来源锚定**（同上）＋ 回答类种子（答案对错：人工抽样） | `AssistantEvalLayersTests.检索与回答层的样本来源锚定到代码或仓库` |
 
 ## 行格式
 
@@ -36,8 +36,16 @@ dotnet test EOS.API.Tests/EOS.API.Tests.csproj --filter FullyQualifiedName~Assis
 ## 判定方式（诚实标注）
 
 - 确定性项（越权拒绝、闭集对齐、格式与来源声明）进 `dotnet test` 自动回归，不达标阻断发布；其中越权泄露为硬门槛（=0）。
-- 正确率与拒答率需 LLM-as-judge（judge 模型、rubric、季度校准均未就绪），现阶段为人工抽样
+- **来源锚定**（2026-09-30 补）覆盖 `functional/` 与 `business/`：每条样本的 `sources[]` 必须在仓库里真实存在——
+  模块映射已登记（`ModuleBusinessMap`）、工具名在工具源码里被声明过、文件在仓库里、类型或成员在 `EOS.API`
+  程序集里、库对象名/错误码能在业务代码与 SQL 里找到。它判的是"**样本没有自造依据**"，
+  **不是**"模型的自然语言回答对不对"——后者仍需 judge，这一层只是把人工抽样前的"依据可核对"自动化。
+- 正确率与拒答率需 LLM-as-judge（judge 模型、rubric、季度校准均未就绪），这两层的**答案对错**现阶段为人工抽样
   （每轮 ≥30 条，结果落本目录留痕），暂不阻断发布。
+- 锚定的实际收益（本次抓出并订正 5 处）：1 条**空来源**（`[""]`）；2 条把依据指向**项目外**的遗留实现
+  （`Admin.GetUserRightDetail` / `Admin.GetRepeat`，实为 `Right.cs` 的参考语义，已改指 `ModuleRightsRepository` /
+  `RightsAdminRepository`）；2 条用**中文描述**当依据（`删除补偿守卫`，已改指
+  `WorkbenchApprovalService.EnsureDeletionAllowedAsync`）。
 
 ## 种子说明（诚实标注）
 
