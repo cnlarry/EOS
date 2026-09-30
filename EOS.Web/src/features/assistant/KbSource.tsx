@@ -1,19 +1,34 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Modal } from '../../components/ui/Modal'
 import { getKbDocument } from './api'
 import { parseKbLinks } from './kbSources'
+import { renderMarkdown } from './markdown'
 import type { KbDocument } from './types'
 
-/** 助手气泡文本：kb 来源引用渲染为可点击按钮，点击打开原文。 */
+/**
+ * 助手气泡文本：按 Markdown 渲染（GFM 子集），并把 kb 来源引用做成可点击按钮。
+ * 来源引用是裸文本 `kb://doc/{id}#c{n}`，因此挂在行内文本钩子上——Markdown 与来源识别互不干扰。
+ */
 export function KbSourceText({ text, onOpen }: { text: string; onOpen: (docId: string) => void }) {
+  return (
+    <div className="erp-assistant-md">
+      {renderMarkdown(text, {
+        renderText: segment => <KbSegments text={segment} onOpen={onOpen} />,
+      })}
+    </div>
+  )
+}
+
+/** 一段纯文本里的来源引用切分渲染；没有引用时原样输出（不额外包节点）。 */
+function KbSegments({ text, onOpen }: { text: string; onOpen: (docId: string) => void }) {
   const parts = parseKbLinks(text)
   if (parts.every(part => typeof part === 'string')) return <>{text}</>
   return (
     <>
       {parts.map((part, index) => typeof part === 'string' ? (
-        <span key={index}>{part}</span>
+        <Fragment key={index}>{part}</Fragment>
       ) : (
-        <button key={index} type="button" className="btn btn-link btn-sm p-0 align-baseline"
+        <button key={index} type="button" className="erp-assistant-kb-link"
           title={`查看知识库来源（文档 ${part.docId}，第 ${part.chunk} 段）`}
           onClick={() => onOpen(part.docId)}>
           [来源 {part.docId}#{part.chunk}]
