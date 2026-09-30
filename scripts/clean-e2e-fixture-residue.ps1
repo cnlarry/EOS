@@ -27,11 +27,16 @@
     （夹具经 API 建的测试用户及其模块覆盖行）。默认只统计不删。
 
 .PARAMETER ReportPath
-    执行记录输出路径（Markdown）。默认 docs/plans/ADR-016-E2E夹具清理-执行记录.md
+    执行记录输出路径（Markdown）。默认 logs/e2e-fixture-cleanup-report.md（留底目录，避免误覆盖已归档的执行记录）。
+
+.PARAMETER SelfTest
+    纯静态判别力自检（不连库、不写库）：断言参数面无自由谓词入口、每条删除谓词都带自造标记且无危险记号、
+    受保护表不在目标内、数量承载表谓词落在 PRO_NO 列上。**默认不删**由「不给 -Apply 就不进写库分支」保证。
 
 .EXAMPLE
     pwsh scripts/clean-e2e-fixture-residue.ps1                 # dry-run
     pwsh scripts/clean-e2e-fixture-residue.ps1 -Apply -Verbose # 真删
+    pwsh scripts/clean-e2e-fixture-residue.ps1 -SelfTest       # 自检（不连库）
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -40,7 +45,8 @@ param(
     [string[]] $IncludeTables = @(),
     [switch] $NoShellPass,
     [switch] $IncludePermissionResidue,
-    [string] $ReportPath = 'docs/plans/ADR-016-E2E夹具清理-执行记录.md'
+    [string] $ReportPath = 'logs/e2e-fixture-cleanup-report.md',
+    [switch] $SelfTest
 )
 
 $ErrorActionPreference = 'Stop'
@@ -250,6 +256,81 @@ WHERE EXISTS (SELECT 1 FROM dbo.[$Detail] d WITH (NOLOCK) WHERE d.[$TypeCol] = m
 function New-PrefixPredicate {
     param([string[]] $Columns)
     return (($Columns | ForEach-Object { "[$_] LIKE N'E2E%'" }) -join ' OR ')
+}
+
+# ---------------------------------------------------------------- 自检 ---
+
+# 判别力自检（不连库、不写库）：删除谓词只能来自本文件的登记表，调用方无法注入自由谓词。
+if ($SelfTest) {
+    $problems = New-Object System.Collections.Generic.List[string]
+
+    # ① 参数面白名单：出现能承载自由 SQL 谓词的参数即判失败
+    $allowedParams = @('Apply', 'IncludeModules', 'IncludeTables', 'NoShellPass', 'IncludePermissionResidue', 'ReportPath', 'SelfTest')
+    $src = Get-Content -LiteralPath $PSCommandPath -Raw -Encoding utf8
+    $m = [regex]::Match($src, '(?s)param\s*\((.*?)\r?\n\)')
+    if (-not $m.Success) {
+        $problems.Add('无法解析 param 块')
+    }
+    else {
+        foreach ($p in [regex]::Matches($m.Groups[1].Value, '\$([A-Za-z_][A-Za-z0-9_]*)')) {
+            if ($allowedParams -notcontains $p.Groups[1].Value) {
+                $problems.Add("param 块出现白名单外参数：`$$($p.Groups[1].Value)")
+            }
+        }
+    }
+
+    # ② 目标登记形态：表名/列名必须是标识符，谓词必须锚定自造标记且不含危险记号
+    $dangerous = @(';', '--', '/*', '1=1', '1 = 1', 'DROP ', 'DELETE ', 'UPDATE ', 'TRUNCATE ', 'EXEC ', 'sp_')
+    $predicates = New-Object System.Collections.Generic.List[string]
+    foreach ($item in $Targets) {
+        $parts = $item -split ':'
+        if ($parts.Count -ne 2) { $problems.Add("目标登记格式错误：$item"); continue }
+        if ($parts[0] -notmatch '^[A-Z0-9_]+$') { $problems.Add("目标表名非法：$($parts[0])") }
+        $cols = @($parts[1] -split ',')
+        foreach ($c in $cols) { if ($c -notmatch '^[A-Z0-9_]+$') { $problems.Add("目标列名非法：$c") } }
+        $predicates.Add((($cols | ForEach-Object { "[$_] LIKE N'E2E%'" }) -join ' OR '))
+    }
+    foreach ($sp in $Specials) { $predicates.Add([string] $sp.Predicate) }
+    foreach ($r in $PermissionResidue) { $predicates.Add([string] $r.Predicate) }
+    foreach ($p in $predicates) {
+        foreach ($d in $dangerous) { if ($p.Contains($d)) { $problems.Add("谓词含危险记号 '$d'：$p") } }
+        if ($p -notmatch "N'E2E") { $problems.Add("谓词未锚定自造标记：$p") }
+    }
+
+    # ③ 受保护表（借来的主档 / 审计 / 元数据）不得出现在任何删除目标里
+    $goalTables = @()
+    foreach ($item in $Targets) { $goalTables += ($item -split ':')[0] }
+    foreach ($sp in $Specials) { $goalTables += $sp.Table }
+    foreach ($r in $PermissionResidue) { $goalTables += $r.Table }
+    foreach ($t in $goalTables) {
+        if ($ProtectedTables -contains $t) { $problems.Add("删除目标命中受保护表：$t") }
+    }
+
+    # ④ 数量承载表的谓词必须落在 PRO_NO 上（禁止按库别整体删）
+    foreach ($item in $Targets) {
+        $parts = $item -split ':'
+        if ($QuantityTables.ContainsKey($parts[0])) {
+            if (@($parts[1] -split ',') -notcontains $QuantityTables[$parts[0]]) {
+                $problems.Add("数量承载表 $($parts[0]) 的谓词未落在 $($QuantityTables[$parts[0]])")
+            }
+        }
+    }
+    foreach ($sp in @($Specials | Where-Object { $QuantityTables.ContainsKey($_.Table) })) {
+        if ($sp.Predicate -notmatch [regex]::Escape($QuantityTables[$sp.Table])) {
+            $problems.Add("数量承载表 $($sp.Table) 的谓词未落在 $($QuantityTables[$sp.Table])")
+        }
+    }
+
+    # ⑤ 自检绝不与 -Apply 同时使用
+    if ($Apply) { $problems.Add('自检不得与 -Apply 同时使用') }
+
+    if ($problems.Count -gt 0) {
+        Write-Host 'FAIL 清理脚本自检：' -ForegroundColor Red
+        foreach ($p in $problems) { Write-Host "  - $p" -ForegroundColor Red }
+        exit 1
+    }
+    Write-Host "PASS 清理脚本自检：参数面无自由谓词入口（白名单 $($allowedParams.Count) 项）；$($predicates.Count) 条删除谓词均锚定自造标记且无危险记号；受保护表 $($ProtectedTables.Count) 张不在目标内；数量承载表按 PRO_NO 限定。" -ForegroundColor Green
+    exit 0
 }
 
 # ---------------------------------------------------------------- 前置校验 ---
