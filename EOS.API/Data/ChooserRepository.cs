@@ -258,6 +258,10 @@ public sealed class ChooserRepository(DbConnectionFactory connections, ILogger<C
     public static bool IsRegistered(string? sourceKey) =>
         !string.IsNullOrWhiteSpace(sourceKey) && RegisteredSources.ContainsKey(sourceKey.Trim());
 
+    /// <summary>注册数据源键清单（稳定的只读视图，供能力目录列出"有哪些来源可选"）。</summary>
+    public static IReadOnlyList<string> RegisteredSourceKeys { get; } =
+        [.. RegisteredSources.Keys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase)];
+
     /// <summary>数据源权限门：返回需要校验的模块号（null 表示仅登录可读，按场景收紧）。</summary>
     public static int? PermissionModuleId(string? sourceKey) => sourceKey?.Trim().ToLowerInvariant() switch
     {

@@ -163,8 +163,8 @@ public sealed class ConfigWriteGateTests
         Assert.Contains("clone_module_config", names);
         Assert.Contains("preview_config_change", names);
         Assert.Contains("apply_config_change", names);
-        // 25 个原有工具 + 请求卡工具（prepare-only，不执行批核族）。
-        Assert.Equal(26, names.Count);
+        // 26 个原有工具 + 机制目录工具（只读，配置域主题另行要求配置维护权限）。
+        Assert.Equal(27, names.Count);
     }
 
     // ===== 装配 =====

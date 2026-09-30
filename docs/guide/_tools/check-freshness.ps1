@@ -16,12 +16,18 @@
 
 .Strict 下「落后」与「未登记」均导致退出码 1，可用于提交前检查。
 
+报「落后」时会同时提示知识库重灌：本手册的「规范与坑」「设计动因」两类内容已进知识库，
+源码动了而文档没动 ⇒ 知识库里的内容可能落后于仓库，助手会拿着旧文档讲错规范。
+默认只提示（并给出命令）；-SyncKb 直接触发同步脚本（幂等，内容未变的文档会被跳过）。
+
 .EXAMPLE
 pwsh docs/guide/_tools/check-freshness.ps1
 pwsh docs/guide/_tools/check-freshness.ps1 -Strict
+pwsh docs/guide/_tools/check-freshness.ps1 -Strict -SyncKb
 #>
 param(
-    [switch]$Strict
+    [switch]$Strict,
+    [switch]$SyncKb
 )
 
 $ErrorActionPreference = 'Stop'
@@ -158,6 +164,28 @@ if ($uncommitted.Count -gt 0) {
 
 foreach ($warning in $warnings) {
     Write-Host "  [提醒] $warning" -ForegroundColor Yellow
+}
+
+# ---- 知识库重灌：文档落后 ⇒ 知识库内容可能落后（不得静默） ----
+if ($stale.Count -gt 0) {
+    $syncScript = Join-Path $root 'scripts/sync-guide-to-kb.ps1'
+    Write-Host ""
+    Write-Host "  [知识库重灌] 本手册的「规范与坑」「设计动因」已进知识库；源码领先于文档意味着" -ForegroundColor Yellow
+    Write-Host "               知识库里的内容可能落后于仓库——先更新文档，再重灌：" -ForegroundColor Yellow
+    if (Test-Path $syncScript) {
+        Write-Host "               pwsh scripts/sync-guide-to-kb.ps1        # 幂等：内容未变的文档会跳过" -ForegroundColor DarkGray
+    } else {
+        Write-Host "               未找到 scripts/sync-guide-to-kb.ps1（同步链路缺失）" -ForegroundColor Red
+    }
+    if ($SyncKb) {
+        if (-not (Test-Path $syncScript)) {
+            Write-Host "               无法触发：同步脚本不存在。" -ForegroundColor Red
+        } else {
+            Write-Host "               -SyncKb：触发知识库重灌…" -ForegroundColor Cyan
+            & pwsh -NoProfile -File $syncScript
+            Write-Host "               重灌退出码 $LASTEXITCODE（非 0 见上行逐文档结果）" -ForegroundColor DarkGray
+        }
+    }
 }
 
 Write-Host ""

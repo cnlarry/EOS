@@ -19,6 +19,9 @@ public sealed class AssistantSchemaToolTests
 
     private sealed class FakeSchema : IAssistantSchemaGateway
     {
+        public Task<IReadOnlyList<FieldAdminModule>> ListModulesAsync(CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<FieldAdminModule>>([new(1201, "产品")]);
+
         public Task<IReadOnlyList<FieldAdminTable>> ListTablesAsync(string? kind, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<FieldAdminTable>>([
                 new("CLIENT", "客户", "P", "TABLE", 2, 1, 0),
@@ -101,6 +104,9 @@ public sealed class AssistantSchemaToolTests
 
     private sealed class MissingTableSchema : IAssistantSchemaGateway
     {
+        public Task<IReadOnlyList<FieldAdminModule>> ListModulesAsync(CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<FieldAdminModule>>([]);
+
         public Task<IReadOnlyList<FieldAdminTable>> ListTablesAsync(string? kind, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<FieldAdminTable>>([]);
 

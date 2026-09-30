@@ -105,6 +105,9 @@ public sealed class AssistantEvalRunnerTests
 
     private sealed class SchemaGatewayStub : IAssistantSchemaGateway
     {
+        public Task<IReadOnlyList<FieldAdminModule>> ListModulesAsync(CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<FieldAdminModule>>([]);
+
         public Task<IReadOnlyList<FieldAdminTable>> ListTablesAsync(string? kind, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<FieldAdminTable>>([]);
 
