@@ -67,12 +67,18 @@ EOS.Web ──HTTP──> EOS.API ──SQL──> SQL Server (EOS.ERP)
 
 ## 本地开发
 
-配置连接串（见 `appsettings.Development.example.json`）：
+配置里只写**环境变量引用**（`appsettings.json` 中是 `${MSSQL_ERP_CONN}` / `${EOS_ASSISTANT_API_KEY}`
+这类占位），真值放环境变量——配置因此可以入库，连接串与密钥不落文件：
 
 ```powershell
-Copy-Item appsettings.Development.example.json appsettings.Development.json
+[Environment]::SetEnvironmentVariable('MSSQL_ERP_CONN', '<业务库连接串>', 'User')
+[Environment]::SetEnvironmentVariable('EOS_ASSISTANT_API_KEY', '<模型密钥，可选>', 'User')
+# 设完重开终端再启动（环境变量在启动进程时继承）
 dotnet run
 ```
+
+未定义的引用会被解析为**空串**并在启动日志里 Warning 点名（不会把 `${VAR}` 字面量当值使用）；
+连接串为空时 `/health/ready` 报 Unhealthy。
 
 服务默认监听 `http://localhost:5261`；健康检查 `http://localhost:5261/health/live`。
 数据库初始化见仓库根 `db/`。

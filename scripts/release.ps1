@@ -280,7 +280,7 @@ function Step-Artifacts([string]$version, $repoMigrations) {
         "api: EOS.API 构建产物（含内嵌迁移脚本 / ReportFormats / 字体）"
         "web: EOS.Web 静态产物"
         "db: 迁移由 EOS.API 启动时执行；仓库内嵌迁移 $($repoMigrations.Count) 个（最新编号 $headNumber）；db/bootstrap 基线登记到迁移 268，其后的脚本靠启动时 DbUp 补齐"
-        "note: 制品与清单不含连接串、密钥或 appsettings.Development*.json"
+        "note: 制品与清单不含连接串与密钥（配置只写 ${VAR} 环境变量引用，真值只存在于环境变量）"
     ) | Set-Content -Path $manifest -Encoding utf8
     Get-ChildItem $outDir -File | ForEach-Object {
         $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash

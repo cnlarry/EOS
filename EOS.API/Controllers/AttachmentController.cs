@@ -185,7 +185,7 @@ public sealed class AttachmentController(
     private static string ResolveStorageRoot(AttachmentSettings config)
     {
         if (!string.IsNullOrWhiteSpace(config.StorageRoot))
-            return Path.GetFullPath(Environment.ExpandEnvironmentVariables(config.StorageRoot));
+            return Path.GetFullPath(config.StorageRoot);
         return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "attachments"));
     }
 

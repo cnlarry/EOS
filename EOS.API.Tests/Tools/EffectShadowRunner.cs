@@ -486,7 +486,7 @@ public sealed class EffectShadowRunner
         var shadowEvent = Environment.GetEnvironmentVariable("EOS_SHADOW_EVENT") ?? "APPROVE_EFFECT";
         var deapprove = shadowEvent.Equals("DEAPPROVE", StringComparison.OrdinalIgnoreCase);
         var connectionString = ConnectionString.Value
-            ?? throw new InvalidOperationException("无法解析 EOS.API/appsettings.Development.json 连接串。");
+            ?? throw new InvalidOperationException("拿不到开发库连接串（请设置 MSSQL_ERP_CONN）。");
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         var spec = GetSpec(moduleId);
@@ -531,7 +531,7 @@ public sealed class EffectShadowRunner
         }
         if (ConnectionString.Value is null)
         {
-            throw new InvalidOperationException("无法解析 EOS.API/appsettings.Development.json 连接串。");
+            throw new InvalidOperationException("拿不到开发库连接串（请设置 MSSQL_ERP_CONN）。");
         }
 
         var runId = options.RunId ?? NextRunId(options.ModuleId);
@@ -5517,20 +5517,8 @@ public sealed class EffectShadowRunner
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(report, ReportJsonOptions));
     }
 
-    private static string? ResolveConnectionString()
-    {
-        var root = FindRepoRoot();
-        var settingsPath = Path.Combine(root, "EOS.API", "appsettings.Development.json");
-        if (!File.Exists(settingsPath))
-        {
-            return null;
-        }
-        using var document = JsonDocument.Parse(File.ReadAllText(settingsPath));
-        return document.RootElement.TryGetProperty("ConnectionStrings", out var section)
-            && section.TryGetProperty("ErpDatabase", out var value)
-            ? value.GetString()
-            : null;
-    }
+    private static string? ResolveConnectionString() =>
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
 
     private static string FindRepoRoot()
     {

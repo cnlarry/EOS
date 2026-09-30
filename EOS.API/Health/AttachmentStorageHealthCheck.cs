@@ -32,6 +32,6 @@ public sealed class AttachmentStorageHealthCheck(IConfiguration configuration, I
         var configured = configuration["Attachment:StorageRoot"];
         return string.IsNullOrWhiteSpace(configured)
             ? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "attachments"))
-            : Path.GetFullPath(Environment.ExpandEnvironmentVariables(configured));
+            : Path.GetFullPath(configured);
     }
 }

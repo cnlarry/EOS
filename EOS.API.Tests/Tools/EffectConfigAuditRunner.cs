@@ -40,7 +40,7 @@ public sealed class EffectConfigAuditRunner
         {
             return;
         }
-        Assert.False(ConnectionString.Value is null, "拿不到开发库连接串（EOS.API/appsettings.Development.json）。");
+        Assert.False(ConnectionString.Value is null, "拿不到开发库连接串（请设置 MSSQL_ERP_CONN）。");
 
         await using var connection = new SqlConnection(ConnectionString.Value);
         await connection.OpenAsync();
@@ -277,19 +277,8 @@ public sealed class EffectConfigAuditRunner
         return result;
     }
 
-    private static string? ResolveConnectionString()
-    {
-        var settingsPath = Path.Combine(RepoRoot.Value, "EOS.API", "appsettings.Development.json");
-        if (!File.Exists(settingsPath))
-        {
-            return null;
-        }
-        using var document = JsonDocument.Parse(File.ReadAllText(settingsPath));
-        return document.RootElement.TryGetProperty("ConnectionStrings", out var section)
-            && section.TryGetProperty("ErpDatabase", out var value)
-            ? value.GetString()
-            : null;
-    }
+    private static string? ResolveConnectionString() =>
+        Environment.GetEnvironmentVariable("MSSQL_ERP_CONN");
 
     private static string FindRepoRoot()
     {
