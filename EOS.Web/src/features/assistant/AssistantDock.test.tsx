@@ -165,6 +165,8 @@ function installFetchMock(options: {
   situation?: unknown
   chatFrames?: string[]
   formDefinition?: unknown
+  /** 历史回读延迟（毫秒）：用来稳定复现"打开抽屉后立刻发问、回读迟到"的竞态。 */
+  messagesDelayMs?: number
 } = {}): FetchHarness {
   const calls: FetchCall[] = []
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -174,7 +176,11 @@ function installFetchMock(options: {
     if (url.includes('/assistant/situation')) return jsonResponse(options.situation ?? situationSnapshot())
     if (url.includes('/chat')) return sseResponse(options.chatFrames ?? ['event: delta\ndata: {"text":"好的"}\n\n'])
     if (url.includes('/form-definition')) return jsonResponse(options.formDefinition ?? minimalFormDefinition())
-    if (url.includes('/messages')) return jsonResponse(options.messages ?? [])
+    if (url.includes('/messages')) {
+      const body = jsonResponse(options.messages ?? [])
+      if (!options.messagesDelayMs) return body
+      return new Promise<Response>(resolve => setTimeout(() => resolve(body), options.messagesDelayMs))
+    }
     if (url.includes('/assistant/sessions')) {
       return method === 'POST'
         ? jsonResponse({ id: '42', userId: 'u1', title: '新会话', createdAt: '', lastActiveAt: '' })
@@ -351,5 +357,124 @@ describe('AssistantDock', () => {
     fireEvent.click(remember)
 
     await waitFor(() => expect(screen.getByText(/已记住/)).toBeInTheDocument())
+  })
+
+  it('工具调用默认收起，点开才显示这次拿回的内容；没成的调用单独标出', async () => {
+    localStorage.setItem('erp-assistant-open', 'true')
+    installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+      chatFrames: [
+        `event: delta\ndata: ${JSON.stringify({ text: '查到 3 条。' })}\n\n`,
+        `event: done\ndata: ${JSON.stringify({
+          message: {
+            id: 'm2', sessionId: '11', role: 2, content: '查到 3 条。',
+            modelName: null, promptTokens: null, completionTokens: null, elapsedMs: null,
+            correlationId: null, createdAt: '',
+          },
+          toolCalls: [
+            { name: 'search_records', digest: 'module=1606(采购单) total=3 shown=3' },
+            { name: 'describe_table', digest: 'error:exception' },
+          ],
+        })}\n\n`,
+      ],
+    })
+
+    renderDock()
+    fireEvent.change(screen.getByPlaceholderText(/输入问题/), { target: { value: '查一下采购单' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+
+    // 收起态：芯片只说人话，摘要不出现在页面上（此前只藏在 title 里，鼠标不悬停就等于没有）
+    const chip = await screen.findByRole('button', { name: /查询业务数据/ })
+    const findByLabel = () => screen.getByRole('button', { name: /查询业务数据/ })
+    expect(chip.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByText(/total=3/)).toBeNull()
+
+    fireEvent.click(chip)
+    await waitFor(() => expect(findByLabel().getAttribute('aria-expanded')).toBe('true'))
+    expect(await screen.findByText(/total=3 shown=3/)).toBeInTheDocument()
+
+    // 没成的调用不冒充成功：文案与状态都要区分得出来
+    expect(screen.getByRole('button', { name: /未能完成：查看表结构/ })).toBeInTheDocument()
+  })
+
+  it('助手回答可复制 Markdown 原文', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    localStorage.setItem('erp-assistant-open', 'true')
+    installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+      chatFrames: [
+        `event: delta\ndata: ${JSON.stringify({ text: '- 甲\n- 乙' })}\n\n`,
+        `event: done\ndata: ${JSON.stringify({
+          message: {
+            id: 'm2', sessionId: '11', role: 2, content: '- 甲\n- 乙',
+            modelName: null, promptTokens: null, completionTokens: null, elapsedMs: null,
+            correlationId: null, createdAt: '',
+          },
+        })}\n\n`,
+      ],
+    })
+
+    renderDock()
+    fireEvent.change(screen.getByPlaceholderText(/输入问题/), { target: { value: '列一下' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+
+    const copy = await screen.findByRole('button', { name: '复制这条回答' })
+    fireEvent.click(copy)
+
+    // 复制的是 Markdown 原文，不是渲染后的文本——粘到别处列表/表格还成形
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('- 甲\n- 乙'))
+    await waitFor(() => expect(screen.getByText(/已复制/)).toBeInTheDocument())
+  })
+
+  it('切回历史会话时工具摘要跟着消息一起恢复（不是只在流式那一瞬可见）', async () => {
+    localStorage.setItem('erp-assistant-open', 'true')
+    installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+      messages: [
+        {
+          id: 'm9', sessionId: '11', role: 2, content: '查到 3 条。',
+          modelName: null, promptTokens: null, completionTokens: null, elapsedMs: null,
+          correlationId: null, createdAt: '',
+          toolCalls: [{ name: 'search_records', digest: 'module=1606(采购单) total=3' }],
+        },
+      ],
+    })
+
+    renderDock()
+    // 历史里的工具摘要要能点开——库里有 TOOL_CALLS_JSON，端点也把它下发成 {name, digest}
+    const chip = await screen.findByRole('button', { name: /查询业务数据/ })
+    fireEvent.click(chip)
+    expect(await screen.findByText(/total=3/)).toBeInTheDocument()
+  })
+
+  it('打开抽屉就发问时，迟到的历史回读不会把回答清掉', async () => {
+    localStorage.setItem('erp-assistant-open', 'true')
+    installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+      messages: [], // 服务端此刻的历史是空的
+      messagesDelayMs: 150, // 但回读迟到：晚于发送、也晚于回答流完
+      chatFrames: [
+        `event: delta\ndata: ${JSON.stringify({ text: '查到了。' })}\n\n`,
+        `event: done\ndata: ${JSON.stringify({
+          message: {
+            id: 'm2', sessionId: '11', role: 2, content: '查到了。',
+            modelName: null, promptTokens: null, completionTokens: null, elapsedMs: null,
+            correlationId: null, createdAt: '',
+          },
+        })}\n\n`,
+      ],
+    })
+
+    renderDock()
+    await waitFor(() => expect(screen.getByRole('complementary')).not.toBeNull())
+    fireEvent.change(screen.getByPlaceholderText(/输入问题/), { target: { value: '查一下' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(await screen.findByText(/查到了。/)).toBeInTheDocument()
+
+    // 等那次迟到的回读落地：它带回的是"空历史"，不该把已经流出来的回答抹掉
+    await new Promise(resolve => setTimeout(resolve, 260))
+    expect(screen.getByText(/查到了。/)).toBeInTheDocument()
   })
 })

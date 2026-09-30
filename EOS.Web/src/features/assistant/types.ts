@@ -294,4 +294,6 @@ export interface AssistantMessage {
   elapsedMs: number | null
   correlationId: string | null
   createdAt: string
+  /** 本次回复用过的工具摘要（与 done 事件同一形状）。历史消息也带，工具卡因此不会一刷新就消失。 */
+  toolCalls?: Array<{ name: string; digest: string }> | null
 }
