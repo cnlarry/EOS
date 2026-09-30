@@ -144,6 +144,19 @@ public sealed class KnowledgeRepository(DbConnectionFactory connections) : IKnow
             if (reused is not null) return (Convert.ToInt64(reused), true);
         }
 
+        // 同一来源（SOURCE_URI）的每次重灌都是该来源的新版本：旧行退役、新行版本号 +1。
+        // 没有来源的散篇维持版本 1（它们没有"同一份文档的不同版本"这回事）。
+        var version = 1;
+        if (normalizedSource is not null)
+        {
+            await using var next = new SqlCommand(
+                "SELECT ISNULL(MAX(VERSION), 0) + 1 FROM dbo.KB_DOCUMENT WITH (NOLOCK) WHERE COLLECTION_ID=@Collection AND SOURCE_URI=@Source;",
+                connection, transaction);
+            next.Parameters.Add("@Collection", SqlDbType.NVarChar, 50).Value = collectionId;
+            next.Parameters.Add("@Source", SqlDbType.NVarChar, 500).Value = normalizedSource;
+            version = Convert.ToInt32(await next.ExecuteScalarAsync(token));
+        }
+
         if (normalizedSource is not null)
         {
             await using var retire = new SqlCommand(
@@ -163,9 +176,9 @@ public sealed class KnowledgeRepository(DbConnectionFactory connections) : IKnow
         long docId;
         await using (var insert = new SqlCommand(
             """
-            INSERT INTO dbo.KB_DOCUMENT (COLLECTION_ID, TITLE, SOURCE_URI, CONTENT_HASH, VISIBILITY, CREATE_BY)
+            INSERT INTO dbo.KB_DOCUMENT (COLLECTION_ID, TITLE, SOURCE_URI, CONTENT_HASH, VISIBILITY, VERSION, CREATE_BY)
             OUTPUT INSERTED.DOC_ID
-            VALUES (@Collection, @Title, @Source, @Hash, @Vis, @By);
+            VALUES (@Collection, @Title, @Source, @Hash, @Vis, @Version, @By);
             """, connection, transaction))
         {
             insert.Parameters.Add("@Collection", SqlDbType.NVarChar, 50).Value = collectionId;
@@ -173,6 +186,7 @@ public sealed class KnowledgeRepository(DbConnectionFactory connections) : IKnow
             insert.Parameters.Add("@Source", SqlDbType.NVarChar, 500).Value = (object?)normalizedSource ?? DBNull.Value;
             insert.Parameters.Add("@Hash", SqlDbType.Char, 64).Value = hash;
             insert.Parameters.Add("@Vis", SqlDbType.NVarChar, 20).Value = normalizedVisibility;
+            insert.Parameters.Add("@Version", SqlDbType.Int).Value = version;
             insert.Parameters.Add("@By", SqlDbType.NVarChar, 50).Value = updatedBy;
             docId = Convert.ToInt64(await insert.ExecuteScalarAsync(token));
         }

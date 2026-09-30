@@ -10,6 +10,9 @@ public sealed record AssistantSchemaProcedure(string Name, string Signature);
 
 public interface IAssistantSchemaGateway
 {
+    /// <summary>库内模块清单（模块号 + 名称），与字段维护页读的是同一张模块定义表。</summary>
+    Task<IReadOnlyList<FieldAdminModule>> ListModulesAsync(CancellationToken token);
+
     Task<IReadOnlyList<FieldAdminTable>> ListTablesAsync(string? kind, CancellationToken token);
     Task<(FieldAdminTableDetail? Table, IReadOnlyList<FieldAdminFieldSummary> Fields, IReadOnlyList<FieldAdminUnmanagedField> Unmanaged)> DescribeTableAsync(string tableId, CancellationToken token);
     Task<IReadOnlyList<AssistantSchemaView>> ListViewsAsync(string? keyword, CancellationToken token);
@@ -20,6 +23,9 @@ public sealed class AssistantSchemaGateway(
     FieldAdminRepository fieldAdmin,
     DbConnectionFactory connections) : IAssistantSchemaGateway
 {
+    public Task<IReadOnlyList<FieldAdminModule>> ListModulesAsync(CancellationToken token) =>
+        fieldAdmin.GetModulesAsync(token);
+
     public Task<IReadOnlyList<FieldAdminTable>> ListTablesAsync(string? kind, CancellationToken token) =>
         fieldAdmin.GetTablesAsync(kind, token);
 

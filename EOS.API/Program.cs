@@ -333,6 +333,8 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.CloneModuleConfigToo
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.PreviewConfigChangeTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ApplyConfigChangeTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Config.ConfigDiagnosisService>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Catalog.SystemCapabilityCatalog>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Catalog.DescribeMechanismTool>();
 builder.Services.AddScoped<EOS.API.Data.IKnowledgeRepository, EOS.API.Data.KnowledgeRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.ModelAccess.IEmbeddingModel,
     EOS.API.Features.Assistant.ModelAccess.PendingEmbeddingModel>();
@@ -393,6 +395,7 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.AssistantToolRegistr
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.PreviewConfigChangeTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.ApplyConfigChangeTool>(),
         sp.GetRequiredService<EOS.API.Features.Assistant.Tools.PreviewBatchDecisionTool>(),
+        sp.GetRequiredService<EOS.API.Features.Assistant.Catalog.DescribeMechanismTool>(),
      ]));
 builder.Services.AddScoped<EOS.API.Features.Assistant.ChatService>();
 builder.Services.Configure<UnifiedFormEditorSettings>(builder.Configuration.GetSection("UnifiedFormEditor"));

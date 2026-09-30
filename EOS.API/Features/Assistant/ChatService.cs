@@ -139,6 +139,13 @@ public sealed class ChatService(
         + "若系统内没有对应口径，如实说明「该指标在系统内尚无定义」，禁止自行拼公式估算或心算。";
 
     /// <summary>
+    /// 机制与规范分走两条通道：机制事实由能力目录从元数据与代码注册表现算，
+    /// 规范、边界、坑与设计动因只在文档里，走知识库检索且必须标注来源；两者冲突以服务端元数据为准。
+    /// </summary>
+    private const string KnowledgeChannelRule =
+        "机制问题走 describe_mechanism 现算；规范、坑与设计动因走 kb_search 并标注来源与版本；冲突以服务端元数据为准。";
+
+    /// <summary>
     /// "这张单为什么存不下去 / 改不了"必须落到证据上：走 diagnose_record 按模块与单号逐条取证，
     /// 权限类原因直说，证据不足时如实说明缺什么——不猜、不编下一步。
     /// </summary>
@@ -478,6 +485,8 @@ public sealed class ChatService(
         systemPrompt.Append(MetricUsageRule);
         systemPrompt.AppendLine();
         systemPrompt.Append(DiagnosisUsageRule);
+        systemPrompt.AppendLine();
+        systemPrompt.Append(KnowledgeChannelRule);
         if (pageContext is not null && !pageContext.IsEmpty)
         {
             pageContext.AppendTo(systemPrompt); // 页面元数据作为「内容」注入并声明非指令（提示注入隔离）
