@@ -15,6 +15,7 @@ node_modules/
 .env
 *.local
 EOS.API/appsettings.Development.json
+EOS.API/appsettings.Production.json
 
 # 运行期产物
 logs/
