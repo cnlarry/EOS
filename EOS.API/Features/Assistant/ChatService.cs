@@ -120,8 +120,33 @@ public sealed class ChatService(
     FailureBreaker? breaker = null,
     AssistantSituationService? situation = null)
 {
-    /// <summary>单轮携带的最大历史条数（含双方消息），防上下文无限增长。</summary>
-    private const int MaxHistoryMessages = 40;
+    /// <summary>
+    /// 单轮从库里取回的**历史条数上限**（含双方消息）。
+    ///
+    /// <para>
+    /// 这只是"取多少条"的兜底，真正决定带多少上下文的是模型的**上下文窗口**
+    /// （见 <see cref="TrimToContextWindow"/>）。此前这里就是唯一的约束（40 条），
+    /// 而条数相同、长度可以差几十倍——一条长回复就能把窗口顶穿，厂商返回的还是模糊的参数错误。
+    /// </para>
+    /// </summary>
+    private const int MaxHistoryMessages = 60;
+
+    /// <summary>
+    /// 估算 token 的**上界**系数：按"1 个字符 ≈ 1 个 token"算。
+    ///
+    /// <para>
+    /// 没有引入 tokenizer：各家算法不同、还得跟着模型版本更新，而这里只需要一个安全的保守值。
+    /// 中文一个汉字通常不到 1 个 token、英文更少，所以这个系数高估——**估多了只是少带些历史，
+    /// 估少了会被厂商直接拒绝**，两边的代价不对称，所以取高估的那一侧。
+    /// </para>
+    /// </summary>
+    private const int CharsPerTokenUpperBound = 1;
+
+    /// <summary>模型没填上下文窗口时的保守默认（token）。宁可少带历史，也不要因为算大了被拒。</summary>
+    private const int DefaultContextWindow = 16_384;
+
+    /// <summary>留给系统提示、用户记忆、处境段与工具结果的余量（token）。</summary>
+    private const int ContextReserveTokens = 4_096;
 
     /// <summary>单条消息长度上限（字符）。</summary>
     public const int MaxContentLength = 8000;
@@ -165,8 +190,11 @@ public sealed class ChatService(
     {
         if (!model.IsConfigured)
         {
+            // 未配置只有两个原因：管理面还没"设为当前"的模型，或者那把密钥还没填。
+            // 文案必须**可执行**——只说"还没配置"，用户唯一能做的就是来找我们。
             yield return new ChatStreamEvent.Failed(
-                "AI_MODEL_NOT_CONFIGURED", "工作助手尚未配置模型接入（Assistant:ApiKey），请联系管理员。");
+                "AI_MODEL_NOT_CONFIGURED",
+                "工作助手尚未配置模型。请管理员在「工作助手管理 → 模型与用量」中添加模型、设置密钥并设为当前。");
             yield break;
         }
 
@@ -217,7 +245,10 @@ public sealed class ChatService(
         var situationText = situation is null
             ? string.Empty
             : await situation.BuildResidentTextAsync(userId, token);
-        var messages = BuildModelMessages(history, pageContext, memoryPrefix, situationText);
+        // 按**当前模型的上下文窗口**裁剪（窗口来自 3102 的模型行）：从最老的消息开始丢。
+        // 系统提示与处境段不参与这个预算——它们是每轮必须带的，占用的额度由 ContextReserveTokens 预留。
+        var trimmedHistory = TrimToContextWindow(history, settings.Value);
+        var messages = BuildModelMessages(trimmedHistory, pageContext, memoryPrefix, situationText);
 
         // 原子预留：同一事务内建行 + 按上限条件扣减（用户行与全局行同时满足），
         // 并发请求在此串行化；超限直接拒绝，不再"先读后放"。
@@ -398,8 +429,12 @@ public sealed class ChatService(
             var saved = await repository.AddAssistantMessageAsync(
                 userId, sessionId, text, model.ModelName,
                 totalPromptTokens, totalCompletionTokens, totalElapsedMs, correlationId, token, anyEstimated);
+            // 按**当前模型的单价**结算：写进台账的就是钱，而限额熔断判定的也是钱。
+            // 用一套全局单价去算所有模型，等于把日上限变成一个与实际花费无关的数字。
             await SettleAsync(userId, dayStart, reserveMicro,
-                ToMicroYuan(AssistantCost.Calculate(totalPromptTokens, totalCompletionTokens, settings.Value.Cost)),
+                ToMicroYuan(AssistantCost.Calculate(
+                    totalPromptTokens, totalCompletionTokens, settings.Value.Cost,
+                    settings.Value.InputPerMillionYuan, settings.Value.OutputPerMillionYuan)),
                 completed: true);
             if (toolLog.Count > 0)
             {
@@ -424,7 +459,8 @@ public sealed class ChatService(
                 toolLog.Count > 0 ? [.. toolLog] : null,
                 drafts.Count > 0 ? [.. drafts] : null);
             // : done 之后异步提炼候选记忆（pending，待用户确认；失败静默，不阻塞对话流）。
-            await DistillSessionBestEffortAsync(userId, saved.Id, history, text, dayStart, token);
+            // 提炼自己也是一次模型调用，同样受窗口约束，所以喂裁剪后的历史（它要的本来就是最近几轮）
+            await DistillSessionBestEffortAsync(userId, saved.Id, trimmedHistory, text, dayStart, token);
             yield break;
         }
     }
@@ -483,6 +519,58 @@ public sealed class ChatService(
             toolLog.Add(new ToolCallSummary(call.Name, call.ArgumentsJson, "error:exception"));
             return ToolExecutionResult.Deny("工具执行出现内部错误，请换一种问法或稍后重试。");
         }
+    }
+
+    /// <summary>
+    /// 按当前模型的**上下文窗口**从最老的一端开始丢，返回能带上的那一截历史。
+    ///
+    /// <para>
+    /// 此前这里是硬编码的"最多 40 条"（<see cref="MaxHistoryMessages"/> 就是它），条数相同而长度
+    /// 可以差几十倍，一条长回复就能把窗口顶穿。窗口来自模型行（3102 的 <c>CONTEXT_WINDOW</c>），
+    /// 没填就用保守默认。
+    /// </para>
+    ///
+    /// <para>
+    /// 预算 = 窗口 − 预留（系统提示/记忆/处境/工具结果）− 本次最大输出——输出的 token 也占窗口，
+    /// 只算输入会在输出很长时照样溢出。**最新的一条消息无论如何都要带上**：一条都带不上，
+    /// 用户看到的就是"助手失忆了"，那比报错更难理解。
+    /// </para>
+    /// </summary>
+    private static IReadOnlyList<(int Role, string Content)> TrimToContextWindow(
+        IReadOnlyList<(int Role, string Content)> history, AssistantSettings modelSettings)
+    {
+        if (history.Count == 0)
+        {
+            return history;
+        }
+
+        var window = modelSettings.ContextWindow ?? DefaultContextWindow;
+        var reserve = ContextReserveTokens + (modelSettings.MaxTokens ?? 0);
+        // 下限 1024：窗口填得再离谱（或输出上限超过窗口），也要留下最基本的对话预算
+        var budgetTokens = Math.Max(1_024, window - reserve);
+        var remainingChars = (long)budgetTokens * CharsPerTokenUpperBound;
+
+        var kept = new List<(int Role, string Content)>(history.Count);
+        for (var index = history.Count - 1; index >= 0; index--)
+        {
+            var item = history[index];
+            var cost = item.Content.Length;
+            // 最老的这一条放不下就停：再往前的一定更老，没有"越过它去拿更早的"的道理
+            if (kept.Count > 0 && cost > remainingChars)
+            {
+                break;
+            }
+
+            kept.Add(item);
+            remainingChars -= cost;
+            if (remainingChars <= 0)
+            {
+                break;
+            }
+        }
+
+        kept.Reverse();
+        return kept;
     }
 
     private List<ChatMessage> BuildModelMessages(
@@ -581,7 +669,9 @@ public sealed class ChatService(
             var promptTokens = usage?.PromptTokens ?? Math.Max(1, prompt.Length);
             var completionTokens = usage?.CompletionTokens ?? Math.Max(1, output.Length);
             await SettleAsync(userId, dayStart, reserveMicro,
-                ToMicroYuan(AssistantCost.Calculate(promptTokens, completionTokens, settings.Value.Cost)),
+                ToMicroYuan(AssistantCost.Calculate(
+                    promptTokens, completionTokens, settings.Value.Cost,
+                    settings.Value.InputPerMillionYuan, settings.Value.OutputPerMillionYuan)),
                 completed: false);
             if (estimated)
             {

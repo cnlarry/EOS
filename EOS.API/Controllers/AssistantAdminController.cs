@@ -40,10 +40,17 @@ public sealed class AssistantAdminController(
     IAssistantUsageRepository usageRepository,
     IOptions<AssistantSettings> assistantSettings) : ControllerBase
 {
-    /// <summary>受支持的供应商。它们都走 OpenAI 兼容的 <c>/chat/completions</c>，因此共用一个客户端实现；
-    /// 将来接入线协议不同的厂商，是"新增一个 <see cref="IChatModel"/> 实现 + 在这里登记"。</summary>
-    private static readonly HashSet<string> SupportedProviders =
-        new(StringComparer.OrdinalIgnoreCase) { "deepseek", "openai-compatible" };
+    /// <summary>
+    /// 受支持的供应商 CODE。**真源是代码里的预设目录**（<see cref="AssistantProviderCatalog"/>），
+    /// 不是这里的白名单：库里存的是 CODE，而 CODE 决定了用哪个客户端实现，所以"目录里没有的 CODE"
+    /// 存下来只会是一个没人认得的字符串。
+    ///
+    /// <para>
+    /// 它们都走 OpenAI 兼容的 <c>/chat/completions</c>，因此共用一个客户端实现；将来接入线协议不同的
+    /// 厂商 = 新增一个 <see cref="IChatModel"/> 实现 + 在目录里登记一行。
+    /// </para>
+    /// </summary>
+    private static bool IsSupportedProvider(string? code) => AssistantProviderCatalog.IsSupported(code);
 
     /// <summary>
     /// 能力面的边界。写在服务端而不是让前端硬编码：这些是"能力面上根本表达不出来"的东西，
@@ -88,19 +95,50 @@ public sealed class AssistantAdminController(
     /// 就会从一条规则退化成一个愿望。
     /// </para>
     /// </summary>
+    /// <summary>
+    /// 新增 / 修改**供应商**（端点 + 密钥环境变量名 + 默认超时）。
+    ///
+    /// <para>
+    /// <c>Models</c> 是可选的"顺带添加"：界面上"选供应商 → 勾选可用模型"是**一次**提交，走这一个
+    /// 请求体。否则要先建供应商、再发 N 个建模型的请求，中间失败会留下半个供应商。
+    /// </para>
+    ///
     /// <remarks>
-    /// 超时/启用/排序都写成可空：客户端少传一个字段时，应当落到**默认值**（300 秒 / 启用 / 0），
-    /// 而不是悄悄变成"0 秒超时"或"新建出来就是停用的"。校验只对**传了**的值生效。
+    /// 超时/启用/排序写成可空：客户端少传一个字段时应当落到默认值（300 秒 / 启用 / 0），
+    /// 而不是悄悄变成"0 秒超时"。校验只对**传了**的值生效。
     /// </remarks>
-    public sealed record AssistantModelRequest(
+    /// </summary>
+    public sealed record AssistantProviderRequest(
+        string? Code,
         string? DisplayName,
-        string? Provider,
-        string? ModelName,
         string? BaseUrl,
         string? ApiKeyEnvVar,
         int? TimeoutSeconds,
-        decimal? Temperature,
-        int? MaxTokens,
+        bool? Enabled,
+        int? SortIdx,
+        string? Remark,
+        IReadOnlyList<AssistantModelRequest>? Models);
+
+    /// <summary>
+    /// 新增 / 修改**模型**。
+    ///
+    /// <para>
+    /// **这里刻意没有密钥字段**：密钥挂在供应商上，且只能走单独那条 <c>PUT providers/{id}/key</c>，
+    /// 而那条路不进库。把密钥混进"新增模型"的 body 里，早晚会有人顺手把它存下来——ADR-030 §3 的
+    /// "密钥不入库"就会从一条规则退化成一个愿望。
+    /// </para>
+    /// </summary>
+    public sealed record AssistantModelRequest(
+        int? ProviderId,
+        string? ModelCode,
+        string? DisplayName,
+        int? ContextWindow,
+        int? MaxOutputTokens,
+        decimal? DefaultTemperature,
+        int? TimeoutSeconds,
+        decimal? InputPerMillionYuan,
+        decimal? OutputPerMillionYuan,
+        bool? SupportsTools,
         bool? Enabled,
         int? SortIdx,
         string? Remark);
@@ -247,116 +285,257 @@ public sealed class AssistantAdminController(
     }
 
     // ==================================================================
-    // 3102 模型与用量（见 ADR-030 §3）：管理员在这里增减 / 切换模型。
-    // 密钥只在 PUT models/{id}/key 那一条路上出现过，且**只写不读**。
+    // 3102 模型与用量（见 ADR-030 §3）：两级 —— **供应商**（端点 + 密钥变量名 + 默认超时）
+    // 与**模型**（模型标识 + 上下文窗口 + 单价 + 工具能力）。
+    // 密钥只在 PUT providers/{id}/key 那一条路上出现过，且**只写不读**。
     // ==================================================================
 
     /// <summary>
-    /// 模型清单。**不含任何密钥本体**，只给"环境变量名 + 是否已配置 + 掩码末四位"。
-    /// 同时给出"现在到底在用哪个"——表里没有启用的当前模型时，助手用的是配置文件那套。
+    /// 预设目录：系统"知道"的主流供应商及其可用模型（端点、上下文窗口、最大输出、是否支持工具）。
+    ///
+    /// <para>
+    /// 放代码里而不是写种子数据：表的语义是"用户配了什么"，目录是"系统知道什么"。界面上
+    /// "选供应商 → 自动罗列可用模型 → 勾选落库"靠的就是它，所以它**必须能被前端读到**。
+    /// </para>
     /// </summary>
-    [HttpGet("models")]
-    public async Task<IActionResult> ListModels(CancellationToken token)
+    [HttpGet("presets")]
+    public async Task<IActionResult> ListPresets(CancellationToken token)
     {
         if (!await CanBrowseModels(token)) return Forbid();
-        var rows = await modelCatalog.ListAsync(token);
-        var config = assistantSettings.Value;
+        return Ok(AssistantProviderCatalog.All.Select(provider => new
+        {
+            code = provider.Code,
+            displayName = provider.DisplayName,
+            baseUrl = provider.BaseUrl,
+            suggestedApiKeyEnvVar = provider.SuggestedApiKeyEnvVar,
+            timeoutSeconds = provider.TimeoutSeconds,
+            remark = provider.Remark,
+            models = provider.Models.Select(model => new
+            {
+                modelCode = model.ModelCode,
+                displayName = model.DisplayName,
+                contextWindow = model.ContextWindow,
+                maxOutputTokens = model.MaxOutputTokens,
+                supportsTools = model.SupportsTools,
+                inputPerMillionYuan = model.InputPerMillionYuan,
+                outputPerMillionYuan = model.OutputPerMillionYuan,
+                defaultTemperature = model.DefaultTemperature,
+                remark = model.Remark,
+            }),
+        }));
+    }
+
+    /// <summary>
+    /// 供应商 + 其下模型（一次给全，界面两级渲染，避免展开一行就发一次请求）。
+    ///
+    /// <para>
+    /// **不含任何密钥本体**，只给"环境变量名 + 是否已配置 + 掩码末四位"。另外给出"现在到底在用哪个"
+    /// ——<c>current</c> 为 <c>null</c> 就是**尚未配置**：界面上必须能一眼看出这件事，
+    /// 而不是等用户打完字发送才报错。
+    /// </para>
+    /// </summary>
+    [HttpGet("providers")]
+    public async Task<IActionResult> ListProviders(CancellationToken token)
+    {
+        if (!await CanBrowseModels(token)) return Forbid();
+        var providers = await modelCatalog.ListProvidersAsync(token);
+        var models = await modelCatalog.ListModelsAsync(token);
         var active = modelRegistry.Active;
+
         return Ok(new
         {
-            items = rows.Select(row => new
+            providers = providers.Select(provider => new
             {
-                modelId = row.ModelId,
-                displayName = row.DisplayName,
-                provider = row.Provider,
-                modelName = row.ModelName,
-                baseUrl = row.BaseUrl,
-                apiKeyEnvVar = row.ApiKeyEnvVar,
-                apiKeyConfigured = modelSecrets.IsConfigured(row.ApiKeyEnvVar),
+                providerId = provider.ProviderId,
+                code = provider.Code,
+                displayName = provider.DisplayName,
+                baseUrl = provider.BaseUrl,
+                apiKeyEnvVar = provider.ApiKeyEnvVar,
+                apiKeyConfigured = modelSecrets.IsConfigured(provider.ApiKeyEnvVar),
                 // 只露末四位：够确认"配的是哪一个"，不足以还原密钥
-                apiKeyMaskedTail = modelSecrets.MaskedTail(row.ApiKeyEnvVar),
-                timeoutSeconds = row.TimeoutSeconds,
-                temperature = row.Temperature,
-                maxTokens = row.MaxTokens,
-                isActive = row.IsActive,
-                enabled = row.Enabled,
-                sortIdx = row.SortIdx,
-                remark = row.Remark,
-                createdAt = row.CreatedAt,
-                updatedAt = row.UpdatedAt,
+                apiKeyMaskedTail = modelSecrets.MaskedTail(provider.ApiKeyEnvVar),
+                timeoutSeconds = provider.TimeoutSeconds,
+                enabled = provider.Enabled,
+                sortIdx = provider.SortIdx,
+                remark = provider.Remark,
+                models = models.Where(row => row.ProviderId == provider.ProviderId).Select(row => new
+                {
+                    modelId = row.ModelId,
+                    providerId = row.ProviderId,
+                    modelCode = row.ModelCode,
+                    displayName = row.DisplayName,
+                    contextWindow = row.ContextWindow,
+                    maxOutputTokens = row.MaxOutputTokens,
+                    defaultTemperature = row.DefaultTemperature,
+                    timeoutSeconds = row.TimeoutSeconds,
+                    inputPerMillionYuan = row.InputPerMillionYuan,
+                    outputPerMillionYuan = row.OutputPerMillionYuan,
+                    supportsTools = row.SupportsTools,
+                    isActive = row.IsActive,
+                    enabled = row.Enabled,
+                    sortIdx = row.SortIdx,
+                    remark = row.Remark,
+                }),
             }),
-            current = new
+            current = active is null ? null : new
             {
-                // "现在到底在用哪个"必须能回答：否则管理员改完表里那行，界面上看不出有没有生效
-                source = active is null ? "appsettings" : "database",
-                modelId = active?.ModelId,
-                displayName = active?.DisplayName,
-                model = active?.Settings.Model ?? config.Model,
-                baseUrl = active?.Settings.BaseUrl ?? config.BaseUrl,
-                timeoutSeconds = active?.Settings.TimeoutSeconds ?? config.TimeoutSeconds,
-                temperature = active?.Settings.Temperature ?? config.Temperature,
-                maxTokens = active?.Settings.MaxTokens ?? config.MaxTokens,
-                apiKeyConfigured = active is not null
-                    ? !string.IsNullOrWhiteSpace(active.Settings.ApiKey)
-                    : !string.IsNullOrWhiteSpace(config.ApiKey),
+                modelId = active.ModelId,
+                displayName = active.DisplayName,
+                modelCode = active.ModelCode,
+                providerId = active.ProviderId,
+                providerCode = active.ProviderCode,
+                providerDisplayName = active.ProviderDisplayName,
+                contextWindow = active.Settings.ContextWindow,
+                timeoutSeconds = active.Settings.TimeoutSeconds,
+                supportsTools = active.Settings.SupportsTools,
+                apiKeyConfigured = !string.IsNullOrWhiteSpace(active.Settings.ApiKey),
             },
         });
     }
 
-    /// <summary>新增模型。密钥不在这个 body 里，要另外用 <c>PUT models/{id}/key</c> 写一次。</summary>
+    /// <summary>
+    /// 新增供应商（可顺带批量添加它的模型）。密钥不在这个 body 里，要另外用
+    /// <c>PUT providers/{id}/key</c> 写一次。
+    /// </summary>
+    [HttpPost("providers")]
+    public async Task<IActionResult> CreateProvider(
+        [FromBody] AssistantProviderRequest? request, CancellationToken token)
+    {
+        if (!await CanSetupModels(token)) return Forbid();
+        if (request is null)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少请求体。"));
+        }
+
+        var error = ValidateProvider(request);
+        if (error is not null)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", error));
+        }
+
+        // 先把要顺带添加的模型**全部校验一遍**再落库：否则第 3 个模型参数不对时，
+        // 供应商已经建好了，留下一个半截的配置要人手工收拾
+        var modelWrites = new List<AssistantModelWrite>();
+        foreach (var model in request.Models ?? [])
+        {
+            var modelError = ValidateModel(model);
+            if (modelError is not null)
+            {
+                return BadRequest(ApiProblem.Create(
+                    StatusCodes.Status400BadRequest, "INVALID_ARGUMENT",
+                    $"模型「{model.ModelCode ?? "未命名"}」：{modelError}"));
+            }
+
+            modelWrites.Add(ToModelWrite(model, providerId: 0));
+        }
+
+        var providerId = await modelCatalog.CreateProviderAsync(
+            ToProviderWrite(request), userContext.UserId, token);
+        var created = 0;
+        if (modelWrites.Count > 0)
+        {
+            // 供应商主键要等落库之后才有，所以这里补上再批量插
+            created = await modelCatalog.CreateModelsAsync(
+                [.. modelWrites.Select(write => write with { ProviderId = providerId })],
+                userContext.UserId, token);
+        }
+
+        return Ok(new { providerId, modelsCreated = created });
+    }
+
+    /// <summary>新增单个模型（挂到某个已有供应商下）。</summary>
     [HttpPost("models")]
     public async Task<IActionResult> CreateModel([FromBody] AssistantModelRequest? request, CancellationToken token)
     {
         if (!await CanSetupModels(token)) return Forbid();
-        if (request is null) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少请求体。"));
-        var error = ValidateModel(request);
-        if (error is not null) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", error));
+        if (request is null)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少请求体。"));
+        }
 
-        var modelId = await modelCatalog.CreateAsync(ToWrite(request), userContext.UserId, token);
+        if (request.ProviderId is not { } providerId)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少供应商。"));
+        }
+
+        if (await modelCatalog.GetProviderAsync(providerId, token) is null)
+        {
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "供应商不存在。"));
+        }
+
+        var error = ValidateModel(request);
+        if (error is not null)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", error));
+        }
+
+        var modelId = await modelCatalog.CreateModelAsync(
+            ToModelWrite(request, providerId), userContext.UserId, token);
         return Ok(new { modelId });
     }
 
-    /// <summary>修改模型（不含密钥，也不改"是否当前"——那是单独的动作）。</summary>
-    [HttpPut("models/{modelId:int}")]
-    public async Task<IActionResult> UpdateModel(
-        int modelId, [FromBody] AssistantModelRequest? request, CancellationToken token)
+    /// <summary>修改供应商（端点 / 密钥变量名 / 默认超时 / 启用）。改完要让快照跟着变。</summary>
+    [HttpPut("providers/{providerId:int}")]
+    public async Task<IActionResult> UpdateProvider(
+        int providerId, [FromBody] AssistantProviderRequest? request, CancellationToken token)
     {
         if (!await CanSetupModels(token)) return Forbid();
-        if (request is null) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少请求体。"));
-        var error = ValidateModel(request);
-        if (error is not null) return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", error));
+        if (request is null)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少请求体。"));
+        }
 
-        var updated = await modelCatalog.UpdateAsync(modelId, ToWrite(request), userContext.UserId, token);
-        if (!updated) return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "模型不存在。"));
-        // 改的若是当前这一行（端点/模型名/超时/温度…），必须让快照跟着变，否则界面显示改了、实际还在用旧的
+        var error = ValidateProvider(request);
+        if (error is not null)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", error));
+        }
+
+        var updated = await modelCatalog.UpdateProviderAsync(
+            providerId, ToProviderWrite(request), userContext.UserId, token);
+        if (!updated)
+        {
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "供应商不存在。"));
+        }
+
+        // 端点/超时/启用都可能被改到，而它们直接决定正在用的那个模型怎么发请求：
+        // 不刷新的话，界面显示"改好了"，实际还在用旧的值发。
         await modelRegistry.RefreshAsync(token);
         return NoContent();
     }
 
     /// <summary>
-    /// 写入密钥：写进**环境变量**（进程级立即生效 + 用户级持久化），**数据库里只留变量名**。
+    /// 写入供应商密钥：写进**环境变量**（进程级立即生效 + 用户级持久化），**数据库里只留变量名**。
     /// 成功后返回掩码末四位，供界面确认"配上了"。
+    ///
+    /// <para>
+    /// 密钥挂在**供应商**上：一次配置，该供应商名下所有模型共用——这也是一把密钥的真实用法。
+    /// </para>
     /// </summary>
-    [HttpPut("models/{modelId:int}/key")]
-    public async Task<IActionResult> SetModelKey(
-        int modelId, [FromBody] AssistantModelKeyRequest? request, CancellationToken token)
+    [HttpPut("providers/{providerId:int}/key")]
+    public async Task<IActionResult> SetProviderKey(
+        int providerId, [FromBody] AssistantModelKeyRequest? request, CancellationToken token)
     {
         if (!await CanSetupModels(token)) return Forbid();
-        var row = await modelCatalog.GetAsync(modelId, token);
-        if (row is null) return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "模型不存在。"));
+        var provider = await modelCatalog.GetProviderAsync(providerId, token);
+        if (provider is null)
+        {
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "供应商不存在。"));
+        }
+
         if (string.IsNullOrWhiteSpace(request?.ApiKey))
         {
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "密钥不能为空。"));
         }
 
-        var (processUpdated, persisted) = modelSecrets.Write(row.ApiKeyEnvVar, request.ApiKey.Trim());
-        // 换密钥必须重建快照：否则当进程内还拿着旧密钥，表现是"界面说配好了，聊天却 401"
+        var (processUpdated, persisted) = modelSecrets.Write(provider.ApiKeyEnvVar, request.ApiKey.Trim());
+        // 换密钥必须重建快照：否则进程内还拿着旧密钥，表现是"界面说配好了，聊天却 401"
         await modelRegistry.RefreshAsync(token);
         return Ok(new
         {
-            envVar = row.ApiKeyEnvVar,
-            configured = modelSecrets.IsConfigured(row.ApiKeyEnvVar),
-            maskedTail = modelSecrets.MaskedTail(row.ApiKeyEnvVar),
+            envVar = provider.ApiKeyEnvVar,
+            configured = modelSecrets.IsConfigured(provider.ApiKeyEnvVar),
+            maskedTail = modelSecrets.MaskedTail(provider.ApiKeyEnvVar),
             processUpdated,
             // 用户级写入在部分环境会失败（受限账户 / 平台不支持）。那时只有当前进程生效，
             // 不能假装持久化成功——如实告诉调用方，界面才能提示"重启后需重设"。
@@ -365,29 +544,109 @@ public sealed class AssistantAdminController(
     }
 
     /// <summary>
-    /// 设为当前模型。**要求密钥已配置**：把一个没有密钥的模型设成当前，会让所有人的助手立刻不可用，
-    /// 而界面上看不出原因——所以在这里挡住，并说清先做哪一步。
+    /// 删除供应商。**名下还有模型就删不掉**：级联删会一次带走整家供应商的配置，手滑代价太大。
+    /// </summary>
+    [HttpDelete("providers/{providerId:int}")]
+    public async Task<IActionResult> DeleteProvider(int providerId, CancellationToken token)
+    {
+        if (!await CanSetupModels(token)) return Forbid();
+        var provider = await modelCatalog.GetProviderAsync(providerId, token);
+        if (provider is null)
+        {
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "供应商不存在。"));
+        }
+
+        var modelCount = await modelCatalog.CountModelsAsync(providerId, token);
+        if (modelCount > 0)
+        {
+            return Conflict(ApiProblem.Create(
+                StatusCodes.Status409Conflict, "PROVIDER_HAS_MODELS",
+                $"该供应商下还有 {modelCount} 个模型，请先删除它们再删供应商。"));
+        }
+
+        await modelCatalog.DeleteProviderAsync(providerId, token);
+        return NoContent();
+    }
+
+    /// <summary>修改模型（不含密钥，也不改"是否当前"——那是单独的动作）。</summary>
+    [HttpPut("models/{modelId:int}")]
+    public async Task<IActionResult> UpdateModel(
+        int modelId, [FromBody] AssistantModelRequest? request, CancellationToken token)
+    {
+        if (!await CanSetupModels(token)) return Forbid();
+        if (request is null)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少请求体。"));
+        }
+
+        var row = await modelCatalog.GetModelAsync(modelId, token);
+        if (row is null)
+        {
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "模型不存在。"));
+        }
+
+        // 没传 ProviderId 就沿用原供应商：编辑模型时前端不必重复回传它
+        var providerId = request.ProviderId ?? row.ProviderId;
+        if (await modelCatalog.GetProviderAsync(providerId, token) is null)
+        {
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "供应商不存在。"));
+        }
+
+        var error = ValidateModel(request);
+        if (error is not null)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", error));
+        }
+
+        var updated = await modelCatalog.UpdateModelAsync(
+            modelId, ToModelWrite(request, providerId), userContext.UserId, token);
+        if (!updated)
+        {
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "模型不存在。"));
+        }
+
+        // 改的若是当前这一行（模型标识/窗口/输出/温度/超时/单价…），必须让快照跟着变，
+        // 否则界面显示改了、实际还在用旧的
+        await modelRegistry.RefreshAsync(token);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// 设为当前模型。**要求该供应商的密钥已配置**：把一个没有密钥的模型设成当前，会让所有人的助手
+    /// 立刻不可用，而界面上看不出原因——所以在这里挡住，并说清先做哪一步。
     /// </summary>
     [HttpPost("models/{modelId:int}/activate")]
     public async Task<IActionResult> ActivateModel(int modelId, CancellationToken token)
     {
         if (!await CanSetupModels(token)) return Forbid();
-        var row = await modelCatalog.GetAsync(modelId, token);
-        if (row is null) return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "模型不存在。"));
-        if (!row.Enabled)
+        var row = await modelCatalog.GetModelAsync(modelId, token);
+        if (row is null)
         {
-            return Conflict(ApiProblem.Create(StatusCodes.Status409Conflict, "MODEL_DISABLED", "已停用的模型不能设为当前，请先启用它。"));
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "模型不存在。"));
         }
 
-        if (!modelSecrets.IsConfigured(row.ApiKeyEnvVar))
+        var provider = await modelCatalog.GetProviderAsync(row.ProviderId, token);
+        if (provider is null)
+        {
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "模型所属的供应商不存在。"));
+        }
+
+        if (!row.Enabled || !provider.Enabled)
+        {
+            return Conflict(ApiProblem.Create(
+                StatusCodes.Status409Conflict, "MODEL_DISABLED",
+                row.Enabled ? "该模型所属的供应商已停用，请先启用供应商。" : "已停用的模型不能设为当前，请先启用它。"));
+        }
+
+        if (!modelSecrets.IsConfigured(provider.ApiKeyEnvVar))
         {
             return Conflict(ApiProblem.Create(
                 StatusCodes.Status409Conflict, "MODEL_KEY_NOT_CONFIGURED",
-                $"环境变量 {row.ApiKeyEnvVar} 还没有值。请先用「设置密钥」填一次，再设为当前——"
-                + "否则整个助手的模型调用会立刻失败。"));
+                $"环境变量 {provider.ApiKeyEnvVar}（供应商「{provider.DisplayName}」的密钥）还没有值。"
+                + "请先用「设置密钥」填一次，再设为当前——否则整个助手的模型调用会立刻失败。"));
         }
 
-        if (!await modelCatalog.ActivateAsync(modelId, userContext.UserId, token))
+        if (!await modelCatalog.ActivateModelAsync(modelId, userContext.UserId, token))
         {
             return Conflict(ApiProblem.Create(StatusCodes.Status409Conflict, "ACTIVATE_FAILED", "切换失败，请刷新后重试。"));
         }
@@ -396,30 +655,34 @@ public sealed class AssistantAdminController(
         return NoContent();
     }
 
-    /// <summary>取消当前模型：助手回到用配置文件里的那套（表里的行都留着）。</summary>
+    /// <summary>取消当前模型：助手回到**未配置**状态（供应商与模型都留着，只是没有"当前"）。</summary>
     [HttpPost("models/active/clear")]
     public async Task<IActionResult> ClearActiveModel(CancellationToken token)
     {
         if (!await CanSetupModels(token)) return Forbid();
-        await modelCatalog.ClearActiveAsync(token);
+        await modelCatalog.ClearActiveModelAsync(token);
         await modelRegistry.RefreshAsync(token);
         return NoContent();
     }
 
-    /// <summary>删除模型。**当前模型删不掉**：删掉它会让助手在无人察觉的情况下退回配置文件那套。</summary>
+    /// <summary>删除模型。**当前模型删不掉**：删掉它会让助手在无人察觉的情况下变成"未配置"。</summary>
     [HttpDelete("models/{modelId:int}")]
     public async Task<IActionResult> DeleteModel(int modelId, CancellationToken token)
     {
         if (!await CanSetupModels(token)) return Forbid();
-        var row = await modelCatalog.GetAsync(modelId, token);
-        if (row is null) return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "模型不存在。"));
+        var row = await modelCatalog.GetModelAsync(modelId, token);
+        if (row is null)
+        {
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "模型不存在。"));
+        }
+
         if (row.IsActive)
         {
             return Conflict(ApiProblem.Create(
                 StatusCodes.Status409Conflict, "MODEL_IN_USE", "正在使用这个模型，不能删除；请先切换到别的模型或取消当前。"));
         }
 
-        await modelCatalog.DeleteAsync(modelId, token);
+        await modelCatalog.DeleteModelAsync(modelId, token);
         return NoContent();
     }
 
@@ -439,6 +702,10 @@ public sealed class AssistantAdminController(
         var todayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
         var since = new DateTimeOffset(DateTime.UtcNow.Date.AddDays(-(window - 1)), TimeSpan.Zero);
         var cost = assistantSettings.Value.Cost;
+        // 按**模型单价**计价：看板上的成本要和台账里实际扣掉的钱用同一套口径。两边对不上，
+        // 正是"配了单价却不消费"最容易露出来的样子。
+        var priceByCode = (await modelCatalog.ListModelsAsync(token)).ToDictionary(
+            row => row.ModelCode, StringComparer.OrdinalIgnoreCase);
 
         var models = await usageRepository.GetPerModelUsageAsync(since, token);
         var trend = await usageRepository.GetDailyTrendAsync(since, token);
@@ -455,14 +722,22 @@ public sealed class AssistantAdminController(
                 completionTokens = today.CompletionTokens,
                 estimatedCostYuan = Math.Round(AssistantCost.Calculate(today.PromptTokens, today.CompletionTokens, cost), 4),
             },
-            models = models.Select(entry => new
+            models = models.Select(entry =>
             {
-                modelName = entry.ModelName,
-                requests = entry.Usage.Requests,
-                promptTokens = entry.Usage.PromptTokens,
-                completionTokens = entry.Usage.CompletionTokens,
-                estimatedCostYuan = Math.Round(AssistantCost.Calculate(entry.Usage.PromptTokens, entry.Usage.CompletionTokens, cost), 4),
-                lastUsedAt = entry.LastUsedAt,
+                // 落库的 MODEL_NAME 就是模型标识，所以能按它找回那一行的单价；
+                // 找不回（模型已被删/换过名）就用全局兜底价，不能让成本显示成 0。
+                priceByCode.TryGetValue(entry.ModelName, out var price);
+                return new
+                {
+                    modelName = entry.ModelName,
+                    requests = entry.Usage.Requests,
+                    promptTokens = entry.Usage.PromptTokens,
+                    completionTokens = entry.Usage.CompletionTokens,
+                    estimatedCostYuan = Math.Round(AssistantCost.Calculate(
+                        entry.Usage.PromptTokens, entry.Usage.CompletionTokens, cost,
+                        price?.InputPerMillionYuan, price?.OutputPerMillionYuan), 4),
+                    lastUsedAt = entry.LastUsedAt,
+                };
             }),
             trend = trend.Select(entry => new
             {
@@ -480,27 +755,23 @@ public sealed class AssistantAdminController(
         });
     }
 
-    /// <summary>校验模型入参；返回 null 表示通过。宁可在这里把话说明白，也不要让一次必然失败的保存悄悄成功。</summary>
-    private static string? ValidateModel(AssistantModelRequest request)
+    /// <summary>校验供应商入参；返回 null 表示通过。宁可在这里把话说明白，也不要让一次必然失败的保存悄悄成功。</summary>
+    private static string? ValidateProvider(AssistantProviderRequest request)
     {
+        if (!IsSupportedProvider(request.Code))
+        {
+            return $"未知的供应商；可选：{string.Join("、", AssistantProviderCatalog.SupportedCodes)}。";
+        }
+
         var displayName = request.DisplayName?.Trim() ?? string.Empty;
         if (displayName.Length == 0) return "显示名不能为空。";
         if (displayName.Length > 100) return "显示名不能超过 100 个字符。";
 
-        var provider = request.Provider?.Trim() ?? string.Empty;
-        if (provider.Length == 0 || !SupportedProviders.Contains(provider))
-        {
-            return $"暂不支持的供应商；目前支持：{string.Join("、", SupportedProviders)}。";
-        }
-
-        var modelName = request.ModelName?.Trim() ?? string.Empty;
-        if (modelName.Length == 0) return "模型名不能为空（厂商侧的模型标识，例如 deepseek-chat）。";
-        if (modelName.Length > 100) return "模型名不能超过 100 个字符。";
-
         var baseUrl = request.BaseUrl?.Trim() ?? string.Empty;
         if (baseUrl.Length == 0) return "端点不能为空。";
         if (baseUrl.Length > 300) return "端点不能超过 300 个字符。";
-        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
         {
             return "端点必须是完整 URL（含 http/https）。";
         }
@@ -510,18 +781,58 @@ public sealed class AssistantAdminController(
         if (envVar.Length > 100) return "环境变量名不能超过 100 个字符。";
         if (!IsValidEnvVarName(envVar)) return "环境变量名只能由字母、数字与下划线组成，且不能以数字开头。";
 
-        if (request.TimeoutSeconds is < 10 or > 3600) return "超时需要在 10–3600 秒之间。";
-        if (request.Temperature is { } temperature && (temperature < 0 || temperature > 2))
+        if (request.TimeoutSeconds is { } timeout && timeout is < 10 or > 3600)
         {
-            return "温度需要在 0–2 之间（留空表示用厂商默认）。";
+            return "超时需要在 10–3600 秒之间。";
         }
 
-        if (request.MaxTokens is { } maxTokens && (maxTokens is < 1 or > 200000))
+        if (request.SortIdx is { } sortIdx && sortIdx is < 0 or > 9999) return "排序号需要在 0–9999 之间。";
+        if (request.Remark is { Length: > 200 }) return "备注不能超过 200 个字符。";
+        return null;
+    }
+
+    /// <summary>
+    /// 校验模型入参；返回 null 表示通过。
+    ///
+    /// <para>
+    /// 窗口/输出/温度/单价/超时**都允许留空**——留空的语义各不相同（未知 / 用厂商默认 / 用供应商默认 /
+    /// 用全局兜底价），所以这里只校验"传了的那个值"，不把留空当成 0。
+    /// </para>
+    /// </summary>
+    private static string? ValidateModel(AssistantModelRequest request)
+    {
+        var modelCode = request.ModelCode?.Trim() ?? string.Empty;
+        if (modelCode.Length == 0) return "模型名不能为空（厂商侧的标识，例如 deepseek-reasoner）。";
+        if (modelCode.Length > 100) return "模型名不能超过 100 个字符。";
+
+        var displayName = request.DisplayName?.Trim() ?? string.Empty;
+        if (displayName.Length == 0) return "显示名不能为空。";
+        if (displayName.Length > 100) return "显示名不能超过 100 个字符。";
+
+        if (request.ContextWindow is { } window && window is < 1000 or > 20000000)
         {
-            return "最大 token 需要在 1–200000 之间（留空表示用厂商默认）。";
+            return "上下文窗口需要在 1000–20000000 之间（留空表示未知，按保守默认处理）。";
         }
 
-        if (request.SortIdx is < 0 or > 9999) return "排序号需要在 0–9999 之间。";
+        if (request.MaxOutputTokens is { } maxOutput && maxOutput is < 1 or > 200000)
+        {
+            return "最大输出 token 需要在 1–200000 之间（留空表示用厂商默认）。";
+        }
+
+        if (request.DefaultTemperature is { } temperature && (temperature < 0 || temperature > 2))
+        {
+            return "默认温度需要在 0–2 之间（留空表示不传该参数）。";
+        }
+
+        if (request.TimeoutSeconds is { } timeout && timeout is < 10 or > 3600)
+        {
+            return "超时覆盖需要在 10–3600 秒之间（留空表示用供应商的默认超时）。";
+        }
+
+        if (request.InputPerMillionYuan is { } inputPrice && inputPrice < 0) return "输入单价不能为负。";
+        if (request.OutputPerMillionYuan is { } outputPrice && outputPrice < 0) return "输出单价不能为负。";
+
+        if (request.SortIdx is { } sortIdx && sortIdx is < 0 or > 9999) return "排序号需要在 0–9999 之间。";
         if (request.Remark is { Length: > 200 }) return "备注不能超过 200 个字符。";
         return null;
     }
@@ -533,15 +844,28 @@ public sealed class AssistantAdminController(
         return name.All(ch => (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_');
     }
 
-    private static AssistantModelWrite ToWrite(AssistantModelRequest request) => new(
+    private static AssistantProviderWrite ToProviderWrite(AssistantProviderRequest request) => new(
+        // CODE 统一小写：它要和代码里的预设目录对上，大小写不一致会让"目录里有、库里对不上"
+        request.Code!.Trim().ToLowerInvariant(),
         request.DisplayName!.Trim(),
-        request.Provider!.Trim(),
-        request.ModelName!.Trim(),
         request.BaseUrl!.Trim(),
         request.ApiKeyEnvVar!.Trim(),
         request.TimeoutSeconds ?? 300,
-        request.Temperature,
-        request.MaxTokens,
+        request.Enabled ?? true,
+        request.SortIdx ?? 0,
+        string.IsNullOrWhiteSpace(request.Remark) ? null : request.Remark.Trim());
+
+    private static AssistantModelWrite ToModelWrite(AssistantModelRequest request, int providerId) => new(
+        providerId,
+        request.ModelCode!.Trim(),
+        request.DisplayName!.Trim(),
+        request.ContextWindow,
+        request.MaxOutputTokens,
+        request.DefaultTemperature,
+        request.TimeoutSeconds,
+        request.InputPerMillionYuan,
+        request.OutputPerMillionYuan,
+        request.SupportsTools ?? true,
         request.Enabled ?? true,
         request.SortIdx ?? 0,
         string.IsNullOrWhiteSpace(request.Remark) ? null : request.Remark.Trim());

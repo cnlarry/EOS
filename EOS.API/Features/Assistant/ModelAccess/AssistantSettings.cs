@@ -33,6 +33,41 @@ public sealed class AssistantSettings
     /// <summary>单次回复的最大输出 token。<c>null</c> = 不传，用厂商默认。</summary>
     public int? MaxTokens { get; set; }
 
+    /// <summary>
+    /// 当前模型的**上下文窗口**（token）。<c>null</c> = 未知，按保守默认处理。
+    ///
+    /// <para>
+    /// **会被消费**：<c>ChatService</c> 用它推算一轮能带多少历史消息（此前是硬编码"最多 40 条、
+    /// 完全不看 token"，长会话可能直接顶穿窗口）。算小了只是少带点历史，算大了会被厂商 400，
+    /// 所以这里与预设目录都取偏保守的值。
+    /// </para>
+    /// </summary>
+    public int? ContextWindow { get; set; }
+
+    /// <summary>
+    /// 当前模型是否支持工具调用。默认 true。
+    ///
+    /// <para>
+    /// **会被消费**：不支持的模型仍然带 <c>tools</c> 去请求，厂商会直接报错，而错误信息通常只说
+    /// 参数不合法，看不出是模型选错了。
+    /// </para>
+    /// </summary>
+    public bool SupportsTools { get; set; } = true;
+
+    /// <summary>
+    /// 当前模型的单价（元 / 百万 token）。<c>null</c> = 用 <see cref="Cost"/> 里的全局兜底价。
+    ///
+    /// <para>
+    /// **会被消费**：台账结算（<c>SettleAsync</c> 写入的钱）与用量看板都按它算。没有它的话，
+    /// 换个单价差十倍的模型，限额熔断仍然按同一套单价判定——**成本归因是错的**。
+    /// 留空退回兜底而不是按 0 元算：0 元会让日限额形同虚设。
+    /// </para>
+    /// </summary>
+    public decimal? InputPerMillionYuan { get; set; }
+
+    /// <summary>当前模型的输出单价。计算口径同 <see cref="InputPerMillionYuan"/>。</summary>
+    public decimal? OutputPerMillionYuan { get; set; }
+
     /// <summary>会话结束自动提炼：done 事件后异步提炼候选记忆，失败静默。运维可关闭。</summary>
     public bool EnableAutoDistill { get; set; } = true;
 
