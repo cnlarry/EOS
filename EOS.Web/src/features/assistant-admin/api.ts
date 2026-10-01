@@ -1,0 +1,47 @@
+import { apiClient } from '../../services/api'
+import type { AssistantSessionPage } from '../assistant/types'
+
+/** 列会话的三态视图，语义与个人侧一致（服务端过滤，前端不自己筛）。 */
+export type AdminSessionView = 'active' | 'archived' | 'all'
+
+export interface AdminSessionQuery {
+  offset?: number
+  limit?: number
+  state?: AdminSessionView
+  /** 只搜标题（会话没有别的人类可读字段）。 */
+  keyword?: string
+  /** 按归属用户筛；空表示不限（管理侧的关键差别：这里能跨用户看）。 */
+  owner?: string
+}
+
+/**
+ * 管理侧：跨用户分页列会话（**只有元数据**，见 ADR-030 §2）。
+ *
+ * 与个人侧的 `listSessions` 是两个端点：那一侧服务端强制按 `USER_ID` 隔离，这一侧面向管理员。
+ */
+export function listAllSessions(params: AdminSessionQuery = {}) {
+  const { offset = 0, limit = 50, state = 'active', keyword = '', owner = '' } = params
+  return apiClient.get<AssistantSessionPage>('/admin/assistant/sessions', {
+    query: { offset, limit, state, keyword: keyword.trim() || undefined, owner: owner || undefined },
+  })
+}
+
+/** 出现过会话的归属用户（"按用户筛选"下拉）。 */
+export function listSessionOwners() {
+  return apiClient.get<string[]>('/admin/assistant/sessions/owners')
+}
+
+/** 归档 / 取消归档任意用户的会话（幂等）。 */
+export function archiveAnySession(sessionId: string, archived = true) {
+  return apiClient.put<void>(`/admin/assistant/sessions/${sessionId}/archive`, { archived })
+}
+
+/**
+ * 永久删除任意用户的会话（连消息，不可恢复）。
+ *
+ * **只对已归档会话生效**：服务端强制，在列的会话会返回 409 `NOT_DELETABLE`
+ * （界面上该按钮只在已归档行出现，这里只是最后一道兜底）。
+ */
+export function deleteAnySession(sessionId: string) {
+  return apiClient.delete<void>(`/admin/assistant/sessions/${sessionId}`)
+}
