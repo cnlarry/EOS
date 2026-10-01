@@ -8,7 +8,9 @@ public sealed record AssistantSessionDto(
     string UserId,
     string Title,
     DateTimeOffset CreatedAt,
-    DateTimeOffset LastActiveAt);
+    DateTimeOffset LastActiveAt,
+    /// <summary>归档时刻；null = 在列。界面不再提供删除，归档即"从列表里收起来但留住历史"。</summary>
+    DateTimeOffset? ArchivedAt = null);
 
 /// <summary>ASSISTANT_MESSAGE 行。</summary>
 public sealed record AssistantMessageDto(
@@ -33,7 +35,15 @@ public interface IAssistantRepository
 {
     Task<AssistantSessionDto> CreateSessionAsync(string userId, CancellationToken token);
 
-    Task<IReadOnlyList<AssistantSessionDto>> ListSessionsAsync(string userId, int limit, CancellationToken token);
+    /// <summary>列会话：默认只给在列的（<paramref name="includeArchived"/> 为真时一并给已归档的）。</summary>
+    Task<IReadOnlyList<AssistantSessionDto>> ListSessionsAsync(
+        string userId, int limit, bool includeArchived, CancellationToken token);
+
+    /// <summary>重命名会话（归属校验在 SQL 内完成）。返回受影响行数。</summary>
+    Task<int> RenameSessionAsync(string userId, long sessionId, string title, CancellationToken token);
+
+    /// <summary>归档 / 取消归档会话（幂等；归属校验在 SQL 内完成）。返回受影响行数。</summary>
+    Task<int> ArchiveSessionAsync(string userId, long sessionId, bool archived, CancellationToken token);
 
     /// <summary>归属校验 + 取单个会话；不存在或非本人返回 null。</summary>
     Task<AssistantSessionDto?> GetSessionAsync(string userId, long sessionId, CancellationToken token);
@@ -76,12 +86,13 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<AssistantSessionDto>> ListSessionsAsync(string userId, int limit, CancellationToken token)
+    public async Task<IReadOnlyList<AssistantSessionDto>> ListSessionsAsync(
+        string userId, int limit, bool includeArchived, CancellationToken token)
     {
         const string sql = """
-            SELECT TOP (@Limit) ID, USER_ID, TITLE, CREATED_AT, LAST_ACTIVE_AT
+            SELECT TOP (@Limit) ID, USER_ID, TITLE, CREATED_AT, LAST_ACTIVE_AT, ARCHIVED_AT
             FROM dbo.ASSISTANT_SESSION WITH (NOLOCK)
-            WHERE USER_ID = @UserId
+            WHERE USER_ID = @UserId AND (@IncludeArchived = 1 OR ARCHIVED_AT IS NULL)
             ORDER BY LAST_ACTIVE_AT DESC;
             """;
         var items = new List<AssistantSessionDto>();
@@ -90,6 +101,7 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
         await using var cmd = new SqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("@Limit", Math.Clamp(limit, 1, 100));
         cmd.Parameters.AddWithValue("@UserId", userId);
+        cmd.Parameters.AddWithValue("@IncludeArchived", includeArchived ? 1 : 0);
         await using var reader = await cmd.ExecuteReaderAsync(token);
         while (await reader.ReadAsync(token))
         {
@@ -103,7 +115,7 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
     public async Task<AssistantSessionDto?> GetSessionAsync(string userId, long sessionId, CancellationToken token)
     {
         const string sql = """
-            SELECT ID, USER_ID, TITLE, CREATED_AT, LAST_ACTIVE_AT
+            SELECT ID, USER_ID, TITLE, CREATED_AT, LAST_ACTIVE_AT, ARCHIVED_AT
             FROM dbo.ASSISTANT_SESSION WITH (NOLOCK)
             WHERE ID = @Id AND USER_ID = @UserId;
             """;
@@ -129,6 +141,40 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
         cmd.Parameters.AddWithValue("@Id", sessionId);
         cmd.Parameters.AddWithValue("@UserId", userId);
         return Convert.ToInt32(await cmd.ExecuteScalarAsync(token));
+    }
+
+    /// <inheritdoc />
+    public async Task<int> RenameSessionAsync(string userId, long sessionId, string title, CancellationToken token)
+    {
+        const string sql = """
+            UPDATE dbo.ASSISTANT_SESSION SET TITLE = @Title
+            WHERE ID = @Id AND USER_ID = @UserId;
+            """;
+        await using var conn = connections.Create();
+        await conn.OpenAsync(token);
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@Title", title);
+        cmd.Parameters.AddWithValue("@Id", sessionId);
+        cmd.Parameters.AddWithValue("@UserId", userId);
+        return await cmd.ExecuteNonQueryAsync(token);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> ArchiveSessionAsync(string userId, long sessionId, bool archived, CancellationToken token)
+    {
+        // 归档是"收起来"而不是"删掉"：只置/清 ARCHIVED_AT，消息一行不动。
+        const string sql = """
+            UPDATE dbo.ASSISTANT_SESSION
+            SET ARCHIVED_AT = CASE WHEN @Archived = 1 THEN SYSUTCDATETIME() ELSE NULL END
+            WHERE ID = @Id AND USER_ID = @UserId;
+            """;
+        await using var conn = connections.Create();
+        await conn.OpenAsync(token);
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@Archived", archived ? 1 : 0);
+        cmd.Parameters.AddWithValue("@Id", sessionId);
+        cmd.Parameters.AddWithValue("@UserId", userId);
+        return await cmd.ExecuteNonQueryAsync(token);
     }
 
     /// <inheritdoc />
@@ -300,7 +346,9 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
         reader.GetString(1),
         reader.GetString(2),
         ToUtc(reader.GetDateTime(3)),
-        ToUtc(reader.GetDateTime(4)));
+        ToUtc(reader.GetDateTime(4)),
+        // 归档列只有会话查询会 SELECT（插入回显走的 OUTPUT 不带它），故按列数存在与否取值。
+        reader.FieldCount > 5 && !reader.IsDBNull(5) ? ToUtc(reader.GetDateTime(5)) : null);
 
     private static AssistantMessageDto ReadMessage(SqlDataReader reader) => new(
         reader.GetInt64(0),

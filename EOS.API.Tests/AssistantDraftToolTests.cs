@@ -263,7 +263,13 @@ public sealed class AssistantDraftToolTests
         public Task<AssistantSessionDto> CreateSessionAsync(string userId, CancellationToken token)
             => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<AssistantSessionDto>> ListSessionsAsync(string userId, int limit, CancellationToken token)
+        public Task<IReadOnlyList<AssistantSessionDto>> ListSessionsAsync(string userId, int limit, bool includeArchived, CancellationToken token)
+            => throw new NotSupportedException();
+
+        public Task<int> RenameSessionAsync(string userId, long sessionId, string title, CancellationToken token)
+            => throw new NotSupportedException();
+
+        public Task<int> ArchiveSessionAsync(string userId, long sessionId, bool archived, CancellationToken token)
             => throw new NotSupportedException();
 
         public Task<AssistantSessionDto?> GetSessionAsync(string userId, long sessionId, CancellationToken token)
