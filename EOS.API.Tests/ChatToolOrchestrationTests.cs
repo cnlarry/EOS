@@ -153,7 +153,7 @@ public sealed class ChatToolOrchestrationTests
         var tool = new StubTool("module=1606(客户订单) total=1 shown=1\n- _keys=[\"DD26080160\"] 单号=DD26080160");
         var registry = new AssistantToolRegistry([tool]);
         var service = new ChatService(repo, model, registry,
-            Options.Create(new AssistantSettings { SystemPrompt = "SYS" }), NullLogger<ChatService>.Instance);
+            AssistantTestRuntime.Fixed(new AssistantSettings { SystemPrompt = "SYS" }), NullLogger<ChatService>.Instance);
         return (service, model, repo, tool);
     }
 

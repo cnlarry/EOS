@@ -172,7 +172,7 @@ public sealed class MemoryDistillTests
         var store = new FakeStore();
         var service = new ChatService(new FakeRepo(), new ScriptedModel(),
             new AssistantToolRegistry([]),
-            Options.Create(new AssistantSettings { SystemPrompt = "SYS" }),
+            AssistantTestRuntime.Fixed(new AssistantSettings { SystemPrompt = "SYS" }),
             NullLogger<ChatService>.Instance, store);
 
         var events = new List<ChatStreamEvent>();
