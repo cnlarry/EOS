@@ -33,3 +33,5 @@ export const FlowMonitorPage = lazy(() => import('../features/workflow/FlowMonit
 export const ReportCenterPage = lazy(() => import('../features/reports/ReportCenterPage').then((module) => ({ default: module.ReportCenterPage })))
 export const ReportInboxPage = lazy(() => import('../features/reports/ReportInboxPage').then((module) => ({ default: module.ReportInboxPage })))
 export const LayoutDesignerPage = lazy(() => import('../features/layout-designer/LayoutDesignerPage').then((module) => ({ default: module.LayoutDesignerPage })))
+// 工作助手管理（菜单组 31，见 ADR-030）
+export const AdminSessionsPage = lazy(() => import('../features/assistant-admin/AdminSessionsPage').then((module) => ({ default: module.AdminSessionsPage })))

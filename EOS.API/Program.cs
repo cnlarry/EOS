@@ -281,6 +281,8 @@ builder.Services.Configure<EOS.API.Features.Assistant.ModelAccess.AssistantSetti
 builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.IChatModel,
     EOS.API.Features.Assistant.ModelAccess.DeepSeekChatModel>();
 builder.Services.AddScoped<EOS.API.Data.IAssistantRepository, EOS.API.Data.AssistantRepository>();
+// 管理侧会话仓储（跨用户，菜单组 31 / 3101，见 ADR-030）：与个人侧并存，语义互不影响
+builder.Services.AddScoped<EOS.API.Data.IAssistantAdminRepository, EOS.API.Data.AssistantAdminRepository>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.IWorkbenchSearchGateway>(sp =>
     sp.GetRequiredService<EOS.API.Data.DocumentWorkbenchRepository>());
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.SearchRecordsTool>();

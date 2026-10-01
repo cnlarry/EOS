@@ -407,7 +407,11 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
     private static DateTimeOffset ToUtc(DateTime value) =>
         value.Kind == DateTimeKind.Utc ? new DateTimeOffset(value) : new DateTimeOffset(value, TimeSpan.Zero);
 
-    private static AssistantSessionDto ReadSession(SqlDataReader reader) => new(
+    /// <summary>
+    /// 读一行会话。<c>internal</c> 供管理侧仓储复用：两侧的 SELECT 列完全一致
+    /// （见 <see cref="AssistantAdminRepository"/>），复制一份容易在加列时漏改一处。
+    /// </summary>
+    internal static AssistantSessionDto ReadSession(SqlDataReader reader) => new(
         reader.GetInt64(0),
         reader.GetString(1),
         reader.GetString(2),

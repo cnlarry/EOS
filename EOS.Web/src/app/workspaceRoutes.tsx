@@ -29,6 +29,7 @@ import {
   GroupButtonRightsPage,
   GroupMembersPage,
   MenuAdminPage,
+  AdminSessionsPage,
   ReportCenterPage,
   ReportInboxPage,
   LayoutDesignerPage,
@@ -96,6 +97,11 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   { path: 'assistant', element: <AssistantPage /> },
   // 会话管理：同样是普通工作区标签页（历史会话一览 / 重命名 / 归档 / 已归档删除）
   { path: 'assistant/sessions', element: <SessionAdminPage /> },
+  // 工作助手管理（菜单组 31，见 ADR-030）：跨用户会话管理，走模块 3101 的读权限。
+  // 与上面的个人侧是两件事——那一侧登录即可用、只看自己的会话。
+  { element: <RequirePermission permission={moduleReadPermission(3101)} />, children: [
+    { path: 'admin/assistant/sessions', element: withSuspense(<AdminSessionsPage />) },
+  ] },
   { path: 'jobs', element: withSuspense(<JobPage />) },
   { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
   { path: 'settings/:table', element: withSuspense(<SystemSettingsPage />) },
