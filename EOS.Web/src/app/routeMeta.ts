@@ -21,4 +21,5 @@ export const PAGE_META: Record<string, PageMeta> = {
   // 工作助手管理（菜单组 31，见 ADR-030）：跨用户视角，与上面的个人会话管理是两件事
   '/admin/assistant/sessions': { section: '工作助手管理', title: '会话管理' },
   '/admin/assistant/mechanism': { section: '工作助手管理', title: '机制与工具总览' },
+  '/admin/assistant/kb': { section: '工作助手管理', title: '知识库管理' },
 }

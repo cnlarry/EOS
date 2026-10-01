@@ -31,6 +31,7 @@ import {
   MenuAdminPage,
   AdminSessionsPage,
   MechanismOverviewPage,
+  KbAdminPage,
   ReportCenterPage,
   ReportInboxPage,
   LayoutDesignerPage,
@@ -106,6 +107,10 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   // 3104 机制与工具总览：纯只读
   { element: <RequirePermission permission={moduleReadPermission(3104)} />, children: [
     { path: 'admin/assistant/mechanism', element: withSuspense(<MechanismOverviewPage />) },
+  ] },
+  // 3103 知识库管理：清单与删除（入库仍走运维通道）
+  { element: <RequirePermission permission={moduleReadPermission(3103)} />, children: [
+    { path: 'admin/assistant/kb', element: withSuspense(<KbAdminPage />) },
   ] },
   { path: 'jobs', element: withSuspense(<JobPage />) },
   { path: 'settings/profile', element: withSuspense(<ProfilePage />) },

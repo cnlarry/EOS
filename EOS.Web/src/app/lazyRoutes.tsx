@@ -36,3 +36,4 @@ export const LayoutDesignerPage = lazy(() => import('../features/layout-designer
 // 工作助手管理（菜单组 31，见 ADR-030）
 export const AdminSessionsPage = lazy(() => import('../features/assistant-admin/AdminSessionsPage').then((module) => ({ default: module.AdminSessionsPage })))
 export const MechanismOverviewPage = lazy(() => import('../features/assistant-admin/MechanismOverviewPage').then((module) => ({ default: module.MechanismOverviewPage })))
+export const KbAdminPage = lazy(() => import('../features/assistant-admin/KbAdminPage').then((module) => ({ default: module.KbAdminPage })))
