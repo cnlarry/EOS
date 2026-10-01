@@ -2,6 +2,7 @@ using System.Text.Json;
 using EOS.API.Data;
 using EOS.API.Features.Assistant.Kb;
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Features.Assistant.Tools;
 using EOS.API.Models;
 using EOS.API.Security;
@@ -23,7 +24,9 @@ public sealed class KnowledgeBaseTests
         var chunks = KbChunker.Split(content);
 
         Assert.True(chunks.Count >= 2);
-        Assert.All(chunks, chunk => Assert.True(chunk.Length <= KbChunker.DefaultMaxChars + KbChunker.DefaultOverlapChars));
+        var kbDefaults = new AssistantKbLimitsOptions();
+        Assert.All(chunks, chunk => Assert.True(
+            chunk.Length <= kbDefaults.ChunkMaxChars + kbDefaults.ChunkOverlapChars));
         Assert.Contains(chunks, chunk => chunk.Contains("第二段"));
     }
 

@@ -349,17 +349,33 @@ export function getModelUsage(days = 30) {
 }
 
 // ---------------------------------------------------------------------------
-// 3105 助手设置（见 ADR-030 §8）：全局策略参数。**缺行 = 代码默认值**。
+// 3105 助手设置（见 ADR-030 §5）：助手参数目录的一页视图。
+// 参数的**声明**在服务端代码（AssistantParameterCatalog），**取值**在 dbo.SYSSS 的 OWNER_MODULE = 3105。
+// 界面按域分组呈现；目录与库按批同步生长，所以分组会随批次变多。
 // ---------------------------------------------------------------------------
+
+/** 一个参数域（页面上的一节）。 */
+export interface AssistantSettingGroup {
+  code: string
+  label: string
+  seq: number
+}
 
 export interface AssistantSettingItem {
   key: string
   displayName: string
-  valueType: 'string' | 'bool' | 'int' | 'decimal' | 'long'
+  groupCode: string
+  groupLabel: string | null
+  seqNo: number
+  valueType: 'string' | 'bit' | 'int' | 'decimal'
   unit: string | null
   description: string
-  /** 界面上显示的"默认值"取自后端代码，不会与真实行为漂移。 */
+  /** 取值范围提示（如"大于 0"），空串表示该类型没有额外约束。 */
+  rangeHint: string
+  /** 界面上显示的"默认值"取自服务端代码，不会与真实行为漂移。 */
   defaultValue: string
+  /** 读取方符号：这个参数被谁消费。空 = 还没有读取方（界面要标出来）。 */
+  consumers: string[]
   /** null = 没覆盖过，生效的就是 defaultValue。 */
   value: string | null
   isOverridden: boolean
@@ -368,9 +384,10 @@ export interface AssistantSettingItem {
 }
 
 export interface AssistantSettingList {
+  groups: AssistantSettingGroup[]
   items: AssistantSettingItem[]
   /**
-   * 库里解析不了的值（有人手改过库、或升级后格式变了）。
+   * 库里解析不了的值（有人手改过库、或升级后格式变了），以及目录有、库里没有的行。
    * 界面必须**当场**指出来——否则显示着一个其实没生效的值，谁也不知道为什么。
    */
   problems: string[]
@@ -380,12 +397,65 @@ export function listSettings() {
   return apiClient.get<AssistantSettingList>('/admin/assistant/settings')
 }
 
-/** 写回一个设置项。**空值 = 恢复默认**（服务端会删掉覆盖行，而不是存空串）。 */
+/** 写回一个设置项。**空值 = 恢复默认**（服务端清空取值，回到默认值，而不是存空串）。 */
 export function updateSetting(key: string, value: string) {
   return apiClient.put<void>(`/admin/assistant/settings/${encodeURIComponent(key)}`, { value })
 }
 
-/** 恢复默认：删掉覆盖行（缺行 = 用代码默认值）。 */
+/** 恢复默认：清空取值，回到代码默认值（标量参数回到 DEFAULT_VALUE）。 */
 export function resetSetting(key: string) {
   return apiClient.delete<void>(`/admin/assistant/settings/${encodeURIComponent(key)}`)
+}
+
+// ---------------------------------------------------------------------------
+// 3105 → 作用域覆盖（ADR-030 §6.2）：把某一层（模块 / 用户）的值压到全局之上，优先级 用户 > 模块 > 全局。
+//
+// "哪条参数可被覆盖、允许出现在哪些层、能否往那个方向走"全部由服务端判定（参数目录 +
+// 作用域规则），前端只负责显示服务端给出的可选项——界面不自己判断能不能覆盖。
+// ---------------------------------------------------------------------------
+
+export interface AssistantScopeOverride {
+  scopeType: 'MODULE' | 'USER' | string
+  scopeKey: string
+  paramKey: string
+  value: string | null
+  updatedBy: string | null
+  updatedAt: string | null
+}
+
+/** 允许被覆盖的参数（服务端给的可选项，含它声明的层与松紧方向）。 */
+export interface AssistantScopableParameter {
+  key: string
+  displayName: string
+  valueType: string
+  unit: string | null
+  /** 人话说明松紧方向（"只能收紧（关得掉、放不开）" / "可放宽"）。 */
+  displayNameOfPolicy: string
+  layers: string[]
+  rangeHint: string
+}
+
+export interface AssistantScopeList {
+  items: AssistantScopeOverride[]
+  scopable: AssistantScopableParameter[]
+}
+
+export function listScopes() {
+  return apiClient.get<AssistantScopeList>('/admin/assistant/settings/scopes')
+}
+
+/** 写入一层覆盖。**空值 = 清掉这一项在这一层的覆盖**（回到上层取值）。 */
+export function upsertScope(payload: {
+  scopeType: string
+  scopeKey: string
+  paramKey: string
+  value: string
+}) {
+  return apiClient.put<void>('/admin/assistant/settings/scopes', payload)
+}
+
+/** 清掉某一层的全部覆盖。 */
+export function deleteScopeLayer(scopeType: string, scopeKey: string) {
+  return apiClient.delete<void>(
+    `/admin/assistant/settings/scopes/${encodeURIComponent(scopeType)}/${encodeURIComponent(scopeKey)}`)
 }

@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.RegularExpressions;
 using EOS.API.Data;
 using EOS.API.Features.Assistant.Kb;
+using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Features.Assistant.Tools;
 using EOS.API.Logging;
 using EOS.API.Models;
@@ -52,13 +54,13 @@ public sealed record DerivedProfile(
 public sealed class AssistantMemoryStore(
     DbConnectionFactory connections,
     IPermissionService permissions,
-    IWorkbenchSearchGateway? searchGateway = null) : IAssistantMemoryStore
+    IWorkbenchSearchGateway? searchGateway = null,
+    // 参数在最后：既有调用（含单测里的位置参数）不受影响；容器会把运行期配置注进来。
+    IAssistantRuntimeConfig? runtime = null) : IAssistantMemoryStore
 {
-    public const int MaxMemoriesPerUser = 200;
-    public const int MaxMemoryKeyLength = 200;
-    public const int MaxMemoryValueLength = 2000;
-    public const int MaxPreferencesLength = 4000;
-    public const int InjectionTopK = 5;
+    // 五个上限（条数 / 标题 / 内容 / 偏好 / 注入条数）原本是公开常量，现在取自参数目录的 MEMORY 域。
+    // 取不到运行期配置时（单测直接构造）退回默认值——这几项是长度上限，退回默认不会放宽任何权限。
+    private AssistantMemoryLimitsOptions Limits => runtime?.Current.Policy.Memory ?? new();
 
     private static readonly HashSet<string> AllowedTypes =
         new(StringComparer.OrdinalIgnoreCase) { "preference", "fact", "favorite" };
@@ -86,7 +88,7 @@ public sealed class AssistantMemoryStore(
         var normalized = string.IsNullOrWhiteSpace(preferencesJson) ? null : preferencesJson.Trim();
         if (normalized is not null)
         {
-            if (normalized.Length > MaxPreferencesLength)
+            if (normalized.Length > Limits.MaxPreferencesLength)
                 throw new ArgumentException("偏好内容过长。");
             try
             {
@@ -204,9 +206,10 @@ public sealed class AssistantMemoryStore(
         string userId, string memoryType, string memoryKey, string memoryValue,
         long? sourceMessageId, string source, string status, int? confidence, CancellationToken token)
     {
+        var limits = Limits;
         var type = ValidateType(memoryType);
-        var key = ValidateKey(memoryKey);
-        var value = ValidateValue(memoryValue);
+        var key = ValidateKey(memoryKey, limits);
+        var value = ValidateValue(memoryValue, limits);
         var redacted = LogRedactor.Redact(value);
 
         await using var connection = connections.Create();
@@ -216,7 +219,7 @@ public sealed class AssistantMemoryStore(
             connection))
         {
             countCommand.Parameters.Add("@UserId", SqlDbType.NVarChar, 50).Value = userId;
-            if (Convert.ToInt64(await countCommand.ExecuteScalarAsync(token)) >= MaxMemoriesPerUser)
+            if (Convert.ToInt64(await countCommand.ExecuteScalarAsync(token)) >= Limits.MaxPerUser)
             {
                 // LRU 淘汰：归档最久未访问的一条，而不是拒绝写入。
                 await using var evict = new SqlCommand(
@@ -351,7 +354,7 @@ public sealed class AssistantMemoryStore(
         var preferences = await GetPreferencesAsync(userId, token);
         var derived = await GetDerivedProfileAsync(userId, token);
         var active = await ListMemoriesAsync(userId, token);
-        var selected = SelectMemories(active, keyword, InjectionTopK);
+        var selected = SelectMemories(active, keyword, Limits.InjectionTopK);
         var moduleIds = selected
             .SelectMany(item => ModuleReference.Matches(item.MemoryKey + "\n" + item.MemoryValue)
                 .Select(match => int.Parse(match.Groups[1].Value)))
@@ -443,19 +446,27 @@ public sealed class AssistantMemoryStore(
         return normalized;
     }
 
-    internal static string ValidateKey(string memoryKey)
+    /// <summary>校验记忆标题。静态入口用参数默认值，实例路径传当轮解析出来的 <paramref name="limits"/>。</summary>
+    internal static string ValidateKey(string memoryKey) =>
+        ValidateKey(memoryKey, new AssistantMemoryLimitsOptions());
+
+    internal static string ValidateKey(string memoryKey, AssistantMemoryLimitsOptions limits)
     {
         var normalized = memoryKey.Trim();
-        if (normalized.Length == 0 || normalized.Length > MaxMemoryKeyLength)
-            throw new ArgumentException("记忆标题不能为空且不超过 200 字符。");
+        if (normalized.Length == 0 || normalized.Length > limits.MaxKeyLength)
+            throw new ArgumentException($"记忆标题不能为空且不超过 {limits.MaxKeyLength} 字符。");
         return normalized;
     }
 
-    internal static string ValidateValue(string memoryValue)
+    /// <summary>校验记忆内容。静态入口用参数默认值，实例路径传当轮解析出来的 <paramref name="limits"/>。</summary>
+    internal static string ValidateValue(string memoryValue) =>
+        ValidateValue(memoryValue, new AssistantMemoryLimitsOptions());
+
+    internal static string ValidateValue(string memoryValue, AssistantMemoryLimitsOptions limits)
     {
         var normalized = memoryValue.Trim();
-        if (normalized.Length == 0 || normalized.Length > MaxMemoryValueLength)
-            throw new ArgumentException("记忆内容不能为空且不超过 2000 字符。");
+        if (normalized.Length == 0 || normalized.Length > limits.MaxValueLength)
+            throw new ArgumentException($"记忆内容不能为空且不超过 {limits.MaxValueLength} 字符。");
         return normalized;
     }
 

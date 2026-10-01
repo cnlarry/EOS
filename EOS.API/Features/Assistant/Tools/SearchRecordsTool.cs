@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
 using EOS.API.Data;
+using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Models;
 using EOS.API.Security;
 
@@ -14,15 +16,13 @@ namespace EOS.API.Features.Assistant.Tools;
 /// </summary>
 public sealed class SearchRecordsTool(
     IWorkbenchSearchGateway gateway,
-    IPermissionService permissions) : IAssistantTool
+    IPermissionService permissions,
+    // 行数 / 列数 / 单值长度取自参数目录的 TOOL_LIMIT 域；离线构造不传时退回默认值。
+    IAssistantRuntimeConfig? runtime = null) : IAssistantTool
 {
     public const string ToolName = "search_records";
 
-    private const int MaxRows = 5;
-
-    private const int MaxColumnsPerRow = 8;
-
-    private const int MaxValueLength = 40;
+    private AssistantToolLimitsOptions Limits => runtime?.Current.Policy.ToolLimits ?? new();
 
     public string Name => ToolName;
 
@@ -30,7 +30,7 @@ public sealed class SearchRecordsTool(
 
     public string Description =>
         "在 ERP 模块中搜索单据/资料列表。当用户想找单据、查资料时使用。"
-        + "返回前 5 行及每行主键值数组 _keys，可用 get_record_detail 取单行完整详情。";
+        + "返回少量行及每行主键值数组 _keys，可用 get_record_detail 取单行完整详情。";
 
     public string ParametersJson => """
         {
@@ -76,18 +76,25 @@ public sealed class SearchRecordsTool(
         var keywordArg = string.IsNullOrWhiteSpace(keyword) ? null : keyword.Trim();
         var data = await gateway.GetRowsAsync(
             definition, detail: false, new Dictionary<string, string>(), page: 1,
-            pageSize: MaxRows, token, keyword: keywordArg,
+            pageSize: Limits.SearchMaxRows, token, keyword: keywordArg,
             dataFilter: permission.Rights.DataFilter);
 
-        return ToolExecutionResult.Success(Compress(definition, data, keywordArg));
+        return ToolExecutionResult.Success(Compress(definition, data, keywordArg, Limits));
     }
 
     /// <summary>
     /// 压缩为紧凑文本：每行 = 主键值数组 + 前 N 个非空列「标签:值」（截断防 token 爆炸）。
     /// 列集合来自权限过滤后的 definition.MasterFields——成本/保密/禁止字段根本不在其中。
     /// </summary>
-    internal static string Compress(WorkbenchDefinition definition, WorkbenchData data, string? keyword)
+    /// <param name="limits">
+    /// 输出上限（行 / 列 / 单值长度）。为 null 时用参数默认值——单测直接调本方法时不必造参数对象；
+    /// 生产路径由 <c>ExecuteAsync</c> 传当轮的运行期取值。
+    /// </param>
+    internal static string Compress(
+        WorkbenchDefinition definition, WorkbenchData data, string? keyword,
+        AssistantToolLimitsOptions? limits = null)
     {
+        limits ??= new AssistantToolLimitsOptions();
         var sb = new StringBuilder();
         sb.Append($"module={definition.ModuleId}({definition.Title}) total={data.Total} shown={data.Rows.Count}");
         if (!string.IsNullOrEmpty(keyword))
@@ -105,12 +112,14 @@ public sealed class SearchRecordsTool(
             int taken = 0;
             foreach (var field in definition.MasterFields)
             {
-                if (taken >= MaxColumnsPerRow) break;
+                if (taken >= limits.SearchMaxColumns) break;
                 if (!row.TryGetValue(field.Key, out var value)) continue;
                 var text = value?.ToString();
                 if (string.IsNullOrEmpty(text)) continue;
                 sb.Append(' ').Append(field.Label).Append('=')
-                    .Append(text.Length > MaxValueLength ? text[..MaxValueLength] + "…" : text);
+                    .Append(text.Length > limits.SearchMaxValueLength
+                        ? text[..limits.SearchMaxValueLength] + "…"
+                        : text);
                 taken++;
             }
 

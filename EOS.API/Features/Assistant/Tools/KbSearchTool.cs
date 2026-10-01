@@ -3,6 +3,7 @@ using System.Text.Json;
 using EOS.API.Data;
 using EOS.API.Features.Assistant.Kb;
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Security;
 
 namespace EOS.API.Features.Assistant.Tools;
@@ -16,11 +17,12 @@ public sealed class KbSearchTool(
     IKnowledgeRepository repository,
     IEmbeddingModel embedding,
     IPermissionService permissions,
-    IWorkbenchSearchGateway gateway) : AssistantToolBase
+    IWorkbenchSearchGateway gateway,
+    // 容器会把运行期配置注进来；离线构造（单测）不传时退回参数默认值——这两项是长度与条数上限，
+    // 退回默认不会放宽任何权限。
+    IAssistantRuntimeConfig? runtime = null) : AssistantToolBase
 {
     public const string ToolName = "kb_search";
-    private const int MaxHits = 5;
-    private const int MaxContentLength = 300;
 
     public override string Name => ToolName;
     public override AssistantToolRisk Risk => AssistantToolRisk.Read;
@@ -50,10 +52,13 @@ public sealed class KbSearchTool(
             return ToolExecutionResult.Deny(ex.Message);
         }
 
+        // 命中条数与片段长度取自参数目录的 KB 域：它们是运维真想调的数字
+        // （检索回来几条、每条能带多长），此前写死在工具里。
+        var kb = runtime?.Current.Policy.Kb ?? new AssistantKbLimitsOptions();
         var consultant = (await permissions.GetAsync(userId, 2302, token)).CanSetup;
         var ops = (await permissions.GetAsync(userId, 2306, token)).CanSetup;
         var hits = await repository.SearchAsync(EmbeddingJson.ToJson(queryVector),
-            embedding.Dimension, MaxHits, KbVisibility.AllowedFor(consultant, ops), token);
+            embedding.Dimension, kb.SearchMaxHits, KbVisibility.AllowedFor(consultant, ops), token);
         if (hits.Count == 0) return ToolExecutionResult.Success("知识库中没有相关内容。");
 
         var sb = new StringBuilder();
@@ -62,9 +67,9 @@ public sealed class KbSearchTool(
         {
             // R2:含业务引用的片段须逐条复核，失败即丢弃该片段。
             if (!await ReferencesAllowedAsync(userId, hit.Content, token)) continue;
-            var excerpt = hit.Content.Length <= MaxContentLength
+            var excerpt = hit.Content.Length <= kb.SearchMaxContentLength
                 ? hit.Content
-                : hit.Content[..MaxContentLength] + "…";
+                : hit.Content[..kb.SearchMaxContentLength] + "…";
             sb.AppendLine().Append($"- [来源：{hit.Title}#{hit.SerialNo}] {excerpt}");
             sb.AppendLine().Append($"  source: kb://doc/{hit.DocId}#c{hit.SerialNo}");
             kept++;

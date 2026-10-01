@@ -1,4 +1,5 @@
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 
 namespace EOS.API.Tests;
 
@@ -21,8 +22,18 @@ internal static class AssistantTestRuntime
     public static IAssistantRuntimeConfig Fixed(AssistantSettings? settings = null) =>
         new SnapshotConfig(settings ?? new AssistantSettings());
 
-    private sealed class SnapshotConfig(AssistantSettings settings) : IAssistantRuntimeConfig
+    /// <summary>
+    /// 固定策略值（不走库）：用于"参数改了之后行为跟着变"这类断言——
+    /// 它们要的是一套确定的参数，而不是一套从数据库解析出来的参数。
+    /// </summary>
+    public static IAssistantRuntimeConfig Fixed(AssistantSettings? settings, AssistantPolicyValues policy) =>
+        new SnapshotConfig(settings ?? new AssistantSettings(), policy);
+
+    private sealed class SnapshotConfig : IAssistantRuntimeConfig
     {
-        public AssistantRuntimeSnapshot Current { get; } = new(null, settings);
+        public SnapshotConfig(AssistantSettings settings, AssistantPolicyValues? policy = null) =>
+            Current = new AssistantRuntimeSnapshot(null, settings) { Policy = policy ?? AssistantPolicyValues.Default };
+
+        public AssistantRuntimeSnapshot Current { get; }
     }
 }

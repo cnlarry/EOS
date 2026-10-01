@@ -1,5 +1,6 @@
 using EOS.API.Data.Workbench;
 using EOS.API.Features.Assistant.Diagnosis;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Models;
 using EOS.API.Security;
 
@@ -27,9 +28,24 @@ public sealed record AssistantActionGateDecision(
 /// <para>
 /// 它不是权限依据：执行前由服务端**独立重新授权**（同一次执行走同一个入口，但不复用本类的结论）。
 /// </para>
+///
+/// <para>
+/// 它同时是**动作族开关的消费点**（ADR-030 §5.3.4）：管理员可以在 3105 关掉"某模块上的删除动作"，
+/// 判定落在权限判定**之前**——被关掉的动作连策略层都不必问。之所以放在这里而不是"不发工具声明"：
+/// 记录动作的工具（`preview_record_action` / `apply_record_action`）是**同一个工具服务所有模块**的，
+/// 按模块隐藏工具做不到；而门禁本来就带着"哪个模块"，正是判定它该落在哪的地方。
+/// </para>
 /// </summary>
-public sealed class AssistantActionGate(WorkbenchAccessPolicy policy)
+public sealed class AssistantActionGate(
+    WorkbenchAccessPolicy policy,
+    IAssistantEffectiveParameters? effectiveParameters = null)
 {
+    /// <summary>
+    /// 动作族被管理员关掉的原因码。**与权限类拒绝分开**：这不是"你没权限"（去申请权限），
+    /// 而是"这个能力在这个模块上被关闭了"（找管理员）——两者给用户的下一步完全不同。
+    /// </summary>
+    public const string DisabledByAdminCode = "ACTION_DISABLED_BY_ADMIN";
+
     /// <summary>
     /// 按动作类型走策略层对应入口，与控制器端点用的是同一处判定：
     /// 新增 → `form-definition mode=new` 对应的表单访问；修改 → mode=edit；删除 → 删除路径（编辑访问 + 删除动作位）。
@@ -37,6 +53,20 @@ public sealed class AssistantActionGate(WorkbenchAccessPolicy policy)
     public async Task<AssistantActionGateDecision> EvaluateAsync(
         string? userId, int moduleId, AssistantRecordActionKind kind, CancellationToken token)
     {
+        // 动作族开关按**模块 + 当事人**解析（这是本目录里唯一声明了模块层的参数，见目录里的 ActionSwitch）。
+        // 不注入生效参数服务时（单测里直接构造门禁）等同"没有关过任何动作族"——与工具注册表同一约定。
+        if (effectiveParameters is not null)
+        {
+            var capability = (await effectiveParameters.ForAsync(userId ?? string.Empty, moduleId, token)).Capability;
+            var actionName = AssistantRecordActionNames.For(kind);
+            if (!capability.IsActionEnabled(actionName))
+            {
+                return AssistantActionGateDecision.Deny(
+                    DisabledByAdminCode,
+                    $"助手在本模块上已被管理员关闭「{actionName}」这项能力，无法执行该操作。");
+            }
+        }
+
         var decision = kind switch
         {
             AssistantRecordActionKind.Insert => await policy.AuthorizeFormAsync(userId, moduleId, "new", token),

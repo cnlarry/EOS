@@ -1,5 +1,6 @@
 using System.Text.Json;
 using EOS.API.Features.Assistant.Memory;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Features.Assistant.Tools;
 using Xunit;
 
@@ -45,7 +46,8 @@ public sealed class AssistantMemoryTests
 
         public Task<string> BuildMemoryPrefixAsync(string userId, string? keyword, CancellationToken token) =>
             Task.FromResult(AssistantMemoryStore.BuildPrefix(preferences, null,
-                AssistantMemoryStore.SelectMemories(memories, keyword, AssistantMemoryStore.InjectionTopK)));
+                AssistantMemoryStore.SelectMemories(
+                    memories, keyword, new AssistantMemoryLimitsOptions().InjectionTopK)));
     }
 
     [Fact]

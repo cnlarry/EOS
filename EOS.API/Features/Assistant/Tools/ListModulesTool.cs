@@ -3,15 +3,20 @@ using System.Text.Json;
 using EOS.API.Models;
 using EOS.API.Security;
 
+using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
+
 namespace EOS.API.Features.Assistant.Tools;
 
 /// <summary>Lists generic workbench modules visible to the current user.</summary>
 public sealed class ListModulesTool(
     IWorkbenchSearchGateway gateway,
-    IPermissionService permissions) : AssistantToolBase
+    IPermissionService permissions,
+    IAssistantRuntimeConfig? runtime = null) : AssistantToolBase
 {
     public const string ToolName = "list_modules";
-    private const int MaxOutputModules = 50;
+
+    private AssistantToolLimitsOptions Limits => runtime?.Current.Policy.ToolLimits ?? new();
 
     public override string Name => ToolName;
     public override AssistantToolRisk Risk => AssistantToolRisk.Read;
@@ -37,7 +42,7 @@ public sealed class ListModulesTool(
             if (permission.CanBrowse) visible.Add(module);
         }
 
-        var shown = visible.Take(MaxOutputModules).ToArray();
+        var shown = visible.Take(Limits.ListModulesMax).ToArray();
         var sb = new StringBuilder($"共 {visible.Count} 个可操作模块（仅列出你有浏览权限的）：");
         foreach (var module in shown)
         {

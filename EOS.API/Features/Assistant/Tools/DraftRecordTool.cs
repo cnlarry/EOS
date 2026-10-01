@@ -4,6 +4,9 @@ using EOS.API.Data;
 using EOS.API.Models;
 using EOS.API.Security;
 
+using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
+
 namespace EOS.API.Features.Assistant.Tools;
 
 /// <summary>Document draft sent to the frontend (structured change set). The frontend confirms it and executes through the existing save pipeline; the assistant adds no write path.</summary>
@@ -24,11 +27,12 @@ public sealed record AssistantFormDraft(
 /// </summary>
 public sealed class DraftRecordTool(
     IWorkbenchSearchGateway gateway,
-    IPermissionService permissions) : AssistantToolBase
+    IPermissionService permissions,
+    IAssistantRuntimeConfig? runtime = null) : AssistantToolBase
 {
     public const string ToolName = "draft_record";
 
-    private const int MaxValueLength = 500;
+    private AssistantToolLimitsOptions Limits => runtime?.Current.Policy.ToolLimits ?? new();
 
     public override string Name => ToolName;
 
@@ -111,10 +115,11 @@ public sealed class DraftRecordTool(
             }
 
             var raw = property.Value.GetString() ?? string.Empty;
-            if (raw.Length > MaxValueLength)
+            if (raw.Length > Limits.DraftMaxValueLength)
             {
-                raw = raw[..MaxValueLength];
-                warnings.Add($"字段 {field.Label}({field.Key}) 的值过长，已截断到 {MaxValueLength} 字符。");
+                raw = raw[..Limits.DraftMaxValueLength];
+                warnings.Add(
+                    $"字段 {field.Label}({field.Key}) 的值过长，已截断到 {Limits.DraftMaxValueLength} 字符。");
             }
 
             if (!ValidateType(field, raw, out var typeWarning))

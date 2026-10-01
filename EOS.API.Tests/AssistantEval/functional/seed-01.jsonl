@@ -26,5 +26,5 @@
 {"question": "get_my_digest 返回谁的数据？", "expected": "只返回当前本人的偏好与显式记忆，不触碰业务模块。", "sources": ["GetMyDigestTool"]}
 {"question": "无权限用户问越权数据时助手应该怎么做？", "expected": "拒绝：返回 Deny/无浏览权，或把范围外记录表现为不存在。", "sources": ["AssistantToolExtensions", "GetRecordDetailTool"]}
 {"question": "模型没配置时助手怎么响应？", "expected": "快速失败 AI_MODEL_NOT_CONFIGURED，不影响其他 API。", "sources": ["ChatService"]}
-{"question": "助手一轮对话最多调几轮工具？", "expected": "最多 4 轮；达到上限时强制纯文本收尾。", "sources": ["AssistantToolRegistry.MaxToolRounds", "ChatService"]}
+{"question": "助手一轮对话最多调几轮工具？", "expected": "默认最多 4 轮（CHAT_MAX_TOOL_ROUNDS 可调）；达到上限时强制纯文本收尾，且成本预留按（轮数+1）放大。", "sources": ["AssistantChatLimitsOptions.MaxToolRounds", "ChatService"]}
 {"question": "未知工具名出现时怎么处理？", "expected": "拒绝并回喂模型纠偏，不抛业务异常。", "sources": ["ChatService.ExecuteToolSafelyAsync"]}

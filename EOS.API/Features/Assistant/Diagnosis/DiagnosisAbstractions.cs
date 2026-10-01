@@ -34,11 +34,16 @@ public static class DiagnosisFieldGuardText
         $"字段「{label}」是保密字段，你没有查看权限，不能修改。";
 }
 
-/// <summary>诊断输出的条目上限（配置节 <c>AssistantDiagnosis</c>）：代码内不写死数值，超限一律截断并记入 caveat。</summary>
+/// <summary>
+/// 诊断输出的条目上限：超限一律截断并记入 caveat。
+///
+/// <para>
+/// 取值来自 3105 的参数目录（<c>Diag_*</c> 键），**不再从配置节绑定**（ADR-030 §8）；
+/// 这里的属性初始值就是"代码默认值"，也是目录里 <c>DEFAULT_VALUE</c> 的依据——默认值只有这一份。
+/// </para>
+/// </summary>
 public sealed class AssistantDiagnosisOptions
 {
-    public const string SectionName = "AssistantDiagnosis";
-
     /// <summary>列出的校验规则条数上限。</summary>
     public int MaxValidationRules { get; set; } = 12;
 
@@ -62,6 +67,12 @@ public sealed class AssistantDiagnosisOptions
 
     /// <summary>单条原因/文案的字符上限。</summary>
     public int MaxTextLength { get; set; } = 160;
+
+    /// <summary>
+    /// "为什么办不下去"的归因条数上限。它原先写死在 <c>RecordDiagnosisService</c> 里——
+    /// 一个配置入口都没有，管理侧想调都调不了。
+    /// </summary>
+    public int MaxActionSummary { get; set; } = 3;
 }
 
 /// <summary>

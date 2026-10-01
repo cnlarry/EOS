@@ -1,4 +1,5 @@
 using System.Text;
+using EOS.API.Features.Assistant.Parameters;
 
 namespace EOS.API.Features.Assistant.Kb;
 
@@ -9,14 +10,21 @@ namespace EOS.API.Features.Assistant.Kb;
 /// </summary>
 public static class KbChunker
 {
-    public const int DefaultMaxChars = 700;
-    public const int DefaultOverlapChars = 100;
+    // 块长与重叠曾经是两个常量（700 / 100），现在取自参数目录的 KB 域
+    // （AssistantKbLimitsOptions.ChunkMaxChars / ChunkOverlapChars）——**默认值只有那一份**，
+    // 这里不留第二份，否则"界面显示 700、代码其实还是 700 之外的值"迟早出现。
 
     private static readonly char[] SentenceEndings = ['。', '！', '？', ';', '；', '\n'];
 
-    public static IReadOnlyList<string> Split(
-        string content, int maxChars = DefaultMaxChars, int overlapChars = DefaultOverlapChars)
+    /// <summary>
+    /// 切块。<paramref name="limits"/> 为 null 时用参数默认值（单测与离线调用不必自己造参数对象）。
+    /// </summary>
+    public static IReadOnlyList<string> Split(string content, AssistantKbLimitsOptions? limits = null)
     {
+        var effective = limits ?? new AssistantKbLimitsOptions();
+        var maxChars = effective.ChunkMaxChars;
+        var overlapChars = effective.ChunkOverlapChars;
+
         var normalized = (content ?? string.Empty).Replace("\r\n", "\n").Trim();
         if (normalized.Length == 0) return [];
         maxChars = Math.Max(100, maxChars);

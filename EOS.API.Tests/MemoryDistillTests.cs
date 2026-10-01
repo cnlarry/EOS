@@ -2,6 +2,7 @@ using EOS.API.Data;
 using EOS.API.Features.Assistant;
 using EOS.API.Features.Assistant.Memory;
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Features.Assistant.Tools;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -51,7 +52,7 @@ public sealed class MemoryDistillTests
             .Select(index => $"{{\"type\":\"fact\",\"key\":\"事项{index}\",\"value\":\"内容{index}\",\"confidence\":70,\"reason\":\"x\"}}"));
         var candidates = MemoryDistiller.Parse($"{{\"memories\":[{items}]}}");
 
-        Assert.Equal(MemoryDistiller.MaxCandidates, candidates.Count);
+        Assert.Equal(new AssistantMemoryLimitsOptions().MaxCandidates, candidates.Count);
     }
 
     private sealed class FakeStore : IAssistantMemoryStore

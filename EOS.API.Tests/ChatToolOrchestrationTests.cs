@@ -2,6 +2,7 @@ using System.Text.Json;
 using EOS.API.Data;
 using EOS.API.Features.Assistant;
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Features.Assistant.Tools;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -249,7 +250,7 @@ public sealed class ChatToolOrchestrationTests
     {
         var looping = new ModelRound(ToolCalls:
             [new CompletedToolCall("call-loop", SearchRecordsTool.ToolName, "{}")]);
-        var rounds = Enumerable.Repeat(looping, AssistantToolRegistry.MaxToolRounds)
+        var rounds = Enumerable.Repeat(looping, new AssistantChatLimitsOptions().MaxToolRounds)
             .Append(new ModelRound(Text: "已达到工具调用上限。"))
             .ToArray();
         var (service, model, repo, tool) = Create(rounds);
@@ -257,8 +258,8 @@ public sealed class ChatToolOrchestrationTests
         var events = await CollectAsync(service.StreamReplyAsync("u1", 7, "循环", null, "corr", CancellationToken.None));
 
         // 上限轮不带工具声明（强制纯文本收尾）——工具总执行次数 == MaxToolRounds。
-        Assert.Equal(AssistantToolRegistry.MaxToolRounds, tool.Calls.Count);
-        Assert.Equal(AssistantToolRegistry.MaxToolRounds + 1, model.RoundsSeen.Count);
+        Assert.Equal(new AssistantChatLimitsOptions().MaxToolRounds, tool.Calls.Count);
+        Assert.Equal(new AssistantChatLimitsOptions().MaxToolRounds + 1, model.RoundsSeen.Count);
         Assert.Null(model.RoundsSeen[^1].Tools);
         var done = events.OfType<ChatStreamEvent.Completed>().Single();
         Assert.Equal("已达到工具调用上限。", done.Message.Content);

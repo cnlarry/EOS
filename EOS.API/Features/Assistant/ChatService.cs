@@ -4,6 +4,7 @@ using EOS.API.Data;
 using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.Memory;
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Features.Assistant.Situation;
 using EOS.API.Features.Assistant.Tools;
 using Microsoft.Extensions.Options;
@@ -118,18 +119,13 @@ public sealed class ChatService(
     IAssistantMemoryStore? memoryStore = null,
     IAssistantUsageRepository? usageRepository = null,
     FailureBreaker? breaker = null,
-    AssistantSituationService? situation = null)
+    AssistantSituationService? situation = null,
+    IAssistantEffectiveParameters? effectiveParameters = null)
 {
-    /// <summary>
-    /// 单轮从库里取回的**历史条数上限**（含双方消息）。
-    ///
-    /// <para>
-    /// 这只是"取多少条"的兜底，真正决定带多少上下文的是模型的**上下文窗口**
-    /// （见 <see cref="TrimToContextWindow"/>）。此前这里就是唯一的约束（40 条），
-    /// 而条数相同、长度可以差几十倍——一条长回复就能把窗口顶穿，厂商返回的还是模糊的参数错误。
-    /// </para>
-    /// </summary>
-    private const int MaxHistoryMessages = 60;
+    // 单轮从库里取回的**历史条数上限**（含双方消息）也搬进了参数目录（CHAT_MAX_HISTORY_MESSAGES）：
+    // 它只是"取多少条"的兜底，真正决定带多少上下文的是模型的上下文窗口（见 TrimToContextWindow）。
+    // 此前这条约束写死在代码里（先是 40、后是 60），而条数相同、长度可以差几十倍——
+    // 一条长回复就能把窗口顶穿，厂商返回的还是模糊的参数错误。
 
     /// <summary>
     /// 估算 token 的**上界**系数：按"1 个字符 ≈ 1 个 token"算。
@@ -142,17 +138,10 @@ public sealed class ChatService(
     /// </summary>
     private const int CharsPerTokenUpperBound = 1;
 
-    /// <summary>模型没填上下文窗口时的保守默认（token）。宁可少带历史，也不要因为算大了被拒。</summary>
-    private const int DefaultContextWindow = 16_384;
-
-    /// <summary>留给系统提示、用户记忆、处境段与工具结果的余量（token）。</summary>
-    private const int ContextReserveTokens = 4_096;
-
-    /// <summary>单条消息长度上限（字符）。</summary>
-    public const int MaxContentLength = 8000;
-
-    /// <summary>工具参数 JSON 最大长度（模型输出的 arguments 防失控）。</summary>
-    private const int MaxToolArgumentsLength = 2000;
+    // 这里原有五个常量（历史条数上限 / 默认上下文窗口 / 上下文预留 / 单条消息长度上限 /
+    // 工具参数长度上限），现已全部搬进参数目录（域 CHAT，见 AssistantChatLimitsOptions）：
+    // 它们是运维真想调的数字，而调它们此前只有"改代码重新部署"一条路。
+    // 本轮取值一律来自请求开始时的那一份快照（见 SendAsync 里的 local `chat`）。
 
     /// <summary>
     /// 量化指标必须走系统口径计算（enum_metrics 查定义 → resolve_metric 取数），
@@ -200,7 +189,12 @@ public sealed class ChatService(
 
         // 一次请求取**一份配置快照**：这一轮回答（含工具多轮）始终按同一套参数跑。
         // 管理员中途改配置，只影响之后的新请求——不会出现"同一条回答前半段一套参数、后半段另一套"。
-        var settings = runtime.Current.Settings;
+        var snapshot = runtime.Current;
+        var settings = snapshot.Settings;
+        // 能力面与提示词规则同源：这一轮注入哪些规则，取决于这一轮下发了哪些工具（见 BuildModelMessages）
+        var capability = snapshot.Policy.Capability;
+        // 本轮的行为上限（历史条数 / 工具轮数 / 各种截断长度）也从这同一份快照取
+        var chat = snapshot.Policy.Chat;
 
         // 治理门：熔断优先于限额；只计技术失败（模型异常/空回复），权限拒绝与用户取消不计入。
         if (breaker?.IsBlocked(userId) == true)
@@ -216,9 +210,9 @@ public sealed class ChatService(
         }
 
         content = content.Trim();
-        if (content.Length > MaxContentLength)
+        if (content.Length > chat.MaxContentLength)
         {
-            yield return new ChatStreamEvent.Failed("INVALID_ARGUMENT", $"消息长度超过上限（{MaxContentLength} 字符）。");
+            yield return new ChatStreamEvent.Failed("INVALID_ARGUMENT", $"消息长度超过上限（{chat.MaxContentLength} 字符）。");
             yield break;
         }
 
@@ -228,7 +222,7 @@ public sealed class ChatService(
         try
         {
             await repository.AddUserMessageAsync(userId, sessionId, content, correlationId, token);
-            history = await repository.LoadRecentHistoryAsync(userId, sessionId, MaxHistoryMessages, token);
+            history = await repository.LoadRecentHistoryAsync(userId, sessionId, chat.MaxHistoryMessages, token);
         }
         catch (UnauthorizedAccessException)
         {
@@ -251,8 +245,9 @@ public sealed class ChatService(
             : await situation.BuildResidentTextAsync(userId, token);
         // 按**当前模型的上下文窗口**裁剪（窗口来自 3102 的模型行）：从最老的消息开始丢。
         // 系统提示与处境段不参与这个预算——它们是每轮必须带的，占用的额度由 ContextReserveTokens 预留。
-        var trimmedHistory = TrimToContextWindow(history, settings);
-        var messages = BuildModelMessages(trimmedHistory, pageContext, settings, memoryPrefix, situationText);
+        var trimmedHistory = TrimToContextWindow(history, settings, chat);
+        var messages = BuildModelMessages(
+            trimmedHistory, pageContext, settings, memoryPrefix, situationText, capability);
 
         // 原子预留：同一事务内建行 + 按上限条件扣减（用户行与全局行同时满足），
         // 并发请求在此串行化；超限直接拒绝，不再"先读后放"。
@@ -261,11 +256,13 @@ public sealed class ChatService(
         // 一次回答最多触发 MaxToolRounds+1 次独立模型调用（工具轮 ≤ MaxToolRounds + 最终轮），
         // 预留按轮数上限放大，避免进行中请求真实成本超出 SPENT+RESERVED 判定。
         var dayStart = DateTimeOffset.UtcNow.Date;
-        var reserveMicro = settings.Cost.ReserveMicroYuanPerRequest * (AssistantToolRegistry.MaxToolRounds + 1);
+        var reserveMicro = settings.Cost.ReserveMicroYuanPerRequest * (chat.MaxToolRounds + 1);
         if (usageRepository is not null)
         {
+            // 用户日上限按**当事人**取：快照给的是全库统一值，作用域表可能给某个人单独放宽过
+            var userCapYuan = await UserDailyCapYuanAsync(userId, pageContext?.ModuleId, settings, token);
             var reserved = await usageRepository.TryReserveAsync(userId, dayStart, reserveMicro,
-                ToMicroYuan(settings.Cost.UserDailyCapYuan),
+                ToMicroYuan(userCapYuan),
                 ToMicroYuan(settings.Cost.GlobalDailyCapYuan), token);
             if (!reserved)
             {
@@ -281,9 +278,9 @@ public sealed class ChatService(
         var totalElapsedMs = 0;
         var anyEstimated = false;
 
-        for (int round = 0; round <= AssistantToolRegistry.MaxToolRounds; round++)
+        for (int round = 0; round <= chat.MaxToolRounds; round++)
         {
-            var isFinalRound = round == AssistantToolRegistry.MaxToolRounds; // 上限轮强制纯文本收尾
+            var isFinalRound = round == chat.MaxToolRounds; // 上限轮强制纯文本收尾
 
             var textBuilder = new StringBuilder();
             var callMap = new SortedDictionary<int, ToolCallAccumulator>();
@@ -366,7 +363,7 @@ public sealed class ChatService(
                 .Select(kv => new CompletedToolCall(
                     kv.Value.Id ?? $"call_{kv.Key}",
                     kv.Value.Name!,
-                    Truncate(kv.Value.Arguments.ToString(), MaxToolArgumentsLength)))
+                    Truncate(kv.Value.Arguments.ToString(), chat.MaxToolArgumentsLength)))
                 .ToList();
 
             // 每轮模型调用都是独立计费请求：实际 usage 缺失时按该轮输入/输出字符保守估算
@@ -398,7 +395,7 @@ public sealed class ChatService(
                 {
                     foreach (var call in calls)
                     {
-                        var result = await ExecuteToolSafelyAsync(userId, call, pageContext, sessionId, toolLog, token);
+                        var result = await ExecuteToolSafelyAsync(userId, call, pageContext, sessionId, toolLog, chat, token);
                         if (result.Draft is not null)
                         {
                             drafts.Add(result.Draft); // DRAFT 级工具产出的结构化变更集，随 done 事件下发确认卡片
@@ -464,7 +461,8 @@ public sealed class ChatService(
                 drafts.Count > 0 ? [.. drafts] : null);
             // : done 之后异步提炼候选记忆（pending，待用户确认；失败静默，不阻塞对话流）。
             // 提炼自己也是一次模型调用，同样受窗口约束，所以喂裁剪后的历史（它要的本来就是最近几轮）
-            await DistillSessionBestEffortAsync(userId, saved.Id, trimmedHistory, text, dayStart, settings, token);
+            await DistillSessionBestEffortAsync(
+                userId, saved.Id, trimmedHistory, text, dayStart, settings, snapshot.Policy.Memory, token);
             yield break;
         }
     }
@@ -478,7 +476,7 @@ public sealed class ChatService(
 
     private async Task<ToolExecutionResult> ExecuteToolSafelyAsync(
         string userId, CompletedToolCall call, PageContext? pageContext,
-        long sessionId, List<ToolCallSummary> toolLog, CancellationToken token)
+        long sessionId, List<ToolCallSummary> toolLog, AssistantChatLimitsOptions chat, CancellationToken token)
     {
         try
         {
@@ -488,6 +486,15 @@ public sealed class ChatService(
 
             if (!toolRegistry.TryGet(call.Name, out var tool))
             {
+                // "被管理员关掉"与"不认识这个名字"必须分开说：前者是配置，后者是模型跑偏。
+                // 混成一句"未知工具"会让前一种情况看起来像系统故障。
+                if (toolRegistry.IsDisabledByParameter(call.Name))
+                {
+                    toolLog.Add(new ToolCallSummary(call.Name, call.ArgumentsJson, "rejected:disabled_by_admin"));
+                    return ToolExecutionResult.Deny(
+                        $"「{call.Name}」这个能力已被管理员关闭，无法调用；请改用其它方式或在管理界面上确认。");
+                }
+
                 toolLog.Add(new ToolCallSummary(call.Name, call.ArgumentsJson, "rejected:unknown_tool"));
                 return ToolExecutionResult.Deny($"未知工具 {call.Name}，请只使用函数列表中的工具。");
             }
@@ -508,13 +515,15 @@ public sealed class ChatService(
 
             var result = await tool.ExecuteAsync(userId, args, token);
             logger.LogInformation("助手工具执行 session={SessionId} tool={Tool} ok={Ok}", sessionId, call.Name, result.Ok);
-            toolLog.Add(new ToolCallSummary(call.Name, call.ArgumentsJson, Truncate(result.ContentForModel, 160)));
+            toolLog.Add(new ToolCallSummary(
+                call.Name, call.ArgumentsJson, Truncate(result.ContentForModel, chat.ToolDigestLength)));
             return result;
         }
         catch (JsonException ex)
         {
             logger.LogWarning(ex, "助手工具参数非法 session={SessionId} tool={Tool}", sessionId, call.Name);
-            toolLog.Add(new ToolCallSummary(call.Name, Truncate(call.ArgumentsJson, 200), "error:invalid_arguments"));
+            toolLog.Add(new ToolCallSummary(
+                call.Name, Truncate(call.ArgumentsJson, chat.AuditArgumentLength), "error:invalid_arguments"));
             return ToolExecutionResult.Deny("工具参数格式错误，请修正后重试。");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -541,15 +550,16 @@ public sealed class ChatService(
     /// </para>
     /// </summary>
     private static IReadOnlyList<(int Role, string Content)> TrimToContextWindow(
-        IReadOnlyList<(int Role, string Content)> history, AssistantSettings modelSettings)
+        IReadOnlyList<(int Role, string Content)> history, AssistantSettings modelSettings,
+        AssistantChatLimitsOptions chat)
     {
         if (history.Count == 0)
         {
             return history;
         }
 
-        var window = modelSettings.ContextWindow ?? DefaultContextWindow;
-        var reserve = ContextReserveTokens + (modelSettings.MaxTokens ?? 0);
+        var window = modelSettings.ContextWindow ?? chat.DefaultContextWindow;
+        var reserve = chat.ContextReserveTokens + (modelSettings.MaxTokens ?? 0);
         // 下限 1024：窗口填得再离谱（或输出上限超过窗口），也要留下最基本的对话预算
         var budgetTokens = Math.Max(1_024, window - reserve);
         var remainingChars = (long)budgetTokens * CharsPerTokenUpperBound;
@@ -577,19 +587,47 @@ public sealed class ChatService(
         return kept;
     }
 
+    /// <summary>
+    /// 一条行为规则只有在它**点名的工具全部可用**时才注入。
+    ///
+    /// <para>
+    /// 少一个就整条丢掉，而不是把规则改成"半条"：规则是一段话，删掉半句往往就自相矛盾。
+    /// 宁可不给规则（模型按通识回答），也不留一条它做不到的硬要求。
+    /// </para>
+    ///
+    /// <para>
+    /// 不注入能力面时（<paramref name="capability"/> 为 null，单测直接调）视为全开——
+    /// 与工具注册表、动作门禁同一约定：**没有配置就是没关过任何东西**。
+    /// </para>
+    /// </summary>
+    private static void AppendRuleIfAvailable(
+        StringBuilder prompt, AssistantCapabilityOptions? capability, string rule, params string[] requiredTools)
+    {
+        if (capability is not null && !capability.AllowsRule(requiredTools)) return;
+
+        prompt.Append(rule);
+        prompt.AppendLine();
+    }
+
     private static List<ChatMessage> BuildModelMessages(
         IReadOnlyList<(int Role, string Content)> history, PageContext? pageContext,
-        AssistantSettings settings, string? memoryPrefix = null, string? situationText = null)
+        AssistantSettings settings, string? memoryPrefix = null, string? situationText = null,
+        AssistantCapabilityOptions? capability = null)
     {
         var systemPrompt = new StringBuilder(settings.SystemPrompt);
         systemPrompt.AppendLine();
+
+        // 三段行为规则**随能力面派生**（ADR-030 §7.4）：规则要求的工具不在了，规则一起消失。
+        // 否则提示词里会留下"必须先通过 enum_metrics 查口径"这类指令，而那个工具已经被管理员关掉——
+        // 模型只能违反规则，或者空转着去找一个不存在的工具。三段的工具来源一样，所以
+        // "规则在不在"与"工具发没发"这两件事不可能各说各话。
+        //
         // 涉及量化指标必须走系统口径：先查 enum_metrics 再用 resolve_metric 取数，
         // 无口径时如实说明，禁止模型自行拼表达式或心算。
-        systemPrompt.Append(MetricUsageRule);
-        systemPrompt.AppendLine();
-        systemPrompt.Append(DiagnosisUsageRule);
-        systemPrompt.AppendLine();
-        systemPrompt.Append(KnowledgeChannelRule);
+        AppendRuleIfAvailable(systemPrompt, capability, MetricUsageRule, "enum_metrics", "resolve_metric");
+        AppendRuleIfAvailable(systemPrompt, capability, DiagnosisUsageRule, "diagnose_record");
+        AppendRuleIfAvailable(systemPrompt, capability, KnowledgeChannelRule, "describe_mechanism", "kb_search");
+
         if (pageContext is not null && !pageContext.IsEmpty)
         {
             pageContext.AppendTo(systemPrompt); // 页面元数据作为「内容」注入并声明非指令（提示注入隔离）
@@ -630,7 +668,8 @@ public sealed class ChatService(
 
     private async Task DistillSessionBestEffortAsync(
         string userId, long messageId, IReadOnlyList<(int Role, string Content)> history,
-        string finalText, DateTimeOffset dayStart, AssistantSettings settings, CancellationToken token)
+        string finalText, DateTimeOffset dayStart, AssistantSettings settings,
+        AssistantMemoryLimitsOptions memory, CancellationToken token)
     {
         if (memoryStore is null || !settings.EnableAutoDistill) return;
         var exchanges = history
@@ -647,9 +686,11 @@ public sealed class ChatService(
         // 提炼也是一次独立模型调用，纳入成本限额：先按单轮额度预留，超限时静默跳过
         // （记忆提炼是后台增强，不做也不影响已完成的对话），成功后按实际用量结算。
         var reserveMicro = settings.Cost.ReserveMicroYuanPerRequest;
+        // 提炼是后台行为，与当前页面无关，所以只看用户级覆盖（moduleId 传 null）
+        var distillUserCapYuan = await UserDailyCapYuanAsync(userId, null, settings, token);
         var reserved = usageRepository is null
             || await usageRepository.TryReserveAsync(userId, dayStart, reserveMicro,
-                ToMicroYuan(settings.Cost.UserDailyCapYuan),
+                ToMicroYuan(distillUserCapYuan),
                 ToMicroYuan(settings.Cost.GlobalDailyCapYuan), token);
         if (!reserved)
         {
@@ -659,7 +700,7 @@ public sealed class ChatService(
 
         try
         {
-            var prompt = Memory.MemoryDistiller.BuildDistillPrompt(exchanges);
+            var prompt = Memory.MemoryDistiller.BuildDistillPrompt(exchanges, memory);
             var output = new StringBuilder();
             ModelAccess.ChatUsage? usage = null;
             await foreach (var delta in model.StreamAsync(
@@ -684,12 +725,14 @@ public sealed class ChatService(
                     messageId, promptTokens, completionTokens);
             }
 
-            foreach (var candidate in Memory.MemoryDistiller.Parse(output.ToString()))
+            foreach (var candidate in Memory.MemoryDistiller.Parse(output.ToString(), memory))
             {
                 var pending = await memoryStore.AddPendingAsync(userId, candidate.Type, candidate.Key,
                     candidate.Value, messageId, candidate.Confidence, token);
-                // 用户已拍板（2026-09-05）：≥80 置信度自动转正（覆盖同名），以下维持待确认。
-                if (candidate.Confidence >= Memory.MemoryDistiller.SuggestThreshold)
+                // 用户已拍板（2026-09-05）：达到建议门槛的候选**自动转正**（覆盖同名），以下维持待确认。
+                // 门槛来自参数目录（MEM_SUGGEST_THRESHOLD）——这是一条真会影响"记忆自动生效"的配置，
+                // 不是提示文案上的一个数字。
+                if (candidate.Confidence >= memory.SuggestThreshold)
                 {
                     await memoryStore.ResolvePendingAsync(userId, pending.Id, confirm: true, token);
                 }
@@ -709,7 +752,22 @@ public sealed class ChatService(
         }
     }
 
-    internal static long ToMicroYuan(double yuan) => (long)Math.Ceiling(yuan * 1_000_000.0);
+    /// <summary>
+    /// 本轮的**用户日上限**：快照里是全库统一值，作用域表可能给某个人单独放宽过（ADR-030 §6.2）。
+    ///
+    /// <para>
+    /// 没注入生效参数服务时（单测里直接构造 <c>ChatService</c>）退回快照值——
+    /// 作用域是"在这基础上再加一层"，不是"没有它就取不到值"。
+    /// </para>
+    /// </summary>
+    private async Task<double> UserDailyCapYuanAsync(
+        string userId, int? moduleId, AssistantSettings settings, CancellationToken token) =>
+        effectiveParameters is null
+            ? settings.Cost.UserDailyCapYuan
+            : (await effectiveParameters.ForAsync(userId, moduleId, token)).Cost.UserDailyCapYuan;
+
+    internal static long ToMicroYuan(double yuan) =>
+        (long)Math.Ceiling(yuan * (double)AssistantCost.MicroYuanPerYuan);
 
     /// <summary>保守估算单轮输入：消息文本与工具参数按 1 字符 = 1 token 计，只多不少。</summary>
     private static int EstimatePromptChars(IReadOnlyList<ChatMessage> messages) =>
