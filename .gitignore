@@ -6,7 +6,12 @@ obj-tmp/
 dist/
 coverage/
 artifacts/
+# .artifacts/ 是 dotnet --artifacts-path 的制品布局目录（内含 bin/、obj/）
+.artifacts/
 packages/
+
+# 本地校验/临时工作目录（工具与脚本的临时落点，无提交价值）
+.verify/
 
 # 依赖目录
 node_modules/
