@@ -2,6 +2,23 @@ using Microsoft.Data.SqlClient;
 
 namespace EOS.API.Data;
 
+/// <summary>
+/// 会话列表的过滤视图：在列 / 只看已归档 / 两者都要。
+/// 三态而不是"是否含归档"两态——管理页要单独看已归档（删除只在那里开放），
+/// 而"已归档"若靠前端从含归档的结果里筛，分页与总数就都不准了。
+/// </summary>
+public enum AssistantSessionListState
+{
+    /// <summary>只看在列的（默认）。</summary>
+    Active = 0,
+
+    /// <summary>只看已归档的。</summary>
+    Archived = 1,
+
+    /// <summary>两者都要。</summary>
+    All = 2,
+}
+
 /// <summary>ASSISTANT_SESSION 行。</summary>
 public sealed record AssistantSessionDto(
     long Id,
@@ -9,8 +26,10 @@ public sealed record AssistantSessionDto(
     string Title,
     DateTimeOffset CreatedAt,
     DateTimeOffset LastActiveAt,
-    /// <summary>归档时刻；null = 在列。界面不再提供删除，归档即"从列表里收起来但留住历史"。</summary>
-    DateTimeOffset? ArchivedAt = null);
+    /// <summary>归档时刻；null = 在列。归档是"从列表里收起来但留住历史"，与删除是两回事。</summary>
+    DateTimeOffset? ArchivedAt = null,
+    /// <summary>消息条数。只有列表查询会聚合出来（单条查询与插入回显为 0）。</summary>
+    int MessageCount = 0);
 
 /// <summary>ASSISTANT_MESSAGE 行。</summary>
 public sealed record AssistantMessageDto(
@@ -35,9 +54,12 @@ public interface IAssistantRepository
 {
     Task<AssistantSessionDto> CreateSessionAsync(string userId, CancellationToken token);
 
-    /// <summary>列会话：默认只给在列的（<paramref name="includeArchived"/> 为真时一并给已归档的）。</summary>
-    Task<IReadOnlyList<AssistantSessionDto>> ListSessionsAsync(
-        string userId, int limit, bool includeArchived, CancellationToken token);
+    /// <summary>
+    /// 分页列会话：<paramref name="state"/> 决定看哪些（在列 / 已归档 / 全部），
+    /// <paramref name="keyword"/> 只搜标题。返回当页数据与过滤后的**总数**（供分页器用）。
+    /// </summary>
+    Task<(IReadOnlyList<AssistantSessionDto> Items, int Total)> ListSessionsAsync(
+        string userId, int offset, int limit, AssistantSessionListState state, string? keyword, CancellationToken token);
 
     /// <summary>重命名会话（归属校验在 SQL 内完成）。返回受影响行数。</summary>
     Task<int> RenameSessionAsync(string userId, long sessionId, string title, CancellationToken token);
@@ -48,7 +70,10 @@ public interface IAssistantRepository
     /// <summary>归属校验 + 取单个会话；不存在或非本人返回 null。</summary>
     Task<AssistantSessionDto?> GetSessionAsync(string userId, long sessionId, CancellationToken token);
 
-    /// <summary>删除会话及其全部消息；均带 USER_ID 归属条件。返回受影响行数。</summary>
+    /// <summary>
+    /// 删除会话及其全部消息。均带 USER_ID 归属条件，**并且只删已归档的会话**
+    /// （服务端强制，防止绕过界面误删在列会话）。返回受影响行数。
+    /// </summary>
     Task<int> DeleteSessionAsync(string userId, long sessionId, CancellationToken token);
 
     Task<IReadOnlyList<AssistantMessageDto>> ListMessagesAsync(string userId, long sessionId, CancellationToken token);
@@ -86,29 +111,65 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<AssistantSessionDto>> ListSessionsAsync(
-        string userId, int limit, bool includeArchived, CancellationToken token)
+    public async Task<(IReadOnlyList<AssistantSessionDto> Items, int Total)> ListSessionsAsync(
+        string userId, int offset, int limit, AssistantSessionListState state, string? keyword, CancellationToken token)
     {
-        const string sql = """
-            SELECT TOP (@Limit) ID, USER_ID, TITLE, CREATED_AT, LAST_ACTIVE_AT, ARCHIVED_AT
-            FROM dbo.ASSISTANT_SESSION WITH (NOLOCK)
-            WHERE USER_ID = @UserId AND (@IncludeArchived = 1 OR ARCHIVED_AT IS NULL)
-            ORDER BY LAST_ACTIVE_AT DESC;
+        // 会话管理页要显示"这条会话有多少条消息"（判断哪些值得留下），所以在同一查询里聚合。
+        // 关键词只搜标题——会话没有别的人类可读字段。
+        const string filter = """
+            FROM dbo.ASSISTANT_SESSION s WITH (NOLOCK)
+            WHERE s.USER_ID = @UserId
+              AND ((@State = 0 AND s.ARCHIVED_AT IS NULL)
+                OR (@State = 1 AND s.ARCHIVED_AT IS NOT NULL)
+                OR @State = 2)
+              AND (@Keyword IS NULL OR s.TITLE LIKE @Keyword ESCAPE '\')
             """;
+        const string sql = $"""
+            SELECT s.ID, s.USER_ID, s.TITLE, s.CREATED_AT, s.LAST_ACTIVE_AT, s.ARCHIVED_AT,
+                   (SELECT COUNT(*) FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK) WHERE m.SESSION_ID = s.ID)
+            {filter}
+            ORDER BY s.LAST_ACTIVE_AT DESC, s.ID DESC
+            OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
+            """;
+        // 单独取总数：COUNT(*) OVER() 在"页越界返回空页"时拿不到总数，分页器会显示成 0。
+        const string countSql = $"SELECT COUNT(*) {filter};";
+
+        // 用户输入里的 LIKE 元字符要转义，否则搜 "100%" 会变成通配符匹配。
+        var pattern = string.IsNullOrWhiteSpace(keyword)
+            ? null
+            : $"%{keyword.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_").Replace("[", "\\[")}%";
+
+        void Bind(SqlCommand cmd)
+        {
+            cmd.Parameters.AddWithValue("@UserId", userId);
+            cmd.Parameters.AddWithValue("@State", (int)state);
+            cmd.Parameters.AddWithValue("@Keyword", (object?)pattern ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@Offset", Math.Max(offset, 0));
+            cmd.Parameters.AddWithValue("@Limit", Math.Clamp(limit, 1, 200));
+        }
+
         var items = new List<AssistantSessionDto>();
         await using var conn = connections.Create();
         await conn.OpenAsync(token);
-        await using var cmd = new SqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("@Limit", Math.Clamp(limit, 1, 100));
-        cmd.Parameters.AddWithValue("@UserId", userId);
-        cmd.Parameters.AddWithValue("@IncludeArchived", includeArchived ? 1 : 0);
-        await using var reader = await cmd.ExecuteReaderAsync(token);
-        while (await reader.ReadAsync(token))
+
+        await using (var cmd = new SqlCommand(sql, conn))
         {
-            items.Add(ReadSession(reader));
+            Bind(cmd);
+            await using var reader = await cmd.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                items.Add(ReadSession(reader));
+            }
         }
 
-        return items;
+        int total;
+        await using (var cmd = new SqlCommand(countSql, conn))
+        {
+            Bind(cmd);
+            total = Convert.ToInt32(await cmd.ExecuteScalarAsync(token));
+        }
+
+        return (items, total);
     }
 
     /// <inheritdoc />
@@ -129,10 +190,15 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
     /// <inheritdoc />
     public async Task<int> DeleteSessionAsync(string userId, long sessionId, CancellationToken token)
     {
+        // 守卫：只删已归档的会话。控制器已挡了一层，这里再挡一层——"取消归档"与"删除"并发交错时，
+        // SQL 里的条件才是最终裁决（否则可能删掉刚被取消归档的会话）。
         const string sql = """
             DELETE FROM dbo.ASSISTANT_MESSAGE
-            WHERE SESSION_ID IN (SELECT ID FROM dbo.ASSISTANT_SESSION WHERE ID = @Id AND USER_ID = @UserId);
-            DELETE FROM dbo.ASSISTANT_SESSION WHERE ID = @Id AND USER_ID = @UserId;
+            WHERE SESSION_ID IN (
+                SELECT ID FROM dbo.ASSISTANT_SESSION
+                WHERE ID = @Id AND USER_ID = @UserId AND ARCHIVED_AT IS NOT NULL);
+            DELETE FROM dbo.ASSISTANT_SESSION
+            WHERE ID = @Id AND USER_ID = @UserId AND ARCHIVED_AT IS NOT NULL;
             SELECT @@ROWCOUNT AS Deleted;
             """;
         await using var conn = connections.Create();
@@ -347,8 +413,9 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
         reader.GetString(2),
         ToUtc(reader.GetDateTime(3)),
         ToUtc(reader.GetDateTime(4)),
-        // 归档列只有会话查询会 SELECT（插入回显走的 OUTPUT 不带它），故按列数存在与否取值。
-        reader.FieldCount > 5 && !reader.IsDBNull(5) ? ToUtc(reader.GetDateTime(5)) : null);
+        // 末两列只有列表查询会 SELECT（插入回显走的 OUTPUT、单条查询都不带），故按列数存在与否取值。
+        reader.FieldCount > 5 && !reader.IsDBNull(5) ? ToUtc(reader.GetDateTime(5)) : null,
+        reader.FieldCount > 6 ? reader.GetInt32(6) : 0);
 
     private static AssistantMessageDto ReadMessage(SqlDataReader reader) => new(
         reader.GetInt64(0),

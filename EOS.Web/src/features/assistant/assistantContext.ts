@@ -6,6 +6,8 @@ import type { AssistantFormDraft } from './useChatStream'
 export const ASSISTANT_OPEN_KEY = 'erp-assistant-open'
 /** 助手全屏形态的路由：它是普通工作区标签页，所以能像统一工作台那样开成一个标签。 */
 export const ASSISTANT_PATH = '/assistant'
+/** 会话管理页的路由：同样是普通工作区标签页，与助手全屏页可并存、可深链。 */
+export const SESSION_ADMIN_PATH = '/assistant/sessions'
 
 /** 一条已渲染的消息。drafts / tools 由服务端或流式事件带上，不在前端派生。 */
 export interface Bubble {

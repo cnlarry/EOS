@@ -35,6 +35,7 @@ import {
 } from './lazyRoutes'
 import { FieldAdminRoute, FormEditorRoute, ReportAdminRoute, ReportIdentityRoute, ReportViewerRoute, UnknownRoutePage, WorkbenchRoute } from './routeElements'
 import { AssistantPage } from '../features/assistant/AssistantPage'
+import { SessionAdminPage } from '../features/assistant/SessionAdminPage'
 import { withSuspense } from './suspense'
 
 /**
@@ -93,6 +94,8 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   { element: <RequirePermission permission={moduleReadPermission(2103)} />, children: [{ path: 'workflow/monitor', element: withSuspense(<FlowMonitorPage />) }] },
   // 助手全屏形态：普通工作区标签页（与半屏抽屉共用同一份会话，见 AssistantProvider）
   { path: 'assistant', element: <AssistantPage /> },
+  // 会话管理：同样是普通工作区标签页（历史会话一览 / 重命名 / 归档 / 已归档删除）
+  { path: 'assistant/sessions', element: <SessionAdminPage /> },
   { path: 'jobs', element: withSuspense(<JobPage />) },
   { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
   { path: 'settings/:table', element: withSuspense(<SystemSettingsPage />) },

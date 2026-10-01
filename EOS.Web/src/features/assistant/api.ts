@@ -13,18 +13,38 @@ import type {
   AssistantRecordActionPreview,
   AssistantRecordActionResult,
   AssistantSession,
+  AssistantSessionPage,
   KbDocument,
   SituationSnapshot,
 } from './types'
 
 /**
- * 列会话。默认只给在列的；`archived=true` 时把已归档的一并带出来
+ * 分页列会话。默认只给在列的；`archived=true` 时把已归档的一并带出来
  * （界面上"归档"代替了删除：会话从列表里收起来，历史一行不动）。
+ *
+ * `keyword` 由服务端按标题过滤（不是拿回全量在前端搜——那样分页与搜索会互相打架）。
  */
-export function listSessions(limit = 50, archived = false) {
-  // 必须是 true/false 字面量：ASP.NET Core 的 bool 绑定不认 0/1，传 0 会 400（而调用方
-  // 往往把失败静默成空列表，很难查）。
-  return apiClient.get<AssistantSession[]>('/assistant/sessions', { query: { limit, archived: archived ? 'true' : 'false' } })
+export function listSessions(params: {
+  offset?: number
+  limit?: number
+  /** 视图：在列 / 只看已归档 / 全部。由服务端过滤——前端自己筛会让分页与总数都不准。 */
+  state?: 'active' | 'archived' | 'all'
+  keyword?: string
+} = {}) {
+  const { offset = 0, limit = 50, state = 'active', keyword = '' } = params
+  return apiClient.get<AssistantSessionPage>('/assistant/sessions', {
+    query: { offset, limit, state, keyword: keyword.trim() || undefined },
+  })
+}
+
+/**
+ * 永久删除会话（连消息一并删，不可恢复）。
+ *
+ * **只对已归档会话有效**：服务端强制，未归档会返回 400 `SESSION_NOT_ARCHIVED`。
+ * 界面上"先归档、再删除"是两步，为的就是不让手滑删掉还在用的会话。
+ */
+export function deleteSession(sessionId: string) {
+  return apiClient.delete<void>(`/assistant/sessions/${sessionId}`)
 }
 
 export function createSession() {

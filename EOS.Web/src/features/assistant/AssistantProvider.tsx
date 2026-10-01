@@ -87,7 +87,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   const refreshSessions = useCallback(async () => {
     try {
-      const items = await listSessions(50, showArchived)
+      const { items } = await listSessions({ limit: 50, state: showArchived ? 'all' : 'active' })
       setSessions(items)
       return items
     } catch {
@@ -97,7 +97,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   // 会话列表：Provider 常驻，挂载时拉一次；「显示已归档」一开一关再拉（过滤的真源在服务端查询里）
   useEffect(() => {
-    void listSessions(50, showArchived).then((items) => {
+    void listSessions({ limit: 50, state: showArchived ? 'all' : 'active' }).then(({ items }) => {
       setSessions(items)
       setSessionId((current) => current ?? items[0]?.id ?? null)
     }).catch(() => undefined)

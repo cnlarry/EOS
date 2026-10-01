@@ -20,7 +20,8 @@ public sealed class AssistantChatGovernanceTests
         public Task<AssistantSessionDto> CreateSessionAsync(string userId, CancellationToken token) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<AssistantSessionDto>> ListSessionsAsync(string userId, int limit, bool includeArchived, CancellationToken token) =>
+        public Task<(IReadOnlyList<AssistantSessionDto> Items, int Total)> ListSessionsAsync(
+            string userId, int offset, int limit, AssistantSessionListState state, string? keyword, CancellationToken token) =>
             throw new NotSupportedException();
 
         public Task<int> RenameSessionAsync(string userId, long sessionId, string title, CancellationToken token) =>

@@ -212,9 +212,10 @@ function installFetchMock(options: {
       return new Promise<Response>(resolve => setTimeout(() => resolve(body), options.messagesDelayMs))
     }
     if (url.includes('/assistant/sessions')) {
-      return method === 'POST'
-        ? jsonResponse({ id: '42', userId: 'u1', title: '新会话', createdAt: '', lastActiveAt: '' })
-        : jsonResponse(options.sessions ?? [])
+      if (method === 'POST') return jsonResponse({ id: '42', userId: 'u1', title: '新会话', createdAt: '', lastActiveAt: '' })
+      // 列表响应是分页对象：总数跟过滤后的条数一致（管理页与下拉都用它）
+      const items = options.sessions ?? []
+      return jsonResponse({ items, total: items.length })
     }
     return jsonResponse({})
   })
