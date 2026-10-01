@@ -32,9 +32,12 @@ export function listSessions(params: {
   keyword?: string
 } = {}) {
   const { offset = 0, limit = 50, state = 'active', keyword = '' } = params
-  return apiClient.get<AssistantSessionPage>('/assistant/sessions', {
+  return apiClient.get<AssistantSessionPage | AssistantSession[]>('/assistant/sessions', {
     query: { offset, limit, state, keyword: keyword.trim() || undefined },
   })
+    // 归一化：接口改成 {items,total} 之前返回的是裸数组。前后端滚动更新期间（前端已发布、后端还没重启）
+    // 会读到旧形状——不兜住的话解构出来是 undefined，`items[0]` 会把整个助手连工作区一起弄白屏。
+    .then(data => (Array.isArray(data) ? { items: data, total: data.length } : data))
 }
 
 /**
