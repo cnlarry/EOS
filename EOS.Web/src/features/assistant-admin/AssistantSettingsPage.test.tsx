@@ -35,7 +35,7 @@ function settingItem(overrides: Partial<Record<string, unknown>> = {}) {
   }
 }
 
-function installFetchMock(options: { items?: unknown[]; problems?: string[] } = {}) {
+function installFetchMock(options: { items?: unknown[]; problems?: string[]; failKeys?: string[] } = {}) {
   const calls: FetchCall[] = []
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
@@ -58,6 +58,13 @@ function installFetchMock(options: { items?: unknown[]; problems?: string[] } = 
             }),
           ],
           problems: options.problems ?? [],
+        })
+      }
+      // 指定某个键写入失败：用来钉住"没存进去的那一项必须留在待保存里"
+      if ((options.failKeys ?? []).some(key => url.includes(`/settings/${key}`))) {
+        return new Response(JSON.stringify({ code: 'INVALID_ARGUMENT', message: '值不合法。' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
         })
       }
       return new Response(null, { status: 204 })
@@ -105,18 +112,22 @@ describe('AssistantSettingsPage', () => {
     expect(screen.getByText(/上次由 admin 于/)).toBeInTheDocument()
   })
 
-  it('保存写回该键，且未改动时保存按钮不可点', async () => {
+  it('保存是整页一个动作：改完点右上角那颗保存，才写回该键', async () => {
     const harness = installFetchMock()
 
     renderPage()
     const input = await screen.findByLabelText('每人日上限（元）')
-    // 按行定位：每一行都有自己的保存按钮（改哪条存哪条），不能全局找
     const row = input.closest('section')!
-    // 草稿没变就不该能保存：避免一次毫无意义的写库
-    expect(within(row).getByRole('button', { name: '保存' })).toBeDisabled()
+    // 行内不再有自己的"保存"按钮——保存只有右上角那一个（与"刷新"并排）
+    expect(within(row).queryByRole('button', { name: /^保存/ })).toBeNull()
+    // 没有改动时不可点：避免一次毫无意义的写库
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
 
     fireEvent.change(input, { target: { value: '8.5' } })
-    fireEvent.click(within(row).getByRole('button', { name: '保存' }))
+    // 改过哪一项要能在行里看出来，否则一排输入框里不知道动过哪些
+    expect(within(row).getByText('未保存')).toBeInTheDocument()
+    // 按钮上的数字就是"待保存几项"
+    fireEvent.click(screen.getByRole('button', { name: '保存（1）' }))
 
     await waitFor(() => expect(
       harness.calls.some(call => call.method === 'PUT' && call.url.includes('/settings/UserDailyCapYuan')),
@@ -127,6 +138,55 @@ describe('AssistantSettingsPage', () => {
     await waitFor(() => expect(
       harness.calls.filter(call => call.method === 'GET' && call.url.includes('/settings')).length,
     ).toBeGreaterThanOrEqual(2))
+    // 存进去了就不该再挂着"未保存"
+    await waitFor(() => expect(screen.queryByText('未保存')).toBeNull())
+  })
+
+  it('一次改多项，点一次保存全部写回', async () => {
+    const harness = installFetchMock()
+
+    renderPage()
+    const cap = await screen.findByLabelText('每人日上限（元）')
+    fireEvent.change(cap, { target: { value: '9' } })
+    fireEvent.click(screen.getByLabelText('会话结束自动提炼记忆'))
+
+    fireEvent.click(screen.getByRole('button', { name: '保存（2）' }))
+
+    await waitFor(() => {
+      const written = harness.calls.filter(call => call.method === 'PUT').map(call => call.url)
+      expect(written.some(url => url.includes('/settings/UserDailyCapYuan'))).toBe(true)
+      expect(written.some(url => url.includes('/settings/EnableAutoDistill'))).toBe(true)
+    })
+  })
+
+  it('没存进去的那一项要留在待保存里——失败不能被当成成功一起清掉', async () => {
+    const harness = installFetchMock({ failKeys: ['UserDailyCapYuan'] })
+
+    renderPage()
+    const cap = await screen.findByLabelText('每人日上限（元）')
+    fireEvent.change(cap, { target: { value: '9' } })
+    fireEvent.click(screen.getByLabelText('会话结束自动提炼记忆'))
+    fireEvent.click(screen.getByRole('button', { name: '保存（2）' }))
+
+    await waitFor(() => expect(harness.calls.filter(call => call.method === 'PUT')).toHaveLength(2))
+    // 存进去的那一项归位、失败的那一项仍标着"未保存"（草稿留着，用户改完能直接重试）
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存（1）' })).toBeEnabled())
+    expect(document.querySelectorAll('.badge.bg-warning-lt')).toHaveLength(1)
+  })
+
+  it('设置项放在自己的滚动容器里——它们比一屏高，不能把下方项裁掉', async () => {
+    installFetchMock()
+
+    renderPage()
+    await screen.findByText('每人日上限（元）')
+
+    const body = document.querySelector('.erp-assistant-settings-body') as HTMLElement | null
+    expect(body).not.toBeNull()
+    // 命令栏（保存/刷新）与页头必须在滚动容器**之外**：否则往下滚就找不着保存按钮了
+    expect(body!.querySelector('.erp-list-command-bar')).toBeNull()
+    expect(body!.querySelector('.card-header')).toBeNull()
+    expect(within(body!).getByText('系统提示词')).toBeInTheDocument()
+    expect(within(body!).getByText('会话结束自动提炼记忆')).toBeInTheDocument()
   })
 
   it('恢复默认走 DELETE（服务端删掉覆盖行，而不是存空串）', async () => {
@@ -145,11 +205,17 @@ describe('AssistantSettingsPage', () => {
     ).toBe(true))
   })
 
-  it('布尔项点了即时保存，不用再按保存', async () => {
+  it('布尔项也走同一颗保存按钮，不再点了就写库', async () => {
     const harness = installFetchMock()
 
     renderPage()
     fireEvent.click(await screen.findByLabelText('会话结束自动提炼记忆'))
+
+    // 点了只是改了草稿：这一页的约定是"改完一起保存"
+    expect(harness.calls.some(call => call.method === 'PUT')).toBe(false)
+    expect(screen.getByRole('button', { name: '保存（1）' })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: '保存（1）' }))
 
     await waitFor(() => expect(
       harness.calls.some(call => call.method === 'PUT' && call.url.includes('/settings/EnableAutoDistill')),
