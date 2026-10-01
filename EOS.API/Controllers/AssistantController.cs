@@ -59,19 +59,52 @@ public sealed class AssistantController(
 
     public sealed record ChatRequest(string Content, ChatContext? Context);
 
+    /// <summary>重命名会话。标题非空、超长按库内 <c>TITLE</c> 宽度（200）截断。</summary>
+    public sealed record RenameSessionRequest(string Title);
+
+    /// <summary>归档 / 取消归档。<c>Archived</c> 缺省视为 <c>true</c>——空 body 不该把会话"取消归档"。</summary>
+    public sealed record ArchiveSessionRequest(bool? Archived);
+
     [HttpGet("sessions")]
-    public async Task<IActionResult> ListSessions([FromQuery] int limit = 50, CancellationToken token = default)
-        => Ok(await repository.ListSessionsAsync(userContext.UserId, limit, token));
+    public async Task<IActionResult> ListSessions(
+        [FromQuery] int limit = 50, [FromQuery] bool archived = false, CancellationToken token = default)
+        => Ok(await repository.ListSessionsAsync(userContext.UserId, limit, archived, token));
 
     [HttpPost("sessions")]
     public async Task<IActionResult> CreateSession(CancellationToken token)
         => Ok(await repository.CreateSessionAsync(userContext.UserId, token));
 
+    /// <summary>
+    /// 删除会话（连消息一并删）。
+    /// <para>
+    /// **界面已不提供这个动作**：误删即永久丢历史，产品决定改用「归档」（会话不出现在列表里、
+    /// 数据完整保留、可随时取消归档）。端点保留给运维与测试清理，不作为用户界面能力。
+    /// </para>
+    /// </summary>
     [HttpDelete("sessions/{sessionId:long}")]
     public async Task<IActionResult> DeleteSession(long sessionId, CancellationToken token)
     {
         var deleted = await repository.DeleteSessionAsync(userContext.UserId, sessionId, token);
         return deleted > 0 ? NoContent() : NotFound();
+    }
+
+    [HttpPut("sessions/{sessionId:long}/rename")]
+    public async Task<IActionResult> RenameSession(long sessionId, [FromBody] RenameSessionRequest request, CancellationToken token)
+    {
+        var title = request.Title?.Trim() ?? string.Empty;
+        if (title.Length == 0)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "会话标题不能为空。"));
+        }
+        var updated = await repository.RenameSessionAsync(userContext.UserId, sessionId, title[..Math.Min(title.Length, 200)], token);
+        return updated > 0 ? NoContent() : NotFound();
+    }
+
+    [HttpPut("sessions/{sessionId:long}/archive")]
+    public async Task<IActionResult> ArchiveSession(long sessionId, [FromBody] ArchiveSessionRequest? request, CancellationToken token)
+    {
+        var updated = await repository.ArchiveSessionAsync(userContext.UserId, sessionId, request?.Archived ?? true, token);
+        return updated > 0 ? NoContent() : NotFound();
     }
 
     [HttpGet("sessions/{sessionId:long}/messages")]

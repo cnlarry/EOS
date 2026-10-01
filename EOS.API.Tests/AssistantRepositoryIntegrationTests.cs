@@ -106,9 +106,9 @@ public sealed class AssistantRepositoryIntegrationTests : IDisposable
         Assert.Null(otherView);
 
         // 列表只含本人
-        var listA = await _repository.ListSessionsAsync("eosdev-assistant-test-a", 50, token);
+        var listA = await _repository.ListSessionsAsync("eosdev-assistant-test-a", 50, false, token);
         Assert.Contains(listA, s => s.Id == mine.Id);
-        var listB = await _repository.ListSessionsAsync("eosdev-assistant-test-b", 50, token);
+        var listB = await _repository.ListSessionsAsync("eosdev-assistant-test-b", 50, false, token);
         Assert.DoesNotContain(listB, s => s.Id == mine.Id);
 
         // 删除后不可见
@@ -116,6 +116,39 @@ public sealed class AssistantRepositoryIntegrationTests : IDisposable
         Assert.Equal(1, deleted);
         _sessionIds.Remove(mine.Id);
         Assert.Null(await _repository.GetSessionAsync("eosdev-assistant-test-a", mine.Id, token));
+    }
+
+    /// <summary>
+    /// 重命名与归档。归档是"从列表里收起来"，不是"删掉"：默认列表看不到它，
+    /// 带 includeArchived 时仍在，标题与消息一律不动（可随时取消归档找回）。
+    /// </summary>
+    [Fact]
+    public async Task Session_Rename_And_Archive_Work()
+    {
+        if (ConnectionString.Value is null) return;
+        var token = CancellationToken.None;
+        const string user = "eosdev-assistant-test-a";
+
+        var session = await NewSessionAsync(user);
+
+        // 重命名：只动本会话，标题持久化
+        Assert.Equal(1, await _repository.RenameSessionAsync(user, session.Id, "十月采购对账", token));
+        Assert.Equal("十月采购对账", (await _repository.GetSessionAsync(user, session.Id, token))!.Title);
+        // 换个用户改不动（归属条件在 SQL 里，不是靠调用方传对 userId）
+        Assert.Equal(0, await _repository.RenameSessionAsync("eosdev-assistant-test-b", session.Id, "越权改名", token));
+
+        // 归档：默认列表不再出现，带 includeArchived 才出现；标题不变
+        Assert.Equal(1, await _repository.ArchiveSessionAsync(user, session.Id, true, token));
+        var archived = await _repository.GetSessionAsync(user, session.Id, token);
+        Assert.NotNull(archived!.ArchivedAt);
+        Assert.Equal("十月采购对账", archived.Title);
+        Assert.DoesNotContain(await _repository.ListSessionsAsync(user, 50, false, token), s => s.Id == session.Id);
+        Assert.Contains(await _repository.ListSessionsAsync(user, 50, true, token), s => s.Id == session.Id);
+
+        // 取消归档：回到默认列表
+        Assert.Equal(1, await _repository.ArchiveSessionAsync(user, session.Id, false, token));
+        Assert.Null((await _repository.GetSessionAsync(user, session.Id, token))!.ArchivedAt);
+        Assert.Contains(await _repository.ListSessionsAsync(user, 50, false, token), s => s.Id == session.Id);
     }
 
     [Fact]
