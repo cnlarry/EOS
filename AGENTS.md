@@ -323,3 +323,43 @@ pwsh docs/guide/_tools/check-freshness.ps1 -Strict
 
 - 用 `rg` / grep 时**限定目录**（`EOS.API/`、`EOS.Web/src/`、`docs/`），
   排除 `logs/`、`node_modules/`、`bin/`、`obj/`——全仓递归检索会因体量与 IO 超时。
+
+### 浏览器工具（Playwright MCP）
+
+做 UI 冒烟与页面实测时会用到浏览器工具。它在**本机装好一次**即可长期可用；起不来时按下面的顺序定位——
+**先查"谁在跑"，再查"缺什么"**：多数故障不是"没装浏览器"，而是"版本对不上"。
+
+**症状**：调用浏览器工具报
+`Executable doesn't exist at …\ms-playwright\chromium-<N>\chrome-win64\chrome.exe`。
+
+**根因**：Playwright 的**包版本与浏览器 build 号是死绑的**，各版本互不共用。MCP 服务用哪一份
+`playwright-core`，就只认它自己声明的那一个 build 号；本机 `ms-playwright` 里装的往往是另一个号
+（装过多个工具时各自缓存不同版本，很常见）。
+
+**三步定位**（均为只读，先做第 1 步）：
+
+1. **谁在跑**：列出 node 进程的命令行，看**真实启动的包与参数**
+   （`Get-CimInstance Win32_Process -Filter "Name='node.exe'"` 后筛含 `mcp` 的行）。
+   这一步最容易被跳过——IDE 里显示的 MCP 名字未必等于实际进程。
+2. **它要哪个 build**：在 npx 缓存里找该包的 `playwright-core/browsers.json`，读 `chromium.revision`。
+3. **本机有什么**：列 `%LOCALAPPDATA%\ms-playwright` 的目录名（形如 `chromium-<N>`）。
+
+三者对不上，即根因。
+
+**两种修法**：
+
+- **首选：让它用系统浏览器**（零下载、且不受版本漂移影响）。系统装过 Chrome / Edge 即可：
+  官方 `@playwright/mcp` 加启动参数 `--browser chrome`；
+  `@executeautomation/playwright-mcp-server` 用环境变量 `CHROME_EXECUTABLE_PATH` 指向 `chrome.exe`。
+- **备选：补装缺的那个 build**：`npx -y playwright@<该 revision 对应的版本> install chromium`（数百 MB）。
+  注意 **MCP 升级后会再换 build 号**，这条路需要反复维护。
+
+**两个容易踩的坑**：
+
+- **配置可能在用户级而非项目级**：`~/.codebuddy/mcp.json` 与仓库内 `.codebuddy/mcp.json` 可能各定义一份，
+  **实际生效的未必是你改的那一份**。改之前先按第 1 步确认进程用的是哪份。
+- **改完要重启 IDE / 重连 MCP**：配置只在 server 启动时读取。
+
+**窗口尺寸**：`navigate` 的 `width` / `height` **只在浏览器首次启动时生效**，之后要改视口得用 `resize`。
+若把视口设成整块屏幕的尺寸，浏览器窗口（还要占标题栏）放不下，表现为**右侧与下边被裁、
+固定在右下角的浮球看不见**——这不是渲染缺陷，是窗口比视口小。给一个小于屏幕的尺寸即可。
