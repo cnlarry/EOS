@@ -14,7 +14,7 @@
 | `eos-commit` | 自建 | 在用 |
 | `eos-db-objects` | 自建 | 在用 |
 | `eos-security-check` | 自建 | 在用 |
-| `eos-publish` | 自建 | **已退役**——墓碑说明；其正文引用的资产属"已退役"口径 |
+| `eos-release` | 自建 | **在用（唯一发布技能）**——判定版本号 → CHANGELOG 定稿 → 打标签 → 推送 → 建 GitHub Release；取代已删除的 `eos-publish` |
 | `tdd` | [mattpocock/skills](https://github.com/mattpocock/skills) @ `6654f6b` | 在用（第三方，MIT） |
 | `diagnosing-bugs` | 同上 | 在用（第三方） |
 | `code-review` | 同上 | 在用（第三方） |
@@ -28,6 +28,9 @@
 | 资产 | 口径 | 说明 |
 |---|---|---|
 | `docs/status.md` | 本机 | 现状事实源；`docs/` 未整体纳入版本控制，别人克隆里没有 |
+| `AGENTS.local.md` | 本机 | 维护者本机指引（含发布相关的多 Agent 并行规范）；由 `.git/info/exclude` 排除，不随仓库分发 |
+| `scripts/publish-release.ps1` | 相对 | 实际位于 `.agents/skills/eos-release/scripts/`，正文与 README 按技能目录相对书写（文件名带连字符，抽取正则会把长名截断，故登记口径） |
+| `.agents/reservations/` | 本机 | 共享文件编辑锁目录（运行时协调状态，被 `.git/info/exclude` 排除，不随仓库分发） |
 | `docs/plans/` | 本机 | 内部计划目录，不随仓库分发 |
 | `docs/migrations/update.sql` | 本机 | 已冻结的库升级史，不随仓库分发 |
 | `logs/goal/regression/` | 本机 | 回归报告落盘位置，运行时产物 |
@@ -37,6 +40,7 @@
 | `docs/agents/issue-tracker.md` | 外部 | 第三方技能 `code-review` 的 setup 占位，须运行其自身 setup 才有 |
 | `scripts/hitl-loop.template.sh` | 相对 | 实际位于 `.agents/skills/diagnosing-bugs/scripts/`，正文按技能目录相对书写 |
 | `agents/openai.yaml` | 相对 | 技能子目录内的工具专属扩展，正文按技能目录相对书写 |
+| `../SKILL.md` | 相对 | 技能内 `references/` 正文回指同技能 `SKILL.md` 的写法，不指向仓库根 |
 | `ui-reference` | 已退役 | 参考系统截图/资料目录，已于 2026-09-29 删除；技能 README 只在"已删除"的陈述里提到它 |
 
 **口径含义**：
@@ -54,6 +58,8 @@
 | 片段 | 说明 |
 |---|---|
 | `git` | 命令行工具 |
+| `origin` | git 远端名（如 `origin/main`），不是仓库路径 |
+| `bin` | 构建产物目录（如项目内的 `bin/Debug/net10.0/`），不随仓库分发 |
 | `gh` | GitHub CLI |
 | `npm` | 前端包管理器 |
 | `pnpm` | 前端包管理器 |
