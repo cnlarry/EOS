@@ -23,6 +23,9 @@ public enum AssistantSessionSort
 
     /// <summary>消息数。</summary>
     Messages = 3,
+
+    /// <summary>累计 token 消耗。</summary>
+    Tokens = 4,
 }
 
 /// <summary>
@@ -75,6 +78,11 @@ public sealed class AssistantAdminRepository(DbConnectionFactory connections) : 
     private const string MessageCountExpr =
         "(SELECT COUNT(*) FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK) WHERE m.SESSION_ID = s.ID)";
 
+    /// <summary>会话累计 token 的聚合子查询（prompt + completion，任一为 null 按 0 计）。</summary>
+    private const string MessageTokensExpr =
+        "(SELECT ISNULL(SUM(ISNULL(m.PROMPT_TOKENS, 0) + ISNULL(m.COMPLETION_TOKENS, 0)), 0) "
+        + "FROM dbo.ASSISTANT_MESSAGE m WITH (NOLOCK) WHERE m.SESSION_ID = s.ID)";
+
     /// <summary>
     /// 排序列的服务端映射。**列名永远来自这里**，调用方只能传枚举，
     /// 所以不存在"把用户输入拼进 ORDER BY"的注入面。
@@ -87,6 +95,8 @@ public sealed class AssistantAdminRepository(DbConnectionFactory connections) : 
         (AssistantSessionSort.Created, false) => "s.CREATED_AT DESC",
         (AssistantSessionSort.Messages, true) => $"{MessageCountExpr} ASC",
         (AssistantSessionSort.Messages, false) => $"{MessageCountExpr} DESC",
+        (AssistantSessionSort.Tokens, true) => $"{MessageTokensExpr} ASC",
+        (AssistantSessionSort.Tokens, false) => $"{MessageTokensExpr} DESC",
         (_, true) => "s.LAST_ACTIVE_AT ASC",
         // 默认：最近活跃在前。ID 兜底，保证同值行的顺序稳定（分页才不会漏行或重行）
         _ => "s.LAST_ACTIVE_AT DESC",
@@ -98,8 +108,12 @@ public sealed class AssistantAdminRepository(DbConnectionFactory connections) : 
         AssistantSessionSort sort, bool ascending, CancellationToken token)
     {
         // 与个人侧同构，只有一处刻意不同：**没有 s.USER_ID = @UserId**，换成可选的 @Owner 过滤。
+        // 两个 LEFT JOIN 取归属用户姓名（USER_ID → SYSDL.EMP_ID → SYSDN.EMP_NAME）：都是 1:1，
+        // 不会放大行数，COUNT 也照样准；账号不在 SYSDL 里（如测试账号）时姓名为 null，界面回落显示账号。
         const string filter = """
             FROM dbo.ASSISTANT_SESSION s WITH (NOLOCK)
+            LEFT JOIN dbo.SYSDL d WITH (NOLOCK) ON d.USER_ID = s.USER_ID
+            LEFT JOIN dbo.SYSDN n WITH (NOLOCK) ON n.EMP_ID = d.EMP_ID
             WHERE ((@State = 0 AND s.ARCHIVED_AT IS NULL)
                 OR (@State = 1 AND s.ARCHIVED_AT IS NOT NULL)
                 OR @State = 2)
@@ -108,7 +122,7 @@ public sealed class AssistantAdminRepository(DbConnectionFactory connections) : 
             """;
         var sql = $"""
             SELECT s.ID, s.USER_ID, s.TITLE, s.CREATED_AT, s.LAST_ACTIVE_AT, s.ARCHIVED_AT,
-                   {MessageCountExpr}
+                   {MessageCountExpr}, {MessageTokensExpr}, n.EMP_NAME
             {filter}
             ORDER BY {OrderByClause(sort, ascending)}, s.ID DESC
             OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;

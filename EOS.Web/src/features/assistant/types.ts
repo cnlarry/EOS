@@ -16,6 +16,13 @@ export interface AssistantSession {
   archivedAt?: string | null
   /** 消息条数（只有列表接口聚合出来；管理页用它判断哪些会话有内容）。 */
   messageCount?: number
+  /** 该会话累计消耗的 token（prompt + completion 之和，只有管理侧列表会算）。 */
+  messageTokens?: number
+  /**
+   * 归属用户的姓名（管理侧列表经 SYSDL/SYSDN 取出）。`userId` 是账号/编号，
+   * 看列表的人要的是"这是谁的会话"；取不到时为 null，界面回落显示账号。
+   */
+  employeeName?: string | null
 }
 
 export type AssistantRole = 1 | 2 | 3 // 1=USER 2=ASSISTANT 3=SYSTEM

@@ -180,6 +180,7 @@ public sealed class AssistantAdminController(
         "title" => AssistantSessionSort.Title,
         "created" or "createdat" => AssistantSessionSort.Created,
         "messages" or "messagecount" => AssistantSessionSort.Messages,
+        "tokens" or "messagetokens" => AssistantSessionSort.Tokens,
         _ => AssistantSessionSort.LastActive,
     };
 }

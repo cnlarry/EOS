@@ -137,11 +137,19 @@ public sealed class AssistantAdminRepositoryIntegrationTests : IDisposable
 
         var session = await NewSessionAsync(user, token);
         await _personal.AddUserMessageAsync(user, session.Id, "甲：采购单主表是哪张？", "c-admin", token);
+        await _personal.AddAssistantMessageAsync(
+            user, session.Id, "乙：PUR_RECEIVE_H。", "test-model", 100, 50, 1200, "c-admin", token);
 
         var active = await ListActiveAsync(null, token);
         var mine = active.Items.Single(s => s.Id == session.Id);
-        Assert.Equal(1, mine.MessageCount);
+        Assert.Equal(2, mine.MessageCount);
         Assert.Equal(user, mine.UserId);
+
+        // token 聚合：prompt 100 + completion 50
+        Assert.Equal(150, mine.MessageTokens);
+
+        // 姓名：测试账号不在 SYSDL 里，取不到就该是 null（界面回落显示账号），而不是空串或抛错
+        Assert.Null(mine.EmployeeName);
 
         // 归档后：默认视图看不到它，已归档视图看得到，且该视图里每一行都是已归档
         Assert.Equal(1, await _admin.ArchiveSessionAsync(session.Id, true, token));
