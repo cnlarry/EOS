@@ -89,7 +89,9 @@ public sealed class DeepSeekChatModel(
         {
             payload["max_tokens"] = maxTokens;
         }
-        if (tools is { Count: > 0 })
+        // 模型不支持工具调用时**不能**带 tools 过去：厂商会直接报参数不合法，而错误信息里看不出
+        // 真正的原因是"这个模型不支持工具"。能力来自模型行上的 SUPPORTS_TOOLS。
+        if (config.SupportsTools && tools is { Count: > 0 })
         {
             payload["tools"] = tools.Select(t => new
             {

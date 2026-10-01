@@ -23,9 +23,25 @@ public sealed class AssistantCostOptions
 
 public static class AssistantCost
 {
-    public static double Calculate(long promptTokens, long completionTokens, AssistantCostOptions options) =>
-        promptTokens / 1_000_000.0 * options.InputPerMillionYuan
-        + completionTokens / 1_000_000.0 * options.OutputPerMillionYuan;
+    /// <summary>
+    /// 计价。<paramref name="inputPerMillion"/> / <paramref name="outputPerMillion"/> 是**当前模型的单价**
+    /// （模型行上配的），留空则退回 <paramref name="options"/> 里的全局兜底价。
+    ///
+    /// <para>
+    /// 之所以要按模型算：不同模型单价可以差十倍，而限额熔断（日上限、预留/结算）判定的就是"钱"。
+    /// 用一套全局单价去判所有模型，等于把限额变成了一个跟实际花费无关的数字。
+    /// </para>
+    ///
+    /// <para>
+    /// 留空退回兜底、而不是按 0 元算，是刻意的：0 元会让 <c>SPENT + RESERVED &lt;= CAP</c> 永远成立，
+    /// 日上限就废了。
+    /// </para>
+    /// </summary>
+    public static double Calculate(
+        long promptTokens, long completionTokens, AssistantCostOptions options,
+        decimal? inputPerMillion = null, decimal? outputPerMillion = null) =>
+        promptTokens / 1_000_000.0 * (double)(inputPerMillion ?? (decimal)options.InputPerMillionYuan)
+        + completionTokens / 1_000_000.0 * (double)(outputPerMillion ?? (decimal)options.OutputPerMillionYuan);
 }
 
 /// <summary>

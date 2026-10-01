@@ -3,8 +3,15 @@ using Microsoft.Extensions.Options;
 
 namespace EOS.API.Features.Assistant.ModelAccess;
 
-/// <summary>当前生效的模型（来自数据库里那一条 <c>IS_ACTIVE = 1</c> 的记录）。</summary>
-public sealed record ResolvedAssistantModel(int ModelId, string DisplayName, AssistantSettings Settings);
+/// <summary>当前生效的模型（来自数据库里那一条 <c>IS_ACTIVE = 1</c> 的记录）及其所属供应商。</summary>
+public sealed record ResolvedAssistantModel(
+    int ModelId,
+    string DisplayName,
+    string ModelCode,
+    int ProviderId,
+    string ProviderCode,
+    string ProviderDisplayName,
+    AssistantSettings Settings);
 
 /// <summary>
 /// 助手"当前用哪个模型"的唯一权威来源。
@@ -48,10 +55,17 @@ public sealed class AssistantModelRegistry(
     {
         try
         {
-            var row = await catalog.GetActiveAsync(token);
-            _active = row is null
+            var active = await catalog.GetActiveAsync(token);
+            _active = active is null
                 ? null
-                : new ResolvedAssistantModel(row.ModelId, row.DisplayName, Build(row));
+                : new ResolvedAssistantModel(
+                    active.Model.ModelId,
+                    active.Model.DisplayName,
+                    active.Model.ModelCode,
+                    active.Provider.ProviderId,
+                    active.Provider.Code,
+                    active.Provider.DisplayName,
+                    Build(active));
         }
         catch (Exception ex)
         {
@@ -67,18 +81,25 @@ public sealed class AssistantModelRegistry(
     /// 系统提示词与成本限额仍来自配置——换个模型不该把提示词和额度口径一起换掉。
     /// </para>
     /// </summary>
-    private AssistantSettings Build(AssistantModelRow row)
+    private AssistantSettings Build(AssistantActiveModel active)
     {
         var baseSettings = fallback.Value;
+        var model = active.Model;
         return new AssistantSettings
         {
-            BaseUrl = row.BaseUrl,
-            Model = row.ModelName,
+            // 端点与密钥来自**供应商**：一个供应商一个端点、一把密钥，通吃它下面所有模型
+            BaseUrl = active.Provider.BaseUrl,
+            Model = model.ModelCode,
             // 密钥此刻从环境变量读；库里存的那一位只是变量名
-            ApiKey = secrets.Read(row.ApiKeyEnvVar) ?? string.Empty,
-            TimeoutSeconds = row.TimeoutSeconds,
-            Temperature = row.Temperature,
-            MaxTokens = row.MaxTokens,
+            ApiKey = secrets.Read(active.Provider.ApiKeyEnvVar) ?? string.Empty,
+            // 模型行可以覆盖供应商的默认超时（推理模型首次响应慢，往往要单独调大）
+            TimeoutSeconds = model.TimeoutSeconds ?? active.Provider.TimeoutSeconds,
+            Temperature = model.DefaultTemperature,
+            MaxTokens = model.MaxOutputTokens,
+            ContextWindow = model.ContextWindow,
+            SupportsTools = model.SupportsTools,
+            InputPerMillionYuan = model.InputPerMillionYuan,
+            OutputPerMillionYuan = model.OutputPerMillionYuan,
             EnableAutoDistill = baseSettings.EnableAutoDistill,
             Cost = baseSettings.Cost,
             SystemPrompt = baseSettings.SystemPrompt,
