@@ -19,12 +19,19 @@ EOS 发布脚本：跑门禁 → 校验版本一致性 → 升 version.json → 
   ② 产物：CHANGELOG 草稿与 MANIFEST 自动带上"自上个标签起新增的迁移编号区间与数量"。
 连库只读（一条 SELECT），连不上即失败；-DryRun 下跳过该项。
 
-脚本刻意不做的事：不自动 git push、不部署、不重启服务、不改库。推送与否由人决定。
+脚本刻意不做的事：不自动 git push、不部署、不重启服务、不改库。推送与否由人决定
+（推送与建 GitHub Release 由 `.agents/skills/eos-release/scripts/` 下的发布助手接管）。
+
+流程共 9 步（每步失败即停，退出码 1）：0 仓库前置 → 1 迁移门禁 → 2 编译与静态检查 →
+3 手册新鲜度（默认仅提示）→ 4 版本判定 → 5 CHANGELOG 节 → 6 写 version.json/CHANGELOG →
+7 产物与清单 → 8 打标签。
 
 .EXAMPLE
 pwsh scripts/release.ps1 -DryRun                 # 只看会怎么涨、会生成什么，不写任何文件
 pwsh scripts/release.ps1 -Bump minor             # 升 MINOR 并生成 CHANGELOG 节
 pwsh scripts/release.ps1 -Bump minor -Tag        # 再打附注标签 v<version>
+# 服务在跑时的常规发布（产物落到仓库外，避开被锁的 bin）：
+pwsh scripts/release.ps1 -Bump auto -Tag -BuildOutput "$env:TEMP\eos-release-build"
 pwsh scripts/release.ps1 -DryRun -SkipBuild -SkipMigrationGate   # 只验提交分析与草稿文本
 #>
 param(
@@ -33,7 +40,14 @@ param(
     [switch]$Tag,
     [switch]$DryRun,
     [switch]$SkipBuild,
-    [switch]$SkipMigrationGate
+    [switch]$SkipMigrationGate,
+    # 把 API 构建产物落到仓库外的目录。运行中的 EOS.API 会锁住 bin/Debug 下的
+    # EOS.API.exe，默认构建因此报 MSB3027/MSB3021（拷贝失败，不是编译失败）；
+    # 指定本参数后构建照常做、只是不往被锁的目录写，门禁的判别力得以保留。
+    [string]$BuildOutput,
+    # 手册新鲜度默认**非阻断**（它是"该改没改文档"的提示，不是发布正确性的一部分：
+    # 文档在别的提交里落后，不该拦住一次已经就绪的发布）。加本开关恢复阻断语义。
+    [switch]$StrictGuide
 )
 
 $ErrorActionPreference = 'Stop'
@@ -312,7 +326,13 @@ try {
     Write-Step '2. 门禁（编译 + 静态检查）'
     if ($SkipBuild) { Skip '按参数跳过构建' }
     elseif ($script:exitCode -eq 0) {
-        dotnet build EOS.API/EOS.API.csproj --nologo -v:q | Out-Host
+        if ([string]::IsNullOrWhiteSpace($BuildOutput)) {
+            dotnet build EOS.API/EOS.API.csproj --nologo -v:q | Out-Host
+        }
+        else {
+            Write-Host "  产物输出目录（仓库外）：$BuildOutput" -ForegroundColor Gray
+            dotnet build EOS.API/EOS.API.csproj --nologo -v:q -o $BuildOutput | Out-Host
+        }
         if ($LASTEXITCODE -ne 0) { Fail 'dotnet build EOS.API 失败' }
         if ($script:exitCode -eq 0) {
             Push-Location EOS.Web
@@ -326,6 +346,19 @@ try {
         }
         if ($script:exitCode -eq 0) { Pass '编译与静态检查通过' }
     }
+
+    Write-Step '3. 开发手册新鲜度'
+    $freshness = (pwsh docs/guide/_tools/check-freshness.ps1 -Strict 2>&1 | Out-String).Trim()
+    $behind = @($freshness -split "`r?`n" | Where-Object { $_ -match '落后\s*(\d+)' } |
+        ForEach-Object { [int]([regex]::Match($_, '落后\s*(\d+)').Groups[1].Value) } | Select-Object -First 1)
+    if ($null -eq $behind) { $behind = 0 }
+    if ($behind -gt 0) {
+        if ($StrictGuide) { Fail "有 $behind 篇手册落后于其映射源码——同步后再发布（或去掉 -StrictGuide）" }
+        else {
+            Skip "有 $behind 篇手册落后于其映射源码——按变更范围同步后**并入发布提交**（见 .agents/skills/eos-release）"
+        }
+    }
+    else { Pass '手册与其映射源码同步（落后 0 篇）' }
 
     $current = Get-RepoVersion
     if ($script:exitCode -ne 0 -or [string]::IsNullOrWhiteSpace($current)) { return }
