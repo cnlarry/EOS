@@ -182,6 +182,9 @@ git status --porcelain                    # 应为空
 | `git push` / `gh` 报 `EOF`、`SSL connection could not be established` | 本机代理（Clash/mihomo）瞬断，重试即可；发布助手已带重试 |
 | `gh: command not found`（Agent 会话内） | 装 gh 后老进程 PATH 未刷新，用绝对路径 `C:\Program Files\GitHub CLI\gh.exe` |
 | 手册新鲜度报"落后 N 篇" | 见第六节：按本次范围补，不相干的列进结论 |
+| `gh` 报 `error validating token: missing required scope 'read:org'` | `gh auth login` 的校验会读组织列表，**硬性要求 `read:org`**（与有没有组织无关）。令牌补上该 scope 再登录 |
+| `gh auth login --with-token` 提示「GH_TOKEN environment variable is being used」 | 环境变量优先于 keyring，登录被拒。先清掉三处的 `GH_TOKEN`（`[Environment]::SetEnvironmentVariable('GH_TOKEN',$null,'User')` + `Remove-Item Env:GH_TOKEN`）并**新开终端**，再登录 |
+| `gh auth status` 显示 `The token in keyring is invalid` | keyring 里留下了坏凭据（常见于在 `GH_TOKEN` 存在时执行 `--with-token`）。重新 `gh auth login --with-token` 覆盖即可，**不必**先 logout |
 | 运行实例版本号没变 | 正常：要用户重启 `EOS.API` |
 
 ## 参考
