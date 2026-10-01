@@ -189,7 +189,7 @@ public sealed class AssistantChatGovernanceTests
         FakeRepo repo, ScriptedModel model, FakeUsage usage, FailureBreaker breaker,
         IAssistantMemoryStore? memoryStore = null) =>
         new(repo, model, new AssistantToolRegistry([]),
-            Options.Create(new AssistantSettings { SystemPrompt = "SYS" }),
+            AssistantTestRuntime.Fixed(new AssistantSettings { SystemPrompt = "SYS" }),
             NullLogger<ChatService>.Instance, memoryStore, usage, breaker);
 
     private static async Task<IReadOnlyList<ChatStreamEvent>> ChatAsync(ChatService service, int rounds = 1)

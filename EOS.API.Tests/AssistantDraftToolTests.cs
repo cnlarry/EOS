@@ -215,7 +215,7 @@ public sealed class AssistantDraftToolTests
         var permissions = new FakePermissions(Rights());
         var draftTool = new DraftRecordTool(gateway, permissions);
         var service = new ChatService(repo, model, new AssistantToolRegistry([draftTool]),
-            Options.Create(new AssistantSettings { SystemPrompt = "SYS" }), NullLogger<ChatService>.Instance);
+            AssistantTestRuntime.Fixed(new AssistantSettings { SystemPrompt = "SYS" }), NullLogger<ChatService>.Instance);
 
         var events = new List<ChatStreamEvent>();
         await foreach (var evt in service.StreamReplyAsync("u1", 7, "建单", null, "corr", CancellationToken.None))

@@ -109,7 +109,7 @@ public sealed class ChatServiceTests
     }
 
     private static ChatService CreateService(IChatModel model, FakeRepository repo) =>
-        new(repo, model, new AssistantToolRegistry([]), Options.Create(new AssistantSettings { SystemPrompt = "SYS" }), NullLogger<ChatService>.Instance);
+        new(repo, model, new AssistantToolRegistry([]), AssistantTestRuntime.Fixed(new AssistantSettings { SystemPrompt = "SYS" }), NullLogger<ChatService>.Instance);
 
     private static async Task<List<ChatStreamEvent>> CollectAsync(IAsyncEnumerable<ChatStreamEvent> stream)
     {
