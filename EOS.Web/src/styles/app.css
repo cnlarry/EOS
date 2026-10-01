@@ -1546,13 +1546,23 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   height: 100%;
   min-height: 0;
 }
-/* 全屏形态：落在工作区标签页里，占满标签内容区 */
+/* 全屏形态：落在工作区标签页里，占满标签内容区。
+   左右留白 + 页级卡片在这里给——其它页面都是"卡片浮在浅灰底上"（.erp-tab-panel 底色 + .card），
+   助手页若是一块贴边的裸面板，就成了全系统里唯一没有页框的页面。 */
 .erp-assistant-page {
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  padding: 0 10px;
+}
+.erp-assistant-page > .erp-assistant-panel {
+  flex: 1 1 auto;
+  min-height: 0;
   background: var(--tblr-bg-surface, #fff);
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-radius: var(--tblr-border-radius, 4px);
+  overflow: hidden;
 }
 
 .erp-assistant-header {
@@ -1565,6 +1575,10 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 }
 .erp-assistant-title { font-weight: 600; white-space: nowrap; }
 .erp-assistant-session-select { min-width: 0; flex: 1; }
+/* 重命名编辑态：必须与只读下拉一眼可分，否则点完看起来"什么都没发生"（最初的用户反馈） */
+.erp-assistant-rename { display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 0; }
+.erp-assistant-rename .form-control { min-width: 0; border-color: var(--tblr-primary, #206bc4); }
+.erp-assistant-rename .btn { padding: 2px 7px; font-size: 11px; line-height: 1.5; }
 .erp-assistant-menu { position: absolute; top: 100%; right: 0; z-index: 1090; }
 
 .erp-assistant-messages {
@@ -1614,8 +1628,17 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-assistant-situation-item:hover { border-color: var(--tblr-primary, #206bc4); }
 .erp-assistant-situation-caveat { font-size: 11px; color: var(--tblr-secondary, #6c757d); line-height: 1.45; }
 
-.erp-assistant-bubble {
+/* 消息行：气泡 + 气泡**外面**的操作区。宽度上限放在行上，气泡只负责自身外观与对齐 */
+.erp-assistant-message {
+  display: flex;
+  flex-direction: column;
   max-width: 88%;
+}
+.erp-assistant-message.is-user { align-self: flex-end; align-items: flex-end; }
+.erp-assistant-message.is-assistant { align-self: flex-start; align-items: flex-start; }
+
+.erp-assistant-bubble {
+  max-width: 100%;
   padding: 7px 11px;
   border-radius: 10px;
   font-size: 13px;
@@ -1623,7 +1646,6 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   word-break: break-word;
 }
 .erp-assistant-bubble.is-user {
-  align-self: flex-end;
   background: var(--tblr-primary, #206bc4);
   color: #fff;
   border-bottom-right-radius: 3px;
@@ -1631,21 +1653,37 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
   white-space: pre-wrap;
 }
 .erp-assistant-bubble.is-assistant {
-  align-self: flex-start;
   background: var(--tblr-bg-surface-secondary, #f6f8fb);
   border: 1px solid var(--tblr-border-color, #e6e7e9);
   border-bottom-left-radius: 3px;
   /* 极轻的投影：把助手回复与页面底色分出层次，不抢内容 */
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
-/* 用户气泡是主色底：幽灵按钮的灰字在这里等于看不见，按钮必须走白字 */
-.erp-assistant-bubble.is-user .btn {
-  color: rgba(255, 255, 255, 0.82);
+
+/* 气泡外的操作区：平时低调（看得见但不抢视线），指针进入这条消息才实显；
+   键盘 tab 进来也会实显（:focus-within），不让它成为只有鼠标才发现得了的功能。 */
+.erp-assistant-message-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 2px;
+  padding: 0 2px;
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
 }
-.erp-assistant-bubble.is-user .btn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.12);
+.erp-assistant-message:hover .erp-assistant-message-actions,
+.erp-assistant-message:focus-within .erp-assistant-message-actions { opacity: 1; }
+.erp-assistant-message-actions .btn {
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--tblr-secondary, #6c757d);
 }
+.erp-assistant-message-actions .btn:hover:not(:disabled) {
+  color: var(--tblr-primary, #206bc4);
+  background: none;
+}
+.erp-assistant-message-actions .btn:disabled { opacity: 0.7; }
 .erp-assistant-cursor { animation: erp-assistant-blink 1s steps(2) infinite; }
 @keyframes erp-assistant-blink { to { visibility: hidden; } }
 

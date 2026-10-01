@@ -132,7 +132,7 @@ export function AssistantDock() {
           <IconRobot size={26} />
         </button>
       )}
-      {open && (
+      {open && !onAssistantPage && (
         <aside ref={drawerRef} className="erp-assistant-drawer" aria-label="工作助手">
           <AssistantPanel variant="drawer" onExpand={expand} />
         </aside>

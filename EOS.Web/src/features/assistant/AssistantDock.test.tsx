@@ -587,14 +587,18 @@ describe('AssistantDock', () => {
     expect(harness.calls.some(call => call.method === 'DELETE')).toBe(false)
   })
 
-  it('导出会话：拉一次历史并触发 Markdown 下载', async () => {
+  it('导出会话：文件名与会话名称一致，并拉一次历史', async () => {
     localStorage.setItem('erp-assistant-open', 'true')
     const createObjectURL = vi.fn(() => 'blob:eos')
     const revokeObjectURL = vi.fn()
     Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true })
     Object.defineProperty(URL, 'revokeObjectURL', { value: revokeObjectURL, configurable: true })
+    // 拦下载点击：断言"交给浏览器的文件名"就是会话名（文件名不一致正是要修的点）
+    const downloaded: string[] = []
+    const originalClick = HTMLAnchorElement.prototype.click
+    HTMLAnchorElement.prototype.click = function () { downloaded.push(this.download) }
     const harness = installFetchMock({
-      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+      sessions: [{ id: '11', userId: 'u1', title: '十月采购对账', createdAt: '', lastActiveAt: '' }],
       messages: [
         {
           id: 'm1', sessionId: '11', role: 1, content: '采购单主表？',
@@ -604,13 +608,59 @@ describe('AssistantDock', () => {
       ],
     })
 
+    try {
+      renderDock()
+      fireEvent.click(await screen.findByRole('button', { name: '更多操作' }))
+      fireEvent.click(await screen.findByRole('button', { name: /导出为 Markdown/ }))
+
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalled())
+      expect(harness.calls.some(call => call.url.includes('/messages'))).toBe(true)
+      await waitFor(() => expect(downloaded).toContain('十月采购对账.md'))
+    } finally {
+      HTMLAnchorElement.prototype.click = originalClick
+    }
+  })
+
+  it('重命名：进入编辑态要看得出来（高亮输入框 + 确认/取消），回车才落库', async () => {
+    localStorage.setItem('erp-assistant-open', 'true')
+    const harness = installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+    })
+
     renderDock()
     fireEvent.click(await screen.findByRole('button', { name: '更多操作' }))
-    fireEvent.click(await screen.findByRole('button', { name: /导出为 Markdown/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '重命名' }))
 
-    await waitFor(() => expect(createObjectURL).toHaveBeenCalled())
-    expect(harness.calls.some(call => call.url.includes('/messages'))).toBe(true)
-    expect(revokeObjectURL).toHaveBeenCalled()
+    // 此前只是把下拉换成一个同尺寸输入框，用户点完觉得"没反应"——所以要有明确的确认/取消
+    const input = await screen.findByLabelText('会话标题')
+    expect(screen.getByRole('button', { name: '保存名称' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '取消重命名' })).toBeInTheDocument()
+    expect(harness.calls.some(call => call.method === 'PUT')).toBe(false)
+
+    fireEvent.change(input, { target: { value: '十月采购对账' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存名称' }))
+
+    await waitFor(() => expect(
+      harness.calls.some(call => call.method === 'PUT' && call.url.includes('/rename')),
+    ).toBe(true))
+    expect(harness.calls.find(call => call.method === 'PUT')?.body).toContain('十月采购对账')
+  })
+
+  it('重命名可取消：点取消不发请求，输入框收回', async () => {
+    localStorage.setItem('erp-assistant-open', 'true')
+    const harness = installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+    })
+
+    renderDock()
+    fireEvent.click(await screen.findByRole('button', { name: '更多操作' }))
+    fireEvent.click(await screen.findByRole('button', { name: '重命名' }))
+    fireEvent.change(await screen.findByLabelText('会话标题'), { target: { value: '改了但不保存' } })
+    fireEvent.click(screen.getByRole('button', { name: '取消重命名' }))
+
+    await waitFor(() => expect(screen.queryByLabelText('会话标题')).toBeNull())
+    expect(screen.getByRole('combobox', { name: '选择会话' })).toBeInTheDocument()
+    expect(harness.calls.some(call => call.method === 'PUT')).toBe(false)
   })
 
   it('半屏与全屏只是换壳：切形态时对话与工具卡都不丢', async () => {
@@ -642,10 +692,26 @@ describe('AssistantDock', () => {
     expect(screen.getByRole('button', { name: /查看模块说明/ })).toBeInTheDocument()
     // 全屏页里不再有"叫出助手"的浮球：助手已占满屏，形态同一时刻只该有一种
     expect(screen.queryByRole('button', { name: '打开工作助手' })).toBeNull()
+    // 全屏有这么宽，新建会话该是带文字的主按钮，不该还是个只有图标的幽灵按钮
+    expect(screen.getByRole('button', { name: '新建会话' })).toHaveTextContent('新会话')
 
     // 切回半屏：同样不丢（这里全屏侧的"半屏"按钮会收起标签、展开抽屉）
     fireEvent.click(screen.getByRole('button', { name: '半屏' }))
     await waitFor(() => expect(screen.getByRole('complementary')).not.toBeNull())
     expect(screen.getByText(/采购单的主表是/)).toBeInTheDocument()
+  })
+
+  it('深链直接进全屏页时不会同时冒出抽屉：形态同一时刻只有一种', async () => {
+    // 上一轮留在本地的抽屉状态是开着的——深链/刷新进来时不能因此半屏与全屏并存
+    localStorage.setItem('erp-assistant-open', 'true')
+    installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+    })
+
+    renderBothShells('/assistant')
+
+    await waitFor(() => expect(screen.queryByRole('complementary')).toBeNull())
+    expect(screen.queryByRole('button', { name: '打开工作助手' })).toBeNull()
+    expect(screen.getByRole('button', { name: '半屏' })).toBeInTheDocument()
   })
 })
