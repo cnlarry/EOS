@@ -22,5 +22,8 @@ public static class PermissionModules
 
         /// <summary>3103 知识库管理：读 = CanBrowse；删除文档 = CanEdit（入库仍走 2302 那条链路，不在此开放）。</summary>
         public const int Kb = 3103;
+
+        /// <summary>3102 模型与用量：读 = CanBrowse；增改模型 / 切换当前 / 写密钥 = CanSetup。</summary>
+        public const int ModelUsage = 3102;
     }
 }
