@@ -22,7 +22,9 @@ import type {
  * （界面上"归档"代替了删除：会话从列表里收起来，历史一行不动）。
  */
 export function listSessions(limit = 50, archived = false) {
-  return apiClient.get<AssistantSession[]>('/assistant/sessions', { query: { limit, archived: archived ? 1 : 0 } })
+  // 必须是 true/false 字面量：ASP.NET Core 的 bool 绑定不认 0/1，传 0 会 400（而调用方
+  // 往往把失败静默成空列表，很难查）。
+  return apiClient.get<AssistantSession[]>('/assistant/sessions', { query: { limit, archived: archived ? 'true' : 'false' } })
 }
 
 export function createSession() {

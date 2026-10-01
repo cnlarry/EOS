@@ -13,6 +13,7 @@ import { NavLink, UNSAFE_DataRouterContext, parsePath, useLocation, useNavigate,
 import { useAuth } from '../../features/auth/authContext'
 import type { NavigationItem } from '../../features/auth/types'
 import { AssistantDock } from '../../features/assistant/AssistantDock'
+import { AssistantProvider } from '../../features/assistant/AssistantProvider'
 import { useToast } from '../ui/toastContext'
 import { navigationIcons } from './navigationIcons'
 import { childPad, dotLeft, groupPad, lineSidebar } from './menuDepth'
@@ -494,7 +495,10 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     logoutNow()
   }, [logoutNow])
 
-  const workspaceNav = useMemo(() => ({ openTab }), [openTab])
+  /** 关闭当前活动标签：助手全屏形态"回到半屏"时用（首页常驻标签由 closeTab 内部挡掉） */
+  const closeActiveTab = useCallback(() => closeTab(workspaceRef.current.activeId), [closeTab])
+
+  const workspaceNav = useMemo(() => ({ openTab, closeActiveTab }), [openTab, closeActiveTab])
 
   /** 该次导航是否会丢弃活动标签的未保存改动：切标签、开新标签都不算 */
   const shouldBlock = useCallback((nextUrl: string) => {
@@ -888,7 +892,10 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
     })
   }, [])
 
+  // 助手的状态容器包住整棵树：半屏抽屉与全屏标签页共用同一份会话（切换形态不打断对话）。
+  // 缩进不改动，保持这次改动的 diff 只落在首尾两行。
   return (
+    <AssistantProvider>
     <div
       className={`page erp-shell${sidebarResizing ? ' erp-sidebar-resizing' : ''}`}
       style={{ '--erp-sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
@@ -1151,5 +1158,6 @@ export function AppShell({ routes = WORKSPACE_ROUTES }: AppShellProps = {}) {
         <AssistantDock />
       </div>
     </div>
+    </AssistantProvider>
   )
 }
