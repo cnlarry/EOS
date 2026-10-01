@@ -6,6 +6,8 @@ export interface AssistantSession {
   title: string
   createdAt: string
   lastActiveAt: string
+  /** 归档时刻；null/缺省 = 在列。归档代替删除：默认列表看不到，历史完整保留、可取消归档。 */
+  archivedAt?: string | null
 }
 
 export type AssistantRole = 1 | 2 | 3 // 1=USER 2=ASSISTANT 3=SYSTEM

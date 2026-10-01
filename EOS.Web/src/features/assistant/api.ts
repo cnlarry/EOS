@@ -17,8 +17,12 @@ import type {
   SituationSnapshot,
 } from './types'
 
-export function listSessions(limit = 50) {
-  return apiClient.get<AssistantSession[]>('/assistant/sessions', { query: { limit } })
+/**
+ * 列会话。默认只给在列的；`archived=true` 时把已归档的一并带出来
+ * （界面上"归档"代替了删除：会话从列表里收起来，历史一行不动）。
+ */
+export function listSessions(limit = 50, archived = false) {
+  return apiClient.get<AssistantSession[]>('/assistant/sessions', { query: { limit, archived: archived ? 1 : 0 } })
 }
 
 export function createSession() {
@@ -29,8 +33,13 @@ export function listMessages(sessionId: string) {
   return apiClient.get<AssistantMessage[]>(`/assistant/sessions/${sessionId}/messages`)
 }
 
-export function deleteSession(sessionId: string) {
-  return apiClient.delete<void>(`/assistant/sessions/${sessionId}`)
+export function renameSession(sessionId: string, title: string) {
+  return apiClient.put<void>(`/assistant/sessions/${sessionId}/rename`, { title })
+}
+
+/** 归档 / 取消归档。归档不是删除：默认列表看不到，历史完整保留，可随时取消。 */
+export function archiveSession(sessionId: string, archived = true) {
+  return apiClient.put<void>(`/assistant/sessions/${sessionId}/archive`, { archived })
 }
 
 /** 打开即见的处境快照（零模型调用）：身份 / 在哪 / 待办 / 最近被拒 / 结构化摘要。 */

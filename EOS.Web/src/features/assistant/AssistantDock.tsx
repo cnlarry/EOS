@@ -1,17 +1,19 @@
 import {
+  IconArchive,
   IconArrowUp,
   IconBookmark,
   IconDots,
+  IconDownload,
   IconLayoutSidebar,
+  IconPencil,
   IconPlayerStop,
   IconPlus,
   IconRobot,
-  IconTrash,
   IconX,
 } from '@tabler/icons-react'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { createSession, deleteSession, getSituation, listMessages, listSessions, saveMemory } from './api'
+import { archiveSession, createSession, getSituation, listMessages, listSessions, renameSession, saveMemory } from './api'
 import { AssistantMemoryPanel } from './AssistantMemoryPanel'
 import { KbDocDialog, KbSourceText } from './KbSource'
 import { extractPageContext } from './pageContext'
@@ -21,6 +23,7 @@ import { ActionCard, ActionResultCard } from './ActionCard'
 import { AdminChangesetCard } from './AdminChangesetCard'
 import { ApprovalRequestCard } from './ApprovalRequestCard'
 import { ConfigApplyCard, ConfigDiffCard } from './ConfigDiffCard'
+import { buildSessionMarkdown, downloadText } from './sessionExport'
 import { assistantPrefillKey } from '../../lib/storageKeys'
 import { workbenchNew } from '../document-workbench/workbenchPath'
 import type { AssistantMessage, AssistantSession, SituationDigestItem, SituationSnapshot } from './types'
@@ -69,12 +72,20 @@ export function AssistantDock() {
   const [input, setInput] = useState('')
   const [errorText, setErrorText] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  // 会话管理：重命名走行内编辑；归档代替删除（默认列表不含已归档，开关打开才带出来）
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
   const [openDocId, setOpenDocId] = useState<string | null>(null)
   const [remembered, setRemembered] = useState<ReadonlySet<string>>(new Set())
   const [situation, setSituation] = useState<SituationSnapshot | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const drawerRef = useRef<HTMLElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  // Esc 取消重命名时不提交：元素卸载未必派发 blur，这里自己记一笔
+  const cancelRenameRef = useRef(false)
   // 新建会话的 id：那一刻服务端历史确定为空，回读只会把刚送出去的本地气泡盖掉，故记一次"跳过"。
   const skipHistoryRef = useRef<string | null>(null)
   // 历史加载代次：本地一开始新一轮（发送）就 +1，让在途的旧回读结果作废。
@@ -97,6 +108,28 @@ export function AssistantDock() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
+
+  // 点抽屉以外收起（**不销毁**：气泡都在 state 里，再点浮球原样回来）；
+  // 菜单是抽屉内的浮层，点它之外（含抽屉其它区域）就收起来。Esc 先收菜单、没有菜单时收抽屉。
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (menuRef.current && !menuRef.current.contains(target)) setMenuOpen(false)
+      if (drawerRef.current && !drawerRef.current.contains(target)) setOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (menuOpen) setMenuOpen(false)
+      else setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open, menuOpen])
 
   useEffect(() => localStorage.setItem(OPEN_KEY, String(open)), [open])
   useEffect(() => localStorage.setItem(WIDTH_KEY, wide ? '520' : '360'), [wide])
@@ -188,13 +221,19 @@ export function AssistantDock() {
 
   const refreshSessions = useCallback(async () => {
     try {
-      const items = await listSessions()
+      const items = await listSessions(50, showArchived)
       setSessions(items)
       return items
     } catch {
       return []
     }
-  }, [])
+  }, [showArchived])
+
+  // 「显示已归档」一开一关就重拉：过滤的真源在服务端查询里，前端不再自己筛一遍
+  useEffect(() => {
+    if (!open) return
+    void refreshSessions()
+  }, [open, showArchived, refreshSessions])
 
   const handleNewSession = useCallback(async () => {
     setErrorText(null)
@@ -314,18 +353,60 @@ export function AssistantDock() {
     }
   }, [remembered])
 
-  const handleDeleteSession = useCallback(async () => {
+  /** 归档 / 取消归档。归档代替删除：会话从列表里收起来，历史一行不动，随时可取消。 */
+  const handleArchiveSession = useCallback(async (archived: boolean) => {
     setMenuOpen(false)
     if (!sessionId) return
     try {
-      await deleteSession(sessionId)
+      await archiveSession(sessionId, archived)
       const items = await refreshSessions()
-      setSessionId(items[0]?.id ?? null)
-      setBubbles([])
+      // 归档后当前会话可能已不在可见列表里 → 落到第一个仍可见的会话
+      if (!items.some(item => item.id === sessionId)) {
+        setSessionId(items[0]?.id ?? null)
+        setBubbles([])
+      }
     } catch {
-      setErrorText('删除会话失败。')
+      setErrorText(archived ? '归档失败，请重试。' : '取消归档失败，请重试。')
     }
   }, [sessionId, refreshSessions])
+
+  const startRename = useCallback(() => {
+    setMenuOpen(false)
+    const current = sessions.find(item => item.id === sessionId)
+    if (!current) return
+    cancelRenameRef.current = false
+    setRenameValue(current.title)
+    setRenaming(true)
+  }, [sessions, sessionId])
+
+  const commitRename = useCallback(async () => {
+    if (cancelRenameRef.current) {
+      cancelRenameRef.current = false
+      return
+    }
+    setRenaming(false)
+    const title = renameValue.trim()
+    if (!sessionId || !title) return
+    try {
+      await renameSession(sessionId, title)
+      await refreshSessions()
+    } catch {
+      setErrorText('重命名失败，请重试。')
+    }
+  }, [renameValue, sessionId, refreshSessions])
+
+  /** 导出当前会话为 Markdown 文件（纯前端拼装：内容全在手里的消息里，不必再开一个端点）。 */
+  const handleExportSession = useCallback(async () => {
+    setMenuOpen(false)
+    if (!sessionId) return
+    try {
+      const messages = await listMessages(sessionId)
+      const title = sessions.find(item => item.id === sessionId)?.title ?? '工作助手会话'
+      downloadText(`${title}.md`, buildSessionMarkdown(title, messages))
+    } catch {
+      setErrorText('导出失败，请重试。')
+    }
+  }, [sessionId, sessions])
 
   const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -333,6 +414,8 @@ export function AssistantDock() {
       void handleSend()
     }
   }, [handleSend])
+
+  const currentArchived = sessions.find(item => item.id === sessionId)?.archivedAt != null
 
   return (
     <>
@@ -353,7 +436,7 @@ export function AssistantDock() {
         </button>
       )}
       {open && (
-        <aside className={`erp-assistant-drawer${wide ? ' erp-assistant-wide' : ''}`} aria-label="工作助手">
+        <aside ref={drawerRef} className={`erp-assistant-drawer${wide ? ' erp-assistant-wide' : ''}`} aria-label="工作助手">
           <header className="erp-assistant-header">
             <IconRobot size={20} />
             <span className="erp-assistant-title">工作助手</span>
@@ -362,18 +445,41 @@ export function AssistantDock() {
               onClick={() => void handleNewSession()}>
               <IconPlus size={16} />
             </button>
-            <select
-              className="form-select form-select-sm erp-assistant-session-select"
-              value={sessionId ?? ''}
-              onChange={(event) => setSessionId(event.target.value || null)}
-              aria-label="选择会话"
-            >
-              {sessions.length === 0 && <option value="">暂无会话</option>}
-              {sessions.map(session => (
-                <option key={session.id} value={session.id}>{session.title}</option>
-              ))}
-            </select>
-            <div className="position-relative">
+            {renaming ? (
+              <input
+                className="form-control form-control-sm erp-assistant-session-select"
+                value={renameValue}
+                autoFocus
+                aria-label="会话标题"
+                onChange={(event) => setRenameValue(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void commitRename()
+                  }
+                  if (event.key === 'Escape') {
+                    cancelRenameRef.current = true
+                    setRenaming(false)
+                  }
+                }}
+                onBlur={() => void commitRename()}
+              />
+            ) : (
+              <select
+                className="form-select form-select-sm erp-assistant-session-select"
+                value={sessionId ?? ''}
+                onChange={(event) => setSessionId(event.target.value || null)}
+                aria-label="选择会话"
+              >
+                {sessions.length === 0 && <option value="">暂无会话</option>}
+                {sessions.map(session => (
+                  <option key={session.id} value={session.id}>
+                    {session.archivedAt ? `（已归档）${session.title}` : session.title}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="position-relative" ref={menuRef}>
               <button className="btn btn-icon btn-sm btn-ghost-secondary" type="button"
                 title="更多操作" aria-label="更多操作"
                 onClick={() => setMenuOpen(value => !value)}>
@@ -381,9 +487,23 @@ export function AssistantDock() {
               </button>
               {menuOpen && (
                 <div className="dropdown-menu dropdown-menu-end show erp-assistant-menu">
-                  <button className="dropdown-item text-danger" type="button" disabled={!sessionId}
-                    onClick={() => void handleDeleteSession()}>
-                    <IconTrash size={14} className="me-1" />删除当前会话
+                  <button className="dropdown-item" type="button" disabled={!sessionId}
+                    onClick={startRename}>
+                    <IconPencil size={14} className="me-1" />重命名
+                  </button>
+                  <button className="dropdown-item" type="button" disabled={!sessionId}
+                    onClick={() => void handleExportSession()}>
+                    <IconDownload size={14} className="me-1" />导出为 Markdown
+                  </button>
+                  <button className="dropdown-item" type="button" disabled={!sessionId}
+                    onClick={() => void handleArchiveSession(!currentArchived)}>
+                    <IconArchive size={14} className="me-1" />{currentArchived ? '取消归档' : '归档会话'}
+                  </button>
+                  <div className="dropdown-divider" />
+                  <button className="dropdown-item" type="button"
+                    onClick={() => { setShowArchived(value => !value); setMenuOpen(false) }}>
+                    <IconArchive size={14} className="me-1" />
+                    {showArchived ? '✓ 显示已归档' : '显示已归档'}
                   </button>
                 </div>
               )}
@@ -475,7 +595,6 @@ export function AssistantDock() {
                   </button>
                 )}
                 {bubble.streaming && <span className="erp-assistant-cursor" aria-hidden="true">▍</span>}
-                {bubble.role === 2 && bubble.text && !bubble.streaming && <CopyButton text={bubble.text} />}
                 {!bubble.streaming && bubble.tools && bubble.tools.length > 0 && (
                   <ToolCalls tools={bubble.tools} />
                 )}
@@ -484,6 +603,8 @@ export function AssistantDock() {
                     {bubble.drafts.map((draft, index) => renderDraft(draft, index, handleOpenInForm))}
                   </div>
                 )}
+                {/* 操作按钮排在内容之后（工具卡/草稿卡之下）：先读完，再决定要不要复制 */}
+                {bubble.role === 2 && bubble.text && !bubble.streaming && <CopyButton text={bubble.text} />}
               </div>
             ))}
           </div>
@@ -629,6 +750,8 @@ function CopyButton({ text }: { text: string }) {
     </button>
   )
 }
+
+
 
 const PAGE_TYPE_LABELS: Record<string, string> = {
   list: '列表',
