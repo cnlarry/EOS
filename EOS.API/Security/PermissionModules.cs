@@ -16,5 +16,8 @@ public static class PermissionModules
     {
         /// <summary>3101 会话管理：读 = CanBrowse；归档/取消归档/删除 = CanEdit。</summary>
         public const int SessionAdmin = 3101;
+
+        /// <summary>3104 机制与工具总览：纯只读，读 = CanBrowse。</summary>
+        public const int Mechanism = 3104;
     }
 }

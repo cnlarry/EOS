@@ -30,6 +30,7 @@ import {
   GroupMembersPage,
   MenuAdminPage,
   AdminSessionsPage,
+  MechanismOverviewPage,
   ReportCenterPage,
   ReportInboxPage,
   LayoutDesignerPage,
@@ -101,6 +102,10 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   // 与上面的个人侧是两件事——那一侧登录即可用、只看自己的会话。
   { element: <RequirePermission permission={moduleReadPermission(3101)} />, children: [
     { path: 'admin/assistant/sessions', element: withSuspense(<AdminSessionsPage />) },
+  ] },
+  // 3104 机制与工具总览：纯只读
+  { element: <RequirePermission permission={moduleReadPermission(3104)} />, children: [
+    { path: 'admin/assistant/mechanism', element: withSuspense(<MechanismOverviewPage />) },
   ] },
   { path: 'jobs', element: withSuspense(<JobPage />) },
   { path: 'settings/profile', element: withSuspense(<ProfilePage />) },

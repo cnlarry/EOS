@@ -56,3 +56,41 @@ export function archiveAnySession(sessionId: string, archived = true) {
 export function deleteAnySession(sessionId: string) {
   return apiClient.delete<void>(`/admin/assistant/sessions/${sessionId}`)
 }
+
+/** 助手当前挂着的一个工具。 */
+export interface AssistantToolInfo {
+  name: string
+  /** 风险分级（读取级 / 写入级…），由服务端枚举转字符串下发。 */
+  risk: string
+  description: string
+  parametersJson: string
+}
+
+/** 助手可代理的一个动作（含幂等键与审计动作——这两样是"能不能安全代理"的关键）。 */
+export interface AssistantActionInfo {
+  name: string
+  actorSubject: string
+  target: string
+  parameters: string
+  idempotencyKey: string
+  auditAction: string
+  endpoint: string
+  implementation: string
+}
+
+/** 能力面边界：写在服务端，让"助手不能做什么"与"能做什么"同样可见。 */
+export interface AssistantBoundaryInfo {
+  title: string
+  detail: string
+}
+
+export interface AssistantMechanism {
+  tools: AssistantToolInfo[]
+  actions: AssistantActionInfo[]
+  boundaries: AssistantBoundaryInfo[]
+}
+
+/** 机制与工具总览（只读）。数据**现算**：这份清单的意义就是"代码里现在到底是什么"。 */
+export function getMechanism() {
+  return apiClient.get<AssistantMechanism>('/admin/assistant/mechanism')
+}
