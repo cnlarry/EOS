@@ -113,7 +113,7 @@ public sealed class ChatService(
     IAssistantRepository repository,
     IChatModel model,
     AssistantToolRegistry toolRegistry,
-    IOptions<AssistantSettings> settings,
+    IAssistantRuntimeConfig runtime,
     ILogger<ChatService> logger,
     IAssistantMemoryStore? memoryStore = null,
     IAssistantUsageRepository? usageRepository = null,
@@ -198,6 +198,10 @@ public sealed class ChatService(
             yield break;
         }
 
+        // 一次请求取**一份配置快照**：这一轮回答（含工具多轮）始终按同一套参数跑。
+        // 管理员中途改配置，只影响之后的新请求——不会出现"同一条回答前半段一套参数、后半段另一套"。
+        var settings = runtime.Current.Settings;
+
         // 治理门：熔断优先于限额；只计技术失败（模型异常/空回复），权限拒绝与用户取消不计入。
         if (breaker?.IsBlocked(userId) == true)
         {
@@ -247,8 +251,8 @@ public sealed class ChatService(
             : await situation.BuildResidentTextAsync(userId, token);
         // 按**当前模型的上下文窗口**裁剪（窗口来自 3102 的模型行）：从最老的消息开始丢。
         // 系统提示与处境段不参与这个预算——它们是每轮必须带的，占用的额度由 ContextReserveTokens 预留。
-        var trimmedHistory = TrimToContextWindow(history, settings.Value);
-        var messages = BuildModelMessages(trimmedHistory, pageContext, memoryPrefix, situationText);
+        var trimmedHistory = TrimToContextWindow(history, settings);
+        var messages = BuildModelMessages(trimmedHistory, pageContext, settings, memoryPrefix, situationText);
 
         // 原子预留：同一事务内建行 + 按上限条件扣减（用户行与全局行同时满足），
         // 并发请求在此串行化；超限直接拒绝，不再"先读后放"。
@@ -257,12 +261,12 @@ public sealed class ChatService(
         // 一次回答最多触发 MaxToolRounds+1 次独立模型调用（工具轮 ≤ MaxToolRounds + 最终轮），
         // 预留按轮数上限放大，避免进行中请求真实成本超出 SPENT+RESERVED 判定。
         var dayStart = DateTimeOffset.UtcNow.Date;
-        var reserveMicro = settings.Value.Cost.ReserveMicroYuanPerRequest * (AssistantToolRegistry.MaxToolRounds + 1);
+        var reserveMicro = settings.Cost.ReserveMicroYuanPerRequest * (AssistantToolRegistry.MaxToolRounds + 1);
         if (usageRepository is not null)
         {
             var reserved = await usageRepository.TryReserveAsync(userId, dayStart, reserveMicro,
-                ToMicroYuan(settings.Value.Cost.UserDailyCapYuan),
-                ToMicroYuan(settings.Value.Cost.GlobalDailyCapYuan), token);
+                ToMicroYuan(settings.Cost.UserDailyCapYuan),
+                ToMicroYuan(settings.Cost.GlobalDailyCapYuan), token);
             if (!reserved)
             {
                 yield return new ChatStreamEvent.Failed("COST_LIMIT_EXCEEDED", "今日用量已达上限，请明日再试。");
@@ -433,8 +437,8 @@ public sealed class ChatService(
             // 用一套全局单价去算所有模型，等于把日上限变成一个与实际花费无关的数字。
             await SettleAsync(userId, dayStart, reserveMicro,
                 ToMicroYuan(AssistantCost.Calculate(
-                    totalPromptTokens, totalCompletionTokens, settings.Value.Cost,
-                    settings.Value.InputPerMillionYuan, settings.Value.OutputPerMillionYuan)),
+                    totalPromptTokens, totalCompletionTokens, settings.Cost,
+                    settings.InputPerMillionYuan, settings.OutputPerMillionYuan)),
                 completed: true);
             if (toolLog.Count > 0)
             {
@@ -460,7 +464,7 @@ public sealed class ChatService(
                 drafts.Count > 0 ? [.. drafts] : null);
             // : done 之后异步提炼候选记忆（pending，待用户确认；失败静默，不阻塞对话流）。
             // 提炼自己也是一次模型调用，同样受窗口约束，所以喂裁剪后的历史（它要的本来就是最近几轮）
-            await DistillSessionBestEffortAsync(userId, saved.Id, trimmedHistory, text, dayStart, token);
+            await DistillSessionBestEffortAsync(userId, saved.Id, trimmedHistory, text, dayStart, settings, token);
             yield break;
         }
     }
@@ -573,11 +577,11 @@ public sealed class ChatService(
         return kept;
     }
 
-    private List<ChatMessage> BuildModelMessages(
+    private static List<ChatMessage> BuildModelMessages(
         IReadOnlyList<(int Role, string Content)> history, PageContext? pageContext,
-        string? memoryPrefix = null, string? situationText = null)
+        AssistantSettings settings, string? memoryPrefix = null, string? situationText = null)
     {
-        var systemPrompt = new StringBuilder(settings.Value.SystemPrompt);
+        var systemPrompt = new StringBuilder(settings.SystemPrompt);
         systemPrompt.AppendLine();
         // 涉及量化指标必须走系统口径：先查 enum_metrics 再用 resolve_metric 取数，
         // 无口径时如实说明，禁止模型自行拼表达式或心算。
@@ -626,9 +630,9 @@ public sealed class ChatService(
 
     private async Task DistillSessionBestEffortAsync(
         string userId, long messageId, IReadOnlyList<(int Role, string Content)> history,
-        string finalText, DateTimeOffset dayStart, CancellationToken token)
+        string finalText, DateTimeOffset dayStart, AssistantSettings settings, CancellationToken token)
     {
-        if (memoryStore is null || !settings.Value.EnableAutoDistill) return;
+        if (memoryStore is null || !settings.EnableAutoDistill) return;
         var exchanges = history
             .Where(item => item.Role is 1 or 2 && !string.IsNullOrWhiteSpace(item.Content))
             .Select(item => (Role: item.Role == 1 ? "user" : "assistant", item.Content))
@@ -642,11 +646,11 @@ public sealed class ChatService(
 
         // 提炼也是一次独立模型调用，纳入成本限额：先按单轮额度预留，超限时静默跳过
         // （记忆提炼是后台增强，不做也不影响已完成的对话），成功后按实际用量结算。
-        var reserveMicro = settings.Value.Cost.ReserveMicroYuanPerRequest;
+        var reserveMicro = settings.Cost.ReserveMicroYuanPerRequest;
         var reserved = usageRepository is null
             || await usageRepository.TryReserveAsync(userId, dayStart, reserveMicro,
-                ToMicroYuan(settings.Value.Cost.UserDailyCapYuan),
-                ToMicroYuan(settings.Value.Cost.GlobalDailyCapYuan), token);
+                ToMicroYuan(settings.Cost.UserDailyCapYuan),
+                ToMicroYuan(settings.Cost.GlobalDailyCapYuan), token);
         if (!reserved)
         {
             logger.LogDebug("助手记忆提炼跳过（当日用量不足，session={SessionId}）", messageId);
@@ -670,8 +674,8 @@ public sealed class ChatService(
             var completionTokens = usage?.CompletionTokens ?? Math.Max(1, output.Length);
             await SettleAsync(userId, dayStart, reserveMicro,
                 ToMicroYuan(AssistantCost.Calculate(
-                    promptTokens, completionTokens, settings.Value.Cost,
-                    settings.Value.InputPerMillionYuan, settings.Value.OutputPerMillionYuan)),
+                    promptTokens, completionTokens, settings.Cost,
+                    settings.InputPerMillionYuan, settings.OutputPerMillionYuan)),
                 completed: false);
             if (estimated)
             {

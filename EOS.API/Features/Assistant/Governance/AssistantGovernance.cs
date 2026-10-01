@@ -48,19 +48,40 @@ public static class AssistantCost
 /// Consecutive-failure breaker (per user, in-memory; process restart resets).
 /// Only technical failures count: model errors/timeouts, empty replies.
 /// Permission denials, user cancels and limit trips never count.
+///
+/// <para>
+/// 阈值与冷却**按需读取**（<paramref name="policy"/>）而不是构造期固定：它们来自 3105 的设置表
+/// （<c>dbo.ASSISTANT_SETTING</c>），管理员改完应当**立即**生效——把阈值钉在构造期，会让
+/// "阈值改小了却还在按旧值熔断"变成一处无从解释的怪现象，而这个单例活得和进程一样长。
+/// </para>
 /// </summary>
 public sealed class FailureBreaker(
-    Func<DateTimeOffset> clock, int maxFailures, int cooldownSeconds)
+    Func<DateTimeOffset> clock, Func<AssistantCostOptions> policy)
 {
+    /// <summary>
+    /// 固定阈值的便捷构造。给"不关心阈值随配置变化"的场景用（主要是测试）——
+    /// 生产侧一律走上面那个按需读取的构造，否则改了 3105 的阈值却还要等重启。
+    /// </summary>
+    public FailureBreaker(Func<DateTimeOffset> clock, int maxFailures, int cooldownSeconds)
+        : this(clock, () => new AssistantCostOptions
+        {
+            MaxConsecutiveFailures = maxFailures,
+            CooldownSeconds = cooldownSeconds,
+        })
+    {
+    }
+
     private readonly Dictionary<string, (int Failures, DateTimeOffset BlockedUntil)> _state = new();
     private readonly object _lock = new();
 
     public bool IsBlocked(string userId)
     {
+        // 在锁外取策略：读快照是内存操作，但没必要占着锁做件与状态无关的事
+        var options = policy();
         lock (_lock)
         {
             return _state.TryGetValue(userId, out var entry)
-                && entry.Failures >= maxFailures
+                && entry.Failures >= options.MaxConsecutiveFailures
                 && clock() < entry.BlockedUntil;
         }
     }
@@ -75,11 +96,12 @@ public sealed class FailureBreaker(
 
     public void RecordFailure(string userId)
     {
+        var options = policy();
         lock (_lock)
         {
             var failures = _state.TryGetValue(userId, out var entry) ? entry.Failures + 1 : 1;
-            _state[userId] = (failures, failures >= maxFailures
-                ? clock().AddSeconds(cooldownSeconds)
+            _state[userId] = (failures, failures >= options.MaxConsecutiveFailures
+                ? clock().AddSeconds(options.CooldownSeconds)
                 : DateTimeOffset.MinValue);
         }
     }

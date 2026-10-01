@@ -1,13 +1,22 @@
 namespace EOS.API.Features.Assistant.ModelAccess;
 
 /// <summary>
-/// 工作助手模型接入配置。未配置 ApiKey 时助手功能降级，
-/// 其余 API 不受影响。
+/// 工作助手**运行期配置的一份快照**，同时也是所有参数的**代码默认值**。
+///
+/// <para>
+/// <c>new AssistantSettings()</c> 的字段值就是默认值：全局策略（提示词、日上限、单价兜底、熔断）
+/// 由 3105 的设置表按需覆盖（<c>AssistantSettingKeys.Apply</c> 就是唯一入口，界面上的"默认值"提示
+/// 也取自这里，所以不会出现"界面显示 5 元、代码其实已经改了"的漂移）；传输层字段（端点、模型标识、
+/// 超时、温度、窗口、工具能力、单价）由 3102 的模型行覆盖。
+/// </para>
+///
+/// <para>
+/// **它不再从 <c>IConfiguration</c> 绑定**（ADR-030 §8）：助手配置一律由管理面持有。
+/// 未配置当前模型（或那一把密钥没配）时助手功能不可用，其余 API 不受影响。
+/// </para>
 /// </summary>
 public sealed class AssistantSettings
 {
-    public const string SectionName = "Assistant";
-
     /// <summary>供应商端点根（OpenAI 兼容；DeepSeek 默认 https://api.deepseek.com）。</summary>
     public string BaseUrl { get; set; } = "https://api.deepseek.com";
 

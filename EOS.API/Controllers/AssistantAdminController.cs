@@ -35,10 +35,10 @@ public sealed class AssistantAdminController(
     IEnumerable<Features.Assistant.Tools.IAssistantTool> assistantTools,
     IKnowledgeRepository knowledge,
     IAssistantModelCatalog modelCatalog,
+    IAssistantSettingStore settingStore,
     IAssistantSecretStore modelSecrets,
-    AssistantModelRegistry modelRegistry,
-    IAssistantUsageRepository usageRepository,
-    IOptions<AssistantSettings> assistantSettings) : ControllerBase
+    AssistantRuntimeRegistry registry,
+    IAssistantUsageRepository usageRepository) : ControllerBase
 {
     /// <summary>
     /// 受支持的供应商 CODE。**真源是代码里的预设目录**（<see cref="AssistantProviderCatalog"/>），
@@ -145,6 +145,9 @@ public sealed class AssistantAdminController(
 
     /// <summary>写入密钥的入参。只进不出——任何端点都不会把它读回来。</summary>
     public sealed record AssistantModelKeyRequest(string? ApiKey);
+
+    /// <summary>写回一个设置项的入参。**空值 = 恢复默认**（删掉覆盖行）。</summary>
+    public sealed record AssistantSettingRequest(string? Value);
 
     /// <summary>
     /// 跨用户分页列会话（元数据）。<paramref name="state"/> 三态、<paramref name="owner"/> 按归属用户筛、
@@ -340,7 +343,8 @@ public sealed class AssistantAdminController(
         if (!await CanBrowseModels(token)) return Forbid();
         var providers = await modelCatalog.ListProvidersAsync(token);
         var models = await modelCatalog.ListModelsAsync(token);
-        var active = modelRegistry.Active;
+        var snapshot = registry.Current;
+        var active = snapshot.Model;
 
         return Ok(new
         {
@@ -385,10 +389,10 @@ public sealed class AssistantAdminController(
                 providerId = active.ProviderId,
                 providerCode = active.ProviderCode,
                 providerDisplayName = active.ProviderDisplayName,
-                contextWindow = active.Settings.ContextWindow,
-                timeoutSeconds = active.Settings.TimeoutSeconds,
-                supportsTools = active.Settings.SupportsTools,
-                apiKeyConfigured = !string.IsNullOrWhiteSpace(active.Settings.ApiKey),
+                contextWindow = snapshot.Settings.ContextWindow,
+                timeoutSeconds = snapshot.Settings.TimeoutSeconds,
+                supportsTools = snapshot.Settings.SupportsTools,
+                apiKeyConfigured = snapshot.IsConfigured,
             },
         });
     }
@@ -500,7 +504,7 @@ public sealed class AssistantAdminController(
 
         // 端点/超时/启用都可能被改到，而它们直接决定正在用的那个模型怎么发请求：
         // 不刷新的话，界面显示"改好了"，实际还在用旧的值发。
-        await modelRegistry.RefreshAsync(token);
+        await registry.RefreshAsync(token);
         return NoContent();
     }
 
@@ -530,7 +534,7 @@ public sealed class AssistantAdminController(
 
         var (processUpdated, persisted) = modelSecrets.Write(provider.ApiKeyEnvVar, request.ApiKey.Trim());
         // 换密钥必须重建快照：否则进程内还拿着旧密钥，表现是"界面说配好了，聊天却 401"
-        await modelRegistry.RefreshAsync(token);
+        await registry.RefreshAsync(token);
         return Ok(new
         {
             envVar = provider.ApiKeyEnvVar,
@@ -607,7 +611,7 @@ public sealed class AssistantAdminController(
 
         // 改的若是当前这一行（模型标识/窗口/输出/温度/超时/单价…），必须让快照跟着变，
         // 否则界面显示改了、实际还在用旧的
-        await modelRegistry.RefreshAsync(token);
+        await registry.RefreshAsync(token);
         return NoContent();
     }
 
@@ -651,7 +655,7 @@ public sealed class AssistantAdminController(
             return Conflict(ApiProblem.Create(StatusCodes.Status409Conflict, "ACTIVATE_FAILED", "切换失败，请刷新后重试。"));
         }
 
-        await modelRegistry.RefreshAsync(token);
+        await registry.RefreshAsync(token);
         return NoContent();
     }
 
@@ -661,7 +665,7 @@ public sealed class AssistantAdminController(
     {
         if (!await CanSetupModels(token)) return Forbid();
         await modelCatalog.ClearActiveModelAsync(token);
-        await modelRegistry.RefreshAsync(token);
+        await registry.RefreshAsync(token);
         return NoContent();
     }
 
@@ -701,7 +705,7 @@ public sealed class AssistantAdminController(
         var window = Math.Clamp(days, 1, 180);
         var todayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
         var since = new DateTimeOffset(DateTime.UtcNow.Date.AddDays(-(window - 1)), TimeSpan.Zero);
-        var cost = assistantSettings.Value.Cost;
+        var cost = registry.Current.Settings.Cost;
         // 按**模型单价**计价：看板上的成本要和台账里实际扣掉的钱用同一套口径。两边对不上，
         // 正是"配了单价却不消费"最容易露出来的样子。
         var priceByCode = (await modelCatalog.ListModelsAsync(token)).ToDictionary(
@@ -754,6 +758,129 @@ public sealed class AssistantAdminController(
             },
         });
     }
+
+    // ==================================================================
+    // 3105 助手设置（见 ADR-030 §8）：全局策略参数——提示词、日上限、单价兜底、熔断阈值。
+    // **表里没有行 = 用代码默认值**，所以"恢复默认"就是删掉那一行。
+    // ==================================================================
+
+    /// <summary>
+    /// 设置项清单。每一项都带上**代码里的默认值**，界面因此能显示"改过没有、默认是多少"。
+    ///
+    /// <para>
+    /// 另外把 <c>problems</c> 一并给出：库里的值解析不了时（有人手改过库、或升级后格式变了），
+    /// 界面要能**当场看见**它被忽略了——而不是显示着 5 元、实际按默认值跑，谁也不知道为什么。
+    /// </para>
+    /// </summary>
+    [HttpGet("settings")]
+    public async Task<IActionResult> ListSettings(CancellationToken token)
+    {
+        if (!await CanBrowseSettings(token)) return Forbid();
+        var rows = await settingStore.ListAsync(token);
+        var byKey = new Dictionary<string, AssistantSettingRow>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in rows)
+        {
+            byKey[row.ParamKey] = row;
+        }
+
+        var (_, problems) = AssistantSettingKeys.Apply(rows);
+        return Ok(new
+        {
+            items = AssistantSettingKeys.All.Select(descriptor =>
+            {
+                byKey.TryGetValue(descriptor.Key, out var row);
+                return new
+                {
+                    key = descriptor.Key,
+                    displayName = descriptor.DisplayName,
+                    valueType = descriptor.ValueType,
+                    unit = descriptor.Unit,
+                    description = descriptor.Description,
+                    defaultValue = descriptor.DefaultText,
+                    // value 为 null = 没覆盖过，用的就是默认值
+                    value = row?.ParamValue,
+                    isOverridden = row is not null,
+                    updatedAt = row?.UpdatedAt,
+                    updatedBy = row?.UpdatedBy,
+                };
+            }),
+            problems,
+        });
+    }
+
+    /// <summary>
+    /// 写回一个设置项。**空值 = 恢复默认**：删掉覆盖行，而不是存一个空串——
+    /// 存空串会让默认值永远拿不回来。
+    /// </summary>
+    [HttpPut("settings/{key}")]
+    public async Task<IActionResult> UpdateSetting(
+        string key, [FromBody] AssistantSettingRequest? request, CancellationToken token)
+    {
+        if (!await CanSetupSettings(token)) return Forbid();
+        var descriptor = AssistantSettingKeys.Find(key);
+        if (descriptor is null)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "未知的设置项。"));
+        }
+
+        var text = request?.Value?.Trim() ?? string.Empty;
+        if (text.Length == 0)
+        {
+            await settingStore.DeleteAsync(descriptor.Key, token);
+        }
+        else
+        {
+            var problem = ValidateSettingValue(descriptor, text);
+            if (problem is not null)
+            {
+                return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", problem));
+            }
+
+            await settingStore.UpsertAsync(
+                descriptor.Key, text, descriptor.ValueType, descriptor.Description, userContext.UserId, token);
+        }
+
+        // 改完立刻重建快照：否则就成了"保存了但要等重启"——那正是 §8 要消掉的体验
+        await registry.RefreshAsync(token);
+        return NoContent();
+    }
+
+    /// <summary>恢复默认：删掉覆盖行（缺行 = 用代码默认值）。</summary>
+    [HttpDelete("settings/{key}")]
+    public async Task<IActionResult> ResetSetting(string key, CancellationToken token)
+    {
+        if (!await CanSetupSettings(token)) return Forbid();
+        var descriptor = AssistantSettingKeys.Find(key);
+        if (descriptor is null)
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "未知的设置项。"));
+        }
+
+        await settingStore.DeleteAsync(descriptor.Key, token);
+        await registry.RefreshAsync(token);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// 校验一个设置值。**复用 <see cref="AssistantSettingKeys.Apply"/> 的解析器**，不另写一份：
+    /// 两份校验早晚会不一致，而"保存时通过、生效时被忽略"是最难查的一类问题。
+    /// </summary>
+    private static string? ValidateSettingValue(AssistantSettingDescriptor descriptor, string text)
+    {
+        var (_, problems) = AssistantSettingKeys.Apply(
+        [
+            new AssistantSettingRow(descriptor.Key, text, descriptor.ValueType, null, DateTimeOffset.UtcNow, null),
+        ]);
+        return problems.Count > 0 ? problems[0] : null;
+    }
+
+    private async Task<bool> CanBrowseSettings(CancellationToken token) =>
+        (await rightsRepository.GetAsync(
+            userContext.UserId, PermissionModules.AssistantAdmin.Settings, token)).CanBrowse;
+
+    private async Task<bool> CanSetupSettings(CancellationToken token) =>
+        (await rightsRepository.GetAsync(
+            userContext.UserId, PermissionModules.AssistantAdmin.Settings, token)).CanSetup;
 
     /// <summary>校验供应商入参；返回 null 表示通过。宁可在这里把话说明白，也不要让一次必然失败的保存悄悄成功。</summary>
     private static string? ValidateProvider(AssistantProviderRequest request)

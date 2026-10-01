@@ -259,3 +259,45 @@ export function deleteModel(modelId: number) {
 export function getModelUsage(days = 30) {
   return apiClient.get<AssistantModelUsage>('/admin/assistant/usage', { query: { days } })
 }
+
+// ---------------------------------------------------------------------------
+// 3105 助手设置（见 ADR-030 §8）：全局策略参数。**缺行 = 代码默认值**。
+// ---------------------------------------------------------------------------
+
+export interface AssistantSettingItem {
+  key: string
+  displayName: string
+  valueType: 'string' | 'bool' | 'int' | 'decimal' | 'long'
+  unit: string | null
+  description: string
+  /** 界面上显示的"默认值"取自后端代码，不会与真实行为漂移。 */
+  defaultValue: string
+  /** null = 没覆盖过，生效的就是 defaultValue。 */
+  value: string | null
+  isOverridden: boolean
+  updatedAt: string | null
+  updatedBy: string | null
+}
+
+export interface AssistantSettingList {
+  items: AssistantSettingItem[]
+  /**
+   * 库里解析不了的值（有人手改过库、或升级后格式变了）。
+   * 界面必须**当场**指出来——否则显示着一个其实没生效的值，谁也不知道为什么。
+   */
+  problems: string[]
+}
+
+export function listSettings() {
+  return apiClient.get<AssistantSettingList>('/admin/assistant/settings')
+}
+
+/** 写回一个设置项。**空值 = 恢复默认**（服务端会删掉覆盖行，而不是存空串）。 */
+export function updateSetting(key: string, value: string) {
+  return apiClient.put<void>(`/admin/assistant/settings/${encodeURIComponent(key)}`, { value })
+}
+
+/** 恢复默认：删掉覆盖行（缺行 = 用代码默认值）。 */
+export function resetSetting(key: string) {
+  return apiClient.delete<void>(`/admin/assistant/settings/${encodeURIComponent(key)}`)
+}

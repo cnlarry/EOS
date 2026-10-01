@@ -25,5 +25,16 @@ public static class PermissionModules
 
         /// <summary>3102 模型与用量：读 = CanBrowse；增改模型 / 切换当前 / 写密钥 = CanSetup。</summary>
         public const int ModelUsage = 3102;
+
+        /// <summary>
+        /// 3105 助手设置：读 = CanBrowse；改提示词 / 限额 / 熔断 = CanSetup。
+        ///
+        /// <para>
+        /// 这一段的写权限**比模型管理更要紧**：日上限与熔断阈值一改，全体用户的助手行为立刻变化
+        /// （把日上限改小会让所有人被拒、把提示词改坏会让回答不再遵守格式契约），所以它不是一个
+        /// "顺手也能改"的地方。
+        /// </para>
+        /// </summary>
+        public const int Settings = 3105;
     }
 }

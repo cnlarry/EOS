@@ -33,6 +33,7 @@ import {
   MechanismOverviewPage,
   KbAdminPage,
   ModelAdminPage,
+  AssistantSettingsPage,
   ReportCenterPage,
   ReportInboxPage,
   LayoutDesignerPage,
@@ -116,6 +117,10 @@ export const WORKSPACE_ROUTES: RouteObject[] = [
   // 3102 模型与用量：模型增改/切换/密钥 + 用量看板
   { element: <RequirePermission permission={moduleReadPermission(3102)} />, children: [
     { path: 'admin/assistant/models', element: withSuspense(<ModelAdminPage />) },
+  ] },
+  // 3105 助手设置：提示词 / 日上限 / 单价兜底 / 熔断（保存即生效，不再走 appsettings）
+  { element: <RequirePermission permission={moduleReadPermission(3105)} />, children: [
+    { path: 'admin/assistant/settings', element: withSuspense(<AssistantSettingsPage />) },
   ] },
   { path: 'jobs', element: withSuspense(<JobPage />) },
   { path: 'settings/profile', element: withSuspense(<ProfilePage />) },
