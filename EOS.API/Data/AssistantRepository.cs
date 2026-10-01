@@ -29,7 +29,15 @@ public sealed record AssistantSessionDto(
     /// <summary>归档时刻；null = 在列。归档是"从列表里收起来但留住历史"，与删除是两回事。</summary>
     DateTimeOffset? ArchivedAt = null,
     /// <summary>消息条数。只有列表查询会聚合出来（单条查询与插入回显为 0）。</summary>
-    int MessageCount = 0);
+    int MessageCount = 0,
+    /// <summary>该会话累计消耗的 token（prompt + completion 之和）。同上，只有列表查询会算。</summary>
+    long MessageTokens = 0,
+    /// <summary>
+    /// 归属用户的**姓名**（经 SYSDL.EMP_ID → SYSDN.EMP_NAME 取）。只有管理侧列表会带出来：
+    /// `USER_ID` 是账号/编号，看列表的人需要的是"这是谁的会话"。取不到（账号不在 SYSDL 里，
+    /// 例如测试账号）就为 null，界面回落显示账号本身。
+    /// </summary>
+    string? EmployeeName = null);
 
 /// <summary>ASSISTANT_MESSAGE 行。</summary>
 public sealed record AssistantMessageDto(
@@ -417,9 +425,12 @@ public sealed class AssistantRepository(DbConnectionFactory connections) : IAssi
         reader.GetString(2),
         ToUtc(reader.GetDateTime(3)),
         ToUtc(reader.GetDateTime(4)),
-        // 末两列只有列表查询会 SELECT（插入回显走的 OUTPUT、单条查询都不带），故按列数存在与否取值。
+        // 末几列只有列表查询会 SELECT（插入回显走的 OUTPUT、单条查询都不带），故按列数存在与否取值：
+        // 个人侧带 7 列（到消息数），管理侧带 9 列（另有 token 与归属用户姓名）。
         reader.FieldCount > 5 && !reader.IsDBNull(5) ? ToUtc(reader.GetDateTime(5)) : null,
-        reader.FieldCount > 6 ? reader.GetInt32(6) : 0);
+        reader.FieldCount > 6 ? reader.GetInt32(6) : 0,
+        reader.FieldCount > 7 ? Convert.ToInt64(reader.GetValue(7)) : 0L,
+        reader.FieldCount > 8 && !reader.IsDBNull(8) ? reader.GetString(8) : null);
 
     private static AssistantMessageDto ReadMessage(SqlDataReader reader) => new(
         reader.GetInt64(0),

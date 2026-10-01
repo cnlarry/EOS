@@ -13,7 +13,7 @@ export interface AdminSessionQuery {
   /** 按归属用户筛；空表示不限（管理侧的关键差别：这里能跨用户看）。 */
   owner?: string
   /** 排序列。**排序由服务端做**：列表是服务端分页的，在前端排只会排到当前这一页。 */
-  sortBy?: 'lastActive' | 'created' | 'title' | 'messages'
+  sortBy?: 'lastActive' | 'created' | 'title' | 'messages' | 'tokens'
   sortDir?: 'asc' | 'desc'
 }
 

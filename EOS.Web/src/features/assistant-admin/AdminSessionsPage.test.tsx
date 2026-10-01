@@ -18,11 +18,19 @@ function jsonResponse(body: unknown): Response {
   })
 }
 
-function sessionRow(id: string, userId: string, title: string, archivedAt: string | null) {
+function sessionRow(
+  id: string,
+  userId: string,
+  title: string,
+  archivedAt: string | null,
+  extra: { employeeName?: string | null; messageTokens?: number } = {},
+) {
   return {
     id, userId, title,
     createdAt: '2026-09-30T10:00:00Z', lastActiveAt: '2026-10-01T09:00:00Z',
     archivedAt, messageCount: 4,
+    employeeName: extra.employeeName ?? null,
+    messageTokens: extra.messageTokens ?? 0,
   }
 }
 
@@ -83,8 +91,10 @@ describe('AdminSessionsPage', () => {
   it('跨用户列出会话：归属用户与消息数都看得见', async () => {
     installFetchMock({
       sessions: [
-        sessionRow('11', 'zhangsan', '十月采购对账', null),
-        sessionRow('12', 'lisi', '八月盘点', '2026-09-20T02:00:00Z'),
+        sessionRow('11', 'zhangsan', '十月采购对账', null, { employeeName: '张三', messageTokens: 12345 }),
+        sessionRow('12', 'lisi', '八月盘点', '2026-09-20T02:00:00Z', { employeeName: '李四', messageTokens: 678 }),
+        // 账号不在 SYSDL 里（例如测试账号）：姓名取不到，界面要如实说，不假装它有姓名
+        sessionRow('13', 'eosdev-assistant-test-a', '测试会话', null),
       ],
       owners: ['lisi', 'zhangsan'],
     })
@@ -92,8 +102,18 @@ describe('AdminSessionsPage', () => {
     renderAdmin()
     await settleTable()
 
-    // 管理侧的关键能力：同一条列表里同时出现两个用户的会话。
-    // 用户 ID 在"按归属用户筛选"的 option 里也有一份，所以这里按"至少两处"来断言
+    // 归属用户要显示**姓名**（USER_ID 是账号编号，看列表的人要的是"这是谁的会话"），
+    // 账号作为次行小字保留给排查用
+    expect(screen.getByText('张三')).toBeInTheDocument()
+    expect(screen.getByText('李四')).toBeInTheDocument()
+    expect(screen.getByText('（未登记用户）')).toBeInTheDocument()
+
+    // Tokens 列：千分位显示，看得出量级
+    expect(screen.getByText('12,345')).toBeInTheDocument()
+    expect(screen.getByText('678')).toBeInTheDocument()
+
+    // 管理侧的关键能力：同一条列表里同时出现不同用户的会话。
+    // 账号在"按归属用户筛选"的 option 与行内次行各有一份，所以按"至少两处"来断言
     expect(screen.getAllByText('zhangsan').length).toBeGreaterThanOrEqual(2)
     expect(screen.getAllByText('lisi').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('十月采购对账')).toBeInTheDocument()
@@ -103,6 +123,7 @@ describe('AdminSessionsPage', () => {
     const heads = screen.getAllByRole('columnheader').map(node => node.textContent ?? '')
     expect(heads.some(text => text.includes('归属用户'))).toBe(true)
     expect(heads.some(text => text.includes('消息'))).toBe(true)
+    expect(heads.some(text => text.includes('Tokens'))).toBe(true)
   })
 
   it('删除只对已归档开放：在列的行不给删除按钮', async () => {

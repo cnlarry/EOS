@@ -28,6 +28,7 @@ const SORT_KEYS: Record<string, NonNullable<AdminSessionQuery['sortBy']>> = {
   createdAt: 'created',
   title: 'title',
   messageCount: 'messages',
+  messageTokens: 'tokens',
 }
 
 /** 列表要能一眼比出先后，所以显示到分钟。 */
@@ -206,8 +207,15 @@ export function AdminSessionsPage() {
       accessorKey: 'userId',
       header: '归属用户',
       enableSorting: false,
-      meta: { className: 'text-nowrap', minWidth: 110 },
-      cell: (info) => <span className="font-monospace">{String(info.getValue())}</span>,
+      meta: { className: 'text-nowrap', minWidth: 130 },
+      // 显示**姓名**、账号作为次行小字：`USER_ID` 是账号/编号，看列表的人要的是"这是谁的会话"，
+      // 但排查时又要留得住那个编号。账号不在 SYSDL 里（例如测试账号）时明确标出来，不假装它有姓名。
+      cell: (info) => (
+        <span className="d-flex flex-column">
+          <span>{info.row.original.employeeName ?? <span className="text-secondary">（未登记用户）</span>}</span>
+          <span className="text-secondary font-monospace small">{String(info.getValue())}</span>
+        </span>
+      ),
     },
     {
       accessorKey: 'title',
@@ -224,6 +232,17 @@ export function AdminSessionsPage() {
       header: '消息',
       meta: { className: 'text-end text-nowrap', minWidth: 72 },
       cell: (info) => <span className="text-secondary">{info.getValue() as number | undefined ?? 0}</span>,
+    },
+    {
+      accessorKey: 'messageTokens',
+      header: 'Tokens',
+      meta: { className: 'text-end text-nowrap', minWidth: 96 },
+      // 千分位：tokens 动辄五六位，不分位看不出量级
+      cell: (info) => (
+        <span className="text-secondary">
+          {(info.getValue() as number | undefined ?? 0).toLocaleString('zh-CN')}
+        </span>
+      ),
     },
     {
       accessorKey: 'lastActiveAt',
