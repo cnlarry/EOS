@@ -179,4 +179,75 @@ describe('AdminSessionsPage', () => {
 
     await waitFor(() => expect(harness.calls.some(call => call.url.includes('state=archived'))).toBe(true))
   })
+
+  it('首列是可勾选的复选框，勾选后出现批量操作条', async () => {
+    installFetchMock({
+      sessions: [sessionRow('11', 'zhangsan', '十月采购对账', null), sessionRow('12', 'lisi', '八月盘点', null)],
+    })
+
+    renderAdmin()
+    await settleTable()
+
+    const first = screen.getByLabelText('选择 十月采购对账')
+    expect(first).not.toBeChecked()
+    fireEvent.click(first)
+    expect(first).toBeChecked()
+    expect(screen.getByText(/已选 1 项/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /批量归档/ })).toBeInTheDocument()
+
+    // 表头全选：本页两行一起勾上
+    fireEvent.click(screen.getByLabelText('全选本页'))
+    expect(screen.getByText(/已选 2 项/)).toBeInTheDocument()
+  })
+
+  it('批量归档：对选中的每条各发一次 PUT', async () => {
+    const harness = installFetchMock({
+      sessions: [sessionRow('11', 'zhangsan', '甲', null), sessionRow('12', 'lisi', '乙', null)],
+    })
+
+    renderAdmin()
+    await settleTable()
+    fireEvent.click(screen.getByLabelText('全选本页'))
+    fireEvent.click(screen.getByRole('button', { name: /批量归档/ }))
+
+    await waitFor(() => {
+      const targets = harness.calls
+        .filter(call => call.method === 'PUT' && call.url.includes('/archive'))
+        .map(call => (call.url.includes('/sessions/11/archive') ? '11' : '12'))
+        .sort()
+      expect(targets).toEqual(['11', '12'])
+    })
+  })
+
+  it('批量删除只对已归档生效：在列的跳过，并在确认框里说清', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const harness = installFetchMock({
+      sessions: [
+        sessionRow('11', 'zhangsan', '在列的', null),
+        sessionRow('12', 'lisi', '已归档的', '2026-09-20T02:00:00Z'),
+      ],
+    })
+
+    renderAdmin()
+    await settleTable()
+    fireEvent.click(screen.getByLabelText('全选本页'))
+    fireEvent.click(screen.getByRole('button', { name: /批量删除/ }))
+
+    const message = String(confirmSpy.mock.calls[0][0])
+    // 只算可删的那个，并说明另一个被跳过——不能让人以为两条都删了
+    expect(message).toContain('1 个会话')
+    expect(message).toContain('还在「在列」')
+    expect(harness.calls.some(call => call.method === 'DELETE')).toBe(false)
+  })
+
+  it('排序由服务端做：列表请求带排序参数（前端只排当前页是错的）', async () => {
+    const harness = installFetchMock({ sessions: [sessionRow('11', 'zhangsan', '甲', null)] })
+
+    renderAdmin()
+    await settleTable()
+
+    const listCall = harness.calls.find(call => call.url.includes('/admin/assistant/sessions?'))
+    expect(listCall?.url).toContain('sortBy=lastActive')
+    expect(listCall?.url).toContain('sortDir=desc')
+  })
 })
