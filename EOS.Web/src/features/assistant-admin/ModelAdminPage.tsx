@@ -238,7 +238,7 @@ export function ModelAdminPage() {
   const caps = usage.data?.caps
 
   return (
-    <div className="erp-full-list-page d-flex flex-column gap-3">
+    <div className="erp-full-list-page">
       <ErpListCard
         ariaLabel="助手模型管理"
         actions={<>
