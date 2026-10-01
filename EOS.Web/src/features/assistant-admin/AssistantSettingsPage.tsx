@@ -34,7 +34,7 @@ export function AssistantSettingsPage() {
   const overridden = items.filter(item => item.isOverridden).length
 
   return (
-    <div className="erp-full-list-page d-flex flex-column gap-3">
+    <div className="erp-full-list-page">
       <ErpListCard
         ariaLabel="助手设置"
         actions={<Button size="sm" icon={<IconRefresh size={16} />} onClick={refresh}>刷新</Button>}

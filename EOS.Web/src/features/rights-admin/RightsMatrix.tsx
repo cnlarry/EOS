@@ -484,7 +484,7 @@ export function RightsMatrix({ open, mode, targetId, title, onClose, onSaved, va
 
   if (variant === 'page') {
     return (
-      <div className="erp-menu-admin d-flex flex-column gap-2">
+      <div className="erp-menu-admin">
         <section className="card erp-list-card">
           <section className="erp-list-command-bar" aria-label="权限矩阵工具栏">
             <span className="fw-semibold small">{headerTitle}</span>

@@ -1032,7 +1032,7 @@ export function MenuAdminPage() {
   const errorMessage = describeApiError(modules.error, '发生未知错误，请稍后重试。')
 
   return (
-    <div className="erp-menu-admin d-flex flex-column gap-2">
+    <div className="erp-menu-admin">
       <div className="card">
         <div className="card-header d-flex align-items-center gap-2">
           <strong>{selected ? `已选择：${selected.M_DESC}（ID：${selected.M_IDX}）` : '已选择：—'}</strong>

@@ -390,7 +390,7 @@ button, input, select { font: inherit; }
 .erp-menu-group-card { border-color: var(--tblr-border-color); }
 /* 菜单管理：页面随内容区高度自适应（工作台同款思路：根节点/卡片填满、树与表单内部滚动），
    消除内容不满视口时底部留白大于其它边的问题 */
-.erp-menu-admin { flex: 1 1 auto; min-height: 0; }
+.erp-menu-admin { display: flex; flex-direction: column; gap: var(--erp-block-gap); flex: 1 1 auto; min-height: 0; }
 .erp-menu-admin > .card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .erp-menu-admin > .card > .card-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .erp-menu-admin .card-body > .row { flex: 1 1 auto; min-height: 0; }
@@ -410,15 +410,17 @@ button, input, select { font: inherit; }
 .erp-kind-filter { width: 165px; flex: 0 0 165px; }
 /* 通用全高列表页（工作台同款电子表格体验）：列表卡铺满页面高度，
    表格区域内部滚动、表头吸顶；复用 ErpTable 的列宽拖拽/排序/复制/键盘导航 */
-.erp-full-list-page { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 320px; overflow: hidden; }
-/* JSX 上曾挂着 Bootstrap 工具类 gap-2（0.5rem !important）压掉本规则的 10px，
-   已改为不在 JSX 上写间距类：区块间距只由本规则一处定义 */
+.erp-full-list-page { display: flex; flex-direction: column; gap: var(--erp-block-gap); flex: 1 1 auto; min-height: 320px; overflow: hidden; }
+/* 区块间距只由 CSS 一处定义（--erp-block-gap）。JSX 上一律不写间距工具类：
+   Bootstrap 的 gap-* 带 !important，会把这里的 10px 静默压成 8px / 16px。
+   2026-10-01 实测该问题**复发过四处**（3102 / 3105 挂 gap-3 = 16px，菜单管理 / 用户组权限矩阵
+   挂 gap-2 = 8px），已全部去掉并回归 10px。**新增页面照此办理**：类名只写语义类，间距交给本文件。 */
 /* 同类页面级容器的区块间距同样收口到 10px。这几个类此前在 CSS 里没有定义，
    间距全靠 JSX 上的 gap-2（8px），与设计口径不一致。
    报表查看器页（.erp-report-page）已在下方「报表中心」区块完整定义，不在此列 */
 .erp-import-page,
 .erp-search-center-page,
-.erp-field-editor-page { gap: 10px; }
+.erp-field-editor-page { gap: var(--erp-block-gap); }
 .erp-full-list-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .erp-full-list-page .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .erp-full-list-page .erp-list-card .table-responsive { overflow: visible; }
@@ -607,7 +609,7 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-query-control .form-select-sm { height: 28px; }
 .erp-query-control .erp-query-range { flex: 1 1 0; min-width: 0; }
 .erp-report-page > .card { flex: 0 0 auto; }
-.erp-report-page { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 320px; overflow: hidden; }
+.erp-report-page { display: flex; flex-direction: column; gap: var(--erp-block-gap); flex: 1 1 auto; min-height: 320px; overflow: hidden; }
 .erp-report-page > .erp-list-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .erp-report-page > .erp-list-card .erp-table-shell { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .erp-report-page > .erp-list-card .table-responsive { overflow: visible; }
@@ -800,7 +802,11 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-toolbar-divider { align-self: stretch; width: 1px; margin: 0 3px; background: var(--tblr-border-color); }
 /* 工作区顶部：上留白与标签栏高度分开记账——标签栏不贴浏览器上边缘，保留与其他区域一致的 10px 留白。
    表格区域的高度上限按视口计算，两者都要同步扣除，避免整页变高出现双滚动条。 */
-:root { --erp-tabbar-height: 0px; --erp-workspace-gap: 10px; }
+/* 页面级几何的**唯一事实源**：`--erp-workspace-gap` = 页边距（由 `.erp-tab-panel` 出上下、
+   `.erp-tab-panel > .container-fluid` 出左右，各 10px），`--erp-block-gap` = 区块与区块之间的间距。
+   两者都是 10px —— 设计口径是"区块之间、区块与页边距之间都保持 10px，不多也不少"。
+   **页面根容器不得再挂 JSX 间距工具类**：Bootstrap 的 `gap-*` 带 !important，会静默压掉这里的值。 */
+:root { --erp-tabbar-height: 0px; --erp-workspace-gap: 10px; --erp-block-gap: 10px; }
 /* 高度链：page-body 只管撑满高度与上下留白，不承担滚动；滚动权下放给标签面板，
    每个标签面板各持一个滚动位，切换标签才能各自保持滚动位置。 */
 /* 高度链：page-body 顶部留白 + 标签栏是一整条白底区域，工作区内部恢复页面底色，
