@@ -19,5 +19,8 @@ public static class PermissionModules
 
         /// <summary>3104 机制与工具总览：纯只读，读 = CanBrowse。</summary>
         public const int Mechanism = 3104;
+
+        /// <summary>3103 知识库管理：读 = CanBrowse；删除文档 = CanEdit（入库仍走 2302 那条链路，不在此开放）。</summary>
+        public const int Kb = 3103;
     }
 }

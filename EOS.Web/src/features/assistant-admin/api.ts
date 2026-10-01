@@ -94,3 +94,38 @@ export interface AssistantMechanism {
 export function getMechanism() {
   return apiClient.get<AssistantMechanism>('/admin/assistant/mechanism')
 }
+
+/** 知识库集合。 */
+export interface KbCollectionInfo {
+  collectionId: string
+  title: string
+  embeddingModel: string
+  dimension: number
+  defaultVisibility: string
+}
+
+/** 知识库文档（`status = 'deleted'` 是软删墓碑：向量已移除，行还在）。 */
+export interface KbDocumentInfo {
+  docId: string
+  collectionId: string
+  title: string
+  sourceUri: string | null
+  visibility: string
+  status: string
+  version: number
+}
+
+export function listKbCollections() {
+  return apiClient.get<KbCollectionInfo[]>('/admin/assistant/kb/collections')
+}
+
+export function listKbDocuments(collectionId: string, includeDeleted = false) {
+  return apiClient.get<KbDocumentInfo[]>('/admin/assistant/kb/documents', {
+    query: { collectionId, includeDeleted: includeDeleted ? 'true' : 'false' },
+  })
+}
+
+/** 删除知识库文档（软删墓碑 + 物理移除向量）。**管理面不开放入库**，入库仍走 2302 那条链路。 */
+export function deleteKbDocument(docId: string) {
+  return apiClient.delete<void>(`/admin/assistant/kb/documents/${docId}`)
+}

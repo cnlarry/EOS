@@ -174,6 +174,13 @@ public sealed class AssistantEvalRunnerTests
             if (visibilities.Contains("CONSULTANT")) hits.Add(new(1, "顾问手册", null, 1, "内容", 0.1));
             return Task.FromResult<IReadOnlyList<KbHit>>(hits);
         }
+
+        // 管理面的两个只读列举方法：与这个替身关心的"检索可见性"无关，给空结果
+        public Task<IReadOnlyList<KbCollectionInfo>> ListCollectionsAsync(CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<KbCollectionInfo>>([]);
+
+        public Task<IReadOnlyList<KbDocumentInfo>> ListDocumentsAsync(string collectionId, bool includeDeleted, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<KbDocumentInfo>>([]);
     }
 
     private sealed class RecheckGatewayStub : IWorkbenchSearchGateway

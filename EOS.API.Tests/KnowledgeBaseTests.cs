@@ -105,6 +105,13 @@ public sealed class KnowledgeBaseTests
             SeenVisibilities = visibilities;
             return Task.FromResult(hits);
         }
+
+        // 管理面的两个只读列举方法：这个替身不涉及它们（检索路径不需要），给空结果即可
+        public Task<IReadOnlyList<KbCollectionInfo>> ListCollectionsAsync(CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<KbCollectionInfo>>([]);
+
+        public Task<IReadOnlyList<KbDocumentInfo>> ListDocumentsAsync(string collectionId, bool includeDeleted, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<KbDocumentInfo>>([]);
     }
 
     private sealed class RecheckGatewayStub(IReadOnlyList<Dictionary<string, object?>> rows) : IWorkbenchSearchGateway

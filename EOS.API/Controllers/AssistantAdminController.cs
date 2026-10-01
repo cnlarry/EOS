@@ -29,7 +29,8 @@ public sealed class AssistantAdminController(
     IAssistantAdminRepository repository,
     CurrentUserContext userContext,
     ModuleRightsRepository rightsRepository,
-    IEnumerable<Features.Assistant.Tools.IAssistantTool> assistantTools) : ControllerBase
+    IEnumerable<Features.Assistant.Tools.IAssistantTool> assistantTools,
+    IKnowledgeRepository knowledge) : ControllerBase
 {
     /// <summary>
     /// 能力面的边界。写在服务端而不是让前端硬编码：这些是"能力面上根本表达不出来"的东西，
@@ -158,6 +159,58 @@ public sealed class AssistantAdminController(
             boundaries = MechanismBoundaries,
         });
     }
+
+    /// <summary>知识库集合清单（管理面只读）。权限门 3103 的 CanBrowse。</summary>
+    [HttpGet("kb/collections")]
+    public async Task<IActionResult> ListKbCollections(CancellationToken token)
+    {
+        if (!await CanBrowseKb(token)) return Forbid();
+        return Ok(await knowledge.ListCollectionsAsync(token));
+    }
+
+    /// <summary>
+    /// 某集合下的文档清单。<paramref name="includeDeleted"/> 为真时连墓碑一起给
+    /// —— 知识库现在基本是空的，"看到墓碑"恰恰说明这里曾经有过什么。
+    /// </summary>
+    [HttpGet("kb/documents")]
+    public async Task<IActionResult> ListKbDocuments(
+        [FromQuery] string? collectionId,
+        [FromQuery] bool includeDeleted = false,
+        CancellationToken token = default)
+    {
+        if (!await CanBrowseKb(token)) return Forbid();
+        if (string.IsNullOrWhiteSpace(collectionId))
+        {
+            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "缺少集合编号。"));
+        }
+        return Ok(await knowledge.ListDocumentsAsync(collectionId.Trim(), includeDeleted, token));
+    }
+
+    /// <summary>
+    /// 删除知识库文档（软删墓碑 + 物理移除向量）。权限门 3103 的 CanEdit。
+    ///
+    /// <para>
+    /// **管理面只开放删除，不开放入库**：入库要过敏感扫描与业务引用复核（见 <c>KbController</c>），
+    /// 那套门锚在 2302。在这里另开一个入库入口会绕过那条链路，所以不做——要入库仍走原先的通道。
+    /// </para>
+    /// </summary>
+    [HttpDelete("kb/documents/{docId:long}")]
+    public async Task<IActionResult> DeleteKbDocument(long docId, CancellationToken token)
+    {
+        if (!await CanEditKb(token)) return Forbid();
+        var deleted = await knowledge.DeleteDocumentAsync(docId, token);
+        return deleted
+            ? NoContent()
+            : NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "文档不存在。"));
+    }
+
+    private async Task<bool> CanBrowseKb(CancellationToken token) =>
+        (await rightsRepository.GetAsync(
+            userContext.UserId, PermissionModules.AssistantAdmin.Kb, token)).CanBrowse;
+
+    private async Task<bool> CanEditKb(CancellationToken token) =>
+        (await rightsRepository.GetAsync(
+            userContext.UserId, PermissionModules.AssistantAdmin.Kb, token)).CanEdit;
 
     private async Task<bool> CanBrowseMechanism(CancellationToken token) =>
         (await rightsRepository.GetAsync(

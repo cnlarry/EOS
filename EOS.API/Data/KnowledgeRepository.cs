@@ -67,10 +67,72 @@ public interface IKnowledgeRepository
 
     Task<IReadOnlyList<KbHit>> SearchAsync(
         string queryVectorJson, int dimension, int topK, IReadOnlyList<string> visibilities, CancellationToken token);
+
+    /// <summary>列出全部集合（管理面用；只有 steward 端点会调，检索路径不需要）。</summary>
+    Task<IReadOnlyList<KbCollectionInfo>> ListCollectionsAsync(CancellationToken token);
+
+    /// <summary>
+    /// 列某个集合下的文档。<paramref name="includeDeleted"/> 为真时连**墓碑**一起给——
+    /// 知识库现在是空的，管理面上"看到墓碑"恰恰是重要信息（它说明这里曾经有过什么）。
+    /// </summary>
+    Task<IReadOnlyList<KbDocumentInfo>> ListDocumentsAsync(
+        string collectionId, bool includeDeleted, CancellationToken token);
 }
 
 public sealed class KnowledgeRepository(DbConnectionFactory connections) : IKnowledgeRepository
 {
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<KbCollectionInfo>> ListCollectionsAsync(CancellationToken token)
+    {
+        const string sql = """
+            SELECT COLLECTION_ID, TITLE, EMBEDDING_MODEL, DIMENSION, DEFAULT_VISIBILITY
+            FROM dbo.KB_COLLECTION
+            ORDER BY COLLECTION_ID;
+            """;
+        var items = new List<KbCollectionInfo>();
+        await using var conn = connections.Create();
+        await conn.OpenAsync(token);
+        await using var cmd = new SqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            items.Add(new KbCollectionInfo(
+                reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                reader.GetInt32(3), reader.GetString(4)));
+        }
+
+        return items;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<KbDocumentInfo>> ListDocumentsAsync(
+        string collectionId, bool includeDeleted, CancellationToken token)
+    {
+        const string sql = """
+            SELECT DOC_ID, COLLECTION_ID, TITLE, SOURCE_URI, VISIBILITY, STATUS, VERSION
+            FROM dbo.KB_DOCUMENT
+            WHERE COLLECTION_ID = @CollectionId
+              AND (@IncludeDeleted = 1 OR STATUS <> N'deleted')
+            ORDER BY DOC_ID DESC;
+            """;
+        var items = new List<KbDocumentInfo>();
+        await using var conn = connections.Create();
+        await conn.OpenAsync(token);
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@CollectionId", collectionId);
+        cmd.Parameters.AddWithValue("@IncludeDeleted", includeDeleted ? 1 : 0);
+        await using var reader = await cmd.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            items.Add(new KbDocumentInfo(
+                reader.GetInt64(0), reader.GetString(1), reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.GetString(4), reader.GetString(5), reader.GetInt32(6)));
+        }
+
+        return items;
+    }
+
     public async Task EnsureCollectionAsync(
         string collectionId, string title, string embeddingModel, int dimension,
         string defaultVisibility, CancellationToken token)
