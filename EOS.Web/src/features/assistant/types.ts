@@ -1,5 +1,11 @@
 /** 工作助手前端类型。ID 一律字符串（架构约定）。 */
 
+/** 会话分页结果：`total` 是过滤后的全量条数，分页器靠它算总页数。 */
+export interface AssistantSessionPage {
+  items: AssistantSession[]
+  total: number
+}
+
 export interface AssistantSession {
   id: string
   userId: string
@@ -8,6 +14,8 @@ export interface AssistantSession {
   lastActiveAt: string
   /** 归档时刻；null/缺省 = 在列。归档代替删除：默认列表看不到，历史完整保留、可取消归档。 */
   archivedAt?: string | null
+  /** 消息条数（只有列表接口聚合出来；管理页用它判断哪些会话有内容）。 */
+  messageCount?: number
 }
 
 export type AssistantRole = 1 | 2 | 3 // 1=USER 2=ASSISTANT 3=SYSTEM

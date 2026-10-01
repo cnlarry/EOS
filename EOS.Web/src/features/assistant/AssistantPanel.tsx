@@ -5,6 +5,7 @@ import {
   IconDots,
   IconDownload,
   IconLayoutSidebarRightExpand,
+  IconListDetails,
   IconMaximize,
   IconPencil,
   IconPlayerStop,
@@ -16,7 +17,8 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { archiveSession, listMessages, renameSession } from './api'
 import { AssistantMemoryPanel } from './AssistantMemoryPanel'
 import { KbDocDialog, KbSourceText } from './KbSource'
-import { useAssistant, type Bubble } from './assistantContext'
+import { SESSION_ADMIN_PATH, useAssistant, type Bubble } from './assistantContext'
+import { useOpenTab } from '../../components/layout/WorkspaceNavContext'
 import { describePending, describeWhere, digestKindLabel } from './assistantText'
 import { buildSessionMarkdown, downloadText } from './sessionExport'
 import { ActionCard, ActionResultCard } from './ActionCard'
@@ -146,6 +148,7 @@ export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanel
     }
   }, [a])
 
+  const openTab = useOpenTab()
   const currentArchived = a.sessions.find(item => item.id === a.sessionId)?.archivedAt != null
 
   return (
@@ -234,6 +237,10 @@ export function AssistantPanel({ variant, onExpand, onCollapse }: AssistantPanel
                 <IconArchive size={14} className="me-1" />{currentArchived ? '取消归档' : '归档会话'}
               </button>
               <div className="dropdown-divider" />
+              <button className="dropdown-item" type="button"
+                onClick={() => { setMenuOpen(false); a.setOpen(false); openTab(SESSION_ADMIN_PATH) }}>
+                <IconListDetails size={14} className="me-1" />会话管理
+              </button>
               <button className="dropdown-item" type="button"
                 onClick={() => { a.setShowArchived(value => !value); setMenuOpen(false) }}>
                 <IconArchive size={14} className="me-1" />

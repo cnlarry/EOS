@@ -65,27 +65,60 @@ public sealed class AssistantController(
     /// <summary>归档 / 取消归档。<c>Archived</c> 缺省视为 <c>true</c>——空 body 不该把会话"取消归档"。</summary>
     public sealed record ArchiveSessionRequest(bool? Archived);
 
+    /// <summary>
+    /// 分页列会话。<paramref name="state"/> 决定看哪些：<c>active</c>（默认，在列）/ <c>archived</c>
+    /// （只看已归档，会话管理页在这里开放删除）/ <c>all</c>；<paramref name="keyword"/> 只搜标题。
+    /// 返回 <c>{ items, total }</c>——分页器需要总数。
+    /// </summary>
     [HttpGet("sessions")]
     public async Task<IActionResult> ListSessions(
-        [FromQuery] int limit = 50, [FromQuery] bool archived = false, CancellationToken token = default)
-        => Ok(await repository.ListSessionsAsync(userContext.UserId, limit, archived, token));
+        [FromQuery] int offset = 0,
+        [FromQuery] int limit = 50,
+        [FromQuery] string? state = null,
+        [FromQuery] string? keyword = null,
+        CancellationToken token = default)
+    {
+        // 未知取值一律按"在列"处理（旧客户端传 archived=true/false 也能照常工作）——
+        // 列表查不出东西，比抛 400 更难排查。
+        var filter = state?.Trim().ToLowerInvariant() switch
+        {
+            "archived" or "only" or "onlyarchived" => AssistantSessionListState.Archived,
+            "all" or "true" => AssistantSessionListState.All,
+            _ => AssistantSessionListState.Active,
+        };
+        var (items, total) = await repository.ListSessionsAsync(
+            userContext.UserId, offset, limit, filter, keyword, token);
+        return Ok(new { items, total });
+    }
 
     [HttpPost("sessions")]
     public async Task<IActionResult> CreateSession(CancellationToken token)
         => Ok(await repository.CreateSessionAsync(userContext.UserId, token));
 
     /// <summary>
-    /// 删除会话（连消息一并删）。
+    /// 删除会话（连消息一并删，不可恢复）。
     /// <para>
-    /// **界面已不提供这个动作**：误删即永久丢历史，产品决定改用「归档」（会话不出现在列表里、
-    /// 数据完整保留、可随时取消归档）。端点保留给运维与测试清理，不作为用户界面能力。
+    /// **只允许删已归档的会话**。原口径是"界面完全不提供删除"（误删即永久丢历史），
+    /// 2026-10-01 改为：会话管理页可对**已归档**会话执行删除——先归档再删除是两步，且这里在
+    /// 服务端强制（未归档一律 400 <c>SESSION_NOT_ARCHIVED</c>），任何客户端都绕不过去，
+    /// 也就不会出现"在列表里手滑删掉在用的会话"。
     /// </para>
     /// </summary>
     [HttpDelete("sessions/{sessionId:long}")]
     public async Task<IActionResult> DeleteSession(long sessionId, CancellationToken token)
     {
-        var deleted = await repository.DeleteSessionAsync(userContext.UserId, sessionId, token);
-        return deleted > 0 ? NoContent() : NotFound();
+        var session = await repository.GetSessionAsync(userContext.UserId, sessionId, token);
+        if (session is null)
+        {
+            return NotFound(ApiProblem.Create(StatusCodes.Status404NotFound, "NOT_FOUND", "会话不存在或不属于当前用户。"));
+        }
+        if (session.ArchivedAt is null)
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "SESSION_NOT_ARCHIVED", "只能删除已归档的会话；请先归档，再删除。"));
+        }
+        await repository.DeleteSessionAsync(userContext.UserId, sessionId, token);
+        return NoContent();
     }
 
     [HttpPut("sessions/{sessionId:long}/rename")]
