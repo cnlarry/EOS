@@ -1716,7 +1716,11 @@ button.erp-catalog-group-title:hover { background: var(--tblr-primary-lt); }
 .erp-assistant-md-table td {
   padding: 5px 8px;
   border-bottom: 1px solid var(--tblr-border-color, #e6e7e9);
-  white-space: nowrap;
+  /* 允许换行：字段名/说明这类长文本列不该逼用户横向滚才看得全；
+     列确实多到放不下时，外层的 .erp-assistant-md-table-wrap 仍可横向滚 */
+  white-space: normal;
+  max-width: 240px;
+  word-break: break-word;
 }
 .erp-assistant-md-table th {
   background: var(--tblr-bg-surface-secondary, #f6f8fb);

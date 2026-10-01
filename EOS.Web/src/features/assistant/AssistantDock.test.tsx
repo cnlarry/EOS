@@ -176,6 +176,7 @@ function installFetchMock(options: {
     if (url.includes('/assistant/situation')) return jsonResponse(options.situation ?? situationSnapshot())
     if (url.includes('/chat')) return sseResponse(options.chatFrames ?? ['event: delta\ndata: {"text":"好的"}\n\n'])
     if (url.includes('/form-definition')) return jsonResponse(options.formDefinition ?? minimalFormDefinition())
+    if (url.includes('/rename') || url.includes('/archive')) return new Response(null, { status: 204 })
     if (url.includes('/messages')) {
       const body = jsonResponse(options.messages ?? [])
       if (!options.messagesDelayMs) return body
@@ -476,5 +477,110 @@ describe('AssistantDock', () => {
     // 等那次迟到的回读落地：它带回的是"空历史"，不该把已经流出来的回答抹掉
     await new Promise(resolve => setTimeout(resolve, 260))
     expect(screen.getByText(/查到了。/)).toBeInTheDocument()
+  })
+
+  it('点抽屉以外收起，内容不丢（再打开还是原来那些）', async () => {
+    installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+      messages: [
+        {
+          id: 'm1', sessionId: '11', role: 1, content: '先看送货单',
+          modelName: null, promptTokens: null, completionTokens: null, elapsedMs: null,
+          correlationId: null, createdAt: '',
+        },
+      ],
+    })
+
+    renderDock()
+    fireEvent.click(await screen.findByRole('button', { name: '打开工作助手' }))
+    await waitFor(() => expect(screen.getByText('先看送货单')).toBeInTheDocument())
+
+    // 点抽屉以外的页面区域 → 收起
+    fireEvent.pointerDown(document.body)
+    await waitFor(() => expect(screen.queryByRole('complementary')).toBeNull())
+
+    // 再打开：内容是"收起来"而不是"销毁"，原来那条消息还在
+    fireEvent.click(await screen.findByRole('button', { name: '打开工作助手' }))
+    expect(await screen.findByText('先看送货单')).toBeInTheDocument()
+  })
+
+  it('“...”菜单点外部就关，且菜单里不再有删除这一项', async () => {
+    localStorage.setItem('erp-assistant-open', 'true')
+    installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+    })
+
+    renderDock()
+    fireEvent.click(await screen.findByRole('button', { name: '更多操作' }))
+    expect(await screen.findByRole('button', { name: /重命名/ })).toBeInTheDocument()
+
+    // 界面不再提供删除：会话只能重命名/导出/归档（归档可逆，删除不可逆）
+    expect(screen.queryByText(/删除/)).toBeNull()
+
+    fireEvent.pointerDown(document.body)
+    await waitFor(() => expect(screen.queryByRole('button', { name: /重命名/ })).toBeNull())
+  })
+
+  it('重命名走行内输入，回车提交并落库', async () => {
+    localStorage.setItem('erp-assistant-open', 'true')
+    const harness = installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+    })
+
+    renderDock()
+    fireEvent.click(await screen.findByRole('button', { name: '更多操作' }))
+    fireEvent.click(await screen.findByRole('button', { name: /重命名/ }))
+
+    const input = await screen.findByLabelText('会话标题')
+    fireEvent.change(input, { target: { value: '十月采购对账' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => expect(
+      harness.calls.some(call => call.method === 'PUT' && call.url.includes('/rename')),
+    ).toBe(true))
+    expect(harness.calls.find(call => call.method === 'PUT' && call.url.includes('/rename'))?.body)
+      .toContain('十月采购对账')
+  })
+
+  it('归档会话走归档端点，全程不发 DELETE', async () => {
+    localStorage.setItem('erp-assistant-open', 'true')
+    const harness = installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+    })
+
+    renderDock()
+    fireEvent.click(await screen.findByRole('button', { name: '更多操作' }))
+    fireEvent.click(await screen.findByRole('button', { name: '归档会话' }))
+
+    await waitFor(() => expect(
+      harness.calls.some(call => call.method === 'PUT' && call.url.includes('/archive')),
+    ).toBe(true))
+    expect(harness.calls.some(call => call.method === 'DELETE')).toBe(false)
+  })
+
+  it('导出会话：拉一次历史并触发 Markdown 下载', async () => {
+    localStorage.setItem('erp-assistant-open', 'true')
+    const createObjectURL = vi.fn(() => 'blob:eos')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true })
+    Object.defineProperty(URL, 'revokeObjectURL', { value: revokeObjectURL, configurable: true })
+    const harness = installFetchMock({
+      sessions: [{ id: '11', userId: 'u1', title: '会话A', createdAt: '', lastActiveAt: '' }],
+      messages: [
+        {
+          id: 'm1', sessionId: '11', role: 1, content: '采购单主表？',
+          modelName: null, promptTokens: null, completionTokens: null, elapsedMs: null,
+          correlationId: null, createdAt: '',
+        },
+      ],
+    })
+
+    renderDock()
+    fireEvent.click(await screen.findByRole('button', { name: '更多操作' }))
+    fireEvent.click(await screen.findByRole('button', { name: /导出为 Markdown/ }))
+
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled())
+    expect(harness.calls.some(call => call.url.includes('/messages'))).toBe(true)
+    expect(revokeObjectURL).toHaveBeenCalled()
   })
 })
