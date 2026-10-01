@@ -14,6 +14,12 @@ namespace EOS.API.Tests;
 /// 两条都断在"能不能被绕过"上：红线的名字一旦出现在配置里就启动失败（哪怕写的是"看起来是开"的值），
 /// 阈值则只允许在 <see cref="AssistantActionLimits"/> 里声明一次，业务代码引用常量而不是复制数值。
 /// </para>
+///
+/// <para>
+/// **阈值搬进 dbo.SYSSS（ADR-030 批 C）之后，配置节失去了读取方**，于是判定收紧为一条：
+/// 那个节里出现**任何**键都是覆盖尝试。上一版放行四个已知阈值键——那是按"配置文件仍是来源之一"写的；
+/// 现在放行它们等于告诉填表的人"配上了"，而实际一个字节都不会被读。
+/// </para>
 /// </summary>
 public sealed class AssistantActionLimitsTests
 {
@@ -79,7 +85,7 @@ public sealed class AssistantActionLimitsTests
     [Fact]
     public void 配置层尝试覆盖红线时容器启动即失败()
     {
-        // 与 Program.cs 同一套接线：Bind + ValidateOnStart + 校验器。
+        // 与 Program.cs 同一套接线：**不 Bind**（阈值不来自配置）+ ValidateOnStart + 校验器。
         // 红线覆盖不是"记一条警告"，而是取到选项值的那一刻就抛——服务因此起不来。
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -87,9 +93,7 @@ public sealed class AssistantActionLimitsTests
         }).Build();
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
-        services.AddOptions<AssistantActionLimitsOptions>()
-            .Bind(configuration.GetSection(AssistantActionLimitsOptions.SectionName))
-            .ValidateOnStart();
+        services.AddOptions<AssistantActionLimitsOptions>().ValidateOnStart();
         services.AddSingleton<
             Microsoft.Extensions.Options.IValidateOptions<AssistantActionLimitsOptions>,
             AssistantActionLimitsValidator>();
@@ -104,24 +108,32 @@ public sealed class AssistantActionLimitsTests
     }
 
     [Fact]
-    public void 未登记的阈值键即校验失败()
+    public void 配置节里的已知阈值键同样不生效()
+    {
+        // 这一条是本次收紧的核心：MaxRowsPerAction 曾经是"允许被配置文件覆盖"的键，
+        // 而它的读取方（AssistantRecordActionArguments.MaxRows）现在走 SYSSS。
+        // 放行它 = 让填表的人以为配上了，实际不会被读。
+        var result = Validate(new Dictionary<string, string?>
+        {
+            [$"{AssistantActionLimitsOptions.SectionName}:MaxRowsPerAction"] = "10",
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures!, failure => failure.Contains("不会生效", StringComparison.Ordinal));
+        // 提示必须指向真正的落点，否则读者只知道"不能用"，不知道"该去哪"
+        Assert.Contains(result.Failures!, failure => failure.Contains("3105", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void 拼错的键同样不生效()
     {
         var result = Validate(new Dictionary<string, string?>
         {
             [$"{AssistantActionLimitsOptions.SectionName}:MaxRowsPerPage"] = "10",
         });
-        Assert.False(result.Succeeded);
-        Assert.Contains(result.Failures!, failure => failure.Contains("未登记", StringComparison.Ordinal));
-    }
 
-    [Fact]
-    public void 已登记的阈值可以被覆盖()
-    {
-        var result = Validate(new Dictionary<string, string?>
-        {
-            [$"{AssistantActionLimitsOptions.SectionName}:MaxRowsPerAction"] = "10",
-        });
-        Assert.True(result.Succeeded);
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures!, failure => failure.Contains("不会生效", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -129,11 +141,14 @@ public sealed class AssistantActionLimitsTests
     [InlineData(-1)]
     public void 阈值小于最小值即校验失败(int value)
     {
-        var result = Validate(new Dictionary<string, string?>
-        {
-            [$"{AssistantActionLimitsOptions.SectionName}:MaxApprovalRequestRecords"] = value.ToString(),
-        });
+        // 取值范围校验现在校验的是**代码默认值**（属性初始值 = 库里没有行时的取值），
+        // 所以这里直接构造选项对象：再走配置绑定反而会绕进"这个节不生效"那条规则里，
+        // 让这条测试因为别的原因变绿。
+        var result = new AssistantActionLimitsValidator(new ConfigurationBuilder().Build())
+            .Validate(null, new AssistantActionLimitsOptions { MaxApprovalRequestRecords = value });
+
         Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures!, failure => failure.Contains("小于最小值", StringComparison.Ordinal));
     }
 
     private static Microsoft.Extensions.Options.ValidateOptionsResult Validate(

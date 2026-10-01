@@ -277,13 +277,18 @@ builder.Services.AddScoped<CurrentUserContext>();
 builder.Services.AddScoped<AttachmentRepository>();
 builder.Services.AddHttpClient("AssistantModel");
 // 助手配置**一律来自数据库**（ADR-030 §8）：模型与供应商读 dbo.ASSISTANT_MODEL / ASSISTANT_PROVIDER
-// （菜单组 31 / 3102），全局策略读 dbo.ASSISTANT_SETTING（3105）。appsettings 里**没有** Assistant 段——
-// 它是运行期要能改的业务配置，不是部署参数，混在配置清单里会让"改个模型名要改文件加重启"。
-// 密钥仍只走环境变量，库里存的是变量名（§3）。
-// 目录 / 密钥存取 / 设置读写 / 运行期快照都是单例；真正被消费的 IChatModel 是 **Scoped**：
+// （菜单组 31 / 3102），全局策略读 dbo.SYSSS 的 OWNER_MODULE = 3105（3105 助手设置）。
+// appsettings 里**没有** Assistant 段——它是运行期要能改的业务配置，不是部署参数，
+// 混在配置清单里会让"改个模型名要改文件加重启"。密钥仍只走环境变量，库里存的是变量名（§3）。
+// 参数目录（AssistantParameterCatalog）是代码里的唯一真源，解析器读库产出策略对象；
+// 目录 / 密钥存取 / 参数解析 / 运行期快照都是单例；真正被消费的 IChatModel 是 **Scoped**：
 // 一次请求内配置固定（一条回答不会跨两个模型），跨请求读得到新快照（改配置与切模型都不必重启）。
 builder.Services.AddSingleton<EOS.API.Data.IAssistantModelCatalog, EOS.API.Data.AssistantModelCatalog>();
-builder.Services.AddSingleton<EOS.API.Data.IAssistantSettingStore, EOS.API.Data.AssistantSettingStore>();
+builder.Services.AddSingleton<EOS.API.Features.Assistant.Parameters.AssistantParameterResolver>();
+// 作用域覆盖：读写在请求作用域内（要写审计），生效参数按当事人叠加，故两者都是 Scoped
+builder.Services.AddScoped<EOS.API.Features.Assistant.Parameters.AssistantParameterScopeStore>();
+builder.Services.AddScoped<EOS.API.Features.Assistant.Parameters.IAssistantEffectiveParameters,
+    EOS.API.Features.Assistant.Parameters.AssistantEffectiveParameters>();
 builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.IAssistantSecretStore,
     EOS.API.Features.Assistant.ModelAccess.EnvironmentSecretStore>();
 builder.Services.AddSingleton<EOS.API.Features.Assistant.ModelAccess.AssistantRuntimeRegistry>();
@@ -314,16 +319,12 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ListMyCapabilitiesTo
 builder.Services.AddScoped<EOS.API.Features.Assistant.Memory.IAssistantMemoryStore,
     EOS.API.Features.Assistant.Memory.AssistantMemoryStore>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.GetMyDigestTool>();
-builder.Services.Configure<EOS.API.Features.Assistant.Situation.AssistantSituationBudgetOptions>(
-    builder.Configuration.GetSection(EOS.API.Features.Assistant.Situation.AssistantSituationBudgetOptions.SectionName));
 builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.AssistantSituationBudget>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.ISituationFactsReader,
     EOS.API.Features.Assistant.Situation.SituationFactsReader>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.AssistantSituationService>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.SituationContextSanitizer>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Situation.SituationDigestService>();
-builder.Services.Configure<EOS.API.Features.Assistant.Diagnosis.AssistantDiagnosisOptions>(
-    builder.Configuration.GetSection(EOS.API.Features.Assistant.Diagnosis.AssistantDiagnosisOptions.SectionName));
 builder.Services.AddScoped<EOS.API.Features.Assistant.Diagnosis.RecordDiagnosisReader>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Diagnosis.IRecordDiagnosisReader>(sp =>
     sp.GetRequiredService<EOS.API.Features.Assistant.Diagnosis.RecordDiagnosisReader>());
@@ -333,19 +334,47 @@ builder.Services.AddScoped<EOS.API.Features.Assistant.Diagnosis.RecordDiagnosisS
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.DiagnoseRecordTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Actions.AssistantActionGate>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Actions.AssistantRecordActionService>();
+// **不 Bind 配置节**（ADR-030 §8）：阈值住在 3105 助手设置（dbo.SYSSS 的 OWNER_MODULE = 3105），
+// 配置节里已经没有读取方。留一条 Bind 会造出第二个"看起来配上了、其实没人读"的来源——
+// 参数框架要根除的正是这个形态。这条管线现在只承担一件事：启动时跑红线守卫（ValidateOnStart）。
+// 选项对象的属性初始值就是代码默认值（引用 AssistantActionLimits 的常量），校验器校验的是它们。
 builder.Services.AddOptions<EOS.API.Features.Assistant.Governance.AssistantActionLimitsOptions>()
-    .Bind(builder.Configuration.GetSection(EOS.API.Features.Assistant.Governance.AssistantActionLimitsOptions.SectionName))
     .ValidateOnStart();
 builder.Services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<EOS.API.Features.Assistant.Governance.AssistantActionLimitsOptions>,
     EOS.API.Features.Assistant.Governance.AssistantActionLimitsValidator>();
+// ↓ 下面四个域改用**运行期参数视图**：取值来自 dbo.SYSSS 的 3105，不再从配置节绑定（ADR-030 §8）。
+// 注意注册顺序：这几行在 AddOptions 之后，容器对 IOptions<T> 取**最后一个**注册，
+// 于是 AddOptions 那条管线只承担一件事——启动时跑 AssistantActionLimitsValidator（红线守卫）。
+builder.Services.AddSingleton<Microsoft.Extensions.Options.IOptions<
+        EOS.API.Features.Assistant.Situation.AssistantSituationBudgetOptions>>(sp =>
+    new EOS.API.Features.Assistant.Parameters.RuntimeParameterView<
+        EOS.API.Features.Assistant.Situation.AssistantSituationBudgetOptions>(
+        sp.GetRequiredService<EOS.API.Features.Assistant.ModelAccess.IAssistantRuntimeConfig>(),
+        policy => policy.Situation));
+builder.Services.AddSingleton<Microsoft.Extensions.Options.IOptions<
+        EOS.API.Features.Assistant.Diagnosis.AssistantDiagnosisOptions>>(sp =>
+    new EOS.API.Features.Assistant.Parameters.RuntimeParameterView<
+        EOS.API.Features.Assistant.Diagnosis.AssistantDiagnosisOptions>(
+        sp.GetRequiredService<EOS.API.Features.Assistant.ModelAccess.IAssistantRuntimeConfig>(),
+        policy => policy.Diagnosis));
+builder.Services.AddSingleton<Microsoft.Extensions.Options.IOptions<
+        EOS.API.Features.Assistant.Governance.AssistantActionLimitsOptions>>(sp =>
+    new EOS.API.Features.Assistant.Parameters.RuntimeParameterView<
+        EOS.API.Features.Assistant.Governance.AssistantActionLimitsOptions>(
+        sp.GetRequiredService<EOS.API.Features.Assistant.ModelAccess.IAssistantRuntimeConfig>(),
+        policy => policy.ActionLimits));
+builder.Services.AddSingleton<Microsoft.Extensions.Options.IOptions<
+        EOS.API.Features.Assistant.Config.AssistantConfigWriteOptions>>(sp =>
+    new EOS.API.Features.Assistant.Parameters.RuntimeParameterView<
+        EOS.API.Features.Assistant.Config.AssistantConfigWriteOptions>(
+        sp.GetRequiredService<EOS.API.Features.Assistant.ModelAccess.IAssistantRuntimeConfig>(),
+        policy => policy.ConfigWrite));
 builder.Services.AddScoped<EOS.API.Features.Assistant.Actions.AssistantApprovalRequestService>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.PreviewRecordActionTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.ApplyRecordActionTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Tools.PreviewBatchDecisionTool>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Config.IConfigDiagnosisReader,
     EOS.API.Features.Assistant.Config.ConfigDiagnosisReader>();
-builder.Services.Configure<EOS.API.Features.Assistant.Config.AssistantConfigWriteOptions>(
-    builder.Configuration.GetSection(EOS.API.Features.Assistant.Config.AssistantConfigWriteOptions.SectionName));
 builder.Services.AddScoped<EOS.API.Features.Assistant.Config.ConfigClonePlanner>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Config.ConfigDryRunner>();
 builder.Services.AddScoped<EOS.API.Features.Assistant.Config.ConfigWriteService>();
@@ -519,7 +548,8 @@ app.MapFallbackToFile("index.html").RequireAuthorization();
 
 ErpDatabaseInitializer.Run(builder.Configuration, app.Logger);
 await app.Services.GetRequiredService<WorkbenchDefinitionProvider>().RefreshAsync(CancellationToken.None);
-// 助手运行期配置同样在这里读一次：迁移刚跑完，ASSISTANT_MODEL / ASSISTANT_SETTING 才是可用的
+// 助手运行期配置同样在这里读一次：迁移刚跑完，ASSISTANT_MODEL / ASSISTANT_PROVIDER（3102）
+// 与 dbo.SYSSS 的 OWNER_MODULE = 3105（3105 助手设置）才是可用的
 // （照上一行的做法）。读失败不会中断启动——注册表内部会沿用旧值，最终表现为"未配置"，
 // 而助手会以一句**可执行的**文案告诉管理员去哪儿配（不再有"退回 appsettings"的兜底）。
 await app.Services

@@ -19,6 +19,8 @@ public sealed record SystemParameterItem(
     string EffectScope,
     int SeqNo,
     string? Options,
+    string? UpdatedBy,
+    DateTimeOffset? UpdatedAt,
     bool IsReferenced)
 {
     /// <summary>Value actually in force: the stored value, else the declared default.</summary>
@@ -77,6 +79,27 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
 
     private static readonly Dictionary<int, string> ConfigTokens = ConfigScopes
         .ToDictionary(entry => entry.Value, entry => entry.Key);
+
+    /// <summary>
+    /// Owner modules that are deliberately **not** reachable through the generic settings endpoint, but
+    /// still want a readable audit scope token.
+    ///
+    /// <para>
+    /// 3105 助手设置就在这里，且是有意为之：把它登记进 <see cref="ScopeModules"/> 会让助手参数
+    /// 多出一条 <c>CanEdit</c> 就能写的通道，而该模块声明的要求是 <c>CanSetup</c>——那是一次降权。
+    /// 于是只登记审计令牌，让留痕里写的是 <c>assistant</c> 而不是一个光秃秃的模块号。
+    /// </para>
+    /// </summary>
+    private static readonly Dictionary<int, string> AuditOnlyScopeTokens = new()
+    {
+        [PermissionModules.AssistantAdmin.Settings] = "assistant",
+    };
+
+    /// <summary>Audit-facing scope token: registered page scopes first, then audit-only owners.</summary>
+    private static string AuditScopeToken(int ownerModule) =>
+        ScopeTokens.TryGetValue(ownerModule, out var token) ? token
+        : AuditOnlyScopeTokens.TryGetValue(ownerModule, out var auditOnly) ? auditOnly
+        : ownerModule.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>Stored-configuration scope token of an owner module (the "<c>SYSSS</c>" form).</summary>
     public static string ConfigScopeToken(int ownerModule) =>
@@ -180,51 +203,91 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
     /// </summary>
     public async Task<SystemParameterList> ListAsync(int ownerModule, CancellationToken token)
     {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        var referenced = await LoadConfigReferencedKeysAsync(connection, ownerModule, token);
+        var items = await LoadItemsCoreAsync(connection, ownerModule, token);
+
+        var groups = new List<SystemParameterGroup>();
+        var currentCode = string.Empty;
+        var currentLabel = string.Empty;
+        List<SystemParameterItem>? current = null;
+        foreach (var item in items)
+        {
+            if (current is null || !string.Equals(item.GroupCode, currentCode, StringComparison.Ordinal))
+            {
+                if (current is not null) groups.Add(new SystemParameterGroup(currentCode, currentLabel, current));
+                currentCode = item.GroupCode;
+                currentLabel = item.GroupLabel;
+                current = [];
+            }
+
+            current.Add(item with
+            {
+                IsReferenced = referenced.Contains(item.Key) || IsCodeReferenced(ownerModule, item.Key),
+            });
+        }
+
+        if (current is not null) groups.Add(new SystemParameterGroup(currentCode, currentLabel, current));
+
+        return new SystemParameterList(ownerModule, ScopeToken(ownerModule), groups);
+    }
+
+    /// <summary>
+    /// Reads the raw parameter rows of one owner module without touching the request scope.
+    ///
+    /// <para>
+    /// 存在的理由：助手运行期快照的构建者是**单例**（进程内只有一份，改动后重建），
+    /// 而 <see cref="SystemParameterService"/> 依赖审计写入器、注册为请求作用域，单例注入不进来。
+    /// 于是把"读参数行"这一段提成静态入口——**同一段 SQL**，避免为了绕开生命周期再造一份查询
+    /// （两份 SQL 早晚会在"要不要 `WITH (NOLOCK)`"这类细节上分叉）。
+    /// </para>
+    /// </summary>
+    public static async Task<IReadOnlyList<SystemParameterItem>> LoadItemsAsync(
+        DbConnectionFactory connections, int ownerModule, CancellationToken token)
+    {
+        await using var connection = connections.Create();
+        await connection.OpenAsync(token);
+        return await LoadItemsCoreAsync(connection, ownerModule, token);
+    }
+
+    /// <summary>The one query behind both <see cref="ListAsync"/> and <see cref="LoadItemsAsync"/>.</summary>
+    private static async Task<List<SystemParameterItem>> LoadItemsCoreAsync(
+        SqlConnection connection, int ownerModule, CancellationToken token)
+    {
         const string sql = """
             SELECT PARAM_KEY, PARAM_VALUE, VALUE_TYPE, DEFAULT_VALUE, GROUP_CODE, GROUP_LABEL,
-                   DESC_TEXT, EFFECT_SCOPE, SEQ_NO, OPTIONS
+                   DESC_TEXT, EFFECT_SCOPE, SEQ_NO, OPTIONS, LAST_UPDATE_BY, LAST_UPDATE_DATE
             FROM dbo.SYSSS WITH (NOLOCK)
             WHERE OWNER_MODULE = @Owner
             ORDER BY GROUP_SEQ, SEQ_NO, PARAM_KEY;
             """;
-        await using var connection = connections.Create();
-        await connection.OpenAsync(token);
-        var referenced = await LoadConfigReferencedKeysAsync(connection, ownerModule, token);
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.Add("@Owner", SqlDbType.Int).Value = ownerModule;
         await using var reader = await command.ExecuteReaderAsync(token);
 
-        var groups = new List<SystemParameterGroup>();
-        var currentCode = string.Empty;
-        List<SystemParameterItem>? current = null;
-        var currentLabel = string.Empty;
+        var items = new List<SystemParameterItem>();
         while (await reader.ReadAsync(token))
         {
-            var groupCode = reader.GetString(4);
-            if (current is null || !string.Equals(groupCode, currentCode, StringComparison.Ordinal))
-            {
-                if (current is not null) groups.Add(new SystemParameterGroup(currentCode, currentLabel, current));
-                currentCode = groupCode;
-                currentLabel = reader.GetString(5);
-                current = [];
-            }
-            var key = reader.GetString(0);
-            current.Add(new SystemParameterItem(
-                key,
+            items.Add(new SystemParameterItem(
+                reader.GetString(0),
                 reader.IsDBNull(1) ? null : reader.GetString(1),
                 reader.GetString(2),
                 reader.IsDBNull(3) ? null : reader.GetString(3),
-                groupCode,
+                reader.GetString(4),
                 reader.GetString(5),
                 reader.GetString(6),
                 reader.GetString(7),
                 reader.GetInt32(8),
                 reader.IsDBNull(9) ? null : reader.GetString(9),
-                referenced.Contains(key) || IsCodeReferenced(ownerModule, key)));
+                reader.IsDBNull(10) ? null : reader.GetString(10).Trim(),
+                reader.IsDBNull(11)
+                    ? null
+                    : new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(11), DateTimeKind.Utc)),
+                IsReferenced: false));
         }
-        if (current is not null) groups.Add(new SystemParameterGroup(currentCode, currentLabel, current));
 
-        return new SystemParameterList(ownerModule, ScopeToken(ownerModule), groups);
+        return items;
     }
 
     /// <summary>
@@ -334,7 +397,7 @@ public sealed class SystemParameterService(DbConnectionFactory connections, Work
                 connection,
                 transaction,
                 ownerModule,
-                ScopeToken(ownerModule),
+                AuditScopeToken(ownerModule),
                 "PARAM_SAVE",
                 $"保存系统参数 {changed.Count} 项：{string.Join('、', changed.Select(item => item.Key))}",
                 Truncate(user, 20),

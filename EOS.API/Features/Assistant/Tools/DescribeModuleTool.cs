@@ -3,15 +3,20 @@ using System.Text.Json;
 using EOS.API.Models;
 using EOS.API.Security;
 
+using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
+
 namespace EOS.API.Features.Assistant.Tools;
 
 /// <summary>Describes a browsable module from its permission-filtered workbench definition.</summary>
 public sealed class DescribeModuleTool(
     IWorkbenchSearchGateway gateway,
-    IPermissionService permissions) : AssistantToolBase
+    IPermissionService permissions,
+    IAssistantRuntimeConfig? runtime = null) : AssistantToolBase
 {
     public const string ToolName = "describe_module";
-    private const int MaxFieldsPerTable = 80;
+
+    private AssistantToolLimitsOptions Limits => runtime?.Current.Policy.ToolLimits ?? new();
 
     public override string Name => ToolName;
     public override AssistantToolRisk Risk => AssistantToolRisk.Read;
@@ -50,26 +55,30 @@ public sealed class DescribeModuleTool(
         if (definition is null)
             return ToolExecutionResult.Deny($"模块 #{moduleId} 不是可查询的通用工作台模块。");
 
-        return ToolExecutionResult.Success(Compress(definition));
+        return ToolExecutionResult.Success(Compress(definition, Limits));
     }
 
-    internal static string Compress(WorkbenchDefinition definition)
+    internal static string Compress(WorkbenchDefinition definition, AssistantToolLimitsOptions? limits = null)
     {
+        limits ??= new AssistantToolLimitsOptions();
         var sb = new StringBuilder($"模块 #{definition.ModuleId} {definition.Title}");
         sb.AppendLine().Append("- 主表：").Append(definition.MasterTable);
         if (!string.IsNullOrWhiteSpace(definition.DetailTable))
             sb.AppendLine().Append("- 明细表：").Append(definition.DetailTable);
 
-        AppendFields(sb, "主表字段", definition.MasterFields);
+        AppendFields(sb, "主表字段", definition.MasterFields, limits);
         if (definition.DetailFields.Count > 0)
-            AppendFields(sb, "明细字段", definition.DetailFields);
+            AppendFields(sb, "明细字段", definition.DetailFields, limits);
         return sb.ToString().TrimEnd();
     }
 
-    private static void AppendFields(StringBuilder sb, string label, IReadOnlyList<WorkbenchField> fields)
+    private static void AppendFields(
+        StringBuilder sb, string label, IReadOnlyList<WorkbenchField> fields,
+        AssistantToolLimitsOptions limits)
     {
+        var maxFields = limits.DescribeMaxFields;
         sb.AppendLine().Append(label).Append("（").Append(fields.Count).Append("）：");
-        foreach (var field in fields.Take(MaxFieldsPerTable))
+        foreach (var field in fields.Take(maxFields))
         {
             sb.AppendLine().Append("- ").Append(field.Key).Append(' ').Append(field.Label)
                 .Append(" [").Append(field.DataType).Append(']');
@@ -77,7 +86,7 @@ public sealed class DescribeModuleTool(
             if (field.BrowseModuleId is not null) sb.Append(" chooser→").Append(field.BrowseModuleId.Value);
         }
 
-        if (fields.Count > MaxFieldsPerTable)
-            sb.AppendLine().Append($"（其余 {fields.Count - MaxFieldsPerTable} 个字段未展示）");
+        if (fields.Count > maxFields)
+            sb.AppendLine().Append($"（其余 {fields.Count - maxFields} 个字段未展示）");
     }
 }

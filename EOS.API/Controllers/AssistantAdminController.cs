@@ -2,6 +2,7 @@ using EOS.API.Data;
 using EOS.API.Errors;
 using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -35,7 +36,8 @@ public sealed class AssistantAdminController(
     IEnumerable<Features.Assistant.Tools.IAssistantTool> assistantTools,
     IKnowledgeRepository knowledge,
     IAssistantModelCatalog modelCatalog,
-    IAssistantSettingStore settingStore,
+    SystemParameterService parameters,
+    AssistantParameterScopeStore scopeStore,
     IAssistantSecretStore modelSecrets,
     AssistantRuntimeRegistry registry,
     IAssistantUsageRepository usageRepository) : ControllerBase
@@ -148,6 +150,9 @@ public sealed class AssistantAdminController(
 
     /// <summary>写回一个设置项的入参。**空值 = 恢复默认**（删掉覆盖行）。</summary>
     public sealed record AssistantSettingRequest(string? Value);
+
+    /// <summary>一层作用域覆盖的写入请求（3015 页面的「按用户/模块覆盖」）。</summary>
+    public sealed record AssistantScopeRequest(string? ScopeType, string? ScopeKey, string? ParamKey, string? Value);
 
     /// <summary>
     /// 跨用户分页列会话（元数据）。<paramref name="state"/> 三态、<paramref name="owner"/> 按归属用户筛、
@@ -782,12 +787,15 @@ public sealed class AssistantAdminController(
     }
 
     // ==================================================================
-    // 3105 助手设置（见 ADR-030 §8）：全局策略参数——提示词、日上限、单价兜底、熔断阈值。
-    // **表里没有行 = 用代码默认值**，所以"恢复默认"就是删掉那一行。
+    // 3105 助手设置（见 ADR-030 §8）：全局策略参数。
+    // 参数的**声明**在代码（AssistantParameterCatalog），**取值**在 dbo.SYSSS 的 OWNER_MODULE = 3105；
+    // 两者按批同步生长。读写都经 SystemParameterService —— 参数只有一个存储、一套类型校验与审计路径
+    // （§4.3：端点仍挂在 3105 自己这里，写门是 CanSetup，不走通用设置端点那条 CanEdit 的通道）。
     // ==================================================================
 
     /// <summary>
-    /// 设置项清单。每一项都带上**代码里的默认值**，界面因此能显示"改过没有、默认是多少"。
+    /// 设置项清单，**按域分组**。每一项都带上代码里的默认值、单位、取值范围与读取方，
+    /// 界面因此能显示"改过没有、默认是多少、谁在读它、填错了会怎样"。
     ///
     /// <para>
     /// 另外把 <c>problems</c> 一并给出：库里的值解析不了时（有人手改过库、或升级后格式变了），
@@ -798,40 +806,48 @@ public sealed class AssistantAdminController(
     public async Task<IActionResult> ListSettings(CancellationToken token)
     {
         if (!await CanBrowseSettings(token)) return Forbid();
-        var rows = await settingStore.ListAsync(token);
-        var byKey = new Dictionary<string, AssistantSettingRow>(StringComparer.OrdinalIgnoreCase);
-        foreach (var row in rows)
-        {
-            byKey[row.ParamKey] = row;
-        }
 
-        var (_, problems) = AssistantSettingKeys.Apply(rows);
+        var list = await parameters.ListAsync(AssistantParameterCatalog.OwnerModule, token);
+        var rows = list.Groups.SelectMany(group => group.Parameters).ToList();
+        var byKey = rows.ToDictionary(row => row.Key, StringComparer.OrdinalIgnoreCase);
+
         return Ok(new
         {
-            items = AssistantSettingKeys.All.Select(descriptor =>
+            groups = AssistantParameterCatalog.Groups.Select(group => new
+            {
+                code = group.Code,
+                label = group.Label,
+                seq = group.Seq,
+            }),
+            items = AssistantParameterCatalog.All.Select(descriptor =>
             {
                 byKey.TryGetValue(descriptor.Key, out var row);
                 return new
                 {
                     key = descriptor.Key,
                     displayName = descriptor.DisplayName,
+                    groupCode = descriptor.Group,
+                    groupLabel = AssistantParameterCatalog.FindGroup(descriptor.Group)?.Label,
+                    seqNo = AssistantParameterCatalog.SeqNoOf(descriptor),
                     valueType = descriptor.ValueType,
                     unit = descriptor.Unit,
                     description = descriptor.Description,
-                    defaultValue = descriptor.DefaultText,
+                    rangeHint = AssistantParameterCatalog.DescribeRange(descriptor),
+                    defaultValue = descriptor.DefaultValue,
+                    consumers = descriptor.Consumers,
                     // value 为 null = 没覆盖过，用的就是默认值
-                    value = row?.ParamValue,
-                    isOverridden = row is not null,
+                    value = row?.Value,
+                    isOverridden = row?.Value is not null,
                     updatedAt = row?.UpdatedAt,
                     updatedBy = row?.UpdatedBy,
                 };
             }),
-            problems,
+            problems = AssistantParameterResolver.Interpret(rows).Problems,
         });
     }
 
     /// <summary>
-    /// 写回一个设置项。**空值 = 恢复默认**：删掉覆盖行，而不是存一个空串——
+    /// 写回一个设置项。**空值 = 恢复默认**：把取值列清空（而不是存一个空串）——
     /// 存空串会让默认值永远拿不回来。
     /// </summary>
     [HttpPut("settings/{key}")]
@@ -839,27 +855,54 @@ public sealed class AssistantAdminController(
         string key, [FromBody] AssistantSettingRequest? request, CancellationToken token)
     {
         if (!await CanSetupSettings(token)) return Forbid();
-        var descriptor = AssistantSettingKeys.Find(key);
+        return await SaveSettingAsync(key, request?.Value, token);
+    }
+
+    /// <summary>恢复默认：清空取值，回到代码默认值（标量参数则回到 <c>DEFAULT_VALUE</c>）。</summary>
+    [HttpDelete("settings/{key}")]
+    public async Task<IActionResult> ResetSetting(string key, CancellationToken token)
+    {
+        if (!await CanSetupSettings(token)) return Forbid();
+        return await SaveSettingAsync(key, null, token);
+    }
+
+    /// <summary>
+    /// 保存与恢复默认的公共路径。两步：
+    /// ① 用**参数目录的解析器**校验取值（与生效时同一份实现，所以"保存时通过、生效时被忽略"不可能发生）；
+    /// ② 经 <see cref="SystemParameterService.SaveAsync"/> 落库并留痕——类型与归属由它再挡一次。
+    /// </summary>
+    private async Task<IActionResult> SaveSettingAsync(string key, string? value, CancellationToken token)
+    {
+        var descriptor = AssistantParameterCatalog.Find(key);
         if (descriptor is null)
         {
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "未知的设置项。"));
         }
 
-        var text = request?.Value?.Trim() ?? string.Empty;
-        if (text.Length == 0)
+        if (!AssistantParameterCatalog.TryNormalize(descriptor, value, out var normalized, out var problem))
         {
-            await settingStore.DeleteAsync(descriptor.Key, token);
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", $"{descriptor.DisplayName}：{problem}。"));
         }
-        else
-        {
-            var problem = ValidateSettingValue(descriptor, text);
-            if (problem is not null)
-            {
-                return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", problem));
-            }
 
-            await settingStore.UpsertAsync(
-                descriptor.Key, text, descriptor.ValueType, descriptor.Description, userContext.UserId, token);
+        // 目录不许出现的键（红线 / 凭据）在这里也拦一次：正常路径到不了，但"到不了"要靠代码而不是靠界面
+        if (AssistantParameterCatalog.RedLineKeys.Contains(descriptor.Key)
+            || AssistantParameterCatalog.CredentialKeys.Contains(descriptor.Key))
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "该键不是可写的助手参数。"));
+        }
+
+        var result = await parameters.SaveAsync(
+            AssistantParameterCatalog.OwnerModule,
+            new Dictionary<string, string?> { [descriptor.Key] = normalized },
+            userContext.UserId,
+            token);
+
+        if (result.Errors.Count > 0)
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", string.Join("；", result.Errors)));
         }
 
         // 改完立刻重建快照：否则就成了"保存了但要等重启"——那正是 §8 要消掉的体验
@@ -867,33 +910,153 @@ public sealed class AssistantAdminController(
         return NoContent();
     }
 
-    /// <summary>恢复默认：删掉覆盖行（缺行 = 用代码默认值）。</summary>
-    [HttpDelete("settings/{key}")]
-    public async Task<IActionResult> ResetSetting(string key, CancellationToken token)
-    {
-        if (!await CanSetupSettings(token)) return Forbid();
-        var descriptor = AssistantSettingKeys.Find(key);
-        if (descriptor is null)
-        {
-            return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "未知的设置项。"));
-        }
+    // ==================================================================
+    // 3105 助手设置 → **作用域覆盖**（ADR-030 §6.2）：把某一层的值压到全局之上。
+    // 优先级 用户 > 模块 > 全局；"哪条参数可被覆盖、出现在哪些层、能否往那个方向走"
+    // 全部由参数目录与 AssistantParameterScopeRules 判定——**保存与生效共用那一份判断**。
+    // ==================================================================
 
-        await settingStore.DeleteAsync(descriptor.Key, token);
-        await registry.RefreshAsync(token);
-        return NoContent();
+    /// <summary>
+    /// 当前的覆盖清单 + **哪些参数允许被覆盖、允许出现在哪些层**。
+    /// 可选项由服务端给出，界面不自己判断"这条能不能覆盖"。
+    /// </summary>
+    [HttpGet("settings/scopes")]
+    public async Task<IActionResult> ListScopes(CancellationToken token)
+    {
+        if (!await CanBrowseSettings(token)) return Forbid();
+
+        var rows = await scopeStore.ListAllAsync(token);
+        return Ok(new
+        {
+            items = rows.Select(row => new
+            {
+                scopeType = row.ScopeType,
+                scopeKey = row.ScopeKey,
+                paramKey = row.ParamKey,
+                value = row.Value,
+                updatedBy = row.UpdatedBy,
+                updatedAt = row.UpdatedAt,
+            }),
+            scopable = AssistantParameterCatalog.All
+                .Where(item => item.Layers != AssistantParameterScopeLayers.None)
+                .Select(item => new
+                {
+                    key = item.Key,
+                    displayName = item.DisplayName,
+                    valueType = item.ValueType,
+                    unit = item.Unit,
+                    displayNameOfPolicy = item.ScopePolicy == AssistantParameterScopePolicy.Tighten
+                        ? "只能收紧（关得掉、放不开）"
+                        : "可放宽",
+                    layers = LayersOf(item),
+                    rangeHint = AssistantParameterCatalog.DescribeRange(item),
+                }),
+        });
     }
 
     /// <summary>
-    /// 校验一个设置值。**复用 <see cref="AssistantSettingKeys.Apply"/> 的解析器**，不另写一份：
-    /// 两份校验早晚会不一致，而"保存时通过、生效时被忽略"是最难查的一类问题。
+    /// 写入一层覆盖。**空值 = 清掉这一项在这一层的覆盖**（回到上层取值），
+    /// 与 3105 主页面"恢复默认"同一口径。
     /// </summary>
-    private static string? ValidateSettingValue(AssistantSettingDescriptor descriptor, string text)
+    [HttpPut("settings/scopes")]
+    public async Task<IActionResult> UpsertScope(
+        [FromBody] AssistantScopeRequest? request, CancellationToken token)
     {
-        var (_, problems) = AssistantSettingKeys.Apply(
-        [
-            new AssistantSettingRow(descriptor.Key, text, descriptor.ValueType, null, DateTimeOffset.UtcNow, null),
-        ]);
-        return problems.Count > 0 ? problems[0] : null;
+        if (!await CanSetupSettings(token)) return Forbid();
+        if (!AssistantParameterScopeRules.TryParseType(request?.ScopeType, out var scopeType))
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "未知的作用域类型（只支持 MODULE / USER）。"));
+        }
+
+        var scopeKey = request!.ScopeKey?.Trim() ?? string.Empty;
+        if (scopeKey.Length == 0 || scopeKey.Length > 50)
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "作用域对象不能为空，且不超过 50 个字符。"));
+        }
+
+        var descriptor = AssistantParameterCatalog.Find(request.ParamKey);
+        if (descriptor is null)
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "未知的设置项。"));
+        }
+
+        if (descriptor.ScopePolicy == AssistantParameterScopePolicy.None)
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT",
+                $"{descriptor.DisplayName} 不可作用域化——这类参数只允许全库一个值。"));
+        }
+
+        var isUserLayer = scopeType == AssistantParameterScopeRules.User;
+        if (!AssistantParameterCatalog.AllowsLayer(descriptor, scopeType))
+        {
+            var allowed = string.Join('、', LayersOf(descriptor).Select(item => item == "USER" ? "按用户" : "按模块"));
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT",
+                $"{descriptor.DisplayName} 没有声明可被{(isUserLayer ? "用户" : "模块")}覆盖（允许：{allowed}）。"));
+        }
+
+        if (!await scopeStore.ScopeKeyExistsAsync(scopeType, scopeKey, token))
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT",
+                $"{(isUserLayer ? "用户" : "模块")}「{scopeKey}」不存在——"
+                + "写进来也永远匹配不上任何请求，所以这里直接拒绝。"));
+        }
+
+        // 空值 = 清掉这一层，不必再校验取值
+        if (string.IsNullOrWhiteSpace(request.Value))
+        {
+            await scopeStore.UpsertAsync(scopeType, scopeKey, descriptor.Key, null, userContext.UserId, token);
+            return NoContent();
+        }
+
+        if (!AssistantParameterCatalog.TryNormalize(descriptor, request.Value, out var normalized, out var problem))
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", $"{descriptor.DisplayName}：{problem}。"));
+        }
+
+        // 松紧方向：收紧型的"上层"就是全局值（收紧型只允许声明一层，见目录里的 ValidateCatalog）
+        var upperValue = registry.Current.ParameterRows
+            .FirstOrDefault(row => string.Equals(row.Key, descriptor.Key, StringComparison.OrdinalIgnoreCase))
+            ?.EffectiveValue;
+        if (!AssistantParameterScopeRules.IsTightenAllowed(descriptor, upperValue, normalized, out var tightenProblem))
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", $"{descriptor.DisplayName}：{tightenProblem}。"));
+        }
+
+        await scopeStore.UpsertAsync(scopeType, scopeKey, descriptor.Key, normalized, userContext.UserId, token);
+        return NoContent();
+    }
+
+    /// <summary>清掉某一层的全部覆盖（用户在界面上把这一层整个撤掉）。</summary>
+    [HttpDelete("settings/scopes/{scopeType}/{scopeKey}")]
+    public async Task<IActionResult> DeleteScopeLayer(
+        string scopeType, string scopeKey, CancellationToken token)
+    {
+        if (!await CanSetupSettings(token)) return Forbid();
+        if (!AssistantParameterScopeRules.TryParseType(scopeType, out var type))
+        {
+            return BadRequest(ApiProblem.Create(
+                StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "未知的作用域类型。"));
+        }
+
+        await scopeStore.DeleteLayerAsync(type, scopeKey.Trim(), token);
+        return NoContent();
+    }
+
+    /// <summary>该参数声明的层（供界面显示"允许按模块 / 按用户覆盖"）。</summary>
+    private static IReadOnlyList<string> LayersOf(AssistantParameterDescriptor descriptor)
+    {
+        var layers = new List<string>();
+        if (descriptor.Layers.HasFlag(AssistantParameterScopeLayers.Module)) layers.Add("MODULE");
+        if (descriptor.Layers.HasFlag(AssistantParameterScopeLayers.User)) layers.Add("USER");
+        return layers;
     }
 
     private async Task<bool> CanBrowseSettings(CancellationToken token) =>

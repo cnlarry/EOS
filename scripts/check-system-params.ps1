@@ -37,7 +37,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot 'dev\eos-sql.ps1')
 
-$AllowedModules = @{ 110111 = '系统参数设置'; 180213 = '考勤数据设置'; 180662 = '考勤数据设置（月度）' }
+$AllowedModules = @{ 110111 = '系统参数设置'; 180213 = '考勤数据设置'; 180662 = '考勤数据设置（月度）'; 3105 = '助手设置' }
 $problems = [System.Collections.Generic.List[string]]::new()
 
 function Get-ParameterRows {
@@ -186,7 +186,7 @@ SELECT N'组内序号重复|' + CONVERT(nvarchar(32), GROUP_CODE) + N'.' + CONVE
   FROM dbo.SYSSS GROUP BY OWNER_MODULE, GROUP_CODE, SEQ_NO HAVING COUNT(*) > 1
 UNION ALL
 SELECT N'归属模块未登记|' + CONVERT(nvarchar(10), OWNER_MODULE)
-  FROM dbo.SYSSS WHERE OWNER_MODULE NOT IN (110111, 180213, 180662) GROUP BY OWNER_MODULE
+  FROM dbo.SYSSS WHERE OWNER_MODULE NOT IN (110111, 180213, 180662, 3105) GROUP BY OWNER_MODULE
 UNION ALL
 SELECT N'分组顺序未登记|' + CONVERT(nvarchar(32), GROUP_CODE)
   FROM dbo.SYSSS WHERE GROUP_SEQ = 0 OR GROUP_SEQ IS NULL GROUP BY GROUP_CODE

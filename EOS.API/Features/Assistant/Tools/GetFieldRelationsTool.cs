@@ -3,6 +3,9 @@ using System.Text.Json;
 using EOS.API.Features.Assistant.Metrics;
 using EOS.API.Security;
 
+using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
+
 namespace EOS.API.Features.Assistant.Tools;
 
 /// <summary>
@@ -14,10 +17,12 @@ namespace EOS.API.Features.Assistant.Tools;
 public sealed class GetFieldRelationsTool(
     IFieldRelationRepository relations,
     IMetricRepository moduleLocator,
-    IPermissionService permissions) : AssistantToolBase
+    IPermissionService permissions,
+    IAssistantRuntimeConfig? runtime = null) : AssistantToolBase
 {
     public const string ToolName = "get_field_relations";
-    private const int MaxOutput = 50;
+
+    private AssistantToolLimitsOptions Limits => runtime?.Current.Policy.ToolLimits ?? new();
 
     public override string Name => ToolName;
     public override AssistantToolRisk Risk => AssistantToolRisk.Read;
@@ -46,7 +51,7 @@ public sealed class GetFieldRelationsTool(
         var hidden = 0;
         foreach (var relation in all)
         {
-            if (count >= MaxOutput)
+            if (count >= Limits.FieldRelationsMax)
             {
                 hidden++;
                 continue;

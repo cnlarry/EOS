@@ -4,6 +4,9 @@ using EOS.API.Data;
 using EOS.API.Models;
 using EOS.API.Security;
 
+using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
+
 namespace EOS.API.Features.Assistant.Tools;
 
 /// <summary>
@@ -13,13 +16,12 @@ namespace EOS.API.Features.Assistant.Tools;
 /// </summary>
 public sealed class GetRecordDetailTool(
     IWorkbenchSearchGateway gateway,
-    IPermissionService permissions) : IAssistantTool
+    IPermissionService permissions,
+    IAssistantRuntimeConfig? runtime = null) : IAssistantTool
 {
     public const string ToolName = "get_record_detail";
 
-    private const int MaxColumns = 24;
-
-    private const int MaxValueLength = 200;
+    private AssistantToolLimitsOptions Limits => runtime?.Current.Policy.ToolLimits ?? new();
 
     public string Name => ToolName;
 
@@ -85,23 +87,29 @@ public sealed class GetRecordDetailTool(
             return this.DenyNotFound();
         }
 
-        return ToolExecutionResult.Success(Compress(definition, row));
+        return ToolExecutionResult.Success(Compress(definition, row, Limits));
     }
 
     /// <summary>输出全部可见列（限列数与值长），含字段标签；空值跳过。</summary>
-    internal static string Compress(WorkbenchDefinition definition, Dictionary<string, object?> row)
+    /// <param name="limits">输出上限；为 null 时用参数默认值（单测直接调用时不必造参数对象）。</param>
+    internal static string Compress(
+        WorkbenchDefinition definition, Dictionary<string, object?> row,
+        AssistantToolLimitsOptions? limits = null)
     {
+        limits ??= new AssistantToolLimitsOptions();
         var sb = new StringBuilder($"module={definition.ModuleId}({definition.Title}) detail:");
         sb.AppendLine();
         int taken = 0;
         foreach (var field in definition.MasterFields)
         {
-            if (taken >= MaxColumns) break;
+            if (taken >= limits.DetailMaxColumns) break;
             if (!row.TryGetValue(field.Key, out var value)) continue;
             var text = value?.ToString();
             if (string.IsNullOrEmpty(text)) continue;
             sb.Append("- ").Append(field.Label).Append('=')
-                .Append(text.Length > MaxValueLength ? text[..MaxValueLength] + "…" : text);
+                .Append(text.Length > limits.DetailMaxValueLength
+                    ? text[..limits.DetailMaxValueLength] + "…"
+                    : text);
             sb.AppendLine();
             taken++;
         }

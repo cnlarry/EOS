@@ -20,7 +20,10 @@ public sealed class KbController(
     ModuleRightsRepository rightsRepository,
     CurrentUserContext userContext,
     WorkbenchAuditWriter auditWriter,
-    IWorkbenchSearchGateway gateway) : ControllerBase
+    IWorkbenchSearchGateway gateway,
+    // 入库切块的块长与重叠来自参数目录的 KB 域（ADR-030 §5.3.9）：块长直接决定
+    // "检索回来的片段够不够回答一个问题"，它是运维会想调的，不是实现细节。
+    IAssistantRuntimeConfig runtime) : ControllerBase
 {
     private const int StewardModuleId = 2302;
     private const int OpsModuleId = 2306;
@@ -64,7 +67,8 @@ public sealed class KbController(
         if (refError is not null)
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "KB_REF_DENIED",
                 $"文档内业务引用复核未通过（{refError}），请删除该引用后重试。"));
-        var texts = KbChunker.Split(request.Content);
+        var texts = KbChunker.Split(
+            request.Content, runtime.Current.Policy.Kb);
         if (texts.Count == 0)
             return BadRequest(ApiProblem.Create(StatusCodes.Status400BadRequest, "INVALID_ARGUMENT", "文档切块为空，无法入库。"));
         var chunks = new List<(string Content, float[] Vector)>();
@@ -132,13 +136,20 @@ public sealed class KbController(
                 ApiProblem.Create(StatusCodes.Status503ServiceUnavailable, "KB_EMBEDDING_NOT_CONFIGURED", ex.Message));
         }
 
+        // TopK 由调用方给，但**必须有上界**：不然一句请求就能让检索返回任意条数（内存与出网检索成本）。
+        // 上界取自参数目录的 KB 域，与助手工具的 KB_SEARCH_MAX_HITS **分开**：
+        // 那个管"进模型上下文几条"，这个管"界面能翻出几条"——把两者合成一个，
+        // 管理员为省 token 调小工具上限时会把检索页一起缩水，而他从界面上看不出这层关联。
+        var topK = Math.Clamp(request.TopK, 1, runtime.Current.Policy.Kb.EndpointMaxHits);
         var hits = await repository.SearchAsync(EmbeddingJson.ToJson(queryVector),
-            embedding.Dimension, request.TopK, await AllowedVisibilitiesAsync(token), token);
+            embedding.Dimension, topK, await AllowedVisibilitiesAsync(token), token);
         // R2:与 kb_search 工具同口径——命中片段含业务引用时逐条复核，失败片段不返回。
         hits = await KbReferenceVerifier.FilterHitsAsync(
             userContext.UserId, hits, VerifyReferencesAsync, token);
         return Ok(new
         {
+            // 回显实际生效的条数：被夹住时调用方看得见，而不是"我要 100 条、拿到 20 条"却不明白为什么
+            topK,
             hits = hits.Select(hit => new
             {
                 docId = hit.DocId.ToString(),

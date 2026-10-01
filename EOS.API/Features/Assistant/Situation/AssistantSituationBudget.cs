@@ -3,13 +3,15 @@ using Microsoft.Extensions.Options;
 namespace EOS.API.Features.Assistant.Situation;
 
 /// <summary>
-/// 处境上下文的预算与上限。全部可被配置（<c>AssistantSituation</c> 节）或环境变量覆盖，
-/// 代码内不写死数值：超限一律按这里的上限硬截断。
+/// 处境上下文的预算与上限：超限一律按这里的上限硬截断。
+///
+/// <para>
+/// 取值来自 3105 的参数目录（<c>SIT_*</c> 键），**不再从配置节绑定**（ADR-030 §8）；
+/// 这里的属性初始值就是"代码默认值"，也是目录里 <c>DEFAULT_VALUE</c> 的依据——默认值只有这一份。
+/// </para>
 /// </summary>
 public sealed class AssistantSituationBudgetOptions
 {
-    public const string SectionName = "AssistantSituation";
-
     /// <summary>常驻处境合计预算（token）。</summary>
     public int ResidentTokenLimit { get; set; } = 300;
 

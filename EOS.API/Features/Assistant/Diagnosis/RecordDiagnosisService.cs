@@ -25,8 +25,8 @@ public sealed class RecordDiagnosisService(
     /// <summary>阶段展示顺序：保存阶段占实测规则数的 89%，放最前。</summary>
     private static readonly IReadOnlyList<string> StageOrder = ["SAVE", "APPROVE", "DEAPPROVE", "DELETE"];
 
-    /// <summary>归因文案里逐条列出的动作权限项上限（其余指向 blockers 段）。</summary>
-    private const int ActionSummaryLimit = 3;
+    // 归因文案里逐条列出的动作权限项上限（其余指向 blockers 段）：
+    // 取值来自 3105 的参数 DIAG_ACTION_SUMMARY_LIMIT（它原先写死在这里，一个配置入口都没有）
 
     public async Task<RecordDiagnosisOutcome> DiagnoseAsync(
         string userId, DiagnosisContext context, CancellationToken token)
@@ -56,7 +56,9 @@ public sealed class RecordDiagnosisService(
             facts.Flow is not null && facts.Flow.PendingApprovers.Contains(userId, StringComparer.OrdinalIgnoreCase)));
 
         var missing = BuildMissing(facts, ordered, conflicts);
-        var verdict = BuildVerdict(ordered, hits, guards, blockers, context.AttemptedFields, conflicts, missing);
+        var verdict = BuildVerdict(
+            ordered, hits, guards, blockers, context.AttemptedFields, conflicts, missing,
+            options.Value.MaxActionSummary);
 
         var document = new RecordDiagnosisDocument(
             new DiagnosisTarget(
@@ -201,7 +203,8 @@ public sealed class RecordDiagnosisService(
         IReadOnlyList<DiagnosisBlockerFact> blockers,
         IReadOnlyList<string> attemptedFields,
         IReadOnlyList<string> conflicts,
-        IReadOnlyList<string> missing)
+        IReadOnlyList<string> missing,
+        int actionSummaryLimit)
     {
         // 状态类阻塞最根本：它对该记录的任何改动都成立。
         var state = blockers.FirstOrDefault(blocker => DiagnosisActionEvaluator.StateCodes.Contains(blocker.Code));
@@ -246,7 +249,7 @@ public sealed class RecordDiagnosisService(
             .ToList();
         if (action.Count > 0)
         {
-            var listed = action.Take(ActionSummaryLimit).ToList();
+            var listed = action.Take(actionSummaryLimit).ToList();
             var summary = string.Join("；", listed.Select(blocker => $"{blocker.Action}：{blocker.Message}"));
             var rest = action.Count > listed.Count ? $"（另有 {action.Count - listed.Count} 项不可执行，见 blockers 段）" : string.Empty;
             return new DiagnosisVerdictEntry(

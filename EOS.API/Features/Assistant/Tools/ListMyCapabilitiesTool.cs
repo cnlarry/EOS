@@ -2,6 +2,9 @@ using System.Text;
 using System.Text.Json;
 using EOS.API.Security;
 
+using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
+
 namespace EOS.API.Features.Assistant.Tools;
 
 /// <summary>
@@ -18,11 +21,12 @@ namespace EOS.API.Features.Assistant.Tools;
 /// </summary>
 public sealed class ListMyCapabilitiesTool(
     IWorkbenchSearchGateway gateway,
-    IPermissionService permissions) : AssistantToolBase
+    IPermissionService permissions,
+    IAssistantRuntimeConfig? runtime = null) : AssistantToolBase
 {
     public const string ToolName = "list_my_capabilities";
 
-    private const int MaxOutputModules = 50;
+    private AssistantToolLimitsOptions Limits => runtime?.Current.Policy.ToolLimits ?? new();
 
     public override string Name => ToolName;
 
@@ -53,7 +57,7 @@ public sealed class ListMyCapabilitiesTool(
             described.Add((module.Title, module.Id, DescribeActions(permission)));
         }
 
-        var shown = described.Take(MaxOutputModules).ToArray();
+        var shown = described.Take(Limits.ListCapabilitiesMax).ToArray();
         var sb = new StringBuilder($"本人有浏览权限的模块共 {described.Count} 个（括号内是你在该模块上的操作权）：");
         foreach (var item in shown)
         {

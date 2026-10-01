@@ -1,4 +1,5 @@
 using EOS.API.Data;
+using EOS.API.Features.Assistant.Parameters;
 using Microsoft.Extensions.Options;
 
 namespace EOS.API.Features.Assistant.ModelAccess;
@@ -23,6 +24,23 @@ public sealed record ResolvedAssistantModel(
 /// </summary>
 public sealed record AssistantRuntimeSnapshot(ResolvedAssistantModel? Model, AssistantSettings Settings)
 {
+    /// <summary>
+    /// 全局参数行（<c>dbo.SYSSS</c> 的 <c>OWNER_MODULE = 3105</c>）。
+    ///
+    /// <para>
+    /// 快照里连**原始行**一起留着，是为了让作用域覆盖能在它之上叠加
+    /// （<c>AssistantParameterScopeRules.Layer</c>），叠加完仍交给同一个解释器——
+    /// 于是"全局值怎么解释"只有一处实现，作用域不引入第二套口径。
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<Data.SystemParameterItem> ParameterRows { get; init; } = [];
+
+    /// <summary>
+    /// 全局参数的解释结果（快照的一部分）。作用域叠加（模块 / 用户）以它为起点，
+    /// 没有覆盖行时直接用它——所以"大多数人"这个请求里一次额外的库都不用查。
+    /// </summary>
+    public AssistantPolicyValues Policy { get; init; } = AssistantPolicyValues.Default;
+
     /// <summary>
     /// 能不能真正发起模型调用：**有当前模型，且那把密钥已配置**。
     ///
@@ -50,7 +68,8 @@ public interface IAssistantRuntimeConfig
 /// <para>
 /// 此前是**启动期单例绑配置**（<c>AddSingleton&lt;IChatModel, DeepSeekChatModel&gt;</c> +
 /// <c>IOptions&lt;AssistantSettings&gt;</c>），进程跑起来就改不了。现在两块都来自数据库：
-/// 模型来自 <c>dbo.ASSISTANT_MODEL/PROVIDER</c>（3102），全局策略来自 <c>dbo.ASSISTANT_SETTING</c>（3105）。
+/// 模型来自 <c>dbo.ASSISTANT_MODEL/PROVIDER</c>（3102），全局策略来自 <c>dbo.SYSSS</c> 的
+/// <c>OWNER_MODULE = 3105</c>（3105 助手设置，解析见 <see cref="AssistantParameterResolver"/>）。
 /// </para>
 ///
 /// <para>
@@ -65,12 +84,12 @@ public interface IAssistantRuntimeConfig
 /// </summary>
 public sealed class AssistantRuntimeRegistry(
     IAssistantModelCatalog catalog,
-    IAssistantSettingStore settingStore,
+    AssistantParameterResolver parameterResolver,
     IAssistantSecretStore secrets,
     ILogger<AssistantRuntimeRegistry> logger) : IAssistantRuntimeConfig
 {
     private AssistantActiveModel? _active;
-    private AssistantSettings _policy = new();
+    private AssistantParameterSet _parameters = AssistantParameterSet.Empty;
     private volatile AssistantRuntimeSnapshot _current = new(null, new AssistantSettings());
 
     /// <inheritdoc />
@@ -81,19 +100,12 @@ public sealed class AssistantRuntimeRegistry(
     {
         try
         {
-            var rows = await settingStore.ListAsync(token);
-            var (policy, problems) = AssistantSettingKeys.Apply(rows);
-            // 解析不了的值**逐条记日志**：静默忽略会让"界面显示 5 元、实际按默认值跑"无从追查
-            foreach (var problem in problems)
-            {
-                logger.LogWarning("助手设置项被忽略：{Problem}", problem);
-            }
-
-            _policy = policy;
+            // 解析失败的值由解析器**逐条记日志**：静默忽略会让"界面显示 5 元、实际按默认值跑"无从追查
+            _parameters = await parameterResolver.ResolveAsync(token);
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "读取助手设置失败，沿用上一次生效的策略。");
+            logger.LogWarning(ex, "读取助手参数失败，沿用上一次生效的策略。");
         }
 
         try
@@ -114,11 +126,15 @@ public sealed class AssistantRuntimeRegistry(
         if (_active is null)
         {
             // 没有当前模型：策略照旧生效（提示词与限额仍要能看、能改），但未配置
-            _current = new AssistantRuntimeSnapshot(null, _policy);
+            _current = new AssistantRuntimeSnapshot(null, PolicyOnly(_parameters.Values))
+            {
+                ParameterRows = _parameters.Rows,
+                Policy = _parameters.Values,
+            };
             return;
         }
 
-        var settings = Compose(_active, _policy);
+        var settings = Compose(_active, _parameters.Values);
         _current = new AssistantRuntimeSnapshot(
             new ResolvedAssistantModel(
                 _active.Model.ModelId,
@@ -127,19 +143,31 @@ public sealed class AssistantRuntimeRegistry(
                 _active.Provider.ProviderId,
                 _active.Provider.Code,
                 _active.Provider.DisplayName),
-            settings);
+            settings)
+        {
+            ParameterRows = _parameters.Rows,
+            Policy = _parameters.Values,
+        };
     }
+
+    /// <summary>只有全局策略、没有模型行时的配置（传输层字段取代码默认值，密钥为空即"未配置"）。</summary>
+    private static AssistantSettings PolicyOnly(AssistantPolicyValues policy) => new()
+    {
+        EnableAutoDistill = policy.EnableAutoDistill,
+        Cost = policy.Cost,
+        SystemPrompt = policy.SystemPrompt,
+    };
 
     /// <summary>
     /// 把"模型行 + 供应商行 + 全局策略"合成为一次调用要用的配置。
     ///
     /// <para>
     /// 传输层字段来自表行（端点 / 模型标识 / 超时 / 温度 / 最大输出 / 窗口 / 工具能力 / 单价）；
-    /// 策略字段来自 <c>dbo.ASSISTANT_SETTING</c>（提示词 / 自动提炼 / 日上限 / 单价兜底 / 熔断）。
+    /// 策略字段来自 3105 的参数（提示词 / 自动提炼 / 日上限 / 单价兜底 / 熔断）。
     /// 单价留空时由策略里的兜底价接手——这条退路在 <c>AssistantCost.Calculate</c> 里。
     /// </para>
     /// </summary>
-    private AssistantSettings Compose(AssistantActiveModel active, AssistantSettings policy)
+    private AssistantSettings Compose(AssistantActiveModel active, AssistantPolicyValues policy)
     {
         var model = active.Model;
         return new AssistantSettings
@@ -157,7 +185,7 @@ public sealed class AssistantRuntimeRegistry(
             SupportsTools = model.SupportsTools,
             InputPerMillionYuan = model.InputPerMillionYuan,
             OutputPerMillionYuan = model.OutputPerMillionYuan,
-            // 以下来自全局策略表（缺行 = 代码默认值）
+            // 以下来自 3105 的全局策略参数
             EnableAutoDistill = policy.EnableAutoDistill,
             Cost = policy.Cost,
             SystemPrompt = policy.SystemPrompt,

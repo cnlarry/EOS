@@ -3,6 +3,7 @@ using EOS.API.Features.Assistant;
 using EOS.API.Features.Assistant.Governance;
 using EOS.API.Features.Assistant.Memory;
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Features.Assistant.Tools;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -272,7 +273,7 @@ public sealed class AssistantChatGovernanceTests
         var blank = await CollectAsync(service, "   ");
         Assert.Equal("INVALID_ARGUMENT", Assert.IsType<ChatStreamEvent.Failed>(Assert.Single(blank)).Code);
 
-        var oversize = await CollectAsync(service, new string('长', ChatService.MaxContentLength + 1));
+        var oversize = await CollectAsync(service, new string('长', new AssistantChatLimitsOptions().MaxContentLength + 1));
         Assert.Equal("INVALID_ARGUMENT", Assert.IsType<ChatStreamEvent.Failed>(Assert.Single(oversize)).Code);
 
         Assert.Equal(0, usage.Reserves);
@@ -306,7 +307,7 @@ public sealed class AssistantChatGovernanceTests
         Assert.Equal(1, usage.Reserves);
         Assert.Equal(1, usage.Settles);
         // 单请求最多 MaxToolRounds+1 次模型调用：预留 = 每轮 0.05 元 × 5。
-        Assert.Equal(50_000L * (AssistantToolRegistry.MaxToolRounds + 1), usage.LastReserveMicro);
+        Assert.Equal(50_000L * (new AssistantChatLimitsOptions().MaxToolRounds + 1), usage.LastReserveMicro);
     }
 
     [Fact]

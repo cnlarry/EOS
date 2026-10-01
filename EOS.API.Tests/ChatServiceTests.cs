@@ -1,6 +1,7 @@
 using EOS.API.Data;
 using EOS.API.Features.Assistant;
 using EOS.API.Features.Assistant.ModelAccess;
+using EOS.API.Features.Assistant.Parameters;
 using EOS.API.Features.Assistant.Tools;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -193,7 +194,8 @@ public sealed class ChatServiceTests
         var blank = await CollectAsync(service.StreamReplyAsync("u1", 7, "   ", null, "corr", CancellationToken.None));
         Assert.Equal("INVALID_ARGUMENT", Assert.IsType<ChatStreamEvent.Failed>(Assert.Single(blank)).Code);
 
-        var oversize = await CollectAsync(service.StreamReplyAsync("u1", 7, new string('长', ChatService.MaxContentLength + 1), null, "corr", CancellationToken.None));
+        var oversize = await CollectAsync(service.StreamReplyAsync(
+            "u1", 7, new string('长', new AssistantChatLimitsOptions().MaxContentLength + 1), null, "corr", CancellationToken.None));
         Assert.Equal("INVALID_ARGUMENT", Assert.IsType<ChatStreamEvent.Failed>(Assert.Single(oversize)).Code);
 
         Assert.Empty(repo.UserMessages);

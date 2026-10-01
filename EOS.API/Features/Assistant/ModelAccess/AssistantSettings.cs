@@ -5,9 +5,10 @@ namespace EOS.API.Features.Assistant.ModelAccess;
 ///
 /// <para>
 /// <c>new AssistantSettings()</c> 的字段值就是默认值：全局策略（提示词、日上限、单价兜底、熔断）
-/// 由 3105 的设置表按需覆盖（<c>AssistantSettingKeys.Apply</c> 就是唯一入口，界面上的"默认值"提示
-/// 也取自这里，所以不会出现"界面显示 5 元、代码其实已经改了"的漂移）；传输层字段（端点、模型标识、
-/// 超时、温度、窗口、工具能力、单价）由 3102 的模型行覆盖。
+/// 由 3105 的参数按需覆盖（<c>dbo.SYSSS</c> 的 <c>OWNER_MODULE = 3105</c>，声明在
+/// <c>AssistantParameterCatalog</c>、解析在 <c>AssistantParameterResolver</c>；界面上的"默认值"提示
+/// 也取自同一份声明，所以不会出现"界面显示 5 元、代码其实已经改了"的漂移）；传输层字段（端点、
+/// 模型标识、超时、温度、窗口、工具能力、单价）由 3102 的模型行覆盖。
 /// </para>
 ///
 /// <para>
@@ -33,8 +34,8 @@ public sealed class AssistantSettings
     /// 采样温度。<c>null</c> = 不传该参数，用厂商默认。
     ///
     /// <para>
-    /// 与 <c>BaseUrl</c>/<c>Model</c> 一样属于**传输层参数**：当管理员在模型管理页（3102）
-    /// 配了模型，这些值由那一行覆盖；表为空时退回这里的配置。
+    /// 与 <c>BaseUrl</c>/<c>Model</c> 一样属于**传输层参数**：管理员在模型管理页（3102）配了模型，
+    /// 这些值由那一行覆盖。**没有"退回这里"的退路**——管理面没配好就是未配置。
     /// </para>
     /// </summary>
     public decimal? Temperature { get; set; }
